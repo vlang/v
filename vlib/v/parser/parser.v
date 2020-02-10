@@ -178,17 +178,17 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 				.key_struct, .key_union, .key_interface {
 					return p.struct_decl()
 				}
+				.key_enum {
+					return p.enum_decl()
+				}
+				.key_type {
+					return p.type_decl()
+				}
 				else {
 					p.error('wrong pub keyword usage')
 					return ast.Stmt{}
 				}
-				// .key_enum {
-				// return p.enum_decl()
-				// }
-				// .key_type {
-				// return p.type_decl()
-				// }
-			}
+	}
 		}
 		.lsbr {
 			return p.attr()
@@ -300,6 +300,8 @@ fn (p mut Parser) attr() ast.Attr {
 	}
 }
 
+/*
+
 fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 	// ,table.Type) {
 	if p.tok.kind != .dotdot {
@@ -319,6 +321,7 @@ fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 	}
 	return node
 }
+*/
 
 /*
 pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
@@ -499,7 +502,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		}
 	}
 	// struct init
-	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || p.tok.lit in ['array', 'string', 'ustring', 'mapnode', 'map']) && !p.tok.lit[p.tok.lit.len - 1].is_capital() {
+	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || p.tok.lit in ['array', 'string', 'ustring', 'mapnode', 'map']) && !p.tok.lit[p.tok.lit.len - 1].is_capital() {
 		// || p.table.known_type(p.tok.lit)) {
 		typ = p.parse_type()
 		// p.warn('struct init typ=$typ.name')
@@ -643,36 +646,49 @@ fn (p mut Parser) prefix_expr() (ast.Expr,table.Type) {
 	return expr,typ
 }
 
-// fn (p mut Parser) index_expr(left ast.Expr, typ_ table.Type) (ast.Expr,table.Type) {
-fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
-	// mut typ := typ_
-	// println('index expr$p.tok.str() line=$p.tok.line_nr')
+fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
+	// left == `a` in `a[0]`
 	p.next() // [
 	mut index_expr := ast.Expr{}
-	if p.tok.kind == .dotdot || p.peek_tok.kind == .dotdot {
-		// `numbers[..end]`
-		index_expr = p.range_expr(left)
-		// typ = typ_ // set the type back to array
+	if p.tok.kind == .dotdot {
+		// [..end]
+		p.next()
+		high,_ := p.expr(0)
+		p.check(.rsbr)
+		return ast.IndexExpr{
+			left: left
+			pos: p.tok.position()
+			index: ast.RangeExpr{
+				low: ast.Expr{}
+				high: high
+			}
+		}
 	}
-	else {
-		// println('start index expr')
-		index_expr,_ = p.expr(0)
+	expr,_ := p.expr(0) // `[expr]` or  `[expr..]`
+	if p.tok.kind == .dotdot {
+		// [start..end] or [start..]
+		p.check(.dotdot)
+		mut high := ast.Expr{}
+		if p.tok.kind != .rsbr {
+			high,_ = p.expr(0)
+		}
+		p.check(.rsbr)
+		return ast.IndexExpr{
+			left: left
+			pos: p.tok.position()
+			index: ast.RangeExpr{
+				low: expr
+				high: high
+			}
+		}
 	}
-	// println('end expr typ=$typ.name')
+	// [expr]
 	p.check(.rsbr)
-	// println('got ]')
-	// /ti := table.int_type
-	mut node := ast.Expr{}
-	// println('index expr: $typ.typ.name')
-	node = ast.IndexExpr{
+	return ast.IndexExpr{
 		left: left
-		index: index_expr
+		index: expr
 		pos: p.tok.position()
-		// typ: typ
-		
 	}
-	return node
-	// return node,typ
 }
 
 fn (p mut Parser) filter(typ table.Type) {
@@ -1061,6 +1077,10 @@ fn (p mut Parser) import_stmt() []ast.Import {
 }
 
 fn (p mut Parser) const_decl() ast.ConstDecl {
+	is_pub := p.tok.kind == .key_pub
+	if is_pub {
+		p.next()
+	}
 	p.check(.key_const)
 	p.check(.lpar)
 	mut fields := []ast.Field
@@ -1093,6 +1113,11 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		p.next()
 	}
 	p.check(.key_struct)
+	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
+	if is_c {
+		p.next() // C
+		p.next() // .
+	}
 	name := p.check_name()
 	p.check(.lcbr)
 	mut ast_fields := []ast.Field
@@ -1294,6 +1319,10 @@ fn (p mut Parser) match_expr() (ast.Expr,table.Type) {
 	mut return_type := table.void_type
 	for {
 		// p.tok.kind != .rcbr {
+		// Sum type match
+		// if p.tok.kind == .name && p.tok.lit[0].is_capital() {
+		// } else {
+		// Expression match
 		match_expr,_ := p.expr(0)
 		match_exprs << match_expr
 		p.warn('match block')
@@ -1331,6 +1360,51 @@ fn (p mut Parser) match_expr() (ast.Expr,table.Type) {
 		cond: cond
 	}
 	return node,return_type
+}
+
+fn (p mut Parser) enum_decl() ast.EnumDecl {
+	is_pub := p.tok.kind == .key_pub
+	if is_pub {
+		p.next()
+	}
+	p.check(.key_enum)
+	name := p.check_name()
+	p.check(.lcbr)
+	mut vals := []string
+	for p.tok.kind != .eof && p.tok.kind != .rcbr {
+		val := p.check_name()
+		vals << val
+		p.warn('enum val $val')
+	}
+	p.check(.rcbr)
+	return ast.EnumDecl{
+		name: name
+		is_pub: is_pub
+		vals: vals
+	}
+}
+
+fn (p mut Parser) type_decl() ast.TypeDecl {
+	is_pub := p.tok.kind == .key_pub
+	if is_pub {
+		p.next()
+	}
+	p.check(.key_type)
+	name := p.check_name()
+	// type SumType = A | B | c
+	if p.tok.kind == .assign {
+		p.next()
+		for {
+			p.check_name()
+			if p.tok.kind != .pipe {
+				break
+			}
+			p.check(.pipe)
+		}
+	}
+	return ast.TypeDecl{
+		name: name
+	}
 }
 
 fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.Type {

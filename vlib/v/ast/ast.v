@@ -11,11 +11,11 @@ import (
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral |
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr |
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr |
-CastExpr  | EnumVal
+CastExpr | EnumVal
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
-HashStmt | AssignStmt
+HashStmt | AssignStmt | EnumDecl | TypeDecl
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
@@ -367,10 +367,22 @@ pub:
 	name string
 }
 
-pub struct EnumVal{
+pub struct EnumVal {
 pub:
 	name string
+}
 
+pub struct EnumDecl {
+pub:
+	name   string
+	is_pub bool
+	vals   []string
+}
+
+pub struct TypeDecl{
+pub:
+	name   string
+	is_pub bool
 }
 
 pub struct AssignExpr {

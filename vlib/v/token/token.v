@@ -388,7 +388,7 @@ pub fn (tok Token) precedence() int {
 			return 3
 		}
 		// `||`
-		.logical_or, .assign, .plus_assign, .minus_assign, .div_assign, .or_assign,
+		.logical_or, .assign, .plus_assign, .minus_assign, .div_assign, .mod_assign, .or_assign,
 		//
 		.left_shift_assign, .righ_shift_assign, .mult_assign {
 			return 2
