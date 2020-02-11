@@ -11,9 +11,9 @@ pub fn (p mut Parser) parse_array_type(nr_muls int) table.Type {
 	// fixed array
 	if p.tok.kind == .number {
 		size := p.tok.lit.int()
-		elem_type := p.parse_type()
+		p.next()
 		p.check(.rsbr)
-		p.check_name()
+		elem_type := p.parse_type()
 		idx := p.table.find_or_register_array_fixed(elem_type, size, 1)
 		return table.new_type_ptr(idx, nr_muls)
 	}
