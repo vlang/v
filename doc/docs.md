@@ -948,13 +948,78 @@ which module is being called. Especially in large code bases.
 
 Module names should be short, under 10 characters. Circular imports are not allowed.
 
-You can create modules anywhere.
+Module names should be snake_case identifier (`/[a-z][a-z0-9_-]/`) as a convention. You cannot use space characters for module names.
+
+The imported modules are all automatically compiled, which means you don't need to precompile modules unless you need `.o` file.
+
+TBD: You can create modules anywhere.
+
+The lookup for modules happens in this order:
+
+1. project's local folders (like `./my_module/`)
+2. v's `vlib/` folder (like `vlib/my_module/`)
+3. home directory's `~/.vmodules/` folder (like `~/.vmodules/my_module/`)
+
+You can specify modules in subdirectory with `.` (not with `/`) like`module_name.submodule_name`:
+
+```v
+./
+  |- parent/
+    |- child/
+      |- child1.v
+  |- main.v
+
+// child1.v
+module child
+
+// main.v
+import parent.child     // imports modules under parent/child/
+
+child.function()        // reference is not namespaced
+```
+
+Notes on submodules:
+
+* The maximum depth of submodule path is "5" and you cannot exceed this.
+* TBD: When importing modules, you cannot use `../` to refer to the modules in parent directories. Use symbolic links in the case.
+
+You can rename the modules when imported:
+
+```v
+import module_name as mn      // mn is an alias of the module_name
+```
+
+Note that V looks up the module by the containing directory name, which means the directory name should match exactly the module name.
+
+The name of the modules under the directory can be any `*.v`, but at least putting the file with the exact module name is preferable as a convention because the module file with the exact name, where `init()` function (see below) can exist, will be fetched first.
+
+```v
+./
+  |- module_name/
+    |- module_name.v    // first access
+    |- module1.v
+    |- module2.v
+    |- ...
+  |- main.v
+
+// module_name.v, module1.v, module2.v ...
+module module_name
+
+// main.v
+import module_name
+```
+
+Then you can refer to the modules "module_name" from the main.v file via `import module_name`.
+
+The same modules under the directory shares the same scope, which means they don't need `pub` to access each other.
+
+This means you can create modules as a name snake_case or PascalCase. You cannot include spaces within the module name.
 
 All modules are compiled statically into a single executable.
 
 If you want to write a module that will automatically call some
 setup/initialization code when imported (perhaps you want to call
-some C library functions), write a module `init` function inside the module:
+some C library functions), write a module `init()` function inside the module:
 
 ```v
 fn init() int {
@@ -963,7 +1028,7 @@ fn init() int {
 }
 ```
 
-The init function cannot be public. It will be called automatically.
+The `init()` function cannot be public and will be called automatically.
 
 ## Interfaces
 
