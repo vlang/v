@@ -93,91 +93,39 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	// println('fn decl $name')
 	p.check(.lpar)
-	mut is_variadic := false
 	// Args
 	mut args := []table.Var
-	mut ast_args := []ast.Arg
-	// `int, int, string` (no names, just types)
-	types_only := p.tok.kind in [.amp] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
+	ast_args,is_variadic := p.fn_args()
+	for ast_arg in ast_args {
+		var := table.Var{
+			name: ast_arg.name
+			typ: ast_arg.typ
+		}
+		args << var
+		p.table.register_var(var)
+	}
 	//
-	p.peek_tok.kind == .rpar
-	if types_only {
-		p.warn('types only')
-		mut arg_no := 1
-		for p.tok.kind != .rpar {
-			arg_name := 'arg_$arg_no'
-			if p.tok.kind == .ellipsis {
-				p.check(.ellipsis)
-				is_variadic = true
-			}
-			arg_type := p.parse_type()
-			if p.tok.kind == .comma {
-				if is_variadic {
-					p.error('cannot use ...(variadic) with non-final parameter no $arg_no')
-				}
-				p.next()
-			}
+	/*
+
 			arg := table.Var{
 				name: arg_name
 				typ: arg_type
 			}
 			args << arg
 			// p.table.register_var(arg)
-			ast_args << ast.Arg{
-				name: arg_name
-				typ: arg_type
-			}
-		}
-		arg_no++
-	}
-	else {
-		for p.tok.kind != .rpar {
-			mut arg_names := [p.check_name()]
-			// `a, b, c int`
-			for p.tok.kind == .comma {
-				p.check(.comma)
-				arg_names << p.check_name()
-			}
-			if p.tok.kind == .key_mut {
-				p.check(.key_mut)
-			}
-			if p.tok.kind == .ellipsis {
-				p.check(.ellipsis)
-				is_variadic = true
-			}
-			typ := p.parse_type()
-			for arg_name in arg_names {
 				arg := table.Var{
 					name: arg_name
 					typ: typ
 				}
 				args << arg
 				p.table.register_var(arg)
-				ast_args << ast.Arg{
-					name: arg_name
-					typ: typ
-				}
-				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
-				if is_variadic && p.tok.kind == .comma {
-					p.error('cannot use ...(variadic) with non-final parameter $arg_name')
-				}
-			}
-			if p.tok.kind != .rpar {
-				p.check(.comma)
-			}
-		}
-	}
-	p.check(.rpar)
+				*/
 	// Return type
 	mut typ := table.void_type
 	if p.tok.kind in [.name, .lpar, .amp, .lsbr, .question] {
 		typ = p.parse_type()
-		p.return_type = typ
 	}
-	else {
-		// p.return_type = table.void_type
-		p.return_type = typ
-	}
+	p.return_type = typ
 	if is_method {
 		type_sym := p.table.get_type_symbol(rec_type)
 		ok := p.table.register_method(type_sym, table.Fn{
@@ -214,4 +162,67 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			typ: rec_type
 		}
 	}
+}
+
+fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
+	mut args := []ast.Arg
+	mut is_variadic := false
+	// `int, int, string` (no names, just types)
+	types_only := p.tok.kind in [.amp] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) || p.peek_tok.kind == .rpar
+	if types_only {
+		p.warn('types only')
+		mut arg_no := 1
+		for p.tok.kind != .rpar {
+			arg_name := 'arg_$arg_no'
+			if p.tok.kind == .ellipsis {
+				p.check(.ellipsis)
+				is_variadic = true
+			}
+			arg_type := p.parse_type()
+			if p.tok.kind == .comma {
+				if is_variadic {
+					p.error('cannot use ...(variadic) with non-final parameter no $arg_no')
+				}
+				p.next()
+			}
+			args << ast.Arg{
+				name: arg_name
+				typ: arg_type
+			}
+		}
+		arg_no++
+	}
+	else {
+		for p.tok.kind != .rpar {
+			mut arg_names := [p.check_name()]
+			// `a, b, c int`
+			for p.tok.kind == .comma {
+				p.check(.comma)
+				arg_names << p.check_name()
+			}
+			if p.tok.kind == .key_mut {
+				p.check(.key_mut)
+			}
+			if p.tok.kind == .ellipsis {
+				p.check(.ellipsis)
+				is_variadic = true
+			}
+			typ := p.parse_type()
+			for arg_name in arg_names {
+				args << ast.Arg{
+					name: arg_name
+					typ: typ
+				}
+				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
+				if is_variadic && p.tok.kind == .comma {
+					p.error('cannot use ...(variadic) with non-final parameter $arg_name')
+				}
+			}
+			if p.tok.kind != .rpar {
+				p.check(.comma)
+			}
+		}
+	}
+	p.check(.rpar)
+	return args,is_variadic
 }
