@@ -414,7 +414,6 @@ fn sub(prev int, curr int) int {
 }
 
 fn test_reduce() {
-	/*
 	a := [1, 2, 3, 4, 5]
 	b := a.reduce(sum, 0)
 	c := a.reduce(sum, 5)
@@ -427,7 +426,6 @@ fn test_reduce() {
 	g := e.reduce(sub, -1)
 	assert f == -6
 	assert g == -7
-	*/
 }
 
 fn test_filter() {
