@@ -682,7 +682,7 @@ fn (p mut Parser) index_expr(left ast.Expr, left_type table.Type) (ast.IndexExpr
 				low: ast.Expr{}
 				high: high
 			}
-		},left_type
+		},left_type // TODO: return correct type
 	}
 	expr,_ := p.expr(0) // `[expr]` or  `[expr..]`
 	if p.tok.kind == .dotdot {
@@ -700,15 +700,15 @@ fn (p mut Parser) index_expr(left ast.Expr, left_type table.Type) (ast.IndexExpr
 				low: expr
 				high: high
 			}
-		},left_type
+		},left_type // TODO: return correct type
 	}
+	// get the element type
 	mut typ := left_type
 	left_type_sym := p.table.get_type_symbol(left_type)
 	if left_type_sym.kind == .array {
 		info := left_type_sym.info as table.Array
 		elem_type_sym := p.table.get_type_symbol(info.elem_type)
 		typ = info.elem_type
-		println('ARRAY INDEX: $elem_type_sym.name')
 	}
 	// [expr]
 	p.check(.rsbr)
