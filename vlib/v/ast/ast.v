@@ -15,7 +15,7 @@ CastExpr | EnumVal
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
-HashStmt | AssignStmt | EnumDecl | TypeDecl
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
@@ -383,6 +383,11 @@ pub struct TypeDecl{
 pub:
 	name   string
 	is_pub bool
+}
+
+pub struct DeferStmt{
+pub:
+stmts []Stmt
 }
 
 pub struct AssignExpr {

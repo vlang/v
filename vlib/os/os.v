@@ -224,7 +224,7 @@ pub fn mv_by_cp(source string, target string) ?bool {
 	return true
 }
 
-fn vfopen(path, mode string) *C.FILE {
+fn vfopen(path, mode string) &C.FILE {
 	$if windows {
 		return C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
@@ -1016,9 +1016,9 @@ pub fn walk_ext(path, ext string) []string {
 	return res
 }
 
-// walk recursively traverse the given directory path.
+// walk recursively traverses the given directory path.
 // When a file is encountred it will call the callback function with current file as argument.
-pub fn walk(path string, fnc fn(path string)) {
+pub fn walk(path string, f fn(path string)) {
 	if !os.is_dir(path) {
 		return
 	}
@@ -1028,10 +1028,10 @@ pub fn walk(path string, fnc fn(path string)) {
 	for file in files {
 		p := path + os.path_separator + file
 		if os.is_dir(p) && !os.is_link(p) {
-			walk(p, fnc)
+			walk(p, f)
 		}
 		else if os.exists(p) {
-			fnc(p)
+			f(p)
 		}
 	}
 	return
@@ -1161,7 +1161,7 @@ pub const (
 	wd_at_startup = getwd()
 )
 
-// resource_abs_path returns an absolute path, for the given `path` 
+// resource_abs_path returns an absolute path, for the given `path`
 // (the path is expected to be relative to the executable program)
 // See https://discordapp.com/channels/592103645835821068/592294828432424960/630806741373943808
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,

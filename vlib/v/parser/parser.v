@@ -244,6 +244,13 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			p.parse_block()
 			return ast.Stmt{}
 		}
+		.key_defer {
+			p.next()
+			stmts := p.parse_block()
+			return ast.DeferStmt{
+				stmts: stmts
+			}
+		}
 		else {
 			// `x := ...`
 			// if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
@@ -359,7 +366,7 @@ pub fn (p &Parser) error(s string) {
 	if path.starts_with(workdir) {
 		path = path.replace(workdir, '')
 	}
-	final_msg_line := 'xxx$path:$p.tok.line_nr: error: $s'
+	final_msg_line := '$path:$p.tok.line_nr: error: $s'
 	if colored_output {
 		eprintln(term.bold(term.red(final_msg_line)))
 	}
@@ -476,7 +483,8 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		name := p.tok.lit
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if name in p.table.type_idxs {
+		if name in p.table.type_idxs && !(name in ['stat', 'sigaction']) {
+			// TODO handle C.stat()
 			to_typ := p.parse_type()
 			p.check(.lpar)
 			mut expr := ast.Expr{}
@@ -914,7 +922,16 @@ fn (p mut Parser) if_expr() (ast.Expr,table.Type) {
 	// }
 	mut node := ast.Expr{}
 	p.check(.key_if)
-	cond,_ := p.expr(0)
+	// `if x := opt() {`
+	mut cond := ast.Expr{}
+	if p.peek_tok.kind == .decl_assign {
+		p.next()
+		p.check(.decl_assign)
+		p.expr(0)
+	}
+	else {
+		cond,_ = p.expr(0)
+	}
 	p.inside_if = false
 	stmts := p.parse_block()
 	mut else_stmts := []ast.Stmt
@@ -973,6 +990,13 @@ fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
 		p.expr(0)
 		if p.tok.kind == .colon {
 			p.next()
+		}
+		// ${num:2d}
+		if p.tok.kind == .number {
+			p.next()
+			if p.tok.lit.len == 1 {
+				p.next()
+			}
 		}
 	}
 	return node,table.string_type
@@ -1341,8 +1365,14 @@ fn (p mut Parser) match_expr() (ast.Expr,table.Type) {
 		}
 		else {
 			// Expression match
-			match_expr,_ := p.expr(0)
-			match_exprs << match_expr
+			for {
+				match_expr,_ := p.expr(0)
+				match_exprs << match_expr
+				if p.tok.kind != .comma {
+					break
+				}
+				p.check(.comma)
+			}
 		}
 		p.warn('match block')
 		stmts := p.parse_block()
@@ -1420,6 +1450,9 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 			}
 			p.check(.pipe)
 		}
+	}
+	else {
+		p.check_name()
 	}
 	return ast.TypeDecl{
 		name: name
