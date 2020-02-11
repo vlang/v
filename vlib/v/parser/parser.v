@@ -707,7 +707,6 @@ fn (p mut Parser) index_expr(left ast.Expr, left_type table.Type) (ast.IndexExpr
 	left_type_sym := p.table.get_type_symbol(left_type)
 	if left_type_sym.kind == .array {
 		info := left_type_sym.info as table.Array
-		elem_type_sym := p.table.get_type_symbol(info.elem_type)
 		typ = info.elem_type
 	}
 	// [expr]
