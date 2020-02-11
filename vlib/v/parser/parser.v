@@ -635,7 +635,10 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node,typ = p.dot_expr(node, typ)
 		}
 		else if p.tok.kind == .lsbr {
-			node = p.index_expr(node) // , typ)
+			//node = p.index_expr(node) // , typ)
+			ie_node,ie_typ := p.index_expr(node, typ)
+			node = ie_node
+			typ = ie_typ
 		}
 		else if p.tok.kind == .key_as {
 			p.next()
@@ -672,7 +675,7 @@ fn (p mut Parser) prefix_expr() (ast.Expr,table.Type) {
 	return expr,typ
 }
 
-fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
+fn (p mut Parser) index_expr(left ast.Expr, left_type table.Type) (ast.IndexExpr,table.Type) {
 	// left == `a` in `a[0]`
 	p.next() // [
 	if p.tok.kind == .dotdot {
@@ -687,7 +690,7 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 				low: ast.Expr{}
 				high: high
 			}
-		}
+		},left_type // TODO: return correct type
 	}
 	expr,_ := p.expr(0) // `[expr]` or  `[expr..]`
 	if p.tok.kind == .dotdot {
@@ -705,7 +708,14 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 				low: expr
 				high: high
 			}
-		}
+		},left_type // TODO: return correct type
+	}
+	// get the element type
+	mut typ := left_type
+	left_type_sym := p.table.get_type_symbol(left_type)
+	if left_type_sym.kind == .array {
+		info := left_type_sym.info as table.Array
+		typ = info.elem_type
 	}
 	// [expr]
 	p.check(.rsbr)
@@ -713,7 +723,7 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		left: left
 		index: expr
 		pos: p.tok.position()
-	}
+	},typ
 }
 
 fn (p mut Parser) filter(typ table.Type) {
@@ -858,8 +868,8 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 	}
 	// `for i in vals`, `for i in start .. end`
-	else if p.peek_tok.kind == .key_in || p.peek_tok.kind == .comma {
-		var_name := p.check_name()
+	else if p.peek_tok.kind in [.key_in, .comma] {
+	var_name := p.check_name()
 		if p.tok.kind == .comma {
 			p.check(.comma)
 			val_name := p.check_name()
@@ -873,20 +883,25 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		// arr_expr
 		_,arr_typ := p.expr(0)
 		// array / map
-		arr_typ_sym := p.table.get_type_symbol(arr_typ)
-		match arr_typ_sym.info {
-			table.Array {
-				elem_type = it.elem_type
+		if table.type_idx(arr_typ) == table.string_type_idx {
+			elem_type = table.byte_type
+		}
+		else {
+			arr_typ_sym := p.table.get_type_symbol(arr_typ)
+			match arr_typ_sym.info {
+				table.Array {
+					elem_type = it.elem_type
+				}
+				table.Map {
+					elem_type = it.value_type
+				}
+				else {
+					println(1)
+					// elem_type_sym := p.table.get_type_symbol(elem_type)
+					// p.error('cannot loop over type: $elem_type_sym.name')
+				}
 			}
-			table.Map {
-				elem_type = it.value_type
-			}
-			else {
-				println(1)
-				// elem_type_sym := p.table.get_type_symbol(elem_type)
-				// p.error('cannot loop over type: $elem_type_sym.name')
-			}
-	}
+		}
 		// 0 .. 10
 		// start := p.tok.lit.int()
 		if p.tok.kind == .dotdot {
