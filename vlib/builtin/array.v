@@ -449,7 +449,6 @@ pub fn (a []char) index(v char) int {
 	return -1
 }
 
-/*
 // []int.reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
@@ -461,6 +460,7 @@ pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
 	return _accum
 }
 
+/*
 // array_eq<T> checks if two arrays contain all the same elements in the same order.
 // []int == []int (also for: i64, f32, f64, byte, string)
 fn array_eq<T>(a1, a2 []T) bool {

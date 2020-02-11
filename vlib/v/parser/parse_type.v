@@ -67,8 +67,13 @@ pub fn (p mut Parser) parse_multi_return_type() table.Type {
 }
 
 pub fn (p mut Parser) parse_fn_type() table.Type {
-	// p.check(.key_fn)
-	p.fn_decl()
+	p.warn('parrse fn')
+	p.check(.key_fn)
+	// p.fn_decl()
+	p.fn_args()
+	if p.tok.kind.is_start_of_type() {
+		p.parse_type()
+	}
 	return table.int_type
 }
 

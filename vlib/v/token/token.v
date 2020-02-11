@@ -463,6 +463,10 @@ pub fn (tok Kind) is_relational() bool {
 	.lt, .le, .gt, .ge, .eq, .ne]
 }
 
+pub fn (k Kind) is_start_of_type() bool {
+	return k in [.name, .lpar, .amp, .lsbr, .question]
+}
+
 pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in,
 	//

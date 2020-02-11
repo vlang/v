@@ -635,7 +635,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node,typ = p.dot_expr(node, typ)
 		}
 		else if p.tok.kind == .lsbr {
-			//node = p.index_expr(node) // , typ)
+			// node = p.index_expr(node) // , typ)
 			ie_node,ie_typ := p.index_expr(node, typ)
 			node = ie_node
 			typ = ie_typ
@@ -869,7 +869,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	}
 	// `for i in vals`, `for i in start .. end`
 	else if p.peek_tok.kind in [.key_in, .comma] {
-	var_name := p.check_name()
+		var_name := p.check_name()
 		if p.tok.kind == .comma {
 			p.check(.comma)
 			val_name := p.check_name()
@@ -900,7 +900,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 					// elem_type_sym := p.table.get_type_symbol(elem_type)
 					// p.error('cannot loop over type: $elem_type_sym.name')
 				}
-			}
+	}
 		}
 		// 0 .. 10
 		// start := p.tok.lit.int()
@@ -1104,6 +1104,10 @@ fn (p mut Parser) module_decl() ast.Module {
 
 fn (p mut Parser) parse_import() ast.Import {
 	mod_name := p.check_name()
+	if p.tok.kind == .dot {
+		p.next()
+		p.check_name()
+	}
 	mut mod_alias := mod_name
 	if p.tok.kind == .key_as {
 		p.check(.key_as)

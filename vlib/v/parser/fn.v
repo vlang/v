@@ -92,7 +92,6 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		p.check(.gt)
 	}
 	// println('fn decl $name')
-	p.check(.lpar)
 	// Args
 	mut args := []table.Var
 	ast_args,is_variadic := p.fn_args()
@@ -122,7 +121,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 				*/
 	// Return type
 	mut typ := table.void_type
-	if p.tok.kind in [.name, .lpar, .amp, .lsbr, .question] {
+	if p.tok.kind.is_start_of_type() {
 		typ = p.parse_type()
 	}
 	p.return_type = typ
@@ -165,6 +164,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 }
 
 fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
+	p.check(.lpar)
 	mut args := []ast.Arg
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
