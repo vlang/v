@@ -211,6 +211,12 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		.hash {
 			return p.hash()
 		}
+		.key_type {
+			return p.type_decl()
+		}
+		.key_enum {
+			return p.enum_decl()
+		}
 		else {
 			p.error('parser: bad top level statement')
 			return ast.Stmt{}
@@ -470,7 +476,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		p.next()
 		p.check(.dot)
 	}
-	else if p.tok.lit in ['strings', 'strconv'] {
+	if p.peek_tok.kind == .dot && p.tok.lit in p.table.imports {
 		p.next()
 		p.check(.dot)
 	}
@@ -1020,6 +1026,18 @@ fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
 fn (p mut Parser) array_init() (ast.Expr,table.Type) {
 	mut node := ast.Expr{}
 	p.check(.lsbr)
+	// `[]` - empty array with an automatically deduced type
+	/*
+	if p.peek_tok.kind == .rsbr && p.expected_type.kind == .array {
+		node = ast.ArrayInit{
+			// typ: array_type
+			exprs: []
+			pos: p.tok.position()
+		}
+		return node,p.expected_type
+	}
+	*/
+
 	mut val_type := table.void_type
 	mut exprs := []ast.Expr
 	mut is_fixed := false
@@ -1103,16 +1121,17 @@ fn (p mut Parser) module_decl() ast.Module {
 }
 
 fn (p mut Parser) parse_import() ast.Import {
-	mod_name := p.check_name()
+	mut mod_name := p.check_name()
 	if p.tok.kind == .dot {
 		p.next()
-		p.check_name()
+		mod_name += '.' + p.check_name()
 	}
 	mut mod_alias := mod_name
 	if p.tok.kind == .key_as {
 		p.check(.key_as)
 		mod_alias = p.check_name()
 	}
+	p.table.imports << mod_name
 	return ast.Import{
 		mod: mod_name
 		alias: mod_alias
@@ -1372,6 +1391,10 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 
 fn (p mut Parser) match_expr() (ast.Expr,table.Type) {
 	p.check(.key_match)
+	is_mut := p.tok.kind == .key_mut
+	if is_mut {
+		p.next()
+	}
 	cond,typ := p.expr(0)
 	p.check(.lcbr)
 	mut blocks := []ast.StmtBlock
@@ -1443,6 +1466,10 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 		val := p.check_name()
 		vals << val
 		p.warn('enum val $val')
+		if p.tok.kind == .assign {
+			p.next()
+			p.expr(0)
+		}
 	}
 	p.check(.rcbr)
 	return ast.EnumDecl{

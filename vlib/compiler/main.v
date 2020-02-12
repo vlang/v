@@ -311,6 +311,8 @@ pub fn (v mut V) compile() {
 	}
 	cgen.save()
 	v.cc()
+	//println(v.table.imports)
+	//println(v.table.modules)
 }
 
 pub fn (v mut V) compile2() {

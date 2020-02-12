@@ -19,7 +19,8 @@ pub mut:
 	fns             map[string]Fn
 	consts          map[string]Var
 	tmp_cnt         int
-	imports         []string
+	imports         []string // List of all imports
+	modules         []string // List of all modules registered by the application
 }
 
 pub struct Fn {
@@ -577,3 +578,13 @@ pub fn (t &Table) get_expr_typ(expr ast.Expr) TypeSymbol {
 	}
 }
 */
+
+
+pub fn (t &Table) known_import(name string) bool {
+	for i in t.imports {
+		if i.all_after('.') == name {
+			return true
+		}
+	}
+	return false
+}
