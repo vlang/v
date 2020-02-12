@@ -41,9 +41,9 @@ jobs:
         brew install freetype glfw openssl postgres sdl2 sdl2_ttf sdl2_mixer sdl2_image
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
-      run:  make -j4 && ./v -cg -o v v.v
+      run:  make -j4 && ./v -cg -o v cmd/v
     - name: Build V using V
-      run:  ./v -o v2 v.v && ./v2 -o v3 v.v
+      run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
     - name: Test symlink
       run:  sudo ./v symlink
     - name: Set up pg database
