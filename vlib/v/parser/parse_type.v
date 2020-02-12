@@ -90,8 +90,9 @@ pub fn (p mut Parser) parse_type() table.Type {
 	if p.tok.kind == .question {
 		p.next()
 	}
+	// `module.Type`
 	if p.peek_tok.kind == .dot {
-		///if !(p.tok.lit in p.table.imports) {
+		// /if !(p.tok.lit in p.table.imports) {
 		if !p.table.known_import(p.tok.lit) {
 			println(p.table.imports)
 			p.error('unknown module `$p.tok.lit`')

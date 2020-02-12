@@ -467,6 +467,53 @@ pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.Type) {
 	return node,typ
 }
 
+fn (p mut Parser) struct_init() (ast.Expr,table.Type) {
+	mut node := ast.Expr{}
+	typ := p.parse_type()
+	// p.warn('struct init typ=$typ.name')
+	p.check(.lcbr)
+	mut field_names := []string
+	mut exprs := []ast.Expr
+	mut i := 0
+	sym := p.table.get_type_symbol(typ)
+	// TODO if sym.info is table.Struct
+	mut is_struct := false
+	match sym.info {
+		table.Struct {
+			is_struct = true
+		}
+		else {}
+	}
+	for p.tok.kind != .rcbr {
+		field_name := p.check_name()
+		field_names << field_name
+		// Set expected type for this field's expression
+		// p.warn('$sym.name field $field_name')
+		if is_struct {
+			info := sym.info as table.Struct
+			field := sym.find_field(field_name) or {
+				p.error(err)
+				continue
+			}
+			p.expected_type = field.typ
+			// p.warn('setting exp $field.typ')
+		}
+		//
+		p.check(.colon)
+		expr,_ := p.expr(0)
+		exprs << expr
+		i++
+	}
+	node = ast.StructInit{
+		typ: typ
+		exprs: exprs
+		fields: field_names
+		pos: p.tok.position()
+	}
+	p.check(.rcbr)
+	return node,typ
+}
+
 pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 	mut node := ast.Expr{}
 	mut typ := table.void_type
@@ -518,25 +565,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 	// struct init
 	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || p.tok.lit in ['array', 'string', 'ustring', 'mapnode', 'map']) && !p.tok.lit[p.tok.lit.len - 1].is_capital() {
 		// || p.table.known_type(p.tok.lit)) {
-		typ = p.parse_type()
-		// p.warn('struct init typ=$typ.name')
-		p.check(.lcbr)
-		mut field_names := []string
-		mut exprs := []ast.Expr
-		for p.tok.kind != .rcbr {
-			field_name := p.check_name()
-			field_names << field_name
-			p.check(.colon)
-			expr,_ := p.expr(0)
-			exprs << expr
-		}
-		node = ast.StructInit{
-			typ: typ
-			exprs: exprs
-			fields: field_names
-			pos: p.tok.position()
-		}
-		p.check(.rcbr)
+		return p.struct_init()
 	}
 	else {
 		mut ident := ast.Ident{}
@@ -1027,17 +1056,24 @@ fn (p mut Parser) array_init() (ast.Expr,table.Type) {
 	mut node := ast.Expr{}
 	p.check(.lsbr)
 	// `[]` - empty array with an automatically deduced type
+	// p.warn('array_init() exp=$p.expected_type')
 	/*
-	if p.peek_tok.kind == .rsbr && p.expected_type.kind == .array {
+	if p.expected_type != 0 {
+		sym := p.table.get_type_symbol(p.expected_type)
+		println(sym.name)
+	}
+	*/
+
+	if p.tok.kind == .rsbr && int(p.expected_type) != 0 && p.table.get_type_symbol(p.expected_type).kind == .array {
+		// p.warn('[] expr')
 		node = ast.ArrayInit{
 			// typ: array_type
 			exprs: []
 			pos: p.tok.position()
 		}
+		p.check(.rsbr)
 		return node,p.expected_type
 	}
-	*/
-
 	mut val_type := table.void_type
 	mut exprs := []ast.Expr
 	mut is_fixed := false
