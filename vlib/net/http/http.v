@@ -212,12 +212,12 @@ pub fn (req &Request) do() ?Response {
 		}
 		// follow any redirects
 		mut redirect_url := resp.headers['Location']
-		if redirect_url.len>0 && redirect_url[0] == `/` {
-			url.set_path( redirect_url ) or {
+		if redirect_url.len > 0 && redirect_url[0] == `/` {
+			url.set_path(redirect_url) or {
 				return error('http.request.do: invalid path in redirect: "$redirect_url"')
 			}
 			redirect_url = url.str()
-		}		
+		}
 		qrurl := urllib.parse(redirect_url) or {
 			return error('http.request.do: invalid URL in redirect "$redirect_url"')
 		}

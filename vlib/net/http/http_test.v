@@ -43,6 +43,5 @@ fn test_relative_redirects() {
 	assert 200 == res.status_code
 	assert res.text.len > 0
 	assert res.text.contains('"abc": "xyz"')
-	eprintln( res.text )
 }
 
