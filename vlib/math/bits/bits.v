@@ -96,6 +96,7 @@ pub fn trailing_zeros_64(x u64) int {
 }
 
 // --- OnesCount ---
+
 // ones_count_8 returns the number of one bits ("population count") in x.
 pub fn ones_count_8(x byte) int {
 	return int(pop_8_tab[x])
@@ -142,6 +143,7 @@ pub fn ones_count_64(x u64) int {
 }
 
 // --- RotateLeft ---
+
 // rotate_left_8 returns the value of x rotated left by (k mod 8) bits.
 // To rotate x right by k bits, call rotate_left_8(x, -k).
 //
@@ -187,6 +189,7 @@ pub fn rotate_left_64(x u64, k int) u64 {
 }
 
 // --- Reverse ---
+
 // reverse_8 returns the value of x with its bits in reversed order.
 [inline]
 pub fn reverse_8(x byte) byte {
@@ -218,6 +221,7 @@ pub fn reverse_64(x u64) u64 {
 }
 
 // --- ReverseBytes ---
+
 // reverse_bytes_16 returns the value of x with its bytes in reversed order.
 //
 // This function's execution time does not depend on the inputs.
@@ -246,6 +250,7 @@ pub fn reverse_bytes_64(x u64) u64 {
 }
 
 // --- Len ---
+
 // len_8 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
 pub fn len_8(x byte) int {
 	return int(len_8_tab[x])
@@ -296,3 +301,195 @@ pub fn len_64(x u64) int {
 	return n + int(len_8_tab[y])
 }
 
+// --- Add with carry ---
+
+// Add returns the sum with carry of x, y and carry: sum = x + y + carry.
+// The carry input must be 0 or 1; otherwise the behavior is undefined.
+// The carryOut output is guaranteed to be 0 or 1.
+//
+
+// add_32 returns the sum with carry of x, y and carry: sum = x + y + carry.
+// The carry input must be 0 or 1; otherwise the behavior is undefined.
+// The carryOut output is guaranteed to be 0 or 1.
+//
+// This function's execution time does not depend on the inputs.
+fn add_32(x u32, y u32, carry u32) (u32, u32) {
+	sum64 := u64(x) + u64(y) + u64(carry)
+	sum := u32(sum64)
+	carry_out := u32(sum64>>32)
+	return sum, carry_out
+}
+
+// add_64 returns the sum with carry of x, y and carry: sum = x + y + carry.
+// The carry input must be 0 or 1; otherwise the behavior is undefined.
+// The carryOut output is guaranteed to be 0 or 1.
+//
+// This function's execution time does not depend on the inputs.
+fn add_64(x u64, y u64, carry u64) (u64, u64) {
+	sum := x + y + carry
+	// The sum will overflow if both top bits are set (x & y) or if one of them
+	// is (x | y), and a carry from the lower place happened. If such a carry
+	// happens, the top bit will be 1 + 0 + 1 = 0 (&^ sum).
+	carry_out := ((x & y) | ((x | y) & ~sum ))>>63
+	return sum, carry_out
+}
+
+// --- Subtract with borrow ---
+
+// Sub returns the difference of x, y and borrow: diff = x - y - borrow.
+// The borrow input must be 0 or 1; otherwise the behavior is undefined.
+// The borrowOut output is guaranteed to be 0 or 1.
+//
+
+// sub_32 returns the difference of x, y and borrow, diff = x - y - borrow.
+// The borrow input must be 0 or 1; otherwise the behavior is undefined.
+// The borrowOut output is guaranteed to be 0 or 1.
+//
+// This function's execution time does not depend on the inputs.
+fn sub_32(x u32, y u32, borrow u32) (u32, u32) {
+	diff := x - y - borrow
+	// The difference will underflow if the top bit of x is not set and the top
+	// bit of y is set (^x & y) or if they are the same (^(x ^ y)) and a borrow
+	// from the lower place happens. If that borrow happens, the result will be
+	// 1 - 1 - 1 = 0 - 0 - 1 = 1 (& diff).
+	borrow_out := ((~x & y) | (~(x ^ y) & diff))>>31
+	return diff, borrow_out
+}
+
+// sub_64 returns the difference of x, y and borrow: diff = x - y - borrow.
+// The borrow input must be 0 or 1; otherwise the behavior is undefined.
+// The borrowOut output is guaranteed to be 0 or 1.
+//
+// This function's execution time does not depend on the inputs.
+fn sub_64(x u64, y u64, borrow u64) (u64, u64) {
+	diff := x - y - borrow
+	// See Sub32 for the bit logic.
+	borrow_out  := ((~x & y) | (~(x ^ y) & diff))>>63
+	return diff, borrow_out
+}
+
+// --- Full-width multiply ---
+
+const (
+	two32  = u64(0x1_0000_0000)
+	mask32 = two32 - 1
+	overflow_error = "Overflow Error"
+	divide_error = "Divide Error"
+)
+
+// mul_32 returns the 64-bit product of x and y: (hi, lo) = x * y
+// with the product bits' upper half returned in hi and the lower
+// half returned in lo.
+//
+// This function's execution time does not depend on the inputs.
+fn mul_32(x u32, y u32) (u32, u32) {
+	tmp := u64(x) * u64(y)
+	hi := u32(tmp>>32)
+	lo := u32(tmp)
+	return hi, lo
+}
+
+// mul_64 returns the 128-bit product of x and y: (hi, lo) = x * y
+// with the product bits' upper half returned in hi and the lower
+// half returned in lo.
+//
+// This function's execution time does not depend on the inputs.
+fn mul_64(x u64, y u64) (u64, u64) {
+	x0 := x & mask32
+	x1 := x>>32
+	y0 := y & mask32
+	y1 := y>>32
+	w0 := x0 * y0
+	t := x1*y0 + (w0>>32)
+	mut w1 := t & mask32
+	w2 := t>>32
+	w1 += x0 * y1
+	hi := x1*y1 + w2 + (w1>>32)
+	lo := x * y
+	return hi, lo
+}
+
+// --- Full-width divide ---
+
+// div_32 returns the quotient and remainder of (hi, lo) divided by y:
+// quo = (hi, lo)/y, rem = (hi, lo)%y with the dividend bits' upper
+// half in parameter hi and the lower half in parameter lo.
+// div_32 panics for y == 0 (division by zero) or y <= hi (quotient overflow).
+fn div_32(hi u32, lo u32, y u32) (u32, u32) {
+	if y != 0 && y <= hi {
+		panic(overflow_error)
+	}
+	z := (u64(hi)<<32) | u64(lo)
+	quo := u32(z/u64(y))
+	rem := u32(z%u64(y))
+	return quo, rem
+}
+
+// div_64 returns the quotient and remainder of (hi, lo) divided by y:
+// quo = (hi, lo)/y, rem = (hi, lo)%y with the dividend bits' upper
+// half in parameter hi and the lower half in parameter lo.
+// div_64 panics for y == 0 (division by zero) or y <= hi (quotient overflow).
+fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
+	mut y := y1
+	if y == 0 {
+		panic(overflow_error)
+	}
+	if y <= hi {
+		panic(overflow_error)
+	}
+
+	s := u32(leading_zeros_64(y))
+	y <<= s
+
+	yn1 := y>>32
+	yn0 := y & mask32
+	un32 := (hi<<s) | (lo>>(64-s))
+	un10 := lo<<s
+	un1 := un10>>32
+	un0 := un10 & mask32
+	mut q1 := un32 / yn1
+	mut rhat := un32 - q1*yn1
+
+	for q1 >= two32 || q1*yn0 > two32*rhat+un1 {
+		q1--
+		rhat += yn1
+		if rhat >= two32 {
+			break
+		}
+	}
+
+	un21 := un32*two32 + un1 - q1*y
+	mut q0 := un21 / yn1
+	rhat = un21 - q0*yn1
+
+	for q0 >= two32 || q0*yn0 > two32*rhat+un0 {
+		q0--
+		rhat += yn1
+		if rhat >= two32 {
+			break
+		}
+	}
+
+	return q1*two32 + q0, (un21*two32 + un0 - q0*y)>>s
+}
+
+// rem_32 returns the remainder of (hi, lo) divided by y. Rem32 panics
+// for y == 0 (division by zero) but, unlike Div32, it doesn't panic
+// on a quotient overflow.
+fn rem_32(hi u32, lo u32, y u32) u32 {
+	return u32((u64(hi)<<32 | u64(lo)) % u64(y))
+}
+
+// rem_64 returns the remainder of (hi, lo) divided by y. Rem64 panics
+// for y == 0 (division by zero) but, unlike div_64, it doesn't panic
+// on a quotient overflow.
+fn rem_64(hi, lo, y u64) u64 {
+	// We scale down hi so that hi < y, then use div_64 to compute the
+	// rem with the guarantee that it won't panic on quotient overflow.
+	// Given that
+	//   hi ≡ hi%y    (mod y)
+	// we have
+	//   hi<<64 + lo ≡ (hi%y)<<64 + lo    (mod y)
+	_, rem := div_64(hi%y, lo, y)
+	return rem
+}
