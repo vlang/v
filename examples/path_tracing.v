@@ -464,6 +464,7 @@ fn ray_trace(w int, h int, samps int, file_name string, tb &Cache) {
 		c_b := to_int(c[i].z)
 		f_out.write('$c_r $c_g $c_b ')
 	}
+	f_out.close()
 
 	println("image saved as [${file_name}]")
 }
