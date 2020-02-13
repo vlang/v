@@ -470,12 +470,12 @@ pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.Type) {
 fn (p mut Parser) struct_init() (ast.Expr,table.Type) {
 	mut node := ast.Expr{}
 	typ := p.parse_type()
-	// p.warn('struct init typ=$typ.name')
+	sym := p.table.get_type_symbol(typ)
+	// p.warn('struct init typ=$sym.name')
 	p.check(.lcbr)
 	mut field_names := []string
 	mut exprs := []ast.Expr
 	mut i := 0
-	sym := p.table.get_type_symbol(typ)
 	// TODO if sym.info is table.Struct
 	mut is_struct := false
 	match sym.info {
@@ -492,7 +492,7 @@ fn (p mut Parser) struct_init() (ast.Expr,table.Type) {
 		if is_struct {
 			info := sym.info as table.Struct
 			field := sym.find_field(field_name) or {
-				p.error(err)
+				p.error('field `${sym.name}.$field_name` not found')
 				continue
 			}
 			p.expected_type = field.typ
@@ -527,10 +527,12 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		p.next()
 		p.check(.dot)
 	}
+	// `map[string]int` initialization
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
 		map_type := p.parse_map_type(0)
 		return node,typ
 	}
+	// p.warn('name expr  $p.tok.lit')
 	// fn call or type cast
 	if p.peek_tok.kind == .lpar {
 		name := p.tok.lit
@@ -562,8 +564,8 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 			typ = ti2
 		}
 	}
-	// struct init
 	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || p.tok.lit in ['array', 'string', 'ustring', 'mapnode', 'map']) && !p.tok.lit[p.tok.lit.len - 1].is_capital() {
+		p.warn('!! s init $p.tok.lit')
 		// || p.table.known_type(p.tok.lit)) {
 		return p.struct_init()
 	}
@@ -1167,7 +1169,7 @@ fn (p mut Parser) parse_import() ast.Import {
 		p.check(.key_as)
 		mod_alias = p.check_name()
 	}
-	p.table.imports << mod_name
+	p.table.imports << mod_name.all_after('.')
 	return ast.Import{
 		mod: mod_name
 		alias: mod_alias
@@ -1432,14 +1434,23 @@ fn (p mut Parser) match_expr() (ast.Expr,table.Type) {
 		p.next()
 	}
 	cond,typ := p.expr(0)
+	// sym := p.table.get_type_symbol(typ)
+	// p.warn('match typ $sym.name')
 	p.check(.lcbr)
 	mut blocks := []ast.StmtBlock
 	mut match_exprs := []ast.Expr
 	mut return_type := table.void_type
 	for {
 		// Sum type match
-		if p.tok.kind == .name && p.tok.lit[0].is_capital() {
+		if p.tok.kind == .name && (p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
+			// if sym.kind == .sum_type {
+			// p.warn('is sum')
+			// p.parse_type()
 			p.check_name()
+			if p.tok.kind == .dot {
+				p.check(.dot)
+				p.check_name()
+			}
 		}
 		else {
 			// Expression match
@@ -1522,6 +1533,7 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 	}
 	p.check(.key_type)
 	name := p.check_name()
+	mut is_sum := false
 	// type SumType = A | B | c
 	if p.tok.kind == .assign {
 		p.next()
@@ -1531,11 +1543,20 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 				break
 			}
 			p.check(.pipe)
+			is_sum = true
 		}
 	}
 	else {
 		p.check_name()
 	}
+	p.table.register_type_symbol(table.TypeSymbol{
+		parent: 0
+		kind: .sum_type
+		name: name
+		info: table.Alias{
+			foo: ''
+		}
+	})
 	return ast.TypeDecl{
 		name: name
 	}
