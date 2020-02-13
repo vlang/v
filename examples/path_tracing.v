@@ -479,7 +479,7 @@ fn main() {
 
 	width    := 1280  // width of the rendering in pixels
 	height   := 1280  // height of the rendering in pixels
-	samples  := 10    // number of samples*4 per pixel
+	samples  := 10    // number of samples*4 per pixel, increase for better quality
 	tb.scene = 1      // scene to render [0 cornell box,1 sunset,2 psyco]  
 	file_name := "image.ppm" // name of the output file in .ppm format
 
