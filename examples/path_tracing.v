@@ -414,7 +414,7 @@ fn ray_trace(w int, h int, samps int, file_name string, tb &Cache) {
 	
 	// OpenMP injection point! #pragma omp parallel for schedule(dynamic, 1) shared(c)
 	for y:=0; y < h; y++ {
-		print("\rRendering (${samps * 4} spp) ${(100.0 * f64(y)) / (f64(h) - 1.0)}%\n")
+		eprint("\rRendering (${samps * 4} spp) ${(100.0 * f64(y)) / (f64(h) - 1.0)}%")
 		for x := 0; x < w; x++ {
 
 			i := (h - y - 1) * w + x
@@ -449,7 +449,7 @@ fn ray_trace(w int, h int, samps int, file_name string, tb &Cache) {
 			}
 		} 
 	}
-	println("Rendering finished.")
+	eprintln('\nRendering finished.')
 
 	//
 	// write out a .ppm file
