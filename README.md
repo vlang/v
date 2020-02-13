@@ -184,7 +184,7 @@ Hello from V.js
 ```
 -->
 
-## Troubleshooting:
+## Troubleshooting
 
 https://github.com/vlang/v/wiki/Troubleshooting
 
