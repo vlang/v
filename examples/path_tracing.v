@@ -414,7 +414,7 @@ fn ray_trace(w int, h int, samps int, file_name string, tb &Cache) {
 	
 	// OpenMP injection point! #pragma omp parallel for schedule(dynamic, 1) shared(c)
 	for y:=0; y < h; y++ {
-		eprint("\rRendering (${samps * 4} spp) ${(100.0 * f64(y)) / (f64(h) - 1.0)}%")
+		eprint("\rRendering (${samps * 4} spp) ${(100.0 * f64(y)) / (f64(h) - 1.0):5.2f}%")
 		for x := 0; x < w; x++ {
 
 			i := (h - y - 1) * w + x
@@ -478,9 +478,9 @@ fn main() {
 	mut tb := Cache{}
 	tb.fill()
 
-	width    := 1280  // width of the rendering in pixels
-	height   := 1280  // height of the rendering in pixels
-	samples  := 10    // number of samples*4 per pixel, increase for better quality
+	width    := 1024  // width of the rendering in pixels
+	height   := 768  // height of the rendering in pixels
+	samples  := 1    // number of samples per pixel, increase for better quality
 	tb.scene = 1      // scene to render [0 cornell box,1 sunset,2 psyco]  
 	file_name := "image.ppm" // name of the output file in .ppm format
 
