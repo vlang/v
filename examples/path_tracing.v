@@ -470,19 +470,39 @@ fn ray_trace(w int, h int, samps int, file_name string, tb &Cache) {
 }
 
 fn main() {
+	if os.args.len > 6 {
+		eprintln('Usage:\n     path_tracing [samples] [image.ppm] [scene_n] [width] [height]')
+		exit(1)
+	}
+	mut tb := Cache{}
+	mut width := 1024 // width of the rendering in pixels
+	mut height := 768 // height of the rendering in pixels
+	mut samples := 1  // number of samples per pixel, increase for better quality
+	tb.scene = 1      // scene to render [0 cornell box,1 sunset,2 psyco]
+	mut file_name := 'image.ppm' // name of the output file in .ppm format
+	
+	if os.args.len >= 2 {
+		samples = os.args[1].int() / 4
+	}
+	if os.args.len >= 3 {
+		file_name = os.args[2]
+	}
+	if os.args.len >= 4 {
+		tb.scene = os.args[3].int()
+	}
+	if os.args.len >= 5 {
+		width = os.args[4].int()
+	}
+	if os.args.len == 6 {
+		height = os.args[5].int()
+	}
+	
 	// init the rand, using the same seed allows to obtain the same result in different runs
 	// change the seed from 2020 for different results
 	rand.seed(2020)  
 	
 	// init the sin/cos cache table 
-	mut tb := Cache{}
 	tb.fill()
-
-	width    := 1024  // width of the rendering in pixels
-	height   := 768  // height of the rendering in pixels
-	samples  := 1    // number of samples per pixel, increase for better quality
-	tb.scene = 1      // scene to render [0 cornell box,1 sunset,2 psyco]  
-	file_name := "image.ppm" // name of the output file in .ppm format
-
+	
 	ray_trace(width, height, samples, file_name, tb)
 }
