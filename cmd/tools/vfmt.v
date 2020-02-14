@@ -62,7 +62,7 @@ fn main() {
 		exit(0)
 	}
 	// we are NOT a worker at this stage, i.e. we are a parent vfmt process
-	possible_files := cmdline.only_non_options(cmdline.after(args, ['fmt']))
+	possible_files := cmdline.only_non_options(cmdline.after_options(args, ['fmt']))
 	if foptions.is_verbose {
 		eprintln('vfmt toolexe: $toolexe')
 		eprintln('vfmt args: ' + os.args.str())
@@ -170,7 +170,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	compiler_params.path = cfile
 	compiler_params.mod = mod_name
 	compiler_params.is_test = is_test_file
-	compiler_params.is_script = file.ends_with('.v') || file.ends_with('.vsh')  
+	compiler_params.is_script = file.ends_with('.v') || file.ends_with('.vsh')
 	if foptions.is_verbose {
 		eprintln('vfmt format_file: file: $file')
 		eprintln('vfmt format_file: cfile: $cfile')

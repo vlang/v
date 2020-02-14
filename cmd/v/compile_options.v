@@ -39,7 +39,7 @@ pub fn new_v(args []string) &compiler.V {
 	mut out_name := cmdline.option(args, '-o', '')
 	mut dir := args.last()
 	if 'run' in args {
-		args_after_run := cmdline.only_non_options( cmdline.after(args,['run']) )
+		args_after_run := cmdline.only_non_options( cmdline.after_options(args,['run']) )
 		dir = if args_after_run.len>0 { args_after_run[0] } else { '' }
 	}
 	if dir == 'v.v' {
@@ -95,9 +95,8 @@ pub fn new_v(args []string) &compiler.V {
 	}
 
 	// println('VROOT=$vroot')
-	cflags := cmdline.many_values(args, '-cflags').join(' ')
-
-	defines := cmdline.many_values(args, '-d')
+	cflags := cmdline.options(args, '-cflags').join(' ')
+	defines := cmdline.options(args, '-d')
 	compile_defines, compile_defines_all := parse_defines( defines )
 
 	rdir := os.realpath(dir)
@@ -194,7 +193,7 @@ pub fn new_v(args []string) &compiler.V {
 }
 
 fn find_c_compiler_thirdparty_options(args []string) string {
-	mut cflags := cmdline.many_values(args,'-cflags')
+	mut cflags := cmdline.options(args, '-cflags')
 	$if !windows {
 		cflags << '-fPIC'
 	}
