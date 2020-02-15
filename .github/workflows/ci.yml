@@ -150,7 +150,7 @@ jobs:
 
 
   macos-prebuilt:
-    runs-on: macOS-latest
+    runs-on: macos-latest
     steps:
     - name: Install dependencies
       run: |
@@ -159,10 +159,10 @@ jobs:
     - name: Download V
       run: wget https://github.com/vlang/v/releases/latest/download/v_macos.zip && unzip v_macos.zip && ./v --version
     - name: Test V
-      run: echo "TODO" #./v examples/hello_world.v && examples/hello_world && ./v -silent build-examples
+      run: echo ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
 
   windows-prebuilt:
-    runs-on: windows-2019
+    runs-on: windows
     steps:
     - name: Download V
       shell: bash
@@ -208,7 +208,7 @@ jobs:
       run: docker build . -f Dockerfile.cross
 
   windows-gcc:
-    runs-on: windows-2019
+    runs-on: windows
     env:
         VFLAGS: -cc gcc
     steps:
@@ -231,7 +231,7 @@ jobs:
       run: ./v -silent build-vbinaries
 
   windows-msvc:
-    runs-on: windows-2019
+    runs-on: windows
     env:
         VFLAGS: -cc msvc
     steps:
