@@ -1092,8 +1092,8 @@ fn (p mut Parser) array_init() ast.Expr {
 
 	mut val_type := table.void_type
 	mut exprs := []ast.Expr
-	mut is_fixed := false
-	mut fixed_size := 0
+	//mut is_fixed := false
+	//mut fixed_size := 0
 	if p.tok.kind == .rsbr {
 		p.check(.rsbr)
 		// []string
@@ -1118,7 +1118,7 @@ fn (p mut Parser) array_init() ast.Expr {
 				p.check(.comma)
 			}
 		}
-		line_nr := p.tok.line_nr
+		//line_nr := p.tok.line_nr
 		p.check(.rsbr)
 		// Fixed size array? (`[100]byte`)
 		// NOTE: this should be hanled in parse_type() ?
