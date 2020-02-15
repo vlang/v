@@ -39,7 +39,7 @@ pub fn new_v(args []string) &compiler.V {
 	mut out_name := cmdline.option(args, '-o', '')
 	mut dir := args.last()
 	if 'run' in args {
-		args_after_run := cmdline.only_non_options( cmdline.after_options(args,['run']) )
+		args_after_run := cmdline.only_non_options( cmdline.options_after(args,['run']) )
 		dir = if args_after_run.len>0 { args_after_run[0] } else { '' }
 	}
 	if dir == 'v.v' {
@@ -225,4 +225,3 @@ fn parse_defines(defines []string) ([]string,[]string) {
 	}
 	return compile_defines, compile_defines_all
 }
-

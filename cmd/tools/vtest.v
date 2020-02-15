@@ -22,8 +22,8 @@ pub fn main() {
 	}
 
 	args_to_executable := args[1..]
-	args_before := cmdline.before_options(args_to_executable, ['test'])
-	args_after := cmdline.after_options(args_to_executable, ['test'])
+	args_before := cmdline.options_before(args_to_executable, ['test'])
+	args_after := cmdline.options_after(args_to_executable, ['test'])
 
 	if args_after.join(' ') == 'v' {
 		eprintln('`v test v` has been deprecated.')
@@ -53,4 +53,3 @@ pub fn main() {
 		exit(1)
 	}
 }
-

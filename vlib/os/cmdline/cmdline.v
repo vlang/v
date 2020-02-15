@@ -38,7 +38,7 @@ pub fn option(args []string, param string, def string) string {
 // args: ['-stat', 'test', 'aaa.v']
 // what: ['test']
 // ret: ['-stat']
-pub fn before_options(args []string, what []string) []string {
+pub fn options_before(args []string, what []string) []string {
 	mut found := false
 	mut args_before := []string
 	for a in args {
@@ -55,7 +55,7 @@ pub fn before_options(args []string, what []string) []string {
 // args: ['-stat', 'test', 'aaa.v']
 // what: ['test']
 // ret: ['aaa.v']
-pub fn after_options(args []string, what []string) []string {
+pub fn options_after(args []string, what []string) []string {
 	mut found := false
 	mut args_after := []string
 	for a in args {

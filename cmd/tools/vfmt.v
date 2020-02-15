@@ -62,7 +62,7 @@ fn main() {
 		exit(0)
 	}
 	// we are NOT a worker at this stage, i.e. we are a parent vfmt process
-	possible_files := cmdline.only_non_options(cmdline.after_options(args, ['fmt']))
+	possible_files := cmdline.only_non_options(cmdline.options_after(args, ['fmt']))
 	if foptions.is_verbose {
 		eprintln('vfmt toolexe: $toolexe')
 		eprintln('vfmt args: ' + os.args.str())

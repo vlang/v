@@ -219,7 +219,7 @@ fn main() {
 	// Support for the parameters replfolder and replprefix is needed
 	// so that the repl can be launched in parallel by several different
 	// threads by the REPL test runner.
-	args := cmdline.after_options(os.args, ['repl'])
+	args := cmdline.options_after(os.args, ['repl'])
 	replfolder := os.realpath( cmdline.option(args, '-replfolder', '.') )
 	replprefix := cmdline.option(args, '-replprefix', 'noprefix.')
 	os.chdir( replfolder )

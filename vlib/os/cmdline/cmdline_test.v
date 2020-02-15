@@ -12,15 +12,15 @@ fn test_option() {
 	assert ret == 'aa'
 }
 
-fn test_before_options() {
+fn test_options_before() {
 	args := ['-stat', 'test', 'aaa.v']
-	ret := cmdline.before_options(args, ['test'])
+	ret := cmdline.options_before(args, ['test'])
 	assert ret.eq(['-stat'])
 }
 
-fn test_after_options() {
+fn test_options_after() {
 	args := ['-stat', 'test', 'aaa.v']
-	ret := cmdline.after_options(args, ['test'])
+	ret := cmdline.options_after(args, ['test'])
 	assert ret.eq(['aaa.v'])
 }
 
