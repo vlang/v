@@ -80,7 +80,7 @@ fn (s &Scanner) scan_res(tok_kind token.Kind, lit string) token.Token {
 		kind: tok_kind
 		lit: lit
 		line_nr: s.line_nr + 1
-		s.pos
+		pos: s.pos
 	}
 }
 
