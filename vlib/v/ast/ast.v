@@ -70,6 +70,7 @@ pub struct Field {
 pub:
 	name string
 	// type_idx int
+mut:
 	typ  table.Type
 }
 
@@ -197,6 +198,7 @@ pub:
 	mod        Module
 	imports    []Import
 	stmts      []Stmt
+	scope      Scope
 	unresolved []Expr
 }
 
@@ -292,9 +294,10 @@ pub:
 	cond       Expr
 	stmts      []Stmt
 	else_stmts []Stmt
-	typ        table.Type
 	left       Expr // `a` in `a := if ...`
 	pos        token.Position
+mut:
+	typ        table.Type
 }
 
 pub struct MatchExpr {
@@ -303,8 +306,9 @@ pub:
 	cond        Expr
 	blocks      []StmtBlock
 	match_exprs []Expr
-	typ         table.Type
 	pos         token.Position
+mut:
+	typ         table.Type
 }
 
 pub struct CompIf {

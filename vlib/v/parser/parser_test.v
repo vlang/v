@@ -32,20 +32,26 @@ fn test_eval() {
 	'20',
 	//
 	]
+	/*
 	table := table.new_table()
+	mut scope := ast.Scope{start_pos: 0, parent: 0}
 	mut stmts := []ast.Stmt
 	for input in inputs {
-		stmts << parse_stmt(input, table)
+		stmts << parse_stmt(input, table, &scope)
 	}
 	file := ast.File{
 		stmts: stmts
+		scope: &scope
 	}
+	mut checker := checker.new_checker(table)
+	checker.check(file)
 	mut ev := eval.Eval{}
 	s := ev.eval(file, table)
 	println('eval done')
 	println(s)
 	assert s == expected.join('\n')
 	// exit(0)
+	*/
 }
 
 fn test_parse_file() {
@@ -65,6 +71,8 @@ x := 10
 '
 	table := &table.Table{}
 	prog := parse_file(s, table)
+	mut checker := checker.new_checker(table)
+	checker.check(prog)
 	res := gen.cgen([prog], table)
 	println(res)
 }
@@ -79,14 +87,21 @@ fn test_one() {
 	]
 	expected := 'int a = 10;int b = -a;int c = 20;'
 	table := table.new_table()
+	mut scope := ast.Scope{start_pos: 0, parent: 0}
 	mut e := []ast.Stmt
 	for line in input {
-		e << parse_stmt(line, table)
+		e << parse_stmt(line, table, &scope)
 	}
 	program := ast.File{
 		stmts: e
+		scope: scope
 	}
+	mut checker := checker.new_checker(table)
+	checker.check(program)
+	//ast.print_scope_vars(scope, 0)
+	//ast.print_scope_vars(program.scope, 0)
 	res := gen.cgen([program], table).replace('\n', '').trim_space()
+	println(res)
 	ok := expected == res
 	println(res)
 	assert ok
@@ -166,12 +181,14 @@ fn test_parse_expr() {
 	mut e := []ast.Stmt
 	table := table.new_table()
 	mut checker := checker.new_checker(table)
+	mut scope := ast.Scope{start_pos: 0, parent: 0}
 	for s in input {
 		println('\n\nst="$s"')
-		e << parse_stmt(s, table)
+		e << parse_stmt(s, table, &scope)
 	}
 	program := ast.File{
 		stmts: e
+		scope: scope
 	}
 	checker.check(program)
 	res := gen.cgen([program], table)

@@ -112,12 +112,12 @@ void println(string s) {
 
 void matches() {
 	int a = 100;
-	int tmp2 = a;
-	if tmp2 == 10{
+	int tmp3 = a;
+	if tmp3 == 10{
 		println(tos3("10"));
 
 	}
-	if tmp2 == 20{
+	if tmp3 == 20{
 		int k = a + 1;
 
 	}
