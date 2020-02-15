@@ -208,6 +208,12 @@ pub fn (c &Checker) assign_stmt(assign_stmt ast.AssignStmt) {}
 
 pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	mut elem_type := table.void_type
+
+	// a = []
+	if array_init.exprs.len == 0 {
+
+	}
+
 	for i, expr in array_init.exprs {
 		c.expr(expr)
 		typ := c.expr(expr)

@@ -8,17 +8,15 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type) {
+pub fn (p mut Parser) call_expr() ast.CallExpr {
 	tok := p.tok
 	fn_name := p.check_name()
 	p.check(.lpar)
-	// mut return_ti := types.void_ti
 	args := p.call_args()
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
 		// tok: tok
-		
 		pos: tok.position()
 	}
 	if p.tok.kind == .key_orelse {
@@ -26,10 +24,9 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type) {
 		p.parse_block()
 	}
 	if f := p.table.find_fn(fn_name) {
-		return node,f.return_type
+		return node
 	}
-	typ := p.add_unresolved('${fn_name}()', node)
-	return node,typ
+	return node
 }
 
 pub fn (p mut Parser) call_args() []ast.Expr {

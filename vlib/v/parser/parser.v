@@ -43,10 +43,8 @@ mut:
 	pref              &pref.Preferences // Preferences shared from V struct
 	builtin_mod       bool
 	mod               string
-	unresolved        []ast.Expr
-	unresolved_offset int
 	expected_type     table.Type
-	scope &ast.Scope
+	scope			  &ast.Scope
 }
 
 // for tests
@@ -76,7 +74,6 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		file_name: path
 		pref: &pref.Preferences{}
 		scope: &ast.Scope{start_pos: 0, parent: 0}
-		unresolved_offset: table.unresolved_idxs.size
 	}
 	p.read_first_token()
 	//p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -111,7 +108,6 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		imports: imports
 		stmts: stmts
 		scope: *p.scope
-		unresolved: p.unresolved
 	}
 }
 
@@ -587,9 +583,8 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		// fn call
 		else {
 			println('calling $p.tok.lit')
-			x,ti2 := p.call_expr() // TODO `node,typ :=` should work
+			x := p.call_expr() // TODO `node,typ :=` should work
 			node = x
-			typ = ti2
 		}
 	}
 	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || p.tok.lit in ['array', 'string', 'ustring', 'mapnode', 'map']) && !p.tok.lit[p.tok.lit.len - 1].is_capital() {
@@ -1118,6 +1113,7 @@ fn (p mut Parser) array_init() ast.Expr {
 	}
 	*/
 
+	/* TODO: joe
 	if p.tok.kind == .rsbr && int(p.expected_type) != 0 && p.table.get_type_symbol(p.expected_type).kind == .array {
 		// p.warn('[] expr')
 		node = ast.ArrayInit{
@@ -1128,6 +1124,7 @@ fn (p mut Parser) array_init() ast.Expr {
 		p.check(.rsbr)
 		return node,p.expected_type
 	}
+	*/
 	mut val_type := table.void_type
 	mut exprs := []ast.Expr
 	//mut is_fixed := false
@@ -1630,18 +1627,6 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 	return ast.TypeDecl{
 		name: name
 	}
-}
-
-fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.Type {
-	mut idx := p.unresolved_offset + p.unresolved.len
-	if key in p.table.unresolved_idxs {
-		idx = p.table.unresolved_idxs[key]
-	}
-	else {
-		p.table.unresolved_idxs[key] = idx
-		p.unresolved << expr
-	}
-	return table.new_type((-idx) - 1)
 }
 
 fn verror(s string) {

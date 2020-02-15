@@ -11,7 +11,6 @@ pub mut:
 	types           []TypeSymbol
 	// type_idxs Hashmap
 	type_idxs       map[string]int
-	unresolved_idxs map[string]int
 	local_vars      []Var
 	scope_level     int
 	var_idx         int
