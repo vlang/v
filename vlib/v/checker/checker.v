@@ -421,65 +421,66 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 }
 
 pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
-			t := c.expr(node.cond)
-			for i, block in node.blocks {
-				match_expr := node.match_exprs[i]
-				c.expr(match_expr)
-				for stmt in block.stmts {
-					c.stmt(stmt)
+	t := c.expr(node.cond)
+	for i, block in node.blocks {
+		match_expr := node.match_exprs[i]
+		c.expr(match_expr)
+		for stmt in block.stmts {
+			c.stmt(stmt)
+		}
+		// If the last statement is an expression, return its type
+		if block.stmts.len > 0 {
+			match block.stmts[block.stmts.len - 1] {
+				ast.ExprStmt {
+					// TODO: ask alex about this
+					//typ := c.expr(it.expr)
+					//type_sym := c.table.get_type_symbol(typ)
+					//p.warn('match expr ret $type_sym.name')
+					//node.typ = typ
+					//return typ
 				}
-				// If the last statement is an expression, return its type
-				if block.stmts.len > 0 {
-					match block.stmts[block.stmts.len - 1] {
-						ast.ExprStmt {
-							// TODO: ask alex about this
-							//typ := c.expr(it.expr)
-							//type_sym := c.table.get_type_symbol(typ)
-							//p.warn('match expr ret $type_sym.name')
-							//node.typ = typ
-							//return typ
-						}
-						else {}
-					}
-				}
+				else {}
 			}
-			node.typ = t
-			return t
+		}
+	}
+	node.typ = t
+	return t
 }
+
 pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
-			typ := c.expr(node.cond)
-			node.typ = typ
-			typ_sym := c.table.get_type_symbol(typ)
-			// if typ_sym.kind != .bool {
-			if table.type_idx(typ) != table.bool_type_idx {
-				c.error('non-bool (`$typ_sym.name`) used as if condition', node.pos)
+	typ := c.expr(node.cond)
+	node.typ = typ
+	typ_sym := c.table.get_type_symbol(typ)
+	// if typ_sym.kind != .bool {
+	if table.type_idx(typ) != table.bool_type_idx {
+		c.error('non-bool (`$typ_sym.name`) used as if condition', node.pos)
+	}
+	for i, stmt in node.stmts {
+		c.stmt(stmt)
+	}
+	if node.else_stmts.len > 0 {
+		for stmt in node.else_stmts {
+			c.stmt(stmt)
+		}
+	}
+	if node.stmts.len > 0 {
+		match node.stmts[node.stmts.len - 1] {
+			ast.ExprStmt {
+				//type_sym := p.table.get_type_symbol(it.typ)
+				//p.warn('if expr ret $type_sym.name')
+				//typ = it.typ
+				//return it.typ
+				t := c.expr(it.expr)
+				node.typ = t
+				return t
+				// return node,it.ti
+				// left =
 			}
-			for i, stmt in node.stmts {
-				c.stmt(stmt)
-			}
-			if node.else_stmts.len > 0 {
-				for stmt in node.else_stmts {
-					c.stmt(stmt)
-				}
-			}
-			if node.stmts.len > 0 {
-				match node.stmts[node.stmts.len - 1] {
-					ast.ExprStmt {
-						//type_sym := p.table.get_type_symbol(it.typ)
-						//p.warn('if expr ret $type_sym.name')
-						//typ = it.typ
-						//return it.typ
-						t := c.expr(it.expr)
-						node.typ = t
-						return t
-						// return node,it.ti
-						// left =
-					}
-					else {}
-				}
-			}
-			return typ
-			//return table.void_type
+			else {}
+		}
+	}
+	return typ
+	//return table.void_type
 }
 
 pub fn (c mut Checker) postfix_expr(node ast.PostfixExpr) table.Type {
