@@ -49,12 +49,13 @@ pub fn (p mut Parser) call_args() []ast.Expr {
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
-	p.table.clear_vars()
+	//p.table.clear_vars()
+	p.open_scope()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
 	}
-	p.table.clear_vars()
+	//p.table.clear_vars()
 	p.check(.key_fn)
 	// C.
 	is_c := p.tok.kind == .name && p.tok.lit == 'C'
@@ -74,7 +75,11 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			p.next()
 		}
 		rec_type = p.parse_type()
-		p.table.register_var(table.Var{
+		//p.table.register_var(table.Var{
+		//	name: rec_name
+		//	typ: rec_type
+		//})
+		p.scope.register_var(ast.VarDecl{
 			name: rec_name
 			typ: rec_type
 		})
@@ -101,7 +106,11 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			typ: ast_arg.typ
 		}
 		args << var
-		p.table.register_var(var)
+		p.scope.register_var(ast.VarDecl{
+			name: ast_arg.name
+			typ: ast_arg.typ
+		})
+		//p.table.register_var(var)
 	}
 	//
 	/*
@@ -149,6 +158,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block()
 	}
+	p.close_scope()
 	return ast.FnDecl{
 		name: name
 		stmts: stmts

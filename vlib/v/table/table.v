@@ -308,7 +308,7 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 		return &t.types[idx]
 	}
 	// this should never happen
-	panic('get_type_symbol: invalid type $idx')
+	panic('get_type_symbol: invalid type $typ - $idx')
 }
 
 // this will override or register builtin type
