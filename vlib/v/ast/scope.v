@@ -138,6 +138,6 @@ pub fn print_scope_vars(sc &Scope, level int) {
 		println('$indent  * $var.name - $var.typ')
 	}
 	for child in sc.children {
-		print_scope_vars(&child, level+1)
+		print_scope_vars(child, level+1)
 	}
 }
