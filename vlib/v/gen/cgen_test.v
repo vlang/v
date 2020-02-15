@@ -22,10 +22,6 @@ fn test_c_files() {
 			panic(err)
 		}
 		ctext = ctext // unused warn
-		// normalise line endings on win
-		$if windows {
-			ctext = ctext.replace('\r', '')
-		}
 		mut b := builder.new_builder(pref.Preferences{})
 		res := b.gen_c([path])
 		if compare_texts(res, ctext) {

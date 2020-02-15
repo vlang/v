@@ -77,7 +77,11 @@ pub fn new_scanner(text string) &Scanner {
 
 fn (s &Scanner) scan_res(tok_kind token.Kind, lit string) token.Token {
 	return token.Token{
-		tok_kind,lit,s.line_nr + 1, s.pos}
+		kind: tok_kind
+		lit: lit
+		line_nr: s.line_nr + 1
+		s.pos
+	}
 }
 
 fn (s mut Scanner) ident_name() string {
@@ -115,7 +119,9 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 		}
 		b[i1] = 0 // C string compatibility
 		return string{
-			b,i1}
+			str: b
+			len: i1
+		}
 	}
 }
 

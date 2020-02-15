@@ -68,7 +68,10 @@ jobs:
         node-version: 12.x
     - name: Install dependencies
       run: |
-        brew install freetype glfw openssl postgres sdl2 sdl2_ttf sdl2_mixer sdl2_image
+        ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
+        brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
+        brew install postgresql
+        brew install glfw sdl2 sdl2_ttf sdl2_mixer sdl2_image
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
       run:  make -j4 && ./v -cg -o v cmd/v

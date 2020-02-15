@@ -337,11 +337,10 @@ fn file_to_mod_name_and_is_module_file(file string) (string,bool) {
 }
 
 fn read_source_lines(file string) ?[]string {
-	raw_fcontent := os.read_file(file) or {
+	source_lines := os.read_lines(file) or {
 		return error('can not read $file')
 	}
-	fcontent := raw_fcontent.replace('\r\n', '\n')
-	return fcontent.split('\n')
+	return source_lines
 }
 
 fn get_compile_name_of_potential_v_project(file string) string {
