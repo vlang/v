@@ -793,7 +793,13 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 }
 
 fn (p mut Parser) filter(typ table.Type) {
+	/*
 	p.table.register_var(table.Var{
+		name: 'it'
+		typ: typ
+	})
+	*/
+	p.scope.register_var(ast.VarDecl{
 		name: 'it'
 		typ: typ
 	})
