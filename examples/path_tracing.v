@@ -142,7 +142,6 @@ struct Sphere {
 	refl Refl_t          // reflection type => [diffuse, specular, refractive]
 }
 
-[inline]
 fn (sp Sphere) intersect (r Ray) f64 {
 	op        := sp.p - r.o // Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0 
 	mut t     := f64(0.0)
@@ -236,29 +235,22 @@ fn to_int(x f64) int {
 	return int(p*f64(255.0)+f64(0.5))
 }
 
-[inline]
-//fn intersect(r Ray, id1 int, scene int) (bool, f64, int){
-fn intersect(r Ray, id1 int, spheres []Sphere) (bool, f64, int){
+fn intersect(r Ray, spheres &Sphere, nspheres int) (bool, f64, int){
+	inf := f64(1e+10)
 	mut d  := f64(0)
-	inf    := f64(1e+20)
-	mut t  := f64(1e+20)
-	//mut i  := spheres[scene].len-1
-	mut i  := spheres.len-1
-	mut id := id1
-	for i >= 0 {
-		//d = spheres[scene][i].intersect(r)
+	mut t  := inf
+	mut id := 0
+	for i:=nspheres-1; i >= 0; i-- {
 		d = spheres[i].intersect(r)
 		if d != 0.0 && d < t {
 			t = d
 			id = i
 		}
-		i--
 	}
 	return (t < inf) , t, id
 }
 
 // some casual random function, try to avoid the 0
-[inline]
 fn rand_f64() f64 {
  	x := (C.rand()+1) & 0x3FFF_FFFF
  	return f64(x)/f64(0x3FFF_FFFF)
@@ -305,11 +297,12 @@ fn radiance(r Ray, depthi int, tb &Cache) Vec {
 		v_1 := f64(1.0)
 		//v_2 := f64(2.0)
 
+		scene := spheres[tb.scene]
 		//res, t, id = intersect(r, id, tb.scene)
-		res, t, id = intersect(r, id, spheres[tb.scene])
+		res, t, id = intersect(r, scene.data, scene.len)
 		if !res { return Vec{} }  //if miss, return black 
 
-		obj := spheres[tb.scene][id]        // the hit object 
+		obj := scene[id]        // the hit object 
 
 		x := r.o + r.d.mult_s(t)
 		n := (x - obj.p).norm()
