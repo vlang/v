@@ -78,6 +78,13 @@ pub fn (p mut Parser) parse_fn_type() table.Type {
 }
 
 pub fn (p mut Parser) parse_type() table.Type {
+	// optional
+	mut is_optional := false
+	if p.tok.kind == .question {
+		p.next()
+		is_optional = true
+	}
+	// &Type
 	mut nr_muls := 0
 	for p.tok.kind == .amp {
 		p.check(.amp)
@@ -86,9 +93,6 @@ pub fn (p mut Parser) parse_type() table.Type {
 	if p.tok.lit == 'C' {
 		p.next()
 		p.check(.dot)
-	}
-	if p.tok.kind == .question {
-		p.next()
 	}
 	// `module.Type`
 	if p.peek_tok.kind == .dot {

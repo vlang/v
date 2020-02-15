@@ -310,6 +310,7 @@ pub fn (g mut Gen) call_fn(name string) {
 
 fn (g mut Gen) stmt(node ast.Stmt) {
 	match node {
+		ast.ConstDecl {}
 		ast.FnDecl {
 			is_main := it.name == 'main'
 			if is_main {
