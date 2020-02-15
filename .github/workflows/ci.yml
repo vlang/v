@@ -159,7 +159,7 @@ jobs:
     - name: Download V
       run: wget https://github.com/vlang/v/releases/latest/download/v_macos.zip && unzip v_macos.zip && ./v --version
     - name: Test V
-      run: echo ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
+      run: ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
 
   windows-prebuilt:
     runs-on: windows
