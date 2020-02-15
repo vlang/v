@@ -83,9 +83,41 @@ fn (v Vec) norm () Vec {
 }
 
 /******************************************************************************
-*
+* Image
+******************************************************************************/
+struct Image {
+	width int
+	height int
+	data &Vec
+}
+
+fn new_image(w int, h int) Image {
+	return Image{
+		width: w,
+		height: h,
+		data: &Vec(calloc(sizeof(Vec)*w*h))
+	}
+}
+
+// write out a .ppm file
+fn (image Image) save_as_ppm(file_name string) {
+	npixels := image.width * image.height
+	mut f_out := os.create(file_name) or { exit }
+	f_out.writeln('P3')
+	f_out.writeln('${image.width} ${image.height}')
+	f_out.writeln('255')
+	for i in 0..npixels {
+		c_r := to_int(image.data[i].x)
+		c_g := to_int(image.data[i].y)
+		c_b := to_int(image.data[i].z)
+		f_out.write('$c_r $c_g $c_b ')
+	}
+	f_out.close()
+	println("image saved as [${file_name}]")
+}
+
+/******************************************************************************
 * Ray
-*
 ******************************************************************************/
 struct Ray {
 	o Vec
@@ -100,9 +132,7 @@ enum Refl_t {
 }  
 
 /******************************************************************************
-*
 * Sphere
-*
 ******************************************************************************/
 struct Sphere {
 	rad f64 = f64(0.0)   // radius
@@ -399,17 +429,17 @@ fn radiance(r Ray, depthi int, tb &Cache) Vec {
 * beam scan routine
 *
 ******************************************************************************/
-fn ray_trace(w int, h int, samps int, file_name string, tb &Cache) {
-
+fn ray_trace(w int, h int, samps int, file_name string, tb &Cache) Image {
+	image := new_image(w, h)
+	
 	// inverse costants
-	w1     := f64(1.0 / w)
-	h1     := f64(1.0 / h)
+	w1     := f64(1.0 / image.width)
+	h1     := f64(1.0 / image.height)
 	samps1 := f64(1.0 / samps)
 
 	cam   := Ray{Vec{50, 52, 296.5},  Vec{0, -0.042612, -1}.norm()} // cam position, direction
 	cx    := Vec{ f64(w) * .5135 / f64(h), 0, 0}
 	cy    := ((cx.cross(cam.d)).norm()).mult_s(0.5135)
-	mut c := [Vec{}].repeat(w * h)
 	mut r := Vec{}
 	
 	// OpenMP injection point! #pragma omp parallel for schedule(dynamic, 1) shared(c)
@@ -418,6 +448,8 @@ fn ray_trace(w int, h int, samps int, file_name string, tb &Cache) {
 		for x := 0; x < w; x++ {
 
 			i := (h - y - 1) * w + x
+
+			mut ivec := &image.data[i]
 			// we use sx and sy to perform a square subsampling of 4 samples
 			for sy := f64(0.5) ; sy < 2.5; sy += 1.0 {
 				for sx := f64(0.5); sx < 2.5; sx += 1.0 {
@@ -444,29 +476,13 @@ fn ray_trace(w int, h int, samps int, file_name string, tb &Cache) {
 
 					}
 					tmp_vec := Vec{clamp(r.x),clamp(r.y),clamp(r.z)}.mult_s(.25)
-					c[i] = c[i] + tmp_vec
+					*ivec = *ivec + tmp_vec
 				}
 			}
 		} 
 	}
 	eprintln('\nRendering finished.')
-
-	//
-	// write out a .ppm file
-	//
-	mut f_out := os.create(file_name) or { exit }
-	f_out.writeln('P3')
-	f_out.writeln('${w} ${h}')
-	f_out.writeln('255')
-	for i in 0..w*h {
-		c_r := to_int(c[i].x)
-		c_g := to_int(c[i].y)
-		c_b := to_int(c[i].z)
-		f_out.write('$c_r $c_g $c_b ')
-	}
-	f_out.close()
-
-	println("image saved as [${file_name}]")
+	return image
 }
 
 fn main() {
@@ -475,10 +491,10 @@ fn main() {
 		exit(1)
 	}
 	mut tb := Cache{}
-	mut width := 1024 // width of the rendering in pixels
-	mut height := 768 // height of the rendering in pixels
-	mut samples := 1  // number of samples per pixel, increase for better quality
-	tb.scene = 1      // scene to render [0 cornell box,1 sunset,2 psyco]
+	mut width := 320 // width of the rendering in pixels
+	mut height := 200 // height of the rendering in pixels
+	mut samples := 4  // number of samples per pixel, increase for better quality
+	tb.scene = 0      // scene to render [0 cornell box,1 sunset,2 psyco]
 	mut file_name := 'image.ppm' // name of the output file in .ppm format
 	
 	if os.args.len >= 2 {
@@ -503,6 +519,7 @@ fn main() {
 	
 	// init the sin/cos cache table 
 	tb.fill()
-	
-	ray_trace(width, height, samples, file_name, tb)
+
+	image := ray_trace(width, height, samples, file_name, tb)	
+	image.save_as_ppm( file_name )	
 }
