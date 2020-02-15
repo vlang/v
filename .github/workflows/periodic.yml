@@ -49,6 +49,8 @@ jobs:
       run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
     - name: Test symlink
       run:  sudo ./v symlink
+    - name: Ensure thirdparty/cJSON/cJSON.o is compiled, before running tests.
+      run:  ./v examples/json.v
     - name: Set up pg database
       run: |
         brew services start postgresql
