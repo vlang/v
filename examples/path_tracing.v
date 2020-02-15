@@ -1,5 +1,4 @@
 /**********************************************************************
-*
 * path tracing demo
 *
 * Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
@@ -24,17 +23,13 @@
 *   in linux: ulimit -s byte_size_of_the_stack
 *   example: ulimit -s 16000000
 * - No OpenMP support 
-*
 **********************************************************************/
 import os
 import math
 import rand
+import time
 
-/******************************************************************************
-*
-* 3D Vector utility struct
-*
-******************************************************************************/
+/***************************** 3D Vector utility struct **********************/
 struct Vec {     
 mut:  
    x f64 = f64(0.0)
@@ -82,9 +77,7 @@ fn (v Vec) norm () Vec {
 	return Vec{ v.x * tmp_norm , v.y * tmp_norm, v.z * tmp_norm }
 }
 
-/******************************************************************************
-* Image
-******************************************************************************/
+/*********************************Image***************************************/
 struct Image {
 	width int
 	height int
@@ -113,12 +106,9 @@ fn (image Image) save_as_ppm(file_name string) {
 		f_out.write('$c_r $c_g $c_b ')
 	}
 	f_out.close()
-	println("image saved as [${file_name}]")
 }
 
-/******************************************************************************
-* Ray
-******************************************************************************/
+/*********************************** Ray *************************************/
 struct Ray {
 	o Vec
 	d Vec
@@ -131,9 +121,7 @@ enum Refl_t {
 	refr 
 }  
 
-/******************************************************************************
-* Sphere
-******************************************************************************/
+/********************************* Sphere ************************************/
 struct Sphere {
 	rad f64 = f64(0.0)   // radius
 	p Vec                // position
@@ -162,23 +150,15 @@ fn (sp Sphere) intersect (r Ray) f64 {
 	return f64(0)
 }
 
-/******************************************************************************
-*
-* Scenes
-*
+/*********************************** Scenes **********************************
 * 0) Cornell Box with 2 spheres
 * 1) Sunset
 * 2) Psychedelic
-*
-* the sphere fileds are: Sphere{radius, position, emission, color, material}
-*
+* The sphere fileds are: Sphere{radius, position, emission, color, material}
 ******************************************************************************/
 const (
-
 Cen = Vec{50, 40.8, -860} // used by scene 1
-
 spheres = [
-
 [// scene 0 cornnel box
 	Sphere{rad: 1e+5, p: Vec{ 1e+5 +1,40.8,81.6} , e: Vec{}        , c: Vec{.75,.25,.25}        , refl: .diff},//Left    		
 	Sphere{rad: 1e+5, p: Vec{-1e+5 +99,40.8,81.6}, e: Vec{}        , c: Vec{.25,.25,.75}        , refl: .diff},//Rght 
@@ -189,10 +169,9 @@ spheres = [
 	Sphere{rad: 16.5, p: Vec{27.0,16.5,47.0}     , e: Vec{}        , c: Vec{1,1,1}.mult_s(.999) , refl: .spec},//Mirr 
 	Sphere{rad: 16.5, p: Vec{73,16.5,78}         , e: Vec{}        , c: Vec{1,1,1}.mult_s(.999) , refl: .refr},//Glas 
 	Sphere{rad: 600 , p: Vec{50,681.6-.27,81.6}  , e: Vec{12,12,12}, c: Vec{1e-16, 1e-16, 1e-16}, refl: .diff} //Lite 
-]
+],
 
-
-,[// scene 1 sunset
+[// scene 1 sunset
 	Sphere{rad: 1600,  p: Vec{1.0,0.0,2.0}.mult_s(3000), e: Vec{1.0,.9,.8}.mult_s(1.2e+1*1.56*2)    , c: Vec{}                     , refl: .diff}, // sun
 	Sphere{rad: 1560,  p: Vec{1,0,2}.mult_s(3500)      , e: Vec{1.0,.5,.05}.mult_s(4.8e+1*1.56*2)   , c: Vec{}                     ,  refl: .diff}, // horizon sun2
 	Sphere{rad: 10000, p: Cen+Vec{0,0,-200}, e: Vec{0.00063842, 0.02001478, 0.28923243}.mult_s(6e-2*8), c: Vec{.7,.7,1}.mult_s(.25),  refl: .diff}, // sky
@@ -204,10 +183,10 @@ spheres = [
 	Sphere{rad: 26.5, p: Vec{22,26.5,42}, e: Vec{}, c: Vec{1,1,1}.mult_s(.596)     , refl: .spec}, // white Mirr
 	Sphere{rad: 13,   p: Vec{75,13,82  }, e: Vec{}, c: Vec{.96,.96,.96}.mult_s(.96), refl: .refr},// Glas
 	Sphere{rad: 22,   p: Vec{87,22,24  }, e: Vec{}, c: Vec{.6,.6,.6}.mult_s(.696)  , refl: .refr}    // Glas2
-]
+],
 
 
-,[// scene 3 Psychedelic
+[// scene 3 Psychedelic
 	Sphere{rad: 150, p: Vec{50+75,28,62}, e: Vec{1,1,1}.mult_s(0e-3), c: Vec{1,.9,.8}.mult_s(.93), refl: .refr},
 	Sphere{rad: 28 , p: Vec{50+5,-28,62}, e: Vec{1,1,1}.mult_s(1e+1), c: Vec{1,1,1}.mult_s(0)    , refl: .diff},
 	Sphere{rad: 300, p: Vec{50,28,62}   , e: Vec{1,1,1}.mult_s(0e-3), c: Vec{1,1,1}.mult_s(.93)  , refl: .spec}
@@ -217,11 +196,7 @@ spheres = [
 
 )
 
-/******************************************************************************
-*
-* Utility
-*
-******************************************************************************/
+/*********************************** Utilities *******************************/
 [inline]
 fn clamp(x f64) f64 {
 	if x < f64(0.0) { return f64(0.0) }
@@ -256,11 +231,7 @@ fn rand_f64() f64 {
  	return f64(x)/f64(0x3FFF_FFFF)
 }
 
-/******************************************************************************
-*
-* Cache for sin/cos speed-up table and scene selector
-*
-******************************************************************************/
+/************* Cache for sin/cos speed-up table and scene selector ***********/
 const(
 	cache_len = 65536           // the 2*pi angle will be splitted in 65536 part
 	cache_mask = cache_len - 1  // mask to speed-up the module process
@@ -283,11 +254,7 @@ fn (c mut Cache) fill() {
 }
 
 
-/******************************************************************************
-*
-* main function for the radiance calculation
-*
-******************************************************************************/
+/******************* main function for the radiance calculation **************/
 fn radiance(r Ray, depthi int, tb &Cache) Vec {
 		mut depth   := depthi      // actual depth in the reflection tree
 		mut t       := f64(0)      // distance to intersection 
@@ -417,11 +384,7 @@ fn radiance(r Ray, depthi int, tb &Cache) Vec {
 	return res_f
 } 
 
-/******************************************************************************
-*
-* beam scan routine
-*
-******************************************************************************/
+/************************ beam scan routine **********************************/
 fn ray_trace(w int, h int, samps int, file_name string, tb &Cache) Image {
 	image := new_image(w, h)
 	
@@ -464,9 +427,7 @@ fn ray_trace(w int, h int, samps int, file_name string, tb &Cache) Image {
 
                         d := cx.mult_s( ( (sx + dx)*0.5 + f64(x))*w1 - .5) + 
                              cy.mult_s( ( (sy + dy)*0.5 + f64(y))*h1 - .5) + cam.d
-
                         r = r + radiance(Ray{cam.o+d.mult_s(140.0), d.norm()}, 0, tb).mult_s(samps1)
-
 					}
 					tmp_vec := Vec{clamp(r.x),clamp(r.y),clamp(r.z)}.mult_s(.25)
 					*ivec = *ivec + tmp_vec
@@ -474,7 +435,6 @@ fn ray_trace(w int, h int, samps int, file_name string, tb &Cache) Image {
 			}
 		} 
 	}
-	eprintln('\nRendering finished.')
 	return image
 }
 
@@ -487,7 +447,7 @@ fn main() {
 	mut width := 320 // width of the rendering in pixels
 	mut height := 200 // height of the rendering in pixels
 	mut samples := 4  // number of samples per pixel, increase for better quality
-	tb.scene = 0      // scene to render [0 cornell box,1 sunset,2 psyco]
+	tb.scene = 0	  // scene to render [0 cornell box,1 sunset,2 psyco]
 	mut file_name := 'image.ppm' // name of the output file in .ppm format
 	
 	if os.args.len >= 2 {
@@ -508,11 +468,23 @@ fn main() {
 	
 	// init the rand, using the same seed allows to obtain the same result in different runs
 	// change the seed from 2020 for different results
-	rand.seed(2020)  
+	rand.seed(2020)	 
+	
+	t0:=time.ticks()
 	
 	// init the sin/cos cache table 
 	tb.fill()
+	t1:=time.ticks()
+	
+	eprintln('Setup finished. Took: ${t1-t0:5d}ms')
 
 	image := ray_trace(width, height, samples, file_name, tb)	
+	t2:=time.ticks()
+	
+	eprintln('\nRendering finished. Took: ${t2-t1:5d}ms')
+	
 	image.save_as_ppm( file_name )	
+	t3:=time.ticks()
+	
+	eprintln('Image saved as [${file_name}]. Took: ${t3-t2:5d}ms')
 }
