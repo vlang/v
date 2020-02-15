@@ -150,7 +150,7 @@ jobs:
 
 
   macos-prebuilt:
-    runs-on: macos-latest
+    runs-on: macOS-latest
     steps:
     - name: Install dependencies
       run: |
@@ -162,7 +162,7 @@ jobs:
       run: ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
 
   windows-prebuilt:
-    runs-on: windows
+    runs-on: windows-2019
     steps:
     - name: Download V
       shell: bash
@@ -208,7 +208,7 @@ jobs:
       run: docker build . -f Dockerfile.cross
 
   windows-gcc:
-    runs-on: windows
+    runs-on: windows-2019
     env:
         VFLAGS: -cc gcc
     steps:
@@ -231,7 +231,7 @@ jobs:
       run: ./v -silent build-vbinaries
 
   windows-msvc:
-    runs-on: windows
+    runs-on: windows-2019
     env:
         VFLAGS: -cc msvc
     steps:
