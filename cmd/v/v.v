@@ -5,6 +5,7 @@ module main
 
 import (
 	compiler
+	internal.help
 	os
 )
 
@@ -30,10 +31,10 @@ fn main() {
 	}
 	if '-h' in option || '--help' in option || command == 'help' {
 		if is_verbose {
-			println(verbose_help_text)
+			println(help.verbose_help_text)
 		}
 		else {
-			println(help_text)
+			println(help.help_text)
 		}
 		return
 	}

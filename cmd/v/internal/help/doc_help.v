@@ -1,14 +1,44 @@
-module main
+module help
 
-const (
-	help_text = 'Usage: v [options/commands] [file.v | directory]
+pub const (
+	help_text = 'V is a tool for managing V source code.
 
-   To run V in REPL mode, run V without any arguments.
-   To compile a directory/file, pass it as the only argument.
+Usage:
+   v [options] [command] [arguments]
 
-   To run a directory/file, use `v run [file.v | directory]`. V will compile and run it for you.
-   
-   This help message is only intended to be a quick start guide. For a comprehensive help message, use `v help --verbose`.'
+Examples:
+   v hello.v         compile the file `hello.v` and output it as `hello` or `hello.exe`
+   v run hello.v     same as above but also run the produced executable immediately after compilation
+
+The commands are:
+   build             build V code in the provided path (default)
+   create            setup the file structure for a V project
+   doc               generates the documentation for a V module (coming soon in 0.3)
+   fmt               format the V code provided
+   repl              run the REPL
+   run               compile and run a V program
+   symlink           create a symbolic link for V
+   translate         translate C code to V (coming soon in 0.3)
+   up                run the V self-updater
+   version           prints the version text and exits
+
+   install           installs a module from VPM
+   remove            removes a module that was installed from VPM
+   search            searches for a module from VPM
+   update            updates an installed module from VPM
+
+   bin2v             embed a binary file as a constant and output it in a V file
+   build-examples    test if all examples can be built
+   build-tools       test if all tools can be built
+   build-vbinaries   test if V can be built with different configuration
+   test              run all test files in the provided directory
+   test-fmt          test if all files in the current directory is formatted properly
+   test-compiler     run the V self-test suite to make sure V is working properly
+
+For a comprehensive list of options, please refer to `v help --verbose`.'
+//Use "v help <command>" for more information about a command.'
+//TODO When docs have been written for all the subcommands, delete the verbose help text and
+//     tell the user to use "v help <command>" instead.
 	verbose_help_text = 'Usage: v [options/commands] [file.v | directory]
 
    When V is run without any arguments, it is run in REPL mode.
