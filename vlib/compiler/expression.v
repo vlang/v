@@ -217,6 +217,10 @@ fn (p mut Parser) bterm() string {
 		if is_float && p.cur_fn.name != 'f32_abs' && p.cur_fn.name != 'f64_abs' {
 			p.gen(')')
 			match tok {
+				// NB: For more precision/stability, the == and != float
+				// comparisons are done with V functions that use the epsilon
+				// constants for the given type.
+				// Everything else uses native comparisons (C macros) for speed.
 				.eq {
 					p.cgen.set_placeholder(ph, '${expr_type}_eq(')
 				}
@@ -224,16 +228,16 @@ fn (p mut Parser) bterm() string {
 					p.cgen.set_placeholder(ph, '${expr_type}_ne(')
 				}
 				.le {
-					p.cgen.set_placeholder(ph, '${expr_type}_le(')
+					p.cgen.set_placeholder(ph, 'macro_${expr_type}_le(')
 				}
 				.ge {
-					p.cgen.set_placeholder(ph, '${expr_type}_ge(')
+					p.cgen.set_placeholder(ph, 'macro_${expr_type}_ge(')
 				}
 				.gt {
-					p.cgen.set_placeholder(ph, '${expr_type}_gt(')
+					p.cgen.set_placeholder(ph, 'macro_${expr_type}_gt(')
 				}
 				.lt {
-					p.cgen.set_placeholder(ph, '${expr_type}_lt(')
+					p.cgen.set_placeholder(ph, 'macro_${expr_type}_lt(')
 				}
 				else {
 				}}

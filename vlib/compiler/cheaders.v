@@ -140,6 +140,25 @@ $c_common_macros
 #define DEFAULT_LE(a, b) (a <= b)
 #define DEFAULT_GT(a, b) (a > b)
 #define DEFAULT_GE(a, b) (a >= b)
+
+// NB: macro_fXX_eq and macro_fXX_ne are NOT used 
+// in the generated C code. They are here just for 
+// completeness/testing.
+
+#define macro_f64_eq(a, b) (a == b)
+#define macro_f64_ne(a, b) (a != b)
+#define macro_f64_lt(a, b) (a <  b)
+#define macro_f64_le(a, b) (a <= b)
+#define macro_f64_gt(a, b) (a >  b)
+#define macro_f64_ge(a, b) (a >= b)
+
+#define macro_f32_eq(a, b) (a == b)
+#define macro_f32_ne(a, b) (a != b)
+#define macro_f32_lt(a, b) (a <  b)
+#define macro_f32_le(a, b) (a <= b)
+#define macro_f32_gt(a, b) (a >  b)
+#define macro_f32_ge(a, b) (a >= b)
+
 //================================== GLOBALS =================================*/
 byte g_str_buf[1024];
 int load_so(byteptr);

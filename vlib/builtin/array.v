@@ -116,8 +116,10 @@ pub fn (a mut array) sort_with_compare(compare voidptr) {
 // a.insert(0, &i)
 // ----------------------------
 pub fn (a mut array) insert(i int, val voidptr) {
-	if i < 0 || i > a.len {
-		panic('array.insert: index out of range (i == $i, a.len == $a.len)')
+	$if !no_bounds_checking? {
+		if i < 0 || i > a.len {
+			panic('array.insert: index out of range (i == $i, a.len == $a.len)')
+		}
 	}
 	a.ensure_cap(a.len + 1)
 	size := a.element_size
@@ -135,8 +137,10 @@ pub fn (a mut array) prepend(val voidptr) {
 
 // array.delete deletes array element at the given index
 pub fn (a mut array) delete(i int) {
-	if i < 0 || i >= a.len {
-		panic('array.delete: index out of range (i == $i, a.len == $a.len)')
+	$if !no_bounds_checking? {
+		if i < 0 || i >= a.len {
+			panic('array.delete: index out of range (i == $i, a.len == $a.len)')
+		}
 	}
 	size := a.element_size
 	C.memmove(a.data + i * size, a.data + (i + 1) * size, (a.len - i) * size)
@@ -150,24 +154,30 @@ pub fn (a mut array) clear() {
 
 // Private function. Used to implement array[] operator
 fn (a array) get(i int) voidptr {
-	if i < 0 || i >= a.len {
-		panic('array.get: index out of range (i == $i, a.len == $a.len)')
+	$if !no_bounds_checking? {
+		if i < 0 || i >= a.len {
+			panic('array.get: index out of range (i == $i, a.len == $a.len)')
+		}
 	}
 	return a.data + i * a.element_size
 }
 
 // array.first returns the first element of the array
 pub fn (a array) first() voidptr {
-	if a.len == 0 {
-		panic('array.first: array is empty')
+	$if !no_bounds_checking? {
+		if a.len == 0 {
+			panic('array.first: array is empty')
+		}
 	}
 	return a.data + 0
 }
 
 // array.last returns the last element of the array
 pub fn (a array) last() voidptr {
-	if a.len == 0 {
-		panic('array.last: array is empty')
+	$if !no_bounds_checking? {
+		if a.len == 0 {
+			panic('array.last: array is empty')
+		}
 	}
 	return a.data + (a.len - 1) * a.element_size
 }
@@ -176,9 +186,11 @@ pub fn (a array) last() voidptr {
 // array.left returns a new array using the same buffer as the given array
 // with the first `n` elements of the given array.
 fn (a array) left(n int) array {
-	if n < 0 {
-		panic('array.left: index is negative (n == $n)')
-	}
+//	$if !no_bounds_checking? {
+//		if n < 0 {
+//			panic('array.left: index is negative (n == $n)')
+//		}
+//	}
 	if n >= a.len {
 		return a.slice(0, a.len)
 	}
@@ -190,9 +202,11 @@ fn (a array) left(n int) array {
 // If `n` is bigger or equal to the length of the given array,
 // returns an empty array of the same type as the given array.
 fn (a array) right(n int) array {
-	if n < 0 {
-		panic('array.right: index is negative (n == $n)')
-	}
+//	$if !no_bounds_checking? {
+//		if n < 0 {
+//			panic('array.right: index is negative (n == $n)')
+//		}
+//	}
 	if n >= a.len {
 		return new_array(0, 0, a.element_size)
 	}
@@ -206,14 +220,16 @@ fn (a array) right(n int) array {
 // set to the number of the elements in the slice.
 fn (a array) slice(start, _end int) array {
 	mut end := _end
-	if start > end {
-		panic('array.slice: invalid slice index ($start > $end)')
-	}
-	if end > a.len {
-		panic('array.slice: slice bounds out of range ($end >= $a.len)')
-	}
-	if start < 0 {
-		panic('array.slice: slice bounds out of range ($start < 0)')
+	$if !no_bounds_checking? {
+		if start > end {
+			panic('array.slice: invalid slice index ($start > $end)')
+		}
+		if end > a.len {
+			panic('array.slice: slice bounds out of range ($end >= $a.len)')
+		}
+		if start < 0 {
+			panic('array.slice: slice bounds out of range ($start < 0)')
+		}
 	}
 	l := end - start
 	res := array{
@@ -249,14 +265,16 @@ pub fn (a array) clone() array {
 
 fn (a array) slice_clone(start, _end int) array {
 	mut end := _end
-	if start > end {
-		panic('array.slice: invalid slice index ($start > $end)')
-	}
-	if end > a.len {
-		panic('array.slice: slice bounds out of range ($end >= $a.len)')
-	}
-	if start < 0 {
-		panic('array.slice: slice bounds out of range ($start < 0)')
+	$if !no_bounds_checking? {
+		if start > end {
+			panic('array.slice: invalid slice index ($start > $end)')
+		}
+		if end > a.len {
+			panic('array.slice: slice bounds out of range ($end >= $a.len)')
+		}
+		if start < 0 {
+			panic('array.slice: slice bounds out of range ($start < 0)')
+		}
 	}
 	l := end - start
 	res := array{
@@ -270,8 +288,10 @@ fn (a array) slice_clone(start, _end int) array {
 
 // Private function. Used to implement assigment to the array element.
 fn (a mut array) set(i int, val voidptr) {
-	if i < 0 || i >= a.len {
-		panic('array.set: index out of range (i == $i, a.len == $a.len)')
+	$if !no_bounds_checking? {
+		if i < 0 || i >= a.len {
+			panic('array.set: index out of range (i == $i, a.len == $a.len)')
+		}
 	}
 	C.memcpy(a.data + a.element_size * i, val, a.element_size)
 }

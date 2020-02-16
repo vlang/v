@@ -13,6 +13,8 @@
 /hello_v_js
 /fibonacci
 /sqlite
+/path_tracing
+*.ppm
 empty_gg_freetype
 game_of_life/life_gg
 random_ips

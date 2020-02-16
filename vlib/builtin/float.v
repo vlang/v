@@ -33,20 +33,25 @@ pub fn (x f64) strlong() string {
 	return tmpstr
 }
 
+[inline]
 fn f32_abs(a f32) f32 {
 	return if a < 0 { -a } else { a }
 }
 
+[inline]
 fn f64_abs(a f64) f64 {
 	return if a < 0 { -a } else { a }
 }
 
 // compare floats using C epsilon
 // ==
+
+[inline]
 pub fn (a f64) eq(b f64) bool {
 	return f64_abs(a - b) <= C.DBL_EPSILON
 }
 
+[inline]
 pub fn (a f32) eq(b f32) bool {
 	return f32_abs(a - b) <= C.FLT_EPSILON
 }

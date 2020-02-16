@@ -518,8 +518,10 @@ fn (s string) substr2(start, _end int, end_max bool) string {
 }
 
 pub fn (s string) substr(start, end int) string {
-	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-		panic('substr($start, $end) out of bounds (len=$s.len)')
+	$if !no_bounds_checking? {
+		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
+			panic('substr($start, $end) out of bounds (len=$s.len)')
+		}
 	}
 	len := end - start
 	mut res := string{
@@ -1043,8 +1045,10 @@ pub fn (u ustring) count(substr ustring) int {
 }
 
 pub fn (u ustring) substr(_start, _end int) string {
-	if _start > _end || _start > u.len || _end > u.len || _start < 0 || _end < 0 {
-		panic('substr($_start, $_end) out of bounds (len=$u.len)')
+	$if !no_bounds_checking? {
+		if _start > _end || _start > u.len || _end > u.len || _start < 0 || _end < 0 {
+			panic('substr($_start, $_end) out of bounds (len=$u.len)')
+		}
 	}
 	end := if _end >= u.len { u.s.len } else { u.runes[_end] }
 	return u.s.substr(u.runes[_start], end)
@@ -1065,15 +1069,19 @@ pub fn (u ustring) right(pos int) string {
 }
 
 fn (s string) at(idx int) byte {
-	if idx < 0 || idx >= s.len {
-		panic('string index out of range: $idx / $s.len')
+	$if !no_bounds_checking? {
+		if idx < 0 || idx >= s.len {
+			panic('string index out of range: $idx / $s.len')
+		}
 	}
 	return s.str[idx]
 }
 
 pub fn (u ustring) at(idx int) string {
-	if idx < 0 || idx >= u.len {
-		panic('string index out of range: $idx / $u.runes.len')
+	$if !no_bounds_checking? {
+		if idx < 0 || idx >= u.len {
+			panic('string index out of range: $idx / $u.runes.len')
+		}
 	}
 	return u.substr(idx, idx + 1)
 }

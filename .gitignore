@@ -57,3 +57,4 @@ info.log
 # vim/emacs editor backup files
 *~
 thirdparty/freetype/
+cachegrind.out.*
