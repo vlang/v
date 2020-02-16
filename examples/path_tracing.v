@@ -204,8 +204,8 @@ spheres = [
 /*********************************** Utilities *******************************/
 [inline]
 fn clamp(x f64) f64 {
-	if x < f64(0.0) { return f64(0.0) }
-	if x > f64(1.0) { return f64(1.0) }
+	if x < 0 { return 0 }
+	if x > 1 { return 1 }
 	return x
 }
 
@@ -250,7 +250,7 @@ mut:
 
 fn new_tabs() Cache {
 	mut c := Cache{}
-	inv_len := 1.0 / f64(cache_len)
+	inv_len := f64(1.0) / f64(cache_len)
 	for i in 0..cache_len {
 		x := f64(i) * math.pi * 2.0 * inv_len
 		c.sin_tab[i] = math.sin(x)
@@ -286,10 +286,7 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 	x := r.o + r.d.mult_s(t)
 	n := (x - obj.p).norm()
 	
-	mut nl := n
-	if n.dot(r.d) >= 0.0 {
-		nl = n.mult_s(-1)
-	}
+	nl := if n.dot(r.d) < 0.0 { n } else { n.mult_s(-1) }
 	
 	mut f := obj.c
 	
@@ -306,7 +303,7 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 	depth++
 	if depth > 5 { 
 		if rand_f64() < p {
-			f = f.mult_s(1.0/p)
+			f = f.mult_s(f64(1.0)/p)
 		} else {
 			return obj.e //R.R.
 		}
@@ -324,12 +321,12 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 		
 		w   := nl
 		
-		mut u := Vec{1, 0, 0}
-		if math.abs(w.x) > 0.1 {
-			u = Vec{0, 1, 0}
-		} 
-		u = u.cross(w)
-		u = u.norm()
+		mut u := if math.abs(w.x) > f64(0.1) {
+			Vec{0, 1, 0}
+		} else {
+			Vec{1, 0, 0}
+		}
+		u = u.cross(w).norm()
 		
 		v := w.cross(u)
 		
@@ -337,17 +334,17 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 		//d := (u.mult_s(math.cos(r1) * r2s) + v.mult_s(math.sin(r1) * r2s) + w.mult_s(1.0 - r2)).norm()
 		
 		// tabbed speed-up
-		d := (u.mult_s(cos_tab[r1] * r2s) + v.mult_s(sin_tab[r1] * r2s) + w.mult_s(1.0 - r2)).norm()
+		d := (u.mult_s(cos_tab[r1] * r2s) + v.mult_s(sin_tab[r1] * r2s) + w.mult_s(math.sqrt(f64(1.0) - r2))).norm()
 		
-		return obj.e + (f * radiance(Ray{x, d}, depth, scene_id))
+		return obj.e + f * radiance(Ray{x, d}, depth, scene_id)
 	} else {
-		if obj.refl == .spec {            // Ideal SPECULAR reflection 
-			return obj.e + (f * radiance(Ray{x, r.d - n.mult_s(2.0 * n.dot(r.d)) }, depth, scene_id))
+		if obj.refl == .spec {            // Ideal SPECULAR reflection
+			return obj.e + f * radiance(Ray{x, r.d - n.mult_s(2.0 * n.dot(r.d)) }, depth, scene_id)
 		}
 	}
 	
-	refl_ray := Ray{x, r.d - n.mult_s(2.0 * n.dot(r.d))}     // Ideal dielectric REFRACTION
-	into     := n.dot(nl) > 0.0                          // Ray from outside going in? 
+	refl_ray := Ray{x, r.d - n.mult_s(2.0 * n.dot(r.d))}  // Ideal dielectric REFRACTION
+	into     := n.dot(nl) > 0                             // Ray from outside going in? 
 	
 	nc       := f64(1.0)
 	nt       := f64(1.5)
@@ -357,11 +354,11 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 	ddn   := r.d.dot(nl)
 	cos2t := v_1 - nnt * nnt * (v_1 - ddn * ddn)
 	if cos2t < 0.0  {   // Total internal reflection
-		return obj.e + (f * radiance(refl_ray, depth, scene_id))
+		return obj.e + f * radiance(refl_ray, depth, scene_id)
 	}
 	
-	dirc := if into { 1 } else { -1 }
-	tdir := r.d.mult_s(nnt) -n.mult_s(dirc).mult_s(ddn * nnt + math.sqrt(cos2t)).norm()
+	dirc := if into { f64(1) } else { f64(-1) }
+	tdir := (r.d.mult_s(nnt) - n.mult_s(dirc * (ddn * nnt + math.sqrt(cos2t)))).norm()
 	
 	a  := nt - nc
 	b  := nt + nc
@@ -383,9 +380,9 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 			radiance(Ray{x, tdir}, depth, scene_id).mult_s(tp)
 		}
 	} else {
-		tmp = radiance(refl_ray, depth, scene_id).mult_s(re) + radiance( Ray{x, tdir}, depth, scene_id).mult_s(tr)
+		tmp = (radiance(refl_ray, depth, scene_id).mult_s(re)) + (radiance( Ray{x, tdir}, depth, scene_id).mult_s(tr))
 	}
-	return obj.e + f * tmp
+	return obj.e + (f * tmp)
 }
 
 /************************ beam scan routine **********************************/
