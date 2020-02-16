@@ -35,5 +35,7 @@ fn test_scan() {
 	assert c == 1000000
 	d := f64(23_000_000e-3)
 	assert int(d) == 23000 
+	e := f64(1.2E3) * f64(-1e-1)
+	assert e == -120.0
 }
 

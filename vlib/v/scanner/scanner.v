@@ -208,8 +208,13 @@ fn (s mut Scanner) ident_dec_number() string {
 	}
 	// scan exponential part
 	mut has_exponential_part := false
-	if s.expect('e+', s.pos) || s.expect('e-', s.pos) {
-		exp_start_pos := s.pos += 2
+	if s.expect('e', s.pos) || s.expect('E', s.pos) {
+		exp_start_pos := (s.pos++)
+
+		if s.text[s.pos] in [`-`, `+`] {
+			s.pos++
+		}
+
 		for s.pos < s.text.len && s.text[s.pos].is_digit() {
 			s.pos++
 		}
@@ -218,6 +223,7 @@ fn (s mut Scanner) ident_dec_number() string {
 		}
 		has_exponential_part = true
 	}
+
 	// error check: 1.23.4, 123.e+3.4
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		if has_exponential_part {
