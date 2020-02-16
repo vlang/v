@@ -71,11 +71,13 @@ fn main() {
 	}
 	mut files := []string
 	for file in possible_files {
-		if !os.exists(file) {
-			compiler.verror('"$file" does not exist.')
-		}
 		if !file.ends_with('.v') {
 			compiler.verror('v fmt can only be used on .v files.\nOffending file: "$file" .')
+			continue
+		}
+		if !os.exists(file) {
+			compiler.verror('"$file" does not exist.')
+			continue
 		}
 		files << file
 	}
