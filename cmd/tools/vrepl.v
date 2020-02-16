@@ -77,10 +77,10 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 	version := v_version()
 	println(version)
 	println('Use Ctrl-C or `exit` to exit')
-	
+
 	file := filepath.join( workdir, '.${vrepl_prefix}vrepl.v' )
-	temp_file := filepath.join( workdir, '.${vrepl_prefix}vrepl_temp.v')	
-	mut prompt := '>>> '	
+	temp_file := filepath.join( workdir, '.${vrepl_prefix}vrepl_temp.v')
+	mut prompt := '>>> '
 	defer {
 		os.rm(file)
 		os.rm(temp_file)
@@ -155,12 +155,12 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 			mut temp_flag := false
 			func_call := r.function_call(r.line)
 			if !(
-				r.line.contains(' ') || 
-				r.line.contains(':') || 
-				r.line.contains('=') || 
-				r.line.contains(',') || 
-				r.line.ends_with('++') || 
-				r.line.ends_with('--') || 
+				r.line.contains(' ') ||
+				r.line.contains(':') ||
+				r.line.contains('=') ||
+				r.line.contains(',') ||
+				r.line.ends_with('++') ||
+				r.line.ends_with('--') ||
 				r.line == '') && !func_call {
 				temp_line = 'println($r.line)'
 				temp_flag = true
@@ -219,7 +219,7 @@ fn main() {
 	// Support for the parameters replfolder and replprefix is needed
 	// so that the repl can be launched in parallel by several different
 	// threads by the REPL test runner.
-	args := cmdline.after(os.args, ['repl'])
+	args := cmdline.options_after(os.args, ['repl'])
 	replfolder := os.realpath( cmdline.option(args, '-replfolder', '.') )
 	replprefix := cmdline.option(args, '-replprefix', 'noprefix.')
 	os.chdir( replfolder )
