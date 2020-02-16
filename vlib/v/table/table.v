@@ -8,18 +8,18 @@ module table
 pub struct Table {
 	// struct_fields map[string][]string
 pub mut:
-	types           []TypeSymbol
+	types       []TypeSymbol
 	// type_idxs Hashmap
-	type_idxs       map[string]int
-	local_vars      []Var
-	scope_level     int
-	var_idx         int
+	type_idxs   map[string]int
+	local_vars  []Var
+	scope_level int
+	var_idx     int
 	// fns Hashmap
-	fns             map[string]Fn
-	consts          map[string]Var
-	tmp_cnt         int
-	imports         []string // List of all imports
-	modules         []string // List of all modules registered by the application
+	fns         map[string]Fn
+	consts      map[string]Var
+	tmp_cnt     int
+	imports     []string // List of all imports
+	modules     []string // List of all modules registered by the application
 }
 
 pub struct Fn {
@@ -336,6 +336,7 @@ pub fn (t mut Table) register_builtin_type_symbol(typ TypeSymbol) int {
 
 [inline]
 pub fn (t mut Table) register_type_symbol(typ TypeSymbol) int {
+	// println('register_type_symbol( $typ.name )')
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
 		ex_type := t.types[existing_idx]
