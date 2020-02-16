@@ -7,8 +7,8 @@ Usage:
    v [options] [command] [arguments]
 
 Examples:
-   v hello.v         compiles the file `hello.v` and output it as `hello` or `hello.exe`
-   v run hello.v     same as above but also runs the produced executable immediately after compilation
+   v hello.v         compile the file `hello.v` and output it as `hello` or `hello.exe`
+   v run hello.v     same as above but also run the produced executable immediately after compilation
 
 The commands are:
    build             build V code in the provided path (default)
