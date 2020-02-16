@@ -573,7 +573,8 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 			mut expr := ast.Expr{}
 			expr,_ = p.expr(0)
 			// TODO, string(b, len)
-			if table.type_idx(to_typ) == table.string_type_idx && p.tok.kind == .comma {
+			// if table.type_idx(to_typ) == table.string_type_idx && p.tok.kind == .comma {
+			if p.tok.kind == .comma && name == 'string' {
 				p.check(.comma)
 				p.expr(0) // len
 			}
