@@ -110,7 +110,7 @@ pub fn (p mut Parser) parse_type() table.Type {
 		name += '.' + p.tok.lit
 	}
 	// `Foo` in module `mod` means `mod.Foo`
-	else if p.mod != 'main' {
+	else if p.mod != 'main' && !(name in table.builtin_type_names) {
 		name = p.mod + '.' + name
 	}
 	// p.warn('get type $name')
