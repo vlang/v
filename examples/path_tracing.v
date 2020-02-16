@@ -29,6 +29,12 @@ import math
 import rand
 import time
 
+const (
+	inf = f64(1e+10)
+	eps = f64(1e-4)
+	f_0 = f64(0.0)
+)
+	
 /***************************** 3D Vector utility struct **********************/
 struct Vec {     
 mut:  
@@ -132,8 +138,6 @@ struct Sphere {
 
 fn (sp Sphere) intersect (r Ray) f64 {
 	op        := sp.p - r.o // Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0 
-	mut t     := f64(0.0)
-	eps       := f64(1e-4)
 	b         := op.dot(r.d)
 	mut det   := b * b - op.dot(op) + sp.rad * sp.rad
 
@@ -143,7 +147,7 @@ fn (sp Sphere) intersect (r Ray) f64 {
 	
 	det = math.sqrt(det)
 	
-	t = b - det
+	mut t := b - det
 	if t > eps {
 		return t
 	}
@@ -161,7 +165,7 @@ fn (sp Sphere) intersect (r Ray) f64 {
 * 2) Psychedelic
 * The sphere fileds are: Sphere{radius, position, emission, color, material}
 ******************************************************************************/
-const (
+const (	
 Cen = Vec{50, 40.8, -860} // used by scene 1
 spheres = [
 [// scene 0 cornnel box
@@ -216,13 +220,12 @@ fn to_int(x f64) int {
 }
 
 fn intersect(r Ray, spheres &Sphere, nspheres int) (bool, f64, int){
-	inf := f64(1e+10)
 	mut d  := f64(0)
 	mut t  := inf
 	mut id := 0
 	for i:=nspheres-1; i >= 0; i-- {
 		d = spheres[i].intersect(r)
-		if d != 0.0 && d < t {
+		if d > 0 && d < t {
 			t = d
 			id = i
 		}
