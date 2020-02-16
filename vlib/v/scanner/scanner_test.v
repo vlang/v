@@ -33,6 +33,7 @@ fn test_scan() {
 	assert c == 9
 	c = 1_000_000
 	assert c == 1000000
+	
 	// test float conversion and reading
 	d := f64(23_000_000e-3)
 	assert int(d) == 23000 

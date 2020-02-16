@@ -223,7 +223,6 @@ fn (s mut Scanner) ident_dec_number() string {
 		}
 		has_exponential_part = true
 	}
-
 	// error check: 1.23.4, 123.e+3.4
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		if has_exponential_part {
