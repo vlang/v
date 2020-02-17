@@ -592,3 +592,20 @@ fn test_clear() {
 	arr.clear()
 	assert arr.len == 0
 }
+
+fn test_trim() {
+	mut arr := [1,2,3,4,5,6,7,8,9]
+	assert arr.len == 9
+	
+	arr.trim(9)
+	assert arr.len == 9
+	assert arr.last() == 9
+	
+	arr.trim(7)
+	assert arr.len == 7
+	assert arr.last() == 7
+	
+	arr.trim(2)
+	assert arr.len == 2
+	assert arr.last() == 2
+}

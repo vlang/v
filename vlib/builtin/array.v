@@ -152,6 +152,14 @@ pub fn (a mut array) clear() {
 	a.len = 0
 }
 
+// trims the array length to "index" without modifying the allocated data. If "index" is greater
+// than len nothing will be changed
+pub fn (a mut array) trim(index int) {
+	if index < a.len {
+		a.len = index
+	}
+}
+
 // Private function. Used to implement array[] operator
 fn (a array) get(i int) voidptr {
 	$if !no_bounds_checking? {
