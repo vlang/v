@@ -5,6 +5,7 @@ module compiler
 
 import (
 	os
+	filepath
 	// strings
 )
 
@@ -850,7 +851,7 @@ fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
 	s.started = false
 	s.debug = true
-	fname := s.file_path.all_after(os.path_separator)
+	fname := s.file_path.all_after(filepath.separator)
 	println('\n===DEBUG TOKENS $fname===')
 	for {
 		res := s.scan()
@@ -941,4 +942,3 @@ fn (s &Scanner) validate_var_name(name string) {
 		s.error('bad variable name `$name`\n' + 'looks like you have a multi-word name without separating them with `_`' + '\nfor example, use `registration_date` instead of `registrationdate` ')
 	}
 }
-

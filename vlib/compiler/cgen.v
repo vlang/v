@@ -285,7 +285,7 @@ fn (v &V) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	mut cfiles := ''
 	for file in files {
 		if file.ends_with('.c') {
-			cfiles += '"' + os.realpath(parent + os.path_separator + file) + '" '
+			cfiles += '"' + os.realpath(parent + filepath.separator + file) + '" '
 		}
 	}
 	btarget := moduleflags.c_options_before_target()
@@ -503,4 +503,3 @@ fn (v &V) interface_table() string {
 	}
 	return sb.str()
 }
-

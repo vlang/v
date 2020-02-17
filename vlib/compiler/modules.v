@@ -25,7 +25,7 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	for m in table.imports {
 		if m.contains('.') && m.contains(mod) {
 			m_parts := m.split('.')
-			m_path := m_parts.join(os.path_separator)
+			m_path := m_parts.join(filepath.separator)
 			if mod == m_parts[m_parts.len - 1] && file_path.contains(m_path) {
 				return m
 			}
@@ -147,7 +147,7 @@ pub fn (graph &DepGraph) imports() []string {
 [inline]
 fn (v &V) module_path(mod string) string {
 	// submodule support
-	return mod.replace('.', os.path_separator)
+	return mod.replace('.', filepath.separator)
 }
 
 // 'strings' => 'VROOT/vlib/strings'
@@ -208,4 +208,3 @@ fn mod_gen_name(mod string) string {
 fn mod_gen_name_rev(mod string) string {
 	return mod.replace('_dot_', '.')
 }
-

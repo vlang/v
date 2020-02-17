@@ -797,7 +797,7 @@ pub fn home_dir() string {
 		}
 		home += homepath
 	}
-	home += path_separator
+	home += filepath.separator
 	return home
 }
 
@@ -1000,7 +1000,7 @@ pub fn walk_ext(path, ext string) []string {
 		panic(err)
 	}
 	mut res := []string
-	separator := if path.ends_with(path_separator) { '' } else { path_separator }
+	separator := if path.ends_with(filepath.separator) { '' } else { filepath.separator }
 	for i, file in files {
 		if file.starts_with('.') {
 			continue
@@ -1026,7 +1026,7 @@ pub fn walk(path string, f fn(path string)) {
 		panic(err)
 	}
 	for file in files {
-		p := path + os.path_separator + file
+		p := path + filepath.separator + file
 		if os.is_dir(p) && !os.is_link(p) {
 			walk(p, f)
 		}
@@ -1087,9 +1087,9 @@ pub fn flush_stdout() {
 }
 
 pub fn mkdir_all(path string) {
-	mut p := if path.starts_with(os.path_separator) { os.path_separator } else { '' }
-	for subdir in path.split(os.path_separator) {
-		p += subdir + os.path_separator
+	mut p := if path.starts_with(filepath.separator) { filepath.separator } else { '' }
+	for subdir in path.split(filepath.separator) {
+		p += subdir + filepath.separator
 		if !os.is_dir(p) {
 			os.mkdir(p) or {
 				panic(err)

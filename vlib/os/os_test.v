@@ -1,4 +1,5 @@
 import os
+import filepath
 
 fn test_aaa_setup(){
 	cleanup_leftovers()
@@ -34,7 +35,7 @@ fn test_open_file() {
   mut file := os.open_file(filename, "w+", 0666) or { panic(err) }
   file.write(hello)
   file.close()
-  
+
   assert hello.len == os.file_size(filename)
 
   read_hello := os.read_file(filename) or {
@@ -116,14 +117,14 @@ fn walk_callback(file string) {
     if file == '.' || file == '..' {
         return
     }
-    assert file == 'test_walk'+os.path_separator+'test1'
+    assert file == 'test_walk' + filepath.separator + 'test1'
 }
 
 fn test_walk() {
     folder := 'test_walk'
     os.mkdir(folder) or { panic(err) }
 
-    file1 := folder+os.path_separator+'test1'
+    file1 := folder + filepath.separator + 'test1'
 
     os.write_file(file1,'test-1')
 
@@ -172,7 +173,7 @@ fn test_tmpdir(){
 	assert t.len > 0
 	assert os.is_dir(t)
 
-	tfile := t + os.path_separator + 'tmpfile.txt'
+	tfile := t + filepath.separator + 'tmpfile.txt'
 
 	os.rm(tfile) // just in case
 
@@ -256,25 +257,25 @@ fn test_symlink() {
 }
 
 fn test_is_executable_writable_readable() {
-  file_name := os.tmpdir() + os.path_separator + 'rwxfile.exe'
+  file_name := os.tmpdir() + filepath.separator + 'rwxfile.exe'
 
   mut f := os.create(file_name) or {
     eprintln('failed to create file $file_name')
     return
   }
   f.close()
-  
+
   $if !windows {
-    os.chmod(file_name, 0600) // mark as readable && writable, but NOT executable  
+    os.chmod(file_name, 0600) // mark as readable && writable, but NOT executable
     assert os.is_writable(file_name)
     assert os.is_readable(file_name)
-    assert !os.is_executable(file_name)  
+    assert !os.is_executable(file_name)
     os.chmod(file_name, 0700) // mark as executable too
     assert os.is_executable(file_name)
   } $else {
     assert os.is_writable(file_name)
     assert os.is_readable(file_name)
-    assert os.is_executable(file_name)    
+    assert os.is_executable(file_name)
   }
 
   // We finally delete the test file.
