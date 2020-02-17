@@ -24,10 +24,7 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		fn_decl: 0
 	}
 	for file in files {
-		for stmt in file.stmts {
-			g.stmt(stmt)
-			g.writeln('')
-		}
+		g.stmts(file.stmts)
 	}
 	return g.definitions.str() + g.out.str()
 }
@@ -76,7 +73,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			for i, arg in it.args {
 				arg_type_sym := g.table.get_type_symbol(arg.typ)
 				mut arg_type_name := arg_type_sym.name
-				if i == it.args.len-1 && it.is_variadic {
+				if i == it.args.len - 1 && it.is_variadic {
 					arg_type_name = 'variadic_$arg_type_sym.name'
 				}
 				g.write(arg_type_name + ' ' + arg.name)
@@ -194,10 +191,22 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 fn (g mut Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
+		ast.ArrayInit {
+			type_sym := g.table.get_type_symbol(it.typ)
+			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($type_sym.name), {\t')
+			for expr in it.exprs {
+				g.expr(expr)
+				g.write(', ')
+			}
+			g.write('\n})')
+		}
 		ast.AssignExpr {
 			g.expr(it.left)
 			g.write(' $it.op.str() ')
 			g.expr(it.val)
+		}
+		ast.BoolLiteral {
+			g.write(it.val.str())
 		}
 		ast.IntegerLiteral {
 			g.write(it.val.str())
@@ -263,25 +272,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(')')
 		}
 		ast.MethodCallExpr {}
-		ast.ArrayInit {
-			type_sym := g.table.get_type_symbol(it.typ)
-			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($type_sym.name), {\t')
-			for expr in it.exprs {
-				g.expr(expr)
-				g.write(', ')
-			}
-			g.write('\n})')
-		}
 		ast.Ident {
 			g.write('$it.name')
-		}
-		ast.BoolLiteral {
-			if it.val == true {
-				g.write('true')
-			}
-			else {
-				g.write('false')
-			}
 		}
 		ast.SelectorExpr {
 			g.expr(it.expr)

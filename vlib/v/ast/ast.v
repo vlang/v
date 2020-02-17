@@ -8,14 +8,23 @@ import (
 	v.table
 )
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral |
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr |
-AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr |
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
+AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
 CastExpr | EnumVal
 
-pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
+pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt
+
+pub type Type = StructType | ArrayType
+
+pub struct StructType {
+	fields []Field
+}
+
+pub struct ArrayType {}
+
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
@@ -72,6 +81,7 @@ pub:
 	// type_idx int
 mut:
 	typ  table.Type
+	// typ2 Type
 }
 
 pub struct ConstDecl {
@@ -194,11 +204,11 @@ pub:
 
 pub struct File {
 pub:
-	path       string
-	mod        Module
-	imports    []Import
-	stmts      []Stmt
-	scope      Scope
+	path    string
+	mod     Module
+	imports []Import
+	stmts   []Stmt
+	scope   Scope
 }
 
 pub struct IdentFunc {
@@ -387,15 +397,15 @@ pub:
 	vals   []string
 }
 
-pub struct TypeDecl{
+pub struct TypeDecl {
 pub:
 	name   string
 	is_pub bool
 }
 
-pub struct DeferStmt{
+pub struct DeferStmt {
 pub:
-stmts []Stmt
+	stmts []Stmt
 }
 
 pub struct AssignExpr {
@@ -406,14 +416,14 @@ pub:
 	val  Expr
 }
 
-pub struct GotoLabel{
+pub struct GotoLabel {
 pub:
-name string
+	name string
 }
 
 pub struct GotoStmt {
 pub:
-name string
+	name string
 }
 
 pub struct ArrayInit {
