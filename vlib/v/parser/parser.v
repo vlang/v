@@ -633,7 +633,6 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 		}
 		// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 		.lcbr {
-			p.warn('kek')
 			p.next()
 			if p.tok.kind == .str {
 				for p.tok.kind != .rcbr && p.tok.kind != .eof {

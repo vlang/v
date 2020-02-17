@@ -447,15 +447,13 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 		// If the last statement is an expression, return its type
 		if block.stmts.len > 0 {
 			match block.stmts[block.stmts.len - 1] {
-				ast.ExprStmt {
-					a := 0
-					// TODO: ask alex about this
-					// typ := c.expr(it.expr)
-					// type_sym := c.table.get_type_symbol(typ)
-					// p.warn('match expr ret $type_sym.name')
-					// node.typ = typ
-					// return typ
-				}
+				ast.ExprStmt {}
+				// TODO: ask alex about this
+				// typ := c.expr(it.expr)
+				// type_sym := c.table.get_type_symbol(typ)
+				// p.warn('match expr ret $type_sym.name')
+				// node.typ = typ
+				// return typ
 				else {}
 	}
 		}
