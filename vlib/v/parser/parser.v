@@ -428,9 +428,7 @@ pub fn (p &Parser) warn(s string) {
 	}
 }
 
-pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.Type) {
-	mut node := ast.Ident{}
-	mut typ := table.void_type
+pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 	// p.warn('name ')
 	// left := p.parse_ident()
 	name := p.check_name()
@@ -450,49 +448,13 @@ pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.Type) {
 		// println('#### IDENT: $var.name: $var.typ.typ.name - $var.typ.idx')
 		ident.kind = .variable
 		ident.info = ast.IdentVar{}
-		// typ: typ
-		// name: ident.name
-		// expr: p.expr(0)// var.expr
-		// }
-		return ident,typ
+		return ident
 	}
 	else {
-		if is_c {
-			typ = table.int_type
-			ident.info = ast.IdentVar{
-				typ: typ
-				// name: ident.name
-				
-			}
-			return ident,typ
-		}
-		// const
-		if c := p.table.find_const(name) {
-			typ = c.typ
-			ident.kind = .constant
-			ident.info = ast.IdentVar{
-				typ: typ
-				// name: ident.name
-				
-			}
-			node = ident
-		}else{
-			// Function object (not a call), e.g. `onclick(my_click)`
-			p.table.find_fn(name) or {
-				// ident.info = ast.IdentVar
-				node = ast.Ident{
-					kind: .blank_ident
-					name: name
-					// pos: p.tok.position()
-					
-				}
-				return node,typ
-				// p.error('parse_ident: unknown identifier `$name`')
-			}
-			// p.next()
-		}
+		// handle consts/fns in checker
+		ident.kind = .unresolved
+		return ident
 	}
-	return node,typ
 }
 
 fn (p mut Parser) struct_init() (ast.Expr,table.Type) {
@@ -598,7 +560,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 	}
 	else {
 		mut ident := ast.Ident{}
-		ident,typ = p.parse_ident(is_c)
+		ident = p.parse_ident(is_c)
 		node = ident
 	}
 	return node,typ
@@ -1400,7 +1362,7 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 	// TODO: multiple return & multiple assign
 	mut idents := []ast.Ident
 	for {
-		ident,_ := p.parse_ident(false)
+		ident := p.parse_ident(false)
 		idents << ident
 		if p.tok.kind == .comma {
 			p.check(.comma)

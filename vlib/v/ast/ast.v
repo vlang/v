@@ -199,7 +199,6 @@ pub:
 	imports    []Import
 	stmts      []Stmt
 	scope      Scope
-	unresolved []Expr
 }
 
 pub struct IdentVar {
@@ -212,10 +211,11 @@ pub mut:
 type IdentInfo = IdentVar
 
 pub enum IdentKind {
+	unresolved
 	blank_ident
 	variable
 	constant
-	func
+	function
 }
 
 // A single identifier
