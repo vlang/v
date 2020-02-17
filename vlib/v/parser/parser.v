@@ -506,7 +506,7 @@ fn (p mut Parser) struct_init() (ast.Expr,table.Type) {
 
 pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 	mut node := ast.Expr{}
-	mut typ := table.void_type
+	typ := table.void_type
 	// mut typ := table.unresolved_type
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
 	if is_c {
