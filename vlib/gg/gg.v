@@ -44,7 +44,7 @@ pub:
 	use_ortho bool
 	retina    bool
 	resizable bool
-	decorated bool
+	decorated bool = true
 
 	font_size int
 	font_path string
