@@ -176,11 +176,11 @@ jobs:
         ls
     - name: Test V
       run: |
-        exit
         ./v.exe -o hi.exe examples/hello_world.v
+        echo "ls:"
         ls
         ./hi.exe
-        ./v.exe -silent build-examples
+        #./v.exe -silent build-examples
 
   ubuntu-musl:
     runs-on: ubuntu-18.04
