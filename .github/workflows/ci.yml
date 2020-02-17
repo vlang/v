@@ -171,15 +171,17 @@ jobs:
         curl -L https://github.com/vbinaries/vbinaries/releases/download/latest/v_windows.zip -o v_windows.zip
         echo "Unzipping..."
         unzip v_windows.zip
+        echo "version:"
         ./v.exe --version
         echo "Done"
         ls
     - name: Test V
+      shell: bash
       run: |
-        v.exe -o hi.exe examples/hello_world.v
-        echo "ls:"
+        echo "dir:"
         ls
-        hi.exe
+        ./v.exe -o hi.exe examples/hello_world.v
+        ./hi.exe
         #./v.exe -silent build-examples
 
   ubuntu-musl:
