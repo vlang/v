@@ -39,10 +39,6 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 	b.parsed_files = parser.parse_files(v_files, b.table)
 	b.parse_imports()
 	b.checker.check_files(b.parsed_files)
-	//println('=======================')
-	//ast.print_scope_vars(&b.parsed_files[0].scope, 0)
-	//println('=======================')
-	//return gen.cgen(b.parsed_files, b.table)
 	return gen.cgen(b.parsed_files, b.table)
 }
 
@@ -58,9 +54,6 @@ pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
 	parse_time := t1 - t0
 	println('PARSE: ${parse_time}ms')
 	b.checker.check_files(b.parsed_files)
-	//println('=======================')
-	//ast.print_scope_vars(&b.parsed_files[0].scope, 0)
-	//println('=======================')
 	t2 := time.ticks()
 	check_time := t2 - t1
 	println('CHECK: ${check_time}ms')

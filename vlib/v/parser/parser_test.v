@@ -98,8 +98,6 @@ fn test_one() {
 	}
 	mut checker := checker.new_checker(table)
 	checker.check(program)
-	//ast.print_scope_vars(scope, 0)
-	//ast.print_scope_vars(program.scope, 0)
 	res := gen.cgen([program], table).replace('\n', '').trim_space()
 	println(res)
 	ok := expected == res
