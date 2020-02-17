@@ -280,14 +280,29 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 				stmts: stmts
 			}
 		}
+		.key_goto {
+			p.next()
+			name := p.check_name()
+			return ast.GotoStmt{
+				name: name
+			}
+		}
 		else {
 			// `x := ...`
 			// if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
 			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign] {
 				return p.var_decl()
 			}
-			if p.tok.kind == .name && p.peek_tok.kind in [.comma] {
+			else if p.tok.kind == .name && p.peek_tok.kind in [.comma] {
 				return p.assign_stmt()
+			}
+			// `label:`
+			else if p.tok.kind == .name && p.peek_tok.kind == .colon {
+				name := p.check_name()
+				p.check(.colon)
+				return ast.GotoLabel{
+					name: name
+				}
 			}
 			// expr,typ := p.expr(0)
 			expr,_ := p.expr(0)
@@ -298,22 +313,6 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			}
 		}
 	}
-}
-
-pub fn (p mut Parser) comp_if() ast.CompIf {
-	p.next()
-	p.check(.key_if)
-	if p.tok.kind == .not {
-		p.next()
-	}
-	p.check_name()
-	p.parse_block()
-	if p.tok.kind == .dollar && p.peek_tok.kind == .key_else {
-		p.next()
-		p.check(.key_else)
-		p.parse_block()
-	}
-	return ast.CompIf{}
 }
 
 pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
@@ -632,20 +631,33 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			p.check(.rpar)
 			typ = table.int_type
 		}
-		// Map or `{ x | foo:bar, a:10 }`
+		// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 		.lcbr {
+			p.warn('kek')
 			p.next()
-			p.check_name()
-			p.check(.pipe)
-			for {
-				p.check_name()
-				p.check(.colon)
-				p.expr(0)
-				if p.tok.kind == .comma {
-					p.check(.comma)
+			if p.tok.kind == .str {
+				for p.tok.kind != .rcbr && p.tok.kind != .eof {
+					p.check(.str)
+					p.check(.colon)
+					p.expr(0)
+					if p.tok.kind == .comma {
+						p.next()
+					}
 				}
-				if p.tok.kind == .rcbr {
-					break
+			}
+			else {
+				p.check_name()
+				p.check(.pipe)
+				for {
+					p.check_name()
+					p.check(.colon)
+					p.expr(0)
+					if p.tok.kind == .comma {
+						p.check(.comma)
+					}
+					if p.tok.kind == .rcbr {
+						break
+					}
 				}
 			}
 			p.check(.rcbr)
@@ -822,7 +834,9 @@ fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,table.Type) {
 	// println('infix op=$op.str()')
 	precedence := p.tok.precedence()
 	p.next()
-	right,mut typ := p.expr(precedence)
+	mut typ := table.Type{}
+	mut right := ast.Expr{}
+	right,typ = p.expr(precedence)
 	if op.is_relational() {
 		typ = table.bool_type
 	}
@@ -1105,9 +1119,11 @@ fn (p mut Parser) array_init() ast.Expr {
 	// mut is_fixed := false
 	// mut fixed_size := 0
 	if p.tok.kind == .rsbr {
+		// []typ => `[]` and `typ` must be on the same line
+		line_nr := p.tok.line_nr
 		p.check(.rsbr)
 		// []string
-		if p.tok.kind == .name {
+		if p.tok.kind == .name && p.tok.line_nr == line_nr {
 			val_type = p.parse_type()
 		}
 		// []
@@ -1192,6 +1208,10 @@ fn (p mut Parser) parse_import() ast.Import {
 	if p.tok.kind == .dot {
 		p.next()
 		mod_name += '.' + p.check_name()
+		if p.tok.kind == .dot {
+			p.next()
+			mod_name += '.' + p.check_name()
+		}
 	}
 	mut mod_alias := mod_name
 	if p.tok.kind == .key_as {

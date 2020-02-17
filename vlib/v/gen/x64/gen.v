@@ -44,7 +44,8 @@ enum Size {
 pub fn gen(files []ast.File, out_name string) {
 	mut g := Gen{
 		sect_header_name_pos: 0
-		buf: []
+		// buf: []
+		
 		out_name: out_name
 	}
 	g.generate_elf_header()

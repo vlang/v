@@ -15,7 +15,7 @@ CastExpr | EnumVal
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
@@ -404,6 +404,16 @@ pub:
 	pos  token.Position
 	left Expr
 	val  Expr
+}
+
+pub struct GotoLabel{
+pub:
+name string
+}
+
+pub struct GotoStmt {
+pub:
+name string
 }
 
 pub struct ArrayInit {

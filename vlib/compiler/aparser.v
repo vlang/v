@@ -3207,6 +3207,8 @@ fn todo_remove() {
 
 
 fn (p mut Parser) check_if_parser_is_stuck(parsing_cycle u64, parsing_start_ticks i64){
+	// QTODO
+	/*
 	if p.prev_stuck_token_idx == p.token_idx {
 		// many many cycles have passed with no progress :-( ...
 		eprintln('Parsing is [probably] stuck. Cycle: ${parsing_cycle:12ld} .')
@@ -3218,9 +3220,10 @@ fn (p mut Parser) check_if_parser_is_stuck(parsing_cycle u64, parsing_start_tick
 		if time.ticks() > parsing_start_ticks + 30*1000{
 			p.error('
 V took more than 30 seconds to compile this file.
-Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose .
+Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose
 ')
 		}
 	}
 	p.prev_stuck_token_idx = p.token_idx
+	*/
 }

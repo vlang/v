@@ -28,7 +28,6 @@ pub fn new_checker(table &table.Table) Checker {
 pub fn (c mut Checker) check(ast_file ast.File) {
 	c.file_name = ast_file.path
 	c.scope = &ast_file.scope
-
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
@@ -56,7 +55,7 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 				c.error('too many fields', struct_init.pos)
 			}
 			for i, expr in struct_init.exprs {
-				//struct_field info.
+				// struct_field info.
 				field_name := struct_init.fields[i]
 				mut field := info.fields[i]
 				mut found_field := false
@@ -209,12 +208,8 @@ pub fn (c &Checker) assign_stmt(assign_stmt ast.AssignStmt) {}
 
 pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	mut elem_type := table.void_type
-
 	// a = []
-	if array_init.exprs.len == 0 {
-
-	}
-
+	if array_init.exprs.len == 0 {}
 	for i, expr in array_init.exprs {
 		c.expr(expr)
 		typ := c.expr(expr)
@@ -228,15 +223,10 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 			c.error('expected array element with type `$elem_type_sym.name`', array_init.pos)
 		}
 	}
-	//idx := if is_fixed { p.table.find_or_register_array_fixed(val_type, fixed_size, 1) } else { p.table.find_or_register_array(val_type, 1) }
+	// idx := if is_fixed { p.table.find_or_register_array_fixed(val_type, fixed_size, 1) } else { p.table.find_or_register_array(val_type, 1) }
 	is_fixed := false
 	fixed_size := 1
-	idx := if is_fixed {
-		c.table.find_or_register_array_fixed(elem_type, fixed_size, 1)
-	}
-	else {
-		c.table.find_or_register_array(elem_type, 1)
-	}
+	idx := if is_fixed { c.table.find_or_register_array_fixed(elem_type, fixed_size, 1) } else { c.table.find_or_register_array(elem_type, 1) }
 	array_type := table.new_type(idx)
 	array_init.typ = array_type
 	return array_init.typ
@@ -260,10 +250,10 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				mut field := it.fields[i]
 				typ := c.expr(expr)
 				mut xconst := c.table.consts[field.name]
-				//if xconst.typ == 0 {
-					xconst.typ = typ
-					c.table.consts[field.name] = xconst
-				//}
+				// if xconst.typ == 0 {
+				xconst.typ = typ
+				c.table.consts[field.name] = xconst
+				// }
 				field.typ = typ
 				it.fields[i] = field
 			}
@@ -271,10 +261,10 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		ast.VarDecl {
 			typ := c.expr(it.expr)
 			// typ_sym := c.table.get_type_symbol(typ)
-			//println('var $it.name - $typ - $it.typ - $typ_sym.name')
-			//if it.typ == 0 {
-			//	it.typ = typ
-			//}
+			// println('var $it.name - $typ - $it.typ - $typ_sym.name')
+			// if it.typ == 0 {
+			// it.typ = typ
+			// }
 			it.typ = typ
 		}
 		ast.ForStmt {
@@ -312,7 +302,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		ast.IntegerLiteral {
 			return table.int_type
 		}
-		ast.FloatLiteral{
+		ast.FloatLiteral {
 			return table.f64_type
 		}
 		ast.PostfixExpr {
@@ -323,6 +313,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			c.expr(it.left)
 		}
 		*/
+
 		ast.StringLiteral {
 			return table.string_type
 		}
@@ -371,18 +362,23 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 }
 
 pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
-	//println('IDENT: $it.name - $it.pos.pos')
+	// println('IDENT: $it.name - $it.pos.pos')
 	if ident.kind == .variable {
-		//println('===========================')
-		//c.scope.print_vars(0)
-		//println('===========================')
+		// println('===========================')
+		// c.scope.print_vars(0)
+		// println('===========================')
 		info := ident.info as ast.IdentVar
 		if info.typ != 0 {
 			return info.typ
 		}
-		start_scope := c.scope.innermost(ident.pos.pos) or { c.scope }
+		start_scope := c.scope.innermost(ident.pos.pos) or {
+			c.scope
+		}
 		mut found := true
-		mut var_scope, mut var := start_scope.find_scope_and_var(ident.name) or {
+		mut var_scope := &ast.Scope(0)
+		mut var := ast.VarDecl{}
+		// mut var_scope, mut var := start_scope.find_scope_and_var(ident.name) or {
+		var_scope,var = start_scope.find_scope_and_var(ident.name) or {
 			found = false
 			c.error('not found: $ident.name - POS: $ident.pos.pos', ident.pos)
 			panic('')
@@ -452,15 +448,16 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 		if block.stmts.len > 0 {
 			match block.stmts[block.stmts.len - 1] {
 				ast.ExprStmt {
+					a := 0
 					// TODO: ask alex about this
-					//typ := c.expr(it.expr)
-					//type_sym := c.table.get_type_symbol(typ)
-					//p.warn('match expr ret $type_sym.name')
-					//node.typ = typ
-					//return typ
+					// typ := c.expr(it.expr)
+					// type_sym := c.table.get_type_symbol(typ)
+					// p.warn('match expr ret $type_sym.name')
+					// node.typ = typ
+					// return typ
 				}
 				else {}
-			}
+	}
 		}
 	}
 	node.typ = t
@@ -486,10 +483,10 @@ pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
 	if node.stmts.len > 0 {
 		match node.stmts[node.stmts.len - 1] {
 			ast.ExprStmt {
-				//type_sym := p.table.get_type_symbol(it.typ)
-				//p.warn('if expr ret $type_sym.name')
-				//typ = it.typ
-				//return it.typ
+				// type_sym := p.table.get_type_symbol(it.typ)
+				// p.warn('if expr ret $type_sym.name')
+				// typ = it.typ
+				// return it.typ
 				t := c.expr(it.expr)
 				node.typ = t
 				return t
@@ -497,10 +494,10 @@ pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
 				// left =
 			}
 			else {}
-		}
+	}
 	}
 	return typ
-	//return table.void_type
+	// return table.void_type
 }
 
 pub fn (c mut Checker) postfix_expr(node ast.PostfixExpr) table.Type {
@@ -522,7 +519,7 @@ pub fn (c mut Checker) postfix_expr(node ast.PostfixExpr) table.Type {
 }
 
 pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
-/*
+	/*
 	mut typ := left_type
 	left_type_sym := p.table.get_type_symbol(left_type)
 	if left_type_sym.kind == .array {
@@ -530,7 +527,6 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 		typ = info.elem_type
 	}
 */
-
 	mut typ := c.expr(node.left)
 	mut is_range := false // TODO is_range := node.index is ast.RangeExpr
 	match node.index {

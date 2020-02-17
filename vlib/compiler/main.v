@@ -65,9 +65,10 @@ pub fn new_v(pref &pref.Preferences) &V {
 
 	mut vgen_buf := strings.new_builder(1000)
 	vgen_buf.writeln('module vgen\nimport strings')
+	compiled_dir:=if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
 
 	return &V{
-		compiled_dir: if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
+		compiled_dir:compiled_dir// if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
 		table: new_table(pref.obfuscate)
 		out_name_c: out_name_c
 		cgen: new_cgen(out_name_c)
