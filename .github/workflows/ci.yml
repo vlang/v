@@ -165,26 +165,18 @@ jobs:
     runs-on: windows-2019
     steps:
     - name: Download V
-      shell: bash
+      shell: cmd
       run: |
-        echo "Downloading v.exe..."
-        curl -L https://github.com/vbinaries/vbinaries/releases/download/latest/v_windows.zip -o v_windows.zip
-        echo "Unzipping..."
+        echo Downloading V...
+        curl -L https://github.com/vlang/v/releases/latest/download/v_windows.zip -o v_windows.zip
+        echo Unzipping...
         unzip v_windows.zip
-        echo "version:"
-        ./v.exe --version
-        echo "Done"
-        ls
+        v.exe --version
+        echo Done
+        dir
     - name: Test V
-      shell: bash
-      run: |
-        echo "ls:"
-        ls
-        echo "ls examples/:"
-        ls examples
-        .\v.exe -o hi.exe examples/hello_world.v
-        .\hi.exe
-        #./v.exe -silent build-examples
+      shell: cmd
+      run: v.exe examples\hello_world.v && examples\hello_world.exe
 
   ubuntu-musl:
     runs-on: ubuntu-18.04
