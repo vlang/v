@@ -146,7 +146,7 @@ jobs:
     - name: Download V
       run: wget https://github.com/vlang/v/releases/latest/download/v_linux.zip && unzip v_linux.zip && ./v --version
     - name: Test V
-      run: echo "TODO" # ./v examples/hello_world.v && examples/hello_world && ./v -silent build-examples
+      run: ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
 
 
   macos-prebuilt:
@@ -176,11 +176,11 @@ jobs:
         ls
     - name: Test V
       run: |
-        exit
         ./v.exe -o hi.exe examples/hello_world.v
+        echo "ls:"
         ls
         ./hi.exe
-        ./v.exe -silent build-examples
+        #./v.exe -silent build-examples
 
   ubuntu-musl:
     runs-on: ubuntu-18.04

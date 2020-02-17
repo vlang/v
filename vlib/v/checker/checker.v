@@ -15,19 +15,20 @@ pub struct Checker {
 	table     &table.Table
 mut:
 	file_name string
-	scope     ast.Scope
+	scope     &ast.Scope
 	resolved  []table.Type
 }
 
 pub fn new_checker(table &table.Table) Checker {
 	return Checker{
 		table: table
+		scope: 0
 	}
 }
 
 pub fn (c mut Checker) check(ast_file ast.File) {
 	c.file_name = ast_file.path
-	c.scope = ast_file.scope
+	c.scope = &ast_file.scope
 
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
@@ -269,10 +270,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			}
 		}
 		ast.VarDecl {
-			println('VARDECL')
 			typ := c.expr(it.expr)
-			typ_sym := c.table.get_type_symbol(typ)
-			//println('var $it.name - $typ - $it.typ')
+			// typ_sym := c.table.get_type_symbol(typ)
+			//println('var $it.name - $typ - $it.typ - $typ_sym.name')
 			//if it.typ == 0 {
 			//	it.typ = typ
 			//}
@@ -346,57 +346,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return c.array_init(mut it)
 		}
 		ast.Ident {
-			//println('IDENT: $it.name - $it.pos.pos')
-			if it.kind == .variable {
-				//println('===========================')
-				//ast.print_scope_vars(&c.scope, 0)
-				//println('===========================')
-				info := it.info as ast.IdentVar
-				if info.typ != 0 {
-					return info.typ
-				}
-				if inner := c.scope.innermost(it.pos.pos) {
-					mut found := true
-					mut varscope, var := inner.find_scope_and_var(it.name) or {
-						//ast.print_scope_vars(inner, 0)
-						found = false
-						c.error('not found: $it.name - POS: $it.pos.pos', it.pos)
-						panic('')
-					}
-					if found {
-						mut typ := var.typ
-						// set var type on first use
-						if var.typ == 0 {
-							typ = c.expr(var.expr)
-							mut v1 := var
-							v1.typ = typ
-							varscope.vars[var.name] = v1
-						}
-						// update ident
-						it.kind = .variable
-						it.info = ast.IdentVar{
-							typ: typ
-						}
-						return typ
-					}
-				}
-			}
-			// Handle indents with unresolved types during the parsing step
-			// (declared after first usage)
-			else if it.kind == .constant {
-				if constant := c.table.find_const(it.name) {
-					return constant.typ
-				}
-			}
-			else if it.kind == .blank_ident {
-				println('CONST A: $it.name')
-				if constant := c.table.find_const(it.name) {
-					println('CONST: $it.name')
-
-					return constant.typ
-				}
-			}
-			return table.void_type
+			return c.ident(mut it)
 		}
 		ast.BoolLiteral {
 			return table.bool_type
@@ -417,6 +367,76 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return it.typ
 		}
 		else {}
+	}
+	return table.void_type
+}
+
+pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
+	//println('IDENT: $it.name - $it.pos.pos')
+	if ident.kind == .variable {
+		//println('===========================')
+		//c.scope.print_vars(0)
+		//println('===========================')
+		info := ident.info as ast.IdentVar
+		if info.typ != 0 {
+			return info.typ
+		}
+		start_scope := c.scope.innermost(ident.pos.pos) or { c.scope }
+		mut found := true
+		mut var_scope, mut var := start_scope.find_scope_and_var(ident.name) or {
+			found = false
+			c.error('not found: $ident.name - POS: $ident.pos.pos', ident.pos)
+			panic('')
+		}
+		if found {
+			// update the variable
+			// we need to do this here instead of var_decl since some
+			// vars are registered manually for things like for loops etc
+			// NOTE: or consider making those declerations part of those ast nodes
+			mut typ := var.typ
+			// set var type on first use
+			if typ == 0 {
+				typ = c.expr(var.expr)
+				var.typ = typ
+				var_scope.override_var(var)
+			}
+			// update ident
+			ident.kind = .variable
+			ident.info = ast.IdentVar{
+				typ: typ
+			}
+			return typ
+		}
+	}
+	// second use, already resovled in unresovled branch
+	else if ident.kind == .constant {
+		info := ident.info as ast.IdentVar
+		return info.typ
+	}
+	// second use, already resovled in unresovled branch
+	else if ident.kind == .function {
+		info := ident.info as ast.IdentFunc
+		return info.return_type
+	}
+	// Handle indents with unresolved types during the parsing step
+	// (declared after first usage)
+	else if ident.kind == .unresolved {
+		// constant
+		if constant := c.table.find_const(ident.name) {
+			ident.kind = .constant
+			ident.info = ast.IdentVar{
+				typ: constant.typ
+			}
+			return constant.typ
+		}
+		// Function object (not a call), e.g. `onclick(my_click)`
+		if func := c.table.find_fn(ident.name) {
+			ident.kind = .function
+			ident.info = ast.IdentFunc{
+				return_type: func.return_type
+			}
+			return func.return_type
+		}
 	}
 	return table.void_type
 }
