@@ -20,16 +20,6 @@ struct Fmt {
 mut:
 	indent     int
 	empty_line bool
-	/*
-	// vfmt fields TODO move to a separate struct
-	// fmt_out        strings.Builder
-	fmt_lines                []string
-	// fmt_line   string
-	fmt_indent               int
-	fmt_line_empty           bool
-	// fmt_needs_nl bool
-	*/
-
 }
 
 pub fn fmt(file ast.File, table &table.Table) {
@@ -39,7 +29,7 @@ pub fn fmt(file ast.File, table &table.Table) {
 		indent: -1
 	}
 	f.stmts(file.stmts)
-	println('!!!!!!!!!')
+	println('vfmt output:')
 	println(f.out.str())
 }
 
