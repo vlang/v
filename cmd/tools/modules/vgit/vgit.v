@@ -42,7 +42,7 @@ pub fn line_to_timestamp_and_commit(line string) (int,string) {
 
 pub fn normalized_workpath_for_commit(workdir string, commit string) string {
 	nc := 'v_at_' + commit.replace('^', '_').replace('-', '_').replace('/', '_')
-	return os.realpath(workdir + os.path_separator + nc)
+	return os.realpath(workdir + filepath.separator + nc)
 }
 
 pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string,string) {
@@ -73,7 +73,7 @@ pub fn clone_or_pull( remote_git_url string, local_worktree_path string ) {
 		// Clone a fresh
 		scripting.run('git clone --quiet "$remote_git_url"  "$local_worktree_path" ')
 	}
-}	
+}
 
 //
 
@@ -111,7 +111,7 @@ pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 	scripting.chdir(vgit_context.workdir)
 	clone_or_pull( vgit_context.v_repo_url,  vgit_context.path_v )
 	clone_or_pull( vgit_context.vc_repo_url, vgit_context.path_vc )
-	
+
 	scripting.chdir(vgit_context.path_v)
 	scripting.run('git checkout $vgit_context.commit_v')
 	v_commithash,vccommit_before := vgit.prepare_vc_source(vgit_context.path_vc, vgit_context.path_v, vgit_context.commit_v)
@@ -131,7 +131,7 @@ pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 	scripting.run(command_for_building_v_from_c_source)
 	build_cmd := command_for_selfbuilding.replace('{SOURCE}', vgit_context.vvlocation)
 	scripting.run(build_cmd)
-	
+
 	// At this point, there exists a file vgit_context.vexepath
 	// which should be a valid working V executable.
 }
@@ -141,8 +141,8 @@ pub fn add_common_tool_options<T>(context mut T, fp mut flag.FlagParser) []strin
 	context.workdir = os.realpath(fp.string_('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
 	context.v_repo_url = fp.string('vrepo', vgit.remote_v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
 	context.vc_repo_url = fp.string('vcrepo', vgit.remote_vc_repo_url, 'The url of the vc repository. You can clone it
-${flag.SPACE}beforehand, and then just give the local folder 
-${flag.SPACE}path here. That will eliminate the network ops 
+${flag.SPACE}beforehand, and then just give the local folder
+${flag.SPACE}path here. That will eliminate the network ops
 ${flag.SPACE}done by this tool, which is useful, if you want
 ${flag.SPACE}to script it/run it in a restrictive vps/docker.
 ')
@@ -157,11 +157,11 @@ ${flag.SPACE}to script it/run it in a restrictive vps/docker.
 	if context.verbose {
 		scripting.set_verbose(true)
 	}
-	
+
 	if os.is_dir(context.v_repo_url) {
 		context.v_repo_url = os.realpath( context.v_repo_url )
 	}
-	
+
 	if os.is_dir(context.vc_repo_url) {
 		context.vc_repo_url = os.realpath( context.vc_repo_url )
 	}
@@ -173,6 +173,6 @@ ${flag.SPACE}to script it/run it in a restrictive vps/docker.
 	for commit in commits {
 		vgit.validate_commit_exists(commit)
 	}
-	
+
 	return commits
 }

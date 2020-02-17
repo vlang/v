@@ -2,6 +2,7 @@ module compiler
 
 import (
 	os
+	filepath
 	term
 )
 // ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -156,7 +157,7 @@ fn (s &Scanner) get_error_filepath() string {
 		else {
 			s.print_rel_paths_on_error}}
 	if use_relative_paths {
-		workdir := os.getwd() + os.path_separator
+		workdir := os.getwd() + filepath.separator
 		if s.file_path.starts_with(workdir) {
 			return s.file_path.replace(workdir, '')
 		}
@@ -315,4 +316,3 @@ const (
 	and_or_error = 'use `()` to make the boolean expression clear\n' + 'for example: `(a && b) || c` instead of `a && b || c`'
 	err_modify_bitfield = 'to modify a bitfield flag use the methods: set, clear, toggle. and to check for flag use: has'
 )
-

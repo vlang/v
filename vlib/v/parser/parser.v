@@ -11,6 +11,7 @@ import (
 	v.pref
 	term
 	os
+	filepath
 )
 
 const (
@@ -56,7 +57,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-		
+
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -294,7 +295,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return ast.ExprStmt{
 				expr: expr
 				// typ: typ
-				
+
 			}
 		}
 	}
@@ -393,7 +394,7 @@ pub fn (p &Parser) error(s string) {
 	print_backtrace()
 	mut path := p.file_name
 	// Get relative path
-	workdir := os.getwd() + os.path_separator
+	workdir := os.getwd() + filepath.separator
 	if path.starts_with(workdir) {
 		path = path.replace(workdir, '')
 	}
@@ -462,7 +463,7 @@ pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.Type) {
 			ident.info = ast.IdentVar{
 				typ: typ
 				// name: ident.name
-				
+
 			}
 			return ident,typ
 		}
@@ -473,7 +474,7 @@ pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.Type) {
 			ident.info = ast.IdentVar{
 				typ: typ
 				// name: ident.name
-				
+
 			}
 			node = ident
 		}else{
@@ -484,7 +485,7 @@ pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.Type) {
 					kind: .blank_ident
 					name: name
 					// pos: p.tok.position()
-					
+
 				}
 				return node,typ
 				// p.error('parse_ident: unknown identifier `$name`')
@@ -1074,10 +1075,10 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-		
+
 		pos: p.tok.position()
 		// left: left
-		
+
 	}
 	return node
 }
@@ -1458,10 +1459,10 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	node := ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-		
+
 		is_mut: is_mut
 		// typ: typ
-		
+
 		pos: p.tok.position()
 	}
 	p.scope.register_var(node)
@@ -1580,7 +1581,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 		blocks: blocks
 		match_exprs: match_exprs
 		// typ: typ
-		
+
 		cond: cond
 	}
 	return node

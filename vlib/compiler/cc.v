@@ -47,7 +47,7 @@ fn (v mut V) cc() {
 			eprintln(format_result.output)
 		}
 	}
-	
+
 	if ends_with_c || ends_with_js {
 		// Translating V code to JS by launching vjs.
 		// Using a separate process for V.js is for performance mostly,
@@ -152,8 +152,8 @@ fn (v mut V) cc() {
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
-		mut out_dir := if v.pref.path.starts_with('vlib') { '$v_modules_path${os.path_separator}cache${os.path_separator}$v.pref.path' } else { '$v_modules_path${os.path_separator}$v.pref.path' }
-		pdir := out_dir.all_before_last(os.path_separator)
+		mut out_dir := if v.pref.path.starts_with('vlib') { '$v_modules_path${filepath.separator}cache${filepath.separator}$v.pref.path' } else { '$v_modules_path${filepath.separator}$v.pref.path' }
+		pdir := out_dir.all_before_last(filepath.separator)
 		if !os.is_dir(pdir) {
 			os.mkdir_all(pdir)
 		}
@@ -223,7 +223,7 @@ fn (v mut V) cc() {
 		}
 		else {
 			println('$builtin_o_path not found... building module builtin')
-			os.system('$vexe build module vlib${os.path_separator}builtin')
+			os.system('$vexe build module vlib${filepath.separator}builtin')
 		}
 		for imp in v.table.imports {
 			if imp.contains('vweb') {
@@ -232,8 +232,8 @@ fn (v mut V) cc() {
 			if imp == 'webview' {
 				continue
 			}
-			imp_path := imp.replace('.', os.path_separator)
-			path := '$v_modules_path${os.path_separator}cache${os.path_separator}vlib${os.path_separator}${imp_path}.o'
+			imp_path := imp.replace('.', filepath.separator)
+			path := '$v_modules_path${filepath.separator}cache${filepath.separator}vlib${filepath.separator}${imp_path}.o'
 			// println('adding ${imp_path}.o')
 			if os.exists(path) {
 				libs += ' ' + path
@@ -250,7 +250,7 @@ fn (v mut V) cc() {
 					}
 				}
 				else {
-					os.system('$vexe build module vlib${os.path_separator}$imp_path')
+					os.system('$vexe build module vlib${filepath.separator}$imp_path')
 				}
 			}
 			if path.ends_with('vlib/ui.o') {
@@ -554,4 +554,3 @@ fn missing_compiler_info() string {
 	}
 	return ''
 }
-

@@ -43,7 +43,7 @@ fn new_context() Context {
 fn (c Context) compare_versions() {
 	// Input is validated at this point...
 	// Cleanup artifacts from previous runs of this tool:
-	scripting.chdir(c.workdir)	
+	scripting.chdir(c.workdir)
 	scripting.run('rm -rf "$c.a" "$c.b" "$c.vc" ')
 	// clone the VC source *just once per comparison*, and reuse it:
 	scripting.run('git clone --quiet "$c.vc_repo_url" "$c.vc" ')
@@ -55,7 +55,7 @@ fn (c Context) compare_versions() {
 	if c.vflags.len > 0 {
 		os.setenv('VFLAGS', c.vflags, true)
 	}
-	
+
 	// The first is the baseline, against which all the others will be compared.
 	// It is the fastest, since hello_world.v has only a single println in it,
 	mut perf_files := []string
@@ -65,7 +65,7 @@ fn (c Context) compare_versions() {
 		'v     @DEBUG@ -o source.c examples/hello_world.v',
 		'v             -o source.c examples/hello_world.v',
 	])
-			
+
 	perf_files << c.compare_v_performance('source_v', [
 		'vprod @DEBUG@ -o source.c @COMPILER@',
 		'vprod         -o source.c @COMPILER@',
@@ -77,7 +77,7 @@ fn (c Context) compare_versions() {
 		'vprod         -o hello    examples/hello_world.v',
 		'v             -o hello    examples/hello_world.v',
 	])
-	
+
 	perf_files << c.compare_v_performance('binary_v', [
 		'vprod         -o binary   @COMPILER@',
 		'v             -o binary   @COMPILER@',
@@ -124,7 +124,7 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	scripting.show_sizes_of_files(['$cdir/v', '$cdir/v_stripped', '$cdir/v_stripped_upxed'])
 	scripting.show_sizes_of_files(['$cdir/vprod', '$cdir/vprod_stripped', '$cdir/vprod_stripped_upxed'])
 	vversion := scripting.run('$cdir/v --version')
-    vcommit := scripting.run('git rev-parse --short  --verify HEAD') 
+    vcommit := scripting.run('git rev-parse --short  --verify HEAD')
 	println('V version is: ${vversion} , local source commit: ${vcommit}')
 	if vgit_context.vvlocation == 'cmd/v' {
 		println('Source lines of the compiler: ' + scripting.run('wc cmd/v/*.v vlib/compiler/*.v | tail -n -1'))
@@ -165,7 +165,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		hyperfine_commands_arguments << " \'cd ${c.a:-34s} ; ./$cmd \' ".replace_each(['@COMPILER@', source_location_a, '@DEBUG@', debug_option_a])
 	}
 	// /////////////////////////////////////////////////////////////////////////////
-	cmd_stats_file := os.realpath([c.workdir, 'v_performance_stats_${label}.json'].join(os.path_separator))
+	cmd_stats_file := os.realpath([c.workdir, 'v_performance_stats_${label}.json'].join(filepath.separator))
 	comparison_cmd := 'hyperfine $c.hyperfineopts ' + '--export-json ${cmd_stats_file} ' + '--time-unit millisecond ' + '--style full --warmup $c.warmups ' + hyperfine_commands_arguments.join(' ')
 	// /////////////////////////////////////////////////////////////////////////////
 	if c.verbose {
@@ -207,6 +207,6 @@ ${flag.SPACE}--hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/
 		eprintln(msg)
 		exit(2)
 	}
-	
+
 	context.compare_versions()
 }

@@ -32,7 +32,7 @@ pub fn full_path_to_v(dirs_in int) string {
 	println('vreal   : $vreal')
 	println('myself  : $myself')
 	println('wd      : $wd')
-    */	
+    */
 	return vexec
 }
 
@@ -52,7 +52,7 @@ fn diff_files( file_result, file_expected string ) string {
 
 pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	fcontent := os.read_file(file) or {	return error('Could not read file ${file}') }
-	content := fcontent.replace('\r', '')		
+	content := fcontent.replace('\r', '')
 	input := content.all_before('===output===\n')
 	output := content.all_after('===output===\n')
 
@@ -67,13 +67,13 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 		return error('Could not execute: $rcmd')
 	}
 	os.rm(input_temporary_filename)
-	
+
 	result := r.output.replace('\r','')
 	.replace('>>> ', '')
 	.replace('>>>', '')
 	.replace('... ', '')
 	.all_after('Use Ctrl-C or `exit` to exit\n')
-	.replace(wd  + os.path_separator, '' )
+	.replace(wd  + filepath.separator, '' )
 
 	if result != output {
 		file_result   := '${file}.result.txt'
@@ -97,7 +97,7 @@ $diff
 pub fn run_prod_file(wd string, vexec string, file string) ?string {
 	file_expected := '${file}.expected.txt'
 	f_expected_content := os.read_file(file_expected) or { return error('Could not read file ${file}') }
-	expected_content := f_expected_content.replace('\r', '')		
+	expected_content := f_expected_content.replace('\r', '')
 
 	cmd := '"$vexec" -prod run "${file}"'
 	r := os.exec(cmd) or {
@@ -160,4 +160,3 @@ pub fn new_prod_options() RunnerOptions {
 		files: files
 	}
 }
-

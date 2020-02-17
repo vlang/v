@@ -6,10 +6,6 @@ import strings
 #include <unistd.h>
 #include <fcntl.h>
 
-pub const (
-	path_separator = '/'
-)
-
 const (
 	stdin_value = 0
 	stdout_value = 1
@@ -241,7 +237,7 @@ pub fn (f mut File) write_bytes(data voidptr, size int) {
 			return
 		}
 	}
-*/  
+*/
 	C.fwrite(data, 1, size, f.cfile)
 }
 

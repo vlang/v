@@ -5,10 +5,6 @@ import strings
 #flag -lws2_32
 #include <winsock2.h>
 
-pub const (
-	path_separator = '\\'
-)
-
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
 pub type HANDLE voidptr

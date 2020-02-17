@@ -163,7 +163,7 @@ fn find_msvc() ?MsvcResult {
 			return error('Unable to find visual studio')
 		}
 		return MsvcResult{
-			full_cl_exe_path: os.realpath(vs.exe_path + os.path_separator + 'cl.exe')
+			full_cl_exe_path: os.realpath(vs.exe_path + filepath.separator + 'cl.exe')
 			exe_path: vs.exe_path
 			um_lib_path: wk.um_lib_path
 			ucrt_lib_path: wk.ucrt_lib_path
@@ -321,7 +321,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 	mut cfiles := ''
 	for file in files {
 		if file.ends_with('.c') {
-			cfiles += '"' + os.realpath(parent + os.path_separator + file) + '" '
+			cfiles += '"' + os.realpath(parent + filepath.separator + file) + '" '
 		}
 	}
 	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path"'
@@ -376,7 +376,7 @@ fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
 		}
 		else if flag.name == '-L' {
 			lib_paths << flag.value
-			lib_paths << flag.value + os.path_separator + 'msvc'
+			lib_paths << flag.value + filepath.separator + 'msvc'
 			// The above allows putting msvc specific .lib files in a subfolder msvc/ ,
 			// where gcc will NOT find them, but cl will do...
 			// NB: gcc is smart enough to not need .lib files at all in most cases, the .dll is enough.
@@ -398,4 +398,3 @@ fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
 	return MsvcStringFlags{
 		real_libs,inc_paths,lpaths,other_flags}
 }
-
