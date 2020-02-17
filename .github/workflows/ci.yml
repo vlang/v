@@ -167,7 +167,7 @@ jobs:
     - name: Download V
       shell: cmd
       run: |
-        echo "Downloading v.exe..."
+        echo Downloading V...
         curl -L https://github.com/vlang/v/releases/latest/download/v_windows.zip -o v_windows.zip
         echo Unzipping...
         unzip v_windows.zip
