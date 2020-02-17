@@ -178,10 +178,12 @@ jobs:
     - name: Test V
       shell: bash
       run: |
-        echo "dir:"
+        echo "ls:"
         ls
-        ./v.exe -o hi.exe examples/hello_world.v
-        ./hi.exe
+        echo "ls examples/:"
+        ls examples
+        .\v.exe -o hi.exe examples/hello_world.v
+        .\hi.exe
         #./v.exe -silent build-examples
 
   ubuntu-musl:
