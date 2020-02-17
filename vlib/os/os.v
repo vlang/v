@@ -785,20 +785,11 @@ pub fn user_os() string {
 
 // home_dir returns path to user's home directory.
 pub fn home_dir() string {
-	mut home := os.getenv('HOME')
 	$if windows {
-		home = os.getenv('HOMEDRIVE')
-		if home.len == 0 {
-			home = os.getenv('SYSTEMDRIVE')
-		}
-		mut homepath := os.getenv('HOMEPATH')
-		if homepath.len == 0 {
-			homepath = '\\Users\\' + os.getenv('USERNAME')
-		}
-		home += homepath
+		return os.getenv('USERPROFILE') + filepath.separator
+	} $else {
+		return os.getenv('HOME') + filepath.separator
 	}
-	home += filepath.separator
-	return home
 }
 
 // write_file writes `text` data to a file in `path`.
