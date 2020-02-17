@@ -176,10 +176,10 @@ jobs:
         ls
     - name: Test V
       run: |
-        ./v.exe -o hi.exe examples/hello_world.v
+        v.exe -o hi.exe examples/hello_world.v
         echo "ls:"
         ls
-        ./hi.exe
+        hi.exe
         #./v.exe -silent build-examples
 
   ubuntu-musl:
