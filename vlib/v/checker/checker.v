@@ -84,7 +84,9 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 }
 
 pub fn (c mut Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
+	println('# INFIX EXPR')
 	left_type := c.expr(infix_expr.left)
+	println(' # LEFT TYP: $left_type')
 	right_type := c.expr(infix_expr.right)
 	if !c.table.check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
@@ -345,60 +347,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return c.array_init(mut it)
 		}
 		ast.Ident {
-			//println('IDENT: $it.name - $it.pos.pos')
-			if it.kind == .variable {
-				//println('===========================')
-				//c.scope.print_vars(0)
-				//println('===========================')
-				info := it.info as ast.IdentVar
-				if info.typ != 0 {
-					return info.typ
-				}
-				start_scope := c.scope.innermost(it.pos.pos) or { c.scope }
-				mut found := true
-				mut var_scope, mut var := start_scope.find_scope_and_var(it.name) or {
-					found = false
-					c.error('not found: $it.name - POS: $it.pos.pos', it.pos)
-					panic('')
-				}
-				if found {
-					// update the variable
-					// we need to do this here instead of var_decl since some
-					// vars are registered manually for things like for loops etc
-					// NOTE: or consider making those declerations part of those ast nodes
-					mut typ := var.typ
-					// set var type on first use
-					if typ == 0 {
-						typ = c.expr(var.expr)
-						var.typ = typ
-						var_scope.override_var(var)
-					}
-					// update ident
-					it.kind = .variable
-					it.info = ast.IdentVar{
-						typ: typ
-					}
-					return typ
-				}
-			}
-			// Handle indents with unresolved types during the parsing step
-			// (declared after first usage)
-			else if it.kind == .unresolved {
-				// constant
-				if constant := c.table.find_const(it.name) {
-					it.kind = .constant
-					it.info = ast.IdentVar{
-						typ: constant.typ
-					}
-					return constant.typ
-				}
-				// Function object (not a call), e.g. `onclick(my_click)`
-				if func := c.table.find_fn(it.name) {
-					it.kind = .function
-					return func.return_type
-				}
-			}
-			return table.void_type
+			return c.ident(mut it)
 		}
 		ast.BoolLiteral {
 			return table.bool_type
@@ -419,6 +368,76 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return it.typ
 		}
 		else {}
+	}
+	return table.void_type
+}
+
+pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
+	//println('IDENT: $it.name - $it.pos.pos')
+	if ident.kind == .variable {
+		//println('===========================')
+		//c.scope.print_vars(0)
+		//println('===========================')
+		info := ident.info as ast.IdentVar
+		if info.typ != 0 {
+			return info.typ
+		}
+		start_scope := c.scope.innermost(ident.pos.pos) or { c.scope }
+		mut found := true
+		mut var_scope, mut var := start_scope.find_scope_and_var(ident.name) or {
+			found = false
+			c.error('not found: $ident.name - POS: $ident.pos.pos', ident.pos)
+			panic('')
+		}
+		if found {
+			// update the variable
+			// we need to do this here instead of var_decl since some
+			// vars are registered manually for things like for loops etc
+			// NOTE: or consider making those declerations part of those ast nodes
+			mut typ := var.typ
+			// set var type on first use
+			if typ == 0 {
+				typ = c.expr(var.expr)
+				var.typ = typ
+				var_scope.override_var(var)
+			}
+			// update ident
+			ident.kind = .variable
+			ident.info = ast.IdentVar{
+				typ: typ
+			}
+			return typ
+		}
+	}
+	// second use, already resovled in unresovled branch
+	else if ident.kind == .constant {
+		info := ident.info as ast.IdentVar
+		return info.typ
+	}
+	// second use, already resovled in unresovled branch
+	else if ident.kind == .function {
+		info := ident.info as ast.IdentFunc
+		return info.return_type
+	}
+	// Handle indents with unresolved types during the parsing step
+	// (declared after first usage)
+	else if ident.kind == .unresolved {
+		// constant
+		if constant := c.table.find_const(ident.name) {
+			ident.kind = .constant
+			ident.info = ast.IdentVar{
+				typ: constant.typ
+			}
+			return constant.typ
+		}
+		// Function object (not a call), e.g. `onclick(my_click)`
+		if func := c.table.find_fn(ident.name) {
+			ident.kind = .function
+			ident.info = ast.IdentFunc{
+				return_type: func.return_type
+			}
+			return func.return_type
+		}
 	}
 	return table.void_type
 }

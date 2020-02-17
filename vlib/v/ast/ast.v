@@ -201,14 +201,18 @@ pub:
 	scope      Scope
 }
 
+pub struct IdentFunc {
+pub mut:
+	return_type table.Type
+}
+
 pub struct IdentVar {
 pub mut:
 	typ    table.Type
 	is_mut bool
-	// name string
 }
 
-type IdentInfo = IdentVar
+type IdentInfo = IdentFunc | IdentVar
 
 pub enum IdentKind {
 	unresolved
