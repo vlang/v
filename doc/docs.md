@@ -1502,7 +1502,7 @@ before their definition.
 Right now it's not possible to modify types while the program is running.
 
 More examples, including a graphical application:
-[github.com/vlang/v/tree/master/examples/hot_code_reloading](https://github.com/vlang/v/tree/master/examples/hot_code_reloading).
+[github.com/vlang/v/tree/master/examples/hot_code_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).
 
 ## Cross compilation
 
