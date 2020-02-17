@@ -6,6 +6,14 @@ import strings
 #include <unistd.h>
 #include <fcntl.h>
 
+pub const (
+	/**
+	 * This constant is deprecated. Use `filepath.separator` instead.
+	 * FIXME Remove this separator, as it a part of `filepath` module.
+	 */
+	path_separator = '/'
+)
+
 const (
 	stdin_value = 0
 	stdout_value = 1

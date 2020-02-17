@@ -5,6 +5,14 @@ import strings
 #flag -lws2_32
 #include <winsock2.h>
 
+pub const (
+	/**
+	 * This constant is deprecated. Use `filepath.separator` instead.
+	 * FIXME Remove this separator, as it a part of `filepath` module.
+	 */
+	path_separator = '\\'
+)
+
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
 pub type HANDLE voidptr
