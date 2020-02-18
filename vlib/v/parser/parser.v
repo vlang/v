@@ -149,7 +149,6 @@ pub fn (p mut Parser) close_scope() {
 
 pub fn (p mut Parser) parse_block() []ast.Stmt {
 	p.open_scope()
-	p.table.open_scope()
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt
 	if p.tok.kind != .rcbr {
@@ -164,7 +163,6 @@ pub fn (p mut Parser) parse_block() []ast.Stmt {
 	p.check(.rcbr)
 	println('parse block')
 	p.close_scope()
-	p.table.close_scope()
 	// println('nr exprs in block = $exprs.len')
 	return stmts
 }
@@ -789,7 +787,6 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) ast.Expr {
 	field_name := p.check_name()
 	if field_name == 'filter' {
 		p.open_scope()
-		p.table.open_scope()
 		p.filter(left_type)
 	}
 	// Method call
@@ -823,7 +820,6 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) ast.Expr {
 	node = sel_expr
 	if field_name == 'filter' {
 		p.close_scope()
-		p.table.close_scope()
 	}
 	return node
 }
@@ -872,13 +868,11 @@ fn (p mut Parser) enum_val() (ast.Expr,table.Type) {
 fn (p mut Parser) for_statement() ast.Stmt {
 	p.check(.key_for)
 	p.open_scope()
-	p.table.open_scope()
-	// defer { p.table.close_scope() }
+	// defer { p.close_scope() }
 	// Infinite loop
 	if p.tok.kind == .lcbr {
 		stmts := p.parse_block()
 		p.close_scope()
-		p.table.close_scope()
 		return ast.ForStmt{
 			stmts: stmts
 			pos: p.tok.position()
@@ -917,7 +911,6 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 		stmts := p.parse_block()
 		p.close_scope()
-		p.table.close_scope()
 		return ast.ForCStmt{
 			stmts: stmts
 			init: init
@@ -981,7 +974,6 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
 		p.close_scope()
-		p.table.close_scope()
 		return ast.ForStmt{
 			stmts: stmts
 			pos: p.tok.position()
@@ -991,7 +983,6 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	cond,_ := p.expr(0)
 	stmts := p.parse_block()
 	p.close_scope()
-	p.table.close_scope()
 	return ast.ForStmt{
 		cond: cond
 		stmts: stmts
