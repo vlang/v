@@ -189,6 +189,7 @@ const (
 	integer_types = ['int', 'i8', 'char', 'byte', 'i16', 'u16', 'u32', 'i64', 'u64']
 	float_types = ['f32', 'f64']
 	reserved_type_param_names = ['R', 'S', 'T', 'U', 'W']
+	pointer_types = ['byte*', 'byteptr', 'char*', 'charptr', 'void*', 'voidptr', 'voidptr*', 'intptr']
 )
 
 fn is_number_type(typ string) bool {
@@ -205,6 +206,10 @@ fn is_float_type(typ string) bool {
 
 fn is_primitive_type(typ string) bool {
 	return is_number_type(typ) || typ == 'string'
+}
+
+fn is_pointer_type(typ string) bool {
+    return typ in pointer_types
 }
 
 /*
