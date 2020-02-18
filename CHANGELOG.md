@@ -15,8 +15,8 @@ The last release before 0.2.
 - os: `is_link()`, `is_dir()`, `exists()`.
 - Ranging through fixed size arrays.
 - Lots of fixes in ORM and vweb.
-- The first tutorial: [building a simple web application with vweb](https://github
-.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md).
+- The first tutorial: [building a simple web application with vweb]
+(https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md).
 - Match expressions now must be exhaustive.
 - freestanding: `malloc()`/`free()`.
 - `++` is now required instead of `+= 1` for consistency.
@@ -55,10 +55,9 @@ it's enough.
 - V UI for macOS.
 - Interfaces have been rewritten. `[]interface` support.
 - `os.cp()` for copying files and directores.
-- Additional compile-time flags: `$if clang, msvc, mingw, x32, x64, big_endian,
-little_endian {`.
-- All C functions now have to be declared, all missing C functions have been
-defined.
+- Additional compile-time flags:
+`$if clang, msvc, mingw, x32, x64, big_endian, little_endian {`.
+- All C functions now have to be declared, all missing C functions have been defined.
 - Global variables (only with the `--enable-globals` flag) for low level
 applications like kernels and drivers.
 - Nothing can be cast to bool (previously code like `if bool(1) {` worked).
@@ -188,7 +187,7 @@ for now).
 - net: basic UDP support.
 - `import const` was removed from the language.
 - `array.contains()` was removed from the language (`in` should be used instead).
-- `[0; len]` syntax was removed (replaced with a simpler `[0].repeat(len)`)
+- `[0; len]` syntax was removed (replaced with a simpler `[0].repeat(len)`).
 - Primitive aliases were removed to simplify the language.
 - GitHub supports V now!
 - Backtraces are now printed on panics.
@@ -202,8 +201,8 @@ for now).
 ## V 0.1.18
 *16 Aug 2019*
 
-- Built-in ORM (`uk_customers = db.select from Customer where country == 'uk'
-&& nr_orders > 0`).
+- Built-in ORM
+(`uk_customers = db.select from Customer where country == 'uk' && nr_orders > 0`).
 - Map initialization syntax: `m := { ‘foo’: ‘bar’, ‘baz’: ‘foo’ }`.
 - `map.delete(key)`.
 - `libcurl` dependency was removed from the `http` module.
