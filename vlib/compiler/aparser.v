@@ -3208,6 +3208,7 @@ fn todo_remove() {
 
 fn (p mut Parser) check_if_parser_is_stuck(parsing_cycle u64, parsing_start_ticks i64){
 	// QTODO
+	p.warn('todo...')
 	/*
 	if p.prev_stuck_token_idx == p.token_idx {
 		// many many cycles have passed with no progress :-( ...
