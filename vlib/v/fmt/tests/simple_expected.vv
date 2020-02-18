@@ -45,3 +45,26 @@ fn voidfn() {
 	println('this is a function that does not return anything')
 }
 
+fn fn_with_1_arg(arg int) int {
+	return 0
+}
+
+fn fn_with_2a_args(arg1, arg2 int) int {
+	return 0
+}
+
+fn fn_with_2_args_to_be_shorten(arg1, arg2 int) int {
+	return 0
+}
+
+fn fn_with_2b_args(arg1 string, arg2 int) int {
+	return 0
+}
+
+fn fn_with_3_args(arg1 string, arg2 int, arg3 User) int {
+	return 0
+}
+
+fn (this User) fn_with_receiver() {
+	println('')
+}
