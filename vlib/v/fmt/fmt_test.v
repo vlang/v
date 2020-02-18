@@ -7,29 +7,50 @@ import (
 	v.parser
 )
 
-const (
-	nr_tests = 1
-)
-
 fn test_fmt() {
 	println('Running vfmt tests')
 	vexe := os.getenv('VEXE')
 	vroot := filepath.dir(vexe)
+	tmpfolder := os.tmpdir()
+	diff_cmd := find_working_diff_command() or {
+		eprintln('No working "diff" CLI command found.')
+		exit(0)
+	}
 	term_ok := term.ok_message('OK')
 	term_fail := term.fail_message('FAIL')
-	// for i in 1 .. nr_tests + 1 {
-	// path := '$vroot/vlib/v/fmt/tests/${i}.vv'
-	path := '$vroot/vlib/compiler/aparser.v'
-	println(path)
-	/*
-	mut ctext := os.read_file('$vroot/vlib/v/fmt/tests/${i}_out.vv') or {
-		panic(err)
+	input_files := os.walk_ext('$vroot/vlib/v/fmt/tests', '_input.vv')
+	for ipath in input_files {
+		ifilename := filepath.filename(ipath)
+		opath := ipath.replace('_input.vv', '_expected.vv')
+		if !os.exists(opath) {
+			eprintln('${term_fail} missing ${opath}')
+			continue
+		}
+		expected_ocontent := os.read_file(opath) or {
+			panic(err)
+		}
+		table := table.new_table()
+		file_ast := parser.parse_file(ipath, table)
+		result_ocontent := fmt.fmt(file_ast, table)
+		if expected_ocontent != result_ocontent {
+			eprintln('${term_fail} ${ipath} is not formatted as expected.')
+			vfmt_result_file := filepath.join(tmpfolder,'vfmt_run_over_${ifilename}')
+			os.write_file(vfmt_result_file, result_ocontent)
+			os.system('$diff_cmd --minimal  --text   --unified=2 --show-function-line="fn " "$vfmt_result_file" "$opath" ')
+			continue
+		}
+		eprintln('${term_ok} ${ipath}')
 	}
-	ctext = ctext // unused warn
-	*/
+}
 
-	table := table.new_table()
-	file := parser.parse_file(path, table)
-	fmt.fmt(file, table)
-	// }
+fn find_working_diff_command() ?string {
+	for diffcmd in ['colordiff', 'diff', 'colordiff.exe', 'diff.exe'] {
+		p := os.exec('$diffcmd --version') or {
+			continue
+		}
+		if p.exit_code == 0 {
+			return diffcmd
+		}
+	}
+	return error('no working diff command found')
 }
