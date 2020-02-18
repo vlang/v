@@ -35,8 +35,6 @@ mut:
 	// vars []string
 	table         &table.Table
 	return_type   table.Type // current function's return type
-	// scope_level int
-	// var_idx     int
 	is_c          bool
 	//
 	// prefix_parse_fns []PrefixParseFn
@@ -161,7 +159,7 @@ pub fn (p mut Parser) parse_block() []ast.Stmt {
 		}
 	}
 	p.check(.rcbr)
-	println('parse block')
+	//println('parse block')
 	p.close_scope()
 	// println('nr exprs in block = $exprs.len')
 	return stmts
@@ -502,10 +500,8 @@ fn (p mut Parser) struct_init() (ast.Expr,table.Type) {
 	return node,typ
 }
 
-pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
+pub fn (p mut Parser) name_expr() ast.Expr {
 	mut node := ast.Expr{}
-	typ := table.void_type
-	// mut typ := table.unresolved_type
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
 	if is_c {
 		p.next()
@@ -518,7 +514,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 	// `map[string]int` initialization
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
 		map_type := p.parse_map_type(0)
-		return node,typ
+		return node
 	}
 	// p.warn('name expr  $p.tok.lit')
 	// fn call or type cast
@@ -533,7 +529,6 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 			mut expr := ast.Expr{}
 			expr,_ = p.expr(0)
 			// TODO, string(b, len)
-			// if table.type_idx(to_typ) == table.string_type_idx && p.tok.kind == .comma {
 			if p.tok.kind == .comma && table.type_idx(to_typ) == table.string_type_idx {
 				p.check(.comma)
 				p.expr(0) // len
@@ -543,25 +538,27 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 				typ: to_typ
 				expr: expr
 			}
-			return node,to_typ
+			return node
 		}
 		// fn call
 		else {
-			println('calling $p.tok.lit')
+			// println('calling $p.tok.lit')
 			x := p.call_expr() // TODO `node,typ :=` should work
 			node = x
 		}
 	}
 	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || p.tok.lit in ['array', 'string', 'ustring', 'mapnode', 'map']) && !p.tok.lit[p.tok.lit.len - 1].is_capital() {
 		// || p.table.known_type(p.tok.lit)) {
-		return p.struct_init()
+		//return p.struct_init()
+		node,_ =  p.struct_init()
+		return node
 	}
 	else {
 		mut ident := ast.Ident{}
 		ident = p.parse_ident(is_c)
 		node = ident
 	}
-	return node,typ
+	return node
 }
 
 pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
@@ -571,10 +568,10 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 	// Prefix
 	match p.tok.kind {
 		.name {
-			node,typ = p.name_expr()
+			node = p.name_expr()
 		}
 		.str {
-			node,typ = p.string_expr()
+			node = p.string_expr()
 		}
 		.dot {
 			// .enum_val
@@ -1049,14 +1046,13 @@ fn (p mut Parser) if_expr() ast.Expr {
 	return node
 }
 
-fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
-	mut node := ast.Expr{}
-	node = ast.StringLiteral{
+fn (p mut Parser) string_expr() ast.Expr {
+	node := ast.StringLiteral{
 		val: p.tok.lit
 	}
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
-		return node,table.string_type
+		return node
 	}
 	// Handle $ interpolation
 	for p.tok.kind == .str {
@@ -1077,7 +1073,7 @@ fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
 			}
 		}
 	}
-	return node,table.string_type
+	return node
 }
 
 // fn (p mut Parser) array_init() (ast.Expr,table.Type) {
