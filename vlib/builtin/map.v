@@ -350,7 +350,11 @@ pub fn (m mut map) set_load_factor(new_load_factor f32) {
 	}
 }
 
-pub fn (m mut map) free() {}
+pub fn (m mut map) free() {
+	unsafe{
+		free(m.key_values)
+	}
+}
 
 pub fn (m map) print() {
 	println('TODO')
