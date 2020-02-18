@@ -464,6 +464,7 @@ fn test_map() {
 
 fn test_array_str() {
 	numbers := [1, 2, 3]
+	// assert numbers == [1,2,3]
 	numbers2 := [numbers, [4, 5, 6]] // dup str() bug
 	assert true
 	assert numbers.str() == '[1, 2, 3]'
