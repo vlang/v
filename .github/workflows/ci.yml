@@ -249,3 +249,10 @@ jobs:
         #node hi.js
     - name: Test v binaries
       run: ./v -silent build-vbinaries
+
+  docs-line-len-check:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v1
+    - name: Check docs line length
+      run: make && ./v run .github/workflows/check_md_line.v
