@@ -19,7 +19,7 @@ const (
 	// Initial number of buckets in the hashtable
 	init_capicity = 1<<init_log_capicity
 	// Initial load-factor
-	init_load_factor = 0.6
+	init_load_factor = 0.8
 	// Initial range cap
 	init_range_cap = init_capicity - 1
 	// Bitmask to select all the hashbits
@@ -353,20 +353,7 @@ pub fn (m mut map) set_load_factor(new_load_factor f32) {
 pub fn (m mut map) free() {}
 
 pub fn (m map) print() {
-	println('<<<<<<<<')
-	//for i := 0; i < m.entries.len; i++ {
-		// entry := m.entries[i]
-		// println('$entry.key => $entry.val')
-	//}
-	/*
-	for i := 0; i < m.cap * m.value_bytes; i++ {
-		b := m.table[i]
-		print('$i: ')
-		C.printf('%02x', b)
-		println('')
-	}
-*/
-	println('>>>>>>>>>>')
+	println('TODO')
 }
 
 pub fn (m map_string) str() string {
