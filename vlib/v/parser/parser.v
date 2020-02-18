@@ -453,7 +453,7 @@ pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 	}
 }
 
-fn (p mut Parser) struct_init() ast.Expr {
+fn (p mut Parser) struct_init() ast.StructInit {
 	typ := p.parse_type()
 	sym := p.table.get_type_symbol(typ)
 	p.warn('struct init typ=$sym.name')
