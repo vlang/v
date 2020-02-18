@@ -453,8 +453,7 @@ pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 	}
 }
 
-fn (p mut Parser) struct_init() (ast.Expr,table.Type) {
-	mut node := ast.Expr{}
+fn (p mut Parser) struct_init() ast.Expr {
 	typ := p.parse_type()
 	sym := p.table.get_type_symbol(typ)
 	p.warn('struct init typ=$sym.name')
@@ -490,14 +489,14 @@ fn (p mut Parser) struct_init() (ast.Expr,table.Type) {
 		exprs << expr
 		i++
 	}
-	node = ast.StructInit{
+	node := ast.StructInit{
 		typ: typ
 		exprs: exprs
 		fields: field_names
 		pos: p.tok.position()
 	}
 	p.check(.rcbr)
-	return node,typ
+	return node
 }
 
 pub fn (p mut Parser) name_expr() ast.Expr {
@@ -549,9 +548,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	}
 	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || p.tok.lit in ['array', 'string', 'ustring', 'mapnode', 'map']) && !p.tok.lit[p.tok.lit.len - 1].is_capital() {
 		// || p.table.known_type(p.tok.lit)) {
-		//return p.struct_init()
-		node,_ =  p.struct_init()
-		return node
+		return p.struct_init()
 	}
 	else {
 		mut ident := ast.Ident{}
@@ -571,7 +568,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node = p.name_expr()
 		}
 		.str {
-			node = p.string_expr()
+			node,typ = p.string_expr()
 		}
 		.dot {
 			// .enum_val
@@ -586,7 +583,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 		}
 		// -1, -a, !x, &x, ~x
 		.minus, .amp, .mul, .not, .bit_not {
-			node,typ = p.prefix_expr()
+			node = p.prefix_expr()
 		}
 		// .amp {
 		// p.next()
@@ -603,7 +600,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node = p.match_expr()
 		}
 		.number {
-			node,typ = p.parse_number_literal()
+			node, typ = p.parse_number_literal()
 		}
 		.lpar {
 			p.check(.lpar)
@@ -701,16 +698,14 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 	return node,typ
 }
 
-fn (p mut Parser) prefix_expr() (ast.Expr,table.Type) {
+fn (p mut Parser) prefix_expr() ast.Expr {
 	op := p.tok.kind
 	p.next()
-	right,typ := p.expr(1)
-	mut expr := ast.Expr{}
-	expr = ast.PrefixExpr{
+	right,_ := p.expr(1)
+	return ast.PrefixExpr{
 		op: op
 		right: right
 	}
-	return expr,typ
 }
 
 fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
@@ -1046,13 +1041,14 @@ fn (p mut Parser) if_expr() ast.Expr {
 	return node
 }
 
-fn (p mut Parser) string_expr() ast.Expr {
-	node := ast.StringLiteral{
+fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
+	mut node := ast.Expr{}
+	node = ast.StringLiteral{
 		val: p.tok.lit
 	}
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
-		return node
+		return node,table.string_type
 	}
 	// Handle $ interpolation
 	for p.tok.kind == .str {
@@ -1073,7 +1069,7 @@ fn (p mut Parser) string_expr() ast.Expr {
 			}
 		}
 	}
-	return node
+	return node,table.string_type
 }
 
 // fn (p mut Parser) array_init() (ast.Expr,table.Type) {
@@ -1163,22 +1159,21 @@ fn (p mut Parser) array_init() ast.Expr {
 fn (p mut Parser) parse_number_literal() (ast.Expr,table.Type) {
 	lit := p.tok.lit
 	mut node := ast.Expr{}
-	mut ti := table.int_type
+	mut typ := table.int_type
 	if lit.contains('.') {
 		node = ast.FloatLiteral{
 			// val: lit.f64()
 			val: lit
 		}
-		ti = table.f64_type
+		typ = table.f64_type
 	}
 	else {
 		node = ast.IntegerLiteral{
 			val: lit.int()
 		}
-		// ti = table.int_ti
 	}
 	p.next()
-	return node,ti
+	return node,typ
 }
 
 fn (p mut Parser) module_decl() ast.Module {
