@@ -9,9 +9,13 @@ import (
 	filepath
 	compiler
 	v.pref
+	v.fmt
+	v.parser
+	v.table
 )
 
 struct FormatOptions {
+	is_2       bool
 	is_l       bool
 	is_c       bool
 	is_w       bool
@@ -39,6 +43,7 @@ fn main() {
 	compiler.set_vroot_folder(filepath.dir(filepath.dir(filepath.dir(toolexe))))
 	args := join_flags_and_argument()
 	foptions := FormatOptions{
+		is_2: '-2' in args
 		is_c: '-c' in args
 		is_l: '-l' in args
 		is_w: '-w' in args
@@ -136,6 +141,22 @@ fn main() {
 }
 
 fn (foptions &FormatOptions) format_file(file string) {
+	if foptions.is_2 {
+		if foptions.is_verbose {
+			eprintln('vfmt2 running fmt.fmt over file: $file')
+		}
+		table := table.new_table()
+		file_ast := parser.parse_file(file, table)
+		formatted_content := fmt.fmt(file_ast, table)
+		file_name := filepath.filename(file)
+		vfmt_output_path := filepath.join(os.tmpdir(), 'vfmt_' + file_name)
+		os.write_file(vfmt_output_path, formatted_content )
+		if foptions.is_verbose {
+			eprintln('vfmt2 fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
+		}
+		eprintln('${FORMATTED_FILE_TOKEN}${vfmt_output_path}')
+		return
+	}
 	tmpfolder := os.tmpdir()
 	mut compiler_params := &pref.Preferences{}
 	target_os := file_to_target_os(file)
@@ -203,16 +224,16 @@ fn (foptions &FormatOptions) format_file(file string) {
 fn print_compiler_options( compiler_params &pref.Preferences ) {
 	eprintln('        os: ' + compiler_params.os.str() )
 	eprintln(' ccompiler: $compiler_params.ccompiler' )
-	eprintln('		 mod: $compiler_params.mod ')
-	eprintln('		path: $compiler_params.path ')
-	eprintln('	out_name: $compiler_params.out_name ')
-	eprintln('	   vroot: $compiler_params.vroot ')
-	eprintln('	   vpath: $compiler_params.vpath ')
+	eprintln('       mod: $compiler_params.mod ')
+	eprintln('      path: $compiler_params.path ')
+	eprintln('  out_name: $compiler_params.out_name ')
+	eprintln('     vroot: $compiler_params.vroot ')
+	eprintln('     vpath: $compiler_params.vpath ')
 	eprintln(' vlib_path: $compiler_params.vlib_path ')
-	eprintln('	out_name: $compiler_params.out_name ')
-	eprintln('	  umpath: $compiler_params.user_mod_path ')
-	eprintln('	  cflags: $compiler_params.cflags ')
-	eprintln('	 is_test: $compiler_params.is_test ')
+	eprintln('  out_name: $compiler_params.out_name ')
+	eprintln('    umpath: $compiler_params.user_mod_path ')
+	eprintln('    cflags: $compiler_params.cflags ')
+	eprintln('   is_test: $compiler_params.is_test ')
 	eprintln(' is_script: $compiler_params.is_script ')
 }
 
@@ -274,6 +295,10 @@ Options:
   -diff display only diffs between the formatted source and the original source.
   -l    list files whose formatting differs from vfmt.
   -w    write result to (source) file(s) instead of to stdout.
+  -2    Use the new V parser/vfmt. NB: this is EXPERIMENTAL for now. 
+          The new vfmt is much faster and more forgiving.
+          It also may EAT some of your code for now.
+          Please be carefull, and make frequent BACKUPS, when running with -vfmt2 .
 ')
 }
 
@@ -305,7 +330,7 @@ fn (foptions &FormatOptions) compile_file(file string, compiler_params &pref.Pre
 }
 
 pub fn (f FormatOptions) str() string {
-	return 'FormatOptions{ ' + ' is_l: $f.is_l' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' + ' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' + ' }'
+	return 'FormatOptions{ ' + ' is_2: $f.is_2' + ' is_l: $f.is_l' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' + ' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' + ' }'
 }
 
 fn file_to_target_os(file string) string {

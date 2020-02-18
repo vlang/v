@@ -10,8 +10,7 @@ import (
 
 const (
 	error_missing_vexe = 1
-	error_missing_diff = 2
-	error_failed_tests = 3
+	error_failed_tests = 2
 )
 
 fn test_fmt() {
