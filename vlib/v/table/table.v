@@ -11,13 +11,9 @@ pub mut:
 	types       []TypeSymbol
 	// type_idxs Hashmap
 	type_idxs   map[string]int
-	local_vars  []Var
-	scope_level int
-	var_idx     int
 	// fns Hashmap
 	fns         map[string]Fn
 	consts      map[string]Var
-	tmp_cnt     int
 	imports     []string // List of all imports
 	modules     []string // List of all modules registered by the application
 }
@@ -51,33 +47,6 @@ pub fn new_table() &Table {
 	return t
 }
 
-pub fn (t &Table) find_var_idx(name string) int {
-	for i, var in t.local_vars {
-		if var.name == name {
-			return i
-		}
-	}
-	return -1
-}
-
-pub fn (t &Table) find_var(name string) ?Var {
-	for i in 0 .. t.var_idx {
-		if t.local_vars[i].name == name {
-			return t.local_vars[i]
-		}
-	}
-	/*
-	// println(t.names)
-	for var in t.local_vars {
-		if var.name == name {
-			return var
-		}
-	}
-	*/
-
-	return none
-}
-
 pub fn (t mut Table) register_const(v Var) {
 	t.consts[v.name] = v
 }
@@ -91,84 +60,7 @@ pub fn (t mut Table) register_global(name string, typ Type) {
 		// mod: p.mod
 		// is_mut: true
 		// idx: -1
-		
 	}
-}
-
-pub fn (t mut Table) register_var(v Var) {
-	typ_sym := t.get_type_symbol(v.typ)
-	println('register_var: $v.name - $typ_sym.name')
-	new_var := {
-		v |
-		idx:t.var_idx,
-		scope_level:t.scope_level
-	}
-	// t.local_vars << v
-	/*
-	if v.line_nr == 0 {
-		new_var.token_idx = p.cur_tok_index()
-		new_var.line_nr = p.cur_tok().line_nr
-	}
-	*/
-	// Expand the array
-	if t.var_idx >= t.local_vars.len {
-		t.local_vars << new_var
-	}
-	else {
-		t.local_vars[t.var_idx] = new_var
-	}
-	t.var_idx++
-}
-
-pub fn (t mut Table) open_scope() {
-	t.scope_level++
-}
-
-pub fn (t mut Table) close_scope() {
-	// println('close_scope level=$f.scope_level var_idx=$f.var_idx')
-	// Move back `var_idx` (pointer to the end of the array) till we reach
-	// the previous scope level.  This effectivly deletes (closes) current
-	// scope.
-	mut i := t.var_idx - 1
-	for ; i >= 0; i-- {
-		var := t.local_vars[i]
-		/*
-		if p.pref.autofree && (v.is_alloc || (v.is_arg && v.typ == 'string')) {
-			// && !p.pref.is_test {
-			p.free_var(v)
-		}
-		*/
-
-		// if p.fileis('mem.v') {
-		// println(v.name + ' $v.is_arg scope=$v.scope_level cur=$p.cur_fn.scope_level')}
-		if var.scope_level != t.scope_level {
-			// && !v.is_arg {
-			break
-		}
-	}
-	/*
-	if p.cur_fn.defer_text.last() != '' {
-		p.genln(p.cur_fn.defer_text.last())
-		// p.cur_fn.defer_text[f] = ''
-	}
-	*/
-
-	t.scope_level--
-	// p.cur_fn.defer_text = p.cur_fn.defer_text[..p.cur_fn.scope_level + 1]
-	t.var_idx = i + 1
-	// println('close_scope new var_idx=$f.var_idx\n')
-}
-
-pub fn (p mut Table) clear_vars() {
-	// shared a := [1, 2, 3]
-	p.var_idx = 0
-	if p.local_vars.len > 0 {
-		// ///if p.pref.autofree {
-		// p.local_vars.free()
-		// ///}
-		p.local_vars = []
-	}
-	p.tmp_cnt = 0
 }
 
 pub fn (t &Table) find_fn(name string) ?Fn {
@@ -202,11 +94,6 @@ pub fn (t &Table) register_method(typ &TypeSymbol, new_fn Fn) bool {
 	methods << new_fn
 	t1.methods = methods
 	return true
-}
-
-pub fn (t mut Table) new_tmp_var() string {
-	t.tmp_cnt++
-	return 'tmp$t.tmp_cnt'
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
@@ -499,86 +386,6 @@ pub fn (t &Table) check(got, expected Type) bool {
 	}
 	return true
 }
-
-/*
-[inline]
-pub fn (t &Table) get_expr_typ(expr ast.Expr) TypeSymbol {
-	match expr {
-		ast.ArrayInit {
-			return it.typ
-		}
-		ast.IndexExpr {
-			return t.get_expr_typ(it.left)
-		}
-		ast.CallExpr {
-			func := t.find_fn(it.name) or {
-				return void_typ
-			}
-			return func.return_typ
-		}
-		ast.MethodCallExpr {
-			ti := t.get_expr_typ(it.expr)
-			func := t.find_method(typ.idx, it.name) or {
-				return void_type
-			}
-			return func.return_typ
-		}
-		ast.Ident {
-			if it.kind == .variable {
-				info := it.info as ast.IdentVar
-				if info.typ.kind != .unresolved {
-					return info.ti
-				}
-				return t.get_expr_typ(info.expr)
-			}
-			return types.void_typ
-		}
-		ast.StructInit {
-			return it.ti
-		}
-		ast.StringLiteral {
-			return types.string_typ
-		}
-		ast.IntegerLiteral {
-			return types.int_typ
-		}
-		ast.SelectorExpr {
-			ti := t.get_expr_typ(it.expr)
-			kind := t.types[typ.idx].kind
-			if typ.kind == .placeholder {
-				println(' ##### PH $typ.name')
-			}
-			if !(kind in [.placeholder, .struct_]) {
-				return types.void_typ
-			}
-			struct_ := t.types[typ.idx]
-			struct_info := struct_.info as types.Struct
-			for field in struct_info.fields {
-				if field.name == it.field {
-					return field.ti
-				}
-			}
-			if struct_.parent_idx != 0 {
-				parent := t.types[struct_.parent_idx]
-				parent_info := parent.info as types.Struct
-				for field in parent_info.fields {
-					if field.name == it.field {
-						return field.ti
-					}
-				}
-			}
-			return types.void_typ
-		}
-		ast.InfixExpr {
-			return t.get_expr_typ(it.left)
-		}
-		else {
-			return types.void_typ
-		}
-	}
-}
-*/
-
 
 pub fn (t &Table) known_import(name string) bool {
 	for i in t.imports {

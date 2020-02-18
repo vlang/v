@@ -13,6 +13,7 @@ struct Gen {
 	table       &table.Table
 mut:
 	fn_decl     &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	tmp_count   int
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
@@ -39,6 +40,15 @@ pub fn (g mut Gen) writeln(s string) {
 	g.out.writeln(s)
 }
 
+pub fn (g mut Gen) new_tmp_var() string {
+	g.tmp_count++
+	return 'tmp$g.tmp_count'
+}
+
+pub fn (g mut Gen) reset_tmp_count() {
+	g.tmp_count = 0
+}
+
 fn (g mut Gen) stmts(stmts []ast.Stmt) {
 	for stmt in stmts {
 		g.stmt(stmt)
@@ -60,6 +70,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
+			g.reset_tmp_count()
 			g.fn_decl = it // &it
 			is_main := it.name == 'main'
 			if is_main {
@@ -286,11 +297,10 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.IfExpr {
 			// If expression? Assign the value to a temp var.
 			// Previously ?: was used, but it's too unreliable.
-			// ti := g.table.refresh_ti(it.ti)
 			type_sym := g.table.get_type_symbol(it.typ)
 			mut tmp := ''
 			if type_sym.kind != .void {
-				tmp = g.table.new_tmp_var()
+				tmp = g.new_tmp_var()
 				// g.writeln('$ti.name $tmp;')
 			}
 			g.write('if (')
@@ -317,7 +327,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			type_sym := g.table.get_type_symbol(it.typ)
 			mut tmp := ''
 			if type_sym.kind != .void {
-				tmp = g.table.new_tmp_var()
+				tmp = g.new_tmp_var()
 			}
 			g.write('$type_sym.name $tmp = ')
 			g.expr(it.cond)
