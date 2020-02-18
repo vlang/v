@@ -35,3 +35,16 @@ fn abc() int {
 	number := nums[0]
 	return 0
 }
+
+fn new_user()
+User
+{
+  return User{
+    name: 'Serious Sam'
+          age: 19
+           }
+}
+
+fn   voidfn(){
+ println('this is a function that does not return anything')
+   }
