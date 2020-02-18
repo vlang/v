@@ -11,7 +11,7 @@ import (
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
-CastExpr | EnumVal | Assoc
+CastExpr | EnumVal | Assoc | SizeOf
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
@@ -145,6 +145,7 @@ mut:
 // func       Expr
 	name string
 	args []Expr
+	is_c bool
 }
 
 pub struct MethodCallExpr {
@@ -450,6 +451,11 @@ pub:
 pub struct Assoc {
 pub:
 	name string
+}
+
+pub struct SizeOf {
+pub:
+	type_name string
 }
 
 // string representaiton of expr

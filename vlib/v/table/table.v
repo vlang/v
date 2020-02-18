@@ -8,14 +8,14 @@ module table
 pub struct Table {
 	// struct_fields map[string][]string
 pub mut:
-	types       []TypeSymbol
+	types     []TypeSymbol
 	// type_idxs Hashmap
-	type_idxs   map[string]int
+	type_idxs map[string]int
 	// fns Hashmap
-	fns         map[string]Fn
-	consts      map[string]Var
-	imports     []string // List of all imports
-	modules     []string // List of all modules registered by the application
+	fns       map[string]Fn
+	consts    map[string]Var
+	imports   []string // List of all imports
+	modules   []string // List of all modules registered by the application
 }
 
 pub struct Fn {
@@ -60,6 +60,7 @@ pub fn (t mut Table) register_global(name string, typ Type) {
 		// mod: p.mod
 		// is_mut: true
 		// idx: -1
+		
 	}
 }
 
@@ -362,7 +363,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 	exp_type_sym := t.get_type_symbol(expected)
 	got_idx := type_idx(got)
 	exp_idx := type_idx(expected)
-	//println('check: $got_type_sym.name, $exp_type_sym.name')
+	// println('check: $got_type_sym.name, $exp_type_sym.name')
 	if exp_type_sym.kind == .voidptr {
 		return true
 	}
@@ -370,6 +371,10 @@ pub fn (t &Table) check(got, expected Type) bool {
 		return true
 	}
 	if got_type_sym.is_int() && exp_type_sym.is_int() {
+		return true
+	}
+	// TODO
+	if got_type_sym.is_number() && exp_type_sym.is_number() {
 		return true
 	}
 	if got_type_sym.kind == .array_fixed && exp_type_sym.kind == .byteptr {
@@ -381,7 +386,8 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// if expected.name == 'array' {
 	// return true
 	// }
-	if got_idx != exp_idx/*&& got.typ.name != expected.typ.name*/ {
+	if got_idx != exp_idx {
+		// && got.typ.name != expected.typ.name*/
 		return false
 	}
 	return true

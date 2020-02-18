@@ -545,7 +545,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		// fn call
 		else {
 			// println('calling $p.tok.lit')
-			x := p.call_expr() // TODO `node,typ :=` should work
+			x := p.call_expr(is_c) // TODO `node,typ :=` should work
 			node = x
 		}
 	}
@@ -627,10 +627,11 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			p.next()
 		}
 		.key_sizeof {
-			p.next()
+			p.next() // sizeof
 			p.check(.lpar)
-			p.next()
+			type_name:= p.check_name()
 			p.check(.rpar)
+			node = ast.SizeOf{ type_name: type_name }
 			typ = table.int_type
 		}
 		// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`

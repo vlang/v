@@ -112,7 +112,7 @@ pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	fn_name := call_expr.name
 	if f := c.table.find_fn(fn_name) {
 		// return_ti := f.return_ti
-		if f.is_c {
+		if f.is_c || call_expr.is_c {
 			return f.return_type
 		}
 		if call_expr.args.len < f.args.len {
@@ -299,11 +299,11 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		ast.AssignExpr {
 			c.check_assign_expr(it)
 		}
-		ast.IntegerLiteral {
-			return table.int_type
-		}
 		ast.FloatLiteral {
 			return table.f64_type
+		}
+		ast.IntegerLiteral {
+			return table.int_type
 		}
 		ast.PostfixExpr {
 			return c.postfix_expr(it)
@@ -314,8 +314,14 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 		*/
 
+		ast.SizeOf {
+			return table.int_type
+		}
 		ast.StringLiteral {
 			return table.string_type
+		}
+		ast.CharLiteral {
+			return table.byte_type
 		}
 		ast.PrefixExpr {
 			return c.expr(it.right)
@@ -432,6 +438,9 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 			}
 			return func.return_type
 		}
+	}
+	if ident.is_c {
+		return table.int_type
 	}
 	return table.void_type
 }

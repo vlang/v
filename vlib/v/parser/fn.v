@@ -8,7 +8,7 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) call_expr() ast.CallExpr {
+pub fn (p mut Parser) call_expr(is_c bool) ast.CallExpr {
 	tok := p.tok
 	fn_name := p.check_name()
 	p.check(.lpar)
@@ -18,6 +18,7 @@ pub fn (p mut Parser) call_expr() ast.CallExpr {
 		args: args
 		// tok: tok
 		pos: tok.position()
+		is_c: is_c
 	}
 	if p.tok.kind == .key_orelse {
 		p.next()
