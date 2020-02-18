@@ -22,15 +22,14 @@ mut:
 	empty_line bool
 }
 
-pub fn fmt(file ast.File, table &table.Table) {
+pub fn fmt(file ast.File, table &table.Table) string {
 	mut f := Fmt{
 		out: strings.new_builder(1000)
 		table: table
 		indent: -1
 	}
 	f.stmts(file.stmts)
-	println('vfmt output:')
-	println(f.out.str())
+	return f.out.str()
 }
 
 pub fn (f mut Fmt) write(s string) {
