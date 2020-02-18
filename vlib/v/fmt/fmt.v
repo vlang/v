@@ -22,15 +22,14 @@ mut:
 	empty_line bool
 }
 
-pub fn fmt(file ast.File, table &table.Table) {
+pub fn fmt(file ast.File, table &table.Table) string {
 	mut f := Fmt{
 		out: strings.new_builder(1000)
 		table: table
 		indent: -1
 	}
 	f.stmts(file.stmts)
-	println('vfmt output:')
-	println(f.out.str())
+	return f.out.str()
 }
 
 pub fn (f mut Fmt) write(s string) {
@@ -98,7 +97,13 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('')
 		}
 		ast.FnDecl {
-			f.writeln('fn ${it.name}() {')
+			return_type_sym := f.table.get_type_symbol(it.typ)
+			rtype_name := if return_type_sym.name == 'void' {
+				''
+			} else {
+				'${return_type_sym.name} '
+			}
+			f.writeln('fn ${it.name}() ${rtype_name}{')
 			f.stmts(it.stmts)
 			f.writeln('}\n')
 		}
@@ -208,7 +213,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.stmts(it.stmts)
 			f.write('}')
 			if it.else_stmts.len > 0 {
-				f.writeln(' else { ')
+				f.writeln(' else {')
 				f.stmts(it.else_stmts)
 				f.write('}')
 			}
