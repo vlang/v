@@ -110,8 +110,8 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				should_add_type := is_last_arg || it.args[i + 1].typ != arg.typ
 				f.write(arg.name)
 				if should_add_type {
-					typ_name := f.table.get_type_symbol(arg.typ)
-					f.write(' ${typ_name.name}')
+					arg_typ_sym := f.table.get_type_symbol(arg.typ)
+					f.write(' ${arg_typ_sym.name}')
 				}
 				if !is_last_arg {
 					f.write(', ')
