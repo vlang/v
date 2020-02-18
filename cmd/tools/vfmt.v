@@ -76,9 +76,16 @@ fn main() {
 	}
 	mut files := []string
 	for file in possible_files {
-		if !file.ends_with('.v') && !file.ends_with('.vv') {
-			compiler.verror('v fmt can only be used on .v or .vv files.\nOffending file: "$file" .')
-			continue
+		if foptions.is_2 {
+			if !file.ends_with('.v') && !file.ends_with('.vv') {
+				compiler.verror('v fmt -2 can only be used on .v or .vv files.\nOffending file: "$file" .')
+				continue
+			}
+		} else {
+			if !file.ends_with('.v') {
+				compiler.verror('v fmt can only be used on .v files.\nOffending file: "$file" .')
+				continue
+			}
 		}
 		if !os.exists(file) {
 			compiler.verror('"$file" does not exist.')
