@@ -16,7 +16,6 @@ pub struct Checker {
 mut:
 	file_name string
 	scope     &ast.Scope
-	resolved  []table.Type
 }
 
 pub fn new_checker(table &table.Table) Checker {

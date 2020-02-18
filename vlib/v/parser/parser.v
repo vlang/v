@@ -35,8 +35,6 @@ mut:
 	// vars []string
 	table         &table.Table
 	return_type   table.Type // current function's return type
-	// scope_level int
-	// var_idx     int
 	is_c          bool
 	//
 	// prefix_parse_fns []PrefixParseFn
@@ -161,7 +159,7 @@ pub fn (p mut Parser) parse_block() []ast.Stmt {
 		}
 	}
 	p.check(.rcbr)
-	println('parse block')
+	//println('parse block')
 	p.close_scope()
 	// println('nr exprs in block = $exprs.len')
 	return stmts
@@ -455,8 +453,7 @@ pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 	}
 }
 
-fn (p mut Parser) struct_init() (ast.Expr,table.Type) {
-	mut node := ast.Expr{}
+fn (p mut Parser) struct_init() ast.StructInit {
 	typ := p.parse_type()
 	sym := p.table.get_type_symbol(typ)
 	p.warn('struct init typ=$sym.name')
@@ -492,20 +489,18 @@ fn (p mut Parser) struct_init() (ast.Expr,table.Type) {
 		exprs << expr
 		i++
 	}
-	node = ast.StructInit{
+	node := ast.StructInit{
 		typ: typ
 		exprs: exprs
 		fields: field_names
 		pos: p.tok.position()
 	}
 	p.check(.rcbr)
-	return node,typ
+	return node
 }
 
-pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
+pub fn (p mut Parser) name_expr() ast.Expr {
 	mut node := ast.Expr{}
-	typ := table.void_type
-	// mut typ := table.unresolved_type
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
 	if is_c {
 		p.next()
@@ -518,7 +513,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 	// `map[string]int` initialization
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
 		map_type := p.parse_map_type(0)
-		return node,typ
+		return node
 	}
 	// p.warn('name expr  $p.tok.lit')
 	// fn call or type cast
@@ -533,7 +528,6 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 			mut expr := ast.Expr{}
 			expr,_ = p.expr(0)
 			// TODO, string(b, len)
-			// if table.type_idx(to_typ) == table.string_type_idx && p.tok.kind == .comma {
 			if p.tok.kind == .comma && table.type_idx(to_typ) == table.string_type_idx {
 				p.check(.comma)
 				p.expr(0) // len
@@ -543,11 +537,11 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 				typ: to_typ
 				expr: expr
 			}
-			return node,to_typ
+			return node
 		}
 		// fn call
 		else {
-			println('calling $p.tok.lit')
+			// println('calling $p.tok.lit')
 			x := p.call_expr() // TODO `node,typ :=` should work
 			node = x
 		}
@@ -561,7 +555,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		ident = p.parse_ident(is_c)
 		node = ident
 	}
-	return node,typ
+	return node
 }
 
 pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
@@ -571,7 +565,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 	// Prefix
 	match p.tok.kind {
 		.name {
-			node,typ = p.name_expr()
+			node = p.name_expr()
 		}
 		.str {
 			node,typ = p.string_expr()
@@ -589,7 +583,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 		}
 		// -1, -a, !x, &x, ~x
 		.minus, .amp, .mul, .not, .bit_not {
-			node,typ = p.prefix_expr()
+			node = p.prefix_expr()
 		}
 		// .amp {
 		// p.next()
@@ -606,7 +600,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node = p.match_expr()
 		}
 		.number {
-			node,typ = p.parse_number_literal()
+			node, typ = p.parse_number_literal()
 		}
 		.lpar {
 			p.check(.lpar)
@@ -704,16 +698,14 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 	return node,typ
 }
 
-fn (p mut Parser) prefix_expr() (ast.Expr,table.Type) {
+fn (p mut Parser) prefix_expr() ast.PrefixExpr {
 	op := p.tok.kind
 	p.next()
-	right,typ := p.expr(1)
-	mut expr := ast.Expr{}
-	expr = ast.PrefixExpr{
+	right,_ := p.expr(1)
+	return ast.PrefixExpr{
 		op: op
 		right: right
 	}
-	return expr,typ
 }
 
 fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
@@ -1167,22 +1159,21 @@ fn (p mut Parser) array_init() ast.Expr {
 fn (p mut Parser) parse_number_literal() (ast.Expr,table.Type) {
 	lit := p.tok.lit
 	mut node := ast.Expr{}
-	mut ti := table.int_type
+	mut typ := table.int_type
 	if lit.contains('.') {
 		node = ast.FloatLiteral{
 			// val: lit.f64()
 			val: lit
 		}
-		ti = table.f64_type
+		typ = table.f64_type
 	}
 	else {
 		node = ast.IntegerLiteral{
 			val: lit.int()
 		}
-		// ti = table.int_ti
 	}
 	p.next()
-	return node,ti
+	return node,typ
 }
 
 fn (p mut Parser) module_decl() ast.Module {

@@ -46,13 +46,11 @@ pub fn (p mut Parser) call_args() []ast.Expr {
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
-	//p.table.clear_vars()
 	p.open_scope()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
 	}
-	//p.table.clear_vars()
 	p.check(.key_fn)
 	// C.
 	is_c := p.tok.kind == .name && p.tok.lit == 'C'
