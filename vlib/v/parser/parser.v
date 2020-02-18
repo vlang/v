@@ -698,7 +698,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 	return node,typ
 }
 
-fn (p mut Parser) prefix_expr() ast.Expr {
+fn (p mut Parser) prefix_expr() ast.PrefixExpr {
 	op := p.tok.kind
 	p.next()
 	right,_ := p.expr(1)
