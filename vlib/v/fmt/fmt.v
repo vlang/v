@@ -26,10 +26,9 @@ pub fn fmt(file ast.File, table &table.Table) string {
 	mut f := Fmt{
 		out: strings.new_builder(1000)
 		table: table
-		indent: -1
+		indent: 0
 	}
-	f.stmts(file.stmts)
-	return f.out.str().trim_space() + '\n'
+	return f.process(file)
 }
 
 pub fn (f mut Fmt) write(s string) {
@@ -47,6 +46,45 @@ pub fn (f mut Fmt) writeln(s string) {
 	}
 	f.out.writeln(s)
 	f.empty_line = true
+}
+
+fn (f mut Fmt) process(file ast.File) string {
+	f.mod(file.mod)
+	f.imports(file.imports)
+	for stmt in file.stmts {
+		f.stmt(stmt)
+	}
+	return f.out.str().trim_space() + '\n'
+}
+
+fn (f mut Fmt) mod(mod ast.Module) {
+	if mod.name != 'main' {
+		f.writeln('module ${mod.name}\n')
+	}
+}
+
+fn (f mut Fmt) imports(imports []ast.Import) {
+	if imports.len == 1 {
+		imp_stmt_str := f.imp_stmt_str(imports[0])
+		f.writeln('import ${imp_stmt_str}\n')
+	} else if imports.len > 1 {
+		f.writeln('import (')
+		f.indent++
+		for imp in imports {
+			f.writeln(f.imp_stmt_str(imp))
+		}
+		f.indent--
+		f.writeln(')\n')
+	}
+}
+
+fn (f Fmt) imp_stmt_str(imp ast.Import) string {
+	imp_alias_suffix := if imp.alias != imp.mod {
+		' as ${imp.alias}'
+	} else {
+		''
+	}
+	return '${imp.mod}${imp_alias_suffix}'
 }
 
 fn (f mut Fmt) stmts(stmts []ast.Stmt) {
