@@ -377,15 +377,20 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if got_type_sym.is_number() && exp_type_sym.is_number() {
 		return true
 	}
+	// TODO
+	// if got_type_sym.kind == .array && exp_type_sym.kind == .array {
+	// return true
+	// }
 	if got_type_sym.kind == .array_fixed && exp_type_sym.kind == .byteptr {
 		info := got_type_sym.info as ArrayFixed
 		if type_idx(info.elem_type) == byte_type_idx {
 			return true
 		}
 	}
-	// if expected.name == 'array' {
-	// return true
-	// }
+	// TODO
+	if exp_type_sym.name == 'array' || got_type_sym.name == 'array' {
+		return true
+	}
 	if got_idx != exp_idx {
 		// && got.typ.name != expected.typ.name*/
 		return false
