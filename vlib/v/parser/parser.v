@@ -57,7 +57,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-
+		
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -264,7 +264,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			tok := p.tok
 			p.next()
 			return ast.BranchStmt{
-				tok: p.tok
+				tok: tok
 			}
 		}
 		.key_unsafe {
@@ -308,7 +308,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return ast.ExprStmt{
 				expr: expr
 				// typ: typ
-
+				
 			}
 		}
 	}
@@ -1041,10 +1041,10 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-
+		
 		pos: p.tok.position()
 		// left: left
-
+		
 	}
 	return node
 }
@@ -1431,10 +1431,10 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	node := ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-
+		
 		is_mut: is_mut
 		// typ: typ
-
+		
 		pos: p.tok.position()
 	}
 	p.scope.register_var(node)
@@ -1553,7 +1553,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 		blocks: blocks
 		match_exprs: match_exprs
 		// typ: typ
-
+		
 		cond: cond
 	}
 	return node

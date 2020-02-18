@@ -17,15 +17,19 @@ fn test_fmt() {
 	vroot := filepath.dir(vexe)
 	term_ok := term.ok_message('OK')
 	term_fail := term.fail_message('FAIL')
-	for i in 1 .. nr_tests + 1 {
-		path := '$vroot/vlib/v/fmt/tests/${i}.vv'
-		println(path)
-		mut ctext := os.read_file('$vroot/vlib/v/fmt/tests/${i}_out.vv') or {
-			panic(err)
-		}
-		ctext = ctext // unused warn
-		table := table.new_table()
-		file := parser.parse_file(path, table)
-		fmt.fmt(file, table)
+	// for i in 1 .. nr_tests + 1 {
+	// path := '$vroot/vlib/v/fmt/tests/${i}.vv'
+	path := '$vroot/vlib/compiler/aparser.v'
+	println(path)
+	/*
+	mut ctext := os.read_file('$vroot/vlib/v/fmt/tests/${i}_out.vv') or {
+		panic(err)
 	}
+	ctext = ctext // unused warn
+	*/
+
+	table := table.new_table()
+	file := parser.parse_file(path, table)
+	fmt.fmt(file, table)
+	// }
 }

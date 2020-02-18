@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t']
+	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t']
 	// tabs = ['', '  ', '    ', '      ', '        ']
 )
 
@@ -36,14 +36,14 @@ pub fn fmt(file ast.File, table &table.Table) {
 pub fn (f mut Fmt) write(s string) {
 	if f.indent > 0 && f.empty_line {
 		f.out.write(tabs[f.indent])
-		f.empty_line = false
 	}
 	f.out.write(s)
+	f.empty_line = false
 }
 
 pub fn (f mut Fmt) writeln(s string) {
-	if f.indent > 0 {
-		println(f.indent.str() + s)
+	if f.indent > 0 && f.empty_line {
+		// println(f.indent.str() + s)
 		f.out.write(tabs[f.indent])
 	}
 	f.out.writeln(s)
@@ -72,6 +72,17 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				f.expr(right)
 			}
 		}
+		ast.BranchStmt {
+			match it.tok.kind {
+				.key_break {
+					f.writeln('break')
+				}
+				.key_continue {
+					f.writeln('continue')
+				}
+				else {}
+	}
+		}
 		ast.ConstDecl {
 			f.writeln('const (')
 			f.indent++
@@ -91,10 +102,18 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}\n')
 		}
+		ast.ForStmt {
+			f.write('for ')
+			f.expr(it.cond)
+			f.writeln(' {')
+			f.stmts(it.stmts)
+			f.writeln('}')
+		}
 		ast.Return {
 			f.write('return')
 			// multiple returns
 			if it.exprs.len > 1 {
+				f.write(' ')
 				for i, expr in it.exprs {
 					f.expr(expr)
 					if i < it.exprs.len - 1 {
@@ -176,19 +195,22 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			}
 			f.write(')')
 		}
+		ast.EnumVal {
+			f.write('.' + it.name)
+		}
 		ast.FloatLiteral {
 			f.write(it.val)
 		}
 		ast.IfExpr {
 			f.write('if ')
 			f.expr(it.cond)
-			f.writeln('{')
+			f.writeln(' {')
 			f.stmts(it.stmts)
-			f.writeln('}')
+			f.write('}')
 			if it.else_stmts.len > 0 {
-				f.writeln('else { ')
+				f.writeln(' else { ')
 				f.stmts(it.else_stmts)
-				f.writeln('}')
+				f.write('}')
 			}
 		}
 		ast.Ident {
@@ -205,6 +227,17 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.IntegerLiteral {
 			f.write(it.val.str())
 		}
+		ast.MethodCallExpr {
+			f.expr(it.expr)
+			f.write('.' + it.name + '(')
+			for i, arg in it.args {
+				f.expr(arg)
+				if i < it.args.len - 1 {
+					f.write(', ')
+				}
+			}
+			f.write(')')
+		}
 		ast.PostfixExpr {
 			f.expr(it.expr)
 			f.write(it.op.str())
@@ -219,7 +252,12 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(it.field)
 		}
 		ast.StringLiteral {
-			f.write('"$it.val"')
+			if it.val.contains("'") {
+				f.write('"$it.val"')
+			}
+			else {
+				f.write("'$it.val'")
+			}
 		}
 		ast.StructInit {
 			type_sym := f.table.get_type_symbol(it.typ)
