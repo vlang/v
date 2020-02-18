@@ -396,5 +396,10 @@ fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
 		lpaths << '/LIBPATH:"' + os.realpath(l) + '"'
 	}
 	return MsvcStringFlags{
-		real_libs,inc_paths,lpaths,other_flags}
+		real_libs:real_libs
+		inc_paths:inc_paths
+		lib_paths:lpaths
+		other_flags:other_flags
+	}
+
 }

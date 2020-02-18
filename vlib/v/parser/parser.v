@@ -55,7 +55,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-		
+
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -159,7 +159,7 @@ pub fn (p mut Parser) parse_block() []ast.Stmt {
 		}
 	}
 	p.check(.rcbr)
-	//println('parse block')
+	// println('parse block')
 	p.close_scope()
 	// println('nr exprs in block = $exprs.len')
 	return stmts
@@ -306,7 +306,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return ast.ExprStmt{
 				expr: expr
 				// typ: typ
-				
+
 			}
 		}
 	}
@@ -327,6 +327,9 @@ pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 
 fn (p mut Parser) attr() ast.Attr {
 	p.check(.lsbr)
+	if p.tok.kind == .key_if {
+		p.next()
+	}
 	name := p.check_name()
 	p.check(.rsbr)
 	return ast.Attr{
@@ -515,7 +518,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		map_type := p.parse_map_type(0)
 		return node
 	}
-	// p.warn('name expr  $p.tok.lit')
+	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
 	if p.peek_tok.kind == .lpar {
 		name := p.tok.lit
@@ -546,7 +549,13 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			node = x
 		}
 	}
-	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || p.tok.lit in ['array', 'string', 'ustring', 'mapnode', 'map']) && !p.tok.lit[p.tok.lit.len - 1].is_capital() {
+	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c ||
+	//
+	p.tok.lit in ['array', 'string', 'ustring', 'mapnode', 'map']) &&
+	//
+	(p.tok.lit.len == 1 || !p.tok.lit[p.tok.lit.len - 1].is_capital())
+	//
+	{
 		// || p.table.known_type(p.tok.lit)) {
 		return p.struct_init()
 	}
@@ -600,7 +609,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node = p.match_expr()
 		}
 		.number {
-			node, typ = p.parse_number_literal()
+			node,typ = p.parse_number_literal()
 		}
 		.lpar {
 			p.check(.lpar)
@@ -638,7 +647,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 				}
 			}
 			else {
-				p.check_name()
+				name := p.check_name()
 				p.check(.pipe)
 				for {
 					p.check_name()
@@ -650,6 +659,9 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 					if p.tok.kind == .rcbr {
 						break
 					}
+				}
+				node = ast.Assoc{
+					name: name
 				}
 			}
 			p.check(.rcbr)
@@ -1033,10 +1045,10 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-		
+
 		pos: p.tok.position()
 		// left: left
-		
+
 	}
 	return node
 }
@@ -1422,10 +1434,10 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	node := ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-		
+
 		is_mut: is_mut
 		// typ: typ
-		
+
 		pos: p.tok.position()
 	}
 	p.scope.register_var(node)
@@ -1544,7 +1556,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 		blocks: blocks
 		match_exprs: match_exprs
 		// typ: typ
-		
+
 		cond: cond
 	}
 	return node

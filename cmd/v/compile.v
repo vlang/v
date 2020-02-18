@@ -7,6 +7,7 @@ import (
 	benchmark
 	os
 	os.cmdline
+	compiler
 )
 
 fn compile(command string, args []string) {

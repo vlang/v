@@ -55,6 +55,7 @@ fn foo(a int) {
 	number := nums[0]
 	bools := [true, false]
 	users := [User{}]
+	//ptr := &User{}
 	b := bools[0]
 	mystrings := ['a', 'b']
 	s := mystrings[0]

@@ -90,7 +90,9 @@ struct ScanRes {
 
 fn scan_res(tok TokenKind, lit string) ScanRes {
 	return ScanRes{
-		tok,lit}
+		tok:tok
+		lit:lit
+	}
 }
 
 fn (s mut Scanner) ident_name() string {
@@ -127,7 +129,8 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 		i++
 	}
 	b[i1]=0 // C string compatibility
-	return string{b,i1}
+	return string{str:b
+len:i1}
 	}
 }
 
