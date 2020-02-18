@@ -29,7 +29,7 @@ pub fn fmt(file ast.File, table &table.Table) string {
 		indent: -1
 	}
 	f.stmts(file.stmts)
-	return f.out.str()
+	return f.out.str().trim_space() + '\n'
 }
 
 pub fn (f mut Fmt) write(s string) {
@@ -106,9 +106,14 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			}
 			f.write('fn ${receiver}${it.name}(')
 			for i, arg in it.args {
-				sym := f.table.get_type_symbol(arg.typ)
-				f.write('$arg.name $sym.name')
-				if i < it.args.len - 1 {
+				is_last_arg := i == it.args.len - 1
+				should_add_type := is_last_arg || it.args[i + 1].typ != arg.typ
+				f.write(arg.name)
+				if should_add_type {
+					typ_name := f.table.get_type_symbol(arg.typ)
+					f.write(' ${typ_name.name}')
+				}
+				if !is_last_arg {
 					f.write(', ')
 				}
 			}
