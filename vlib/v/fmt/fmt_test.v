@@ -24,10 +24,7 @@ fn test_fmt() {
 	}
 	vroot := filepath.dir(vexe)
 	tmpfolder := os.tmpdir()
-	diff_cmd := find_working_diff_command() or {
-		eprintln('No working "diff" CLI command found.')
-		exit(error_missing_diff)
-	}
+	diff_cmd := find_working_diff_command() or { '' }
 	mut fmt_bench := benchmark.new_benchmark()
 	// Lookup the existing test _input.vv files:
 	input_files := os.walk_ext('$vroot/vlib/v/fmt/tests', '_input.vv')
@@ -53,6 +50,10 @@ fn test_fmt() {
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('file ${ipath} after formatting, does not look as expected.'))
+			if diff_cmd == '' {
+				eprintln('>> sorry, but no working "diff" CLI command can be found')
+				continue
+			}
 			vfmt_result_file := filepath.join(tmpfolder,'vfmt_run_over_${ifilename}')
 			os.write_file(vfmt_result_file, result_ocontent)
 			os.system('$diff_cmd --minimal  --text   --unified=2 --show-function-line="fn " "$opath" "$vfmt_result_file"')
