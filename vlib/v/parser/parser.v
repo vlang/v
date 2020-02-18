@@ -55,7 +55,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-
+		
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -237,7 +237,20 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		.key_enum {
 			return p.enum_decl()
 		}
+		.line_comment {
+			// p.next()
+			return ast.LineComment{
+				text: p.scanner.line_comment
+			}
+		}
+		.mline_comment {
+			// p.next()
+			return ast.MultiLineComment{
+				text: p.scanner.line_comment
+			}
+		}
 		else {
+			// #printf("");
 			p.error('parser: bad top level statement')
 			return ast.Stmt{}
 		}
@@ -306,7 +319,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return ast.ExprStmt{
 				expr: expr
 				// typ: typ
-
+				
 			}
 		}
 	}
@@ -459,7 +472,7 @@ pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 fn (p mut Parser) struct_init() ast.StructInit {
 	typ := p.parse_type()
 	sym := p.table.get_type_symbol(typ)
-	//p.warn('struct init typ=$sym.name')
+	// p.warn('struct init typ=$sym.name')
 	p.check(.lcbr)
 	mut field_names := []string
 	mut exprs := []ast.Expr
@@ -629,9 +642,11 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 		.key_sizeof {
 			p.next() // sizeof
 			p.check(.lpar)
-			type_name:= p.check_name()
+			type_name := p.check_name()
 			p.check(.rpar)
-			node = ast.SizeOf{ type_name: type_name }
+			node = ast.SizeOf{
+				type_name: type_name
+			}
 			typ = table.int_type
 		}
 		// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
@@ -1046,10 +1061,10 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-
+		
 		pos: p.tok.position()
 		// left: left
-
+		
 	}
 	return node
 }
@@ -1435,10 +1450,10 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	node := ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-
+		
 		is_mut: is_mut
 		// typ: typ
-
+		
 		pos: p.tok.position()
 	}
 	p.scope.register_var(node)
@@ -1557,7 +1572,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 		blocks: blocks
 		match_exprs: match_exprs
 		// typ: typ
-
+		
 		cond: cond
 	}
 	return node

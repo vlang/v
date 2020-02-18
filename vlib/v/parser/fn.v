@@ -17,6 +17,7 @@ pub fn (p mut Parser) call_expr(is_c bool) ast.CallExpr {
 		name: fn_name
 		args: args
 		// tok: tok
+		
 		pos: tok.position()
 		is_c: is_c
 	}
@@ -47,6 +48,7 @@ pub fn (p mut Parser) call_args() []ast.Expr {
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
+	// p.table.clear_vars()
 	p.open_scope()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -63,18 +65,20 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	mut rec_name := ''
 	mut is_method := false
 	mut rec_type := table.void_type
+	mut rec_mut := false
 	if p.tok.kind == .lpar {
 		is_method = true
 		p.next()
 		rec_name = p.check_name()
 		if p.tok.kind == .key_mut {
 			p.next()
+			rec_mut = true
 		}
 		rec_type = p.parse_type()
-		//p.table.register_var(table.Var{
-		//	name: rec_name
-		//	typ: rec_type
-		//})
+		// p.table.register_var(table.Var{
+		// name: rec_name
+		// typ: rec_type
+		// })
 		p.scope.register_var(ast.VarDecl{
 			name: rec_name
 			typ: rec_type
@@ -106,7 +110,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			name: ast_arg.name
 			typ: ast_arg.typ
 		})
-		//p.table.register_var(var)
+		// p.table.register_var(var)
 	}
 	//
 	/*
@@ -166,6 +170,8 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			name: rec_name
 			typ: rec_type
 		}
+		is_method: is_method
+		rec_mut: rec_mut
 	}
 }
 

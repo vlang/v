@@ -97,13 +97,27 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('')
 		}
 		ast.FnDecl {
-			return_type_sym := f.table.get_type_symbol(it.typ)
-			rtype_name := if return_type_sym.name == 'void' {
-				''
-			} else {
-				'${return_type_sym.name} '
+			mut receiver := ''
+			if it.is_method {
+				sym := f.table.get_type_symbol(it.receiver.typ)
+				name := sym.name.after('.')
+				m := if it.rec_mut { 'mut ' } else { '' }
+				receiver = '($it.receiver.name ${m}$name) '
 			}
-			f.writeln('fn ${it.name}() ${rtype_name}{')
+			f.write('fn ${receiver}${it.name}(')
+			for i, arg in it.args {
+				sym := f.table.get_type_symbol(arg.typ)
+				f.write('$arg.name $sym.name')
+				if i < it.args.len - 1 {
+					f.write(', ')
+				}
+			}
+			f.write(')')
+			if it.typ != table.void_type {
+				sym := f.table.get_type_symbol(it.typ)
+				f.write(' ' + sym.name)
+			}
+			f.writeln(' {')
 			f.stmts(it.stmts)
 			f.writeln('}\n')
 		}

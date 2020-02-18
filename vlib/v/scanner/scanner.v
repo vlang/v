@@ -66,6 +66,9 @@ fn new_scanner_file(file_path string) &Scanner {
 	return s
 }
 
+const (
+	is_fmt = os.getenv('VEXE').contains('vfmt')
+)
 // new scanner from string.
 pub fn new_scanner(text string) &Scanner {
 	return &Scanner{
@@ -73,6 +76,7 @@ pub fn new_scanner(text string) &Scanner {
 		print_line_on_error: true
 		print_colored_error: true
 		print_rel_paths_on_error: true
+		is_fmt: is_fmt
 	}
 }
 
@@ -211,11 +215,9 @@ fn (s mut Scanner) ident_dec_number() string {
 	mut has_exponential_part := false
 	if s.expect('e', s.pos) || s.expect('E', s.pos) {
 		exp_start_pos := (s.pos++)
-
 		if s.text[s.pos] in [`-`, `+`] {
 			s.pos++
 		}
-
 		for s.pos < s.text.len && s.text[s.pos].is_digit() {
 			s.pos++
 		}

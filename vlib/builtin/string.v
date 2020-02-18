@@ -1145,6 +1145,8 @@ pub fn (s string) all_after(dot string) string {
 	return s.right(pos + dot.len)
 }
 
+pub fn (s string) after(dot string) string { return s.all_after(dot) }
+
 // fn (s []string) substr(a, b int) string {
 // return join_strings(s.slice_fast(a, b))
 // }

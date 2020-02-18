@@ -8,14 +8,15 @@ import (
 	v.table
 )
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
-AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral |
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr |
+AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr |
 CastExpr | EnumVal | Assoc | SizeOf
 
-pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt
+pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt |
+LineComment | MultiLineComment
 
 pub type Type = StructType | ArrayType
 
@@ -130,6 +131,8 @@ pub:
 	is_pub      bool
 	is_variadic bool
 	receiver    Field
+	is_method   bool
+	rec_mut     bool // is receiver mutable
 }
 
 pub struct BranchStmt {
@@ -456,6 +459,16 @@ pub:
 pub struct SizeOf {
 pub:
 	type_name string
+}
+
+pub struct LineComment {
+pub:
+	text string
+}
+
+pub struct MultiLineComment {
+pub:
+	text string
 }
 
 // string representaiton of expr
