@@ -1674,6 +1674,21 @@ fn ($v.name mut $v.typ) ${p.cur_fn.name}(...) {
 		}
 		p.cgen.resetln('memcpy( (& $left), ($etype{$expr}), sizeof( $left ) );')
 	}
+	// check type for +=, -=, *=, /=. 
+	else if tok in [.plus_assign, .minus_assign, .mult_assign, .div_assign] {
+		// special 1. `ptr += ptr` and `ptr -= ptr` are acceptable under builtin mode.
+		if !(p.builtin_mod && tok in [.plus_assign, .minus_assign]) {
+			// special 2. `str += str` is acceptable 
+			if !(p.assigned_type == expr_type && expr_type == 'string' && tok == .plus_assign) {
+				if !is_number_type(p.assigned_type) {
+					p.error_with_token_index('cannot use assignment operator ${tok.str()} on non-numeric type `$p.assigned_type`', errtok)
+				}
+				if !is_number_type(expr_type) {
+					p.error_with_token_index('cannot use non-numeric type `$expr_type` as assignment operator ${tok.str()} argument', errtok)
+				}
+			}
+		}
+	}
 	// check type for <<= >>= %= ^= &= |=
 	else if tok in [.left_shift_assign, .righ_shift_assign, .mod_assign, .xor_assign, .and_assign, .or_assign] {
 		if !is_integer_type(p.assigned_type) {
