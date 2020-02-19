@@ -8,9 +8,14 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) call_expr(is_c bool) ast.CallExpr {
+pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	tok := p.tok
-	fn_name := p.check_name()
+	name := p.check_name()
+	fn_name := if mod.len > 0 {
+		'${mod}.$name'
+	} else {
+		name
+	}
 	p.check(.lpar)
 	args := p.call_args()
 	node := ast.CallExpr{
@@ -147,7 +152,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	else {
 		p.table.register_fn(table.Fn{
-			name: name
+			name: p.prepend_mod(name)
 			args: args
 			return_type: typ
 			is_variadic: is_variadic

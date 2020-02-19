@@ -519,15 +519,12 @@ fn (p mut Parser) struct_init() ast.StructInit {
 
 pub fn (p mut Parser) name_expr() ast.Expr {
 	mut node := ast.Expr{}
-	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
-	if is_c {
-		p.next()
-		p.check(.dot)
-	}
-	// TODO: type is getting skipped for call_expr hence current error
-	// strings.new_builder becomes new_builder. 
-	//if p.peek_tok.kind == .dot && p.tok.lit in p.table.imports {
-	if p.peek_tok.kind == .dot && p.tok.lit in p.imports {
+	is_c := p.tok.lit == 'C'
+	mut mod := ''
+	if p.peek_tok.kind == .dot && (is_c || p.tok.lit in p.imports) {
+		if !is_c {
+			mod = p.tok.lit
+		}
 		p.next()
 		p.check(.dot)
 	}
@@ -563,13 +560,13 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		// fn call
 		else {
 			// println('calling $p.tok.lit')
-			x := p.call_expr(is_c) // TODO `node,typ :=` should work
+			x := p.call_expr(is_c, mod) // TODO `node,typ :=` should work
 			node = x
 		}
 	}
 	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c ||
 	//
-	p.tok.lit in ['array', 'string', 'ustring', 'mapnode', 'map']) &&
+	p.tok.lit in table.builtin_type_names) &&
 	//
 	(p.tok.lit.len == 1 || !p.tok.lit[p.tok.lit.len - 1].is_capital())
 	//

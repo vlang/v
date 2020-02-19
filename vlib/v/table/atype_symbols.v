@@ -43,7 +43,8 @@ pub const (
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16', 'u32', 'u64',
-	'f32', 'f64', 'string', 'char', 'byte', 'bool', 'struct', 'array', 'array_fixed', 'map']
+	'f32', 'f64', 'string', 'char', 'byte', 'bool', 'struct', 'array', 'array_fixed', 'map',
+	'mapnode', 'ustring']
 )
 
 pub struct MultiReturn {
