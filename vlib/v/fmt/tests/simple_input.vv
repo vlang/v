@@ -72,3 +72,7 @@ return 0
 fn    (this User) fn_with_receiver() {
 println('')
 }
+
+//fn get_user() ? User {
+
+//}

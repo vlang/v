@@ -11,7 +11,7 @@ import (
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
-CastExpr | EnumVal | Assoc | SizeOf
+CastExpr | EnumVal | Assoc | SizeOf | None
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
@@ -473,6 +473,10 @@ pub:
 	text string
 }
 
+pub struct None {
+pub:
+	foo int // todo
+}
 // string representaiton of expr
 pub fn (x Expr) str() string {
 	match x {

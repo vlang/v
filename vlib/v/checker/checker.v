@@ -11,11 +11,16 @@ import (
 	filepath
 )
 
+const (
+	max_nr_errors = 10
+)
+
 pub struct Checker {
 	table     &table.Table
 mut:
 	file_name string
 	scope     &ast.Scope
+	nr_errors int
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -86,11 +91,16 @@ pub fn (c mut Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
 	left_type := c.expr(infix_expr.left)
 	right_type := c.expr(infix_expr.right)
 	if !c.table.check(right_type, left_type) {
-		left_type_sym := c.table.get_type_symbol(left_type)
-		right_type_sym := c.table.get_type_symbol(right_type)
+		left := c.table.get_type_symbol(left_type)
+		right := c.table.get_type_symbol(right_type)
+		// array << elm
+		// the expressions have different types (array_x and x)
+		if left.kind == .array && infix_expr.op == .left_shift {
+			return table.void_type
+		}
 		// if !c.table.check(&infix_expr.right_type, &infix_expr.right_type) {
 		// c.error('infix expr: cannot use `$infix_expr.right_type.name` as `$infix_expr.left_type.name`', infix_expr.pos)
-		c.error('infix expr: cannot use `$right_type_sym.name` as `$left_type_sym.name`', infix_expr.pos)
+		c.error('infix expr: cannot use `$right.name` (right) as `$left.name`', infix_expr.pos)
 	}
 	if infix_expr.op.is_relational() {
 		return table.bool_type
@@ -367,6 +377,9 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		ast.CastExpr {
 			return it.typ
 		}
+		ast.None {
+			return  table.none_type
+		}
 		else {}
 	}
 	return table.void_type
@@ -570,14 +583,15 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 		else if typ_sym.kind in [.byteptr, .string] {
 			return table.byte_type
 		}
-		//else {
-		//	return table.int_type
-		//}
+		// else {
+		// return table.int_type
+		// }
 	}
 	return typ
 }
 
-pub fn (c &Checker) error(s string, pos token.Position) {
+pub fn (c mut Checker) error(s string, pos token.Position) {
+	c.nr_errors++
 	print_backtrace()
 	mut path := c.file_name
 	// Get relative path
@@ -585,7 +599,7 @@ pub fn (c &Checker) error(s string, pos token.Position) {
 	if path.starts_with(workdir) {
 		path = path.replace(workdir, '')
 	}
-	final_msg_line := '$path:$pos.line_nr: checker error: $s'
+	final_msg_line := '$path:$pos.line_nr: checker error #$c.nr_errors: $s'
 	eprintln(final_msg_line)
 	/*
 	if colored_output {
@@ -595,5 +609,8 @@ pub fn (c &Checker) error(s string, pos token.Position) {
 	}
 	*/
 
-	exit(1)
+	println('\n\n')
+	if c.nr_errors >= max_nr_errors {
+		exit(1)
+	}
 }

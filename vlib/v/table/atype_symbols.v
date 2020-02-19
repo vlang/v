@@ -39,6 +39,7 @@ pub const (
 	string_type_idx = 17
 	array_type_idx = 18
 	map_type_idx = 19
+	none_type_idx = 20
 )
 
 pub const (
@@ -81,6 +82,7 @@ pub enum Kind {
 	sum_type
 	alias
 	unresolved
+	none_
 }
 
 [inline]
@@ -235,6 +237,10 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 	t.register_type_symbol(TypeSymbol{
 		kind: .map
 		name: 'map'
+	})
+	t.register_type_symbol(TypeSymbol{
+		kind: .none_
+		name: 'none'
 	})
 	// TODO: remove
 	t.register_type_symbol(TypeSymbol{

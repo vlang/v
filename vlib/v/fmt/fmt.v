@@ -128,31 +128,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('')
 		}
 		ast.FnDecl {
-			mut receiver := ''
-			if it.is_method {
-				sym := f.table.get_type_symbol(it.receiver.typ)
-				name := sym.name.after('.')
-				m := if it.rec_mut { 'mut ' } else { '' }
-				receiver = '($it.receiver.name ${m}$name) '
-			}
-			f.write('fn ${receiver}${it.name}(')
-			for i, arg in it.args {
-				is_last_arg := i == it.args.len - 1
-				should_add_type := is_last_arg || it.args[i + 1].typ != arg.typ
-				f.write(arg.name)
-				if should_add_type {
-					arg_typ_sym := f.table.get_type_symbol(arg.typ)
-					f.write(' ${arg_typ_sym.name}')
-				}
-				if !is_last_arg {
-					f.write(', ')
-				}
-			}
-			f.write(')')
-			if it.typ != table.void_type {
-				sym := f.table.get_type_symbol(it.typ)
-				f.write(' ' + sym.name)
-			}
+			f.write(it.str(f.table))
 			f.writeln(' {')
 			f.stmts(it.stmts)
 			f.writeln('}\n')

@@ -68,3 +68,7 @@ fn fn_with_3_args(arg1 string, arg2 int, arg3 User) int {
 fn (this User) fn_with_receiver() {
 	println('')
 }
+
+//fn get_user() ?User {
+
+//}

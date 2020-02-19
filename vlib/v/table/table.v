@@ -2,9 +2,12 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module table
-// import (
-// v.ast
-// )
+
+import (
+	v.token
+	// v.ast
+)
+
 pub struct Table {
 	// struct_fields map[string][]string
 pub mut:
@@ -361,6 +364,10 @@ pub fn (t &Table) check(got, expected Type) bool {
 	got_idx := type_idx(got)
 	exp_idx := type_idx(expected)
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
+	if got_type_sym.kind == .none_ {
+		// TODO
+		return true
+	}
 	if exp_type_sym.kind == .voidptr {
 		return true
 	}

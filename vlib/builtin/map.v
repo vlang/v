@@ -148,7 +148,9 @@ fn (m map) get(key string, out voidptr) bool {
 	mut node := m.root
 	for {
 		mut i := node.size - 1
-		for i >= 0 && key < node.keys[i] { i-- }
+		for i >= 0 && key < node.keys[i] {
+			i--
+		}
 		if i != -1 && key == node.keys[i] {
 			C.memcpy(out, node.values[i], m.value_bytes)
 			return true
