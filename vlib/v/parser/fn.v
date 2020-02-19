@@ -11,11 +11,7 @@ import (
 pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	tok := p.tok
 	name := p.check_name()
-	fn_name := if mod.len > 0 {
-		'${mod}.$name'
-	} else {
-		name
-	}
+	fn_name := if mod.len > 0 { '${mod}.$name' } else { name }
 	p.check(.lpar)
 	args := p.call_args()
 	node := ast.CallExpr{
@@ -193,7 +189,7 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 	// `int, int, string` (no names, just types)
 	types_only := p.tok.kind in [.amp] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) || p.peek_tok.kind == .rpar
 	if types_only {
-		p.warn('types only')
+		// p.warn('types only')
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
 			arg_name := 'arg_$arg_no'

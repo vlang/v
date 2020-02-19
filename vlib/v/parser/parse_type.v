@@ -67,7 +67,7 @@ pub fn (p mut Parser) parse_multi_return_type() table.Type {
 }
 
 pub fn (p mut Parser) parse_fn_type() table.Type {
-	p.warn('parrse fn')
+	// p.warn('parrse fn')
 	p.check(.key_fn)
 	// p.fn_decl()
 	p.fn_args()
@@ -196,7 +196,7 @@ pub fn (p mut Parser) parse_type() table.Type {
 					}
 					// not found - add placeholder
 					idx = p.table.add_placeholder_type(name)
-					println('NOT FOUND: $name - adding placeholder - $idx')
+					// println('NOT FOUND: $name - adding placeholder - $idx')
 					return table.new_type_ptr(idx, nr_muls)
 				}
 	}

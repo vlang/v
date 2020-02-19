@@ -64,7 +64,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 }
 
 pub fn parse_file(path string, table &table.Table) ast.File {
-	println('parse_file("$path")')
+	// println('parse_file("$path")')
 	text := os.read_file(path) or {
 		panic(err)
 	}
@@ -95,7 +95,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 	for {
 		// res := s.scan()
 		if p.tok.kind == .eof {
-			println('EOF, breaking')
+			// println('EOF, breaking')
 			break
 		}
 		// println('stmt at ' + p.tok.str())
@@ -642,6 +642,13 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 		.key_sizeof {
 			p.next() // sizeof
 			p.check(.lpar)
+			if p.tok.lit == 'C' {
+				p.next()
+				p.check(.dot)
+			}
+			if p.tok.kind == .amp {
+				p.next()
+			}
 			type_name := p.check_name()
 			p.check(.rpar)
 			node = ast.SizeOf{
@@ -912,17 +919,17 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		if p.peek_tok.kind == .decl_assign {
 			init = p.var_decl()
 		}
-		else if p.tok.kind != .semicolon {
-			// allow `for ;; i++ {`
-			// Allow `for i = 0; i < ...`
-			/*
+		else if p.tok.kind != .semicolon {}
+		// allow `for ;; i++ {`
+		// Allow `for i = 0; i < ...`
+		/*
 			cond, typ = p.expr(0)
 			if typ.kind != _bool {
 				p.error('non-bool used as for condition')
 			}
 			*/
-			println(1)
-		}
+		// println(1)
+		// }
 		p.check(.semicolon)
 		if p.tok.kind != .semicolon {
 			mut typ := table.void_type
@@ -973,12 +980,12 @@ fn (p mut Parser) for_statement() ast.Stmt {
 				table.Map {
 					elem_type = it.value_type
 				}
-				else {
-					println(1)
-					// elem_type_sym := p.table.get_type_symbol(elem_type)
-					// p.error('cannot loop over type: $elem_type_sym.name')
-				}
-	}
+				else {}
+				// println(1)
+				// elem_type_sym := p.table.get_type_symbol(elem_type)
+				// p.error('cannot loop over type: $elem_type_sym.name')
+				// }
+			}
 		}
 		// 0 .. 10
 		// start := p.tok.lit.int()
@@ -1144,10 +1151,8 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 			array_type = table.new_type(idx)
 		}
 		// []
-		else {
-			// TODO ?
-			println(0)
-		}
+		else {}
+		// TODO ?
 	}
 	else {
 		// [1,2,3]
@@ -1176,6 +1181,13 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 		}
 		*/
 
+	}
+	// !
+	if p.tok.kind == .not {
+		p.next()
+	}
+	if p.tok.kind == .not {
+		p.next()
 	}
 	// idx := if is_fixed { p.table.find_or_register_array_fixed(val_type, fixed_size, 1) } else { p.table.find_or_register_array(val_type, 1) }
 	// array_type := table.new_type(idx)
@@ -1265,7 +1277,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	mut exprs := []ast.Expr
 	for p.tok.kind != .rpar {
 		name := p.check_name()
-		println('const: $name')
+		// println('const: $name')
 		p.check(.assign)
 		expr,typ := p.expr(0)
 		fields << ast.Field{
