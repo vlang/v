@@ -395,6 +395,11 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if exp_type_sym.name == 'array' || got_type_sym.name == 'array' {
 		return true
 	}
+	// TODO
+	// accept [] when an expected type is an array
+	if got_type_sym.kind == .array && got_type_sym.name == 'array_void' && exp_type_sym.kind == .array {
+		return true
+	}
 	if got_idx != exp_idx {
 		// && got.typ.name != expected.typ.name*/
 		return false

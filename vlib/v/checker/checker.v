@@ -93,10 +93,14 @@ pub fn (c mut Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
 	if !c.table.check(right_type, left_type) {
 		left := c.table.get_type_symbol(left_type)
 		right := c.table.get_type_symbol(right_type)
-		// array << elm
+		// `array << elm`
 		// the expressions have different types (array_x and x)
 		if left.kind == .array && infix_expr.op == .left_shift {
 			return table.void_type
+		}
+		// `elm in array`
+		if right.kind == .array && infix_expr.op == .key_in {
+			return table.bool_type
 		}
 		// if !c.table.check(&infix_expr.right_type, &infix_expr.right_type) {
 		// c.error('infix expr: cannot use `$infix_expr.right_type.name` as `$infix_expr.left_type.name`', infix_expr.pos)
@@ -378,7 +382,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return it.typ
 		}
 		ast.None {
-			return  table.none_type
+			return table.none_type
 		}
 		else {}
 	}
