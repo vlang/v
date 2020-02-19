@@ -634,7 +634,6 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node = p.if_expr()
 		}
 		.lsbr {
-			// node,typ = p.array_init()
 			node = p.array_init()
 		}
 		.key_none {
@@ -1105,9 +1104,7 @@ fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
 	return node,table.string_type
 }
 
-// fn (p mut Parser) array_init() (ast.Expr,table.Type) {
-fn (p mut Parser) array_init() ast.Expr {
-	mut node := ast.Expr{}
+fn (p mut Parser) array_init() ast.ArrayInit {
 	p.check(.lsbr)
 	// `[]` - empty array with an automatically deduced type
 	// p.warn('array_init() exp=$p.expected_type')
@@ -1130,7 +1127,7 @@ fn (p mut Parser) array_init() ast.Expr {
 	}
 	*/
 
-	mut val_type := table.void_type
+	mut array_type := table.Type(0)
 	mut exprs := []ast.Expr
 	// mut is_fixed := false
 	// mut fixed_size := 0
@@ -1140,7 +1137,11 @@ fn (p mut Parser) array_init() ast.Expr {
 		p.check(.rsbr)
 		// []string
 		if p.tok.kind == .name && p.tok.line_nr == line_nr {
-			val_type = p.parse_type()
+			val_type := p.parse_type()
+			// this is set here becasue its a known type, others could be the
+			// result of expr so we do those in checker
+			idx := p.table.find_or_register_array(val_type, 1)
+			array_type = table.new_type(idx)
 		}
 		// []
 		else {
@@ -1151,11 +1152,8 @@ fn (p mut Parser) array_init() ast.Expr {
 	else {
 		// [1,2,3]
 		for i := 0; p.tok.kind != .rsbr; i++ {
-			expr,typ := p.expr(0)
+			expr,_ := p.expr(0)
 			exprs << expr
-			if i == 0 {
-				val_type = typ
-			}
 			if p.tok.kind == .comma {
 				p.check(.comma)
 			}
@@ -1181,12 +1179,11 @@ fn (p mut Parser) array_init() ast.Expr {
 	}
 	// idx := if is_fixed { p.table.find_or_register_array_fixed(val_type, fixed_size, 1) } else { p.table.find_or_register_array(val_type, 1) }
 	// array_type := table.new_type(idx)
-	node = ast.ArrayInit{
-		// typ: array_type
+	return ast.ArrayInit{
+		typ: array_type
 		exprs: exprs
 		pos: p.tok.position()
 	}
-	return node
 }
 
 fn (p mut Parser) parse_number_literal() (ast.Expr,table.Type) {

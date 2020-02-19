@@ -225,12 +225,15 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 			c.error('expected array element with type `$elem_type_sym.name`', array_init.pos)
 		}
 	}
-	// idx := if is_fixed { p.table.find_or_register_array_fixed(val_type, fixed_size, 1) } else { p.table.find_or_register_array(val_type, 1) }
-	is_fixed := false
-	fixed_size := 1
-	idx := if is_fixed { c.table.find_or_register_array_fixed(elem_type, fixed_size, 1) } else { c.table.find_or_register_array(elem_type, 1) }
-	array_type := table.new_type(idx)
-	array_init.typ = array_type
+	// only inits if know types like []string set the type in parser
+	// as the rest could be result of expression, so do it here
+	if array_init.typ == 0 {
+		is_fixed := false
+		fixed_size := 1
+		idx := if is_fixed { c.table.find_or_register_array_fixed(elem_type, fixed_size, 1) } else { c.table.find_or_register_array(elem_type, 1) }
+		array_type := table.new_type(idx)
+		array_init.typ = array_type
+	}
 	return array_init.typ
 }
 
@@ -536,7 +539,7 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 		typ = info.elem_type
 	}
 */
-	mut typ := c.expr(node.left)
+	typ := c.expr(node.left)
 	mut is_range := false // TODO is_range := node.index is ast.RangeExpr
 	match node.index {
 		ast.RangeExpr {
@@ -544,20 +547,19 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 		}
 		else {}
 	}
-	typ_sym := c.table.get_type_symbol(typ)
 	if !is_range {
 		index_type := c.expr(node.index)
-		// if index_type.typ.kind != .int {
 		if table.type_idx(index_type) != table.int_type_idx {
 			index_type_sym := c.table.get_type_symbol(index_type)
 			c.error('non-integer index (type `$index_type_sym.name`)', node.pos)
 		}
+		typ_sym := c.table.get_type_symbol(typ)
 		if typ_sym.kind == .array {
 			// Check index type
 			info := typ_sym.info as table.Array
 			return info.elem_type
 		}
-		if typ_sym.kind == .array_fixed {
+		else if typ_sym.kind == .array_fixed {
 			info := typ_sym.info as table.ArrayFixed
 			return info.elem_type
 		}
@@ -565,9 +567,12 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 			info := typ_sym.info as table.Map
 			return info.value_type
 		}
-		else {
-			typ = table.int_type
+		else if typ_sym.kind in [.byteptr, .string] {
+			return table.byte_type
 		}
+		//else {
+		//	return table.int_type
+		//}
 	}
 	return typ
 }
