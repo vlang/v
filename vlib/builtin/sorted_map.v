@@ -402,15 +402,15 @@ pub fn (m SortedMap) print() {
 	println('TODO')
 }
 
-pub fn (m sorted_map_string) str() string {
-	if m.size == 0 {
-		return '{}'
-	}
-	mut sb := strings.new_builder(50)
-	sb.writeln('{')
-	for key, val  in m {
-		sb.writeln('  "$key" => "$val"')
-	}
-	sb.writeln('}')
-	return sb.str()
-}
+// pub fn (m map_string) str() string {
+// 	if m.size == 0 {
+// 		return '{}'
+// 	}
+// 	mut sb := strings.new_builder(50)
+// 	sb.writeln('{')
+// 	for key, val  in m {
+// 		sb.writeln('  "$key" => "$val"')
+// 	}
+// 	sb.writeln('}')
+// 	return sb.str()
+// }
