@@ -40,9 +40,7 @@ mut:
 }
 
 pub fn new_table() &Table {
-	mut t := &Table{
-		types: make(0, 400, sizeof(TypeSymbol))
-	}
+	mut t := &Table{}
 	t.register_builtin_type_symbols()
 	return t
 }
@@ -135,8 +133,9 @@ pub fn (s &TypeSymbol) find_field(name string) ?Field {
 }
 
 pub fn (t &Table) struct_has_field(s &TypeSymbol, name string) bool {
-	if !isnil(s.parent) {
-		println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=$s.parent.name')
+	if s.parent_idx != 0 {
+		parent := &t.types[s.parent_idx]
+		println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=$parent.name')
 	}
 	else {
 		println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=none')
@@ -148,8 +147,9 @@ pub fn (t &Table) struct_has_field(s &TypeSymbol, name string) bool {
 }
 
 pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
-	if !isnil(s.parent) {
-		println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent=$s.parent.name')
+	if s.parent_idx != 0 {
+		parent := &t.types[s.parent_idx]
+		println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent=$parent.name')
 	}
 	else {
 		println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent=none')
@@ -157,9 +157,10 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 	if field := s.find_field(name) {
 		return field
 	}
-	if !isnil(s.parent) {
-		if field := s.parent.find_field(name) {
-			println('got parent $s.parent.name')
+	if s.parent_idx != 0 {
+		parent := &t.types[s.parent_idx]
+		if field := parent.find_field(name) {
+			println('got parent $parent.name')
 			return field
 		}
 	}
@@ -186,7 +187,6 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	if idx < 0 {
 		unresolved_idx := -idx
 		return &TypeSymbol{
-			parent: 0
 			kind: .unresolved
 			name: 'unresolved-$unresolved_idx'
 		}
@@ -271,7 +271,7 @@ pub fn (t mut Table) find_or_register_map(key_type, value_type Type) int {
 	}
 	// register
 	map_typ := TypeSymbol{
-		parent: &t.types[map_type_idx]
+		parent_idx: map_type_idx
 		kind: .map
 		name: name
 		info: Map{
@@ -292,7 +292,7 @@ pub fn (t mut Table) find_or_register_array(elem_type Type, nr_dims int) int {
 	}
 	// register
 	array_type := TypeSymbol{
-		parent: &t.types[array_type_idx]
+		parent_idx: array_type_idx
 		kind: .array
 		name: name
 		info: Array{
@@ -313,7 +313,6 @@ pub fn (t mut Table) find_or_register_array_fixed(elem_type Type, size int, nr_d
 	}
 	// register
 	array_fixed_type := TypeSymbol{
-		parent: 0
 		kind: .array_fixed
 		name: name
 		info: ArrayFixed{
@@ -338,7 +337,6 @@ pub fn (t mut Table) find_or_register_multi_return(mr_typs []Type) int {
 	}
 	// register
 	mr_type := TypeSymbol{
-		parent: 0
 		kind: .multi_return
 		name: name
 		info: MultiReturn{
@@ -350,7 +348,6 @@ pub fn (t mut Table) find_or_register_multi_return(mr_typs []Type) int {
 
 pub fn (t mut Table) add_placeholder_type(name string) int {
 	ph_type := TypeSymbol{
-		parent: 0
 		kind: .placeholder
 		name: name
 	}

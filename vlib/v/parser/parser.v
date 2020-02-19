@@ -44,6 +44,7 @@ mut:
 	mod           string
 	expected_type table.Type
 	scope         &ast.Scope
+	imports       map[string]string
 }
 
 // for tests
@@ -90,6 +91,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 	for p.tok.kind == .key_import {
 		imports << p.import_stmt()
 	}
+
 	// TODO: import only mode
 	for {
 		// res := s.scan()
@@ -522,7 +524,10 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.next()
 		p.check(.dot)
 	}
-	if p.peek_tok.kind == .dot && p.tok.lit in p.table.imports {
+	// TODO: type is getting skipped for call_expr hence current error
+	// strings.new_builder becomes new_builder. 
+	//if p.peek_tok.kind == .dot && p.tok.lit in p.table.imports {
+	if p.peek_tok.kind == .dot && p.tok.lit in p.imports {
 		p.next()
 		p.check(.dot)
 	}
@@ -1206,29 +1211,29 @@ fn (p mut Parser) parse_number_literal() (ast.Expr,table.Type) {
 
 fn (p mut Parser) module_decl() ast.Module {
 	p.check(.key_module)
-	name := p.check_name()
-	p.mod = name
+	mod := p.check_name()
+	full_mod := p.table.qualify_module(mod, p.file_name)
+	p.mod = full_mod
 	return ast.Module{
-		name: name
+		name: full_mod
 	}
 }
 
 fn (p mut Parser) parse_import() ast.Import {
 	mut mod_name := p.check_name()
-	if p.tok.kind == .dot {
-		p.next()
-		mod_name += '.' + p.check_name()
-		if p.tok.kind == .dot {
-			p.next()
-			mod_name += '.' + p.check_name()
-		}
-	}
 	mut mod_alias := mod_name
+	for p.tok.kind == .dot {
+		p.check(.dot)
+		submod_name := p.check_name()
+		mod_name += '.' + submod_name
+		mod_alias = submod_name
+	}
 	if p.tok.kind == .key_as {
 		p.check(.key_as)
 		mod_alias = p.check_name()
 	}
-	p.table.imports << mod_name.all_after('.')
+	p.imports[mod_alias] = mod_name
+	p.table.imports << mod_name
 	return ast.Import{
 		mod: mod_name
 		alias: mod_alias
@@ -1330,7 +1335,6 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	}
 	p.check(.rcbr)
 	t := table.TypeSymbol{
-		parent: 0
 		kind: .struct_
 		name: p.prepend_mod(name)
 		info: table.Struct{
@@ -1629,7 +1633,6 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 		p.check_name()
 	}
 	p.table.register_type_symbol(table.TypeSymbol{
-		parent: 0
 		kind: .sum_type
 		name: name
 		info: table.Alias{

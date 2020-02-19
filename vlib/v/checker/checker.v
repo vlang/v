@@ -143,8 +143,9 @@ pub fn (c mut Checker) check_method_call_expr(method_call_expr ast.MethodCallExp
 		return method.return_type
 	}
 	// check parent
-	if !isnil(typ_sym.parent) {
-		if method := typ_sym.parent.find_method(method_call_expr.name) {
+	if typ_sym.parent_idx != 0 {
+		parent := &c.table.types[typ_sym.parent_idx]
+		if method := parent.find_method(method_call_expr.name) {
 			return method.return_type
 		}
 	}
@@ -160,8 +161,9 @@ pub fn (c mut Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type 
 		return field.typ
 	}
 	// check parent
-	if !isnil(typ_sym.parent) {
-		if field := typ_sym.parent.find_field(field_name) {
+	if typ_sym.parent_idx != 0 {
+		parent := &c.table.types[typ_sym.parent_idx]
+		if field := parent.find_field(field_name) {
 			return field.typ
 		}
 	}
