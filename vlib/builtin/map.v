@@ -71,6 +71,7 @@ fn (m mut map) set(key string, value voidptr) {
 	mut child_index := 0
 	mut parent := &mapnode(0)
 	for {
+
 		if node.size == max_size {
 			if isnil(parent) {
 				parent = new_node()

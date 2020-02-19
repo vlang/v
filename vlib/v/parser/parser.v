@@ -850,6 +850,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,table.Type) {
 	// mut typ := p.
 	// println('infix op=$op.str()')
 	precedence := p.tok.precedence()
+	pos := p.tok.position()
 	p.next()
 	mut typ := table.Type{}
 	mut right := ast.Expr{}
@@ -863,7 +864,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,table.Type) {
 		right: right
 		right_type: typ
 		op: op
-		pos: p.tok.position()
+		pos: pos
 	}
 	return expr,typ
 }
@@ -1019,6 +1020,7 @@ fn (p mut Parser) if_expr() ast.Expr {
 	// }
 	mut node := ast.Expr{}
 	p.check(.key_if)
+	pos := p.tok.position()
 	// `if x := opt() {`
 	mut cond := ast.Expr{}
 	if p.peek_tok.kind == .decl_assign {
@@ -1065,7 +1067,7 @@ fn (p mut Parser) if_expr() ast.Expr {
 		else_stmts: else_stmts
 		// typ: typ
 		
-		pos: p.tok.position()
+		pos: pos
 		// left: left
 		
 	}
@@ -1539,7 +1541,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 				p.check(.comma)
 			}
 		}
-		p.warn('match block')
+		// p.warn('match block')
 		stmts := p.parse_block()
 		blocks << ast.StmtBlock{
 			stmts: stmts
@@ -1593,7 +1595,7 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		val := p.check_name()
 		vals << val
-		p.warn('enum val $val')
+		// p.warn('enum val $val')
 		if p.tok.kind == .assign {
 			p.next()
 			p.expr(0)
