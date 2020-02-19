@@ -68,7 +68,7 @@ Download both V source and its auto-translated C source from https://github.com/
 
 Unzip both and place all unzipped files together in any directory.
 
-Open `make.bat` with any txt editor, locate `vc\v_win.c` and replace it with full directory, e.g. `C:\vlang\vc\v_win.c`.
+Open `make.bat` with any text editor, locate `vc\v_win.c` and replace it with full directory, e.g. `C:\vlang\vc\v_win.c`.
 
 Save and then run make. All done!
 
