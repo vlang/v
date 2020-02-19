@@ -3,10 +3,10 @@ module main
 import os
 
 fn main() {
-	files_path := os.args[1..]
+	files_paths := os.args[1..]
 	mut errors := 0
 
-	for file_path in files_path {
+	for file_path in files_paths {
 		real_path := os.realpath(file_path)
 		lines := os.read_lines(real_path) or { continue }
 		mut line_num := 1
