@@ -56,7 +56,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-
+		
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -91,7 +91,6 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 	for p.tok.kind == .key_import {
 		imports << p.import_stmt()
 	}
-
 	// TODO: import only mode
 	for {
 		// res := s.scan()
@@ -321,7 +320,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return ast.ExprStmt{
 				expr: expr
 				// typ: typ
-
+				
 			}
 		}
 	}
@@ -893,11 +892,13 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	// defer { p.close_scope() }
 	// Infinite loop
 	if p.tok.kind == .lcbr {
+		pos := p.tok.position()
 		stmts := p.parse_block()
 		p.close_scope()
 		return ast.ForStmt{
 			stmts: stmts
-			pos: p.tok.position()
+			pos: pos
+			is_inf: true
 		}
 	}
 	else if p.tok.kind == .key_mut {
@@ -1063,10 +1064,10 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-
+		
 		pos: p.tok.position()
 		// left: left
-
+		
 	}
 	return node
 }
@@ -1451,10 +1452,10 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	node := ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-
+		
 		is_mut: is_mut
 		// typ: typ
-
+		
 		pos: p.tok.position()
 	}
 	p.scope.register_var(node)
@@ -1573,7 +1574,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 		blocks: blocks
 		match_exprs: match_exprs
 		// typ: typ
-
+		
 		cond: cond
 	}
 	return node

@@ -338,9 +338,10 @@ pub:
 
 pub struct ForStmt {
 pub:
-	cond  Expr
-	stmts []Stmt
-	pos   token.Position
+	cond   Expr
+	stmts  []Stmt
+	pos    token.Position
+	is_inf bool // `for {}`
 }
 
 pub struct ForInStmt {

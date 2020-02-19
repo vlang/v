@@ -273,7 +273,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			typ := c.expr(it.cond)
 			// typ_sym := c.table.get_type_symbol(typ)
 			// if typ_sym.kind != .bool {
-			if table.type_idx(typ) != table.bool_type_idx {
+			if !it.is_inf && table.type_idx(typ) != table.bool_type_idx {
 				c.error('non-bool used as for condition', it.pos)
 			}
 			for stmt in it.stmts {
