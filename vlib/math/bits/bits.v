@@ -313,7 +313,7 @@ pub fn len_64(x u64) int {
 // The carryOut output is guaranteed to be 0 or 1.
 //
 // This function's execution time does not depend on the inputs.
-fn add_32(x u32, y u32, carry u32) (u32, u32) {
+pub fn add_32(x u32, y u32, carry u32) (u32, u32) {
 	sum64 := u64(x) + u64(y) + u64(carry)
 	sum := u32(sum64)
 	carry_out := u32(sum64>>32)
@@ -325,7 +325,7 @@ fn add_32(x u32, y u32, carry u32) (u32, u32) {
 // The carryOut output is guaranteed to be 0 or 1.
 //
 // This function's execution time does not depend on the inputs.
-fn add_64(x u64, y u64, carry u64) (u64, u64) {
+pub fn add_64(x u64, y u64, carry u64) (u64, u64) {
 	sum := x + y + carry
 	// The sum will overflow if both top bits are set (x & y) or if one of them
 	// is (x | y), and a carry from the lower place happened. If such a carry
@@ -346,7 +346,7 @@ fn add_64(x u64, y u64, carry u64) (u64, u64) {
 // The borrowOut output is guaranteed to be 0 or 1.
 //
 // This function's execution time does not depend on the inputs.
-fn sub_32(x u32, y u32, borrow u32) (u32, u32) {
+pub fn sub_32(x u32, y u32, borrow u32) (u32, u32) {
 	diff := x - y - borrow
 	// The difference will underflow if the top bit of x is not set and the top
 	// bit of y is set (^x & y) or if they are the same (^(x ^ y)) and a borrow
@@ -361,7 +361,7 @@ fn sub_32(x u32, y u32, borrow u32) (u32, u32) {
 // The borrowOut output is guaranteed to be 0 or 1.
 //
 // This function's execution time does not depend on the inputs.
-fn sub_64(x u64, y u64, borrow u64) (u64, u64) {
+pub fn sub_64(x u64, y u64, borrow u64) (u64, u64) {
 	diff := x - y - borrow
 	// See Sub32 for the bit logic.
 	borrow_out  := ((~x & y) | (~(x ^ y) & diff))>>63
@@ -371,7 +371,7 @@ fn sub_64(x u64, y u64, borrow u64) (u64, u64) {
 // --- Full-width multiply ---
 
 const (
-	two32  = u64(0x1_0000_0000)
+	two32  = 0x1_0000_0000
 	mask32 = two32 - 1
 	overflow_error = "Overflow Error"
 	divide_error = "Divide Error"
@@ -382,7 +382,7 @@ const (
 // half returned in lo.
 //
 // This function's execution time does not depend on the inputs.
-fn mul_32(x u32, y u32) (u32, u32) {
+pub fn mul_32(x u32, y u32) (u32, u32) {
 	tmp := u64(x) * u64(y)
 	hi := u32(tmp>>32)
 	lo := u32(tmp)
@@ -394,7 +394,7 @@ fn mul_32(x u32, y u32) (u32, u32) {
 // half returned in lo.
 //
 // This function's execution time does not depend on the inputs.
-fn mul_64(x u64, y u64) (u64, u64) {
+pub fn mul_64(x u64, y u64) (u64, u64) {
 	x0 := x & mask32
 	x1 := x>>32
 	y0 := y & mask32
@@ -415,7 +415,7 @@ fn mul_64(x u64, y u64) (u64, u64) {
 // quo = (hi, lo)/y, rem = (hi, lo)%y with the dividend bits' upper
 // half in parameter hi and the lower half in parameter lo.
 // div_32 panics for y == 0 (division by zero) or y <= hi (quotient overflow).
-fn div_32(hi u32, lo u32, y u32) (u32, u32) {
+pub fn div_32(hi u32, lo u32, y u32) (u32, u32) {
 	if y != 0 && y <= hi {
 		panic(overflow_error)
 	}
@@ -429,7 +429,7 @@ fn div_32(hi u32, lo u32, y u32) (u32, u32) {
 // quo = (hi, lo)/y, rem = (hi, lo)%y with the dividend bits' upper
 // half in parameter hi and the lower half in parameter lo.
 // div_64 panics for y == 0 (division by zero) or y <= hi (quotient overflow).
-fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
+pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	mut y := y1
 	if y == 0 {
 		panic(overflow_error)
@@ -476,14 +476,14 @@ fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 // rem_32 returns the remainder of (hi, lo) divided by y. Rem32 panics
 // for y == 0 (division by zero) but, unlike Div32, it doesn't panic
 // on a quotient overflow.
-fn rem_32(hi u32, lo u32, y u32) u32 {
+pub fn rem_32(hi u32, lo u32, y u32) u32 {
 	return u32((u64(hi)<<32 | u64(lo)) % u64(y))
 }
 
 // rem_64 returns the remainder of (hi, lo) divided by y. Rem64 panics
 // for y == 0 (division by zero) but, unlike div_64, it doesn't panic
 // on a quotient overflow.
-fn rem_64(hi, lo, y u64) u64 {
+pub fn rem_64(hi, lo, y u64) u64 {
 	// We scale down hi so that hi < y, then use div_64 to compute the
 	// rem with the guarantee that it won't panic on quotient overflow.
 	// Given that
