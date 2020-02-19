@@ -4,7 +4,7 @@
 
 module builtin
 
-import strings
+// import strings
 
 // B-trees are balanced search trees with all leaves at
 // the same level. B-trees are generally faster than
