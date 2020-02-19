@@ -255,4 +255,4 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Check docs line length
-      run: make && ./v run .github/workflows/check_md_line.v
+      run: make && ./v run cmd/tools/check-md-len.v doc/docs.md
