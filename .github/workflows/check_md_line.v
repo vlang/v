@@ -1,23 +1,26 @@
 module main
 
 import os
-import filepath
 
 fn main() {
-	args := os.args
-	exec_path := args[0]
-	vroot := filepath.dir(filepath.dir(filepath.dir(exec_path)))
+	files_path := os.args[1..]
+	mut errors := 0
 
-	docs_md_path := filepath.join(vroot, 'doc', 'docs.md')
-	docs_md := os.read_file(docs_md_path) or { return }
-	lines := docs_md.split('\n')
-	mut i := 0
-	for i = 0; i < lines.len; i++ {
-		if lines[i].len >= 100 {
-			eprintln('The number of columns in line $i exceeds the limit: 100')
+	for file_path in files_path {
+		real_path := os.realpath(file_path)
+		lines := os.read_lines(real_path) or { continue }
+		mut line_num := 1
+
+		for line in lines {
+			if line.len > 100 {
+				eprintln('$file_path:$line_num with $line.len column width')
+				errors++
+			}
+			line_num++
 		}
 	}
-	if i > 0 {
+
+	if errors > 0 {
 		exit(1)
 	}
 }
