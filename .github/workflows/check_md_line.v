@@ -13,7 +13,7 @@ fn main() {
 
 		for line in lines {
 			if line.len > 100 {
-				eprintln('$file_path:$line_num with $line.len column width')
+				eprintln('$real_path:$line_num with $line.len column width')
 				errors++
 			}
 			line_num++
