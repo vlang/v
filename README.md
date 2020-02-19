@@ -44,6 +44,8 @@ A stable 0.2 release is planned for February 2020. Right now V is in an alpha st
 
 ### Linux, macOS, Windows, *BSD, Solaris, WSL, Android, Raspbian
 
+1. If you have Git installed 
+
 ```bash
 git clone https://github.com/vlang/v
 cd v
@@ -59,6 +61,17 @@ V is being constantly updated. To update V, simply run:
 ```
 v up
 ```
+
+2. If you do not have Git installed
+
+Download both V source and its auto-translated C source from https://github.com/vlang/v/archive/master.zip and https://github.com/vlang/vc/archive/master.zip.
+
+Unzip both and place all unzipped files together in any directory.
+
+Open `make.bat` with any txt editor, locate `vc\v_win.c` and replace it with full directory, e.g. `C:\vlang\vc\v_win.c`.
+
+Save and then run make. All done!
+
 
 ### C compiler
 
