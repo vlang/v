@@ -703,7 +703,7 @@ fn (p mut Parser) term() string {
 	if p.tok == .mul && line_nr != p.scanner.line_nr {
 		return typ
 	}
-	for p.tok == .mul || p.tok == .div || p.tok == .mod {
+	for p.tok in [.mul, .div, .mod] {
 		tok := p.tok
 		is_mul := tok == .mul
 		is_div := tok == .div
