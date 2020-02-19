@@ -711,20 +711,27 @@ pub fn (s string) contains(p string) bool {
 }
 
 pub fn (s string) starts_with(p string) bool {
-	idx := s.index(p) or {
+	if p.len > s.len {
 		return false
 	}
-	return idx == 0
+	for i := 0; i < p.len; i++ {
+		if s[i] != p[i] {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn (s string) ends_with(p string) bool {
 	if p.len > s.len {
 		return false
 	}
-	idx := s.last_index(p) or {
-		return false
+	for i := 0; i < p.len; i++ {
+		if p[i] != s[s.len - p.len + i] {
+			return false
+		}
 	}
-	return idx == s.len - p.len
+	return true
 }
 
 // TODO only works with ASCII
