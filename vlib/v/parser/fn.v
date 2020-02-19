@@ -151,8 +151,14 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	else {
+		// TODO: prefix c fuctions with C.
+		// since v1 does not currently it sees
+		// `fn C.free` and `fn free` as the same
+		if !is_c {
+			name = p.prepend_mod(name)
+		}
 		p.table.register_fn(table.Fn{
-			name: p.prepend_mod(name)
+			name: name
 			args: args
 			return_type: typ
 			is_variadic: is_variadic
