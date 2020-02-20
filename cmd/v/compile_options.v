@@ -24,7 +24,7 @@ pub fn new_v(args []string) &compiler.V {
 			panic(err)
 		}
 	}
-	vroot := filepath.dir(vexe_path())
+	vroot := filepath.dir(pref.vexe_path())
 	// optional, custom modules search path
 	user_mod_path := cmdline.option(args, '-user_mod_path', '')
 	vlib_path := cmdline.option(args, '-vlib-path', '')
@@ -108,7 +108,7 @@ pub fn new_v(args []string) &compiler.V {
 	}
 	is_repl := '-repl' in args
 	ccompiler := cmdline.option(args, '-cc', '')
-	mut pref := &pref.Preferences{
+	mut prefs := &pref.Preferences{
 		os: pref.os_from_string(target_os)
 		is_so: '-shared' in args
 		is_solive: '-solive' in args
@@ -155,20 +155,20 @@ pub fn new_v(args []string) &compiler.V {
 		compile_defines_all: compile_defines_all
 		mod: mod
 	}
-	if pref.is_verbose || pref.is_debug {
-		println('C compiler=$pref.ccompiler')
+	if prefs.is_verbose || prefs.is_debug {
+		println('C compiler=$prefs.ccompiler')
 	}
 	$if !linux {
-		if pref.is_bare && !out_name.ends_with('.c') {
+		if prefs.is_bare && !out_name.ends_with('.c') {
 			println('V error: -freestanding only works on Linux for now')
 			os.flush_stdout()
 			exit(1)
 		}
 	}
-	pref.fill_with_defaults()
+	prefs.fill_with_defaults()
 
 	// v.exe's parent directory should contain vlib
-	if !os.is_dir(pref.vlib_path) || !os.is_dir(pref.vlib_path + filepath.separator + 'builtin') {
+	if !os.is_dir(prefs.vlib_path) || !os.is_dir(prefs.vlib_path + filepath.separator + 'builtin') {
 		// println('vlib not found, downloading it...')
 		/*
 		ret := os.system('git clone --depth=1 https://github.com/vlang/v .')
@@ -180,16 +180,16 @@ pub fn new_v(args []string) &compiler.V {
 		*/
 		println('vlib not found. It should be next to the V executable.')
 		println('Go to https://vlang.io to install V.')
-		println('(os.executable=${os.executable()} vlib_path=$pref.vlib_path vexe_path=${vexe_path()}')
+		println('(os.executable=${os.executable()} vlib_path=$prefs.vlib_path vexe_path=${pref.vexe_path()}')
 		exit(1)
 	}
 
-	if pref.is_script && !os.exists(dir) {
+	if prefs.is_script && !os.exists(dir) {
 		println('`$dir` does not exist')
 		exit(1)
 	}
 
-	return compiler.new_v(pref)
+	return compiler.new_v(prefs)
 }
 
 fn find_c_compiler_thirdparty_options(args []string) string {

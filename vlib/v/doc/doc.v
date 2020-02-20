@@ -3,7 +3,7 @@ module doc
 import (
 	strings
 	// v.builder
-	// v.pref
+	v.pref
 	v.table
 	v.parser
 	v.ast
@@ -25,7 +25,7 @@ pub fn doc(mod string, table &table.Table) string {
 		table: table
 		mod: mod
 	}
-	mods_path := filepath.dir(vexe_path()) + '/vlib'
+	mods_path := filepath.dir(pref.vexe_path()) + '/vlib'
 	path := filepath.join(mods_path,mod).replace('.', filepath.separator)
 	if !os.exists(path) {
 		println('module "$mod" not found')
@@ -91,14 +91,4 @@ fn (d mut Doc) print_methods() {
 			else {}
 	}
 	}
-}
-
-pub fn vexe_path() string {
-	vexe := os.getenv('VEXE')
-	if '' != vexe {
-		return vexe
-	}
-	real_vexe_path := os.realpath(os.executable())
-	os.setenv('VEXE', real_vexe_path, true)
-	return real_vexe_path
 }

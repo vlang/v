@@ -7,6 +7,7 @@ import (
 	filepath
 	runtime
 	sync
+	v.pref
 )
 
 pub struct TestSession {
@@ -16,7 +17,7 @@ pub mut:
 	vargs     string
 	failed    bool
 	benchmark benchmark.Benchmark
-	
+
 	ntask     int // writing to this should be locked by mu.
 	ntask_mtx &sync.Mutex
 	waitgroup &sync.WaitGroup
@@ -25,23 +26,15 @@ pub mut:
 
 pub fn new_test_session(vargs string) TestSession {
 	return TestSession{
-		vexe: vexe_path()
+		vexe: pref.vexe_path()
 		vargs: vargs
-		
+
 		ntask: 0
 		ntask_mtx: sync.new_mutex()
 		waitgroup: sync.new_waitgroup()
-		
+
 		show_ok_tests: !vargs.contains('-silent')
 	}
-}
-
-pub fn vexe_path() string {
-	// NB: tools extracted from v require that the VEXE
-	// environment variable contains the path to the v executable location.
-	// They are usually launched by cmd/v/simple_tool.v,
-	// launch_tool/1 , which provides it.
-	return os.getenv('VEXE')
 }
 
 pub fn (ts mut TestSession) init() {
@@ -76,7 +69,7 @@ pub fn (ts mut TestSession) test() {
 		}
 		remaining_files << dot_relative_file
 	}
-	
+
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
 
@@ -107,7 +100,7 @@ fn process_in_thread(ts mut TestSession){
 fn (ts mut TestSession) process_files() {
 	tmpd := os.tmpdir()
 	show_stats := '-stats' in ts.vargs.split(' ')
-	
+
 	mut tls_bench := benchmark.new_benchmark() // tls_bench is used to format the step messages/timings
 	tls_bench.set_total_expected_steps( ts.benchmark.nexpected_steps )
 	for {
@@ -116,11 +109,11 @@ fn (ts mut TestSession) process_files() {
 		ts.ntask++
 		idx := ts.ntask-1
 		ts.ntask_mtx.unlock()
-		
+
 		if idx >= ts.files.len { break }
 		tls_bench.cstep = idx
-		
-		dot_relative_file := ts.files[ idx ]			
+
+		dot_relative_file := ts.files[ idx ]
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath(relative_file)
 		// Ensure that the generated binaries will be stored in the temporary folder.
@@ -192,7 +185,7 @@ pub fn vlib_should_be_present(parent_dir string) {
 pub fn v_build_failing(zargs string, folder string) bool {
 	main_label := 'Building $folder ...'
 	finish_label := 'building $folder'
-	vexe := vexe_path()
+	vexe := pref.vexe_path()
 	parent_dir := filepath.dir(vexe)
 	vlib_should_be_present(parent_dir)
 	vargs := zargs.replace(vexe, '')
@@ -233,7 +226,7 @@ pub fn build_v_cmd_failed(cmd string) bool {
 pub fn building_any_v_binaries_failed() bool {
 	eheader('Building V binaries...')
 	eprintln('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
-	vexe := testing.vexe_path()
+	vexe := pref.vexe_path()
 	parent_dir := filepath.dir(vexe)
 	testing.vlib_should_be_present(parent_dir)
 	os.chdir(parent_dir)
