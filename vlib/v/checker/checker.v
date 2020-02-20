@@ -20,6 +20,7 @@ pub struct Checker {
 mut:
 	file      ast.File
 	nr_errors int
+	errors    []string
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -36,6 +37,14 @@ pub fn (c mut Checker) check(ast_file ast.File) {
 	if c.nr_errors > 0 {
 		exit(1)
 	}
+}
+
+pub fn (c mut Checker) check2(ast_file ast.File) []string {
+	c.file = ast_file
+	for stmt in ast_file.stmts {
+		c.stmt(stmt)
+	}
+	return c.errors
 }
 
 pub fn (c mut Checker) check_files(ast_files []ast.File) {
@@ -630,6 +639,7 @@ pub fn (c mut Checker) error(s string, pos token.Position) {
 		path = path.replace(workdir, '')
 	}
 	final_msg_line := '$path:$pos.line_nr: checker error #$c.nr_errors: $s'
+	c.errors << final_msg_line
 	eprintln(final_msg_line)
 	/*
 	if colored_output {
