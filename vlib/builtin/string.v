@@ -752,6 +752,9 @@ pub fn (s string) to_upper() string {
 }
 
 pub fn (s string) capitalize() string {
+	if s.len == 0 {
+		return ''
+	}
 	sl := s.to_lower()
 	cap := sl[0].str().to_upper() + sl.right(1)
 	return cap
