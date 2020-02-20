@@ -7,6 +7,7 @@ fns.txt
 /v.c
 /v.*.c
 /v.c.out
+/cmd/tools/check-md-len
 /cmd/tools/performance_compare
 /cmd/tools/oldv
 /cmd/tools/vrepl
