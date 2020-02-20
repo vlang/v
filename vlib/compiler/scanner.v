@@ -264,7 +264,7 @@ fn (s mut Scanner) ident_number() string {
 
 fn (s mut Scanner) skip_whitespace() {
 	// if s.is_vh { println('vh') return }
-	for s.pos < s.text.len && s.text[s.pos].is_white() {
+	for s.pos < s.text.len && s.text[s.pos].is_space() {
 		if is_nl(s.text[s.pos]) && s.is_vh {
 			return
 		}
