@@ -917,6 +917,9 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		if p.peek_tok.kind == .decl_assign {
 			init = p.var_decl()
 		}
+		else if p.peek_tok.kind == .assign {
+			init = p.assign_stmt()
+		}
 		else if p.tok.kind != .semicolon {}
 		// allow `for ;; i++ {`
 		// Allow `for i = 0; i < ...`

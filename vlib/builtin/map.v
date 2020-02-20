@@ -108,7 +108,10 @@ fn (m mut map) set(key string, value voidptr) {
 	// Match is not possible anymore.
 	// Probe until an empty index is found.
 	// Swap when probe count is higher/richer (Robin Hood).
-	mut current_kv := KeyValue{key, malloc(m.value_bytes)}
+	mut current_kv := KeyValue{
+		key:key
+		value:malloc(m.value_bytes)
+	}
 	C.memcpy(current_kv.value, value, m.value_bytes)
 	for m.probe_hash[index] != 0 {
 		if probe_hash > m.probe_hash[index] {
