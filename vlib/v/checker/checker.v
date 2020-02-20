@@ -33,6 +33,9 @@ pub fn (c mut Checker) check(ast_file ast.File) {
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
+	if c.nr_errors > 0 {
+		exit(1)
+	}
 }
 
 pub fn (c mut Checker) check_files(ast_files []ast.File) {
@@ -121,7 +124,6 @@ fn (c mut Checker) check_assign_expr(assign_expr ast.AssignExpr) {
 
 pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	fn_name := call_expr.name
-
 	mut found := false
 	// look for function in format `mod.fn` or `fn` (main/builtin)
 	mut f := table.Fn{}
@@ -139,7 +141,6 @@ pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	if !found {
 		c.error('unknown fn: $fn_name', call_expr.pos)
 	}
-
 	if f.is_c || call_expr.is_c {
 		return f.return_type
 	}
