@@ -650,26 +650,22 @@ fn print_c_errno() {
 
 [deprecated]
 pub fn ext(path string) string {
-	println('Use filepath.ext')
-	return filepath.ext(path)
+	panic('Use `filepath.exe` instead of `os.ext`')
 }
 
 [deprecated]
 pub fn dir(path string) string {
-	println('Use filepath.dir')
-	return filepath.dir(path)
+	panic('Use `filepath.dir` instead of `os.dir`')
 }
 
 [deprecated]
 pub fn basedir(path string) string {
-	println('Use filepath.basedir')
-	return filepath.basedir(path)
+	panic('Use `filepath.basedir` instead of `os.basedir`')
 }
 
 [deprecated]
 pub fn filename(path string) string {
-	println('Use filepath.filename')
-	return filepath.filename(path)
+	panic('Use `filepath.filename` instead of `os.filename`')
 }
 
 // get_line returns a one-line string from stdin
@@ -895,9 +891,9 @@ pub fn executable() string {
 
 [deprecated]
 pub fn dir_exists(path string) bool {
-	panic('use os.is_dir()')
-	// return false
+	panic('Use `os.is_dir` instead of `os.dir_exists`')
 }
+
 // is_dir returns a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
