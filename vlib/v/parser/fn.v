@@ -18,16 +18,12 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		name: fn_name
 		args: args
 		// tok: tok
-		
 		pos: tok.position()
 		is_c: is_c
 	}
 	if p.tok.kind == .key_orelse {
 		p.next()
 		p.parse_block()
-	}
-	if f := p.table.find_fn(fn_name) {
-		return node
 	}
 	return node
 }

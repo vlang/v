@@ -18,21 +18,18 @@ const (
 pub struct Checker {
 	table     &table.Table
 mut:
-	file_name string
-	scope     &ast.Scope
+	file      ast.File
 	nr_errors int
 }
 
 pub fn new_checker(table &table.Table) Checker {
 	return Checker{
 		table: table
-		scope: 0
 	}
 }
 
 pub fn (c mut Checker) check(ast_file ast.File) {
-	c.file_name = ast_file.path
-	c.scope = &ast_file.scope
+	c.file = ast_file
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
@@ -124,30 +121,44 @@ fn (c mut Checker) check_assign_expr(assign_expr ast.AssignExpr) {
 
 pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	fn_name := call_expr.name
-	if f := c.table.find_fn(fn_name) {
-		// return_ti := f.return_ti
-		if f.is_c || call_expr.is_c {
-			return f.return_type
+
+	mut found := false
+	// look for function in format `mod.fn` or `fn` (main/builtin)
+	mut f := table.Fn{}
+	if f1 := c.table.find_fn(fn_name) {
+		found = true
+		f = f1
+	}
+	// try prefix with current module as it would have never gotten prefixed
+	if !found && !fn_name.contains('.') {
+		if f1 := c.table.find_fn('${c.file.mod.name}.$fn_name') {
+			found = true
+			f = f1
 		}
-		if call_expr.args.len < f.args.len {
-			c.error('too few arguments in call to `$fn_name`', call_expr.pos)
-		}
-		else if !f.is_variadic && call_expr.args.len > f.args.len {
-			c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)', call_expr.pos)
-		}
-		for i, arg_expr in call_expr.args {
-			arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
-			typ := c.expr(arg_expr)
-			typ_sym := c.table.get_type_symbol(typ)
-			arg_typ_sym := c.table.get_type_symbol(arg.typ)
-			if !c.table.check(typ, arg.typ) {
-				c.error('!cannot use type `$typ_sym.name` as type `$arg_typ_sym.name` in argument ${i+1} to `$fn_name`', call_expr.pos)
-			}
-		}
+	}
+	if !found {
+		c.error('unknown fn: $fn_name', call_expr.pos)
+	}
+
+	if f.is_c || call_expr.is_c {
 		return f.return_type
 	}
-	c.error('unknown fn: $fn_name', call_expr.pos)
-	exit(1)
+	if call_expr.args.len < f.args.len {
+		c.error('too few arguments in call to `$fn_name`', call_expr.pos)
+	}
+	else if !f.is_variadic && call_expr.args.len > f.args.len {
+		c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)', call_expr.pos)
+	}
+	for i, arg_expr in call_expr.args {
+		arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
+		typ := c.expr(arg_expr)
+		typ_sym := c.table.get_type_symbol(typ)
+		arg_typ_sym := c.table.get_type_symbol(arg.typ)
+		if !c.table.check(typ, arg.typ) {
+			c.error('!cannot use type `$typ_sym.name` as type `$arg_typ_sym.name` in argument ${i+1} to `$fn_name`', call_expr.pos)
+		}
+	}
+	return f.return_type
 }
 
 pub fn (c mut Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) table.Type {
@@ -399,8 +410,8 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		if info.typ != 0 {
 			return info.typ
 		}
-		start_scope := c.scope.innermost(ident.pos.pos) or {
-			c.scope
+		start_scope := c.file.scope.innermost(ident.pos.pos) or {
+			c.file.scope
 		}
 		mut found := true
 		mut var_scope := &ast.Scope(0)
@@ -597,7 +608,7 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 pub fn (c mut Checker) error(s string, pos token.Position) {
 	c.nr_errors++
 	print_backtrace()
-	mut path := c.file_name
+	mut path := c.file.path
 	// Get relative path
 	workdir := os.getwd() + filepath.separator
 	if path.starts_with(workdir) {

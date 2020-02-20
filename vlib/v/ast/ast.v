@@ -212,7 +212,7 @@ pub:
 	mod     Module
 	imports []Import
 	stmts   []Stmt
-	scope   Scope
+	scope   &Scope
 }
 
 pub struct IdentFunc {

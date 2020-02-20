@@ -109,7 +109,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		mod: module_decl
 		imports: imports
 		stmts: stmts
-		scope: *p.scope
+		scope: p.scope
 	}
 }
 
@@ -520,9 +520,10 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	mut node := ast.Expr{}
 	is_c := p.tok.lit == 'C'
 	mut mod := ''
-	if p.peek_tok.kind == .dot && (is_c || p.tok.lit in p.imports) {
+	if p.peek_tok.kind == .dot && (is_c || p.known_import(p.tok.lit)) {
 		if !is_c {
-			mod = p.tok.lit
+			// prepend the full import
+			mod = p.imports[p.tok.lit]
 		}
 		p.next()
 		p.check(.dot)
@@ -1653,13 +1654,6 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 	return ast.TypeDecl{
 		name: name
 	}
-}
-
-fn (p &Parser) prepend_mod(name string) string {
-	if p.builtin_mod || p.mod == 'main' {
-		return name
-	}
-	return '${p.mod}.${name}'
 }
 
 fn verror(s string) {

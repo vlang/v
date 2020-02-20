@@ -3,11 +3,6 @@
 // that can be found in the LICENSE file.
 module table
 
-import (
-	v.token
-	// v.ast
-)
-
 pub struct Table {
 	// struct_fields map[string][]string
 pub mut:
@@ -400,11 +395,3 @@ pub fn (t &Table) check(got, expected Type) bool {
 	return true
 }
 
-pub fn (t &Table) known_import(name string) bool {
-	for i in t.imports {
-		if i.all_after('.') == name {
-			return true
-		}
-	}
-	return false
-}

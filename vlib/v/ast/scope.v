@@ -105,16 +105,23 @@ fn (s &Scope) contains(pos int) bool {
 	return pos > s.start_pos && pos < s.end_pos
 }
 
-pub fn (sc &Scope) print_vars(level int) {
+pub fn (sc &Scope) show(level int) string {
+	mut out := ''
 	mut indent := ''
 	for _ in 0 .. level * 4 {
 		indent += ' '
 	}
-	println('$indent# $sc.start_pos - $sc.end_pos')
+	out += '$indent# $sc.start_pos - $sc.end_pos\n'
 	for _, var in sc.vars {
-		println('$indent  * $var.name - $var.typ')
+		out += '$indent  * $var.name - $var.typ\n'
 	}
 	for child in sc.children {
-		child.print_vars(level + 1)
+		out += child.show(level + 1)
 	}
+	return out
 }
+
+pub fn (sc &Scope) str() string {
+	return sc.show(0)
+}
+

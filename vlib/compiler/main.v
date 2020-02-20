@@ -327,11 +327,12 @@ pub fn (v mut V) compile2() {
 		println(v.files)
 	}
 	// v1 compiler files
-	v.add_v_files_to_compile()
+	//v.add_v_files_to_compile()
 	//v.files << v.dir
 	// v2 compiler
-	//v.files << v.get_builtin_files()
-	//v.files << v.get_user_files()
+	v.files << v.get_builtin_files()
+	v.files << v.get_user_files()
+	v.set_module_lookup_paths()
 	if v.pref.is_verbose {
 		println('all .v files:')
 		println(v.files)

@@ -34,14 +34,14 @@ fn test_eval() {
 	]
 	/*
 	table := table.new_table()
-	mut scope := ast.Scope{start_pos: 0, parent: 0}
+	mut scope := &ast.Scope{start_pos: 0, parent: 0}
 	mut stmts := []ast.Stmt
 	for input in inputs {
-		stmts << parse_stmt(input, table, &scope)
+		stmts << parse_stmt(input, table, scope)
 	}
 	file := ast.File{
 		stmts: stmts
-		scope: &scope
+		scope: scope
 	}
 	mut checker := checker.new_checker(table)
 	checker.check(file)
@@ -87,10 +87,10 @@ fn test_one() {
 	]
 	expected := 'int a = 10;int b = -a;int c = 20;'
 	table := table.new_table()
-	mut scope := ast.Scope{start_pos: 0, parent: 0}
+	mut scope := &ast.Scope{start_pos: 0, parent: 0}
 	mut e := []ast.Stmt
 	for line in input {
-		e << parse_stmt(line, table, &scope)
+		e << parse_stmt(line, table, scope)
 	}
 	program := ast.File{
 		stmts: e
@@ -179,10 +179,10 @@ fn test_parse_expr() {
 	mut e := []ast.Stmt
 	table := table.new_table()
 	mut checker := checker.new_checker(table)
-	mut scope := ast.Scope{start_pos: 0, parent: 0}
+	mut scope := &ast.Scope{start_pos: 0, parent: 0}
 	for s in input {
 		println('\n\nst="$s"')
-		e << parse_stmt(s, table, &scope)
+		e << parse_stmt(s, table, scope)
 	}
 	program := ast.File{
 		stmts: e
