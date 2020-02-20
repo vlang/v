@@ -159,7 +159,7 @@ pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 		if !c.table.check(typ, arg.typ) {
 			// str method, allow type with str method if fn arg is string
 			if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
-				break
+				continue
 			}
 			c.error('!cannot use type `$typ_sym.name` as type `$arg_typ_sym.name` in argument ${i+1} to `$fn_name`', call_expr.pos)
 		}
