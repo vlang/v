@@ -127,4 +127,8 @@ void matches() {
 int path_sep = 10;
 
 void end() {
+	int i = 2;
+	int key = 10;
+	bool x = i != -1 && key == 10;
+	int e = 2 + 3 * 4;
 }

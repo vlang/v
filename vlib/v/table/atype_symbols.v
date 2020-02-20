@@ -8,13 +8,13 @@ MultiReturn | Alias
 
 pub struct TypeSymbol {
 pub:
-	parent  &TypeSymbol
+	parent_idx int
 mut:
-	info    TypeInfo
-	kind    Kind
-	name    string
-	methods []Fn
-	// is_sum  bool
+	info       TypeInfo
+	kind       Kind
+	name       string
+	methods    []Fn
+	// is_sum    bool
 }
 
 pub const (
@@ -35,15 +35,17 @@ pub const (
 	f64_type_idx = 14
 	char_type_idx = 15
 	bool_type_idx = 16
+	none_type_idx = 17
 	// advanced / defined from v structs
-	string_type_idx = 17
-	array_type_idx = 18
-	map_type_idx = 19
+	string_type_idx = 18
+	array_type_idx = 19
+	map_type_idx = 20
 )
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16', 'u32', 'u64',
-	'f32', 'f64', 'string', 'char', 'byte', 'bool', 'struct', 'array', 'array_fixed', 'map']
+	'f32', 'f64', 'string', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed', 'map', 'struct',
+	'mapnode', 'ustring']
 )
 
 pub struct MultiReturn {
@@ -71,15 +73,15 @@ pub enum Kind {
 	f64
 	char
 	bool
+	none_
 	string
-	struct_
 	array
 	array_fixed
 	map
+	struct_
 	multi_return
 	sum_type
 	alias
-	unresolved
 }
 
 [inline]
@@ -156,108 +158,92 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .placeholder
 		name: 'reserved_0'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .void
 		name: 'void'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .voidptr
 		name: 'voidptr'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .byteptr
 		name: 'byteptr'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .charptr
 		name: 'charptr'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .i8
 		name: 'i8'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .i16
 		name: 'i16'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .int
 		name: 'int'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .i64
 		name: 'i64'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .byte
 		name: 'byte'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .u16
 		name: 'u16'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .u32
 		name: 'u32'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .u64
 		name: 'u64'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .f32
 		name: 'f32'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .f64
 		name: 'f64'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .char
 		name: 'char'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .bool
 		name: 'bool'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
+		kind: .none_
+		name: 'none'
+	})
+	t.register_type_symbol(TypeSymbol{
 		kind: .string
 		name: 'string'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .array
 		name: 'array'
 	})
 	t.register_type_symbol(TypeSymbol{
-		parent: 0
 		kind: .map
 		name: 'map'
 	})
 	// TODO: remove
 	t.register_type_symbol(TypeSymbol{
-		parent: &t.types[map_type_idx]
+		parent_idx: map_type_idx
 		kind: .struct_
 		name: 'map_string'
 	})
@@ -280,9 +266,6 @@ pub fn (t &TypeSymbol) is_number() bool {
 
 pub fn (k Kind) str() string {
 	k_str := match k {
-		.unresolved{
-			'unresolved'
-		}
 		.placeholder{
 			'placeholder'
 		}
@@ -339,6 +322,9 @@ pub fn (k Kind) str() string {
 		}
 		.bool{
 			'bool'
+		}
+		.none_{
+			'none'
 		}
 		.array{
 			'array'

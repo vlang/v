@@ -3,13 +3,16 @@
 // that can be found in the LICENSE file.
 module main
 
-import os
+import (
+	os
+	v.pref
+)
 
 fn create_symlink() {
 	$if windows {
 		return
 	}
-	vexe := vexe_path()
+	vexe := pref.vexe_path()
 	mut link_path := '/usr/local/bin/v'
 	mut ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
 	if ret.exit_code == 0 {
@@ -28,4 +31,3 @@ fn create_symlink() {
 			println('Failed to create symlink "$link_path". Try again with sudo.')
 	}
 }
-

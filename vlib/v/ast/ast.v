@@ -11,11 +11,12 @@ import (
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
-CastExpr | EnumVal | Assoc
+CastExpr | EnumVal | Assoc | SizeOf | None
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
+LineComment | MultiLineComment
 
 pub type Type = StructType | ArrayType
 
@@ -130,6 +131,8 @@ pub:
 	is_pub      bool
 	is_variadic bool
 	receiver    Field
+	is_method   bool
+	rec_mut     bool // is receiver mutable
 }
 
 pub struct BranchStmt {
@@ -145,6 +148,7 @@ mut:
 // func       Expr
 	name string
 	args []Expr
+	is_c bool
 }
 
 pub struct MethodCallExpr {
@@ -208,7 +212,7 @@ pub:
 	mod     Module
 	imports []Import
 	stmts   []Stmt
-	scope   Scope
+	scope   &Scope
 }
 
 pub struct IdentFunc {
@@ -334,9 +338,10 @@ pub:
 
 pub struct ForStmt {
 pub:
-	cond  Expr
-	stmts []Stmt
-	pos   token.Position
+	cond   Expr
+	stmts  []Stmt
+	pos    token.Position
+	is_inf bool // `for {}`
 }
 
 pub struct ForInStmt {
@@ -344,6 +349,7 @@ pub:
 	var   string
 	cond  Expr
 	stmts []Stmt
+	pos   token.Position
 }
 
 pub struct ForCStmt {
@@ -452,6 +458,25 @@ pub:
 	name string
 }
 
+pub struct SizeOf {
+pub:
+	type_name string
+}
+
+pub struct LineComment {
+pub:
+	text string
+}
+
+pub struct MultiLineComment {
+pub:
+	text string
+}
+
+pub struct None {
+pub:
+	foo int // todo
+}
 // string representaiton of expr
 pub fn (x Expr) str() string {
 	match x {

@@ -30,7 +30,7 @@ fn (v mut V) cc() {
 		return
 	}
 	v.build_thirdparty_obj_files()
-	vexe := vexe_path()
+	vexe := pref.vexe_path()
 	vdir := filepath.dir(vexe)
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`

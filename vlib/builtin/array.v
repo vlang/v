@@ -481,15 +481,18 @@ pub fn (a []char) index(v char) int {
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
 	mut _accum := 0
+	/*
 	_accum = accum_start
 	for i := 0; i < a.len; i++ {
 		_accum = iter(_accum, a[i])
 	}
+	*/
 	return _accum
 }
 
 // array_eq<T> checks if two arrays contain all the same elements in the same order.
 // []int == []int (also for: i64, f32, f64, byte, string)
+/*
 fn array_eq<T>(a1, a2 []T) bool {
 	if a1.len != a2.len {
 		return false
@@ -510,9 +513,6 @@ pub fn (a []i64) eq(a2 []i64) bool {
 	return array_eq(a, a2)
 }
 
-pub fn (a []string) eq(a2 []string) bool {
-	return array_eq(a, a2)
-}
 
 pub fn (a []byte) eq(a2 []byte) bool {
 	return array_eq(a, a2)
@@ -520,6 +520,20 @@ pub fn (a []byte) eq(a2 []byte) bool {
 
 pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
+}
+*/
+
+pub fn (a1 []string) eq(a2 []string) bool {
+	//return array_eq(a, a2)
+	if a1.len != a2.len {
+		return false
+	}
+	for i := 0; i < a1.len; i++ {
+		if a1[i] != a2[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // compare_i64 for []f64 sort_with_compare()

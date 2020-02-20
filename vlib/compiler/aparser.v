@@ -450,7 +450,7 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	p.fgen_nl()
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod in ['gg2', 'ui', 'uiold', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
+	p.can_chash = p.mod in ['parser', 'gg2', 'ui', 'uiold', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
 	fq_mod := if p.pref.build_mode == .build_module && p.v.pref.mod.ends_with(p.mod) { p.v.pref.mod }
@@ -1673,6 +1673,21 @@ fn ($v.name mut $v.typ) ${p.cur_fn.name}(...) {
 			p.error_with_token_index('incompatible types: $p.assigned_type != $p.expected_type', errtok)
 		}
 		p.cgen.resetln('memcpy( (& $left), ($etype{$expr}), sizeof( $left ) );')
+	}
+	// check type for +=, -=, *=, /=. 
+	else if tok in [.plus_assign, .minus_assign, .mult_assign, .div_assign] {
+		// special 1. ptrs with += or -= are acceptable.
+		if !(tok in [.plus_assign, .minus_assign] && (is_integer_type(p.assigned_type) || is_pointer_type(p.assigned_type)) && (is_integer_type(expr_type) || is_pointer_type(expr_type))) {
+			// special 2. `str += str` is acceptable 
+			if !(tok == .plus_assign && p.assigned_type == expr_type && expr_type == 'string' ) {
+				if !is_number_type(p.assigned_type) {
+					p.error_with_token_index('cannot use assignment operator ${tok.str()} on non-numeric type `$p.assigned_type`', errtok)
+				}
+				if !is_number_type(expr_type) {
+					p.error_with_token_index('cannot use non-numeric type `$expr_type` as assignment operator ${tok.str()} argument', errtok)
+				}
+			}
+		}
 	}
 	// check type for <<= >>= %= ^= &= |=
 	else if tok in [.left_shift_assign, .righ_shift_assign, .mod_assign, .xor_assign, .and_assign, .or_assign] {

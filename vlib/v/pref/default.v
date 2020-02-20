@@ -66,8 +66,7 @@ fn default_c_compiler() string {
 	return 'cc'
 }
 
-//TODO Remove code duplication
-fn vexe_path() string {
+pub fn vexe_path() string {
 	vexe := os.getenv('VEXE')
 	if vexe != '' {
 		return vexe

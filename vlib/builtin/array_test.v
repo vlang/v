@@ -413,6 +413,7 @@ fn sub(prev int, curr int) int {
 	return prev - curr
 }
 
+/*
 fn test_reduce() {
 	a := [1, 2, 3, 4, 5]
 	b := a.reduce(sum, 0)
@@ -427,6 +428,7 @@ fn test_reduce() {
 	assert f == -6
 	assert g == -7
 }
+*/
 
 fn test_filter() {
 	a := [1, 2, 3, 4, 5, 6]
@@ -462,6 +464,7 @@ fn test_map() {
 
 fn test_array_str() {
 	numbers := [1, 2, 3]
+	// assert numbers == [1,2,3]
 	numbers2 := [numbers, [4, 5, 6]] // dup str() bug
 	assert true
 	assert numbers.str() == '[1, 2, 3]'
@@ -596,15 +599,15 @@ fn test_clear() {
 fn test_trim() {
 	mut arr := [1,2,3,4,5,6,7,8,9]
 	assert arr.len == 9
-	
+
 	arr.trim(9)
 	assert arr.len == 9
 	assert arr.last() == 9
-	
+
 	arr.trim(7)
 	assert arr.len == 7
 	assert arr.last() == 7
-	
+
 	arr.trim(2)
 	assert arr.len == 2
 	assert arr.last() == 2

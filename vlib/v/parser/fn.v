@@ -8,9 +8,10 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) call_expr() ast.CallExpr {
+pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	tok := p.tok
-	fn_name := p.check_name()
+	name := p.check_name()
+	fn_name := if mod.len > 0 { '${mod}.$name' } else { name }
 	p.check(.lpar)
 	args := p.call_args()
 	node := ast.CallExpr{
@@ -18,13 +19,11 @@ pub fn (p mut Parser) call_expr() ast.CallExpr {
 		args: args
 		// tok: tok
 		pos: tok.position()
+		is_c: is_c
 	}
 	if p.tok.kind == .key_orelse {
 		p.next()
 		p.parse_block()
-	}
-	if f := p.table.find_fn(fn_name) {
-		return node
 	}
 	return node
 }
@@ -46,6 +45,7 @@ pub fn (p mut Parser) call_args() []ast.Expr {
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
+	// p.table.clear_vars()
 	p.open_scope()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -62,18 +62,20 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	mut rec_name := ''
 	mut is_method := false
 	mut rec_type := table.void_type
+	mut rec_mut := false
 	if p.tok.kind == .lpar {
 		is_method = true
 		p.next()
 		rec_name = p.check_name()
 		if p.tok.kind == .key_mut {
 			p.next()
+			rec_mut = true
 		}
 		rec_type = p.parse_type()
-		//p.table.register_var(table.Var{
-		//	name: rec_name
-		//	typ: rec_type
-		//})
+		// p.table.register_var(table.Var{
+		// name: rec_name
+		// typ: rec_type
+		// })
 		p.scope.register_var(ast.VarDecl{
 			name: rec_name
 			typ: rec_type
@@ -105,7 +107,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			name: ast_arg.name
 			typ: ast_arg.typ
 		})
-		//p.table.register_var(var)
+		// p.table.register_var(var)
 	}
 	//
 	/*
@@ -141,6 +143,12 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	else {
+		// TODO: prefix c fuctions with C.
+		// since v1 does not currently it sees
+		// `fn C.free` and `fn free` as the same
+		if !is_c {
+			name = p.prepend_mod(name)
+		}
 		p.table.register_fn(table.Fn{
 			name: name
 			args: args
@@ -165,6 +173,8 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			name: rec_name
 			typ: rec_type
 		}
+		is_method: is_method
+		rec_mut: rec_mut
 	}
 }
 
@@ -175,7 +185,7 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 	// `int, int, string` (no names, just types)
 	types_only := p.tok.kind in [.amp] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) || p.peek_tok.kind == .rpar
 	if types_only {
-		p.warn('types only')
+		// p.warn('types only')
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
 			arg_name := 'arg_$arg_no'

@@ -7,6 +7,8 @@ import (
 	compiler
 	internal.help
 	os
+	v.table
+	v.doc
 )
 
 const (
@@ -43,6 +45,12 @@ fn main() {
 		eprintln('v command: $command')
 		eprintln('v options: $option')
 	}
+	if command == 'doc' {
+		mod := arg[arg.len-1]
+		table := table.new_table()
+		println(doc.doc(mod, table))
+		return
+	}
 	if command in simple_cmd {
 		// External tools
 		launch_tool(is_verbose, 'v' + command, command)
@@ -60,20 +68,20 @@ fn main() {
 			launch_tool(is_verbose, 'vrepl', '')
 		}
 		'translate' {
-			println('Translating C to V will be available in V 0.3 (January)')
+			println('Translating C to V will be available in V 0.3')
 		}
 		'search', 'install', 'update', 'remove' {
 			launch_tool(is_verbose, 'vpm', command)
 		}
 		'get' {
-			println('Use `v install` to install modules from vpm.vlang.io.')
+			println('Use `v install` to install modules from vpm.vlang.io')
 		}
 		'symlink' {
 			create_symlink()
 		}
-		'doc' {
-			println('Currently unimplemented')
-		}
+		//'doc' {
+			//println('Currently unimplemented')
+		//}
 		else {
 			eprintln('v $command: unknown command\nRun "v help" for usage.')
 			exit(1)

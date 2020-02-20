@@ -9,7 +9,7 @@ mut:
 	children  []&Scope
 	start_pos int
 	end_pos   int
-	//vars      map[string]table.Var
+	// vars      map[string]table.Var
 	vars      map[string]VarDecl
 }
 
@@ -46,7 +46,7 @@ pub fn (s &Scope) find_var(name string) ?VarDecl {
 
 pub fn (s mut Scope) register_var(var VarDecl) {
 	if x := s.find_var(var.name) {
-		println('existing var: $var.name')
+		// println('existing var: $var.name')
 		return
 	}
 	s.vars[var.name] = var
@@ -61,21 +61,21 @@ pub fn (s &Scope) innermost(pos int) ?&Scope {
 	if s.contains(pos) {
 		// binary search
 		mut first := 0
-		mut last := s.children.len-1
-		mut middle := last/2
+		mut last := s.children.len - 1
+		mut middle := last / 2
 		for first <= last {
-			//println('FIRST: $first, LAST: $last, LEN: $s.children.len-1')
+			// println('FIRST: $first, LAST: $last, LEN: $s.children.len-1')
 			s1 := s.children[middle]
 			if s1.end_pos < pos {
-				first = middle+1
+				first = middle + 1
 			}
 			else if s1.contains(pos) {
 				return s1.innermost(pos)
 			}
 			else {
-				last = middle-1
+				last = middle - 1
 			}
-			middle = (first+last)/2
+			middle = (first + last) / 2
 			if first > last {
 				break
 			}
@@ -99,21 +99,29 @@ pub fn (s &Scope) innermost(pos int) ?&Scope {
 }
 */
 
+
 [inline]
 fn (s &Scope) contains(pos int) bool {
 	return pos > s.start_pos && pos < s.end_pos
 }
 
-pub fn (sc &Scope) print_vars(level int) {
+pub fn (sc &Scope) show(level int) string {
+	mut out := ''
 	mut indent := ''
-	for _ in 0..level*4 {
+	for _ in 0 .. level * 4 {
 		indent += ' '
 	}
-	println('$indent# $sc.start_pos - $sc.end_pos')
+	out += '$indent# $sc.start_pos - $sc.end_pos\n'
 	for _, var in sc.vars {
-		println('$indent  * $var.name - $var.typ')
+		out += '$indent  * $var.name - $var.typ\n'
 	}
 	for child in sc.children {
-		child.print_vars(level+1)
+		out += child.show(level + 1)
 	}
+	return out
 }
+
+pub fn (sc &Scope) str() string {
+	return sc.show(0)
+}
+

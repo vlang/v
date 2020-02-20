@@ -1,0 +1,70 @@
+fn hello() {
+	mut a := 3 + 3
+	a = 10
+	a++
+	-23
+	b := 42
+	println('hello')
+	abc()
+	if true {
+		a = 10
+		a++
+	} else {
+		println('false')
+	}
+}
+
+const (
+	pi = 3.14
+)
+
+struct User {
+	name            string
+	age             int
+	very_long_field bool
+}
+
+fn abc() int {
+	mut u := User{
+		name: 'Bob'
+	}
+	u.age = 20
+	nums := [1, 2, 3]
+	number := nums[0]
+	return 0
+}
+
+fn new_user() User {
+	return User{
+		name: 'Serious Sam'
+		age: 19
+	}
+}
+
+fn voidfn() {
+	println('this is a function that does not return anything')
+}
+
+fn fn_with_1_arg(arg int) int {
+	return 0
+}
+
+fn fn_with_2a_args(arg1, arg2 int) int {
+	return 0
+}
+
+fn fn_with_2_args_to_be_shorten(arg1, arg2 int) int {
+	return 0
+}
+
+fn fn_with_2b_args(arg1 string, arg2 int) int {
+	return 0
+}
+
+fn fn_with_3_args(arg1 string, arg2 int, arg3 User) int {
+	return 0
+}
+
+fn (this User) fn_with_receiver() {
+	println('')
+}

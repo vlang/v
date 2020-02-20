@@ -67,7 +67,7 @@ pub fn (p mut Parser) parse_multi_return_type() table.Type {
 }
 
 pub fn (p mut Parser) parse_fn_type() table.Type {
-	p.warn('parrse fn')
+	// p.warn('parrse fn')
 	p.check(.key_fn)
 	// p.fn_decl()
 	p.fn_args()
@@ -101,16 +101,17 @@ pub fn (p mut Parser) parse_type() table.Type {
 	// `module.Type`
 	if p.peek_tok.kind == .dot {
 		// /if !(p.tok.lit in p.table.imports) {
-		if !p.table.known_import(p.tok.lit) {
+		if !p.known_import(name) {
 			println(p.table.imports)
 			p.error('unknown module `$p.tok.lit`')
 		}
 		p.next()
 		p.check(.dot)
-		name += '.' + p.tok.lit
+		// prefix with full module
+		name = '${p.imports[name]}.$p.tok.lit'
 	}
 	// `Foo` in module `mod` means `mod.Foo`
-	else if p.mod != 'main' && !(name in table.builtin_type_names) {
+	else if !(p.mod in ['builtin', 'main']) && !(name in table.builtin_type_names) {
 		name = p.mod + '.' + name
 	}
 	// p.warn('get type $name')
@@ -196,7 +197,7 @@ pub fn (p mut Parser) parse_type() table.Type {
 					}
 					// not found - add placeholder
 					idx = p.table.add_placeholder_type(name)
-					println('NOT FOUND: $name - adding placeholder - $idx')
+					// println('NOT FOUND: $name - adding placeholder - $idx')
 					return table.new_type_ptr(idx, nr_muls)
 				}
 	}

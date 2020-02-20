@@ -7,10 +7,11 @@ import (
 	compiler
 	filepath
 	os
+	v.pref
 )
 
 fn launch_tool(is_verbose bool, tname string, cmdname string) {
-	vexe := vexe_path()
+	vexe := pref.vexe_path()
 	vroot := filepath.dir(vexe)
 	compiler.set_vroot_folder(vroot)
 
@@ -20,7 +21,7 @@ fn launch_tool(is_verbose bool, tname string, cmdname string) {
 	}
 	mut compilation_options := os.args[1..tname_index].clone()
 	tool_args := os.args[1..].join(' ')
-	tool_exe := os.realpath('$vroot/cmd/tools/$tname')
+	tool_exe := path_of_executable(os.realpath('$vroot/cmd/tools/$tname'))
 	tool_source := os.realpath('$vroot/cmd/tools/${tname}.v')
 	tool_command := '"$tool_exe" $tool_args'
 	if is_verbose {
@@ -55,7 +56,7 @@ fn launch_tool(is_verbose bool, tname string, cmdname string) {
 		compilation_args := compilation_options.join(' ')
 		compilation_command := '"$vexe" $compilation_args "$tool_source"'
 		if is_verbose {
-			eprintln('Compiling $tname with: "$compilation_command"') 
+			eprintln('Compiling $tname with: "$compilation_command"')
 		}
 		tool_compilation := os.exec(compilation_command) or { panic(err) }
 		if tool_compilation.exit_code != 0 {
@@ -65,6 +66,13 @@ fn launch_tool(is_verbose bool, tname string, cmdname string) {
 	if is_verbose {
 		eprintln('launch_tool running tool command: $tool_command ...')
 	}
-	
+
 	exit(os.system(tool_command))
+}
+
+fn path_of_executable(path string) string {
+	$if windows {
+		return path + '.exe'
+	}
+	return path
 }
