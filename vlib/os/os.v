@@ -650,7 +650,7 @@ fn print_c_errno() {
 
 [deprecated]
 pub fn ext(path string) string {
-	panic('Use `filepath.exe` instead of `os.ext`')
+	panic('Use `filepath.ext` instead of `os.ext`')
 }
 
 [deprecated]
