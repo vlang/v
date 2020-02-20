@@ -9,7 +9,7 @@ pub:
 	lit     string // literal representation of the token
 	line_nr int // the line number in the source where the token occured
 	// name_idx int // name table index for O(1) lookup
-	pos      int // the position of the token in scanner text
+	pos     int // the position of the token in scanner text
 }
 
 pub enum Kind {
@@ -304,21 +304,26 @@ pub fn (t Token) str() string {
 }
 
 // Representation of highest and lowest precedence
+/*
 pub const (
 	lowest_prec = 0
 	highest_prec = 8
 )
+*/
+
 
 pub enum Precedence {
 	lowest
 	cond // OR or AND
+	in_as
 	assign // =
 	eq // == or !=
-	less_greater // > or <
+	// less_greater // > or <
 	sum // + or -
 	product // * or /
-	mod // %
+	// mod // %
 	prefix // -X or !X
+	postfix
 	call // func(X) or foo.method(X)
 	index // array[index], map[key]
 }
@@ -329,10 +334,10 @@ pub fn build_precedences() []Precedence {
 	p[Kind.assign] = .assign
 	p[Kind.eq] = .eq
 	p[Kind.ne] = .eq
-	p[Kind.lt] = .less_greater
-	p[Kind.gt] = .less_greater
-	p[Kind.le] = .less_greater
-	p[Kind.ge] = .less_greater
+	p[Kind.lt] = .eq // less_greater
+	p[Kind.gt] = .eq // less_greater
+	p[Kind.le] = .eq // less_greater
+	p[Kind.ge] = .eq // less_greater
 	p[Kind.plus] = .sum
 	p[Kind.plus_assign] = .sum
 	p[Kind.minus] = .sum
@@ -341,7 +346,7 @@ pub fn build_precedences() []Precedence {
 	p[Kind.div_assign] = .product
 	p[Kind.mul] = .product
 	p[Kind.mult_assign] = .product
-	p[Kind.mod] = .mod
+	p[Kind.mod] = .product // mod
 	p[Kind.and] = .cond
 	p[Kind.logical_or] = .cond
 	p[Kind.lpar] = .call
@@ -361,46 +366,51 @@ pub fn (tok Token) precedence() int {
 	// return int(precedences[int(tok)])
 	match tok.kind {
 		.lsbr {
-			return 9
+			return int(Precedence.index)
 		}
 		.dot {
-			return 8
+			return int(Precedence.call)
 		}
 		// `++` | `--`
 		.inc, .dec {
+			return int(Precedence.postfix)
 			// return 0
-			return 7
+			// return 7
 		}
 		// `*` |  `/` | `%` | `<<` | `>>` | `&`
 		.mul, .div, .mod, .left_shift, .right_shift, .amp {
-			return 6
+			return int(Precedence.product)
 		}
 		// `+` |  `-` |  `|` | `^`
 		.plus, .minus, .pipe, .xor {
-			return 5
+			return int(Precedence.sum)
 		}
 		// `==` | `!=` | `<` | `<=` | `>` | `>=`
 		.eq, .ne, .lt, .le, .gt, .ge {
-			return 4
+			return int(Precedence.eq)
 		}
 		// `&&`
-		.and {
-			return 3
-		}
+		// .and {
+		// return 3
+		// }
 		// `||`
-		.logical_or, .assign, .plus_assign, .minus_assign, .div_assign, .mod_assign, .or_assign,
+		// .logical_or,
+		.assign, .plus_assign, .minus_assign, .div_assign, .mod_assign, .or_assign,
 		//
 		.left_shift_assign, .righ_shift_assign, .mult_assign {
-			return 2
+			return int(Precedence.assign)
 		}
 		.key_in, .key_as {
-			return 1
+			return int(Precedence.in_as)
+		}
+		.logical_or, .and {
+			return int(Precedence.cond)
 		}
 		// /.plus_assign {
 		// /return 2
 		// /}
 		else {
-			return lowest_prec
+			return int(Precedence.lowest)
 		}
 	}
 }

@@ -88,6 +88,7 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 }
 
 pub fn (c mut Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
+	// println('checker: infix expr(op $infix_expr.op.str())')
 	left_type := c.expr(infix_expr.left)
 	right_type := c.expr(infix_expr.right)
 	if !c.table.check(right_type, left_type) {
