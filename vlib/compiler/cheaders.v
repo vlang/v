@@ -164,78 +164,6 @@ byte g_str_buf[1024];
 int load_so(byteptr);
 void reload_so();
 
-'
-	js_headers = '
-
-var array_string = function() {}
-var array_byte = function() {}
-var array_int = function() {}
-var byte = function() {}
-var double = function() {}
-var int = function() {}
-var f64 = function() {}
-var f32 = function() {}
-var i64 = function() {}
-var i32 = function() {}
-var i16 = function() {}
-var u64 = function() {}
-var u32 = function() {}
-var u16 = function() {}
-var i8 = function() {}
-var bool = function() {}
-var rune = function() {}
-var map_string = function() {}
-var map_int = function() {}
-
-'
-	c_builtin_types = '
-
-//#include <inttypes.h>  // int64_t etc
-//#include <stdint.h>  // int64_t etc
-
-//================================== TYPEDEFS ================================*/
-
-typedef int64_t i64;
-typedef int16_t i16;
-typedef int8_t i8;
-typedef uint64_t u64;
-typedef uint32_t u32;
-typedef uint16_t u16;
-typedef uint8_t byte;
-typedef uint32_t rune;
-typedef float f32;
-typedef double f64;
-typedef unsigned char* byteptr;
-typedef int* intptr;
-typedef void* voidptr;
-typedef char* charptr;
-typedef struct array array;
-typedef struct map map;
-typedef array array_string;
-typedef array array_int;
-typedef array array_byte;
-typedef array array_f32;
-typedef array array_f64;
-typedef array array_u16;
-typedef array array_u32;
-typedef array array_u64;
-typedef map map_int;
-typedef map map_string;
-#ifndef bool
-	typedef int bool;
-	#define true 1
-	#define false 0
-#endif
-'
-	bare_c_headers = '
-
-$c_common_macros
-
-#ifndef exit
-#define exit(rc) sys_exit(rc)
-void sys_exit (int);
-#endif
-
 // ============== wyhash ==============
 //	Author: Wang Yi <godspeed_china@yeah.net>
 #ifndef wyhash_version_4
@@ -313,6 +241,79 @@ static	inline	uint64_t	wyrand(uint64_t	*seed) {	*seed+=_wyp0;	return	_wymum(*see
 static	inline	double	wy2u01(uint64_t	r) {	const	double	_wynorm=1.0/(1ull<<52);	return	(r>>11)*_wynorm;	}
 static	inline	double	wy2gau(uint64_t	r) {	const	double	_wynorm=1.0/(1ull<<20);	return	((r&0x1fffff)+((r>>21)&0x1fffff)+((r>>42)&0x1fffff))*_wynorm-3.0;	}
 #endif
+
+'
+	js_headers = '
+
+var array_string = function() {}
+var array_byte = function() {}
+var array_int = function() {}
+var byte = function() {}
+var double = function() {}
+var int = function() {}
+var f64 = function() {}
+var f32 = function() {}
+var i64 = function() {}
+var i32 = function() {}
+var i16 = function() {}
+var u64 = function() {}
+var u32 = function() {}
+var u16 = function() {}
+var i8 = function() {}
+var bool = function() {}
+var rune = function() {}
+var map_string = function() {}
+var map_int = function() {}
+
+'
+	c_builtin_types = '
+
+//#include <inttypes.h>  // int64_t etc
+//#include <stdint.h>  // int64_t etc
+
+//================================== TYPEDEFS ================================*/
+
+typedef int64_t i64;
+typedef int16_t i16;
+typedef int8_t i8;
+typedef uint64_t u64;
+typedef uint32_t u32;
+typedef uint16_t u16;
+typedef uint8_t byte;
+typedef uint32_t rune;
+typedef float f32;
+typedef double f64;
+typedef unsigned char* byteptr;
+typedef int* intptr;
+typedef void* voidptr;
+typedef char* charptr;
+typedef struct array array;
+typedef struct map map;
+typedef array array_string;
+typedef array array_int;
+typedef array array_byte;
+typedef array array_f32;
+typedef array array_f64;
+typedef array array_u16;
+typedef array array_u32;
+typedef array array_u64;
+typedef map map_int;
+typedef map map_string;
+#ifndef bool
+	typedef int bool;
+	#define true 1
+	#define false 0
+#endif
+'
+	bare_c_headers = '
+
+$c_common_macros
+
+#ifndef exit
+#define exit(rc) sys_exit(rc)
+void sys_exit (int);
+#endif
+
 '
 )
 
