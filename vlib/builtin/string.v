@@ -815,9 +815,10 @@ pub fn (a []string) to_c() voidptr {
 }
 */
 
-
 pub fn (c byte) is_space() bool {
-	return c in [` `, `\n`, `\t`, `\v`, `\f`, `\r`]
+	// 0x0085 is NEXT LINE (NEL)
+	// 0x00a0 is NO-BREAK SPACE
+	return c in [` `, `\n`, `\t`, `\v`, `\f`, `\r`, 0x85, 0xa0]
 }
 
 pub fn (s string) trim_space() string {
@@ -1223,10 +1224,9 @@ pub fn (s string) limit(max int) string {
 	return u.substr(0, max)
 }
 
-// TODO is_white_space()
+[deprecated]
 pub fn (c byte) is_white() bool {
-	i := int(c)
-	return i == 10 || i == 32 || i == 9 || i == 13 || c == `\r`
+	panic('Use `string.is_space` instead of `string.is_white')
 }
 
 pub fn (s string) hash() int {
