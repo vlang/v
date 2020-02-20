@@ -503,6 +503,8 @@ fn test_capitalize() {
 	assert s.capitalize() == 'Test'
     s = 'i am ray'
 	assert s.capitalize() == 'I am ray'
+	s = ''
+	assert s.capitalize() == ''
 }
 
 fn test_title() {
