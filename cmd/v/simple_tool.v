@@ -7,10 +7,11 @@ import (
 	compiler
 	filepath
 	os
+	v.pref
 )
 
 fn launch_tool(is_verbose bool, tname string, cmdname string) {
-	vexe := vexe_path()
+	vexe := pref.vexe_path()
 	vroot := filepath.dir(vexe)
 	compiler.set_vroot_folder(vroot)
 
@@ -55,7 +56,7 @@ fn launch_tool(is_verbose bool, tname string, cmdname string) {
 		compilation_args := compilation_options.join(' ')
 		compilation_command := '"$vexe" $compilation_args "$tool_source"'
 		if is_verbose {
-			eprintln('Compiling $tname with: "$compilation_command"') 
+			eprintln('Compiling $tname with: "$compilation_command"')
 		}
 		tool_compilation := os.exec(compilation_command) or { panic(err) }
 		if tool_compilation.exit_code != 0 {
@@ -65,6 +66,6 @@ fn launch_tool(is_verbose bool, tname string, cmdname string) {
 	if is_verbose {
 		eprintln('launch_tool running tool command: $tool_command ...')
 	}
-	
+
 	exit(os.system(tool_command))
 }

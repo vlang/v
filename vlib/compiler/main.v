@@ -732,7 +732,7 @@ pub fn (v &V) get_user_files() []string {
 	mut user_files := []string
 
     // See cmd/tools/preludes/README.md for more info about what preludes are
-	vroot := filepath.dir(vexe_path())
+	vroot := filepath.dir(pref.vexe_path())
 	preludes_path := filepath.join(vroot,'cmd','tools','preludes')
 	if v.pref.is_live {
 		user_files << filepath.join(preludes_path,'live_main.v')
@@ -841,16 +841,6 @@ pub fn (v &V) log(s string) {
 		return
 	}
 	println(s)
-}
-
-pub fn vexe_path() string {
-	vexe := os.getenv('VEXE')
-	if '' != vexe {
-		return vexe
-	}
-	real_vexe_path := os.realpath(os.executable())
-	os.setenv('VEXE', real_vexe_path, true)
-	return real_vexe_path
 }
 
 pub fn verror(s string) {
