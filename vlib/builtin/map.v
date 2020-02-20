@@ -4,73 +4,44 @@
 
 module builtin
 
-import (
-	strings
-	hash.wyhash
-)
+import strings
+
+// B-trees are balanced search trees with all leaves at
+// the same level. B-trees are generally faster than
+// binary search trees due to the better locality of
+// reference, since multiple keys are stored in one node.
+
+// The number for `degree` has been picked through vigor-
+// ous benchmarking but can be changed to any number > 1.
+// `degree` determines the size of each node.
 
 const (
-	// Number of bits from the hash stored for each entry
-	hashbits = 24
-	// Number of bits from the hash stored for rehasing
-	cached_hashbits = 16
-	// Initial log-number of buckets in the hashtable
-	init_log_capicity = 5
-	// Initial number of buckets in the hashtable
-	init_capicity = 1<<init_log_capicity
-	// Initial load-factor
-	init_load_factor = 0.8
-	// Initial range cap
-	init_range_cap = init_capicity - 1
-	// Bitmask to select all the hashbits
-	hash_mask = u32(0x00FFFFFF)
-	// Used for incrementing the probe-count
-	probe_inc = u32(0x01000000)
-	// Bitmask for maximum probe count
-	max_probe = u32(0xFF000000)
+	degree = 6
+	mid_index = degree - 1
+	max_size = 2 * degree - 1
+	children_bytes = sizeof(voidptr) * (max_size + 1)
 )
 
 pub struct map {
-	// Byte size of value
 	value_bytes int
 mut:
-	// Index of the highest index in the hashtable
-	range_cap   u32
-	// Number of cached hashbits left for rehasing
-	window      byte
-	// Used for right-shifting out used hashbits
-	shift       byte
-	// Pointer to Key-value memory
-	key_values  &KeyValue
-	// Pointer to probe_hash memory. Each Key-value has a
-	// corresponding probe_hash-DWORD. Upper-bits are the
-	// probe-count and lower-bits are bits from the hash.
-	probe_hash  &u32
-	// Measure that decides when to increase the capacity
-	load_factor f32
+	root &mapnode
 pub mut:
-	// Number of key-values currently in the hashmap
-	size        int
+	size int
 }
 
-struct KeyValue {
-	key   string
+struct mapnode {
 mut:
-	value voidptr
+	keys     [11]string  // TODO: Should use `max_size`
+	values   [11]voidptr // TODO: Should use `max_size`
+	children &voidptr
+	size     int
 }
 
-fn new_map(n, value_bytes int) map {
-	probe_hash_bytes := sizeof(u32) * init_capicity
-	key_value_bytes := sizeof(KeyValue) * init_capicity
-	memory := calloc(key_value_bytes + probe_hash_bytes)
-	return map{
+fn new_map(n, value_bytes int) map { // TODO: Remove `n`
+	return map {
 		value_bytes: value_bytes
-		range_cap: init_range_cap
-		shift: init_log_capicity
-		window: cached_hashbits
-		key_values: &KeyValue(memory)
-		probe_hash: &u32(memory + key_value_bytes)
-		load_factor: init_load_factor
+		root: new_node()
 		size: 0
 	}
 }
@@ -83,281 +54,383 @@ fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
 	return out
 }
 
+// The tree is initialized with an empty node as root to
+// avoid having to check whether the root is null for
+// each insertion.
+fn new_node() &mapnode {
+	return &mapnode {
+		children: 0
+		size: 0
+	}
+}
+
+// This implementation does proactive insertion, meaning
+// that splits are done top-down and not bottom-up.
 fn (m mut map) set(key string, value voidptr) {
-	// load_factor can be adjusted.
-	if (f32(m.size) / f32(m.range_cap)) > m.load_factor {
-		m.expand()
-	}
-	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
-	mut probe_hash := u32(((hash>>m.shift) & hash_mask) | probe_inc)
-	mut index := hash & m.range_cap
-	// While probe count is less
-	for probe_hash < m.probe_hash[index] {
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
-	}
-	// While we might have a match
-	for probe_hash == m.probe_hash[index] {
-		if key == m.key_values[index].key {
-			C.memcpy(m.key_values[index].value, value, m.value_bytes)
-			return
-		}
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
-	}
-	// Match is not possible anymore.
-	// Probe until an empty index is found.
-	// Swap when probe count is higher/richer (Robin Hood).
-	mut current_kv := KeyValue{key, malloc(m.value_bytes)}
-	C.memcpy(current_kv.value, value, m.value_bytes)
-	for m.probe_hash[index] != 0 {
-		if probe_hash > m.probe_hash[index] {
-			// Swap probe_hash
-			tmp_probe_hash := m.probe_hash[index]
-			m.probe_hash[index] = probe_hash
-			probe_hash = tmp_probe_hash
-			// Swap KeyValue
-			tmp_kv := m.key_values[index]
-			m.key_values[index] = current_kv
-			current_kv = tmp_kv
-		}
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
-	}
-	// Should almost never happen
-	if (probe_hash & max_probe) == max_probe {
-		m.expand()
-		m.set(current_kv.key, current_kv.value)
-		return
-	}
-	m.probe_hash[index] = probe_hash
-	m.key_values[index] = current_kv
-	m.size++
-}
+	mut node := m.root
+	mut child_index := 0
+	mut parent := &mapnode(0)
+	for {
 
-fn (m mut map) expand() {
-	old_range_cap := m.range_cap
-	// double the size of the hashmap
-	m.range_cap = ((m.range_cap + 1)<<1) - 1
-	// check if no hashbits are left
-	if m.window == 0 {
-		m.shift += cached_hashbits
-		m.rehash(old_range_cap)
-		m.window = cached_hashbits
-	}
-	else {
-		m.cached_rehash(old_range_cap)
-	}
-	m.window--
-}
-
-fn (m mut map) rehash(old_range_cap u32) {
-	probe_hash_bytes := sizeof(u32) * (m.range_cap + 1)
-	key_value_bytes := sizeof(KeyValue) * (m.range_cap + 1)
-	memory := calloc(probe_hash_bytes + key_value_bytes)
-	mut new_key_values := &KeyValue(memory)
-	mut new_probe_hash := &u32(memory + key_value_bytes)
-	for i in 0 .. (old_range_cap + 1) {
-		if m.probe_hash[i] != 0 {
-			mut kv := m.key_values[i]
-			hash := wyhash.wyhash_c(kv.key.str, u64(kv.key.len), 0)
-			mut probe_hash := u32(((hash>>m.shift) & hash_mask) | probe_inc)
-			mut index := hash & m.range_cap
-			// While probe count is less
-			for probe_hash < new_probe_hash[index] {
-				index = (index + 1) & m.range_cap
-				probe_hash += probe_inc
+		if node.size == max_size {
+			if isnil(parent) {
+				parent = new_node()
+				m.root = parent
 			}
-			// Probe until an empty index is found.
-			// Swap when probe count is higher/richer (Robin Hood).
-			for new_probe_hash[index] != 0 {
-				if probe_hash > new_probe_hash[index] {
-					// Swap probe_hash
-					tmp_probe_hash := new_probe_hash[index]
-					new_probe_hash[index] = probe_hash
-					probe_hash = tmp_probe_hash
-					// Swap KeyValue
-					tmp_kv := new_key_values[index]
-					new_key_values[index] = kv
-					kv = tmp_kv
-				}
-				index = (index + 1) & m.range_cap
-				probe_hash += probe_inc
-			}
-			// Should almost never happen
-			if (probe_hash & max_probe) == max_probe {
-				m.expand()
-				m.set(kv.key, kv.value)
+			parent.split_child(child_index, mut node)
+			if key == parent.keys[child_index] {
+				C.memcpy(parent.values[child_index], value, m.value_bytes)
 				return
 			}
-			new_probe_hash[index] = probe_hash
-			new_key_values[index] = kv
+			node = if key < parent.keys[child_index] {
+				&mapnode(parent.children[child_index])
+			} else {
+				&mapnode(parent.children[child_index + 1])
+			}
 		}
-	}
-	unsafe{
-		free(m.key_values)
-	}
-	m.key_values = new_key_values
-	m.probe_hash = new_probe_hash
-}
-
-fn (m mut map) cached_rehash(old_range_cap u32) {
-	probe_hash_bytes := sizeof(u32) * (m.range_cap + 1)
-	key_value_bytes := sizeof(KeyValue) * (m.range_cap + 1)
-	memory := calloc(probe_hash_bytes + key_value_bytes)
-	mut new_probe_hash := &u32(memory + key_value_bytes)
-	mut new_key_values := &KeyValue(memory)
-	for i in 0 .. (old_range_cap + 1) {
-		if m.probe_hash[i] != 0 {
-			mut kv := m.key_values[i]
-			mut probe_hash := m.probe_hash[i]
-			original := u64(i - ((probe_hash>>hashbits) - 1)) & (m.range_cap>>1)
-			hash := original | (probe_hash<<m.shift)
-			probe_hash = (probe_hash & hash_mask) | probe_inc
-			mut index := hash & m.range_cap
-			// While probe count is less
-			for probe_hash < new_probe_hash[index] {
-				index = (index + 1) & m.range_cap
-				probe_hash += probe_inc
-			}
-			// Probe until an empty index is found.
-			// Swap when probe count is higher/richer (Robin Hood).
-			for new_probe_hash[index] != 0 {
-				if probe_hash > new_probe_hash[index] {
-					// Swap probe_hash
-					tmp_probe_hash := new_probe_hash[index]
-					new_probe_hash[index] = probe_hash
-					probe_hash = tmp_probe_hash
-					// Swap KeyValue
-					tmp_kv := new_key_values[index]
-					new_key_values[index] = kv
-					kv = tmp_kv
-				}
-				index = (index + 1) & m.range_cap
-				probe_hash += probe_inc
-			}
-			// Should almost never happen
-			if (probe_hash & max_probe) == max_probe {
-				m.expand()
-				m.set(kv.key, kv.value)
-				return
-			}
-			new_probe_hash[index] = probe_hash
-			new_key_values[index] = kv
-		}
-	}
-	unsafe{
-		free(m.key_values)
-	}
-	m.key_values = new_key_values
-	m.probe_hash = new_probe_hash
-}
-
-pub fn (m mut map) delete(key string) {
-	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
-	mut index := hash & m.range_cap
-	mut probe_hash := u32(((hash>>m.shift) & hash_mask) | probe_inc)
-	for probe_hash < m.probe_hash[index] {
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
-	}
-	// Perform backwards shifting
-	for probe_hash == m.probe_hash[index] {
-		if key == m.key_values[index].key {
-			mut old_index := index
-			index = (index + 1) & m.range_cap
-			mut current_probe_hash := m.probe_hash[index]
-			for (current_probe_hash>>hashbits) > 1 {
-				m.probe_hash[old_index] = current_probe_hash - probe_inc
-				m.key_values[old_index] = m.key_values[index]
-				old_index = index
-				index = (index + 1) & m.range_cap
-				current_probe_hash = m.probe_hash[index]
-			}
-			m.probe_hash[old_index] = 0
-			m.size--
+		mut i := 0
+		for i < node.size && key > node.keys[i] { i++ }
+		if i != node.size && key == node.keys[i] {
+			C.memcpy(node.values[i], value, m.value_bytes)
 			return
 		}
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
+		if isnil(node.children) {
+			mut j := node.size - 1
+			for j >= 0 && key < node.keys[j] {
+				node.keys[j + 1] = node.keys[j]
+				node.values[j + 1] = node.values[j]
+				j--
+			}
+			node.keys[j + 1] = key
+			node.values[j + 1] = malloc(m.value_bytes)
+			C.memcpy(node.values[j + 1], value, m.value_bytes)
+			node.size++
+			m.size++
+			return
+		}
+		parent = node
+		child_index = i
+		node = &mapnode(node.children[child_index])
 	}
+}
+
+fn (n mut mapnode) split_child(child_index int, y mut mapnode) {
+	mut z := new_node()
+	z.size = mid_index
+	y.size = mid_index
+	for j := mid_index - 1; j >= 0; j-- {
+		z.keys[j] = y.keys[j + degree]
+		z.values[j] = y.values[j + degree]
+	}
+	if !isnil(y.children) {
+		z.children = &voidptr(malloc(children_bytes))
+		for jj := degree - 1; jj >= 0; jj-- {
+			z.children[jj] = y.children[jj + degree]
+		}
+	}
+	if isnil(n.children) {
+		n.children = &voidptr(malloc(children_bytes))
+	}
+	n.children[n.size + 1] = n.children[n.size]
+	for j := n.size; j > child_index; j-- {
+		n.keys[j] = n.keys[j - 1]
+		n.values[j] = n.values[j - 1]
+		n.children[j] = n.children[j - 1]
+	}
+	n.keys[child_index] = y.keys[mid_index]
+	n.values[child_index] = y.values[mid_index]
+	n.children[child_index] = voidptr(y)
+	n.children[child_index + 1] = voidptr(z)
+	n.size++
 }
 
 fn (m map) get(key string, out voidptr) bool {
-	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
-	mut index := hash & m.range_cap
-	mut probe_hash := u32(((hash>>m.shift) & hash_mask) | probe_inc)
-	for probe_hash < m.probe_hash[index] {
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
-	}
-	for probe_hash == m.probe_hash[index] {
-		if key == m.key_values[index].key {
-			C.memcpy(out, m.key_values[index].value, m.value_bytes)
+	mut node := m.root
+	for {
+		mut i := node.size - 1
+		for i >= 0 && key < node.keys[i] {
+			i--
+		}
+		if i != -1 && key == node.keys[i] {
+			C.memcpy(out, node.values[i], m.value_bytes)
 			return true
 		}
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
+		if isnil(node.children) {
+			break
+		}
+		node = &mapnode(node.children[i + 1])
 	}
 	return false
 }
 
 fn (m map) exists(key string) bool {
-	if m.value_bytes == 0 {
+	if isnil(m.root) { // TODO: find out why root can be nil
 		return false
 	}
-	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
-	mut index := hash & m.range_cap
-	mut probe_hash := u32(((hash>>m.shift) & hash_mask) | probe_inc)
-	for probe_hash < m.probe_hash[index] {
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
-	}
-	for probe_hash == m.probe_hash[index] {
-		if key == m.key_values[index].key {
+	mut node := m.root
+	for {
+		mut i := node.size - 1
+		for i >= 0 && key < node.keys[i] { i-- }
+		if i != -1 && key == node.keys[i] {
 			return true
 		}
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
+		if isnil(node.children) {
+			break
+		}
+		node = &mapnode(node.children[i + 1])
 	}
 	return false
 }
 
-pub fn (m &map) keys() []string {
-	mut keys := [''].repeat(m.size)
-	if m.value_bytes == 0 {
-		return keys
+fn (n mapnode) find_key(k string) int {
+	mut idx := 0
+	for idx < n.size && n.keys[idx] < k {
+		idx++
 	}
-	mut j := 0
-	for i in 0 .. (m.range_cap + 1) {
-		if m.probe_hash[i] != 0 {
-			keys[j] = m.key_values[i].key
-			j++
+	return idx
+}
+
+fn (n mut mapnode) remove_key(k string) bool {
+	idx := n.find_key(k)
+	if idx < n.size && n.keys[idx] == k {
+		if isnil(n.children) {
+			n.remove_from_leaf(idx)
+		} else {
+			n.remove_from_non_leaf(idx)
+		}
+		return true
+	} else {
+		if isnil(n.children) {
+			return false
+		}
+		flag := if idx == n.size {true} else {false}
+		if (&mapnode(n.children[idx])).size < degree {
+			n.fill(idx)
+		}
+
+		if flag && idx > n.size {
+			return (&mapnode(n.children[idx - 1])).remove_key(k)
+		} else {
+			return (&mapnode(n.children[idx])).remove_key(k)
 		}
 	}
+}
+
+fn (n mut mapnode) remove_from_leaf(idx int) {
+	for i := idx + 1; i < n.size; i++ {
+		n.keys[i - 1] = n.keys[i]
+		n.values[i - 1] = n.values[i]
+	}
+	n.size--
+}
+
+fn (n mut mapnode) remove_from_non_leaf(idx int) {
+	k := n.keys[idx]
+	if &mapnode(n.children[idx]).size >= degree {
+		mut current := &mapnode(n.children[idx])
+		for !isnil(current.children) {
+			current = &mapnode(current.children[current.size])
+		}
+		predecessor := current.keys[current.size - 1]
+		n.keys[idx] = predecessor
+		n.values[idx] = current.values[current.size - 1]
+		(&mapnode(n.children[idx])).remove_key(predecessor)
+	} else if &mapnode(n.children[idx + 1]).size >= degree {
+		mut current := &mapnode(n.children[idx + 1])
+		for !isnil(current.children) {
+			current = &mapnode(current.children[0])
+		}
+		successor := current.keys[0]
+		n.keys[idx] = successor
+		n.values[idx] = current.values[0]
+		(&mapnode(n.children[idx + 1])).remove_key(successor)
+	} else {
+		n.merge(idx)
+		(&mapnode(n.children[idx])).remove_key(k)
+	}
+}
+
+fn (n mut mapnode) fill(idx int) {
+	if idx != 0 && &mapnode(n.children[idx - 1]).size >= degree {
+		n.borrow_from_prev(idx)
+	} else if idx != n.size && &mapnode(n.children[idx + 1]).size >= degree {
+		n.borrow_from_next(idx)
+	} else if idx != n.size {
+		n.merge(idx)
+	} else {
+		n.merge(idx - 1)
+	}
+}
+
+fn (n mut mapnode) borrow_from_prev(idx int) {
+	mut child := &mapnode(n.children[idx])
+	mut sibling := &mapnode(n.children[idx - 1])
+	for i := child.size - 1; i >= 0; i-- {
+		child.keys[i + 1] = child.keys[i]
+		child.values[i + 1] = child.values[i]
+	}
+	if !isnil(child.children) {
+		for i := child.size; i >= 0; i-- {
+			child.children[i + 1] = child.children[i]
+		}
+	}
+	child.keys[0] = n.keys[idx - 1]
+	child.values[0] = n.values[idx - 1]
+	if !isnil(child.children) {
+		child.children[0] = sibling.children[sibling.size]
+	}
+	n.keys[idx - 1] = sibling.keys[sibling.size - 1]
+	n.values[idx - 1] = sibling.values[sibling.size - 1]
+	child.size++
+	sibling.size--
+}
+
+fn (n mut mapnode) borrow_from_next(idx int) {
+	mut child := &mapnode(n.children[idx])
+	mut sibling := &mapnode(n.children[idx + 1])
+	child.keys[child.size] = n.keys[idx]
+	child.values[child.size] = n.values[idx]
+	if !isnil(child.children) {
+		child.children[child.size + 1] = sibling.children[0]
+	}
+	n.keys[idx] = sibling.keys[0]
+	n.values[idx] = sibling.values[0]
+	for i := 1; i < sibling.size; i++ {
+		sibling.keys[i - 1] = sibling.keys[i]
+		sibling.values[i - 1] = sibling.values[i]
+	}
+	if !isnil(sibling.children) {
+		for i := 1; i <= sibling.size; i++ {
+			sibling.children[i - 1] = sibling.children[i]
+		}
+	}
+	child.size++
+	sibling.size--
+}
+
+fn (n mut mapnode) merge(idx int) {
+	mut child := &mapnode(n.children[idx])
+	sibling := &mapnode(n.children[idx + 1])
+	child.keys[mid_index] = n.keys[idx]
+	child.values[mid_index] = n.values[idx]
+	for i := 0; i < sibling.size; i++ {
+		child.keys[i + degree] = sibling.keys[i]
+		child.values[i + degree] = sibling.values[i]
+	}
+	if !isnil(child.children) {
+		for i := 0; i <= sibling.size; i++ {
+			child.children[i + degree] = sibling.children[i]
+		}
+	}
+	for i := idx + 1; i < n.size; i++ {
+		n.keys[i - 1] = n.keys[i]
+		n.values[i - 1] = n.values[i]
+	}
+	for i := idx + 2; i <= n.size; i++ {
+		n.children[i - 1] = n.children[i]
+	}
+	child.size += sibling.size + 1
+	n.size--
+	// free(sibling)
+}
+
+pub fn (m mut map) delete(key string) {
+	if m.root.size == 0 {
+		return
+	}
+
+	removed := m.root.remove_key(key)
+	if removed {
+		m.size--
+	}
+
+	if m.root.size == 0 {
+		// tmp := t.root
+		if isnil(m.root.children) {
+			return
+		} else {
+			m.root = &mapnode(m.root.children[0])
+		}
+		// free(tmp)
+	}
+}
+
+// Insert all keys of the subtree into array `keys`
+// starting at `at`. Keys are inserted in order.
+fn (n mapnode) subkeys(keys mut []string, at int) int {
+	mut position := at
+	if !isnil(n.children) {
+		// Traverse children and insert
+		// keys inbetween children
+		for i in 0..n.size {
+			child := &mapnode(n.children[i])
+			position += child.subkeys(mut keys, position)
+			keys[position] = n.keys[i]
+			position++
+		}
+		// Insert the keys of the last child
+		child := &mapnode(n.children[n.size])
+		position += child.subkeys(mut keys, position)
+	} else {
+		// If leaf, insert keys
+		for i in 0..n.size {
+			keys[position + i] = n.keys[i]
+		}
+		position += n.size
+	}
+	// Return # of added keys
+	return position - at
+}
+
+pub fn (m &map) keys() []string {
+	mut keys := [''].repeat(m.size)
+	if isnil(m.root) || m.root.size == 0 {
+		return keys
+	}
+	m.root.subkeys(mut keys, 0)
 	return keys
 }
 
-pub fn (m mut map) set_load_factor(new_load_factor f32) {
-	if new_load_factor > 1.0 {
-		m.load_factor = 1.0
+fn (n mut mapnode) free() {
+	mut i := 0
+	if isnil(n.children) {
+		i = 0
+		for i < n.size {
+			i++
+		}
+	} else {
+		i = 0
+		for i < n.size {
+			&mapnode(n.children[i]).free()
+			i++
+		}
+		&mapnode(n.children[i]).free()
 	}
-	else if new_load_factor < 0.1 {
-		m.load_factor = 0.1
-	}
-	else {
-		m.load_factor = new_load_factor
-	}
+	// free(n)
 }
 
 pub fn (m mut map) free() {
-	unsafe{
-		free(m.key_values)
+	if isnil(m.root) {
+		return
 	}
+	m.root.free()
 }
 
 pub fn (m map) print() {
-	println('TODO')
+	println('<<<<<<<<')
+	//for i := 0; i < m.entries.len; i++ {
+		// entry := m.entries[i]
+		// println('$entry.key => $entry.val')
+	//}
+	/*
+	for i := 0; i < m.cap * m.value_bytes; i++ {
+		b := m.table[i]
+		print('$i: ')
+		C.printf('%02x', b)
+		println('')
+	}
+*/
+	println('>>>>>>>>>>')
 }
 
 pub fn (m map_string) str() string {
