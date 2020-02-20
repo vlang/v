@@ -222,7 +222,7 @@ pub fn (t mut Table) register_type_symbol(typ TypeSymbol) int {
 		match ex_type.kind {
 			.placeholder {
 				// override placeholder
-				println('overriding type placeholder `$typ.name`')
+				// println('overriding type placeholder `$typ.name`')
 				t.types[existing_idx] = {
 					typ |
 					methods:ex_type.methods
@@ -394,4 +394,3 @@ pub fn (t &Table) check(got, expected Type) bool {
 	}
 	return true
 }
-

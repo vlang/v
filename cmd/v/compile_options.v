@@ -37,7 +37,7 @@ pub fn new_v(args []string) &compiler.V {
 		exit(1)
 	}
 	mut out_name := cmdline.option(args, '-o', '')
-	mut dir := args.last()
+	mut dir := args[args.len-1]//.last()
 	if 'run' in args {
 		args_after_run := cmdline.only_non_options( cmdline.options_after(args,['run']) )
 		dir = if args_after_run.len>0 { args_after_run[0] } else { '' }

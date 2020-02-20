@@ -50,6 +50,7 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 	// panic('')
 	// }
 	typ_sym := c.table.get_type_symbol(struct_init.typ)
+	// println('check struct $typ_sym.name')
 	match typ_sym.kind {
 		.placeholder {
 			c.error('unknown struct: $typ_sym.name', struct_init.pos)
@@ -161,6 +162,10 @@ pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 			if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 				continue
 			}
+			// TODO const bug
+			if typ_sym.kind == .void && arg_typ_sym.kind == .string {
+				continue
+			}
 			c.error('!cannot use type `$typ_sym.name` as type `$arg_typ_sym.name` in argument ${i+1} to `$fn_name`', call_expr.pos)
 		}
 	}
@@ -199,6 +204,10 @@ pub fn (c mut Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type 
 		}
 	}
 	if typ_sym.kind != .struct_ {
+		if field_name == 'default_mode' {
+			// TODO
+			return table.bool_type
+		}
 		c.error('`$typ_sym.name` is not a struct', selector_expr.pos)
 	}
 	else {
