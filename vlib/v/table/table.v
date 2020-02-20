@@ -187,14 +187,7 @@ pub fn (t &Table) find_type(name string) ?TypeSymbol {
 [inline]
 pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	idx := type_idx(typ)
-	if idx < 0 {
-		unresolved_idx := -idx
-		return &TypeSymbol{
-			kind: .unresolved
-			name: 'unresolved-$unresolved_idx'
-		}
-	}
-	else if idx > 0 {
+	if idx > 0 {
 		return &t.types[idx]
 	}
 	// this should never happen

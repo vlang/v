@@ -35,16 +35,16 @@ pub const (
 	f64_type_idx = 14
 	char_type_idx = 15
 	bool_type_idx = 16
+	none_type_idx = 17
 	// advanced / defined from v structs
-	string_type_idx = 17
-	array_type_idx = 18
-	map_type_idx = 19
-	none_type_idx = 20
+	string_type_idx = 18
+	array_type_idx = 19
+	map_type_idx = 20
 )
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16', 'u32', 'u64',
-	'f32', 'f64', 'string', 'char', 'byte', 'bool', 'struct', 'array', 'array_fixed', 'map',
+	'f32', 'f64', 'string', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed', 'map', 'struct',
 	'mapnode', 'ustring']
 )
 
@@ -73,16 +73,15 @@ pub enum Kind {
 	f64
 	char
 	bool
+	none_
 	string
-	struct_
 	array
 	array_fixed
 	map
+	struct_
 	multi_return
 	sum_type
 	alias
-	unresolved
-	none_
 }
 
 [inline]
@@ -227,6 +226,10 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 		name: 'bool'
 	})
 	t.register_type_symbol(TypeSymbol{
+		kind: .none_
+		name: 'none'
+	})
+	t.register_type_symbol(TypeSymbol{
 		kind: .string
 		name: 'string'
 	})
@@ -237,10 +240,6 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 	t.register_type_symbol(TypeSymbol{
 		kind: .map
 		name: 'map'
-	})
-	t.register_type_symbol(TypeSymbol{
-		kind: .none_
-		name: 'none'
 	})
 	// TODO: remove
 	t.register_type_symbol(TypeSymbol{
@@ -267,9 +266,6 @@ pub fn (t &TypeSymbol) is_number() bool {
 
 pub fn (k Kind) str() string {
 	k_str := match k {
-		.unresolved{
-			'unresolved'
-		}
 		.placeholder{
 			'placeholder'
 		}
@@ -326,6 +322,9 @@ pub fn (k Kind) str() string {
 		}
 		.bool{
 			'bool'
+		}
+		.none_{
+			'none'
 		}
 		.array{
 			'array'

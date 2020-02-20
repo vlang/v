@@ -57,12 +57,6 @@ pub fn new_type_ptr(idx, nr_muls int) Type {
 	return idx<<i16(16) | nr_muls
 }
 
-// true if the type of unresolved expression
-[inline]
-pub fn type_is_unresolved(t Type) bool {
-	return type_idx(t) < 0
-}
-
 pub const (
 	void_type = new_type(void_type_idx)
 	voidptr_type = new_type(voidptr_type_idx)
