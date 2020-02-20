@@ -100,6 +100,20 @@ fn private_function() {
 }
 ```
 
+Function names in V should be written in snake_case style:
+
+```v
+// valid
+fn my_func() int {
+    return 42
+}
+
+// invalid
+fn MyFunc() int {
+    return 42
+} //=> function names cannot contain uppercase letters, use snake_case instead
+```
+
 ## Variables
 
 ```v
@@ -135,7 +149,7 @@ immutable by default. To be able to change the value of the variable, you have t
 
 Try compiling the program above after removing `mut` from the first line.
 
-Please note the difference between `:=` and `=`  
+Please note the difference between `:=` and `=`
 `:=` is used for declaring and initializing, `=` is used for assigning.
 
 ```v
@@ -167,6 +181,16 @@ fn main() {
 
 Unlike most languages, variable shadowing is not allowed. Declaring a variable with a name that is already used in a parent scope will result in a compilation error.
 
+Variable names in V should be written in snake_case style:
+
+```v
+// valid
+mut upper_age := 50
+
+// invalid
+mut UpperAge := 20 // => variable names cannot contain uppercase letters, use snake_case instead
+```
+
 ## Basic types
 
 ```v
@@ -186,6 +210,16 @@ voidptr
 ```
 
 Please note that unlike C and Go, `int` is always a 32 bit integer.
+
+TBD: Type names in V currently permits snake_case/PascalCase/ALLCAP/SCREAMING_SNAKE_CASE styles, and distinguish them:
+
+```v
+// valid
+type ActiveMember bool
+type active_member bool
+type ACTIVE bool
+type ACTIVE_MEMBER bool
+```
 
 ## Strings
 
@@ -377,6 +411,32 @@ if parser.token in [.plus, .minus, .div, .mult] {
 
 V optimizes such expressions, so both `if` statements above produce the same machine code, no arrays are created.
 
+Unlike Go, semicolon `;` cannot be used for delimiting `if` conditions:
+
+```v
+// invalid
+fn foo() ?int {
+	if 1 > 2 {
+	   return error('error')
+	}
+	return 4
+}
+
+fn main() {
+	if a := foo(); a == 4 { // ';' is invalid
+		println("true")
+	}
+} //=> syntax error: unexpected `;`, expecting `{`
+
+// invalid
+  if a := 1; a > 2 {
+    println("true")
+  }
+//=>  `if x := opt() {` syntax requires a function that returns an optional value
+```
+
+This also means that `if`-scope local variables are unavailable.
+
 ## For loop
 
 V has only one looping construct: `for`.
@@ -537,6 +597,33 @@ button.set_pos(x, y)
 button.widget.set_pos(x,y)
 ```
 
+Struct names in V should be written in PascalCase style:
+
+```v
+// valid
+struct PointCursor {
+    x int
+    y int
+}
+
+// invalid
+struct point_cursor {
+    x int
+    y int
+} //=> type names cannot contain `_`
+
+struct pointCursor {
+    x int
+    y int
+} //=> mod=main struct names must be capitalized: use `struct Pointcursor`
+
+// valid but discouraged
+struct POINT {
+    x int
+    y int
+} //=> bad struct name, e.g. use `HttpRequest` instead of `HTTPRequest`
+```
+
 ## Access modifiers
 
 Struct fields are private and immutable by default (making structs immutable as well).
@@ -608,6 +695,20 @@ The receiver appears in its own argument list between the `fn` keyword and the m
 In this example, the `can_register` method has a receiver of type `User` named `u`.
 The convention is not to use receiver names like `self` or `this`,
 but a short, preferably one letter long, name.
+
+Method names in V should be written in snake_case style:
+
+```v
+// valid
+fn (u User) my_func() int {
+    return u.age
+}
+
+// invalid
+fn (u User) MyFunc() int {
+    return u.age
+} //=> function names cannot contain uppercase letters, use snake_case instead
+```
 
 ## Pure functions by default
 
@@ -847,13 +948,78 @@ which module is being called. Especially in large code bases.
 
 Module names should be short, under 10 characters. Circular imports are not allowed.
 
-You can create modules anywhere.
+Module names should be snake_case identifier (`/[a-z][a-z0-9_-]/`) as a convention. You cannot use space characters for module names.
+
+The imported modules are all automatically compiled, which means you don't need to precompile modules unless you need `.o` file.
+
+TBD: You can create modules anywhere.
+
+The lookup for modules happens in this order:
+
+1. project's local folders (like `./my_module/`)
+2. v's `vlib/` folder (like `vlib/my_module/`)
+3. home directory's `~/.vmodules/` folder (like `~/.vmodules/my_module/`)
+
+You can specify modules in subdirectory with `.` (not with `/`) like`module_name.submodule_name`:
+
+```v
+./
+  |- parent/
+    |- child/
+      |- child1.v
+  |- main.v
+
+// child1.v
+module child
+
+// main.v
+import parent.child     // imports modules under parent/child/
+
+child.function()        // reference is not namespaced
+```
+
+Notes on submodules:
+
+* The maximum depth of submodule path is "5" and you cannot exceed this.
+* TBD: When importing modules, you cannot use `../` to refer to the modules in parent directories. Use symbolic links in the case.
+
+You can rename the modules when imported:
+
+```v
+import module_name as mn      // mn is an alias of the module_name
+```
+
+Note that V looks up the module by the containing directory name, which means the directory name should match exactly the module name.
+
+The name of the modules under the directory can be any `*.v`, but at least putting the file with the exact module name is preferable as a convention because the module file with the exact name, where `init()` function (see below) can exist, will be fetched first.
+
+```v
+./
+  |- module_name/
+    |- module_name.v    // first access
+    |- module1.v
+    |- module2.v
+    |- ...
+  |- main.v
+
+// module_name.v, module1.v, module2.v ...
+module module_name
+
+// main.v
+import module_name
+```
+
+Then you can refer to the modules "module_name" from the main.v file via `import module_name`.
+
+The same modules under the directory shares the same scope, which means they don't need `pub` to access each other.
+
+This means you can create modules as a name snake_case or PascalCase. You cannot include spaces within the module name.
 
 All modules are compiled statically into a single executable.
 
 If you want to write a module that will automatically call some
 setup/initialization code when imported (perhaps you want to call
-some C library functions), write a module `init` function inside the module:
+some C library functions), write a module `init()` function inside the module:
 
 ```v
 fn init() int {
@@ -862,7 +1028,7 @@ fn init() int {
 }
 ```
 
-The init function cannot be public. It will be called automatically.
+The `init()` function cannot be public and will be called automatically.
 
 ## Interfaces
 
@@ -894,6 +1060,42 @@ println(perform(cat)) // "meow"
 
 A type implements an interface by implementing its methods.
 There is no explicit declaration of intent, no "implements" keyword.
+
+Interface names in V should be written in PascalCase style.
+
+```v
+// valid
+interface HumanSpeaker {
+    speak() string
+}
+
+// invalid
+interface human_speaker {
+    speak() string
+} //=> type names cannot contain `_`
+
+interface speaker {
+    speak() string
+} //=> mod=main struct names must be capitalized: use `struct Speaker`
+
+interface humanSpeaker {
+    speak() string
+} //=> mod=main struct names must be capitalized: use `struct Humanspeaker`
+```
+
+```v
+// TODO: currently interface names require "er" suffix, but it will be changed again.
+interface HumanSpeaking {
+    speak() string
+} //=> interface names temporarily have to end with `er` (e.g. `Speaker`, `Reader`)
+```
+
+Empty interface `interface{}` cannot be used in V:
+
+```v
+// invalid
+type Foo interface{}   //=> unknown type ``
+```
 
 ## Enums
 
@@ -1640,3 +1842,5 @@ Assignment Operators
 &=   |=   ^=
 >>=  <<=
 ```
+
+V language does not use `;` for separators except in `for` syntax.
