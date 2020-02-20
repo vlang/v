@@ -76,6 +76,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	.all_after('Use Ctrl-C or `exit` to exit\n')
 	.replace(wd  + filepath.separator, '' )
 	.replace(vexec_folder, '')
+	.replace('\\', '/')
 
 	if result != output {
 		file_result   := '${file}.result.txt'
