@@ -828,7 +828,7 @@ pub fn (v mut V) parse_lib_imports() {
 				pidx := v.parse(file, .imports)
 				p_mod := v.parsers[pidx].mod
 				if p_mod != mod {
-					v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1)
+					v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 0)
 				}
 			}
 			done_imports << mod
