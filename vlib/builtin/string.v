@@ -543,7 +543,7 @@ pub fn (s string) substr(start, end int) string {
 }
 
 pub fn (s string) index_old(p string) int {
-	if p.len > s.len {
+	if p.len > s.len || p.len == 0 {
 		return -1
 	}
 	mut i := 0
@@ -561,7 +561,7 @@ pub fn (s string) index_old(p string) int {
 }
 
 pub fn (s string) index(p string) ?int {
-	if p.len > s.len {
+	if p.len > s.len || p.len == 0 {
 		return none
 	}
 	mut i := 0
@@ -620,7 +620,7 @@ pub fn (s string) index_any(chars string) int {
 }
 
 pub fn (s string) last_index(p string) ?int {
-	if p.len > s.len {
+	if p.len > s.len || p.len == 0 {
 		return none
 	}
 	mut i := s.len - p.len
@@ -1199,8 +1199,8 @@ pub fn (s []string) join_lines() string {
 
 // reverse will return a new reversed string.
 pub fn (s string) reverse() string {
-	if s.len == 0 {
-		return ''
+	if s.len == 0 || s.len == 1 {
+		return s
 	}
 	mut res := string{
 		len: s.len

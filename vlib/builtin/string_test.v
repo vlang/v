@@ -355,16 +355,22 @@ fn test_upper() {
 	assert s.to_upper() == 'HAVE A NICE DAY!'
 	s = 'hi'
 	assert s.to_upper() == 'HI'
-
 }
 
 fn test_left_right() {
 	s := 'ALOHA'
 	assert s.left(3) == 'ALO'
+	assert s.left(0) == ''
+	assert s.left(8) == s
+	assert s.right(3) == 'HA'
+	assert s.right(6) == ''
 	assert s[3..] == 'HA'
 	u := s.ustring()
 	assert u.left(3) == 'ALO'
+	assert u.left(0) == ''
+	assert s.left(8) == s
 	assert u.right(3) == 'HA'
+	assert u.right(6) == ''
 }
 
 fn test_contains() {
@@ -439,19 +445,32 @@ fn test_trim_right() {
 	assert s.trim_right('na') == 'b'
 }
 
+fn test_all_before() {
+	s := 'fn hello fn'
+	assert s.all_before(' ') == 'fn'
+	assert s.all_before('2') == s
+	assert s.all_before('') == s
+}
+
+fn test_all_before_last() {
+	s := 'fn hello fn'
+	assert s.all_before_last(' ') == 'fn hello'
+	assert s.all_before_last('2') == s
+	assert s.all_before_last('') == s
+}
+
 fn test_all_after() {
 	s := 'fn hello'
-	q := s.all_after('fn ')
-	assert q == 'hello'
+	assert s.all_after('fn ') == 'hello'
+	assert s.all_after('test') == s
+	assert s.all_after('') == s
 }
 
 fn test_reverse() {
-	s := 'hello'
-	assert s.reverse() == 'olleh'
-	t := ''
-	assert t.reverse() == t
+	assert 'hello'.reverse() == 'olleh'
+	assert ''.reverse() == ''
+	assert 'a'.reverse() == 'a'
 }
-
 
 struct Foo {
 	bar int
@@ -575,9 +594,20 @@ fn test_ustring_count() {
 	assert (a.count('a'.ustring())) == 0
 }
 
+fn test_limit() {
+	s := 'hello'
+	assert s.limit(2) == 'he'
+	assert s.limit(9) == s
+	assert s.limit(0) == ''
+	// assert s.limit(-1) == ''
+}
+
 fn test_repeat() {
 	s := 'V! '
 	assert s.repeat(5) == 'V! V! V! V! V! '
+	assert s.repeat(1) == s
+	assert s.repeat(0) == s
+	assert s.repeat(-1) == s
 }
 
 fn test_raw() {
