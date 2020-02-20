@@ -257,4 +257,4 @@ jobs:
     - name: Build
       run: make
     - name: Check docs line length
-      run: ./v run cmd/tools/check-md-len.v $(find -name '*.md')
+      run: ./v run cmd/tools/check-md-len.v doc/docs.md
