@@ -1424,7 +1424,7 @@ fn (p mut Parser) gen(s string) {
 fn (p mut Parser) statement(add_semi bool) string {
 	p.expected_type = ''
 	if p.returns {
-		p.error('unreachable code')
+		p.warn_or_error('unreachable code')
 	}
 	// if !p.in_dispatch {
 	p.cgen.is_tmp = false
