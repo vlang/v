@@ -70,6 +70,7 @@ return 0
 }
 
 fn    (this User) fn_with_receiver() {
+	x := if true {1} else {2}
 println('')
 }
 

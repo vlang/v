@@ -16,12 +16,13 @@ const (
 )
 
 struct Fmt {
-	out        strings.Builder
-	table      &table.Table
+	out            strings.Builder
+	table          &table.Table
 mut:
-	indent     int
-	empty_line bool
-	line_len   int
+	indent         int
+	empty_line     bool
+	line_len       int
+	single_line_if bool
 }
 
 pub fn fmt(file ast.File, table &table.Table) string {
@@ -130,7 +131,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			f.expr(it.expr)
-			f.writeln('')
+			if !f.single_line_if {
+				f.writeln('')
+			}
 		}
 		ast.FnDecl {
 			f.write(it.str(f.table))
@@ -241,16 +244,36 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(it.val)
 		}
 		ast.IfExpr {
+			single_line := it.stmts.len == 1 && it.else_stmts.len == 1 && it.typ != table.void_type
+			f.single_line_if = single_line
 			f.write('if ')
 			f.expr(it.cond)
-			f.writeln(' {')
+			if single_line {
+				f.write(' { ')
+			}
+			else {
+				f.writeln(' {')
+			}
 			f.stmts(it.stmts)
+			if single_line {
+				f.write(' ')
+			}
 			f.write('}')
 			if it.else_stmts.len > 0 {
-				f.writeln(' else {')
+				f.write(' else {')
+				if single_line {
+					f.write(' ')
+				}
+				else {
+					f.writeln('')
+				}
 				f.stmts(it.else_stmts)
+				if single_line {
+					f.write(' ')
+				}
 				f.write('}')
 			}
+			f.single_line_if = false
 		}
 		ast.Ident {
 			f.write('$it.name')
