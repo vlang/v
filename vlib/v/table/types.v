@@ -19,12 +19,6 @@ pub fn type_nr_muls(t Type) int {
 	return (int(t)>>16) & 0xff
 }
 
-// return extra
-[inline]
-pub fn type_extra(t Type) TypeExtra {
-	return ((int(t)>>24) & 0xff)
-}
-
 // return true if pointer (nr_muls>0)
 [inline]
 pub fn type_is_ptr(t Type) bool {
@@ -60,6 +54,18 @@ pub fn type_deref(t Type) Type {
 	return (int(type_extra(t))<<24) | ((nr_muls - 1)<<16) | u16(type_idx(t))
 }
 
+// return extra info
+[inline]
+pub fn type_extra(t Type) TypeExtra {
+	return (int(t)>>24) & 0xff
+}
+
+// set extra info
+[inline]
+pub fn type_set_extra(t Type, extra TypeExtra) Type {
+	return (int(extra)<<24) | (type_nr_muls(t)<<16) | u16(type_idx(t))
+}
+
 [inline]
 pub fn type_is_optional(t Type) bool {
 	return type_extra(t) == .optional
@@ -67,7 +73,7 @@ pub fn type_is_optional(t Type) bool {
 
 [inline]
 pub fn type_to_optional(t Type) Type {
-	return (int(TypeExtra.optional)<<24) | (type_nr_muls(t)<<16) | u16(type_idx(t))
+	return type_set_extra(t, .optional)
 }
 
 // new type with idx of TypeSymbol, not pointer (nr_muls=0)
@@ -76,7 +82,7 @@ pub fn new_type(idx int) Type {
 	if idx < 1 || idx > 65536 {
 		panic('new_type_id: idx must be between 1 & 65536')
 	}
-	return u16(idx)
+	return idx
 }
 
 // return Type idx of TypeSymbol & specify if ptr (nr_muls)

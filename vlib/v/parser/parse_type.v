@@ -6,7 +6,7 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) parse_array_type(nr_muls int) table.Type {
+pub fn (p mut Parser) parse_array_type() table.Type {
 	p.check(.lsbr)
 	// fixed array
 	if p.tok.kind == .number {
@@ -15,7 +15,7 @@ pub fn (p mut Parser) parse_array_type(nr_muls int) table.Type {
 		p.check(.rsbr)
 		elem_type := p.parse_type()
 		idx := p.table.find_or_register_array_fixed(elem_type, size, 1)
-		return table.new_type_ptr(idx, nr_muls)
+		return table.new_type(idx)
 	}
 	// array
 	p.check(.rsbr)
@@ -27,13 +27,13 @@ pub fn (p mut Parser) parse_array_type(nr_muls int) table.Type {
 		nr_dims++
 	}
 	idx := p.table.find_or_register_array(elem_type, nr_dims)
-	return table.new_type_ptr(idx, nr_muls)
+	return table.new_type(idx)
 }
 
-pub fn (p mut Parser) parse_map_type(nr_muls int) table.Type {
+pub fn (p mut Parser) parse_map_type() table.Type {
 	p.next()
 	if p.tok.kind != .lsbr {
-		return table.new_type(table.map_type_idx)
+		return table.map_type
 	}
 	p.check(.lsbr)
 	key_type := p.parse_type()
@@ -45,7 +45,7 @@ pub fn (p mut Parser) parse_map_type(nr_muls int) table.Type {
 	p.check(.rsbr)
 	value_type := p.parse_type()
 	idx := p.table.find_or_register_map(key_type, value_type)
-	return table.new_type_ptr(idx, nr_muls)
+	return table.new_type(idx)
 }
 
 pub fn (p mut Parser) parse_multi_return_type() table.Type {
@@ -94,10 +94,7 @@ pub fn (p mut Parser) parse_type() table.Type {
 		p.next()
 		p.check(.dot)
 	}
-	//if p.tok.kind == .question {
-	//	p.next()
-	//}
-	mut typ := p.parse_any_type(nr_muls)
+	mut typ := p.parse_any_type(nr_muls > 0)
 	if is_optional {
 		typ = table.type_to_optional(typ)
 	}
@@ -107,7 +104,7 @@ pub fn (p mut Parser) parse_type() table.Type {
 	return typ
 }
 
-pub fn (p mut Parser) parse_any_type(nr_muls int) table.Type {
+pub fn (p mut Parser) parse_any_type(is_ptr bool) table.Type {
 	mut name := p.tok.lit
 	// `module.Type`
 	if p.peek_tok.kind == .dot {
@@ -133,11 +130,11 @@ pub fn (p mut Parser) parse_any_type(nr_muls int) table.Type {
 		}
 		// array
 		.lsbr {
-			return p.parse_array_type(nr_muls)
+			return p.parse_array_type()
 		}
 		// multiple return
 		.lpar {
-			if nr_muls > 0 {
+			if is_ptr {
 				p.error('parse_type: unexpected `&` before multiple returns')
 			}
 			return p.parse_multi_return_type()
@@ -145,71 +142,71 @@ pub fn (p mut Parser) parse_any_type(nr_muls int) table.Type {
 		else {
 			// no defer
 			if name == 'map' {
-				return p.parse_map_type(nr_muls)
+				return p.parse_map_type()
 			}
 			defer {
 				p.next()
 			}
 			match name {
 				'voidptr' {
-					return table.new_type_ptr(table.voidptr_type_idx, nr_muls)
+					return table.voidptr_type
 				}
 				'byteptr' {
-					return table.new_type_ptr(table.byteptr_type_idx, nr_muls)
+					return table.byteptr_type
 				}
 				'charptr' {
-					return table.new_type_ptr(table.charptr_type_idx, nr_muls)
+					return table.charptr_type
 				}
 				'i8' {
-					return table.new_type_ptr(table.i8_type_idx, nr_muls)
+					return table.i8_type
 				}
 				'i16' {
-					return table.new_type_ptr(table.i16_type_idx, nr_muls)
+					return table.i16_type
 				}
 				'int' {
-					return table.new_type_ptr(table.int_type_idx, nr_muls)
+					return table.int_type
 				}
 				'i64' {
-					return table.new_type_ptr(table.i64_type_idx, nr_muls)
+					return table.i64_type
 				}
 				'byte' {
-					return table.new_type_ptr(table.byte_type_idx, nr_muls)
+					return table.byte_type
 				}
 				'u16' {
-					return table.new_type_ptr(table.u16_type_idx, nr_muls)
+					return table.u16_type
 				}
 				'u32' {
-					return table.new_type_ptr(table.u32_type_idx, nr_muls)
+					return table.u32_type
 				}
 				'u64' {
-					return table.new_type_ptr(table.u64_type_idx, nr_muls)
+					return table.u64_type
 				}
 				'f32' {
-					return table.new_type_ptr(table.f32_type_idx, nr_muls)
+					return table.f32_type
 				}
 				'f64' {
-					return table.new_type_ptr(table.f64_type_idx, nr_muls)
+					return table.f64_type
 				}
 				'string' {
-					return table.new_type_ptr(table.string_type_idx, nr_muls)
+					return table.string_type
 				}
 				'char' {
-					return table.new_type_ptr(table.char_type_idx, nr_muls)
+					return table.char_type
 				}
 				'bool' {
-					return table.new_type_ptr(table.bool_type_idx, nr_muls)
+					return table.bool_type
 				}
 				// struct / enum / placeholder
 				else {
 					// struct / enum
 					mut idx := p.table.find_type_idx(name)
 					if idx > 0 {
-						return table.new_type_ptr(idx, nr_muls)
+						return table.new_type(idx)
 					}
 					// not found - add placeholder
 					idx = p.table.add_placeholder_type(name)
 					// println('NOT FOUND: $name - adding placeholder - $idx')
-					return table.new_type_ptr(idx, nr_muls)
+					return table.new_type(idx)
 				}
 			}
 		}
