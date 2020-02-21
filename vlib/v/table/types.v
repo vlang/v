@@ -1,16 +1,29 @@
 module table
 
 pub type Type int
+
+pub enum TypeExtra {
+	unset
+	optional
+}
+
 // return underlying TypeSymbol idx
 [inline]
 pub fn type_idx(t Type) int {
-	return i16(int(t)>>16) & 0xffffffff
+	return u16(t) & 0xffff
 }
+
 
 // return nr_muls
 [inline]
 pub fn type_nr_muls(t Type) int {
-	return i16(int(t) & 0xffffffff)
+	return (int(t) >> 16) & 0xff
+}
+
+// return extra
+[inline]
+pub fn type_extra(t Type) TypeExtra {
+	return ((int(t) >> 24) & 0xff)
 }
 
 // return true if pointer (nr_muls>0)
@@ -19,42 +32,64 @@ pub fn type_is_ptr(t Type) bool {
 	return type_nr_muls(t) > 0
 }
 
+// set nr_muls on Type and return it
+[inline]
+pub fn type_set_nr_muls(t Type, nr_muls int) Type {
+	if nr_muls < 0 || nr_muls > 255 {
+		panic('typ_set_nr_muls: nr_muls must be between 0 & 255')
+	}
+	return (int(type_extra(t)) << 24) | (nr_muls << 16) | u16(type_idx(t))
+}
+
 // increments nr_nuls on Type and return it
 [inline]
 pub fn type_to_ptr(t Type) Type {
-	return type_idx(t)<<i16(16) | (type_nr_muls(t) + 1)
+	nr_muls := type_nr_muls(t)
+	if nr_muls == 255 {
+		panic('type_to_pre: nr_muls is already at max of 255')
+	}
+	return (int(type_extra(t)) << 24) | ((nr_muls+1) << 16) | u16(type_idx(t))
 }
 
 // decrement nr_muls on Type and return it
 [inline]
 pub fn type_deref(t Type) Type {
-	idx := type_idx(t)
 	nr_muls := type_nr_muls(t)
 	if nr_muls == 0 {
-		panic('deref: $idx is not a pointer')
+		panic('deref: type `$t` is not a pointer')
 	}
-	return idx<<i16(16) | (nr_muls + -1)
+	return (int(type_extra(t)) << 24) | ((nr_muls-1) << 16) | u16(type_idx(t))
+}
+
+[inline]
+pub fn type_is_optional(t Type) bool {
+	return type_extra(t) == .optional
+}
+
+[inline]
+pub fn type_to_optional(t Type) Type {
+	return (int(TypeExtra.optional) << 24) | (type_nr_muls(t) << 16) | u16(type_idx(t))
 }
 
 // new type with idx of TypeSymbol, not pointer (nr_muls=0)
 [inline]
 pub fn new_type(idx int) Type {
-	if idx > 32767 || idx < -32767 {
-		panic('new_type_id: idx must be between -32767 & 32767')
+	if idx < 1 || idx > 65536 {
+		panic('new_type_id: idx must be between 1 & 65536')
 	}
-	return idx<<i16(16)
+	return u16(idx)
 }
 
 // return Type idx of TypeSymbol & specify if ptr (nr_muls)
 [inline]
-pub fn new_type_ptr(idx, nr_muls int) Type {
-	if idx > 32767 || idx < -32767 {
-		panic('typ_ptr: idx must be between -32767 & 32767')
+pub fn new_type_ptr(idx int, nr_muls int) Type {
+	if idx < 1 || idx > 65536 {
+		panic('typ_ptr: idx must be between 1 & 65536')
 	}
-	if nr_muls > 32767 || nr_muls < -0 {
-		panic('typ_ptr: nr_muls must be between 0 & 32767')
+	if nr_muls < 0 || nr_muls > 255 {
+		panic('typ_ptr: nr_muls must be between 0 & 255')
 	}
-	return idx<<i16(16) | nr_muls
+	return (nr_muls << 16) | u16(idx)
 }
 
 pub const (

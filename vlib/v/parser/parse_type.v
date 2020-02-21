@@ -94,9 +94,20 @@ pub fn (p mut Parser) parse_type() table.Type {
 		p.next()
 		p.check(.dot)
 	}
-	if p.tok.kind == .question {
-		p.next()
+	//if p.tok.kind == .question {
+	//	p.next()
+	//}
+	mut typ := p.parse_any_type(nr_muls)
+	if is_optional {
+		typ = table.type_to_optional(typ)
 	}
+	if nr_muls > 0 {
+		typ = table.type_set_nr_muls(typ, nr_muls)
+	}
+	return typ
+}
+
+pub fn (p mut Parser) parse_any_type(nr_muls int) table.Type {
 	mut name := p.tok.lit
 	// `module.Type`
 	if p.peek_tok.kind == .dot {
@@ -200,7 +211,7 @@ pub fn (p mut Parser) parse_type() table.Type {
 					// println('NOT FOUND: $name - adding placeholder - $idx')
 					return table.new_type_ptr(idx, nr_muls)
 				}
-	}
+			}
 		}
 	}
 }
