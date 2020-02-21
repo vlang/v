@@ -821,7 +821,7 @@ fn (t &Table) main_exists() bool {
 fn (t &Table) all_test_function_names() []string {
 	mut fn_begin_test_name := ''
 	mut fn_end_test_name := ''
-	
+
 	mut fn_test_names := []string
 	for _, f in t.fns {
 		if f.name.contains('__test_') {
@@ -843,7 +843,7 @@ fn (t &Table) all_test_function_names() []string {
 		res << fn_end_test_name
 	}
 	return res
-}  
+}
 
 fn (t &Table) find_const(name string) ?Var {
 	// println('find const l=$t.consts.len')
