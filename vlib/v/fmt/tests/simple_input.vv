@@ -77,3 +77,7 @@ println('')
 fn get_user() ? User {
 	return none
 }
+
+fn get_user_ptr() & User {
+	return &User{}
+}

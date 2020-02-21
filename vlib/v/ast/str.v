@@ -1,4 +1,11 @@
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module ast
+/*
+These methods are used only by vfmt, vdoc, and for debugging.
+*/
+
 
 import (
 	v.table

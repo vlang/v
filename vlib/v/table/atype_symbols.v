@@ -3,6 +3,10 @@
 // that can be found in the LICENSE file.
 module table
 
+import (
+	strings
+)
+
 pub type TypeInfo = Array | ArrayFixed | Map | Struct | 	
 MultiReturn | Alias
 
@@ -398,6 +402,10 @@ pub fn (table &Table) type_to_str(t Type) string {
 	mut res := sym.name.replace('array_', '[]')
 	if type_is_optional(t) {
 		res = '?' + res
+	}
+	nr_muls := type_nr_muls(t)
+	if nr_muls > 0 {
+		res = strings.repeat(`&`, nr_muls) + res
 	}
 	return res
 }
