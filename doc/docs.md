@@ -1069,6 +1069,12 @@ fn test_hello() {
 
 All test functions have to be placed in `*_test.v` files and begin with `test_`.
 
+You can also define a special test function: `testsuite_begin`, which will be 
+run *before* all other test functions in a `_test.v` file.
+
+You can also define a special test function: `testsuite_end`, which will be 
+run *after* all other test functions in a `_test.v` file.
+
 To run the tests do `v hello_test.v`.
 
 To test an entire module, do `v test mymodule`.

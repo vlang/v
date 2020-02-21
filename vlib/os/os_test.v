@@ -1,9 +1,14 @@
-import os
-import filepath
+import (
+	os
+	filepath
+)
 
-fn test_aaa_setup(){
+fn testsuite_begin() {
 	cleanup_leftovers()
-	assert true
+}
+
+fn testsuite_end() {
+	cleanup_leftovers()
 }
 
 fn test_setenv() {
@@ -240,11 +245,6 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 //  }
 //}
 
-fn test_zzz_cleanup(){
-	cleanup_leftovers() assert true
-}
-
-
 fn test_symlink() {
   $if windows { return }
   os.mkdir('symlink') or { panic(err) }
@@ -285,18 +285,14 @@ fn test_is_executable_writable_readable() {
 // this function is called by both test_aaa_setup & test_zzz_cleanup
 // it ensures that os tests do not polute the filesystem with leftover
 // files so that they can be run several times in a row.
-fn cleanup_leftovers(){
+fn cleanup_leftovers() {
 	// possible leftovers from test_cp
 	os.rm('cp_example.txt')
 	os.rm('cp_new_example.txt')
 
 	// possible leftovers from test_cp_r
-	os.rm('ex/ex2/ex2.txt')
-	os.rmdir('ex/ex2')
-	os.rm('ex/ex1.txt')
-	os.rmdir('ex')
-	os.rm('ex2/ex2.txt')
-	os.rmdir('ex2')
+	os.rmdir_recursive('ex')
+	os.rmdir_recursive('ex2')
 	os.rm('ex1.txt')
 	os.rm('ex2.txt')
 }

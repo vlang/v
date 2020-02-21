@@ -819,11 +819,28 @@ fn (t &Table) main_exists() bool {
 }
 
 fn (t &Table) all_test_function_names() []string {
-	mut res := []string
+	mut fn_begin_test_name := ''
+	mut fn_end_test_name := ''
+
+	mut fn_test_names := []string
 	for _, f in t.fns {
 		if f.name.contains('__test_') {
-			res << f.name
+			fn_test_names << f.name
 		}
+		else if f.name.contains('__testsuite_begin') {
+			fn_begin_test_name = f.name
+		}
+		else if f.name.contains('__testsuite_end') {
+			fn_end_test_name = f.name
+		}
+	}
+	mut res := []string
+	if fn_begin_test_name.len > 0 {
+		res << fn_begin_test_name
+	}
+	res << fn_test_names
+	if fn_end_test_name.len > 0 {
+		res << fn_end_test_name
 	}
 	return res
 }
@@ -1142,4 +1159,3 @@ fn type_cat_str(tc TypeCategory) string {
 			'unknown'}}
 	return tc_str
 }
-
