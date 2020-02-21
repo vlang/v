@@ -82,6 +82,7 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 	temp_file := filepath.join( workdir, '.${vrepl_prefix}vrepl_temp.v')
 	mut prompt := '>>> '
 	defer {
+		println('')
 		os.rm(file)
 		os.rm(temp_file)
 		os.rm(file[..file.len - 2])
@@ -128,8 +129,7 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 			for rline in r.line.split('\n') {
 				if r.in_func || was_func {
 					r.functions << rline
-				}
-				else {
+				} else {
 					r.temp_lines << rline
 				}
 			}
@@ -149,8 +149,7 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 				return []
 			}
 			print_output(s)
-		}
-		else {
+		} else {
 			mut temp_line := r.line
 			mut temp_flag := false
 			func_call := r.function_call(r.line)
@@ -180,8 +179,7 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 					r.temp_lines.delete(0)
 				}
 				r.lines << r.line
-			}
-			else {
+			} else {
 				for r.temp_lines.len > 0 {
 					r.temp_lines.delete(0)
 				}
@@ -212,7 +210,6 @@ fn print_output(s os.Result) {
 			println(line)
 		}
 	}
-
 }
 
 fn main() {
