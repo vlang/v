@@ -1077,6 +1077,12 @@ You can also do `v test .` to test everything inside your curent folder (and und
 
 You can pass `-stats` to v test, to see more details about the individual tests in each _test.v file.
 
+You can define a special test function: `testsuite_begin`, which will be 
+run *before* all other test functions in a _test.v file.
+
+You can also define a special test function: `testsuite_end`, which will be 
+run *after* all other test functions in a _test.v file.
+
 ## Memory management
 
 (Work in progress)
