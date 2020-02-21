@@ -984,7 +984,7 @@ pub fn walk_ext(path, ext string) []string {
 		return []
 	}
 	mut files := os.ls(path) or {
-		panic(err)
+		return []
 	}
 	mut res := []string
 	separator := if path.ends_with(filepath.separator) { '' } else { filepath.separator }
@@ -1010,7 +1010,7 @@ pub fn walk(path string, f fn(path string)) {
 		return
 	}
 	mut files := os.ls(path) or {
-		panic(err)
+		return
 	}
 	for file in files {
 		p := path + filepath.separator + file
@@ -1085,9 +1085,9 @@ pub fn mkdir_all(path string) {
 	}
 }
 
+[deprecated]
 pub fn join(base string, dirs ...string) string {
-	println('use filepath.join')
-	return filepath.join(base,dirs)
+	panic('Use `filepath.join` instead of `os.join`')
 }
 
 // cachedir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
