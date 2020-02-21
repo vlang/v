@@ -20,8 +20,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ
 		f.write(arg.name)
 		if should_add_type {
-			arg_typ_sym := t.get_type_symbol(arg.typ)
-			f.write(' ${arg_typ_sym.name}')
+			f.write(' ' + t.type_to_str(arg.typ))
 		}
 		if !is_last_arg {
 			f.write(', ')
@@ -29,8 +28,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 	}
 	f.write(')')
 	if node.typ != table.void_type {
-		sym := t.get_type_symbol(node.typ)
-		f.write(' ' + sym.name)
+		f.write(' ' + t.type_to_str(node.typ))
 	}
 	return f.str()
 }

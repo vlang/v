@@ -40,7 +40,7 @@ pub fn doc(mod string, table &table.Table) string {
 		if !file.ends_with('.v') {
 			continue
 		}
-		if file.ends_with('_test.v') {
+		if file.ends_with('_test.v') || file.ends_with('_windows.v') || file.ends_with('_macos.v') {
 			continue
 		}
 		file_ast := parser.parse_file(filepath.join(path,file), table)

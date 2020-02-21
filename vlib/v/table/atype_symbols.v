@@ -392,3 +392,8 @@ pub mut:
 	key_type   Type
 	value_type Type
 }
+
+pub fn (table &Table) type_to_str(t Type) string {
+	sym := table.get_type_symbol(t)
+	return sym.name.replace('array_', '[]')
+}
