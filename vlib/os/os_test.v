@@ -1,10 +1,14 @@
 import (
 	os
 	filepath
-	time
 )
 
 fn test_aaa_setup() {
+	cleanup_leftovers()
+	assert true
+}
+
+fn test_zzz_cleanup() {
 	cleanup_leftovers()
 	assert true
 }
@@ -293,10 +297,4 @@ fn cleanup_leftovers() {
 	os.rmdir_recursive('ex2')
 	os.rm('ex1.txt')
 	os.rm('ex2.txt')
-}
-
-fn test_zzz_cleanup() {
-	time.sleep(1)
-	cleanup_leftovers()
-	assert true
 }
