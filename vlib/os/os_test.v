@@ -3,14 +3,12 @@ import (
 	filepath
 )
 
-fn test_aaa_setup() {
+fn begin_test() {
 	cleanup_leftovers()
-	assert true
 }
 
-fn test_zzz_cleanup() {
+fn end_test() {
 	cleanup_leftovers()
-	assert true
 }
 
 fn test_setenv() {
