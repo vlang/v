@@ -834,15 +834,21 @@ fn (t &Table) all_test_function_names() []string {
 			fn_end_test_name = f.name
 		}
 	}
-	mut res := []string
-	if fn_begin_test_name.len > 0 {
+	if fn_begin_test_name.len == 0 {
+		if fn_end_test_name.len > 0 {
+			fn_test_names << fn_end_test_name
+		}
+		return fn_test_names
+	}
+	else {
+		mut res := []string
 		res << fn_begin_test_name
+		res << fn_test_names
+		if fn_end_test_name.len > 0 {
+			res << fn_end_test_name
+		}
+		return res
 	}
-	res << fn_test_names
-	if fn_end_test_name.len > 0 {
-		res << fn_end_test_name
-	}
-	return res
 }
 
 fn (t &Table) find_const(name string) ?Var {
