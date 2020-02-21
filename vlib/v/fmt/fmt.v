@@ -84,7 +84,8 @@ fn (f mut Fmt) imports(imports []ast.Import) {
 }
 
 fn (f Fmt) imp_stmt_str(imp ast.Import) string {
-	imp_alias_suffix := if imp.alias != imp.mod { ' as ${imp.alias}' } else { '' }
+	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
+	imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
 	return '${imp.mod}${imp_alias_suffix}'
 }
 
@@ -127,6 +128,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			for i, field in it.fields {
 				f.write('$field.name = ')
 				f.expr(it.exprs[i])
+				f.writeln('')
 			}
 			f.indent--
 			f.writeln('\n)\n')
