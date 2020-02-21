@@ -400,6 +400,13 @@ pub mut:
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
 	mut res := sym.name.replace('array_', '[]')
+	// mod.submod.submod2.Type => submod2.Type
+	if res.contains('.') {
+		vals := res.split('.')
+		if vals.len > 2 {
+			res = vals[vals.len - 2] + '.' + vals[vals.len - 1]
+		}
+	}
 	if type_is_optional(t) {
 		res = '?' + res
 	}
@@ -407,5 +414,11 @@ pub fn (table &Table) type_to_str(t Type) string {
 	if nr_muls > 0 {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
+	/*
+	if res.starts_with(cur_mod +'.') {
+	res = res[cur_mod.len+1.. ]
+	}
+	*/
+
 	return res
 }

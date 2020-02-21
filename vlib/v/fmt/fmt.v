@@ -23,6 +23,7 @@ mut:
 	empty_line     bool
 	line_len       int
 	single_line_if bool
+	cur_mod        string
 }
 
 pub fn fmt(file ast.File, table &table.Table) string {
@@ -63,6 +64,7 @@ fn (f mut Fmt) mod(mod ast.Module) {
 	if mod.name != 'main' {
 		f.writeln('module ${mod.name}\n')
 	}
+	f.cur_mod = mod.name
 }
 
 fn (f mut Fmt) imports(imports []ast.Import) {
@@ -197,9 +199,14 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 	for field in node.fields {
 		f.write('\t$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
-		f.writeln(f.table.type_to_str(field.typ))
+		f.writeln(f.type_to_str(field.typ))
 	}
 	f.writeln('}\n')
+}
+
+fn (f &Fmt) type_to_str(t table.Type) string {
+	res := f.table.type_to_str(t)
+	return res.replace(f.cur_mod + '.', '')
 }
 
 fn (f mut Fmt) expr(node ast.Expr) {
