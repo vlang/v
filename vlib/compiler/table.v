@@ -829,11 +829,11 @@ fn (t &Table) all_test_function_names() []string {
 		if f.name.contains('__test_') {
 			fn_test_names << f.name
 		}
-		else if f.name.contains('__begin_test') {
+		else if f.name.contains('__testsuite_begin') {
 			is_begin_test = true
 			fn_begin_test_name = f.name
 		}
-		else if f.name.contains('__end_test') {
+		else if f.name.contains('__testsuite_end') {
 			is_end_test = true
 			fn_end_test_name = f.name
 		}

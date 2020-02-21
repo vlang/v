@@ -3,11 +3,11 @@ import (
 	filepath
 )
 
-fn begin_test() {
+fn testsuite_begin() {
 	cleanup_leftovers()
 }
 
-fn end_test() {
+fn testsuite_end() {
 	cleanup_leftovers()
 }
 
