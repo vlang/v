@@ -131,7 +131,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				f.writeln('')
 			}
 			f.indent--
-			f.writeln('\n)\n')
+			f.writeln(')\n')
 		}
 		ast.ExprStmt {
 			f.expr(it.expr)
