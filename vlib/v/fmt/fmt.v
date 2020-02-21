@@ -206,6 +206,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			// type_sym := f.table.get_type_symbol(it.typ)
 			f.write('[')
 			for i, expr in it.exprs {
+				if i > 0 {
+					f.wrap_long_line()
+				}
 				f.expr(expr)
 				if i < it.exprs.len - 1 {
 					f.write(', ')
@@ -255,10 +258,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.InfixExpr {
 			f.expr(it.left)
 			f.write(' $it.op.str() ')
-			if f.line_len > max_len {
-				f.write('\n' + tabs[f.indent + 1])
-				f.line_len = 0
-			}
+			f.wrap_long_line()
 			f.expr(it.right)
 		}
 		ast.IndexExpr {
@@ -271,6 +271,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.expr(it.expr)
 			f.write('.' + it.name + '(')
 			for i, arg in it.args {
+				if i > 0 {
+					f.wrap_long_line()
+				}
 				f.expr(arg)
 				if i < it.args.len - 1 {
 					f.write(', ')
@@ -310,6 +313,13 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write('}')
 		}
 		else {}
+	}
+}
+
+fn (f mut Fmt) wrap_long_line() {
+	if f.line_len > max_len {
+		f.write('\n' + tabs[f.indent + 1])
+		f.line_len = 0
 	}
 }
 
