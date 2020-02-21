@@ -395,5 +395,9 @@ pub mut:
 
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
-	return sym.name.replace('array_', '[]')
+	mut res := sym.name.replace('array_', '[]')
+	if type_is_optional(t) {
+		res = '?' + res
+	}
+	return res
 }

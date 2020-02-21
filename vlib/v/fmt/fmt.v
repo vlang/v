@@ -304,6 +304,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			}
 			f.write(')')
 		}
+		ast.None {
+			f.write('none')
+		}
 		ast.PostfixExpr {
 			f.expr(it.expr)
 			f.write(it.op.str())
