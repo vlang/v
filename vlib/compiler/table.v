@@ -818,8 +818,10 @@ fn (t &Table) main_exists() bool {
 	return false
 }
 
-fn (t &Table) all_test_function_names() (string, []string, string) {
+fn (t &Table) all_test_function_names() []string {
+	mut is_begin_test := false
 	mut fn_begin_test_name := ''
+	mut is_end_test := false
 	mut fn_end_test_name := ''
 
 	mut fn_test_names := []string
@@ -828,13 +830,31 @@ fn (t &Table) all_test_function_names() (string, []string, string) {
 			fn_test_names << f.name
 		}
 		else if f.name.contains('__testsuite_begin') {
+			is_begin_test = true
 			fn_begin_test_name = f.name
 		}
 		else if f.name.contains('__testsuite_end') {
+			is_end_test = true
 			fn_end_test_name = f.name
 		}
 	}
-	return fn_begin_test_name, fn_test_names, fn_end_test_name
+
+	if is_begin_test {
+		mut fn_names := []string
+		fn_names << fn_begin_test_name
+		fn_names << fn_test_names
+		if is_end_test {
+			fn_names << fn_end_test_name
+		}
+
+		return fn_names
+	}
+	else {
+		if is_end_test {
+			fn_test_names << fn_end_test_name
+		}
+		return fn_test_names
+	}
 }
 
 fn (t &Table) find_const(name string) ?Var {

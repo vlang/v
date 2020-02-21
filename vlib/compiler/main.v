@@ -494,7 +494,7 @@ pub fn (v mut V) generate_main() {
 			if v.table.main_exists() {
 				verror('test files cannot have function `main`')
 			}
-			testsuite_begin_name, test_fn_names, testsuite_end_name := v.table.all_test_function_names()
+			test_fn_names := v.table.all_test_function_names()
 			if test_fn_names.len == 0 {
 				verror('test files need to have at least one test function')
 			}
@@ -502,9 +502,6 @@ pub fn (v mut V) generate_main() {
 			v.gen_main_start(false)
 			if v.pref.is_stats {
 				cgen.genln('BenchedTests bt = main__start_testing(${test_fn_names.len},tos3("$v.pref.path"));')
-			}
-			if testsuite_begin_name.len > 0 {
-				cgen.genln('${testsuite_begin_name}();')
 			}
 			for tfname in test_fn_names {
 				if v.pref.is_stats {
@@ -515,9 +512,6 @@ pub fn (v mut V) generate_main() {
 					cgen.genln('BenchedTests_testing_step_end(&bt);')
 				}
 			}
-			if testsuite_end_name.len > 0 {
-				cgen.genln('${testsuite_end_name}();')
-			}			
 			if v.pref.is_stats {
 				cgen.genln('BenchedTests_end_testing(&bt);')
 			}
