@@ -12,6 +12,7 @@ import (
 const (
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t']
 	// tabs = ['', '  ', '    ', '      ', '        ']
+	max_len = 80
 )
 
 struct Fmt {
@@ -20,6 +21,7 @@ struct Fmt {
 mut:
 	indent     int
 	empty_line bool
+	line_len   int
 }
 
 pub fn fmt(file ast.File, table &table.Table) string {
@@ -39,8 +41,10 @@ pub fn fmt(file ast.File, table &table.Table) string {
 pub fn (f mut Fmt) write(s string) {
 	if f.indent > 0 && f.empty_line {
 		f.out.write(tabs[f.indent])
+		f.line_len += f.indent
 	}
 	f.out.write(s)
+	f.line_len += s.len
 	f.empty_line = false
 }
 
@@ -51,6 +55,7 @@ pub fn (f mut Fmt) writeln(s string) {
 	}
 	f.out.writeln(s)
 	f.empty_line = true
+	f.line_len = 0
 }
 
 fn (f mut Fmt) mod(mod ast.Module) {
@@ -250,6 +255,10 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.InfixExpr {
 			f.expr(it.left)
 			f.write(' $it.op.str() ')
+			if f.line_len > max_len {
+				f.write('\n' + tabs[f.indent + 1])
+				f.line_len = 0
+			}
 			f.expr(it.right)
 		}
 		ast.IndexExpr {
