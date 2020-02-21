@@ -195,10 +195,9 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 		}
 	}
 	for field in node.fields {
-		field_type_sym := f.table.get_type_symbol(field.typ)
 		f.write('\t$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
-		f.writeln('$field_type_sym.name')
+		f.writeln(f.table.type_to_str(field.typ))
 	}
 	f.writeln('}\n')
 }
