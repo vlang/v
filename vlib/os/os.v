@@ -624,7 +624,7 @@ pub fn rmdir(path string) {
 
 pub fn rmdir_recursive(path string) {
 	items := os.ls(path) or {
-		panic(err)
+		return
 	}
 	for item in items {
 		if os.is_dir(filepath.join(path,item)) {
@@ -637,7 +637,7 @@ pub fn rmdir_recursive(path string) {
 
 pub fn is_dir_empty(path string) bool {
 	items := os.ls(path) or {
-		panic(err)
+		return true
 	}
 	return items.len == 0
 }

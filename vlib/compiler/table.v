@@ -825,6 +825,7 @@ fn (t &Table) all_test_function_names() []string {
 			res << f.name
 		}
 	}
+	res.sort()
 	return res
 }
 
@@ -1142,4 +1143,3 @@ fn type_cat_str(tc TypeCategory) string {
 			'unknown'}}
 	return tc_str
 }
-
