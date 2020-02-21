@@ -574,8 +574,7 @@ pub fn (c mut Checker) postfix_expr(node ast.PostfixExpr) table.Type {
 	}
 	*/
 	typ := c.expr(node.expr)
-	// if typ.typ.kind != .int {
-	if table.type_idx(typ) != table.int_type_idx {
+	if !table.is_number(typ) {
 		typ_sym := c.table.get_type_symbol(typ)
 		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)', node.pos)
 	}
@@ -601,7 +600,7 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 	}
 	if !is_range {
 		index_type := c.expr(node.index)
-		if table.type_idx(index_type) != table.int_type_idx {
+		if !(table.type_idx(index_type) in table.number_idxs) {
 			index_type_sym := c.table.get_type_symbol(index_type)
 			c.error('non-integer index (type `$index_type_sym.name`)', node.pos)
 		}

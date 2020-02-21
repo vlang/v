@@ -13,17 +13,16 @@ pub fn type_idx(t Type) int {
 	return u16(t) & 0xffff
 }
 
-
 // return nr_muls
 [inline]
 pub fn type_nr_muls(t Type) int {
-	return (int(t) >> 16) & 0xff
+	return (int(t)>>16) & 0xff
 }
 
 // return extra
 [inline]
 pub fn type_extra(t Type) TypeExtra {
-	return ((int(t) >> 24) & 0xff)
+	return ((int(t)>>24) & 0xff)
 }
 
 // return true if pointer (nr_muls>0)
@@ -38,7 +37,7 @@ pub fn type_set_nr_muls(t Type, nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('typ_set_nr_muls: nr_muls must be between 0 & 255')
 	}
-	return (int(type_extra(t)) << 24) | (nr_muls << 16) | u16(type_idx(t))
+	return (int(type_extra(t))<<24) | (nr_muls<<16) | u16(type_idx(t))
 }
 
 // increments nr_nuls on Type and return it
@@ -48,7 +47,7 @@ pub fn type_to_ptr(t Type) Type {
 	if nr_muls == 255 {
 		panic('type_to_pre: nr_muls is already at max of 255')
 	}
-	return (int(type_extra(t)) << 24) | ((nr_muls+1) << 16) | u16(type_idx(t))
+	return (int(type_extra(t))<<24) | ((nr_muls + 1)<<16) | u16(type_idx(t))
 }
 
 // decrement nr_muls on Type and return it
@@ -58,7 +57,7 @@ pub fn type_deref(t Type) Type {
 	if nr_muls == 0 {
 		panic('deref: type `$t` is not a pointer')
 	}
-	return (int(type_extra(t)) << 24) | ((nr_muls-1) << 16) | u16(type_idx(t))
+	return (int(type_extra(t))<<24) | ((nr_muls - 1)<<16) | u16(type_idx(t))
 }
 
 [inline]
@@ -68,7 +67,7 @@ pub fn type_is_optional(t Type) bool {
 
 [inline]
 pub fn type_to_optional(t Type) Type {
-	return (int(TypeExtra.optional) << 24) | (type_nr_muls(t) << 16) | u16(type_idx(t))
+	return (int(TypeExtra.optional)<<24) | (type_nr_muls(t)<<16) | u16(type_idx(t))
 }
 
 // new type with idx of TypeSymbol, not pointer (nr_muls=0)
@@ -89,7 +88,16 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('typ_ptr: nr_muls must be between 0 & 255')
 	}
-	return (nr_muls << 16) | u16(idx)
+	return (nr_muls<<16) | u16(idx)
+}
+
+pub const (
+	number_idxs = [int_type_idx, byte_type_idx, u64_type_idx]
+)
+
+pub fn is_number(typ Type) bool {
+	idx := type_idx(typ)
+	return idx in [int_type_idx, byte_type_idx, u64_type_idx]
 }
 
 pub const (
