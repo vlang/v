@@ -145,6 +145,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}\n')
 		}
+		ast.ForInStmt {
+			f.writeln(' for in {')
+			f.stmts(it.stmts)
+			f.writeln('}')
+		}
 		ast.ForStmt {
 			f.write('for ')
 			f.expr(it.cond)
@@ -240,6 +245,19 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.expr(it.left)
 			f.write(' $it.op.str() ')
 			f.expr(it.val)
+		}
+		ast.Assoc {
+			f.writeln('{')
+			// f.indent++
+			f.writeln('\t$it.name |')
+			// TODO StructInit copy pasta
+			for i, field in it.fields {
+				f.write('\t$field: ')
+				f.expr(it.exprs[i])
+				f.writeln('')
+			}
+			// f.indent--
+			f.write('}')
 		}
 		ast.BoolLiteral {
 			f.write(it.val.str())
