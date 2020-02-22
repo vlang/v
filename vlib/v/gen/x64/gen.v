@@ -44,7 +44,8 @@ enum Size {
 pub fn gen(files []ast.File, out_name string) {
 	mut g := Gen{
 		sect_header_name_pos: 0
-		buf: []
+		// buf: []
+		
 		out_name: out_name
 	}
 	g.generate_elf_header()
@@ -310,6 +311,7 @@ pub fn (g mut Gen) call_fn(name string) {
 
 fn (g mut Gen) stmt(node ast.Stmt) {
 	match node {
+		ast.ConstDecl {}
 		ast.FnDecl {
 			is_main := it.name == 'main'
 			if is_main {
@@ -326,6 +328,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.ret()
 		}
 		ast.Return {}
+		ast.AssignStmt {}
 		ast.VarDecl {}
 		ast.ForStmt {}
 		ast.StructDecl {}

@@ -77,40 +77,42 @@ fn (p mut Parser) bool_expression() string {
 	// `as` cast
 	// TODO remove copypasta
 	if p.tok == .key_as {
-		p.fspace()
-		p.next()
-		p.fspace()
-		cast_typ := p.get_type()
-		if typ == cast_typ {
-			p.warn('casting `$typ` to `$cast_typ` is not needed')
-		}
-		if typ in p.table.sum_types {
-			T := p.table.find_type(cast_typ)
-			if T.parent != typ {
-				p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`' +
-				'parent=$T.parent')
-			}
-			p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
-			p.gen('.obj')
-			// Make sure the sum type can be cast, otherwise throw a runtime error
-			/*
-			sum_type:= p.cgen.cur_line.all_after('*) (').replace('.obj', '.typ')
+		return p.key_as(typ, start_ph)
+	}
+	return typ
+}
 
-			n := cast_typ.all_after('__')
-			p.cgen.insert_before('if (($sum_type != SumType_$n) {
+fn (p mut Parser) key_as(typ string, start_ph int) string {
+	p.fspace()
+	p.next()
+	p.fspace()
+	cast_typ := p.get_type()
+	if typ == cast_typ {
+		p.error('casting `$typ` to `$cast_typ` is not needed')
+	}
+	if typ in p.table.sum_types {
+		T := p.table.find_type(cast_typ)
+		if T.parent != typ {
+			p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`' +
+			'parent=$T.parent')
+		}
+		p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
+		p.gen('.obj')
+		// Make sure the sum type can be cast, otherwise throw a runtime error
+		/*
+		sum_type:= p.cgen.cur_line.all_after('*) (').replace('.obj', '.typ')
+
+		n := cast_typ.all_after('__')
+		p.cgen.insert_before('if (($sum_type != SumType_$n) {
 puts("runtime error: $p.file_name:$p.scanner.line_nr cannot cast sum type `$typ` to `$n`");
 exit(1);
 }
 ')
 */
-
-		} else {
-			p.cgen.set_placeholder(start_ph, '($cast_typ)(')
-			p.gen(')')
-		}
-		return cast_typ
+	} else {
+		p.error('`as` casts have been removed, use the old syntax: `Type(val)`')
 	}
-	return typ
+	return cast_typ
 }
 
 fn (p mut Parser) bterm() string {
@@ -215,6 +217,10 @@ fn (p mut Parser) bterm() string {
 		if is_float && p.cur_fn.name != 'f32_abs' && p.cur_fn.name != 'f64_abs' {
 			p.gen(')')
 			match tok {
+				// NB: For more precision/stability, the == and != float
+				// comparisons are done with V functions that use the epsilon
+				// constants for the given type.
+				// Everything else uses native comparisons (C macros) for speed.
 				.eq {
 					p.cgen.set_placeholder(ph, '${expr_type}_eq(')
 				}
@@ -222,16 +228,16 @@ fn (p mut Parser) bterm() string {
 					p.cgen.set_placeholder(ph, '${expr_type}_ne(')
 				}
 				.le {
-					p.cgen.set_placeholder(ph, '${expr_type}_le(')
+					p.cgen.set_placeholder(ph, 'macro_${expr_type}_le(')
 				}
 				.ge {
-					p.cgen.set_placeholder(ph, '${expr_type}_ge(')
+					p.cgen.set_placeholder(ph, 'macro_${expr_type}_ge(')
 				}
 				.gt {
-					p.cgen.set_placeholder(ph, '${expr_type}_gt(')
+					p.cgen.set_placeholder(ph, 'macro_${expr_type}_gt(')
 				}
 				.lt {
-					p.cgen.set_placeholder(ph, '${expr_type}_lt(')
+					p.cgen.set_placeholder(ph, 'macro_${expr_type}_lt(')
 				}
 				else {
 				}}
@@ -665,6 +671,11 @@ fn (p mut Parser) expression() string {
 			}
 		}
 	}
+	// `as` cast
+	// TODO remove copypasta
+	if p.tok == .key_as {
+		return p.key_as(typ, ph)
+	}
 	return typ
 }
 
@@ -692,7 +703,7 @@ fn (p mut Parser) term() string {
 	if p.tok == .mul && line_nr != p.scanner.line_nr {
 		return typ
 	}
-	for p.tok == .mul || p.tok == .div || p.tok == .mod {
+	for p.tok in [.mul, .div, .mod] {
 		tok := p.tok
 		is_mul := tok == .mul
 		is_div := tok == .div
@@ -914,9 +925,6 @@ fn (p mut Parser) factor() string {
 			}
 			peek2 := p.tokens[p.token_idx + 1]
 			if p.peek() == .rcbr || (p.peek() == .name && peek2.tok == .colon) {
-				if !p.expected_type.ends_with('Config') {
-					p.error('short struct initialization syntax only works with structs that end with `Config`')
-				}
 				return p.struct_init(p.expected_type)
 			}
 			// { user | name :'new name' }

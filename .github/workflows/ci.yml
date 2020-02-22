@@ -12,8 +12,8 @@ jobs:
           echo "Changed files compared to origin/master are:" && git diff --name-status origin/master HEAD -- '*.v'
     - name: Build v (there is no need for dependencies for fmt)
       run: make -j4
-    - name: Build a production tools/vfmt
-      run: ./v -prod -d vfmt tools/vfmt.v
+    - name: Build a production cmd/tools/vfmt
+      run: ./v -prod -d vfmt cmd/tools/vfmt.v
     - name: Run v fmt -diff on only the changed files. Does NOT fail for now.
       run: git diff --name-status origin/master HEAD -- '*.v' |grep -v '^D'|rev|cut -f1|rev| xargs ./v fmt -noerror -diff
     - name: Run v test-fmt
@@ -28,12 +28,12 @@ jobs:
     - name: Install dependencies
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build v
-      run: echo $VFLAGS && make -j4 && ./v -cg -o v v.v
+      run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
     - name: Test v->c
       run: |
         sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
         tcc -version
-        ./v -o v2 v.v # Make sure vtcc can build itself
+        ./v -o v2 cmd/v # Make sure vtcc can build itself
         ./v -silent test-compiler
     - name: Test v binaries
       run: ./v -silent build-vbinaries
@@ -68,12 +68,15 @@ jobs:
         node-version: 12.x
     - name: Install dependencies
       run: |
-        brew install freetype glfw openssl postgres sdl2 sdl2_ttf sdl2_mixer sdl2_image
+        ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
+        brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
+        brew install postgresql
+        brew install glfw sdl2 sdl2_ttf sdl2_mixer sdl2_image
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
-      run:  make -j4 && ./v -cg -o v v.v
+      run:  make -j4 && ./v -cg -o v cmd/v
     - name: Build V using V
-      run:  ./v -o v2 v.v && ./v2 -o v3 v.v
+      run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
     - name: Test symlink
       run:  sudo ./v symlink
     - name: Set up pg database
@@ -89,7 +92,7 @@ jobs:
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Test symlink
-      run:  ./v symlink && v -o v2 v.v
+      run:  ./v symlink && v -o v2 cmd/v
     - name: Test vsh
       run:  ./v examples/v_script.vsh
     - name: Test vid
@@ -107,7 +110,7 @@ jobs:
     - name: Install dependencies
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build V
-      run: make -j4 && ./v -cc gcc -o v v.v
+      run: make -j4 && ./v -cc gcc -o v cmd/v
     - name: Test V
       run: ./v -silent test-compiler
     - name: Test v binaries
@@ -122,13 +125,13 @@ jobs:
       run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: x64 machine code generation
       run: |
-        ./v -o vprod -prod v.v
-        cd tools
+        ./v -o vprod -prod cmd/v
+        cd cmd/tools
         echo "Generating a 1m line V file..."
-        ../vprod gen1m.v
+        ../../vprod gen1m.v
         ./gen1m > 1m.v
         echo "Building it..."
-        ../vprod -x64 -o 1m 1m.v
+        ../../vprod -x64 -o 1m 1m.v
         echo "Running it..."
         ls
 #        ./1m
@@ -143,7 +146,7 @@ jobs:
     - name: Download V
       run: wget https://github.com/vlang/v/releases/latest/download/v_linux.zip && unzip v_linux.zip && ./v --version
     - name: Test V
-      run: echo "TODO" # ./v examples/hello_world.v && examples/hello_world && ./v -silent build-examples
+      run: ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
 
 
   macos-prebuilt:
@@ -156,28 +159,24 @@ jobs:
     - name: Download V
       run: wget https://github.com/vlang/v/releases/latest/download/v_macos.zip && unzip v_macos.zip && ./v --version
     - name: Test V
-      run: echo "TODO" #./v examples/hello_world.v && examples/hello_world && ./v -silent build-examples
+      run: ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
 
   windows-prebuilt:
     runs-on: windows-2019
     steps:
     - name: Download V
-      shell: bash
+      shell: cmd
       run: |
-        echo "Downloading v.exe..."
-        curl -L https://github.com/vbinaries/vbinaries/releases/download/latest/v_windows.zip -o v_windows.zip
-        echo "Unzipping..."
+        echo Downloading V...
+        curl -L https://github.com/vlang/v/releases/latest/download/v_windows.zip -o v_windows.zip
+        echo Unzipping...
         unzip v_windows.zip
-        ./v.exe --version
-        echo "Done"
-        ls
+        v.exe --version
+        echo Done
+        dir
     - name: Test V
-      run: |
-        exit
-        ./v.exe -o hi.exe examples/hello_world.v
-        ls
-        ./hi.exe
-        ./v.exe -silent build-examples
+      shell: cmd
+      run: v.exe examples\hello_world.v && examples\hello_world.exe
 
   ubuntu-musl:
     runs-on: ubuntu-18.04
@@ -191,7 +190,7 @@ jobs:
     - name: Install dependencies
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build v
-      run: echo $VFLAGS && make -j4 && ./v -cg -o v v.v
+      run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
     - name: Test v binaries
       run: ./v -silent build-vbinaries
 #    - name: Test v->js
@@ -250,3 +249,12 @@ jobs:
         #node hi.js
     - name: Test v binaries
       run: ./v -silent build-vbinaries
+
+  docs-line-len-check:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v1
+    - name: Build
+      run: make
+    - name: Check docs line length
+      run: ./v run cmd/tools/check-md.v doc/docs.md CHANGELOG.md

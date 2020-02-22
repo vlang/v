@@ -5,6 +5,7 @@ module compiler
 
 import (
 	os
+	filepath
 	// strings
 )
 
@@ -89,7 +90,9 @@ struct ScanRes {
 
 fn scan_res(tok TokenKind, lit string) ScanRes {
 	return ScanRes{
-		tok,lit}
+		tok:tok
+		lit:lit
+	}
 }
 
 fn (s mut Scanner) ident_name() string {
@@ -114,6 +117,7 @@ const(
 )
 
 fn filter_num_sep(txt byteptr, start int, end int) string {
+	unsafe {
 	mut b := malloc(end-start + 1) // add a byte for the endstring 0
 	mut i := start
 	mut i1 := 0
@@ -125,7 +129,9 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 		i++
 	}
 	b[i1]=0 // C string compatibility
-	return string{b,i1}
+	return string{str:b
+len:i1}
+	}
 }
 
 fn (s mut Scanner) ident_bin_number() string {
@@ -211,8 +217,13 @@ fn (s mut Scanner) ident_dec_number() string {
 	}
 	// scan exponential part
 	mut has_exponential_part := false
-	if s.expect('e+', s.pos) || s.expect('e-', s.pos) {
-		exp_start_pos := s.pos += 2
+	if s.expect('e', s.pos) || s.expect('E', s.pos) {
+		exp_start_pos := (s.pos++)
+
+		if s.text[s.pos] in [`-`, `+`] {
+			s.pos++
+		}
+
 		for s.pos < s.text.len && s.text[s.pos].is_digit() {
 			s.pos++
 		}
@@ -253,7 +264,7 @@ fn (s mut Scanner) ident_number() string {
 
 fn (s mut Scanner) skip_whitespace() {
 	// if s.is_vh { println('vh') return }
-	for s.pos < s.text.len && s.text[s.pos].is_white() {
+	for s.pos < s.text.len && s.text[s.pos].is_space() {
 		if is_nl(s.text[s.pos]) && s.is_vh {
 			return
 		}
@@ -843,7 +854,7 @@ fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
 	s.started = false
 	s.debug = true
-	fname := s.file_path.all_after(os.path_separator)
+	fname := s.file_path.all_after(filepath.separator)
 	println('\n===DEBUG TOKENS $fname===')
 	for {
 		res := s.scan()
@@ -934,4 +945,3 @@ fn (s &Scanner) validate_var_name(name string) {
 		s.error('bad variable name `$name`\n' + 'looks like you have a multi-word name without separating them with `_`' + '\nfor example, use `registration_date` instead of `registrationdate` ')
 	}
 }
-

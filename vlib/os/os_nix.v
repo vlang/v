@@ -7,6 +7,10 @@ import strings
 #include <fcntl.h>
 
 pub const (
+	/**
+	 * This constant is deprecated. Use `filepath.separator` instead.
+	 * FIXME Remove this separator, as it a part of `filepath` module.
+	 */
 	path_separator = '/'
 )
 
@@ -18,7 +22,7 @@ const (
 
 fn C.symlink(charptr, charptr) int
 
-pub fn init_os_args(argc int, argv &byteptr) []string {
+fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
 	for i in 0 .. argc {
 		args << string(argv[i])
@@ -241,7 +245,7 @@ pub fn (f mut File) write_bytes(data voidptr, size int) {
 			return
 		}
 	}
-*/  
+*/
 	C.fwrite(data, 1, size, f.cfile)
 }
 

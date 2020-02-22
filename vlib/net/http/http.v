@@ -193,7 +193,7 @@ pub fn parse_headers(lines []string) map[string]string {
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is recevied
 pub fn (req &Request) do() ?Response {
-	url := urllib.parse(req.url) or {
+	mut url := urllib.parse(req.url) or {
 		return error('http.Request.do: invalid url ${req.url}')
 	}
 	mut rurl := url
@@ -211,7 +211,13 @@ pub fn (req &Request) do() ?Response {
 			break
 		}
 		// follow any redirects
-		redirect_url := resp.headers['Location']
+		mut redirect_url := resp.headers['Location']
+		if redirect_url.len > 0 && redirect_url[0] == `/` {
+			url.set_path(redirect_url) or {
+				return error('http.request.do: invalid path in redirect: "$redirect_url"')
+			}
+			redirect_url = url.str()
+		}
 		qrurl := urllib.parse(redirect_url) or {
 			return error('http.request.do: invalid URL in redirect "$redirect_url"')
 		}

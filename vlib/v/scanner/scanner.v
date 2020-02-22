@@ -5,6 +5,7 @@ module scanner
 
 import (
 	os
+	filepath
 	v.token
 	// strings
 )
@@ -65,6 +66,9 @@ fn new_scanner_file(file_path string) &Scanner {
 	return s
 }
 
+const (
+	is_fmt = os.getenv('VEXE').contains('vfmt')
+)
 // new scanner from string.
 pub fn new_scanner(text string) &Scanner {
 	return &Scanner{
@@ -72,12 +76,17 @@ pub fn new_scanner(text string) &Scanner {
 		print_line_on_error: true
 		print_colored_error: true
 		print_rel_paths_on_error: true
+		is_fmt: is_fmt
 	}
 }
 
 fn (s &Scanner) scan_res(tok_kind token.Kind, lit string) token.Token {
 	return token.Token{
-		tok_kind,lit,s.line_nr + 1}
+		kind: tok_kind
+		lit: lit
+		line_nr: s.line_nr + 1
+		pos: s.pos
+	}
 }
 
 fn (s mut Scanner) ident_name() string {
@@ -97,23 +106,28 @@ fn (s mut Scanner) ident_name() string {
 	return name
 }
 
-const(
-	num_sep = `_`	// char used as number separator
+const (
+	num_sep = `_` // char used as number separator
 )
 
 fn filter_num_sep(txt byteptr, start int, end int) string {
-	mut b := malloc(end-start + 1) // add a byte for the endstring 0
-	mut i := start
-	mut i1 := 0
-	for i < end {
-		if txt[i] != num_sep {
-			b[i1]=txt[i]
-			i1++
+	unsafe{
+		mut b := malloc(end - start + 1) // add a byte for the endstring 0
+		mut i := start
+		mut i1 := 0
+		for i < end {
+			if txt[i] != num_sep {
+				b[i1] = txt[i]
+				i1++
+			}
+			i++
 		}
-		i++
+		b[i1] = 0 // C string compatibility
+		return string{
+			str: b
+			len: i1
+		}
 	}
-	b[i1]=0 // C string compatibility
-	return string{b,i1}
 }
 
 fn (s mut Scanner) ident_bin_number() string {
@@ -199,8 +213,11 @@ fn (s mut Scanner) ident_dec_number() string {
 	}
 	// scan exponential part
 	mut has_exponential_part := false
-	if s.expect('e+', s.pos) || s.expect('e-', s.pos) {
-		exp_start_pos := s.pos += 2
+	if s.expect('e', s.pos) || s.expect('E', s.pos) {
+		exp_start_pos := (s.pos++)
+		if s.text[s.pos] in [`-`, `+`] {
+			s.pos++
+		}
 		for s.pos < s.text.len && s.text[s.pos].is_digit() {
 			s.pos++
 		}
@@ -241,7 +258,7 @@ fn (s mut Scanner) ident_number() string {
 
 fn (s mut Scanner) skip_whitespace() {
 	// if s.is_vh { println('vh') return }
-	for s.pos < s.text.len && s.text[s.pos].is_white() {
+	for s.pos < s.text.len && s.text[s.pos].is_space() {
 		if is_nl(s.text[s.pos]) && s.is_vh {
 			return
 		}
@@ -824,7 +841,7 @@ fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
 	s.started = false
 	s.debug = true
-	fname := s.file_path.all_after(os.path_separator)
+	fname := s.file_path.all_after(filepath.separator)
 	println('\n===DEBUG TOKENS $fname===')
 	for {
 		tok := s.scan()

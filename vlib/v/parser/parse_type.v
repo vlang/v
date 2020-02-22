@@ -6,49 +6,54 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) parse_array_ti(nr_muls int) table.Type {
+pub fn (p mut Parser) parse_array_type() table.Type {
 	p.check(.lsbr)
 	// fixed array
 	if p.tok.kind == .number {
 		size := p.tok.lit.int()
-		elem_ti := p.parse_type()
+		p.next()
 		p.check(.rsbr)
-		p.check_name()
-		idx,name := p.table.find_or_register_array_fixed(&elem_ti, size, 1)
-		return table.new_type(.array_fixed, name, idx, nr_muls)
+		elem_type := p.parse_type()
+		idx := p.table.find_or_register_array_fixed(elem_type, size, 1)
+		return table.new_type(idx)
 	}
 	// array
 	p.check(.rsbr)
-	elem_ti := p.parse_type()
+	elem_type := p.parse_type()
 	mut nr_dims := 1
 	for p.tok.kind == .lsbr {
 		p.check(.lsbr)
 		p.check(.rsbr)
 		nr_dims++
 	}
-	idx,name := p.table.find_or_register_array(&elem_ti, nr_dims)
-	return table.new_type(.array, name, idx, nr_muls)
+	idx := p.table.find_or_register_array(elem_type, nr_dims)
+	return table.new_type(idx)
 }
 
-pub fn (p mut Parser) parse_map_type(nr_muls int) table.Type {
+pub fn (p mut Parser) parse_map_type() table.Type {
+	p.next()
 	if p.tok.kind != .lsbr {
 		return table.map_type
 	}
-	p.next()
 	p.check(.lsbr)
-	key_ti := p.parse_type()
+	key_type := p.parse_type()
+	// key_type_sym := p.get_type_symbol(key_type)
+	// if key_type_sym.kind != .string {
+	if table.type_idx(key_type) != table.string_type_idx {
+		p.error('maps can only have string keys for now')
+	}
 	p.check(.rsbr)
-	value_ti := p.parse_type()
-	idx,name := p.table.find_or_register_map(&key_ti, &value_ti)
-	return table.new_type(.map, name, idx, nr_muls)
+	value_type := p.parse_type()
+	idx := p.table.find_or_register_map(key_type, value_type)
+	return table.new_type(idx)
 }
 
-pub fn (p mut Parser) parse_multi_return_ti() table.Type {
+pub fn (p mut Parser) parse_multi_return_type() table.Type {
 	p.check(.lpar)
-	mut mr_tis := []table.Type
+	mut mr_types := []table.Type
 	for {
-		mr_ti := p.parse_type()
-		mr_tis << mr_ti
+		mr_type := p.parse_type()
+		mr_types << mr_type
 		if p.tok.kind == .comma {
 			p.check(.comma)
 		}
@@ -57,24 +62,29 @@ pub fn (p mut Parser) parse_multi_return_ti() table.Type {
 		}
 	}
 	p.check(.rpar)
-	idx,name := p.table.find_or_register_multi_return(mr_tis)
-	return table.new_type(.multi_return, name, idx, 0)
-}
-
-pub fn (p mut Parser) parse_variadic_ti() table.Type {
-	p.check(.ellipsis)
-	variadic_ti := p.parse_type()
-	idx,name := p.table.find_or_register_variadic(&variadic_ti)
-	return table.new_type(.variadic, name, idx, 0)
+	idx := p.table.find_or_register_multi_return(mr_types)
+	return table.new_type(idx)
 }
 
 pub fn (p mut Parser) parse_fn_type() table.Type {
-	// p.check(.key_fn)
-	p.fn_decl()
+	// p.warn('parrse fn')
+	p.check(.key_fn)
+	// p.fn_decl()
+	p.fn_args()
+	if p.tok.kind.is_start_of_type() {
+		p.parse_type()
+	}
 	return table.int_type
 }
 
 pub fn (p mut Parser) parse_type() table.Type {
+	// optional
+	mut is_optional := false
+	if p.tok.kind == .question {
+		p.next()
+		is_optional = true
+	}
+	// &Type
 	mut nr_muls := 0
 	for p.tok.kind == .amp {
 		p.check(.amp)
@@ -84,10 +94,35 @@ pub fn (p mut Parser) parse_type() table.Type {
 		p.next()
 		p.check(.dot)
 	}
-	if p.tok.kind == .question {
-		p.next()
+	mut typ := p.parse_any_type(nr_muls > 0)
+	if is_optional {
+		typ = table.type_to_optional(typ)
 	}
-	name := p.tok.lit
+	if nr_muls > 0 {
+		typ = table.type_set_nr_muls(typ, nr_muls)
+	}
+	return typ
+}
+
+pub fn (p mut Parser) parse_any_type(is_ptr bool) table.Type {
+	mut name := p.tok.lit
+	// `module.Type`
+	if p.peek_tok.kind == .dot {
+		// /if !(p.tok.lit in p.table.imports) {
+		if !p.known_import(name) {
+			println(p.table.imports)
+			p.error('unknown module `$p.tok.lit`')
+		}
+		p.next()
+		p.check(.dot)
+		// prefix with full module
+		name = '${p.imports[name]}.$p.tok.lit'
+	}
+	// `Foo` in module `mod` means `mod.Foo`
+	else if !(p.mod in ['builtin', 'main']) && !(name in table.builtin_type_names) {
+		name = p.mod + '.' + name
+	}
+	// p.warn('get type $name')
 	match p.tok.kind {
 		// func
 		.key_fn {
@@ -95,90 +130,85 @@ pub fn (p mut Parser) parse_type() table.Type {
 		}
 		// array
 		.lsbr {
-			return p.parse_array_ti(nr_muls)
+			return p.parse_array_type()
 		}
 		// multiple return
 		.lpar {
-			if nr_muls > 0 {
-				p.error('parse_ti: unexpected `&` before multiple returns')
+			if is_ptr {
+				p.error('parse_type: unexpected `&` before multiple returns')
 			}
-			return p.parse_multi_return_ti()
-		}
-		// variadic
-		.ellipsis {
-			if nr_muls > 0 {
-				p.error('parse_ti: unexpected `&` before variadic')
-			}
-			return p.parse_variadic_ti()
+			return p.parse_multi_return_type()
 		}
 		else {
+			// no defer
+			if name == 'map' {
+				return p.parse_map_type()
+			}
 			defer {
 				p.next()
 			}
 			match name {
-				'map' {
-					return p.parse_map_type(nr_muls)
-				}
 				'voidptr' {
-					return table.new_type(.voidptr, 'voidptr', table.voidptr_type_idx, nr_muls)
+					return table.voidptr_type
 				}
 				'byteptr' {
-					return table.new_type(.byteptr, 'byteptr', table.byteptr_type_idx, nr_muls)
+					return table.byteptr_type
 				}
 				'charptr' {
-					return table.new_type(.charptr, 'charptr', table.charptr_type_idx, nr_muls)
+					return table.charptr_type
 				}
 				'i8' {
-					return table.new_type(.i8, 'i8', table.i8_type_idx, nr_muls)
+					return table.i8_type
 				}
 				'i16' {
-					return table.new_type(.i16, 'i16', table.i16_type_idx, nr_muls)
+					return table.i16_type
 				}
 				'int' {
-					return table.new_type(.int, 'int', table.int_type_idx, nr_muls)
+					return table.int_type
 				}
 				'i64' {
-					return table.new_type(.i64, 'i64', table.i64_type_idx, nr_muls)
+					return table.i64_type
 				}
 				'byte' {
-					return table.new_type(.byte, 'byte', table.byte_type_idx, nr_muls)
+					return table.byte_type
 				}
 				'u16' {
-					return table.new_type(.u16, 'u16', table.u16_type_idx, nr_muls)
+					return table.u16_type
 				}
 				'u32' {
-					return table.new_type(.u32, 'u32', table.u32_type_idx, nr_muls)
+					return table.u32_type
 				}
 				'u64' {
-					return table.new_type(.u64, 'u64', table.u64_type_idx, nr_muls)
+					return table.u64_type
 				}
 				'f32' {
-					return table.new_type(.f32, 'f32', table.f32_type_idx, nr_muls)
+					return table.f32_type
 				}
 				'f64' {
-					return table.new_type(.f64, 'f64', table.f64_type_idx, nr_muls)
+					return table.f64_type
 				}
 				'string' {
-					return table.new_type(.string, 'string', table.string_type_idx, nr_muls)
+					return table.string_type
 				}
 				'char' {
-					return table.new_type(.char, 'char', table.charptr_type_idx, nr_muls)
+					return table.char_type
 				}
 				'bool' {
-					return table.new_type(.bool, 'bool', table.bool_type_idx, nr_muls)
+					return table.bool_type
 				}
 				// struct / enum / placeholder
 				else {
 					// struct / enum
 					mut idx := p.table.find_type_idx(name)
 					if idx > 0 {
-						return table.new_type(p.table.types[idx].kind, name, idx, nr_muls)
+						return table.new_type(idx)
 					}
 					// not found - add placeholder
 					idx = p.table.add_placeholder_type(name)
-					return table.new_type(.placeholder, name, idx, nr_muls)
+					// println('NOT FOUND: $name - adding placeholder - $idx')
+					return table.new_type(idx)
 				}
-	}
+			}
 		}
 	}
 }

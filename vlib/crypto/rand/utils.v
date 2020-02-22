@@ -10,7 +10,7 @@ import(
 )
 
 pub fn int_u64(max u64) ?u64 {
-	bitlen := bits.len64(max)
+	bitlen := bits.len_64(max)
 	if bitlen == 0 {
 		return u64(0)
 	}

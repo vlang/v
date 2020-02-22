@@ -24,12 +24,12 @@ pub fn join(base string, dirs ...string) string {
 	for d in dirs {
 		result << d
 	}
-	return result.join(path_separator)
+	return result.join(separator)
 }
 
 // dir returns all but the last element of path, typically the path's directory.
 pub fn dir(path string) string {
-	pos := path.last_index(path_separator) or {
+	pos := path.last_index(separator) or {
 		return '.'
 	}
 	return path[..pos]
@@ -37,7 +37,7 @@ pub fn dir(path string) string {
 
 // basedir returns a directory name from path
 pub fn basedir(path string) string {
-	pos := path.last_index(path_separator) or {
+	pos := path.last_index(separator) or {
 		return path
 	}
 	// NB: *without* terminating /
@@ -46,5 +46,5 @@ pub fn basedir(path string) string {
 
 // filename returns a file name from path
 pub fn filename(path string) string {
-	return path.all_after(path_separator)
+	return path.all_after(separator)
 }

@@ -55,6 +55,7 @@ fn foo(a int) {
 	number := nums[0]
 	bools := [true, false]
 	users := [User{}]
+	//ptr := &User{}
 	b := bools[0]
 	mystrings := ['a', 'b']
 	s := mystrings[0]
@@ -85,7 +86,7 @@ fn myuser() {
 	x := 1
 	q := x | 0x1004
 	user := User{age:10}
-	age := user.age + 1
+	age := user.age + 1 // crash here
 	boo := 2
 	boo2 := boo+1
 	b := age > 0
@@ -97,12 +98,49 @@ fn multi_return() (int,string) {
 }
 
 fn variadic(a ...int) {
+	x := path_sep
+	y := if true { 1 } else { 0 } // TODO cgen
 }
 
 fn ensure_cap(required int, cap int) {
 	if required < cap {
 		return
 	}
+}
+
+fn println(s string){}
+
+fn matches() {
+	a := 100
+	match a {
+		10 {
+			println('10')
+		}
+		20 {
+			k := a + 1
+		}
+	}
+	/*
+	n := match a {
+		1 { 10 }
+		2 { 20 }
+		else { 30 }
+	}
+	*/
+}
+
+const (
+	path_sep = 10
+)
+
+fn end() {
+	i := 2
+	key := 10
+	x := i != -1 && key == 10 // key == keys[i]
+	e := 2 + 3 * 4
+	//mut a := [1,2,3]
+	//(a << 4) + 2
+
 }
 
 

@@ -224,7 +224,7 @@ pub fn mv_by_cp(source string, target string) ?bool {
 	return true
 }
 
-fn vfopen(path, mode string) *C.FILE {
+fn vfopen(path, mode string) &C.FILE {
 	$if windows {
 		return C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
@@ -624,7 +624,7 @@ pub fn rmdir(path string) {
 
 pub fn rmdir_recursive(path string) {
 	items := os.ls(path) or {
-		panic(err)
+		return
 	}
 	for item in items {
 		if os.is_dir(filepath.join(path,item)) {
@@ -637,7 +637,7 @@ pub fn rmdir_recursive(path string) {
 
 pub fn is_dir_empty(path string) bool {
 	items := os.ls(path) or {
-		panic(err)
+		return true
 	}
 	return items.len == 0
 }
@@ -650,26 +650,22 @@ fn print_c_errno() {
 
 [deprecated]
 pub fn ext(path string) string {
-	println('Use filepath.ext')
-	return filepath.ext(path)
+	panic('Use `filepath.ext` instead of `os.ext`')
 }
 
 [deprecated]
 pub fn dir(path string) string {
-	println('Use filepath.dir')
-	return filepath.dir(path)
+	panic('Use `filepath.dir` instead of `os.dir`')
 }
 
 [deprecated]
 pub fn basedir(path string) string {
-	println('Use filepath.basedir')
-	return filepath.basedir(path)
+	panic('Use `filepath.basedir` instead of `os.basedir`')
 }
 
 [deprecated]
 pub fn filename(path string) string {
-	println('Use filepath.filename')
-	return filepath.filename(path)
+	panic('Use `filepath.filename` instead of `os.filename`')
 }
 
 // get_line returns a one-line string from stdin
@@ -785,20 +781,11 @@ pub fn user_os() string {
 
 // home_dir returns path to user's home directory.
 pub fn home_dir() string {
-	mut home := os.getenv('HOME')
 	$if windows {
-		home = os.getenv('HOMEDRIVE')
-		if home.len == 0 {
-			home = os.getenv('SYSTEMDRIVE')
-		}
-		mut homepath := os.getenv('HOMEPATH')
-		if homepath.len == 0 {
-			homepath = '\\Users\\' + os.getenv('USERNAME')
-		}
-		home += homepath
+		return os.getenv('USERPROFILE') + filepath.separator
+	} $else {
+		return os.getenv('HOME') + filepath.separator
 	}
-	home += path_separator
-	return home
 }
 
 // write_file writes `text` data to a file in `path`.
@@ -904,9 +891,9 @@ pub fn executable() string {
 
 [deprecated]
 pub fn dir_exists(path string) bool {
-	panic('use os.is_dir()')
-	// return false
+	panic('Use `os.is_dir` instead of `os.dir_exists`')
 }
+
 // is_dir returns a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
@@ -997,10 +984,10 @@ pub fn walk_ext(path, ext string) []string {
 		return []
 	}
 	mut files := os.ls(path) or {
-		panic(err)
+		return []
 	}
 	mut res := []string
-	separator := if path.ends_with(path_separator) { '' } else { path_separator }
+	separator := if path.ends_with(filepath.separator) { '' } else { filepath.separator }
 	for i, file in files {
 		if file.starts_with('.') {
 			continue
@@ -1016,22 +1003,22 @@ pub fn walk_ext(path, ext string) []string {
 	return res
 }
 
-// walk recursively traverse the given directory path.
+// walk recursively traverses the given directory path.
 // When a file is encountred it will call the callback function with current file as argument.
-pub fn walk(path string, fnc fn(path string)) {
+pub fn walk(path string, f fn(path string)) {
 	if !os.is_dir(path) {
 		return
 	}
 	mut files := os.ls(path) or {
-		panic(err)
+		return
 	}
 	for file in files {
-		p := path + os.path_separator + file
+		p := path + filepath.separator + file
 		if os.is_dir(p) && !os.is_link(p) {
-			walk(p, fnc)
+			walk(p, f)
 		}
 		else if os.exists(p) {
-			fnc(p)
+			f(p)
 		}
 	}
 	return
@@ -1063,7 +1050,7 @@ pub fn wait() int {
 	$if !windows {
 		pid = C.wait(0)
 	}
-	$if !windows {
+	$if windows {
 		panic('os.wait not supported in windows') // TODO
 	}
 	return pid
@@ -1087,9 +1074,9 @@ pub fn flush_stdout() {
 }
 
 pub fn mkdir_all(path string) {
-	mut p := if path.starts_with(os.path_separator) { os.path_separator } else { '' }
-	for subdir in path.split(os.path_separator) {
-		p += subdir + os.path_separator
+	mut p := if path.starts_with(filepath.separator) { filepath.separator } else { '' }
+	for subdir in path.split(filepath.separator) {
+		p += subdir + filepath.separator
 		if !os.is_dir(p) {
 			os.mkdir(p) or {
 				panic(err)
@@ -1098,9 +1085,9 @@ pub fn mkdir_all(path string) {
 	}
 }
 
+[deprecated]
 pub fn join(base string, dirs ...string) string {
-	println('use filepath.join')
-	return filepath.join(base,dirs)
+	panic('Use `filepath.join` instead of `os.join`')
 }
 
 // cachedir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
@@ -1161,7 +1148,7 @@ pub const (
 	wd_at_startup = getwd()
 )
 
-// resource_abs_path returns an absolute path, for the given `path` 
+// resource_abs_path returns an absolute path, for the given `path`
 // (the path is expected to be relative to the executable program)
 // See https://discordapp.com/channels/592103645835821068/592294828432424960/630806741373943808
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,

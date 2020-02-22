@@ -255,9 +255,10 @@ pub fn (s Socket) send_string(sdata string) ?int {
 	return s.send(sdata.str, sdata.len)
 }
 
-// receive string data from socket
+// receive string data from socket. NB: you are responsible for freeing the returned byteptr
 pub fn (s Socket) recv(bufsize int) (byteptr,int) {
-	buf := malloc(bufsize)
+	mut buf := byteptr(0)
+	unsafe { buf = malloc(bufsize) }
 	res := C.recv(s.sockfd, buf, bufsize, 0)
 	return buf,res
 }
