@@ -75,8 +75,7 @@ fn get_user() ?User {
 }
 
 fn get_user_ptr() &User {
-	return &User{
-	}
+	return &User{	}
 }
 
 struct Foo {
