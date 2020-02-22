@@ -56,7 +56,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-		
+
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -320,7 +320,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return ast.ExprStmt{
 				expr: expr
 				// typ: typ
-				
+
 			}
 		}
 	}
@@ -663,13 +663,23 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 		.lcbr {
 			p.next()
 			if p.tok.kind == .str {
+				mut keys := []ast.Expr
+				mut vals := []ast.Expr
 				for p.tok.kind != .rcbr && p.tok.kind != .eof {
-					p.check(.str)
+					//p.check(.str)
+					key, _ := p.expr(0)
+					keys <<  key
 					p.check(.colon)
-					p.expr(0)
+					val,_  := p.expr(0)
+					vals << val
 					if p.tok.kind == .comma {
 						p.next()
 					}
+				}
+				node = ast.MapInit {
+					keys:keys
+					vals: vals
+					pos: p.tok.position()
 				}
 			}
 			else {
@@ -1073,10 +1083,10 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-		
+
 		pos: pos
 		// left: left
-		
+
 	}
 	return node
 }
@@ -1313,17 +1323,25 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	p.check(.lcbr)
 	mut ast_fields := []ast.Field
 	mut fields := []table.Field
+	mut mut_pos := -1
+	mut pub_pos := -1
+	mut pub_mut_pos := -1
 	for p.tok.kind != .rcbr {
 		if p.tok.kind == .key_pub {
 			p.check(.key_pub)
 			if p.tok.kind == .key_mut {
 				p.check(.key_mut)
+				pub_mut_pos = fields.len
+			}
+			else {
+				pub_pos = fields.len
 			}
 			p.check(.colon)
 		}
 		else if p.tok.kind == .key_mut {
 			p.check(.key_mut)
 			p.check(.colon)
+			mut_pos = fields.len
 		}
 		field_name := p.check_name()
 		// p.warn('field $field_name')
@@ -1368,6 +1386,9 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		is_pub: is_pub
 		fields: ast_fields
 		pos: p.tok.position()
+		mut_pos: mut_pos
+		pub_pos: pub_pos
+		pub_mut_pos: pub_mut_pos
 	}
 }
 
@@ -1464,10 +1485,10 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	node := ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-		
+
 		is_mut: is_mut
 		// typ: typ
-		
+
 		pos: p.tok.position()
 	}
 	p.scope.register_var(node)
@@ -1586,7 +1607,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 		blocks: blocks
 		match_exprs: match_exprs
 		// typ: typ
-		
+
 		cond: cond
 	}
 	return node

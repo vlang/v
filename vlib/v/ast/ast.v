@@ -11,7 +11,7 @@ import (
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
-CastExpr | EnumVal | Assoc | SizeOf | None
+CastExpr | EnumVal | Assoc | SizeOf | None | MapInit
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
@@ -93,10 +93,13 @@ pub:
 
 pub struct StructDecl {
 pub:
-	pos    token.Position
-	name   string
-	fields []Field
-	is_pub bool
+	pos         token.Position
+	name        string
+	fields      []Field
+	is_pub      bool
+	mut_pos     int // mut:
+	pub_pos     int // pub:
+	pub_mut_pos int // pub mut:
 }
 
 pub struct StructInit {
@@ -440,6 +443,15 @@ mut:
 	typ   table.Type
 }
 
+pub struct MapInit {
+pub:
+	pos  token.Position
+	keys []Expr
+	vals []Expr
+mut:
+	typ  table.Type
+}
+
 // s[10..20]
 pub struct RangeExpr {
 pub:
@@ -455,7 +467,9 @@ pub:
 
 pub struct Assoc {
 pub:
-	name string
+	name   string
+	fields []string
+	exprs  []Expr
 }
 
 pub struct SizeOf {

@@ -198,7 +198,16 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 			max = field.name.len
 		}
 	}
-	for field in node.fields {
+	for i, field in node.fields {
+		if i == node.mut_pos {
+			f.writeln('mut:')
+		}
+		else if i == node.pub_pos {
+			f.writeln('pub:')
+		}
+		else if i == node.pub_mut_pos {
+			f.writeln('pub mut:')
+		}
 		f.write('\t$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
 		f.writeln(f.type_to_str(field.typ))
@@ -297,6 +306,28 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.IntegerLiteral {
 			f.write(it.val.str())
+		}
+		ast.MapInit {
+			f.writeln('{')
+			f.indent++
+			/*
+			mut max := 0
+			for i, key in it.keys {
+				if key.len > max {
+					max = key.len
+				}
+			}
+				*/
+
+			for i, key in it.keys {
+				f.expr(key)
+				// f.write(strings.repeat(` `, max - field.name.len))
+				f.write(': ')
+				f.expr(it.vals[i])
+				f.writeln('')
+			}
+			f.indent--
+			f.write('}')
 		}
 		ast.MethodCallExpr {
 			f.expr(it.expr)
