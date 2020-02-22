@@ -207,21 +207,23 @@ pub fn get_file_handle(path string) HANDLE {
 // get_module_filename retrieves the fully qualified path for the file that contains the specified module.
 // The module must have been loaded by the current process.
 pub fn get_module_filename(handle HANDLE) ?string {
-    mut sz := 4096 // Optimized length
-    mut buf := &u16(malloc(4096))
-    for {
-        status := int(C.GetModuleFileNameW(handle, voidptr(&buf), sz))
-        match status {
-            SUCCESS {
-                _filename := string_from_wide2(buf, sz)
-                return _filename
-            }
-            else {
-                // Must handled with GetLastError and converted by FormatMessage
-                return error('Cannot get file name from handle')
-            }
-        }
-    }
+	unsafe {
+		mut sz := 4096 // Optimized length
+		mut buf := &u16(malloc(4096))
+		for {
+			status := int(C.GetModuleFileNameW(handle, voidptr(&buf), sz))
+			match status {
+				SUCCESS {
+					_filename := string_from_wide2(buf, sz)
+					return _filename
+				}
+				else {
+					// Must handled with GetLastError and converted by FormatMessage
+					return error('Cannot get file name from handle')
+				}
+			}
+		}
+	}
     panic('this should be unreachable') // TODO remove unreachable after loop
 }
 
