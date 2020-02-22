@@ -5,6 +5,7 @@ module main
 
 import (
 	benchmark
+	compiler
 	os
 	os.cmdline
 	compiler
@@ -13,7 +14,7 @@ import (
 fn compile(command string, args []string) {
 	// Construct the V object from command line arguments
 	parse_and_output_new_format(args)
-	mut v := new_v(args)
+	mut v := compiler.new_v(parse_arguments(args))
 	if v.pref.is_verbose {
 		println(args)
 	}
