@@ -8,7 +8,8 @@ import os
 const (
 	//list_of_flags contains a list of flags where an argument is expected past it.
 	list_of_flags = [
-		'-o', '-os', '-cc', '-cflags', '-d'
+		'-o', '-output', '-d', '-define', '-b', '-backend', '-verbose', '-cc', '-os', '-target-os', '-arch',
+			'-csource', '-cf', '-cflags'
 	]
 )
 
