@@ -195,6 +195,7 @@ pub fn (c mut Checker) check_method_call_expr(method_call_expr ast.MethodCallExp
 		}
 	}
 	c.error('type `$typ_sym.name` has no method `$method_call_expr.name`', method_call_expr.pos)
+	return table.void_type
 }
 
 pub fn (c mut Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type {
@@ -221,6 +222,7 @@ pub fn (c mut Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type 
 	else {
 		c.error('unknown field `${typ_sym.name}.$field_name`', selector_expr.pos)
 	}
+	return table.void_type
 }
 
 // TODO: non deferred
