@@ -48,7 +48,7 @@ pub fn (c mut Checker) check2(ast_file ast.File) []string {
 }
 
 pub fn (c mut Checker) check_files(ast_files []ast.File) {
-	// TODO: temp fix, impl proper solition
+	// TODO: temp fix, impl proper solution
 	for file in ast_files {
 		c.file = file
 		for stmt in file.stmts {
