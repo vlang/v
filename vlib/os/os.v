@@ -681,28 +681,30 @@ pub fn get_line() string {
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
 	$if windows {
-		max_line_chars := 256
-		buf := malloc(max_line_chars * 2)
-		h_input := C.GetStdHandle(STD_INPUT_HANDLE)
-		mut bytes_read := 0
-		if is_atty(0) > 0 {
-			C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
-			return string_from_wide2(&u16(buf), bytes_read)
-		}
-		mut offset := 0
-		for {
-			pos := buf + offset
-			res := C.ReadFile(h_input, pos, 1, &bytes_read, 0)
-			if !res || bytes_read == 0 {
-           			break
+		unsafe {
+			max_line_chars := 256
+			buf := malloc(max_line_chars * 2)
+			h_input := C.GetStdHandle(STD_INPUT_HANDLE)
+			mut bytes_read := 0
+			if is_atty(0) > 0 {
+				C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
+				return string_from_wide2(&u16(buf), bytes_read)
 			}
-			if *pos == `\n` || *pos == `\r` {
+			mut offset := 0
+			for {
+				pos := buf + offset
+				res := C.ReadFile(h_input, pos, 1, &bytes_read, 0)
+				if !res || bytes_read == 0 {
+						break
+				}
+				if *pos == `\n` || *pos == `\r` {
+					offset++
+					break
+				}
 				offset++
-				break
 			}
-			offset++
+			return string(buf, offset)
 		}
-		return string(buf, offset)
 	} $else {
 		max := size_t(0)
 		mut buf := byteptr(0)

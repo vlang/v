@@ -33,28 +33,30 @@ const (
 // Given a root key look for one of the subkeys in 'versions' and get the path
 fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 	$if windows {
-		for version in versions {
-			required_bytes := 0 // TODO mut
-			result := C.RegQueryValueEx(key, version.to_wide(), 0, 0, 0, &required_bytes)
-			length := required_bytes / 2
-			if result != 0 {
-				continue
+		unsafe {
+			for version in versions {
+				required_bytes := 0 // TODO mut
+				result := C.RegQueryValueEx(key, version.to_wide(), 0, 0, 0, &required_bytes)
+				length := required_bytes / 2
+				if result != 0 {
+					continue
+				}
+				alloc_length := (required_bytes + 2)
+				mut value := &u16(malloc(alloc_length))
+				if isnil(value) {
+					continue
+				}
+				result2 := C.RegQueryValueEx(key, version.to_wide(), 0, 0, value, &alloc_length)
+				if result2 != 0 {
+					continue
+				}
+				// We might need to manually null terminate this thing
+				// So just make sure that we do that
+				if (value[length - 1] != u16(0)) {
+					value[length] = u16(0)
+				}
+				return string_from_wide(value)
 			}
-			alloc_length := (required_bytes + 2)
-			mut value := &u16(malloc(alloc_length))
-			if isnil(value) {
-				continue
-			}
-			result2 := C.RegQueryValueEx(key, version.to_wide(), 0, 0, value, &alloc_length)
-			if result2 != 0 {
-				continue
-			}
-			// We might need to manually null terminate this thing
-			// So just make sure that we do that
-			if (value[length - 1] != u16(0)) {
-				value[length] = u16(0)
-			}
-			return string_from_wide(value)
 		}
 	}
 	return error('windows kit not found')
