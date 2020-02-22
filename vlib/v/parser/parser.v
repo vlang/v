@@ -466,7 +466,7 @@ pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 	else {
 		// handle consts/fns in checker
 		ident.kind = .unresolved
-		return ident
+		return {ident | name: p.prepend_mod(name)}
 	}
 }
 
@@ -1277,7 +1277,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	mut fields := []ast.Field
 	mut exprs := []ast.Expr
 	for p.tok.kind != .rpar {
-		name := p.check_name()
+		name := p.prepend_mod(p.check_name())
 		// println('const: $name')
 		p.check(.assign)
 		expr,typ := p.expr(0)

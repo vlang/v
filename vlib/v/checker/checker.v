@@ -48,6 +48,18 @@ pub fn (c mut Checker) check2(ast_file ast.File) []string {
 }
 
 pub fn (c mut Checker) check_files(ast_files []ast.File) {
+	// TODO: temp fix, impl proper solition
+	for file in ast_files {
+		c.file = file
+		for stmt in file.stmts {
+			match mut stmt {
+				ast.ConstDecl {
+					c.stmt(*it)
+				}
+				else {}
+			}
+		}
+	}
 	for file in ast_files {
 		c.check(file)
 	}
@@ -304,6 +316,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				mut field := it.fields[i]
 				typ := c.expr(expr)
 				mut xconst := c.table.consts[field.name]
+
 				// if xconst.typ == 0 {
 				xconst.typ = typ
 				c.table.consts[field.name] = xconst

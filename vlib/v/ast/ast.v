@@ -213,6 +213,7 @@ pub:
 	imports []Import
 	stmts   []Stmt
 	scope   &Scope
+	const_decls []ConstDecl
 }
 
 pub struct IdentFunc {
