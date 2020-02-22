@@ -168,7 +168,12 @@ fn (foptions &FormatOptions) format_file(file string) {
 	mut compiler_params := &pref.Preferences{}
 	target_os := file_to_target_os(file)
 	if target_os != '' {
-		compiler_params.os = pref.os_from_string(target_os)
+		//TODO Remove temporary variable once it compiles correctly in C
+		tmp := pref.os_from_string(target_os) or {
+			eprintln('unknown operating system $target_os')
+			return
+		}
+		compiler_params.os = tmp
 	}
 	mut cfile := file
 	mut mod_folder_parent := tmpfolder
