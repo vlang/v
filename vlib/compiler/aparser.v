@@ -2556,7 +2556,9 @@ fn (p mut Parser) assoc() string {
 		p.check_types(p.bool_expression(), f.typ)
 		p.gen(',')
 		if p.tok != .rcbr {
-			p.check(.comma)
+			if p.tok == .comma {
+				p.check(.comma)
+			}
 		}
 		p.fgen_nl()
 	}

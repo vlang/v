@@ -56,7 +56,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-		
+
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -320,7 +320,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return ast.ExprStmt{
 				expr: expr
 				// typ: typ
-				
+
 			}
 		}
 	}
@@ -985,7 +985,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		p.check(.key_in)
 		mut elem_type := table.void_type
 		// arr_expr
-		_,arr_typ := p.expr(0)
+		cond,arr_typ := p.expr(0)
 		// array / map
 		if table.type_idx(arr_typ) == table.string_type_idx {
 			elem_type = table.byte_type
@@ -1026,6 +1026,8 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		return ast.ForInStmt{
 			stmts: stmts
 			pos: p.tok.position()
+			cond: cond
+			var: var_name
 		}
 	}
 	// `for cond {`
@@ -1057,13 +1059,16 @@ fn (p mut Parser) if_expr() ast.Expr {
 		cond,_ = p.expr(0)
 	}
 	p.inside_if = false
+	mut has_else := false
 	stmts := p.parse_block()
 	mut else_stmts := []ast.Stmt
 	if p.tok.kind == .key_else {
 		p.check(.key_else)
 		if p.tok.kind == .key_if {
-			p.if_expr()
+			// The next if block is handled by next if_expr()
+			has_else = true
 		}
+		// p.if_expr()
 		else {
 			else_stmts = p.parse_block()
 		}
@@ -1091,10 +1096,11 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-		
+
 		pos: pos
+		has_else  : has_else
 		// left: left
-		
+
 	}
 	return node
 }
@@ -1493,10 +1499,10 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	node := ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-		
+
 		is_mut: is_mut
 		// typ: typ
-		
+
 		pos: p.tok.position()
 	}
 	p.scope.register_var(node)
@@ -1615,7 +1621,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 		blocks: blocks
 		match_exprs: match_exprs
 		// typ: typ
-		
+
 		cond: cond
 	}
 	return node

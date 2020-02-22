@@ -319,6 +319,7 @@ pub:
 	pos        token.Position
 mut:
 	typ        table.Type
+	has_else   bool
 }
 
 pub struct MatchExpr {

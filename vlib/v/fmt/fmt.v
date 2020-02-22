@@ -43,7 +43,7 @@ pub fn fmt(file ast.File, table &table.Table) string {
 pub fn (f mut Fmt) write(s string) {
 	if f.indent > 0 && f.empty_line {
 		f.out.write(tabs[f.indent])
-		f.line_len += f.indent
+		f.line_len += f.indent * 4
 	}
 	f.out.write(s)
 	f.line_len += s.len
@@ -126,7 +126,8 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('const (')
 			f.indent++
 			for i, field in it.fields {
-				f.write('$field.name = ')
+				name := field.name.after('.')
+				f.write('$name = ')
 				f.expr(it.exprs[i])
 				f.writeln('')
 			}
@@ -146,7 +147,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('}\n')
 		}
 		ast.ForInStmt {
-			f.writeln(' for in {')
+			f.write('for $it.var in ')
+			f.expr(it.cond)
+			f.writeln(' {')
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
@@ -231,7 +234,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			// type_sym := f.table.get_type_symbol(it.typ)
 			f.write('[')
 			for i, expr in it.exprs {
-				if i > 0 {
+				if i > 0 && it.exprs.len > 1 {
 					f.wrap_long_line()
 				}
 				f.expr(expr)
@@ -294,7 +297,10 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.write(' ')
 			}
 			f.write('}')
-			if it.else_stmts.len > 0 {
+			if it.has_else {
+				f.write(' else ')
+			}
+			else if it.else_stmts.len > 0 {
 				f.write(' else {')
 				if single_line {
 					f.write(' ')
@@ -387,13 +393,19 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.StructInit {
 			type_sym := f.table.get_type_symbol(it.typ)
-			f.writeln('$type_sym.name{')
-			for i, field in it.fields {
-				f.write('\t$field: ')
-				f.expr(it.exprs[i])
-				f.writeln('')
+			// `Foo{}` on one line if there are no fields
+			if it.fields.len == 0 {
+				f.write('$type_sym.name{}')
 			}
-			f.write('}')
+			else {
+				f.writeln('$type_sym.name{')
+				for i, field in it.fields {
+					f.write('\t$field: ')
+					f.expr(it.exprs[i])
+					f.writeln('')
+				}
+				f.write('}')
+			}
 		}
 		else {}
 	}
