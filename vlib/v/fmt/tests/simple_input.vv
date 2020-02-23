@@ -104,3 +104,10 @@ reserved_types = {
 }
 )
 
+fn fn_with_assign_stmts() {
+	a,b := fn_with_multi_return()
+}
+
+fn fn_with_multi_return() (int,string) {
+	return 0,'test'
+}
