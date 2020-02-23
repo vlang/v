@@ -1450,11 +1450,13 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 			break
 		}
 	}
+	op := p.tok.kind
 	p.next() // :=, =
 	expr,_ := p.expr(0)
 	return ast.AssignStmt{
 		left: idents
 		right: [expr]
+		op: op
 	}
 }
 
