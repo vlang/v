@@ -116,7 +116,7 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 		mut i := start
 		mut i1 := 0
 		for i < end {
-			if txt[i] != num_sep {
+			if txt[i] != num_sep && txt[i] != `o` {
 				b[i1] = txt[i]
 				i1++
 			}
@@ -168,17 +168,13 @@ fn (s mut Scanner) ident_hex_number() string {
 
 fn (s mut Scanner) ident_oct_number() string {
 	start_pos := s.pos
+	s.pos += 2 // skip '0o'
 	for {
 		if s.pos >= s.text.len {
 			break
 		}
 		c := s.text[s.pos]
-		if c.is_digit() {
-			if !c.is_oct_digit() && c != num_sep {
-				s.error('malformed octal constant')
-			}
-		}
-		else {
+		if !c.is_oct_digit() && c != num_sep {
 			break
 		}
 		s.pos++
@@ -247,11 +243,11 @@ fn (s mut Scanner) ident_number() string {
 	if s.expect('0x', s.pos) {
 		return s.ident_hex_number()
 	}
+	if s.expect('0o', s.pos) {
+		return s.ident_oct_number()
+	}
 	if s.expect('0.', s.pos) || s.expect('0e', s.pos) {
 		return s.ident_dec_number()
-	}
-	if s.text[s.pos] == `0` {
-		return s.ident_oct_number()
 	}
 	return s.ident_dec_number()
 }

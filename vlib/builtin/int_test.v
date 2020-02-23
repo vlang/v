@@ -113,3 +113,10 @@ fn test_hex() {
 	x := u64(10)
 	assert x.hex() == '0xa'
 }
+
+fn test_oct() {
+	x1 := 0o12
+	assert x1 == 10
+	x2 := 012
+	assert x2 == 10
+}
