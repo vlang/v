@@ -290,13 +290,13 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 		}
 	}
 
-	mut permission := 0666
+	mut permission := 0o666
 	if options.len > 0 {
 		permission = options[0]
 	}
 
 	$if windows {
-		if permission < 0600 {
+		if permission < 0o600 {
 			permission = 0x0100
 		}
 		else {
