@@ -106,10 +106,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 					f.write(', ')
 				}
 			}
-			f.write(' = ')
+			f.write(' $it.op.str() ')
 			for right in it.right {
 				f.expr(right)
 			}
+			f.writeln('')
 		}
 		ast.BranchStmt {
 			match it.tok.kind {
