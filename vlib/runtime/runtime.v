@@ -4,6 +4,8 @@
 
 module runtime
 
+import os
+
 //$if linux {
 fn C.sysconf(name int) i64
 //}
@@ -17,6 +19,16 @@ pub fn nr_cpus() int {
 		return nr_cpus_win()
 	}
 	return nr_cpus_nix()
+}
+
+pub fn nr_jobs() int {
+	mut cpus := nr_cpus()
+	// allow for overrides, for example using `VJOBS=32 ./v test .`
+	vjobs := os.getenv('VJOBS').int()
+	if vjobs > 0 {
+		cpus = vjobs
+	}
+	return cpus
 }
 
 pub fn is_32bit() bool {

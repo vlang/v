@@ -189,6 +189,7 @@ const (
 	integer_types = ['int', 'i8', 'char', 'byte', 'i16', 'u16', 'u32', 'i64', 'u64']
 	float_types = ['f32', 'f64']
 	reserved_type_param_names = ['R', 'S', 'T', 'U', 'W']
+	pointer_types = ['byte*', 'byteptr', 'char*', 'charptr', 'void*', 'voidptr', 'voidptr*', 'intptr']
 )
 
 fn is_number_type(typ string) bool {
@@ -205,6 +206,10 @@ fn is_float_type(typ string) bool {
 
 fn is_primitive_type(typ string) bool {
 	return is_number_type(typ) || typ == 'string'
+}
+
+fn is_pointer_type(typ string) bool {
+    return typ in pointer_types
 }
 
 /*
@@ -814,13 +819,36 @@ fn (t &Table) main_exists() bool {
 }
 
 fn (t &Table) all_test_function_names() []string {
-	mut res := []string
+	mut fn_begin_test_name := ''
+	mut fn_end_test_name := ''
+
+	mut fn_test_names := []string
 	for _, f in t.fns {
 		if f.name.contains('__test_') {
-			res << f.name
+			fn_test_names << f.name
+		}
+		else if f.name.contains('__testsuite_begin') {
+			fn_begin_test_name = f.name
+		}
+		else if f.name.contains('__testsuite_end') {
+			fn_end_test_name = f.name
 		}
 	}
-	return res
+	if fn_begin_test_name.len == 0 {
+		if fn_end_test_name.len > 0 {
+			fn_test_names << fn_end_test_name
+		}
+		return fn_test_names
+	}
+	else {
+		mut res := []string
+		res << fn_begin_test_name
+		res << fn_test_names
+		if fn_end_test_name.len > 0 {
+			res << fn_end_test_name
+		}
+		return res
+	}
 }
 
 fn (t &Table) find_const(name string) ?Var {
@@ -1137,4 +1165,3 @@ fn type_cat_str(tc TypeCategory) string {
 			'unknown'}}
 	return tc_str
 }
-

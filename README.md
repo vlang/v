@@ -17,7 +17,7 @@ Speed Test: [fast.vlang.io](https://fast.vlang.io/) (monitors compilation speed 
 
 Twitter: [twitter.com/v_language](https://twitter.com/v_language)
 
-Discord (primary community): [discord.gg/n7c74HM](https://discord.gg/n7c74HM)
+Discord (primary community): [discord.gg/vlang](https://discord.gg/vlang)
 
 Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/vlang/v#installing-v-from-source)
 
@@ -38,7 +38,7 @@ Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/v
 - Built-in ORM
 - C and JavaScript backends
 
-A stable 0.2 release is planned for January 2020. Right now V is in an alpha stage.
+A stable 0.2 release is planned for February 2020. Right now V is in an alpha stage.
 
 ## Installing V from source
 
@@ -66,9 +66,9 @@ You'll need Clang or GCC or Visual Studio. If you are doing development, you mos
 
 Otherwise, follow these instructions:
 
-[github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS)
+- [Installing a C compiler on Linux and macOS](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-and-macOS)
 
-[github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
+- [Installing a C compiler on Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
 ### Symlinking
 
@@ -106,7 +106,7 @@ docker run --rm -it vlang:latest
 Make sure V can compile itself:
 
 ```
-v v.v
+v -o v2 cmd/v
 ```
 
 ```bash
@@ -184,7 +184,7 @@ Hello from V.js
 ```
 -->
 
-## Troubleshooting:
+## Troubleshooting
 
 https://github.com/vlang/v/wiki/Troubleshooting
 
@@ -198,4 +198,4 @@ https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
 
 [Twitter handle]: https://img.shields.io/twitter/follow/v_language.svg?style=social&label=Follow
-[Twitter badge]: https://twitter.com/intent/follow?screen_name=v_language
+[Twitter badge]: https://twitter.com/v_language

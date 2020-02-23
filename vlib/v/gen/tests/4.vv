@@ -32,6 +32,13 @@ fn main() {
 	mut g := [testb(1),'hello']
 
 	m1, m2 := mr_test()
+
+	//mut arr_foo := []Foo
+	arr_foo := [a]
+	//arr_foo << a // TODO
+	af_idx_el := arr_foo[0]
+	foo_a := af_idx_el.a
+	
 }
 
 fn mr_test() (int, string) {

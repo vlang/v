@@ -8,10 +8,10 @@ import (
 [inline]
 fn module_path(mod string) string {
 	// submodule support
-	return mod.replace('.', os.path_separator)
+	return mod.replace('.', filepath.separator)
 }
 
-fn (b &Builder) find_module_path(mod string) ?string {
+pub fn (b &Builder) find_module_path(mod string) ?string {
 	mod_path := module_path(mod)
 	for search_path in b.module_search_paths {
 		try_path := filepath.join(search_path,mod_path)

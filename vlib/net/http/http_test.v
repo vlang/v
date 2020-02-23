@@ -36,3 +36,12 @@ fn test_public_servers() {
 		assert res.text.len > 0
 	}
 }
+
+fn test_relative_redirects() {
+	$if !network ? { return }
+	res := http.get('https://httpbin.org/relative-redirect/3?abc=xyz') or { panic(err) }
+	assert 200 == res.status_code
+	assert res.text.len > 0
+	assert res.text.contains('"abc": "xyz"')
+}
+

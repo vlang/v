@@ -326,6 +326,7 @@ pub mut:
 	raw_query   string // encoded query values, without '?'
 	fragment    string // fragment for references, without '#'
 }
+
 // user returns a Userinfo containing the provided username
 // and no password set.
 pub fn user(username string) &Userinfo {
@@ -650,7 +651,7 @@ fn parse_host(host string) ?string {
 // - set_path('/foo%2fbar') will set path='/foo/bar' and raw_path='/foo%2fbar'
 // set_path will return an error only if the provided path contains an invalid
 // escaping.
-fn (u mut URL) set_path(p string) ?bool {
+pub fn (u mut URL) set_path(p string) ?bool {
 	path := unescape(p, .encode_path) or {
 		return error(err)
 	}
@@ -755,7 +756,7 @@ fn valid_optional_port(port string) bool {
 // the form host/path does not add its own /.
 // - if u.raw_query is empty, ?query is omitted.
 // - if u.fragment is empty, #fragment is omitted.
-pub fn (u &URL) str() string {
+pub fn (u URL) str() string {
 	mut buf := strings.new_builder(200)
 	if u.scheme != '' {
 		buf.write(u.scheme)
@@ -765,7 +766,7 @@ pub fn (u &URL) str() string {
 		buf.write(u.opaque)
 	}
 	else {
-		if u.scheme != '' || u.host != '' || !u.user.empty() {
+		if u.scheme != '' || u.host != '' || (u.user != 0 && !u.user.empty()) {
 			if u.host != '' || u.path != '' || !u.user.empty() {
 				buf.write('//')
 			}

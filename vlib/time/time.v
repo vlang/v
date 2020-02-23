@@ -12,7 +12,7 @@ const (
 	// The unsigned zero year for internal calculations.
 	// Must be 1 mod 400, and times before it will not compute correctly,
 	// but otherwise can be changed at will.
-	absolute_zero_year = i64(-292277022399)
+	absolute_zero_year = i64(-292277022399 )//as i64
 	seconds_per_minute = 60
 	seconds_per_hour = 60 * seconds_per_minute
 	seconds_per_day = 24 * seconds_per_hour

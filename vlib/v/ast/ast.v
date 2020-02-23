@@ -10,17 +10,28 @@ import (
 
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
-AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr
+AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
+CastExpr | EnumVal | Assoc | SizeOf | None | MapInit
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
+LineComment | MultiLineComment
+
+pub type Type = StructType | ArrayType
+
+pub struct StructType {
+	fields []Field
+}
+
+pub struct ArrayType {}
+
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
 	expr Expr
-	typ   table.TypeRef
+	typ  table.Type
 }
 
 pub struct IntegerLiteral {
@@ -69,7 +80,9 @@ pub struct Field {
 pub:
 	name string
 	// type_idx int
-	typ  table.TypeRef
+mut:
+	typ  table.Type
+	// typ2 Type
 }
 
 pub struct ConstDecl {
@@ -80,16 +93,19 @@ pub:
 
 pub struct StructDecl {
 pub:
-	pos    token.Position
-	name   string
-	fields []Field
-	is_pub bool
+	pos         token.Position
+	name        string
+	fields      []Field
+	is_pub      bool
+	mut_pos     int // mut:
+	pub_pos     int // pub:
+	pub_mut_pos int // pub mut:
 }
 
 pub struct StructInit {
 pub:
 	pos    token.Position
-	typ    table.TypeRef
+	typ    table.Type
 	fields []string
 	exprs  []Expr
 }
@@ -105,18 +121,21 @@ pub:
 
 pub struct Arg {
 pub:
-	typ  table.TypeRef
+	typ  table.Type
 	name string
 }
 
 pub struct FnDecl {
 pub:
-	name     string
-	stmts    []Stmt
-	typ      table.TypeRef
-	args     []Arg
-	is_pub   bool
-	receiver Field
+	name        string
+	stmts       []Stmt
+	typ         table.Type
+	args        []Arg
+	is_pub      bool
+	is_variadic bool
+	receiver    Field
+	is_method   bool
+	rec_mut     bool // is receiver mutable
 }
 
 pub struct BranchStmt {
@@ -132,6 +151,7 @@ mut:
 // func       Expr
 	name string
 	args []Expr
+	is_c bool
 }
 
 pub struct MethodCallExpr {
@@ -146,7 +166,7 @@ pub:
 pub struct Return {
 pub:
 	pos           token.Position
-	expected_type table.TypeRef // TODO: remove once checker updated
+	expected_type table.Type // TODO: remove once checker updated
 	exprs         []Expr
 }
 
@@ -172,7 +192,7 @@ pub:
 	expr   Expr
 	is_mut bool
 mut:
-	typ    table.TypeRef
+	typ    table.Type
 	pos    token.Position
 }
 
@@ -181,47 +201,58 @@ pub:
 	name string
 	expr Expr
 mut:
-	typ  table.TypeRef
+	typ  table.Type
+}
+
+pub struct StmtBlock {
+pub:
+	stmts []Stmt
 }
 
 pub struct File {
 pub:
-	path       string
-	mod        Module
-	imports    []Import
-	stmts      []Stmt
-	unresolved []Expr
+	path    string
+	mod     Module
+	imports []Import
+	stmts   []Stmt
+	scope   &Scope
+}
+
+pub struct IdentFunc {
+pub mut:
+	return_type table.Type
 }
 
 pub struct IdentVar {
 pub mut:
-	typ    table.TypeRef
+	typ    table.Type
 	is_mut bool
-	//name string
 }
 
-type IdentInfo = IdentVar
+type IdentInfo = IdentFunc | IdentVar
 
 pub enum IdentKind {
+	unresolved
 	blank_ident
 	variable
 	constant
-	func
+	function
 }
 
 // A single identifier
 pub struct Ident {
 pub:
 	name     string
+	value    string
+	is_c     bool
 	tok_kind token.Kind
 	pos      token.Position
-	value    string
 mut:
 	kind     IdentKind
 	info     IdentInfo
 }
 
-pub fn(i &Ident) var_info() IdentVar {
+pub fn (i &Ident) var_info() IdentVar {
 	match i.info {
 		IdentVar {
 			return it
@@ -239,9 +270,9 @@ pub:
 	op         token.Kind
 	pos        token.Position
 	left       Expr
-	left_type  table.TypeRef
+	left_type  table.Type
 	right      Expr
-	right_type table.TypeRef
+	right_type table.Type
 }
 
 /*
@@ -254,6 +285,7 @@ pub:
 	left Expr
 }
 */
+
 
 pub struct PostfixExpr {
 pub:
@@ -283,20 +315,22 @@ pub:
 	cond       Expr
 	stmts      []Stmt
 	else_stmts []Stmt
-	typ        table.TypeRef
 	left       Expr // `a` in `a := if ...`
 	pos        token.Position
+mut:
+	typ        table.Type
+	has_else   bool
 }
 
 pub struct MatchExpr {
 pub:
-	tok_kind   token.Kind
-	cond       Expr
-	stmts      []Stmt
-	else_stmts []Stmt
-	ti         table.Type
-	left       Expr // `a` in `a := if ...`
-	pos        token.Position
+	tok_kind    token.Kind
+	cond        Expr
+	blocks      []StmtBlock
+	match_exprs []Expr
+	pos         token.Position
+mut:
+	typ         table.Type
 }
 
 pub struct CompIf {
@@ -308,9 +342,10 @@ pub:
 
 pub struct ForStmt {
 pub:
-	cond  Expr
-	stmts []Stmt
-	pos   token.Position
+	cond   Expr
+	stmts  []Stmt
+	pos    token.Position
+	is_inf bool // `for {}`
 }
 
 pub struct ForInStmt {
@@ -318,6 +353,7 @@ pub:
 	var   string
 	cond  Expr
 	stmts []Stmt
+	pos   token.Position
 }
 
 pub struct ForCStmt {
@@ -340,6 +376,11 @@ pub:
 	name string
 }
 
+// filter(), map()
+pub struct Lambda {
+pub:
+	name string
+}
 
 pub struct AssignStmt {
 pub:
@@ -348,11 +389,33 @@ pub:
 	op    token.Kind
 }
 
-
 // e.g. `[unsafe_fn]`
 pub struct Attr {
 pub:
 	name string
+}
+
+pub struct EnumVal {
+pub:
+	name string
+}
+
+pub struct EnumDecl {
+pub:
+	name   string
+	is_pub bool
+	vals   []string
+}
+
+pub struct TypeDecl {
+pub:
+	name   string
+	is_pub bool
+}
+
+pub struct DeferStmt {
+pub:
+	stmts []Stmt
 }
 
 pub struct AssignExpr {
@@ -363,12 +426,31 @@ pub:
 	val  Expr
 }
 
+pub struct GotoLabel {
+pub:
+	name string
+}
+
+pub struct GotoStmt {
+pub:
+	name string
+}
+
 pub struct ArrayInit {
 pub:
 	pos   token.Position
 	exprs []Expr
 mut:
-	typ    table.TypeRef
+	typ   table.Type
+}
+
+pub struct MapInit {
+pub:
+	pos  token.Position
+	keys []Expr
+	vals []Expr
+mut:
+	typ  table.Type
 }
 
 // s[10..20]
@@ -378,6 +460,38 @@ pub:
 	high Expr
 }
 
+pub struct CastExpr {
+pub:
+	typ  table.Type
+	expr Expr
+}
+
+pub struct Assoc {
+pub:
+	name   string
+	fields []string
+	exprs  []Expr
+}
+
+pub struct SizeOf {
+pub:
+	type_name string
+}
+
+pub struct LineComment {
+pub:
+	text string
+}
+
+pub struct MultiLineComment {
+pub:
+	text string
+}
+
+pub struct None {
+pub:
+	foo int // todo
+}
 // string representaiton of expr
 pub fn (x Expr) str() string {
 	match x {

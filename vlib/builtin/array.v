@@ -116,8 +116,10 @@ pub fn (a mut array) sort_with_compare(compare voidptr) {
 // a.insert(0, &i)
 // ----------------------------
 pub fn (a mut array) insert(i int, val voidptr) {
-	if i < 0 || i > a.len {
-		panic('array.insert: index out of range (i == $i, a.len == $a.len)')
+	$if !no_bounds_checking? {
+		if i < 0 || i > a.len {
+			panic('array.insert: index out of range (i == $i, a.len == $a.len)')
+		}
 	}
 	a.ensure_cap(a.len + 1)
 	size := a.element_size
@@ -135,8 +137,10 @@ pub fn (a mut array) prepend(val voidptr) {
 
 // array.delete deletes array element at the given index
 pub fn (a mut array) delete(i int) {
-	if i < 0 || i >= a.len {
-		panic('array.delete: index out of range (i == $i, a.len == $a.len)')
+	$if !no_bounds_checking? {
+		if i < 0 || i >= a.len {
+			panic('array.delete: index out of range (i == $i, a.len == $a.len)')
+		}
 	}
 	size := a.element_size
 	C.memmove(a.data + i * size, a.data + (i + 1) * size, (a.len - i) * size)
@@ -148,26 +152,40 @@ pub fn (a mut array) clear() {
 	a.len = 0
 }
 
+// trims the array length to "index" without modifying the allocated data. If "index" is greater
+// than len nothing will be changed
+pub fn (a mut array) trim(index int) {
+	if index < a.len {
+		a.len = index
+	}
+}
+
 // Private function. Used to implement array[] operator
 fn (a array) get(i int) voidptr {
-	if i < 0 || i >= a.len {
-		panic('array.get: index out of range (i == $i, a.len == $a.len)')
+	$if !no_bounds_checking? {
+		if i < 0 || i >= a.len {
+			panic('array.get: index out of range (i == $i, a.len == $a.len)')
+		}
 	}
 	return a.data + i * a.element_size
 }
 
 // array.first returns the first element of the array
 pub fn (a array) first() voidptr {
-	if a.len == 0 {
-		panic('array.first: array is empty')
+	$if !no_bounds_checking? {
+		if a.len == 0 {
+			panic('array.first: array is empty')
+		}
 	}
 	return a.data + 0
 }
 
 // array.last returns the last element of the array
 pub fn (a array) last() voidptr {
-	if a.len == 0 {
-		panic('array.last: array is empty')
+	$if !no_bounds_checking? {
+		if a.len == 0 {
+			panic('array.last: array is empty')
+		}
 	}
 	return a.data + (a.len - 1) * a.element_size
 }
@@ -176,9 +194,11 @@ pub fn (a array) last() voidptr {
 // array.left returns a new array using the same buffer as the given array
 // with the first `n` elements of the given array.
 fn (a array) left(n int) array {
-	if n < 0 {
-		panic('array.left: index is negative (n == $n)')
-	}
+//	$if !no_bounds_checking? {
+//		if n < 0 {
+//			panic('array.left: index is negative (n == $n)')
+//		}
+//	}
 	if n >= a.len {
 		return a.slice(0, a.len)
 	}
@@ -190,9 +210,11 @@ fn (a array) left(n int) array {
 // If `n` is bigger or equal to the length of the given array,
 // returns an empty array of the same type as the given array.
 fn (a array) right(n int) array {
-	if n < 0 {
-		panic('array.right: index is negative (n == $n)')
-	}
+//	$if !no_bounds_checking? {
+//		if n < 0 {
+//			panic('array.right: index is negative (n == $n)')
+//		}
+//	}
 	if n >= a.len {
 		return new_array(0, 0, a.element_size)
 	}
@@ -206,14 +228,16 @@ fn (a array) right(n int) array {
 // set to the number of the elements in the slice.
 fn (a array) slice(start, _end int) array {
 	mut end := _end
-	if start > end {
-		panic('array.slice: invalid slice index ($start > $end)')
-	}
-	if end > a.len {
-		panic('array.slice: slice bounds out of range ($end >= $a.len)')
-	}
-	if start < 0 {
-		panic('array.slice: slice bounds out of range ($start < 0)')
+	$if !no_bounds_checking? {
+		if start > end {
+			panic('array.slice: invalid slice index ($start > $end)')
+		}
+		if end > a.len {
+			panic('array.slice: slice bounds out of range ($end >= $a.len)')
+		}
+		if start < 0 {
+			panic('array.slice: slice bounds out of range ($start < 0)')
+		}
 	}
 	l := end - start
 	res := array{
@@ -249,14 +273,16 @@ pub fn (a array) clone() array {
 
 fn (a array) slice_clone(start, _end int) array {
 	mut end := _end
-	if start > end {
-		panic('array.slice: invalid slice index ($start > $end)')
-	}
-	if end > a.len {
-		panic('array.slice: slice bounds out of range ($end >= $a.len)')
-	}
-	if start < 0 {
-		panic('array.slice: slice bounds out of range ($start < 0)')
+	$if !no_bounds_checking? {
+		if start > end {
+			panic('array.slice: invalid slice index ($start > $end)')
+		}
+		if end > a.len {
+			panic('array.slice: slice bounds out of range ($end >= $a.len)')
+		}
+		if start < 0 {
+			panic('array.slice: slice bounds out of range ($start < 0)')
+		}
 	}
 	l := end - start
 	res := array{
@@ -270,8 +296,10 @@ fn (a array) slice_clone(start, _end int) array {
 
 // Private function. Used to implement assigment to the array element.
 fn (a mut array) set(i int, val voidptr) {
-	if i < 0 || i >= a.len {
-		panic('array.set: index out of range (i == $i, a.len == $a.len)')
+	$if !no_bounds_checking? {
+		if i < 0 || i >= a.len {
+			panic('array.set: index out of range (i == $i, a.len == $a.len)')
+		}
 	}
 	C.memcpy(a.data + a.element_size * i, val, a.element_size)
 }
@@ -367,8 +395,10 @@ pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len * 2 + 1)
 	mut ptr := &hex[0]
 	for i := 0; i < b.len; i++ {
-		ptr += C.sprintf(ptr as charptr, '%02x', b[i])
+		// QTODO
+		ptr += C.sprintf(ptr, '%02x', b[i])
 	}
+	//return hex as string
 	return string(hex)
 }
 
@@ -447,20 +477,22 @@ pub fn (a []char) index(v char) int {
 	return -1
 }
 
-/*
 // []int.reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
 	mut _accum := 0
+	/*
 	_accum = accum_start
 	for i := 0; i < a.len; i++ {
 		_accum = iter(_accum, a[i])
 	}
+	*/
 	return _accum
 }
 
 // array_eq<T> checks if two arrays contain all the same elements in the same order.
 // []int == []int (also for: i64, f32, f64, byte, string)
+/*
 fn array_eq<T>(a1, a2 []T) bool {
 	if a1.len != a2.len {
 		return false
@@ -481,9 +513,6 @@ pub fn (a []i64) eq(a2 []i64) bool {
 	return array_eq(a, a2)
 }
 
-pub fn (a []string) eq(a2 []string) bool {
-	return array_eq(a, a2)
-}
 
 pub fn (a []byte) eq(a2 []byte) bool {
 	return array_eq(a, a2)
@@ -493,6 +522,19 @@ pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
 }
 */
+
+pub fn (a1 []string) eq(a2 []string) bool {
+	//return array_eq(a, a2)
+	if a1.len != a2.len {
+		return false
+	}
+	for i := 0; i < a1.len; i++ {
+		if a1[i] != a2[i] {
+			return false
+		}
+	}
+	return true
+}
 
 // compare_i64 for []f64 sort_with_compare()
 // sort []i64 with quicksort

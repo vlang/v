@@ -6,7 +6,9 @@ void myuser();
 multi_return_int_string multi_return();
 void variadic(variadic_int a);
 void ensure_cap(int required, int cap);
-
+void println(string s);
+void matches();
+void end();
 int pi = 3;
 
 typedef struct {
@@ -28,7 +30,6 @@ int main() {
 
 void foo(int a) {
 	while (true) {
-
 	}
 	for (int i = 0;
 i < 10; i++;
@@ -90,10 +91,44 @@ multi_return_int_string multi_return() {
 }
 
 void variadic(variadic_int a) {
+	int x = path_sep;
+	int y = if (true) {
+1;
+}
+else {
+0;
+}
+;
 }
 
 void ensure_cap(int required, int cap) {
 	if (required < cap) {
 		return;
 	}
+}
+
+void println(string s) {
+}
+
+void matches() {
+	int a = 100;
+	int tmp1 = a;
+	if tmp1 == 10{
+		println(tos3("10"));
+
+	}
+	if tmp1 == 20{
+		int k = a + 1;
+
+	}
+	;
+}
+
+int path_sep = 10;
+
+void end() {
+	int i = 2;
+	int key = 10;
+	bool x = i != -1 && key == 10;
+	int e = 2 + 3 * 4;
 }

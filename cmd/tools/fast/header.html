@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Is V still fast?</title>
+<style>
+*, body {
+	font-family: Menlo, Monospace, 'Courier New';
+}
+table, td {
+	border-collapse: collapse;
+	border: 1px solid #dfdfdf;
+}
+td {
+	padding: 5px;
+	position: relative;
+}
+.diff {
+	border-radius: 2.5px;
+	color: #ffffff;
+	padding: 0 5px 0 5px;
+	position: absolute;
+	right: 5px;
+}
+.minus {
+	background-color: rgb(195, 74, 104);
+}
+.plus {
+	background-color: #8BC34A;
+}
+.equal {
+	background-color: rgb(113, 68, 172);
+}
+</style>
+</head>
+<body>
+<h2>Is V still fast?</h2>
+
+Monitoring compilation speed for each commit. <br><br>
+Source code: <a target=blank href='https://github.com/vlang/v/blob/master/cmd/tools/fast/fast.v'>fast.v</a> <br><br>
+
+<table>
+	<tr>
+		<td></td>
+		<td></td>
+		<td style='width:400px'></td>
+		<td style='width:120px'>v -o v.c</td>
+		<td style='width:120px'>v -o v</td>
+		<td style='width:130px'>v -x64 1mil.v</td>
+		<td style='width:120px'>v hello.v</td>
+	</tr>

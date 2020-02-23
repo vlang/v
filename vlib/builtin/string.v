@@ -468,13 +468,27 @@ pub fn (s string) split_into_lines() []string {
 	}
 	mut start := 0
 	for i := 0; i < s.len; i++ {
-		last := i == s.len - 1
-		if s[i] == 10 || last {
-			if last {
+		is_lf := s[i] == `\n`
+		is_crlf := i != s.len - 1 && s[i] == `\r` && s[i + 1] == `\n`
+		is_eol := is_lf || is_crlf
+		is_last := if is_crlf {
+			i == s.len - 2
+		} else {
+			i == s.len - 1
+		}
+
+		if is_eol || is_last {
+			if is_last && !is_eol {
 				i++
 			}
+
 			line := s.substr(start, i)
 			res << line
+
+			if is_crlf {
+				i++
+			}
+
 			start = i + 1
 		}
 	}
@@ -504,8 +518,10 @@ fn (s string) substr2(start, _end int, end_max bool) string {
 }
 
 pub fn (s string) substr(start, end int) string {
-	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-		panic('substr($start, $end) out of bounds (len=$s.len)')
+	$if !no_bounds_checking? {
+		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
+			panic('substr($start, $end) out of bounds (len=$s.len)')
+		}
 	}
 	len := end - start
 	mut res := string{
@@ -527,7 +543,7 @@ pub fn (s string) substr(start, end int) string {
 }
 
 pub fn (s string) index_old(p string) int {
-	if p.len > s.len {
+	if p.len > s.len || p.len == 0 {
 		return -1
 	}
 	mut i := 0
@@ -545,7 +561,7 @@ pub fn (s string) index_old(p string) int {
 }
 
 pub fn (s string) index(p string) ?int {
-	if p.len > s.len {
+	if p.len > s.len || p.len == 0 {
 		return none
 	}
 	mut i := 0
@@ -604,7 +620,7 @@ pub fn (s string) index_any(chars string) int {
 }
 
 pub fn (s string) last_index(p string) ?int {
-	if p.len > s.len {
+	if p.len > s.len || p.len == 0 {
 		return none
 	}
 	mut i := s.len - p.len
@@ -695,20 +711,27 @@ pub fn (s string) contains(p string) bool {
 }
 
 pub fn (s string) starts_with(p string) bool {
-	idx := s.index(p) or {
+	if p.len > s.len {
 		return false
 	}
-	return idx == 0
+	for i := 0; i < p.len; i++ {
+		if s[i] != p[i] {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn (s string) ends_with(p string) bool {
 	if p.len > s.len {
 		return false
 	}
-	idx := s.last_index(p) or {
-		return false
+	for i := 0; i < p.len; i++ {
+		if p[i] != s[s.len - p.len + i] {
+			return false
+		}
 	}
-	return idx == s.len - p.len
+	return true
 }
 
 // TODO only works with ASCII
@@ -729,6 +752,9 @@ pub fn (s string) to_upper() string {
 }
 
 pub fn (s string) capitalize() string {
+	if s.len == 0 {
+		return ''
+	}
 	sl := s.to_lower()
 	cap := sl[0].str().to_upper() + sl.right(1)
 	return cap
@@ -789,9 +815,10 @@ pub fn (a []string) to_c() voidptr {
 }
 */
 
-
 pub fn (c byte) is_space() bool {
-	return c in [` `, `\n`, `\t`, `\v`, `\f`, `\r`]
+	// 0x0085 is NEXT LINE (NEL)
+	// 0x00a0 is NO-BREAK SPACE
+	return c in [` `, `\n`, `\t`, `\v`, `\f`, `\r`, 0x85, 0xa0]
 }
 
 pub fn (s string) trim_space() string {
@@ -1029,8 +1056,10 @@ pub fn (u ustring) count(substr ustring) int {
 }
 
 pub fn (u ustring) substr(_start, _end int) string {
-	if _start > _end || _start > u.len || _end > u.len || _start < 0 || _end < 0 {
-		panic('substr($_start, $_end) out of bounds (len=$u.len)')
+	$if !no_bounds_checking? {
+		if _start > _end || _start > u.len || _end > u.len || _start < 0 || _end < 0 {
+			panic('substr($_start, $_end) out of bounds (len=$u.len)')
+		}
 	}
 	end := if _end >= u.len { u.s.len } else { u.runes[_end] }
 	return u.s.substr(u.runes[_start], end)
@@ -1051,15 +1080,19 @@ pub fn (u ustring) right(pos int) string {
 }
 
 fn (s string) at(idx int) byte {
-	if idx < 0 || idx >= s.len {
-		panic('string index out of range: $idx / $s.len')
+	$if !no_bounds_checking? {
+		if idx < 0 || idx >= s.len {
+			panic('string index out of range: $idx / $s.len')
+		}
 	}
 	return s.str[idx]
 }
 
 pub fn (u ustring) at(idx int) string {
-	if idx < 0 || idx >= u.len {
-		panic('string index out of range: $idx / $u.runes.len')
+	$if !no_bounds_checking? {
+		if idx < 0 || idx >= u.len {
+			panic('string index out of range: $idx / $u.runes.len')
+		}
 	}
 	return u.substr(idx, idx + 1)
 }
@@ -1123,6 +1156,8 @@ pub fn (s string) all_after(dot string) string {
 	return s.right(pos + dot.len)
 }
 
+pub fn (s string) after(dot string) string { return s.all_after(dot) }
+
 // fn (s []string) substr(a, b int) string {
 // return join_strings(s.slice_fast(a, b))
 // }
@@ -1165,8 +1200,8 @@ pub fn (s []string) join_lines() string {
 
 // reverse will return a new reversed string.
 pub fn (s string) reverse() string {
-	if s.len == 0 {
-		return ''
+	if s.len == 0 || s.len == 1 {
+		return s
 	}
 	mut res := string{
 		len: s.len
@@ -1189,10 +1224,9 @@ pub fn (s string) limit(max int) string {
 	return u.substr(0, max)
 }
 
-// TODO is_white_space()
+[deprecated]
 pub fn (c byte) is_white() bool {
-	i := int(c)
-	return i == 10 || i == 32 || i == 9 || i == 13 || c == `\r`
+	panic('Use `string.is_space` instead of `string.is_white')
 }
 
 pub fn (s string) hash() int {

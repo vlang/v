@@ -4,7 +4,7 @@ on:
   schedule:
     - cron:  '31 1,12 * * *'
 
-jobs:       
+jobs:
   network-tests-ubuntu-tcc:
     runs-on: ubuntu-latest
     env:
@@ -15,16 +15,16 @@ jobs:
       run: |
         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
         sudo apt-get update
-        sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev 
-        sudo apt-get install --quiet -y sqlite3 libsqlite3-dev 
+        sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
+        sudo apt-get install --quiet -y sqlite3 libsqlite3-dev
         sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build v
-      run: echo $VFLAGS && make -j4 && ./v -cg -o v v.v
+      run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
     - name: Test v->c
       run: |
         sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
         tcc -version
-        ./v -o v2 v.v # Make sure vtcc can build itself        
+        ./v -o v2 cmd/v # Make sure vtcc can build itself
     - name: Run network tests
       run: ./v -d network test vlib/
 
@@ -38,14 +38,19 @@ jobs:
     - uses: actions/checkout@v1
     - name: Install dependencies
       run: |
-        brew install freetype glfw openssl postgres sdl2 sdl2_ttf sdl2_mixer sdl2_image
+        ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
+        brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
+        brew install postgresql
+        brew install glfw sdl2 sdl2_ttf sdl2_mixer sdl2_image
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
-      run:  make -j4 && ./v -cg -o v v.v
+      run:  make -j4 && ./v -cg -o v cmd/v
     - name: Build V using V
-      run:  ./v -o v2 v.v && ./v2 -o v3 v.v
+      run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
     - name: Test symlink
       run:  sudo ./v symlink
+    - name: Ensure thirdparty/cJSON/cJSON.o is compiled, before running tests.
+      run:  ./v examples/json.v
     - name: Set up pg database
       run: |
         brew services start postgresql

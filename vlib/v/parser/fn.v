@@ -8,28 +8,24 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) call_expr() (ast.CallExpr,table.TypeRef) {
+pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	tok := p.tok
-	fn_name := p.check_name()
+	name := p.check_name()
+	fn_name := if mod.len > 0 { '${mod}.$name' } else { name }
 	p.check(.lpar)
-	// mut return_ti := types.void_ti
 	args := p.call_args()
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
 		// tok: tok
-		
 		pos: tok.position()
+		is_c: is_c
 	}
 	if p.tok.kind == .key_orelse {
 		p.next()
 		p.parse_block()
 	}
-	if f := p.table.find_fn(fn_name) {
-		return node,f.return_type
-	}
-	typ := p.add_unresolved('${fn_name}()', node)
-	return node,typ
+	return node
 }
 
 pub fn (p mut Parser) call_args() []ast.Expr {
@@ -49,12 +45,12 @@ pub fn (p mut Parser) call_args() []ast.Expr {
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
-	p.table.clear_vars()
+	// p.table.clear_vars()
+	p.open_scope()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
 	}
-	p.table.clear_vars()
 	p.check(.key_fn)
 	// C.
 	is_c := p.tok.kind == .name && p.tok.lit == 'C'
@@ -65,16 +61,22 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	// Receiver?
 	mut rec_name := ''
 	mut is_method := false
-	mut rec_type := p.table.type_ref(table.void_type_idx)
+	mut rec_type := table.void_type
+	mut rec_mut := false
 	if p.tok.kind == .lpar {
 		is_method = true
 		p.next()
 		rec_name = p.check_name()
 		if p.tok.kind == .key_mut {
 			p.next()
+			rec_mut = true
 		}
 		rec_type = p.parse_type()
-		p.table.register_var(table.Var{
+		// p.table.register_var(table.Var{
+		// name: rec_name
+		// typ: rec_type
+		// })
+		p.scope.register_var(ast.VarDecl{
 			name: rec_name
 			typ: rec_type
 		})
@@ -92,22 +94,118 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		p.check(.gt)
 	}
 	// println('fn decl $name')
-	p.check(.lpar)
 	// Args
 	mut args := []table.Var
-	mut ast_args := []ast.Arg
-	// `int, int, string` (no names, just types)
-	types_only := p.tok.kind in [.amp] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
+	ast_args,is_variadic := p.fn_args()
+	for ast_arg in ast_args {
+		var := table.Var{
+			name: ast_arg.name
+			typ: ast_arg.typ
+		}
+		args << var
+		p.scope.register_var(ast.VarDecl{
+			name: ast_arg.name
+			typ: ast_arg.typ
+		})
+		// p.table.register_var(var)
+	}
 	//
-	p.peek_tok.kind == .rpar
+	/*
+
+			arg := table.Var{
+				name: arg_name
+				typ: arg_type
+			}
+			args << arg
+			// p.table.register_var(arg)
+				arg := table.Var{
+					name: arg_name
+					typ: typ
+				}
+				args << arg
+				p.table.register_var(arg)
+				*/
+	// Return type
+	mut typ := table.void_type
+	if p.tok.kind.is_start_of_type() {
+		typ = p.parse_type()
+	}
+	p.return_type = typ
+	if is_method {
+		type_sym := p.table.get_type_symbol(rec_type)
+		ok := p.table.register_method(type_sym, table.Fn{
+			name: name
+			args: args
+			return_type: typ
+		})
+		if !ok {
+			p.error('expected Struct')
+		}
+	}
+	else {
+		// TODO: prefix c fuctions with C.
+		// since v1 does not currently it sees
+		// `fn C.free` and `fn free` as the same
+		if !is_c {
+			name = p.prepend_mod(name)
+		}
+		p.table.register_fn(table.Fn{
+			name: name
+			args: args
+			return_type: typ
+			is_variadic: is_variadic
+			is_c: is_c
+		})
+	}
+	mut stmts := []ast.Stmt
+	if p.tok.kind == .lcbr {
+		stmts = p.parse_block()
+	}
+	p.close_scope()
+	return ast.FnDecl{
+		name: name
+		stmts: stmts
+		typ: typ
+		args: ast_args
+		is_pub: is_pub
+		is_variadic: is_variadic
+		receiver: ast.Field{
+			name: rec_name
+			typ: rec_type
+		}
+		is_method: is_method
+		rec_mut: rec_mut
+	}
+}
+
+fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
+	p.check(.lpar)
+	mut args := []ast.Arg
+	mut is_variadic := false
+	// `int, int, string` (no names, just types)
+	types_only := p.tok.kind in [.amp] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) || p.peek_tok.kind == .rpar
 	if types_only {
-		p.warn('types only')
+		// p.warn('types only')
+		mut arg_no := 1
 		for p.tok.kind != .rpar {
-			p.parse_type()
+			arg_name := 'arg_$arg_no'
+			if p.tok.kind == .ellipsis {
+				p.check(.ellipsis)
+				is_variadic = true
+			}
+			arg_type := p.parse_type()
 			if p.tok.kind == .comma {
+				if is_variadic {
+					p.error('cannot use ...(variadic) with non-final parameter no $arg_no')
+				}
 				p.next()
 			}
+			args << ast.Arg{
+				name: arg_name
+				typ: arg_type
+			}
 		}
+		arg_no++
 	}
 	else {
 		for p.tok.kind != .rpar {
@@ -120,19 +218,18 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			if p.tok.kind == .key_mut {
 				p.check(.key_mut)
 			}
+			if p.tok.kind == .ellipsis {
+				p.check(.ellipsis)
+				is_variadic = true
+			}
 			typ := p.parse_type()
 			for arg_name in arg_names {
-				arg := table.Var{
+				args << ast.Arg{
 					name: arg_name
 					typ: typ
 				}
-				args << arg
-				p.table.register_var(arg)
-				ast_args << ast.Arg{
-					typ: typ
-					name: arg_name
-				}
-				if typ.typ.kind == .variadic && p.tok.kind == .comma {
+				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
+				if is_variadic && p.tok.kind == .comma {
 					p.error('cannot use ...(variadic) with non-final parameter $arg_name')
 				}
 			}
@@ -142,47 +239,5 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	p.check(.rpar)
-	// Return type
-	mut typ := p.table.type_ref(table.void_type_idx)
-	if p.tok.kind in [.name, .lpar, .amp, .lsbr, .question] {
-		typ = p.parse_type()
-		p.return_type = typ
-	}
-	else {
-		// p.return_type = table.void_type
-		p.return_type = typ
-	}
-	if is_method {
-		ok := p.table.register_method(rec_type.typ, table.Fn{
-			name: name
-			args: args
-			return_type: typ
-		})
-		if !ok {
-			p.error('expected Struct')
-		}
-	}
-	else {
-		p.table.register_fn(table.Fn{
-			name: name
-			args: args
-			return_type: typ
-			is_c: is_c
-		})
-	}
-	mut stmts := []ast.Stmt
-	if p.tok.kind == .lcbr {
-		stmts = p.parse_block()
-	}
-	return ast.FnDecl{
-		name: name
-		stmts: stmts
-		typ: typ
-		args: ast_args
-		is_pub: is_pub
-		receiver: ast.Field{
-			name: rec_name
-			typ: rec_type
-		}
-	}
+	return args,is_variadic
 }

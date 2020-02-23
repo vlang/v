@@ -11,12 +11,12 @@
 // branch prediction hints. the C version will be
 // removed once the perfomance is matched.
 // you can test performance by running:
-// `v run tools/bench/wyhash.v`
+// `v run cmd/tools/bench/wyhash.v`
 // try running with and without the `-prod` flag
 module wyhash
 
-#flag -I @VROOT/thirdparty/wyhash
-#include "wyhash.h"
+//#flag -I @VROOT/thirdparty/wyhash
+//#include "wyhash.h"
 fn C.wyhash(byteptr, u64, u64) u64
 
 

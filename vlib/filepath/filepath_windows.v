@@ -1,6 +1,5 @@
 module filepath
 
-const (
-	path_separator = '\\'
+pub const (
+	separator = '\\'
 )
-

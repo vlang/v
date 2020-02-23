@@ -10,10 +10,10 @@ fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
 	mut a := []string
 	if v.pref.is_live || v.pref.is_so {
 		// See 'man dlopen', and test running a GUI program compiled with -live
-		if (v.os == .linux || os.user_os() == 'linux') {
+		if (v.pref.os == .linux || os.user_os() == 'linux') {
 			a << '-rdynamic'
 		}
-		if (v.os == .mac || os.user_os() == 'mac') {
+		if (v.pref.os == .mac || os.user_os() == 'mac') {
 			a << '-flat_namespace'
 		}
 	}
@@ -22,7 +22,7 @@ fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
 
 fn (v &V) generate_hotcode_reloading_declarations() {
 	mut cgen := v.cgen
-	if v.os != .windows {
+	if v.pref.os != .windows {
 		if v.pref.is_so {
 			cgen.genln('pthread_mutex_t live_fn_mutex;')
 		}
@@ -55,8 +55,8 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 	// We are in live code reload mode, so start the .so loader in the background
 	mut cgen := v.cgen
 	cgen.genln('')
-	file_base := filepath.filename(v.dir).replace('.v', '')
-	if v.os != .windows {
+	file_base := filepath.filename(v.pref.path).replace('.v', '')
+	if v.pref.os != .windows {
 		// unix:
 		so_name := file_base + '.so'
 		cgen.genln('  char *live_library_name = "$so_name";')
@@ -79,7 +79,7 @@ fn (v &V) generate_hot_reload_code() {
 	mut cgen := v.cgen
 	// Hot code reloading
 	if v.pref.is_live {
-		mut file := os.realpath(v.dir)
+		mut file := os.realpath(v.pref.path)
 		file_base := filepath.filename(file).replace('.v', '')
 		so_name := file_base + '.so'
 		// Need to build .so file before building the live application
@@ -115,7 +115,7 @@ void lfnmutex_print(char *s){
 	}
 }
 ')
-		if v.os != .windows {
+		if v.pref.os != .windows {
 			cgen.genln('
 void* live_lib=0;
 int load_so(byteptr path) {
