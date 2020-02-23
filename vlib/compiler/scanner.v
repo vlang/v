@@ -349,12 +349,12 @@ fn (s mut Scanner) scan() ScanRes {
 		if !s.inside_string {
 		    // In C ints with `0` prefix are octal (in V they're decimal), so discarding heading zeros is needed.
 			mut start_pos := s.pos
-			for start_pos < s.text.len && s.text[start_pos] == `0`{
+			for start_pos < s.text.len && s.text[start_pos] == `0` {
 				start_pos++
 			}
-			mut prefix_zero_num := start_pos-s.pos  // how many prefix zeros should be jumped
+			mut prefix_zero_num := start_pos - s.pos  // how many prefix zeros should be jumped
 			// for 0b, 0o, 0x the heading zero shouldn't be jumped
-			if c == `0` && start_pos < s.text.len && !s.text[start_pos].is_digit(){
+			if c == `0` && start_pos < s.text.len && !s.text[start_pos].is_digit() {
 				prefix_zero_num--
 			}
 			s.pos += prefix_zero_num  // jump these zeros
