@@ -117,6 +117,12 @@ fn test_hex() {
 fn test_oct() {
 	x1 := 0o12
 	assert x1 == 10
-	x2 := 012
-	assert x2 == 10
+	x2 := 00000o350
+	assert x2 == 232
+	x3 := 000o00073
+	assert x3 == 59
+	x4 := 00000000
+	assert x4 == 0
+	x5 := 00000195
+	assert x5 == 195
 }
