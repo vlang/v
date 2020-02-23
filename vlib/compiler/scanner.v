@@ -346,7 +346,7 @@ fn (s mut Scanner) scan() ScanRes {
 	}
 	// `123`, `.123`
 	else if c.is_digit() || (c == `.` && nextc.is_digit()) {
-		if !s.inside_string
+		if !s.inside_string {
 		    // In C ints with `0` prefix are octal (in V they're decimal), so discarding heading zeros is needed.
 			mut start_pos := s.pos
 			for start_pos < s.text.len && s.text[start_pos] == `0`{
