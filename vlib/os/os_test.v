@@ -51,6 +51,18 @@ fn test_open_file() {
   os.rm(filename)
 }
 
+fn test_create_file() {
+	filename := './test1.txt'
+	hello := 'hello world!'
+	mut f := os.create(filename) or { panic(err)}
+	f.write(hello)
+	f.close()
+
+	assert hello.len == os.file_size(filename)
+
+	os.rm(filename)
+}
+
 fn test_write_and_read_string_to_file() {
   filename := './test1.txt'
   hello := 'hello world!'
