@@ -34,10 +34,10 @@ SET default_tablespace = '';
 SET default_with_oids = false;
 
 --
--- Name: customer; Type: TABLE; Schema: public; Owner: myuser
+-- Name: customers; Type: TABLE; Schema: public; Owner: myuser
 --
 
-CREATE TABLE public.customer (
+CREATE TABLE public.customers (
     id integer NOT NULL,
     name text DEFAULT ''::text,
     nr_orders integer DEFAULT 0,
@@ -46,13 +46,13 @@ CREATE TABLE public.customer (
 );
 
 
-ALTER TABLE public.customer OWNER TO myuser;
+ALTER TABLE public.customers OWNER TO myuser;
 
 --
--- Name: customer_id_seq; Type: SEQUENCE; Schema: public; Owner: myuser
+-- Name: customers_id_seq; Type: SEQUENCE; Schema: public; Owner: myuser
 --
 
-CREATE SEQUENCE public.customer_id_seq
+CREATE SEQUENCE public.customers_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -60,27 +60,27 @@ CREATE SEQUENCE public.customer_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.customer_id_seq OWNER TO myuser;
+ALTER TABLE public.customers_id_seq OWNER TO myuser;
 
 --
--- Name: customer_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: myuser
+-- Name: customers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: myuser
 --
 
-ALTER SEQUENCE public.customer_id_seq OWNED BY public.customer.id;
+ALTER SEQUENCE public.customers_id_seq OWNED BY public.customers.id;
 
 
 --
 -- Name: id; Type: DEFAULT; Schema: public; Owner: myuser
 --
 
-ALTER TABLE ONLY public.customer ALTER COLUMN id SET DEFAULT nextval('public.customer_id_seq'::regclass);
+ALTER TABLE ONLY public.customers ALTER COLUMN id SET DEFAULT nextval('public.customers_id_seq'::regclass);
 
 
 --
--- Data for Name: customer; Type: TABLE DATA; Schema: public; Owner: myuser
+-- Data for Name: customers; Type: TABLE DATA; Schema: public; Owner: myuser
 --
 
-COPY public.customer (id, name, nr_orders, country, created_at) FROM stdin;
+COPY public.customers (id, name, nr_orders, country, created_at) FROM stdin;
 2	Pippi Långstrump	3	Bulgaria	2019-08-19 09:41:30.78888
 1	Bilbo Begins	11	Bulgaria	2019-08-19 09:40:31.396807
 3	Viktualia Rullgardina	0	Bulgaria	2019-08-19 09:42:52.723223
@@ -92,18 +92,18 @@ COPY public.customer (id, name, nr_orders, country, created_at) FROM stdin;
 
 
 --
--- Name: customer_id_seq; Type: SEQUENCE SET; Schema: public; Owner: myuser
+-- Name: customers_id_seq; Type: SEQUENCE SET; Schema: public; Owner: myuser
 --
 
-SELECT pg_catalog.setval('public.customer_id_seq', 1, true);
+SELECT pg_catalog.setval('public.customers_id_seq', 1, true);
 
 
 --
--- Name: customer_pkey; Type: CONSTRAINT; Schema: public; Owner: myuser
+-- Name: customers_pkey; Type: CONSTRAINT; Schema: public; Owner: myuser
 --
 
-ALTER TABLE ONLY public.customer
-    ADD CONSTRAINT customer_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.customers
+    ADD CONSTRAINT customers_pkey PRIMARY KEY (id);
 
 
 --
