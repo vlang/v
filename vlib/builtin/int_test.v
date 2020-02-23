@@ -129,6 +129,8 @@ fn test_oct() {
 	assert x6 == -484
 	x7 := -000o000042
 	assert x7 == -34
-	x8 := -0000
-	assert x7 == 0
+	x8 := -0000112
+	assert x8 == -112
+	x9 := -000
+	assert x9 == 0
 }
