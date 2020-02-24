@@ -24,6 +24,6 @@ fn main() {
 		}
 	}
 	$else {
-		println('It is only for windows to setup thirdparty "freetype".')
+		println('It is only for Windows to setup thirdparty "freetype".')
 	}
 }
