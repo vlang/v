@@ -82,7 +82,7 @@ pub enum PixelFormat {
     etc2_rg11
     etc2_rg11sn
 
-    num
+    _num
 }
 
 pub enum ResourceState {

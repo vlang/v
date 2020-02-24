@@ -82,6 +82,11 @@ pub fn append_buffer(buf C.sg_buffer, ptr voidptr, num_bytes int) int {
 	return C.sg_append_buffer(buf, ptr, num_bytes)
 }
 
+[inline]
+pub fn query_buffer_overflow(buf C.sg_buffer) bool {
+	return C.sg_query_buffer_overflow(buf)
+}
+
 // rendering functions
 [inline]
 pub fn begin_default_pass(actions &C.sg_pass_action, width int, height int) {
@@ -133,9 +138,56 @@ pub fn commit() {
 	C.sg_commit()
 }
 
+// getting information
 [inline]
-pub fn query_buffer_overflow(buf C.sg_buffer) bool {
-	return C.sg_query_buffer_overflow(buf)
+pub fn query_desc() C.sg_desc {
+	return C.sg_query_desc()
+}
+
+[inline]
+pub fn query_backend() Backend {
+	return C.sg_query_backend()
+}
+
+[inline]
+pub fn query_features() C.sg_features {
+	return C.sg_query_features()
+}
+
+[inline]
+pub fn query_limits() C.sg_limits {
+	return C.sg_query_limits()
+}
+
+[inline]
+pub fn query_pixelformat(fmt PixelFormat) C.sg_pixelformat_info {
+	return C.sg_query_pixelformat(fmt)
+}
+
+/* get current state of a resource (INITIAL, ALLOC, VALID, FAILED, INVALID) */
+[inline]
+pub fn query_buffer_state(buf C.sg_buffer) C.sg_resource_state {
+	return sg_query_buffer_state(buf)
+}
+
+[inline]
+pub fn query_image_state(img C.sg_image) C.sg_resource_state {
+	return sg_query_image_state(img)
+}
+
+[inline]
+pub fn query_shader_state(shd C.sg_shader) C.sg_resource_state {
+	return sg_query_shader_state(shd)
+}
+
+[inline]
+pub fn query_pipeline_state(pip C.sg_pipeline) C.sg_resource_state {
+	return sg_query_pipeline_state(pip)
+}
+
+[inline]
+pub fn query_pass_state(pass C.sg_pass) C.sg_resource_state {
+	return sg_query_pass_state(pass)
 }
 
 // get runtime information about a resource
@@ -164,32 +216,6 @@ pub fn query_pass_info(pass C.sg_pass) C.sg_pass_info {
 	return C.sg_query_pass_info(pass)
 }
 
-// getting information
-[inline]
-pub fn query_desc() C.sg_desc {
-	return C.sg_query_desc()
-}
-
-[inline]
-pub fn query_backend() Backend {
-	return C.sg_query_backend()
-}
-
-[inline]
-pub fn query_features() C.sg_features {
-	return C.sg_query_features()
-}
-
-[inline]
-pub fn query_limits() C.sg_limits {
-	return C.sg_query_limits()
-}
-
-[inline]
-pub fn query_pixelformat(fmt PixelFormat) C.sg_pixelformat_info {
-	return C.sg_query_pixelformat(fmt)
-}
-
 // get resource creation desc struct with their default values replaced
 [inline]
 pub fn query_buffer_defaults(desc &C.sg_buffer) C.sg_buffer_desc {
@@ -216,3 +242,18 @@ pub fn query_pass_defaults(desc &C.sg_pass) C.sg_pass_desc {
 	return C.sg_query_pass_defaults(desc)
 }
 
+/* rendering contexts (optional) */
+[inline]
+pub fn setup_context() C.sg_context {
+	return C.sg_setup_context()
+}
+
+[inline]
+pub fn activate_context(ctx_id C.sg_context) {
+	C.sg_activate_context(ctx_id)
+}
+
+[inline]
+pub fn discard_context(ctx_id C.sg_context) {
+	C.sg_discard_context(ctx_id)
+}
