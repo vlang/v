@@ -31,6 +31,9 @@ fn parse_c_options(flag string, f mut flag.Instance, prefs mut pref.Preferences)
 				prefs.is_vlines = false
 			}
 		}
+		'live' {
+			prefs.is_live = f.bool()
+		}
 		'csource' {
 			operation := f.string() or {
 				println('V error: Expected argument after `-csource`.')

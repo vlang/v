@@ -56,6 +56,7 @@ pub mut:
 	is_cache            bool // turns on v usage of the module cache to speed up compilation.
 	is_stats            bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	no_auto_free        bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
+	// TODO Convert this into a []string
 	cflags              string // Additional options which will be passed to the C compiler.
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 	// You could pass several -cflags XXX arguments. They will be merged with each other.

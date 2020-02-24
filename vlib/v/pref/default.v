@@ -52,6 +52,14 @@ pub fn (p mut Preferences) fill_with_defaults() {
 	}
 	p.is_test = p.path.ends_with('_test.v')
 	p.is_script = p.path.ends_with('.v') || p.path.ends_with('.vsh')
+	if p.third_party_option == '' {
+		p.third_party_option = p.cflags
+		$if !windows {
+			if !p.third_party_option.contains('-fPIC') {
+				p.third_party_option += ' -fPIC'
+			}
+		}
+	}
 }
 
 fn default_c_compiler() string {
