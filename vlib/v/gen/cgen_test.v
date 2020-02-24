@@ -16,7 +16,7 @@ fn test_c_files() {
 	vroot := filepath.dir(vexe)
 	term_ok := term.ok_message('OK')
 	term_fail := term.fail_message('FAIL')
-	for i in 1 .. nr_tests + 1 {
+	for i in 1..(nr_tests + 1) {
 		path := '$vroot/vlib/v/gen/tests/${i}.vv'
 		mut ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {
 			panic(err)
