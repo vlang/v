@@ -309,7 +309,7 @@ fn (n mut mapnode) merge(idx int) {
 	sibling := &mapnode(n.children[idx + 1])
 	child.keys[mid_index] = n.keys[idx]
 	child.values[mid_index] = n.values[idx]
-	for i := 0; i < sibling.size; i++ {
+	for i in 0..sibling.size {
 		child.keys[i + degree] = sibling.keys[i]
 		child.values[i + degree] = sibling.values[i]
 	}

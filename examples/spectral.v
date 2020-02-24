@@ -18,9 +18,9 @@ fn evala(i, j int) int {
 }
 
 fn times(v mut []f64, u []f64) {
-	for i := 0; i < v.len; i++ {
+	for i in 0..v.len {
 		mut a := f64(0)
-		for j := 0; j < u.len; j++ {
+		for j in 0..u.len {
 			a += u[j] / f64(evala(i, j))
 		}
 		v[i] = a
@@ -28,9 +28,9 @@ fn times(v mut []f64, u []f64) {
 }
 
 fn times_trans(v mut []f64, u []f64) {
-	for i := 0; i < v.len; i++ {
+	for i in 0..v.len {
 		mut a := f64(0)
-		for j := 0; j < u.len; j++ {
+		for j in 0..u.len {
 			a += u[j] / f64(evala(j, i))
 		}
 		v[i] = a
@@ -54,13 +54,13 @@ fn main() {
 	}
 	mut u := [f64(1.0)].repeat(n)
 	mut v := [f64(1.0)].repeat(n)
-	for i := 0; i < 10; i++ {
+	for i in 0..10 {
 		a_times_transp(mut v, u)
 		a_times_transp(mut u, v)
 	}
 	mut vbv := f64(0)
 	mut vv := f64(0)
-	for i := 0; i < n; i++ {
+	for i in 0..n {
 		vbv += u[i] * v[i]
 		vv += v[i] * v[i]
 	}

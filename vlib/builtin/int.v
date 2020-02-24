@@ -186,7 +186,7 @@ pub fn (c rune) str() string {
 		len: len
 		str: malloc(len + 1)
 	}
-	for i := 0; i < len; i++ {
+	for i in 0..len {
 		str.str[i] = int(c)>>8 * (3 - i) & 0xff
 	}
 	str[len] = `\0`
@@ -210,7 +210,7 @@ pub fn (c byte) is_capital() bool {
 pub fn (b []byte) clone() []byte {
 	mut res := [byte(0)].repeat(b.len)
 	//mut res := make([]byte, {repeat:b.len})
-	for i := 0; i < b.len; i++ {
+	for i in 0..b.len {
 		res[i] = b[i]
 	}
 	return res

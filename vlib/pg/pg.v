@@ -50,9 +50,9 @@ fn res_to_rows(res voidptr) []pg.Row {
 	nr_rows := C.PQntuples(res)
 	nr_cols := C.PQnfields(res)
 	mut rows := []pg.Row
-	for i := 0; i < nr_rows; i++ {
+	for i in 0..nr_rows {
 		mut row := Row{}
-		for j := 0; j < nr_cols; j++ {
+		for j in 0..nr_cols {
 			val := C.PQgetvalue(res, i, j)
 			row.vals << string(val)
 		}
@@ -124,7 +124,7 @@ pub fn (db DB) exec_one(query string) ?pg.Row {
 //
 pub fn (db DB) exec_param_many(query string, params []string) []pg.Row {
 	mut param_vals := &byteptr( malloc( params.len * sizeof(byteptr) ) )
-	for i := 0; i < params.len; i++ {
+	for i in 0..params.len {
 		param_vals[i] = params[i].str
 	}
 	res := C.PQexecParams(db.conn, query.str, params.len, 0, param_vals, 0, 0, 0)

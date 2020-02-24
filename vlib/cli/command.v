@@ -43,7 +43,7 @@ pub fn (cmd mut Command) parse(args []string) {
 	cmd.add_default_commands()
 
 	cmd.args = args[1..]
-	for i := 0; i < cmd.commands.len; i++ {
+	for i in 0..cmd.commands.len {
 		cmd.commands[i].parent = cmd
 	}
 
@@ -75,7 +75,7 @@ fn (cmd mut Command) parse_flags() {
 			break
 		}
 		mut found := false
-		for i := 0; i < cmd.flags.len; i++ {
+		for i in 0..cmd.flags.len {
 			mut flag := &cmd.flags[i]
 			if flag.matches(cmd.args) {
 				found = true
@@ -102,9 +102,9 @@ fn (cmd &Command) parse_commands() {
 	cmd.check_help_flag()
 	cmd.check_version_flag()
 
-	for i := 0; i < cmd.args.len; i++ {
+	for i in 0..cmd.args.len {
 		arg := cmd.args[i]
-		for j := 0; j < cmd.commands.len; j++ {
+		for j in 0..cmd.commands.len {
 			mut command := cmd.commands[j]
 			if command.name == arg {
 				for flag in global_flags {

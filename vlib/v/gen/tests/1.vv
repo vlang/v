@@ -47,7 +47,7 @@ fn foo(a int) {
 	for true {
 
 	}
-	for i := 0; i < 10; i++ {
+	for i in 0..10 {
 
 	}
 	nums := [1,2,3]

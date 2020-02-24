@@ -170,7 +170,7 @@ https://github.com/vlang/ui
 
 ```v
 fn main() {
-        for i := 0; i < 3; i++ {
+        for i in 0..3 {
                 println('Hello from V.js')
         }
 }

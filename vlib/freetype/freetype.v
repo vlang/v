@@ -224,7 +224,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	// Gen texture
 	// Load first 128 characters of ASCII set
 	mut chars := []Character
-	for c := 0; c < 128; c++ {
+	for c in 0..128 {
 		ch := ft_load_char(face, i64(c))
 		// s := utf32_to_str(uint(0x043f))
 		// s := 'п'
@@ -307,7 +307,7 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 	gl.bind_vao(ctx.vao)
 	// Iterate through all characters
 	// utext := text.ustring()
-	for i := 0; i < utext.len; i++ {
+	for i in 0..utext.len {
 		_rune := utext.at(i)
 		// println('$i => $_rune')
 		mut ch := Character{}
@@ -323,7 +323,7 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 		}
 		else if _rune.len > 1 {
 			// TODO O(1) use map
-			for j := 0; j < ctx.utf_runes.len; j++ {
+			for j in 0..ctx.utf_runes.len {
 				rune_j := ctx.utf_runes[j]
 				if rune_j==_rune {
 					ch = ctx.utf_chars[j]
@@ -404,7 +404,7 @@ pub fn (ctx mut FreeType) text_size(s string) (int, int) {
 	mut maxy := u32(0)
 	mut _rune := ''
 	mut ch := Character{}
-	for i := 0; i < utext.len; i++ {
+	for i in 0..utext.len {
 		_rune = utext.at(i)
 		ch = Character{}		
 		mut found := false
@@ -419,7 +419,7 @@ pub fn (ctx mut FreeType) text_size(s string) (int, int) {
 		}
 		else if _rune.len > 1 {
 			// TODO O(1) use map
-			for j := 0; j < ctx.utf_runes.len; j++ {
+			for j in 0..ctx.utf_runes.len {
 				rune_j := ctx.utf_runes[j]
 				if rune_j==_rune {
 					ch = ctx.utf_chars[j]

@@ -24,7 +24,7 @@ pub fn xor_bytes(dst mut []byte, a, b []byte) int {
 
 // n needs to be smaller or equal than the length of a and b.
 pub fn safe_xor_bytes(dst mut []byte, a, b []byte, n int) {
-	for i := 0; i < n; i++ {
+	for i in 0..n {
 		dst[i] = a[i] ^ b[i]
 	}
 }

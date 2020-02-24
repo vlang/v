@@ -28,7 +28,7 @@ fn block_generic(dig mut Digest, p_ []byte) {
 	for p.len >= chunk {
 		// Can interlace the computation of w with the
 		// rounds below if needed for speed.
-		for i := 0; i < 16; i++ {
+		for i in 0..16 {
 			j := i * 4
 			w[i] = u32(p[j]<<24) | u32(p[j+1]<<16) | u32(p[j+2]<<8) | u32(p[j+3])
 		}

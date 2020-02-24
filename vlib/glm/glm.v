@@ -59,11 +59,11 @@ pub fn (v Vec2) str() string {
 
 pub fn (m Mat4) str() string {
 	mut s := '[ '
-	for i := 0; i < 4; i++ {
+	for i in 0..4 {
 		if i != 0 {
 			s += '  '
 		}
-		for j := 0; j < 4; j++ {
+		for j in 0..4 {
 			val := m.data[i * 4 + j]
 			s += '${val:.2f} '
 		}

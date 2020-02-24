@@ -47,7 +47,7 @@ fn (dtp DTP) read() []byte {
 		buf, len := dtp.sock.recv(1024)
 		if len == 0 { break }
 
-		for i := 0; i < len; i++ {
+		for i in 0..len {
 			data << buf[i]
 		}
 		unsafe { free(buf) }

@@ -409,7 +409,7 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 	// OpenMP injection point! #pragma omp parallel for schedule(dynamic, 1) shared(c)
 	for y:=0; y < h; y++ {
 		eprint("\rRendering (${samps * 4} spp) ${(100.0 * f64(y)) / (f64(h) - 1.0):5.2f}%")
-		for x := 0; x < w; x++ {
+		for x in 0..w {
 			
 			i := (h - y - 1) * w + x
 			mut ivec := &image.data[i]
@@ -417,7 +417,7 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 			for sy := 0; sy < 2; sy ++ {
 				for sx := 0; sx < 2; sx ++ {
 					r = Vec{0,0,0}
-					for s := 0; s < samps; s++ {
+					for s in 0..samps {
 						r1 := v_2 * rand_f64()
 						dx := if r1 < v_1 { math.sqrt(r1) - v_1 } else { v_1 - math.sqrt(v_2 - r1) }
 						

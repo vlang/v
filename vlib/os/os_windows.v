@@ -82,7 +82,7 @@ mut:
 
 fn init_os_args_wide(argc int, argv &byteptr) []string {
 	mut args := []string
-	for i := 0; i < argc; i++ {
+	for i in 0..argc {
 		args << string_from_wide(&u16(argv[i]))
 	}
 	return args
