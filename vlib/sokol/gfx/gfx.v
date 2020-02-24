@@ -167,27 +167,27 @@ pub fn query_pixelformat(fmt PixelFormat) C.sg_pixelformat_info {
 /* get current state of a resource (INITIAL, ALLOC, VALID, FAILED, INVALID) */
 [inline]
 pub fn query_buffer_state(buf C.sg_buffer) C.sg_resource_state {
-	return sg_query_buffer_state(buf)
+	return C.sg_query_buffer_state(buf)
 }
 
 [inline]
 pub fn query_image_state(img C.sg_image) C.sg_resource_state {
-	return sg_query_image_state(img)
+	return C.sg_query_image_state(img)
 }
 
 [inline]
 pub fn query_shader_state(shd C.sg_shader) C.sg_resource_state {
-	return sg_query_shader_state(shd)
+	return C.sg_query_shader_state(shd)
 }
 
 [inline]
 pub fn query_pipeline_state(pip C.sg_pipeline) C.sg_resource_state {
-	return sg_query_pipeline_state(pip)
+	return C.sg_query_pipeline_state(pip)
 }
 
 [inline]
 pub fn query_pass_state(pass C.sg_pass) C.sg_resource_state {
-	return sg_query_pass_state(pass)
+	return C.sg_query_pass_state(pass)
 }
 
 // get runtime information about a resource
