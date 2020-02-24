@@ -148,7 +148,7 @@ fn (s mut Scanner) ident_bin_number() string {
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
-		s.error('Number part of this binary is not provided.')
+		s.error('number part of this binary is not provided')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
@@ -169,7 +169,7 @@ fn (s mut Scanner) ident_hex_number() string {
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
-		s.error('Number part of this hexadecimal is not provided.')
+		s.error('number part of this hexadecimal is not provided')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
@@ -190,7 +190,7 @@ fn (s mut Scanner) ident_oct_number() string {
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
-		s.error('Number part of this octal is not provided.')
+		s.error('number part of this octal is not provided')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
