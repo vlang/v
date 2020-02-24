@@ -68,10 +68,9 @@ fn (p mut Parser) bool_expression() string {
 		//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
 		T := p.table.find_type(typ)
 		if T.parent == expected {
-			p.cgen.set_placeholder(start_ph,
-				'/*SUM TYPE CAST2*/($expected) { .obj = memdup( &($typ[]) { ')
+			p.cgen.set_placeholder(start_ph, '(/*SUM TYPE CAST2*/($expected) { .obj = memdup( &($typ[]) { ')
 			tt := typ.all_after('_') // TODO
-			p.gen('}, sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
+			p.gen('}, sizeof($typ) ), .typ = SumType_${tt} })')//${val}_type }')
 		}
 	}
 	// `as` cast
