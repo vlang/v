@@ -11,7 +11,7 @@ fn test_atoi() {
 fn test_parse_int() {
 	// Different bases
 	assert strconv.parse_int('16', 16, 0) == 0x16
-	assert strconv.parse_int('16', 8, 0) == 016
+	assert strconv.parse_int('16', 8, 0) == 0o16
 	assert strconv.parse_int('11', 2, 0) == 3
 	// Different bit sizes
 	assert strconv.parse_int('127', 10, 8) == 127

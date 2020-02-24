@@ -45,6 +45,10 @@ User
            }
 }
 
+fn fn_contains_range_expr() {
+	a:=1 in arr[0..2]
+}
+
 fn   voidfn(){
  println('this is a function that does not return anything')
    }
@@ -111,3 +115,4 @@ fn fn_with_assign_stmts() {
 fn fn_with_multi_return() (int,string) {
 	return 0,'test'
 }
+
