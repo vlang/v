@@ -38,14 +38,10 @@ pub fn (ms MySumType) str() string {
 }
 
 fn test_typeof_on_sumtypes(){
-	svalues := [MySumType( 32 ), MySumType(123.0), MySumType(FooBar{x:43})]
-	a := svalues[0]
-	b := svalues[1]
-	c := svalues[2]
+	a := MySumType( 32 )
+	b := MySumType(123.0)
+	c := MySumType(FooBar{x:43})
 	assert typeof(a) == 'int'
 	assert typeof(b) == 'f32'
 	assert typeof(c) == 'FooBar'
-	for s in svalues {		
-		println(s)
-	}
 }
