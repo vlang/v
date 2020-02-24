@@ -54,7 +54,7 @@ fn main() {
 	}
 	if command in simple_cmd {
 		// External tools
-		launch_tool(is_verbose, 'v' + command, command)
+		launch_tool(is_verbose, 'v' + command)
 		return
 	}
 	if command == 'run' || command == 'build' || command.ends_with('.v') || os.exists(command) {
@@ -66,13 +66,13 @@ fn main() {
 			if arg.len == 1 {
 				println('Running REPL as no arguments are provided. For usage information, use `v help`.')
 			}
-			launch_tool(is_verbose, 'vrepl', '')
+			launch_tool(is_verbose, 'vrepl')
 		}
 		'translate' {
 			println('Translating C to V will be available in V 0.3')
 		}
 		'search', 'install', 'update', 'remove' {
-			launch_tool(is_verbose, 'vpm', command)
+			launch_tool(is_verbose, 'vpm')
 		}
 		'get' {
 			println('Use `v install` to install modules from vpm.vlang.io')

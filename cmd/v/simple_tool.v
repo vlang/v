@@ -10,19 +10,14 @@ import (
 	v.pref
 )
 
-fn launch_tool(is_verbose bool, tname string, cmdname string) {
+fn launch_tool(is_verbose bool, tool_name string) {
 	vexe := pref.vexe_path()
 	vroot := filepath.dir(vexe)
 	compiler.set_vroot_folder(vroot)
 
-	mut tname_index := os.args.index(cmdname)
-	if tname_index == -1 {
-		tname_index = os.args.len
-	}
-	mut compilation_options := os.args[1..tname_index].clone()
 	tool_args := os.args[1..].join(' ')
-	tool_exe := path_of_executable(os.realpath('$vroot/cmd/tools/$tname'))
-	tool_source := os.realpath('$vroot/cmd/tools/${tname}.v')
+	tool_exe := path_of_executable(os.realpath('$vroot/cmd/tools/$tool_name'))
+	tool_source := os.realpath('$vroot/cmd/tools/${tool_name}.v')
 	tool_command := '"$tool_exe" $tool_args'
 	if is_verbose {
 		eprintln('launch_tool vexe        : $vroot')
@@ -31,6 +26,7 @@ fn launch_tool(is_verbose bool, tname string, cmdname string) {
 		eprintln('launch_tool tool_command: $tool_command')
 	}
 
+	// TODO Caching should be done on the `vlib/v` level.
 	mut should_compile := false
 	if !os.exists(tool_exe) {
 		should_compile = true
@@ -59,13 +55,9 @@ fn launch_tool(is_verbose bool, tname string, cmdname string) {
 	}
 
 	if should_compile {
-		if tname == 'vfmt' {
-			compilation_options << ['-d', 'vfmt']
-		}
-		compilation_args := compilation_options.join(' ')
-		compilation_command := '"$vexe" $compilation_args "$tool_source"'
+		compilation_command := '"$vexe" "$tool_source"'
 		if is_verbose {
-			eprintln('Compiling $tname with: "$compilation_command"')
+			eprintln('Compiling $tool_name with: "$compilation_command"')
 		}
 		tool_compilation := os.exec(compilation_command) or { panic(err) }
 		if tool_compilation.exit_code != 0 {
