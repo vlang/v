@@ -843,9 +843,13 @@ fn (p mut Parser) type_decl() {
 			is_public: is_pub
 		})
 		*/
+		if p.pass == .main {
+			p.cgen.consts << '//// SUMTYPE:  ${p.mod} | parent: ${name} | name: ${parent.name}'
+		}
 		// Register the rest of them
 		mut idx := 0
 		mut done := false
+		mut ctype_names := []string
 		for {
 			// p.tok == .pipe {
 			idx++
@@ -865,6 +869,7 @@ fn (p mut Parser) type_decl() {
 				t.parent = name
 				p.table.rewrite_type(t)
 				p.cgen.consts << '#define SumType_$child_type_name $idx // DEF2'
+				ctype_names << child_type_name
 			}
 			if done {
 				break
@@ -888,7 +893,15 @@ fn (p mut Parser) type_decl() {
 			mod: p.mod
 			cat: .alias
 			is_public: is_pub
+			ctype_names: ctype_names
 		})
+		if p.pass == .main {
+			p.cgen.consts << 'const char * __SumTypeNames__${name}[] = {'
+			for ctype_name in ctype_names {
+				p.cgen.consts << '    "$ctype_name",'
+			}
+			p.cgen.consts << '};'
+		}
 		p.gen_typedef('typedef struct {
 void* obj;
 int typ;

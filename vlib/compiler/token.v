@@ -115,7 +115,7 @@ enum TokenKind {
 	key_switch
 	key_true
 	key_type
-	// typeof
+	key_typeof
 	key_orelse
 	key_union
 	key_pub
@@ -224,7 +224,7 @@ fn build_token_str() []string {
 	s[TokenKind.key_import] = 'import'
 	s[TokenKind.key_embed] = 'embed'
 	s[TokenKind.key_unsafe] = 'unsafe'
-	// Tokens[key_typeof] = 'typeof'
+	s[TokenKind.key_typeof] = 'typeof'
 	s[TokenKind.key_enum] = 'enum'
 	s[TokenKind.key_interface] = 'interface'
 	s[TokenKind.key_pub] = 'pub'

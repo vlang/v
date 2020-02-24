@@ -109,6 +109,7 @@ $c_common_macros
 #include <direct.h> // _wgetcwd
 //#include <WinSock2.h>
 #ifdef _MSC_VER
+
 // On MSVC these are the same (as long as /volatile:ms is passed)
 #define _Atomic volatile
 
