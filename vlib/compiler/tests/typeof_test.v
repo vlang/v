@@ -59,10 +59,19 @@ struct BinExpr { a string b string }
 struct BoolExpr { z int }
 type ExprType = BoolExpr | BinExpr | UnaryExpr
 
+fn fexpr(k int) ExprType {
+	match k {
+		1 { return UnaryExpr{} }
+		2 { return BinExpr{} }
+		3 { return BoolExpr{} }
+		else { return UnaryExpr{} }
+	}
+}
+
 fn test_typeof_on_sumtypes_of_structs() {
-	a := ExprType( UnaryExpr{} )
-	b := ExprType( BinExpr{} )
-	c := ExprType( BoolExpr{} )
+	a := fexpr(1)
+	b := fexpr(2)
+	c := fexpr(3)
 	assert typeof(a) == 'UnaryExpr'
 	assert typeof(b) == 'BinExpr'
 	assert typeof(c) == 'BoolExpr'
