@@ -18,7 +18,8 @@ const (
 	'test', 'test-fmt', 'test-compiler',
 	'bin2v',
 	'repl',
-	'build-tools', 'build-examples', 'build-vbinaries']
+	'build-tools', 'build-examples', 'build-vbinaries',
+	'setup-freetype']
 )
 
 fn main() {
