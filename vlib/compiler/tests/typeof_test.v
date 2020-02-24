@@ -38,10 +38,32 @@ pub fn (ms MySumType) str() string {
 }
 
 fn test_typeof_on_sumtypes(){
-	a := MySumType( 32 )
-	b := MySumType(123.0)
-	c := MySumType(FooBar{x:43})
-	assert typeof(a) == 'int'
-	assert typeof(b) == 'f32'
-	assert typeof(c) == 'FooBar'
+	$if !msvc {
+		// NB: msvc produces:
+		// error C2440: 'type cast': cannot convert from 'MySumType' to 'MySumType'
+		// for this C code:
+		// MySumType a = ((MySumType)(/*SUM TYPE CAST2*/ (MySumType){ .obj = memdup(&(int[]){32}, sizeof(int)), .typ = SumType_int}));
+		a := MySumType(32)
+		b := MySumType(123.0)
+		c := MySumType(FooBar{x:43})
+		assert typeof(a) == 'int'
+		assert typeof(b) == 'f32'
+		assert typeof(c) == 'FooBar'
+	}
+}
+
+//
+
+struct UnaryExpr { a string }
+struct BinExpr { a string b string }
+struct BoolExpr { z int }
+type ExprType = BoolExpr | BinExpr | UnaryExpr
+
+fn test_typeof_on_sumtypes_of_structs() {
+	a := ExprType( UnaryExpr{} )
+	b := ExprType( BinExpr{} )
+	c := ExprType( BoolExpr{} )
+	assert typeof(a) == 'UnaryExpr'
+	assert typeof(b) == 'BinExpr'
+	assert typeof(c) == 'BoolExpr'
 }
