@@ -54,7 +54,7 @@ fn parse_arguments(args []string) pref.Preferences {
 		println('V error: Expected file/directory to compile.')
 		exit(1)
 	}
-	if remaining.len > 1 {
+	if !p.is_run && remaining.len > 1 {
 		println('V error: Expected only one file/directory to compile.')
 		println('Did you perhaps put flags after the file/directory?')
 		exit(1)
