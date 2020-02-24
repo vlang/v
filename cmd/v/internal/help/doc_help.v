@@ -35,6 +35,8 @@ The commands are:
    test-fmt          test if all files in the current directory is formatted properly
    test-compiler     run the V self-test suite to make sure V is working properly
 
+   setup-freetype    setup thirdparty freetype on Windows
+
 For a comprehensive list of options, please refer to `v help --verbose`.'
 //Use "v help <command>" for more information about a command.'
 //TODO When docs have been written for all the subcommands, delete the verbose help text and
@@ -116,6 +118,7 @@ Commands:
   doc               Run vdoc over the source code and produce documentation.
   translate         Translates C to V. [wip, will be available in V 0.3]
   create            Create a new v project interactively. Answer the questions, and run it with `v run projectname`
+  setup-freetype    Setup thirdparty freetype on Windows.
 
 V package management commands:
   search  keywords  Search the https://vpm.vlang.io/ module repository for matching modules and shows their details.
@@ -128,4 +131,3 @@ V package management commands:
 - To disable automatic formatting:
 v -nofmt file.v
 */
-
