@@ -143,15 +143,15 @@ fn parse_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 		'stats' {
 			prefs.is_stats = f.bool()
 		}
-		'-obf', '-obfuscate' {
+		'obf', 'obfuscate' {
 			f.is_equivalent_to(['-obf', '-obfuscate'])
 			prefs.obfuscate = f.bool()
 		}
-		'-prof', '-profile' {
+		'prof', 'profile' {
 			f.is_equivalent_to(['-prof', '-profile'])
 			prefs.is_prof = f.bool()
 		}
-		'-translated' {
+		'translated' {
 			prefs.translated = f.bool()
 		}
 		else {
