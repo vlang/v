@@ -38,18 +38,12 @@ pub fn (ms MySumType) str() string {
 }
 
 fn test_typeof_on_sumtypes(){
-	$if !msvc {
-		// NB: msvc produces:
-		// error C2440: 'type cast': cannot convert from 'MySumType' to 'MySumType'
-		// for this C code:
-		// MySumType a = ((MySumType)(/*SUM TYPE CAST2*/ (MySumType){ .obj = memdup(&(int[]){32}, sizeof(int)), .typ = SumType_int}));
-		a := MySumType(32)
-		b := MySumType(123.0)
-		c := MySumType(FooBar{x:43})
-		assert typeof(a) == 'int'
-		assert typeof(b) == 'f32'
-		assert typeof(c) == 'FooBar'
-	}
+	a := MySumType(32)
+	b := MySumType(123.0)
+	c := MySumType(FooBar{x:43})
+	assert typeof(a) == 'int'
+	assert typeof(b) == 'f32'
+	assert typeof(c) == 'FooBar'
 }
 
 //
@@ -72,7 +66,9 @@ fn test_typeof_on_sumtypes_of_structs() {
 	a := fexpr(1)
 	b := fexpr(2)
 	c := fexpr(3)
+	d := ExprType( UnaryExpr{} )
 	assert typeof(a) == 'UnaryExpr'
 	assert typeof(b) == 'BinExpr'
 	assert typeof(c) == 'BoolExpr'
+	assert typeof(d) == 'UnaryExpr'
 }
