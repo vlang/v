@@ -5,7 +5,7 @@ pub:
 	init_cb fn()					/* these are the user-provided callbacks without user data */
 	frame_cb fn()
 	cleanup_cb fn()
-	event_cb fn(voidptr) //&sapp_event)
+	event_cb fn(&C.sapp_event) //&sapp_event)
 	fail_cb fn(byteptr)
 
     user_data voidptr                /* these are the user-provided callbacks with user data */
