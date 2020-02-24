@@ -348,7 +348,7 @@ pub fn (s mut Scanner) scan() token.Token {
 			}
 			mut prefix_zero_num := start_pos - s.pos  // how many prefix zeros should be jumped
 			// for 0b, 0o, 0x the heading zero shouldn't be jumped
-			if c == `0` && start_pos < s.text.len && !s.text[start_pos].is_digit() {
+			if start_pos == s.text.len || (c == `0` && !s.text[start_pos].is_digit()) {
 				prefix_zero_num--
 			}
 			s.pos += prefix_zero_num  // jump these zeros
