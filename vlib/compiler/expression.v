@@ -824,13 +824,29 @@ fn (p mut Parser) factor() string {
 			// p.fgen('$sizeof_typ)')
 			return 'int'
 		}
+		.key_typeof {
+			p.next()
+			p.check(.lpar)
+			p.cgen.nogen = true
+			vname := if p.tok == .name && p.peek() == .rpar { p.lit } else { '' }
+			type_of_var := p.expression()
+			p.cgen.nogen = false
+			p.check(.rpar)
+			is_sum_type := type_of_var in p.table.sum_types
+			if is_sum_type && vname.len > 0 {
+				// TODO: make this work for arbitrary sumtype expressions, not just simple vars
+				p.gen('tos3(__SumTypeNames__${type_of_var}[${vname}.typ - 1])')
+			}else{
+				p.gen('tos3("$type_of_var")')
+			}
+			return 'string'
+		}
 		.key_nameof {
 			p.next()
 			p.check(.lpar)
 			mut nameof_typ := p.get_type()
 			p.check(.rpar)
 			p.gen('tos3("$nameof_typ")')
-//			return 'byteptr'
 			return 'string'
 		}
 		.key_offsetof {
