@@ -109,7 +109,7 @@ pub fn (a array) free() {
 pub fn (a []string) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write('[')
-	for i := 0; i < a.len; i++ {
+	for i in 0..a.len {
 		val := a[i]
 		sb.write('"')
 		sb.write(val)

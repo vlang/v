@@ -58,7 +58,7 @@ fn main() {
 	if ids.len > 10 {
 		// ids = ids[:10]
 		mut tmp := [0].repeat(10)
-		for i := 0; i < 10; i++ {
+		for i in 0..10 {
 			tmp[i] = ids[i]
 		}
 		ids = tmp
@@ -69,7 +69,7 @@ fn main() {
 		wg: sync.new_waitgroup()
 	}
 	fetcher.wg.add(ids.len)
-	for i := 0; i < nr_threads; i++ {
+	for i in 0..nr_threads {
 		go fetcher.fetch()
 	}
 	fetcher.wg.wait()

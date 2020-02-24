@@ -257,11 +257,11 @@ fn (sdlc mut SdlContext) set_sdl_context(w int, h int, title string) {
 		C.Mix_VolumeMusic(sdlc.actx.volume)
 	}
 	njoy := C.SDL_NumJoysticks()
-	for i := 0; i < njoy; i++ {
+	for i in 0..njoy {
 		C.SDL_JoystickOpen(i)
 		jn := tos_clone(sdl.joystick_name_for_index(i))
 		println('JOY NAME $jn')
-		for j := 0; j < NJOYMAX; j++ {
+		for j in 0..NJOYMAX {
 			if sdlc.jnames[j] == jn {
 				println('FOUND JOYSTICK $j $jn ID=$i')
 				sdlc.jids[j] = i
@@ -534,7 +534,7 @@ fn (g mut Game) init_game() {
 	g.generate_tetro()
 	g.field = []
 	// Generate the field, fill it with 0's, add -1's on each edge
-	for i := 0; i < FieldHeight + 2; i++ {
+	for i in 0..FieldHeight + 2 {
 		mut row := [0].repeat(FieldWidth + 2)
 		row[0] = - 1
 		row[FieldWidth + 1] = - 1
@@ -542,7 +542,7 @@ fn (g mut Game) init_game() {
 	}
 	mut first_row := g.field[0]
 	mut last_row := g.field[FieldHeight + 1]
-	for j := 0; j < FieldWidth + 2; j++ {
+	for j in 0..FieldWidth + 2 {
 		first_row[j] = - 1
 		last_row[j] = - 1
 	}
@@ -626,7 +626,7 @@ fn (g mut Game) move_tetro() {
 
 fn (g mut Game) move_right(dx int) bool {
 	// Reached left/right edge or another tetro?
-	for i := 0; i < TetroSize; i++ {
+	for i in 0..TetroSize {
 		tetro := g.tetro[i]
 		y := tetro.y + g.pos_y
 		x := tetro.x + g.pos_x + dx
@@ -693,7 +693,7 @@ fn (g mut Game) get_tetro() {
 }
 
 fn (g &Game) drop_tetro() {
-	for i := 0; i < TetroSize; i++ {
+	for i in 0..TetroSize {
 		tetro := g.tetro[i]
 		x := tetro.x + g.pos_x
 		y := tetro.y + g.pos_y
@@ -705,7 +705,7 @@ fn (g &Game) drop_tetro() {
 }
 
 fn (g &Game) draw_tetro() {
-	for i := 0; i < TetroSize; i++ {
+	for i in 0..TetroSize {
 		tetro := g.tetro[i]
 		g.draw_block(g.pos_y + tetro.y, g.pos_x + tetro.x, g.tetro_idx + 1)
 	}

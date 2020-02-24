@@ -24,9 +24,9 @@ mut:
 }
 
 fn(c mut Crc32) generate_table(poly int) {
-	for i := 0; i < 256; i++ {
+	for i in 0..256 {
 		mut crc := u32(i)
-		for j := 0; j < 8; j++ {
+		for j in 0..8 {
 			if crc & u32(1) == u32(1) {
 				crc = (crc >> 1) ^ u32(poly)
 			} else {
@@ -39,7 +39,7 @@ fn(c mut Crc32) generate_table(poly int) {
 
 fn(c &Crc32) sum32(b []byte) u32 {
 	mut crc := ~u32(0)
-	for i := 0; i < b.len; i++ {
+	for i in 0..b.len {
 		crc = c.table[byte(crc)^b[i]] ^ u32(crc >> u32(8))
 	}
 	return ~crc

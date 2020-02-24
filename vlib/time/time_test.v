@@ -106,7 +106,7 @@ fn test_smonth() {
 }
 
 fn test_day_of_week() {
-	for i := 0; i < 7; i++ {
+	for i in 0..7 {
 		day_of_week := i + 1
 		// 2 Dec 2019 is Monday
 		t := time.Time{

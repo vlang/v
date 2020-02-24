@@ -641,7 +641,7 @@ so `register()` can change the user object. The same works with non-receiver arg
 
 ```v
 fn multiply_by_2(arr mut []int) {
-    for i := 0; i < arr.len; i++ {
+    for i in 0..arr.len {
         arr[i] *= 2
     }
 }

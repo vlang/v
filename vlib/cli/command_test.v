@@ -178,7 +178,7 @@ fn compare_arrays(array0 []string, array1 []string) bool {
 	if array0.len != array1.len {
 		return false
 	}
-	for i := 0; i < array0.len; i++ {
+	for i in 0..array0.len {
 		if array0[i] != array1[i] {
 			return false
 		}

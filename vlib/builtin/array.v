@@ -98,7 +98,7 @@ pub fn (a array) repeat(nr_repeats int) array {
 		element_size: a.element_size
 		data: calloc(size)
 	}
-	for i := 0; i < nr_repeats; i++ {
+	for i in 0..nr_repeats {
 		C.memcpy(arr.data + i * a.len * a.element_size, a.data, a.len * a.element_size)
 	}
 	return arr
@@ -335,7 +335,7 @@ pub fn (a array) reverse() array {
 		element_size: a.element_size
 		data: calloc(a.cap * a.element_size)
 	}
-	for i := 0; i < a.len; i++ {
+	for i in 0..a.len {
 		C.memcpy(arr.data + i * arr.element_size, &a[a.len - 1 - i], arr.element_size)
 	}
 	return arr
@@ -355,7 +355,7 @@ pub fn (a array) free() {
 pub fn (a []string) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write('[')
-	for i := 0; i < a.len; i++ {
+	for i in 0..a.len {
 		val := a[i]
 		sb.write('"')
 		sb.write(val)
@@ -373,7 +373,7 @@ pub fn (a []string) str() string {
 pub fn (a []bool) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write('[')
-	for i := 0; i < a.len; i++ {
+	for i in 0..a.len {
 		val := a[i]
 		if val {
 			sb.write('true')
@@ -394,7 +394,7 @@ pub fn (a []bool) str() string {
 pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len * 2 + 1)
 	mut ptr := &hex[0]
-	for i := 0; i < b.len; i++ {
+	for i in 0..b.len {
 		// QTODO
 		ptr += C.sprintf(ptr, '%02x', b[i])
 	}
@@ -435,7 +435,7 @@ pub fn (a mut []int) sort() {
 // []string.index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 pub fn (a []string) index(v string) int {
-	for i := 0; i < a.len; i++ {
+	for i in 0..a.len {
 		if a[i] == v {
 			return i
 		}
@@ -446,7 +446,7 @@ pub fn (a []string) index(v string) int {
 // []int.index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 pub fn (a []int) index(v int) int {
-	for i := 0; i < a.len; i++ {
+	for i in 0..a.len {
 		if a[i] == v {
 			return i
 		}
@@ -457,7 +457,7 @@ pub fn (a []int) index(v int) int {
 // []byte.index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 pub fn (a []byte) index(v byte) int {
-	for i := 0; i < a.len; i++ {
+	for i in 0..a.len {
 		if a[i] == v {
 			return i
 		}
@@ -469,7 +469,7 @@ pub fn (a []byte) index(v byte) int {
 // or -1 if the value is not found in the array.
 // TODO is `char` type yet in the language?
 pub fn (a []char) index(v char) int {
-	for i := 0; i < a.len; i++ {
+	for i in 0..a.len {
 		if a[i] == v {
 			return i
 		}
@@ -480,13 +480,11 @@ pub fn (a []char) index(v char) int {
 // []int.reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
-	mut _accum := 0
-	/*
-	_accum = accum_start
-	for i := 0; i < a.len; i++ {
-		_accum = iter(_accum, a[i])
+	mut _accum := accum_start
+	for i in a {
+		_accum = iter(_accum, i)
 	}
-	*/
+	
 	return _accum
 }
 
@@ -497,7 +495,7 @@ fn array_eq<T>(a1, a2 []T) bool {
 	if a1.len != a2.len {
 		return false
 	}
-	for i := 0; i < a1.len; i++ {
+	for i in 0..a1.len {
 		if a1[i] != a2[i] {
 			return false
 		}
@@ -528,7 +526,7 @@ pub fn (a1 []string) eq(a2 []string) bool {
 	if a1.len != a2.len {
 		return false
 	}
-	for i := 0; i < a1.len; i++ {
+	for i in 0..a1.len {
 		if a1[i] != a2[i] {
 			return false
 		}

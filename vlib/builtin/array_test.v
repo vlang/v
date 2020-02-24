@@ -62,7 +62,7 @@ fn test_short() {
 
 fn test_large() {
 	mut a := [0].repeat(0)
-	for i := 0; i < 10000; i++ {
+	for i in 0..10000 {
 		a << i
 	}
 	assert a.len == 10000
@@ -311,7 +311,7 @@ fn test_clone() {
 
 fn test_doubling() {
 	mut nums := [1, 2, 3, 4, 5]
-	for i := 0; i < nums.len; i++ {
+	for i in 0..nums.len {
 		nums[i] *= 2
 	}
 	assert nums.str() == '[2, 4, 6, 8, 10]'
@@ -562,7 +562,7 @@ fn test_push_many_self() {
     actual_arr << actual_arr
     expected_arr := [1, 2, 3, 4, 1, 2, 3, 4]
     assert actual_arr.len == expected_arr.len
-    for i := 0; i < actual_arr.len; i++ {
+    for i in 0..actual_arr.len {
         assert actual_arr[i] == expected_arr[i]
     }
 }

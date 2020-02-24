@@ -83,7 +83,7 @@ pub fn (c byte) is_capital() bool {
 
 pub fn (b []byte) clone() []byte {
 	mut res := [byte(0)].repeat(b.len)
-	for i := 0; i < b.len; i++ {
+	for i in 0..b.len {
 		res[i] = b[i]
 	}
 	return res
