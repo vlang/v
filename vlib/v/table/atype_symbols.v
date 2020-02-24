@@ -7,7 +7,7 @@ import (
 	strings
 )
 
-pub type TypeInfo = Array | ArrayFixed | Map | Struct | 	
+pub type TypeInfo = Array | ArrayFixed | Map | Struct |
 MultiReturn | Alias
 
 pub struct TypeSymbol {
@@ -399,6 +399,19 @@ pub mut:
 
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
+	if sym.kind == .multi_return {
+		mut res := '('
+		mr_info := sym.info as MultiReturn
+		for i, typ in mr_info.types {
+			res += table.type_to_str(typ)
+			if i < mr_info.types.len - 1 {
+				res += ', '
+			}
+		}
+		res += ')'
+		return res
+	}
+
 	mut res := sym.name.replace('array_', '[]')
 	// mod.submod.submod2.Type => submod2.Type
 	if res.contains('.') {

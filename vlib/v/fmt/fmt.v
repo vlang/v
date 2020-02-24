@@ -428,9 +428,11 @@ fn (f mut Fmt) index_expr(node ast.IndexExpr) {
 		ast.RangeExpr {
 			is_range = true
 			f.expr(node.left)
+			f.write('[')
+			f.expr(it.low)
 			f.write('..')
 			f.expr(it.high)
-			f.write(')')
+			f.write(']')
 		}
 		else {}
 	}

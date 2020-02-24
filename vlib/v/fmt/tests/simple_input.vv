@@ -45,7 +45,12 @@ User
            }
 }
 
+
 [inline]
+fn fn_contains_range_expr() {
+	a:=1 in arr[0..2]
+}
+
 fn   voidfn(){
  println('this is a function that does not return anything')
    }
@@ -104,4 +109,12 @@ reserved_types = {
          'i128': true
 }
 )
+
+fn fn_with_assign_stmts() {
+	a,b := fn_with_multi_return()
+}
+
+fn fn_with_multi_return() (int,string) {
+	return 0,'test'
+}
 

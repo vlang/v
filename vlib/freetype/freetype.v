@@ -17,7 +17,9 @@ import (
 #flag windows -L @VROOT/thirdparty/freetype/win64
 
 #flag darwin -I/usr/local/include/freetype2
+// MacPorts
 #flag darwin -I/opt/local/include/freetype2
+#flag darwin -L/opt/local/lib
 #flag freebsd -I/usr/local/include/freetype2
 #flag freebsd -Wl -L/usr/local/lib
 #flag -lfreetype
