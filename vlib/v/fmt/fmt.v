@@ -112,6 +112,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			}
 			f.writeln('')
 		}
+		ast.Attr {
+			f.writeln('[$it.name]')
+		}
 		ast.BranchStmt {
 			match it.tok.kind {
 				.key_break {

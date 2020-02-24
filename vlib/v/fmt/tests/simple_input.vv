@@ -45,6 +45,7 @@ User
            }
 }
 
+[inline]
 fn   voidfn(){
  println('this is a function that does not return anything')
    }
