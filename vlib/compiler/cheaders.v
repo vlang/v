@@ -110,7 +110,7 @@ $c_common_macros
 //#include <WinSock2.h>
 #ifdef _MSC_VER
 
-//// Try turning off error C2440: 'type cast': cannot convert from 'ExprType' to 'ExprType'
+//// Try turning off error C2440: type cast: cannot convert from ExprType to ExprType
 #pragma warning(disable:2440)
 
 // On MSVC these are the same (as long as /volatile:ms is passed)
