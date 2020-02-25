@@ -226,6 +226,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.BoolLiteral {
 			g.write(it.val.str())
 		}
+		ast.EnumVal {
+			g.write('${it.enum_name}_$it.val')
+		}
 		ast.IntegerLiteral {
 			g.write(it.val.str())
 		}

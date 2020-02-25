@@ -31,6 +31,7 @@ int main() {
 	foo(3);
 	int ak = 10;
 	int mypi = pi;
+	Color color = Color_red;
 	return 0;
 }
 

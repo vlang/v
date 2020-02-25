@@ -397,7 +397,10 @@ pub:
 
 pub struct EnumVal {
 pub:
-	name string
+	enum_name string
+	val       string
+	pos       token.Position
+	// name string
 }
 
 pub struct EnumDecl {

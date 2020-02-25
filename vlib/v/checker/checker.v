@@ -57,7 +57,7 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 					c.stmt(*it)
 				}
 				else {}
-			}
+	}
 		}
 	}
 	for file in ast_files {
@@ -316,7 +316,6 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				mut field := it.fields[i]
 				typ := c.expr(expr)
 				mut xconst := c.table.consts[field.name]
-
 				// if xconst.typ == 0 {
 				xconst.typ = typ
 				c.table.consts[field.name] = xconst
@@ -365,6 +364,17 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 	match mut node {
 		ast.AssignExpr {
 			c.check_assign_expr(it)
+		}
+		ast.EnumVal {
+			typ_idx := c.table.find_type_idx(it.enum_name) // or {
+			typ := c.table.find_type(it.enum_name) or {
+				panic(err)
+			}
+			info := typ.info as table.Enum
+			if !(it.val in info.vals) {
+				c.error('enum `$it.enum_name` does not have a value `$it.val`', it.pos)
+			}
+			return typ_idx
 		}
 		ast.FloatLiteral {
 			return table.f64_type

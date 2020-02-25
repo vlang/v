@@ -367,7 +367,7 @@ pub mut:
 
 pub struct Enum {
 pub mut:
-	vals []Field
+	vals []string
 }
 
 pub struct Alias {

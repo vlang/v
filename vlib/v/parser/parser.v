@@ -577,12 +577,16 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		// || p.table.known_type(p.tok.lit)) {
 		return p.struct_init()
 	}
-	/*
-	else if p.peek_tok.kind == .dot {
-		p.warn('enum val $name')
+	else if p.peek_tok.kind == .dot && p.tok.lit[0].is_capital() {
+		enum_name := p.check_name()
+		p.check(.dot)
+		val := p.check_name()
+		// println('enum val $enum_name . $val')
+		return ast.EnumVal{
+			enum_name: enum_name
+			val: val
+		}
 	}
-	*/
-
 	else {
 		mut ident := ast.Ident{}
 		ident = p.parse_ident(is_c)
@@ -907,10 +911,10 @@ fn (p &Parser) is_addative() bool {
 // `pref.BuildMode.default_mode`
 fn (p mut Parser) enum_val() (ast.Expr,table.Type) {
 	p.check(.dot)
-	name := p.check_name()
+	val := p.check_name()
 	mut node := ast.Expr{}
 	node = ast.EnumVal{
-		name: name
+		val: val
 	}
 	return node,table.int_type
 }
