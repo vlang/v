@@ -59,7 +59,7 @@ pub fn doc(mod string, table &table.Table) string {
 	return d.out.str()
 }
 
-fn (d &Doc) write_fn_node(f ast.FnDecl) string {
+fn (d &Doc) get_fn_node(f ast.FnDecl) string {
 	return f.str(d.table).replace(d.mod + '.', '')
 }
 
@@ -69,7 +69,7 @@ fn (d mut Doc) print_fns() {
 		match stmt {
 			ast.FnDecl {
 				if it.is_pub && !it.is_method {
-					name := d.write_fn_node(it)
+					name := d.get_fn_node(it)
 					fn_names << name
 				}
 			}
@@ -88,7 +88,7 @@ fn (d mut Doc) print_methods() {
 		match stmt {
 			ast.FnDecl {
 				if it.is_pub && it.is_method {
-					name := d.write_fn_node(it)
+					name := d.get_fn_node(it)
 					fn_names << name
 				}
 			}
