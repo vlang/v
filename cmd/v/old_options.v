@@ -18,20 +18,6 @@ struct Deprecated {
 fn parse_and_output_new_format(args []string) {
 	mut list := []Deprecated
 	mut obsolete := []string
-	//Check output suffixes
-	output := cmdline.option(args, '-o', '')
-	backend := cmdline.option(args, '-backend', '')
-	if output.ends_with('.c') {
-		list << Deprecated {
-			old: '-o $output'
-			new: '-csource keep'
-		}
-	} else if output.ends_with('.js') && backend != 'js' {
-		list << Deprecated {
-			old: '-o $output'
-			new: '-backend js'
-		}
-	}
 	//Check `-os msvc`
 	os := cmdline.option(args, '-os', '')
 	if os == 'msvc' {

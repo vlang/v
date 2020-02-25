@@ -14,7 +14,9 @@ import (
 fn compile(command string, args []string) {
 	// Construct the V object from command line arguments
 	parse_and_output_new_format(args)
-	mut v := compiler.new_v(parse_arguments(args))
+	prefs := parse_arguments(args)
+	check_for_common_mistake(args, &prefs)
+	mut v := compiler.new_v(prefs)
 	if v.pref.is_verbose {
 		println(args)
 	}
