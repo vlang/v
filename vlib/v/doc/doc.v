@@ -47,7 +47,7 @@ pub fn doc(mod string, table &table.Table) string {
 		d.stmts << file_ast.stmts
 	}
 	d.print_fns()
-	d.writeln('')
+	d.out.writeln('')
 	d.print_methods()
 	/*
 		for stmt in file_ast.stmts {
@@ -59,36 +59,44 @@ pub fn doc(mod string, table &table.Table) string {
 	return d.out.str()
 }
 
-fn (d mut Doc) writeln(s string) {
-	d.out.writeln(s)
-}
-
-fn (d mut Doc) write_fn_node(f ast.FnDecl) {
-	d.writeln(f.str(d.table).replace(d.mod + '.', ''))
+fn (d &Doc) write_fn_node(f ast.FnDecl) string {
+	return f.str(d.table).replace(d.mod + '.', '')
 }
 
 fn (d mut Doc) print_fns() {
+	mut fn_names := []string
 	for stmt in d.stmts {
 		match stmt {
 			ast.FnDecl {
 				if it.is_pub && !it.is_method {
-					d.write_fn_node(it)
+					name := d.write_fn_node(it)
+					fn_names << name
 				}
 			}
 			else {}
+		}
 	}
+	fn_names.sort()
+	for s in fn_names {
+		d.out.writeln(s)
 	}
 }
 
 fn (d mut Doc) print_methods() {
+	mut fn_names := []string
 	for stmt in d.stmts {
 		match stmt {
 			ast.FnDecl {
 				if it.is_pub && it.is_method {
-					d.write_fn_node(it)
+					name := d.write_fn_node(it)
+					fn_names << name
 				}
 			}
 			else {}
+		}
 	}
+	fn_names.sort()
+	for s in fn_names {
+		d.out.writeln(s)
 	}
 }
