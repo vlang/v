@@ -92,11 +92,7 @@ fn (s &Scanner) scan_res(tok_kind token.Kind, lit string) token.Token {
 fn (s mut Scanner) ident_name() string {
 	start := s.pos
 	s.pos++
-	for s.pos < s.text.len {
-		c := s.text[s.pos]
-		if !is_name_char(c) && !c.is_digit() {
-			break
-		}
+	for s.pos < s.text.len && (is_name_char(s.text[s.pos]) || s.text[s.pos].is_digit()) {
 		s.pos++
 	}
 	name := s.text[start..s.pos]
