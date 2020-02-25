@@ -230,7 +230,7 @@ pub fn f32_to_str_l(f f64) string {
 
 // f64_to_str_l return a string with the f64 converted in a strign in decimal notation
 pub fn f64_to_str_l(f f64) string {
-	s := ftoa.f64_to_str(f,18)
+	s := f64_to_str(f,18)
 
 	// check for +inf -inf Nan
 	if s.len > 2 && (s[0] == `N` || s[1] == `i`) {
