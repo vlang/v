@@ -9,11 +9,13 @@ import ftoa
 // ----- f64 to string functions -----
 
 // str return a f64 as string in scientific notation, auto display digits limit
+[inline]
 pub fn (d f64) str() string {
 	return ftoa.ftoa_64(d)
 }
 
 // return a string of the input f64 in scientific notation with digit_num deciamals displayed, max 17 digits
+[inline]
 pub fn (x f64) strsci(digit_num int) string {
 	mut n_digit := digit_num
 	if n_digit < 1 {
@@ -25,6 +27,7 @@ pub fn (x f64) strsci(digit_num int) string {
 }
 
 // return a decimal notation of the input f64
+[inline]
 pub fn (x f64) strlong() string {
 	return ftoa.f64_to_str_l(x)
 }
@@ -32,11 +35,13 @@ pub fn (x f64) strlong() string {
 // ----- f32 to string functions -----
 
 // str return a f32 as string in scientific notation, auto display digits limit
+[inline]
 pub fn (d f32) str() string {
 	return ftoa.ftoa_32(d)
 }
 
 // return a string of the input f32 in scientific notation with digit_num deciamals displayed, max 8 digits
+[inline]
 pub fn (x f32) strsci(digit_num int) string {
 	mut n_digit := digit_num
 	if n_digit < 1 {
@@ -48,10 +53,12 @@ pub fn (x f32) strsci(digit_num int) string {
 }
 
 // return a decimal notation of the input f32
+[inline]
 pub fn (x f32) strlong() string {
 	return ftoa.f32_to_str_l(x)
 }
 
+// ----- C functions -----
 
 [inline]
 fn f32_abs(a f32) f32 {
