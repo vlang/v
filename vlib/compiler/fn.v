@@ -431,7 +431,7 @@ fn (p mut Parser) fn_decl() {
 	str_args := f.str_args(p.table)
 	// Special case for main() args
 	if f.name == 'main__main' && !has_receiver {
-		if p.pref.x64 && !p.first_pass() {
+		if p.pref.backend == .x64 && !p.first_pass() {
 			//p.x64.save_main_fn_addr()
 		}
 		if str_args != '' || typ != 'void' {
@@ -581,7 +581,7 @@ fn (p mut Parser) fn_decl() {
 			f.defer_text[f.scope_level] = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
 		}
 	}
-	if p.pref.x64 {
+	if p.pref.backend == .x64 {
 		//p.x64.register_function_address(f.name)
 	}
 	p.statements_no_rcbr()
@@ -597,10 +597,10 @@ fn (p mut Parser) fn_decl() {
 	if typ != 'void' && !p.returns {
 		p.error_with_token_index('$f.name must return "$typ"', f.fn_name_token_idx)
 	}
-	if p.pref.x64 && f.name == 'main__main' && !p.first_pass() {
+	if p.pref.backend == .x64 && f.name == 'main__main' && !p.first_pass() {
 		//p.x64.gen_exit()
 	}
-	if p.pref.x64 && !p.first_pass() {
+	if p.pref.backend == .x64 && !p.first_pass() {
 		//p.x64.ret()
 	}
 	// {} closed correctly? scope_level should be 0
@@ -778,7 +778,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	if is_comptime_define {
 		p.cgen.nogen = true
 	}
-	if p.pref.x64 && !p.first_pass() {
+	if p.pref.backend == .x64 && !p.first_pass() {
 		//p.x64.call_fn(f.name)
 	}
 	p.calling_c = f.is_c
@@ -1104,7 +1104,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
 		}
 		// x64 println gen
-		if p.pref.x64 && i == 0 && f.name == 'println' && p.tok == .str && p.peek() == .rpar {
+		if p.pref.backend == .x64 && i == 0 && f.name == 'println' && p.tok == .str && p.peek() == .rpar {
 			//p.x64.gen_print(p.lit)
 		}
 		mut typ := p.bool_expression()

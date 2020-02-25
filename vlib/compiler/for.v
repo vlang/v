@@ -143,13 +143,13 @@ fn (p mut Parser) for_st() {
 		if is_range {
 			p.check_types(typ, 'int')
 			p.check_space(.dotdot)
-			if p.pref.x64 {
+			if p.pref.backend == .x64 {
 				to = p.lit.int()
 			}
 			range_typ,range_expr := p.tmp_expr()
 			p.check_types(range_typ, 'int')
 			range_end = range_expr
-			if p.pref.x64 {
+			if p.pref.backend == .x64 {
 				//label = p.x64.gen_loop_start(expr.int())
 				// to  = range_expr.int() // TODO why empty?
 			}

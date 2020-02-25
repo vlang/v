@@ -131,7 +131,7 @@ jobs:
         ../../vprod gen1m.v
         ./gen1m > 1m.v
         echo "Building it..."
-        ../../vprod -x64 -o 1m 1m.v
+        ../../vprod -backend x64 -o 1m 1m.v
         echo "Running it..."
         ls
 #        ./1m

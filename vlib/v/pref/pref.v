@@ -78,7 +78,6 @@ pub mut:
 	user_mod_path       string // `v -user_mod_path /Users/user/modules` adds a new lookup path for imported modules
 	vlib_path           string
 	vpath               string
-	x64                 bool
 	output_cross_c      bool
 	prealloc            bool
 	v2                  bool

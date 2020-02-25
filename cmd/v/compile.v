@@ -35,7 +35,7 @@ fn compile(command string, args []string) {
 		run_compiled_executable_and_exit(v, args)
 	}
 	mut tmark := benchmark.new_benchmark()
-	if v.pref.x64 {
+	if v.pref.backend == .x64 {
 		v.compile_x64()
 	}
 	else if v.pref.v2 {
