@@ -135,6 +135,8 @@ len:i1}
 }
 
 fn (s mut Scanner) ident_bin_number() string {
+	mut has_wrong_digit := false
+	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0b'
 	for {
@@ -142,13 +144,20 @@ fn (s mut Scanner) ident_bin_number() string {
 			break
 		}
 		c := s.text[s.pos]
-		if !c.is_bin_digit() && c != num_sep {
+		if !c.is_digit() && !c.is_letter() && c != num_sep {
 			break
+		}
+		if !has_wrong_digit && !c.is_bin_digit() {
+			has_wrong_digit = true
+			first_wrong_digit = c
 		}
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
 		s.error('number part of this binary is not provided')
+	}
+	if has_wrong_digit {
+		s.error('this binary number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
@@ -156,6 +165,8 @@ fn (s mut Scanner) ident_bin_number() string {
 }
 
 fn (s mut Scanner) ident_hex_number() string {
+	mut has_wrong_digit := false
+	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0x'
 	for {
@@ -163,13 +174,20 @@ fn (s mut Scanner) ident_hex_number() string {
 			break
 		}
 		c := s.text[s.pos]
-		if !c.is_hex_digit() && c != num_sep {
+		if !c.is_digit() && !c.is_letter() && c != num_sep {
 			break
+		}
+		if !has_wrong_digit && !c.is_hex_digit() {
+			has_wrong_digit = true
+			first_wrong_digit = c
 		}
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
 		s.error('number part of this hexadecimal is not provided')
+	}
+	if has_wrong_digit {
+		s.error('this hexadecimal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
@@ -177,6 +195,8 @@ fn (s mut Scanner) ident_hex_number() string {
 }
 
 fn (s mut Scanner) ident_oct_number() string {
+	mut has_wrong_digit := false
+	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0o'
 	for {
@@ -184,13 +204,20 @@ fn (s mut Scanner) ident_oct_number() string {
 			break
 		}
 		c := s.text[s.pos]
-		if !c.is_oct_digit() && c != num_sep {
+		if !c.is_digit() && !c.is_letter() && c != num_sep {
 			break
+		}
+		if !has_wrong_digit && !c.is_oct_digit() {
+			has_wrong_digit = true
+			first_wrong_digit = c
 		}
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
 		s.error('number part of this octal is not provided')
+	}
+	if has_wrong_digit {
+		s.error('this octal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
