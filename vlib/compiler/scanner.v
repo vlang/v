@@ -259,7 +259,7 @@ fn (s mut Scanner) ident_dec_number() string {
 		s.pos++
 		for s.pos < s.text.len {
 			if !s.text[s.pos].is_digit() {
-				if !s.text[s.pos].is_letter() || s.text[s.pos] in [`e`, `E`] {
+				if !s.text[s.pos].is_letter() || s.text[s.pos] in [`e`, `E`] || s.inside_string {
 					break
 				}
 				else if !has_wrong_digit {
@@ -280,7 +280,7 @@ fn (s mut Scanner) ident_dec_number() string {
 		}
 		for s.pos < s.text.len {
 			if !s.text[s.pos].is_digit() {
-				if !s.text[s.pos].is_letter() {
+				if !s.text[s.pos].is_letter() || s.inside_string {
 					break
 				}
 				else if !has_wrong_digit {
