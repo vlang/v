@@ -140,12 +140,14 @@ fn (s mut Scanner) ident_bin_number() string {
 			break
 		}
 		c := s.text[s.pos]
-		if !c.is_digit() && !c.is_letter() && c != num_sep {
-			break
-		}
-		if !has_wrong_digit && !c.is_bin_digit() {
-			has_wrong_digit = true
-			first_wrong_digit = c
+		if !c.is_bin_digit() && c != num_sep {
+			if !c.is_digit() && !c.is_letter() {
+				break
+			} 
+			else if !has_wrong_digit {
+				has_wrong_digit = true
+				first_wrong_digit = c
+			}
 		}
 		s.pos++
 	}
@@ -170,12 +172,14 @@ fn (s mut Scanner) ident_hex_number() string {
 			break
 		}
 		c := s.text[s.pos]
-		if !c.is_digit() && !c.is_letter() && c != num_sep {
-			break
-		}
-		if !has_wrong_digit && !c.is_hex_digit() {
-			has_wrong_digit = true
-			first_wrong_digit = c
+		if !c.is_hex_digit() && c != num_sep {
+			if !c.is_letter() {
+				break
+			} 
+			else if !has_wrong_digit {
+				has_wrong_digit = true
+				first_wrong_digit = c
+			}
 		}
 		s.pos++
 	}
@@ -200,12 +204,14 @@ fn (s mut Scanner) ident_oct_number() string {
 			break
 		}
 		c := s.text[s.pos]
-		if !c.is_digit() && !c.is_letter() && c != num_sep {
-			break
-		}
-		if !has_wrong_digit && !c.is_oct_digit() {
-			has_wrong_digit = true
-			first_wrong_digit = c
+		if !c.is_oct_digit() && c != num_sep {
+			if !c.is_digit() && !c.is_letter() {
+				break
+			} 
+			else if !has_wrong_digit {
+				has_wrong_digit = true
+				first_wrong_digit = c
+			}
 		}
 		s.pos++
 	}
