@@ -141,7 +141,7 @@ fn (s mut Scanner) ident_bin_number() string {
 		}
 		c := s.text[s.pos]
 		if !c.is_bin_digit() && c != num_sep {
-			if !c.is_digit() && !c.is_letter() {
+			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
 				break
 			} 
 			else if !has_wrong_digit {
@@ -173,7 +173,7 @@ fn (s mut Scanner) ident_hex_number() string {
 		}
 		c := s.text[s.pos]
 		if !c.is_hex_digit() && c != num_sep {
-			if !c.is_letter() {
+			if !c.is_letter() || s.inside_string {
 				break
 			} 
 			else if !has_wrong_digit {
@@ -205,7 +205,7 @@ fn (s mut Scanner) ident_oct_number() string {
 		}
 		c := s.text[s.pos]
 		if !c.is_oct_digit() && c != num_sep {
-			if !c.is_digit() && !c.is_letter() {
+			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
 				break
 			} 
 			else if !has_wrong_digit {
