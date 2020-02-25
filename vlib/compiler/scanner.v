@@ -145,7 +145,7 @@ fn (s mut Scanner) ident_bin_number() string {
 		}
 		c := s.text[s.pos]
 		if !c.is_bin_digit() && c != num_sep {
-			if !c.is_digit() && !c.is_letter() {
+			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
 				break
 			} 
 			else if !has_wrong_digit {
@@ -177,7 +177,7 @@ fn (s mut Scanner) ident_hex_number() string {
 		}
 		c := s.text[s.pos]
 		if !c.is_hex_digit() && c != num_sep {
-			if !c.is_letter() {
+			if !c.is_letter() || s.inside_string {
 				break
 			} 
 			else if !has_wrong_digit {
@@ -209,7 +209,7 @@ fn (s mut Scanner) ident_oct_number() string {
 		}
 		c := s.text[s.pos]
 		if !c.is_oct_digit() && c != num_sep {
-			if !c.is_digit() && !c.is_letter() {
+			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
 				break
 			} 
 			else if !has_wrong_digit {
@@ -231,9 +231,20 @@ fn (s mut Scanner) ident_oct_number() string {
 }
 
 fn (s mut Scanner) ident_dec_number() string {
+	mut has_wrong_digit := false
+	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	// scan integer part
-	for s.pos < s.text.len && (s.text[s.pos].is_digit() || s.text[s.pos] == num_sep) {
+	for s.pos < s.text.len {
+		if !s.text[s.pos].is_digit() && s.text[s.pos] != num_sep {
+			if !s.text[s.pos].is_letter() || s.text[s.pos] in [`e`, `E`] || s.inside_string {
+				break
+			}
+			else if !has_wrong_digit {
+				has_wrong_digit = true
+				first_wrong_digit = s.text[s.pos]
+			}
+		}
 		s.pos++
 	}
 	// e.g. 1..9
@@ -246,11 +257,17 @@ fn (s mut Scanner) ident_dec_number() string {
 	// scan fractional part
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
-		for s.pos < s.text.len && s.text[s.pos].is_digit() {
+		for s.pos < s.text.len {
+			if !s.text[s.pos].is_digit() {
+				if !s.text[s.pos].is_letter() || s.text[s.pos] in [`e`, `E`] || s.inside_string {
+					break
+				}
+				else if !has_wrong_digit {
+					has_wrong_digit = true
+					first_wrong_digit = s.text[s.pos]
+				}
+			}
 			s.pos++
-		}
-		if !s.inside_string && s.pos < s.text.len && s.text[s.pos] == `f` {
-			s.error('no `f` is needed for floats')
 		}
 	}
 	// scan exponential part
@@ -258,12 +275,19 @@ fn (s mut Scanner) ident_dec_number() string {
 	if s.expect('e', s.pos) || s.expect('E', s.pos) {
 		s.pos++
 		exp_start_pos := s.pos
-
 		if s.pos < s.text.len && s.text[s.pos] in [`-`, `+`] {
 			s.pos++
 		}
-
-		for s.pos < s.text.len && s.text[s.pos].is_digit() {
+		for s.pos < s.text.len {
+			if !s.text[s.pos].is_digit() {
+				if !s.text[s.pos].is_letter() || s.inside_string {
+					break
+				}
+				else if !has_wrong_digit {
+					has_wrong_digit = true
+					first_wrong_digit = s.text[s.pos]
+				}
+			}
 			s.pos++
 		}
 		if exp_start_pos == s.pos {
@@ -280,6 +304,9 @@ fn (s mut Scanner) ident_dec_number() string {
 			s.error('too many decimal points in number')
 		}
 	}
+	if has_wrong_digit {
+		s.error('this number has unsuitable digit `${first_wrong_digit.str()}`')
+	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
 	return number
@@ -289,16 +316,15 @@ fn (s mut Scanner) ident_number() string {
 	if s.expect('0b', s.pos) {
 		return s.ident_bin_number()
 	}
-	if s.expect('0x', s.pos) {
+	else if s.expect('0x', s.pos) {
 		return s.ident_hex_number()
 	}
-	if s.expect('0o', s.pos) {
+	else if s.expect('0o', s.pos) {
 		return s.ident_oct_number()
 	}
-	if s.expect('0.', s.pos) || s.expect('0e', s.pos) {
+	else {
 		return s.ident_dec_number()
 	}
-	return s.ident_dec_number()
 }
 
 fn (s mut Scanner) skip_whitespace() {
