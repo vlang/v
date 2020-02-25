@@ -11,6 +11,10 @@ struct User {
 	age int
 }
 
+enum Color {
+	red green blue
+}
+
 /*
 struct One {
 	two Two

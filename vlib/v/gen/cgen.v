@@ -60,7 +60,6 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
-		ast.Import {}
 		ast.ConstDecl {
 			for i, field in it.fields {
 				field_type_sym := g.table.get_type_symbol(field.typ)
@@ -69,6 +68,14 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.writeln(';')
 			}
 		}
+		ast.EnumDecl {
+			g.writeln('enum $it.name {')
+			for i, val in it.vals {
+				g.writeln('\t${it.name}_$val, // $i')
+			}
+			g.writeln('}')
+		}
+		ast.Import {}
 		ast.FnDecl {
 			g.reset_tmp_count()
 			g.fn_decl = it // &it
@@ -194,7 +201,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	}
 		}
 		else {
-			verror('cgen.stmt(): bad node')
+			verror('cgen.stmt(): unhandled node ' + typeof(node))
 		}
 	}
 }

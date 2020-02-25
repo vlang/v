@@ -15,6 +15,12 @@ typedef struct {
 	int age;
 } User;
 
+enum Color {
+	Color_red, // 0
+	Color_green, // 1
+	Color_blue, // 2
+}
+
 int main() {
 	int a = 10;
 	a++;
