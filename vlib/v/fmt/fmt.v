@@ -280,7 +280,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(')')
 		}
 		ast.EnumVal {
-			f.write('.' + it.name)
+			f.write(it.enum_name + '.' + it.val)
 		}
 		ast.FloatLiteral {
 			f.write(it.val)
