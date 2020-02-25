@@ -156,7 +156,7 @@ fn (s mut Scanner) ident_bin_number() string {
 	if start_pos + 2 == s.pos {
 		s.error('number part of this binary is not provided')
 	}
-	if has_wrong_digit {
+	else if has_wrong_digit {
 		s.error('this binary number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
@@ -186,7 +186,7 @@ fn (s mut Scanner) ident_hex_number() string {
 	if start_pos + 2 == s.pos {
 		s.error('number part of this hexadecimal is not provided')
 	}
-	if has_wrong_digit {
+	else if has_wrong_digit {
 		s.error('this hexadecimal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
@@ -216,7 +216,7 @@ fn (s mut Scanner) ident_oct_number() string {
 	if start_pos + 2 == s.pos {
 		s.error('number part of this octal is not provided')
 	}
-	if has_wrong_digit {
+	else if has_wrong_digit {
 		s.error('this octal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
