@@ -542,22 +542,9 @@ pub fn (s string) substr(start, end int) string {
 	return res
 }
 
+[deprecated]
 pub fn (s string) index_old(p string) int {
-	if p.len > s.len || p.len == 0 {
-		return -1
-	}
-	mut i := 0
-	for i < s.len {
-		mut j := 0
-		for j < p.len && s[i + j] == p[j] {
-			j++
-		}
-		if j == p.len {
-			return i
-		}
-		i++
-	}
-	return -1
+	panic('Use `${s}.index()` instead of `${s}.old_index()`')
 }
 
 pub fn (s string) index(p string) ?int {
@@ -761,6 +748,9 @@ pub fn (s string) capitalize() string {
 }
 
 pub fn (s string) title() string {
+	if s.len == 0 {
+		return ''
+	}
 	words := s.split(' ')
 	mut tit := []string
 	for word in words {
