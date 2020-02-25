@@ -72,3 +72,16 @@ fn test_typeof_on_sumtypes_of_structs() {
 	assert typeof(c) == 'BoolExpr'
 	assert typeof(d) == 'UnaryExpr'
 }
+
+type MyFn fn(int) int
+type MyFn2 fn()
+
+fn myfn(i int) int {
+	return i
+}
+fn myfn2() {}
+
+fn test_typeof_on_fn() {
+	assert typeof(myfn) == 'fn (int) int'
+	assert typeof(myfn2) == 'fn ()'
+}
