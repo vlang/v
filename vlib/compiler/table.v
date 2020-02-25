@@ -127,6 +127,7 @@ pub mut:
 	is_flag        bool // enum bitfield flag
 	// max_field_len  int
 	is_generic     bool
+	ctype_names    []string
 }
 
 struct TypeNode {
