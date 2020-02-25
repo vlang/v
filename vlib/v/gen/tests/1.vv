@@ -37,6 +37,8 @@ fn main() {
 	foo(3)
 	ak := 10
 	mypi := pi
+	//color := Color.red
+	//Color color = Color_red;
 }
 	/*
 	user := User{}

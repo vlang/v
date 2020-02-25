@@ -577,6 +577,12 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		// || p.table.known_type(p.tok.lit)) {
 		return p.struct_init()
 	}
+	/*
+	else if p.peek_tok.kind == .dot {
+		p.warn('enum val $name')
+	}
+	*/
+
 	else {
 		mut ident := ast.Ident{}
 		ident = p.parse_ident(is_c)
@@ -1649,6 +1655,13 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 		}
 	}
 	p.check(.rcbr)
+	p.table.register_type_symbol(table.TypeSymbol{
+		kind: .enum_
+		name: name
+		info: table.Enum{
+			vals: vals
+		}
+	})
 	return ast.EnumDecl{
 		name: name
 		is_pub: is_pub

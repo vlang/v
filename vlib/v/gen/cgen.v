@@ -69,11 +69,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.EnumDecl {
-			g.writeln('enum $it.name {')
+			g.writeln('typedef enum {')
 			for i, val in it.vals {
 				g.writeln('\t${it.name}_$val, // $i')
 			}
-			g.writeln('}')
+			g.writeln('} $it.name;')
 		}
 		ast.Import {}
 		ast.FnDecl {

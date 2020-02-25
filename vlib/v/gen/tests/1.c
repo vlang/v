@@ -15,11 +15,11 @@ typedef struct {
 	int age;
 } User;
 
-enum Color {
+typedef enum {
 	Color_red, // 0
 	Color_green, // 1
 	Color_blue, // 2
-}
+} Color;
 
 int main() {
 	int a = 10;

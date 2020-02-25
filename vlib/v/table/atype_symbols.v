@@ -7,8 +7,8 @@ import (
 	strings
 )
 
-pub type TypeInfo = Array | ArrayFixed | Map | Struct |
-MultiReturn | Alias
+pub type TypeInfo = Array | ArrayFixed | Map | Struct | 	
+MultiReturn | Alias | Enum
 
 pub struct TypeSymbol {
 pub:
@@ -86,6 +86,7 @@ pub enum Kind {
 	multi_return
 	sum_type
 	alias
+	enum_
 }
 
 [inline]
@@ -364,6 +365,11 @@ pub mut:
 	fields []Field
 }
 
+pub struct Enum {
+pub mut:
+	vals []Field
+}
+
 pub struct Alias {
 pub:
 	foo string
@@ -411,7 +417,6 @@ pub fn (table &Table) type_to_str(t Type) string {
 		res += ')'
 		return res
 	}
-
 	mut res := sym.name.replace('array_', '[]')
 	// mod.submod.submod2.Type => submod2.Type
 	if res.contains('.') {
