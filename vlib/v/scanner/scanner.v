@@ -91,15 +91,13 @@ fn (s &Scanner) scan_res(tok_kind token.Kind, lit string) token.Token {
 
 fn (s mut Scanner) ident_name() string {
 	start := s.pos
-	for {
-		s.pos++
-		if s.pos >= s.text.len {
-			break
-		}
+	s.pos++
+	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !is_name_char(c) && !c.is_digit() {
 			break
 		}
+		s.pos++
 	}
 	name := s.text[start..s.pos]
 	s.pos--
@@ -111,7 +109,7 @@ const (
 )
 
 fn filter_num_sep(txt byteptr, start int, end int) string {
-	unsafe{
+	unsafe {
 		mut b := malloc(end - start + 1) // add a byte for the endstring 0
 		mut i := start
 		mut i1 := 0
@@ -135,10 +133,7 @@ fn (s mut Scanner) ident_bin_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0b'
-	for {
-		if s.pos >= s.text.len {
-			break
-		}
+	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_bin_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
@@ -167,10 +162,7 @@ fn (s mut Scanner) ident_hex_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0x'
-	for {
-		if s.pos >= s.text.len {
-			break
-		}
+	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_hex_digit() && c != num_sep {
 			if !c.is_letter() || s.inside_string {
@@ -199,10 +191,7 @@ fn (s mut Scanner) ident_oct_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0o'
-	for {
-		if s.pos >= s.text.len {
-			break
-		}
+	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_oct_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
@@ -232,13 +221,14 @@ fn (s mut Scanner) ident_dec_number() string {
 	start_pos := s.pos
 	// scan integer part
 	for s.pos < s.text.len {
-		if !s.text[s.pos].is_digit() && s.text[s.pos] != num_sep {
-			if !s.text[s.pos].is_letter() || s.text[s.pos] in [`e`, `E`] || s.inside_string {
+		c := s.text[s.pos]
+		if !c.is_digit() && c != num_sep {
+			if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
 				break
 			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
-				first_wrong_digit = s.text[s.pos]
+				first_wrong_digit = c
 			}
 		}
 		s.pos++
@@ -254,13 +244,14 @@ fn (s mut Scanner) ident_dec_number() string {
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
 		for s.pos < s.text.len {
-			if !s.text[s.pos].is_digit() {
-				if !s.text[s.pos].is_letter() || s.text[s.pos] in [`e`, `E`] || s.inside_string {
+			c := s.text[s.pos]
+			if !c.is_digit() {
+				if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
 					break
 				}
 				else if !has_wrong_digit {
 					has_wrong_digit = true
-					first_wrong_digit = s.text[s.pos]
+					first_wrong_digit = c
 				}
 			}
 			s.pos++
@@ -275,13 +266,14 @@ fn (s mut Scanner) ident_dec_number() string {
 			s.pos++
 		}
 		for s.pos < s.text.len {
-			if !s.text[s.pos].is_digit() {
-				if !s.text[s.pos].is_letter() || s.inside_string {
+			c := s.text[s.pos]
+			if !c.is_digit() {
+				if !c.is_letter() || s.inside_string {
 					break
 				}
 				else if !has_wrong_digit {
 					has_wrong_digit = true
-					first_wrong_digit = s.text[s.pos]
+					first_wrong_digit = c
 				}
 			}
 			s.pos++
