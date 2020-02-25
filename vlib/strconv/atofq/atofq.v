@@ -18,14 +18,14 @@
 
 module atofq
 
-import strconv
-
 // same used in atof, here only for references
-// const(
-// DOUBLE_PLUS_ZERO        = u64(0x0000000000000000)
-// DOUBLE_MINUS_ZERO       = 0x8000000000000000
-// DOUBLE_PLUS_INFINITY    = 0x7FF0000000000000
-// DOUBLE_MINUS_INFINITY   = 0xFFF0000000000000
+const(
+	DOUBLE_PLUS_ZERO        = u64(0x0000000000000000)
+	DOUBLE_MINUS_ZERO       = 0x8000000000000000
+	DOUBLE_PLUS_INFINITY    = 0x7FF0000000000000
+	DOUBLE_MINUS_INFINITY   = 0xFFF0000000000000
+)
+
 // atof_quick return a f64 number from a string in a quick way
 pub fn atof_quick(s string) f64 {
 	mut f := f64(0.0) // result
@@ -49,10 +49,10 @@ pub fn atof_quick(s string) f64 {
 	if s[i] == `i` && i + 2 < s.len && s[i + 1] == `n` && s[i + 2] == `f` {
 		mut d := *u64(&f)
 		if sign > 0.0 {
-			*d = strconv.DOUBLE_PLUS_INFINITY
+			*d = DOUBLE_PLUS_INFINITY
 		}
 		else {
-			*d = strconv.DOUBLE_MINUS_INFINITY
+			*d = DOUBLE_MINUS_INFINITY
 		}
 		return f
 	}
@@ -63,10 +63,10 @@ pub fn atof_quick(s string) f64 {
 		if i >= s.len {
 			mut d := *u64(&f)
 			if sign > 0.0 {
-				*d = strconv.DOUBLE_PLUS_ZERO
+				*d = DOUBLE_PLUS_ZERO
 			}
 			else {
-				*d = strconv.DOUBLE_MINUS_ZERO
+				*d = DOUBLE_MINUS_ZERO
 			}
 			return f
 		}
@@ -115,10 +115,10 @@ pub fn atof_quick(s string) f64 {
 			if exp > pos_exp.len {
 				mut d := *u64(&f)
 				if sign > 0 {
-					*d = strconv.DOUBLE_PLUS_INFINITY
+					*d = DOUBLE_PLUS_INFINITY
 				}
 				else {
-					*d = strconv.DOUBLE_MINUS_INFINITY
+					*d = DOUBLE_MINUS_INFINITY
 				}
 				return f
 			}
@@ -132,10 +132,10 @@ pub fn atof_quick(s string) f64 {
 			if exp > neg_exp.len {
 				mut d := *u64(&f)
 				if (sign > 0) {
-					*d = strconv.DOUBLE_PLUS_ZERO
+					*d = DOUBLE_PLUS_ZERO
 				}
 				else {
-					*d = strconv.DOUBLE_MINUS_ZERO
+					*d = DOUBLE_MINUS_ZERO
 				}
 				return f
 			}

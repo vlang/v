@@ -2,36 +2,56 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
+import ftoa
 
 #include <float.h>
+
+// ----- f64 to string functions -----
+
+// str return a f64 as string in scientific notation, auto display digits limit
 pub fn (d f64) str() string {
-	buf := malloc(sizeof(double) * 5 + 1) // TODO
-	C.sprintf(charptr(buf), '%f', d)
-	return tos(buf, vstrlen(buf))
+	return ftoa.ftoa_64(d)
 }
 
-pub fn (d f32) str() string {
-	buf := malloc(sizeof(double) * 5 + 1) // TODO
-	C.sprintf((buf), '%f', d)
-	return tos(buf, vstrlen(buf))
-}
-
-// return a string of the input f64 in scientific notation with digit_num digits displayed
+// return a string of the input f64 in scientific notation with digit_num deciamals displayed, max 17 digits
 pub fn (x f64) strsci(digit_num int) string {
-	buf := malloc(digit_num * 2 + 2) // TODO
-	conf_str := '%0.' + digit_num.str() + 'e'
-	C.sprintf((buf), (conf_str.str), x)
-	tmpstr := tos(buf, vstrlen(buf))
-	return tmpstr
+	mut n_digit := digit_num
+	if n_digit < 1 {
+		n_digit = 1
+	} else if n_digit > 17 {
+		n_digit = 17
+	}
+	return ftoa.f64_to_str(x,n_digit)
 }
 
-// return a long string of the input f64, max
+// return a decimal notation of the input f64
 pub fn (x f64) strlong() string {
-	buf := malloc(18 + 32) // TODO
-	C.sprintf((buf), '%0.30lf', x)
-	tmpstr := tos(buf, vstrlen(buf))
-	return tmpstr
+	return ftoa.f64_to_str_l(x)
 }
+
+// ----- f32 to string functions -----
+
+// str return a f32 as string in scientific notation, auto display digits limit
+pub fn (d f32) str() string {
+	return ftoa.ftoa_32(d)
+}
+
+// return a string of the input f32 in scientific notation with digit_num deciamals displayed, max 8 digits
+pub fn (x f32) strsci(digit_num int) string {
+	mut n_digit := digit_num
+	if n_digit < 1 {
+		n_digit = 1
+	} else if n_digit > 8 {
+		n_digit = 8
+	}
+	return ftoa.f32_to_str(x,n_digit)
+}
+
+// return a decimal notation of the input f32
+pub fn (x f32) strlong() string {
+	return ftoa.f32_to_str_l(x)
+}
+
 
 [inline]
 fn f32_abs(a f32) f32 {

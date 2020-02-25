@@ -19,6 +19,13 @@
 *
 **********************************************************************/
 module strconv
+
+union Float64u {
+mut:
+	f f64
+	u u64 = u64(0)
+}
+
 /**********************************************************************
 *
 * 96 bit operation utilities
@@ -148,25 +155,6 @@ fn is_space(x byte) bool {
 fn is_exp(x byte) bool {
 	return (x == `E` || x == `e`) == true
 }
-
-/*
-// return a string of the input f64 in scientific notation with digit_num digits displayed
-pub fn strsci(x f64, digit_num int) string{
-	buf := malloc(digit_num*2+2)// TODO
-	conf_str := '%0.'+digit_num.str()+'e'
-	C.sprintf(charptr(buf), charptr(conf_str.str), x)
-	tmpstr := tos(buf, vstrlen(buf))
-	return tmpstr
-}
-
-// return a long string of the input f64, max
-pub fn strlong(x f64) string {
-	buf := malloc(18+32)// TODO
-	C.sprintf(charptr(buf),"%0.30lf",x)
-	tmpstr := tos(buf, vstrlen(buf))
-	return tmpstr
-}
-*/
 
 /**********************************************************************
 *
@@ -545,29 +533,30 @@ pub fn atof64(s string) f64 {
 	mut pn := PrepNumber{
 	}
 	mut res_parsing := 0
-	mut result := f64(0)
-	result = f64(0.0)
-	mut res_ptr := *u64(&result)
+	mut res  := Float64u{}
+
 	res_parsing,pn = parser(s + ' ') // TODO: need an extra char for now
 	// println(pn)
 	match res_parsing {
 		PARSER_OK {
-			*res_ptr = converter(mut pn)
+			res.u = converter(mut pn)
 		}
 		PARSER_PZERO {
-			*res_ptr = DOUBLE_PLUS_ZERO
+			res.u = DOUBLE_PLUS_ZERO
 		}
 		PARSER_MZERO {
-			*res_ptr = DOUBLE_MINUS_ZERO
+			res.u = DOUBLE_MINUS_ZERO
 		}
 		PARSER_PINF {
-			*res_ptr = DOUBLE_PLUS_INFINITY
+			res.u = DOUBLE_PLUS_INFINITY
 		}
 		PARSER_MINF {
-			*res_ptr = DOUBLE_MINUS_INFINITY
+			res.u = DOUBLE_MINUS_INFINITY
 		}
 		else {
 		}}
-	return result
+	return res.f
 }
+
+
 
