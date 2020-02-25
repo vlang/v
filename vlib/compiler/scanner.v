@@ -231,9 +231,9 @@ fn (s mut Scanner) ident_oct_number() string {
 }
 
 fn (s mut Scanner) ident_dec_number() string {
-	start_pos := s.pos
 	mut has_wrong_digit := false
 	mut first_wrong_digit := `\0`
+	start_pos := s.pos
 	// scan integer part
 	for s.pos < s.text.len {
 		if !s.text[s.pos].is_digit() && s.text[s.pos] != num_sep {
