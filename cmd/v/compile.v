@@ -38,7 +38,7 @@ fn compile(command string, args []string) {
 	if v.pref.backend == .x64 {
 		v.compile_x64()
 	}
-	else if v.pref.v2 {
+	else if v.pref.backend == .experimental {
 		v.compile2()
 	}
 	else {

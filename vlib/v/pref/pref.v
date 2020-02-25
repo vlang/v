@@ -80,7 +80,6 @@ pub mut:
 	vpath               string
 	output_cross_c      bool
 	prealloc            bool
-	v2                  bool
 	vroot               string
 	out_name            string
 	path                string // Path to file/folder to compile
