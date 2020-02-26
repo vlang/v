@@ -17,12 +17,13 @@ pub fn repeat_string(s string, n int) string {
 		return ''
 	}
 	slen := s.len
-	blen := s.len*n
+	blen := slen*n
 	mut bytes := &byte(0)
 	unsafe { bytes = malloc(blen + 1) }
 	for bi in 0..n {
+		bislen := bi*slen
 		for si in 0..slen {
-			bytes[bi*slen+si] = s[si]
+			bytes[bislen+si] = s[si]
 		}
 	}
 	bytes[blen] = `0`

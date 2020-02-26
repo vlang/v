@@ -10,4 +10,5 @@ fn test_repeat_string() {
 	assert strings.repeat_string('abc', 3) == 'abcabcabc'
 	assert strings.repeat_string('abc', 1) == 'abc'
 	assert strings.repeat_string('abc', 0) == ''
+	assert strings.repeat_string('', 200) == ''
 }
