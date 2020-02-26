@@ -1138,7 +1138,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 		}
 		if i == 0 && (f.name == 'println' || f.name == 'print') && !(typ in ['string', 'ustring', 'void']) {
 			//
-			T := p.table.find_type(typ)
+			tt := p.table.find_type(typ)
 			$if !windows {
 				$if !js {
 					fmt := p.typ_to_fmt(typ, 0)
@@ -1156,31 +1156,31 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 			}
 			// Make sure this type has a `str()` method
 			$if !js {
-				if !T.has_method('str') {
+				if !tt.has_method('str') {
 					// varg
-					if T.name.starts_with('varg_') {
-						p.gen_varg_str(T)
+					if tt.name.starts_with('varg_') {
+						p.gen_varg_str(tt)
 						p.cgen.set_placeholder(ph, '${typ}_str(')
 						p.gen(')')
 						continue
 					}
 					// Arrays have automatic `str()` methods
-					else if T.name.starts_with('array_') {
-						p.gen_array_str(T)
+					else if tt.name.starts_with('array_') {
+						p.gen_array_str(tt)
 						p.cgen.set_placeholder(ph, '${typ}_str(')
 						p.gen(')')
 						continue
 					}
 					// struct
-					else if T.cat == .struct_ {
-						p.gen_struct_str(T)
+					else if tt.cat == .struct_ {
+						p.gen_struct_str(tt)
 						p.cgen.set_placeholder(ph, '${typ}_str(')
 						p.gen(')')
 						continue
 					}
 					else {
-						base := p.base_type(T.name)
-						if base != T.name {
+						base := p.base_type(tt.name)
+						if base != tt.name {
 							base_type := p.find_type(base)
 							if base_type.has_method('str') {
 								p.cgen.set_placeholder(ph, '${base_type.name}_str(')

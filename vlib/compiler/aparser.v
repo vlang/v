@@ -2522,8 +2522,8 @@ fn (p mut Parser) indot_expr() string {
 		if is_map && typ != 'string' {
 			p.error('bad element type: expecting `string`')
 		}
-		T := p.table.find_type(arr_typ)
-		if !is_map && !T.has_method('contains') {
+		arr_typ2 := p.table.find_type(arr_typ)
+		if !is_map && !arr_typ2.has_method('contains') {
 			p.error('$arr_typ has no method `contains`')
 		}
 		// `typ` is element's type

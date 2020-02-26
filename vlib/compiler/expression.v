@@ -675,8 +675,8 @@ fn (p mut Parser) expression() string {
 	return typ
 }
 
-fn (p mut Parser) handle_operator(op string, typ string, cpostfix string, ph int, T &Type) {
-	if T.has_method(op) {
+fn (p mut Parser) handle_operator(op string, typ string,cpostfix string, ph int, tt &Type) {
+	if tt.has_method(op) {
 		p.cgen.set_placeholder(ph, '${typ}_${cpostfix}(')
 		p.gen(')')
 	}

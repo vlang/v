@@ -16,11 +16,12 @@ const (
 )
 
 pub struct Checker {
-	table     &table.Table
+	table         &table.Table
 mut:
-	file      ast.File
-	nr_errors int
-	errors    []string
+	file          ast.File
+	nr_errors     int
+	errors        []string
+	expected_type table.Type
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -78,6 +79,10 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 		}
 		.struct_ {
 			info := typ_sym.info as table.Struct
+			if struct_init.fields.len == 0 {
+				// Short syntax TODO check
+				return struct_init.typ
+			}
 			if struct_init.exprs.len > info.fields.len {
 				c.error('too many fields', struct_init.pos)
 			}
@@ -279,6 +284,7 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 		// The first element's type
 		if i == 0 {
 			elem_type = typ
+			c.expected_type = typ
 			continue
 		}
 		if !c.table.check(elem_type, typ) {
@@ -366,15 +372,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			c.check_assign_expr(it)
 		}
 		ast.EnumVal {
-			typ_idx := c.table.find_type_idx(it.enum_name) // or {
-			typ := c.table.find_type(it.enum_name) or {
-				panic(err)
-			}
-			info := typ.info as table.Enum
-			if !(it.val in info.vals) {
-				c.error('enum `$it.enum_name` does not have a value `$it.val`', it.pos)
-			}
-			return typ_idx
+			return c.enum_val(it)
 		}
 		ast.FloatLiteral {
 			return table.f64_type
@@ -649,6 +647,20 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 		// }
 	}
 	return typ
+}
+
+// `.green` or `Color.green`
+// If a short form is used, `expected_type` needs to be an enum
+// with this value.
+pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
+	typ_idx := if node.enum_name == '' { c.expected_type } else { c.table.find_type_idx(node.enum_name) }
+	typ := c.table.get_type_symbol(table.Type(typ_idx))
+	// println('checker: enum val $c.expected_type $typ.name')
+	info := typ.info as table.Enum
+	if !(node.val in info.vals) {
+		c.error('enum `$typ.name` does not have a value `$node.val`', node.pos)
+	}
+	return typ_idx
 }
 
 pub fn (c mut Checker) error(s string, pos token.Position) {

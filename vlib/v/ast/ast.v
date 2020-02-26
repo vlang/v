@@ -16,7 +16,7 @@ CastExpr | EnumVal | Assoc | SizeOf | None | MapInit
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
-LineComment | MultiLineComment
+LineComment | MultiLineComment | AssertStmt
 
 pub type Type = StructType | ArrayType
 
@@ -466,6 +466,11 @@ pub:
 pub struct CastExpr {
 pub:
 	typ  table.Type
+	expr Expr
+}
+
+pub struct AssertStmt {
+pub:
 	expr Expr
 }
 

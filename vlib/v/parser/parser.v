@@ -238,6 +238,9 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		.key_enum {
 			return p.enum_decl()
 		}
+		.key_union {
+			return p.struct_decl()
+		}
 		.line_comment {
 			// p.next()
 			return ast.LineComment{
@@ -252,7 +255,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		}
 		else {
 			// #printf("");
-			p.error('parser: bad top level statement')
+			p.error('parser: bad top level statement ' + p.tok.str())
 			return ast.Stmt{}
 		}
 	}
@@ -260,6 +263,13 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 
 pub fn (p mut Parser) stmt() ast.Stmt {
 	match p.tok.kind {
+		.key_assert {
+			p.next()
+			expr,_ := p.expr(0)
+			return ast.AssertStmt{
+				expr: expr
+			}
+		}
 		.key_mut {
 			return p.var_decl()
 		}
@@ -481,7 +491,7 @@ fn (p mut Parser) struct_init() ast.StructInit {
 	mut field_names := []string
 	mut exprs := []ast.Expr
 	mut i := 0
-	// TODO if sym.info is table.Struct
+	// TODO `if sym.info is table.Struct`
 	mut is_struct := false
 	match sym.info {
 		table.Struct {
@@ -489,25 +499,41 @@ fn (p mut Parser) struct_init() ast.StructInit {
 		}
 		else {}
 	}
+	is_short_syntax := !(p.peek_tok.kind == .colon || p.tok.kind == .rcbr) // `Vec{a,b,c}`
+	// p.warn(is_short_syntax.str())
 	for p.tok.kind != .rcbr {
-		field_name := p.check_name()
-		field_names << field_name
+		mut field_name := ''
+		if is_short_syntax {
+			expr,_ := p.expr(0)
+			exprs << expr
+		}
+		else {
+			field_name = p.check_name()
+			field_names << field_name
+		}
 		// Set expected type for this field's expression
 		// p.warn('$sym.name field $field_name')
 		if is_struct {
 			info := sym.info as table.Struct
-			field := sym.find_field(field_name) or {
-				p.error('field `${sym.name}.$field_name` not found')
-				continue
+			if is_short_syntax {}
+			else {
+				field := sym.find_field(field_name) or {
+					p.error('field `${sym.name}.$field_name` not found')
+					continue
+				}
+				p.expected_type = field.typ
 			}
-			p.expected_type = field.typ
 			// p.warn('setting exp $field.typ')
 		}
-		//
-		p.check(.colon)
-		expr,_ := p.expr(0)
-		exprs << expr
+		if !is_short_syntax {
+			p.check(.colon)
+			expr,_ := p.expr(0)
+			exprs << expr
+		}
 		i++
+		if p.tok.kind == .comma {
+			p.check(.comma)
+		}
 	}
 	node := ast.StructInit{
 		typ: typ
@@ -609,7 +635,8 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 		}
 		.dot {
 			// .enum_val
-			node,typ = p.enum_val()
+			// node,typ = p.enum_val()
+			node = p.enum_val()
 		}
 		.chartoken {
 			typ = table.byte_type
@@ -909,14 +936,25 @@ fn (p &Parser) is_addative() bool {
 */
 // `.green`
 // `pref.BuildMode.default_mode`
-fn (p mut Parser) enum_val() (ast.Expr,table.Type) {
+fn (p mut Parser) enum_val() ast.EnumVal {
 	p.check(.dot)
 	val := p.check_name()
-	mut node := ast.Expr{}
-	node = ast.EnumVal{
+	/*
+	if p.expected_type == 0 {
+		p.error('wtf')
+	}
+	*/
+
+	/*
+	sym := p.table.get_type_symbol(p.expected_type) //or {
+		//return ast.EnumVal{val:val}
+	//}
+	p.warn(sym.name)
+	*/
+
+	return ast.EnumVal{
 		val: val
 	}
-	return node,table.int_type
 }
 
 fn (p mut Parser) for_statement() ast.Stmt {
@@ -1332,12 +1370,18 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	}
 }
 
+// structs and unions
 fn (p mut Parser) struct_decl() ast.StructDecl {
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
 	}
-	p.check(.key_struct)
+	if p.tok.kind == .key_struct {
+		p.check(.key_struct)
+	}
+	else {
+		p.check(.key_union)
+	}
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
 	if is_c {
 		p.next() // C
