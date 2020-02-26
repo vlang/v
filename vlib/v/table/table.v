@@ -56,7 +56,7 @@ pub fn (t mut Table) register_global(name string, typ Type) {
 		// mod: p.mod
 		// is_mut: true
 		// idx: -1
-
+		
 	}
 }
 
@@ -186,7 +186,7 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 		return &t.types[idx]
 	}
 	// this should never happen
-	panic('get_type_symbol: invalid type $typ - ${idx}. This should neer happen')
+	panic('get_type_symbol: invalid type (typ=$typ idx=${idx}). This should neer happen')
 }
 
 // this will override or register builtin type

@@ -35,6 +35,13 @@ pub fn (c mut Checker) check(ast_file ast.File) {
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
+	/*
+	println('all types:')
+	for t in c.table.types {
+		println(t.name + ' - ' + t.kind.str())
+	}
+	*/
+
 	if c.nr_errors > 0 {
 		exit(1)
 	}
@@ -105,7 +112,7 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 				expr_type_sym := c.table.get_type_symbol(expr_type)
 				field_type_sym := c.table.get_type_symbol(field.typ)
 				if !c.table.check(expr_type, field.typ) {
-					c.error('cannot assign $expr_type_sym.name as $field_type_sym.name for field $field.name', struct_init.pos)
+					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$field.name`', struct_init.pos)
 				}
 			}
 		}
@@ -132,6 +139,7 @@ pub fn (c mut Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
 		}
 		// if !c.table.check(&infix_expr.right_type, &infix_expr.right_type) {
 		// c.error('infix expr: cannot use `$infix_expr.right_type.name` as `$infix_expr.left_type.name`', infix_expr.pos)
+		// ltyp := typeof(infix_expr.left)
 		c.error('infix expr: cannot use `$right.name` (right) as `$left.name`', infix_expr.pos)
 	}
 	if infix_expr.op.is_relational() {
@@ -142,6 +150,9 @@ pub fn (c mut Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
 
 fn (c mut Checker) check_assign_expr(assign_expr ast.AssignExpr) {
 	left_type := c.expr(assign_expr.left)
+	c.expected_type = left_type
+	// t := c.table.get_type_symbol(left_type)
+	// println('setting exp type to $c.expected_type $t.name')
 	right_type := c.expr(assign_expr.val)
 	if !c.table.check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
@@ -272,7 +283,11 @@ pub fn (c mut Checker) return_stmt(return_stmt ast.Return) {
 	}
 }
 
-pub fn (c &Checker) assign_stmt(assign_stmt ast.AssignStmt) {}
+/*
+pub fn (c mut Checker) assign_stmt(assign_stmt ast.AssignStmt) {
+}
+*/
+
 
 pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	mut elem_type := table.void_type
@@ -305,6 +320,7 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 }
 
 fn (c mut Checker) stmt(node ast.Stmt) {
+	// c.expected_type = table.void_type
 	match mut node {
 		ast.FnDecl {
 			for stmt in it.stmts {
@@ -314,9 +330,12 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		ast.Return {
 			c.return_stmt(it)
 		}
+		/*
 		ast.AssignStmt {
 			c.assign_stmt(it)
 		}
+		*/
+
 		ast.ConstDecl {
 			for i, expr in it.exprs {
 				mut field := it.fields[i]
@@ -653,10 +672,13 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 // If a short form is used, `expected_type` needs to be an enum
 // with this value.
 pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
-	typ_idx := if node.enum_name == '' { c.expected_type } else { c.table.find_type_idx(node.enum_name) }
+	// println('checker: enum: $node.enum_name')
+	typ_idx := if node.enum_name == '' { c.expected_type } else { //
+	c.table.find_type_idx(node.enum_name) }
 	typ := c.table.get_type_symbol(table.Type(typ_idx))
-	// println('checker: enum val $c.expected_type $typ.name')
 	info := typ.info as table.Enum
+	// rintln('checker: x = $info.x enum val $c.expected_type $typ.name')
+	// println(info.vals)
 	if !(node.val in info.vals) {
 		c.error('enum `$typ.name` does not have a value `$node.val`', node.pos)
 	}

@@ -118,6 +118,9 @@ pub fn (p mut Parser) parse_any_type(is_ptr bool) table.Type {
 		// prefix with full module
 		name = '${p.imports[name]}.$p.tok.lit'
 	}
+	else if p.expr_mod != '' {
+		name = p.expr_mod + '.' + name
+	}
 	// `Foo` in module `mod` means `mod.Foo`
 	else if !(p.mod in ['builtin', 'main']) && !(name in table.builtin_type_names) {
 		name = p.mod + '.' + name
@@ -208,7 +211,7 @@ pub fn (p mut Parser) parse_any_type(is_ptr bool) table.Type {
 					// println('NOT FOUND: $name - adding placeholder - $idx')
 					return table.new_type(idx)
 				}
-			}
+	}
 		}
 	}
 }

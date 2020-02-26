@@ -42,6 +42,7 @@ mut:
 	pref          &pref.Preferences // Preferences shared from V struct
 	builtin_mod   bool
 	mod           string
+	expr_mod      string
 	expected_type table.Type
 	scope         &ast.Scope
 	imports       map[string]string
@@ -551,6 +552,13 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	mut node := ast.Expr{}
 	is_c := p.tok.lit == 'C'
 	mut mod := ''
+	// p.warn('resetting')
+	p.expr_mod = ''
+	// `map[string]int` initialization
+	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
+		map_type := p.parse_map_type()
+		return node
+	}
 	if p.peek_tok.kind == .dot && (is_c || p.known_import(p.tok.lit)) {
 		if !is_c {
 			// prepend the full import
@@ -558,11 +566,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		}
 		p.next()
 		p.check(.dot)
-	}
-	// `map[string]int` initialization
-	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
-		map_type := p.parse_map_type()
-		return node
+		p.expr_mod = mod
 	}
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
@@ -586,6 +590,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 				typ: to_typ
 				expr: expr
 			}
+			p.expr_mod = ''
 			return node
 		}
 		// fn call
@@ -606,13 +611,24 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		return p.struct_init()
 	}
 	else if p.peek_tok.kind == .dot && p.tok.lit[0].is_capital() {
-		enum_name := p.check_name()
+		// `Color.green`
+		mut enum_name := p.check_name()
+		if mod != '' {
+			enum_name = mod + '.' + enum_name
+		}
+		else {
+			enum_name = p.prepend_mod(enum_name)
+		}
+		// p.warn('Color.green $enum_name ' + p.prepend_mod(enum_name) + 'mod=$mod')
 		p.check(.dot)
 		val := p.check_name()
 		// println('enum val $enum_name . $val')
+		p.expr_mod = ''
 		return ast.EnumVal{
-			enum_name: enum_name
+			enum_name: enum_name // lp.prepend_mod(enum_name)
+			
 			val: val
+			pos: p.tok.position()
 		}
 	}
 	else {
@@ -620,6 +636,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		ident = p.parse_ident(is_c)
 		node = ident
 	}
+	p.expr_mod = ''
 	return node
 }
 
@@ -956,6 +973,7 @@ fn (p mut Parser) enum_val() ast.EnumVal {
 
 	return ast.EnumVal{
 		val: val
+		pos: p.tok.position()
 	}
 }
 
@@ -1452,6 +1470,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	if ret == -1 {
 		p.error('cannot register type `$name`, another type with this name exists')
 	}
+	p.expr_mod = ''
 	return ast.StructDecl{
 		name: name
 		is_pub: is_pub
@@ -1708,7 +1727,7 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	p.check(.rcbr)
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_
-		name: name
+		name: p.prepend_mod(name)
 		info: table.Enum{
 			vals: vals
 		}
