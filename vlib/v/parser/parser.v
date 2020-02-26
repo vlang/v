@@ -1760,7 +1760,7 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 		}
 	}
 	else {
-		p.check_name()
+		p.parse_type()
 	}
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .sum_type
