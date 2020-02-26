@@ -22,7 +22,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		receiver = '($node.receiver.name ${m}$name) '
 	}
 	name := node.name.after('.')
-	f.write(' fn ${receiver}${name}(')
+	f.write('fn ${receiver}${name}(')
 	for i, arg in node.args {
 		is_last_arg := i == node.args.len - 1
 		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ
