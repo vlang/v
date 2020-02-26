@@ -1,5 +1,12 @@
 module math
 
+fn tst_res(str1 string, str2 string) bool {
+	if (math.abs(str1.f64() - str2.f64())) < 1e-5 {
+		return true
+	}
+	return false
+}
+
 fn test_gcd() {
 	assert gcd(6, 9) == 3
 	assert gcd(6, -9) == 3
@@ -38,9 +45,11 @@ fn test_erf() {
 fn test_gamma() {
 	assert gamma(1) == 1
 	assert gamma(5) == 24
-	sval := '2.4537365708424423e+00'
-	assert log_gamma(4.5).str() == sval
-	assert log(gamma(4.5)).str() == sval
+	sval := '2.453737'
+	assert tst_res(log_gamma(4.5).str(), sval) 
+	assert tst_res(log(gamma(4.5)).str(), sval) 
+	//assert log_gamma(4.5).str() == sval
+	//assert log(gamma(4.5)).str() == sval
 	assert abs( log_gamma(4.5) - log(gamma(4.5)) ) < 0.000001
 	// assert log_gamma(4.5) == log(gamma(4.5)) /* <-- fails on alpine/musl
 }
