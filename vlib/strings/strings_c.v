@@ -13,7 +13,7 @@ pub fn repeat(c byte, n int) string {
 
 
 pub fn repeat_string(s string, n int) string {
-	if n <= 0 {
+	if n <= 0 || s.len == 0 {
 		return ''
 	}
 	slen := s.len
