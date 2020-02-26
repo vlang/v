@@ -1,11 +1,11 @@
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
 // This module is designed to be general purpose. The only reason it currently only lives here is because there's no
 // generics support and all types are defined manually.
 // TODO Move to vlib once generics are implemented properly.
 module flag
-
-import (
-	v.pref
-)
 
 const (
 	// List as taken from `pkg.go.dev/flag`
@@ -22,11 +22,7 @@ mut:
 	encountered  map[string]bool
 }
 
-pub fn parse(args []string, callback fn(string, &Instance, &pref.Preferences), obj &pref.Preferences) ?[]string {
-	mut p := Instance {
-		args: args
-		current_pos: -1
-	}
+fn (p mut Instance) parse_impl(args []string, value voidptr, callback void_cb) ?[]string {
 	for p.current_pos < p.args.len {
 		p.current_pos++
 		next := p.args[p.current_pos]
@@ -55,7 +51,7 @@ pub fn parse(args []string, callback fn(string, &Instance, &pref.Preferences), o
 		}
 		p.encountered[flag_name] = true
 		p.current_flag = flag_name
-		callback(flag_name, p, obj)
+		callback(flag_name, p, value)
 	}
 	// We didn't hit any exit condition. There's no argument left so nothing.
 	return []string
