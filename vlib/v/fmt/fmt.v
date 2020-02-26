@@ -138,6 +138,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.indent--
 			f.writeln(')\n')
 		}
+		ast.DeferStmt {
+			f.writeln('defer {')
+			f.stmts(it.stmts)
+			f.writeln('}')
+		}
 		ast.ExprStmt {
 			f.expr(it.expr)
 			if !f.single_line_if {
