@@ -186,6 +186,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		ast.StructDecl {
 			f.struct_decl(it)
 		}
+		ast.UnsafeStmt {
+			f.writeln('unsafe {')
+			f.stmts(it.stmts)
+			f.writeln('}')
+		}
 		ast.VarDecl {
 			// type_sym := f.table.get_type_symbol(it.typ)
 			if it.is_mut {

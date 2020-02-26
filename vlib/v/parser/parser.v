@@ -291,8 +291,10 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		}
 		.key_unsafe {
 			p.next()
-			p.parse_block()
-			return ast.Stmt{}
+			stmts := p.parse_block()
+			return ast.UnsafeStmt{
+				stmts: stmts
+			}
 		}
 		.key_defer {
 			p.next()

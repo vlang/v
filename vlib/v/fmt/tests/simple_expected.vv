@@ -112,3 +112,9 @@ fn fn_with_assign_stmts() {
 fn fn_with_multi_return() (int, string) {
 	return 0, 'test'
 }
+
+fn unsafe_fn() {
+	unsafe {
+		malloc(2)
+	}
+}
