@@ -170,9 +170,7 @@ pub fn calloc(n int) byteptr {
 
 [unsafe_fn]
 pub fn free(ptr voidptr) {
-	if ptr != 0 {
-		C.free(ptr)
-	}
+	C.free(ptr)
 }
 
 pub fn memdup(src voidptr, sz int) voidptr {
