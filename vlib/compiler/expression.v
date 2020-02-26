@@ -66,11 +66,10 @@ fn (p mut Parser) bool_expression() string {
 	// e.g. `return InfixExpr{}` in a function expecting `Expr`
 	if expected != typ && expected in p.table.sum_types { // TODO perf
 		//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
-		T := p.table.find_type(typ)
-		if T.parent == expected {
+		if typ in p.table.sum_types[expected] {
 			p.cgen.set_placeholder(start_ph, '/*SUM TYPE CAST2*/ ($expected) { .obj = memdup( &($typ[]) { ')
 			tt := typ.all_after('_') // TODO
-			p.gen('}, sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
+			p.gen('}, sizeof($typ) ), .typ = SumType_${expected}_${tt} }')//${val}_type }')
 		}
 	}
 	// `as` cast
@@ -90,10 +89,8 @@ fn (p mut Parser) key_as(typ string, start_ph int) string {
 		p.error('casting `$typ` to `$cast_typ` is not needed')
 	}
 	if typ in p.table.sum_types {
-		T := p.table.find_type(cast_typ)
-		if T.parent != typ {
-			p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`' +
-			'parent=$T.parent')
+		if !(cast_typ in  p.table.sum_types[typ]) {
+			p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`')
 		}
 		p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
 		p.gen('.obj')
@@ -102,7 +99,7 @@ fn (p mut Parser) key_as(typ string, start_ph int) string {
 		sum_type:= p.cgen.cur_line.all_after('*) (').replace('.obj', '.typ')
 
 		n := cast_typ.all_after('__')
-		p.cgen.insert_before('if (($sum_type != SumType_$n) {
+		p.cgen.insert_before('if (($sum_type != SumType_${typ}_$n) {
 puts("runtime error: $p.file_name:$p.scanner.line_nr cannot cast sum type `$typ` to `$n`");
 exit(1);
 }

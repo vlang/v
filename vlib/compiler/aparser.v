@@ -850,6 +850,7 @@ fn (p mut Parser) type_decl() {
 		mut idx := 0
 		mut done := false
 		mut ctype_names := []string
+		mut sum_variants := []string
 		for {
 			// p.tok == .pipe {
 			idx++
@@ -862,14 +863,17 @@ fn (p mut Parser) type_decl() {
 			if p.pass == .main {
 				// Update the type's parent
 				// println('child=$child_type_name parent=$name')
-				mut t := p.find_type(child_type_name)
+				t := p.find_type(child_type_name)
 				if t.name == '' {
 					p.error('unknown type `$child_type_name`')
 				}
-				t.parent = name
-				p.table.rewrite_type(t)
-				p.cgen.consts << '#define SumType_$child_type_name $idx // DEF2'
+				p.cgen.consts << '#define SumType_${name}_$child_type_name $idx // DEF2'
 				ctype_names << child_type_name
+				sum_variants << if p.mod in ['builtin', 'main'] || child_type_name in builtin_types {
+					child_type_name
+				} else {
+					p.prepend_mod(child_type_name)
+				}
 			}
 			if done {
 				break
@@ -882,10 +886,7 @@ fn (p mut Parser) type_decl() {
 				// p.fgen_nl()
 			}
 		}
-		if p.pass == .decl {
-			p.table.sum_types << name
-			// println(p.table.sum_types)
-		}
+		p.table.sum_types[name] = sum_variants
 		// Register the actual sum type
 		// println('registering sum $name')
 		p.table.register_type(Type{
