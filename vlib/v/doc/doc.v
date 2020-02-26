@@ -58,7 +58,7 @@ pub fn doc(mod string, table &table.Table) string {
 	println(path)
 	*/
 
-	return d.out.str()
+	return d.out.str().trim_space()
 }
 
 fn (d &Doc) get_fn_node(f ast.FnDecl) string {
