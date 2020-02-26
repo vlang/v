@@ -326,18 +326,15 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	}
 }
 
-/*
 pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
-	$if linux {
-	}
-	$else {
+	//$if linux {
+	//}
+	//$else {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	C.fwrite(data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_END)
-	}
+	//}
 }
-*/
-
 
 pub fn (f mut File) flush() {
 	if !f.opened {
