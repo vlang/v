@@ -5,6 +5,7 @@ module main
 
 import (
 	compiler
+	internal.compile
 	internal.help
 	os
 	v.table
@@ -58,7 +59,7 @@ fn main() {
 		return
 	}
 	if command == 'run' || command == 'build' || command.ends_with('.v') || os.exists(command) {
-		compile(command, arg)
+		compile.compile(command, arg)
 		return
 	}
 	match command {

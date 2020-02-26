@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module main
+module compile
 
 // This file contains the options specific to the C backend of V.
 // To add a flag to all backends at once, please add the flag to `parse_options()` in `compile_options.v`.
