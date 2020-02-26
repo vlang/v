@@ -239,7 +239,7 @@ pub fn f64_to_str_l(f f64) string {
 
 	m_sgn_flag := false
 	mut sgn        := 1
-	mut b          := [18+5]byte
+	mut b          := [18+8]byte
 	mut d_pos      := 1
 	mut i          := 0
 	mut i1         := 0
