@@ -38,7 +38,7 @@ fn test_erf() {
 fn test_gamma() {
 	assert gamma(1) == 1
 	assert gamma(5) == 24
-	sval := '2.453737'
+	sval := '2.4537365708424423e+00'
 	assert log_gamma(4.5).str() == sval
 	assert log(gamma(4.5)).str() == sval
 	assert abs( log_gamma(4.5) - log(gamma(4.5)) ) < 0.000001

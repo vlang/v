@@ -58,7 +58,7 @@ fn bool_to_u64(b bool) u64 {
 
 fn get_string_special(neg bool, expZero bool, mantZero bool) string {
 	if !mantZero {
-		return "NaN"
+		return "nan"
 	}
 	if !expZero {
 		if neg {

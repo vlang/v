@@ -59,8 +59,8 @@ test_cases_f32 = [
 exp_result_f32 = [
 	"0e+00",
 	"-0e+00",
-	"NaN",
-	"NaN",
+	"nan",
+	"nan",
 	"+inf",
 	"-inf",
 	"1.e+00",
@@ -111,8 +111,8 @@ test_cases_f64 = [
 exp_result_f64 = [
 	"0e+00",
 	"-0e+00",
-	"NaN",
-	"NaN",
+	"nan",
+	"nan",
 	"+inf",
 	"-inf",
 	"1.e+00",
