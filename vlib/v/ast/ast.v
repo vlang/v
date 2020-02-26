@@ -89,6 +89,7 @@ pub struct ConstDecl {
 pub:
 	fields []Field
 	exprs  []Expr
+	is_pub bool
 }
 
 pub struct StructDecl {

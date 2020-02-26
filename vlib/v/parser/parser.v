@@ -1369,6 +1369,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	return ast.ConstDecl{
 		fields: fields
 		exprs: exprs
+		is_pub: is_pub
 	}
 }
 

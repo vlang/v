@@ -127,6 +127,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 	}
 		}
 		ast.ConstDecl {
+			if it.is_pub {
+				f.write('pub ')
+			}
 			f.writeln('const (')
 			f.indent++
 			for i, field in it.fields {
