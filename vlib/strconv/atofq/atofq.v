@@ -18,17 +18,23 @@
 
 module atofq
 
-import strconv
-
 // same used in atof, here only for references
-// const(
-// DOUBLE_PLUS_ZERO        = u64(0x0000000000000000)
-// DOUBLE_MINUS_ZERO       = 0x8000000000000000
-// DOUBLE_PLUS_INFINITY    = 0x7FF0000000000000
-// DOUBLE_MINUS_INFINITY   = 0xFFF0000000000000
+const(
+	DOUBLE_PLUS_ZERO        = u64(0x0000000000000000)
+	DOUBLE_MINUS_ZERO       = 0x8000000000000000
+	DOUBLE_PLUS_INFINITY    = 0x7FF0000000000000
+	DOUBLE_MINUS_INFINITY   = 0xFFF0000000000000
+)
+
+union Float64u {
+mut:
+	f f64
+	u u64 = u64(0)
+}
+
 // atof_quick return a f64 number from a string in a quick way
 pub fn atof_quick(s string) f64 {
-	mut f := f64(0.0) // result
+	mut f := Float64u{} // result
 	mut sign := f64(1.0) // result sign
 	mut i := 0 // index
 	// skip white spaces
@@ -47,34 +53,32 @@ pub fn atof_quick(s string) f64 {
 	}
 	// infinite
 	if s[i] == `i` && i + 2 < s.len && s[i + 1] == `n` && s[i + 2] == `f` {
-		mut d := *u64(&f)
 		if sign > 0.0 {
-			*d = strconv.DOUBLE_PLUS_INFINITY
+			f.u = DOUBLE_PLUS_INFINITY
 		}
 		else {
-			*d = strconv.DOUBLE_MINUS_INFINITY
+			f.u = DOUBLE_MINUS_INFINITY
 		}
-		return f
+		return f.f
 	}
 	// skip zeros
 	for i < s.len && s[i] == `0` {
 		i++
 		// we have a zero, manage it
 		if i >= s.len {
-			mut d := *u64(&f)
 			if sign > 0.0 {
-				*d = strconv.DOUBLE_PLUS_ZERO
+				f.u = DOUBLE_PLUS_ZERO
 			}
 			else {
-				*d = strconv.DOUBLE_MINUS_ZERO
+				f.u = DOUBLE_MINUS_ZERO
 			}
-			return f
+			return f.f
 		}
 	}
 	// integer part
 	for i < s.len && (s[i] >= `0` && s[i] <= `9`) {
-		f *= f64(10.0)
-		f += f64(s[i] - `0`)
+		f.f *= f64(10.0)
+		f.f += f64(s[i] - `0`)
 		i++
 	}
 	// decimal point
@@ -82,7 +86,7 @@ pub fn atof_quick(s string) f64 {
 		i++
 		mut frac_mul := f64(0.1)
 		for i < s.len && (s[i] >= `0` && s[i] <= `9`) {
-			f += f64(s[i] - `0`) * frac_mul
+			f.f += f64(s[i] - `0`) * frac_mul
 			frac_mul *= f64(0.1)
 			i++
 		}
@@ -113,41 +117,36 @@ pub fn atof_quick(s string) f64 {
 		}
 		if exp_sign == 1 {
 			if exp > pos_exp.len {
-				mut d := *u64(&f)
 				if sign > 0 {
-					*d = strconv.DOUBLE_PLUS_INFINITY
+					f.u = DOUBLE_PLUS_INFINITY
 				}
 				else {
-					*d = strconv.DOUBLE_MINUS_INFINITY
+					f.u = DOUBLE_MINUS_INFINITY
 				}
-				return f
+				return f.f
 			}
-			tmp_mul := f64(0.0)
-			mut ptr_d := *u64(&tmp_mul)
-			*ptr_d = pos_exp[exp]
+			tmp_mul := Float64u{u: pos_exp[exp]}
 			// C.printf("exp: %d  [0x%016llx] %f,",exp,pos_exp[exp],tmp_mul)
-			f = f * tmp_mul
+			f.f = f.f * tmp_mul.f
 		}
 		else {
 			if exp > neg_exp.len {
-				mut d := *u64(&f)
 				if (sign > 0) {
-					*d = strconv.DOUBLE_PLUS_ZERO
+					f.u = DOUBLE_PLUS_ZERO
 				}
 				else {
-					*d = strconv.DOUBLE_MINUS_ZERO
+					f.u = DOUBLE_MINUS_ZERO
 				}
-				return f
+				return f.f
 			}
-			tmp_mul := f64(0.0)
-			mut ptr_d := *u64(&tmp_mul)
-			*ptr_d = neg_exp[exp]
+			tmp_mul := Float64u{u: neg_exp[exp]}
+			
 			// C.printf("exp: %d  [0x%016llx] %f,",exp,pos_exp[exp],tmp_mul)
-			f = f * tmp_mul
+			f.f = f.f * tmp_mul.f
 		}
 	}
-	f = f * sign
-	return f
+	f.f = f.f * sign
+	return f.f
 }
 
 const (
