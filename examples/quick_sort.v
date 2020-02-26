@@ -21,7 +21,7 @@ fn main() {
 
 fn quick_sort(arr mut []int, l int, r int) {
 	if l>=r { return }
-	mut sep := l  // what is sep: [...all_value<arr[l]...sep...all_value>=arr[l]...]
+	mut sep := l  // what is sep: [...all_value<arr[sep]...sep...all_value>=arr[sep]...]
 	for i in l+1..r+1 {
 		if arr[i] < arr[l] {
 			sep++
