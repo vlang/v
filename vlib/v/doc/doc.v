@@ -19,6 +19,8 @@ mut:
 	stmts []ast.Stmt // all module statements from all files
 }
 
+type FilterFn fn(node ast.FnDecl) bool
+
 pub fn doc(mod string, table &table.Table) string {
 	mut d := Doc{
 		out: strings.new_builder(1000)
@@ -64,39 +66,42 @@ fn (d &Doc) get_fn_node(f ast.FnDecl) string {
 }
 
 fn (d mut Doc) print_fns() {
-	mut fn_names := []string
-	for stmt in d.stmts {
-		match stmt {
-			ast.FnDecl {
-				if it.is_pub && !it.is_method {
-					name := d.get_fn_node(it)
-					fn_names << name
-				}
-			}
-			else {}
-		}
-	}
-	fn_names.sort()
-	for s in fn_names {
+	fn_signatures := d.get_fn_signatures(is_pub_function)
+	d.write_fn_signatures(fn_signatures)
+}
+
+fn (d mut Doc) print_methods() {
+	fn_signatures := d.get_fn_signatures(is_pub_method)
+	d.write_fn_signatures(fn_signatures)
+}
+
+[inline]
+fn (d mut Doc) write_fn_signatures(fn_signatures []string) {
+	for s in fn_signatures {
 		d.out.writeln(s)
 	}
 }
 
-fn (d mut Doc) print_methods() {
-	mut fn_names := []string
+fn (d Doc) get_fn_signatures(filter_fn FilterFn) []string {
+	mut fn_signatures := []string
 	for stmt in d.stmts {
 		match stmt {
 			ast.FnDecl {
-				if it.is_pub && it.is_method {
-					name := d.get_fn_node(it)
-					fn_names << name
+				if filter_fn(it) {
+					fn_signatures << d.get_fn_node(it)
 				}
 			}
 			else {}
 		}
 	}
-	fn_names.sort()
-	for s in fn_names {
-		d.out.writeln(s)
-	}
+	fn_signatures.sort()
+	return fn_signatures
+}
+
+fn is_pub_method(node ast.FnDecl) bool {
+	return node.is_pub && node.is_method
+}
+
+fn is_pub_function(node ast.FnDecl) bool {
+	return node.is_pub && !node.is_method
 }
