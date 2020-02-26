@@ -9,3 +9,7 @@ pub fn repeat(c byte, n int) string {
 	return string(arr,n)
 }
 
+pub fn repeat_string(s string, n int) string {
+	res := # s.repeat(n)
+	return res
+}
