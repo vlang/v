@@ -83,6 +83,12 @@ fn get_user_ptr() &User {
 	return &User{}
 }
 
+fn fn_with_defer() {
+	defer {
+		close()
+	}
+}
+
 struct Foo {
 	field1        int
 	field2        string
