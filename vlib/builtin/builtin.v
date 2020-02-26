@@ -163,14 +163,16 @@ TODO
 
 pub fn calloc(n int) byteptr {
 	if n <= 0 {
-		panic('calloc(<=0)')
+		return 0
 	}
 	return C.calloc(n, 1)
 }
 
 [unsafe_fn]
 pub fn free(ptr voidptr) {
-	C.free(ptr)
+	if ptr != 0 {
+		C.free(ptr)
+	}
 }
 
 pub fn memdup(src voidptr, sz int) voidptr {
