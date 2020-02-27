@@ -153,6 +153,7 @@ mut:
 	name string
 	args []Expr
 	is_c bool
+	muts []bool
 }
 
 pub struct MethodCallExpr {
@@ -162,6 +163,7 @@ pub:
 	expr Expr
 	name string
 	args []Expr
+	muts []bool
 }
 
 pub struct Return {

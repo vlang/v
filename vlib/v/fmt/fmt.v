@@ -252,18 +252,25 @@ fn (f &Fmt) type_to_str(t table.Type) string {
 fn (f mut Fmt) expr(node ast.Expr) {
 	match node {
 		ast.ArrayInit {
-			// type_sym := f.table.get_type_symbol(it.typ)
-			f.write('[')
-			for i, expr in it.exprs {
-				if i > 0 && it.exprs.len > 1 {
-					f.wrap_long_line()
-				}
-				f.expr(expr)
-				if i < it.exprs.len - 1 {
-					f.write(', ')
-				}
+			// `x := []string`
+			if it.exprs.len == 0 && it.typ != 0 {
+				f.write(f.table.type_to_str(it.typ))
 			}
-			f.write(']')
+			// `[1,2,3]`
+			else {
+				// type_sym := f.table.get_type_symbol(it.typ)
+				f.write('[')
+				for i, expr in it.exprs {
+					if i > 0 && it.exprs.len > 1 {
+						f.wrap_long_line()
+					}
+					f.expr(expr)
+					if i < it.exprs.len - 1 {
+						f.write(', ')
+					}
+				}
+				f.write(']')
+			}
 		}
 		ast.AssignExpr {
 			f.expr(it.left)
@@ -294,6 +301,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.CallExpr {
 			f.write('${it.name}(')
 			for i, expr in it.args {
+				if it.muts[i] {
+					f.write('mut ')
+				}
 				f.expr(expr)
 				if i != it.args.len - 1 {
 					f.write(', ')
@@ -383,6 +393,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.expr(it.expr)
 			f.write('.' + it.name + '(')
 			for i, arg in it.args {
+				if it.muts[i] {
+					f.write('mut ')
+				}
 				if i > 0 {
 					f.wrap_long_line()
 				}

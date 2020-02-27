@@ -13,12 +13,13 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	name := p.check_name()
 	fn_name := if mod.len > 0 { '${mod}.$name' } else { name }
 	p.check(.lpar)
-	args := p.call_args()
+	args, muts := p.call_args()
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
+		muts: muts
 		// tok: tok
-		
+
 		pos: tok.position()
 		is_c: is_c
 	}
@@ -29,11 +30,16 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	return node
 }
 
-pub fn (p mut Parser) call_args() []ast.Expr {
+pub fn (p mut Parser) call_args() ([]ast.Expr, []bool) {
 	mut args := []ast.Expr
+	mut muts := []bool
 	for p.tok.kind != .rpar {
 		if p.tok.kind == .key_mut {
 			p.check(.key_mut)
+			muts << true
+		}
+		else {
+			muts << false
 		}
 		e,_ := p.expr(0)
 		args << e
@@ -42,7 +48,7 @@ pub fn (p mut Parser) call_args() []ast.Expr {
 		}
 	}
 	p.check(.rpar)
-	return args // ,table.void_ti
+	return args, muts
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
