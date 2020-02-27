@@ -222,6 +222,10 @@ pub fn (c mut Checker) check_method_call_expr(method_call_expr ast.MethodCallExp
 			return method.return_type
 		}
 	}
+	if typ_sym.kind == .array && method_call_expr.name == 'filter' {
+		// info := typ_sym.info as table.Array
+		return typ // info.elem_type
+	}
 	c.error('type `$typ_sym.name` has no method `$method_call_expr.name`', method_call_expr.pos)
 	return table.void_type
 }
@@ -284,25 +288,25 @@ pub fn (c mut Checker) return_stmt(return_stmt ast.Return) {
 }
 
 pub fn (c mut Checker) assign_stmt(assign_stmt ast.AssignStmt) {
-    // multi return
-    if assign_stmt.left.len > assign_stmt.right.len {
-        right := c.expr(assign_stmt.right[0])
-        right_sym := c.table.get_type_symbol(right)
-        info := right_sym.mr_info()
-        if right_sym.kind != .multi_return {
-            c.error('wrong number of vars', assign_stmt.pos)
-        }
-        mut scope := c.file.scope.innermost(assign_stmt.pos.pos) or {
-            c.file.scope
-        }
-        for i, ident in assign_stmt.left {
+	// multi return
+	if assign_stmt.left.len > assign_stmt.right.len {
+		right := c.expr(assign_stmt.right[0])
+		right_sym := c.table.get_type_symbol(right)
+		info := right_sym.mr_info()
+		if right_sym.kind != .multi_return {
+			c.error('wrong number of vars', assign_stmt.pos)
+		}
+		mut scope := c.file.scope.innermost(assign_stmt.pos.pos) or {
+			c.file.scope
+		}
+		for i, ident in assign_stmt.left {
 			// TODO: check types
 			scope.override_var(ast.VarDecl{
-                name: ident.name
-                typ: info.types[i]
-            })
-        }
-    }
+				name: ident.name
+				typ: info.types[i]
+			})
+		}
+	}
 	// TODO: multiple assign
 }
 
