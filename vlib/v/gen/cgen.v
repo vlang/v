@@ -373,6 +373,6 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 }
 
 fn verror(s string) {
-	println(s)
+	println('V error: $s')
 	exit(1)
 }

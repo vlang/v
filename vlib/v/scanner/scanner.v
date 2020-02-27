@@ -956,9 +956,8 @@ pub fn (s &Scanner) error(msg string) {
 	exit(1)
 }
 
-pub fn verror(s string) {
+fn verror(s string) {
 	println('V error: $s')
-	os.flush_stdout()
 	exit(1)
 }
 

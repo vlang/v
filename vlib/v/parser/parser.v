@@ -1692,6 +1692,6 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 }
 
 fn verror(s string) {
-	println(s)
+	println('V error: $s')
 	exit(1)
 }

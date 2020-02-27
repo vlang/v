@@ -162,8 +162,9 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 	return res
 }
 
-fn verror(err string) {
-	panic('v error: $err')
+fn verror(s string) {
+	println('V error: $s')
+	exit(1)
 }
 
 pub fn (b &Builder) log(s string) {

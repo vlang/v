@@ -384,7 +384,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 	}
 	}
 
-	fn verror(s string) {
-		println(s)
-		exit(1)
-	}
+fn verror(s string) {
+	println('V error: $s')
+	exit(1)
+}
