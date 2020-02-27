@@ -159,7 +159,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('}\n')
 		}
 		ast.ForInStmt {
-			f.write('for $it.var in ')
+			f.write('for $it.key_var')
+			if it.val_var != '' {
+				f.write(', $it.val_var')
+			}
+			f.write(' in ')
 			f.expr(it.cond)
 			f.writeln(' {')
 			f.stmts(it.stmts)
@@ -282,6 +286,11 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.BoolLiteral {
 			f.write(it.val.str())
 		}
+		ast.CastExpr {
+			f.write(f.table.type_to_str(it.typ) + '(')
+			f.expr(it.expr)
+			f.write(')')
+		}
 		ast.CallExpr {
 			f.write('${it.name}(')
 			for i, expr in it.args {
@@ -387,6 +396,10 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.None {
 			f.write('none')
 		}
+		ast.OrExpr {
+			f.write(it.var_name + ' := ')
+			f.expr(it.expr)
+		}
 		ast.PostfixExpr {
 			f.expr(it.expr)
 			f.write(it.op.str())
@@ -424,7 +437,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.write('}')
 			}
 		}
-		else {}
+		else {
+			println('fmt expr: unhandled node ') // + typeof(node))
+		}
 	}
 }
 

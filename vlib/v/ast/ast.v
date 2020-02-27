@@ -11,11 +11,11 @@ import (
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
-CastExpr | EnumVal | Assoc | SizeOf | None | MapInit
+CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | OrExpr
 
-pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt |
+pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
 LineComment | MultiLineComment | AssertStmt | UnsafeStmt
 
 pub type Type = StructType | ArrayType
@@ -351,10 +351,11 @@ pub:
 
 pub struct ForInStmt {
 pub:
-	var   string
-	cond  Expr
-	stmts []Stmt
-	pos   token.Position
+	key_var string
+	val_var string
+	cond    Expr
+	stmts   []Stmt
+	pos     token.Position
 }
 
 pub struct ForCStmt {
@@ -479,6 +480,12 @@ pub:
 pub struct AssertStmt {
 pub:
 	expr Expr
+}
+
+pub struct OrExpr {
+pub:
+	var_name string
+	expr     Expr
 }
 
 pub struct Assoc {

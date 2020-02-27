@@ -1035,9 +1035,10 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	// `for i in vals`, `for i in start .. end`
 	else if p.peek_tok.kind in [.key_in, .comma] {
 		var_name := p.check_name()
+		mut val_name := ''
 		if p.tok.kind == .comma {
 			p.check(.comma)
-			val_name := p.check_name()
+			val_name = p.check_name()
 			// p.table.register_var(table.Var{
 			// name: val_name
 			// typ: table.int_type
@@ -1092,7 +1093,8 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			stmts: stmts
 			pos: p.tok.position()
 			cond: cond
-			var: var_name
+			key_var: var_name
+			val_var: val_name
 		}
 	}
 	// `for cond {`
@@ -1115,10 +1117,22 @@ fn (p mut Parser) if_expr() ast.Expr {
 	pos := p.tok.position()
 	// `if x := opt() {`
 	mut cond := ast.Expr{}
+	mut is_or := false
 	if p.peek_tok.kind == .decl_assign {
-		p.next()
+		is_or = true
+		p.open_scope()
+		var_name := p.check_name()
+		// p.table.register_var(
 		p.check(.decl_assign)
-		p.expr(0)
+		expr,typ := p.expr(0)
+		p.scope.register_var(ast.VarDecl{
+			name: var_name
+			typ: typ
+		})
+		cond = ast.OrExpr{
+			var_name: var_name
+			expr: expr
+		}
 	}
 	else {
 		cond,_ = p.expr(0)
@@ -1137,6 +1151,9 @@ fn (p mut Parser) if_expr() ast.Expr {
 		else {
 			else_stmts = p.parse_block()
 		}
+	}
+	if is_or {
+		p.close_scope()
 	}
 	// mut typ := table.void_type
 	// mut left := ast.Expr{}
