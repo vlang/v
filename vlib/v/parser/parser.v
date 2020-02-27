@@ -868,12 +868,6 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 }
 
 fn (p mut Parser) filter(typ table.Type) {
-	/*
-	p.table.register_var(table.Var{
-		name: 'it'
-		typ: typ
-	})
-	*/
 	p.scope.register_var(ast.VarDecl{
 		name: 'it'
 		typ: typ
@@ -886,6 +880,9 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) ast.Expr {
 	if field_name == 'filter' {
 		p.open_scope()
 		p.filter(left_type)
+		defer {
+			p.close_scope()
+		}
 	}
 	// Method call
 	if p.tok.kind == .lpar {
@@ -903,8 +900,6 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) ast.Expr {
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr
-		// typ := p.add_unresolved('${left_type.typ.name}.${field_name}()', mcall_expr)
-		// typ := p.add_unresolved('${table.type_idx(left_type)}.${field_name}()', mcall_expr)
 		return node
 	}
 	sel_expr := ast.SelectorExpr{
@@ -912,13 +907,8 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) ast.Expr {
 		field: field_name
 		pos: p.tok.position()
 	}
-	// typ := p.add_unresolved('${left_type.typ.name}.$field_name', sel_expr)
-	// typ := p.add_unresolved('${table.type_idx(left_type)}.$field_name', sel_expr)
 	mut node := ast.Expr{}
 	node = sel_expr
-	if field_name == 'filter' {
-		p.close_scope()
-	}
 	return node
 }
 
