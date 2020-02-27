@@ -516,47 +516,6 @@ pub struct None {
 pub:
 	foo int // todo
 }
-// string representaiton of expr
-pub fn (x Expr) str() string {
-	match x {
-		InfixExpr {
-			return '(${it.left.str()} $it.op.str() ${it.right.str()})'
-		}
-		/*
-		PrefixExpr {
-			return it.left.str() + it.op.str()
-		}
-		*/
-
-		IntegerLiteral {
-			return it.val.str()
-		}
-		IntegerLiteral {
-			return '"$it.val"'
-		}
-		else {
-			return ''
-		}
-	}
-}
-
-pub fn (node Stmt) str() string {
-	match node {
-		VarDecl {
-			return it.name + ' = ' + it.expr.str()
-		}
-		ExprStmt {
-			return it.expr.str()
-		}
-		FnDecl {
-			return 'fn ${it.name}() { $it.stmts.len stmts }'
-		}
-		else {
-			return '[unhandled stmt str]'
-		}
-	}
-}
-
 /*
 enum BinaryOp {
 	sum
