@@ -1527,7 +1527,7 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 	expr,_ := p.expr(0)
 	is_decl := op == .decl_assign
 	for ident in idents {
-		if is_decl && ident.kind == .blank_ident {
+		if is_decl && ident.kind != .blank_ident {
 			if p.scope.known_var(ident.name) {
 				p.error('redefinition of `$ident.name`')
 			}
