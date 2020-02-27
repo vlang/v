@@ -18,6 +18,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		name: fn_name
 		args: args
 		// tok: tok
+		
 		pos: tok.position()
 		is_c: is_c
 	}
@@ -131,8 +132,10 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		typ = p.parse_type()
 	}
 	p.return_type = typ
+	// Register
 	if is_method {
 		type_sym := p.table.get_type_symbol(rec_type)
+		// p.warn('reg method $type_sym.name . $name ()')
 		ok := p.table.register_method(type_sym, table.Fn{
 			name: name
 			args: args

@@ -212,21 +212,23 @@ pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 pub fn (c mut Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) table.Type {
 	typ := c.expr(method_call_expr.expr)
 	typ_sym := c.table.get_type_symbol(typ)
-	if method := typ_sym.find_method(method_call_expr.name) {
+	name := method_call_expr.name
+	if method := typ_sym.find_method(name) {
 		return method.return_type
+	}
+	if typ_sym.kind == .array && name in ['filter', 'clone'] {
+		// info := typ_sym.info as table.Array
+		return typ // info.elem_type
 	}
 	// check parent
 	if typ_sym.parent_idx != 0 {
 		parent := &c.table.types[typ_sym.parent_idx]
-		if method := parent.find_method(method_call_expr.name) {
+		if method := parent.find_method(name) {
+			// println('got method $name, returning')
 			return method.return_type
 		}
 	}
-	if typ_sym.kind == .array && method_call_expr.name == 'filter' {
-		// info := typ_sym.info as table.Array
-		return typ // info.elem_type
-	}
-	c.error('type `$typ_sym.name` has no method `$method_call_expr.name`', method_call_expr.pos)
+	c.error('type `$typ_sym.name` has no method `$name`', method_call_expr.pos)
 	return table.void_type
 }
 

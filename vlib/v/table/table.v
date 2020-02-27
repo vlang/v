@@ -86,6 +86,7 @@ pub fn (t mut Table) register_fn(new_fn Fn) {
 pub fn (t &Table) register_method(typ &TypeSymbol, new_fn Fn) bool {
 	// println('register method `$new_fn.name` type=$typ.name idx=$typ.idx')
 	// println('register method `$new_fn.name` type=$typ.name')
+	// TODO mut << bug
 	mut t1 := typ
 	mut methods := typ.methods
 	methods << new_fn

@@ -20,7 +20,6 @@ fn launch_tool(is_verbose bool, tname string, cmdname string) {
 		tname_index = os.args.len
 	}
 	mut compilation_options := os.args[1..tname_index].clone()
-	//f  := os.args.join(' ')
 	tool_args := os.args[1..].join(' ')
 	tool_exe := path_of_executable(os.realpath('$vroot/cmd/tools/$tname'))
 	tool_source := os.realpath('$vroot/cmd/tools/${tname}.v')
