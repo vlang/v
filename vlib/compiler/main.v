@@ -844,7 +844,7 @@ pub fn (v &V) log(s string) {
 	println(s)
 }
 
-fn verror(s string) {
+pub fn verror(s string) {
 	println('V error: $s')
 	exit(1)
 }
