@@ -388,6 +388,7 @@ pub:
 	left  []Ident
 	right []Expr
 	op    token.Kind
+	pos   token.Position
 }
 
 // e.g. `[unsafe_fn]`

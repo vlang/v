@@ -458,6 +458,12 @@ pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 	// p.warn('name ')
 	// left := p.parse_ident()
 	name := p.check_name()
+	if name == '_' {
+		return ast.Ident{
+			kind: .blank_ident
+			pos: p.tok.position()
+		}
+	}
 	mut ident := ast.Ident{
 		name: name
 		is_c: is_c
@@ -1519,10 +1525,22 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 	op := p.tok.kind
 	p.next() // :=, =
 	expr,_ := p.expr(0)
+	is_decl := op == .decl_assign
+	for ident in idents {
+		if is_decl && ident.kind == .blank_ident {
+			if p.scope.known_var(ident.name) {
+				p.error('redefinition of `$ident.name`')
+			}
+			p.scope.register_var(ast.VarDecl{
+				name: ident.name
+			})
+		}
+	}
 	return ast.AssignStmt{
 		left: idents
 		right: [expr]
 		op: op
+		pos: p.tok.position()
 	}
 }
 

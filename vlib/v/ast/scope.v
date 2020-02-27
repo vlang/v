@@ -44,6 +44,13 @@ pub fn (s &Scope) find_var(name string) ?VarDecl {
 	return none
 }
 
+pub fn (s &Scope) known_var(name string) bool {
+	if _ := s.find_var(name) {
+		return true
+	}
+	return false
+}
+
 pub fn (s mut Scope) register_var(var VarDecl) {
 	if x := s.find_var(var.name) {
 		// println('existing var: $var.name')

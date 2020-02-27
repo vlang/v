@@ -283,11 +283,28 @@ pub fn (c mut Checker) return_stmt(return_stmt ast.Return) {
 	}
 }
 
-/*
 pub fn (c mut Checker) assign_stmt(assign_stmt ast.AssignStmt) {
+    // multi return
+    if assign_stmt.left.len > assign_stmt.right.len {
+        right := c.expr(assign_stmt.right[0])
+        right_sym := c.table.get_type_symbol(right)
+        info := right_sym.mr_info()
+        if right_sym.kind != .multi_return {
+            c.error('wrong number of vars', assign_stmt.pos)
+        }
+        mut scope := c.file.scope.innermost(assign_stmt.pos.pos) or {
+            c.file.scope
+        }
+        for i, ident in assign_stmt.left {
+			// TODO: check types
+			scope.override_var(ast.VarDecl{
+                name: ident.name
+                typ: info.types[i]
+            })
+        }
+    }
+	// TODO: multiple assign
 }
-*/
-
 
 pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	mut elem_type := table.void_type
@@ -330,12 +347,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		ast.Return {
 			c.return_stmt(it)
 		}
-		/*
 		ast.AssignStmt {
 			c.assign_stmt(it)
 		}
-		*/
-
 		ast.ConstDecl {
 			for i, expr in it.exprs {
 				mut field := it.fields[i]
@@ -480,7 +494,6 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		mut found := true
 		mut var_scope := &ast.Scope(0)
 		mut var := ast.VarDecl{}
-		// mut var_scope, mut var := start_scope.find_scope_and_var(ident.name) or {
 		var_scope,var = start_scope.find_scope_and_var(ident.name) or {
 			found = false
 			c.error('not found: $ident.name - POS: $ident.pos.pos', ident.pos)
