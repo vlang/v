@@ -57,7 +57,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-
+		
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -333,7 +333,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return ast.ExprStmt{
 				expr: expr
 				// typ: typ
-
+				
 			}
 		}
 	}
@@ -632,7 +632,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-
+			
 			val: val
 			pos: p.tok.position()
 		}
@@ -903,7 +903,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) ast.Expr {
 			expr: left
 			name: field_name
 			args: args
-			muts:muts
+			muts: muts
 			pos: p.tok.position()
 		}
 		mut node := ast.Expr{}
@@ -1179,11 +1179,11 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-
+		
 		pos: pos
 		has_else: has_else
 		// left: left
-
+		
 	}
 	return node
 }
@@ -1575,9 +1575,10 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 		// p.fspace()
 	}
 	name := p.check_name()
+	mut name2 := ''
 	if p.tok.kind == .comma {
 		p.check(.comma)
-		p.check_name()
+		name2 = p.check_name()
 	}
 	p.next() // :=
 	// expr,typ := p.expr(0)
@@ -1603,11 +1604,12 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	// println(p.table.names)
 	node := ast.VarDecl{
 		name: name
+		name2: name2
 		expr: expr // p.expr(token.lowest_prec)
-
+		
 		is_mut: is_mut
 		// typ: typ
-
+		
 		pos: p.tok.position()
 	}
 	p.scope.register_var(node)
@@ -1726,7 +1728,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 		blocks: blocks
 		match_exprs: match_exprs
 		// typ: typ
-
+		
 		cond: cond
 	}
 	return node

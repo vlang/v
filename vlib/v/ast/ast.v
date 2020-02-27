@@ -192,6 +192,7 @@ pub struct Stmt {
 pub struct VarDecl {
 pub:
 	name   string
+	name2  string // TODO
 	expr   Expr
 	is_mut bool
 mut:

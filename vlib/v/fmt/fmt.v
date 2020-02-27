@@ -208,7 +208,12 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			if it.is_mut {
 				f.write('mut ')
 			}
-			f.write('$it.name := ')
+			if it.name2 == '' {
+				f.write('$it.name := ')
+			}
+			else {
+				f.write('/*2*/$it.name, $it.name2 := ')
+			}
 			f.expr(it.expr)
 			f.writeln('')
 		}
@@ -311,6 +316,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			}
 			f.write(')')
 		}
+		ast.CharLiteral {
+			f.write('`$it.val`')
+		}
 		ast.EnumVal {
 			f.write(it.enum_name + '.' + it.val)
 		}
@@ -353,7 +361,12 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.single_line_if = false
 		}
 		ast.Ident {
-			f.write('$it.name')
+			if it.kind == .blank_ident {
+				f.write('_')
+			}
+			else {
+				f.write('$it.name')
+			}
 		}
 		ast.InfixExpr {
 			f.expr(it.left)
