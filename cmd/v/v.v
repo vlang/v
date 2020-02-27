@@ -13,7 +13,7 @@ import (
 
 const (
 	simple_cmd = ['fmt',
-	'up',
+	'up', 'self',
 	'create',
 	'test', 'test-fmt', 'test-compiler',
 	'bin2v',
