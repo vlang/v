@@ -799,6 +799,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node = ast.PostfixExpr{
 				op: p.tok.kind
 				expr: node
+				pos: p.tok.position()
 			}
 			p.next()
 			return node,typ

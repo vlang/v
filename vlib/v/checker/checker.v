@@ -633,8 +633,10 @@ pub fn (c mut Checker) postfix_expr(node ast.PostfixExpr) table.Type {
 	}
 	*/
 	typ := c.expr(node.expr)
-	if !table.is_number(typ) {
-		typ_sym := c.table.get_type_symbol(typ)
+	typ_sym := c.table.get_type_symbol(typ)
+	// if !table.is_number(typ) {
+	if !typ_sym.is_number() {
+		println(typ_sym.kind.str())
 		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)', node.pos)
 	}
 	return typ

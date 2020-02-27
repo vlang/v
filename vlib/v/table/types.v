@@ -101,10 +101,15 @@ pub const (
 	number_idxs = [int_type_idx, byte_type_idx, u64_type_idx]
 )
 
+/*
 pub fn is_number(typ Type) bool {
-	idx := type_idx(typ)
-	return idx in [int_type_idx, byte_type_idx, u64_type_idx]
+	typ_sym := c.table.get_type_symbol(typ)
+	return typ_sym.is_int()
+	//idx := type_idx(typ)
+	//return idx in [int_type_idx, byte_type_idx, u64_type_idx]
 }
+*/
+
 
 pub const (
 	void_type = new_type(void_type_idx)
