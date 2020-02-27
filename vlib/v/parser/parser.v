@@ -64,10 +64,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 }
 
 pub fn parse_file(path string, table &table.Table) ast.File {
-	// println('parse_file("$path")')
-	text := os.read_file(path) or {
-		panic(err)
-	}
+	text:=scanner.file_to_text(path)
 	mut stmts := []ast.Stmt
 	mut p := Parser{
 		scanner: scanner.new_scanner(text)

@@ -44,12 +44,21 @@ mut:
 }
 // new scanner from file.
 fn new_scanner_file(file_path string) &Scanner {
+	text:=file_to_text(file_path)
+	mut s := new_scanner(text)
+	// s.init_fmt()
+	s.file_path = file_path
+	return s
+}
+
+//make sure file exist and check BOM.
+pub fn file_to_text(file_path string) string {
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
 	mut raw_text := os.read_file(file_path) or {
 		verror('scanner: failed to open $file_path')
-		return 0
+		return ''
 	}
 	// BOM check
 	if raw_text.len >= 3 {
@@ -60,10 +69,7 @@ fn new_scanner_file(file_path string) &Scanner {
 			raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
 		}
 	}
-	mut s := new_scanner(raw_text)
-	// s.init_fmt()
-	s.file_path = file_path
-	return s
+	return raw_text
 }
 
 const (
