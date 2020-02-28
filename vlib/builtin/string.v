@@ -1251,7 +1251,11 @@ pub fn (s string) bytes() []byte {
 
 // repeat returns a new string with a specified number of copies of the string it was called on.
 pub fn (s string) repeat(count int) string {
-	if count <= 1 {
+	if count < 0 {
+		panic('string.repeat: count is negative: $count')
+	} else if count == 0 {
+		return ''
+	} else if count == 1 {
 		return s
 	}
 	mut ret := malloc(s.len * count + 1)
