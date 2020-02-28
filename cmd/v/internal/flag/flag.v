@@ -23,7 +23,7 @@ mut:
 }
 
 fn (p mut Instance) parse_impl(args []string, value voidptr, callback void_cb) ?[]string {
-	for p.current_pos < p.args.len {
+	for p.current_pos+1 < p.args.len {
 		p.current_pos++
 		next := p.args[p.current_pos]
 		if !next.starts_with('-') || next == '-' {

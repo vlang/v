@@ -89,7 +89,7 @@ fn main() {
 				exit(1)
 			}
 			table := table.new_table()
-			println(doc.doc(values[2], table))
+			println(doc.doc(values[1], table))
 			return
 		}
 		'help' {
