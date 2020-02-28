@@ -82,23 +82,22 @@ fn (a mut array) ensure_cap(required int) {
 	a.cap = cap
 }
 
-// array.repeat returns new array with the given array elements
-// repeated `nr_repeat` times
-pub fn (a array) repeat(nr_repeats int) array {
-	if nr_repeats < 0 {
-		panic('array.repeat: count is negative (count == nr_repeats)')
+// repeat returns new array with the given array elements repeated given times.
+pub fn (a array) repeat(count int) array {
+	if count < 0 {
+		panic('array.repeat: count is negative: $count')
 	}
-	mut size := nr_repeats * a.len * a.element_size
+	mut size := count * a.len * a.element_size
 	if size == 0 {
 		size = a.element_size
 	}
 	arr := array{
-		len: nr_repeats * a.len
-		cap: nr_repeats * a.len
+		len: count * a.len
+		cap: count * a.len
 		element_size: a.element_size
 		data: calloc(size)
 	}
-	for i in 0..nr_repeats {
+	for i in 0..count {
 		C.memcpy(arr.data + i * a.len * a.element_size, a.data, a.len * a.element_size)
 	}
 	return arr
@@ -484,7 +483,7 @@ pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
 	for i in a {
 		_accum = iter(_accum, i)
 	}
-	
+
 	return _accum
 }
 
