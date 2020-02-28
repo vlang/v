@@ -89,7 +89,7 @@ $(TMPVC)/.git/config:
 	$(MAKE) fresh_vc
 
 selfcompile:
-	./v self
+	./v -keep_c -cg -cflags -o v cmd/v
 
 selfcompile-static:
 	./v -keep_c -cg -cflags '--static' -o v-static cmd/v
