@@ -52,12 +52,7 @@ else
 ifdef ANDROID
 	chmod 755 v
 endif
-	@(VC_V=`./v version | cut -f 3 -d " "`; \
-	V_V=`git rev-parse --short=7 HEAD`; \
-	if [ $$VC_V != $$V_V ]; then \
-		echo "Self rebuild ($$VC_V => $$V_V)"; \
-		./v self; \
-	fi)
+	./v self
 ifndef ANDROID
 	$(MAKE) modules
 endif

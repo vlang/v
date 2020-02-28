@@ -8,9 +8,10 @@ import (
 
 fn main() {
 	println('V Self Compiling...')
-	vroot := filepath.dir(pref.vexe_path())
+	vexe := pref.vexe_path()
+	vroot := filepath.dir(vexe)
 	os.chdir(vroot)
-	s2 := os.exec('v -keep_c -cg -o v2 cmd/v') or {
+	s2 := os.exec('$vexe -keep_c -cg -o v2 cmd/v') or {
 		panic(err)
 	}
 	if s2.output.len > 0 {
