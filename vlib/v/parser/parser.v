@@ -64,10 +64,9 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 }
 
 pub fn parse_file(path string, table &table.Table) ast.File {
-	text:=scanner.file_to_text(path)
 	mut stmts := []ast.Stmt
 	mut p := Parser{
-		scanner: scanner.new_scanner(text)
+		scanner: scanner.new_scanner_file(path)
 		table: table
 		file_name: path
 		pref: &pref.Preferences{}
