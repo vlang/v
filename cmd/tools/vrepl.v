@@ -237,6 +237,6 @@ pub fn rerror(s string) {
 
 fn v_version() string {
 	vexe := os.getenv('VEXE')
-	vversion_res := os.exec('$vexe --version') or { panic('"$vexe --version" is not working') }
+	vversion_res := os.exec('$vexe -version') or { panic('"$vexe -version" is not working') }
 	return vversion_res.output
 }

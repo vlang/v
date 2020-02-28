@@ -81,6 +81,10 @@ fn parse_flags(flag string, f mut flag.Instance, prefs mut flag.MainCmdPreferenc
 			f.is_equivalent_to(['v', 'version'])
 			prefs.action = .version
 		}
+		'-version', '-help' {
+			println('V error: `-$flag` has been deprecated. Use `$flag` instead.')
+			exit(1)
+		}
 		else {
 			prefs.unknown_flag = '-$flag'
 			if !(flag in list_of_flags) {
