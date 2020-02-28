@@ -10,6 +10,7 @@ void println(string s);
 void matches();
 void end();
 int pi = 3;
+int pi2 = pi;
 
 typedef struct {
 	int age;

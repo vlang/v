@@ -3,6 +3,7 @@
 
 const (
 	pi = 3
+	pi2 = pi
 	//s = 'hi'
 
 )

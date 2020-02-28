@@ -36,6 +36,8 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 	}
 	f.write(')')
 	if node.typ != table.void_type {
+		// typ := t.type_to_str(node.typ)
+		// if typ.starts_with('
 		f.write(' ' + t.type_to_str(node.typ))
 	}
 	return f.str()

@@ -149,6 +149,13 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
+		ast.EnumDecl {
+			f.writeln('enum $it.name {')
+			for val in it.vals {
+				f.writeln('\t' + val)
+			}
+			f.writeln('}\n')
+		}
 		ast.ExprStmt {
 			f.expr(it.expr)
 			if !f.single_line_if {
@@ -156,7 +163,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
-			f.write(it.str(f.table))
+			s := it.str(f.table)
+			// f.write(it.str(f.table))
+			f.write(s.replace(f.cur_mod + '.', '')) // `Expr` instead of `ast.Expr` in mod ast
 			f.writeln(' {')
 			f.stmts(it.stmts)
 			f.writeln('}\n')
