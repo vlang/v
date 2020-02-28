@@ -6,8 +6,8 @@ pub const (
   used_import = 1 + fontstash.used_import
 )
 
-#flag windows -I @VROOT/thirdparty/freetype/include
-#flag windows -L @VROOT/thirdparty/freetype/win64
+#flag windows -I @VMODULE/../../../thirdparty/freetype/include
+#flag windows -L @VMODULE/../../../thirdparty/freetype/win64
 
 #flag linux -I/usr/include/freetype2
 #flag darwin -I/usr/local/include/freetype2

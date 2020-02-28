@@ -242,12 +242,8 @@ fn (p mut Parser) chash() {
 	if hash.starts_with('flag ') {
 		if p.first_pass() {
 			mut flag := hash[5..]
-			// expand `@VROOT` `@VMOD` to absolute path
+			// expand `@VMODULE` etc to its absolute path
 			flag = flag.replace('@VMODULE', p.file_path_dir)
-			flag = flag.replace('@VROOT', p.vroot)
-			flag = flag.replace('@VPATH', p.pref.vpath)
-			flag = flag.replace('@VLIB_PATH', p.pref.vlib_path)
-			flag = flag.replace('@VMOD', v_modules_path)
 			// p.log('adding flag "$flag"')
 			_ = p.table.parse_cflag(flag, p.mod, p.v.pref.compile_defines_all ) or {
 				p.error_with_token_index(err, p.cur_tok_index() - 1)
