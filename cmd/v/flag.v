@@ -3,57 +3,25 @@
 // that can be found in the LICENSE file.
 module main
 
-import os
+import (
+	internal.flag
+	os
+)
 
 const (
 	//list_of_flags contains a list of flags where an argument is expected past it.
 	list_of_flags = [
-		'-o', '-output', '-d', '-define', '-b', '-backend', '-verbose', '-cc', '-os', '-target-os', '-arch',
-			'-csource', '-cf', '-cflags'
+		'o', 'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'arch',
+			'csource', 'cf', 'cflags'
 	]
 )
-
-fn get_basic_command_and_option(args []string) (string, []string) {
-	mut option := []string
-	for i, arg in args {
-		if i == 0 {
-			//Skip executable
-			continue
-		}
-		if arg == '--' {
-			//End of list of options. The next one is the command.
-			if i+1 < os.args.len {
-				return os.args[i+1], option
-			}
-			//There's no option past this
-			return '', option
-		}
-		if arg in list_of_flags {
-			i++
-			continue
-		}
-		if arg[0] == `-` {
-			option << arg
-			continue
-		}
-		//It's not a flag. We did not skip it. It's a command.
-		return arg, option
-	}
-
-	//There's no arguments that were not part of a flag.
-	return '', option
-}
-
-fn non_empty(arg []string) []string {
-	return arg.filter(it != '')
-}
 
 fn join_flags_and_argument() []string {
 	vosargs := os.getenv('VOSARGS')
 	if vosargs != '' {
-		return non_empty(vosargs.split(' '))
+		return vosargs.split(' ')
 	}
-
+	// No VOSARGS? Look for VFLAGS and concat it with command-line options.
 	mut args := []string
 	vflags := os.getenv('VFLAGS')
 	if vflags != '' {
@@ -62,8 +30,66 @@ fn join_flags_and_argument() []string {
 		if os.args.len > 1 {
 			args << os.args[1..]
 		}
-		return non_empty(args)
+		return args
 	}
+	// No VFLAGS too? Just return command-line args.
+	return os.args
+}
 
-	return non_empty(os.args)
+fn parse_flags(flag string, f mut flag.Instance, prefs mut flag.MainCmdPreferences) {
+	match flag {
+		'v' {
+			f.is_equivalent_to(['v', 'vv', 'vvv', 'verbose'])
+			prefs.verbosity = .level_one
+		}
+		'vv' {
+			f.is_equivalent_to(['v', 'vv', 'vvv', 'verbose'])
+			prefs.verbosity = .level_two
+		}
+		'vvv' {
+			f.is_equivalent_to(['v', 'vv', 'vvv', 'verbose'])
+			prefs.verbosity = .level_three
+		}
+		'verbose' {
+			f.is_equivalent_to(['v', 'vv', 'vvv', 'verbose'])
+			level := f.int() or {
+				println('V error: Expected `0`, `1`, `2` or `3` as argument to `-verbose` to specify verbosity level.')
+				exit(1)
+			}
+			match level {
+				0 {} //Zero verbosity is already default.
+				1 {
+					prefs.verbosity = .level_one
+				}
+				2 {
+					prefs.verbosity = .level_two
+				}
+				3 {
+					prefs.verbosity = .level_three
+				}
+				else {
+					println('V error: Expected `0`, `1`, `2` or `3` as argument to `-verbose` to specify verbosity level.')
+					exit(1)
+				}
+			}
+		}
+		'h', 'help' {
+			f.is_equivalent_to(['h', 'help'])
+			prefs.action = .help
+		}
+		'v', 'version' {
+			f.is_equivalent_to(['v', 'version'])
+			prefs.action = .version
+		}
+		else {
+			prefs.unknown_flag = '-$flag'
+			if !(flag in list_of_flags) {
+				return
+			}
+			f.string() or {
+				println('V error: Error parsing flag. Expected value for `-$flag`.')
+				exit(1)
+			}
+		}
+	}
 }

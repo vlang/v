@@ -14,7 +14,32 @@ type void_cb fn(string, &Instance, voidptr)
 pub fn parse_pref(args []string, callback fn(string, &Instance, &pref.Preferences), obj &pref.Preferences) ?[]string {
 	mut p := Instance {
 		args: args
-		current_pos: -1
+		current_pos: 0
+	}
+	casted_callback := *(&void_cb(&callback))
+	tmp := p.parse_impl(args, voidptr(obj), casted_callback) or {
+		return error(err)
+	}
+	return tmp
+}
+
+pub enum MainCmdAction {
+	unspecified
+	version
+	help
+}
+
+pub struct MainCmdPreferences {
+pub mut:
+	verbosity    pref.VerboseLevel
+	action       MainCmdAction
+	unknown_flag string
+}
+
+pub fn parse_main_cmd(args []string, callback fn(string, &Instance, &MainCmdPreferences), obj &MainCmdPreferences) ?[]string {
+	mut p := Instance {
+		args: args
+		current_pos: 0
 	}
 	casted_callback := *(&void_cb(&callback))
 	tmp := p.parse_impl(args, voidptr(obj), casted_callback) or {

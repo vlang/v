@@ -111,3 +111,8 @@ pub fn backend_from_string(s string) ?Backend {
 		}
 	}
 }
+
+[inline]
+pub fn (v VerboseLevel) is_higher_or_equal(other VerboseLevel) bool {
+	return int(v) >= int(other)
+}
