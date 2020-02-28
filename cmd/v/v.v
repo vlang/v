@@ -25,9 +25,8 @@ const (
 )
 
 fn main() {
-	arg := join_flags_and_argument()
 	prefs := flag.MainCmdPreferences{}
-	values := flag.parse_main_cmd(arg, parse_flags, &prefs) or {
+	values := flag.parse_main_cmd(os.args, parse_flags, &prefs) or {
 		println('V Error: An error has occured while parsing flags: ')
 		println(err)
 		exit(1)
@@ -112,6 +111,7 @@ fn main() {
 		else {}
 	}
 	if command == 'run' || command == 'build' || command.ends_with('.v') || os.exists(command) {
+		arg := join_flags_and_argument()
 		compile.compile(command, arg)
 		return
 	}
