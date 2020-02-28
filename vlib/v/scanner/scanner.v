@@ -623,7 +623,7 @@ pub fn (s mut Scanner) scan() token.Token {
 			else if nextc == `>` {
 				if s.pos + 2 < s.text.len && s.text[s.pos + 2] == `=` {
 					s.pos += 2
-					return s.scan_res(.righ_shift_assign, '')
+					return s.scan_res(.right_shift_assign, '')
 				}
 				s.pos++
 				return s.scan_res(.right_shift, '')
