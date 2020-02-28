@@ -705,7 +705,7 @@ pub fn get_raw_line() string {
 	} $else {
 		max := size_t(0)
 		mut buf := byteptr(0)
-		nr_chars := C.getline(&buf, &max, stdin)
+		nr_chars := C.getline(&charptr(buf), &max, stdin)
 		defer { unsafe{ free(buf) } }
 		if nr_chars == 0 || nr_chars == -1 {
 			return ''
