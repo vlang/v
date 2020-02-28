@@ -168,6 +168,10 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			}
 			f.write(' in ')
 			f.expr(it.cond)
+			if it.is_range {
+				f.write(' .. ')
+				f.expr(it.high)
+			}
 			f.writeln(' {')
 			f.stmts(it.stmts)
 			f.writeln('}')
@@ -421,19 +425,24 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				}
 			}
 			f.write(')')
+			if it.or_block.stmts.len > 0 {
+				f.writeln(' or {')
+				f.stmts(it.or_block.stmts)
+				f.write('}')
+			}
 		}
 		ast.None {
 			f.write('none')
 		}
-		ast.OrExpr {
+		ast.IfGuardExpr {
 			f.write(it.var_name + ' := ')
 			f.expr(it.expr)
 		}
-		ast.ParExpr{
+		ast.ParExpr {
 			f.write('(')
 			f.expr(it.expr)
 			f.write(')')
-			}
+		}
 		ast.PostfixExpr {
 			f.expr(it.expr)
 			f.write(it.op.str())

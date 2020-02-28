@@ -57,7 +57,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-
+		
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -329,7 +329,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return ast.ExprStmt{
 				expr: expr
 				// typ: typ
-
+				
 			}
 		}
 	}
@@ -621,7 +621,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-
+			
 			val: val
 			pos: p.tok.position()
 		}
@@ -887,9 +887,10 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) ast.Expr {
 	if p.tok.kind == .lpar {
 		p.next()
 		args,muts := p.call_args()
+		mut or_stmts := []ast.Stmt
 		if p.tok.kind == .key_orelse {
 			p.next()
-			p.parse_block()
+			or_stmts = p.parse_block()
 		}
 		mcall_expr := ast.MethodCallExpr{
 			expr: left
@@ -897,6 +898,9 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) ast.Expr {
 			args: args
 			muts: muts
 			pos: p.tok.position()
+			or_block: ast.OrExpr{
+				stmts: or_stmts
+			}
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr
@@ -1064,9 +1068,13 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 		// 0 .. 10
 		// start := p.tok.lit.int()
+		// TODO use RangeExpr
+		mut high_expr := ast.Expr{}
+		mut is_range := false
 		if p.tok.kind == .dotdot {
+			is_range = true
 			p.check(.dotdot)
-			p.expr(0)
+			high_expr,_ = p.expr(0)
 		}
 		// p.table.register_var(table.Var{
 		// name: var_name
@@ -1085,6 +1093,8 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			cond: cond
 			key_var: var_name
 			val_var: val_name
+			high: high_expr
+			is_range: is_range
 		}
 	}
 	// `for cond {`
@@ -1119,7 +1129,7 @@ fn (p mut Parser) if_expr() ast.Expr {
 			name: var_name
 			typ: typ
 		})
-		cond = ast.OrExpr{
+		cond = ast.IfGuardExpr{
 			var_name: var_name
 			expr: expr
 		}
@@ -1168,11 +1178,11 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-
+		
 		pos: pos
 		has_else: has_else
 		// left: left
-
+		
 	}
 	return node
 }
@@ -1588,12 +1598,12 @@ fn (p mut Parser) var_decl_and_assign_stmt() ast.Stmt {
 		return ast.VarDecl{
 			name: ident.name
 			// name2: name2
-
+			
 			expr: expr // p.expr(token.lowest_prec)
-
+			
 			is_mut: info0.is_mut
 			// typ: typ
-
+			
 			pos: p.tok.position()
 		}
 		// return p.var_decl(ident[0], exprs[0])
@@ -1731,7 +1741,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 		blocks: blocks
 		match_exprs: match_exprs
 		// typ: typ
-
+		
 		cond: cond
 	}
 	return node

@@ -11,7 +11,7 @@ import (
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
-CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | OrExpr | ParExpr
+CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
@@ -159,11 +159,12 @@ mut:
 pub struct MethodCallExpr {
 pub:
 // tok        token.Token
-	pos  token.Position
-	expr Expr
-	name string
-	args []Expr
-	muts []bool
+	pos      token.Position
+	expr     Expr
+	name     string
+	args     []Expr
+	muts     []bool
+	or_block OrExpr
 }
 
 pub struct Return {
@@ -355,11 +356,13 @@ pub:
 
 pub struct ForInStmt {
 pub:
-	key_var string
-	val_var string
-	cond    Expr
-	stmts   []Stmt
-	pos     token.Position
+	key_var  string
+	val_var  string
+	cond     Expr
+	is_range bool
+	high     Expr // `10` in `for i in 0..10 {`
+	stmts    []Stmt
+	pos      token.Position
 }
 
 pub struct ForCStmt {
@@ -492,10 +495,19 @@ pub:
 	expr Expr
 }
 
-pub struct OrExpr {
+// `if [x := opt()] {`
+pub struct IfGuardExpr {
 pub:
 	var_name string
 	expr     Expr
+}
+
+// `or { ... }`
+pub struct OrExpr {
+pub:
+	stmts []Stmt
+	// var_name string
+	// expr     Expr
 }
 
 pub struct Assoc {

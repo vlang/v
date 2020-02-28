@@ -2014,21 +2014,21 @@ fn (p mut Parser) var_expr(v Var) string {
 	mut typ := v.typ
 	// Function pointer?
 	if p.base_type(typ).starts_with('fn ') && p.tok == .lpar {
-		T := p.table.find_type(p.base_type(typ))
+		tt := p.table.find_type(p.base_type(typ))
 		p.gen('(')
-		p.fn_call_args(mut T.func, [])
+		p.fn_call_args(mut tt.func, [])
 		p.gen(')')
-		typ = T.func.typ
+		typ = tt.func.typ
 	}
 	// users[0].name
 	if p.tok == .lsbr {
 		typ = p.index_expr(typ, fn_ph)
 		if p.base_type(typ).starts_with('fn ') && p.tok == .lpar {
-			T := p.table.find_type(p.base_type(typ))
+			tt := p.table.find_type(p.base_type(typ))
 			p.gen('(')
-			p.fn_call_args(mut T.func, [])
+			p.fn_call_args(mut tt.func, [])
 			p.gen(')')
-			typ = T.func.typ
+			typ = tt.func.typ
 		}
 	}
 	// a.b.c().d chain
@@ -2364,10 +2364,10 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			// [2..
 			if p.tok != .dotdot {
 				index_pos := p.cgen.cur_line.len
-				T := p.table.find_type(p.expression())
+				tt := p.table.find_type(p.expression())
 				// Allows only i8-64 and byte-64 to be used when accessing an array
-				if T.parent != 'int' && T.parent != 'u32' {
-					p.check_types(T.name, 'int')
+				if tt.parent != 'int' && tt.parent != 'u32' {
+					p.check_types(tt.name, 'int')
 				}
 				if p.cgen.cur_line[index_pos..].replace(' ', '').int() < 0 {
 					p.error('cannot access negative array index')
@@ -2402,10 +2402,10 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			}
 		}
 		else {
-			T := p.table.find_type(p.expression())
+			tt := p.table.find_type(p.expression())
 			// TODO: Get the key type of the map instead of only string.
-			if is_map && T.parent != 'string' {
-				p.check_types(T.name, 'string')
+			if is_map && tt.parent != 'string' {
+				p.check_types(tt.name, 'string')
 			}
 		}
 		p.check(.rsbr)
@@ -3065,14 +3065,14 @@ fn (p mut Parser) js_decode() string {
 		cjson_tmp := p.get_tmp()
 		mut decl := '$typ $tmp; '
 		// Init the struct
-		T := p.table.find_type(typ)
-		for field in T.fields {
+		tt := p.table.find_type(typ)
+		for field in tt.fields {
 			def_val := type_default(field.typ)
 			if def_val != '' {
 				decl += '${tmp}.$field.name = OPTION_CAST($field.typ) $def_val;\n'
 			}
 		}
-		p.gen_json_for_type(T)
+		p.gen_json_for_type(tt)
 		decl += 'cJSON* $cjson_tmp = json__json_parse($expr);'
 		p.cgen.insert_before(decl)
 		// p.gen('jsdecode_$typ(json_parse($expr), &$tmp);')
@@ -3085,8 +3085,8 @@ fn (p mut Parser) js_decode() string {
 	else if op == 'encode' {
 		p.check(.lpar)
 		typ,expr := p.tmp_expr()
-		T := p.table.find_type(typ)
-		p.gen_json_for_type(T)
+		tt := p.table.find_type(typ)
+		p.gen_json_for_type(tt)
 		p.check(.rpar)
 		p.gen('json__json_print(json__jsencode_${typ}($expr))')
 		return 'string'
