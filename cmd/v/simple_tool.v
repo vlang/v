@@ -36,7 +36,7 @@ fn launch_tool(verbosity pref.VerboseLevel, tool_name string) {
 			// rebuild the tool too just in case
 			should_compile = true
 
-			if tname == 'vself' || tname == 'vup' {
+			if tool_name == 'vself' || tool_name == 'vup' {
 				// The purpose of vself/up is to update and recompile v itself.
 				// After the first 'v self' execution, v will be modified, so
 				// then a second 'v self' will detect, that v is newer than the
