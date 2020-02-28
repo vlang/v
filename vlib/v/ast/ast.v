@@ -229,8 +229,9 @@ pub mut:
 
 pub struct IdentVar {
 pub mut:
-	typ    table.Type
-	is_mut bool
+	typ       table.Type
+	is_mut    bool
+	is_static bool
 }
 
 type IdentInfo = IdentFunc | IdentVar

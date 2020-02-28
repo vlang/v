@@ -98,7 +98,7 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 }
 
 pub const (
-	number_idxs = [int_type_idx, byte_type_idx, u64_type_idx]
+	number_idxs = [int_type_idx, byte_type_idx, u32_type_idx, u64_type_idx]
 )
 
 /*

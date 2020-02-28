@@ -538,8 +538,14 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 	// Handle indents with unresolved types during the parsing step
 	// (declared after first usage)
 	else if ident.kind == .unresolved {
+		// prepend mod to look for fn call or const
+		mut name := ident.name
+		if !name.contains('.') && !(c.file.mod.name in ['builtin', 'main']) {
+			name = '${c.file.mod.name}.$ident.name'
+		}
+		// println('# name: $name')
 		// constant
-		if constant := c.table.find_const(ident.name) {
+		if constant := c.table.find_const(name) {
 			ident.kind = .constant
 			ident.info = ast.IdentVar{
 				typ: constant.typ
@@ -547,7 +553,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 			return constant.typ
 		}
 		// Function object (not a call), e.g. `onclick(my_click)`
-		if func := c.table.find_fn(ident.name) {
+		if func := c.table.find_fn(name) {
 			ident.kind = .function
 			ident.info = ast.IdentFunc{
 				return_type: func.return_type
@@ -564,8 +570,10 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	t := c.expr(node.cond)
 	for i, block in node.blocks {
-		match_expr := node.match_exprs[i]
-		c.expr(match_expr)
+		if i < node.match_exprs.len {
+			match_expr := node.match_exprs[i]
+			c.expr(match_expr)
+		}
 		for stmt in block.stmts {
 			c.stmt(stmt)
 		}
@@ -680,6 +688,10 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 			return info.value_type
 		}
 		else if typ_sym.kind in [.byteptr, .string] {
+			// TODO: hack need to handle &a[0] comment to see wyahsh errors
+			if typ_sym.kind == .byteptr {
+				return table.type_to_ptr(table.byte_type)
+			}
 			return table.byte_type
 		}
 		// else {

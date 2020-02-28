@@ -272,7 +272,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			}
 		}
 		.key_mut {
-			return p.var_decl()
+			return p.var_decl_and_assign_stmt()
 		}
 		.key_for {
 			return p.for_statement()
@@ -313,12 +313,8 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		}
 		else {
 			// `x := ...`
-			// if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
-			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign] {
-				return p.var_decl()
-			}
-			else if p.tok.kind == .name && p.peek_tok.kind in [.comma] {
-				return p.assign_stmt()
+			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
+				return p.var_decl_and_assign_stmt()
 			}
 			// `label:`
 			else if p.tok.kind == .name && p.peek_tok.kind == .colon {
@@ -339,6 +335,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 	}
 }
 
+// TODO: merge wtih AssignStmt & VarDecl
 pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	op := p.tok.kind
 	p.next()
@@ -456,40 +453,32 @@ pub fn (p &Parser) warn(s string) {
 
 pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 	// p.warn('name ')
-	// left := p.parse_ident()
-	name := p.check_name()
+	mut name := p.check_name()
 	if name == '_' {
 		return ast.Ident{
+			name: '_'
 			kind: .blank_ident
 			pos: p.tok.position()
 		}
 	}
+	if p.expr_mod.len > 0 {
+		name = '${p.expr_mod}.$name'
+	}
 	mut ident := ast.Ident{
+		kind: .unresolved
 		name: name
 		is_c: is_c
 		pos: p.tok.position()
 	}
-	mut known_var := false
-	if var := p.scope.find_var(name) {
-		known_var = true
-		// typ = var.typ
-	}
 	// variable
-	if known_var {
-		// || p.tok.kind in [.comma, .decl_assign, .assign]
-		// println('#### IDENT: $var.name: $var.typ.typ.name - $var.typ.idx')
-		ident.kind = .variable
-		ident.info = ast.IdentVar{}
-		return ident
-	}
-	else {
-		// handle consts/fns in checker
-		ident.kind = .unresolved
-		return {
-			ident |
-			name:p.prepend_mod(name)
+	if p.expr_mod.len == 0 {
+		if var := p.scope.find_var(name) {
+			ident.kind = .variable
+			ident.info = ast.IdentVar{}
 		}
 	}
+	// handle consts/fns in checker
+	return ident
 }
 
 fn (p mut Parser) struct_init() ast.StructInit {
@@ -565,7 +554,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		map_type := p.parse_map_type()
 		return node
 	}
-	if p.peek_tok.kind == .dot && (is_c || p.known_import(p.tok.lit)) {
+	if p.peek_tok.kind == .dot && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') == p.tok.lit) {
 		if !is_c {
 			// prepend the full import
 			mod = p.imports[p.tok.lit]
@@ -998,11 +987,8 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		mut init := ast.Stmt{}
 		mut cond := ast.Expr{}
 		mut inc := ast.Stmt{}
-		if p.peek_tok.kind == .decl_assign {
-			init = p.var_decl()
-		}
-		else if p.peek_tok.kind == .assign {
-			init = p.assign_stmt()
+		if p.peek_tok.kind in [.assign, .decl_assign] {
+			init = p.var_decl_and_assign_stmt()
 		}
 		else if p.tok.kind != .semicolon {}
 		// allow `for ;; i++ {`
@@ -1528,11 +1514,23 @@ fn (p mut Parser) return_stmt() ast.Return {
 	return stmt
 }
 
-pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
-	// TODO: multiple return & multiple assign
+// left hand side of `=` or `:=` in `a,b,c := 1,2,3`
+fn (p mut Parser) parse_assign_lhs() []ast.Ident {
 	mut idents := []ast.Ident
 	for {
-		ident := p.parse_ident(false)
+		is_mut := p.tok.kind == .key_mut
+		if is_mut {
+			p.check(.key_mut)
+		}
+		is_static := p.tok.kind == .key_static
+		if is_static {
+			p.check(.key_static)
+		}
+		mut ident := p.parse_ident(false)
+		ident.info = ast.IdentVar{
+			is_mut: is_mut
+			is_static: is_static
+		}
 		idents << ident
 		if p.tok.kind == .comma {
 			p.check(.comma)
@@ -1541,10 +1539,63 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 			break
 		}
 	}
+	return idents
+}
+
+// right hand side of `=` or `:=` in `a,b,c := 1,2,3`
+fn (p mut Parser) parse_assign_rhs() []ast.Expr {
+	mut exprs := []ast.Expr
+	for {
+		expr,_ := p.expr(0)
+		exprs << expr
+		if p.tok.kind == .comma {
+			p.check(.comma)
+		}
+		else {
+			break
+		}
+	}
+	return exprs
+}
+
+fn (p mut Parser) var_decl_and_assign_stmt() ast.Stmt {
+	idents := p.parse_assign_lhs()
 	op := p.tok.kind
 	p.next() // :=, =
-	expr,_ := p.expr(0)
+	exprs := p.parse_assign_rhs()
 	is_decl := op == .decl_assign
+	// VarDecl
+	if idents.len == 1 {
+		ident := idents[0]
+		expr := exprs[0]
+		info0 := ident.var_info()
+		known_var := p.scope.known_var(ident.name)
+		if !is_decl && !known_var {
+			p.error('unknown variable `$ident.name`')
+		}
+		if is_decl && ident.kind != .blank_ident {
+			if known_var {
+				p.error('redefinition of `$ident.name`')
+			}
+			p.scope.register_var(ast.VarDecl{
+				name: ident.name
+				expr: expr
+			})
+		}
+		return ast.VarDecl{
+			name: ident.name
+			// name2: name2
+			
+			expr: expr // p.expr(token.lowest_prec)
+			
+			is_mut: info0.is_mut
+			// typ: typ
+			
+			pos: p.tok.position()
+		}
+		// return p.var_decl(ident[0], exprs[0])
+	}
+	// AssignStmt
 	for ident in idents {
 		if is_decl && ident.kind != .blank_ident {
 			if p.scope.known_var(ident.name) {
@@ -1557,65 +1608,14 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 	}
 	return ast.AssignStmt{
 		left: idents
-		right: [expr]
+		right: exprs
 		op: op
 		pos: p.tok.position()
 	}
 }
 
-fn (p mut Parser) var_decl() ast.VarDecl {
-	is_mut := p.tok.kind == .key_mut // || p.prev_tok == .key_for
-	// is_static := p.tok.kind == .key_static
-	if p.tok.kind == .key_mut {
-		p.check(.key_mut)
-		// p.fspace()
-	}
-	if p.tok.kind == .key_static {
-		p.check(.key_static)
-		// p.fspace()
-	}
-	name := p.check_name()
-	mut name2 := ''
-	if p.tok.kind == .comma {
-		p.check(.comma)
-		name2 = p.check_name()
-	}
-	p.next() // :=
-	// expr,typ := p.expr(0)
-	expr,_ := p.expr(0)
-	// if _ := p.table.find_var(name) {
-	// p.error('redefinition of `$name`')
-	// }
-	// p.table.register_var(table.Var{
-	// name: name
-	// is_mut: is_mut
-	// typ: typ
-	// })
-	if _ := p.scope.find_var(name) {
-		p.error('redefinition of `$name`')
-	}
-	// p.scope.register_var(table.Var{
-	// name: name
-	// is_mut: is_mut
-	// typ: typ
-	// })
-	// typ_sym := p.table.get_type_symbol(typ)
-	// p.warn('var decl name=$name typ=$typ_sym.name')
-	// println(p.table.names)
-	node := ast.VarDecl{
-		name: name
-		name2: name2
-		expr: expr // p.expr(token.lowest_prec)
-		
-		is_mut: is_mut
-		// typ: typ
-		
-		pos: p.tok.position()
-	}
-	p.scope.register_var(node)
-	return node
-}
-
+// pub fn (p mut Parser) assign_stmt() ast.AssignStmt {}
+// fn (p mut Parser) var_decl() ast.VarDecl {}
 fn (p mut Parser) hash() ast.HashStmt {
 	p.next()
 	return ast.HashStmt{

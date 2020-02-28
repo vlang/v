@@ -63,6 +63,14 @@ pub fn (s mut Scope) override_var(var VarDecl) {
 	s.vars[var.name] = var
 }
 
+pub fn (s &Scope) outermost() &Scope {
+	mut sc := s
+	for !isnil(sc.parent) {
+		sc = sc.parent
+	}
+	return sc
+}
+
 // returns the innermost scope containing pos
 pub fn (s &Scope) innermost(pos int) ?&Scope {
 	if s.contains(pos) {

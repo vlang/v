@@ -24,7 +24,7 @@ fn main() {
 	mut d := testb(1)
 	d = 'hello'
 
-	mut e = 'hello'
+	mut e := 'hello'
 	e = testb(111)
 	e = 'world'
 

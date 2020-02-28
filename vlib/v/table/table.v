@@ -370,6 +370,10 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if got_type_sym.is_number() && exp_type_sym.is_number() {
 		return true
 	}
+	// check hack in checker IndexExpr line #691
+	if type_is_ptr(got) && got_type_sym.kind == .byte && exp_type_sym.kind == .byteptr {
+		return true
+	}
 	// TODO
 	// if got_type_sym.kind == .array && exp_type_sym.kind == .array {
 	// return true
