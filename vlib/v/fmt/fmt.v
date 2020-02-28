@@ -101,6 +101,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
 			for i, left in it.left {
+				if left.var_info().is_mut {
+					f.write('mut ')
+				}
 				f.expr(left)
 				if i < it.left.len - 1 {
 					f.write(', ')
@@ -426,6 +429,11 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(it.var_name + ' := ')
 			f.expr(it.expr)
 		}
+		ast.ParExpr{
+			f.write('(')
+			f.expr(it.expr)
+			f.write(')')
+			}
 		ast.PostfixExpr {
 			f.expr(it.expr)
 			f.write(it.op.str())

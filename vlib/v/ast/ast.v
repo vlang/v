@@ -11,7 +11,7 @@ import (
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
-CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | OrExpr
+CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | OrExpr | ParExpr
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
@@ -431,6 +431,12 @@ pub:
 pub struct UnsafeStmt {
 pub:
 	stmts []Stmt
+}
+
+// `(3+4)`
+pub struct ParExpr {
+pub:
+	expr Expr
 }
 
 pub struct AssignExpr {
