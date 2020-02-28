@@ -39,9 +39,18 @@ fn launch_tool(is_verbose bool, tname string, cmdname string) {
 			// v was recompiled, maybe after v up ...
 			// rebuild the tool too just in case
 			should_compile = true
+
+			if tname == 'vself' || tname == 'vup' {
+				// The purpose of vself/up is to update and recompile v itself.
+				// After the first 'v self' execution, v will be modified, so
+				// then a second 'v self' will detect, that v is newer than the
+				// vself executable, and try to recompile vself/up again, which
+				// will slow down the next v recompilation needlessly.
+				should_compile = false
+			}
 		}
 		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(tool_source) {
-			// the user changed the source code of the tool
+			// the user changed the source code of the tool, or git updated it:
 			should_compile = true
 		}
 	}
