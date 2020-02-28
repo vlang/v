@@ -115,4 +115,4 @@ exit /b 1
 
 :success
 echo V build OK!
-v -v
+v -version

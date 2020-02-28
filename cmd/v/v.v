@@ -39,6 +39,12 @@ fn main() {
 		println(prefs)
 		println('Remaining: $values')
 	}
+	// Do a quick check for `v -v`. Too much error has been made this way.
+	if prefs.verbosity == .level_one && values.len == 0 {
+		println("`v -v` now runs V with verbose mode set to level one which doesn't do anything.")
+		println('Did you mean `v -version` instead?')
+		exit(1)
+	}
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if prefs.action == .version {
