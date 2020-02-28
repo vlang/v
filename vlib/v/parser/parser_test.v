@@ -10,8 +10,11 @@ import (
 )
 
 fn test_eval() {
+	/*
 	inputs := [
 	//
+	'2+2',
+	'struct User { age int }',
 	'2+3',
 	'4',
 	'x := 10',
@@ -32,9 +35,11 @@ fn test_eval() {
 	'20',
 	//
 	]
-	/*
 	table := table.new_table()
-	mut scope := &ast.Scope{start_pos: 0, parent: 0}
+	mut scope := &ast.Scope{
+		start_pos: 0
+		parent: 0
+	}
 	mut stmts := []ast.Stmt
 	for input in inputs {
 		stmts << parse_stmt(input, table, scope)
@@ -50,8 +55,9 @@ fn test_eval() {
 	println('eval done')
 	println(s)
 	assert s == expected.join('\n')
-	// exit(0)
+	exit(0)
 	*/
+	return
 }
 
 fn test_parse_file() {
@@ -87,7 +93,10 @@ fn test_one() {
 	]
 	expected := 'int a = 10;int b = -a;int c = 20;'
 	table := table.new_table()
-	mut scope := &ast.Scope{start_pos: 0, parent: 0}
+	mut scope := &ast.Scope{
+		start_pos: 0
+		parent: 0
+	}
 	mut e := []ast.Stmt
 	for line in input {
 		e << parse_stmt(line, table, scope)
@@ -179,7 +188,10 @@ fn test_parse_expr() {
 	mut e := []ast.Stmt
 	table := table.new_table()
 	mut checker := checker.new_checker(table)
-	mut scope := &ast.Scope{start_pos: 0, parent: 0}
+	mut scope := &ast.Scope{
+		start_pos: 0
+		parent: 0
+	}
 	for s in input {
 		println('\n\nst="$s"')
 		e << parse_stmt(s, table, scope)

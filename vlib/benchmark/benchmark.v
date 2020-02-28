@@ -24,7 +24,7 @@ bmark.stop() // call when you want to finalize the benchmark
 println( bmark.total_message('remarks about the benchmark') )
 ```
 
-benchmark.start() and b.measure() are convenience methods, 
+benchmark.start() and b.measure() are convenience methods,
 intended to be used in combination. Their goal is to make
 benchmarking of small snippets of code as *short*, easy to
 write, and then to read and analyze the results, as possible.

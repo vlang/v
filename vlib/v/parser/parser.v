@@ -762,7 +762,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			p.check(.rcbr)
 		}
 		else {
-			p.error('pexpr(): bad token `$p.tok.str()`')
+			p.error('parser: expr(): bad token `$p.tok.str()`')
 		}
 	}
 	// Infix
