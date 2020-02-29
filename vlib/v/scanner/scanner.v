@@ -43,7 +43,7 @@ mut:
 	// string values when generating formatted code.
 }
 // new scanner from file.
-fn new_scanner_file(file_path string) &Scanner {
+pub fn new_scanner_file(file_path string) &Scanner {
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
