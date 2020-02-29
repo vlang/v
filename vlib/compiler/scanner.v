@@ -137,7 +137,7 @@ fn (s mut Scanner) ident_bin_number() string {
 		if !c.is_bin_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
 				break
-			} 
+			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit = c
@@ -166,7 +166,7 @@ fn (s mut Scanner) ident_hex_number() string {
 		if !c.is_hex_digit() && c != num_sep {
 			if !c.is_letter() || s.inside_string {
 				break
-			} 
+			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit = c
@@ -195,7 +195,7 @@ fn (s mut Scanner) ident_oct_number() string {
 		if !c.is_oct_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
 				break
-			} 
+			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit = c

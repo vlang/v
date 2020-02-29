@@ -15,7 +15,7 @@ const (
 
 fn test_fmt() {
 	fmt_message := 'vfmt tests'
-	eprintln(term.header(fmt_message,'-'))
+	eprintln(term.header(fmt_message, '-'))
 	vexe := os.getenv('VEXE')
 	if vexe.len == 0 || !os.exists(vexe) {
 		eprintln('VEXE must be set')
@@ -23,11 +23,13 @@ fn test_fmt() {
 	}
 	vroot := filepath.dir(vexe)
 	tmpfolder := os.tmpdir()
-	diff_cmd := find_working_diff_command() or { '' }
+	diff_cmd := find_working_diff_command() or {
+		''
+	}
 	mut fmt_bench := benchmark.new_benchmark()
 	// Lookup the existing test _input.vv files:
 	input_files := os.walk_ext('$vroot/vlib/v/fmt/tests', '_input.vv')
-	fmt_bench.set_total_expected_steps( input_files.len )
+	fmt_bench.set_total_expected_steps(input_files.len)
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
 		fmt_bench.step()
@@ -39,12 +41,12 @@ fn test_fmt() {
 			continue
 		}
 		expected_ocontent := os.read_file(opath) or {
-			fmt_bench.fail()			
+			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('cannot read from ${opath}'))
 			continue
 		}
 		table := table.new_table()
-		file_ast := parser.parse_file(ipath, table)
+		file_ast := parser.parse_file(ipath, table, .skip_comments)
 		result_ocontent := fmt.fmt(file_ast, table)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()

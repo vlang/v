@@ -195,6 +195,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
+		ast.LineComment {
+			f.writeln('// $it.text')
+		}
 		ast.Return {
 			f.write('return')
 			// multiple returns
@@ -244,6 +247,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 }
 
 fn (f mut Fmt) struct_decl(node ast.StructDecl) {
+	if node.is_pub {
+		f.write('pub ')
+	}
 	f.writeln('struct $node.name {')
 	mut max := 0
 	for field in node.fields {

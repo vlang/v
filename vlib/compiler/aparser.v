@@ -22,9 +22,10 @@ struct Parser {
 	// the #include directives in the parsed .v file
 	file_pcguard           string
 	v                      &V
-	pref                   &pref.Preferences // Preferences shared from V struct
+	pref                   &pref.Preferences
 mut:
 	scanner                &Scanner
+// Preferences shared from V struct
 	tokens                 []Token
 	token_idx              int
 	prev_stuck_token_idx   int
@@ -261,6 +262,7 @@ fn (p mut Parser) next() {
 	// (only when vfmt compile time flag is enabled, otherwise this function
 	// is not even generated)
 	p.fnext()
+	//
 	p.prev_tok2 = p.prev_tok
 	p.prev_tok = p.tok
 	p.scanner.prev_tok = p.tok

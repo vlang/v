@@ -19,7 +19,7 @@ mut:
 	stmts []ast.Stmt // all module statements from all files
 }
 
-type FilterFn fn(node ast.FnDecl) bool
+type FilterFn fn(node ast.FnDecl)bool
 
 pub fn doc(mod string, table &table.Table) string {
 	mut d := Doc{
@@ -45,7 +45,7 @@ pub fn doc(mod string, table &table.Table) string {
 		if file.ends_with('_test.v') || file.ends_with('_windows.v') || file.ends_with('_macos.v') {
 			continue
 		}
-		file_ast := parser.parse_file(filepath.join(path,file), table)
+		file_ast := parser.parse_file(filepath.join(path,file), table, .skip_comments)
 		d.stmts << file_ast.stmts
 	}
 	d.print_fns()
@@ -92,7 +92,7 @@ fn (d Doc) get_fn_signatures(filter_fn FilterFn) []string {
 				}
 			}
 			else {}
-		}
+	}
 	}
 	fn_signatures.sort()
 	return fn_signatures

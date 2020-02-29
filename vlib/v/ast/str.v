@@ -14,6 +14,9 @@ import (
 
 pub fn (node &FnDecl) str(t &table.Table) string {
 	mut f := strings.new_builder(30)
+	if node.is_pub {
+		f.write('pub ')
+	}
 	mut receiver := ''
 	if node.is_method {
 		sym := t.get_type_symbol(node.receiver.typ)

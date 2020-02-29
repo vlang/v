@@ -153,7 +153,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 			eprintln('vfmt2 running fmt.fmt over file: $file')
 		}
 		table := table.new_table()
-		file_ast := parser.parse_file(file, table)
+		file_ast := parser.parse_file(file, table, .parse_comments)
 		formatted_content := fmt.fmt(file_ast, table)
 		file_name := filepath.filename(file)
 		vfmt_output_path := filepath.join(os.tmpdir(), 'vfmt_' + file_name)
@@ -302,7 +302,7 @@ Options:
   -diff display only diffs between the formatted source and the original source.
   -l    list files whose formatting differs from vfmt.
   -w    write result to (source) file(s) instead of to stdout.
-  -2    Use the new V parser/vfmt. NB: this is EXPERIMENTAL for now. 
+  -2    Use the new V parser/vfmt. NB: this is EXPERIMENTAL for now.
           The new vfmt is much faster and more forgiving.
           It also may EAT some of your code for now.
           Please be carefull, and make frequent BACKUPS, when running with -vfmt2 .

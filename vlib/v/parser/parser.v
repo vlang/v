@@ -46,11 +46,12 @@ mut:
 	expected_type table.Type
 	scope         &ast.Scope
 	imports       map[string]string
+	ast_imports   []ast.Import
 }
 
 // for tests
 pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
-	s := scanner.new_scanner(text)
+	s := scanner.new_scanner(text, .skip_comments)
 	mut p := Parser{
 		scanner: s
 		table: table
@@ -64,10 +65,15 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt()
 }
 
-pub fn parse_file(path string, table &table.Table) ast.File {
+pub fn parse_file(path string, table &table.Table, comments_mode scanner.CommentsMode) ast.File {
+	// println('parse_file("$path")')
+	text := os.read_file(path) or {
+		panic(err)
+	}
 	mut stmts := []ast.Stmt
 	mut p := Parser{
-		scanner: scanner.new_scanner_file(path)
+		// scanner: scanner.new_scanner(text, comments_mode)
+		scanner: scanner.new_scanner_file(path, comments_mode)
 		table: table
 		file_name: path
 		pref: &pref.Preferences{}
@@ -75,6 +81,8 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 			start_pos: 0
 			parent: 0
 		}
+		// comments_mode: comments_mode
+		
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -84,10 +92,12 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 	p.mod = module_decl.name
 	p.builtin_mod = p.mod == 'builtin'
 	// imports
+	/*
 	mut imports := []ast.Import
 	for p.tok.kind == .key_import {
 		imports << p.import_stmt()
 	}
+	*/
 	// TODO: import only mode
 	for {
 		// res := s.scan()
@@ -104,7 +114,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 	return ast.File{
 		path: path
 		mod: module_decl
-		imports: imports
+		imports: p.ast_imports
 		stmts: stmts
 		scope: p.scope
 	}
@@ -113,7 +123,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	mut files := []ast.File
 	for path in paths {
-		files << parse_file(path, table)
+		files << parse_file(path, table, .skip_comments)
 	}
 	return files
 }
@@ -164,12 +174,20 @@ pub fn (p mut Parser) parse_block() []ast.Stmt {
 }
 
 fn (p mut Parser) next() {
+	// for {
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()
+	// if !(p.tok.kind in [.line_comment, .mline_comment]) {
+	// break
+	// }
+	// }
 	// println(p.tok.str())
 }
 
 fn (p mut Parser) check(expected token.Kind) {
+	// for p.tok.kind in [.line_comment, .mline_comment] {
+	// p.next()
+	// }
 	if p.tok.kind != expected {
 		s := 'syntax error: unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`'
 		p.error(s)
@@ -211,6 +229,14 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		.lsbr {
 			return p.attr()
 		}
+		.key_module {
+			return p.module_decl()
+		}
+		.key_import {
+			node := p.import_stmt()
+			p.ast_imports << node
+			return node[0]
+		}
 		.key_global {
 			return p.global_decl()
 		}
@@ -239,10 +265,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 			return p.struct_decl()
 		}
 		.line_comment {
-			// p.next()
-			return ast.LineComment{
-				text: p.scanner.line_comment
-			}
+			return p.line_comment()
 		}
 		.mline_comment {
 			// p.next()
@@ -255,6 +278,14 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 			p.error('parser: bad top level statement ' + p.tok.str())
 			return ast.Stmt{}
 		}
+	}
+}
+
+pub fn (p mut Parser) line_comment() ast.LineComment {
+	text := p.tok.lit
+	p.next()
+	return ast.LineComment{
+		text: text
 	}
 }
 
@@ -272,6 +303,9 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		}
 		.key_for {
 			return p.for_statement()
+		}
+		.line_comment {
+			return p.line_comment()
 		}
 		.key_return {
 			return p.return_stmt()
@@ -553,7 +587,8 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	if p.peek_tok.kind == .dot && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') == p.tok.lit) {
 		if is_c {
 			mod = 'C'
-		} else {
+		}
+		else {
 			// prepend the full import
 			mod = p.imports[p.tok.lit]
 		}
@@ -1472,7 +1507,8 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	p.check(.rcbr)
 	if is_c {
 		name = 'C.$name'
-	} else {
+	}
+	else {
 		name = p.prepend_mod(name)
 	}
 	t := table.TypeSymbol{
