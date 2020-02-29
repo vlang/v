@@ -402,7 +402,10 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.expr(it.right)
 		}
 		ast.IndexExpr {
-			f.index_expr(it)
+			f.expr(it.left)
+			f.write('[')
+			f.expr(it.index)
+			f.write(']')
 		}
 		ast.IntegerLiteral {
 			f.write(it.val.str())
@@ -471,6 +474,11 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(it.op.str())
 			f.expr(it.right)
 		}
+		ast.RangeExpr {
+			f.expr(it.low)
+			f.write('..')
+			f.expr(it.high)
+		}
 		ast.SelectorExpr {
 			f.expr(it.expr)
 			f.write('.')
@@ -510,27 +518,5 @@ fn (f mut Fmt) wrap_long_line() {
 	if f.line_len > max_len {
 		f.write('\n' + tabs[f.indent + 1])
 		f.line_len = 0
-	}
-}
-
-fn (f mut Fmt) index_expr(node ast.IndexExpr) {
-	mut is_range := false
-	match node.index {
-		ast.RangeExpr {
-			is_range = true
-			f.expr(node.left)
-			f.write('[')
-			f.expr(it.low)
-			f.write('..')
-			f.expr(it.high)
-			f.write(']')
-		}
-		else {}
-	}
-	if !is_range {
-		f.expr(node.left)
-		f.write('[')
-		f.expr(node.index)
-		f.write(']')
 	}
 }

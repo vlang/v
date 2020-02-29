@@ -56,8 +56,14 @@ fn new_user() User {
 }
 
 [inline]
-fn fn_contains_range_expr() {
-	a := 1 in arr[0..2]
+fn fn_contains_index_expr() {
+	a := 1 in arr[0..]
+	b := 1 in arr[..2]
+	c := 1 in arr[1..3]
+	d := arr[2]
+	e := arr[2..]
+	f := arr[..2]
+	g := arr[1..3]
 }
 
 fn voidfn() {
