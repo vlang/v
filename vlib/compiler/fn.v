@@ -1120,7 +1120,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 				if !f.is_method {
 					concrete_type_name := typ.replace('*', '_ptr')
 					p.cgen.set_placeholder(ph, '($arg.typ) { ._object = &')
-					p.gen(', /*OLD*/ ._interface_idx = _${arg.typ}_${concrete_type_name}_index} /* i. arg*/')
+					p.gen(', ._interface_idx = _${arg.typ}_${concrete_type_name}_index} ')
 				}
 				p.table.add_gen_type(arg.typ, typ)
 			}
