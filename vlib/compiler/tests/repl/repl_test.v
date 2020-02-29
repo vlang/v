@@ -8,7 +8,7 @@ import sync
 import filepath
 
 fn test_the_v_compiler_can_be_invoked() {
-	vexec := runner.full_path_to_v(5)	
+	vexec := runner.full_path_to_v(5)
 	println('vexecutable: $vexec')
 	assert vexec != ''
 	vcmd := '"$vexec" --version'
@@ -73,30 +73,30 @@ fn process_in_thread( session mut Session, thread_id int ){
 		session.ntask++
 		idx := session.ntask-1
 		session.ntask_mtx.unlock()
-		
+
 		if idx >= session.options.files.len { break }
 		tls_bench.cstep = idx
 
 		tfolder := filepath.join( cdir, 'vrepl_tests_$idx')
 		if os.is_dir( tfolder ) {
-			os.rmdir_recursive( tfolder )
+			os.rmdir_r( tfolder )
 		}
 		os.mkdir( tfolder ) or { panic(err) }
-		
-		file := session.options.files[ idx ] 
+
+		file := session.options.files[ idx ]
 		session.bmark.step()
 		tls_bench.step()
 		fres := runner.run_repl_file(tfolder, session.options.vexec, file) or {
 			session.bmark.fail()
 			tls_bench.fail()
-			os.rmdir_recursive( tfolder )
+			os.rmdir_r( tfolder )
 			eprintln(tls_bench.step_message_fail(err))
 			assert false
 			continue
 		}
 		session.bmark.ok()
 		tls_bench.ok()
-		os.rmdir_recursive( tfolder )
+		os.rmdir_r( tfolder )
 		println(tls_bench.step_message_ok(fres))
 		assert true
 	}
