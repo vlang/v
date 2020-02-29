@@ -17,11 +17,12 @@ pub fn (p mut Preferences) fill_with_defaults() {
 		// Location of all vlib files
 		p.vroot = filepath.dir(vexe_path())
 	}
-	if p.vlib_path == '' {
-		p.vlib_path = filepath.join(p.vroot,'vlib')
+	vlib_path := filepath.join(p.vroot, 'vlib')
+	if p.lookup_path.len == 0 {
+		p.lookup_path = ['@vlib', '@vmodules']
 	}
-	if p.vpath == '' {
-		p.vpath = default_module_path
+	for i, path in p.lookup_path {
+		p.lookup_path[i] = path.replace('@vlib', vlib_path).replace('@vmodules', default_module_path)
 	}
 	if p.out_name == ''{
 		rpath := os.realpath(p.path)

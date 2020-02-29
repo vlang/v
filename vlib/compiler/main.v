@@ -687,6 +687,8 @@ pub fn (v mut V) add_v_files_to_compile() {
 			continue
 		}
 		// use cached built module if exists
+		// Cached modules are broken currently
+		/*
 		if v.pref.vpath != '' && v.pref.build_mode != .build_module && !mod.contains('vweb') {
 			mod_path := mod.replace('.', filepath.separator)
 			vh_path := '$v_modules_path${filepath.separator}vlib${filepath.separator}${mod_path}.vh'
@@ -697,6 +699,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 				continue
 			}
 		}
+		*/
 		// standard module
 		vfiles := v.get_imported_module_files(mod)
 		for file in vfiles {
@@ -716,14 +719,24 @@ pub fn (v mut V) add_v_files_to_compile() {
 }
 
 pub fn (v &V) get_builtin_files() []string {
-	// .vh cache exists? Use it
-	if v.pref.is_bare {
-		return v.v_files_from_dir(filepath.join(v.pref.vlib_path,'builtin','bare'))
+	// Lookup for built-in folder in lookup path.
+	// Assumption: `builtin/` folder implies usable implementation of builtin
+	for location in v.pref.lookup_path {
+		if !os.exists(filepath.join(location, 'builtin')) {
+			continue
+		}
+		if v.pref.is_bare {
+			return v.v_files_from_dir(filepath.join(location, 'builtin', 'bare'))
+		}
+		$if js {
+			return v.v_files_from_dir(filepath.join(location, 'builtin','js'))
+		}
+		return v.v_files_from_dir(filepath.join(location, 'builtin'))
 	}
-	$if js {
-		return v.v_files_from_dir(filepath.join(v.pref.vlib_path,'builtin','js'))
-	}
-	return v.v_files_from_dir(filepath.join(v.pref.vlib_path,'builtin'))
+	// Panic. We couldn't find the folder.
+	verror('`builtin/` not included on module lookup path.
+Did you forget to add vlib to the path? (Use @vlib for default vlib)')
+	panic('Unreachable code reached.')
 }
 
 // get user files

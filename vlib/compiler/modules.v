@@ -154,7 +154,6 @@ fn (v &V) module_path(mod string) string {
 // 'installed_mod' => '~/.vmodules/installed_mod'
 // 'local_mod' => '/path/to/current/dir/local_mod'
 fn (v mut V) set_module_lookup_paths() {
-	mlookup_path := if v.pref.vpath.len > 0 { v.pref.vpath } else { v_modules_path }
 	// Module search order:
 	// 0) V test files are very commonly located right inside the folder of the
 	// module, which they test. Adding the parent folder of the module folder
@@ -163,20 +162,17 @@ fn (v mut V) set_module_lookup_paths() {
 	// 1) search in the *same* directory, as the compiled final v program source
 	// (i.e. the . in `v .` or file.v in `v file.v`)
 	// 2) search in the modules/ in the same directory.
-	// 3) search in vlib/
-	// 4.1) search in -vpath (if given)
-	// 4.2) search in ~/.vmodules/ (i.e. modules installed with vpm) (no -vpath)
+	// 3) search in the provided paths
+	// By default, these are what (3) contains:
+	// 3.1) search in vlib/
+	// 3.2) search in ~/.vmodules/ (i.e. modules installed with vpm)
 	v.module_lookup_paths = []
 	if v.pref.is_test {
 		v.module_lookup_paths << filepath.basedir(v.compiled_dir) // pdir of _test.v
 	}
 	v.module_lookup_paths << v.compiled_dir
 	v.module_lookup_paths << filepath.join(v.compiled_dir,'modules')
-	v.module_lookup_paths << v.pref.vlib_path
-	v.module_lookup_paths << mlookup_path
-	if v.pref.user_mod_path.len > 0 {
-		v.module_lookup_paths << v.pref.user_mod_path
-	}
+	v.module_lookup_paths << v.pref.lookup_path
 	if v.pref.is_verbose {
 		v.log('v.module_lookup_paths: $v.module_lookup_paths')
 	}

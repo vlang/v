@@ -75,9 +75,7 @@ pub mut:
 	enable_globals      bool // allow __global for low level code
 	// is_fmt bool
 	is_bare             bool
-	user_mod_path       string // `v -user_mod_path /Users/user/modules` adds a new lookup path for imported modules
-	vlib_path           string
-	vpath               string
+	lookup_path         []string
 	output_cross_c      bool
 	prealloc            bool
 	vroot               string
