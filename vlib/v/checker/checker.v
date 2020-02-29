@@ -271,6 +271,7 @@ pub fn (c mut Checker) return_stmt(return_stmt ast.Return) {
 	}
 	expected_type := return_stmt.expected_type
 	expected_type_sym := c.table.get_type_symbol(expected_type)
+	exp_is_optional := table.type_is_optional(expected_type)
 	mut expected_types := [expected_type]
 	if expected_type_sym.kind == .multi_return {
 		mr_info := expected_type_sym.info as table.MultiReturn
@@ -284,6 +285,9 @@ pub fn (c mut Checker) return_stmt(return_stmt ast.Return) {
 		if !c.table.check(got_typ, exp_typ) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			exp_typ_sym := c.table.get_type_symbol(exp_typ)
+			if got_typ_sym.name == 'Option' && exp_is_optional {
+				continue
+			}
 			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument', return_stmt.pos)
 		}
 	}
