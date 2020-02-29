@@ -619,13 +619,13 @@ pub fn rmdir(path string) {
 	}
 }
 
-pub fn rmdir_r(path string) {
+pub fn rmdir_all(path string) {
 	items := os.ls(path) or {
 		return
 	}
 	for item in items {
 		if os.is_dir(filepath.join(path,item)) {
-			rmdir_r(filepath.join(path,item))
+			rmdir_all(filepath.join(path,item))
 		}
 		os.rm(filepath.join(path,item))
 	}

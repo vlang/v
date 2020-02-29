@@ -303,8 +303,8 @@ fn cleanup_leftovers() {
 	os.rm('cp_new_example.txt')
 
 	// possible leftovers from test_cp_r
-	os.rmdir_r('ex')
-	os.rmdir_r('ex2')
+	os.rmdir_all('ex')
+	os.rmdir_all('ex2')
 	os.rm('ex1.txt')
 	os.rm('ex2.txt')
 }
