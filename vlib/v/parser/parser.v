@@ -67,9 +67,9 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 
 pub fn parse_file(path string, table &table.Table, comments_mode scanner.CommentsMode) ast.File {
 	// println('parse_file("$path")')
-	text := os.read_file(path) or {
-		panic(err)
-	}
+	// text := os.read_file(path) or {
+	// panic(err)
+	// }
 	mut stmts := []ast.Stmt
 	mut p := Parser{
 		// scanner: scanner.new_scanner(text, comments_mode)
