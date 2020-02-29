@@ -176,10 +176,11 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		}
 	}
 	mut p := v.new_parser(new_scanner_file(path))
+	path_dir := os.realpath(filepath.dir(path))
 	p = {
 		p |
 		file_path:path,
-		file_path_dir:filepath.dir(path),
+		file_path_dir: path_dir,
 		file_name:path.all_after(filepath.separator),
 		file_platform:path_platform,
 		file_pcguard:path_pcguard,

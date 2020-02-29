@@ -36,6 +36,7 @@ enum Pass {
 
 pub struct V {
 pub mut:
+	mod_file_cacher     &ModFileCacher // used during lookup for v.mod to support @VMODULE
 	out_name_c          string // name of the temporary C file
 	files               []string // all V files that need to be parsed and compiled
 	compiled_dir        string // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
@@ -68,6 +69,7 @@ pub fn new_v(pref &pref.Preferences) &V {
 	compiled_dir:=if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
 
 	return &V{
+		mod_file_cacher: new_mod_file_cacher()
 		compiled_dir:compiled_dir// if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
 		table: new_table(pref.obfuscate)
 		out_name_c: out_name_c
@@ -815,8 +817,8 @@ pub fn (v mut V) parse_lib_imports() {
 			if mod in done_imports {
 				continue
 			}
-			import_path := v.find_module_path(mod) or {
-				v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
+			import_path := v.parsers[i].find_module_path(mod) or {
+				v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)\n$err', v.parsers[i].import_table.get_import_tok_idx(mod))
 				break
 			}
 			vfiles := v.v_files_from_dir(import_path)
