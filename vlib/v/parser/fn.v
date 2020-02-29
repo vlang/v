@@ -205,7 +205,10 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 				p.check(.ellipsis)
 				is_variadic = true
 			}
-			arg_type := p.parse_type()
+			mut arg_type := p.parse_type()
+			if is_variadic {
+				arg_type = table.type_to_variadic(arg_type)
+			}
 			if p.tok.kind == .comma {
 				if is_variadic {
 					p.error('cannot use ...(variadic) with non-final parameter no $arg_no')
@@ -234,7 +237,10 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 				p.check(.ellipsis)
 				is_variadic = true
 			}
-			typ := p.parse_type()
+			mut typ := p.parse_type()
+			if is_variadic {
+				typ = table.type_to_variadic(typ)
+			}
 			for arg_name in arg_names {
 				args << ast.Arg{
 					name: arg_name

@@ -239,6 +239,12 @@ pub fn (c mut Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type 
 	if field := typ_sym.find_field(field_name) {
 		return field.typ
 	}
+	// variadic
+	if table.type_is_variadic(typ) {
+		if field_name == 'len' {
+			return table.int_type
+		}
+	}
 	// check parent
 	if typ_sym.parent_idx != 0 {
 		parent := &c.table.types[typ_sym.parent_idx]

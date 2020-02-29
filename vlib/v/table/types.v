@@ -5,6 +5,7 @@ pub type Type int
 pub enum TypeExtra {
 	unset
 	optional
+	variadic
 }
 
 // return underlying TypeSymbol idx
@@ -74,6 +75,16 @@ pub fn type_is_optional(t Type) bool {
 [inline]
 pub fn type_to_optional(t Type) Type {
 	return type_set_extra(t, .optional)
+}
+
+[inline]
+pub fn type_is_variadic(t Type) bool {
+	return type_extra(t) == .variadic
+}
+
+[inline]
+pub fn type_to_variadic(t Type) Type {
+	return type_set_extra(t, .variadic)
 }
 
 // new type with idx of TypeSymbol, not pointer (nr_muls=0)
