@@ -1,6 +1,6 @@
 module szip
 
-#flag -I @VMODULE/thirdparty/zip
+#flag -I @VROOT/thirdparty/zip
 
 #include "zip.c"
 #include "zip.h"

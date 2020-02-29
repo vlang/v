@@ -8,8 +8,8 @@ module glfw
 // see TmpGlImportHack below (joe-c)
 import gl
 
-#flag -I @VMODULE/thirdparty/glfw
-#flag -L @VMODULE/thirdparty/glfw
+#flag -I @VROOT/thirdparty/glfw
+#flag -L @VROOT/thirdparty/glfw
 
 // Debugging a custom build
 //-#flag darwin -L/var/tmp/glfw/src/

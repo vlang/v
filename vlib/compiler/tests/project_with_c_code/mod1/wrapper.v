@@ -1,7 +1,7 @@
 module mod1
 
-#flag -I @VMODULE/c
-#flag @VMODULE/c/implementation.o
+#flag -I @VROOT/c
+#flag @VROOT/c/implementation.o
 
 #include "header.h"
 

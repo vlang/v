@@ -1275,14 +1275,14 @@ NB: For now you have to use one flag per line:
 You can also add C code, in your V module. For example, lets say that your C code is located in a folder named 'c' inside your module folder. Then:
 
 ```v
-#flag -I @VMODULE/c
-#flag @VMODULE/c/implementation.o
+#flag -I @VROOT/c
+#flag @VROOT/c/implementation.o
 #include "header.h"
 ```
 
 ... will make V look for an compiled .o file in your module folder/c/implementation.o .
 If V finds it, the .o file will get linked to the main executable, that used the module.
-If it does not find it, V assumes that there is a `@VMODULE/c/implementation.c` file,
+If it does not find it, V assumes that there is a `@VROOT/c/implementation.c` file,
 and tries to compile it to a .o file, then will use that.
 This allows you to have C code, that is contained in a V module, so that its distribution is easier.
 You can see a complete example for using C code in a V wrapper module here:

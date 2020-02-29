@@ -242,17 +242,17 @@ fn (p mut Parser) chash() {
 	if hash.starts_with('flag ') {
 		if p.first_pass() {
 			mut flag := hash[5..]
-			// expand `@VMODULE` to its absolute path
-			if flag.contains('@VMODULE') {
+			// expand `@VROOT` to its absolute path
+			if flag.contains('@VROOT') {
 				vmod_file_location := p.v.mod_file_cacher.get( p.file_path_dir )
 				if vmod_file_location.vmod_file.len == 0 {
 					// There was no actual v.mod file found.
-					p.error_with_token_index('To use @VMODULE, you need' +
+					p.error_with_token_index('To use @VROOT, you need' +
 						' to have a "v.mod" file in ${p.file_path_dir},' +
 						' or in one of its parent folders.',
 						p.cur_tok_index() - 1)
 				}
-				flag = flag.replace('@VMODULE', vmod_file_location.vmod_folder )
+				flag = flag.replace('@VROOT', vmod_file_location.vmod_folder )
 			}
 			// p.log('adding flag "$flag"')
 			_ = p.table.parse_cflag(flag, p.mod, p.v.pref.compile_defines_all ) or {

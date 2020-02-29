@@ -7,9 +7,9 @@ module stbi
 // note we might need special case for this
 // import gl
 
-#flag -I @VMODULE/thirdparty/stb_image
+#flag -I @VROOT/thirdparty/stb_image
 #include "stb_image.h"
-#flag @VMODULE/thirdparty/stb_image/stbi.o
+#flag @VROOT/thirdparty/stb_image/stbi.o
 
 pub struct Image {
 mut:

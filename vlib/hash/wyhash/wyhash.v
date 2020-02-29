@@ -15,7 +15,7 @@
 // try running with and without the `-prod` flag
 module wyhash
 
-//#flag -I @VMODULE/thirdparty/wyhash
+//#flag -I @VROOT/thirdparty/wyhash
 //#include "wyhash.h"
 fn C.wyhash(byteptr, u64, u64) u64
 

@@ -3,8 +3,8 @@
 // that can be found in the LICENSE file.
 module json
 
-#flag -I @VMODULE/thirdparty/cJSON
-#flag @VMODULE/thirdparty/cJSON/cJSON.o
+#flag -I @VROOT/thirdparty/cJSON
+#flag @VROOT/thirdparty/cJSON/cJSON.o
 #include "cJSON.h"
 struct C.cJSON {
 	valueint    int

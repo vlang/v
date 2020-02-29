@@ -36,7 +36,7 @@ enum Pass {
 
 pub struct V {
 pub mut:
-	mod_file_cacher     &ModFileCacher // used during lookup for v.mod to support @VMODULE
+	mod_file_cacher     &ModFileCacher // used during lookup for v.mod to support @VROOT
 	out_name_c          string // name of the temporary C file
 	files               []string // all V files that need to be parsed and compiled
 	compiled_dir        string // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`

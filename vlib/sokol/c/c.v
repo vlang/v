@@ -4,8 +4,8 @@ pub const (
   used_import = 1
 )
 
-#flag -I @VMODULE/thirdparty/sokol
-#flag -I @VMODULE/thirdparty/sokol/util
+#flag -I @VROOT/thirdparty/sokol
+#flag -I @VROOT/thirdparty/sokol/util
 
 #flag darwin -fobjc-arc
 #flag linux -lX11 -lGL
