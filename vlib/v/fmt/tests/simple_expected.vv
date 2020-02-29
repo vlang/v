@@ -22,6 +22,16 @@ pub const (
 	i_am_pub_const = true
 )
 
+pub enum PubEnum {
+	foo
+	bar
+}
+
+enum PrivateEnum {
+	foo
+	bar
+}
+
 struct User {
 	name            string
 	age             int
