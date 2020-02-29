@@ -12,9 +12,9 @@ import picohttpparser
 #include <fcntl.h>
 #include <signal.h>
 
-#flag -I @VMODULE/../thirdparty/picoev
-#flag -L @VMODULE/../thirdparty/picoev
-#flag @VMODULE/../thirdparty/picoev/picoev.o
+#flag -I @VMODULE/thirdparty/picoev
+#flag -L @VMODULE/thirdparty/picoev
+#flag @VMODULE/thirdparty/picoev/picoev.o
 
 #include "src/picoev.h"
 

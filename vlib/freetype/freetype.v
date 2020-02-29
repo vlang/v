@@ -13,8 +13,8 @@ import (
 	filepath
 )
 
-#flag windows -I @VMODULE/../thirdparty/freetype/include
-#flag windows -L @VMODULE/../thirdparty/freetype/win64
+#flag windows -I @VMODULE/thirdparty/freetype/include
+#flag windows -L @VMODULE/thirdparty/freetype/win64
 
 #flag darwin -I/usr/local/include/freetype2
 // MacPorts
@@ -24,9 +24,9 @@ import (
 #flag freebsd -Wl -L/usr/local/lib
 #flag -lfreetype
 
-//#flag -I @VMODULE/../thirdparty/freetype
+//#flag -I @VMODULE/thirdparty/freetype
 
-//#flag @VMODULE/../thirdparty/freetype/libfreetype.a
+//#flag @VMODULE/thirdparty/freetype/libfreetype.a
 #flag darwin -lpng -lbz2 -lz
 
 

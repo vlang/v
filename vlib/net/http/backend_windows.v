@@ -4,7 +4,7 @@
 
 module http
 
-#flag windows -I @VMODULE/../thirdparty/vschannel
+#flag windows -I @VMODULE/thirdparty/vschannel
 #flag -l ws2_32 -l crypt32 -l secur32
  
 #include "vschannel.c"
