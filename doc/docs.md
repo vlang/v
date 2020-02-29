@@ -1274,16 +1274,31 @@ NB: For now you have to use one flag per line:
 
 You can also add C code, in your V module. For example, lets say that your C code is located in a folder named 'c' inside your module folder. Then:
 
+* Put a v.mod file inside the toplevel folder of your module (if you
+created your module with `v create` you already have v.mod file). For
+example:
 ```v
-#flag -I @VMODULE/c
-#flag @VMODULE/c/implementation.o
-#include "header.h"
+Module {
+	name: 'mymodule',
+	description: 'My nice module wraps a simple C library.',
+	version: '0.0.1'
+	dependencies: []
+}
 ```
 
-... will make V look for an compiled .o file in your module folder/c/implementation.o .
+* Add these lines to the top of your module:
+```v
+#flag -I @VROOT/c
+#flag @VROOT/c/implementation.o
+#include "header.h"
+```
+NB: @VROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
+
+The instructions above will make V look for an compiled .o file in your module folder/c/implementation.o .
 If V finds it, the .o file will get linked to the main executable, that used the module.
-If it does not find it, V assumes that there is a `@VMODULE/c/implementation.c` file,
+If it does not find it, V assumes that there is a `@VROOT/c/implementation.c` file,
 and tries to compile it to a .o file, then will use that.
+
 This allows you to have C code, that is contained in a V module, so that its distribution is easier.
 You can see a complete example for using C code in a V wrapper module here:
 [minimal V project, that has a module, which contains C code](https://github.com/vlang/v/tree/master/vlib/compiler/tests/project_with_c_code)

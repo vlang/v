@@ -21,7 +21,7 @@ fn (p mut Parser) comp_time() {
 		}
 		name := p.check_name()
 		p.fspace()
-    
+
 		if name in supported_platforms {
 			os := os_from_string(name)
 			ifdef_name := os_name_to_ifdef(name)
@@ -127,13 +127,13 @@ fn (p mut Parser) comp_time() {
 			//
 			// The ? sign, means that `custom` is optional, and when
 			// it is not present at all at the command line, then the
-			// block will just be ignored, instead of erroring.			
+			// block will just be ignored, instead of erroring.
 			if p.tok == .question {
 				p.next()
 			}
 			p.comptime_if_block('CUSTOM_DEFINE_${name}', not)
-		} else {			
-			if p.tok == .question {				
+		} else {
+			if p.tok == .question {
 				p.next()
 				p.comptime_if_block('CUSTOM_DEFINE_${name}', not)
 			}else{
@@ -242,12 +242,18 @@ fn (p mut Parser) chash() {
 	if hash.starts_with('flag ') {
 		if p.first_pass() {
 			mut flag := hash[5..]
-			// expand `@VROOT` `@VMOD` to absolute path
-			flag = flag.replace('@VMODULE', p.file_path_dir)
-			flag = flag.replace('@VROOT', p.vroot)
-			flag = flag.replace('@VPATH', p.pref.vpath)
-			flag = flag.replace('@VLIB_PATH', p.pref.vlib_path)
-			flag = flag.replace('@VMOD', v_modules_path)
+			// expand `@VROOT` to its absolute path
+			if flag.contains('@VROOT') {
+				vmod_file_location := p.v.mod_file_cacher.get( p.file_path_dir )
+				if vmod_file_location.vmod_file.len == 0 {
+					// There was no actual v.mod file found.
+					p.error_with_token_index('To use @VROOT, you need' +
+						' to have a "v.mod" file in ${p.file_path_dir},' +
+						' or in one of its parent folders.',
+						p.cur_tok_index() - 1)
+				}
+				flag = flag.replace('@VROOT', vmod_file_location.vmod_folder )
+			}
 			// p.log('adding flag "$flag"')
 			_ = p.table.parse_cflag(flag, p.mod, p.v.pref.compile_defines_all ) or {
 				p.error_with_token_index(err, p.cur_tok_index() - 1)
@@ -561,4 +567,3 @@ pub fn (e &$typ.name) has(flag $typ.name) bool { return int(*e)&(1 << int(flag))
 	p.cgen.fns << 'void ${typ.name}_toggle($typ.name *e, $typ.name flag);'
 	p.cgen.fns << 'bool ${typ.name}_has($typ.name *e, $typ.name flag);'
 }
-

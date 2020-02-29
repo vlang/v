@@ -182,21 +182,21 @@ fn (v mut V) set_module_lookup_paths() {
 	}
 }
 
-fn (v &V) find_module_path(mod string) ?string {
-	mod_path := v.module_path(mod)
-	for lookup_path in v.module_lookup_paths {
+fn (p &Parser) find_module_path(mod string) ?string {
+	mod_path := p.v.module_path(mod)
+	for lookup_path in p.v.module_lookup_paths {
 		try_path := filepath.join(lookup_path,mod_path)
-		if v.pref.is_verbose {
+		if p.v.pref.is_verbose {
 			println('  >> trying to find $mod in $try_path ...')
 		}
 		if os.is_dir(try_path) {
-			if v.pref.is_verbose {
+			if p.v.pref.is_verbose {
 				println('  << found $try_path .')
 			}
 			return try_path
 		}
 	}
-	return error('module "$mod" not found')
+	return error('module "$mod" not found in ${p.v.module_lookup_paths}')
 }
 
 [inline]
