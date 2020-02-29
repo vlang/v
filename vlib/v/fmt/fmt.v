@@ -324,16 +324,24 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.CallExpr {
 			f.write('${it.name}(')
-			for i, expr in it.args {
+			for i, arg in it.args {
 				if it.muts[i] {
 					f.write('mut ')
 				}
-				f.expr(expr)
-				if i != it.args.len - 1 {
+				if i > 0 {
+					f.wrap_long_line()
+				}
+				f.expr(arg)
+				if i < it.args.len - 1 {
 					f.write(', ')
 				}
 			}
 			f.write(')')
+			if it.or_block.stmts.len > 0 {
+				f.writeln(' or {')
+				f.stmts(it.or_block.stmts)
+				f.write('}')
+			}
 		}
 		ast.CharLiteral {
 			f.write('`$it.val`')

@@ -138,3 +138,17 @@ fn fn_with_multi_return() (int,string) {
 fn unsafe_fn() {
 unsafe { malloc(2) }
 }
+
+fn fn_with_or() int {
+	fn_with_optional() or {
+		return 10
+	}
+	return 20
+}
+
+fn (f Foo) method_with_or() int {
+	f.fn_with_optional() or {
+		return 10
+	}
+	return 20
+}
