@@ -555,7 +555,9 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		return node
 	}
 	if p.peek_tok.kind == .dot && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') == p.tok.lit) {
-		if !is_c {
+		if is_c {
+			mod = 'C'
+		} else {
 			// prepend the full import
 			mod = p.imports[p.tok.lit]
 		}
@@ -566,10 +568,13 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
 	if p.peek_tok.kind == .lpar {
-		name := p.tok.lit
+		mut name := p.tok.lit
+		if mod.len > 0 {
+			name = '${mod}.$name'
+		}
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if name in p.table.type_idxs && !(name in ['stat', 'sigaction']) {
+		if name in p.table.type_idxs && !(name in ['C.stat', 'C.sigaction']) {
 			// TODO handle C.stat()
 			to_typ := p.parse_type()
 			p.check(.lpar)
@@ -1426,7 +1431,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		p.next() // C
 		p.next() // .
 	}
-	name := p.check_name()
+	mut name := p.check_name()
 	p.check(.lcbr)
 	mut ast_fields := []ast.Field
 	mut fields := []table.Field
@@ -1469,9 +1474,14 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		// println('struct field $ti.name $field_name')
 	}
 	p.check(.rcbr)
+	if is_c {
+		name = 'C.$name'
+	} else {
+		name = p.prepend_mod(name)
+	}
 	t := table.TypeSymbol{
 		kind: .struct_
-		name: p.prepend_mod(name)
+		name: name
 		info: table.Struct{
 			fields: fields
 		}

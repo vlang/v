@@ -11,11 +11,7 @@ import (
 pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	tok := p.tok
 	name := p.check_name()
-	// these fns are are not defined as C functions, but are v fns and have no C prefix
-	// but for some reason are called with the C pefix. for now add exception until fixed
-	v_fns_called_with_c_prefix := ['exit', 'calloc', 'free']
-	fn_name := if is_c && !(name in v_fns_called_with_c_prefix) {'C.$name' }
-		else if mod.len > 0 { '${mod}.$name' } else { name }
+	fn_name := if is_c {'C.$name' } else if mod.len > 0 { '${mod}.$name' } else { name }
 	p.check(.lpar)
 	args, muts := p.call_args()
 	node := ast.CallExpr{

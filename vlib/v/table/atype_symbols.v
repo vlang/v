@@ -90,6 +90,18 @@ pub enum Kind {
 }
 
 [inline]
+pub fn (t &TypeSymbol) enum_info() Enum {
+	match t.info {
+		Enum {
+			return it
+		}
+		else {
+			panic('TypeSymbol.enum_info(): no enum info')
+		}
+	}
+}
+
+[inline]
 pub fn (t &TypeSymbol) mr_info() MultiReturn {
 	match t.info {
 		MultiReturn {

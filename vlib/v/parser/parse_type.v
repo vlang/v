@@ -90,11 +90,12 @@ pub fn (p mut Parser) parse_type() table.Type {
 		p.check(.amp)
 		nr_muls++
 	}
-	if p.tok.lit == 'C' {
+	is_c := p.tok.lit == 'C'
+	if is_c {
 		p.next()
 		p.check(.dot)
 	}
-	mut typ := p.parse_any_type(nr_muls > 0)
+	mut typ := p.parse_any_type(is_c, nr_muls > 0)
 	if is_optional {
 		typ = table.type_to_optional(typ)
 	}
@@ -104,10 +105,13 @@ pub fn (p mut Parser) parse_type() table.Type {
 	return typ
 }
 
-pub fn (p mut Parser) parse_any_type(is_ptr bool) table.Type {
+pub fn (p mut Parser) parse_any_type(is_c, is_ptr bool) table.Type {
 	mut name := p.tok.lit
+	if is_c {
+		name = 'C.$name'
+	}
 	// `module.Type`
-	if p.peek_tok.kind == .dot {
+	else if p.peek_tok.kind == .dot {
 		// /if !(p.tok.lit in p.table.imports) {
 		if !p.known_import(name) {
 			println(p.table.imports)
@@ -211,7 +215,7 @@ pub fn (p mut Parser) parse_any_type(is_ptr bool) table.Type {
 					// println('NOT FOUND: $name - adding placeholder - $idx')
 					return table.new_type(idx)
 				}
-	}
+			}
 		}
 	}
 }

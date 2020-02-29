@@ -164,6 +164,17 @@ fn (c mut Checker) check_assign_expr(assign_expr ast.AssignExpr) {
 pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	fn_name := call_expr.name
 	mut found := false
+	// start hack: until v1 is fixed and c definitions are added for these
+	if fn_name == 'C.calloc' {
+		return table.byteptr_type
+	}
+	else if fn_name == 'C.exit' {
+		return table.void_type
+	}
+	else if fn_name == 'C.free' {
+		return table.void_type
+	}
+	// end hack
 	// look for function in format `mod.fn` or `fn` (main/builtin)
 	mut f := table.Fn{}
 	if f1 := c.table.find_fn(fn_name) {
@@ -722,7 +733,9 @@ pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
 	typ_idx := if node.enum_name == '' { c.expected_type } else { //
 	c.table.find_type_idx(node.enum_name) }
 	typ := c.table.get_type_symbol(table.Type(typ_idx))
-	info := typ.info as table.Enum
+	
+	//info := typ.info as table.Enum
+	info := typ.enum_info()
 	// rintln('checker: x = $info.x enum val $c.expected_type $typ.name')
 	// println(info.vals)
 	if !(node.val in info.vals) {
