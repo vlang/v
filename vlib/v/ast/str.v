@@ -25,12 +25,11 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 	f.write('fn ${receiver}${name}(')
 	for i, arg in node.args {
 		is_last_arg := i == node.args.len - 1
-		is_variadic_last_arg := node.is_variadic && is_last_arg
 		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ ||
 									(node.is_variadic && i == node.args.len - 2)
 		f.write(arg.name)
 		if should_add_type {
-			if is_variadic_last_arg {
+			if node.is_variadic && is_last_arg {
 				f.write(' ...' + t.type_to_str(arg.typ))
 			}
 			else {
