@@ -16,12 +16,13 @@ const (
 )
 
 pub struct Checker {
-	table         &table.Table
+	table          &table.Table
 mut:
-	file          ast.File
-	nr_errors     int
-	errors        []string
-	expected_type table.Type
+	file           ast.File
+	nr_errors      int
+	errors         []string
+	expected_type  table.Type
+	fn_return_type table.Type // current function's return type
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -108,6 +109,7 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 				if !found_field {
 					c.error('struct init: no such field `$field_name` for struct `$typ_sym.name`', struct_init.pos)
 				}
+				c.expected_type = field.typ
 				expr_type := c.expr(expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
 				field_type_sym := c.table.get_type_symbol(field.typ)
@@ -124,6 +126,7 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 pub fn (c mut Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
 	// println('checker: infix expr(op $infix_expr.op.str())')
 	left_type := c.expr(infix_expr.left)
+	c.expected_type = left_type
 	right_type := c.expr(infix_expr.right)
 	if !c.table.check(right_type, left_type) {
 		left := c.table.get_type_symbol(left_type)
@@ -279,6 +282,7 @@ pub fn (c mut Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type 
 // TODO: non deferred
 pub fn (c mut Checker) return_stmt(return_stmt ast.Return) {
 	mut got_types := []table.Type
+	c.expected_type = c.fn_return_type
 	if return_stmt.exprs.len == 0 {
 		return
 	}
@@ -367,6 +371,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 	// c.expected_type = table.void_type
 	match mut node {
 		ast.FnDecl {
+			c.fn_return_type = it.typ
 			for stmt in it.stmts {
 				c.stmt(stmt)
 			}
@@ -605,6 +610,7 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	for i, block in node.blocks {
 		if i < node.match_exprs.len {
 			match_expr := node.match_exprs[i]
+			c.expected_type = node.typ
 			c.expr(match_expr)
 		}
 		for stmt in block.stmts {
@@ -738,10 +744,13 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 // If a short form is used, `expected_type` needs to be an enum
 // with this value.
 pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
-	// println('checker: enum: $node.enum_name')
 	typ_idx := if node.enum_name == '' { c.expected_type } else { //
 	c.table.find_type_idx(node.enum_name) }
 	typ := c.table.get_type_symbol(table.Type(typ_idx))
+	// println('checker: enum_val: $node.enum_name typeidx=$typ_idx tname=$typ.name')
+	if typ.kind != .enum_ {
+		c.error('not an enum', node.pos)
+	}
 	// info := typ.info as table.Enum
 	info := typ.enum_info()
 	// rintln('checker: x = $info.x enum val $c.expected_type $typ.name')
