@@ -1207,6 +1207,10 @@ fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
 		if p.tok.kind == .colon {
 			p.next()
 		}
+		// ${num:-2d}
+		if p.tok.kind == .minus {
+			p.next()
+		}
 		// ${num:2d}
 		if p.tok.kind == .number {
 			p.next()
