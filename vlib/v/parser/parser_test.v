@@ -76,7 +76,7 @@ x := 10
 8+4
 '
 	table := &table.Table{}
-	prog := parse_file(s, table)
+	prog := parse_file(s, table, .skip_comments)
 	mut checker := checker.new_checker(table)
 	checker.check(prog)
 	res := gen.cgen([prog], table)

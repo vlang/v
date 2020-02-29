@@ -513,9 +513,10 @@ pub:
 
 pub struct Assoc {
 pub:
-	name   string
+	var_name   string
 	fields []string
 	exprs  []Expr
+	pos token.Position
 }
 
 pub struct SizeOf {

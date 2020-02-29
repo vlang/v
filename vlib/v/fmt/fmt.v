@@ -310,7 +310,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.Assoc {
 			f.writeln('{')
 			// f.indent++
-			f.writeln('\t$it.name |')
+			f.writeln('\t$it.var_name |')
 			// TODO StructInit copy pasta
 			for i, field in it.fields {
 				f.write('\t$field: ')

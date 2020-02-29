@@ -431,6 +431,15 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		ast.AssignExpr {
 			c.check_assign_expr(it)
 		}
+		ast.Assoc {
+			scope := c.file.scope.innermost(it.pos.pos) or {
+				c.file.scope
+			}
+			var := scope.find_var(it.var_name) or {
+				panic(err)
+			}
+			return var.typ
+		}
 		ast.EnumVal {
 			return c.enum_val(it)
 		}
@@ -733,8 +742,7 @@ pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
 	typ_idx := if node.enum_name == '' { c.expected_type } else { //
 	c.table.find_type_idx(node.enum_name) }
 	typ := c.table.get_type_symbol(table.Type(typ_idx))
-	
-	//info := typ.info as table.Enum
+	// info := typ.info as table.Enum
 	info := typ.enum_info()
 	// rintln('checker: x = $info.x enum val $c.expected_type $typ.name')
 	// println(info.vals)
