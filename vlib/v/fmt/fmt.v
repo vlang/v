@@ -319,18 +319,33 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.expr(it.expr)
 			f.write(')')
 		}
-		ast.CallExpr {
+		ast.MethodCallExpr, ast.CallExpr {
+			match node {
+				ast.MethodCallExpr {
+					f.expr(it.expr)
+					f.write('.')
+				}
+				else{}
+			}
 			f.write('${it.name}(')
-			for i, expr in it.args {
+			for i, arg in it.args {
 				if it.muts[i] {
 					f.write('mut ')
 				}
-				f.expr(expr)
-				if i != it.args.len - 1 {
+				if i > 0 {
+					f.wrap_long_line()
+				}
+				f.expr(arg)
+				if i < it.args.len - 1 {
 					f.write(', ')
 				}
 			}
 			f.write(')')
+			if it.or_block.stmts.len > 0 {
+				f.writeln(' or {')
+				f.stmts(it.or_block.stmts)
+				f.write('}')
+			}
 		}
 		ast.CharLiteral {
 			f.write('`$it.val`')
@@ -417,28 +432,6 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			}
 			f.indent--
 			f.write('}')
-		}
-		ast.MethodCallExpr {
-			f.expr(it.expr)
-			f.write('.' + it.name + '(')
-			for i, arg in it.args {
-				if it.muts[i] {
-					f.write('mut ')
-				}
-				if i > 0 {
-					f.wrap_long_line()
-				}
-				f.expr(arg)
-				if i < it.args.len - 1 {
-					f.write(', ')
-				}
-			}
-			f.write(')')
-			if it.or_block.stmts.len > 0 {
-				f.writeln(' or {')
-				f.stmts(it.or_block.stmts)
-				f.write('}')
-			}
 		}
 		ast.None {
 			f.write('none')

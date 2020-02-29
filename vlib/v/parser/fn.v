@@ -14,6 +14,11 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	fn_name := if is_c {'C.$name' } else if mod.len > 0 { '${mod}.$name' } else { name }
 	p.check(.lpar)
 	args, muts := p.call_args()
+	mut or_stmts := []ast.Stmt
+	if p.tok.kind == .key_orelse {
+		p.next()
+		or_stmts = p.parse_block()
+	}
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
@@ -22,10 +27,9 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 
 		pos: tok.position()
 		is_c: is_c
-	}
-	if p.tok.kind == .key_orelse {
-		p.next()
-		p.parse_block()
+		or_block: ast.OrExpr{
+			stmts: or_stmts
+		}
 	}
 	return node
 }
