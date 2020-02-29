@@ -72,8 +72,7 @@ fn parse_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 				println('V error: Expected argument for `-path`.')
 				exit(1)
 			}
-
-			// TODO To implement. Involves big changes across codebase.
+			prefs.lookup_path = path_str.split('|')
 		}
 		'o', 'output' {
 			f.is_equivalent_to(['o', 'output'])

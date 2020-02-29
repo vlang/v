@@ -12,7 +12,7 @@ const (
 	//list_of_flags contains a list of flags where an argument is expected past it.
 	list_of_flags = [
 		'o', 'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'arch',
-			'csource', 'cf', 'cflags'
+			'csource', 'cf', 'cflags', 'path'
 	]
 )
 
