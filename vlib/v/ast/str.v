@@ -19,16 +19,22 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		sym := t.get_type_symbol(node.receiver.typ)
 		name := sym.name.after('.')
 		m := if node.rec_mut { 'mut ' } else { '' }
-		receiver = '($node.receiver.name ${m}$name) '
+		receiver = '($node.receiver.name $m$name) '
 	}
 	name := node.name.after('.')
 	f.write('fn ${receiver}${name}(')
 	for i, arg in node.args {
 		is_last_arg := i == node.args.len - 1
-		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ
+		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ ||
+									(node.is_variadic && i == node.args.len - 2)
 		f.write(arg.name)
 		if should_add_type {
-			f.write(' ' + t.type_to_str(arg.typ))
+			if node.is_variadic && is_last_arg {
+				f.write(' ...' + t.type_to_str(arg.typ))
+			}
+			else {
+				f.write(' ' + t.type_to_str(arg.typ))
+			}
 		}
 		if !is_last_arg {
 			f.write(', ')
