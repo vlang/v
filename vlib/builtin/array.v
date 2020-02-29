@@ -328,7 +328,7 @@ pub fn (a mut array) push_many(val voidptr, size int) {
 // array.reverse returns a new array with the elements of
 // the original array in reverse order.
 pub fn (a array) reverse() array {
-	if a.len == 0 {
+	if a.len < 2 {
 		return a
 	}
 	arr := array{
