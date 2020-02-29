@@ -431,6 +431,12 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 	}
 }
 
+fn (c mut Checker) stmts(stmts []ast.Stmt) {
+	for stmt in stmts {
+		c.stmt(stmt)
+	}
+}
+
 pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 	match mut node {
 		ast.AssignExpr {
@@ -610,12 +616,10 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	for i, block in node.blocks {
 		if i < node.match_exprs.len {
 			match_expr := node.match_exprs[i]
-			c.expected_type = node.typ
+			c.expected_type = t
 			c.expr(match_expr)
 		}
-		for stmt in block.stmts {
-			c.stmt(stmt)
-		}
+		c.stmts(block.stmts)
 		// If the last statement is an expression, return its type
 		if block.stmts.len > 0 {
 			match block.stmts[block.stmts.len - 1] {
@@ -746,8 +750,12 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
 	typ_idx := if node.enum_name == '' { c.expected_type } else { //
 	c.table.find_type_idx(node.enum_name) }
+	// println('checker: enum_val: $node.enum_name typeidx=$typ_idx')
+	if typ_idx == 0 {
+		c.error('not an enum (type_idx=0)', node.pos)
+	}
 	typ := c.table.get_type_symbol(table.Type(typ_idx))
-	// println('checker: enum_val: $node.enum_name typeidx=$typ_idx tname=$typ.name')
+	// println('tname=$typ.name')
 	if typ.kind != .enum_ {
 		c.error('not an enum', node.pos)
 	}
