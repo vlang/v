@@ -2,8 +2,8 @@ module bignum
 
 // Wrapper for https://github.com/kokke/tiny-bignum-c
 
-#flag -I @VMODULE/../../thirdparty/bignum
-#flag @VMODULE/../../thirdparty/bignum/bn.o
+#flag -I @VMODULE/../thirdparty/bignum
+#flag @VMODULE/../thirdparty/bignum/bn.o
 #include "bn.h"
 
 const (

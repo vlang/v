@@ -1,6 +1,6 @@
 module fontstash
 
-#flag -I @VMODULE/../../thirdparty/fontstash
+#flag -I @VMODULE/../thirdparty/fontstash
 
 #define FONTSTASH_IMPLEMENTATION
 #include "fontstash.h"

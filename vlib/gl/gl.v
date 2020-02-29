@@ -4,9 +4,9 @@
 
 module gl
 
-#flag  -I @VMODULE/../../thirdparty/glad
+#flag  -I @VMODULE/../thirdparty/glad
 #include "glad.h"
-#flag @VMODULE/../../thirdparty/glad/glad.o
+#flag @VMODULE/../thirdparty/glad/glad.o
 
 // joe-c: fix & remove
 pub enum TmpGlImportHack{ non_empty }
