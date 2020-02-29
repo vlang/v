@@ -476,6 +476,9 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		ast.CastExpr {
 			return it.typ
 		}
+		ast.ParExpr {
+			return c.expr(it.expr)
+		}
 		ast.None {
 			return table.none_type
 		}
