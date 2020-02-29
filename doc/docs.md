@@ -1292,8 +1292,9 @@ Module {
 #flag @VROOT/c/implementation.o
 #include "header.h"
 ```
+NB: @VROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
 
-... this will make V look for an compiled .o file in your module folder/c/implementation.o .
+The instructions above will make V look for an compiled .o file in your module folder/c/implementation.o .
 If V finds it, the .o file will get linked to the main executable, that used the module.
 If it does not find it, V assumes that there is a `@VROOT/c/implementation.c` file,
 and tries to compile it to a .o file, then will use that.
