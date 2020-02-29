@@ -158,3 +158,27 @@ fn (f Foo) method_with_or() int {
 	}
 	return 20
 }
+
+fn fn_with_match_expr() {
+	a := 10
+	b := match a {
+		10 {
+			10
+		}
+		5 {
+			5
+		}
+		else {
+			2
+		}
+	}
+	match b {
+		10 {
+			println('10')
+		}
+		20 {
+			println('20')
+		}
+		else {}
+	}
+}

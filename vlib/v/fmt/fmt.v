@@ -438,6 +438,29 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.indent--
 			f.write('}')
 		}
+		ast.MatchExpr {
+			f.write('match ')
+			f.expr(it.cond)
+			f.writeln(' {')
+			f.indent++
+			for i, expr in it.match_exprs {
+				f.expr(expr)
+				f.writeln(' {')
+				f.stmts(it.blocks[i].stmts)
+				f.writeln('}')
+			}
+
+			else_stmts := it.blocks[it.blocks.len - 1].stmts
+			if (else_stmts.len == 0) {
+				f.writeln('else {}')
+			} else {
+				f.writeln('else {')
+				f.stmts(else_stmts)
+				f.writeln('}')
+			}
+			f.indent--
+			f.write('}')
+		}
 		ast.MethodCallExpr {
 			f.expr(it.expr)
 			f.write('.' + it.name + '(')
