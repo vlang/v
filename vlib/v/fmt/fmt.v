@@ -150,6 +150,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.EnumDecl {
+			if it.is_pub {
+				f.write('pub ')
+			}
 			f.writeln('enum $it.name {')
 			for val in it.vals {
 				f.writeln('\t' + val)
