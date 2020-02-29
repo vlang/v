@@ -137,7 +137,7 @@ pub fn (c mut Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
 			return table.void_type
 		}
 		// `elm in array`
-		if right.kind == .array && infix_expr.op == .key_in {
+		if right.kind in [.array, .map] && infix_expr.op == .key_in {
 			return table.bool_type
 		}
 		// if !c.table.check(&infix_expr.right_type, &infix_expr.right_type) {
@@ -523,6 +523,9 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		ast.None {
 			return table.none_type
 		}
+		ast.IfGuardExpr {
+			return table.bool_type
+		}
 		else {}
 	}
 	return table.void_type
@@ -711,12 +714,15 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 		else {}
 	}
 	if !is_range {
-		index_type := c.expr(node.index)
-		if !(table.type_idx(index_type) in table.number_idxs) {
-			index_type_sym := c.table.get_type_symbol(index_type)
-			c.error('non-integer index (type `$index_type_sym.name`)', node.pos)
-		}
 		typ_sym := c.table.get_type_symbol(typ)
+		index_type := c.expr(node.index)
+		// println('index expr left=$typ_sym.name $node.pos.line_nr')
+		if typ_sym.kind == .array && !(table.type_idx(index_type) in table.number_idxs) {
+			c.error('non-integer index (type `$typ_sym.name`)', node.pos)
+		}
+		else if typ_sym.kind == .map && table.type_idx(index_type) != table.string_type_idx {
+			c.error('non-string map index (type `$typ_sym.name`)', node.pos)
+		}
 		if typ_sym.kind == .array {
 			// Check index type
 			info := typ_sym.info as table.Array
