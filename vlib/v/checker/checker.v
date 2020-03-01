@@ -206,6 +206,7 @@ pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	}
 	for i, arg_expr in call_expr.args {
 		arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
+		c.expected_type = arg.typ
 		typ := c.expr(arg_expr)
 		typ_sym := c.table.get_type_symbol(typ)
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)
