@@ -111,7 +111,7 @@ fn (mcache mut ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 		if mcache.check_for_stop( cfolder, files ) {
 			break
 		}
-		cfolder = filepath.basedir( cfolder )
+		cfolder = filepath.base( cfolder )
 		folders_so_far << cfolder
 		levels++
 	}

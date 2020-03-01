@@ -50,7 +50,7 @@ pub enum CommentsMode {
 }
 
 // new scanner from file.
-fn new_scanner_file(file_path string) &Scanner {
+pub fn new_scanner_file(file_path string, comments_mode CommentsMode) &Scanner {
 	if !os.is_exist(file_path) {
 		verror("$file_path doesn't exist")
 	}
