@@ -960,7 +960,7 @@ The lookup for modules happens in this order:
 2. v's `vlib/` folder (like `vlib/my_module/`)
 3. home directory's `~/.vmodules/` folder (like `~/.vmodules/my_module/`)
 
-You can specify modules in subdirectory with `.` (not with `/`) like`module_name.submodule_name`:
+You can specify modules in subdirectory with `.` (not with `/`) like`import module_name.submodule_name`:
 
 ```v
 ./
@@ -989,14 +989,16 @@ You can rename the modules when imported:
 import module_name as mn      // mn is an alias of the module_name
 ```
 
-Note that V looks up the module by the containing directory name, which means the directory name should match exactly the module name.
+Note that when importing modules, V looks up the module name by the containing directory name, which means the containing directory name should match exactly the specified module name in `import` syntax.
 
-The name of the modules under the directory can be any `*.v`, but at least putting the file with the exact module name is preferable as a convention because the module file with the exact name, where `init()` function (see below) can exist, will be fetched first.
+The module's containing directory can contain one or more module files, which just need to end with `.v`. Any module files under the directory should declare `module` syntax with the same module name as the containing directory name.
+
+One of the V module files under the module directory can contain an `init()` function for initialization.
 
 ```v
 ./
-  |- module_name/
-    |- module_name.v    // first access
+  |- module_name/     // V looks up the module by the directory name
+    |- module_name.v
     |- module1.v
     |- module2.v
     |- ...
@@ -1013,9 +1015,9 @@ Then you can refer to the modules "module_name" from the main.v file via `import
 
 The same modules under the directory shares the same scope, which means they don't need `pub` to access each other.
 
-This means you can create modules as a name snake_case or PascalCase. You cannot include spaces within the module name.
+This means you can create modules as a name snake_case or PascalCase. You cannot include spaces within the module names.
 
-All modules are compiled statically into a single executable.
+All of the imported modules are compiled statically into a single executable.
 
 If you want to write a module that will automatically call some
 setup/initialization code when imported (perhaps you want to call
@@ -1271,10 +1273,10 @@ fn test_hello() {
 
 All test functions have to be placed in `*_test.v` files and begin with `test_`.
 
-You can also define a special test function: `testsuite_begin`, which will be 
+You can also define a special test function: `testsuite_begin`, which will be
 run *before* all other test functions in a `_test.v` file.
 
-You can also define a special test function: `testsuite_end`, which will be 
+You can also define a special test function: `testsuite_end`, which will be
 run *after* all other test functions in a `_test.v` file.
 
 To run the tests do `v hello_test.v`.
