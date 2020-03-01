@@ -79,9 +79,6 @@ fn (mcache mut ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 	mut folders_so_far := [cfolder]
 	mut levels := 0
 	for {
-		$if debug {
-			eprintln('pdir2vmod mfolder: ${mfolder:-32s} | cfolder: ${cfolder:-20s} | levels: $levels')
-		}
 		if levels > 255 {
 			break
 		}
@@ -102,10 +99,6 @@ fn (mcache mut ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 			// TODO: actually read the v.mod file and parse its contents to see
 			// if its source folder is different
 			res := ModFileAndFolder{ vmod_file: filepath.join( cfolder, 'v.mod'), vmod_folder: cfolder }
-			$if debug {
-				eprintln('FOUND v.mod:')
-				eprintln(' ModFileAndFolder{ vmod_file: $res.vmod_file , vmod_folder: $res.vmod_folder } ')
-			}
 			return folders_so_far, res
 		}
 		if mcache.check_for_stop( cfolder, files ) {
