@@ -584,7 +584,8 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		map_type := p.parse_map_type()
 		return node
 	}
-	if p.peek_tok.kind == .dot && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') == p.tok.lit) {
+	known_var := p.scope.known_var(p.tok.lit)
+	if p.peek_tok.kind == .dot && !known_var && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') == p.tok.lit) {
 		if is_c {
 			mod = 'C'
 		}
@@ -603,9 +604,10 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		if mod.len > 0 {
 			name = '${mod}.$name'
 		}
+		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if name in p.table.type_idxs && !(name in ['C.stat', 'C.sigaction']) {
+		if (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) && !(name in ['C.stat', 'C.sigaction']) {
 			// TODO handle C.stat()
 			to_typ := p.parse_type()
 			p.check(.lpar)
@@ -641,9 +643,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		// || p.table.known_type(p.tok.lit)) {
 		return p.struct_init()
 	}
-	else if p.peek_tok.kind == .dot &&
-	//
-	(p.tok.lit[0].is_capital() && !p.scope.known_var(p.tok.lit)) {
+	else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
 		// `Color.green`
 		mut enum_name := p.check_name()
 		if mod != '' {
