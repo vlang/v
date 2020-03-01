@@ -63,7 +63,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.ConstDecl {
 			for i, field in it.fields {
 				field_type_sym := g.table.get_type_symbol(field.typ)
-				g.write('$field_type_sym.name $field.name = ')
+				name := field.name.replace('.', '__')
+				g.write('$field_type_sym.name $name = ')
 				g.expr(it.exprs[i])
 				g.writeln(';')
 			}
@@ -310,7 +311,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(')')
 		}
 		ast.Ident {
-			g.write('$it.name')
+			name := it.name.replace('.', '__')
+			g.write(name)
 		}
 		ast.SelectorExpr {
 			g.expr(it.expr)

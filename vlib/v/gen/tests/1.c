@@ -10,6 +10,7 @@ void println(string s);
 void matches();
 void end();
 void localmod__pub_foo();
+int localmod__get_int_10();
 int pi = 3;
 int pi2 = pi;
 
@@ -35,6 +36,8 @@ int main() {
 	int mypi = pi;
 	Color color = Color_red;
 	localmod__pub_foo();
+	int ten = localmod__get_int_10();
+	println(localmod__pub_int_const);
 	return 0;
 }
 
@@ -144,6 +147,13 @@ void end() {
 	int e = 2 + 3 * 4;
 }
 
+int localmod__pub_int_const = 20;
+
 void localmod__pub_foo() {
 	int a = 10;
 }
+
+int localmod__get_int_10() {
+	return 10;
+}
+

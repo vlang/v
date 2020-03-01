@@ -42,6 +42,8 @@ fn main() {
 	mypi := pi
 	color := Color.red
 	localmod.pub_foo()
+	ten := localmod.get_int_10()
+	println(localmod.pub_int_const)
 }
 	/*
 	user := User{}
