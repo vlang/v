@@ -68,7 +68,7 @@ fn init_sokol_window() {
 	sgl_desc := sgl_desc_t{}
 	sgl.setup(&sgl_desc)
 	g_fons = sfons.create(512, 512, 1)
-	if g_font_path.len == 0 || !os.exists(g_font_path) {
+	if g_font_path.len == 0 || !os.is_exist(g_font_path) {
 		println('failed to load font "$g_font_path"')
 		return
 	}
@@ -168,7 +168,7 @@ pub fn (gg &GG) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 
 pub fn create_image(file string) u32 {
 	// println('gg create image "$file"')
-	if !os.exists(file) {
+	if !os.is_exist(file) {
 		println('gg create image no such file "$file"')
 		return u32(0)
 	}

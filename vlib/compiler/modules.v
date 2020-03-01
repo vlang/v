@@ -168,7 +168,7 @@ fn (v mut V) set_module_lookup_paths() {
 	// 4.2) search in ~/.vmodules/ (i.e. modules installed with vpm) (no -vpath)
 	v.module_lookup_paths = []
 	if v.pref.is_test {
-		v.module_lookup_paths << filepath.basedir(v.compiled_dir) // pdir of _test.v
+		v.module_lookup_paths << filepath.base(v.compiled_dir) // pdir of _test.v
 	}
 	v.module_lookup_paths << v.compiled_dir
 	v.module_lookup_paths << filepath.join(v.compiled_dir,'modules')

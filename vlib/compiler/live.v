@@ -79,7 +79,7 @@ fn (v &V) generate_hot_reload_code() {
 	mut cgen := v.cgen
 	// Hot code reloading
 	if v.pref.is_live {
-		mut file := os.realpath(v.pref.path)
+		mut file := filepath.abs(v.pref.path)
 		file_base := filepath.filename(file).replace('.v', '')
 		so_name := file_base + '.so'
 		// Need to build .so file before building the live application
@@ -191,7 +191,7 @@ void reload_so() {
 			sprintf(compile_cmd, "$vexe $msvc -o %s -solive -shared $file", new_so_base);
 			os__system(tos2(compile_cmd));
 
-			if( !os__exists(tos2(new_so_name)) ) {
+			if( !os__is_exist(tos2(new_so_name)) ) {
 				fprintf(stderr, "Errors while compiling $file\\n");
 				continue;
 			}
@@ -225,4 +225,3 @@ void reload_so() {
 		cgen.genln(' int load_so(byteptr path) { return 0; }')
 	}
 }
-

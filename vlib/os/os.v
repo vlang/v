@@ -142,7 +142,7 @@ pub fn file_size(path string) int {
 	return s.st_size
 }
 
-pub fn mv(old, new string) {
+pub fn rename(old, new string) {
 	$if windows {
 		C._wrename(old.to_wide(), new.to_wide())
 	} $else {
@@ -152,7 +152,7 @@ pub fn mv(old, new string) {
 
 fn C.CopyFile(&u32, &u32, int) int
 // TODO implement actual cp for linux
-pub fn cp(old, new string) ?bool {
+pub fn copy(old, new string) ?bool {
 	$if windows {
 		_old := old.replace('/', '\\')
 		_new := new.replace('/', '\\')
@@ -170,24 +170,24 @@ pub fn cp(old, new string) ?bool {
 	}
 }
 
-pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
-	source_path := os.realpath(osource_path)
-	dest_path := os.realpath(odest_path)
-	if !os.exists(source_path) {
+pub fn copy_all(osource_path, odest_path string, overwrite bool) ?bool {
+	source_path := filepath.abs(osource_path)
+	dest_path := filepath.abs(odest_path)
+	if !os.is_exist(source_path) {
 		return error("Source path doesn\'t exist")
 	}
 	// single file copy
 	if !os.is_dir(source_path) {
 		adjasted_path := if os.is_dir(dest_path) { filepath.join(dest_path,filepath.filename(source_path)) } else { dest_path }
-		if os.exists(adjasted_path) {
+		if os.is_exist(adjasted_path) {
 			if overwrite {
-				os.rm(adjasted_path)
+				os.remove(adjasted_path)
 			}
 			else {
 				return error('Destination file path already exist')
 			}
 		}
-		os.cp(source_path, adjasted_path) or {
+		os.copy(source_path, adjasted_path) or {
 			return error(err)
 		}
 		return true
@@ -206,7 +206,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 				panic(err)
 			}
 		}
-		cp_r(sp, dp, overwrite) or {
+		copy_all(sp, dp, overwrite) or {
 			os.rmdir(dp)
 			panic(err)
 		}
@@ -217,7 +217,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 // mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
 // mv_by_cp may be used when you are not sure that the source and target are on the same mount/partition.
 pub fn mv_by_cp(source string, target string) ?bool {
-	os.cp(source, target) or {
+	os.copy(source, target) or {
 		return error(err)
 	}
 	os.rm(source)
@@ -550,8 +550,8 @@ const (
 	R_OK = 4
 )
 
-// exists returns true if `path` exists.
-pub fn exists(path string) bool {
+// is_exist returns true if `path` exists.
+pub fn is_exist(path string) bool {
 	$if windows {
 		p := path.replace('/', '\\')
 		return C._waccess(p.to_wide(), F_OK) != -1
@@ -569,8 +569,8 @@ pub fn is_executable(path string) bool {
     // 02 Write-only
     // 04 Read-only
     // 06 Read and write
-    p := os.realpath( path )
-    return ( os.exists( p ) && p.ends_with('.exe') )
+    p := filepath.abs( path )
+    return ( os.is_exist( p ) && p.ends_with('.exe') )
   } $else {
     return C.access(path.str, X_OK) != -1
   }
@@ -596,13 +596,8 @@ pub fn is_readable(path string) bool {
   }
 }
 
-[deprecated]
-pub fn file_exists(_path string) bool {
-	panic('use os.exists(path) instead of os.file_exists(path)')
-}
-
 // rm removes file in `path`.
-pub fn rm(path string) {
+fn rm(path string) {
 	$if windows {
 		C._wremove(path.to_wide())
 	} $else {
@@ -611,25 +606,44 @@ pub fn rm(path string) {
 	// C.unlink(path.cstr())
 }
 // rmdir removes a specified directory.
-pub fn rmdir(path string) {
+fn rmdir(path string) {
 	$if !windows {
 		C.rmdir(path.str)
 	} $else {
 		C.RemoveDirectory(path.to_wide())
 	}
 }
-
-pub fn rmdir_all(path string) {
+fn rmdir_recursive(path string) {
 	items := os.ls(path) or {
 		return
 	}
 	for item in items {
 		if os.is_dir(filepath.join(path,item)) {
-			rmdir_all(filepath.join(path,item))
+			rmdir_recursive(filepath.join(path,item))
 		}
 		os.rm(filepath.join(path,item))
 	}
 	os.rmdir(path)
+}
+
+// remove file or empty directory
+pub fn remove(path string) {
+	if os.is_dir(path) {
+		os.rmdir(path)
+	}
+	else {
+		os.rm(path)
+	}
+}
+
+// remove file or directory(may be not empty)
+pub fn remove_all(path string) {
+	if os.is_dir(path) {
+		os.rmdir_recursive(path)
+	}
+	else {
+		os.rm(path)
+	}
 }
 
 pub fn is_dir_empty(path string) bool {
@@ -643,26 +657,6 @@ fn print_c_errno() {
 	e := C.errno
 	se := tos_clone(byteptr(C.strerror(C.errno)))
 	println('errno=$e err=$se')
-}
-
-[deprecated]
-pub fn ext(path string) string {
-	panic('Use `filepath.ext` instead of `os.ext`')
-}
-
-[deprecated]
-pub fn dir(path string) string {
-	panic('Use `filepath.dir` instead of `os.dir`')
-}
-
-[deprecated]
-pub fn basedir(path string) string {
-	panic('Use `filepath.basedir` instead of `os.basedir`')
-}
-
-[deprecated]
-pub fn filename(path string) string {
-	panic('Use `filepath.filename` instead of `os.filename`')
 }
 
 // get_line returns a one-line string from stdin
@@ -889,11 +883,6 @@ pub fn executable() string {
 	return os.args[0]
 }
 
-[deprecated]
-pub fn dir_exists(path string) bool {
-	panic('Use `os.is_dir` instead of `os.dir_exists`')
-}
-
 // is_dir returns a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
@@ -956,28 +945,6 @@ pub fn getwd() string {
 	}
 }
 
-// Returns the full absolute path for fpath, with all relative ../../, symlinks and so on resolved.
-// See http://pubs.opengroup.org/onlinepubs/9699919799/functions/realpath.html
-// Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
-// and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
-// NB: this particular rabbit hole is *deep* ...
-pub fn realpath(fpath string) string {
-	mut fullpath := calloc(MAX_PATH)
-	mut ret := charptr(0)
-	$if windows {
-		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
-		if ret == 0 {
-			return fpath
-		}
-	} $else {
-		ret = C.realpath(fpath.str, fullpath)
-		if ret == 0 {
-			return fpath
-		}
-	}
-	return string(fullpath)
-}
-
 // walk_ext returns a recursive list of all file paths ending with `ext`.
 pub fn walk_ext(path, ext string) []string {
 	if !os.is_dir(path) {
@@ -1017,7 +984,7 @@ pub fn walk(path string, f fn(path string)) {
 		if os.is_dir(p) && !os.is_link(p) {
 			walk(p, f)
 		}
-		else if os.exists(p) {
+		else if os.is_exist(p) {
 			f(p)
 		}
 	}
@@ -1085,11 +1052,6 @@ pub fn mkdir_all(path string) {
 	}
 }
 
-[deprecated]
-pub fn join(base string, dirs ...string) string {
-	panic('Use `filepath.join` instead of `os.join`')
-}
-
 // cachedir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
 pub fn cachedir() string {
 	// See: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
@@ -1154,10 +1116,10 @@ pub const (
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
 pub fn resource_abs_path(path string) string {
-	mut base_path := os.realpath(filepath.dir(os.executable()))
+	mut base_path := filepath.abs(filepath.dir(os.executable()))
 	vresource := os.getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
 		base_path = vresource
 	}
-	return os.realpath( filepath.join( base_path, path ) )
+	return filepath.abs( filepath.join( base_path, path ) )
 }

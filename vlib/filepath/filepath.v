@@ -1,5 +1,9 @@
 module filepath
 
+const (
+	MAX_PATH = 4096
+)
+
 // ext returns the extension in the file `path`.
 pub fn ext(path string) string {
 	pos := path.last_index('.') or {
@@ -15,6 +19,28 @@ pub fn is_abs(path string) bool {
 		(path[0].is_letter() && path[1] == `:`)
 	}
 	return path[0] == `/`
+}
+
+// Returns the full absolute path for fpath, with all relative ../../, symlinks and so on resolved.
+// See http://pubs.opengroup.org/onlinepubs/9699919799/functions/realpath.html
+// Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
+// and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
+// NB: this particular rabbit hole is *deep* ...
+pub fn abs(fpath string) string {
+	mut fullpath := calloc(MAX_PATH)
+	mut ret := charptr(0)
+	$if windows {
+		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
+		if ret == 0 {
+			return fpath
+		}
+	} $else {
+		ret = C.realpath(fpath.str, fullpath)
+		if ret == 0 {
+			return fpath
+		}
+	}
+	return string(fullpath)
 }
 
 // join returns path as string from string parameter(s).
@@ -35,8 +61,8 @@ pub fn dir(path string) string {
 	return path[..pos]
 }
 
-// basedir returns a directory name from path
-pub fn basedir(path string) string {
+// base returns a directory name from path
+pub fn base(path string) string {
 	pos := path.last_index(separator) or {
 		return path
 	}

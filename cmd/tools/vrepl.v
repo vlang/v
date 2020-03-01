@@ -83,10 +83,10 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 	mut prompt := '>>> '
 	defer {
 		println('')
-		os.rm(file)
-		os.rm(temp_file)
-		os.rm(file[..file.len - 2])
-		os.rm(temp_file[..temp_file.len - 2])
+		os.remove(file)
+		os.remove(temp_file)
+		os.remove(file[..file.len - 2])
+		os.remove(temp_file[..temp_file.len - 2])
 	}
 	mut r := Repl{}
 	mut readline := readline.Readline{}
@@ -217,10 +217,10 @@ fn main() {
 	// so that the repl can be launched in parallel by several different
 	// threads by the REPL test runner.
 	args := cmdline.options_after(os.args, ['repl'])
-	replfolder := os.realpath( cmdline.option(args, '-replfolder', '.') )
+	replfolder := filepath.abs( cmdline.option(args, '-replfolder', '.') )
 	replprefix := cmdline.option(args, '-replprefix', 'noprefix.')
 	os.chdir( replfolder )
-	if !os.exists(os.getenv('VEXE')) {
+	if !os.is_exist(os.getenv('VEXE')) {
 		println('Usage:')
 		println('  VEXE=vexepath vrepl\n')
 		println('  ... where vexepath is the full path to the v executable file')

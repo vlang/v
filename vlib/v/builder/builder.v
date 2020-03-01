@@ -19,7 +19,7 @@ pub:
 	table               &table.Table
 	checker             checker.Checker
 	os                  pref.OS // the OS to build for
-	compiled_dir        string // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
+	compiled_dir        string // contains filepath.abs() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path         string
 	module_search_paths []string
 mut:
@@ -99,7 +99,7 @@ pub fn (b mut Builder) parse_imports() {
 
 pub fn (b &Builder) v_files_from_dir(dir string) []string {
 	mut res := []string
-	if !os.exists(dir) {
+	if !os.is_exist(dir) {
 		if dir == 'compiler' && os.is_dir('vlib') {
 			println('looks like you are trying to build V with an old command')
 			println('use `v -o v cmd/v` instead of `v -o v compiler`')

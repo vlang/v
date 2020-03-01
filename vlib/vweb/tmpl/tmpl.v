@@ -17,7 +17,7 @@ pub fn compile_template(path string) string {
 		panic('html failed')
 	}
 	mut header := ''
-	if os.exists('header.html') && html.contains('@header') {
+	if os.is_exist('header.html') && html.contains('@header') {
 		h := os.read_file('header.html')or{
 			panic('reading file header.html failed')
 		}
@@ -85,4 +85,3 @@ _ = header
 	s.writeln('tmpl_res := sb.str() }')
 	return s.str()
 }
-

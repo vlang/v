@@ -50,7 +50,7 @@ mut:
 }
 // new scanner from file.
 fn new_scanner_file(file_path string) &Scanner {
-	if !os.exists(file_path) {
+	if !os.is_exist(file_path) {
 		verror("$file_path doesn't exist")
 	}
 	mut raw_text := os.read_file(file_path)or{
@@ -565,7 +565,7 @@ fn (s mut Scanner) scan() ScanRes {
 				return scan_res(.str, s.fn_name)
 			}
 			if name == 'FILE' {
-				return scan_res(.str, cescaped_path(os.realpath(s.file_path)))
+				return scan_res(.str, cescaped_path(filepath.abs(s.file_path)))
 			}
 			if name == 'LINE' {
 				return scan_res(.str, (s.line_nr + 1).str())

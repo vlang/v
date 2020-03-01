@@ -18,5 +18,5 @@ fn get_vtmp_folder() string {
 
 fn get_vtmp_filename(base_file_name string, postfix string) string {
 	vtmp := get_vtmp_folder()
-	return os.realpath(filepath.join(vtmp,filepath.filename(os.realpath(base_file_name)) + postfix))
+	return filepath.abs(filepath.join(vtmp,filepath.filename(filepath.abs(base_file_name)) + postfix))
 }

@@ -34,7 +34,7 @@ pub fn main() {
 
 	mut ts := testing.new_test_session(args_before.join(' '))
 	for targ in args_after {
-		if os.exists(targ) && targ.ends_with('_test.v') {
+		if os.is_exist(targ) && targ.ends_with('_test.v') {
 			ts.files << targ
 			continue
 		}

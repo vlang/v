@@ -35,7 +35,7 @@ fn generate_vh(mod string) {
 	pdir := dir.all_before_last(filepath.separator)
 	if !os.is_dir(pdir) {
 		os.mkdir_all(pdir)
-		// os.mkdir(os.realpath(dir)) or { panic(err) }
+		// os.mkdir(filepath.abs(dir)) or { panic(err) }
 	}
 	mut out := os.create(path)or{
 		panic(err)

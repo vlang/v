@@ -1,6 +1,9 @@
 module main
 
-import os
+import (
+	os
+	filepath
+)
 
 const (
 	too_long_line_length = 100
@@ -10,7 +13,7 @@ fn main() {
 	files_paths := os.args[1..]
 	mut errors := 0
 	for file_path in files_paths {
-		real_path := os.realpath(file_path)
+		real_path := filepath.abs(file_path)
 		lines := os.read_lines(real_path) or {
 			continue
 		}
@@ -22,7 +25,7 @@ fn main() {
 		}
 	}
 	// TODO: uncomment this AFTER doc/docs.md line lengths are fixed
-	/*	
+	/*
 	if errors > 0 {
 		exit(1)
 	}

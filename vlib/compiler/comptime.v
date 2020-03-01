@@ -194,12 +194,12 @@ fn (p mut Parser) comp_time() {
 		if p.pref.is_debug {
 			println('>>> compiling vweb HTML template "$path"')
 		}
-		if !os.exists(path) {
+		if !os.is_exist(path) {
 			// Can't find the template file in current directory,
 			// try looking next to the vweb program, in case it's run with
 			// v path/to/vweb_app.v
 			path = filepath.dir(p.scanner.file_path) + '/' + path
-			if !os.exists(path) {
+			if !os.is_exist(path) {
 				p.error('vweb HTML template "$path" not found')
 			}
 		}

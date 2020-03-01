@@ -273,8 +273,8 @@ fn (g mut CGen) add_to_main(s string) {
 }
 
 fn (v &V) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
-	obj_path := os.realpath(path)
-	if os.exists(obj_path) {
+	obj_path := filepath.abs(path)
+	if os.is_exist(obj_path) {
 		return
 	}
 	println('$obj_path not found, building it...')
@@ -285,7 +285,7 @@ fn (v &V) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	mut cfiles := ''
 	for file in files {
 		if file.ends_with('.c') {
-			cfiles += '"' + os.realpath(parent + filepath.separator + file) + '" '
+			cfiles += '"' + filepath.abs(parent + filepath.separator + file) + '" '
 		}
 	}
 	btarget := moduleflags.c_options_before_target()

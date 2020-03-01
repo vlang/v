@@ -24,7 +24,7 @@ pub fn (p mut Preferences) fill_with_defaults() {
 		p.vpath = default_module_path
 	}
 	if p.out_name == ''{
-		rpath := os.realpath(p.path)
+		rpath := filepath.abs(p.path)
 		filename := filepath.filename(rpath).trim_space()
 		mut base := filename.all_before_last('.')
 		if base == '' {
@@ -56,7 +56,7 @@ pub fn (p mut Preferences) fill_with_defaults() {
 
 fn default_c_compiler() string {
 	// fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
-	// if os.exists(fast_clang) {
+	// if os.is_exist(fast_clang) {
 	// return fast_clang
 	// }
 	// TODO fix $if after 'string'
@@ -71,7 +71,7 @@ pub fn vexe_path() string {
 	if vexe != '' {
 		return vexe
 	}
-	real_vexe_path := os.realpath(os.executable())
+	real_vexe_path := filepath.abs(os.executable())
 	os.setenv('VEXE', real_vexe_path, true)
 	return real_vexe_path
 }

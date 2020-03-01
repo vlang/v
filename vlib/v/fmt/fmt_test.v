@@ -17,7 +17,7 @@ fn test_fmt() {
 	fmt_message := 'vfmt tests'
 	eprintln(term.header(fmt_message, '-'))
 	vexe := os.getenv('VEXE')
-	if vexe.len == 0 || !os.exists(vexe) {
+	if vexe.len == 0 || !os.is_exist(vexe) {
 		eprintln('VEXE must be set')
 		exit(error_missing_vexe)
 	}
@@ -35,7 +35,7 @@ fn test_fmt() {
 		fmt_bench.step()
 		ifilename := filepath.filename(ipath)
 		opath := ipath.replace('_input.vv', '_expected.vv')
-		if !os.exists(opath) {
+		if !os.is_exist(opath) {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('missing file ${opath}'))
 			continue

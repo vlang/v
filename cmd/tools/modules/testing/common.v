@@ -46,7 +46,7 @@ pub fn (ts mut TestSession) test() {
 	mut remaining_files := []string
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
-		file := os.realpath(relative_file)
+		file := filepath.abs(relative_file)
 		$if windows {
 			if file.contains('sqlite') || file.contains('httpbin') {
 				continue
@@ -115,14 +115,14 @@ fn (ts mut TestSession) process_files() {
 
 		dot_relative_file := ts.files[ idx ]
 		relative_file := dot_relative_file.replace('./', '')
-		file := os.realpath(relative_file)
+		file := filepath.abs(relative_file)
 		// Ensure that the generated binaries will be stored in the temporary folder.
 		// Remove them after a test passes/fails.
 		fname := filepath.filename(file)
 		generated_binary_fname := if os.user_os() == 'windows' { fname.replace('.v', '.exe') } else { fname.replace('.v', '') }
 		generated_binary_fpath := filepath.join(tmpd,generated_binary_fname)
-		if os.exists(generated_binary_fpath) {
-			os.rm(generated_binary_fpath)
+		if os.is_exist(generated_binary_fpath) {
+			os.remove(generated_binary_fpath)
 		}
 		mut cmd_options := [ts.vargs]
 		if !ts.vargs.contains('fmt') {
@@ -168,8 +168,8 @@ fn (ts mut TestSession) process_files() {
 				}
 			}
 		}
-		if os.exists(generated_binary_fpath) {
-			os.rm(generated_binary_fpath)
+		if os.is_exist(generated_binary_fpath) {
+			os.remove(generated_binary_fpath)
 		}
 	}
 }

@@ -48,7 +48,7 @@ fn test_open_file() {
   }
   assert hello == read_hello
 
-  os.rm(filename)
+  os.remove(filename)
 }
 
 fn test_create_file() {
@@ -60,7 +60,7 @@ fn test_create_file() {
 
 	assert hello.len == os.file_size(filename)
 
-	os.rm(filename)
+	os.remove(filename)
 }
 
 fn test_write_and_read_string_to_file() {
@@ -74,7 +74,7 @@ fn test_write_and_read_string_to_file() {
   }
   assert hello == read_hello
 
-  os.rm(filename)
+  os.remove(filename)
 }
 
 // test_write_and_read_bytes checks for regressions made in the functions
@@ -84,7 +84,7 @@ fn test_write_and_read_bytes() {
         file_name :=  './byte_reader_writer.tst'
         payload   :=  [`I`, `D`, `D`, `Q`, `D`]
 
-        mut file_write := os.create(os.realpath(file_name)) or {
+        mut file_write := os.create(filepath.abs(file_name)) or {
                 eprintln('failed to create file $file_name')
                 return
         }
@@ -97,7 +97,7 @@ fn test_write_and_read_bytes() {
 
         assert payload.len == os.file_size(file_name)
 
-        mut file_read := os.open(os.realpath(file_name)) or {
+        mut file_read := os.open(filepath.abs(file_name)) or {
           eprintln('failed to open file $file_name')
           return
         }
@@ -111,7 +111,7 @@ fn test_write_and_read_bytes() {
         assert red_bytes.str() == payload.str()
 
         // We finally delete the test file.
-        os.rm(file_name)
+        os.remove(file_name)
 }
 */
 
@@ -123,7 +123,7 @@ fn test_create_and_delete_folder() {
   folder_contents := os.ls(folder) or { panic(err) }
   assert folder_contents.len == 0
 
-  os.rmdir(folder)
+  os.remove(folder)
 
   folder_exists := os.is_dir(folder)
 
@@ -147,42 +147,41 @@ fn test_walk() {
 
     os.walk(folder, walk_callback)
 
-	os.rm(file1)
-	os.rmdir(folder)
+	  os.remove_all(folder)
 }
 
-fn test_cp() {
+fn test_copy() {
     old_file_name := 'cp_example.txt'
     new_file_name := 'cp_new_example.txt'
 
     os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐')
-    os.cp(old_file_name, new_file_name) or { panic('$err: errcode: $errcode') }
+    os.copy(old_file_name, new_file_name) or { panic('$err: errcode: $errcode') }
 
     old_file := os.read_file(old_file_name) or { panic(err) }
     new_file := os.read_file(new_file_name) or { panic(err) }
     assert old_file == new_file
 
-    os.rm(old_file_name)
-    os.rm(new_file_name)
+    os.remove(old_file_name)
+    os.remove(new_file_name)
 }
 
-fn test_cp_r() {
+fn test_copy_all() {
   //fileX -> dir/fileX
   // NB: clean up of the files happens inside the cleanup_leftovers function
   os.write_file('ex1.txt', 'wow!')
   os.mkdir('ex') or { panic(err) }
-  os.cp_r('ex1.txt', 'ex', false) or { panic(err) }
+  os.copy_all('ex1.txt', 'ex', false) or { panic(err) }
   old := os.read_file('ex1.txt') or { panic(err) }
   new := os.read_file('ex/ex1.txt') or { panic(err) }
   assert old == new
   os.mkdir('ex/ex2') or { panic(err) }
   os.write_file('ex2.txt', 'great!')
-  os.cp_r('ex2.txt', 'ex/ex2', false) or { panic(err) }
+  os.copy_all('ex2.txt', 'ex/ex2', false) or { panic(err) }
   old2 := os.read_file('ex2.txt') or { panic(err) }
   new2 := os.read_file('ex/ex2/ex2.txt') or { panic(err) }
   assert old2 == new2
   //recurring on dir -> local dir
-  os.cp_r('ex', './', true) or { panic(err) }
+  os.copy_all('ex', './', true) or { panic(err) }
 }
 
 fn test_tmpdir(){
@@ -192,7 +191,7 @@ fn test_tmpdir(){
 
 	tfile := t + filepath.separator + 'tmpfile.txt'
 
-	os.rm(tfile) // just in case
+	os.remove(tfile) // just in case
 
 	tfile_content := 'this is a temporary file'
 	os.write_file(tfile, tfile_content)
@@ -200,7 +199,7 @@ fn test_tmpdir(){
 	tfile_content_read := os.read_file(tfile) or { panic(err) }
 	assert tfile_content_read == tfile_content
 
-	os.rm(tfile)
+	os.remove(tfile)
 }
 
 
@@ -214,8 +213,8 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
    folder  := 'tfolder'
    symlink := 'tsymlink'
 
-   os.rm(symlink)
-   os.rm(folder)
+   os.remove(symlink)
+   os.remove(folder)
 
    os.mkdir(folder) or { panic(err) }
    folder_contents := os.ls(folder) or { panic(err) }
@@ -224,8 +223,8 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
    os.system('ln -s $folder $symlink')
    assert os.is_link(symlink) == true
 
-   os.rm(symlink)
-   os.rm(folder)
+   os.remove(symlink)
+   os.remove(folder)
 
    folder_exists := os.is_dir(folder)
    assert folder_exists == false
@@ -261,11 +260,11 @@ fn test_symlink() {
   $if windows { return }
   os.mkdir('symlink') or { panic(err) }
   os.symlink('symlink', 'symlink2') or { panic(err) }
-  assert os.exists('symlink2')
+  assert os.is_exist('symlink2')
 
   // cleanup
-  os.rm('symlink')
-  os.rm('symlink2')
+  os.remove('symlink')
+  os.remove('symlink2')
 }
 
 fn test_is_executable_writable_readable() {
@@ -291,7 +290,7 @@ fn test_is_executable_writable_readable() {
   }
 
   // We finally delete the test file.
-  os.rm(file_name)
+  os.remove(file_name)
 }
 
 // this function is called by both test_aaa_setup & test_zzz_cleanup
@@ -299,12 +298,12 @@ fn test_is_executable_writable_readable() {
 // files so that they can be run several times in a row.
 fn cleanup_leftovers() {
 	// possible leftovers from test_cp
-	os.rm('cp_example.txt')
-	os.rm('cp_new_example.txt')
+	os.remove('cp_example.txt')
+	os.remove('cp_new_example.txt')
 
 	// possible leftovers from test_cp_r
-	os.rmdir_all('ex')
-	os.rmdir_all('ex2')
-	os.rm('ex1.txt')
-	os.rm('ex2.txt')
+	os.remove_all('ex')
+	os.remove_all('ex2')
+	os.remove('ex1.txt')
+	os.remove('ex2.txt')
 }

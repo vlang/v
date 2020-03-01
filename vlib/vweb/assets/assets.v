@@ -21,7 +21,7 @@ pub:
 	// when true assets will be minified
 	minify    bool
 	// the directory to store the cached/combined files
-	cache_dir string 
+	cache_dir string
 }
 
 struct Asset {
@@ -75,11 +75,11 @@ fn (am mut AssetManager) combine(asset_type string, to_file bool) string {
 	cache_key := am.get_cache_key(asset_type)
 	out_file := '$am.cache_dir/${cache_key}.$asset_type'
 	mut out := ''
-	// use cache 
-	if os.exists(out_file) {
+	// use cache
+	if os.is_exist(out_file) {
 		if to_file {
 			return out_file
-		}    	
+		}
 		cached := os.read_file(out_file) or {
 			return ''
 		}
@@ -153,7 +153,7 @@ fn (am mut AssetManager) include(asset_type string, combine bool) string {
 // dont return option until size limit is removed
 // fn (am mut AssetManager) add(asset_type, file string) ?bool {
 fn (am mut AssetManager) add(asset_type, file string) bool {
-	if !os.exists(file) {
+	if !os.is_exist(file) {
 		// return error('vweb.assets: cannot add asset $file, it does not exist')
 		return false
 	}

@@ -11,7 +11,7 @@ fn main() {
  println(foo)
 
  println('')
- rm('a.out')
+ remove('a.out')
 
  println('Making dir name and creating foo.txt')
  os.mkdir('name')? // TODO mkdir()
@@ -30,8 +30,8 @@ fn main() {
  println('Removing name and foo.txt')
  println('')
  chdir('../')
- rmdir('name')
- rm('foo.txt')
+ remove('name')
+ remove('foo.txt')
 
  again := ls('.') or { panic(err) }
  println(again)

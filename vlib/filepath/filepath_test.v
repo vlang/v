@@ -32,12 +32,12 @@ fn test_dir() {
 	assert filepath.dir('filepath') == '.'
 }
 
-fn test_basedir() {
+fn test_base() {
 	$if windows {
-		assert filepath.basedir('v\\vlib\\filepath') == 'v\\vlib'
+		assert filepath.base('v\\vlib\\filepath') == 'v\\vlib'
 	} $else {
-		assert filepath.basedir('v/vlib/filepath') == 'v/vlib'
+		assert filepath.base('v/vlib/filepath') == 'v/vlib'
 	}
 
-	assert filepath.basedir('filename') == 'filename'
+	assert filepath.base('filename') == 'filename'
 }

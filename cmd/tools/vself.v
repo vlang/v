@@ -23,9 +23,9 @@ fn main() {
 	v_file := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	v2_file := if os.user_os() == 'windows' { 'v2.exe' } else { 'v2' }
 	bak_file := if os.user_os() == 'windows' { 'v_old.exe' } else { 'v_old' }
-	if os.exists(bak_file) {
-		os.rm(bak_file)
+	if os.is_exist(bak_file) {
+		os.remove(bak_file)
 	}
-	os.mv(v_file, bak_file)
-	os.mv(v2_file, v_file)
+	os.rename(v_file, bak_file)
+	os.rename(v2_file, v_file)
 }

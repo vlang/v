@@ -21,8 +21,8 @@ fn launch_tool(is_verbose bool, tname string, cmdname string) {
 	}
 	mut compilation_options := os.args[1..tname_index].clone()
 	tool_args := os.args[1..].join(' ')
-	tool_exe := path_of_executable(os.realpath('$vroot/cmd/tools/$tname'))
-	tool_source := os.realpath('$vroot/cmd/tools/${tname}.v')
+	tool_exe := path_of_executable(filepath.abs('$vroot/cmd/tools/$tname'))
+	tool_source := filepath.abs('$vroot/cmd/tools/${tname}.v')
 	tool_command := '"$tool_exe" $tool_args'
 	if is_verbose {
 		eprintln('launch_tool vexe        : $vroot')
@@ -32,7 +32,7 @@ fn launch_tool(is_verbose bool, tname string, cmdname string) {
 	}
 
 	mut should_compile := false
-	if !os.exists(tool_exe) {
+	if !os.is_exist(tool_exe) {
 		should_compile = true
 	} else {
 		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(vexe) {

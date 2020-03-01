@@ -390,7 +390,7 @@ pub fn create_image(file string) u32 {
 	if file.contains('twitch') {
 		return u32(0)// TODO
 	}
-	if !os.exists(file) {
+	if !os.is_exist(file) {
 		println('gg create image no such file "$file"')
 		return u32(0)
 	}
@@ -422,7 +422,7 @@ pub fn (ctx &GG) draw_line(x, y, x2, y2 f32, color gx.Color) {
 }
 
 pub fn (ctx &GG) draw_arc(x, y, r, start_angle, end_angle f32, segments int, color gx.Color) {
-	ctx.use_color_shader(color)	
+	ctx.use_color_shader(color)
 	vertices := arc_vertices(x, y, r, start_angle, end_angle, segments)
 	ctx.bind_vertices(vertices)
 	gl.draw_arrays(C.GL_LINE_STRIP, 0, segments + 1)
@@ -432,7 +432,7 @@ pub fn (ctx &GG) draw_arc(x, y, r, start_angle, end_angle f32, segments int, col
 pub fn (ctx &GG) draw_filled_arc(x, y, r, start_angle, end_angle f32, segments int, color gx.Color) {
 	ctx.use_color_shader(color)
 
-	
+
 	mut vertices := []f32
 	vertices << [x, y] !
 	vertices << arc_vertices(x, y, r, start_angle, end_angle, segments)

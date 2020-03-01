@@ -18,11 +18,11 @@ fn main() {
 
 	$if windows {
 		v_backup_file := 'v_old.exe'
-		if os.exists(v_backup_file) {
-			os.rm(v_backup_file)
+		if os.is_exist(v_backup_file) {
+			os.remove(v_backup_file)
 		}
-		os.mv('v.exe', v_backup_file)
-		
+		os.rename('v.exe', v_backup_file)
+
 		s2 := os.exec('make.bat') or {
 			panic(err)
 		}

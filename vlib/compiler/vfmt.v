@@ -171,8 +171,8 @@ fn (p mut Parser) fnext() {
 		p.fgen_nl()
 		p.fmt_inc()
 	}
-	if p.token_idx >= p.tokens.len { 
-		return 
+	if p.token_idx >= p.tokens.len {
+		return
 	}
 	// Skip comments and add them to vfmt output
 	if p.tokens[p.token_idx].tok in [.line_comment, .mline_comment] {
@@ -286,7 +286,7 @@ fn (p &Parser) gen_fmt() {
 	if is_all {
 		if p.file_path.len > 0 {
 			path := write_formatted_source( p.file_name, s )
-			os.cp( path, p.file_path ) or { panic(err) }
+			os.copy( path, p.file_path ) or { panic(err) }
 			eprintln('Written fmt file to: $p.file_path')
 		}
 	}

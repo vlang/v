@@ -99,7 +99,7 @@ pub fn new_v(args []string) &compiler.V {
 	defines := cmdline.options(args, '-d')
 	compile_defines, compile_defines_all := parse_defines( defines )
 
-	rdir := os.realpath(dir)
+	rdir := filepath.abs(dir)
 	rdir_name := filepath.filename(rdir)
 	if '-bare' in args {
 		println('V error: use -freestanding instead of -bare')
@@ -184,7 +184,7 @@ pub fn new_v(args []string) &compiler.V {
 		exit(1)
 	}
 
-	if prefs.is_script && !os.exists(dir) {
+	if prefs.is_script && !os.is_exist(dir) {
 		println('`$dir` does not exist')
 		exit(1)
 	}

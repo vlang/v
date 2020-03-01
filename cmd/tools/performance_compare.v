@@ -140,15 +140,15 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 	println('Compare v performance when doing the following commands ($label):')
 	mut source_location_a := ''
 	mut source_location_b := ''
-	if os.exists('$c.a/cmd/v') {
+	if os.is_exist('$c.a/cmd/v') {
 		source_location_a = 'cmd/v'
 	} else {
-		source_location_a = if os.exists('$c.a/v.v') { 'v.v       ' } else { 'compiler/ ' }
+		source_location_a = if os.is_exist('$c.a/v.v') { 'v.v       ' } else { 'compiler/ ' }
 	}
-	if os.exists('$c.b/cmd/v') {
+	if os.is_exist('$c.b/cmd/v') {
 		source_location_b = 'cmd/v'
 	} else {
-		source_location_b = if os.exists('$c.b/v.v') { 'v.v       ' } else { 'compiler/ ' }
+		source_location_b = if os.is_exist('$c.b/v.v') { 'v.v       ' } else { 'compiler/ ' }
 	}
 	timestamp_a,_ := vgit.line_to_timestamp_and_commit(scripting.run('cd $c.a/ ; git rev-list -n1 --timestamp HEAD'))
 	timestamp_b,_ := vgit.line_to_timestamp_and_commit(scripting.run('cd $c.b/ ; git rev-list -n1 --timestamp HEAD'))
@@ -165,7 +165,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		hyperfine_commands_arguments << " \'cd ${c.a:-34s} ; ./$cmd \' ".replace_each(['@COMPILER@', source_location_a, '@DEBUG@', debug_option_a])
 	}
 	// /////////////////////////////////////////////////////////////////////////////
-	cmd_stats_file := os.realpath([c.workdir, 'v_performance_stats_${label}.json'].join(filepath.separator))
+	cmd_stats_file := filepath.abs([c.workdir, 'v_performance_stats_${label}.json'].join(filepath.separator))
 	comparison_cmd := 'hyperfine $c.hyperfineopts ' + '--export-json ${cmd_stats_file} ' + '--time-unit millisecond ' + '--style full --warmup $c.warmups ' + hyperfine_commands_arguments.join(' ')
 	// /////////////////////////////////////////////////////////////////////////////
 	if c.verbose {

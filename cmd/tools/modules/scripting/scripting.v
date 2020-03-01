@@ -41,11 +41,11 @@ pub fn chdir(path string) {
 
 pub fn rmrf(path string) {
 	verbose_trace(@FN, 'rm -rf $path')
-	if os.exists(path) {
+	if os.is_exist(path) {
 		if os.is_dir(path) {
-			os.rmdir_all(path)
+			os.remove_all(path)
 		}else{
-			os.rm(path)
+			os.remove(path)
 		}
 	}
 }

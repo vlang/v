@@ -375,7 +375,7 @@ fn (gen_vc mut GenVC) purge_repos() {
 
 // check if file size is too short
 fn (gen_vc mut GenVC) assert_file_exists_and_is_not_too_short(f string, emsg string){
-	if !os.exists(f) {
+	if !os.is_exist(f) {
 		gen_vc.logger.error('$err_msg_build: $emsg .')
 		gen_vc.gen_error = true
 		return

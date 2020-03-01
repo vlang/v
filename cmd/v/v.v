@@ -57,7 +57,7 @@ fn main() {
 		launch_tool(is_verbose, 'v' + command, command)
 		return
 	}
-	if command == 'run' || command == 'build' || command.ends_with('.v') || os.exists(command) {
+	if command == 'run' || command == 'build' || command.ends_with('.v') || os.is_exist(command) {
 		compile(command, arg)
 		return
 	}

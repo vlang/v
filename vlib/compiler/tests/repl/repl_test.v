@@ -79,7 +79,7 @@ fn process_in_thread( session mut Session, thread_id int ){
 
 		tfolder := filepath.join( cdir, 'vrepl_tests_$idx')
 		if os.is_dir( tfolder ) {
-			os.rmdir_all( tfolder )
+			os.remove_all( tfolder )
 		}
 		os.mkdir( tfolder ) or { panic(err) }
 
@@ -89,14 +89,14 @@ fn process_in_thread( session mut Session, thread_id int ){
 		fres := runner.run_repl_file(tfolder, session.options.vexec, file) or {
 			session.bmark.fail()
 			tls_bench.fail()
-			os.rmdir_all( tfolder )
+			os.remove_all( tfolder )
 			eprintln(tls_bench.step_message_fail(err))
 			assert false
 			continue
 		}
 		session.bmark.ok()
 		tls_bench.ok()
-		os.rmdir_all( tfolder )
+		os.remove_all( tfolder )
 		println(tls_bench.step_message_ok(fres))
 		assert true
 	}

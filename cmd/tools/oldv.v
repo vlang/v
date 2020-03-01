@@ -59,7 +59,7 @@ fn (c mut Context) compile_oldv_if_needed() {
 	}
 	vgit_context.compile_oldv_if_needed()
 	c.commit_v_hash = vgit_context.commit_v__hash
-	if !os.exists(vgit_context.vexepath) && c.cmd_to_run.len > 0 {
+	if !os.is_exist(vgit_context.vexepath) && c.cmd_to_run.len > 0 {
 		// NB: 125 is a special code, that git bisect understands as 'skip this commit'.
 		// it is used to inform git bisect that the current commit leads to a build failure.
 		exit(125)
@@ -76,10 +76,10 @@ fn main() {
 	fp.arguments_description('VCOMMIT')
 	fp.skip_executable()
 	fp.limit_free_args(1, 1)
-	
+
 	context.cleanup = fp.bool('clean', true, 'Clean before running (slower).')
 	context.cmd_to_run = fp.string_('command', `c`, '', 'Command to run in the old V repo.\n')
-	
+
 	commits := vgit.add_common_tool_options(mut context, mut fp)
 	if commits.len > 0 {
 		context.commit_v = commits[0]
@@ -102,9 +102,9 @@ fn main() {
 		scripting.rmrf(context.path_v)
 		scripting.rmrf(context.path_vc)
 	}
-	
+
 	context.compile_oldv_if_needed()
-	
+
 	scripting.chdir(context.path_v)
 	println('#     v commit hash: $context.commit_v_hash')
 	println('#   checkout folder: $context.path_v')
@@ -116,5 +116,5 @@ fn main() {
 		println(cmdres.output)
 		exit(cmdres.exit_code)
 	}
-	
+
 }

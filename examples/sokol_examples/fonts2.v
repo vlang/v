@@ -54,11 +54,11 @@ fn init(user_data voidptr) {
 	C.sgl_setup(s)
 	state.fons = C.sfons_create(512, 512, 1)
 	mut font_path := os.resource_abs_path('assets/DroidSerif-Regular.ttf')
-	if !os.exists(font_path) {
+	if !os.is_exist(font_path) {
 		font_path = os.resource_abs_path('../tetris/RobotoMono-Regular.ttf')
 		println(font_path)
 	}
-	if !os.exists(font_path) {
+	if !os.is_exist(font_path) {
 		println('failed to load $font_path')
 		return
 	}

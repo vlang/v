@@ -55,7 +55,7 @@ fn (v mut V) cc() {
 		$if !js {
 			if ends_with_js {
 				vjs_path := vexe + 'js'
-				if !os.exists(vjs_path) {
+				if !os.is_exist(vjs_path) {
 					println('V.js compiler not found, building...')
 					// Build V.js. Specifying `-os js` makes V include
 					// only _js.v files and ignore _c.v files.
@@ -112,7 +112,7 @@ fn (v mut V) cc() {
 				tcc_3rd := '$vdir/thirdparty/tcc/bin/tcc'
 				// println('tcc third "$tcc_3rd"')
 				tcc_path := '/var/tmp/tcc/bin/tcc'
-				if os.exists(tcc_3rd) && !os.exists(tcc_path) {
+				if os.is_exist(tcc_3rd) && !os.is_exist(tcc_path) {
 					// println('moving tcc')
 					// if there's tcc in thirdparty/, that means this is
 					// a prebuilt V_linux.zip.
@@ -120,7 +120,7 @@ fn (v mut V) cc() {
 					// it to /var/tmp/
 					os.system('mv $vdir/thirdparty/tcc /var/tmp/')
 				}
-				if v.pref.ccompiler == 'cc' && os.exists(tcc_path) {
+				if v.pref.ccompiler == 'cc' && os.is_exist(tcc_path) {
 					// TODO tcc bug, needs an empty libtcc1.a fila
 					// os.mkdir('/var/tmp/tcc/lib/tcc/') or { panic(err) }
 					// os.create('/var/tmp/tcc/lib/tcc/libtcc1.a')
@@ -218,7 +218,7 @@ fn (v mut V) cc() {
 	else if v.pref.is_cache {
 		builtin_o_path := filepath.join(v_modules_path,'cache','vlib','builtin.o')
 		a << builtin_o_path.replace('builtin.o', 'strconv.o') // TODO hack no idea why this is needed
-		if os.exists(builtin_o_path) {
+		if os.is_exist(builtin_o_path) {
 			libs = builtin_o_path
 		}
 		else {
@@ -235,17 +235,17 @@ fn (v mut V) cc() {
 			imp_path := imp.replace('.', filepath.separator)
 			path := '$v_modules_path${filepath.separator}cache${filepath.separator}vlib${filepath.separator}${imp_path}.o'
 			// println('adding ${imp_path}.o')
-			if os.exists(path) {
+			if os.is_exist(path) {
 				libs += ' ' + path
 			}
 			else {
 				println('$path not found... building module $imp')
 				if path.ends_with('vlib/ui.o') {
 					println('copying ui...')
-					os.cp('$vdir/thirdparty/ui/ui.o', path)or{
+					os.copy('$vdir/thirdparty/ui/ui.o', path)or{
 						panic('error copying ui files')
 					}
-					os.cp('$vdir/thirdparty/ui/ui.vh', v_modules_path + '/vlib/ui.vh')or{
+					os.copy('$vdir/thirdparty/ui/ui.vh', v_modules_path + '/vlib/ui.vh')or{
 						panic('error copying ui files')
 					}
 				}
@@ -422,7 +422,7 @@ If you're confident that all of the above is true, please try running V with the
 	*/
 
 	if !v.pref.is_keep_c && v.out_name_c != 'v.c' {
-		os.rm(v.out_name_c)
+		os.remove(v.out_name_c)
 	}
 	if v.pref.compress {
 		$if windows {
@@ -467,7 +467,7 @@ fn (c mut V) cc_windows_cross() {
 	mut libs := ''
 	if false && c.pref.build_mode == .default_mode {
 		libs = '"$v_modules_path/vlib/builtin.o"'
-		if !os.exists(libs) {
+		if !os.is_exist(libs) {
 			println('`$libs` not found')
 			exit(1)
 		}
@@ -522,7 +522,7 @@ fn (c mut V) cc_windows_cross() {
 			println('Cross compilation for Windows failed. Make sure you have lld linker installed.')
 			exit(1)
 		}
-		// os.rm(obj_name)
+		// os.remove(obj_name)
 	}
 	*/
 	println('Done!')

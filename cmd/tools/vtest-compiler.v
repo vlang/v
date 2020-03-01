@@ -26,7 +26,7 @@ fn v_test_compiler(vargs string) {
 	// compiler/tests/local_test.v and compiler/tests/repl/repl_test.v
 	os.chdir(parent_dir)
 	/*
-	if !os.exists(parent_dir + '/v.v') {
+	if !os.is_exist(parent_dir + '/v.v') {
 		eprintln('v.v is missing, it must be next to the V executable')
 		exit(1)
 	}
@@ -34,7 +34,7 @@ fn v_test_compiler(vargs string) {
 
 	// Make sure v.c can be compiled without warnings
 	$if macos {
-		if os.exists('/cmd/v') {
+		if os.is_exist('/cmd/v') {
 			os.system('$vexe -o v.c cmd/v')
 			if os.system('cc -Werror v.c') != 0 {
 				eprintln('cc failed to build v.c without warnings')
@@ -63,7 +63,7 @@ fn v_test_compiler(vargs string) {
 	if ret != 0 {
 		eprintln('failed to run v install')
 	}
-	if !os.exists(v_modules_path + '/nedpals/args') {
+	if !os.is_exist(v_modules_path + '/nedpals/args') {
 		eprintln('v failed to install a test module')
 	}
 	vmark.stop()

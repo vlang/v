@@ -1,7 +1,11 @@
 module main
 
-import os
-import term
+import (
+	os
+	filepath
+	term
+)
+
 // //////////////////////////////////////////////////////////////////
 // / This file will get compiled as part of the main program,
 // / for a _test.v file.
@@ -19,7 +23,7 @@ fn cb_assertion_failed(filename string, line int, sourceline string, funcname st
 		else {
 			true}
 	}
-	final_filename := if use_relative_paths { filename } else { os.realpath(filename) }
+	final_filename := if use_relative_paths { filename } else { filepath.abs(filename) }
 	final_funcname := funcname.replace('main__', '').replace('__', '.')
 	mut fail_message := 'FAILED assertion'
 	if color_on {
