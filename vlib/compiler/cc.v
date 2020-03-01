@@ -17,7 +17,7 @@ fn todo() {
 fn (v &V) no_cc_installed() bool {
 	$if windows {
 		os.exec('$v.pref.ccompiler -v')or{
-			if v.pref.is_verbose {
+			if v.pref.verbosity.is_higher_or_equal(.level_one) {
 				println('C compiler not found, trying to build with msvc...')
 			}
 			return true
