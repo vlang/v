@@ -138,7 +138,7 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 	mut files := os.ls(dir) or {
 		panic(err)
 	}
-	if b.pref.is_verbose {
+	if b.pref.verbosity.is_higher_or_equal(.level_one) {
 		println('v_files_from_dir ("$dir")')
 	}
 	files.sort()
@@ -193,7 +193,7 @@ fn verror(err string) {
 }
 
 pub fn (b &Builder) log(s string) {
-	if b.pref.is_verbose {
+	if b.pref.verbosity.is_higher_or_equal(.level_two) {
 		println(s)
 	}
 }

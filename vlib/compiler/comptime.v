@@ -209,7 +209,7 @@ fn (p mut Parser) comp_time() {
 		p.check(.lpar)
 		p.check(.rpar)
 		v_code := tmpl.compile_template(path)
-		if p.pref.is_verbose {
+		if p.pref.verbosity.is_higher_or_equal(.level_three) {
 			println('\n\n')
 			println('>>> vweb template for ${path}:')
 			println(v_code)

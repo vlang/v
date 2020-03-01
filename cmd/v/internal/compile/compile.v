@@ -17,7 +17,7 @@ pub fn compile(command string, args []string) {
 	prefs := parse_arguments(args)
 	check_for_common_mistake(args, &prefs)
 	mut v := compiler.new_v(prefs)
-	if v.pref.is_verbose {
+	if v.pref.verbosity.is_higher_or_equal(.level_two) {
 		println(args)
 	}
 	if command == 'run' {
@@ -55,7 +55,7 @@ pub fn compile(command string, args []string) {
 }
 
 pub fn run_compiled_executable_and_exit(v &compiler.V, args []string) {
-	if v.pref.is_verbose {
+	if v.pref.verbosity.is_higher_or_equal(.level_two) {
 		println('============ running $v.pref.out_name ============')
 	}
 	mut cmd := '"${v.pref.out_name}"'

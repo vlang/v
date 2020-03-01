@@ -280,7 +280,7 @@ pub fn (v mut V) cc_msvc() {
 	cmd := '"$r.full_cl_exe_path" $args'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
-	if v.pref.show_c_cmd || v.pref.is_verbose {
+	if v.pref.verbosity.is_higher_or_equal(.level_one) {
 		println('\n========== cl cmd line:')
 		println(cmd)
 		println('==========\n')

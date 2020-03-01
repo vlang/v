@@ -951,7 +951,7 @@ fn (p mut Parser) factor() string {
 			return typ
 		}
 		else {
-			if p.pref.is_verbose || p.pref.is_debug {
+			if p.pref.verbosity.is_higher_or_equal(.level_three) {
 				next := p.peek()
 				println('prev=${p.prev_tok.str()}')
 				println('next=${next.str()}')

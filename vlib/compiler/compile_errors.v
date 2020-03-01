@@ -176,7 +176,7 @@ fn (p mut Parser) print_error_context() {
 		// os.write_to_file('/var/tmp/lang.types', '')//pes(p.table.types))
 		os.write_file('fns.txt', p.table.debug_fns())
 	}
-	if p.pref.is_verbose || p.pref.is_debug {
+	if p.pref.verbosity.is_higher_or_equal(.level_three) {
 		println('pass=$p.pass fn=`$p.cur_fn.name`\n')
 	}
 	p.cgen.save()

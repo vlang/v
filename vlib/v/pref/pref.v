@@ -41,11 +41,9 @@ pub mut:
 	is_prof             bool // benchmark every function
 	translated          bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	is_prod             bool // use "-O2"
-	is_verbose          bool // print extra information with `v.log()`
 	obfuscate           bool // `v -obf program.v`, renames functions to "f_XXX"
 	is_repl             bool
 	is_run              bool
-	show_c_cmd          bool // `v -show_c_cmd` prints the C command to build program.v.c
 	sanitize            bool // use Clang's new "-fsanitize" option
 	is_debug            bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines           bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).

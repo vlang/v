@@ -328,7 +328,7 @@ start:
 	// TODO remove
 	cmd := '${v.pref.ccompiler} $args'
 	// Run
-	if v.pref.show_c_cmd || v.pref.is_verbose {
+	if v.pref.verbosity.is_higher_or_equal(.level_one) {
 		println('\n==========')
 		println(cmd)
 	}
@@ -402,7 +402,7 @@ If you're confident that all of the above is true, please try running V with the
 	}
 	diff := time.ticks() - ticks
 	// Print the C command
-	if v.pref.show_c_cmd || v.pref.is_verbose {
+	if v.pref.verbosity.is_higher_or_equal(.level_one) {
 		println('${v.pref.ccompiler} took $diff ms')
 		println('=========\n')
 	}
@@ -513,7 +513,7 @@ fn (c mut V) cc_windows_cross() {
 
 	println(cmd)
 	//cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $v_modules_path/$c.out_name_c'
-	if c.pref.show_c_cmd {
+	if c.pref.verbosity.is_higher_or_equal(.level_one) {
 		println(cmd)
 	}
 	if os.system(cmd) != 0 {

@@ -95,12 +95,12 @@ fn (v &V) generate_hot_reload_code() {
 		}
 		so_debug_flag := if v.pref.is_debug { '-g' } else { '' }
 		cmd_compile_shared_library := '$vexe $msvc $so_debug_flag -o $file_base -solive -shared $file'
-		if v.pref.show_c_cmd {
+		if v.pref.verbosity.is_higher_or_equal(.level_one) {
 			println(cmd_compile_shared_library)
 		}
 		ticks := time.ticks()
 		os.system(cmd_compile_shared_library)
-		if v.pref.is_verbose {
+		if v.pref.verbosity.is_higher_or_equal(.level_two) {
 			diff := time.ticks() - ticks
 			println('compiling shared library took $diff ms')
 			println('=========\n')
