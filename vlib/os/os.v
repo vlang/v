@@ -220,7 +220,7 @@ pub fn mv_by_cp(source string, target string) ?bool {
 	os.copy(source, target) or {
 		return error(err)
 	}
-	os.rm(source)
+	os.remove(source)
 	return true
 }
 
@@ -596,8 +596,8 @@ pub fn is_readable(path string) bool {
   }
 }
 
-// rm removes file in `path`.
-fn rm(path string) {
+// removes file in `path`.
+pub fn remove(path string) {
 	$if windows {
 		C._wremove(path.to_wide())
 	} $else {
@@ -621,19 +621,9 @@ fn rmdir_recursive(path string) {
 		if os.is_dir(filepath.join(path,item)) {
 			rmdir_recursive(filepath.join(path,item))
 		}
-		os.rm(filepath.join(path,item))
+		os.remove(filepath.join(path,item))
 	}
 	os.rmdir(path)
-}
-
-// remove file or empty directory
-pub fn remove(path string) {
-	if os.is_dir(path) {
-		os.rmdir(path)
-	}
-	else {
-		os.rm(path)
-	}
 }
 
 // remove file or directory(may be not empty)
@@ -642,7 +632,7 @@ pub fn remove_all(path string) {
 		os.rmdir_recursive(path)
 	}
 	else {
-		os.rm(path)
+		os.remove(path)
 	}
 }
 
@@ -898,10 +888,6 @@ pub fn is_dir(path string) bool {
 	} $else {
 		statbuf := C.stat{}
 		if C.stat(path.str, &statbuf) != 0 {
-			return false
-		}
-		// judge link for folder
-		if int(statbuf.st_mode) & S_IFMT == S_IFLNK {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
