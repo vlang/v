@@ -194,7 +194,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		}
 		os.write_file(main_program_file, main_program_content)
 		cfile = main_program_file
-		compiler_params.user_mod_path = mod_folder_parent
+		compiler_params.lookup_path = [mod_folder_parent, '@vlib', '@vmodule']
 	}
 	if !is_test_file && mod_name == 'main' {
 		// NB: here, file is guaranted to be a main. We do not know however
@@ -234,19 +234,17 @@ fn (foptions &FormatOptions) format_file(file string) {
 }
 
 fn print_compiler_options( compiler_params &pref.Preferences ) {
-	eprintln('        os: ' + compiler_params.os.str() )
-	eprintln(' ccompiler: $compiler_params.ccompiler' )
-	eprintln('       mod: $compiler_params.mod ')
-	eprintln('      path: $compiler_params.path ')
-	eprintln('  out_name: $compiler_params.out_name ')
-	eprintln('     vroot: $compiler_params.vroot ')
-	eprintln('     vpath: $compiler_params.vpath ')
-	eprintln(' vlib_path: $compiler_params.vlib_path ')
-	eprintln('  out_name: $compiler_params.out_name ')
-	eprintln('    umpath: $compiler_params.user_mod_path ')
-	eprintln('    cflags: $compiler_params.cflags ')
-	eprintln('   is_test: $compiler_params.is_test ')
-	eprintln(' is_script: $compiler_params.is_script ')
+	eprintln('         os: ' + compiler_params.os.str() )
+	eprintln('  ccompiler: $compiler_params.ccompiler' )
+	eprintln('        mod: $compiler_params.mod ')
+	eprintln('       path: $compiler_params.path ')
+	eprintln('   out_name: $compiler_params.out_name ')
+	eprintln('      vroot: $compiler_params.vroot ')
+	eprintln('lookup_path: $compiler_params.lookup_path ')
+	eprintln('   out_name: $compiler_params.out_name ')
+	eprintln('     cflags: $compiler_params.cflags ')
+	eprintln('    is_test: $compiler_params.is_test ')
+	eprintln('  is_script: $compiler_params.is_script ')
 }
 
 fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path string) {
