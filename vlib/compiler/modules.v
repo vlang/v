@@ -182,9 +182,18 @@ fn (v mut V) set_module_lookup_paths() {
 	}
 }
 
-fn (p &Parser) find_module_path(mod string) ?string {
+fn (p mut Parser) find_module_path(mod string) ?string {
+	vmod_file_location := p.v.mod_file_cacher.get( p.file_path_dir )
+	mut module_lookup_paths := []string
+	if vmod_file_location.vmod_file.len != 0 {
+		if ! vmod_file_location.vmod_folder in p.v.module_lookup_paths {
+			module_lookup_paths << vmod_file_location.vmod_folder
+		}
+	}
+	module_lookup_paths << p.v.module_lookup_paths
+
 	mod_path := p.v.module_path(mod)
-	for lookup_path in p.v.module_lookup_paths {
+	for lookup_path in module_lookup_paths {
 		try_path := filepath.join(lookup_path,mod_path)
 		if p.v.pref.is_verbose {
 			println('  >> trying to find $mod in $try_path ...')
@@ -196,7 +205,7 @@ fn (p &Parser) find_module_path(mod string) ?string {
 			return try_path
 		}
 	}
-	return error('module "$mod" not found in ${p.v.module_lookup_paths}')
+	return error('module "$mod" not found in ${module_lookup_paths}')
 }
 
 [inline]

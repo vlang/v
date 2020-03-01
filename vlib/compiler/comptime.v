@@ -254,6 +254,20 @@ fn (p mut Parser) chash() {
 				}
 				flag = flag.replace('@VROOT', vmod_file_location.vmod_folder )
 			}
+			for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
+				if flag.contains(deprecated) {
+					p.error('${deprecated} had been deprecated, sorry.
+Instead, please use @VROOT:
+1) Add a v.mod file, if you do not have one (NB: `v create` adds one)
+   at your top module or project folder.
+2) The folder where your v.mod file is, is your project/module @VROOT.
+3) Any .v file beside or below it, can use #flag @VROOT/abc to refer
+   to this folder.
+4) @VROOT is also prepended to the module lookup path, so you can import
+   other modules under your @VROOT, by just naming them.
+')
+				}
+			}
 			// p.log('adding flag "$flag"')
 			_ = p.table.parse_cflag(flag, p.mod, p.v.pref.compile_defines_all ) or {
 				p.error_with_token_index(err, p.cur_tok_index() - 1)
