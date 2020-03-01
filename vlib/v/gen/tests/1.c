@@ -9,6 +9,7 @@ void ensure_cap(int required, int cap);
 void println(string s);
 void matches();
 void end();
+void localmod__pub_foo();
 int pi = 3;
 int pi2 = pi;
 
@@ -33,6 +34,7 @@ int main() {
 	int ak = 10;
 	int mypi = pi;
 	Color color = Color_red;
+	localmod__pub_foo();
 	return 0;
 }
 
@@ -140,4 +142,8 @@ void end() {
 	int key = 10;
 	bool x = i != -1 && key == 10;
 	int e = 2 + 3 * 4;
+}
+
+void localmod__pub_foo() {
+	int a = 10;
 }

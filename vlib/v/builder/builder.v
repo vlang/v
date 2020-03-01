@@ -21,8 +21,8 @@ pub:
 	os                  pref.OS // the OS to build for
 	compiled_dir        string // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path         string
-	module_search_paths []string
 mut:
+	module_search_paths []string
 	parsed_files        []ast.File
 }
 
@@ -76,6 +76,8 @@ pub fn (b mut Builder) parse_imports() {
 			import_path := b.find_module_path(mod) or {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
 				// break
+				// println('module_search_paths:')
+				// println(b.module_search_paths)
 				panic('cannot import module "$mod" (not found)')
 			}
 			v_files := b.v_files_from_dir(import_path)
@@ -170,4 +172,27 @@ pub fn (b &Builder) log(s string) {
 	if b.pref.is_verbose {
 		println(s)
 	}
+}
+
+[inline]
+fn module_path(mod string) string {
+	// submodule support
+	return mod.replace('.', filepath.separator)
+}
+
+pub fn (b &Builder) find_module_path(mod string) ?string {
+	mod_path := module_path(mod)
+	for search_path in b.module_search_paths {
+		try_path := filepath.join(search_path,mod_path)
+		if b.pref.is_verbose {
+			println('  >> trying to find $mod in $try_path ..')
+		}
+		if os.is_dir(try_path) {
+			if b.pref.is_verbose {
+				println('  << found $try_path .')
+			}
+			return try_path
+		}
+	}
+	return error('module "$mod" not found')
 }

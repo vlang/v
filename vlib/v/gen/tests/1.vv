@@ -1,6 +1,8 @@
 //import moda
 //import modb as mb
 
+import localmod
+
 const (
 	pi = 3
 	pi2 = pi
@@ -39,6 +41,7 @@ fn main() {
 	ak := 10
 	mypi := pi
 	color := Color.red
+	localmod.pub_foo()
 }
 	/*
 	user := User{}

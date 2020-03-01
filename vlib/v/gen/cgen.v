@@ -85,8 +85,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 			else {
 				type_sym := g.table.get_type_symbol(it.typ)
-				g.write('$type_sym.name ${it.name}(')
-				g.definitions.write('$type_sym.name ${it.name}(')
+				name := it.name.replace('.', '__')
+				g.write('$type_sym.name ${name}(')
+				g.definitions.write('$type_sym.name ${name}(')
 			}
 			for i, arg in it.args {
 				arg_type_sym := g.table.get_type_symbol(arg.typ)
@@ -283,7 +284,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('}')
 		}
 		ast.CallExpr {
-			g.write('${it.name}(')
+			name := it.name.replace('.', '__')
+			g.write('${name}(')
 			g.call_args(it.args)
 			g.write(')')
 			/*
@@ -298,7 +300,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.MethodCallExpr {
 			typ := 'TODO'
-			g.write('${typ}_${it.name}(')
+			name := it.name.replace('.', '__')
+			g.write('${typ}_${name}(')
 			g.expr(it.expr)
 			if it.args.len > 0 {
 				g.write(', ')
