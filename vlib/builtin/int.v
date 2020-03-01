@@ -156,14 +156,18 @@ pub fn (n int) hex() string {
 pub fn (n i64) hex() string {
 	len := if n >= 0 { n.str().len + 3 } else { 19 }
 	hex := malloc(len)
-	count := C.sprintf(charptr(hex), '0x%'C.PRIx64, n)
+	// TODO
+	//count := C.sprintf(charptr(hex), '0x%'C.PRIx64, n)
+	count := C.sprintf(charptr(hex), '0x%llx', n)
 	return tos(hex, count)
 }
 
 pub fn (n u64) hex() string {
 	len := if n > 0 { n.str().len + 3 } else { 19 }
 	hex := malloc(len)
-	count := C.sprintf(charptr(hex), '0x%'C.PRIx64, n)
+	//count := C.sprintf(charptr(hex), '0x%'C.PRIx64, n)
+	count := C.sprintf(charptr(hex), '0x%llx', n)
+	//count := C.sprintf(charptr(hex), '0x%lx', n)
 	return tos(hex, count)
 }
 

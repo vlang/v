@@ -439,11 +439,16 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			it.typ = typ
 		}
 		else {
+			println('checker.stmt(): unhandled node')
+		}
+		/*
+			println('1')
 			node_name := typeof(node)
-			if !(node_name) in c.unhandled_stmts {
+			println('2')
+			if !(node_name in c.unhandled_stmts) {
 				c.unhandled_stmts << node_name
 			}
-		}
+			*/
 	}
 }
 
