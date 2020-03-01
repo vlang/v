@@ -900,6 +900,10 @@ pub fn is_dir(path string) bool {
 		if C.stat(path.str, &statbuf) != 0 {
 			return false
 		}
+		// judge link for folder
+		if int(statbuf.st_mode) & S_IFMT == S_IFLNK {
+			return false
+		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
 		return int(statbuf.st_mode) & S_IFMT == S_IFDIR
 	}
