@@ -12,17 +12,17 @@ import (
 )
 
 const (
-	max_nr_errors = 50
+	max_nr_errors = 150
 )
 
 pub struct Checker {
-	table          &table.Table
+	table           &table.Table
 mut:
-	file           ast.File
-	nr_errors      int
-	errors         []string
-	expected_type  table.Type
-	fn_return_type table.Type // current function's return type
+	file            ast.File
+	nr_errors       int
+	errors          []string
+	expected_type   table.Type
+	fn_return_type  table.Type // current function's return type
 	// TODO: remove once all exprs/stmts are handled
 	unhandled_exprs []string
 	unhandled_stmts []string
@@ -45,6 +45,7 @@ pub fn (c mut Checker) check(ast_file ast.File) {
 		println(t.name + ' - ' + t.kind.str())
 	}
 	*/
+
 }
 
 pub fn (c mut Checker) check2(ast_file ast.File) []string {
@@ -71,7 +72,6 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	for file in ast_files {
 		c.check(file)
 	}
-
 	c.print_unhandled_nodes()
 }
 
@@ -232,8 +232,11 @@ pub fn (c mut Checker) check_method_call_expr(method_call_expr ast.MethodCallExp
 		return method.return_type
 	}
 	if typ_sym.kind == .array && name in ['filter', 'clone'] {
-		// info := typ_sym.info as table.Array
-		return typ // info.elem_type
+		return typ
+	}
+	if typ_sym.kind == .array && name in ['first', 'last'] {
+		info := typ_sym.info as table.Array
+		return info.elem_type
 	}
 	// check parent
 	if typ_sym.parent_idx != 0 {
@@ -436,7 +439,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		}
 		else {
 			node_name := typeof(node)
-			if !(node_name) in c.unhandled_stmts { c.unhandled_stmts << node_name }
+			if !(node_name) in c.unhandled_stmts {
+				c.unhandled_stmts << node_name
+			}
 		}
 	}
 }
@@ -538,11 +543,11 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			c.expr(it.left)
 		}
 		*/
-		else {
-			// TODO: find nil string bug triggered with typeof
-			// node_name := typeof(node)
-			// if !(node_name) in c.unhandled_exprs { c.unhandled_exprs << node_name }
-		}
+
+		else {}
+		// TODO: find nil string bug triggered with typeof
+		// node_name := typeof(node)
+		// if !(node_name) in c.unhandled_exprs { c.unhandled_exprs << node_name }
 	}
 	return table.void_type
 }

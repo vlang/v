@@ -66,6 +66,7 @@ i < 10; i++;
 	bool q = true || false;
 	bool b2 = bools[0] || true;
 	bool b3 = get_bool() || true;
+	int f = TODO_first(nums);
 }
 
 int get_int(string a) {

@@ -8,14 +8,14 @@ import (
 	v.table
 )
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral |
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr |
-AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr |
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
+AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
 CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr
 
-pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt |
+pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
 LineComment | MultiLineComment | AssertStmt | UnsafeStmt
 
 pub type Type = StructType | ArrayType
@@ -147,13 +147,13 @@ pub:
 pub struct CallExpr {
 pub:
 // tok        token.Token
-	pos  token.Position
+	pos      token.Position
 mut:
 // func       Expr
-	name string
-	args []Expr
-	is_c bool
-	muts []bool
+	name     string
+	args     []Expr
+	is_c     bool
+	muts     []bool
 	or_block OrExpr
 }
 
@@ -166,6 +166,7 @@ pub:
 	args     []Expr
 	muts     []bool
 	or_block OrExpr
+	typ      table.Type
 }
 
 pub struct Return {
@@ -513,10 +514,10 @@ pub:
 
 pub struct Assoc {
 pub:
-	var_name   string
-	fields []string
-	exprs  []Expr
-	pos token.Position
+	var_name string
+	fields   []string
+	exprs    []Expr
+	pos      token.Position
 }
 
 pub struct SizeOf {

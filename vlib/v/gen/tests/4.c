@@ -17,7 +17,7 @@ int main() {
     a.a = tos3("da");
     a.b.a = 111;
     string a1 = a.a;
-    int a2 = ;
+    int a2 = TODO_testa(b);
     int c = testa();
     c = 1;
     string d = testb(1);
@@ -56,7 +56,7 @@ int testc(int a) {
 }
 
 int testa() {
-    int a = ;
+    int a = TODO_testb(f);
     a = 1;
     return 4;
 }

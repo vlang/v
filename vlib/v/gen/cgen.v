@@ -284,15 +284,28 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.CallExpr {
 			g.write('${it.name}(')
+			g.call_args(it.args)
+			g.write(')')
+			/*
 			for i, expr in it.args {
 				g.expr(expr)
 				if i != it.args.len - 1 {
 					g.write(', ')
 				}
 			}
+			*/
+
+		}
+		ast.MethodCallExpr {
+			typ := 'TODO'
+			g.write('${typ}_${it.name}(')
+			g.expr(it.expr)
+			if it.args.len > 0 {
+				g.write(', ')
+			}
+			g.call_args(it.args)
 			g.write(')')
 		}
-		ast.MethodCallExpr {}
 		ast.Ident {
 			g.write('$it.name')
 		}
@@ -379,6 +392,15 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 		g.write('[')
 		g.expr(node.index)
 		g.write(']')
+	}
+}
+
+fn (g mut Gen) call_args(args []ast.Expr) {
+	for i, expr in args {
+		g.expr(expr)
+		if i != args.len - 1 {
+			g.write(', ')
+		}
 	}
 }
 

@@ -72,6 +72,7 @@ fn foo(a int) {
 	q := true || false
 	b2 := bools[0] || true
 	b3 := get_bool() || true
+	f := nums.first()
 	//cloned = nums.clone()
 	//cloned1 := cloned[0]
 	//println(cloned1 == 1)
