@@ -989,6 +989,59 @@ You can rename the modules when imported:
 import module_name as mn      // mn is an alias of the module_name
 ```
 
+Note that V looks up the module by the containing directory name, which means the directory name should match exactly the module name.
+
+The name of the modules under the directory can be any `*.v`, but at least putting the file with the exact module name is preferable as a convention because the module file with the exact name, where `init()` function (see below) can exist, will be fetched first.
+
+```v
+./
+  |- module_name/
+    |- module_name.v    // first access
+    |- module1.v
+    |- module2.v
+    |- ...
+  |- main.v
+
+// module_name.v, module1.v, module2.v ...
+module module_name
+
+// main.v
+import module_name
+```
+
+Then you can refer to the modules "module_name" from the main.v file via `import module_name`.
+
+The same modules under the directory shares the same scope, which means they don't need `pub` to access each other.
+
+This means you can create modules as a name snake_case or PascalCase. You cannot include spaces within the module name.
+
+```v
+./
+  |- parent/
+    |- child/
+      |- child1.v
+  |- main.v
+
+// child1.v
+module child
+
+// main.v
+import parent.child     // imports modules under parent/child/
+
+child.function()        // reference is not namespaced
+```
+
+Notes on submodules:
+
+* The maximum depth of submodule path is "5" and you cannot exceed this.
+* TBD: When importing modules, you cannot use `../` to refer to the modules in parent directories. Use symbolic links in the case.
+
+You can rename the modules when imported:
+
+```v
+import module_name as mn      // mn is an alias of the module_name
+```
+
 Note that when importing modules, V looks up the module name by the containing directory name, which means the containing directory name should match exactly the specified module name in `import` syntax.
 
 The module's containing directory can contain one or more module files, which just need to end with `.v`. Any module files under the directory should declare `module` syntax with the same module name as the containing directory name.
