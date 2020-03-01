@@ -1,6 +1,9 @@
 module os
 
-import strings
+import (
+	strings
+	filepath
+)
 
 #include <dirent.h>
 #include <unistd.h>
