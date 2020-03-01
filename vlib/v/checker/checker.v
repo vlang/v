@@ -785,7 +785,7 @@ pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
 	c.table.find_type_idx(node.enum_name) }
 	// println('checker: enum_val: $node.enum_name typeidx=$typ_idx')
 	if typ_idx == 0 {
-		c.error('not an enum (type_idx=0)', node.pos)
+		c.error('not an enum (name=$node.enum_name) (type_idx=0)', node.pos)
 	}
 	typ := c.table.get_type_symbol(table.Type(typ_idx))
 	// println('tname=$typ.name')
