@@ -20,20 +20,6 @@ pub fn compile(command string, args []string) {
 	if v.pref.verbosity.is_higher_or_equal(.level_two) {
 		println(args)
 	}
-	if command == 'run' {
-		// always recompile for now, too error prone to skip recompilation otherwise
-		// for example for -repl usage, especially when piping lines to v
-		if v.pref.x64 {
-			v.compile_x64()
-		}
-		else if v.pref.v2 {
-			v.compile2()
-		}
-		else {
-			v.compile()
-		}
-		run_compiled_executable_and_exit(v, args)
-	}
 	mut tmark := benchmark.new_benchmark()
 	if v.pref.backend == .x64 {
 		v.compile_x64()
@@ -48,7 +34,7 @@ pub fn compile(command string, args []string) {
 		tmark.stop()
 		println('compilation took: ' + tmark.total_duration().str() + 'ms')
 	}
-	if v.pref.is_test {
+	if v.pref.is_test || v.pref.is_run {
 		run_compiled_executable_and_exit(v, args)
 	}
 	v.finalize_compilation()
