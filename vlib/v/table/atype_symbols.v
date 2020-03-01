@@ -96,7 +96,7 @@ pub fn (t &TypeSymbol) enum_info() Enum {
 			return it
 		}
 		else {
-			panic('TypeSymbol.enum_info(): no enum info')
+			panic('TypeSymbol.enum_info(): no enum info for type: $t.name')
 		}
 	}
 }
@@ -108,7 +108,7 @@ pub fn (t &TypeSymbol) mr_info() MultiReturn {
 			return it
 		}
 		else {
-			panic('TypeSymbol.mr_info(): no multi return info')
+			panic('TypeSymbol.mr_info(): no multi return info for type: $t.name')
 		}
 	}
 }
@@ -120,7 +120,7 @@ pub fn (t &TypeSymbol) array_info() Array {
 			return it
 		}
 		else {
-			panic('TypeSymbol.array_info(): no array info')
+			panic('TypeSymbol.array_info(): no array info for type: $t.name')
 		}
 	}
 }
@@ -132,7 +132,7 @@ pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 			return it
 		}
 		else {
-			panic('TypeSymbol.array_fixed(): no array fixed info')
+			panic('TypeSymbol.array_fixed(): no array fixed info for type: $t.name')
 		}
 	}
 }
@@ -144,7 +144,7 @@ pub fn (t &TypeSymbol) map_info() Map {
 			return it
 		}
 		else {
-			panic('TypeSymbol.map_info(): no map info')
+			panic('TypeSymbol.map_info(): no map info for type: $t.name')
 		}
 	}
 }
@@ -154,22 +154,6 @@ pub fn (t TypeSymbol) str() string {
 	return t.name
 }
 */
-
-
-[inline]
-pub fn array_name(elem_type &TypeSymbol, nr_dims int) string {
-	return 'array_${elem_type.name}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
-}
-
-[inline]
-pub fn array_fixed_name(elem_type &TypeSymbol, size int, nr_dims int) string {
-	return 'array_fixed_${elem_type.name}_${size}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
-}
-
-[inline]
-pub fn map_name(key_type &TypeSymbol, value_type &TypeSymbol) string {
-	return 'map_${key_type.name}_${value_type.name}'
-}
 
 pub fn (t mut Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there

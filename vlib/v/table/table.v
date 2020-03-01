@@ -252,10 +252,32 @@ pub fn (t &Table) known_type(name string) bool {
 	return true
 }
 
-pub fn (t mut Table) find_or_register_map(key_type, value_type Type) int {
+[inline]
+pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
+	elem_type_sym := t.get_type_symbol(elem_type)
+	return 'array_${elem_type_sym.name}'
+		+ if type_is_ptr(elem_type) { '_ptr' } else { '' }
+		+ if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+}
+
+[inline]
+pub fn (t &Table) array_fixed_name(elem_type Type, size int, nr_dims int) string {
+	elem_type_sym := t.get_type_symbol(elem_type)
+	return 'array_fixed_${elem_type_sym.name}_${size}'
+		+ if type_is_ptr(elem_type) { '_ptr' } else { '' }
+		+ if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+}
+
+[inline]
+pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
-	val_type_sym := t.get_type_symbol(value_type)
-	name := map_name(key_type_sym, val_type_sym)
+	value_type_sym := t.get_type_symbol(value_type)
+	return 'map_${key_type_sym.name}_${value_type_sym.name}'
+		+ if type_is_ptr(value_type) { '_ptr' } else { '' }
+}
+
+pub fn (t mut Table) find_or_register_map(key_type, value_type Type) int {
+	name := t.map_name(key_type, value_type)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -275,8 +297,7 @@ pub fn (t mut Table) find_or_register_map(key_type, value_type Type) int {
 }
 
 pub fn (t mut Table) find_or_register_array(elem_type Type, nr_dims int) int {
-	elem_type_sym := t.get_type_symbol(elem_type)
-	name := array_name(elem_type_sym, nr_dims)
+	name := t.array_name(elem_type, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -296,8 +317,7 @@ pub fn (t mut Table) find_or_register_array(elem_type Type, nr_dims int) int {
 }
 
 pub fn (t mut Table) find_or_register_array_fixed(elem_type Type, size int, nr_dims int) int {
-	elem_type_sym := t.get_type_symbol(elem_type)
-	name := array_fixed_name(elem_type_sym, size, nr_dims)
+	name := t.array_fixed_name(elem_type, size, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {

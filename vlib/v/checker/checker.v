@@ -23,6 +23,9 @@ mut:
 	errors         []string
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
+	// TODO: remove once all exprs/stmts are handled
+	unhandled_exprs []string
+	unhandled_stmts []string
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -42,10 +45,6 @@ pub fn (c mut Checker) check(ast_file ast.File) {
 		println(t.name + ' - ' + t.kind.str())
 	}
 	*/
-
-	if c.nr_errors > 0 {
-		exit(1)
-	}
 }
 
 pub fn (c mut Checker) check2(ast_file ast.File) []string {
@@ -72,6 +71,8 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	for file in ast_files {
 		c.check(file)
 	}
+
+	c.print_unhandled_nodes()
 }
 
 pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type {
@@ -370,18 +371,11 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 fn (c mut Checker) stmt(node ast.Stmt) {
 	// c.expected_type = table.void_type
 	match mut node {
-		ast.FnDecl {
-			c.fn_return_type = it.typ
-			for stmt in it.stmts {
-				c.stmt(stmt)
-			}
-		}
-		ast.Return {
-			c.return_stmt(it)
-		}
 		ast.AssignStmt {
 			c.assign_stmt(it)
 		}
+		// ast.Attr {}
+		// ast.CompIf {}
 		ast.ConstDecl {
 			for i, expr in it.exprs {
 				mut field := it.fields[i]
@@ -395,14 +389,14 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				it.fields[i] = field
 			}
 		}
-		ast.VarDecl {
-			typ := c.expr(it.expr)
-			// typ_sym := c.table.get_type_symbol(typ)
-			// println('var $it.name - $typ - $it.typ - $typ_sym.name')
-			// if it.typ == 0 {
-			// it.typ = typ
-			// }
-			it.typ = typ
+		ast.ExprStmt {
+			c.expr(it.expr)
+		}
+		ast.FnDecl {
+			c.fn_return_type = it.typ
+			for stmt in it.stmts {
+				c.stmt(stmt)
+			}
 		}
 		ast.ForStmt {
 			typ := c.expr(it.cond)
@@ -423,11 +417,27 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				c.stmt(stmt)
 			}
 		}
-		// ast.StructDecl {}
-		ast.ExprStmt {
-			c.expr(it.expr)
+		// ast.ForInStmt {}
+		// ast.GlobalDecl {}
+		// ast.HashStmt {}
+		ast.Import {}
+		ast.Return {
+			c.return_stmt(it)
 		}
-		else {}
+		// ast.StructDecl {}
+		ast.VarDecl {
+			typ := c.expr(it.expr)
+			// typ_sym := c.table.get_type_symbol(typ)
+			// println('var $it.name - $typ - $it.typ - $typ_sym.name')
+			// if it.typ == 0 {
+			// it.typ = typ
+			// }
+			it.typ = typ
+		}
+		else {
+			node_name := typeof(node)
+			if !(node_name) in c.unhandled_stmts { c.unhandled_stmts << node_name }
+		}
 	}
 }
 
@@ -439,6 +449,9 @@ fn (c mut Checker) stmts(stmts []ast.Stmt) {
 
 pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 	match mut node {
+		ast.ArrayInit {
+			return c.array_init(mut it)
+		}
 		ast.AssignExpr {
 			c.check_assign_expr(it)
 		}
@@ -451,82 +464,85 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			}
 			return var.typ
 		}
+		ast.BoolLiteral {
+			return table.bool_type
+		}
+		ast.CastExpr {
+			return it.typ
+		}
+		ast.CallExpr {
+			return c.call_expr(it)
+		}
+		ast.CharLiteral {
+			return table.byte_type
+		}
 		ast.EnumVal {
 			return c.enum_val(it)
 		}
 		ast.FloatLiteral {
 			return table.f64_type
 		}
+		ast.Ident {
+			return c.ident(mut it)
+		}
+		ast.IfExpr {
+			return c.if_expr(mut it)
+		}
+		ast.IfGuardExpr {
+			return table.bool_type
+		}
+		ast.IndexExpr {
+			return c.index_expr(it)
+		}
+		ast.InfixExpr {
+			return c.infix_expr(it)
+		}
 		ast.IntegerLiteral {
 			return table.int_type
+		}
+		ast.MapInit {
+			return c.map_init(it)
+		}
+		ast.MatchExpr {
+			return c.match_expr(mut it)
+		}
+		ast.MethodCallExpr {
+			return c.check_method_call_expr(it)
 		}
 		ast.PostfixExpr {
 			return c.postfix_expr(it)
 		}
-		/*
-		ast.UnaryExpr {
-			c.expr(it.left)
+		ast.PrefixExpr {
+			return c.expr(it.right)
 		}
-		*/
-
+		ast.None {
+			return table.none_type
+		}
+		ast.ParExpr {
+			return c.expr(it.expr)
+		}
+		ast.SelectorExpr {
+			return c.selector_expr(it)
+		}
 		ast.SizeOf {
 			return table.int_type
 		}
 		ast.StringLiteral {
 			return table.string_type
 		}
-		ast.CharLiteral {
-			return table.byte_type
-		}
-		ast.PrefixExpr {
-			return c.expr(it.right)
-		}
-		ast.InfixExpr {
-			return c.infix_expr(it)
-		}
 		ast.StructInit {
 			return c.check_struct_init(it)
 		}
-		ast.CallExpr {
-			return c.call_expr(it)
+		/*
+		ast.UnaryExpr {
+			c.expr(it.left)
 		}
-		ast.MethodCallExpr {
-			return c.check_method_call_expr(it)
+		*/
+		else {
+			// TODO: find nil string bug triggered with typeof
+			// node_name := typeof(node)
+			// if !(node_name) in c.unhandled_exprs { c.unhandled_exprs << node_name }
 		}
-		ast.ArrayInit {
-			return c.array_init(mut it)
-		}
-		ast.Ident {
-			return c.ident(mut it)
-		}
-		ast.BoolLiteral {
-			return table.bool_type
-		}
-		ast.SelectorExpr {
-			return c.selector_expr(it)
-		}
-		ast.IndexExpr {
-			return c.index_expr(it)
-		}
-		ast.IfExpr {
-			return c.if_expr(mut it)
-		}
-		ast.MatchExpr {
-			return c.match_expr(mut it)
-		}
-		ast.CastExpr {
-			return it.typ
-		}
-		ast.ParExpr {
-			return c.expr(it.expr)
-		}
-		ast.None {
-			return table.none_type
-		}
-		ast.IfGuardExpr {
-			return table.bool_type
-		}
-		else {}
 	}
 	return table.void_type
 }
@@ -775,6 +791,40 @@ pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
 	return typ_idx
 }
 
+pub fn (c mut Checker) map_init(node ast.MapInit) table.Type {
+	key0_type := c.expr(node.keys[0])
+	val0_type := c.expr(node.vals[0])
+	for i, key in node.keys {
+		if i == 0 {
+			continue
+		}
+		val := node.vals[i]
+		key_type := c.expr(key)
+		val_type := c.expr(val)
+		if !c.table.check(key_type, key0_type) {
+			key0_type_sym := c.table.get_type_symbol(key0_type)
+			key_type_sym := c.table.get_type_symbol(key_type)
+			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym` for map key', node.pos)
+		}
+		if !c.table.check(val_type, val0_type) {
+			val0_type_sym := c.table.get_type_symbol(val0_type)
+			val_type_sym := c.table.get_type_symbol(val_type)
+			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym` for map value', node.pos)
+		}
+	}
+	return c.table.find_or_register_map(key0_type, val0_type)
+}
+
+// TODO: remove once all exprs/stmts are handled
+pub fn (c &Checker) print_unhandled_nodes() {
+	if c.unhandled_exprs.len > 0 {
+		eprintln(' # unhandled Expr nodes:\n\t * ' + c.unhandled_exprs.join(', ') + '\n')
+	}
+	if c.unhandled_stmts.len > 0 {
+		eprintln(' # unhandled Stmt nodes:\n\t * ' + c.unhandled_stmts.join(', ') + '\n')
+	}
+}
+
 pub fn (c mut Checker) error(s string, pos token.Position) {
 	c.nr_errors++
 	print_backtrace()
@@ -797,6 +847,7 @@ pub fn (c mut Checker) error(s string, pos token.Position) {
 
 	println('\n\n')
 	if c.nr_errors >= max_nr_errors {
+		c.print_unhandled_nodes()
 		exit(1)
 	}
 }
