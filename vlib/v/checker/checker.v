@@ -812,7 +812,7 @@ pub fn (c mut Checker) map_init(node ast.MapInit) table.Type {
 			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym` for map value', node.pos)
 		}
 	}
-	return c.table.find_or_register_map(key0_type, val0_type)
+	return table.new_type(c.table.find_or_register_map(key0_type, val0_type))
 }
 
 // TODO: remove once all exprs/stmts are handled
