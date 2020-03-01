@@ -19,7 +19,15 @@ fn compile(command string, args []string) {
 	if command == 'run' {
 		// always recompile for now, too error prone to skip recompilation otherwise
 		// for example for -repl usage, especially when piping lines to v
-		v.compile()
+		if v.pref.x64 {
+			v.compile_x64()
+		}
+		else if v.pref.v2 {
+			v.compile2()
+		}
+		else {
+			v.compile()
+		}
 		run_compiled_executable_and_exit(v, args)
 	}
 	mut tmark := benchmark.new_benchmark()
