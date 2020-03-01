@@ -132,7 +132,7 @@ fn multiple_of_power_of_five_32(v u32, p u32) bool {
 
 // multiple_of_power_of_two_32 reports whether v is divisible by 2^p.
 fn multiple_of_power_of_two_32(v u32, p u32) bool {
-	return bits.trailing_zeros_32(v) >= p
+	return u32(bits.trailing_zeros_32(v)) >= p
 }
 
 // log10_pow2 returns floor(log_10(2^e)).
