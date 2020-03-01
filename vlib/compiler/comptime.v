@@ -254,6 +254,11 @@ fn (p mut Parser) chash() {
 				}
 				flag = flag.replace('@VROOT', vmod_file_location.vmod_folder )
 			}
+			for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
+				if flag.contains(deprecated) {
+					p.error('${deprecated} had been deprecated, use @VROOT instead.')
+				}
+			}
 			// p.log('adding flag "$flag"')
 			_ = p.table.parse_cflag(flag, p.mod, p.v.pref.compile_defines_all ) or {
 				p.error_with_token_index(err, p.cur_tok_index() - 1)

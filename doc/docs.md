@@ -1286,6 +1286,7 @@ Module {
 }
 ```
 
+
 * Add these lines to the top of your module:
 ```v
 #flag -I @VROOT/c
@@ -1293,6 +1294,9 @@ Module {
 #include "header.h"
 ```
 NB: @VROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
+Any .v file beside or below the folder where the v.mod file is, can use #flag @VROOT/abc to refer to this folder.
+The @VROOT folder is also *prepended* to the module lookup path, so you can *import* other 
+modules under your @VROOT, by just naming them.
 
 The instructions above will make V look for an compiled .o file in your module folder/c/implementation.o .
 If V finds it, the .o file will get linked to the main executable, that used the module.
