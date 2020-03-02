@@ -177,7 +177,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		}
 	}
 	mut p := v.new_parser(new_scanner_file(path))
-	path_dir := os.realpath(filepath.dir(path))
+	path_dir := filepath.abs(filepath.dir(path))
 	p = {
 		p |
 		file_path:path,
@@ -419,7 +419,7 @@ fn (p mut Parser) statements_from_text(text string, rcbr bool, fpath string) {
 
 fn (p mut Parser) parse(pass Pass) {
 	p.cgen.line = 0
-	p.cgen.file = cescaped_path(os.realpath(p.file_path))
+	p.cgen.file = cescaped_path(filepath.abs(p.file_path))
 	// ///////////////////////////////////
 	p.pass = pass
 	p.token_idx = 0

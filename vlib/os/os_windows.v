@@ -1,6 +1,9 @@
 module os
 
-import strings
+import (
+	strings
+	filepath
+)
 
 #flag -lws2_32
 #include <winsock2.h>
@@ -177,7 +180,7 @@ pub fn (f mut File) writeln(s string) {
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) ?bool {
 	if path == '.' { return true }
-	apath := os.realpath( path )
+	apath := filepath.abs( path )
 	if !C.CreateDirectory(apath.to_wide(), 0) {
 		return error('mkdir failed for "$apath", because CreateDirectory returned ' + get_error_msg(int(C.GetLastError())))
 	}

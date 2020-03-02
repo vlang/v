@@ -46,7 +46,7 @@ pub fn (ts mut TestSession) test() {
 	mut remaining_files := []string
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
-		file := os.realpath(relative_file)
+		file := filepath.abs(relative_file)
 		$if windows {
 			if file.contains('sqlite') || file.contains('httpbin') {
 				continue
@@ -115,7 +115,7 @@ fn (ts mut TestSession) process_files() {
 
 		dot_relative_file := ts.files[ idx ]
 		relative_file := dot_relative_file.replace('./', '')
-		file := os.realpath(relative_file)
+		file := filepath.abs(relative_file)
 		// Ensure that the generated binaries will be stored in the temporary folder.
 		// Remove them after a test passes/fails.
 		fname := filepath.filename(file)

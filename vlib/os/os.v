@@ -176,8 +176,8 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 }
 
 pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
-	source_path := os.realpath(osource_path)
-	dest_path := os.realpath(odest_path)
+	source_path := os.abs(osource_path)
+	dest_path := os.abs(odest_path)
 	if !os.exists(source_path) {
 		return error("Source path doesn\'t exist")
 	}
@@ -574,7 +574,7 @@ pub fn is_executable(path string) bool {
     // 02 Write-only
     // 04 Read-only
     // 06 Read and write
-    p := os.realpath( path )
+    p := filepath.abs( path )
     return ( os.exists( p ) && p.ends_with('.exe') )
   } $else {
     return C.access(path.str, X_OK) != -1
@@ -961,26 +961,9 @@ pub fn getwd() string {
 	}
 }
 
-// Returns the full absolute path for fpath, with all relative ../../, symlinks and so on resolved.
-// See http://pubs.opengroup.org/onlinepubs/9699919799/functions/realpath.html
-// Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
-// and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
-// NB: this particular rabbit hole is *deep* ...
+[deprecated]
 pub fn realpath(fpath string) string {
-	mut fullpath := calloc(MAX_PATH)
-	mut ret := charptr(0)
-	$if windows {
-		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
-		if ret == 0 {
-			return fpath
-		}
-	} $else {
-		ret = C.realpath(fpath.str, fullpath)
-		if ret == 0 {
-			return fpath
-		}
-	}
-	return string(fullpath)
+	panic('Use `filepath.abs` instead of `os.realpath`')
 }
 
 // walk_ext returns a recursive list of all file paths ending with `ext`.
@@ -1164,10 +1147,10 @@ pub const (
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
 pub fn resource_abs_path(path string) string {
-	mut base_path := os.realpath(filepath.dir(os.executable()))
+	mut base_path := filepath.abs(filepath.dir(os.executable()))
 	vresource := os.getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
 		base_path = vresource
 	}
-	return os.realpath( filepath.join( base_path, path ) )
+	return filepath.abs( filepath.join( base_path, path ) )
 }

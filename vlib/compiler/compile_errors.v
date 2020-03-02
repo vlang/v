@@ -163,7 +163,7 @@ fn (s &Scanner) get_error_filepath() string {
 		}
 		return s.file_path
 	}
-	return os.realpath(s.file_path)
+	return filepath.abs(s.file_path)
 }
 
 fn (s &Scanner) is_color_output_on() bool {

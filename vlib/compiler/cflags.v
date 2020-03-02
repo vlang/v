@@ -3,7 +3,8 @@
 // that can be found in the LICENSE file.
 module compiler
 
-import os
+import filepath
+
 // parsed cflag
 struct CFlag {
 	mod   string // the module in which the flag was given
@@ -23,7 +24,7 @@ fn (v &V) get_os_cflags() []CFlag {
 	if v.pref.compile_defines.len > 0 {
 		ctimedefines << v.pref.compile_defines
 	}
-	
+
 	for flag in v.table.cflags {
 		if flag.os == '' || (flag.os == 'linux' && v.pref.os == .linux) || (flag.os == 'darwin' && v.pref.os == .mac) || (flag.os == 'freebsd' && v.pref.os == .freebsd) || (flag.os == 'windows' && v.pref.os == .windows) {
 			flags << flag
@@ -57,7 +58,7 @@ fn (cf &CFlag) format() string {
 	}
 	// convert to absolute path
 	if cf.name == '-I' || cf.name == '-L' || value.ends_with('.o') {
-		value = '"' + os.realpath(value) + '"'
+		value = '"' + filepath.abs(value) + '"'
 	}
 	return '$cf.name $value'.trim_space()
 }
@@ -198,4 +199,3 @@ fn (cflags []CFlag) c_options_only_object_files() string {
 	}
 	return args.join(' ')
 }
-
