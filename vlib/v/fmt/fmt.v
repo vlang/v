@@ -195,6 +195,12 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
+		ast.GotoLabel {
+			f.writeln('$it.name:')
+		}
+		ast.GotoStmt {
+			f.writeln('goto $it.name')
+		}
 		ast.LineComment {
 			f.writeln('// $it.text')
 		}
