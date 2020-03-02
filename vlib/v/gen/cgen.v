@@ -86,7 +86,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 			else {
 				type_sym := g.table.get_type_symbol(it.typ)
-				name := it.name.replace('.', '__')
+				mut name := it.name.replace('.', '__')
+				if it.is_method {
+					name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
+				}
 				g.write('$type_sym.name ${name}(')
 				g.definitions.write('$type_sym.name ${name}(')
 			}

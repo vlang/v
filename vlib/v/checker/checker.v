@@ -216,6 +216,10 @@ pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	else if !f.is_variadic && call_expr.args.len > f.args.len {
 		c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)', call_expr.pos)
 	}
+	// println can print anything
+	if fn_name == 'println' {
+		return f.return_type
+	}
 	for i, arg_expr in call_expr.args {
 		arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
 		c.expected_type = arg.typ
@@ -666,9 +670,7 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 			typ := c.expr(match_expr)
 			typ_sym := c.table.get_type_symbol(typ)
 			// TODO:
-			if typ_sym.kind == .sum_type {
-			
-			}
+			if typ_sym.kind == .sum_type {}
 		}
 		c.stmts(block.stmts)
 		// If the last statement is an expression, return its type
@@ -766,8 +768,7 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 		index_type := c.expr(node.index)
 		index_type_sym := c.table.get_type_symbol(index_type)
 		// println('index expr left=$typ_sym.name $node.pos.line_nr')
-		if typ_sym.kind == .array &&
-		(!(table.type_idx(index_type) in table.number_idxs) && index_type_sym.kind != .enum_) {
+		if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_idxs) && index_type_sym.kind != .enum_) {
 			c.error('non-integer index (type `$typ_sym.name`)', node.pos)
 		}
 		else if typ_sym.kind == .map && table.type_idx(index_type) != table.string_type_idx {

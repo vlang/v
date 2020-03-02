@@ -1,4 +1,5 @@
 void foo(int a);
+void User_inc_age(int n);
 int get_int(string a);
 bool get_bool();
 int get_int2();
@@ -74,6 +75,10 @@ i < 10; i++;
 	int f = TODO_first(nums);
 }
 
+void User_inc_age(int n) {
+	u.age += n;
+}
+
 int get_int(string a) {
 	return 10;
 }
@@ -91,13 +96,17 @@ void myuser() {
 	int x = 1;
 	int q = x | 4100;
 	User user = (User){
-		.age = 10,
+		.age = 30,
 	};
 	int age = user.age + 1;
 	int boo = 2;
 	int boo2 = boo + 1;
 	bool b = age > 0;
 	bool b2 = user.age > 0;
+	User user2 = (User){
+		.age = 20,
+	};
+	user2.age = 20 + boo;
 }
 
 multi_return_int_string multi_return() {

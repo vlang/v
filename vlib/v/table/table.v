@@ -255,25 +255,20 @@ pub fn (t &Table) known_type(name string) bool {
 [inline]
 pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	return 'array_${elem_type_sym.name}'
-		+ if type_is_ptr(elem_type) { '_ptr' } else { '' }
-		+ if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+	return 'array_${elem_type_sym.name}' + if type_is_ptr(elem_type) { '_ptr' } else { '' } + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
 }
 
 [inline]
 pub fn (t &Table) array_fixed_name(elem_type Type, size int, nr_dims int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	return 'array_fixed_${elem_type_sym.name}_${size}'
-		+ if type_is_ptr(elem_type) { '_ptr' } else { '' }
-		+ if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+	return 'array_fixed_${elem_type_sym.name}_${size}' + if type_is_ptr(elem_type) { '_ptr' } else { '' } + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
 }
 
 [inline]
 pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
 	value_type_sym := t.get_type_symbol(value_type)
-	return 'map_${key_type_sym.name}_${value_type_sym.name}'
-		+ if type_is_ptr(value_type) { '_ptr' } else { '' }
+	return 'map_${key_type_sym.name}_${value_type_sym.name}' + if type_is_ptr(value_type) { '_ptr' } else { '' }
 }
 
 pub fn (t mut Table) find_or_register_map(key_type, value_type Type) int {
@@ -382,6 +377,9 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if exp_type_sym.kind == .voidptr {
 		return true
 	}
+	// if got_type_sym.kind == .array_fixed {
+	// return true
+	// }
 	if got_type_sym.kind in [.voidptr, .byteptr, .charptr, .int] && exp_type_sym.kind in [.voidptr, .byteptr, .charptr] {
 		return true
 	}
@@ -393,8 +391,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 		return true
 	}
 	// allow enum value to be used as int
-	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) ||
-	(exp_type_sym.is_int() && got_type_sym.kind == .enum_) {
+	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) || (exp_type_sym.is_int() && got_type_sym.kind == .enum_) {
 		return true
 	}
 	// TODO
