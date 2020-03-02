@@ -335,7 +335,12 @@ pub fn exec(cmd string) ?Result {
 
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
+[deprecated]
 pub fn symlink(origin, target string) ?bool {
+	panic('use os.link() instead of os.symlink()')
+}
+
+pub fn link(origin, target string) ?bool {
 	flags := if os.is_dir(origin) { 1 } else { 0 }
 	if C.CreateSymbolicLinkW(origin.to_wide(), target.to_wide(), u32(flags)) != 0 {
 		return true

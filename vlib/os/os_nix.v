@@ -221,7 +221,12 @@ pub fn exec(cmd string) ?Result {
 	}
 }
 
+[deprecated]
 pub fn symlink(origin, target string) ?bool {
+	panic('use os.link() instead of os.symlink()')
+}
+
+pub fn link(origin, target string) ?bool {
 	res := C.symlink(origin.str, target.str)
 	if res == 0 {
 		return true

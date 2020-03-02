@@ -260,7 +260,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 fn test_symlink() {
   $if windows { return }
   os.mkdir('symlink') or { panic(err) }
-  os.symlink('symlink', 'symlink2') or { panic(err) }
+  os.link('symlink', 'symlink2') or { panic(err) }
   assert os.exists('symlink2')
 
   // cleanup
