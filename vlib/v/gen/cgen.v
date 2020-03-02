@@ -262,6 +262,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.BoolLiteral {
 			g.write(it.val.str())
 		}
+		ast.CharLiteral {
+			g.write("'$it.val'")
+		}
 		ast.EnumVal {
 			g.write('${it.enum_name}_$it.val')
 		}
@@ -404,7 +407,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 		}
 		else {
-			println(term.red('cgen.expr(): bad node'))
+			verror(term.red('cgen.expr(): bad node ' + typeof(node)))
 		}
 	}
 }

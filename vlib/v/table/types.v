@@ -118,9 +118,8 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 }
 
 pub const (
-	number_idxs = [int_type_idx, byte_type_idx, u32_type_idx, u64_type_idx]
+	number_idxs = [int_type_idx, byte_type_idx, u16_type_idx, i16_type_idx, i64_type_idx, u32_type_idx, u64_type_idx]
 )
-
 /*
 pub fn is_number(typ Type) bool {
 	typ_sym := c.table.get_type_symbol(typ)
