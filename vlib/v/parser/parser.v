@@ -1161,12 +1161,11 @@ fn (p mut Parser) if_expr() ast.Expr {
 		is_or = true
 		p.open_scope()
 		var_name := p.check_name()
-		// p.table.register_var(
 		p.check(.decl_assign)
 		expr,typ := p.expr(0)
 		p.scope.register_var(ast.VarDecl{
 			name: var_name
-			typ: typ
+			expr: expr
 		})
 		cond = ast.IfGuardExpr{
 			var_name: var_name

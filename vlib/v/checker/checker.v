@@ -153,6 +153,14 @@ pub fn (c mut Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
 }
 
 fn (c mut Checker) check_assign_expr(assign_expr ast.AssignExpr) {
+	match assign_expr.left {
+		ast.Ident {
+			if it.kind == .blank_ident {
+				return
+			}
+		}
+		else {}
+	}
 	left_type := c.expr(assign_expr.left)
 	c.expected_type = left_type
 	// t := c.table.get_type_symbol(left_type)
