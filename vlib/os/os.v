@@ -621,7 +621,7 @@ pub fn rmdir(path string) {
 
 [deprecated]
 pub fn rmdir_recursive(path string) {
-	panic('use `os.rmdir_all` instead of `os.rmdir_recursive`')
+	panic('Use `os.rmdir_all` instead of `os.rmdir_recursive`')
 }
 
 pub fn rmdir_all(path string) {
