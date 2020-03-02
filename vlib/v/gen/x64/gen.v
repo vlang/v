@@ -247,7 +247,7 @@ pub fn (g mut Gen) gen_print_from_expr(expr ast.Expr) {
 
 pub fn (g mut Gen) gen_print(s string) {
 	//
-	qq := s + '\n'
+	// qq := s + '\n'
 	//
 	g.strings << s + '\n'
 	// g.string_addr[s] = str_pos
