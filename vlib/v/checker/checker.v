@@ -303,6 +303,10 @@ pub fn (c mut Checker) return_stmt(return_stmt ast.Return) {
 		mr_info := expected_type_sym.info as table.MultiReturn
 		expected_types = mr_info.types
 	}
+	// allow `none` & `error (Option)` return types for function that returns optional
+	if exp_is_optional && table.type_idx(got_types[0]) in [table.none_type_idx, c.table.type_idxs['Option']] {
+		return
+	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
 		c.error('wrong number of return arguments:\n\texpected: $expected_types.str()\n\tgot: $got_types.str()', return_stmt.pos)
 	}
@@ -311,9 +315,6 @@ pub fn (c mut Checker) return_stmt(return_stmt ast.Return) {
 		if !c.table.check(got_typ, exp_typ) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			exp_typ_sym := c.table.get_type_symbol(exp_typ)
-			if got_typ_sym.name == 'Option' && exp_is_optional {
-				continue
-			}
 			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument', return_stmt.pos)
 		}
 	}
