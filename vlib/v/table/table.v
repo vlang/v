@@ -386,6 +386,11 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if got_type_sym.is_int() && exp_type_sym.is_int() {
 		return true
 	}
+	// allow enum value to be used as int
+	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) ||
+	(exp_type_sym.is_int() && got_type_sym.kind == .enum_) {
+		return true
+	}
 	// TODO
 	if got_type_sym.is_number() && exp_type_sym.is_number() {
 		return true
