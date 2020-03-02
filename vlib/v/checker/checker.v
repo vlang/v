@@ -513,7 +513,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.int_type
 		}
 		ast.MapInit {
-			return c.map_init(it)
+			return c.map_init(mut it)
 		}
 		ast.MatchExpr {
 			return c.match_expr(mut it)
@@ -803,7 +803,7 @@ pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
 	return typ_idx
 }
 
-pub fn (c mut Checker) map_init(node ast.MapInit) table.Type {
+pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {
 	key0_type := c.expr(node.keys[0])
 	val0_type := c.expr(node.vals[0])
 	for i, key in node.keys {
@@ -824,7 +824,9 @@ pub fn (c mut Checker) map_init(node ast.MapInit) table.Type {
 			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym` for map value', node.pos)
 		}
 	}
-	return table.new_type(c.table.find_or_register_map(key0_type, val0_type))
+	map_type := table.new_type(c.table.find_or_register_map(key0_type, val0_type))
+	node.typ = map_type
+	return map_type
 }
 
 // TODO: remove once all exprs/stmts are handled
