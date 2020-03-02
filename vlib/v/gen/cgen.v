@@ -60,6 +60,35 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
+		ast.AssignStmt {
+			// ident0 := it.left[0]
+			// info0 := ident0.var_info()
+			// for i, ident in it.left {
+			// info := ident.var_info()
+			// if info0.typ.typ.kind == .multi_return {
+			// if i == 0 {
+			// g.write('$info.typ.typ.name $ident.name = ')
+			// g.expr(it.right[0])
+			// } else {
+			// arg_no := i-1
+			// g.write('$info.typ.typ.name $ident.name = $ident0.name->arg[$arg_no]')
+			// }
+			// }
+			// g.writeln(';')
+			// }
+			println('assign')
+		}
+		ast.AssertStmt {
+			println('// assert')
+			// TODO
+		}
+		ast.Attr {
+			g.writeln('[$it.name]')
+		}
+		ast.BranchStmt {
+			// continue or break
+			g.writeln(it.tok.str())
+		}
 		ast.ConstDecl {
 			for i, field in it.fields {
 				field_type_sym := g.table.get_type_symbol(field.typ)
@@ -69,6 +98,13 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.writeln(';')
 			}
 		}
+		ast.CompIf {
+			// TODO
+			g.write('#ifdef ')
+			g.expr(it.cond)
+			g.stmts(it.stmts)
+			g.writeln('#endif')
+		}
 		ast.EnumDecl {
 			g.writeln('typedef enum {')
 			for i, val in it.vals {
@@ -76,7 +112,16 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 			g.writeln('} $it.name;')
 		}
-		ast.Import {}
+		ast.ExprStmt {
+			g.expr(it.expr)
+			match it.expr {
+				// no ; after an if expression
+				ast.IfExpr {}
+				else {
+					g.writeln(';')
+				}
+	}
+		}
 		ast.FnDecl {
 			g.reset_tmp_count()
 			g.fn_decl = it // &it
@@ -119,6 +164,39 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 			g.fn_decl = 0
 		}
+		ast.ForCStmt {
+			g.write('for (')
+			g.stmt(it.init)
+			// g.write('; ')
+			g.expr(it.cond)
+			g.write('; ')
+			g.stmt(it.inc)
+			g.writeln(') {')
+			for stmt in it.stmts {
+				g.stmt(stmt)
+			}
+			g.writeln('}')
+		}
+		ast.ForInStmt {
+			g.writeln('for')
+		}
+		ast.ForStmt {
+			g.write('while (')
+			g.expr(it.cond)
+			g.writeln(') {')
+			for stmt in it.stmts {
+				g.stmt(stmt)
+			}
+			g.writeln('}')
+		}
+		ast.GlobalDecl {
+			// TODO
+			g.writeln('__global')
+		}
+		ast.HashStmt {
+			g.writeln('#$it.name')
+		}
+		ast.Import {}
 		ast.Return {
 			g.write('return')
 			// multiple returns
@@ -141,52 +219,6 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 			g.writeln(';')
 		}
-		ast.AssignStmt {
-			// ident0 := it.left[0]
-			// info0 := ident0.var_info()
-			// for i, ident in it.left {
-			// info := ident.var_info()
-			// if info0.typ.typ.kind == .multi_return {
-			// if i == 0 {
-			// g.write('$info.typ.typ.name $ident.name = ')
-			// g.expr(it.right[0])
-			// } else {
-			// arg_no := i-1
-			// g.write('$info.typ.typ.name $ident.name = $ident0.name->arg[$arg_no]')
-			// }
-			// }
-			// g.writeln(';')
-			// }
-			println('assign')
-		}
-		ast.VarDecl {
-			type_sym := g.table.get_type_symbol(it.typ)
-			g.write('$type_sym.name $it.name = ')
-			g.expr(it.expr)
-			g.writeln(';')
-		}
-		ast.ForStmt {
-			g.write('while (')
-			g.expr(it.cond)
-			g.writeln(') {')
-			for stmt in it.stmts {
-				g.stmt(stmt)
-			}
-			g.writeln('}')
-		}
-		ast.ForCStmt {
-			g.write('for (')
-			g.stmt(it.init)
-			// g.write('; ')
-			g.expr(it.cond)
-			g.write('; ')
-			g.stmt(it.inc)
-			g.writeln(') {')
-			for stmt in it.stmts {
-				g.stmt(stmt)
-			}
-			g.writeln('}')
-		}
 		ast.StructDecl {
 			g.writeln('typedef struct {')
 			for field in it.fields {
@@ -195,15 +227,14 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 			g.writeln('} $it.name;')
 		}
-		ast.ExprStmt {
+		ast.UnsafeStmt {
+			g.stmts(it.stmts)
+		}
+		ast.VarDecl {
+			type_sym := g.table.get_type_symbol(it.typ)
+			g.write('$type_sym.name $it.name = ')
 			g.expr(it.expr)
-			match it.expr {
-				// no ; after an if expression
-				ast.IfExpr {}
-				else {
-					g.writeln(';')
-				}
-	}
+			g.writeln(';')
 		}
 		else {
 			verror('cgen.stmt(): unhandled node ' + typeof(node))
