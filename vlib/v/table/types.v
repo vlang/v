@@ -8,6 +8,15 @@ pub enum TypeExtra {
 	variadic
 }
 
+pub fn (types []Type) contains(typ Type) bool {
+	for t in types {
+		if int(typ) == int(t) {
+			return true
+		}
+	}
+	return false
+}
+
 // return underlying TypeSymbol idx
 [inline]
 pub fn type_idx(t Type) int {

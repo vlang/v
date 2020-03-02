@@ -8,7 +8,7 @@ import (
 )
 
 pub type TypeInfo = Array | ArrayFixed | Map | Struct | 	
-MultiReturn | Alias | Enum
+MultiReturn | Alias | Enum | SumType
 
 pub struct TypeSymbol {
 pub:
@@ -397,6 +397,10 @@ pub struct Map {
 pub mut:
 	key_type   Type
 	value_type Type
+}
+
+pub struct SumType {
+	variants []Type
 }
 
 pub fn (table &Table) type_to_str(t Type) string {

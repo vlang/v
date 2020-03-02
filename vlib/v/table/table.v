@@ -413,6 +413,19 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if got_type_sym.kind == .array && got_type_sym.name == 'array_void' && exp_type_sym.kind == .array {
 		return true
 	}
+	// sum type
+	if got_type_sym.kind == .sum_type {
+		sum_info := got_type_sym.info as SumType
+		if expected in sum_info.variants {
+			return true
+		}
+	}
+	else if exp_type_sym.kind == .sum_type {
+		sum_info := exp_type_sym.info as SumType
+		if got in sum_info.variants {
+			return true
+		}
+	}
 	if got_idx != exp_idx {
 		// && got.typ.name != expected.typ.name*/
 		return false
