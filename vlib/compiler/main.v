@@ -848,7 +848,7 @@ pub fn (v &V) log(s string) {
 
 pub fn verror(s string) {
 	println('V error: $s')
-	os.flush_stdout()
+	os.flush()
 	exit(1)
 }
 

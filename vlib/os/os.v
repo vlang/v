@@ -1069,7 +1069,12 @@ pub fn log(s string) {
 	println('os.log: ' + s)
 }
 
+[deprecated]
 pub fn flush_stdout() {
+	panic('Use `os.flush` instead of `os.flush_stdout`')
+}
+
+pub fn flush() {
 	C.fflush(stdout)
 }
 

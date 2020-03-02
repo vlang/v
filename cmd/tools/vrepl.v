@@ -231,7 +231,7 @@ fn main() {
 
 pub fn rerror(s string) {
 	println('V repl error: $s')
-	os.flush_stdout()
+	os.flush()
 	exit(1)
 }
 
