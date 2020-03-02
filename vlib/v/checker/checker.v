@@ -175,6 +175,10 @@ fn (c mut Checker) check_assign_expr(assign_expr ast.AssignExpr) {
 
 pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	fn_name := call_expr.name
+	// TODO: impl typeof properly (probably not going to be a fn call)
+	if fn_name == 'typeof' {
+		return table.string_type
+	}
 	mut found := false
 	// start hack: until v1 is fixed and c definitions are added for these
 	if fn_name == 'C.calloc' {
@@ -553,6 +557,9 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		ast.StructInit {
 			return c.check_struct_init(it)
 		}
+		ast.TypeName {
+			return it.typ
+		}
 		/*
 		ast.UnaryExpr {
 			c.expr(it.left)
@@ -656,7 +663,12 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 		if i < node.match_exprs.len {
 			match_expr := node.match_exprs[i]
 			c.expected_type = t
-			c.expr(match_expr)
+			typ := c.expr(match_expr)
+			typ_sym := c.table.get_type_symbol(typ)
+			// TODO:
+			if typ_sym.kind == .sum_type {
+			
+			}
 		}
 		c.stmts(block.stmts)
 		// If the last statement is an expression, return its type

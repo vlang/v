@@ -1732,16 +1732,21 @@ fn (p mut Parser) match_expr() ast.Expr {
 	mut match_exprs := []ast.Expr
 	// mut return_type := table.void_type
 	for {
+		p.open_scope()
 		// Sum type match
 		if p.tok.kind == .name && (p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
 			// if sym.kind == .sum_type {
 			// p.warn('is sum')
-			// p.parse_type()
-			p.check_name()
-			if p.tok.kind == .dot {
-				p.check(.dot)
-				p.check_name()
+			typ := p.parse_type()
+			typ_sym := p.table.get_type_symbol(typ)
+			match_exprs << ast.TypeName{
+				name: typ_sym.name
+				typ: typ
 			}
+			p.scope.register_var(ast.VarDecl{
+				name: 'it'
+				typ: typ
+			})
 		}
 		else {
 			// Expression match
@@ -1778,7 +1783,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 			}
 		}
 		*/
-
+		p.close_scope()
 		if p.tok.kind == .rcbr {
 			break
 		}

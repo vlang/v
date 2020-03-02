@@ -12,7 +12,7 @@ pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLitera
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
 CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | 	
-ConcatExpr
+ConcatExpr | TypeName
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
@@ -26,6 +26,12 @@ pub struct StructType {
 }
 
 pub struct ArrayType {}
+
+pub struct TypeName {
+pub:
+	name string
+	typ  table.Type
+}
 
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
