@@ -582,7 +582,11 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	// `map[string]int` initialization
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
 		map_type := p.parse_map_type()
-		return node
+		map_type_sym := p.table.get_type_symbol(map_type)
+		return ast.TypeName{
+			name: map_type_sym.name
+			typ: map_type
+		}
 	}
 	known_var := p.scope.known_var(p.tok.lit)
 	if p.peek_tok.kind == .dot && !known_var && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') == p.tok.lit) {
