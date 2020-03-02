@@ -1105,8 +1105,13 @@ pub fn join(base string, dirs ...string) string {
 	panic('Use `filepath.join` instead of `os.join`')
 }
 
-// cachedir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
+[deprecated]
 pub fn cachedir() string {
+	panic('Use `os.cache_dir` instead of `os.cachedir`')
+}
+
+// cache_dir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
+pub fn cache_dir() string {
 	// See: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
 	// There is a single base directory relative to which user-specific non-essential
 	// (cached) data should be written. This directory is defined by the environment
@@ -1129,8 +1134,13 @@ pub fn cachedir() string {
 	return cdir
 }
 
-// tmpdir returns the path to a folder, that is suitable for storing temporary files
+[deprecated]
 pub fn tmpdir() string {
+	panic('Use `os.tmp_dir` instead of `os.tmpdir`')
+}
+
+// tmp_dir returns the path to a folder, that is suitable for storing temporary files
+pub fn tmp_dir() string {
 	mut path := os.getenv('TMPDIR')
 	$if windows {
 		if path == '' {
@@ -1147,7 +1157,7 @@ pub fn tmpdir() string {
 		}
 	}
 	if path == '' {
-		path = os.cachedir()
+		path = os.cache_dir()
 	}
 	if path == '' {
 		path = '/tmp'

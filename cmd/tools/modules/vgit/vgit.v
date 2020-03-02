@@ -137,7 +137,7 @@ pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 }
 
 pub fn add_common_tool_options<T>(context mut T, fp mut flag.FlagParser) []string {
-	tdir := os.tmpdir()
+	tdir := os.tmp_dir()
 	context.workdir = os.realpath(fp.string_('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
 	context.v_repo_url = fp.string('vrepo', vgit.remote_v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
 	context.vc_repo_url = fp.string('vcrepo', vgit.remote_vc_repo_url, 'The url of the vc repository. You can clone it

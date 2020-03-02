@@ -37,7 +37,7 @@ fn test_all_v_repl_files() {
 		bmark: benchmark.new_benchmark()
 	}
 	// warmup, and ensure that the vrepl is compiled in single threaded mode if it does not exist
-	runner.run_repl_file(os.cachedir(), session.options.vexec, 'vlib/compiler/tests/repl/nothing.repl') or {
+	runner.run_repl_file(os.cache_dir(), session.options.vexec, 'vlib/compiler/tests/repl/nothing.repl') or {
 		panic(err)
 	}
 	session.bmark.set_total_expected_steps(session.options.files.len)
@@ -55,7 +55,7 @@ fn test_all_v_repl_files() {
 }
 
 fn worker_repl(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
-	cdir := os.cachedir()
+	cdir := os.cache_dir()
 	mut session := &Session(p.get_shared_context())
 	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
 	if isnil(tls_bench) {
