@@ -4,9 +4,11 @@ fn hello()
 	a = 10
 	a++
 	-23
+	goto lbl
 	b:= 42
 	println( 'hello' )
 	abc()
+	lbl:
 	if true {
 		a = 10
 		a++
