@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module compiler
 
-import filepath
+import os
 
 // parsed cflag
 struct CFlag {
@@ -58,7 +58,7 @@ fn (cf &CFlag) format() string {
 	}
 	// convert to absolute path
 	if cf.name == '-I' || cf.name == '-L' || value.ends_with('.o') {
-		value = '"' + filepath.abs(value) + '"'
+		value = '"' + os.abs(value) + '"'
 	}
 	return '$cf.name $value'.trim_space()
 }

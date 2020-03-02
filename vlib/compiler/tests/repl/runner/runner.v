@@ -25,8 +25,8 @@ pub fn full_path_to_v(dirs_in int) string {
 	vexec := filepath.join( path, vname )
 	/*
 	args := os.args
-	vreal  := filepath.abs('v')
-	myself := filepath.abs( os.executable() )
+	vreal  := os.abs('v')
+	myself := os.abs( os.executable() )
 	wd := os.getwd()
 	println('args are: $args')
 	println('vreal   : $vreal')
@@ -59,9 +59,9 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 
 	fname := filepath.filename( file )
 
-	input_temporary_filename := filepath.abs(filepath.join( wd, 'input_temporary_filename.txt'))
+	input_temporary_filename := os.abs(filepath.join( wd, 'input_temporary_filename.txt'))
 	os.write_file(input_temporary_filename, input)
-	os.write_file( filepath.abs(filepath.join( wd, 'original.txt' ) ), fcontent )
+	os.write_file( os.abs(filepath.join( wd, 'original.txt' ) ), fcontent )
 	rcmd := '"$vexec" repl -replfolder "$wd" -replprefix "${fname}." < $input_temporary_filename'
 	r := os.exec(rcmd) or {
 		os.rm(input_temporary_filename)

@@ -84,7 +84,7 @@ fn test_write_and_read_bytes() {
         file_name :=  './byte_reader_writer.tst'
         payload   :=  [`I`, `D`, `D`, `Q`, `D`]
 
-        mut file_write := os.create(filepath.abs(file_name)) or {
+        mut file_write := os.create(os.abs(file_name)) or {
                 eprintln('failed to create file $file_name')
                 return
         }
@@ -97,7 +97,7 @@ fn test_write_and_read_bytes() {
 
         assert payload.len == os.file_size(file_name)
 
-        mut file_read := os.open(filepath.abs(file_name)) or {
+        mut file_read := os.open(os.abs(file_name)) or {
           eprintln('failed to open file $file_name')
           return
         }

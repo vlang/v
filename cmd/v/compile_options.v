@@ -99,7 +99,7 @@ pub fn new_v(args []string) &compiler.V {
 	defines := cmdline.options(args, '-d')
 	compile_defines, compile_defines_all := parse_defines( defines )
 
-	rdir := filepath.abs(dir)
+	rdir := os.abs(dir)
 	rdir_name := filepath.filename(rdir)
 	if '-bare' in args {
 		println('V error: use -freestanding instead of -bare')

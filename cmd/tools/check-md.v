@@ -1,9 +1,6 @@
 module main
 
-import (
-	os
-	filepath
-)
+import os
 
 const (
 	too_long_line_length = 100
@@ -13,7 +10,7 @@ fn main() {
 	files_paths := os.args[1..]
 	mut errors := 0
 	for file_path in files_paths {
-		real_path := filepath.abs(file_path)
+		real_path := os.abs(file_path)
 		lines := os.read_lines(real_path) or {
 			continue
 		}

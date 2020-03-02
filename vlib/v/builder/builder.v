@@ -19,7 +19,7 @@ pub:
 	table               &table.Table
 	checker             checker.Checker
 	os                  pref.OS // the OS to build for
-	compiled_dir        string // contains filepath.abs() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
+	compiled_dir        string // contains os.abs() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path         string
 mut:
 	module_search_paths []string

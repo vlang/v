@@ -574,7 +574,7 @@ pub fn is_executable(path string) bool {
     // 02 Write-only
     // 04 Read-only
     // 06 Read and write
-    p := filepath.abs( path )
+    p := os.abs( path )
     return ( os.exists( p ) && p.ends_with('.exe') )
   } $else {
     return C.access(path.str, X_OK) != -1
@@ -963,7 +963,29 @@ pub fn getwd() string {
 
 [deprecated]
 pub fn realpath(fpath string) string {
-	panic('Use `filepath.abs` instead of `os.realpath`')
+	panic('Use `os.abs` instead of `os.realpath`')
+}
+
+// Returns the full absolute path for fpath, with all relative ../../, symlinks and so on resolved.
+// See http://pubs.opengroup.org/onlinepubs/9699919799/functions/realpath.html
+// Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
+// and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
+// NB: this particular rabbit hole is *deep* ...
+pub fn abs(fpath string) string {
+	mut fullpath := calloc(MAX_PATH)
+	mut ret := charptr(0)
+	$if windows {
+		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
+		if ret == 0 {
+			return fpath
+		}
+	} $else {
+		ret = C.realpath(fpath.str, fullpath)
+		if ret == 0 {
+			return fpath
+		}
+	}
+	return string(fullpath)
 }
 
 // walk_ext returns a recursive list of all file paths ending with `ext`.
@@ -1147,10 +1169,10 @@ pub const (
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
 pub fn resource_abs_path(path string) string {
-	mut base_path := filepath.abs(filepath.dir(os.executable()))
+	mut base_path := os.abs(filepath.dir(os.executable()))
 	vresource := os.getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
 		base_path = vresource
 	}
-	return filepath.abs( filepath.join( base_path, path ) )
+	return os.abs( filepath.join( base_path, path ) )
 }

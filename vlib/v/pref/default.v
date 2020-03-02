@@ -24,7 +24,7 @@ pub fn (p mut Preferences) fill_with_defaults() {
 		p.vpath = default_module_path
 	}
 	if p.out_name == ''{
-		rpath := filepath.abs(p.path)
+		rpath := os.abs(p.path)
 		filename := filepath.filename(rpath).trim_space()
 		mut base := filename.all_before_last('.')
 		if base == '' {
@@ -71,7 +71,7 @@ pub fn vexe_path() string {
 	if vexe != '' {
 		return vexe
 	}
-	real_vexe_path := filepath.abs(os.executable())
+	real_vexe_path := os.abs(os.executable())
 	os.setenv('VEXE', real_vexe_path, true)
 	return real_vexe_path
 }

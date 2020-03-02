@@ -217,7 +217,7 @@ fn main() {
 	// so that the repl can be launched in parallel by several different
 	// threads by the REPL test runner.
 	args := cmdline.options_after(os.args, ['repl'])
-	replfolder := filepath.abs( cmdline.option(args, '-replfolder', '.') )
+	replfolder := os.abs( cmdline.option(args, '-replfolder', '.') )
 	replprefix := cmdline.option(args, '-replprefix', 'noprefix.')
 	os.chdir( replfolder )
 	if !os.exists(os.getenv('VEXE')) {
