@@ -1,9 +1,5 @@
 module filepath
 
-pub const (
-	MAX_PATH = 4096
-)
-
 // ext returns the extension in the file `path`.
 pub fn ext(path string) string {
 	pos := path.last_index('.') or {
