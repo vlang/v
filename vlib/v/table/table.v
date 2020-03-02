@@ -421,6 +421,11 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if got_type_sym.kind == .array && got_type_sym.name == 'array_void' && exp_type_sym.kind == .array {
 		return true
 	}
+	// type alias
+	if (got_type_sym.kind == .alias && got_type_sym.parent_idx == exp_idx) ||
+	(exp_type_sym.kind == .alias && exp_type_sym.parent_idx == got_idx) {
+		return true
+	}
 	// sum type
 	if got_type_sym.kind == .sum_type {
 		sum_info := got_type_sym.info as SumType

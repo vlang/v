@@ -1848,7 +1848,6 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 	}
 	p.check(.key_type)
 	name := p.check_name()
-	mut is_sum := false
 	mut sum_variants := []table.Type
 	// type SumType = A | B | c
 	if p.tok.kind == .assign {
@@ -1860,13 +1859,7 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 				break
 			}
 			p.check(.pipe)
-			is_sum = true
 		}
-	}
-	else {
-		p.parse_type()
-	}
-	if is_sum {
 		p.table.register_type_symbol(table.TypeSymbol{
 			kind: .sum_type
 			name: p.prepend_mod(name)
@@ -1874,10 +1867,14 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 				variants: sum_variants
 			}
 		})
-	} else {
+	}
+	// type MyType int
+	else {
+		parent_type := p.parse_type()
 		p.table.register_type_symbol(table.TypeSymbol{
 			kind: .alias
 			name: p.prepend_mod(name)
+			parent_idx: table.type_idx(parent_type)
 			info: table.Alias{
 				foo: ''
 			}
