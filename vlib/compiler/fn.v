@@ -1116,11 +1116,11 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 			t := p.table.find_type(arg.typ)
 			if t.cat == .interface_ {
 				// NB: here concrete_type_name can be 'Dog' OR 'Dog_ptr'
-				// cgen should have generated *both* versions of the conversion
-				// functions, i.e. it should generate either:
-				// perform( _I_Dog_to_Speaker(dog) )
-				// OR
-				// perform( _I_Dog_ptr_to_Speaker(dog_ptr) )
+				// cgen should have generated a _I_Dog_to_Speaker conversion function
+				// C: perform( _I_Dog_to_Speaker((Dog){...}) )
+				// In case of _ptr, there is no need for conversion, so the generated
+				// code will be just:
+				// C: perform( dog_ptr )
 				concrete_type_name := typ.replace('*', '_ptr')
 				// concrete_type_name here can be say Dog, or ui__Group_ptr (in vui)
 				//eprintln('arg.typ: $arg.typ | concrete_type_name: $concrete_type_name ')
