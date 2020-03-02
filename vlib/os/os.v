@@ -170,7 +170,12 @@ pub fn cp(old, new string) ?bool {
 	}
 }
 
+[deprecated]
 pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
+	panic('Use `os.cp_all` instead of `os.cp_r`')
+}
+
+pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 	source_path := os.realpath(osource_path)
 	dest_path := os.realpath(odest_path)
 	if !os.exists(source_path) {
@@ -206,7 +211,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 				panic(err)
 			}
 		}
-		cp_r(sp, dp, overwrite) or {
+		cp_all(sp, dp, overwrite) or {
 			os.rmdir(dp)
 			panic(err)
 		}
