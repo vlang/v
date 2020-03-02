@@ -470,23 +470,38 @@ fn (v &V) interface_table() string {
 		if t.cat != .interface_ {
 			continue
 		}
+		// interface_name is for example Speaker
 		interface_name := t.name
 		mut methods := ''
+		mut generated_casting_functions := ''
 		sb.writeln('// NR methods = $t.gen_types.len')
 		for i, gen_type in t.gen_types {
-			gen_concrete_type_name := gen_type.replace('*', '')
+			// ptr_ctype can be for example Cat OR Cat_ptr:
+			ptr_ctype := gen_type.replace('*', '_ptr')
+			// cctype is the Cleaned Concrete Type name, *without ptr*,
+			// i.e. cctype is always just Cat, not Cat_ptr:
+			cctype := gen_type.replace('*', '')
+
+			// Speaker_Cat_index = 0
+			interface_index_name := '_${interface_name}_${ptr_ctype}_index'
+
+			generated_casting_functions += '
+${interface_name} I_${cctype}_to_${interface_name}(${cctype} x) {
+  return (${interface_name}){
+           ._object = (void*) memdup(&x, sizeof(${cctype})),
+           ._interface_idx = ${interface_index_name} };
+}
+'
 			methods += '{\n'
 			for j, method in t.methods {
 				// Cat_speak
-				methods += ' (void*)    ${gen_concrete_type_name}_${method.name}'
+				methods += ' (void*)    ${cctype}_${method.name}'
 				if j < t.methods.len - 1 {
 					methods += ', \n'
 				}
 			}
 			methods += '\n},\n\n'
-			// Speaker_Cat_index = 0
-			concrete_type_name := gen_type.replace('*', '_ptr')
-			sb.writeln('int _${interface_name}_${concrete_type_name}_index = $i;')
+			sb.writeln('int ${interface_index_name} = $i;')
 		}
 		if t.gen_types.len > 0 {
 			// methods = '{TCCSKIP(0)}'
@@ -499,7 +514,10 @@ fn (v &V) interface_table() string {
 			// See https://github.com/zenith391/vgtk3/issues/7
 			sb.writeln('void* (* ${interface_name}_name_table[][1]) = ' + '{ {NULL} }; ')
 		}
-		continue
+		if generated_casting_functions.len > 0 {
+			sb.writeln('// Casting functions for interface "${interface_name}" :')
+			sb.writeln( generated_casting_functions )
+		}
 	}
 	return sb.str()
 }
