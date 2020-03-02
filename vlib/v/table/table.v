@@ -372,6 +372,8 @@ pub fn (t &Table) check(got, expected Type) bool {
 	exp_type_sym := t.get_type_symbol(expected)
 	got_idx := type_idx(got)
 	exp_idx := type_idx(expected)
+	// got_is_ptr := type_is_ptr(got)
+	exp_is_ptr := type_is_ptr(expected)
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
 	if got_type_sym.kind == .none_ {
 		// TODO
@@ -384,6 +386,10 @@ pub fn (t &Table) check(got, expected Type) bool {
 		return true
 	}
 	if got_type_sym.is_int() && exp_type_sym.is_int() {
+		return true
+	}
+	// allow pointers to be initialized with 0. TODO: use none instead
+	if exp_is_ptr && got_idx == int_type_idx {
 		return true
 	}
 	// allow enum value to be used as int
