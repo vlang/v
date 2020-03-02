@@ -33,7 +33,7 @@ pub fn new_v(args []string) &compiler.V {
 	if target_os == 'msvc' {
 		// notice that `-os msvc` became `-cc msvc`
 		println('V error: use the flag `-cc msvc` to build using msvc')
-		os.flush_stdout()
+		os.flush()
 		exit(1)
 	}
 	mut out_name := cmdline.option(args, '-o', '')
@@ -103,7 +103,7 @@ pub fn new_v(args []string) &compiler.V {
 	rdir_name := filepath.filename(rdir)
 	if '-bare' in args {
 		println('V error: use -freestanding instead of -bare')
-		os.flush_stdout()
+		os.flush()
 		exit(1)
 	}
 	is_repl := '-repl' in args
@@ -161,7 +161,7 @@ pub fn new_v(args []string) &compiler.V {
 	$if !linux {
 		if prefs.is_bare && !out_name.ends_with('.c') {
 			println('V error: -freestanding only works on Linux for now')
-			os.flush_stdout()
+			os.flush()
 			exit(1)
 		}
 	}

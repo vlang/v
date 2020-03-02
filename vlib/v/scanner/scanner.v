@@ -1028,7 +1028,7 @@ pub fn (s &Scanner) error(msg string) {
 
 pub fn verror(s string) {
 	println('V error: $s')
-	os.flush_stdout()
+	os.flush()
 	exit(1)
 }
 
