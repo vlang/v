@@ -330,24 +330,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.CallExpr {
 			f.write('${it.name}(')
-			for i, arg in it.args {
-				if it.muts[i] {
-					f.write('mut ')
-				}
-				if i > 0 {
-					f.wrap_long_line()
-				}
-				f.expr(arg)
-				if i < it.args.len - 1 {
-					f.write(', ')
-				}
-			}
+			f.call_args(it.args, it.muts)
 			f.write(')')
-			if it.or_block.stmts.len > 0 {
-				f.writeln(' or {')
-				f.stmts(it.or_block.stmts)
-				f.write('}')
-			}
+			f.or_expr(it.or_block)
 		}
 		ast.CharLiteral {
 			f.write('`$it.val`')
@@ -464,24 +449,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.MethodCallExpr {
 			f.expr(it.expr)
 			f.write('.' + it.name + '(')
-			for i, arg in it.args {
-				if it.muts[i] {
-					f.write('mut ')
-				}
-				if i > 0 {
-					f.wrap_long_line()
-				}
-				f.expr(arg)
-				if i < it.args.len - 1 {
-					f.write(', ')
-				}
-			}
+			f.call_args(it.args, it.muts)
 			f.write(')')
-			if it.or_block.stmts.len > 0 {
-				f.writeln(' or {')
-				f.stmts(it.or_block.stmts)
-				f.write('}')
-			}
+			f.or_expr(it.or_block)
 		}
 		ast.None {
 			f.write('none')
@@ -547,5 +517,28 @@ fn (f mut Fmt) wrap_long_line() {
 	if f.line_len > max_len {
 		f.write('\n' + tabs[f.indent + 1])
 		f.line_len = 0
+	}
+}
+
+fn (f mut Fmt) call_args(args []ast.Expr, muts []bool) {
+	for i, arg in args {
+		if muts[i] {
+			f.write('mut ')
+		}
+		if i > 0 {
+			f.wrap_long_line()
+		}
+		f.expr(arg)
+		if i < args.len - 1 {
+			f.write(', ')
+		}
+	}
+}
+
+fn (f mut Fmt) or_expr(or_block ast.OrExpr) {
+	if or_block.stmts.len > 0 {
+		f.writeln(' or {')
+		f.stmts(or_block.stmts)
+		f.write('}')
 	}
 }
