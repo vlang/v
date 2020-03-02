@@ -172,7 +172,7 @@ pub fn cp(old, new string) ?bool {
 
 [deprecated]
 pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
-	panic('use os.cp_all(...) instead of os.cp_r(...)')
+	panic('use `os.cp_all` instead of `os.cp_r`')
 }
 
 pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
