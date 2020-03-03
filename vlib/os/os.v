@@ -624,13 +624,18 @@ pub fn rmdir(path string) {
 	}
 }
 
+[deprecated]
 pub fn rmdir_recursive(path string) {
+	panic('Use `os.rmdir_all` instead of `os.rmdir_recursive`')
+}
+
+pub fn rmdir_all(path string) {
 	items := os.ls(path) or {
 		return
 	}
 	for item in items {
 		if os.is_dir(filepath.join(path,item)) {
-			rmdir_recursive(filepath.join(path,item))
+			rmdir_all(filepath.join(path,item))
 		}
 		os.rm(filepath.join(path,item))
 	}

@@ -275,7 +275,7 @@ fn vpm_remove(module_names []string) {
 		}
 		println('Removing module "$name"...')
 		verbose_println('removing folder $final_module_path')
-		os.rmdir_recursive(final_module_path)
+		os.rmdir_all(final_module_path)
 		// delete author directory if it is empty
 		author := name.split('.')[0]
 		author_dir := os.realpath(filepath.join(settings.vmodules_path,author))
