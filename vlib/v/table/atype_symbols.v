@@ -89,6 +89,10 @@ pub enum Kind {
 	enum_
 }
 
+pub fn (t &TypeSymbol) str() string {
+	return t.name.replace('array_', '[]')
+}
+
 [inline]
 pub fn (t &TypeSymbol) enum_info() Enum {
 	match t.info {
@@ -154,6 +158,7 @@ pub fn (t TypeSymbol) str() string {
 	return t.name
 }
 */
+
 
 pub fn (t mut Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
