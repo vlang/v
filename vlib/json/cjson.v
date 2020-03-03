@@ -40,7 +40,7 @@ fn C.cJSON_Parse() &C.cJSON
 fn C.cJSON_Print() byteptr
 fn C.cJSON_PrintUnformatted() byteptr
 
-[inline]
+// [inline]
 pub fn create_object() &C.cJSON {
 	return C.cJSON_CreateObject()
 }
