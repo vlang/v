@@ -644,9 +644,6 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		if !name.contains('.') && !(c.file.mod.name in ['builtin', 'main']) {
 			name = '${c.file.mod.name}.$ident.name'
 		}
-		if name.contains('new_v') {
-			println(' ## $name - $c.file.path - $ident.pos.line_nr')
-		}
 		// println('# name: $name')
 		// constant
 		if constant := c.table.find_const(name) {
