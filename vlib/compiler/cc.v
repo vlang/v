@@ -375,9 +375,11 @@ please put the whole output in a pastebin and contact us through the following w
 			if res.output.len < 30 {
 				println(res.output)
 			} else {
-				q := res.output.all_after('error: ').limit(150)
+				elines := error_context_lines( res.output, 'error:', 1, 12 )
 				println('==================')
-				println(q)
+				for eline in elines {
+					println(eline)
+				}
 				println('...')
 				println('==================')
 				println('(Use `v -cg` to print the entire error message)\n')
@@ -553,4 +555,18 @@ fn missing_compiler_info() string {
 		return 'Install command line XCode tools with `xcode-select --install`'
 	}
 	return ''
+}
+
+fn error_context_lines(text, keyword string, before, after int) []string {
+	mut eline_idx := 0
+	lines := text.split_into_lines()
+	for idx, eline in lines {
+		if eline.contains(keyword) {
+			eline_idx = idx
+			break
+		}
+	}
+	idx_s := if eline_idx - before >= 0 { eline_idx - before } else { 0 }
+	idx_e := if idx_s + after < lines.len { idx_s + after } else { lines.len }
+	return lines[idx_s..idx_e]
 }
