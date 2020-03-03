@@ -564,7 +564,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		ast.StructInit {
 			return c.check_struct_init(it)
 		}
-		ast.TypeName {
+		ast.Type {
 			return it.typ
 		}
 		/*

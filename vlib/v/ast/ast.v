@@ -12,24 +12,23 @@ pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLitera
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
 CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | 	
-ConcatExpr | TypeName | AsCast
+ConcatExpr | Type | AsCast
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
 LineComment | MultiLineComment | AssertStmt | UnsafeStmt
 
-pub type Type = StructType | ArrayType
+// pub type Type = StructType | ArrayType
 
-pub struct StructType {
-	fields []Field
-}
+// pub struct StructType {
+// 	fields []Field
+// }
 
-pub struct ArrayType {}
+// pub struct ArrayType {}
 
-pub struct TypeName {
+pub struct Type {
 pub:
-	name string
 	typ  table.Type
 }
 

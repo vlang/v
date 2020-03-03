@@ -583,9 +583,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	// `map[string]int` initialization
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
 		map_type := p.parse_map_type()
-		map_type_sym := p.table.get_type_symbol(map_type)
-		return ast.TypeName{
-			name: map_type_sym.name
+		return ast.Type{
 			typ: map_type
 		}
 	}
@@ -1746,9 +1744,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 			// if sym.kind == .sum_type {
 			// p.warn('is sum')
 			typ := p.parse_type()
-			typ_sym := p.table.get_type_symbol(typ)
-			match_exprs << ast.TypeName{
-				name: typ_sym.name
+			match_exprs << ast.Type{
 				typ: typ
 			}
 			p.scope.register_var(ast.VarDecl{
