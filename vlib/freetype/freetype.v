@@ -212,7 +212,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 		println('failed to load $font_path')
 		return 0
 	}
-	// println('Trying to load font from $font_path')
+	println('Trying to load font from $font_path')
 	face := C.FT_Face{}
 	ret = int(C.FT_New_Face(ft, font_path.str, 0, &face))
 	if ret != 0	{
