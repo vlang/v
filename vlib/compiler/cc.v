@@ -8,6 +8,7 @@ import (
 	time
 	filepath
 	v.pref
+	term
 )
 
 fn todo() {
@@ -558,12 +559,15 @@ fn missing_compiler_info() string {
 }
 
 fn error_context_lines(text, keyword string, before, after int) []string {
+	khighlight := if term.can_show_color_on_stdout() { term.red(keyword) } else { keyword }
 	mut eline_idx := 0
-	lines := text.split_into_lines()
+	mut lines := text.split_into_lines()
 	for idx, eline in lines {
 		if eline.contains(keyword) {
-			eline_idx = idx
-			break
+			lines[idx] = lines[idx].replace(keyword, khighlight)
+			if eline_idx == 0 {
+				eline_idx = idx
+			}
 		}
 	}
 	idx_s := if eline_idx - before >= 0 { eline_idx - before } else { 0 }
