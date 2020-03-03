@@ -179,7 +179,6 @@ pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	if fn_name == 'typeof' {
 		return table.string_type
 	}
-	mut found := false
 	// start hack: until v1 is fixed and c definitions are added for these
 	if fn_name == 'C.calloc' {
 		return table.byteptr_type
@@ -193,13 +192,17 @@ pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	// end hack
 	// look for function in format `mod.fn` or `fn` (main/builtin)
 	mut f := table.Fn{}
-	if f1 := c.table.find_fn(fn_name) {
-		found = true
-		f = f1
-	}
+	mut found := false
 	// try prefix with current module as it would have never gotten prefixed
-	if !found && !fn_name.contains('.') {
+	if !fn_name.contains('.') && !(c.file.mod.name in ['builtin', 'main']) {
 		if f1 := c.table.find_fn('${c.file.mod.name}.$fn_name') {
+			found = true
+			f = f1
+		}
+	}
+	// already prefixed (mod.fn) or C/builtin/main
+	if !found {
+		if f1 := c.table.find_fn(fn_name) {
 			found = true
 			f = f1
 		}
@@ -640,6 +643,9 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		mut name := ident.name
 		if !name.contains('.') && !(c.file.mod.name in ['builtin', 'main']) {
 			name = '${c.file.mod.name}.$ident.name'
+		}
+		if name.contains('new_v') {
+			println(' ## $name - $c.file.path - $ident.pos.line_nr')
 		}
 		// println('# name: $name')
 		// constant
