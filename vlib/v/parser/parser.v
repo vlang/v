@@ -832,8 +832,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 		else if p.tok.kind == .left_shift {
 			tok := p.tok
 			p.next()
-			mut right := ast.Expr{}
-			right, typ = p.expr(precedence-1)
+			right,_ := p.expr(precedence-1)
 			node = ast.InfixExpr{
 				left: node
 				right: right
