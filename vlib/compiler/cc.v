@@ -8,6 +8,7 @@ import (
 	time
 	filepath
 	v.pref
+	term
 )
 
 fn todo() {
@@ -357,7 +358,9 @@ start:
 			verror('C compiler error, while attempting to run: \n' + '-----------------------------------------------------------\n' + '$cmd\n' + '-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' + 'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
 		}
 		if v.pref.is_debug {
-			println(res.output)
+			eword := 'error:'
+			khighlight := if term.can_show_color_on_stdout() { term.red(eword) } else { eword }
+			println(res.output.replace(eword, khighlight))
 			verror("
 ==================
 C error. This should never happen.
@@ -375,9 +378,11 @@ please put the whole output in a pastebin and contact us through the following w
 			if res.output.len < 30 {
 				println(res.output)
 			} else {
-				q := res.output.all_after('error: ').limit(150)
+				elines := error_context_lines( res.output, 'error:', 1, 12 )
 				println('==================')
-				println(q)
+				for eline in elines {
+					println(eline)
+				}
 				println('...')
 				println('==================')
 				println('(Use `v -cg` to print the entire error message)\n')
@@ -553,4 +558,21 @@ fn missing_compiler_info() string {
 		return 'Install command line XCode tools with `xcode-select --install`'
 	}
 	return ''
+}
+
+fn error_context_lines(text, keyword string, before, after int) []string {
+	khighlight := if term.can_show_color_on_stdout() { term.red(keyword) } else { keyword }
+	mut eline_idx := 0
+	mut lines := text.split_into_lines()
+	for idx, eline in lines {
+		if eline.contains(keyword) {
+			lines[idx] = lines[idx].replace(keyword, khighlight)
+			if eline_idx == 0 {
+				eline_idx = idx
+			}
+		}
+	}
+	idx_s := if eline_idx - before >= 0 { eline_idx - before } else { 0 }
+	idx_e := if idx_s + after < lines.len { idx_s + after } else { lines.len }
+	return lines[idx_s..idx_e]
 }
