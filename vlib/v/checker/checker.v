@@ -455,9 +455,8 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			// }
 			it.typ = typ
 		}
-		else {
-			println('checker.stmt(): unhandled node')
-		}
+		else {}
+		// println('checker.stmt(): unhandled node')
 		/*
 			println('1')
 			node_name := typeof(node)
@@ -666,6 +665,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 
 pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	t := c.expr(node.cond)
+	mut ret_type := table.void_type
 	for i, block in node.blocks {
 		if i < node.match_exprs.len {
 			match_expr := node.match_exprs[i]
@@ -679,7 +679,9 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 		// If the last statement is an expression, return its type
 		if block.stmts.len > 0 {
 			match block.stmts[block.stmts.len - 1] {
-				ast.ExprStmt {}
+				ast.ExprStmt {
+					ret_type = c.expr(it.expr)
+				}
 				// TODO: ask alex about this
 				// typ := c.expr(it.expr)
 				// type_sym := c.table.get_type_symbol(typ)
@@ -691,7 +693,7 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 		}
 	}
 	node.typ = t
-	return t
+	return ret_type
 }
 
 pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
