@@ -358,7 +358,9 @@ start:
 			verror('C compiler error, while attempting to run: \n' + '-----------------------------------------------------------\n' + '$cmd\n' + '-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' + 'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
 		}
 		if v.pref.is_debug {
-			println(res.output)
+			eword := 'error:'
+			khighlight := if term.can_show_color_on_stdout() { term.red(eword) } else { eword }
+			println(res.output.replace(eword, khighlight))
 			verror("
 ==================
 C error. This should never happen.
