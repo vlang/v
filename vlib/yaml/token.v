@@ -13,6 +13,9 @@ enum TokenKind{
 	name
 	number
 	str
+	key
+	value
+	alias
 	scalars
 	comma
 	question
@@ -26,6 +29,9 @@ enum TokenKind{
 	json
 	name
 	tab
+	sequence
+	mapping
+	flow
 }
 
 fn build_token_str() []string{

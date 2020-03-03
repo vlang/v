@@ -67,15 +67,15 @@ fn (s &Scanner) expect(want string, start_pos int) bool {
 	return true
 }
 
-fn (s mut Scanner) ident_array string{
-
+fn (s mut Scanner) ident_array(parsed string,start_pos int) string{
+	end_pos := start_pos + parsed.len
 }
 
-fn (s mut Scanner) ident_table string{
-
+fn (s mut Scanner) ident_table(parsed string, start_pos int) string{
+	end_pos := start_pos + parsed.len
 }
 
-fn (s mut Scanner) ident_basic_string string{
+fn (s mut Scanner) ident_basic_string() string{
 	q := s.text[s.pos]
 	// """
 	is_raw := s.text[s.pos + 1] == string_quote && s.text[s.pos + 2] == string_quote
@@ -94,7 +94,7 @@ fn (s mut Scanner) ident_basic_string string{
 	}
 }
 
-fn (s mut Scanner) ident_literal_string string{
+fn (s mut Scanner) ident_literal_string() string{
 	q := s.text[s.pos]
 	// '''
 	is_raw := s.text[s.pos + 1] == literal_quote && s.text[s.pos + 2] == literal_quote
@@ -130,22 +130,68 @@ fn (s mut Scanner) ident_number() string{
 	}
 }
 
+fn filter_num_sep(txt byteptr, start int, end int) string {
+	unsafe {
+	mut b := malloc(end-start + 1) // add a byte for the endstring 0
+	mut i := start
+	mut i1 := 0
+	for i < end {
+		if txt[i] != num_sep && txt[i] != `o` {
+			b[i1]=txt[i]
+			i1++
+		}
+		i++
+	}
+	b[i1]=0 // C string compatibility
+	return string{str:b
+len:i1}
+	}
+}
 fn (s mut Scanner) ident_unicode() string {
 		
 }
 
 fn (s mut Scanner) ident_dec_num() string{
-
+	start_pos := s.pos
+	for s.pos < s.text.len  && (s.text[s.pos].is_digit( || s.text[s.pos] == num_sep)){
+		s.pos++
+	}
 }
 
 fn (s mut Scanner) ident_hex_num() string{
-	start := s.pos
+	start_pos := s.pos
 	s.pos += 2	// skip 0x
+	for {
+		s.pos >= s.text.len{
+			break
+		}
+		c := s.text[s.pos]
+		if !c.is_hex_digit() && c != num_sep{
+			break
+		}
+		s.pos++
+	}
+	number := filter_num_sep(s.text.str, start_pos, s.pos)
+	s.pos--
+	return number
 }
 
 fn (s mut Scanner) ident_bin_num() string{
-	start := s.pos
+	start_pos := s.pos
 	s.pos += 2 // skip 0b
+	for {
+		if s.pos >= s.text.len {
+			break
+		}
+		c := s.text[s.pos]
+		if !c.is_oct_digit() && c != num_sep {
+			break
+		}
+		s.pos++
+	}
+	number := filter_num_sep(s.text.str, start_pos, s.pos)
+	s.pos--
+	return number
 }
 
 fn (s mut Scanner) ident_oct_num() string {
@@ -161,7 +207,7 @@ fn (s mut Scanner) ident_oct_num() string {
 		}
 		s.pos++
 	}
-	number := s.text[start_pos..s.pos]
+	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
 	return number
 }

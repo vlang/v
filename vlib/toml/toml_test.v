@@ -28,9 +28,15 @@ fn test_BurntSushi_array_string_quote_comma_toml(){
 }
 
 fn test_BurntSushi_array_string_quote_comma2_toml(){
-	pub arr_str_quote_comma2_data :=
+	pub arr_str_quote_comma2_data :=　http.get('https://github.com/BurntSushi/toml-test/tree/master/tests/valid')or{
+		println('failed to fetch data from /valid/')
+	}
+	assert toml_parse(arr_str_quote_comma2_data)?
 }
 
+fn test_BurntSushi_arrays_toml(){
+
+}
 
 fn test_BurntSushi_arrayempty_json(){
 	json_test_data := http.get('https://github.com/BurntSushi/toml-test/blob/master/tests/valid/array-empty.json')or{
