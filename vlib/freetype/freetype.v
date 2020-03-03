@@ -49,13 +49,13 @@ pub const (
 
 struct Character {
 	code i64
-	
+
 	texture_id u32
 	size       gg.Vec2
-	
+
 	horizontal_bearing_px gg.Vec2
 	horizontal_advance_px u32
-	
+
 	vertical_bearing_px   gg.Vec2
 	vertical_advance_px   u32
 }
@@ -112,7 +112,7 @@ struct C.Glyph {
 	bitmap_left int
 	bitmap_top int
 	advance Advance
-	metrics FT_Glyph_Metrics 
+	metrics FT_Glyph_Metrics
 }
 
 [typedef]
@@ -155,10 +155,10 @@ fn ft_load_char(face C.FT_Face, code i64) Character {
 		size:    gg.vec2(fgwidth, fgrows)
 
 		// Note: advance is number of 1/64 pixels
-		// Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))		
+		// Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
 		horizontal_bearing_px:  gg.vec2(face.glyph.metrics.horiBearingX >> 6, face.glyph.metrics.horiBearingY >> 6)
 		vertical_bearing_px:    gg.vec2(face.glyph.metrics.vertBearingX >> 6, face.glyph.metrics.vertBearingY >> 6) // not used for now
-		
+
 		horizontal_advance_px:  face.glyph.metrics.horiAdvance >> 6
 		vertical_advance_px:    face.glyph.metrics.vertAdvance >> 6
 	}
@@ -408,7 +408,7 @@ pub fn (ctx mut FreeType) text_size(s string) (int, int) {
 	mut ch := Character{}
 	for i in 0..utext.len {
 		_rune = utext.at(i)
-		ch = Character{}		
+		ch = Character{}
 		mut found := false
 		if _rune.len == 1 {
 			idx := _rune[0]
@@ -444,7 +444,7 @@ pub fn (ctx mut FreeType) text_size(s string) (int, int) {
 	//scaled_x := x
 	//scaled_y := maxy
 	scaled_x := int(f64(x)/ctx.scale)
-	scaled_y := int(f64(maxy)/ctx.scale)	
+	scaled_y := int(f64(maxy)/ctx.scale)
 	//println('text_size of "${s}" | x,y: $x,$maxy | scaled_x: ${scaled_x:3d} | scaled_y: ${scaled_y:3d} ')
 	return scaled_x, scaled_y
 }

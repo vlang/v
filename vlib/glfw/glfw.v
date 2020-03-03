@@ -131,7 +131,7 @@ pub fn create_window(c WinCfg) &glfw.Window {
 		println('failed to create a glfw window, make sure you have a GPU driver installed')
 		C.glfwTerminate()
 	}
-	println('create window wnd=$cwindow ptr==$c.ptr')
+	// println('create window wnd=$cwindow ptr==$c.ptr')
 	C.glfwSetWindowUserPointer(cwindow, c.ptr)
 	window := &glfw.Window {
 		data: cwindow,
@@ -305,4 +305,3 @@ pub fn (size Size) str() string {
 pub fn get_window_user_pointer(gwnd voidptr) voidptr {
 	return C.glfwGetWindowUserPointer(gwnd)
 }
-
