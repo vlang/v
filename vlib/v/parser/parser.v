@@ -828,6 +828,19 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 				typ: typ
 			}
 		}
+		// `arr << 'a'` | `arr << 'a' + 'b'`
+		else if p.tok.kind == .left_shift {
+			tok := p.tok
+			p.next()
+			mut right := ast.Expr{}
+			right, typ = p.expr(precedence-1)
+			node = ast.InfixExpr{
+				left: node
+				right: right
+				op: tok.kind
+				pos: tok.position()
+			}
+		}
 		else if p.tok.kind.is_infix() {
 			node,typ = p.infix_expr(node)
 		}
