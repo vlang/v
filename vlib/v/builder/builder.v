@@ -39,6 +39,9 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 	b.parsed_files = parser.parse_files(v_files, b.table)
 	b.parse_imports()
 	b.checker.check_files(b.parsed_files)
+	if b.checker.nr_errors > 0 {
+		exit(1)
+	}
 	return gen.cgen(b.parsed_files, b.table)
 }
 

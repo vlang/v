@@ -39,6 +39,7 @@ int main() {
 	localmod__pub_foo();
 	int ten = localmod__get_int_10();
 	println(localmod__pub_int_const);
+	int g = (int)(3.0);
 	return 0;
 }
 

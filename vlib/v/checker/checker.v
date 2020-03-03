@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	max_nr_errors = 350
+	max_nr_errors = 100
 )
 
 pub struct Checker {
@@ -235,7 +235,9 @@ pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 			if typ_sym.kind == .void && arg_typ_sym.kind == .string {
 				continue
 			}
-			c.error('!cannot use type `$typ_sym.name` as type `$arg_typ_sym.name` in argument ${i+1} to `$fn_name`', call_expr.pos)
+			if typ_sym.kind == .array_fixed {}
+			// println('fixed')
+			c.error('!cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`', call_expr.pos)
 		}
 	}
 	return f.return_type

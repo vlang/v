@@ -262,65 +262,6 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.BoolLiteral {
 			g.write(it.val.str())
 		}
-		ast.CharLiteral {
-			g.write("'$it.val'")
-		}
-		ast.EnumVal {
-			g.write('${it.enum_name}_$it.val')
-		}
-		ast.IntegerLiteral {
-			g.write(it.val.str())
-		}
-		ast.FloatLiteral {
-			g.write(it.val)
-		}
-		ast.PostfixExpr {
-			g.expr(it.expr)
-			g.write(it.op.str())
-		}
-		/*
-		ast.UnaryExpr {
-			// probably not :D
-			if it.op in [.inc, .dec] {
-				g.expr(it.left)
-				g.write(it.op.str())
-			}
-			else {
-				g.write(it.op.str())
-				g.expr(it.left)
-			}
-		}
-		*/
-
-		ast.StringLiteral {
-			g.write('tos3("$it.val")')
-		}
-		ast.PrefixExpr {
-			g.write(it.op.str())
-			g.expr(it.right)
-		}
-		ast.InfixExpr {
-			g.expr(it.left)
-			if it.op == .dot {
-				println('!! dot')
-			}
-			g.write(' $it.op.str() ')
-			g.expr(it.right)
-			// if typ.name != typ2.name {
-			// verror('bad types $typ.name $typ2.name')
-			// }
-		}
-		// `user := User{name: 'Bob'}`
-		ast.StructInit {
-			type_sym := g.table.get_type_symbol(it.typ)
-			g.writeln('($type_sym.name){')
-			for i, field in it.fields {
-				g.write('\t.$field = ')
-				g.expr(it.exprs[i])
-				g.writeln(', ')
-			}
-			g.write('}')
-		}
 		ast.CallExpr {
 			name := it.name.replace('.', '__')
 			g.write('${name}(')
@@ -336,28 +277,24 @@ fn (g mut Gen) expr(node ast.Expr) {
 			*/
 
 		}
-		ast.MethodCallExpr {
-			typ := 'TODO'
-			name := it.name.replace('.', '__')
-			g.write('${typ}_${name}(')
+		ast.CastExpr {
+			styp := g.table.type_to_str(it.typ)
+			g.write('($styp)(')
 			g.expr(it.expr)
-			if it.args.len > 0 {
-				g.write(', ')
-			}
-			g.call_args(it.args)
 			g.write(')')
+		}
+		ast.CharLiteral {
+			g.write("'$it.val'")
+		}
+		ast.EnumVal {
+			g.write('${it.enum_name}_$it.val')
+		}
+		ast.FloatLiteral {
+			g.write(it.val)
 		}
 		ast.Ident {
 			name := it.name.replace('.', '__')
 			g.write(name)
-		}
-		ast.SelectorExpr {
-			g.expr(it.expr)
-			g.write('.')
-			g.write(it.field)
-		}
-		ast.IndexExpr {
-			g.index_expr(it)
 		}
 		ast.IfExpr {
 			// If expression? Assign the value to a temp var.
@@ -388,6 +325,23 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.writeln('}')
 			}
 		}
+		ast.IndexExpr {
+			g.index_expr(it)
+		}
+		ast.InfixExpr {
+			g.expr(it.left)
+			if it.op == .dot {
+				println('!! dot')
+			}
+			g.write(' $it.op.str() ')
+			g.expr(it.right)
+			// if typ.name != typ2.name {
+			// verror('bad types $typ.name $typ2.name')
+			// }
+		}
+		ast.IntegerLiteral {
+			g.write(it.val.str())
+		}
 		ast.MatchExpr {
 			type_sym := g.table.get_type_symbol(it.typ)
 			mut tmp := ''
@@ -406,8 +360,69 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.writeln('}')
 			}
 		}
+		ast.MethodCallExpr {
+			typ := 'TODO'
+			name := it.name.replace('.', '__')
+			g.write('${typ}_${name}(')
+			g.expr(it.expr)
+			if it.args.len > 0 {
+				g.write(', ')
+			}
+			g.call_args(it.args)
+			g.write(')')
+		}
+		ast.ParExpr {
+			g.write('(')
+			g.expr(it.expr)
+			g.write(')')
+		}
+		ast.PostfixExpr {
+			g.expr(it.expr)
+			g.write(it.op.str())
+		}
+		ast.PrefixExpr {
+			g.write(it.op.str())
+			g.expr(it.right)
+		}
+		/*
+		ast.UnaryExpr {
+			// probably not :D
+			if it.op in [.inc, .dec] {
+				g.expr(it.left)
+				g.write(it.op.str())
+			}
+			else {
+				g.write(it.op.str())
+				g.expr(it.left)
+			}
+		}
+		*/
+
+		ast.SizeOf {
+			g.write('sizeof($it.type_name)')
+		}
+		ast.StringLiteral {
+			g.write('tos3("$it.val")')
+		}
+		// `user := User{name: 'Bob'}`
+		ast.StructInit {
+			type_sym := g.table.get_type_symbol(it.typ)
+			g.writeln('($type_sym.name){')
+			for i, field in it.fields {
+				g.write('\t.$field = ')
+				g.expr(it.exprs[i])
+				g.writeln(', ')
+			}
+			g.write('}')
+		}
+		ast.SelectorExpr {
+			g.expr(it.expr)
+			g.write('.')
+			g.write(it.field)
+		}
 		else {
-			verror(term.red('cgen.expr(): bad node ' + typeof(node)))
+			// #printf("node=%d\n", node.typ);
+			println(term.red('cgen.expr(): bad node ' + typeof(node)))
 		}
 	}
 }

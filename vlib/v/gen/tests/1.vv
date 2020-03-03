@@ -44,6 +44,7 @@ fn main() {
 	localmod.pub_foo()
 	ten := localmod.get_int_10()
 	println(localmod.pub_int_const)
+	g := int(3.0)
 }
 	/*
 	user := User{}
@@ -81,6 +82,11 @@ fn foo(a int) {
 	//cloned = nums.clone()
 	//cloned1 := cloned[0]
 	//println(cloned1 == 1)
+	/*
+	mut strings := ['hi', 'hello']
+	strings << 'a' + b
+	*/
+
 }
 
 fn (u mut User) inc_age(n int) {
