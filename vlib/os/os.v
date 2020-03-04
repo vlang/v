@@ -603,7 +603,7 @@ pub fn is_readable(path string) bool {
 
 [deprecated]
 pub fn file_exists(_path string) bool {
-	panic('use os.exists(path) instead of os.file_exists(path)')
+	panic('Use `os.exists` instead of `os.file_exists`')
 }
 
 // rm removes file in `path`.
