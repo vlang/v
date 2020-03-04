@@ -172,7 +172,7 @@ pub fn run<T>(port int) {
 
 fn handle_conn<T>(conn net.Socket, app mut T) {
 	//first_line := strip(lines[0])
-	first_line := conn.read_line()
+	first_line := conn.read_line().trim('\r\n')
 	println('firstline="$first_line"')
 	$if debug { println(first_line) }
 	// Parse the first line
