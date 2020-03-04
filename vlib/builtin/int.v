@@ -18,7 +18,7 @@ pub fn (nn int) str() string {
 		return '0'
 	}
 	max := 16
-	mut buf := calloc(max + 1)
+	mut buf := vcalloc(max + 1)
 	mut len := 0
 	mut is_neg := false
 	if n < 0 {

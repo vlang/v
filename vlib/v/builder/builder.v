@@ -51,7 +51,12 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 
 pub fn (b mut Builder) build_c(v_files []string, out_file string) {
 	println('build_c($out_file)')
-	os.write_file(out_file, b.gen_c(v_files))
+	mut f := os.create(out_file) or {
+		panic(err)
+	}
+	f.writeln(b.gen_c(v_files))
+	f.close()
+	// os.write_file(out_file, b.gen_c(v_files))
 }
 
 pub fn (b mut Builder) build_x64(v_files []string, out_file string) {

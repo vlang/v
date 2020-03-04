@@ -11,9 +11,9 @@ import (
 pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	tok := p.tok
 	name := p.check_name()
-	fn_name := if is_c {'C.$name' } else if mod.len > 0 { '${mod}.$name' } else { name }
+	fn_name := if is_c { 'C.$name' } else if mod.len > 0 { '${mod}.$name' } else { name }
 	p.check(.lpar)
-	args, muts := p.call_args()
+	args,muts := p.call_args()
 	mut or_stmts := []ast.Stmt
 	if p.tok.kind == .key_orelse {
 		p.next()
@@ -24,7 +24,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		args: args
 		muts: muts
 		// tok: tok
-
+		
 		pos: tok.position()
 		is_c: is_c
 		or_block: ast.OrExpr{
@@ -34,7 +34,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	return node
 }
 
-pub fn (p mut Parser) call_args() ([]ast.Expr, []bool) {
+pub fn (p mut Parser) call_args() ([]ast.Expr,[]bool) {
 	mut args := []ast.Expr
 	mut muts := []bool
 	for p.tok.kind != .rpar {
@@ -52,7 +52,7 @@ pub fn (p mut Parser) call_args() ([]ast.Expr, []bool) {
 		}
 	}
 	p.check(.rpar)
-	return args, muts
+	return args,muts
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
@@ -158,7 +158,8 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	else {
 		if is_c {
 			name = 'C.$name'
-		} else {
+		}
+		else {
 			name = p.prepend_mod(name)
 		}
 		p.table.register_fn(table.Fn{
@@ -187,6 +188,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		}
 		is_method: is_method
 		rec_mut: rec_mut
+		is_c: is_c
 	}
 }
 

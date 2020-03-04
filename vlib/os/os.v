@@ -840,7 +840,7 @@ fn C.readlink() int
 // process.
 pub fn executable() string {
 	$if linux {
-		mut result := calloc(MAX_PATH)
+		mut result := vcalloc(MAX_PATH)
 		count := C.readlink('/proc/self/exe', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
@@ -850,12 +850,12 @@ pub fn executable() string {
 	}
 	$if windows {
 		max := 512
-		mut result := &u16(calloc(max * 2)) // MAX_PATH * sizeof(wchar_t)
+		mut result := &u16(vcalloc(max * 2)) // MAX_PATH * sizeof(wchar_t)
 		len := C.GetModuleFileName(0, result, max)
 		return string_from_wide2(result, len)
 	}
 	$if macos {
-		mut result := calloc(MAX_PATH)
+		mut result := vcalloc(MAX_PATH)
 		pid := C.getpid()
 		ret := proc_pidpath(pid, result, MAX_PATH)
 		if ret <= 0 {
@@ -865,7 +865,7 @@ pub fn executable() string {
 		return string(result)
 	}
 	$if freebsd {
-		mut result := calloc(MAX_PATH)
+		mut result := vcalloc(MAX_PATH)
 		mib := [1/* CTL_KERN */, 14/* KERN_PROC */, 12/* KERN_PROC_PATHNAME */, -1]
 		size := MAX_PATH
 		C.sysctl(mib.data, 4, result, &size, 0, 0)
@@ -879,7 +879,7 @@ pub fn executable() string {
 	$if solaris {}
 	$if haiku {}
 	$if netbsd {
-		mut result := calloc(MAX_PATH)
+		mut result := vcalloc(MAX_PATH)
 		count := C.readlink('/proc/curproc/exe', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
@@ -888,7 +888,7 @@ pub fn executable() string {
 		return string(result,count)
 	}
 	$if dragonfly {
-		mut result := calloc(MAX_PATH)
+		mut result := vcalloc(MAX_PATH)
 		count := C.readlink('/proc/curproc/file', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
@@ -952,13 +952,13 @@ pub fn chdir(path string) {
 pub fn getwd() string {
 	$if windows {
 		max := 512 // MAX_PATH * sizeof(wchar_t)
-		buf := &u16(calloc(max * 2))
+		buf := &u16(vcalloc(max * 2))
 		if C._wgetcwd(buf, max) == 0 {
 			return ''
 		}
 		return string_from_wide(buf)
 	} $else {
-		buf := calloc(512)
+		buf := vcalloc(512)
 		if C.getcwd(buf, 512) == 0 {
 			return ''
 		}
@@ -972,7 +972,7 @@ pub fn getwd() string {
 // and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
 pub fn realpath(fpath string) string {
-	mut fullpath := calloc(MAX_PATH)
+	mut fullpath := vcalloc(MAX_PATH)
 	mut ret := charptr(0)
 	$if windows {
 		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)

@@ -1,4 +1,4 @@
-module compiler
+module gen
 
 const (
 	c_common_macros = '
@@ -43,7 +43,7 @@ const (
 '
 	c_headers = '
 
-//#include <inttypes.h>  // int64_t etc
+// c_headers
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
 
@@ -261,35 +261,9 @@ static inline uint64_t fastest_hash(const void *key, size_t len, uint64_t seed) 
 #endif
 
 '
-	js_headers = '
-
-var array_string = function() {}
-var array_byte = function() {}
-var array_int = function() {}
-var byte = function() {}
-var double = function() {}
-var int = function() {}
-var f64 = function() {}
-var f32 = function() {}
-var i64 = function() {}
-var i32 = function() {}
-var i16 = function() {}
-var u64 = function() {}
-var u32 = function() {}
-var u16 = function() {}
-var i8 = function() {}
-var bool = function() {}
-var rune = function() {}
-var map_string = function() {}
-var map_int = function() {}
-
-'
 	c_builtin_types = '
 
-//#include <inttypes.h>  // int64_t etc
-//#include <stdint.h>  // int64_t etc
-
-//================================== 1TYPEDEFS ================================*/
+//================================== builtin types ================================*/
 
 typedef int64_t i64;
 typedef int16_t i16;
@@ -334,4 +308,3 @@ void sys_exit (int);
 
 '
 )
-

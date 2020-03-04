@@ -164,7 +164,9 @@ const (
 	c_reserved = ['delete', 'exit', 'unix',
 	// 'print',
 	// 'ok',
-	'error', 'malloc', 'calloc', 'free', 'panic',
+	'error', 'malloc',
+//'calloc',
+'free', 'panic',
 	// Full list of C reserved words, from: https://en.cppreference.com/w/c/keyword
 	'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while', ]
 )

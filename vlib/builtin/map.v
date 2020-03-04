@@ -62,7 +62,7 @@ mut:
 fn new_map(n, value_bytes int) map {
 	probe_hash_bytes := sizeof(u32) * init_capicity
 	key_value_bytes := sizeof(KeyValue) * init_capicity
-	memory := calloc(key_value_bytes + probe_hash_bytes)
+	memory := vcalloc(key_value_bytes + probe_hash_bytes)
 	return map{
 		value_bytes: value_bytes
 		range_cap: init_range_cap
@@ -157,7 +157,7 @@ fn (m mut map) expand() {
 fn (m mut map) rehash(old_range_cap u32) {
 	probe_hash_bytes := sizeof(u32) * (m.range_cap + 1)
 	key_value_bytes := sizeof(KeyValue) * (m.range_cap + 1)
-	memory := calloc(probe_hash_bytes + key_value_bytes)
+	memory := vcalloc(probe_hash_bytes + key_value_bytes)
 	mut new_key_values := &KeyValue(memory)
 	mut new_probe_hash := &u32(memory + key_value_bytes)
 	for i := u32(0); i < old_range_cap + 1; i++ {
@@ -207,7 +207,7 @@ fn (m mut map) rehash(old_range_cap u32) {
 fn (m mut map) cached_rehash(old_range_cap u32) {
 	probe_hash_bytes := sizeof(u32) * (m.range_cap + 1)
 	key_value_bytes := sizeof(KeyValue) * (m.range_cap + 1)
-	memory := calloc(probe_hash_bytes + key_value_bytes)
+	memory := vcalloc(probe_hash_bytes + key_value_bytes)
 	mut new_probe_hash := &u32(memory + key_value_bytes)
 	mut new_key_values := &KeyValue(memory)
 	for i := u32(0); i < old_range_cap + 1; i++ {

@@ -139,6 +139,7 @@ pub:
 	receiver    Field
 	is_method   bool
 	rec_mut     bool // is receiver mutable
+	is_c        bool
 }
 
 pub struct BranchStmt {
