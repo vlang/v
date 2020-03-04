@@ -23,9 +23,6 @@ mut:
 	errors          []string
 	expected_type   table.Type
 	fn_return_type  table.Type // current function's return type
-	// TODO: remove once all exprs/stmts are handled
-	unhandled_exprs []string
-	unhandled_stmts []string
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -72,7 +69,6 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	for file in ast_files {
 		c.check(file)
 	}
-	c.print_unhandled_nodes()
 }
 
 pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type {
@@ -141,9 +137,6 @@ pub fn (c mut Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
 		if right.kind in [.array, .map] && infix_expr.op == .key_in {
 			return table.bool_type
 		}
-		// if !c.table.check(&infix_expr.right_type, &infix_expr.right_type) {
-		// c.error('infix expr: cannot use `$infix_expr.right_type.name` as `$infix_expr.left_type.name`', infix_expr.pos)
-		// ltyp := typeof(infix_expr.left)
 		c.error('infix expr: cannot use `$right.name` (right) as `$left.name`', infix_expr.pos)
 	}
 	if infix_expr.op.is_relational() {
@@ -424,10 +417,8 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				mut field := it.fields[i]
 				typ := c.expr(expr)
 				mut xconst := c.table.consts[field.name]
-				// if xconst.typ == 0 {
 				xconst.typ = typ
 				c.table.consts[field.name] = xconst
-				// }
 				field.typ = typ
 				it.fields[i] = field
 			}
@@ -443,8 +434,6 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		}
 		ast.ForStmt {
 			typ := c.expr(it.cond)
-			// typ_sym := c.table.get_type_symbol(typ)
-			// if typ_sym.kind != .bool {
 			if !it.is_inf && table.type_idx(typ) != table.bool_type_idx {
 				c.error('non-bool used as for condition', it.pos)
 			}
@@ -470,23 +459,12 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		// ast.StructDecl {}
 		ast.VarDecl {
 			typ := c.expr(it.expr)
-			// typ_sym := c.table.get_type_symbol(typ)
-			// println('var $it.name - $typ - $it.typ - $typ_sym.name')
-			// if it.typ == 0 {
-			// it.typ = typ
-			// }
 			it.typ = typ
 		}
-		else {}
-		// println('checker.stmt(): unhandled node')
-		/*
-			println('1')
-			node_name := typeof(node)
-			println('2')
-			if !(node_name in c.unhandled_stmts) {
-				c.unhandled_stmts << node_name
-			}
-			*/
+		else {
+			// println('checker.stmt(): unhandled node')
+			// println('checker.stmt(): unhandled node (${typeof(node)})')
+		}
 	}
 }
 
@@ -594,10 +572,11 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 		*/
 
-		else {}
-		// TODO: find nil string bug triggered with typeof
-		// node_name := typeof(node)
-		// if !(node_name) in c.unhandled_exprs { c.unhandled_exprs << node_name }
+		else {
+			// println('checker.expr(): unhandled node')
+			// TODO: find nil string bug triggered with typeof
+			// println('checker.expr(): unhandled node (${typeof(node)})')
+		}
 	}
 	return table.void_type
 }
@@ -739,13 +718,9 @@ pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
 			ast.ExprStmt {
 				// type_sym := p.table.get_type_symbol(it.typ)
 				// p.warn('if expr ret $type_sym.name')
-				// typ = it.typ
-				// return it.typ
 				t := c.expr(it.expr)
 				node.typ = t
 				return t
-				// return node,it.ti
-				// left =
 			}
 			else {}
 	}
@@ -774,14 +749,6 @@ pub fn (c mut Checker) postfix_expr(node ast.PostfixExpr) table.Type {
 }
 
 pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
-	/*
-	mut typ := left_type
-	left_type_sym := p.table.get_type_symbol(left_type)
-	if left_type_sym.kind == .array {
-		info := left_type_sym.info as table.Array
-		typ = info.elem_type
-	}
-*/
 	typ := c.expr(node.left)
 	mut is_range := false // TODO is_range := node.index is ast.RangeExpr
 	match node.index {
@@ -879,16 +846,6 @@ pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {
 	return map_type
 }
 
-// TODO: remove once all exprs/stmts are handled
-pub fn (c &Checker) print_unhandled_nodes() {
-	if c.unhandled_exprs.len > 0 {
-		eprintln(' # unhandled Expr nodes:\n\t * ' + c.unhandled_exprs.join(', ') + '\n')
-	}
-	if c.unhandled_stmts.len > 0 {
-		eprintln(' # unhandled Stmt nodes:\n\t * ' + c.unhandled_stmts.join(', ') + '\n')
-	}
-}
-
 pub fn (c mut Checker) error(s string, pos token.Position) {
 	c.nr_errors++
 	print_backtrace()
@@ -911,7 +868,6 @@ pub fn (c mut Checker) error(s string, pos token.Position) {
 
 	println('\n\n')
 	if c.nr_errors >= max_nr_errors {
-		c.print_unhandled_nodes()
 		exit(1)
 	}
 }
