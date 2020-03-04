@@ -457,6 +457,11 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.return_stmt(it)
 		}
 		// ast.StructDecl {}
+		ast.UnsafeStmt {
+			for stmt in it.stmts {
+				c.stmt(stmt)
+			}
+		}
 		ast.VarDecl {
 			typ := c.expr(it.expr)
 			it.typ = typ
