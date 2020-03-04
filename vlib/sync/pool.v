@@ -44,6 +44,8 @@ mut:
 	ntask     int // writing to this should be locked by ntask_mtx.
 	ntask_mtx &sync.Mutex
 	waitgroup &sync.WaitGroup
+	shared_context voidptr
+	thread_contexts []voidptr
 }
 
 pub type ThreadCB fn(p &PoolProcessor, idx int, task_id int) voidptr
@@ -64,6 +66,9 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 	pool := &PoolProcessor{
 		items: []
 		results: []
+		shared_context: voidptr(0)
+		thread_contexts: []
+
 		njobs: context.maxjobs,
 		ntask: 0,
 		ntask_mtx: sync.new_mutex(),
@@ -94,10 +99,12 @@ pub fn (pool mut PoolProcessor) work_on_items<T>(items []T){
 	}
 	pool.items = []
 	pool.results = []
+	pool.thread_contexts = []
 	for i in 0..items.len-1{
 		pool.items << items.data + i*sizeof(T)
 	}
 	pool.results = [voidptr(0)].repeat(pool.items.len)
+	pool.thread_contexts << [voidptr(0)].repeat(pool.items.len)
 	pool.waitgroup.add( njobs )
 	for i:=0; i < njobs; i++ {
 		go process_in_thread(pool, i)
@@ -139,4 +146,31 @@ pub fn (pool &PoolProcessor) get_results<T>() []T {
 		res << *(&T( pool.results[ i ] ))
 	}
 	return res
+}
+
+// set_shared_context - can be called during the setup so that you can
+// provide a context that is shared between all worker threads, like
+// common options/settings.
+pub fn (pool mut PoolProcessor) set_shared_context(context voidptr){
+	pool.shared_context = context
+}
+
+// get_shared_context - can be called in each worker callback, to get
+// the context set by pool.set_shared_context
+pub fn (pool &PoolProcessor) get_shared_context() voidptr {
+	return pool.shared_context
+}
+
+// set_thread_context - can be called during the setup at the start of
+// each worker callback, so that the worker callback can have some thread
+// local storage area where it can write/read information that is private
+// to the given thread, without worrying that it will get overwritten by
+// another thread
+pub fn (pool mut PoolProcessor) set_thread_context(idx int, context voidptr) {
+	pool.thread_contexts[idx] = context
+}
+// get_thread_context - returns a pointer, that was set with
+// pool.set_thread_context . This pointer is private to each thread.
+pub fn (pool &PoolProcessor) get_thread_context(idx int) voidptr {
+	return pool.thread_contexts[idx]
 }
