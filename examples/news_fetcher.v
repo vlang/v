@@ -39,12 +39,7 @@ fn main() {
 		return
 	}
 	if ids.len > 10 {
-		// ids = ids[:10]
-		mut tmp := [0].repeat(10)
-		for i in 0..10 {
-			tmp[i] = ids[i]
-		}
-		ids = tmp
+		ids = ids[0..10]
 	}
 	mut fetcher_pool := sync.new_pool_processor({ callback: worker_fetch })
 	// NB: if you do not call set_max_jobs, the pool will try to use an optimal
