@@ -434,20 +434,29 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.expr(it.cond)
 			f.writeln(' {')
 			f.indent++
-			for i, expr in it.match_exprs {
-				f.expr(expr)
-				f.writeln(' {')
-				f.stmts(it.blocks[i].stmts)
-				f.writeln('}')
-			}
-
-			else_stmts := it.blocks[it.blocks.len - 1].stmts
-			if (else_stmts.len == 0) {
-				f.writeln('else {}')
-			} else {
-				f.writeln('else {')
-				f.stmts(else_stmts)
-				f.writeln('}')
+			for i, branch in it.branches {
+				// normal branch
+				if i < it.branches.len - 1 {
+					for j,expr in branch.exprs {
+						f.expr(expr)
+						if j < branch.exprs.len - 1 {
+							f.write(', ')
+						}
+					}
+					f.writeln(' {')
+					f.stmts(branch.stmts)
+					f.writeln('}')
+				}
+				// else branch
+				else {
+					if (branch.stmts.len == 0) {
+						f.writeln('else {}')
+					} else {
+						f.writeln('else {')
+						f.stmts(branch.stmts)
+						f.writeln('}')
+					}
+				}
 			}
 			f.indent--
 			f.write('}')
