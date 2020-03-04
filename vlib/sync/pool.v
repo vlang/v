@@ -136,6 +136,12 @@ pub fn (pool &PoolProcessor) get_item<T>(idx int) T {
 	return *(&T(pool.items[idx]))
 }
 
+// get_string_item - called by the worker callback. It does not use generics so
+// it does not mess up vfmt. TODO: remove the need for this
+pub fn (pool &PoolProcessor) get_string_item(idx int) string {
+	return *(&string(pool.items[idx]))
+}
+
 pub fn (pool &PoolProcessor) get_result<T>(idx int) T {
 	return *(&T(pool.results[idx]))
 }
