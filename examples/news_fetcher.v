@@ -5,10 +5,6 @@ import net.http
 import json
 import sync
 
-const (
-	nr_threads = 4
-)
-
 struct Story {
 	title string
 	url   string
@@ -48,6 +44,6 @@ fn main() {
 	// number of threads, one per each core in your system, which in most
 	// cases is what you want anyway... You can override the automatic choice
 	// by setting the VJOBS environment variable too.
-	// fetcher_pool.set_max_jobs( nr_threads )
+	// fetcher_pool.set_max_jobs( 4 )
 	fetcher_pool.work_on_items<int>(ids)
 }
