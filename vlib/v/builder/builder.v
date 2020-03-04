@@ -42,10 +42,15 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 	if b.checker.nr_errors > 0 {
 		exit(1)
 	}
-	return gen.cgen(b.parsed_files, b.table)
+	// println('starting cgen...')
+	res := gen.cgen(b.parsed_files, b.table)
+	println('cgen done')
+	// println(res)
+	return res
 }
 
 pub fn (b mut Builder) build_c(v_files []string, out_file string) {
+	println('build_c($out_file)')
 	os.write_file(out_file, b.gen_c(v_files))
 }
 

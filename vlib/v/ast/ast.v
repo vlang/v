@@ -18,18 +18,14 @@ pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprS
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
 LineComment | MultiLineComment | AssertStmt | UnsafeStmt
-
 // pub type Type = StructType | ArrayType
-
 // pub struct StructType {
-// 	fields []Field
+// fields []Field
 // }
-
 // pub struct ArrayType {}
-
 pub struct Type {
 pub:
-	typ  table.Type
+	typ table.Type
 }
 
 // | IncDecStmt k
@@ -333,12 +329,12 @@ mut:
 
 pub struct MatchExpr {
 pub:
-	tok_kind    token.Kind
-	cond        Expr
-	branches    []MatchBranch
-	pos         token.Position
+	tok_kind  token.Kind
+	cond      Expr
+	branches  []MatchBranch
+	pos       token.Position
 mut:
-	typ         table.Type
+	expr_type table.Type // type of `x` in `match x {`
 }
 
 pub struct MatchBranch {
@@ -347,7 +343,6 @@ pub:
 	stmts []Stmt
 	pos   token.Position
 }
-
 
 pub struct CompIf {
 pub:
@@ -477,11 +472,11 @@ pub:
 
 pub struct ArrayInit {
 pub:
-	pos   token.Position
-	exprs []Expr
+	pos       token.Position
+	exprs     []Expr
 mut:
 	elem_type table.Type
-	typ   table.Type
+	typ       table.Type
 }
 
 pub struct MapInit {

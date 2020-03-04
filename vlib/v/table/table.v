@@ -182,6 +182,7 @@ pub fn (t &Table) find_type(name string) ?TypeSymbol {
 
 [inline]
 pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
+	// println('get_type_symbol $typ')
 	idx := type_idx(typ)
 	if idx > 0 {
 		return &t.types[idx]
@@ -400,8 +401,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 	}
 	// TODO: actually check for & handle pointers with name_expr
 	// see hack in checker IndexExpr line #691
-	if (got_type_sym.kind == .byte && exp_type_sym.kind == .byteptr) ||
-	(exp_type_sym.kind == .byte && got_type_sym.kind == .byteptr) {
+	if (got_type_sym.kind == .byte && exp_type_sym.kind == .byteptr) || (exp_type_sym.kind == .byte && got_type_sym.kind == .byteptr) {
 		return true
 	}
 	// TODO
@@ -424,8 +424,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 		return true
 	}
 	// type alias
-	if (got_type_sym.kind == .alias && got_type_sym.parent_idx == exp_idx) ||
-	(exp_type_sym.kind == .alias && exp_type_sym.parent_idx == got_idx) {
+	if (got_type_sym.kind == .alias && got_type_sym.parent_idx == exp_idx) || (exp_type_sym.kind == .alias && exp_type_sym.parent_idx == got_idx) {
 		return true
 	}
 	// sum type

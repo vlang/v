@@ -16,13 +16,13 @@ const (
 )
 
 pub struct Checker {
-	table           &table.Table
+	table          &table.Table
 mut:
-	file            ast.File
-	nr_errors       int
-	errors          []string
-	expected_type   table.Type
-	fn_return_type  table.Type // current function's return type
+	file           ast.File
+	nr_errors      int
+	errors         []string
+	expected_type  table.Type
+	fn_return_type table.Type // current function's return type
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -466,10 +466,10 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			typ := c.expr(it.expr)
 			it.typ = typ
 		}
-		else {
-			// println('checker.stmt(): unhandled node')
-			// println('checker.stmt(): unhandled node (${typeof(node)})')
-		}
+		else {}
+		// println('checker.stmt(): unhandled node')
+		// println('checker.stmt(): unhandled node (${typeof(node)})')
+		// }
 	}
 }
 
@@ -577,11 +577,10 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 		*/
 
-		else {
-			// println('checker.expr(): unhandled node')
-			// TODO: find nil string bug triggered with typeof
-			// println('checker.expr(): unhandled node (${typeof(node)})')
-		}
+		else {}
+		// println('checker.expr(): unhandled node')
+		// TODO: find nil string bug triggered with typeof
+		// println('checker.expr(): unhandled node (${typeof(node)})')
 	}
 	return table.void_type
 }
@@ -670,12 +669,15 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 }
 
 pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
-	t := c.expr(node.cond)
-	c.expected_type = t
+	expr_type := c.expr(node.cond)
+	if expr_type == 0 {
+		c.error('match 0 expr type', node.pos)
+	}
+	c.expected_type = expr_type
 	mut ret_type := table.void_type
 	for branch in node.branches {
 		for expr in branch.exprs {
-			c.expected_type = t
+			c.expected_type = expr_type
 			typ := c.expr(expr)
 			typ_sym := c.table.get_type_symbol(typ)
 			// TODO:
@@ -695,10 +697,11 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 				// node.typ = typ
 				// return typ
 				else {}
-			}
+	}
 		}
 	}
-	node.typ = t
+	node.expr_type = expr_type
+	// println('!m $expr_type')
 	return ret_type
 }
 

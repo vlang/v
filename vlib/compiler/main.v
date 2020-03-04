@@ -340,7 +340,7 @@ pub fn (v mut V) compile2() {
 		println(v.files)
 	}
 	mut b := v.new_v2()
-	b.build_c(v.files, v.pref.out_name)
+	b.build_c(v.files, v.out_name_c)// v.pref.out_name + '.c')
 	v.cc()
 }
 

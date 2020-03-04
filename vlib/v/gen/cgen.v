@@ -76,10 +76,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			// }
 			// g.writeln(';')
 			// }
-			println('assign')
+			g.write('') // /*assign*/')
 		}
 		ast.AssertStmt {
-			println('// assert')
+			g.write('// assert')
 			// TODO
 		}
 		ast.Attr {
@@ -104,6 +104,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.expr(it.cond)
 			g.stmts(it.stmts)
 			g.writeln('#endif')
+		}
+		ast.DeferStmt {
+			g.writeln('// defer')
 		}
 		ast.EnumDecl {
 			g.writeln('typedef enum {')
@@ -193,6 +196,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			// TODO
 			g.writeln('__global')
 		}
+		ast.GotoLabel {
+			g.writeln('$it.name:')
+		}
 		ast.HashStmt {
 			g.writeln('#$it.name')
 		}
@@ -227,6 +233,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 			g.writeln('} $it.name;')
 		}
+		ast.TypeDecl {
+			g.writeln('// type')
+		}
 		ast.UnsafeStmt {
 			g.stmts(it.stmts)
 		}
@@ -243,7 +252,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 }
 
 fn (g mut Gen) expr(node ast.Expr) {
-	// println('cgen expr()')
+	// println('cgen expr() line_nr=$node.pos.line_nr')
 	match node {
 		ast.ArrayInit {
 			type_sym := g.table.get_type_symbol(it.typ)
@@ -254,10 +263,16 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			g.write('\n})')
 		}
+		ast.AsCast {
+			g.write('/* as */')
+		}
 		ast.AssignExpr {
 			g.expr(it.left)
 			g.write(' $it.op.str() ')
 			g.expr(it.val)
+		}
+		ast.Assoc {
+			g.write('/* assoc */')
 		}
 		ast.BoolLiteral {
 			g.write(it.val.str())
@@ -310,10 +325,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.writeln(') {')
 			for i, stmt in it.stmts {
 				// Assign ret value
-				if i == it.stmts.len - 1 && type_sym.kind != .void {
-					// g.writeln('$tmp =')
-					println(1)
-				}
+				if i == it.stmts.len - 1 && type_sym.kind != .void {}
+				// g.writeln('$tmp =')
 				g.stmt(stmt)
 			}
 			g.writeln('}')
@@ -324,6 +337,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 				}
 				g.writeln('}')
 			}
+		}
+		ast.IfGuardExpr {
+			g.write('/* guard */')
 		}
 		ast.IndexExpr {
 			g.index_expr(it)
@@ -343,7 +359,13 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(it.val.str())
 		}
 		ast.MatchExpr {
-			type_sym := g.table.get_type_symbol(it.typ)
+			// println('match expr typ=$it.expr_type')
+			// TODO
+			if it.expr_type == 0 {
+				g.writeln('// match 0')
+				return
+			}
+			type_sym := g.table.get_type_symbol(it.expr_type)
 			mut tmp := ''
 			if type_sym.kind != .void {
 				tmp = g.new_tmp_var()
@@ -356,7 +378,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				for i, expr in branch.exprs {
 					g.write('$tmp == ')
 					g.expr(expr)
-					if i < branch.exprs.len-1 {
+					if i < branch.exprs.len - 1 {
 						g.write(' || ')
 					}
 				}
@@ -375,6 +397,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			g.call_args(it.args)
 			g.write(')')
+		}
+		ast.None {
+			g.write('0')
 		}
 		ast.ParExpr {
 			g.write('(')
@@ -425,6 +450,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('.')
 			g.write(it.field)
 		}
+		ast.Type {
+			g.write('/* Type */')
+		}
 		else {
 			// #printf("node=%d\n", node.typ);
 			println(term.red('cgen.expr(): bad node ' + typeof(node)))
@@ -467,6 +495,6 @@ fn (g mut Gen) call_args(args []ast.Expr) {
 }
 
 fn verror(s string) {
-	println(s)
-	exit(1)
+	println('cgen error: $s')
+	// exit(1)
 }
