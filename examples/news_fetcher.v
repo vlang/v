@@ -18,13 +18,13 @@ fn worker_fetch(p &sync.PoolProcessor, cursor int, worker_id int) voidptr {
 	id := p.get_item<int>(cursor)
 	resp := http.get('https://hacker-news.firebaseio.com/v0/item/${id}.json') or {
 		println('failed to fetch data from /v0/item/${id}.json')
-		exit(1)
+		return sync.no_result
 	}
 	story := json.decode(Story,resp.text) or {
 		println('failed to decode a story')
-		exit(1)
+		return sync.no_result
 	}
-	println('#$cursor) $story.title | $story.url')
+	println('# $cursor) $story.title | $story.url')
 	return sync.no_result
 }
 
@@ -51,6 +51,6 @@ fn main() {
 	// number of threads, one per each core in your system, which in most
 	// cases is what you want anyway... You can override the automatic choice
 	// by setting the VJOBS environment variable too.
-	fetcher_pool.set_max_jobs( nr_threads )
+	//fetcher_pool.set_max_jobs( nr_threads )
 	fetcher_pool.work_on_items<int>( ids )
 }

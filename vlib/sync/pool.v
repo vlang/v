@@ -35,6 +35,7 @@ import runtime
 pub const (
 	no_result = voidptr(0)
 )
+
 pub struct PoolProcessor {
 	thread_cb voidptr
 mut:
@@ -100,7 +101,7 @@ pub fn (pool mut PoolProcessor) work_on_items<T>(items []T){
 	pool.items = []
 	pool.results = []
 	pool.thread_contexts = []
-	for i in 0..items.len-1{
+	for i in 0..items.len {
 		pool.items << items.data + i*sizeof(T)
 	}
 	pool.results = [voidptr(0)].repeat(pool.items.len)
@@ -117,12 +118,14 @@ pub fn (pool mut PoolProcessor) work_on_items<T>(items []T){
 // method in a callback.
 fn process_in_thread(pool mut PoolProcessor, task_id int){
 	cb := ThreadCB( pool.thread_cb )
+	mut idx := 0
+	ilen := pool.items.len
 	for {
+		if pool.ntask >= ilen { break }
 		pool.ntask_mtx.lock()
+		idx = pool.ntask
 		pool.ntask++
-		idx := pool.ntask-1
 		pool.ntask_mtx.unlock()
-		if idx >= pool.items.len { break }
 		pool.results[ idx ] = cb( pool, idx, task_id )
 	}
 	pool.waitgroup.done()
