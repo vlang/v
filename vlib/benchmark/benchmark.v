@@ -74,6 +74,13 @@ pub fn new_benchmark() Benchmark {
 	}
 }
 
+pub fn new_benchmark_pointer() &Benchmark {
+	return &Benchmark{
+		bench_start_time: benchmark.now()
+		verbose: true
+	}
+}
+
 pub fn (b mut Benchmark) set_total_expected_steps(n int) {
 	b.nexpected_steps = n
 }
