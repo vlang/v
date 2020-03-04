@@ -47,23 +47,22 @@ void foo(int a) {
 	while (true) {
 	}
 	for (int i = 0;
-i < 10; i++;
-) {
+i < 10; i++) {
 	}
-	array_int nums = new_array_from_c_array(3, 3, sizeof(array_int), {
+	array_int nums = new_array_from_c_array(3, 3, sizeof(array_int), (void[]){
 		1, 2, 3,
 	});
 	array_int nums2 = array_slice(nums, 0, 2);
 	int number = nums[0];
-	array_bool bools = new_array_from_c_array(2, 2, sizeof(array_bool), {
+	array_bool bools = new_array_from_c_array(2, 2, sizeof(array_bool), (void[]){
 		true, false,
 	});
-	array_User users = new_array_from_c_array(1, 1, sizeof(array_User), {
+	array_User users = new_array_from_c_array(1, 1, sizeof(array_User), (void[]){
 		(User){
 			},
 	});
 	bool b = bools[0];
-	array_string mystrings = new_array_from_c_array(2, 2, sizeof(array_string), {
+	array_string mystrings = new_array_from_c_array(2, 2, sizeof(array_string), (void[]){
 		tos3("a"), tos3("b"),
 	});
 	string s = mystrings[0];
@@ -116,12 +115,7 @@ multi_return_int_string multi_return() {
 
 void variadic(variadic_int a) {
 	int x = path_sep;
-	int y = if (true) {
-1;
-}
-else {
-0;
-}
+	int y = true ? 1 : 0;
 ;
 }
 

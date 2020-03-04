@@ -58,7 +58,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-		
+
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -82,7 +82,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 			parent: 0
 		}
 		// comments_mode: comments_mode
-		
+
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -359,7 +359,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return ast.ExprStmt{
 				expr: expr
 				// typ: typ
-				
+
 			}
 		}
 	}
@@ -662,7 +662,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-			
+
 			val: val
 			pos: p.tok.position()
 		}
@@ -1052,7 +1052,8 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] || p.tok.kind == .semicolon {
 		mut init := ast.Stmt{}
 		mut cond := ast.Expr{}
-		mut inc := ast.Stmt{}
+		//mut inc := ast.Stmt{}
+		mut inc := ast.Expr{}
 		if p.peek_tok.kind in [.assign, .decl_assign] {
 			init = p.var_decl_and_assign_stmt()
 		}
@@ -1074,7 +1075,8 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 		p.check(.semicolon)
 		if p.tok.kind != .lcbr {
-			inc = p.stmt()
+			//inc = p.stmt()
+			inc,_ = p.expr(0)
 		}
 		stmts := p.parse_block()
 		p.close_scope()
@@ -1236,11 +1238,11 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-		
+
 		pos: pos
 		has_else: has_else
 		// left: left
-		
+
 	}
 	return node
 }
@@ -1630,12 +1632,12 @@ fn (p mut Parser) var_decl_and_assign_stmt() ast.Stmt {
 		return ast.VarDecl{
 			name: ident.name
 			// name2: name2
-			
+
 			expr: expr // p.expr(token.lowest_prec)
-			
+
 			is_mut: info0.is_mut
 			// typ: typ
-			
+
 			pos: p.tok.position()
 		}
 		// return p.var_decl(ident[0], exprs[0])
@@ -1662,9 +1664,10 @@ fn (p mut Parser) var_decl_and_assign_stmt() ast.Stmt {
 // pub fn (p mut Parser) assign_stmt() ast.AssignStmt {}
 // fn (p mut Parser) var_decl() ast.VarDecl {}
 fn (p mut Parser) hash() ast.HashStmt {
+	val := p.tok.lit
 	p.next()
 	return ast.HashStmt{
-		name: p.tok.lit
+		val: val
 	}
 }
 
@@ -1747,7 +1750,6 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		branches << ast.MatchBranch{
 			exprs: exprs
 			stmts: stmts
-			
 		}
 		p.close_scope()
 		if p.tok.kind == .rcbr {

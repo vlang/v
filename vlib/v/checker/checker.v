@@ -444,7 +444,8 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		ast.ForCStmt {
 			c.stmt(it.init)
 			c.expr(it.cond)
-			c.stmt(it.inc)
+			// c.stmt(it.inc)
+			c.expr(it.inc)
 			for stmt in it.stmts {
 				c.stmt(stmt)
 			}

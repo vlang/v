@@ -54,7 +54,7 @@ pub fn (g mut Gen) init() {
 		for i, mr_typ in info.types {
 			field_type_sym := g.table.get_type_symbol(mr_typ)
 			type_name := field_type_sym.name.replace('.', '__')
-			g.definitions.writeln('\t$type_name arg_${i+1};')
+			g.definitions.writeln('\t$type_name arg${i};')
 		}
 		g.definitions.writeln('} $name;\n')
 		// g.typedefs.writeln('typedef struct $name $name;')
@@ -115,11 +115,12 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			// TODO
 		}
 		ast.Attr {
-			g.writeln('[$it.name]')
+			g.writeln('//[$it.name]')
 		}
 		ast.BranchStmt {
 			// continue or break
-			g.writeln(it.tok.str())
+			g.write(it.tok.kind.str())
+			g.writeln(';')
 		}
 		ast.ConstDecl {
 			for i, field in it.fields {
@@ -132,10 +133,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.CompIf {
 			// TODO
-			g.write('#ifdef ')
+			g.writeln('//#ifdef ')
 			g.expr(it.cond)
 			g.stmts(it.stmts)
-			g.writeln('#endif')
+			g.writeln('//#endif')
 		}
 		ast.DeferStmt {
 			g.writeln('// defer')
@@ -218,7 +219,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			// g.write('; ')
 			g.expr(it.cond)
 			g.write('; ')
-			g.stmt(it.inc)
+			//g.stmt(it.inc)
+			g.expr(it.inc)
 			g.writeln(') {')
 			for stmt in it.stmts {
 				g.stmt(stmt)
@@ -226,7 +228,16 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.ForInStmt {
-			g.writeln('for')
+			if it.is_range {
+				i := g.new_tmp_var()
+				g.write('for (int $i = ')
+				g.expr(it.cond)
+				g.write('; $i < ')
+				g.expr(it.high)
+				g.writeln('; $i++) { ')
+				// g.stmts(it.stmts) TODO
+				g.writeln('}')
+			}
 		}
 		ast.ForStmt {
 			g.write('while (')
@@ -245,7 +256,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('$it.name:')
 		}
 		ast.HashStmt {
-			g.writeln('#$it.name')
+			// #include etc
+			g.writeln('#$it.val')
 		}
 		ast.Import {}
 		ast.Return {
@@ -303,7 +315,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 	match node {
 		ast.ArrayInit {
 			type_sym := g.table.get_type_symbol(it.typ)
-			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($type_sym.name), {\t')
+			elem_sym := g.table.get_type_symbol(it.elem_type)
+			g.write('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($type_sym.name), ')
+			g.writeln('(${elem_sym.name}[]){\t')
 			for expr in it.exprs {
 				g.expr(expr)
 				g.write(', ')
@@ -325,7 +339,11 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(it.val.str())
 		}
 		ast.CallExpr {
-			name := it.name.replace('.', '__')
+			mut name := it.name.replace('.', '__')
+			if it.is_c {
+				// Skip "C__"
+				name = name[3..]
+			}
 			g.write('${name}(')
 			g.call_args(it.args)
 			g.write(')')
@@ -367,22 +385,42 @@ fn (g mut Gen) expr(node ast.Expr) {
 				tmp = g.new_tmp_var()
 				// g.writeln('$ti.name $tmp;')
 			}
-			g.write('if (')
-			g.expr(it.cond)
-			g.writeln(') {')
-			for i, stmt in it.stmts {
-				// Assign ret value
-				if i == it.stmts.len - 1 && type_sym.kind != .void {}
-				// g.writeln('$tmp =')
-				g.stmt(stmt)
+			// one line ?:
+			// TODO clean this up once `is` is supported
+			if it.stmts.len == 1 && it.else_stmts.len == 1 && type_sym.kind != .void {
+				cond := it.cond
+				stmt1 := it.stmts[0]
+				else_stmt1 := it.else_stmts[0]
+				match stmt1 {
+					ast.ExprStmt {
+						g.expr(cond)
+						g.write(' ? ')
+						expr_stmt := stmt1 as ast.ExprStmt
+						g.expr(expr_stmt.expr)
+						g.write(' : ')
+						g.stmt(else_stmt1)
+					}
+					else {}
+	}
 			}
-			g.writeln('}')
-			if it.else_stmts.len > 0 {
-				g.writeln('else { ')
-				for stmt in it.else_stmts {
+			else {
+				g.write('if (')
+				g.expr(it.cond)
+				g.writeln(') {')
+				for i, stmt in it.stmts {
+					// Assign ret value
+					if i == it.stmts.len - 1 && type_sym.kind != .void {}
+					// g.writeln('$tmp =')
 					g.stmt(stmt)
 				}
 				g.writeln('}')
+				if it.else_stmts.len > 0 {
+					g.writeln('else { ')
+					for stmt in it.else_stmts {
+						g.stmt(stmt)
+					}
+					g.writeln('}')
+				}
 			}
 		}
 		ast.IfGuardExpr {
