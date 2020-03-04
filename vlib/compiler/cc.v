@@ -199,7 +199,9 @@ fn (v mut V) cc() {
 	}
 	if debug_mode {
 		a << debug_options
-		a << ' -ferror-limit=5000 '
+		$if macos {
+			a << ' -ferror-limit=5000 '
+		}
 	}
 	if v.pref.is_prod {
 		a << optimization_options
