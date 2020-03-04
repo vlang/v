@@ -27,8 +27,8 @@ fn test_the_v_compiler_can_be_invoked() {
 
 struct Session {
 mut:
-	options   runner.RunnerOptions
-	bmark     benchmark.Benchmark
+	options runner.RunnerOptions
+	bmark   benchmark.Benchmark
 }
 
 fn test_all_v_repl_files() {
@@ -40,16 +40,16 @@ fn test_all_v_repl_files() {
 	runner.run_repl_file(os.cachedir(), session.options.vexec, 'vlib/compiler/tests/repl/nothing.repl') or {
 		panic(err)
 	}
-
-	session.bmark.set_total_expected_steps( session.options.files.len )
-
-	mut pool_repl := sync.new_pool_processor({ callback: worker_repl })
-	pool_repl.set_shared_context( session )
+	session.bmark.set_total_expected_steps(session.options.files.len)
+	mut pool_repl := sync.new_pool_processor({
+		callback: worker_repl
+	})
+	pool_repl.set_shared_context(session)
 	$if windows {
-	// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
+		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
 		pool_repl.set_max_jobs(1)
 	}
-	pool_repl.work_on_items<string>( session.options.files )
+	pool_repl.work_on_items<string>(session.options.files)
 	session.bmark.stop()
 	println(session.bmark.total_message('total time spent running REPL files'))
 }
@@ -58,36 +58,34 @@ fn worker_repl(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	cdir := os.cachedir()
 	mut session := &Session(p.get_shared_context())
 	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
-	if isnil(tls_bench){
+	if isnil(tls_bench) {
 		tls_bench = benchmark.new_benchmark_pointer()
-		tls_bench.set_total_expected_steps( session.bmark.nexpected_steps )
-		p.set_thread_context(idx, tls_bench )
+		tls_bench.set_total_expected_steps(session.bmark.nexpected_steps)
+		p.set_thread_context(idx, tls_bench)
 	}
-
 	tls_bench.cstep = idx
-
-	tfolder := filepath.join( cdir, 'vrepl_tests_$idx')
-	if os.is_dir( tfolder ) {
-		os.rmdir_all( tfolder )
+	tfolder := filepath.join(cdir,'vrepl_tests_$idx')
+	if os.is_dir(tfolder) {
+		os.rmdir_all(tfolder)
 	}
-	os.mkdir( tfolder ) or { panic(err) }
-
-	file := p.get_item<string>(idx)
+	os.mkdir(tfolder) or {
+		panic(err)
+	}
+	file := p.get_string_item(idx)
 	session.bmark.step()
 	tls_bench.step()
 	fres := runner.run_repl_file(tfolder, session.options.vexec, file) or {
 		session.bmark.fail()
 		tls_bench.fail()
-		os.rmdir_all( tfolder )
+		os.rmdir_all(tfolder)
 		eprintln(tls_bench.step_message_fail(err))
 		assert false
 		return sync.no_result
 	}
 	session.bmark.ok()
 	tls_bench.ok()
-	os.rmdir_all( tfolder )
+	os.rmdir_all(tfolder)
 	println(tls_bench.step_message_ok(fres))
 	assert true
-
 	return sync.no_result
 }
