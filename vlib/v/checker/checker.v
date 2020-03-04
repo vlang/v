@@ -366,28 +366,45 @@ pub fn (c mut Checker) assign_stmt(assign_stmt ast.AssignStmt) {
 
 pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	mut elem_type := table.void_type
-	// a = []
-	if array_init.exprs.len == 0 {}
-	for i, expr in array_init.exprs {
-		c.expr(expr)
-		typ := c.expr(expr)
-		// The first element's type
-		if i == 0 {
-			elem_type = typ
-			c.expected_type = typ
-			continue
-		}
-		if !c.table.check(elem_type, typ) {
-			elem_type_sym := c.table.get_type_symbol(elem_type)
-			c.error('expected array element with type `$elem_type_sym.name`', array_init.pos)
-		}
+	// []string - was set in parser
+	if array_init.typ != table.void_type {
+		return array_init.typ
 	}
-	// only inits if know types like []string set the type in parser
-	// as the rest could be result of expression, so do it here
-	if array_init.typ == 0 {
-		is_fixed := false
-		fixed_size := 1
-		idx := if is_fixed { c.table.find_or_register_array_fixed(elem_type, fixed_size, 1) } else { c.table.find_or_register_array(elem_type, 1) }
+	// a = []
+	if array_init.exprs.len == 0 {
+		return c.expected_type
+	}
+	// [1,2,3]
+	if array_init.exprs.len > 0 && array_init.elem_type == table.void_type {
+		for i, expr in array_init.exprs {
+			c.expr(expr)
+			typ := c.expr(expr)
+			// The first element's type
+			if i == 0 {
+				elem_type = typ
+				c.expected_type = typ
+				continue
+			}
+			if !c.table.check(elem_type, typ) {
+				elem_type_sym := c.table.get_type_symbol(elem_type)
+				c.error('expected array element with type `$elem_type_sym.name`', array_init.pos)
+			}
+		}
+		idx := c.table.find_or_register_array(elem_type, 1)
+		array_init.typ = table.new_type(idx)
+	}
+	// [50]byte
+	else if array_init.exprs.len == 1 && array_init.elem_type != table.void_type {
+		mut fixed_size := 1
+		match array_init.exprs[0] {
+			ast.IntegerLiteral {
+				fixed_size = it.val
+			}
+			else {
+				c.error('expecting `int` for fixed size', array_init.pos)
+			}
+	}
+		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size, 1)
 		array_type := table.new_type(idx)
 		array_init.typ = array_type
 	}

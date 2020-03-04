@@ -478,6 +478,7 @@ pub:
 	pos   token.Position
 	exprs []Expr
 mut:
+	elem_type table.Type
 	typ   table.Type
 }
 

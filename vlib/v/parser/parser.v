@@ -58,7 +58,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-
+		
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -82,7 +82,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 			parent: 0
 		}
 		// comments_mode: comments_mode
-
+		
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -359,7 +359,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return ast.ExprStmt{
 				expr: expr
 				// typ: typ
-
+				
 			}
 		}
 	}
@@ -662,7 +662,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-
+			
 			val: val
 			pos: p.tok.position()
 		}
@@ -824,15 +824,17 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 		else if p.tok.kind == .key_as {
 			p.next()
 			typ = p.parse_type()
-			node = ast.AsCast {
+			node = ast.AsCast{
 				typ: typ
 			}
 		}
+		// TODO: handle in later stages since this
+		// will fudge left shift as it makes it right assoc
 		// `arr << 'a'` | `arr << 'a' + 'b'`
 		else if p.tok.kind == .left_shift {
 			tok := p.tok
 			p.next()
-			right,_ := p.expr(precedence-1)
+			right,_ := p.expr(precedence - 1)
 			node = ast.InfixExpr{
 				left: node
 				right: right
@@ -1234,11 +1236,11 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-
+		
 		pos: pos
 		has_else: has_else
 		// left: left
-
+		
 	}
 	return node
 }
@@ -1280,46 +1282,22 @@ fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
 
 fn (p mut Parser) array_init() ast.ArrayInit {
 	p.check(.lsbr)
-	// `[]` - empty array with an automatically deduced type
 	// p.warn('array_init() exp=$p.expected_type')
-	/*
-	if p.expected_type != 0 {
-		sym := p.table.get_type_symbol(p.expected_type)
-		println(sym.name)
-	}
-	*/
-	/* TODO: joe
-	if p.tok.kind == .rsbr && int(p.expected_type) != 0 && p.table.get_type_symbol(p.expected_type).kind == .array {
-		// p.warn('[] expr')
-		node = ast.ArrayInit{
-			// typ: array_type
-			exprs: []
-			pos: p.tok.position()
-		}
-		p.check(.rsbr)
-		return node,p.expected_type
-	}
-	*/
-
-	mut array_type := table.Type(0)
+	mut array_type := table.void_type
+	mut elem_type := table.void_type
 	mut exprs := []ast.Expr
-	// mut is_fixed := false
-	// mut fixed_size := 0
 	if p.tok.kind == .rsbr {
 		// []typ => `[]` and `typ` must be on the same line
 		line_nr := p.tok.line_nr
 		p.check(.rsbr)
 		// []string
 		if p.tok.kind == .name && p.tok.line_nr == line_nr {
-			val_type := p.parse_type()
+			elem_type = p.parse_type()
 			// this is set here becasue its a known type, others could be the
 			// result of expr so we do those in checker
-			idx := p.table.find_or_register_array(val_type, 1)
+			idx := p.table.find_or_register_array(elem_type, 1)
 			array_type = table.new_type(idx)
 		}
-		// []
-		else {}
-		// TODO ?
 	}
 	else {
 		// [1,2,3]
@@ -1330,24 +1308,13 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 				p.check(.comma)
 			}
 		}
-		// line_nr := p.tok.line_nr
+		line_nr := p.tok.line_nr
 		p.check(.rsbr)
-		// Fixed size array? (`[100]byte`)
-		// NOTE: this should be hanled in parse_type() ?
-		/*
+		// [100]byte
 		if exprs.len == 1 && p.tok.kind == .name && p.tok.line_nr == line_nr {
-			is_fixed = true
-			val_type = p.parse_type()
-			match exprs[0] {
-				ast.IntegerLiteral {
-					fixed_size = it.val
-				}
-				else {}
-			}
-			p.warn('fixed size array')
+			elem_type = p.parse_type()
+			// p.warn('fixed size array')
 		}
-		*/
-
 	}
 	// !
 	if p.tok.kind == .not {
@@ -1356,9 +1323,8 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	if p.tok.kind == .not {
 		p.next()
 	}
-	// idx := if is_fixed { p.table.find_or_register_array_fixed(val_type, fixed_size, 1) } else { p.table.find_or_register_array(val_type, 1) }
-	// array_type := table.new_type(idx)
 	return ast.ArrayInit{
+		elem_type: elem_type
 		typ: array_type
 		exprs: exprs
 		pos: p.tok.position()
@@ -1664,12 +1630,12 @@ fn (p mut Parser) var_decl_and_assign_stmt() ast.Stmt {
 		return ast.VarDecl{
 			name: ident.name
 			// name2: name2
-
+			
 			expr: expr // p.expr(token.lowest_prec)
-
+			
 			is_mut: info0.is_mut
 			// typ: typ
-
+			
 			pos: p.tok.position()
 		}
 		// return p.var_decl(ident[0], exprs[0])
@@ -1799,6 +1765,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 			}
 		}
 		*/
+
 		p.close_scope()
 		if p.tok.kind == .rcbr {
 			break
@@ -1810,7 +1777,7 @@ fn (p mut Parser) match_expr() ast.Expr {
 		blocks: blocks
 		match_exprs: match_exprs
 		// typ: typ
-
+		
 		cond: cond
 	}
 	return node
