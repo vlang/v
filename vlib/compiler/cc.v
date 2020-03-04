@@ -27,7 +27,7 @@ fn (v &V) no_cc_installed() bool {
 }
 
 fn (v mut V) cc() {
-	if os.executable().contains('vfmt') {
+	if os.exe().contains('vfmt') {
 		return
 	}
 	v.build_thirdparty_obj_files()

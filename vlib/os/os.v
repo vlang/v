@@ -836,14 +836,19 @@ fn C.proc_pidpath(int, byteptr, int) int
 
 
 fn C.readlink() int
-// executable returns the path name of the executable that started the current
-// process.
+
+[deprecated]
 pub fn executable() string {
+	panic('Use `os.exe` instead of `os.executable`')
+}
+
+// exe returns the path name of the executable that started the current process.
+pub fn exe() string {
 	$if linux {
 		mut result := calloc(MAX_PATH)
 		count := C.readlink('/proc/self/exe', result, MAX_PATH)
 		if count < 0 {
-			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
+			eprintln('os.exe() failed at reading /proc/self/exe to get exe path')
 			return os.args[0]
 		}
 		return string(result)
@@ -859,7 +864,7 @@ pub fn executable() string {
 		pid := C.getpid()
 		ret := proc_pidpath(pid, result, MAX_PATH)
 		if ret <= 0 {
-			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
+			eprintln('os.exe() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
 			return os.args[0]
 		}
 		return string(result)
@@ -882,7 +887,7 @@ pub fn executable() string {
 		mut result := calloc(MAX_PATH)
 		count := C.readlink('/proc/curproc/exe', result, MAX_PATH)
 		if count < 0 {
-			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
+			eprintln('os.exe() failed at reading /proc/curproc/exe to get exe path')
 			return os.args[0]
 		}
 		return string(result,count)
@@ -891,7 +896,7 @@ pub fn executable() string {
 		mut result := calloc(MAX_PATH)
 		count := C.readlink('/proc/curproc/file', result, MAX_PATH)
 		if count < 0 {
-			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
+			eprintln('os.exe() failed at reading /proc/curproc/file to get exe path')
 			return os.args[0]
 		}
 		return string(result,count)
@@ -1169,7 +1174,7 @@ pub const (
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
 pub fn resource_abs_path(path string) string {
-	mut base_path := os.realpath(filepath.dir(os.executable()))
+	mut base_path := os.realpath(filepath.dir(os.exe()))
 	vresource := os.getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
 		base_path = vresource

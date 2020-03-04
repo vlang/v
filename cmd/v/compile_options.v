@@ -180,7 +180,7 @@ pub fn new_v(args []string) &compiler.V {
 		*/
 		println('vlib not found. It should be next to the V executable.')
 		println('Go to https://vlang.io to install V.')
-		println('(os.executable=${os.executable()} vlib_path=$prefs.vlib_path vexe_path=${pref.vexe_path()}')
+		println('(os.exe=${os.exe()} vlib_path=$prefs.vlib_path vexe_path=${pref.vexe_path()}')
 		exit(1)
 	}
 

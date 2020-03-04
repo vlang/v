@@ -70,16 +70,16 @@ fn main() {
 	scripting.used_tools_must_exist(['git', 'cc'])
 	mut context := Context{}
 	mut fp := flag.new_flag_parser(os.args)
-	fp.application(filepath.filename(os.executable()))
+	fp.application(filepath.filename(os.exe()))
 	fp.version(tool_version)
 	fp.description(tool_description)
 	fp.arguments_description('VCOMMIT')
 	fp.skip_executable()
 	fp.limit_free_args(1, 1)
-	
+
 	context.cleanup = fp.bool('clean', true, 'Clean before running (slower).')
 	context.cmd_to_run = fp.string_('command', `c`, '', 'Command to run in the old V repo.\n')
-	
+
 	commits := vgit.add_common_tool_options(mut context, mut fp)
 	if commits.len > 0 {
 		context.commit_v = commits[0]
@@ -102,9 +102,9 @@ fn main() {
 		scripting.rmrf(context.path_v)
 		scripting.rmrf(context.path_vc)
 	}
-	
+
 	context.compile_oldv_if_needed()
-	
+
 	scripting.chdir(context.path_v)
 	println('#     v commit hash: $context.commit_v_hash')
 	println('#   checkout folder: $context.path_v')
@@ -116,5 +116,5 @@ fn main() {
 		println(cmdres.output)
 		exit(cmdres.exit_code)
 	}
-	
+
 }

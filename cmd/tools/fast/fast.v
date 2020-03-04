@@ -9,7 +9,7 @@ import (
 )
 
 fn main() {
-	exe := os.executable()
+	exe := os.exe()
 	dir := filepath.dir(exe)
 	vdir := filepath.dir(filepath.dir(filepath.dir(dir)))
 	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {

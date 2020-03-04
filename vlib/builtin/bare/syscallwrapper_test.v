@@ -7,7 +7,7 @@ fn test_syscallwrappers() {
 	if true { return }
 	$if linux {
 		$if x64 {
-			exe := os.executable()
+			exe := os.exe()
 			vdir := filepath.dir(exe)
 			if vdir.len > 1 {
 				dot_checks := vdir + "/.checks"
