@@ -443,19 +443,17 @@ fn (f mut Fmt) expr(node ast.Expr) {
 							f.write(', ')
 						}
 					}
-					f.writeln(' {')
-					f.stmts(branch.stmts)
-					f.writeln('}')
 				}
 				// else branch
 				else {
-					if (branch.stmts.len == 0) {
-						f.writeln('else {}')
-					} else {
-						f.writeln('else {')
-						f.stmts(branch.stmts)
-						f.writeln('}')
-					}
+					f.write('else')
+				}
+				if (branch.stmts.len == 0) {
+					f.writeln(' {}')
+				} else {
+					f.writeln(' {')
+					f.stmts(branch.stmts)
+					f.writeln('}')
 				}
 			}
 			f.indent--
