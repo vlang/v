@@ -24,7 +24,7 @@ fn worker_fetch(p &sync.PoolProcessor, cursor int, worker_id int) voidptr {
 	return sync.no_result
 }
 
-// Fetches top HN stories in 4 coroutines
+// Fetches top HN stories in parallel, depending on how many cores you have
 fn main() {
 	resp := http.get('https://hacker-news.firebaseio.com/v0/topstories.json') or {
 		println('failed to fetch data from /v0/topstories.json')
