@@ -250,8 +250,8 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 		req: req
 		conn: conn
 		form: map[string]string
-		static_files: map[string]string
-		static_mime_types: map[string]string
+		static_files: app.vweb.static_files
+		static_mime_types: app.vweb.static_mime_types
 	}
 	//}
 	if req.method in methods_with_form {
@@ -269,10 +269,17 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 	}
 
 	// Serve a static file if it's one
-	// if app.vweb.handle_static() {
-	// 	conn.close()
-	// 	continue
-	// }
+	static_file := app.vweb.static_files[app.vweb.req.url]
+	mime_type := app.vweb.static_mime_types[app.vweb.req.url]
+
+	if static_file != '' && mime_type != '' {
+		data := os.read_file(static_file) or {
+			conn.send_string(HTTP_404) or {}
+			return
+		}
+		app.vweb.send_response_to_client(mime_type, data)
+		return
+	}
 
 	// Call the right action
 	$if debug {
@@ -347,14 +354,7 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 	if ctx.done { return false }
 	ctx.scan_static_directory(directory_path, '')
 
-	static_file := ctx.static_files[ctx.req.url]
-	mime_type := ctx.static_mime_types[ctx.req.url]
-
-	if static_file != '' {
-		data := os.read_file(static_file) or { return false }
-		return ctx.send_response_to_client(mime_type, data)
-	}
-	return false
+	return true
 }
 
 pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) {
