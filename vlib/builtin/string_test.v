@@ -493,7 +493,7 @@ fn test_interpolation() {
 }
 
 fn test_bytes_to_string() {
-	mut buf := calloc(10)
+	mut buf := vcalloc(10)
 	buf[0] = `h`
 	buf[1] = `e`
 	buf[2] = `l`

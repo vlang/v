@@ -107,7 +107,7 @@ fn test_one() {
 	}
 	mut checker := checker.new_checker(table)
 	checker.check(program)
-	res := gen.cgen([program], table).replace('\n', '').trim_space()
+	res := gen.cgen([program], table).replace('\n', '').trim_space().after('#endif')
 	println(res)
 	ok := expected == res
 	println(res)
@@ -201,7 +201,7 @@ fn test_parse_expr() {
 		scope: scope
 	}
 	checker.check(program)
-	res := gen.cgen([program], table)
+	res := gen.cgen([program], table).after('#endif')
 	println('========')
 	println(res)
 	println('========')
