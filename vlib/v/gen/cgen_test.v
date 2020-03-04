@@ -24,7 +24,7 @@ fn test_c_files() {
 		ctext = ctext // unused warn
 		mut b := builder.new_builder(pref.Preferences{})
 		b.module_search_paths = ['$vroot/vlib/v/gen/tests/']
-		res := b.gen_c([path])
+		res := b.gen_c([path]).after('#endif')
 		if compare_texts(res, ctext) {
 			eprintln('${term_ok} ${i}')
 		}
