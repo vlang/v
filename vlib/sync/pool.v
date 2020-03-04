@@ -4,7 +4,8 @@ module sync
 // *
 // * Usage example:
 // *   pool := sync.new_pool_processor({ callback: worker_cb })
-// *   pool.work_on_items<string>(['a','b','c'])
+// *   //pool.work_on_items<string>(['a','b','c']) // TODO: vfmt and generics
+// *   pool.work_on_pointers(['a','b','c'].pointers())
 // *   // optionally, you can iterate over the results too:
 // *   for x in pool.get_results<IResult>() {
 // *       // do stuff with x
@@ -25,6 +26,8 @@ module sync
 // *       The callback function will receive as parameters:
 // *       1) the PoolProcessor instance, so it can call
 // *             p.get_item<int>(idx) to get the actual item at index idx
+// *             NB: for now, you are better off calling p.get_string_item(idx)
+// *                 or p.get_int_item(idx) ; TODO: vfmt and generics
 // *       2) idx - the index of the currently processed item
 // *       3) task_id - the index of the worker thread in which the callback
 // *             function is running.
@@ -82,8 +85,8 @@ pub fn (pool mut PoolProcessor) set_max_jobs(njobs int) {
 	pool.njobs = njobs
 }
 
-// work_on_items receives a list of items of type T, then
-// starts a work pool of pool.njobs threads, each running
+// work_on_items receives a list of items of type T,
+// then starts a work pool of pool.njobs threads, each running
 // pool.thread_cb in a loop, untill all items in the list,
 // are processed.
 // When pool.njobs is 0, the number of jobs is determined
@@ -91,6 +94,10 @@ pub fn (pool mut PoolProcessor) set_max_jobs(njobs int) {
 // work_on_items returns *after* all threads finish.
 // You can optionally call get_results after that.
 pub fn (pool mut PoolProcessor) work_on_items<T>(items []T) {
+	pool.work_on_pointers( items.pointers() )
+}
+
+pub fn (pool mut PoolProcessor) work_on_pointers(items []voidptr) {
 	mut njobs := runtime.nr_jobs()
 	if pool.njobs > 0 {
 		njobs = pool.njobs
@@ -98,9 +105,7 @@ pub fn (pool mut PoolProcessor) work_on_items<T>(items []T) {
 	pool.items = []
 	pool.results = []
 	pool.thread_contexts = []
-	for i in 0 .. items.len {
-		pool.items << items.data + i * sizeof(T)
-	}
+	pool.items << items
 	pool.results = [voidptr(0)].repeat(pool.items.len)
 	pool.thread_contexts << [voidptr(0)].repeat(pool.items.len)
 	pool.waitgroup.add(njobs)
