@@ -1,34 +1,34 @@
 module sync
 
-// Goal: this file provides a convenient way to run identical tasks over a list
-// of items in parallel, without worrying about waitgroups, mutexes and so on.
-//
-// Usage example:
-//    pool := sync.new_pool_processor({ callback: worker_cb })
-//    pool.work_on_items<string>(['a','b','c'])
-//    // optionally, you can iterate over the results too:
-//    for x in pool.get_results<IResult>() {
-//        // do stuff with x
-//    }
-//
-// See https://github.com/vlang/v/blob/master/vlib/sync/pool_test.v for a
-// more detailed usage example.
-//
-// After all the work is done in parallel by the worker threads in the pool,
-// pool.work_on_items will return, and you can then call
-// pool.get_results<Result>() to retrieve a list of all the results,
-// that the worker callbacks returned for each item that you passed.
-// The parameters of new_pool_processor are:
-//    context.maxjobs: when 0 (the default), the PoolProcessor will use an
-//        optimal for your system number of threads to process your items
-//    context.callback: this should be a callback function, that each worker
-//        thread in the pool will run for each item.
-//        The callback function will receive as parameters:
-//        1) the PoolProcessor instance, so it can call
-//              p.get_item<int>(idx) to get the actual item at index idx
-//        2) idx - the index of the currently processed item
-//        3) task_id - the index of the worker thread in which the callback
-//              function is running.
+// * Goal: this file provides a convenient way to run identical tasks over a list
+// * of items in parallel, without worrying about waitgroups, mutexes and so on.
+// *
+// * Usage example:
+// *   pool := sync.new_pool_processor({ callback: worker_cb })
+// *   pool.work_on_items<string>(['a','b','c'])
+// *   // optionally, you can iterate over the results too:
+// *   for x in pool.get_results<IResult>() {
+// *       // do stuff with x
+// *   }
+// *
+// * See https://github.com/vlang/v/blob/master/vlib/sync/pool_test.v for a
+// * more detailed usage example.
+// *
+// * After all the work is done in parallel by the worker threads in the pool,
+// * pool.work_on_items will return, and you can then call
+// * pool.get_results<Result>() to retrieve a list of all the results,
+// * that the worker callbacks returned for each item that you passed.
+// * The parameters of new_pool_processor are:
+// *   context.maxjobs: when 0 (the default), the PoolProcessor will use an
+// *       optimal for your system number of threads to process your items
+// *   context.callback: this should be a callback function, that each worker
+// *       thread in the pool will run for each item.
+// *       The callback function will receive as parameters:
+// *       1) the PoolProcessor instance, so it can call
+// *             p.get_item<int>(idx) to get the actual item at index idx
+// *       2) idx - the index of the currently processed item
+// *       3) task_id - the index of the worker thread in which the callback
+// *             function is running.
 
 import runtime
 
