@@ -38,6 +38,28 @@ pub fn (g mut Gen) init() {
 	g.definitions.writeln('#include <inttypes.h>') // int64_t etc
 	g.definitions.writeln(c_builtin_types)
 	g.definitions.writeln(c_headers)
+	// Multi return structs
+	// TODO move to a method
+	g.definitions.writeln('// multi return structs')
+	for typ in g.table.types {
+		// sym := g.table.get_type_symbol(typ)
+		if typ.kind != .multi_return {
+			continue
+		}
+		name := typ.name.replace('.', '__')
+		info := typ.info as table.MultiReturn
+		g.definitions.writeln('typedef struct {')
+		// TODO copy pasta StructDecl
+		// for field in struct_info.fields {
+		for i, mr_typ in info.types {
+			field_type_sym := g.table.get_type_symbol(mr_typ)
+			type_name := field_type_sym.name.replace('.', '__')
+			g.definitions.writeln('\t$type_name arg_${i+1};')
+		}
+		g.definitions.writeln('} $name;\n')
+		// g.typedefs.writeln('typedef struct $name $name;')
+	}
+	g.definitions.writeln('// end of definitions #endif')
 }
 
 pub fn (g &Gen) save() {}
@@ -136,7 +158,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	}
 		}
 		ast.FnDecl {
-			if it.is_c {
+			if it.is_c || it.name == 'malloc' {
 				return
 			}
 			g.reset_tmp_count()
@@ -147,21 +169,31 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 			else {
 				type_sym := g.table.get_type_symbol(it.typ)
-				mut name := it.name.replace('.', '__')
+				mut name := it.name
 				if it.is_method {
 					name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
 				}
-				g.write('$type_sym.name ${name}(')
-				g.definitions.write('$type_sym.name ${name}(')
+				name = name.replace('.', '__')
+				// type_name := g.table.type_to_str(it.typ)
+				type_name := type_sym.name.replace('.', '__') // g.table.type_to_str(it.typ)
+				g.write('$type_name ${name}(')
+				g.definitions.write('$type_name ${name}(')
 			}
+			no_names := it.args.len > 0 && it.args[0].name == 'arg_1'
 			for i, arg in it.args {
 				arg_type_sym := g.table.get_type_symbol(arg.typ)
-				mut arg_type_name := arg_type_sym.name
+				mut arg_type_name := arg_type_sym.name.replace('.', '__')
 				if i == it.args.len - 1 && it.is_variadic {
 					arg_type_name = 'variadic_$arg_type_sym.name'
 				}
-				g.write(arg_type_name + ' ' + arg.name)
-				g.definitions.write(arg_type_name + ' ' + arg.name)
+				if no_names {
+					g.write(arg_type_name)
+					g.definitions.write(arg_type_name)
+				}
+				else {
+					g.write(arg_type_name + ' ' + arg.name)
+					g.definitions.write(arg_type_name + ' ' + arg.name)
+				}
 				if i < it.args.len - 1 {
 					g.write(', ')
 					g.definitions.write(', ')
@@ -239,13 +271,13 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.StructDecl {
+			name := it.name.replace('.', '__')
 			g.writeln('typedef struct {')
 			for field in it.fields {
 				field_type_sym := g.table.get_type_symbol(field.typ)
 				g.writeln('\t$field_type_sym.name $field.name;')
 			}
-			g.writeln('} $it.name;')
-			name := it.name.replace('.', '__')
+			g.writeln('} $name;')
 			g.typedefs.writeln('typedef struct $name $name;')
 		}
 		ast.TypeDecl {

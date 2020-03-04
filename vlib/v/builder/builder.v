@@ -36,14 +36,25 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 }
 
 pub fn (b mut Builder) gen_c(v_files []string) string {
+	t0 := time.ticks()
 	b.parsed_files = parser.parse_files(v_files, b.table)
 	b.parse_imports()
+	t1 := time.ticks()
+	parse_time := t1 - t0
+	println('PARSE: ${parse_time}ms')
+	//
 	b.checker.check_files(b.parsed_files)
+	t2 := time.ticks()
+	check_time := t2 - t1
+	println('CHECK: ${check_time}ms')
 	if b.checker.nr_errors > 0 {
 		exit(1)
 	}
 	// println('starting cgen...')
 	res := gen.cgen(b.parsed_files, b.table)
+	t3 := time.ticks()
+	gen_time := t3 - t2
+	println('C GEN: ${gen_time}ms')
 	println('cgen done')
 	// println(res)
 	return res
