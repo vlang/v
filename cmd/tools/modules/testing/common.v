@@ -11,12 +11,11 @@ import (
 
 pub struct TestSession {
 pub mut:
-	files     []string
-	vexe      string
-	vargs     string
-	failed    bool
-	benchmark benchmark.Benchmark
-
+	files         []string
+	vexe          string
+	vargs         string
+	failed        bool
+	benchmark     benchmark.Benchmark
 	show_ok_tests bool
 }
 
@@ -60,12 +59,12 @@ pub fn (ts mut TestSession) test() {
 		}
 		remaining_files << dot_relative_file
 	}
-
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-
-	mut pool_of_test_runners := sync.new_pool_processor({ callback: worker_trunner })
-	pool_of_test_runners.set_shared_context( ts )
+	mut pool_of_test_runners := sync.new_pool_processor({
+		callback: worker_trunner
+	})
+	pool_of_test_runners.set_shared_context(ts)
 	$if msvc {
 		// NB: MSVC can not be launched in parallel, without giving it
 		// the option /FS because it uses a shared PDB file, which should
@@ -74,27 +73,24 @@ pub fn (ts mut TestSession) test() {
 		// Instead, just run tests on 1 core for now.
 		pool_of_test_runners.set_max_jobs(1)
 	}
-	pool_of_test_runners.work_on_items<string>( remaining_files )
+	pool_of_test_runners.work_on_pointers(remaining_files.pointers())
 	ts.benchmark.stop()
 	eprintln(term.h_divider('-'))
 }
 
 fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
-	mut ts := &TestSession( p.get_shared_context() )
+	mut ts := &TestSession(p.get_shared_context())
 	tmpd := os.tmpdir()
 	show_stats := '-stats' in ts.vargs.split(' ')
-
 	// tls_bench is used to format the step messages/timings
-	mut tls_bench := &benchmark.Benchmark( p.get_thread_context(idx) )
+	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
 	if isnil(tls_bench) {
 		tls_bench = benchmark.new_benchmark_pointer()
-		tls_bench.set_total_expected_steps( ts.benchmark.nexpected_steps )
+		tls_bench.set_total_expected_steps(ts.benchmark.nexpected_steps)
 		p.set_thread_context(idx, tls_bench)
 	}
-
 	tls_bench.cstep = idx
-
-	dot_relative_file := p.get_item<string>( idx )
+	dot_relative_file := p.get_string_item(idx)
 	relative_file := dot_relative_file.replace('./', '')
 	file := os.realpath(relative_file)
 	// Ensure that the generated binaries will be stored in the temporary folder.
@@ -238,9 +234,9 @@ pub fn building_any_v_binaries_failed() bool {
 }
 
 pub fn eheader(msg string) {
-	eprintln(term.header(msg,'-'))
+	eprintln(term.header(msg, '-'))
 }
 
 pub fn header(msg string) {
-	println(term.header(msg,'-'))
+	println(term.header(msg, '-'))
 }
