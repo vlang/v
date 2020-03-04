@@ -176,7 +176,6 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	files := os.walk_ext(filepath.join(parent_dir,folder), '.v')
 	mut mains := []string
 	for f in files {
-		eprintln('f: $f')
 		if !f.contains('modules') && !f.contains('preludes') {
 			$if windows {
 				// skip pico example on windows
@@ -187,8 +186,6 @@ pub fn v_build_failing(zargs string, folder string) bool {
 			mains << f
 		}
 	}
-	eprintln('mains: ')
-	eprintln(mains.str())
 	session.files << mains
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
