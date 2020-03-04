@@ -1,5 +1,4 @@
 module sync
-
 // * Goal: this file provides a convenient way to run identical tasks over a list
 // * of items in parallel, without worrying about waitgroups, mutexes and so on.
 // *
@@ -29,7 +28,6 @@ module sync
 // *       2) idx - the index of the currently processed item
 // *       3) task_id - the index of the worker thread in which the callback
 // *             function is running.
-
 import runtime
 
 pub const (
@@ -37,23 +35,23 @@ pub const (
 )
 
 pub struct PoolProcessor {
-	thread_cb voidptr
+	thread_cb       voidptr
 mut:
-	njobs     int
-	items     []voidptr
-	results   []voidptr
-	ntask     int // writing to this should be locked by ntask_mtx.
-	ntask_mtx &sync.Mutex
-	waitgroup &sync.WaitGroup
-	shared_context voidptr
+	njobs           int
+	items           []voidptr
+	results         []voidptr
+	ntask           int // writing to this should be locked by ntask_mtx.
+	ntask_mtx       &sync.Mutex
+	waitgroup       &sync.WaitGroup
+	shared_context  voidptr
 	thread_contexts []voidptr
 }
 
-pub type ThreadCB fn(p &PoolProcessor, idx int, task_id int) voidptr
+pub type ThreadCB fn(p &PoolProcessor, idx int, task_id int)voidptr
 
 pub struct PoolProcessorConfig {
-  maxjobs int
-  callback ThreadCB
+	maxjobs  int
+	callback ThreadCB
 }
 
 // new_pool_processor returns a new PoolProcessor instance.
@@ -64,16 +62,15 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 	// TODO: remove this call.
 	// It prevents a V warning about unused module runtime.
 	runtime.nr_jobs()
-	pool := &PoolProcessor{
+	pool := &PoolProcessor {
 		items: []
 		results: []
 		shared_context: voidptr(0)
 		thread_contexts: []
-
-		njobs: context.maxjobs,
-		ntask: 0,
-		ntask_mtx: sync.new_mutex(),
-		waitgroup: sync.new_waitgroup(),
+		njobs: context.maxjobs
+		ntask: 0
+		ntask_mtx: sync.new_mutex()
+		waitgroup: sync.new_waitgroup()
 		thread_cb: context.callback
 	}
 	return pool
@@ -81,7 +78,7 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 
 // set_max_jobs gives you the ability to override the number
 // of jobs *after* the PoolProcessor had been created already.
-pub fn (pool mut PoolProcessor) set_max_jobs(njobs int){
+pub fn (pool mut PoolProcessor) set_max_jobs(njobs int) {
 	pool.njobs = njobs
 }
 
@@ -93,7 +90,7 @@ pub fn (pool mut PoolProcessor) set_max_jobs(njobs int){
 // by the number of available cores on the system.
 // work_on_items returns *after* all threads finish.
 // You can optionally call get_results after that.
-pub fn (pool mut PoolProcessor) work_on_items<T>(items []T){
+pub fn (pool mut PoolProcessor) work_on_items<T>(items []T) {
 	mut njobs := runtime.nr_jobs()
 	if pool.njobs > 0 {
 		njobs = pool.njobs
@@ -101,14 +98,14 @@ pub fn (pool mut PoolProcessor) work_on_items<T>(items []T){
 	pool.items = []
 	pool.results = []
 	pool.thread_contexts = []
-	for i in 0..items.len {
-		pool.items << items.data + i*sizeof(T)
+	for i in 0 .. items.len {
+		pool.items << items.data + i * sizeof(T)
 	}
 	pool.results = [voidptr(0)].repeat(pool.items.len)
 	pool.thread_contexts << [voidptr(0)].repeat(pool.items.len)
-	pool.waitgroup.add( njobs )
-	for i:=0; i < njobs; i++ {
-		go process_in_thread(pool, i)
+	pool.waitgroup.add(njobs)
+	for i := 0; i < njobs; i++ {
+		go process_in_thread(pool,i)
 	}
 	pool.waitgroup.wait()
 }
@@ -116,37 +113,38 @@ pub fn (pool mut PoolProcessor) work_on_items<T>(items []T){
 // process_in_thread does the actual work of worker thread.
 // It is a workaround for the current inability to pass a
 // method in a callback.
-fn process_in_thread(pool mut PoolProcessor, task_id int){
-	cb := ThreadCB( pool.thread_cb )
+fn process_in_thread(pool mut PoolProcessor, task_id int) {
+	cb := ThreadCB(pool.thread_cb)
 	mut idx := 0
 	ilen := pool.items.len
 	for {
-		if pool.ntask >= ilen { break }
+		if pool.ntask >= ilen {
+			break
+		}
 		pool.ntask_mtx.lock()
 		idx = pool.ntask
 		pool.ntask++
 		pool.ntask_mtx.unlock()
-		pool.results[ idx ] = cb( pool, idx, task_id )
+		pool.results[idx] = cb(pool, idx, task_id)
 	}
 	pool.waitgroup.done()
 }
 
-
 // get_item - called by the worker callback.
 // Retrieves a type safe instance of the currently processed item
 pub fn (pool &PoolProcessor) get_item<T>(idx int) T {
-	return *(&T( pool.items[ idx ] ))
+	return *(&T(pool.items[idx]))
 }
 
 pub fn (pool &PoolProcessor) get_result<T>(idx int) T {
-	return *(&T( pool.results[ idx ] ))
+	return *(&T(pool.results[idx]))
 }
 
 // get_results - can be called to get a list of type safe results.
 pub fn (pool &PoolProcessor) get_results<T>() []T {
 	mut res := []T
-	for i in 0..pool.results.len {
-		res << *(&T( pool.results[ i ] ))
+	for i in 0 .. pool.results.len {
+		res << *(&T(pool.results[i]))
 	}
 	return res
 }
@@ -154,7 +152,7 @@ pub fn (pool &PoolProcessor) get_results<T>() []T {
 // set_shared_context - can be called during the setup so that you can
 // provide a context that is shared between all worker threads, like
 // common options/settings.
-pub fn (pool mut PoolProcessor) set_shared_context(context voidptr){
+pub fn (pool mut PoolProcessor) set_shared_context(context voidptr) {
 	pool.shared_context = context
 }
 
@@ -172,6 +170,7 @@ pub fn (pool &PoolProcessor) get_shared_context() voidptr {
 pub fn (pool mut PoolProcessor) set_thread_context(idx int, context voidptr) {
 	pool.thread_contexts[idx] = context
 }
+
 // get_thread_context - returns a pointer, that was set with
 // pool.set_thread_context . This pointer is private to each thread.
 pub fn (pool &PoolProcessor) get_thread_context(idx int) voidptr {
