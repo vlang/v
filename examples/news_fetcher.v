@@ -14,35 +14,18 @@ struct Story {
 	url   string
 }
 
-struct Fetcher {
-mut:
-	mu     &sync.Mutex
-	ids    []int
-	cursor int
-	wg     &sync.WaitGroup
-}
-
-fn (f mut Fetcher) fetch() {
-	for {
-		if f.cursor >= f.ids.len {
-			return
-		}
-		id := f.ids[f.cursor]
-		f.mu.lock()
-		f.cursor++
-		f.mu.unlock()
-		cursor := f.cursor
-		resp := http.get('https://hacker-news.firebaseio.com/v0/item/${id}.json') or {
-			println('failed to fetch data from /v0/item/${id}.json')
-			exit(1)
-		}
-		story := json.decode(Story,resp.text) or {
-			println('failed to decode a story')
-			exit(1)
-		}
-		println('#$cursor) $story.title | $story.url')
-		f.wg.done()
+fn worker_fetch(p &sync.PoolProcessor, cursor int, worker_id int) voidptr {
+	id := p.get_item<int>(cursor)
+	resp := http.get('https://hacker-news.firebaseio.com/v0/item/${id}.json') or {
+		println('failed to fetch data from /v0/item/${id}.json')
+		exit(1)
 	}
+	story := json.decode(Story,resp.text) or {
+		println('failed to decode a story')
+		exit(1)
+	}
+	println('#$cursor) $story.title | $story.url')
+	return sync.no_result
 }
 
 // Fetches top HN stories in 4 coroutines
@@ -63,15 +46,11 @@ fn main() {
 		}
 		ids = tmp
 	}
-	mut fetcher := &Fetcher{
-		ids: ids
-		mu: sync.new_mutex()
-		wg: sync.new_waitgroup()
-	}
-	fetcher.wg.add(ids.len)
-	for i in 0..nr_threads {
-		go fetcher.fetch()
-	}
-	fetcher.wg.wait()
+	mut fetcher_pool := sync.new_pool_processor({ callback: worker_fetch })
+	// NB: if you do not call set_max_jobs, the pool will try to use an optimal
+	// number of threads, one per each core in your system, which in most
+	// cases is what you want anyway... You can override the automatic choice
+	// by setting the VJOBS environment variable too.
+	fetcher_pool.set_max_jobs( nr_threads )
+	fetcher_pool.work_on_items<int>( ids )
 }
-
