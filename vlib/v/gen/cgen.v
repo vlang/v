@@ -351,12 +351,17 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('$type_sym.name $tmp = ')
 			g.expr(it.cond)
 			g.writeln(';') // $it.blocks.len')
-			for i, block in it.blocks {
-				match_expr := it.match_exprs[i]
-				g.write('if $tmp == ')
-				g.expr(match_expr)
+			for branch in it.branches {
+				g.write('if ')
+				for i, expr in branch.exprs {
+					g.write('$tmp == ')
+					g.expr(expr)
+					if i < branch.exprs.len-1 {
+						g.write(' || ')
+					}
+				}
 				g.writeln('{')
-				g.stmts(block.stmts)
+				g.stmts(branch.stmts)
 				g.writeln('}')
 			}
 		}

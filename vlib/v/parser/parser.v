@@ -1702,27 +1702,28 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 	}
 }
 
-fn (p mut Parser) match_expr() ast.Expr {
+fn (p mut Parser) match_expr() ast.MatchExpr {
 	p.check(.key_match)
 	is_mut := p.tok.kind == .key_mut
 	if is_mut {
 		p.next()
 	}
 	cond,_ := p.expr(0)
-	// sym := p.table.get_type_symbol(typ)
-	// p.warn('match typ $sym.name')
 	p.check(.lcbr)
-	mut blocks := []ast.StmtBlock
-	mut match_exprs := []ast.Expr
-	// mut return_type := table.void_type
+	mut branches := []ast.MatchBranch
 	for {
+		mut exprs := []ast.Expr
 		p.open_scope()
+		// final else
+		if p.tok.kind == .key_else {
+			p.next()
+		}
 		// Sum type match
-		if p.tok.kind == .name && (p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
+		else if p.tok.kind == .name && (p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
 			// if sym.kind == .sum_type {
 			// p.warn('is sum')
 			typ := p.parse_type()
-			match_exprs << ast.Type{
+			exprs << ast.Type{
 				typ: typ
 			}
 			p.scope.register_var(ast.VarDecl{
@@ -1733,8 +1734,8 @@ fn (p mut Parser) match_expr() ast.Expr {
 		else {
 			// Expression match
 			for {
-				match_expr,_ := p.expr(0)
-				match_exprs << match_expr
+				expr,_ := p.expr(0)
+				exprs << expr
 				if p.tok.kind != .comma {
 					break
 				}
@@ -1743,45 +1744,21 @@ fn (p mut Parser) match_expr() ast.Expr {
 		}
 		// p.warn('match block')
 		stmts := p.parse_block()
-		blocks << ast.StmtBlock{
+		branches << ast.MatchBranch{
+			exprs: exprs
 			stmts: stmts
+			
 		}
-		if p.tok.kind == .key_else {
-			p.next()
-			blocks << ast.StmtBlock{
-				stmts: p.parse_block()
-			}
-		}
-		// If the last statement is an expression, return its type
-		/*
-		if stmts.len > 0 {
-			match stmts[stmts.len - 1] {
-				ast.ExprStmt {
-					type_sym := p.table.get_type_symbol(it.typ)
-					p.warn('match expr ret $type_sym.name')
-					return_type = it.typ
-				}
-				else {}
-			}
-		}
-		*/
-
 		p.close_scope()
 		if p.tok.kind == .rcbr {
 			break
 		}
 	}
 	p.check(.rcbr)
-	mut node := ast.Expr{}
-	node = ast.MatchExpr{
-		blocks: blocks
-		match_exprs: match_exprs
-		// typ: typ
-		
+	return ast.MatchExpr{
+		branches: branches
 		cond: cond
 	}
-	return node
-	// return node,return_type
 }
 
 fn (p mut Parser) enum_decl() ast.EnumDecl {

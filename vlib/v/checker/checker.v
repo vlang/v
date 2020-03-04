@@ -666,20 +666,20 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 
 pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	t := c.expr(node.cond)
+	c.expected_type = t
 	mut ret_type := table.void_type
-	for i, block in node.blocks {
-		if i < node.match_exprs.len {
-			match_expr := node.match_exprs[i]
+	for branch in node.branches {
+		for expr in branch.exprs {
 			c.expected_type = t
-			typ := c.expr(match_expr)
+			typ := c.expr(expr)
 			typ_sym := c.table.get_type_symbol(typ)
 			// TODO:
 			if typ_sym.kind == .sum_type {}
 		}
-		c.stmts(block.stmts)
+		c.stmts(branch.stmts)
 		// If the last statement is an expression, return its type
-		if block.stmts.len > 0 {
-			match block.stmts[block.stmts.len - 1] {
+		if branch.stmts.len > 0 {
+			match branch.stmts[branch.stmts.len - 1] {
 				ast.ExprStmt {
 					ret_type = c.expr(it.expr)
 				}
@@ -690,7 +690,7 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 				// node.typ = typ
 				// return typ
 				else {}
-	}
+			}
 		}
 	}
 	node.typ = t

@@ -217,11 +217,6 @@ mut:
 	typ  table.Type
 }
 
-pub struct StmtBlock {
-pub:
-	stmts []Stmt
-}
-
 pub struct File {
 pub:
 	path    string
@@ -340,12 +335,19 @@ pub struct MatchExpr {
 pub:
 	tok_kind    token.Kind
 	cond        Expr
-	blocks      []StmtBlock
-	match_exprs []Expr
+	branches    []MatchBranch
 	pos         token.Position
 mut:
 	typ         table.Type
 }
+
+pub struct MatchBranch {
+pub:
+	exprs []Expr
+	stmts []Stmt
+	pos   token.Position
+}
+
 
 pub struct CompIf {
 pub:
