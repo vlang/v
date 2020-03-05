@@ -1,5 +1,5 @@
 void foo(int a);
-void User_inc_age(int n);
+void User_inc_age(User u, int n);
 int get_int(string a);
 bool get_bool();
 int get_int2();
@@ -75,7 +75,7 @@ i < 10; i++) {
 	int f = TODO_first(nums);
 }
 
-void User_inc_age(int n) {
+void User_inc_age(User u, int n) {
 	u.age += n;
 }
 

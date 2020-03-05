@@ -186,8 +186,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				sym := g.table.get_type_symbol(it.receiver.typ)
 				styp := sym.name.replace('.', '__')
 				g.write('$styp $it.receiver.name')
+				g.definitions.write('$styp $it.receiver.name')
 				if it.args.len > 0 {
 					g.write(', ')
+					g.definitions.write(', ')
 				}
 			}
 			//

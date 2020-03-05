@@ -2,9 +2,9 @@ multi_return_int_string mr_test();
 int testa();
 string testb(int a);
 int testc(int a);
-int Foo_testa();
-int Foo_testb();
-int Bar_testa();
+int Foo_testa(Foo f);
+int Foo_testb(Foo f);
+int Bar_testa(Bar b);
 
 int main() {
     Bar b = (Bar){
@@ -55,17 +55,17 @@ int testc(int a) {
     return a;
 }
 
-int Foo_testa() {
+int Foo_testa(Foo f) {
     int a = TODO_testb(f);
     a = 1;
     return 4;
 }
 
-int Foo_testb() {
+int Foo_testb(Foo f) {
     return 4;
 }
 
-int Bar_testa() {
+int Bar_testa(Bar b) {
     return 4;
 }
 
