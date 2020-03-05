@@ -18,17 +18,6 @@ enum Color {
 	red green blue
 }
 
-/*
-struct One {
-	two Two
-}
-
-struct Two {
-
-}
-*/
-
-
 fn main() {
 	a := 10
 	//bb := 2 + 'hi'
@@ -54,6 +43,14 @@ fn main() {
 
 	}
 	*/
+
+struct One {
+	two Two
+}
+
+struct Two {
+
+}
 
 fn foo(a int) {
 	for true {

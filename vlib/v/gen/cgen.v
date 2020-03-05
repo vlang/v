@@ -4,6 +4,7 @@ import (
 	strings
 	v.ast
 	v.table
+	v.depgraph
 	term
 )
 
@@ -38,8 +39,12 @@ pub fn (g mut Gen) init() {
 	g.definitions.writeln('#include <inttypes.h>') // int64_t etc
 	g.definitions.writeln(c_builtin_types)
 	g.definitions.writeln(c_headers)
-	// Multi return structs
-	// TODO move to a method
+	g.write_sorted_types()
+	g.write_multi_return_types()
+	g.definitions.writeln('// end of definitions #endif')
+}
+
+pub fn (g mut Gen) write_multi_return_types() {
 	g.definitions.writeln('// multi return structs')
 	for typ in g.table.types {
 		// sym := g.table.get_type_symbol(typ)
@@ -59,7 +64,6 @@ pub fn (g mut Gen) init() {
 		g.definitions.writeln('} $name;\n')
 		// g.typedefs.writeln('typedef struct $name $name;')
 	}
-	g.definitions.writeln('// end of definitions #endif')
 }
 
 pub fn (g &Gen) save() {}
@@ -297,12 +301,12 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.StructDecl {
 			name := it.name.replace('.', '__')
-			g.writeln('typedef struct {')
-			for field in it.fields {
-				field_type_sym := g.table.get_type_symbol(field.typ)
-				g.writeln('\t$field_type_sym.name $field.name;')
-			}
-			g.writeln('} $name;')
+			// g.writeln('typedef struct {')
+			// for field in it.fields {
+			// field_type_sym := g.table.get_type_symbol(field.typ)
+			// g.writeln('\t$field_type_sym.name $field.name;')
+			// }
+			// g.writeln('} $name;')
 			g.typedefs.writeln('typedef struct $name $name;')
 		}
 		ast.TypeDecl {
@@ -445,9 +449,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.InfixExpr {
 			g.expr(it.left)
-			if it.op == .dot {
-				println('!! dot')
-			}
+			// if it.op == .dot {
+			// println('!! dot')
+			// }
 			g.write(' $it.op.str() ')
 			g.expr(it.right)
 			// if typ.name != typ2.name {
@@ -596,4 +600,120 @@ fn (g mut Gen) call_args(args []ast.Expr) {
 fn verror(s string) {
 	println('cgen error: $s')
 	// exit(1)
+}
+// C struct definitions, ordered
+// Sort the types, make sure types that are referenced by other types
+// are added before them.
+fn (g mut Gen) write_sorted_types() {
+	mut types := []table.TypeSymbol // structs that need to be sorted
+	// builtin_types := [
+	mut builtin_types := []table.TypeSymbol // builtin types
+	// builtin types need to be on top
+	builtins := ['string', 'array', 'KeyValue', 'map', 'Option']
+	for builtin in builtins {
+		// typ := table.Type( g.table.type_idxs[builtin])
+		typ := g.table.find_type(builtin) or {
+			continue
+			// panic('failed to find type $builtin')
+		}
+		builtin_types << typ
+	}
+	// everything except builtin will get sorted
+	for t_name, t in g.table.type_idxs {
+		if t == 0 {
+			continue
+		}
+		if t_name in builtins {
+			// || t.is_generic {
+			continue
+		}
+		println(t_name)
+		x := g.table.get_type_symbol(table.Type(t))
+		// types << g.table.get_type_symbol(table.Type(t))
+		types << *x
+	}
+	// sort structs
+	types_sorted := g.sort_structs(types)
+	// Generate C code
+	g.definitions.writeln('// builtin types:')
+	g.write_types(builtin_types)
+	g.definitions.writeln('//------------------\n')
+	g.write_types(types_sorted)
+}
+
+fn (g mut Gen) write_types(types []table.TypeSymbol) {
+	for typ in types {
+		// sym := g.table.get_type_symbol(typ)
+		match typ.info {
+			table.Struct {
+				info := typ.info as table.Struct
+				name := typ.name.replace('.', '__')
+				// g.definitions.writeln('typedef struct {')
+				g.definitions.writeln('struct $name {')
+				for field in info.fields {
+					field_type_sym := g.table.get_type_symbol(field.typ)
+					type_name := field_type_sym.name.replace('.', '__')
+					g.definitions.writeln('\t$type_name $field.name;')
+				}
+				// g.definitions.writeln('} $name;\n')
+				//
+				g.definitions.writeln('};\n')
+			}
+			else {}
+	}
+	}
+}
+
+// sort structs by dependant fields
+fn (g &Gen) sort_structs(types []table.TypeSymbol) []table.TypeSymbol {
+	mut dep_graph := depgraph.new_dep_graph()
+	// types name list
+	mut type_names := []string
+	for typ in types {
+		type_names << typ.name
+	}
+	// loop over types
+	for t in types {
+		match t.info {
+			table.Struct {
+				// create list of deps
+				mut field_deps := []string
+				info := t.info as table.Struct
+				for field in info.fields {
+					// Need to handle fixed size arrays as well (`[10]Point`)
+					// ft := if field.typ.starts_with('[') { field.typ.all_after(']') } else { field.typ }
+					// skip if not in types list or already in deps
+					/*
+			if !(ft in type_names) || ft in field_deps {
+				continue
+			}
+			*/
+					field_deps << g.table.get_type_symbol(field.typ).name
+					// field_deps << ft // field.typ
+				}
+				// add type and dependant types to graph
+				dep_graph.add(t.name, field_deps)
+			}
+			else {}
+	}
+	}
+	// sort graph
+	dep_graph_sorted := dep_graph.resolve()
+	if !dep_graph_sorted.acyclic {
+		verror('cgen.sort_structs(): the following structs form a dependency cycle:\n' + dep_graph_sorted.display_cycles() + '\nyou can solve this by making one or both of the dependant struct fields references, eg: field &MyStruct' + '\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
+	}
+	// sort types
+	mut types_sorted := []table.TypeSymbol
+	for node in dep_graph_sorted.nodes {
+		for t in types {
+			if t.name == node.name {
+				types_sorted << t
+				continue
+			}
+		}
+	}
+	for x in types_sorted {
+		println(x.name)
+	}
+	return types_sorted
 }
