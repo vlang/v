@@ -180,12 +180,23 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.write('$type_name ${name}(')
 				g.definitions.write('$type_name ${name}(')
 			}
+			// Receiver is the first argument
+			if it.is_method {
+				// styp := g.table.type_to_str(it.receiver.typ)
+				sym := g.table.get_type_symbol(it.receiver.typ)
+				styp := sym.name.replace('.', '__')
+				g.write('$styp $it.receiver.name')
+				if it.args.len > 0 {
+					g.write(', ')
+				}
+			}
+			//
 			no_names := it.args.len > 0 && it.args[0].name == 'arg_1'
 			for i, arg in it.args {
 				arg_type_sym := g.table.get_type_symbol(arg.typ)
 				mut arg_type_name := arg_type_sym.name.replace('.', '__')
 				if i == it.args.len - 1 && it.is_variadic {
-					arg_type_name = 'variadic_$arg_type_sym.name'
+					arg_type_name = 'variadic_$arg_type_name'
 				}
 				if no_names {
 					g.write(arg_type_name)
@@ -219,7 +230,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			// g.write('; ')
 			g.expr(it.cond)
 			g.write('; ')
-			//g.stmt(it.inc)
+			// g.stmt(it.inc)
 			g.expr(it.inc)
 			g.writeln(') {')
 			for stmt in it.stmts {
@@ -300,7 +311,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.VarDecl {
 			type_sym := g.table.get_type_symbol(it.typ)
-			g.write('$type_sym.name $it.name = ')
+			styp := type_sym.name.replace('.', '__')
+			g.write('$styp $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
