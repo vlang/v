@@ -416,6 +416,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			for i, expr in it.exprs {
 				mut field := it.fields[i]
 				typ := c.expr(expr)
+				// TODO: once consts are fixed update here
 				c.table.register_const(table.Var{
 					name: field.name
 					typ: typ
@@ -438,6 +439,8 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			if !it.is_inf && table.type_idx(typ) != table.bool_type_idx {
 				c.error('non-bool used as for condition', it.pos)
 			}
+			// TODO: update loop var type
+			// how does this work currenly?
 			for stmt in it.stmts {
 				c.stmt(stmt)
 			}

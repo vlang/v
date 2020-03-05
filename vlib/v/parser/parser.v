@@ -1058,10 +1058,6 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		if p.tok.kind == .comma {
 			p.check(.comma)
 			val_name = p.check_name()
-			// p.table.register_var(table.Var{
-			// name: val_name
-			// typ: table.int_type
-			// })
 			p.scope.register_var(ast.VarDecl{
 				name: val_name
 				typ: table.int_type
@@ -1080,9 +1076,10 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			p.check(.dotdot)
 			high_expr = p.expr(0)
 		}
+		// TODO: update var type in checker
 		p.scope.register_var(ast.VarDecl{
 			name: var_name
-			expr: cond
+			// expr: cond
 		})
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
@@ -1357,6 +1354,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 			// typ: typ
 		}
 		exprs << expr
+		// TODO: once consts are fixed reg here & update in checker
 		// p.table.register_const(table.Var{
 		// 	name: name
 		// 	// typ: typ
