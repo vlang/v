@@ -45,7 +45,7 @@ pub fn (p mut Parser) call_args() ([]ast.Expr,[]bool) {
 		else {
 			muts << false
 		}
-		e,_ := p.expr(0)
+		e := p.expr(0)
 		args << e
 		if p.tok.kind != .rpar {
 			p.check(.comma)
