@@ -229,7 +229,7 @@ pub mut:
 	is_mut bool
 }
 
-type IdentInfo = IdentFunc | IdentVar
+pub type IdentInfo = IdentFunc | IdentVar
 
 pub enum IdentKind {
 	unresolved
