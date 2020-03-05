@@ -416,9 +416,10 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			for i, expr in it.exprs {
 				mut field := it.fields[i]
 				typ := c.expr(expr)
-				mut xconst := c.table.consts[field.name]
-				xconst.typ = typ
-				c.table.consts[field.name] = xconst
+				c.table.register_const(table.Var{
+					name: field.name
+					typ: typ
+				})
 				field.typ = typ
 				it.fields[i] = field
 			}
