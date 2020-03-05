@@ -120,28 +120,11 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		})
 		// p.table.register_var(var)
 	}
-	//
-	/*
-
-			arg := table.Var{
-				name: arg_name
-				typ: arg_type
-			}
-			args << arg
-			// p.table.register_var(arg)
-				arg := table.Var{
-					name: arg_name
-					typ: typ
-				}
-				args << arg
-				p.table.register_var(arg)
-				*/
 	// Return type
 	mut typ := table.void_type
 	if p.tok.kind.is_start_of_type() {
 		typ = p.parse_type()
 	}
-	p.return_type = typ
 	// Register
 	if is_method {
 		type_sym := p.table.get_type_symbol(rec_type)

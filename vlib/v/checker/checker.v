@@ -300,22 +300,22 @@ pub fn (c mut Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type 
 
 // TODO: non deferred
 pub fn (c mut Checker) return_stmt(return_stmt ast.Return) {
-	mut got_types := []table.Type
 	c.expected_type = c.fn_return_type
 	if return_stmt.exprs.len == 0 {
 		return
 	}
-	for expr in return_stmt.exprs {
-		typ := c.expr(expr)
-		got_types << typ
-	}
-	expected_type := return_stmt.expected_type
+	expected_type := c.fn_return_type
 	expected_type_sym := c.table.get_type_symbol(expected_type)
 	exp_is_optional := table.type_is_optional(expected_type)
 	mut expected_types := [expected_type]
 	if expected_type_sym.kind == .multi_return {
 		mr_info := expected_type_sym.info as table.MultiReturn
 		expected_types = mr_info.types
+	}
+	mut got_types := []table.Type
+	for expr in return_stmt.exprs {
+		typ := c.expr(expr)
+		got_types << typ
 	}
 	// allow `none` & `error (Option)` return types for function that returns optional
 	if exp_is_optional && table.type_idx(got_types[0]) in [table.none_type_idx, c.table.type_idxs['Option']] {

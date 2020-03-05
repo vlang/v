@@ -34,16 +34,13 @@ mut:
 	peek_tok      token.Token
 	// vars []string
 	table         &table.Table
-	return_type   table.Type // current function's return type
 	is_c          bool
-	//
 	// prefix_parse_fns []PrefixParseFn
 	inside_if     bool
 	pref          &pref.Preferences // Preferences shared from V struct
 	builtin_mod   bool
 	mod           string
 	expr_mod      string
-	expected_type table.Type
 	scope         &ast.Scope
 	imports       map[string]string
 	ast_imports   []ast.Import
@@ -482,20 +479,12 @@ pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 fn (p mut Parser) struct_init() ast.StructInit {
 	typ := p.parse_type()
 	p.expr_mod = ''
-	sym := p.table.get_type_symbol(typ)
+	// sym := p.table.get_type_symbol(typ)
 	// p.warn('struct init typ=$sym.name')
 	p.check(.lcbr)
 	mut field_names := []string
 	mut exprs := []ast.Expr
 	mut i := 0
-	// TODO `if sym.info is table.Struct`
-	mut is_struct := false
-	match sym.info {
-		table.Struct {
-			is_struct = true
-		}
-		else {}
-	}
 	is_short_syntax := !(p.peek_tok.kind == .colon || p.tok.kind == .rcbr) // `Vec{a,b,c}`
 	// p.warn(is_short_syntax.str())
 	for p.tok.kind != .rcbr {
@@ -507,20 +496,6 @@ fn (p mut Parser) struct_init() ast.StructInit {
 		else {
 			field_name = p.check_name()
 			field_names << field_name
-		}
-		// Set expected type for this field's expression
-		// p.warn('$sym.name field $field_name')
-		if is_struct {
-			info := sym.info as table.Struct
-			if is_short_syntax {}
-			else {
-				field := sym.find_field(field_name) or {
-					p.error('field `${sym.name}.$field_name` not found')
-					continue
-				}
-				p.expected_type = field.typ
-			}
-			// p.warn('setting exp $field.typ')
 		}
 		if !is_short_syntax {
 			p.check(.colon)
@@ -812,6 +787,13 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		}
 		else if p.tok.kind.is_infix() {
 			node = p.infix_expr(node)
+			match node {
+				ast.PrefixExpr {
+					println('IS PREFIX')
+					return node
+				}
+				else {}
+			}
 		}
 		// Postfix
 		else if p.tok.kind in [.inc, .dec] {
@@ -950,6 +932,12 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 	precedence := p.tok.precedence()
 	pos := p.tok.position()
 	p.next()
+	if op == .mul && p.peek_tok.kind in [.assign, .decl_assign] {
+		return ast.PrefixExpr{
+			op: op
+			right: p.expr(0)
+		}
+	}
 	mut right := ast.Expr{}
 	right = p.expr(precedence)
 	mut expr := ast.Expr{}
@@ -975,19 +963,6 @@ fn (p &Parser) is_addative() bool {
 fn (p mut Parser) enum_val() ast.EnumVal {
 	p.check(.dot)
 	val := p.check_name()
-	/*
-	if p.expected_type == 0 {
-		p.error('wtf')
-	}
-	*/
-
-	/*
-	sym := p.table.get_type_symbol(p.expected_type) //or {
-		//return ast.EnumVal{val:val}
-	//}
-	p.warn(sym.name)
-	*/
-
 	return ast.EnumVal{
 		val: val
 		pos: p.tok.position()
@@ -1469,18 +1444,14 @@ fn (p mut Parser) return_stmt() ast.Return {
 	p.next()
 	// return expressions
 	mut exprs := []ast.Expr
-	// return type idents
-	// mut got_tis := []table.Type
-	if table.type_idx(p.return_type) == table.void_type_idx {
+	if p.tok.kind == .rcbr {
 		return ast.Return{
 			pos: p.tok.position()
 		}
 	}
 	for {
-		// expr,ti := p.expr(0)
 		expr := p.expr(0)
 		exprs << expr
-		// got_tis << ti
 		if p.tok.kind == .comma {
 			p.check(.comma)
 		}
@@ -1489,7 +1460,6 @@ fn (p mut Parser) return_stmt() ast.Return {
 		}
 	}
 	stmt := ast.Return{
-		expected_type: p.return_type
 		exprs: exprs
 		pos: p.tok.position()
 	}

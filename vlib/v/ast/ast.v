@@ -175,7 +175,6 @@ pub:
 pub struct Return {
 pub:
 	pos           token.Position
-	expected_type table.Type // TODO: remove once checker updated
 	exprs         []Expr
 }
 
