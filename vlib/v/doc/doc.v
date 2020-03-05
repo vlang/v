@@ -27,8 +27,9 @@ pub fn doc(mod string, table &table.Table) string {
 		table: table
 		mod: mod
 	}
-	mods_path := filepath.dir(pref.vexe_path()) + '/vlib'
-	path := filepath.join(mods_path,mod).replace('.', filepath.separator)
+	vlib_path := filepath.dir(pref.vexe_path()) + '/vlib'
+	mod_path := mod.replace('.', filepath.separator)
+	path := filepath.join(vlib_path, mod_path)
 	if !os.exists(path) {
 		println('module "$mod" not found')
 		println(path)
