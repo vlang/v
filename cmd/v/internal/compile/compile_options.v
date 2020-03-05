@@ -9,7 +9,7 @@ import (
 	v.pref
 )
 
-fn parse_arguments(args []string) pref.Preferences {
+fn parse_arguments(args []string) (pref.Preferences, []string) {
 	mut p := pref.Preferences{
 		//TODO: Refactor away this preference.
 		// It's no longer controlled by a command-line flag.
@@ -61,7 +61,7 @@ fn parse_arguments(args []string) pref.Preferences {
 	}
 	p.path = remaining[0]
 	p.fill_with_defaults()
-	return p
+	return p, remaining
 }
 
 fn parse_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {

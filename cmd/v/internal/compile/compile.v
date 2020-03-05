@@ -7,14 +7,13 @@ import (
 	benchmark
 	compiler
 	os
-	os.cmdline
 	compiler
 )
 
 pub fn compile(command string, args []string) {
 	// Construct the V object from command line arguments
 	parse_and_output_new_format(args)
-	prefs := parse_arguments(args)
+	prefs, remaining := parse_arguments(args)
 	check_for_common_mistake(args, &prefs)
 	mut v := compiler.new_v(prefs)
 	if v.pref.verbosity.is_higher_or_equal(.level_two) {
@@ -35,19 +34,21 @@ pub fn compile(command string, args []string) {
 		println('compilation took: ' + tmark.total_duration().str() + 'ms')
 	}
 	if v.pref.is_test || v.pref.is_run {
-		run_compiled_executable_and_exit(v, args)
+		run_compiled_executable_and_exit(v, remaining)
 	}
 	v.finalize_compilation()
 }
 
-pub fn run_compiled_executable_and_exit(v &compiler.V, args []string) {
+pub fn run_compiled_executable_and_exit(v &compiler.V, remaining_args []string) {
 	if v.pref.verbosity.is_higher_or_equal(.level_two) {
 		println('============ running $v.pref.out_name ============')
 	}
 	mut cmd := '"${v.pref.out_name}"'
-	args_after_no_options := cmdline.only_non_options( cmdline.options_after(args,['run','test']) )
-	if args_after_no_options.len > 1 {
-		cmd += ' ' + args_after_no_options[1..].join(' ')
+	if remaining_args.len > 1 {
+		cmd += ' ' + remaining_args[1..].join(' ')
+	}
+	if v.pref.verbosity.is_higher_or_equal(.level_two) {
+		println('command to run executable: $cmd')
 	}
 	if v.pref.is_test {
 		ret := os.system(cmd)
