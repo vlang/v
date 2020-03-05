@@ -234,7 +234,7 @@ pub mut:
 	is_static bool
 }
 
-type IdentInfo = IdentFunc | IdentVar
+pub type IdentInfo = IdentFunc | IdentVar
 
 pub enum IdentKind {
 	unresolved
