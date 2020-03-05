@@ -24,11 +24,6 @@ pub fn new_test_session(_vargs string) TestSession {
 	return TestSession{
 		vexe: pref.vexe_path()
 		vargs: vargs
-
-		ntask: 0
-		ntask_mtx: sync.new_mutex()
-		waitgroup: sync.new_waitgroup()
-
 		show_ok_tests: !_vargs.contains('-silent')
 	}
 }
