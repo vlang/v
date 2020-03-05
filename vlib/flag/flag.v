@@ -156,7 +156,7 @@ fn (fs mut FlagParser) parse_value(longhand string, shorthand byte) []string {
 			continue
 		}
 		if (arg.len == 2 && arg[0] == `-` && arg[1] == shorthand ) || arg == full {
-			if i+1 > fs.args.len {
+			if i+1 >= fs.args.len {
 				panic("Missing argument for '$longhand'")
 			}
 			nextarg := fs.args[i+1]
