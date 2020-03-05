@@ -100,9 +100,9 @@ fn (d Doc) get_fn_signatures(filter_fn FilterFn) []string {
 }
 
 fn is_pub_method(node ast.FnDecl) bool {
-	return node.is_pub && node.is_method
+	return node.is_pub && node.is_method && !node.is_deprecated
 }
 
 fn is_pub_function(node ast.FnDecl) bool {
-	return node.is_pub && !node.is_method
+	return node.is_pub && !node.is_method && !node.is_deprecated
 }

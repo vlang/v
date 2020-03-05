@@ -130,16 +130,17 @@ pub:
 
 pub struct FnDecl {
 pub:
-	name        string
-	stmts       []Stmt
-	typ         table.Type
-	args        []Arg
-	is_pub      bool
-	is_variadic bool
-	receiver    Field
-	is_method   bool
-	rec_mut     bool // is receiver mutable
-	is_c        bool
+	name          string
+	stmts         []Stmt
+	typ           table.Type
+	args          []Arg
+	is_deprecated bool
+	is_pub        bool
+	is_variadic   bool
+	receiver      Field
+	is_method     bool
+	rec_mut       bool // is receiver mutable
+	is_c          bool
 }
 
 pub struct BranchStmt {
