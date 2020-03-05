@@ -787,13 +787,6 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		}
 		else if p.tok.kind.is_infix() {
 			node = p.infix_expr(node)
-			match node {
-				ast.PrefixExpr {
-					println('IS PREFIX')
-					return node
-				}
-				else {}
-			}
 		}
 		// Postfix
 		else if p.tok.kind in [.inc, .dec] {
@@ -932,12 +925,6 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 	precedence := p.tok.precedence()
 	pos := p.tok.position()
 	p.next()
-	if op == .mul && p.peek_tok.kind in [.assign, .decl_assign] {
-		return ast.PrefixExpr{
-			op: op
-			right: p.expr(0)
-		}
-	}
 	mut right := ast.Expr{}
 	right = p.expr(precedence)
 	mut expr := ast.Expr{}
