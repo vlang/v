@@ -248,12 +248,12 @@ pub enum IdentKind {
 // A single identifier
 pub struct Ident {
 pub:
-	name     string
 	value    string
 	is_c     bool
 	tok_kind token.Kind
 	pos      token.Position
 mut:
+	name     string
 	kind     IdentKind
 	info     IdentInfo
 }

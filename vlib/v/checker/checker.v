@@ -649,9 +649,9 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		if !name.contains('.') && !(c.file.mod.name in ['builtin', 'main']) {
 			name = '${c.file.mod.name}.$ident.name'
 		}
-		// println('# name: $name')
 		// constant
 		if constant := c.table.find_const(name) {
+			ident.name = name
 			ident.kind = .constant
 			ident.info = ast.IdentVar{
 				typ: constant.typ
@@ -660,6 +660,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		}
 		// Function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
+			ident.name = name
 			ident.kind = .function
 			ident.info = ast.IdentFunc{
 				return_type: func.return_type
@@ -667,6 +668,8 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 			return func.return_type
 		}
 	}
+	// TODO
+	// c.error('unknown ident: `$ident.name`', ident.pos)
 	if ident.is_c {
 		return table.int_type
 	}
