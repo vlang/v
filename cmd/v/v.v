@@ -107,6 +107,9 @@ fn main() {
 			else {
 				println(help.help_text)
 			}
+			if values.len > 1 {
+				println('Note: Actual help module is coming soon. Feel free to ask on the official channels for clarification.')
+			}
 			return
 		}
 		'version' {
