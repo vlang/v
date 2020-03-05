@@ -24,7 +24,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		args: args
 		muts: muts
 		// tok: tok
-		
+
 		pos: tok.position()
 		is_c: is_c
 		or_block: ast.OrExpr{
@@ -58,6 +58,7 @@ pub fn (p mut Parser) call_args() ([]ast.Expr,[]bool) {
 fn (p mut Parser) fn_decl() ast.FnDecl {
 	// p.table.clear_vars()
 	p.open_scope()
+	is_deprecated := p.attr == 'deprecated'
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -158,11 +159,13 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		stmts = p.parse_block()
 	}
 	p.close_scope()
+	p.attr = ''
 	return ast.FnDecl{
 		name: name
 		stmts: stmts
 		typ: typ
 		args: ast_args
+		is_deprecated: is_deprecated
 		is_pub: is_pub
 		is_variadic: is_variadic
 		receiver: ast.Field{

@@ -40,6 +40,7 @@ mut:
 	pref          &pref.Preferences // Preferences shared from V struct
 	builtin_mod   bool
 	mod           string
+	attr          string
 	expr_mod      string
 	scope         &ast.Scope
 	imports       map[string]string
@@ -221,10 +222,10 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 					p.error('wrong pub keyword usage')
 					return ast.Stmt{}
 				}
-	}
+			}
 		}
 		.lsbr {
-			return p.attr()
+			return p.attribute()
 		}
 		.key_module {
 			return p.module_decl()
@@ -373,13 +374,14 @@ pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	return node
 }
 
-fn (p mut Parser) attr() ast.Attr {
+fn (p mut Parser) attribute() ast.Attr {
 	p.check(.lsbr)
 	if p.tok.kind == .key_if {
 		p.next()
 	}
 	name := p.check_name()
 	p.check(.rsbr)
+	p.attr = name
 	return ast.Attr{
 		name: name
 	}
