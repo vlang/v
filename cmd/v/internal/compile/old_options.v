@@ -41,7 +41,7 @@ fn parse_and_output_new_format(args []string) {
 	list << add_if_found_deprecated(args, '-m32', '-arch x86')
 	list << add_if_found_deprecated(args, '-bare', '-freestanding')
 	obsolete << add_if_found_string(args, '--enable-globals')
-	obsolete << add_if_found_string(args, '-prealloc')
+	list << add_if_found_deprecated(args, '-prealloc', '-e prealloc')
 	list << add_if_found_deprecated(args, '-user_mod_path', '-path*')
 	list << add_if_found_deprecated(args, '-vlib-path', '-path*')
 	list << add_if_found_deprecated(args, '-vpath', '-path*')

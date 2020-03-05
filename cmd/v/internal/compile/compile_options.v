@@ -98,6 +98,22 @@ fn parse_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 				prefs.is_vlines = true
 			}
 		}
+		'e', 'experiments' {
+			f.allow_duplicate()
+			to_enable := f.string() or {
+				println('V error: Expected argument for `-$flag`.')
+				exit(1)
+			}
+			match to_enable {
+				'prealloc' {
+					prefs.prealloc = true
+				}
+				else {
+					println('V error: Unknown experiment `$to_enable`.')
+					exit(1)
+				}
+			}
+		}
 		'prod' {
 			prefs.is_prod = true
 		}
