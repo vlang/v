@@ -10,6 +10,7 @@ import (
 	net.http
 	net.urllib
 	strings
+	filepath
 )
 
 pub const (
@@ -323,36 +324,38 @@ fn (ctx mut Context) parse_form(s string) {
 
 fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 	files := os.ls(directory_path) or { panic(err) }
+
 	if files.len > 0 {
 		for file in files {
-			mut ext := ''
-			mut i := file.len
-			mut flag := true
-			for i > 0 {
-		 		i--
-				if flag {
-					ext = file[i..i + 1] + ext
-				}
-				if file[i..i + 1] == '.' {
-					flag = false
-				}
-			}
 
-			// todo: os.is_dir is broken now so we expect that file is dir it has no extension
-			// if flag {
 			if os.is_dir(file) {
 				ctx.scan_static_directory(directory_path + '/' + file, mount_path + '/' + file)
-			} else {
-				ctx.static_files[mount_path + '/' + file] = directory_path + '/' + file
-				ctx.static_mime_types[mount_path + '/' + file] = mime_types[ext]
+			} else if file.contains('.') && ! file.starts_with('.') && ! file.ends_with('.') {
+				ext := filepath.ext(file)
+
+				// Rudimentary guard against adding files not in mime_types.
+				// Use serve_static directly to add non-standard mime types.
+				if ext in mime_types {
+					ctx.serve_static(mount_path + '/' + file, directory_path + '/' + file, mime_types[ext])
+				}
 			}
 		}
 	}
 }
 
 pub fn (ctx mut Context) handle_static(directory_path string) bool {
-	if ctx.done { return false }
-	ctx.scan_static_directory(directory_path, '')
+	if ctx.done || ! os.exists(directory_path) {
+		return false
+	}
+
+	dir_path := directory_path.trim_space()
+	mut mount_path := ''
+
+	if dir_path != '.' && os.is_dir(dir_path) {
+		mount_path = '/' + dir_path
+	}
+
+	ctx.scan_static_directory(directory_path, mount_path)
 
 	return true
 }
