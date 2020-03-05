@@ -55,7 +55,12 @@ fn launch_tool(verbosity pref.VerboseLevel, tool_name string) {
 	}
 
 	if should_compile {
-		compilation_command := '"$vexe" "$tool_source"'
+		mut compilation_command := '"$vexe" '
+		if tool_source == 'vfmt' {
+			// TODO Remove when it's no longer required by fmt
+			compilation_command += '-d vfmt '
+		}
+		compilation_command += '"$tool_source"'
 		if verbosity.is_higher_or_equal(.level_three) {
 			eprintln('Compiling $tool_name with: "$compilation_command"')
 		}

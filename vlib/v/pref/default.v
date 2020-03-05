@@ -45,7 +45,7 @@ pub fn (p mut Preferences) fill_with_defaults() {
 		}
 	}
 	rpath_name := filepath.filename(rpath)
-	p.building_v = !p.is_repl && (rpath_name == 'compiler' || rpath_name == 'v' || rpath_name == 'vfmt.v')
+	p.building_v = !p.is_repl && (rpath_name == 'v' || rpath_name == 'vfmt.v')
 	if p.os == ._auto {
 		// No OS specifed? Use current system
 		p.os = get_host_os()
