@@ -45,5 +45,5 @@ fn main() {
 	// cases is what you want anyway... You can override the automatic choice
 	// by setting the VJOBS environment variable too.
 	// fetcher_pool.set_max_jobs( 4 )
-	fetcher_pool.work_on_items<int>(ids)
+	fetcher_pool.work_on_items(ids)
 }

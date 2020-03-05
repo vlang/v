@@ -49,7 +49,7 @@ fn test_all_v_repl_files() {
 		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
 		pool_repl.set_max_jobs(1)
 	}
-	pool_repl.work_on_items<string>(session.options.files)
+	pool_repl.work_on_items(session.options.files)
 	session.bmark.stop()
 	println(session.bmark.total_message('total time spent running REPL files'))
 }

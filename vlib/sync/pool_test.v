@@ -35,7 +35,7 @@ fn test_work_on_strings() {
 		callback: worker_s
 		maxjobs: 8
 	})
-	pool_s.work_on_items<string>(['a','b','c','d','e','f','g','h','i','j'])
+	pool_s.work_on_items(['a','b','c','d','e','f','g','h','i','j'])
 	for x in pool_s.get_results<SResult>() {
 		println( x.s )
 		assert x.s.len > 1
@@ -50,7 +50,7 @@ fn test_work_on_ints() {
 	mut pool_i := sync.new_pool_processor({
 		callback: worker_i
 	})
-	pool_i.work_on_items<int>([1,2,3,4,5,6,7,8])
+	pool_i.work_on_items([1,2,3,4,5,6,7,8])
 	for x in pool_i.get_results<IResult>() {
 		println( x.i )
 		assert x.i > 100

@@ -3,12 +3,17 @@ module sync
 // * of items in parallel, without worrying about waitgroups, mutexes and so on.
 // *
 // * Usage example:
-// *   pool := sync.new_pool_processor({ callback: worker_cb })
-// *   //pool.work_on_items<string>(['a','b','c']) // TODO: vfmt and generics
-// *   pool.work_on_pointers(['a','b','c'].pointers())
+// *   struct SResult{ s string }
+// *   fn sprocess(p &sync.PoolProcessor, idx, wid int) voidptr {
+// *       item := p.get_item<string>(idx)
+// *       println('idx: $idx, wid: $wid, item: ' + item)
+// *       return &SResult{ item.reverse() }
+// *   }
+// *   pool := sync.new_pool_processor({ callback: sprocess })
+// *   pool.work_on_items(['a','b','c','d','e','f','g'])
 // *   // optionally, you can iterate over the results too:
-// *   for x in pool.get_results<IResult>() {
-// *       // do stuff with x
+// *   for x in pool.get_results<SResult>() {
+// *       println('result: $x.s')
 // *   }
 // *
 // * See https://github.com/vlang/v/blob/master/vlib/sync/pool_test.v for a
