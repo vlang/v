@@ -411,6 +411,7 @@ pub:
 
 pub struct AsCast {
 pub:
+	expr Expr
 	typ table.Type
 }
 

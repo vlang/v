@@ -766,6 +766,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			p.next()
 			typ = p.parse_type()
 			node = ast.AsCast{
+				expr: node
 				typ: typ
 			}
 		}

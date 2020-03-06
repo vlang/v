@@ -188,3 +188,7 @@ fn fn_with_match_expr() {
 fn fn_variadic(arg int, args... string) {
 	println('Do nothing')
 }
+
+fn test_as() {
+	a := expr1() as Foo
+}
