@@ -20,6 +20,7 @@ struct C.PGResult { }
 pub struct Config {
 pub:
 	host string
+	port int
 	user string
 	password string
 	dbname string
@@ -35,7 +36,7 @@ fn C.PQexec(voidptr) voidptr
 fn C.PQexecParams(voidptr) voidptr
 
 pub fn connect(config pg.Config) ?DB {
-	conninfo := 'host=$config.host user=$config.user dbname=$config.dbname password=$config.password'
+	conninfo := 'host=$config.host port=$config.port user=$config.user dbname=$config.dbname password=$config.password'
 	conn := C.PQconnectdb(conninfo.str)
 	status := C.PQstatus(conn)
 	println("status=$status")
