@@ -147,6 +147,7 @@ fn main() {
 			width: WinWidth
 			height: WinHeight
 			use_ortho: true
+			font_path: 'fonts/RobotoMono-Regular.ttf'
 			font_size: 18
 			scale: 2
 			window_user_ptr: 0
