@@ -92,8 +92,9 @@ fn (d Doc) get_fn_signatures(filter_fn FilterFn) []string {
 					fn_signatures << d.get_fn_node(it)
 				}
 			}
-			else {}
-	}
+			else {
+			}
+		}
 	}
 	fn_signatures.sort()
 	return fn_signatures
