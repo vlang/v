@@ -320,8 +320,13 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			g.definitions.write(arg_type_name)
 		}
 		else {
-			g.write(arg_type_name + ' ' + arg.name)
-			g.definitions.write(arg_type_name + ' ' + arg.name)
+			nr_muls := table.type_nr_muls(arg.typ)
+			mut s := arg_type_name + ' ' + arg.name
+			if nr_muls > 0 {
+				s = arg_type_name + strings.repeat(`*`, nr_muls) + ' ' + arg.name
+			}
+			g.write(s)
+			g.definitions.write(s)
 		}
 		if i < it.args.len - 1 {
 			g.write(', ')
@@ -534,6 +539,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.PrefixExpr {
 			g.write(it.op.str())
+			g.write('/*pref*/')
 			g.expr(it.right)
 		}
 		/*
@@ -608,10 +614,17 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			g.write('array_get(')
 			g.expr(node.left)
 			g.write(', ')
-			// g.write('[')
 			g.expr(node.index)
 			g.write(')')
 		}
+		else if sym.kind == .string {
+			g.write('string_get(')
+			g.expr(node.left)
+			g.write(', ')
+			g.expr(node.index)
+			g.write(')')
+		}
+		// g.write('[')
 		// g.write(']')
 	}
 }
@@ -677,7 +690,7 @@ fn (g mut Gen) write_sorted_types() {
 	// Generate C code
 	g.definitions.writeln('// builtin types:')
 	g.write_types(builtin_types)
-	g.definitions.writeln('//------------------\n #endbuiltin')
+	g.definitions.writeln('//------------------ #endbuiltin')
 	g.write_types(types_sorted)
 }
 
@@ -724,7 +737,7 @@ fn (g &Gen) sort_structs(types []table.TypeSymbol) []table.TypeSymbol {
 					// ft := if field.typ.starts_with('[') { field.typ.all_after(']') } else { field.typ }
 					dep := g.table.get_type_symbol(field.typ).name
 					// skip if not in types list or already in deps
-					if !(dep in type_names) || dep in field_deps || table.type_is_ptr(field.typ){
+					if !(dep in type_names) || dep in field_deps || table.type_is_ptr(field.typ) {
 						continue
 					}
 					field_deps << dep
