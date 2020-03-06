@@ -308,9 +308,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	// Receiver is the first argument
 	if it.is_method {
-		// styp := g.table.type_to_str(it.receiver.typ)
-		sym := g.table.get_type_symbol(it.receiver.typ)
-		styp := sym.name.replace('.', '__')
+		styp := g.typ(it.receiver.typ)
 		g.write('$styp $it.receiver.name')
 		g.definitions.write('$styp $it.receiver.name')
 		if it.args.len > 0 {
@@ -645,8 +643,12 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			g.expr(node.index)
 			g.write(')')
 		}
-		// g.write('[')
-		// g.write(']')
+		else {
+			g.expr(node.left)
+			g.write('[')
+			g.expr(node.index)
+			g.write(']')
+		}
 	}
 }
 
