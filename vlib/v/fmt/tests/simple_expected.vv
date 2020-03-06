@@ -123,6 +123,10 @@ pub mut:
 	pub_mut_field string
 }
 
+struct Bar {
+	val int
+}
+
 const (
 	reserved_types = {
 		'i8': true
@@ -187,4 +191,14 @@ fn fn_with_match_expr() {
 
 fn fn_variadic(arg int, args ...string) {
 	println('Do nothing')
+}
+
+fn test_as() {
+	a := sum_expr() as Bar
+}
+
+fn sum_expr() FooBar {
+	return Bar{
+		val: 5
+	}
 }

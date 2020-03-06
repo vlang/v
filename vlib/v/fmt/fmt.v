@@ -308,6 +308,11 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.write(']')
 			}
 		}
+		ast.AsCast {
+			type_str := f.table.type_to_str(it.typ)
+			f.expr(it.expr)
+			f.write(' as $type_str')
+		}
 		ast.AssignExpr {
 			f.expr(it.left)
 			f.write(' $it.op.str() ')
