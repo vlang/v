@@ -539,7 +539,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.PrefixExpr {
 			g.write(it.op.str())
-			g.write('/*pref*/')
+			// g.write('/*pref*/')
 			g.expr(it.right)
 		}
 		/*
