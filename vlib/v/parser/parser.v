@@ -1593,6 +1593,7 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 
 	return ast.GlobalDecl{
 		name: name
+		typ: typ
 	}
 }
 

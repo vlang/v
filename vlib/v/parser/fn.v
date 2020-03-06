@@ -24,7 +24,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		args: args
 		muts: muts
 		// tok: tok
-
+		
 		pos: tok.position()
 		is_c: is_c
 		or_block: ast.OrExpr{
@@ -155,6 +155,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		})
 	}
 	mut stmts := []ast.Stmt
+	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block()
 	}
@@ -175,6 +176,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		is_method: is_method
 		rec_mut: rec_mut
 		is_c: is_c
+		no_body: no_body
 	}
 }
 

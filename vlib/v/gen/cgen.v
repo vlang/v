@@ -173,7 +173,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	}
 		}
 		ast.FnDecl {
-			if it.is_c || it.name == 'malloc' {
+			if it.is_c || it.name == 'malloc' || it.no_body {
 				return
 			}
 			g.reset_tmp_count()
@@ -276,8 +276,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.GlobalDecl {
-			// TODO
-			g.writeln('__global')
+			styp := g.typ(g.table.get_type_symbol(it.typ).name)
+			g.definitions.writeln('$styp $it.name; // global')
 		}
 		ast.GotoLabel {
 			g.writeln('$it.name:')
@@ -620,7 +620,8 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 				g.writeln('')
 			}
 			else {
-				g.writeln('$field_type_sym.name $name; // inited later') // = ')
+				styp := g.typ(field_type_sym.name)
+				g.definitions.writeln('$styp $name; // inited later') // = ')
 				// TODO
 				// g.expr(node.exprs[i])
 			}

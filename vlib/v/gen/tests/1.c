@@ -15,6 +15,7 @@ typedef struct {
 	string arg1;
 } multi_return_int_string;
 // end of definitions #endif
+int pi2; // inited later
 void foo(int a);
 void User_inc_age(User u, int n);
 int get_int(string a);
@@ -30,7 +31,6 @@ void end();
 void localmod__pub_foo();
 int localmod__get_int_10();
 #define pi 3
-int pi2; // inited later
 
 typedef enum {
 	Color_red, // 0
