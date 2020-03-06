@@ -143,13 +143,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.ConstDecl {
-			for i, field in it.fields {
-				field_type_sym := g.table.get_type_symbol(field.typ)
-				name := field.name.replace('.', '__')
-				g.write('$field_type_sym.name $name = ')
-				g.expr(it.exprs[i])
-				g.writeln(';')
-			}
+			g.const_decl(it)
 		}
 		ast.CompIf {
 			// TODO
@@ -609,6 +603,30 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	}
 }
 
+fn (g mut Gen) const_decl(node ast.ConstDecl) {
+	for i, field in node.fields {
+		field_type_sym := g.table.get_type_symbol(field.typ)
+		name := field.name.replace('.', '__')
+		expr := node.exprs[i]
+		match expr {
+			// Simple expressions should use a #define
+			// so that we don't pollute the binary with unnecessary global vars
+			// Do not do this when building a module, otherwise the consts
+			// will not be accessible.
+			ast.CharLiteral, ast.IntegerLiteral {
+				g.write('#define $name ')
+				g.expr(expr)
+				g.writeln('')
+			}
+			else {
+				g.writeln('$field_type_sym.name $name; // inited later') // = ')
+				// TODO
+				// g.expr(node.exprs[i])
+			}
+	}
+	}
+}
+
 fn (g mut Gen) call_args(args []ast.Expr) {
 	for i, expr in args {
 		g.expr(expr)
@@ -699,7 +717,7 @@ fn (g &Gen) sort_structs(types []table.TypeSymbol) []table.TypeSymbol {
 				}
 			}
 			else {}
-		}
+	}
 		// add type and dependant types to graph
 		dep_graph.add(t.name, field_deps)
 	}

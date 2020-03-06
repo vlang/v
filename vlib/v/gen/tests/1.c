@@ -29,8 +29,8 @@ void matches();
 void end();
 void localmod__pub_foo();
 int localmod__get_int_10();
-int pi = 3;
-int pi2 = pi;
+#define pi 3
+int pi2; // inited later
 
 typedef enum {
 	Color_red, // 0
@@ -155,7 +155,7 @@ void matches() {
 	;
 }
 
-int path_sep = 10;
+#define path_sep 10
 
 void end() {
 	int i = 2;
@@ -164,7 +164,7 @@ void end() {
 	int e = 2 + 3 * 4;
 }
 
-int localmod__pub_int_const = 20;
+#define localmod__pub_int_const 20
 
 void localmod__pub_foo() {
 	int a = 10;
