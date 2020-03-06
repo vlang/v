@@ -476,15 +476,23 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.index_expr(it)
 		}
 		ast.InfixExpr {
-			g.expr(it.left)
-			// if it.op == .dot {
-			// println('!! dot')
+			// if it.left_type == table.string_type_idx {
+			// g.write('/*$it.left_type str*/')
 			// }
-			g.write(' $it.op.str() ')
-			g.expr(it.right)
-			// if typ.name != typ2.name {
-			// verror('bad types $typ.name $typ2.name')
-			// }
+			if it.op == .plus && it.left_type == table.string_type_idx {
+				g.write('string_add(')
+				g.expr(it.left)
+				g.write(', ')
+				g.expr(it.right)
+			}
+			else {
+				// if it.op == .dot {
+				// println('!! dot')
+				// }
+				g.expr(it.left)
+				g.write(' $it.op.str() ')
+				g.expr(it.right)
+			}
 		}
 		ast.IntegerLiteral {
 			g.write(it.val.str())

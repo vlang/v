@@ -120,9 +120,10 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 	return struct_init.typ
 }
 
-pub fn (c mut Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
+pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	// println('checker: infix expr(op $infix_expr.op.str())')
 	left_type := c.expr(infix_expr.left)
+	infix_expr.left_type = left_type
 	c.expected_type = left_type
 	right_type := c.expr(infix_expr.right)
 	if !c.table.check(right_type, left_type) {
@@ -429,7 +430,7 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 			else {
 				c.error('expecting `int` for fixed size', array_init.pos)
 			}
-		}
+	}
 		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size, 1)
 		array_type := table.new_type(idx)
 		array_init.typ = array_type
@@ -569,7 +570,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return c.index_expr(mut it)
 		}
 		ast.InfixExpr {
-			return c.infix_expr(it)
+			return c.infix_expr(mut it)
 		}
 		ast.IntegerLiteral {
 			return table.int_type
@@ -808,7 +809,7 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 		else {}
 	}
 	if !is_range {
-		node.container_type =  typ
+		node.container_type = typ
 		typ_sym := c.table.get_type_symbol(typ)
 		index_type := c.expr(node.index)
 		index_type_sym := c.table.get_type_symbol(index_type)
