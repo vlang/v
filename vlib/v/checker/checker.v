@@ -539,6 +539,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.bool_type
 		}
 		ast.CastExpr {
+			c.expr(it.expr)
 			return it.typ
 		}
 		ast.CallExpr {
