@@ -63,7 +63,7 @@ pub fn doc(mod string, table &table.Table) string {
 }
 
 fn (d &Doc) get_fn_node(f ast.FnDecl) string {
-	return f.str(d.table).replace(d.mod + '.', '')
+	return f.str(d.table).replace_each([d.mod + '.', '', 'pub ', ''])
 }
 
 fn (d mut Doc) print_fns() {
@@ -92,8 +92,9 @@ fn (d Doc) get_fn_signatures(filter_fn FilterFn) []string {
 					fn_signatures << d.get_fn_node(it)
 				}
 			}
-			else {}
-	}
+			else {
+			}
+		}
 	}
 	fn_signatures.sort()
 	return fn_signatures
