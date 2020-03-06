@@ -652,13 +652,13 @@ fn (g mut Gen) write_sorted_types() {
 	// builtin types need to be on top
 	builtins := ['string', 'array', 'KeyValue', 'map', 'Option']
 	// everything except builtin will get sorted
+	for builtin_name in builtins {
+		builtin_types << g.table.types[g.table.type_idxs[builtin_name]]
+	}
 	for typ in g.table.types {
-		if typ.name in builtins {
-			// || t.is_generic {
-			builtin_types << typ
-			continue
+		if !(typ.name in builtins) {
+			types << typ
 		}
-		types << typ
 	}
 	// sort structs
 	types_sorted := g.sort_structs(types)
@@ -712,7 +712,7 @@ fn (g &Gen) sort_structs(types []table.TypeSymbol) []table.TypeSymbol {
 					// ft := if field.typ.starts_with('[') { field.typ.all_after(']') } else { field.typ }
 					dep := g.table.get_type_symbol(field.typ).name
 					// skip if not in types list or already in deps
-					if !(dep in type_names) || dep in field_deps {
+					if !(dep in type_names) || dep in field_deps || table.type_is_ptr(field.typ){
 						continue
 					}
 					field_deps << dep
@@ -731,12 +731,7 @@ fn (g &Gen) sort_structs(types []table.TypeSymbol) []table.TypeSymbol {
 	// sort types
 	mut types_sorted := []table.TypeSymbol
 	for node in dep_graph_sorted.nodes {
-		for t in types {
-			if t.name == node.name {
-				types_sorted << t
-				continue
-			}
-		}
+		types_sorted << g.table.types[g.table.type_idxs[node.name]]
 	}
 	return types_sorted
 }
