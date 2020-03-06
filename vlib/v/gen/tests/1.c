@@ -1,3 +1,20 @@
+struct Two {
+};
+
+struct User {
+	int age;
+};
+
+struct One {
+	Two two;
+};
+
+// multi return structs
+typedef struct {
+	int arg0;
+	string arg1;
+} multi_return_int_string;
+// end of definitions
 void foo(int a);
 void User_inc_age(User u, int n);
 int get_int(string a);
@@ -14,10 +31,6 @@ void localmod__pub_foo();
 int localmod__get_int_10();
 int pi = 3;
 int pi2 = pi;
-
-typedef struct {
-	int age;
-} User;
 
 typedef enum {
 	Color_red, // 0
@@ -72,7 +85,7 @@ i < 10; i++) {
 	bool q = true || false;
 	bool b2 = bools[0] || true;
 	bool b3 = get_bool() || true;
-	int f = TODO_first(nums);
+	int f = array_int_first(nums);
 }
 
 void User_inc_age(User u, int n) {

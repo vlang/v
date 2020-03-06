@@ -1,3 +1,19 @@
+struct Bar {
+	int a;
+};
+
+struct Foo {
+	string a;
+	Bar b;
+};
+
+// multi return structs
+typedef struct {
+	int arg0;
+	string arg1;
+} multi_return_int_string;
+
+// end of definitions
 multi_return_int_string mr_test();
 int testa();
 string testb(int a);
@@ -17,7 +33,7 @@ int main() {
     a.a = tos3("da");
     a.b.a = 111;
     string a1 = a.a;
-    int a2 = TODO_testa(b);
+    int a2 = Bar_testa(b);
     int c = testa();
     c = 1;
     string d = testb(1);
@@ -56,7 +72,7 @@ int testc(int a) {
 }
 
 int Foo_testa(Foo f) {
-    int a = TODO_testb(f);
+    int a = Foo_testb(f);
     a = 1;
     return 4;
 }
@@ -68,12 +84,3 @@ int Foo_testb(Foo f) {
 int Bar_testa(Bar b) {
     return 4;
 }
-
-typedef struct {
-        int a;
-} Bar;
-
-typedef struct {
-        string a;
-        Bar b;
-} Foo;

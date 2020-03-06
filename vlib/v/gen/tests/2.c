@@ -1,3 +1,9 @@
+struct User {
+	string name;
+};
+
+// multi return structs
+// end of definitions
 int function1();
 void foo(int a);
 void init_user();
@@ -16,11 +22,6 @@ int function1() {
 
 void foo(int a) {
 }
-
-typedef struct {
-	string name;
-} User;
-
 void init_user() {
 	User user = (User){
 		.name = tos3("Bob"),
