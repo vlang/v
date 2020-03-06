@@ -166,7 +166,7 @@ fn (c mut Checker) assign_expr(assign_expr ast.AssignExpr) {
 	}
 }
 
-pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
+pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	fn_name := call_expr.name
 	// TODO: impl typeof properly (probably not going to be a fn call)
 	if fn_name == 'typeof' {
@@ -188,7 +188,9 @@ pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	mut found := false
 	// try prefix with current module as it would have never gotten prefixed
 	if !fn_name.contains('.') && !(c.file.mod.name in ['builtin', 'main']) {
-		if f1 := c.table.find_fn('${c.file.mod.name}.$fn_name') {
+		name_prefixed := '${c.file.mod.name}.$fn_name'
+		if f1 := c.table.find_fn(name_prefixed) {
+			call_expr.name = name_prefixed
 			found = true
 			f = f1
 		}
@@ -543,7 +545,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return it.typ
 		}
 		ast.CallExpr {
-			return c.call_expr(it)
+			return c.call_expr(mut it)
 		}
 		ast.CharLiteral {
 			return table.byte_type
