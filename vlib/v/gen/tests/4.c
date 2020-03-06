@@ -50,7 +50,7 @@ int main() {
 	array_Foo arr_foo = new_array_from_c_array(1, 1, sizeof(array_Foo), (Foo[]){
 		a,
 	});
-	Foo af_idx_el = arr_foo[0];
+	Foo af_idx_el = array_get(arr_foo, 0);
 	string foo_a = af_idx_el.a;
 	return 0;
 }

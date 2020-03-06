@@ -566,7 +566,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.bool_type
 		}
 		ast.IndexExpr {
-			return c.index_expr(it)
+			return c.index_expr(mut it)
 		}
 		ast.InfixExpr {
 			return c.infix_expr(it)
@@ -798,7 +798,7 @@ pub fn (c mut Checker) postfix_expr(node ast.PostfixExpr) table.Type {
 	return typ
 }
 
-pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
+pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 	typ := c.expr(node.left)
 	mut is_range := false // TODO is_range := node.index is ast.RangeExpr
 	match node.index {
@@ -808,6 +808,7 @@ pub fn (c mut Checker) index_expr(node ast.IndexExpr) table.Type {
 		else {}
 	}
 	if !is_range {
+		node.container_type =  typ
 		typ_sym := c.table.get_type_symbol(typ)
 		index_type := c.expr(node.index)
 		index_type_sym := c.table.get_type_symbol(index_type)

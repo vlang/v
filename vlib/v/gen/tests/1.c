@@ -66,7 +66,7 @@ i < 10; i++) {
 		1, 2, 3,
 	});
 	array_int nums2 = array_slice(nums, 0, 2);
-	int number = nums[0];
+	int number = array_get(nums, 0);
 	array_bool bools = new_array_from_c_array(2, 2, sizeof(array_bool), (bool[]){
 		true, false,
 	});
@@ -74,16 +74,16 @@ i < 10; i++) {
 		(User){
 			},
 	});
-	bool b = bools[0];
+	bool b = array_get(bools, 0);
 	array_string mystrings = new_array_from_c_array(2, 2, sizeof(array_string), (string[]){
 		tos3("a"), tos3("b"),
 	});
-	string s = mystrings[0];
+	string s = array_get(mystrings, 0);
 	int x = 0;
 	x = get_int2();
 	int n = get_int2();
 	bool q = true || false;
-	bool b2 = bools[0] || true;
+	bool b2 = array_get(bools, 0) || true;
 	bool b3 = get_bool() || true;
 	int f = array_int_first(nums);
 }

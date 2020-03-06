@@ -173,72 +173,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	}
 		}
 		ast.FnDecl {
-			if it.is_c || it.name == 'malloc' || it.no_body {
-				return
-			}
-			g.reset_tmp_count()
 			g.fn_decl = it // &it
-			is_main := it.name == 'main'
-			if is_main {
-				g.write('int ${it.name}(')
-			}
-			else {
-				type_sym := g.table.get_type_symbol(it.typ)
-				mut name := it.name
-				if it.is_method {
-					name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
-				}
-				name = name.replace('.', '__')
-				// type_name := g.table.type_to_str(it.typ)
-				type_name := type_sym.name.replace('.', '__') // g.table.type_to_str(it.typ)
-				g.write('$type_name ${name}(')
-				g.definitions.write('$type_name ${name}(')
-			}
-			// Receiver is the first argument
-			if it.is_method {
-				// styp := g.table.type_to_str(it.receiver.typ)
-				sym := g.table.get_type_symbol(it.receiver.typ)
-				styp := sym.name.replace('.', '__')
-				g.write('$styp $it.receiver.name')
-				g.definitions.write('$styp $it.receiver.name')
-				if it.args.len > 0 {
-					g.write(', ')
-					g.definitions.write(', ')
-				}
-			}
-			//
-			no_names := it.args.len > 0 && it.args[0].name == 'arg_1'
-			for i, arg in it.args {
-				arg_type_sym := g.table.get_type_symbol(arg.typ)
-				mut arg_type_name := arg_type_sym.name.replace('.', '__')
-				if i == it.args.len - 1 && it.is_variadic {
-					arg_type_name = 'variadic_$arg_type_name'
-				}
-				if no_names {
-					g.write(arg_type_name)
-					g.definitions.write(arg_type_name)
-				}
-				else {
-					g.write(arg_type_name + ' ' + arg.name)
-					g.definitions.write(arg_type_name + ' ' + arg.name)
-				}
-				if i < it.args.len - 1 {
-					g.write(', ')
-					g.definitions.write(', ')
-				}
-			}
-			g.writeln(') { ')
-			if !is_main {
-				g.definitions.writeln(');')
-			}
-			for stmt in it.stmts {
-				g.stmt(stmt)
-			}
-			if is_main {
-				g.writeln('return 0;')
-			}
-			g.writeln('}')
-			g.fn_decl = 0
+			g.gen_fn_decl(it)
 		}
 		ast.ForCStmt {
 			g.write('for (')
@@ -336,6 +272,74 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			verror('cgen.stmt(): unhandled node ' + typeof(node))
 		}
 	}
+}
+
+fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
+	if it.is_c || it.name == 'malloc' || it.no_body {
+		return
+	}
+	g.reset_tmp_count()
+	is_main := it.name == 'main'
+	if is_main {
+		g.write('int ${it.name}(')
+	}
+	else {
+		type_sym := g.table.get_type_symbol(it.typ)
+		mut name := it.name
+		if it.is_method {
+			name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
+		}
+		name = name.replace('.', '__')
+		// type_name := g.table.type_to_str(it.typ)
+		type_name := type_sym.name.replace('.', '__') // g.table.type_to_str(it.typ)
+		g.write('$type_name ${name}(')
+		g.definitions.write('$type_name ${name}(')
+	}
+	// Receiver is the first argument
+	if it.is_method {
+		// styp := g.table.type_to_str(it.receiver.typ)
+		sym := g.table.get_type_symbol(it.receiver.typ)
+		styp := sym.name.replace('.', '__')
+		g.write('$styp $it.receiver.name')
+		g.definitions.write('$styp $it.receiver.name')
+		if it.args.len > 0 {
+			g.write(', ')
+			g.definitions.write(', ')
+		}
+	}
+	//
+	no_names := it.args.len > 0 && it.args[0].name == 'arg_1'
+	for i, arg in it.args {
+		arg_type_sym := g.table.get_type_symbol(arg.typ)
+		mut arg_type_name := arg_type_sym.name.replace('.', '__')
+		if i == it.args.len - 1 && it.is_variadic {
+			arg_type_name = 'variadic_$arg_type_name'
+		}
+		if no_names {
+			g.write(arg_type_name)
+			g.definitions.write(arg_type_name)
+		}
+		else {
+			g.write(arg_type_name + ' ' + arg.name)
+			g.definitions.write(arg_type_name + ' ' + arg.name)
+		}
+		if i < it.args.len - 1 {
+			g.write(', ')
+			g.definitions.write(', ')
+		}
+	}
+	g.writeln(') { ')
+	if !is_main {
+		g.definitions.writeln(');')
+	}
+	for stmt in it.stmts {
+		g.stmt(stmt)
+	}
+	if is_main {
+		g.writeln('return 0;')
+	}
+	g.writeln('}')
+	g.fn_decl = 0
 }
 
 fn (g mut Gen) expr(node ast.Expr) {
@@ -596,11 +600,19 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 		}
 		else {}
 	}
-	if !is_range {
-		g.expr(node.left)
-		g.write('[')
-		g.expr(node.index)
-		g.write(']')
+	// if !is_range && node.container_type == 0 {
+	// }
+	if !is_range && node.container_type != 0 {
+		sym := g.table.get_type_symbol(node.container_type)
+		if sym.kind == .array {
+			g.write('array_get(')
+			g.expr(node.left)
+			g.write(', ')
+			// g.write('[')
+			g.expr(node.index)
+			g.write(')')
+		}
+		// g.write(']')
 	}
 }
 

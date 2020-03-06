@@ -311,10 +311,11 @@ pub:
 pub struct IndexExpr {
 pub:
 // op   token.Kind
-	pos   token.Position
-	left  Expr
-	index Expr // [0], [start..end] etc
-	// typ   table.Type
+	pos            token.Position
+	left           Expr
+	index          Expr // [0], [start..end] etc
+mut:
+	container_type table.Type // array, map, fixed array
 }
 
 pub struct IfExpr {
