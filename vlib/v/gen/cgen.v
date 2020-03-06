@@ -484,6 +484,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.expr(it.left)
 				g.write(', ')
 				g.expr(it.right)
+				g.write(')')
 			}
 			else {
 				// if it.op == .dot {

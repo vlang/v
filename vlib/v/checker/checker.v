@@ -217,6 +217,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	}
 	// println can print anything
 	if fn_name == 'println' {
+		c.expr(call_expr.args[0])
 		return f.return_type
 	}
 	for i, arg_expr in call_expr.args {

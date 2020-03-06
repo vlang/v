@@ -89,7 +89,7 @@ i < 10; i++) {
 	bool b3 = get_bool() || true;
 	int f = array_int_first(nums);
 	string d = tos3("d");
-	println(string_add(s + d));
+	println(string_add(s, d));
 }
 
 void User_inc_age(User u, int n) {
