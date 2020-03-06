@@ -491,9 +491,17 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 		}
 		ast.MethodCallExpr {
-			typ := 'TODO'
-			name := it.name.replace('.', '__')
-			g.write('${typ}_${name}(')
+			mut receiver_name := 'TODO'
+			// TODO: there are still due to unchecked exprs (opt/some fn arg)
+			if it.typ != 0 {
+				typ_sym := g.table.get_type_symbol(it.typ)
+				receiver_name = typ_sym.name
+			}
+			name := '${receiver_name}_$it.name'.replace('.', '__')
+			if table.type_is_ptr(it.typ) {
+				g.write('&')
+			}
+			g.write('${name}(')
 			g.expr(it.expr)
 			if it.args.len > 0 {
 				g.write(', ')

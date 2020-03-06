@@ -450,12 +450,13 @@ pub fn (p &Parser) warn(s string) {
 
 pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 	// p.warn('name ')
+	pos := p.tok.position()
 	mut name := p.check_name()
 	if name == '_' {
 		return ast.Ident{
 			name: '_'
 			kind: .blank_ident
-			pos: p.tok.position()
+			pos: pos
 		}
 	}
 	if p.expr_mod.len > 0 {
@@ -465,7 +466,7 @@ pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 		kind: .unresolved
 		name: name
 		is_c: is_c
-		pos: p.tok.position()
+		pos: pos
 	}
 	// variable
 	if p.expr_mod.len == 0 {
@@ -635,11 +636,9 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		}
 		.dot {
 			// .enum_val
-			// node,typ = p.enum_val()
 			node = p.enum_val()
 		}
 		.chartoken {
-			typ = table.byte_type
 			node = ast.CharLiteral{
 				val: p.tok.lit
 			}
@@ -656,11 +655,9 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			node = ast.BoolLiteral{
 				val: p.tok.kind == .key_true
 			}
-			typ = table.bool_type
 			p.next()
 		}
 		.key_match {
-			// node,typ = p.match_expr()
 			node = p.match_expr()
 		}
 		.number {
@@ -682,7 +679,6 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		}
 		.key_none {
 			p.next()
-			typ = table.none_type
 			node = ast.None{}
 		}
 		.key_sizeof {
@@ -700,7 +696,6 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			node = ast.SizeOf{
 				type_name: type_name
 			}
-			typ = table.int_type
 		}
 		// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 		.lcbr {
@@ -761,7 +756,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			node = p.assign_expr(node)
 		}
 		else if p.tok.kind == .dot {
-			node = p.dot_expr(node, typ)
+			node = p.dot_expr(node)
 		}
 		else if p.tok.kind == .lsbr {
 			node = p.index_expr(node)
@@ -852,15 +847,6 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			}
 		}
 	}
-	// get the element type
-	/*
-	mut typ := left_type
-	left_type_sym := p.table.get_type_symbol(left_type)
-	if left_type_sym.kind == .array {
-		info := left_type_sym.info as table.Array
-		typ = info.elem_type
-	}
-	*/
 	// [expr]
 	p.check(.rsbr)
 	return ast.IndexExpr{
@@ -870,24 +856,25 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	}
 }
 
-fn (p mut Parser) filter(typ table.Type) {
+fn (p mut Parser) filter() {
 	p.scope.register_var(ast.VarDecl{
 		name: 'it'
-		typ: typ
 	})
 }
 
-fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) ast.Expr {
+fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
 	field_name := p.check_name()
 	if field_name == 'filter' {
 		p.open_scope()
-		p.filter(left_type)
-		defer {
-			p.close_scope()
-		}
+		p.filter()
+		// wrong tok position when using defer
+		// defer {
+		// 	p.close_scope()
+		// }
 	}
 	// Method call
+	pos := p.tok.position()
 	if p.tok.kind == .lpar {
 		p.next()
 		args,muts := p.call_args()
@@ -901,13 +888,16 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) ast.Expr {
 			name: field_name
 			args: args
 			muts: muts
-			pos: p.tok.position()
+			pos: pos
 			or_block: ast.OrExpr{
 				stmts: or_stmts
 			}
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr
+		if field_name == 'filter' {
+			p.close_scope()
+		}
 		return node
 	}
 	sel_expr := ast.SelectorExpr{
@@ -917,6 +907,9 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) ast.Expr {
 	}
 	mut node := ast.Expr{}
 	node = sel_expr
+	if field_name == 'filter' {
+		p.close_scope()
+	}
 	return node
 }
 

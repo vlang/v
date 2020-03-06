@@ -117,7 +117,7 @@ pub fn (s &Scope) innermost(pos int) ?&Scope {
 
 [inline]
 fn (s &Scope) contains(pos int) bool {
-	return pos > s.start_pos && pos < s.end_pos
+	return pos >= s.start_pos && pos <= s.end_pos
 }
 
 pub fn (sc &Scope) show(level int) string {

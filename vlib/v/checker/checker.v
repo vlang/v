@@ -145,7 +145,7 @@ pub fn (c mut Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
 	return left_type
 }
 
-fn (c mut Checker) check_assign_expr(assign_expr ast.AssignExpr) {
+fn (c mut Checker) assign_expr(assign_expr ast.AssignExpr) {
 	match assign_expr.left {
 		ast.Ident {
 			if it.kind == .blank_ident {
@@ -239,25 +239,52 @@ pub fn (c mut Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	return f.return_type
 }
 
-pub fn (c mut Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) table.Type {
+// TODO: clean this up, remove dupe code & consider merging method/fn call everywhere
+pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr) table.Type {
 	typ := c.expr(method_call_expr.expr)
+	method_call_expr.typ = typ
 	typ_sym := c.table.get_type_symbol(typ)
 	name := method_call_expr.name
-	if method := typ_sym.find_method(name) {
-		return method.return_type
-	}
 	if typ_sym.kind == .array && name in ['filter', 'clone'] {
+		if name == 'filter' {
+			array_info := typ_sym.info as table.Array
+			elem_type_sym := c.table.get_type_symbol(array_info.elem_type)
+			mut scope := c.file.scope.innermost(method_call_expr.pos.pos) or {
+				c.file.scope
+			}
+			scope.override_var(ast.VarDecl{
+				name: 'it'
+				typ: array_info.elem_type
+			})
+		}
+		if method := typ_sym.find_method(name) {
+			for i, arg_expr in method_call_expr.args {
+				c.expected_type = method.args[i].typ
+				c.expr(arg_expr)
+			}
+		}
 		return typ
 	}
-	if typ_sym.kind == .array && name in ['first', 'last'] {
+	else if typ_sym.kind == .array && name in ['first', 'last'] {
 		info := typ_sym.info as table.Array
 		return info.elem_type
+	}
+	if method := typ_sym.find_method(name) {
+		for i, arg_expr in method_call_expr.args {
+			c.expected_type = method.args[i].typ
+			c.expr(arg_expr)
+		}
+		return method.return_type
 	}
 	// check parent
 	if typ_sym.parent_idx != 0 {
 		parent := &c.table.types[typ_sym.parent_idx]
 		if method := parent.find_method(name) {
 			// println('got method $name, returning')
+			for i, arg_expr in method_call_expr.args {
+				c.expected_type = method.args[i].typ
+				c.expr(arg_expr)
+			}
 			return method.return_type
 		}
 	}
@@ -493,7 +520,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return it.typ
 		}
 		ast.AssignExpr {
-			c.check_assign_expr(it)
+			c.assign_expr(it)
 		}
 		ast.Assoc {
 			scope := c.file.scope.innermost(it.pos.pos) or {
@@ -547,7 +574,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return c.match_expr(mut it)
 		}
 		ast.MethodCallExpr {
-			return c.check_method_call_expr(it)
+			return c.method_call_expr(mut it)
 		}
 		ast.PostfixExpr {
 			return c.postfix_expr(it)

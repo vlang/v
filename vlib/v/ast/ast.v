@@ -170,6 +170,7 @@ pub:
 	args     []Expr
 	muts     []bool
 	or_block OrExpr
+mut:
 	typ      table.Type
 }
 
