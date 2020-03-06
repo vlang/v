@@ -46,9 +46,22 @@ pub fn (g mut Gen) init() {
 }
 
 // V type to C type
-pub fn (g &Gen) typ(t string) string {
+pub fn (g &Gen) typ(t table.Type) string {
+	nr_muls := table.type_nr_muls(t)
+	sym := g.table.get_type_symbol(t)
+	mut styp := sym.name.replace_each(['.', '__'])
+	if nr_muls > 0 {
+		styp += strings.repeat(`*`, nr_muls)
+	}
+	return styp
+}
+
+/*
+pub fn (g &Gen) styp(t string) string {
 	return t.replace_each(['.', '__'])
 }
+*/
+
 
 pub fn (g mut Gen) write_array_types() {
 	for typ in g.table.types {
@@ -212,7 +225,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.GlobalDecl {
-			styp := g.typ(g.table.get_type_symbol(it.typ).name)
+			styp := g.typ(it.typ)
 			g.definitions.writeln('$styp $it.name; // global')
 		}
 		ast.GotoLabel {
@@ -262,8 +275,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.stmts(it.stmts)
 		}
 		ast.VarDecl {
-			type_sym := g.table.get_type_symbol(it.typ)
-			styp := type_sym.name.replace('.', '__')
+			styp := g.typ(it.typ)
 			g.write('$styp $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
@@ -284,14 +296,13 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		g.write('int ${it.name}(')
 	}
 	else {
-		type_sym := g.table.get_type_symbol(it.typ)
 		mut name := it.name
 		if it.is_method {
 			name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
 		}
 		name = name.replace('.', '__')
 		// type_name := g.table.type_to_str(it.typ)
-		type_name := type_sym.name.replace('.', '__') // g.table.type_to_str(it.typ)
+		type_name := g.typ(it.typ)
 		g.write('$type_name ${name}(')
 		g.definitions.write('$type_name ${name}(')
 	}
@@ -564,8 +575,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			type_sym := g.table.get_type_symbol(it.typ)
-			styp := g.typ(type_sym.name)
+			styp := g.typ(it.typ)
 			g.writeln('($styp){')
 			for i, field in it.fields {
 				g.write('\t.$field = ')
@@ -642,7 +652,6 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 
 fn (g mut Gen) const_decl(node ast.ConstDecl) {
 	for i, field in node.fields {
-		field_type_sym := g.table.get_type_symbol(field.typ)
 		name := field.name.replace('.', '__')
 		expr := node.exprs[i]
 		match expr {
@@ -656,7 +665,7 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 				g.writeln('')
 			}
 			else {
-				styp := g.typ(field_type_sym.name)
+				styp := g.typ(field.typ)
 				g.definitions.writeln('$styp $name; // inited later') // = ')
 				// TODO
 				// g.expr(node.exprs[i])
