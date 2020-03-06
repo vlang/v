@@ -555,7 +555,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
 			type_sym := g.table.get_type_symbol(it.typ)
-			g.writeln('($type_sym.name){')
+			styp := g.typ(type_sym.name)
+			g.writeln('($styp){')
 			for i, field in it.fields {
 				g.write('\t.$field = ')
 				g.expr(it.exprs[i])

@@ -27,24 +27,24 @@ type PostfixParseFn fn()ast.Expr
 
 
 struct Parser {
-	scanner       &scanner.Scanner
-	file_name     string
+	scanner     &scanner.Scanner
+	file_name   string
 mut:
-	tok           token.Token
-	peek_tok      token.Token
+	tok         token.Token
+	peek_tok    token.Token
 	// vars []string
-	table         &table.Table
-	is_c          bool
+	table       &table.Table
+	is_c        bool
 	// prefix_parse_fns []PrefixParseFn
-	inside_if     bool
-	pref          &pref.Preferences // Preferences shared from V struct
-	builtin_mod   bool
-	mod           string
-	attr          string
-	expr_mod      string
-	scope         &ast.Scope
-	imports       map[string]string
-	ast_imports   []ast.Import
+	inside_if   bool
+	pref        &pref.Preferences // Preferences shared from V struct
+	builtin_mod bool
+	mod         string
+	attr        string
+	expr_mod    string
+	scope       &ast.Scope
+	imports     map[string]string
+	ast_imports []ast.Import
 }
 
 // for tests
@@ -56,7 +56,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-
+		
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -80,7 +80,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 			parent: 0
 		}
 		// comments_mode: comments_mode
-
+		
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -222,7 +222,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 					p.error('wrong pub keyword usage')
 					return ast.Stmt{}
 				}
-			}
+	}
 		}
 		.lsbr {
 			return p.attribute()
@@ -408,6 +408,7 @@ fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 	return node
 }
 */
+
 
 pub fn (p &Parser) error(s string) {
 	print_backtrace()
@@ -608,7 +609,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-
+			
 			val: val
 			pos: p.tok.position()
 		}
@@ -870,7 +871,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.filter()
 		// wrong tok position when using defer
 		// defer {
-		// 	p.close_scope()
+		// p.close_scope()
 		// }
 	}
 	// Method call
@@ -927,6 +928,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 		left: left
 		right: right
 		// right_type: typ
+		
 		op: op
 		pos: pos
 	}
@@ -973,7 +975,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] || p.tok.kind == .semicolon {
 		mut init := ast.Stmt{}
 		mut cond := ast.Expr{}
-		//mut inc := ast.Stmt{}
+		// mut inc := ast.Stmt{}
 		mut inc := ast.Expr{}
 		if p.peek_tok.kind in [.assign, .decl_assign] {
 			init = p.var_decl_and_assign_stmt()
@@ -996,7 +998,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 		p.check(.semicolon)
 		if p.tok.kind != .lcbr {
-			//inc = p.stmt()
+			// inc = p.stmt()
 			inc = p.expr(0)
 		}
 		stmts := p.parse_block()
@@ -1037,6 +1039,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		p.scope.register_var(ast.VarDecl{
 			name: var_name
 			// expr: cond
+			
 		})
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
@@ -1131,11 +1134,11 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-
+		
 		pos: pos
 		has_else: has_else
 		// left: left
-
+		
 	}
 	return node
 }
@@ -1309,12 +1312,13 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		fields << ast.Field{
 			name: name
 			// typ: typ
+			
 		}
 		exprs << expr
 		// TODO: once consts are fixed reg here & update in checker
 		// p.table.register_const(table.Var{
-		// 	name: name
-		// 	// typ: typ
+		// name: name
+		// // typ: typ
 		// })
 	}
 	p.check(.rpar)
@@ -1519,12 +1523,12 @@ fn (p mut Parser) var_decl_and_assign_stmt() ast.Stmt {
 		return ast.VarDecl{
 			name: ident.name
 			// name2: name2
-
+			
 			expr: expr // p.expr(token.lowest_prec)
-
+			
 			is_mut: info0.is_mut
 			// typ: typ
-
+			
 			pos: p.tok.position()
 		}
 		// return p.var_decl(ident[0], exprs[0])
@@ -1620,6 +1624,11 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 				name: 'it'
 				typ: typ
 			})
+			// TODO
+			if p.tok.kind == .comma {
+				p.next()
+				p.parse_type()
+			}
 		}
 		else {
 			// Expression match
