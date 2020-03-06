@@ -67,6 +67,11 @@ info.log
 *~
 
 thirdparty/freetype/
+thirdparty/sdl2/
+thirdparty/SDL2_image/
+thirdparty/SDL2_mixer/
+thirdparty/SDL2_ttf/
+
 cachegrind.out.*
 
 .gdb_history
