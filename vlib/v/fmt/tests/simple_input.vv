@@ -125,6 +125,12 @@ struct Foo {
 	pub_mut_field string
 }
 
+struct Bar {
+	val int
+}
+
+type FooBar = Foo | Bar
+
 const (
 reserved_types = {
          'i8': true
@@ -190,5 +196,9 @@ fn fn_variadic(arg int, args... string) {
 }
 
 fn test_as() {
-	a := expr1() as Foo
+	a := sum_expr() as Bar
+}
+
+fn sum_expr() FooBar {
+	return Bar{ val: 5 }
 }
