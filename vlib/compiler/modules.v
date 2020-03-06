@@ -4,7 +4,6 @@
 module compiler
 
 import (
-	filepath
 	os
 	v.pref
 )
@@ -25,7 +24,7 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	for m in table.imports {
 		if m.contains('.') && m.contains(mod) {
 			m_parts := m.split('.')
-			m_path := m_parts.join(filepath.separator)
+			m_path := m_parts.join(os.separator)
 			if mod == m_parts[m_parts.len - 1] && file_path.contains(m_path) {
 				return m
 			}
@@ -147,7 +146,7 @@ pub fn (graph &DepGraph) imports() []string {
 [inline]
 fn (v &V) module_path(mod string) string {
 	// submodule support
-	return mod.replace('.', filepath.separator)
+	return mod.replace('.', os.separator)
 }
 
 // 'strings' => 'VROOT/vlib/strings'
@@ -168,10 +167,10 @@ fn (v mut V) set_module_lookup_paths() {
 	// 3.2) search in ~/.vmodules/ (i.e. modules installed with vpm)
 	v.module_lookup_paths = []
 	if v.pref.is_test {
-		v.module_lookup_paths << filepath.basedir(v.compiled_dir) // pdir of _test.v
+		v.module_lookup_paths << os.basedir(v.compiled_dir) // pdir of _test.v
 	}
 	v.module_lookup_paths << v.compiled_dir
-	v.module_lookup_paths << filepath.join(v.compiled_dir,'modules')
+	v.module_lookup_paths << os.join(v.compiled_dir,'modules')
 	v.module_lookup_paths << v.pref.lookup_path
 	if v.pref.verbosity.is_higher_or_equal(.level_two) {
 		v.log('v.module_lookup_paths: $v.module_lookup_paths')
@@ -190,7 +189,7 @@ fn (p mut Parser) find_module_path(mod string) ?string {
 
 	mod_path := p.v.module_path(mod)
 	for lookup_path in module_lookup_paths {
-		try_path := filepath.join(lookup_path,mod_path)
+		try_path := os.join(lookup_path,mod_path)
 		if p.v.pref.verbosity.is_higher_or_equal(.level_three) {
 			println('  >> trying to find $mod in $try_path ...')
 		}

@@ -3,7 +3,6 @@ module main
 import (
 	os
 	os.cmdline
-	filepath
 	testing
 )
 
@@ -40,7 +39,7 @@ pub fn main() {
 		}
 		if os.is_dir(targ) {
 			// Fetch all tests from the directory
-			ts.files << os.walk_ext( targ.trim_right(filepath.separator), '_test.v')
+			ts.files << os.walk_ext( targ.trim_right(os.separator), '_test.v')
 			continue
 		}
 		println('Unrecognized test file $targ .')

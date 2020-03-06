@@ -4,7 +4,6 @@ import (
 	os
 	flag
 	strings
-	filepath
 	compiler
 	v.pref
 )
@@ -42,7 +41,7 @@ fn analyze_v_file(file string) {
 	for f in v.files { v.parse(f, .decl) }
 	fi := v.get_file_parser_index( file ) or { panic(err) }
 	fmod :=  v.parsers[fi].mod
-	
+
 	// output:
 	mut fns :=[]string
 	for _, f in v.table.fns {
@@ -51,26 +50,26 @@ fn analyze_v_file(file string) {
 	}
 	fns.sort()
 	for f in fns { println(f) }
-	
+
 }
 
 fn main(){
 	toolexe := os.executable()
-	compiler.set_vroot_folder(filepath.dir(filepath.dir(filepath.dir(toolexe))))
+	compiler.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 
 	mut fp := flag.new_flag_parser(os.args)
-	fp.application(filepath.filename(toolexe))
+	fp.application(os.filename(toolexe))
 	fp.version( tool_version )
 	fp.description( tool_description )
 	fp.arguments_description('FILE.v/FOLDER [FILE.v/FOLDER]...')
 	fp.limit_free_args_to_at_least(1)
 	fp.skip_executable()
-	show_help:=fp.bool_('help', `h`, false, 'Show this help screen\n')	
+	show_help:=fp.bool_('help', `h`, false, 'Show this help screen\n')
 	if( show_help ){
 		println( fp.usage() )
 		exit(0)
 	}
-	
+
 	mut files := []string
 	locations := fp.finalize() or { eprintln('Error: ' + err) exit(1) }
 	for xloc in locations {

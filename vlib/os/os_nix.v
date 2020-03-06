@@ -7,11 +7,7 @@ import strings
 #include <fcntl.h>
 
 pub const (
-	/**
-	 * This constant is deprecated. Use `filepath.separator` instead.
-	 * FIXME Remove this separator, as it a part of `filepath` module.
-	 */
-	path_separator = '/'
+	separator = '/'
 )
 
 const (

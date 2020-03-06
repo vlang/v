@@ -6,7 +6,6 @@ module compiler
 import (
 	os
 	strings
-	filepath
 	v.pref
 	// compiler.x64
 	time
@@ -177,12 +176,12 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		}
 	}
 	mut p := v.new_parser(new_scanner_file(path))
-	path_dir := os.realpath(filepath.dir(path))
+	path_dir := os.realpath(os.dir(path))
 	p = {
 		p |
 		file_path:path,
 		file_path_dir: path_dir,
-		file_name:path.all_after(filepath.separator),
+		file_name:path.all_after(os.separator),
 		file_platform:path_platform,
 		file_pcguard:path_pcguard,
 		is_vh:path.ends_with('.vh'),
@@ -2486,7 +2485,7 @@ struct IndexConfig {
 
 // for debugging only
 fn (p &Parser) fileis(s string) bool {
-	return filepath.filename(p.scanner.file_path).contains(s)
+	return os.filename(p.scanner.file_path).contains(s)
 }
 
 // in and dot have higher priority than `!`

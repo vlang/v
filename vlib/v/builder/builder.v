@@ -3,7 +3,6 @@ module builder
 import (
 	os
 	time
-	filepath
 	v.ast
 	v.table
 	v.pref
@@ -183,7 +182,7 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 		}
 		*/
 
-		res << filepath.join(dir,file)
+		res << os.join(dir,file)
 	}
 	return res
 }
@@ -201,13 +200,13 @@ pub fn (b &Builder) log(s string) {
 [inline]
 fn module_path(mod string) string {
 	// submodule support
-	return mod.replace('.', filepath.separator)
+	return mod.replace('.', os.separator)
 }
 
 pub fn (b &Builder) find_module_path(mod string) ?string {
 	mod_path := module_path(mod)
 	for search_path in b.module_search_paths {
-		try_path := filepath.join(search_path,mod_path)
+		try_path := os.join(search_path,mod_path)
 		if b.pref.verbosity.is_higher_or_equal(.level_three) {
 			println('  >> trying to find $mod in $try_path ..')
 		}

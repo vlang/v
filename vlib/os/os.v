@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module os
 
-import filepath
-
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
 
@@ -183,7 +181,7 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 	}
 	// single file copy
 	if !os.is_dir(source_path) {
-		adjasted_path := if os.is_dir(dest_path) { filepath.join(dest_path,filepath.filename(source_path)) } else { dest_path }
+		adjasted_path := if os.is_dir(dest_path) { os.join(dest_path,os.filename(source_path)) } else { dest_path }
 		if os.exists(adjasted_path) {
 			if overwrite {
 				os.rm(adjasted_path)
@@ -204,8 +202,8 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 		return error(err)
 	}
 	for file in files {
-		sp := filepath.join(source_path,file)
-		dp := filepath.join(dest_path,file)
+		sp := os.join(source_path,file)
+		dp := os.join(dest_path,file)
 		if os.is_dir(sp) {
 			os.mkdir(dp) or {
 				panic(err)
@@ -634,10 +632,10 @@ pub fn rmdir_all(path string) {
 		return
 	}
 	for item in items {
-		if os.is_dir(filepath.join(path,item)) {
-			rmdir_all(filepath.join(path,item))
+		if os.is_dir(os.join(path,item)) {
+			rmdir_all(os.join(path,item))
 		}
-		os.rm(filepath.join(path,item))
+		os.rm(os.join(path,item))
 	}
 	os.rmdir(path)
 }
@@ -655,24 +653,30 @@ fn print_c_errno() {
 	println('errno=$e err=$se')
 }
 
-[deprecated]
 pub fn ext(path string) string {
-	panic('Use `filepath.ext` instead of `os.ext`')
+	pos := path.last_index('.') or {
+		return ''
+	}
+	return path[pos..]
 }
 
-[deprecated]
 pub fn dir(path string) string {
-	panic('Use `filepath.dir` instead of `os.dir`')
+	pos := path.last_index(separator) or {
+		return '.'
+	}
+	return path[..pos]
 }
 
-[deprecated]
 pub fn basedir(path string) string {
-	panic('Use `filepath.basedir` instead of `os.basedir`')
+	pos := path.last_index(separator) or {
+		return path
+	}
+	// NB: *without* terminating /
+	return path[..pos]
 }
 
-[deprecated]
 pub fn filename(path string) string {
-	panic('Use `filepath.filename` instead of `os.filename`')
+	return path.all_after(separator)
 }
 
 // get_line returns a one-line string from stdin
@@ -792,9 +796,9 @@ pub fn user_os() string {
 // home_dir returns path to user's home directory.
 pub fn home_dir() string {
 	$if windows {
-		return os.getenv('USERPROFILE') + filepath.separator
+		return os.getenv('USERPROFILE') + os.separator
 	} $else {
-		return os.getenv('HOME') + filepath.separator
+		return os.getenv('HOME') + os.separator
 	}
 }
 
@@ -988,6 +992,25 @@ pub fn realpath(fpath string) string {
 	return string(fullpath)
 }
 
+// is_abs returns true if `path` is absolute.
+pub fn is_abs(path string) bool {
+	$if windows {
+		return path[0] == `/` || // incase we're in MingGW bash
+		(path[0].is_letter() && path[1] == `:`)
+	}
+	return path[0] == `/`
+}
+
+// join returns path as string from string parameter(s).
+pub fn join(base string, dirs ...string) string {
+	mut result := []string
+	result << base.trim_right('\\/')
+	for d in dirs {
+		result << d
+	}
+	return result.join(separator)
+}
+
 // walk_ext returns a recursive list of all file paths ending with `ext`.
 pub fn walk_ext(path, ext string) []string {
 	if !os.is_dir(path) {
@@ -997,7 +1020,7 @@ pub fn walk_ext(path, ext string) []string {
 		return []
 	}
 	mut res := []string
-	separator := if path.ends_with(filepath.separator) { '' } else { filepath.separator }
+	separator := if path.ends_with(os.separator) { '' } else { os.separator }
 	for i, file in files {
 		if file.starts_with('.') {
 			continue
@@ -1023,7 +1046,7 @@ pub fn walk(path string, f fn(path string)) {
 		return
 	}
 	for file in files {
-		p := path + filepath.separator + file
+		p := path + os.separator + file
 		if os.is_dir(p) && !os.is_link(p) {
 			walk(p, f)
 		}
@@ -1089,20 +1112,15 @@ pub fn flush() {
 }
 
 pub fn mkdir_all(path string) {
-	mut p := if path.starts_with(filepath.separator) { filepath.separator } else { '' }
-	for subdir in path.split(filepath.separator) {
-		p += subdir + filepath.separator
+	mut p := if path.starts_with(os.separator) { os.separator } else { '' }
+	for subdir in path.split(os.separator) {
+		p += subdir + os.separator
 		if !os.is_dir(p) {
 			os.mkdir(p) or {
 				panic(err)
 			}
 		}
 	}
-}
-
-[deprecated]
-pub fn join(base string, dirs ...string) string {
-	panic('Use `filepath.join` instead of `os.join`')
 }
 
 // cachedir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
@@ -1169,10 +1187,10 @@ pub const (
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
 pub fn resource_abs_path(path string) string {
-	mut base_path := os.realpath(filepath.dir(os.executable()))
+	mut base_path := os.realpath(os.dir(os.executable()))
 	vresource := os.getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
 		base_path = vresource
 	}
-	return os.realpath( filepath.join( base_path, path ) )
+	return os.realpath( os.join( base_path, path ) )
 }

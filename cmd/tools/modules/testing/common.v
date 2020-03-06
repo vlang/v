@@ -4,7 +4,6 @@ import (
 	os
 	term
 	benchmark
-	filepath
 	sync
 	v.pref
 )
@@ -96,9 +95,9 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	file := os.realpath(relative_file)
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
-	fname := filepath.filename(file)
+	fname := os.filename(file)
 	generated_binary_fname := if os.user_os() == 'windows' { fname.replace('.v', '.exe') } else { fname.replace('.v', '') }
-	generated_binary_fpath := filepath.join(tmpd,generated_binary_fname)
+	generated_binary_fpath := os.join(tmpd,generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
 		os.rm(generated_binary_fpath)
 	}
@@ -153,7 +152,7 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 }
 
 pub fn vlib_should_be_present(parent_dir string) {
-	vlib_dir := filepath.join(parent_dir,'vlib')
+	vlib_dir := os.join(parent_dir,'vlib')
 	if !os.is_dir(vlib_dir) {
 		eprintln('$vlib_dir is missing, it must be next to the V executable')
 		exit(1)
@@ -164,13 +163,13 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	main_label := 'Building $folder ...'
 	finish_label := 'building $folder'
 	vexe := pref.vexe_path()
-	parent_dir := filepath.dir(vexe)
+	parent_dir := os.dir(vexe)
 	vlib_should_be_present(parent_dir)
 	vargs := zargs.replace(vexe, '')
 	eheader(main_label)
 	eprintln('v compiler args: "$vargs"')
 	mut session := new_test_session(vargs)
-	files := os.walk_ext(filepath.join(parent_dir,folder), '.v')
+	files := os.walk_ext(os.join(parent_dir,folder), '.v')
 	mut mains := []string
 	for f in files {
 		if !f.contains('modules') && !f.contains('preludes') {
@@ -205,7 +204,7 @@ pub fn building_any_v_binaries_failed() bool {
 	eheader('Building V binaries...')
 	eprintln('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
 	vexe := pref.vexe_path()
-	parent_dir := filepath.dir(vexe)
+	parent_dir := os.dir(vexe)
 	testing.vlib_should_be_present(parent_dir)
 	os.chdir(parent_dir)
 	mut failed := false

@@ -10,7 +10,6 @@ import (
 	net.http
 	net.urllib
 	strings
-	filepath
 )
 
 pub const (
@@ -331,7 +330,7 @@ fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 			if os.is_dir(file) {
 				ctx.scan_static_directory(directory_path + '/' + file, mount_path + '/' + file)
 			} else if file.contains('.') && ! file.starts_with('.') && ! file.ends_with('.') {
-				ext := filepath.ext(file)
+				ext := os.ext(file)
 
 				// Rudimentary guard against adding files not in mime_types.
 				// Use serve_static directly to add non-standard mime types.

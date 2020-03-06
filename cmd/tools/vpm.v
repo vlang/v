@@ -5,7 +5,6 @@ import (
 	os
 	os.cmdline
 	json
-	filepath
 )
 
 const (
@@ -177,7 +176,7 @@ fn vpm_install(module_names []string) {
 			println('Skipping module "$name", since it uses an unsupported VCS {$vcs} .')
 			continue
 		}
-		final_module_path := os.realpath(filepath.join(settings.vmodules_path,mod.name.replace('.', filepath.separator)))
+		final_module_path := os.realpath(os.join(settings.vmodules_path,mod.name.replace('.', os.separator)))
 		if os.exists(final_module_path) {
 			vpm_update([name])
 			continue
@@ -278,7 +277,7 @@ fn vpm_remove(module_names []string) {
 		os.rmdir_all(final_module_path)
 		// delete author directory if it is empty
 		author := name.split('.')[0]
-		author_dir := os.realpath(filepath.join(settings.vmodules_path,author))
+		author_dir := os.realpath(os.join(settings.vmodules_path,author))
 		if os.is_dir_empty(author_dir) {
 			verbose_println('removing author folder $author_dir')
 			os.rmdir(author_dir)
@@ -287,7 +286,7 @@ fn vpm_remove(module_names []string) {
 }
 
 fn valid_final_path_of_existing_module(name string) ?string {
-	name_of_vmodules_folder := filepath.join(settings.vmodules_path,name.replace('.', filepath.separator))
+	name_of_vmodules_folder := os.join(settings.vmodules_path,name.replace('.', os.separator))
 	final_module_path := os.realpath(name_of_vmodules_folder)
 	if !os.exists(final_module_path) {
 		println('No module with name "$name" exists at $name_of_vmodules_folder')
@@ -326,7 +325,7 @@ fn vpm_help(module_names []string) {
 fn vcs_used_in_dir(dir string) ?[]string {
 	mut vcs := []string
 	for repo_subfolder in supported_vcs_folders {
-		checked_folder := os.realpath(filepath.join(dir,repo_subfolder))
+		checked_folder := os.realpath(os.join(dir,repo_subfolder))
 		if os.is_dir(checked_folder) {
 			vcs << repo_subfolder.replace('.', '')
 		}
@@ -343,7 +342,7 @@ fn get_installed_modules() []string {
 	}
 	mut modules := []string
 	for dir in dirs {
-		adir := filepath.join(settings.vmodules_path,dir)
+		adir := os.join(settings.vmodules_path,dir)
 		if dir in excluded_dirs || !os.is_dir(adir) {
 			continue
 		}
@@ -352,7 +351,7 @@ fn get_installed_modules() []string {
 			continue
 		}
 		for m in mods {
-			vcs_used_in_dir(filepath.join(adir,m)) or {
+			vcs_used_in_dir(os.join(adir,m)) or {
 				continue
 			}
 			modules << '${author}.$m'
@@ -400,7 +399,7 @@ fn get_all_modules() []string {
 }
 
 fn resolve_dependencies(name, module_path string, module_names []string) {
-	vmod_path := filepath.join(module_path,'v.mod')
+	vmod_path := os.join(module_path,'v.mod')
 	if !os.exists(vmod_path) {
 		return
 	}

@@ -8,7 +8,6 @@ import (
 	v.parser
 	v.ast
 	os
-	filepath
 )
 
 struct Doc {
@@ -27,9 +26,9 @@ pub fn doc(mod string, table &table.Table) string {
 		table: table
 		mod: mod
 	}
-	vlib_path := filepath.dir(pref.vexe_path()) + '/vlib'
-	mod_path := mod.replace('.', filepath.separator)
-	path := filepath.join(vlib_path, mod_path)
+	vlib_path := os.dir(pref.vexe_path()) + '/vlib'
+	mod_path := mod.replace('.', os.separator)
+	path := os.join(vlib_path, mod_path)
 	if !os.exists(path) {
 		println('module "$mod" not found')
 		println(path)
@@ -46,7 +45,7 @@ pub fn doc(mod string, table &table.Table) string {
 		if file.ends_with('_test.v') || file.ends_with('_windows.v') || file.ends_with('_macos.v') {
 			continue
 		}
-		file_ast := parser.parse_file(filepath.join(path,file), table, .skip_comments)
+		file_ast := parser.parse_file(os.join(path,file), table, .skip_comments)
 		d.stmts << file_ast.stmts
 	}
 	d.print_fns()

@@ -6,7 +6,6 @@ module compiler
 import (
 	strings
 	os
-	filepath
 	v.pref
 )
 /*
@@ -29,10 +28,10 @@ mut:
 fn generate_vh(mod string) {
 	println('\n\n\n\nGenerating a V header file for module `$mod`')
 	vexe := pref.vexe_path()
-	full_mod_path := filepath.join(filepath.dir(vexe),mod)
-	dir := if mod.starts_with('vlib') { '$compiler.v_modules_path${filepath.separator}$mod' } else { mod }
+	full_mod_path := os.join(os.dir(vexe),mod)
+	dir := if mod.starts_with('vlib') { '$compiler.v_modules_path${os.separator}$mod' } else { mod }
 	path := dir + '.vh'
-	pdir := dir.all_before_last(filepath.separator)
+	pdir := dir.all_before_last(os.separator)
 	if !os.is_dir(pdir) {
 		os.mkdir_all(pdir)
 		// os.mkdir(os.realpath(dir)) or { panic(err) }
@@ -50,7 +49,7 @@ fn generate_vh(mod string) {
 	// mut vfiles := os.ls(full_mod_path) or {
 	// exit(1)
 	// }
-	filtered := vfiles.filter(it.ends_with('.v') && !it.ends_with('test.v') && !it.ends_with('_windows.v') && !it.ends_with('_win.v') && !it.ends_with('_lin.v') && !it.contains('${filepath.separator}examples') && !it.contains('_js.v') && !it.contains('_bare.v') && !it.contains('${filepath.separator}js')) // TODO merge once filter allows it
+	filtered := vfiles.filter(it.ends_with('.v') && !it.ends_with('test.v') && !it.ends_with('_windows.v') && !it.ends_with('_win.v') && !it.ends_with('_lin.v') && !it.contains('${os.separator}examples') && !it.contains('_js.v') && !it.contains('_bare.v') && !it.contains('${os.separator}js')) // TODO merge once filter allows it
 	// println('f:')
 	// println(filtered)
 	mut pref := &pref.Preferences {

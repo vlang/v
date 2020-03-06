@@ -6,11 +6,7 @@ import strings
 #include <winsock2.h>
 
 pub const (
-	/**
-	 * This constant is deprecated. Use `filepath.separator` instead.
-	 * FIXME Remove this separator, as it a part of `filepath` module.
-	 */
-	path_separator = '\\'
+	separator = '\\'
 )
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types

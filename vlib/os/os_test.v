@@ -1,7 +1,4 @@
-import (
-	os
-	filepath
-)
+import os
 
 fn testsuite_begin() {
 	cleanup_leftovers()
@@ -134,14 +131,14 @@ fn walk_callback(file string) {
     if file == '.' || file == '..' {
         return
     }
-    assert file == 'test_walk' + filepath.separator + 'test1'
+    assert file == 'test_walk' + os.separator + 'test1'
 }
 
 fn test_walk() {
     folder := 'test_walk'
     os.mkdir(folder) or { panic(err) }
 
-    file1 := folder + filepath.separator + 'test1'
+    file1 := folder + os.separator + 'test1'
 
     os.write_file(file1,'test-1')
 
@@ -190,7 +187,7 @@ fn test_tmpdir(){
 	assert t.len > 0
 	assert os.is_dir(t)
 
-	tfile := t + filepath.separator + 'tmpfile.txt'
+	tfile := t + os.separator + 'tmpfile.txt'
 
 	os.rm(tfile) // just in case
 
@@ -269,7 +266,7 @@ fn test_symlink() {
 }
 
 fn test_is_executable_writable_readable() {
-  file_name := os.tmpdir() + filepath.separator + 'rwxfile.exe'
+  file_name := os.tmpdir() + os.separator + 'rwxfile.exe'
 
   mut f := os.create(file_name) or {
     eprintln('failed to create file $file_name')
@@ -292,6 +289,48 @@ fn test_is_executable_writable_readable() {
 
   // We finally delete the test file.
   os.rm(file_name)
+}
+
+fn test_ext() {
+	assert os.ext('file.v') == '.v'
+	assert os.ext('file') == ''
+}
+
+fn test_is_abs() {
+	assert os.is_abs('/home/user') == true
+	assert os.is_abs('v/vlib') == false
+
+	$if windows {
+		assert os.is_abs('C:\\Windows\\') == true
+	}
+}
+
+fn test_join() {
+	$if windows {
+		assert os.join('v', 'vlib', 'os') == 'v\\vlib\\os'
+	} $else {
+		assert os.join('v', 'vlib', 'os') == 'v/vlib/os'
+	}
+}
+
+fn test_dir() {
+	$if windows {
+		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b'
+	} $else {
+		assert os.dir('/var/tmp/foo') == '/var/tmp'
+	}
+
+	assert os.dir('os') == '.'
+}
+
+fn test_basedir() {
+	$if windows {
+		assert os.basedir('v\\vlib\\os') == 'v\\vlib'
+	} $else {
+		assert os.basedir('v/vlib/os') == 'v/vlib'
+	}
+
+	assert os.basedir('filename') == 'filename'
 }
 
 // this function is called by both test_aaa_setup & test_zzz_cleanup
