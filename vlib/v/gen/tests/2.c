@@ -3,7 +3,7 @@ struct User {
 };
 
 // multi return structs
-// end of definitions
+// end of definitions #endif
 int function1();
 void foo(int a);
 void init_user();

@@ -14,7 +14,7 @@ typedef struct {
 	int arg0;
 	string arg1;
 } multi_return_int_string;
-// end of definitions
+// end of definitions #endif
 void foo(int a);
 void User_inc_age(User u, int n);
 int get_int(string a);

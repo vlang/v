@@ -4,7 +4,7 @@ struct User {
 };
 
 // multi return structs
-// end of definitions
+// end of definitions #endif
 int main() {
 	User user = (User){
 };

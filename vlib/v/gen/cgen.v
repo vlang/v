@@ -41,7 +41,7 @@ pub fn (g mut Gen) init() {
 	g.definitions.writeln(c_headers)
 	g.write_sorted_types()
 	g.write_multi_return_types()
-	g.definitions.writeln('// end of definitions')
+	g.definitions.writeln('// end of definitions #endif')
 }
 
 pub fn (g mut Gen) write_multi_return_types() {

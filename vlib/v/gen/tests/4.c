@@ -13,7 +13,7 @@ typedef struct {
 	string arg1;
 } multi_return_int_string;
 
-// end of definitions
+// end of definitions #endif
 multi_return_int_string mr_test();
 int testa();
 string testb(int a);
