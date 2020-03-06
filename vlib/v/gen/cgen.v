@@ -39,9 +39,25 @@ pub fn (g mut Gen) init() {
 	g.definitions.writeln('#include <inttypes.h>') // int64_t etc
 	g.definitions.writeln(c_builtin_types)
 	g.definitions.writeln(c_headers)
+	g.write_array_types()
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
+}
+
+// V type to C type
+pub fn (g &Gen) typ(t string) string {
+	return t.replace_each(['.', '__'])
+}
+
+pub fn (g mut Gen) write_array_types() {
+	for typ in g.table.types {
+		if typ.kind != .array {
+			continue
+		}
+		styp := typ.name.replace('.', '__')
+		g.definitions.writeln('typedef array $styp;')
+	}
 }
 
 pub fn (g mut Gen) write_multi_return_types() {
