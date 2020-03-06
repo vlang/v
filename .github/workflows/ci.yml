@@ -214,7 +214,8 @@ jobs:
     #    node-version: 12.x
     - name: Install dependencies
       run: |
-        .\.github\workflows\windows-install-deps.bat
+        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
+        .\.github\workflows\windows-install-sdlbat
     - name: Build
       run: |
         gcc --version
@@ -239,7 +240,8 @@ jobs:
     #    node-version: 12.x
     - name: Install dependencies
       run: |
-        .\.github\workflows\windows-install-deps.bat
+        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
+        .\.github\workflows\windows-install-sdlbat
     - name: Build
       run: |
         echo %VFLAGS%

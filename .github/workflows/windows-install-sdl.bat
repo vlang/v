@@ -1,7 +1,5 @@
 @echo off
 
-git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
-
 curl -L https://www.libsdl.org/release/SDL2-devel-2.0.10-VC.zip -o SDL2.zip
 curl -L https://www.libsdl.org/projects/SDL_ttf/release/SDL2_ttf-devel-2.0.15-VC.zip -o SDL2_ttf.zip
 curl -L https://www.libsdl.org/projects/SDL_image/release/SDL2_image-devel-2.0.5-VC.zip -o SDL2_image.zip
