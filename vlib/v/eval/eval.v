@@ -88,7 +88,7 @@ fn (e mut Eval) expr(node ast.Expr) Object {
 			return v.value
 		}
 		ast.InfixExpr {
-			e.checker.infix_expr(it)
+			e.checker.infix_expr(mut it)
 			// println('bin $it.op')
 			left := e.expr(it.left) as int
 			right := e.expr(it.right) as int
