@@ -392,6 +392,9 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	}
 	// a = []
 	if array_init.exprs.len == 0 {
+		type_sym := c.table.get_type_symbol(c.expected_type)
+		array_info := type_sym.array_info()
+		array_init.elem_type = array_info.elem_type
 		return c.expected_type
 	}
 	// [1,2,3]
@@ -412,6 +415,7 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 		}
 		idx := c.table.find_or_register_array(elem_type, 1)
 		array_init.typ = table.new_type(idx)
+		array_init.elem_type = elem_type
 	}
 	// [50]byte
 	else if array_init.exprs.len == 1 && array_init.elem_type != table.void_type {
@@ -423,7 +427,7 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 			else {
 				c.error('expecting `int` for fixed size', array_init.pos)
 			}
-	}
+		}
 		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size, 1)
 		array_type := table.new_type(idx)
 		array_init.typ = array_type

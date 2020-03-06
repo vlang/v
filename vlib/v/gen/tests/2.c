@@ -66,7 +66,7 @@ void function2() {
 }
 
 void init_array() {
-	array_int nums = new_array_from_c_array(3, 3, sizeof(array_int), (void[]){
+	array_int nums = new_array_from_c_array(3, 3, sizeof(array_int), (int[]){
 		4, 2, 3,
 	});
 }

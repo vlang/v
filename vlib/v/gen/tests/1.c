@@ -62,20 +62,20 @@ void foo(int a) {
 	for (int i = 0;
 i < 10; i++) {
 	}
-	array_int nums = new_array_from_c_array(3, 3, sizeof(array_int), (void[]){
+	array_int nums = new_array_from_c_array(3, 3, sizeof(array_int), (int[]){
 		1, 2, 3,
 	});
 	array_int nums2 = array_slice(nums, 0, 2);
 	int number = nums[0];
-	array_bool bools = new_array_from_c_array(2, 2, sizeof(array_bool), (void[]){
+	array_bool bools = new_array_from_c_array(2, 2, sizeof(array_bool), (bool[]){
 		true, false,
 	});
-	array_User users = new_array_from_c_array(1, 1, sizeof(array_User), (void[]){
+	array_User users = new_array_from_c_array(1, 1, sizeof(array_User), (User[]){
 		(User){
 			},
 	});
 	bool b = bools[0];
-	array_string mystrings = new_array_from_c_array(2, 2, sizeof(array_string), (void[]){
+	array_string mystrings = new_array_from_c_array(2, 2, sizeof(array_string), (string[]){
 		tos3("a"), tos3("b"),
 	});
 	string s = mystrings[0];

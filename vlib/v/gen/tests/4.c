@@ -41,13 +41,13 @@ int main() {
     string e = tos3("hello");
     e = testb(111);
 	e = tos3("world");
-	array_int f = new_array_from_c_array(4, 4, sizeof(array_int), (void[]){
+	array_int f = new_array_from_c_array(4, 4, sizeof(array_int), (int[]){
         testa(), 2, 3, 4,
 	});
-	array_string g = new_array_from_c_array(2, 2, sizeof(array_string), (void[]){
+	array_string g = new_array_from_c_array(2, 2, sizeof(array_string), (string[]){
 		testb(1), tos3("hello"),
 	});
-	array_Foo arr_foo = new_array_from_c_array(1, 1, sizeof(array_Foo), (void[]){
+	array_Foo arr_foo = new_array_from_c_array(1, 1, sizeof(array_Foo), (Foo[]){
 		a,
 	});
 	Foo af_idx_el = arr_foo[0];
