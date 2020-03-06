@@ -2,6 +2,10 @@ module ttf
 
 import sdl
 
+#flag windows -I @VROOT/thirdparty/SDL2_ttf/include
+#flag windows -L @VROOT/thirdparty/SDL2_ttf/lib/x64
+#flag windows -lSDL2_ttf
+
 #include <SDL_ttf.h>
 
 [typedef]

@@ -212,10 +212,12 @@ jobs:
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x
+    - name: Install dependencies
+      run: |
+        .\.github\workflows\windows-install-deps.bat
     - name: Build
       run: |
         gcc --version
-        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         .\make.bat -gcc
     - name: Test
       run: |
@@ -235,11 +237,13 @@ jobs:
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x
+    - name: Install dependencies
+      run: |
+        .\.github\workflows\windows-install-deps.bat
     - name: Build
       run: |
         echo %VFLAGS%
         echo $VFLAGS
-        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         .\make.bat -msvc
     - name: Test
       run: |
