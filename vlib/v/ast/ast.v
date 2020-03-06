@@ -497,8 +497,10 @@ mut:
 // s[10..20]
 pub struct RangeExpr {
 pub:
-	low  Expr
-	high Expr
+	low      Expr
+	high     Expr
+	has_high bool
+	has_low  bool
 }
 
 pub struct CastExpr {

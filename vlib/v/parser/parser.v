@@ -817,7 +817,9 @@ fn (p mut Parser) prefix_expr() ast.PrefixExpr {
 fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	// left == `a` in `a[0]`
 	p.next() // [
+	mut has_low := true
 	if p.tok.kind == .dotdot {
+		has_low = false
 		// [..end]
 		p.next()
 		high := p.expr(0)
@@ -828,15 +830,18 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			index: ast.RangeExpr{
 				low: ast.Expr{}
 				high: high
+				has_high: true
 			}
 		}
 	}
 	expr := p.expr(0) // `[expr]` or  `[expr..]`
+	mut has_high := false
 	if p.tok.kind == .dotdot {
 		// [start..end] or [start..]
 		p.check(.dotdot)
 		mut high := ast.Expr{}
 		if p.tok.kind != .rsbr {
+			has_high = true
 			high = p.expr(0)
 		}
 		p.check(.rsbr)
@@ -846,6 +851,8 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			index: ast.RangeExpr{
 				low: expr
 				high: high
+				has_high: has_high
+				has_low: has_low
 			}
 		}
 	}

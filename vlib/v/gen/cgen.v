@@ -598,11 +598,22 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			g.write('array_slice(')
 			g.expr(node.left)
 			g.write(', ')
-			// g.expr(it.low)
-			g.write('0')
+			if it.has_low {
+				g.expr(it.low)
+			}
+			else {
+				g.write('0')
+			}
 			g.write(', ')
-			g.expr(it.high)
+			if it.has_high {
+				g.expr(it.high)
+			}
+			else {
+				g.expr(node.left)
+				g.write('.len')
+			}
 			g.write(')')
+			return
 		}
 		else {}
 	}
@@ -618,7 +629,7 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			g.write(')')
 		}
 		else if sym.kind == .string {
-			g.write('string_get(')
+			g.write('string_at(')
 			g.expr(node.left)
 			g.write(', ')
 			g.expr(node.index)

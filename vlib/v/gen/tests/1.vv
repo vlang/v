@@ -61,6 +61,8 @@ fn foo(a int) {
 	}
 	nums := [1,2,3]
 	nums2 := nums[..2]
+	nums3 := nums[1..2]
+	nums4 := nums[1..]
 	number := nums[0]
 	bools := [true, false]
 	users := [User{}]
