@@ -123,7 +123,7 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	scripting.show_sizes_of_files(['$cdir/cv', '$cdir/cv_stripped', '$cdir/cv_stripped_upxed'])
 	scripting.show_sizes_of_files(['$cdir/v', '$cdir/v_stripped', '$cdir/v_stripped_upxed'])
 	scripting.show_sizes_of_files(['$cdir/vprod', '$cdir/vprod_stripped', '$cdir/vprod_stripped_upxed'])
-	vversion := scripting.run('$cdir/v --version')
+	vversion := scripting.run('$cdir/v -version')
     vcommit := scripting.run('git rev-parse --short  --verify HEAD')
 	println('V version is: ${vversion} , local source commit: ${vcommit}')
 	if vgit_context.vvlocation == 'cmd/v' {

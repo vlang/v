@@ -19,11 +19,12 @@ pub mut:
 	show_ok_tests bool
 }
 
-pub fn new_test_session(vargs string) TestSession {
+pub fn new_test_session(_vargs string) TestSession {
+	vargs := _vargs.replace('-silent', '')
 	return TestSession{
 		vexe: pref.vexe_path()
 		vargs: vargs
-		show_ok_tests: !vargs.contains('-silent')
+		show_ok_tests: !_vargs.contains('-silent')
 	}
 }
 

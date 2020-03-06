@@ -10,7 +10,7 @@ fn test_the_v_compiler_can_be_invoked() {
 	vexec := runner.full_path_to_v(5)
 	println('vexecutable: $vexec')
 	assert vexec != ''
-	vcmd := '"$vexec" --version'
+	vcmd := '"$vexec" -version'
 	r := os.exec(vcmd) or {
 		panic(err)
 	}
@@ -22,7 +22,7 @@ fn test_the_v_compiler_can_be_invoked() {
 	}
 	// println('"$vcmd_error" exit_code: $r_error.exit_code | output: $r_error.output')
 	assert r_error.exit_code == 1
-	assert r_error.output == '`nonexisting.v` does not exist'
+	assert r_error.output == "V error: nonexisting.v doesn't exist"
 }
 
 struct Session {

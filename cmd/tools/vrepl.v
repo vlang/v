@@ -144,7 +144,7 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 		if r.line.starts_with('print') {
 			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.line
 			os.write_file(file, source_code)
-			s := os.exec('"$vexe" run $file -repl') or {
+			s := os.exec('"$vexe" -repl run $file') or {
 				rerror(err)
 				return []
 			}
@@ -166,7 +166,7 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 			}
 			temp_source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.temp_lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
-			s := os.exec('"$vexe" run $temp_file -repl') or {
+			s := os.exec('"$vexe" -repl run $temp_file') or {
 				println("SDFSDF")
 				rerror(err)
 				return []
@@ -237,6 +237,6 @@ pub fn rerror(s string) {
 
 fn v_version() string {
 	vexe := os.getenv('VEXE')
-	vversion_res := os.exec('$vexe --version') or { panic('"$vexe --version" is not working') }
+	vversion_res := os.exec('$vexe -version') or { panic('"$vexe -version" is not working') }
 	return vversion_res.output
 }

@@ -138,7 +138,7 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 	mut files := os.ls(dir) or {
 		panic(err)
 	}
-	if b.pref.is_verbose {
+	if b.pref.verbosity.is_higher_or_equal(.level_one) {
 		println('v_files_from_dir ("$dir")')
 	}
 	files.sort()
@@ -193,7 +193,7 @@ fn verror(err string) {
 }
 
 pub fn (b &Builder) log(s string) {
-	if b.pref.is_verbose {
+	if b.pref.verbosity.is_higher_or_equal(.level_two) {
 		println(s)
 	}
 }
@@ -208,11 +208,11 @@ pub fn (b &Builder) find_module_path(mod string) ?string {
 	mod_path := module_path(mod)
 	for search_path in b.module_search_paths {
 		try_path := filepath.join(search_path,mod_path)
-		if b.pref.is_verbose {
+		if b.pref.verbosity.is_higher_or_equal(.level_three) {
 			println('  >> trying to find $mod in $try_path ..')
 		}
 		if os.is_dir(try_path) {
-			if b.pref.is_verbose {
+			if b.pref.verbosity.is_higher_or_equal(.level_three) {
 				println('  << found $try_path .')
 			}
 			return try_path

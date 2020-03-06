@@ -3186,7 +3186,7 @@ fn (p mut Parser) check_unused_imports() {
 	}
 	// the imports are usually at the start of the file
 	// p.production_error_with_token_index('the following imports were never used: $output', 0)
-	if p.pref.is_verbose {
+	if p.pref.verbosity.is_higher_or_equal(.level_two) {
 		eprintln('Used imports table: ${p.import_table.used_imports.str()}')
 	}
 	p.warn('the following imports were never used: $output')
