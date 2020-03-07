@@ -56,7 +56,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-		
+
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -80,7 +80,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 			parent: 0
 		}
 		// comments_mode: comments_mode
-		
+
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -614,7 +614,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-			
+
 			val: val
 			pos: p.tok.position()
 		}
@@ -941,7 +941,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 		left: left
 		right: right
 		// right_type: typ
-		
+
 		op: op
 		pos: pos
 	}
@@ -1052,7 +1052,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		p.scope.register_var(ast.VarDecl{
 			name: var_name
 			// expr: cond
-			
+
 		})
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
@@ -1147,11 +1147,11 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-		
+
 		pos: pos
 		has_else: has_else
 		// left: left
-		
+
 	}
 	return node
 }
@@ -1325,7 +1325,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		fields << ast.Field{
 			name: name
 			// typ: typ
-			
+
 		}
 		exprs << expr
 		// TODO: once consts are fixed reg here & update in checker
@@ -1536,12 +1536,12 @@ fn (p mut Parser) var_decl_and_assign_stmt() ast.Stmt {
 		return ast.VarDecl{
 			name: ident.name
 			// name2: name2
-			
+
 			expr: expr // p.expr(token.lowest_prec)
-			
+
 			is_mut: info0.is_mut
 			// typ: typ
-			
+
 			pos: p.tok.position()
 		}
 		// return p.var_decl(ident[0], exprs[0])
@@ -1714,8 +1714,8 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 	p.check(.key_type)
 	name := p.check_name()
 	mut sum_variants := []table.Type
-	// type SumType = A | B | c
 	if p.tok.kind == .assign {
+		// type SumType = A | B | c
 		p.next()
 		for {
 			variant_type := p.parse_type()
@@ -1732,21 +1732,28 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 				variants: sum_variants
 			}
 		})
+		return ast.SumTypeDecl{
+			name: name
+			is_pub: is_pub
+			sub_types: sum_variants
+		}
 	}
+
 	// type MyType int
-	else {
-		parent_type := p.parse_type()
-		p.table.register_type_symbol(table.TypeSymbol{
-			kind: .alias
-			name: p.prepend_mod(name)
-			parent_idx: table.type_idx(parent_type)
-			info: table.Alias{
-				foo: ''
-			}
-		})
-	}
-	return ast.TypeDecl{
+	parent_type := p.parse_type()
+	pid := table.type_idx(parent_type)
+	p.table.register_type_symbol(table.TypeSymbol{
+		kind: .alias
+		name: p.prepend_mod(name)
+		parent_idx: pid
+		info: table.Alias{
+			foo: ''
+		}
+	})
+	return ast.AliasTypeDecl{
 		name: name
+		is_pub: is_pub
+		parent_type: parent_type
 	}
 }
 
