@@ -810,8 +810,8 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 		}
 		else {}
 	}
+	node.container_type = typ
 	if !is_range {
-		node.container_type = typ
 		typ_sym := c.table.get_type_symbol(typ)
 		index_type := c.expr(node.index)
 		index_type_sym := c.table.get_type_symbol(index_type)

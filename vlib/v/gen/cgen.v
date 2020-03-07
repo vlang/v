@@ -218,7 +218,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.ForStmt {
 			g.write('while (')
 			g.expr(it.cond)
-			g.writeln(') {')
+			g.writeln(') { //1')
 			for stmt in it.stmts {
 				g.stmt(stmt)
 			}
@@ -483,8 +483,17 @@ fn (g mut Gen) expr(node ast.Expr) {
 			// if it.left_type == table.string_type_idx {
 			// g.write('/*$it.left_type str*/')
 			// }
+			// string + string
 			if it.op == .plus && it.left_type == table.string_type_idx {
 				g.write('string_add(')
+				g.expr(it.left)
+				g.write(', ')
+				g.expr(it.right)
+				g.write(')')
+			}
+			// arr << val
+			else if it.op == .left_shift && g.table.get_type_symbol(it.left_type).kind == .array {
+				g.write('array_push(')
 				g.expr(it.left)
 				g.write(', ')
 				g.expr(it.right)
@@ -634,8 +643,17 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	mut is_range := false
 	match node.index {
 		ast.RangeExpr {
-			is_range = true
-			g.write('array_slice(')
+			// TODO should never be 0
+			if node.container_type != 0 {
+				sym := g.table.get_type_symbol(node.container_type)
+				is_range = true
+				if sym.kind == .string {
+					g.write('string_substr(')
+				}
+				else if sym.kind == .array {
+					g.write('array_slice(')
+				}
+			}
 			g.expr(node.left)
 			g.write(', ')
 			if it.has_low {
