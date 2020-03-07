@@ -415,10 +415,21 @@ fn (g mut Gen) expr(node ast.Expr) {
 
 		}
 		ast.CastExpr {
-			styp := g.table.type_to_str(it.typ)
-			g.write('($styp)(')
-			g.expr(it.expr)
-			g.write(')')
+			if it.typ == table.string_type_idx {
+				g.write('tos(')
+				g.expr(it.expr)
+				if it.has_arg {
+					g.write(',')
+					g.expr(it.arg)
+				}
+				g.write(')')
+			}
+			else {
+				styp := g.table.type_to_str(it.typ)
+				g.write('($styp)(')
+				g.expr(it.expr)
+				g.write(')')
+			}
 		}
 		ast.CharLiteral {
 			g.write("'$it.val'")

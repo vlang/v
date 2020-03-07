@@ -490,11 +490,11 @@ mut:
 
 pub struct MapInit {
 pub:
-	pos  	   token.Position
-	keys 	   []Expr
-	vals 	   []Expr
+	pos        token.Position
+	keys       []Expr
+	vals       []Expr
 mut:
-	typ  	   table.Type
+	typ        table.Type
 	key_type   table.Type
 	value_type table.Type
 }
@@ -510,8 +510,10 @@ pub:
 
 pub struct CastExpr {
 pub:
-	typ  table.Type
-	expr Expr
+	typ     table.Type
+	expr    Expr // `buf`
+	arg     Expr // `n` in `string(buf, n)`
+	has_arg bool
 }
 
 pub struct AssertStmt {

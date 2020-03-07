@@ -530,7 +530,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	// `map[string]int` initialization
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
 		map_type := p.parse_map_type()
-		return ast.MapInit {
+		return ast.MapInit{
 			typ: map_type
 		}
 	}
@@ -562,16 +562,21 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			to_typ := p.parse_type()
 			p.check(.lpar)
 			mut expr := ast.Expr{}
+			mut arg := ast.Expr{}
+			mut has_arg := false
 			expr = p.expr(0)
 			// TODO, string(b, len)
 			if p.tok.kind == .comma && table.type_idx(to_typ) == table.string_type_idx {
 				p.check(.comma)
-				p.expr(0) // len
+				arg = p.expr(0) // len
+				has_arg = true
 			}
 			p.check(.rpar)
 			node = ast.CastExpr{
 				typ: to_typ
 				expr: expr
+				arg: arg
+				has_arg: has_arg
 			}
 			p.expr_mod = ''
 			return node

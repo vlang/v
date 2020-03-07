@@ -1208,7 +1208,7 @@ pub fn (s string) reverse() string {
 		str: malloc(s.len)
 	}
 	for i := s.len - 1; i >= 0; i-- {
-		res[s.len - i - 1] = s[i]
+		res.str[s.len - i - 1] = s[i]
 	}
 	return res
 }
