@@ -1,7 +1,6 @@
 import (
 	os
 	flag
-	filepath
 	scripting
 	vgit
 )
@@ -165,7 +164,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		hyperfine_commands_arguments << " \'cd ${c.a:-34s} ; ./$cmd \' ".replace_each(['@COMPILER@', source_location_a, '@DEBUG@', debug_option_a])
 	}
 	// /////////////////////////////////////////////////////////////////////////////
-	cmd_stats_file := os.realpath([c.workdir, 'v_performance_stats_${label}.json'].join(filepath.separator))
+	cmd_stats_file := os.realpath([c.workdir, 'v_performance_stats_${label}.json'].join(os.path_separator))
 	comparison_cmd := 'hyperfine $c.hyperfineopts ' + '--export-json ${cmd_stats_file} ' + '--time-unit millisecond ' + '--style full --warmup $c.warmups ' + hyperfine_commands_arguments.join(' ')
 	// /////////////////////////////////////////////////////////////////////////////
 	if c.verbose {
@@ -181,7 +180,7 @@ fn main() {
 	scripting.used_tools_must_exist(['cp', 'rm', 'strip', 'make', 'git', 'upx', 'cc', 'wc', 'tail', 'hyperfine'])
 	mut context := new_context()
 	mut fp := flag.new_flag_parser(os.args)
-	fp.application(filepath.filename(os.executable()))
+	fp.application(os.filename(os.executable()))
 	fp.version(tool_version)
 	fp.description(tool_description)
 	fp.arguments_description('COMMIT_BEFORE [COMMIT_AFTER]')

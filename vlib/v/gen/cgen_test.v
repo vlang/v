@@ -1,6 +1,5 @@
 import (
 	os
-	filepath
 	v.pref
 	v.builder
 	term
@@ -13,7 +12,7 @@ const (
 fn test_c_files() {
 	println('Running V => C tests')
 	vexe := os.getenv('VEXE')
-	vroot := filepath.dir(vexe)
+	vroot := os.dir(vexe)
 	term_ok := term.ok_message('OK')
 	term_fail := term.fail_message('FAIL')
 	for i in 1 .. (nr_tests + 1) {

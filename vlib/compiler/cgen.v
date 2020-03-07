@@ -6,7 +6,6 @@ module compiler
 import (
 	os
 	strings
-	filepath
 )
 
 struct CGen {
@@ -278,14 +277,14 @@ fn (v &V) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 		return
 	}
 	println('$obj_path not found, building it...')
-	parent := filepath.dir(obj_path)
+	parent := os.dir(obj_path)
 	files := os.ls(parent)or{
 		panic(err)
 	}
 	mut cfiles := ''
 	for file in files {
 		if file.ends_with('.c') {
-			cfiles += '"' + os.realpath(parent + filepath.separator + file) + '" '
+			cfiles += '"' + os.realpath(parent + os.path_separator + file) + '" '
 		}
 	}
 	btarget := moduleflags.c_options_before_target()

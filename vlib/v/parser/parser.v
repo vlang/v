@@ -11,7 +11,6 @@ import (
 	v.pref
 	term
 	os
-	filepath
 )
 
 const (
@@ -414,7 +413,7 @@ pub fn (p &Parser) error(s string) {
 	print_backtrace()
 	mut path := p.file_name
 	// Get relative path
-	workdir := os.getwd() + filepath.separator
+	workdir := os.getwd() + os.path_separator
 	if path.starts_with(workdir) {
 		path = path.replace(workdir, '')
 	}

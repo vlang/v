@@ -7,7 +7,6 @@ import (
 	vweb.tmpl // for `$vweb_html()`
 	os
 	strings
-	filepath
 )
 
 fn (p mut Parser) comp_time() {
@@ -198,7 +197,7 @@ fn (p mut Parser) comp_time() {
 			// Can't find the template file in current directory,
 			// try looking next to the vweb program, in case it's run with
 			// v path/to/vweb_app.v
-			path = filepath.dir(p.scanner.file_path) + '/' + path
+			path = os.dir(p.scanner.file_path) + '/' + path
 			if !os.exists(path) {
 				p.error('vweb HTML template "$path" not found')
 			}

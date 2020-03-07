@@ -2,14 +2,13 @@ module main
 
 import (
 	os
-	filepath
 	v.pref
 )
 
 fn main() {
 	println('V Self Compiling...')
 	vexe := pref.vexe_path()
-	vroot := filepath.dir(vexe)
+	vroot := os.dir(vexe)
 	os.chdir(vroot)
 	s2 := os.exec('$vexe -o v2 cmd/v') or {
 		panic(err)

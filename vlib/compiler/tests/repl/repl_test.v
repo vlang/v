@@ -4,7 +4,6 @@ import os
 import compiler.tests.repl.runner
 import benchmark
 import sync
-import filepath
 
 fn test_the_v_compiler_can_be_invoked() {
 	vexec := runner.full_path_to_v(5)
@@ -64,7 +63,7 @@ fn worker_repl(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.cstep = idx
-	tfolder := filepath.join(cdir,'vrepl_tests_$idx')
+	tfolder := os.join(cdir,'vrepl_tests_$idx')
 	if os.is_dir(tfolder) {
 		os.rmdir_all(tfolder)
 	}

@@ -7,7 +7,6 @@
 
 module main
 
-import filepath
 import rand
 import time
 import os
@@ -20,7 +19,7 @@ import sdl.ttf as ttf
 
 const (
 	Title = 'tVintris'
-	BASE = filepath.dir( os.realpath( os.executable() ) )
+	BASE = os.dir( os.realpath( os.executable() ) )
 	FontName = BASE + '/../../assets/fonts/RobotoMono-Regular.ttf'
 	MusicName = BASE + '/sounds/TwintrisThosenine.mod'
 	SndBlockName = BASE + '/sounds/block.wav'

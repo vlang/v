@@ -8,7 +8,6 @@ import (
 	v.table
 	v.token
 	os
-	filepath
 )
 
 const (
@@ -920,7 +919,7 @@ pub fn (c mut Checker) error(s string, pos token.Position) {
 	print_backtrace()
 	mut path := c.file.path
 	// Get relative path
-	workdir := os.getwd() + filepath.separator
+	workdir := os.getwd() + os.path_separator
 	if path.starts_with(workdir) {
 		path = path.replace(workdir, '')
 	}

@@ -6,7 +6,6 @@ module compiler
 import (
 	os
 	strings
-	filepath
 	v.pref
 	v.builder
 )
@@ -66,11 +65,11 @@ pub fn new_v(pref &pref.Preferences) &V {
 
 	mut vgen_buf := strings.new_builder(1000)
 	vgen_buf.writeln('module vgen\nimport strings')
-	compiled_dir:=if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
+	compiled_dir:=if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 
 	return &V{
 		mod_file_cacher: new_mod_file_cacher()
-		compiled_dir:compiled_dir// if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
+		compiled_dir:compiled_dir// if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 		table: new_table(pref.obfuscate)
 		out_name_c: out_name_c
 		cgen: new_cgen(out_name_c)
@@ -106,13 +105,13 @@ pub fn (v &V) finalize_compilation() {
 pub fn (v mut V) add_parser(parser Parser) int {
 	pidx := v.parsers.len
 	v.parsers << parser
-	file_path := if filepath.is_abs(parser.file_path) { parser.file_path } else { os.realpath(parser.file_path) }
+	file_path := if os.is_abs(parser.file_path) { parser.file_path } else { os.realpath(parser.file_path) }
 	v.file_parser_idx[file_path] = pidx
 	return pidx
 }
 
 pub fn (v &V) get_file_parser_index(file string) ?int {
-	file_path := if filepath.is_abs(file) { file } else { os.realpath(file) }
+	file_path := if os.is_abs(file) { file } else { os.realpath(file) }
 	if file_path in v.file_parser_idx {
 		return v.file_parser_idx[file_path]
 	}
@@ -349,7 +348,7 @@ pub fn (v mut V) compile_x64() {
 		println('v -x64 can only generate Linux binaries for now')
 		println('You are not on a Linux system, so you will not ' + 'be able to run the resulting executable')
 	}
-	//v.files << v.v_files_from_dir(filepath.join(v.pref.vlib_path,'builtin','bare'))
+	//v.files << v.v_files_from_dir(os.join(v.pref.vlib_path,'builtin','bare'))
 	v.files << v.pref.path
 	v.set_module_lookup_paths()
 	mut b := v.new_v2()
@@ -625,7 +624,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 				continue
 			}
 		}
-		res << filepath.join(dir,file)
+		res << os.join(dir,file)
 	}
 	return res
 }
@@ -639,7 +638,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 	}
 	// Builtin cache exists? Use it.
 	if v.pref.is_cache {
-		builtin_vh := filepath.join(v_modules_path,'vlib','builtin.vh')
+		builtin_vh := os.join(v_modules_path,'vlib','builtin.vh')
 		if os.exists(builtin_vh) {
 			v.cached_mods << 'builtin'
 			builtin_files = [builtin_vh]
@@ -690,8 +689,8 @@ pub fn (v mut V) add_v_files_to_compile() {
 		// Cached modules are broken currently
 		/*
 		if v.pref.vpath != '' && v.pref.build_mode != .build_module && !mod.contains('vweb') {
-			mod_path := mod.replace('.', filepath.separator)
-			vh_path := '$v_modules_path${filepath.separator}vlib${filepath.separator}${mod_path}.vh'
+			mod_path := mod.replace('.', os.path_separator)
+			vh_path := '$v_modules_path${os.path_separator}vlib${os.path_separator}${mod_path}.vh'
 			if v.pref.is_cache && os.exists(vh_path) {
 				eprintln('using cached module `$mod`: $vh_path')
 				v.cached_mods << mod
@@ -722,16 +721,16 @@ pub fn (v &V) get_builtin_files() []string {
 	// Lookup for built-in folder in lookup path.
 	// Assumption: `builtin/` folder implies usable implementation of builtin
 	for location in v.pref.lookup_path {
-		if !os.exists(filepath.join(location, 'builtin')) {
+		if !os.exists(os.join(location, 'builtin')) {
 			continue
 		}
 		if v.pref.is_bare {
-			return v.v_files_from_dir(filepath.join(location, 'builtin', 'bare'))
+			return v.v_files_from_dir(os.join(location, 'builtin', 'bare'))
 		}
 		$if js {
-			return v.v_files_from_dir(filepath.join(location, 'builtin','js'))
+			return v.v_files_from_dir(os.join(location, 'builtin','js'))
 		}
-		return v.v_files_from_dir(filepath.join(location, 'builtin'))
+		return v.v_files_from_dir(os.join(location, 'builtin'))
 	}
 	// Panic. We couldn't find the folder.
 	verror('`builtin/` not included on module lookup path.
@@ -748,19 +747,19 @@ pub fn (v &V) get_user_files() []string {
 	mut user_files := []string
 
     // See cmd/tools/preludes/README.md for more info about what preludes are
-	vroot := filepath.dir(pref.vexe_path())
-	preludes_path := filepath.join(vroot,'cmd','tools','preludes')
+	vroot := os.dir(pref.vexe_path())
+	preludes_path := os.join(vroot,'cmd','tools','preludes')
 	if v.pref.is_live {
-		user_files << filepath.join(preludes_path,'live_main.v')
+		user_files << os.join(preludes_path,'live_main.v')
 	}
 	if v.pref.is_solive {
-		user_files << filepath.join(preludes_path,'live_shared.v')
+		user_files << os.join(preludes_path,'live_shared.v')
 	}
 	if v.pref.is_test {
-		user_files << filepath.join(preludes_path,'tests_assertions.v')
+		user_files << os.join(preludes_path,'tests_assertions.v')
 	}
 	if v.pref.is_test && v.pref.is_stats {
-		user_files << filepath.join(preludes_path,'tests_with_stats.v')
+		user_files << os.join(preludes_path,'tests_with_stats.v')
 	}
 
 	is_test := dir.ends_with('_test.v')
@@ -781,7 +780,7 @@ pub fn (v &V) get_user_files() []string {
 			v.log('> That brings in all other ordinary .v files in the same module too .')
 		}
 		user_files << single_test_v_file
-		dir = filepath.basedir(single_test_v_file)
+		dir = os.basedir(single_test_v_file)
 	}
 	if dir.ends_with('.v') || dir.ends_with('.vsh') {
 		single_v_file := dir
@@ -934,5 +933,5 @@ pub fn set_vroot_folder(vroot_path string) {
 	// VEXE env variable is needed so that compiler.vexe_path()
 	// can return it later to whoever needs it:
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	os.setenv('VEXE', os.realpath([vroot_path, vname].join(filepath.separator)), true)
+	os.setenv('VEXE', os.realpath([vroot_path, vname].join(os.path_separator)), true)
 }

@@ -5,14 +5,13 @@ module main
 
 import (
 	compiler
-	filepath
 	os
 	v.pref
 )
 
 fn launch_tool(verbosity pref.VerboseLevel, tool_name string) {
 	vexe := pref.vexe_path()
-	vroot := filepath.dir(vexe)
+	vroot := os.dir(vexe)
 	compiler.set_vroot_folder(vroot)
 
 	tool_args := os.args[1..].join(' ')

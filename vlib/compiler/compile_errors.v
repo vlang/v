@@ -2,7 +2,6 @@ module compiler
 
 import (
 	os
-	filepath
 	term
 )
 // ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -157,7 +156,7 @@ fn (s &Scanner) get_error_filepath() string {
 		else {
 			s.print_rel_paths_on_error}}
 	if use_relative_paths {
-		workdir := os.getwd() + filepath.separator
+		workdir := os.getwd() + os.path_separator
 		if s.file_path.starts_with(workdir) {
 			return s.file_path.replace(workdir, '')
 		}

@@ -3,11 +3,7 @@
 // that can be found in the LICENSE file.
 module compiler
 
-import (
-	os
-	filepath
-	// strings
-)
+import os
 
 const (
 	single_quote = `\'`
@@ -919,7 +915,7 @@ fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
 	s.started = false
 	s.debug = true
-	fname := s.file_path.all_after(filepath.separator)
+	fname := s.file_path.all_after(os.path_separator)
 	println('\n===DEBUG TOKENS $fname===')
 	for {
 		res := s.scan()

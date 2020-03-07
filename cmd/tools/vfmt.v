@@ -6,7 +6,6 @@ module main
 import (
 	os
 	os.cmdline
-	filepath
 	compiler
 	v.pref
 	v.fmt
@@ -40,7 +39,7 @@ const (
 
 fn main() {
 	toolexe := os.executable()
-	compiler.set_vroot_folder(filepath.dir(filepath.dir(filepath.dir(toolexe))))
+	compiler.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := join_flags_and_argument()
 	foptions := FormatOptions{
 		is_2: '-2' in args
@@ -155,8 +154,8 @@ fn (foptions &FormatOptions) format_file(file string) {
 		table := table.new_table()
 		file_ast := parser.parse_file(file, table, .parse_comments)
 		formatted_content := fmt.fmt(file_ast, table)
-		file_name := filepath.filename(file)
-		vfmt_output_path := filepath.join(os.tmpdir(), 'vfmt_' + file_name)
+		file_name := os.filename(file)
+		vfmt_output_path := os.join(os.tmpdir(), 'vfmt_' + file_name)
 		os.write_file(vfmt_output_path, formatted_content )
 		if foptions.is_verbose {
 			eprintln('vfmt2 fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
@@ -180,15 +179,15 @@ fn (foptions &FormatOptions) format_file(file string) {
 	is_test_file := file.ends_with('_test.v')
 	mod_name,is_module_file := file_to_mod_name_and_is_module_file(file)
 	use_tmp_main_program := is_module_file && !is_test_file
-	mod_folder := filepath.basedir(file)
+	mod_folder := os.basedir(file)
 	if use_tmp_main_program {
 		// TODO: remove the need for this
 		// This makes a small program that imports the module,
 		// so that the module files will get processed by the
 		// vfmt implementation.
-		mod_folder_parent = filepath.basedir(mod_folder)
+		mod_folder_parent = os.basedir(mod_folder)
 		mut main_program_content := if mod_name == 'builtin' || mod_name == 'main' { 'fn main(){}\n' } else { 'import ${mod_name}\n' + 'fn main(){}\n' }
-		main_program_file := filepath.join(tmpfolder,'vfmt_tmp_${mod_name}_program.v')
+		main_program_file := os.join(tmpfolder,'vfmt_tmp_${mod_name}_program.v')
 		if os.exists(main_program_file) {
 			os.rm(main_program_file)
 		}
@@ -384,7 +383,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	// This function get_compile_name_of_potential_v_project returns:
 	// a) the file's folder, if file is part of a v project
 	// b) the file itself, if the file is a standalone v program
-	pfolder := os.realpath(filepath.dir(file))
+	pfolder := os.realpath(os.dir(file))
 	// a .v project has many 'module main' files in one folder
 	// if there is only one .v file, then it must be a standalone
 	all_files_in_pfolder := os.ls(pfolder) or {
@@ -392,7 +391,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	}
 	mut vfiles := []string
 	for f in all_files_in_pfolder {
-		vf := filepath.join(pfolder,f)
+		vf := os.join(pfolder,f)
 		if f.starts_with('.') || !f.ends_with('.v') || os.is_dir(vf) {
 			continue
 		}

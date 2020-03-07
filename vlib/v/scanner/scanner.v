@@ -5,9 +5,7 @@ module scanner
 
 import (
 	os
-	filepath
 	v.token
-	// strings
 )
 
 const (
@@ -929,7 +927,7 @@ fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
 	s.started = false
 	s.debug = true
-	fname := s.file_path.all_after(filepath.separator)
+	fname := s.file_path.all_after(os.path_separator)
 	println('\n===DEBUG TOKENS $fname===')
 	for {
 		tok := s.scan()

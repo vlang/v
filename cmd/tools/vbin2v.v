@@ -2,7 +2,6 @@ module main
 
 import os
 import flag
-import filepath
 
 const (
 	tool_version = '0.0.3'
@@ -42,7 +41,7 @@ fn (context Context) footer() {
 }
 
 fn (context Context) file2v(file string) {
-	fname := filepath.filename(file)
+	fname := os.filename(file)
 	fname_no_dots := fname.replace('.', '_')
 	byte_name := '${context.prefix}${fname_no_dots}'
 	fbytes := os.read_bytes(file) or {

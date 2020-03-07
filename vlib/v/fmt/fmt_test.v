@@ -2,7 +2,6 @@ import (
 	os
 	term
 	benchmark
-	filepath
 	v.fmt
 	v.parser
 	v.table
@@ -21,7 +20,7 @@ fn test_fmt() {
 		eprintln('VEXE must be set')
 		exit(error_missing_vexe)
 	}
-	vroot := filepath.dir(vexe)
+	vroot := os.dir(vexe)
 	tmpfolder := os.tmpdir()
 	diff_cmd := find_working_diff_command() or {
 		''
@@ -33,7 +32,7 @@ fn test_fmt() {
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
 		fmt_bench.step()
-		ifilename := filepath.filename(ipath)
+		ifilename := os.filename(ipath)
 		opath := ipath.replace('_input.vv', '_expected.vv')
 		if !os.exists(opath) {
 			fmt_bench.fail()
@@ -55,7 +54,7 @@ fn test_fmt() {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue
 			}
-			vfmt_result_file := filepath.join(tmpfolder,'vfmt_run_over_${ifilename}')
+			vfmt_result_file := os.join(tmpfolder,'vfmt_run_over_${ifilename}')
 			os.write_file(vfmt_result_file, result_ocontent)
 			os.system('$diff_cmd --minimal  --text   --unified=2 --show-function-line="fn " "$opath" "$vfmt_result_file"')
 			continue
