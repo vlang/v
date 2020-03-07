@@ -127,7 +127,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 					f.writeln('continue')
 				}
 				else {}
-	}
+			}
 		}
 		ast.ConstDecl {
 			if it.is_pub {
@@ -245,8 +245,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.expr(it.expr)
 			f.writeln('')
 		}
+		ast.Import {
+			// already handled in f.imports		
+		}
 		else {
-			println('unknown node')
+			eprintln('fmt stmt: unknown node: ' + typeof(node))
 			// exit(1)
 		}
 	}
@@ -526,7 +529,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			}
 		}
 		else {
-			println('fmt expr: unhandled node ') // + typeof(node))
+			eprintln('fmt expr: unhandled node ' + typeof(node))
 		}
 	}
 }
