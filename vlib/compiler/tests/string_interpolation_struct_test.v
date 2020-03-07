@@ -1,7 +1,11 @@
+// This file tests whether V can generate a convenience default .str() method
+// for a custom struct, when the developer has not defined one himself.
+// The .str() methods are used for string interpolation and for println() calls.
+
 struct Man {
-  name string
-  age int
-  interests []string
+	name string
+	age int
+	interests []string
 }
 
 fn test_default_struct_string_interpolation(){
@@ -13,5 +17,5 @@ fn test_default_struct_string_interpolation(){
 	assert s.contains('interests: [')
 	assert s.contains('"being nice"')
 	assert s.contains('}')
-	println(s)
+	//println(s)
 }

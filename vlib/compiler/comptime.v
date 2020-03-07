@@ -357,6 +357,41 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 	}
 }
 
+fn (p mut Parser) gen_default_str_method_if_missing(typename string) (bool, string) {
+	// NB: string_type_name can be != typename, if the base typename has str()
+	mut string_type_name := typename
+	typ := p.table.find_type(typename)
+	is_varg := typename.starts_with('varg_')
+	is_array := typename.starts_with('array_')
+	is_struct := typ.cat == .struct_
+	mut has_str_method := p.table.type_has_method(typ, 'str')
+	if !has_str_method {
+		if is_varg {
+			p.gen_varg_str(typ)
+			has_str_method = true
+		}
+		else if is_array {
+			p.gen_array_str(typ)
+			has_str_method = true
+		}
+		else if is_struct {
+			p.gen_struct_str(typ)
+			has_str_method = true
+		}
+		else {
+			btypename := p.base_type(typ.name)
+			if btypename != typ.name {
+				base_type := p.find_type(btypename)
+				if base_type.has_method('str'){
+					string_type_name = base_type.name
+					has_str_method = true
+				}
+			}
+		}
+	}
+	return has_str_method, string_type_name
+}
+
 fn (p mut Parser) gen_array_str(typ Type) {
 	if typ.has_method('str') {
 		return
@@ -379,7 +414,10 @@ fn (p mut Parser) gen_array_str(typ Type) {
 		p.gen_array_str(elm_type2)
 	}
 	else if p.typ_to_fmt(elm_type, 0) == '' && !p.table.type_has_method(elm_type2, 'str') {
-		p.error('cant print ${elm_type}[], unhandled print of ${elm_type}')
+		has_str_method, _ := p.gen_default_str_method_if_missing( elm_type )
+		if !has_str_method {
+			p.error('cant print []${elm_type}, unhandled print of ${elm_type}')
+		}
 	}
 	p.v.vgen_buf.writeln('
 pub fn (a $typ.name) str() string {
@@ -398,7 +436,7 @@ pub fn (a $typ.name) str() string {
 	p.cgen.fns << 'string ${typ.name}_str();'
 }
 
-// `Foo { bar: 3, baz: 'hi' }` => '{ bar: 3, baz: "hi" }'
+// `Foo { bar: 3, baz: 'hi' }` => interpolated to string 'Foo { bar: 3, baz: "hi" }'
 fn (p mut Parser) gen_struct_str(typ Type) {
 	p.add_method(typ.name, Fn{
 		name: 'str'
