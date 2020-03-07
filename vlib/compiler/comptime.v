@@ -413,7 +413,8 @@ fn (p mut Parser) gen_struct_str(typ Type) {
 	})
 	mut sb := strings.new_builder(typ.fields.len * 20)
 	sb.writeln('pub fn (a $typ.name) str() string {\nreturn')
-	sb.writeln("'{")
+	short_struct_name := typ.name.all_after('__')
+	sb.writeln("'$short_struct_name {")
 	for field in typ.fields {
 		sb.writeln('\t$field.name: $' + 'a.${field.name}')
 	}
