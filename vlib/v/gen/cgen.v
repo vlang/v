@@ -16,6 +16,7 @@ struct Gen {
 mut:
 	fn_decl     &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	tmp_count   int
+	is_c_call   bool // e.g. `C.printf("v")`
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
@@ -86,8 +87,7 @@ pub fn (g mut Gen) write_multi_return_types() {
 		// TODO copy pasta StructDecl
 		// for field in struct_info.fields {
 		for i, mr_typ in info.types {
-			field_type_sym := g.table.get_type_symbol(mr_typ)
-			type_name := field_type_sym.name.replace('.', '__')
+			type_name := g.typ(mr_typ)
 			g.definitions.writeln('\t$type_name arg${i};')
 		}
 		g.definitions.writeln('} $name;\n')
@@ -388,11 +388,13 @@ fn (g mut Gen) expr(node ast.Expr) {
 			mut name := it.name.replace('.', '__')
 			if it.is_c {
 				// Skip "C__"
+				g.is_c_call = true
 				name = name[3..]
 			}
 			g.write('${name}(')
 			g.call_args(it.args)
 			g.write(')')
+			g.is_c_call = false
 			/*
 			for i, expr in it.args {
 				g.expr(expr)
@@ -587,7 +589,12 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('sizeof($it.type_name)')
 		}
 		ast.StringLiteral {
-			g.write('tos3("$it.val")')
+			if g.is_c_call {
+				g.write('"$it.val"')
+			}
+			else {
+				g.write('tos3("$it.val")')
+			}
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
@@ -744,8 +751,7 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				// g.definitions.writeln('typedef struct {')
 				g.definitions.writeln('struct $name {')
 				for field in info.fields {
-					field_type_sym := g.table.get_type_symbol(field.typ)
-					type_name := field_type_sym.name.replace('.', '__')
+					type_name := g.typ(field.typ)
 					g.definitions.writeln('\t$type_name $field.name;')
 				}
 				// g.definitions.writeln('} $name;\n')
