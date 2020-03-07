@@ -2,6 +2,7 @@ module main
 
 import gg2 as gg
 import gx
+import os
 
 const (
 	win_width = 600
@@ -24,7 +25,7 @@ fn main() {
 		window_title: 'Empty window'
 		frame_fn: frame
 		user_data: app
-		font_path: 'examples/tetris/RobotoMono-Regular.ttf'
+		font_path: os.resource_abs_path('assets/fonts/RobotoMono-Regular.ttf')
 	})
 	app.gg.run()
 }
@@ -47,4 +48,3 @@ fn (app &App) draw() {
 	app.gg.draw_rect(10, 10, 100, 30, gx.blue)
 	app.gg.draw_empty_rect(10, 150, 80, 40, gx.green)
 }
-
