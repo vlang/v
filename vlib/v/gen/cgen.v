@@ -218,7 +218,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.ForStmt {
 			g.write('while (')
 			g.expr(it.cond)
-			g.writeln(') { //1')
+			g.writeln(') {')
 			for stmt in it.stmts {
 				g.stmt(stmt)
 			}
