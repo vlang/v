@@ -8,6 +8,8 @@ import (
 	v.table
 )
 
+pub type TypeDecl = AliasTypeDecl | SumTypeDecl
+
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral |
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr |
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr |
@@ -439,10 +441,18 @@ pub:
 	vals   []string
 }
 
-pub struct TypeDecl {
+pub struct AliasTypeDecl {
 pub:
 	name   string
 	is_pub bool
+	parent_type table.Type
+}
+
+pub struct SumTypeDecl {
+pub:
+	name   string
+	is_pub bool
+	sub_types []table.Type
 }
 
 pub struct DeferStmt {
