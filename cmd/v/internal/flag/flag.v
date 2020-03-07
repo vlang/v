@@ -72,6 +72,9 @@ pub fn (p mut Instance) int() ?int {
 	val := p.string() or {
 		return error(err)
 	}
+	if !val[0].is_digit() {
+		return error('an integer number was expected, but "$val" was found instead.')
+	}
 	return val.int()
 }
 
