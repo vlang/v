@@ -41,7 +41,7 @@ pub fn line_to_timestamp_and_commit(line string) (int,string) {
 
 pub fn normalized_workpath_for_commit(workdir string, commit string) string {
 	nc := 'v_at_' + commit.replace('^', '_').replace('-', '_').replace('/', '_')
-	return os.realpath(workdir + os.separator + nc)
+	return os.realpath(workdir + os.path_separator + nc)
 }
 
 pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string,string) {

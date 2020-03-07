@@ -7,7 +7,7 @@ import strings
 #include <fcntl.h>
 
 pub const (
-	separator = '/'
+	path_separator = '/'
 )
 
 const (

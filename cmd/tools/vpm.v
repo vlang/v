@@ -176,7 +176,7 @@ fn vpm_install(module_names []string) {
 			println('Skipping module "$name", since it uses an unsupported VCS {$vcs} .')
 			continue
 		}
-		final_module_path := os.realpath(os.join(settings.vmodules_path,mod.name.replace('.', os.separator)))
+		final_module_path := os.realpath(os.join(settings.vmodules_path,mod.name.replace('.', os.path_separator)))
 		if os.exists(final_module_path) {
 			vpm_update([name])
 			continue
@@ -286,7 +286,7 @@ fn vpm_remove(module_names []string) {
 }
 
 fn valid_final_path_of_existing_module(name string) ?string {
-	name_of_vmodules_folder := os.join(settings.vmodules_path,name.replace('.', os.separator))
+	name_of_vmodules_folder := os.join(settings.vmodules_path,name.replace('.', os.path_separator))
 	final_module_path := os.realpath(name_of_vmodules_folder)
 	if !os.exists(final_module_path) {
 		println('No module with name "$name" exists at $name_of_vmodules_folder')

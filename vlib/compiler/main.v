@@ -689,8 +689,8 @@ pub fn (v mut V) add_v_files_to_compile() {
 		// Cached modules are broken currently
 		/*
 		if v.pref.vpath != '' && v.pref.build_mode != .build_module && !mod.contains('vweb') {
-			mod_path := mod.replace('.', os.separator)
-			vh_path := '$v_modules_path${os.separator}vlib${os.separator}${mod_path}.vh'
+			mod_path := mod.replace('.', os.path_separator)
+			vh_path := '$v_modules_path${os.path_separator}vlib${os.path_separator}${mod_path}.vh'
 			if v.pref.is_cache && os.exists(vh_path) {
 				eprintln('using cached module `$mod`: $vh_path')
 				v.cached_mods << mod
@@ -933,5 +933,5 @@ pub fn set_vroot_folder(vroot_path string) {
 	// VEXE env variable is needed so that compiler.vexe_path()
 	// can return it later to whoever needs it:
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	os.setenv('VEXE', os.realpath([vroot_path, vname].join(os.separator)), true)
+	os.setenv('VEXE', os.realpath([vroot_path, vname].join(os.path_separator)), true)
 }

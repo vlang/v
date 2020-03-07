@@ -48,7 +48,7 @@ fn diff_files( file_result, file_expected string ) string {
 }
 
 pub fn run_repl_file(wd string, vexec string, file string) ?string {
-	vexec_folder := os.dir(vexec) + os.separator
+	vexec_folder := os.dir(vexec) + os.path_separator
 	fcontent := os.read_file(file) or {	return error('Could not read file ${file}') }
 	content := fcontent.replace('\r', '')
 	input := content.all_before('===output===\n')
@@ -71,7 +71,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	.replace('>>>', '')
 	.replace('... ', '')
 	.all_after('Use Ctrl-C or `exit` to exit\n')
-	.replace(wd  + os.separator, '' )
+	.replace(wd  + os.path_separator, '' )
 	.replace(vexec_folder, '')
 	.replace('\\', '/')
 

@@ -200,7 +200,7 @@ pub fn (b &Builder) log(s string) {
 [inline]
 fn module_path(mod string) string {
 	// submodule support
-	return mod.replace('.', os.separator)
+	return mod.replace('.', os.path_separator)
 }
 
 pub fn (b &Builder) find_module_path(mod string) ?string {

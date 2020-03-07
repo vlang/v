@@ -6,7 +6,7 @@ import strings
 #include <winsock2.h>
 
 pub const (
-	separator = '\\'
+	path_separator = '\\'
 )
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types

@@ -661,14 +661,14 @@ pub fn ext(path string) string {
 }
 
 pub fn dir(path string) string {
-	pos := path.last_index(separator) or {
+	pos := path.last_index(path_separator) or {
 		return '.'
 	}
 	return path[..pos]
 }
 
 pub fn basedir(path string) string {
-	pos := path.last_index(separator) or {
+	pos := path.last_index(path_separator) or {
 		return path
 	}
 	// NB: *without* terminating /
@@ -676,7 +676,7 @@ pub fn basedir(path string) string {
 }
 
 pub fn filename(path string) string {
-	return path.all_after(separator)
+	return path.all_after(path_separator)
 }
 
 // get_line returns a one-line string from stdin
@@ -796,9 +796,9 @@ pub fn user_os() string {
 // home_dir returns path to user's home directory.
 pub fn home_dir() string {
 	$if windows {
-		return os.getenv('USERPROFILE') + os.separator
+		return os.getenv('USERPROFILE') + os.path_separator
 	} $else {
-		return os.getenv('HOME') + os.separator
+		return os.getenv('HOME') + os.path_separator
 	}
 }
 
@@ -1008,7 +1008,7 @@ pub fn join(base string, dirs ...string) string {
 	for d in dirs {
 		result << d
 	}
-	return result.join(separator)
+	return result.join(path_separator)
 }
 
 // walk_ext returns a recursive list of all file paths ending with `ext`.
@@ -1020,7 +1020,7 @@ pub fn walk_ext(path, ext string) []string {
 		return []
 	}
 	mut res := []string
-	separator := if path.ends_with(os.separator) { '' } else { os.separator }
+	separator := if path.ends_with(os.path_separator) { '' } else { os.path_separator }
 	for i, file in files {
 		if file.starts_with('.') {
 			continue
@@ -1046,7 +1046,7 @@ pub fn walk(path string, f fn(path string)) {
 		return
 	}
 	for file in files {
-		p := path + os.separator + file
+		p := path + os.path_separator + file
 		if os.is_dir(p) && !os.is_link(p) {
 			walk(p, f)
 		}
@@ -1112,9 +1112,9 @@ pub fn flush() {
 }
 
 pub fn mkdir_all(path string) {
-	mut p := if path.starts_with(os.separator) { os.separator } else { '' }
-	for subdir in path.split(os.separator) {
-		p += subdir + os.separator
+	mut p := if path.starts_with(os.path_separator) { os.path_separator } else { '' }
+	for subdir in path.split(os.path_separator) {
+		p += subdir + os.path_separator
 		if !os.is_dir(p) {
 			os.mkdir(p) or {
 				panic(err)

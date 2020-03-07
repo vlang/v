@@ -181,7 +181,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		p |
 		file_path:path,
 		file_path_dir: path_dir,
-		file_name:path.all_after(os.separator),
+		file_name:path.all_after(os.path_separator),
 		file_platform:path_platform,
 		file_pcguard:path_pcguard,
 		is_vh:path.ends_with('.vh'),

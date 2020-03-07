@@ -131,14 +131,14 @@ fn walk_callback(file string) {
     if file == '.' || file == '..' {
         return
     }
-    assert file == 'test_walk' + os.separator + 'test1'
+    assert file == 'test_walk' + os.path_separator + 'test1'
 }
 
 fn test_walk() {
     folder := 'test_walk'
     os.mkdir(folder) or { panic(err) }
 
-    file1 := folder + os.separator + 'test1'
+    file1 := folder + os.path_separator + 'test1'
 
     os.write_file(file1,'test-1')
 
@@ -187,7 +187,7 @@ fn test_tmpdir(){
 	assert t.len > 0
 	assert os.is_dir(t)
 
-	tfile := t + os.separator + 'tmpfile.txt'
+	tfile := t + os.path_separator + 'tmpfile.txt'
 
 	os.rm(tfile) // just in case
 
@@ -266,7 +266,7 @@ fn test_symlink() {
 }
 
 fn test_is_executable_writable_readable() {
-  file_name := os.tmpdir() + os.separator + 'rwxfile.exe'
+  file_name := os.tmpdir() + os.path_separator + 'rwxfile.exe'
 
   mut f := os.create(file_name) or {
     eprintln('failed to create file $file_name')
