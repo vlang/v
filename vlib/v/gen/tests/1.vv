@@ -59,11 +59,12 @@ fn foo(a int) {
 	for i := 0; i < 10; i++ {
 
 	}
-	nums := [1,2,3]
+	mut nums := [1,2,3]
 	nums2 := nums[..2]
 	nums3 := nums[1..2]
 	nums4 := nums[1..]
 	number := nums[0]
+	nums[1] = 10
 	bools := [true, false]
 	users := [User{}]
 	//ptr := &User{}

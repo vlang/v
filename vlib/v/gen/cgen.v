@@ -9,14 +9,16 @@ import (
 )
 
 struct Gen {
-	out         strings.Builder
-	typedefs    strings.Builder
-	definitions strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	table       &table.Table
+	out            strings.Builder
+	typedefs       strings.Builder
+	definitions    strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	table          &table.Table
 mut:
-	fn_decl     &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	tmp_count   int
-	is_c_call   bool // e.g. `C.printf("v")`
+	fn_decl        &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	tmp_count      int
+	is_c_call      bool // e.g. `C.printf("v")`
+	is_assign_expr bool
+	is_array_set   bool
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
@@ -383,9 +385,18 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('/* as */')
 		}
 		ast.AssignExpr {
+			g.is_assign_expr = true
 			g.expr(it.left)
-			g.write(' $it.op.str() ')
+			// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
+			if !g.is_array_set {
+				g.write(' $it.op.str() ')
+			}
 			g.expr(it.val)
+			if g.is_array_set {
+				g.write(')')
+				g.is_array_set = false
+			}
+			g.is_assign_expr = false
 		}
 		ast.Assoc {
 			g.write('/* assoc */')
@@ -498,40 +509,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.index_expr(it)
 		}
 		ast.InfixExpr {
-			// if it.left_type == table.string_type_idx {
-			// g.write('/*$it.left_type str*/')
-			// }
-			// string + string
-			if it.op == .plus && it.left_type == table.string_type_idx {
-				g.write('string_add(')
-				g.expr(it.left)
-				g.write(', ')
-				g.expr(it.right)
-				g.write(')')
-			}
-			else if it.op == .eq && it.left_type == table.string_type_idx {
-				g.write('string_eq(')
-				g.expr(it.left)
-				g.write(', ')
-				g.expr(it.right)
-				g.write(')')
-			}
-			// arr << val
-			else if it.op == .left_shift && g.table.get_type_symbol(it.left_type).kind == .array {
-				g.write('array_push(')
-				g.expr(it.left)
-				g.write(', ')
-				g.expr(it.right)
-				g.write(')')
-			}
-			else {
-				// if it.op == .dot {
-				// println('!! dot')
-				// }
-				g.expr(it.left)
-				g.write(' $it.op.str() ')
-				g.expr(it.right)
-			}
+			g.infix_expr(it)
 		}
 		ast.IntegerLiteral {
 			g.write(it.val.str())
@@ -687,6 +665,49 @@ fn (g mut Gen) expr(node ast.Expr) {
 	}
 }
 
+fn (g mut Gen) infix_expr(it ast.InfixExpr) {
+	// if it.left_type == table.string_type_idx {
+	// g.write('/*$it.left_type str*/')
+	// }
+	// string + string, string == string etc
+	if it.left_type == table.string_type_idx {
+		fn_name := match it.op {
+			.plus{
+				'string_add('
+			}
+			.eq{
+				'string_eq('
+			}
+			.ne{
+				'string_ne('
+			}
+			else {
+				''}
+	}
+		g.write(fn_name)
+		g.expr(it.left)
+		g.write(', ')
+		g.expr(it.right)
+		g.write(')')
+	}
+	// arr << val
+	else if it.op == .left_shift && g.table.get_type_symbol(it.left_type).kind == .array {
+		g.write('array_push(')
+		g.expr(it.left)
+		g.write(', ')
+		g.expr(it.right)
+		g.write(')')
+	}
+	else {
+		// if it.op == .dot {
+		// println('!! dot')
+		// }
+		g.expr(it.left)
+		g.write(' $it.op.str() ')
+		g.expr(it.right)
+	}
+}
+
 fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	// TODO else doesn't work with sum types
 	mut is_range := false
@@ -729,11 +750,21 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	if !is_range && node.container_type != 0 {
 		sym := g.table.get_type_symbol(node.container_type)
 		if sym.kind == .array {
-			g.write('array_get(')
-			g.expr(node.left)
-			g.write(', ')
-			g.expr(node.index)
-			g.write(')')
+			if g.is_assign_expr {
+				g.is_array_set = true
+				g.write('array_set(&')
+				g.expr(node.left)
+				g.write(', ')
+				g.expr(node.index)
+				g.write(', ')
+			}
+			else {
+				g.write('array_get(')
+				g.expr(node.left)
+				g.write(', ')
+				g.expr(node.index)
+				g.write(')')
+			}
 		}
 		else if sym.kind == .string {
 			g.write('string_at(')

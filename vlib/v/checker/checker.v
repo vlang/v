@@ -157,6 +157,7 @@ fn (c mut Checker) assign_expr(assign_expr ast.AssignExpr) {
 	}
 	left_type := c.expr(assign_expr.left)
 	c.expected_type = left_type
+	// assign_expr.left_type = left_type
 	// t := c.table.get_type_symbol(left_type)
 	// println('setting exp type to $c.expected_type $t.name')
 	right_type := c.expr(assign_expr.val)
