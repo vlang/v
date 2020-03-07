@@ -549,6 +549,27 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.writeln('}')
 			}
 		}
+		ast.MapInit {
+			key_typ_sym := g.table.get_type_symbol(it.key_type)
+			value_typ_sym := g.table.get_type_symbol(it.value_type)
+			size := it.vals.len
+			if size  > 0 {
+				g.write('new_map_init($size, sizeof($value_typ_sym.name), (${key_typ_sym.name}[$size]){')
+				for expr in it.keys {
+					g.expr(expr)
+					g.write(', ')
+				}
+				g.write('}, (${value_typ_sym.name}[$size]){')
+				for expr in it.vals {
+					g.expr(expr)
+					g.write(', ')
+				}
+				g.write('})')
+			}
+			else {
+				g.write('new_map(1, sizeof($value_typ_sym.name))')
+			}
+		}
 		ast.MethodCallExpr {
 			mut receiver_name := 'TODO'
 			// TODO: there are still due to unchecked exprs (opt/some fn arg)

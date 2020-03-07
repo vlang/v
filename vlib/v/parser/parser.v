@@ -530,7 +530,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	// `map[string]int` initialization
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
 		map_type := p.parse_map_type()
-		return ast.Type{
+		return ast.MapInit {
 			typ: map_type
 		}
 	}

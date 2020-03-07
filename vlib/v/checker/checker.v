@@ -875,6 +875,14 @@ pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
 }
 
 pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {
+	// `x ;= map[string]string` - set in parser
+	if node.typ != 0 {
+		info := c.table.get_type_symbol(node.typ).map_info()
+		node.key_type = info.key_type
+		node.value_type = info.value_type
+		return node.typ
+	}
+	// `{'age': 20}`
 	key0_type := c.expr(node.keys[0])
 	val0_type := c.expr(node.vals[0])
 	for i, key in node.keys {
@@ -897,6 +905,8 @@ pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {
 	}
 	map_type := table.new_type(c.table.find_or_register_map(key0_type, val0_type))
 	node.typ = map_type
+	node.key_type = key0_type
+	node.value_type = val0_type
 	return map_type
 }
 

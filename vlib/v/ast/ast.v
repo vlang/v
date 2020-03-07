@@ -490,11 +490,13 @@ mut:
 
 pub struct MapInit {
 pub:
-	pos  token.Position
-	keys []Expr
-	vals []Expr
+	pos  	   token.Position
+	keys 	   []Expr
+	vals 	   []Expr
 mut:
-	typ  table.Type
+	typ  	   table.Type
+	key_type   table.Type
+	value_type table.Type
 }
 
 // s[10..20]
