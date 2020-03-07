@@ -310,6 +310,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	if it.is_method {
 		styp := g.typ(it.receiver.typ)
 		g.write('$styp $it.receiver.name')
+		// TODO mut
 		g.definitions.write('$styp $it.receiver.name')
 		if it.args.len > 0 {
 			g.write(', ')
@@ -347,6 +348,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		g.definitions.writeln(');')
 	}
 	for stmt in it.stmts {
+		// g.write('\t')
 		g.stmt(stmt)
 	}
 	if is_main {
@@ -609,7 +611,12 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.SelectorExpr {
 			g.expr(it.expr)
-			g.write('.')
+			if table.type_nr_muls(it.expr_type) > 0 {
+				g.write('->')
+			}
+			else {
+				g.write('.')
+			}
 			g.write(it.field)
 		}
 		ast.Type {

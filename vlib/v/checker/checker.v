@@ -296,8 +296,9 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 	return table.void_type
 }
 
-pub fn (c mut Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type {
+pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.Type {
 	typ := c.expr(selector_expr.expr)
+	selector_expr.expr_type = typ
 	typ_sym := c.table.get_type_symbol(typ)
 	field_name := selector_expr.field
 	if field := typ_sym.find_field(field_name) {
@@ -598,7 +599,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return c.expr(it.expr)
 		}
 		ast.SelectorExpr {
-			return c.selector_expr(it)
+			return c.selector_expr(mut it)
 		}
 		ast.SizeOf {
 			return table.int_type
