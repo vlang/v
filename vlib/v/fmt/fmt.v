@@ -274,7 +274,7 @@ fn (f mut Fmt) type_decl(node ast.TypeDecl) {
 			f.write('type $it.name = ')
 			mut sum_type_names := []string
 			for t in it.sub_types {
-				sum_type_names << f.table.get_type_symbol(t).name
+				sum_type_names << f.table.type_to_str(t)
 			}
 			f.write( sum_type_names.join(' | ') )
 		}
