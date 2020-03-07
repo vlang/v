@@ -273,6 +273,10 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		info := typ_sym.info as table.Array
 		return info.elem_type
 	}
+	// repeat() returns `array`, need to return `array_xxx`
+	else if typ_sym.kind == .array && name in ['repeat'] {
+		return typ
+	}
 	if method := typ_sym.find_method(name) {
 		for i, arg_expr in method_call_expr.args {
 			c.expected_type = method.args[i].typ

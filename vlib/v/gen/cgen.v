@@ -66,11 +66,18 @@ pub fn (g &Gen) styp(t string) string {
 
 pub fn (g mut Gen) write_array_types() {
 	for typ in g.table.types {
-		if typ.kind != .array {
-			continue
+		if typ.kind == .array {
+			styp := typ.name.replace('.', '__')
+			g.definitions.writeln('typedef array $styp;')
 		}
-		styp := typ.name.replace('.', '__')
-		g.definitions.writeln('typedef array $styp;')
+		else if typ.kind == .array_fixed {
+			styp := typ.name.replace('.', '__')
+			// array_fixed_char_300 => char x[300]
+			mut fixed := styp[12..]
+			len := styp.after('_')
+			fixed = fixed[..fixed.len - len.len - 1]
+			g.definitions.writeln('typedef $fixed $styp [$len];')
+		}
 	}
 }
 
@@ -491,6 +498,13 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.expr(it.right)
 				g.write(')')
 			}
+			else if it.op == .eq && it.left_type == table.string_type_idx {
+				g.write('string_eq(')
+				g.expr(it.left)
+				g.write(', ')
+				g.expr(it.right)
+				g.write(')')
+			}
 			// arr << val
 			else if it.op == .left_shift && g.table.get_type_symbol(it.left_type).kind == .array {
 				g.write('array_push(')
@@ -553,7 +567,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			key_typ_sym := g.table.get_type_symbol(it.key_type)
 			value_typ_sym := g.table.get_type_symbol(it.value_type)
 			size := it.vals.len
-			if size  > 0 {
+			if size > 0 {
 				g.write('new_map_init($size, sizeof($value_typ_sym.name), (${key_typ_sym.name}[$size]){')
 				for expr in it.keys {
 					g.expr(expr)
@@ -576,6 +590,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			if it.typ != 0 {
 				typ_sym := g.table.get_type_symbol(it.typ)
 				receiver_name = typ_sym.name
+				// if typ_sym.kind == .array {
+				// receiver_name = 'array'
+				// }
 			}
 			name := '${receiver_name}_$it.name'.replace('.', '__')
 			g.write('${name}(')
