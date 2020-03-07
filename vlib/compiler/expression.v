@@ -831,7 +831,9 @@ fn (p mut Parser) factor() string {
 			is_sum_type := type_of_var in p.table.sum_types
 			if is_sum_type && vname.len > 0 {
 				// TODO: make this work for arbitrary sumtype expressions, not just simple vars
-				p.gen('${vname}.typ == 0 ? tos3("typeof(): typ == 0") : tos3(__SumTypeNames__${type_of_var}[${vname}.typ - 1])')
+				// NB: __SumTypeNames__[xxx][0] is the name of the sumtype itself;
+				// idx>0 are the names of the sumtype children
+				p.gen('tos3(__SumTypeNames__${type_of_var}[${vname}.typ])') 
 			}else{
 				p.gen('tos3("$type_of_var")')
 			}

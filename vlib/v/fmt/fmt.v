@@ -127,7 +127,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 					f.writeln('continue')
 				}
 				else {}
-	}
+			}
 		}
 		ast.ConstDecl {
 			if it.is_pub {
@@ -245,11 +245,44 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.expr(it.expr)
 			f.writeln('')
 		}
+		ast.Import {
+			// already handled in f.imports
+		}
+		ast.TypeDecl {
+			f.type_decl( it )
+		}
 		else {
-			println('unknown node')
+			eprintln('fmt stmt: unknown node: ' + typeof(node))
 			// exit(1)
 		}
 	}
+}
+
+fn (f mut Fmt) type_decl(node ast.TypeDecl) {
+	match node {
+		ast.AliasTypeDecl {
+			if it.is_pub {
+				f.write('pub ')
+			}
+			ptype := f.table.type_to_str( it.parent_type )
+			f.write('type $it.name $ptype')
+		}
+		ast.SumTypeDecl {
+			if it.is_pub {
+				f.write('pub ')
+			}
+			f.write('type $it.name = ')
+			mut sum_type_names := []string
+			for t in it.sub_types {
+				sum_type_names << f.table.type_to_str(t)
+			}
+			f.write( sum_type_names.join(' | ') )
+		}
+		else {
+			eprintln('fmt type_decl: unknown ' + typeof(node))
+		}
+	}
+	f.writeln('\n')
 }
 
 fn (f mut Fmt) struct_decl(node ast.StructDecl) {
@@ -526,7 +559,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			}
 		}
 		else {
-			println('fmt expr: unhandled node ') // + typeof(node))
+			eprintln('fmt expr: unhandled node ' + typeof(node))
 		}
 	}
 }

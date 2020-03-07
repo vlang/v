@@ -901,6 +901,7 @@ fn (p mut Parser) type_decl() {
 		})
 		if p.pass == .main {
 			p.cgen.consts << 'const char * __SumTypeNames__${name}[] = {'
+			p.cgen.consts << '    "$name",'
 			for ctype_name in ctype_names {
 				p.cgen.consts << '    "$ctype_name",'
 			}

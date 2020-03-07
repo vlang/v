@@ -7,7 +7,7 @@ import (
 	strings
 )
 
-pub type TypeInfo = Array | ArrayFixed | Map | Struct | 	
+pub type TypeInfo = Array | ArrayFixed | Map | Struct |
 MultiReturn | Alias | Enum | SumType
 
 pub struct TypeSymbol {
@@ -344,8 +344,18 @@ pub fn (k Kind) str() string {
 		.multi_return{
 			'multi_return'
 		}
+		.sum_type{
+			'sum_type'
+		}
+		.alias{
+			'alias'
+		}
+		.enum_{
+			'enum'
+		}
 		else {
-			'unknown'}
+			'unknown'
+		}
 	}
 	return k_str
 }
@@ -405,6 +415,7 @@ pub mut:
 }
 
 pub struct SumType {
+pub:
 	variants []Type
 }
 
