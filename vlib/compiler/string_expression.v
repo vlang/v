@@ -114,15 +114,39 @@ fn (p mut Parser) string_expr() {
 		else {
 			f := p.typ_to_fmt(typ, 0)
 			if f == '' {
-				is_array := typ.starts_with('array_')
 				typ2 := p.table.find_type(typ)
-				has_str_method := p.table.type_has_method(typ2, 'str')
-				if is_array || has_str_method {
-					if is_array && !has_str_method {
-						p.gen_array_str(typ2)
+				is_varg := typ.starts_with('varg_')
+				is_array := typ.starts_with('array_')
+				is_struct := typ2.cat == .struct_
+				mut has_str_method := p.table.type_has_method(typ2, 'str')
+				mut styp := typ
+				if !has_str_method {
+					if is_varg {
+						p.gen_varg_str(typ2)
+						has_str_method = true
 					}
+					else if is_array {
+						p.gen_array_str(typ2)
+						has_str_method = true
+					}
+					else if is_struct {
+						p.gen_struct_str(typ2)
+						has_str_method = true
+					}
+					else {
+						btypename := p.base_type(typ2.name)
+						if btypename != typ2.name {
+							base_type := p.find_type(btypename)
+							if base_type.has_method('str'){
+								styp = base_type.name
+								has_str_method = true
+							}
+						}
+					}
+				}
+				if has_str_method {
 					tmp_var := p.get_tmp()
-					p.cgen.insert_before('string $tmp_var = ${typ}_str(${val});')
+					p.cgen.insert_before('string $tmp_var = ${styp}_str(${val});')
 					args = args.all_before_last(val) + '${tmp_var}.len, ${tmp_var}.str'
 					format += '%.*s '
 				}
@@ -137,7 +161,7 @@ fn (p mut Parser) string_expr() {
 	if complex_inter {
 		p.fgen('}')
 	}
-  
+
 	// p.fgen('\'')
 	// println("hello %d", num) optimization.
 	if p.cgen.nogen {
@@ -165,4 +189,3 @@ fn (p mut Parser) string_expr() {
 		p.gen('_STR($format$args)')
 	}
 }
-
