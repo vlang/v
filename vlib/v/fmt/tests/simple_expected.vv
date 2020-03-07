@@ -129,6 +129,8 @@ struct Bar {
 	val int
 }
 
+type FooBar = Foo | Bar
+
 const (
 	reserved_types = {
 		'i8': true
