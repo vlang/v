@@ -317,7 +317,11 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	// Receiver is the first argument
 	if it.is_method {
-		styp := g.typ(it.receiver.typ)
+		mut styp := g.typ(it.receiver.typ)
+		// if table.type_nr_muls(it.receiver.typ) > 0 {
+		if it.rec_mut {
+			styp += '*'
+		}
 		g.write('$styp $it.receiver.name')
 		// TODO mut
 		g.definitions.write('$styp $it.receiver.name')
@@ -415,15 +419,6 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.call_args(it.args)
 			g.write(')')
 			g.is_c_call = false
-			/*
-			for i, expr in it.args {
-				g.expr(expr)
-				if i != it.args.len - 1 {
-					g.write(', ')
-				}
-			}
-			*/
-
 		}
 		ast.CastExpr {
 			if it.typ == table.string_type_idx {

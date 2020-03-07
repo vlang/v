@@ -17,7 +17,7 @@ typedef struct {
 // end of definitions #endif
 int pi2; // inited later
 void foo(int a);
-void User_inc_age(User u, int n);
+void User_inc_age(User* u, int n);
 int get_int(string a);
 bool get_bool();
 int get_int2();
@@ -93,7 +93,7 @@ i < 10; i++) {
 	println(string_add(s, d));
 }
 
-void User_inc_age(User u, int n) {
+void User_inc_age(User* u, int n) {
 	u.age += n;
 }
 

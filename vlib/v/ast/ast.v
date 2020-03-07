@@ -10,15 +10,15 @@ import (
 
 pub type TypeDecl = AliasTypeDecl | SumTypeDecl
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral |
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr |
-AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr |
-CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr |
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
+AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
+CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | 	
 ConcatExpr | Type | AsCast
 
-pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt |
+pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
 LineComment | MultiLineComment | AssertStmt | UnsafeStmt
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
@@ -443,15 +443,15 @@ pub:
 
 pub struct AliasTypeDecl {
 pub:
-	name   string
-	is_pub bool
+	name        string
+	is_pub      bool
 	parent_type table.Type
 }
 
 pub struct SumTypeDecl {
 pub:
-	name   string
-	is_pub bool
+	name      string
+	is_pub    bool
 	sub_types []table.Type
 }
 
@@ -473,12 +473,12 @@ pub:
 
 pub struct AssignExpr {
 pub:
-	op        token.Kind
-	pos       token.Position
-	left      Expr
-	val       Expr
-//mut:
-	//left_type table.Type
+	op   token.Kind
+	pos  token.Position
+	left Expr
+	val  Expr
+	// mut:
+	// left_type table.Type
 }
 
 pub struct GotoLabel {
