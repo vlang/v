@@ -720,12 +720,16 @@ fn (p mut Parser) const_decl() {
 			// }
 			continue
 		}
+    var_token_idx := p.cur_tok_index()
 		mut name := p.check_name() // `Age = 20`
 		// if !p.pref.building_v && p.mod != 'os' && contains_capital(name) {
 		// p.warn('const names cannot contain uppercase letters, use snake_case instead')
 		// }
 		name = p.prepend_mod(name)
 		mut typ := ''
+		if p.first_pass() && p.table.known_const(name) {
+			p.error_with_token_index('redefinition of `$name`', var_token_idx)
+		}
 		if p.is_vh {
 			// println('CONST VH $p.file_path')
 			// .vh files may not have const values, just types: `const (a int)`
@@ -748,9 +752,6 @@ fn (p mut Parser) const_decl() {
 		else {
 			p.check_space(.assign)
 			typ = p.expression()
-		}
-		if p.first_pass() && p.table.known_const(name) {
-			p.error('redefinition of `$name`')
 		}
 		if p.first_pass() {
 			p.table.register_const(name, typ, p.mod, is_pub)
