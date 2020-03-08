@@ -73,6 +73,7 @@ const (
 #include <locale.h> // tolower
 #include <sys/time.h>
 #include <unistd.h> // sleep
+extern char **environ;
 #endif
 
 #if defined(__CYGWIN__) && !defined(_WIN32)
@@ -135,6 +136,8 @@ $c_common_macros
 
 #include <dbghelp.h>
 #pragma comment(lib, "Dbghelp.lib")
+
+extern wchar_t **_wenviron;
 
 #endif
 
@@ -334,4 +337,3 @@ void sys_exit (int);
 
 '
 )
-
