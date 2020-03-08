@@ -38,7 +38,7 @@ The commands are:
 
    setup-freetype    setup thirdparty freetype on Windows
 
-For a comprehensive list of options, please refer to `v -verbose 1 help`.'
+For a comprehensive list of options, please refer to `v -v help`.'
 //Use "v help <command>" for more information about a command.'
 //TODO When docs have been written for all the subcommands, delete the verbose help text and
 //     tell the user to use "v help <command>" instead.
@@ -78,8 +78,9 @@ Options/commands:
   -o <file>.c       Produce C source without compiling it.
   -o <file>.js      Produce JavaScript source.
   -prod             Build an optimized executable.
-  -v, version       Display compiler version and git hash of the compiler source.
-  -verbose          Produce a verbose log about what the compiler is doing, where it seeks for files and so on.
+  -version          Display compiler version and git hash of the compiler source.
+  -verbose <level>  Produce a verbose log about what the compiler is doing, where it seeks for files and so on.
+  -v                Shorthand for `-verbose 1`
   -live             Enable hot code reloading (required by functions marked with [live]).
   -os <OS>          Produce an executable for the selected OS.
                     OS can be linux, mac, windows, msvc.
