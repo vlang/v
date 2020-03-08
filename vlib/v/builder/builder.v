@@ -206,7 +206,7 @@ fn module_path(mod string) string {
 pub fn (b &Builder) find_module_path(mod string) ?string {
 	mod_path := module_path(mod)
 	for search_path in b.module_search_paths {
-		try_path := os.path_join(search_path,mod_path)
+		try_path := os.path_join(search_path, mod_path)
 		if b.pref.verbosity.is_higher_or_equal(.level_three) {
 			println('  >> trying to find $mod in $try_path ..')
 		}

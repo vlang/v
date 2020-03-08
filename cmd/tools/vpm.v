@@ -342,7 +342,7 @@ fn get_installed_modules() []string {
 	}
 	mut modules := []string
 	for dir in dirs {
-		adir := os.path_join(settings.vmodules_path,dir)
+		adir := os.path_join(settings.vmodules_path, dir)
 		if dir in excluded_dirs || !os.is_dir(adir) {
 			continue
 		}
@@ -351,7 +351,7 @@ fn get_installed_modules() []string {
 			continue
 		}
 		for m in mods {
-			vcs_used_in_dir(os.path_join(adir,m)) or {
+			vcs_used_in_dir(os.path_join(adir, m)) or {
 				continue
 			}
 			modules << '${author}.$m'
@@ -399,7 +399,7 @@ fn get_all_modules() []string {
 }
 
 fn resolve_dependencies(name, module_path string, module_names []string) {
-	vmod_path := os.path_join(module_path,'v.mod')
+	vmod_path := os.path_join(module_path, 'v.mod')
 	if !os.exists(vmod_path) {
 		return
 	}

@@ -391,7 +391,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	}
 	mut vfiles := []string
 	for f in all_files_in_pfolder {
-		vf := os.path_join(pfolder,f)
+		vf := os.path_join(pfolder, f)
 		if f.starts_with('.') || !f.ends_with('.v') || os.is_dir(vf) {
 			continue
 		}

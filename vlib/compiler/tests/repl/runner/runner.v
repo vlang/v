@@ -19,7 +19,7 @@ pub fn full_path_to_v(dirs_in int) string {
 	for i := 0; i < dirs_in; i++ {
 		path = os.dir(path)
 	}
-	vexec := os.path_join( path, vname )
+	vexec := os.path_join(path, vname)
 	/*
 	args := os.args
 	vreal  := os.realpath('v')

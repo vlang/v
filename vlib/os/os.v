@@ -202,8 +202,8 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 		return error(err)
 	}
 	for file in files {
-		sp := os.path_join(source_path,file)
-		dp := os.path_join(dest_path,file)
+		sp := os.path_join(source_path, file)
+		dp := os.path_join(dest_path, file)
 		if os.is_dir(sp) {
 			os.mkdir(dp) or {
 				panic(err)
@@ -632,10 +632,10 @@ pub fn rmdir_all(path string) {
 		return
 	}
 	for item in items {
-		if os.is_dir(os.path_join(path,item)) {
-			rmdir_all(os.path_join(path,item))
+		if os.is_dir(os.path_join(path, item)) {
+			rmdir_all(os.path_join(path, item))
 		}
-		os.rm(os.path_join(path,item))
+		os.rm(os.path_join(path, item))
 	}
 	os.rmdir(path)
 }
@@ -1192,5 +1192,5 @@ pub fn resource_abs_path(path string) string {
 	if vresource.len != 0 {
 		base_path = vresource
 	}
-	return os.realpath( os.path_join( base_path, path ) )
+	return os.realpath(os.path_join(base_path, path))
 }

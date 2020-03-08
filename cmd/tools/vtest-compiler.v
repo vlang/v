@@ -52,7 +52,7 @@ fn v_test_compiler(vargs string) {
 	eprintln('')
 	building_examples_failed := testing.v_build_failing(vargs, 'examples')
 	eprintln('')
-	building_live_failed := testing.v_build_failing(vargs + '-live', os.path_join('examples','hot_reload'))
+	building_live_failed := testing.v_build_failing(vargs + '-live', os.path_join('examples', 'hot_reload'))
 	eprintln('')
 	v_module_install_cmd := '$vexe install nedpals.args'
 	eprintln('')
