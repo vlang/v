@@ -179,13 +179,13 @@ fn (foptions &FormatOptions) format_file(file string) {
 	is_test_file := file.ends_with('_test.v')
 	mod_name,is_module_file := file_to_mod_name_and_is_module_file(file)
 	use_tmp_main_program := is_module_file && !is_test_file
-	mod_folder := os.basedir(file)
+	mod_folder := os.base_dir(file)
 	if use_tmp_main_program {
 		// TODO: remove the need for this
 		// This makes a small program that imports the module,
 		// so that the module files will get processed by the
 		// vfmt implementation.
-		mod_folder_parent = os.basedir(mod_folder)
+		mod_folder_parent = os.base_dir(mod_folder)
 		mut main_program_content := if mod_name == 'builtin' || mod_name == 'main' { 'fn main(){}\n' } else { 'import ${mod_name}\n' + 'fn main(){}\n' }
 		main_program_file := os.join(tmpfolder,'vfmt_tmp_${mod_name}_program.v')
 		if os.exists(main_program_file) {

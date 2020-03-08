@@ -204,7 +204,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	}
 	if !os.exists(font_path) {
 		exe_path := os.executable()
-		exe_dir := os.basedir(exe_path)
+		exe_dir := os.base_dir(exe_path)
 		font_path = '$exe_dir/$font_path'
 	}
 	if !os.exists(font_path) {

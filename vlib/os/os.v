@@ -667,7 +667,7 @@ pub fn dir(path string) string {
 	return path[..pos]
 }
 
-pub fn basedir(path string) string {
+pub fn base_dir(path string) string {
 	pos := path.last_index(path_separator) or {
 		return path
 	}
