@@ -45,7 +45,7 @@ const(
 	// name
 	app_name = 'gen_vc'
 	// version
-	app_version = '0.1.1'
+	app_version = '0.1.2'
 	// description
 	app_description = 'This tool regenerates V\'s bootstrap .c files every time the V master branch is updated.'
 	// assume something went wrong if file size less than this
