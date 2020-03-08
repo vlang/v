@@ -7,7 +7,6 @@ import (
 	benchmark
 	compiler
 	os
-	compiler
 )
 
 pub fn compile(command string, args []string) {
