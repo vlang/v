@@ -347,14 +347,15 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 		return false
 	}
 
-	dir_path := directory_path.trim_space()
+	dir_path := directory_path.trim_space().trim_right('/')
 	mut mount_path := ''
 
 	if dir_path != '.' && os.is_dir(dir_path) {
-		mount_path = '/' + dir_path
+		// Mount point hygene, "./assets" => "/assets".
+		mount_path = '/' + dir_path.trim_left('.').trim('/')
 	}
 
-	ctx.scan_static_directory(directory_path, mount_path)
+	ctx.scan_static_directory(dir_path, mount_path)
 
 	return true
 }
