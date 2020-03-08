@@ -1123,8 +1123,8 @@ pub fn mkdir_all(path string) {
 	}
 }
 
-// cachedir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
-pub fn cachedir() string {
+// cache_dir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
+pub fn cache_dir() string {
 	// See: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
 	// There is a single base directory relative to which user-specific non-essential
 	// (cached) data should be written. This directory is defined by the environment
@@ -1165,7 +1165,7 @@ pub fn tmpdir() string {
 		}
 	}
 	if path == '' {
-		path = os.cachedir()
+		path = os.cache_dir()
 	}
 	if path == '' {
 		path = '/tmp'
