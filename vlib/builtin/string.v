@@ -544,7 +544,7 @@ pub fn (s string) substr(start, end int) string {
 
 [deprecated]
 pub fn (s string) index_old(p string) int {
-	panic('Use `${s}.index()` instead of `${s}.old_index()`')
+	panic('Use `string.index()` instead of `string.index_old()`')
 }
 
 pub fn (s string) index(p string) ?int {
@@ -740,7 +740,7 @@ pub fn (s string) to_upper() string {
 
 pub fn (s string) capitalize() string {
 	if s.len == 0 {
-		return ''
+		return s
 	}
 	sl := s.to_lower()
 	cap := sl[0].str().to_upper() + sl.right(1)
