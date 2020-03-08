@@ -181,7 +181,7 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 	}
 	// single file copy
 	if !os.is_dir(source_path) {
-		adjasted_path := if os.is_dir(dest_path) { os.path_join(dest_path,os.filename(source_path)) } else { dest_path }
+		adjasted_path := if os.is_dir(dest_path) { os.join_path(dest_path,os.filename(source_path)) } else { dest_path }
 		if os.exists(adjasted_path) {
 			if overwrite {
 				os.rm(adjasted_path)
@@ -202,8 +202,8 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 		return error(err)
 	}
 	for file in files {
-		sp := os.path_join(source_path, file)
-		dp := os.path_join(dest_path, file)
+		sp := os.join_path(source_path, file)
+		dp := os.join_path(dest_path, file)
 		if os.is_dir(sp) {
 			os.mkdir(dp) or {
 				panic(err)
@@ -632,10 +632,10 @@ pub fn rmdir_all(path string) {
 		return
 	}
 	for item in items {
-		if os.is_dir(os.path_join(path, item)) {
-			rmdir_all(os.path_join(path, item))
+		if os.is_dir(os.join_path(path, item)) {
+			rmdir_all(os.join_path(path, item))
 		}
-		os.rm(os.path_join(path, item))
+		os.rm(os.join_path(path, item))
 	}
 	os.rmdir(path)
 }
@@ -1002,7 +1002,7 @@ pub fn is_abs(path string) bool {
 }
 
 // join returns path as string from string parameter(s).
-pub fn path_join(base string, dirs ...string) string {
+pub fn join_path(base string, dirs ...string) string {
 	mut result := []string
 	result << base.trim_right('\\/')
 	for d in dirs {
@@ -1192,5 +1192,5 @@ pub fn resource_abs_path(path string) string {
 	if vresource.len != 0 {
 		base_path = vresource
 	}
-	return os.realpath(os.path_join(base_path, path))
+	return os.realpath(os.join_path(base_path, path))
 }

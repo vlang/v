@@ -170,7 +170,7 @@ fn (v mut V) set_module_lookup_paths() {
 		v.module_lookup_paths << os.base_dir(v.compiled_dir) // pdir of _test.v
 	}
 	v.module_lookup_paths << v.compiled_dir
-	v.module_lookup_paths << os.path_join(v.compiled_dir, 'modules')
+	v.module_lookup_paths << os.join_path(v.compiled_dir, 'modules')
 	v.module_lookup_paths << v.pref.lookup_path
 	if v.pref.verbosity.is_higher_or_equal(.level_two) {
 		v.log('v.module_lookup_paths: $v.module_lookup_paths')
@@ -189,7 +189,7 @@ fn (p mut Parser) find_module_path(mod string) ?string {
 
 	mod_path := p.v.module_path(mod)
 	for lookup_path in module_lookup_paths {
-		try_path := os.path_join(lookup_path, mod_path)
+		try_path := os.join_path(lookup_path, mod_path)
 		if p.v.pref.verbosity.is_higher_or_equal(.level_three) {
 			println('  >> trying to find $mod in $try_path ...')
 		}

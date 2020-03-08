@@ -54,7 +54,7 @@ fn test_fmt() {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue
 			}
-			vfmt_result_file := os.path_join(tmpfolder, 'vfmt_run_over_${ifilename}')
+			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
 			os.write_file(vfmt_result_file, result_ocontent)
 			os.system('$diff_cmd --minimal  --text   --unified=2 --show-function-line="fn " "$opath" "$vfmt_result_file"')
 			continue
