@@ -51,3 +51,7 @@ fn (f Foo) fn_with_optional() ?int {
 fn fn_with_ref_return() &Foo {
 	return &Foo{}
 }
+
+[inline] fn fn_with_flag() {
+println('flag')
+}
