@@ -261,3 +261,18 @@ pub fn (f mut File) close() {
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
 }
+
+// os.environ returns a map of all the current environment variables
+// See: https://linux.die.net/man/5/environ
+pub fn environ() map[string]string {
+	mut res := map[string]string
+	e := &byteptr( &C.environ )
+	for i := 0; !isnil(e[i]); i++ {
+		eline := cstring_to_vstring(e[i])
+		eq_index := eline.index_byte(`=`)
+		if eq_index > 0 {
+			res[ eline[0..eq_index] ] = eline[eq_index+1..]
+		}
+	}
+	return res
+}
