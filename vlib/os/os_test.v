@@ -333,6 +333,18 @@ fn test_basedir() {
 	assert os.base_dir('filename') == 'filename'
 }
 
+fn test_environ() {
+	os.setenv('myvar1', 'bar1', true)
+	os.setenv('myvar2', 'bar2', true)
+	assert os.getenv('myvar1') == 'bar1'
+	assert os.getenv('myvar2') == 'bar2'
+	assert os.getenv('myvar_not_defined') == ''
+	all := os.environ()
+	assert all['myvar1'] == 'bar1'
+	assert all['myvar2'] == 'bar2'
+	assert all['myvar_not_defined'] == ''
+}
+
 // this function is called by both test_aaa_setup & test_zzz_cleanup
 // it ensures that os tests do not polute the filesystem with leftover
 // files so that they can be run several times in a row.
