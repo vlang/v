@@ -94,6 +94,7 @@ i < 10; i++) {
 }
 
 void User_inc_age(User* u, int n) {
+	printf("%d", u->age);
 	u->age += n;
 }
 

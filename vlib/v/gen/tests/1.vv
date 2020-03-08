@@ -91,7 +91,10 @@ fn foo(a int) {
 
 }
 
+fn C.printf()
+
 fn (u mut User) inc_age(n int) {
+	C.printf("%d", u.age)
 	u.age += n
 }
 

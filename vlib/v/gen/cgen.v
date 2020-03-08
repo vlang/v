@@ -622,6 +622,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('sizeof($it.type_name)')
 		}
 		ast.StringLiteral {
+			// In C calls we have to generate C strings
+			// `C.printf("hi")` => `printf("hi");`
 			if g.is_c_call {
 				g.write('"$it.val"')
 			}

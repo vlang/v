@@ -311,18 +311,20 @@ fn (a mut array) push(val voidptr) {
 
 // `val` is array.data
 // TODO make private, right now it's used by strings.Builder
-pub fn (a mut array) push_many(val voidptr, size int) {
-	// handle `arr << arr`
-	if a.data == val {
-		copy := a.clone()
-		a.ensure_cap(a.len + size)
+pub fn (a3 mut array) push_many(val voidptr, size int) {
+	if a3.data == val {
+		// handle `arr << arr`
+		copy := a3.clone()
+		a3.ensure_cap(a3.len + size)
+		C.printf("%d", a3.len*2)
+		println(a3.len*2)
 		//C.memcpy(a.data, copy.data, copy.element_size * copy.len)
-		C.memcpy(a.data + a.element_size * a.len, copy.data, a.element_size * size)
+		C.memcpy(a3.data + a3.element_size * a3.len, copy.data, a3.element_size * size)
 	} else {
-		a.ensure_cap(a.len + size)
-		C.memcpy(a.data + a.element_size * a.len, val, a.element_size * size)
+		a3.ensure_cap(a3.len + size)
+		C.memcpy(a3.data + a3.element_size * a3.len, val, a3.element_size * size)
 	}
-	a.len += size
+	a3.len += size
 }
 
 // array.reverse returns a new array with the elements of
@@ -578,7 +580,7 @@ pub fn compare_f32(a, b &f32) int {
 	return 0
 }
 
-// a.pointers() returns a new array, where each element 
+// a.pointers() returns a new array, where each element
 // is the address of the corresponding element in a.
 pub fn (a array) pointers() []voidptr {
 	mut res := []voidptr

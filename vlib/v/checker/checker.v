@@ -207,6 +207,9 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		c.error('unknown fn: $fn_name', call_expr.pos)
 	}
 	if f.is_c || call_expr.is_c {
+		for expr in call_expr.args {
+			c.expr(expr)
+		}
 		return f.return_type
 	}
 	if call_expr.args.len < f.args.len {
@@ -303,6 +306,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.Type {
 	typ := c.expr(selector_expr.expr)
 	selector_expr.expr_type = typ
+	// println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
 	typ_sym := c.table.get_type_symbol(typ)
 	field_name := selector_expr.field
 	if field := typ_sym.find_field(field_name) {
@@ -322,10 +326,6 @@ pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 		}
 	}
 	if typ_sym.kind != .struct_ {
-		if field_name == 'default_mode' {
-			// TODO
-			return table.bool_type
-		}
 		c.error('`$typ_sym.name` is not a struct', selector_expr.pos)
 	}
 	else {
@@ -632,7 +632,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 }
 
 pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
-	// println('IDENT: $it.name - $it.pos.pos')
+	// println('IDENT: $ident.name - $ident.pos.pos')
 	if ident.kind == .variable {
 		// println('===========================')
 		// c.scope.print_vars(0)
@@ -656,7 +656,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 			// update the variable
 			// we need to do this here instead of var_decl since some
 			// vars are registered manually for things like for loops etc
-			// NOTE: or consider making those declerations part of those ast nodes
+			// NOTE: or consider making those declarations part of those ast nodes
 			mut typ := var.typ
 			// set var type on first use
 			if typ == 0 {
