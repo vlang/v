@@ -97,7 +97,7 @@ fn (mcache mut ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 		if 'v.mod' in files {
 			// TODO: actually read the v.mod file and parse its contents to see
 			// if its source folder is different
-			res := ModFileAndFolder{ vmod_file: os.join( cfolder, 'v.mod'), vmod_folder: cfolder }
+			res := ModFileAndFolder{ vmod_file: os.path_join( cfolder, 'v.mod'), vmod_folder: cfolder }
 			return folders_so_far, res
 		}
 		if mcache.check_for_stop( cfolder, files ) {

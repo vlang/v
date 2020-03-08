@@ -14,7 +14,7 @@ fn main() {
 		exit(1)
 	}
 
-	if testing.v_build_failing(params + '-live', os.join( 'examples', 'hot_reload')){
+	if testing.v_build_failing(params + '-live', os.path_join( 'examples', 'hot_reload')){
 		exit(1)
 	}
 

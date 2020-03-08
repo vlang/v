@@ -348,7 +348,7 @@ pub fn (v mut V) compile_x64() {
 		println('v -x64 can only generate Linux binaries for now')
 		println('You are not on a Linux system, so you will not ' + 'be able to run the resulting executable')
 	}
-	//v.files << v.v_files_from_dir(os.join(v.pref.vlib_path,'builtin','bare'))
+	//v.files << v.v_files_from_dir(os.path_join(v.pref.vlib_path,'builtin','bare'))
 	v.files << v.pref.path
 	v.set_module_lookup_paths()
 	mut b := v.new_v2()
@@ -624,7 +624,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 				continue
 			}
 		}
-		res << os.join(dir,file)
+		res << os.path_join(dir,file)
 	}
 	return res
 }
@@ -638,7 +638,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 	}
 	// Builtin cache exists? Use it.
 	if v.pref.is_cache {
-		builtin_vh := os.join(v_modules_path,'vlib','builtin.vh')
+		builtin_vh := os.path_join(v_modules_path,'vlib','builtin.vh')
 		if os.exists(builtin_vh) {
 			v.cached_mods << 'builtin'
 			builtin_files = [builtin_vh]
@@ -721,16 +721,16 @@ pub fn (v &V) get_builtin_files() []string {
 	// Lookup for built-in folder in lookup path.
 	// Assumption: `builtin/` folder implies usable implementation of builtin
 	for location in v.pref.lookup_path {
-		if !os.exists(os.join(location, 'builtin')) {
+		if !os.exists(os.path_join(location, 'builtin')) {
 			continue
 		}
 		if v.pref.is_bare {
-			return v.v_files_from_dir(os.join(location, 'builtin', 'bare'))
+			return v.v_files_from_dir(os.path_join(location, 'builtin', 'bare'))
 		}
 		$if js {
-			return v.v_files_from_dir(os.join(location, 'builtin','js'))
+			return v.v_files_from_dir(os.path_join(location, 'builtin','js'))
 		}
-		return v.v_files_from_dir(os.join(location, 'builtin'))
+		return v.v_files_from_dir(os.path_join(location, 'builtin'))
 	}
 	// Panic. We couldn't find the folder.
 	verror('`builtin/` not included on module lookup path.
@@ -748,18 +748,18 @@ pub fn (v &V) get_user_files() []string {
 
     // See cmd/tools/preludes/README.md for more info about what preludes are
 	vroot := os.dir(pref.vexe_path())
-	preludes_path := os.join(vroot,'cmd','tools','preludes')
+	preludes_path := os.path_join(vroot,'cmd','tools','preludes')
 	if v.pref.is_live {
-		user_files << os.join(preludes_path,'live_main.v')
+		user_files << os.path_join(preludes_path,'live_main.v')
 	}
 	if v.pref.is_solive {
-		user_files << os.join(preludes_path,'live_shared.v')
+		user_files << os.path_join(preludes_path,'live_shared.v')
 	}
 	if v.pref.is_test {
-		user_files << os.join(preludes_path,'tests_assertions.v')
+		user_files << os.path_join(preludes_path,'tests_assertions.v')
 	}
 	if v.pref.is_test && v.pref.is_stats {
-		user_files << os.join(preludes_path,'tests_with_stats.v')
+		user_files << os.path_join(preludes_path,'tests_with_stats.v')
 	}
 
 	is_test := dir.ends_with('_test.v')

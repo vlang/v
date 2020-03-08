@@ -97,7 +97,7 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	// Remove them after a test passes/fails.
 	fname := os.filename(file)
 	generated_binary_fname := if os.user_os() == 'windows' { fname.replace('.v', '.exe') } else { fname.replace('.v', '') }
-	generated_binary_fpath := os.join(tmpd,generated_binary_fname)
+	generated_binary_fpath := os.path_join(tmpd,generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
 		os.rm(generated_binary_fpath)
 	}
@@ -152,7 +152,7 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 }
 
 pub fn vlib_should_be_present(parent_dir string) {
-	vlib_dir := os.join(parent_dir,'vlib')
+	vlib_dir := os.path_join(parent_dir,'vlib')
 	if !os.is_dir(vlib_dir) {
 		eprintln('$vlib_dir is missing, it must be next to the V executable')
 		exit(1)
@@ -169,7 +169,7 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	eheader(main_label)
 	eprintln('v compiler args: "$vargs"')
 	mut session := new_test_session(vargs)
-	files := os.walk_ext(os.join(parent_dir,folder), '.v')
+	files := os.walk_ext(os.path_join(parent_dir,folder), '.v')
 	mut mains := []string
 	for f in files {
 		if !f.contains('modules') && !f.contains('preludes') {

@@ -77,8 +77,8 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 	println(version)
 	println('Use Ctrl-C or `exit` to exit')
 
-	file := os.join( workdir, '.${vrepl_prefix}vrepl.v' )
-	temp_file := os.join( workdir, '.${vrepl_prefix}vrepl_temp.v')
+	file := os.path_join( workdir, '.${vrepl_prefix}vrepl.v' )
+	temp_file := os.path_join( workdir, '.${vrepl_prefix}vrepl_temp.v')
 	mut prompt := '>>> '
 	defer {
 		println('')

@@ -155,7 +155,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		file_ast := parser.parse_file(file, table, .parse_comments)
 		formatted_content := fmt.fmt(file_ast, table)
 		file_name := os.filename(file)
-		vfmt_output_path := os.join(os.tmpdir(), 'vfmt_' + file_name)
+		vfmt_output_path := os.path_join(os.tmpdir(), 'vfmt_' + file_name)
 		os.write_file(vfmt_output_path, formatted_content )
 		if foptions.is_verbose {
 			eprintln('vfmt2 fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
@@ -187,7 +187,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		// vfmt implementation.
 		mod_folder_parent = os.base_dir(mod_folder)
 		mut main_program_content := if mod_name == 'builtin' || mod_name == 'main' { 'fn main(){}\n' } else { 'import ${mod_name}\n' + 'fn main(){}\n' }
-		main_program_file := os.join(tmpfolder,'vfmt_tmp_${mod_name}_program.v')
+		main_program_file := os.path_join(tmpfolder,'vfmt_tmp_${mod_name}_program.v')
 		if os.exists(main_program_file) {
 			os.rm(main_program_file)
 		}
@@ -391,7 +391,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	}
 	mut vfiles := []string
 	for f in all_files_in_pfolder {
-		vf := os.join(pfolder,f)
+		vf := os.path_join(pfolder,f)
 		if f.starts_with('.') || !f.ends_with('.v') || os.is_dir(vf) {
 			continue
 		}
