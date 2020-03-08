@@ -325,12 +325,12 @@ fn test_dir() {
 
 fn test_basedir() {
 	$if windows {
-		assert os.basedir('v\\vlib\\os') == 'v\\vlib'
+		assert os.base_dir('v\\vlib\\os') == 'v\\vlib'
 	} $else {
-		assert os.basedir('v/vlib/os') == 'v/vlib'
+		assert os.base_dir('v/vlib/os') == 'v/vlib'
 	}
 
-	assert os.basedir('filename') == 'filename'
+	assert os.base_dir('filename') == 'filename'
 }
 
 // this function is called by both test_aaa_setup & test_zzz_cleanup

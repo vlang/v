@@ -780,7 +780,7 @@ pub fn (v &V) get_user_files() []string {
 			v.log('> That brings in all other ordinary .v files in the same module too .')
 		}
 		user_files << single_test_v_file
-		dir = os.basedir(single_test_v_file)
+		dir = os.base_dir(single_test_v_file)
 	}
 	if dir.ends_with('.v') || dir.ends_with('.vsh') {
 		single_v_file := dir
