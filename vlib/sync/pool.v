@@ -135,6 +135,9 @@ fn process_in_thread(pool mut PoolProcessor, task_id int) {
 		idx = pool.ntask
 		pool.ntask++
 		pool.ntask_mtx.unlock()
+		if idx >= ilen {
+			break
+		}
 		pool.results[idx] = cb(pool, idx, task_id)
 	}
 	pool.waitgroup.done()
