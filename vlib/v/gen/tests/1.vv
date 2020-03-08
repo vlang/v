@@ -1,8 +1,11 @@
 //import moda
 //import modb as mb
 
+import localmod
+
 const (
 	pi = 3
+	pi2 = pi
 	//s = 'hi'
 
 )
@@ -14,17 +17,6 @@ struct User {
 enum Color {
 	red green blue
 }
-
-/*
-struct One {
-	two Two
-}
-
-struct Two {
-
-}
-*/
-
 
 fn main() {
 	a := 10
@@ -38,6 +30,10 @@ fn main() {
 	ak := 10
 	mypi := pi
 	color := Color.red
+	localmod.pub_foo()
+	ten := localmod.get_int_10()
+	println(localmod.pub_int_const)
+	g := int(3.0)
 }
 	/*
 	user := User{}
@@ -48,6 +44,14 @@ fn main() {
 	}
 	*/
 
+struct One {
+	two Two
+}
+
+struct Two {
+
+}
+
 fn foo(a int) {
 	for true {
 
@@ -55,9 +59,12 @@ fn foo(a int) {
 	for i := 0; i < 10; i++ {
 
 	}
-	nums := [1,2,3]
+	mut nums := [1,2,3]
 	nums2 := nums[..2]
+	nums3 := nums[1..2]
+	nums4 := nums[1..]
 	number := nums[0]
+	nums[1] = 10
 	bools := [true, false]
 	users := [User{}]
 	//ptr := &User{}
@@ -71,6 +78,21 @@ fn foo(a int) {
 	q := true || false
 	b2 := bools[0] || true
 	b3 := get_bool() || true
+	f := nums.first()
+	d := 'd'
+	println(s + d)
+	//cloned = nums.clone()
+	//cloned1 := cloned[0]
+	//println(cloned1 == 1)
+	/*
+	mut strings := ['hi', 'hello']
+	strings << 'a' + b
+	*/
+
+}
+
+fn (u mut User) inc_age(n int) {
+	u.age += n
 }
 
 fn get_int(a string) int {
@@ -90,12 +112,14 @@ fn get_int2() int {
 fn myuser() {
 	x := 1
 	q := x | 0x1004
-	user := User{age:10}
+	user := User{age:30}
 	age := user.age + 1 // crash here
 	boo := 2
 	boo2 := boo+1
 	b := age > 0
 	b2 := user.age > 0
+	mut user2 := User{age:20}
+	user2.age = 20 + boo
 }
 
 fn multi_return() (int,string) {
@@ -124,6 +148,7 @@ fn matches() {
 		20 {
 			k := a + 1
 		}
+		else{}
 	}
 	/*
 	n := match a {

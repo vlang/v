@@ -45,21 +45,14 @@ endif
 
 all: latest_vc latest_tcc
 ifdef WIN32
-	$(CC) $(CFLAGS) -std=c99 -municode -w -o v2.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
-	./v2.exe -o v3.exe cmd/v
-	./v3.exe -o v.exe -prod cmd/v
-	rm -f v2.exe v3.exe
+	$(CC) $(CFLAGS) -std=c99 -municode -w -o v.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
+	./v.exe self
 else
 	$(CC) $(CFLAGS) -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm
 ifdef ANDROID
 	chmod 755 v
 endif
-	@(VC_V=`./v version | cut -f 3 -d " "`; \
-	V_V=`git rev-parse --short=7 HEAD`; \
-	if [ $$VC_V != $$V_V ]; then \
-		echo "Self rebuild ($$VC_V => $$V_V)"; \
-		$(MAKE) selfcompile; \
-	fi)
+	./v self
 ifndef ANDROID
 	$(MAKE) modules
 endif
@@ -96,10 +89,10 @@ $(TMPVC)/.git/config:
 	$(MAKE) fresh_vc
 
 selfcompile:
-	./v -cg -o v cmd/v
+	./v -keep_c -cg -o v cmd/v
 
 selfcompile-static:
-	./v -cg -cflags '--static' -o v-static cmd/v
+	./v -keep_c -cg -cflags '--static' -o v-static cmd/v
 
 modules: module_builtin module_strings module_strconv
 module_builtin:

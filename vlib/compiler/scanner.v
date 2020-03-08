@@ -3,11 +3,7 @@
 // that can be found in the LICENSE file.
 module compiler
 
-import (
-	os
-	filepath
-	// strings
-)
+import os
 
 const (
 	single_quote = `\'`
@@ -97,15 +93,9 @@ fn scan_res(tok TokenKind, lit string) ScanRes {
 
 fn (s mut Scanner) ident_name() string {
 	start := s.pos
-	for {
+	s.pos++
+	for s.pos < s.text.len && (is_name_char(s.text[s.pos]) || s.text[s.pos].is_digit()) {
 		s.pos++
-		if s.pos >= s.text.len {
-			break
-		}
-		c := s.text[s.pos]
-		if !is_name_char(c) && !c.is_digit() {
-			break
-		}
 	}
 	name := s.text[start..s.pos]
 	s.pos--
@@ -118,19 +108,18 @@ const(
 
 fn filter_num_sep(txt byteptr, start int, end int) string {
 	unsafe {
-	mut b := malloc(end-start + 1) // add a byte for the endstring 0
-	mut i := start
-	mut i1 := 0
-	for i < end {
-		if txt[i] != num_sep && txt[i] != `o` {
-			b[i1]=txt[i]
-			i1++
+		mut b := malloc(end-start + 1) // add a byte for the endstring 0
+		mut i := start
+		mut i1 := 0
+		for i < end {
+			if txt[i] != num_sep && txt[i] != `o` {
+				b[i1]=txt[i]
+				i1++
+			}
+			i++
 		}
-		i++
-	}
-	b[i1]=0 // C string compatibility
-	return string{str:b
-len:i1}
+		b[i1]=0 // C string compatibility
+		return string{str:b len:i1}
 	}
 }
 
@@ -139,15 +128,12 @@ fn (s mut Scanner) ident_bin_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0b'
-	for {
-		if s.pos >= s.text.len {
-			break
-		}
+	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_bin_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
 				break
-			} 
+			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit = c
@@ -171,15 +157,12 @@ fn (s mut Scanner) ident_hex_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0x'
-	for {
-		if s.pos >= s.text.len {
-			break
-		}
+	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_hex_digit() && c != num_sep {
 			if !c.is_letter() || s.inside_string {
 				break
-			} 
+			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit = c
@@ -203,15 +186,12 @@ fn (s mut Scanner) ident_oct_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0o'
-	for {
-		if s.pos >= s.text.len {
-			break
-		}
+	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_oct_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
 				break
-			} 
+			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit = c
@@ -236,13 +216,14 @@ fn (s mut Scanner) ident_dec_number() string {
 	start_pos := s.pos
 	// scan integer part
 	for s.pos < s.text.len {
-		if !s.text[s.pos].is_digit() && s.text[s.pos] != num_sep {
-			if !s.text[s.pos].is_letter() || s.text[s.pos] in [`e`, `E`] || s.inside_string {
+		c := s.text[s.pos]
+		if !c.is_digit() && c != num_sep {
+			if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
 				break
 			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
-				first_wrong_digit = s.text[s.pos]
+				first_wrong_digit = c
 			}
 		}
 		s.pos++
@@ -258,13 +239,14 @@ fn (s mut Scanner) ident_dec_number() string {
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
 		for s.pos < s.text.len {
-			if !s.text[s.pos].is_digit() {
-				if !s.text[s.pos].is_letter() || s.text[s.pos] in [`e`, `E`] || s.inside_string {
+			c := s.text[s.pos]
+			if !c.is_digit() {
+				if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
 					break
 				}
 				else if !has_wrong_digit {
 					has_wrong_digit = true
-					first_wrong_digit = s.text[s.pos]
+					first_wrong_digit = c
 				}
 			}
 			s.pos++
@@ -279,13 +261,14 @@ fn (s mut Scanner) ident_dec_number() string {
 			s.pos++
 		}
 		for s.pos < s.text.len {
-			if !s.text[s.pos].is_digit() {
-				if !s.text[s.pos].is_letter() || s.inside_string {
+			c := s.text[s.pos]
+			if !c.is_digit() {
+				if !c.is_letter() || s.inside_string {
 					break
 				}
 				else if !has_wrong_digit {
 					has_wrong_digit = true
-					first_wrong_digit = s.text[s.pos]
+					first_wrong_digit = c
 				}
 			}
 			s.pos++
@@ -932,7 +915,7 @@ fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
 	s.started = false
 	s.debug = true
-	fname := s.file_path.all_after(filepath.separator)
+	fname := s.file_path.all_after(os.path_separator)
 	println('\n===DEBUG TOKENS $fname===')
 	for {
 		res := s.scan()

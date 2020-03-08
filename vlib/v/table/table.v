@@ -86,6 +86,7 @@ pub fn (t mut Table) register_fn(new_fn Fn) {
 pub fn (t &Table) register_method(typ &TypeSymbol, new_fn Fn) bool {
 	// println('register method `$new_fn.name` type=$typ.name idx=$typ.idx')
 	// println('register method `$new_fn.name` type=$typ.name')
+	// TODO mut << bug
 	mut t1 := typ
 	mut methods := typ.methods
 	methods << new_fn
@@ -181,12 +182,13 @@ pub fn (t &Table) find_type(name string) ?TypeSymbol {
 
 [inline]
 pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
+	// println('get_type_symbol $typ')
 	idx := type_idx(typ)
 	if idx > 0 {
 		return &t.types[idx]
 	}
 	// this should never happen
-	panic('get_type_symbol: invalid type $typ - $idx')
+	panic('get_type_symbol: invalid type (typ=$typ idx=${idx}). This should neer happen')
 }
 
 // this will override or register builtin type
@@ -251,10 +253,27 @@ pub fn (t &Table) known_type(name string) bool {
 	return true
 }
 
-pub fn (t mut Table) find_or_register_map(key_type, value_type Type) int {
+[inline]
+pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
+	elem_type_sym := t.get_type_symbol(elem_type)
+	return 'array_${elem_type_sym.name}' + if type_is_ptr(elem_type) { '_ptr' } else { '' } + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+}
+
+[inline]
+pub fn (t &Table) array_fixed_name(elem_type Type, size int, nr_dims int) string {
+	elem_type_sym := t.get_type_symbol(elem_type)
+	return 'array_fixed_${elem_type_sym.name}_${size}' + if type_is_ptr(elem_type) { '_ptr' } else { '' } + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+}
+
+[inline]
+pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
-	val_type_sym := t.get_type_symbol(value_type)
-	name := map_name(key_type_sym, val_type_sym)
+	value_type_sym := t.get_type_symbol(value_type)
+	return 'map_${key_type_sym.name}_${value_type_sym.name}' + if type_is_ptr(value_type) { '_ptr' } else { '' }
+}
+
+pub fn (t mut Table) find_or_register_map(key_type, value_type Type) int {
+	name := t.map_name(key_type, value_type)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -274,8 +293,7 @@ pub fn (t mut Table) find_or_register_map(key_type, value_type Type) int {
 }
 
 pub fn (t mut Table) find_or_register_array(elem_type Type, nr_dims int) int {
-	elem_type_sym := t.get_type_symbol(elem_type)
-	name := array_name(elem_type_sym, nr_dims)
+	name := t.array_name(elem_type, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -295,8 +313,7 @@ pub fn (t mut Table) find_or_register_array(elem_type Type, nr_dims int) int {
 }
 
 pub fn (t mut Table) find_or_register_array_fixed(elem_type Type, size int, nr_dims int) int {
-	elem_type_sym := t.get_type_symbol(elem_type)
-	name := array_fixed_name(elem_type_sym, size, nr_dims)
+	name := t.array_fixed_name(elem_type, size, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -351,6 +368,8 @@ pub fn (t &Table) check(got, expected Type) bool {
 	exp_type_sym := t.get_type_symbol(expected)
 	got_idx := type_idx(got)
 	exp_idx := type_idx(expected)
+	// got_is_ptr := type_is_ptr(got)
+	exp_is_ptr := type_is_ptr(expected)
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
 	if got_type_sym.kind == .none_ {
 		// TODO
@@ -359,14 +378,30 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if exp_type_sym.kind == .voidptr {
 		return true
 	}
+	// if got_type_sym.kind == .array_fixed {
+	// return true
+	// }
 	if got_type_sym.kind in [.voidptr, .byteptr, .charptr, .int] && exp_type_sym.kind in [.voidptr, .byteptr, .charptr] {
 		return true
 	}
 	if got_type_sym.is_int() && exp_type_sym.is_int() {
 		return true
 	}
+	// allow pointers to be initialized with 0. TODO: use none instead
+	if exp_is_ptr && got_idx == int_type_idx {
+		return true
+	}
+	// allow enum value to be used as int
+	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) || (exp_type_sym.is_int() && got_type_sym.kind == .enum_) {
+		return true
+	}
 	// TODO
 	if got_type_sym.is_number() && exp_type_sym.is_number() {
+		return true
+	}
+	// TODO: actually check for & handle pointers with name_expr
+	// see hack in checker IndexExpr line #691
+	if (got_type_sym.kind == .byte && exp_type_sym.kind == .byteptr) || (exp_type_sym.kind == .byte && got_type_sym.kind == .byteptr) {
 		return true
 	}
 	// TODO
@@ -387,6 +422,23 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// accept [] when an expected type is an array
 	if got_type_sym.kind == .array && got_type_sym.name == 'array_void' && exp_type_sym.kind == .array {
 		return true
+	}
+	// type alias
+	if (got_type_sym.kind == .alias && got_type_sym.parent_idx == exp_idx) || (exp_type_sym.kind == .alias && exp_type_sym.parent_idx == got_idx) {
+		return true
+	}
+	// sum type
+	if got_type_sym.kind == .sum_type {
+		sum_info := got_type_sym.info as SumType
+		if expected in sum_info.variants {
+			return true
+		}
+	}
+	else if exp_type_sym.kind == .sum_type {
+		sum_info := exp_type_sym.info as SumType
+		if got in sum_info.variants {
+			return true
+		}
 	}
 	if got_idx != exp_idx {
 		// && got.typ.name != expected.typ.name*/

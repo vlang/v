@@ -27,6 +27,19 @@ const (
 #endif
 
 #define OPTION_CAST(x) (x)
+
+#ifndef V64_PRINTFORMAT
+#ifdef PRIx64
+#define V64_PRINTFORMAT "0x%"PRIx64
+#elif defined(__WIN32__)
+#define V64_PRINTFORMAT "0x%I64x"
+#elif defined(__LINUX__) && defined(__LP64__)
+#define V64_PRINTFORMAT "0x%lx"
+#else
+#define V64_PRINTFORMAT "0x%llx"
+#endif
+#endif
+
 '
 	c_headers = '
 
@@ -276,7 +289,7 @@ var map_int = function() {}
 //#include <inttypes.h>  // int64_t etc
 //#include <stdint.h>  // int64_t etc
 
-//================================== TYPEDEFS ================================*/
+//================================== 1TYPEDEFS ================================*/
 
 typedef int64_t i64;
 typedef int16_t i16;

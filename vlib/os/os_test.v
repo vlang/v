@@ -1,7 +1,4 @@
-import (
-	os
-	filepath
-)
+import os
 
 fn testsuite_begin() {
 	cleanup_leftovers()
@@ -134,14 +131,14 @@ fn walk_callback(file string) {
     if file == '.' || file == '..' {
         return
     }
-    assert file == 'test_walk' + filepath.separator + 'test1'
+    assert file == 'test_walk' + os.path_separator + 'test1'
 }
 
 fn test_walk() {
     folder := 'test_walk'
     os.mkdir(folder) or { panic(err) }
 
-    file1 := folder + filepath.separator + 'test1'
+    file1 := folder + os.path_separator + 'test1'
 
     os.write_file(file1,'test-1')
 
@@ -171,18 +168,18 @@ fn test_cp_r() {
   // NB: clean up of the files happens inside the cleanup_leftovers function
   os.write_file('ex1.txt', 'wow!')
   os.mkdir('ex') or { panic(err) }
-  os.cp_r('ex1.txt', 'ex', false) or { panic(err) }
+  os.cp_all('ex1.txt', 'ex', false) or { panic(err) }
   old := os.read_file('ex1.txt') or { panic(err) }
   new := os.read_file('ex/ex1.txt') or { panic(err) }
   assert old == new
   os.mkdir('ex/ex2') or { panic(err) }
   os.write_file('ex2.txt', 'great!')
-  os.cp_r('ex2.txt', 'ex/ex2', false) or { panic(err) }
+  os.cp_all('ex2.txt', 'ex/ex2', false) or { panic(err) }
   old2 := os.read_file('ex2.txt') or { panic(err) }
   new2 := os.read_file('ex/ex2/ex2.txt') or { panic(err) }
   assert old2 == new2
   //recurring on dir -> local dir
-  os.cp_r('ex', './', true) or { panic(err) }
+  os.cp_all('ex', './', true) or { panic(err) }
 }
 
 fn test_tmpdir(){
@@ -190,7 +187,7 @@ fn test_tmpdir(){
 	assert t.len > 0
 	assert os.is_dir(t)
 
-	tfile := t + filepath.separator + 'tmpfile.txt'
+	tfile := t + os.path_separator + 'tmpfile.txt'
 
 	os.rm(tfile) // just in case
 
@@ -269,7 +266,7 @@ fn test_symlink() {
 }
 
 fn test_is_executable_writable_readable() {
-  file_name := os.tmpdir() + filepath.separator + 'rwxfile.exe'
+  file_name := os.tmpdir() + os.path_separator + 'rwxfile.exe'
 
   mut f := os.create(file_name) or {
     eprintln('failed to create file $file_name')
@@ -294,6 +291,48 @@ fn test_is_executable_writable_readable() {
   os.rm(file_name)
 }
 
+fn test_ext() {
+	assert os.ext('file.v') == '.v'
+	assert os.ext('file') == ''
+}
+
+fn test_is_abs() {
+	assert os.is_abs('/home/user') == true
+	assert os.is_abs('v/vlib') == false
+
+	$if windows {
+		assert os.is_abs('C:\\Windows\\') == true
+	}
+}
+
+fn test_join() {
+	$if windows {
+		assert os.join('v', 'vlib', 'os') == 'v\\vlib\\os'
+	} $else {
+		assert os.join('v', 'vlib', 'os') == 'v/vlib/os'
+	}
+}
+
+fn test_dir() {
+	$if windows {
+		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b'
+	} $else {
+		assert os.dir('/var/tmp/foo') == '/var/tmp'
+	}
+
+	assert os.dir('os') == '.'
+}
+
+fn test_basedir() {
+	$if windows {
+		assert os.base_dir('v\\vlib\\os') == 'v\\vlib'
+	} $else {
+		assert os.base_dir('v/vlib/os') == 'v/vlib'
+	}
+
+	assert os.base_dir('filename') == 'filename'
+}
+
 // this function is called by both test_aaa_setup & test_zzz_cleanup
 // it ensures that os tests do not polute the filesystem with leftover
 // files so that they can be run several times in a row.
@@ -303,8 +342,8 @@ fn cleanup_leftovers() {
 	os.rm('cp_new_example.txt')
 
 	// possible leftovers from test_cp_r
-	os.rmdir_recursive('ex')
-	os.rmdir_recursive('ex2')
+	os.rmdir_all('ex')
+	os.rmdir_all('ex2')
 	os.rm('ex1.txt')
 	os.rm('ex2.txt')
 }

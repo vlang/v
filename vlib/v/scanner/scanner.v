@@ -5,9 +5,7 @@ module scanner
 
 import (
 	os
-	filepath
 	v.token
-	// strings
 )
 
 const (
@@ -41,9 +39,16 @@ mut:
 	is_vh                    bool // Keep newlines
 	is_fmt                   bool // Used only for skipping ${} in strings, since we need literal
 	// string values when generating formatted code.
+	comments_mode            CommentsMode
 }
+
+pub enum CommentsMode {
+	skip_comments
+	parse_comments
+}
+
 // new scanner from file.
-fn new_scanner_file(file_path string) &Scanner {
+pub fn new_scanner_file(file_path string, comments_mode CommentsMode) &Scanner {
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
@@ -60,7 +65,7 @@ fn new_scanner_file(file_path string) &Scanner {
 			raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
 		}
 	}
-	mut s := new_scanner(raw_text)
+	mut s := new_scanner(raw_text, comments_mode) // .skip_comments)
 	// s.init_fmt()
 	s.file_path = file_path
 	return s
@@ -70,13 +75,14 @@ const (
 	is_fmt = os.getenv('VEXE').contains('vfmt')
 )
 // new scanner from string.
-pub fn new_scanner(text string) &Scanner {
+pub fn new_scanner(text string, comments_mode CommentsMode) &Scanner {
 	return &Scanner{
 		text: text
 		print_line_on_error: true
 		print_colored_error: true
 		print_rel_paths_on_error: true
 		is_fmt: is_fmt
+		comments_mode: comments_mode
 	}
 }
 
@@ -91,15 +97,9 @@ fn (s &Scanner) scan_res(tok_kind token.Kind, lit string) token.Token {
 
 fn (s mut Scanner) ident_name() string {
 	start := s.pos
-	for {
+	s.pos++
+	for s.pos < s.text.len && (is_name_char(s.text[s.pos]) || s.text[s.pos].is_digit()) {
 		s.pos++
-		if s.pos >= s.text.len {
-			break
-		}
-		c := s.text[s.pos]
-		if !is_name_char(c) && !c.is_digit() {
-			break
-		}
 	}
 	name := s.text[start..s.pos]
 	s.pos--
@@ -135,15 +135,12 @@ fn (s mut Scanner) ident_bin_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0b'
-	for {
-		if s.pos >= s.text.len {
-			break
-		}
+	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_bin_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
 				break
-			} 
+			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit = c
@@ -167,15 +164,12 @@ fn (s mut Scanner) ident_hex_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0x'
-	for {
-		if s.pos >= s.text.len {
-			break
-		}
+	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_hex_digit() && c != num_sep {
 			if !c.is_letter() || s.inside_string {
 				break
-			} 
+			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit = c
@@ -199,15 +193,12 @@ fn (s mut Scanner) ident_oct_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0o'
-	for {
-		if s.pos >= s.text.len {
-			break
-		}
+	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_oct_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
 				break
-			} 
+			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit = c
@@ -232,13 +223,14 @@ fn (s mut Scanner) ident_dec_number() string {
 	start_pos := s.pos
 	// scan integer part
 	for s.pos < s.text.len {
-		if !s.text[s.pos].is_digit() && s.text[s.pos] != num_sep {
-			if !s.text[s.pos].is_letter() || s.text[s.pos] in [`e`, `E`] || s.inside_string {
+		c := s.text[s.pos]
+		if !c.is_digit() && c != num_sep {
+			if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
 				break
 			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
-				first_wrong_digit = s.text[s.pos]
+				first_wrong_digit = c
 			}
 		}
 		s.pos++
@@ -254,13 +246,14 @@ fn (s mut Scanner) ident_dec_number() string {
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
 		for s.pos < s.text.len {
-			if !s.text[s.pos].is_digit() {
-				if !s.text[s.pos].is_letter() || s.text[s.pos] in [`e`, `E`] || s.inside_string {
+			c := s.text[s.pos]
+			if !c.is_digit() {
+				if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
 					break
 				}
 				else if !has_wrong_digit {
 					has_wrong_digit = true
-					first_wrong_digit = s.text[s.pos]
+					first_wrong_digit = c
 				}
 			}
 			s.pos++
@@ -275,13 +268,14 @@ fn (s mut Scanner) ident_dec_number() string {
 			s.pos++
 		}
 		for s.pos < s.text.len {
-			if !s.text[s.pos].is_digit() {
-				if !s.text[s.pos].is_letter() || s.inside_string {
+			c := s.text[s.pos]
+			if !c.is_digit() {
+				if !c.is_letter() || s.inside_string {
 					break
 				}
 				else if !has_wrong_digit {
 					has_wrong_digit = true
-					first_wrong_digit = s.text[s.pos]
+					first_wrong_digit = c
 				}
 			}
 			s.pos++
@@ -344,6 +338,9 @@ fn (s mut Scanner) end_of_file() token.Token {
 }
 
 pub fn (s mut Scanner) scan() token.Token {
+	// if s.comments_mode == .parse_comments {
+	// println('\nscan()')
+	// }
 	// if s.line_comment != '' {
 	// s.fgenln('// LC "$s.line_comment"')
 	// s.line_comment = ''
@@ -412,17 +409,17 @@ pub fn (s mut Scanner) scan() token.Token {
 	// `123`, `.123`
 	else if c.is_digit() || (c == `.` && nextc.is_digit()) {
 		if !s.inside_string {
-		    // In C ints with `0` prefix are octal (in V they're decimal), so discarding heading zeros is needed.
+			// In C ints with `0` prefix are octal (in V they're decimal), so discarding heading zeros is needed.
 			mut start_pos := s.pos
 			for start_pos < s.text.len && s.text[start_pos] == `0` {
 				start_pos++
 			}
-			mut prefix_zero_num := start_pos - s.pos  // how many prefix zeros should be jumped
+			mut prefix_zero_num := start_pos - s.pos // how many prefix zeros should be jumped
 			// for 0b, 0o, 0x the heading zero shouldn't be jumped
 			if start_pos == s.text.len || (c == `0` && !s.text[start_pos].is_digit()) {
 				prefix_zero_num--
 			}
-			s.pos += prefix_zero_num  // jump these zeros
+			s.pos += prefix_zero_num // jump these zeros
 		}
 		num := s.ident_number()
 		return s.scan_res(.number, num)
@@ -635,7 +632,7 @@ pub fn (s mut Scanner) scan() token.Token {
 			else if nextc == `>` {
 				if s.pos + 2 < s.text.len && s.text[s.pos + 2] == `=` {
 					s.pos += 2
-					return s.scan_res(.righ_shift_assign, '')
+					return s.scan_res(.right_shift_assign, '')
 				}
 				s.pos++
 				return s.scan_res(.right_shift, '')
@@ -724,11 +721,19 @@ pub fn (s mut Scanner) scan() token.Token {
 				start := s.pos + 1
 				s.ignore_line()
 				s.line_comment = s.text[start + 1..s.pos]
-				s.line_comment = s.line_comment.trim_space()
-				if s.is_fmt {
-					s.pos-- // fix line_nr, \n was read, and the comment is marked on the next line
-					s.line_nr--
-					return s.scan_res(.line_comment, s.line_comment)
+				// if s.comments_mode == .parse_comments {
+				// println('line c $s.line_comment')
+				// }
+				comment := s.line_comment.trim_space()
+				// s.line_comment = comment
+				if s.comments_mode == .parse_comments {
+					// println('line c "$comment" z=')
+					// fix line_nr, \n was read, and the comment is marked
+					// on the next line
+					s.pos--
+					// println("'" + s.text[s.pos].str() + "'")
+					// s.line_nr--
+					return s.scan_res(.line_comment, comment)
 				}
 				// s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 				// Skip the comment (return the next token)
@@ -760,7 +765,8 @@ pub fn (s mut Scanner) scan() token.Token {
 				s.pos++
 				end := s.pos + 1
 				comment := s.text[start..end]
-				if s.is_fmt {
+				// if s.is_fmt {
+				if false && s.comments_mode == .parse_comments {
 					s.line_comment = comment
 					return s.scan_res(.mline_comment, s.line_comment)
 				}
@@ -921,7 +927,7 @@ fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
 	s.started = false
 	s.debug = true
-	fname := s.file_path.all_after(filepath.separator)
+	fname := s.file_path.all_after(os.path_separator)
 	println('\n===DEBUG TOKENS $fname===')
 	for {
 		tok := s.scan()
@@ -1020,7 +1026,7 @@ pub fn (s &Scanner) error(msg string) {
 
 pub fn verror(s string) {
 	println('V error: $s')
-	os.flush_stdout()
+	os.flush()
 	exit(1)
 }
 

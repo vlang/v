@@ -6,7 +6,6 @@ module compiler
 import (
 	os
 	strings
-	filepath
 	v.pref
 	// compiler.x64
 	time
@@ -22,9 +21,10 @@ struct Parser {
 	// the #include directives in the parsed .v file
 	file_pcguard           string
 	v                      &V
-	pref                   &pref.Preferences // Preferences shared from V struct
+	pref                   &pref.Preferences
 mut:
 	scanner                &Scanner
+// Preferences shared from V struct
 	tokens                 []Token
 	token_idx              int
 	prev_stuck_token_idx   int
@@ -176,11 +176,12 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		}
 	}
 	mut p := v.new_parser(new_scanner_file(path))
+	path_dir := os.realpath(os.dir(path))
 	p = {
 		p |
 		file_path:path,
-		file_path_dir:filepath.dir(path),
-		file_name:path.all_after(filepath.separator),
+		file_path_dir: path_dir,
+		file_name:path.all_after(os.path_separator),
 		file_platform:path_platform,
 		file_pcguard:path_pcguard,
 		is_vh:path.ends_with('.vh'),
@@ -260,6 +261,7 @@ fn (p mut Parser) next() {
 	// (only when vfmt compile time flag is enabled, otherwise this function
 	// is not even generated)
 	p.fnext()
+	//
 	p.prev_tok2 = p.prev_tok
 	p.prev_tok = p.tok
 	p.scanner.prev_tok = p.tok
@@ -718,12 +720,16 @@ fn (p mut Parser) const_decl() {
 			// }
 			continue
 		}
+    var_token_idx := p.cur_tok_index()
 		mut name := p.check_name() // `Age = 20`
 		// if !p.pref.building_v && p.mod != 'os' && contains_capital(name) {
 		// p.warn('const names cannot contain uppercase letters, use snake_case instead')
 		// }
 		name = p.prepend_mod(name)
 		mut typ := ''
+		if p.first_pass() && p.table.known_const(name) {
+			p.error_with_token_index('redefinition of `$name`', var_token_idx)
+		}
 		if p.is_vh {
 			// println('CONST VH $p.file_path')
 			// .vh files may not have const values, just types: `const (a int)`
@@ -746,9 +752,6 @@ fn (p mut Parser) const_decl() {
 		else {
 			p.check_space(.assign)
 			typ = p.expression()
-		}
-		if p.first_pass() && p.table.known_const(name) {
-			p.error('redefinition of `$name`')
 		}
 		if p.first_pass() {
 			p.table.register_const(name, typ, p.mod, is_pub)
@@ -850,6 +853,7 @@ fn (p mut Parser) type_decl() {
 		mut idx := 0
 		mut done := false
 		mut ctype_names := []string
+		mut sum_variants := []string
 		for {
 			// p.tok == .pipe {
 			idx++
@@ -862,14 +866,17 @@ fn (p mut Parser) type_decl() {
 			if p.pass == .main {
 				// Update the type's parent
 				// println('child=$child_type_name parent=$name')
-				mut t := p.find_type(child_type_name)
+				t := p.find_type(child_type_name)
 				if t.name == '' {
 					p.error('unknown type `$child_type_name`')
 				}
-				t.parent = name
-				p.table.rewrite_type(t)
-				p.cgen.consts << '#define SumType_$child_type_name $idx // DEF2'
+				p.cgen.consts << '#define SumType_${name}_$child_type_name $idx // DEF2'
 				ctype_names << child_type_name
+				sum_variants << if p.mod in ['builtin', 'main'] || child_type_name in builtin_types {
+					child_type_name
+				} else {
+					p.prepend_mod(child_type_name)
+				}
 			}
 			if done {
 				break
@@ -882,10 +889,7 @@ fn (p mut Parser) type_decl() {
 				// p.fgen_nl()
 			}
 		}
-		if p.pass == .decl {
-			p.table.sum_types << name
-			// println(p.table.sum_types)
-		}
+		p.table.sum_types[name] = sum_variants
 		// Register the actual sum type
 		// println('registering sum $name')
 		p.table.register_type(Type{
@@ -897,6 +901,7 @@ fn (p mut Parser) type_decl() {
 		})
 		if p.pass == .main {
 			p.cgen.consts << 'const char * __SumTypeNames__${name}[] = {'
+			p.cgen.consts << '    "$name",'
 			for ctype_name in ctype_names {
 				p.cgen.consts << '    "$ctype_name",'
 			}
@@ -2013,21 +2018,21 @@ fn (p mut Parser) var_expr(v Var) string {
 	mut typ := v.typ
 	// Function pointer?
 	if p.base_type(typ).starts_with('fn ') && p.tok == .lpar {
-		T := p.table.find_type(p.base_type(typ))
+		tt := p.table.find_type(p.base_type(typ))
 		p.gen('(')
-		p.fn_call_args(mut T.func, [])
+		p.fn_call_args(mut tt.func, [])
 		p.gen(')')
-		typ = T.func.typ
+		typ = tt.func.typ
 	}
 	// users[0].name
 	if p.tok == .lsbr {
 		typ = p.index_expr(typ, fn_ph)
 		if p.base_type(typ).starts_with('fn ') && p.tok == .lpar {
-			T := p.table.find_type(p.base_type(typ))
+			tt := p.table.find_type(p.base_type(typ))
 			p.gen('(')
-			p.fn_call_args(mut T.func, [])
+			p.fn_call_args(mut tt.func, [])
 			p.gen(')')
-			typ = T.func.typ
+			typ = tt.func.typ
 		}
 	}
 	// a.b.c().d chain
@@ -2363,10 +2368,10 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			// [2..
 			if p.tok != .dotdot {
 				index_pos := p.cgen.cur_line.len
-				T := p.table.find_type(p.expression())
+				tt := p.table.find_type(p.expression())
 				// Allows only i8-64 and byte-64 to be used when accessing an array
-				if T.parent != 'int' && T.parent != 'u32' {
-					p.check_types(T.name, 'int')
+				if tt.parent != 'int' && tt.parent != 'u32' {
+					p.check_types(tt.name, 'int')
 				}
 				if p.cgen.cur_line[index_pos..].replace(' ', '').int() < 0 {
 					p.error('cannot access negative array index')
@@ -2401,10 +2406,10 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			}
 		}
 		else {
-			T := p.table.find_type(p.expression())
+			tt := p.table.find_type(p.expression())
 			// TODO: Get the key type of the map instead of only string.
-			if is_map && T.parent != 'string' {
-				p.check_types(T.name, 'string')
+			if is_map && tt.parent != 'string' {
+				p.check_types(tt.name, 'string')
 			}
 		}
 		p.check(.rsbr)
@@ -2482,7 +2487,7 @@ struct IndexConfig {
 
 // for debugging only
 fn (p &Parser) fileis(s string) bool {
-	return filepath.filename(p.scanner.file_path).contains(s)
+	return os.filename(p.scanner.file_path).contains(s)
 }
 
 // in and dot have higher priority than `!`
@@ -2521,8 +2526,8 @@ fn (p mut Parser) indot_expr() string {
 		if is_map && typ != 'string' {
 			p.error('bad element type: expecting `string`')
 		}
-		T := p.table.find_type(arr_typ)
-		if !is_map && !T.has_method('contains') {
+		arr_typ2 := p.table.find_type(arr_typ)
+		if !is_map && !arr_typ2.has_method('contains') {
 			p.error('$arr_typ has no method `contains`')
 		}
 		// `typ` is element's type
@@ -3064,14 +3069,14 @@ fn (p mut Parser) js_decode() string {
 		cjson_tmp := p.get_tmp()
 		mut decl := '$typ $tmp; '
 		// Init the struct
-		T := p.table.find_type(typ)
-		for field in T.fields {
+		tt := p.table.find_type(typ)
+		for field in tt.fields {
 			def_val := type_default(field.typ)
 			if def_val != '' {
 				decl += '${tmp}.$field.name = OPTION_CAST($field.typ) $def_val;\n'
 			}
 		}
-		p.gen_json_for_type(T)
+		p.gen_json_for_type(tt)
 		decl += 'cJSON* $cjson_tmp = json__json_parse($expr);'
 		p.cgen.insert_before(decl)
 		// p.gen('jsdecode_$typ(json_parse($expr), &$tmp);')
@@ -3084,8 +3089,8 @@ fn (p mut Parser) js_decode() string {
 	else if op == 'encode' {
 		p.check(.lpar)
 		typ,expr := p.tmp_expr()
-		T := p.table.find_type(typ)
-		p.gen_json_for_type(T)
+		tt := p.table.find_type(typ)
+		p.gen_json_for_type(tt)
 		p.check(.rpar)
 		p.gen('json__json_print(json__jsencode_${typ}($expr))')
 		return 'string'
@@ -3182,7 +3187,7 @@ fn (p mut Parser) check_unused_imports() {
 	}
 	// the imports are usually at the start of the file
 	// p.production_error_with_token_index('the following imports were never used: $output', 0)
-	if p.pref.is_verbose {
+	if p.pref.verbosity.is_higher_or_equal(.level_two) {
 		eprintln('Used imports table: ${p.import_table.used_imports.str()}')
 	}
 	p.warn('the following imports were never used: $output')

@@ -1,0 +1,7 @@
+const (
+pi=3.14
+)
+
+pub const (
+i_am_pub_const=true
+)

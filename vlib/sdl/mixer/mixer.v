@@ -1,6 +1,10 @@
 module mixer
 import sdl
 
+#flag windows -I @VROOT/thirdparty/SDL2_mixer/include
+#flag windows -L @VROOT/thirdparty/SDL2_mixer/lib/x64
+#flag windows -lSDL2_mixer
+
 #include <SDL_mixer.h>
 
 

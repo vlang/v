@@ -2,13 +2,12 @@ module main
 
 import (
 	os
-	filepath
 	v.pref
 )
 
 fn main() {
 	println('Updating V...')
-	vroot := filepath.dir(pref.vexe_path())
+	vroot := os.dir(pref.vexe_path())
 	os.chdir(vroot)
 	// git pull
 	s := os.exec('git pull --rebase origin master') or {
@@ -22,7 +21,7 @@ fn main() {
 			os.rm(v_backup_file)
 		}
 		os.mv('v.exe', v_backup_file)
-		
+
 		s2 := os.exec('make.bat') or {
 			panic(err)
 		}

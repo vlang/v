@@ -93,6 +93,15 @@ pub fn rgb(r, g, b int) Color {
 	return res
 }
 
+pub fn hex(color int) Color {
+  res := Color {
+    r: (color >> 16) & 0xFF
+    g: (color >> 8) & 0xFF
+    b: color & 0xFF
+  }
+  return res
+}
+
 // fn text_width_char(c char) int {
 // return text_width(char2string(c))
 // // return C.text_width_char(c)

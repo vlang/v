@@ -3,7 +3,6 @@ module builder
 import (
 	os
 	time
-	filepath
 	v.ast
 	v.table
 	v.pref
@@ -21,8 +20,8 @@ pub:
 	os                  pref.OS // the OS to build for
 	compiled_dir        string // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path         string
-	module_search_paths []string
 mut:
+	module_search_paths []string
 	parsed_files        []ast.File
 }
 
@@ -36,14 +35,38 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 }
 
 pub fn (b mut Builder) gen_c(v_files []string) string {
+	t0 := time.ticks()
 	b.parsed_files = parser.parse_files(v_files, b.table)
 	b.parse_imports()
+	t1 := time.ticks()
+	parse_time := t1 - t0
+	println('PARSE: ${parse_time}ms')
+	//
 	b.checker.check_files(b.parsed_files)
-	return gen.cgen(b.parsed_files, b.table)
+	t2 := time.ticks()
+	check_time := t2 - t1
+	println('CHECK: ${check_time}ms')
+	if b.checker.nr_errors > 0 {
+		exit(1)
+	}
+	// println('starting cgen...')
+	res := gen.cgen(b.parsed_files, b.table)
+	t3 := time.ticks()
+	gen_time := t3 - t2
+	println('C GEN: ${gen_time}ms')
+	println('cgen done')
+	// println(res)
+	return res
 }
 
 pub fn (b mut Builder) build_c(v_files []string, out_file string) {
-	os.write_file(out_file, b.gen_c(v_files))
+	println('build_c($out_file)')
+	mut f := os.create(out_file) or {
+		panic(err)
+	}
+	f.writeln(b.gen_c(v_files))
+	f.close()
+	// os.write_file(out_file, b.gen_c(v_files))
 }
 
 pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
@@ -76,6 +99,8 @@ pub fn (b mut Builder) parse_imports() {
 			import_path := b.find_module_path(mod) or {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
 				// break
+				// println('module_search_paths:')
+				// println(b.module_search_paths)
 				panic('cannot import module "$mod" (not found)')
 			}
 			v_files := b.v_files_from_dir(import_path)
@@ -112,7 +137,7 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 	mut files := os.ls(dir) or {
 		panic(err)
 	}
-	if b.pref.is_verbose {
+	if b.pref.verbosity.is_higher_or_equal(.level_one) {
 		println('v_files_from_dir ("$dir")')
 	}
 	files.sort()
@@ -157,7 +182,7 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 		}
 		*/
 
-		res << filepath.join(dir,file)
+		res << os.join(dir,file)
 	}
 	return res
 }
@@ -167,7 +192,30 @@ fn verror(err string) {
 }
 
 pub fn (b &Builder) log(s string) {
-	if b.pref.is_verbose {
+	if b.pref.verbosity.is_higher_or_equal(.level_two) {
 		println(s)
 	}
+}
+
+[inline]
+fn module_path(mod string) string {
+	// submodule support
+	return mod.replace('.', os.path_separator)
+}
+
+pub fn (b &Builder) find_module_path(mod string) ?string {
+	mod_path := module_path(mod)
+	for search_path in b.module_search_paths {
+		try_path := os.join(search_path,mod_path)
+		if b.pref.verbosity.is_higher_or_equal(.level_three) {
+			println('  >> trying to find $mod in $try_path ..')
+		}
+		if os.is_dir(try_path) {
+			if b.pref.verbosity.is_higher_or_equal(.level_three) {
+				println('  << found $try_path .')
+			}
+			return try_path
+		}
+	}
+	return error('module "$mod" not found')
 }

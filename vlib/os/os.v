@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module os
 
-import filepath
-
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
 
@@ -170,7 +168,12 @@ pub fn cp(old, new string) ?bool {
 	}
 }
 
+[deprecated]
 pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
+	panic('Use `os.cp_all` instead of `os.cp_r`')
+}
+
+pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 	source_path := os.realpath(osource_path)
 	dest_path := os.realpath(odest_path)
 	if !os.exists(source_path) {
@@ -178,7 +181,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 	}
 	// single file copy
 	if !os.is_dir(source_path) {
-		adjasted_path := if os.is_dir(dest_path) { filepath.join(dest_path,filepath.filename(source_path)) } else { dest_path }
+		adjasted_path := if os.is_dir(dest_path) { os.join(dest_path,os.filename(source_path)) } else { dest_path }
 		if os.exists(adjasted_path) {
 			if overwrite {
 				os.rm(adjasted_path)
@@ -199,14 +202,14 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 		return error(err)
 	}
 	for file in files {
-		sp := filepath.join(source_path,file)
-		dp := filepath.join(dest_path,file)
+		sp := os.join(source_path,file)
+		dp := os.join(dest_path,file)
 		if os.is_dir(sp) {
 			os.mkdir(dp) or {
 				panic(err)
 			}
 		}
-		cp_r(sp, dp, overwrite) or {
+		cp_all(sp, dp, overwrite) or {
 			os.rmdir(dp)
 			panic(err)
 		}
@@ -326,18 +329,15 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	}
 }
 
-/*
 pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
-	$if linux {
-	}
-	$else {
+	//$if linux {
+	//}
+	//$else {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	C.fwrite(data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_END)
-	}
+	//}
 }
-*/
-
 
 pub fn (f mut File) flush() {
 	if !f.opened {
@@ -601,7 +601,7 @@ pub fn is_readable(path string) bool {
 
 [deprecated]
 pub fn file_exists(_path string) bool {
-	panic('use os.exists(path) instead of os.file_exists(path)')
+	panic('Use `os.exists` instead of `os.file_exists`')
 }
 
 // rm removes file in `path`.
@@ -622,15 +622,20 @@ pub fn rmdir(path string) {
 	}
 }
 
+[deprecated]
 pub fn rmdir_recursive(path string) {
+	panic('Use `os.rmdir_all` instead of `os.rmdir_recursive`')
+}
+
+pub fn rmdir_all(path string) {
 	items := os.ls(path) or {
 		return
 	}
 	for item in items {
-		if os.is_dir(filepath.join(path,item)) {
-			rmdir_recursive(filepath.join(path,item))
+		if os.is_dir(os.join(path,item)) {
+			rmdir_all(os.join(path,item))
 		}
-		os.rm(filepath.join(path,item))
+		os.rm(os.join(path,item))
 	}
 	os.rmdir(path)
 }
@@ -648,24 +653,30 @@ fn print_c_errno() {
 	println('errno=$e err=$se')
 }
 
-[deprecated]
 pub fn ext(path string) string {
-	panic('Use `filepath.ext` instead of `os.ext`')
+	pos := path.last_index('.') or {
+		return ''
+	}
+	return path[pos..]
 }
 
-[deprecated]
 pub fn dir(path string) string {
-	panic('Use `filepath.dir` instead of `os.dir`')
+	pos := path.last_index(path_separator) or {
+		return '.'
+	}
+	return path[..pos]
 }
 
-[deprecated]
-pub fn basedir(path string) string {
-	panic('Use `filepath.basedir` instead of `os.basedir`')
+pub fn base_dir(path string) string {
+	pos := path.last_index(path_separator) or {
+		return path
+	}
+	// NB: *without* terminating /
+	return path[..pos]
 }
 
-[deprecated]
 pub fn filename(path string) string {
-	panic('Use `filepath.filename` instead of `os.filename`')
+	return path.all_after(path_separator)
 }
 
 // get_line returns a one-line string from stdin
@@ -707,14 +718,15 @@ pub fn get_raw_line() string {
 		}
 	} $else {
 		max := size_t(0)
-		mut buf := byteptr(0)
+		mut buf := charptr(0)
 		nr_chars := C.getline(&buf, &max, stdin)
-		defer { unsafe{ free(buf) } }
+		//defer { unsafe{ free(buf) } }
 		if nr_chars == 0 || nr_chars == -1 {
 			return ''
 		}
-		res := tos_clone( buf )
-		return res
+		return tos3(buf)
+		//res := tos_clone(buf)
+		//return res
 	}
 }
 
@@ -784,9 +796,9 @@ pub fn user_os() string {
 // home_dir returns path to user's home directory.
 pub fn home_dir() string {
 	$if windows {
-		return os.getenv('USERPROFILE') + filepath.separator
+		return os.getenv('USERPROFILE') + os.path_separator
 	} $else {
-		return os.getenv('HOME') + filepath.separator
+		return os.getenv('HOME') + os.path_separator
 	}
 }
 
@@ -832,7 +844,7 @@ fn C.readlink() int
 // process.
 pub fn executable() string {
 	$if linux {
-		mut result := calloc(MAX_PATH)
+		mut result := vcalloc(MAX_PATH)
 		count := C.readlink('/proc/self/exe', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
@@ -842,12 +854,12 @@ pub fn executable() string {
 	}
 	$if windows {
 		max := 512
-		mut result := &u16(calloc(max * 2)) // MAX_PATH * sizeof(wchar_t)
+		mut result := &u16(vcalloc(max * 2)) // MAX_PATH * sizeof(wchar_t)
 		len := C.GetModuleFileName(0, result, max)
 		return string_from_wide2(result, len)
 	}
 	$if macos {
-		mut result := calloc(MAX_PATH)
+		mut result := vcalloc(MAX_PATH)
 		pid := C.getpid()
 		ret := proc_pidpath(pid, result, MAX_PATH)
 		if ret <= 0 {
@@ -857,7 +869,7 @@ pub fn executable() string {
 		return string(result)
 	}
 	$if freebsd {
-		mut result := calloc(MAX_PATH)
+		mut result := vcalloc(MAX_PATH)
 		mib := [1/* CTL_KERN */, 14/* KERN_PROC */, 12/* KERN_PROC_PATHNAME */, -1]
 		size := MAX_PATH
 		C.sysctl(mib.data, 4, result, &size, 0, 0)
@@ -871,7 +883,7 @@ pub fn executable() string {
 	$if solaris {}
 	$if haiku {}
 	$if netbsd {
-		mut result := calloc(MAX_PATH)
+		mut result := vcalloc(MAX_PATH)
 		count := C.readlink('/proc/curproc/exe', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
@@ -880,7 +892,7 @@ pub fn executable() string {
 		return string(result,count)
 	}
 	$if dragonfly {
-		mut result := calloc(MAX_PATH)
+		mut result := vcalloc(MAX_PATH)
 		count := C.readlink('/proc/curproc/file', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
@@ -944,13 +956,13 @@ pub fn chdir(path string) {
 pub fn getwd() string {
 	$if windows {
 		max := 512 // MAX_PATH * sizeof(wchar_t)
-		buf := &u16(calloc(max * 2))
+		buf := &u16(vcalloc(max * 2))
 		if C._wgetcwd(buf, max) == 0 {
 			return ''
 		}
 		return string_from_wide(buf)
 	} $else {
-		buf := calloc(512)
+		buf := vcalloc(512)
 		if C.getcwd(buf, 512) == 0 {
 			return ''
 		}
@@ -964,7 +976,7 @@ pub fn getwd() string {
 // and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
 pub fn realpath(fpath string) string {
-	mut fullpath := calloc(MAX_PATH)
+	mut fullpath := vcalloc(MAX_PATH)
 	mut ret := charptr(0)
 	$if windows {
 		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
@@ -980,6 +992,25 @@ pub fn realpath(fpath string) string {
 	return string(fullpath)
 }
 
+// is_abs returns true if `path` is absolute.
+pub fn is_abs(path string) bool {
+	$if windows {
+		return path[0] == `/` || // incase we're in MingGW bash
+		(path[0].is_letter() && path[1] == `:`)
+	}
+	return path[0] == `/`
+}
+
+// join returns path as string from string parameter(s).
+pub fn join(base string, dirs ...string) string {
+	mut result := []string
+	result << base.trim_right('\\/')
+	for d in dirs {
+		result << d
+	}
+	return result.join(path_separator)
+}
+
 // walk_ext returns a recursive list of all file paths ending with `ext`.
 pub fn walk_ext(path, ext string) []string {
 	if !os.is_dir(path) {
@@ -989,7 +1020,7 @@ pub fn walk_ext(path, ext string) []string {
 		return []
 	}
 	mut res := []string
-	separator := if path.ends_with(filepath.separator) { '' } else { filepath.separator }
+	separator := if path.ends_with(os.path_separator) { '' } else { os.path_separator }
 	for i, file in files {
 		if file.starts_with('.') {
 			continue
@@ -1015,7 +1046,7 @@ pub fn walk(path string, f fn(path string)) {
 		return
 	}
 	for file in files {
-		p := path + filepath.separator + file
+		p := path + os.path_separator + file
 		if os.is_dir(p) && !os.is_link(p) {
 			walk(p, f)
 		}
@@ -1071,14 +1102,19 @@ pub fn log(s string) {
 	println('os.log: ' + s)
 }
 
+[deprecated]
 pub fn flush_stdout() {
+	panic('Use `os.flush` instead of `os.flush_stdout`')
+}
+
+pub fn flush() {
 	C.fflush(stdout)
 }
 
 pub fn mkdir_all(path string) {
-	mut p := if path.starts_with(filepath.separator) { filepath.separator } else { '' }
-	for subdir in path.split(filepath.separator) {
-		p += subdir + filepath.separator
+	mut p := if path.starts_with(os.path_separator) { os.path_separator } else { '' }
+	for subdir in path.split(os.path_separator) {
+		p += subdir + os.path_separator
 		if !os.is_dir(p) {
 			os.mkdir(p) or {
 				panic(err)
@@ -1087,13 +1123,8 @@ pub fn mkdir_all(path string) {
 	}
 }
 
-[deprecated]
-pub fn join(base string, dirs ...string) string {
-	panic('Use `filepath.join` instead of `os.join`')
-}
-
-// cachedir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
-pub fn cachedir() string {
+// cache_dir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
+pub fn cache_dir() string {
 	// See: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
 	// There is a single base directory relative to which user-specific non-essential
 	// (cached) data should be written. This directory is defined by the environment
@@ -1134,7 +1165,7 @@ pub fn tmpdir() string {
 		}
 	}
 	if path == '' {
-		path = os.cachedir()
+		path = os.cache_dir()
 	}
 	if path == '' {
 		path = '/tmp'
@@ -1156,10 +1187,10 @@ pub const (
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
 pub fn resource_abs_path(path string) string {
-	mut base_path := os.realpath(filepath.dir(os.executable()))
+	mut base_path := os.realpath(os.dir(os.executable()))
 	vresource := os.getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
 		base_path = vresource
 	}
-	return os.realpath( filepath.join( base_path, path ) )
+	return os.realpath( os.join( base_path, path ) )
 }

@@ -3,7 +3,6 @@ module compiler
 import (
 	os
 	time
-	filepath
 )
 
 fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
@@ -55,7 +54,7 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 	// We are in live code reload mode, so start the .so loader in the background
 	mut cgen := v.cgen
 	cgen.genln('')
-	file_base := filepath.filename(v.pref.path).replace('.v', '')
+	file_base := os.filename(v.pref.path).replace('.v', '')
 	if v.pref.os != .windows {
 		// unix:
 		so_name := file_base + '.so'
@@ -80,7 +79,7 @@ fn (v &V) generate_hot_reload_code() {
 	// Hot code reloading
 	if v.pref.is_live {
 		mut file := os.realpath(v.pref.path)
-		file_base := filepath.filename(file).replace('.v', '')
+		file_base := os.filename(file).replace('.v', '')
 		so_name := file_base + '.so'
 		// Need to build .so file before building the live application
 		// The live app needs to load this .so file on initialization.
@@ -95,12 +94,12 @@ fn (v &V) generate_hot_reload_code() {
 		}
 		so_debug_flag := if v.pref.is_debug { '-g' } else { '' }
 		cmd_compile_shared_library := '$vexe $msvc $so_debug_flag -o $file_base -solive -shared $file'
-		if v.pref.show_c_cmd {
+		if v.pref.verbosity.is_higher_or_equal(.level_one) {
 			println(cmd_compile_shared_library)
 		}
 		ticks := time.ticks()
 		os.system(cmd_compile_shared_library)
-		if v.pref.is_verbose {
+		if v.pref.verbosity.is_higher_or_equal(.level_two) {
 			diff := time.ticks() - ticks
 			println('compiling shared library took $diff ms')
 			println('=========\n')
@@ -225,4 +224,3 @@ void reload_so() {
 		cgen.genln(' int load_so(byteptr path) { return 0; }')
 	}
 }
-

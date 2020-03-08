@@ -131,7 +131,7 @@ fn rotate(m Mat4, angle f32, vec Vec3) Mat4 {
 */
 
 fn f32_calloc(n int) &f32 {
-	return &f32(calloc(n * sizeof(f32)))
+	return &f32(vcalloc(n * sizeof(f32)))
 }
 // fn translate(vec Vec3) *f32 {
 pub fn translate(m Mat4, v Vec3) Mat4 {

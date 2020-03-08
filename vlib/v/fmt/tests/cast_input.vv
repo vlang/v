@@ -1,0 +1,7 @@
+fn test_as() {
+	a := sum_expr()     as Bar
+}
+
+fn test_cast() {
+	f := f32(0)
+}

@@ -1,6 +1,6 @@
 /**********************************************************************
 *
-* f32 to string 
+* f32 to string
 *
 * Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
 * Use of this source code is governed by an MIT license
@@ -9,11 +9,11 @@
 * This file contains the f32 to string functions
 *
 * These functions are based on the work of:
-* Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN 
-* Conference on Programming Language Design and ImplementationJune 2018 
+* Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN
+* Conference on Programming Language Design and ImplementationJune 2018
 * Pages 270–282 https://doi.org/10.1145/3192366.3192369
 *
-* inspired by the Go version here: 
+* inspired by the Go version here:
 * https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 *
 **********************************************************************/
@@ -72,7 +72,7 @@ fn (d Dec32) get_string_32(neg bool, n_digit int) string {
 	mut x := 0
 	for x < (out_len-disp-1) {
 		buf[y - x] = `0` + byte(out%10)
-		out /= 10 
+		out /= 10
 		i++
 		x++
 	}
@@ -170,7 +170,7 @@ pub fn f32_to_decimal(mant u32, exp u32) Dec32 {
 	mm_shift := bool_to_u32(mant != 0 || exp <= 1)
 	mm       := u32(4 * m2 - 1 - mm_shift)
 
-	mut vr                   := u32(0) 
+	mut vr                   := u32(0)
 	mut vp                   := u32(0)
 	mut vm                   := u32(0)
 	mut e10                  := 0
@@ -291,7 +291,7 @@ pub fn f32_to_decimal(mant u32, exp u32) Dec32 {
 		out = vr + bool_to_u32(vr == vm || last_removed_digit >= 5)
 	}
 
-	return Dec32{m: out, e: e10 + removed}
+	return Dec32{m: out e: e10 + removed}
 }
 
 // f32_to_str return a string in scientific notation with max n_digit after the dot
@@ -316,7 +316,7 @@ pub fn f32_to_str(f f32, n_digit int) string {
 		//println("with exp form")
 		d = f32_to_decimal(mant, exp)
 	}
-	
+
 	//println("${d.m} ${d.e}")
 	return d.get_string_32(neg, n_digit)
 }

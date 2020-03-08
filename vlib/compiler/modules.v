@@ -4,7 +4,6 @@
 module compiler
 
 import (
-	filepath
 	os
 	v.pref
 )
@@ -25,7 +24,7 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	for m in table.imports {
 		if m.contains('.') && m.contains(mod) {
 			m_parts := m.split('.')
-			m_path := m_parts.join(filepath.separator)
+			m_path := m_parts.join(os.path_separator)
 			if mod == m_parts[m_parts.len - 1] && file_path.contains(m_path) {
 				return m
 			}
@@ -147,14 +146,13 @@ pub fn (graph &DepGraph) imports() []string {
 [inline]
 fn (v &V) module_path(mod string) string {
 	// submodule support
-	return mod.replace('.', filepath.separator)
+	return mod.replace('.', os.path_separator)
 }
 
 // 'strings' => 'VROOT/vlib/strings'
 // 'installed_mod' => '~/.vmodules/installed_mod'
 // 'local_mod' => '/path/to/current/dir/local_mod'
 fn (v mut V) set_module_lookup_paths() {
-	mlookup_path := if v.pref.vpath.len > 0 { v.pref.vpath } else { v_modules_path }
 	// Module search order:
 	// 0) V test files are very commonly located right inside the folder of the
 	// module, which they test. Adding the parent folder of the module folder
@@ -163,40 +161,46 @@ fn (v mut V) set_module_lookup_paths() {
 	// 1) search in the *same* directory, as the compiled final v program source
 	// (i.e. the . in `v .` or file.v in `v file.v`)
 	// 2) search in the modules/ in the same directory.
-	// 3) search in vlib/
-	// 4.1) search in -vpath (if given)
-	// 4.2) search in ~/.vmodules/ (i.e. modules installed with vpm) (no -vpath)
+	// 3) search in the provided paths
+	// By default, these are what (3) contains:
+	// 3.1) search in vlib/
+	// 3.2) search in ~/.vmodules/ (i.e. modules installed with vpm)
 	v.module_lookup_paths = []
 	if v.pref.is_test {
-		v.module_lookup_paths << filepath.basedir(v.compiled_dir) // pdir of _test.v
+		v.module_lookup_paths << os.base_dir(v.compiled_dir) // pdir of _test.v
 	}
 	v.module_lookup_paths << v.compiled_dir
-	v.module_lookup_paths << filepath.join(v.compiled_dir,'modules')
-	v.module_lookup_paths << v.pref.vlib_path
-	v.module_lookup_paths << mlookup_path
-	if v.pref.user_mod_path.len > 0 {
-		v.module_lookup_paths << v.pref.user_mod_path
-	}
-	if v.pref.is_verbose {
+	v.module_lookup_paths << os.join(v.compiled_dir,'modules')
+	v.module_lookup_paths << v.pref.lookup_path
+	if v.pref.verbosity.is_higher_or_equal(.level_two) {
 		v.log('v.module_lookup_paths: $v.module_lookup_paths')
 	}
 }
 
-fn (v &V) find_module_path(mod string) ?string {
-	mod_path := v.module_path(mod)
-	for lookup_path in v.module_lookup_paths {
-		try_path := filepath.join(lookup_path,mod_path)
-		if v.pref.is_verbose {
+fn (p mut Parser) find_module_path(mod string) ?string {
+	vmod_file_location := p.v.mod_file_cacher.get( p.file_path_dir )
+	mut module_lookup_paths := []string
+	if vmod_file_location.vmod_file.len != 0 {
+		if ! vmod_file_location.vmod_folder in p.v.module_lookup_paths {
+			module_lookup_paths << vmod_file_location.vmod_folder
+		}
+	}
+	module_lookup_paths << p.v.module_lookup_paths
+
+	mod_path := p.v.module_path(mod)
+	for lookup_path in module_lookup_paths {
+		try_path := os.join(lookup_path,mod_path)
+		if p.v.pref.verbosity.is_higher_or_equal(.level_three) {
 			println('  >> trying to find $mod in $try_path ...')
 		}
 		if os.is_dir(try_path) {
-			if v.pref.is_verbose {
+			if p.v.pref.verbosity.is_higher_or_equal(.level_three) {
 				println('  << found $try_path .')
 			}
 			return try_path
 		}
 	}
-	return error('module "$mod" not found')
+	return error('module "$mod" not found in ${module_lookup_paths}')
 }
 
 [inline]

@@ -1,0 +1,10 @@
+
+
+  // Sumtype
+   type    FooBar=   Foo |     Bar
+   pub type   PublicBar = Foo | Bar | FooBar
+
+ // Alias type
+     type  MyInt    int
+	 
+ pub type Abc f32

@@ -20,6 +20,7 @@ The commands are:
    symlink           create a symbolic link for V
    translate         translate C code to V (coming soon in 0.3)
    up                run the V self-updater
+   self              run the V self-compiler
    version           prints the version text and exits
 
    install           installs a module from VPM
@@ -110,6 +111,7 @@ Commands:
   up                Update V. Run `v up` at least once per day, since V development is rapid and features/bugfixes are added constantly.
   run <file.v>      Build and execute the V program in file.v. You can add arguments for the V program *after* the file name.
   build <module>    Compile a module into an object file.
+  self              Self-compile V from local source files.
   repl              Run the V REPL. If V is running in a tty terminal, the REPL is interactive, otherwise it just reads from stdin.
   symlink           Useful on Unix systems. Symlinks the current V executable to /usr/local/bin/v, so that V is globally available.
   test-compiler     Run all V test files, and compile all V examples.

@@ -21,8 +21,8 @@ pub mut:
 	// names        []Name
 	max_field_len         map[string]int // for vfmt: max_field_len['Parser'] == 12
 	generic_struct_params map[string][]string
-	tuple_variants map[string][]string // enum( Bool(BoolExpr) )
-	sum_types []string
+	tuple_variants		  map[string][]string // enum( Bool(BoolExpr) )
+	sum_types			  map[string][]string // SumType -> [Variants]
 }
 
 struct VargAccess {
@@ -164,7 +164,9 @@ const (
 	c_reserved = ['delete', 'exit', 'unix',
 	// 'print',
 	// 'ok',
-	'error', 'malloc', 'calloc', 'free', 'panic',
+	'error', 'malloc',
+//'calloc',
+'free', 'panic',
 	// Full list of C reserved words, from: https://en.cppreference.com/w/c/keyword
 	'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while', ]
 )
@@ -191,6 +193,8 @@ const (
 	float_types = ['f32', 'f64']
 	reserved_type_param_names = ['R', 'S', 'T', 'U', 'W']
 	pointer_types = ['byte*', 'byteptr', 'char*', 'charptr', 'void*', 'voidptr', 'voidptr*', 'intptr']
+	builtin_types = ['int', 'i8', 'char', 'byte', 'i16', 'u16', 'u32', 'i64', 'u64',
+		'f64', 'f32', 'byteptr', 'charptr', 'voidptr', 'intptr', 'string', 'ustring']
 )
 
 fn is_number_type(typ string) bool {
@@ -745,8 +749,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 		// Sum type
 		if expected in p.table.sum_types {
 			//println('checking sum')
-			child := p.table.find_type(got)
-			if child.parent == expected {
+			if got in p.table.sum_types[expected] {
 				//println('yep $expected')
 				return true
 			}

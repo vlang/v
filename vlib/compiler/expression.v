@@ -66,11 +66,10 @@ fn (p mut Parser) bool_expression() string {
 	// e.g. `return InfixExpr{}` in a function expecting `Expr`
 	if expected != typ && expected in p.table.sum_types { // TODO perf
 		//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
-		T := p.table.find_type(typ)
-		if T.parent == expected {
+		if typ in p.table.sum_types[expected] {
 			p.cgen.set_placeholder(start_ph, '/*SUM TYPE CAST2*/ ($expected) { .obj = memdup( &($typ[]) { ')
 			tt := typ.all_after('_') // TODO
-			p.gen('}, sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
+			p.gen('}, sizeof($typ) ), .typ = SumType_${expected}_${tt} }')//${val}_type }')
 		}
 	}
 	// `as` cast
@@ -90,10 +89,8 @@ fn (p mut Parser) key_as(typ string, start_ph int) string {
 		p.error('casting `$typ` to `$cast_typ` is not needed')
 	}
 	if typ in p.table.sum_types {
-		T := p.table.find_type(cast_typ)
-		if T.parent != typ {
-			p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`' +
-			'parent=$T.parent')
+		if !(cast_typ in  p.table.sum_types[typ]) {
+			p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`')
 		}
 		p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
 		p.gen('.obj')
@@ -102,7 +99,7 @@ fn (p mut Parser) key_as(typ string, start_ph int) string {
 		sum_type:= p.cgen.cur_line.all_after('*) (').replace('.obj', '.typ')
 
 		n := cast_typ.all_after('__')
-		p.cgen.insert_before('if (($sum_type != SumType_$n) {
+		p.cgen.insert_before('if (($sum_type != SumType_${typ}_$n) {
 puts("runtime error: $p.file_name:$p.scanner.line_nr cannot cast sum type `$typ` to `$n`");
 exit(1);
 }
@@ -678,8 +675,8 @@ fn (p mut Parser) expression() string {
 	return typ
 }
 
-fn (p mut Parser) handle_operator(op string, typ string, cpostfix string, ph int, T &Type) {
-	if T.has_method(op) {
+fn (p mut Parser) handle_operator(op string, typ string,cpostfix string, ph int, tt &Type) {
+	if tt.has_method(op) {
 		p.cgen.set_placeholder(ph, '${typ}_${cpostfix}(')
 		p.gen(')')
 	}
@@ -834,7 +831,9 @@ fn (p mut Parser) factor() string {
 			is_sum_type := type_of_var in p.table.sum_types
 			if is_sum_type && vname.len > 0 {
 				// TODO: make this work for arbitrary sumtype expressions, not just simple vars
-				p.gen('tos3(__SumTypeNames__${type_of_var}[${vname}.typ - 1])')
+				// NB: __SumTypeNames__[xxx][0] is the name of the sumtype itself;
+				// idx>0 are the names of the sumtype children
+				p.gen('tos3(__SumTypeNames__${type_of_var}[${vname}.typ])') 
 			}else{
 				p.gen('tos3("$type_of_var")')
 			}
@@ -954,7 +953,7 @@ fn (p mut Parser) factor() string {
 			return typ
 		}
 		else {
-			if p.pref.is_verbose || p.pref.is_debug {
+			if p.pref.verbosity.is_higher_or_equal(.level_three) {
 				next := p.peek()
 				println('prev=${p.prev_tok.str()}')
 				println('next=${next.str()}')

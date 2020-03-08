@@ -11,42 +11,54 @@ import (
 pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	tok := p.tok
 	name := p.check_name()
-	fn_name := if mod.len > 0 { '${mod}.$name' } else { name }
+	fn_name := if is_c { 'C.$name' } else if mod.len > 0 { '${mod}.$name' } else { name }
 	p.check(.lpar)
-	args := p.call_args()
+	args,muts := p.call_args()
+	mut or_stmts := []ast.Stmt
+	if p.tok.kind == .key_orelse {
+		p.next()
+		or_stmts = p.parse_block()
+	}
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
+		muts: muts
 		// tok: tok
+		
 		pos: tok.position()
 		is_c: is_c
-	}
-	if p.tok.kind == .key_orelse {
-		p.next()
-		p.parse_block()
+		or_block: ast.OrExpr{
+			stmts: or_stmts
+		}
 	}
 	return node
 }
 
-pub fn (p mut Parser) call_args() []ast.Expr {
+pub fn (p mut Parser) call_args() ([]ast.Expr,[]bool) {
 	mut args := []ast.Expr
+	mut muts := []bool
 	for p.tok.kind != .rpar {
 		if p.tok.kind == .key_mut {
 			p.check(.key_mut)
+			muts << true
 		}
-		e,_ := p.expr(0)
+		else {
+			muts << false
+		}
+		e := p.expr(0)
 		args << e
 		if p.tok.kind != .rpar {
 			p.check(.comma)
 		}
 	}
 	p.check(.rpar)
-	return args // ,table.void_ti
+	return args,muts
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
 	// p.table.clear_vars()
 	p.open_scope()
+	is_deprecated := p.attr == 'deprecated'
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -109,30 +121,15 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		})
 		// p.table.register_var(var)
 	}
-	//
-	/*
-
-			arg := table.Var{
-				name: arg_name
-				typ: arg_type
-			}
-			args << arg
-			// p.table.register_var(arg)
-				arg := table.Var{
-					name: arg_name
-					typ: typ
-				}
-				args << arg
-				p.table.register_var(arg)
-				*/
 	// Return type
 	mut typ := table.void_type
 	if p.tok.kind.is_start_of_type() {
 		typ = p.parse_type()
 	}
-	p.return_type = typ
+	// Register
 	if is_method {
 		type_sym := p.table.get_type_symbol(rec_type)
+		// p.warn('reg method $type_sym.name . $name ()')
 		ok := p.table.register_method(type_sym, table.Fn{
 			name: name
 			args: args
@@ -143,10 +140,10 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	else {
-		// TODO: prefix c fuctions with C.
-		// since v1 does not currently it sees
-		// `fn C.free` and `fn free` as the same
-		if !is_c {
+		if is_c {
+			name = 'C.$name'
+		}
+		else {
 			name = p.prepend_mod(name)
 		}
 		p.table.register_fn(table.Fn{
@@ -158,15 +155,18 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		})
 	}
 	mut stmts := []ast.Stmt
+	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block()
 	}
 	p.close_scope()
+	p.attr = ''
 	return ast.FnDecl{
 		name: name
 		stmts: stmts
 		typ: typ
 		args: ast_args
+		is_deprecated: is_deprecated
 		is_pub: is_pub
 		is_variadic: is_variadic
 		receiver: ast.Field{
@@ -175,6 +175,8 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		}
 		is_method: is_method
 		rec_mut: rec_mut
+		is_c: is_c
+		no_body: no_body
 	}
 }
 
@@ -193,7 +195,10 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 				p.check(.ellipsis)
 				is_variadic = true
 			}
-			arg_type := p.parse_type()
+			mut arg_type := p.parse_type()
+			if is_variadic {
+				arg_type = table.type_to_variadic(arg_type)
+			}
 			if p.tok.kind == .comma {
 				if is_variadic {
 					p.error('cannot use ...(variadic) with non-final parameter no $arg_no')
@@ -222,7 +227,10 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 				p.check(.ellipsis)
 				is_variadic = true
 			}
-			typ := p.parse_type()
+			mut typ := p.parse_type()
+			if is_variadic {
+				typ = table.type_to_variadic(typ)
+			}
 			for arg_name in arg_names {
 				args << ast.Arg{
 					name: arg_name

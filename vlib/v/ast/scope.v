@@ -44,6 +44,13 @@ pub fn (s &Scope) find_var(name string) ?VarDecl {
 	return none
 }
 
+pub fn (s &Scope) known_var(name string) bool {
+	if _ := s.find_var(name) {
+		return true
+	}
+	return false
+}
+
 pub fn (s mut Scope) register_var(var VarDecl) {
 	if x := s.find_var(var.name) {
 		// println('existing var: $var.name')
@@ -54,6 +61,14 @@ pub fn (s mut Scope) register_var(var VarDecl) {
 
 pub fn (s mut Scope) override_var(var VarDecl) {
 	s.vars[var.name] = var
+}
+
+pub fn (s &Scope) outermost() &Scope {
+	mut sc := s
+	for !isnil(sc.parent) {
+		sc = sc.parent
+	}
+	return sc
 }
 
 // returns the innermost scope containing pos
@@ -102,7 +117,7 @@ pub fn (s &Scope) innermost(pos int) ?&Scope {
 
 [inline]
 fn (s &Scope) contains(pos int) bool {
-	return pos > s.start_pos && pos < s.end_pos
+	return pos >= s.start_pos && pos <= s.end_pos
 }
 
 pub fn (sc &Scope) show(level int) string {

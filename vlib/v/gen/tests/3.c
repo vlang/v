@@ -1,8 +1,10 @@
-typedef struct {
+struct User {
 	int age;
 	string name;
-} User;
+};
 
+// multi return structs
+// end of definitions #endif
 int main() {
 	User user = (User){
 };

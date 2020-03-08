@@ -18,7 +18,7 @@ pub fn (nn int) str() string {
 		return '0'
 	}
 	max := 16
-	mut buf := calloc(max + 1)
+	mut buf := vcalloc(max + 1)
 	mut len := 0
 	mut is_neg := false
 	if n < 0 {
@@ -156,17 +156,18 @@ pub fn (n int) hex() string {
 pub fn (n i64) hex() string {
 	len := if n >= 0 { n.str().len + 3 } else { 19 }
 	hex := malloc(len)
-	// QTODO
+	// TODO
 	//count := C.sprintf(charptr(hex), '0x%'C.PRIx64, n)
-	count := C.sprintf(hex, '0x%x', n)
+	count := C.sprintf(charptr(hex), C.V64_PRINTFORMAT, n)
 	return tos(hex, count)
 }
 
 pub fn (n u64) hex() string {
-	len := if n >= 0 { n.str().len + 3 } else { 19 }
+	len := if n > 0 { n.str().len + 3 } else { 19 }
 	hex := malloc(len)
 	//count := C.sprintf(charptr(hex), '0x%'C.PRIx64, n)
-	count := C.sprintf((hex), '0x%lx', n)
+	count := C.sprintf(charptr(hex), C.V64_PRINTFORMAT, n)
+	//count := C.sprintf(charptr(hex), '0x%lx', n)
 	return tos(hex, count)
 }
 

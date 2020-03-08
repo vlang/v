@@ -2,11 +2,12 @@ module image
 import sdl
 
 #flag linux -lSDL2_image
-#include <SDL_image.h>
 
-// following kludge until `sdl2-config ...` is supported also on windows
-#flag windows -I/msys64/mingw64/include/SDL2
-#flag windows -L/mingw64/lib -lSDL2_image
+#flag windows -I @VROOT/thirdparty/SDL2_image/include
+#flag windows -L @VROOT/thirdparty/SDL2_image/lib/x64
+#flag windows -lSDL2_image
+
+#include <SDL_image.h>
 
 //////////////////////////////////////////////////////////
 // SDL_Image.h

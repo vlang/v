@@ -24,21 +24,23 @@ fn main() {
 	mut d := testb(1)
 	d = 'hello'
 
-	mut e = 'hello'
+	mut e := 'hello'
 	e = testb(111)
 	e = 'world'
 
 	mut f := [testa(),2,3,4]
 	mut g := [testb(1),'hello']
 
-	m1, m2 := mr_test()
+	mr1, mr2 := mr_test()
 
 	//mut arr_foo := []Foo
 	arr_foo := [a]
 	//arr_foo << a // TODO
 	af_idx_el := arr_foo[0]
 	foo_a := af_idx_el.a
-	
+
+	mut m1 := map[string]string
+	mut m2 := {'v': 1, 'lang': 2}
 }
 
 fn mr_test() (int, string) {

@@ -61,7 +61,7 @@ fn function2() {
 }
 
 fn init_array() {
-	nums := [1,2,3]
+	nums := [4,2,3]
 
 }
 

@@ -29,7 +29,7 @@ fn new_array(mylen int, cap int, elm_size int) array {
 		len: mylen
 		cap: cap_
 		element_size: elm_size
-		data: calloc(cap_ * elm_size)
+		data: vcalloc(cap_ * elm_size)
 	}
 	return arr
 }
@@ -46,7 +46,7 @@ fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 		len: len
 		cap: cap
 		element_size: elm_size
-		data: calloc(cap_ * elm_size)
+		data: vcalloc(cap_ * elm_size)
 	}
 	// TODO Write all memory functions (like memcpy) in V
 	C.memcpy(arr.data, c_array, len * elm_size)
@@ -74,7 +74,7 @@ fn (a mut array) ensure_cap(required int) {
 		cap *= 2
 	}
 	if a.cap == 0 {
-		a.data = calloc(cap * a.element_size)
+		a.data = vcalloc(cap * a.element_size)
 	}
 	else {
 		a.data = C.realloc(a.data, cap * a.element_size)
@@ -82,23 +82,22 @@ fn (a mut array) ensure_cap(required int) {
 	a.cap = cap
 }
 
-// array.repeat returns new array with the given array elements
-// repeated `nr_repeat` times
-pub fn (a array) repeat(nr_repeats int) array {
-	if nr_repeats < 0 {
-		panic('array.repeat: count is negative (count == nr_repeats)')
+// repeat returns new array with the given array elements repeated given times.
+pub fn (a array) repeat(count int) array {
+	if count < 0 {
+		panic('array.repeat: count is negative: $count')
 	}
-	mut size := nr_repeats * a.len * a.element_size
+	mut size := count * a.len * a.element_size
 	if size == 0 {
 		size = a.element_size
 	}
 	arr := array{
-		len: nr_repeats * a.len
-		cap: nr_repeats * a.len
+		len: count * a.len
+		cap: count * a.len
 		element_size: a.element_size
-		data: calloc(size)
+		data: vcalloc(size)
 	}
-	for i in 0..nr_repeats {
+	for i in 0..count {
 		C.memcpy(arr.data + i * a.len * a.element_size, a.data, a.len * a.element_size)
 	}
 	return arr
@@ -265,7 +264,7 @@ pub fn (a array) clone() array {
 		len: a.len
 		cap: a.cap
 		element_size: a.element_size
-		data: calloc(size)
+		data: vcalloc(size)
 	}
 	C.memcpy(arr.data, a.data, a.cap * a.element_size)
 	return arr
@@ -329,11 +328,14 @@ pub fn (a mut array) push_many(val voidptr, size int) {
 // array.reverse returns a new array with the elements of
 // the original array in reverse order.
 pub fn (a array) reverse() array {
+	if a.len < 2 {
+		return a
+	}
 	arr := array{
 		len: a.len
 		cap: a.cap
 		element_size: a.element_size
-		data: calloc(a.cap * a.element_size)
+		data: vcalloc(a.cap * a.element_size)
 	}
 	for i in 0..a.len {
 		C.memcpy(arr.data + i * arr.element_size, &a[a.len - 1 - i], arr.element_size)
@@ -484,7 +486,7 @@ pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
 	for i in a {
 		_accum = iter(_accum, i)
 	}
-	
+
 	return _accum
 }
 
@@ -574,4 +576,14 @@ pub fn compare_f32(a, b &f32) int {
 		return 1
 	}
 	return 0
+}
+
+// a.pointers() returns a new array, where each element 
+// is the address of the corresponding element in a.
+pub fn (a array) pointers() []voidptr {
+	mut res := []voidptr
+	for i in 0..a.len {
+		res << a.data + i * a.element_size
+	}
+	return res
 }

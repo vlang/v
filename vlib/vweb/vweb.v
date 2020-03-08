@@ -250,8 +250,8 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 		req: req
 		conn: conn
 		form: map[string]string
-		static_files: map[string]string
-		static_mime_types: map[string]string
+		static_files: app.vweb.static_files
+		static_mime_types: app.vweb.static_mime_types
 	}
 	//}
 	if req.method in methods_with_form {
@@ -269,10 +269,17 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 	}
 
 	// Serve a static file if it's one
-	// if app.vweb.handle_static() {
-	// 	conn.close()
-	// 	continue
-	// }
+	static_file := app.vweb.static_files[app.vweb.req.url]
+	mime_type := app.vweb.static_mime_types[app.vweb.req.url]
+
+	if static_file != '' && mime_type != '' {
+		data := os.read_file(static_file) or {
+			conn.send_string(HTTP_404) or {}
+			return
+		}
+		app.vweb.send_response_to_client(mime_type, data)
+		return
+	}
 
 	// Call the right action
 	$if debug {
@@ -316,45 +323,41 @@ fn (ctx mut Context) parse_form(s string) {
 
 fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 	files := os.ls(directory_path) or { panic(err) }
+
 	if files.len > 0 {
 		for file in files {
-			mut ext := ''
-			mut i := file.len
-			mut flag := true
-			for i > 0 {
-		 		i--
-				if flag {
-					ext = file[i..i + 1] + ext
-				}
-				if file[i..i + 1] == '.' {
-					flag = false
-				}
-			}
 
-			// todo: os.is_dir is broken now so we expect that file is dir it has no extension
-			// if flag {
 			if os.is_dir(file) {
 				ctx.scan_static_directory(directory_path + '/' + file, mount_path + '/' + file)
-			} else {
-				ctx.static_files[mount_path + '/' + file] = directory_path + '/' + file
-				ctx.static_mime_types[mount_path + '/' + file] = mime_types[ext]
+			} else if file.contains('.') && ! file.starts_with('.') && ! file.ends_with('.') {
+				ext := os.ext(file)
+
+				// Rudimentary guard against adding files not in mime_types.
+				// Use serve_static directly to add non-standard mime types.
+				if ext in mime_types {
+					ctx.serve_static(mount_path + '/' + file, directory_path + '/' + file, mime_types[ext])
+				}
 			}
 		}
 	}
 }
 
 pub fn (ctx mut Context) handle_static(directory_path string) bool {
-	if ctx.done { return false }
-	ctx.scan_static_directory(directory_path, '')
-
-	static_file := ctx.static_files[ctx.req.url]
-	mime_type := ctx.static_mime_types[ctx.req.url]
-
-	if static_file != '' {
-		data := os.read_file(static_file) or { return false }
-		return ctx.send_response_to_client(mime_type, data)
+	if ctx.done || ! os.exists(directory_path) {
+		return false
 	}
-	return false
+
+	dir_path := directory_path.trim_space().trim_right('/')
+	mut mount_path := ''
+
+	if dir_path != '.' && os.is_dir(dir_path) {
+		// Mount point hygene, "./assets" => "/assets".
+		mount_path = '/' + dir_path.trim_left('.').trim('/')
+	}
+
+	ctx.scan_static_directory(dir_path, mount_path)
+
+	return true
 }
 
 pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) {

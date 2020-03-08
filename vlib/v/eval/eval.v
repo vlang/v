@@ -15,6 +15,7 @@ pub struct Eval {
 mut:
 	checker checker.Checker
 	vars    map[string]Var
+	table   &table.Table
 }
 
 pub struct Var {
@@ -22,6 +23,7 @@ pub struct Var {
 }
 
 pub fn (e mut Eval) eval(file ast.File, table &table.Table) string {
+	e.table = table
 	mut res := ''
 	e.checker = checker.new_checker(table)
 	for stmt in file.stmts {
@@ -61,6 +63,9 @@ fn (e mut Eval) stmt(node ast.Stmt) string {
 			print_object(o)
 			return o.str()
 		}
+		// ast.StructDecl {
+		// println('s decl')
+		// }
 		ast.VarDecl {
 			e.vars[it.name] = Var{
 				value: e.expr(it.expr)
@@ -83,7 +88,7 @@ fn (e mut Eval) expr(node ast.Expr) Object {
 			return v.value
 		}
 		ast.InfixExpr {
-			e.checker.infix_expr(it)
+			e.checker.infix_expr(mut it)
 			// println('bin $it.op')
 			left := e.expr(it.left) as int
 			right := e.expr(it.right) as int
