@@ -334,8 +334,6 @@ fn test_basedir() {
 }
 
 fn test_environ() {
-	// TODO: make this work on windows too
-	$if windows { return }
 	os.setenv('myvar1', 'bar1', true)
 	os.setenv('myvar2', 'bar2', true)
 	assert os.getenv('myvar1') == 'bar1'

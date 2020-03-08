@@ -357,8 +357,15 @@ pub fn (f mut File) close() {
 fn C.GetEnvironmentStringsW() &u16
 pub fn environ() map[string]string {
 	mut res := map[string]string
-	mut e := &u16( C.GetEnvironmentStringsW() )
-	eprintln( ptr_str(e) )
-	res['abc'] = 'def'
+	mut c := C.GetEnvironmentStringsW()
+	for {
+		if *c==0 { break }
+		eline := string_from_wide(c)
+		eq_index := eline.index_byte(`=`)
+		if eq_index > 0 {
+			res[ eline[0..eq_index] ] = eline[eq_index+1..]
+		}
+		c = c + eline.len + 1
+	}
 	return res
 }
