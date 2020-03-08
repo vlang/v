@@ -90,6 +90,10 @@ pub fn (p mut Parser) parse_type() table.Type {
 		p.check(.amp)
 		nr_muls++
 	}
+	if p.tok.kind == .key_mut {
+		nr_muls++
+		p.next()
+	}
 	is_c := p.tok.lit == 'C'
 	if is_c {
 		p.next()
@@ -215,7 +219,7 @@ pub fn (p mut Parser) parse_any_type(is_c, is_ptr bool) table.Type {
 					// println('NOT FOUND: $name - adding placeholder - $idx')
 					return table.new_type(idx)
 				}
-			}
+	}
 		}
 	}
 }
