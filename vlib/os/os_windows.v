@@ -355,9 +355,11 @@ pub fn (f mut File) close() {
 // os.environ returns a map of all the current environment variables
 // See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
 fn C.GetEnvironmentStringsW() &u16
+fn C.FreeEnvironmentStringsW(&u16) int
 pub fn environ() map[string]string {
 	mut res := map[string]string
-	mut c := C.GetEnvironmentStringsW()
+	mut estrings := C.GetEnvironmentStringsW()
+	mut c := estrings
 	for {
 		if *c==0 { break }
 		eline := string_from_wide(c)
@@ -367,5 +369,6 @@ pub fn environ() map[string]string {
 		}
 		c = c + eline.len + 1
 	}
+	C.FreeEnvironmentStringsW(estrings)
 	return res
 }
