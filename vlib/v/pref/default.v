@@ -14,7 +14,7 @@ pub fn (p mut Preferences) fill_with_defaults() {
 		// Location of all vlib files
 		p.vroot = os.dir(vexe_path())
 	}
-	vlib_path := os.join(p.vroot, 'vlib')
+	vlib_path := os.join_path(p.vroot, 'vlib')
 	if p.lookup_path.len == 0 {
 		p.lookup_path = ['@vlib', '@vmodules']
 	}
@@ -30,7 +30,7 @@ pub fn (p mut Preferences) fill_with_defaults() {
 			base = filename
 		}
 		target_dir := if os.is_dir(rpath) { rpath } else { os.dir(rpath) }
-		p.out_name = os.join(target_dir, base)
+		p.out_name = os.join_path(target_dir, base)
 
 		if rpath == '$p.vroot/cmd/v' && os.is_dir('vlib/compiler') {
 			// Building V? Use v2, since we can't overwrite a running

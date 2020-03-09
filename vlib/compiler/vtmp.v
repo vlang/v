@@ -6,9 +6,9 @@ module compiler
 import os
 
 fn get_vtmp_folder() string {
-	vtmp := os.join(os.tmpdir(),'v')
+	vtmp := os.join_path(os.tmpdir(), 'v')
 	if !os.is_dir(vtmp) {
-		os.mkdir(vtmp)or{
+		os.mkdir(vtmp) or {
 			panic(err)
 		}
 	}
@@ -17,5 +17,5 @@ fn get_vtmp_folder() string {
 
 fn get_vtmp_filename(base_file_name string, postfix string) string {
 	vtmp := get_vtmp_folder()
-	return os.realpath(os.join(vtmp,os.filename(os.realpath(base_file_name)) + postfix))
+	return os.realpath(os.join_path(vtmp, os.filename(os.realpath(base_file_name)) + postfix))
 }

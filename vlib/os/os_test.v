@@ -307,9 +307,9 @@ fn test_is_abs() {
 
 fn test_join() {
 	$if windows {
-		assert os.join('v', 'vlib', 'os') == 'v\\vlib\\os'
+		assert os.join_path('v', 'vlib', 'os') == 'v\\vlib\\os'
 	} $else {
-		assert os.join('v', 'vlib', 'os') == 'v/vlib/os'
+		assert os.join_path('v', 'vlib', 'os') == 'v/vlib/os'
 	}
 }
 

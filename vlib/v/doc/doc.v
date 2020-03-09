@@ -28,7 +28,7 @@ pub fn doc(mod string, table &table.Table) string {
 	}
 	vlib_path := os.dir(pref.vexe_path()) + '/vlib'
 	mod_path := mod.replace('.', os.path_separator)
-	path := os.join(vlib_path, mod_path)
+	path := os.join_path(vlib_path, mod_path)
 	if !os.exists(path) {
 		println('module "$mod" not found')
 		println(path)
@@ -45,7 +45,7 @@ pub fn doc(mod string, table &table.Table) string {
 		if file.ends_with('_test.v') || file.ends_with('_windows.v') || file.ends_with('_macos.v') {
 			continue
 		}
-		file_ast := parser.parse_file(os.join(path,file), table, .skip_comments)
+		file_ast := parser.parse_file(os.join_path(path,file), table, .skip_comments)
 		d.stmts << file_ast.stmts
 	}
 	d.print_fns()
