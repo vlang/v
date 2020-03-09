@@ -80,7 +80,7 @@ pub fn (ts mut TestSession) test() {
 
 fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
-	tmpd := os.tmpdir()
+	tmpd := os.temp_dir()
 	show_stats := '-stats' in ts.vargs.split(' ')
 	// tls_bench is used to format the step messages/timings
 	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
