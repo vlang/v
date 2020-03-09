@@ -297,11 +297,11 @@ fn test_ext() {
 }
 
 fn test_is_abs() {
-	assert os.is_abs('/home/user') == true
-	assert os.is_abs('v/vlib') == false
+	assert os.is_abspath('/home/user') == true
+	assert os.is_abspath('v/vlib') == false
 
 	$if windows {
-		assert os.is_abs('C:\\Windows\\') == true
+		assert os.is_abspath('C:\\Windows\\') == true
 	}
 }
 
