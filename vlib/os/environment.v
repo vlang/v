@@ -4,11 +4,11 @@
 module os
 
 fn C.getenv(byteptr) &char
-
-  // C.GetEnvironmentStringsW & C.FreeEnvironmentStringsW are defined only on windows
+// C.GetEnvironmentStringsW & C.FreeEnvironmentStringsW are defined only on windows
 fn C.GetEnvironmentStringsW() &u16
-fn C.FreeEnvironmentStringsW(&u16) int
 
+
+fn C.FreeEnvironmentStringsW(&u16) int
 // `getenv` returns the value of the environment variable named by the key.
 pub fn getenv(key string) string {
 	$if windows {
@@ -58,21 +58,21 @@ pub fn environ() map[string]string {
 	$if windows {
 		mut estrings := C.GetEnvironmentStringsW()
 		mut eline := ''
-		for c := estrings; *c!=0; c = c + eline.len + 1 {
+		for c := estrings; *c != 0; c = c + eline.len + 1 {
 			eline = string_from_wide(c)
 			eq_index := eline.index_byte(`=`)
 			if eq_index > 0 {
-				res[ eline[0..eq_index] ] = eline[eq_index+1..]
-			}			
+				res[eline[0..eq_index]] = eline[eq_index + 1..]
+			}
 		}
 		C.FreeEnvironmentStringsW(estrings)
-	} $else {   
-		e := &byteptr( &C.environ )
+	} $else {
+		e := &byteptr(&C.environ)
 		for i := 0; !isnil(e[i]); i++ {
 			eline := cstring_to_vstring(e[i])
 			eq_index := eline.index_byte(`=`)
 			if eq_index > 0 {
-				res[ eline[0..eq_index] ] = eline[eq_index+1..]
+				res[eline[0..eq_index]] = eline[eq_index + 1..]
 			}
 		}
 	}
