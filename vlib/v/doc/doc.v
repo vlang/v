@@ -28,7 +28,7 @@ pub fn doc(mod string, table &table.Table) string {
 	}
 	vlib_path := os.dir(pref.vexe_path()) + '/vlib'
 	mod_path := mod.replace('.', os.path_separator)
-	path := os.join_path(vlib_path, mod_path)
+	path := os.join_path(vlib_path,mod_path)
 	if !os.exists(path) {
 		println('module "$mod" not found')
 		println(path)
@@ -48,6 +48,12 @@ pub fn doc(mod string, table &table.Table) string {
 		file_ast := parser.parse_file(os.join_path(path,file), table, .skip_comments)
 		d.stmts << file_ast.stmts
 	}
+	if d.stmts.len == 0 {
+		println('nothing here')
+		exit(1)
+	}
+	d.print_structs()
+	d.print_enums()
 	d.print_fns()
 	d.out.writeln('')
 	d.print_methods()
@@ -91,9 +97,8 @@ fn (d Doc) get_fn_signatures(filter_fn FilterFn) []string {
 					fn_signatures << d.get_fn_node(it)
 				}
 			}
-			else {
-			}
-		}
+			else {}
+	}
 	}
 	fn_signatures.sort()
 	return fn_signatures
@@ -105,4 +110,36 @@ fn is_pub_method(node ast.FnDecl) bool {
 
 fn is_pub_function(node ast.FnDecl) bool {
 	return node.is_pub && !node.is_method && !node.is_deprecated
+}
+
+// TODO it's probably better to keep using AST, not `table`
+fn (d mut Doc) print_enums() {
+	for typ in d.table.types {
+		if typ.kind != .enum_ {
+			continue
+		}
+		d.out.writeln('enum $typ.name {')
+		info := typ.info as table.Enum
+		for val in info.vals {
+			d.out.writeln('\t$val')
+		}
+		d.out.writeln('}')
+	}
+}
+
+fn (d mut Doc) print_structs() {
+	for typ in d.table.types {
+		if typ.kind != .struct_ || !typ.name.starts_with(d.mod + '.') {
+			// !typ.name[0].is_capital() || typ.name.starts_with('C.') {
+			continue
+		}
+		name := typ.name.after('.')
+		d.out.writeln('struct $name {')
+		info := typ.info as table.Struct
+		for field in info.fields {
+			sym := d.table.get_type_symbol(field.typ)
+			d.out.writeln('\t$field.name $sym.name')
+		}
+		d.out.writeln('}\n')
+	}
 }
