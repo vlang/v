@@ -54,9 +54,11 @@ int main() {
 	string foo_a = af_idx_el.a;
     map_string_string m1 = new_map(1, sizeof(string));
     map_string_int m2 = new_map_init(2, sizeof(int), (string[2]){tos3("v"), tos3("lang"), }, (int[2]){1, 2, });
-    multi_return_int_string mr_548 = mr_test();
-    int mr1 = mr_548->arg[0];
-    string mr2 = mr_548->arg[1];
+    string ma1 = tos3("hello");
+    string ma2 = tos3("vlang");
+    multi_return_int_string mr_578 = mr_test();
+    int mr1 = mr_578->arg[0];
+    string mr2 = mr_578->arg[1];
     return 0;
 }
 
