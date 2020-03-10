@@ -1,5 +1,10 @@
 import os
 
+fn test_getenv() {
+	assert os.getenv('VEXE').len > 0
+	assert os.getenv('PATH').len > 0	 
+}
+
 fn test_setenv() {
   os.setenv('foo', 'bar', true)
   assert os.getenv('foo') == 'bar'
