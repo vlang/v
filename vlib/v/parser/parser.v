@@ -296,7 +296,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			}
 		}
 		.key_mut {
-			return p.var_decl_and_assign_stmt()
+			return p.assign_stmt()
 		}
 		.key_for {
 			return p.for_statement()
@@ -341,7 +341,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		else {
 			// `x := ...`
 			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
-				return p.var_decl_and_assign_stmt()
+				return p.assign_stmt()
 			}
 			// `label:`
 			else if p.tok.kind == .name && p.peek_tok.kind == .colon {
@@ -870,7 +870,7 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 }
 
 fn (p mut Parser) filter() {
-	p.scope.register_var(ast.VarDecl{
+	p.scope.register_var(ast.Var{
 		name: 'it'
 	})
 }
@@ -990,7 +990,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		// mut inc := ast.Stmt{}
 		mut inc := ast.Expr{}
 		if p.peek_tok.kind in [.assign, .decl_assign] {
-			init = p.var_decl_and_assign_stmt()
+			init = p.assign_stmt()
 		}
 		else if p.tok.kind != .semicolon {}
 		// allow `for ;; i++ {`
@@ -1029,7 +1029,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		if p.tok.kind == .comma {
 			p.check(.comma)
 			val_name = p.check_name()
-			p.scope.register_var(ast.VarDecl{
+			p.scope.register_var(ast.Var{
 				name: val_name
 				typ: table.int_type
 			})
@@ -1048,7 +1048,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			high_expr = p.expr(0)
 		}
 		// TODO: update var type in checker
-		p.scope.register_var(ast.VarDecl{
+		p.scope.register_var(ast.Var{
 			name: var_name
 			// expr: cond
 
@@ -1093,7 +1093,7 @@ fn (p mut Parser) if_expr() ast.Expr {
 		var_name := p.check_name()
 		p.check(.decl_assign)
 		expr := p.expr(0)
-		p.scope.register_var(ast.VarDecl{
+		p.scope.register_var(ast.Var{
 			name: var_name
 			expr: expr
 		})
@@ -1508,50 +1508,22 @@ fn (p mut Parser) parse_assign_rhs() []ast.Expr {
 	return exprs
 }
 
-fn (p mut Parser) var_decl_and_assign_stmt() ast.Stmt {
+fn (p mut Parser) assign_stmt() ast.Stmt {
 	idents := p.parse_assign_lhs()
 	op := p.tok.kind
 	p.next() // :=, =
 	exprs := p.parse_assign_rhs()
 	is_decl := op == .decl_assign
-	// VarDecl
-	if idents.len == 1 {
-		ident := idents[0]
-		expr := exprs[0]
-		info0 := ident.var_info()
+	for ident in idents {
 		known_var := p.scope.known_var(ident.name)
 		if !is_decl && !known_var {
 			p.error('unknown variable `$ident.name`')
 		}
 		if is_decl && ident.kind != .blank_ident {
-			if known_var {
-				p.error('redefinition of `$ident.name`')
-			}
-			p.scope.register_var(ast.VarDecl{
-				name: ident.name
-				expr: expr
-			})
-		}
-		return ast.VarDecl{
-			name: ident.name
-			// name2: name2
-
-			expr: expr // p.expr(token.lowest_prec)
-
-			is_mut: info0.is_mut
-			// typ: typ
-
-			pos: p.tok.position()
-		}
-		// return p.var_decl(ident[0], exprs[0])
-	}
-	// AssignStmt
-	for ident in idents {
-		if is_decl && ident.kind != .blank_ident {
 			if p.scope.known_var(ident.name) {
 				p.error('redefinition of `$ident.name`')
 			}
-			p.scope.register_var(ast.VarDecl{
+			p.scope.register_var(ast.Var{
 				name: ident.name
 			})
 		}
@@ -1564,8 +1536,6 @@ fn (p mut Parser) var_decl_and_assign_stmt() ast.Stmt {
 	}
 }
 
-// pub fn (p mut Parser) assign_stmt() ast.AssignStmt {}
-// fn (p mut Parser) var_decl() ast.VarDecl {}
 fn (p mut Parser) hash() ast.HashStmt {
 	val := p.tok.lit
 	p.next()
@@ -1633,7 +1603,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 			exprs << ast.Type{
 				typ: typ
 			}
-			p.scope.register_var(ast.VarDecl{
+			p.scope.register_var(ast.Var{
 				name: 'it'
 				typ: typ
 			})

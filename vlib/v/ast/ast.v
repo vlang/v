@@ -16,7 +16,7 @@ AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr |
 CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | 	
 ConcatExpr | Type | AsCast
 
-pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
+pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
 LineComment | MultiLineComment | AssertStmt | UnsafeStmt
@@ -164,6 +164,7 @@ mut:
 	is_c     bool
 	muts     []bool
 	or_block OrExpr
+	typ      table.Type
 }
 
 pub struct MethodCallExpr {
@@ -201,10 +202,9 @@ pub struct Stmt {
 */
 
 
-pub struct VarDecl {
+pub struct Var {
 pub:
 	name   string
-	name2  string // TODO
 	expr   Expr
 	is_mut bool
 mut:

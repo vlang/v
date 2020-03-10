@@ -66,11 +66,14 @@ fn (e mut Eval) stmt(node ast.Stmt) string {
 		// ast.StructDecl {
 		// println('s decl')
 		// }
-		ast.VarDecl {
-			e.vars[it.name] = Var{
-				value: e.expr(it.expr)
-			}
+		ast.AssignStmt {
+			// TODO; replaced VarDecl
 		}
+		// ast.VarDecl {
+		// 	e.vars[it.name] = Var{
+		// 		value: e.expr(it.expr)
+		// 	}
+		// }
 		else {}
 	}
 	return '>>'

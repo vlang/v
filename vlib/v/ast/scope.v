@@ -10,7 +10,7 @@ mut:
 	start_pos int
 	end_pos   int
 	// vars      map[string]table.Var
-	vars      map[string]VarDecl
+	vars      map[string]Var
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
@@ -20,7 +20,7 @@ pub fn new_scope(parent &Scope, start_pos int) &Scope {
 	}
 }
 
-pub fn (s &Scope) find_scope_and_var(name string) ?(&Scope,VarDecl) {
+pub fn (s &Scope) find_scope_and_var(name string) ?(&Scope,Var) {
 	if name in s.vars {
 		return s,s.vars[name]
 	}
@@ -32,7 +32,7 @@ pub fn (s &Scope) find_scope_and_var(name string) ?(&Scope,VarDecl) {
 	return none
 }
 
-pub fn (s &Scope) find_var(name string) ?VarDecl {
+pub fn (s &Scope) find_var(name string) ?Var {
 	if name in s.vars {
 		return s.vars[name]
 	}
@@ -51,7 +51,7 @@ pub fn (s &Scope) known_var(name string) bool {
 	return false
 }
 
-pub fn (s mut Scope) register_var(var VarDecl) {
+pub fn (s mut Scope) register_var(var Var) {
 	if x := s.find_var(var.name) {
 		// println('existing var: $var.name')
 		return
@@ -59,7 +59,7 @@ pub fn (s mut Scope) register_var(var VarDecl) {
 	s.vars[var.name] = var
 }
 
-pub fn (s mut Scope) override_var(var VarDecl) {
+pub fn (s mut Scope) override_var(var Var) {
 	s.vars[var.name] = var
 }
 

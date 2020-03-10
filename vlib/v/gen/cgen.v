@@ -135,22 +135,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	// g.writeln('//// stmt start')
 	match node {
 		ast.AssignStmt {
-			// ident0 := it.left[0]
-			// info0 := ident0.var_info()
-			// for i, ident in it.left {
-			// info := ident.var_info()
-			// if info0.typ.typ.kind == .multi_return {
-			// if i == 0 {
-			// g.write('$info.typ.typ.name $ident.name = ')
-			// g.expr(it.right[0])
-			// } else {
-			// arg_no := i-1
-			// g.write('$info.typ.typ.name $ident.name = $ident0.name->arg[$arg_no]')
-			// }
-			// }
-			// g.writeln(';')
-			// }
-			g.write('') // /*assign*/')
+			g.gen_assign_stmt(it)
 		}
 		ast.AssertStmt {
 			g.write('// assert')
@@ -283,14 +268,47 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.UnsafeStmt {
 			g.stmts(it.stmts)
 		}
-		ast.VarDecl {
-			styp := g.typ(it.typ)
-			g.write('$styp $it.name = ')
-			g.expr(it.expr)
-			g.writeln(';')
-		}
 		else {
 			verror('cgen.stmt(): unhandled node ' + typeof(node))
+		}
+	}
+}
+
+fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
+	// multi return
+	if assign_stmt.left.len > assign_stmt.right.len {
+		mut return_type := table.void_type
+		match assign_stmt.right[0] {
+			ast.CallExpr {
+				return_type = it.typ
+			}
+			ast.MethodCallExpr {
+				return_type = it.typ
+			}
+			else {
+				panic('expected call')
+			}
+		}
+		mr_typ_sym := g.table.get_type_symbol(return_type)
+		mr_var_name := 'mr_$assign_stmt.pos.pos'
+		g.write('$mr_typ_sym.name $mr_var_name = ')
+		g.expr(assign_stmt.right[0])
+		g.writeln(';')
+		for i, ident in assign_stmt.left {
+			ident_var_info := ident.var_info()
+			var_type_sym := g.table.get_type_symbol(ident_var_info.typ)
+			g.writeln('$var_type_sym.name $ident.name = $mr_var_name->arg[$i];')
+		}
+	}
+	// `a := 1` | `a,b := 1,2`
+	else {
+		for i, ident in assign_stmt.left {
+			val := assign_stmt.right[i]
+			ident_var_info := ident.var_info()
+			var_type_sym := g.table.get_type_symbol(ident_var_info.typ)
+			g.write('$var_type_sym.name $ident.name = ')
+			g.expr(val)
+			g.writeln(';')
 		}
 	}
 }

@@ -57,12 +57,20 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			}
 			g.writeln(';')
 		}
-		ast.AssignStmt {}
-		ast.VarDecl {
-			type_sym := g.table.get_type_symbol(it.typ)
-			g.write('var /* $type_sym.name */ $it.name = ')
-			g.expr(it.expr)
-			g.writeln(';')
+		ast.AssignStmt {
+			if it.left.len > it.right.len {
+				// TODO: multi return
+			}
+			else {
+				for i,ident in it.left {
+					var_info := ident.var_info()
+					var_type_sym := g.table.get_type_symbol(var_info.typ)
+					val := it.right[i]
+					g.write('var /* $var_type_sym.name */ $ident.name = ')
+					g.expr(val)
+					g.writeln(';')
+				}
+			}
 		}
 		ast.ForStmt {
 			g.write('while (')

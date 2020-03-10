@@ -100,18 +100,22 @@ fn (f mut Fmt) stmts(stmts []ast.Stmt) {
 fn (f mut Fmt) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
-			for i, left in it.left {
-				if left.var_info().is_mut {
+			for i,ident in it.left {
+				var_info := ident.var_info()
+				if var_info.is_mut {
 					f.write('mut ')
 				}
-				f.expr(left)
-				if i < it.left.len - 1 {
+				f.write(ident.name)
+				if i < it.left.len-1 {
 					f.write(', ')
 				}
 			}
 			f.write(' $it.op.str() ')
-			for right in it.right {
-				f.expr(right)
+			for i,val in it.right {
+				f.expr(val)
+				if i < it.right.len-1 {
+					f.write(', ')
+				}
 			}
 			f.writeln('')
 		}
@@ -230,20 +234,6 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('unsafe {')
 			f.stmts(it.stmts)
 			f.writeln('}')
-		}
-		ast.VarDecl {
-			// type_sym := f.table.get_type_symbol(it.typ)
-			if it.is_mut {
-				f.write('mut ')
-			}
-			if it.name2 == '' {
-				f.write('$it.name := ')
-			}
-			else {
-				f.write('/*2*/$it.name, $it.name2 := ')
-			}
-			f.expr(it.expr)
-			f.writeln('')
 		}
 		ast.Import {
 			// already handled in f.imports

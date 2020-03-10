@@ -88,7 +88,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		// name: rec_name
 		// typ: rec_type
 		// })
-		p.scope.register_var(ast.VarDecl{
+		p.scope.register_var(ast.Var{
 			name: rec_name
 			typ: rec_type
 		})
@@ -115,7 +115,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			typ: ast_arg.typ
 		}
 		args << var
-		p.scope.register_var(ast.VarDecl{
+		p.scope.register_var(ast.Var{
 			name: ast_arg.name
 			typ: ast_arg.typ
 		})

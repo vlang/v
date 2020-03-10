@@ -78,8 +78,26 @@ pub fn (x Expr) str() string {
 
 pub fn (node Stmt) str() string {
 	match node {
-		VarDecl {
-			return it.name + ' = ' + it.expr.str()
+		AssignStmt {
+			mut out := ''
+			for i,ident in it.left {
+				var_info := ident.var_info()
+				if var_info.is_mut {
+					out += 'mut '
+				}
+				out += ident.name
+				if i < it.left.len-1 {
+					out += ','
+				}
+			}
+			out += ' $it.op.str() '
+			for i,val in it.right {
+				out += val.str()
+				if i < it.right.len-1 {
+					out += ','
+				}
+			}
+			return out
 		}
 		ExprStmt {
 			return it.expr.str()

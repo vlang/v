@@ -206,6 +206,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	if !found {
 		c.error('unknown fn: $fn_name', call_expr.pos)
 	}
+	call_expr.typ = f.return_type
 	if f.is_c || call_expr.is_c {
 		for expr in call_expr.args {
 			c.expr(expr)
@@ -259,12 +260,13 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 			mut scope := c.file.scope.innermost(method_call_expr.pos.pos) or {
 				c.file.scope
 			}
-			scope.override_var(ast.VarDecl{
+			scope.override_var(ast.Var{
 				name: 'it'
 				typ: array_info.elem_type
 			})
 		}
 		if method := typ_sym.find_method(name) {
+			method_call_expr.typ = method.return_type
 			for i, arg_expr in method_call_expr.args {
 				c.expected_type = method.args[i].typ
 				c.expr(arg_expr)
@@ -370,27 +372,70 @@ pub fn (c mut Checker) return_stmt(return_stmt ast.Return) {
 	}
 }
 
-pub fn (c mut Checker) assign_stmt(assign_stmt ast.AssignStmt) {
+pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	// multi return
 	if assign_stmt.left.len > assign_stmt.right.len {
 		right := c.expr(assign_stmt.right[0])
 		right_sym := c.table.get_type_symbol(right)
-		info := right_sym.mr_info()
+		mr_info := right_sym.mr_info()
 		if right_sym.kind != .multi_return {
 			c.error('wrong number of vars', assign_stmt.pos)
 		}
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos) or {
 			c.file.scope
 		}
-		for i, ident in assign_stmt.left {
-			// TODO: check types
-			scope.override_var(ast.VarDecl{
+		for i, _ in assign_stmt.left {
+			mut ident := assign_stmt.left[i]
+			mut var_info := ident.var_info()
+			val_type :=  mr_info.types[i]
+			var_info.typ = val_type
+			ident.info = var_info
+			assign_stmt.left[i] = ident
+			if assign_stmt.op == .assign {
+				if !c.table.check(val_type, var_info.typ) {
+					val_type_sym := c.table.get_type_symbol(val_type)
+					var_type_sym := c.table.get_type_symbol(var_info.typ)
+					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
+				}
+			}
+			scope.override_var(ast.Var{
 				name: ident.name
-				typ: info.types[i]
+				typ: mr_info.types[i]
 			})
 		}
 	}
-	// TODO: multiple assign
+	// `a := 1` | `a,b := 1,2`
+	else {
+		if assign_stmt.left.len != assign_stmt.right.len  {
+			c.error('wrong number of vars', assign_stmt.pos)
+		}
+		for i, _ in assign_stmt.left {
+			mut ident := assign_stmt.left[i]
+			val := assign_stmt.right[i]
+			val_type := c.expr(val)
+			if assign_stmt.op == .assign {
+				var_info := ident.var_info()
+				if !c.table.check(val_type, var_info.typ) {
+					val_type_sym := c.table.get_type_symbol(val_type)
+					var_type_sym := c.table.get_type_symbol(var_info.typ)
+					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
+				}
+			}
+			else if assign_stmt.op == .decl_assign {
+				mut var_info := ident.var_info()
+				var_info.typ = val_type
+				ident.info = var_info
+				assign_stmt.left[i] = ident
+			}
+			mut scope := c.file.scope.innermost(assign_stmt.pos.pos) or {
+				c.file.scope
+			}
+			scope.override_var(ast.Var{
+				name: ident.name
+				typ: val_type
+			})
+		}
+	}
 }
 
 pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
@@ -448,7 +493,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 	// c.expected_type = table.void_type
 	match mut node {
 		ast.AssignStmt {
-			c.assign_stmt(it)
+			c.assign_stmt(mut it)
 		}
 		// ast.Attr {}
 		// ast.CompIf {}
@@ -506,10 +551,6 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			for stmt in it.stmts {
 				c.stmt(stmt)
 			}
-		}
-		ast.VarDecl {
-			typ := c.expr(it.expr)
-			it.typ = typ
 		}
 		else {}
 		// println('checker.stmt(): unhandled node')
@@ -646,7 +687,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		}
 		mut found := true
 		mut var_scope := &ast.Scope(0)
-		mut var := ast.VarDecl{}
+		mut var := ast.Var{}
 		var_scope,var = start_scope.find_scope_and_var(ident.name) or {
 			found = false
 			c.error('not found: $ident.name - POS: $ident.pos.pos', ident.pos)
