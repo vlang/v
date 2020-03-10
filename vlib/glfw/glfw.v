@@ -121,8 +121,6 @@ pub fn window_hint(key, val int) {
 	C.glfwWindowHint(key, val)
 }
 
-fn C.glfwGetWindowContentScale(window &glfw.Window, scale_x &f32, scale_y &f32) // scale
-
 pub fn create_window(c WinCfg) &glfw.Window {
 	if c.borderless {
 		window_hint(C.GLFW_RESIZABLE, 0)
@@ -132,7 +130,9 @@ pub fn create_window(c WinCfg) &glfw.Window {
 		window_hint(C.GLFW_FLOATING, 1)
 	}
 	if c.scale_to_monitor {
-		window_hint(C.GLFW_SCALE_TO_MONITOR, 1)
+		$if windows {
+			window_hint(C.GLFW_SCALE_TO_MONITOR, 1)
+		}
 	}
 	cwindow := C.glfwCreateWindow(c.width, c.height, c.title.str, 0, 0)
 	if isnil(cwindow) {
@@ -141,7 +141,13 @@ pub fn create_window(c WinCfg) &glfw.Window {
 	}
 	// println('create window wnd=$cwindow ptr==$c.ptr')
 	C.glfwSetWindowUserPointer(cwindow, c.ptr)
-	C.glfwGetWindowContentScale(cwindow, &monitor_scale, &monitor_scale)
+	
+	$if windows {
+		C.glfwGetWindowContentScale(cwindow, &monitor_scale, &monitor_scale)
+	}
+	$else {
+		monitor_scale = 1.0
+	}
 
 	window := &glfw.Window {
 		data: cwindow,
