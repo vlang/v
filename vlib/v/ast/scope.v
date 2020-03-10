@@ -72,7 +72,8 @@ pub fn (s &Scope) outermost() &Scope {
 }
 
 // returns the innermost scope containing pos
-pub fn (s &Scope) innermost(pos int) ?&Scope {
+// pub fn (s &Scope) innermost(pos int) ?&Scope {
+pub fn (s &Scope) innermost(pos int) &Scope {
 	if s.contains(pos) {
 		// binary search
 		mut first := 0
@@ -97,7 +98,8 @@ pub fn (s &Scope) innermost(pos int) ?&Scope {
 		}
 		return s
 	}
-	return none
+	// return none
+	return s
 }
 
 /*

@@ -257,9 +257,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		if name == 'filter' {
 			array_info := typ_sym.info as table.Array
 			elem_type_sym := c.table.get_type_symbol(array_info.elem_type)
-			mut scope := c.file.scope.innermost(method_call_expr.pos.pos) or {
-				c.file.scope
-			}
+			mut scope := c.file.scope.innermost(method_call_expr.pos.pos)
 			scope.override_var(ast.Var{
 				name: 'it'
 				typ: array_info.elem_type
@@ -381,9 +379,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		if right_sym.kind != .multi_return {
 			c.error('wrong number of vars', assign_stmt.pos)
 		}
-		mut scope := c.file.scope.innermost(assign_stmt.pos.pos) or {
-			c.file.scope
-		}
+		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
 			mut ident := assign_stmt.left[i]
 			mut var_info := ident.var_info()
@@ -409,6 +405,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		if assign_stmt.left.len != assign_stmt.right.len  {
 			c.error('wrong number of vars', assign_stmt.pos)
 		}
+		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
 			mut ident := assign_stmt.left[i]
 			val := assign_stmt.right[i]
@@ -426,9 +423,6 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 				var_info.typ = val_type
 				ident.info = var_info
 				assign_stmt.left[i] = ident
-			}
-			mut scope := c.file.scope.innermost(assign_stmt.pos.pos) or {
-				c.file.scope
 			}
 			scope.override_var(ast.Var{
 				name: ident.name
@@ -577,9 +571,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			c.assign_expr(it)
 		}
 		ast.Assoc {
-			scope := c.file.scope.innermost(it.pos.pos) or {
-				c.file.scope
-			}
+			scope := c.file.scope.innermost(it.pos.pos)
 			var := scope.find_var(it.var_name) or {
 				panic(err)
 			}
@@ -682,9 +674,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		if info.typ != 0 {
 			return info.typ
 		}
-		start_scope := c.file.scope.innermost(ident.pos.pos) or {
-			c.file.scope
-		}
+		start_scope := c.file.scope.innermost(ident.pos.pos)
 		mut found := true
 		mut var_scope := &ast.Scope(0)
 		mut var := ast.Var{}

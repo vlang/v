@@ -105,7 +105,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				if var_info.is_mut {
 					f.write('mut ')
 				}
-				f.write(ident.name)
+				f.expr(ident)
 				if i < it.left.len-1 {
 					f.write(', ')
 				}

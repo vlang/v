@@ -297,7 +297,12 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		for i, ident in assign_stmt.left {
 			ident_var_info := ident.var_info()
 			var_type_sym := g.table.get_type_symbol(ident_var_info.typ)
-			g.writeln('$var_type_sym.name $ident.name = $mr_var_name->arg[$i];')
+			if ident.kind == .blank_ident {
+				g.writeln('{$var_type_sym.name _ = $mr_var_name->arg[$i]};')
+			}
+			else {
+				g.writeln('$var_type_sym.name $ident.name = $mr_var_name->arg[$i];')
+			}
 		}
 	}
 	// `a := 1` | `a,b := 1,2`
@@ -306,8 +311,25 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			val := assign_stmt.right[i]
 			ident_var_info := ident.var_info()
 			var_type_sym := g.table.get_type_symbol(ident_var_info.typ)
-			g.write('$var_type_sym.name $ident.name = ')
-			g.expr(val)
+			if ident.kind == .blank_ident {
+				is_call := match val {
+					ast.CallExpr { true }
+					ast.MethodCallExpr { true }
+					else { false }
+				}
+				if is_call {
+					g.expr(val)	
+				}
+				else {
+					g.write('{$var_type_sym.name _ = ')
+					g.expr(val)
+					g.write('}')	
+				}
+			}
+			else {
+				g.write('$var_type_sym.name $ident.name = ')
+				g.expr(val)
+			}
 			g.writeln(';')
 		}
 	}
