@@ -395,13 +395,15 @@ pub fn (a []bool) str() string {
 // of the byte elements of the array
 pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len * 2 + 1)
-	mut ptr := &hex[0]
-	for i in 0..b.len {
-		// QTODO
-		ptr += C.sprintf(ptr, '%02x', b[i])
+	mut dst_i := 0
+	for i in b {
+		n0 := i >> 4 
+		hex[dst_i++] = if n0 < 10 { n0 + `0` } else { n0 + 87 }
+		n1 := i & 0xF
+		hex[dst_i++] = if n1 < 10 { n1 + `0` } else { n1 + 87 }
 	}
-	//return hex as string
-	return string(hex)
+	hex[dst_i] = `\0`
+	return tos(hex,dst_i)
 }
 
 // copy copies the `src` byte array elements to the `dst` byte array.

@@ -3,16 +3,9 @@
 // that can be found in the LICENSE file.
 module builtin
 
-pub fn ptr_str(ptr voidptr) string {
-	buf := malloc(sizeof(double) * 5 + 1) // TODO
-	C.sprintf((buf), '%p', ptr)
-	return tos(buf, vstrlen(buf))
-}
-
-// fn (nn i32) str() string {
-// return i
-// }
-pub fn (nn int) str() string {
+/*
+// old function for reference
+pub fn (nn int) str1() string {
 	mut n := nn
 	if n == 0 {
 		return '0'
@@ -40,103 +33,179 @@ pub fn (nn int) str() string {
 	buf[max] = `\0`
 	return tos(buf + max - len, len)
 }
+*/
 
-pub fn (n i8) str() string {
-	return int(n).str()
-}
-
-pub fn (n i16) str() string {
-	return int(n).str()
-}
-
-pub fn (n u16) str() string {
-	return int(n).str()
-}
-
-pub fn (nn u32) str() string {
-	mut n := nn
-	if n == 0 {
-		return '0'
-	}
-	max := 16
-	mut buf := malloc(max)
-	mut len := 0
-	// Fill the string from the end
-	for n > 0 {
-		d := n % 10
-		buf[max - len - 1] = d + u32(`0`)
-		len++
-		n = n / 10
-	}
-	return tos(buf + max - len, len)
-}
+// ----- value to string functions -----
 
 /*
-pub fn (nn byte) str() string {
-	 mut n := nn
-	if n == byte(0) {
-		return '0'
-	}
-	max := 5
-	mut buf := malloc(max)
-	mut len := 0
-	// Fill the string from the end
-	for n > byte(0) {
-		d := n % byte(10)
-		buf[max - len - 1] = d + byte(`0`)
-		len++
-		n = n / byte(10)
-	}
-	return tos(buf + max - len, len)
+// old function for reference
+pub fn ptr_str(ptr voidptr) string {
+	buf := malloc(sizeof(double) * 5 + 1) // TODO
+	C.sprintf((buf), '%p', ptr)
+	return tos(buf, vstrlen(buf))
 }
 */
 
+pub fn ptr_str(ptr voidptr) string {
+	buf1 := u64(ptr).hex()
+	return buf1
+}
 
-pub fn (nn i64) str() string {
+const(
+	digit_pairs = "00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999"
+)
+
+// This implementation is the quickest with gcc -O2
+[inline]
+pub fn (nn int) str_l(max int) string {
 	mut n := nn
+	mut d := 0
 	if n == 0 {
 		return '0'
 	}
-	max := 32
-	mut buf := malloc(max)
-	mut len := 0
+	mut buf := malloc(max + 1)
+	
 	mut is_neg := false
 	if n < 0 {
 		n = -n
 		is_neg = true
 	}
-	// Fill the string from the end
+
+	mut index := max
+	buf[index--] = `\0`
 	for n > 0 {
-		//d := int(n % (10 as i64))
-		d := n % 10
-		buf[max - len - 1] = d + int(`0`)
-		len++
-		n /= 10
+		n1 := n / 100
+		d = ((n - (n1 * 100)) << 1)
+		n = n1
+		buf[index--] = digit_pairs[d++]
+		buf[index--] = digit_pairs[d]
 	}
+	index++
+	
+	// remove head zero
+	if d < 20 {
+		index++
+	}
+
 	// Prepend - if it's negative
 	if is_neg {
-		buf[max - len - 1] = `-`
-		len++
+		index--
+		buf[index] = `-`
 	}
-	return tos(buf + max - len, len)
+	
+	return tos(buf + index, (max-index))
+}
+
+pub fn (n i8) str() string {
+	return int(n).str_l(5)
+}
+
+pub fn (n i16) str() string {
+	return int(n).str_l(7)
+}
+
+pub fn (n u16) str() string {
+	return int(n).str_l(7)
+}
+
+pub fn (n int) str() string {
+	return n.str_l(12)
+}
+
+pub fn (nn u32) str() string {
+	mut n := nn
+	mut d := u32(0)
+	if n == 0 {
+		return '0'
+	}
+	max := 12
+	mut buf := malloc(max + 1)
+	
+	mut index := max
+	buf[index--] = `\0`
+	for n > 0 {
+		n1 := n / u32(100)
+		d = ((n - (n1 * u32(100))) << u32(1))
+		n = n1
+		buf[index--] = digit_pairs[d++]
+		buf[index--] = digit_pairs[d]
+	}
+	index++
+	
+	// remove head zero
+	if d < u32(20) {
+		index++
+	}
+	
+	return tos(buf + index, (max-index))
+}
+
+pub fn (nn i64) str() string {
+	mut n := nn
+	mut d := i64(0)
+	if n == 0 {
+		return '0'
+	}
+	max := 20
+	mut buf := vcalloc(max + 1)
+	
+	mut is_neg := false
+	if n < 0 {
+		n = -n
+		is_neg = true
+	}
+
+	mut index := max
+	buf[index--] = `\0`
+	for n > 0 {
+		n1 := n / i64(100)
+		d = ((n - (n1 * i64(100))) << i64(1))
+		n = n1
+		buf[index--] = digit_pairs[d++]
+		buf[index--] = digit_pairs[d]
+	}
+	index++
+	
+	// remove head zero
+	if d < i64(20) {
+		index++
+	}
+
+	// Prepend - if it's negative
+	if is_neg {
+		index--
+		buf[index] = `-`
+	}
+
+	return tos(buf + index, (max-index))
 }
 
 pub fn (nn u64) str() string {
 	mut n := nn
+	mut d := 0
 	if n == 0 {
 		return '0'
 	}
-	max := 32
-	mut buf := malloc(max)
-	mut len := 0
-	// Fill the string from the end
+	max := 20
+	mut buf := vcalloc(max + 1)
+	
+	mut index := max
+	buf[index--] = `\0`
 	for n > 0 {
-		d := n % 10
-		buf[max - len - 1] = d + u64(`0`)
-		len++
-		n = n / (10)
+		n1 := n / 100
+		d = ((n - (n1 * 100)) << 1)
+		n = n1
+		buf[index--] = digit_pairs[d++]
+		buf[index--] = digit_pairs[d]
 	}
-	return tos(buf + max - len, len)
+	index++
+	
+	// remove head zero
+	if d < 20 {
+		index++
+	}
+
+	return tos(buf + index, (max-index))
 }
 
 pub fn (b bool) str() string {
@@ -146,30 +215,62 @@ pub fn (b bool) str() string {
 	return 'false'
 }
 
-pub fn (n int) hex() string {
+// ----- value to hex string functions -----
+
+/*
+//old function for reference
+pub fn (n int) hex1() string {
 	len := if n >= 0 { n.str().len + 3 } else { 11 }
 	hex := malloc(len) // 0x + \n
 	count := C.sprintf((hex), '0x%x', n)
 	return tos(hex, count)
 }
+*/
 
-pub fn (n i64) hex() string {
-	len := if n >= 0 { n.str().len + 3 } else { 19 }
-	hex := malloc(len)
-	// TODO
-	//count := C.sprintf(charptr(hex), '0x%'C.PRIx64, n)
-	count := C.sprintf(charptr(hex), C.V64_PRINTFORMAT, n)
-	return tos(hex, count)
+pub fn (nn int) hex() string {
+	mut n := u32(nn)
+	max := 10
+	mut buf := malloc(max + 1)
+
+	mut index := max
+	buf[index--] = `\0`
+	for n > 0 {
+		d := n & 0xF
+		n = n >> 4
+		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
+	}
+	//buf[index--] = `x`
+	//buf[index]   = `0`
+	index++
+
+	return tos(buf + index, (max - index))
 }
 
-pub fn (n u64) hex() string {
-	len := if n > 0 { n.str().len + 3 } else { 19 }
-	hex := malloc(len)
-	//count := C.sprintf(charptr(hex), '0x%'C.PRIx64, n)
-	count := C.sprintf(charptr(hex), C.V64_PRINTFORMAT, n)
-	//count := C.sprintf(charptr(hex), '0x%lx', n)
-	return tos(hex, count)
+pub fn (nn u64) hex() string {
+	mut n := nn
+	max := 18
+	mut buf := malloc(max + 1)
+
+	mut index := max
+	buf[index--] = `\0`
+	for n > 0 {
+		d := n & 0xF
+		n = n >> 4
+		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
+	}
+	//buf[index--] = `x`
+	//buf[index]   = `0`
+	index++
+
+	return tos(buf + index, (max-index))
 }
+
+pub fn (nn i64) hex() string {
+	mut n := u64(nn)
+	return n.hex()
+}
+
+// ----- utilities functions -----
 
 pub fn (a []byte) contains(val byte) bool {
 	for aa in a {
