@@ -5,7 +5,9 @@ pub mut:
 	name string
 	description string
 	version string
+	pre_execute fn(cmd Command)
 	execute fn(cmd Command)
+	post_execute fn(cmd Command)
 
 	disable_help bool
 	disable_version bool
@@ -126,8 +128,18 @@ fn (cmd &Command) parse_commands() {
 	} else {
 		cmd.check_required_flags()
 
+		if int(cmd.pre_execute) > 0 {
+			pre_execute := cmd.pre_execute
+			pre_execute(cmd)
+		}
+
 		execute := cmd.execute
 		execute(cmd) // TODO: fix once higher order function can be execute on struct variable
+		
+		if int(cmd.post_execute) > 0 {
+			post_execute := cmd.post_execute
+			post_execute(cmd)
+		}
 	}
 }
 
