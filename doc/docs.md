@@ -1558,10 +1558,15 @@ V can be used as an alternative to Bash to write deployment scripts, build scrip
 The advantage of using V for this is the simplicity and predictability of the language, and
 cross-platform support. "V scripts" run on Unix-like systems as well as on Windows.
 
-Use .vsh file extension. It will make all functions in the `os`
+Use the `.vsh` file extension. It will make all functions in the `os`
 module global (so that you can use `ls()` instead of `os.ls()`, for example).
 
 ```v
+#!/usr/local/bin/v run
+// The shebang above associates the file to V on Unix-like systems,
+// so it can be run just by specifying the path to the file
+// once it's made executable using `chmod +x`.
+
 rm('build/*')
 // Same as:
 for file in ls('build/') {
@@ -1579,10 +1584,13 @@ for file in ls('.') {
 
 Now you can either compile this like a normal V program and get an executable you can deploy and run
 anywhere:
-`v deploy.v && ./deploy`
+`v deploy.vsh && ./deploy`
 
-Or just run it more like a traditional bash script:
-`v run deploy.v`
+Or just run it more like a traditional Bash script:
+`v run deploy.vsh`
+
+On Unix-like platforms, the file can be run directly after making it executable using `chmod +x`:
+`./deploy.vsh`
 
 ## Appendix I: Keywords
 
