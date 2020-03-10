@@ -351,4 +351,3 @@ pub fn (f mut File) close() {
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
 }
-
