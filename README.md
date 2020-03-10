@@ -7,7 +7,7 @@
 [![Twitter handle][]][Twitter badge]
 
 
-https://vlang.io
+Homepage: https://vlang.io
 
 Documentation: [vlang.io/docs](https://vlang.io/docs)
 
