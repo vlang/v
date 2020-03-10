@@ -45,6 +45,8 @@ pub const (
 	KeyDown  = 264
 )
 
+__global monitor_scale f32
+
 // joe-c: fix & remove
 struct TmpGlImportHack {
 	hack gl.TmpGlImportHack
@@ -70,7 +72,6 @@ pub struct Window {
 	title   string
 	mx      int
 	my      int
-	scale_  f64
 }
 
 pub struct Size {
@@ -140,13 +141,11 @@ pub fn create_window(c WinCfg) &glfw.Window {
 	}
 	// println('create window wnd=$cwindow ptr==$c.ptr')
 	C.glfwSetWindowUserPointer(cwindow, c.ptr)
-	scale_x := f32(1)
-	scale_y := f32(1)
-	C.glfwGetWindowContentScale(cwindow, &scale_x, &scale_y)
+	C.glfwGetWindowContentScale(cwindow, &monitor_scale, &monitor_scale)
+
 	window := &glfw.Window {
 		data: cwindow,
 		title: c.title,
-		scale_: scale_x,
 	}
 	return window
 }
@@ -160,7 +159,7 @@ pub fn (w &glfw.Window) make_context_current() {
 }
 
 pub fn (w &glfw.Window) scale() f64 {
-	return w.scale_
+	return monitor_scale
 }
 
 pub fn swap_interval(interval int) {
@@ -248,11 +247,7 @@ pub fn get_cursor_pos(glfw_window voidptr) (f64, f64) {
 	y := f64(0)
 	C.glfwGetCursorPos(glfw_window, &x, &y)
 
-	scale_x := f32(1)
-	scale_y := f32(1)
-	C.glfwGetWindowContentScale(glfw_window, &scale_x, &scale_y)
-
-	return x/scale_x, y/scale_y
+	return x/monitor_scale, y/monitor_scale
 }
 
 pub fn (w &glfw.Window) get_cursor_pos() Pos {
@@ -261,8 +256,8 @@ pub fn (w &glfw.Window) get_cursor_pos() Pos {
 	C.glfwGetCursorPos(w.data, &x, &y)
 
 	return Pos {
-		x: int(x/w.scale_)
-		y: int(y/w.scale_)
+		x: int(x/monitor_scale)
+		y: int(y/monitor_scale)
 	}
 }
 
