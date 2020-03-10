@@ -10,7 +10,7 @@ unzip SDL2_ttf.zip -d thirdparty/
 unzip SDL2_image.zip -d thirdparty/
 unzip SDL2_mixer.zip -d thirdparty/
 
-mv thirdparty/SDL2-2.0.10 thirdparty/SDL2
-mv thirdparty/SDL2_ttf-2.0.15 thirdparty/SDL2_ttf
-mv thirdparty/SDL2_image-2.0.5 thirdparty/SDL2_image
-mv thirdparty/SDL2_mixer-2.0.4 thirdparty/SDL2_mixer
+move /y thirdparty/SDL2-2.0.10 thirdparty/SDL2
+move /y thirdparty/SDL2_ttf-2.0.15 thirdparty/SDL2_ttf
+move /y thirdparty/SDL2_image-2.0.5 thirdparty/SDL2_image
+move /y thirdparty/SDL2_mixer-2.0.4 thirdparty/SDL2_mixer
