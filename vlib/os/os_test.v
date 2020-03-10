@@ -8,25 +8,6 @@ fn testsuite_end() {
 	cleanup_leftovers()
 }
 
-fn test_setenv() {
-  os.setenv('foo', 'bar', true)
-  assert os.getenv('foo') == 'bar'
-
-  // `setenv` should not set if `overwrite` is false
-  os.setenv('foo', 'bar2', false)
-  assert os.getenv('foo') == 'bar'
-
-  // `setenv` should overwrite if `overwrite` is true
-  os.setenv('foo', 'bar2', true)
-  assert os.getenv('foo') == 'bar2'
-}
-
-fn test_unsetenv() {
-  os.setenv('foo', 'bar', true)
-  os.unsetenv('foo')
-  assert os.getenv('foo') == ''
-}
-
 fn test_open_file() {
   filename := './test1.txt'
   hello := 'hello world!'
@@ -331,18 +312,6 @@ fn test_basedir() {
 	}
 
 	assert os.base_dir('filename') == 'filename'
-}
-
-fn test_environ() {
-	os.setenv('myvar1', 'bar1', true)
-	os.setenv('myvar2', 'bar2', true)
-	assert os.getenv('myvar1') == 'bar1'
-	assert os.getenv('myvar2') == 'bar2'
-	assert os.getenv('myvar_not_defined') == ''
-	all := os.environ()
-	assert all['myvar1'] == 'bar1'
-	assert all['myvar2'] == 'bar2'
-	assert all['myvar_not_defined'] == ''
 }
 
 // this function is called by both test_aaa_setup & test_zzz_cleanup
