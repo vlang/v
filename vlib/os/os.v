@@ -65,9 +65,6 @@ fn C.getline(voidptr, voidptr, voidptr) int
 fn C.ftell(fp voidptr) int
 
 
-fn C.getenv(byteptr) &char
-
-
 fn C.sigaction(int, voidptr, int)
 
 
@@ -505,45 +502,6 @@ pub fn sigint_to_signal_name(si int) string {
 		}
 	}
 	return 'unknown'
-}
-
-// `getenv` returns the value of the environment variable named by the key.
-pub fn getenv(key string) string {
-	$if windows {
-		s := C._wgetenv(key.to_wide())
-		if s == 0 {
-			return ''
-		}
-		return string_from_wide(s)
-	} $else {
-		s := C.getenv(key.str)
-		if s == 0 {
-			return ''
-		}
-		// NB: C.getenv *requires* that the result be copied.
-		return cstring_to_vstring(byteptr(s))
-	}
-}
-
-pub fn setenv(name string, value string, overwrite bool) int {
-	$if windows {
-		format := '$name=$value'
-		if overwrite {
-			return C._putenv(format.str)
-		}
-		return -1
-	} $else {
-		return C.setenv(name.str, value.str, overwrite)
-	}
-}
-
-pub fn unsetenv(name string) int {
-	$if windows {
-		format := '${name}='
-		return C._putenv(format.str)
-	} $else {
-		return C.unsetenv(name.str)
-	}
 }
 
 const (
