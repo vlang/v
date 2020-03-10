@@ -1514,7 +1514,7 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 	p.next() // :=, =
 	exprs := p.parse_assign_rhs()
 	is_decl := op == .decl_assign
-	for ident in idents {
+	for i, ident in idents {
 		known_var := p.scope.known_var(ident.name)
 		if !is_decl && !known_var {
 			p.error('unknown variable `$ident.name`')
@@ -1523,9 +1523,17 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 			if p.scope.known_var(ident.name) {
 				p.error('redefinition of `$ident.name`')
 			}
-			p.scope.register_var(ast.Var{
-				name: ident.name
-			})
+			if idents.len == exprs.len {
+				p.scope.register_var(ast.Var{
+					name: ident.name
+					expr: exprs[i]
+				})
+			}
+			else {
+				p.scope.register_var(ast.Var{
+					name: ident.name
+				})
+			}
 		}
 	}
 	return ast.AssignStmt{

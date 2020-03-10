@@ -388,9 +388,10 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 			ident.info = var_info
 			assign_stmt.left[i] = ident
 			if assign_stmt.op == .assign {
-				if !c.table.check(val_type, var_info.typ) {
+				var_type := c.expr(ident)
+				if !c.table.check(val_type, var_type) {
 					val_type_sym := c.table.get_type_symbol(val_type)
-					var_type_sym := c.table.get_type_symbol(var_info.typ)
+					var_type_sym := c.table.get_type_symbol(var_type)
 					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
 				}
 			}
@@ -408,20 +409,19 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
 			mut ident := assign_stmt.left[i]
-			val := assign_stmt.right[i]
-			val_type := c.expr(val)
+			val_type := c.expr(assign_stmt.right[i])
 			if assign_stmt.op == .assign {
-				var_info := ident.var_info()
-				if !c.table.check(val_type, var_info.typ) {
+				var_type := c.expr(ident)
+				if !c.table.check(val_type, var_type) {
 					val_type_sym := c.table.get_type_symbol(val_type)
-					var_type_sym := c.table.get_type_symbol(var_info.typ)
+					var_type_sym := c.table.get_type_symbol(var_type)
 					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
 				}
 			}
-			else if assign_stmt.op == .decl_assign {
-				mut var_info := ident.var_info()
-				var_info.typ = val_type
-				ident.info = var_info
+			else {
+				mut ident_var_info := ident.var_info()
+				ident_var_info.typ = val_type
+				ident.info = ident_var_info
 				assign_stmt.left[i] = ident
 			}
 			scope.override_var(ast.Var{
