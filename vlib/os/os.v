@@ -1106,7 +1106,7 @@ pub fn cache_dir() string {
 }
 
 // tmpdir returns the path to a folder, that is suitable for storing temporary files
-pub fn tmpdir() string {
+pub fn temp_dir() string {
 	mut path := os.getenv('TMPDIR')
 	$if windows {
 		if path == '' {

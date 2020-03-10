@@ -164,7 +164,7 @@ fn test_cp_r() {
 }
 
 fn test_tmpdir(){
-	t := os.tmpdir()
+	t := os.temp_dir()
 	assert t.len > 0
 	assert os.is_dir(t)
 
@@ -247,7 +247,7 @@ fn test_symlink() {
 }
 
 fn test_is_executable_writable_readable() {
-  file_name := os.tmpdir() + os.path_separator + 'rwxfile.exe'
+  file_name := os.temp_dir() + os.path_separator + 'rwxfile.exe'
 
   mut f := os.create(file_name) or {
     eprintln('failed to create file $file_name')

@@ -155,7 +155,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		file_ast := parser.parse_file(file, table, .parse_comments)
 		formatted_content := fmt.fmt(file_ast, table)
 		file_name := os.filename(file)
-		vfmt_output_path := os.join_path(os.tmpdir(), 'vfmt_' + file_name)
+		vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
 		os.write_file(vfmt_output_path, formatted_content )
 		if foptions.is_verbose {
 			eprintln('vfmt2 fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
@@ -163,7 +163,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		eprintln('${FORMATTED_FILE_TOKEN}${vfmt_output_path}')
 		return
 	}
-	tmpfolder := os.tmpdir()
+	tmpfolder := os.temp_dir()
 	mut compiler_params := &pref.Preferences{}
 	target_os := file_to_target_os(file)
 	if target_os != '' {

@@ -6,7 +6,7 @@ module compiler
 import os
 
 fn get_vtmp_folder() string {
-	vtmp := os.join_path(os.tmpdir(), 'v')
+	vtmp := os.join_path(os.temp_dir(), 'v')
 	if !os.is_dir(vtmp) {
 		os.mkdir(vtmp) or {
 			panic(err)
