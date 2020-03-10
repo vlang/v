@@ -38,7 +38,7 @@ The commands are:
 
    setup-freetype    setup thirdparty freetype on Windows
 
-For a comprehensive list of options, please refer to `v help --verbose`.'
+For a comprehensive list of options, please refer to `v -v help`.'
 //Use "v help <command>" for more information about a command.'
 //TODO When docs have been written for all the subcommands, delete the verbose help text and
 //     tell the user to use "v help <command>" instead.
@@ -78,8 +78,9 @@ Options/commands:
   -o <file>.c       Produce C source without compiling it.
   -o <file>.js      Produce JavaScript source.
   -prod             Build an optimized executable.
-  -v, version       Display compiler version and git hash of the compiler source.
-  -verbose          Produce a verbose log about what the compiler is doing, where it seeks for files and so on.
+  -version          Display compiler version and git hash of the compiler source.
+  -verbose <level>  Produce a verbose log about what the compiler is doing, where it seeks for files and so on.
+  -v                Shorthand for `-verbose 1`
   -live             Enable hot code reloading (required by functions marked with [live]).
   -os <OS>          Produce an executable for the selected OS.
                     OS can be linux, mac, windows, msvc.
@@ -97,9 +98,9 @@ Options/commands:
 Options for debugging/troubleshooting v programs:
   -g                Generate debugging information in the backtraces. Add *V* line numbers to the generated executable.
   -cg               Same as -g, but add *C* line numbers to the generated executable instead of *V* line numbers.
-  -keep_c           Do NOT remove the generated .tmp.c files after compilation.
+  -csource keep     Do NOT remove the generated .tmp.c files after compilation.
                     It is useful when using debuggers like gdb/visual studio, when given after `-g` / `-cg`.
-  -pretty_c         Run clang-format over the generated C file, so that it looks nicer. Requires you to have clang-format.
+  -csource prettify Run clang-format over the generated C file, so that it looks nicer. Requires you to have clang-format.
   -show_c_cmd       Print the full C compilation command and how much time it took. See also `-verbose`.
   -cc <ccompiler>   Specify which C compiler you want to use as a C backend.
                     The C backend compiler should be able to handle C99 compatible C code.
