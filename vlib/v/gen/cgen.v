@@ -350,6 +350,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
 		}
 		name = name.replace('.', '__')
+		if name.starts_with('_op_') {
+			name = op_to_fn_name(name)
+		}
 		// type_name := g.table.type_to_str(it.typ)
 		type_name := g.typ(it.typ)
 		g.write('$type_name ${name}(')
@@ -948,4 +951,26 @@ fn (g &Gen) sort_structs(types []table.TypeSymbol) []table.TypeSymbol {
 		types_sorted << g.table.types[g.table.type_idxs[node.name]]
 	}
 	return types_sorted
+}
+
+fn op_to_fn_name(name string) string {
+	return match name {
+		'+'{
+			'_op_plus'
+		}
+		'-'{
+			'_op_minus'
+		}
+		'*'{
+			'_op_mul'
+		}
+		'/'{
+			'_op_div'
+		}
+		'%'{
+			'_op_mod'
+		}
+		else {
+			'bad op $name'}
+	}
 }

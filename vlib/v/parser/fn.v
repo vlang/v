@@ -99,6 +99,10 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		// TODO high
 		name = p.check_name()
 	}
+	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
+		name = p.tok.kind.str() // op_to_fn_name()
+		p.next()
+	}
 	// <T>
 	if p.tok.kind == .lt {
 		p.next()

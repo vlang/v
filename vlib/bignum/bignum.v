@@ -33,7 +33,7 @@ fn C.bignum_xor( a &Number, b &Number, c &Number) // c = a xor b
 fn C.bignum_lshift( a &Number, b &Number, nbits int) // b = a << nbits
 fn C.bignum_rshift( a &Number, b &Number, nbits int) // b = a >> nbits
 
-fn C.bignum_cmp( a &Number, b &Number) int 
+fn C.bignum_cmp( a &Number, b &Number) int
 fn C.bignum_is_zero( a &Number) int
 fn C.bignum_inc(n &Number)
 fn C.bignum_dec(n &Number)
@@ -176,7 +176,7 @@ pub fn (a Number) clone() Number {
 	return b
 }
 ////////////////////////////////////////////////////////////
-pub fn factorial(nn bignum.Number) bignum.Number {
+pub fn factorial(nn Number) Number {
 	mut n := nn.clone()
 	mut a := nn.clone()
 	n.dec()
@@ -190,6 +190,6 @@ pub fn factorial(nn bignum.Number) bignum.Number {
 	return a
 }
 
-pub fn fact(n int) bignum.Number {
+pub fn fact(n int) Number {
 	return factorial( bignum.from_int(n) )
 }
