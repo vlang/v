@@ -57,9 +57,9 @@ pub fn environ() map[string]string {
 	mut res := map[string]string
 	$if windows {
 		mut estrings := C.GetEnvironmentStringsW()
-		mut c := estrings
-		 for c := estrings; *c!=0; c = c + eline.len + 1 {
-			eline := string_from_wide(c)
+		mut eline := ''
+		for c := estrings; *c!=0; c = c + eline.len + 1 {
+			eline = string_from_wide(c)
 			eq_index := eline.index_byte(`=`)
 			if eq_index > 0 {
 				res[ eline[0..eq_index] ] = eline[eq_index+1..]
