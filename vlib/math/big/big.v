@@ -1,4 +1,4 @@
-module bignum
+module big
 
 // Wrapper for https://github.com/kokke/tiny-bignum-c
 
@@ -43,7 +43,7 @@ fn C.bignum_assign( dst &Number, src &Number) // copy src number to dst number
 
 ////////////////////////////////////////////////////////////
 // conversion actions to/from big numbers:
-pub fn new_bignum() Number {
+pub fn new() Number {
 	return Number{}
 }
 pub fn from_int(i int) Number {
@@ -191,5 +191,5 @@ pub fn factorial(nn Number) Number {
 }
 
 pub fn fact(n int) Number {
-	return factorial( bignum.from_int(n) )
+	return factorial( from_int(n) )
 }
