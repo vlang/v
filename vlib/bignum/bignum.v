@@ -126,7 +126,7 @@ pub fn cmp(a Number, b Number) int {
 	return C.bignum_cmp(&a,&b)
 }
 pub fn (a Number) is_zero() bool {
-	return int(C.bignum_is_zero(&a)) != 0
+	return C.bignum_is_zero(&a) != 0
 }
 pub fn (a mut Number) inc() {
 	C.bignum_inc(a)
