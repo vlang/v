@@ -294,6 +294,7 @@ typedef array array_u32;
 typedef array array_u64;
 typedef map map_int;
 typedef map map_string;
+typedef byte array_fixed_byte_300 [300];
 #ifndef bool
 	typedef int bool;
 	#define true 1

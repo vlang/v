@@ -190,7 +190,7 @@ pub fn (c rune) str() string {
 	for i in 0..len {
 		str.str[i] = int(c)>>8 * (3 - i) & 0xff
 	}
-	str[len] = `\0`
+	str.str[len] = `\0`
 	return str
 }
 

@@ -52,7 +52,9 @@ int main() {
 	localmod__pub_foo();
 	int ten = localmod__get_int_10();
 	println(localmod__pub_int_const);
-	int g = (int)(3.0);
+	int g = ((int)(3.0));
+	byte* bytes = ((byte*)(0));
+	User user_ptr = (User*)memdup(&(User){}, sizeof(User));
 	return 0;
 }
 

@@ -10,15 +10,15 @@ import (
 
 pub type TypeDecl = AliasTypeDecl | SumTypeDecl
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
-AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
-CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | 	
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral |
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr |
+AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr |
+CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr |
 ConcatExpr | Type | AsCast
 
-pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
+pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt |
 LineComment | MultiLineComment | AssertStmt | UnsafeStmt
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
@@ -156,28 +156,31 @@ pub:
 pub struct CallExpr {
 pub:
 // tok        token.Token
-	pos      token.Position
+	pos       token.Position
 mut:
 // func       Expr
-	name     string
-	args     []Expr
-	is_c     bool
-	muts     []bool
-	or_block OrExpr
+	name      string
+	args      []Expr
+	arg_types []table.Type
+	is_c      bool
+	muts      []bool
+	or_block  OrExpr
 	typ      table.Type
 }
 
 pub struct MethodCallExpr {
 pub:
 // tok        token.Token
-	pos      token.Position
-	expr     Expr
-	name     string
-	args     []Expr
-	muts     []bool
-	or_block OrExpr
+	pos           token.Position
+	expr          Expr // `user` in `user.register()`
+	name          string
+	args          []Expr
+	muts          []bool
+	or_block      OrExpr
 mut:
-	typ      table.Type
+	expr_type     table.Type // type of `user`
+	receiver_type table.Type // User
+	typ       table.Type
 }
 
 pub struct Return {

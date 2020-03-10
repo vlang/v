@@ -34,6 +34,8 @@ fn main() {
 	ten := localmod.get_int_10()
 	println(localmod.pub_int_const)
 	g := int(3.0)
+	bytes := &byte(0)
+	user_ptr := &User{}
 }
 	/*
 	user := User{}

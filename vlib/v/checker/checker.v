@@ -22,6 +22,7 @@ mut:
 	errors         []string
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
+	// is_amp         bool
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -250,7 +251,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 // TODO: clean this up, remove dupe code & consider merging method/fn call everywhere
 pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr) table.Type {
 	typ := c.expr(method_call_expr.expr)
-	method_call_expr.typ = typ
+	method_call_expr.expr_type = typ
 	typ_sym := c.table.get_type_symbol(typ)
 	name := method_call_expr.name
 	if typ_sym.kind == .array && name in ['filter', 'clone'] {
@@ -281,6 +282,10 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		return typ
 	}
 	if method := typ_sym.find_method(name) {
+		if name == 'clone' {
+			println('CLONE nr args=$method.args.len')
+		}
+		method_call_expr.receiver_type = method.args[0].typ
 		for i, arg_expr in method_call_expr.args {
 			c.expected_type = method.args[i].typ
 			c.expr(arg_expr)
@@ -382,7 +387,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
 			mut ident := assign_stmt.left[i]
-			val_type :=  mr_info.types[i]
+			val_type := mr_info.types[i]
 			mut var_info := ident.var_info()
 			var_info.typ = val_type
 			ident.info = var_info
@@ -403,7 +408,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	}
 	// `a := 1` | `a,b := 1,2`
 	else {
-		if assign_stmt.left.len != assign_stmt.right.len  {
+		if assign_stmt.left.len != assign_stmt.right.len {
 			c.error('wrong number of vars', assign_stmt.pos)
 		}
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)

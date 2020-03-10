@@ -75,6 +75,8 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	mut is_method := false
 	mut rec_type := table.void_type
 	mut rec_mut := false
+	mut args := []table.Var
+	mut ast_args := []ast.Arg
 	if p.tok.kind == .lpar {
 		is_method = true
 		p.next()
@@ -84,6 +86,15 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			rec_mut = true
 		}
 		rec_type = p.parse_type()
+		args << table.Var{
+			// Receiver is the first arg
+			typ: rec_type
+			name: rec_name
+		}
+		ast_args << ast.Arg{
+			name: rec_name
+			typ: rec_type
+		}
 		// p.table.register_var(table.Var{
 		// name: rec_name
 		// typ: rec_type
@@ -111,8 +122,8 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	// println('fn decl $name')
 	// Args
-	mut args := []table.Var
-	ast_args,is_variadic := p.fn_args()
+	ast_args2,is_variadic := p.fn_args()
+	ast_args << ast_args2
 	for ast_arg in ast_args {
 		var := table.Var{
 			name: ast_arg.name

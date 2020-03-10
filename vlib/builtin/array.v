@@ -255,7 +255,7 @@ fn (a array) slice2(start, _end int, end_max bool) array {
 }
 
 // array.clone returns an independent copy of a given array
-pub fn (a array) clone() array {
+pub fn (a &array) clone() array {
 	mut size := a.cap * a.element_size
 	if size == 0 {
 		size++
@@ -270,7 +270,7 @@ pub fn (a array) clone() array {
 	return arr
 }
 
-fn (a array) slice_clone(start, _end int) array {
+fn (a &array) slice_clone(start, _end int) array {
 	mut end := _end
 	$if !no_bounds_checking? {
 		if start > end {
@@ -316,8 +316,6 @@ pub fn (a3 mut array) push_many(val voidptr, size int) {
 		// handle `arr << arr`
 		copy := a3.clone()
 		a3.ensure_cap(a3.len + size)
-		C.printf("%d", a3.len*2)
-		println(a3.len*2)
 		//C.memcpy(a.data, copy.data, copy.element_size * copy.len)
 		C.memcpy(a3.data + a3.element_size * a3.len, copy.data, a3.element_size * size)
 	} else {

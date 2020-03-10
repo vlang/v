@@ -44,6 +44,7 @@ mut:
 	scope       &ast.Scope
 	imports     map[string]string
 	ast_imports []ast.Import
+	is_amp      bool
 }
 
 // for tests
@@ -55,7 +56,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-
+		
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -79,7 +80,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 			parent: 0
 		}
 		// comments_mode: comments_mode
-
+		
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -558,7 +559,11 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		// if name in table.builtin_type_names {
 		if (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) && !(name in ['C.stat', 'C.sigaction']) {
 			// TODO handle C.stat()
-			to_typ := p.parse_type()
+			mut to_typ := p.parse_type()
+			if p.is_amp {
+				// Handle `&Foo(0)`
+				to_typ = table.type_to_ptr(to_typ)
+			}
 			p.check(.lpar)
 			mut expr := ast.Expr{}
 			mut arg := ast.Expr{}
@@ -613,7 +618,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-
+			
 			val: val
 			pos: p.tok.position()
 		}
@@ -810,8 +815,12 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 
 fn (p mut Parser) prefix_expr() ast.PrefixExpr {
 	op := p.tok.kind
+	if op == .amp {
+		p.is_amp = true
+	}
 	p.next()
 	right := p.expr(1)
+	p.is_amp = false
 	return ast.PrefixExpr{
 		op: op
 		right: right
@@ -940,7 +949,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 		left: left
 		right: right
 		// right_type: typ
-
+		
 		op: op
 		pos: pos
 	}
@@ -1051,7 +1060,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		p.scope.register_var(ast.Var{
 			name: var_name
 			// expr: cond
-
+			
 		})
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
@@ -1146,11 +1155,11 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-
+		
 		pos: pos
 		has_else: has_else
 		// left: left
-
+		
 	}
 	return node
 }
@@ -1324,7 +1333,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		fields << ast.Field{
 			name: name
 			// typ: typ
-
+			
 		}
 		exprs << expr
 		// TODO: once consts are fixed reg here & update in checker
@@ -1715,7 +1724,6 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 			sub_types: sum_variants
 		}
 	}
-
 	// type MyType int
 	parent_type := p.parse_type()
 	pid := table.type_idx(parent_type)
