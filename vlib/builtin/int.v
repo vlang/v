@@ -239,8 +239,9 @@ pub fn (nn int) hex() string {
 		n = n >> 4
 		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}
-	buf[index--] = `x`
-	buf[index]   = `0`
+	//buf[index--] = `x`
+	//buf[index]   = `0`
+	index++
 
 	return tos(buf + index, (max - index))
 }
@@ -257,8 +258,9 @@ pub fn (nn u64) hex() string {
 		n = n >> 4
 		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}
-	buf[index--] = `x`
-	buf[index]   = `0`
+	//buf[index--] = `x`
+	//buf[index]   = `0`
+	index++
 
 	return tos(buf + index, (max-index))
 }

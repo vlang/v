@@ -111,7 +111,11 @@ fn test_int_alias() {
 
 fn test_hex() {
 	x := u64(10)
-	assert x.hex() == '0xa'
+	assert x.hex() == 'a'
+	b := 1234
+	assert b.hex() == '4d2'
+	b1 := -1
+	assert b1.hex() == 'ffffffff'
 }
 
 fn test_oct() {

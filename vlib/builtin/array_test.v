@@ -616,3 +616,13 @@ fn test_trim() {
 	assert arr.len == 2
 	assert arr.last() == 2
 }
+
+fn test_hex(){
+	// array hex
+	st := [byte(`V`),`L`,`A`,`N`,`G`]
+	assert st.hex() == "564c414e47"
+	assert st.hex().len == 10
+
+	st1 := [byte(0x41)].repeat(100)
+	assert st1.hex() == "41".repeat(100)
+}
