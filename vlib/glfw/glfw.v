@@ -120,6 +120,8 @@ pub fn window_hint(key, val int) {
 	C.glfwWindowHint(key, val)
 }
 
+fn C.glfwGetWindowContentScale(window &glfw.Window, scale_x &f32, scale_y &f32) // scale
+
 pub fn create_window(c WinCfg) &glfw.Window {
 	if c.borderless {
 		window_hint(C.GLFW_RESIZABLE, 0)
@@ -257,7 +259,7 @@ pub fn (w &glfw.Window) get_cursor_pos() Pos {
 	x := f64(0)
 	y := f64(0)
 	C.glfwGetCursorPos(w.data, &x, &y)
-	
+
 	return Pos {
 		x: int(x/w.scale_)
 		y: int(y/w.scale_)
