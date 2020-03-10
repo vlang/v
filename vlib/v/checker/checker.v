@@ -382,8 +382,8 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
 			mut ident := assign_stmt.left[i]
-			mut var_info := ident.var_info()
 			val_type :=  mr_info.types[i]
+			mut var_info := ident.var_info()
 			var_info.typ = val_type
 			ident.info = var_info
 			assign_stmt.left[i] = ident
@@ -418,12 +418,10 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
 				}
 			}
-			else {
-				mut ident_var_info := ident.var_info()
-				ident_var_info.typ = val_type
-				ident.info = ident_var_info
-				assign_stmt.left[i] = ident
-			}
+			mut ident_var_info := ident.var_info()
+			ident_var_info.typ = val_type
+			ident.info = ident_var_info
+			assign_stmt.left[i] = ident
 			scope.override_var(ast.Var{
 				name: ident.name
 				typ: val_type
