@@ -83,15 +83,8 @@ pub fn (t mut Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn
 }
 
-pub fn (t &Table) register_method(typ &TypeSymbol, new_fn Fn) bool {
-	// println('register method `$new_fn.name` type=$typ.name idx=$typ.idx')
-	// println('register method `$new_fn.name` type=$typ.name')
-	// TODO mut << bug
-	mut t1 := typ
-	mut methods := typ.methods
-	methods << new_fn
-	t1.methods = methods
-	return true
+pub fn (t mut TypeSymbol) register_method(new_fn Fn) {
+	t.methods << new_fn
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
@@ -131,37 +124,50 @@ pub fn (s &TypeSymbol) find_field(name string) ?Field {
 	return none
 }
 
+pub fn (t &Table) type_has_method(s &TypeSymbol, name string) bool {
+	// println('type_has_method($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
+	if _ := t.type_find_method(s, name) {
+		return true
+	}
+	return false
+}
+
+// search from current type up through each parent looking for method
+pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
+	// println('type_find_method($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
+	mut ts := s
+	for {
+		if method := ts.find_method(name) {
+			return method
+		}
+		if s.parent_idx == 0 {
+			break
+		}
+		ts = &t.types[ts.parent_idx]
+	}
+	return none
+}
+
 pub fn (t &Table) struct_has_field(s &TypeSymbol, name string) bool {
-	if s.parent_idx != 0 {
-		parent := &t.types[s.parent_idx]
-		println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=$parent.name')
-	}
-	else {
-		println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=none')
-	}
+	// println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	if _ := t.struct_find_field(s, name) {
 		return true
 	}
 	return false
 }
 
+// search from current type up through each parent looking for field
 pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
-	if s.parent_idx != 0 {
-		parent := &t.types[s.parent_idx]
-		println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent=$parent.name')
-	}
-	else {
-		println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent=none')
-	}
-	if field := s.find_field(name) {
-		return field
-	}
-	if s.parent_idx != 0 {
-		parent := &t.types[s.parent_idx]
-		if field := parent.find_field(name) {
-			println('got parent $parent.name')
+	// println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
+	mut ts := s
+	for {
+		if field := ts.find_field(name) {
 			return field
 		}
+		if s.parent_idx == 0 {
+			break
+		}
+		ts = &t.types[ts.parent_idx]
 	}
 	return none
 }

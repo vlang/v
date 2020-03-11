@@ -207,7 +207,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	if !found {
 		c.error('unknown fn: $fn_name', call_expr.pos)
 	}
-	call_expr.typ = f.return_type
+	call_expr.return_type = f.return_type
 	if f.is_c || call_expr.is_c {
 		for expr in call_expr.args {
 			c.expr(expr)
@@ -255,56 +255,38 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 	typ_sym := c.table.get_type_symbol(typ)
 	name := method_call_expr.name
 	// println('method call $name $method_call_expr.pos.line_nr')
-	if typ_sym.kind == .array && name in ['filter', 'clone'] {
+	if typ_sym.kind == .array && name in ['filter', 'clone', 'repeat'] {
 		if name == 'filter' {
 			array_info := typ_sym.info as table.Array
-			elem_type_sym := c.table.get_type_symbol(array_info.elem_type)
 			mut scope := c.file.scope.innermost(method_call_expr.pos.pos)
 			scope.override_var(ast.Var{
 				name: 'it'
 				typ: array_info.elem_type
 			})
 		}
-		if method := typ_sym.find_method(name) {
-			method_call_expr.typ = method.return_type
-			for i, arg_expr in method_call_expr.args {
-				c.expected_type = method.args[i].typ
-				c.expr(arg_expr)
-			}
+		else if name == 'repeat' {
+			c.expr(method_call_expr.args[0])
 		}
+		// need to return `array_xxx` instead of `array`
+		method_call_expr.return_type = typ
 		return typ
 	}
 	else if typ_sym.kind == .array && name in ['first', 'last'] {
 		info := typ_sym.info as table.Array
+		method_call_expr.return_type = info.elem_type
 		return info.elem_type
 	}
-	// repeat() returns `array`, need to return `array_xxx`
-	else if typ_sym.kind == .array && name in ['repeat'] {
-		c.expr(method_call_expr.args[0])
-		return typ
-	}
-	if method := typ_sym.find_method(name) {
+	if method := c.table.type_find_method(typ_sym, name) {
 		// if name == 'clone' {
 		// println('CLONE nr args=$method.args.len')
 		// }
-		method_call_expr.receiver_type = method.args[0].typ
 		for i, arg_expr in method_call_expr.args {
 			c.expected_type = method.args[i].typ
 			c.expr(arg_expr)
 		}
+		method_call_expr.receiver_type = method.args[0].typ
+		method_call_expr.return_type = method.return_type
 		return method.return_type
-	}
-	// check parent
-	if typ_sym.parent_idx != 0 {
-		parent := &c.table.types[typ_sym.parent_idx]
-		if method := parent.find_method(name) {
-			// println('got method $name, returning')
-			for i, arg_expr in method_call_expr.args {
-				c.expected_type = method.args[i].typ
-				c.expr(arg_expr)
-			}
-			return method.return_type
-		}
 	}
 	c.error('type `$typ_sym.name` has no method `$name`', method_call_expr.pos)
 	return table.void_type
@@ -320,21 +302,14 @@ pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 	// println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
 	typ_sym := c.table.get_type_symbol(typ)
 	field_name := selector_expr.field
-	if field := typ_sym.find_field(field_name) {
-		return field.typ
-	}
 	// variadic
 	if table.type_is_variadic(typ) {
 		if field_name == 'len' {
 			return table.int_type
 		}
 	}
-	// check parent
-	if typ_sym.parent_idx != 0 {
-		parent := &c.table.types[typ_sym.parent_idx]
-		if field := parent.find_field(field_name) {
-			return field.typ
-		}
+	if field := c.table.struct_find_field(typ_sym, field_name) {
+		return field.typ
 	}
 	if typ_sym.kind != .struct_ {
 		c.error('`$typ_sym.name` is not a struct', selector_expr.pos)

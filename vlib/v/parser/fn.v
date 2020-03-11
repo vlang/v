@@ -142,16 +142,13 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	// Register
 	if is_method {
-		type_sym := p.table.get_type_symbol(rec_type)
+		mut type_sym := p.table.get_type_symbol(rec_type)
 		// p.warn('reg method $type_sym.name . $name ()')
-		ok := p.table.register_method(type_sym, table.Fn{
+		type_sym.register_method(table.Fn{
 			name: name
 			args: args
 			return_type: typ
 		})
-		if !ok {
-			p.error('expected Struct')
-		}
 	}
 	else {
 		if is_c {

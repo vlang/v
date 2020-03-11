@@ -291,10 +291,10 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mut return_type := table.void_type
 		match assign_stmt.right[0] {
 			ast.CallExpr {
-				return_type = it.typ
+				return_type = it.return_type
 			}
 			ast.MethodCallExpr {
-				return_type = it.typ
+				return_type = it.return_type
 			}
 			else {
 				panic('expected call')
