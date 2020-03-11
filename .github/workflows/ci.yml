@@ -136,6 +136,10 @@ jobs:
         ls
 #        ./1m
       #run: echo "TODO" #cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
+#    - name: Coveralls GitHub Action
+#      uses: coverallsapp/github-action@v1.0.1
+#      with:
+#        github-token: ${{ secrets.GITHUB_TOKEN }}
 
 
   ubuntu-prebuilt:

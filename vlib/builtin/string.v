@@ -396,7 +396,7 @@ fn (s string) add(a string) string {
 	for j in 0..a.len {
 		res[s.len + j] = a[j]
 	}
-	res[new_len] = `\0` // V strings are not null terminated, but just in case
+	res.str[new_len] = `\0` // V strings are not null terminated, but just in case
 	return res
 }
 

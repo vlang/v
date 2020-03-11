@@ -76,7 +76,7 @@ i < 10; i++) {
 	array_int nums3 = array_slice(nums, 1, 2);
 	array_int nums4 = array_slice(nums, 1, nums.len);
 	int number = (*(int*)array_get(nums, 0));
-	array_set(&nums, 1, 10);
+	array_set(&nums, 1, &(int[]) { 10 });
 	array_bool bools = new_array_from_c_array(2, 2, sizeof(array_bool), (bool[]){
 		true, false,
 	});

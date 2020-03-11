@@ -83,7 +83,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		rec_name = p.check_name()
 		rec_mut = p.tok.kind == .key_mut
 		// if rec_mut {
-		// 	p.check(.key_mut)
+		// p.check(.key_mut)
 		// }
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
@@ -97,7 +97,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	mut name := ''
 	if p.tok.kind == .name {
-		// TODO high
+		// TODO high order fn
 		name = p.check_name()
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
@@ -229,9 +229,9 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 				arg_names << p.check_name()
 			}
 			is_mut := p.tok.kind == .key_mut
-			if is_mut {
-				p.check(.key_mut)
-			}
+			// if is_mut {
+			// p.check(.key_mut)
+			// }
 			if p.tok.kind == .ellipsis {
 				p.check(.ellipsis)
 				is_variadic = true

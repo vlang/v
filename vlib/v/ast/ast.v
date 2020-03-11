@@ -182,6 +182,7 @@ mut:
 	expr_type     table.Type // type of `user`
 	receiver_type table.Type // User
 	return_type   table.Type
+	arg_types     []table.Type
 }
 
 pub struct Return {

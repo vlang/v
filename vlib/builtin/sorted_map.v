@@ -178,7 +178,7 @@ fn (m SortedMap) exists(key string) bool {
 	return false
 }
 
-fn (n mapnode) find_key(k string) int {
+fn (n &mapnode) find_key(k string) int {
 	mut idx := 0
 	for idx < n.size && n.keys[idx] < k {
 		idx++
@@ -353,7 +353,7 @@ pub fn (m mut SortedMap) delete(key string) {
 
 // Insert all keys of the subtree into array `keys`
 // starting at `at`. Keys are inserted in order.
-fn (n mapnode) subkeys(keys mut []string, at int) int {
+fn (n &mapnode) subkeys(keys mut []string, at int) int {
 	mut position := at
 	if !isnil(n.children) {
 		// Traverse children and insert

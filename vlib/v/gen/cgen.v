@@ -410,8 +410,12 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			g.definitions.write(arg_type_name)
 		}
 		else {
-			nr_muls := table.type_nr_muls(arg.typ)
+			mut nr_muls := table.type_nr_muls(arg.typ)
 			mut s := arg_type_name + ' ' + arg.name
+			if arg.is_mut {
+				// mut arg needs one *
+				nr_muls = 1
+			}
 			if nr_muls > 0 {
 				s = arg_type_name + strings.repeat(`*`, nr_muls) + ' ' + arg.name
 			}
@@ -464,7 +468,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			g.expr(it.val)
 			if g.is_array_set {
-				g.write(')')
+				g.write(' })')
 				g.is_array_set = false
 			}
 			g.is_assign_expr = false
@@ -483,7 +487,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				name = name[3..]
 			}
 			g.write('${name}(')
-			g.call_args(it.args, it.muts)
+			g.call_args(it.args, it.muts, it.arg_types)
 			g.write(')')
 			g.is_c_call = false
 		}
@@ -689,7 +693,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			if it.args.len > 0 {
 				g.write(', ')
 			}
-			g.call_args(it.args, it.muts)
+			g.call_args(it.args, it.muts, it.arg_types)
 			g.write(')')
 		}
 		ast.None {
@@ -895,18 +899,18 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	if !is_range && node.container_type != 0 {
 		sym := g.table.get_type_symbol(node.container_type)
 		if sym.kind == .array {
+			info := sym.info as table.Array
+			elem_type_str := g.typ(info.elem_type)
 			if g.is_assign_expr {
 				g.is_array_set = true
 				g.write('array_set(&')
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
-				g.write(', ')
+				g.write(', &($elem_type_str[]) { ')
 			}
 			else {
-				info := sym.info as table.Array
-				styp := g.typ(info.elem_type)
-				g.write('(*($styp*)array_get(')
+				g.write('(*($elem_type_str*)array_get(')
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
@@ -959,10 +963,17 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 	}
 }
 
-fn (g mut Gen) call_args(args []ast.Expr, muts []bool) {
+fn (g mut Gen) call_args(args []ast.Expr, muts []bool, arg_types []table.Type) {
 	for i, expr in args {
-		if muts[i] {
-			g.write('&/*mut*/')
+		if arg_types.len > 0 {
+			// typ := arg_types[i]
+			arg_is_ptr := table.type_is_ptr(arg_types[i])
+			if muts[i] && !arg_is_ptr {
+				g.write('&/*mut*/')
+			}
+			else if arg_is_ptr {
+				g.write('&/*q*/')
+			}
 		}
 		g.expr(expr)
 		if i != args.len - 1 {
@@ -977,6 +988,7 @@ fn verror(s string) {
 }
 
 const (
+// TODO all builtin types must be lowercase
 	builtins = ['string', 'array', 'KeyValue', 'map', 'Option']
 )
 

@@ -238,10 +238,12 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		c.expr(call_expr.args[0])
 		return f.return_type
 	}
+	mut arg_types := []table.Type
 	for i, arg_expr in call_expr.args {
 		arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
 		c.expected_type = arg.typ
 		typ := c.expr(arg_expr)
+		arg_types << typ
 		typ_sym := c.table.get_type_symbol(typ)
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)
 		if !c.table.check(typ, arg.typ) {
@@ -258,6 +260,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 			c.error('!cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`', call_expr.pos)
 		}
 	}
+	call_expr.arg_types = arg_types
 	return f.return_type
 }
 
@@ -267,6 +270,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 	method_call_expr.expr_type = typ
 	typ_sym := c.table.get_type_symbol(typ)
 	name := method_call_expr.name
+	mut arg_types := []table.Type
 	// println('method call $name $method_call_expr.pos.line_nr')
 	if typ_sym.kind == .array && name in ['filter', 'clone', 'repeat'] {
 		if name == 'filter' {
@@ -301,6 +305,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		// }
 		for i, arg_expr in method_call_expr.args {
 			c.expected_type = method.args[i + 1].typ
+			arg_types << c.expected_type
 			c.expr(arg_expr)
 		}
 		method_call_expr.receiver_type = method.args[0].typ

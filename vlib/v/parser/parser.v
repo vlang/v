@@ -16,14 +16,6 @@ import (
 const (
 	colored_output = term.can_show_color_on_stderr()
 )
-/*
-type PrefixParseFn fn()ast.Expr
-
-type InfixParseFn fn(e ast.Expr)ast.Expr
-
-type PostfixParseFn fn()ast.Expr
-*/
-
 
 struct Parser {
 	scanner     &scanner.Scanner
