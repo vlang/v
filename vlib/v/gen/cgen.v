@@ -140,7 +140,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.gen_assign_stmt(it)
 		}
 		ast.AssertStmt {
-			g.write('// assert')
+			g.writeln('// assert')
 			// TODO
 		}
 		ast.Attr {
@@ -456,8 +456,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('/* as */')
 		}
 		ast.AssignExpr {
-			g.is_assign_expr = true
 			g.expr(it.left)
+			g.is_assign_expr = true
 			// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
 			if !g.is_array_set {
 				g.write(' $it.op.str() ')
@@ -896,11 +896,13 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 				g.write(', ')
 			}
 			else {
-				g.write('array_get(')
+				info := sym.info as table.Array
+				styp := g.typ(info.elem_type)
+				g.write('(*($styp*)array_get(')
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
-				g.write(')')
+				g.write('))')
 			}
 		}
 		else if sym.kind == .string {
