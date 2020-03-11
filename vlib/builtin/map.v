@@ -328,6 +328,7 @@ fn (m map) exists(key string) bool {
 
 pub fn (m &map) keys() []string {
 	mut keys := [''].repeat(m.size)
+	//mut keys := []string{len: m.size}
 	if m.value_bytes == 0 {
 		return keys
 	}

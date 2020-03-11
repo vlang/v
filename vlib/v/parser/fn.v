@@ -82,7 +82,6 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		p.next()
 		rec_name = p.check_name()
 		if p.tok.kind == .key_mut {
-			// p.next()
 			rec_mut = true
 		}
 		rec_type = p.parse_type()

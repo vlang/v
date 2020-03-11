@@ -590,11 +590,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('/* guard */')
 		}
 		ast.IndexExpr {
-			//
 			g.index_expr(it)
 		}
 		ast.InfixExpr {
-			// sdf
 			g.infix_expr(it)
 		}
 		ast.IntegerLiteral {
@@ -763,7 +761,11 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write('->')
 			}
 			else {
+				// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
 				g.write('.')
+			}
+			if it.expr_type == 0 {
+				verror('cgen: SelectorExpr typ=0 field=$it.field')
 			}
 			g.write(it.field)
 		}

@@ -311,7 +311,9 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.Type {
 	typ := c.expr(selector_expr.expr)
 	selector_expr.expr_type = typ
+	// if selector_expr.field == 'size' {
 	// println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
+	// }
 	typ_sym := c.table.get_type_symbol(typ)
 	field_name := selector_expr.field
 	if field := typ_sym.find_field(field_name) {
@@ -879,6 +881,11 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 				return table.type_to_ptr(table.byte_type)
 			}
 			return table.byte_type
+		}
+		else if table.type_is_ptr(typ) {
+			// byte* => byte
+			// bytes[0] is a byte, not byte*
+			return table.type_deref(typ)
 		}
 		// else {
 		// return table.int_type
