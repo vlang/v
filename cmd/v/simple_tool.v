@@ -15,8 +15,8 @@ fn launch_tool(verbosity pref.VerboseLevel, tool_name string) {
 	compiler.set_vroot_folder(vroot)
 
 	tool_args := os.args[1..].join(' ')
-	tool_exe := path_of_executable(os.realpath('$vroot/cmd/tools/$tool_name'))
-	tool_source := os.realpath('$vroot/cmd/tools/${tool_name}.v')
+	tool_exe := path_of_executable(os.abs_path('$vroot/cmd/tools/$tool_name'))
+	tool_source := os.abs_path('$vroot/cmd/tools/${tool_name}.v')
 	tool_command := '"$tool_exe" $tool_args'
 	if verbosity.is_higher_or_equal(.level_two) {
 		eprintln('launch_tool vexe        : $vroot')

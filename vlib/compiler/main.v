@@ -38,7 +38,7 @@ pub mut:
 	mod_file_cacher     &ModFileCacher // used during lookup for v.mod to support @VROOT
 	out_name_c          string // name of the temporary C file
 	files               []string // all V files that need to be parsed and compiled
-	compiled_dir        string // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
+	compiled_dir        string // contains os.abs_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	table               &Table // table with types, vars, functions etc
 	cgen                &CGen // C code generator
 	//x64                 &x64.Gen
@@ -56,7 +56,7 @@ pub mut:
 }
 
 pub fn new_v(pref &pref.Preferences) &V {
-	rdir := os.realpath(pref.path)
+	rdir := os.abs_path(pref.path)
 
 	mut out_name_c := get_vtmp_filename(pref.out_name, '.tmp.c')
 	if pref.is_so {
@@ -105,13 +105,13 @@ pub fn (v &V) finalize_compilation() {
 pub fn (v mut V) add_parser(parser Parser) int {
 	pidx := v.parsers.len
 	v.parsers << parser
-	file_path := if os.is_abs_path(parser.file_path) { parser.file_path } else { os.realpath(parser.file_path) }
+	file_path := if os.is_abs_path(parser.file_path) { parser.file_path } else { os.abs_path(parser.file_path) }
 	v.file_parser_idx[file_path] = pidx
 	return pidx
 }
 
 pub fn (v &V) get_file_parser_index(file string) ?int {
-	file_path := if os.is_abs_path(file) { file } else { os.realpath(file) }
+	file_path := if os.is_abs_path(file) { file } else { os.abs_path(file) }
 	if file_path in v.file_parser_idx {
 		return v.file_parser_idx[file_path]
 	}
@@ -472,7 +472,7 @@ pub fn (v mut V) generate_main() {
 		lines_so_far := cgen.lines.join('\n').count('\n') + 5
 		cgen.genln('')
 		cgen.genln('// Reset the file/line numbers')
-		cgen.lines << '#line $lines_so_far "${cescaped_path(os.realpath(cgen.out_path))}"'
+		cgen.lines << '#line $lines_so_far "${cescaped_path(os.abs_path(cgen.out_path))}"'
 		cgen.genln('')
 	}
 	// Make sure the main function exists
@@ -774,7 +774,7 @@ pub fn (v &V) get_user_files() []string {
 	}
 	if is_internal_module_test {
 		// v volt/slack_test.v: compile all .v files to get the environment
-		single_test_v_file := os.realpath(dir)
+		single_test_v_file := os.abs_path(dir)
 		if v.pref.verbosity.is_higher_or_equal(.level_two) {
 			v.log('> Compiling an internal module _test.v file $single_test_v_file .')
 			v.log('> That brings in all other ordinary .v files in the same module too .')
@@ -933,5 +933,5 @@ pub fn set_vroot_folder(vroot_path string) {
 	// VEXE env variable is needed so that compiler.vexe_path()
 	// can return it later to whoever needs it:
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	os.setenv('VEXE', os.realpath([vroot_path, vname].join(os.path_separator)), true)
+	os.setenv('VEXE', os.abs_path([vroot_path, vname].join(os.path_separator)), true)
 }

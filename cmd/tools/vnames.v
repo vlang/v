@@ -73,7 +73,7 @@ fn main(){
 	mut files := []string
 	locations := fp.finalize() or { eprintln('Error: ' + err) exit(1) }
 	for xloc in locations {
-		loc := os.realpath(xloc)
+		loc := os.abs_path(xloc)
 		xfiles := if os.is_dir(loc){ os.walk_ext(loc,'.v') } else { [loc] }
 		filtered_files := xfiles.filter(!it.ends_with('_js.v'))
 		files << filtered_files

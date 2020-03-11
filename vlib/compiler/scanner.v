@@ -561,7 +561,7 @@ fn (s mut Scanner) scan() ScanRes {
 				return scan_res(.str, s.fn_name)
 			}
 			if name == 'FILE' {
-				return scan_res(.str, cescaped_path(os.realpath(s.file_path)))
+				return scan_res(.str, cescaped_path(os.abs_path(s.file_path)))
 			}
 			if name == 'LINE' {
 				return scan_res(.str, (s.line_nr + 1).str())

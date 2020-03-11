@@ -78,7 +78,7 @@ fn (v &V) generate_hot_reload_code() {
 	mut cgen := v.cgen
 	// Hot code reloading
 	if v.pref.is_live {
-		mut file := os.realpath(v.pref.path)
+		mut file := os.abs_path(v.pref.path)
 		file_base := os.filename(file).replace('.v', '')
 		so_name := file_base + '.so'
 		// Need to build .so file before building the live application

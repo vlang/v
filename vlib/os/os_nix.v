@@ -171,7 +171,7 @@ pub fn mkdir(path string) ?bool {
 	if path == '.' {
 		return true
 	}
-	apath := os.realpath(path)
+	apath := os.abs_path(path)
   /*
 	$if linux {
 		$if !android {
