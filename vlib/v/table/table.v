@@ -140,7 +140,7 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 		if method := ts.find_method(name) {
 			return method
 		}
-		if s.parent_idx == 0 {
+		if ts.parent_idx == 0 {
 			break
 		}
 		ts = &t.types[ts.parent_idx]
@@ -164,7 +164,7 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 		if field := ts.find_field(name) {
 			return field
 		}
-		if s.parent_idx == 0 {
+		if ts.parent_idx == 0 {
 			break
 		}
 		ts = &t.types[ts.parent_idx]
