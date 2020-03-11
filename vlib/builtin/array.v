@@ -353,7 +353,7 @@ pub fn (a array) free() {
 }
 
 // []string.str returns a string representation of the array of strings
-// "[ 'a', 'b', 'c' ]"
+// => '["a", "b", "c"]'
 pub fn (a []string) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write('[')
@@ -370,8 +370,23 @@ pub fn (a []string) str() string {
 	return sb.str()
 }
 
+// []int.str returns a string representation of the array of ints
+// => '[1, 2, 3]'
+pub fn (a []int) str() string {
+	mut sb := strings.new_builder(a.len * 13)
+	sb.write('[')
+	for i in 0..a.len {
+		sb.write(a[i].str())
+		if i < a.len - 1 {
+			sb.write(', ')
+		}
+	}
+	sb.write(']')
+	return sb.str()
+}
+
 // []bool.str returns a string representation of the array of bools
-// "[true, true, false]"
+// => '[true, true, false]'
 pub fn (a []bool) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write('[')
