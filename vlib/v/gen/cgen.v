@@ -187,8 +187,12 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.ForCStmt {
 			g.write('for (')
-			g.stmt(it.init)
-			// g.write('; ')
+			if !it.has_init {
+				g.write('; ')
+			}
+			else {
+				g.stmt(it.init)
+			}
 			g.expr(it.cond)
 			g.write('; ')
 			// g.stmt(it.inc)
@@ -925,9 +929,15 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 			// Do not do this when building a module, otherwise the consts
 			// will not be accessible.
 			ast.CharLiteral, ast.IntegerLiteral {
-				g.write('#define $name ')
+				g.definitions.write('#define $name ')
+				// TODO hack. Cut the generated value and paste it into definitions.
+				g.write('//')
+				pos := g.out.len
 				g.expr(expr)
 				g.writeln('')
+				val := string(g.out.buf[pos..])
+				// g.out.go_back(val.len)
+				g.definitions.write(val)
 			}
 			else {
 				styp := g.typ(field.typ)

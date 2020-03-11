@@ -15,6 +15,7 @@ typedef struct {
 	string arg1;
 } multi_return_int_string;
 // end of definitions #endif
+#define pi 3
 int pi2; // inited later
 void foo(int a);
 void User_inc_age(User* u, int n);
@@ -27,10 +28,14 @@ void variadic(variadic_int a);
 void ensure_cap(int required, int cap);
 void println(string s);
 void matches();
+#define path_sep 10
 void end();
+#define localmod__pub_int_const 20
 void localmod__pub_foo();
 int localmod__get_int_10();
-#define pi 3
+
+//3
+
 
 typedef enum {
 	Color_red, // 0
@@ -165,7 +170,7 @@ void matches() {
 	;
 }
 
-#define path_sep 10
+//10
 
 void end() {
 	int i = 2;
@@ -174,7 +179,7 @@ void end() {
 	int e = 2 + 3 * 4;
 }
 
-#define localmod__pub_int_const 20
+//20
 
 void localmod__pub_foo() {
 	int a = 10;

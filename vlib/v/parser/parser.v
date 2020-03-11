@@ -998,8 +998,10 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		mut cond := ast.Expr{}
 		// mut inc := ast.Stmt{}
 		mut inc := ast.Expr{}
+		mut has_init := false
 		if p.peek_tok.kind in [.assign, .decl_assign] {
 			init = p.assign_stmt()
+			has_init = true
 		}
 		else if p.tok.kind != .semicolon {}
 		// allow `for ;; i++ {`
@@ -1026,6 +1028,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		p.close_scope()
 		return ast.ForCStmt{
 			stmts: stmts
+			has_init: has_init
 			init: init
 			cond: cond
 			inc: inc
