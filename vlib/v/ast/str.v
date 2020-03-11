@@ -27,6 +27,10 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 	name := node.name.after('.')
 	f.write('fn ${receiver}${name}(')
 	for i, arg in node.args {
+		// skip receiver
+		if node.is_method && i == 0 {
+			continue
+		}
 		is_last_arg := i == node.args.len - 1
 		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ ||
 									(node.is_variadic && i == node.args.len - 2)

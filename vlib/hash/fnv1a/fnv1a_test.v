@@ -7,6 +7,6 @@ fn test_fnv1a() {
 	a := 'apple'
 	b := fnv1a.sum64_string(a)
 	c := fnv1a.sum64(a.bytes())
-	assert b.hex() == '0xf74a62a458befdbf'
-	assert c.hex() == '0xf74a62a458befdbf'
+	assert b.hex() == 'f74a62a458befdbf'
+	assert c.hex() == 'f74a62a458befdbf'
 }

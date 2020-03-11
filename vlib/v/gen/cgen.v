@@ -302,14 +302,16 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		g.expr(assign_stmt.right[0])
 		g.writeln(';')
 		for i, ident in assign_stmt.left {
+			if ident.kind == .blank_ident {
+				continue
+			}
 			ident_var_info := ident.var_info()
 			styp := g.typ(ident_var_info.typ)
-			if ident.kind == .blank_ident {
-				g.writeln('{ $styp _ = ${mr_var_name}.arg$i};')
+			if assign_stmt.op == .decl_assign {
+				g.write('$styp ')
 			}
-			else {
-				g.writeln('$styp $ident.name = ${mr_var_name}.arg$i;')
-			}
+			g.expr(ident)
+			g.writeln(' = ${mr_var_name}.arg$i;')
 		}
 	}
 	// `a := 1` | `a,b := 1,2`
@@ -339,7 +341,11 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 			}
 			else {
-				g.write('$styp $ident.name = ')
+				if assign_stmt.op == .decl_assign {
+					g.write('$styp ')
+				}
+				g.expr(ident)
+				g.write(' = ')
 				g.expr(val)
 			}
 			g.writeln(';')

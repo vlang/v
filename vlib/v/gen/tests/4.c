@@ -33,7 +33,7 @@ int main() {
     a.a = tos3("da");
     a.b.a = 111;
     string a1 = a.a;
-    int a2 = Bar_testa(b);
+    int a2 = Bar_testa(&b);
     int c = testa();
     c = 1;
     string d = testb(1);
@@ -57,8 +57,8 @@ int main() {
     string ma1 = tos3("hello");
     string ma2 = tos3("vlang");
     multi_return_int_string mr_578 = mr_test();
-    int mr1 = mr_578->arg[0];
-    string mr2 = mr_578->arg[1];
+    int mr1 = mr_578.arg0;
+    string mr2 = mr_578.arg1;
     return 0;
 }
 

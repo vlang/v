@@ -42,8 +42,8 @@ pub fn (b mut Builder) write(s string) {
 
 pub fn (b mut Builder) go_back(n int) {
 	b.buf.trim(b.buf.len-n)
-	//b.len -= n
-	}
+	b.len -= n
+}
 
 pub fn (b mut Builder) writeln(s string) {
 	// for c in s {
