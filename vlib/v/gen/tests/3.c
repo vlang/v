@@ -10,6 +10,9 @@ void User_foo(User* u);
 
 void User_foo(User* u) {
 	int age = u->age;
+	array_string zzz = array_repeat(new_array_from_c_array(1, 1, sizeof(array_string), (string[]){
+tos3(""),
+}), u->age);
 }
 
 int main() {

@@ -254,6 +254,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 	method_call_expr.expr_type = typ
 	typ_sym := c.table.get_type_symbol(typ)
 	name := method_call_expr.name
+	// println('method call $name $method_call_expr.pos.line_nr')
 	if typ_sym.kind == .array && name in ['filter', 'clone'] {
 		if name == 'filter' {
 			array_info := typ_sym.info as table.Array
@@ -279,12 +280,13 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 	}
 	// repeat() returns `array`, need to return `array_xxx`
 	else if typ_sym.kind == .array && name in ['repeat'] {
+		c.expr(method_call_expr.args[0])
 		return typ
 	}
 	if method := typ_sym.find_method(name) {
-		if name == 'clone' {
-			println('CLONE nr args=$method.args.len')
-		}
+		// if name == 'clone' {
+		// println('CLONE nr args=$method.args.len')
+		// }
 		method_call_expr.receiver_type = method.args[0].typ
 		for i, arg_expr in method_call_expr.args {
 			c.expected_type = method.args[i].typ
@@ -315,9 +317,7 @@ pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 		return table.void_type
 	}
 	selector_expr.expr_type = typ
-	if selector_expr.field == 'size' {
-		println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
-	}
+	// println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
 	typ_sym := c.table.get_type_symbol(typ)
 	field_name := selector_expr.field
 	if field := typ_sym.find_field(field_name) {

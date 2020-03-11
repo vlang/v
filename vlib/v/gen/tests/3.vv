@@ -5,6 +5,7 @@ struct User {
 
 fn (u &User) foo() {
 	age := u.age
+	zzz := [''].repeat(u.age)
 }
 
 fn main() {
