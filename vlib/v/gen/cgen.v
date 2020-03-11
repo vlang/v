@@ -241,8 +241,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.write('return')
 			// multiple returns
 			if it.exprs.len > 1 {
-				type_sym := g.table.get_type_symbol(g.fn_decl.typ)
-				g.write(' ($type_sym.name){')
+				styp := g.typ(g.fn_decl.typ)
+				g.write(' ($styp){')
 				for i, expr in it.exprs {
 					g.write('.arg$i=')
 					g.expr(expr)
@@ -789,8 +789,20 @@ fn (g mut Gen) infix_expr(it ast.InfixExpr) {
 			.ne{
 				'string_ne('
 			}
+			.lt{
+				'string_lt('
+			}
+			.le{
+				'string_le('
+			}
+			.gt{
+				'string_gt('
+			}
+			.ge{
+				'string_ge('
+			}
 			else {
-				''}
+				'/*infix_expr error*/'}
 	}
 		g.write(fn_name)
 		g.expr(it.left)
