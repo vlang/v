@@ -1744,7 +1744,6 @@ fn (p mut Parser) var_decl() {
 	mut var_token_idxs := [p.cur_tok_index()]
 	mut var_mut := [is_mut] // add first var mut
 	mut var_names := [p.check_name()] // add first variable
-	p.scanner.validate_var_name(var_names[0])
 	mut new_vars := 0
 	if var_names[0] != '_' && !p.known_var(var_names[0]) {
 		new_vars++
@@ -1762,7 +1761,6 @@ fn (p mut Parser) var_decl() {
 		}
 		var_token_idxs << p.cur_tok_index()
 		var_name := p.check_name()
-		p.scanner.validate_var_name(var_name)
 		if var_name != '_' && !p.known_var(var_name) {
 			new_vars++
 		}

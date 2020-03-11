@@ -1282,6 +1282,7 @@ fn (p mut Parser) module_decl() ast.Module {
 }
 
 fn (p mut Parser) parse_import() ast.Import {
+	pos := p.tok.position()
 	mut mod_name := p.check_name()
 	mut mod_alias := mod_name
 	for p.tok.kind == .dot {
@@ -1299,7 +1300,7 @@ fn (p mut Parser) parse_import() ast.Import {
 	return ast.Import{
 		mod: mod_name
 		alias: mod_alias
-		pos: p.tok.position()
+		pos: pos
 	}
 }
 

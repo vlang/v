@@ -999,12 +999,3 @@ fn good_type_name(s string) bool {
 	return true
 }
 
-// registration_date good
-// registrationdate  bad
-fn (s &Scanner) validate_var_name(name string) {
-	/*
-	if name.len > 15 && !name.contains('_') {
-		s.error('bad variable name `$name`\n' + 'looks like you have a multi-word name without separating them with `_`' + '\nfor example, use `registration_date` instead of `registrationdate` ')
-	}
-	*/
-}
