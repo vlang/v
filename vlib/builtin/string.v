@@ -110,9 +110,9 @@ pub fn (a string) clone() string {
 		str: malloc(a.len + 1)
 	}
 	for i in 0..a.len {
-		b[i] = a[i]
+		b.str[i] = a.str[i]
 	}
-	b[a.len] = `\0`
+	b.str[a.len] = `\0`
 	return b
 }
 
@@ -280,7 +280,7 @@ val_idx:rep_i}
 		}
 		// Rep doesnt start here, just copy
 		else {
-			b[b_i] = s[i]
+			b[b_i] = s.str[i]
 			b_i++
 		}
 	}

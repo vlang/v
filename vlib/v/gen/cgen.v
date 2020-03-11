@@ -17,7 +17,7 @@ mut:
 	fn_decl        &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	tmp_count      int
 	is_c_call      bool // e.g. `C.printf("v")`
-	is_assign_expr bool
+	is_assign_expr bool // inside left part of assign expr (for array_set(), etc)
 	is_array_set   bool
 	is_amp         bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 }
@@ -466,12 +466,12 @@ fn (g mut Gen) expr(node ast.Expr) {
 			if !g.is_array_set {
 				g.write(' $it.op.str() ')
 			}
+			g.is_assign_expr = false
 			g.expr(it.val)
 			if g.is_array_set {
 				g.write(' })')
 				g.is_array_set = false
 			}
-			g.is_assign_expr = false
 		}
 		ast.Assoc {
 			g.write('/* assoc */')
@@ -487,8 +487,17 @@ fn (g mut Gen) expr(node ast.Expr) {
 				name = name[3..]
 			}
 			g.write('${name}(')
-			g.call_args(it.args, it.muts, it.arg_types)
-			g.write(')')
+			if name == 'println' && it.arg_types[0] != table.string_type_idx {
+				// `println(int_str(10))`
+				sym := g.table.get_type_symbol(it.arg_types[0])
+				g.write('${sym.name}_str(')
+				g.expr(it.args[0])
+				g.write('))')
+			}
+			else {
+				g.call_args(it.args, it.muts, it.arg_types)
+				g.write(')')
+			}
 			g.is_c_call = false
 		}
 		ast.CastExpr {
@@ -672,9 +681,14 @@ fn (g mut Gen) expr(node ast.Expr) {
 			// TODO: there are still due to unchecked exprs (opt/some fn arg)
 			if it.expr_type != 0 {
 				typ_sym := g.table.get_type_symbol(it.expr_type)
+				// rec_sym := g.table.get_type_symbol(it.receiver_type)
 				receiver_name = typ_sym.name
-				if typ_sym.kind == .array && receiver_name.starts_with('array_') {
-					// array_byte_clone => array_clone
+				if typ_sym.kind == .array && it.name in
+				// TODO performance, detect `array` method differently
+				['repeat', 'sort_with_compare', 'free', 'push_many', 'trim'] {
+					// && rec_sym.name == 'array' {
+					// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
+					// `array_byte_clone` => `array_clone`
 					receiver_name = 'array'
 				}
 			}
@@ -693,6 +707,18 @@ fn (g mut Gen) expr(node ast.Expr) {
 			if it.args.len > 0 {
 				g.write(', ')
 			}
+			// /////////
+			/*
+			if name.contains('subkeys') {
+				println('call_args $name $it.arg_types.len')
+				for t in it.arg_types {
+					sym := g.table.get_type_symbol(t)
+					print('$sym.name ')
+				}
+				println('')
+			}
+			*/
+			// ///////
 			g.call_args(it.args, it.muts, it.arg_types)
 			g.write(')')
 		}
@@ -843,9 +869,9 @@ fn (g mut Gen) infix_expr(it ast.InfixExpr) {
 		tmp := g.new_tmp_var()
 		g.write('_PUSH(&')
 		g.expr(it.left)
-		g.write(', ')
+		g.write(', (')
 		g.expr(it.right)
-		g.write(', $tmp, $elem_type_str)')
+		g.write('), $tmp, $elem_type_str)')
 	}
 	else {
 		// if it.op == .dot {

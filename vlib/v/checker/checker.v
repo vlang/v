@@ -235,7 +235,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	}
 	// println can print anything
 	if fn_name == 'println' {
-		c.expr(call_expr.args[0])
+		call_expr.arg_types = [c.expr(call_expr.args[0])]
 		return f.return_type
 	}
 	mut arg_types := []table.Type
@@ -286,6 +286,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		}
 		// need to return `array_xxx` instead of `array`
 		method_call_expr.return_type = typ
+		// method_call_expr.receiver_type = typ
 		return typ
 	}
 	else if typ_sym.kind == .array && name in ['first', 'last'] {
@@ -310,6 +311,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		}
 		method_call_expr.receiver_type = method.args[0].typ
 		method_call_expr.return_type = method.return_type
+		method_call_expr.arg_types = arg_types
 		return method.return_type
 	}
 	c.error('type `$typ_sym.name` has no method `$name`', method_call_expr.pos)
