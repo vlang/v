@@ -81,6 +81,7 @@ fn foo(a int) {
 	b2 := bools[0] || true
 	b3 := get_bool() || true
 	f := nums.first()
+	c := nums.clone()
 	d := 'd'
 	println(s + d)
 	//cloned = nums.clone()

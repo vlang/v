@@ -56,7 +56,7 @@ int main() {
 	Color color = Color_red;
 	localmod__pub_foo();
 	int ten = localmod__get_int_10();
-	println(localmod__pub_int_const);
+	println(int_str(localmod__pub_int_const));
 	int g = ((int)(3.0));
 	byte* bytes = ((byte*)(0));
 	User user_ptr = (User*)memdup(&(User){}, sizeof(User));
@@ -96,6 +96,7 @@ i < 10; i++) {
 	bool b2 = (*(bool*)array_get(bools, 0)) || true;
 	bool b3 = get_bool() || true;
 	int f = array_first(nums);
+	array_int c = array_clone(nums);
 	string d = tos3("d");
 	println(string_add(s, d));
 }
