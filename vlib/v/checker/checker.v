@@ -909,7 +909,6 @@ pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
 	typ := c.table.get_type_symbol(table.Type(typ_idx))
 	// println('tname=$typ.name')
 	if typ.kind != .enum_ {
-		println('# $typ.kind.str()')
 		c.error('not an enum', node.pos)
 	}
 	// info := typ.info as table.Enum
