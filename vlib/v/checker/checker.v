@@ -290,17 +290,17 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		return info.elem_type
 	}
 	if method := c.table.type_find_method(typ_sym, name) {
-		if method_call_expr.args.len < method.args.len-1 {
+		if method_call_expr.args.len < method.args.len - 1 {
 			c.error('too few arguments in call to `${typ_sym.name}.$name`', method_call_expr.pos)
 		}
-		else if !method.is_variadic && method_call_expr.args.len > method.args.len+1 {
+		else if !method.is_variadic && method_call_expr.args.len > method.args.len + 1 {
 			c.error('too many arguments in call to `${typ_sym.name}.$name` ($method_call_expr.args.len instead of $method.args.len)', method_call_expr.pos)
 		}
 		// if name == 'clone' {
 		// println('CLONE nr args=$method.args.len')
 		// }
 		for i, arg_expr in method_call_expr.args {
-			c.expected_type = method.args[i+1].typ
+			c.expected_type = method.args[i + 1].typ
 			c.expr(arg_expr)
 		}
 		method_call_expr.receiver_type = method.args[0].typ
@@ -536,7 +536,10 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				c.stmt(stmt)
 			}
 		}
-		// ast.ForInStmt {}
+		ast.ForInStmt {
+			c.expr(it.cond)
+			c.expr(it.high)
+		}
 		// ast.GlobalDecl {}
 		// ast.HashStmt {}
 		ast.Import {}
@@ -584,7 +587,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.bool_type
 		}
 		ast.CastExpr {
-			c.expr(it.expr)
+			it.expr_type = c.expr(it.expr)
 			if it.has_arg {
 				c.expr(it.arg)
 			}
@@ -739,7 +742,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		// Function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
 			fn_type := c.table.find_or_register_fn_type(func)
-			ident.name = name			
+			ident.name = name
 			ident.kind = .function
 			ident.info = ast.IdentFn{
 				typ: fn_type

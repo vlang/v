@@ -128,7 +128,6 @@ pub:
 
 pub struct Arg {
 pub:
-	
 	name   string
 	is_mut bool
 	typ    table.Type
@@ -463,9 +462,9 @@ pub:
 
 pub struct FnTypeDecl {
 pub:
-	name    string
-	is_pub  bool
-	typ     table.Type
+	name   string
+	is_pub bool
+	typ    table.Type
 }
 
 pub struct DeferStmt {
@@ -535,10 +534,12 @@ pub:
 
 pub struct CastExpr {
 pub:
-	typ     table.Type
-	expr    Expr // `buf`
-	arg     Expr // `n` in `string(buf, n)`
-	has_arg bool
+	expr      Expr // `buf`
+	arg       Expr // `n` in `string(buf, n)`
+	typ       table.Type // `string`
+mut:
+	expr_type table.Type // `byteptr`
+	has_arg   bool
 }
 
 pub struct AssertStmt {

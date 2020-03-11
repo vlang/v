@@ -7,7 +7,7 @@ import (
 	strings
 )
 
-pub type TypeInfo = Array | ArrayFixed | Map | Struct |
+pub type TypeInfo = Array | ArrayFixed | Map | Struct | 	
 MultiReturn | Alias | Enum | SumType | Fn
 
 pub struct TypeSymbol {
@@ -355,8 +355,7 @@ pub fn (k Kind) str() string {
 			'enum'
 		}
 		else {
-			'unknown'
-		}
+			'unknown'}
 	}
 	return k_str
 }
@@ -434,7 +433,6 @@ pub fn (table &Table) type_to_str(t Type) string {
 		res += ')'
 		return res
 	}
-
 	mut res := sym.name
 	if sym.kind == .array {
 		res = res.replace('array_', '[]')

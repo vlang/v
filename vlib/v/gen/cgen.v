@@ -494,7 +494,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.out.go_back(1)
 			}
 			if it.typ == table.string_type_idx {
-				// tos(str, len), tos2(str)
+				// `tos(str, len)`, `tos2(str)`
 				if it.has_arg {
 					g.write('tos(')
 				}
@@ -502,8 +502,14 @@ fn (g mut Gen) expr(node ast.Expr) {
 					g.write('tos2(')
 				}
 				g.expr(it.expr)
+				sym := g.table.get_type_symbol(it.expr_type)
+				if sym.kind == .array {
+					// if we are casting an array, we need to add `.data`
+					g.write('.data')
+				}
 				if it.has_arg {
-					g.write(',')
+					// len argument
+					g.write(', ')
 					g.expr(it.arg)
 				}
 				g.write(')')

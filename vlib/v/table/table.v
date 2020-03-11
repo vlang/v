@@ -67,11 +67,11 @@ pub fn (f &Fn) signature() string {
 		// TODO: for now ignore mut/pts in sig for now
 		typ := type_set_nr_muls(arg.typ, 0)
 		// if arg.is_mut {
-		// 	sig += 'mut_'
+		// sig += 'mut_'
 		// }
 		// sig += '$arg.typ'
 		sig += '$typ'
-		if i < f.args.len-1 {
+		if i < f.args.len - 1 {
 			sig += '_'
 		}
 	}
@@ -294,7 +294,9 @@ pub fn (t &Table) array_fixed_name(elem_type Type, size int, nr_dims int) string
 pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
 	value_type_sym := t.get_type_symbol(value_type)
-	return 'map_${key_type_sym.name}_${value_type_sym.name}' + if type_is_ptr(value_type) { '_ptr' } else { '' }
+	suffix := if type_is_ptr(value_type) { '_ptr' } else { '' }
+	return 'map_${key_type_sym.name}_${value_type_sym.name}' + suffix
+	// return 'map_${value_type_sym.name}' + suffix
 }
 
 pub fn (t mut Table) find_or_register_map(key_type, value_type Type) int {
@@ -380,12 +382,7 @@ pub fn (t mut Table) find_or_register_multi_return(mr_typs []Type) int {
 }
 
 pub fn (t mut Table) find_or_register_fn_type(f Fn) int {
-	name := if f.name.len > 0 {
-		f.name
-	}
-	else {
-		'anon_$f.signature()'
-	}
+	name := if f.name.len > 0 { f.name } else { 'anon_$f.signature()' }
 	return t.register_type_symbol(TypeSymbol{
 		kind: .function
 		name: name
