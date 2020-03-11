@@ -433,7 +433,14 @@ pub fn (table &Table) type_to_str(t Type) string {
 		res += ')'
 		return res
 	}
-	mut res := sym.name.replace('array_', '[]')
+
+	mut res := sym.name
+	if sym.kind == .array {
+		res = res.replace('array_', '[]')
+	}
+	else if sym.kind == .map {
+		res = res.replace('map_string_', 'map[string]')
+	}
 	// mod.submod.submod2.Type => submod2.Type
 	if res.contains('.') {
 		vals := res.split('.')
