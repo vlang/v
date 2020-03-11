@@ -907,6 +907,11 @@ fn (p mut Parser) fn_args(f mut Fn) {
 p.table.known_type(p.lit)) || p.peek() == .rpar // (int, string)
 	if types_only {
 		for p.tok != .rpar {
+			is_mut := p.tok == .key_mut
+			if is_mut {
+				p.check(.key_mut)
+				p.fspace()
+			}
 			typ := p.get_type()
 			if typ == '' {
 				// && !f.is_c {
@@ -918,7 +923,7 @@ p.table.known_type(p.lit)) || p.peek() == .rpar // (int, string)
 			v := Var{
 				typ: typ
 				is_arg: true
-				// is_mut: is_mut
+				is_mut: is_mut
 
 				line_nr: p.scanner.line_nr
 				token_idx: p.cur_tok_index()
