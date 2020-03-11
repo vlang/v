@@ -8,7 +8,7 @@ import (
 )
 
 pub type TypeInfo = Array | ArrayFixed | Map | Struct |
-MultiReturn | Alias | Enum | SumType
+MultiReturn | Alias | Enum | SumType | Fn
 
 pub struct TypeSymbol {
 pub:
@@ -87,6 +87,7 @@ pub enum Kind {
 	sum_type
 	alias
 	enum_
+	function
 }
 
 pub fn (t &TypeSymbol) str() string {

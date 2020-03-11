@@ -245,7 +245,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.write('return')
 			// multiple returns
 			if it.exprs.len > 1 {
-				styp := g.typ(g.fn_decl.typ)
+				styp := g.typ(g.fn_decl.return_type)
 				g.write(' ($styp){')
 				for i, expr in it.exprs {
 					g.write('.arg$i=')
@@ -375,8 +375,8 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		if name.starts_with('_op_') {
 			name = op_to_fn_name(name)
 		}
-		// type_name := g.table.type_to_str(it.typ)
-		type_name := g.typ(it.typ)
+		// type_name := g.table.type_to_str(it.return_type)
+		type_name := g.typ(it.return_type)
 		g.write('$type_name ${name}(')
 		g.definitions.write('$type_name ${name}(')
 	}

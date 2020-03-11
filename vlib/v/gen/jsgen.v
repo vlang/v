@@ -37,7 +37,7 @@ pub fn (g mut JsGen) writeln(s string) {
 fn (g mut JsGen) stmt(node ast.Stmt) {
 	match node {
 		ast.FnDecl {
-			type_sym := g.table.get_type_symbol(it.typ)
+			type_sym := g.table.get_type_symbol(it.return_type)
 			g.write('/** @return { $type_sym.name } **/\nfunction ${it.name}(')
 			for arg in it.args {
 				arg_type_sym := g.table.get_type_symbol(arg.typ)

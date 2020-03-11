@@ -1727,6 +1727,16 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 			sub_types: sum_variants
 		}
 	}
+	// function type: `type mycallback fn(string, int)`
+	if p.tok.kind == .key_fn {
+		fn_name := p.prepend_mod(name)
+		fn_type := p.parse_fn_type(fn_name)
+		return ast.FnTypeDecl{
+			name: fn_name
+			is_pub: is_pub
+			typ: fn_type
+		}
+	}
 	// type MyType int
 	parent_type := p.parse_type()
 	pid := table.type_idx(parent_type)

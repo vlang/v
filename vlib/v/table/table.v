@@ -60,6 +60,25 @@ pub fn (t mut Table) register_global(name string, typ Type) {
 	}
 }
 
+// used to compare fn's & for naming anon fn's
+pub fn (f &Fn) signature() string {
+	mut sig := ''
+	for i, arg in f.args {
+		// TODO: for now ignore mut/pts in sig for now
+		typ := type_set_nr_muls(arg.typ, 0)
+		// if arg.is_mut {
+		// 	sig += 'mut_'
+		// }
+		// sig += '$arg.typ'
+		sig += '$typ'
+		if i < f.args.len-1 {
+			sig += '_'
+		}
+	}
+	sig += '_$f.return_type'
+	return sig
+}
+
 pub fn (t &Table) find_fn(name string) ?Fn {
 	f := t.fns[name]
 	if f.name.str != 0 {
@@ -360,6 +379,20 @@ pub fn (t mut Table) find_or_register_multi_return(mr_typs []Type) int {
 	return t.register_type_symbol(mr_type)
 }
 
+pub fn (t mut Table) find_or_register_fn_type(f Fn) int {
+	name := if f.name.len > 0 {
+		f.name
+	}
+	else {
+		'anon_$f.signature()'
+	}
+	return t.register_type_symbol(TypeSymbol{
+		kind: .function
+		name: name
+		info: f
+	})
+}
+
 pub fn (t mut Table) add_placeholder_type(name string) int {
 	ph_type := TypeSymbol{
 		kind: .placeholder
@@ -440,9 +473,17 @@ pub fn (t &Table) check(got, expected Type) bool {
 			return true
 		}
 	}
-	else if exp_type_sym.kind == .sum_type {
+	if exp_type_sym.kind == .sum_type {
 		sum_info := exp_type_sym.info as SumType
 		if got in sum_info.variants {
+			return true
+		}
+	}
+	// fn type
+	if got_type_sym.kind == .function && exp_type_sym.kind == .function {
+		got_fn := got_type_sym.info as Fn
+		exp_fn := exp_type_sym.info as Fn
+		if got_fn.signature() == exp_fn.signature() {
 			return true
 		}
 	}

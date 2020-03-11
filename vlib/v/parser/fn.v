@@ -81,27 +81,18 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		is_method = true
 		p.next()
 		rec_name = p.check_name()
-		if p.tok.kind == .key_mut {
-			rec_mut = true
-		}
+		rec_mut = p.tok.kind == .key_mut
+		// if rec_mut {
+		// 	p.check(.key_mut)
+		// }
+		// TODO: talk to alex, should mut be parsed with the type like this?
+		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type()
-		args << table.Var{
-			// Receiver is the first arg
-			typ: rec_type
-			name: rec_name
-		}
 		ast_args << ast.Arg{
 			name: rec_name
+			is_mut: rec_mut
 			typ: rec_type
 		}
-		// p.table.register_var(table.Var{
-		// name: rec_name
-		// typ: rec_type
-		// })
-		p.scope.register_var(ast.Var{
-			name: rec_name
-			typ: rec_type
-		})
 		p.check(.rpar)
 	}
 	mut name := ''
@@ -126,6 +117,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	for ast_arg in ast_args {
 		var := table.Var{
 			name: ast_arg.name
+			is_mut: ast_arg.is_mut
 			typ: ast_arg.typ
 		}
 		args << var
@@ -136,9 +128,9 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		// p.table.register_var(var)
 	}
 	// Return type
-	mut typ := table.void_type
+	mut return_type := table.void_type
 	if p.tok.kind.is_start_of_type() {
-		typ = p.parse_type()
+		return_type = p.parse_type()
 	}
 	// Register
 	if is_method {
@@ -147,7 +139,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		type_sym.register_method(table.Fn{
 			name: name
 			args: args
-			return_type: typ
+			return_type: return_type
 		})
 	}
 	else {
@@ -160,7 +152,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		p.table.register_fn(table.Fn{
 			name: name
 			args: args
-			return_type: typ
+			return_type: return_type
 			is_variadic: is_variadic
 			is_c: is_c
 		})
@@ -175,7 +167,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	return ast.FnDecl{
 		name: name
 		stmts: stmts
-		typ: typ
+		return_type: return_type
 		args: ast_args
 		is_deprecated: is_deprecated
 		is_pub: is_pub
@@ -202,6 +194,10 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
 			arg_name := 'arg_$arg_no'
+			is_mut := p.tok.kind == .key_mut
+			if is_mut {
+				p.check(.key_mut)
+			}
 			if p.tok.kind == .ellipsis {
 				p.check(.ellipsis)
 				is_variadic = true
@@ -218,6 +214,7 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 			}
 			args << ast.Arg{
 				name: arg_name
+				is_mut: is_mut
 				typ: arg_type
 			}
 		}
@@ -231,7 +228,8 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 				p.check(.comma)
 				arg_names << p.check_name()
 			}
-			if p.tok.kind == .key_mut {
+			is_mut := p.tok.kind == .key_mut
+			if is_mut {
 				p.check(.key_mut)
 			}
 			if p.tok.kind == .ellipsis {
@@ -245,6 +243,7 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 			for arg_name in arg_names {
 				args << ast.Arg{
 					name: arg_name
+					is_mut: is_mut
 					typ: typ
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {

@@ -204,6 +204,19 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 			f = f1
 		}
 	}
+	// check for arg (var) of fn type
+	if !found {
+		scope := c.file.scope.innermost(call_expr.pos.pos)
+		if var := scope.find_var(fn_name) {
+			if var.typ != 0 {
+				vts := c.table.get_type_symbol(var.typ)
+				if vts.kind == .function {
+					f = vts.info as table.Fn
+					found = true
+				}
+			}
+		}
+	}
 	if !found {
 		c.error('unknown fn: $fn_name', call_expr.pos)
 	}
@@ -277,11 +290,17 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		return info.elem_type
 	}
 	if method := c.table.type_find_method(typ_sym, name) {
+		if method_call_expr.args.len < method.args.len-1 {
+			c.error('too few arguments in call to `${typ_sym.name}.$name`', method_call_expr.pos)
+		}
+		else if !method.is_variadic && method_call_expr.args.len > method.args.len+1 {
+			c.error('too many arguments in call to `${typ_sym.name}.$name` ($method_call_expr.args.len instead of $method.args.len)', method_call_expr.pos)
+		}
 		// if name == 'clone' {
 		// println('CLONE nr args=$method.args.len')
 		// }
 		for i, arg_expr in method_call_expr.args {
-			c.expected_type = method.args[i].typ
+			c.expected_type = method.args[i+1].typ
 			c.expr(arg_expr)
 		}
 		method_call_expr.receiver_type = method.args[0].typ
@@ -492,7 +511,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.expr(it.expr)
 		}
 		ast.FnDecl {
-			c.fn_return_type = it.typ
+			c.fn_return_type = it.return_type
 			for stmt in it.stmts {
 				c.stmt(stmt)
 			}
@@ -697,8 +716,8 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 	}
 	// second use, already resovled in unresovled branch
 	else if ident.kind == .function {
-		info := ident.info as ast.IdentFunc
-		return info.return_type
+		info := ident.info as ast.IdentFn
+		return info.typ
 	}
 	// Handle indents with unresolved types during the parsing step
 	// (declared after first usage)
@@ -719,12 +738,13 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		}
 		// Function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
-			ident.name = name
+			fn_type := c.table.find_or_register_fn_type(func)
+			ident.name = name			
 			ident.kind = .function
-			ident.info = ast.IdentFunc{
-				return_type: func.return_type
+			ident.info = ast.IdentFn{
+				typ: fn_type
 			}
-			return func.return_type
+			return fn_type
 		}
 	}
 	// TODO
@@ -889,6 +909,7 @@ pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
 	typ := c.table.get_type_symbol(table.Type(typ_idx))
 	// println('tname=$typ.name')
 	if typ.kind != .enum_ {
+		println('# $typ.kind.str()')
 		c.error('not an enum', node.pos)
 	}
 	// info := typ.info as table.Enum

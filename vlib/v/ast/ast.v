@@ -8,7 +8,7 @@ import (
 	v.table
 )
 
-pub type TypeDecl = AliasTypeDecl | SumTypeDecl
+pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
 
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
@@ -128,15 +128,17 @@ pub:
 
 pub struct Arg {
 pub:
-	typ  table.Type
-	name string
+	
+	name   string
+	is_mut bool
+	typ    table.Type
 }
 
 pub struct FnDecl {
 pub:
 	name          string
 	stmts         []Stmt
-	typ           table.Type
+	return_type   table.Type
 	args          []Arg
 	is_deprecated bool
 	is_pub        bool
@@ -232,9 +234,9 @@ pub:
 	scope   &Scope
 }
 
-pub struct IdentFunc {
+pub struct IdentFn {
 pub mut:
-	return_type table.Type
+	typ table.Type
 }
 
 pub struct IdentVar {
@@ -244,7 +246,7 @@ pub mut:
 	is_static bool
 }
 
-pub type IdentInfo = IdentFunc | IdentVar
+pub type IdentInfo = IdentFn | IdentVar
 
 pub enum IdentKind {
 	unresolved
@@ -457,6 +459,13 @@ pub:
 	name      string
 	is_pub    bool
 	sub_types []table.Type
+}
+
+pub struct FnTypeDecl {
+pub:
+	name    string
+	is_pub  bool
+	typ     table.Type
 }
 
 pub struct DeferStmt {
