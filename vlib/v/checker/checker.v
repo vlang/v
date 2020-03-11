@@ -591,6 +591,9 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CastExpr {
 			c.expr(it.expr)
+			if it.has_arg {
+				c.expr(it.arg)
+			}
 			return it.typ
 		}
 		ast.CallExpr {
