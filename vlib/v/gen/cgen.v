@@ -456,8 +456,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('/* as */')
 		}
 		ast.AssignExpr {
-			g.expr(it.left)
 			g.is_assign_expr = true
+			g.expr(it.left)
 			// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
 			if !g.is_array_set {
 				g.write(' $it.op.str() ')

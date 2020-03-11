@@ -50,7 +50,7 @@ int main() {
 	array_Foo arr_foo = new_array_from_c_array(1, 1, sizeof(array_Foo), (Foo[]){
 		a,
 	});
-	Foo af_idx_el = array_get(arr_foo, 0);
+	Foo af_idx_el = (*(Foo*)array_get(arr_foo, 0));
 	string foo_a = af_idx_el.a;
     map_string_string m1 = new_map(1, sizeof(string));
     map_string_int m2 = new_map_init(2, sizeof(int), (string[2]){tos3("v"), tos3("lang"), }, (int[2]){1, 2, });
