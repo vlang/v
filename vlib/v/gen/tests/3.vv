@@ -3,6 +3,10 @@ struct User {
 	name string
 }
 
+fn (u &User) foo() {
+	age := u.age
+}
+
 fn main() {
 	user := User{}
 	user.age = 10

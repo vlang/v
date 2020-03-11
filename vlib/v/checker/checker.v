@@ -310,10 +310,14 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 
 pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.Type {
 	typ := c.expr(selector_expr.expr)
+	if typ == table.void_type_idx {
+		c.error('unknown selector expression', selector_expr.pos)
+		return table.void_type
+	}
 	selector_expr.expr_type = typ
-	// if selector_expr.field == 'size' {
-	// println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
-	// }
+	if selector_expr.field == 'size' {
+		println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
+	}
 	typ_sym := c.table.get_type_symbol(typ)
 	field_name := selector_expr.field
 	if field := typ_sym.find_field(field_name) {

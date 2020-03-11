@@ -5,6 +5,13 @@ struct User {
 
 // multi return structs
 // end of definitions #endif
+
+void User_foo(User* u);
+
+void User_foo(User* u) {
+	int age = u->age;
+}
+
 int main() {
 	User user = (User){
 };
