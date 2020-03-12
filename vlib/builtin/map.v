@@ -119,7 +119,9 @@ fn (d mut DenseArray) zeros_to_end() {
 	mut count := u32(0)
 	for i in 0..d.size {
 		if d.data[i].key.str != 0 {
+			tmp := d.data[count]
 			d.data[count] = d.data[i]
+			d.data[i] = tmp
 			count++
 		}
 	}
