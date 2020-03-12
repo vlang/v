@@ -200,7 +200,7 @@ fn (m mut map) set(key string, value voidptr) {
 	// Probe until an empty index is found.
 	// Swap when probe count is higher/richer (Robin Hood).
 	kv := KeyValue{
-		key: key, 
+		key: key 
 		value: malloc(m.value_bytes)
 	}
 	C.memcpy(kv.value, value, m.value_bytes)
