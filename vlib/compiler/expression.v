@@ -786,7 +786,7 @@ fn (p mut Parser) factor() string {
 			return p.expected_type
 		}
 		.number {
-			// Check if float (`1.0`, `1e+3`) but not if is hexa (e.g. `0xEE` contains `E` but is not float)
+			// Check if float (`1.0`, `1e+3`) but not if is hexa (e.g. 0xEE contains `E` but is not float)
 			if (p.lit.contains('.') || (p.lit.contains('e') || p.lit.contains('E'))) && !(p.lit[0] == `0` && (p.lit[1] == `x` || p.lit[1] == `X`)) {
 				typ = if p.lit.f32().str() in ['+inf', '-inf'] { 'f64' } else { 'f32' }
 			}
