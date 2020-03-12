@@ -505,7 +505,6 @@ pub:
 	name string
 }
 
-/*
 pub struct ContinueLabel{
 pub:
 	name string
@@ -525,8 +524,6 @@ pub struct BreakStmt{
 pub: 
 	name string
 }
-
-*/
 
 pub struct ArrayInit {
 pub:
