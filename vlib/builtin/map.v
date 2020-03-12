@@ -388,7 +388,7 @@ fn (m map) get(key string, out voidptr) bool {
 	return false
 }
 
-pub fn (m map) exists(key string) bool {
+fn (m map) exists(key string) bool {
 	if m.value_bytes == 0 {
 		return false
 	}
