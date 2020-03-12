@@ -405,7 +405,22 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		if i == it.args.len - 1 && it.is_variadic {
 			arg_type_name = 'variadic_$arg_type_name'
 		}
-		if no_names {
+		if arg_type_sym.kind == .function {
+			func := arg_type_sym.info as table.Fn
+			g.write('${g.typ(func.return_type)} (*$arg.name)(')
+			g.definitions.write('${g.typ(func.return_type)} (*$arg.name)(')
+			for j, a in func.args {
+				g.write('${g.typ(a.typ)} $a.name')
+				g.definitions.write('${g.typ(a.typ)} $a.name')
+				if j < func.args.len - 1 {
+					g.write(',')
+					g.definitions.write(',')
+				}
+			}
+			g.write(')')
+			g.definitions.write(')')
+		}
+		else if no_names {
 			g.write(arg_type_name)
 			g.definitions.write(arg_type_name)
 		}
