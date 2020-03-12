@@ -41,3 +41,57 @@ fn variadic_forward_b(a ...string) string {
 fn test_fn_variadic_forward() {
 	assert variadic_forward_a('a', 'b', 'c') == 'abc'
 }
+
+fn variadic_test_no_args(name string, groups ...VaTestGroup) {
+  assert groups.len == 0
+
+  mut grps := []VaTestGroup
+  if groups.len != 0 {
+    for grp in groups {
+      grps << grp
+    }
+  }
+}
+
+fn test_fn_variadic_no_args() {
+  variadic_test_no_args('marko')
+}
+
+struct VaTestStruct {
+}
+
+fn (a VaTestStruct) variadic_method(name string, groups ...VaTestGroup) {
+	assert groups.len == 2
+	assert groups[0].name == 'users'
+	assert groups[1].name == 'admins'
+
+  mut grps := []VaTestGroup
+  if groups.len != 0 {
+    for grp in groups {
+      grps << grp
+    }
+  }
+}
+
+fn (a VaTestStruct) variadic_method_no_args(name string, groups ...VaTestGroup) {
+  assert groups.len == 0
+
+  mut grps := []VaTestGroup
+  if groups.len != 0 {
+    for grp in groups {
+      grps << grp
+    }
+  }
+}
+
+fn test_fn_variadic_method() {
+  a := VaTestStruct{}
+	group1 := VaTestGroup{name: 'users'}
+	group2 := VaTestGroup{name: 'admins'}
+  a.variadic_method('marko', group1, group2)
+}
+
+fn test_fn_variadic_method_no_args() {
+  a := VaTestStruct{}
+  a.variadic_method_no_args('marko')
+}
