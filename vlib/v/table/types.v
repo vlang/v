@@ -32,9 +32,8 @@ pub fn type_nr_muls(t Type) int {
 // return true if pointer (nr_muls>0)
 [inline]
 pub fn type_is_ptr(t Type) bool {
-	return type_nr_muls(t) > 0
+	return type_nr_muls(t) > 0 // || t == voidptr_type_idx
 }
-
 // set nr_muls on Type and return it
 [inline]
 pub fn type_set_nr_muls(t Type, nr_muls int) Type {

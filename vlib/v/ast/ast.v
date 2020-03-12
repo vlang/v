@@ -163,6 +163,7 @@ mut:
 	name        string
 	args        []Expr
 	arg_types   []table.Type
+	expr_types  []table.Type
 	is_c        bool
 	muts        []bool
 	or_block    OrExpr
@@ -183,6 +184,7 @@ mut:
 	receiver_type table.Type // User
 	return_type   table.Type
 	arg_types     []table.Type
+	expr_types    []table.Type
 }
 
 pub struct Return {

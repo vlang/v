@@ -22,7 +22,7 @@ mut:
 	errors         []string
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
-	// is_amp         bool
+	is_amp         bool
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -86,6 +86,9 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 			info := typ_sym.info as table.Struct
 			if struct_init.fields.len == 0 {
 				// Short syntax TODO check
+				if c.is_amp {
+					return table.type_to_ptr(struct_init.typ)
+				}
 				return struct_init.typ
 			}
 			if struct_init.exprs.len > info.fields.len {
@@ -116,6 +119,10 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 			}
 		}
 		else {}
+	}
+	if c.is_amp {
+		println('XAXAXAX')
+		return table.type_to_ptr(struct_init.typ)
 	}
 	return struct_init.typ
 }
@@ -239,11 +246,14 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		return f.return_type
 	}
 	mut arg_types := []table.Type
+	mut expr_types := []table.Type
 	for i, arg_expr in call_expr.args {
 		arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
 		c.expected_type = arg.typ
 		typ := c.expr(arg_expr)
-		arg_types << typ
+		expr_types << typ
+		// arg_types << typ // arg.typ
+		arg_types << arg.typ
 		typ_sym := c.table.get_type_symbol(typ)
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)
 		if !c.table.check(typ, arg.typ) {
@@ -261,6 +271,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		}
 	}
 	call_expr.arg_types = arg_types
+	call_expr.expr_types = expr_types
 	return f.return_type
 }
 
@@ -271,6 +282,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 	typ_sym := c.table.get_type_symbol(typ)
 	name := method_call_expr.name
 	mut arg_types := []table.Type
+	mut expr_types := []table.Type
 	// println('method call $name $method_call_expr.pos.line_nr')
 	if typ_sym.kind == .array && name in ['filter', 'clone', 'repeat'] {
 		if name == 'filter' {
@@ -307,11 +319,12 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		for i, arg_expr in method_call_expr.args {
 			c.expected_type = method.args[i + 1].typ
 			arg_types << c.expected_type
-			c.expr(arg_expr)
+			expr_types << c.expr(arg_expr)
 		}
 		method_call_expr.receiver_type = method.args[0].typ
 		method_call_expr.return_type = method.return_type
 		method_call_expr.arg_types = arg_types
+		method_call_expr.expr_types = expr_types
 		return method.return_type
 	}
 	c.error('type `$typ_sym.name` has no method `$name`', method_call_expr.pos)
@@ -643,7 +656,12 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return c.postfix_expr(it)
 		}
 		ast.PrefixExpr {
-			return c.expr(it.right)
+			if it.op == .amp {
+				c.is_amp = true
+			}
+			res := c.expr(it.right)
+			c.is_amp = false
+			return res
 		}
 		ast.None {
 			return table.none_type
@@ -888,10 +906,6 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 			return info.value_type
 		}
 		else if typ_sym.kind in [.byteptr, .string] {
-			// TODO: hack need to handle &a[0] comment to see wyahsh errors
-			if typ_sym.kind == .byteptr {
-				return table.type_to_ptr(table.byte_type)
-			}
 			return table.byte_type
 		}
 		else if table.type_is_ptr(typ) {

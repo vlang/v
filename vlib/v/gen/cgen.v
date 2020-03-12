@@ -67,6 +67,7 @@ pub fn (g &Gen) styp(t string) string {
 }
 */
 
+
 pub fn (g mut Gen) write_typedef_types() {
 	for typ in g.table.types {
 		match typ.kind {
@@ -95,7 +96,7 @@ pub fn (g mut Gen) write_typedef_types() {
 			else {
 				continue
 			}
-		}
+	}
 	}
 }
 
@@ -524,7 +525,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write('))')
 			}
 			else {
-				g.call_args(it.args, it.muts, it.arg_types)
+				g.call_args(it.args, it.muts, it.arg_types, it.expr_types)
 				g.write(')')
 			}
 			g.is_c_call = false
@@ -730,7 +731,11 @@ fn (g mut Gen) expr(node ast.Expr) {
 			if table.type_is_ptr(it.receiver_type) && !table.type_is_ptr(it.expr_type) {
 				// The receiver is a reference, but the caller provided a value
 				// Add `&` automatically.
+				// TODO same logic in call_args()
 				g.write('&')
+			}
+			else if !table.type_is_ptr(it.receiver_type) && table.type_is_ptr(it.expr_type) {
+				g.write('/*rec*/*')
 			}
 			g.expr(it.expr)
 			if it.args.len > 0 {
@@ -748,7 +753,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			*/
 			// ///////
-			g.call_args(it.args, it.muts, it.arg_types)
+			g.call_args(it.args, it.muts, it.arg_types, it.expr_types)
 			g.write(')')
 		}
 		ast.None {
@@ -1018,16 +1023,21 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 	}
 }
 
-fn (g mut Gen) call_args(args []ast.Expr, muts []bool, arg_types []table.Type) {
+fn (g mut Gen) call_args(args []ast.Expr, muts []bool, arg_types []table.Type, expr_types []table.Type) {
 	for i, expr in args {
 		if arg_types.len > 0 {
 			// typ := arg_types[i]
-			arg_is_ptr := table.type_is_ptr(arg_types[i])
+			arg_is_ptr := table.type_is_ptr(arg_types[i]) || arg_types[i] == table.voidptr_type_idx
+			expr_is_ptr := i < expr_types.len && table.type_is_ptr(expr_types[i])
 			if muts[i] && !arg_is_ptr {
 				g.write('&/*mut*/')
 			}
-			else if arg_is_ptr {
+			else if arg_is_ptr && !expr_is_ptr {
 				g.write('&/*q*/')
+			}
+			else if !arg_is_ptr && expr_is_ptr {
+				// Dereference a pointer if a value is required
+				g.write('*/*d*/')
 			}
 		}
 		g.expr(expr)
