@@ -18,8 +18,8 @@ ConcatExpr | Type | AsCast
 
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
-LineComment | MultiLineComment | AssertStmt | UnsafeStmt
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 
+ContinueLabel | ContinueStmt | BreakLabel | BreakStmt | LineComment | MultiLineComment | AssertStmt | UnsafeStmt
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -207,7 +207,6 @@ pub struct Stmt {
 	//end int
 }
 */
-
 
 pub struct Var {
 pub:
@@ -505,6 +504,29 @@ pub struct GotoStmt {
 pub:
 	name string
 }
+
+/*
+pub struct ContinueLabel{
+pub:
+	name string
+}
+
+pub struct ContinueStmt{
+pub: 
+	name string
+}
+
+pub struct BreakLabel{
+pub:
+	name string
+}
+
+pub struct BreakStmt{
+pub: 
+	name string
+}
+
+*/
 
 pub struct ArrayInit {
 pub:
