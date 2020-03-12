@@ -3,7 +3,7 @@ module time
 const (
 	nanosecond = 1
 	microsecond = 1000 * nanosecond
-	millsecond = 1000 * microsecond
+	millisecond = 1000 * microsecond
 	second = 1000 * millisecond
 	minute = 60 * second
 	hour = 60 * minute	
@@ -12,10 +12,6 @@ const (
 )
 
 type Duration i64
-
-pub fn (t Time) duration(duration i64) Duration{
-	t.duration = duration
-}
 
 pub fn (d Duration) nanoseconds() i64 { 
 	return d.nsec as i64
@@ -45,6 +41,11 @@ pub fn (d Duration) hours() f64 {
 	hour := d.nsec / hour
 	nsec := d.nsec % hour
 	return hour as f64 + nsec as f64 / 60*60*60*1e+9
+}
+
+// transpile UNIX Time.
+pub fn (d Duration) unix(t time){
+
 }
 
 fn (d Duration) time(t time) Time{
