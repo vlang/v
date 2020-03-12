@@ -11,8 +11,8 @@ fn test_float_decl() {
   x6 := -7e99
   x7 := 3e-205
   x8 := -6e-147
-  assert typeof(x1) == 'f64'
-  assert typeof(x2) == 'f64'
-  assert typeof(x3) == 'f64'
-  assert typeof(x4) == 'f64'
+  assert typeof(x5) == 'f64'
+  assert typeof(x6) == 'f64'
+  assert typeof(x7) == 'f64'
+  assert typeof(x8) == 'f64'
 }
