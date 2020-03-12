@@ -59,6 +59,14 @@ mut:
 	value voidptr
 }
 
+// Dynamic array with very low growth factor
+struct DenseArray {
+mut:
+	data &KeyValue
+	cap  u32
+	size u32
+}
+
 fn new_map(n, value_bytes int) map {
 	probe_hash_bytes := sizeof(u32) * init_capicity
 	key_value_bytes := sizeof(KeyValue) * init_capicity
