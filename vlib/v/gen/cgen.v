@@ -809,11 +809,14 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.StringLiteral {
 			// In C calls we have to generate C strings
 			// `C.printf("hi")` => `printf("hi");`
+			escaped_val := it.val.replace_each(['"', '\\"',
+			'\n', '\\n',
+			'\r\n', '\\n'])
 			if g.is_c_call {
-				g.write('"$it.val"')
+				g.write('"$escaped_val"')
 			}
 			else {
-				g.write('tos3("$it.val")')
+				g.write('tos3("$escaped_val")')
 			}
 		}
 		// `user := User{name: 'Bob'}`
