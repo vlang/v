@@ -477,14 +477,17 @@ fn (g mut Gen) expr(node ast.Expr) {
 	match node {
 		ast.ArrayInit {
 			type_sym := g.table.get_type_symbol(it.typ)
-			elem_sym := g.table.get_type_symbol(it.elem_type)
-			g.write('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($type_sym.name), ')
-			g.writeln('(${elem_sym.name}[]){\t')
-			for expr in it.exprs {
-				g.expr(expr)
-				g.write(', ')
+			if type_sym.kind != .array_fixed {
+				elem_sym := g.table.get_type_symbol(it.elem_type)
+				g.write('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($type_sym.name), ')
+				g.writeln('(${elem_sym.name}[]){\t')
+				for expr in it.exprs {
+					g.expr(expr)
+					g.write(', ')
+				}
+				g.write('\n})')
 			}
-			g.write('\n})')
+			else {}
 		}
 		ast.AsCast {
 			g.write('/* as */')
