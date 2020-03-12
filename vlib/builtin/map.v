@@ -437,7 +437,7 @@ pub fn (m mut map) delete(key string) {
 			}
 			m.metas[old_index] = 0
 			m.size--
-			if m.cap == 14 {return}
+			if m.cap == 30 {return}
 			if (f32(m.size << 1) / f32(m.cap)) < min_load_factor {
 				m.shrink()
 			}
