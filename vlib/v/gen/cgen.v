@@ -44,7 +44,7 @@ pub fn (g mut Gen) init() {
 	g.definitions.writeln(c_builtin_types)
 	g.definitions.writeln(c_headers)
 	g.write_builtin_types()
-	g.write_array_types()
+	g.write_typedef_types()
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
@@ -67,20 +67,34 @@ pub fn (g &Gen) styp(t string) string {
 }
 */
 
-
-pub fn (g mut Gen) write_array_types() {
+pub fn (g mut Gen) write_typedef_types() {
 	for typ in g.table.types {
-		if typ.kind == .array {
-			styp := typ.name.replace('.', '__')
-			g.definitions.writeln('typedef array $styp;')
-		}
-		else if typ.kind == .array_fixed {
-			styp := typ.name.replace('.', '__')
-			// array_fixed_char_300 => char x[300]
-			mut fixed := styp[12..]
-			len := styp.after('_')
-			fixed = fixed[..fixed.len - len.len - 1]
-			g.definitions.writeln('typedef $fixed $styp [$len];')
+		match typ.kind {
+			.alias {
+				parent := &g.table.types[typ.parent_idx]
+				styp := typ.name.replace('.', '__')
+				parent_styp := parent.name.replace('.', '__')
+				g.definitions.writeln('typedef $parent_styp $styp;')
+			}
+			.array {
+				styp := typ.name.replace('.', '__')
+				g.definitions.writeln('typedef array $styp;')
+			}
+			.array_fixed {
+				styp := typ.name.replace('.', '__')
+				// array_fixed_char_300 => char x[300]
+				mut fixed := styp[12..]
+				len := styp.after('_')
+				fixed = fixed[..fixed.len - len.len - 1]
+				g.definitions.writeln('typedef $fixed $styp [$len];')
+			}
+			.map {
+				styp := typ.name.replace('.', '__')
+				g.definitions.writeln('typedef map $styp;')
+			}
+			else {
+				continue
+			}
 		}
 	}
 }

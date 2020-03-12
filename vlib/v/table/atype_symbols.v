@@ -248,11 +248,18 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 		kind: .map
 		name: 'map'
 	})
-	// TODO: remove
+	// TODO: remove. for v1 map compatibility
+	map_string_string_idx := t.find_or_register_map(string_type, string_type)
+	map_string_int_idx := t.find_or_register_map(string_type, int_type)
 	t.register_type_symbol(TypeSymbol{
-		parent_idx: map_type_idx
-		kind: .struct_
+		kind: .alias
 		name: 'map_string'
+		parent_idx: map_string_string_idx
+	})
+	t.register_type_symbol(TypeSymbol{
+		kind: .alias
+		name: 'map_int'
+		parent_idx: map_string_int_idx
 	})
 }
 
