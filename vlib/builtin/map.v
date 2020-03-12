@@ -152,15 +152,6 @@ pub mut:
 	size            int
 }
 
-
-// Dynamic array with very low growth factor
-struct DenseArray {
-mut:
-	data &KeyValue
-	cap  u32
-	size u32
-}
-
 fn new_map(n, value_bytes int) map {
 	return map{
 		value_bytes: value_bytes
