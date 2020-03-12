@@ -74,30 +74,6 @@ const (
 	max_probe = u32(0xFF000000)
 )
 
-pub struct map {
-	// Byte size of value
-	value_bytes     int
-mut:
-	// Index of the highest index in the hashtable
-	cap             u32
-	// Number of cached hashbits left for rehasing
-	window          byte
-	// Used for right-shifting out used hashbits
-	shift           byte
-	// Pointer to Key-value memory
-	key_values      DenseArray
-	// Pointer to meta-data
-	metas           &u32
-	// Measure that decides when to increase the capacity
-	max_load_factor f32
-	// Extra metas that allows for no ranging when incrementing
-	// index in the hashmap
-	extra_metas     u32
-pub mut:
-	// Number of key-values currently in the hashmap
-	size            int
-}
-
 struct KeyValue {
 	key   string
 mut:
@@ -151,6 +127,31 @@ fn (d mut DenseArray) zeros_to_end() {
 	d.cap = if count < 8 {8} else {count}
 	d.data = &KeyValue(realloc(d.data, sizeof(KeyValue) * d.cap))
 }
+
+pub struct map {
+	// Byte size of value
+	value_bytes     int
+mut:
+	// Index of the highest index in the hashtable
+	cap             u32
+	// Number of cached hashbits left for rehasing
+	window          byte
+	// Used for right-shifting out used hashbits
+	shift           byte
+	// Pointer to Key-value memory
+	key_values      DenseArray
+	// Pointer to meta-data
+	metas           &u32
+	// Measure that decides when to increase the capacity
+	max_load_factor f32
+	// Extra metas that allows for no ranging when incrementing
+	// index in the hashmap
+	extra_metas     u32
+pub mut:
+	// Number of key-values currently in the hashmap
+	size            int
+}
+
 
 fn new_map(n, value_bytes int) map {
 	return map{
