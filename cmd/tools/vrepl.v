@@ -9,7 +9,6 @@ import (
 	term
 	readline
 	os.cmdline
-	filepath
 )
 
 struct Repl {
@@ -78,8 +77,8 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 	println(version)
 	println('Use Ctrl-C or `exit` to exit')
 
-	file := filepath.join( workdir, '.${vrepl_prefix}vrepl.v' )
-	temp_file := filepath.join( workdir, '.${vrepl_prefix}vrepl_temp.v')
+	file := os.join_path(workdir, '.${vrepl_prefix}vrepl.v')
+	temp_file := os.join_path(workdir, '.${vrepl_prefix}vrepl_temp.v')
 	mut prompt := '>>> '
 	defer {
 		println('')
@@ -144,7 +143,7 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 		if r.line.starts_with('print') {
 			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.line
 			os.write_file(file, source_code)
-			s := os.exec('"$vexe" run $file -repl') or {
+			s := os.exec('"$vexe" -repl run $file') or {
 				rerror(err)
 				return []
 			}
@@ -166,7 +165,7 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 			}
 			temp_source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.temp_lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
-			s := os.exec('"$vexe" run $temp_file -repl') or {
+			s := os.exec('"$vexe" -repl run $temp_file') or {
 				println("SDFSDF")
 				rerror(err)
 				return []
@@ -231,12 +230,12 @@ fn main() {
 
 pub fn rerror(s string) {
 	println('V repl error: $s')
-	os.flush_stdout()
+	os.flush()
 	exit(1)
 }
 
 fn v_version() string {
 	vexe := os.getenv('VEXE')
-	vversion_res := os.exec('$vexe --version') or { panic('"$vexe --version" is not working') }
+	vversion_res := os.exec('$vexe -version') or { panic('"$vexe -version" is not working') }
 	return vversion_res.output
 }

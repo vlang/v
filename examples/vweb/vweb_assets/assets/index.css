@@ -1,0 +1,19 @@
+body {
+	font-family: Arial, Helvetica, sans-serif;
+	color: #eee;
+	background-color: #333;
+	background-image: url("v-logo.svg");
+	background-repeat: no-repeat;
+	background-size: 10em;
+	margin: 0;
+	padding-left: 11em;
+}
+
+h1 {
+	color: #6699CC;
+}
+
+img.logo {
+	float: left;
+	width: 10em;
+}

@@ -242,7 +242,7 @@ fn escape(s string, mode EncodingMode) string {
 	mut space_count := 0
 	mut hex_count := 0
 	mut c := byte(0)
-	for i := 0; i < s.len; i++ {
+	for i in 0..s.len {
 		c = s[i]
 		if should_escape(c, mode) {
 			if c == ` ` && mode == .encode_query_component {
@@ -267,7 +267,7 @@ fn escape(s string, mode EncodingMode) string {
 	}
 	if hex_count == 0 {
 		copy(t, s.bytes())
-		for i := 0; i < s.len; i++ {
+		for i in 0..s.len {
 			if s[i] == ` ` {
 				t[i] = `+`
 			}
@@ -276,7 +276,7 @@ fn escape(s string, mode EncodingMode) string {
 	}
 	upperhex := '0123456789ABCDEF'
 	mut j := 0
-	for i := 0; i < s.len; i++ {
+	for i in 0..s.len {
 		c1 := s[i]
 		if c1 == ` ` && mode == .encode_query_component {
 			t[j] = `+`
@@ -382,7 +382,7 @@ fn (u &Userinfo) string() string {
 // (scheme must be [a-zA-Z][a-zA-Z0-9+-.]*)
 // If so, return [scheme, path]; else return ['', rawurl]
 fn split_by_scheme(rawurl string) ?[]string {
-	for i := 0; i < rawurl.len; i++ {
+	for i in 0..rawurl.len {
 		c := rawurl[i]
 		if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) {
 			// do nothing
@@ -692,7 +692,7 @@ fn (u &URL) escaped_path() string {
 // valid_encoded_path reports whether s is a valid encoded path.
 // It must not contain any bytes that require escaping during path encoding.
 fn valid_encoded_path(s string) bool {
-	for i := 0; i < s.len; i++ {
+	for i in 0..s.len {
 		// RFC 3986, Appendix A.
 		// pchar = unreserved / pct-encoded / sub-delims / ':' / '@'.
 		// should_escape is not quite compliant with the RFC,
@@ -1097,7 +1097,7 @@ pub fn valid_userinfo(s string) bool {
 
 // string_contains_ctl_byte reports whether s contains any ASCII control character.
 fn string_contains_ctl_byte(s string) bool {
-	for i := 0; i < s.len; i++ {
+	for i in 0..s.len {
 		b := s[i]
 		if b < ` ` || b == 0x7f {
 			return true

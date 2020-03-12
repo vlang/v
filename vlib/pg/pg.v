@@ -20,6 +20,7 @@ struct C.PGResult { }
 pub struct Config {
 pub:
 	host string
+	port int = 5432
 	user string
 	password string
 	dbname string
@@ -35,7 +36,7 @@ fn C.PQexec(voidptr) voidptr
 fn C.PQexecParams(voidptr) voidptr
 
 pub fn connect(config pg.Config) ?DB {
-	conninfo := 'host=$config.host user=$config.user dbname=$config.dbname password=$config.password'
+	conninfo := 'host=$config.host port=$config.port user=$config.user dbname=$config.dbname password=$config.password'
 	conn := C.PQconnectdb(conninfo.str)
 	status := C.PQstatus(conn)
 	println("status=$status")
@@ -50,9 +51,9 @@ fn res_to_rows(res voidptr) []pg.Row {
 	nr_rows := C.PQntuples(res)
 	nr_cols := C.PQnfields(res)
 	mut rows := []pg.Row
-	for i := 0; i < nr_rows; i++ {
+	for i in 0..nr_rows {
 		mut row := Row{}
-		for j := 0; j < nr_cols; j++ {
+		for j in 0..nr_cols {
 			val := C.PQgetvalue(res, i, j)
 			row.vals << string(val)
 		}
@@ -121,16 +122,19 @@ pub fn (db DB) exec_one(query string) ?pg.Row {
 	return row
 }
 
-//
+// The entire function can be considered unsafe because of the malloc and the
+// free. This prevents warnings and doesn't seem to affect behavior.
 pub fn (db DB) exec_param_many(query string, params []string) []pg.Row {
-	mut param_vals := &byteptr( malloc( params.len * sizeof(byteptr) ) )
-	for i := 0; i < params.len; i++ {
-		param_vals[i] = params[i].str
+	unsafe {
+		mut param_vals := &byteptr( malloc( params.len * sizeof(byteptr) ) )
+		for i in 0..params.len {
+			param_vals[i] = params[i].str
+		}
+		res := C.PQexecParams(db.conn, query.str, params.len, 0, param_vals, 0, 0, 0)
+		free(param_vals)
+		return db.handle_error_or_result(res, 'exec_param_many')
 	}
-	res := C.PQexecParams(db.conn, query.str, params.len, 0, param_vals, 0, 0, 0)
-	unsafe{ free(param_vals) }
-	return db.handle_error_or_result(res, 'exec_param_many')
-}  
+}
 
 pub fn (db DB) exec_param2(query string, param, param2 string) []pg.Row {
 	mut param_vals := [2]byteptr

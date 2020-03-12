@@ -15,6 +15,6 @@ struct C.tm {
 
 fn C.timegm(&tm) time_t
 
-fn make_unix_time(t tm) int {
+fn make_unix_time(t C.tm) int {
 	return int(C.timegm(&t))
 }

@@ -4,6 +4,7 @@ fn C.memcpy(byteptr, byteptr, int) voidptr
 
 
 fn C.memmove(byteptr, byteptr, int) voidptr
+fn C.calloc(int)  byteptr
 // fn C.malloc(int) byteptr
 fn C.realloc(a byteptr, b int) byteptr
 

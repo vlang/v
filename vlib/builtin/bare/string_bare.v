@@ -28,10 +28,10 @@ fn (s string) add(a string) string {
 		len: new_len
 		str: malloc(new_len + 1)
 	}
-	for j := 0; j < s.len; j++ {
+	for j in 0..s.len {
 		res[j] = s[j]
 	}
-	for j := 0; j < a.len; j++ {
+	for j in 0..a.len {
 		res[s.len + j] = a[j]
 	}
 	res[new_len] = `\0`// V strings are not null terminated, but just in case

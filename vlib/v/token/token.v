@@ -54,7 +54,7 @@ pub enum Kind {
 	mod_assign
 	or_assign
 	and_assign
-	righ_shift_assign
+	right_shift_assign
 	left_shift_assign
 	// {}  () []
 	lcbr
@@ -126,7 +126,7 @@ pub enum Kind {
 const (
 	assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign,
 	.div_assign, .xor_assign, .mod_assign, .or_assign, .and_assign,
-	.righ_shift_assign, .left_shift_assign]
+	.right_shift_assign, .left_shift_assign]
 	nr_tokens = 141
 )
 // build_keys genereates a map with keywords' string values:
@@ -183,7 +183,7 @@ fn build_token_str() []string {
 	s[Kind.mod_assign] = '%='
 	s[Kind.or_assign] = '|='
 	s[Kind.and_assign] = '&='
-	s[Kind.righ_shift_assign] = '>>='
+	s[Kind.right_shift_assign] = '>>='
 	s[Kind.left_shift_assign] = '<<='
 	s[Kind.lcbr] = '{'
 	s[Kind.rcbr] = '}'
@@ -395,9 +395,9 @@ pub fn (tok Token) precedence() int {
 		// }
 		// `||`
 		// .logical_or,
-		.assign, .plus_assign, .minus_assign, .div_assign, .mod_assign, .or_assign,
+		.assign, .plus_assign, .minus_assign, .div_assign, .mod_assign, .or_assign, .and_assign,
 		//
-		.left_shift_assign, .righ_shift_assign, .mult_assign {
+		.left_shift_assign, .right_shift_assign, .mult_assign {
 			return int(Precedence.assign)
 		}
 		.key_in, .key_as {
@@ -460,7 +460,7 @@ pub fn (tok Token) is_right_assoc() bool {
 	// `=` | `+=` | `-=` | `*=` | `/=`
 	.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
 	// `%=` | `>>=` | `<<=`
-	.mod_assign, .righ_shift_assign, .left_shift_assign,
+	.mod_assign, .right_shift_assign, .left_shift_assign,
 	// `&=` | `^=` | `|=`
 	.and_assign, .xor_assign, .or_assign]
 }

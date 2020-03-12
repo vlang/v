@@ -4,97 +4,46 @@
 module math
 
 #include <math.h>
+
 fn C.acos(x f64) f64
-
-
 fn C.asin(x f64) f64
-
-
 fn C.atan(x f64) f64
-
-
 fn C.atan2(y f64, x f64) f64
-
-
 fn C.cbrt(x f64) f64
-
-
 fn C.ceil(x f64) f64
-
-
 fn C.cos(x f64) f64
-
-
+fn C.cosf(x f32) f32
 fn C.cosh(x f64) f64
-
-
 fn C.erf(x f64) f64
-
-
 fn C.erfc(x f64) f64
-
-
 fn C.exp(x f64) f64
-
-
 fn C.exp2(x f64) f64
-
-
 fn C.fabs(x f64) f64
-
-
 fn C.floor(x f64) f64
-
-
 fn C.fmod(x f64, y f64) f64
-
-
 fn C.hypot(x f64, y f64) f64
-
-
 fn C.log(x f64) f64
-
-
 fn C.log2(x f64) f64
-
-
 fn C.log10(x f64) f64
-
-
 fn C.lgamma(x f64) f64
-
-
 fn C.pow(x f64, y f64) f64
-
-
+fn C.powf(x f32, y f32) f32
 fn C.round(x f64) f64
-
-
 fn C.sin(x f64) f64
-
-
+fn C.sinf(x f32) f32
 fn C.sinh(x f64) f64
-
-
 fn C.sqrt(x f64) f64
-
-
 fn C.sqrtf(x f32) f32
-
-
 fn C.tgamma(x f64) f64
-
-
 fn C.tan(x f64) f64
-
-
+fn C.tanf(x f32) f32
 fn C.tanh(x f64) f64
-
-
 fn C.trunc(x f64) f64
+
 // NOTE
 // When adding a new function, please make sure it's in the right place.
 // All functions are sorted alphabetically.
+
 // Returns the absolute value.
 pub fn abs(a f64) f64 {
 	return C.fabs(a)
@@ -133,6 +82,11 @@ pub fn ceil(a f64) f64 {
 // cos calculates cosine.
 pub fn cos(a f64) f64 {
 	return C.cos(a)
+}
+
+// cosf calculates cosine. (float32)
+pub fn cosf(a f32) f32 {
+	return C.cosf(a)
 }
 
 // cosh calculates hyperbolic cosine.
@@ -282,6 +236,11 @@ pub fn pow(a, b f64) f64 {
 	return C.pow(a, b)
 }
 
+// powf returns base raised to the provided power. (float32)
+pub fn powf(a, b f32) f32 {
+	return C.powf(a, b)
+}
+
 // radians convert from radians to degrees.
 pub fn radians(degrees f64) f64 {
 	return degrees * (pi / 180.0)
@@ -297,6 +256,11 @@ pub fn sin(a f64) f64 {
 	return C.sin(a)
 }
 
+// sinf calculates sine. (float32)
+pub fn sinf(a f32) f32 {
+	return C.sinf(a)
+}
+
 // sinh calculates hyperbolic sine.
 pub fn sinh(a f64) f64 {
 	return C.sinh(a)
@@ -307,7 +271,7 @@ pub fn sqrt(a f64) f64 {
 	return C.sqrt(a)
 }
 
-// sqrtf calculates square-root of the provided float32 value.
+// sqrtf calculates square-root of the provided value. (float32)
 pub fn sqrtf(a f32) f32 {
 	return C.sqrtf(a)
 }
@@ -315,6 +279,11 @@ pub fn sqrtf(a f32) f32 {
 // tan calculates tangent.
 pub fn tan(a f64) f64 {
 	return C.tan(a)
+}
+
+// tanf calculates tangent. (float32)
+pub fn tanf(a f32) f32 {
+	return C.tanf(a)
 }
 
 // tanh calculates hyperbolic tangent.

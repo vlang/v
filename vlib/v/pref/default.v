@@ -3,10 +3,7 @@
 // that can be found in the LICENSE file.
 module pref
 
-import (
-	filepath
-	os
-)
+import os
 
 pub const (
 	default_module_path = os.home_dir() + '.vmodules'
@@ -15,24 +12,25 @@ pub const (
 pub fn (p mut Preferences) fill_with_defaults() {
 	if p.vroot == '' {
 		// Location of all vlib files
-		p.vroot = filepath.dir(vexe_path())
+		p.vroot = os.dir(vexe_path())
 	}
-	if p.vlib_path == '' {
-		p.vlib_path = filepath.join(p.vroot,'vlib')
+	vlib_path := os.join_path(p.vroot, 'vlib')
+	if p.lookup_path.len == 0 {
+		p.lookup_path = ['@vlib', '@vmodules']
 	}
-	if p.vpath == '' {
-		p.vpath = default_module_path
+	for i, path in p.lookup_path {
+		p.lookup_path[i] = path.replace('@vlib', vlib_path).replace('@vmodules', default_module_path)
 	}
+	rpath := os.realpath(p.path)
 	if p.out_name == ''{
-		rpath := os.realpath(p.path)
-		filename := filepath.filename(rpath).trim_space()
+		filename := os.filename(rpath).trim_space()
 		mut base := filename.all_before_last('.')
 		if base == '' {
 			// The file name is just `.v` or `.vsh` or `.*`
 			base = filename
 		}
-		target_dir := if os.is_dir(rpath) { rpath } else { filepath.dir(rpath) }
-		p.out_name = filepath.join(target_dir, base)
+		target_dir := if os.is_dir(rpath) { rpath } else { os.dir(rpath) }
+		p.out_name = os.join_path(target_dir, base)
 
 		if rpath == '$p.vroot/cmd/v' && os.is_dir('vlib/compiler') {
 			// Building V? Use v2, since we can't overwrite a running
@@ -43,6 +41,8 @@ pub fn (p mut Preferences) fill_with_defaults() {
 			p.out_name = 'v2'
 		}
 	}
+	rpath_name := os.filename(rpath)
+	p.building_v = !p.is_repl && (rpath_name == 'v' || rpath_name == 'vfmt.v')
 	if p.os == ._auto {
 		// No OS specifed? Use current system
 		p.os = get_host_os()
@@ -52,6 +52,14 @@ pub fn (p mut Preferences) fill_with_defaults() {
 	}
 	p.is_test = p.path.ends_with('_test.v')
 	p.is_script = p.path.ends_with('.v') || p.path.ends_with('.vsh')
+	if p.third_party_option == '' {
+		p.third_party_option = p.cflags
+		$if !windows {
+			if !p.third_party_option.contains('-fPIC') {
+				p.third_party_option += ' -fPIC'
+			}
+		}
+	}
 }
 
 fn default_c_compiler() string {

@@ -25,7 +25,7 @@ fn main() {
 	mut b := u64(0)
 	mut c := u64(1)
 
-	for i := 0; i < stop; i++ {
+	for i in 0..stop {
 		// Set a and b to the next term
 		a = b
 		b = c

@@ -7,7 +7,6 @@ import (
 	vweb.tmpl // for `$vweb_html()`
 	os
 	strings
-	filepath
 )
 
 fn (p mut Parser) comp_time() {
@@ -21,7 +20,7 @@ fn (p mut Parser) comp_time() {
 		}
 		name := p.check_name()
 		p.fspace()
-    
+
 		if name in supported_platforms {
 			os := os_from_string(name)
 			ifdef_name := os_name_to_ifdef(name)
@@ -127,13 +126,13 @@ fn (p mut Parser) comp_time() {
 			//
 			// The ? sign, means that `custom` is optional, and when
 			// it is not present at all at the command line, then the
-			// block will just be ignored, instead of erroring.			
+			// block will just be ignored, instead of erroring.
 			if p.tok == .question {
 				p.next()
 			}
 			p.comptime_if_block('CUSTOM_DEFINE_${name}', not)
-		} else {			
-			if p.tok == .question {				
+		} else {
+			if p.tok == .question {
 				p.next()
 				p.comptime_if_block('CUSTOM_DEFINE_${name}', not)
 			}else{
@@ -198,7 +197,7 @@ fn (p mut Parser) comp_time() {
 			// Can't find the template file in current directory,
 			// try looking next to the vweb program, in case it's run with
 			// v path/to/vweb_app.v
-			path = filepath.dir(p.scanner.file_path) + '/' + path
+			path = os.dir(p.scanner.file_path) + '/' + path
 			if !os.exists(path) {
 				p.error('vweb HTML template "$path" not found')
 			}
@@ -209,7 +208,7 @@ fn (p mut Parser) comp_time() {
 		p.check(.lpar)
 		p.check(.rpar)
 		v_code := tmpl.compile_template(path)
-		if p.pref.is_verbose {
+		if p.pref.verbosity.is_higher_or_equal(.level_three) {
 			println('\n\n')
 			println('>>> vweb template for ${path}:')
 			println(v_code)
@@ -242,12 +241,23 @@ fn (p mut Parser) chash() {
 	if hash.starts_with('flag ') {
 		if p.first_pass() {
 			mut flag := hash[5..]
-			// expand `@VROOT` `@VMOD` to absolute path
-			flag = flag.replace('@VMODULE', p.file_path_dir)
-			flag = flag.replace('@VROOT', p.vroot)
-			flag = flag.replace('@VPATH', p.pref.vpath)
-			flag = flag.replace('@VLIB_PATH', p.pref.vlib_path)
-			flag = flag.replace('@VMOD', v_modules_path)
+			// expand `@VROOT` to its absolute path
+			if flag.contains('@VROOT') {
+				vmod_file_location := p.v.mod_file_cacher.get( p.file_path_dir )
+				if vmod_file_location.vmod_file.len == 0 {
+					// There was no actual v.mod file found.
+					p.error_with_token_index('To use @VROOT, you need' +
+						' to have a "v.mod" file in ${p.file_path_dir},' +
+						' or in one of its parent folders.',
+						p.cur_tok_index() - 1)
+				}
+				flag = flag.replace('@VROOT', vmod_file_location.vmod_folder )
+			}
+			for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
+				if flag.contains(deprecated) {
+					p.error('${deprecated} had been deprecated, use @VROOT instead.')
+				}
+			}
 			// p.log('adding flag "$flag"')
 			_ = p.table.parse_cflag(flag, p.mod, p.v.pref.compile_defines_all ) or {
 				p.error_with_token_index(err, p.cur_tok_index() - 1)
@@ -346,6 +356,41 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 	}
 }
 
+fn (p mut Parser) gen_default_str_method_if_missing(typename string) (bool, string) {
+	// NB: string_type_name can be != typename, if the base typename has str()
+	mut string_type_name := typename
+	typ := p.table.find_type(typename)
+	is_varg := typename.starts_with('varg_')
+	is_array := typename.starts_with('array_')
+	is_struct := typ.cat == .struct_
+	mut has_str_method := p.table.type_has_method(typ, 'str')
+	if !has_str_method {
+		if is_varg {
+			p.gen_varg_str(typ)
+			has_str_method = true
+		}
+		else if is_array {
+			p.gen_array_str(typ)
+			has_str_method = true
+		}
+		else if is_struct {
+			p.gen_struct_str(typ)
+			has_str_method = true
+		}
+		else {
+			btypename := p.base_type(typ.name)
+			if btypename != typ.name {
+				base_type := p.find_type(btypename)
+				if base_type.has_method('str'){
+					string_type_name = base_type.name
+					has_str_method = true
+				}
+			}
+		}
+	}
+	return has_str_method, string_type_name
+}
+
 fn (p mut Parser) gen_array_str(typ Type) {
 	if typ.has_method('str') {
 		return
@@ -368,7 +413,10 @@ fn (p mut Parser) gen_array_str(typ Type) {
 		p.gen_array_str(elm_type2)
 	}
 	else if p.typ_to_fmt(elm_type, 0) == '' && !p.table.type_has_method(elm_type2, 'str') {
-		p.error('cant print ${elm_type}[], unhandled print of ${elm_type}')
+		has_str_method, _ := p.gen_default_str_method_if_missing( elm_type )
+		if !has_str_method {
+			p.error('cant print []${elm_type}, unhandled print of ${elm_type}')
+		}
 	}
 	p.v.vgen_buf.writeln('
 pub fn (a $typ.name) str() string {
@@ -387,7 +435,7 @@ pub fn (a $typ.name) str() string {
 	p.cgen.fns << 'string ${typ.name}_str();'
 }
 
-// `Foo { bar: 3, baz: 'hi' }` => '{ bar: 3, baz: "hi" }'
+// `Foo { bar: 3, baz: 'hi' }` => interpolated to string 'Foo { bar: 3, baz: "hi" }'
 fn (p mut Parser) gen_struct_str(typ Type) {
 	p.add_method(typ.name, Fn{
 		name: 'str'
@@ -402,7 +450,8 @@ fn (p mut Parser) gen_struct_str(typ Type) {
 	})
 	mut sb := strings.new_builder(typ.fields.len * 20)
 	sb.writeln('pub fn (a $typ.name) str() string {\nreturn')
-	sb.writeln("'{")
+	short_struct_name := typ.name.all_after('__')
+	sb.writeln("'$short_struct_name {")
 	for field in typ.fields {
 		sb.writeln('\t$field.name: $' + 'a.${field.name}')
 	}
@@ -561,4 +610,3 @@ pub fn (e &$typ.name) has(flag $typ.name) bool { return int(*e)&(1 << int(flag))
 	p.cgen.fns << 'void ${typ.name}_toggle($typ.name *e, $typ.name flag);'
 	p.cgen.fns << 'bool ${typ.name}_has($typ.name *e, $typ.name flag);'
 }
-

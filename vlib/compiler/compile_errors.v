@@ -2,7 +2,6 @@ module compiler
 
 import (
 	os
-	filepath
 	term
 )
 // ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -157,7 +156,7 @@ fn (s &Scanner) get_error_filepath() string {
 		else {
 			s.print_rel_paths_on_error}}
 	if use_relative_paths {
-		workdir := os.getwd() + filepath.separator
+		workdir := os.getwd() + os.path_separator
 		if s.file_path.starts_with(workdir) {
 			return s.file_path.replace(workdir, '')
 		}
@@ -176,7 +175,7 @@ fn (p mut Parser) print_error_context() {
 		// os.write_to_file('/var/tmp/lang.types', '')//pes(p.table.types))
 		os.write_file('fns.txt', p.table.debug_fns())
 	}
-	if p.pref.is_verbose || p.pref.is_debug {
+	if p.pref.verbosity.is_higher_or_equal(.level_three) {
 		println('pass=$p.pass fn=`$p.cur_fn.name`\n')
 	}
 	p.cgen.save()

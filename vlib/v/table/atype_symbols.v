@@ -8,7 +8,7 @@ import (
 )
 
 pub type TypeInfo = Array | ArrayFixed | Map | Struct | 	
-MultiReturn | Alias
+MultiReturn | Alias | Enum | SumType | Fn
 
 pub struct TypeSymbol {
 pub:
@@ -86,6 +86,24 @@ pub enum Kind {
 	multi_return
 	sum_type
 	alias
+	enum_
+	function
+}
+
+pub fn (t &TypeSymbol) str() string {
+	return t.name.replace('array_', '[]')
+}
+
+[inline]
+pub fn (t &TypeSymbol) enum_info() Enum {
+	match t.info {
+		Enum {
+			return it
+		}
+		else {
+			panic('TypeSymbol.enum_info(): no enum info for type: $t.name')
+		}
+	}
 }
 
 [inline]
@@ -95,7 +113,7 @@ pub fn (t &TypeSymbol) mr_info() MultiReturn {
 			return it
 		}
 		else {
-			panic('TypeSymbol.mr_info(): no multi return info')
+			panic('TypeSymbol.mr_info(): no multi return info for type: $t.name')
 		}
 	}
 }
@@ -107,7 +125,7 @@ pub fn (t &TypeSymbol) array_info() Array {
 			return it
 		}
 		else {
-			panic('TypeSymbol.array_info(): no array info')
+			panic('TypeSymbol.array_info(): no array info for type: $t.name')
 		}
 	}
 }
@@ -119,7 +137,7 @@ pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 			return it
 		}
 		else {
-			panic('TypeSymbol.array_fixed(): no array fixed info')
+			panic('TypeSymbol.array_fixed(): no array fixed info for type: $t.name')
 		}
 	}
 }
@@ -131,7 +149,7 @@ pub fn (t &TypeSymbol) map_info() Map {
 			return it
 		}
 		else {
-			panic('TypeSymbol.map_info(): no map info')
+			panic('TypeSymbol.map_info(): no map info for type: $t.name')
 		}
 	}
 }
@@ -142,21 +160,6 @@ pub fn (t TypeSymbol) str() string {
 }
 */
 
-
-[inline]
-pub fn array_name(elem_type &TypeSymbol, nr_dims int) string {
-	return 'array_${elem_type.name}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
-}
-
-[inline]
-pub fn array_fixed_name(elem_type &TypeSymbol, size int, nr_dims int) string {
-	return 'array_fixed_${elem_type.name}_${size}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
-}
-
-[inline]
-pub fn map_name(key_type &TypeSymbol, value_type &TypeSymbol) string {
-	return 'map_${key_type.name}_${value_type.name}'
-}
 
 pub fn (t mut Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
@@ -245,11 +248,18 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 		kind: .map
 		name: 'map'
 	})
-	// TODO: remove
+	// TODO: remove. for v1 map compatibility
+	map_string_string_idx := t.find_or_register_map(string_type, string_type)
+	map_string_int_idx := t.find_or_register_map(string_type, int_type)
 	t.register_type_symbol(TypeSymbol{
-		parent_idx: map_type_idx
-		kind: .struct_
+		kind: .alias
 		name: 'map_string'
+		parent_idx: map_string_string_idx
+	})
+	t.register_type_symbol(TypeSymbol{
+		kind: .alias
+		name: 'map_int'
+		parent_idx: map_string_int_idx
 	})
 }
 
@@ -342,6 +352,15 @@ pub fn (k Kind) str() string {
 		.multi_return{
 			'multi_return'
 		}
+		.sum_type{
+			'sum_type'
+		}
+		.alias{
+			'alias'
+		}
+		.enum_{
+			'enum'
+		}
 		else {
 			'unknown'}
 	}
@@ -362,6 +381,11 @@ pub fn (kinds []Kind) str() string {
 pub struct Struct {
 pub mut:
 	fields []Field
+}
+
+pub struct Enum {
+pub mut:
+	vals []string
 }
 
 pub struct Alias {
@@ -397,9 +421,32 @@ pub mut:
 	value_type Type
 }
 
+pub struct SumType {
+pub:
+	variants []Type
+}
+
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
-	mut res := sym.name.replace('array_', '[]')
+	if sym.kind == .multi_return {
+		mut res := '('
+		mr_info := sym.info as MultiReturn
+		for i, typ in mr_info.types {
+			res += table.type_to_str(typ)
+			if i < mr_info.types.len - 1 {
+				res += ', '
+			}
+		}
+		res += ')'
+		return res
+	}
+	mut res := sym.name
+	if sym.kind == .array {
+		res = res.replace('array_', '[]')
+	}
+	else if sym.kind == .map {
+		res = res.replace('map_string_', 'map[string]')
+	}
 	// mod.submod.submod2.Type => submod2.Type
 	if res.contains('.') {
 		vals := res.split('.')

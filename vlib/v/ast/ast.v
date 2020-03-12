@@ -8,23 +8,27 @@ import (
 	v.table
 )
 
+pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
+
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
-CastExpr | EnumVal | Assoc | SizeOf | None | MapInit
+CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | 	
+ConcatExpr | Type | AsCast
 
-pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
+pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
-LineComment | MultiLineComment
-
-pub type Type = StructType | ArrayType
-
-pub struct StructType {
-	fields []Field
+LineComment | MultiLineComment | AssertStmt | UnsafeStmt
+// pub type Type = StructType | ArrayType
+// pub struct StructType {
+// fields []Field
+// }
+// pub struct ArrayType {}
+pub struct Type {
+pub:
+	typ table.Type
 }
-
-pub struct ArrayType {}
 
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
@@ -63,9 +67,11 @@ pub:
 // `foo.bar`
 pub struct SelectorExpr {
 pub:
-	pos   token.Position
-	expr  Expr
-	field string
+	pos       token.Position
+	expr      Expr
+	field     string
+mut:
+	expr_type table.Type
 }
 
 // module declaration
@@ -89,6 +95,7 @@ pub struct ConstDecl {
 pub:
 	fields []Field
 	exprs  []Expr
+	is_pub bool
 }
 
 pub struct StructDecl {
@@ -121,21 +128,25 @@ pub:
 
 pub struct Arg {
 pub:
-	typ  table.Type
-	name string
+	name   string
+	is_mut bool
+	typ    table.Type
 }
 
 pub struct FnDecl {
 pub:
-	name        string
-	stmts       []Stmt
-	typ         table.Type
-	args        []Arg
-	is_pub      bool
-	is_variadic bool
-	receiver    Field
-	is_method   bool
-	rec_mut     bool // is receiver mutable
+	name          string
+	stmts         []Stmt
+	return_type   table.Type
+	args          []Arg
+	is_deprecated bool
+	is_pub        bool
+	is_variadic   bool
+	receiver      Field
+	is_method     bool
+	rec_mut       bool // is receiver mutable
+	is_c          bool
+	no_body       bool // just a definition `fn C.malloc()`
 }
 
 pub struct BranchStmt {
@@ -145,29 +156,41 @@ pub:
 
 pub struct CallExpr {
 pub:
-// tok        token.Token
-	pos  token.Position
+// tok          token.Token
+	pos         token.Position
 mut:
-// func       Expr
-	name string
-	args []Expr
-	is_c bool
+// func         Expr
+	name        string
+	args        []Expr
+	arg_types   []table.Type
+	expr_types  []table.Type
+	is_c        bool
+	muts        []bool
+	or_block    OrExpr
+	return_type table.Type
 }
 
 pub struct MethodCallExpr {
 pub:
 // tok        token.Token
-	pos  token.Position
-	expr Expr
-	name string
-	args []Expr
+	pos           token.Position
+	expr          Expr // `user` in `user.register()`
+	name          string
+	args          []Expr
+	muts          []bool
+	or_block      OrExpr
+mut:
+	expr_type     table.Type // type of `user`
+	receiver_type table.Type // User
+	return_type   table.Type
+	arg_types     []table.Type
+	expr_types    []table.Type
 }
 
 pub struct Return {
 pub:
-	pos           token.Position
-	expected_type table.Type // TODO: remove once checker updated
-	exprs         []Expr
+	pos   token.Position
+	exprs []Expr
 }
 
 /*
@@ -186,7 +209,7 @@ pub struct Stmt {
 */
 
 
-pub struct VarDecl {
+pub struct Var {
 pub:
 	name   string
 	expr   Expr
@@ -204,11 +227,6 @@ mut:
 	typ  table.Type
 }
 
-pub struct StmtBlock {
-pub:
-	stmts []Stmt
-}
-
 pub struct File {
 pub:
 	path    string
@@ -218,18 +236,19 @@ pub:
 	scope   &Scope
 }
 
-pub struct IdentFunc {
+pub struct IdentFn {
 pub mut:
-	return_type table.Type
+	typ table.Type
 }
 
 pub struct IdentVar {
 pub mut:
-	typ    table.Type
-	is_mut bool
+	typ       table.Type
+	is_mut    bool
+	is_static bool
 }
 
-type IdentInfo = IdentFunc | IdentVar
+pub type IdentInfo = IdentFn | IdentVar
 
 pub enum IdentKind {
 	unresolved
@@ -242,12 +261,12 @@ pub enum IdentKind {
 // A single identifier
 pub struct Ident {
 pub:
-	name     string
 	value    string
 	is_c     bool
 	tok_kind token.Kind
 	pos      token.Position
 mut:
+	name     string
 	kind     IdentKind
 	info     IdentInfo
 }
@@ -270,8 +289,9 @@ pub:
 	op         token.Kind
 	pos        token.Position
 	left       Expr
-	left_type  table.Type
 	right      Expr
+mut:
+	left_type  table.Type
 	right_type table.Type
 }
 
@@ -303,10 +323,11 @@ pub:
 pub struct IndexExpr {
 pub:
 // op   token.Kind
-	pos   token.Position
-	left  Expr
-	index Expr // [0], [start..end] etc
-	// typ   table.Type
+	pos            token.Position
+	left           Expr
+	index          Expr // [0], [start..end] etc
+mut:
+	container_type table.Type // array, map, fixed array
 }
 
 pub struct IfExpr {
@@ -324,13 +345,19 @@ mut:
 
 pub struct MatchExpr {
 pub:
-	tok_kind    token.Kind
-	cond        Expr
-	blocks      []StmtBlock
-	match_exprs []Expr
-	pos         token.Position
+	tok_kind  token.Kind
+	cond      Expr
+	branches  []MatchBranch
+	pos       token.Position
 mut:
-	typ         table.Type
+	expr_type table.Type // type of `x` in `match x {`
+}
+
+pub struct MatchBranch {
+pub:
+	exprs []Expr
+	stmts []Stmt
+	pos   token.Position
 }
 
 pub struct CompIf {
@@ -350,18 +377,23 @@ pub:
 
 pub struct ForInStmt {
 pub:
-	var   string
-	cond  Expr
-	stmts []Stmt
-	pos   token.Position
+	key_var  string
+	val_var  string
+	cond     Expr
+	is_range bool
+	high     Expr // `10` in `for i in 0..10 {`
+	stmts    []Stmt
+	pos      token.Position
 }
 
 pub struct ForCStmt {
 pub:
-	init  Stmt // i := 0;
-	cond  Expr // i < 10;
-	inc   Stmt // i++;
-	stmts []Stmt
+	init     Stmt // i := 0;
+	has_init bool
+	cond     Expr // i < 10;
+	// inc   Stmt // i++;
+	inc      Expr // i++;
+	stmts    []Stmt
 }
 
 pub struct ReturnStmt {
@@ -373,7 +405,7 @@ pub struct ReturnStmt {
 // #include etc
 pub struct HashStmt {
 pub:
-	name string
+	val string
 }
 
 // filter(), map()
@@ -387,6 +419,13 @@ pub:
 	left  []Ident
 	right []Expr
 	op    token.Kind
+	pos   token.Position
+}
+
+pub struct AsCast {
+pub:
+	expr Expr
+	typ  table.Type
 }
 
 // e.g. `[unsafe_fn]`
@@ -397,7 +436,10 @@ pub:
 
 pub struct EnumVal {
 pub:
-	name string
+	enum_name string
+	val       string
+	pos       token.Position
+	// name string
 }
 
 pub struct EnumDecl {
@@ -407,15 +449,41 @@ pub:
 	vals   []string
 }
 
-pub struct TypeDecl {
+pub struct AliasTypeDecl {
+pub:
+	name        string
+	is_pub      bool
+	parent_type table.Type
+}
+
+pub struct SumTypeDecl {
+pub:
+	name      string
+	is_pub    bool
+	sub_types []table.Type
+}
+
+pub struct FnTypeDecl {
 pub:
 	name   string
 	is_pub bool
+	typ    table.Type
 }
 
 pub struct DeferStmt {
 pub:
 	stmts []Stmt
+}
+
+pub struct UnsafeStmt {
+pub:
+	stmts []Stmt
+}
+
+// `(3+4)`
+pub struct ParExpr {
+pub:
+	expr Expr
 }
 
 pub struct AssignExpr {
@@ -424,6 +492,8 @@ pub:
 	pos  token.Position
 	left Expr
 	val  Expr
+	// mut:
+	// left_type table.Type
 }
 
 pub struct GotoLabel {
@@ -438,39 +508,69 @@ pub:
 
 pub struct ArrayInit {
 pub:
-	pos   token.Position
-	exprs []Expr
+	pos       token.Position
+	exprs     []Expr
 mut:
-	typ   table.Type
+	elem_type table.Type
+	typ       table.Type
 }
 
 pub struct MapInit {
 pub:
-	pos  token.Position
-	keys []Expr
-	vals []Expr
+	pos        token.Position
+	keys       []Expr
+	vals       []Expr
 mut:
-	typ  table.Type
+	typ        table.Type
+	key_type   table.Type
+	value_type table.Type
 }
 
 // s[10..20]
 pub struct RangeExpr {
 pub:
-	low  Expr
-	high Expr
+	low      Expr
+	high     Expr
+	has_high bool
+	has_low  bool
 }
 
 pub struct CastExpr {
 pub:
-	typ  table.Type
+	expr      Expr // `buf`
+	arg       Expr // `n` in `string(buf, n)`
+	typ       table.Type // `string`
+mut:
+	expr_type table.Type // `byteptr`
+	has_arg   bool
+}
+
+pub struct AssertStmt {
+pub:
 	expr Expr
+}
+
+// `if [x := opt()] {`
+pub struct IfGuardExpr {
+pub:
+	var_name string
+	expr     Expr
+}
+
+// `or { ... }`
+pub struct OrExpr {
+pub:
+	stmts []Stmt
+	// var_name string
+	// expr     Expr
 }
 
 pub struct Assoc {
 pub:
-	name   string
-	fields []string
-	exprs  []Expr
+	var_name string
+	fields   []string
+	exprs    []Expr
+	pos      token.Position
 }
 
 pub struct SizeOf {
@@ -488,51 +588,15 @@ pub:
 	text string
 }
 
+pub struct ConcatExpr {
+pub:
+	vals []Expr
+}
+
 pub struct None {
 pub:
 	foo int // todo
 }
-// string representaiton of expr
-pub fn (x Expr) str() string {
-	match x {
-		InfixExpr {
-			return '(${it.left.str()} $it.op.str() ${it.right.str()})'
-		}
-		/*
-		PrefixExpr {
-			return it.left.str() + it.op.str()
-		}
-		*/
-
-		IntegerLiteral {
-			return it.val.str()
-		}
-		IntegerLiteral {
-			return '"$it.val"'
-		}
-		else {
-			return ''
-		}
-	}
-}
-
-pub fn (node Stmt) str() string {
-	match node {
-		VarDecl {
-			return it.name + ' = ' + it.expr.str()
-		}
-		ExprStmt {
-			return it.expr.str()
-		}
-		FnDecl {
-			return 'fn ${it.name}() { $it.stmts.len stmts }'
-		}
-		else {
-			return '[unhandled stmt str]'
-		}
-	}
-}
-
 /*
 enum BinaryOp {
 	sum

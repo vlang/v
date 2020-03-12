@@ -325,13 +325,13 @@ pub mut:
 
 pub struct C.sg_features {
 pub:
-    instancing bool
-    origin_top_left bool
-    multiple_render_targets bool
-    msaa_render_targets bool
-    imagetype_3d bool          /* creation of SG_IMAGETYPE_3D images is supported */
-    imagetype_array bool       /* creation of SG_IMAGETYPE_ARRAY images is supported */
-    image_clamp_to_border bool /* border color and clamp-to-border UV-wrap mode is supported */
+    instancing bool              /* hardware instancing supported */
+    origin_top_left bool         /* framebuffer and texture origin is in top left corner */
+    multiple_render_targets bool /* offscreen render passes can have multiple render targets attached */
+    msaa_render_targets bool     /* offscreen render passes support MSAA antialiasing */
+    imagetype_3d bool            /* creation of SG_IMAGETYPE_3D images is supported */
+    imagetype_array bool         /* creation of SG_IMAGETYPE_ARRAY images is supported */
+    image_clamp_to_border bool   /* border color and clamp-to-border UV-wrap mode is supported */
 }
 
 pub struct C.sg_limits {
@@ -339,8 +339,8 @@ pub:
     max_image_size_2d u32         /* max width/height of SG_IMAGETYPE_2D images */
     max_image_size_cube u32       /* max width/height of SG_IMAGETYPE_CUBE images */
     max_image_size_3d u32         /* max width/height/depth of SG_IMAGETYPE_3D images */
-    max_image_size_array u32
-    max_image_array_layers u32
+    max_image_size_array u32      /* max width/height pf SG_IMAGETYPE_ARRAY images */
+    max_image_array_layers u32    /* max number of layers in SG_IMAGETYPE_ARRAY images */
     max_vertex_attrs u32          /* <= SG_MAX_VERTEX_ATTRIBUTES (only on some GLES2 impls) */
 }
 

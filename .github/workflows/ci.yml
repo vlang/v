@@ -131,11 +131,15 @@ jobs:
         ../../vprod gen1m.v
         ./gen1m > 1m.v
         echo "Building it..."
-        ../../vprod -x64 -o 1m 1m.v
+        ../../vprod -backend x64 -o 1m 1m.v
         echo "Running it..."
         ls
 #        ./1m
       #run: echo "TODO" #cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
+#    - name: Coveralls GitHub Action
+#      uses: coverallsapp/github-action@v1.0.1
+#      with:
+#        github-token: ${{ secrets.GITHUB_TOKEN }}
 
 
   ubuntu-prebuilt:
@@ -144,7 +148,7 @@ jobs:
     - name: Install dependencies
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Download V
-      run: wget https://github.com/vlang/v/releases/latest/download/v_linux.zip && unzip v_linux.zip && ./v --version
+      run: wget https://github.com/vlang/v/releases/latest/download/v_linux.zip && unzip v_linux.zip && ./v -version
     - name: Test V
       run: ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
 
@@ -157,7 +161,7 @@ jobs:
         brew install freetype glfw openssl sdl2 sdl2_ttf sdl2_mixer sdl2_image
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Download V
-      run: wget https://github.com/vlang/v/releases/latest/download/v_macos.zip && unzip v_macos.zip && ./v --version
+      run: wget https://github.com/vlang/v/releases/latest/download/v_macos.zip && unzip v_macos.zip && ./v -version
     - name: Test V
       run: ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
 
@@ -171,7 +175,7 @@ jobs:
         curl -L https://github.com/vlang/v/releases/latest/download/v_windows.zip -o v_windows.zip
         echo Unzipping...
         unzip v_windows.zip
-        v.exe --version
+        v.exe -version
         echo Done
         dir
     - name: Test V
@@ -212,10 +216,13 @@ jobs:
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x
+    - name: Install dependencies
+      run: |
+        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
+        .\.github\workflows\windows-install-sdl.bat
     - name: Build
       run: |
         gcc --version
-        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         .\make.bat -gcc
     - name: Test
       run: |
@@ -235,11 +242,14 @@ jobs:
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x
+    - name: Install dependencies
+      run: |
+        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
+        .\.github\workflows\windows-install-sdl.bat
     - name: Build
       run: |
         echo %VFLAGS%
         echo $VFLAGS
-        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         .\make.bat -msvc
     - name: Test
       run: |

@@ -20,6 +20,7 @@ The commands are:
    symlink           create a symbolic link for V
    translate         translate C code to V (coming soon in 0.3)
    up                run the V self-updater
+   self              run the V self-compiler
    version           prints the version text and exits
 
    install           installs a module from VPM
@@ -35,7 +36,9 @@ The commands are:
    test-fmt          test if all files in the current directory is formatted properly
    test-compiler     run the V self-test suite to make sure V is working properly
 
-For a comprehensive list of options, please refer to `v help --verbose`.'
+   setup-freetype    setup thirdparty freetype on Windows
+
+For a comprehensive list of options, please refer to `v -v help`.'
 //Use "v help <command>" for more information about a command.'
 //TODO When docs have been written for all the subcommands, delete the verbose help text and
 //     tell the user to use "v help <command>" instead.
@@ -75,8 +78,9 @@ Options/commands:
   -o <file>.c       Produce C source without compiling it.
   -o <file>.js      Produce JavaScript source.
   -prod             Build an optimized executable.
-  -v, version       Display compiler version and git hash of the compiler source.
-  -verbose          Produce a verbose log about what the compiler is doing, where it seeks for files and so on.
+  -version          Display compiler version and git hash of the compiler source.
+  -verbose <level>  Produce a verbose log about what the compiler is doing, where it seeks for files and so on.
+  -v                Shorthand for `-verbose 1`
   -live             Enable hot code reloading (required by functions marked with [live]).
   -os <OS>          Produce an executable for the selected OS.
                     OS can be linux, mac, windows, msvc.
@@ -94,9 +98,9 @@ Options/commands:
 Options for debugging/troubleshooting v programs:
   -g                Generate debugging information in the backtraces. Add *V* line numbers to the generated executable.
   -cg               Same as -g, but add *C* line numbers to the generated executable instead of *V* line numbers.
-  -keep_c           Do NOT remove the generated .tmp.c files after compilation.
+  -csource keep     Do NOT remove the generated .tmp.c files after compilation.
                     It is useful when using debuggers like gdb/visual studio, when given after `-g` / `-cg`.
-  -pretty_c         Run clang-format over the generated C file, so that it looks nicer. Requires you to have clang-format.
+  -csource prettify Run clang-format over the generated C file, so that it looks nicer. Requires you to have clang-format.
   -show_c_cmd       Print the full C compilation command and how much time it took. See also `-verbose`.
   -cc <ccompiler>   Specify which C compiler you want to use as a C backend.
                     The C backend compiler should be able to handle C99 compatible C code.
@@ -108,6 +112,7 @@ Commands:
   up                Update V. Run `v up` at least once per day, since V development is rapid and features/bugfixes are added constantly.
   run <file.v>      Build and execute the V program in file.v. You can add arguments for the V program *after* the file name.
   build <module>    Compile a module into an object file.
+  self              Self-compile V from local source files.
   repl              Run the V REPL. If V is running in a tty terminal, the REPL is interactive, otherwise it just reads from stdin.
   symlink           Useful on Unix systems. Symlinks the current V executable to /usr/local/bin/v, so that V is globally available.
   test-compiler     Run all V test files, and compile all V examples.
@@ -116,6 +121,7 @@ Commands:
   doc               Run vdoc over the source code and produce documentation.
   translate         Translates C to V. [wip, will be available in V 0.3]
   create            Create a new v project interactively. Answer the questions, and run it with `v run projectname`
+  setup-freetype    Setup thirdparty freetype on Windows.
 
 V package management commands:
   search  keywords  Search the https://vpm.vlang.io/ module repository for matching modules and shows their details.
@@ -128,4 +134,3 @@ V package management commands:
 - To disable automatic formatting:
 v -nofmt file.v
 */
-

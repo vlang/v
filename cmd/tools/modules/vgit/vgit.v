@@ -2,7 +2,6 @@ module vgit
 
 import os
 import flag
-import filepath
 import scripting
 
 const (
@@ -42,7 +41,7 @@ pub fn line_to_timestamp_and_commit(line string) (int,string) {
 
 pub fn normalized_workpath_for_commit(workdir string, commit string) string {
 	nc := 'v_at_' + commit.replace('^', '_').replace('-', '_').replace('/', '_')
-	return os.realpath(workdir + filepath.separator + nc)
+	return os.realpath(workdir + os.path_separator + nc)
 }
 
 pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string,string) {
@@ -65,7 +64,7 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string,strin
 
 pub fn clone_or_pull( remote_git_url string, local_worktree_path string ) {
 	// NB: after clone_or_pull, the current repo branch is === HEAD === master
-	if os.is_dir( local_worktree_path ) && os.is_dir(filepath.join(local_worktree_path,'.git')) {
+	if os.is_dir(local_worktree_path) && os.is_dir(os.join_path(local_worktree_path, '.git')) {
 		// Already existing ... Just pulling in this case is faster usually.
 		scripting.run('git -C "$local_worktree_path"  checkout --quiet master')
 		scripting.run('git -C "$local_worktree_path"  pull     --quiet ')
@@ -97,7 +96,7 @@ pub mut:
 
 pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	vgit_context.vexepath = os.realpath( filepath.join(vgit_context.path_v, vgit_context.vexename) )
+	vgit_context.vexepath = os.realpath(os.join_path(vgit_context.path_v, vgit_context.vexename))
 	mut command_for_building_v_from_c_source := ''
 	mut command_for_selfbuilding := ''
 	if 'windows' == os.user_os() {
@@ -137,7 +136,7 @@ pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 }
 
 pub fn add_common_tool_options<T>(context mut T, fp mut flag.FlagParser) []string {
-	tdir := os.tmpdir()
+	tdir := os.temp_dir()
 	context.workdir = os.realpath(fp.string_('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
 	context.v_repo_url = fp.string('vrepo', vgit.remote_v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
 	context.vc_repo_url = fp.string('vcrepo', vgit.remote_vc_repo_url, 'The url of the vc repository. You can clone it

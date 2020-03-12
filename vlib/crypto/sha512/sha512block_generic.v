@@ -104,8 +104,8 @@ fn block_generic(dig mut Digest, p_ []byte) {
 	mut h5 := dig.h[5]
 	mut h6 := dig.h[6]
 	mut h7 := dig.h[7]
-	for p.len >= Chunk {
-		for i := 0; i < 16; i++ {
+	for p.len >= chunk {
+		for i in 0..16 {
 			j := i * 8
 			w[i] = (u64(p[j])<<56) | (u64(p[j + 1])<<48) | (u64(p[j + 2])<<40) | (u64(p[j + 3])<<32) | (u64(p[j + 4])<<24) | (u64(p[j + 5])<<16) | (u64(p[j + 6])<<8) | u64(p[j + 7])
 		}
@@ -124,7 +124,7 @@ fn block_generic(dig mut Digest, p_ []byte) {
 		mut f := h5
 		mut g := h6
 		mut h := h7
-		for i := 0; i < 80; i++ {
+		for i in 0..80 {
 			t1 := h + (bits.rotate_left_64(e, -14) ^ bits.rotate_left_64(e, -18) ^ bits.rotate_left_64(e, -41)) + ((e & f) ^ (~e & g)) + _k[i] + w[i]
 			t2 := (bits.rotate_left_64(a, -28) ^ bits.rotate_left_64(a, -34) ^ bits.rotate_left_64(a, -39)) + ((a & b) ^ (a & c) ^ (b & c))
 			h = g
@@ -144,11 +144,11 @@ fn block_generic(dig mut Digest, p_ []byte) {
 		h5 += f
 		h6 += g
 		h7 += h
-		if Chunk >= p.len {
+		if chunk >= p.len {
 			p = []
 		}
 		else {
-			p = p[Chunk..]
+			p = p[chunk..]
 		}
 	}
 	dig.h[0] = h0

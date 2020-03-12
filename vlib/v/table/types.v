@@ -5,6 +5,16 @@ pub type Type int
 pub enum TypeExtra {
 	unset
 	optional
+	variadic
+}
+
+pub fn (types []Type) contains(typ Type) bool {
+	for t in types {
+		if int(typ) == int(t) {
+			return true
+		}
+	}
+	return false
 }
 
 // return underlying TypeSymbol idx
@@ -22,9 +32,8 @@ pub fn type_nr_muls(t Type) int {
 // return true if pointer (nr_muls>0)
 [inline]
 pub fn type_is_ptr(t Type) bool {
-	return type_nr_muls(t) > 0
+	return type_nr_muls(t) > 0 // || t == voidptr_type_idx
 }
-
 // set nr_muls on Type and return it
 [inline]
 pub fn type_set_nr_muls(t Type, nr_muls int) Type {
@@ -76,6 +85,16 @@ pub fn type_to_optional(t Type) Type {
 	return type_set_extra(t, .optional)
 }
 
+[inline]
+pub fn type_is_variadic(t Type) bool {
+	return type_extra(t) == .variadic
+}
+
+[inline]
+pub fn type_to_variadic(t Type) Type {
+	return type_set_extra(t, .variadic)
+}
+
 // new type with idx of TypeSymbol, not pointer (nr_muls=0)
 [inline]
 pub fn new_type(idx int) Type {
@@ -98,13 +117,17 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 }
 
 pub const (
-	number_idxs = [int_type_idx, byte_type_idx, u64_type_idx]
+	number_idxs = [int_type_idx, byte_type_idx, u16_type_idx, i16_type_idx, i64_type_idx, u32_type_idx, u64_type_idx]
 )
-
+/*
 pub fn is_number(typ Type) bool {
-	idx := type_idx(typ)
-	return idx in [int_type_idx, byte_type_idx, u64_type_idx]
+	typ_sym := c.table.get_type_symbol(typ)
+	return typ_sym.is_int()
+	//idx := type_idx(typ)
+	//return idx in [int_type_idx, byte_type_idx, u64_type_idx]
 }
+*/
+
 
 pub const (
 	void_type = new_type(void_type_idx)
@@ -123,8 +146,8 @@ pub const (
 	f64_type = new_type(f64_type_idx)
 	char_type = new_type(char_type_idx)
 	bool_type = new_type(bool_type_idx)
+	none_type = new_type(none_type_idx)
 	string_type = new_type(string_type_idx)
 	array_type = new_type(array_type_idx)
 	map_type = new_type(map_type_idx)
-	none_type = new_type(none_type_idx)
 )

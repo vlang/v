@@ -140,7 +140,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			if is_sum_type {
 				sum_child_type = p.get_type2().name
 				tt := sum_child_type.all_after('_')
-				p.gen('SumType_$tt')
+				p.gen('SumType_${typ}_$tt')
 				// println('got child $sum_child_type')
 				p.register_var(Var{
 					name: 'it'

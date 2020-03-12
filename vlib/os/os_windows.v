@@ -6,10 +6,6 @@ import strings
 #include <winsock2.h>
 
 pub const (
-	/**
-	 * This constant is deprecated. Use `filepath.separator` instead.
-	 * FIXME Remove this separator, as it a part of `filepath` module.
-	 */
 	path_separator = '\\'
 )
 
@@ -82,7 +78,7 @@ mut:
 
 fn init_os_args_wide(argc int, argv &byteptr) []string {
 	mut args := []string
-	for i := 0; i < argc; i++ {
+	for i in 0..argc {
 		args << string_from_wide(&u16(argv[i]))
 	}
 	return args
@@ -135,27 +131,20 @@ pub fn is_dir(path string) bool {
 */
 
 pub fn open(path string) ?File {
-	mut file := File{}
-	wpath := path.to_wide()
-	mode := 'rb'
-	file = File{
-		cfile: C._wfopen(wpath, mode.to_wide())
+	file := File {
+		cfile: C._wfopen(path.to_wide(), 'rb'.to_wide())
+		opened: true
 	}
 	if isnil(file.cfile) {
 		return error('failed to open file "$path"')
 	}
-	file.opened = true
 	return file
 }
 
-
-
 // create creates a file at a specified location and returns a writable `File` object.
 pub fn create(path string) ?File {
-	wpath := path.replace('/', '\\').to_wide()
-	mode := 'wb'
-	file := File{
-		cfile: C._wfopen(wpath, mode.to_wide())
+	file := File {
+		cfile: C._wfopen(path.to_wide(), 'wb'.to_wide())
 		opened: true
 	}
 	if isnil(file.cfile) {

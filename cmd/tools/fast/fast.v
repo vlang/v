@@ -5,13 +5,12 @@
 import (
 	os
 	time
-	filepath
 )
 
 fn main() {
 	exe := os.executable()
-	dir := filepath.dir(exe)
-	vdir := filepath.dir(filepath.dir(filepath.dir(dir)))
+	dir := os.dir(exe)
+	vdir := os.dir(os.dir(os.dir(dir)))
 	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {
 		println('fast.html generator needs to be located in `v/cmd/tools/fast`')
 	}

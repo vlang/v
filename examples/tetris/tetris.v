@@ -147,6 +147,7 @@ fn main() {
 			width: WinWidth
 			height: WinHeight
 			use_ortho: true
+			font_path: '../assets/fonts/RobotoMono-Regular.ttf'
 			font_size: 18
 			scale: 2
 			window_user_ptr: 0
@@ -175,7 +176,7 @@ fn (g mut Game) init_game() {
 	g.generate_tetro()
 	g.field = [] // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge
-	for i := 0; i < FieldHeight + 2; i++ {
+	for i in 0..FieldHeight + 2 {
 		mut row := [0].repeat(FieldWidth + 2)
 		row[0] = - 1
 		row[FieldWidth + 1] = - 1
@@ -183,7 +184,7 @@ fn (g mut Game) init_game() {
 	}
 	mut first_row := g.field[0]
 	mut last_row := g.field[FieldHeight + 1]
-	for j := 0; j < FieldWidth + 2; j++ {
+	for j in 0..FieldWidth + 2 {
 		first_row[j] = - 1
 		last_row[j] = - 1
 	}
@@ -238,7 +239,7 @@ fn (g mut Game) move_tetro() {
 
 fn (g mut Game) move_right(dx int) bool {
 	// Reached left/right edge or another tetro?
-	for i := 0; i < TetroSize; i++ {
+	for i in 0..TetroSize {
 		tetro := g.tetro[i]
 		y := tetro.y + g.pos_y
 		x := tetro.x + g.pos_x + dx
@@ -293,7 +294,7 @@ fn (g mut Game) get_tetro() {
 
 // TODO mut
 fn (g &Game) drop_tetro() {
-	for i := 0; i < TetroSize; i++ {
+	for i in 0..TetroSize {
 		tetro := g.tetro[i]
 		x := tetro.x + g.pos_x
 		y := tetro.y + g.pos_y
@@ -305,7 +306,7 @@ fn (g &Game) drop_tetro() {
 }
 
 fn (g &Game) draw_tetro() {
-	for i := 0; i < TetroSize; i++ {
+	for i in 0..TetroSize {
 		tetro := g.tetro[i]
 		g.draw_block(g.pos_y + tetro.y, g.pos_x + tetro.x, g.tetro_idx + 1)
 	}

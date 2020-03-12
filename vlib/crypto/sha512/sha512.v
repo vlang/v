@@ -27,7 +27,7 @@ pub const (
 )
 
 const (
-	Chunk = 128
+	chunk = 128
 	init0 = 0x6a09e667f3bcc908
 	init1 = 0xbb67ae8584caa73b
 	init2 = 0x3c6ef372fe94f82b
@@ -73,7 +73,7 @@ mut:
 
 fn (d mut Digest) reset() {
 	d.h = [u64(0)].repeat(8)
-	d.x = [byte(0)].repeat(Chunk)
+	d.x = [byte(0)].repeat(chunk)
 	match d.function {
 		.sha384 {
 			d.h[0] = init0_384
@@ -155,7 +155,7 @@ fn (d mut Digest) write(p_ []byte) int {
 	if d.nx > 0 {
 		n := copy(d.x[d.nx..], p)
 		d.nx += n
-		if d.nx == Chunk {
+		if d.nx == chunk{
 			block(mut d, d.x)
 			d.nx = 0
 		}
@@ -166,8 +166,8 @@ fn (d mut Digest) write(p_ []byte) int {
 			p = p[n..]
 		}
 	}
-	if p.len >= Chunk {
-		n := p.len & ~(Chunk - 1)
+	if p.len >= chunk{
+		n := p.len & ~(chunk- 1)
 		block(mut d, p[..n])
 		if n >= p.len {
 			p = []

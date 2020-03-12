@@ -6,7 +6,6 @@ module main
 import (
 	os
 	os.cmdline
-	filepath
 	compiler
 	v.pref
 	v.fmt
@@ -40,7 +39,7 @@ const (
 
 fn main() {
 	toolexe := os.executable()
-	compiler.set_vroot_folder(filepath.dir(filepath.dir(filepath.dir(toolexe))))
+	compiler.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := join_flags_and_argument()
 	foptions := FormatOptions{
 		is_2: '-2' in args
@@ -153,10 +152,10 @@ fn (foptions &FormatOptions) format_file(file string) {
 			eprintln('vfmt2 running fmt.fmt over file: $file')
 		}
 		table := table.new_table()
-		file_ast := parser.parse_file(file, table)
+		file_ast := parser.parse_file(file, table, .parse_comments)
 		formatted_content := fmt.fmt(file_ast, table)
-		file_name := filepath.filename(file)
-		vfmt_output_path := filepath.join(os.tmpdir(), 'vfmt_' + file_name)
+		file_name := os.filename(file)
+		vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
 		os.write_file(vfmt_output_path, formatted_content )
 		if foptions.is_verbose {
 			eprintln('vfmt2 fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
@@ -164,32 +163,37 @@ fn (foptions &FormatOptions) format_file(file string) {
 		eprintln('${FORMATTED_FILE_TOKEN}${vfmt_output_path}')
 		return
 	}
-	tmpfolder := os.tmpdir()
+	tmpfolder := os.temp_dir()
 	mut compiler_params := &pref.Preferences{}
 	target_os := file_to_target_os(file)
 	if target_os != '' {
-		compiler_params.os = pref.os_from_string(target_os)
+		//TODO Remove temporary variable once it compiles correctly in C
+		tmp := pref.os_from_string(target_os) or {
+			eprintln('unknown operating system $target_os')
+			return
+		}
+		compiler_params.os = tmp
 	}
 	mut cfile := file
 	mut mod_folder_parent := tmpfolder
 	is_test_file := file.ends_with('_test.v')
 	mod_name,is_module_file := file_to_mod_name_and_is_module_file(file)
 	use_tmp_main_program := is_module_file && !is_test_file
-	mod_folder := filepath.basedir(file)
+	mod_folder := os.base_dir(file)
 	if use_tmp_main_program {
 		// TODO: remove the need for this
 		// This makes a small program that imports the module,
 		// so that the module files will get processed by the
 		// vfmt implementation.
-		mod_folder_parent = filepath.basedir(mod_folder)
+		mod_folder_parent = os.base_dir(mod_folder)
 		mut main_program_content := if mod_name == 'builtin' || mod_name == 'main' { 'fn main(){}\n' } else { 'import ${mod_name}\n' + 'fn main(){}\n' }
-		main_program_file := filepath.join(tmpfolder,'vfmt_tmp_${mod_name}_program.v')
+		main_program_file := os.join_path(tmpfolder,'vfmt_tmp_${mod_name}_program.v')
 		if os.exists(main_program_file) {
 			os.rm(main_program_file)
 		}
 		os.write_file(main_program_file, main_program_content)
 		cfile = main_program_file
-		compiler_params.user_mod_path = mod_folder_parent
+		compiler_params.lookup_path = [mod_folder_parent, '@vlib', '@vmodule']
 	}
 	if !is_test_file && mod_name == 'main' {
 		// NB: here, file is guaranted to be a main. We do not know however
@@ -229,19 +233,17 @@ fn (foptions &FormatOptions) format_file(file string) {
 }
 
 fn print_compiler_options( compiler_params &pref.Preferences ) {
-	eprintln('        os: ' + compiler_params.os.str() )
-	eprintln(' ccompiler: $compiler_params.ccompiler' )
-	eprintln('       mod: $compiler_params.mod ')
-	eprintln('      path: $compiler_params.path ')
-	eprintln('  out_name: $compiler_params.out_name ')
-	eprintln('     vroot: $compiler_params.vroot ')
-	eprintln('     vpath: $compiler_params.vpath ')
-	eprintln(' vlib_path: $compiler_params.vlib_path ')
-	eprintln('  out_name: $compiler_params.out_name ')
-	eprintln('    umpath: $compiler_params.user_mod_path ')
-	eprintln('    cflags: $compiler_params.cflags ')
-	eprintln('   is_test: $compiler_params.is_test ')
-	eprintln(' is_script: $compiler_params.is_script ')
+	eprintln('         os: ' + compiler_params.os.str() )
+	eprintln('  ccompiler: $compiler_params.ccompiler' )
+	eprintln('        mod: $compiler_params.mod ')
+	eprintln('       path: $compiler_params.path ')
+	eprintln('   out_name: $compiler_params.out_name ')
+	eprintln('      vroot: $compiler_params.vroot ')
+	eprintln('lookup_path: $compiler_params.lookup_path ')
+	eprintln('   out_name: $compiler_params.out_name ')
+	eprintln('     cflags: $compiler_params.cflags ')
+	eprintln('    is_test: $compiler_params.is_test ')
+	eprintln('  is_script: $compiler_params.is_script ')
 }
 
 fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path string) {
@@ -302,7 +304,7 @@ Options:
   -diff display only diffs between the formatted source and the original source.
   -l    list files whose formatting differs from vfmt.
   -w    write result to (source) file(s) instead of to stdout.
-  -2    Use the new V parser/vfmt. NB: this is EXPERIMENTAL for now. 
+  -2    Use the new V parser/vfmt. NB: this is EXPERIMENTAL for now.
           The new vfmt is much faster and more forgiving.
           It also may EAT some of your code for now.
           Please be carefull, and make frequent BACKUPS, when running with -vfmt2 .
@@ -381,7 +383,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	// This function get_compile_name_of_potential_v_project returns:
 	// a) the file's folder, if file is part of a v project
 	// b) the file itself, if the file is a standalone v program
-	pfolder := os.realpath(filepath.dir(file))
+	pfolder := os.realpath(os.dir(file))
 	// a .v project has many 'module main' files in one folder
 	// if there is only one .v file, then it must be a standalone
 	all_files_in_pfolder := os.ls(pfolder) or {
@@ -389,7 +391,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	}
 	mut vfiles := []string
 	for f in all_files_in_pfolder {
-		vf := filepath.join(pfolder,f)
+		vf := os.join_path(pfolder, f)
 		if f.starts_with('.') || !f.ends_with('.v') || os.is_dir(vf) {
 			continue
 		}

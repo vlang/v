@@ -493,7 +493,7 @@ fn test_interpolation() {
 }
 
 fn test_bytes_to_string() {
-	mut buf := calloc(10)
+	mut buf := vcalloc(10)
 	buf[0] = `h`
 	buf[1] = `e`
 	buf[2] = `l`
@@ -603,11 +603,15 @@ fn test_limit() {
 }
 
 fn test_repeat() {
-	s := 'V! '
-	assert s.repeat(5) == 'V! V! V! V! V! '
-	assert s.repeat(1) == s
-	assert s.repeat(0) == s
-	assert s.repeat(-1) == s
+	s1 := 'V! '
+	assert s1.repeat(5) == 'V! V! V! V! V! '
+	assert s1.repeat(1) == s1
+	assert s1.repeat(0) == ''
+	s2 := ''
+	assert s2.repeat(5) == s2
+	assert s2.repeat(1) == s2
+	assert s2.repeat(0) == s2
+	// TODO Add test for negative values
 }
 
 fn test_raw() {

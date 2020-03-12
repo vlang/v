@@ -627,7 +627,21 @@ fn (p mut Parser) cast(typ string) {
 		if expr_typ == 'bool' {
 			p.error('cannot cast `bool` to `$typ`')
 		}
-		p.cgen.set_placeholder(pos, '($typ)(')
+		if typ != expr_typ && typ in p.table.sum_types {
+			tt := p.table.find_type(typ)
+			if expr_typ in tt.ctype_names {
+				// There is no need for a cast here, since it was already done
+				// in p.bool_expression, SUM TYPE CAST2 . Besides, doubling the
+				// cast here causes MSVC to complain with:
+				// error C2440: 'type cast': cannot convert from 'ExprType' to 'ExprType'
+				p.cgen.set_placeholder(pos, '(')
+			}else{
+				p.warn('only $tt.ctype_names can be casted to `$typ`')
+				p.error('cannot cast `$expr_typ` to `$typ`')
+			}
+		}else{
+			p.cgen.set_placeholder(pos, '($typ)(')
+		}
 	}
 	p.check(.rpar)
 	p.gen(')')

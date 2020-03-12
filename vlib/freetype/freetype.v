@@ -10,14 +10,15 @@ import (
 	gg
 	glm
 	gl
-	filepath
 )
 
 #flag windows -I @VROOT/thirdparty/freetype/include
 #flag windows -L @VROOT/thirdparty/freetype/win64
 
 #flag darwin -I/usr/local/include/freetype2
+// MacPorts
 #flag darwin -I/opt/local/include/freetype2
+#flag darwin -L/opt/local/lib
 #flag freebsd -I/usr/local/include/freetype2
 #flag freebsd -Wl -L/usr/local/lib
 #flag -lfreetype
@@ -47,13 +48,13 @@ pub const (
 
 struct Character {
 	code i64
-	
+
 	texture_id u32
 	size       gg.Vec2
-	
+
 	horizontal_bearing_px gg.Vec2
 	horizontal_advance_px u32
-	
+
 	vertical_bearing_px   gg.Vec2
 	vertical_advance_px   u32
 }
@@ -110,7 +111,7 @@ struct C.Glyph {
 	bitmap_left int
 	bitmap_top int
 	advance Advance
-	metrics FT_Glyph_Metrics 
+	metrics FT_Glyph_Metrics
 }
 
 [typedef]
@@ -153,10 +154,10 @@ fn ft_load_char(face C.FT_Face, code i64) Character {
 		size:    gg.vec2(fgwidth, fgrows)
 
 		// Note: advance is number of 1/64 pixels
-		// Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))		
+		// Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
 		horizontal_bearing_px:  gg.vec2(face.glyph.metrics.horiBearingX >> 6, face.glyph.metrics.horiBearingY >> 6)
 		vertical_bearing_px:    gg.vec2(face.glyph.metrics.vertBearingX >> 6, face.glyph.metrics.vertBearingY >> 6) // not used for now
-		
+
 		horizontal_advance_px:  face.glyph.metrics.horiAdvance >> 6
 		vertical_advance_px:    face.glyph.metrics.vertAdvance >> 6
 	}
@@ -203,7 +204,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	}
 	if !os.exists(font_path) {
 		exe_path := os.executable()
-		exe_dir := filepath.basedir(exe_path)
+		exe_dir := os.base_dir(exe_path)
 		font_path = '$exe_dir/$font_path'
 	}
 	if !os.exists(font_path) {
@@ -224,7 +225,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	// Gen texture
 	// Load first 128 characters of ASCII set
 	mut chars := []Character
-	for c := 0; c < 128; c++ {
+	for c in 0..128 {
 		ch := ft_load_char(face, i64(c))
 		// s := utf32_to_str(uint(0x043f))
 		// s := 'п'
@@ -307,7 +308,7 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 	gl.bind_vao(ctx.vao)
 	// Iterate through all characters
 	// utext := text.ustring()
-	for i := 0; i < utext.len; i++ {
+	for i in 0..utext.len {
 		_rune := utext.at(i)
 		// println('$i => $_rune')
 		mut ch := Character{}
@@ -323,7 +324,7 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 		}
 		else if _rune.len > 1 {
 			// TODO O(1) use map
-			for j := 0; j < ctx.utf_runes.len; j++ {
+			for j in 0..ctx.utf_runes.len {
 				rune_j := ctx.utf_runes[j]
 				if rune_j==_rune {
 					ch = ctx.utf_chars[j]
@@ -404,9 +405,9 @@ pub fn (ctx mut FreeType) text_size(s string) (int, int) {
 	mut maxy := u32(0)
 	mut _rune := ''
 	mut ch := Character{}
-	for i := 0; i < utext.len; i++ {
+	for i in 0..utext.len {
 		_rune = utext.at(i)
-		ch = Character{}		
+		ch = Character{}
 		mut found := false
 		if _rune.len == 1 {
 			idx := _rune[0]
@@ -419,7 +420,7 @@ pub fn (ctx mut FreeType) text_size(s string) (int, int) {
 		}
 		else if _rune.len > 1 {
 			// TODO O(1) use map
-			for j := 0; j < ctx.utf_runes.len; j++ {
+			for j in 0..ctx.utf_runes.len {
 				rune_j := ctx.utf_runes[j]
 				if rune_j==_rune {
 					ch = ctx.utf_chars[j]
@@ -442,7 +443,7 @@ pub fn (ctx mut FreeType) text_size(s string) (int, int) {
 	//scaled_x := x
 	//scaled_y := maxy
 	scaled_x := int(f64(x)/ctx.scale)
-	scaled_y := int(f64(maxy)/ctx.scale)	
+	scaled_y := int(f64(maxy)/ctx.scale)
 	//println('text_size of "${s}" | x,y: $x,$maxy | scaled_x: ${scaled_x:3d} | scaled_y: ${scaled_y:3d} ')
 	return scaled_x, scaled_y
 }

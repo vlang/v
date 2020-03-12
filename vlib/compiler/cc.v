@@ -6,8 +6,8 @@ module compiler
 import (
 	os
 	time
-	filepath
 	v.pref
+	term
 )
 
 fn todo() {
@@ -16,7 +16,7 @@ fn todo() {
 fn (v &V) no_cc_installed() bool {
 	$if windows {
 		os.exec('$v.pref.ccompiler -v')or{
-			if v.pref.is_verbose {
+			if v.pref.verbosity.is_higher_or_equal(.level_one) {
 				println('C compiler not found, trying to build with msvc...')
 			}
 			return true
@@ -31,7 +31,7 @@ fn (v mut V) cc() {
 	}
 	v.build_thirdparty_obj_files()
 	vexe := pref.vexe_path()
-	vdir := filepath.dir(vexe)
+	vdir := os.dir(vexe)
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`
 	ends_with_c := v.pref.out_name.ends_with('.c')
@@ -152,8 +152,8 @@ fn (v mut V) cc() {
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
-		mut out_dir := if v.pref.path.starts_with('vlib') { '$v_modules_path${filepath.separator}cache${filepath.separator}$v.pref.path' } else { '$v_modules_path${filepath.separator}$v.pref.path' }
-		pdir := out_dir.all_before_last(filepath.separator)
+		mut out_dir := if v.pref.path.starts_with('vlib') { '$v_modules_path${os.path_separator}cache${os.path_separator}$v.pref.path' } else { '$v_modules_path${os.path_separator}$v.pref.path' }
+		pdir := out_dir.all_before_last(os.path_separator)
 		if !os.is_dir(pdir) {
 			os.mkdir_all(pdir)
 		}
@@ -198,6 +198,9 @@ fn (v mut V) cc() {
 	}
 	if debug_mode {
 		a << debug_options
+		$if macos {
+			a << ' -ferror-limit=5000 '
+		}
 	}
 	if v.pref.is_prod {
 		a << optimization_options
@@ -216,14 +219,14 @@ fn (v mut V) cc() {
 		a << '-c'
 	}
 	else if v.pref.is_cache {
-		builtin_o_path := filepath.join(v_modules_path,'cache','vlib','builtin.o')
+		builtin_o_path := os.join_path(v_modules_path, 'cache', 'vlib', 'builtin.o')
 		a << builtin_o_path.replace('builtin.o', 'strconv.o') // TODO hack no idea why this is needed
 		if os.exists(builtin_o_path) {
 			libs = builtin_o_path
 		}
 		else {
 			println('$builtin_o_path not found... building module builtin')
-			os.system('$vexe build module vlib${filepath.separator}builtin')
+			os.system('$vexe build module vlib${os.path_separator}builtin')
 		}
 		for imp in v.table.imports {
 			if imp.contains('vweb') {
@@ -232,8 +235,8 @@ fn (v mut V) cc() {
 			if imp == 'webview' {
 				continue
 			}
-			imp_path := imp.replace('.', filepath.separator)
-			path := '$v_modules_path${filepath.separator}cache${filepath.separator}vlib${filepath.separator}${imp_path}.o'
+			imp_path := imp.replace('.', os.path_separator)
+			path := '$v_modules_path${os.path_separator}cache${os.path_separator}vlib${os.path_separator}${imp_path}.o'
 			// println('adding ${imp_path}.o')
 			if os.exists(path) {
 				libs += ' ' + path
@@ -250,7 +253,7 @@ fn (v mut V) cc() {
 					}
 				}
 				else {
-					os.system('$vexe build module vlib${filepath.separator}$imp_path')
+					os.system('$vexe build module vlib${os.path_separator}$imp_path')
 				}
 			}
 			if path.ends_with('vlib/ui.o') {
@@ -324,7 +327,7 @@ start:
 	// TODO remove
 	cmd := '${v.pref.ccompiler} $args'
 	// Run
-	if v.pref.show_c_cmd || v.pref.is_verbose {
+	if v.pref.verbosity.is_higher_or_equal(.level_one) {
 		println('\n==========')
 		println(cmd)
 	}
@@ -357,7 +360,9 @@ start:
 			verror('C compiler error, while attempting to run: \n' + '-----------------------------------------------------------\n' + '$cmd\n' + '-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' + 'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
 		}
 		if v.pref.is_debug {
-			println(res.output)
+			eword := 'error:'
+			khighlight := if term.can_show_color_on_stdout() { term.red(eword) } else { eword }
+			println(res.output.replace(eword, khighlight))
 			verror("
 ==================
 C error. This should never happen.
@@ -375,9 +380,11 @@ please put the whole output in a pastebin and contact us through the following w
 			if res.output.len < 30 {
 				println(res.output)
 			} else {
-				q := res.output.all_after('error: ').limit(150)
+				elines := error_context_lines( res.output, 'error:', 1, 12 )
 				println('==================')
-				println(q)
+				for eline in elines {
+					println(eline)
+				}
 				println('...')
 				println('==================')
 				println('(Use `v -cg` to print the entire error message)\n')
@@ -394,7 +401,7 @@ If you're confident that all of the above is true, please try running V with the
 	}
 	diff := time.ticks() - ticks
 	// Print the C command
-	if v.pref.show_c_cmd || v.pref.is_verbose {
+	if v.pref.verbosity.is_higher_or_equal(.level_one) {
 		println('${v.pref.ccompiler} took $diff ms')
 		println('=========\n')
 	}
@@ -505,7 +512,7 @@ fn (c mut V) cc_windows_cross() {
 
 	println(cmd)
 	//cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $v_modules_path/$c.out_name_c'
-	if c.pref.show_c_cmd {
+	if c.pref.verbosity.is_higher_or_equal(.level_one) {
 		println(cmd)
 	}
 	if os.system(cmd) != 0 {
@@ -553,4 +560,21 @@ fn missing_compiler_info() string {
 		return 'Install command line XCode tools with `xcode-select --install`'
 	}
 	return ''
+}
+
+fn error_context_lines(text, keyword string, before, after int) []string {
+	khighlight := if term.can_show_color_on_stdout() { term.red(keyword) } else { keyword }
+	mut eline_idx := 0
+	mut lines := text.split_into_lines()
+	for idx, eline in lines {
+		if eline.contains(keyword) {
+			lines[idx] = lines[idx].replace(keyword, khighlight)
+			if eline_idx == 0 {
+				eline_idx = idx
+			}
+		}
+	}
+	idx_s := if eline_idx - before >= 0 { eline_idx - before } else { 0 }
+	idx_e := if idx_s + after < lines.len { idx_s + after } else { lines.len }
+	return lines[idx_s..idx_e]
 }

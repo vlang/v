@@ -13,7 +13,7 @@ pub mut:
 }
 
 fn main() {
-	println('noice')
+	println('vweb example')
 	vweb.run<App>(port)
 }
 

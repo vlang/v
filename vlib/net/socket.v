@@ -329,7 +329,7 @@ pub fn (s Socket) read_line() string {
 		}
 		buf[n] = `\0`
 		mut eol_idx := -1
-		for i := 0; i < n; i++ {
+		for i in 0..n {
 			if int(buf[i]) == `\n` {
 				eol_idx = i
 				// Ensure that tos_clone(buf) later,

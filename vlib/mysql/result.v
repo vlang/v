@@ -45,7 +45,7 @@ pub fn (r Result) rows() []Row {
 	nr_cols := r.num_fields()
 	for rr := r.fetch_row(); rr; rr = r.fetch_row() {
 		mut row := Row{}
-		for i := 0; i < nr_cols; i++ {
+		for i in 0..nr_cols {
 			if rr[i] == 0 {
 				row.vals << ''
 			} else {
@@ -61,7 +61,7 @@ pub fn (r Result) fetch_fields() []Field {
 	mut fields := []Field
 	nr_cols := r.num_fields()
 	orig_fields := mysql_fetch_fields(r.result)
-	for i := 0; i < nr_cols; i++ {
+	for i in 0..nr_cols {
 		fields << Field{
 			name: string(orig_fields[i].name)
 			org_name: string(orig_fields[i].org_name)
