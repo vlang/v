@@ -810,8 +810,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			// In C calls we have to generate C strings
 			// `C.printf("hi")` => `printf("hi");`
 			escaped_val := it.val.replace_each(['"', '\\"',
-			'\n', '\\n',
-			'\r\n', '\\n'])
+			'\r\n', '\\n',
+			'\n', '\\n'])
 			if g.is_c_call {
 				g.write('"$escaped_val"')
 			}

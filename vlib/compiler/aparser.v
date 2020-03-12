@@ -2595,8 +2595,8 @@ fn (p mut Parser) char_expr() {
 fn format_str(_str string) string {
 	// TODO don't call replace 3 times for every string, do this in scanner.v
 	return _str.replace_each(['"', '\\"',
-	'\n', '\\n',
-	'\r\n', '\\n'])
+	'\r\n', '\\n',
+	'\n', '\\n'])
 }
 
 // m := map[string]int{}
