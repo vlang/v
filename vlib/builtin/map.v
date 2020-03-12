@@ -105,7 +105,7 @@ fn new_dense_array() DenseArray {
 fn (d mut DenseArray) push(kv KeyValue) u32 {
 	if d.cap == d.size {
 		d.cap += d.cap >> 3
-		d.data = &KeyValue(realloc(d.data, sizeof(KeyValue) * d.cap))
+		d.data = &KeyValue(C.realloc(d.data, sizeof(KeyValue) * d.cap))
 	}
 	push_index := d.size
 	d.data[push_index] = kv
@@ -127,7 +127,7 @@ fn (d mut DenseArray) zeros_to_end() {
 	}
 	d.size = count
 	d.cap = if count < 8 {8} else {count}
-	d.data = &KeyValue(realloc(d.data, sizeof(KeyValue) * d.cap))
+	d.data = &KeyValue(C.realloc(d.data, sizeof(KeyValue) * d.cap))
 }
 
 pub struct map {
@@ -229,8 +229,8 @@ fn (m mut map) set(key string, value voidptr) {
 		}
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.cap + 2 + m.extra_metas)
-		m.metas = &u32(realloc(m.metas, sizeof(u32) * mem_size))
-		memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
+		m.metas = &u32(C.realloc(m.metas, sizeof(u32) * mem_size))
+		C.memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
 	}  
 	m.metas[index] = meta
 	m.metas[index + 1] = kv_index
@@ -267,7 +267,7 @@ fn (m mut map) shrink() {
 
 fn (m mut map) rehash() {
 	meta_bytes := sizeof(u32) * (m.cap + 2 + m.extra_metas)
-	m.metas = &u32(realloc(m.metas, meta_bytes))
+	m.metas = &u32(C.realloc(m.metas, meta_bytes))
 	C.memset(m.metas, 0, meta_bytes)
 	for i := u32(0); i < m.key_values.size; i++ {
 		if m.key_values.data[i].key.str == 0 {
@@ -307,8 +307,8 @@ fn (m mut map) rehash() {
 			}
 			m.extra_metas += extra_metas_inc
 			mem_size := (m.cap + 2 + m.extra_metas)
-			m.metas = &u32(realloc(m.metas, sizeof(u32) * mem_size))
-			memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
+			m.metas = &u32(C.realloc(m.metas, sizeof(u32) * mem_size))
+			C.memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
 		} 
 		m.metas[index] = meta
 		m.metas[index + 1] = kv_index
@@ -358,8 +358,8 @@ fn (m mut map) cached_rehash(old_cap u32) {
 			}
 			m.extra_metas += extra_metas_inc
 			mem_size := (m.cap + 2 + m.extra_metas)
-			new_meta = &u32(realloc(new_meta, sizeof(u32) * mem_size))
-			memset(new_meta + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
+			new_meta = &u32(C.realloc(new_meta, sizeof(u32) * mem_size))
+			C.memset(new_meta + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
 		} 
 		new_meta[index] = meta
 		new_meta[index + 1] = kv_index
@@ -426,7 +426,7 @@ pub fn (m mut map) delete(key string) {
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if key == m.key_values.data[kv_index].key {
-			memset(&m.key_values.data[kv_index], 0, sizeof(KeyValue))
+			C.memset(&m.key_values.data[kv_index], 0, sizeof(KeyValue))
 			mut old_index := index
 			index += 2
 			mut cur_meta := m.metas[index]

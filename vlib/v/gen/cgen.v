@@ -366,7 +366,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						is_fixed_array_init = g.table.get_type_symbol(it.typ).kind == .array_fixed
 					}
 					else {}
-				}
+	}
 				if assign_stmt.op == .decl_assign {
 					g.write('$styp ')
 				}
@@ -1069,7 +1069,7 @@ fn verror(s string) {
 
 const (
 // TODO all builtin types must be lowercase
-	builtins = ['string', 'array', 'KeyValue', 'map', 'Option']
+	builtins = ['string', 'array', 'KeyValue', 'DenseArray', 'map', 'Option']
 )
 
 fn (g mut Gen) write_builtin_types() {
