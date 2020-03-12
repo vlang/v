@@ -370,6 +370,7 @@ fn (m mut map) cached_rehash(old_cap u32) {
 	m.metas = new_meta
 }
 
+[inline]
 fn (m map) get(key string, out voidptr) bool {
 	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
 	mut index := hash & m.cap
@@ -390,6 +391,7 @@ fn (m map) get(key string, out voidptr) bool {
 	return false
 }
 
+[inline]
 fn (m map) exists(key string) bool {
 	if m.value_bytes == 0 {
 		return false
