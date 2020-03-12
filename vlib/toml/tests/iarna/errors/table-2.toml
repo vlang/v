@@ -1,0 +1,7 @@
+# DO NOT DO THIS EITHER
+
+[a]
+b = 1
+
+[a.b]
+c = 2

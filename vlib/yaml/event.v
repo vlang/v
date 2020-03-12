@@ -38,3 +38,7 @@ enum MappingStyle{
 struct Event{
 	
 }
+
+fn (e &Event) parser_state_machine{
+	match 
+}

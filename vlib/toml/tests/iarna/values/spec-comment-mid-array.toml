@@ -1,0 +1,6 @@
+# eol commetns can go anywhere
+abc = [ # this is valid
+  123,#as is this
+  456    #so is  this
+  ]# and this
+# here too
