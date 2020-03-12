@@ -12,4 +12,4 @@ Tetris has a temporary dependency on GLFW.
 `sudo pacman -S glfw-x11` 
 
 ## Windows 
-Copy `thirdparty/glfw/glfw3.dll` to this directory. 
+Copy `thirdparty/glfw/glfw3.dll` & `thirdparty/freetype/win64/freetype.dll` to this directory. 

@@ -37,9 +37,11 @@ pub fn (g mut JsGen) writeln(s string) {
 fn (g mut JsGen) stmt(node ast.Stmt) {
 	match node {
 		ast.FnDecl {
-			g.write('/** @return { $it.typ.typ.name } **/\nfunction ${it.name}(')
+			type_sym := g.table.get_type_symbol(it.typ)
+			g.write('/** @return { $type_sym.name } **/\nfunction ${it.name}(')
 			for arg in it.args {
-				g.write(' /** @type { $arg.typ.typ.name } **/ $arg.name')
+				arg_type_sym := g.table.get_type_symbol(arg.typ)
+				g.write(' /** @type { $arg_type_sym.name } **/ $arg.name')
 			}
 			g.writeln(') { ')
 			for stmt in it.stmts {
@@ -57,7 +59,8 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.AssignStmt {}
 		ast.VarDecl {
-			g.write('var /* $it.typ.typ.name */ $it.name = ')
+			type_sym := g.table.get_type_symbol(it.typ)
+			g.write('var /* $type_sym.name */ $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -119,7 +122,8 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			g.writeln('/*$it.typ.typ.name*/{')
+			type_sym := g.table.get_type_symbol(it.typ)
+			g.writeln('/*$type_sym.name*/{')
 			for i, field in it.fields {
 				g.write('\t$field : ')
 				g.expr(it.exprs[i])

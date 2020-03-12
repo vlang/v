@@ -1,17 +1,26 @@
 module cmdline
 
-pub fn many_values(args []string, optname string) []string {
+// Fetch multiple option by param, e.g.
+// args: ['v', '-d', 'aa', '-d', 'bb', '-d', 'cc']
+// param: '-d'
+// ret: ['aa', 'bb', 'cc']
+pub fn options(args []string, param string) []string {
 	mut flags := []string
-	for ci, cv in args {
-		if cv == optname {
-			if ci + 1 < args.len {
-				flags << args[ci + 1]
+	for i, v in args {
+		if v == param {
+			if i + 1 < args.len {
+				flags << args[i + 1]
 			}
 		}
 	}
 	return flags
 }
 
+// Fetch option by param, e.g.
+// args: ['v', '-d', 'aa']
+// param: '-d'
+// def: ''
+// ret: 'aa'
 pub fn option(args []string, param string, def string) string {
 	mut found := false
 	for arg in args {
@@ -25,7 +34,11 @@ pub fn option(args []string, param string, def string) string {
 	return def
 }
 
-pub fn before(args []string, what []string) []string {
+// Fetch all options before what params, e.g.
+// args: ['-stat', 'test', 'aaa.v']
+// what: ['test']
+// ret: ['-stat']
+pub fn options_before(args []string, what []string) []string {
 	mut found := false
 	mut args_before := []string
 	for a in args {
@@ -38,7 +51,11 @@ pub fn before(args []string, what []string) []string {
 	return args_before
 }
 
-pub fn after(args []string, what []string) []string {
+// Fetch all options after what params, e.g.
+// args: ['-stat', 'test', 'aaa.v']
+// what: ['test']
+// ret: ['aaa.v']
+pub fn options_after(args []string, what []string) []string {
 	mut found := false
 	mut args_after := []string
 	for a in args {
@@ -53,10 +70,16 @@ pub fn after(args []string, what []string) []string {
 	return args_after
 }
 
+// Fetch all options not start with '-', e.g.
+// args: ['-d', 'aa', '--help', 'bb']
+// ret: ['aa', 'bb']
 pub fn only_non_options(args []string) []string {
 	return args.filter(!it.starts_with('-'))
 }
 
+// Fetch all options start with '-', e.g.
+// args: ['-d', 'aa', '--help', 'bb']
+// ret: ['-d', '--help']
 pub fn only_options(args []string) []string {
 	return args.filter(it.starts_with('-'))
 }

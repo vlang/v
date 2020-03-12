@@ -28,6 +28,10 @@ ifeq ($(_SYS),Darwin)
 MAC := 1
 endif
 
+ifeq ($(_SYS),FreeBSD)
+LDFLAGS += -lexecinfo
+endif
+
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
@@ -42,8 +46,8 @@ endif
 all: latest_vc latest_tcc
 ifdef WIN32
 	$(CC) $(CFLAGS) -std=c99 -municode -w -o v2.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
-	./v2.exe -o v3.exe v.v
-	./v3.exe -o v.exe -prod v.v
+	./v2.exe -o v3.exe cmd/v
+	./v3.exe -o v.exe -prod cmd/v
 	rm -f v2.exe v3.exe
 else
 	$(CC) $(CFLAGS) -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm
@@ -92,10 +96,10 @@ $(TMPVC)/.git/config:
 	$(MAKE) fresh_vc
 
 selfcompile:
-	./v -cg -o v v.v
+	./v -cg -o v cmd/v
 
 selfcompile-static:
-	./v -cg -cflags '--static' -o v-static v.v
+	./v -cg -cflags '--static' -o v-static cmd/v
 
 modules: module_builtin module_strings module_strconv
 module_builtin:

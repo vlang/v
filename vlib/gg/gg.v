@@ -44,6 +44,7 @@ pub:
 	use_ortho bool
 	retina    bool
 	resizable bool
+	decorated bool = true
 
 	font_size int
 	font_path string
@@ -81,6 +82,11 @@ pub fn new_context(cfg Cfg) &GG {
 			glfw.window_hint(C.GLFW_RESIZABLE, 1)
 		} else {
 			glfw.window_hint(C.GLFW_RESIZABLE, 0)
+		}
+		if cfg.decorated {
+			glfw.window_hint(C.GLFW_DECORATED, 1)
+		} else {
+			glfw.window_hint(C.GLFW_DECORATED, 0)
 		}
 		window = glfw.create_window(glfw.WinCfg{
 			title: cfg.window_title

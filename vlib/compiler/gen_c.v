@@ -54,7 +54,7 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	dll_export_linkage := if p.pref.ccompiler == 'msvc' && p.attr == 'live' && p.pref.is_so { '__declspec(dllexport) ' } else if p.attr == 'inline' { 'static inline ' } else { '' }
 	fn_name_cgen := p.table.fn_gen_name(f)
 	// str_args := f.str_args(p.table)
-	
+
 	if p.attr == 'live' && p.pref.is_so {
 		// See fn.v for details about impl_live_ functions
 		p.genln('$typ impl_live_${fn_name_cgen} ($str_args);')
@@ -151,7 +151,7 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 	else if is_assign {
 		p.genln('$name = *($typ*)${tmp}.data;')
 	}
-	if !p.returns && last_typ != typ && is_assign && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
+	if !p.returns && last_typ != typ && is_assign && !(p.prev_tok2 in [.key_continue, .key_break]) {
 		p.error_with_token_index('`or` block must provide a default value or return/exit/continue/break/panic', or_tok_idx)
 	}
 	p.returns = false
@@ -301,7 +301,7 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 	// Obfuscate but skip certain names
 	// TODO ugly, fix
 	// NB: the order here is from faster to potentially slower checks
-	if table.obfuscate && !f.is_c && f.name != 'main' && f.name != 'WinMain' && f.name != 'main__main' && f.name != 'gg__vec2' && f.name != 'build_token_str' && f.name != 'build_keys' && f.mod != 'builtin' && f.mod != 'darwin' && f.mod != 'os' && f.mod != 'json' && !f.name.ends_with('_init') && !f.name.contains('window_proc') && !name.ends_with('_str') && !name.contains('contains') {
+	if table.obfuscate && !f.is_c && !(f.name in ['main', 'WinMain', 'main__main', 'gg__vec2', 'build_token_str', 'build_keys']) && !(f.mod in ['builtin', 'darwin', 'os', 'json']) && !f.name.ends_with('_init') && !f.name.contains('window_proc') && !name.ends_with('_str') && !name.contains('contains') {
 		mut idx := table.obf_ids[name]
 		// No such function yet, register it
 		if idx == 0 {
@@ -549,6 +549,7 @@ fn (p mut Parser) gen_empty_map(typ string) {
 }
 
 fn (p mut Parser) cast(typ string) {
+	//p.error('old cast syntax')
 	p.gen('(')
 	defer {
 		p.gen(')')
@@ -568,12 +569,12 @@ fn (p mut Parser) cast(typ string) {
 		p.warn('casting `$typ` to `$expr_typ` is not needed')
 	}
 	// `face := FT_Face(cobj)` => `FT_Face face = *((FT_Face*)cobj);`
-	casting_voidptr_to_value := expr_typ == 'void*' && typ != 'int' && typ != 'byteptr' && !typ.ends_with('*')
+	casting_voidptr_to_value := expr_typ == 'void*' && !(typ in ['int', 'byteptr']) && !typ.ends_with('*')
 	p.expected_type = ''
 	// `string(buffer)` => `tos2(buffer)`
 	// `string(buffer, len)` => `tos(buffer, len)`
 	// `string(bytes_array, len)` => `tos(bytes_array.data, len)`
-	is_byteptr := expr_typ == 'byte*' || expr_typ == 'byteptr'
+	is_byteptr := expr_typ in ['byte*', 'byteptr']
 	is_bytearr := expr_typ == 'array_byte'
 	if typ == 'string' {
 		if is_byteptr || is_bytearr {
@@ -610,14 +611,14 @@ fn (p mut Parser) cast(typ string) {
 	else {
 		// Nothing can be cast to bool
 		if typ == 'bool' {
-			if is_number_type(expr_typ) || is_float_type(expr_typ) {
+			if is_number_type(expr_typ) {
 				p.error('cannot cast a number to `bool`')
 			}
 			p.error('cannot cast `$expr_typ` to `bool`')
 		}
 		// Strings can't be cast
 		if expr_typ == 'string' {
-			if is_number_type(typ) || is_float_type(typ) {
+			if is_number_type(typ) {
 				p.error('cannot cast `string` to `$typ`, use `${expr_typ}.${typ}()` instead')
 			}
 			p.error('cannot cast `$expr_typ` to `$typ`')

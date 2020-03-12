@@ -203,9 +203,14 @@ struct Config {
 fn foo_config(c Config) {
 }
 
+fn foo2(u User) {
+
+}
+
 fn test_config() {
 	foo_config({n: 10, def: 20})
 	foo_config({})
+	foo2({name:'Peter'})
 }
 
 

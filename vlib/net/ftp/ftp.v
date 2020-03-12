@@ -50,6 +50,7 @@ fn (dtp DTP) read() []byte {
 		for i := 0; i < len; i++ {
 			data << buf[i]
 		}
+		unsafe { free(buf) }
 	}
 
 	return data

@@ -6,7 +6,6 @@ const (
 	default_columns_size = 80
 	default_rows_size = 25
 )
-
 // can_show_color_on_stdout returns true if colors are allowed in stdout;
 // returns false otherwise.
 pub fn can_show_color_on_stdout() bool {
@@ -34,9 +33,24 @@ pub fn fail_message(s string) string {
 // h_divider returns a horizontal divider line with a dynamic width,
 // that depends on the current terminal settings.
 pub fn h_divider(divider string) string {
-	cols, _ := get_terminal_size()
+	cols,_ := get_terminal_size()
 	result := divider.repeat(1 + (cols / divider.len))
 	return result[0..cols]
+}
+
+// header returns a horizontal divider line with a centered text in the middle.
+// e.g: term.header('TEXT', '=')
+// =============== TEXT ===============
+pub fn header(text, divider string) string {
+	if text.len == 0 {
+		return h_divider(divider)
+	}
+	cols,_ := get_terminal_size()
+	tlimit := if cols > text.len + 2 + 2 * divider.len { text.len } else { cols - 3 - 2 * divider.len }
+	tlimit_alligned := if (tlimit % 2) != (cols % 2) { tlimit + 1 } else { tlimit }
+	tstart := (cols - tlimit_alligned) / 2
+	ln := divider.repeat(1 + cols / divider.len)[0..cols]
+	return ln[0..tstart] + ' ' + text[0..tlimit] + ' ' + ln[tstart + tlimit + 2..cols]
 }
 
 fn supports_escape_sequences(fd int) bool {

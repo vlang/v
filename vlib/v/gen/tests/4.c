@@ -31,7 +31,12 @@ int main() {
     array_string g = new_array_from_c_array(2, 2, sizeof(array_string), {
         testb(1), tos3("hello"),
     });
-    return 0;
+	array_Foo arr_foo = new_array_from_c_array(1, 1, sizeof(array_Foo), {
+		a,
+	});
+	Foo af_idx_el = arr_foo[0];
+	string foo_a = af_idx_el.a;
+	return 0;
 }
 
 multi_return_int_string mr_test() {

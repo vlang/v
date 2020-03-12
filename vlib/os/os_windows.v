@@ -6,12 +6,16 @@ import strings
 #include <winsock2.h>
 
 pub const (
+	/**
+	 * This constant is deprecated. Use `filepath.separator` instead.
+	 * FIXME Remove this separator, as it a part of `filepath` module.
+	 */
 	path_separator = '\\'
 )
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
-type HANDLE voidptr
+pub type HANDLE voidptr
 
 // win: FILETIME
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
@@ -203,21 +207,23 @@ pub fn get_file_handle(path string) HANDLE {
 // get_module_filename retrieves the fully qualified path for the file that contains the specified module.
 // The module must have been loaded by the current process.
 pub fn get_module_filename(handle HANDLE) ?string {
-    mut sz := 4096 // Optimized length
-    mut buf := &u16(malloc(4096))
-    for {
-        status := int(C.GetModuleFileNameW(handle, voidptr(&buf), sz))
-        match status {
-            SUCCESS {
-                _filename := string_from_wide2(buf, sz)
-                return _filename
-            }
-            else {
-                // Must handled with GetLastError and converted by FormatMessage
-                return error('Cannot get file name from handle')
-            }
-        }
-    }
+	unsafe {
+		mut sz := 4096 // Optimized length
+		mut buf := &u16(malloc(4096))
+		for {
+			status := int(C.GetModuleFileNameW(handle, voidptr(&buf), sz))
+			match status {
+				SUCCESS {
+					_filename := string_from_wide2(buf, sz)
+					return _filename
+				}
+				else {
+					// Must handled with GetLastError and converted by FormatMessage
+					return error('Cannot get file name from handle')
+				}
+			}
+		}
+	}
     panic('this should be unreachable') // TODO remove unreachable after loop
 }
 

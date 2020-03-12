@@ -21,20 +21,14 @@
 + wrap up orm
 + bring back vweb
 + fix vorum, migrate to orm
-- wrap up memory management
-- remove all compiler memory leaks
 + fix child <T> function calls
 + enable vfmt
 + bring back vdoc and regenerate all module docs
 + optimize the parser
-- chat.vlang.io
-- doom.v
 + v ui
-- ui/orm demo: a simple gui client for postgres/mysql/sqlite
 + ui demo: calculator
-- declarative ui with hot reload (similar to swiftui)
++ declarative ui with hot reload (similar to swiftui)
 + "building a simple blog with vweb" tutorial +
-- youtube video
 + fix interfaces
 + fast.vlang.io
 + bare metal support
@@ -42,7 +36,10 @@
 + x64 machine code generation (ELF)
 + require explicit C.fn definitions, add all missing definitions
 + string.index() ?int
-- new AST based parser
++ new AST based parser
+- wrap up memory management
+- remove all compiler memory leaks
+- doom.v
 
 
 

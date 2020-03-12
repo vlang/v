@@ -131,7 +131,7 @@ fn rotate(m Mat4, angle f32, vec Vec3) Mat4 {
 */
 
 fn f32_calloc(n int) &f32 {
-	return *f32(calloc(n * sizeof(f32)))
+	return &f32(calloc(n * sizeof(f32)))
 }
 // fn translate(vec Vec3) *f32 {
 pub fn translate(m Mat4, v Vec3) Mat4 {
@@ -277,23 +277,24 @@ fn ortho_js(left, right, bottom, top f32) &f32 {
 	lr := 1.0 / (left - right)
 	bt := 1.0 / (bottom - top)
 	nf := 1.0 / 1.0// (mynear -myfar)
-	mut out := (*f32)( malloc (sizeof(f32) * 16))
-	 out[0] = -2.0 * lr
-	 out[1] = 0
-	 out[2] = 0
-	 out[3] = 0
-	 out[4] = 0
-	 out[5] = -2.0 * bt
-	 out[6] = 0
-	 out[7] = 0
-	 out[8] = 0
-	 out[9] = 0
-	 out[10] = 2.0 * nf
-	 out[11] = 0
-	 out[12] = (left + right) * lr
-	 out[13] = (top + bottom) * bt
-	 out[14] = 1.0 * nf//(far + near) * nf;
-	 out[15] = 1
+	mut out := &f32(0)
+	unsafe { out = &f32( malloc (sizeof(f32) * 16)) }
+	out[0] = -2.0 * lr
+	out[1] = 0
+	out[2] = 0
+	out[3] = 0
+	out[4] = 0
+	out[5] = -2.0 * bt
+	out[6] = 0
+	out[7] = 0
+	out[8] = 0
+	out[9] = 0
+	out[10] = 2.0 * nf
+	out[11] = 0
+	out[12] = (left + right) * lr
+	out[13] = (top + bottom) * bt
+	out[14] = 1.0 * nf//(far + near) * nf;
+	out[15] = 1
 	return out
 	//f := 0.0
 	//return &f

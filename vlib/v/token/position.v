@@ -6,14 +6,13 @@ module token
 pub struct Position {
 pub:
 	line_nr int // the line number in the source where the token occured
-	// pos      int // the position of the token in scanner text
+	pos     int // the position of the token in scanner text
 }
 
 [inline]
 pub fn (tok &Token) position() Position {
 	return Position{
 		line_nr: tok.line_nr - 1
-		// pos: tok.pos
-		
+		pos: tok.pos
 	}
 }
