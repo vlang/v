@@ -1308,6 +1308,8 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 				p.check(.comma)
 				p.fspace()
 				p.gen(',')
+			} else if p.tok != .comma {
+				p.gen(',')
 			}
 		}
 	}
@@ -1499,9 +1501,17 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string,[]string) {
 			p.error_with_token_index('variadic arg index out of range: $va.index/${values.len-1}, vargs are 0 indexed', va.tok_idx)
 		}
 	}
-	if !f.is_method && f.args.len > 1 {
+
+	if types.len == 0 {
+		return last_arg.typ,[]string
+	}
+
+	insert_comma_after_arg := if f.is_method { 2 } else { 1 }
+
+	if f.args.len > insert_comma_after_arg {
 		p.cgen.gen(',')
 	}
+
 	return types[0],values
 }
 
@@ -1509,7 +1519,12 @@ fn (p mut Parser) fn_gen_caller_vargs(f &Fn, varg_type string, values []string) 
 	is_varg := varg_type.starts_with('varg_')
 	if is_varg {
 		// forwarding varg
-		p.cgen.gen('${values[0]}')
+		if values.len == 0 {
+			vargs_struct := p.register_vargs_stuct(varg_type, 1)
+			p.cgen.gen('&($vargs_struct){.len=0}')
+		} else {
+			p.cgen.gen('${values[0]}')
+		}
 	}
 	else {
 		vargs_struct := p.register_vargs_stuct(varg_type, values.len)
