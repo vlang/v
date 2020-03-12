@@ -360,12 +360,21 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 			}
 			else {
+				mut is_fixed_array_init := false
+				match val {
+					ast.ArrayInit {
+						is_fixed_array_init = g.table.get_type_symbol(it.typ).kind == .array_fixed
+					}
+					else {}
+				}
 				if assign_stmt.op == .decl_assign {
 					g.write('$styp ')
 				}
 				g.expr(ident)
-				g.write(' = ')
-				g.expr(val)
+				if !is_fixed_array_init {
+					g.write(' = ')
+					g.expr(val)
+				}
 			}
 			g.writeln(';')
 		}
@@ -800,11 +809,14 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.StringLiteral {
 			// In C calls we have to generate C strings
 			// `C.printf("hi")` => `printf("hi");`
+			escaped_val := it.val.replace_each(['"', '\\"',
+			'\n', '\\n',
+			'\r\n', '\\n'])
 			if g.is_c_call {
-				g.write('"$it.val"')
+				g.write('"$escaped_val"')
 			}
 			else {
-				g.write('tos3("$it.val")')
+				g.write('tos3("$escaped_val")')
 			}
 		}
 		// `user := User{name: 'Bob'}`
@@ -852,13 +864,13 @@ fn (g mut Gen) expr(node ast.Expr) {
 	}
 }
 
-fn (g mut Gen) infix_expr(it ast.InfixExpr) {
+fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	// if it.left_type == table.string_type_idx {
-	// g.write('/*$it.left_type str*/')
+	// g.write('/*$node.left_type str*/')
 	// }
 	// string + string, string == string etc
-	if it.left_type == table.string_type_idx {
-		fn_name := match it.op {
+	if node.left_type == table.string_type_idx {
+		fn_name := match node.op {
 			.plus{
 				'string_add('
 			}
@@ -881,42 +893,42 @@ fn (g mut Gen) infix_expr(it ast.InfixExpr) {
 				'string_ge('
 			}
 			else {
-				'/*infix_expr error*/'}
+				'/*node error*/'}
 	}
 		g.write(fn_name)
-		g.expr(it.left)
+		g.expr(node.left)
 		g.write(', ')
-		g.expr(it.right)
+		g.expr(node.right)
 		g.write(')')
 	}
-	else if it.op == .key_in {
-		styp := g.typ(it.left_type)
+	else if node.op == .key_in {
+		styp := g.typ(node.left_type)
 		g.write('_IN($styp, ')
-		g.expr(it.left)
+		g.expr(node.left)
 		g.write(', ')
-		g.expr(it.right)
+		g.expr(node.right)
 		g.write(')')
 	}
 	// arr << val
-	else if it.op == .left_shift && g.table.get_type_symbol(it.left_type).kind == .array {
-		sym := g.table.get_type_symbol(it.left_type)
+	else if node.op == .left_shift && g.table.get_type_symbol(node.left_type).kind == .array {
+		sym := g.table.get_type_symbol(node.left_type)
 		info := sym.info as table.Array
 		elem_type_str := g.typ(info.elem_type)
 		// g.write('array_push(&')
 		tmp := g.new_tmp_var()
 		g.write('_PUSH(&')
-		g.expr(it.left)
+		g.expr(node.left)
 		g.write(', (')
-		g.expr(it.right)
+		g.expr(node.right)
 		g.write('), $tmp, $elem_type_str)')
 	}
 	else {
-		// if it.op == .dot {
+		// if node.op == .dot {
 		// println('!! dot')
 		// }
-		g.expr(it.left)
-		g.write(' $it.op.str() ')
-		g.expr(it.right)
+		g.expr(node.left)
+		g.write(' $node.op.str() ')
+		g.expr(node.right)
 	}
 }
 
