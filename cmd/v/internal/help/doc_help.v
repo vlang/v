@@ -12,7 +12,8 @@ Examples:
 
 The commands are:
    build             build V code in the provided path (default)
-   create            setup the file structure for a V project
+   create            create a new V module
+   init              create a new V module in an existing directory
    doc               generates the documentation for a V module (coming soon in 0.3)
    fmt               format the V code provided
    repl              run the REPL
@@ -120,7 +121,8 @@ Commands:
   fmt               Run vfmt to format the source code. [wip]
   doc               Run vdoc over the source code and produce documentation.
   translate         Translates C to V. [wip, will be available in V 0.3]
-  create            Create a new v project interactively. Answer the questions, and run it with `v run projectname`
+  create            Create a new V module interactively. Answer the questions, and run it with `v run module_name`
+  init              Create a new V module in an existing directory
   setup-freetype    Setup thirdparty freetype on Windows.
 
 V package management commands:
