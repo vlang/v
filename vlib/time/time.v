@@ -30,8 +30,6 @@ pub:
 	hour   int
 	minute int
 	second int
-	duration &Duration
-	loc &Location
 	unix int
 }
 
