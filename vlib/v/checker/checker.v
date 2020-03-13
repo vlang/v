@@ -878,6 +878,12 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 	match node.index {
 		ast.RangeExpr {
 			is_range = true
+			if it.has_low {
+				c.expr(it.low)
+			}
+			if it.has_high {
+				c.expr(it.high)
+			}
 		}
 		else {}
 	}
