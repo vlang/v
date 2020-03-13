@@ -5,6 +5,7 @@ import (
 	os
 	os.cmdline
 	json
+	vhelp
 )
 
 const (
@@ -82,7 +83,7 @@ fn main() {
 
 fn vpm_search(keywords []string) {
 	if settings.is_help {
-		show_help_topic('search')
+		vhelp.show_topic('search')
 		exit(0)
 	}
 	if keywords.len == 0 {
@@ -120,7 +121,7 @@ fn vpm_search(keywords []string) {
 
 fn vpm_install(module_names []string) {
 	if settings.is_help {
-		show_help_topic('install')
+		vhelp.show_topic('install')
 		exit(0)
 	}
 	if module_names.len == 0 {
@@ -202,7 +203,7 @@ fn vpm_install(module_names []string) {
 fn vpm_update(m []string) {
 	mut module_names := m
 	if settings.is_help {
-		show_help_topic('update')
+		vhelp.show_topic('update')
 		exit(0)
 	}
 	if module_names.len == 0 {
@@ -244,7 +245,7 @@ fn vpm_update(m []string) {
 
 fn vpm_remove(module_names []string) {
 	if settings.is_help {
-		show_help_topic('remove')
+		vhelp.show_topic('remove')
 		exit(0)
 	}
 	if module_names.len == 0 {
@@ -296,7 +297,7 @@ fn ensure_vmodules_dir_exist() {
 }
 
 fn vpm_help() {
-	show_help_topic('vpm')
+	vhelp.show_topic('vpm')
 }
 
 fn vcs_used_in_dir(dir string) ?[]string {
@@ -462,15 +463,4 @@ fn verbose_println(s string) {
 	if settings.is_verbose {
 		println(s)
 	}
-}
-
-fn show_help_topic(topic string) {
-	vexe := os.realpath(os.getenv('VEXE'))
-	vroot := os.dir(vexe)
-	target_topic := os.join_path(vroot,'cmd','v','internal','help','${topic}.txt')
-	content := os.read_file(target_topic) or {
-		eprintln('Unknown topic: $topic')
-		exit(1)
-	}
-	println(content)
 }
