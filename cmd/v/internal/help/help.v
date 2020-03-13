@@ -12,9 +12,8 @@ const (
 pub fn print_and_exit(topic string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
-
 	for b in topic {
-		if (b >= `a` && b <= `z`) || b == `-` {
+		if (b >= `a` && b <= `z`) || b == `-` || (b >= `0` && b <= `9`) {
 			continue
 		}
 		println(unknown_topic)
