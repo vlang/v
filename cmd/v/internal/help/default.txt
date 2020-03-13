@@ -1,0 +1,39 @@
+V is a tool for managing V source code.
+
+Usage:
+   v [options] [command] [arguments]
+
+Examples:
+   v hello.v         compile the file `hello.v` and output it as `hello` or `hello.exe`
+   v run hello.v     same as above but also run the produced executable immediately after compilation
+
+The commands are:
+   build             build V code in the provided path (default)
+   create            setup the file structure for a V project
+   doc               generates the documentation for a V module (coming soon in 0.3)
+   fmt               format the V code provided
+   repl              run the REPL
+   run               compile and run a V program
+   symlink           create a symbolic link for V
+   translate         translate C code to V (coming soon in 0.3)
+   up                run the V self-updater
+   self              run the V self-compiler
+   version           prints the version text and exits
+
+   install           installs a module from VPM
+   remove            removes a module that was installed from VPM
+   search            searches for a module from VPM
+   update            updates an installed module from VPM
+
+   bin2v             embed a binary file as a constant and output it in a V file
+   build-examples    test if all examples can be built
+   build-tools       test if all tools can be built
+   build-vbinaries   test if V can be built with different configuration
+   test              run all test files in the provided directory
+   test-fmt          test if all files in the current directory is formatted properly
+   test-compiler     run the V self-test suite to make sure V is working properly
+
+   setup-freetype    setup thirdparty freetype on Windows
+
+Use "v help <command>" for more information about a command.
+Note: Help required to write help topics. Only `build` and `run` are properly documented currently.
