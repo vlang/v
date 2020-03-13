@@ -1,3 +1,0 @@
-# TOML is case sensitive.
-abc = 123
-ABC = 456
