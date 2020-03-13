@@ -169,7 +169,7 @@ fn parse_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 		'translated' {
 			prefs.translated = f.bool()
 		}
-		'backend' {
+		'b', 'backend' {
 			// Just consume it. The option is handled outside of this function
 			f.string() or { return }
 		}
