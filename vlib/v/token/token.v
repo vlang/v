@@ -427,46 +427,6 @@ pub fn (tok Token) is_unary() bool {
 	.plus, .minus, .not, .bit_not, .mul, .amp]
 }
 
-/*
-// NOTE: do we need this for all tokens (is_left_assoc / is_right_assoc),
-// or only ones with the same precedence?
-// is_left_assoc returns true if the token is left associative
-pub fn (tok Token) is_left_assoc() bool {
-	return tok.kind in [
-	// `.`
-	.dot,
-	// `+` | `-`
-	.plus, .minus, // additive
-	// .number,
-	// `++` | `--`
-	.inc, .dec,
-	// `*` | `/` | `%`
-	.mul, .div, .mod,
-	// `^` | `||` | `&`
-	.xor, .logical_or, .and,
-	// `==` | `!=`
-	.eq, .ne,
-	// `<` | `<=` | `>` | `>=`
-	.lt, .le, .gt, .ge, .ne, .eq,
-	// `,`
-	.comma]
-}
-
-// is_right_assoc returns true if the token is right associative
-pub fn (tok Token) is_right_assoc() bool {
-	return tok.kind in [
-	// `+` | `-` | `!`
-	.plus, .minus, .not, // unary
-	// `=` | `+=` | `-=` | `*=` | `/=`
-	.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
-	// `%=` | `>>=` | `<<=`
-	.mod_assign, .right_shift_assign, .left_shift_assign,
-	// `&=` | `^=` | `|=`
-	.and_assign, .xor_assign, .or_assign]
-}
-*/
-
-
 pub fn (tok Kind) is_relational() bool {
 	return tok in [
 	// `<` | `<=` | `>` | `>=`

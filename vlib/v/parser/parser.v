@@ -1440,6 +1440,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		mut_pos: mut_pos
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
+		is_c: is_c
 	}
 }
 

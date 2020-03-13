@@ -49,6 +49,8 @@ fn compare_texts(a, b, path string) bool {
 			println('${path}: got\n$a')
 			println('${term_fail} ${i}')
 			println(term.red('i=$i "$line_a" expected="$line_b"'))
+			// println(lines_b[i + 1])
+			// println(lines_b[i + 2])
 			// exit(1)
 			return false
 		}

@@ -58,6 +58,13 @@ pub fn (g &Gen) typ(t table.Type) string {
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
+	if styp.starts_with('C__') {
+		styp = styp[3..]
+	}
+	if styp == 'stat' {
+		// TODO perf and other C structs
+		styp = 'struct stat'
+	}
 	return styp
 }
 
@@ -286,7 +293,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			// g.writeln('\t$field_type_sym.name $field.name;')
 			// }
 			// g.writeln('} $name;')
-			g.typedefs.writeln('typedef struct $name $name;')
+			if !it.is_c {
+				g.typedefs.writeln('typedef struct $name $name;')
+			}
 		}
 		ast.TypeDecl {
 			g.writeln('// type')
@@ -302,6 +311,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 
 fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// multi return
+	// g.write('/*assign*/')
 	if assign_stmt.left.len > assign_stmt.right.len {
 		mut return_type := table.void_type
 		match assign_stmt.right[0] {
@@ -398,6 +408,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		name = name.replace('.', '__')
 		if name.starts_with('_op_') {
 			name = op_to_fn_name(name)
+		}
+		if name == 'exit' {
+			name = 'v_exit'
 		}
 		// type_name := g.table.type_to_str(it.return_type)
 		type_name := g.typ(it.return_type)
@@ -503,16 +516,29 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.AssignExpr {
 			g.is_assign_expr = true
+			mut str_add := false
+			if it.left_type == table.string_type_idx && it.op == .plus_assign {
+				// str += str2 => `str = string_add(str, str2)`
+				g.expr(it.left)
+				g.write(' = string_add(')
+				str_add = true
+			}
 			g.expr(it.left)
 			// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
-			if !g.is_array_set {
+			if !g.is_array_set && !str_add {
 				g.write(' $it.op.str() ')
+			}
+			else if str_add {
+				g.write(', ')
 			}
 			g.is_assign_expr = false
 			g.expr(it.val)
 			if g.is_array_set {
 				g.write(' })')
 				g.is_array_set = false
+			}
+			else if str_add {
+				g.write(')')
 			}
 		}
 		ast.Assoc {
@@ -523,6 +549,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.CallExpr {
 			mut name := it.name.replace('.', '__')
+			if name == 'exit' {
+				name = 'v_exit'
+			}
 			if it.is_c {
 				// Skip "C__"
 				g.is_c_call = true
@@ -834,6 +863,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.expr(it.exprs[i])
 				g.writeln(', ')
 			}
+			if it.fields.len == 0 {
+				g.write('0')
+			}
 			g.write('}')
 			if g.is_amp {
 				g.write(', sizeof($styp))')
@@ -865,6 +897,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 }
 
 fn (g mut Gen) infix_expr(node ast.InfixExpr) {
+	// g.write('/*infix*/')
 	// if it.left_type == table.string_type_idx {
 	// g.write('/*$node.left_type str*/')
 	// }
@@ -1103,6 +1136,9 @@ fn (g mut Gen) write_sorted_types() {
 
 fn (g mut Gen) write_types(types []table.TypeSymbol) {
 	for typ in types {
+		if typ.name.starts_with('C.') {
+			continue
+		}
 		// sym := g.table.get_type_symbol(typ)
 		match typ.info {
 			table.Struct {

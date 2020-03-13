@@ -3,6 +3,10 @@
 // that can be found in the LICENSE file.
 module table
 
+import (
+	strings
+)
+
 pub struct Table {
 	// struct_fields map[string][]string
 pub mut:
@@ -56,7 +60,7 @@ pub fn (t mut Table) register_global(name string, typ Type) {
 		// mod: p.mod
 		// is_mut: true
 		// idx: -1
-		
+
 	}
 }
 

@@ -107,6 +107,7 @@ pub:
 	mut_pos     int // mut:
 	pub_pos     int // pub:
 	pub_mut_pos int // pub mut:
+	is_c        bool
 }
 
 pub struct StructInit {
@@ -488,12 +489,12 @@ pub:
 
 pub struct AssignExpr {
 pub:
-	op   token.Kind
-	pos  token.Position
-	left Expr
-	val  Expr
-	// mut:
-	// left_type table.Type
+	op        token.Kind
+	pos       token.Position
+	left      Expr
+	val       Expr
+mut:
+	left_type table.Type
 }
 
 pub struct GotoLabel {
