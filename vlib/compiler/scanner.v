@@ -968,7 +968,7 @@ fn (s Scanner) line(n int) string {
 }
 
 fn is_name_char(c byte) bool {
-	return c == `_` || c.is_letter()
+	return c.is_letter() || c == `_`
 }
 
 [inline]
@@ -998,4 +998,3 @@ fn good_type_name(s string) bool {
 	}
 	return true
 }
-
