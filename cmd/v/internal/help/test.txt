@@ -1,0 +1,10 @@
+Usage:
+
+   A)
+      v test folder/ : run all v tests in the given folder.
+      v -stats test folder/ : the same, but print more stats.
+   B)
+      v test file_test.v : run test functions in a given test file.
+      v -stats test file_test.v : as above, but with more stats.
+
+NB: you can also give many and mixed folder/ file_test.v arguments after test.
