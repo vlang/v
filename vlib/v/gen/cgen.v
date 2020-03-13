@@ -61,9 +61,9 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 	}
-	if styp == 'stat' {
+	if styp in ['stat', 'dirent*'] {
 		// TODO perf and other C structs
-		styp = 'struct stat'
+		styp = 'struct $styp'
 	}
 	if table.type_is_optional(t) {
 		styp = 'Option_' + styp
@@ -264,7 +264,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.HashStmt {
 			// #include etc
-			g.writeln('#$it.val')
+			g.definitions.writeln('#$it.val')
 		}
 		ast.Import {}
 		ast.Return {
@@ -954,6 +954,7 @@ fn (g mut Gen) ident(node ast.Ident) {
 		match node.info {
 			ast.IdentVar {
 				if it.is_optional {
+					g.write('/*opt*/')
 					styp := g.typ(it.typ)[7..] // Option_int => int TODO perf?
 					g.write('(*($styp*)${name}.data)')
 					return
@@ -1073,10 +1074,10 @@ fn (g mut Gen) return_statement(it ast.Return) {
 				else {}
 	}
 			if !is_none && !is_error {
-				g.write('opt_ok(')
-				g.expr(it.exprs[0])
 				styp := g.typ(g.fn_decl.return_type)[7..] // remove 'Option_'
-				g.writeln(', sizeof($styp));')
+				g.write('opt_ok(& ($styp []) { ')
+				g.expr(it.exprs[0])
+				g.writeln(' }, sizeof($styp));')
 				return
 			}
 			// g.write('/*OPTIONAL*/')

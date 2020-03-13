@@ -626,11 +626,11 @@ pub fn dir(path string) string {
 }
 
 pub fn base_dir(path string) string {
-	pos := path.last_index(path_separator) or {
+	posx := path.last_index(path_separator) or {
 		return path
 	}
 	// NB: *without* terminating /
-	return path[..pos]
+	return path[..posx]
 }
 
 pub fn filename(path string) string {
