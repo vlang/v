@@ -885,7 +885,8 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 		return exepath
 	}
 	mut res := ''
-	paths := os.getenv('PATH').split(':')
+	env_path_delimiter := if os.user_os() == 'windows' { ';' } else { ':' }
+	paths := os.getenv('PATH').split(env_path_delimiter)
 	for p in paths {
 		found_abs_path := os.join_path( p, exepath )
 		if os.exists( found_abs_path ) && os.is_executable( found_abs_path ) {
