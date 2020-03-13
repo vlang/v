@@ -6,6 +6,7 @@ Usage:
 Examples:
    v hello.v         compile the file `hello.v` and output it as `hello` or `hello.exe`
    v run hello.v     same as above but also run the produced executable immediately after compilation
+   v -o h.c hello.v  translate `hello.v` to `h.c` . Do not compile further.
 
 The commands are:
    build             build V code in the provided path (default)
@@ -15,6 +16,7 @@ The commands are:
    repl              run the REPL
    run               compile and run a V program
    symlink           create a symbolic link for V
+   test              run all test files in the provided directory
    translate         translate C code to V (coming soon in 0.3)
    up                run the V self-updater
    self              run the V self-compiler
@@ -25,16 +27,8 @@ The commands are:
    search            searches for a module from VPM
    update            updates an installed module from VPM
 
-   bin2v             embed a binary file as a constant and output it in a V file
-   build-examples    test if all examples can be built
-   build-tools       test if all tools can be built
-   build-vbinaries   test if V can be built with different configuration
-   test              run all test files in the provided directory
-   test-fmt          test if all files in the current directory is formatted properly
-   test-compiler     run the V self-test suite to make sure V is working properly
+Use "v help <command>" for more information about a command, example: `v help build`
+Use "v help other" to see less frequently used commands.
 
-   setup-freetype    setup thirdparty freetype on Windows
-
-Use "v help <command>" for more information about a command.
-Note: Help required to write more help topics. 
+Note: Help is required to write more help topics. 
 Only `build`, `run`, `search`, `install`, `remove`, `update` are properly documented currently.
