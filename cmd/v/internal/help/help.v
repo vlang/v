@@ -1,5 +1,7 @@
 module help
 
+//TODO: move this file outside internal, and merge it with cmd/tools/modules/vhelp/vhelp.v .
+
 import (
 	os
 	v.pref
