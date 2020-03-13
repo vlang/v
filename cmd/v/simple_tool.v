@@ -9,12 +9,16 @@ import (
 	v.pref
 )
 
-fn launch_tool(verbosity pref.VerboseLevel, tool_name string) {
+fn launch_tool(verbosity pref.VerboseLevel, tool_name string, args ...string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	compiler.set_vroot_folder(vroot)
 
-	tool_args := os.args[1..].join(' ')
+	// This may not be the best way to do this...
+	mut tool_args := os.args[1..].join(' ')
+	for a in args {
+		tool_args = tool_args + ' ' + a
+	}
 	tool_exe := path_of_executable(os.realpath('$vroot/cmd/tools/$tool_name'))
 	tool_source := os.realpath('$vroot/cmd/tools/${tool_name}.v')
 	tool_command := '"$tool_exe" $tool_args'
