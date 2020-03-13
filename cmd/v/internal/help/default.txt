@@ -36,4 +36,5 @@ The commands are:
    setup-freetype    setup thirdparty freetype on Windows
 
 Use "v help <command>" for more information about a command.
-Note: Help required to write help topics. Only `build` and `run` are properly documented currently.
+Note: Help required to write more help topics. 
+Only `build`, `run`, `search`, `install`, `remove`, `update` are properly documented currently.
