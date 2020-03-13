@@ -27,7 +27,7 @@ const (
 fn main() {
 	prefs := flag.MainCmdPreferences{}
 	values := flag.parse_main_cmd(os.args, parse_flags, &prefs) or {
-		println('V Error: An error has occured while parsing flags: ')
+		println('V Error: An error has occurred while parsing flags: ')
 		println(err)
 		exit(1)
 	}
