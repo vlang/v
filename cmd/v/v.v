@@ -52,8 +52,7 @@ fn main() {
 		print_version_and_exit()
 	}
 	if values.len == 0 && prefs.action == .help {
-		println('Use `v help` for usage information.')
-		exit(1)
+		invoke_help_and_exit(values)
 	}
 	if values.len == 0 || values[0] == '-' || values[0] == 'repl' {
 		// Check for REPL.
@@ -98,18 +97,8 @@ fn main() {
 			return
 		}
 		'help' {
-			// We check if the arguments are empty as we don't want to steal it from tools
-			// TODO Call actual help tool
 			disallow_unknown_flags(prefs)
-			if prefs.verbosity.is_higher_or_equal(.level_one) {
-				println(help.verbose_help_text)
-			}
-			else {
-				println(help.help_text)
-			}
-			if values.len > 1 {
-				println('Note: Actual help module is coming soon. Feel free to ask on the official channels for clarification.')
-			}
+			invoke_help_and_exit(values)
 			return
 		}
 		'version' {
@@ -132,6 +121,21 @@ fn print_version_and_exit() {
 	version_hash := compiler.vhash()
 	println('V $compiler.Version $version_hash')
 	exit(0)
+}
+
+fn invoke_help_and_exit(remaining []string) {
+	match remaining.len {
+		0, 1 {
+			help.print_and_exit('default')
+		}
+		2 {
+			help.print_and_exit(remaining[1])
+		}
+		else {}
+	}
+	println('V Error: Expected only one help topic to be provided.')
+	println('For usage information, use `v help`.')
+	exit(1)
 }
 
 [inline]
