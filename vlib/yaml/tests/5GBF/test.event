@@ -1,0 +1,10 @@
++STR
++DOC
++MAP
+=VAL :Folding
+=VAL "Empty line\nas a line feed
+=VAL :Chomping
+=VAL |Clipped empty lines\n
+-MAP
+-DOC
+-STR

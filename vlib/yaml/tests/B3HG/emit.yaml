@@ -1,0 +1,2 @@
+--- >
+  folded text

@@ -1,0 +1,11 @@
++STR
++DOC ---
++MAP
+=VAL :seq
++SEQ &anchor
+=VAL :a
+=VAL :b
+-SEQ
+-MAP
+-DOC
+-STR

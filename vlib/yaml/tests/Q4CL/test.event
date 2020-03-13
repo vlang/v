@@ -1,0 +1,7 @@
++STR
++DOC
++MAP
+=VAL :key1
+=VAL "quoted1
+=VAL :key2
+=VAL "quoted2

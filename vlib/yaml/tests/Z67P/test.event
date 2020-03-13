@@ -1,0 +1,10 @@
++STR
++DOC
++MAP
+=VAL :literal
+=VAL |value\n
+=VAL :folded
+=VAL <!foo> >value\n
+-MAP
+-DOC
+-STR

@@ -1,0 +1,8 @@
++STR
++DOC
++MAP
+=VAL :escaped slash
+=VAL "a/b
+-MAP
+-DOC
+-STR

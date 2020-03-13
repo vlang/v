@@ -1,0 +1,7 @@
+>
+  Sammy Sosa completed another fine season with great stats.
+
+    63 Home Runs
+    0.288 Batting Average
+
+  What a year!

@@ -1,0 +1,12 @@
++STR
++DOC ---
++MAP
+=VAL :a
+=VAL :1
+=VAL :b
+=VAL :
+=VAL &anchor :c
+=VAL :3
+-MAP
+-DOC
+-STR

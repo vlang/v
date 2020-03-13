@@ -1,0 +1,7 @@
++STR
++DOC ---
++SEQ
+=VAL <tag:example.com,2000:app/foo> "bar
+-SEQ
+-DOC
+-STR

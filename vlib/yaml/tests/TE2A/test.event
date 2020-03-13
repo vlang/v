@@ -1,0 +1,11 @@
++STR
++DOC
++MAP
+=VAL :block mapping
++MAP
+=VAL :key
+=VAL :value
+-MAP
+-MAP
+-DOC
+-STR

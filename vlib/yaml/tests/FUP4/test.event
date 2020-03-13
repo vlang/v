@@ -1,0 +1,11 @@
++STR
++DOC
++SEQ
+=VAL :a
++SEQ
+=VAL :b
+=VAL :c
+-SEQ
+-SEQ
+-DOC
+-STR

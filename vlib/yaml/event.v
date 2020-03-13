@@ -1,5 +1,16 @@
 module yaml
 
+
+struct VersionDriective{
+	major i8
+	minor i8
+}
+
+struct TagDirective{
+	handle []byte
+	prefix []byte
+}
+
 enum EventKind{
 	no_event
 	stream_start
@@ -35,8 +46,20 @@ enum MappingStyle{
 	flow
 }
 
+struct YamlPointer{
+	index int
+	line int
+	column int
+}
+
 struct Event{
-	
+	typ EventKind
+	start, end YamlPointer
+	version 
+	tag []byte
+	anchor []byte
+	implicit bool
+	quoted_implicit bool
 }
 
 fn (e &Event) parser_state_machine{

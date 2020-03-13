@@ -1,0 +1,2 @@
+---
+tab: "\tstring"

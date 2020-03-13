@@ -1,0 +1,13 @@
++STR
++DOC
++MAP
+=VAL :explicit key
+=VAL :
+=VAL |block key\n
++SEQ
+=VAL :one
+=VAL :two
+-SEQ
+-MAP
+-DOC
+-STR

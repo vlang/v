@@ -1,0 +1,10 @@
++STR
++DOC ---
++MAP
+=VAL :a
+=VAL > more indented\nregular\n
+=VAL :b
+=VAL >\n\n more indented\nregular\n
+-MAP
+-DOC
+-STR

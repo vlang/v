@@ -1,0 +1,10 @@
++STR
++DOC
++MAP
+=VAL :plain
+=VAL :This unquoted scalar spans many lines.
+=VAL :quoted
+=VAL "So does this quoted scalar.\n
+-MAP
+-DOC
+-STR

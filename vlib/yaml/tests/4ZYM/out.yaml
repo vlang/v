@@ -1,0 +1,3 @@
+plain: text lines
+quoted: "text lines"
+block: "text\n \tlines\n"

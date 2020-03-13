@@ -1,0 +1,14 @@
++STR
++DOC
++MAP
+=VAL :unquoted
+=VAL "separate
+=VAL :http://foo.com
+=VAL :
+=VAL :omitted value
+=VAL :
+=VAL :
+=VAL :omitted key
+-MAP
+-DOC
+-STR

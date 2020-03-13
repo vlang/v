@@ -1,0 +1,12 @@
++STR
++DOC
++MAP
+=VAL :strip
+=VAL |# text
+=VAL :clip
+=VAL |# text\n
+=VAL :keep
+=VAL |# text\n\n
+-MAP
+-DOC
+-STR

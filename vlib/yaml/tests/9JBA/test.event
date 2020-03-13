@@ -1,0 +1,7 @@
++STR
++DOC ---
++SEQ
+=VAL :a
+=VAL :b
+=VAL :c
+-SEQ

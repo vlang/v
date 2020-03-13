@@ -1,0 +1,6 @@
++STR
++DOC
++MAP
+=VAL :key1
+=VAL &a :value
+=VAL :key2

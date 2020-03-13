@@ -1,0 +1,18 @@
++STR
++DOC
++MAP
++MAP
+=VAL :first
+=VAL :Sammy
+=VAL :last
+=VAL :Sosa
+-MAP
++MAP
+=VAL :hr
+=VAL :65
+=VAL :avg
+=VAL :0.278
+-MAP
+-MAP
+-DOC
+-STR

@@ -1,0 +1,36 @@
++STR
++DOC ---
++SEQ <tag:clarkevans.com,2002:shape>
++MAP <tag:clarkevans.com,2002:circle>
+=VAL :center
++MAP &ORIGIN
+=VAL :x
+=VAL :73
+=VAL :y
+=VAL :129
+-MAP
+=VAL :radius
+=VAL :7
+-MAP
++MAP <tag:clarkevans.com,2002:line>
+=VAL :start
+=ALI *ORIGIN
+=VAL :finish
++MAP
+=VAL :x
+=VAL :89
+=VAL :y
+=VAL :102
+-MAP
+-MAP
++MAP <tag:clarkevans.com,2002:label>
+=VAL :start
+=ALI *ORIGIN
+=VAL :color
+=VAL :0xFFEEBB
+=VAL :text
+=VAL :Pretty vector drawing.
+-MAP
+-SEQ
+-DOC
+-STR

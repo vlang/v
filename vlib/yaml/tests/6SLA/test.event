@@ -1,0 +1,10 @@
++STR
++DOC
++MAP
+=VAL "foo\nbar:baz\tx \\$%^&*()x
+=VAL :23
+=VAL 'x\\ny:z\\tx $%^&*()x
+=VAL :24
+-MAP
+-DOC
+-STR

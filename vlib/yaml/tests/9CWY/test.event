@@ -1,0 +1,8 @@
++STR
++DOC
++MAP
+=VAL :key
++SEQ
+=VAL :item1
+=VAL :item2
+-SEQ

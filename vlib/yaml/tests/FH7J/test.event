@@ -1,0 +1,17 @@
++STR
++DOC
++SEQ
+=VAL <tag:yaml.org,2002:str> :
++MAP
+=VAL <tag:yaml.org,2002:null> :
+=VAL :a
+=VAL :b
+=VAL <tag:yaml.org,2002:str> :
+-MAP
++MAP
+=VAL <tag:yaml.org,2002:str> :
+=VAL <tag:yaml.org,2002:null> :
+-MAP
+-SEQ
+-DOC
+-STR

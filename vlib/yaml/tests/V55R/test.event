@@ -1,0 +1,10 @@
++STR
++DOC
++SEQ
+=VAL &a :a
+=VAL &b :b
+=ALI *a
+=ALI *b
+-SEQ
+-DOC
+-STR

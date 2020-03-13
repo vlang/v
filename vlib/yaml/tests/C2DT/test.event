@@ -1,0 +1,12 @@
++STR
++DOC
++MAP
+=VAL "adjacent
+=VAL :value
+=VAL "readable
+=VAL :value
+=VAL "empty
+=VAL :
+-MAP
+-DOC
+-STR

@@ -1,0 +1,17 @@
++STR
++DOC
++MAP
+=VAL :Not indented
++MAP
+=VAL :By one space
+=VAL |By four\n  spaces\n
+=VAL :Flow style
++SEQ
+=VAL :By two
+=VAL :Also by two
+=VAL :Still by two
+-SEQ
+-MAP
+-MAP
+-DOC
+-STR

@@ -1,0 +1,11 @@
++STR
++DOC ---
++MAP
+=VAL :matches %
+=VAL :20
+-MAP
+-DOC ...
++DOC ---
+=VAL :
+-DOC ...
+-STR

@@ -14,33 +14,33 @@ const (
 type Duration i64
 
 pub fn (d Duration) nanoseconds() i64 { 
-	return d.nsec as i64
+	return d.nsec
 }
 
 pub fn (d Duration) microseconds() i64 { 
-	return (d.nsec / 1e+3) as i64
+	return (d.nsec / 0.001) as i64
 }
 
 pub fn (d Duration) milliseconds() i64 { 
-	return (d.nsec / 1e+6) as i64
+	return (d.nsec / 0.000001) as i64
 }
 
 pub fn (d Duration) seconds() f64 {
 	sec := d.nsec / second
 	nsec := d.nsec % second
-	return sec as f64 + nsec as f64 / 1e+9
+	return sec as f64 + nsec as f64 / 0.000000001
 }
 
 pub fn (d Duration) minutes() f64 {
 	min := d.nsec / minute
 	nsec := d.nsec % minute 
-	return min as f64 + nsec as f64 / 60*60*1e+9
+	return min as f64 + nsec as f64 / 60*60*0.000000001
 }
 
 pub fn (d Duration) hours() f64 {
 	hour := d.nsec / hour
 	nsec := d.nsec % hour
-	return hour as f64 + nsec as f64 / 60*60*60*1e+9
+	return hour as f64 + nsec as f64 / 60*60*60*0.000000001
 }
 
 // transpile UNIX Time.
@@ -53,5 +53,9 @@ fn (d Duration) time(t time) Time{
 }
 
 fn (d Duration) round(m Duration) Duration{
+
+}
+
+fn (d Duration) abs(m Duration) Duration{
 
 }

@@ -1,0 +1,2 @@
+!!str a: !!int 47
+c: !!str d

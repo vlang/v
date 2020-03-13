@@ -1,0 +1,10 @@
++STR
++DOC
++MAP
+=VAL :a true
+=VAL :null d
+=VAL :e 42
+=VAL :
+-MAP
+-DOC
+-STR

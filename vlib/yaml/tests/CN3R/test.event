@@ -1,0 +1,22 @@
++STR
++DOC
++SEQ &flowseq
++MAP
+=VAL :a
+=VAL :b
+-MAP
++MAP
+=VAL &c :c
+=VAL :d
+-MAP
++MAP
+=VAL &e :e
+=VAL :f
+-MAP
++MAP &g
+=VAL :g
+=VAL :h
+-MAP
+-SEQ
+-DOC
+-STR

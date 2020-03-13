@@ -1,0 +1,11 @@
++STR
++DOC ---
+=VAL :scalar1
+-DOC ...
++DOC
++MAP
+=VAL :key
+=VAL :value
+-MAP
+-DOC
+-STR

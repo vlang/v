@@ -1,0 +1,5 @@
+--- !!map
+a: b
+--- !!seq
+- !!str c
+--- !!str d e

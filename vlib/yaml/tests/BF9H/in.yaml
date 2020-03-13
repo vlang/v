@@ -1,0 +1,4 @@
+---
+plain: a
+       b # end of scalar
+       c

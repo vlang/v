@@ -1,0 +1,10 @@
++STR
++DOC
++SEQ
++MAP
+=VAL :url
+=VAL :http://example.org
+-MAP
+-SEQ
+-DOC
+-STR

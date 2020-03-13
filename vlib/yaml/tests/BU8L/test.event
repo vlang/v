@@ -1,0 +1,11 @@
++STR
++DOC
++MAP
+=VAL :key
++MAP &anchor <tag:yaml.org,2002:map>
+=VAL :a
+=VAL :b
+-MAP
+-MAP
+-DOC
+-STR

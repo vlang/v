@@ -1,0 +1,5 @@
+literal: |
+  some
+  text
+folded: >
+  some text

@@ -1,0 +1,8 @@
++STR
++DOC ---
+=VAL "quoted string
+-DOC
++DOC ---
+=VAL &node :foo
+-DOC
+-STR

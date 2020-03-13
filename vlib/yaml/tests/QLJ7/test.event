@@ -1,0 +1,8 @@
++STR
++DOC ---
++MAP <tag:example.com,2011:A>
+=VAL :a
+=VAL :b
+-MAP
+-DOC
++DOC ---

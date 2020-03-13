@@ -1,0 +1,20 @@
++STR
++DOC
++MAP
+=VAL :Mark McGwire
++MAP
+=VAL :hr
+=VAL :65
+=VAL :avg
+=VAL :0.278
+-MAP
+=VAL :Sammy Sosa
++MAP
+=VAL :hr
+=VAL :63
+=VAL :avg
+=VAL :0.288
+-MAP
+-MAP
+-DOC
+-STR

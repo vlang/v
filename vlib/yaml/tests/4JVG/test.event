@@ -1,0 +1,9 @@
++STR
++DOC
++MAP
+=VAL :top1
++MAP &node1
+=VAL &k1 :key1
+=VAL :val1
+-MAP
+=VAL :top2

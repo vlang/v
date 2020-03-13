@@ -1,0 +1,12 @@
++STR
++DOC ---
++MAP <tag:yaml.org,2002:set>
+=VAL :Mark McGwire
+=VAL :
+=VAL :Sammy Sosa
+=VAL :
+=VAL :Ken Griff
+=VAL :
+-MAP
+-DOC
+-STR

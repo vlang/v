@@ -1,0 +1,8 @@
++STR
++DOC
++MAP
+=VAL :key
+=VAL :value with\ntabs
+-MAP
+-DOC
+-STR

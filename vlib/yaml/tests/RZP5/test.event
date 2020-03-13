@@ -1,0 +1,27 @@
++STR
++DOC
++MAP
+=VAL :a
+=VAL "double quotes
+=VAL :b
+=VAL :plain value
+=VAL :c
+=VAL :d
++SEQ
+=VAL :seq1
+-SEQ
++SEQ
+=VAL :seq2
+-SEQ
+=VAL :e
++SEQ &node
++MAP
+=VAL :x
+=VAL :y
+-MAP
+-SEQ
+=VAL :block
+=VAL >abcde\n
+-MAP
+-DOC
+-STR

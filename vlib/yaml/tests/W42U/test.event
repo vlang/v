@@ -1,0 +1,16 @@
++STR
++DOC
++SEQ
+=VAL :
+=VAL |block node\n
++SEQ
+=VAL :one
+=VAL :two
+-SEQ
++MAP
+=VAL :one
+=VAL :two
+-MAP
+-SEQ
+-DOC
+-STR

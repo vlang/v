@@ -1,0 +1,4 @@
+top1: &node1
+  &k1 key1: val1
+top2: &node2
+  &v2 val2

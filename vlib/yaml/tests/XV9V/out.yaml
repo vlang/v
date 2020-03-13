@@ -1,0 +1,3 @@
+Folding: "Empty line\nas a line feed"
+Chomping: |
+  Clipped empty lines

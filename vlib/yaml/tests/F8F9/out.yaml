@@ -1,0 +1,8 @@
+strip: |-
+  # text
+clip: |
+  # text
+keep: |+
+  # text
+
+...

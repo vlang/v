@@ -1,0 +1,15 @@
+--- !<tag:clarkevans.com,2002:shape>
+- !<tag:clarkevans.com,2002:circle>
+  center: &ORIGIN
+    x: 73
+    y: 129
+  radius: 7
+- !<tag:clarkevans.com,2002:line>
+  start: *ORIGIN
+  finish:
+    x: 89
+    y: 102
+- !<tag:clarkevans.com,2002:label>
+  start: *ORIGIN
+  color: 0xFFEEBB
+  text: Pretty vector drawing.

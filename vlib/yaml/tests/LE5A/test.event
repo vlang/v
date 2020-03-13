@@ -1,0 +1,11 @@
++STR
++DOC
++SEQ
+=VAL <tag:yaml.org,2002:str> "a
+=VAL 'b
+=VAL &anchor "c
+=ALI *anchor
+=VAL <tag:yaml.org,2002:str> :
+-SEQ
+-DOC
+-STR

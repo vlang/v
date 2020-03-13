@@ -1,0 +1,8 @@
++STR
++DOC
++MAP
+=VAL :key
++MAP
+=VAL :ok
+=VAL :1
+-MAP

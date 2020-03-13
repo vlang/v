@@ -1,0 +1,35 @@
++STR
++DOC ---
++MAP
+=VAL :top1
++MAP &node1
+=VAL &k1 :key1
+=VAL :one
+-MAP
+=VAL :top2
++MAP &node2
+=VAL :key2
+=VAL :two
+-MAP
+=VAL :top3
++MAP
+=VAL &k3 :key3
+=VAL :three
+-MAP
+=VAL :top4
++MAP &node4
+=VAL &k4 :key4
+=VAL :four
+-MAP
+=VAL :top5
++MAP &node5
+=VAL :key5
+=VAL :five
+-MAP
+=VAL :top6
+=VAL &val6 :six
+=VAL :top7
+=VAL &val7 :seven
+-MAP
+-DOC
+-STR

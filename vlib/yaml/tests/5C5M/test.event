@@ -1,0 +1,18 @@
++STR
++DOC
++SEQ
++MAP
+=VAL :one
+=VAL :two
+=VAL :three
+=VAL :four
+-MAP
++MAP
+=VAL :five
+=VAL :six
+=VAL :seven
+=VAL :eight
+-MAP
+-SEQ
+-DOC
+-STR

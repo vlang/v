@@ -1,0 +1,2 @@
+--- "quoted string"
+--- &node foo

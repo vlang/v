@@ -1,0 +1,11 @@
++STR
++DOC
++SEQ
++SEQ
+=VAL :s1_i1
+=VAL :s1_i2
+-SEQ
+=VAL :s2
+-SEQ
+-DOC
+-STR

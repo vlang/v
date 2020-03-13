@@ -1,0 +1,7 @@
+%TAG !prefix! tag:example.com,2011:
+--- !prefix!A
+a: b
+--- !prefix!B
+c: d
+--- !prefix!C
+e: f

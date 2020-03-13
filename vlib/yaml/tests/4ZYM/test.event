@@ -1,0 +1,12 @@
++STR
++DOC
++MAP
+=VAL :plain
+=VAL :text lines
+=VAL :quoted
+=VAL "text lines
+=VAL :block
+=VAL |text\n \tlines\n
+-MAP
+-DOC
+-STR

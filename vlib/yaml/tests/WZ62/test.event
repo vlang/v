@@ -1,0 +1,10 @@
++STR
++DOC
++MAP
+=VAL :foo
+=VAL <tag:yaml.org,2002:str> :
+=VAL <tag:yaml.org,2002:str> :
+=VAL :bar
+-MAP
+-DOC
+-STR

@@ -1,0 +1,14 @@
++STR
++DOC
++MAP
+=VAL :plain key
+=VAL :in-line value
+=VAL :
+=VAL :
+=VAL "quoted key
++SEQ
+=VAL :entry
+-SEQ
+-MAP
+-DOC
+-STR

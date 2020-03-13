@@ -1,0 +1,18 @@
++STR
++DOC ---
++MAP
+=VAL :a
++SEQ
+=VAL :b
+=VAL :c
++MAP
+=VAL :d
++SEQ
+=VAL :e
+=VAL :f
+-SEQ
+-MAP
+-SEQ
+-MAP
+-DOC
+-STR

@@ -1,0 +1,4 @@
+--- !!omap
+- Mark McGwire: 65
+- Sammy Sosa: 63
+- Ken Griffy: 58

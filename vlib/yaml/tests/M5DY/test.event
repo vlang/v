@@ -1,0 +1,22 @@
++STR
++DOC
++MAP
++SEQ
+=VAL :Detroit Tigers
+=VAL :Chicago cubs
+-SEQ
++SEQ
+=VAL :2001-07-23
+-SEQ
++SEQ
+=VAL :New York Yankees
+=VAL :Atlanta Braves
+-SEQ
++SEQ
+=VAL :2001-07-02
+=VAL :2001-08-12
+=VAL :2001-08-14
+-SEQ
+-MAP
+-DOC
+-STR

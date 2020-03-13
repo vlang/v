@@ -1,0 +1,14 @@
++STR
++DOC
++MAP
+=VAL :block sequence
++SEQ
+=VAL :one
++MAP
+=VAL :two
+=VAL :three
+-MAP
+-SEQ
+-MAP
+-DOC
+-STR

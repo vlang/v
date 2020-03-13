@@ -1,0 +1,8 @@
++STR
++DOC ---
++MAP
+=VAL :key ends with two colons::
+=VAL :value
+-MAP
+-DOC
+-STR

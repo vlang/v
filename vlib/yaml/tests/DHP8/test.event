@@ -1,0 +1,9 @@
++STR
++DOC
++SEQ
+=VAL :foo
+=VAL :bar
+=VAL :42
+-SEQ
+-DOC
+-STR

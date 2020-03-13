@@ -1,0 +1,16 @@
++STR
++DOC
++SEQ
+=VAL "double quoted
+=VAL 'single quoted
+=VAL :plain text
++SEQ
+=VAL :nested
+-SEQ
++MAP
+=VAL :single
+=VAL :pair
+-MAP
+-SEQ
+-DOC
+-STR

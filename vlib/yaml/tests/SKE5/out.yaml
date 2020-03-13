@@ -1,0 +1,4 @@
+---
+seq: &anchor
+- a
+- b

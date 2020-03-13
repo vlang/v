@@ -1,0 +1,13 @@
++STR
++DOC
++MAP
+=VAL :1
++SEQ
+=VAL :2
+=VAL :3
+-SEQ
+=VAL :4
+=VAL :5
+-MAP
+-DOC
+-STR

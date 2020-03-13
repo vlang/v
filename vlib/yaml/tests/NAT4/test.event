@@ -1,0 +1,22 @@
++STR
++DOC ---
++MAP
+=VAL :a
+=VAL ' 
+=VAL :b
+=VAL ' 
+=VAL :c
+=VAL " 
+=VAL :d
+=VAL " 
+=VAL :e
+=VAL '\n
+=VAL :f
+=VAL "\n
+=VAL :g
+=VAL '\n\n
+=VAL :h
+=VAL "\n\n
+-MAP
+-DOC
+-STR

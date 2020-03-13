@@ -1,0 +1,22 @@
++STR
++DOC ---
++MAP
+=VAL :time
+=VAL :20:03:20
+=VAL :player
+=VAL :Sammy Sosa
+=VAL :action
+=VAL :strike (miss)
+-MAP
+-DOC ...
++DOC ---
++MAP
+=VAL :time
+=VAL :20:03:47
+=VAL :player
+=VAL :Sammy Sosa
+=VAL :action
+=VAL :grand slam
+-MAP
+-DOC ...
+-STR

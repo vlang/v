@@ -1,0 +1,41 @@
++STR
++DOC
++MAP
+=VAL :complex1
++MAP
++SEQ
+=VAL :a
+-SEQ
+=VAL :
+-MAP
+=VAL :complex2
++MAP
++SEQ
+=VAL :a
+-SEQ
+=VAL :b
+-MAP
+=VAL :complex3
++MAP
++SEQ
+=VAL :a
+-SEQ
+=VAL >b\n
+-MAP
+=VAL :complex4
++MAP
+=VAL >a\n
+=VAL :
+-MAP
+=VAL :complex5
++MAP
++SEQ
+=VAL :a
+-SEQ
++SEQ
+=VAL :b
+-SEQ
+-MAP
+-MAP
+-DOC
+-STR

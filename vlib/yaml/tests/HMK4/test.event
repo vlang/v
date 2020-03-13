@@ -1,0 +1,12 @@
++STR
++DOC
++MAP
+=VAL :name
+=VAL :Mark McGwire
+=VAL :accomplishment
+=VAL >Mark set a major league home run record in 1998.\n
+=VAL :stats
+=VAL |65 Home Runs\n0.278 Batting Average\n
+-MAP
+-DOC
+-STR

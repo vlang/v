@@ -1,0 +1,5 @@
++STR
++DOC
++MAP
+=VAL :key1
+=VAL &alias :value1

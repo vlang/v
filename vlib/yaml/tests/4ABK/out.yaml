@@ -1,0 +1,4 @@
+unquoted: "separate"
+http://foo.com: null
+omitted value: null
+null: omitted key

@@ -1,0 +1,24 @@
++STR
++DOC ---
++SEQ
++MAP
+=VAL :item
+=VAL :Super Hoop
+=VAL :quantity
+=VAL :1
+-MAP
++MAP
+=VAL :item
+=VAL :Basketball
+=VAL :quantity
+=VAL :4
+-MAP
++MAP
+=VAL :item
+=VAL :Big Shoes
+=VAL :quantity
+=VAL :1
+-MAP
+-SEQ
+-DOC
+-STR

@@ -1,0 +1,12 @@
++STR
++DOC
++SEQ
+=VAL "flow in block
+=VAL >Block scalar\n
++MAP <tag:yaml.org,2002:map>
+=VAL :foo
+=VAL :bar
+-MAP
+-SEQ
+-DOC
+-STR

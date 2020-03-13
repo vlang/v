@@ -1,0 +1,24 @@
++STR
++DOC
++SEQ
++SEQ
++MAP
+=VAL :YAML
+=VAL :separate
+-MAP
+-SEQ
++SEQ
++MAP
+=VAL :
+=VAL :empty key entry
+-MAP
+-SEQ
++SEQ
++MAP
+=VAL "JSON like
+=VAL :adjacent
+-MAP
+-SEQ
+-SEQ
+-DOC
+-STR

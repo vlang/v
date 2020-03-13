@@ -1,0 +1,4 @@
+safe: a!"#$%&'()*+,-./09:;<=>?@AZ[\]^_`az{|}~ !"#$%&'()*+,-./09:;<=>?@AZ[\]^_`az{|}~
+safe question mark: ?foo
+safe colon: :foo
+safe dash: -foo

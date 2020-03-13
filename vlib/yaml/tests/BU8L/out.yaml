@@ -1,0 +1,2 @@
+key: &anchor !!map
+  a: b

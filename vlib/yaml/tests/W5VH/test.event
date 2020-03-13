@@ -1,0 +1,10 @@
++STR
++DOC
++MAP
+=VAL :a
+=VAL &:@*!$"<foo>: :scalar a
+=VAL :b
+=ALI *:@*!$"<foo>:
+-MAP
+-DOC
+-STR

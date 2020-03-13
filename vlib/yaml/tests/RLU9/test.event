@@ -1,0 +1,14 @@
++STR
++DOC
++MAP
+=VAL :foo
++SEQ
+=VAL :42
+-SEQ
+=VAL :bar
++SEQ
+=VAL :44
+-SEQ
+-MAP
+-DOC
+-STR

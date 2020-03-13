@@ -1,0 +1,6 @@
+---
+nested sequences:
+- - - []
+- - - {}
+key1: []
+key2: {}

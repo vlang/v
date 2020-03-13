@@ -1,0 +1,7 @@
++STR
++DOC
++MAP
+=VAL :key
++SEQ
+=VAL :bar
+=VAL :baz
