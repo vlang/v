@@ -3,10 +3,7 @@
 // that can be found in the LICENSE file.
 module table
 
-import (
-	strings
-	os
-)
+import os
 
 pub struct Table {
 	// struct_fields map[string][]string
