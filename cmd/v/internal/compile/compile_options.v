@@ -41,7 +41,7 @@ fn parse_arguments(args []string) (pref.Preferences, []string) {
 		}
 		'build' {
 			remaining = remaining[1..]
-			if remaining[0] == 'module' {
+			if remaining.len > 0 && remaining[0] == 'module' {
 				remaining = remaining[1..]
 				//TODO Figure out module
 				println('V error: Module compilation is not ready yet.')
