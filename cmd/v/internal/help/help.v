@@ -13,8 +13,7 @@ pub fn print_and_exit(topic string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 
-	bytes := []byte(topic)
-	for b in bytes {
+	for b in topic {
 		if (b >= `a` && b <= `z`) || b == `-` {
 			continue
 		}

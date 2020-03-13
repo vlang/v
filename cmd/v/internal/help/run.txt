@@ -1,9 +1,7 @@
 Usage: v [build flags] run <file.v|directory> [arguments...]
 
-Run compiles and runs the named target.
-
 This command is equivalent to running `v build` and running the compiled executable.
-The executable is executed with the command: `a.out arguments...`.
+The executable is passed the arguments as provided in [arguments...].
 
 The exit status of Run will be:
 * `1` if the compilation failed.

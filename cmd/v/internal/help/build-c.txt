@@ -59,10 +59,3 @@ These build flags are enabled on `build` and `run` as long as the backend is set
    -shared
       Tells V to compile a shared object instead of an executable.
       The resulting file extension will be `.dll` on Windows and `.so` on Unix systems
-
-Notable internal flags (should not be used as it is subject to change):
-   -repl
-      Builds the provided code in REPL mode.
-
-   -solive
-      Injects some code `-live` depends on currently.

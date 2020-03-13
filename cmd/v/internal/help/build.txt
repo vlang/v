@@ -15,7 +15,7 @@ instead of the default behavior described in the last two paragraphs.
 You can put common options inside an environment variable named VFLAGS, so that
 you don't have to repeat them.
 
-You can set it like this: `export VFLAGS=\"-cc clang -debug\"` on *nix,
+You can set it like this: `export VFLAGS="-cc clang -debug"` on *nix,
 `set VFLAGS=-cc msvc` on Windows.
 
 V respects the TMPDIR environment variable, and will put .tmp.c files in TMPDIR/v/ .
