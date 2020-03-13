@@ -733,6 +733,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 			ident.kind = .variable
 			ident.info = ast.IdentVar{
 				typ: typ
+				is_optional: table.type_is_optional(typ)
 			}
 			return typ
 		}

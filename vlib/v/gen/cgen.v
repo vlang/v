@@ -51,7 +51,7 @@ pub fn (g mut Gen) init() {
 }
 
 // V type to C type
-pub fn (g &Gen) typ(t table.Type) string {
+pub fn (g mut Gen) typ(t table.Type) string {
 	nr_muls := table.type_nr_muls(t)
 	sym := g.table.get_type_symbol(t)
 	mut styp := sym.name.replace_each(['.', '__'])
@@ -64,6 +64,10 @@ pub fn (g &Gen) typ(t table.Type) string {
 	if styp == 'stat' {
 		// TODO perf and other C structs
 		styp = 'struct stat'
+	}
+	if table.type_is_optional(t) {
+		styp = 'Option_' + styp
+		g.definitions.writeln('typedef Option $styp;')
 	}
 	return styp
 }
@@ -264,26 +268,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.Import {}
 		ast.Return {
-			g.write('return')
-			// multiple returns
-			if it.exprs.len > 1 {
-				styp := g.typ(g.fn_decl.return_type)
-				g.write(' ($styp){')
-				for i, expr in it.exprs {
-					g.write('.arg$i=')
-					g.expr(expr)
-					if i < it.exprs.len - 1 {
-						g.write(',')
-					}
-				}
-				g.write('}')
-			}
-			// normal return
-			else if it.exprs.len == 1 {
-				g.write(' ')
-				g.expr(it.exprs[0])
-			}
-			g.writeln(';')
+			g.return_statement(it)
 		}
 		ast.StructDecl {
 			name := it.name.replace('.', '__')
@@ -621,13 +606,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(it.val)
 		}
 		ast.Ident {
-			name := it.name.replace('.', '__')
-			if name.starts_with('C__') {
-				g.write(name[3..])
-			}
-			else {
-				g.write(name)
-			}
+			g.ident(it)
 		}
 		ast.IfExpr {
 			// If expression? Assign the value to a temp var.
@@ -798,7 +777,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(')')
 		}
 		ast.None {
-			g.write('0')
+			g.write('opt_none()')
 		}
 		ast.ParExpr {
 			g.write('(')
@@ -965,6 +944,27 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	}
 }
 
+fn (g mut Gen) ident(node ast.Ident) {
+	name := node.name.replace('.', '__')
+	if name.starts_with('C__') {
+		g.write(name[3..])
+	}
+	else {
+		// TODO `is`
+		match node.info {
+			ast.IdentVar {
+				if it.is_optional {
+					styp := g.typ(it.typ)[7..] // Option_int => int TODO perf?
+					g.write('(*($styp*)${name}.data)')
+					return
+				}
+			}
+			else {}
+	}
+		g.write(name)
+	}
+}
+
 fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	// TODO else doesn't work with sum types
 	mut is_range := false
@@ -1039,6 +1039,51 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			g.write(']')
 		}
 	}
+}
+
+fn (g mut Gen) return_statement(it ast.Return) {
+	g.write('return')
+	// multiple returns
+	if it.exprs.len > 1 {
+		styp := g.typ(g.fn_decl.return_type)
+		g.write(' ($styp){')
+		for i, expr in it.exprs {
+			g.write('.arg$i=')
+			g.expr(expr)
+			if i < it.exprs.len - 1 {
+				g.write(',')
+			}
+		}
+		g.write('}')
+	}
+	// normal return
+	else if it.exprs.len == 1 {
+		g.write(' ')
+		// `return opt_ok(expr)` for functions that expect an optional
+		if table.type_is_optional(g.fn_decl.return_type) {
+			mut is_none := false
+			mut is_error := false
+			match it.exprs[0] {
+				ast.None {
+					is_none = true
+				}
+				ast.CallExpr {
+					is_error = true // TODO check name 'error'
+				}
+				else {}
+	}
+			if !is_none && !is_error {
+				g.write('opt_ok(')
+				g.expr(it.exprs[0])
+				styp := g.typ(g.fn_decl.return_type)[7..] // remove 'Option_'
+				g.writeln(', sizeof($styp));')
+				return
+			}
+			// g.write('/*OPTIONAL*/')
+		}
+		g.expr(it.exprs[0])
+	}
+	g.writeln(';')
 }
 
 fn (g mut Gen) const_decl(node ast.ConstDecl) {

@@ -5,6 +5,7 @@ module table
 
 import (
 	strings
+	os
 )
 
 pub struct Table {
@@ -60,7 +61,7 @@ pub fn (t mut Table) register_global(name string, typ Type) {
 		// mod: p.mod
 		// is_mut: true
 		// idx: -1
-
+		
 	}
 }
 
@@ -493,4 +494,19 @@ pub fn (t &Table) check(got, expected Type) bool {
 		return false
 	}
 	return true
+}
+
+// Once we have a module format we can read from module file instead
+// this is not optimal
+pub fn (table &Table) qualify_module(mod string, file_path string) string {
+	for m in table.imports {
+		if m.contains('.') && m.contains(mod) {
+			m_parts := m.split('.')
+			m_path := m_parts.join(os.path_separator)
+			if mod == m_parts[m_parts.len - 1] && file_path.contains(m_path) {
+				return m
+			}
+		}
+	}
+	return mod
 }
