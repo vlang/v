@@ -31,4 +31,4 @@ Use "v help <command>" for more information about a command, example: `v help bu
 Use "v help other" to see less frequently used commands.
 
 Note: Help is required to write more help topics. 
-Only build, run, search, install, remove, update, bin2v, test, are properly documented currently.
+Only build, fmt, run, test, search, install, remove, update, bin2v are properly documented currently.
