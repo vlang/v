@@ -57,7 +57,14 @@ The build flags are shared by the build and run commands:
 
    -path
       Specifies the order of path V looks up in while searching for imported dependencies,
-      separated by pipes (`|`).
+      separated by pipes (`|`). In addition to absolute paths, you can
+      also use these special strings too:
+           @vmodules - replaced with the location of the global ~/.vmodules/ folder 
+           (modules installed with `v install` are there).
+           @vlib - replaced with the location of the v's vlib folder.
+      Using these, you can arrange for very flexible search orders for you project, for example:
+           -path "/v/my_project_private_modules|@vlib|@vmodules"
+      By default, -path is just "@vlib|@vmodules" .
 
    -prod
       Compiles the executable in production mode where most optimizations are enabled.
@@ -66,7 +73,12 @@ The build flags are shared by the build and run commands:
       Compiles the executable with all functions profiled.
 
    -stats
-      Enable statistics while compiling.
+      Enable more detailed statistics reporting, while compiling test files.
+      You can use that with `v test` too, for example:
+        v -stats test vlib/
+      ... will run test_ functions inside all _test.v files inside vlib/ ,
+      and will report detailed statistics about how much time each test_ function took, how many 
+      assertions were made, how many tests passed/failed and so on.
 
    -translated
       Enables features that are discouraged in regular V code but required for translated V code.
