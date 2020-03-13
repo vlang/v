@@ -24,7 +24,7 @@ const (
               ## ... or do:
           git bisect bad
               ## Now you just repeat the above steps, each time running oldv with the same command, then mark the result as good or bad,
-              ## until you find the commit, where the problem first occured.
+              ## until you find the commit, where the problem first occurred.
               ## When you finish, do not forget to do:
           git bisect reset'
 )

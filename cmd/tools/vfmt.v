@@ -196,7 +196,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		compiler_params.lookup_path = [mod_folder_parent, '@vlib', '@vmodule']
 	}
 	if !is_test_file && mod_name == 'main' {
-		// NB: here, file is guaranted to be a main. We do not know however
+		// NB: here, file is guaranteed to be a main. We do not know however
 		// whether it is a standalone v program, or is it a part of a bigger
 		// project, like vorum or vid.
 		cfile = get_compile_name_of_potential_v_project(cfile)
@@ -307,7 +307,7 @@ Options:
   -2    Use the new V parser/vfmt. NB: this is EXPERIMENTAL for now.
           The new vfmt is much faster and more forgiving.
           It also may EAT some of your code for now.
-          Please be carefull, and make frequent BACKUPS, when running with -vfmt2 .
+          Please be careful, and make frequent BACKUPS, when running with -vfmt2 .
 ')
 }
 
