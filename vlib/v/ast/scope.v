@@ -10,7 +10,7 @@ mut:
 	start_pos int
 	end_pos   int
 	// vars      map[string]table.Var
-	vars      map[string]VarDecl
+	vars      map[string]Var
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
@@ -20,7 +20,7 @@ pub fn new_scope(parent &Scope, start_pos int) &Scope {
 	}
 }
 
-pub fn (s &Scope) find_scope_and_var(name string) ?(&Scope,VarDecl) {
+pub fn (s &Scope) find_scope_and_var(name string) ?(&Scope,Var) {
 	if name in s.vars {
 		return s,s.vars[name]
 	}
@@ -32,7 +32,7 @@ pub fn (s &Scope) find_scope_and_var(name string) ?(&Scope,VarDecl) {
 	return none
 }
 
-pub fn (s &Scope) find_var(name string) ?VarDecl {
+pub fn (s &Scope) find_var(name string) ?Var {
 	if name in s.vars {
 		return s.vars[name]
 	}
@@ -44,7 +44,14 @@ pub fn (s &Scope) find_var(name string) ?VarDecl {
 	return none
 }
 
-pub fn (s mut Scope) register_var(var VarDecl) {
+pub fn (s &Scope) known_var(name string) bool {
+	if _ := s.find_var(name) {
+		return true
+	}
+	return false
+}
+
+pub fn (s mut Scope) register_var(var Var) {
 	if x := s.find_var(var.name) {
 		// println('existing var: $var.name')
 		return
@@ -52,12 +59,21 @@ pub fn (s mut Scope) register_var(var VarDecl) {
 	s.vars[var.name] = var
 }
 
-pub fn (s mut Scope) override_var(var VarDecl) {
+pub fn (s mut Scope) override_var(var Var) {
 	s.vars[var.name] = var
 }
 
+pub fn (s &Scope) outermost() &Scope {
+	mut sc := s
+	for !isnil(sc.parent) {
+		sc = sc.parent
+	}
+	return sc
+}
+
 // returns the innermost scope containing pos
-pub fn (s &Scope) innermost(pos int) ?&Scope {
+// pub fn (s &Scope) innermost(pos int) ?&Scope {
+pub fn (s &Scope) innermost(pos int) &Scope {
 	if s.contains(pos) {
 		// binary search
 		mut first := 0
@@ -82,7 +98,8 @@ pub fn (s &Scope) innermost(pos int) ?&Scope {
 		}
 		return s
 	}
-	return none
+	// return none
+	return s
 }
 
 /*
@@ -102,7 +119,7 @@ pub fn (s &Scope) innermost(pos int) ?&Scope {
 
 [inline]
 fn (s &Scope) contains(pos int) bool {
-	return pos > s.start_pos && pos < s.end_pos
+	return pos >= s.start_pos && pos <= s.end_pos
 }
 
 pub fn (sc &Scope) show(level int) string {

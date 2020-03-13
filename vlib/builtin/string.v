@@ -109,10 +109,10 @@ pub fn (a string) clone() string {
 		len: a.len
 		str: malloc(a.len + 1)
 	}
-	for i := 0; i < a.len; i++ {
-		b[i] = a[i]
+	for i in 0..a.len {
+		b.str[i] = a.str[i]
 	}
-	b[a.len] = `\0`
+	b.str[a.len] = `\0`
 	return b
 }
 
@@ -168,7 +168,7 @@ pub fn (s string) replace(rep, with string) string {
 	for i := 0; i < s.len; i++ {
 		// Reached the location of rep, replace it with "with"
 		if i == cur_idx {
-			for j := 0; j < with.len; j++ {
+			for j in 0..with.len {
 				b[b_i] = with[j]
 				b_i++
 			}
@@ -266,7 +266,7 @@ val_idx:rep_i}
 		if i == cur_idx.idx {
 			rep := vals[cur_idx.val_idx]
 			with := vals[cur_idx.val_idx + 1]
-			for j := 0; j < with.len; j++ {
+			for j in 0..with.len {
 				b[b_i] = with[j]
 				b_i++
 			}
@@ -280,7 +280,7 @@ val_idx:rep_i}
 		}
 		// Rep doesnt start here, just copy
 		else {
-			b[b_i] = s[i]
+			b[b_i] = s.str[i]
 			b_i++
 		}
 	}
@@ -339,7 +339,7 @@ fn (s string) eq(a string) bool {
 	if s.len != a.len {
 		return false
 	}
-	for i := 0; i < s.len; i++ {
+	for i in 0..s.len {
 		if s[i] != a[i] {
 			return false
 		}
@@ -354,7 +354,7 @@ fn (s string) ne(a string) bool {
 
 // s < a
 fn (s string) lt(a string) bool {
-	for i := 0; i < s.len; i++ {
+	for i in 0..s.len {
 		if i >= a.len || s[i] > a[i] {
 			return false
 		}
@@ -390,13 +390,13 @@ fn (s string) add(a string) string {
 		len: new_len
 		str: malloc(new_len + 1)
 	}
-	for j := 0; j < s.len; j++ {
+	for j in 0..s.len {
 		res[j] = s[j]
 	}
-	for j := 0; j < a.len; j++ {
+	for j in 0..a.len {
 		res[s.len + j] = a[j]
 	}
-	res[new_len] = `\0` // V strings are not null terminated, but just in case
+	res.str[new_len] = `\0` // V strings are not null terminated, but just in case
 	return res
 }
 
@@ -528,7 +528,7 @@ pub fn (s string) substr(start, end int) string {
 		len: len
 		str: malloc(len + 1)
 	}
-	for i := 0; i < len; i++ {
+	for i in 0..len {
 		res.str[i] = s.str[start + i]
 	}
 	res.str[len] = `\0`
@@ -595,7 +595,7 @@ fn (s string) index_kmp(p string) int {
 		prefix[i] = j
 	}
 	j = 0
-	for i := 0; i < s.len; i++ {
+	for i in 0..s.len {
 		for p[j] != s[i] && j > 0 {
 			j = prefix[j - 1]
 		}
@@ -665,7 +665,7 @@ pub fn (s string) index_after(p string, start int) int {
 }
 
 pub fn (s string) index_byte(c byte) int {
-	for i := 0; i < s.len; i++ {
+	for i in 0..s.len {
 		if s[i] == c {
 			return i
 		}
@@ -714,7 +714,7 @@ pub fn (s string) starts_with(p string) bool {
 	if p.len > s.len {
 		return false
 	}
-	for i := 0; i < p.len; i++ {
+	for i in 0..p.len {
 		if s[i] != p[i] {
 			return false
 		}
@@ -726,7 +726,7 @@ pub fn (s string) ends_with(p string) bool {
 	if p.len > s.len {
 		return false
 	}
-	for i := 0; i < p.len; i++ {
+	for i in 0..p.len {
 		if p[i] != s[s.len - p.len + i] {
 			return false
 		}
@@ -737,7 +737,7 @@ pub fn (s string) ends_with(p string) bool {
 // TODO only works with ASCII
 pub fn (s string) to_lower() string {
 	mut b := malloc(s.len + 1)
-	for i := 0; i < s.len; i++ {
+	for i in 0..s.len {
 		b[i] = C.tolower(s.str[i])
 	}
 	return tos(b, s.len)
@@ -745,7 +745,7 @@ pub fn (s string) to_lower() string {
 
 pub fn (s string) to_upper() string {
 	mut b := malloc(s.len + 1)
-	for i := 0; i < s.len; i++ {
+	for i in 0..s.len {
 		b[i] = C.toupper(s.str[i])
 	}
 	return tos(b, s.len)
@@ -807,7 +807,7 @@ fn (ar []int) contains(val int) bool {
 /*
 pub fn (a []string) to_c() voidptr {
 	mut res := malloc(sizeof(byteptr) * a.len)
-	for i := 0; i < a.len; i++ {
+	for i in 0..a.len {
 		val := a[i]
 		res[i] = val.str
 	}
@@ -1177,14 +1177,14 @@ pub fn (a []string) join(del string) string {
 	mut idx := 0
 	// Go thru every string and copy its every char one by one
 	for i, val in a {
-		for j := 0; j < val.len; j++ {
+		for j in 0..val.len {
 			c := val[j]
 			res.str[idx] = val.str[j]
 			idx++
 		}
 		// Add del if it's not last
 		if i != a.len - 1 {
-			for k := 0; k < del.len; k++ {
+			for k in 0..del.len {
 				res.str[idx] = del.str[k]
 				idx++
 			}
@@ -1208,7 +1208,7 @@ pub fn (s string) reverse() string {
 		str: malloc(s.len)
 	}
 	for i := s.len - 1; i >= 0; i-- {
-		res[s.len - i - 1] = s[i]
+		res.str[s.len - i - 1] = s[i]
 	}
 	return res
 }
@@ -1251,7 +1251,11 @@ pub fn (s string) bytes() []byte {
 
 // repeat returns a new string with a specified number of copies of the string it was called on.
 pub fn (s string) repeat(count int) string {
-	if count <= 1 {
+	if count < 0 {
+		panic('string.repeat: count is negative: $count')
+	} else if count == 0 {
+		return ''
+	} else if count == 1 {
 		return s
 	}
 	mut ret := malloc(s.len * count + 1)

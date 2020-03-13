@@ -431,7 +431,7 @@ fn (p mut Parser) fn_decl() {
 	str_args := f.str_args(p.table)
 	// Special case for main() args
 	if f.name == 'main__main' && !has_receiver {
-		if p.pref.x64 && !p.first_pass() {
+		if p.pref.backend == .x64 && !p.first_pass() {
 			//p.x64.save_main_fn_addr()
 		}
 		if str_args != '' || typ != 'void' {
@@ -581,7 +581,7 @@ fn (p mut Parser) fn_decl() {
 			f.defer_text[f.scope_level] = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
 		}
 	}
-	if p.pref.x64 {
+	if p.pref.backend == .x64 {
 		//p.x64.register_function_address(f.name)
 	}
 	p.statements_no_rcbr()
@@ -597,10 +597,10 @@ fn (p mut Parser) fn_decl() {
 	if typ != 'void' && !p.returns {
 		p.error_with_token_index('$f.name must return "$typ"', f.fn_name_token_idx)
 	}
-	if p.pref.x64 && f.name == 'main__main' && !p.first_pass() {
+	if p.pref.backend == .x64 && f.name == 'main__main' && !p.first_pass() {
 		//p.x64.gen_exit()
 	}
-	if p.pref.x64 && !p.first_pass() {
+	if p.pref.backend == .x64 && !p.first_pass() {
 		//p.x64.ret()
 	}
 	// {} closed correctly? scope_level should be 0
@@ -778,7 +778,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	if is_comptime_define {
 		p.cgen.nogen = true
 	}
-	if p.pref.x64 && !p.first_pass() {
+	if p.pref.backend == .x64 && !p.first_pass() {
 		//p.x64.call_fn(f.name)
 	}
 	p.calling_c = f.is_c
@@ -907,6 +907,11 @@ fn (p mut Parser) fn_args(f mut Fn) {
 p.table.known_type(p.lit)) || p.peek() == .rpar // (int, string)
 	if types_only {
 		for p.tok != .rpar {
+			is_mut := p.tok == .key_mut
+			if is_mut {
+				p.check(.key_mut)
+				p.fspace()
+			}
 			typ := p.get_type()
 			if typ == '' {
 				// && !f.is_c {
@@ -918,7 +923,7 @@ p.table.known_type(p.lit)) || p.peek() == .rpar // (int, string)
 			v := Var{
 				typ: typ
 				is_arg: true
-				// is_mut: is_mut
+				is_mut: is_mut
 
 				line_nr: p.scanner.line_nr
 				token_idx: p.cur_tok_index()
@@ -1104,7 +1109,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
 		}
 		// x64 println gen
-		if p.pref.x64 && i == 0 && f.name == 'println' && p.tok == .str && p.peek() == .rpar {
+		if p.pref.backend == .x64 && i == 0 && f.name == 'println' && p.tok == .str && p.peek() == .rpar {
 			//p.x64.gen_print(p.lit)
 		}
 		mut typ := p.bool_expression()
@@ -1115,11 +1120,19 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 		if arg.typ.ends_with('er') || arg.typ[0] == `I` {
 			t := p.table.find_type(arg.typ)
 			if t.cat == .interface_ {
-				// perform((Speaker) { ._object = &dog,
-				// _interface_idx = _Speaker_Dog_index })
+				// NB: here concrete_type_name can be 'Dog' OR 'Dog_ptr'
+				// cgen should have generated a _I_Dog_to_Speaker conversion function
+				// C: perform( _I_Dog_to_Speaker((Dog){...}) )
+				// In case of _ptr, there is no need for conversion, so the generated
+				// code will be just:
+				// C: perform( dog_ptr )
 				concrete_type_name := typ.replace('*', '_ptr')
-				p.cgen.set_placeholder(ph, '($arg.typ) { ._object = &')
-				p.gen(', /*OLD*/ ._interface_idx = _${arg.typ}_${concrete_type_name}_index} /* i. arg*/')
+				// concrete_type_name here can be say Dog, or ui__Group_ptr (in vui)
+				//eprintln('arg.typ: $arg.typ | concrete_type_name: $concrete_type_name ')
+				if !concrete_type_name.ends_with('_ptr')  {
+					p.cgen.set_placeholder(ph, 'I_${concrete_type_name}_to_${arg.typ}(')
+					p.gen(')')
+				}
 				p.table.add_gen_type(arg.typ, typ)
 			}
 		}
@@ -1138,7 +1151,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 		}
 		if i == 0 && (f.name == 'println' || f.name == 'print') && !(typ in ['string', 'ustring', 'void']) {
 			//
-			T := p.table.find_type(typ)
+			tt := p.table.find_type(typ)
 			$if !windows {
 				$if !js {
 					fmt := p.typ_to_fmt(typ, 0)
@@ -1156,31 +1169,31 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 			}
 			// Make sure this type has a `str()` method
 			$if !js {
-				if !T.has_method('str') {
+				if !tt.has_method('str') {
 					// varg
-					if T.name.starts_with('varg_') {
-						p.gen_varg_str(T)
+					if tt.name.starts_with('varg_') {
+						p.gen_varg_str(tt)
 						p.cgen.set_placeholder(ph, '${typ}_str(')
 						p.gen(')')
 						continue
 					}
 					// Arrays have automatic `str()` methods
-					else if T.name.starts_with('array_') {
-						p.gen_array_str(T)
+					else if tt.name.starts_with('array_') {
+						p.gen_array_str(tt)
 						p.cgen.set_placeholder(ph, '${typ}_str(')
 						p.gen(')')
 						continue
 					}
 					// struct
-					else if T.cat == .struct_ {
-						p.gen_struct_str(T)
+					else if tt.cat == .struct_ {
+						p.gen_struct_str(tt)
 						p.cgen.set_placeholder(ph, '${typ}_str(')
 						p.gen(')')
 						continue
 					}
 					else {
-						base := p.base_type(T.name)
-						if base != T.name {
+						base := p.base_type(tt.name)
+						if base != tt.name {
 							base_type := p.find_type(base)
 							if base_type.has_method('str') {
 								p.cgen.set_placeholder(ph, '${base_type.name}_str(')
@@ -1294,6 +1307,8 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 			if p.tok == .comma && (!f.is_variadic || (f.is_variadic && i < f.args.len - 2)) {
 				p.check(.comma)
 				p.fspace()
+				p.gen(',')
+			} else if p.tok != .comma {
 				p.gen(',')
 			}
 		}
@@ -1486,9 +1501,17 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string,[]string) {
 			p.error_with_token_index('variadic arg index out of range: $va.index/${values.len-1}, vargs are 0 indexed', va.tok_idx)
 		}
 	}
-	if !f.is_method && f.args.len > 1 {
+
+	if types.len == 0 {
+		return last_arg.typ,[]string
+	}
+
+	insert_comma_after_arg := if f.is_method { 2 } else { 1 }
+
+	if f.args.len > insert_comma_after_arg {
 		p.cgen.gen(',')
 	}
+
 	return types[0],values
 }
 
@@ -1496,7 +1519,12 @@ fn (p mut Parser) fn_gen_caller_vargs(f &Fn, varg_type string, values []string) 
 	is_varg := varg_type.starts_with('varg_')
 	if is_varg {
 		// forwarding varg
-		p.cgen.gen('${values[0]}')
+		if values.len == 0 {
+			vargs_struct := p.register_vargs_stuct(varg_type, 1)
+			p.cgen.gen('&($vargs_struct){.len=0}')
+		} else {
+			p.cgen.gen('${values[0]}')
+		}
 	}
 	else {
 		vargs_struct := p.register_vargs_stuct(varg_type, values.len)
@@ -1706,4 +1734,3 @@ pub fn (f &Fn) str_for_error() string {
 	}
 	return s + ')'
 }
-

@@ -23,12 +23,32 @@ for {
 bmark.stop() // call when you want to finalize the benchmark
 println( bmark.total_message('remarks about the benchmark') )
 ```
+
+benchmark.start() and b.measure() are convenience methods,
+intended to be used in combination. Their goal is to make
+benchmarking of small snippets of code as *short*, easy to
+write, and then to read and analyze the results, as possible.
+Example:
+```v
+import benchmark
+b := benchmark.start()
+
+// your code 1 ...
+b.measure('code_1')
+
+// your code 2 ...
+b.measure('code_2')
+```
+... which will produce on stdout something like this:
+SPENT    17 ms in code_1
+SPENT   462 ms in code_2
 */
 
 
 const (
 	BOK = term.ok_message('OK')
 	BFAIL = term.fail_message('FAIL')
+	BSPENT = term.ok_message('SPENT')
 )
 
 pub struct Benchmark {
@@ -49,6 +69,13 @@ pub mut:
 
 pub fn new_benchmark() Benchmark {
 	return Benchmark{
+		bench_start_time: benchmark.now()
+		verbose: true
+	}
+}
+
+pub fn new_benchmark_pointer() &Benchmark {
+	return &Benchmark{
 		bench_start_time: benchmark.now()
 		verbose: true
 	}
@@ -93,6 +120,20 @@ pub fn (b mut Benchmark) ok_many(n int) {
 
 pub fn (b mut Benchmark) neither_fail_nor_ok() {
 	b.step_end_time = benchmark.now()
+}
+
+pub fn start() Benchmark {
+	mut b := new_benchmark()
+	b.step()
+	return b
+}
+
+pub fn (b mut Benchmark) measure(label string) i64 {
+	b.ok()
+	res := b.step_end_time - b.step_start_time
+	println(b.step_message_with_label(BSPENT, 'in $label'))
+	b.step()
+	return res
 }
 
 pub fn (b &Benchmark) step_message_with_label(label string, msg string) string {

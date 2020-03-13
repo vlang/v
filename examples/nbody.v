@@ -33,7 +33,7 @@ pub mut:
 }
 
 fn advance(sys mut System, dt f64) {
-    for i := 0; i < N - 1; i++ {
+    for i in 0..N - 1 {
         mut _vx := sys.v[i].x
         mut _vy := sys.v[i].y
         mut _vz := sys.v[i].z
@@ -61,7 +61,7 @@ fn advance(sys mut System, dt f64) {
         sys.v[i].z = _vz
     }
 
-    for i := 0; i < N; i++ {
+    for i in 0..N {
         sys.s[i].x += dt * sys.v[i].x
         sys.s[i].y += dt * sys.v[i].y
         sys.s[i].z += dt * sys.v[i].z
@@ -73,7 +73,7 @@ fn offsetmomentum(sys mut System) {
     mut py := f64(0)
     mut pz := f64(0)
 
-    for i := 0; i < N; i++ {
+    for i in 0..N {
         px += sys.v[i].x * sys.v[i].m
         py += sys.v[i].y * sys.v[i].m
         pz += sys.v[i].z * sys.v[i].m
@@ -85,7 +85,7 @@ fn offsetmomentum(sys mut System) {
 
 fn energy(sys System) f64 {
     mut e := f64(0)
-    for i := 0; i < N; i++ {
+    for i in 0..N {
         e += 0.5 * sys.v[i].m * (sys.v[i].x * sys.v[i].x + sys.v[i].y * sys.v[i].y + sys.v[i].z * sys.v[i].z)
         for j := i + 1; j < N; j++ {
             dx := sys.s[i].x - sys.s[j].x
@@ -124,7 +124,7 @@ sys := &System {arr_momentum(), arr_position()}
 offsetmomentum(mut sys)
 
 println('${energy(sys):.9f}')  //-0.169075164
-for i := 0; i < 50000000; i++ {
+for i in 0..50000000 {
     advance(mut sys, 0.01)
 }
 println('${energy(sys):.9f}') //-0.169059907

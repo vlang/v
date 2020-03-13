@@ -67,3 +67,5 @@ fn C.sapp_d3d11_get_render_target_view() voidptr
 fn C.sapp_d3d11_get_depth_stencil_view() voidptr
 /* Win32: get the HWND window handle */
 fn C.sapp_win32_get_hwnd() voidptr
+/* Android: get native activity handle */
+fn C.sapp_android_get_native_activity() voidptr

@@ -45,7 +45,7 @@ const(
 	// name
 	app_name = 'gen_vc'
 	// version
-	app_version = '0.1.1'
+	app_version = '0.1.2'
 	// description
 	app_description = 'This tool regenerates V\'s bootstrap .c files every time the V master branch is updated.'
 	// assume something went wrong if file size less than this
@@ -288,7 +288,7 @@ fn (gen_vc mut GenVC) generate() {
 	// build v.c for each os
 	for os_name in vc_build_oses {
 		vc_suffix := if os_name == 'nix' { '' } else { '_${os_name[..3]}' }
-		v_flags := if os_name == 'nix' { '-output-cross-platform-c' } else { '-os $os_name' }
+		v_flags := if os_name == 'nix' { '-os cross' } else { '-os $os_name' }
 		c_file := 'v${vc_suffix}.c'
 		// try generate .c file
 		gen_vc.cmd_exec('$v_exec $v_flags -o $c_file $git_repo_dir_v/cmd/v')

@@ -54,7 +54,7 @@ pub enum Kind {
 	mod_assign
 	or_assign
 	and_assign
-	righ_shift_assign
+	right_shift_assign
 	left_shift_assign
 	// {}  () []
 	lcbr
@@ -126,7 +126,7 @@ pub enum Kind {
 const (
 	assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign,
 	.div_assign, .xor_assign, .mod_assign, .or_assign, .and_assign,
-	.righ_shift_assign, .left_shift_assign]
+	.right_shift_assign, .left_shift_assign]
 	nr_tokens = 141
 )
 // build_keys genereates a map with keywords' string values:
@@ -183,7 +183,7 @@ fn build_token_str() []string {
 	s[Kind.mod_assign] = '%='
 	s[Kind.or_assign] = '|='
 	s[Kind.and_assign] = '&='
-	s[Kind.righ_shift_assign] = '>>='
+	s[Kind.right_shift_assign] = '>>='
 	s[Kind.left_shift_assign] = '<<='
 	s[Kind.lcbr] = '{'
 	s[Kind.rcbr] = '}'
@@ -395,9 +395,9 @@ pub fn (tok Token) precedence() int {
 		// }
 		// `||`
 		// .logical_or,
-		.assign, .plus_assign, .minus_assign, .div_assign, .mod_assign, .or_assign,
+		.assign, .plus_assign, .minus_assign, .div_assign, .mod_assign, .or_assign, .and_assign,
 		//
-		.left_shift_assign, .righ_shift_assign, .mult_assign {
+		.left_shift_assign, .right_shift_assign, .mult_assign {
 			return int(Precedence.assign)
 		}
 		.key_in, .key_as {
@@ -426,46 +426,6 @@ pub fn (tok Token) is_unary() bool {
 	// `+` | `-` | `!` | `~` | `*` | `&`
 	.plus, .minus, .not, .bit_not, .mul, .amp]
 }
-
-/*
-// NOTE: do we need this for all tokens (is_left_assoc / is_right_assoc),
-// or only ones with the same precedence?
-// is_left_assoc returns true if the token is left associative
-pub fn (tok Token) is_left_assoc() bool {
-	return tok.kind in [
-	// `.`
-	.dot,
-	// `+` | `-`
-	.plus, .minus, // additive
-	// .number,
-	// `++` | `--`
-	.inc, .dec,
-	// `*` | `/` | `%`
-	.mul, .div, .mod,
-	// `^` | `||` | `&`
-	.xor, .logical_or, .and,
-	// `==` | `!=`
-	.eq, .ne,
-	// `<` | `<=` | `>` | `>=`
-	.lt, .le, .gt, .ge, .ne, .eq,
-	// `,`
-	.comma]
-}
-
-// is_right_assoc returns true if the token is right associative
-pub fn (tok Token) is_right_assoc() bool {
-	return tok.kind in [
-	// `+` | `-` | `!`
-	.plus, .minus, .not, // unary
-	// `=` | `+=` | `-=` | `*=` | `/=`
-	.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
-	// `%=` | `>>=` | `<<=`
-	.mod_assign, .righ_shift_assign, .left_shift_assign,
-	// `&=` | `^=` | `|=`
-	.and_assign, .xor_assign, .or_assign]
-}
-*/
-
 
 pub fn (tok Kind) is_relational() bool {
 	return tok in [

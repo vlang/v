@@ -1,9 +1,6 @@
 module runner
 
-import (
-	os
-	filepath
-)
+import os
 
 pub struct RunnerOptions {
 pub:
@@ -20,9 +17,9 @@ pub fn full_path_to_v(dirs_in int) string {
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	mut path := os.executable()
 	for i := 0; i < dirs_in; i++ {
-		path = filepath.dir(path)
+		path = os.dir(path)
 	}
-	vexec := filepath.join( path, vname )
+	vexec := os.join_path(path, vname)
 	/*
 	args := os.args
 	vreal  := os.realpath('v')
@@ -51,17 +48,17 @@ fn diff_files( file_result, file_expected string ) string {
 }
 
 pub fn run_repl_file(wd string, vexec string, file string) ?string {
-	vexec_folder := filepath.dir(vexec) + filepath.separator
+	vexec_folder := os.dir(vexec) + os.path_separator
 	fcontent := os.read_file(file) or {	return error('Could not read file ${file}') }
 	content := fcontent.replace('\r', '')
 	input := content.all_before('===output===\n')
 	output := content.all_after('===output===\n')
 
-	fname := filepath.filename( file )
+	fname := os.filename( file )
 
-	input_temporary_filename := os.realpath(filepath.join( wd, 'input_temporary_filename.txt'))
+	input_temporary_filename := os.realpath(os.join_path( wd, 'input_temporary_filename.txt'))
 	os.write_file(input_temporary_filename, input)
-	os.write_file(  os.realpath(filepath.join( wd, 'original.txt' ) ), fcontent )
+	os.write_file(  os.realpath(os.join_path( wd, 'original.txt' ) ), fcontent )
 	rcmd := '"$vexec" repl -replfolder "$wd" -replprefix "${fname}." < $input_temporary_filename'
 	r := os.exec(rcmd) or {
 		os.rm(input_temporary_filename)
@@ -74,7 +71,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	.replace('>>>', '')
 	.replace('... ', '')
 	.all_after('Use Ctrl-C or `exit` to exit\n')
-	.replace(wd  + filepath.separator, '' )
+	.replace(wd  + os.path_separator, '' )
 	.replace(vexec_folder, '')
 	.replace('\\', '/')
 
@@ -137,7 +134,7 @@ pub fn new_options() RunnerOptions {
 	if os.args.len > 1 {
 		files = os.args[1..]
 	} else {
-		os.chdir( filepath.dir(vexec) )
+		os.chdir( os.dir(vexec) )
 		wd = os.getwd()
 		files = os.walk_ext('.', '.repl')
 	}

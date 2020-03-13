@@ -186,3 +186,8 @@ pub fn win32_get_hwnd() voidptr {
 	return C.sapp_win32_get_hwnd()
 }
 
+/* Android: get native activity handle */
+[inline]
+pub fn android_get_native_activity() voidptr {
+	return C.sapp_android_get_native_activity()
+}

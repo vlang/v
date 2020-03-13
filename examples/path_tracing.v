@@ -8,7 +8,7 @@
 * This file contains a path tracer example in less of 500 line of codes
 * 3 demo scenes included
 *
-* This code is inspired by: 
+* This code is inspired by:
 * - "Realistic Ray Tracing" by Peter Shirley 2000 ISBN-13: 978-1568814612
 * - https://www.kevinbeason.com/smallpt/
 *
@@ -16,13 +16,13 @@
 * - there are some approximation errors in the calculations
 * - to speed-up the code a cos/sin table is used
 * - the full precision code is present but commented, can be restored very easily
-* - an higher number of samples ( > 60) can block the program on higher resolutions 
+* - an higher number of samples ( > 60) can block the program on higher resolutions
 *   without a stack size increase
-* - as a recursive program this code depend on the stack size, 
+* - as a recursive program this code depend on the stack size,
 *   for higher number of samples increase the stack size
 *   in linux: ulimit -s byte_size_of_the_stack
 *   example: ulimit -s 16000000
-* - No OpenMP support 
+* - No OpenMP support
 **********************************************************************/
 import os
 import math
@@ -34,10 +34,10 @@ const (
 	eps = f64(1e-4)
 	f_0 = f64(0.0)
 )
-	
+
 /***************************** 3D Vector utility struct **********************/
-struct Vec {     
-mut:  
+struct Vec {
+mut:
    x f64 = f64(0.0)
    y f64 = f64(0.0)
    z f64 = f64(0.0)
@@ -94,7 +94,7 @@ fn new_image(w int, h int) Image {
 	return Image{
 		width: w,
 		height: h,
-		data: &Vec(calloc(sizeof(Vec)*w*h))
+		data: &Vec(vcalloc(sizeof(Vec)*w*h))
 	}
 }
 
@@ -121,11 +121,11 @@ struct Ray {
 }
 
 // material types, used in radiance()
-enum Refl_t { 
-	diff, 
-	spec, 
-	refr 
-}  
+enum Refl_t {
+	diff,
+	spec,
+	refr
+}
 
 /********************************* Sphere ************************************/
 struct Sphere {
@@ -137,21 +137,21 @@ struct Sphere {
 }
 
 fn (sp Sphere) intersect (r Ray) f64 {
-	op        := sp.p - r.o // Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0 
+	op        := sp.p - r.o // Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0
 	b         := op.dot(r.d)
 	mut det   := b * b - op.dot(op) + sp.rad * sp.rad
 
 	if det < 0 {
 		return f64(0)
 	}
-	
+
 	det = math.sqrt(det)
-	
+
 	mut t := b - det
 	if t > eps {
 		return t
 	}
-	
+
 	t = b + det
 	if t > eps {
 		return t
@@ -165,19 +165,19 @@ fn (sp Sphere) intersect (r Ray) f64 {
 * 2) Psychedelic
 * The sphere fileds are: Sphere{radius, position, emission, color, material}
 ******************************************************************************/
-const (	
+const (
 Cen = Vec{50, 40.8, -860} // used by scene 1
 spheres = [
 [// scene 0 cornnel box
-	Sphere{rad: 1e+5, p: Vec{ 1e+5 +1,40.8,81.6} , e: Vec{}        , c: Vec{.75,.25,.25}        , refl: .diff},//Left    		
-	Sphere{rad: 1e+5, p: Vec{-1e+5 +99,40.8,81.6}, e: Vec{}        , c: Vec{.25,.25,.75}        , refl: .diff},//Rght 
-	Sphere{rad: 1e+5, p: Vec{50,40.8, 1e+5}      , e: Vec{}        , c: Vec{.75,.75,.75}        , refl: .diff},//Back 
-	Sphere{rad: 1e+5, p: Vec{50,40.8,-1e+5 +170} , e: Vec{}        , c: Vec{}                   , refl: .diff},//Frnt 
-	Sphere{rad: 1e+5, p: Vec{50, 1e+5, 81.6}     , e: Vec{}        , c: Vec{.75,.75,.75}        , refl: .diff},//Botm 
-	Sphere{rad: 1e+5, p: Vec{50,-1e+5 +81.6,81.6}, e: Vec{}        , c: Vec{.75,.75,.75}        , refl: .diff},//Top 
-	Sphere{rad: 16.5, p: Vec{27,16.5,47}         , e: Vec{}        , c: Vec{1,1,1}.mult_s(.999) , refl: .spec},//Mirr 
-	Sphere{rad: 16.5, p: Vec{73,16.5,78}         , e: Vec{}        , c: Vec{1,1,1}.mult_s(.999) , refl: .refr},//Glas 
-	Sphere{rad: 600 , p: Vec{50,681.6-.27,81.6}  , e: Vec{12,12,12}, c: Vec{}, refl: .diff} //Lite 
+	Sphere{rad: 1e+5, p: Vec{ 1e+5 +1,40.8,81.6} , e: Vec{}        , c: Vec{.75,.25,.25}        , refl: .diff},//Left
+	Sphere{rad: 1e+5, p: Vec{-1e+5 +99,40.8,81.6}, e: Vec{}        , c: Vec{.25,.25,.75}        , refl: .diff},//Rght
+	Sphere{rad: 1e+5, p: Vec{50,40.8, 1e+5}      , e: Vec{}        , c: Vec{.75,.75,.75}        , refl: .diff},//Back
+	Sphere{rad: 1e+5, p: Vec{50,40.8,-1e+5 +170} , e: Vec{}        , c: Vec{}                   , refl: .diff},//Frnt
+	Sphere{rad: 1e+5, p: Vec{50, 1e+5, 81.6}     , e: Vec{}        , c: Vec{.75,.75,.75}        , refl: .diff},//Botm
+	Sphere{rad: 1e+5, p: Vec{50,-1e+5 +81.6,81.6}, e: Vec{}        , c: Vec{.75,.75,.75}        , refl: .diff},//Top
+	Sphere{rad: 16.5, p: Vec{27,16.5,47}         , e: Vec{}        , c: Vec{1,1,1}.mult_s(.999) , refl: .spec},//Mirr
+	Sphere{rad: 16.5, p: Vec{73,16.5,78}         , e: Vec{}        , c: Vec{1,1,1}.mult_s(.999) , refl: .refr},//Glas
+	Sphere{rad: 600 , p: Vec{50,681.6-.27,81.6}  , e: Vec{12,12,12}, c: Vec{}, refl: .diff} //Lite
 ],
 
 [// scene 1 sunset
@@ -272,27 +272,27 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 	sin_tab := &f64( tabs.sin_tab )
 	cos_tab := &f64( tabs.cos_tab )
 	mut depth   := depthi      // actual depth in the reflection tree
-	mut t       := f64(0)      // distance to intersection 
+	mut t       := f64(0)      // distance to intersection
 	mut id      := 0           // id of intersected object
 	mut res     := false       // result of intersect
-	
+
 	v_1 := f64(1.0)
 	//v_2 := f64(2.0)
-	
+
 	scene := spheres[scene_id]
 	//res, t, id = intersect(r, id, tb.scene)
 	res, t, id = intersect(r, scene.data, scene.len)
-	if !res { return Vec{} }  //if miss, return black 
-	
-	obj := scene[id]        // the hit object 
-	
+	if !res { return Vec{} }  //if miss, return black
+
+	obj := scene[id]        // the hit object
+
 	x := r.o + r.d.mult_s(t)
 	n := (x - obj.p).norm()
-	
+
 	nl := if n.dot(r.d) < 0.0 { n } else { n.mult_s(-1) }
-	
+
 	mut f := obj.c
-	
+
 	// max reflection
 	mut p := f.z
 	if f.x > f.y && f.x > f.z {
@@ -300,80 +300,80 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 	} else {
 		if f.y > f.z {
 			p = f.y
-		} 
+		}
 	}
-	
+
 	depth++
-	if depth > 5 { 
+	if depth > 5 {
 		if rand_f64() < p {
 			f = f.mult_s(f64(1.0)/p)
 		} else {
 			return obj.e //R.R.
 		}
 	}
-	
-	if obj.refl == .diff {                  // Ideal DIFFUSE reflection 
+
+	if obj.refl == .diff {                  // Ideal DIFFUSE reflection
 		// **Full Precision**
 		//r1  := f64(2.0 * math.pi) * rand_f64()
-		
+
 		// tabbed speed-up
 		r1 := C.rand() & cache_mask
-		
+
 		r2  := rand_f64()
 		r2s := math.sqrt(r2)
-		
+
 		w   := nl
-		
+
 		mut u := if math.abs(w.x) > f64(0.1) {
 			Vec{0, 1, 0}
 		} else {
 			Vec{1, 0, 0}
 		}
 		u = u.cross(w).norm()
-		
+
 		v := w.cross(u)
-		
+
 		// **Full Precision**
 		//d := (u.mult_s(math.cos(r1) * r2s) + v.mult_s(math.sin(r1) * r2s) + w.mult_s(1.0 - r2)).norm()
-		
+
 		// tabbed speed-up
 		d := (u.mult_s(cos_tab[r1] * r2s) + v.mult_s(sin_tab[r1] * r2s) + w.mult_s(math.sqrt(f64(1.0) - r2))).norm()
-		
+
 		return obj.e + f * radiance(Ray{x, d}, depth, scene_id)
 	} else {
 		if obj.refl == .spec {            // Ideal SPECULAR reflection
 			return obj.e + f * radiance(Ray{x, r.d - n.mult_s(2.0 * n.dot(r.d)) }, depth, scene_id)
 		}
 	}
-	
+
 	refl_ray := Ray{x, r.d - n.mult_s(2.0 * n.dot(r.d))}  // Ideal dielectric REFRACTION
-	into     := n.dot(nl) > 0                             // Ray from outside going in? 
-	
+	into     := n.dot(nl) > 0                             // Ray from outside going in?
+
 	nc       := f64(1.0)
 	nt       := f64(1.5)
-	
+
 	nnt := if into { nc / nt } else { nt / nc }
-	
+
 	ddn   := r.d.dot(nl)
 	cos2t := v_1 - nnt * nnt * (v_1 - ddn * ddn)
 	if cos2t < 0.0  {   // Total internal reflection
 		return obj.e + f * radiance(refl_ray, depth, scene_id)
 	}
-	
+
 	dirc := if into { f64(1) } else { f64(-1) }
 	tdir := (r.d.mult_s(nnt) - n.mult_s(dirc * (ddn * nnt + math.sqrt(cos2t)))).norm()
-	
+
 	a  := nt - nc
 	b  := nt + nc
-	r0 := a * a / (b * b) 
+	r0 := a * a / (b * b)
 	c  := if into { v_1 + ddn } else { v_1 - tdir.dot(n) }
-	
+
 	re := r0 + (v_1 - r0) * c * c * c * c * c
 	tr := v_1 - re
 	pp  := f64(.25) + f64(.5) * re
 	rp := re / pp
 	tp := tr / (v_1 - pp)
-	
+
 	mut tmp := Vec{}
 	if depth > 2 {
 		// Russian roulette
@@ -391,40 +391,40 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 /************************ beam scan routine **********************************/
 fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 	image := new_image(w, h)
-	
+
 	// inverse costants
 	w1     := f64(1.0 / w)
 	h1     := f64(1.0 / h)
 	samps1 := f64(1.0 / samps)
-	
+
 	cam   := Ray{Vec{50, 52, 295.6},  Vec{0, -0.042612, -1}.norm()} // cam position, direction
 	cx    := Vec{ f64(w) * 0.5135 / f64(h), 0, 0}
 	cy    := cx.cross(cam.d).norm().mult_s(0.5135)
 	mut r := Vec{}
-	
+
 	// speed-up constants
 	v_1 := f64(1.0)
 	v_2 := f64(2.0)
-	
+
 	// OpenMP injection point! #pragma omp parallel for schedule(dynamic, 1) shared(c)
 	for y:=0; y < h; y++ {
 		eprint("\rRendering (${samps * 4} spp) ${(100.0 * f64(y)) / (f64(h) - 1.0):5.2f}%")
-		for x := 0; x < w; x++ {
-			
+		for x in 0..w {
+
 			i := (h - y - 1) * w + x
 			mut ivec := &image.data[i]
 			// we use sx and sy to perform a square subsampling of 4 samples
 			for sy := 0; sy < 2; sy ++ {
 				for sx := 0; sx < 2; sx ++ {
 					r = Vec{0,0,0}
-					for s := 0; s < samps; s++ {
+					for s in 0..samps {
 						r1 := v_2 * rand_f64()
 						dx := if r1 < v_1 { math.sqrt(r1) - v_1 } else { v_1 - math.sqrt(v_2 - r1) }
-						
+
 						r2 := v_2 * rand_f64()
 						dy := if r2 < v_1 { math.sqrt(r2) - v_1 } else { v_1 - math.sqrt(v_2 - r2) }
-						
-                        d := cx.mult_s( ( (f64(sx) + 0.5 + dx)*0.5 + f64(x))*w1 - .5) + 
+
+                        d := cx.mult_s( ( (f64(sx) + 0.5 + dx)*0.5 + f64(x))*w1 - .5) +
 							cy.mult_s( ( (f64(sy) + 0.5 + dy)*0.5 + f64(y))*h1 - .5) + cam.d
                         r = r + radiance(Ray{cam.o+d.mult_s(140.0), d.norm()}, 0, scene_id).mult_s(samps1)
 					}
@@ -432,7 +432,7 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 					*ivec = *ivec + tmp_vec
 				}
 			}
-		} 
+		}
 	}
 	return image
 }
@@ -447,7 +447,7 @@ fn main() {
 	mut samples := 4  // number of samples per pixel, increase for better quality
 	mut scene_id := 0 // scene to render [0 cornell box,1 sunset,2 psyco]
 	mut file_name := 'image.ppm' // name of the output file in .ppm format
-	
+
 	if os.args.len >= 2 {
 		samples = os.args[1].int() / 4
 	}
@@ -463,20 +463,20 @@ fn main() {
 	if os.args.len == 6 {
 		height = os.args[5].int()
 	}
-	
+
 	// init the rand, using the same seed allows to obtain the same result in different runs
 	// change the seed from 2020 for different results
-	rand.seed(2020)	 
-	
+	rand.seed(2020)
+
 	t1:=time.ticks()
 
-	image := ray_trace(width, height, samples, file_name, scene_id)	
+	image := ray_trace(width, height, samples, file_name, scene_id)
 	t2:=time.ticks()
-	
+
 	eprintln('\nRendering finished. Took: ${t2-t1:5d}ms')
-	
-	image.save_as_ppm( file_name )	
+
+	image.save_as_ppm( file_name )
 	t3:=time.ticks()
-	
+
 	eprintln('Image saved as [${file_name}]. Took: ${t3-t2:5d}ms')
 }

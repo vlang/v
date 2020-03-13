@@ -16,7 +16,9 @@ fn main() {
 	mut greet_cmd := cli.Command{
 		name: 'greet',
 		description: 'Prints greeting in different languages',
+		pre_execute: greet_pre_func,
 		execute: greet_func,
+		post_execute: greet_post_func,
 		parent: 0
 	}
 	greet_cmd.add_flag(cli.Flag{
@@ -41,7 +43,7 @@ fn greet_func(cmd cli.Command) {
 	language := cmd.flags.get_string('language') or { panic('failed to get \'language\' flag: $err') }
 	times := cmd.flags.get_int('times') or { panic('failed to get \'times\' flag: $err') }
 
-	for i := 0; i < times; i++ {
+	for i in 0..times {
 		match language {
 			'english' { println('Hello World') }
 			'german' { println('Hallo Welt') }
@@ -49,4 +51,12 @@ fn greet_func(cmd cli.Command) {
 			else { println('unsupported language') }
 		}
 	}
+}
+
+fn greet_pre_func(cmd cli.Command) {
+	println('This is a function running before the main function')
+}
+
+fn greet_post_func(cmd cli.Command) {
+	println('This is a function running after the main function')
 }

@@ -33,6 +33,13 @@ pub enum MouseButton {
     middle = 2
 }
 
+pub enum Modifier {
+    shift = 1   //(1<<0)
+    ctrl = 2    //(1<<1)
+    alt =  4    //(1<<2)
+    super = 8   //(1<<3)
+}
+
 pub enum KeyCode {
     invalid          = 0
     space            = 32

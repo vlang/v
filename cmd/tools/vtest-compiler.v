@@ -4,7 +4,6 @@ import (
 	os
 	testing
 	benchmark
-	filepath
 	v.pref
 )
 
@@ -20,7 +19,7 @@ fn main() {
 
 fn v_test_compiler(vargs string) {
 	vexe := pref.vexe_path()
-	parent_dir := filepath.dir(vexe)
+	parent_dir := os.dir(vexe)
 	testing.vlib_should_be_present(parent_dir)
 	// Changing the current directory is needed for some of the compiler tests,
 	// compiler/tests/local_test.v and compiler/tests/repl/repl_test.v
@@ -53,7 +52,7 @@ fn v_test_compiler(vargs string) {
 	eprintln('')
 	building_examples_failed := testing.v_build_failing(vargs, 'examples')
 	eprintln('')
-	building_live_failed := testing.v_build_failing(vargs + '-live', filepath.join('examples','hot_reload'))
+	building_live_failed := testing.v_build_failing(vargs + '-live', os.join_path('examples', 'hot_reload'))
 	eprintln('')
 	v_module_install_cmd := '$vexe install nedpals.args'
 	eprintln('')

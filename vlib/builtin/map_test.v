@@ -74,7 +74,7 @@ fn test_large_map() {
 	//ticks := time.ticks()
 	mut nums := map[string]int
 	N := 30 * 1000
-	for i := 0; i < N; i++ {
+	for i in 0..N {
 	        key := i.str()
 	        nums[key] = i
 	}

@@ -38,7 +38,7 @@ Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/v
 - Built-in ORM
 - C and JavaScript backends
 
-A stable 0.2 release is planned for February 2020. Right now V is in an alpha stage.
+A stable 0.2 release is planned for March 2020. Right now V is in an alpha stage.
 
 ## Installing V from source
 
@@ -170,7 +170,7 @@ https://github.com/vlang/ui
 
 ```v
 fn main() {
-        for i := 0; i < 3; i++ {
+        for i in 0..3 {
                 println('Hello from V.js')
         }
 }

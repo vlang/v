@@ -641,7 +641,7 @@ so `register()` can change the user object. The same works with non-receiver arg
 
 ```v
 fn multiply_by_2(arr mut []int) {
-    for i := 0; i < arr.len; i++ {
+    for i in 0..arr.len {
         arr[i] *= 2
     }
 }
@@ -1274,16 +1274,35 @@ NB: For now you have to use one flag per line:
 
 You can also add C code, in your V module. For example, lets say that your C code is located in a folder named 'c' inside your module folder. Then:
 
+* Put a v.mod file inside the toplevel folder of your module (if you
+created your module with `v create` you already have v.mod file). For
+example:
 ```v
-#flag -I @VMODULE/c
-#flag @VMODULE/c/implementation.o
-#include "header.h"
+Module {
+	name: 'mymodule',
+	description: 'My nice module wraps a simple C library.',
+	version: '0.0.1'
+	dependencies: []
+}
 ```
 
-... will make V look for an compiled .o file in your module folder/c/implementation.o .
+
+* Add these lines to the top of your module:
+```v
+#flag -I @VROOT/c
+#flag @VROOT/c/implementation.o
+#include "header.h"
+```
+NB: @VROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
+Any .v file beside or below the folder where the v.mod file is, can use #flag @VROOT/abc to refer to this folder.
+The @VROOT folder is also *prepended* to the module lookup path, so you can *import* other 
+modules under your @VROOT, by just naming them.
+
+The instructions above will make V look for an compiled .o file in your module folder/c/implementation.o .
 If V finds it, the .o file will get linked to the main executable, that used the module.
-If it does not find it, V assumes that there is a `@VMODULE/c/implementation.c` file,
+If it does not find it, V assumes that there is a `@VROOT/c/implementation.c` file,
 and tries to compile it to a .o file, then will use that.
+
 This allows you to have C code, that is contained in a V module, so that its distribution is easier.
 You can see a complete example for using C code in a V wrapper module here:
 [minimal V project, that has a module, which contains C code](https://github.com/vlang/v/tree/master/vlib/compiler/tests/project_with_c_code)
@@ -1539,10 +1558,15 @@ V can be used as an alternative to Bash to write deployment scripts, build scrip
 The advantage of using V for this is the simplicity and predictability of the language, and
 cross-platform support. "V scripts" run on Unix-like systems as well as on Windows.
 
-Use .vsh file extension. It will make all functions in the `os`
+Use the `.vsh` file extension. It will make all functions in the `os`
 module global (so that you can use `ls()` instead of `os.ls()`, for example).
 
 ```v
+#!/usr/local/bin/v run
+// The shebang above associates the file to V on Unix-like systems,
+// so it can be run just by specifying the path to the file
+// once it's made executable using `chmod +x`.
+
 rm('build/*')
 // Same as:
 for file in ls('build/') {
@@ -1560,10 +1584,13 @@ for file in ls('.') {
 
 Now you can either compile this like a normal V program and get an executable you can deploy and run
 anywhere:
-`v deploy.v && ./deploy`
+`v deploy.vsh && ./deploy`
 
-Or just run it more like a traditional bash script:
-`v run deploy.v`
+Or just run it more like a traditional Bash script:
+`v run deploy.vsh`
+
+On Unix-like platforms, the file can be run directly after making it executable using `chmod +x`:
+`./deploy.vsh`
 
 ## Appendix I: Keywords
 

@@ -12,10 +12,26 @@ pub enum BuildMode {
 	build_module
 }
 
+pub enum Backend {
+	c            // The (default) C backend
+	experimental // The experimental v2 backend
+	js           // The JavaScript backend
+	x64          // The x64 backend
+}
+
+pub enum VerboseLevel {
+	clean       // `-verbose 0` or unspecified
+	level_one   // `-v` or `-verbose 1`
+	level_two   // `-vv` or `-verbose 2`
+	level_three // `-vvv` or `-verbose 3`
+}
+
 pub struct Preferences {
 pub mut:
 	os                  OS   // the OS to compile for
+	backend             Backend
 	build_mode          BuildMode
+	verbosity           VerboseLevel
 	// nofmt            bool   // disable vfmt
 	is_test             bool // `v test string_test.v`
 	is_script           bool // single file mode (`v program.v`), main function can be skipped
@@ -25,11 +41,9 @@ pub mut:
 	is_prof             bool // benchmark every function
 	translated          bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	is_prod             bool // use "-O2"
-	is_verbose          bool // print extra information with `v.log()`
 	obfuscate           bool // `v -obf program.v`, renames functions to "f_XXX"
 	is_repl             bool
 	is_run              bool
-	show_c_cmd          bool // `v -show_c_cmd` prints the C command to build program.v.c
 	sanitize            bool // use Clang's new "-fsanitize" option
 	is_debug            bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines           bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
@@ -40,6 +54,7 @@ pub mut:
 	is_cache            bool // turns on v usage of the module cache to speed up compilation.
 	is_stats            bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	no_auto_free        bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
+	// TODO Convert this into a []string
 	cflags              string // Additional options which will be passed to the C compiler.
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 	// You could pass several -cflags XXX arguments. They will be merged with each other.
@@ -58,13 +73,9 @@ pub mut:
 	enable_globals      bool // allow __global for low level code
 	// is_fmt bool
 	is_bare             bool
-	user_mod_path       string // `v -user_mod_path /Users/user/modules` adds a new lookup path for imported modules
-	vlib_path           string
-	vpath               string
-	x64                 bool
+	lookup_path         []string
 	output_cross_c      bool
 	prealloc            bool
-	v2                  bool
 	vroot               string
 	out_name            string
 	path                string // Path to file/folder to compile
@@ -74,4 +85,30 @@ pub mut:
 	compile_defines_all []string // contains both: ['vfmt','another']
 
 	mod                 string
+}
+
+pub fn backend_from_string(s string) ?Backend {
+	match s {
+		'c' {
+			return .c
+		}
+		'js' {
+			return .js
+		}
+		'experimental', 'v2' {
+			//TODO Remove in the future once it's considered stable :)
+			return .experimental
+		}
+		'x64' {
+			return .x64
+		}
+		else {
+			return error('Unknown backend type $s')
+		}
+	}
+}
+
+[inline]
+pub fn (v VerboseLevel) is_higher_or_equal(other VerboseLevel) bool {
+	return int(v) >= int(other)
 }

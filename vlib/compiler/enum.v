@@ -109,7 +109,7 @@ int typ;
 	// Skip nameless enums
 	else if !no_name && !p.first_pass() {
 		p.cgen.typedefs << 'typedef int $enum_name;'
-	}	
+	}
 	p.check(.rcbr)
 	p.fgen_nl()
 	p.fgen_nl()
@@ -122,18 +122,18 @@ fn (p mut Parser) check_enum_member_access() {
 	if p.expected_type.starts_with('Option_') {
 		p.expected_type = p.expected_type[7..]
 	}
-	T := p.find_type(p.expected_type)
-	if T.cat == .enum_ {
+	tt := p.find_type(p.expected_type)
+	if tt.cat == .enum_ {
 		p.check(.dot)
 		val := p.check_name()
 		// Make sure this enum value exists
-		if !T.has_enum_val(val) {
-			p.error('enum `$T.name` does not have value `$val`')
+		if !tt.has_enum_val(val) {
+			p.error('enum `$tt.name` does not have value `$val`')
 		}
-		p.gen(mod_gen_name(T.mod) + '__' + p.expected_type + '_' + val)
+		p.gen(mod_gen_name(tt.mod) + '__' + p.expected_type + '_' + val)
 	}
 	else {
-		p.error('`$T.name` is not an enum')
+		p.error('`$tt.name` is not an enum')
 	}
 }
 

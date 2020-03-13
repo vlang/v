@@ -32,11 +32,11 @@ pub fn new_cipher(key []byte) ?Cipher {
 	mut c := Cipher{
 		s: [u32(0)].repeat(256)
 	}
-	for i := 0; i < 256; i++ {
+	for i in 0..256 {
 		c.s[i] = u32(i)
 	}
 	mut j := byte(0)
-	for i := 0; i < 256; i++ {
+	for i in 0..256 {
 		j += byte(c.s[i]) + key[i%key.len]
 		tmp := c.s[i]
 		c.s[i] = c.s[j]

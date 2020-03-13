@@ -2,7 +2,6 @@ import (
 	os
 	term
 	benchmark
-	filepath
 	v.fmt
 	v.parser
 	v.table
@@ -15,23 +14,25 @@ const (
 
 fn test_fmt() {
 	fmt_message := 'vfmt tests'
-	eprintln(term.header(fmt_message,'-'))
+	eprintln(term.header(fmt_message, '-'))
 	vexe := os.getenv('VEXE')
 	if vexe.len == 0 || !os.exists(vexe) {
 		eprintln('VEXE must be set')
 		exit(error_missing_vexe)
 	}
-	vroot := filepath.dir(vexe)
-	tmpfolder := os.tmpdir()
-	diff_cmd := find_working_diff_command() or { '' }
+	vroot := os.dir(vexe)
+	tmpfolder := os.temp_dir()
+	diff_cmd := find_working_diff_command() or {
+		''
+	}
 	mut fmt_bench := benchmark.new_benchmark()
 	// Lookup the existing test _input.vv files:
 	input_files := os.walk_ext('$vroot/vlib/v/fmt/tests', '_input.vv')
-	fmt_bench.set_total_expected_steps( input_files.len )
+	fmt_bench.set_total_expected_steps(input_files.len)
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
 		fmt_bench.step()
-		ifilename := filepath.filename(ipath)
+		ifilename := os.filename(ipath)
 		opath := ipath.replace('_input.vv', '_expected.vv')
 		if !os.exists(opath) {
 			fmt_bench.fail()
@@ -39,12 +40,12 @@ fn test_fmt() {
 			continue
 		}
 		expected_ocontent := os.read_file(opath) or {
-			fmt_bench.fail()			
+			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('cannot read from ${opath}'))
 			continue
 		}
 		table := table.new_table()
-		file_ast := parser.parse_file(ipath, table)
+		file_ast := parser.parse_file(ipath, table, .parse_comments)
 		result_ocontent := fmt.fmt(file_ast, table)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
@@ -53,7 +54,7 @@ fn test_fmt() {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue
 			}
-			vfmt_result_file := filepath.join(tmpfolder,'vfmt_run_over_${ifilename}')
+			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
 			os.write_file(vfmt_result_file, result_ocontent)
 			os.system('$diff_cmd --minimal  --text   --unified=2 --show-function-line="fn " "$opath" "$vfmt_result_file"')
 			continue

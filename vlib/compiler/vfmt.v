@@ -171,8 +171,8 @@ fn (p mut Parser) fnext() {
 		p.fgen_nl()
 		p.fmt_inc()
 	}
-	if p.token_idx >= p.tokens.len { 
-		return 
+	if p.token_idx >= p.tokens.len {
+		return
 	}
 	// Skip comments and add them to vfmt output
 	if p.tokens[p.token_idx].tok in [.line_comment, .mline_comment] {
@@ -298,7 +298,7 @@ fn (p &Parser) gen_fmt() {
 }
 
 fn write_formatted_source(file_name string, s string) string {
-	path := os.tmpdir() + '/' + file_name
+	path := os.temp_dir() + '/' + file_name
 	mut out := os.create(path) or {
 		verror('failed to create file $path')
 		return ''

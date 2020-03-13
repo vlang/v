@@ -77,8 +77,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo rebuild from source (twice, in case of C definitions changes)
-v2.exe -cc msvc -o v3.exe cmd/v
-v3.exe -cc msvc -o v -prod cmd/v
+v2.exe -o v3.exe cmd/v
+v3.exe -o v -prod cmd/v
 if %ERRORLEVEL% NEQ 0 (
     echo V failed to build itself with error %ERRORLEVEL%
     goto :compileerror
@@ -115,4 +115,4 @@ exit /b 1
 
 :success
 echo V build OK!
-v -v
+v -version

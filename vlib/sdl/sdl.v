@@ -13,10 +13,10 @@ module sdl
 
 #flag -DSDL_DISABLE_IMMINTRIN_H
 
-// following kludge until `sdl2-config ...` is supported also on windows
-#flag windows -I/msys64/mingw64/include/SDL2
+#flag windows -I @VROOT/thirdparty/SDL2/include
 #flag windows -Dmain=SDL_main
-#flag windows -L/mingw64/lib -lmingw32 -lSDL2main -lSDL2 -lSDL2_ttf -lSDL2_mixer -lSDL2_image
+#flag windows -lSDL2main -lSDL2
+#flag windows -L @VROOT/thirdparty/SDL2/lib/x64
 
 #include <SDL.h>
 

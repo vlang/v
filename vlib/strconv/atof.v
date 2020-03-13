@@ -19,6 +19,13 @@
 *
 **********************************************************************/
 module strconv
+
+union Float64u {
+mut:
+	f f64
+	u u64 = u64(0)
+}
+
 /**********************************************************************
 *
 * 96 bit operation utilities
@@ -101,24 +108,24 @@ const (
 	//
 	// parser state machine states
 	//
-	FSM_A = 0
-	FSM_B = 1
-	FSM_C = 2
-	FSM_D = 3
-	FSM_E = 4
-	FSM_F = 5
-	FSM_G = 6
-	FSM_H = 7
-	FSM_I = 8
+	fsm_a = 0
+	fsm_b = 1
+	fsm_c = 2
+	fsm_d = 3
+	fsm_e = 4
+	fsm_f = 5
+	fsm_g = 6
+	fsm_h = 7
+	fsm_i = 8
 	FSM_STOP = 9
 	//
 	// Possible parser return values.
 	//
-	PARSER_OK = 0 // parser finished OK
-	PARSER_PZERO = 1 // no digits or number is smaller than +-2^-1022
-	PARSER_MZERO = 2 // number is negative, module smaller
-	PARSER_PINF = 3 // number is higher than +HUGE_VAL
-	PARSER_MINF = 4 // number is lower than -HUGE_VAL
+	parser_ok = 0 // parser finished OK
+	parser_pzero = 1 // no digits or number is smaller than +-2^-1022
+	parser_mzero = 2 // number is negative, module smaller
+	parser_pinf = 3 // number is higher than +HUGE_VAL
+	parser_minf = 4 // number is lower than -HUGE_VAL
 	//
 	// char constants
 	// Note: Modify these if working with non-ASCII encoding
@@ -149,25 +156,6 @@ fn is_exp(x byte) bool {
 	return (x == `E` || x == `e`) == true
 }
 
-/*
-// return a string of the input f64 in scientific notation with digit_num digits displayed
-pub fn strsci(x f64, digit_num int) string{
-	buf := malloc(digit_num*2+2)// TODO
-	conf_str := '%0.'+digit_num.str()+'e'
-	C.sprintf(charptr(buf), charptr(conf_str.str), x)
-	tmpstr := tos(buf, vstrlen(buf))
-	return tmpstr
-}
-
-// return a long string of the input f64, max
-pub fn strlong(x f64) string {
-	buf := malloc(18+32)// TODO
-	C.sprintf(charptr(buf),"%0.30lf",x)
-	tmpstr := tos(buf, vstrlen(buf))
-	return tmpstr
-}
-*/
-
 /**********************************************************************
 *
 * Support struct
@@ -190,10 +178,10 @@ pub mut:
 
 // parser return a support struct with all the parsing information for the converter
 fn parser(s string) (int,PrepNumber) {
-	mut state := FSM_A
+	mut state := fsm_a
 	mut digx := 0
 	mut c := ` ` // initial value for kicking off the state machine
-	mut result := PARSER_OK
+	mut result := parser_ok
 	mut expneg := false
 	mut expexp := 0
 	mut i := 0
@@ -202,17 +190,17 @@ fn parser(s string) (int,PrepNumber) {
 	for state != FSM_STOP {
 		match state {
 			// skip starting spaces
-			FSM_A {
+			fsm_a {
 				if is_space(c) == true {
 					c = s[i++]
 				}
 				else {
-					state = FSM_B
+					state = fsm_b
 				}
 			}
 			// check for the sign or point
-			FSM_B {
-				state = FSM_C
+			fsm_b {
+				state = fsm_c
 				if c == PLUS {
 					c = s[i++]
 					//i++
@@ -230,20 +218,20 @@ fn parser(s string) (int,PrepNumber) {
 				}
 			}
 			// skip the inital zeros
-			FSM_C {
+			fsm_c {
 				if c == ZERO {
 					c = s[i++]
 				}
 				else if c == DPOINT {
 					c = s[i++]
-					state = FSM_D
+					state = fsm_d
 				}
 				else {
-					state = FSM_E
+					state = fsm_e
 				}
 			}
 			// reading leading zeros in the fractional part of mantissa
-			FSM_D {
+			fsm_d {
 				if c == ZERO {
 					c = s[i++]
 					if pn.exponent > -2147483647 {
@@ -251,11 +239,11 @@ fn parser(s string) (int,PrepNumber) {
 					}
 				}
 				else {
-					state = FSM_F
+					state = fsm_f
 				}
 			}
 			// reading integer part of mantissa
-			FSM_E {
+			fsm_e {
 				if is_digit(c) {
 					if digx < DIGITS {
 						pn.mantissa *= 10
@@ -269,14 +257,14 @@ fn parser(s string) (int,PrepNumber) {
 				}
 				else if c == DPOINT {
 					c = s[i++]
-					state = FSM_F
+					state = fsm_f
 				}
 				else {
-					state = FSM_F
+					state = fsm_f
 				}
 			}
 			// reading fractional part of mantissa
-			FSM_F {
+			fsm_f {
 				if is_digit(c) {
 					if digx < DIGITS {
 						pn.mantissa *= 10
@@ -288,14 +276,14 @@ fn parser(s string) (int,PrepNumber) {
 				}
 				else if is_exp(c) {
 					c = s[i++]
-					state = FSM_G
+					state = fsm_g
 				}
 				else {
-					state = FSM_G
+					state = fsm_g
 				}
 			}
 			// reading sign of exponent
-			FSM_G {
+			fsm_g {
 				if c == PLUS {
 					c = s[i++]
 				}
@@ -303,19 +291,19 @@ fn parser(s string) (int,PrepNumber) {
 					expneg = true
 					c = s[i++]
 				}
-				state = FSM_H
+				state = fsm_h
 			}
 			// skipping leading zeros of exponent
-			FSM_H {
+			fsm_h {
 				if c == ZERO {
 					c = s[i++]
 				}
 				else {
-					state = FSM_I
+					state = fsm_i
 				}
 			}
 			// reading exponent digits
-			FSM_I {
+			fsm_i {
 				if is_digit(c) {
 					if expexp < 214748364 {
 						expexp *= 10
@@ -340,26 +328,26 @@ fn parser(s string) (int,PrepNumber) {
 	pn.exponent += expexp
 	if pn.mantissa == 0 {
 		if pn.negative {
-			result = PARSER_MZERO
+			result = parser_mzero
 		}
 		else {
-			result = PARSER_PZERO
+			result = parser_pzero
 		}
 	}
 	else if (pn.exponent > 309) {
 		if pn.negative {
-			result = PARSER_MINF
+			result = parser_minf
 		}
 		else {
-			result = PARSER_PINF
+			result = parser_pinf
 		}
 	}
 	else if pn.exponent < -328 {
 		if pn.negative {
-			result = PARSER_MZERO
+			result = parser_mzero
 		}
 		else {
-			result = PARSER_PZERO
+			result = parser_pzero
 		}
 	}
 	return result,pn
@@ -545,29 +533,30 @@ pub fn atof64(s string) f64 {
 	mut pn := PrepNumber{
 	}
 	mut res_parsing := 0
-	mut result := f64(0)
-	result = f64(0.0)
-	mut res_ptr := *u64(&result)
+	mut res  := Float64u{}
+
 	res_parsing,pn = parser(s + ' ') // TODO: need an extra char for now
 	// println(pn)
 	match res_parsing {
-		PARSER_OK {
-			*res_ptr = converter(mut pn)
+		parser_ok {
+			res.u = converter(mut pn)
 		}
-		PARSER_PZERO {
-			*res_ptr = DOUBLE_PLUS_ZERO
+		parser_pzero {
+			res.u = DOUBLE_PLUS_ZERO
 		}
-		PARSER_MZERO {
-			*res_ptr = DOUBLE_MINUS_ZERO
+		parser_mzero {
+			res.u = DOUBLE_MINUS_ZERO
 		}
-		PARSER_PINF {
-			*res_ptr = DOUBLE_PLUS_INFINITY
+		parser_pinf {
+			res.u = DOUBLE_PLUS_INFINITY
 		}
-		PARSER_MINF {
-			*res_ptr = DOUBLE_MINUS_INFINITY
+		parser_minf {
+			res.u = DOUBLE_MINUS_INFINITY
 		}
 		else {
 		}}
-	return result
+	return res.f
 }
+
+
 

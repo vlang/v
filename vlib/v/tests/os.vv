@@ -1,0 +1,10 @@
+import os
+
+fn main() {
+	files := os.ls('.') or { panic(err) }
+	for file in files {
+		if file.ends_with('_test.v') {
+			println(file)
+		}
+}	
+}

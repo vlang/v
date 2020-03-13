@@ -3,7 +3,6 @@
 * String to float Test
 *
 **********************************************************************/
-
 import (
 	strconv
 	strconv.atofq
@@ -41,15 +40,19 @@ fn test_atof() {
 		// slow atof
 		assert strconv.atof64(src_num_str[c]).strlong() == x.strlong()
 
+		
 		// quick atof
 		mut s1 := (atofq.atof_quick(src_num_str[c]).str())
-		s1 = s1[..src_num_str[c].len]
 		mut s2 := (x.str())
-		s2 = s2[..src_num_str[c].len]
-		assert s1 == s2
+		delta := s1.f64() - s2.f64()
+		//println("$s1 $s2 $delta")
+		assert delta < f64(1e-16)
 
 		// test C.atof
-		assert x.strsci(18) == f64(C.atof(src_num_str[c].str)).strsci(18)
+		n1 := x.strsci(18)
+		n2 := f64(C.atof(src_num_str[c].str)).strsci(18)
+		//println("$n1 $n2")
+		assert n1 == n2		
 	}
 
 	// check conversion case 2 string <==> f64
@@ -71,4 +74,5 @@ fn test_atof() {
 	// DOUBLE_MINUS_ZERO
 	f1=-0.0
 	assert *ptr == u64(0x8000000000000000)
+	//println("DONE!")
 }
