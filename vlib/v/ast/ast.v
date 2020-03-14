@@ -127,19 +127,12 @@ pub:
 	// expr Expr
 }
 
-pub struct Arg {
-pub:
-	name   string
-	is_mut bool
-	typ    table.Type
-}
-
 pub struct FnDecl {
 pub:
 	name          string
 	stmts         []Stmt
 	return_type   table.Type
-	args          []Arg
+	args          []table.Arg
 	is_deprecated bool
 	is_pub        bool
 	is_variadic   bool

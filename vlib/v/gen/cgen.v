@@ -106,6 +106,9 @@ pub fn (g mut Gen) write_typedef_types() {
 				styp := typ.name.replace('.', '__')
 				g.definitions.writeln('typedef map $styp;')
 			}
+			.function {
+				// TODO:
+			}
 			else {
 				continue
 			}
@@ -443,11 +446,28 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	*/
 	//
-	no_names := it.args.len > 0 && it.args[0].name == 'arg_1'
-	for i, arg in it.args {
+	g.fn_args(it.args, it.is_variadic)
+	g.writeln(') { ')
+	if !is_main {
+		g.definitions.writeln(');')
+	}
+	for stmt in it.stmts {
+		// g.write('\t')
+		g.stmt(stmt)
+	}
+	if is_main {
+		g.writeln('return 0;')
+	}
+	g.writeln('}')
+	g.fn_decl = 0
+}
+
+fn (g mut Gen) fn_args(args []table.Arg, is_variadic bool) {
+	no_names := args.len > 0 && args[0].name == 'arg_1'
+	for i, arg in args {
 		arg_type_sym := g.table.get_type_symbol(arg.typ)
 		mut arg_type_name := arg_type_sym.name.replace('.', '__')
-		is_varg := i == it.args.len - 1 && it.is_variadic
+		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
 			g.varaidic_args[int(arg.typ).str()] = 0
 			arg_type_name = 'varg_' + g.typ(arg.typ).replace('*', '_ptr')
@@ -456,14 +476,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			func := arg_type_sym.info as table.Fn
 			g.write('${g.typ(func.return_type)} (*$arg.name)(')
 			g.definitions.write('${g.typ(func.return_type)} (*$arg.name)(')
-			for j, a in func.args {
-				g.write('${g.typ(a.typ)} $a.name')
-				g.definitions.write('${g.typ(a.typ)} $a.name')
-				if j < func.args.len - 1 {
-					g.write(',')
-					g.definitions.write(',')
-				}
-			}
+			g.fn_args(func.args, func.is_variadic)
 			g.write(')')
 			g.definitions.write(')')
 		}
@@ -484,24 +497,11 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			g.write(s)
 			g.definitions.write(s)
 		}
-		if i < it.args.len - 1 {
+		if i < args.len - 1 {
 			g.write(', ')
 			g.definitions.write(', ')
 		}
 	}
-	g.writeln(') { ')
-	if !is_main {
-		g.definitions.writeln(');')
-	}
-	for stmt in it.stmts {
-		// g.write('\t')
-		g.stmt(stmt)
-	}
-	if is_main {
-		g.writeln('return 0;')
-	}
-	g.writeln('}')
-	g.fn_decl = 0
 }
 
 fn (g mut Gen) expr(node ast.Expr) {

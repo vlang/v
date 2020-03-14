@@ -73,8 +73,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	mut is_method := false
 	mut rec_type := table.void_type
 	mut rec_mut := false
-	mut args := []table.Var
-	mut ast_args := []ast.Arg
+	mut args := []table.Arg
 	if p.tok.kind == .lpar {
 		is_method = true
 		p.next()
@@ -86,7 +85,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type()
-		ast_args << ast.Arg{
+		args << table.Arg{
 			name: rec_name
 			is_mut: rec_mut
 			typ: rec_type
@@ -110,20 +109,13 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	// println('fn decl $name')
 	// Args
-	ast_args2,is_variadic := p.fn_args()
-	ast_args << ast_args2
-	for ast_arg in ast_args {
-		var := table.Var{
-			name: ast_arg.name
-			is_mut: ast_arg.is_mut
-			typ: ast_arg.typ
-		}
-		args << var
+	args2,is_variadic := p.fn_args()
+	args << args2
+	for arg in args {
 		p.scope.register_var(ast.Var{
-			name: ast_arg.name
-			typ: ast_arg.typ
+			name: arg.name
+			typ: arg.typ
 		})
-		// p.table.register_var(var)
 	}
 	// Return type
 	mut return_type := table.void_type
@@ -166,7 +158,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		name: name
 		stmts: stmts
 		return_type: return_type
-		args: ast_args
+		args: args
 		is_deprecated: is_deprecated
 		is_pub: is_pub
 		is_variadic: is_variadic
@@ -181,9 +173,9 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 }
 
-fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
+fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 	p.check(.lpar)
-	mut args := []ast.Arg
+	mut args := []table.Arg
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
 	types_only := p.tok.kind in [.amp] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) || p.peek_tok.kind == .rpar
@@ -210,7 +202,7 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 				}
 				p.next()
 			}
-			args << ast.Arg{
+			args << table.Arg{
 				name: arg_name
 				is_mut: is_mut
 				typ: arg_type
@@ -239,7 +231,7 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 				typ = table.type_to_variadic(typ)
 			}
 			for arg_name in arg_names {
-				args << ast.Arg{
+				args << table.Arg{
 					name: arg_name
 					is_mut: is_mut
 					typ: typ

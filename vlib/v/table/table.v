@@ -21,20 +21,25 @@ pub mut:
 pub struct Fn {
 pub:
 	name        string
-	args        []Var
+	args        []Arg
 	return_type Type
 	is_variadic bool
 	is_c        bool
 }
 
+pub struct Arg {
+pub:
+	name        string
+	is_mut      bool
+	typ         Type
+}
+
 pub struct Var {
 pub:
 	name        string
-	idx         int
 	is_mut      bool
 	is_const    bool
 	is_global   bool
-	scope_level int
 mut:
 	typ         Type
 }
