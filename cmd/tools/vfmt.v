@@ -11,6 +11,7 @@ import (
 	v.fmt
 	v.parser
 	v.table
+	vhelp
 )
 
 struct FormatOptions {
@@ -93,7 +94,7 @@ fn main() {
 		files << file
 	}
 	if files.len == 0 {
-		usage()
+	    vhelp.show_topic('fmt')
 		exit(0)
 	}
 	mut cli_args_no_files := []string
@@ -196,7 +197,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		compiler_params.lookup_path = [mod_folder_parent, '@vlib', '@vmodule']
 	}
 	if !is_test_file && mod_name == 'main' {
-		// NB: here, file is guaranted to be a main. We do not know however
+		// NB: here, file is guaranteed to be a main. We do not know however
 		// whether it is a standalone v program, or is it a part of a bigger
 		// project, like vorum or vid.
 		cfile = get_compile_name_of_potential_v_project(cfile)
@@ -293,22 +294,6 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 		return
 	}
 	print(formatted_fc)
-}
-
-fn usage() {
-	print('Usage: cmd/tools/vfmt [flags] fmt path_to_source.v [path_to_other_source.v]
-Formats the given V source files, and prints their formatted source to stdout.
-Options:
-  -c    check if file is already formatted.
-        If it is not, print filepath, and exit with code 2.
-  -diff display only diffs between the formatted source and the original source.
-  -l    list files whose formatting differs from vfmt.
-  -w    write result to (source) file(s) instead of to stdout.
-  -2    Use the new V parser/vfmt. NB: this is EXPERIMENTAL for now.
-          The new vfmt is much faster and more forgiving.
-          It also may EAT some of your code for now.
-          Please be carefull, and make frequent BACKUPS, when running with -vfmt2 .
-')
 }
 
 fn find_working_diff_command() ?string {

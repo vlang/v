@@ -1,6 +1,6 @@
 ---
 name: Bug report for V
-about: Please use the apropriate label when submitting an issue: bug/feature request/question.
+about: Please use the appropriate label when submitting an issue: bug/feature request/question.
 title: "New issue"
 labels: ''
 assignees: ''

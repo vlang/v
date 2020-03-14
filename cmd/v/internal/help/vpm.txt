@@ -1,0 +1,7 @@
+Usage:
+  a) v install module [module] [module] [...]
+  b) v update [module] [...]
+  c) v remove [module] [...]
+  d) v search keyword1 [keyword2] [...]
+
+  You can also pass -h or --help after each vpm command from the above, to see more details about it.

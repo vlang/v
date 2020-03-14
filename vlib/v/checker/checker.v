@@ -121,7 +121,6 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 		else {}
 	}
 	if c.is_amp {
-		println('XAXAXAX')
 		return table.type_to_ptr(struct_init.typ)
 	}
 	return struct_init.typ
@@ -153,7 +152,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	return left_type
 }
 
-fn (c mut Checker) assign_expr(assign_expr ast.AssignExpr) {
+fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	match assign_expr.left {
 		ast.Ident {
 			if it.kind == .blank_ident {
@@ -164,6 +163,7 @@ fn (c mut Checker) assign_expr(assign_expr ast.AssignExpr) {
 	}
 	left_type := c.expr(assign_expr.left)
 	c.expected_type = left_type
+	assign_expr.left_type = left_type
 	// assign_expr.left_type = left_type
 	// t := c.table.get_type_symbol(left_type)
 	// println('setting exp type to $c.expected_type $t.name')
@@ -594,7 +594,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return it.typ
 		}
 		ast.AssignExpr {
-			c.assign_expr(it)
+			c.assign_expr(mut it)
 		}
 		ast.Assoc {
 			scope := c.file.scope.innermost(it.pos.pos)
@@ -733,6 +733,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 			ident.kind = .variable
 			ident.info = ast.IdentVar{
 				typ: typ
+				is_optional: table.type_is_optional(typ)
 			}
 			return typ
 		}
@@ -877,6 +878,12 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 	match node.index {
 		ast.RangeExpr {
 			is_range = true
+			if it.has_low {
+				c.expr(it.low)
+			}
+			if it.has_high {
+				c.expr(it.high)
+			}
 		}
 		else {}
 	}

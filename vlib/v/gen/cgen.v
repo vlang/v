@@ -51,12 +51,23 @@ pub fn (g mut Gen) init() {
 }
 
 // V type to C type
-pub fn (g &Gen) typ(t table.Type) string {
+pub fn (g mut Gen) typ(t table.Type) string {
 	nr_muls := table.type_nr_muls(t)
 	sym := g.table.get_type_symbol(t)
 	mut styp := sym.name.replace_each(['.', '__'])
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
+	}
+	if styp.starts_with('C__') {
+		styp = styp[3..]
+	}
+	if styp in ['stat', 'dirent*'] {
+		// TODO perf and other C structs
+		styp = 'struct $styp'
+	}
+	if table.type_is_optional(t) {
+		styp = 'Option_' + styp
+		g.definitions.writeln('typedef Option $styp;')
 	}
 	return styp
 }
@@ -180,11 +191,16 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('// defer')
 		}
 		ast.EnumDecl {
-			g.writeln('typedef enum {')
+			g.writeln('//')
+			/*
+			name := it.name.replace('.', '__')
+			g.definitions.writeln('typedef enum {')
 			for i, val in it.vals {
-				g.writeln('\t${it.name}_$val, // $i')
+				g.definitions.writeln('\t${name}_$val, // $i')
 			}
-			g.writeln('} $it.name;')
+			g.definitions.writeln('} $name;')
+			*/
+
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
@@ -253,30 +269,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.HashStmt {
 			// #include etc
-			g.writeln('#$it.val')
+			g.definitions.writeln('#$it.val')
 		}
 		ast.Import {}
 		ast.Return {
-			g.write('return')
-			// multiple returns
-			if it.exprs.len > 1 {
-				styp := g.typ(g.fn_decl.return_type)
-				g.write(' ($styp){')
-				for i, expr in it.exprs {
-					g.write('.arg$i=')
-					g.expr(expr)
-					if i < it.exprs.len - 1 {
-						g.write(',')
-					}
-				}
-				g.write('}')
-			}
-			// normal return
-			else if it.exprs.len == 1 {
-				g.write(' ')
-				g.expr(it.exprs[0])
-			}
-			g.writeln(';')
+			g.return_statement(it)
 		}
 		ast.StructDecl {
 			name := it.name.replace('.', '__')
@@ -286,7 +283,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			// g.writeln('\t$field_type_sym.name $field.name;')
 			// }
 			// g.writeln('} $name;')
-			g.typedefs.writeln('typedef struct $name $name;')
+			if !it.is_c {
+				g.typedefs.writeln('typedef struct $name $name;')
+			}
 		}
 		ast.TypeDecl {
 			g.writeln('// type')
@@ -302,6 +301,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 
 fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// multi return
+	// g.write('/*assign*/')
 	if assign_stmt.left.len > assign_stmt.right.len {
 		mut return_type := table.void_type
 		match assign_stmt.right[0] {
@@ -360,12 +360,21 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 			}
 			else {
+				mut is_fixed_array_init := false
+				match val {
+					ast.ArrayInit {
+						is_fixed_array_init = g.table.get_type_symbol(it.typ).kind == .array_fixed
+					}
+					else {}
+	}
 				if assign_stmt.op == .decl_assign {
 					g.write('$styp ')
 				}
 				g.expr(ident)
-				g.write(' = ')
-				g.expr(val)
+				if !is_fixed_array_init {
+					g.write(' = ')
+					g.expr(val)
+				}
 			}
 			g.writeln(';')
 		}
@@ -389,6 +398,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		name = name.replace('.', '__')
 		if name.starts_with('_op_') {
 			name = op_to_fn_name(name)
+		}
+		if name == 'exit' {
+			name = 'v_exit'
 		}
 		// type_name := g.table.type_to_str(it.return_type)
 		type_name := g.typ(it.return_type)
@@ -494,16 +506,29 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.AssignExpr {
 			g.is_assign_expr = true
+			mut str_add := false
+			if it.left_type == table.string_type_idx && it.op == .plus_assign {
+				// str += str2 => `str = string_add(str, str2)`
+				g.expr(it.left)
+				g.write(' = string_add(')
+				str_add = true
+			}
 			g.expr(it.left)
 			// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
-			if !g.is_array_set {
+			if !g.is_array_set && !str_add {
 				g.write(' $it.op.str() ')
+			}
+			else if str_add {
+				g.write(', ')
 			}
 			g.is_assign_expr = false
 			g.expr(it.val)
 			if g.is_array_set {
 				g.write(' })')
 				g.is_array_set = false
+			}
+			else if str_add {
+				g.write(')')
 			}
 		}
 		ast.Assoc {
@@ -514,6 +539,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.CallExpr {
 			mut name := it.name.replace('.', '__')
+			if name == 'exit' {
+				name = 'v_exit'
+			}
 			if it.is_c {
 				// Skip "C__"
 				g.is_c_call = true
@@ -583,13 +611,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(it.val)
 		}
 		ast.Ident {
-			name := it.name.replace('.', '__')
-			if name.starts_with('C__') {
-				g.write(name[3..])
-			}
-			else {
-				g.write(name)
-			}
+			g.ident(it)
 		}
 		ast.IfExpr {
 			// If expression? Assign the value to a temp var.
@@ -760,7 +782,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(')')
 		}
 		ast.None {
-			g.write('0')
+			g.write('opt_none()')
 		}
 		ast.ParExpr {
 			g.write('(')
@@ -800,11 +822,14 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.StringLiteral {
 			// In C calls we have to generate C strings
 			// `C.printf("hi")` => `printf("hi");`
+			escaped_val := it.val.replace_each(['"', '\\"',
+			'\r\n', '\\n',
+			'\n', '\\n'])
 			if g.is_c_call {
-				g.write('"$it.val"')
+				g.write('"$escaped_val"')
 			}
 			else {
-				g.write('tos3("$it.val")')
+				g.write('tos3("$escaped_val")')
 			}
 		}
 		// `user := User{name: 'Bob'}`
@@ -821,6 +846,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write('\t.$field = ')
 				g.expr(it.exprs[i])
 				g.writeln(', ')
+			}
+			if it.fields.len == 0 {
+				g.write('0')
 			}
 			g.write('}')
 			if g.is_amp {
@@ -852,13 +880,14 @@ fn (g mut Gen) expr(node ast.Expr) {
 	}
 }
 
-fn (g mut Gen) infix_expr(it ast.InfixExpr) {
+fn (g mut Gen) infix_expr(node ast.InfixExpr) {
+	// g.write('/*infix*/')
 	// if it.left_type == table.string_type_idx {
-	// g.write('/*$it.left_type str*/')
+	// g.write('/*$node.left_type str*/')
 	// }
 	// string + string, string == string etc
-	if it.left_type == table.string_type_idx {
-		fn_name := match it.op {
+	if node.left_type == table.string_type_idx {
+		fn_name := match node.op {
 			.plus{
 				'string_add('
 			}
@@ -881,42 +910,64 @@ fn (g mut Gen) infix_expr(it ast.InfixExpr) {
 				'string_ge('
 			}
 			else {
-				'/*infix_expr error*/'}
+				'/*node error*/'}
 	}
 		g.write(fn_name)
-		g.expr(it.left)
+		g.expr(node.left)
 		g.write(', ')
-		g.expr(it.right)
+		g.expr(node.right)
 		g.write(')')
 	}
-	else if it.op == .key_in {
-		styp := g.typ(it.left_type)
+	else if node.op == .key_in {
+		styp := g.typ(node.left_type)
 		g.write('_IN($styp, ')
-		g.expr(it.left)
+		g.expr(node.left)
 		g.write(', ')
-		g.expr(it.right)
+		g.expr(node.right)
 		g.write(')')
 	}
 	// arr << val
-	else if it.op == .left_shift && g.table.get_type_symbol(it.left_type).kind == .array {
-		sym := g.table.get_type_symbol(it.left_type)
+	else if node.op == .left_shift && g.table.get_type_symbol(node.left_type).kind == .array {
+		sym := g.table.get_type_symbol(node.left_type)
 		info := sym.info as table.Array
 		elem_type_str := g.typ(info.elem_type)
 		// g.write('array_push(&')
 		tmp := g.new_tmp_var()
 		g.write('_PUSH(&')
-		g.expr(it.left)
+		g.expr(node.left)
 		g.write(', (')
-		g.expr(it.right)
+		g.expr(node.right)
 		g.write('), $tmp, $elem_type_str)')
 	}
 	else {
-		// if it.op == .dot {
+		// if node.op == .dot {
 		// println('!! dot')
 		// }
-		g.expr(it.left)
-		g.write(' $it.op.str() ')
-		g.expr(it.right)
+		g.expr(node.left)
+		g.write(' $node.op.str() ')
+		g.expr(node.right)
+	}
+}
+
+fn (g mut Gen) ident(node ast.Ident) {
+	name := node.name.replace('.', '__')
+	if name.starts_with('C__') {
+		g.write(name[3..])
+	}
+	else {
+		// TODO `is`
+		match node.info {
+			ast.IdentVar {
+				if it.is_optional {
+					g.write('/*opt*/')
+					styp := g.typ(it.typ)[7..] // Option_int => int TODO perf?
+					g.write('(*($styp*)${name}.data)')
+					return
+				}
+			}
+			else {}
+	}
+		g.write(name)
 	}
 }
 
@@ -996,6 +1047,51 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	}
 }
 
+fn (g mut Gen) return_statement(it ast.Return) {
+	g.write('return')
+	// multiple returns
+	if it.exprs.len > 1 {
+		styp := g.typ(g.fn_decl.return_type)
+		g.write(' ($styp){')
+		for i, expr in it.exprs {
+			g.write('.arg$i=')
+			g.expr(expr)
+			if i < it.exprs.len - 1 {
+				g.write(',')
+			}
+		}
+		g.write('}')
+	}
+	// normal return
+	else if it.exprs.len == 1 {
+		g.write(' ')
+		// `return opt_ok(expr)` for functions that expect an optional
+		if table.type_is_optional(g.fn_decl.return_type) {
+			mut is_none := false
+			mut is_error := false
+			match it.exprs[0] {
+				ast.None {
+					is_none = true
+				}
+				ast.CallExpr {
+					is_error = true // TODO check name 'error'
+				}
+				else {}
+	}
+			if !is_none && !is_error {
+				styp := g.typ(g.fn_decl.return_type)[7..] // remove 'Option_'
+				g.write('opt_ok(& ($styp []) { ')
+				g.expr(it.exprs[0])
+				g.writeln(' }, sizeof($styp));')
+				return
+			}
+			// g.write('/*OPTIONAL*/')
+		}
+		g.expr(it.exprs[0])
+	}
+	g.writeln(';')
+}
+
 fn (g mut Gen) const_decl(node ast.ConstDecl) {
 	for i, field in node.fields {
 		name := field.name.replace('.', '__')
@@ -1012,8 +1108,11 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 				pos := g.out.len
 				g.expr(expr)
 				g.writeln('')
-				val := string(g.out.buf[pos..])
+				b := g.out.buf[pos..g.out.buf.len].clone()
+				val := string(b)
+				// val += '\0'
 				// g.out.go_back(val.len)
+				// println('pos=$pos buf.len=$g.out.buf.len len=$g.out.len val.len=$val.len val="$val"\n')
 				g.definitions.write(val)
 			}
 			else {
@@ -1057,7 +1156,7 @@ fn verror(s string) {
 
 const (
 // TODO all builtin types must be lowercase
-	builtins = ['string', 'array', 'KeyValue', 'map', 'Option']
+	builtins = ['string', 'array', 'KeyValue', 'DenseArray', 'map', 'Option']
 )
 
 fn (g mut Gen) write_builtin_types() {
@@ -1068,6 +1167,18 @@ fn (g mut Gen) write_builtin_types() {
 		builtin_types << g.table.types[g.table.type_idxs[builtin_name]]
 	}
 	g.write_types(builtin_types)
+	// TODO remove this
+	g.definitions.writeln('
+	typedef struct {
+    int len;
+    string args[100];
+} variadic_string;
+
+	typedef struct {
+    int len;
+    int args[100];
+} variadic_int;
+')
 }
 
 // C struct definitions, ordered
@@ -1091,11 +1202,14 @@ fn (g mut Gen) write_sorted_types() {
 
 fn (g mut Gen) write_types(types []table.TypeSymbol) {
 	for typ in types {
+		if typ.name.starts_with('C.') {
+			continue
+		}
 		// sym := g.table.get_type_symbol(typ)
+		name := typ.name.replace('.', '__')
 		match typ.info {
 			table.Struct {
 				info := typ.info as table.Struct
-				name := typ.name.replace('.', '__')
 				// g.definitions.writeln('typedef struct {')
 				g.definitions.writeln('struct $name {')
 				for field in info.fields {
@@ -1105,6 +1219,21 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				// g.definitions.writeln('} $name;\n')
 				//
 				g.definitions.writeln('};\n')
+			}
+			table.Enum {
+				g.definitions.writeln('typedef enum {')
+				for i, val in it.vals {
+					g.definitions.writeln('\t${name}_$val, // $i')
+				}
+				g.definitions.writeln('} $name;\n')
+			}
+			table.SumType {
+				g.definitions.writeln('// Sum type')
+				g.definitions.writeln('
+				typedef struct {
+void* obj;
+int typ;
+} $name;')
 			}
 			else {}
 	}

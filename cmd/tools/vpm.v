@@ -5,6 +5,7 @@ import (
 	os
 	os.cmdline
 	json
+	vhelp
 )
 
 const (
@@ -46,7 +47,7 @@ fn main() {
 	params := cmdline.only_non_options(args[1..])
 	verbose_println('cli params: $params')
 	if params.len < 1 {
-		vpm_help([])
+		vpm_help()
 		exit(5)
 	}
 	vpm_command := params[0]
@@ -55,7 +56,7 @@ fn main() {
 	// println('module names: ') println(module_names)
 	match vpm_command {
 		'help' {
-			vpm_help(module_names)
+			vpm_help()
 		}
 		'search' {
 			vpm_search(module_names)
@@ -82,11 +83,7 @@ fn main() {
 
 fn vpm_search(keywords []string) {
 	if settings.is_help {
-		println('Usage:')
-		println('  v search keyword1 [keyword2] [...]')
-		println('  ^^^^^^^^^^^^^^^^^ will search https://vpm.vlang.io/ for matching modules,')
-		println('                    and will show details about them')
-		show_vpm_options()
+		vhelp.show_topic('search')
 		exit(0)
 	}
 	if keywords.len == 0 {
@@ -124,10 +121,7 @@ fn vpm_search(keywords []string) {
 
 fn vpm_install(module_names []string) {
 	if settings.is_help {
-		println('Usage:')
-		println('  v install module [module] [module] [...]')
-		println('  ^^^^^^^^^^^^^ will install the modules you specified')
-		show_vpm_options()
+		vhelp.show_topic('install')
 		exit(0)
 	}
 	if module_names.len == 0 {
@@ -209,12 +203,7 @@ fn vpm_install(module_names []string) {
 fn vpm_update(m []string) {
 	mut module_names := m
 	if settings.is_help {
-		println('Usage: ')
-		println(' a) v update module [module] [module] [...]')
-		println('    ^^^^^^^^^^^^ will update the listed modules to their latest versions')
-		println(' b) v update')
-		println('    ^^^^^^^^^^^^ will update ALL installed modules to their latest versions')
-		show_vpm_options()
+		vhelp.show_topic('update')
 		exit(0)
 	}
 	if module_names.len == 0 {
@@ -256,12 +245,7 @@ fn vpm_update(m []string) {
 
 fn vpm_remove(module_names []string) {
 	if settings.is_help {
-		println('Usage: ')
-		println(' a) v remove module [module] [module] [...]')
-		println('    ^^^^^^^^^^^^ will remove the listed modules')
-		println(' b) v remove')
-		println('    ^^^^^^^^^^^^ will remove ALL installed modules')
-		show_vpm_options()
+		vhelp.show_topic('remove')
 		exit(0)
 	}
 	if module_names.len == 0 {
@@ -312,14 +296,8 @@ fn ensure_vmodules_dir_exist() {
 	}
 }
 
-fn vpm_help(module_names []string) {
-	println('Usage:')
-	println('  a) v install module [module] [module] [...]')
-	println('  b) v update [module] [...]')
-	println('  c) v remove [module] [...]')
-	println('  d) v search keyword1 [keyword2] [...]')
-	println('')
-	println('  You can also pass -h or --help after each vpm command from the above, to see more details about it.')
+fn vpm_help() {
+	vhelp.show_topic('vpm')
 }
 
 fn vcs_used_in_dir(dir string) ?[]string {
@@ -342,7 +320,7 @@ fn get_installed_modules() []string {
 	}
 	mut modules := []string
 	for dir in dirs {
-		adir := os.join_path(settings.vmodules_path, dir)
+		adir := os.join_path(settings.vmodules_path,dir)
 		if dir in excluded_dirs || !os.is_dir(adir) {
 			continue
 		}
@@ -351,7 +329,7 @@ fn get_installed_modules() []string {
 			continue
 		}
 		for m in mods {
-			vcs_used_in_dir(os.join_path(adir, m)) or {
+			vcs_used_in_dir(os.join_path(adir,m)) or {
 				continue
 			}
 			modules << '${author}.$m'
@@ -399,7 +377,7 @@ fn get_all_modules() []string {
 }
 
 fn resolve_dependencies(name, module_path string, module_names []string) {
-	vmod_path := os.join_path(module_path, 'v.mod')
+	vmod_path := os.join_path(module_path,'v.mod')
 	if !os.exists(vmod_path) {
 		return
 	}
@@ -479,13 +457,6 @@ fn init_settings() {
 	s.is_verbose = '-verbose' in os.args || '--verbose' in os.args
 	s.server_urls = cmdline.options(os.args, '-server-url')
 	s.vmodules_path = os.home_dir() + '.vmodules'
-}
-
-fn show_vpm_options() {
-	println('Options:')
-	println('  -help        - Show usage info')
-	println('  -verbose     - Print more details about the performed operation')
-	println('  -server-url  - When doing network operations, use this vpm server. Can be given multiple times.')
 }
 
 fn verbose_println(s string) {

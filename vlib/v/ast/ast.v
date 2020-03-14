@@ -107,6 +107,7 @@ pub:
 	mut_pos     int // mut:
 	pub_pos     int // pub:
 	pub_mut_pos int // pub mut:
+	is_c        bool
 }
 
 pub struct StructInit {
@@ -242,9 +243,10 @@ pub mut:
 
 pub struct IdentVar {
 pub mut:
-	typ       table.Type
-	is_mut    bool
-	is_static bool
+	typ         table.Type
+	is_mut      bool
+	is_static   bool
+	is_optional bool
 }
 
 pub type IdentInfo = IdentFn | IdentVar
@@ -487,12 +489,12 @@ pub:
 
 pub struct AssignExpr {
 pub:
-	op   token.Kind
-	pos  token.Position
-	left Expr
-	val  Expr
-	// mut:
-	// left_type table.Type
+	op        token.Kind
+	pos       token.Position
+	left      Expr
+	val       Expr
+mut:
+	left_type table.Type
 }
 
 pub struct GotoLabel {

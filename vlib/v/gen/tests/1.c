@@ -1,3 +1,9 @@
+typedef enum {
+	Color_red, // 0
+	Color_green, // 1
+	Color_blue, // 2
+} Color;
+
 struct Two {
 };
 
@@ -36,12 +42,7 @@ int localmod__get_int_10();
 
 //3
 
-
-typedef enum {
-	Color_red, // 0
-	Color_green, // 1
-	Color_blue, // 2
-} Color;
+//
 
 int main() {
 	int a = 10;
@@ -59,7 +60,7 @@ int main() {
 	println(int_str(localmod__pub_int_const));
 	int g = ((int)(3.0));
 	byte* bytes = ((byte*)(0));
-	User* user_ptr = (User*)memdup(&(User){}, sizeof(User));
+	User* user_ptr = (User*)memdup(&(User){0}, sizeof(User));
 	return 0;
 }
 
@@ -82,7 +83,7 @@ i < 10; i++) {
 	});
 	array_User users = new_array_from_c_array(1, 1, sizeof(array_User), (User[]){
 		(User){
-			},
+			0},
 	});
 	bool b = (*(bool*)array_get(bools, 0));
 	array_string mystrings = new_array_from_c_array(2, 2, sizeof(array_string), (string[]){

@@ -9,6 +9,44 @@ import (
 	hash.wyhash
 )
 
+/*
+This is a very fast hashmap implementation. It has several properties 
+that in combination makes it very fast. Here is a short explanation of
+each property. After reading this you should have a basic understanding
+of how it works:
+
+1.	Hash-function (Wyhash). Wyhash is the fastest hash-function
+	passing SMHasher, so it was an easy choice.
+
+2.	Open addressing (Robin Hood Hashing). With this method a hash 
+	collision is resolved by probing. As opposed to linear probing,
+	Robin Hood hashing has simple but clever twist: As new keys are 
+	inserted, old keys are shifted around in a way such that all keys 
+	stay reasonably close to the slot they originally hash to.
+
+3.	Memory layout. Key-value pairs are stored in a "DenseArray",
+	with an average of rougly 6.25% unused memory as opposed to
+	most other dynamic array implementation with a growth factor
+	of 1.5 or 2. The key-values keep their index in the array -
+	they and are not probed. Instead, this implementation uses another
+	array "metas" storing "metas" (meta-data). Each Key-value has
+	a corresponding meta. A meta stores a reference to its key-value, and
+	its index in "metas" is determined by the hash of the key and probing.
+	A meta also stores bits from the hash (for faster rehashing etc.)
+	and how far away it is from the index it was originally hashed to 
+	(probe count).  
+
+	meta (64 bit) = probe_count (8 bits) | hashbits (24 bits) | kv_index (32 bit)
+	metas = [meta, 0, meta, 0, meta, meta, meta, 0, ...]
+	key_values = [kv, kv, kv, kv, kv, ...]
+
+4.	Power of two. TODO: explain
+5.	Extra metas. TODO: explain
+6.	Cached rehashing TODO: explain
+7.	Load-factor. TODO: explain
+8.	Deletion. TODO: explain
+*/
+
 const (
 	// Number of bits from the hash stored for each entry
 	hashbits = 24
@@ -17,41 +55,24 @@ const (
 	// Initial log-number of buckets in the hashtable
 	init_log_capicity = 5
 	// Initial number of buckets in the hashtable
-	init_capicity = 1<<init_log_capicity
-	// Initial load-factor
-	init_load_factor = 0.8
+	init_capicity = 1 << init_log_capicity
+	// Initial max load-factor
+	init_max_load_factor = 0.8
+	// Minimum Load-factor. 
+	// Number is picked to make delete O(1) amortized
+	min_load_factor = 0.3
 	// Initial range cap
-	init_range_cap = init_capicity - 1
+	init_cap = init_capicity - 2
+	// Used for incrementing `extra_metas` when max
+	// probe count is too high, to avoid overflow
+	extra_metas_inc = 4
 	// Bitmask to select all the hashbits
 	hash_mask = u32(0x00FFFFFF)
 	// Used for incrementing the probe-count
-	probe_inc = u32(0x01000000)
+	probe_inc = u32(0x01000000) 
 	// Bitmask for maximum probe count
 	max_probe = u32(0xFF000000)
 )
-
-pub struct map {
-	// Byte size of value
-	value_bytes int
-mut:
-	// Index of the highest index in the hashtable
-	range_cap   u32
-	// Number of cached hashbits left for rehasing
-	window      byte
-	// Used for right-shifting out used hashbits
-	shift       byte
-	// Pointer to Key-value memory
-	key_values  &KeyValue
-	// Pointer to probe_hash memory. Each Key-value has a
-	// corresponding probe_hash-DWORD. Upper-bits are the
-	// probe-count and lower-bits are bits from the hash.
-	probe_hash  &u32
-	// Measure that decides when to increase the capacity
-	load_factor f32
-pub mut:
-	// Number of key-values currently in the hashmap
-	size        int
-}
 
 struct KeyValue {
 	key   string
@@ -59,18 +80,90 @@ mut:
 	value voidptr
 }
 
+// Dynamic array with very low growth factor
+struct DenseArray {
+mut:
+	data &KeyValue
+	cap  u32
+	size u32
+}
+
+[inline]
+fn new_dense_array() DenseArray {
+	unsafe {
+		return DenseArray {
+			data: &KeyValue(malloc(8 * sizeof(KeyValue)))
+			cap: 8
+			size: 0
+		}
+	}
+}
+
+// Push element to array and return index
+// The growth-factor is roughly 12.5 `(x + (x >> 3))`
+[inline]
+fn (d mut DenseArray) push(kv KeyValue) u32 {
+	if d.cap == d.size {
+		d.cap += d.cap >> 3
+		d.data = &KeyValue(C.realloc(d.data, sizeof(KeyValue) * d.cap))
+	}
+	push_index := d.size
+	d.data[push_index] = kv
+	d.size++
+	return push_index
+}
+
+// Move all zeros to the end of the array
+// and resize array
+fn (d mut DenseArray) zeros_to_end() {
+	mut count := u32(0)
+	for i in 0..d.size {
+		if d.data[i].key.str != 0 {
+			tmp := d.data[count]
+			d.data[count] = d.data[i]
+			d.data[i] = tmp
+			count++
+		}
+	}
+	d.size = count
+	d.cap = if count < 8 {8} else {count}
+	d.data = &KeyValue(C.realloc(d.data, sizeof(KeyValue) * d.cap))
+}
+
+pub struct map {
+	// Byte size of value
+	value_bytes     int
+mut:
+	// Index of the highest index in the hashtable
+	cap             u32
+	// Number of cached hashbits left for rehasing
+	window          byte
+	// Used for right-shifting out used hashbits
+	shift           byte
+	// Pointer to Key-value memory
+	key_values      DenseArray
+	// Pointer to meta-data
+	metas           &u32
+	// Measure that decides when to increase the capacity
+	max_load_factor f32
+	// Extra metas that allows for no ranging when incrementing
+	// index in the hashmap
+	extra_metas     u32
+pub mut:
+	// Number of key-values currently in the hashmap
+	size            int
+}
+
 fn new_map(n, value_bytes int) map {
-	probe_hash_bytes := sizeof(u32) * init_capicity
-	key_value_bytes := sizeof(KeyValue) * init_capicity
-	memory := vcalloc(key_value_bytes + probe_hash_bytes)
 	return map{
 		value_bytes: value_bytes
-		range_cap: init_range_cap
-		shift: init_log_capicity
+		cap: init_cap
 		window: cached_hashbits
-		key_values: &KeyValue(memory)
-		probe_hash: &u32(memory + key_value_bytes)
-		load_factor: init_load_factor
+		shift: init_log_capicity
+		key_values: new_dense_array()
+		metas: &u32(vcalloc(sizeof(u32) * (init_capicity + extra_metas_inc)))
+		max_load_factor: init_max_load_factor
+		extra_metas: extra_metas_inc
 		size: 0
 	}
 }
@@ -84,279 +177,301 @@ fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
 }
 
 fn (m mut map) set(key string, value voidptr) {
-	// load_factor can be adjusted.
-	if (f32(m.size) / f32(m.range_cap)) > m.load_factor {
+	if (f32(m.size << 1) / f32(m.cap)) > m.max_load_factor {
 		m.expand()
 	}
 	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
-	mut probe_hash := u32(((hash>>m.shift) & hash_mask) | probe_inc)
-	mut index := hash & m.range_cap
+	mut meta := u32(((hash >> m.shift) & hash_mask) | probe_inc)
+	mut index := hash & m.cap
 	// While probe count is less
-	for probe_hash < m.probe_hash[index] {
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
+	for meta < m.metas[index] {
+		index += 2
+		meta += probe_inc
 	}
 	// While we might have a match
-	for probe_hash == m.probe_hash[index] {
-		if key == m.key_values[index].key {
-			C.memcpy(m.key_values[index].value, value, m.value_bytes)
+	for meta == m.metas[index] {
+		kv_index := m.metas[index + 1]
+		if key == m.key_values.data[kv_index].key {
+			C.memcpy(m.key_values.data[kv_index].value, value, m.value_bytes)
 			return
 		}
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
+		index += 2
+		meta += probe_inc
 	}
 	// Match is not possible anymore.
 	// Probe until an empty index is found.
 	// Swap when probe count is higher/richer (Robin Hood).
-	mut current_kv := KeyValue{
-		key:key
-		value:malloc(m.value_bytes)
+	kv := KeyValue{
+		key: key 
+		value: malloc(m.value_bytes)
 	}
-	C.memcpy(current_kv.value, value, m.value_bytes)
-	for m.probe_hash[index] != 0 {
-		if probe_hash > m.probe_hash[index] {
-			// Swap probe_hash
-			tmp_probe_hash := m.probe_hash[index]
-			m.probe_hash[index] = probe_hash
-			probe_hash = tmp_probe_hash
-			// Swap KeyValue
-			tmp_kv := m.key_values[index]
-			m.key_values[index] = current_kv
-			current_kv = tmp_kv
+	C.memcpy(kv.value, value, m.value_bytes)
+	mut kv_index := m.key_values.push(kv)
+	for m.metas[index] != 0 {
+		if meta > m.metas[index] {
+			tmp_meta := m.metas[index]
+			m.metas[index] = meta
+			meta = tmp_meta
+			tmp_index := m.metas[index + 1]
+			m.metas[index + 1] = kv_index
+			kv_index = tmp_index
 		}
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
+		index += 2
+		meta += probe_inc
 	}
-	// Should almost never happen
-	if (probe_hash & max_probe) == max_probe {
-		m.expand()
-		m.set(current_kv.key, current_kv.value)
-		return
-	}
-	m.probe_hash[index] = probe_hash
-	m.key_values[index] = current_kv
+	probe_count := (meta >> hashbits) - 1
+	if (probe_count << 1) == m.extra_metas {
+		// Should almost never happen
+		if (meta & max_probe) == max_probe {
+			m.expand()
+			m.set(kv.key, kv.value)
+			return
+		}
+		m.extra_metas += extra_metas_inc
+		mem_size := (m.cap + 2 + m.extra_metas)
+		m.metas = &u32(C.realloc(m.metas, sizeof(u32) * mem_size))
+		C.memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
+	}  
+	m.metas[index] = meta
+	m.metas[index + 1] = kv_index
 	m.size++
 }
 
+// Doubles the size of the hashmap
 fn (m mut map) expand() {
-	old_range_cap := m.range_cap
-	// double the size of the hashmap
-	m.range_cap = ((m.range_cap + 1)<<1) - 1
-	// check if no hashbits are left
+	old_cap := m.cap
+	m.cap = ((m.cap + 2)<<1) - 2
+	// Check if any hashbits are left
 	if m.window == 0 {
 		m.shift += cached_hashbits
-		m.rehash(old_range_cap)
+		m.rehash()
 		m.window = cached_hashbits
 	}
 	else {
-		m.cached_rehash(old_range_cap)
+		m.cached_rehash(old_cap)
 	}
 	m.window--
 }
 
-fn (m mut map) rehash(old_range_cap u32) {
-	probe_hash_bytes := sizeof(u32) * (m.range_cap + 1)
-	key_value_bytes := sizeof(KeyValue) * (m.range_cap + 1)
-	memory := vcalloc(probe_hash_bytes + key_value_bytes)
-	mut new_key_values := &KeyValue(memory)
-	mut new_probe_hash := &u32(memory + key_value_bytes)
-	for i := u32(0); i < old_range_cap + 1; i++ {
-		if m.probe_hash[i] != 0 {
-			mut kv := m.key_values[i]
-			hash := wyhash.wyhash_c(kv.key.str, u64(kv.key.len), 0)
-			mut probe_hash := u32(((hash>>m.shift) & hash_mask) | probe_inc)
-			mut index := hash & m.range_cap
-			// While probe count is less
-			for probe_hash < new_probe_hash[index] {
-				index = (index + 1) & m.range_cap
-				probe_hash += probe_inc
+// Halves the size of the hashmap
+fn (m mut map) shrink() {
+	m.key_values.zeros_to_end()
+	m.cap = ((m.cap + 2)>>1) - 2
+	if m.window == 16 {
+		m.shift -= cached_hashbits
+		m.window = 0
+	}
+	m.rehash()
+	m.window++
+}
+
+fn (m mut map) rehash() {
+	meta_bytes := sizeof(u32) * (m.cap + 2 + m.extra_metas)
+	m.metas = &u32(C.realloc(m.metas, meta_bytes))
+	C.memset(m.metas, 0, meta_bytes)
+	for i := u32(0); i < m.key_values.size; i++ {
+		if m.key_values.data[i].key.str == 0 {
+			continue
+		}
+		kv := m.key_values.data[i]
+		hash := wyhash.wyhash_c(kv.key.str, u64(kv.key.len), 0)
+		mut meta := u32(((hash>>m.shift) & hash_mask) | probe_inc)
+		mut index := hash & m.cap
+		// While probe count is less
+		for meta < m.metas[index] {
+			index += 2
+			meta += probe_inc
+		}
+		// Match is not possible anymore.
+		// Probe until an empty index is found.
+		// Swap when probe count is higher/richer (Robin Hood).
+		mut kv_index := i
+		for m.metas[index] != 0 {
+			if meta > m.metas[index] {
+				tmp_meta := m.metas[index]
+				m.metas[index] = meta
+				meta = tmp_meta
+				tmp_index := m.metas[index + 1]
+				m.metas[index + 1] = kv_index
+				kv_index = tmp_index
 			}
-			// Probe until an empty index is found.
-			// Swap when probe count is higher/richer (Robin Hood).
-			for new_probe_hash[index] != 0 {
-				if probe_hash > new_probe_hash[index] {
-					// Swap probe_hash
-					tmp_probe_hash := new_probe_hash[index]
-					new_probe_hash[index] = probe_hash
-					probe_hash = tmp_probe_hash
-					// Swap KeyValue
-					tmp_kv := new_key_values[index]
-					new_key_values[index] = kv
-					kv = tmp_kv
-				}
-				index = (index + 1) & m.range_cap
-				probe_hash += probe_inc
-			}
+			index += 2
+			meta += probe_inc
+		}
+		probe_count := (meta >> hashbits) - 1
+		if (probe_count << 1) == m.extra_metas {
 			// Should almost never happen
-			if (probe_hash & max_probe) == max_probe {
+			if (meta & max_probe) == max_probe {
 				m.expand()
-				m.set(kv.key, kv.value)
 				return
 			}
-			new_probe_hash[index] = probe_hash
-			new_key_values[index] = kv
-		}
+			m.extra_metas += extra_metas_inc
+			mem_size := (m.cap + 2 + m.extra_metas)
+			m.metas = &u32(C.realloc(m.metas, sizeof(u32) * mem_size))
+			C.memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
+		} 
+		m.metas[index] = meta
+		m.metas[index + 1] = kv_index
 	}
-	unsafe{
-		free(m.key_values)
-	}
-	m.key_values = new_key_values
-	m.probe_hash = new_probe_hash
 }
 
-fn (m mut map) cached_rehash(old_range_cap u32) {
-	probe_hash_bytes := sizeof(u32) * (m.range_cap + 1)
-	key_value_bytes := sizeof(KeyValue) * (m.range_cap + 1)
-	memory := vcalloc(probe_hash_bytes + key_value_bytes)
-	mut new_probe_hash := &u32(memory + key_value_bytes)
-	mut new_key_values := &KeyValue(memory)
-	for i := u32(0); i < old_range_cap + 1; i++ {
-		if m.probe_hash[i] != 0 {
-			mut kv := m.key_values[i]
-			mut probe_hash := m.probe_hash[i]
-			original := u64(i - ((probe_hash>>hashbits) - 1)) & (m.range_cap>>1)
-			hash := original | (probe_hash<<m.shift)
-			probe_hash = (probe_hash & hash_mask) | probe_inc
-			mut index := hash & m.range_cap
-			// While probe count is less
-			for probe_hash < new_probe_hash[index] {
-				index = (index + 1) & m.range_cap
-				probe_hash += probe_inc
+fn (m mut map) cached_rehash(old_cap u32) {
+	mut new_meta := &u32(vcalloc(sizeof(u32) * (m.cap + 2 + m.extra_metas)))
+	old_extra_metas := m.extra_metas
+	for i := 0; i <= old_cap + old_extra_metas; i += 2 {
+		if m.metas[i] == 0 {
+			continue
+		}
+		old_meta := m.metas[i]
+		old_probe_count := u64((old_meta>>hashbits) - 1) << 1
+		old_index := (i - old_probe_count) & (m.cap >> 1)
+		mut index := u64(old_index) | (old_meta << m.shift) & m.cap
+		mut meta := (old_meta & hash_mask) | probe_inc
+		// While probe count is less
+		for meta < new_meta[index] {
+			index += 2
+			meta += probe_inc
+		}
+		// Match is not possible anymore.
+		// Probe until an empty index is found.
+		// Swap when probe count is higher/richer (Robin Hood).
+		mut kv_index := m.metas[i + 1]
+		for new_meta[index] != 0 {
+			if meta > new_meta[index] {
+				tmp_meta := new_meta[index]
+				new_meta[index] = meta
+				meta = tmp_meta
+				tmp_index := new_meta[index + 1]
+				new_meta[index + 1] = kv_index
+				kv_index = tmp_index
 			}
-			// Probe until an empty index is found.
-			// Swap when probe count is higher/richer (Robin Hood).
-			for new_probe_hash[index] != 0 {
-				if probe_hash > new_probe_hash[index] {
-					// Swap probe_hash
-					tmp_probe_hash := new_probe_hash[index]
-					new_probe_hash[index] = probe_hash
-					probe_hash = tmp_probe_hash
-					// Swap KeyValue
-					tmp_kv := new_key_values[index]
-					new_key_values[index] = kv
-					kv = tmp_kv
-				}
-				index = (index + 1) & m.range_cap
-				probe_hash += probe_inc
-			}
+			index += 2
+			meta += probe_inc
+		}
+		probe_count := (meta >> hashbits) - 1
+		if (probe_count << 1) == m.extra_metas {
 			// Should almost never happen
-			if (probe_hash & max_probe) == max_probe {
+			if (meta & max_probe) == max_probe {
+				free(new_meta)
 				m.expand()
-				m.set(kv.key, kv.value)
 				return
 			}
-			new_probe_hash[index] = probe_hash
-			new_key_values[index] = kv
-		}
+			m.extra_metas += extra_metas_inc
+			mem_size := (m.cap + 2 + m.extra_metas)
+			new_meta = &u32(C.realloc(new_meta, sizeof(u32) * mem_size))
+			C.memset(new_meta + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
+		} 
+		new_meta[index] = meta
+		new_meta[index + 1] = kv_index
 	}
 	unsafe{
-		free(m.key_values)
+		free(m.metas)
 	}
-	m.key_values = new_key_values
-	m.probe_hash = new_probe_hash
+	m.metas = new_meta
 }
 
-pub fn (m mut map) delete(key string) {
-	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
-	mut index := hash & m.range_cap
-	mut probe_hash := u32(((hash>>m.shift) & hash_mask) | probe_inc)
-	for probe_hash < m.probe_hash[index] {
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
-	}
-	// Perform backwards shifting
-	for probe_hash == m.probe_hash[index] {
-		if key == m.key_values[index].key {
-			mut old_index := index
-			index = (index + 1) & m.range_cap
-			mut current_probe_hash := m.probe_hash[index]
-			for (current_probe_hash>>hashbits) > 1 {
-				m.probe_hash[old_index] = current_probe_hash - probe_inc
-				m.key_values[old_index] = m.key_values[index]
-				old_index = index
-				index = (index + 1) & m.range_cap
-				current_probe_hash = m.probe_hash[index]
-			}
-			m.probe_hash[old_index] = 0
-			m.size--
-			return
-		}
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
-	}
-}
-
+[inline]
 fn (m map) get(key string, out voidptr) bool {
 	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
-	mut index := hash & m.range_cap
-	mut probe_hash := u32(((hash>>m.shift) & hash_mask) | probe_inc)
-	for probe_hash < m.probe_hash[index] {
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
+	mut index := hash & m.cap
+	mut meta := u32(((hash>>m.shift) & hash_mask) | probe_inc)
+	for meta < m.metas[index] {
+		index += 2
+		meta += probe_inc
 	}
-	for probe_hash == m.probe_hash[index] {
-		if key == m.key_values[index].key {
-			C.memcpy(out, m.key_values[index].value, m.value_bytes)
+	for meta == m.metas[index] {
+		kv_index := m.metas[index + 1]
+		if key == m.key_values.data[kv_index].key {
+			C.memcpy(out, m.key_values.data[kv_index].value, m.value_bytes)
 			return true
 		}
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
+		index += 2
+		meta += probe_inc
 	}
 	return false
 }
 
+[inline]
 fn (m map) exists(key string) bool {
 	if m.value_bytes == 0 {
 		return false
 	}
 	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
-	mut index := hash & m.range_cap
-	mut probe_hash := u32(((hash>>m.shift) & hash_mask) | probe_inc)
-	for probe_hash < m.probe_hash[index] {
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
+	mut index := hash & m.cap
+	mut meta := u32(((hash>>m.shift) & hash_mask) | probe_inc)
+	for meta < m.metas[index] {
+		index += 2
+		meta += probe_inc
 	}
-	for probe_hash == m.probe_hash[index] {
-		if key == m.key_values[index].key {
+	for meta == m.metas[index] {
+		kv_index := m.metas[index + 1]
+		if key == m.key_values.data[kv_index].key {
 			return true
 		}
-		index = (index + 1) & m.range_cap
-		probe_hash += probe_inc
+		index += 2
+		meta += probe_inc
 	}
 	return false
 }
 
+pub fn (m mut map) delete(key string) {
+	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
+	mut index := hash & m.cap
+	mut meta := u32(((hash>>m.shift) & hash_mask) | probe_inc)
+	for meta < m.metas[index] {
+		index += 2
+		meta += probe_inc
+	}
+	// Perform backwards shifting
+	for meta == m.metas[index] {
+		kv_index := m.metas[index + 1]
+		if key == m.key_values.data[kv_index].key {
+			C.memset(&m.key_values.data[kv_index], 0, sizeof(KeyValue))
+			mut old_index := index
+			index += 2
+			mut cur_meta := m.metas[index]
+			mut cur_index := m.metas[index + 1]
+			for (cur_meta >> hashbits) > 1 {
+				m.metas[old_index] = cur_meta - probe_inc
+				m.metas[old_index + 1] = cur_index
+				old_index = index
+				index += 2
+				cur_meta = m.metas[index]
+				cur_index = m.metas[index + 1]
+			}
+			m.metas[old_index] = 0
+			m.size--
+			if m.cap == 30 {return}
+			if (f32(m.size << 1) / f32(m.cap)) < min_load_factor {
+				m.shrink()
+			}
+			return
+		}
+		index += 2
+		meta += probe_inc
+	}
+}
+
 pub fn (m &map) keys() []string {
 	mut keys := [''].repeat(m.size)
-	//mut keys := []string{len: m.size}
 	if m.value_bytes == 0 {
 		return keys
 	}
 	mut j := 0
-	for i := u32(0); i < m.range_cap + 1; i++ {
-		if m.probe_hash[i] != 0 {
-			keys[j] = m.key_values[i].key
-			j++
+	for i := u32(0); i < m.key_values.size; i++ {
+		if m.key_values.data[i].key.str == 0 {
+			continue
 		}
+		keys[j] = m.key_values.data[i].key
+		j++
 	}
 	return keys
 }
 
-pub fn (m mut map) set_load_factor(new_load_factor f32) {
-	if new_load_factor > 1.0 {
-		m.load_factor = 1.0
-	}
-	else if new_load_factor < 0.1 {
-		m.load_factor = 0.1
-	}
-	else {
-		m.load_factor = new_load_factor
-	}
-}
-
-pub fn (m mut map) free() {
-	unsafe{
-		free(m.key_values)
+pub fn (m map) free() {
+	unsafe {
+		free(m.metas)
+		free(m.key_values.data)
 	}
 }
 

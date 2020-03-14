@@ -17,7 +17,7 @@ tos3(""),
 
 int main() {
 	User user = (User){
-};
+0};
 	user.age = 10;
 	user.age++;
 	user.name = tos3("bob");

@@ -24,7 +24,7 @@ struct Parser {
 	pref                   &pref.Preferences
 mut:
 	scanner                &Scanner
-// Preferences shared from V struct
+	// Preferences shared from V struct
 	tokens                 []Token
 	token_idx              int
 	prev_stuck_token_idx   int
@@ -180,7 +180,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	p = {
 		p |
 		file_path:path,
-		file_path_dir: path_dir,
+		file_path_dir:path_dir,
 		file_name:path.all_after(os.path_separator),
 		file_platform:path_platform,
 		file_pcguard:path_pcguard,
@@ -720,7 +720,7 @@ fn (p mut Parser) const_decl() {
 			// }
 			continue
 		}
-    var_token_idx := p.cur_tok_index()
+		var_token_idx := p.cur_tok_index()
 		mut name := p.check_name() // `Age = 20`
 		// if !p.pref.building_v && p.mod != 'os' && contains_capital(name) {
 		// p.warn('const names cannot contain uppercase letters, use snake_case instead')
@@ -872,11 +872,7 @@ fn (p mut Parser) type_decl() {
 				}
 				p.cgen.consts << '#define SumType_${name}_$child_type_name $idx // DEF2'
 				ctype_names << child_type_name
-				sum_variants << if p.mod in ['builtin', 'main'] || child_type_name in builtin_types {
-					child_type_name
-				} else {
-					p.prepend_mod(child_type_name)
-				}
+				sum_variants << if p.mod in ['builtin', 'main'] || child_type_name in builtin_types { child_type_name } else { p.prepend_mod(child_type_name) }
 			}
 			if done {
 				break
