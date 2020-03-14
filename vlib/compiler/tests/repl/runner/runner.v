@@ -15,7 +15,7 @@ pub fn full_path_to_v(dirs_in int) string {
 		return vexe_from_env
 	}
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	mut path := os.executable()
+	mut path := os.exe_path()
 	for i := 0; i < dirs_in; i++ {
 		path = os.dir(path)
 	}
@@ -23,7 +23,7 @@ pub fn full_path_to_v(dirs_in int) string {
 	/*
 	args := os.args
 	vreal  := os.realpath('v')
-	myself := os.realpath( os.executable() )
+	myself := os.realpath( os.exe_path() )
 	wd := os.getwd()
 	println('args are: $args')
 	println('vreal   : $vreal')

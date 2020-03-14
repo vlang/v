@@ -79,7 +79,7 @@ pub fn vexe_path() string {
 	if vexe != '' {
 		return vexe
 	}
-	real_vexe_path := os.realpath(os.executable())
+	real_vexe_path := os.realpath(os.exe_path())
 	os.setenv('VEXE', real_vexe_path, true)
 	return real_vexe_path
 }

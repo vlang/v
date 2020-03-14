@@ -54,7 +54,7 @@ fn analyze_v_file(file string) {
 }
 
 fn main(){
-	toolexe := os.executable()
+	toolexe := os.exe_path()
 	compiler.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 
 	mut fp := flag.new_flag_parser(os.args)

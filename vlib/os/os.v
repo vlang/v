@@ -800,12 +800,18 @@ fn C.proc_pidpath(int, byteptr, int) int
 fn C.readlink() int
 // executable returns the path name of the executable that started the current
 // process.
-pub fn executable() string {
+
+[deprecated]
+pub fn executable() {
+	panic('Use `os.exe_path` instead of `os.executable`')
+}
+
+pub fn exe_path() string {
 	$if linux {
 		mut result := vcalloc(MAX_PATH)
 		count := C.readlink('/proc/self/exe', result, MAX_PATH)
 		if count < 0 {
-			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
+			eprintln('os.exe_path() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
 		return string(result)
@@ -821,7 +827,7 @@ pub fn executable() string {
 		pid := C.getpid()
 		ret := proc_pidpath(pid, result, MAX_PATH)
 		if ret <= 0 {
-			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
+			eprintln('os.exe_path() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
 			return executable_fallback()
 		}
 		return string(result)
@@ -841,8 +847,8 @@ pub fn executable() string {
 		mut result := vcalloc(MAX_PATH)
 		count := C.readlink('/proc/curproc/exe', result, MAX_PATH)
 		if count < 0 {
-			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
-			return executable_fallback()
+			eprintln('os.exe_path() failed at reading /proc/curproc/exe to get exe path')
+			return exe_path_fallback()
 		}
 		return string(result,count)
 	}
@@ -850,23 +856,24 @@ pub fn executable() string {
 		mut result := vcalloc(MAX_PATH)
 		count := C.readlink('/proc/curproc/file', result, MAX_PATH)
 		if count < 0 {
-			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
-			return executable_fallback()
+			eprintln('os.exe_path() failed at reading /proc/curproc/file to get exe path')
+			return exe_path_fallback()
 		}
 		return string(result,count)
 	}
-	return executable_fallback()
+	return exe_path_fallback()
 }
 
 // executable_fallback is used when there is not a more platform specific and accurate implementation
 // it relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
 // all cases, but it should be better, than just using os.args[0] directly.
-fn executable_fallback() string {
+fn exe_path_fallback() string {
 	mut exepath := os.args[0]
 	if !os.is_abs_path(exepath) {
-		if exepath.contains( os.path_separator ) {
+		if exepath.contains(os.path_separator) {
 			exepath = os.join_path(os.wd_at_startup, exepath)
-		}else{
+		}
+		else {
 			// no choice but to try to walk the PATH folders :-| ...
 			foundpath := os.find_abs_path_of_executable(exepath) or { '' }
 			if foundpath.len > 0 {
@@ -1184,7 +1191,7 @@ pub const (
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
 pub fn resource_abs_path(path string) string {
-	mut base_path := os.realpath(os.dir(os.executable()))
+	mut base_path := os.realpath(os.dir(os.exe_path()))
 	vresource := os.getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
 		base_path = vresource

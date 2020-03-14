@@ -39,7 +39,7 @@ const (
 )
 
 fn main() {
-	toolexe := os.executable()
+	toolexe := os.exe_path()
 	compiler.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := join_flags_and_argument()
 	foptions := FormatOptions{
