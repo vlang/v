@@ -16,7 +16,7 @@ pub enum Kind {
 	eof
 	name // user
 	number // 123
-	str // 'foo'
+	string // 'foo'
 	str_inter // 'name=$user.name'
 	chartoken // `A`
 	plus
@@ -148,7 +148,7 @@ fn build_token_str() []string {
 	s[Kind.eof] = 'eof'
 	s[Kind.name] = 'name'
 	s[Kind.number] = 'number'
-	s[Kind.str] = 'STR'
+	s[Kind.string] = 'STR'
 	s[Kind.chartoken] = 'char'
 	s[Kind.plus] = '+'
 	s[Kind.minus] = '-'
@@ -287,7 +287,7 @@ pub fn (t Kind) str() string {
 	if t == .chartoken {
 		return 'char' // '`lit`'
 	}
-	if t == .str {
+	if t == .string {
 		return 'str' // "'lit'"
 	}
 	/*
@@ -417,7 +417,7 @@ pub fn (tok Token) precedence() int {
 
 // is_scalar returns true if the token is a scalar
 pub fn (tok Token) is_scalar() bool {
-	return tok.kind in [.number, .str]
+	return tok.kind in [.number, .string]
 }
 
 // is_unary returns true if the token can be in a unary expression

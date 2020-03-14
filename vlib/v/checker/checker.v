@@ -132,6 +132,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	infix_expr.left_type = left_type
 	c.expected_type = left_type
 	right_type := c.expr(infix_expr.right)
+	infix_expr.right_type = right_type
 	if !c.table.check(right_type, left_type) {
 		left := c.table.get_type_symbol(left_type)
 		right := c.table.get_type_symbol(right_type)

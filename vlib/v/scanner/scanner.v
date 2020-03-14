@@ -359,10 +359,10 @@ pub fn (s mut Scanner) scan() token.Token {
 	if s.inter_end {
 		if s.text[s.pos] == s.quote {
 			s.inter_end = false
-			return s.scan_res(.str, '')
+			return s.scan_res(.string, '')
 		}
 		s.inter_end = false
-		return s.scan_res(.str, s.ident_string())
+		return s.scan_res(.string, s.ident_string())
 	}
 	s.skip_whitespace()
 	// end of file
@@ -483,7 +483,7 @@ pub fn (s mut Scanner) scan() token.Token {
 			return s.scan_res(.question, '')
 		}
 		single_quote, double_quote {
-			return s.scan_res(.str, s.ident_string())
+			return s.scan_res(.string, s.ident_string())
 		}
 		`\`` {
 			// ` // apostrophe balance comment. do not remove
@@ -523,9 +523,9 @@ pub fn (s mut Scanner) scan() token.Token {
 				s.pos++
 				if s.text[s.pos] == s.quote {
 					s.inside_string = false
-					return s.scan_res(.str, '')
+					return s.scan_res(.string, '')
 				}
-				return s.scan_res(.str, s.ident_string())
+				return s.scan_res(.string, s.ident_string())
 			}
 			else {
 				return s.scan_res(.rcbr, '')
@@ -568,19 +568,19 @@ pub fn (s mut Scanner) scan() token.Token {
 			// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @FN)
 			// ... which is useful while debugging/tracing
 			if name == 'FN' {
-				return s.scan_res(.str, s.fn_name)
+				return s.scan_res(.string, s.fn_name)
 			}
 			if name == 'FILE' {
-				return s.scan_res(.str, cescaped_path(os.realpath(s.file_path)))
+				return s.scan_res(.string, cescaped_path(os.realpath(s.file_path)))
 			}
 			if name == 'LINE' {
-				return s.scan_res(.str, (s.line_nr + 1).str())
+				return s.scan_res(.string, (s.line_nr + 1).str())
 			}
 			if name == 'COLUMN' {
-				return s.scan_res(.str, (s.current_column()).str())
+				return s.scan_res(.string, (s.current_column()).str())
 			}
 			if name == 'VHASH' {
-				return s.scan_res(.str, vhash())
+				return s.scan_res(.string, vhash())
 			}
 			if !token.is_key(name) {
 				s.error('@ must be used before keywords (e.g. `@type string`)')

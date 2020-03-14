@@ -286,12 +286,12 @@ fn (p mut Parser) name_expr() string {
 		name = p.generic_dispatch.inst[name]
 	}
 	// Raw string (`s := r'hello \n ')
-	if name == 'r' && p.peek() == .str && p.prev_tok != .str_dollar {
+	if name == 'r' && p.peek() == .string&& p.prev_tok != .str_dollar {
 		p.string_expr()
 		return 'string'
 	}
 	// C string (a zero terminated one) C.func( c'hello' )
-	if name == 'c' && p.peek() == .str && p.prev_tok != .str_dollar {
+	if name == 'c' && p.peek() == .string&& p.prev_tok != .str_dollar {
 		p.string_expr()
 		return 'charptr'
 	}
@@ -833,7 +833,7 @@ fn (p mut Parser) factor() string {
 				// TODO: make this work for arbitrary sumtype expressions, not just simple vars
 				// NB: __SumTypeNames__[xxx][0] is the name of the sumtype itself;
 				// idx>0 are the names of the sumtype children
-				p.gen('tos3(__SumTypeNames__${type_of_var}[${vname}.typ])') 
+				p.gen('tos3(__SumTypeNames__${type_of_var}[${vname}.typ])')
 			}else{
 				p.gen('tos3("$type_of_var")')
 			}
@@ -913,7 +913,7 @@ fn (p mut Parser) factor() string {
 			typ = 'byte'
 			return typ
 		}
-		.str {
+		.string{
 			p.string_expr()
 			typ = 'string'
 			return typ
@@ -934,7 +934,7 @@ fn (p mut Parser) factor() string {
 		}
 		.lcbr {
 			// `m := { 'one': 1 }`
-			if p.peek() == .str {
+			if p.peek() == .string{
 				return p.map_init()
 			}
 			peek2 := p.tokens[p.token_idx + 1]

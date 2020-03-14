@@ -178,8 +178,8 @@ mut:
 
 pub struct CallArg {
 pub:
-	is_mut bool
-	expr   Expr
+	is_mut        bool
+	expr          Expr
 mut:
 	typ           table.Type
 	expected_type table.Type
@@ -437,8 +437,9 @@ pub struct EnumVal {
 pub:
 	enum_name string
 	val       string
+	mod       string // for full path `mod_Enum_val`
+	// typ       table.Type
 	pos       token.Position
-	// name string
 }
 
 pub struct EnumDecl {

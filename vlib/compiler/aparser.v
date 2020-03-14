@@ -982,7 +982,7 @@ fn (p mut Parser) check_name() string {
 
 fn (p mut Parser) check_string() string {
 	s := p.lit
-	p.check(.str)
+	p.check(.string)
 	return s
 }
 
@@ -1005,7 +1005,7 @@ fn (p &Parser) strtok() string {
 		}
 		return '`$p.lit`'
 	}
-	if p.tok == .str {
+	if p.tok == .string{
 		if p.lit.contains("'") && !p.lit.contains('"') {
 			return '"$p.lit"'
 		}
@@ -1296,7 +1296,7 @@ fn (p &Parser) print_tok() {
 		println(p.lit)
 		return
 	}
-	if p.tok == .str {
+	if p.tok == .string{
 		println('"$p.lit"')
 		return
 	}
@@ -2613,7 +2613,7 @@ fn (p mut Parser) map_init() string {
 		for {
 			key := p.lit
 			keys_gen += 'tos3("$key"), '
-			p.check(.str)
+			p.check(.string)
 			p.check(.colon)
 			p.fspace()
 			t,val_expr := p.tmp_expr()
@@ -2954,7 +2954,7 @@ fn (p mut Parser) return_st() {
 	}
 	else {
 		// Don't allow `return val` in functions that don't return anything
-		if p.tok == .name || p.tok == .number || p.tok == .str {
+		if p.tok == .name || p.tok == .number || p.tok == .string{
 			p.error_with_token_index('function `$p.cur_fn.name` should not return a value', p.cur_fn.fn_name_token_idx)
 		}
 		p.genln(deferred_text)

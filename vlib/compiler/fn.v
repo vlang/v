@@ -1115,7 +1115,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
 		}
 		// x64 println gen
-		if p.pref.backend == .x64 && i == 0 && f.name == 'println' && p.tok == .str && p.peek() == .rpar {
+		if p.pref.backend == .x64 && i == 0 && f.name == 'println' && p.tok == .string&& p.peek() == .rpar {
 			//p.x64.gen_print(p.lit)
 		}
 		mut typ := p.bool_expression()

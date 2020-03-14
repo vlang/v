@@ -304,7 +304,7 @@ fn (p mut Parser) struct_decl(generic_param_types []string) {
 					.name {
 						val = p.check_name()
 					}
-					.str {
+					.string{
 						val = p.check_string()
 					}
 					else {

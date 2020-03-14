@@ -63,7 +63,7 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 	}
-	if styp in ['stat', 'dirent*'] {
+	if styp in ['stat', 'dirent*', 'tm'] {
 		// TODO perf and other C structs
 		styp = 'struct $styp'
 	}
@@ -106,9 +106,8 @@ pub fn (g mut Gen) write_typedef_types() {
 				styp := typ.name.replace('.', '__')
 				g.definitions.writeln('typedef map $styp;')
 			}
-			.function {
-				// TODO:
-			}
+			// TODO:
+			.function {}
 			else {
 				continue
 			}
@@ -290,7 +289,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.HashStmt {
 			// #include etc
-			g.definitions.writeln('#$it.val')
+			typ := it.val.all_before(' ')
+			if typ in ['#include', '#define'] {
+				g.definitions.writeln('#$it.val')
+			}
 		}
 		ast.Import {}
 		ast.Return {
@@ -466,7 +468,7 @@ fn (g mut Gen) fn_args(args []table.Arg, is_variadic bool) {
 	no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
 		arg_type_sym := g.table.get_type_symbol(arg.typ)
-		mut arg_type_name := arg_type_sym.name.replace('.', '__')
+		mut arg_type_name := g.typ(arg.typ) // arg_type_sym.name.replace('.', '__')
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
 			g.varaidic_args[int(arg.typ).str()] = 0
@@ -486,14 +488,14 @@ fn (g mut Gen) fn_args(args []table.Arg, is_variadic bool) {
 		}
 		else {
 			mut nr_muls := table.type_nr_muls(arg.typ)
-			mut s := arg_type_name + ' ' + arg.name
+			s := arg_type_name + ' ' + arg.name
 			if arg.is_mut {
 				// mut arg needs one *
 				nr_muls = 1
 			}
-			if nr_muls > 0 && !is_varg {
-				s = arg_type_name + strings.repeat(`*`, nr_muls) + ' ' + arg.name
-			}
+			// if nr_muls > 0 && !is_varg {
+			// s = arg_type_name + strings.repeat(`*`, nr_muls) + ' ' + arg.name
+			// }
 			g.write(s)
 			g.definitions.write(s)
 		}
@@ -625,6 +627,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.EnumVal {
+			// g.write('/*EnumVal*/${it.mod}${it.enum_name}_$it.val')
 			g.write('${it.enum_name}_$it.val')
 		}
 		ast.FloatLiteral {
@@ -718,8 +721,16 @@ fn (g mut Gen) expr(node ast.Expr) {
 					}
 					g.write('if (')
 					for i, expr in branch.exprs {
-						g.write('$tmp == ')
+						if type_sym.kind == .string {
+							g.write('string_eq($tmp, ')
+						}
+						else {
+							g.write('$tmp == ')
+						}
 						g.expr(expr)
+						if type_sym.kind == .string {
+							g.write(')')
+						}
 						if i < branch.exprs.len - 1 {
 							g.write(' || ')
 						}
@@ -948,16 +959,29 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	}
 	// arr << val
 	else if node.op == .left_shift && g.table.get_type_symbol(node.left_type).kind == .array {
-		sym := g.table.get_type_symbol(node.left_type)
-		info := sym.info as table.Array
-		elem_type_str := g.typ(info.elem_type)
-		// g.write('array_push(&')
 		tmp := g.new_tmp_var()
-		g.write('_PUSH(&')
-		g.expr(node.left)
-		g.write(', (')
-		g.expr(node.right)
-		g.write('), $tmp, $elem_type_str)')
+		sym := g.table.get_type_symbol(node.left_type)
+		right_sym := g.table.get_type_symbol(node.right_type)
+		if right_sym.kind == .array {
+			// push an array => PUSH_MANY
+			g.write('_PUSH_MANY(&')
+			g.expr(node.left)
+			g.write(', (')
+			g.expr(node.right)
+			styp := g.typ(node.left_type)
+			g.write('), $tmp, $styp)')
+		}
+		else {
+			// push a single element
+			info := sym.info as table.Array
+			elem_type_str := g.typ(info.elem_type)
+			// g.write('array_push(&')
+			g.write('_PUSH(&')
+			g.expr(node.left)
+			g.write(', (')
+			g.expr(node.right)
+			g.write('), $tmp, $elem_type_str)')
+		}
 	}
 	else {
 		// if node.op == .dot {
@@ -1156,16 +1180,16 @@ fn (g mut Gen) call_args(args []ast.CallArg) {
 	for i, arg in args {
 		if table.type_is_variadic(arg.expected_type) {
 			struct_name := 'varg_' + g.typ(arg.expected_type).replace('*', '_ptr')
-			len := args.len-i
+			len := args.len - i
 			type_str := int(arg.expected_type).str()
 			if len > g.varaidic_args[type_str] {
 				g.varaidic_args[type_str] = len
 			}
 			g.write('($struct_name){.len=$len,.args={')
-			for j in i..args.len {
+			for j in i .. args.len {
 				g.ref_or_deref_arg(args[j])
 				g.expr(args[j].expr)
-				if j < args.len-1 {
+				if j < args.len - 1 {
 					g.write(', ')
 				}
 			}

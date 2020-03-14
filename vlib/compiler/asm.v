@@ -11,7 +11,7 @@ fn (p mut Parser) inline_asm() {
 	p.check(.lcbr)
 	s := p.check_string()
 	p.genln('asm("$s"')
-	for p.tok == .str {
+	for p.tok == .string{
 		p.genln('"$p.lit"')
 		p.next()
 	}

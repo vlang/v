@@ -46,6 +46,7 @@ const (
 // c_headers
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
+#include <float.h>
 
 //#include "fns.h"
 #include <signal.h>
