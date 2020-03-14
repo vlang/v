@@ -217,8 +217,8 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 				is_mut: is_mut
 				typ: arg_type
 			}
+			arg_no++
 		}
-		arg_no++
 	}
 	else {
 		for p.tok.kind != .rpar {
