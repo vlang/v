@@ -16,6 +16,7 @@ struct Gen {
 mut:
 	fn_decl        &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	tmp_count      int
+	varaidic_args  map[string]int
 	is_c_call      bool // e.g. `C.printf("v")`
 	is_assign_expr bool // inside left part of assign expr (for array_set(), etc)
 	is_array_set   bool
@@ -35,6 +36,7 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 	for file in files {
 		g.stmts(file.stmts)
 	}
+	g.write_variadic_types()
 	return g.typedefs.str() + g.definitions.str() + g.out.str()
 }
 
@@ -129,6 +131,22 @@ pub fn (g mut Gen) write_multi_return_types() {
 		}
 		g.definitions.writeln('} $name;\n')
 		// g.typedefs.writeln('typedef struct $name $name;')
+	}
+}
+
+pub fn (g mut Gen) write_variadic_types() {
+	if g.varaidic_args.size > 0 {
+		g.definitions.writeln('// variadic structs')
+	}
+	for type_str, arg_len in g.varaidic_args {
+		typ := table.Type(type_str.int())
+		type_name := g.typ(typ)
+		struct_name := 'varg_' + type_name.replace('*', '_ptr')
+		g.definitions.writeln('struct $struct_name {')
+		g.definitions.writeln('\tint len;')
+		g.definitions.writeln('\t$type_name args[$arg_len];')
+		g.definitions.writeln('};\n')
+		g.typedefs.writeln('typedef struct $struct_name $struct_name;')
 	}
 }
 
@@ -429,8 +447,10 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	for i, arg in it.args {
 		arg_type_sym := g.table.get_type_symbol(arg.typ)
 		mut arg_type_name := arg_type_sym.name.replace('.', '__')
-		if i == it.args.len - 1 && it.is_variadic {
-			arg_type_name = 'variadic_$arg_type_name'
+		is_varg := i == it.args.len - 1 && it.is_variadic
+		if is_varg {
+			g.varaidic_args[int(arg.typ).str()] = 0
+			arg_type_name = 'varg_' + g.typ(arg.typ).replace('*', '_ptr')
 		}
 		if arg_type_sym.kind == .function {
 			func := arg_type_sym.info as table.Fn
@@ -458,7 +478,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 				// mut arg needs one *
 				nr_muls = 1
 			}
-			if nr_muls > 0 {
+			if nr_muls > 0 && !is_varg {
 				s = arg_type_name + strings.repeat(`*`, nr_muls) + ' ' + arg.name
 			}
 			g.write(s)
@@ -1040,6 +1060,9 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 		}
 		else {
 			g.expr(node.left)
+			if table.type_is_variadic(node.container_type) {
+				g.write('.args')
+			}
 			g.write('[')
 			g.expr(node.index)
 			g.write(']')
@@ -1127,24 +1150,44 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 
 fn (g mut Gen) call_args(args []ast.CallArg) {
 	for i, arg in args {
+		if table.type_is_variadic(arg.expected_type) {
+			struct_name := 'varg_' + g.typ(arg.expected_type).replace('*', '_ptr')
+			len := args.len-i
+			g.varaidic_args[int(arg.expected_type).str()] = len
+			g.write('($struct_name){.len=$len,.args={')
+			for j in i..args.len {
+				g.ref_or_deref_arg(args[j])
+				g.expr(args[j].expr)
+				if j < args.len-1 {
+					g.write(', ')
+				}
+			}
+			g.write('}}')
+			break
+		}
 		if arg.expected_type != 0 {
-			arg_is_ptr := table.type_is_ptr(arg.expected_type) || arg.expected_type == table.voidptr_type_idx
-			expr_is_ptr := table.type_is_ptr(arg.typ)
-			if arg.is_mut && !arg_is_ptr {
-				g.write('&/*mut*/')
-			}
-			else if arg_is_ptr && !expr_is_ptr {
-				g.write('&/*q*/')
-			}
-			else if !arg_is_ptr && expr_is_ptr {
-				// Dereference a pointer if a value is required
-				g.write('*/*d*/')
-			}
+			g.ref_or_deref_arg(arg)
 		}
 		g.expr(arg.expr)
 		if i != args.len - 1 {
 			g.write(', ')
 		}
+	}
+}
+
+[inline]
+fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg) {
+	arg_is_ptr := table.type_is_ptr(arg.expected_type) || arg.expected_type == table.voidptr_type_idx
+	expr_is_ptr := table.type_is_ptr(arg.typ)
+	if arg.is_mut && !arg_is_ptr {
+		g.write('&/*mut*/')
+	}
+	else if arg_is_ptr && !expr_is_ptr {
+		g.write('&/*q*/')
+	}
+	else if !arg_is_ptr && expr_is_ptr {
+		// Dereference a pointer if a value is required
+		g.write('*/*d*/')
 	}
 }
 
@@ -1166,18 +1209,6 @@ fn (g mut Gen) write_builtin_types() {
 		builtin_types << g.table.types[g.table.type_idxs[builtin_name]]
 	}
 	g.write_types(builtin_types)
-	// TODO remove this
-	g.definitions.writeln('
-	typedef struct {
-    int len;
-    string args[100];
-} variadic_string;
-
-	typedef struct {
-    int len;
-    int args[100];
-} variadic_int;
-')
 }
 
 // C struct definitions, ordered

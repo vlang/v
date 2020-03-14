@@ -30,7 +30,7 @@ bool get_bool();
 int get_int2();
 void myuser();
 multi_return_int_string multi_return();
-void variadic(variadic_int a);
+void variadic(varg_int a);
 void ensure_cap(int required, int cap);
 void println(string s);
 void matches();
@@ -39,6 +39,11 @@ void end();
 #define localmod__pub_int_const 20
 void localmod__pub_foo();
 int localmod__get_int_10();
+// variadic structs
+struct varg_int {
+	int len;
+	int args[0];
+};
 
 //3
 
@@ -141,7 +146,7 @@ multi_return_int_string multi_return() {
 	return (multi_return_int_string){.arg0=4,.arg1=tos3("four")};
 }
 
-void variadic(variadic_int a) {
+void variadic(varg_int a) {
 	int x = path_sep;
 	int y = true ? 1 : 0;
 ;
