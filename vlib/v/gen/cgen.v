@@ -1032,7 +1032,14 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	// }
 	if !is_range && node.container_type != 0 {
 		sym := g.table.get_type_symbol(node.container_type)
-		if sym.kind == .array {
+		if table.type_is_variadic(node.container_type) {
+			g.expr(node.left)
+			g.write('.args')
+			g.write('[')
+			g.expr(node.index)
+			g.write(']')
+		}
+		else if sym.kind == .array {
 			info := sym.info as table.Array
 			elem_type_str := g.typ(info.elem_type)
 			if g.is_assign_expr {
@@ -1060,9 +1067,6 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 		}
 		else {
 			g.expr(node.left)
-			if table.type_is_variadic(node.container_type) {
-				g.write('.args')
-			}
 			g.write('[')
 			g.expr(node.index)
 			g.write(']')
@@ -1153,7 +1157,10 @@ fn (g mut Gen) call_args(args []ast.CallArg) {
 		if table.type_is_variadic(arg.expected_type) {
 			struct_name := 'varg_' + g.typ(arg.expected_type).replace('*', '_ptr')
 			len := args.len-i
-			g.varaidic_args[int(arg.expected_type).str()] = len
+			type_str := int(arg.expected_type).str()
+			if len > g.varaidic_args[type_str] {
+				g.varaidic_args[type_str] = len
+			}
 			g.write('($struct_name){.len=$len,.args={')
 			for j in i..args.len {
 				g.ref_or_deref_arg(args[j])
