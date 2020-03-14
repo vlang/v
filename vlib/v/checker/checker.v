@@ -229,8 +229,8 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	}
 	call_expr.return_type = f.return_type
 	if f.is_c || call_expr.is_c {
-		for expr in call_expr.args {
-			c.expr(expr)
+		for arg in call_expr.args {
+			c.expr(arg.expr)
 		}
 		return f.return_type
 	}
@@ -242,18 +242,15 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	}
 	// println can print anything
 	if fn_name == 'println' {
-		call_expr.arg_types = [c.expr(call_expr.args[0])]
+		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
 		return f.return_type
 	}
-	mut arg_types := []table.Type
-	mut expr_types := []table.Type
-	for i, arg_expr in call_expr.args {
+	for i, call_arg in call_expr.args {
 		arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
 		c.expected_type = arg.typ
-		typ := c.expr(arg_expr)
-		expr_types << typ
-		// arg_types << typ // arg.typ
-		arg_types << arg.typ
+		typ := c.expr(call_arg.expr)
+		call_expr.args[i].typ = typ
+		call_expr.args[i].expected_type = arg.typ
 		typ_sym := c.table.get_type_symbol(typ)
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)
 		if !c.table.check(typ, arg.typ) {
@@ -270,8 +267,6 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 			c.error('!cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`', call_expr.pos)
 		}
 	}
-	call_expr.arg_types = arg_types
-	call_expr.expr_types = expr_types
 	return f.return_type
 }
 
@@ -281,8 +276,6 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 	method_call_expr.expr_type = typ
 	typ_sym := c.table.get_type_symbol(typ)
 	name := method_call_expr.name
-	mut arg_types := []table.Type
-	mut expr_types := []table.Type
 	// println('method call $name $method_call_expr.pos.line_nr')
 	if typ_sym.kind == .array && name in ['filter', 'clone', 'repeat'] {
 		if name == 'filter' {
@@ -294,7 +287,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 			})
 		}
 		else if name == 'repeat' {
-			c.expr(method_call_expr.args[0])
+			c.expr(method_call_expr.args[0].expr)
 		}
 		// need to return `array_xxx` instead of `array`
 		method_call_expr.return_type = typ
@@ -316,15 +309,13 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		// if name == 'clone' {
 		// println('CLONE nr args=$method.args.len')
 		// }
-		for i, arg_expr in method_call_expr.args {
+		for i, arg in method_call_expr.args {
 			c.expected_type = method.args[i + 1].typ
-			arg_types << c.expected_type
-			expr_types << c.expr(arg_expr)
+			method_call_expr.args[i].expected_type = c.expected_type
+			method_call_expr.args[i].typ = c.expr(arg.expr)
 		}
 		method_call_expr.receiver_type = method.args[0].typ
 		method_call_expr.return_type = method.return_type
-		method_call_expr.arg_types = arg_types
-		method_call_expr.expr_types = expr_types
 		return method.return_type
 	}
 	c.error('type `$typ_sym.name` has no method `$name`', method_call_expr.pos)

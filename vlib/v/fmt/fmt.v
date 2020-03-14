@@ -364,7 +364,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.CallExpr {
 			f.write('${it.name}(')
-			f.call_args(it.args, it.muts)
+			f.call_args(it.args)
 			f.write(')')
 			f.or_expr(it.or_block)
 		}
@@ -490,7 +490,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.MethodCallExpr {
 			f.expr(it.expr)
 			f.write('.' + it.name + '(')
-			f.call_args(it.args, it.muts)
+			f.call_args(it.args)
 			f.write(')')
 			f.or_expr(it.or_block)
 		}
@@ -561,15 +561,15 @@ fn (f mut Fmt) wrap_long_line() {
 	}
 }
 
-fn (f mut Fmt) call_args(args []ast.Expr, muts []bool) {
+fn (f mut Fmt) call_args(args []ast.CallArg) {
 	for i, arg in args {
-		if muts[i] {
+		if arg.is_mut {
 			f.write('mut ')
 		}
 		if i > 0 {
 			f.wrap_long_line()
 		}
-		f.expr(arg)
+		f.expr(arg.expr)
 		if i < args.len - 1 {
 			f.write(', ')
 		}

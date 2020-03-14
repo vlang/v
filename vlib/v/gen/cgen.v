@@ -16,6 +16,7 @@ struct Gen {
 mut:
 	fn_decl        &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	tmp_count      int
+	varaidic_args  map[string]int
 	is_c_call      bool // e.g. `C.printf("v")`
 	is_assign_expr bool // inside left part of assign expr (for array_set(), etc)
 	is_array_set   bool
@@ -35,6 +36,7 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 	for file in files {
 		g.stmts(file.stmts)
 	}
+	g.write_variadic_types()
 	return g.typedefs.str() + g.definitions.str() + g.out.str()
 }
 
@@ -132,6 +134,22 @@ pub fn (g mut Gen) write_multi_return_types() {
 	}
 }
 
+pub fn (g mut Gen) write_variadic_types() {
+	if g.varaidic_args.size > 0 {
+		g.definitions.writeln('// variadic structs')
+	}
+	for type_str, arg_len in g.varaidic_args {
+		typ := table.Type(type_str.int())
+		type_name := g.typ(typ)
+		struct_name := 'varg_' + type_name.replace('*', '_ptr')
+		g.definitions.writeln('struct $struct_name {')
+		g.definitions.writeln('\tint len;')
+		g.definitions.writeln('\t$type_name args[$arg_len];')
+		g.definitions.writeln('};\n')
+		g.typedefs.writeln('typedef struct $struct_name $struct_name;')
+	}
+}
+
 pub fn (g &Gen) save() {}
 
 pub fn (g mut Gen) write(s string) {
@@ -191,11 +209,16 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('// defer')
 		}
 		ast.EnumDecl {
-			g.writeln('typedef enum {')
+			g.writeln('//')
+			/*
+			name := it.name.replace('.', '__')
+			g.definitions.writeln('typedef enum {')
 			for i, val in it.vals {
-				g.writeln('\t${it.name}_$val, // $i')
+				g.definitions.writeln('\t${name}_$val, // $i')
 			}
-			g.writeln('} $it.name;')
+			g.definitions.writeln('} $name;')
+			*/
+
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
@@ -424,8 +447,10 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	for i, arg in it.args {
 		arg_type_sym := g.table.get_type_symbol(arg.typ)
 		mut arg_type_name := arg_type_sym.name.replace('.', '__')
-		if i == it.args.len - 1 && it.is_variadic {
-			arg_type_name = 'variadic_$arg_type_name'
+		is_varg := i == it.args.len - 1 && it.is_variadic
+		if is_varg {
+			g.varaidic_args[int(arg.typ).str()] = 0
+			arg_type_name = 'varg_' + g.typ(arg.typ).replace('*', '_ptr')
 		}
 		if arg_type_sym.kind == .function {
 			func := arg_type_sym.info as table.Fn
@@ -453,7 +478,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 				// mut arg needs one *
 				nr_muls = 1
 			}
-			if nr_muls > 0 {
+			if nr_muls > 0 && !is_varg {
 				s = arg_type_name + strings.repeat(`*`, nr_muls) + ' ' + arg.name
 			}
 			g.write(s)
@@ -543,15 +568,15 @@ fn (g mut Gen) expr(node ast.Expr) {
 				name = name[3..]
 			}
 			g.write('${name}(')
-			if name == 'println' && it.arg_types[0] != table.string_type_idx {
+			if name == 'println' && it.args[0].typ != table.string_type_idx {
 				// `println(int_str(10))`
-				sym := g.table.get_type_symbol(it.arg_types[0])
+				sym := g.table.get_type_symbol(it.args[0].typ)
 				g.write('${sym.name}_str(')
-				g.expr(it.args[0])
+				g.expr(it.args[0].expr)
 				g.write('))')
 			}
 			else {
-				g.call_args(it.args, it.muts, it.arg_types, it.expr_types)
+				g.call_args(it.args)
 				g.write(')')
 			}
 			g.is_c_call = false
@@ -773,7 +798,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			*/
 			// ///////
-			g.call_args(it.args, it.muts, it.arg_types, it.expr_types)
+			g.call_args(it.args)
 			g.write(')')
 		}
 		ast.None {
@@ -1007,7 +1032,14 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	// }
 	if !is_range && node.container_type != 0 {
 		sym := g.table.get_type_symbol(node.container_type)
-		if sym.kind == .array {
+		if table.type_is_variadic(node.container_type) {
+			g.expr(node.left)
+			g.write('.args')
+			g.write('[')
+			g.expr(node.index)
+			g.write(']')
+		}
+		else if sym.kind == .array {
 			info := sym.info as table.Array
 			elem_type_str := g.typ(info.elem_type)
 			if g.is_assign_expr {
@@ -1103,8 +1135,11 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 				pos := g.out.len
 				g.expr(expr)
 				g.writeln('')
-				val := string(g.out.buf[pos..])
+				b := g.out.buf[pos..g.out.buf.len].clone()
+				val := string(b)
+				// val += '\0'
 				// g.out.go_back(val.len)
+				// println('pos=$pos buf.len=$g.out.buf.len len=$g.out.len val.len=$val.len val="$val"\n')
 				g.definitions.write(val)
 			}
 			else {
@@ -1117,27 +1152,49 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 	}
 }
 
-fn (g mut Gen) call_args(args []ast.Expr, muts []bool, arg_types []table.Type, expr_types []table.Type) {
-	for i, expr in args {
-		if arg_types.len > 0 {
-			// typ := arg_types[i]
-			arg_is_ptr := table.type_is_ptr(arg_types[i]) || arg_types[i] == table.voidptr_type_idx
-			expr_is_ptr := i < expr_types.len && table.type_is_ptr(expr_types[i])
-			if muts[i] && !arg_is_ptr {
-				g.write('&/*mut*/')
+fn (g mut Gen) call_args(args []ast.CallArg) {
+	for i, arg in args {
+		if table.type_is_variadic(arg.expected_type) {
+			struct_name := 'varg_' + g.typ(arg.expected_type).replace('*', '_ptr')
+			len := args.len-i
+			type_str := int(arg.expected_type).str()
+			if len > g.varaidic_args[type_str] {
+				g.varaidic_args[type_str] = len
 			}
-			else if arg_is_ptr && !expr_is_ptr {
-				g.write('&/*q*/')
+			g.write('($struct_name){.len=$len,.args={')
+			for j in i..args.len {
+				g.ref_or_deref_arg(args[j])
+				g.expr(args[j].expr)
+				if j < args.len-1 {
+					g.write(', ')
+				}
 			}
-			else if !arg_is_ptr && expr_is_ptr {
-				// Dereference a pointer if a value is required
-				g.write('*/*d*/')
-			}
+			g.write('}}')
+			break
 		}
-		g.expr(expr)
+		if arg.expected_type != 0 {
+			g.ref_or_deref_arg(arg)
+		}
+		g.expr(arg.expr)
 		if i != args.len - 1 {
 			g.write(', ')
 		}
+	}
+}
+
+[inline]
+fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg) {
+	arg_is_ptr := table.type_is_ptr(arg.expected_type) || arg.expected_type == table.voidptr_type_idx
+	expr_is_ptr := table.type_is_ptr(arg.typ)
+	if arg.is_mut && !arg_is_ptr {
+		g.write('&/*mut*/')
+	}
+	else if arg_is_ptr && !expr_is_ptr {
+		g.write('&/*q*/')
+	}
+	else if !arg_is_ptr && expr_is_ptr {
+		// Dereference a pointer if a value is required
+		g.write('*/*d*/')
 	}
 }
 
@@ -1186,10 +1243,10 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 			continue
 		}
 		// sym := g.table.get_type_symbol(typ)
+		name := typ.name.replace('.', '__')
 		match typ.info {
 			table.Struct {
 				info := typ.info as table.Struct
-				name := typ.name.replace('.', '__')
 				// g.definitions.writeln('typedef struct {')
 				g.definitions.writeln('struct $name {')
 				for field in info.fields {
@@ -1199,6 +1256,21 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				// g.definitions.writeln('} $name;\n')
 				//
 				g.definitions.writeln('};\n')
+			}
+			table.Enum {
+				g.definitions.writeln('typedef enum {')
+				for i, val in it.vals {
+					g.definitions.writeln('\t${name}_$val, // $i')
+				}
+				g.definitions.writeln('} $name;\n')
+			}
+			table.SumType {
+				g.definitions.writeln('// Sum type')
+				g.definitions.writeln('
+				typedef struct {
+void* obj;
+int typ;
+} $name;')
 			}
 			else {}
 	}

@@ -13,7 +13,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	name := p.check_name()
 	fn_name := if is_c { 'C.$name' } else if mod.len > 0 { '${mod}.$name' } else { name }
 	p.check(.lpar)
-	args,muts := p.call_args()
+	args := p.call_args()
 	mut or_stmts := []ast.Stmt
 	if p.tok.kind == .key_orelse {
 		p.next()
@@ -22,9 +22,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
-		muts: muts
 		// tok: tok
-		
 		pos: tok.position()
 		is_c: is_c
 		or_block: ast.OrExpr{
@@ -34,25 +32,25 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	return node
 }
 
-pub fn (p mut Parser) call_args() ([]ast.Expr,[]bool) {
-	mut args := []ast.Expr
-	mut muts := []bool
+pub fn (p mut Parser) call_args() []ast.CallArg {
+	mut args := []ast.CallArg
 	for p.tok.kind != .rpar {
+		mut is_mut := false
 		if p.tok.kind == .key_mut {
 			p.check(.key_mut)
-			muts << true
-		}
-		else {
-			muts << false
+			is_mut = true
 		}
 		e := p.expr(0)
-		args << e
+		args << ast.CallArg{
+			is_mut: is_mut
+			expr: e
+		}
 		if p.tok.kind != .rpar {
 			p.check(.comma)
 		}
 	}
 	p.check(.rpar)
-	return args,muts
+	return args
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
@@ -217,8 +215,8 @@ fn (p mut Parser) fn_args() ([]ast.Arg,bool) {
 				is_mut: is_mut
 				typ: arg_type
 			}
+			arg_no++
 		}
-		arg_no++
 	}
 	else {
 		for p.tok.kind != .rpar {

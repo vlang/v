@@ -891,7 +891,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	pos := p.tok.position()
 	if p.tok.kind == .lpar {
 		p.next()
-		args,muts := p.call_args()
+		args := p.call_args()
 		mut or_stmts := []ast.Stmt
 		if p.tok.kind == .key_orelse {
 			p.next()
@@ -901,7 +901,6 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 			expr: left
 			name: field_name
 			args: args
-			muts: muts
 			pos: pos
 			or_block: ast.OrExpr{
 				stmts: or_stmts
@@ -1662,7 +1661,7 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 		p.next()
 	}
 	p.check(.key_enum)
-	name := p.check_name()
+	name := p.prepend_mod(p.check_name())
 	p.check(.lcbr)
 	mut vals := []string
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
@@ -1677,7 +1676,7 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	p.check(.rcbr)
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_
-		name: p.prepend_mod(name)
+		name: name
 		info: table.Enum{
 			vals: vals
 		}

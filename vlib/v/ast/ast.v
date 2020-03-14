@@ -162,9 +162,7 @@ pub:
 mut:
 // func         Expr
 	name        string
-	args        []Expr
-	arg_types   []table.Type
-	expr_types  []table.Type
+	args        []CallArg
 	is_c        bool
 	muts        []bool
 	or_block    OrExpr
@@ -177,15 +175,21 @@ pub:
 	pos           token.Position
 	expr          Expr // `user` in `user.register()`
 	name          string
-	args          []Expr
-	muts          []bool
+	args          []CallArg
 	or_block      OrExpr
 mut:
 	expr_type     table.Type // type of `user`
 	receiver_type table.Type // User
 	return_type   table.Type
-	arg_types     []table.Type
-	expr_types    []table.Type
+}
+
+pub struct CallArg {
+pub:
+	is_mut bool
+	expr   Expr
+mut:
+	typ           table.Type
+	expected_type table.Type
 }
 
 pub struct Return {
