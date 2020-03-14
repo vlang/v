@@ -16,7 +16,6 @@ import (
 const (
 	simple_cmd = ['fmt',
 	'up', 'self',
-	'create',
 	'test', 'test-fmt', 'test-compiler',
 	'bin2v',
 	'repl',
@@ -69,6 +68,10 @@ fn main() {
 		return
 	}
 	match command {
+		'create', 'init' {
+			launch_tool(prefs.verbosity, 'vcreate')
+			return
+		}
 		'translate' {
 			println('Translating C to V will be available in V 0.3')
 			return
