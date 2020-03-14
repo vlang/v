@@ -812,7 +812,7 @@ pub fn exe_path() string {
 		count := C.readlink('/proc/self/exe', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.exe_path() failed at reading /proc/self/exe to get exe path')
-			return executable_fallback()
+			return exe_path_fallback()
 		}
 		return string(result)
 	}
@@ -828,7 +828,7 @@ pub fn exe_path() string {
 		ret := proc_pidpath(pid, result, MAX_PATH)
 		if ret <= 0 {
 			eprintln('os.exe_path() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
-			return executable_fallback()
+			return exe_path_fallback()
 		}
 		return string(result)
 	}
