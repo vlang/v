@@ -44,12 +44,23 @@ fn main_content() string {
 	].join('\n')
 }
 
+[inline]
+fn gen_gitignore(name string) string {
+	return [
+		'main',
+		'$name',
+		'*.so',
+		'*.dll'
+	].join('\n')
+}
+
 fn (c &Create)create_vmod() {
 	mut vmod := os.create('${c.name}/v.mod') or {
 		cerror(err)
 		exit(1)
 	}
 	vmod.write(vmod_content(c.name, c.description))
+	vmod.close()
 }
 
 fn (c &Create)create_main() {
@@ -58,6 +69,7 @@ fn (c &Create)create_main() {
 		exit(2)
 	}
 	main.write(main_content())
+	main.close()
 }
 
 fn (c &Create)init_vmod() {
@@ -66,11 +78,30 @@ fn (c &Create)init_vmod() {
 		exit(1)
 	}
 	vmod.write(vmod_content(c.name, c.description))
+	vmod.close()
+}
+
+fn (c &Create)create_git_repo(dir string) {
+	// Create Git Repo and .gitignore file
+	if !os.is_dir('${dir}/.git') {
+		os.exec('git init ${dir}') or {
+			cerror('Unable to create git repo')
+		}
+		if !os.exists('${dir}/.gitignore') {
+			mut fl := os.create('${dir}/.gitignore') or {
+				// We don't really need a .gitignore, it's just a nice-to-have
+				return
+			}
+			fl.write(gen_gitignore(c.name))
+			fl.close()
+		}
+	}
 }
 
 fn (c &Create)init_main() {
 	// The file already exists, don't over-write anything.
-	if os.exists('${c.name}.v') {
+	// Searching in the 'src' directory allows flexibility user module structure
+	if os.exists('${c.name}.v') || os.exists('src/${c.name}.v') {
 		return
 	}
 	mut main := os.create('${c.name}.v') or {
@@ -78,6 +109,7 @@ fn (c &Create)init_main() {
 		exit(2)
 	}
 	main.write(main_content())
+	main.close()
 }
 
 fn create() {
@@ -86,7 +118,7 @@ fn create() {
 	print('Input your project name: ')
 	c.name = os.get_line()
 
-	if (os.is_dir(c.name)) {
+	if os.is_dir(c.name) {
 		cerror('${c.name} folder already exists')
 		exit(3)
 	}
@@ -101,6 +133,7 @@ fn create() {
 	}
 	c.create_vmod()
 	c.create_main()
+	c.create_git_repo(c.name)
 }
 
 fn init() {
@@ -113,6 +146,8 @@ fn init() {
 	c.description = ''
 	c.init_vmod()
 	c.init_main()
+	c.create_git_repo('')
+	println("Change your module's description in `v.mod`")
 }
 
 fn main() {
@@ -124,5 +159,5 @@ fn main() {
 		cerror('Unknown command: ${os.args[1]}')
 		exit(1)
 	}
-	println('Complete !')
+	println('Complete!')
 }
