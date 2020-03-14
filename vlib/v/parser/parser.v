@@ -891,7 +891,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	pos := p.tok.position()
 	if p.tok.kind == .lpar {
 		p.next()
-		args,muts := p.call_args()
+		args := p.call_args()
 		mut or_stmts := []ast.Stmt
 		if p.tok.kind == .key_orelse {
 			p.next()
@@ -901,7 +901,6 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 			expr: left
 			name: field_name
 			args: args
-			muts: muts
 			pos: pos
 			or_block: ast.OrExpr{
 				stmts: or_stmts

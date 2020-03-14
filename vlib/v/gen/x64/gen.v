@@ -361,7 +361,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.StructInit {}
 		ast.CallExpr {
 			if it.name == 'println' || it.name == 'print' {
-				expr := it.args[0]
+				expr := it.args[0].expr
 				g.gen_print_from_expr(expr)
 			}
 			/*

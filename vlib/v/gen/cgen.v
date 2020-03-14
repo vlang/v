@@ -548,15 +548,15 @@ fn (g mut Gen) expr(node ast.Expr) {
 				name = name[3..]
 			}
 			g.write('${name}(')
-			if name == 'println' && it.arg_types[0] != table.string_type_idx {
+			if name == 'println' && it.args[0].typ != table.string_type_idx {
 				// `println(int_str(10))`
-				sym := g.table.get_type_symbol(it.arg_types[0])
+				sym := g.table.get_type_symbol(it.args[0].typ)
 				g.write('${sym.name}_str(')
-				g.expr(it.args[0])
+				g.expr(it.args[0].expr)
 				g.write('))')
 			}
 			else {
-				g.call_args(it.args, it.muts, it.arg_types, it.expr_types)
+				g.call_args(it.args)
 				g.write(')')
 			}
 			g.is_c_call = false
@@ -778,7 +778,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			*/
 			// ///////
-			g.call_args(it.args, it.muts, it.arg_types, it.expr_types)
+			g.call_args(it.args)
 			g.write(')')
 		}
 		ast.None {
@@ -1125,13 +1125,12 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 	}
 }
 
-fn (g mut Gen) call_args(args []ast.Expr, muts []bool, arg_types []table.Type, expr_types []table.Type) {
-	for i, expr in args {
-		if arg_types.len > 0 {
-			// typ := arg_types[i]
-			arg_is_ptr := table.type_is_ptr(arg_types[i]) || arg_types[i] == table.voidptr_type_idx
-			expr_is_ptr := i < expr_types.len && table.type_is_ptr(expr_types[i])
-			if muts[i] && !arg_is_ptr {
+fn (g mut Gen) call_args(args []ast.CallArg) {
+	for i, arg in args {
+		if arg.expected_type != 0 {
+			arg_is_ptr := table.type_is_ptr(arg.expected_type) || arg.expected_type == table.voidptr_type_idx
+			expr_is_ptr := table.type_is_ptr(arg.typ)
+			if arg.is_mut && !arg_is_ptr {
 				g.write('&/*mut*/')
 			}
 			else if arg_is_ptr && !expr_is_ptr {
@@ -1142,7 +1141,7 @@ fn (g mut Gen) call_args(args []ast.Expr, muts []bool, arg_types []table.Type, e
 				g.write('*/*d*/')
 			}
 		}
-		g.expr(expr)
+		g.expr(arg.expr)
 		if i != args.len - 1 {
 			g.write(', ')
 		}

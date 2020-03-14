@@ -141,8 +141,8 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		}
 		ast.CallExpr {
 			g.write('${it.name}(')
-			for i, expr in it.args {
-				g.expr(expr)
+			for i, arg in it.args {
+				g.expr(arg.expr)
 				if i != it.args.len - 1 {
 					g.write(', ')
 				}
