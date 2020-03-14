@@ -1662,7 +1662,7 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 		p.next()
 	}
 	p.check(.key_enum)
-	name := p.check_name()
+	name := p.prepend_mod(p.check_name())
 	p.check(.lcbr)
 	mut vals := []string
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
@@ -1677,7 +1677,7 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	p.check(.rcbr)
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_
-		name: p.prepend_mod(name)
+		name: name
 		info: table.Enum{
 			vals: vals
 		}

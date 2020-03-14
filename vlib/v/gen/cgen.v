@@ -191,11 +191,16 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('// defer')
 		}
 		ast.EnumDecl {
-			g.writeln('typedef enum {')
+			g.writeln('//')
+			/*
+			name := it.name.replace('.', '__')
+			g.definitions.writeln('typedef enum {')
 			for i, val in it.vals {
-				g.writeln('\t${it.name}_$val, // $i')
+				g.definitions.writeln('\t${name}_$val, // $i')
 			}
-			g.writeln('} $it.name;')
+			g.definitions.writeln('} $name;')
+			*/
+
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
@@ -1103,8 +1108,11 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 				pos := g.out.len
 				g.expr(expr)
 				g.writeln('')
-				val := string(g.out.buf[pos..])
+				b := g.out.buf[pos..g.out.buf.len].clone()
+				val := string(b)
+				// val += '\0'
 				// g.out.go_back(val.len)
+				// println('pos=$pos buf.len=$g.out.buf.len len=$g.out.len val.len=$val.len val="$val"\n')
 				g.definitions.write(val)
 			}
 			else {
@@ -1159,6 +1167,18 @@ fn (g mut Gen) write_builtin_types() {
 		builtin_types << g.table.types[g.table.type_idxs[builtin_name]]
 	}
 	g.write_types(builtin_types)
+	// TODO remove this
+	g.definitions.writeln('
+	typedef struct {
+    int len;
+    string args[100];
+} variadic_string;
+
+	typedef struct {
+    int len;
+    int args[100];
+} variadic_int;
+')
 }
 
 // C struct definitions, ordered
@@ -1186,10 +1206,10 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 			continue
 		}
 		// sym := g.table.get_type_symbol(typ)
+		name := typ.name.replace('.', '__')
 		match typ.info {
 			table.Struct {
 				info := typ.info as table.Struct
-				name := typ.name.replace('.', '__')
 				// g.definitions.writeln('typedef struct {')
 				g.definitions.writeln('struct $name {')
 				for field in info.fields {
@@ -1199,6 +1219,21 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				// g.definitions.writeln('} $name;\n')
 				//
 				g.definitions.writeln('};\n')
+			}
+			table.Enum {
+				g.definitions.writeln('typedef enum {')
+				for i, val in it.vals {
+					g.definitions.writeln('\t${name}_$val, // $i')
+				}
+				g.definitions.writeln('} $name;\n')
+			}
+			table.SumType {
+				g.definitions.writeln('// Sum type')
+				g.definitions.writeln('
+				typedef struct {
+void* obj;
+int typ;
+} $name;')
 			}
 			else {}
 	}
