@@ -1272,7 +1272,7 @@ pub fn (s string) repeat(count int) string {
 // before a delimeter. by default `|` is used.
 // Note: the delimiter has to be a byte at this time. That means surrounding
 // the value in ``.
-// 
+//
 // Example:
 // st := 'Hello there,
 //       |this is a string,
@@ -1306,14 +1306,9 @@ pub fn (s string) strip_margin(del ...byte) string {
 	mut count := 0
 	for i := 0; i < s.len; i++ {
 		if (s[i] in [`\n`, `\r`]) {
-			$if windows {
-				ret[count] = `\r`
-				ret[count+1] = `\n`
-				count += 2
-			} $else {
-				ret[count] = s[i]
-				count++
-			}
+			ret[count] = s[i]
+			count++
+			
 			for s[i] != sep {
 				i++
 				if i >= s.len {
