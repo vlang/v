@@ -290,7 +290,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.HashStmt {
 			// #include etc
 			typ := it.val.all_before(' ')
-			if typ in ['#include', '#define'] {
+			if typ in ['include', 'define'] {
 				g.definitions.writeln('#$it.val')
 			}
 		}
@@ -628,7 +628,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.EnumVal {
 			// g.write('/*EnumVal*/${it.mod}${it.enum_name}_$it.val')
-			g.write('${it.enum_name}_$it.val')
+			enum_name := it.enum_name.replace('.', '__')
+			g.write('${enum_name}_$it.val')
 		}
 		ast.FloatLiteral {
 			g.write(it.val)
@@ -917,7 +918,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	// g.write('/*$node.left_type str*/')
 	// }
 	// string + string, string == string etc
-	if node.left_type == table.string_type_idx {
+	if node.left_type == table.string_type_idx && node.op != .key_in {
 		fn_name := match node.op {
 			.plus{
 				'string_add('
