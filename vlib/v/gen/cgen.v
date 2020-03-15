@@ -1159,13 +1159,14 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 				g.write('//')
 				pos := g.out.len
 				g.expr(expr)
-				g.writeln('')
-				b := g.out.buf[pos..g.out.buf.len].clone()
+				mut b := g.out.buf[pos..g.out.buf.len].clone()
+				b << `\0`
 				val := string(b)
 				// val += '\0'
 				// g.out.go_back(val.len)
 				// println('pos=$pos buf.len=$g.out.buf.len len=$g.out.len val.len=$val.len val="$val"\n')
-				g.definitions.write(val)
+				g.writeln('')
+				g.definitions.writeln(val)
 			}
 			else {
 				styp := g.typ(field.typ)
