@@ -46,30 +46,33 @@ pub const (
 	KeyDown  = 264
 )
 
+__global monitor_scale f32
+
 // joe-c: fix & remove
 struct TmpGlImportHack {
 	hack gl.TmpGlImportHack
 }
 
 pub struct WinCfg {
-	width      int
-	height     int
-	title      string
-	ptr        voidptr
-	borderless bool
-	is_modal   int
-	is_browser bool
-	url        string
+	width             int
+	height            int
+	title             string
+	ptr               voidptr
+	borderless        bool
+	is_modal          int
+	is_browser        bool
+	url        		  string
 	always_on_top     bool
+	scale_to_monitor  bool = true
 }
 
 // data  *C.GLFWwindow
 // TODO change data to cobj
 pub struct Window {
-	data  voidptr
-	title string
-	mx    int
-	my    int
+	data    voidptr
+	title   string
+	mx      int
+	my      int
 }
 
 pub struct Size {
@@ -127,6 +130,11 @@ pub fn create_window(c WinCfg) &glfw.Window {
 	if c.always_on_top {
 		window_hint(C.GLFW_FLOATING, 1)
 	}
+	if c.scale_to_monitor {
+		$if windows {
+			window_hint(C.GLFW_SCALE_TO_MONITOR, 1)
+		}
+	}
 	cwindow := C.glfwCreateWindow(c.width, c.height, c.title.str, 0, 0)
 	if isnil(cwindow) {
 		println('failed to create a glfw window, make sure you have a GPU driver installed')
@@ -134,6 +142,14 @@ pub fn create_window(c WinCfg) &glfw.Window {
 	}
 	// println('create window wnd=$cwindow ptr==$c.ptr')
 	C.glfwSetWindowUserPointer(cwindow, c.ptr)
+	
+	$if windows {
+		C.glfwGetWindowContentScale(cwindow, &monitor_scale, &monitor_scale)
+	}
+	$else {
+		monitor_scale = 1.0
+	}
+
 	window := &glfw.Window {
 		data: cwindow,
 		title: c.title,
@@ -147,6 +163,10 @@ pub fn (w &glfw.Window) set_title(title string) {
 
 pub fn (w &glfw.Window) make_context_current() {
 	C.glfwMakeContextCurrent(w.data)
+}
+
+pub fn (w &glfw.Window) scale() f64 {
+	return monitor_scale
 }
 
 pub fn swap_interval(interval int) {
@@ -233,16 +253,18 @@ pub fn get_cursor_pos(glfw_window voidptr) (f64, f64) {
 	x := f64(0)
 	y := f64(0)
 	C.glfwGetCursorPos(glfw_window, &x, &y)
-	return x,y
+
+	return x/monitor_scale, y/monitor_scale
 }
 
 pub fn (w &glfw.Window) get_cursor_pos() Pos {
 	x := f64(0)
 	y := f64(0)
 	C.glfwGetCursorPos(w.data, &x, &y)
+
 	return Pos {
-		x: int(x)
-		y: int(y)
+		x: int(x/monitor_scale)
+		y: int(y/monitor_scale)
 	}
 }
 
