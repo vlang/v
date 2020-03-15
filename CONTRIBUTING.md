@@ -17,16 +17,15 @@ The main files are:
 - Creates a parser object for each file and runs `parse()` on them.
 - The correct backend is called (C, JS, x64), and a binary is compiled.
 
-2. `v/parser` The parser. It converts a list of tokens into an AST.
-
-   In V, objects can be used before declaration, so unknown types are marked as unresolved.
-   They are resolved later in the type checker.
-
-3. `v/scanner` The scanner's job is to parse a list of characters and convert
+2. `v/scanner` The scanner's job is to parse a list of characters and convert
 them to tokens.
 
-4. `v/token` This is simply a list of all tokens, their string values, and a
+3. `v/token` This is simply a list of all tokens, their string values, and a
 couple of helper functions.
+
+4. `v/parser` The parser. It converts a list of tokens into an AST.
+In V, objects can be used before declaration, so unknown types are marked as unresolved.
+They are resolved later in the type checker.
 
 5. `v/table` V creates one table object that is shared by all parsers. It
 contains all types, consts, and functions, as well as several helpers to search
@@ -52,8 +51,8 @@ support of the x64 platform/ELF format.
 The rest of the directories are vlib modules: `builtin/` (strings, arrays,
 maps), `time/`, `os/`, etc. Their documentation is pretty clear.
 
-## Example Workflow for Contributing ##### (provided by
-[@spytheman](https://github.com/spytheman))
+## Example Workflow for Contributing
+(provided by [@spytheman](https://github.com/spytheman))
 
 (If you don't already have a GitHub account, please create one. Your GitHub
 username will be referred to later as 'YOUR_GITHUB_USERNAME'. Change it
