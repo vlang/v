@@ -1308,7 +1308,13 @@ pub fn (s string) strip_margin(del ...byte) string {
 		if (s[i] in [`\n`, `\r`]) {
 			ret[count] = s[i]
 			count++
-			
+			// CRLF
+			if s[i] == `\r` && i < s.len - 1 && s[i+1] == `\n` {
+				ret[count] = s[i+1]
+				count++
+				i++
+			}
+
 			for s[i] != sep {
 				i++
 				if i >= s.len {
