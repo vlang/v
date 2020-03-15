@@ -81,6 +81,11 @@ pub fn type_deref(t Type) Type {
 	return (int(type_extra(t))<<24) | ((nr_muls - 1)<<16) | u16(type_idx(t))
 }
 
+[inline]
+pub fn type_clear_extra(t Type) Type {
+	return type_set_extra(t, .unset)
+}
+
 // return extra info
 [inline]
 pub fn type_extra(t Type) TypeExtra {

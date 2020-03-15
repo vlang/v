@@ -727,10 +727,14 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 				typ: typ
 				is_optional: table.type_is_optional(typ)
 			}
+			// unwrap optional (`println(x)`)
+			if table.type_is_optional(typ) {
+				return table.type_clear_extra(typ)
+			}
 			return typ
 		}
 	}
-	// second use, already resovled in unresovled branch
+	// second use, already resovled in unresolved branch
 	else if ident.kind == .constant {
 		info := ident.info as ast.IdentVar
 		return info.typ

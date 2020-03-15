@@ -21,6 +21,7 @@ mut:
 	is_assign_expr bool // inside left part of assign expr (for array_set(), etc)
 	is_array_set   bool
 	is_amp         bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	optionals      []string // to avoid duplicates TODO perf, use map
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
@@ -69,7 +70,10 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	}
 	if table.type_is_optional(t) {
 		styp = 'Option_' + styp
-		g.definitions.writeln('typedef Option $styp;')
+		if !(styp in g.optionals) {
+			g.definitions.writeln('typedef Option $styp;')
+			g.optionals << styp
+		}
 	}
 	return styp
 }

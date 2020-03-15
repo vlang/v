@@ -5,8 +5,13 @@ struct User {
 
 // multi return structs
 // end of definitions #endif
-
+typedef Option Option_int;
+Option_int get_opt();
 void User_foo(User* u);
+
+Option_int get_opt() {
+	return opt_ok(& (int []) { 0 }, sizeof(int));
+}
 
 void User_foo(User* u) {
 	int age = u->age;
@@ -21,5 +26,7 @@ int main() {
 	user.age = 10;
 	user.age++;
 	user.name = tos3("bob");
+	Option_int n = get_opt();
+	int a = /*opt*/(*(int*)n.data) + 3;
 	return 0;
 }

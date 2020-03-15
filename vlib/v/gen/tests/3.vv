@@ -3,6 +3,10 @@ struct User {
 	name string
 }
 
+fn get_opt() ?int {
+	return 0
+}
+
 fn (u &User) foo() {
 	age := u.age
 	zzz := [''].repeat(u.age)
@@ -13,4 +17,8 @@ fn main() {
 	user.age = 10
 	user.age++
 	user.name = 'bob'
+	n := get_opt() or {
+		return
+	}
+	a := n + 3
 }
