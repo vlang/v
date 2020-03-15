@@ -1288,15 +1288,15 @@ pub fn (s string) strip_margin(del ...byte) string {
 		// Only care about the first one, ignore the rest if more
 		for d in del {
 			// The delimiter is not allowed to be white-space. Will use default
-			if !d.is_space() {
-				sep = d
-			} else {
+			if d.is_space() {
 				eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
 				eprintln("    Defaulting to `|`")
+			} else {
+				sep = d
 			}
 			break
 		}
-		if del.len == 1 {
+		if del.len != 1 {
 			eprintln("Warning: `strip_margin` only uses the first argument given")
 		}
 	}
