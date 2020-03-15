@@ -513,8 +513,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			type_sym := g.table.get_type_symbol(it.typ)
 			if type_sym.kind != .array_fixed {
 				elem_sym := g.table.get_type_symbol(it.elem_type)
-				g.write('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($type_sym.name), ')
-				g.writeln('(${elem_sym.name}[]){\t')
+				elem_type_str := g.typ(it.elem_type)
+				g.write('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($elem_type_str), ')
+				g.writeln('($elem_type_str[]){\t')
 				for expr in it.exprs {
 					g.expr(expr)
 					g.write(', ')
@@ -708,7 +709,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			if type_sym.kind != .void {
 				tmp = g.new_tmp_var()
 			}
-			g.write('$type_sym.name $tmp = ')
+			styp := g.typ(it.expr_type)
+			g.write('$styp $tmp = ')
 			g.expr(it.cond)
 			g.writeln(';') // $it.blocks.len')
 			for j, branch in it.branches {
