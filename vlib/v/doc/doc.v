@@ -8,6 +8,7 @@ import (
 	v.parser
 	v.ast
 	os
+	term
 )
 
 struct Doc {
@@ -52,17 +53,31 @@ pub fn doc(mod string, table &table.Table) string {
 		println('nothing here')
 		exit(1)
 	}
-	d.print_structs()
-	d.print_enums()
-	d.print_fns()
-	d.out.writeln('')
-	d.print_methods()
-	/*
-		for stmt in file_ast.stmts {
-			d.stmt(stmt)
-		}
-	println(path)
-	*/
+	// struct
+	structs_string := d.get_structs()
+	if structs_string.len > 0 {
+		d.out.writeln(term.header('module $mod: structs', '-- -- '))
+		d.out.write(structs_string)
+	}
+	// enum
+	enums_string := d.get_enums()
+	if enums_string.len > 0 {
+		d.out.writeln(term.header('module $mod: enums', '-- -- '))
+		d.out.write(enums_string)
+	}
+	// function
+	fns_string := d.get_fns()
+	if fns_string.len > 0 {
+		d.out.writeln(term.header('module $mod: functions', '-- -- '))
+		d.out.write(fns_string)
+	}
+	// method
+	methods_string := d.get_methods()
+	if methods_string.len > 0 {
+		d.out.writeln(term.header('module $mod: methods', '-- -- '))
+		d.out.write(methods_string)
+	}
+	d.out.writeln(term.header('', '-- -- '))
 
 	return d.out.str().trim_space()
 }
@@ -71,21 +86,22 @@ fn (d &Doc) get_fn_node(f ast.FnDecl) string {
 	return f.str(d.table).replace_each([d.mod + '.', '', 'pub ', ''])
 }
 
-fn (d mut Doc) print_fns() {
+fn (d &Doc) get_fns() string {
+	mut fns_strings := strings.new_builder(100)
 	fn_signatures := d.get_fn_signatures(is_pub_function)
-	d.write_fn_signatures(fn_signatures)
-}
-
-fn (d mut Doc) print_methods() {
-	fn_signatures := d.get_fn_signatures(is_pub_method)
-	d.write_fn_signatures(fn_signatures)
-}
-
-[inline]
-fn (d mut Doc) write_fn_signatures(fn_signatures []string) {
-	for s in fn_signatures {
-		d.out.writeln(s)
+	for i, s in fn_signatures {
+		fns_strings.writeln('[ ${(i+1):02d} ]  $s')
 	}
+	return fns_strings.str()
+}
+
+fn (d &Doc) get_methods() string {
+	mut methods_strings := strings.new_builder(100)
+	fn_signatures := d.get_fn_signatures(is_pub_method)
+	for i, s in fn_signatures {
+		methods_strings.writeln('[ ${(i+1):02d} ]  $s')
+	}
+	return methods_strings.str()
 }
 
 fn (d Doc) get_fn_signatures(filter_fn FilterFn) []string {
@@ -98,7 +114,7 @@ fn (d Doc) get_fn_signatures(filter_fn FilterFn) []string {
 				}
 			}
 			else {}
-	}
+		}
 	}
 	fn_signatures.sort()
 	return fn_signatures
@@ -113,33 +129,37 @@ fn is_pub_function(node ast.FnDecl) bool {
 }
 
 // TODO it's probably better to keep using AST, not `table`
-fn (d mut Doc) print_enums() {
+fn (d &Doc) get_enums() string {
+	mut enums_strings := strings.new_builder(100)
 	for typ in d.table.types {
 		if typ.kind != .enum_ {
 			continue
 		}
-		d.out.writeln('enum $typ.name {')
+		enums_strings.writeln('enum $typ.name {')
 		info := typ.info as table.Enum
 		for val in info.vals {
-			d.out.writeln('\t$val')
+			enums_strings.writeln('\t$val')
 		}
-		d.out.writeln('}')
+		enums_strings.writeln('}')
 	}
+	return enums_strings.str()
 }
 
-fn (d mut Doc) print_structs() {
+fn (d &Doc) get_structs() string {
+	mut structs_strings := strings.new_builder(100)
 	for typ in d.table.types {
 		if typ.kind != .struct_ || !typ.name.starts_with(d.mod + '.') {
 			// !typ.name[0].is_capital() || typ.name.starts_with('C.') {
 			continue
 		}
 		name := typ.name.after('.')
-		d.out.writeln('struct $name {')
+		structs_strings.writeln('struct $name {')
 		info := typ.info as table.Struct
 		for field in info.fields {
 			sym := d.table.get_type_symbol(field.typ)
-			d.out.writeln('\t$field.name $sym.name')
+			structs_strings.writeln('\t$field.name $sym.name')
 		}
-		d.out.writeln('}\n')
+		structs_strings.writeln('}')
 	}
+	return structs_strings.str()
 }
