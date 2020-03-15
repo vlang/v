@@ -438,8 +438,9 @@ pub:
 	enum_name string
 	val       string
 	mod       string // for full path `mod_Enum_val`
-	// typ       table.Type
 	pos       token.Position
+mut:
+	typ       table.Type
 }
 
 pub struct EnumDecl {

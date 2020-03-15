@@ -612,7 +612,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.byte_type
 		}
 		ast.EnumVal {
-			return c.enum_val(it)
+			return c.enum_val(mut it)
 		}
 		ast.FloatLiteral {
 			return table.f64_type
@@ -922,26 +922,28 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 // `.green` or `Color.green`
 // If a short form is used, `expected_type` needs to be an enum
 // with this value.
-pub fn (c mut Checker) enum_val(node ast.EnumVal) table.Type {
+pub fn (c mut Checker) enum_val(node mut ast.EnumVal) table.Type {
 	typ_idx := if node.enum_name == '' { c.expected_type } else { //
 	c.table.find_type_idx(node.enum_name) }
 	// println('checker: enum_val: $node.enum_name typeidx=$typ_idx')
 	if typ_idx == 0 {
 		c.error('not an enum (name=$node.enum_name) (type_idx=0)', node.pos)
 	}
-	typ := c.table.get_type_symbol(table.Type(typ_idx))
+	typ := table.Type(typ_idx)
+	typ_sym := c.table.get_type_symbol(typ)
 	// println('tname=$typ.name')
-	if typ.kind != .enum_ {
+	if typ_sym.kind != .enum_ {
 		c.error('not an enum', node.pos)
 	}
-	// info := typ.info as table.Enum
-	info := typ.enum_info()
-	// rintln('checker: x = $info.x enum val $c.expected_type $typ.name')
+	// info := typ_sym.info as table.Enum
+	info := typ_sym.enum_info()
+	// rintln('checker: x = $info.x enum val $c.expected_type $typ_sym.name')
 	// println(info.vals)
 	if !(node.val in info.vals) {
-		c.error('enum `$typ.name` does not have a value `$node.val`', node.pos)
+		c.error('enum `$typ_sym.name` does not have a value `$node.val`', node.pos)
 	}
-	return typ_idx
+	node.typ = typ
+	return typ
 }
 
 pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {

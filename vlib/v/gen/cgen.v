@@ -628,8 +628,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.EnumVal {
 			// g.write('/*EnumVal*/${it.mod}${it.enum_name}_$it.val')
-			enum_name := it.enum_name.replace('.', '__')
-			g.write('${enum_name}_$it.val')
+			g.write(g.typ(it.typ))
+			g.write('_$it.val')
 		}
 		ast.FloatLiteral {
 			g.write(it.val)
