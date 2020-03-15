@@ -1267,3 +1267,64 @@ pub fn (s string) repeat(count int) string {
 	ret[s.len * count] = 0
 	return string(ret)
 }
+
+// Allows multi-line strings to be formatted in a way that removes white-space
+// before a delimeter. by default `|` is used.
+// Note: the delimiter has to be a byte at this time. That means surrounding
+// the value in ``.
+// 
+// Example:
+// st := 'Hello there,
+//       |this is a string,
+//       |    Everything before the first | is removed'.strip_margin()
+// Returns:
+// Hello there,
+// this is a string,
+//     Everything before the first | is removed
+pub fn (s string) strip_margin(del ...byte) string {
+	mut sep := `|`
+	if del.len >= 1 {
+		// This is a workaround. We can't directly index a var_args array.
+		// Only care about the first one, ignore the rest if more
+		for d in del {
+			// The delimiter is not allowed to be white-space. Will use default
+			if !d.is_space() {
+				sep = d
+			} else {
+				eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
+				eprintln("    Defaulting to `|`")
+			}
+			break
+		}
+		if del.len == 1 {
+			eprintln("Warning: `strip_margin` only uses the first argument given")
+		}
+	}
+	// don't know how much space the resulting string will be, but the max it
+	// can be is this big
+	mut ret := malloc(s.len + 1)
+	mut count := 0
+	for i := 0; i < s.len; i++ {
+		if (s[i] in [`\n`, `\r`]) {
+			$if windows {
+				ret[count] = `\r`
+				ret[count+1] = `\n`
+				count += 2
+			} $else {
+				ret[count] = s[i]
+				count++
+			}
+			for s[i] != sep {
+				i++
+				if i >= s.len {
+					break
+				}
+			}
+		} else {
+			ret[count] = s[i]
+			count++
+		}
+	}
+	ret[count] = 0
+	return string(ret)
+}
