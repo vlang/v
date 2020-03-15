@@ -695,3 +695,79 @@ fn test_split_into_lines() {
 		assert line == line_content
 	}
 }
+
+fn test_strip_margins() {
+	no_tabs := 'Hello there
+This is a string
+With multiple lines'
+	no_tabs_stripped := 'Hello there
+	                    |This is a string
+						|With multiple lines'.strip_margin()
+	assert no_tabs == no_tabs_stripped
+
+	text_before := 'There is text
+before the delimiter
+that should be removed as well'
+	text_before_stripped := 'There is text
+	f lasj  asldfj j lksjdf |before the delimiter
+	Which is removed hello  |that should be removed as well'.strip_margin()
+	assert text_before_stripped == text_before
+
+	tabs := '	Tab
+    spaces
+	another tab'
+	tabs_stripped := '	Tab
+	                 |    spaces
+					 |	another tab'.strip_margin()
+	assert tabs == tabs_stripped
+
+	alternate_delimiter := 'This has a different delim,
+but that is ok
+	because everything works'
+	alternate_delimiter_stripped := 'This has a different delim,
+		                            #but that is ok
+                                    #	because everything works'.strip_margin(`#`)
+	assert alternate_delimiter_stripped == alternate_delimiter
+
+	delim_after_first_instance := 'The delimiter used
+only matters the |||| First time it is seen
+not any | other | times'
+	delim_after_first_instance_stripped := 'The delimiter used
+	                                       |only matters the |||| First time it is seen
+	                                       |not any | other | times'.strip_margin()
+	assert delim_after_first_instance_stripped == delim_after_first_instance
+
+	uneven_delims := 'It doesn\'t matter if the delims are uneven,
+The text will still be delimited correctly.
+Maybe not everything needs 3 lines?
+Let us go for 4 then'
+	uneven_delims_stripped := 'It doesn\'t matter if the delims are uneven,
+           |The text will still be delimited correctly.
+                      |Maybe not everything needs 3 lines?
+		 	 	|Let us go for 4 then'.strip_margin()
+	assert uneven_delims_stripped == uneven_delims
+
+	multi_blank_lines := 'Multiple blank lines will be removed.
+	I actually consider this a feature.'
+	multi_blank_lines_stripped := 'Multiple blank lines will be removed.
+
+
+
+		|	I actually consider this a feature.'.strip_margin()
+	assert multi_blank_lines == multi_blank_lines_stripped
+
+	end_with_newline := 'This line will end with a newline
+Something cool or something.
+'
+	end_with_newline_stripped := 'This line will end with a newline
+	                             |Something cool or something.
+                                 
+					'.strip_margin()
+	assert end_with_newline_stripped == end_with_newline
+
+	space_delimiter := 'Using a white-space char will
+revert back to default behavior.'
+	space_delimiter_stripped := 'Using a white-space char will
+		|revert back to default behavior.'.strip_margin(`\n`)
+	assert space_delimiter == space_delimiter_stripped
+}
