@@ -54,12 +54,14 @@ struct YamlPointer{
 
 struct Event{
 	typ EventKind
-	start, end YamlPointer
+	start YamlPointer 
+	end YamlPointer
 	version 
 	tag []byte
 	anchor []byte
 	implicit bool
 	quoted_implicit bool
+	
 }
 
 fn (e &Event) parser_state_machine{

@@ -7,7 +7,7 @@ import (
 const (
 	NULL = 0
 )
-struct Yaml{
+struct Data{
 	squences 	&[]Squence
 	maps		&[]Mapping
 }
@@ -25,11 +25,11 @@ struct YAMLInt{
 }
 
 struct Squence{
-
+	val YAMLVal
 }
 
 struct Mapping{
-
+	val YAMLVal
 }
 
 struct TimeStamp{
