@@ -12,6 +12,7 @@
 // --log-to    either 'file' or 'terminal'
 // --log-file  path to log file used when --log-to is 'file'
 // --dry-run   dont push anything to remote repo
+// --force     force update even if already up to date
 
 module main
 
