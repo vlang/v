@@ -46,8 +46,6 @@ pub const (
 	KeyDown  = 264
 )
 
-__global monitor_scale f32
-
 // joe-c: fix & remove
 struct TmpGlImportHack {
 	hack gl.TmpGlImportHack
@@ -73,6 +71,7 @@ pub struct Window {
 	title   string
 	mx      int
 	my      int
+	scale_  f32
 }
 
 pub struct Size {
@@ -142,17 +141,16 @@ pub fn create_window(c WinCfg) &glfw.Window {
 	}
 	// println('create window wnd=$cwindow ptr==$c.ptr')
 	C.glfwSetWindowUserPointer(cwindow, c.ptr)
-	
+
+	mut scale := 1.0
 	$if windows {
-		C.glfwGetWindowContentScale(cwindow, &monitor_scale, &monitor_scale)
-	}
-	$else {
-		monitor_scale = 1.0
+		C.glfwGetWindowContentScale(cwindow, &scale, &scale)
 	}
 
 	window := &glfw.Window {
 		data: cwindow,
 		title: c.title,
+		scale_: scale
 	}
 	return window
 }
@@ -165,8 +163,8 @@ pub fn (w &glfw.Window) make_context_current() {
 	C.glfwMakeContextCurrent(w.data)
 }
 
-pub fn (w &glfw.Window) scale() f64 {
-	return monitor_scale
+pub fn (w &glfw.Window) scale() f32 {
+	return w.scale_
 }
 
 pub fn swap_interval(interval int) {
@@ -249,12 +247,16 @@ pub fn (w &glfw.Window) set_clipboard_text(s string) {
 	C.glfwSetClipboardString(w.data, s.str)
 }
 
-pub fn get_cursor_pos(glfw_window voidptr) (f64, f64) {
+pub fn get_cursor_pos(cwindow voidptr) (f64, f64) {
 	x := f64(0)
 	y := f64(0)
-	C.glfwGetCursorPos(glfw_window, &x, &y)
+	C.glfwGetCursorPos(cwindow, &x, &y)
 
-	return x/monitor_scale, y/monitor_scale
+	mut scale := 1.0
+	$if windows {
+		C.glfwGetWindowContentScale(cwindow, &scale, &scale)
+	}
+	return x/scale, y/scale
 }
 
 pub fn (w &glfw.Window) get_cursor_pos() Pos {
@@ -263,8 +265,8 @@ pub fn (w &glfw.Window) get_cursor_pos() Pos {
 	C.glfwGetCursorPos(w.data, &x, &y)
 
 	return Pos {
-		x: int(x/monitor_scale)
-		y: int(y/monitor_scale)
+		x: int(x/w.scale_)
+		y: int(y/w.scale_)
 	}
 }
 
@@ -309,15 +311,15 @@ fn C.glfwGetFramebufferSize(window &glfw.Window, width &int, height &int) // pix
 
 // get_window_size in screen coordinates
 pub fn (w &glfw.Window) get_window_size() Size {
-	res := Size{ 0, 0 }
-	C.glfwGetWindowSize( w.data, &res.width, &res.height )
+	res := Size {0, 0}
+	C.glfwGetWindowSize(w.data, &res.width, &res.height)
 	return res
 }
 
 // get_framebuffer_size in pixels
 pub fn (w &glfw.Window) get_framebuffer_size() Size {
-	res := Size{ 0, 0 }
-	C.glfwGetFramebufferSize( w.data, &res.width, &res.height )
+	res := Size {0, 0}
+	C.glfwGetFramebufferSize(w.data, &res.width, &res.height)
 	return res
 }
 
