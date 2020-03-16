@@ -13,7 +13,7 @@ import (
 fn todo() {
 }
 
-fn (v &V) no_cc_installed() bool {
+fn (v &Vlang) no_cc_installed() bool {
 	$if windows {
 		os.exec('$v.pref.ccompiler -v')or{
 			if v.pref.verbosity.is_higher_or_equal(.level_one) {
@@ -25,7 +25,7 @@ fn (v &V) no_cc_installed() bool {
 	return false
 }
 
-fn (v mut V) cc() {
+fn (v mut Vlang) cc() {
 	if os.executable().contains('vfmt') {
 		return
 	}
@@ -462,7 +462,7 @@ If you're confident that all of the above is true, please try running V with the
 	}
 }
 
-fn (c mut V) cc_windows_cross() {
+fn (c mut Vlang) cc_windows_cross() {
 	println('Cross compiling for Windows...')
 	if !c.pref.out_name.ends_with('.exe') {
 		c.pref.out_name += '.exe'
@@ -535,7 +535,7 @@ fn (c mut V) cc_windows_cross() {
 	println('Done!')
 }
 
-fn (c &V) build_thirdparty_obj_files() {
+fn (c &Vlang) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
 		if flag.value.ends_with('.o') {
 			rest_of_module_flags := c.get_rest_of_module_cflags(flag)

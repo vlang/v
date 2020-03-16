@@ -5,7 +5,7 @@ import (
 	time
 )
 
-fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
+fn (v &Vlang) generate_hotcode_reloading_compiler_flags() []string {
 	mut a := []string
 	if v.pref.is_live || v.pref.is_so {
 		// See 'man dlopen', and test running a GUI program compiled with -live
@@ -19,7 +19,7 @@ fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
 	return a
 }
 
-fn (v &V) generate_hotcode_reloading_declarations() {
+fn (v &Vlang) generate_hotcode_reloading_declarations() {
 	mut cgen := v.cgen
 	if v.pref.os != .windows {
 		if v.pref.is_so {
@@ -47,7 +47,7 @@ void pthread_mutex_unlock(HANDLE *m) {
 	}
 }
 
-fn (v &V) generate_hotcode_reloading_main_caller() {
+fn (v &Vlang) generate_hotcode_reloading_main_caller() {
 	if !v.pref.is_live {
 		return
 	}
@@ -74,7 +74,7 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 	}
 }
 
-fn (v &V) generate_hot_reload_code() {
+fn (v &Vlang) generate_hot_reload_code() {
 	mut cgen := v.cgen
 	// Hot code reloading
 	if v.pref.is_live {

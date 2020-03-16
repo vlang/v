@@ -36,7 +36,7 @@ fn analyze_v_file(file string) {
 		path: file
 	}
 	pref.fill_with_defaults()
-	mut v := compiler.new_v(pref)
+	mut v := compiler.new_vlang(pref)
 	v.add_v_files_to_compile()
 	for f in v.files { v.parse(f, .decl) }
 	fi := v.get_file_parser_index( file ) or { panic(err) }

@@ -207,7 +207,7 @@ fn (g mut CGen) register_thread_fn(wrapper_name, wrapper_text, struct_text strin
 	g.thread_args << wrapper_text
 }
 
-fn (v &V) prof_counters() string {
+fn (v &Vlang) prof_counters() string {
 	res := []string
 	// Global fns
 	// for f in c.table.fns {
@@ -271,7 +271,7 @@ fn (g mut CGen) add_to_main(s string) {
 	g.fn_main = g.fn_main + s
 }
 
-fn (v &V) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
+fn (v &Vlang) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	obj_path := os.realpath(path)
 	if os.exists(obj_path) {
 		return
@@ -354,7 +354,7 @@ fn os_name_to_ifdef(name string) string {
 	return ''
 }
 
-fn (v &V) platform_postfix_to_ifdefguard(name string) string {
+fn (v &Vlang) platform_postfix_to_ifdefguard(name string) string {
 	if name.starts_with('custom '){
 		cdefine := name.replace('custom ','')
 		return '#ifdef CUSTOM_DEFINE_${cdefine}'
@@ -397,7 +397,7 @@ fn (v &V) platform_postfix_to_ifdefguard(name string) string {
 // C struct definitions, ordered
 // Sort the types, make sure types that are referenced by other types
 // are added before them.
-fn (v &V) type_definitions() string {
+fn (v &Vlang) type_definitions() string {
 	mut types := []Type // structs that need to be sorted
 	mut builtin_types := []Type // builtin types
 	// builtin types need to be on top
@@ -463,7 +463,7 @@ fn sort_structs(types []Type) []Type {
 }
 
 // Generates interface table and interface indexes
-fn (v &V) interface_table() string {
+fn (v &Vlang) interface_table() string {
 	mut sb := strings.new_builder(100)
 	for _, t in v.table.typesmap {
 		if t.cat != .interface_ {

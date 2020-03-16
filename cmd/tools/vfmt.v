@@ -314,7 +314,7 @@ fn (foptions &FormatOptions) compile_file(file string, compiler_params &pref.Pre
 		eprintln('> new_v_compiler_with_args compiler_params:')
 		print_compiler_options( compiler_params )
 	}
-	mut v := compiler.new_v(compiler_params)
+	mut v := compiler.new_vlang(compiler_params)
 	v.v_fmt_file = file
 	if foptions.is_all {
 		v.v_fmt_all = true

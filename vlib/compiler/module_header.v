@@ -56,7 +56,7 @@ fn generate_vh(mod string) {
 		path: 'foo.v'
 	}
 	pref.fill_with_defaults()
-	mut v := new_v(pref)
+	mut v := new_vlang(pref)
 	// v.pref.generating_vh = true
 	mut g := VhGen{
 		consts: strings.new_builder(1000)

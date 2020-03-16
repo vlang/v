@@ -112,7 +112,7 @@ pub fn (p &Parser) is_mod_in_scope(mod string) bool {
 }
 
 // return resolved dep graph (order deps)
-pub fn (v &V) resolve_deps() &DepGraph {
+pub fn (v &Vlang) resolve_deps() &DepGraph {
 	graph := v.import_graph()
 	deps_resolved := graph.resolve()
 	if !deps_resolved.acyclic {
@@ -122,7 +122,7 @@ pub fn (v &V) resolve_deps() &DepGraph {
 }
 
 // graph of all imported modules
-pub fn (v &V) import_graph() &DepGraph {
+pub fn (v &Vlang) import_graph() &DepGraph {
 	mut graph := new_dep_graph()
 	for p in v.parsers {
 		mut deps := []string
@@ -144,7 +144,7 @@ pub fn (graph &DepGraph) imports() []string {
 }
 
 [inline]
-fn (v &V) module_path(mod string) string {
+fn (v &Vlang) module_path(mod string) string {
 	// submodule support
 	return mod.replace('.', os.path_separator)
 }
@@ -152,7 +152,7 @@ fn (v &V) module_path(mod string) string {
 // 'strings' => 'VROOT/vlib/strings'
 // 'installed_mod' => '~/.vmodules/installed_mod'
 // 'local_mod' => '/path/to/current/dir/local_mod'
-fn (v mut V) set_module_lookup_paths() {
+fn (v mut Vlang) set_module_lookup_paths() {
 	// Module search order:
 	// 0) V test files are very commonly located right inside the folder of the
 	// module, which they test. Adding the parent folder of the module folder
