@@ -256,7 +256,6 @@ pub fn get_cursor_pos(cwindow voidptr) (f64, f64) {
 	$if windows {
 		C.glfwGetWindowContentScale(cwindow, &scale, &scale)
 	}
-
 	return x/scale, y/scale
 }
 
@@ -312,15 +311,15 @@ fn C.glfwGetFramebufferSize(window &glfw.Window, width &int, height &int) // pix
 
 // get_window_size in screen coordinates
 pub fn (w &glfw.Window) get_window_size() Size {
-	res := Size{ 0, 0 }
-	C.glfwGetWindowSize( w.data, &res.width, &res.height )
+	res := Size {0, 0}
+	C.glfwGetWindowSize(w.data, &res.width, &res.height)
 	return res
 }
 
 // get_framebuffer_size in pixels
 pub fn (w &glfw.Window) get_framebuffer_size() Size {
-	res := Size{ 0, 0 }
-	C.glfwGetFramebufferSize( w.data, &res.width, &res.height )
+	res := Size {0, 0}
+	C.glfwGetFramebufferSize(w.data, &res.width, &res.height)
 	return res
 }
 
