@@ -244,9 +244,10 @@ pub fn (s string) replace_each(vals []string) string {
 			}
 			// We need to remember both the position in the string,
 			// and which rep/with pair it refers to.
-			idxs << RepIndex{
+			idxs << RepIndex {
 				idx:idx
-val_idx:rep_i}
+				val_idx:rep_i
+			}
 			idx++
 			new_len += with.len - rep.len
 		}
@@ -1272,7 +1273,7 @@ pub fn (s string) repeat(count int) string {
 // before a delimeter. by default `|` is used.
 // Note: the delimiter has to be a byte at this time. That means surrounding
 // the value in ``.
-// 
+//
 // Example:
 // st := 'Hello there,
 //       |this is a string,
@@ -1306,14 +1307,15 @@ pub fn (s string) strip_margin(del ...byte) string {
 	mut count := 0
 	for i := 0; i < s.len; i++ {
 		if (s[i] in [`\n`, `\r`]) {
-			$if windows {
-				ret[count] = `\r`
-				ret[count+1] = `\n`
-				count += 2
-			} $else {
-				ret[count] = s[i]
+			ret[count] = s[i]
+			count++
+			// CRLF
+			if s[i] == `\r` && i < s.len - 1 && s[i+1] == `\n` {
+				ret[count] = s[i+1]
 				count++
+				i++
 			}
+
 			for s[i] != sep {
 				i++
 				if i >= s.len {
