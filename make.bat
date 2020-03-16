@@ -35,7 +35,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo Now using V to build V...
-v self
+v self -prod
 if %ERRORLEVEL% NEQ 0 (
     echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
     rd /s /q vc
@@ -74,7 +74,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo rebuild from source (twice, in case of C definitions changes)
-v self
+v self -prod
 if %ERRORLEVEL% NEQ 0 (
     echo V failed to build itself with error %ERRORLEVEL%
     goto :compileerror
