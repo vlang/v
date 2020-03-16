@@ -19,7 +19,7 @@ ConcatExpr | Type | AsCast
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
-LineComment | MultiLineComment | AssertStmt | UnsafeStmt
+LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -502,6 +502,11 @@ pub:
 mut:
 	left_type  table.Type
 	right_type table.Type
+}
+
+pub struct GoStmt {
+pub:
+	expr Expr
 }
 
 pub struct GotoLabel {
