@@ -189,6 +189,8 @@ pub struct Return {
 pub:
 	pos   token.Position
 	exprs []Expr
+mut:
+	types []table.Type
 }
 
 /*
@@ -416,10 +418,13 @@ pub:
 
 pub struct AssignStmt {
 pub:
-	left  []Ident
-	right []Expr
-	op    token.Kind
-	pos   token.Position
+	left        []Ident
+	right       []Expr
+	op          token.Kind
+	pos         token.Position
+mut:
+	left_types  []table.Type
+	right_types []table.Type
 }
 
 pub struct AsCast {
@@ -490,12 +495,13 @@ pub:
 
 pub struct AssignExpr {
 pub:
-	op        token.Kind
-	pos       token.Position
-	left      Expr
-	val       Expr
+	op         token.Kind
+	pos        token.Position
+	left       Expr
+	val        Expr
 mut:
-	left_type table.Type
+	left_type  table.Type
+	right_type table.Type
 }
 
 pub struct GotoLabel {

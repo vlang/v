@@ -169,6 +169,7 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	// t := c.table.get_type_symbol(left_type)
 	// println('setting exp type to $c.expected_type $t.name')
 	right_type := c.expr(assign_expr.val)
+	assign_expr.right_type = right_type
 	if !c.table.check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
@@ -352,7 +353,7 @@ pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 }
 
 // TODO: non deferred
-pub fn (c mut Checker) return_stmt(return_stmt ast.Return) {
+pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 	c.expected_type = c.fn_return_type
 	if return_stmt.exprs.len == 0 {
 		return
@@ -370,6 +371,7 @@ pub fn (c mut Checker) return_stmt(return_stmt ast.Return) {
 		typ := c.expr(expr)
 		got_types << typ
 	}
+	return_stmt.types = got_types
 	// allow `none` & `error (Option)` return types for function that returns optional
 	if exp_is_optional && table.type_idx(got_types[0]) in [table.none_type_idx, c.table.type_idxs['Option']] {
 		return
@@ -406,12 +408,14 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 			assign_stmt.left[i] = ident
 			if assign_stmt.op == .assign {
 				var_type := c.expr(ident)
+				assign_stmt.left_types << var_type
 				if !c.table.check(val_type, var_type) {
 					val_type_sym := c.table.get_type_symbol(val_type)
 					var_type_sym := c.table.get_type_symbol(var_type)
 					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
 				}
 			}
+			assign_stmt.right_types << val_type
 			scope.override_var(ast.Var{
 				name: ident.name
 				typ: mr_info.types[i]
@@ -426,16 +430,18 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
 			mut ident := assign_stmt.left[i]
+			mut ident_var_info := ident.var_info()
 			val_type := c.expr(assign_stmt.right[i])
 			if assign_stmt.op == .assign {
 				var_type := c.expr(ident)
+				assign_stmt.left_types << var_type
 				if !c.table.check(val_type, var_type) {
 					val_type_sym := c.table.get_type_symbol(val_type)
 					var_type_sym := c.table.get_type_symbol(var_type)
 					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
 				}
 			}
-			mut ident_var_info := ident.var_info()
+			assign_stmt.right_types << val_type
 			ident_var_info.typ = val_type
 			ident.info = ident_var_info
 			assign_stmt.left[i] = ident
@@ -556,7 +562,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		// ast.HashStmt {}
 		ast.Import {}
 		ast.Return {
-			c.return_stmt(it)
+			c.return_stmt(mut it)
 		}
 		// ast.StructDecl {}
 		ast.UnsafeStmt {

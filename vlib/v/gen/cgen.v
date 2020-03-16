@@ -326,6 +326,29 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	}
 }
 
+fn (g &Gen) is_sum_cast(got_type table.Type, exp_type table.Type) bool {
+	if exp_type != table.void_type && exp_type != 0  && got_type != 0{
+		exp_sym := g.table.get_type_symbol(exp_type)
+		// got_sym := g.table.get_type_symbol(got_type)
+		if exp_sym.kind == .sum_type {
+			sum_info := exp_sym.info as table.SumType
+			if got_type in sum_info.variants {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (g mut Gen) sum_cast(got_type table.Type, exp_type table.Type, expr ast.Expr) {
+	got_styp := g.typ(got_type)
+	exp_styp := g.typ(exp_type)
+	got_idx := table.type_idx(got_type)
+	g.write('/* SUM TYPE CAST */ ($exp_styp) {.obj = memdup(&(${got_styp}[]) {')
+	g.expr(expr)
+	g.writeln('}, sizeof($got_styp)), .typ = $got_idx};')
+}
+
 fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// multi return
 	// g.write('/*assign*/')
@@ -394,13 +417,20 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 					else {}
 	}
+				mut is_sum_cast := false
 				if assign_stmt.op == .decl_assign {
 					g.write('$styp ')
+				} else {
+					is_sum_cast = g.is_sum_cast(assign_stmt.right_types[i], assign_stmt.left_types[i])
 				}
 				g.expr(ident)
 				if !is_fixed_array_init {
 					g.write(' = ')
-					g.expr(val)
+					if is_sum_cast {
+						g.sum_cast(ident_var_info.typ, assign_stmt.left_types[i], val)
+					} else {
+						g.expr(val)
+					}
 				}
 			}
 			g.writeln(';')
@@ -549,7 +579,11 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write(', ')
 			}
 			g.is_assign_expr = false
-			g.expr(it.val)
+			if g.is_sum_cast(it.left_type, it.right_type) {
+				g.sum_cast(it.left_type, it.right_type, it.val)
+			} else {
+				g.expr(it.val)
+			}
 			if g.is_array_set {
 				g.write(' })')
 				g.is_array_set = false
@@ -1135,6 +1169,8 @@ fn (g mut Gen) return_statement(it ast.Return) {
 	g.write('return')
 	// multiple returns
 	if it.exprs.len > 1 {
+		typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
+		mr_info := typ_sym.info as table.MultiReturn
 		styp := g.typ(g.fn_decl.return_type)
 		g.write(' ($styp){')
 		for i, expr in it.exprs {
@@ -1171,7 +1207,12 @@ fn (g mut Gen) return_statement(it ast.Return) {
 			}
 			// g.write('/*OPTIONAL*/')
 		}
-		g.expr(it.exprs[0])
+		if g.is_sum_cast(it.types[0], g.fn_decl.return_type) {
+			g.sum_cast(it.types[0], g.fn_decl.return_type, it.exprs[0])
+		}
+		else {
+			g.expr(it.exprs[0])
+		}
 	}
 	g.writeln(';')
 }
