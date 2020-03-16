@@ -110,8 +110,21 @@ pub fn (g mut Gen) write_typedef_types() {
 				styp := typ.name.replace('.', '__')
 				g.definitions.writeln('typedef map $styp;')
 			}
-			// TODO:
-			.function {}
+			.function {
+				info := typ.info as table.FnType
+				func := info.func
+				if !info.has_decl && !info.is_anon {
+					fn_name := func.name.replace('.', '__')
+					g.definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
+					for i,arg in func.args {
+						g.definitions.write(g.typ(arg.typ))
+						if i < func.args.len - 1 {
+							g.definitions.write(',')
+						}
+					}
+					g.definitions.writeln(');')
+				}
+			}
 			else {
 				continue
 			}
@@ -509,7 +522,8 @@ fn (g mut Gen) fn_args(args []table.Arg, is_variadic bool) {
 			arg_type_name = 'varg_' + g.typ(arg.typ).replace('*', '_ptr')
 		}
 		if arg_type_sym.kind == .function {
-			func := arg_type_sym.info as table.Fn
+			info := arg_type_sym.info as table.FnType
+			func := info.func
 			g.write('${g.typ(func.return_type)} (*$arg.name)(')
 			g.definitions.write('${g.typ(func.return_type)} (*$arg.name)(')
 			g.fn_args(func.args, func.is_variadic)

@@ -7,7 +7,7 @@ import (
 pub type Type int
 
 pub type TypeInfo = Array | ArrayFixed | Map | Struct | 	
-MultiReturn | Alias | Enum | SumType | Fn
+MultiReturn | Alias | Enum | SumType | FnType
 
 pub struct TypeSymbol {
 pub:
@@ -212,6 +212,13 @@ pub:
 	name  string
 mut:
 	types []Type
+}
+
+pub struct FnType {
+pub:
+	is_anon  bool
+	has_decl bool
+	func     Fn
 }
 
 pub enum Kind {

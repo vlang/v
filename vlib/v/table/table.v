@@ -388,12 +388,17 @@ pub fn (t mut Table) find_or_register_multi_return(mr_typs []Type) int {
 	return t.register_type_symbol(mr_type)
 }
 
-pub fn (t mut Table) find_or_register_fn_type(f Fn) int {
-	name := if f.name.len > 0 { f.name } else { 'anon_$f.signature()' }
+pub fn (t mut Table) find_or_register_fn_type(f Fn, has_decl bool) int {
+	is_anon := f.name.len == 0
+	name := if is_anon { 'anon_fn_$f.signature()' } else { f.name }
 	return t.register_type_symbol(TypeSymbol{
 		kind: .function
 		name: name
-		info: f
+		info: FnType{
+			is_anon: is_anon
+			has_decl: has_decl
+			func: f
+		}
 	})
 }
 
@@ -485,9 +490,9 @@ pub fn (t &Table) check(got, expected Type) bool {
 	}
 	// fn type
 	if got_type_sym.kind == .function && exp_type_sym.kind == .function {
-		got_fn := got_type_sym.info as Fn
-		exp_fn := exp_type_sym.info as Fn
-		if got_fn.signature() == exp_fn.signature() {
+		got_info := got_type_sym.info as FnType
+		exp_info := exp_type_sym.info as FnType
+		if got_info.func.signature() == exp_info.func.signature() {
 			return true
 		}
 	}

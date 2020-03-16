@@ -220,7 +220,8 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 			if var.typ != 0 {
 				vts := c.table.get_type_symbol(var.typ)
 				if vts.kind == .function {
-					f = vts.info as table.Fn
+					info := vts.info as table.FnType
+					f = info.func
 					found = true
 				}
 			}
@@ -769,7 +770,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		}
 		// Function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
-			fn_type := c.table.find_or_register_fn_type(func)
+			fn_type := table.new_type(c.table.find_or_register_fn_type(func, true))
 			ident.name = name
 			ident.kind = .function
 			ident.info = ast.IdentFn{
