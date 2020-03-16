@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	default_vpm_server_urls = ['https://vpm.vlang.io']
+	default_vpm_server_urls = ['https://vpm.best', 'https://vpm.vlang.io']
 	valid_vpm_commands = ['help', 'search', 'install', 'update', 'remove']
 	excluded_dirs = ['cache', 'vlib']
 	supported_vcs_systems = ['git', 'hg']
