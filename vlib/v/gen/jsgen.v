@@ -108,7 +108,7 @@ fn (g mut JsGen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
 		ast.IntegerLiteral {
-			g.write(it.val.str())
+			g.write(it.val)
 		}
 		ast.FloatLiteral {
 			g.write(it.val)

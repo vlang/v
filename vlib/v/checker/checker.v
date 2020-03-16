@@ -492,12 +492,12 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 		mut fixed_size := 1
 		match array_init.exprs[0] {
 			ast.IntegerLiteral {
-				fixed_size = it.val
+				fixed_size = it.val.int()
 			}
 			else {
 				c.error('expecting `int` for fixed size', array_init.pos)
 			}
-	}
+		}
 		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size, 1)
 		array_type := table.new_type(idx)
 		array_init.typ = array_type
