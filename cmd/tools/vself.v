@@ -18,18 +18,19 @@ fn main() {
 	else {
 		println('V Self Compiling...')
 	}
-	s2 := os.exec(cmd) or {
-		panic(err)
-	}
+	
+	s2 := os.exec(cmd) or { panic(err) }
 	if s2.output.len > 0 {
 		println(s2.output)
 	}
 	if s2.exit_code != 0 {
 		exit(1)
 	}
+
 	v_file := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	v2_file := if os.user_os() == 'windows' { 'v2.exe' } else { 'v2' }
 	bak_file := if os.user_os() == 'windows' { 'v_old.exe' } else { 'v_old' }
+
 	if os.exists(bak_file) {
 		os.rm(bak_file)
 	}
