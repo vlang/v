@@ -19,7 +19,7 @@ The commands are:
    test              Run all test files in the provided directory.
    translate         Translate C code to V (coming soon in 0.3).
    up                Run the V self-updater.
-   self              Run the V self-compiler.
+   self [-prod]      Run the V self-compiler, use -prod to optimize compilation.
    version           Print the version text and exits.
 
    install           Install a module from VPM.
