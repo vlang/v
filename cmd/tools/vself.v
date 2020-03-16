@@ -13,12 +13,12 @@ fn main() {
 	mut cmd := '$vexe -o v2 cmd/v'
 	if os.args.len >= 3 && os.args[2] == '-prod' {
 		cmd = '$vexe -o v2 -prod cmd/v'
-		println('V Self Compiling (prod mode)...')
+		println('V Self Compiling (-prod mode)...')
 	}
 	else {
 		println('V Self Compiling...')
 	}
-	
+
 	s2 := os.exec(cmd) or { panic(err) }
 	if s2.output.len > 0 {
 		println(s2.output)
