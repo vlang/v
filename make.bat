@@ -30,7 +30,7 @@ if not exist "%gccpath%" (
 gcc -std=c99 -municode -w -o v.exe vc\v_win.c
 if %ERRORLEVEL% NEQ 0 (
     echo gcc failed to compile - Create an issue at 'https://github.com/vlang'
-	rd /s /q vc
+    rd /s /q vc
     exit /b 1
 )
 
@@ -38,7 +38,7 @@ echo Now using V to build V...
 v self
 if %ERRORLEVEL% NEQ 0 (
     echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
-	rd /s /q vc
+    rd /s /q vc
     exit /b 1
 )
 
