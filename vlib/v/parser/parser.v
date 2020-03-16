@@ -48,7 +48,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-
+		
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -72,7 +72,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 			parent: 0
 		}
 		// comments_mode: comments_mode
-
+		
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -610,7 +610,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-
+			
 			val: val
 			pos: p.tok.position()
 			mod: mod
@@ -703,7 +703,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 		.lcbr {
 			p.next()
-			if p.tok.kind == .string{
+			if p.tok.kind == .string {
 				mut keys := []ast.Expr
 				mut vals := []ast.Expr
 				for p.tok.kind != .rcbr && p.tok.kind != .eof {
@@ -941,7 +941,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 		left: left
 		right: right
 		// right_type: typ
-
+		
 		op: op
 		pos: pos
 	}
@@ -1055,7 +1055,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		p.scope.register_var(ast.Var{
 			name: var_name
 			// expr: cond
-
+			
 		})
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
@@ -1150,11 +1150,11 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-
+		
 		pos: pos
 		has_else: has_else
 		// left: left
-
+		
 	}
 	return node
 }
@@ -1169,7 +1169,7 @@ fn (p mut Parser) string_expr() ast.Expr {
 		return node
 	}
 	// Handle $ interpolation
-	for p.tok.kind == .string{
+	for p.tok.kind == .string {
 		p.next()
 		if p.tok.kind != .str_dollar {
 			continue
@@ -1329,7 +1329,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		fields << ast.Field{
 			name: name
 			// typ: typ
-
+			
 		}
 		exprs << expr
 		// TODO: once consts are fixed reg here & update in checker
@@ -1596,6 +1596,7 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 fn (p mut Parser) match_expr() ast.MatchExpr {
 	p.check(.key_match)
 	is_mut := p.tok.kind == .key_mut
+	mut is_sum_type := false
 	if is_mut {
 		p.next()
 	}
@@ -1626,6 +1627,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 				p.next()
 				p.parse_type()
 			}
+			is_sum_type = true
 		}
 		else {
 			// Expression match
@@ -1653,6 +1655,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 	return ast.MatchExpr{
 		branches: branches
 		cond: cond
+		is_sum_type: is_sum_type
 	}
 }
 

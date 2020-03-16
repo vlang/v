@@ -315,7 +315,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.TypeDecl {
-			g.writeln('// type')
+			g.writeln('// TypeDecl')
 		}
 		ast.UnsafeStmt {
 			g.stmts(it.stmts)
@@ -728,7 +728,10 @@ fn (g mut Gen) expr(node ast.Expr) {
 					}
 					g.write('if (')
 					for i, expr in branch.exprs {
-						if type_sym.kind == .string {
+						if it.is_sum_type {
+							g.write('${tmp}.typ == ')
+						}
+						else if type_sym.kind == .string {
 							g.write('string_eq($tmp, ')
 						}
 						else {
@@ -909,7 +912,10 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(it.field)
 		}
 		ast.Type {
-			g.write('/* Type */')
+			// match sum Type
+			// g.write('/* Type */')
+			g.write('_type_idx_')
+			g.write(g.typ(it.typ))
 		}
 		else {
 			// #printf("node=%d\n", node.typ);
@@ -1270,7 +1276,7 @@ fn (g mut Gen) write_sorted_types() {
 }
 
 fn (g mut Gen) write_types(types []table.TypeSymbol) {
-	for typ in types {
+	for i, typ in types {
 		if typ.name.starts_with('C.') {
 			continue
 		}
@@ -1288,11 +1294,12 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				// g.definitions.writeln('} $name;\n')
 				//
 				g.definitions.writeln('};\n')
+				g.typedefs.writeln('#define _type_idx_$name $i')
 			}
 			table.Enum {
 				g.definitions.writeln('typedef enum {')
-				for i, val in it.vals {
-					g.definitions.writeln('\t${name}_$val, // $i')
+				for j, val in it.vals {
+					g.definitions.writeln('\t${name}_$val, // $j')
 				}
 				g.definitions.writeln('} $name;\n')
 			}

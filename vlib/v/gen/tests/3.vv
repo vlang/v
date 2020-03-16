@@ -1,3 +1,8 @@
+type Expr = IfExpr | IntegerLiteral
+
+struct IfExpr{}
+struct IntegerLiteral{}
+
 struct User {
 	age int
 	name string
@@ -10,6 +15,26 @@ fn get_opt() ?int {
 fn (u &User) foo() {
 	age := u.age
 	zzz := [''].repeat(u.age)
+}
+
+fn println(s string) {}
+
+fn handle_expr(e Expr) {
+	match e {
+		IfExpr {
+			println('if')
+
+
+		}
+		IntegerLiteral {
+			println('integer')
+
+		}
+		else {
+			println('else')
+		}
+	}
+
 }
 
 fn main() {
