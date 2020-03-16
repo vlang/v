@@ -702,54 +702,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(it.val.str())
 		}
 		ast.MatchExpr {
-			// println('match expr typ=$it.expr_type')
-			// TODO
-			if it.expr_type == 0 {
-				g.writeln('// match 0')
-				return
-			}
-			type_sym := g.table.get_type_symbol(it.expr_type)
-			mut tmp := ''
-			if type_sym.kind != .void {
-				tmp = g.new_tmp_var()
-			}
-			styp := g.typ(it.expr_type)
-			g.write('$styp $tmp = ')
-			g.expr(it.cond)
-			g.writeln(';') // $it.blocks.len')
-			for j, branch in it.branches {
-				if j == it.branches.len - 1 {
-					// last block is an `else{}`
-					g.writeln('else {')
-				}
-				else {
-					if j > 0 {
-						g.write('else ')
-					}
-					g.write('if (')
-					for i, expr in branch.exprs {
-						if it.is_sum_type {
-							g.write('${tmp}.typ == ')
-						}
-						else if type_sym.kind == .string {
-							g.write('string_eq($tmp, ')
-						}
-						else {
-							g.write('$tmp == ')
-						}
-						g.expr(expr)
-						if type_sym.kind == .string {
-							g.write(')')
-						}
-						if i < branch.exprs.len - 1 {
-							g.write(' || ')
-						}
-					}
-					g.writeln(') {')
-				}
-				g.stmts(branch.stmts)
-				g.writeln('}')
-			}
+			g.match_expr(it)
 		}
 		ast.MapInit {
 			key_typ_sym := g.table.get_type_symbol(it.key_type)
@@ -1003,6 +956,73 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.left)
 		g.write(' $node.op.str() ')
 		g.expr(node.right)
+	}
+}
+
+fn (g mut Gen) match_expr(node ast.MatchExpr) {
+	// println('match expr typ=$it.expr_type')
+	// TODO
+	if node.expr_type == 0 {
+		g.writeln('// match 0')
+		return
+	}
+	type_sym := g.table.get_type_symbol(node.expr_type)
+	mut tmp := ''
+	if type_sym.kind != .void {
+		tmp = g.new_tmp_var()
+	}
+	styp := g.typ(node.expr_type)
+	g.write('$styp $tmp = ')
+	g.expr(node.cond)
+	g.writeln(';') // $it.blocks.len')
+	// mut sum_type_str = ''
+	for j, branch in node.branches {
+		if j == node.branches.len - 1 {
+			// last block is an `else{}`
+			g.writeln('else {')
+		}
+		else {
+			if j > 0 {
+				g.write('else ')
+			}
+			g.write('if (')
+			for i, expr in branch.exprs {
+				if node.is_sum_type {
+					g.write('${tmp}.typ == ')
+					// sum_type_str
+				}
+				else if type_sym.kind == .string {
+					g.write('string_eq($tmp, ')
+				}
+				else {
+					g.write('$tmp == ')
+				}
+				g.expr(expr)
+				if type_sym.kind == .string {
+					g.write(')')
+				}
+				if i < branch.exprs.len - 1 {
+					g.write(' || ')
+				}
+			}
+			g.writeln(') {')
+		}
+		if node.is_sum_type && branch.exprs.len > 0 {
+			// The first node in expr is an ast.Type
+			// Use it to generate `it` variable.
+			fe := branch.exprs[0]
+			match fe {
+				ast.Type {
+					it_type := g.typ(it.typ)
+					g.writeln('$it_type* it = ($it_type*)tmp3.obj; // ST it')
+				}
+				else {
+					verror('match sum type')
+				}
+	}
+		}
+		g.stmts(branch.stmts)
+		g.writeln('}')
 	}
 }
 
