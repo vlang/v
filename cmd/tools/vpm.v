@@ -129,36 +129,12 @@ fn vpm_install(module_names []string) {
 		exit(2)
 	}
 	mut errors := 0
-	url := get_working_server_url()
 	for n in module_names {
 		name := n.trim_space()
-		modurl := url + '/jsmod/$name'
-		r := http.get(modurl) or {
-			println('Http server did not respond to our request for ${modurl}.')
-			println('Error details: $err')
+		mod := get_module_meta_info(name) or {
 			errors++
-			continue
-		}
-		if r.status_code == 404 {
-			println('Skipping module "$name", since $url reported that "$name" does not exist.')
-			errors++
-			continue
-		}
-		if r.status_code != 200 {
-			println('Skipping module "$name", since $url responded with $r.status_code http status code. Please try again later.')
-			errors++
-			continue
-		}
-		s := r.text
-		mod := json.decode(Mod,s) or {
-			errors++
-			println('Skipping module "$name", since its information is not in json format.')
-			continue
-		}
-		if ('' == mod.url || '' == mod.name) {
-			errors++
-			// a possible 404 error, which means a missing module?
-			println('Skipping module "$name", since it is missing name or url information.')
+			println('Errors while retrieving meta data for module ${name}:')
+			println(err)
 			continue
 		}
 		mut vcs := mod.vcs
@@ -463,4 +439,36 @@ fn verbose_println(s string) {
 	if settings.is_verbose {
 		println(s)
 	}
+}
+
+fn get_module_meta_info(name string) ?Mod {
+	mut errors := []string
+	for server_url in default_vpm_server_urls {
+		modurl := server_url + '/jsmod/$name'
+		verbose_println('Retrieving module metadata from: $modurl ...')
+		r := http.get(modurl) or {
+			errors << 'Http server did not respond to our request for ${modurl}.'
+			errors << 'Error details: $err'
+			continue
+		}
+		if r.status_code == 404 {
+			errors << 'Skipping module "$name", since $server_url reported that "$name" does not exist.'
+			continue
+		}
+		if r.status_code != 200 {
+			errors << 'Skipping module "$name", since $server_url responded with $r.status_code http status code. Please try again later.'
+			continue
+		}
+		s := r.text
+		mod := json.decode(Mod,s) or {
+			errors << 'Skipping module "$name", since its information is not in json format.'
+			continue
+		}
+		if ('' == mod.url || '' == mod.name) {
+			errors << 'Skipping module "$name", since it is missing name or url information.'
+			continue
+		}
+		return mod
+	}
+	return error(errors.join('\n'))
 }
