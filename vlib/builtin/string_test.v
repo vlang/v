@@ -696,7 +696,6 @@ fn test_split_into_lines() {
 	}
 }
 
-/*
 fn test_strip_margins() {
 	no_tabs := 'Hello there
 This is a string
@@ -772,4 +771,3 @@ revert back to default behavior.'
 		|revert back to default behavior.'.strip_margin(`\n`)
 	assert space_delimiter == space_delimiter_stripped
 }
-*/
