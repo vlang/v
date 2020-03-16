@@ -460,6 +460,11 @@ fn get_module_meta_info(name string) ?Mod {
 			continue
 		}
 		s := r.text
+		if s.len > 0 && s[0] != `{` {
+			errors << 'Invalid json data'
+			errors << s.trim_space().limit(100) + '...'
+			continue
+		}
 		mod := json.decode(Mod,s) or {
 			errors << 'Skipping module "$name", since its information is not in json format.'
 			continue
@@ -470,5 +475,5 @@ fn get_module_meta_info(name string) ?Mod {
 		}
 		return mod
 	}
-	return error(errors.join('\n'))
+	return error(errors.join_lines())
 }
