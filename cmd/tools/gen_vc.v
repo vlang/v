@@ -105,6 +105,7 @@ struct FlagOptions {
 	log_to   string
 	log_file string
 	dry_run  bool
+	force    bool
 }
 
 fn main() {
@@ -186,6 +187,7 @@ fn parse_flags(fp mut flag.FlagParser) FlagOptions {
 		log_to   : fp.string('log-to', log_to, 'log to is \'file\' or \'terminal\'')
 		log_file : fp.string('log-file', log_file, 'log file to use when log-to is \'file\'')
 		dry_run  : fp.bool('dry-run', dry_run, 'when specified dont push anything to remote repo')
+		force    : fp.bool('force', false, 'force update even if already up to date')
 	}
 }
 
@@ -226,7 +228,7 @@ fn (gen_vc mut GenVC) generate() {
 		// fetch the remote repo just in case there are newer commits there
 		gen_vc.cmd_exec('git -C $git_repo_dir_v fetch')
 		git_status := gen_vc.cmd_exec('git -C $git_repo_dir_v status')
-		if !git_status.contains('behind') {
+		if !git_status.contains('behind') && !gen_vc.options.force {
 			gen_vc.logger.warn('v repository is already up to date.')
 			return
 		}
@@ -274,7 +276,7 @@ fn (gen_vc mut GenVC) generate() {
 	gen_vc.logger.debug('last commit subject ($git_repo_v): $last_commit_subject')
 
 	// if vc repo already has a newer commit than the v repo, assume it's up to date
-	if t_unix_vc >= t_unix_v {
+	if t_unix_vc >= t_unix_v && !gen_vc.options.force {
 		gen_vc.logger.warn('vc repository is already up to date.')
 		return
 	}
