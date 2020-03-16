@@ -41,11 +41,11 @@ void println(string s) {
 void handle_expr(Expr e) {
 	Expr tmp1 = e;
 	if (tmp1.typ == _type_idx_IfExpr) {
-		IfExpr* it = (IfExpr*)tmp3.obj; // ST it
+		IfExpr* it = (IfExpr*)tmp1.obj; // ST it
 		println(tos3("if"));
 	}
 	else if (tmp1.typ == _type_idx_IntegerLiteral) {
-		IntegerLiteral* it = (IntegerLiteral*)tmp3.obj; // ST it
+		IntegerLiteral* it = (IntegerLiteral*)tmp1.obj; // ST it
 		println(tos3("integer"));
 	}
 	else {
@@ -62,5 +62,7 @@ int main() {
 	user.name = tos3("bob");
 	Option_int n = get_opt();
 	int a = /*opt*/(*(int*)n.data) + 3;
+	handle_expr((IfExpr){
+0});
 	return 0;
 }

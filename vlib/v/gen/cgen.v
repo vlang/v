@@ -1014,7 +1014,7 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 			match fe {
 				ast.Type {
 					it_type := g.typ(it.typ)
-					g.writeln('$it_type* it = ($it_type*)tmp3.obj; // ST it')
+					g.writeln('$it_type* it = ($it_type*)${tmp}.obj; // ST it')
 				}
 				else {
 					verror('match sum type')

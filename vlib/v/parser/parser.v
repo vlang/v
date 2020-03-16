@@ -1620,7 +1620,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 			}
 			p.scope.register_var(ast.Var{
 				name: 'it'
-				typ: typ
+				typ: table.type_to_ptr(typ)
 			})
 			// TODO
 			if p.tok.kind == .comma {

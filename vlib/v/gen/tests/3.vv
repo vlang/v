@@ -46,4 +46,5 @@ fn main() {
 		return
 	}
 	a := n + 3
+	handle_expr(IfExpr{})
 }
