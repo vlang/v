@@ -244,9 +244,10 @@ pub fn (s string) replace_each(vals []string) string {
 			}
 			// We need to remember both the position in the string,
 			// and which rep/with pair it refers to.
-			idxs << RepIndex{
+			idxs << RepIndex {
 				idx:idx
-val_idx:rep_i}
+				val_idx:rep_i
+			}
 			idx++
 			new_len += with.len - rep.len
 		}
