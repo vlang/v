@@ -850,7 +850,6 @@ pub fn (v mut Vlang) parse_lib_imports() {
 	}
 }
 
-
 pub fn (v &Vlang) log(s string) {
 	if !v.pref.verbosity.is_higher_or_equal(.level_two) {
 		return
@@ -877,52 +876,25 @@ pub fn cescaped_path(s string) string {
 
 pub fn os_from_string(os string) pref.OS {
 	match os {
-		'linux' {
-			return .linux
-		}
-		'windows' {
-			return .windows
-		}
-		'mac' {
-			return .mac
-		}
-		'macos' {
-			return .mac
-		}
-		'freebsd' {
-			return .freebsd
-		}
-		'openbsd' {
-			return .openbsd
-		}
-		'netbsd' {
-			return .netbsd
-		}
-		'dragonfly' {
-			return .dragonfly
-		}
-		'js' {
-			return .js
-		}
-		'solaris' {
-			return .solaris
-		}
-		'android' {
-			return .android
-		}
+		'linux' { return .linux }
+		'windows' { return .windows }
+		'mac' { return .mac }
+		'macos' { return .mac }
+		'freebsd' { return .freebsd }
+		'openbsd' { return .openbsd }
+		'netbsd' { return .netbsd }
+		'dragonfly' { return .dragonfly }
+		'js' { return .js }
+		'solaris' { return .solaris }
+		'android' { return .android }
 		'msvc' {
 			// notice that `-os msvc` became `-cc msvc`
 			verror('use the flag `-cc msvc` to build using msvc')
 		}
-		'haiku' {
-			return .haiku
-		}
-		'linux_or_macos' {
-			return .linux
-		}
-		else {
-			panic('bad os $os')
-		}}
+		'haiku' { return .haiku }
+		'linux_or_macos' { return .linux }
+		else { panic('bad os $os') }
+	}
 	// println('bad os $os') // todo panic?
 	return .linux
 }
