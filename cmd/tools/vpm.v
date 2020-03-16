@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	default_vpm_server_urls = ['https://vpm.best', 'https://vpm.vlang.io']
+	default_vpm_server_urls = ['https://vpm.vlang.io']
 	valid_vpm_commands = ['help', 'search', 'install', 'update', 'remove']
 	excluded_dirs = ['cache', 'vlib']
 	supported_vcs_systems = ['git', 'hg']
@@ -344,7 +344,7 @@ fn get_all_modules() []string {
 		panic(err)
 	}
 	if r.status_code != 200 {
-		println('Failed to search vpm.best. Status code: $r.status_code')
+		println('Failed to search vpm.vlang.io. Status code: $r.status_code')
 		exit(1)
 	}
 	s := r.text

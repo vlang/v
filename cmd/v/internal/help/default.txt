@@ -6,12 +6,12 @@ Usage:
 Examples:
    v hello.v         Compile the file `hello.v` and output it as `hello` or `hello.exe`.
    v run hello.v     Same as above but also run the produced executable immediately after compilation.
-   v -o h.c hello.v  Translate `hello.v` to `h.c` . Do not compile further.
+   v -o h.c hello.v  Translate `hello.v` to `h.c`. Do not compile further.
 
 The commands are:
    build             Build V code in the provided path (default).
    create            Setup the file structure for a V project.
-   doc               Generates the documentation for a V module (coming soon in 0.3).
+   doc               Generate the documentation for a V module.
    fmt               Format the V code provided.
    repl              Run the REPL.
    run               Compile and run a V program.

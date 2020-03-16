@@ -39,12 +39,11 @@ void println(string s) {
 }
 
 void handle_expr(Expr e) {
-	Expr tmp1 = e;
-	if (tmp1.typ == _type_idx_IfExpr) {
+	if (e.typ == _type_idx_IfExpr) {
 		IfExpr* it = (IfExpr*)tmp1.obj; // ST it
 		println(tos3("if"));
 	}
-	else if (tmp1.typ == _type_idx_IntegerLiteral) {
+	else if (e.typ == _type_idx_IntegerLiteral) {
 		IntegerLiteral* it = (IntegerLiteral*)tmp1.obj; // ST it
 		println(tos3("integer"));
 	}

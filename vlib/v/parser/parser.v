@@ -11,9 +11,9 @@ import (
 	v.pref
 	term
 	os
-	//runtime
-	sync
-	//time
+	// runtime
+	// sync
+	// time
 )
 
 const (
@@ -51,7 +51,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-
+		
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -75,7 +75,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 			parent: 0
 		}
 		// comments_mode: comments_mode
-
+		
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -113,6 +113,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	}
 }
 
+/*
 struct Queue {
 mut:
 	idx              int
@@ -137,6 +138,8 @@ fn (q mut Queue) run() {
 	q.parsed_ast_files << file
 	q.mu.unlock()
 }
+*/
+
 
 pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	/*
@@ -661,7 +664,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-
+			
 			val: val
 			pos: p.tok.position()
 			mod: mod
@@ -992,7 +995,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 		left: left
 		right: right
 		// right_type: typ
-
+		
 		op: op
 		pos: pos
 	}
@@ -1106,7 +1109,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		p.scope.register_var(ast.Var{
 			name: var_name
 			// expr: cond
-
+			
 		})
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
@@ -1201,11 +1204,11 @@ fn (p mut Parser) if_expr() ast.Expr {
 		stmts: stmts
 		else_stmts: else_stmts
 		// typ: typ
-
+		
 		pos: pos
 		has_else: has_else
 		// left: left
-
+		
 	}
 	return node
 }
@@ -1380,7 +1383,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		fields << ast.Field{
 			name: name
 			// typ: typ
-
+			
 		}
 		exprs << expr
 		// TODO: once consts are fixed reg here & update in checker

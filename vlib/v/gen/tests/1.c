@@ -163,14 +163,11 @@ void println(string s) {
 
 void matches() {
 	int a = 100;
-	int tmp1 = a;
-	if (tmp1 == 10) {
+	if (a == 10) {
 		println(tos3("10"));
-
 	}
-	else if (tmp1 == 20) {
+	else if (a == 20) {
 		int k = a + 1;
-
 	}
 	else {
 	}

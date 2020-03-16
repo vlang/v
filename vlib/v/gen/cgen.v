@@ -84,7 +84,7 @@ pub fn (g &Gen) styp(t string) string {
 }
 */
 
-
+//
 pub fn (g mut Gen) write_typedef_types() {
 	for typ in g.table.types {
 		match typ.kind {
@@ -1019,10 +1019,10 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 	if type_sym.kind != .void {
 		tmp = g.new_tmp_var()
 	}
-	styp := g.typ(node.expr_type)
-	g.write('$styp $tmp = ')
-	g.expr(node.cond)
-	g.writeln(';') // $it.blocks.len')
+	//styp := g.typ(node.expr_type)
+	//g.write('$styp $tmp = ')
+	//g.expr(node.cond)
+	//g.writeln(';') // $it.blocks.len')
 	// mut sum_type_str = ''
 	for j, branch in node.branches {
 		if j == node.branches.len - 1 {
@@ -1036,14 +1036,22 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 			g.write('if (')
 			for i, expr in branch.exprs {
 				if node.is_sum_type {
-					g.write('${tmp}.typ == ')
+					g.expr(node.cond )
+					g.write('.typ == ')
+					//g.write('${tmp}.typ == ')
 					// sum_type_str
 				}
 				else if type_sym.kind == .string {
-					g.write('string_eq($tmp, ')
+					g.write('string_eq(')
+					//
+g.expr(node.cond)
+g.write(', ')
+					//g.write('string_eq($tmp, ')
 				}
 				else {
-					g.write('$tmp == ')
+					g.expr(node.cond)
+					g.write(' == ')
+					//g.write('$tmp == ')
 				}
 				g.expr(expr)
 				if type_sym.kind == .string {
