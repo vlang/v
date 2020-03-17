@@ -1083,13 +1083,15 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 	}
 	else {
 		mut is_guard := false
+		guard_ok := g.new_tmp_var()
 		match node.cond {
 			ast.IfGuardExpr {
 				is_guard = true
-				g.write('/* if guard */{${g.typ(it.expr_type)} $it.var_name = ')
+				g.writeln('bool $guard_ok;')
+				g.write('{ /* if guard */ ${g.typ(it.expr_type)} $it.var_name = ')
 				g.expr(it.expr)
 				g.writeln(';')
-				g.writeln('if (${it.var_name}.ok) {')
+				g.writeln('if (($guard_ok = ${it.var_name}.ok)) {')
 			}
 			else {
 				g.write('if (')
@@ -1108,7 +1110,11 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 		}
 		g.writeln('}')
 		if node.else_stmts.len > 0 {
-			g.writeln('else { ')
+			if is_guard {
+				g.writeln('if !$guard_ok { /* else */')
+			} else {
+				g.writeln('else { ')
+			}
 			for stmt in node.else_stmts {
 				g.stmt(stmt)
 			}
