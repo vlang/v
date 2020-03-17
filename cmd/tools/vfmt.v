@@ -32,8 +32,11 @@ const (
 	['linux', '_lin.v', '_linux.v', '_nix.v'],
 	['macos', '_mac.v', '_darwin.v'],
 	['freebsd', '_bsd.v', '_freebsd.v'],
+	['netbsd', '_bsd.v', '_netbsd.v'],
+	['openbsd', '_bsd.v', '_openbsd.v'],
 	['solaris', '_solaris.v'],
 	['haiku', '_haiku.v'],
+	['qnx', '_qnx.v'],
 	]
 	FORMATTED_FILE_TOKEN = '\@\@\@' + 'FORMATTED_FILE: '
 )
