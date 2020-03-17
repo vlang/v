@@ -7,6 +7,8 @@ fn int_access_field_or_method() {
     assert x3 == '73'
     x4 := 0o653262.str()
     assert x4 == '218802'
+	x5 := 0.str()
+	assert x5 == '0'
 }
 
 fn float_access_field_or_method() {
