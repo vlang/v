@@ -39,7 +39,7 @@ pub fn (ms MySumType) str() string {
 
 fn test_typeof_on_sumtypes(){
 	a := MySumType(32)
-	b := MySumType(123.0)
+	b := MySumType(f32(123.0))
 	c := MySumType(FooBar{x:43})
 	assert typeof(a) == 'int'
 	assert typeof(b) == 'f32'
