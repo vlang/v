@@ -76,7 +76,7 @@ fn (state &AppState) render_font() {
 	mut sy := 0.0
 	mut dx := 0.0
 	mut dy := 0.0
-	lh := 0.0
+	lh := f32(0.0)
 	white := C.sfons_rgba(255, 255, 255, 255)
 	black := C.sfons_rgba(0, 0, 0, 255)
 	brown := C.sfons_rgba(192, 128, 0, 128)
@@ -91,8 +91,8 @@ fn (state &AppState) render_font() {
 	dy = sy
 	state.fons.set_font(state.font_normal)
 	state.fons.set_size(100.0)
-	ascender := 0.0
-	descender := 0.0
+	ascender := f32(0.0)
+	descender := f32(0.0)
 	state.fons.vert_metrics(&ascender, &descender, &lh)
 	dx = sx
 	dy += lh
