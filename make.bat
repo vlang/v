@@ -54,20 +54,15 @@ if "%PROCESSOR_ARCHITECTURE%" == "x86" (
 	set HostArch=x86
 )
 
-if exist "%VsWhereDir%"\MSBuild\14.0 (
-	set VsInstallDir="%VsWhereDir%"\"Microsoft Visual Studio 14.0"
-) else if exist "%VsWhereDir%"\MSBuild\15.0 (
-	set VsInstallDir="%VsWhereDir%"\"Microsoft Visual Studio 15.0"
-) else if exist "%VsWhereDir%"\MSBuild\17.0 (
-	set VsInstallDir="%VsWhereDir%"\"Microsoft Visual Studio 17.0"
-) else if exist "%VsWhereDir%"\MSBuild\19.0 (
-	set VsInstallDir="%VsWhereDir%"\"Microsoft Visual Studio 19.0"
-) else if exist "%VsWhereDir%"\MSBuild\12.0 (
-	set VsInstallDir="%VsWhereDir%"\"Microsoft Visual Studio 12.0"
-) else (
-	goto :no_compiler
+for /f "TOKENS=*" %%i in ('dir "%VsWhereDir%"\MSBuild /b /ad') do (
+	set VS_PREFIX=Microsoft Visual Studio
+	set VS=%VS_PREFIX% %%i
+	echo %VS%
+	set VsInstallDir="%VsWhereDir%"\"%VS%"
+	goto :check_vsdevcmd
 )
 
+:check_vsdevcmd
 if exist %VsInstallDir%\Common7\Tools\vsdevcmd.bat (
 	call %VsInstallDir%\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
 ) else (
