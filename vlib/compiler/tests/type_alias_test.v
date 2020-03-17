@@ -8,7 +8,7 @@ fn test_type_alias() {
 	assert i + 100 == 110
 
 	f1 := Myf32(1.0)
-	assert f1 + f32(3.14) == 4.14
+	assert f1 + f32(3.14) == f32(4.14)
 	
 	f2 := Myf64(-10.4)
 	assert f2 + 0.5 == 9.9  
