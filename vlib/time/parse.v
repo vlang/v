@@ -42,7 +42,7 @@ pub fn parse_rfc2822(s string) ?Time {
 	mm := pos / 3 + 1
 	mut tmstr := byteptr(0)
 	unsafe { tmstr = malloc(s.len * 2) }
-	count := C.sprintf(charptr(tmstr), '%s-%02d-%s %s', fields[3].str, mm,
+	count := C.snprintf(charptr(tmstr), (s.len *  2), '%s-%02d-%s %s', fields[3].str, mm,
 		fields[1].str, fields[4].str)
 
 	t := parse(tos(tmstr, count)) or {

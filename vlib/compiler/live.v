@@ -121,13 +121,16 @@ void lfnmutex_print(char *s){
 			cgen.genln('
 void* live_lib=0;
 int load_so(byteptr path) {
-	char cpath[1024];
-	sprintf(cpath,"./%s", path);
+	char cpath[1024] = {0};
+	int res = snprintf(cpath, sizeof (cpath), "./%s", path);
+	if (res >= sizezof (cpath)) {
+		return 0;
+	}
 	//printf("load_so %s\\n", cpath);
 	if (live_lib) dlclose(live_lib);
 	live_lib = dlopen(cpath, RTLD_LAZY);
 	if (!live_lib) {
-		puts("open failed");
+		fprintf(stderr, "open failed");
 		exit(1);
 		return 0;
 	}
@@ -146,14 +149,19 @@ void pthread_mutex_unlock(HANDLE *m) {
 	ReleaseMutex(*m);
 }
 
-void* live_lib=0;
+void* live_lib = NULL;
 int load_so(byteptr path) {
-	char cpath[1024];
-	sprintf(cpath, "./%s", path);
+	char cpath[1024]; // TODO: use maxpathlen
+	if (strlen (path) > sizeof (cpath)) {
+		fprintf (stderr, "open failed");
+		exit(1);
+		return 0;
+	}
+	snprintf(cpath, sizeof (cpath), "./%s", path);
 	if (live_lib) FreeLibrary(live_lib);
 	live_lib = LoadLibraryA(cpath);
 	if (!live_lib) {
-		puts("open failed");
+		fprintf (stderr, "open failed");
 		exit(1);
 		return 0;
 	}
@@ -167,9 +175,9 @@ int load_so(byteptr path) {
 
 int _live_reloads = 0;
 void reload_so() {
-	char new_so_base[1024];
-	char new_so_name[1024];
-	char compile_cmd[1024];
+	char new_so_base[1024] = {0};
+	char new_so_name[1024] = {0};
+	char compile_cmd[1024] = {0};
 	int last = os__file_last_mod_unix(tos2("$file"));
 	while (1) {
 		// TODO use inotify
@@ -179,18 +187,18 @@ void reload_so() {
 			_live_reloads++;
 
 			//v -o bounce -shared bounce.v
-			sprintf(new_so_base, ".tmp.%d.${file_base}", _live_reloads);
+			snprintf(new_so_base, sizeof (new_so_base), ".tmp.%d.${file_base}", _live_reloads);
 			#ifdef _WIN32
 			// We have to make this directory becuase windows WILL NOT
 			// do it for us
 			os__mkdir(string_all_before_last(tos2(new_so_base), tos2("/")));
 			#endif
 			#ifdef _MSC_VER
-			sprintf(new_so_name, "%s.dll", new_so_base);
+			snprintf(new_so_name, sizeof (new_so_name), "%s.dll", new_so_base);
 			#else
-			sprintf(new_so_name, "%s.so", new_so_base);
+			snprintf(new_so_name, sizeof (new_so_name), "%s.so", new_so_base);
 			#endif
-			sprintf(compile_cmd, "$vexe $msvc -o %s -solive -shared $file", new_so_base);
+			snprintf(compile_cmd, sizeof (compile_cmd), "$vexe $msvc -o %s -solive -shared $file", new_so_base);
 			os__system(tos2(compile_cmd));
 
 			if( !os__exists(tos2(new_so_name)) ) {
