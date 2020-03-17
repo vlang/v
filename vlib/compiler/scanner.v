@@ -241,7 +241,7 @@ fn (s mut Scanner) ident_dec_number() string {
 		s.pos++
 		// check: 12.field_or_method
 		if s.pos < s.text.len && s.text[s.pos].is_digit() {
-		    for s.pos < s.text.len {
+			for s.pos < s.text.len {
 				c := s.text[s.pos]
 				if !c.is_digit() {
 					if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
