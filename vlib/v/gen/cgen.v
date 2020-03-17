@@ -350,7 +350,7 @@ fn (g mut Gen) expr_with_cast(got_type table.Type, exp_type table.Type, expr ast
 				got_styp := g.typ(got_type)
 				exp_styp := g.typ(exp_type)
 				got_idx := table.type_idx(got_type)
-				g.write('/* SUM TYPE CAST */ ($exp_styp) {.obj = memdup(&(${got_styp}[]) {')
+				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&(${got_styp}[]) {')
 				g.expr(expr)
 				g.writeln('}, sizeof($got_styp)), .typ = $got_idx};')
 			}
@@ -683,51 +683,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.ident(it)
 		}
 		ast.IfExpr {
-			// If expression? Assign the value to a temp var.
-			// Previously ?: was used, but it's too unreliable.
-			type_sym := g.table.get_type_symbol(it.typ)
-			mut tmp := ''
-			if type_sym.kind != .void {
-				tmp = g.new_tmp_var()
-				// g.writeln('$ti.name $tmp;')
-			}
-			// one line ?:
-			// TODO clean this up once `is` is supported
-			if it.stmts.len == 1 && it.else_stmts.len == 1 && type_sym.kind != .void {
-				cond := it.cond
-				stmt1 := it.stmts[0]
-				else_stmt1 := it.else_stmts[0]
-				match stmt1 {
-					ast.ExprStmt {
-						g.expr(cond)
-						g.write(' ? ')
-						expr_stmt := stmt1 as ast.ExprStmt
-						g.expr(expr_stmt.expr)
-						g.write(' : ')
-						g.stmt(else_stmt1)
-					}
-					else {}
-	}
-			}
-			else {
-				g.write('if (')
-				g.expr(it.cond)
-				g.writeln(') {')
-				for i, stmt in it.stmts {
-					// Assign ret value
-					if i == it.stmts.len - 1 && type_sym.kind != .void {}
-					// g.writeln('$tmp =')
-					g.stmt(stmt)
-				}
-				g.writeln('}')
-				if it.else_stmts.len > 0 {
-					g.writeln('else { ')
-					for stmt in it.else_stmts {
-						g.stmt(stmt)
-					}
-					g.writeln('}')
-				}
-			}
+			g.if_expr(it)
 		}
 		ast.IfGuardExpr {
 			g.write('/* guard */')
@@ -1095,6 +1051,69 @@ fn (g mut Gen) ident(node ast.Ident) {
 			else {}
 	}
 		g.write(name)
+	}
+}
+
+fn (g mut Gen) if_expr(node ast.IfExpr) {
+	// If expression? Assign the value to a temp var.
+	// Previously ?: was used, but it's too unreliable.
+	type_sym := g.table.get_type_symbol(node.typ)
+	mut tmp := ''
+	if type_sym.kind != .void {
+		tmp = g.new_tmp_var()
+		// g.writeln('$ti.name $tmp;')
+	}
+	// one line ?:
+	// TODO clean this up once `is` is supported
+	if node.stmts.len == 1 && node.else_stmts.len == 1 && type_sym.kind != .void {
+		cond := node.cond
+		stmt1 := node.stmts[0]
+		else_stmt1 := node.else_stmts[0]
+		match stmt1 {
+			ast.ExprStmt {
+				g.expr(cond)
+				g.write(' ? ')
+				expr_stmt := stmt1 as ast.ExprStmt
+				g.expr(expr_stmt.expr)
+				g.write(' : ')
+				g.stmt(else_stmt1)
+			}
+			else {}
+		}
+	}
+	else {
+		mut is_guard := false
+		match node.cond {
+			ast.IfGuardExpr {
+				is_guard = true
+				g.write('/* if guard */{${g.typ(it.expr_type)} $it.var_name = ')
+				g.expr(it.expr)
+				g.writeln(';')
+				g.writeln('if (${it.var_name}.ok) {')
+			}
+			else {
+				g.write('if (')
+				g.expr(node.cond)
+				g.writeln(') {')
+			}
+		}
+		for i, stmt in node.stmts {
+			// Assign ret value
+			if i == node.stmts.len - 1 && type_sym.kind != .void {}
+			// g.writeln('$tmp =')
+			g.stmt(stmt)
+		}
+		if is_guard {
+			g.write('}')
+		}
+		g.writeln('}')
+		if node.else_stmts.len > 0 {
+			g.writeln('else { ')
+			for stmt in node.else_stmts {
+				g.stmt(stmt)
+			}
+			g.writeln('}')
+		}
 	}
 }
 

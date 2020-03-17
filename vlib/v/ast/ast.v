@@ -567,8 +567,10 @@ pub:
 // `if [x := opt()] {`
 pub struct IfGuardExpr {
 pub:
-	var_name string
-	expr     Expr
+	var_name  string
+	expr      Expr
+mut:
+	expr_type table.Type
 }
 
 // `or { ... }`

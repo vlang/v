@@ -631,6 +631,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return c.if_expr(mut it)
 		}
 		ast.IfGuardExpr {
+			it.expr_type = c.expr(it.expr)
 			return table.bool_type
 		}
 		ast.IndexExpr {
