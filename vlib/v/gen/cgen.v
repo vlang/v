@@ -401,23 +401,13 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			ident_var_info := ident.var_info()
 			styp := g.typ(ident_var_info.typ)
 			if ident.kind == .blank_ident {
-				is_call := match val {
-					ast.CallExpr{
-						true
-					}
-					ast.MethodCallExpr{
-						true
-					}
-					else {
-						false}
-	}
-				if is_call {
+				if is_call(val) {
 					g.expr(val)
 				}
 				else {
 					g.write('{$styp _ = ')
 					g.expr(val)
-					g.write('}')
+					g.writeln('}')
 				}
 			}
 			else {
@@ -572,30 +562,42 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('/* as */')
 		}
 		ast.AssignExpr {
-			g.is_assign_expr = true
-			mut str_add := false
-			if it.left_type == table.string_type_idx && it.op == .plus_assign {
-				// str += str2 => `str = string_add(str, str2)`
+			if is_blank_ident(it.left) {
+				if is_call(it.val) {
+					g.expr(it.val)
+				}
+				else {
+					g.write('{${g.typ(it.left_type)} _ = ')
+					g.expr(it.val)
+					g.writeln('}')
+				}
+			}
+			else {
+				g.is_assign_expr = true
+				mut str_add := false
+				if it.left_type == table.string_type_idx && it.op == .plus_assign {
+					// str += str2 => `str = string_add(str, str2)`
+					g.expr(it.left)
+					g.write(' = string_add(')
+					str_add = true
+				}
 				g.expr(it.left)
-				g.write(' = string_add(')
-				str_add = true
-			}
-			g.expr(it.left)
-			// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
-			if !g.is_array_set && !str_add {
-				g.write(' $it.op.str() ')
-			}
-			else if str_add {
-				g.write(', ')
-			}
-			g.is_assign_expr = false
-			g.expr_with_cast(it.right_type, it.left_type, it.val)
-			if g.is_array_set {
-				g.write(' })')
-				g.is_array_set = false
-			}
-			else if str_add {
-				g.write(')')
+				// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
+				if !g.is_array_set && !str_add {
+					g.write(' $it.op.str() ')
+				}
+				else if str_add {
+					g.write(', ')
+				}
+				g.is_assign_expr = false
+				g.expr_with_cast(it.right_type, it.left_type, it.val)
+				if g.is_array_set {
+					g.write(' })')
+					g.is_array_set = false
+				}
+				else if str_add {
+					g.write(')')
+				}
 			}
 		}
 		ast.Assoc {
@@ -1330,6 +1332,33 @@ fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg) {
 	else if !arg_is_ptr && expr_is_ptr {
 		// Dereference a pointer if a value is required
 		g.write('*/*d*/')
+	}
+}
+
+[inline]
+fn is_blank_ident(expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			return it.kind == .blank_ident
+		}
+		else {
+			return false
+		}
+	}
+}
+
+[inline]
+fn is_call(expr ast.Expr) bool {
+	return match expr {
+		ast.CallExpr {
+			true
+		}
+		ast.MethodCallExpr {
+			true
+		}
+		else {
+			false
+		}
 	}
 }
 
