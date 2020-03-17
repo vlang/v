@@ -500,7 +500,7 @@ fn test_sort() {
 }
 
 fn test_f32_sort() {
-	mut f := [50.0, 15, 1, 79, 38, 0, 27]
+	mut f := [f32(50.0), 15, 1, 79, 38, 0, 27]
 	f.sort_with_compare(compare_f32)
 	assert f[0] == 0.0
 	assert f[1] == 1.0
@@ -508,7 +508,7 @@ fn test_f32_sort() {
 }
 
 fn test_f64_sort() {
-	mut f := [f64(50.0), 15, 1, 79, 38, 0, 27]
+	mut f := [50.0, 15, 1, 79, 38, 0, 27]
 	f.sort_with_compare(compare_f64)
 	assert f[0] == 0.0
 	assert f[1] == 1.0
