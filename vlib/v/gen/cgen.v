@@ -339,27 +339,25 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	}
 }
 
-fn (g &Gen) is_sum_cast(got_type table.Type, exp_type table.Type) bool {
+// use instead of expr() when you need to cast to sum type (can add other casts also)
+fn (g mut Gen) expr_with_cast(got_type table.Type, exp_type table.Type, expr ast.Expr) {
+	// cast to sum type
 	if exp_type != table.void_type && exp_type != 0  && got_type != 0{
 		exp_sym := g.table.get_type_symbol(exp_type)
-		// got_sym := g.table.get_type_symbol(got_type)
 		if exp_sym.kind == .sum_type {
 			sum_info := exp_sym.info as table.SumType
 			if got_type in sum_info.variants {
-				return true
+				got_styp := g.typ(got_type)
+				exp_styp := g.typ(exp_type)
+				got_idx := table.type_idx(got_type)
+				g.write('/* SUM TYPE CAST */ ($exp_styp) {.obj = memdup(&(${got_styp}[]) {')
+				g.expr(expr)
+				g.writeln('}, sizeof($got_styp)), .typ = $got_idx};')
 			}
 		}
 	}
-	return false
-}
-
-fn (g mut Gen) sum_cast(got_type table.Type, exp_type table.Type, expr ast.Expr) {
-	got_styp := g.typ(got_type)
-	exp_styp := g.typ(exp_type)
-	got_idx := table.type_idx(got_type)
-	g.write('/* SUM TYPE CAST */ ($exp_styp) {.obj = memdup(&(${got_styp}[]) {')
+	// no cast
 	g.expr(expr)
-	g.writeln('}, sizeof($got_styp)), .typ = $got_idx};')
 }
 
 fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
@@ -430,17 +428,15 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 					else {}
 	}
-				mut is_sum_cast := false
-				if assign_stmt.op == .decl_assign {
+				is_decl := assign_stmt.op == .decl_assign
+				if is_decl {
 					g.write('$styp ')
-				} else {
-					is_sum_cast = g.is_sum_cast(assign_stmt.right_types[i], assign_stmt.left_types[i])
 				}
 				g.expr(ident)
 				if !is_fixed_array_init {
 					g.write(' = ')
-					if is_sum_cast {
-						g.sum_cast(ident_var_info.typ, assign_stmt.left_types[i], val)
+					if !is_decl {
+						g.expr_with_cast(assign_stmt.left_types[i], ident_var_info.typ, val)
 					} else {
 						g.expr(val)
 					}
@@ -593,11 +589,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write(', ')
 			}
 			g.is_assign_expr = false
-			if g.is_sum_cast(it.left_type, it.right_type) {
-				g.sum_cast(it.left_type, it.right_type, it.val)
-			} else {
-				g.expr(it.val)
-			}
+			g.expr_with_cast(it.right_type, it.left_type, it.val)
 			if g.is_array_set {
 				g.write(' })')
 				g.is_array_set = false
@@ -755,14 +747,16 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.MapInit {
 			key_typ_sym := g.table.get_type_symbol(it.key_type)
 			value_typ_sym := g.table.get_type_symbol(it.value_type)
+			key_typ_str := key_typ_sym.name.replace('.', '__')
+			value_typ_str := value_typ_sym.name.replace('.', '__')
 			size := it.vals.len
 			if size > 0 {
-				g.write('new_map_init($size, sizeof($value_typ_sym.name), (${key_typ_sym.name}[$size]){')
+				g.write('new_map_init($size, sizeof($value_typ_str), (${key_typ_str}[$size]){')
 				for expr in it.keys {
 					g.expr(expr)
 					g.write(', ')
 				}
-				g.write('}, (${value_typ_sym.name}[$size]){')
+				g.write('}, (${value_typ_str}[$size]){')
 				for expr in it.vals {
 					g.expr(expr)
 					g.write(', ')
@@ -770,7 +764,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write('})')
 			}
 			else {
-				g.write('new_map(1, sizeof($value_typ_sym.name))')
+				g.write('new_map(1, sizeof($value_typ_str))')
 			}
 		}
 		ast.MethodCallExpr {
@@ -979,7 +973,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		if right_sym.kind == .array {
 			// push an array => PUSH_MANY
 			g.write('_PUSH_MANY(&')
-			g.expr(node.left)
+			g.expr_with_cast(node.right_type, node.left_type, node.left)
 			g.write(', (')
 			g.expr(node.right)
 			styp := g.typ(node.left_type)
@@ -991,7 +985,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			elem_type_str := g.typ(info.elem_type)
 			// g.write('array_push(&')
 			g.write('_PUSH(&')
-			g.expr(node.left)
+			g.expr_with_cast(node.right_type, info.elem_type, node.left)
 			g.write(', (')
 			g.expr(node.right)
 			g.write('), $tmp, $elem_type_str)')
@@ -1229,12 +1223,7 @@ fn (g mut Gen) return_statement(it ast.Return) {
 			}
 			// g.write('/*OPTIONAL*/')
 		}
-		if g.is_sum_cast(it.types[0], g.fn_decl.return_type) {
-			g.sum_cast(it.types[0], g.fn_decl.return_type, it.exprs[0])
-		}
-		else {
-			g.expr(it.exprs[0])
-		}
+		g.expr_with_cast(it.types[0], g.fn_decl.return_type, it.exprs[0])
 	}
 	g.writeln(';')
 }
