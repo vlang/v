@@ -60,17 +60,29 @@ if exist "%VsWhereDir%"\"Microsoft Visual Studio 14.0"\Common7\Tools\vsdevcmd.ba
 ) else if exist "%VsWhereDir%"\"Microsoft Visual Studio 15.0"\Common7\Tools\vsdevcmd.bat (
 	echo Microsoft Visual Studio 15.0
 	call "%VsWhereDir%"\"Microsoft Visual Studio 15.0"\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
+) else if exist "%VsWhereDir%"\"Microsoft Visual Studio 16.0"\Common7\Tools\vsdevcmd.bat (
+	echo Microsoft Visual Studio 16.0
+	call "%VsWhereDir%"\"Microsoft Visual Studio 16.0"\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
 ) else if exist "%VsWhereDir%"\"Microsoft Visual Studio 17.0"\Common7\Tools\vsdevcmd.bat (
 	echo Microsoft Visual Studio 17.0
 	call "%VsWhereDir%"\"Microsoft Visual Studio 17.0"\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
+) else if exist "%VsWhereDir%"\"Microsoft Visual Studio 18.0"\Common7\Tools\vsdevcmd.bat (
+	echo Microsoft Visual Studio 18.0
+	call "%VsWhereDir%"\"Microsoft Visual Studio 18.0"\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
 ) else if exist "%VsWhereDir%"\"Microsoft Visual Studio 19.0"\Common7\Tools\vsdevcmd.bat (
 	echo Microsoft Visual Studio 19.0
 	call "%VsWhereDir%"\"Microsoft Visual Studio 19.0"\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
+) else if exist "%VsWhereDir%"\"Microsoft Visual Studio 20.0"\Common7\Tools\vsdevcmd.bat (
+	echo Microsoft Visual Studio 20.0
+	call "%VsWhereDir%"\"Microsoft Visual Studio 20.0"\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
 ) else if exist "%VsWhereDir%"\"Microsoft Visual Studio 12.0"\Common7\Tools\vsdevcmd.bat (
 	echo Microsoft Visual Studio 12.0
 	call "%VsWhereDir%"\"Microsoft Visual Studio 12.0"\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
 ) else if exist "%VsWhereDir%"\"Microsoft Visual Studio 11.0"\Common7\Tools\vsdevcmd.bat (
 	echo Microsoft Visual Studio 11.0
+	call "%VsWhereDir%"\"Microsoft Visual Studio 11.0"\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
+) else if exist "%VsWhereDir%"\"Microsoft Visual Studio 10.0"\Common7\Tools\vsdevcmd.bat (
+	echo Microsoft Visual Studio 10.0
 	call "%VsWhereDir%"\"Microsoft Visual Studio 11.0"\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
 ) else (
 	goto :no_compiler
