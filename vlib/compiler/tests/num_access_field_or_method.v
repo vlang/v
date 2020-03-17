@@ -15,7 +15,7 @@ fn float_access_field_or_method() {
     x2 := 12.5e-2.str()
     assert x2 == '1.25e-01'
 	x3 := .789.str()
-	assert x3 == '7.89e-01'
-	x4 := .003e2.str()
-	assert x4 == '3.e-01'
+    assert x3 == '7.89e-01'
+    x4 := .003e2.str()
+    assert x4 == '3.e-01'
 }
