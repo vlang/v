@@ -1310,7 +1310,7 @@ fn (p mut Parser) parse_number_literal() ast.Expr {
 	}
 	else {
 		node = ast.IntegerLiteral{
-			val: lit.int()
+			val: lit
 		}
 	}
 	p.next()

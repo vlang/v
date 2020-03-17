@@ -40,7 +40,7 @@ pub:
 
 pub struct IntegerLiteral {
 pub:
-	val int
+	val string
 }
 
 pub struct FloatLiteral {

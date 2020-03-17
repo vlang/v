@@ -433,7 +433,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(']')
 		}
 		ast.IntegerLiteral {
-			f.write(it.val.str())
+			f.write(it.val)
 		}
 		ast.MapInit {
 			f.writeln('{')

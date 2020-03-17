@@ -747,7 +747,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.infix_expr(it)
 		}
 		ast.IntegerLiteral {
-			g.write(it.val.str())
+			g.write(it.val.int().str())
 		}
 		ast.MatchExpr {
 			g.match_expr(it)
