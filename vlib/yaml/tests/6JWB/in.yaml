@@ -1,4 +1,0 @@
-foo: !!seq
-  - !!str a
-  - !!map
-    key: !!str value
