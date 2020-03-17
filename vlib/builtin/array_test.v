@@ -190,10 +190,10 @@ fn test_repeat() {
 		assert a[9] == 123
 	}
 	{
-		a := [f64(1.1)].repeat(10)
-		assert a[0] == f64(1.1)
-		assert a[5] == f64(1.1)
-		assert a[9] == f64(1.1)
+		a := [1.1].repeat(10)
+		assert a[0] == 1.1
+		assert a[5] == 1.1
+		assert a[9] == 1.1
 	}
 	{
 		a := [1, 2].repeat(2)
