@@ -76,8 +76,8 @@ fn main() {
 	fp.skip_executable()
 	fp.limit_free_args(1, 1)
 
-	context.cleanup = fp.bool('clean', true, 'Clean before running (slower).')
-	context.cmd_to_run = fp.string_('command', `c`, '', 'Command to run in the old V repo.\n')
+	context.cleanup = fp.bool('clean', 0, true, 'Clean before running (slower).')
+	context.cmd_to_run = fp.string('command', `c`, '', 'Command to run in the old V repo.\n')
 
 	commits := vgit.add_common_tool_options(mut context, mut fp)
 	if commits.len > 0 {

@@ -117,7 +117,7 @@ fn main() {
  	fp.description(app_description)
  	fp.skip_executable()
 
-	show_help:=fp.bool('help', false, 'Show this help screen\n')
+	show_help:=fp.bool('help', 0, false, 'Show this help screen\n')
 	flag_options := parse_flags(mut fp)
 
 	if( show_help ){ println( fp.usage() ) exit(0) }
@@ -181,14 +181,14 @@ pub fn (ws &WebhookServer) reset() {
 // parse flags to FlagOptions struct
 fn parse_flags(fp mut flag.FlagParser) FlagOptions {
 	return FlagOptions{
-		serve    : fp.bool('serve', false, 'run in webhook server mode')
-		work_dir : fp.string('work-dir', work_dir, 'gen_vc working directory')
-		purge    : fp.bool('purge', false, 'force purge the local repositories')
-		port     : fp.int('port', server_port, 'port for web server to listen on')
-		log_to   : fp.string('log-to', log_to, 'log to is \'file\' or \'terminal\'')
-		log_file : fp.string('log-file', log_file, 'log file to use when log-to is \'file\'')
-		dry_run  : fp.bool('dry-run', dry_run, 'when specified dont push anything to remote repo')
-		force    : fp.bool('force', false, 'force update even if already up to date')
+		serve    : fp.bool('serve', 0, false, 'run in webhook server mode')
+		work_dir : fp.string('work-dir', 0, work_dir, 'gen_vc working directory')
+		purge    : fp.bool('purge', 0, false, 'force purge the local repositories')
+		port     : fp.int('port', 0, server_port, 'port for web server to listen on')
+		log_to   : fp.string('log-to', 0, log_to, 'log to is \'file\' or \'terminal\'')
+		log_file : fp.string('log-file', 0, log_file, 'log file to use when log-to is \'file\'')
+		dry_run  : fp.bool('dry-run', 0, dry_run, 'when specified dont push anything to remote repo')
+		force    : fp.bool('force', 0, false, 'force update even if already up to date')
 	}
 }
 
