@@ -40,11 +40,11 @@ void println(string s) {
 
 void handle_expr(Expr e) {
 	if (e.typ == _type_idx_IfExpr) {
-		IfExpr* it = (IfExpr*)tmp1.obj; // ST it
+		IfExpr* it = (IfExpr*)e.obj; // ST it
 		println(tos3("if"));
 	}
 	else if (e.typ == _type_idx_IntegerLiteral) {
-		IntegerLiteral* it = (IntegerLiteral*)tmp1.obj; // ST it
+		IntegerLiteral* it = (IntegerLiteral*)e.obj; // ST it
 		println(tos3("integer"));
 	}
 	else {

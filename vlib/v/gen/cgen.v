@@ -22,6 +22,7 @@ mut:
 	is_array_set   bool
 	is_amp         bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 	optionals      []string // to avoid duplicates TODO perf, use map
+	inside_ternary bool // ?: comma separated statements on a single line
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
@@ -116,7 +117,7 @@ pub fn (g mut Gen) write_typedef_types() {
 				if !info.has_decl && !info.is_anon {
 					fn_name := func.name.replace('.', '__')
 					g.definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
-					for i,arg in func.args {
+					for i, arg in func.args {
 						g.definitions.write(g.typ(arg.typ))
 						if i < func.args.len - 1 {
 							g.definitions.write(',')
@@ -191,7 +192,9 @@ pub fn (g mut Gen) reset_tmp_count() {
 fn (g mut Gen) stmts(stmts []ast.Stmt) {
 	for stmt in stmts {
 		g.stmt(stmt)
-		g.writeln('')
+		if !g.inside_ternary {
+			g.writeln('')
+		}
 	}
 }
 
@@ -245,7 +248,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				// no ; after an if expression
 				ast.IfExpr {}
 				else {
-					g.writeln(';')
+					if !g.inside_ternary {
+						g.writeln(';')
+					}
 				}
 	}
 		}
@@ -342,7 +347,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 // use instead of expr() when you need to cast to sum type (can add other casts also)
 fn (g mut Gen) expr_with_cast(got_type table.Type, exp_type table.Type, expr ast.Expr) {
 	// cast to sum type
-	if exp_type != table.void_type && exp_type != 0  && got_type != 0{
+	if exp_type != table.void_type && exp_type != 0 && got_type != 0 {
 		exp_sym := g.table.get_type_symbol(exp_type)
 		if exp_sym.kind == .sum_type {
 			sum_info := exp_sym.info as table.SumType
@@ -427,7 +432,8 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write(' = ')
 					if !is_decl {
 						g.expr_with_cast(assign_stmt.left_types[i], ident_var_info.typ, val)
-					} else {
+					}
+					else {
 						g.expr(val)
 					}
 				}
@@ -811,7 +817,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 		*/
 
 		ast.SizeOf {
-			g.write('sizeof($it.type_name)')
+			styp := g.typ(it.typ)
+			g.write('sizeof($styp)')
 		}
 		ast.StringLiteral {
 			// In C calls we have to generate C strings
@@ -966,44 +973,65 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
+	is_expr := node.return_type != table.void_type
+	if is_expr {
+		g.inside_ternary = true
+		// g.write('/* EM ret type=${g.typ(node.return_type)} */')
+	}
 	type_sym := g.table.get_type_symbol(node.expr_type)
 	mut tmp := ''
 	if type_sym.kind != .void {
 		tmp = g.new_tmp_var()
 	}
-	//styp := g.typ(node.expr_type)
-	//g.write('$styp $tmp = ')
-	//g.expr(node.cond)
-	//g.writeln(';') // $it.blocks.len')
+	// styp := g.typ(node.expr_type)
+	// g.write('$styp $tmp = ')
+	// g.expr(node.cond)
+	// g.writeln(';') // $it.blocks.len')
 	// mut sum_type_str = ''
 	for j, branch in node.branches {
 		if j == node.branches.len - 1 {
 			// last block is an `else{}`
-			g.writeln('else {')
+			if is_expr {
+				// TODO too many branches. maybe separate ?: matches
+				g.write(' : ')
+			}
+			else {
+				g.writeln('else {')
+			}
 		}
 		else {
 			if j > 0 {
-				g.write('else ')
+				if is_expr {
+					g.write(' : ')
+				}
+				else {
+					g.write('else ')
+				}
 			}
-			g.write('if (')
+			if is_expr {
+				g.write('(')
+			}
+			else {
+				g.write('if (')
+			}
 			for i, expr in branch.exprs {
 				if node.is_sum_type {
-					g.expr(node.cond )
+					g.expr(node.cond)
 					g.write('.typ == ')
-					//g.write('${tmp}.typ == ')
+					// g.write('${tmp}.typ == ')
 					// sum_type_str
 				}
 				else if type_sym.kind == .string {
 					g.write('string_eq(')
 					//
-g.expr(node.cond)
-g.write(', ')
-					//g.write('string_eq($tmp, ')
+					g.expr(node.cond)
+					g.write(', ')
+					// g.write('string_eq($tmp, ')
 				}
 				else {
 					g.expr(node.cond)
 					g.write(' == ')
-					//g.write('$tmp == ')
+					// g.write('$tmp == ')
 				}
 				g.expr(expr)
 				if type_sym.kind == .string {
@@ -1013,7 +1041,12 @@ g.write(', ')
 					g.write(' || ')
 				}
 			}
-			g.writeln(') {')
+			if is_expr {
+				g.write(') ? ')
+			}
+			else {
+				g.writeln(') {')
+			}
 		}
 		if node.is_sum_type && branch.exprs.len > 0 {
 			// The first node in expr is an ast.Type
@@ -1022,7 +1055,10 @@ g.write(', ')
 			match fe {
 				ast.Type {
 					it_type := g.typ(it.typ)
-					g.writeln('$it_type* it = ($it_type*)${tmp}.obj; // ST it')
+					// g.writeln('$it_type* it = ($it_type*)${tmp}.obj; // ST it')
+					g.write('$it_type* it = ($it_type*)')
+					g.expr(node.cond)
+					g.writeln('.obj; // ST it')
 				}
 				else {
 					verror('match sum type')
@@ -1030,8 +1066,11 @@ g.write(', ')
 	}
 		}
 		g.stmts(branch.stmts)
-		g.writeln('}')
+		if !g.inside_ternary {
+			g.writeln('}')
+		}
 	}
+	g.inside_ternary = false
 }
 
 fn (g mut Gen) ident(node ast.Ident) {
@@ -1067,12 +1106,13 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 	}
 	// one line ?:
 	// TODO clean this up once `is` is supported
-	if node.stmts.len == 1 && node.else_stmts.len == 1 && type_sym.kind != .void {
+	if node.is_expr && node.stmts.len == 1 && node.else_stmts.len == 1 && type_sym.kind != .void {
 		cond := node.cond
 		stmt1 := node.stmts[0]
 		else_stmt1 := node.else_stmts[0]
 		match stmt1 {
 			ast.ExprStmt {
+				g.inside_ternary = true
 				g.expr(cond)
 				g.write(' ? ')
 				expr_stmt := stmt1 as ast.ExprStmt
@@ -1081,7 +1121,7 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 				g.stmt(else_stmt1)
 			}
 			else {}
-		}
+	}
 	}
 	else {
 		mut is_guard := false
@@ -1096,11 +1136,12 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 				g.writeln('if (($guard_ok = ${it.var_name}.ok)) {')
 			}
 			else {
+				g.inside_ternary = false
 				g.write('if (')
 				g.expr(node.cond)
 				g.writeln(') {')
 			}
-		}
+	}
 		for i, stmt in node.stmts {
 			// Assign ret value
 			if i == node.stmts.len - 1 && type_sym.kind != .void {}
@@ -1113,8 +1154,9 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 		g.writeln('}')
 		if node.else_stmts.len > 0 {
 			if is_guard {
-				g.writeln('if !$guard_ok { /* else */')
-			} else {
+				g.writeln('if (!$guard_ok) { /* else */')
+			}
+			else {
 				g.writeln('else { ')
 			}
 			for stmt in node.else_stmts {
@@ -1123,6 +1165,7 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 			g.writeln('}')
 		}
 	}
+	g.inside_ternary = false
 }
 
 fn (g mut Gen) index_expr(node ast.IndexExpr) {
@@ -1210,6 +1253,10 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 
 fn (g mut Gen) return_statement(it ast.Return) {
 	g.write('return')
+	if g.fn_decl.name == 'main' {
+		g.writeln(' 0;')
+		return
+	}
 	// multiple returns
 	if it.exprs.len > 1 {
 		typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)

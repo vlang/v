@@ -748,10 +748,13 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			if p.tok.kind == .amp {
 				p.next()
 			}
-			type_name := p.check_name()
+			// type_name := p.check_name()
+			sizeof_type := p.parse_type()
 			p.check(.rpar)
 			node = ast.SizeOf{
-				type_name: type_name
+				typ: sizeof_type
+				// type_name: type_name
+				
 			}
 		}
 		// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`

@@ -94,6 +94,7 @@ fn parse_flags(flag string, f mut flag.Instance, prefs mut flag.MainCmdPreferenc
 				println('V error: Error parsing flag. Expected value for `-$flag`.')
 				exit(1)
 			}
+			return
 		}
 	}
 }

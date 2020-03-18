@@ -149,7 +149,6 @@ multi_return_int_string multi_return() {
 void variadic(varg_int a) {
 	int x = path_sep;
 	int y = true ? 1 : 0;
-;
 }
 
 void ensure_cap(int required, int cap) {
@@ -172,6 +171,9 @@ void matches() {
 	else {
 	}
 	;
+	string x = (a == 10) ? tos3("ten") : (a == 30) ? tos3("thirty") : tos3("unknown");
+	int xx = (a == 10) ? 100 : (a == 30) ? 300 : 0;
+	println((a == 10) ? tos3("ten") : tos3("not ten"));
 }
 
 //10

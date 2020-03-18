@@ -270,6 +270,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 
 // TODO: clean this up, remove dupe code & consider merging method/fn call everywhere
 pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr) table.Type {
+	c.expected_type = table.void_type
 	typ := c.expr(method_call_expr.expr)
 	method_call_expr.expr_type = typ
 	typ_sym := c.table.get_type_symbol(typ)
@@ -492,7 +493,7 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 			else {
 				c.error('expecting `int` for fixed size', array_init.pos)
 			}
-		}
+	}
 		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size, 1)
 		array_type := table.new_type(idx)
 		array_init.typ = array_type
@@ -525,6 +526,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.expr(it.expr)
 		}
 		ast.FnDecl {
+			c.expected_type = table.void_type
 			c.fn_return_type = it.return_type
 			for stmt in it.stmts {
 				c.stmt(stmt)
@@ -815,14 +817,25 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	}
 		}
 	}
+	// if ret_type != table.void_type {
+	// node.is_expr = c.expected_type != table.void_type
+	// node.expected_type = c.expected_type
+	// }
+	node.return_type = ret_type
 	node.expr_type = expr_type
 	// println('!m $expr_type')
 	return ret_type
 }
 
 pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
+	if c.expected_type != 0 {
+		// sym := c.table.get_type_symbol(c.expected_type)
+		// println('$c.file.path  $node.pos.line_nr IF: checker exp type = ' + sym.name)
+		node.is_expr = true
+	}
 	typ := c.expr(node.cond)
-	node.typ = typ
+	node.typ = table.void_type
+	// node.typ = typ
 	typ_sym := c.table.get_type_symbol(typ)
 	// if typ_sym.kind != .bool {
 	if table.type_idx(typ) != table.bool_type_idx {

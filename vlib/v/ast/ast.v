@@ -10,15 +10,15 @@ import (
 
 pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral |
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr |
-AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr |
-CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr |
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
+AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
+CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | 	
 ConcatExpr | Type | AsCast
 
-pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt |
+pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
 LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
@@ -340,6 +340,7 @@ pub:
 	left       Expr // `a` in `a := if ...`
 	pos        token.Position
 mut:
+	is_expr    bool
 	typ        table.Type
 	has_else   bool
 }
@@ -351,7 +352,8 @@ pub:
 	branches    []MatchBranch
 	pos         token.Position
 mut:
-is_expr bool // returns a value
+	is_expr     bool // returns a value
+	return_type table.Type
 	expr_type   table.Type // type of `x` in `match x {`
 	is_sum_type bool
 }
@@ -591,6 +593,7 @@ pub:
 
 pub struct SizeOf {
 pub:
+	typ       table.Type
 	type_name string
 }
 
@@ -641,6 +644,7 @@ enum BinaryOp {
 }
 */
 
+
 [inline]
 pub fn expr_is_blank_ident(expr Expr) bool {
 	match expr {
@@ -656,14 +660,13 @@ pub fn expr_is_blank_ident(expr Expr) bool {
 [inline]
 pub fn expr_is_call(expr Expr) bool {
 	return match expr {
-		CallExpr {
+		CallExpr{
 			true
 		}
-		MethodCallExpr {
+		MethodCallExpr{
 			true
 		}
 		else {
-			false
-		}
+			false}
 	}
 }

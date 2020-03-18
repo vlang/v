@@ -313,6 +313,12 @@ fn (m map) get(key string, out voidptr) bool {
 	return false
 }
 
+// TODO
+/*
+fn (m &map) get2(key string, out voidptr) voidptr {
+}
+*/
+
 fn (m map) exists(key string) bool {
 	if m.value_bytes == 0 {
 		return false
