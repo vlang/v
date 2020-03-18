@@ -365,6 +365,7 @@ pub:
 }
 
 pub struct ReturnStmt {
+pub:
 	tok_kind token.Kind // or pos
 	pos      token.Position
 	results  []Expr
