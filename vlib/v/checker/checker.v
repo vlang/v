@@ -567,7 +567,8 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 							sym.map_info().key_type
 						}
 						else {
-							table.int_type}
+							table.int_type
+						}
 	}
 					scope.override_var(ast.Var{
 						name: it.key_var
@@ -581,7 +582,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				}
 				scope.override_var(ast.Var{
 					name: it.val_var
-					typ: c.table.value_type(typ)
+					typ: value_type
 				})
 			}
 			c.stmts(it.stmts)
