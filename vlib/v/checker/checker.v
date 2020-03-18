@@ -456,6 +456,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 			})
 		}
 	}
+	c.expected_type = table.void_type
 }
 
 pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
@@ -839,7 +840,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 
 pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	node.is_expr = c.expected_type != table.void_type
-	// node.expected_type = c.expected_type
+	node.expected_type = c.expected_type
 	cond_type := c.expr(node.cond)
 	if cond_type == 0 {
 		c.error('match 0 cond type', node.pos)

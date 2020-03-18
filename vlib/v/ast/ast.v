@@ -347,16 +347,16 @@ mut:
 
 pub struct MatchExpr {
 pub:
-	tok_kind    token.Kind
-	cond        Expr
-	branches    []MatchBranch
-	pos         token.Position
+	tok_kind      token.Kind
+	cond          Expr
+	branches      []MatchBranch
+	pos           token.Position
 mut:
-	is_expr     bool // returns a value
-	return_type table.Type
-	cond_type   table.Type // type of `x` in `match x {`
-	// expected_type table.Type // for debugging only
-	is_sum_type bool
+	is_expr       bool // returns a value
+	return_type   table.Type
+	cond_type     table.Type // type of `x` in `match x {`
+	expected_type table.Type // for debugging only
+	is_sum_type   bool
 }
 
 pub struct MatchBranch {

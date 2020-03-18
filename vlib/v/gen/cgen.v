@@ -286,7 +286,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.stmts(it.stmts)
 				g.writeln('}')
 			}
-			//TODO:
+			// TODO:
 			else {}
 		}
 		ast.ForStmt {
@@ -1054,11 +1054,12 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 				g.writeln(') {')
 			}
 		}
-		if node.is_sum_type && branch.exprs.len > 0 {
+		// g.writeln('/* M sum_type=$node.is_sum_type is_expr=$node.is_expr exp_type=${g.typ(node.expected_type)}*/')
+		if node.is_sum_type && branch.exprs.len > 0 && !node.is_expr {
 			// The first node in expr is an ast.Type
 			// Use it to generate `it` variable.
-			fe := branch.exprs[0]
-			match fe {
+			first_expr := branch.exprs[0]
+			match first_expr {
 				ast.Type {
 					it_type := g.typ(it.typ)
 					// g.writeln('$it_type* it = ($it_type*)${tmp}.obj; // ST it')
@@ -1301,6 +1302,10 @@ fn (g mut Gen) return_statement(it ast.Return) {
 				return
 			}
 			// g.write('/*OPTIONAL*/')
+		}
+		if !table.type_is_ptr(g.fn_decl.return_type) && table.type_is_ptr(it.types[0]) {
+			// Automatic Dereference
+			g.write('*')
 		}
 		g.expr_with_cast(it.types[0], g.fn_decl.return_type, it.exprs[0])
 	}
