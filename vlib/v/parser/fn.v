@@ -20,7 +20,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		p.open_scope()
 		p.scope.register_var(ast.Var{
 			name: 'err'
-			typ: table.type_to_optional(table.string_type)
+			typ: table.string_type
 		})
 		or_stmts = p.parse_block_no_scope()
 		p.close_scope()
