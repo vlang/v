@@ -319,6 +319,11 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		method_call_expr.return_type = method.return_type
 		return method.return_type
 	}
+	// TODO: str methods
+	if typ_sym.kind in [.map] && name == 'str' {
+		method_call_expr.return_type = table.string_type
+		return table.string_type
+	}
 	c.error('type `$typ_sym.name` has no method `$name`', method_call_expr.pos)
 	return table.void_type
 }
@@ -530,9 +535,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		ast.FnDecl {
 			c.expected_type = table.void_type
 			c.fn_return_type = it.return_type
-			for stmt in it.stmts {
-				c.stmt(stmt)
-			}
+			c.stmts(it.stmts)
 		}
 		ast.ForStmt {
 			typ := c.expr(it.cond)
@@ -541,22 +544,47 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			}
 			// TODO: update loop var type
 			// how does this work currenly?
-			for stmt in it.stmts {
-				c.stmt(stmt)
-			}
+			c.stmts(it.stmts)
 		}
 		ast.ForCStmt {
 			c.stmt(it.init)
 			c.expr(it.cond)
 			// c.stmt(it.inc)
 			c.expr(it.inc)
-			for stmt in it.stmts {
-				c.stmt(stmt)
-			}
+			c.stmts(it.stmts)
 		}
 		ast.ForInStmt {
-			c.expr(it.cond)
-			c.expr(it.high)
+			typ := c.expr(it.cond)
+			if it.is_range {
+				c.expr(it.high)
+			}
+			else {
+				mut scope := c.file.scope.innermost(it.pos.pos)
+				if it.key_var.len > 0 {
+					sym := c.table.get_type_symbol(typ)
+					key_type := match sym.kind {
+						.map{
+							sym.map_info().key_type
+						}
+						else {
+							table.int_type}
+	}
+					scope.override_var(ast.Var{
+						name: it.key_var
+						typ: key_type
+					})
+				}
+				value_type := c.table.value_type(typ)
+				if value_type == table.void_type {
+					typ_sym := c.table.get_type_symbol(typ)
+					c.error('for in: cannot index $typ_sym.name', it.pos)
+				}
+				scope.override_var(ast.Var{
+					name: it.val_var
+					typ: c.table.value_type(typ)
+				})
+			}
+			c.stmts(it.stmts)
 		}
 		// ast.GlobalDecl {}
 		// ast.HashStmt {}
@@ -566,9 +594,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		}
 		// ast.StructDecl {}
 		ast.UnsafeStmt {
-			for stmt in it.stmts {
-				c.stmt(stmt)
-			}
+			c.stmts(it.stmts)
 		}
 		else {}
 		// println('checker.stmt(): unhandled node')
@@ -761,6 +787,15 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		if !name.contains('.') && !(c.file.mod.name in ['builtin', 'main']) {
 			name = '${c.file.mod.name}.$ident.name'
 		}
+		// hack - const until consts are fixed properly
+		if ident.name == 'v_modules_path' {
+			ident.name = name
+			ident.kind = .constant
+			ident.info = ast.IdentVar{
+				typ: table.string_type
+			}
+			return table.string_type
+		}
 		// constant
 		if constant := c.table.find_const(name) {
 			ident.name = name
@@ -913,30 +948,10 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 		else if typ_sym.kind == .map && table.type_idx(index_type) != table.string_type_idx {
 			c.error('non-string map index (type `$typ_sym.name`)', node.pos)
 		}
-		if typ_sym.kind == .array {
-			// Check index type
-			info := typ_sym.info as table.Array
-			return info.elem_type
+		value_type := c.table.value_type(typ)
+		if value_type != table.void_type {
+			return value_type
 		}
-		else if typ_sym.kind == .array_fixed {
-			info := typ_sym.info as table.ArrayFixed
-			return info.elem_type
-		}
-		else if typ_sym.kind == .map {
-			info := typ_sym.info as table.Map
-			return info.value_type
-		}
-		else if typ_sym.kind in [.byteptr, .string] {
-			return table.byte_type
-		}
-		else if table.type_is_ptr(typ) {
-			// byte* => byte
-			// bytes[0] is a byte, not byte*
-			return table.type_deref(typ)
-		}
-		// else {
-		// return table.int_type
-		// }
 	}
 	return typ
 }

@@ -1096,13 +1096,14 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	}
 	// `for i in vals`, `for i in start .. end`
 	else if p.peek_tok.kind in [.key_in, .comma] {
-		var_name := p.check_name()
-		mut val_name := ''
+		mut key_var_name := ''
+		mut val_var_name := p.check_name()
 		if p.tok.kind == .comma {
 			p.check(.comma)
-			val_name = p.check_name()
+			key_var_name = val_var_name
+			val_var_name = p.check_name()
 			p.scope.register_var(ast.Var{
-				name: val_name
+				name: key_var_name
 				typ: table.int_type
 			})
 		}
@@ -1118,13 +1119,17 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			is_range = true
 			p.check(.dotdot)
 			high_expr = p.expr(0)
+			p.scope.register_var(ast.Var{
+				name: val_var_name
+				typ: table.int_type
+			})
 		}
-		// TODO: update var type in checker
-		p.scope.register_var(ast.Var{
-			name: var_name
-			// expr: cond
-			
-		})
+		else {
+			// this type will be set in checker
+			p.scope.register_var(ast.Var{
+				name: val_var_name
+			})
+		}
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
 		p.close_scope()
@@ -1132,8 +1137,8 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			stmts: stmts
 			pos: p.tok.position()
 			cond: cond
-			key_var: var_name
-			val_var: val_name
+			key_var: key_var_name
+			val_var: val_var_name
 			high: high_expr
 			is_range: is_range
 		}

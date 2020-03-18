@@ -271,9 +271,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			// g.stmt(it.inc)
 			g.expr(it.inc)
 			g.writeln(') {')
-			for stmt in it.stmts {
-				g.stmt(stmt)
-			}
+			g.stmts(it.stmts)
 			g.writeln('}')
 		}
 		ast.ForInStmt {
@@ -284,7 +282,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.write('; $i < ')
 				g.expr(it.high)
 				g.writeln('; $i++) { ')
-				// g.stmts(it.stmts) TODO
+				g.stmts(it.stmts)
 				g.writeln('}')
 			}
 		}
@@ -297,9 +295,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.expr(it.cond)
 			}
 			g.writeln(') {')
-			for stmt in it.stmts {
-				g.stmt(stmt)
-			}
+			g.stmts(it.stmts)
 			g.writeln('}')
 		}
 		ast.GlobalDecl {

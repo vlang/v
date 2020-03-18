@@ -29,19 +29,19 @@ pub:
 
 pub struct Arg {
 pub:
-	name        string
-	is_mut      bool
-	typ         Type
+	name   string
+	is_mut bool
+	typ    Type
 }
 
 pub struct Var {
 pub:
-	name        string
-	is_mut      bool
-	is_const    bool
-	is_global   bool
+	name      string
+	is_mut    bool
+	is_const  bool
+	is_global bool
 mut:
-	typ         Type
+	typ       Type
 }
 
 pub fn new_table() &Table {
@@ -409,6 +409,43 @@ pub fn (t mut Table) add_placeholder_type(name string) int {
 	}
 	// println('added placeholder: $name - $ph_type.idx')
 	return t.register_type_symbol(ph_type)
+}
+
+[inline]
+pub fn (t &Table) value_type(typ Type) Type {
+	typ_sym := t.get_type_symbol(typ)
+	if typ_sym.kind == .array {
+		// Check index type
+		info := typ_sym.info as Array
+		return info.elem_type
+	}
+	else if typ_sym.kind == .array_fixed {
+		info := typ_sym.info as ArrayFixed
+		return info.elem_type
+	}
+	else if typ_sym.kind == .map {
+		info := typ_sym.info as Map
+		return info.value_type
+	}
+	else if typ_sym.kind in [.byteptr, .string] {
+		return byte_type
+	}
+	else if type_is_ptr(typ) {
+		// byte* => byte
+		// bytes[0] is a byte, not byte*
+		return type_deref(typ)
+	}
+	else if type_is_variadic(typ) {
+		// ...string => string
+		return type_clear_extra(typ)
+	}
+	else {
+		// TODO: remove when map_string is removed
+		if typ_sym.name == 'map_string' {
+			return string_type
+		}
+		return void_type
+	}
 }
 
 pub fn (t &Table) check(got, expected Type) bool {
