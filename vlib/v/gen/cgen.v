@@ -65,7 +65,7 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 	}
-	if styp in ['stat', 'dirent*', 'tm'] {
+	if styp in ['stat', 'dirent*', 'tm', 'tm*'] {
 		// TODO perf and other C structs
 		styp = 'struct $styp'
 	}
@@ -244,7 +244,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
-			match it.expr {
+			expr := it.expr
+			match expr {
 				// no ; after an if expression
 				ast.IfExpr {}
 				else {
@@ -1453,6 +1454,10 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				g.definitions.writeln('};\n')
 				g.typedefs.writeln('#define _type_idx_$name $i')
 			}
+			// table.Alias, table.SumType { TODO
+			table.Alias {
+				g.typedefs.writeln('#define _type_idx_$name $i')
+			}
 			table.Enum {
 				g.definitions.writeln('typedef enum {')
 				for j, val in it.vals {
@@ -1461,6 +1466,7 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				g.definitions.writeln('} $name;\n')
 			}
 			table.SumType {
+				g.typedefs.writeln('#define _type_idx_$name $i')
 				g.definitions.writeln('// Sum type')
 				g.definitions.writeln('
 				typedef struct {
