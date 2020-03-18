@@ -82,7 +82,8 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 		.placeholder {
 			c.error('unknown struct: $typ_sym.name', struct_init.pos)
 		}
-		.struct_ {
+		// string & array are also structs but .kind of string/array
+		.struct_, .string, .array {
 			info := typ_sym.info as table.Struct
 			if struct_init.fields.len == 0 {
 				// Short syntax TODO check
@@ -154,17 +155,15 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 }
 
 fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
-	if ast.expr_is_blank_ident(assign_expr.left) {
-		return
-	}
 	left_type := c.expr(assign_expr.left)
 	c.expected_type = left_type
 	assign_expr.left_type = left_type
-	// assign_expr.left_type = left_type
-	// t := c.table.get_type_symbol(left_type)
 	// println('setting exp type to $c.expected_type $t.name')
 	right_type := c.expr(assign_expr.val)
 	assign_expr.right_type = right_type
+	if ast.expr_is_blank_ident(assign_expr.left) {
+		return
+	}
 	if !c.table.check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
@@ -174,18 +173,19 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 
 pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	fn_name := call_expr.name
+	c.stmts(call_expr.or_block.stmts)
 	// TODO: impl typeof properly (probably not going to be a fn call)
 	if fn_name == 'typeof' {
 		return table.string_type
 	}
 	// start hack: until v1 is fixed and c definitions are added for these
-	if fn_name == 'C.calloc' {
-		return table.byteptr_type
-	}
-	else if fn_name == 'C.exit' {
-		return table.void_type
-	}
-	else if fn_name == 'C.free' {
+	if fn_name in ['C.calloc', 'C.exit', 'C.free'] {
+		for arg in call_expr.args {
+			c.expr(arg.expr)
+		}
+		if fn_name == 'C.calloc' {
+			return table.byteptr_type
+		}
 		return table.void_type
 	}
 	// end hack
@@ -224,6 +224,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	}
 	if !found {
 		c.error('unknown fn: $fn_name', call_expr.pos)
+		return table.void_type
 	}
 	call_expr.return_type = f.return_type
 	if f.is_c || call_expr.is_c {
@@ -275,6 +276,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 	method_call_expr.expr_type = typ
 	typ_sym := c.table.get_type_symbol(typ)
 	name := method_call_expr.name
+	c.stmts(method_call_expr.or_block.stmts)
 	// println('method call $name $method_call_expr.pos.line_nr')
 	if typ_sym.kind == .array && name in ['filter', 'clone', 'repeat'] {
 		if name == 'filter' {
@@ -285,12 +287,11 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 				typ: array_info.elem_type
 			})
 		}
-		else if name == 'repeat' {
-			c.expr(method_call_expr.args[0].expr)
+		for i, arg in method_call_expr.args {
+			c.expr(arg.expr)
 		}
 		// need to return `array_xxx` instead of `array`
 		method_call_expr.return_type = typ
-		// method_call_expr.receiver_type = typ
 		return typ
 	}
 	else if typ_sym.kind == .array && name in ['first', 'last'] {
@@ -466,7 +467,6 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	// [1,2,3]
 	if array_init.exprs.len > 0 && array_init.elem_type == table.void_type {
 		for i, expr in array_init.exprs {
-			c.expr(expr)
 			typ := c.expr(expr)
 			// The first element's type
 			if i == 0 {

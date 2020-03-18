@@ -235,14 +235,14 @@ fn vfopen(path, mode string) &C.FILE {
 // read_lines reads the file in `path` into an array of lines.
 pub fn read_lines(path string) ?[]string {
 	buf := read_file(path) or {
-		return err
+		return error(err)
 	}
 	return buf.split_into_lines()
 }
 
 fn read_ulines(path string) ?[]ustring {
 	lines := read_lines(path) or {
-		return err
+		return error(err)
 	}
 	// mut ulines := new_array(0, lines.len, sizeof(ustring))
 	mut ulines := []ustring

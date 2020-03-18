@@ -412,7 +412,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				else {
 					g.write('{$styp _ = ')
 					g.expr(val)
-					g.writeln('}')
+					g.writeln(';}')
 				}
 			}
 			else {
@@ -575,7 +575,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				else {
 					g.write('{${g.typ(it.left_type)} _ = ')
 					g.expr(it.val)
-					g.writeln('}')
+					g.writeln(';}')
 				}
 			}
 			else {
@@ -732,20 +732,20 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 		}
 		ast.MethodCallExpr {
-			mut receiver_name := 'TODO'
 			// TODO: there are still due to unchecked exprs (opt/some fn arg)
-			if it.expr_type != 0 {
-				typ_sym := g.table.get_type_symbol(it.expr_type)
-				// rec_sym := g.table.get_type_symbol(it.receiver_type)
-				receiver_name = typ_sym.name
-				if typ_sym.kind == .array && it.name in
-				// TODO performance, detect `array` method differently
-				['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'clone'] {
-					// && rec_sym.name == 'array' {
-					// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
-					// `array_byte_clone` => `array_clone`
-					receiver_name = 'array'
-				}
+			if it.expr_type == 0 {
+				verror('method receiver type is 0, this means there are some uchecked exprs')
+			}
+			typ_sym := g.table.get_type_symbol(it.expr_type)
+			// rec_sym := g.table.get_type_symbol(it.receiver_type)
+			mut receiver_name := typ_sym.name
+			if typ_sym.kind == .array && it.name in
+			// TODO performance, detect `array` method differently
+			['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'clone'] {
+				// && rec_sym.name == 'array' {
+				// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
+				// `array_byte_clone` => `array_clone`
+				receiver_name = 'array'
 			}
 			name := '${receiver_name}_$it.name'.replace('.', '__')
 			// if it.receiver_type != 0 {

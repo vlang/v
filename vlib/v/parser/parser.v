@@ -193,6 +193,14 @@ pub fn (p mut Parser) close_scope() {
 
 pub fn (p mut Parser) parse_block() []ast.Stmt {
 	p.open_scope()
+	// println('parse block')
+	stmts := p.parse_block_no_scope()
+	p.close_scope()
+	// println('nr exprs in block = $exprs.len')
+	return stmts
+}
+
+pub fn (p mut Parser) parse_block_no_scope() []ast.Stmt {
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt
 	if p.tok.kind != .rcbr {
@@ -205,9 +213,6 @@ pub fn (p mut Parser) parse_block() []ast.Stmt {
 		}
 	}
 	p.check(.rcbr)
-	// println('parse block')
-	p.close_scope()
-	// println('nr exprs in block = $exprs.len')
 	return stmts
 }
 
@@ -945,15 +950,21 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 		// p.close_scope()
 		// }
 	}
-	// Method call
 	pos := p.tok.position()
+	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
 		mut or_stmts := []ast.Stmt
 		if p.tok.kind == .key_orelse {
 			p.next()
-			or_stmts = p.parse_block()
+			p.open_scope()
+			p.scope.register_var(ast.Var{
+				name: 'err'
+				typ: table.type_to_optional(table.string_type)
+			})
+			or_stmts = p.parse_block_no_scope()
+			p.close_scope()
 		}
 		mcall_expr := ast.MethodCallExpr{
 			expr: left

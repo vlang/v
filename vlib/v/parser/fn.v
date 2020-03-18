@@ -17,12 +17,19 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	mut or_stmts := []ast.Stmt
 	if p.tok.kind == .key_orelse {
 		p.next()
-		or_stmts = p.parse_block()
+		p.open_scope()
+		p.scope.register_var(ast.Var{
+			name: 'err'
+			typ: table.type_to_optional(table.string_type)
+		})
+		or_stmts = p.parse_block_no_scope()
+		p.close_scope()
 	}
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
 		// tok: tok
+		
 		pos: tok.position()
 		is_c: is_c
 		or_block: ast.OrExpr{
