@@ -790,15 +790,15 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 
 pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	node.is_expr = c.expected_type != table.void_type
-	expr_type := c.expr(node.cond)
-	if expr_type == 0 {
-		c.error('match 0 expr type', node.pos)
+	cond_type := c.expr(node.cond)
+	if cond_type == 0 {
+		c.error('match 0 cond type', node.pos)
 	}
-	c.expected_type = expr_type
+	c.expected_type = cond_type
 	mut ret_type := table.void_type
 	for branch in node.branches {
 		for expr in branch.exprs {
-			c.expected_type = expr_type
+			c.expected_type = cond_type
 			typ := c.expr(expr)
 			typ_sym := c.table.get_type_symbol(typ)
 			// TODO:
@@ -826,7 +826,7 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	// node.expected_type = c.expected_type
 	// }
 	node.return_type = ret_type
-	node.expr_type = expr_type
+	node.cond_type = cond_type
 	// println('!m $expr_type')
 	return ret_type
 }

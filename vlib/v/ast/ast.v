@@ -354,7 +354,7 @@ pub:
 mut:
 	is_expr     bool // returns a value
 	return_type table.Type
-	expr_type   table.Type // type of `x` in `match x {`
+	cond_type   table.Type // type of `x` in `match x {`
 	is_sum_type bool
 }
 

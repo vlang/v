@@ -970,7 +970,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 fn (g mut Gen) match_expr(node ast.MatchExpr) {
 	// println('match expr typ=$it.expr_type')
 	// TODO
-	if node.expr_type == 0 {
+	if node.cond_type == 0 {
 		g.writeln('// match 0')
 		return
 	}
@@ -979,7 +979,7 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary = true
 		// g.write('/* EM ret type=${g.typ(node.return_type)} */')
 	}
-	type_sym := g.table.get_type_symbol(node.expr_type)
+	type_sym := g.table.get_type_symbol(node.cond_type)
 	mut tmp := ''
 	if type_sym.kind != .void {
 		tmp = g.new_tmp_var()
@@ -1278,7 +1278,8 @@ fn (g mut Gen) return_statement(it ast.Return) {
 		if table.type_is_optional(g.fn_decl.return_type) {
 			mut is_none := false
 			mut is_error := false
-			match it.exprs[0] {
+			expr0 := it.exprs[0]
+			match expr0 {
 				ast.None {
 					is_none = true
 				}
