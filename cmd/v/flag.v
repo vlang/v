@@ -77,8 +77,7 @@ fn parse_flags(flag string, f mut flag.Instance, prefs mut flag.MainCmdPreferenc
 			f.is_equivalent_to(['h', 'help'])
 			prefs.action = .help
 		}
-		'v', 'version' {
-			f.is_equivalent_to(['v', 'version'])
+		'version' {
 			prefs.action = .version
 		}
 		'-version', '-help' {
