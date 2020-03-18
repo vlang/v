@@ -433,8 +433,10 @@ mut:
 
 pub struct AsCast {
 pub:
-	expr Expr
-	typ  table.Type
+	expr      Expr
+	typ       table.Type
+mut:
+	expr_type table.Type
 }
 
 // e.g. `[unsafe_fn]`

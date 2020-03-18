@@ -562,7 +562,17 @@ fn (g mut Gen) expr(node ast.Expr) {
 			else {}
 		}
 		ast.AsCast {
-			g.write('/* as */')
+			styp := g.typ(it.typ)
+			expr_type_sym := g.table.get_type_symbol(it.expr_type)
+			if expr_type_sym.kind == .sum_type {
+				g.write('/* as */ *($styp*)')
+				g.expr(it.expr)
+				g.write('.obj')
+			}
+			else {
+				g.write('/* as */ ($styp)')
+				g.expr(it.expr)
+			}
 		}
 		ast.AssignExpr {
 			if ast.expr_is_blank_ident(it.left) {

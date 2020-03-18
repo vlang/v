@@ -567,8 +567,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 							sym.map_info().key_type
 						}
 						else {
-							table.int_type
-						}
+							table.int_type}
 	}
 					scope.override_var(ast.Var{
 						name: it.key_var
@@ -618,6 +617,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return c.array_init(mut it)
 		}
 		ast.AsCast {
+			it.expr_type = c.expr(it.expr)
 			return it.typ
 		}
 		ast.AssignExpr {
