@@ -357,7 +357,8 @@ fn (g mut Gen) expr_with_cast(got_type table.Type, exp_type table.Type, expr ast
 				got_idx := table.type_idx(got_type)
 				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&(${got_styp}[]) {')
 				g.expr(expr)
-				g.writeln('}, sizeof($got_styp)), .typ = $got_idx};')
+				g.write('}, sizeof($got_styp)), .typ = $got_idx}')
+				return
 			}
 		}
 	}
