@@ -1089,7 +1089,7 @@ fn (g mut Gen) ident(node ast.Ident) {
 		// TODO `is`
 		match node.info {
 			ast.IdentVar {
-				if it.is_optional {
+				if it.is_optional && !g.is_assign_expr {
 					g.write('/*opt*/')
 					styp := g.typ(it.typ)[7..] // Option_int => int TODO perf?
 					g.write('(*($styp*)${name}.data)')
@@ -1103,6 +1103,7 @@ fn (g mut Gen) ident(node ast.Ident) {
 }
 
 fn (g mut Gen) if_expr(node ast.IfExpr) {
+	// g.writeln('/* if is_expr=$node.is_expr */')
 	// If expression? Assign the value to a temp var.
 	// Previously ?: was used, but it's too unreliable.
 	type_sym := g.table.get_type_symbol(node.typ)
@@ -1240,7 +1241,7 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 				g.write('))')
 			}
 		}
-		else if sym.kind == .string {
+		else if sym.kind == .string && !table.type_is_ptr(node.container_type) {
 			g.write('string_at(')
 			g.expr(node.left)
 			g.write(', ')

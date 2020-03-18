@@ -392,10 +392,10 @@ fn (s string) add(a string) string {
 		str: malloc(new_len + 1)
 	}
 	for j in 0..s.len {
-		res[j] = s[j]
+		res.str[j] = s.str[j]
 	}
 	for j in 0..a.len {
-		res[s.len + j] = a[j]
+		res.str[s.len + j] = a.str[j]
 	}
 	res.str[new_len] = `\0` // V strings are not null terminated, but just in case
 	return res

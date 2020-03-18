@@ -883,7 +883,7 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 }
 
 pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
-	if c.expected_type != 0 {
+	if c.expected_type != table.void_type {
 		// sym := c.table.get_type_symbol(c.expected_type)
 		// println('$c.file.path  $node.pos.line_nr IF: checker exp type = ' + sym.name)
 		node.is_expr = true
