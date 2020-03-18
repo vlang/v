@@ -1,13 +1,13 @@
 fn int_lit_call_method() {
-	x1 := (1234).str()
+    x1 := (1234).str()
     assert x1 == '1234'
-	x2 := (-0xffff).str()
+    x2 := (-0xffff).str()
     assert x2 == '-65535'
     x3 := 0b1001001.str()
     assert x3 == '73'
     x4 := 0o653262.str()
     assert x4 == '218802'
-	x5 := (0).str()
+    x5 := (0).str()
     assert x5 == '0'
 }
 
