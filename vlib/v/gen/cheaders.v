@@ -107,6 +107,11 @@ extern char **environ;
 #include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
+#ifdef __sun
+#include <sys/types.h>
+#include <sys/wait.h> // os__wait uses wait on nix
+#endif
+
 $c_common_macros
 
 #ifdef _WIN32
