@@ -640,3 +640,30 @@ enum BinaryOp {
 	or_bool
 }
 */
+
+[inline]
+pub fn expr_is_blank_ident(expr Expr) bool {
+	match expr {
+		Ident {
+			return it.kind == .blank_ident
+		}
+		else {
+			return false
+		}
+	}
+}
+
+[inline]
+pub fn expr_is_call(expr Expr) bool {
+	return match expr {
+		CallExpr {
+			true
+		}
+		MethodCallExpr {
+			true
+		}
+		else {
+			false
+		}
+	}
+}

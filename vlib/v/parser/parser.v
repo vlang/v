@@ -406,7 +406,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 	}
 }
 
-// TODO: merge wtih AssignStmt & VarDecl
+// TODO: is it possible to merge with AssignStmt?
 pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	op := p.tok.kind
 	p.next()

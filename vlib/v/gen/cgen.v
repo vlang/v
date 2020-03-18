@@ -401,7 +401,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			ident_var_info := ident.var_info()
 			styp := g.typ(ident_var_info.typ)
 			if ident.kind == .blank_ident {
-				if is_call(val) {
+				if ast.expr_is_call(val) {
 					g.expr(val)
 				}
 				else {
@@ -562,8 +562,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('/* as */')
 		}
 		ast.AssignExpr {
-			if is_blank_ident(it.left) {
-				if is_call(it.val) {
+			if ast.expr_is_blank_ident(it.left) {
+				if ast.expr_is_call(it.val) {
 					g.expr(it.val)
 				}
 				else {
@@ -1332,33 +1332,6 @@ fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg) {
 	else if !arg_is_ptr && expr_is_ptr {
 		// Dereference a pointer if a value is required
 		g.write('*/*d*/')
-	}
-}
-
-[inline]
-fn is_blank_ident(expr ast.Expr) bool {
-	match expr {
-		ast.Ident {
-			return it.kind == .blank_ident
-		}
-		else {
-			return false
-		}
-	}
-}
-
-[inline]
-fn is_call(expr ast.Expr) bool {
-	return match expr {
-		ast.CallExpr {
-			true
-		}
-		ast.MethodCallExpr {
-			true
-		}
-		else {
-			false
-		}
 	}
 }
 
