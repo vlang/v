@@ -104,8 +104,8 @@ test_cases_f64 = [
 	// C failing cases
 	123e300,
 	123e-300,
-	5.0e-324,
-	-5.0e-324,
+	5.e-324,
+	-5.e-324,
 ]
 
 exp_result_f64 = [
