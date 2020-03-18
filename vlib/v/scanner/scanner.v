@@ -220,7 +220,7 @@ fn (s mut Scanner) ident_oct_number() string {
 fn (s mut Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit := `\0`
-	mut access_field_or_method := false  // true for, e.g., 12.str(), 12.3.str(), 12e-3.str()
+	mut call_method := false  // true for, e.g., 12.str(), 12.3.str(), 12e-3.str()
 	start_pos := s.pos
 	// scan integer part
 	for s.pos < s.text.len {
@@ -246,30 +246,30 @@ fn (s mut Scanner) ident_dec_number() string {
 	// scan fractional part
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
-		// check: 12.field_or_method
-		if s.pos < s.text.len && s.text[s.pos].is_digit() {
-			for s.pos < s.text.len {
-				c := s.text[s.pos]
-				if !c.is_digit() {
-					if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
-						// check: 12.34.field_or_method
-						if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos+1].is_digit() {
-							access_field_or_method = true
+		if s.pos < s.text.len {
+			if s.text[s.pos].is_digit() {
+				for s.pos < s.text.len {
+					c := s.text[s.pos]
+					if !c.is_digit() {
+						if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
+							if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos+1].is_digit() && s.text[s.pos+1] != `)` {
+								call_method = true
+							}
+							break
 						}
-						break
+						else if !has_wrong_digit {
+							has_wrong_digit = true
+							first_wrong_digit = c
+						}
 					}
-					else if !has_wrong_digit {
-						has_wrong_digit = true
-						first_wrong_digit = c
-					}
+					s.pos++
 				}
-				s.pos++
 			}
-		}
-		else {
-			access_field_or_method = true
-			s.pos--
-		}
+			else if !(s.text[s.pos] in [`)`, `e`, `E`]) {
+				call_method = true  
+				s.pos--
+			} 
+		}	
 	}
 	// scan exponential part
 	mut has_exponential_part := false
@@ -283,9 +283,8 @@ fn (s mut Scanner) ident_dec_number() string {
 			c := s.text[s.pos]
 			if !c.is_digit() {
 				if !c.is_letter() || s.inside_string {
-					// check 123e-4.field_or_method
-					if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos+1].is_digit() {
-						access_field_or_method = true
+					if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos+1].is_digit() && s.text[s.pos+1] != `)` {
+						call_method = true
 					}
 					break
 				}
@@ -301,8 +300,11 @@ fn (s mut Scanner) ident_dec_number() string {
 		}
 		has_exponential_part = true
 	}
-	// error check: 1.23.4, 123.4e+3.4
-	if s.pos < s.text.len && s.text[s.pos] == `.` && !access_field_or_method {
+	if call_method {
+		s.error('calling methods on decimal number literals without brackets around risks ambiguity')
+	}
+	// error check: 1.23.4, 123.e+3.4
+	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		if has_exponential_part {
 			s.error('exponential part should be integer')
 		}
