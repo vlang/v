@@ -338,7 +338,7 @@ pub fn (a array) reverse() array {
 		data: vcalloc(a.cap * a.element_size)
 	}
 	for i in 0..a.len {
-		C.memcpy(arr.data + i * arr.element_size, &a.data[a.len - 1 - i], arr.element_size)
+		C.memcpy(arr.data + i * arr.element_size, &a[a.len - 1 - i], arr.element_size)
 	}
 	return arr
 }

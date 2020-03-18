@@ -259,6 +259,7 @@ fn test_reverse() {
 	a := [1, 2, 3, 4]
 	b := ['test', 'array', 'reverse']
 	c := a.reverse()
+	println(c)
 	d := b.reverse()
 	for i, _ in c {
 		assert c[i] == a[a.len - i - 1]
