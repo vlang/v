@@ -282,9 +282,12 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.write('; $i < ')
 				g.expr(it.high)
 				g.writeln('; $i++) { ')
+				g.writeln('int $it.val_var = $i;')
 				g.stmts(it.stmts)
 				g.writeln('}')
 			}
+			//TODO:
+			else {}
 		}
 		ast.ForStmt {
 			g.write('while (')
@@ -568,10 +571,6 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write('/* as */ *($styp*)')
 				g.expr(it.expr)
 				g.write('.obj')
-			}
-			else {
-				g.write('/* as */ ($styp)')
-				g.expr(it.expr)
 			}
 		}
 		ast.AssignExpr {

@@ -827,11 +827,13 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			node = p.index_expr(node)
 		}
 		else if p.tok.kind == .key_as {
+			pos := p.tok.position()
 			p.next()
 			typ = p.parse_type()
 			node = ast.AsCast{
 				expr: node
 				typ: typ
+				pos: pos
 			}
 		}
 		// TODO: handle in later stages since this
@@ -1036,11 +1038,11 @@ fn (p mut Parser) enum_val() ast.EnumVal {
 
 fn (p mut Parser) for_statement() ast.Stmt {
 	p.check(.key_for)
+	pos := p.tok.position()
 	p.open_scope()
 	// defer { p.close_scope() }
 	// Infinite loop
 	if p.tok.kind == .lcbr {
-		pos := p.tok.position()
 		stmts := p.parse_block()
 		p.close_scope()
 		return ast.ForStmt{
@@ -1092,6 +1094,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			init: init
 			cond: cond
 			inc: inc
+			pos: pos
 		}
 	}
 	// `for i in vals`, `for i in start .. end`
@@ -1135,12 +1138,12 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		p.close_scope()
 		return ast.ForInStmt{
 			stmts: stmts
-			pos: p.tok.position()
 			cond: cond
 			key_var: key_var_name
 			val_var: val_var_name
 			high: high_expr
 			is_range: is_range
+			pos: pos
 		}
 	}
 	// `for cond {`
@@ -1150,7 +1153,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	return ast.ForStmt{
 		cond: cond
 		stmts: stmts
-		pos: p.tok.position()
+		pos: pos
 	}
 }
 

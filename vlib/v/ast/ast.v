@@ -377,8 +377,8 @@ pub struct ForStmt {
 pub:
 	cond   Expr
 	stmts  []Stmt
-	pos    token.Position
 	is_inf bool // `for {}`
+	pos    token.Position
 }
 
 pub struct ForInStmt {
@@ -400,12 +400,13 @@ pub:
 	// inc   Stmt // i++;
 	inc      Expr // i++;
 	stmts    []Stmt
+	pos      token.Position
 }
 
 pub struct ReturnStmt {
 	tok_kind token.Kind // or pos
-	pos      token.Position
 	results  []Expr
+	pos      token.Position
 }
 
 // #include etc
@@ -435,6 +436,7 @@ pub struct AsCast {
 pub:
 	expr      Expr
 	typ       table.Type
+	pos       token.Position
 mut:
 	expr_type table.Type
 }

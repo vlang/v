@@ -618,6 +618,18 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.AsCast {
 			it.expr_type = c.expr(it.expr)
+			expr_type_sym := c.table.get_type_symbol(it.expr_type)
+			type_sym := c.table.get_type_symbol(it.typ)
+			if expr_type_sym.kind == .sum_type {
+				info := expr_type_sym.info as table.SumType
+				if !it.typ in info.variants {
+					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', it.pos)
+					// c.error('only $info.variants can be casted to `$typ`', it.pos)
+				}
+			}
+			else {
+				c.error('cannot cast non sum type `$type_sym.name` using `as`', it.pos)
+			}
 			return it.typ
 		}
 		ast.AssignExpr {
