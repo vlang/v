@@ -974,7 +974,7 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
-	is_expr := node.return_type != table.void_type
+	is_expr := node.is_expr && node.return_type != table.void_type
 	if is_expr {
 		g.inside_ternary = true
 		// g.write('/* EM ret type=${g.typ(node.return_type)} */')
@@ -1160,9 +1160,7 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 			else {
 				g.writeln('else { ')
 			}
-			for stmt in node.else_stmts {
-				g.stmt(stmt)
-			}
+			g.stmts(node.else_stmts)
 			g.writeln('}')
 		}
 	}

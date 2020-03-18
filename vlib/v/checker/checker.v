@@ -241,6 +241,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	}
 	// println can print anything
 	if fn_name == 'println' {
+		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
 		return f.return_type
 	}
@@ -388,6 +389,7 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 }
 
 pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
+	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
 	// multi return
 	if assign_stmt.left.len > assign_stmt.right.len {
 		right := c.expr(assign_stmt.right[0])
@@ -576,6 +578,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 }
 
 fn (c mut Checker) stmts(stmts []ast.Stmt) {
+	c.expected_type = table.void_type
 	for stmt in stmts {
 		c.stmt(stmt)
 	}
@@ -786,6 +789,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 }
 
 pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
+	node.is_expr = c.expected_type != table.void_type
 	expr_type := c.expr(node.cond)
 	if expr_type == 0 {
 		c.error('match 0 expr type', node.pos)
@@ -845,9 +849,7 @@ pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
 		c.stmt(stmt)
 	}
 	if node.else_stmts.len > 0 {
-		for stmt in node.else_stmts {
-			c.stmt(stmt)
-		}
+		c.stmts(node.else_stmts)
 	}
 	if node.stmts.len > 0 {
 		match node.stmts[node.stmts.len - 1] {
