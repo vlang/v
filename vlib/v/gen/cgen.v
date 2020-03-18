@@ -977,7 +977,7 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 	is_expr := node.is_expr && node.return_type != table.void_type
 	if is_expr {
 		g.inside_ternary = true
-		// g.write('/* EM ret type=${g.typ(node.return_type)} */')
+		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
 	}
 	type_sym := g.table.get_type_symbol(node.cond_type)
 	mut tmp := ''

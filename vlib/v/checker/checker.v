@@ -582,6 +582,7 @@ fn (c mut Checker) stmts(stmts []ast.Stmt) {
 	for stmt in stmts {
 		c.stmt(stmt)
 	}
+	c.expected_type = table.void_type
 }
 
 pub fn (c mut Checker) expr(node ast.Expr) table.Type {
@@ -790,6 +791,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 
 pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	node.is_expr = c.expected_type != table.void_type
+	// node.expected_type = c.expected_type
 	cond_type := c.expr(node.cond)
 	if cond_type == 0 {
 		c.error('match 0 cond type', node.pos)
@@ -845,9 +847,7 @@ pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
 	if table.type_idx(typ) != table.bool_type_idx {
 		c.error('non-bool (`$typ_sym.name`) used as if condition', node.pos)
 	}
-	for i, stmt in node.stmts {
-		c.stmt(stmt)
-	}
+	c.stmts(node.stmts)
 	if node.else_stmts.len > 0 {
 		c.stmts(node.else_stmts)
 	}

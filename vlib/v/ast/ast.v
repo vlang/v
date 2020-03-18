@@ -355,6 +355,7 @@ mut:
 	is_expr     bool // returns a value
 	return_type table.Type
 	cond_type   table.Type // type of `x` in `match x {`
+	// expected_type table.Type // for debugging only
 	is_sum_type bool
 }
 
