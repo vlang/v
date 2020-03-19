@@ -762,6 +762,10 @@ fn (g mut Gen) expr(node ast.Expr) {
 				// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 				// `array_byte_clone` => `array_clone`
 				receiver_name = 'array'
+				if it.name in ['last', 'first'] {
+					return_type_str := g.typ(it.return_type)
+					g.write('*($return_type_str*)')
+				}
 			}
 			name := '${receiver_name}_$it.name'.replace('.', '__')
 			// if it.receiver_type != 0 {
