@@ -688,7 +688,15 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.EnumVal {
 			// g.write('/*EnumVal*/${it.mod}${it.enum_name}_$it.val')
-			g.write(g.typ(it.typ))
+			styp := g.typ(it.typ)
+			if table.type_is_optional(it.typ) {
+				ostyp := styp + '_$it.val'
+				if !(ostyp in g.optionals) {
+					g.definitions.writeln('typedef Option $ostyp;')
+					g.optionals << ostyp
+				}
+			}
+			g.write(styp)
 			g.write('_$it.val')
 		}
 		ast.FloatLiteral {
@@ -743,7 +751,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			if it.expr_type == 0 {
 				verror('method receiver type is 0, this means there are some uchecked exprs')
 			}
-			typ_sym := g.table.get_type_symbol(it.expr_type)
+			typ_sym := g.table.get_type_symbol(it.receiver_type)
 			// rec_sym := g.table.get_type_symbol(it.receiver_type)
 			mut receiver_name := typ_sym.name
 			if typ_sym.kind == .array && it.name in

@@ -298,11 +298,18 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		}
 		// need to return `array_xxx` instead of `array`
 		method_call_expr.return_type = typ
+		if name == 'clone' {
+			method_call_expr.receiver_type = table.type_to_ptr(typ)
+		}
+		else {
+			method_call_expr.receiver_type = typ
+		}
 		return typ
 	}
 	else if typ_sym.kind == .array && name in ['first', 'last'] {
 		info := typ_sym.info as table.Array
 		method_call_expr.return_type = info.elem_type
+		method_call_expr.receiver_type = typ
 		return info.elem_type
 	}
 	if method := c.table.type_find_method(typ_sym, name) {
