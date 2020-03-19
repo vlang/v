@@ -1298,17 +1298,22 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 }
 
 fn (g mut Gen) return_statement(it ast.Return) {
-	g.write('return')
+	g.write('return ')
 	if g.fn_decl.name == 'main' {
-		g.writeln(' 0;')
+		g.writeln('0;')
 		return
 	}
+	fn_return_is_optional := table.type_is_optional(g.fn_decl.return_type)
 	// multiple returns
 	if it.exprs.len > 1 {
 		typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		mr_info := typ_sym.info as table.MultiReturn
-		styp := g.typ(g.fn_decl.return_type)
-		g.write(' ($styp){')
+		mut styp := g.typ(g.fn_decl.return_type)
+		if fn_return_is_optional {
+			styp = styp[7..] // remove 'Option_'
+			g.write('opt_ok(& ($styp []) { ')
+		}
+		g.write('($styp){')
 		for i, expr in it.exprs {
 			g.write('.arg$i=')
 			g.expr(expr)
@@ -1317,12 +1322,14 @@ fn (g mut Gen) return_statement(it ast.Return) {
 			}
 		}
 		g.write('}')
+		if fn_return_is_optional {
+			g.writeln(' }, sizeof($styp));')
+		}
 	}
 	// normal return
 	else if it.exprs.len == 1 {
-		g.write(' ')
 		// `return opt_ok(expr)` for functions that expect an optional
-		if table.type_is_optional(g.fn_decl.return_type) && !table.type_is_optional(it.types[0]) {
+		if fn_return_is_optional && !table.type_is_optional(it.types[0]) {
 			mut is_none := false
 			mut is_error := false
 			expr0 := it.exprs[0]
