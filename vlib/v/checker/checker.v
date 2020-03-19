@@ -990,13 +990,13 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 // If a short form is used, `expected_type` needs to be an enum
 // with this value.
 pub fn (c mut Checker) enum_val(node mut ast.EnumVal) table.Type {
-	typ_idx := if node.enum_name == '' { c.expected_type } else { //
+	typ_idx := if node.enum_name == '' { table.type_idx(c.expected_type) } else { //
 	c.table.find_type_idx(node.enum_name) }
 	// println('checker: enum_val: $node.enum_name typeidx=$typ_idx')
 	if typ_idx == 0 {
 		c.error('not an enum (name=$node.enum_name) (type_idx=0)', node.pos)
 	}
-	typ := table.Type(typ_idx)
+	typ := table.new_type(typ_idx)
 	typ_sym := c.table.get_type_symbol(typ)
 	// println('tname=$typ.name')
 	if typ_sym.kind != .enum_ {
