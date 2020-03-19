@@ -1301,14 +1301,15 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 }
 
 fn (g mut Gen) return_statement(it ast.Return) {
-	g.write('return ')
+	g.write('return')
 	if g.fn_decl.name == 'main' {
-		g.writeln('0;')
+		g.writeln(' 0;')
 		return
 	}
 	fn_return_is_optional := table.type_is_optional(g.fn_decl.return_type)
 	// multiple returns
 	if it.exprs.len > 1 {
+		g.write(' ')
 		typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		mr_info := typ_sym.info as table.MultiReturn
 		mut styp := g.typ(g.fn_decl.return_type)
@@ -1331,6 +1332,7 @@ fn (g mut Gen) return_statement(it ast.Return) {
 	}
 	// normal return
 	else if it.exprs.len == 1 {
+		g.write(' ')
 		// `return opt_ok(expr)` for functions that expect an optional
 		if fn_return_is_optional && !table.type_is_optional(it.types[0]) {
 			mut is_none := false
