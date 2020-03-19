@@ -644,6 +644,9 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			var := scope.find_var(it.var_name) or {
 				panic(err)
 			}
+			for i, _ in it.fields {
+				c.expr(it.exprs[i])
+			}
 			return var.typ
 		}
 		ast.BoolLiteral {
