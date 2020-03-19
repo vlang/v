@@ -794,6 +794,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 					p.error('unknown variable `$name`')
 					return node
 				}
+				println('assoc var $name typ=$var.typ')
 				mut fields := []string
 				mut vals := []ast.Expr
 				p.check(.pipe)

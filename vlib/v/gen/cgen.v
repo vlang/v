@@ -748,7 +748,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			mut receiver_name := typ_sym.name
 			if typ_sym.kind == .array && it.name in
 			// TODO performance, detect `array` method differently
-			['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'clone'] {
+			['repeat', 'sort_with_compare', 'free', 'push_many', 'trim',
+			//
+			'first', 'last', 'clone'] {
 				// && rec_sym.name == 'array' {
 				// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 				// `array_byte_clone` => `array_clone`
@@ -1367,10 +1369,10 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 
 // { user | name: 'new name' }
 fn (g mut Gen) assoc(node ast.Assoc) {
+	g.writeln('// assoc')
 	if node.typ == 0 {
 		return
 	}
-	g.writeln('// assoc')
 	styp := g.typ(node.typ)
 	g.writeln('($styp){')
 	for i, field in node.fields {
