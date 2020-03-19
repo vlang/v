@@ -41,7 +41,7 @@ fn (context Context) footer() {
 }
 
 fn (context Context) file2v(file string) {
-	fname := os.filename(file)
+	fname := os.file_name(file)
 	fname_no_dots := fname.replace('.', '_')
 	byte_name := '${context.prefix}${fname_no_dots}'
 	fbytes := os.read_bytes(file) or {

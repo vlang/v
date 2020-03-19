@@ -35,7 +35,7 @@ fn test_fmt() {
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
 		fmt_bench.step()
-		ifilename := os.filename(ipath)
+		ifilename := os.file_name(ipath)
 		opath := ipath
 		expected_ocontent := os.read_file(opath) or {
 			fmt_bench.fail()
