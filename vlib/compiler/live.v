@@ -98,11 +98,14 @@ fn (v &V) generate_hot_reload_code() {
 			println(cmd_compile_shared_library)
 		}
 		ticks := time.ticks()
-		os.system(cmd_compile_shared_library)
+		so_compilation_result := os.system(cmd_compile_shared_library)
 		if v.pref.verbosity.is_higher_or_equal(.level_two) {
 			diff := time.ticks() - ticks
 			println('compiling shared library took $diff ms')
 			println('=========\n')
+		}
+		if so_compilation_result != 0 {
+			exit(1)
 		}
 		cgen.genln('
 
@@ -199,7 +202,6 @@ void reload_so() {
 			pthread_mutex_lock(&live_fn_mutex);
 			lfnmutex_print("reload_so locked");
 
-			live_lib = 0; // hack: force skipping dlclose/1, the code may be still used...
 			load_so(new_so_name);
 			#ifndef _WIN32
 			unlink(new_so_name); // removing the .so file from the filesystem after dlopen-ing it is safe, since it will still be mapped in memory.

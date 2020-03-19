@@ -422,41 +422,10 @@ $consts_init_body
 builtin__init();
 $call_mod_init
 }')
-			// _STR function can't be defined in vlib
-			v.cgen.genln('
-string _STR(const char *fmt, ...) {
-	va_list argptr;
-	va_start(argptr, fmt);
-	size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
-	va_end(argptr);
-	byte* buf = malloc(len);
-	va_start(argptr, fmt);
-	vsprintf((char *)buf, fmt, argptr);
-	va_end(argptr);
-#ifdef DEBUG_ALLOC
-	puts("_STR:");
-	puts(buf);
-#endif
-	return tos2(buf);
-}
-
-string _STR_TMP(const char *fmt, ...) {
-	va_list argptr;
-	va_start(argptr, fmt);
-	//size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
-	va_end(argptr);
-	va_start(argptr, fmt);
-	vsprintf((char *)g_str_buf, fmt, argptr);
-	va_end(argptr);
-#ifdef DEBUG_ALLOC
-	//puts("_STR_TMP:");
-	//puts(g_str_buf);
-#endif
-	return tos2(g_str_buf);
-}
-
-')
 		}
+		if !v.pref.is_bare {
+			v.generate_str_definitions()
+        }
 	}
 }
 
@@ -935,4 +904,41 @@ pub fn set_vroot_folder(vroot_path string) {
 	// can return it later to whoever needs it:
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	os.setenv('VEXE', os.realpath([vroot_path, vname].join(os.path_separator)), true)
+}
+
+pub fn (v mut V) generate_str_definitions() {
+	// _STR function can't be defined in vlib
+	v.cgen.genln('
+string _STR(const char *fmt, ...) {
+	va_list argptr;
+	va_start(argptr, fmt);
+	size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
+	va_end(argptr);
+	byte* buf = malloc(len);
+	va_start(argptr, fmt);
+	vsprintf((char *)buf, fmt, argptr);
+	va_end(argptr);
+#ifdef DEBUG_ALLOC
+	puts("_STR:");
+	puts(buf);
+#endif
+	return tos2(buf);
+}
+
+string _STR_TMP(const char *fmt, ...) {
+	va_list argptr;
+	va_start(argptr, fmt);
+	//size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
+	va_end(argptr);
+	va_start(argptr, fmt);
+	vsprintf((char *)g_str_buf, fmt, argptr);
+	va_end(argptr);
+#ifdef DEBUG_ALLOC
+	//puts("_STR_TMP:");
+	//puts(g_str_buf);
+#endif
+	return tos2(g_str_buf);
+}
+
+')
 }
