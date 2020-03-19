@@ -944,6 +944,16 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	else if node.op == .key_in {
 		right_sym := g.table.get_type_symbol(node.right_type)
 		if right_sym.kind == .array {
+			match node.right {
+				ast.ArrayInit {
+					// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
+					// avoids an allocation
+					// g.write('/*in opt*/')
+					g.in_optimization(node.left, it)
+					return
+				}
+				else {}
+	}
 			styp := g.typ(node.left_type)
 			g.write('_IN($styp, ')
 			g.expr(node.left)
@@ -1632,6 +1642,30 @@ fn (g mut Gen) gen_filter(node ast.MethodCallExpr) {
 	g.write(s)
 	g.write(' ')
 	g.write(tmp)
+}
+
+// `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
+fn (g mut Gen) in_optimization(left ast.Expr, right ast.ArrayInit) {
+	is_str := right.elem_type == table.string_type
+	for i, array_expr in right.exprs {
+		if is_str {
+			g.write('string_eq(')
+		}
+		g.expr(left)
+		if is_str {
+			g.write(', ')
+		}
+		else {
+			g.write(' == ')
+		}
+		g.expr(array_expr)
+		if is_str {
+			g.write(')')
+		}
+		if i < right.exprs.len - 1 {
+			g.write(' || ')
+		}
+	}
 }
 
 fn op_to_fn_name(name string) string {

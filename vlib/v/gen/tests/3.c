@@ -33,6 +33,10 @@ void User_foo(User* u) {
 	array_string zzz = array_repeat(new_array_from_c_array(1, 1, sizeof(string), (string[]){
 tos3(""),
 }), u->age);
+	int a = 10;
+	if (a == 10 || a == 20 || a == 30) {
+		int b = 10;
+	}
 }
 
 void println(string s) {

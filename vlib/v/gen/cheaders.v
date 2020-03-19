@@ -40,6 +40,8 @@ const (
 #endif
 #endif
 
+#define V_COMMIT_HASH "TODO"
+
 '
 	c_headers = '
 
