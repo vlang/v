@@ -4,8 +4,7 @@ import os
 
 #include <sys/ioctl.h>
 
-$if solaris
-{
+$if solaris {
 #include <unistd.h> // ioctl
 #include <sys/termios.h> // TIOCGWINSZ
 }

@@ -614,7 +614,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 		}
 		ast.Assoc {
-			g.write('/* assoc */')
+			g.assoc(it)
 		}
 		ast.BoolLiteral {
 			g.write(it.val.str())
@@ -1347,6 +1347,9 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 	}
 	}
 }
+
+// { user | name: 'new name' }
+fn (g mut Gen) assoc(node ast.Assoc) {}
 
 fn (g mut Gen) call_args(args []ast.CallArg) {
 	for i, arg in args {

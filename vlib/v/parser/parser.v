@@ -370,6 +370,9 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 				stmts: stmts
 			}
 		}
+		.hash {
+			return p.hash()
+		}
 		.key_defer {
 			p.next()
 			stmts := p.parse_block()
