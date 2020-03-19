@@ -649,6 +649,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			for i, _ in it.fields {
 				c.expr(it.exprs[i])
 			}
+			it.typ = var.typ
 			return var.typ
 		}
 		ast.BoolLiteral {

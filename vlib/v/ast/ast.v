@@ -594,11 +594,12 @@ pub:
 
 pub struct Assoc {
 pub:
-	typ      table.Type
 	var_name string
 	fields   []string
 	exprs    []Expr
 	pos      token.Position
+mut:
+	typ      table.Type
 }
 
 pub struct SizeOf {
