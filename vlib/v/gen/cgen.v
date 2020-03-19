@@ -1322,7 +1322,7 @@ fn (g mut Gen) return_statement(it ast.Return) {
 	else if it.exprs.len == 1 {
 		g.write(' ')
 		// `return opt_ok(expr)` for functions that expect an optional
-		if table.type_is_optional(g.fn_decl.return_type) {
+		if table.type_is_optional(g.fn_decl.return_type) && !table.type_is_optional(it.types[0]) {
 			mut is_none := false
 			mut is_error := false
 			expr0 := it.exprs[0]
