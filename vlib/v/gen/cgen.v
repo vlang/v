@@ -23,6 +23,7 @@ mut:
 	is_amp         bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 	optionals      []string // to avoid duplicates TODO perf, use map
 	inside_ternary bool // ?: comma separated statements on a single line
+	stmt_start_pos int
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
@@ -199,6 +200,7 @@ fn (g mut Gen) stmts(stmts []ast.Stmt) {
 }
 
 fn (g mut Gen) stmt(node ast.Stmt) {
+	g.stmt_start_pos = g.out.len
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
@@ -747,6 +749,10 @@ fn (g mut Gen) expr(node ast.Expr) {
 			typ_sym := g.table.get_type_symbol(it.receiver_type)
 			// rec_sym := g.table.get_type_symbol(it.receiver_type)
 			mut receiver_name := typ_sym.name
+			if typ_sym.kind == .array && it.name == 'filter' {
+				g.gen_filter(it)
+				return
+			}
 			if typ_sym.kind == .array && it.name in
 			// TODO performance, detect `array` method differently
 			['repeat', 'sort_with_compare', 'free', 'push_many', 'trim',
@@ -1597,6 +1603,35 @@ fn (g &Gen) sort_structs(types []table.TypeSymbol) []table.TypeSymbol {
 		types_sorted << g.table.types[g.table.type_idxs[node.name]]
 	}
 	return types_sorted
+}
+
+fn (g mut Gen) gen_filter(node ast.MethodCallExpr) {
+	tmp := g.new_tmp_var()
+	buf := g.out.buf[g.stmt_start_pos..]
+	s := string(buf.clone()) // the already generated part of current statement
+	g.out.go_back(s.len)
+	// println('filter s="$s"')
+	sym := g.table.get_type_symbol(node.return_type)
+	if sym.kind != .array {
+		verror('filter() requires an array')
+	}
+	info := sym.info as table.Array
+	styp := g.typ(node.return_type)
+	elem_type_str := g.typ(info.elem_type)
+	g.write('\nint ${tmp}_len = ')
+	g.expr(node.expr)
+	g.writeln('.len;')
+	g.writeln('$styp $tmp = new_array(0, ${tmp}_len, sizeof($elem_type_str));')
+	g.writeln('for (int i = 0; i < ${tmp}_len; i++) {')
+	g.write('  $elem_type_str it = (($elem_type_str*) ')
+	g.expr(node.expr)
+	g.writeln('.data)[i];')
+	g.write('if (')
+	g.expr(node.args[0].expr) // the first arg is the filter condition
+	g.writeln(') array_push(&$tmp, &it); \n }')
+	g.write(s)
+	g.write(' ')
+	g.write(tmp)
 }
 
 fn op_to_fn_name(name string) string {

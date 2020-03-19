@@ -526,6 +526,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 	match mut node {
 		ast.AssignStmt {
 			c.assign_stmt(mut it)
+			c.expected_type = table.void_type
 		}
 		// ast.Attr {}
 		// ast.CompIf {}
@@ -544,6 +545,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			c.expr(it.expr)
+			c.expected_type = table.void_type
 		}
 		ast.FnDecl {
 			c.expected_type = table.void_type
