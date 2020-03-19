@@ -1349,7 +1349,29 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 }
 
 // { user | name: 'new name' }
-fn (g mut Gen) assoc(node ast.Assoc) {}
+fn (g mut Gen) assoc(node ast.Assoc) {
+	if node.typ == 0 {
+		return
+	}
+	g.writeln('// assoc')
+	styp := g.typ(node.typ)
+	g.writeln('($styp){')
+	for i, field in node.fields {
+		g.write('\t.$field = ')
+		g.expr(node.exprs[i])
+		g.writeln(', ')
+	}
+	// Copy the rest of the fields.
+	sym := g.table.get_type_symbol(node.typ)
+	info := sym.info as table.Struct
+	for field in info.fields {
+		g.writeln('\t.$field.name = ${node.var_name}.$field.name,')
+	}
+	g.write('}')
+	if g.is_amp {
+		g.write(', sizeof($styp))')
+	}
+}
 
 fn (g mut Gen) call_args(args []ast.CallArg) {
 	for i, arg in args {

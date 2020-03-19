@@ -591,6 +591,7 @@ pub:
 
 pub struct Assoc {
 pub:
+	typ      table.Type
 	var_name string
 	fields   []string
 	exprs    []Expr

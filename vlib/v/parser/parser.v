@@ -790,6 +790,10 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			}
 			else {
 				name := p.check_name()
+				var := p.scope.find_var(name) or {
+					p.error('unknown variable `$name`')
+					return node
+				}
 				mut fields := []string
 				mut vals := []ast.Expr
 				p.check(.pipe)
@@ -810,6 +814,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 					fields: fields
 					exprs: vals
 					pos: p.tok.position()
+					typ: var.typ
 				}
 			}
 			p.check(.rcbr)
