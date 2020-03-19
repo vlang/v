@@ -12,11 +12,9 @@ import (
 	v.pref
 )
 
-[inline]
 fn parse_c_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 	match flag {
 		'cc', 'compiler' {
-			f.allow_duplicate() // needed to enable CI compiling of -live examples.
 			f.is_equivalent_to(['cc', 'compiler'])
 			//TODO Remove `tmp` variable when it doesn't error out in C.
 			tmp := f.string() or {
@@ -24,6 +22,8 @@ fn parse_c_options(flag string, f mut flag.Instance, prefs mut pref.Preferences)
 				exit(1)
 			}
 			prefs.ccompiler = tmp
+			// needed to enable CI compiling of -live examples.
+			f.allow_duplicate() 
 		}
 		'cg', 'cdebug' {
 			f.is_equivalent_to(['cg', 'cdebug', 'g', 'debug'])
