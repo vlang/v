@@ -782,7 +782,7 @@ pub fn (v &V) get_user_files() []string {
 		user_files << single_test_v_file
 		dir = os.base_dir(single_test_v_file)
 	}
-	if dir.ends_with('.v') || dir.ends_with('.vsh') {
+	if ( os.exists(dir) && !os.is_dir(dir) ) && ( dir.ends_with('.v') || dir.ends_with('.vsh') ) {
 		single_v_file := dir
 		// Just compile one file and get parent dir
 		user_files << single_v_file
