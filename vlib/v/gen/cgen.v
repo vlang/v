@@ -689,13 +689,6 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.EnumVal {
 			// g.write('/*EnumVal*/${it.mod}${it.enum_name}_$it.val')
 			styp := g.typ(it.typ)
-			if table.type_is_optional(it.typ) {
-				ostyp := styp + '_$it.val'
-				if !(ostyp in g.optionals) {
-					g.definitions.writeln('typedef Option $ostyp;')
-					g.optionals << ostyp
-				}
-			}
 			g.write(styp)
 			g.write('_$it.val')
 		}
