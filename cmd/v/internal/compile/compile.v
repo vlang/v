@@ -43,8 +43,14 @@ pub fn run_compiled_executable_and_exit(v &compiler.V, remaining_args []string) 
 		println('============ running $v.pref.out_name ============')
 	}
 	mut cmd := '"${v.pref.out_name}"'
-	if remaining_args.len > 1 {
-		cmd += ' ' + remaining_args[1..].join(' ')
+	for i in 1..remaining_args.len {
+		// Determine if there are spaces in the parameters
+		if remaining_args[i].index_byte(` `) > 0 {
+			cmd += ' "' + remaining_args[i] + ' "'
+		}
+		else {
+			cmd += ' ' + remaining_args[i]
+		}
 	}
 	if v.pref.verbosity.is_higher_or_equal(.level_two) {
 		println('command to run executable: $cmd')
