@@ -10,7 +10,6 @@ struct C.tm {
 	tm_hour int
 	tm_min  int
 	tm_sec  int
-	tm_gmtoff int // seconds
 }
 
 fn C.timegm(&tm) time_t
