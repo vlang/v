@@ -98,11 +98,14 @@ fn (v &V) generate_hot_reload_code() {
 			println(cmd_compile_shared_library)
 		}
 		ticks := time.ticks()
-		os.system(cmd_compile_shared_library)
+		so_compilation_result := os.system(cmd_compile_shared_library)
 		if v.pref.verbosity.is_higher_or_equal(.level_two) {
 			diff := time.ticks() - ticks
 			println('compiling shared library took $diff ms')
 			println('=========\n')
+		}
+		if so_compilation_result != 0 {
+			exit(1)
 		}
 		cgen.genln('
 
