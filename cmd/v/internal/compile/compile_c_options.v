@@ -16,6 +16,7 @@ import (
 fn parse_c_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 	match flag {
 		'cc', 'compiler' {
+			f.allow_duplicate() // needed to enable CI compiling of -live examples.
 			f.is_equivalent_to(['cc', 'compiler'])
 			//TODO Remove `tmp` variable when it doesn't error out in C.
 			tmp := f.string() or {
