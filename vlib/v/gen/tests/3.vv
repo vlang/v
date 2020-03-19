@@ -12,6 +12,17 @@ fn get_opt() ?int {
 	return 0
 }
 
+/*
+fn new_user() User {
+	return User{}
+}
+
+fn get_user_opt() ?User {
+	return new_user()
+	//return User{age:20, name:'Peter'}
+}
+*/
+
 fn (u &User) foo() {
 	age := u.age
 	zzz := [''].repeat(u.age)

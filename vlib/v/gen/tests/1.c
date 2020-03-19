@@ -102,7 +102,7 @@ i < 10; i++) {
 	bool b2 = (*(bool*)array_get(bools, 0)) || true;
 	bool b3 = get_bool() || true;
 	int f = array_first(nums);
-	array_int c = array_clone(nums);
+	array_int c = array_clone(&nums);
 	string d = tos3("d");
 	println(string_add(s, d));
 }

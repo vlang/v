@@ -19,7 +19,7 @@ pub fn parse(s string) ?Time {
 	minute := hms[1]
 	second := hms[2]
 
-	return new_time(Time{
+	res := new_time(Time{
 		year: ymd[0].int()
 		month: ymd[1].int()
 		day: ymd[2].int()
@@ -27,6 +27,7 @@ pub fn parse(s string) ?Time {
 		minute: minute.int()
 		second: second.int()
 	})
+	return res
 }
 
 // parse_rfc2822 returns time from a date string in RFC 2822 datetime format.
