@@ -134,9 +134,12 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	c.expected_type = left_type
 	right_type := c.expr(infix_expr.right)
 	infix_expr.right_type = right_type
+	right := c.table.get_type_symbol(right_type)
+	if infix_expr.op == .key_in && !(right.kind in [.array, .map, .string]) {
+		c.error('infix expr: `in` can only be used with array/map/string.', infix_expr.pos)
+	}
 	if !c.table.check(right_type, left_type) {
 		left := c.table.get_type_symbol(left_type)
-		right := c.table.get_type_symbol(right_type)
 		// `array << elm`
 		// the expressions have different types (array_x and x)
 		if left.kind == .array && infix_expr.op == .left_shift {

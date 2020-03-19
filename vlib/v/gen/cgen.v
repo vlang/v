@@ -930,12 +930,29 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		g.write(')')
 	}
 	else if node.op == .key_in {
-		styp := g.typ(node.left_type)
-		g.write('_IN($styp, ')
-		g.expr(node.left)
-		g.write(', ')
-		g.expr(node.right)
-		g.write(')')
+		right_sym := g.table.get_type_symbol(node.right_type)
+		if right_sym.kind == .array {
+			styp := g.typ(node.left_type)
+			g.write('_IN($styp, ')
+			g.expr(node.left)
+			g.write(', ')
+			g.expr(node.right)
+			g.write(')')
+		}
+		else if right_sym.kind == .map {
+			g.write('_IN_MAP(')
+			g.expr(node.left)
+			g.write(', ')
+			g.expr(node.right)
+			g.write(')')
+		}
+		else if right_sym.kind == .string {
+			g.write('string_contains(')
+			g.expr(node.right)
+			g.write(', ')
+			g.expr(node.left)
+			g.write(')')
+		}
 	}
 	// arr << val
 	else if node.op == .left_shift && g.table.get_type_symbol(node.left_type).kind == .array {
