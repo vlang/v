@@ -65,7 +65,7 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 	}
-	if styp in ['stat', 'dirent*', 'tm', 'tm*'] {
+	if styp in ['stat', 'dirent*', 'tm', 'tm*', 'winsize'] {
 		// TODO perf and other C structs
 		styp = 'struct $styp'
 	}
@@ -1255,6 +1255,25 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			}
 			else {
 				g.write('(*($elem_type_str*)array_get(')
+				g.expr(node.left)
+				g.write(', ')
+				g.expr(node.index)
+				g.write('))')
+			}
+		}
+		else if sym.kind == .map {
+			info := sym.info as table.Map
+			elem_type_str := g.typ(info.value_type)
+			if g.is_assign_expr {
+				g.is_array_set = true
+				g.write('map_set(&')
+				g.expr(node.left)
+				g.write(', ')
+				g.expr(node.index)
+				g.write(', &($elem_type_str[]) { ')
+			}
+			else {
+				g.write('(*($elem_type_str*)map_get2(')
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
