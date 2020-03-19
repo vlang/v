@@ -187,8 +187,8 @@ fn main() {
 	fp.skip_executable()
 	fp.limit_free_args(1, 2)
 
-	context.vflags = fp.string('vflags', '', 'Additional options to pass to the v commands, for example "-cc tcc"')
-	context.hyperfineopts = fp.string('hyperfine_options', '',
+	context.vflags = fp.string('vflags', 0, '', 'Additional options to pass to the v commands, for example "-cc tcc"')
+	context.hyperfineopts = fp.string('hyperfine_options', 0, '',
 		'Additional options passed to hyperfine.
 ${flag.SPACE}For example on linux, you may want to pass:
 ${flag.SPACE}--hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches\'"

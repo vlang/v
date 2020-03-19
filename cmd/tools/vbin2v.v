@@ -69,9 +69,9 @@ fn main() {
 	fp.version(tool_version)
 	fp.description(tool_description)
 	fp.arguments_description('FILE [FILE]...')
-	context.show_help = fp.bool_('help', `h`, false, 'Show this help screen.')
-	context.module_name = fp.string_('module', `m`, 'binary', 'Name of the generated module.\n')
-	context.prefix = fp.string_('prefix', `p`, '', 'A prefix put before each resource name.\n')
+	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
+	context.module_name = fp.string('module', `m`, 'binary', 'Name of the generated module.\n')
+	context.prefix = fp.string('prefix', `p`, '', 'A prefix put before each resource name.\n')
 	if (context.show_help) {
 		println(fp.usage())
 		exit(0)

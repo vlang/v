@@ -64,7 +64,7 @@ fn main(){
 	fp.arguments_description('FILE.v/FOLDER [FILE.v/FOLDER]...')
 	fp.limit_free_args_to_at_least(1)
 	fp.skip_executable()
-	show_help:=fp.bool_('help', `h`, false, 'Show this help screen\n')
+	show_help:=fp.bool('help', `h`, false, 'Show this help screen\n')
 	if( show_help ){
 		println( fp.usage() )
 		exit(0)
