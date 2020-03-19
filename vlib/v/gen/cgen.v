@@ -887,6 +887,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('_type_idx_')
 			g.write(g.typ(it.typ))
 		}
+		ast.TypeOf {
+			g.write('tos3("TYPEOF_TODO")')
+		}
 		else {
 			// #printf("node=%d\n", node.typ);
 			println(term.red('cgen.expr(): bad node ' + typeof(node)))

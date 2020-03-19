@@ -58,11 +58,10 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.AssignStmt {
-			if it.left.len > it.right.len {
-				// TODO: multi return
-			}
+			if it.left.len > it.right.len {}
+			// TODO: multi return
 			else {
-				for i,ident in it.left {
+				for i, ident in it.left {
 					var_info := ident.var_info()
 					var_type_sym := g.table.get_type_symbol(var_info.typ)
 					val := it.right[i]
@@ -90,6 +89,8 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
+		}
+		/*
 			match it.expr {
 				// no ; after an if expression
 				ast.IfExpr {}
@@ -97,7 +98,8 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 					g.writeln(';')
 				}
 	}
-		}
+	*/
+
 		else {
 			verror('jsgen.stmt(): bad node')
 		}

@@ -14,7 +14,7 @@ pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLitera
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
 CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | 	
-ConcatExpr | Type | AsCast
+ConcatExpr | Type | AsCast | TypeOf
 
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
@@ -606,6 +606,11 @@ pub struct SizeOf {
 pub:
 	typ       table.Type
 	type_name string
+}
+
+pub struct TypeOf {
+pub:
+	expr Expr
 }
 
 pub struct LineComment {

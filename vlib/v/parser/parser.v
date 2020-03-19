@@ -765,6 +765,15 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 				
 			}
 		}
+		.key_typeof {
+			p.next()
+			p.check(.lpar)
+			expr := p.expr(0)
+			p.check(.rpar)
+			node = ast.TypeOf{
+				expr: expr
+			}
+		}
 		// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 		.lcbr {
 			p.next()

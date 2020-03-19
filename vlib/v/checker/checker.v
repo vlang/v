@@ -741,6 +741,9 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		ast.Type {
 			return it.typ
 		}
+		ast.TypeOf {
+			return table.string_type
+		}
 		/*
 		ast.UnaryExpr {
 			c.expr(it.left)
