@@ -71,7 +71,7 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	}
 }
 
-pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type {
+pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 	// typ := c.table.find_type(struct_init.typ.typ.name) or {
 	// c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
 	// panic('')
@@ -117,6 +117,8 @@ pub fn (c mut Checker) check_struct_init(struct_init ast.StructInit) table.Type 
 				if !c.table.check(expr_type, field.typ) {
 					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$field.name`', struct_init.pos)
 				}
+				struct_init.expr_types << expr_type
+				struct_init.expected_types << field.typ
 			}
 		}
 		else {}
@@ -726,7 +728,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.string_type
 		}
 		ast.StructInit {
-			return c.check_struct_init(it)
+			return c.struct_init(mut it)
 		}
 		ast.Type {
 			return it.typ

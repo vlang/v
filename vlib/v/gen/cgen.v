@@ -345,7 +345,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 }
 
 // use instead of expr() when you need to cast to sum type (can add other casts also)
-fn (g mut Gen) expr_with_cast(got_type table.Type, exp_type table.Type, expr ast.Expr) {
+fn (g mut Gen) expr_with_cast(expr ast.Expr, got_type table.Type, exp_type table.Type) {
 	// cast to sum type
 	if exp_type != table.void_type && exp_type != 0 && got_type != 0 {
 		exp_sym := g.table.get_type_symbol(exp_type)
@@ -432,7 +432,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if !is_fixed_array_init {
 					g.write(' = ')
 					if !is_decl {
-						g.expr_with_cast(assign_stmt.left_types[i], ident_var_info.typ, val)
+						g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
 					}
 					else {
 						g.expr(val)
@@ -603,7 +603,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 					g.write(', ')
 				}
 				g.is_assign_expr = false
-				g.expr_with_cast(it.right_type, it.left_type, it.val)
+				g.expr_with_cast(it.val, it.right_type, it.left_type)
 				if g.is_array_set {
 					g.write(' })')
 					g.is_array_set = false
@@ -854,7 +854,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			for i, field in it.fields {
 				g.write('\t.$field = ')
-				g.expr(it.exprs[i])
+				g.expr_with_cast(it.exprs[i], it.expr_types[i], it.expected_types[i])
 				g.writeln(', ')
 			}
 			if it.fields.len == 0 {
@@ -964,7 +964,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		if right_sym.kind == .array {
 			// push an array => PUSH_MANY
 			g.write('_PUSH_MANY(&')
-			g.expr_with_cast(node.right_type, node.left_type, node.left)
+			g.expr_with_cast(node.left, node.right_type, node.left_type)
 			g.write(', (')
 			g.expr(node.right)
 			styp := g.typ(node.left_type)
@@ -976,7 +976,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			elem_type_str := g.typ(info.elem_type)
 			// g.write('array_push(&')
 			g.write('_PUSH(&')
-			g.expr_with_cast(node.right_type, info.elem_type, node.left)
+			g.expr_with_cast(node.left, node.right_type, info.elem_type)
 			g.write(', (')
 			g.expr(node.right)
 			g.write('), $tmp, $elem_type_str)')
@@ -1328,7 +1328,7 @@ fn (g mut Gen) return_statement(it ast.Return) {
 			// Automatic Dereference
 			g.write('*')
 		}
-		g.expr_with_cast(it.types[0], g.fn_decl.return_type, it.exprs[0])
+		g.expr_with_cast(it.exprs[0], it.types[0], g.fn_decl.return_type)
 	}
 	g.writeln(';')
 }

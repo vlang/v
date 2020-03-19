@@ -112,10 +112,13 @@ pub:
 
 pub struct StructInit {
 pub:
-	pos    token.Position
-	typ    table.Type
-	fields []string
-	exprs  []Expr
+	pos            token.Position
+	typ            table.Type
+	fields         []string
+	exprs          []Expr
+mut:
+	expr_types     []table.Type
+	expected_types []table.Type
 }
 
 // import statement
