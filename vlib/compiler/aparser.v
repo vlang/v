@@ -2481,7 +2481,7 @@ struct IndexConfig {
 
 // for debugging only
 fn (p &Parser) fileis(s string) bool {
-	return os.filename(p.scanner.file_path).contains(s)
+	return os.file_name(p.scanner.file_path).contains(s)
 }
 
 // in and dot have higher priority than `!`

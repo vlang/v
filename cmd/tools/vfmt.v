@@ -158,7 +158,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		table := table.new_table()
 		file_ast := parser.parse_file(file, table, .parse_comments)
 		formatted_content := fmt.fmt(file_ast, table)
-		file_name := os.filename(file)
+		file_name := os.file_name(file)
 		vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
 		os.write_file(vfmt_output_path, formatted_content )
 		if foptions.is_verbose {

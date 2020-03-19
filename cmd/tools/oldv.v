@@ -69,7 +69,7 @@ fn main() {
 	scripting.used_tools_must_exist(['git', 'cc'])
 	mut context := Context{}
 	mut fp := flag.new_flag_parser(os.args)
-	fp.application(os.filename(os.executable()))
+	fp.application(os.file_name(os.executable()))
 	fp.version(tool_version)
 	fp.description(tool_description)
 	fp.arguments_description('VCOMMIT')

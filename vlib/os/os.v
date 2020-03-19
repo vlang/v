@@ -178,7 +178,7 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 	}
 	// single file copy
 	if !os.is_dir(source_path) {
-		adjasted_path := if os.is_dir(dest_path) { os.join_path(dest_path,os.filename(source_path)) } else { dest_path }
+		adjasted_path := if os.is_dir(dest_path) { os.join_path(dest_path,os.file_name(source_path)) } else { dest_path }
 		if os.exists(adjasted_path) {
 			if overwrite {
 				os.rm(adjasted_path)
@@ -633,7 +633,7 @@ pub fn base_dir(path string) string {
 	return path[..posx]
 }
 
-pub fn filename(path string) string {
+pub fn file_name(path string) string {
 	return path.all_after(path_separator)
 }
 

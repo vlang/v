@@ -142,7 +142,7 @@ fn init() {
 		exit(3)
 	}
 	mut c := Create{}
-	c.name = os.filename(os.getwd())
+	c.name = os.file_name(os.getwd())
 	c.description = ''
 	c.init_vmod()
 	c.init_main()
