@@ -24,6 +24,7 @@ mut:
 	optionals      []string // to avoid duplicates TODO perf, use map
 	inside_ternary bool // ?: comma separated statements on a single line
 	stmt_start_pos int
+	right_is_opt   bool
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
@@ -598,6 +599,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			else {
 				g.is_assign_expr = true
+				if table.type_is_optional(it.right_type) {
+					g.right_is_opt = true
+				}
 				mut str_add := false
 				if it.left_type == table.string_type_idx && it.op == .plus_assign {
 					// str += str2 => `str = string_add(str, str2)`
@@ -622,6 +626,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				else if str_add {
 					g.write(')')
 				}
+				g.right_is_opt = false
 			}
 		}
 		ast.Assoc {
@@ -1142,7 +1147,11 @@ fn (g mut Gen) ident(node ast.Ident) {
 		// TODO `is`
 		match node.info {
 			ast.IdentVar {
-				if it.is_optional && !g.is_assign_expr {
+				// x ?int
+				// `x = 10` => `x.data = 10` (g.right_is_opt == false)
+				// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
+				// `println(x)` => `println(*(int*)x.data)`
+				if it.is_optional && !(g.is_assign_expr && g.right_is_opt) {
 					g.write('/*opt*/')
 					styp := g.typ(it.typ)[7..] // Option_int => int TODO perf?
 					g.write('(*($styp*)${name}.data)')
