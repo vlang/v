@@ -110,20 +110,28 @@ fn (v &V) generate_hot_reload_code() {
 		cgen.genln('
 
 void lfnmutex_print(char *s){
-	if(0){
-		fflush(stderr);
-		fprintf(stderr,">> live_fn_mutex: %p | %s\\n", &live_fn_mutex, s);
-		fflush(stderr);
-	}
+#if 0
+	fflush(stderr);
+	fprintf(stderr,">> live_fn_mutex: %p | %s\\n", &live_fn_mutex, s);
+	fflush(stderr);
+#endif
 }
 ')
 		if v.pref.os != .windows {
 			cgen.genln('
-void* live_lib=0;
+#define _POSIX_C_SOURCE 1
+#include <limits.h>
+#ifndef PATH_MAX
+#define PATH_MAX 1024
+#endif
+
+void* live_lib = 0;
+
 int load_so(byteptr path) {
-	char cpath[1024] = {0};
+	char cpath[PATH_MAX] = {0};
 	int res = snprintf(cpath, sizeof (cpath), "./%s", path);
-	if (res >= sizezof (cpath)) {
+	if (res >= sizeof (cpath)) {
+		fprintf (stderr, "path is too long");
 		return 0;
 	}
 	//printf("load_so %s\\n", cpath);
@@ -151,13 +159,13 @@ void pthread_mutex_unlock(HANDLE *m) {
 
 void* live_lib = NULL;
 int load_so(byteptr path) {
-	char cpath[1024]; // TODO: use maxpathlen
-	if (strlen (path) > sizeof (cpath)) {
-		fprintf (stderr, "open failed");
+	char cpath[PATH_MAX];
+	int res = snprintf(cpath, sizeof (cpath), "./%s", path);
+	if (res >= sizeof(cpath)) {
+		fprintf (stderr, "path is too long");
 		exit(1);
 		return 0;
 	}
-	snprintf(cpath, sizeof (cpath), "./%s", path);
 	if (live_lib) FreeLibrary(live_lib);
 	live_lib = LoadLibraryA(cpath);
 	if (!live_lib) {
@@ -175,9 +183,9 @@ int load_so(byteptr path) {
 
 int _live_reloads = 0;
 void reload_so() {
-	char new_so_base[1024] = {0};
-	char new_so_name[1024] = {0};
-	char compile_cmd[1024] = {0};
+	char new_so_base[PATH_MAX] = {0};
+	char new_so_name[PATH_MAX] = {0};
+	char compile_cmd[PATH_MAX] = {0};
 	int last = os__file_last_mod_unix(tos2("$file"));
 	while (1) {
 		// TODO use inotify
