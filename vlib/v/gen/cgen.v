@@ -385,9 +385,18 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 	}
 		mr_var_name := 'mr_$assign_stmt.pos.pos'
-		mr_typ_str := g.typ(return_type)
-		g.write('$mr_typ_str $mr_var_name = ')
-		g.expr(assign_stmt.right[0])
+		if table.type_is_optional(return_type) {
+			return_type = table.type_clear_extra(return_type)
+			mr_styp := g.typ(return_type)
+			g.write('$mr_styp $mr_var_name = (*(${mr_styp}*)')
+			g.expr(assign_stmt.right[0])
+			g.write('.data)')
+		}
+		else {
+			mr_styp := g.typ(return_type)
+			g.write('$mr_styp $mr_var_name = ')
+			g.expr(assign_stmt.right[0])
+		}
 		g.writeln(';')
 		for i, ident in assign_stmt.left {
 			if ident.kind == .blank_ident {
