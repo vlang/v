@@ -268,7 +268,7 @@ fn (gen_vc mut GenVC) generate() {
 	last_commit_hash_v_short := last_commit_hash_v[..7]
 
 	// subject
-	last_commit_subject := git_log_v.find_between('Subject:', '\n').trim_space()
+	last_commit_subject := git_log_v.find_between('Subject:', '\n').trim_space().replace('"', '\\"')
 
 	// log some info
 	gen_vc.logger.debug('last commit time ($git_repo_v): ' + last_commit_time_v.format_ss())
