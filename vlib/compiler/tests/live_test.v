@@ -28,10 +28,11 @@ fn main() {
 //
 
 fn testsuite_begin(){
-	$if !linux {
+	if os.user_os() != 'linux' && os.getenv('FORCE_LIVE_TEST').len == 0 {
 		eprintln('Testing the runtime behaviour of -live mode,')
 		eprintln('is reliable only on Linux for now.')
-		exit(0)   
+		eprintln('You can still do it by setting FORCE_LIVE_TEST=1 .')
+		exit(0)
 	}
 	os.write_file(source_file, live_program_source)
 }
