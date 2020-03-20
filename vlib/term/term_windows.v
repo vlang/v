@@ -22,7 +22,7 @@ fn C.GetConsoleScreenBufferInfo(handle os.HANDLE, info &CONSOLE_SCREEN_BUFFER_IN
 // get_terminal_size returns a number of colums and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
 	if is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
-		info := C.CONSOLE_SCREEN_BUFFER_INFO{}
+		info := CONSOLE_SCREEN_BUFFER_INFO{}
 
 		if C.GetConsoleScreenBufferInfo(C.GetStdHandle(C.STD_OUTPUT_HANDLE), &info) {
 			columns := int(info.srWindow.Right - info.srWindow.Left + 1)

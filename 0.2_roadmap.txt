@@ -37,6 +37,7 @@
 + require explicit C.fn definitions, add all missing definitions
 + string.index() ?int
 + new AST based parser
++ make V2 compile itself
 - wrap up memory management
 - remove all compiler memory leaks
 - doom.v
