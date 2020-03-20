@@ -2,6 +2,8 @@
 
 echo Building V
 
+cd /d %~dp0
+
 if exist "vc" (
 	rd /s /q vc
 )
