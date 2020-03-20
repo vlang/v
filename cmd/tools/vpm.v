@@ -146,7 +146,7 @@ fn vpm_install(module_names []string) {
 			println('Skipping module "$name", since it uses an unsupported VCS {$vcs} .')
 			continue
 		}
-		final_module_path := os.realpath(os.join_path(settings.vmodules_path,mod.name.replace('.', os.path_separator)))
+		final_module_path := os.real_path(os.join_path(settings.vmodules_path,mod.name.replace('.', os.path_separator)))
 		if os.exists(final_module_path) {
 			vpm_update([name])
 			continue
@@ -237,7 +237,7 @@ fn vpm_remove(module_names []string) {
 		os.rmdir_all(final_module_path)
 		// delete author directory if it is empty
 		author := name.split('.')[0]
-		author_dir := os.realpath(os.join_path(settings.vmodules_path,author))
+		author_dir := os.real_path(os.join_path(settings.vmodules_path,author))
 		if os.is_dir_empty(author_dir) {
 			verbose_println('removing author folder $author_dir')
 			os.rmdir(author_dir)
@@ -247,7 +247,7 @@ fn vpm_remove(module_names []string) {
 
 fn valid_final_path_of_existing_module(name string) ?string {
 	name_of_vmodules_folder := os.join_path(settings.vmodules_path,name.replace('.', os.path_separator))
-	final_module_path := os.realpath(name_of_vmodules_folder)
+	final_module_path := os.real_path(name_of_vmodules_folder)
 	if !os.exists(final_module_path) {
 		println('No module with name "$name" exists at $name_of_vmodules_folder')
 		return none
@@ -279,7 +279,7 @@ fn vpm_help() {
 fn vcs_used_in_dir(dir string) ?[]string {
 	mut vcs := []string
 	for repo_subfolder in supported_vcs_folders {
-		checked_folder := os.realpath(os.join_path(dir,repo_subfolder))
+		checked_folder := os.real_path(os.join_path(dir,repo_subfolder))
 		if os.is_dir(checked_folder) {
 			vcs << repo_subfolder.replace('.', '')
 		}

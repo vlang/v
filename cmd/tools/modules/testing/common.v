@@ -36,7 +36,7 @@ pub fn (ts mut TestSession) test() {
 	mut remaining_files := []string
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
-		file := os.realpath(relative_file)
+		file := os.real_path(relative_file)
 		$if windows {
 			if file.contains('sqlite') || file.contains('httpbin') {
 				continue
@@ -92,7 +92,7 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.cstep = idx
 	dot_relative_file := p.get_string_item(idx)
 	relative_file := dot_relative_file.replace('./', '')
-	file := os.realpath(relative_file)
+	file := os.real_path(relative_file)
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
 	fname := os.file_name(file)
