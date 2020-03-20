@@ -2,6 +2,7 @@
 
 echo Building V
 
+set origin_dir=%cd%
 cd /d %~dp0
 
 if exist "vc" (
@@ -112,8 +113,10 @@ goto :error
 
 :error
 echo Exiting from error
+cd %origin_dir%
 exit /b 1
 
 :success
 echo V build OK!
 v -version
+cd %origin_dir%
