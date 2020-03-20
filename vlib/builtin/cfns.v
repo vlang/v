@@ -32,7 +32,7 @@ fn backtrace_symbols_fd(voidptr, int, int)
 fn proc_pidpath(int, voidptr, int) int
 
 
-fn C.real_path(byteptr, byteptr) &char
+fn C.realpath(byteptr, byteptr) &char
 
 
 fn C.chmod(byteptr, int) int

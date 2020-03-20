@@ -981,7 +981,7 @@ pub fn real_path(fpath string) string {
 			return fpath
 		}
 	} $else {
-		ret = C.real_path(fpath.str, fullpath)
+		ret = C.realpath(fpath.str, fullpath)
 		if ret == 0 {
 			return fpath
 		}
