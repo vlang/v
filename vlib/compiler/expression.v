@@ -791,8 +791,8 @@ fn (p mut Parser) factor() string {
 				typ = 'f64'
 			}
 			else {
-				v_u64 := p.lit.u64()
-				typ = if u64(u32(v_u64)) < v_u64 { 'u64' } else { 'int' }
+				v_u64 := p.lit.i64()
+				typ = if i64(int(v_i64)) < v_i64 { 'i64' } else { 'int' }
 			}
 			if p.expected_type != '' && !is_valid_int_const(p.lit, p.expected_type) {
 				p.error('constant `$p.lit` overflows `$p.expected_type`')
