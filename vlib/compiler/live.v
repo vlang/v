@@ -162,14 +162,14 @@ int load_so(byteptr path) {
 	char cpath[PATH_MAX];
 	int res = snprintf(cpath, sizeof (cpath), "./%s", path);
 	if (res >= sizeof(cpath)) {
-		fprintf (stderr, "path is too long");
+		puts("path is too long\\n");
 		exit(1);
 		return 0;
 	}
 	if (live_lib) FreeLibrary(live_lib);
 	live_lib = LoadLibraryA(cpath);
 	if (!live_lib) {
-		fprintf (stderr, "open failed");
+		puts("open failed\\n");
 		exit(1);
 		return 0;
 	}
@@ -210,7 +210,7 @@ void reload_so() {
 			os__system(tos2(compile_cmd));
 
 			if( !os__exists(tos2(new_so_name)) ) {
-				fprintf(stderr, "Errors while compiling $file\\n");
+				puts("Errors while compiling $file\\n");
 				continue;
 			}
 
