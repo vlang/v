@@ -138,3 +138,20 @@ fn test_oct() {
 	x9 := -000
 	assert x9 == 0
 }
+
+fn test_int_decl() {
+	x1 := 0
+	x2 := 1333
+	x3 := -88955
+	x4 := 2000000000
+	x5 := -1999999999
+	assert typeof(x1) == 'int'
+	assert typeof(x2) == 'int'
+	assert typeof(x3) == 'int'
+	assert typeof(x4) == 'int'
+	assert typeof(x5) == 'int'
+	x6 := 989898932113111
+	x7 := -321314588900011
+	assert typeof(x6) == 'u64'
+	assert typeof(x7) == 'u64'
+}

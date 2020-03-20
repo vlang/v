@@ -30,7 +30,7 @@ void init_user() {
 
 User get_user() {
 	User user = (User){
-	};
+	0};
 	return user;
 }
 
@@ -52,8 +52,7 @@ void function2() {
 	}
 	if (false) {
 		foo(1);
-	}
-	else {
+	} else {
 		puts(tos3("else"));
 		foo(100);
 	}
@@ -66,7 +65,7 @@ void function2() {
 }
 
 void init_array() {
-	array_int nums = new_array_from_c_array(3, 3, sizeof(array_int), (int[]){
+	array_int nums = new_array_from_c_array(3, 3, sizeof(int), (int[]){
 		4, 2, 3,
 	});
 }

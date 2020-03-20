@@ -1,0 +1,4 @@
+fn main() {
+	x := 0xdeadbeef
+	u := 9978654321
+}

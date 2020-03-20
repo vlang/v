@@ -54,7 +54,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	input := content.all_before('===output===\n')
 	output := content.all_after('===output===\n')
 
-	fname := os.filename( file )
+	fname := os.file_name( file )
 
 	input_temporary_filename := os.realpath(os.join_path( wd, 'input_temporary_filename.txt'))
 	os.write_file(input_temporary_filename, input)

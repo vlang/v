@@ -38,17 +38,25 @@ fn compare_texts(a, b, path string) bool {
 	lines_b_ := b.trim_space().split_into_lines()
 	lines_a := lines_a_.filter(it != '')
 	lines_b := lines_b_.filter(it != '')
+	/*
 	if lines_a.len != lines_b.len {
 		println(term.red('different len'))
 		println('${path}: got\n$a')
 		return false
 	}
+	*/
+
 	for i, line_a in lines_a {
+		if i >= lines_b.len {
+			return false
+		}
 		line_b := lines_b[i]
 		if line_a.trim_space() != line_b.trim_space() {
 			println('${path}: got\n$a')
 			println('${term_fail} ${i}')
 			println(term.red('i=$i "$line_a" expected="$line_b"'))
+			println(lines_b[i + 1])
+			println(lines_b[i + 2])
 			// exit(1)
 			return false
 		}

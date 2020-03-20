@@ -11,12 +11,12 @@ import (
 	os
 	v.table
 	v.doc
+	v.pref
 )
 
 const (
 	simple_cmd = ['fmt',
 	'up', 'self',
-	'create',
 	'test', 'test-fmt', 'test-compiler',
 	'bin2v',
 	'repl',
@@ -27,7 +27,7 @@ const (
 fn main() {
 	prefs := flag.MainCmdPreferences{}
 	values := flag.parse_main_cmd(os.args, parse_flags, &prefs) or {
-		println('V Error: An error has occured while parsing flags: ')
+		println('V Error: An error has occurred while parsing flags: ')
 		println(err)
 		exit(1)
 	}
@@ -52,8 +52,7 @@ fn main() {
 		print_version_and_exit()
 	}
 	if values.len == 0 && prefs.action == .help {
-		println('Use `v help` for usage information.')
-		exit(1)
+		invoke_help_and_exit(values)
 	}
 	if values.len == 0 || values[0] == '-' || values[0] == 'repl' {
 		// Check for REPL.
@@ -70,6 +69,10 @@ fn main() {
 		return
 	}
 	match command {
+		'create', 'init' {
+			launch_tool(prefs.verbosity, 'vcreate')
+			return
+		}
 		'translate' {
 			println('Translating C to V will be available in V 0.3')
 			return
@@ -98,18 +101,8 @@ fn main() {
 			return
 		}
 		'help' {
-			// We check if the arguments are empty as we don't want to steal it from tools
-			// TODO Call actual help tool
 			disallow_unknown_flags(prefs)
-			if prefs.verbosity.is_higher_or_equal(.level_one) {
-				println(help.verbose_help_text)
-			}
-			else {
-				println(help.help_text)
-			}
-			if values.len > 1 {
-				println('Note: Actual help module is coming soon. Feel free to ask on the official channels for clarification.')
-			}
+			invoke_help_and_exit(values)
 			return
 		}
 		'version' {
@@ -134,6 +127,21 @@ fn print_version_and_exit() {
 	exit(0)
 }
 
+fn invoke_help_and_exit(remaining []string) {
+	match remaining.len {
+		0, 1 {
+			help.print_and_exit('default')
+		}
+		2 {
+			help.print_and_exit(remaining[1])
+		}
+		else {}
+	}
+	println('V Error: Expected only one help topic to be provided.')
+	println('For usage information, use `v help`.')
+	exit(1)
+}
+
 [inline]
 fn disallow_unknown_flags(prefs flag.MainCmdPreferences) {
 	if prefs.unknown_flag == '' {
@@ -141,4 +149,28 @@ fn disallow_unknown_flags(prefs flag.MainCmdPreferences) {
 	}
 	println('V Error: Unexpected flag found: $prefs.unknown_flag')
 	exit(1)
+}
+
+fn create_symlink() {
+	$if windows {
+		return
+	}
+	vexe := pref.vexe_path()
+	mut link_path := '/usr/local/bin/v'
+	mut ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
+	if ret.exit_code == 0 {
+		println('Symlink "$link_path" has been created')
+	}
+	else if os.system('uname -o | grep -q \'[A/a]ndroid\'') == 0 {
+		println('Failed to create symlink "$link_path". Trying again with Termux path for Android.')
+		link_path = '/data/data/com.termux/files/usr/bin/v'
+		ret = os.exec('ln -sf $vexe $link_path') or { panic(err) }
+		if ret.exit_code == 0 {
+			println('Symlink "$link_path" has been created')
+		} else {
+			println('Failed to create symlink "$link_path". Try again with sudo.')
+		}
+	} else {
+			println('Failed to create symlink "$link_path". Try again with sudo.')
+	}
 }

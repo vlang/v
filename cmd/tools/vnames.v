@@ -58,13 +58,13 @@ fn main(){
 	compiler.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 
 	mut fp := flag.new_flag_parser(os.args)
-	fp.application(os.filename(toolexe))
+	fp.application(os.file_name(toolexe))
 	fp.version( tool_version )
 	fp.description( tool_description )
 	fp.arguments_description('FILE.v/FOLDER [FILE.v/FOLDER]...')
 	fp.limit_free_args_to_at_least(1)
 	fp.skip_executable()
-	show_help:=fp.bool_('help', `h`, false, 'Show this help screen\n')
+	show_help:=fp.bool('help', `h`, false, 'Show this help screen\n')
 	if( show_help ){
 		println( fp.usage() )
 		exit(0)

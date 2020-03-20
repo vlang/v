@@ -360,28 +360,40 @@ fn (v &V) platform_postfix_to_ifdefguard(name string) string {
 		return '#ifdef CUSTOM_DEFINE_${cdefine}'
 	}
 	s := match name {
-		'.v'{
+		'.v' {
 			''
 		} // no guard needed
-		'_win.v', '_windows.v'{
+		'_win.v', '_windows.v' {
 			'#ifdef _WIN32'
 		}
-		'_nix.v'{
+		'_nix.v' {
 			'#ifndef _WIN32'
 		}
-		'_lin.v', '_linux.v'{
+		'_qnx.v' {
+			'#ifndef __QNX__'
+		}
+		'_lin.v', '_linux.v' {
 			'#ifdef __linux__'
 		}
-		'_mac.v', '_darwin.v'{
+		'_mac.v', '_darwin.v' {
 			'#ifdef __APPLE__'
 		}
-		'_bsd.v', '_freebsd.v '{
+		'_freebsd.v' {
 			'#ifdef __FreeBSD__'
 		}
-		'_solaris.v'{
+		'_openbsd.v' {
+			'#ifdef __OpenBSD__'
+		}
+		'_netbsd.v' {
+			'#ifdef __NetBSD__'
+		}
+		'_bsd.v' {
+			'#ifdef __FreeBSD__ || __NetBSD__ || __OpenBSD__'
+		}
+		'_solaris.v' {
 			'#ifdef __sun'
 		}
-		'_haiku.v'{
+		'_haiku.v' {
 			'#ifdef __haiku__'
 		}
 		else {
@@ -401,7 +413,7 @@ fn (v &V) type_definitions() string {
 	mut types := []Type // structs that need to be sorted
 	mut builtin_types := []Type // builtin types
 	// builtin types need to be on top
-	builtins := ['string', 'array', 'map', 'Option']
+	builtins := ['string', 'array', 'KeyValue', 'DenseArray', 'map', 'Option']
 	for builtin in builtins {
 		typ := v.table.typesmap[builtin]
 		builtin_types << typ

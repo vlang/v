@@ -1,0 +1,14 @@
+These are utility commands that you can also launch through v,
+but which are used less frequently by users:
+
+   bin2v             Convert a binary file to a v source file,
+                     that can be later embedded in a module or program.
+
+   build-examples    Test if all examples can be built.
+   build-tools       Test if all tools can be built.
+   build-vbinaries   Test if V can be built with different configuration.
+   test-fmt          Test if all files in the current directory is formatted properly.
+   test-compiler     Test if V is working properly by running all tests, including the compiler ones.
+                     NB: this can take a minute or two to run
+
+   setup-freetype    Setup thirdparty freetype on Windows.

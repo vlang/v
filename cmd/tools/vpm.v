@@ -5,6 +5,7 @@ import (
 	os
 	os.cmdline
 	json
+	vhelp
 )
 
 const (
@@ -46,7 +47,7 @@ fn main() {
 	params := cmdline.only_non_options(args[1..])
 	verbose_println('cli params: $params')
 	if params.len < 1 {
-		vpm_help([])
+		vpm_help()
 		exit(5)
 	}
 	vpm_command := params[0]
@@ -55,7 +56,7 @@ fn main() {
 	// println('module names: ') println(module_names)
 	match vpm_command {
 		'help' {
-			vpm_help(module_names)
+			vpm_help()
 		}
 		'search' {
 			vpm_search(module_names)
@@ -82,11 +83,7 @@ fn main() {
 
 fn vpm_search(keywords []string) {
 	if settings.is_help {
-		println('Usage:')
-		println('  v search keyword1 [keyword2] [...]')
-		println('  ^^^^^^^^^^^^^^^^^ will search https://vpm.vlang.io/ for matching modules,')
-		println('                    and will show details about them')
-		show_vpm_options()
+		vhelp.show_topic('search')
 		exit(0)
 	}
 	if keywords.len == 0 {
@@ -124,10 +121,7 @@ fn vpm_search(keywords []string) {
 
 fn vpm_install(module_names []string) {
 	if settings.is_help {
-		println('Usage:')
-		println('  v install module [module] [module] [...]')
-		println('  ^^^^^^^^^^^^^ will install the modules you specified')
-		show_vpm_options()
+		vhelp.show_topic('install')
 		exit(0)
 	}
 	if module_names.len == 0 {
@@ -135,36 +129,12 @@ fn vpm_install(module_names []string) {
 		exit(2)
 	}
 	mut errors := 0
-	url := get_working_server_url()
 	for n in module_names {
 		name := n.trim_space()
-		modurl := url + '/jsmod/$name'
-		r := http.get(modurl) or {
-			println('Http server did not respond to our request for ${modurl}.')
-			println('Error details: $err')
+		mod := get_module_meta_info(name) or {
 			errors++
-			continue
-		}
-		if r.status_code == 404 {
-			println('Skipping module "$name", since $url reported that "$name" does not exist.')
-			errors++
-			continue
-		}
-		if r.status_code != 200 {
-			println('Skipping module "$name", since $url responded with $r.status_code http status code. Please try again later.')
-			errors++
-			continue
-		}
-		s := r.text
-		mod := json.decode(Mod,s) or {
-			errors++
-			println('Skipping module "$name", since its information is not in json format.')
-			continue
-		}
-		if ('' == mod.url || '' == mod.name) {
-			errors++
-			// a possible 404 error, which means a missing module?
-			println('Skipping module "$name", since it is missing name or url information.')
+			println('Errors while retrieving meta data for module ${name}:')
+			println(err)
 			continue
 		}
 		mut vcs := mod.vcs
@@ -209,12 +179,7 @@ fn vpm_install(module_names []string) {
 fn vpm_update(m []string) {
 	mut module_names := m
 	if settings.is_help {
-		println('Usage: ')
-		println(' a) v update module [module] [module] [...]')
-		println('    ^^^^^^^^^^^^ will update the listed modules to their latest versions')
-		println(' b) v update')
-		println('    ^^^^^^^^^^^^ will update ALL installed modules to their latest versions')
-		show_vpm_options()
+		vhelp.show_topic('update')
 		exit(0)
 	}
 	if module_names.len == 0 {
@@ -256,12 +221,7 @@ fn vpm_update(m []string) {
 
 fn vpm_remove(module_names []string) {
 	if settings.is_help {
-		println('Usage: ')
-		println(' a) v remove module [module] [module] [...]')
-		println('    ^^^^^^^^^^^^ will remove the listed modules')
-		println(' b) v remove')
-		println('    ^^^^^^^^^^^^ will remove ALL installed modules')
-		show_vpm_options()
+		vhelp.show_topic('remove')
 		exit(0)
 	}
 	if module_names.len == 0 {
@@ -312,14 +272,8 @@ fn ensure_vmodules_dir_exist() {
 	}
 }
 
-fn vpm_help(module_names []string) {
-	println('Usage:')
-	println('  a) v install module [module] [module] [...]')
-	println('  b) v update [module] [...]')
-	println('  c) v remove [module] [...]')
-	println('  d) v search keyword1 [keyword2] [...]')
-	println('')
-	println('  You can also pass -h or --help after each vpm command from the above, to see more details about it.')
+fn vpm_help() {
+	vhelp.show_topic('vpm')
 }
 
 fn vcs_used_in_dir(dir string) ?[]string {
@@ -342,7 +296,7 @@ fn get_installed_modules() []string {
 	}
 	mut modules := []string
 	for dir in dirs {
-		adir := os.join_path(settings.vmodules_path, dir)
+		adir := os.join_path(settings.vmodules_path,dir)
 		if dir in excluded_dirs || !os.is_dir(adir) {
 			continue
 		}
@@ -351,7 +305,7 @@ fn get_installed_modules() []string {
 			continue
 		}
 		for m in mods {
-			vcs_used_in_dir(os.join_path(adir, m)) or {
+			vcs_used_in_dir(os.join_path(adir,m)) or {
 				continue
 			}
 			modules << '${author}.$m'
@@ -366,7 +320,7 @@ fn get_all_modules() []string {
 		panic(err)
 	}
 	if r.status_code != 200 {
-		println('Failed to search vpm.best. Status code: $r.status_code')
+		println('Failed to search vpm.vlang.io. Status code: $r.status_code')
 		exit(1)
 	}
 	s := r.text
@@ -399,7 +353,7 @@ fn get_all_modules() []string {
 }
 
 fn resolve_dependencies(name, module_path string, module_names []string) {
-	vmod_path := os.join_path(module_path, 'v.mod')
+	vmod_path := os.join_path(module_path,'v.mod')
 	if !os.exists(vmod_path) {
 		return
 	}
@@ -481,15 +435,45 @@ fn init_settings() {
 	s.vmodules_path = os.home_dir() + '.vmodules'
 }
 
-fn show_vpm_options() {
-	println('Options:')
-	println('  -help        - Show usage info')
-	println('  -verbose     - Print more details about the performed operation')
-	println('  -server-url  - When doing network operations, use this vpm server. Can be given multiple times.')
-}
-
 fn verbose_println(s string) {
 	if settings.is_verbose {
 		println(s)
 	}
+}
+
+fn get_module_meta_info(name string) ?Mod {
+	mut errors := []string
+	for server_url in default_vpm_server_urls {
+		modurl := server_url + '/jsmod/$name'
+		verbose_println('Retrieving module metadata from: $modurl ...')
+		r := http.get(modurl) or {
+			errors << 'Http server did not respond to our request for ${modurl}.'
+			errors << 'Error details: $err'
+			continue
+		}
+		if r.status_code == 404 {
+			errors << 'Skipping module "$name", since $server_url reported that "$name" does not exist.'
+			continue
+		}
+		if r.status_code != 200 {
+			errors << 'Skipping module "$name", since $server_url responded with $r.status_code http status code. Please try again later.'
+			continue
+		}
+		s := r.text
+		if s.len > 0 && s[0] != `{` {
+			errors << 'Invalid json data'
+			errors << s.trim_space().limit(100) + '...'
+			continue
+		}
+		mod := json.decode(Mod,s) or {
+			errors << 'Skipping module "$name", since its information is not in json format.'
+			continue
+		}
+		if ('' == mod.url || '' == mod.name) {
+			errors << 'Skipping module "$name", since it is missing name or url information.'
+			continue
+		}
+		return mod
+	}
+	return error(errors.join_lines())
 }

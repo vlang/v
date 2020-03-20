@@ -54,7 +54,7 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 	// We are in live code reload mode, so start the .so loader in the background
 	mut cgen := v.cgen
 	cgen.genln('')
-	file_base := os.filename(v.pref.path).replace('.v', '')
+	file_base := os.file_name(v.pref.path).replace('.v', '')
 	if v.pref.os != .windows {
 		// unix:
 		so_name := file_base + '.so'
@@ -79,7 +79,7 @@ fn (v &V) generate_hot_reload_code() {
 	// Hot code reloading
 	if v.pref.is_live {
 		mut file := os.realpath(v.pref.path)
-		file_base := os.filename(file).replace('.v', '')
+		file_base := os.file_name(file).replace('.v', '')
 		so_name := file_base + '.so'
 		// Need to build .so file before building the live application
 		// The live app needs to load this .so file on initialization.
@@ -98,11 +98,14 @@ fn (v &V) generate_hot_reload_code() {
 			println(cmd_compile_shared_library)
 		}
 		ticks := time.ticks()
-		os.system(cmd_compile_shared_library)
+		so_compilation_result := os.system(cmd_compile_shared_library)
 		if v.pref.verbosity.is_higher_or_equal(.level_two) {
 			diff := time.ticks() - ticks
 			println('compiling shared library took $diff ms')
 			println('=========\n')
+		}
+		if so_compilation_result != 0 {
+			exit(1)
 		}
 		cgen.genln('
 
@@ -199,7 +202,6 @@ void reload_so() {
 			pthread_mutex_lock(&live_fn_mutex);
 			lfnmutex_print("reload_so locked");
 
-			live_lib = 0; // hack: force skipping dlclose/1, the code may be still used...
 			load_so(new_so_name);
 			#ifndef _WIN32
 			unlink(new_so_name); // removing the .so file from the filesystem after dlopen-ing it is safe, since it will still be mapped in memory.

@@ -178,7 +178,7 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 	}
 	// single file copy
 	if !os.is_dir(source_path) {
-		adjasted_path := if os.is_dir(dest_path) { os.join_path(dest_path,os.filename(source_path)) } else { dest_path }
+		adjasted_path := if os.is_dir(dest_path) { os.join_path(dest_path,os.file_name(source_path)) } else { dest_path }
 		if os.exists(adjasted_path) {
 			if overwrite {
 				os.rm(adjasted_path)
@@ -235,14 +235,14 @@ fn vfopen(path, mode string) &C.FILE {
 // read_lines reads the file in `path` into an array of lines.
 pub fn read_lines(path string) ?[]string {
 	buf := read_file(path) or {
-		return err
+		return error(err)
 	}
 	return buf.split_into_lines()
 }
 
 fn read_ulines(path string) ?[]ustring {
 	lines := read_lines(path) or {
-		return err
+		return error(err)
 	}
 	// mut ulines := new_array(0, lines.len, sizeof(ustring))
 	mut ulines := []ustring
@@ -626,14 +626,14 @@ pub fn dir(path string) string {
 }
 
 pub fn base_dir(path string) string {
-	pos := path.last_index(path_separator) or {
+	posx := path.last_index(path_separator) or {
 		return path
 	}
 	// NB: *without* terminating /
-	return path[..pos]
+	return path[..posx]
 }
 
-pub fn filename(path string) string {
+pub fn file_name(path string) string {
 	return path.all_after(path_separator)
 }
 
@@ -806,7 +806,7 @@ pub fn executable() string {
 		count := C.readlink('/proc/self/exe', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
-			return os.args[0]
+			return executable_fallback()
 		}
 		return string(result)
 	}
@@ -822,7 +822,7 @@ pub fn executable() string {
 		ret := proc_pidpath(pid, result, MAX_PATH)
 		if ret <= 0 {
 			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
-			return os.args[0]
+			return executable_fallback()
 		}
 		return string(result)
 	}
@@ -833,11 +833,8 @@ pub fn executable() string {
 		C.sysctl(mib.data, 4, result, &size, 0, 0)
 		return string(result)
 	}
-	$if openbsd {
-		// "Sadly there is no way to get the full path of the executed file in OpenBSD."
-		// lol
-		return os.args[0]
-	}
+	// "Sadly there is no way to get the full path of the executed file in OpenBSD."
+	$if openbsd {}
 	$if solaris {}
 	$if haiku {}
 	$if netbsd {
@@ -845,7 +842,7 @@ pub fn executable() string {
 		count := C.readlink('/proc/curproc/exe', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
-			return os.args[0]
+			return executable_fallback()
 		}
 		return string(result,count)
 	}
@@ -854,11 +851,53 @@ pub fn executable() string {
 		count := C.readlink('/proc/curproc/file', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
-			return os.args[0]
+			return executable_fallback()
 		}
 		return string(result,count)
 	}
-	return os.args[0]
+	return executable_fallback()
+}
+
+// executable_fallback is used when there is not a more platform specific and accurate implementation
+// it relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
+// all cases, but it should be better, than just using os.args[0] directly.
+fn executable_fallback() string {
+	mut exepath := os.args[0]
+	if !os.is_abs_path(exepath) {
+		if exepath.contains( os.path_separator ) {
+			exepath = os.join_path(os.wd_at_startup, exepath)
+		}else{
+			// no choice but to try to walk the PATH folders :-| ...
+			foundpath := os.find_abs_path_of_executable(exepath) or { '' }
+			if foundpath.len > 0 {
+				exepath = foundpath
+			}
+		}
+	}
+	exepath = os.realpath(exepath)
+	return exepath
+}
+
+// find_exe_path walks the environment PATH, just like most shell do, it returns
+// the absolute path of the executable if found
+pub fn find_abs_path_of_executable(exepath string) ?string {
+	if os.is_abs_path(exepath) {
+		return exepath
+	}
+	mut res := ''
+	env_path_delimiter := if os.user_os() == 'windows' { ';' } else { ':' }
+	paths := os.getenv('PATH').split(env_path_delimiter)
+	for p in paths {
+		found_abs_path := os.join_path( p, exepath )
+		if os.exists( found_abs_path ) && os.is_executable( found_abs_path ) {
+			res = found_abs_path
+			break
+		}
+	}
+	if res.len>0 {
+		return res
+	}
+	return error('failed to find executable')
 }
 
 [deprecated]

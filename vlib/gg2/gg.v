@@ -107,9 +107,9 @@ pub fn new_context(cfg Config) &GG {
 pub fn (gg &GG) draw_text(x, y int, text string, cfg gx.TextCfg) {
 	gg.fons.set_font(gg.font_normal)
 	gg.fons.set_size(cfg.size)
-	ascender := 0.0
-	descender := 0.0
-	lh := 0.0
+	ascender := f32(0.0)
+	descender := f32(0.0)
+	lh := f32(0.0)
 	gg.fons.vert_metrics(&ascender, &descender, &lh)
 	color:= C.sfons_rgba(cfg.color.r, cfg.color.g, cfg.color.b, 255)
 	C.fonsSetColor(gg.fons, color)

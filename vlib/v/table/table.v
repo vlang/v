@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module table
 
+import os
+
 pub struct Table {
 	// struct_fields map[string][]string
 pub mut:
@@ -19,22 +21,27 @@ pub mut:
 pub struct Fn {
 pub:
 	name        string
-	args        []Var
+	args        []Arg
 	return_type Type
 	is_variadic bool
 	is_c        bool
 }
 
+pub struct Arg {
+pub:
+	name   string
+	is_mut bool
+	typ    Type
+}
+
 pub struct Var {
 pub:
-	name        string
-	idx         int
-	is_mut      bool
-	is_const    bool
-	is_global   bool
-	scope_level int
+	name      string
+	is_mut    bool
+	is_const  bool
+	is_global bool
 mut:
-	typ         Type
+	typ       Type
 }
 
 pub fn new_table() &Table {
@@ -381,12 +388,17 @@ pub fn (t mut Table) find_or_register_multi_return(mr_typs []Type) int {
 	return t.register_type_symbol(mr_type)
 }
 
-pub fn (t mut Table) find_or_register_fn_type(f Fn) int {
-	name := if f.name.len > 0 { f.name } else { 'anon_$f.signature()' }
+pub fn (t mut Table) find_or_register_fn_type(f Fn, has_decl bool) int {
+	is_anon := f.name.len == 0
+	name := if is_anon { 'anon_fn_$f.signature()' } else { f.name }
 	return t.register_type_symbol(TypeSymbol{
 		kind: .function
 		name: name
-		info: f
+		info: FnType{
+			is_anon: is_anon
+			has_decl: has_decl
+			func: f
+		}
 	})
 }
 
@@ -397,6 +409,43 @@ pub fn (t mut Table) add_placeholder_type(name string) int {
 	}
 	// println('added placeholder: $name - $ph_type.idx')
 	return t.register_type_symbol(ph_type)
+}
+
+[inline]
+pub fn (t &Table) value_type(typ Type) Type {
+	typ_sym := t.get_type_symbol(typ)
+	if typ_sym.kind == .array {
+		// Check index type
+		info := typ_sym.info as Array
+		return info.elem_type
+	}
+	else if typ_sym.kind == .array_fixed {
+		info := typ_sym.info as ArrayFixed
+		return info.elem_type
+	}
+	else if typ_sym.kind == .map {
+		info := typ_sym.info as Map
+		return info.value_type
+	}
+	else if typ_sym.kind in [.byteptr, .string] {
+		return byte_type
+	}
+	else if type_is_ptr(typ) {
+		// byte* => byte
+		// bytes[0] is a byte, not byte*
+		return type_deref(typ)
+	}
+	else if type_is_variadic(typ) {
+		// ...string => string
+		return type_clear_extra(typ)
+	}
+	else {
+		// TODO: remove when map_string is removed
+		if typ_sym.name == 'map_string' {
+			return string_type
+		}
+		return void_type
+	}
 }
 
 pub fn (t &Table) check(got, expected Type) bool {
@@ -478,9 +527,9 @@ pub fn (t &Table) check(got, expected Type) bool {
 	}
 	// fn type
 	if got_type_sym.kind == .function && exp_type_sym.kind == .function {
-		got_fn := got_type_sym.info as Fn
-		exp_fn := exp_type_sym.info as Fn
-		if got_fn.signature() == exp_fn.signature() {
+		got_info := got_type_sym.info as FnType
+		exp_info := exp_type_sym.info as FnType
+		if got_info.func.signature() == exp_info.func.signature() {
 			return true
 		}
 	}
@@ -489,4 +538,19 @@ pub fn (t &Table) check(got, expected Type) bool {
 		return false
 	}
 	return true
+}
+
+// Once we have a module format we can read from module file instead
+// this is not optimal
+pub fn (table &Table) qualify_module(mod string, file_path string) string {
+	for m in table.imports {
+		if m.contains('.') && m.contains(mod) {
+			m_parts := m.split('.')
+			m_path := m_parts.join(os.path_separator)
+			if mod == m_parts[m_parts.len - 1] && file_path.contains(m_path) {
+				return m
+			}
+		}
+	}
+	return mod
 }

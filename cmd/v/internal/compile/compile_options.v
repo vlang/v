@@ -32,6 +32,8 @@ fn parse_arguments(args []string) (pref.Preferences, []string) {
 	mut remaining := flag.parse_pref(args, parse_options, &p) or {
 		println('V error: Error while parsing flags.')
 		println(err)
+		println('Args:')
+		println(args)
 		exit(1)
 	}
 	match remaining[0] {
@@ -41,7 +43,7 @@ fn parse_arguments(args []string) (pref.Preferences, []string) {
 		}
 		'build' {
 			remaining = remaining[1..]
-			if remaining[0] == 'module' {
+			if remaining.len > 0 && remaining[0] == 'module' {
 				remaining = remaining[1..]
 				//TODO Figure out module
 				println('V error: Module compilation is not ready yet.')
@@ -169,7 +171,7 @@ fn parse_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 		'translated' {
 			prefs.translated = f.bool()
 		}
-		'backend' {
+		'b', 'backend' {
 			// Just consume it. The option is handled outside of this function
 			f.string() or { return }
 		}

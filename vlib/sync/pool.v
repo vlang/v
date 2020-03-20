@@ -49,8 +49,8 @@ mut:
 	items           []voidptr
 	results         []voidptr
 	ntask           int // writing to this should be locked by ntask_mtx.
-	ntask_mtx       &sync.Mutex
-	waitgroup       &sync.WaitGroup
+	ntask_mtx       &Mutex
+	waitgroup       &WaitGroup
 	shared_context  voidptr
 	thread_contexts []voidptr
 }
@@ -77,8 +77,8 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 		thread_contexts: []
 		njobs: context.maxjobs
 		ntask: 0
-		ntask_mtx: sync.new_mutex()
-		waitgroup: sync.new_waitgroup()
+		ntask_mtx: new_mutex()
+		waitgroup: new_waitgroup()
 		thread_cb: context.callback
 	}
 	return pool
@@ -149,15 +149,15 @@ pub fn (pool &PoolProcessor) get_item<T>(idx int) T {
 	return *(&T(pool.items[idx]))
 }
 
-// get_string_item - called by the worker callback. 
+// get_string_item - called by the worker callback.
 // It does not use generics so it does not mess up vfmt.
 // TODO: remove the need for this when vfmt becomes smarter.
 pub fn (pool &PoolProcessor) get_string_item(idx int) string {
 	return *(&string(pool.items[idx]))
 }
 
-// get_int_item - called by the worker callback. 
-// It does not use generics so it does not mess up vfmt. 
+// get_int_item - called by the worker callback.
+// It does not use generics so it does not mess up vfmt.
 // TODO: remove the need for this when vfmt becomes smarter.
 pub fn (pool &PoolProcessor) get_int_item(idx int) int {
 	return *(&int(pool.items[idx]))

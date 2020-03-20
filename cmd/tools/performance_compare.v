@@ -16,8 +16,8 @@ const (
 struct Context {
 	cwd           string // current working folder
 mut:
-	v_repo_url   string // the url of the vc repository. It can be a local folder path, which is usefull to eliminate network operations...
-	vc_repo_url   string // the url of the vc repository. It can be a local folder path, which is usefull to eliminate network operations...
+	v_repo_url   string // the url of the vc repository. It can be a local folder path, which is useful to eliminate network operations...
+	vc_repo_url   string // the url of the vc repository. It can be a local folder path, which is useful to eliminate network operations...
 	workdir       string // the working folder (typically /tmp), where the tool will write
 	a             string // the full path to the 'after' folder inside workdir
 	b             string // the full path to the 'before' folder inside workdir
@@ -180,15 +180,15 @@ fn main() {
 	scripting.used_tools_must_exist(['cp', 'rm', 'strip', 'make', 'git', 'upx', 'cc', 'wc', 'tail', 'hyperfine'])
 	mut context := new_context()
 	mut fp := flag.new_flag_parser(os.args)
-	fp.application(os.filename(os.executable()))
+	fp.application(os.file_name(os.executable()))
 	fp.version(tool_version)
 	fp.description(tool_description)
 	fp.arguments_description('COMMIT_BEFORE [COMMIT_AFTER]')
 	fp.skip_executable()
 	fp.limit_free_args(1, 2)
 
-	context.vflags = fp.string('vflags', '', 'Additional options to pass to the v commands, for example "-cc tcc"')
-	context.hyperfineopts = fp.string('hyperfine_options', '',
+	context.vflags = fp.string('vflags', 0, '', 'Additional options to pass to the v commands, for example "-cc tcc"')
+	context.hyperfineopts = fp.string('hyperfine_options', 0, '',
 		'Additional options passed to hyperfine.
 ${flag.SPACE}For example on linux, you may want to pass:
 ${flag.SPACE}--hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches\'"

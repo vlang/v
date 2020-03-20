@@ -55,6 +55,12 @@ fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 	$if freebsd {
 		return print_backtrace_skipping_top_frames_freebsd(skipframes)
 	}
+	$if netbsd {
+		return print_backtrace_skipping_top_frames_freebsd(skipframes)
+	}
+	$if openbsd {
+		return print_backtrace_skipping_top_frames_freebsd(skipframes)
+	}
 	return false
 }
 
@@ -119,7 +125,11 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				if output in ['??:0:', '??:?:'] {
 					output = ''
 				}
-				//println('${output:-46s} | ${addr:14s} | $beforeaddr') // QTODO
+				// See http://wiki.dwarfstd.org/index.php?title=Path_Discriminators
+				// NB: it is shortened here to just d. , just so that it fits, and so
+				// that the common error file:lineno: line format is enforced.
+				output = output.replace(' (discriminator', ': (d.')
+				println('${output:-46s} | ${addr:14s} | $beforeaddr')
 			}
 			// C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 			return true
@@ -130,4 +140,3 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	}
 	return false
 }
-

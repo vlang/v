@@ -15,7 +15,7 @@ enum TokenKind {
 	eof
 	name // user
 	number // 123
-	str // 'foo'
+	string // 'foo'
 	str_inter // 'name=$user.name'
 	chartoken // `A`
 	plus
@@ -143,7 +143,7 @@ fn build_token_str() []string {
 	s[TokenKind.eof] = 'eof'
 	s[TokenKind.name] = 'name'
 	s[TokenKind.number] = 'number'
-	s[TokenKind.str] = 'STR'
+	s[TokenKind.string] = 'STR'
 	s[TokenKind.chartoken] = 'char'
 	s[TokenKind.plus] = '+'
 	s[TokenKind.minus] = '-'
@@ -292,7 +292,7 @@ pub fn (t Token) str() string {
 	if t.tok == .chartoken {
 		return '`$t.lit`'
 	}
-	if t.tok == .str {
+	if t.tok == .string {
 		return "'$t.lit'"
 	}
 	if t.tok == .eof {

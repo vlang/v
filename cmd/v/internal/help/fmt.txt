@@ -1,0 +1,15 @@
+Usage:
+  v [flags] fmt path_to_source.v [path_to_other_source.v]
+
+Formats the given V source files, then prints their formatted source to stdout.
+
+Options:
+  -c    Check if file is already formatted.
+        If it is not, print filepath, and exit with code 2.
+  -diff Display only diffs between the formatted source and the original source.
+  -l    List files whose formatting differs from vfmt.
+  -w    Write result to (source) file(s) instead of to stdout.
+  -2    Use the new V parser/vfmt. NB: this is EXPERIMENTAL for now.
+          The new vfmt is much faster and more forgiving.
+          It also may EAT some of your code for now.
+          Please be careful, and make frequent BACKUPS, when running with -vfmt2 .
