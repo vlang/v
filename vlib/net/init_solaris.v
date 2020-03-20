@@ -1,0 +1,4 @@
+module net
+
+#flag -lsocket
+
