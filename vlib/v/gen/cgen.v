@@ -1445,6 +1445,9 @@ fn (g mut Gen) assoc(node ast.Assoc) {
 	sym := g.table.get_type_symbol(node.typ)
 	info := sym.info as table.Struct
 	for field in info.fields {
+		if field.name in node.fields {
+			continue
+		}
 		g.writeln('\t.$field.name = ${node.var_name}.$field.name,')
 	}
 	g.write('}')
