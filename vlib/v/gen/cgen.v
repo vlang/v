@@ -1141,6 +1141,9 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 
 fn (g mut Gen) ident(node ast.Ident) {
 	name := node.name.replace('.', '__')
+	if name == 'lld' {
+		return
+	}
 	if name.starts_with('C__') {
 		g.write(name[3..])
 	}
