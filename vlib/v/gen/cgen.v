@@ -1176,64 +1176,68 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 	}
 	// one line ?:
 	// TODO clean this up once `is` is supported
-	if node.is_expr && node.stmts.len == 1 && node.else_stmts.len == 1 && type_sym.kind != .void {
-		cond := node.cond
-		stmt1 := node.stmts[0]
-		else_stmt1 := node.else_stmts[0]
-		match stmt1 {
-			ast.ExprStmt {
-				g.inside_ternary = true
-				g.expr(cond)
-				g.write(' ? ')
-				expr_stmt := stmt1 as ast.ExprStmt
-				g.expr(expr_stmt.expr)
+	// TODO: make sure only one stmt in eac branch
+	if node.is_expr && node.branches.len >= 2 && node.has_else && type_sym.kind != .void {
+		g.inside_ternary = true
+		for i, branch in node.branches {
+			if i > 0 {
 				g.write(' : ')
-				g.stmt(else_stmt1)
 			}
-			else {}
-	}
+			if i < node.branches.len-1 || !node.has_else {
+				g.expr(branch.cond)
+				g.write(' ? ')
+			}
+			g.stmts(branch.stmts)
+		}
+		g.inside_ternary = false
 	}
 	else {
-		mut is_guard := false
 		guard_ok := g.new_tmp_var()
-		match node.cond {
-			ast.IfGuardExpr {
-				is_guard = true
-				g.writeln('bool $guard_ok;')
-				g.write('{ /* if guard */ ${g.typ(it.expr_type)} $it.var_name = ')
-				g.expr(it.expr)
-				g.writeln(';')
-				g.writeln('if (($guard_ok = ${it.var_name}.ok)) {')
+		mut is_guard := false
+		for i, branch in node.branches {
+			if i == 0 {
+				match branch.cond {
+					ast.IfGuardExpr {
+						is_guard = true
+						g.writeln('bool $guard_ok;')
+						g.write('{ /* if guard */ ${g.typ(it.expr_type)} $it.var_name = ')
+						g.expr(it.expr)
+						g.writeln(';')
+						g.writeln('if (($guard_ok = ${it.var_name}.ok)) {')
+					}
+					else {
+						g.write('if (')
+						g.expr(branch.cond)
+						g.writeln(') {')
+					}
+				}
+	
 			}
-			else {
-				g.inside_ternary = false
-				g.write('if (')
-				g.expr(node.cond)
-				g.writeln(') {')
+			else if i < node.branches.len-1 || !node.has_else {
+				g.writeln('} else if (')
+				g.expr(branch.cond)
+				g.write(') {')
 			}
-	}
-		for i, stmt in node.stmts {
+			else if i == node.branches.len-1 && node.has_else {
+				if is_guard {
+					g.writeln('} if (!$guard_ok) { /* else */')
+				}
+				else {
+					g.writeln('} else {')
+				}
+			}
 			// Assign ret value
-			if i == node.stmts.len - 1 && type_sym.kind != .void {}
+			// if i == node.stmts.len - 1 && type_sym.kind != .void {}
 			// g.writeln('$tmp =')
-			g.stmt(stmt)
+			// 
+			g.stmts(branch.stmts)
+			// g.writeln('')
 		}
 		if is_guard {
 			g.write('}')
 		}
 		g.writeln('}')
-		if node.else_stmts.len > 0 {
-			if is_guard {
-				g.writeln('if (!$guard_ok) { /* else */')
-			}
-			else {
-				g.writeln('else { ')
-			}
-			g.stmts(node.else_stmts)
-			g.writeln('}')
-		}
 	}
-	g.inside_ternary = false
 }
 
 fn (g mut Gen) index_expr(node ast.IndexExpr) {

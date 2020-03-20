@@ -34,6 +34,12 @@ pub fn (g mut JsGen) writeln(s string) {
 	g.out.writeln(s)
 }
 
+fn (g mut JsGen) stmts(stmts []ast.Stmt) {
+	for stmt in stmts {
+		g.stmt(stmt)
+	}
+}
+
 fn (g mut JsGen) stmt(node ast.Stmt) {
 	match node {
 		ast.FnDecl {
@@ -163,13 +169,23 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			}
 		}
 		ast.IfExpr {
-			g.write('if (')
-			g.expr(it.cond)
-			g.writeln(') {')
-			for stmt in it.stmts {
-				g.stmt(stmt)
+			for i, branch in it.branches {
+				if i == 0 {
+					g.write('if (')
+					g.expr(branch.cond)
+					g.writeln(') {')
+				}
+				else if i < it.branches.len-1 || !it.has_else {
+					g.write('else if (')
+					g.expr(branch.cond)
+					g.writeln(') {')
+				}
+				else {
+					g.write('else {')
+				}
+				g.stmts(branch.stmts)
+				g.writeln('}')
 			}
-			g.writeln('}')
 		}
 		else {
 			println(term.red('jsgen.expr(): bad node'))

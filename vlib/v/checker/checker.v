@@ -909,32 +909,34 @@ pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
 		// println('$c.file.path  $node.pos.line_nr IF: checker exp type = ' + sym.name)
 		node.is_expr = true
 	}
-	typ := c.expr(node.cond)
 	node.typ = table.void_type
-	// node.typ = typ
-	typ_sym := c.table.get_type_symbol(typ)
-	// if typ_sym.kind != .bool {
-	if table.type_idx(typ) != table.bool_type_idx {
-		c.error('non-bool (`$typ_sym.name`) used as if condition', node.pos)
-	}
-	c.stmts(node.stmts)
-	if node.else_stmts.len > 0 {
-		c.stmts(node.else_stmts)
-	}
-	if node.stmts.len > 0 {
-		match node.stmts[node.stmts.len - 1] {
-			ast.ExprStmt {
-				// type_sym := p.table.get_type_symbol(it.typ)
-				// p.warn('if expr ret $type_sym.name')
-				t := c.expr(it.expr)
-				node.typ = t
-				return t
+	for i, branch in node.branches {
+		typ := c.expr(branch.cond)
+		if i < node.branches.len-1 || !node.has_else {
+			typ_sym := c.table.get_type_symbol(typ)
+			// if typ_sym.kind != .bool {
+			if table.type_idx(typ) != table.bool_type_idx {
+				c.error('non-bool (`$typ_sym.name`) used as if condition', node.pos)
 			}
-			else {}
+		}
+		c.stmts(branch.stmts)
 	}
+	if node.has_else && node.is_expr {
+		last_branch := node.branches[node.branches.len-1]
+		if last_branch.stmts.len > 0 {
+			match last_branch.stmts[last_branch.stmts.len - 1] {
+				ast.ExprStmt {
+					// type_sym := p.table.get_type_symbol(it.typ)
+					// p.warn('if expr ret $type_sym.name')
+					t := c.expr(it.expr)
+					node.typ = t
+					return t
+				}
+				else {}
+			}
+		}
 	}
-	return typ
-	// return table.void_type
+	return table.bool_type
 }
 
 pub fn (c mut Checker) postfix_expr(node ast.PostfixExpr) table.Type {

@@ -1175,82 +1175,70 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	}
 }
 
-fn (p mut Parser) if_expr() ast.Expr {
+fn (p mut Parser) if_expr() ast.IfExpr {
 	p.inside_if = true
-	// defer {
-	// }
-	mut node := ast.Expr{}
-	p.check(.key_if)
 	pos := p.tok.position()
-	// `if x := opt() {`
-	mut cond := ast.Expr{}
-	mut is_or := false
-	if p.peek_tok.kind == .decl_assign {
-		is_or = true
-		p.open_scope()
-		var_name := p.check_name()
-		p.check(.decl_assign)
-		expr := p.expr(0)
-		p.scope.register_var(ast.Var{
-			name: var_name
-			expr: expr
-		})
-		cond = ast.IfGuardExpr{
-			var_name: var_name
-			expr: expr
-		}
-	}
-	else {
-		cond = p.expr(0)
-	}
-	p.inside_if = false
+	mut branches := []ast.IfBranch
 	mut has_else := false
-	stmts := p.parse_block()
-	mut else_stmts := []ast.Stmt
-	if p.tok.kind == .key_else {
-		p.check(.key_else)
+	for p.tok.kind in [.key_if, .key_else] {
+		branch_pos := p.tok.position()
 		if p.tok.kind == .key_if {
-			// The next if block is handled by next if_expr()
-			has_else = true
+			p.check(.key_if)
 		}
-		// p.if_expr()
 		else {
-			else_stmts = p.parse_block()
+			p.check(.key_else)
+			if p.tok.kind == .key_if {
+				p.check(.key_if)
+			}
+			else {
+				has_else = true
+				branches << ast.IfBranch{
+					stmts: p.parse_block()
+					pos: branch_pos
+				}
+				break
+			}
+		}
+		mut cond := ast.Expr{}
+		mut is_or := false
+		// `if x := opt() {`
+		if p.peek_tok.kind == .decl_assign {
+			is_or = true
+			p.open_scope()
+			var_name := p.check_name()
+			p.check(.decl_assign)
+			expr := p.expr(0)
+			p.scope.register_var(ast.Var{
+				name: var_name
+				expr: expr
+			})
+			cond = ast.IfGuardExpr{
+				var_name: var_name
+				expr: expr
+			}
+		}
+		else {
+			cond = p.expr(0)
+		}
+		p.inside_if = false
+		stmts := p.parse_block()
+		if is_or {
+			p.close_scope()
+		}
+		branches << ast.IfBranch{
+			cond: cond
+			stmts: stmts
+			pos: branch_pos
+		}
+		if p.tok.kind != .key_else {
+			break
 		}
 	}
-	if is_or {
-		p.close_scope()
-	}
-	// mut typ := table.void_type
-	// mut left := ast.Expr{}
-	// If the last statement is an expression, return its type
-	/*
-	if stmts.len > 0 {
-		match stmts[stmts.len - 1] {
-			ast.ExprStmt {
-				type_sym := p.table.get_type_symbol(it.typ)
-				p.warn('if expr ret $type_sym.name')
-				typ = it.typ
-				// return node,it.ti
-				// left =
-			}
-			else {}
-	}
-	}
-	*/
-
-	node = ast.IfExpr{
-		cond: cond
-		stmts: stmts
-		else_stmts: else_stmts
-		// typ: typ
-		
+	return ast.IfExpr{
+		branches: branches
 		pos: pos
 		has_else: has_else
-		// left: left
-		
 	}
-	return node
 }
 
 fn (p mut Parser) string_expr() ast.Expr {

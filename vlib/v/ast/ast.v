@@ -336,16 +336,21 @@ mut:
 
 pub struct IfExpr {
 pub:
-	tok_kind   token.Kind
-	cond       Expr
-	stmts      []Stmt
-	else_stmts []Stmt
-	left       Expr // `a` in `a := if ...`
-	pos        token.Position
+	tok_kind token.Kind
+	branches []IfBranch
+	left     Expr // `a` in `a := if ...`
+	pos      token.Position
 mut:
-	is_expr    bool
-	typ        table.Type
-	has_else   bool
+	is_expr  bool
+	typ      table.Type
+	has_else bool
+}
+
+pub struct IfBranch {
+pub:
+	cond  Expr
+	stmts []Stmt
+	pos   token.Position
 }
 
 pub struct MatchExpr {

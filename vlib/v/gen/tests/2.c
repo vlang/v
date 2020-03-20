@@ -52,7 +52,7 @@ void function2() {
 	}
 	if (false) {
 		foo(1);
-	}	else {
+	} else {
 		puts(tos3("else"));
 		foo(100);
 	}
