@@ -6,6 +6,9 @@ const (
 	S_IFMT = 0xF000 // type of file
 	S_IFDIR = 0x4000 // directory
 	S_IFLNK = 0xa000 // link
+	S_IXUSR = 0o100  // is executable by the owner
+	S_IXGRP = 0o010  // is executable by group
+	S_IXOTH = 0o001  // is executable by others
 )
 
 const (
