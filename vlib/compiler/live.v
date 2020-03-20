@@ -149,6 +149,11 @@ int load_so(byteptr path) {
 		}
 		else {
 			cgen.genln('
+
+#ifndef PATH_MAX
+#define PATH_MAX 1024
+#endif
+
 void pthread_mutex_lock(HANDLE *m) {
 	WaitForSingleObject(*m, INFINITE);
 }
