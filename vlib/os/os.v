@@ -171,8 +171,8 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 }
 
 pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
-	source_path := os.realpath(osource_path)
-	dest_path := os.realpath(odest_path)
+	source_path := os.real_path(osource_path)
+	dest_path := os.real_path(odest_path)
 	if !os.exists(source_path) {
 		return error("Source path doesn\'t exist")
 	}
@@ -530,7 +530,7 @@ pub fn is_executable(path string) bool {
     // 02 Write-only
     // 04 Read-only
     // 06 Read and write
-    p := os.realpath( path )
+    p := os.real_path( path )
     return ( os.exists( p ) && p.ends_with('.exe') )
   } $else {
     return C.access(path.str, X_OK) != -1
@@ -874,7 +874,7 @@ fn executable_fallback() string {
 			}
 		}
 	}
-	exepath = os.realpath(exepath)
+	exepath = os.real_path(exepath)
 	return exepath
 }
 
@@ -972,7 +972,7 @@ pub fn getwd() string {
 // Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
 // and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
-pub fn realpath(fpath string) string {
+pub fn real_path(fpath string) string {
 	mut fullpath := vcalloc(MAX_PATH)
 	mut ret := charptr(0)
 	$if windows {
@@ -1184,10 +1184,10 @@ pub const (
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
 pub fn resource_abs_path(path string) string {
-	mut base_path := os.realpath(os.dir(os.executable()))
+	mut base_path := os.real_path(os.dir(os.executable()))
 	vresource := os.getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
 		base_path = vresource
 	}
-	return os.realpath(os.join_path(base_path, path))
+	return os.real_path(os.join_path(base_path, path))
 }

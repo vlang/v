@@ -571,7 +571,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				return s.scan_res(.string, s.fn_name)
 			}
 			if name == 'FILE' {
-				return s.scan_res(.string, cescaped_path(os.realpath(s.file_path)))
+				return s.scan_res(.string, cescaped_path(os.real_path(s.file_path)))
 			}
 			if name == 'LINE' {
 				return s.scan_res(.string, (s.line_nr + 1).str())

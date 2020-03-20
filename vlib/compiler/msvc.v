@@ -162,7 +162,7 @@ fn find_msvc() ?MsvcResult {
 			return error('Unable to find visual studio')
 		}
 		return MsvcResult{
-			full_cl_exe_path: os.realpath(vs.exe_path + os.path_separator + 'cl.exe')
+			full_cl_exe_path: os.real_path(vs.exe_path + os.path_separator + 'cl.exe')
 			exe_path: vs.exe_path
 			um_lib_path: wk.um_lib_path
 			ucrt_lib_path: wk.ucrt_lib_path
@@ -187,7 +187,7 @@ pub fn (v mut V) cc_msvc() {
 		verror('Cannot find MSVC on this OS')
 		return
 	}
-	out_name_obj := os.realpath(v.out_name_c + '.obj')
+	out_name_obj := os.real_path(v.out_name_c + '.obj')
 	// Default arguments
 	// volatile:ms enables atomic volatile (gcc _Atomic)
 	// -w: no warnings
@@ -214,7 +214,7 @@ pub fn (v mut V) cc_msvc() {
 	else if !v.pref.out_name.ends_with('.exe') {
 		v.pref.out_name += '.exe'
 	}
-	v.pref.out_name = os.realpath(v.pref.out_name)
+	v.pref.out_name = os.real_path(v.pref.out_name)
 	// alibs := []string // builtin.o os.o http.o etc
 	if v.pref.build_mode == .build_module {
 		// Compile only
@@ -222,7 +222,7 @@ pub fn (v mut V) cc_msvc() {
 	}
 	else if v.pref.build_mode == .default_mode {
 		/*
-		b := os.realpath( '$v_modules_path/vlib/builtin.obj' )
+		b := os.real_path( '$v_modules_path/vlib/builtin.obj' )
 		alibs << '"$b"'
 		if !os.exists(b) {
 			println('`builtin.obj` not found')
@@ -232,7 +232,7 @@ pub fn (v mut V) cc_msvc() {
 			if imp == 'webview' {
 				continue
 			}
-			alibs << '"' + os.realpath( '$v_modules_path/vlib/${imp}.obj' ) + '"'
+			alibs << '"' + os.real_path( '$v_modules_path/vlib/${imp}.obj' ) + '"'
 		}
 		*/
 	}
@@ -241,7 +241,7 @@ pub fn (v mut V) cc_msvc() {
 	}
 	// The C file we are compiling
 	// a << '"$TmpPath/$v.out_name_c"'
-	a << '"' + os.realpath(v.out_name_c) + '"'
+	a << '"' + os.real_path(v.out_name_c) + '"'
 	// Emily:
 	// Not all of these are needed (but the compiler should discard them if they are not used)
 	// these are the defaults used by msbuild and visual studio
@@ -307,7 +307,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 	}
 	// msvc expects .obj not .o
 	mut obj_path := '${path}bj'
-	obj_path = os.realpath(obj_path)
+	obj_path = os.real_path(obj_path)
 	if os.exists(obj_path) {
 		println('$obj_path already built.')
 		return
@@ -320,7 +320,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 	mut cfiles := ''
 	for file in files {
 		if file.ends_with('.c') {
-			cfiles += '"' + os.realpath(parent + os.path_separator + file) + '" '
+			cfiles += '"' + os.real_path(parent + os.path_separator + file) + '" '
 		}
 	}
 	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path"'
@@ -392,7 +392,7 @@ fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
 	}
 	mut lpaths := []string
 	for l in lib_paths {
-		lpaths << '/LIBPATH:"' + os.realpath(l) + '"'
+		lpaths << '/LIBPATH:"' + os.real_path(l) + '"'
 	}
 	return MsvcStringFlags{
 		real_libs:real_libs
