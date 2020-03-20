@@ -648,8 +648,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('${name}(')
 			if name == 'println' && it.args[0].typ != table.string_type_idx {
 				// `println(int_str(10))`
-				sym := g.table.get_type_symbol(it.args[0].typ)
-				g.write('${sym.name}_str(')
+				// sym := g.table.get_type_symbol(it.args[0].typ)
+				styp := g.typ(it.args[0].typ)
+				g.write('${styp}_str(')
 				g.expr(it.args[0].expr)
 				g.write('))')
 			}

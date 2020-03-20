@@ -365,7 +365,7 @@ fn (p mut Parser) struct_init(typ_ string) string {
 		t = p.table.find_type(t.name)
 		typ = t.name
 	}
-	if p.gen_struct_init(typ, &t) {
+	if p.gen_struct_init(typ, t) {
 		return typ
 	}
 	ptr := typ.contains('*')

@@ -36,7 +36,7 @@ fn main() {
 	}
 	if prefs.verbosity.is_higher_or_equal(.level_three) {
 		println('Parsed preferences: ')
-		println(prefs)
+		//println(prefs) // QTODO
 		println('Remaining: $values')
 	}
 	// Do a quick check for `v -v`. Too much error has been made this way.

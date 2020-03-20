@@ -13,7 +13,7 @@ pub fn compile(command string, args []string) {
 	// Construct the V object from command line arguments
 	parse_and_output_new_format(args)
 	prefs, remaining := parse_arguments(args)
-	check_for_common_mistake(args, &prefs)
+	check_for_common_mistake(args, prefs)
 	mut v := compiler.new_v(prefs)
 	if v.pref.verbosity.is_higher_or_equal(.level_two) {
 		println(args)

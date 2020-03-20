@@ -1330,7 +1330,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 	p.check(.rpar)
 	if f.is_generic && !p.scanner.is_fmt {
 		type_map := p.extract_type_inst(f, saved_args)
-		p.dispatch_generic_fn_instance(mut f, &type_map)
+		p.dispatch_generic_fn_instance(mut f, type_map)
 	}
 	if f.is_variadic {
 		p.fn_gen_caller_vargs(f, varg_type, varg_values)

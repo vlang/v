@@ -29,7 +29,7 @@ fn parse_arguments(args []string) (pref.Preferences, []string) {
 	} else {
 		p.backend = .c
 	}
-	mut remaining := flag.parse_pref(args, parse_options, &p) or {
+	mut remaining := flag.parse_pref(args, parse_options, p) or {
 		println('V error: Error while parsing flags.')
 		println(err)
 		println('Args:')
