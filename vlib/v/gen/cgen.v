@@ -1274,8 +1274,6 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 		}
 		else {}
 	}
-	// if !is_range && node.container_type == 0 {
-	// }
 	if !is_range && node.container_type != 0 {
 		sym := g.table.get_type_symbol(node.container_type)
 		if table.type_is_variadic(node.container_type) {
@@ -1288,7 +1286,16 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 		else if sym.kind == .array {
 			info := sym.info as table.Array
 			elem_type_str := g.typ(info.elem_type)
-			if g.is_assign_expr {
+			// `vals[i].field = x` is an exception and requires `array_get`:
+			// `(*(Val*)array_get(vals, i)).field = x ;`
+			mut is_selector := false
+			match node.left {
+				ast.SelectorExpr {
+					is_selector = true
+				}
+				else {}
+	}
+			if g.is_assign_expr && !is_selector {
 				g.is_array_set = true
 				g.write('array_set(&')
 				g.expr(node.left)
