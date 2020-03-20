@@ -133,8 +133,9 @@ fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 		println('Unable to find msvc version')
 		return error('Unable to find vs installation')
 	}
+	version2 := version // TODO remove. cgen option bug if expr
 	// println('version: $version')
-	v := if version.ends_with('\n') { version[..version.len - 2] } else { version }
+	v := if version.ends_with('\n') { version2[..version.len - 2] } else {version2 }
 	lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\$host_arch'
 	include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
 	if os.exists('$lib_path\\vcruntime.lib') {

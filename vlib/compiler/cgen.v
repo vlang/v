@@ -49,14 +49,14 @@ pub fn new_cgen(out_name_c string) &CGen {
 		return &CGen{
 		}
 	}
-	gen := &CGen{
+	return &CGen{
 		out_path: path
 		out: out
 		// buf: strings.new_builder(10000)
 
 		lines: make(0, 1000, sizeof(string))
 	}
-	return gen
+	//return gen
 }
 
 fn (g mut CGen) genln(s string) {
