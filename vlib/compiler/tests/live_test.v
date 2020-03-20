@@ -3,8 +3,8 @@ import time
 
 const (
 	vexe = os.getenv('VEXE')
-	source_file = os.join_path(os.cache_dir(), 'generated_live_program.v')
-	output_file = os.join_path(os.cache_dir(), 'generated_live_program.output.txt')
+	source_file = os.join_path(os.temp_dir(), 'generated_live_program.v')
+	output_file = os.join_path(os.temp_dir(), 'generated_live_program.output.txt')
 	live_program_source = "
 module main
 import time
@@ -35,6 +35,10 @@ fn testsuite_end(){
 	os.rm( source_file )
 	eprintln('source: $source_file')
 	eprintln('output: $output_file')
+	$if !windows {
+		os.system('cat $output_file')
+	}
+	println('---------------------------------------------------------------------------')
 	output_lines := os.read_lines( output_file ) or {
 		return
 	}
@@ -45,7 +49,6 @@ fn testsuite_end(){
 	for k,v in histogram {
 		println('> found ${k} $v times.')
 	}
-	println('---------------------------------------------------------------------------')
 	println('---------------------------------------------------------------------------')
 	assert histogram['START'] > 0
 	assert histogram['END'] > 0
