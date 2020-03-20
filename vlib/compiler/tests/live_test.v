@@ -28,6 +28,11 @@ fn main() {
 //
 
 fn testsuite_begin(){
+	$if !linux {
+		eprintln('Testing the runtime behaviour of -live mode,')
+		eprintln('is reliable only on Linux for now.')
+		exit(0)   
+	}
 	os.write_file(source_file, live_program_source)
 }
 
