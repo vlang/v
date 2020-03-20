@@ -2,6 +2,8 @@
 
 echo Building V
 
+pushd %~dp0
+
 if exist "vc" (
 	rd /s /q vc
 )
@@ -110,8 +112,10 @@ goto :error
 
 :error
 echo Exiting from error
+popd
 exit /b 1
 
 :success
 echo V build OK!
 v -version
+popd
