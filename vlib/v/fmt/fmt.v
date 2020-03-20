@@ -178,9 +178,15 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('}\n')
 		}
 		ast.ForInStmt {
-			f.write('for $it.key_var')
+			f.write('for ')
+			if it.key_var != '' {
+				f.write(it.key_var)
+			}
 			if it.val_var != '' {
-				f.write(', $it.val_var')
+				if it.key_var != '' {
+					f.write(', ')
+				}
+				f.write(it.val_var)
 			}
 			f.write(' in ')
 			f.expr(it.cond)
