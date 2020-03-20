@@ -346,7 +346,7 @@ fn (p mut Parser) fn_decl() {
 	if p.tok == .lt {
 		// instance (dispatch)
 		if p.generic_dispatch.inst.size > 0 {
-			rename_generic_fn_instance(mut f, &p.generic_dispatch)
+			rename_generic_fn_instance(mut f, p.generic_dispatch)
 		}
 		else {
 			f.is_generic = true
