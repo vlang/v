@@ -232,7 +232,7 @@ pub fn (t mut Table) register_builtin_type_symbol(typ TypeSymbol) int {
 	if existing_idx > 0 {
 		if existing_idx >= string_type_idx {
 			if existing_idx == string_type_idx {
-				existing_type := &t.types[existing_idx]
+				existing_type := t.types[existing_idx]
 				t.types[existing_idx] = {
 					typ |
 					kind:existing_type.kind

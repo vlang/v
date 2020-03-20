@@ -1696,10 +1696,14 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		else if p.tok.kind == .name && (p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
 			// if sym.kind == .sum_type {
 			// p.warn('is sum')
+			// TODO `exprs << ast.Type{...}`
 			typ := p.parse_type()
-			exprs << ast.Type{
+			x := ast.Type{
 				typ: typ
 			}
+			mut expr := ast.Expr{}
+			expr = x
+			exprs << expr
 			p.scope.register_var(ast.Var{
 				name: 'it'
 				typ: table.type_to_ptr(typ)
