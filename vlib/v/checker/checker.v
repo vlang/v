@@ -912,7 +912,7 @@ pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
 	node.typ = table.void_type
 	for i, branch in node.branches {
 		typ := c.expr(branch.cond)
-		if i < node.branches.len-1 || !node.has_else {
+		if i < node.branches.len - 1 || !node.has_else {
 			typ_sym := c.table.get_type_symbol(typ)
 			// if typ_sym.kind != .bool {
 			if table.type_idx(typ) != table.bool_type_idx {
@@ -922,7 +922,7 @@ pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
 		c.stmts(branch.stmts)
 	}
 	if node.has_else && node.is_expr {
-		last_branch := node.branches[node.branches.len-1]
+		last_branch := node.branches[node.branches.len - 1]
 		if last_branch.stmts.len > 0 {
 			match last_branch.stmts[last_branch.stmts.len - 1] {
 				ast.ExprStmt {
@@ -933,7 +933,7 @@ pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
 					return t
 				}
 				else {}
-			}
+	}
 		}
 	}
 	return table.bool_type

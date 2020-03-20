@@ -406,9 +406,6 @@ fn (f mut Fmt) expr(node ast.Expr) {
 					f.write(' ')
 				}
 			}
-			// if !single_line {
-			// 	f.writeln('')
-			// }
 			f.write('}')
 			f.single_line_if = false
 		}

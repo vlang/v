@@ -1176,14 +1176,14 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 	}
 	// one line ?:
 	// TODO clean this up once `is` is supported
-	// TODO: make sure only one stmt in eac branch
+	// TODO: make sure only one stmt in each branch
 	if node.is_expr && node.branches.len >= 2 && node.has_else && type_sym.kind != .void {
 		g.inside_ternary = true
 		for i, branch in node.branches {
 			if i > 0 {
 				g.write(' : ')
 			}
-			if i < node.branches.len-1 || !node.has_else {
+			if i < node.branches.len - 1 || !node.has_else {
 				g.expr(branch.cond)
 				g.write(' ? ')
 			}
@@ -1210,15 +1210,14 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 						g.expr(branch.cond)
 						g.writeln(') {')
 					}
-				}
-	
+	}
 			}
-			else if i < node.branches.len-1 || !node.has_else {
+			else if i < node.branches.len - 1 || !node.has_else {
 				g.writeln('} else if (')
 				g.expr(branch.cond)
 				g.write(') {')
 			}
-			else if i == node.branches.len-1 && node.has_else {
+			else if i == node.branches.len - 1 && node.has_else {
 				if is_guard {
 					g.writeln('} if (!$guard_ok) { /* else */')
 				}
@@ -1229,9 +1228,7 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 			// Assign ret value
 			// if i == node.stmts.len - 1 && type_sym.kind != .void {}
 			// g.writeln('$tmp =')
-			// 
 			g.stmts(branch.stmts)
-			// g.writeln('')
 		}
 		if is_guard {
 			g.write('}')
