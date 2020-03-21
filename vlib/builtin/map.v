@@ -29,17 +29,17 @@ meta stores a reference to its key-value, and its index in "metas" is determined
 by the hash of the key and probing. A meta also stores bits from the hash (for
 faster rehashing etc.) and how far away it is from the index it was originally
 hashed to (probe_count). probe_count is 0 if empty, 1 if not probed, 2 if probed
-by 1, etc.. 
+by 1, etc..
 
 meta (64 bit) =  kv_index (32 bit) | probe_count (8 bits) | hashbits (24 bits)
 metas = [meta, 0, meta, 0, meta, meta, meta, 0, ...]
 key_values = [kv, kv, kv, kv, kv, ...]
 
 4. |Power of two size array|. The size of metas is a power of two. This makes it
-possible to find a bucket from a hash code by using "hash & (SIZE -1)" instead 
+possible to find a bucket from a hash code by using "hash & (SIZE -1)" instead
 of "abs(hash) % SIZE". Modulo is extremely expensive so using '&' is a big perf-
 ormance improvement. The general concern with this is that you only use the low-
-er bits of the hash and that can cause more collisions. This is solved by using 
+er bits of the hash and that can cause more collisions. This is solved by using
 good hash-function.
 
 5. |Extra metas|. The hashmap keeps track of the highest probe_count. The trick
@@ -50,19 +50,19 @@ the last index.
 6. |Cached rehashing|. When the load_factor of the map exceeds the max_load_fac-
 tor the size of metas is doubled and all the elements need to be "rehashed" to
 find the index in the new array. Instead of rehashing completely, it simply uses
-the hashbits stored in the meta. 
+the hashbits stored in the meta.
 */
 
 
 const (
-	// Number of bits from the hash stored for each entry
+// Number of bits from the hash stored for each entry
 	hashbits = 24
 	// Number of bits from the hash stored for rehashing
 	cached_hashbits = 16
 	// Initial log-number of buckets in the hashtable
 	init_log_capicity = 5
 	// Initial number of buckets in the hashtable
-	init_capicity = 1 << init_log_capicity
+	init_capicity = 1<<init_log_capicity
 	// Maximum load-factor (size / capacity)
 	max_load_factor = 0.8
 	// Initial highest even index in metas
@@ -108,7 +108,7 @@ fn new_dense_array() DenseArray {
 [inline]
 fn (d mut DenseArray) push(kv KeyValue) u32 {
 	if d.cap == d.size {
-		d.cap += d.cap >> 3
+		d.cap += d.cap>>3
 		d.data = &KeyValue(C.realloc(d.data, sizeof(KeyValue) * d.cap))
 	}
 	push_index := d.size
@@ -139,7 +139,7 @@ pub struct map {
 	// Byte size of value
 	value_bytes int
 mut:
-	// Index of the highest index in the hashtable
+// Index of the highest index in the hashtable
 	cap         u32
 	// Number of cached hashbits left for rehasing
 	window      byte
@@ -147,7 +147,7 @@ mut:
 	shift       byte
 	// Array storing key-values (ordered)
 	key_values  DenseArray
-	// Pointer to meta-data: 
+	// Pointer to meta-data:
 	// Odd indices stores index in `key_values`.
 	// Even indices stores probe_count and hashbits.
 	metas       &u32
@@ -155,7 +155,7 @@ mut:
 	// index in the hashmap
 	extra_metas u32
 pub mut:
-	// Number of key-values currently in the hashmap
+// Number of key-values currently in the hashmap
 	size        int
 }
 
@@ -181,22 +181,22 @@ fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
 }
 
 [inline]
-fn (m map) key_to_index(key string) (u32, u32) {
+fn (m map) key_to_index(key string) (u32,u32) {
 	hash := u32(wyhash.wyhash_c(key.str, u64(key.len), 0))
 	index := hash & m.cap
-	meta := ((hash >> m.shift) & hash_mask) | probe_inc
-	return index, meta
+	meta := ((hash>>m.shift) & hash_mask) | probe_inc
+	return index,meta
 }
 
 [inline]
-fn meta_less(metas &u32, i u32, m u32) (u32, u32) {
+fn meta_less(metas &u32, i u32, m u32) (u32,u32) {
 	mut index := i
 	mut meta := m
 	for meta < metas[index] {
 		index += 2
 		meta += probe_inc
 	}
-	return index, meta
+	return index,meta
 }
 
 [inline]
@@ -219,8 +219,8 @@ fn (m mut map) meta_greater(ms &u32, i u32, me u32, kvi u32) &u32 {
 	}
 	metas[index] = meta
 	metas[index + 1] = kv_index
-	probe_count := (meta >> hashbits) - 1
-	if (probe_count << 1) == m.extra_metas {
+	probe_count := (meta>>hashbits) - 1
+	if (probe_count<<1) == m.extra_metas {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.cap + 2 + m.extra_metas)
 		metas = &u32(C.realloc(metas, sizeof(u32) * mem_size))
@@ -234,12 +234,12 @@ fn (m mut map) meta_greater(ms &u32, i u32, me u32, kvi u32) &u32 {
 }
 
 fn (m mut map) set(key string, value voidptr) {
-	load_factor := f32(m.size << 1) / f32(m.cap)
+	load_factor := f32(m.size<<1) / f32(m.cap)
 	if load_factor > max_load_factor {
 		m.expand()
 	}
-	mut index, mut meta := m.key_to_index(key)
-	index, meta = meta_less(m.metas, index, meta)
+	mut index,mut meta := m.key_to_index(key)
+	index,meta = meta_less(m.metas, index, meta)
 	// While we might have a match
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
@@ -264,7 +264,7 @@ fn (m mut map) set(key string, value voidptr) {
 // Doubles the size of the hashmap
 fn (m mut map) expand() {
 	old_cap := m.cap
-	m.cap = ((m.cap + 2) << 1) - 2
+	m.cap = ((m.cap + 2)<<1) - 2
 	// Check if any hashbits are left
 	if m.window == 0 {
 		m.shift += cached_hashbits
@@ -286,8 +286,8 @@ fn (m mut map) rehash() {
 			continue
 		}
 		kv := m.key_values.data[i]
-		mut index, mut meta := m.key_to_index(kv.key)
-		index, meta = meta_less(m.metas, index, meta)
+		mut index,mut meta := m.key_to_index(kv.key)
+		index,meta = meta_less(m.metas, index, meta)
 		m.metas = m.meta_greater(m.metas, index, meta, i)
 	}
 }
@@ -300,11 +300,11 @@ fn (m mut map) cached_rehash(old_cap u32) {
 			continue
 		}
 		old_meta := m.metas[i]
-		old_probe_count := ((old_meta >> hashbits) - 1) << 1
-		old_index := (i - old_probe_count) & (m.cap >> 1)
-		mut index := (old_index | (old_meta << m.shift)) & m.cap
+		old_probe_count := ((old_meta>>hashbits) - 1)<<1
+		old_index := (i - old_probe_count) & (m.cap>>1)
+		mut index := (old_index | (old_meta<<m.shift)) & m.cap
 		mut meta := (old_meta & hash_mask) | probe_inc
-		index, meta = meta_less(new_meta, index, meta)
+		index,meta = meta_less(new_meta, index, meta)
 		kv_index := m.metas[i + 1]
 		new_meta = m.meta_greater(new_meta, index, meta, kv_index)
 	}
@@ -315,8 +315,8 @@ fn (m mut map) cached_rehash(old_cap u32) {
 }
 
 fn (m map) get(key string, out voidptr) bool {
-	mut index, mut meta := m.key_to_index(key)
-	index, meta = meta_less(m.metas, index, meta)
+	mut index,mut meta := m.key_to_index(key)
+	index,meta = meta_less(m.metas, index, meta)
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if key == m.key_values.data[kv_index].key {
@@ -330,8 +330,8 @@ fn (m map) get(key string, out voidptr) bool {
 }
 
 fn (m map) get2(key string) voidptr {
-	mut index, mut meta := m.key_to_index(key)
-	index, meta = meta_less(m.metas, index, meta)
+	mut index,mut meta := m.key_to_index(key)
+	index,meta = meta_less(m.metas, index, meta)
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if key == m.key_values.data[kv_index].key {
@@ -349,8 +349,8 @@ fn (m map) exists(key string) bool {
 	if m.value_bytes == 0 {
 		return false
 	}
-	mut index, mut meta := m.key_to_index(key)
-	index, meta = meta_less(m.metas, index, meta)
+	mut index,mut meta := m.key_to_index(key)
+	index,meta = meta_less(m.metas, index, meta)
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if key == m.key_values.data[kv_index].key {
@@ -363,14 +363,14 @@ fn (m map) exists(key string) bool {
 }
 
 pub fn (m mut map) delete(key string) {
-	mut index, mut meta := m.key_to_index(key)
-	index, meta = meta_less(m.metas, index, meta)
+	mut index,mut meta := m.key_to_index(key)
+	index,meta = meta_less(m.metas, index, meta)
 	// Perform backwards shifting
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if key == m.key_values.data[kv_index].key {
 			C.memset(&m.key_values.data[kv_index], 0, sizeof(KeyValue))
-			for (m.metas[index + 2] >> hashbits) > 1 {
+			for (m.metas[index + 2]>>hashbits) > 1 {
 				m.metas[index] = m.metas[index + 2] - probe_inc
 				m.metas[index + 1] = m.metas[index + 3]
 				index += 2
