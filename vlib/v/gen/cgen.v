@@ -43,7 +43,7 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		g.stmts(file.stmts)
 	}
 	g.write_variadic_types()
-	g.write_str_definitions()
+	// g.write_str_definitions()
 	g.write_init_function()
 	return g.typedefs.str() + g.definitions.str() + g.out.str()
 }
@@ -57,6 +57,7 @@ pub fn (g mut Gen) init() {
 	g.definitions.writeln('\nstring _STR_TMP(const char*, ...);\n')
 	g.write_builtin_types()
 	g.write_typedef_types()
+	g.write_str_definitions()
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
@@ -1591,13 +1592,12 @@ string _STR_TMP(const char *fmt, ...) {
 	//puts(g_str_buf);
 #endif
 	return tos2(g_str_buf);
-}
+} // endof _STR_TMP
 
 ')
 }
 
 const (
-// TODO all builtin types must be lowercase
 	builtins = ['string', 'array', 'KeyValue', 'DenseArray', 'map', 'Option']
 )
 
@@ -1625,7 +1625,6 @@ fn (g mut Gen) write_sorted_types() {
 	types_sorted := g.sort_structs(types)
 	// Generate C code
 	g.definitions.writeln('// builtin types:')
-	// g.write_types(builtin_types)
 	g.definitions.writeln('//------------------ #endbuiltin')
 	g.write_types(types_sorted)
 }

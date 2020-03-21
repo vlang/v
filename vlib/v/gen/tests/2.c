@@ -76,7 +76,13 @@ void end() {
 
 
 int main(int argc, char** argv) {
+	_init();
+	os__args = os__init_os_args(argc, (byteptr*)argv);
 	return 0;
+}
+
+void _init() {
+
 }
 
 

@@ -23,7 +23,14 @@ fn test_c_files() {
 		ctext = ctext // unused warn
 		mut b := builder.new_builder(pref.Preferences{})
 		b.module_search_paths = ['$vroot/vlib/v/gen/tests/']
-		res := b.gen_c([path]).after('#endbuiltin')
+		mut res := b.gen_c([path]).after('#endbuiltin')
+		if res.contains('string _STR') {
+			pos := res.index('string _STR') or {
+				-1
+			}
+			end := res.index_after('endof _STR_TMP', pos)
+			res = res[..pos] + res[end + 15..]
+		}
 		if compare_texts(res, ctext, path) {
 			println('${term_ok} ${i}')
 		}
@@ -47,6 +54,15 @@ fn compare_texts(a, b, path string) bool {
 	*/
 
 	for i, line_a in lines_a {
+		// mut j := 0
+		// for i := 0; i < lines_a.len; i++ {
+		// line_a := lines_a[i]
+		// if line_a.contains('string _STR') {
+		// println(' SKIPPING!!')
+		// for !lines_a[i].contains('}') {
+		// i++
+		// }
+		// }
 		if i >= lines_b.len {
 			println(line_a)
 			return false

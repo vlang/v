@@ -22,7 +22,9 @@ int Foo_testa(Foo* f);
 int Foo_testb(Foo* f);
 int Bar_testa(Bar* b);
 
-int main() {
+int main(int argc, char** argv) {
+	_init();
+	os__args = os__init_os_args(argc, (byteptr*)argv);
     Bar b = (Bar){
         .a = 122,
     };
@@ -90,4 +92,7 @@ int Foo_testb(Foo* f) {
 
 int Bar_testa(Bar* b) {
     return 4;
+}
+
+void _init() {
 }
