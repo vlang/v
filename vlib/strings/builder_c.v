@@ -57,7 +57,7 @@ pub fn (b mut Builder) writeln(s string) {
 
 // buf == 'hello world'
 // last_n(5) returns 'world'
-pub fn (b mut Builder) last_n(n int) string {
+pub fn (b &Builder) last_n(n int) string {
 	if n > b.len {
 		return ''
 	}
@@ -67,7 +67,7 @@ pub fn (b mut Builder) last_n(n int) string {
 
 // buf == 'hello world'
 // after(6) returns 'world'
-pub fn (b mut Builder) after(n int) string {
+pub fn (b &Builder) after(n int) string {
 	if n >= b.len {
 		return ''
 	}

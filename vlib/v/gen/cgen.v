@@ -1663,7 +1663,6 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if i >= node.exprs.len {
 			continue
 		}
-		pos := g.out.len
 		match node.expr_types[i] {
 			table.string_type {
 				g.write('%.*s')
@@ -1679,13 +1678,13 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 	for i, expr in node.exprs {
 		if node.expr_types[i] == table.string_type {
 			// `name.str, name.len,`
-			g.expr(node.exprs[i])
+			g.expr(expr)
 			g.write('.len, ')
-			g.expr(node.exprs[i])
+			g.expr(expr)
 			g.write('.str')
 		}
 		else {
-			g.expr(node.exprs[i])
+			g.expr(expr)
 		}
 		if i < node.exprs.len - 1 {
 			g.write(', ')
