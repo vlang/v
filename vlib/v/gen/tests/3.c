@@ -63,7 +63,7 @@ void handle_expr(Expr e) {
 }
 
 int main(int argc, char** argv) {
-	_init();
+	_vinit();
 	os__args = os__init_os_args(argc, (byteptr*)argv);
 	User user = (User){
 0};
@@ -77,6 +77,6 @@ int main(int argc, char** argv) {
 	return 0;
 }
 
-void _init() {
+void _vinit() {
 
 }

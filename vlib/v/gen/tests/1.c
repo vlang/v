@@ -47,7 +47,7 @@ struct varg_int {
 
 //
 int main(int argc, char** argv) {
-	_init();
+	_vinit();
 	os__args = os__init_os_args(argc, (byteptr*)argv);
 	int a = 10;
 	a++;
@@ -190,7 +190,7 @@ int localmod__get_int_10() {
 	return 10;
 }
 
-void _init() {
+void _vinit() {
 	pi2 = pi;
 }
 
