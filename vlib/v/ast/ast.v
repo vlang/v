@@ -546,26 +546,6 @@ pub:
 	name string
 }
 
-pub struct ContinueLabel{
-pub:
-	name string
-}
-
-pub struct ContinueStmt{
-pub: 
-	name string
-}
-
-pub struct BreakLabel{
-pub:
-	name string
-}
-
-pub struct BreakStmt{
-pub: 
-	name string
-}
-
 pub struct ArrayInit {
 pub:
 	pos       token.Position
