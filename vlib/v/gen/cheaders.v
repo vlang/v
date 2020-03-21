@@ -188,7 +188,7 @@ extern wchar_t **_wenviron;
 byte g_str_buf[1024];
 int load_so(byteptr);
 void reload_so();
-void _init();
+void _vinit();
 
 // ============== wyhash ==============
 //	Author: Wang Yi
