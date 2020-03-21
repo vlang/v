@@ -12,7 +12,7 @@ struct Gen {
 	out            strings.Builder
 	typedefs       strings.Builder
 	definitions    strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	inits          strings.Builder // contents of `void _init(){}`
+	inits          strings.Builder // contents of `void _vinit(){}`
 	table          &table.Table
 mut:
 	fn_decl        &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
@@ -527,7 +527,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		g.definitions.writeln(');')
 	}
 	if is_main {
-		g.writeln('_init();')
+		g.writeln('_vinit();')
 		g.writeln('os__args = os__init_os_args(argc, (byteptr*)argv);')
 	}
 	for stmt in it.stmts {
@@ -1463,7 +1463,7 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 				g.definitions.writeln(val)
 			}
 			else {
-				// Initialize more complex consts in `void _init(){}`
+				// Initialize more complex consts in `void _vinit(){}`
 				// (C doesn't allow init expressions that can't be resolved at compile time).
 				styp := g.typ(field.typ)
 				g.definitions.writeln('$styp $name; // inited later') // = ')
@@ -1555,7 +1555,7 @@ fn verror(s string) {
 }
 
 fn (g mut Gen) write_init_function() {
-	g.writeln('void _init() {')
+	g.writeln('void _vinit() {')
 	g.writeln(g.inits.str())
 	g.writeln('}')
 }
