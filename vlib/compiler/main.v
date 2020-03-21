@@ -574,6 +574,15 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_nix.v') && v.pref.os == .windows {
 			continue
 		}
+		if file.ends_with('_android.v') && v.pref.os != .android {
+			continue
+		}
+		if file.ends_with('_freebsd.v') && v.pref.os != .freebsd {
+			continue
+		}
+		if file.ends_with('_solaris.v') && v.pref.os != .solaris {
+			continue
+		}
 		if file.ends_with('_js.v') && v.pref.os != .js {
 			continue
 		}

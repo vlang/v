@@ -20,6 +20,11 @@ import gl
 #flag darwin -lglfw
 #flag freebsd -I/usr/local/include
 #flag freebsd -Wl,-L/usr/local/lib,-lglfw
+
+#flag solaris -I/opt/local/include
+#flag solaris -L/opt/local/lib
+#flag solaris -lglfw
+
 #flag linux -lglfw
 #flag windows -lgdi32 -lshell32 -lglfw3
 #flag mingw -mwindows

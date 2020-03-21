@@ -532,9 +532,15 @@ pub fn is_executable(path string) bool {
     // 06 Read and write
     p := os.real_path( path )
     return ( os.exists( p ) && p.ends_with('.exe') )
-  } $else {
-    return C.access(path.str, X_OK) != -1
   }
+  $if solaris {
+    statbuf := C.stat{}
+    if C.stat(path.str, &statbuf) != 0 {
+      return false
+    }
+    return (int(statbuf.st_mode) & ( S_IXUSR | S_IXGRP | S_IXOTH )) != 0
+  }
+  return C.access(path.str, X_OK) != -1
 }
 
 // `is_writable` returns `true` if `path` is writable.
