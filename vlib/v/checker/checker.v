@@ -724,6 +724,10 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			}
 			res := c.expr(it.right)
 			c.is_amp = false
+			// TODO: impl solid ref/deref strategy
+			if it.op == .mul && table.type_is_ptr(res) {
+				return table.type_deref(res)
+			}
 			return res
 		}
 		ast.None {
