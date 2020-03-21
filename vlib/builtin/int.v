@@ -93,7 +93,9 @@ pub fn (nn int) str_l(max int) string {
 		buf[index] = `-`
 	}
 	
-	return tos(buf + index, (max-index))
+	C.memmove(buf,buf+index, (max-index)+1 )
+	return tos(buf, (max-index))
+	//return tos(buf + index, (max-index))
 }
 
 pub fn (n i8) str() string {
@@ -137,7 +139,9 @@ pub fn (nn u32) str() string {
 		index++
 	}
 	
-	return tos(buf + index, (max-index))
+	C.memmove(buf,buf+index, (max-index)+1 )
+	return tos(buf, (max-index))
+	//return tos(buf + index, (max-index))
 }
 
 pub fn (nn i64) str() string {
@@ -177,7 +181,9 @@ pub fn (nn i64) str() string {
 		buf[index] = `-`
 	}
 
-	return tos(buf + index, (max-index))
+	C.memmove(buf,buf+index, (max-index)+1 )
+	return tos(buf, (max-index))
+	//return tos(buf + index, (max-index))
 }
 
 pub fn (nn u64) str() string {
@@ -205,7 +211,9 @@ pub fn (nn u64) str() string {
 		index++
 	}
 
-	return tos(buf + index, (max-index))
+	C.memmove(buf,buf+index, (max-index)+1 )
+	return tos(buf, (max-index))
+	//return tos(buf + index, (max-index))
 }
 
 pub fn (b bool) str() string {
@@ -262,7 +270,9 @@ pub fn (nn u64) hex() string {
 	//buf[index]   = `0`
 	index++
 
-	return tos(buf + index, (max-index))
+	C.memmove(buf,buf+index, (max-index)+1 )
+	return tos(buf, (max-index))
+	//return tos(buf + index, (max-index))
 }
 
 pub fn (nn i64) hex() string {
