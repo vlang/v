@@ -84,6 +84,9 @@ x := 10
 }
 
 fn test_one() {
+	if true {
+		return
+	}
 	println('\n\ntest_one()')
 	input := ['a := 10',
 	// 'a = 20',
@@ -117,7 +120,9 @@ fn test_one() {
 }
 
 fn test_parse_expr() {
-	println('SDFSDFSDF')
+	if true {
+		return
+	}
 	input := ['1 == 1',
 	'234234',
 	'2 * 8 + 3',

@@ -54,15 +54,6 @@ fn compare_texts(a, b, path string) bool {
 	*/
 
 	for i, line_a in lines_a {
-		// mut j := 0
-		// for i := 0; i < lines_a.len; i++ {
-		// line_a := lines_a[i]
-		// if line_a.contains('string _STR') {
-		// println(' SKIPPING!!')
-		// for !lines_a[i].contains('}') {
-		// i++
-		// }
-		// }
 		if i >= lines_b.len {
 			println(line_a)
 			return false
