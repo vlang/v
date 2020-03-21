@@ -1243,21 +1243,25 @@ fn (p mut Parser) if_expr() ast.IfExpr {
 
 fn (p mut Parser) string_expr() ast.Expr {
 	mut node := ast.Expr{}
+	val := p.tok.lit
 	node = ast.StringLiteral{
-		val: p.tok.lit
+		val: val
 	}
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
 		return node
 	}
+	mut exprs := []ast.Expr
+	mut vals := []string
 	// Handle $ interpolation
 	for p.tok.kind == .string {
+		vals << p.tok.lit
 		p.next()
 		if p.tok.kind != .str_dollar {
 			continue
 		}
 		p.check(.str_dollar)
-		p.expr(0)
+		exprs << p.expr(0)
 		if p.tok.kind == .colon {
 			p.next()
 		}
@@ -1272,6 +1276,10 @@ fn (p mut Parser) string_expr() ast.Expr {
 				p.next()
 			}
 		}
+	}
+	node = ast.StringInterLiteral{
+		vals: vals
+		exprs: exprs
 	}
 	return node
 }

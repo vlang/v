@@ -868,6 +868,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write('tos3("$escaped_val")')
 			}
 		}
+		ast.StringInterLiteral {
+			g.string_inter_literal(it)
+		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
 			styp := g.typ(it.typ)
@@ -1652,6 +1655,46 @@ fn (g &Gen) sort_structs(types []table.TypeSymbol) []table.TypeSymbol {
 	return types_sorted
 }
 
+fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
+	g.write('_STR("')
+	// Build the string with %
+	for i, val in node.vals {
+		g.write(val)
+		if i >= node.exprs.len {
+			continue
+		}
+		pos := g.out.len
+		match node.expr_types[i] {
+			table.string_type {
+				g.write('%.*s')
+			}
+			table.int_type {
+				g.write('%d')
+			}
+			else {}
+	}
+	}
+	g.write('", ')
+	// Build args
+	for i, expr in node.exprs {
+		if node.expr_types[i] == table.string_type {
+			// `name.str, name.len,`
+			g.expr(node.exprs[i])
+			g.write('.len, ')
+			g.expr(node.exprs[i])
+			g.write('.str')
+		}
+		else {
+			g.expr(node.exprs[i])
+		}
+		if i < node.exprs.len - 1 {
+			g.write(', ')
+		}
+	}
+	g.write(')')
+}
+
+// `nums.filter(it % 2 == 0)`
 fn (g mut Gen) gen_filter(node ast.MethodCallExpr) {
 	tmp := g.new_tmp_var()
 	buf := g.out.buf[g.stmt_start_pos..]

@@ -30,6 +30,11 @@ fn (u &User) foo() {
 	if a in [10, 20, 30] {
 		b := 10
 	}
+	name := 'Bob'
+	println('hello')
+	println('Hello, $name')
+	println('age = $age')
+	println('name=$name age=$age')
 }
 
 fn println(s string) {}

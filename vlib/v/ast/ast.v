@@ -14,7 +14,7 @@ pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLitera
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
 CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | 	
-ConcatExpr | Type | AsCast | TypeOf
+ConcatExpr | Type | AsCast | TypeOf | StringInterLiteral
 
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
@@ -52,6 +52,15 @@ pub:
 pub struct StringLiteral {
 pub:
 	val string
+}
+
+// 'name: $name'
+pub struct StringInterLiteral {
+pub:
+	vals       []string
+	exprs      []Expr
+mut:
+	expr_types []table.Type
 }
 
 pub struct CharLiteral {

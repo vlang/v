@@ -37,6 +37,11 @@ tos3(""),
 	if (a == 10 || a == 20 || a == 30) {
 		int b = 10;
 	}
+	string name = tos3("Bob");
+	println(tos3("hello"));
+	println(_STR("Hello, %.*s", name.len, name.str));
+	println(_STR("age = %d", age));
+	println(_STR("name=%.*s age=%d", name.len, name.str, age));
 }
 
 void println(string s) {

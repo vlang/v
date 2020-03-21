@@ -393,7 +393,8 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
-		c.error('wrong number of return arguments:\n\texpected: $expected_types.str()\n\tgot: $got_types.str()', return_stmt.pos)
+		// c.error('wrong number of return arguments:\n\texpected: $expected_types.str()\n\tgot: $got_types.str()', return_stmt.pos)
+		c.error('wrong number of return arguments', return_stmt.pos)
 	}
 	for i, exp_typ in expected_types {
 		got_typ := got_types[i]
@@ -735,6 +736,12 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.int_type
 		}
 		ast.StringLiteral {
+			return table.string_type
+		}
+		ast.StringInterLiteral {
+			for expr in it.exprs {
+				it.expr_types << c.expr(expr)
+			}
 			return table.string_type
 		}
 		ast.StructInit {
