@@ -52,7 +52,7 @@ fn (p mut Parser) string_expr() {
 	mut args := '"'
 	mut format := '"'
 	mut complex_inter := false // for vfmt
-	for p.tok == .str {
+	for p.tok == .string{
 		// Add the string between %d's
 		p.lit = p.lit.replace('%', '%%')
 		format += format_str(p.lit)
@@ -64,7 +64,7 @@ fn (p mut Parser) string_expr() {
 		p.check(.str_dollar)
 		// If there's no string after current token, it means we are in
 		// a complex expression (`${...}`)
-		if p.peek() != .str {
+		if p.peek() != .string{
 			p.fgen('{')
 			complex_inter = true
 		}

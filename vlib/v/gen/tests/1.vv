@@ -156,6 +156,17 @@ fn matches() {
 		}
 		else{}
 	}
+	x := match a {
+		10 { 'ten' }
+		30 { 'thirty' }
+		else { 'unknown' }
+	}
+	xx := match a {
+		10 { 100 }
+		30 { 300 }
+		else { 0 }
+	}
+	println(match a {  10 { 'ten' } else { 'not ten' } })
 	/*
 	n := match a {
 		1 { 10 }

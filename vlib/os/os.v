@@ -171,14 +171,14 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 }
 
 pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
-	source_path := os.realpath(osource_path)
-	dest_path := os.realpath(odest_path)
+	source_path := os.real_path(osource_path)
+	dest_path := os.real_path(odest_path)
 	if !os.exists(source_path) {
 		return error("Source path doesn\'t exist")
 	}
 	// single file copy
 	if !os.is_dir(source_path) {
-		adjasted_path := if os.is_dir(dest_path) { os.join_path(dest_path,os.filename(source_path)) } else { dest_path }
+		adjasted_path := if os.is_dir(dest_path) { os.join_path(dest_path,os.file_name(source_path)) } else { dest_path }
 		if os.exists(adjasted_path) {
 			if overwrite {
 				os.rm(adjasted_path)
@@ -235,14 +235,14 @@ fn vfopen(path, mode string) &C.FILE {
 // read_lines reads the file in `path` into an array of lines.
 pub fn read_lines(path string) ?[]string {
 	buf := read_file(path) or {
-		return err
+		return error(err)
 	}
 	return buf.split_into_lines()
 }
 
 fn read_ulines(path string) ?[]ustring {
 	lines := read_lines(path) or {
-		return err
+		return error(err)
 	}
 	// mut ulines := new_array(0, lines.len, sizeof(ustring))
 	mut ulines := []ustring
@@ -530,7 +530,7 @@ pub fn is_executable(path string) bool {
     // 02 Write-only
     // 04 Read-only
     // 06 Read and write
-    p := os.realpath( path )
+    p := os.real_path( path )
     return ( os.exists( p ) && p.ends_with('.exe') )
   } $else {
     return C.access(path.str, X_OK) != -1
@@ -633,7 +633,7 @@ pub fn base_dir(path string) string {
 	return path[..posx]
 }
 
-pub fn filename(path string) string {
+pub fn file_name(path string) string {
 	return path.all_after(path_separator)
 }
 
@@ -874,7 +874,7 @@ fn executable_fallback() string {
 			}
 		}
 	}
-	exepath = os.realpath(exepath)
+	exepath = os.real_path(exepath)
 	return exepath
 }
 
@@ -972,7 +972,7 @@ pub fn getwd() string {
 // Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
 // and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
-pub fn realpath(fpath string) string {
+pub fn real_path(fpath string) string {
 	mut fullpath := vcalloc(MAX_PATH)
 	mut ret := charptr(0)
 	$if windows {
@@ -1184,10 +1184,10 @@ pub const (
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
 pub fn resource_abs_path(path string) string {
-	mut base_path := os.realpath(os.dir(os.executable()))
+	mut base_path := os.real_path(os.dir(os.executable()))
 	vresource := os.getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
 		base_path = vresource
 	}
-	return os.realpath(os.join_path(base_path, path))
+	return os.real_path(os.join_path(base_path, path))
 }

@@ -33,7 +33,7 @@ The build flags are shared by the build and run commands:
                               current backends when finished
 
    -d <flag>[=<value>], -define <flag>[=<value>]
-      Defines the provided flag.
+      Define the provided flag.
       If value is not provided, it is assumed to be set to `true`.
       `value` should be `1` or `0` to indicate `true` and `false` respectively otherwise.
 
@@ -42,24 +42,24 @@ The build flags are shared by the build and run commands:
       Currently, the only experiment available is: `prealloc`
 
    -full-rebuild
-      Forces a full rebuild of all dependencies.
+      Force a full rebuild of all dependencies.
       Enabled by default currently until caching works reliably.
 
    -g
-      Compiles the executable in debug mode, allowing code to be debugged more easily.
+      Compile the executable in debug mode, allowing code to be debugged more easily.
 
    -o <output>, -output <output>
-      Forces V to output the executable in a specific location.
-      (relative to the current working directory if not absolute)
+      Force V to output the executable in a specific location
+      (relative to the current working directory if not absolute).
 
    -obf, -obfuscate
-      Turns on obfuscation for the code being built. Currently only renames symbols.
+      Turn on obfuscation for the code being built. Currently only renames symbols.
 
    -path
-      Specifies the order of path V looks up in while searching for imported dependencies,
+      Specify the order of path V looks up in while searching for imported dependencies,
       separated by pipes (`|`). In addition to absolute paths, you can
       also use these special strings too:
-           @vmodules - replaced with the location of the global ~/.vmodules/ folder 
+           @vmodules - replaced with the location of the global ~/.vmodules/ folder
            (modules installed with `v install` are there).
            @vlib - replaced with the location of the v's vlib folder.
       Using these, you can arrange for very flexible search orders for you project, for example:
@@ -67,21 +67,21 @@ The build flags are shared by the build and run commands:
       By default, -path is just "@vlib|@vmodules" .
 
    -prod
-      Compiles the executable in production mode where most optimizations are enabled.
+      Compile the executable in production mode where most optimizations are enabled.
 
    -prof, -profile
-      Compiles the executable with all functions profiled.
+      Compile the executable with all functions profiled.
 
    -stats
       Enable more detailed statistics reporting, while compiling test files.
       You can use that with `v test` too, for example:
         v -stats test vlib/
       ... will run test_ functions inside all _test.v files inside vlib/ ,
-      and will report detailed statistics about how much time each test_ function took, how many 
+      and will report detailed statistics about how much time each test_ function took, how many
       assertions were made, how many tests passed/failed and so on.
 
    -translated
-      Enables features that are discouraged in regular V code but required for translated V code.
+      Enable features that are discouraged in regular V code but required for translated V code.
 
    -v, -vv, -vvv
       Enable varying verbosity in the V compiler while compiling

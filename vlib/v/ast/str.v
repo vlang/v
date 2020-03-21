@@ -69,9 +69,9 @@ pub fn (x Expr) str() string {
 		*/
 
 		IntegerLiteral {
-			return it.val.str()
+			return it.val
 		}
-		IntegerLiteral {
+		StringLiteral {
 			return '"$it.val"'
 		}
 		else {

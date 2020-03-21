@@ -7,7 +7,7 @@ import (
 pub type Type int
 
 pub type TypeInfo = Array | ArrayFixed | Map | Struct | 	
-MultiReturn | Alias | Enum | SumType | Fn
+MultiReturn | Alias | Enum | SumType | FnType
 
 pub struct TypeSymbol {
 pub:
@@ -79,6 +79,11 @@ pub fn type_deref(t Type) Type {
 		panic('deref: type `$t` is not a pointer')
 	}
 	return (int(type_extra(t))<<24) | ((nr_muls - 1)<<16) | u16(type_idx(t))
+}
+
+[inline]
+pub fn type_clear_extra(t Type) Type {
+	return type_set_extra(t, .unset)
 }
 
 // return extra info
@@ -207,6 +212,13 @@ pub:
 	name  string
 mut:
 	types []Type
+}
+
+pub struct FnType {
+pub:
+	is_anon  bool
+	has_decl bool
+	func     Fn
 }
 
 pub enum Kind {

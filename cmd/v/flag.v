@@ -9,8 +9,9 @@ import (
 )
 
 const (
+	list_of_flags_that_allow_duplicates = ['cc','d','define','cf','cflags']
 	//list_of_flags contains a list of flags where an argument is expected past it.
-	list_of_flags = [
+	list_of_flags_with_param = [
 		'o', 'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'arch',
 			'csource', 'cf', 'cflags', 'path'
 	]
@@ -77,8 +78,7 @@ fn parse_flags(flag string, f mut flag.Instance, prefs mut flag.MainCmdPreferenc
 			f.is_equivalent_to(['h', 'help'])
 			prefs.action = .help
 		}
-		'v', 'version' {
-			f.is_equivalent_to(['v', 'version'])
+		'version' {
 			prefs.action = .version
 		}
 		'-version', '-help' {
@@ -86,14 +86,18 @@ fn parse_flags(flag string, f mut flag.Instance, prefs mut flag.MainCmdPreferenc
 			exit(1)
 		}
 		else {
-			prefs.unknown_flag = '-$flag'
-			if !(flag in list_of_flags) {
+			if flag in list_of_flags_that_allow_duplicates {
+				f.allow_duplicate()			   
+			}
+			prefs.unknown_flag = '-$flag'			 
+			if !(flag in list_of_flags_with_param) {
 				return
 			}
 			f.string() or {
 				println('V error: Error parsing flag. Expected value for `-$flag`.')
 				exit(1)
 			}
+			return
 		}
 	}
 }

@@ -178,9 +178,15 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('}\n')
 		}
 		ast.ForInStmt {
-			f.write('for $it.key_var')
+			f.write('for ')
+			if it.key_var != '' {
+				f.write(it.key_var)
+			}
 			if it.val_var != '' {
-				f.write(', $it.val_var')
+				if it.key_var != '' {
+					f.write(', ')
+				}
+				f.write(it.val_var)
 			}
 			f.write(' in ')
 			f.expr(it.cond)
@@ -364,7 +370,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.CallExpr {
 			f.write('${it.name}(')
-			f.call_args(it.args, it.muts)
+			f.call_args(it.args)
 			f.write(')')
 			f.or_expr(it.or_block)
 		}
@@ -378,38 +384,35 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(it.val)
 		}
 		ast.IfExpr {
-			single_line := it.stmts.len == 1 && it.else_stmts.len == 1 && it.typ != table.void_type
+			single_line := it.branches.len == 2 && it.has_else //
+				&& it.branches[0].stmts.len == 1 && it.branches[1].stmts.len == 1
 			f.single_line_if = single_line
-			f.write('if ')
-			f.expr(it.cond)
-			if single_line {
-				f.write(' { ')
-			}
-			else {
-				f.writeln(' {')
-			}
-			f.stmts(it.stmts)
-			if single_line {
-				f.write(' ')
-			}
-			f.write('}')
-			if it.has_else {
-				f.write(' else ')
-			}
-			else if it.else_stmts.len > 0 {
-				f.write(' else {')
+			for i, branch in it.branches {
+				if i == 0 {
+					f.write('if ')
+					f.expr(branch.cond)
+					f.write(' {')
+				}
+				else if i < it.branches.len-1 || !it.has_else {
+					f.write('} else if ')
+					f.expr(branch.cond)
+					f.write(' {')
+				}
+				else if i == it.branches.len-1 && it.has_else {
+					f.write('} else {')
+				}
 				if single_line {
 					f.write(' ')
 				}
 				else {
 					f.writeln('')
 				}
-				f.stmts(it.else_stmts)
+				f.stmts(branch.stmts)
 				if single_line {
 					f.write(' ')
 				}
-				f.write('}')
 			}
+			f.write('}')
 			f.single_line_if = false
 		}
 		ast.Ident {
@@ -433,7 +436,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(']')
 		}
 		ast.IntegerLiteral {
-			f.write(it.val.str())
+			f.write(it.val)
 		}
 		ast.MapInit {
 			f.writeln('{')
@@ -490,7 +493,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.MethodCallExpr {
 			f.expr(it.expr)
 			f.write('.' + it.name + '(')
-			f.call_args(it.args, it.muts)
+			f.call_args(it.args)
 			f.write(')')
 			f.or_expr(it.or_block)
 		}
@@ -561,15 +564,15 @@ fn (f mut Fmt) wrap_long_line() {
 	}
 }
 
-fn (f mut Fmt) call_args(args []ast.Expr, muts []bool) {
+fn (f mut Fmt) call_args(args []ast.CallArg) {
 	for i, arg in args {
-		if muts[i] {
+		if arg.is_mut {
 			f.write('mut ')
 		}
 		if i > 0 {
 			f.wrap_long_line()
 		}
-		f.expr(arg)
+		f.expr(arg.expr)
 		if i < args.len - 1 {
 			f.write(', ')
 		}

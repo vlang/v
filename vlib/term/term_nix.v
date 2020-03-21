@@ -3,6 +3,12 @@ module term
 import os
 
 #include <sys/ioctl.h>
+
+$if solaris {
+#include <unistd.h> // ioctl
+#include <sys/termios.h> // TIOCGWINSZ
+}
+
 pub struct C.winsize {
 pub:
 	ws_row    u16

@@ -55,6 +55,12 @@ fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 	$if freebsd {
 		return print_backtrace_skipping_top_frames_freebsd(skipframes)
 	}
+	$if netbsd {
+		return print_backtrace_skipping_top_frames_freebsd(skipframes)
+	}
+	$if openbsd {
+		return print_backtrace_skipping_top_frames_freebsd(skipframes)
+	}
 	return false
 }
 

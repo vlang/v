@@ -69,15 +69,15 @@ fn main() {
 	scripting.used_tools_must_exist(['git', 'cc'])
 	mut context := Context{}
 	mut fp := flag.new_flag_parser(os.args)
-	fp.application(os.filename(os.executable()))
+	fp.application(os.file_name(os.executable()))
 	fp.version(tool_version)
 	fp.description(tool_description)
 	fp.arguments_description('VCOMMIT')
 	fp.skip_executable()
 	fp.limit_free_args(1, 1)
 
-	context.cleanup = fp.bool('clean', true, 'Clean before running (slower).')
-	context.cmd_to_run = fp.string_('command', `c`, '', 'Command to run in the old V repo.\n')
+	context.cleanup = fp.bool('clean', 0, true, 'Clean before running (slower).')
+	context.cmd_to_run = fp.string('command', `c`, '', 'Command to run in the old V repo.\n')
 
 	commits := vgit.add_common_tool_options(mut context, mut fp)
 	if commits.len > 0 {

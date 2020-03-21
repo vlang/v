@@ -22,18 +22,24 @@ fn parse_arguments(args []string) (pref.Preferences, []string) {
 		exit(1)
 	}
 	if backend.len == 1 {
-		p.backend = pref.backend_from_string(backend[0]) or {
+
+// TODO remove tmp var after cgen optional bug is fixed
+		x := pref.backend_from_string(backend[0]) or {
 			println('V error: Unknown backend ${backend[0]} provided.')
 			exit(1)
 		}
+		p.backend = x
 	} else {
 		p.backend = .c
 	}
-	mut remaining := flag.parse_pref(args, parse_options, &p) or {
+	remaining2 := flag.parse_pref(args, parse_options, p) or {
 		println('V error: Error while parsing flags.')
 		println(err)
+		println('Args:')
+		println(args)
 		exit(1)
 	}
+	mut remaining := remaining2 // TODO cgen bug
 	match remaining[0] {
 		'run' {
 			p.is_run = true

@@ -32,7 +32,7 @@ fn test_fmt() {
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
 		fmt_bench.step()
-		ifilename := os.filename(ipath)
+		ifilename := os.file_name(ipath)
 		opath := ipath.replace('_input.vv', '_expected.vv')
 		if !os.exists(opath) {
 			fmt_bench.fail()

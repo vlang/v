@@ -32,8 +32,11 @@ const (
 	['linux', '_lin.v', '_linux.v', '_nix.v'],
 	['macos', '_mac.v', '_darwin.v'],
 	['freebsd', '_bsd.v', '_freebsd.v'],
+	['netbsd', '_bsd.v', '_netbsd.v'],
+	['openbsd', '_bsd.v', '_openbsd.v'],
 	['solaris', '_solaris.v'],
 	['haiku', '_haiku.v'],
+	['qnx', '_qnx.v'],
 	]
 	FORMATTED_FILE_TOKEN = '\@\@\@' + 'FORMATTED_FILE: '
 )
@@ -105,7 +108,7 @@ fn main() {
 	}
 	mut errors := 0
 	for file in files {
-		fpath := os.realpath(file)
+		fpath := os.real_path(file)
 		mut worker_command_array := cli_args_no_files.clone()
 		worker_command_array << ['-worker', fpath]
 		worker_cmd := worker_command_array.join(' ')
@@ -155,7 +158,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		table := table.new_table()
 		file_ast := parser.parse_file(file, table, .parse_comments)
 		formatted_content := fmt.fmt(file_ast, table)
-		file_name := os.filename(file)
+		file_name := os.file_name(file)
 		vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
 		os.write_file(vfmt_output_path, formatted_content )
 		if foptions.is_verbose {
@@ -368,7 +371,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	// This function get_compile_name_of_potential_v_project returns:
 	// a) the file's folder, if file is part of a v project
 	// b) the file itself, if the file is a standalone v program
-	pfolder := os.realpath(os.dir(file))
+	pfolder := os.real_path(os.dir(file))
 	// a .v project has many 'module main' files in one folder
 	// if there is only one .v file, then it must be a standalone
 	all_files_in_pfolder := os.ls(pfolder) or {

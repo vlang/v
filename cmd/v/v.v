@@ -11,12 +11,12 @@ import (
 	os
 	v.table
 	v.doc
+	v.pref
 )
 
 const (
 	simple_cmd = ['fmt',
 	'up', 'self',
-	'create',
 	'test', 'test-fmt', 'test-compiler',
 	'bin2v',
 	'repl',
@@ -26,7 +26,7 @@ const (
 
 fn main() {
 	prefs := flag.MainCmdPreferences{}
-	values := flag.parse_main_cmd(os.args, parse_flags, &prefs) or {
+	values := flag.parse_main_cmd(os.args, parse_flags, prefs) or {
 		println('V Error: An error has occurred while parsing flags: ')
 		println(err)
 		exit(1)
@@ -36,7 +36,7 @@ fn main() {
 	}
 	if prefs.verbosity.is_higher_or_equal(.level_three) {
 		println('Parsed preferences: ')
-		println(prefs)
+		//println(prefs) // QTODO
 		println('Remaining: $values')
 	}
 	// Do a quick check for `v -v`. Too much error has been made this way.
@@ -69,6 +69,10 @@ fn main() {
 		return
 	}
 	match command {
+		'create', 'init' {
+			launch_tool(prefs.verbosity, 'vcreate')
+			return
+		}
 		'translate' {
 			println('Translating C to V will be available in V 0.3')
 			return
@@ -145,4 +149,28 @@ fn disallow_unknown_flags(prefs flag.MainCmdPreferences) {
 	}
 	println('V Error: Unexpected flag found: $prefs.unknown_flag')
 	exit(1)
+}
+
+fn create_symlink() {
+	$if windows {
+		return
+	}
+	vexe := pref.vexe_path()
+	mut link_path := '/usr/local/bin/v'
+	mut ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
+	if ret.exit_code == 0 {
+		println('Symlink "$link_path" has been created')
+	}
+	else if os.system('uname -o | grep -q \'[A/a]ndroid\'') == 0 {
+		println('Failed to create symlink "$link_path". Trying again with Termux path for Android.')
+		link_path = '/data/data/com.termux/files/usr/bin/v'
+		ret = os.exec('ln -sf $vexe $link_path') or { panic(err) }
+		if ret.exit_code == 0 {
+			println('Symlink "$link_path" has been created')
+		} else {
+			println('Failed to create symlink "$link_path". Try again with sudo.')
+		}
+	} else {
+			println('Failed to create symlink "$link_path". Try again with sudo.')
+	}
 }

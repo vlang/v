@@ -7,7 +7,7 @@ module math
 // f32_bits(f32_from_bits(x)) == x.
 pub fn f32_bits(f f32) u32 {
 	p := &u32(&f)
-	return *p
+	return p
 }
 
 // f32_from_bits returns the floating-point number corresponding
@@ -16,7 +16,7 @@ pub fn f32_bits(f f32) u32 {
 // f32_from_bits(f32_bits(x)) == x.
 pub fn f32_from_bits(b u32) f32 {
 	p := &f32(&b)
-	return *p
+	return p
 }
 
 // f64_bits returns the IEEE 754 binary representation of f,
@@ -24,7 +24,7 @@ pub fn f32_from_bits(b u32) f32 {
 // and f64_bits(f64_from_bits(x)) == x.
 pub fn f64_bits(f f64) u64 {
 	p := &u64(&f)
-	return *p
+	return p
 }
 
 // f64_from_bits returns the floating-point number corresponding
@@ -33,6 +33,6 @@ pub fn f64_bits(f f64) u64 {
 // f64_from_bits(f64_bits(x)) == x.
 pub fn f64_from_bits(b u64) f64 {
 	p := &f64(&b)
-	return *p
+	return p
 }
 

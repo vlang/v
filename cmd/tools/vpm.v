@@ -129,36 +129,12 @@ fn vpm_install(module_names []string) {
 		exit(2)
 	}
 	mut errors := 0
-	url := get_working_server_url()
 	for n in module_names {
 		name := n.trim_space()
-		modurl := url + '/jsmod/$name'
-		r := http.get(modurl) or {
-			println('Http server did not respond to our request for ${modurl}.')
-			println('Error details: $err')
+		mod := get_module_meta_info(name) or {
 			errors++
-			continue
-		}
-		if r.status_code == 404 {
-			println('Skipping module "$name", since $url reported that "$name" does not exist.')
-			errors++
-			continue
-		}
-		if r.status_code != 200 {
-			println('Skipping module "$name", since $url responded with $r.status_code http status code. Please try again later.')
-			errors++
-			continue
-		}
-		s := r.text
-		mod := json.decode(Mod,s) or {
-			errors++
-			println('Skipping module "$name", since its information is not in json format.')
-			continue
-		}
-		if ('' == mod.url || '' == mod.name) {
-			errors++
-			// a possible 404 error, which means a missing module?
-			println('Skipping module "$name", since it is missing name or url information.')
+			println('Errors while retrieving meta data for module ${name}:')
+			println(err)
 			continue
 		}
 		mut vcs := mod.vcs
@@ -170,7 +146,7 @@ fn vpm_install(module_names []string) {
 			println('Skipping module "$name", since it uses an unsupported VCS {$vcs} .')
 			continue
 		}
-		final_module_path := os.realpath(os.join_path(settings.vmodules_path,mod.name.replace('.', os.path_separator)))
+		final_module_path := os.real_path(os.join_path(settings.vmodules_path,mod.name.replace('.', os.path_separator)))
 		if os.exists(final_module_path) {
 			vpm_update([name])
 			continue
@@ -261,7 +237,7 @@ fn vpm_remove(module_names []string) {
 		os.rmdir_all(final_module_path)
 		// delete author directory if it is empty
 		author := name.split('.')[0]
-		author_dir := os.realpath(os.join_path(settings.vmodules_path,author))
+		author_dir := os.real_path(os.join_path(settings.vmodules_path,author))
 		if os.is_dir_empty(author_dir) {
 			verbose_println('removing author folder $author_dir')
 			os.rmdir(author_dir)
@@ -271,7 +247,7 @@ fn vpm_remove(module_names []string) {
 
 fn valid_final_path_of_existing_module(name string) ?string {
 	name_of_vmodules_folder := os.join_path(settings.vmodules_path,name.replace('.', os.path_separator))
-	final_module_path := os.realpath(name_of_vmodules_folder)
+	final_module_path := os.real_path(name_of_vmodules_folder)
 	if !os.exists(final_module_path) {
 		println('No module with name "$name" exists at $name_of_vmodules_folder')
 		return none
@@ -303,7 +279,7 @@ fn vpm_help() {
 fn vcs_used_in_dir(dir string) ?[]string {
 	mut vcs := []string
 	for repo_subfolder in supported_vcs_folders {
-		checked_folder := os.realpath(os.join_path(dir,repo_subfolder))
+		checked_folder := os.real_path(os.join_path(dir,repo_subfolder))
 		if os.is_dir(checked_folder) {
 			vcs << repo_subfolder.replace('.', '')
 		}
@@ -344,7 +320,7 @@ fn get_all_modules() []string {
 		panic(err)
 	}
 	if r.status_code != 200 {
-		println('Failed to search vpm.best. Status code: $r.status_code')
+		println('Failed to search vpm.vlang.io. Status code: $r.status_code')
 		exit(1)
 	}
 	s := r.text
@@ -463,4 +439,41 @@ fn verbose_println(s string) {
 	if settings.is_verbose {
 		println(s)
 	}
+}
+
+fn get_module_meta_info(name string) ?Mod {
+	mut errors := []string
+	for server_url in default_vpm_server_urls {
+		modurl := server_url + '/jsmod/$name'
+		verbose_println('Retrieving module metadata from: $modurl ...')
+		r := http.get(modurl) or {
+			errors << 'Http server did not respond to our request for ${modurl}.'
+			errors << 'Error details: $err'
+			continue
+		}
+		if r.status_code == 404 {
+			errors << 'Skipping module "$name", since $server_url reported that "$name" does not exist.'
+			continue
+		}
+		if r.status_code != 200 {
+			errors << 'Skipping module "$name", since $server_url responded with $r.status_code http status code. Please try again later.'
+			continue
+		}
+		s := r.text
+		if s.len > 0 && s[0] != `{` {
+			errors << 'Invalid json data'
+			errors << s.trim_space().limit(100) + '...'
+			continue
+		}
+		mod := json.decode(Mod,s) or {
+			errors << 'Skipping module "$name", since its information is not in json format.'
+			continue
+		}
+		if ('' == mod.url || '' == mod.name) {
+			errors << 'Skipping module "$name", since it is missing name or url information.'
+			continue
+		}
+		return mod
+	}
+	return error(errors.join_lines())
 }

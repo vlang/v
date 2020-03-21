@@ -58,13 +58,13 @@ fn main(){
 	compiler.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 
 	mut fp := flag.new_flag_parser(os.args)
-	fp.application(os.filename(toolexe))
+	fp.application(os.file_name(toolexe))
 	fp.version( tool_version )
 	fp.description( tool_description )
 	fp.arguments_description('FILE.v/FOLDER [FILE.v/FOLDER]...')
 	fp.limit_free_args_to_at_least(1)
 	fp.skip_executable()
-	show_help:=fp.bool_('help', `h`, false, 'Show this help screen\n')
+	show_help:=fp.bool('help', `h`, false, 'Show this help screen\n')
 	if( show_help ){
 		println( fp.usage() )
 		exit(0)
@@ -73,7 +73,7 @@ fn main(){
 	mut files := []string
 	locations := fp.finalize() or { eprintln('Error: ' + err) exit(1) }
 	for xloc in locations {
-		loc := os.realpath(xloc)
+		loc := os.real_path(xloc)
 		xfiles := if os.is_dir(loc){ os.walk_ext(loc,'.v') } else { [loc] }
 		filtered_files := xfiles.filter(!it.ends_with('_js.v'))
 		files << filtered_files

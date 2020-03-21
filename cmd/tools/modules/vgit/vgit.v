@@ -41,7 +41,7 @@ pub fn line_to_timestamp_and_commit(line string) (int,string) {
 
 pub fn normalized_workpath_for_commit(workdir string, commit string) string {
 	nc := 'v_at_' + commit.replace('^', '_').replace('-', '_').replace('/', '_')
-	return os.realpath(workdir + os.path_separator + nc)
+	return os.real_path(workdir + os.path_separator + nc)
 }
 
 pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string,string) {
@@ -96,7 +96,7 @@ pub mut:
 
 pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	vgit_context.vexepath = os.realpath(os.join_path(vgit_context.path_v, vgit_context.vexename))
+	vgit_context.vexepath = os.real_path(os.join_path(vgit_context.path_v, vgit_context.vexename))
 	mut command_for_building_v_from_c_source := ''
 	mut command_for_selfbuilding := ''
 	if 'windows' == os.user_os() {
@@ -137,16 +137,16 @@ pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 
 pub fn add_common_tool_options<T>(context mut T, fp mut flag.FlagParser) []string {
 	tdir := os.temp_dir()
-	context.workdir = os.realpath(fp.string_('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
-	context.v_repo_url = fp.string('vrepo', vgit.remote_v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
-	context.vc_repo_url = fp.string('vcrepo', vgit.remote_vc_repo_url, 'The url of the vc repository. You can clone it
+	context.workdir = os.real_path(fp.string('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
+	context.v_repo_url = fp.string('vrepo', 0, vgit.remote_v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
+	context.vc_repo_url = fp.string('vcrepo', 0, vgit.remote_vc_repo_url, 'The url of the vc repository. You can clone it
 ${flag.SPACE}beforehand, and then just give the local folder
 ${flag.SPACE}path here. That will eliminate the network ops
 ${flag.SPACE}done by this tool, which is useful, if you want
 ${flag.SPACE}to script it/run it in a restrictive vps/docker.
 ')
-	context.show_help = fp.bool_('help', `h`, false, 'Show this help screen.')
-	context.verbose = fp.bool_('verbose', `v`, false, 'Be more verbose.')
+	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
+	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 
 	if (context.show_help) {
 		println(fp.usage())
@@ -158,11 +158,11 @@ ${flag.SPACE}to script it/run it in a restrictive vps/docker.
 	}
 
 	if os.is_dir(context.v_repo_url) {
-		context.v_repo_url = os.realpath( context.v_repo_url )
+		context.v_repo_url = os.real_path( context.v_repo_url )
 	}
 
 	if os.is_dir(context.vc_repo_url) {
-		context.vc_repo_url = os.realpath( context.vc_repo_url )
+		context.vc_repo_url = os.real_path( context.vc_repo_url )
 	}
 
 	commits := fp.finalize() or {

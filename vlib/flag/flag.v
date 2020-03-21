@@ -23,7 +23,7 @@ module flag
 //
 //  	fp.skip_executable()
 //
-//  	an_int := fp.int('an_int', 666, 'some int to define 666 is default')
+//  	an_int := fp.int('an_int', 0o666, 'some int to define 0o666 is default')
 //  	a_bool := fp.bool('a_bool', false, 'some \'real\' flag')
 //  	a_float := fp.float('a_float', 1.0, 'also floats')
 //  	a_string := fp.string('a_string', 'no text', 'finally, some text')
@@ -245,21 +245,11 @@ pub fn (fs mut FlagParser) bool_opt(name string, abbr byte, usage string) ?bool 
 //      the default value is returned
 // version with abbr
 //TODO error handling for invalid string to bool conversion
-pub fn (fs mut FlagParser) bool_(name string, abbr byte, bdefault bool, usage string) bool {
+pub fn (fs mut FlagParser) bool(name string, abbr byte, bdefault bool, usage string) bool {
 	value := fs.bool_opt(name, abbr, usage) or {
 		return bdefault
 	}
 	return value
-}
-
-// defining and parsing a bool flag
-//  if defined
-//      the value is returned (true/false)
-//  else
-//      the default value is returned
-//TODO error handling for invalid string to bool conversion
-pub fn (fs mut FlagParser) bool(name string, v bool, usage string) bool {
-	return fs.bool_(name, 0, v, usage)
 }
 
 // int_multi returns all instances of values associated with the flags provided
@@ -292,21 +282,11 @@ pub fn (fs mut FlagParser) int_opt(name string, abbr byte, usage string) ?int {
 //      the default value is returned
 // version with abbr
 //TODO error handling for invalid string to int conversion
-pub fn (fs mut FlagParser) int_(name string, abbr byte, idefault int, usage string) int {
+pub fn (fs mut FlagParser) int(name string, abbr byte, idefault int, usage string) int {
 	value := fs.int_opt(name, abbr, usage) or {
 		return idefault
 	}
 	return value
-}
-
-// defining and parsing an int flag
-//  if defined
-//      the value is returned (int)
-//  else
-//      the default value is returned
-//TODO error handling for invalid string to int conversion
-pub fn (fs mut FlagParser) int(name string, i int, usage string) int {
-	return fs.int_(name, 0, i, usage)
 }
 
 // float_multi returns all instances of values associated with the flags provided
@@ -339,21 +319,11 @@ pub fn (fs mut FlagParser) float_opt(name string, abbr byte, usage string) ?f32 
 //      the default value is returned
 // version with abbr
 //TODO error handling for invalid string to float conversion
-pub fn (fs mut FlagParser) float_(name string, abbr byte, fdefault f32, usage string) f32 {
+pub fn (fs mut FlagParser) float(name string, abbr byte, fdefault f32, usage string) f32 {
 	value := fs.float_opt(name, abbr, usage) or {
 		return fdefault
 	}
 	return value
-}
-
-// defining and parsing a float flag
-//  if defined
-//      the value is returned (float)
-//  else
-//      the default value is returned
-//TODO error handling for invalid string to float conversion
-pub fn (fs mut FlagParser) float(name string, f f32, usage string) f32 {
-	return fs.float_(name, 0, f, usage)
 }
 
 // string_multi returns all instances of values associated with the flags provided
@@ -380,20 +350,11 @@ pub fn (fs mut FlagParser) string_opt(name string, abbr byte, usage string) ?str
 //  else
 //      the default value is returned
 // version with abbr
-pub fn (fs mut FlagParser) string_(name string, abbr byte, sdefault string, usage string) string {
+pub fn (fs mut FlagParser) string(name string, abbr byte, sdefault string, usage string) string {
 	value := fs.string_opt(name, abbr, usage) or {
 		return sdefault
 	}
 	return value
-}
-
-// defining and parsing a string flag
-//  if defined
-//      the value is returned (string)
-//  else
-//      the default value is returned
-pub fn (fs mut FlagParser) string(name string, sdefault string, usage string) string {
-	return fs.string_(name, 0, sdefault, usage)
 }
 
 pub fn (fs mut FlagParser) limit_free_args_to_at_least(n int) {
@@ -522,4 +483,3 @@ pub fn (fs FlagParser) finalize() ?[]string {
 	}
 	return fs.args
 }
-

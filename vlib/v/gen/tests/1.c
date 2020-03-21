@@ -30,7 +30,7 @@ bool get_bool();
 int get_int2();
 void myuser();
 multi_return_int_string multi_return();
-void variadic(variadic_int a);
+void variadic(varg_int a);
 void ensure_cap(int required, int cap);
 void println(string s);
 void matches();
@@ -39,6 +39,11 @@ void end();
 #define localmod__pub_int_const 20
 void localmod__pub_foo();
 int localmod__get_int_10();
+// variadic structs
+struct varg_int {
+	int len;
+	int args[0];
+};
 
 //3
 
@@ -70,7 +75,7 @@ void foo(int a) {
 	for (int i = 0;
 i < 10; i++) {
 	}
-	array_int nums = new_array_from_c_array(3, 3, sizeof(array_int), (int[]){
+	array_int nums = new_array_from_c_array(3, 3, sizeof(int), (int[]){
 		1, 2, 3,
 	});
 	array_int nums2 = array_slice(nums, 0, 2);
@@ -78,15 +83,15 @@ i < 10; i++) {
 	array_int nums4 = array_slice(nums, 1, nums.len);
 	int number = (*(int*)array_get(nums, 0));
 	array_set(&nums, 1, &(int[]) { 10 });
-	array_bool bools = new_array_from_c_array(2, 2, sizeof(array_bool), (bool[]){
+	array_bool bools = new_array_from_c_array(2, 2, sizeof(bool), (bool[]){
 		true, false,
 	});
-	array_User users = new_array_from_c_array(1, 1, sizeof(array_User), (User[]){
+	array_User users = new_array_from_c_array(1, 1, sizeof(User), (User[]){
 		(User){
 			0},
 	});
 	bool b = (*(bool*)array_get(bools, 0));
-	array_string mystrings = new_array_from_c_array(2, 2, sizeof(array_string), (string[]){
+	array_string mystrings = new_array_from_c_array(2, 2, sizeof(string), (string[]){
 		tos3("a"), tos3("b"),
 	});
 	string s = (*(string*)array_get(mystrings, 0));
@@ -96,8 +101,8 @@ i < 10; i++) {
 	bool q = true || false;
 	bool b2 = (*(bool*)array_get(bools, 0)) || true;
 	bool b3 = get_bool() || true;
-	int f = array_first(nums);
-	array_int c = array_clone(nums);
+	int f = *(int*)array_first(nums);
+	array_int c = array_clone(&nums);
 	string d = tos3("d");
 	println(string_add(s, d));
 }
@@ -141,10 +146,9 @@ multi_return_int_string multi_return() {
 	return (multi_return_int_string){.arg0=4,.arg1=tos3("four")};
 }
 
-void variadic(variadic_int a) {
+void variadic(varg_int a) {
 	int x = path_sep;
 	int y = true ? 1 : 0;
-;
 }
 
 void ensure_cap(int required, int cap) {
@@ -158,18 +162,18 @@ void println(string s) {
 
 void matches() {
 	int a = 100;
-	int tmp1 = a;
-	if (tmp1 == 10) {
+	if (a == 10) {
 		println(tos3("10"));
-
 	}
-	else if (tmp1 == 20) {
+	else if (a == 20) {
 		int k = a + 1;
-
 	}
 	else {
 	}
 	;
+	string x = (a == 10) ? tos3("ten") : (a == 30) ? tos3("thirty") : tos3("unknown");
+	int xx = (a == 10) ? 100 : (a == 30) ? 300 : 0;
+	println((a == 10) ? tos3("ten") : tos3("not ten"));
 }
 
 //10
