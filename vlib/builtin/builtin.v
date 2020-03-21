@@ -177,6 +177,9 @@ pub fn free(ptr voidptr) {
 }
 
 pub fn memdup(src voidptr, sz int) voidptr {
+	if sz == 0 {
+		return vcalloc(1)
+	}
 	mem := malloc(sz)
 	return C.memcpy(mem, src, sz)
 }
