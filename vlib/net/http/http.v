@@ -163,11 +163,11 @@ fn build_url_from_fetch(_url string, config FetchConfig) ?string {
 	return url.str()
 }
 
-fn (req mut Request) free() {
+fn (req Request) free() {
 	req.headers.free()
 }
 
-fn (resp mut Response) free() {
+fn (resp Response) free() {
 	resp.headers.free()
 }
 
