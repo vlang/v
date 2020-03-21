@@ -62,7 +62,7 @@ void handle_expr(Expr e) {
 	;
 }
 
-int main() {
+int main(int argc, char** argv) {
 	User user = (User){
 0};
 	user.age = 10;

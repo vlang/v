@@ -45,11 +45,10 @@ struct varg_int {
 	int args[0];
 };
 
-//3
-
 //
-
-int main() {
+int main(int argc, char** argv) {
+	_init();
+	os__args = os__init_os_args(argc, (byteptr*)argv);
 	int a = 10;
 	a++;
 	int negative = -a;
@@ -176,16 +175,12 @@ void matches() {
 	println((a == 10) ? tos3("ten") : tos3("not ten"));
 }
 
-//10
-
 void end() {
 	int i = 2;
 	int key = 10;
 	bool x = i != -1 && key == 10;
 	int e = 2 + 3 * 4;
 }
-
-//20
 
 void localmod__pub_foo() {
 	int a = 10;
@@ -194,4 +189,9 @@ void localmod__pub_foo() {
 int localmod__get_int_10() {
 	return 10;
 }
+
+void _init() {
+	pi2 = pi;
+}
+
 

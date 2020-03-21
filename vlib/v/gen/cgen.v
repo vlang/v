@@ -1196,6 +1196,7 @@ fn (g mut Gen) ident(node ast.Ident) {
 }
 
 fn (g mut Gen) if_expr(node ast.IfExpr) {
+	// println('if_expr pos=$node.pos.line_nr')
 	// g.writeln('/* if is_expr=$node.is_expr */')
 	// If expression? Assign the value to a temp var.
 	// Previously ?: was used, but it's too unreliable.
