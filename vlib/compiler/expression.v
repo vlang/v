@@ -787,13 +787,7 @@ fn (p mut Parser) factor() string {
 		}
 		.number {
 			// Check if float (`1.0`, `1e+3`) but not if is hexa (e.g. 0xEE contains `E` but is not float)
-			if (p.lit.contains('.') || p.lit.contains('e') || p.lit.contains('E')) && !(p.lit[..2] in ['0x', '0X']) {
-				typ = 'f64'
-			}
-			else {
-				v_i64 := p.lit.i64()
-				typ = if i64(int(v_i64)) < v_i64 { 'i64' } else { 'int' }
-			}
+			typ = if (p.lit.contains('.') || p.lit.contains('e') || p.lit.contains('E')) && !(p.lit[..2] in ['0x', '0X']) { 'f64' } else { 'int' }
 			if p.expected_type != '' && !is_valid_int_const(p.lit, p.expected_type) {
 				p.error('constant `$p.lit` overflows `$p.expected_type`')
 			}
