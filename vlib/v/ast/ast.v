@@ -153,6 +153,7 @@ pub:
 	rec_mut       bool // is receiver mutable
 	is_c          bool
 	no_body       bool // just a definition `fn C.malloc()`
+	pos           token.Position
 }
 
 pub struct BranchStmt {

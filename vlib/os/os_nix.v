@@ -20,7 +20,11 @@ fn C.symlink(charptr, charptr) int
 
 fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
+	//mut args := []string(make(0, argc, sizeof(string)))
+	//mut args := []string{len:argc}
 	for i in 0 .. argc {
+
+		//args [i] = string(argv[i])
 		args << string(argv[i])
 	}
 	return args

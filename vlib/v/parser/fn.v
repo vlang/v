@@ -177,6 +177,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		rec_mut: rec_mut
 		is_c: is_c
 		no_body: no_body
+		pos: p.tok.position()
 	}
 }
 

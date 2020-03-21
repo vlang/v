@@ -2809,6 +2809,13 @@ fn (p mut Parser) array_init() string {
 	p.gen_array_init(real, no_alloc, new_arr_ph, i)
 	typ = 'array_${stringify_pointer(typ)}'
 	p.register_array(typ)
+	if p.tok == .lcbr && i == 0 && p.peek() == .name {
+		// []string{len:10} (V2)
+		for p.tok != .rcbr {
+			p.next()
+		}
+		p.check(.rcbr)
+	}
 	return typ
 }
 

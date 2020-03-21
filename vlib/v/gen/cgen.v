@@ -15,6 +15,7 @@ struct Gen {
 	inits          strings.Builder // contents of `void _vinit(){}`
 	table          &table.Table
 mut:
+	file           ast.File
 	fn_decl        &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	tmp_count      int
 	varaidic_args  map[string]int
@@ -26,6 +27,7 @@ mut:
 	inside_ternary bool // ?: comma separated statements on a single line
 	stmt_start_pos int
 	right_is_opt   bool
+	autofree       bool
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
@@ -37,9 +39,16 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		inits: strings.new_builder(100)
 		table: table
 		fn_decl: 0
+		autofree: true
 	}
 	g.init()
 	for file in files {
+		// println('cgen "$g.file.path" $file.stmts.len')
+		g.file = file
+		if g.file.path == '' || g.file.path.ends_with('.vv') {
+			// cgen test
+			g.autofree = false
+		}
 		g.stmts(file.stmts)
 	}
 	g.write_variadic_types()
@@ -498,6 +507,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		if name == 'exit' {
 			name = 'v_exit'
 		}
+		if name == 'free' {
+			name = 'v_free'
+		}
 		// type_name := g.table.type_to_str(it.return_type)
 		type_name := g.typ(it.return_type)
 		g.write('$type_name ${name}(')
@@ -528,13 +540,31 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	if is_main {
 		g.writeln('_vinit();')
+		if g.autofree {
+			g.writeln('free(os__args.data); // empty, inited in _vinit()')
+		}
 		g.writeln('os__args = os__init_os_args(argc, (byteptr*)argv);')
 	}
 	for stmt in it.stmts {
 		// g.write('\t')
 		g.stmt(stmt)
 	}
+	// ////////////
+	if g.autofree && false {
+		scope := g.file.scope.innermost(it.pos.pos - 1)
+		for i, var in scope.vars {
+			sym := g.table.get_type_symbol(var.typ)
+			if sym.kind == .array && !table.type_is_optional(var.typ) {
+				g.writeln('array_free($var.name); // autofree')
+			}
+			println(var.name)
+		}
+	}
+	// /////////
 	if is_main {
+		if g.autofree {
+			g.writeln('_vcleanup();')
+		}
 		g.writeln('return 0;')
 	}
 	g.writeln('}')
@@ -592,13 +622,18 @@ fn (g mut Gen) expr(node ast.Expr) {
 			if type_sym.kind != .array_fixed {
 				elem_sym := g.table.get_type_symbol(it.elem_type)
 				elem_type_str := g.typ(it.elem_type)
-				g.write('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($elem_type_str), ')
-				g.writeln('($elem_type_str[]){\t')
-				for expr in it.exprs {
-					g.expr(expr)
-					g.write(', ')
+				if it.exprs.len == 0 {
+					g.write('new_array($it.exprs.len, $it.exprs.len, sizeof($elem_type_str))')
 				}
-				g.write('\n})')
+				else {
+					g.write('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($elem_type_str), ')
+					g.writeln('($elem_type_str[]){\t')
+					for expr in it.exprs {
+						g.expr(expr)
+						g.write(', ')
+					}
+					g.write('\n})')
+				}
 			}
 			else {}
 		}
@@ -661,29 +696,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(it.val.str())
 		}
 		ast.CallExpr {
-			mut name := it.name.replace('.', '__')
-			if name == 'exit' {
-				name = 'v_exit'
-			}
-			if it.is_c {
-				// Skip "C__"
-				g.is_c_call = true
-				name = name[3..]
-			}
-			g.write('${name}(')
-			if name == 'println' && it.args[0].typ != table.string_type_idx {
-				// `println(int_str(10))`
-				// sym := g.table.get_type_symbol(it.args[0].typ)
-				styp := g.typ(it.args[0].typ)
-				g.write('${styp}_str(')
-				g.expr(it.args[0].expr)
-				g.write('))')
-			}
-			else {
-				g.call_args(it.args)
-				g.write(')')
-			}
-			g.is_c_call = false
+			g.call_expr(it)
 		}
 		ast.CastExpr {
 			// g.write('/*cast*/')
@@ -1561,6 +1574,13 @@ fn (g mut Gen) write_init_function() {
 	g.writeln('void _vinit() {')
 	g.writeln(g.inits.str())
 	g.writeln('}')
+	if g.autofree {
+		g.writeln('void _vcleanup() {')
+		g.writeln('puts("cleaning up...");')
+		g.writeln('free(os__args.data);')
+		g.writeln('free(strconv__ftoa__powers_of_10.data);')
+		g.writeln('}')
+	}
 }
 
 fn (g mut Gen) write_str_definitions() {
@@ -1737,13 +1757,13 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 		// TODO: fix match, sum type false positive
 		// match node.expr_types[i] {
-		// 	table.string_type {
-		// 		g.write('%.*s')
-		// 	}
-		// 	table.int_type {
-		// 		g.write('%d')
-		// 	}
-		// 	else {}
+		// table.string_type {
+		// g.write('%.*s')
+		// }
+		// table.int_type {
+		// g.write('%d')
+		// }
+		// else {}
 		// }
 		if node.expr_types[i] == table.string_type {
 			g.write('%.*s')
@@ -1800,6 +1820,59 @@ fn (g mut Gen) gen_filter(node ast.MethodCallExpr) {
 	g.write(s)
 	g.write(' ')
 	g.write(tmp)
+}
+
+fn (g mut Gen) call_expr(it ast.CallExpr) {
+	mut name := it.name.replace('.', '__')
+	if name == 'exit' {
+		name = 'v_exit'
+	}
+	if name == 'free' {
+		name = 'v_free'
+	}
+	is_print := name == 'println'
+	if it.is_c {
+		// Skip "C__"
+		g.is_c_call = true
+		name = name[3..]
+	}
+	// Generate tmp vars for values that have to be freed.
+	mut tmps := []string
+	/*
+	for arg in it.args {
+		if arg.typ == table.string_type_idx || is_print {
+			tmp := g.new_tmp_var()
+			tmps << tmp
+			g.write('string $tmp = ')
+			g.expr(arg.expr)
+			g.writeln('; //memory')
+		}
+	}
+	*/
+
+	if is_print && it.args[0].typ != table.string_type_idx {
+		styp := g.typ(it.args[0].typ)
+		if g.autofree {
+			tmp := g.new_tmp_var()
+			// tmps << tmp
+			g.write('string $tmp = ${styp}_str(')
+			g.expr(it.args[0].expr)
+			g.writeln('); println($tmp); string_free($tmp); //MEM2')
+		}
+		else {
+			// `println(int_str(10))`
+			// sym := g.table.get_type_symbol(it.args[0].typ)
+			g.write('println(${styp}_str(')
+			g.expr(it.args[0].expr)
+			g.write('))')
+		}
+	}
+	else {
+		g.write('${name}(')
+		g.call_args(it.args)
+		g.write(')')
+	}
+	g.is_c_call = false
 }
 
 // `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`

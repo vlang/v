@@ -189,6 +189,7 @@ byte g_str_buf[1024];
 int load_so(byteptr);
 void reload_so();
 void _vinit();
+void _vcleanup();
 
 // ============== wyhash ==============
 //	Author: Wang Yi
