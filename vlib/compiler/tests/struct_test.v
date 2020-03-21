@@ -1,10 +1,10 @@
-struct A{
+struct A {
 mut:
 	val int
 	nums []int
 }
 
-struct B{
+struct B {
 mut:
 	a A
 }
@@ -24,6 +24,9 @@ struct User {
 
 struct Foo {
 	@type string
+}
+
+struct Empty {
 }
 
 //We need to make sure that this compiles with all the reserved names.
@@ -53,6 +56,12 @@ struct ReservedKeywords {
 	void     int
 	volatile int
 	while    int
+}
+
+fn test_empty_struct() {
+	d := &Empty{}
+	println(d) // != voidptr(0)
+	println(sizeof(Empty)) // == 0
 }
 
 fn test_struct_levels() {
