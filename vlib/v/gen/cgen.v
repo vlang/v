@@ -41,6 +41,7 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		g.stmts(file.stmts)
 	}
 	g.write_variadic_types()
+	g.write_str_definitions()
 	return g.typedefs.str() + g.definitions.str() + g.out.str()
 }
 
@@ -49,6 +50,8 @@ pub fn (g mut Gen) init() {
 	g.definitions.writeln('#include <inttypes.h>') // int64_t etc
 	g.definitions.writeln(c_builtin_types)
 	g.definitions.writeln(c_headers)
+	g.definitions.writeln('\nstring _STR(const char*, ...);\n')
+	g.definitions.writeln('\nstring _STR_TMP(const char*, ...);\n')
 	g.write_builtin_types()
 	g.write_typedef_types()
 	g.write_sorted_types()
@@ -856,12 +859,12 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('sizeof($styp)')
 		}
 		ast.StringLiteral {
-			// In C calls we have to generate C strings
-			// `C.printf("hi")` => `printf("hi");`
 			escaped_val := it.val.replace_each(['"', '\\"',
 			'\r\n', '\\n',
 			'\n', '\\n'])
 			if g.is_c_call {
+				// In C calls we have to generate C strings
+				// `C.printf("hi")` => `printf("hi");`
 				g.write('"$escaped_val"')
 			}
 			else {
@@ -1531,6 +1534,43 @@ fn verror(s string) {
 	// exit(1)
 }
 
+fn (g mut Gen) write_str_definitions() {
+	// _STR function can't be defined in vlib
+	g.writeln('
+string _STR(const char *fmt, ...) {
+	va_list argptr;
+	va_start(argptr, fmt);
+	size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
+	va_end(argptr);
+	byte* buf = malloc(len);
+	va_start(argptr, fmt);
+	vsprintf((char *)buf, fmt, argptr);
+	va_end(argptr);
+#ifdef DEBUG_ALLOC
+	puts("_STR:");
+	puts(buf);
+#endif
+	return tos2(buf);
+}
+
+string _STR_TMP(const char *fmt, ...) {
+	va_list argptr;
+	va_start(argptr, fmt);
+	//size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
+	va_end(argptr);
+	va_start(argptr, fmt);
+	vsprintf((char *)g_str_buf, fmt, argptr);
+	va_end(argptr);
+#ifdef DEBUG_ALLOC
+	//puts("_STR_TMP:");
+	//puts(g_str_buf);
+#endif
+	return tos2(g_str_buf);
+}
+
+')
+}
+
 const (
 // TODO all builtin types must be lowercase
 	builtins = ['string', 'array', 'KeyValue', 'DenseArray', 'map', 'Option']
@@ -1659,7 +1699,10 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write('_STR("')
 	// Build the string with %
 	for i, val in node.vals {
-		g.write(val)
+		escaped_val := val.replace_each(['"', '\\"',
+		'\r\n', '\\n',
+		'\n', '\\n'])
+		g.write(escaped_val)
 		if i >= node.exprs.len {
 			continue
 		}
