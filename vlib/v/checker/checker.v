@@ -333,6 +333,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 	}
 	// TODO: str methods
 	if typ_sym.kind in [.map] && name == 'str' {
+		method_call_expr.receiver_type = typ
 		method_call_expr.return_type = table.string_type
 		return table.string_type
 	}
