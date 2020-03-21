@@ -22,7 +22,6 @@ mut:
 	errors         []string
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
-	is_amp         bool
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -87,9 +86,6 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 			info := typ_sym.info as table.Struct
 			if struct_init.fields.len == 0 {
 				// Short syntax TODO check
-				if c.is_amp {
-					return table.type_to_ptr(struct_init.typ)
-				}
 				return struct_init.typ
 			}
 			if struct_init.exprs.len > info.fields.len {
@@ -122,9 +118,6 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 			}
 		}
 		else {}
-	}
-	if c.is_amp {
-		return table.type_to_ptr(struct_init.typ)
 	}
 	return struct_init.typ
 }
@@ -719,16 +712,15 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return c.postfix_expr(it)
 		}
 		ast.PrefixExpr {
-			if it.op == .amp {
-				c.is_amp = true
+			right_type := c.expr(it.right)
+			// TODO: testing ref/deref strategy
+			if it.op == .amp && !table.type_is_ptr(right_type) {
+				return table.type_to_ptr(right_type)
 			}
-			res := c.expr(it.right)
-			c.is_amp = false
-			// TODO: impl solid ref/deref strategy
-			if it.op == .mul && table.type_is_ptr(res) {
-				return table.type_deref(res)
+			if it.op == .mul && table.type_is_ptr(right_type) {
+				return table.type_deref(right_type)
 			}
-			return res
+			return right_type
 		}
 		ast.None {
 			return table.none_type
@@ -1001,15 +993,8 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != table.void_type {
-			if c.is_amp {
-				return table.type_to_ptr(value_type)
-			}
 			return value_type
 		}
-	}
-	// TODO: handle these globally, not individually
-	if c.is_amp {
-		return table.type_to_ptr(typ)
 	}
 	return typ
 }
