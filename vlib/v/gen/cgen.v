@@ -44,9 +44,7 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 	}
 	g.write_variadic_types()
 	g.write_str_definitions()
-	g.writeln('void _init() {')
-	g.writeln(g.inits.str())
-	g.writeln('}')
+	g.write_init_function()
 	return g.typedefs.str() + g.definitions.str() + g.out.str()
 }
 
@@ -288,6 +286,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.ForInStmt {
 			if it.is_range {
+				// `for x in 1..10 {`
 				i := g.new_tmp_var()
 				g.write('for (int $i = ')
 				g.expr(it.cond)
@@ -299,7 +298,20 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.writeln('}')
 			}
 			// TODO:
-			else {}
+			else if it.kind == .array {
+				// `for num in nums {`
+				g.writeln('// FOR IN')
+				i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+				g.write('for (int $i = 0; $i < ')
+				g.expr(it.cond)
+				g.writeln('.len; $i++) {')
+				styp := g.typ(it.element_type)
+				g.write('$styp $it.val_var = (($styp*)')
+				g.expr(it.cond)
+				g.writeln('.data)[$i];')
+				g.stmts(it.stmts)
+				g.writeln('}')
+			}
 		}
 		ast.ForStmt {
 			g.write('while (')
@@ -471,7 +483,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	g.reset_tmp_count()
 	is_main := it.name == 'main'
 	if is_main {
-		g.write('int ${it.name}(')
+		g.write('int ${it.name}(int argc, char** argv')
 	}
 	else {
 		mut name := it.name
@@ -512,6 +524,10 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	g.writeln(') { ')
 	if !is_main {
 		g.definitions.writeln(');')
+	}
+	if is_main {
+		g.writeln('_init();')
+		g.writeln('os__args = os__init_os_args(argc, (byteptr*)argv);')
 	}
 	for stmt in it.stmts {
 		// g.write('\t')
@@ -1522,7 +1538,7 @@ fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg) {
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
 	}
-	else if arg_is_ptr && !expr_is_ptr {
+	else if arg_is_ptr && !expr_is_ptr && arg.typ != table.byteptr_type {
 		g.write('&/*q*/')
 	}
 	else if !arg_is_ptr && expr_is_ptr {
@@ -1538,6 +1554,7 @@ fn verror(s string) {
 
 fn (g mut Gen) write_init_function() {
 	g.writeln('void _init() {')
+	g.writeln(g.inits.str())
 	g.writeln('}')
 }
 

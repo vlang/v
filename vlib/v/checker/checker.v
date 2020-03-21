@@ -576,8 +576,8 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			}
 			else {
 				mut scope := c.file.scope.innermost(it.pos.pos)
+				sym := c.table.get_type_symbol(typ)
 				if it.key_var.len > 0 {
-					sym := c.table.get_type_symbol(typ)
 					key_type := match sym.kind {
 						.map{
 							sym.map_info().key_type
@@ -595,6 +595,8 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 					typ_sym := c.table.get_type_symbol(typ)
 					c.error('for in: cannot index $typ_sym.name', it.pos)
 				}
+				it.kind = sym.kind
+				it.element_type = value_type
 				scope.override_var(ast.Var{
 					name: it.val_var
 					typ: value_type
