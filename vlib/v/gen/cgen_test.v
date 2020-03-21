@@ -48,6 +48,7 @@ fn compare_texts(a, b, path string) bool {
 
 	for i, line_a in lines_a {
 		if i >= lines_b.len {
+			println(line_a)
 			return false
 		}
 		line_b := lines_b[i]

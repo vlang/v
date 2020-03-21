@@ -188,9 +188,10 @@ extern wchar_t **_wenviron;
 byte g_str_buf[1024];
 int load_so(byteptr);
 void reload_so();
+void _init();
 
 // ============== wyhash ==============
-//	Author: Wang Yi <godspeed_china@yeah.net>
+//	Author: Wang Yi
 #ifndef wyhash_version_4
 #define wyhash_version_4
 #include	<stdint.h>

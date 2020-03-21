@@ -12,6 +12,7 @@ struct Gen {
 	out            strings.Builder
 	typedefs       strings.Builder
 	definitions    strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	inits          strings.Builder // contents of `void _init(){}`
 	table          &table.Table
 mut:
 	fn_decl        &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
@@ -33,6 +34,7 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		out: strings.new_builder(100)
 		typedefs: strings.new_builder(100)
 		definitions: strings.new_builder(100)
+		inits: strings.new_builder(100)
 		table: table
 		fn_decl: 0
 	}
@@ -42,6 +44,9 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 	}
 	g.write_variadic_types()
 	g.write_str_definitions()
+	g.writeln('void _init() {')
+	g.writeln(g.inits.str())
+	g.writeln('}')
 	return g.typedefs.str() + g.definitions.str() + g.out.str()
 }
 
@@ -1425,31 +1430,28 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 	for i, field in node.fields {
 		name := field.name.replace('.', '__')
 		expr := node.exprs[i]
+		// TODO hack. Cut the generated value and paste it into definitions.
+		pos := g.out.len
+		g.expr(expr)
+		val := g.out.after(pos)
+		g.out.go_back(val.len)
 		match expr {
-			// Simple expressions should use a #define
-			// so that we don't pollute the binary with unnecessary global vars
-			// Do not do this when building a module, otherwise the consts
-			// will not be accessible.
 			ast.CharLiteral, ast.IntegerLiteral {
+				// Simple expressions should use a #define
+				// so that we don't pollute the binary with unnecessary global vars
+				// Do not do this when building a module, otherwise the consts
+				// will not be accessible.
 				g.definitions.write('#define $name ')
-				// TODO hack. Cut the generated value and paste it into definitions.
-				g.write('//')
-				pos := g.out.len
-				g.expr(expr)
-				mut b := g.out.buf[pos..g.out.buf.len].clone()
-				b << `\0`
-				val := string(b)
-				// val += '\0'
-				// g.out.go_back(val.len)
-				// println('pos=$pos buf.len=$g.out.buf.len len=$g.out.len val.len=$val.len val="$val"\n')
-				g.writeln('')
 				g.definitions.writeln(val)
 			}
 			else {
+				// Initialize more complex consts in `void _init(){}`
+				// (C doesn't allow init expressions that can't be resolved at compile time).
 				styp := g.typ(field.typ)
 				g.definitions.writeln('$styp $name; // inited later') // = ')
-				// TODO
-				// g.expr(node.exprs[i])
+				g.inits.write('$name = ')
+				g.inits.write(val)
+				g.inits.writeln(';')
 			}
 	}
 	}
@@ -1532,6 +1534,11 @@ fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg) {
 fn verror(s string) {
 	println('cgen error: $s')
 	// exit(1)
+}
+
+fn (g mut Gen) write_init_function() {
+	g.writeln('void _init() {')
+	g.writeln('}')
 }
 
 fn (g mut Gen) write_str_definitions() {
