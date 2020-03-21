@@ -72,8 +72,8 @@ int main(int argc, char** argv) {
 	user.name = tos3("bob");
 	Option_int n = get_opt();
 	int a = /*opt*/(*(int*)n.data) + 3;
-	handle_expr((IfExpr){
-0});
+	handle_expr(/* sum type cast */ (Expr) {.obj = memdup(&(IfExpr[]) {(IfExpr){
+0}}, sizeof(IfExpr)), .typ = 25});
 	return 0;
 }
 

@@ -1525,8 +1525,11 @@ fn (g mut Gen) call_args(args []ast.CallArg) {
 		}
 		if arg.expected_type != 0 {
 			g.ref_or_deref_arg(arg)
+			g.expr_with_cast(arg.expr, arg.typ, arg.expected_type)
 		}
-		g.expr(arg.expr)
+		else {
+			g.expr(arg.expr)
+		}
 		if i != args.len - 1 {
 			g.write(', ')
 		}
@@ -1670,7 +1673,9 @@ void* obj;
 int typ;
 } $name;')
 			}
-			else {}
+			else {
+				g.typedefs.writeln('#define _type_idx_$name $i')
+			}
 	}
 	}
 }
@@ -1730,15 +1735,22 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if i >= node.exprs.len {
 			continue
 		}
-		match node.expr_types[i] {
-			table.string_type {
-				g.write('%.*s')
-			}
-			table.int_type {
-				g.write('%d')
-			}
-			else {}
-	}
+		// TODO: fix match, sum type false positive
+		// match node.expr_types[i] {
+		// 	table.string_type {
+		// 		g.write('%.*s')
+		// 	}
+		// 	table.int_type {
+		// 		g.write('%d')
+		// 	}
+		// 	else {}
+		// }
+		if node.expr_types[i] == table.string_type {
+			g.write('%.*s')
+		}
+		else if node.expr_types[i] == table.int_type {
+			g.write('%d')
+		}
 	}
 	g.write('", ')
 	// Build args

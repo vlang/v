@@ -1685,6 +1685,7 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 
 fn (p mut Parser) match_expr() ast.MatchExpr {
 	p.check(.key_match)
+	pos := p.tok.position()
 	is_mut := p.tok.kind == .key_mut
 	mut is_sum_type := false
 	if is_mut {
@@ -1695,6 +1696,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 	mut branches := []ast.MatchBranch
 	for {
 		mut exprs := []ast.Expr
+		branch_pos := p.tok.position()
 		p.open_scope()
 		// final else
 		if p.tok.kind == .key_else {
@@ -1739,6 +1741,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		branches << ast.MatchBranch{
 			exprs: exprs
 			stmts: stmts
+			pos: branch_pos
 		}
 		p.close_scope()
 		if p.tok.kind == .rcbr {
@@ -1750,6 +1753,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		branches: branches
 		cond: cond
 		is_sum_type: is_sum_type
+		pos: pos
 	}
 }
 

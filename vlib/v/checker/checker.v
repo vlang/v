@@ -333,7 +333,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 	}
 	// TODO: str methods
 	if typ_sym.kind in [.map] && name == 'str' {
-		method_call_expr.receiver_type = typ
+		method_call_expr.receiver_type = table.new_type(c.table.type_idxs['map_string'])
 		method_call_expr.return_type = table.string_type
 		return table.string_type
 	}
@@ -997,8 +997,15 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != table.void_type {
+			if c.is_amp {
+				return table.type_to_ptr(value_type)
+			}
 			return value_type
 		}
+	}
+	// TODO: handle these globally, not individually
+	if c.is_amp {
+		return table.type_to_ptr(typ)
 	}
 	return typ
 }
