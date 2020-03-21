@@ -552,7 +552,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	// ////////////
 	if g.autofree && false {
 		scope := g.file.scope.innermost(it.pos.pos - 1)
-		for i, var in scope.vars {
+		for _, var in scope.vars {
 			sym := g.table.get_type_symbol(var.typ)
 			if sym.kind == .array && !table.type_is_optional(var.typ) {
 				g.writeln('array_free($var.name); // autofree')
@@ -1837,8 +1837,8 @@ fn (g mut Gen) call_expr(it ast.CallExpr) {
 		name = name[3..]
 	}
 	// Generate tmp vars for values that have to be freed.
-	mut tmps := []string
 	/*
+	mut tmps := []string
 	for arg in it.args {
 		if arg.typ == table.string_type_idx || is_print {
 			tmp := g.new_tmp_var()

@@ -1,0 +1,18 @@
+import os
+
+fn return_array(array_arg []string) []int {
+        s := [1, 2, 3] // escaping array must not be freed
+        return s
+}
+
+fn foo() {
+        nums := [1, 2, 3] // local array must be freed
+        println(nums)
+}
+
+fn main() {
+        println('start')
+        foo()
+        println('end')
+}
+
