@@ -1,18 +1,21 @@
 import os
 
-fn return_array(array_arg []string) []int {
-        s := [1, 2, 3] // escaping array must not be freed
-        return s
+fn return_array(array_arg []string) []int { // array argument must not be freed
+	s := [1, 2, 3] // escaping array must not be freed
+	return s
 }
 
 fn foo() {
-        nums := [1, 2, 3] // local array must be freed
-        println(nums)
+	nums := [1, 2, 3] // local array must be freed
+	nums_copy := nums // array assignments call .clone()
+	println(nums)
+	println(nums_copy)
+	nums.free()
 }
 
 fn main() {
-        println('start')
-        foo()
-        println('end')
+	println('start')
+	foo()
+	println('end')
 }
 
