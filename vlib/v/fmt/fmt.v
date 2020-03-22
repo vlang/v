@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t']
+	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
 	// tabs = ['', '  ', '    ', '      ', '        ']
 	max_len = 80
 )
@@ -100,20 +100,20 @@ fn (f mut Fmt) stmts(stmts []ast.Stmt) {
 fn (f mut Fmt) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
-			for i,ident in it.left {
+			for i, ident in it.left {
 				var_info := ident.var_info()
 				if var_info.is_mut {
 					f.write('mut ')
 				}
 				f.expr(ident)
-				if i < it.left.len-1 {
+				if i < it.left.len - 1 {
 					f.write(', ')
 				}
 			}
 			f.write(' $it.op.str() ')
-			for i,val in it.right {
+			for i, val in it.right {
 				f.expr(val)
-				if i < it.right.len-1 {
+				if i < it.right.len - 1 {
 					f.write(', ')
 				}
 			}
@@ -131,7 +131,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 					f.writeln('continue')
 				}
 				else {}
-			}
+	}
 		}
 		ast.ConstDecl {
 			if it.is_pub {
@@ -241,11 +241,10 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
-		ast.Import {
-			// already handled in f.imports
-		}
+		ast.Import {}
+		// already handled in f.imports
 		ast.TypeDecl {
-			f.type_decl( it )
+			f.type_decl(it)
 		}
 		else {
 			eprintln('fmt stmt: unknown node: ' + typeof(node))
@@ -260,7 +259,7 @@ fn (f mut Fmt) type_decl(node ast.TypeDecl) {
 			if it.is_pub {
 				f.write('pub ')
 			}
-			ptype := f.table.type_to_str( it.parent_type )
+			ptype := f.table.type_to_str(it.parent_type)
 			f.write('type $it.name $ptype')
 		}
 		ast.SumTypeDecl {
@@ -272,7 +271,7 @@ fn (f mut Fmt) type_decl(node ast.TypeDecl) {
 			for t in it.sub_types {
 				sum_type_names << f.table.type_to_str(t)
 			}
-			f.write( sum_type_names.join(' | ') )
+			f.write(sum_type_names.join(' | '))
 		}
 		else {
 			eprintln('fmt type_decl: unknown ' + typeof(node))
@@ -385,7 +384,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.IfExpr {
 			single_line := it.branches.len == 2 && it.has_else //
-				&& it.branches[0].stmts.len == 1 && it.branches[1].stmts.len == 1
+			&& it.branches[0].stmts.len == 1 && it.branches[1].stmts.len == 1
 			f.single_line_if = single_line
 			for i, branch in it.branches {
 				if i == 0 {
@@ -393,12 +392,12 @@ fn (f mut Fmt) expr(node ast.Expr) {
 					f.expr(branch.cond)
 					f.write(' {')
 				}
-				else if i < it.branches.len-1 || !it.has_else {
+				else if i < it.branches.len - 1 || !it.has_else {
 					f.write('} else if ')
 					f.expr(branch.cond)
 					f.write(' {')
 				}
-				else if i == it.branches.len-1 && it.has_else {
+				else if i == it.branches.len - 1 && it.has_else {
 					f.write('} else {')
 				}
 				if single_line {
@@ -468,7 +467,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			for i, branch in it.branches {
 				// normal branch
 				if i < it.branches.len - 1 {
-					for j,expr in branch.exprs {
+					for j, expr in branch.exprs {
 						f.expr(expr)
 						if j < branch.exprs.len - 1 {
 							f.write(', ')
@@ -481,7 +480,8 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				}
 				if (branch.stmts.len == 0) {
 					f.writeln(' {}')
-				} else {
+				}
+				else {
 					f.writeln(' {')
 					f.stmts(branch.stmts)
 					f.writeln('}')

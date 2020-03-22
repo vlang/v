@@ -388,6 +388,7 @@ pub struct CompIf {
 pub:
 	cond       Expr
 	stmts      []Stmt
+mut:
 	else_stmts []Stmt
 }
 

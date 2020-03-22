@@ -28,7 +28,14 @@ mut:
 	stmt_start_pos int
 	right_is_opt   bool
 	autofree       bool
+	indent         int
+	empty_line     bool
 }
+
+const (
+	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
+	'\t\t\t\t\t\t\t\t']
+)
 
 pub fn cgen(files []ast.File, table &table.Table) string {
 	println('start cgen2')
@@ -40,13 +47,14 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		table: table
 		fn_decl: 0
 		autofree: true
+		indent: -1
 	}
 	g.init()
 	for file in files {
 		// println('cgen "$g.file.path" $file.stmts.len')
 		g.file = file
-		if g.file.path == '' || g.file.path.ends_with('.vv') {
-			// cgen test
+		if g.file.path == '' || g.file.path.ends_with('.vv') || g.file.path.contains('/vlib/') {
+			// cgen test or building V
 			g.autofree = false
 		}
 		g.stmts(file.stmts)
@@ -191,11 +199,20 @@ pub fn (g mut Gen) write_variadic_types() {
 pub fn (g &Gen) save() {}
 
 pub fn (g mut Gen) write(s string) {
+	if g.indent > 0 && g.empty_line {
+		g.out.write(tabs[g.indent])
+		// g.line_len += g.indent * 4
+	}
 	g.out.write(s)
+	g.empty_line = false
 }
 
 pub fn (g mut Gen) writeln(s string) {
+	if g.indent > 0 && g.empty_line {
+		g.out.write(tabs[g.indent])
+	}
 	g.out.writeln(s)
+	g.empty_line = true
 }
 
 pub fn (g mut Gen) new_tmp_var() string {
@@ -208,12 +225,14 @@ pub fn (g mut Gen) reset_tmp_count() {
 }
 
 fn (g mut Gen) stmts(stmts []ast.Stmt) {
+	g.indent++
 	for stmt in stmts {
 		g.stmt(stmt)
-		if !g.inside_ternary {
-			g.writeln('')
-		}
+		// if !g.inside_ternary {
+		// g.writeln('')
+		// }
 	}
+	g.indent--
 }
 
 fn (g mut Gen) stmt(node ast.Stmt) {
@@ -242,8 +261,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.CompIf {
 			// TODO
 			g.writeln('//#ifdef ')
-			g.expr(it.cond)
-			g.stmts(it.stmts)
+			// g.expr(it.cond)
+			// g.stmts(it.stmts)
 			g.writeln('//#endif')
 		}
 		ast.DeferStmt {
@@ -277,6 +296,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.FnDecl {
 			g.fn_decl = it // &it
 			g.gen_fn_decl(it)
+			g.writeln('')
 		}
 		ast.ForCStmt {
 			g.write('for (')
@@ -545,10 +565,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 		g.writeln('os__args = os__init_os_args(argc, (byteptr*)argv);')
 	}
-	for stmt in it.stmts {
-		// g.write('\t')
-		g.stmt(stmt)
-	}
+	g.stmts(it.stmts)
 	// ////////////
 	if g.autofree {
 		scope := g.file.scope.innermost(it.pos.pos - 1)
