@@ -22,6 +22,7 @@ mut:
 	errors         []string
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
+	// fn_decl        ast.FnDecl
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -366,6 +367,10 @@ pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 	c.expected_type = c.fn_return_type
 	if return_stmt.exprs.len == 0 {
+		return
+	}
+	if return_stmt.exprs.len > 0 && c.fn_return_type == table.void_type {
+		c.error('too many arguments to return, current function does not return anything', return_stmt.pos)
 		return
 	}
 	expected_type := c.fn_return_type

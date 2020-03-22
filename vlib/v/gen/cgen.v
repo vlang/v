@@ -431,7 +431,7 @@ fn (g mut Gen) expr_with_cast(expr ast.Expr, got_type table.Type, exp_type table
 
 fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// multi return
-	// g.write('/*assign*/')
+	// g.write('/*assign_stmt*/')
 	if assign_stmt.left.len > assign_stmt.right.len {
 		mut return_type := table.void_type
 		match assign_stmt.right[0] {
@@ -490,9 +490,14 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			else {
 				mut is_fixed_array_init := false
+				mut is_ident := false
+				right_sym := g.table.get_type_symbol(assign_stmt.right_types[i])
 				match val {
 					ast.ArrayInit {
-						is_fixed_array_init = g.table.get_type_symbol(it.typ).kind == .array_fixed
+						is_fixed_array_init = right_sym.kind == .array_fixed
+					}
+					ast.Ident {
+						is_ident = true
 					}
 					else {}
 	}
@@ -501,7 +506,13 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('$styp ')
 				}
 				g.expr(ident)
-				if !is_fixed_array_init {
+				if g.autofree && right_sym.kind == .array && is_ident {
+					// `arr1 = arr2` => `arr1 = arr2.clone()`
+					g.write(' = array_clone(&')
+					g.expr(val)
+					g.write(')')
+				}
+				else if !is_fixed_array_init {
 					g.write(' = ')
 					if !is_decl {
 						g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
@@ -674,6 +685,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 		}
 		ast.AssignExpr {
+			// g.write('/*assign_expr*/')
 			if ast.expr_is_blank_ident(it.left) {
 				if ast.expr_is_call(it.val) {
 					g.expr(it.val)
