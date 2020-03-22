@@ -147,7 +147,7 @@ pub fn create_window(c WinCfg) &glfw.Window {
 	// println('create window wnd=$cwindow ptr==$c.ptr')
 	C.glfwSetWindowUserPointer(cwindow, c.ptr)
 
-	mut scale := 1.0
+	scale := 1.0
 	$if windows {
 		C.glfwGetWindowContentScale(cwindow, &scale, &scale)
 	}
@@ -257,7 +257,7 @@ pub fn get_cursor_pos(cwindow voidptr) (f64, f64) {
 	y := f64(0)
 	C.glfwGetCursorPos(cwindow, &x, &y)
 
-	mut scale := 1.0
+	scale := 1.0
 	$if windows {
 		C.glfwGetWindowContentScale(cwindow, &scale, &scale)
 	}
