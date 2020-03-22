@@ -38,7 +38,7 @@ const (
 )
 
 pub fn cgen(files []ast.File, table &table.Table) string {
-	println('start cgen2')
+	// println('start cgen2')
 	mut g := Gen{
 		out: strings.new_builder(100)
 		typedefs: strings.new_builder(100)
@@ -50,14 +50,23 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		indent: -1
 	}
 	g.init()
+	mut autofree_used := false
 	for file in files {
-		// println('cgen "$g.file.path" $file.stmts.len')
 		g.file = file
+		// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
 		if g.file.path == '' || g.file.path.ends_with('.vv') || g.file.path.contains('/vlib/') {
 			// cgen test or building V
+			// println('autofree=false')
 			g.autofree = false
 		}
+		else {
+			g.autofree = true
+			autofree_used = true
+		}
 		g.stmts(file.stmts)
+	}
+	if autofree_used {
+		g.autofree = true // so that void _vcleanup is generated
 	}
 	g.write_variadic_types()
 	// g.write_str_definitions()
