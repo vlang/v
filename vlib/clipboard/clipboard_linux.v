@@ -209,7 +209,7 @@ fn (cb mut Clipboard) get_text() string {
 	mut retries := 5
 	for {
 		if cb.got_text || retries == 0 {break}
-		time.usleep(50000)
+		time.sleep_us(50000)
 		retries--
 	}
 	return cb.text

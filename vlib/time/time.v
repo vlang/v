@@ -221,8 +221,8 @@ pub fn sleep_ms(milliseconds int) {
 	}
 }
 
-// usleep makes the calling thread sleep for a given number of microseconds.
-pub fn usleep(microseconds int) {
+// sleep_us makes the calling thread sleep for a given number of microseconds.
+pub fn sleep_us(microseconds int) {
 	$if windows {
 		milliseconds := microseconds / 1000
 		C.Sleep(milliseconds)

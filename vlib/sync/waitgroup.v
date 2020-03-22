@@ -37,4 +37,3 @@ pub fn (wg &WaitGroup) wait() {
 		}
 	}
 }
-
