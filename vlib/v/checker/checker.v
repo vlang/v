@@ -530,7 +530,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		}
 		// ast.Attr {}
 		ast.CompIf {
-			c.expr(it.cond)
+			// c.expr(it.cond)
 			c.stmts(it.stmts)
 		}
 		ast.ConstDecl {

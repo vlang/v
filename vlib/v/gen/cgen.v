@@ -268,12 +268,13 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.const_decl(it)
 		}
 		ast.CompIf {
-			g.writeln('//#ifdef ')
-			g.expr(it.cond)
+			g.writeln('\n#ifdef ' + comp_if_to_ifdef(it.val))
+			g.writeln('// #if $it.val')
+			// g.expr(it.cond)
 			// println('comp if stmts $g.file.path:$it.pos.line_nr')
 			g.stmts(it.stmts)
 			// println('done')
-			g.writeln('//#endif')
+			g.writeln('#endif')
 		}
 		ast.DeferStmt {
 			g.writeln('// defer')
@@ -1964,4 +1965,65 @@ fn op_to_fn_name(name string) string {
 		else {
 			'bad op $name'}
 	}
+}
+
+fn comp_if_to_ifdef(name string) string {
+	match name {
+		'windows' {
+			return '_WIN32'
+		}
+		'mac' {
+			return '__APPLE__'
+		}
+		'macos' {
+			return '__APPLE__'
+		}
+		'linux' {
+			return '__linux__'
+		}
+		'freebsd' {
+			return '__FreeBSD__'
+		}
+		'openbsd' {
+			return '__OpenBSD__'
+		}
+		'netbsd' {
+			return '__NetBSD__'
+		}
+		'dragonfly' {
+			return '__DragonFly__'
+		}
+		'msvc' {
+			return '_MSC_VER'
+		}
+		'android' {
+			return '__ANDROID__'
+		}
+		'js' {
+			return '_VJS'
+		}
+		'solaris' {
+			return '__sun'
+		}
+		'haiku' {
+			return '__haiku__'
+		}
+		'tinyc' {
+			return 'tinyc'
+		}
+		'debug' {
+			return '_VDEBUG'
+		}
+		'linux_or_macos' {
+			return ''
+		}
+		'no_bounds_checking' {
+			return 'NO_BOUNDS_CHECK'
+		}
+		else {
+			verror('bad os ifdef name "$name"')
+		}
+	}
+	// verror('bad os ifdef name "$name"')
+	return ''
 }

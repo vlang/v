@@ -11,13 +11,14 @@ pub fn (p mut Parser) comp_if() ast.CompIf {
 	if p.tok.kind == .not {
 		p.next()
 	}
-	p.check_name()
+	val := p.check_name()
 	if p.tok.kind == .question {
 		p.next()
 	}
 	mut node := ast.CompIf{
 		stmts: p.parse_block()
 		pos: pos
+		val: val
 	}
 	if p.tok.kind == .dollar && p.peek_tok.kind == .key_else {
 		p.next()

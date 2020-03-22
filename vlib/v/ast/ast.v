@@ -386,7 +386,8 @@ pub:
 
 pub struct CompIf {
 pub:
-	cond       Expr
+// cond       Expr
+	val        string
 	stmts      []Stmt
 	pos        token.Position
 mut:
