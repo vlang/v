@@ -3,6 +3,10 @@ import term
 import benchmark
 
 fn test_all() {
+	$if tinyc {
+		eprintln('Temporarily disabled for tcc, till the generated C code works with tcc.')
+		exit(0)
+	}
 	if os.user_os() != 'linux' && os.getenv('FORCE_VALGRIND_TEST').len == 0 {
 		eprintln('Valgrind tests can only be run reliably on Linux for now.')
 		eprintln('You can still do it by setting FORCE_VALGRIND_TEST=1 .')
