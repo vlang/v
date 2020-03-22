@@ -100,7 +100,7 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 	}
-	if styp in ['stat', 'dirent*', 'tm', 'tm*', 'winsize'] {
+	if styp in ['stat', 'dirent*', 'tm', 'tm*', 'winsize', 'sigaction'] {
 		// TODO perf and other C structs
 		styp = 'struct $styp'
 	}
@@ -536,7 +536,8 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 }
 
 fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
-	if it.is_c || it.name == 'malloc' || it.no_body {
+	if it.is_c || it.name == 'malloc' {
+		// || it.no_body {
 		return
 	}
 	g.reset_tmp_count()
@@ -583,6 +584,12 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	*/
 	//
 	g.fn_args(it.args, it.is_variadic)
+	if it.no_body {
+		// Just a function header.
+		g.definitions.writeln(');')
+		g.writeln(');')
+		return
+	}
 	g.writeln(') { ')
 	if !is_main {
 		g.definitions.writeln(');')

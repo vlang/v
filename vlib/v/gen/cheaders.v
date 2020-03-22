@@ -190,6 +190,7 @@ int load_so(byteptr);
 void reload_so();
 void _vinit();
 void _vcleanup();
+#define sigaction_size sizeof(sigaction);
 
 // ============== wyhash ==============
 //	Author: Wang Yi
@@ -311,6 +312,7 @@ typedef byte array_fixed_byte_400 [400];
 	#define true 1
 	#define false 0
 #endif
+
 '
 	bare_c_headers = '
 

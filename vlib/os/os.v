@@ -791,12 +791,15 @@ pub fn on_segfault(f voidptr) {
 		return
 	}
 	$if macos {
+		C.printf("TODO")
+		/*
 		mut sa := C.sigaction{}
-		C.memset(&sa, 0, sizeof(sigaction))
+		C.memset(&sa, 0, sizeof(C.sigaction_size))
 		C.sigemptyset(&sa.sa_mask)
 		sa.sa_sigaction = f
 		sa.sa_flags = C.SA_SIGINFO
 		C.sigaction(C.SIGSEGV, &sa, 0)
+		*/
 	}
 }
 

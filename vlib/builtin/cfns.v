@@ -21,7 +21,9 @@ fn C.strlen(s byteptr) int
 fn C.isdigit(s byteptr) bool
 // stdio.h
 fn C.popen(c byteptr, t byteptr) voidptr
+
 // <execinfo.h>
+// backtrace functions are not #included, that's why they have to be defined without C.
 fn backtrace(a voidptr, b int) int
 
 fn backtrace_symbols(voidptr, int)  &byteptr
