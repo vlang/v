@@ -550,14 +550,14 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		g.stmt(stmt)
 	}
 	// ////////////
-	if g.autofree && false {
+	if g.autofree {
 		scope := g.file.scope.innermost(it.pos.pos - 1)
 		for _, var in scope.vars {
 			sym := g.table.get_type_symbol(var.typ)
 			if sym.kind == .array && !table.type_is_optional(var.typ) {
 				g.writeln('array_free($var.name); // autofree')
 			}
-			println(var.name)
+			// println(var.name)
 		}
 	}
 	// /////////
