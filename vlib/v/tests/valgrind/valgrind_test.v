@@ -3,6 +3,10 @@ import term
 import benchmark
 
 fn test_all() {
+	$if tinyc {
+		eprintln('Temporarily disabled for tcc, till the generated C code works with tcc.')
+		exit(0)
+	}
 	if os.user_os() != 'linux' && os.getenv('FORCE_VALGRIND_TEST').len == 0 {
 		eprintln('Valgrind tests can only be run reliably on Linux for now.')
 		eprintln('You can still do it by setting FORCE_VALGRIND_TEST=1 .')
@@ -11,18 +15,24 @@ fn test_all() {
 	bench_message := 'memory leak checking with valgrind'
 	mut bench := benchmark.new_benchmark()
 	eprintln(term.header(bench_message,'-'))
-	dir := os.resource_abs_path('')
 	vexe := os.getenv('VEXE')
+	vroot := os.dir(vexe)
+	dir := os.join_path(vroot, 'vlib/v/tests/valgrind')
 	files := os.ls(dir) or {
 		panic(err)
 	}
+	//
+	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'valgrind')
+	os.mkdir_all(wrkdir)
+	os.chdir(wrkdir)
+	//
 	tests := files.filter(it.ends_with('.vv'))
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
 		bench.step()
 		full_test_path := os.real_path(test)
-		os.system('cp ${dir}/${test} x.v') // cant run .vv file
-		res := os.exec('$vexe -b v2 x.v') or {
+		os.system('cp ${dir}/${test} $wrkdir/x.v') // cant run .vv file
+		res := os.exec('$vexe -b v2 $wrkdir/x.v') or {
 			bench.fail()
 			eprintln(bench.step_message_fail('valgrind $test failed'))
 			continue
@@ -33,7 +43,7 @@ fn test_all() {
 			eprintln(res.output)
 			continue
 		}
-		valgrind_res := os.exec('valgrind --error-exitcode=1 --leak-check=full ./x') or {
+		valgrind_res := os.exec('valgrind --error-exitcode=1 --leak-check=full $wrkdir/x') or {
 			bench.fail()
 			eprintln(bench.step_message_fail('valgrind could not be executed'))
 			continue
