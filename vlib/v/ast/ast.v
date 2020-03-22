@@ -391,6 +391,7 @@ pub:
 	stmts      []Stmt
 	pos        token.Position
 mut:
+	has_else   bool
 	else_stmts []Stmt
 }
 

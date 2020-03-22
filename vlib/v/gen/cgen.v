@@ -270,10 +270,12 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.CompIf {
 			g.writeln('\n#ifdef ' + comp_if_to_ifdef(it.val))
 			g.writeln('// #if $it.val')
-			// g.expr(it.cond)
 			// println('comp if stmts $g.file.path:$it.pos.line_nr')
 			g.stmts(it.stmts)
-			// println('done')
+			if it.has_else {
+				g.writeln('#else')
+				g.stmts(it.else_stmts)
+			}
 			g.writeln('#endif')
 		}
 		ast.DeferStmt {
@@ -1728,8 +1730,7 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				g.definitions.writeln('};\n')
 			}
 			// table.Alias, table.SumType { TODO
-			table.Alias {
-			}
+			table.Alias {}
 			table.Enum {
 				g.definitions.writeln('typedef enum {')
 				for j, val in it.vals {
@@ -2020,6 +2021,9 @@ fn comp_if_to_ifdef(name string) string {
 		}
 		'linux_or_macos' {
 			return ''
+		}
+		'mingw' {
+			return '__MINGW32__'
 		}
 		'no_bounds_checking' {
 			return 'NO_BOUNDS_CHECK'
