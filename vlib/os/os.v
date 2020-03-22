@@ -221,7 +221,7 @@ pub fn cp(old, new string) ?bool {
 			return error_with_code('failed to copy $old to $new', int(result))
 		}
 	} $else {
-		os.system('cp "$old" "$new"')
+		os.system('cp -- "$old" "$new"')
 		return true // TODO make it return true or error when cp for linux is implemented
 	}
 }
