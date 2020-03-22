@@ -210,7 +210,7 @@ pub fn exec(cmd string) ?Result {
 		res.write_bytes( buf, vstrlen(buf) )
 	}
 	soutput := res.str().trim_space()
-	res.free()
+	//res.free()
 	exit_code := vpclose(f)
 	// if exit_code != 0 {
 	// return error(res)

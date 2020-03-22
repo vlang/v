@@ -54,7 +54,9 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 	for file in files {
 		g.file = file
 		// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
-		if g.file.path == '' || g.file.path.ends_with('.vv') || g.file.path.contains('/vlib/') {
+		building_v := g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v')
+		is_test := g.file.path.ends_with('.vv')
+		if g.file.path == '' || is_test || building_v {
 			// cgen test or building V
 			// println('autofree=false')
 			g.autofree = false
@@ -100,7 +102,7 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 	}
-	if styp in ['stat', 'dirent*', 'tm', 'tm*', 'winsize', 'sigaction'] {
+	if styp in ['stat', 'dirent*', 'tm', 'tm*', 'winsize', 'sigaction', 'timeval'] {
 		// TODO perf and other C structs
 		styp = 'struct $styp'
 	}
