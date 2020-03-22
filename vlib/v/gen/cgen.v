@@ -259,10 +259,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.const_decl(it)
 		}
 		ast.CompIf {
-			// TODO
 			g.writeln('//#ifdef ')
 			// g.expr(it.cond)
+			// println('comp if stmts $g.file.path:$it.pos.line_nr')
 			// g.stmts(it.stmts)
+			// println('done')
 			g.writeln('//#endif')
 		}
 		ast.DeferStmt {

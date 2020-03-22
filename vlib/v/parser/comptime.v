@@ -5,6 +5,7 @@ import (
 )
 
 pub fn (p mut Parser) comp_if() ast.CompIf {
+	pos := p.tok.position()
 	p.next()
 	p.check(.key_if)
 	if p.tok.kind == .not {
@@ -16,6 +17,7 @@ pub fn (p mut Parser) comp_if() ast.CompIf {
 	}
 	mut node := ast.CompIf{
 		stmts: p.parse_block()
+		pos: pos
 	}
 	if p.tok.kind == .dollar && p.peek_tok.kind == .key_else {
 		p.next()
