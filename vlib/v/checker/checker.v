@@ -532,6 +532,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		ast.CompIf {
 			// c.expr(it.cond)
 			c.stmts(it.stmts)
+			if it.has_else {
+				c.stmts(it.else_stmts)
+			}
 		}
 		ast.ConstDecl {
 			for i, expr in it.exprs {
