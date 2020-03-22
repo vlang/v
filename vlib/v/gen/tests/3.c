@@ -48,11 +48,11 @@ void println(string s) {
 }
 
 void handle_expr(Expr e) {
-	if (e.typ == _type_idx_IfExpr) {
+	if (e.typ == 25 /* IfExpr */) {
 		IfExpr* it = (IfExpr*)e.obj; // ST it
 		println(tos3("if"));
 	}
-	else if (e.typ == _type_idx_IntegerLiteral) {
+	else if (e.typ == 26 /* IntegerLiteral */) {
 		IntegerLiteral* it = (IntegerLiteral*)e.obj; // ST it
 		println(tos3("integer"));
 	}
@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
 	Option_int n = get_opt();
 	int a = /*opt*/(*(int*)n.data) + 3;
 	handle_expr(/* sum type cast */ (Expr) {.obj = memdup(&(IfExpr[]) {(IfExpr){
-0}}, sizeof(IfExpr)), .typ = 25});
+0}}, sizeof(IfExpr)), .typ = 25 /* IfExpr */});
 	return 0;
 }
 

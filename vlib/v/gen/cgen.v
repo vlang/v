@@ -416,12 +416,13 @@ fn (g mut Gen) expr_with_cast(expr ast.Expr, got_type table.Type, exp_type table
 		if exp_sym.kind == .sum_type {
 			sum_info := exp_sym.info as table.SumType
 			if got_type in sum_info.variants {
+				got_sym := g.table.get_type_symbol(got_type)
 				got_styp := g.typ(got_type)
 				exp_styp := g.typ(exp_type)
 				got_idx := table.type_idx(got_type)
 				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&(${got_styp}[]) {')
 				g.expr(expr)
-				g.write('}, sizeof($got_styp)), .typ = $got_idx}')
+				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
 				return
 			}
 		}
@@ -996,8 +997,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.Type {
 			// match sum Type
 			// g.write('/* Type */')
-			g.write('_type_idx_')
-			g.write(g.typ(it.typ))
+			type_idx := table.type_idx(it.typ)
+			sym := g.table.get_type_symbol(it.typ)
+			g.write('$type_idx /* $sym.name */')
 		}
 		ast.TypeOf {
 			g.write('tos3("TYPEOF_TODO")')
@@ -1305,9 +1307,9 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 	}
 			}
 			else if i < node.branches.len - 1 || !node.has_else {
-				g.writeln('} else if (')
+				g.write('} else if (')
 				g.expr(branch.cond)
-				g.write(') {')
+				g.writeln(') {')
 			}
 			else if i == node.branches.len - 1 && node.has_else {
 				if is_guard {
@@ -1699,7 +1701,7 @@ fn (g mut Gen) write_sorted_types() {
 }
 
 fn (g mut Gen) write_types(types []table.TypeSymbol) {
-	for i, typ in types {
+	for typ in types {
 		if typ.name.starts_with('C.') {
 			continue
 		}
@@ -1717,11 +1719,9 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				// g.definitions.writeln('} $name;\n')
 				//
 				g.definitions.writeln('};\n')
-				g.typedefs.writeln('#define _type_idx_$name $i')
 			}
 			// table.Alias, table.SumType { TODO
 			table.Alias {
-				g.typedefs.writeln('#define _type_idx_$name $i')
 			}
 			table.Enum {
 				g.definitions.writeln('typedef enum {')
@@ -1731,7 +1731,6 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				g.definitions.writeln('} $name;\n')
 			}
 			table.SumType {
-				g.typedefs.writeln('#define _type_idx_$name $i')
 				g.definitions.writeln('// Sum type')
 				g.definitions.writeln('
 				typedef struct {
@@ -1739,9 +1738,7 @@ void* obj;
 int typ;
 } $name;')
 			}
-			else {
-				g.typedefs.writeln('#define _type_idx_$name $i')
-			}
+			else {}
 	}
 	}
 }
