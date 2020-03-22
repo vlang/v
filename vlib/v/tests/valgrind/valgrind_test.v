@@ -17,13 +17,18 @@ fn test_all() {
 	files := os.ls(dir) or {
 		panic(err)
 	}
+	//
+	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'valgrind')
+	os.mkdir_all(wrkdir)
+	os.chdir(wrkdir)
+	//
 	tests := files.filter(it.ends_with('.vv'))
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
 		bench.step()
 		full_test_path := os.real_path(test)
-		os.system('cp ${dir}/${test} x.v') // cant run .vv file
-		res := os.exec('$vexe -b v2 x.v') or {
+		os.system('cp ${dir}/${test} $wrkdir/x.v') // cant run .vv file
+		res := os.exec('$vexe -b v2 $wrkdir/x.v') or {
 			bench.fail()
 			eprintln(bench.step_message_fail('valgrind $test failed'))
 			continue
@@ -34,7 +39,7 @@ fn test_all() {
 			eprintln(res.output)
 			continue
 		}
-		valgrind_res := os.exec('valgrind --error-exitcode=1 --leak-check=full ./x') or {
+		valgrind_res := os.exec('valgrind --error-exitcode=1 --leak-check=full $wrkdir/x') or {
 			bench.fail()
 			eprintln(bench.step_message_fail('valgrind could not be executed'))
 			continue
