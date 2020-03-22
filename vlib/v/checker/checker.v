@@ -529,7 +529,10 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.expected_type = table.void_type
 		}
 		// ast.Attr {}
-		// ast.CompIf {}
+		ast.CompIf {
+			c.expr(it.cond)
+			c.stmts(it.stmts)
+		}
 		ast.ConstDecl {
 			for i, expr in it.exprs {
 				mut field := it.fields[i]
@@ -990,7 +993,7 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 		index_type := c.expr(node.index)
 		index_type_sym := c.table.get_type_symbol(index_type)
 		// println('index expr left=$typ_sym.name $node.pos.line_nr')
-		if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_idxs) && index_type_sym.kind != .enum_) {
+		if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) && index_type_sym.kind != .enum_) {
 			c.error('non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)', node.pos)
 		}
 		else if typ_sym.kind == .map && table.type_idx(index_type) != table.string_type_idx {

@@ -175,7 +175,8 @@ pub const (
 )
 
 pub const (
-	number_idxs = [int_type_idx, byte_type_idx, u16_type_idx, i16_type_idx, i64_type_idx, u32_type_idx, u64_type_idx]
+	number_type_idxs = [int_type_idx, byte_type_idx, u16_type_idx, i16_type_idx, i64_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx]
+	pointer_type_idxs = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 )
 
 pub const (
@@ -423,6 +424,11 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 		name: 'map_int'
 		parent_idx: map_string_int_idx
 	})
+}
+
+[inline]
+pub fn (t &TypeSymbol) is_pointer() bool {
+	return t.kind in [.byteptr, .charptr, .voidptr]
 }
 
 [inline]

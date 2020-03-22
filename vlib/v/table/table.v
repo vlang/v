@@ -449,39 +449,32 @@ pub fn (t &Table) value_type(typ Type) Type {
 }
 
 pub fn (t &Table) check(got, expected Type) bool {
-	got_type_sym := t.get_type_symbol(got)
-	exp_type_sym := t.get_type_symbol(expected)
 	got_idx := type_idx(got)
 	exp_idx := type_idx(expected)
 	// got_is_ptr := type_is_ptr(got)
 	exp_is_ptr := type_is_ptr(expected)
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
-	if got_type_sym.kind == .none_ {
+	// # NOTE: use idxs here, and symbols below for perf
+	if got_idx == none_type_idx {
 		// TODO
-		return true
-	}
-	if exp_type_sym.kind == .voidptr {
-		return true
-	}
-	// if got_type_sym.kind == .array_fixed {
-	// return true
-	// }
-	if got_type_sym.kind in [.voidptr, .byteptr, .charptr, .int] && exp_type_sym.kind in [.voidptr, .byteptr, .charptr] {
-		return true
-	}
-	if got_type_sym.is_int() && exp_type_sym.is_int() {
 		return true
 	}
 	// allow pointers to be initialized with 0. TODO: use none instead
 	if exp_is_ptr && got_idx == int_type_idx {
 		return true
 	}
-	// allow enum value to be used as int
-	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) || (exp_type_sym.is_int() && got_type_sym.kind == .enum_) {
+	if exp_idx == voidptr_type_idx || got_idx == voidptr_type_idx {
 		return true
 	}
-	// TODO
-	if got_type_sym.is_number() && exp_type_sym.is_number() {
+	if (exp_idx in pointer_type_idxs || exp_idx in number_type_idxs) //
+	&& (got_idx in pointer_type_idxs || got_idx in number_type_idxs) {
+		return true
+	}
+	// # NOTE: use symbols from this point on for perf
+	got_type_sym := t.get_type_symbol(got)
+	exp_type_sym := t.get_type_symbol(expected)
+	// allow enum value to be used as int
+	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) || (exp_type_sym.is_int() && got_type_sym.kind == .enum_) {
 		return true
 	}
 	// TODO: actually check for & handle pointers with name_expr

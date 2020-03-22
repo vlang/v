@@ -269,9 +269,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.CompIf {
 			g.writeln('//#ifdef ')
-			// g.expr(it.cond)
+			g.expr(it.cond)
 			// println('comp if stmts $g.file.path:$it.pos.line_nr')
-			// g.stmts(it.stmts)
+			g.stmts(it.stmts)
 			// println('done')
 			g.writeln('//#endif')
 		}
