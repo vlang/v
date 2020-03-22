@@ -512,6 +512,12 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.expr(val)
 					g.write(')')
 				}
+				else if g.autofree && right_sym.kind == .string && is_ident {
+					// `str1 = str2` => `str1 = str2.clone()`
+					g.write(' = string_clone(')
+					g.expr(val)
+					g.write(')')
+				}
 				else if !is_fixed_array_init {
 					g.write(' = ')
 					if !is_decl {

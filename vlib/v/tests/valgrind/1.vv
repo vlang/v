@@ -10,7 +10,7 @@ fn foo() {
 	nums_copy := nums // array assignments call .clone()
 	println(nums)
 	println(nums_copy)
-	nums.free()
+	// nums.free() // this should result in a double free and a CI error
 }
 
 fn main() {
