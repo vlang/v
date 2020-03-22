@@ -11,8 +11,9 @@ fn test_all() {
 	bench_message := 'memory leak checking with valgrind'
 	mut bench := benchmark.new_benchmark()
 	eprintln(term.header(bench_message,'-'))
-	dir := os.resource_abs_path('')
 	vexe := os.getenv('VEXE')
+	vroot := os.dir(vexe)
+	dir := os.join_path(vroot, 'vlib/v/tests/valgrind')
 	files := os.ls(dir) or {
 		panic(err)
 	}
