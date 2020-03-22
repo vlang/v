@@ -470,16 +470,20 @@ pub fn (t &Table) check(got, expected Type) bool {
 	&& (got_idx in pointer_type_idxs || got_idx in number_type_idxs) {
 		return true
 	}
+	// see hack in checker IndexExpr line #691
+	if (got_idx == byte_type_idx && exp_idx == byteptr_type_idx) //
+	|| (exp_idx == byte_type_idx && got_idx == byteptr_type_idx) {
+		return true
+	}
+	if (got_idx == char_type_idx && exp_idx == charptr_type_idx) //
+	|| (exp_idx == char_type_idx && got_idx == charptr_type_idx) {
+		return true
+	}
 	// # NOTE: use symbols from this point on for perf
 	got_type_sym := t.get_type_symbol(got)
 	exp_type_sym := t.get_type_symbol(expected)
 	// allow enum value to be used as int
 	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) || (exp_type_sym.is_int() && got_type_sym.kind == .enum_) {
-		return true
-	}
-	// TODO: actually check for & handle pointers with name_expr
-	// see hack in checker IndexExpr line #691
-	if (got_type_sym.kind == .byte && exp_type_sym.kind == .byteptr) || (exp_type_sym.kind == .byte && got_type_sym.kind == .byteptr) {
 		return true
 	}
 	// TODO

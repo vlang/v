@@ -268,8 +268,14 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.const_decl(it)
 		}
 		ast.CompIf {
-			g.writeln('\n#ifdef ' + comp_if_to_ifdef(it.val))
-			g.writeln('// #if $it.val')
+			if it.is_not {
+				g.writeln('\n#ifndef ' + comp_if_to_ifdef(it.val))
+				g.writeln('// #if not $it.val')
+			}
+			else {
+				g.writeln('\n#ifdef ' + comp_if_to_ifdef(it.val))
+				g.writeln('// #if $it.val')
+			}
 			// println('comp if stmts $g.file.path:$it.pos.line_nr')
 			g.stmts(it.stmts)
 			if it.has_else {
@@ -2024,6 +2030,9 @@ fn comp_if_to_ifdef(name string) string {
 		}
 		'mingw' {
 			return '__MINGW32__'
+		}
+		'glibc' {
+			return '__GLIBC__'
 		}
 		'no_bounds_checking' {
 			return 'NO_BOUNDS_CHECK'

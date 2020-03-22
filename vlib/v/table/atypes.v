@@ -205,7 +205,7 @@ pub const (
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16', 'u32', 'u64',
 	'f32', 'f64', 'string', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed', 'map', 'struct',
-	'mapnode', 'ustring']
+	'mapnode', 'ustring', 'size_t']
 )
 
 pub struct MultiReturn {
@@ -410,6 +410,10 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 	t.register_type_symbol(TypeSymbol{
 		kind: .map
 		name: 'map'
+	})
+	t.register_type_symbol(TypeSymbol{
+		kind: .placeholder
+		name: 'size_t'
 	})
 	// TODO: remove. for v1 map compatibility
 	map_string_string_idx := t.find_or_register_map(string_type, string_type)

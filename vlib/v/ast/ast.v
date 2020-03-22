@@ -389,6 +389,7 @@ pub:
 // cond       Expr
 	val        string
 	stmts      []Stmt
+	is_not     bool
 	pos        token.Position
 mut:
 	has_else   bool

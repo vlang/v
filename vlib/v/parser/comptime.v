@@ -8,7 +8,8 @@ pub fn (p mut Parser) comp_if() ast.CompIf {
 	pos := p.tok.position()
 	p.next()
 	p.check(.key_if)
-	if p.tok.kind == .not {
+	is_not := p.tok.kind == .not
+	if is_not {
 		p.next()
 	}
 	val := p.check_name()
@@ -16,6 +17,7 @@ pub fn (p mut Parser) comp_if() ast.CompIf {
 		p.next()
 	}
 	mut node := ast.CompIf{
+		is_not: is_not
 		stmts: p.parse_block()
 		pos: pos
 		val: val
