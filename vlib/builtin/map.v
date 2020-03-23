@@ -345,6 +345,25 @@ fn (m map) get2(key string) voidptr {
 	return voidptr(0)
 }
 
+fn (m map) get3(key string, zero voidptr) voidptr {
+	mut index,mut meta := m.key_to_index(key)
+	index,meta = meta_less(m.metas, index, meta)
+	for meta == m.metas[index] {
+		kv_index := m.metas[index + 1]
+		if key == m.key_values.data[kv_index].key {
+			out := malloc(m.value_bytes)
+			C.memcpy(out, m.key_values.data[kv_index].value, m.value_bytes)
+			return out
+		}
+		index += 2
+		meta += probe_inc
+	}
+	out := malloc(m.value_bytes)
+	C.memcpy(out, zero, m.value_bytes)
+	return out
+	//return voidptr(0)
+}
+
 fn (m map) exists(key string) bool {
 	if m.value_bytes == 0 {
 		return false

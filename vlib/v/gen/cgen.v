@@ -1430,11 +1430,19 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 				g.write(', &($elem_type_str[]) { ')
 			}
 			else {
+				/*
 				g.write('(*($elem_type_str*)map_get2(')
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
 				g.write('))')
+				*/
+				zero := g.type_default(info.value_type)
+				g.write('(*($elem_type_str*)map_get3(')
+				g.expr(node.left)
+				g.write(', ')
+				g.expr(node.index)
+				g.write(', &($elem_type_str[]){ $zero }))')
 			}
 		}
 		else if sym.kind == .string && !table.type_is_ptr(node.container_type) {
