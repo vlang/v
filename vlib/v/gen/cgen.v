@@ -656,11 +656,17 @@ fn (g mut Gen) fn_args(args []table.Arg, is_variadic bool) {
 		if arg_type_sym.kind == .function {
 			info := arg_type_sym.info as table.FnType
 			func := info.func
-			g.write('${g.typ(func.return_type)} (*$arg.name)(')
-			g.definitions.write('${g.typ(func.return_type)} (*$arg.name)(')
-			g.fn_args(func.args, func.is_variadic)
-			g.write(')')
-			g.definitions.write(')')
+			if !info.is_anon {
+				g.write(arg_type_name + ' ' + arg.name)
+				g.definitions.write(arg_type_name + ' ' + arg.name)
+			}
+			else {
+				g.write('${g.typ(func.return_type)} (*$arg.name)(')
+				g.definitions.write('${g.typ(func.return_type)} (*$arg.name)(')
+				g.fn_args(func.args, func.is_variadic)
+				g.write(')')
+				g.definitions.write(')')
+			}
 		}
 		else if no_names {
 			g.write(arg_type_name)
@@ -2098,6 +2104,11 @@ fn (g &Gen) type_default(typ table.Type) string {
 	if sym.kind == .array {
 		elem_type := 'int'
 		return 'new_array(0, 1, sizeof($elem_type))'
+	}
+	if sym.kind == .map {
+		value_sym := g.table.get_type_symbol(sym.map_info().value_type)
+		value_typ_str := value_sym.name.replace('.', '__')
+		return 'new_map(1, sizeof($value_typ_str))'
 	}
 	// Always set pointers to 0
 	if table.type_is_ptr(typ) {
