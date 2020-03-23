@@ -2,6 +2,9 @@ import os
 import term
 
 fn test_all() {
+	$if windows {
+		return
+	}
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	dir := os.join_path(vroot,'vlib/v/tests')
