@@ -157,7 +157,7 @@ fn f64_to_decimal_exact_int(i_mant u64, exp u64) (Dec64, bool) {
 		return d, false
 	}
 	shift := mantbits64 - e
-	mant  := i_mant | 0x0010_0000_0000_0000 // implicit 1
+	mant  := i_mant | u64(0x0010_0000_0000_0000) // implicit 1
 	//mant  := i_mant | (1 << mantbits64) // implicit 1
 	d.m = mant >> shift
 	if (d.m << shift) != mant {

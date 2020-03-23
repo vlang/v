@@ -277,7 +277,7 @@ fn test_bits(){
 	for x in 0..62 {
 		hi := u64(i) << x
 		lo := u64(2) //hi - 1
-		y  := 0x4000_0000_0000_0000
+		y  := u64(0x4000_0000_0000_0000)
 		quo, rem := div_64(hi, lo, y)
 		//C.printf("[%016llx_%016llx] %016llx (%016llx,%016llx)\n", hi, lo, y, quo, rem)
 		assert quo == u64(2)<<(x+1)
