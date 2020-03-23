@@ -704,8 +704,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 					g.write('new_array($it.exprs.len, $it.exprs.len, sizeof($elem_type_str))')
 				}
 				else {
-					g.write('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($elem_type_str), ')
-					g.writeln('($elem_type_str[]){\t')
+					len := it.exprs.len
+					g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), ')
+					g.writeln('($elem_type_str[$len]){\t')
 					for expr in it.exprs {
 						g.expr(expr)
 						g.write(', ')
