@@ -1574,7 +1574,7 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 		inited_fields << field
 		g.write('\t.$field_name = ')
 		g.expr_with_cast(it.exprs[i], it.expr_types[i], it.expected_types[i])
-		g.writeln(', ')
+		g.writeln(',')
 	}
 	// The rest of the fields are zeroed.
 	if is_struct {
@@ -1587,7 +1587,7 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 			g.writeln('\t.$field_name = $zero,') // zer0')
 		}
 	}
-	if it.fields.len == 0 {
+	if it.fields.len == 0 && info.fields.len == 0 {
 		g.write('0')
 	}
 	g.write('}')

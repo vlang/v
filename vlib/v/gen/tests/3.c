@@ -66,7 +66,9 @@ int main(int argc, char** argv) {
 	_vinit();
 	os__args = os__init_os_args(argc, (byteptr*)argv);
 	User user = (User){
-0};
+		.age = 0,
+		.name = tos3(""),
+	};
 	user.age = 10;
 	user.age++;
 	user.name = tos3("bob");

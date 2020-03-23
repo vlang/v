@@ -64,8 +64,8 @@ int main(int argc, char** argv) {
 	println(int_str(localmod__pub_int_const));
 	int g = ((int)(3.0));
 	byte* bytes = ((byte*)(0));
-	User* user_ptr = (User*)memdup(&(User){ .age = 0,
-0}, sizeof(User));
+    User* user_ptr = (User*)memdup(&(User){	.age = 0,
+}, sizeof(User));
 	return 0;
 }
 
@@ -88,7 +88,8 @@ i < 10; i++) {
 	});
 	array_User users = new_array_from_c_array(1, 1, sizeof(User), (User[]){
 		(User){
-			0},
+			.age = 0,
+		},
 	});
 	bool b = (*(bool*)array_get(bools, 0));
 	array_string mystrings = new_array_from_c_array(2, 2, sizeof(string), (string[]){

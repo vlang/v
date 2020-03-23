@@ -30,7 +30,8 @@ void init_user() {
 
 User get_user() {
 	User user = (User){
-	0};
+		.name = tos3(""),
+	};
 	return user;
 }
 
