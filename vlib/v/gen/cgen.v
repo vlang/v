@@ -8,6 +8,16 @@ import (
 	term
 )
 
+const (
+	c_reserved = ['delete', 'exit', 'unix',
+	// 'print',
+	// 'ok',
+	'error', 'calloc', 'free', 'panic',
+	// 'malloc',
+	// Full list of C reserved words, from: https://en.cppreference.com/w/c/keyword
+	'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while', ]
+)
+
 struct Gen {
 	out            strings.Builder
 	typedefs       strings.Builder
@@ -152,7 +162,12 @@ pub fn (g mut Gen) write_typedef_types() {
 				info := typ.info as table.FnType
 				func := info.func
 				if !info.has_decl && !info.is_anon {
-					fn_name := func.name.replace('.', '__')
+					fn_name := if func.is_c {
+						func.name.replace('.', '__')
+					}
+					else {
+						c_name(func.name)
+					}
 					g.definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 					for i, arg in func.args {
 						g.definitions.write(g.typ(arg.typ))
@@ -395,7 +410,12 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.return_statement(it)
 		}
 		ast.StructDecl {
-			name := it.name.replace('.', '__')
+			name := if it.is_c {
+				it.name.replace('.', '__')
+			}
+			else {
+				c_name(it.name)
+			}
 			// g.writeln('typedef struct {')
 			// for field in it.fields {
 			// field_type_sym := g.table.get_type_symbol(field.typ)
@@ -560,15 +580,14 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		if it.is_method {
 			name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
 		}
-		name = name.replace('.', '__')
+		if it.is_c {
+			name = name.replace('.', '__')
+		}
+		else {
+			name = c_name(name)
+		}
 		if name.starts_with('_op_') {
 			name = op_to_fn_name(name)
-		}
-		if name == 'exit' {
-			name = 'v_exit'
-		}
-		if name == 'free' {
-			name = 'v_free'
 		}
 		// type_name := g.table.type_to_str(it.return_type)
 		type_name := g.typ(it.return_type)
@@ -984,7 +1003,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.writeln('($styp){')
 			}
 			for i, field in it.fields {
-				g.write('\t.$field = ')
+				field_name := c_name(field)
+				g.write('\t.$field_name = ')
 				g.expr_with_cast(it.exprs[i], it.expr_types[i], it.expected_types[i])
 				g.writeln(', ')
 			}
@@ -1009,7 +1029,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			if it.expr_type == 0 {
 				verror('cgen: SelectorExpr typ=0 field=$it.field')
 			}
-			g.write(it.field)
+			g.write(c_name(it.field))
 		}
 		ast.Type {
 			// match sum Type
@@ -1246,14 +1266,14 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 }
 
 fn (g mut Gen) ident(node ast.Ident) {
-	name := node.name.replace('.', '__')
-	if name == 'lld' {
+	if node.name == 'lld' {
 		return
 	}
-	if name.starts_with('C__') {
-		g.write(name[3..])
+	if node.name.starts_with('C.') {
+		g.write(node.name[2..].replace('.', '__'))
 	}
 	else {
+		name := c_name(node.name)
 		// TODO `is`
 		match node.info {
 			ast.IdentVar {
@@ -1524,7 +1544,7 @@ fn (g mut Gen) return_statement(it ast.Return) {
 
 fn (g mut Gen) const_decl(node ast.ConstDecl) {
 	for i, field in node.fields {
-		name := field.name.replace('.', '__')
+		name := c_name(field.name)
 		expr := node.exprs[i]
 		// TODO hack. Cut the generated value and paste it into definitions.
 		pos := g.out.len
@@ -1562,7 +1582,8 @@ fn (g mut Gen) assoc(node ast.Assoc) {
 	styp := g.typ(node.typ)
 	g.writeln('($styp){')
 	for i, field in node.fields {
-		g.write('\t.$field = ')
+		field_name := c_name(field)
+		g.write('\t.$field_name = ')
 		g.expr(node.exprs[i])
 		g.writeln(', ')
 	}
@@ -1573,7 +1594,8 @@ fn (g mut Gen) assoc(node ast.Assoc) {
 		if field.name in node.fields {
 			continue
 		}
-		g.writeln('\t.$field.name = ${node.var_name}.$field.name,')
+		field_name := c_name(field.name)
+		g.writeln('\t.$field_name = ${node.var_name}.$field_name,')
 	}
 	g.write('}')
 	if g.is_amp {
@@ -1731,7 +1753,8 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				g.definitions.writeln('struct $name {')
 				for field in info.fields {
 					type_name := g.typ(field.typ)
-					g.definitions.writeln('\t$type_name $field.name;')
+					field_name := c_name(field.name)
+					g.definitions.writeln('\t$type_name $field_name;')
 				}
 				// g.definitions.writeln('} $name;\n')
 				//
@@ -1882,18 +1905,15 @@ fn (g mut Gen) gen_filter(node ast.MethodCallExpr) {
 }
 
 fn (g mut Gen) call_expr(it ast.CallExpr) {
-	mut name := it.name.replace('.', '__')
-	if name == 'exit' {
-		name = 'v_exit'
-	}
-	if name == 'free' {
-		name = 'v_free'
-	}
+	mut name := it.name
 	is_print := name == 'println'
 	if it.is_c {
-		// Skip "C__"
+		// Skip "C."
 		g.is_c_call = true
-		name = name[3..]
+		name = name[2..].replace('.', '__')
+	}
+	else {
+		name = c_name(name)
 	}
 	// Generate tmp vars for values that have to be freed.
 	/*
@@ -2045,4 +2065,13 @@ fn comp_if_to_ifdef(name string) string {
 	}
 	// verror('bad os ifdef name "$name"')
 	return ''
+}
+
+[inline]
+fn c_name(name_ string) string {
+	name := name_.replace('.', '__')
+	if name in c_reserved {
+		return 'v_$name'
+	}
+	return name
 }
