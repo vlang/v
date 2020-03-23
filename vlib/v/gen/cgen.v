@@ -1638,12 +1638,12 @@ fn (g mut Gen) call_args(args []ast.CallArg) {
 
 [inline]
 fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg) {
-	arg_is_ptr := table.type_is_ptr(arg.expected_type) || arg.expected_type == table.voidptr_type_idx
-	expr_is_ptr := table.type_is_ptr(arg.typ)
+	arg_is_ptr := table.type_is_ptr(arg.expected_type) || table.type_idx(arg.expected_type) in table.pointer_type_idxs
+	expr_is_ptr := table.type_is_ptr(arg.typ) || table.type_idx(arg.typ) in table.pointer_type_idxs
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
 	}
-	else if arg_is_ptr && !expr_is_ptr && arg.typ != table.byteptr_type {
+	else if arg_is_ptr && !expr_is_ptr {
 		g.write('&/*q*/')
 	}
 	else if !arg_is_ptr && expr_is_ptr {
