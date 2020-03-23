@@ -2,24 +2,30 @@ import os
 import term
 
 fn test_all() {
-	files := os.ls('.') or {
+	vexe := os.getenv('VEXE')
+	vroot := os.dir(vexe)
+	dir := os.join_path(vroot,'vlib/v/tests')
+	files := os.ls(dir) or {
 		panic(err)
 	}
-	for file in files {
-		if !file.ends_with('.vv') {
-			continue
-		}
-		print(file + ' ')
-		program := file.replace('.vv', '.v')
-		os.cp(file, program) or {
+	println(files)
+	tests := files.filter(it.ends_with('.vv'))
+	if tests.len == 0 {
+		println('no compiler tests found')
+		assert false
+	}
+	for test in tests {
+		path := os.join_path(dir,test)
+		print(test + ' ')
+		program := path.replace('.vv', '.v')
+		os.cp(path, program) or {
 			panic(err)
 		}
 		os.rm('exe')
 		x := os.exec('v -o exe -cflags "-w" -cg -backend experimental $program') or {
 			panic(err)
 		}
-		println(x.output.limit(30))
-		os.rm(program)
+		// os.rm(program)
 		res := os.exec('./exe') or {
 			println('nope')
 			panic(err)
@@ -34,6 +40,7 @@ fn test_all() {
 		found := res.output.trim_space()
 		if expected != found {
 			println(term.red('FAIL'))
+			println(x.output.limit(30))
 			println('============')
 			println('expected:')
 			println(expected)
