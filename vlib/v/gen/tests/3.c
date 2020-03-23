@@ -30,7 +30,7 @@ Option_int get_opt() {
 
 void User_foo(User* u) {
 	int age = u->age;
-	array_string zzz = array_repeat(new_array_from_c_array(1, 1, sizeof(string), (string[]){
+	array_string zzz = array_repeat(new_array_from_c_array(1, 1, sizeof(string), (string[1]){
 tos3(""),
 }), u->age);
 	int a = 10;
