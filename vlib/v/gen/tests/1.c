@@ -64,7 +64,8 @@ int main(int argc, char** argv) {
 	println(int_str(localmod__pub_int_const));
 	int g = ((int)(3.0));
 	byte* bytes = ((byte*)(0));
-	User* user_ptr = (User*)memdup(&(User){0}, sizeof(User));
+	User* user_ptr = (User*)memdup(&(User){ .age = 0,
+0}, sizeof(User));
 	return 0;
 }
 

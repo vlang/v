@@ -162,12 +162,7 @@ pub fn (g mut Gen) write_typedef_types() {
 				info := typ.info as table.FnType
 				func := info.func
 				if !info.has_decl && !info.is_anon {
-					fn_name := if func.is_c {
-						func.name.replace('.', '__')
-					}
-					else {
-						c_name(func.name)
-					}
+					fn_name := if func.is_c { func.name.replace('.', '__') } else { c_name(func.name) }
 					g.definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 					for i, arg in func.args {
 						g.definitions.write(g.typ(arg.typ))
@@ -410,12 +405,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.return_statement(it)
 		}
 		ast.StructDecl {
-			name := if it.is_c {
-				it.name.replace('.', '__')
-			}
-			else {
-				c_name(it.name)
-			}
+			name := if it.is_c { it.name.replace('.', '__') } else { c_name(it.name) }
 			// g.writeln('typedef struct {')
 			// for field in it.fields {
 			// field_type_sym := g.table.get_type_symbol(field.typ)
@@ -994,27 +984,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			styp := g.typ(it.typ)
-			if g.is_amp {
-				g.out.go_back(1) // delete the & already generated in `prefix_expr()
-				g.write('($styp*)memdup(&($styp){')
-			}
-			else {
-				g.writeln('($styp){')
-			}
-			for i, field in it.fields {
-				field_name := c_name(field)
-				g.write('\t.$field_name = ')
-				g.expr_with_cast(it.exprs[i], it.expr_types[i], it.expected_types[i])
-				g.writeln(', ')
-			}
-			if it.fields.len == 0 {
-				g.write('0')
-			}
-			g.write('}')
-			if g.is_amp {
-				g.write(', sizeof($styp))')
-			}
+			g.struct_init(it)
 		}
 		ast.SelectorExpr {
 			g.expr(it.expr)
@@ -1573,6 +1543,53 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 	}
 }
 
+fn (g mut Gen) struct_init(it ast.StructInit) {
+	mut info := table.Struct{}
+	mut is_struct := false
+	sym := g.table.get_type_symbol(it.typ)
+	if sym.kind == .struct_ {
+		is_struct = true
+		info = sym.info as table.Struct
+	}
+	// info := g.table.get_type_symbol(it.typ).info as table.Struct
+	println(info.fields.len)
+	styp := g.typ(it.typ)
+	if g.is_amp {
+		g.out.go_back(1) // delete the & already generated in `prefix_expr()
+		g.write('($styp*)memdup(&($styp){')
+	}
+	else {
+		g.writeln('($styp){')
+	}
+	mut inited_fields := []string
+	// User set fields
+	for i, field in it.fields {
+		field_name := c_name(field)
+		inited_fields << field
+		g.write('\t.$field_name = ')
+		g.expr_with_cast(it.exprs[i], it.expr_types[i], it.expected_types[i])
+		g.writeln(', ')
+	}
+	// The rest of the fields are zeroed.
+	if is_struct {
+		for field in info.fields {
+			if field.name in inited_fields {
+				continue
+			}
+			field_name := c_name(field.name)
+			zero := g.type_default(field.typ)
+			g.writeln('\t.$field_name = $zero,') // zer0')
+		}
+	}
+	if it.fields.len == 0 {
+		g.write('0')
+	}
+	g.write('}')
+	if g.is_amp {
+		g.write(', sizeof($styp))')
+	}
+}
+
 // { user | name: 'new name' }
 fn (g mut Gen) assoc(node ast.Assoc) {
 	g.writeln('// assoc')
@@ -2074,4 +2091,98 @@ fn c_name(name_ string) string {
 		return 'v_$name'
 	}
 	return name
+}
+
+fn (g &Gen) type_default(typ table.Type) string {
+	sym := g.table.get_type_symbol(typ)
+	if sym.kind == .array {
+		elem_type := 'int'
+		return 'new_array(0, 1, sizeof($elem_type))'
+	}
+	// Always set pointers to 0
+	if table.type_is_ptr(typ) {
+		return '0'
+	}
+	// User struct defined in another module.
+	// if typ.contains('__') {
+	if sym.kind == .struct_ {
+		return '{0}'
+	}
+	// if typ.ends_with('Fn') { // TODO
+	// return '0'
+	// }
+	// Default values for other types are not needed because of mandatory initialization
+	match sym.name {
+		'bool' {
+			return '0'
+		}
+		'string' {
+			return 'tos3("")'
+		}
+		'i8' {
+			return '0'
+		}
+		'i16' {
+			return '0'
+		}
+		'i64' {
+			return '0'
+		}
+		'u16' {
+			return '0'
+		}
+		'u32' {
+			return '0'
+		}
+		'u64' {
+			return '0'
+		}
+		'byte' {
+			return '0'
+		}
+		'int' {
+			return '0'
+		}
+		'rune' {
+			return '0'
+		}
+		'f32' {
+			return '0.0'
+		}
+		'f64' {
+			return '0.0'
+		}
+		'byteptr' {
+			return '0'
+		}
+		'voidptr' {
+			return '0'
+		}
+		else {}
+	}
+	return '{0}'
+	// TODO this results in
+	// error: expected a field designator, such as '.field = 4'
+	// - Empty ee= (Empty) { . =  {0}  } ;
+	/*
+	return match typ {
+		'bool'{ '0'}
+		'string'{ 'tos3("")'}
+		'i8'{ '0'}
+		'i16'{ '0'}
+		'i64'{ '0'}
+		'u16'{ '0'}
+		'u32'{ '0'}
+		'u64'{ '0'}
+		'byte'{ '0'}
+		'int'{ '0'}
+		'rune'{ '0'}
+		'f32'{ '0.0'}
+		'f64'{ '0.0'}
+		'byteptr'{ '0'}
+		'voidptr'{ '0'}
+		else { '{0} '}
+	}
+	*/
+
 }
