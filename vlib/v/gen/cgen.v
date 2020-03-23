@@ -1552,7 +1552,7 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 		info = sym.info as table.Struct
 	}
 	// info := g.table.get_type_symbol(it.typ).info as table.Struct
-	println(info.fields.len)
+	// println(info.fields.len)
 	styp := g.typ(it.typ)
 	if g.is_amp {
 		g.out.go_back(1) // delete the & already generated in `prefix_expr()
@@ -2112,50 +2112,24 @@ fn (g &Gen) type_default(typ table.Type) string {
 	// return '0'
 	// }
 	// Default values for other types are not needed because of mandatory initialization
-	match sym.name {
-		'bool' {
+	idx := int(typ)
+	if idx >= 1 && idx <= 17 {
+		return '0'
+	}
+	/*
+	match idx {
+		table.bool_type_idx {
 			return '0'
 		}
+		else {}
+	}
+	*/
+
+	match sym.name {
 		'string' {
 			return 'tos3("")'
 		}
-		'i8' {
-			return '0'
-		}
-		'i16' {
-			return '0'
-		}
-		'i64' {
-			return '0'
-		}
-		'u16' {
-			return '0'
-		}
-		'u32' {
-			return '0'
-		}
-		'u64' {
-			return '0'
-		}
-		'byte' {
-			return '0'
-		}
-		'int' {
-			return '0'
-		}
 		'rune' {
-			return '0'
-		}
-		'f32' {
-			return '0.0'
-		}
-		'f64' {
-			return '0.0'
-		}
-		'byteptr' {
-			return '0'
-		}
-		'voidptr' {
 			return '0'
 		}
 		else {}
