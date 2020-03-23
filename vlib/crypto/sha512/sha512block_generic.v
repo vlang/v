@@ -11,9 +11,9 @@ import math.bits
 
 const (
 	_k = [u64(0x428a2f98d728ae22),
-		  u64(0x7137449123ef65cd),
-		  u64(0xb5c0fbcfec4d3b2f),
-		  u64(0xe9b5dba58189dbbc),
+          u64(0x7137449123ef65cd),
+          u64(0xb5c0fbcfec4d3b2f),
+	      u64(0xe9b5dba58189dbbc),
 		  u64(0x3956c25bf348b538),
 		  u64(0x59f111f1b605d019),
 		  u64(0x923f82a4af194f9b),
