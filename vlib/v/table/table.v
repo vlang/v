@@ -414,7 +414,11 @@ pub fn (t mut Table) add_placeholder_type(name string) int {
 [inline]
 pub fn (t &Table) value_type(typ Type) Type {
 	typ_sym := t.get_type_symbol(typ)
-	if typ_sym.kind == .array {
+	if type_is_variadic(typ) {
+		// ...string => string
+		return type_clear_extra(typ)
+	}
+	else if typ_sym.kind == .array {
 		// Check index type
 		info := typ_sym.info as Array
 		return info.elem_type
@@ -434,10 +438,6 @@ pub fn (t &Table) value_type(typ Type) Type {
 		// byte* => byte
 		// bytes[0] is a byte, not byte*
 		return type_deref(typ)
-	}
-	else if type_is_variadic(typ) {
-		// ...string => string
-		return type_clear_extra(typ)
 	}
 	else {
 		// TODO: remove when map_string is removed

@@ -28,7 +28,7 @@ mut:
 	file           ast.File
 	fn_decl        &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	tmp_count      int
-	varaidic_args  map[string]int
+	variadic_args  map[string]int
 	is_c_call      bool // e.g. `C.printf("v")`
 	is_assign_expr bool // inside left part of assign expr (for array_set(), etc)
 	is_array_set   bool
@@ -202,10 +202,10 @@ pub fn (g mut Gen) write_multi_return_types() {
 }
 
 pub fn (g mut Gen) write_variadic_types() {
-	if g.varaidic_args.size > 0 {
+	if g.variadic_args.size > 0 {
 		g.definitions.writeln('// variadic structs')
 	}
-	for type_str, arg_len in g.varaidic_args {
+	for type_str, arg_len in g.variadic_args {
 		typ := table.Type(type_str.int())
 		type_name := g.typ(typ)
 		struct_name := 'varg_' + type_name.replace('*', '_ptr')
@@ -390,6 +390,19 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.write('$val_styp $it.val_var = (*($val_styp*)map_get3(')
 				g.expr(it.cond)
 				g.writeln(', $key, &($val_styp[]){ $zero }));')
+				g.stmts(it.stmts)
+				g.writeln('}')
+			}
+			else if table.type_is_variadic(it.cond_type) {
+				g.writeln('// FOR IN')
+				i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+				g.write('for (int $i = 0; $i < ')
+				g.expr(it.cond)
+				g.writeln('.len; $i++) {')
+				styp := g.typ(it.cond_type)
+				g.write('$styp $it.val_var = ')
+				g.expr(it.cond)
+				g.writeln('.args[$i];')
 				g.stmts(it.stmts)
 				g.writeln('}')
 			}
@@ -670,7 +683,10 @@ fn (g mut Gen) fn_args(args []table.Arg, is_variadic bool) {
 		mut arg_type_name := g.typ(arg.typ) // arg_type_sym.name.replace('.', '__')
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
-			g.varaidic_args[int(arg.typ).str()] = 0
+			varg_type_str := int(arg.typ).str()
+			if (!varg_type_str in g.variadic_args) {
+				g.variadic_args[int(arg.typ).str()] = 0
+			}
 			arg_type_name = 'varg_' + g.typ(arg.typ).replace('*', '_ptr')
 		}
 		if arg_type_sym.kind == .function {
@@ -1661,8 +1677,9 @@ fn (g mut Gen) call_args(args []ast.CallArg) {
 			struct_name := 'varg_' + g.typ(arg.expected_type).replace('*', '_ptr')
 			len := args.len - i
 			type_str := int(arg.expected_type).str()
-			if len > g.varaidic_args[type_str] {
-				g.varaidic_args[type_str] = len
+			if len > g.variadic_args[type_str] {
+				x := g.variadic_args[type_str]
+				g.variadic_args[type_str] = len
 			}
 			g.write('($struct_name){.len=$len,.args={')
 			for j in i .. args.len {
