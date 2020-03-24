@@ -64,7 +64,7 @@ pub fn (nn int) str_l(max int) string {
 		return '0'
 	}
 	mut buf := malloc(max + 1)
-	
+
 	mut is_neg := false
 	if n < 0 {
 		n = -n
@@ -77,11 +77,11 @@ pub fn (nn int) str_l(max int) string {
 		n1 := n / 100
 		d = ((n - (n1 * 100)) << 1)
 		n = n1
-		buf[index--] = digit_pairs[d++]
-		buf[index--] = digit_pairs[d]
+		buf[index--] = digit_pairs.str[d++]
+		buf[index--] = digit_pairs.str[d]
 	}
 	index++
-	
+
 	// remove head zero
 	if d < 20 {
 		index++
@@ -92,7 +92,7 @@ pub fn (nn int) str_l(max int) string {
 		index--
 		buf[index] = `-`
 	}
-	
+
 	C.memmove(buf,buf+index, (max-index)+1 )
 	return tos(buf, (max-index))
 	//return tos(buf + index, (max-index))
@@ -122,7 +122,7 @@ pub fn (nn u32) str() string {
 	}
 	max := 12
 	mut buf := malloc(max + 1)
-	
+
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
@@ -133,12 +133,12 @@ pub fn (nn u32) str() string {
 		buf[index--] = digit_pairs[d]
 	}
 	index++
-	
+
 	// remove head zero
 	if d < u32(20) {
 		index++
 	}
-	
+
 	C.memmove(buf,buf+index, (max-index)+1 )
 	return tos(buf, (max-index))
 	//return tos(buf + index, (max-index))
@@ -152,7 +152,7 @@ pub fn (nn i64) str() string {
 	}
 	max := 20
 	mut buf := vcalloc(max + 1)
-	
+
 	mut is_neg := false
 	if n < 0 {
 		n = -n
@@ -169,7 +169,7 @@ pub fn (nn i64) str() string {
 		buf[index--] = digit_pairs[d]
 	}
 	index++
-	
+
 	// remove head zero
 	if d < i64(20) {
 		index++
@@ -194,7 +194,7 @@ pub fn (nn u64) str() string {
 	}
 	max := 20
 	mut buf := vcalloc(max + 1)
-	
+
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
@@ -205,7 +205,7 @@ pub fn (nn u64) str() string {
 		buf[index--] = digit_pairs[d]
 	}
 	index++
-	
+
 	// remove head zero
 	if d < 20 {
 		index++

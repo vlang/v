@@ -2233,11 +2233,12 @@ fn (g &Gen) type_default(typ table.Type) string {
 
 pub fn (g mut Gen) write_tests_main() {
 	g.writeln('int main() {')
+	g.writeln('\t_vinit();')
 	for _, f in g.table.fns {
 		if !f.name.starts_with('test_') {
 			continue
 		}
-		g.writeln('${f.name}();')
+		g.writeln('\t${f.name}();')
 	}
 	g.writeln('return 0; }')
 }
