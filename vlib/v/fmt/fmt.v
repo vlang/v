@@ -246,6 +246,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		ast.TypeDecl {
 			f.type_decl(it)
 		}
+		ast.AssertStmt {
+			f.write('assert ')
+			f.expr(it.expr)
+			f.writeln('')
+		}
 		else {
 			eprintln('fmt stmt: unknown node: ' + typeof(node))
 			// exit(1)
