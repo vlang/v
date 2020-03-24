@@ -214,6 +214,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		ast.LineComment {
 			f.writeln('// $it.text')
 		}
+		ast.MultiLineComment {
+			f.writeln('/*')
+			f.writeln(it.text)
+			f.writeln('*/')
+		}
 		ast.Return {
 			f.write('return')
 			// multiple returns
@@ -245,6 +250,21 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		// already handled in f.imports
 		ast.TypeDecl {
 			f.type_decl(it)
+		}
+		ast.AssertStmt {
+			f.write('assert ')
+			f.expr(it.expr)
+			f.writeln('')
+		}
+		ast.CompIf {
+			inversion := if it.is_not { '!' } else { '' }
+			f.writeln('\$if ${inversion}${it.val} {')
+			f.stmts(it.stmts)
+			if it.has_else {
+				f.writeln('} \$else {')
+				f.stmts(it.else_stmts)
+			}
+			f.writeln('}')
 		}
 		else {
 			eprintln('fmt stmt: unknown node: ' + typeof(node))
@@ -534,6 +554,25 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			else {
 				f.write("'$it.val'")
 			}
+		}
+		ast.StringInterLiteral {
+			f.write("'")
+			for i, val in it.vals {
+				f.write(val)
+				if i>=it.exprs.len {
+					continue
+				}
+				f.write('$')
+				if it.expr_fmts[i].len > 0 {
+					f.write('{')
+					f.expr(it.exprs[i])
+					f.write(it.expr_fmts[i])
+					f.write('}')
+				}else{
+					f.expr(it.exprs[i])
+				}
+			}
+			f.write("'")
 		}
 		ast.StructInit {
 			type_sym := f.table.get_type_symbol(it.typ)

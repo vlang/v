@@ -1,5 +1,9 @@
 import os
 
+const (
+	rwxfile = os.join_path( os.temp_dir(), 'rwxfile.exe' )
+)
+
 fn testsuite_begin() {
 	cleanup_leftovers()
 }
@@ -259,18 +263,18 @@ fn test_symlink() {
 }
 
 fn test_is_executable_writable_readable() {
-	file_name := os.temp_dir() + os.path_separator + 'rwxfile.exe'
+	file_name := rwxfile
 	mut f := os.create(file_name) or {
 		eprintln('failed to create file $file_name')
 		return
 	}
 	f.close()
 	$if !windows {
-		os.chmod(file_name, 0600) // mark as readable && writable, but NOT executable
+		os.chmod(file_name, 0o600) // mark as readable && writable, but NOT executable
 		assert os.is_writable(file_name)
 		assert os.is_readable(file_name)
 		assert !os.is_executable(file_name)
-		os.chmod(file_name, 0700) // mark as executable too
+		os.chmod(file_name, 0o700) // mark as executable too
 		assert os.is_executable(file_name)
 	} $else {
 		assert os.is_writable(file_name)
@@ -332,4 +336,8 @@ fn cleanup_leftovers() {
 	os.rmdir_all('ex2')
 	os.rm('ex1.txt')
 	os.rm('ex2.txt')
+	if os.exists( rwxfile ) {
+		os.chmod(rwxfile, 0o777)
+		os.rm(rwxfile)
+	}
 }
