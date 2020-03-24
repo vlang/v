@@ -251,6 +251,16 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.expr(it.expr)
 			f.writeln('')
 		}
+		ast.CompIf {
+			inversion := if it.is_not { '!' } else { '' }
+			f.writeln('\$if ${inversion}${it.val} {')
+			f.stmts(it.stmts)
+			if it.has_else {
+				f.writeln('} \$else {')
+				f.stmts(it.else_stmts)
+			}
+			f.writeln('}')
+		}
 		else {
 			eprintln('fmt stmt: unknown node: ' + typeof(node))
 			// exit(1)
