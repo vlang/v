@@ -376,7 +376,6 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			else if it.kind == .map {
 				// `for num in nums {`
 				g.writeln('// FOR IN')
-				cond_styp := g.typ(it.cond_type)
 				key_styp := g.typ(it.key_type)
 				val_styp := g.typ(it.val_type)
 				keys_tmp := 'keys_' + g.new_tmp_var()
