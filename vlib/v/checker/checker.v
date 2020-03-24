@@ -307,11 +307,13 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		return info.elem_type
 	}
 	if method := c.table.type_find_method(typ_sym, name) {
-		if method_call_expr.args.len < method.args.len - 1 {
-			c.error('too few arguments in call to `${typ_sym.name}.$name`', method_call_expr.pos)
+		no_args := method.args.len - 1
+		min_required_args := method.args.len - if method.is_variadic && method.args.len > 1 { 2 } else { 1 }
+		if method_call_expr.args.len < min_required_args {
+			c.error('too few arguments in call to `${typ_sym.name}.$name` ($method_call_expr.args.len instead of $min_required_args)', method_call_expr.pos)
 		}
-		else if !method.is_variadic && method_call_expr.args.len > method.args.len + 1 {
-			c.error('too many arguments in call to `${typ_sym.name}.$name` ($method_call_expr.args.len instead of $method.args.len)', method_call_expr.pos)
+		else if !method.is_variadic && method_call_expr.args.len > no_args {
+			c.error('too many arguments in call to `${typ_sym.name}.$name` ($method_call_expr.args.len instead of $no_args)', method_call_expr.pos)
 		}
 		// if name == 'clone' {
 		// println('CLONE nr args=$method.args.len')

@@ -137,6 +137,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			name: name
 			args: args
 			return_type: return_type
+			is_variadic: is_variadic
 		})
 	}
 	else {
