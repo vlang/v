@@ -11,10 +11,10 @@ fn testsuite_end() {
 fn test_open_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
-	os.open_file(filename, 'r+',0666) or {
+	os.open_file(filename, 'r+', 0o666) or {
 		assert err == 'No such file or directory'
 	}
-	mut file := os.open_file(filename, 'w+',0666) or {
+	mut file := os.open_file(filename, 'w+', 0o666) or {
 		panic(err)
 	}
 	file.write(hello)
