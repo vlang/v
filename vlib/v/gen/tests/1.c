@@ -48,7 +48,7 @@ struct varg_int {
 //
 int main(int argc, char** argv) {
 	_vinit();
-	os__args = os__init_os_args(argc, (byteptr*)argv);
+	_const_os__args = os__init_os_args(argc, (byteptr*)argv);
 	int a = 10;
 	a++;
 	int negative = -a;
