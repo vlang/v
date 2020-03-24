@@ -156,3 +156,4 @@ fn test_int_decl() {
 	assert typeof(x6) == 'int'
 	assert typeof(x7) == 'u64'
 }
+

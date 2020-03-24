@@ -39,6 +39,7 @@ mut:
 	autofree       bool
 	indent         int
 	empty_line     bool
+	is_test        bool
 }
 
 const (
@@ -64,7 +65,10 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		g.file = file
 		// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
 		building_v := g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v')
-		is_test := g.file.path.ends_with('.vv')
+		is_test := g.file.path.ends_with('.vv') || g.file.path.ends_with('_test.v')
+		if is_test {
+			g.is_test = is_test
+		}
 		if g.file.path == '' || is_test || building_v {
 			// cgen test or building V
 			// println('autofree=false')
@@ -82,6 +86,9 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 	g.write_variadic_types()
 	// g.write_str_definitions()
 	g.write_init_function()
+	if g.is_test {
+		g.write_tests_main()
+	}
 	return g.typedefs.str() + g.definitions.str() + g.out.str()
 }
 
@@ -668,6 +675,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	if is_main {
 		if g.autofree {
 			g.writeln('_vcleanup();')
+		}
+		if g.is_test {
+			verror('test files cannot have function `main`')
 		}
 		g.writeln('return 0;')
 	}
@@ -1283,27 +1293,30 @@ fn (g mut Gen) ident(node ast.Ident) {
 	}
 	if node.name.starts_with('C.') {
 		g.write(node.name[2..].replace('.', '__'))
+		return
 	}
-	else {
-		name := c_name(node.name)
-		// TODO `is`
-		match node.info {
-			ast.IdentVar {
-				// x ?int
-				// `x = 10` => `x.data = 10` (g.right_is_opt == false)
-				// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
-				// `println(x)` => `println(*(int*)x.data)`
-				if it.is_optional && !(g.is_assign_expr && g.right_is_opt) {
-					g.write('/*opt*/')
-					styp := g.typ(it.typ)[7..] // Option_int => int TODO perf?
-					g.write('(*($styp*)${name}.data)')
-					return
-				}
+	if node.kind == .constant && !node.name.starts_with('g_') {
+		// TODO globals hack
+		g.write('_const_')
+	}
+	name := c_name(node.name)
+	// TODO `is`
+	match node.info {
+		ast.IdentVar {
+			// x ?int
+			// `x = 10` => `x.data = 10` (g.right_is_opt == false)
+			// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
+			// `println(x)` => `println(*(int*)x.data)`
+			if it.is_optional && !(g.is_assign_expr && g.right_is_opt) {
+				g.write('/*opt*/')
+				styp := g.typ(it.typ)[7..] // Option_int => int TODO perf?
+				g.write('(*($styp*)${name}.data)')
+				return
 			}
-			else {}
+		}
+		else {}
 	}
-		g.write(name)
-	}
+	g.write(name)
 }
 
 fn (g mut Gen) if_expr(node ast.IfExpr) {
@@ -1574,15 +1587,15 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 				// so that we don't pollute the binary with unnecessary global vars
 				// Do not do this when building a module, otherwise the consts
 				// will not be accessible.
-				g.definitions.write('#define $name ')
+				g.definitions.write('#define _const_$name ')
 				g.definitions.writeln(val)
 			}
 			else {
 				// Initialize more complex consts in `void _vinit(){}`
 				// (C doesn't allow init expressions that can't be resolved at compile time).
 				styp := g.typ(field.typ)
-				g.definitions.writeln('$styp $name; // inited later') // = ')
-				g.inits.write('$name = ')
+				g.definitions.writeln('$styp _const_$name; // inited later') // = ')
+				g.inits.write('_const_$name = ')
 				g.inits.write(val)
 				g.inits.writeln(';')
 			}
@@ -1719,7 +1732,7 @@ fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg) {
 
 fn verror(s string) {
 	println('cgen error: $s')
-	// exit(1)
+	exit(1)
 }
 
 fn (g mut Gen) write_init_function() {
@@ -1729,8 +1742,8 @@ fn (g mut Gen) write_init_function() {
 	if g.autofree {
 		g.writeln('void _vcleanup() {')
 		g.writeln('puts("cleaning up...");')
-		g.writeln('free(os__args.data);')
-		g.writeln('free(strconv__ftoa__powers_of_10.data);')
+		g.writeln('free(_const_os__args.data);')
+		g.writeln('free(_const_strconv__ftoa__powers_of_10.data);')
 		g.writeln('}')
 	}
 }
@@ -2216,4 +2229,15 @@ fn (g &Gen) type_default(typ table.Type) string {
 	}
 	*/
 
+}
+
+pub fn (g mut Gen) write_tests_main() {
+	g.writeln('int main() {')
+	for _, f in g.table.fns {
+		if !f.name.starts_with('test_') {
+			continue
+		}
+		g.writeln('${f.name}();')
+	}
+	g.writeln('return 0; }')
 }
