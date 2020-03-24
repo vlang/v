@@ -132,7 +132,7 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 		verror("$dir doesn't exist")
 	}
 	else if !os.is_dir(dir) {
-		verror("$dir isn't a directory")
+		verror("$dir isn't a directory!")
 	}
 	mut files := os.ls(dir) or {
 		panic(err)
@@ -206,7 +206,7 @@ fn module_path(mod string) string {
 pub fn (b &Builder) find_module_path(mod string) ?string {
 	mod_path := module_path(mod)
 	for search_path in b.module_search_paths {
-		try_path := os.join_path(search_path, mod_path)
+		try_path := os.join_path(search_path,mod_path)
 		if b.pref.verbosity.is_higher_or_equal(.level_three) {
 			println('  >> trying to find $mod in $try_path ..')
 		}

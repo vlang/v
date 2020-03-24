@@ -935,7 +935,8 @@ pub fn is_dir(path string) bool {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
-		return int(statbuf.st_mode) & S_IFMT == S_IFDIR
+		val:= int(statbuf.st_mode) & S_IFMT
+		return val == S_IFDIR
 	}
 }
 

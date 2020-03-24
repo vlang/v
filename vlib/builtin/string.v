@@ -550,7 +550,7 @@ pub fn (s string) index_old(p string) int {
 	mut i := 0
 	for i < s.len {
 		mut j := 0
-		for j < p.len && s[i + j] == p[j] {
+		for j < p.len && s.str[i + j] == p.str[j] {
 			j++
 		}
 		if j == p.len {
@@ -568,7 +568,7 @@ pub fn (s string) index(p string) ?int {
 	mut i := 0
 	for i < s.len {
 		mut j := 0
-		for j < p.len && s[i + j] == p[j] {
+		for j < p.len && s.str[i + j] == p.str[j] {
 			j++
 		}
 		if j == p.len {
@@ -587,20 +587,20 @@ fn (s string) index_kmp(p string) int {
 	mut prefix := [0].repeat(p.len)
 	mut j := 0
 	for i := 1; i < p.len; i++ {
-		for p[j] != p[i] && j > 0 {
+		for p.str[j] != p.str[i] && j > 0 {
 			j = prefix[j - 1]
 		}
-		if p[j] == p[i] {
+		if p.str[j] == p.str[i] {
 			j++
 		}
 		prefix[i] = j
 	}
 	j = 0
 	for i in 0..s.len {
-		for p[j] != s[i] && j > 0 {
+		for p.str[j] != s.str[i] && j > 0 {
 			j = prefix[j - 1]
 		}
-		if p[j] == s[i] {
+		if p.str[j] == s.str[i] {
 			j++
 		}
 		if j == p.len {
@@ -627,7 +627,7 @@ pub fn (s string) last_index(p string) ?int {
 	mut i := s.len - p.len
 	for i >= 0 {
 		mut j := 0
-		for j < p.len && s[i + j] == p[j] {
+		for j < p.len && s.str[i + j] == p.str[j] {
 			j++
 		}
 		if j == p.len {
@@ -653,7 +653,7 @@ pub fn (s string) index_after(p string, start int) int {
 	for i < s.len {
 		mut j := 0
 		mut ii := i
-		for j < p.len && s[ii] == p[j] {
+		for j < p.len && s.str[ii] == p.str[j] {
 			j++
 			ii++
 		}
@@ -667,7 +667,7 @@ pub fn (s string) index_after(p string, start int) int {
 
 pub fn (s string) index_byte(c byte) int {
 	for i in 0..s.len {
-		if s[i] == c {
+		if s.str[i] == c {
 			return i
 		}
 	}
@@ -676,7 +676,7 @@ pub fn (s string) index_byte(c byte) int {
 
 pub fn (s string) last_index_byte(c byte) int {
 	for i := s.len - 1; i >= 0; i-- {
-		if s[i] == c {
+		if s.str[i] == c {
 			return i
 		}
 	}
@@ -716,7 +716,7 @@ pub fn (s string) starts_with(p string) bool {
 		return false
 	}
 	for i in 0..p.len {
-		if s[i] != p[i] {
+		if s.str[i] != p.str[i] {
 			return false
 		}
 	}

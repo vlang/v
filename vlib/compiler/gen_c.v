@@ -565,7 +565,7 @@ fn (p mut Parser) cast(typ string) {
 	p.expected_type = typ
 	expr_typ := p.bool_expression()
 	// Do not allow `int(my_int)`
-	if expr_typ == typ && typ != 'u64' {
+	if expr_typ == typ {
 		p.warn('casting `$typ` to `$expr_typ` is not needed')
 	}
 	// `face := FT_Face(cobj)` => `FT_Face face = *((FT_Face*)cobj);`

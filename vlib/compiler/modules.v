@@ -170,10 +170,15 @@ fn (v mut V) set_module_lookup_paths() {
 		v.module_lookup_paths << os.base_dir(v.compiled_dir) // pdir of _test.v
 	}
 	v.module_lookup_paths << v.compiled_dir
+	x := os.join_path(v.compiled_dir, 'modules')
+	if v.pref.verbosity.is_higher_or_equal(.level_two) {
+		println('x: "$x"')
+	}
 	v.module_lookup_paths << os.join_path(v.compiled_dir, 'modules')
 	v.module_lookup_paths << v.pref.lookup_path
 	if v.pref.verbosity.is_higher_or_equal(.level_two) {
-		v.log('v.module_lookup_paths: $v.module_lookup_paths')
+		v.log('v.module_lookup_paths') //: $v.module_lookup_paths')
+		println(v.module_lookup_paths)
 	}
 }
 
