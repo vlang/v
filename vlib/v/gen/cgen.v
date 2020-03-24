@@ -2111,13 +2111,14 @@ fn c_name(name_ string) string {
 fn (g &Gen) type_default(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .array {
-		elem_type := 'int'
-		return 'new_array(0, 1, sizeof($elem_type))'
+		elem_sym := g.table.get_type_symbol(sym.array_info().elem_type)
+		elem_type_str := elem_sym.name.replace('.', '__')
+		return 'new_array(0, 1, sizeof($elem_type_str))'
 	}
 	if sym.kind == .map {
 		value_sym := g.table.get_type_symbol(sym.map_info().value_type)
-		value_typ_str := value_sym.name.replace('.', '__')
-		return 'new_map(1, sizeof($value_typ_str))'
+		value_type_str := value_sym.name.replace('.', '__')
+		return 'new_map(1, sizeof($value_type_str))'
 	}
 	// Always set pointers to 0
 	if table.type_is_ptr(typ) {
