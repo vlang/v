@@ -1301,7 +1301,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 		line_nr := p.tok.line_nr
 		p.check(.rsbr)
 		// []string
-		if p.tok.kind == .name && p.tok.line_nr == line_nr {
+		if p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
 			elem_type = p.parse_type()
 			// this is set here becasue its a known type, others could be the
 			// result of expr so we do those in checker
@@ -1321,7 +1321,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 		line_nr := p.tok.line_nr
 		p.check(.rsbr)
 		// [100]byte
-		if exprs.len == 1 && p.tok.kind == .name && p.tok.line_nr == line_nr {
+		if exprs.len == 1 && p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
 			elem_type = p.parse_type()
 			// p.warn('fixed size array')
 		}
