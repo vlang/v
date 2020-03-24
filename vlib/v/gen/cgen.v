@@ -12,8 +12,7 @@ const (
 	c_reserved = ['delete', 'exit', 'unix',
 	// 'print',
 	// 'ok',
-	'error', 'calloc', 'free', 'panic',
-	// 'malloc',
+	'error', 'calloc', 'malloc', 'free', 'panic',
 	// Full list of C reserved words, from: https://en.cppreference.com/w/c/keyword
 	'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while', ]
 )
@@ -589,7 +588,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 }
 
 fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
-	if it.is_c || it.name == 'malloc' {
+	if it.is_c {
 		// || it.no_body {
 		return
 	}
@@ -2121,6 +2120,9 @@ fn comp_if_to_ifdef(name string) string {
 		}
 		'glibc' {
 			return '__GLIBC__'
+		}
+		'prealloc' {
+			return 'VPREALLOC'
 		}
 		'no_bounds_checking' {
 			return 'NO_BOUNDS_CHECK'
