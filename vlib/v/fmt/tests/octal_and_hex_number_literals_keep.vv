@@ -1,6 +1,6 @@
 fn main() {
 	c_oct := 0o664
-	c_hex := 0xdeadbeaf
+	c_hex := 0xdeadbeef
 	eprintln('octal constant in decimal: $c_oct')
 	eprintln('  hex constant in decimal: $c_hex')
 }
