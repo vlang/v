@@ -363,10 +363,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				// `for num in nums {`
 				g.writeln('// FOR IN')
 				i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+				styp := g.typ(it.val_type)
 				g.write('for (int $i = 0; $i < ')
 				g.expr(it.cond)
 				g.writeln('.len; $i++) {')
-				styp := g.typ(it.val_type)
 				g.write('$styp $it.val_var = (($styp*)')
 				g.expr(it.cond)
 				g.writeln('.data)[$i];')
@@ -381,12 +381,12 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				keys_tmp := 'keys_' + g.new_tmp_var()
 				idx := g.new_tmp_var()
 				key := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+				zero := g.type_default(it.val_type)
 				g.write('array_$key_styp $keys_tmp = map_keys(&')
 				g.expr(it.cond)
 				g.writeln(');')
 				g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; $idx++) {')
 				g.writeln('$key_styp $key = (($key_styp*)${keys_tmp}.data)[$idx];')
-				zero := g.type_default(it.val_type)
 				g.write('$val_styp $it.val_var = (*($val_styp*)map_get3(')
 				g.expr(it.cond)
 				g.writeln(', $key, &($val_styp[]){ $zero }));')
@@ -396,10 +396,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			else if table.type_is_variadic(it.cond_type) {
 				g.writeln('// FOR IN')
 				i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+				styp := g.typ(it.cond_type)
 				g.write('for (int $i = 0; $i < ')
 				g.expr(it.cond)
 				g.writeln('.len; $i++) {')
-				styp := g.typ(it.cond_type)
 				g.write('$styp $it.val_var = ')
 				g.expr(it.cond)
 				g.writeln('.args[$i];')
@@ -464,7 +464,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 // use instead of expr() when you need to cast to sum type (can add other casts also)
 fn (g mut Gen) expr_with_cast(expr ast.Expr, got_type table.Type, exp_type table.Type) {
 	// cast to sum type
-	if exp_type != table.void_type && exp_type != 0 && got_type != 0 {
+	if exp_type != table.void_type {
 		exp_sym := g.table.get_type_symbol(exp_type)
 		if exp_sym.kind == .sum_type {
 			sum_info := exp_sym.info as table.SumType
@@ -685,7 +685,7 @@ fn (g mut Gen) fn_args(args []table.Arg, is_variadic bool) {
 		if is_varg {
 			varg_type_str := int(arg.typ).str()
 			if (!varg_type_str in g.variadic_args) {
-				g.variadic_args[int(arg.typ).str()] = 0
+				g.variadic_args[varg_type_str] = 0
 			}
 			arg_type_name = 'varg_' + g.typ(arg.typ).replace('*', '_ptr')
 		}
@@ -1386,16 +1386,13 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	mut is_range := false
 	match node.index {
 		ast.RangeExpr {
-			// TODO should never be 0
-			if node.container_type != 0 {
-				sym := g.table.get_type_symbol(node.container_type)
-				is_range = true
-				if sym.kind == .string {
-					g.write('string_substr(')
-				}
-				else if sym.kind == .array {
-					g.write('array_slice(')
-				}
+			sym := g.table.get_type_symbol(node.container_type)
+			is_range = true
+			if sym.kind == .string {
+				g.write('string_substr(')
+			}
+			else if sym.kind == .array {
+				g.write('array_slice(')
 			}
 			g.expr(node.left)
 			g.write(', ')
@@ -1418,7 +1415,7 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 		}
 		else {}
 	}
-	if !is_range && node.container_type != 0 {
+	if !is_range {
 		sym := g.table.get_type_symbol(node.container_type)
 		if table.type_is_variadic(node.container_type) {
 			g.expr(node.left)
@@ -1676,10 +1673,9 @@ fn (g mut Gen) call_args(args []ast.CallArg) {
 		if table.type_is_variadic(arg.expected_type) {
 			struct_name := 'varg_' + g.typ(arg.expected_type).replace('*', '_ptr')
 			len := args.len - i
-			type_str := int(arg.expected_type).str()
-			if len > g.variadic_args[type_str] {
-				x := g.variadic_args[type_str]
-				g.variadic_args[type_str] = len
+			varg_type_str := int(arg.expected_type).str()
+			if len > g.variadic_args[varg_type_str] {
+				g.variadic_args[varg_type_str] = len
 			}
 			g.write('($struct_name){.len=$len,.args={')
 			for j in i .. args.len {
@@ -1692,6 +1688,7 @@ fn (g mut Gen) call_args(args []ast.CallArg) {
 			g.write('}}')
 			break
 		}
+		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		if arg.expected_type != 0 {
 			g.ref_or_deref_arg(arg)
 			g.expr_with_cast(arg.expr, arg.typ, arg.expected_type)
