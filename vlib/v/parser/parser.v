@@ -311,9 +311,10 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 			return p.line_comment()
 		}
 		.mline_comment {
-			// p.next()
+			comment := p.tok.lit
+			p.next()
 			return ast.MultiLineComment{
-				text: p.scanner.line_comment
+				text: comment
 			}
 		}
 		else {

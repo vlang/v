@@ -214,6 +214,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		ast.LineComment {
 			f.writeln('// $it.text')
 		}
+		ast.MultiLineComment {
+			f.writeln('/*')
+			f.writeln(it.text)
+			f.writeln('*/')
+		}
 		ast.Return {
 			f.write('return')
 			// multiple returns

@@ -741,7 +741,7 @@ pub fn (s mut Scanner) scan() token.Token {
 			}
 			// Multiline comments
 			if nextc == `*` {
-				start := s.pos
+				start := s.pos + 2
 				mut nest_count := 1
 				// Skip comment
 				for nest_count > 0 {
@@ -763,12 +763,9 @@ pub fn (s mut Scanner) scan() token.Token {
 					}
 				}
 				s.pos++
-				end := s.pos + 1
-				comment := s.text[start..end]
-				// if s.is_fmt {
-				if false && s.comments_mode == .parse_comments {
-					s.line_comment = comment
-					return s.scan_res(.mline_comment, s.line_comment)
+				if s.comments_mode == .parse_comments {
+					comment := s.text[start..(s.pos-1)].trim_space()
+					return s.scan_res(.mline_comment, comment)
 				}
 				// Skip if not in fmt mode
 				return s.scan()
