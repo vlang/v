@@ -21,8 +21,8 @@ typedef struct {
 	string arg1;
 } multi_return_int_string;
 // end of definitions #endif
-#define pi 3
-int pi2; // inited later
+#define _const_pi 3
+int _const_pi2; // inited later
 void foo(int a);
 void User_inc_age(User* u, int n);
 int get_int(string a);
@@ -34,9 +34,9 @@ void variadic(varg_int a);
 void ensure_cap(int required, int cap);
 void println(string s);
 void matches();
-#define path_sep 10
+#define _const_path_sep 10
 void end();
-#define localmod__pub_int_const 20
+#define _const_localmod__pub_int_const 20
 void localmod__pub_foo();
 int localmod__get_int_10();
 // variadic structs
@@ -57,11 +57,11 @@ int main(int argc, char** argv) {
 	a++;
 	foo(3);
 	int ak = 10;
-	int mypi = pi;
+	int mypi = _const_pi;
 	Color color = Color_red;
 	localmod__pub_foo();
 	int ten = localmod__get_int_10();
-	println(int_str(localmod__pub_int_const));
+	println(int_str(_const_localmod__pub_int_const));
 	int g = ((int)(3.0));
 	byte* bytes = ((byte*)(0));
     User* user_ptr = (User*)memdup(&(User){	.age = 0,
@@ -148,7 +148,7 @@ multi_return_int_string multi_return() {
 }
 
 void variadic(varg_int a) {
-	int x = path_sep;
+	int x = _const_path_sep;
 	int y = true ? 1 : 0;
 }
 
@@ -193,7 +193,7 @@ int localmod__get_int_10() {
 }
 
 void _vinit() {
-	pi2 = pi;
+	_const_pi2 = _const_pi;
 }
 
 
