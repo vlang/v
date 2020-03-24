@@ -116,7 +116,7 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 		mut i := start
 		mut i1 := 0
 		for i < end {
-			if txt[i] != num_sep && txt[i] != `o` {
+			if txt[i] != num_sep {
 				b[i1] = txt[i]
 				i1++
 			}
