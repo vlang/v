@@ -40,7 +40,7 @@ pub const (
 
 pub const (
 	KEY_ESCAPE     = 256
-	key_space     = 32
+	key_space      = 32
 	KEY_LEFT_SUPER = 343
 )
 
