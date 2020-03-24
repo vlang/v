@@ -278,7 +278,7 @@ const (
 )
 
 struct Foooj {
-	a [N]int
+	a [5]int // N
 }
 
 fn test_fixed() {

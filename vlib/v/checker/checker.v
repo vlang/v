@@ -474,6 +474,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 }
 
 pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
+	// println('checker: array init $array_init.pos.line_nr $c.file.path')
 	mut elem_type := table.void_type
 	// []string - was set in parser
 	if array_init.typ != table.void_type {
