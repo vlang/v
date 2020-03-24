@@ -267,7 +267,6 @@ fn test_reverse() {
 	for i, _ in d {
 		assert d[i] == b[b.len - i - 1]
 	}
-
 	e := []int
 	f := e.reverse()
 	assert f.len == 0

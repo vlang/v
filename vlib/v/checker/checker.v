@@ -602,7 +602,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				value_type := c.table.value_type(typ)
 				if value_type == table.void_type {
 					typ_sym := c.table.get_type_symbol(typ)
-					c.error('for in: cannot index $typ_sym.name', it.pos)
+					c.error('for in: cannot index `$typ_sym.name`', it.pos)
 				}
 				it.cond_type = typ
 				it.kind = sym.kind

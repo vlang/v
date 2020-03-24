@@ -594,6 +594,11 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			typ: map_type
 		}
 	}
+	// Raw string (`s := r'hello \n ')
+	if p.tok.lit == 'r' && p.peek_tok.kind == .string {
+		// && p.prev_tok.kind != .str_dollar {
+		return p.string_expr()
+	}
 	known_var := p.scope.known_var(p.tok.lit)
 	if p.peek_tok.kind == .dot && !known_var && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') == p.tok.lit) {
 		if is_c {
@@ -1248,10 +1253,17 @@ fn (p mut Parser) if_expr() ast.IfExpr {
 }
 
 fn (p mut Parser) string_expr() ast.Expr {
+	is_raw := p.tok.kind == .name && p.tok.lit == 'r'
+	is_cstr := p.tok.kind == .name && p.tok.lit == 'c'
+	if is_raw || is_cstr {
+		p.next()
+	}
 	mut node := ast.Expr{}
 	val := p.tok.lit
 	node = ast.StringLiteral{
 		val: val
+		is_raw: is_raw
+		is_c: is_cstr
 	}
 	if p.peek_tok.kind != .str_dollar {
 		p.next()

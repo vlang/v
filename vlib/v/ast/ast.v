@@ -56,7 +56,9 @@ pub:
 
 pub struct StringLiteral {
 pub:
-	val string
+	val    string
+	is_raw bool
+	is_c   bool
 }
 
 // 'name: $name'
