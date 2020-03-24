@@ -334,6 +334,12 @@ pub fn (p mut Parser) line_comment() ast.LineComment {
 
 pub fn (p mut Parser) stmt() ast.Stmt {
 	match p.tok.kind {
+		.lcbr {
+			stmts := p.parse_block()
+			return ast.Block{
+				stmts: stmts
+			}
+		}
 		.key_assert {
 			p.next()
 			expr := p.expr(0)
