@@ -590,6 +590,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 						else {
 							table.int_type}
 	}
+					it.key_type = key_type
 					scope.override_var(ast.Var{
 						name: it.key_var
 						typ: key_type
@@ -600,8 +601,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 					typ_sym := c.table.get_type_symbol(typ)
 					c.error('for in: cannot index $typ_sym.name', it.pos)
 				}
+				it.cond_type = typ
 				it.kind = sym.kind
-				it.element_type = value_type
+				it.val_type = value_type
 				scope.override_var(ast.Var{
 					name: it.val_var
 					typ: value_type

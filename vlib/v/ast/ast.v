@@ -406,16 +406,18 @@ pub:
 
 pub struct ForInStmt {
 pub:
-	key_var      string
-	val_var      string
-	cond         Expr
-	is_range     bool
-	high         Expr // `10` in `for i in 0..10 {`
-	stmts        []Stmt
-	pos          token.Position
+	key_var   string
+	val_var   string
+	cond      Expr
+	is_range  bool
+	high      Expr // `10` in `for i in 0..10 {`
+	stmts     []Stmt
+	pos       token.Position
 mut:
-	element_type table.Type
-	kind         table.Kind // array/map/string
+	key_type  table.Type
+	val_type  table.Type
+	cond_type table.Type
+	kind      table.Kind // array/map/string
 }
 
 pub struct ForCStmt {

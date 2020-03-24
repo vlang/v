@@ -366,10 +366,31 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.write('for (int $i = 0; $i < ')
 				g.expr(it.cond)
 				g.writeln('.len; $i++) {')
-				styp := g.typ(it.element_type)
+				styp := g.typ(it.val_type)
 				g.write('$styp $it.val_var = (($styp*)')
 				g.expr(it.cond)
 				g.writeln('.data)[$i];')
+				g.stmts(it.stmts)
+				g.writeln('}')
+			}
+			else if it.kind == .map {
+				// `for num in nums {`
+				g.writeln('// FOR IN')
+				cond_styp := g.typ(it.cond_type)
+				key_styp := g.typ(it.key_type)
+				val_styp := g.typ(it.val_type)
+				keys_tmp := 'keys_' + g.new_tmp_var()
+				idx := g.new_tmp_var()
+				key := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+				g.write('array_$key_styp $keys_tmp = map_keys(&')
+				g.expr(it.cond)
+				g.writeln(');')
+				g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; $idx++) {')
+				g.writeln('$key_styp $key = (($key_styp*)${keys_tmp}.data)[$idx];')
+				zero := g.type_default(it.val_type)
+				g.write('$val_styp $it.val_var = (*($val_styp*)map_get3(')
+				g.expr(it.cond)
+				g.writeln(', $key, &($val_styp[]){ $zero }));')
 				g.stmts(it.stmts)
 				g.writeln('}')
 			}
