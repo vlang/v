@@ -66,6 +66,7 @@ pub struct StringInterLiteral {
 pub:
 	vals       []string
 	exprs      []Expr
+	expr_fmts  []string
 mut:
 	expr_types []table.Type
 }

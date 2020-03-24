@@ -1271,6 +1271,7 @@ fn (p mut Parser) string_expr() ast.Expr {
 	}
 	mut exprs := []ast.Expr
 	mut vals := []string
+	mut efmts := []string
 	// Handle $ interpolation
 	for p.tok.kind == .string {
 		vals << p.tok.lit
@@ -1280,24 +1281,31 @@ fn (p mut Parser) string_expr() ast.Expr {
 		}
 		p.check(.str_dollar)
 		exprs << p.expr(0)
+		mut efmt := []string
 		if p.tok.kind == .colon {
+			efmt << ':'
 			p.next()
 		}
 		// ${num:-2d}
 		if p.tok.kind == .minus {
+			efmt << '-'
 			p.next()
 		}
 		// ${num:2d}
 		if p.tok.kind == .number {
+			efmt << p.tok.lit
 			p.next()
 			if p.tok.lit.len == 1 {
+				efmt << p.tok.lit
 				p.next()
 			}
 		}
+		efmts << efmt.join('')
 	}
 	node = ast.StringInterLiteral{
 		vals: vals
 		exprs: exprs
+		expr_fmts: efmts
 	}
 	return node
 }

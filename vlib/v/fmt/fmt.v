@@ -535,6 +535,25 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.write("'$it.val'")
 			}
 		}
+		ast.StringInterLiteral {
+			f.write("'")
+			for i, val in it.vals {
+				f.write(val)
+				if i>=it.exprs.len {
+					continue
+				}
+				f.write('$')
+				if it.expr_fmts[i].len > 0 {
+					f.write('{')
+					f.expr(it.exprs[i])
+					f.write(it.expr_fmts[i])
+					f.write('}')
+				}else{
+					f.expr(it.exprs[i])
+				}
+			}
+			f.write("'")
+		}
 		ast.StructInit {
 			type_sym := f.table.get_type_symbol(it.typ)
 			// `Foo{}` on one line if there are no fields
