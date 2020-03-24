@@ -655,9 +655,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	if is_main {
 		g.writeln('_vinit();')
 		if g.autofree {
-			g.writeln('free(os__args.data); // empty, inited in _vinit()')
+			g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
 		}
-		g.writeln('os__args = os__init_os_args(argc, (byteptr*)argv);')
+		g.writeln('_const_os__args = os__init_os_args(argc, (byteptr*)argv);')
 	}
 	g.stmts(it.stmts)
 	// ////////////
