@@ -266,11 +266,11 @@ fn test_is_executable_writable_readable() {
 	}
 	f.close()
 	$if !windows {
-		os.chmod(file_name, 0600) // mark as readable && writable, but NOT executable
+		os.chmod(file_name, 0o600) // mark as readable && writable, but NOT executable
 		assert os.is_writable(file_name)
 		assert os.is_readable(file_name)
 		assert !os.is_executable(file_name)
-		os.chmod(file_name, 0700) // mark as executable too
+		os.chmod(file_name, 0o700) // mark as executable too
 		assert os.is_executable(file_name)
 	} $else {
 		assert os.is_writable(file_name)
