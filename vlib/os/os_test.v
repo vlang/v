@@ -5,6 +5,7 @@ const (
 )
 
 fn testsuite_begin() {
+	eprintln('testsuite_begin, tfolder = $tfolder')
 	os.rmdir_all( tfolder )
 	assert !os.is_dir( tfolder )
 	os.mkdir_all( tfolder )
