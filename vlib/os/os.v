@@ -178,16 +178,16 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 	}
 	// single file copy
 	if !os.is_dir(source_path) {
-		adjasted_path := if os.is_dir(dest_path) { os.join_path(dest_path,os.file_name(source_path)) } else { dest_path }
-		if os.exists(adjasted_path) {
+		adjusted_path := if os.is_dir(dest_path) {os.join_path(dest_path,os.file_name(source_path)) } else { dest_path }
+		if os.exists(adjusted_path) {
 			if overwrite {
-				os.rm(adjasted_path)
+				os.rm(adjusted_path)
 			}
 			else {
 				return error('Destination file path already exist')
 			}
 		}
-		os.cp(source_path, adjasted_path) or {
+		os.cp(source_path, adjusted_path) or {
 			return error(err)
 		}
 		return true

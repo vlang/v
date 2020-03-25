@@ -438,6 +438,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.GotoLabel {
 			g.writeln('$it.name:')
 		}
+		ast.GotoStmt {
+			g.writeln('goto $it.name;')
+		}
 		ast.HashStmt {
 			// #include etc
 			typ := it.val.all_before(' ')
@@ -2081,6 +2084,8 @@ fn (g mut Gen) call_expr(it ast.CallExpr) {
 		// `foo() or { return }`
 		g.writeln(';') // or')
 		g.writeln('if (!${g.expr_var_name}.ok) {')
+		g.writeln('string err = ${g.expr_var_name}.v_error;')
+		g.writeln('int errcode = ${g.expr_var_name}.ecode;')
 		g.stmts(it.or_block.stmts)
 		g.writeln('}')
 	}
