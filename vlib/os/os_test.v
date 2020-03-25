@@ -6,13 +6,16 @@ const (
 
 fn testsuite_begin() {
 	os.rmdir_all( tfolder )
+	assert !os.is_dir( tfolder )
 	os.mkdir_all( tfolder )
 	os.chdir( tfolder )
+	assert os.is_dir( tfolder )
 }
 
 fn testsuite_end() {
 	os.chdir( os.wd_at_startup )
 	os.rmdir_all( tfolder )
+	assert !os.is_dir( tfolder )
 }
 
 fn test_open_file() {
