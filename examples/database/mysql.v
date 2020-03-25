@@ -1,4 +1,4 @@
-// import mysql
+// import db.mysql
 
 // pub fn main() {
 // 	conn := mysql.connect('localhost', 'root', '', 'mysql')
@@ -11,5 +11,5 @@
 // }
 
 fn main() {
-	
-}	
+
+}

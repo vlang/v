@@ -1,6 +1,6 @@
 module main
 
-import pg
+import db.pg
 
 struct Customer {
 	id int
@@ -58,5 +58,3 @@ fn main() {
 	}
 	db.insert(nc)
 }
-
-
