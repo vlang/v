@@ -974,7 +974,8 @@ fn (p mut Parser) filter() {
 fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
 	field_name := p.check_name()
-	if field_name == 'filter' {
+	is_filter := field_name in ['filter', 'map']
+	if is_filter {
 		p.open_scope()
 		p.filter()
 		// wrong tok position when using defer
@@ -1009,7 +1010,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr
-		if field_name == 'filter' {
+		if is_filter {
 			p.close_scope()
 		}
 		return node
@@ -1021,7 +1022,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	mut node := ast.Expr{}
 	node = sel_expr
-	if field_name == 'filter' {
+	if is_filter {
 		p.close_scope()
 	}
 	return node
