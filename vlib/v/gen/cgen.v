@@ -2099,7 +2099,7 @@ fn (g mut Gen) call_expr(it ast.CallExpr) {
 			g.insert_before('$styp $var_name = ')
 		}
 		g.writeln(';') // or')
-		g.writeln('if ( !${var_name}.ok) {')
+		g.writeln('if (!${var_name}.ok) {')
 		g.writeln('string err = ${var_name}.v_error;')
 		g.writeln('int errcode = ${var_name}.ecode;')
 		g.stmts(it.or_block.stmts)
