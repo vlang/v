@@ -1,15 +1,18 @@
 import os
 
 const (
-	rwxfile = os.join_path( os.temp_dir(), 'rwxfile.exe' )
+	tfolder = os.join_path( os.temp_dir(), 'v', 'tests', 'os_test')
 )
 
 fn testsuite_begin() {
-	cleanup_leftovers()
+	os.rmdir_all( tfolder )
+	os.mkdir_all( tfolder )
+	os.chdir( tfolder )
 }
 
 fn testsuite_end() {
-	cleanup_leftovers()
+	os.chdir( os.wd_at_startup )
+	os.rmdir_all( tfolder )
 }
 
 fn test_open_file() {
@@ -263,7 +266,7 @@ fn test_symlink() {
 }
 
 fn test_is_executable_writable_readable() {
-	file_name := rwxfile
+	file_name := 'rwxfile.exe'
 	mut f := os.create(file_name) or {
 		eprintln('failed to create file $file_name')
 		return
@@ -322,22 +325,4 @@ fn test_basedir() {
 		assert os.base_dir('v/vlib/os') == 'v/vlib'
 	}
 	assert os.base_dir('filename') == 'filename'
-}
-
-// this function is called by both test_aaa_setup & test_zzz_cleanup
-// it ensures that os tests do not polute the filesystem with leftover
-// files so that they can be run several times in a row.
-fn cleanup_leftovers() {
-	// possible leftovers from test_cp
-	os.rm('cp_example.txt')
-	os.rm('cp_new_example.txt')
-	// possible leftovers from test_cp_r
-	os.rmdir_all('ex')
-	os.rmdir_all('ex2')
-	os.rm('ex1.txt')
-	os.rm('ex2.txt')
-	if os.exists( rwxfile ) {
-		os.chmod(rwxfile, 0o777)
-		os.rm(rwxfile)
-	}
 }
