@@ -180,6 +180,7 @@ mut:
 	is_c        bool
 	muts        []bool
 	or_block    OrExpr
+	// has_or_block bool
 	return_type table.Type
 }
 

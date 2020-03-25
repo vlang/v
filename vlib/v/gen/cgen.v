@@ -40,6 +40,7 @@ mut:
 	indent         int
 	empty_line     bool
 	is_test        bool
+	expr_var_name  string
 }
 
 const (
@@ -571,6 +572,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if is_decl {
 					g.write('$styp ')
 				}
+				g.expr_var_name = ident.name
 				g.expr(ident)
 				if g.autofree && right_sym.kind == .array && is_ident {
 					// `arr1 = arr2` => `arr1 = arr2.clone()`
@@ -686,6 +688,13 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 fn (g mut Gen) free_scope_vars(pos int) {
 	scope := g.file.scope.innermost(pos)
 	for _, var in scope.vars {
+		// println('//////')
+		// println(var.name)
+		// println(var.typ)
+		if var.typ == 0 {
+			// TODO why 0?
+			continue
+		}
 		sym := g.table.get_type_symbol(var.typ)
 		if sym.kind == .array && !table.type_is_optional(var.typ) {
 			g.writeln('array_free($var.name); // autofreed')
@@ -2031,12 +2040,12 @@ fn (g mut Gen) call_expr(it ast.CallExpr) {
 
 	if is_print && it.args[0].typ != table.string_type_idx {
 		styp := g.typ(it.args[0].typ)
-		if g.autofree {
+		if g.autofree && !table.type_is_optional(it.args[0].typ) {
 			tmp := g.new_tmp_var()
 			// tmps << tmp
 			g.write('string $tmp = ${styp}_str(')
 			g.expr(it.args[0].expr)
-			g.writeln('); println($tmp); string_free($tmp); //MEM2')
+			g.writeln('); println($tmp); string_free($tmp); //MEM2 $styp')
 		}
 		else {
 			// `println(int_str(10))`
@@ -2050,6 +2059,13 @@ fn (g mut Gen) call_expr(it ast.CallExpr) {
 		g.write('${name}(')
 		g.call_args(it.args)
 		g.write(')')
+	}
+	if it.or_block.stmts.len > 0 {
+		// `foo() or { return }`
+		g.writeln(';') // or')
+		g.writeln('if (!${g.expr_var_name}.ok) {')
+		g.stmts(it.or_block.stmts)
+		g.writeln('}')
 	}
 	g.is_c_call = false
 }
