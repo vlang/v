@@ -598,6 +598,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.expr(val)
 					}
 				}
+				g.expr_var_name = ''
 			}
 			g.writeln(';')
 		}
@@ -2033,6 +2034,13 @@ fn (g mut Gen) gen_filter(node ast.MethodCallExpr) {
 	g.write(tmp)
 }
 
+fn (g mut Gen) insert_before(s string) {
+	cur_line := g.out.after(g.stmt_start_pos)
+	g.out.go_back(cur_line.len)
+	g.writeln(s)
+	g.write(cur_line)
+}
+
 fn (g mut Gen) call_expr(it ast.CallExpr) {
 	mut name := it.name
 	is_print := name == 'println'
@@ -2082,10 +2090,18 @@ fn (g mut Gen) call_expr(it ast.CallExpr) {
 	}
 	if it.or_block.stmts.len > 0 {
 		// `foo() or { return }`
+		var_name := if g.expr_var_name != '' { g.expr_var_name } else { g.new_tmp_var() }
+		if g.expr_var_name == '' {
+			// The user is not using the optional return value. We need to use a temp var
+			// to access its fields (`.ok`, `.error` etc)
+			// `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
+			styp := g.typ(it.return_type)
+			g.insert_before('$styp $var_name = ')
+		}
 		g.writeln(';') // or')
-		g.writeln('if (!${g.expr_var_name}.ok) {')
-		g.writeln('string err = ${g.expr_var_name}.v_error;')
-		g.writeln('int errcode = ${g.expr_var_name}.ecode;')
+		g.writeln('if ( !${var_name}.ok) {')
+		g.writeln('string err = ${var_name}.v_error;')
+		g.writeln('int errcode = ${var_name}.ecode;')
 		g.stmts(it.or_block.stmts)
 		g.writeln('}')
 	}
