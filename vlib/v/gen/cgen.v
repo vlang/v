@@ -662,14 +662,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	g.stmts(it.stmts)
 	// ////////////
 	if g.autofree {
-		scope := g.file.scope.innermost(it.pos.pos - 1)
-		for _, var in scope.vars {
-			sym := g.table.get_type_symbol(var.typ)
-			if sym.kind == .array && !table.type_is_optional(var.typ) {
-				g.writeln('array_free($var.name); // autofree')
-			}
-			// println(var.name)
-		}
+		g.free_scope_vars(it.pos.pos - 1)
 	}
 	// /////////
 	if is_main {
@@ -683,6 +676,30 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	g.writeln('}')
 	g.fn_decl = 0
+}
+
+fn (g mut Gen) free_scope_vars(pos int) {
+	scope := g.file.scope.innermost(pos)
+	for _, var in scope.vars {
+		sym := g.table.get_type_symbol(var.typ)
+		if sym.kind == .array && !table.type_is_optional(var.typ) {
+			g.writeln('array_free($var.name); // autofreed')
+		}
+		if sym.kind == .string && !table.type_is_optional(var.typ) {
+			// Don't free simple string literals.
+			t := typeof(var.expr)
+			match var.expr {
+				ast.StringLiteral {
+					g.writeln('// str literal')
+					continue
+				}
+				else {
+					g.writeln('// other' + t)
+				}
+	}
+			g.writeln('string_free($var.name); // autofreed')
+		}
+	}
 }
 
 fn (g mut Gen) fn_args(args []table.Arg, is_variadic bool) {

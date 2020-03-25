@@ -31,8 +31,9 @@ fn test_all() {
 	for test in tests {
 		bench.step()
 		full_test_path := os.real_path(test)
+		println('x.v: $wrkdir/x.v')
 		os.system('cp ${dir}/${test} $wrkdir/x.v') // cant run .vv file
-		res := os.exec('$vexe -b v2 $wrkdir/x.v') or {
+		res := os.exec('$vexe -verbose=3 -b v2 -csource keep -cg $wrkdir/x.v') or {
 			bench.fail()
 			eprintln(bench.step_message_fail('valgrind $test failed'))
 			continue
