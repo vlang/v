@@ -277,6 +277,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.Attr {
 			g.writeln('//[$it.name]')
 		}
+		ast.Block {
+			g.writeln('{')
+			g.stmts(it.stmts)
+			g.writeln('}')
+		}
 		ast.BranchStmt {
 			// continue or break
 			g.write(it.tok.kind.str())
@@ -952,7 +957,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			// TODO performance, detect `array` method differently
 			['repeat', 'sort_with_compare', 'free', 'push_many', 'trim',
 			//
-			'first', 'last', 'clone'] {
+			'first', 'last', 'clone', 'reverse'] {
 				// && rec_sym.name == 'array' {
 				// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 				// `array_byte_clone` => `array_clone`

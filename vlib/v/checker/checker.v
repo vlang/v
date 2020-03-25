@@ -531,6 +531,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.assign_stmt(mut it)
 			c.expected_type = table.void_type
 		}
+		ast.Block {
+			c.stmts(it.stmts)
+		}
 		// ast.Attr {}
 		ast.CompIf {
 			// c.expr(it.cond)

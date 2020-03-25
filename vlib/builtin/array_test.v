@@ -288,7 +288,7 @@ fn test_fixed() {
 	assert nums[3] == 0
 	nums[1] = 7
 	assert nums[1] == 7
-	nums2 := [N]int
+	nums2 := [5]int // N
 	assert nums2[N - 1] == 0
 }
 
@@ -298,6 +298,7 @@ fn modify(numbers mut []int) {
 
 fn test_mut_slice() {
 	mut n := [1, 2, 3]
+	//modify(mut n)
 	modify(mut n[..2])
 	assert n[0] == 777
 	modify(mut n[2..])
@@ -574,7 +575,7 @@ fn test_push_many_self() {
 fn test_for() {
 	nums := [1,2,3]
 	mut sum := 0
-	for num <- nums {
+	for num in nums {
 		sum += num
 	}
 	assert sum == 6
