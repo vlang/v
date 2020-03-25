@@ -438,6 +438,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.GotoLabel {
 			g.writeln('$it.name:')
 		}
+		ast.GotoStmt {
+			g.writeln('goto $it.name;')
+		}
 		ast.HashStmt {
 			// #include etc
 			typ := it.val.all_before(' ')
@@ -1722,8 +1725,8 @@ fn (g mut Gen) call_args(args []ast.CallArg) {
 			}
 			g.write('($struct_name){.len=$len,.args={')
 			for j in i .. args.len {
-				g.ref_or_deref_arg(args[j])
-				g.expr(args[j].expr)
+				g.ref_or_deref_arg(args[j], args[j].expr, false)
+				// g.expr(args[j].expr)
 				if j < args.len - 1 {
 					g.write(', ')
 				}
@@ -1733,8 +1736,8 @@ fn (g mut Gen) call_args(args []ast.CallArg) {
 		}
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		if arg.expected_type != 0 {
-			g.ref_or_deref_arg(arg)
-			g.expr_with_cast(arg.expr, arg.typ, arg.expected_type)
+			g.ref_or_deref_arg(arg, arg.expr, true)
+			// g.expr_with_cast(arg.expr, arg.typ, arg.expected_type)
 		}
 		else {
 			g.expr(arg.expr)
@@ -1746,18 +1749,35 @@ fn (g mut Gen) call_args(args []ast.CallArg) {
 }
 
 [inline]
-fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg) {
+fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expr ast.Expr, with_cast bool) {
 	arg_is_ptr := table.type_is_ptr(arg.expected_type) || table.type_idx(arg.expected_type) in table.pointer_type_idxs
 	expr_is_ptr := table.type_is_ptr(arg.typ) || table.type_idx(arg.typ) in table.pointer_type_idxs
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
 	}
 	else if arg_is_ptr && !expr_is_ptr {
-		g.write('&/*q*/')
+		if arg.is_mut {
+			sym := g.table.get_type_symbol(arg.expected_type)
+			if sym.kind == .array {
+				// Special case for mutable arrays. We can't `&` function
+				// results,	have to use `(array[]){ expr }[0]` hack.
+				g.write('&/*111*/(array[]){')
+				g.expr(expr)
+				g.write('}[0]')
+				return
+			}
+		}
+		g.write('&/*qq*/')
 	}
 	else if !arg_is_ptr && expr_is_ptr {
 		// Dereference a pointer if a value is required
 		g.write('*/*d*/')
+	}
+	if with_cast {
+		g.expr_with_cast(arg.expr, arg.typ, arg.expected_type)
+	}
+	else {
+		g.expr(arg.expr)
 	}
 }
 
@@ -2064,6 +2084,8 @@ fn (g mut Gen) call_expr(it ast.CallExpr) {
 		// `foo() or { return }`
 		g.writeln(';') // or')
 		g.writeln('if (!${g.expr_var_name}.ok) {')
+		g.writeln('string err = ${g.expr_var_name}.v_error;')
+		g.writeln('int errcode = ${g.expr_var_name}.ecode;')
 		g.stmts(it.or_block.stmts)
 		g.writeln('}')
 	}
