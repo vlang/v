@@ -40,7 +40,7 @@ pub const (
 
 pub const (
 	KEY_ESCAPE     = 256
-	key_space     = 32
+	key_space      = 32
 	KEY_LEFT_SUPER = 343
 )
 
@@ -147,9 +147,12 @@ pub fn create_window(c WinCfg) &glfw.Window {
 	// println('create window wnd=$cwindow ptr==$c.ptr')
 	C.glfwSetWindowUserPointer(cwindow, c.ptr)
 
-	scale := 1.0
+	mut scale := f32(1.0)
 	$if windows {
 		C.glfwGetWindowContentScale(cwindow, &scale, &scale)
+	}
+	$else {
+		scale = 1.0
 	}
 
 	window := &glfw.Window {
@@ -257,9 +260,12 @@ pub fn get_cursor_pos(cwindow voidptr) (f64, f64) {
 	y := f64(0)
 	C.glfwGetCursorPos(cwindow, &x, &y)
 
-	scale := 1.0
+	mut scale := f32(1.0)
 	$if windows {
 		C.glfwGetWindowContentScale(cwindow, &scale, &scale)
+	}
+	$else {
+		scale = 1.0
 	}
 	return x/scale, y/scale
 }
