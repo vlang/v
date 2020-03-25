@@ -366,7 +366,7 @@ fn (p mut Parser) name_expr() string {
 	}
 	// Unknown name, try prepending the module name to it
 	// TODO perf
-	else if !p.table.known_type(name) && !p.table.known_fn(name) && !p.table.known_const(name) && !is_c {
+	else if !p.table.known_type(name) && !p.known_fn_in_mod(name) && !p.table.known_const(name) && !is_c {
 		name = p.prepend_mod(name)
 	}
 	// re-check
