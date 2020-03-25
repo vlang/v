@@ -73,6 +73,12 @@ int main(int argc, char** argv) {
 	user.age++;
 	user.name = tos3("bob");
 	Option_int n = get_opt();
+	if (!n.ok) {
+		string err = n.v_error;
+		int errcode = n.ecode;
+		return 0;
+	}
+	;
 	int a = /*opt*/(*(int*)n.data) + 3;
 	handle_expr(/* sum type cast */ (Expr) {.obj = memdup(&(IfExpr[]) {(IfExpr){
 0}}, sizeof(IfExpr)), .typ = 26 /* IfExpr */});
