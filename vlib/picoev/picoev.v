@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module picoev
 
-import ui.picohttpparser
+import picohttpparser
 
 #include <errno.h>
 #include <sys/socket.h>
