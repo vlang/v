@@ -508,9 +508,9 @@ fn (g mut Gen) expr_with_cast(expr ast.Expr, got_type table.Type, exp_type table
 }
 
 fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
-	// multi return
 	// g.write('/*assign_stmt*/')
 	if assign_stmt.left.len > assign_stmt.right.len {
+		// multi return
 		mut return_type := table.void_type
 		match assign_stmt.right[0] {
 			ast.CallExpr {
@@ -524,6 +524,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 	}
 		mr_var_name := 'mr_$assign_stmt.pos.pos'
+		g.expr_var_name = mr_var_name
 		if table.type_is_optional(return_type) {
 			return_type = table.type_clear_extra(return_type)
 			mr_styp := g.typ(return_type)
@@ -606,11 +607,11 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.expr(val)
 					}
 				}
-				g.expr_var_name = ''
 			}
 			g.writeln(';')
 		}
 	}
+	g.expr_var_name = ''
 }
 
 fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {

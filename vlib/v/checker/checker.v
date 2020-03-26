@@ -327,7 +327,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		// println('CLONE nr args=$method.args.len')
 		// }
 		for i, arg in method_call_expr.args {
-			c.expected_type = if method.is_variadic && i >= method.args.len-1 { method.args[method.args.len - 1].typ } else { method.args[i + 1].typ }
+			c.expected_type = if method.is_variadic && i >= method.args.len - 1 { method.args[method.args.len - 1].typ } else { method.args[i + 1].typ }
 			method_call_expr.args[i].typ = c.expr(arg.expr)
 		}
 		// TODO: typ optimize.. this node can get processed more than once
@@ -820,11 +820,14 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		mut found := true
 		mut var_scope := &ast.Scope(0)
 		mut var := ast.Var{}
-		var_scope,var = start_scope.find_scope_and_var(ident.name) or {
+		// var_scope,var = start_scope.find_scope_and_var(ident.name) or {
+		mr := start_scope.find_scope_and_var(ident.name) or {
 			found = false
 			c.error('not found: $ident.name - POS: $ident.pos.pos', ident.pos)
 			panic('')
 		}
+		var_scope = mr.scope
+		var = mr.var
 		if found {
 			// update the variable
 			// we need to do this here instead of var_decl since some
