@@ -171,17 +171,18 @@ pub:
 
 pub struct CallExpr {
 pub:
-// tok          token.Token
-	pos         token.Position
+// tok            token.Token
+	pos           token.Position
 mut:
-// func         Expr
-	name        string
-	args        []CallArg
-	is_c        bool
-	muts        []bool
-	or_block    OrExpr
+// func           Expr
+	name          string
+	args          []CallArg
+	exp_arg_types []table.Type
+	is_c          bool
+	muts          []bool
+	or_block      OrExpr
 	// has_or_block bool
-	return_type table.Type
+	return_type   table.Type
 }
 
 pub struct MethodCallExpr {
@@ -193,6 +194,7 @@ pub:
 	args          []CallArg
 	or_block      OrExpr
 mut:
+	exp_arg_types []table.Type
 	expr_type     table.Type // type of `user`
 	receiver_type table.Type // User
 	return_type   table.Type
@@ -200,11 +202,10 @@ mut:
 
 pub struct CallArg {
 pub:
-	is_mut        bool
-	expr          Expr
+	is_mut bool
+	expr   Expr
 mut:
-	typ           table.Type
-	expected_type table.Type
+	typ    table.Type
 }
 
 pub struct Return {

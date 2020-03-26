@@ -1021,7 +1021,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			*/
 			// ///////
-			g.call_args(it.args)
+			g.call_args(it.args, it.exp_arg_types)
 			g.write(')')
 		}
 		ast.None {
@@ -1729,55 +1729,60 @@ fn (g mut Gen) assoc(node ast.Assoc) {
 	}
 }
 
-fn (g mut Gen) call_args(args []ast.CallArg) {
-	for i, arg in args {
-		if table.type_is_variadic(arg.expected_type) {
-			struct_name := 'varg_' + g.typ(arg.expected_type).replace('*', '_ptr')
-			len := args.len - i
-			varg_type_str := int(arg.expected_type).str()
-			if len > g.variadic_args[varg_type_str] {
-				g.variadic_args[varg_type_str] = len
-			}
-			g.write('($struct_name){.len=$len,.args={')
-			for j in i .. args.len {
-				g.ref_or_deref_arg(args[j], args[j].expr, false)
-				// g.expr(args[j].expr)
-				if j < args.len - 1 {
-					g.write(', ')
-				}
-			}
-			g.write('}}')
+fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
+	is_variadic := expected_types.len > 0 && table.type_is_variadic(expected_types[expected_types.len - 1])
+	mut arg_no := 0
+	for arg in args {
+		if is_variadic && arg_no == expected_types.len - 1 {
 			break
 		}
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
-		if arg.expected_type != 0 {
-			g.ref_or_deref_arg(arg, arg.expr, true)
-			// g.expr_with_cast(arg.expr, arg.typ, arg.expected_type)
+		// when these are fixed we wont beed this check
+		if arg_no < expected_types.len {
+			g.ref_or_deref_arg(arg, expected_types[arg_no])
 		}
 		else {
 			g.expr(arg.expr)
 		}
-		if i != args.len - 1 {
+		if arg_no < args.len - 1 || is_variadic {
 			g.write(', ')
 		}
+		arg_no++
+	}
+	if is_variadic {
+		varg_type := expected_types[expected_types.len - 1]
+		struct_name := 'varg_' + g.typ(varg_type).replace('*', '_ptr')
+		len := args.len - arg_no
+		varg_type_str := int(varg_type).str()
+		if len > g.variadic_args[varg_type_str] {
+			g.variadic_args[varg_type_str] = len
+		}
+		g.write('($struct_name){.len=$len,.args={')
+		for j in arg_no .. args.len {
+			g.ref_or_deref_arg(args[j], varg_type)
+			if j < args.len - 1 {
+				g.write(', ')
+			}
+		}
+		g.write('}}')
 	}
 }
 
 [inline]
-fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expr ast.Expr, with_cast bool) {
-	arg_is_ptr := table.type_is_ptr(arg.expected_type) || table.type_idx(arg.expected_type) in table.pointer_type_idxs
+fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
+	arg_is_ptr := table.type_is_ptr(expected_type) || table.type_idx(expected_type) in table.pointer_type_idxs
 	expr_is_ptr := table.type_is_ptr(arg.typ) || table.type_idx(arg.typ) in table.pointer_type_idxs
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
 	}
 	else if arg_is_ptr && !expr_is_ptr {
 		if arg.is_mut {
-			sym := g.table.get_type_symbol(arg.expected_type)
+			sym := g.table.get_type_symbol(arg.typ)
 			if sym.kind == .array {
 				// Special case for mutable arrays. We can't `&` function
 				// results,	have to use `(array[]){ expr }[0]` hack.
 				g.write('&/*111*/(array[]){')
-				g.expr(expr)
+				g.expr(arg.expr)
 				g.write('}[0]')
 				return
 			}
@@ -1788,12 +1793,7 @@ fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expr ast.Expr, with_cast bool) 
 		// Dereference a pointer if a value is required
 		g.write('*/*d*/')
 	}
-	if with_cast {
-		g.expr_with_cast(arg.expr, arg.typ, arg.expected_type)
-	}
-	else {
-		g.expr(arg.expr)
-	}
+	g.expr_with_cast(arg.expr, arg.typ, expected_type)
 }
 
 fn verror(s string) {
@@ -2102,7 +2102,7 @@ fn (g mut Gen) call_expr(it ast.CallExpr) {
 	}
 	else {
 		g.write('${name}(')
-		g.call_args(it.args)
+		g.call_args(it.args, it.exp_arg_types)
 		g.write(')')
 	}
 	if it.or_block.stmts.len > 0 {

@@ -232,8 +232,9 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		}
 		return f.return_type
 	}
-	if call_expr.args.len < f.args.len {
-		c.error('too few arguments in call to `$fn_name`', call_expr.pos)
+	min_required_args := if f.is_variadic { f.args.len - 1 } else { f.args.len }
+	if call_expr.args.len < min_required_args {
+		c.error('too few arguments in call to `$fn_name` ($call_expr.args.len instead of $min_required_args)', call_expr.pos)
 	}
 	else if !f.is_variadic && call_expr.args.len > f.args.len {
 		c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)', call_expr.pos)
@@ -244,12 +245,17 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
 		return f.return_type
 	}
+	// TODO: typ optimize.. this node can get processed more than once
+	if call_expr.exp_arg_types.len == 0 {
+		for arg in f.args {
+			call_expr.exp_arg_types << arg.typ
+		}
+	}
 	for i, call_arg in call_expr.args {
 		arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
 		c.expected_type = arg.typ
 		typ := c.expr(call_arg.expr)
 		call_expr.args[i].typ = typ
-		call_expr.args[i].expected_type = arg.typ
 		typ_sym := c.table.get_type_symbol(typ)
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)
 		if !c.table.check(typ, arg.typ) {
@@ -320,8 +326,13 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		// }
 		for i, arg in method_call_expr.args {
 			c.expected_type = method.args[i + 1].typ
-			method_call_expr.args[i].expected_type = c.expected_type
 			method_call_expr.args[i].typ = c.expr(arg.expr)
+		}
+		// TODO: typ optimize.. this node can get processed more than once
+		if method_call_expr.exp_arg_types.len == 0 {
+			for i in 1 .. method.args.len {
+				method_call_expr.exp_arg_types << method.args[i].typ
+			}
 		}
 		method_call_expr.receiver_type = method.args[0].typ
 		method_call_expr.return_type = method.return_type
