@@ -1006,7 +1006,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write('/*rec*/*')
 			}
 			g.expr(it.expr)
-			is_variadic := it.exp_arg_types.len > 0 && table.type_is_variadic(it.exp_arg_types[it.exp_arg_types.len-1])
+			is_variadic := it.exp_arg_types.len > 0 && table.type_is_variadic(it.exp_arg_types[it.exp_arg_types.len - 1])
 			if it.args.len > 0 || is_variadic {
 				g.write(', ')
 			}
@@ -1024,6 +1024,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			// ///////
 			g.call_args(it.args, it.exp_arg_types)
 			g.write(')')
+			if it.or_block.stmts.len > 0 {
+				g.or_block(it.or_block.stmts, it.return_type)
+			}
 		}
 		ast.None {
 			g.write('opt_none()')
@@ -2107,23 +2110,27 @@ fn (g mut Gen) call_expr(it ast.CallExpr) {
 		g.write(')')
 	}
 	if it.or_block.stmts.len > 0 {
-		// `foo() or { return }`
-		var_name := if g.expr_var_name != '' { g.expr_var_name } else { g.new_tmp_var() }
-		if g.expr_var_name == '' {
-			// The user is not using the optional return value. We need to use a temp var
-			// to access its fields (`.ok`, `.error` etc)
-			// `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
-			styp := g.typ(it.return_type)
-			g.insert_before('$styp $var_name = ')
-		}
-		g.writeln(';') // or')
-		g.writeln('if (!${var_name}.ok) {')
-		g.writeln('string err = ${var_name}.v_error;')
-		g.writeln('int errcode = ${var_name}.ecode;')
-		g.stmts(it.or_block.stmts)
-		g.writeln('}')
+		g.or_block(it.or_block.stmts, it.return_type)
 	}
 	g.is_c_call = false
+}
+
+fn (g mut Gen) or_block(stmts []ast.Stmt, return_type table.Type) {
+	// `foo() or { return }`
+	var_name := if g.expr_var_name != '' { g.expr_var_name } else { g.new_tmp_var() }
+	if g.expr_var_name == '' {
+		// The user is not using the optional return value. We need to use a temp var
+		// to access its fields (`.ok`, `.error` etc)
+		// `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
+		styp := g.typ(return_type)
+		g.insert_before('$styp $var_name = ')
+	}
+	g.writeln(';') // or')
+	g.writeln('if (!${var_name}.ok) {')
+	g.writeln('string err = ${var_name}.v_error;')
+	g.writeln('int errcode = ${var_name}.ecode;')
+	g.stmts(stmts)
+	g.writeln('}')
 }
 
 // `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
