@@ -134,7 +134,7 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	println('sql query="$q"')
 	p.cgen.insert_before('// DEBUG_SQL prefix: $qprefix | fn_ph: $fn_ph | query: "$q" ')
 	if n == 'count' {
-		p.cgen.set_placeholder(fn_ph, 'pg__DB_q_int(')
+		p.cgen.set_placeholder(fn_ph, 'db_dot_pg__DB_q_int(')
 		p.gen(', tos2("$q"))')
 	}
 	else {
@@ -161,13 +161,13 @@ $params_gen
 
 Option_${table_name} opt_${qprefix}$tmp;
 void* ${qprefix}res = PQexecParams(db.conn, "$q", $p.sql_i, 0, ${qprefix}params, 0, 0, 0)  ;
-array_pg__Row ${qprefix}rows = pg__res_to_rows ( ${qprefix}res ) ;
-Option_pg__Row opt_${qprefix}row = pg__rows_first_or_empty( ${qprefix}rows );
+array_db_dot_pg__Row ${qprefix}rows = db_dot_pg__res_to_rows ( ${qprefix}res ) ;
+Option_db_dot_pg__Row opt_${qprefix}row = db_dot_pg__rows_first_or_empty( ${qprefix}rows );
 if (! opt_${qprefix}row . ok ) {
    opt_${qprefix}$tmp = v_error( opt_${qprefix}row . error );
 }else{
    $table_name ${qprefix}$tmp;
-   pg__Row ${qprefix}row = *(pg__Row*) opt_${qprefix}row . data;
+   db_dot_pg__Row ${qprefix}row = *(db_dot_pg__Row*) opt_${qprefix}row . data;
 ${obj_gen.str()}
    opt_${qprefix}$tmp = opt_ok( & ${qprefix}$tmp, sizeof($table_name) );
 }
@@ -183,12 +183,12 @@ ${obj_gen.str()}
 $params_gen
 
 void* ${qprefix}res = PQexecParams(db.conn, "$q", $p.sql_i, 0, ${qprefix}params, 0, 0, 0)  ;
-array_pg__Row ${qprefix}rows = pg__res_to_rows(${qprefix}res);
+array_db_dot_pg__Row ${qprefix}rows = db_dot_pg__res_to_rows(${qprefix}res);
 
 // TODO preallocate
 array ${qprefix}arr_$tmp = new_array(0, 0, sizeof($table_name));
 for (int i = 0; i < ${qprefix}rows.len; i++) {
-    pg__Row ${qprefix}row = *(pg__Row*)array_get(${qprefix}rows, i);
+    db_dot_pg__Row ${qprefix}row = *(db_dot_pg__Row*)array_get(${qprefix}rows, i);
     $table_name ${qprefix}$tmp;
     ${obj_gen.str()}
     _PUSH(&${qprefix}arr_$tmp, ${qprefix}$tmp, ${tmp}2, $table_name);
@@ -337,4 +337,3 @@ fn (p mut Parser) update_query(fn_ph int) {
 	println('update q="$q"')
 	p.genln('.conn, "$q", $nr_vals, 0, params, 0, 0, 0)')
 }
-
