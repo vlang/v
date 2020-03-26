@@ -296,8 +296,8 @@ fn test_is_executable_writable_readable() {
 }
 
 fn test_ext() {
-	assert os.ext('file.v') == '.v'
-	assert os.ext('file') == ''
+	assert os.file_ext('file.v') == '.v'
+	assert os.file_ext('file') == ''
 }
 
 fn test_is_abs() {
