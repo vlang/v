@@ -268,12 +268,21 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
-		ast.AssignStmt {
-			g.gen_assign_stmt(it)
-		}
 		ast.AssertStmt {
 			g.writeln('// assert')
-			// TODO
+			g.write('if (!(')
+			g.expr(it.expr)
+			g.writeln(')) {')
+			g.writeln('g_test_fails++;')
+			g.writeln('puts("FAILED assertion");')
+			g.writeln('puts("function: $g.fn_decl.name");')
+			g.writeln('} else {')
+			g.writeln('g_test_oks++;')
+			g.writeln('puts("OK $g.fn_decl.name");')
+			g.writeln('}')
+		}
+		ast.AssignStmt {
+			g.gen_assign_stmt(it)
 		}
 		ast.Attr {
 			g.writeln('//[$it.name]')

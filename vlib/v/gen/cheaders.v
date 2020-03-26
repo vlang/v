@@ -186,6 +186,8 @@ extern wchar_t **_wenviron;
 
 //================================== GLOBALS =================================*/
 byte g_str_buf[1024];
+int g_test_fails = 0;
+int g_test_oks = 0;
 int load_so(byteptr);
 void reload_so();
 void _vinit();

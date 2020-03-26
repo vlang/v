@@ -527,6 +527,9 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 fn (c mut Checker) stmt(node ast.Stmt) {
 	// c.expected_type = table.void_type
 	match mut node {
+		ast.AssertStmt {
+			c.expr(it.expr)
+		}
 		ast.AssignStmt {
 			c.assign_stmt(mut it)
 			c.expected_type = table.void_type
