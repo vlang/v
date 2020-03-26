@@ -62,9 +62,9 @@ fn compare_texts(a, b, path string) bool {
 		line_b := lines_b[i]
 		if line_a.trim_space() != line_b.trim_space() {
 			println('${path}: Got\n$a')
-			println('${term_fail} near line: ${i}')
-			println(term.red('actual  :${line_a}'))
-			println(term.red('expected:${line_b}'))
+			println('${path}:${i}: ${term_fail}')
+			println(term.bold(term.bright_yellow('actual  : ')) + line_a)
+			println(term.green('expected: ') + line_b)
 			println(lines_b[i + 1])
 			println(lines_b[i + 2])
 			// exit(1)
