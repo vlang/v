@@ -127,7 +127,7 @@ int get_int2() {
 
 void myuser() {
 	int x = 1;
-	int q = x | 4100;
+	int q = x | 0x1004;
 	User user = (User){
 		.age = 30,
 	};

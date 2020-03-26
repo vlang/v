@@ -567,6 +567,7 @@ fn test_quote() {
 
 fn test_ustring_comparisons() {
 	/*
+	QTODO
 	assert ('h€llô !'.ustring() == 'h€llô !'.ustring()) == true
 	assert ('h€llô !'.ustring() == 'h€llô'.ustring()) == false
 	assert ('h€llô !'.ustring() == 'h€llo !'.ustring()) == false
