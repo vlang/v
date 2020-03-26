@@ -518,14 +518,22 @@ fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
 	g.write('if( ')
 	g.expr(a.expr)
 	s_assertion := a.expr.str().replace('"', "\'")
-	g.writeln(' ){')
-	g.writeln('	g_test_oks++;')
-	//	g.writeln('	println(_STR("OK ${g.file.path}:${a.pos.line_nr}: fn ${g.fn_decl.name}(): assert $s_assertion"));')
-	g.writeln('}else{')
-	g.writeln('	g_test_fails++;')
-	g.writeln('	eprintln(_STR("${g.file.path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
-	g.writeln('	return;')
-	g.writeln('}')
+	g.write(' )')
+	if g.is_test {
+		g.writeln('{')
+		g.writeln('	g_test_oks++;')
+		//	g.writeln('	println(_STR("OK ${g.file.path}:${a.pos.line_nr}: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+		g.writeln('}else{')
+		g.writeln('	g_test_fails++;')
+		g.writeln('	eprintln(_STR("${g.file.path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+		g.writeln('	exit(1);')
+		g.writeln('}')
+	} else {
+		g.writeln('{}else{')
+		g.writeln('	eprintln(_STR("${g.file.path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+		g.writeln('	exit(1);')
+		g.writeln('}')
+	}
 }
 
 fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
@@ -2037,24 +2045,39 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 		// }
 		// else {}
 		// }
-		if node.expr_types[i] == table.string_type {
+
+		sfmt := node.expr_fmts[i]
+		if sfmt.len > 0 {
+			fspec := sfmt[sfmt.len-1]
+			if fspec == `s` && node.expr_types[i] != table.string_type {
+				verror('only V strings can be formatted with a ${sfmt} format')
+			}
+			g.write('%' + sfmt[1..])
+		}else if node.expr_types[i] == table.string_type {
 			g.write('%.*s')
-		}
-		else if node.expr_types[i] == table.int_type {
+		}else {
 			g.write('%d')
 		}
 	}
 	g.write('", ')
 	// Build args
 	for i, expr in node.exprs {
-		if node.expr_types[i] == table.string_type {
+		sfmt := node.expr_fmts[i]
+		if sfmt.len > 0 {
+			fspec := sfmt[sfmt.len-1]
+			if fspec == `s` && node.expr_types[i] == table.string_type {
+				g.expr(expr)
+				g.write('.str')
+			}else{
+				g.expr(expr)
+			}
+		} else if node.expr_types[i] == table.string_type {
 			// `name.str, name.len,`
 			g.expr(expr)
 			g.write('.len, ')
 			g.expr(expr)
 			g.write('.str')
-		}
-		else {
+		} else {
 			g.expr(expr)
 		}
 		if i < node.exprs.len - 1 {
