@@ -2036,7 +2036,7 @@ fn (p mut Parser) var_expr(v Var) string {
 			p.next()
 			return p.select_query(fn_ph)
 		}
-		if typ == 'db_dot_pg__DB' && !p.fileis('pg.v') && p.peek() == .name {
+		if typ == 'pg__DB' && !p.fileis('pg.v') && p.peek() == .name {
 			name := p.tokens[p.token_idx].lit
 			if !name.contains('exec') && !name.starts_with('q_') {
 				p.next()
