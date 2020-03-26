@@ -1548,7 +1548,7 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	}
 			if g.is_assign_expr && !is_selector {
 				g.is_array_set = true
-				g.write('/*S $g.assign_op.str() */array_set(&')
+				g.write('array_set(&')
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
