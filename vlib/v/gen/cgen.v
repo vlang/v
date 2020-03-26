@@ -269,16 +269,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	// g.writeln('//// stmt start')
 	match node {
 		ast.AssertStmt {
-			g.writeln('// assert')
-			g.write('if ((')
-			g.expr(it.expr)
-			g.writeln(')) {')
-			g.writeln('g_test_oks++;')
-			// g.writeln('puts("OK $g.fn_decl.name");')
-			g.writeln('} else {')
-			g.writeln('g_test_fails++;')
-			g.writeln('puts("FAILED $g.fn_decl.name $it.pos.line_nr");')
-			g.writeln('}')
+			g.gen_assert_stmt(it)
 		}
 		ast.AssignStmt {
 			g.gen_assign_stmt(it)
@@ -522,6 +513,21 @@ fn (g mut Gen) expr_with_cast(expr ast.Expr, got_type table.Type, exp_type table
 	g.expr(expr)
 }
 
+fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
+	g.writeln('// assert')
+	g.write('if( ')
+	g.expr(a.expr)
+	g.writeln('){')
+	g.writeln('	g_test_oks++;')
+	g.writeln('	puts("OK $g.fn_decl.name");')
+	g.writeln('}else{')
+	g.writeln('	g_test_fails++;')
+	g.writeln('	eprintln(_STR("${it.pos.line_nr}: FAILED: ${g.fn_decl.name}()"));')
+	g.writeln('	v_panic(_STR("An assertion failed."));')
+	g.writeln('	return;')
+	g.writeln('}')
+}
+
 fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// g.write('/*assign_stmt*/')
 	if assign_stmt.left.len > assign_stmt.right.len {
@@ -537,7 +543,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			else {
 				panic('expected call')
 			}
-	}
+		}
 		mr_var_name := 'mr_$assign_stmt.pos.pos'
 		g.expr_var_name = mr_var_name
 		if table.type_is_optional(return_type) {
@@ -2366,15 +2372,36 @@ fn (g &Gen) type_default(typ table.Type) string {
 }
 
 pub fn (g mut Gen) write_tests_main() {
+	g.definitions.writeln('int g_test_oks = 0;')
+	g.definitions.writeln('int g_test_fails = 0;')
 	g.writeln('int main() {')
 	g.writeln('\t_vinit();')
+	mut tfuncs := []string
+	mut tsuite_begin := ''
+	mut tsuite_end := ''
 	for _, f in g.table.fns {
+		if f.name == 'testsuite_begin' {
+			tsuite_begin = f.name
+		}
+		if f.name == 'testsuite_end' {
+			tsuite_end = f.name
+		}
 		if !f.name.starts_with('test_') {
 			continue
 		}
-		g.writeln('\t${f.name}();')
+		tfuncs << f.name
 	}
-	g.writeln('return 0; }')
+	if tsuite_begin.len > 0 {
+		g.writeln('\t${tsuite_begin}();\n')
+	}
+	for t in tfuncs {
+		g.writeln('\t${t}();')
+	}
+	if tsuite_end.len > 0 {
+		g.writeln('\t${tsuite_end}();\n')
+	}
+	g.writeln('\treturn 0;')
+	g.writeln('}')
 }
 
 fn (g &Gen) is_importing_os() bool {
