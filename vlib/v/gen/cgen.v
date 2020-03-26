@@ -1737,7 +1737,7 @@ fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 			break
 		}
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
-		// when these are fixed we wont beed this check
+		// when these are fixed we wont need this check
 		if arg_no < expected_types.len {
 			g.ref_or_deref_arg(arg, expected_types[arg_no])
 		}
@@ -1777,7 +1777,7 @@ fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 	}
 	else if arg_is_ptr && !expr_is_ptr {
 		if arg.is_mut {
-			sym := g.table.get_type_symbol(arg.typ)
+			sym := g.table.get_type_symbol(expected_type)
 			if sym.kind == .array {
 				// Special case for mutable arrays. We can't `&` function
 				// results,	have to use `(array[]){ expr }[0]` hack.
