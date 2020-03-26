@@ -99,9 +99,7 @@ fn test_sort() {
 }
 
 fn test_split_nth() {
-
 	a := "1,2,3"
-	println(a)
 	assert (a.split(',').len == 3)
 	assert (a.split_nth(',', -1).len == 3)
 	assert (a.split_nth(',', 0).len == 3)
@@ -109,7 +107,6 @@ fn test_split_nth() {
 	assert (a.split_nth(',', 2).len == 2)
 	assert (a.split_nth(',', 10).len == 3)
 	b := "1::2::3"
-	println(b)
 	assert (b.split('::').len == 3)
 	assert (b.split_nth('::', -1).len == 3)
 	assert (b.split_nth('::', 0).len == 3)
@@ -117,19 +114,16 @@ fn test_split_nth() {
 	assert (b.split_nth('::', 2).len == 2)
 	assert (b.split_nth('::', 10).len == 3)
 	c := "ABCDEF"
-	println(c)
 	println(c.split('').len)
 	assert (c.split('').len == 6)
 	assert (c.split_nth('', 3).len == 3)
 	assert (c.split_nth('BC', -1).len == 2)
 	d := ","
-	println(d)
 	assert (d.split(',').len == 2)
 	assert (d.split_nth('', 3).len == 1)
 	assert (d.split_nth(',', -1).len == 2)
 	assert (d.split_nth(',', 3).len == 2)
 	e := ",,,0,,,,,a,,b,"
-	println(e)
 	// assert (e.split(',,').len == 5)
 	// assert (e.split_nth(',,', 3).len == 2)
 	assert (e.split_nth(',', -1).len == 12)

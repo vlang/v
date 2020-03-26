@@ -13,7 +13,7 @@ struct CC {
 mut:
 	b BB
 	nums []int
-	aarr []A
+	aarr []AA
 	num int
 }
 
@@ -82,7 +82,7 @@ fn test_struct_levels() {
 	assert c.b.a.nums[1] == 2
 	c.b.a.nums [0] = 7
 	assert c.b.a.nums[0] == 7
-	c.aarr << A{val:8}
+	c.aarr << AA{val:8}
 	assert c.aarr.len == 1
 	assert c.aarr[0].val == 8
 	c.num = 20

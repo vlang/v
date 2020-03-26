@@ -270,14 +270,14 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	match node {
 		ast.AssertStmt {
 			g.writeln('// assert')
-			g.write('if (!(')
+			g.write('if ((')
 			g.expr(it.expr)
 			g.writeln(')) {')
-			g.writeln('g_test_fails++;')
-			g.writeln('puts("FAILED $g.fn_decl.name $it.pos.line_nr");')
-			g.writeln('} else {')
 			g.writeln('g_test_oks++;')
 			// g.writeln('puts("OK $g.fn_decl.name");')
+			g.writeln('} else {')
+			g.writeln('g_test_fails++;')
+			g.writeln('puts("FAILED $g.fn_decl.name $it.pos.line_nr");')
 			g.writeln('}')
 		}
 		ast.AssignStmt {
@@ -952,7 +952,13 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.infix_expr(it)
 		}
 		ast.IntegerLiteral {
-			g.write(it.val.int().str())
+			if it.val.starts_with('0o') {
+				g.write('0')
+				g.write(it.val[2..])
+			}
+			else {
+				g.write(it.val) // .int().str())
+			}
 		}
 		ast.MatchExpr {
 			g.match_expr(it)
