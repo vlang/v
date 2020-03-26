@@ -310,6 +310,7 @@ fn test_clone() {
 	nums := [1, 2, 3, 4, 100]
 	nums2 := nums.clone()
 	assert nums2.len == 5
+	assert nums.str() == '[1, 2, 3, 4, 100]'
 	assert nums2.str() == '[1, 2, 3, 4, 100]'
 	assert nums.slice(1, 3).str() == '[2, 3]'
 }

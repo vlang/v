@@ -299,7 +299,9 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		// need to return `array_xxx` instead of `array`
 		method_call_expr.return_type = typ
 		if name == 'clone' {
+			// in ['clone', 'str'] {
 			method_call_expr.receiver_type = table.type_to_ptr(typ)
+			// method_call_expr.return_type = method_call_expr.receiver_type
 		}
 		else {
 			method_call_expr.receiver_type = typ
@@ -339,8 +341,13 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		return method.return_type
 	}
 	// TODO: str methods
-	if typ_sym.kind in [.map] && name == 'str' {
+	if typ_sym.kind == .map && name == 'str' {
 		method_call_expr.receiver_type = table.new_type(c.table.type_idxs['map_string'])
+		method_call_expr.return_type = table.string_type
+		return table.string_type
+	}
+	if typ_sym.kind == .array && name == 'str' {
+		// method_call_expr.receiver_type = table.new_type(c.table.type_idxs['ar_string'])
 		method_call_expr.return_type = table.string_type
 		return table.string_type
 	}
