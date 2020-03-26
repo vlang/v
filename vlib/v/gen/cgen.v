@@ -665,10 +665,12 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	if is_main {
 		g.writeln('_vinit();')
-		if g.autofree {
-			g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
+		if g.is_importing_os() {
+			if g.autofree {
+				g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
+			}
+			g.writeln('_const_os__args = os__init_os_args(argc, (byteptr*)argv);')
 		}
-		g.writeln('_const_os__args = os__init_os_args(argc, (byteptr*)argv);')
 	}
 	g.stmts(it.stmts)
 	// ////////////
@@ -1794,7 +1796,10 @@ fn (g mut Gen) write_init_function() {
 	if g.autofree {
 		g.writeln('void _vcleanup() {')
 		g.writeln('puts("cleaning up...");')
-		g.writeln('free(_const_os__args.data);')
+		if g.is_importing_os() {
+			g.writeln('free(_const_os__args.data);')
+			g.writeln('string_free(_const_os__wd_at_startup);')
+		}
 		g.writeln('free(_const_strconv__ftoa__powers_of_10.data);')
 		g.writeln('}')
 	}
@@ -2317,4 +2322,8 @@ pub fn (g mut Gen) write_tests_main() {
 		g.writeln('\t${f.name}();')
 	}
 	g.writeln('return 0; }')
+}
+
+fn (g &Gen) is_importing_os() bool {
+	return 'os' in g.table.imports
 }
