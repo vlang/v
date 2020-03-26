@@ -617,7 +617,7 @@ fn print_c_errno() {
 	println('errno=$e err=$se')
 }
 
-pub fn ext(path string) string {
+pub fn file_ext(path string) string {
 	pos := path.last_index('.') or {
 		return ''
 	}
