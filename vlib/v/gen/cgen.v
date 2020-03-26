@@ -5,6 +5,7 @@ import (
 	v.ast
 	v.table
 	v.depgraph
+	v.token
 	term
 )
 
@@ -41,6 +42,7 @@ mut:
 	empty_line     bool
 	is_test        bool
 	expr_var_name  string
+	assign_op      token.Kind // *=, =, etc (for array_set)
 }
 
 const (
@@ -357,7 +359,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.ForInStmt {
-			g.for_in(it)		
+			g.for_in(it)
 		}
 		ast.ForStmt {
 			g.write('while (')
@@ -522,13 +524,14 @@ fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
 	if g.is_test {
 		g.writeln('{')
 		g.writeln('	g_test_oks++;')
-		//	g.writeln('	println(_STR("OK ${g.file.path}:${a.pos.line_nr}: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+		// g.writeln('	println(_STR("OK ${g.file.path}:${a.pos.line_nr}: fn ${g.fn_decl.name}(): assert $s_assertion"));')
 		g.writeln('}else{')
 		g.writeln('	g_test_fails++;')
 		g.writeln('	eprintln(_STR("${g.file.path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
 		g.writeln('	exit(1);')
 		g.writeln('}')
-	} else {
+	}
+	else {
 		g.writeln('{}else{')
 		g.writeln('	eprintln(_STR("${g.file.path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
 		g.writeln('	exit(1);')
@@ -551,7 +554,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			else {
 				panic('expected call')
 			}
-		}
+	}
 		mr_var_name := 'mr_$assign_stmt.pos.pos'
 		g.expr_var_name = mr_var_name
 		if table.type_is_optional(return_type) {
@@ -635,6 +638,9 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					else {
 						g.expr(val)
 					}
+				}
+				else if is_fixed_array_init {
+					g.write('= {0}')
 				}
 			}
 			g.writeln(';')
@@ -754,7 +760,7 @@ fn (g mut Gen) free_scope_vars(pos int) {
 				else {
 					g.writeln('// other ' + t)
 				}
-			}
+	}
 			g.writeln('string_free($var.name); // autofreed')
 		}
 	}
@@ -869,6 +875,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 					g.write(' = string_add(')
 					str_add = true
 				}
+				g.assign_op = it.op
 				g.expr(it.left)
 				// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
 				if !g.is_array_set && !str_add {
@@ -1016,7 +1023,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			// TODO performance, detect `array` method differently
 			['repeat', 'sort_with_compare', 'free', 'push_many', 'trim',
 			//
-			'first', 'last', 'clone', 'reverse'] {
+			'first', 'last', 'clone', 'reverse', 'slice'] {
 				// && rec_sym.name == 'array' {
 				// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 				// `array_byte_clone` => `array_clone`
@@ -1162,6 +1169,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	// g.write('/*$node.left_type str*/')
 	// }
 	// string + string, string == string etc
+	// g.infix_op = node.op
 	if node.left_type == table.string_type_idx && node.op != .key_in {
 		fn_name := match node.op {
 			.plus{
@@ -1233,9 +1241,10 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	else if node.op == .left_shift && g.table.get_type_symbol(node.left_type).kind == .array {
 		tmp := g.new_tmp_var()
 		sym := g.table.get_type_symbol(node.left_type)
+		info := sym.info as table.Array
 		right_sym := g.table.get_type_symbol(node.right_type)
-		if right_sym.kind == .array {
-			// push an array => PUSH_MANY
+		if right_sym.kind == .array && info.elem_type != node.right_type {
+			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY(&')
 			g.expr_with_cast(node.left, node.right_type, node.left_type)
 			g.write(', (')
@@ -1245,7 +1254,6 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		}
 		else {
 			// push a single element
-			info := sym.info as table.Array
 			elem_type_str := g.typ(info.elem_type)
 			// g.write('array_push(&')
 			g.write('_PUSH(&')
@@ -1540,11 +1548,27 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	}
 			if g.is_assign_expr && !is_selector {
 				g.is_array_set = true
-				g.write('array_set(&')
+				g.write('/*S $g.assign_op.str() */array_set(&')
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
 				g.write(', &($elem_type_str[]) { ')
+				// `x[0] *= y`
+				if g.assign_op in [.mult_assign] {
+					g.write('*($elem_type_str*)array_get(')
+					g.expr(node.left)
+					g.write(', ')
+					g.expr(node.index)
+					g.write(') ')
+					op := match g.assign_op {
+						.mult_assign{
+							'*'
+						}
+						else {
+							''}
+	}
+					g.write(op)
+				}
 			}
 			else {
 				g.write('(*($elem_type_str*)array_get(')
@@ -2045,17 +2069,18 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 		// }
 		// else {}
 		// }
-
 		sfmt := node.expr_fmts[i]
 		if sfmt.len > 0 {
-			fspec := sfmt[sfmt.len-1]
+			fspec := sfmt[sfmt.len - 1]
 			if fspec == `s` && node.expr_types[i] != table.string_type {
 				verror('only V strings can be formatted with a ${sfmt} format')
 			}
 			g.write('%' + sfmt[1..])
-		}else if node.expr_types[i] == table.string_type {
+		}
+		else if node.expr_types[i] == table.string_type {
 			g.write('%.*s')
-		}else {
+		}
+		else {
 			g.write('%d')
 		}
 	}
@@ -2064,20 +2089,23 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 	for i, expr in node.exprs {
 		sfmt := node.expr_fmts[i]
 		if sfmt.len > 0 {
-			fspec := sfmt[sfmt.len-1]
+			fspec := sfmt[sfmt.len - 1]
 			if fspec == `s` && node.expr_types[i] == table.string_type {
 				g.expr(expr)
 				g.write('.str')
-			}else{
+			}
+			else {
 				g.expr(expr)
 			}
-		} else if node.expr_types[i] == table.string_type {
+		}
+		else if node.expr_types[i] == table.string_type {
 			// `name.str, name.len,`
 			g.expr(expr)
 			g.write('.len, ')
 			g.expr(expr)
 			g.write('.str')
-		} else {
+		}
+		else {
 			g.expr(expr)
 		}
 		if i < node.exprs.len - 1 {
