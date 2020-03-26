@@ -274,11 +274,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.expr(it.expr)
 			g.writeln(')) {')
 			g.writeln('g_test_fails++;')
-			g.writeln('puts("FAILED assertion");')
-			g.writeln('puts("function: $g.fn_decl.name");')
+			g.writeln('puts("FAILED $g.fn_decl.name $it.pos.line_nr");')
 			g.writeln('} else {')
 			g.writeln('g_test_oks++;')
-			g.writeln('puts("OK $g.fn_decl.name");')
+			// g.writeln('puts("OK $g.fn_decl.name");')
 			g.writeln('}')
 		}
 		ast.AssignStmt {
@@ -1216,12 +1215,16 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		}
 	}
 	else {
-		// if node.op == .dot {
-		// println('!! dot')
-		// }
+		need_par := node.op == .amp // `x & y == 0` => `(x & y) == 0` in C
+		if need_par {
+			g.write('(')
+		}
 		g.expr(node.left)
 		g.write(' $node.op.str() ')
 		g.expr(node.right)
+		if need_par {
+			g.write(')')
+		}
 	}
 }
 

@@ -346,6 +346,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			expr := p.expr(0)
 			return ast.AssertStmt{
 				expr: expr
+				pos: p.tok.position()
 			}
 		}
 		.key_mut {

@@ -607,6 +607,7 @@ mut:
 pub struct AssertStmt {
 pub:
 	expr Expr
+	pos  token.Position
 }
 
 // `if [x := opt()] {`
