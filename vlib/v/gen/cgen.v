@@ -366,66 +366,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.ForInStmt {
-			if it.is_range {
-				// `for x in 1..10 {`
-				i := g.new_tmp_var()
-				g.write('for (int $i = ')
-				g.expr(it.cond)
-				g.write('; $i < ')
-				g.expr(it.high)
-				g.writeln('; $i++) { ')
-				g.writeln('int $it.val_var = $i;')
-				g.stmts(it.stmts)
-				g.writeln('}')
-			}
-			// TODO:
-			else if it.kind == .array {
-				// `for num in nums {`
-				g.writeln('// FOR IN')
-				i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
-				styp := g.typ(it.val_type)
-				g.write('for (int $i = 0; $i < ')
-				g.expr(it.cond)
-				g.writeln('.len; $i++) {')
-				g.write('$styp $it.val_var = (($styp*)')
-				g.expr(it.cond)
-				g.writeln('.data)[$i];')
-				g.stmts(it.stmts)
-				g.writeln('}')
-			}
-			else if it.kind == .map {
-				// `for num in nums {`
-				g.writeln('// FOR IN')
-				key_styp := g.typ(it.key_type)
-				val_styp := g.typ(it.val_type)
-				keys_tmp := 'keys_' + g.new_tmp_var()
-				idx := g.new_tmp_var()
-				key := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
-				zero := g.type_default(it.val_type)
-				g.write('array_$key_styp $keys_tmp = map_keys(&')
-				g.expr(it.cond)
-				g.writeln(');')
-				g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; $idx++) {')
-				g.writeln('$key_styp $key = (($key_styp*)${keys_tmp}.data)[$idx];')
-				g.write('$val_styp $it.val_var = (*($val_styp*)map_get3(')
-				g.expr(it.cond)
-				g.writeln(', $key, &($val_styp[]){ $zero }));')
-				g.stmts(it.stmts)
-				g.writeln('}')
-			}
-			else if table.type_is_variadic(it.cond_type) {
-				g.writeln('// FOR IN')
-				i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
-				styp := g.typ(it.cond_type)
-				g.write('for (int $i = 0; $i < ')
-				g.expr(it.cond)
-				g.writeln('.len; $i++) {')
-				g.write('$styp $it.val_var = ')
-				g.expr(it.cond)
-				g.writeln('.args[$i];')
-				g.stmts(it.stmts)
-				g.writeln('}')
-			}
+			g.for_in(it)
 		}
 		ast.ForStmt {
 			g.write('while (')
@@ -481,6 +422,80 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		else {
 			verror('cgen.stmt(): unhandled node ' + typeof(node))
 		}
+	}
+}
+
+fn (g mut Gen) for_in(it ast.ForInStmt) {
+	if it.is_range {
+		// `for x in 1..10 {`
+		i := g.new_tmp_var()
+		g.write('for (int $i = ')
+		g.expr(it.cond)
+		g.write('; $i < ')
+		g.expr(it.high)
+		g.writeln('; $i++) { ')
+		g.writeln('int $it.val_var = $i;')
+		g.stmts(it.stmts)
+		g.writeln('}')
+	}
+	// TODO:
+	else if it.kind == .array {
+		// `for num in nums {`
+		g.writeln('// FOR IN')
+		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		styp := g.typ(it.val_type)
+		g.write('for (int $i = 0; $i < ')
+		g.expr(it.cond)
+		g.writeln('.len; $i++) {')
+		g.write('$styp $it.val_var = (($styp*)')
+		g.expr(it.cond)
+		g.writeln('.data)[$i];')
+		g.stmts(it.stmts)
+		g.writeln('}')
+	}
+	else if it.kind == .map {
+		// `for num in nums {`
+		g.writeln('// FOR IN')
+		key_styp := g.typ(it.key_type)
+		val_styp := g.typ(it.val_type)
+		keys_tmp := 'keys_' + g.new_tmp_var()
+		idx := g.new_tmp_var()
+		key := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		zero := g.type_default(it.val_type)
+		g.write('array_$key_styp $keys_tmp = map_keys(&')
+		g.expr(it.cond)
+		g.writeln(');')
+		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; $idx++) {')
+		g.writeln('$key_styp $key = (($key_styp*)${keys_tmp}.data)[$idx];')
+		g.write('$val_styp $it.val_var = (*($val_styp*)map_get3(')
+		g.expr(it.cond)
+		g.writeln(', $key, &($val_styp[]){ $zero }));')
+		g.stmts(it.stmts)
+		g.writeln('}')
+	}
+	else if table.type_is_variadic(it.cond_type) {
+		g.writeln('// FOR IN')
+		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		styp := g.typ(it.cond_type)
+		g.write('for (int $i = 0; $i < ')
+		g.expr(it.cond)
+		g.writeln('.len; $i++) {')
+		g.write('$styp $it.val_var = ')
+		g.expr(it.cond)
+		g.writeln('.args[$i];')
+		g.stmts(it.stmts)
+		g.writeln('}')
+	}
+	else if it.kind == .string {
+		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		g.write('for (int $i = 0; $i < ')
+		g.expr(it.cond)
+		g.writeln('.len; $i++) {')
+		g.write('byte $it.val_var = ')
+		g.expr(it.cond)
+		g.writeln('.str[$i];')
+		g.stmts(it.stmts)
+		g.writeln('}')
 	}
 }
 
@@ -1121,6 +1136,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 }
 
 fn (g mut Gen) infix_expr(node ast.InfixExpr) {
+	// println('infix_expr() op="$node.op.str()" line_nr=$node.pos.line_nr')
 	// g.write('/*infix*/')
 	// if it.left_type == table.string_type_idx {
 	// g.write('/*$node.left_type str*/')
@@ -1675,9 +1691,19 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 	else {
 		g.writeln('($styp){')
 	}
+	mut fields := []string
 	mut inited_fields := []string
-	// User set fields
-	for i, field in it.fields {
+	if it.fields.len == 0 && it.exprs.len > 0 {
+		// Get fields for {a,b} short syntax. Fields array wasn't set in the parser.
+		for f in info.fields {
+			fields << f.name
+		}
+	}
+	else {
+		fields = it.fields
+	}
+	// / User set fields
+	for i, field in fields {
 		field_name := c_name(field)
 		inited_fields << field
 		g.write('\t.$field_name = ')

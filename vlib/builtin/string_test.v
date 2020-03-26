@@ -2,6 +2,12 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
+struct Foo {
+	bar int
+mut:
+	str string
+}
+
 fn test_add() {
 	mut a := 'a'
 	a += 'b'
@@ -14,7 +20,9 @@ fn test_add() {
 	assert a.ends_with('bbbbb')
 	a += '123'
 	assert a.ends_with('3')
-	mut foo := Foo{0, 'hi'}
+	mut foo := Foo{10, 'hi'}
+	assert foo.str == 'hi'
+	assert foo.bar == 10
 	foo.str += '!'
 	assert foo.str == 'hi!'
 }
@@ -91,7 +99,9 @@ fn test_sort() {
 }
 
 fn test_split_nth() {
+
 	a := "1,2,3"
+	println(a)
 	assert (a.split(',').len == 3)
 	assert (a.split_nth(',', -1).len == 3)
 	assert (a.split_nth(',', 0).len == 3)
@@ -99,6 +109,7 @@ fn test_split_nth() {
 	assert (a.split_nth(',', 2).len == 2)
 	assert (a.split_nth(',', 10).len == 3)
 	b := "1::2::3"
+	println(b)
 	assert (b.split('::').len == 3)
 	assert (b.split_nth('::', -1).len == 3)
 	assert (b.split_nth('::', 0).len == 3)
@@ -106,15 +117,19 @@ fn test_split_nth() {
 	assert (b.split_nth('::', 2).len == 2)
 	assert (b.split_nth('::', 10).len == 3)
 	c := "ABCDEF"
+	println(c)
+	println(c.split('').len)
 	assert (c.split('').len == 6)
 	assert (c.split_nth('', 3).len == 3)
 	assert (c.split_nth('BC', -1).len == 2)
 	d := ","
+	println(d)
 	assert (d.split(',').len == 2)
 	assert (d.split_nth('', 3).len == 1)
 	assert (d.split_nth(',', -1).len == 2)
 	assert (d.split_nth(',', 3).len == 2)
 	e := ",,,0,,,,,a,,b,"
+	println(e)
 	// assert (e.split(',,').len == 5)
 	// assert (e.split_nth(',,', 3).len == 2)
 	assert (e.split_nth(',', -1).len == 12)
@@ -470,12 +485,6 @@ fn test_reverse() {
 	assert 'hello'.reverse() == 'olleh'
 	assert ''.reverse() == ''
 	assert 'a'.reverse() == 'a'
-}
-
-struct Foo {
-	bar int
-mut:
-	str string
 }
 
 fn (f Foo) baz() string {

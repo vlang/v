@@ -85,16 +85,13 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array {
 			info := typ_sym.info as table.Struct
-			if struct_init.fields.len == 0 {
-				// Short syntax TODO check
-				return struct_init.typ
-			}
+			is_short_syntax := struct_init.fields.len == 0
 			if struct_init.exprs.len > info.fields.len {
 				c.error('too many fields', struct_init.pos)
 			}
 			for i, expr in struct_init.exprs {
 				// struct_field info.
-				field_name := struct_init.fields[i]
+				field_name := if is_short_syntax { info.fields[i].name } else { struct_init.fields[i] }
 				mut field := info.fields[i]
 				mut found_field := false
 				for f in info.fields {

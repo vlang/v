@@ -1,17 +1,17 @@
-struct A {
+struct AA {
 mut:
 	val int
 	nums []int
 }
 
-struct B {
+struct BB {
 mut:
-	a A
+	a AA
 }
 
-struct C {
+struct CC {
 mut:
-	b B
+	b BB
 	nums []int
 	aarr []A
 	num int
@@ -65,7 +65,7 @@ fn test_empty_struct() {
 }
 
 fn test_struct_levels() {
-	mut c := C{}
+	mut c := CC{}
 	assert c.nums.len == 0
 	c.nums << 3
 	assert c.nums.len == 1

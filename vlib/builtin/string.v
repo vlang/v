@@ -429,10 +429,10 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	mut start := 0
 	nth_1 := nth - 1
 	for i <= s.len {
-		mut is_delim := s[i] == delim[0]
+		mut is_delim := s.str[i] == delim.str[0]
 		mut j := 0
 		for is_delim && j < delim.len {
-			is_delim = is_delim && s[i + j] == delim[j]
+			is_delim = is_delim && s.str[i + j] == delim.str[j]
 			j++
 		}
 		last := i == s.len - 1
@@ -469,8 +469,8 @@ pub fn (s string) split_into_lines() []string {
 	}
 	mut start := 0
 	for i := 0; i < s.len; i++ {
-		is_lf := s[i] == `\n`
-		is_crlf := i != s.len - 1 && s[i] == `\r` && s[i + 1] == `\n`
+		is_lf := s.str[i] == `\n`
+		is_crlf := i != s.len - 1 && s.str[i] == `\r` && s.str[i + 1] == `\n`
 		is_eol := is_lf || is_crlf
 		is_last := if is_crlf {
 			i == s.len - 2
