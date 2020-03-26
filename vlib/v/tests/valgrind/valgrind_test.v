@@ -14,15 +14,15 @@ fn test_all() {
 	}
 	bench_message := 'memory leak checking with valgrind'
 	mut bench := benchmark.new_benchmark()
-	eprintln(term.header(bench_message,'-'))
+	eprintln(term.header(bench_message, '-'))
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	dir := os.join_path(vroot, 'vlib/v/tests/valgrind')
+	dir := os.join_path(vroot,'vlib/v/tests/valgrind')
 	files := os.ls(dir) or {
 		panic(err)
 	}
 	//
-	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'valgrind')
+	wrkdir := os.join_path(os.temp_dir(),'vtests','valgrind')
 	os.mkdir_all(wrkdir)
 	os.chdir(wrkdir)
 	//
@@ -33,7 +33,7 @@ fn test_all() {
 		full_test_path := os.real_path(test)
 		println('x.v: $wrkdir/x.v')
 		os.system('cp ${dir}/${test} $wrkdir/x.v') // cant run .vv file
-		res := os.exec('$vexe -verbose=3 -b v2 -csource keep -cg $wrkdir/x.v') or {
+		res := os.exec('$vexe -cflags "-w" -verbose=3 -b v2 -csource keep -cg $wrkdir/x.v') or {
 			bench.fail()
 			eprintln(bench.step_message_fail('valgrind $test failed'))
 			continue
