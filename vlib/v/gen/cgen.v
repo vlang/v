@@ -357,7 +357,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.ForInStmt {
-			g.for_in(it)
+			g.for_in(it)		
 		}
 		ast.ForStmt {
 			g.write('while (')
@@ -752,9 +752,9 @@ fn (g mut Gen) free_scope_vars(pos int) {
 					continue
 				}
 				else {
-					g.writeln('// other' + t)
+					g.writeln('// other ' + t)
 				}
-	}
+			}
 			g.writeln('string_free($var.name); // autofreed')
 		}
 	}
