@@ -233,7 +233,7 @@ pub fn f64_to_str_l(f f64) string {
 	s := f64_to_str(f,18)
 
 	// check for +inf -inf Nan
-	if s.len > 2 && (s[0] == `N` || s[1] == `i`) {
+	if s.len > 2 && (s[0] == `n` || s[1] == `i`) {
 		return s
 	} 
 

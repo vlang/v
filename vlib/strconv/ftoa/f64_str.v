@@ -39,6 +39,32 @@ mut:
 	u u64
 }
 
+// pow of ten table used by n_digit reduction
+const(
+	ten_pow_table_64 = [
+		u64(1),
+		u64(10),
+		u64(100),
+		u64(1000),
+		u64(10000),
+		u64(100000),
+		u64(1000000),
+		u64(10000000),
+		u64(100000000),
+		u64(1000000000),
+		u64(10000000000),
+		u64(100000000000),
+		u64(1000000000000),
+		u64(10000000000000),
+		u64(100000000000000),
+		u64(1000000000000000),
+		u64(10000000000000000),
+		u64(100000000000000000),
+		u64(1000000000000000000),
+		u64(10000000000000000000),
+	]
+)
+
 /******************************************************************************
 *
 * Conversion Functions
@@ -51,16 +77,14 @@ const(
 	maxexp64    = 2047
 )
 
-fn (d Dec64) get_string_64(neg bool, n_digit int) string {
-	mut out         := d.m
-	mut out_len     := decimal_len_64(out)
+fn (d Dec64) get_string_64(neg bool, i_n_digit int) string {
+	n_digit          := i_n_digit + 1
+	mut out          := d.m
+	mut out_len      := decimal_len_64(out)
+	out_len_original := out_len
 
 	mut buf := [byte(0)].repeat(out_len + 6 + 1 +1) // sign + mant_len + . +  e + e_sign + exp_len(2) + \0
 	mut i := 0
-
-	if n_digit > 0 && out_len > n_digit {
-		out_len = n_digit+1
-	}
 
 	if neg {
 		buf[i]=`-`
@@ -70,6 +94,13 @@ fn (d Dec64) get_string_64(neg bool, n_digit int) string {
 	mut disp := 0
 	if out_len <= 1 {
 		disp = 1
+	}
+
+	if n_digit < out_len {
+		//println("orig: ${out_len_original}")
+		out += ten_pow_table_64[out_len - n_digit] + 1  // round to up
+		out /= ten_pow_table_64[out_len - n_digit]
+		out_len = n_digit
 	}
 
 	y := i + out_len
@@ -104,7 +135,7 @@ fn (d Dec64) get_string_64(neg bool, n_digit int) string {
 	buf[i]=`e`
 	i++
 
-	mut exp := d.e + out_len - 1
+	mut exp := d.e + out_len_original - 1
 	if exp < 0 {
 		buf[i]=`-`
 		i++
@@ -113,16 +144,6 @@ fn (d Dec64) get_string_64(neg bool, n_digit int) string {
 		buf[i]=`+`
 		i++
 	}
-
-	// Always print two digits to match strconv's formatting.
-/*	d1 := exp % 10
-	d0 := exp / 10
-	buf[i]=`0` + byte(d0)
-	i++
-	buf[i]=`0` + byte(d1)
-	i++
-	buf[i]=0
-*/
 
 	// Always print at least two digits to match strconv's formatting.
 	d2 := exp % 10
