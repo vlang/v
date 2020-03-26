@@ -327,7 +327,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		// println('CLONE nr args=$method.args.len')
 		// }
 		for i, arg in method_call_expr.args {
-			c.expected_type = method.args[i + 1].typ
+			c.expected_type = if method.is_variadic && i >= method.args.len-1 { method.args[method.args.len - 1].typ } else { method.args[i + 1].typ }
 			method_call_expr.args[i].typ = c.expr(arg.expr)
 		}
 		// TODO: typ optimize.. this node can get processed more than once

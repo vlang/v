@@ -1006,7 +1006,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write('/*rec*/*')
 			}
 			g.expr(it.expr)
-			if it.args.len > 0 {
+			is_variadic := it.exp_arg_types.len > 0 && table.type_is_variadic(it.exp_arg_types[it.exp_arg_types.len-1])
+			if it.args.len > 0 || is_variadic {
 				g.write(', ')
 			}
 			// /////////
