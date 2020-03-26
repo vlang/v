@@ -1,8 +1,8 @@
-import sokol
-import sokol.sapp
-import sokol.gfx
-import sokol.sgl
-import sokol.sfons
+import ui.sokol
+import ui.sokol.sapp
+import ui.sokol.gfx
+import ui.sokol.sgl
+import ui.sokol.sfons
 import os
 import time
 

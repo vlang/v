@@ -1,7 +1,7 @@
 module some_module
 
 import (
-	eventbus
+	ui.eventbus
 )
 
 const (

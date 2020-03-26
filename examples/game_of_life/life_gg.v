@@ -1,8 +1,8 @@
 module main
 
-import gg
-import glfw
-import gx
+import ui.gg
+import ui.glfw
+import ui.gx
 import automaton
 
 const (
@@ -49,7 +49,7 @@ fn main() {
 		gg.post_empty_event() // needed so the animation does not stop
 		///////////////////////////////////////////////
 		a.update()
-		print_automaton(a)		
+		print_automaton(a)
 		graphics.render()
 	}
 }

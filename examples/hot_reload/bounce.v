@@ -2,10 +2,10 @@
 // v -live bounce.v
 module main
 
-import gx
-import gl
-import gg
-import glfw
+import ui.gx
+import ui.gl
+import ui.gg
+import ui.glfw
 import time
 
 struct Game {
@@ -88,7 +88,7 @@ fn (game mut Game) update_model() {
 //    game.dx = 3 game.dy = 3
 	speed := 2
 	game.x += speed * game.dx
-	game.y += speed * game.dy 
+	game.y += speed * game.dy
 	if game.y >= game.height - width || game.y <= 0 {
 		game.dy = - game.dy
 	}
@@ -99,7 +99,7 @@ fn (game mut Game) update_model() {
 
 fn (game mut Game) run() {
 	for {
-		game.update_model()		
+		game.update_model()
 		glfw.post_empty_event() // Refresh
 		time.sleep_ms(17)
 	}

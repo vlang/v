@@ -1,7 +1,7 @@
 module main
 
-import gg2 as gg
-import gx
+import ui.gg2
+import ui.gx
 import os
 
 const (
@@ -11,12 +11,12 @@ const (
 
 struct App {
 mut:
-	gg &gg.GG
+	gg &gg2.GG
 }
 
 fn main() {
 	mut app := &App{}
-	app.gg = gg.new_context({
+	app.gg = gg2.new_context(gg2.Config{
 		bg_color: gx.white
 		width: win_width
 		height: win_height

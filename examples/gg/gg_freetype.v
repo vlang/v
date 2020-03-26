@@ -1,9 +1,9 @@
 module main
 
-import gg
-import freetype
-import gx
-import glfw
+import ui.gg
+import ui.freetype
+import ui.gx
+import ui.glfw
 
 const (
 	win_width = 600
@@ -53,4 +53,3 @@ fn main() {
 
 fn (ctx Context) draw() {
 }
-

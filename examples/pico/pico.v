@@ -1,6 +1,6 @@
 import json
-import picoev
-import picohttpparser
+import ui.picoev
+import ui.picohttpparser
 
 struct Message {
 	message string

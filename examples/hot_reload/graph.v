@@ -1,9 +1,9 @@
 module main
 
-import gx
-import gg
+import ui.gx
+import ui.gg
 import time
-import glfw
+import ui.glfw
 import math
 
 const (

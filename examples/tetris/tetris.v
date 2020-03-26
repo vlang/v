@@ -6,11 +6,11 @@ module main
 
 import rand
 import time
-import gx
-import gg
-import glfw
+import ui.gx
+import ui.gg
+import ui.glfw
 import math
-import freetype
+import ui.freetype
 
 const (
 	BlockSize = 20 // pixels
