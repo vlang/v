@@ -284,7 +284,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 	name := method_call_expr.name
 	c.stmts(method_call_expr.or_block.stmts)
 	// println('method call $name $method_call_expr.pos.line_nr')
-	if typ_sym.kind == .array && name in ['filter', 'clone', 'repeat', 'reverse', 'map'] {
+	if typ_sym.kind == .array && name in ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice'] {
 		if name in ['filter', 'map'] {
 			array_info := typ_sym.info as table.Array
 			mut scope := c.file.scope.innermost(method_call_expr.pos.pos)
