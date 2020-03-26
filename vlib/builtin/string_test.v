@@ -20,11 +20,6 @@ fn test_add() {
 	assert a.ends_with('bbbbb')
 	a += '123'
 	assert a.ends_with('3')
-	mut foo := Foo{10, 'hi'}
-	assert foo.str == 'hi'
-	assert foo.bar == 10
-	foo.str += '!'
-	assert foo.str == 'hi!'
 }
 
 fn test_ends_with() {
@@ -479,20 +474,6 @@ fn test_reverse() {
 	assert 'hello'.reverse() == 'olleh'
 	assert ''.reverse() == ''
 	assert 'a'.reverse() == 'a'
-}
-
-fn (f Foo) baz() string {
-	return 'baz'
-}
-
-fn test_interpolation() {
-	num := 7
-	mut s := 'number=$num'
-	assert s == 'number=7'
-	foo := Foo{}
-	s = 'baz=${foo.baz()}'
-	assert s == 'baz=baz'
-
 }
 
 fn test_bytes_to_string() {
