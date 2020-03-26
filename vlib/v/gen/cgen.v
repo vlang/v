@@ -269,16 +269,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	// g.writeln('//// stmt start')
 	match node {
 		ast.AssertStmt {
-			g.writeln('// assert')
-			g.write('if ((')
-			g.expr(it.expr)
-			g.writeln(')) {')
-			g.writeln('g_test_oks++;')
-			// g.writeln('puts("OK $g.fn_decl.name");')
-			g.writeln('} else {')
-			g.writeln('g_test_fails++;')
-			g.writeln('puts("FAILED $g.fn_decl.name $it.pos.line_nr");')
-			g.writeln('}')
+			g.gen_assert_stmt(it)
 		}
 		ast.AssignStmt {
 			g.gen_assign_stmt(it)
@@ -366,7 +357,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.ForInStmt {
-			g.for_in(it)
+			g.for_in(it)		
 		}
 		ast.ForStmt {
 			g.write('while (')
@@ -522,6 +513,29 @@ fn (g mut Gen) expr_with_cast(expr ast.Expr, got_type table.Type, exp_type table
 	g.expr(expr)
 }
 
+fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
+	g.writeln('// assert')
+	g.write('if( ')
+	g.expr(a.expr)
+	s_assertion := a.expr.str().replace('"', "\'")
+	g.write(' )')
+	if g.is_test {
+		g.writeln('{')
+		g.writeln('	g_test_oks++;')
+		//	g.writeln('	println(_STR("OK ${g.file.path}:${a.pos.line_nr}: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+		g.writeln('}else{')
+		g.writeln('	g_test_fails++;')
+		g.writeln('	eprintln(_STR("${g.file.path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+		g.writeln('	exit(1);')
+		g.writeln('}')
+	} else {
+		g.writeln('{}else{')
+		g.writeln('	eprintln(_STR("${g.file.path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+		g.writeln('	exit(1);')
+		g.writeln('}')
+	}
+}
+
 fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// g.write('/*assign_stmt*/')
 	if assign_stmt.left.len > assign_stmt.right.len {
@@ -537,7 +551,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			else {
 				panic('expected call')
 			}
-	}
+		}
 		mr_var_name := 'mr_$assign_stmt.pos.pos'
 		g.expr_var_name = mr_var_name
 		if table.type_is_optional(return_type) {
@@ -738,9 +752,9 @@ fn (g mut Gen) free_scope_vars(pos int) {
 					continue
 				}
 				else {
-					g.writeln('// other' + t)
+					g.writeln('// other ' + t)
 				}
-	}
+			}
 			g.writeln('string_free($var.name); // autofreed')
 		}
 	}
@@ -2031,24 +2045,39 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 		// }
 		// else {}
 		// }
-		if node.expr_types[i] == table.string_type {
+
+		sfmt := node.expr_fmts[i]
+		if sfmt.len > 0 {
+			fspec := sfmt[sfmt.len-1]
+			if fspec == `s` && node.expr_types[i] != table.string_type {
+				verror('only V strings can be formatted with a ${sfmt} format')
+			}
+			g.write('%' + sfmt[1..])
+		}else if node.expr_types[i] == table.string_type {
 			g.write('%.*s')
-		}
-		else if node.expr_types[i] == table.int_type {
+		}else {
 			g.write('%d')
 		}
 	}
 	g.write('", ')
 	// Build args
 	for i, expr in node.exprs {
-		if node.expr_types[i] == table.string_type {
+		sfmt := node.expr_fmts[i]
+		if sfmt.len > 0 {
+			fspec := sfmt[sfmt.len-1]
+			if fspec == `s` && node.expr_types[i] == table.string_type {
+				g.expr(expr)
+				g.write('.str')
+			}else{
+				g.expr(expr)
+			}
+		} else if node.expr_types[i] == table.string_type {
 			// `name.str, name.len,`
 			g.expr(expr)
 			g.write('.len, ')
 			g.expr(expr)
 			g.write('.str')
-		}
-		else {
+		} else {
 			g.expr(expr)
 		}
 		if i < node.exprs.len - 1 {
@@ -2366,15 +2395,36 @@ fn (g &Gen) type_default(typ table.Type) string {
 }
 
 pub fn (g mut Gen) write_tests_main() {
+	g.definitions.writeln('int g_test_oks = 0;')
+	g.definitions.writeln('int g_test_fails = 0;')
 	g.writeln('int main() {')
 	g.writeln('\t_vinit();')
+	mut tfuncs := []string
+	mut tsuite_begin := ''
+	mut tsuite_end := ''
 	for _, f in g.table.fns {
+		if f.name == 'testsuite_begin' {
+			tsuite_begin = f.name
+		}
+		if f.name == 'testsuite_end' {
+			tsuite_end = f.name
+		}
 		if !f.name.starts_with('test_') {
 			continue
 		}
-		g.writeln('\t${f.name}();')
+		tfuncs << f.name
 	}
-	g.writeln('return 0; }')
+	if tsuite_begin.len > 0 {
+		g.writeln('\t${tsuite_begin}();\n')
+	}
+	for t in tfuncs {
+		g.writeln('\t${t}();')
+	}
+	if tsuite_end.len > 0 {
+		g.writeln('\t${tsuite_end}();\n')
+	}
+	g.writeln('\treturn 0;')
+	g.writeln('}')
 }
 
 fn (g &Gen) is_importing_os() bool {
