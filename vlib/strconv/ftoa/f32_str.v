@@ -33,6 +33,24 @@ mut:
 	u u32
 }
 
+// pow of ten table used by n_digit reduction
+const(
+	ten_pow_table_32 = [
+		u32(1),
+		u32(10),
+		u32(100),
+		u32(1000),
+		u32(10000),
+		u32(100000),
+		u32(1000000),
+		u32(10000000),
+		u32(100000000),
+		u32(1000000000),
+		u32(10000000000),
+		u32(100000000000),
+	]
+)
+
 /******************************************************************************
 *
 * Conversion Functions
@@ -47,16 +65,14 @@ const(
 
 // max 46 char
 // -3.40282346638528859811704183484516925440e+38
-fn (d Dec32) get_string_32(neg bool, n_digit int) string {
-	mut out     := d.m
-	mut out_len := decimal_len_32(out)
+fn (d Dec32) get_string_32(neg bool, i_n_digit int) string {
+	n_digit          := i_n_digit + 1
+	mut out          := d.m
+	mut out_len      := decimal_len_32(out)
+	out_len_original := out_len
 
 	mut buf := [byte(0)].repeat(out_len + 5 + 1 +1) // sign + mant_len + . +  e + e_sign + exp_len(2) + \0
 	mut i := 0
-
-	if n_digit > 0 && out_len > n_digit {
-		out_len = n_digit+1
-	}
 
 	if neg {
 		buf[i]=`-`
@@ -66,6 +82,13 @@ fn (d Dec32) get_string_32(neg bool, n_digit int) string {
 	mut disp := 0
 	if out_len <= 1 {
 		disp = 1
+	}
+
+	if n_digit < out_len {
+		//println("orig: ${out_len_original}")
+		out += ten_pow_table_32[out_len - n_digit] + 1  // round to up
+		out /= ten_pow_table_32[out_len - n_digit]
+		out_len = n_digit
 	}
 
 	y := i + out_len
@@ -100,7 +123,7 @@ fn (d Dec32) get_string_32(neg bool, n_digit int) string {
 	buf[i]=`e`
 	i++
 
-	mut exp := d.e + out_len - 1
+	mut exp := d.e + out_len_original - 1
 	if exp < 0 {
 		buf[i]=`-`
 		i++
