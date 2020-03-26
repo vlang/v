@@ -24,7 +24,6 @@ int Bar_testa(Bar* b);
 
 int main(int argc, char** argv) {
 	_vinit();
-	_const_os__args = os__init_os_args(argc, (byteptr*)argv);
     Bar b = (Bar){
         .a = 122,
     };

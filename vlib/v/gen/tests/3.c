@@ -64,7 +64,6 @@ void handle_expr(Expr e) {
 
 int main(int argc, char** argv) {
 	_vinit();
-	_const_os__args = os__init_os_args(argc, (byteptr*)argv);
 	User user = (User){
 		.age = 0,
 		.name = tos3(""),
