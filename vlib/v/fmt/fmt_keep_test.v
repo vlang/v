@@ -5,6 +5,7 @@ import (
 	v.fmt
 	v.parser
 	v.table
+	v.pref
 )
 
 const (
@@ -43,7 +44,7 @@ fn test_fmt() {
 			continue
 		}
 		table := table.new_table()
-		file_ast := parser.parse_file(ipath, table, .parse_comments)
+		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{})
 		result_ocontent := fmt.fmt(file_ast, table)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
