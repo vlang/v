@@ -64,10 +64,10 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 
 // blank identifer assignment `_ = 111`
 fn (p mut Parser) gen_blank_identifier_assign() {
-	assign_error_tok_idx := p.token_idx
+	//assign_error_tok_idx := p.token_idx
 	p.check_name()
 	p.check_space(.assign)
-	is_indexer := p.peek() == .lsbr
+	//is_indexer := p.peek() == .lsbr
 	is_fn_call,next_expr := p.is_expr_fn_call(p.token_idx)
 	pos := p.cgen.add_placeholder()
 	expr_tok := p.cur_tok_index()
@@ -77,9 +77,9 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 		p.error_with_token_index('${next_expr}() $err_used_as_value', expr_tok)
 	}
 	p.is_var_decl = false
-	if !is_indexer && !is_fn_call {
-		p.error_with_token_index('assigning `$next_expr` to `_` is redundant', assign_error_tok_idx)
-	}
+	//if !is_indexer && !is_fn_call {
+		//p.error_with_token_index('assigning `$next_expr` to `_` is redundant', assign_error_tok_idx)
+	//}
 	// handle or
 	if p.tok == .key_orelse {
 		p.gen_handle_option_or_else(typ, '', pos)

@@ -16,14 +16,14 @@ pub fn utf32_to_str(code u32) string {
 		buffer[0] = icode
 		return tos(buffer, 1)
 	}
-	if (icode <= 2047/* 0x7FF */) {
+	if icode <= 2047/* 0x7FF */ {
 		buffer[0] = 192/*0xC0*/ | (icode>>6)/* 110xxxxx */
 
 		buffer[1] = 128/*0x80*/ | (icode & 63/*0x3F*/)/* 10xxxxxx */
 
 		return tos(buffer, 2)
 	}
-	if (icode <= 65535/* 0xFFFF */) {
+	if icode <= 65535/* 0xFFFF */ {
 		buffer[0] = 224/*0xE0*/ | (icode>>12)/* 1110xxxx */
 
 		buffer[1] = 128/*0x80*/ | ((icode>>6) & 63/*0x3F*/)/* 10xxxxxx */
@@ -32,7 +32,7 @@ pub fn utf32_to_str(code u32) string {
 
 		return tos(buffer, 3)
 	}
-	if (icode <= 1114111/* 0x10FFFF */) {
+	if icode <= 1114111/* 0x10FFFF */ {
 		buffer[0] = 240/*0xF0*/ | (icode>>18)/* 11110xxx */
 
 		buffer[1] = 128/*0x80*/ | ((icode>>12) & 63/*0x3F*/)/* 10xxxxxx */
@@ -54,14 +54,14 @@ pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
 		buffer[0] = icode
 		return tos(buffer, 1)
 	}
-	if (icode <= 2047/* 0x7FF */) {
+	if icode <= 2047/* 0x7FF */ {
 		buffer[0] = 192/*0xC0*/ | (icode>>6)/* 110xxxxx */
 
 		buffer[1] = 128/*0x80*/ | (icode & 63/*0x3F*/)/* 10xxxxxx */
 
 		return tos(buffer, 2)
 	}
-	if (icode <= 65535/* 0xFFFF */) {
+	if icode <= 65535/* 0xFFFF */ {
 		buffer[0] = 224/*0xE0*/ | (icode>>12)/* 1110xxxx */
 
 		buffer[1] = 128/*0x80*/ | ((icode>>6) & 63/*0x3F*/)/* 10xxxxxx */
@@ -70,7 +70,7 @@ pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
 
 		return tos(buffer, 3)
 	}
-	if (icode <= 1114111/* 0x10FFFF */) {
+	if icode <= 1114111/* 0x10FFFF */ {
 		buffer[0] = 240/*0xF0*/ | (icode>>18)/* 11110xxx */
 
 		buffer[1] = 128/*0x80*/ | ((icode>>12) & 63/*0x3F*/)/* 10xxxxxx */
@@ -153,21 +153,21 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
 fn utf8_len(c byte) int {
 	mut b := 0
 	mut x := c
-	if ((x & 240) != 0) {
+	if (x & 240) != 0 {
 		// 0xF0
 		x >>= 4
 	}
 	else {
 		b += 4
 	}
-	if ((x & 12) != 0) {
+	if (x & 12) != 0 {
 		// 0x0C
 		x >>= 2
 	}
 	else {
 		b += 2
 	}
-	if ((x & 2) == 0) {
+	if (x & 2) == 0 {
 		// 0x02
 		b++
 	}

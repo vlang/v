@@ -29,7 +29,7 @@ fn (p mut Parser) comp_if() ast.CompIf {
 		if ((!is_not && os != p.pref.os) || (is_not && os == p.pref.os)) && !p.pref.output_cross_c {
 			skip_os = true
 			p.check(.lcbr)
-			p.warn('SKIPPING $val os=$os p.pref.os=$p.pref.os')
+			//p.warn('skipping $if $val os=$os p.pref.os=$p.pref.os')
 			mut stack := 1
 			for {
 				if p.tok.kind == .key_return {
@@ -73,6 +73,10 @@ fn (p mut Parser) comp_if() ast.CompIf {
 	}
 	return node
 }
+
+const (
+todo_delete_me = pref.OS.linux   // TODO import warning bug
+)
 
 fn os_from_string(os string) pref.OS {
 	match os {

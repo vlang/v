@@ -172,7 +172,7 @@ pub fn day_of_week(y, m, d int) int {
 	// https://stackoverflow.com/a/6385934
 	t := [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
 	mut sy := y
-	if (m < 3) {
+	if m < 3 {
 		sy = sy - 1
 	}
 	return (sy + sy / 4 - sy / 100 + sy / 400 + t[m - 1] + d - 1) % 7 + 1

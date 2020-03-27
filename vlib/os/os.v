@@ -699,7 +699,7 @@ pub fn get_lines() []string {
 	mut inputstr := []string
 	for {
 		line = get_line()
-		if (line.len <= 0) {
+		if line.len <= 0 {
 			break
 		}
 		line = line.trim_space()

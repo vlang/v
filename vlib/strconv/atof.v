@@ -334,7 +334,7 @@ fn parser(s string) (int,PrepNumber) {
 			result = parser_pzero
 		}
 	}
-	else if (pn.exponent > 309) {
+	else if pn.exponent > 309 {
 		if pn.negative {
 			result = parser_minf
 		}

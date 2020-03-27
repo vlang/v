@@ -388,7 +388,7 @@ fn (p &Parser) known_fn_in_mod(name string) bool {
 	existing_fn := p.table.find_fn(name) or {
 		return false
 	}
-	if (existing_fn.mod == p.mod || existing_fn.mod == 'builtin') {
+	if existing_fn.mod == p.mod || existing_fn.mod == 'builtin' {
 		return true
 	}
 	return false

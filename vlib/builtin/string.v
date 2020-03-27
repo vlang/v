@@ -1306,7 +1306,7 @@ pub fn (s string) strip_margin(del ...byte) string {
 	mut ret := malloc(s.len + 1)
 	mut count := 0
 	for i := 0; i < s.len; i++ {
-		if (s[i] in [`\n`, `\r`]) {
+		if s[i] in [`\n`, `\r`] {
 			ret[count] = s[i]
 			count++
 			// CRLF

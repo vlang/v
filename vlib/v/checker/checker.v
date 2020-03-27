@@ -961,6 +961,12 @@ pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
 	}
 	node.typ = table.void_type
 	for i, branch in node.branches {
+		match branch.cond {
+			ast.ParExpr{
+				c.error('unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.',				node.pos)
+			}
+			else {}
+		}
 		typ := c.expr(branch.cond)
 		if i < node.branches.len - 1 || !node.has_else {
 			typ_sym := c.table.get_type_symbol(typ)
