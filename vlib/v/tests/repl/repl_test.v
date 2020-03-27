@@ -1,7 +1,7 @@
 module main
 
 import os
-import compiler.tests.repl.runner
+import v.tests.repl.runner
 import benchmark
 import sync
 
@@ -36,7 +36,7 @@ fn test_all_v_repl_files() {
 		bmark: benchmark.new_benchmark()
 	}
 	// warmup, and ensure that the vrepl is compiled in single threaded mode if it does not exist
-	runner.run_repl_file(os.cache_dir(), session.options.vexec, 'vlib/compiler/tests/repl/nothing.repl') or {
+	runner.run_repl_file(os.cache_dir(), session.options.vexec, 'vlib/v/tests/repl/nothing.repl') or {
 		panic(err)
 	}
 	session.bmark.set_total_expected_steps(session.options.files.len)
@@ -63,7 +63,7 @@ fn worker_repl(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.cstep = idx
-	tfolder := os.join_path(cdir, 'vrepl_tests_$idx')
+	tfolder := os.join_path(cdir,'vrepl_tests_$idx')
 	if os.is_dir(tfolder) {
 		os.rmdir_all(tfolder)
 	}

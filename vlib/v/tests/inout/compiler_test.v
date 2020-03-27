@@ -7,7 +7,7 @@ fn test_all() {
 	}
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	dir := os.join_path(vroot,'vlib/v/tests')
+	dir := os.join_path(vroot,'vlib/v/tests/inout')
 	files := os.ls(dir) or {
 		panic(err)
 	}
