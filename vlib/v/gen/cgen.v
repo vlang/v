@@ -45,6 +45,7 @@ mut:
 	assign_op      token.Kind // *=, =, etc (for array_set)
 	defer_stmts    []ast.DeferStmt
 	defer_ifdef    string
+	str_types      []int // types that need automatic str() generation
 }
 
 const (
@@ -2193,8 +2194,18 @@ fn (g mut Gen) call_expr(it ast.CallExpr) {
 	*/
 
 	if is_print && it.args[0].typ != table.string_type_idx {
-		styp := g.typ(it.args[0].typ)
-		if g.autofree && !table.type_is_optional(it.args[0].typ) {
+		typ := it.args[0].typ
+		mut styp := g.typ(typ)
+		sym := g.table.get_type_symbol(typ)
+		if !sym.has_method('str') && !(int(typ) in g.str_types) {
+			// Generate an automatic str() method if this type doesn't have it already
+			if table.type_is_ptr(typ) {
+				styp = styp.replace('*', '')
+			}
+			g.str_types << typ
+			g.definitions.writeln('string ${styp}_str($styp* x) { return tos3("TODO_str"); }')
+		}
+		if g.autofree && !table.type_is_optional(typ) {
 			tmp := g.new_tmp_var()
 			// tmps << tmp
 			g.write('string $tmp = ${styp}_str(')
