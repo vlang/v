@@ -42,13 +42,13 @@ fn init(user_data voidptr) {
 	mut state := &AppState(user_data)
 	// dont actually alocate this on the heap in real life
 	gfx.setup(&sg_desc{
-		mtl_device: C.sapp_metal_get_device()
-		mtl_renderpass_descriptor_cb: sapp_metal_get_renderpass_descriptor
-		mtl_drawable_cb: sapp_metal_get_drawable
-		d3d11_device: sapp_d3d11_get_device()
-		d3d11_device_context: sapp_d3d11_get_device_context()
-		d3d11_render_target_view_cb: sapp_d3d11_get_render_target_view
-		d3d11_depth_stencil_view_cb: sapp_d3d11_get_depth_stencil_view
+		mtl_device: sapp.metal_get_device()
+		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
+		mtl_drawable_cb: sapp.metal_get_drawable
+		d3d11_device: sapp.d3d11_get_device()
+		d3d11_device_context: sapp.d3d11_get_device_context()
+		d3d11_render_target_view_cb: sapp.d3d11_get_render_target_view
+		d3d11_depth_stencil_view_cb: sapp.d3d11_get_depth_stencil_view
 	})
 	s := &C.sgl_desc_t{}
 	C.sgl_setup(s)
@@ -64,7 +64,7 @@ fn frame(user_data voidptr) {
 	t := time.ticks()
 	mut state := &AppState(user_data)
 	state.render_font()
-	gfx.begin_default_pass(&state.pass_action, sapp_width(), sapp_height())
+	gfx.begin_default_pass(&state.pass_action, sapp.width(), sapp.height())
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
@@ -98,43 +98,43 @@ fn (state &AppState) render_font() {
 	dy += lh
 	C.fonsSetColor(state.fons, white)
 	dx = C.fonsDrawText(state.fons, dx, dy, c'The quick ', C.NULL)
-	fonsSetFont(state.fons, state.font_normal)
-	fonsSetSize(state.fons, 48.0)
-	fonsSetColor(state.fons, brown)
-	dx = fonsDrawText(state.fons, dx, dy, c'brown ', C.NULL)
-	fonsSetFont(state.fons, state.font_normal)
-	fonsSetSize(state.fons, 24.0)
-	fonsSetColor(state.fons, white)
-	dx = fonsDrawText(state.fons, dx, dy, c'fox ', C.NULL)
+	C.fonsSetFont(state.fons, state.font_normal)
+	C.fonsSetSize(state.fons, 48.0)
+	C.fonsSetColor(state.fons, brown)
+	dx = C.fonsDrawText(state.fons, dx, dy, c'brown ', C.NULL)
+	C.fonsSetFont(state.fons, state.font_normal)
+	C.fonsSetSize(state.fons, 24.0)
+	C.fonsSetColor(state.fons, white)
+	dx = C.fonsDrawText(state.fons, dx, dy, c'fox ', C.NULL)
 	dx = sx
 	dy += lh * 1.2
-	fonsSetSize(state.fons, 20.0)
-	fonsSetFont(state.fons, state.font_normal)
-	fonsSetColor(state.fons, blue)
-	fonsDrawText(state.fons, dx, dy, c'Now is the time for all good men to come to the aid of the party.', C.NULL)
+	C.fonsSetSize(state.fons, 20.0)
+	C.fonsSetFont(state.fons, state.font_normal)
+	C.fonsSetColor(state.fons, blue)
+	C.fonsDrawText(state.fons, dx, dy, c'Now is the time for all good men to come to the aid of the party.', C.NULL)
 	dx = 300
 	dy = 350
-	fonsSetAlign(state.fons, C.FONS_ALIGN_LEFT | C.FONS_ALIGN_BASELINE)
-	fonsSetSize(state.fons, 60.0)
-	fonsSetFont(state.fons, state.font_normal)
-	fonsSetColor(state.fons, white)
-	fonsSetSpacing(state.fons, 5.0)
-	fonsSetBlur(state.fons, 6.0)
-	fonsDrawText(state.fons, dx, dy, c'Blurry...', C.NULL)
+	C.fonsSetAlign(state.fons, C.FONS_ALIGN_LEFT | C.FONS_ALIGN_BASELINE)
+	C.fonsSetSize(state.fons, 60.0)
+	C.fonsSetFont(state.fons, state.font_normal)
+	C.fonsSetColor(state.fons, white)
+	C.fonsSetSpacing(state.fons, 5.0)
+	C.fonsSetBlur(state.fons, 6.0)
+	C.fonsDrawText(state.fons, dx, dy, c'Blurry...', C.NULL)
 	dx = 300
 	dy += 50.0
-	fonsSetSize(state.fons, 28.0)
-	fonsSetFont(state.fons, state.font_normal)
-	fonsSetColor(state.fons, white)
-	fonsSetSpacing(state.fons, 0.0)
-	fonsSetBlur(state.fons, 3.0)
-	fonsDrawText(state.fons, dx, dy + 2, c'DROP SHADOW', C.NULL)
-	fonsSetColor(state.fons, black)
-	fonsSetBlur(state.fons, 0)
-	fonsDrawText(state.fons, dx, dy, c'DROP SHADOW', C.NULL)
-	fonsSetSize(state.fons, 18.0)
-	fonsSetFont(state.fons, state.font_normal)
-	fonsSetColor(state.fons, white)
+	C.fonsSetSize(state.fons, 28.0)
+	C.fonsSetFont(state.fons, state.font_normal)
+	C.fonsSetColor(state.fons, white)
+	C.fonsSetSpacing(state.fons, 0.0)
+	C.fonsSetBlur(state.fons, 3.0)
+	C.fonsDrawText(state.fons, dx, dy + 2, c'DROP SHADOW', C.NULL)
+	C.fonsSetColor(state.fons, black)
+	C.fonsSetBlur(state.fons, 0)
+	C.fonsDrawText(state.fons, dx, dy, c'DROP SHADOW', C.NULL)
+	C.fonsSetSize(state.fons, 18.0)
+	C.fonsSetFont(state.fons, state.font_normal)
+	C.fonsSetColor(state.fons, white)
 	dx = 50
 	dy = 350
 	line(dx - 10, dy, dx + 250, dy)

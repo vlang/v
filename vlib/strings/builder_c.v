@@ -72,7 +72,9 @@ pub fn (b &Builder) after(n int) string {
 		return ''
 	}
 	buf := b.buf[n..]
-	return string(buf.clone())
+	mut copy := buf.clone()
+	copy << `\0`
+	return string(copy)
 }
 
 pub fn (b mut Builder) str() string {

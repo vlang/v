@@ -18,8 +18,8 @@ ConcatExpr | Type | AsCast | TypeOf | StringInterLiteral
 
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 
-LineComment | MultiLineComment | AssertStmt | UnsafeStmt
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
+LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -28,6 +28,11 @@ LineComment | MultiLineComment | AssertStmt | UnsafeStmt
 pub struct Type {
 pub:
 	typ table.Type
+}
+
+pub struct Block {
+pub:
+	stmts []Stmt
 }
 
 // | IncDecStmt k
@@ -51,7 +56,9 @@ pub:
 
 pub struct StringLiteral {
 pub:
-	val string
+	val    string
+	is_raw bool
+	is_c   bool
 }
 
 // 'name: $name'
@@ -59,6 +66,7 @@ pub struct StringInterLiteral {
 pub:
 	vals       []string
 	exprs      []Expr
+	expr_fmts  []string
 mut:
 	expr_types []table.Type
 }
@@ -153,6 +161,7 @@ pub:
 	rec_mut       bool // is receiver mutable
 	is_c          bool
 	no_body       bool // just a definition `fn C.malloc()`
+	pos           token.Position
 }
 
 pub struct BranchStmt {
@@ -162,16 +171,18 @@ pub:
 
 pub struct CallExpr {
 pub:
-// tok          token.Token
-	pos         token.Position
+// tok            token.Token
+	pos           token.Position
 mut:
-// func         Expr
-	name        string
-	args        []CallArg
-	is_c        bool
-	muts        []bool
-	or_block    OrExpr
-	return_type table.Type
+// func           Expr
+	name          string
+	args          []CallArg
+	exp_arg_types []table.Type
+	is_c          bool
+	muts          []bool
+	or_block      OrExpr
+	// has_or_block bool
+	return_type   table.Type
 }
 
 pub struct MethodCallExpr {
@@ -183,6 +194,7 @@ pub:
 	args          []CallArg
 	or_block      OrExpr
 mut:
+	exp_arg_types []table.Type
 	expr_type     table.Type // type of `user`
 	receiver_type table.Type // User
 	return_type   table.Type
@@ -190,11 +202,10 @@ mut:
 
 pub struct CallArg {
 pub:
-	is_mut        bool
-	expr          Expr
+	is_mut bool
+	expr   Expr
 mut:
-	typ           table.Type
-	expected_type table.Type
+	typ    table.Type
 }
 
 pub struct Return {
@@ -384,8 +395,13 @@ pub:
 
 pub struct CompIf {
 pub:
-	cond       Expr
+// cond       Expr
+	val        string
 	stmts      []Stmt
+	is_not     bool
+	pos        token.Position
+mut:
+	has_else   bool
 	else_stmts []Stmt
 }
 
@@ -399,13 +415,18 @@ pub:
 
 pub struct ForInStmt {
 pub:
-	key_var  string
-	val_var  string
-	cond     Expr
-	is_range bool
-	high     Expr // `10` in `for i in 0..10 {`
-	stmts    []Stmt
-	pos      token.Position
+	key_var   string
+	val_var   string
+	cond      Expr
+	is_range  bool
+	high      Expr // `10` in `for i in 0..10 {`
+	stmts     []Stmt
+	pos       token.Position
+mut:
+	key_type  table.Type
+	val_type  table.Type
+	cond_type table.Type
+	kind      table.Kind // array/map/string
 }
 
 pub struct ForCStmt {
@@ -505,6 +526,11 @@ pub:
 pub struct DeferStmt {
 pub:
 	stmts []Stmt
+mut:
+	// TODO: handle this differently
+	// v1 excludes non current os ifdefs so
+	// the defer's never get added in the first place
+	ifdef string
 }
 
 pub struct UnsafeStmt {
@@ -586,6 +612,7 @@ mut:
 pub struct AssertStmt {
 pub:
 	expr Expr
+	pos  token.Position
 }
 
 // `if [x := opt()] {`

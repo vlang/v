@@ -30,7 +30,8 @@ void init_user() {
 
 User get_user() {
 	User user = (User){
-	0};
+		.name = tos3(""),
+	};
 	return user;
 }
 
@@ -65,7 +66,7 @@ void function2() {
 }
 
 void init_array() {
-	array_int nums = new_array_from_c_array(3, 3, sizeof(int), (int[]){
+	array_int nums = new_array_from_c_array(3, 3, sizeof(int), (int[3]){
 		4, 2, 3,
 	});
 }
@@ -75,8 +76,13 @@ void end() {
 }
 
 
-int main() {
+int main(int argc, char** argv) {
+	_vinit();
 	return 0;
+}
+
+void _vinit() {
+
 }
 
 

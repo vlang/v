@@ -22,7 +22,7 @@ mut:
 	errors         []string
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
-	is_amp         bool
+	// fn_decl        ast.FnDecl
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -85,19 +85,13 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array {
 			info := typ_sym.info as table.Struct
-			if struct_init.fields.len == 0 {
-				// Short syntax TODO check
-				if c.is_amp {
-					return table.type_to_ptr(struct_init.typ)
-				}
-				return struct_init.typ
-			}
+			is_short_syntax := struct_init.fields.len == 0
 			if struct_init.exprs.len > info.fields.len {
 				c.error('too many fields', struct_init.pos)
 			}
 			for i, expr in struct_init.exprs {
 				// struct_field info.
-				field_name := struct_init.fields[i]
+				field_name := if is_short_syntax { info.fields[i].name } else { struct_init.fields[i] }
 				mut field := info.fields[i]
 				mut found_field := false
 				for f in info.fields {
@@ -122,9 +116,6 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 			}
 		}
 		else {}
-	}
-	if c.is_amp {
-		return table.type_to_ptr(struct_init.typ)
 	}
 	return struct_init.typ
 }
@@ -184,11 +175,11 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		return table.string_type
 	}
 	// start hack: until v1 is fixed and c definitions are added for these
-	if fn_name in ['C.calloc', 'C.exit', 'C.free'] {
+	if fn_name in ['C.calloc', 'C.malloc', 'C.exit', 'C.free'] {
 		for arg in call_expr.args {
 			c.expr(arg.expr)
 		}
-		if fn_name == 'C.calloc' {
+		if fn_name in ['C.calloc', 'C.malloc'] {
 			return table.byteptr_type
 		}
 		return table.void_type
@@ -238,8 +229,9 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		}
 		return f.return_type
 	}
-	if call_expr.args.len < f.args.len {
-		c.error('too few arguments in call to `$fn_name`', call_expr.pos)
+	min_required_args := if f.is_variadic { f.args.len - 1 } else { f.args.len }
+	if call_expr.args.len < min_required_args {
+		c.error('too few arguments in call to `$fn_name` ($call_expr.args.len instead of $min_required_args)', call_expr.pos)
 	}
 	else if !f.is_variadic && call_expr.args.len > f.args.len {
 		c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)', call_expr.pos)
@@ -250,12 +242,17 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
 		return f.return_type
 	}
+	// TODO: typ optimize.. this node can get processed more than once
+	if call_expr.exp_arg_types.len == 0 {
+		for arg in f.args {
+			call_expr.exp_arg_types << arg.typ
+		}
+	}
 	for i, call_arg in call_expr.args {
 		arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
 		c.expected_type = arg.typ
 		typ := c.expr(call_arg.expr)
 		call_expr.args[i].typ = typ
-		call_expr.args[i].expected_type = arg.typ
 		typ_sym := c.table.get_type_symbol(typ)
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)
 		if !c.table.check(typ, arg.typ) {
@@ -284,8 +281,8 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 	name := method_call_expr.name
 	c.stmts(method_call_expr.or_block.stmts)
 	// println('method call $name $method_call_expr.pos.line_nr')
-	if typ_sym.kind == .array && name in ['filter', 'clone', 'repeat'] {
-		if name == 'filter' {
+	if typ_sym.kind == .array && name in ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice'] {
+		if name in ['filter', 'map'] {
 			array_info := typ_sym.info as table.Array
 			mut scope := c.file.scope.innermost(method_call_expr.pos.pos)
 			scope.override_var(ast.Var{
@@ -299,7 +296,9 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		// need to return `array_xxx` instead of `array`
 		method_call_expr.return_type = typ
 		if name == 'clone' {
+			// in ['clone', 'str'] {
 			method_call_expr.receiver_type = table.type_to_ptr(typ)
+			// method_call_expr.return_type = method_call_expr.receiver_type
 		}
 		else {
 			method_call_expr.receiver_type = typ
@@ -313,26 +312,39 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		return info.elem_type
 	}
 	if method := c.table.type_find_method(typ_sym, name) {
-		if method_call_expr.args.len < method.args.len - 1 {
-			c.error('too few arguments in call to `${typ_sym.name}.$name`', method_call_expr.pos)
+		no_args := method.args.len - 1
+		min_required_args := method.args.len - if method.is_variadic && method.args.len > 1 { 2 } else { 1 }
+		if method_call_expr.args.len < min_required_args {
+			c.error('too few arguments in call to `${typ_sym.name}.$name` ($method_call_expr.args.len instead of $min_required_args)', method_call_expr.pos)
 		}
-		else if !method.is_variadic && method_call_expr.args.len > method.args.len + 1 {
-			c.error('too many arguments in call to `${typ_sym.name}.$name` ($method_call_expr.args.len instead of $method.args.len)', method_call_expr.pos)
+		else if !method.is_variadic && method_call_expr.args.len > no_args {
+			c.error('too many arguments in call to `${typ_sym.name}.$name` ($method_call_expr.args.len instead of $no_args)', method_call_expr.pos)
 		}
 		// if name == 'clone' {
 		// println('CLONE nr args=$method.args.len')
 		// }
 		for i, arg in method_call_expr.args {
-			c.expected_type = method.args[i + 1].typ
-			method_call_expr.args[i].expected_type = c.expected_type
+			c.expected_type = if method.is_variadic && i >= method.args.len - 1 { method.args[method.args.len - 1].typ } else { method.args[i + 1].typ }
 			method_call_expr.args[i].typ = c.expr(arg.expr)
+		}
+		// TODO: typ optimize.. this node can get processed more than once
+		if method_call_expr.exp_arg_types.len == 0 {
+			for i in 1 .. method.args.len {
+				method_call_expr.exp_arg_types << method.args[i].typ
+			}
 		}
 		method_call_expr.receiver_type = method.args[0].typ
 		method_call_expr.return_type = method.return_type
 		return method.return_type
 	}
 	// TODO: str methods
-	if typ_sym.kind in [.map] && name == 'str' {
+	if typ_sym.kind == .map && name == 'str' {
+		method_call_expr.receiver_type = table.new_type(c.table.type_idxs['map_string'])
+		method_call_expr.return_type = table.string_type
+		return table.string_type
+	}
+	if typ_sym.kind == .array && name == 'str' {
+		// method_call_expr.receiver_type = table.new_type(c.table.type_idxs['ar_string'])
 		method_call_expr.return_type = table.string_type
 		return table.string_type
 	}
@@ -372,6 +384,10 @@ pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 	c.expected_type = c.fn_return_type
 	if return_stmt.exprs.len == 0 {
+		return
+	}
+	if return_stmt.exprs.len > 0 && c.fn_return_type == table.void_type {
+		c.error('too many arguments to return, current function does not return anything', return_stmt.pos)
 		return
 	}
 	expected_type := c.fn_return_type
@@ -473,6 +489,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 }
 
 pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
+	// println('checker: array init $array_init.pos.line_nr $c.file.path')
 	mut elem_type := table.void_type
 	// []string - was set in parser
 	if array_init.typ != table.void_type {
@@ -525,12 +542,27 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 fn (c mut Checker) stmt(node ast.Stmt) {
 	// c.expected_type = table.void_type
 	match mut node {
+		ast.AssertStmt {
+			c.expr(it.expr)
+		}
 		ast.AssignStmt {
 			c.assign_stmt(mut it)
 			c.expected_type = table.void_type
 		}
+		ast.Block {
+			c.stmts(it.stmts)
+		}
 		// ast.Attr {}
-		// ast.CompIf {}
+		ast.CompIf {
+			// c.expr(it.cond)
+			c.stmts(it.stmts)
+			if it.has_else {
+				c.stmts(it.else_stmts)
+			}
+		}
+		ast.DeferStmt {
+			c.stmts(it.stmts)
+		}
 		ast.ConstDecl {
 			for i, expr in it.exprs {
 				mut field := it.fields[i]
@@ -576,8 +608,8 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			}
 			else {
 				mut scope := c.file.scope.innermost(it.pos.pos)
+				sym := c.table.get_type_symbol(typ)
 				if it.key_var.len > 0 {
-					sym := c.table.get_type_symbol(typ)
 					key_type := match sym.kind {
 						.map{
 							sym.map_info().key_type
@@ -585,6 +617,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 						else {
 							table.int_type}
 	}
+					it.key_type = key_type
 					scope.override_var(ast.Var{
 						name: it.key_var
 						typ: key_type
@@ -593,8 +626,11 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				value_type := c.table.value_type(typ)
 				if value_type == table.void_type {
 					typ_sym := c.table.get_type_symbol(typ)
-					c.error('for in: cannot index $typ_sym.name', it.pos)
+					c.error('for in: cannot index `$typ_sym.name`', it.pos)
 				}
+				it.cond_type = typ
+				it.kind = sym.kind
+				it.val_type = value_type
 				scope.override_var(ast.Var{
 					name: it.val_var
 					typ: value_type
@@ -716,12 +752,15 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return c.postfix_expr(it)
 		}
 		ast.PrefixExpr {
-			if it.op == .amp {
-				c.is_amp = true
+			right_type := c.expr(it.right)
+			// TODO: testing ref/deref strategy
+			if it.op == .amp && !table.type_is_ptr(right_type) {
+				return table.type_to_ptr(right_type)
 			}
-			res := c.expr(it.right)
-			c.is_amp = false
-			return res
+			if it.op == .mul && table.type_is_ptr(right_type) {
+				return table.type_deref(right_type)
+			}
+			return right_type
 		}
 		ast.None {
 			return table.none_type
@@ -781,11 +820,14 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		mut found := true
 		mut var_scope := &ast.Scope(0)
 		mut var := ast.Var{}
-		var_scope,var = start_scope.find_scope_and_var(ident.name) or {
+		// var_scope,var = start_scope.find_scope_and_var(ident.name) or {
+		mr := start_scope.find_scope_and_var(ident.name) or {
 			found = false
 			c.error('not found: $ident.name - POS: $ident.pos.pos', ident.pos)
 			panic('')
 		}
+		var_scope = mr.scope
+		var = mr.var
 		if found {
 			// update the variable
 			// we need to do this here instead of var_decl since some
@@ -986,7 +1028,7 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 		index_type := c.expr(node.index)
 		index_type_sym := c.table.get_type_symbol(index_type)
 		// println('index expr left=$typ_sym.name $node.pos.line_nr')
-		if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_idxs) && index_type_sym.kind != .enum_) {
+		if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) && index_type_sym.kind != .enum_) {
 			c.error('non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)', node.pos)
 		}
 		else if typ_sym.kind == .map && table.type_idx(index_type) != table.string_type_idx {

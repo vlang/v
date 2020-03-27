@@ -15,13 +15,6 @@ pub:
 	element_size int
 }
 
-/*
-struct Foo {
-	a []string
-	b [][]string
-}
-*/
-
 // Internal function, used by V (`nums := []int`)
 fn new_array(mylen int, cap int, elm_size int) array {
 	cap_ := if cap == 0 { 1 } else { cap }
@@ -39,9 +32,17 @@ pub fn make(len int, cap int, elm_size int) array {
 	return new_array(len, cap, elm_size)
 }
 
+/*
+struct Foo {
+	a []string
+	b [][]string
+}
+*/
+
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 	cap_ := if cap == 0 { 1 } else { cap }
+
 	arr := array{
 		len: len
 		cap: cap
@@ -377,7 +378,9 @@ pub fn (a []int) str() string {
 	mut sb := strings.new_builder(a.len * 13)
 	sb.write('[')
 	for i in 0..a.len {
-		sb.write(a[i].str())
+		val := a[i].str()
+		sb.write(val)
+		val.free()
 		if i < a.len - 1 {
 			sb.write(', ')
 		}

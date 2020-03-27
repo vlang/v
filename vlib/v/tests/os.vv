@@ -1,10 +1,12 @@
 import os
 
 fn main() {
-	files := os.ls('.') or { panic(err) }
+	vexe := os.getenv('VEXE')
+	vroot := os.dir(vexe)
+	files := os.ls(vroot) or { panic(err) }
 	for file in files {
-		if file.ends_with('_test.v') {
+		if file.ends_with('.md') {
 			println(file)
 		}
-}	
+	}
 }

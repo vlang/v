@@ -38,11 +38,11 @@ pub const (
 	// -9223372036854775808 is wrong because C compilers parse litteral values
 	// without sign first, and 9223372036854775808 overflows i64, hence the
 	// consecutive subtraction by 1
-	min_i64 = -9223372036854775807 - 1
-	max_i64 = 9223372036854775807
+	min_i64 = i64(-9223372036854775807 - 1)
+	max_i64 = i64(9223372036854775807)
 	max_u8 = 255
 	max_u16 = 65535
-	max_u32 = 4294967295
-	max_u64 = 18446744073709551615
+	max_u32 = u32(4294967295)
+	max_u64 = u64(18446744073709551615)
 )
 

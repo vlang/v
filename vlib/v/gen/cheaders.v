@@ -188,9 +188,12 @@ extern wchar_t **_wenviron;
 byte g_str_buf[1024];
 int load_so(byteptr);
 void reload_so();
+void _vinit();
+void _vcleanup();
+#define sigaction_size sizeof(sigaction);
 
 // ============== wyhash ==============
-//	Author: Wang Yi <godspeed_china@yeah.net>
+//	Author: Wang Yi
 #ifndef wyhash_version_4
 #define wyhash_version_4
 #include	<stdint.h>
@@ -303,11 +306,13 @@ typedef array array_u64;
 typedef map map_int;
 typedef map map_string;
 typedef byte array_fixed_byte_300 [300];
+typedef byte array_fixed_byte_400 [400];
 #ifndef bool
 	typedef int bool;
 	#define true 1
 	#define false 0
 #endif
+
 '
 	bare_c_headers = '
 

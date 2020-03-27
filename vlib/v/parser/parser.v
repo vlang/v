@@ -161,6 +161,7 @@ pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	// ///////////////
 	mut files := []ast.File
 	for path in paths {
+		// println('parse_files $path')
 		files << parse_file(path, table, .skip_comments)
 	}
 	return files
@@ -311,9 +312,10 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 			return p.line_comment()
 		}
 		.mline_comment {
-			// p.next()
+			comment := p.tok.lit
+			p.next()
 			return ast.MultiLineComment{
-				text: p.scanner.line_comment
+				text: comment
 			}
 		}
 		else {
@@ -334,11 +336,18 @@ pub fn (p mut Parser) line_comment() ast.LineComment {
 
 pub fn (p mut Parser) stmt() ast.Stmt {
 	match p.tok.kind {
+		.lcbr {
+			stmts := p.parse_block()
+			return ast.Block{
+				stmts: stmts
+			}
+		}
 		.key_assert {
 			p.next()
 			expr := p.expr(0)
 			return ast.AssertStmt{
 				expr: expr
+				pos: p.tok.position()
 			}
 		}
 		.key_mut {
@@ -587,6 +596,11 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		return ast.MapInit{
 			typ: map_type
 		}
+	}
+	// Raw string (`s := r'hello \n ')
+	if p.tok.lit == 'r' && p.peek_tok.kind == .string {
+		// && p.prev_tok.kind != .str_dollar {
+		return p.string_expr()
 	}
 	known_var := p.scope.known_var(p.tok.lit)
 	if p.peek_tok.kind == .dot && !known_var && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') == p.tok.lit) {
@@ -962,7 +976,8 @@ fn (p mut Parser) filter() {
 fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
 	field_name := p.check_name()
-	if field_name == 'filter' {
+	is_filter := field_name in ['filter', 'map']
+	if is_filter {
 		p.open_scope()
 		p.filter()
 		// wrong tok position when using defer
@@ -997,7 +1012,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr
-		if field_name == 'filter' {
+		if is_filter {
 			p.close_scope()
 		}
 		return node
@@ -1009,7 +1024,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	mut node := ast.Expr{}
 	node = sel_expr
-	if field_name == 'filter' {
+	if is_filter {
 		p.close_scope()
 	}
 	return node
@@ -1242,10 +1257,17 @@ fn (p mut Parser) if_expr() ast.IfExpr {
 }
 
 fn (p mut Parser) string_expr() ast.Expr {
+	is_raw := p.tok.kind == .name && p.tok.lit == 'r'
+	is_cstr := p.tok.kind == .name && p.tok.lit == 'c'
+	if is_raw || is_cstr {
+		p.next()
+	}
 	mut node := ast.Expr{}
 	val := p.tok.lit
 	node = ast.StringLiteral{
 		val: val
+		is_raw: is_raw
+		is_c: is_cstr
 	}
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
@@ -1253,6 +1275,7 @@ fn (p mut Parser) string_expr() ast.Expr {
 	}
 	mut exprs := []ast.Expr
 	mut vals := []string
+	mut efmts := []string
 	// Handle $ interpolation
 	for p.tok.kind == .string {
 		vals << p.tok.lit
@@ -1262,24 +1285,31 @@ fn (p mut Parser) string_expr() ast.Expr {
 		}
 		p.check(.str_dollar)
 		exprs << p.expr(0)
+		mut efmt := []string
 		if p.tok.kind == .colon {
+			efmt << ':'
 			p.next()
 		}
 		// ${num:-2d}
 		if p.tok.kind == .minus {
+			efmt << '-'
 			p.next()
 		}
 		// ${num:2d}
 		if p.tok.kind == .number {
+			efmt << p.tok.lit
 			p.next()
 			if p.tok.lit.len == 1 {
+				efmt << p.tok.lit
 				p.next()
 			}
 		}
+		efmts << efmt.join('')
 	}
 	node = ast.StringInterLiteral{
 		vals: vals
 		exprs: exprs
+		expr_fmts: efmts
 	}
 	return node
 }
@@ -1295,7 +1325,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 		line_nr := p.tok.line_nr
 		p.check(.rsbr)
 		// []string
-		if p.tok.kind == .name && p.tok.line_nr == line_nr {
+		if p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
 			elem_type = p.parse_type()
 			// this is set here becasue its a known type, others could be the
 			// result of expr so we do those in checker
@@ -1315,7 +1345,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 		line_nr := p.tok.line_nr
 		p.check(.rsbr)
 		// [100]byte
-		if exprs.len == 1 && p.tok.kind == .name && p.tok.line_nr == line_nr {
+		if exprs.len == 1 && p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
 			elem_type = p.parse_type()
 			// p.warn('fixed size array')
 		}
@@ -1454,6 +1484,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		p.next() // .
 	}
 	mut name := p.check_name()
+	// println('struct decl $name')
 	p.check(.lcbr)
 	mut ast_fields := []ast.Field
 	mut fields := []table.Field
@@ -1476,6 +1507,10 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			p.check(.key_mut)
 			p.check(.colon)
 			mut_pos = fields.len
+		}
+		else if p.tok.kind == .key_global {
+			p.check(.key_global)
+			p.check(.colon)
 		}
 		field_name := p.check_name()
 		// p.warn('field $field_name')
@@ -1685,6 +1720,7 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 
 fn (p mut Parser) match_expr() ast.MatchExpr {
 	p.check(.key_match)
+	pos := p.tok.position()
 	is_mut := p.tok.kind == .key_mut
 	mut is_sum_type := false
 	if is_mut {
@@ -1695,6 +1731,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 	mut branches := []ast.MatchBranch
 	for {
 		mut exprs := []ast.Expr
+		branch_pos := p.tok.position()
 		p.open_scope()
 		// final else
 		if p.tok.kind == .key_else {
@@ -1739,6 +1776,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		branches << ast.MatchBranch{
 			exprs: exprs
 			stmts: stmts
+			pos: branch_pos
 		}
 		p.close_scope()
 		if p.tok.kind == .rcbr {
@@ -1750,6 +1788,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		branches: branches
 		cond: cond
 		is_sum_type: is_sum_type
+		pos: pos
 	}
 }
 

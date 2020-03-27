@@ -160,7 +160,7 @@ pub fn cp(old, new string) ?bool {
 			return error_with_code('failed to copy $old to $new', int(result))
 		}
 	} $else {
-		os.system('cp $old $new')
+		os.system('cp "$old" "$new"')
 		return true // TODO make it return true or error when cp for linux is implemented
 	}
 }
@@ -178,16 +178,16 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 	}
 	// single file copy
 	if !os.is_dir(source_path) {
-		adjasted_path := if os.is_dir(dest_path) { os.join_path(dest_path,os.file_name(source_path)) } else { dest_path }
-		if os.exists(adjasted_path) {
+		adjusted_path := if os.is_dir(dest_path) {os.join_path(dest_path,os.file_name(source_path)) } else { dest_path }
+		if os.exists(adjusted_path) {
 			if overwrite {
-				os.rm(adjasted_path)
+				os.rm(adjusted_path)
 			}
 			else {
 				return error('Destination file path already exist')
 			}
 		}
-		os.cp(source_path, adjasted_path) or {
+		os.cp(source_path, adjusted_path) or {
 			return error(err)
 		}
 		return true
@@ -532,9 +532,15 @@ pub fn is_executable(path string) bool {
     // 06 Read and write
     p := os.real_path( path )
     return ( os.exists( p ) && p.ends_with('.exe') )
-  } $else {
-    return C.access(path.str, X_OK) != -1
   }
+  $if solaris {
+    statbuf := C.stat{}
+    if C.stat(path.str, &statbuf) != 0 {
+      return false
+    }
+    return (int(statbuf.st_mode) & ( S_IXUSR | S_IXGRP | S_IXOTH )) != 0
+  }
+  return C.access(path.str, X_OK) != -1
 }
 
 // `is_writable` returns `true` if `path` is writable.
@@ -611,7 +617,7 @@ fn print_c_errno() {
 	println('errno=$e err=$se')
 }
 
-pub fn ext(path string) string {
+pub fn file_ext(path string) string {
 	pos := path.last_index('.') or {
 		return ''
 	}
@@ -756,6 +762,9 @@ pub fn home_dir() string {
 	$if windows {
 		return os.getenv('USERPROFILE') + os.path_separator
 	} $else {
+		//println('home_dir() call')
+		//res:= os.getenv('HOME') + os.path_separator
+		//println('res="$res"')
 		return os.getenv('HOME') + os.path_separator
 	}
 }
@@ -782,12 +791,15 @@ pub fn on_segfault(f voidptr) {
 		return
 	}
 	$if macos {
+		C.printf("TODO")
+		/*
 		mut sa := C.sigaction{}
-		C.memset(&sa, 0, sizeof(sigaction))
+		C.memset(&sa, 0, sizeof(C.sigaction_size))
 		C.sigemptyset(&sa.sa_mask)
 		sa.sa_sigaction = f
 		sa.sa_flags = C.SA_SIGINFO
 		C.sigaction(C.SIGSEGV, &sa, 0)
+		*/
 	}
 }
 
@@ -923,7 +935,8 @@ pub fn is_dir(path string) bool {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
-		return int(statbuf.st_mode) & S_IFMT == S_IFDIR
+		val:= int(statbuf.st_mode) & S_IFMT
+		return val == S_IFDIR
 	}
 }
 

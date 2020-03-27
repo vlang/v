@@ -95,17 +95,17 @@ pub fn new_time(t Time) Time {
 		hour: t.hour
 		minute: t.minute
 		second: t.second
-		unix: t.calc_unix()
+		unix: t.unix_time()
 	}
 	// TODO Use the syntax below when it works with reserved keywords like `unix`
 	// return {
 	// 	t |
-	// 	unix:t.calc_unix()
+	// 	unix:t.unix_time()
 	// }
 }
 
-// calc_unix returns Unix time.
-pub fn (t &Time) calc_unix() int {
+// unix_time returns Unix time.
+pub fn (t &Time) unix_time() int {
 	if t.unix != 0 {
 		return t.unix
 	}

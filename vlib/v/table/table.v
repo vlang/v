@@ -220,7 +220,7 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 		return &t.types[idx]
 	}
 	// this should never happen
-	panic('get_type_symbol: invalid type (typ=$typ idx=${idx}). This should neer happen')
+	panic('get_type_symbol: invalid type (typ=$typ idx=${idx}). This should never happen')
 }
 
 // this will override or register builtin type
@@ -414,7 +414,11 @@ pub fn (t mut Table) add_placeholder_type(name string) int {
 [inline]
 pub fn (t &Table) value_type(typ Type) Type {
 	typ_sym := t.get_type_symbol(typ)
-	if typ_sym.kind == .array {
+	if type_is_variadic(typ) {
+		// ...string => string
+		return type_clear_extra(typ)
+	}
+	else if typ_sym.kind == .array {
 		// Check index type
 		info := typ_sym.info as Array
 		return info.elem_type
@@ -435,10 +439,6 @@ pub fn (t &Table) value_type(typ Type) Type {
 		// bytes[0] is a byte, not byte*
 		return type_deref(typ)
 	}
-	else if type_is_variadic(typ) {
-		// ...string => string
-		return type_clear_extra(typ)
-	}
 	else {
 		// TODO: remove when map_string is removed
 		if typ_sym.name == 'map_string' {
@@ -449,44 +449,41 @@ pub fn (t &Table) value_type(typ Type) Type {
 }
 
 pub fn (t &Table) check(got, expected Type) bool {
-	got_type_sym := t.get_type_symbol(got)
-	exp_type_sym := t.get_type_symbol(expected)
 	got_idx := type_idx(got)
 	exp_idx := type_idx(expected)
 	// got_is_ptr := type_is_ptr(got)
 	exp_is_ptr := type_is_ptr(expected)
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
-	if got_type_sym.kind == .none_ {
+	// # NOTE: use idxs here, and symbols below for perf
+	if got_idx == none_type_idx {
 		// TODO
-		return true
-	}
-	if exp_type_sym.kind == .voidptr {
-		return true
-	}
-	// if got_type_sym.kind == .array_fixed {
-	// return true
-	// }
-	if got_type_sym.kind in [.voidptr, .byteptr, .charptr, .int] && exp_type_sym.kind in [.voidptr, .byteptr, .charptr] {
-		return true
-	}
-	if got_type_sym.is_int() && exp_type_sym.is_int() {
 		return true
 	}
 	// allow pointers to be initialized with 0. TODO: use none instead
 	if exp_is_ptr && got_idx == int_type_idx {
 		return true
 	}
+	if exp_idx == voidptr_type_idx || got_idx == voidptr_type_idx {
+		return true
+	}
+	if (exp_idx in pointer_type_idxs || exp_idx in number_type_idxs) //
+	&& (got_idx in pointer_type_idxs || got_idx in number_type_idxs) {
+		return true
+	}
+	// see hack in checker IndexExpr line #691
+	if (got_idx == byte_type_idx && exp_idx == byteptr_type_idx) //
+	|| (exp_idx == byte_type_idx && got_idx == byteptr_type_idx) {
+		return true
+	}
+	if (got_idx == char_type_idx && exp_idx == charptr_type_idx) //
+	|| (exp_idx == char_type_idx && got_idx == charptr_type_idx) {
+		return true
+	}
+	// # NOTE: use symbols from this point on for perf
+	got_type_sym := t.get_type_symbol(got)
+	exp_type_sym := t.get_type_symbol(expected)
 	// allow enum value to be used as int
 	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) || (exp_type_sym.is_int() && got_type_sym.kind == .enum_) {
-		return true
-	}
-	// TODO
-	if got_type_sym.is_number() && exp_type_sym.is_number() {
-		return true
-	}
-	// TODO: actually check for & handle pointers with name_expr
-	// see hack in checker IndexExpr line #691
-	if (got_type_sym.kind == .byte && exp_type_sym.kind == .byteptr) || (exp_type_sym.kind == .byte && got_type_sym.kind == .byteptr) {
 		return true
 	}
 	// TODO

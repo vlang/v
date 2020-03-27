@@ -30,11 +30,11 @@ Option_int get_opt() {
 
 void User_foo(User* u) {
 	int age = u->age;
-	array_string zzz = array_repeat(new_array_from_c_array(1, 1, sizeof(string), (string[]){
+	array_string zzz = array_repeat(new_array_from_c_array(1, 1, sizeof(string), (string[1]){
 tos3(""),
 }), u->age);
 	int a = 10;
-	if (a == 10 || a == 20 || a == 30) {
+	if ((a == 10 || a == 20 || a == 30)) {
 		int b = 10;
 	}
 	string name = tos3("Bob");
@@ -48,11 +48,11 @@ void println(string s) {
 }
 
 void handle_expr(Expr e) {
-	if (e.typ == _type_idx_IfExpr) {
+	if (e.typ == 26 /* IfExpr */) {
 		IfExpr* it = (IfExpr*)e.obj; // ST it
 		println(tos3("if"));
 	}
-	else if (e.typ == _type_idx_IntegerLiteral) {
+	else if (e.typ == 27 /* IntegerLiteral */) {
 		IntegerLiteral* it = (IntegerLiteral*)e.obj; // ST it
 		println(tos3("integer"));
 	}
@@ -62,15 +62,28 @@ void handle_expr(Expr e) {
 	;
 }
 
-int main() {
+int main(int argc, char** argv) {
+	_vinit();
 	User user = (User){
-0};
+		.age = 0,
+		.name = tos3(""),
+	};
 	user.age = 10;
 	user.age++;
 	user.name = tos3("bob");
 	Option_int n = get_opt();
+	if (!n.ok) {
+		string err = n.v_error;
+		int errcode = n.ecode;
+		return 0;
+	}
+	;
 	int a = /*opt*/(*(int*)n.data) + 3;
-	handle_expr((IfExpr){
-0});
+	handle_expr(/* sum type cast */ (Expr) {.obj = memdup(&(IfExpr[]) {(IfExpr){
+0}}, sizeof(IfExpr)), .typ = 26 /* IfExpr */});
 	return 0;
+}
+
+void _vinit() {
+
 }

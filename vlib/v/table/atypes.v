@@ -175,7 +175,8 @@ pub const (
 )
 
 pub const (
-	number_idxs = [int_type_idx, byte_type_idx, u16_type_idx, i16_type_idx, i64_type_idx, u32_type_idx, u64_type_idx]
+	number_type_idxs = [int_type_idx, byte_type_idx, u16_type_idx, i16_type_idx, i64_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx]
+	pointer_type_idxs = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 )
 
 pub const (
@@ -204,7 +205,7 @@ pub const (
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16', 'u32', 'u64',
 	'f32', 'f64', 'string', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed', 'map', 'struct',
-	'mapnode', 'ustring']
+	'mapnode', 'ustring', 'size_t']
 )
 
 pub struct MultiReturn {
@@ -410,6 +411,10 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 		kind: .map
 		name: 'map'
 	})
+	t.register_type_symbol(TypeSymbol{
+		kind: .placeholder
+		name: 'size_t'
+	})
 	// TODO: remove. for v1 map compatibility
 	map_string_string_idx := t.find_or_register_map(string_type, string_type)
 	map_string_int_idx := t.find_or_register_map(string_type, int_type)
@@ -423,6 +428,11 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 		name: 'map_int'
 		parent_idx: map_string_int_idx
 	})
+}
+
+[inline]
+pub fn (t &TypeSymbol) is_pointer() bool {
+	return t.kind in [.byteptr, .charptr, .voidptr]
 }
 
 [inline]

@@ -451,7 +451,7 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	p.fgen_nl()
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod in ['parser', 'gg2', 'ui', 'uiold', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
+	p.can_chash = p.mod in ['parser', 'gg2', 'ui', 'uiold', 'darwin', 'clipboard', 'webview', 'gen'] // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
 	fq_mod := if p.pref.build_mode == .build_module && p.v.pref.mod.ends_with(p.mod) { p.v.pref.mod }
@@ -2809,6 +2809,13 @@ fn (p mut Parser) array_init() string {
 	p.gen_array_init(real, no_alloc, new_arr_ph, i)
 	typ = 'array_${stringify_pointer(typ)}'
 	p.register_array(typ)
+	if p.tok == .lcbr && i == 0 && p.peek() == .name {
+		// []string{len:10} (V2)
+		for p.tok != .rcbr {
+			p.next()
+		}
+		p.check(.rcbr)
+	}
 	return typ
 }
 

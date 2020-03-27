@@ -44,11 +44,6 @@ fn (p mut Instance) parse_impl(args []string, value voidptr, callback void_cb) ?
 			p.equal_val = ''
 			flag_name = next[1..]
 		}
-		if p.encountered[flag_name] {
-			// Duplicate flags are opt-in
-			// This can be prevented with p.allow_duplicate()
-			return error('Duplicate flag: -$flag_name')
-		}
 		p.encountered[flag_name] = true
 		p.current_flag = flag_name
 		callback(flag_name, p, value)
@@ -113,10 +108,6 @@ pub fn (p mut Instance) bool() bool {
 	// Unrecognized boolean type. Probably is not related to boolean.
 	p.current_pos--
 	return true
-}
-
-pub fn (p mut Instance) allow_duplicate() {
-	p.encountered[p.current_flag] = false
 }
 
 pub fn (p mut Instance) is_equivalent_to(flags []string) {

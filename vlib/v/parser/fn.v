@@ -114,7 +114,6 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		p.next()
 		p.check(.gt)
 	}
-	// println('fn decl $name')
 	// Args
 	args2,is_variadic := p.fn_args()
 	args << args2
@@ -137,6 +136,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			name: name
 			args: args
 			return_type: return_type
+			is_variadic: is_variadic
 		})
 	}
 	else {
@@ -177,6 +177,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		rec_mut: rec_mut
 		is_c: is_c
 		no_body: no_body
+		pos: p.tok.position()
 	}
 }
 
@@ -255,4 +256,8 @@ fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 	}
 	p.check(.rpar)
 	return args,is_variadic
+}
+
+fn (p &Parser) fileis(s string) bool {
+	return p.file_name.contains(s)
 }
