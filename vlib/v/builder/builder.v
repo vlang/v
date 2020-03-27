@@ -36,7 +36,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 
 pub fn (b mut Builder) gen_c(v_files []string) string {
 	t0 := time.ticks()
-	b.parsed_files = parser.parse_files(v_files, b.table)
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
@@ -71,7 +71,7 @@ pub fn (b mut Builder) build_c(v_files []string, out_file string) {
 
 pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
 	t0 := time.ticks()
-	b.parsed_files = parser.parse_files(v_files, b.table)
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
@@ -109,7 +109,7 @@ pub fn (b mut Builder) parse_imports() {
 				panic('cannot import module "$mod" (no .v files in "$import_path")')
 			}
 			// Add all imports referenced by these libs
-			parsed_files := parser.parse_files(v_files, b.table)
+			parsed_files := parser.parse_files(v_files, b.table, b.pref)
 			for file in parsed_files {
 				if file.mod.name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1

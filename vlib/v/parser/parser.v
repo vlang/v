@@ -40,6 +40,7 @@ mut:
 	imports     map[string]string
 	ast_imports []ast.Import
 	is_amp      bool
+	returns     bool
 }
 
 // for tests
@@ -51,14 +52,14 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-		
+
 	}
 	p.init_parse_fns()
 	p.read_first_token()
 	return p.stmt()
 }
 
-pub fn parse_file(path string, table &table.Table, comments_mode scanner.CommentsMode) ast.File {
+pub fn parse_file(path string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) ast.File {
 	// println('parse_file("$path")')
 	// text := os.read_file(path) or {
 	// panic(err)
@@ -69,13 +70,13 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		scanner: scanner.new_scanner_file(path, comments_mode)
 		table: table
 		file_name: path
-		pref: &pref.Preferences{}
+		pref: pref //&pref.Preferences{}
 		scope: &ast.Scope{
 			start_pos: 0
 			parent: 0
 		}
 		// comments_mode: comments_mode
-		
+
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -141,7 +142,7 @@ fn (q mut Queue) run() {
 */
 
 
-pub fn parse_files(paths []string, table &table.Table) []ast.File {
+pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences) []ast.File {
 	/*
 	println('\n\n\nparse_files()')
 	println(paths)
@@ -162,7 +163,7 @@ pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	mut files := []ast.File
 	for path in paths {
 		// println('parse_files $path')
-		files << parse_file(path, table, .skip_comments)
+		files << parse_file(path, table, .skip_comments, pref)
 	}
 	return files
 }
@@ -686,7 +687,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-			
+
 			val: val
 			pos: p.tok.position()
 			mod: mod
@@ -776,7 +777,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			node = ast.SizeOf{
 				typ: sizeof_type
 				// type_name: type_name
-				
+
 			}
 		}
 		.key_typeof {
@@ -1044,7 +1045,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 		left: left
 		right: right
 		// right_type: typ
-		
+
 		op: op
 		pos: pos
 	}
@@ -1449,7 +1450,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		fields << ast.Field{
 			name: name
 			// typ: typ
-			
+
 		}
 		exprs << expr
 		// TODO: once consts are fixed reg here & update in checker

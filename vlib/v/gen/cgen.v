@@ -295,28 +295,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.const_decl(it)
 		}
 		ast.CompIf {
-			ifdef := comp_if_to_ifdef(it.val)
-			if it.is_not {
-				g.writeln('\n#ifndef ' + ifdef)
-				g.writeln('// #if not $it.val')
-			}
-			else {
-				g.writeln('\n#ifdef ' + ifdef)
-				g.writeln('// #if $it.val')
-			}
-			// NOTE: g.defer_ifdef is needed for defers called witin an ifdef
-			// in v1 this code would be completely excluded
-			g.defer_ifdef = if it.is_not { '#ifndef ' + ifdef } else { '#ifdef ' + ifdef }
-			// println('comp if stmts $g.file.path:$it.pos.line_nr')
-			g.stmts(it.stmts)
-			g.defer_ifdef = ''
-			if it.has_else {
-				g.writeln('#else')
-				g.defer_ifdef = if it.is_not { '#ifdef ' + ifdef } else { '#ifndef ' + ifdef }
-				g.stmts(it.else_stmts)
-				g.defer_ifdef = ''
-			}
-			g.writeln('#endif')
+			g.comp_if(it)
 		}
 		ast.DeferStmt {
 			mut defer_stmt := *it
@@ -2493,4 +2472,29 @@ pub fn (g mut Gen) write_tests_main() {
 
 fn (g &Gen) is_importing_os() bool {
 	return 'os' in g.table.imports
+}
+
+fn (g mut Gen) comp_if(it ast.CompIf) {
+	ifdef := comp_if_to_ifdef(it.val)
+	if it.is_not {
+		g.writeln('\n#ifndef ' + ifdef)
+		g.writeln('// #if not $it.val')
+	}
+	else {
+		g.writeln('\n#ifdef ' + ifdef)
+		g.writeln('// #if $it.val')
+	}
+	// NOTE: g.defer_ifdef is needed for defers called witin an ifdef
+	// in v1 this code would be completely excluded
+	g.defer_ifdef = if it.is_not { '#ifndef ' + ifdef } else { '#ifdef ' + ifdef }
+	// println('comp if stmts $g.file.path:$it.pos.line_nr')
+	g.stmts(it.stmts)
+	g.defer_ifdef = ''
+	if it.has_else {
+		g.writeln('#else')
+		g.defer_ifdef = if it.is_not { '#ifdef ' + ifdef } else { '#ifndef ' + ifdef }
+		g.stmts(it.else_stmts)
+		g.defer_ifdef = ''
+	}
+	g.writeln('#endif')
 }
