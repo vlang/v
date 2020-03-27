@@ -5,8 +5,12 @@ fn foo() string {
 
 fn foo2() string {
 	println('start')
-	defer { println('defer') }
-	defer { println('defer2') }
+	defer {
+		println('defer')
+	}
+	defer {
+		println('defer2')
+	}
 	println('end')
 	return foo()
 }
@@ -16,17 +20,23 @@ fn test_defer() {
 }
 
 fn set_num(i int, n mut Num) {
-	defer { n.val++ }
-	println("Hi")
+	defer {
+		println('exiting')
+		n.val++
+	}
+	println('Hi')
 	if i < 5 {
 		return
-	} else {
+	}
+	else {
 		n.val++
 	}
 }
 
 fn set_num_opt(n mut Num) ?int {
-	defer { n.val = 1 }
+	defer {
+		n.val = 1
+	}
 	return 99
 }
 
@@ -36,16 +46,18 @@ mut:
 }
 
 fn test_defer_early_exit() {
-	mut sum := Num{0}
-	for i in 0..10 {
+	mut sum := Num{
+		0}
+	for i in 0 .. 10 {
 		set_num(i, mut sum)
 	}
-	println("sum: $sum.val")
+	println('sum: $sum.val')
 	assert sum.val == 15
 }
 
 fn test_defer_option() {
-	mut ok := Num{0}
+	mut ok := Num{
+		0}
 	set_num_opt(mut ok) or {
 		assert false
 	}

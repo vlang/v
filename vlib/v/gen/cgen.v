@@ -404,17 +404,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.Import {}
 		ast.Return {
 			if g.defer_stmts.len > 0 {
-				for defer_stmt in g.defer_stmts {
-					g.writeln('// defer')
-					if defer_stmt.ifdef.len > 0 {
-						g.writeln(defer_stmt.ifdef)
-						g.stmts(defer_stmt.stmts)
-						g.writeln('#endif')
-					}
-					else {
-						g.stmts(defer_stmt.stmts)
-					}
-				}
+				g.write_defer_stmts()
 			}
 			g.return_statement(it)
 		}
@@ -438,6 +428,20 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		else {
 			verror('cgen.stmt(): unhandled node ' + typeof(node))
+		}
+	}
+}
+
+fn (g mut Gen) write_defer_stmts() {
+	for defer_stmt in g.defer_stmts {
+		g.writeln('// defer')
+		if defer_stmt.ifdef.len > 0 {
+			g.writeln(defer_stmt.ifdef)
+			g.stmts(defer_stmt.stmts)
+			g.writeln('#endif')
+		}
+		else {
+			g.stmts(defer_stmt.stmts)
 		}
 	}
 }
@@ -754,6 +758,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			verror('test files cannot have function `main`')
 		}
 		g.writeln('return 0;')
+	}
+	if g.defer_stmts.len > 0 {
+		g.write_defer_stmts()
 	}
 	g.writeln('}')
 	g.defer_stmts = []

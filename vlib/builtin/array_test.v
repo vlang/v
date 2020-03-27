@@ -372,7 +372,7 @@ fn test_struct_print() {
 	a.b << b
 	a.b << b
 	println('QTODO: v2 struct .str() methods')
-	// assert a.str() == '{Test [{1 2}, {1 2}] }'
+	//assert a.str() == '{Test [{1 2}, {1 2}] }'
 	// assert b.str() == '{1 2}'
 	assert a.b.str() == '[{1 2}, {1 2}]'
 }
