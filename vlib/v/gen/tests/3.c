@@ -34,7 +34,7 @@ void User_foo(User* u) {
 tos3(""),
 }), u->age);
 	int a = 10;
-	if (a == 10 || a == 20 || a == 30) {
+	if ((a == 10 || a == 20 || a == 30)) {
 		int b = 10;
 	}
 	string name = tos3("Bob");

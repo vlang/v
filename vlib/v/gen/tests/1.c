@@ -148,7 +148,7 @@ multi_return_int_string multi_return() {
 
 void variadic(varg_int a) {
 	int x = _const_path_sep;
-	int y = true ? 1 : 0;
+	int y = (true ? 1 : 0);
 }
 
 void ensure_cap(int required, int cap) {
