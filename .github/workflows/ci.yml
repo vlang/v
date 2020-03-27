@@ -93,6 +93,8 @@ jobs:
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Test symlink
       run:  ./v symlink && v -o v2 cmd/v
+    - name: v2 self compilation
+      run: ./v -b v2 -o v2 cmd/v && ./v2 -b v2 -o v3 cmd/v && ./v3 -b v2 -o v4 cmd/v
     - name: Test vsh
       run:  ./v examples/v_script.vsh
     - name: Test vid
@@ -124,7 +126,7 @@ jobs:
     - name: Freestanding
       run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: v2 self compilation
-      run: ./v -b v2 -o v2 && ./v2 -b v2 -o v3 && ./v3 -b v2 -o v4
+      run: ./v -b v2 -o v2 cmd/v && ./v2 -b v2 -o v3 cmd/v && ./v3 -b v2 -o v4 cmd/v
 
     - name: x64 machine code generation
       run: |
