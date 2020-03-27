@@ -58,31 +58,31 @@ maps), `time/`, `os/`, etc. Their documentation is pretty clear.
 username will be referred to later as 'YOUR_GITHUB_USERNAME'. Change it
 accordingly in the steps below.)
 
-1. Clone https://github.com/vlang/v in a folder, say nv (`git clone
-https://github.com/vlang/v nv`)
+1. Fork https://github.com/vlang/v using github's interface in your own account, lets say that the forked repository is at
+`https://github.com/YOUR_GITHUB_USERNAME/v` .
+1. Clone the main v repository https://github.com/vlang/v in a local folder on your computer, say named nv/ 
+(`git clone https://github.com/vlang/v nv`)
 1. `cd nv`
-1. `git remote add pullrequest git@github.com:YOUR_GITHUB_USERNAME/v.git`  #
-(NOTE: this is your own forked repo of: https://github.com/vlang/v - After
-this, we just do normal git operations such as: `git pull` and so on.)
-1. When finished with a feature/bugfix, you can: `git checkout -b fix_alabala`
-1. `git push pullrequest`  # (NOTE: the pullrequest remote was setup on step 3)
-1. On GitHub's web interface, I go to: https://github.com/vlang/v/pulls  Here
-the UI shows a nice dialog with a button to make a new pull request based on
-the new pushed branch. (Example dialogue:
-https://url4e.com/gyazo/images/364edc04.png)
+1. `git remote add pullrequest https://github.com/YOUR_GITHUB_USERNAME/v`  
+NB: the remote named `pullrequest` should point to YOUR own forked repo, not the main v repository!
+After this, your local cloned repository is prepared for making pullrequests, and you can just do normal git operations such as: `git pull` `git status` and so on.
+
+1. When finished with a feature/bugfix/change, you can: 
+`git checkout -b fix_alabala`
+1. `git push pullrequest`  # (NOTE: the `pullrequest` remote was setup on step 4)
+1. On GitHub's web interface, go to: https://github.com/vlang/v/pulls  
+Here the UI shows a nice dialog with a button to make a new pull request based on
+the new pushed branch. 
+(Example dialogue: https://url4e.com/gyazo/images/364edc04.png)
 1. After making your pullrequest (aka, PR), you can continue to work on the
-branch... just do step #5 when you have more commits.
+branch `fix_alabala` ... just do again `git push pullrequest` when you have more commits.
 1. If there are merge conflicts, or a branch lags too much behind V's master,
 you can do the following:
-   1. `git checkout master`
-   1. `git pull`
-   1. `git checkout fix_alabala`
-   1. `git rebase master`  # solve conflicts and do git rebase --continue
-   1. `git push pullrequest -f`
+   1. `git pull --rebase origin master` # solve conflicts and do `git rebase --continue`
+   1. `git push pullrequest -f` # this will overwrite your current remote branch with the updated version of your changes.
 
-The point of doing the above steps to never directly push to the main V
-repository, only to your own fork. Since your local master branch tracks the
-main V repository's master, then `git checkout master; git pull --rebase origin
-master` work as expected (this is actually used by `v up`) and it can always do
-so cleanly. Git is very flexible, so there may be simpler/easier ways to
-accomplish the same thing.
+The point of doing the above steps, is to never directly push to the main V
+repository, *only to your own fork*. Since your local `master` branch tracks the
+main V repository's master, then `git checkout master`, as well as `git pull --rebase origin master` will continue to work as expected (these are actually used by `v up`) and git can always do so cleanly.
+
+Git is very flexible, so there may be simpler/easier ways to accomplish the same thing.
