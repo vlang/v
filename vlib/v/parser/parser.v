@@ -161,6 +161,7 @@ pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	// ///////////////
 	mut files := []ast.File
 	for path in paths {
+		// println('parse_files $path')
 		files << parse_file(path, table, .skip_comments)
 	}
 	return files
@@ -1483,6 +1484,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		p.next() // .
 	}
 	mut name := p.check_name()
+	// println('struct decl $name')
 	p.check(.lcbr)
 	mut ast_fields := []ast.Field
 	mut fields := []table.Field
@@ -1505,6 +1507,10 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			p.check(.key_mut)
 			p.check(.colon)
 			mut_pos = fields.len
+		}
+		else if p.tok.kind == .key_global {
+			p.check(.key_global)
+			p.check(.colon)
 		}
 		field_name := p.check_name()
 		// p.warn('field $field_name')

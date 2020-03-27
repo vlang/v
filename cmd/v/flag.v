@@ -86,10 +86,7 @@ fn parse_flags(flag string, f mut flag.Instance, prefs mut flag.MainCmdPreferenc
 			exit(1)
 		}
 		else {
-			if flag in list_of_flags_that_allow_duplicates {
-				f.allow_duplicate()			   
-			}
-			prefs.unknown_flag = '-$flag'			 
+			prefs.unknown_flag = '-$flag'
 			if !(flag in list_of_flags_with_param) {
 				return
 			}

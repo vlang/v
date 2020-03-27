@@ -90,7 +90,6 @@ fn parse_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 			prefs.out_name = tmp
 		}
 		'd', 'define' {
-			f.allow_duplicate()
 			define := f.string() or {
 				println('V error: Expected argument for `-$flag`.')
 				exit(1)
@@ -105,7 +104,6 @@ fn parse_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 			}
 		}
 		'e', 'experiments' {
-			f.allow_duplicate()
 			to_enable := f.string() or {
 				println('V error: Expected argument for `-$flag`.')
 				exit(1)

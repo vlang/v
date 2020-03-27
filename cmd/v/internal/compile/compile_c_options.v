@@ -22,8 +22,6 @@ fn parse_c_options(flag string, f mut flag.Instance, prefs mut pref.Preferences)
 				exit(1)
 			}
 			prefs.ccompiler = tmp
-			// needed to enable CI compiling of -live examples.
-			f.allow_duplicate() 
 		}
 		'cg', 'cdebug' {
 			f.is_equivalent_to(['cg', 'cdebug', 'g', 'debug'])
@@ -60,7 +58,6 @@ fn parse_c_options(flag string, f mut flag.Instance, prefs mut pref.Preferences)
 			prefs.sanitize = f.bool()
 		}
 		'cf', 'cflags' {
-			f.allow_duplicate()
 			cflag := f.string() or {
 				println('V error: Expected argument after `-$flag`.')
 				exit(1)
