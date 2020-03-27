@@ -95,27 +95,30 @@ You can download the `hub` tool from https://hub.github.com/ . Using
 to make PRs. Most remote operations can be done through the `hub` CLI 
 command:
 
-Preparation (steps 1..3 need to be done just *once*):
+### Preparation (steps 1..3 need to be done just *once*):
 1. `hub clone vlang/v my_v`
 2. `cd my_v`
 3. `hub fork --remote-name pullrequest`
 
-4. `git checkout -b my_cool_feature`
-Step 4 is better done *once per each new feature/bugfix* that you make.
+4. `git checkout -b my_cool_feature` # Step 4 is better done *once per each new feature/bugfix* that you make.
 
-Improve V by changing it and making commits:
+### Improve V by changing it and making commits:
+
 6. `git commit -am "math: add a new function copysign"`
+
 You can test locally whether your changes have not broken something by 
 running: `v test-compiler`
 
-Publishing your changes:
+### Publishing your changes:
+
 7. `git push pullrequest`
 
-Making a PR with `hub`, so that your changes can be merged to the main
-V repository:
+### Making a PR with `hub`, so that your changes can be merged to the main V repository:
+
 8. `hub pull-request`
 
-Optionally, you can track the status of your PR CI tests with:
+### Optionally, you can track the status of your PR CI tests with:
+
 9. `hub ci-status --verbose`
 
 If everything is OK, after 5-10 minutes, the CI tests should pass for
