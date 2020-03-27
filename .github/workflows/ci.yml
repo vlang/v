@@ -123,6 +123,9 @@ jobs:
       run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
     - name: Freestanding
       run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
+    - name: v2 self compilation
+      run: ./v -b v2 -o v2 && ./v2 -b v2 -o v3 && ./v3 -b v2 -o v4
+
     - name: x64 machine code generation
       run: |
         ./v -o vprod -prod cmd/v
