@@ -92,35 +92,42 @@ Git is very flexible, so there are other ways to accomplish the same thing.
 
 You can download the `hub` tool from https://hub.github.com/ . Using
 `hub`, you will not need to go through the (sometimes) slow website 
-to make PRs. Most remote operations can be done through the `hub` CLI 
-command:
+to make PRs. Most remote operations can be done through the `hub` CLI
+command.
 
-### Preparation (steps 1..3 need to be done just *once*):
+NB: You still need to have a GitHub account.
+
+### Preparation:
+(steps 1..3 need to be done just *once*):
+
 1. `hub clone vlang/v my_v`
 2. `cd my_v`
 3. `hub fork --remote-name pullrequest`
 
 4. `git checkout -b my_cool_feature` # Step 4 is better done *once per each new feature/bugfix* that you make.
 
-### Improve V by changing it and making commits:
+### Improve V by making commits:
 
-6. `git commit -am "math: add a new function copysign"`
+5. `git commit -am "math: add a new function copysign"`
 
+### Testing your commits locally:
 You can test locally whether your changes have not broken something by 
 running: `v test-compiler`
 
-### Publishing your changes:
+### Publishing your commits to GitHub:
 
-7. `git push pullrequest`
+6. `git push pullrequest`
 
-### Making a PR with `hub`, so that your changes can be merged to the main V repository:
+### Making a PR with `hub`:
+(so that your changes can be merged to the main V repository)
 
-8. `hub pull-request`
+7. `hub pull-request`
 
-### Optionally, you can track the status of your PR CI tests with:
+Optionally, you can track the status of your PR CI tests with:
 
-9. `hub ci-status --verbose`
+8. `hub ci-status --verbose`
 
+### Fixing failing tests:
 If everything is OK, after 5-10 minutes, the CI tests should pass for
 all platforms. If not, visit the URLs for the failing CI jobs, see
 which tests have failed, then fix them, by making more changes. Just use 
