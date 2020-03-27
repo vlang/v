@@ -1,19 +1,19 @@
-struct AA {
+struct Aa {
 mut:
 	val  int
 	nums []int
 }
 
-struct BB {
+struct Bb {
 mut:
-	a AA
+	a Aa
 }
 
-struct CC {
+struct Cu {
 mut:
-	b    BB
+	b    Bb
 	nums []int
-	aarr []AA
+	aarr []Aa
 	num  int
 }
 
@@ -64,7 +64,7 @@ fn test_empty_struct() {
 }
 
 fn test_struct_levels() {
-	mut c := CC{}
+	mut c := Cu{}
 	println(c.nums.len)
 	assert c.nums.len == 0
 	c.nums << 3
@@ -82,7 +82,7 @@ fn test_struct_levels() {
 	assert c.b.a.nums[1] == 2
 	c.b.a.nums[0] = 7
 	assert c.b.a.nums[0] == 7
-	c.aarr << AA{
+	c.aarr << Aa{
 		val: 8
 	}
 	assert c.aarr.len == 1

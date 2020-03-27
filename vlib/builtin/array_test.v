@@ -339,6 +339,19 @@ mut:
 	b []Test2
 }
 
+// TODO: default array/struct str methods
+pub fn (ta []Test2) str() string {
+	mut s := '['
+	for i, t in ta {
+		s += t.str()
+		if i < ta.len-1 {
+			s += ', '
+		}
+	}
+	s += ']'
+	return s
+}
+
 pub fn (t Test2) str() string {
 	return '{$t.one $t.two}'
 }
@@ -348,9 +361,6 @@ pub fn (t Test) str() string {
 }
 
 fn test_struct_print() {
-	println('QTODO')
-
-	/*
 	mut a := Test{
 		a: 'Test'
 		b: []
@@ -361,10 +371,10 @@ fn test_struct_print() {
 	}
 	a.b << b
 	a.b << b
-	assert a.str() == '{Test [{1 2}, {1 2}] }'
-	assert b.str() == '{1 2}'
+	println('QTODO: v2 struct .str() methods')
+	// assert a.str() == '{Test [{1 2}, {1 2}] }'
+	// assert b.str() == '{1 2}'
 	assert a.b.str() == '[{1 2}, {1 2}]'
-	*/
 }
 
 fn test_single_element() {
