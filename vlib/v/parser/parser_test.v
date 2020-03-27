@@ -6,6 +6,7 @@ import (
 	v.table
 	v.checker
 	v.eval
+	v.pref
 	term
 )
 
