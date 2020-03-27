@@ -58,7 +58,7 @@ maps), `time/`, `os/`, etc. Their documentation is pretty clear.
 username will be referred to later as 'YOUR_GITHUB_USERNAME'. Change it
 accordingly in the steps below.)
 
-1. Fork https://github.com/vlang/v using GitHub's interface in your own account, lets say that the forked repository is at
+1. Fork https://github.com/vlang/v using GitHub's interface to your own account, lets say that the forked repository is at
 `https://github.com/YOUR_GITHUB_USERNAME/v` .
 2. Clone the main v repository https://github.com/vlang/v in a local folder on your computer, say named nv/ 
 (`git clone https://github.com/vlang/v nv`)
