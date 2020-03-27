@@ -527,6 +527,11 @@ pub:
 pub struct DeferStmt {
 pub:
 	stmts []Stmt
+mut:
+	// TODO: handle this differently
+	// v1 excludes non current os ifdefs so
+	// the defer's never get added in the first place
+	ifdef string
 }
 
 pub struct UnsafeStmt {

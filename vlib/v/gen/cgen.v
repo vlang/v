@@ -43,6 +43,8 @@ mut:
 	is_test        bool
 	expr_var_name  string
 	assign_op      token.Kind // *=, =, etc (for array_set)
+	defer_stmts    []ast.DeferStmt
+	defer_ifdef    string
 }
 
 const (
@@ -293,24 +295,33 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.const_decl(it)
 		}
 		ast.CompIf {
+			ifdef := comp_if_to_ifdef(it.val)
 			if it.is_not {
-				g.writeln('\n#ifndef ' + comp_if_to_ifdef(it.val))
+				g.writeln('\n#ifndef ' + ifdef)
 				g.writeln('// #if not $it.val')
 			}
 			else {
-				g.writeln('\n#ifdef ' + comp_if_to_ifdef(it.val))
+				g.writeln('\n#ifdef ' + ifdef)
 				g.writeln('// #if $it.val')
 			}
+			// NOTE: g.defer_ifdef is needed for defers called witin an ifdef
+			// in v1 this code would be completely excluded
+			g.defer_ifdef = if it.is_not { '#ifndef ' + ifdef } else { '#ifdef ' + ifdef }
 			// println('comp if stmts $g.file.path:$it.pos.line_nr')
 			g.stmts(it.stmts)
+			g.defer_ifdef = ''
 			if it.has_else {
 				g.writeln('#else')
+				g.defer_ifdef = if it.is_not { '#ifdef ' + ifdef } else { '#ifndef ' + ifdef }
 				g.stmts(it.else_stmts)
+				g.defer_ifdef = ''
 			}
 			g.writeln('#endif')
 		}
 		ast.DeferStmt {
-			g.writeln('// defer')
+			mut defer_stmt := *it
+			defer_stmt.ifdef = g.defer_ifdef
+			g.defer_stmts << defer_stmt
 		}
 		ast.EnumDecl {
 			g.writeln('//')
@@ -392,6 +403,19 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.Import {}
 		ast.Return {
+			if g.defer_stmts.len > 0 {
+				for defer_stmt in g.defer_stmts {
+					g.writeln('// defer')
+					if defer_stmt.ifdef.len > 0 {
+						g.writeln(defer_stmt.ifdef)
+						g.stmts(defer_stmt.stmts)
+						g.writeln('#endif')
+					}
+					else {
+						g.stmts(defer_stmt.stmts)
+					}
+				}
+			}
 			g.return_statement(it)
 		}
 		ast.StructDecl {
@@ -732,6 +756,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		g.writeln('return 0;')
 	}
 	g.writeln('}')
+	g.defer_stmts = []
 	g.fn_decl = 0
 }
 
@@ -1210,7 +1235,9 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 					// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
 					// avoids an allocation
 					// g.write('/*in opt*/')
+					g.write('(')
 					g.in_optimization(node.left, it)
+					g.write(')')
 					return
 				}
 				else {}
@@ -1433,6 +1460,7 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 	// TODO: make sure only one stmt in each branch
 	if node.is_expr && node.branches.len >= 2 && node.has_else && type_sym.kind != .void {
 		g.inside_ternary = true
+		g.write('(')
 		for i, branch in node.branches {
 			if i > 0 {
 				g.write(' : ')
@@ -1443,6 +1471,7 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 			}
 			g.stmts(branch.stmts)
 		}
+		g.write(')')
 		g.inside_ternary = false
 	}
 	else {

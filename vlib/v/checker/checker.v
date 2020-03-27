@@ -560,6 +560,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				c.stmts(it.else_stmts)
 			}
 		}
+		ast.DeferStmt {
+			c.stmts(it.stmts)
+		}
 		ast.ConstDecl {
 			for i, expr in it.exprs {
 				mut field := it.fields[i]
