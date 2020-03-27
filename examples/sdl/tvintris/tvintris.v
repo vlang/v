@@ -11,10 +11,10 @@ import rand
 import time
 import os
 import math
-import sdl
-import sdl.image as img
-import sdl.mixer as mix
-import sdl.ttf as ttf
+import gui.sdl
+import gui.sdl.image as img
+import gui.sdl.mixer as mix
+import gui.sdl.ttf as ttf
 [inline] fn sdl_fill_rect(s &SDL_Surface,r &SDL_Rect,c &SDL_Color){sdl.fill_rect(s,r,c)}
 
 const (

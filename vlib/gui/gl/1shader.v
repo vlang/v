@@ -5,8 +5,8 @@
 module gl
 
 // import os
-import gx
-import glm
+import gui.gx
+import gui.glm
 
 // import darwin
 
@@ -129,11 +129,11 @@ pub fn new_shader(name string) Shader {
 		fragment_src = SIMPLE_FRAG
 	}
 	// ////////////////////////////////////////
-	vertex_shader := gl.create_shader(C.GL_VERTEX_SHADER)
-	gl.shader_source(vertex_shader, 1, vertex_src, 0)
-	gl.compile_shader(vertex_shader)
-	if gl.shader_compile_status(vertex_shader) == 0 {
-		log := gl.shader_info_log(vertex_shader)
+	vertex_shader := create_shader(C.GL_VERTEX_SHADER)
+	shader_source(vertex_shader, 1, vertex_src, 0)
+	compile_shader(vertex_shader)
+	if shader_compile_status(vertex_shader) == 0 {
+		log := shader_info_log(vertex_shader)
 		println('shader $vertex_shader compilation failed')
 		println('shader source = $vertex_src')
 		println('shader failed to compile')
@@ -141,21 +141,21 @@ pub fn new_shader(name string) Shader {
 	}
 	// fragment shader
 	// fragment_src := os.read_file(fragment_path.trim_space())
-	fragment_shader := gl.create_shader(C.GL_FRAGMENT_SHADER)
-	gl.shader_source(fragment_shader, 1, fragment_src, 0)
-	gl.compile_shader(fragment_shader)
-	if gl.shader_compile_status(fragment_shader) == 0 {
+	fragment_shader := create_shader(C.GL_FRAGMENT_SHADER)
+	shader_source(fragment_shader, 1, fragment_src, 0)
+	compile_shader(fragment_shader)
+	if shader_compile_status(fragment_shader) == 0 {
 		println('fragment $fragment_shader shader compilation failed')
 		println('shader failed to compile')
 		exit(1)
 	}
 	// link shaders
-	shader_program := gl.create_program()
-	gl.attach_shader(shader_program, vertex_shader)
-	gl.attach_shader(shader_program, fragment_shader)
-	gl.link_program(shader_program)
+	shader_program := create_program()
+	attach_shader(shader_program, vertex_shader)
+	attach_shader(shader_program, fragment_shader)
+	link_program(shader_program)
 	// check for linking errors
-	success := gl.get_program_link_status(shader_program)
+	success := get_program_link_status(shader_program)
 	if success == 0 {
 		println('shader compilation failed')
 		println('vertex source = $vertex_src')
@@ -170,7 +170,7 @@ pub fn new_shader(name string) Shader {
 }
 
 pub fn (s Shader) use() {
-	gl.use_program(s.program_id)
+	use_program(s.program_id)
 }
 
 fn C.glGetUniformLocation() int
@@ -195,4 +195,3 @@ pub fn (s Shader) set_int(str string, n int) {
 pub fn (s Shader) set_color(str string, c gx.Color) {
 	C.glUniform3f(s.uni_location(str), f32(c.r) / 255.0, f32(c.g) / 255.0, f32(c.b) / 255.0)
 }
-

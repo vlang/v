@@ -1,5 +1,5 @@
 module image
-import sdl
+import gui.sdl
 
 #flag linux -lSDL2_image
 

@@ -1,7 +1,7 @@
 module main
 
-import gg2 as gg
-import gx
+import gui.gg2 as gg
+import gui.gx
 import os
 
 const (

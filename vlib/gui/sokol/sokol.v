@@ -1,7 +1,7 @@
 module sokol
 
-import sokol.c
-import sokol.f
+import gui.sokol.c
+import gui.sokol.f
 
 pub const (
   used_import = c.used_import + f.used_import

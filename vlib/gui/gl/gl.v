@@ -125,14 +125,14 @@ pub fn buffer_data_f32(typ int, vertices []f32, draw_typ int) {
 }
 
 pub fn set_vbo(vbo u32, vertices []f32, draw_typ int) {
-	gl.bind_buffer(C.GL_ARRAY_BUFFER, vbo)
-	gl.buffer_data_f32(C.GL_ARRAY_BUFFER, vertices, draw_typ)
+	bind_buffer(C.GL_ARRAY_BUFFER, vbo)
+	buffer_data_f32(C.GL_ARRAY_BUFFER, vertices, draw_typ)
 }
 
 pub fn set_ebo(ebo u32, indices []int, draw_typ int) {
-	gl.bind_buffer(C.GL_ELEMENT_ARRAY_BUFFER, ebo)
+	bind_buffer(C.GL_ELEMENT_ARRAY_BUFFER, ebo)
 	// gl.buffer_data_int(GL_ELEMENT_ARRAY_BUFFER, indices, draw_typ)
-	gl.buffer_data_int(C.GL_ELEMENT_ARRAY_BUFFER, indices, draw_typ)
+	buffer_data_int(C.GL_ELEMENT_ARRAY_BUFFER, indices, draw_typ)
 }
 
 // /////////////////////
@@ -196,4 +196,3 @@ pub fn scissor(a, b, c, d int) {
 pub fn generate_mipmap(typ int) {
 	C.glGenerateMipmap(typ)
 }
-

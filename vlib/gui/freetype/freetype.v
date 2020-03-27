@@ -6,10 +6,10 @@ module freetype
 
 import (
 	os
-	gx
-	gg
-	glm
-	gl
+	gui.gx
+	gui.gg
+	gui.glm
+	gui.gl
 )
 
 #flag windows -I @VROOT/thirdparty/freetype/include

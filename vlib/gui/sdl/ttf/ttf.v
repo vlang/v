@@ -1,6 +1,6 @@
 module ttf
 
-import sdl
+import gui.sdl
 
 #flag windows -I @VROOT/thirdparty/SDL2_ttf/include
 #flag windows -L @VROOT/thirdparty/SDL2_ttf/lib/x64

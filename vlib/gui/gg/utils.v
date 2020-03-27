@@ -1,8 +1,8 @@
 module gg
 
 import (
-	gl
-	gx
+	gui.gl
+	gui.gx
 	math
 )
 

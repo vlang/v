@@ -1,7 +1,7 @@
-import sokol
-import sokol.sapp
-import sokol.gfx
-import sokol.sgl
+import gui.sokol
+import gui.sokol.sapp
+import gui.sokol.gfx
+import gui.sokol.sgl
 
 struct AppState {
 	pass_action sg_pass_action

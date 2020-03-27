@@ -1,6 +1,6 @@
 module f
 
-import fontstash
+import gui.fontstash
 
 pub const (
   used_import = 1 + fontstash.used_import

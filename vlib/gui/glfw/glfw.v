@@ -6,7 +6,7 @@ module glfw
 
 // note: we might need special case for this
 // see TmpGlImportHack below (joe-c)
-import gl
+import gui.gl
 
 #flag -I @VROOT/thirdparty/glfw
 #flag -L @VROOT/thirdparty/glfw

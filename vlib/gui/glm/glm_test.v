@@ -4,7 +4,7 @@
 
 // might need special case for this
 // import gl
-import glm
+import gui.glm
 
 fn cmp(a, b f32) bool {
 	return int(a * 1000) == int(b * 1000)
@@ -33,7 +33,7 @@ fn test_ortho() {
 	assert cmp(projection.data[15], 1.000000)
 	// f := gg.ortho(1,2,3,4)
 
-		/* 
+		/*
 		// for debugging broken tetris in gg.o
 		# projection.data[0]=0.010000;
 		# projection.data[1]=0.000000;
@@ -75,10 +75,9 @@ fn test_translate() {
 	$if debug {
 		println(m)
 	}
-	// TODO 
+	// TODO
 	// mat4x4((1.000000, 0.000000, 0.000000, 0.000000),
 	// (0.000000, 1.000000, 0.000000, 0.000000),
 	// (0.000000, 0.000000, 1.000000, 0.000000),
 	// (0.000000, 0.000000, -0.500000, 1.000000))
 }
-

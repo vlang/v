@@ -1,5 +1,5 @@
 module mixer
-import sdl
+import gui.sdl
 
 #flag windows -I @VROOT/thirdparty/SDL2_mixer/include
 #flag windows -L @VROOT/thirdparty/SDL2_mixer/lib/x64

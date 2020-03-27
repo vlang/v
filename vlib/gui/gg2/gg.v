@@ -4,14 +4,14 @@
 module gg2
 
 import (
-	glm
-	gx
+	gui.glm
+	gui.gx
 	os
-	sokol
-	sokol.sapp
-	sokol.sgl
-	sokol.gfx
-	sokol.sfons
+	gui.sokol
+	gui.sokol.sapp
+	gui.sokol.sgl
+	gui.sokol.gfx
+	gui.sokol.sfons
 )
 const (
 	default_font_size = 24
@@ -54,7 +54,7 @@ __global g_fons &C.FONScontext
 __global g_font_normal int
 __global g_font_path string
 
-fn init_sokol_window() {
+fn init_sokol_window(p voidptr) {
 	desc := sg_desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
