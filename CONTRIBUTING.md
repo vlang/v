@@ -58,31 +58,68 @@ maps), `time/`, `os/`, etc. Their documentation is pretty clear.
 username will be referred to later as 'YOUR_GITHUB_USERNAME'. Change it
 accordingly in the steps below.)
 
-1. Fork https://github.com/vlang/v using github's interface in your own account, lets say that the forked repository is at
+1. Fork https://github.com/vlang/v using GitHub's interface in your own account, lets say that the forked repository is at
 `https://github.com/YOUR_GITHUB_USERNAME/v` .
-1. Clone the main v repository https://github.com/vlang/v in a local folder on your computer, say named nv/ 
+2. Clone the main v repository https://github.com/vlang/v in a local folder on your computer, say named nv/ 
 (`git clone https://github.com/vlang/v nv`)
-1. `cd nv`
-1. `git remote add pullrequest https://github.com/YOUR_GITHUB_USERNAME/v`  
+3. `cd nv`
+4. `git remote add pullrequest https://github.com/YOUR_GITHUB_USERNAME/v`  
 NB: the remote named `pullrequest` should point to YOUR own forked repo, not the main v repository!
 After this, your local cloned repository is prepared for making pullrequests, and you can just do normal git operations such as: `git pull` `git status` and so on.
 
 1. When finished with a feature/bugfix/change, you can: 
 `git checkout -b fix_alabala`
-1. `git push pullrequest`  # (NOTE: the `pullrequest` remote was setup on step 4)
-1. On GitHub's web interface, go to: https://github.com/vlang/v/pulls  
+2. `git push pullrequest`  # (NOTE: the `pullrequest` remote was setup on step 4)
+3. On GitHub's web interface, go to: https://github.com/vlang/v/pulls  
+
 Here the UI shows a nice dialog with a button to make a new pull request based on
 the new pushed branch. 
 (Example dialogue: https://url4e.com/gyazo/images/364edc04.png)
-1. After making your pullrequest (aka, PR), you can continue to work on the
+4. After making your pullrequest (aka, PR), you can continue to work on the
 branch `fix_alabala` ... just do again `git push pullrequest` when you have more commits.
-1. If there are merge conflicts, or a branch lags too much behind V's master,
+5. If there are merge conflicts, or a branch lags too much behind V's master,
 you can do the following:
    1. `git pull --rebase origin master` # solve conflicts and do `git rebase --continue`
-   1. `git push pullrequest -f` # this will overwrite your current remote branch with the updated version of your changes.
+   2. `git push pullrequest -f` # this will overwrite your current remote branch with the updated version of your changes.
 
 The point of doing the above steps, is to never directly push to the main V
 repository, *only to your own fork*. Since your local `master` branch tracks the
 main V repository's master, then `git checkout master`, as well as `git pull --rebase origin master` will continue to work as expected (these are actually used by `v up`) and git can always do so cleanly.
 
-Git is very flexible, so there may be simpler/easier ways to accomplish the same thing.
+Git is very flexible, so there are other ways to accomplish the same thing.
+
+## Using Github's hub CLI tool
+
+You can download the `hub` tool from https://hub.github.com/ . Using
+`hub`, you will not need to go through the (sometimes) slow website 
+to make PRs. Most remote operations can be done through the `hub` CLI 
+command:
+
+Preparation (steps 1..3 need to be done just *once*):
+1. hub clone vlang/v my_v
+2. cd my_v
+3. hub fork --remote-name pullrequest
+
+4. git checkout -b my_cool_feature
+Step 4 is better done *once per each new feature/bugfix* that you make.
+
+Improve V by changing it and making commits:
+6. git commit -am "math: add a new function copysign"
+You can test locally whether your changes have not broken something by 
+running: `v test-compiler`
+
+Publishing your changes:
+7. git push pullrequest
+
+Making a PR with `hub`, so that your changes can be merged to the main
+V repository:
+8. hub pull-request
+
+Optionally, you can track the status of your PR CI tests with:
+9. hub ci-status --verbose
+
+If everything is OK, after 5-10 minutes, the CI tests should pass for
+all platforms. If not, visit the URLs for the failing CI jobs, see
+which tests have failed, then fix them, by making more changes. Just use 
+`git push pullrequest` to publish your changes, and the CI tests will
+run with your updated code.
