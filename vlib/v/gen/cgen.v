@@ -107,10 +107,32 @@ pub fn (g mut Gen) init() {
 	g.definitions.writeln('\nstring _STR_TMP(const char*, ...);\n')
 	g.write_builtin_types()
 	g.write_typedef_types()
+	g.write_typeof_functions()
 	g.write_str_definitions()
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
+}
+
+pub fn (g mut Gen) write_typeof_functions() {
+	g.writeln('// >> typeof() support for sum types')
+	for typ in g.table.types {
+		if typ.kind == .sum_type {
+			sum_info := typ.info as table.SumType
+			tidx := g.table.find_type_idx( typ.name )
+			g.writeln('char * v_typeof_sumtype_${tidx}(int sidx) { /* ${typ.name} */ ')
+			g.writeln('	switch(sidx) {')
+			g.writeln('		case $tidx: return "$typ.name";')
+			for v in sum_info.variants {
+				subtype := g.table.get_type_symbol(v)
+				g.writeln('		case $v: return "$subtype.name";')
+			}
+			g.writeln('		default: return "unknown ${typ.name}";')
+			g.writeln('	}')
+			g.writeln('}')
+		}
+	}
+	g.writeln('// << typeof() support for sum types')
 }
 
 // V type to C type
@@ -188,7 +210,7 @@ pub fn (g mut Gen) write_typedef_types() {
 			else {
 				continue
 			}
-	}
+		}
 	}
 }
 
@@ -772,7 +794,7 @@ fn (g mut Gen) free_scope_vars(pos int) {
 				else {
 					g.writeln('// other ' + t)
 				}
-	}
+			}
 			g.writeln('string_free($var.name); // autofreed')
 		}
 	}
@@ -1165,12 +1187,26 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('$type_idx /* $sym.name */')
 		}
 		ast.TypeOf {
-			g.write('tos3("TYPEOF_TODO")')
+			g.typeof_expr(it)
 		}
 		else {
 			// #printf("node=%d\n", node.typ);
 			println(term.red('cgen.expr(): bad node ' + typeof(node)))
 		}
+	}
+}
+
+fn (g mut Gen) typeof_expr(node ast.TypeOf) {
+	sym := g.table.get_type_symbol(node.expr_type)
+	if sym.kind == .sum_type {
+		// When encountering a .sum_type, typeof() should be done at runtime,
+		// because the subtype of the expression may change:
+		sum_type_idx := table.type_idx( node.expr_type  )
+		g.write('tos3( /* ${sym.name} */ v_typeof_sumtype_${sum_type_idx}( (')
+		g.expr(node.expr)
+		g.write(').typ ))')
+	}else{
+		g.write('tos3("${sym.name}")')
 	}
 }
 
