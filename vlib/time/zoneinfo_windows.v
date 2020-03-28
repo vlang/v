@@ -6,3 +6,7 @@ struct C.TIME_ZONE_INFORMATION{
 	C.StandardDate C.SYSTEMTIME
 }
 fn C.GetTimeZoneInfomation()
+
+fn get_system_timezone(){
+
+}
