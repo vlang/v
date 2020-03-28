@@ -120,14 +120,14 @@ pub fn (g mut Gen) write_typeof_functions() {
 		if typ.kind == .sum_type {
 			sum_info := typ.info as table.SumType
 			tidx := g.table.find_type_idx( typ.name )
-			g.writeln('char * v_typeof_sumtype_${typ.name}(int sidx) {')
+			g.writeln('char * v_typeof_sumtype_${tidx}(int sidx) { /* ${typ.name} */ ')
 			g.writeln('	switch(sidx) {')
 			g.writeln('		case $tidx: return "$typ.name";')
 			for v in sum_info.variants {
 				subtype := g.table.get_type_symbol(v)
 				g.writeln('		case $v: return "$subtype.name";')
 			}
-			g.writeln('		default: return "unknown";')
+			g.writeln('		default: return "unknown ${typ.name}";')
 			g.writeln('	}')
 			g.writeln('}')
 		}
@@ -1201,7 +1201,8 @@ fn (g mut Gen) typeof_expr(node ast.TypeOf) {
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
-		g.write('tos3( v_typeof_sumtype_${sym.name}( (')
+		sum_type_idx := table.type_idx( node.expr_type  )
+		g.write('tos3( /* ${sym.name} */ v_typeof_sumtype_${sum_type_idx}( (')
 		g.expr(node.expr)
 		g.write(').typ ))')
 	}else{
