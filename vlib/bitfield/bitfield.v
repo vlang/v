@@ -509,7 +509,7 @@ pub fn (instance BitField) rotate(offset int) BitField {
 	// removing extra rotations
 
 	mut offset_internal := offset % size
-	if (offset_internal == 0) {
+	if offset_internal == 0 {
 		// nothing to shift
 		return instance
 	}

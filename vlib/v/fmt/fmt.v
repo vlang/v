@@ -498,7 +498,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				else {
 					f.write('else')
 				}
-				if (branch.stmts.len == 0) {
+				if branch.stmts.len == 0 {
 					f.writeln(' {}')
 				}
 				else {

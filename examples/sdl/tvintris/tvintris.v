@@ -269,7 +269,7 @@ fn (sdlc mut SdlContext) set_sdl_context(w int, h int, title string) {
 	}
 	flags := C.IMG_INIT_PNG
 	imgres := img.img_init(flags)
-	if ((imgres & flags) != flags) {
+	if (imgres & flags) != flags {
 		println('error initializing image library.')
 	}
 	println('opening logo $VLogo')

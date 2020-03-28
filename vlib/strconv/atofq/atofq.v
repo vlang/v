@@ -131,7 +131,7 @@ pub fn atof_quick(s string) f64 {
 		}
 		else {
 			if exp > neg_exp.len {
-				if (sign > 0) {
+				if sign > 0 {
 					f.u = DOUBLE_PLUS_ZERO
 				}
 				else {
@@ -140,7 +140,7 @@ pub fn atof_quick(s string) f64 {
 				return f.f
 			}
 			tmp_mul := Float64u{u: neg_exp[exp]}
-			
+
 			// C.printf("exp: %d  [0x%016llx] %f,",exp,pos_exp[exp],tmp_mul)
 			f.f = f.f * tmp_mul.f
 		}

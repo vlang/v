@@ -469,7 +469,7 @@ fn get_module_meta_info(name string) ?Mod {
 			errors << 'Skipping module "$name", since its information is not in json format.'
 			continue
 		}
-		if ('' == mod.url || '' == mod.name) {
+		if '' == mod.url || '' == mod.name {
 			errors << 'Skipping module "$name", since it is missing name or url information.'
 			continue
 		}
