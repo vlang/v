@@ -286,10 +286,7 @@ pub fn (c mut Checker) method_call_expr(method_call_expr mut ast.MethodCallExpr)
 		if name in ['filter', 'map'] {
 			array_info := typ_sym.info as table.Array
 			mut scope := c.file.scope.innermost(method_call_expr.pos.pos)
-			scope.override_var(ast.Var{
-				name: 'it'
-				typ: array_info.elem_type
-			})
+			scope.update_var_type('it', array_info.elem_type)
 		}
 		for i, arg in method_call_expr.args {
 			c.expr(arg.expr)
@@ -451,10 +448,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 				}
 			}
 			assign_stmt.right_types << val_type
-			scope.override_var(ast.Var{
-				name: ident.name
-				typ: mr_info.types[i]
-			})
+			scope.update_var_type(ident.name, mr_info.types[i])
 		}
 	}
 	// `a := 1` | `a,b := 1,2`
@@ -480,10 +474,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 			ident_var_info.typ = val_type
 			ident.info = ident_var_info
 			assign_stmt.left[i] = ident
-			scope.override_var(ast.Var{
-				name: ident.name
-				typ: val_type
-			})
+			scope.update_var_type(ident.name, val_type)
 		}
 	}
 	c.expected_type = table.void_type
@@ -619,10 +610,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 							table.int_type}
 	}
 					it.key_type = key_type
-					scope.override_var(ast.Var{
-						name: it.key_var
-						typ: key_type
-					})
+					scope.update_var_type(it.key_var, key_type)
 				}
 				value_type := c.table.value_type(typ)
 				if value_type == table.void_type {
@@ -632,10 +620,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				it.cond_type = typ
 				it.kind = sym.kind
 				it.val_type = value_type
-				scope.override_var(ast.Var{
-					name: it.val_var
-					typ: value_type
-				})
+				scope.update_var_type(it.val_var, value_type)
 			}
 			c.stmts(it.stmts)
 		}
@@ -838,8 +823,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 			// set var type on first use
 			if typ == 0 {
 				typ = c.expr(var.expr)
-				var.typ = typ
-				var_scope.override_var(var)
+				var_scope.update_var_type(var.name, typ)
 			}
 			// update ident
 			ident.kind = .variable

@@ -358,9 +358,7 @@ fn (m map) get3(key string, zero voidptr) voidptr {
 		index += 2
 		meta += probe_inc
 	}
-	out := malloc(m.value_bytes)
-	C.memcpy(out, zero, m.value_bytes)
-	return out
+	return zero
 	//return voidptr(0)
 }
 

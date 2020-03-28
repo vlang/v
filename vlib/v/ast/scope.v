@@ -3,13 +3,14 @@
 // that can be found in the LICENSE file.
 module ast
 
+import v.table
+
 pub struct Scope {
 mut:
 	parent    &Scope
 	children  []&Scope
 	start_pos int
 	end_pos   int
-	// vars      map[string]table.Var
 	vars      map[string]Var
 }
 
@@ -71,6 +72,18 @@ pub fn (s mut Scope) register_var(var Var) {
 
 pub fn (s mut Scope) override_var(var Var) {
 	s.vars[var.name] = var
+}
+
+pub fn (s mut Scope) update_var_type(name string, typ table.Type) {
+	mut x := s.vars[name]
+	// dont do an insert for no reason
+	if x.typ == typ {
+		return
+	}
+	x.typ = typ
+	s.vars[name] = x
+	// TODO
+	// s.vars[name].typ = typ
 }
 
 pub fn (s &Scope) outermost() &Scope {
