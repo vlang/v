@@ -319,18 +319,6 @@ mut:
 	right_type table.Type
 }
 
-/*
-// renamed to PrefixExpr
-pub struct UnaryExpr {
-pub:
-// tok_kind token.Kind
-// op    BinaryOp
-	op   token.Kind
-	left Expr
-}
-*/
-
-
 pub struct PostfixExpr {
 pub:
 	op   token.Kind
@@ -342,6 +330,7 @@ pub struct PrefixExpr {
 pub:
 	op    token.Kind
 	right Expr
+	pos   token.Position
 }
 
 pub struct IndexExpr {
@@ -528,9 +517,9 @@ pub struct DeferStmt {
 pub:
 	stmts []Stmt
 mut:
-	// TODO: handle this differently
-	// v1 excludes non current os ifdefs so
-	// the defer's never get added in the first place
+// TODO: handle this differently
+// v1 excludes non current os ifdefs so
+// the defer's never get added in the first place
 	ifdef string
 }
 

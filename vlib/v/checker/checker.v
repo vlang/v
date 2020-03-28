@@ -746,6 +746,9 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			if it.op == .mul && table.type_is_ptr(right_type) {
 				return table.type_deref(right_type)
 			}
+			if it.op == .not && right_type != table.bool_type_idx {
+				c.error('! operator can only be used with bool types', it.pos)
+			}
 			return right_type
 		}
 		ast.None {
