@@ -125,31 +125,34 @@ v hello_world.v && ./hello_world    # or simply
 v run hello_world.v                 # this builds the program and runs it right away
 
 v word_counter.v && ./word_counter cinderella.txt
+```
+
+News Fetcher Example:
+```
+# This requires the http package.
+# - macOS: `brew install openssl`
+
 v run news_fetcher.v
+```
+
+Tetris Example:
+```
+# To build Tetris and anything else using the graphics module, you will need to install glfw and freetype libraries.
+# - macOS: `brew install glfw freetype openssl`
+# - Debian/Ubuntu:`sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libssl-dev`
+# - Arch/Manjaro: `sudo pacman -S glfw-x11 freetype2`
+# - Fedora: `sudo dnf install glfw glfw-devel freetype-devel`
+# - Windows: `git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries [path to v repo]/thirdparty/freetype/`
+
 v run tetris/tetris.v
 ```
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
 
-In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype libraries.
-
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
 ```
-macOS:
-brew install glfw freetype openssl
 
-Debian/Ubuntu:
-sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
-
-Arch/Manjaro:
-sudo pacman -S glfw-x11 freetype2
-
-Fedora:
-sudo dnf install glfw glfw-devel freetype-devel
-
-Windows:
-git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries [path to v repo]/thirdparty/freetype/
 
 ```
 
