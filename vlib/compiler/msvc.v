@@ -49,7 +49,7 @@ fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 				}
 				// We might need to manually null terminate this thing
 				// So just make sure that we do that
-				if (value[length - 1] != u16(0)) {
+				if value[length - 1] != u16(0) {
 					value[length] = u16(0)
 				}
 				return string_from_wide(value)

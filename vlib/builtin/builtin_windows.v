@@ -103,10 +103,10 @@ $if msvc {
 		else {
 			// https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes
 			cerr := int(C.GetLastError())
-			if (cerr == 87) {
+			if cerr == 87 {
 				println('SymFromAddr failure: $cerr = The parameter is incorrect)')
 			}
-			else if (cerr == 487) {
+			else if cerr == 487 {
 				// probably caused because the .pdb isn't in the executable folder
 				println('SymFromAddr failure: $cerr = Attempt to access invalid address (Verify that you have the .pdb file in the right folder.)')
 			}
@@ -137,4 +137,3 @@ fn print_backtrace_skipping_top_frames_nix(skipframes int) bool {
 pub fn println(s string) {
 	print('$s\n')
 }
-
