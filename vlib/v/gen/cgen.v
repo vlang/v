@@ -753,10 +753,10 @@ fn (g mut Gen) free_scope_vars(pos int) {
 		// println('//////')
 		// println(var.name)
 		// println(var.typ)
-		if var.typ == 0 {
-			// TODO why 0?
-			continue
-		}
+		// if var.typ == 0 {
+		// 	// TODO why 0?
+		// 	continue
+		// }
 		sym := g.table.get_type_symbol(var.typ)
 		if sym.kind == .array && !table.type_is_optional(var.typ) {
 			g.writeln('array_free($var.name); // autofreed')

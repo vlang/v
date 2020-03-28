@@ -94,9 +94,14 @@ pub fn (p mut Parser) parse_type() table.Type {
 	}
 	// &Type
 	mut nr_muls := 0
-	for p.tok.kind == .amp {
-		p.check(.amp)
-		nr_muls++
+	for p.tok.kind in [.and, .amp] {
+		if p.tok.kind == .and {
+			nr_muls+=2
+		}
+		else {
+			nr_muls++
+		}
+		p.next()
 	}
 	if p.tok.kind == .key_mut {
 		nr_muls++
