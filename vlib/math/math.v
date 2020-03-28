@@ -325,6 +325,5 @@ pub fn aprox_cos(a f64) f64 {
 
 // copysign returns a value with the magnitude of x and the sign of y
 pub fn copysign(x, y f64) f64 {
-	sign := u64(1) << 63
-	return f64_from_bits((f64_bits(x) & ~sign) | (f64_bits(y) & sign))
+	return f64_from_bits((f64_bits(x) & ~sign_mask) | (f64_bits(y) & sign_mask))
 }
