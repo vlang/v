@@ -6,6 +6,7 @@ module scanner
 import (
 	os
 	v.token
+	v.pref
 )
 
 const (
@@ -560,6 +561,7 @@ pub fn (s mut Scanner) scan() token.Token {
 			s.pos++
 			name := s.ident_name()
 			// @FN => will be substituted with the name of the current V function
+			// @VEXE => will be substituted with the path to the V compiler
 			// @FILE => will be substituted with the path of the V source file
 			// @LINE => will be substituted with the V line number where it appears (as a string).
 			// @COLUMN => will be substituted with the column where it appears (as a string).
@@ -569,6 +571,10 @@ pub fn (s mut Scanner) scan() token.Token {
 			// ... which is useful while debugging/tracing
 			if name == 'FN' {
 				return s.scan_res(.string, s.fn_name)
+			}
+			if name == 'VEXE' {
+				vexe := pref.vexe_path()
+				return s.scan_res(.string, cescaped_path( vexe ) )
 			}
 			if name == 'FILE' {
 				return s.scan_res(.string, cescaped_path(os.real_path(s.file_path)))
