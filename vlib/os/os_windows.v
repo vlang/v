@@ -106,7 +106,7 @@ pub fn ls(path string) ?[]string {
 	if first_filename != '.' && first_filename != '..' {
 		dir_files << first_filename
 	}
-	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) {
+	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0 {
 		filename := string_from_wide(&u16(find_file_data.cFileName))
 		if filename != '.' && filename != '..' {
 			dir_files << filename.clone()

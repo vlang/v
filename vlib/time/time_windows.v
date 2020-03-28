@@ -12,8 +12,8 @@ struct C.tm {
 	tm_sec  int
 }
 
-fn C._mkgmtime(&tm) time_t
+fn C._mkgmtime(&C.tm) time_t
 
-fn make_unix_time(t tm) int {
+fn make_unix_time(t C.tm) int {
 	return int(C._mkgmtime(&t))
 }

@@ -337,7 +337,7 @@ fn C.FindFirstFileW() voidptr
 fn C.FindFirstFile() voidptr
 
 
-fn C.FindNextFile() voidptr
+fn C.FindNextFile() int
 
 
 fn C.FindClose()
