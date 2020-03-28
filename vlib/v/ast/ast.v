@@ -641,6 +641,8 @@ pub:
 pub struct TypeOf {
 pub:
 	expr Expr
+mut:
+	expr_type table.Type
 }
 
 pub struct LineComment {

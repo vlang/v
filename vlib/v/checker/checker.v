@@ -779,6 +779,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return it.typ
 		}
 		ast.TypeOf {
+			it.expr_type = c.expr(it.expr)
 			return table.string_type
 		}
 		/*
