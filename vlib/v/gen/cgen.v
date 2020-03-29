@@ -139,7 +139,7 @@ pub fn (g mut Gen) write_typeof_functions() {
 pub fn (g mut Gen) typ(t table.Type) string {
 	nr_muls := table.type_nr_muls(t)
 	sym := g.table.get_type_symbol(t)
-	mut styp := sym.name.replace_each(['.', '__'])
+	mut styp := sym.name.replace('.', '__')
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
@@ -162,7 +162,7 @@ pub fn (g mut Gen) typ(t table.Type) string {
 
 /*
 pub fn (g &Gen) styp(t string) string {
-	return t.replace_each(['.', '__'])
+	return t.replace('.', '__')
 }
 */
 
