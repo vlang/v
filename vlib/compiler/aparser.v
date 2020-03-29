@@ -756,7 +756,7 @@ fn (p mut Parser) const_decl() {
 		if p.first_pass() {
 			p.table.register_const(name, typ, p.mod, is_pub)
 		}
-		// Check to see if this constant exists, and is void. If so, try and get the type again:
+		// Check to see if this constant exists, and is unresolved. If so, try and get the type again:
 		if my_const := p.v.table.find_const(name) {
 			if my_const.typ == 'unresolved' {
 				for i, v in p.v.table.consts {
