@@ -758,7 +758,7 @@ fn (p mut Parser) const_decl() {
 		}
 		// Check to see if this constant exists, and is void. If so, try and get the type again:
 		if my_const := p.v.table.find_const(name) {
-			if my_const.typ == 'void' {
+			if my_const.typ == 'unresolved' {
 				for i, v in p.v.table.consts {
 					if v.name == name {
 						p.v.table.consts[i].typ = typ

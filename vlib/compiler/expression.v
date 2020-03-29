@@ -457,7 +457,7 @@ fn (p mut Parser) name_expr() string {
 		// First pass, the function can be defined later.
 		if p.first_pass() {
 			p.next()
-			return 'void'
+			return 'unresolved'
 		}
 		// exhaused all options type,enum,const,mod,var,fn etc
 		// so show undefined error (also checks typos)
@@ -680,7 +680,7 @@ fn (p mut Parser) handle_operator(op string, typ string,cpostfix string, ph int,
 		p.cgen.set_placeholder(ph, '${typ}_${cpostfix}(')
 		p.gen(')')
 	}
-	else {
+	else if typ != 'unresolved' {
 		p.error('operator $op not defined on `$typ`')
 	}
 }
