@@ -188,7 +188,7 @@ pub fn (g mut Gen) write_typedef_types() {
 			else {
 				continue
 			}
-		}
+	}
 	}
 }
 
@@ -313,6 +313,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 			g.definitions.writeln('} $name;')
 			*/
+
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
@@ -325,7 +326,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 						g.writeln(';')
 					}
 				}
-			}
+	}
 		}
 		ast.FnDecl {
 			g.fn_decl = it // &it
@@ -561,7 +562,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			else {
 				panic('expected call')
 			}
-		}
+	}
 		mr_var_name := 'mr_$assign_stmt.pos.pos'
 		g.expr_var_name = mr_var_name
 		if table.type_is_optional(return_type) {
@@ -618,7 +619,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						is_ident = true
 					}
 					else {}
-				}
+	}
 				is_decl := assign_stmt.op == .decl_assign
 				if is_decl {
 					g.write('$styp ')
@@ -771,7 +772,7 @@ fn (g mut Gen) free_scope_vars(pos int) {
 				else {
 					g.writeln('// other ' + t)
 				}
-			}
+	}
 			g.writeln('string_free($var.name); // autofreed')
 		}
 	}
@@ -1116,6 +1117,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 		}
 		*/
+
 		ast.SizeOf {
 			styp := g.typ(it.typ)
 			g.write('sizeof($styp)')
@@ -1204,9 +1206,8 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 				'string_ge('
 			}
 			else {
-				'/*node error*/'
-			}
-		}
+				'/*node error*/'}
+	}
 		g.write(fn_name)
 		g.expr(node.left)
 		g.write(', ')
@@ -1227,7 +1228,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 					return
 				}
 				else {}
-			}
+	}
 			styp := g.typ(node.left_type)
 			g.write('_IN($styp, ')
 			g.expr(node.left)
@@ -1388,7 +1389,7 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 				else {
 					verror('match sum type')
 				}
-			}
+	}
 		}
 		g.stmts(branch.stmts)
 		if !g.inside_ternary {
@@ -1479,7 +1480,7 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 						g.expr(branch.cond)
 						g.writeln(') {')
 					}
-				}
+	}
 			}
 			else if i < node.branches.len - 1 || !node.has_else {
 				g.write('} else if (')
@@ -1560,7 +1561,7 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 					is_selector = true
 				}
 				else {}
-			}
+	}
 			if g.is_assign_expr && !is_selector {
 				g.is_array_set = true
 				g.write('array_set(&')
@@ -1576,11 +1577,12 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 					g.expr(node.index)
 					g.write(') ')
 					op := match g.assign_op {
-						.mult_assign {
+						.mult_assign{
 							'*'
 						}
-						else { '' }
-					}
+						else {
+							''}
+	}
 					g.write(op)
 				}
 			}
@@ -1681,7 +1683,7 @@ fn (g mut Gen) return_statement(it ast.Return) {
 					is_error = true // TODO check name 'error'
 				}
 				else {}
-			}
+	}
 			if !is_none && !is_error {
 				styp := g.typ(g.fn_decl.return_type)[7..] // remove 'Option_'
 				g.write('opt_ok(& ($styp []) { ')
@@ -1727,7 +1729,7 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 				g.inits.write(val)
 				g.inits.writeln(';')
 			}
-		}
+	}
 	}
 }
 
@@ -2007,13 +2009,14 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 			}
 			table.SumType {
 				g.definitions.writeln('// Sum type')
-				g.definitions.writeln('typedef struct {
+				g.definitions.writeln('
+				typedef struct {
 void* obj;
 int typ;
 } $name;')
 			}
 			else {}
-		}
+	}
 	}
 }
 
@@ -2044,7 +2047,7 @@ fn (g &Gen) sort_structs(types []table.TypeSymbol) []table.TypeSymbol {
 				}
 			}
 			else {}
-		}
+	}
 		// add type and dependant types to graph
 		dep_graph.add(t.name, field_deps)
 	}
@@ -2288,8 +2291,7 @@ fn op_to_fn_name(name string) string {
 			'_op_mod'
 		}
 		else {
-			'bad op $name'
-		}
+			'bad op $name'}
 	}
 }
 
