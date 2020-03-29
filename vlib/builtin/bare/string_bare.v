@@ -101,7 +101,7 @@ pub fn i64_tos(buf byteptr, len int, n0 i64, base int) string {
 		n /= base
 		if n < 1 {break}
 	}
-	if (neg) {
+	if neg {
 		if i < 0 { panic ("buffer to small") }
 		b[i--] = 45
 	}
@@ -132,4 +132,3 @@ pub fn (a string) clone() string {
 	b[a.len] = `\0`
 	return b
 }
-

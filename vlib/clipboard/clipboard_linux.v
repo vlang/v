@@ -237,7 +237,7 @@ fn (cb mut Clipboard) start_listener(){
 	mut to_be_requested := Atom(0)
 	for {
 		XNextEvent(cb.display, &event)
-		if (event.@type == 0) {
+		if event.@type == 0 {
 			println("error")
            	continue
         }

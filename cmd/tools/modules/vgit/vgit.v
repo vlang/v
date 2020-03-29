@@ -148,7 +148,7 @@ ${flag.SPACE}to script it/run it in a restrictive vps/docker.
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 
-	if (context.show_help) {
+	if context.show_help {
 		println(fp.usage())
 		exit(0)
 	}

@@ -62,7 +62,7 @@ pub fn (r mut Readline) enable_raw_mode() {
 // Enable the raw mode of the terminal
 // Does not catch the SIGUSER (CTRL+C) Signal
 pub fn (r mut Readline) enable_raw_mode_nosig() {
-  if ( C.tcgetattr(0, &r.orig_termios) == -1 ) {
+  if C.tcgetattr(0, &r.orig_termios) == -1 {
     r.is_tty = false
     r.is_raw = false
     return
@@ -319,7 +319,7 @@ fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count 
   out[0] = x
   out[1] = y
   for chars_remaining := char_count; chars_remaining > 0; {
-    chars_this_row := if ( (x + chars_remaining) < screen_columns) { chars_remaining } else { screen_columns - x }
+    chars_this_row := if (x + chars_remaining) < screen_columns { chars_remaining } else { screen_columns - x }
     out[0] = x + chars_this_row
     out[1] = y
     chars_remaining -= chars_this_row
