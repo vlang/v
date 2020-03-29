@@ -454,11 +454,6 @@ fn (p mut Parser) name_expr() string {
 	// TODO: V script? Try os module.
 	// Function (not method, methods are handled in `.dot()`)
 	mut f := p.table.find_fn_is_script(name, p.v_script) or {
-		// First pass, the function can be defined later.
-		if p.first_pass() {
-			p.next()
-			return 'void'
-		}
 		// exhaused all options type,enum,const,mod,var,fn etc
 		// so show undefined error (also checks typos)
 		p.undefined_error(name, orig_name)
