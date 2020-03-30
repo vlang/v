@@ -218,7 +218,6 @@ pub struct Stmt {
 }
 */
 
-
 pub struct Var {
 pub:
 	name   string
