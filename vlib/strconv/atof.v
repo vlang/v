@@ -102,9 +102,9 @@ const (
 //
 	DIGITS = 18
 	DOUBLE_PLUS_ZERO = u64(0x0000000000000000)
-	DOUBLE_MINUS_ZERO = 0x8000000000000000
-	DOUBLE_PLUS_INFINITY = 0x7FF0000000000000
-	DOUBLE_MINUS_INFINITY = 0xFFF0000000000000
+	DOUBLE_MINUS_ZERO = u64(0x8000000000000000)
+	DOUBLE_PLUS_INFINITY = u64(0x7FF0000000000000)
+	DOUBLE_MINUS_INFINITY = u64(0xFFF0000000000000)
 	//
 	// parser state machine states
 	//
@@ -334,7 +334,7 @@ fn parser(s string) (int,PrepNumber) {
 			result = parser_pzero
 		}
 	}
-	else if (pn.exponent > 309) {
+	else if pn.exponent > 309 {
 		if pn.negative {
 			result = parser_minf
 		}

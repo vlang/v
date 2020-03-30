@@ -40,12 +40,15 @@ const (
 #endif
 #endif
 
+#define V_COMMIT_HASH "TODO"
+
 '
 	c_headers = '
 
 // c_headers
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
+#include <float.h>
 
 //#include "fns.h"
 #include <signal.h>
@@ -103,6 +106,11 @@ extern char **environ;
 #endif
 
 #ifdef __NetBSD__
+#include <sys/wait.h> // os__wait uses wait on nix
+#endif
+
+#ifdef __sun
+#include <sys/types.h>
 #include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
@@ -180,9 +188,12 @@ extern wchar_t **_wenviron;
 byte g_str_buf[1024];
 int load_so(byteptr);
 void reload_so();
+void _vinit();
+void _vcleanup();
+#define sigaction_size sizeof(sigaction);
 
 // ============== wyhash ==============
-//	Author: Wang Yi <godspeed_china@yeah.net>
+//	Author: Wang Yi
 #ifndef wyhash_version_4
 #define wyhash_version_4
 #include	<stdint.h>
@@ -295,11 +306,13 @@ typedef array array_u64;
 typedef map map_int;
 typedef map map_string;
 typedef byte array_fixed_byte_300 [300];
+typedef byte array_fixed_byte_400 [400];
 #ifndef bool
 	typedef int bool;
 	#define true 1
 	#define false 0
 #endif
+
 '
 	bare_c_headers = '
 

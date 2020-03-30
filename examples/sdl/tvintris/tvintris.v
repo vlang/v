@@ -19,7 +19,7 @@ import sdl.ttf as ttf
 
 const (
 	Title = 'tVintris'
-	BASE = os.dir( os.realpath( os.executable() ) )
+	BASE = os.dir( os.real_path( os.executable() ) )
 	FontName = BASE + '/../../assets/fonts/RobotoMono-Regular.ttf'
 	MusicName = BASE + '/sounds/TwintrisThosenine.mod'
 	SndBlockName = BASE + '/sounds/block.wav'
@@ -269,7 +269,7 @@ fn (sdlc mut SdlContext) set_sdl_context(w int, h int, title string) {
 	}
 	flags := C.IMG_INIT_PNG
 	imgres := img.img_init(flags)
-	if ((imgres & flags) != flags) {
+	if (imgres & flags) != flags {
 		println('error initializing image library.')
 	}
 	println('opening logo $VLogo')

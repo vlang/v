@@ -55,6 +55,28 @@ pub fn (b mut Builder) writeln(s string) {
 	b.len += s.len + 1
 }
 
+// buf == 'hello world'
+// last_n(5) returns 'world'
+pub fn (b &Builder) last_n(n int) string {
+	if n > b.len {
+		return ''
+	}
+	buf := b.buf[b.len-n..]
+	return string(buf.clone())
+}
+
+// buf == 'hello world'
+// after(6) returns 'world'
+pub fn (b &Builder) after(n int) string {
+	if n >= b.len {
+		return ''
+	}
+	buf := b.buf[n..]
+	mut copy := buf.clone()
+	copy << `\0`
+	return string(copy)
+}
+
 pub fn (b mut Builder) str() string {
 	b.buf << `\0`
 	return string(b.buf,b.len)

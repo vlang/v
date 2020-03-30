@@ -20,7 +20,11 @@ fn C.symlink(charptr, charptr) int
 
 fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
+	//mut args := []string(make(0, argc, sizeof(string)))
+	//mut args := []string{len:argc}
 	for i in 0 .. argc {
+
+		//args [i] = string(argv[i])
 		args << string(argv[i])
 	}
 	return args
@@ -171,7 +175,7 @@ pub fn mkdir(path string) ?bool {
 	if path == '.' {
 		return true
 	}
-	apath := os.realpath(path)
+	apath := os.real_path(path)
   /*
 	$if linux {
 		$if !android {
@@ -206,7 +210,7 @@ pub fn exec(cmd string) ?Result {
 		res.write_bytes( buf, vstrlen(buf) )
 	}
 	soutput := res.str().trim_space()
-	res.free()
+	//res.free()
 	exit_code := vpclose(f)
 	// if exit_code != 0 {
 	// return error(res)

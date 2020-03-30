@@ -55,6 +55,12 @@ fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 	$if freebsd {
 		return print_backtrace_skipping_top_frames_freebsd(skipframes)
 	}
+	$if netbsd {
+		return print_backtrace_skipping_top_frames_freebsd(skipframes)
+	}
+	$if openbsd {
+		return print_backtrace_skipping_top_frames_freebsd(skipframes)
+	}
 	return false
 }
 
@@ -63,7 +69,7 @@ fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	$if macos {
 		buffer := [100]byteptr
-		nr_ptrs := C.backtrace(buffer, 100)
+		nr_ptrs := backtrace(buffer, 100)
 		backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 1)
 	}
 	return true
@@ -72,8 +78,8 @@ fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
 	$if freebsd {
 		buffer := [100]byteptr
-		nr_ptrs := C.backtrace(buffer, 100)
-		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 1)
+		nr_ptrs := backtrace(buffer, 100)
+		backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 1)
 	}
 	return true
 }
@@ -87,13 +93,13 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		// backtrace is not available on Android.
 		$if glibc {
 			buffer := [100]byteptr
-			nr_ptrs := C.backtrace(buffer, 100)
+			nr_ptrs := backtrace(buffer, 100)
 			nr_actual_frames := nr_ptrs - skipframes
 			mut sframes := []string
-			//////csymbols := C.backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
-			csymbols := C.backtrace_symbols(&buffer[skipframes], nr_actual_frames)
+			//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
+			csymbols := backtrace_symbols(&buffer[skipframes], nr_actual_frames)
 			for i in 0 .. nr_actual_frames {
-				sframes << tos2(csymbols[i])
+				sframes << tos2( byteptr( voidptr(csymbols[i]) ) )
 			}
 			for sframe in sframes {
 				executable := sframe.all_before('(')
@@ -119,9 +125,13 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				if output in ['??:0:', '??:?:'] {
 					output = ''
 				}
-				//println('${output:-46s} | ${addr:14s} | $beforeaddr') // QTODO
+				// See http://wiki.dwarfstd.org/index.php?title=Path_Discriminators
+				// NB: it is shortened here to just d. , just so that it fits, and so
+				// that the common error file:lineno: line format is enforced.
+				output = output.replace(' (discriminator', ': (d.')
+				println('${output:-46s} | ${addr:14s} | $beforeaddr')
 			}
-			// C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
+			// backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 			return true
 		} $else {
 			println('backtrace_symbols_fd is missing, so printing backtraces is not available.\n')
@@ -130,4 +140,3 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	}
 	return false
 }
-

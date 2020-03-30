@@ -75,3 +75,4 @@ thirdparty/SDL2_ttf/
 cachegrind.out.*
 
 .gdb_history
+/thirdparty/pg

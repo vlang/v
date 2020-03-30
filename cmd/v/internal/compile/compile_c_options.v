@@ -12,7 +12,6 @@ import (
 	v.pref
 )
 
-[inline]
 fn parse_c_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 	match flag {
 		'cc', 'compiler' {
@@ -59,7 +58,6 @@ fn parse_c_options(flag string, f mut flag.Instance, prefs mut pref.Preferences)
 			prefs.sanitize = f.bool()
 		}
 		'cf', 'cflags' {
-			f.allow_duplicate()
 			cflag := f.string() or {
 				println('V error: Expected argument after `-$flag`.')
 				exit(1)

@@ -3,13 +3,14 @@
 // that can be found in the LICENSE file.
 module ast
 
+import v.table
+
 pub struct Scope {
 mut:
 	parent    &Scope
 	children  []&Scope
 	start_pos int
 	end_pos   int
-	// vars      map[string]table.Var
 	vars      map[string]Var
 }
 
@@ -20,13 +21,23 @@ pub fn new_scope(parent &Scope, start_pos int) &Scope {
 	}
 }
 
-pub fn (s &Scope) find_scope_and_var(name string) ?(&Scope,Var) {
+pub struct ScopeVar {
+pub:
+	scope &Scope
+	var   Var
+}
+
+// pub fn (s &Scope) find_scope_and_var(name string) ?(&Scope,Var) {
+pub fn (s &Scope) find_scope_and_var(name string) ?ScopeVar {
 	if name in s.vars {
-		return s,s.vars[name]
+		// return s,s.vars[name]
+		return ScopeVar{
+			s,s.vars[name]}
 	}
 	for sc := s; !isnil(sc.parent); sc = sc.parent {
 		if name in sc.vars {
-			return sc,sc.vars[name]
+			return ScopeVar{
+				sc,sc.vars[name]}
 		}
 	}
 	return none
@@ -61,6 +72,18 @@ pub fn (s mut Scope) register_var(var Var) {
 
 pub fn (s mut Scope) override_var(var Var) {
 	s.vars[var.name] = var
+}
+
+pub fn (s mut Scope) update_var_type(name string, typ table.Type) {
+	mut x := s.vars[name]
+	// dont do an insert for no reason
+	if x.typ == typ {
+		return
+	}
+	x.typ = typ
+	s.vars[name] = x
+	// TODO
+	// s.vars[name].typ = typ
 }
 
 pub fn (s &Scope) outermost() &Scope {
@@ -141,4 +164,3 @@ pub fn (sc &Scope) show(level int) string {
 pub fn (sc &Scope) str() string {
 	return sc.show(0)
 }
-

@@ -286,12 +286,12 @@ fn (p mut Parser) name_expr() string {
 		name = p.generic_dispatch.inst[name]
 	}
 	// Raw string (`s := r'hello \n ')
-	if name == 'r' && p.peek() == .str && p.prev_tok != .str_dollar {
+	if name == 'r' && p.peek() == .string&& p.prev_tok != .str_dollar {
 		p.string_expr()
 		return 'string'
 	}
 	// C string (a zero terminated one) C.func( c'hello' )
-	if name == 'c' && p.peek() == .str && p.prev_tok != .str_dollar {
+	if name == 'c' && p.peek() == .string&& p.prev_tok != .str_dollar {
 		p.string_expr()
 		return 'charptr'
 	}
@@ -366,7 +366,7 @@ fn (p mut Parser) name_expr() string {
 	}
 	// Unknown name, try prepending the module name to it
 	// TODO perf
-	else if !p.table.known_type(name) && !p.table.known_fn(name) && !p.table.known_const(name) && !is_c {
+	else if !p.table.known_type(name) && !p.known_fn_in_mod(name) && !p.table.known_const(name) && !is_c {
 		name = p.prepend_mod(name)
 	}
 	// re-check
@@ -457,7 +457,7 @@ fn (p mut Parser) name_expr() string {
 		// First pass, the function can be defined later.
 		if p.first_pass() {
 			p.next()
-			return 'void'
+			return 'unresolved'
 		}
 		// exhaused all options type,enum,const,mod,var,fn etc
 		// so show undefined error (also checks typos)
@@ -680,7 +680,7 @@ fn (p mut Parser) handle_operator(op string, typ string,cpostfix string, ph int,
 		p.cgen.set_placeholder(ph, '${typ}_${cpostfix}(')
 		p.gen(')')
 	}
-	else {
+	else if typ != 'unresolved' {
 		p.error('operator $op not defined on `$typ`')
 	}
 }
@@ -786,18 +786,8 @@ fn (p mut Parser) factor() string {
 			return p.expected_type
 		}
 		.number {
-			typ = 'int'
-			// Check if float (`1.0`, `1e+3`) but not if is hexa
-			if (p.lit.contains('.') || (p.lit.contains('e') || p.lit.contains('E'))) && !(p.lit[0] == `0` && (p.lit[1] == `x` || p.lit[1] == `X`)) {
-				typ = 'f32'
-				// typ = 'f64' // TODO
-			}
-			else {
-				v_u64 := p.lit.u64()
-				if u64(u32(v_u64)) < v_u64 {
-					typ = 'u64'
-				}
-			}
+			// Check if float (`1.0`, `1e+3`) but not if is hexa (e.g. 0xEE contains `E` but is not float)
+			typ = if (p.lit.contains('.') || p.lit.contains('e') || p.lit.contains('E')) && !(p.lit[..2] in ['0x', '0X']) { 'f64' } else { 'int' }
 			if p.expected_type != '' && !is_valid_int_const(p.lit, p.expected_type) {
 				p.error('constant `$p.lit` overflows `$p.expected_type`')
 			}
@@ -833,7 +823,7 @@ fn (p mut Parser) factor() string {
 				// TODO: make this work for arbitrary sumtype expressions, not just simple vars
 				// NB: __SumTypeNames__[xxx][0] is the name of the sumtype itself;
 				// idx>0 are the names of the sumtype children
-				p.gen('tos3(__SumTypeNames__${type_of_var}[${vname}.typ])') 
+				p.gen('tos3(__SumTypeNames__${type_of_var}[${vname}.typ])')
 			}else{
 				p.gen('tos3("$type_of_var")')
 			}
@@ -913,7 +903,7 @@ fn (p mut Parser) factor() string {
 			typ = 'byte'
 			return typ
 		}
-		.str {
+		.string{
 			p.string_expr()
 			typ = 'string'
 			return typ
@@ -934,7 +924,7 @@ fn (p mut Parser) factor() string {
 		}
 		.lcbr {
 			// `m := { 'one': 1 }`
-			if p.peek() == .str {
+			if p.peek() == .string{
 				return p.map_init()
 			}
 			peek2 := p.tokens[p.token_idx + 1]

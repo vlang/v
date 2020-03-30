@@ -5,6 +5,7 @@ import (
 	v.fmt
 	v.parser
 	v.table
+	v.pref
 )
 
 const (
@@ -32,7 +33,7 @@ fn test_fmt() {
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
 		fmt_bench.step()
-		ifilename := os.filename(ipath)
+		ifilename := os.file_name(ipath)
 		opath := ipath.replace('_input.vv', '_expected.vv')
 		if !os.exists(opath) {
 			fmt_bench.fail()
@@ -45,7 +46,7 @@ fn test_fmt() {
 			continue
 		}
 		table := table.new_table()
-		file_ast := parser.parse_file(ipath, table, .parse_comments)
+		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{})
 		result_ocontent := fmt.fmt(file_ast, table)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()

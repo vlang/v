@@ -70,16 +70,7 @@ pub fn (p mut Parser) parse_multi_return_type() table.Type {
 pub fn (p mut Parser) parse_fn_type(name string) table.Type {
 	// p.warn('parse fn')
 	p.check(.key_fn)
-	ast_args, is_variadic := p.fn_args()
-	mut args := []table.Var
-	for ast_arg in ast_args {
-		arg := table.Var{
-			name: ast_arg.name
-			is_mut: ast_arg.is_mut
-			typ: ast_arg.typ
-		}
-		args << arg
-	}
+	args, is_variadic := p.fn_args()
 	mut return_type := table.void_type
 	if p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()
@@ -90,7 +81,7 @@ pub fn (p mut Parser) parse_fn_type(name string) table.Type {
 		is_variadic: is_variadic
 		return_type: return_type
 	}
-	idx := p.table.find_or_register_fn_type(func)
+	idx := p.table.find_or_register_fn_type(func, false)
 	return table.new_type(idx)
 }
 
@@ -103,9 +94,14 @@ pub fn (p mut Parser) parse_type() table.Type {
 	}
 	// &Type
 	mut nr_muls := 0
-	for p.tok.kind == .amp {
-		p.check(.amp)
-		nr_muls++
+	for p.tok.kind in [.and, .amp] {
+		if p.tok.kind == .and {
+			nr_muls+=2
+		}
+		else {
+			nr_muls++
+		}
+		p.next()
 	}
 	if p.tok.kind == .key_mut {
 		nr_muls++

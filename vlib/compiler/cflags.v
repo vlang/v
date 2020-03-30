@@ -23,9 +23,9 @@ fn (v &V) get_os_cflags() []CFlag {
 	if v.pref.compile_defines.len > 0 {
 		ctimedefines << v.pref.compile_defines
 	}
-	
+
 	for flag in v.table.cflags {
-		if flag.os == '' || (flag.os == 'linux' && v.pref.os == .linux) || (flag.os == 'darwin' && v.pref.os == .mac) || (flag.os == 'freebsd' && v.pref.os == .freebsd) || (flag.os == 'windows' && v.pref.os == .windows) {
+		if flag.os == '' || (flag.os == 'linux' && v.pref.os == .linux) || (flag.os == 'darwin' && v.pref.os == .mac) || (flag.os == 'freebsd' && v.pref.os == .freebsd) || (flag.os == 'windows' && v.pref.os == .windows) || (flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler != 'msvc') || (flag.os == 'solaris' && v.pref.os == .solaris) {
 			flags << flag
 		}
 		if flag.os in ctimedefines {
@@ -57,7 +57,7 @@ fn (cf &CFlag) format() string {
 	}
 	// convert to absolute path
 	if cf.name == '-I' || cf.name == '-L' || value.ends_with('.o') {
-		value = '"' + os.realpath(value) + '"'
+		value = '"' + os.real_path(value) + '"'
 	}
 	return '$cf.name $value'.trim_space()
 }
@@ -82,7 +82,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string, ctimedefines []string
 		return true
 	}
 	mut fos := ''
-	mut allowed_os_overrides := ['linux','darwin','freebsd','windows']
+	mut allowed_os_overrides := ['linux', 'darwin', 'freebsd', 'windows', 'mingw', 'solaris']
 	allowed_os_overrides << ctimedefines
 	for os_override in allowed_os_overrides {
 		if !flag.starts_with( os_override ) { continue }

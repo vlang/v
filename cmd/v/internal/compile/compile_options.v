@@ -22,18 +22,24 @@ fn parse_arguments(args []string) (pref.Preferences, []string) {
 		exit(1)
 	}
 	if backend.len == 1 {
-		p.backend = pref.backend_from_string(backend[0]) or {
+
+// TODO remove tmp var after cgen optional bug is fixed
+		x := pref.backend_from_string(backend[0]) or {
 			println('V error: Unknown backend ${backend[0]} provided.')
 			exit(1)
 		}
+		p.backend = x
 	} else {
 		p.backend = .c
 	}
-	mut remaining := flag.parse_pref(args, parse_options, &p) or {
+	remaining2 := flag.parse_pref(args, parse_options, p) or {
 		println('V error: Error while parsing flags.')
 		println(err)
+		println('Args:')
+		println(args)
 		exit(1)
 	}
+	mut remaining := remaining2 // TODO cgen bug
 	match remaining[0] {
 		'run' {
 			p.is_run = true
@@ -41,7 +47,7 @@ fn parse_arguments(args []string) (pref.Preferences, []string) {
 		}
 		'build' {
 			remaining = remaining[1..]
-			if remaining[0] == 'module' {
+			if remaining.len > 0 && remaining[0] == 'module' {
 				remaining = remaining[1..]
 				//TODO Figure out module
 				println('V error: Module compilation is not ready yet.')
@@ -84,7 +90,6 @@ fn parse_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 			prefs.out_name = tmp
 		}
 		'd', 'define' {
-			f.allow_duplicate()
 			define := f.string() or {
 				println('V error: Expected argument for `-$flag`.')
 				exit(1)
@@ -99,7 +104,6 @@ fn parse_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 			}
 		}
 		'e', 'experiments' {
-			f.allow_duplicate()
 			to_enable := f.string() or {
 				println('V error: Expected argument for `-$flag`.')
 				exit(1)
@@ -169,7 +173,7 @@ fn parse_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 		'translated' {
 			prefs.translated = f.bool()
 		}
-		'backend' {
+		'b', 'backend' {
 			// Just consume it. The option is handled outside of this function
 			f.string() or { return }
 		}

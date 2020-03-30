@@ -21,9 +21,9 @@ pub fn (p mut Preferences) fill_with_defaults() {
 	for i, path in p.lookup_path {
 		p.lookup_path[i] = path.replace('@vlib', vlib_path).replace('@vmodules', default_module_path)
 	}
-	rpath := os.realpath(p.path)
+	rpath := os.real_path(p.path)
 	if p.out_name == ''{
-		filename := os.filename(rpath).trim_space()
+		filename := os.file_name(rpath).trim_space()
 		mut base := filename.all_before_last('.')
 		if base == '' {
 			// The file name is just `.v` or `.vsh` or `.*`
@@ -41,7 +41,7 @@ pub fn (p mut Preferences) fill_with_defaults() {
 			p.out_name = 'v2'
 		}
 	}
-	rpath_name := os.filename(rpath)
+	rpath_name := os.file_name(rpath)
 	p.building_v = !p.is_repl && (rpath_name == 'v' || rpath_name == 'vfmt.v')
 	if p.os == ._auto {
 		// No OS specifed? Use current system
@@ -79,7 +79,7 @@ pub fn vexe_path() string {
 	if vexe != '' {
 		return vexe
 	}
-	real_vexe_path := os.realpath(os.executable())
+	real_vexe_path := os.real_path(os.executable())
 	os.setenv('VEXE', real_vexe_path, true)
 	return real_vexe_path
 }

@@ -18,7 +18,7 @@ pub:
 	table               &table.Table
 	checker             checker.Checker
 	os                  pref.OS // the OS to build for
-	compiled_dir        string // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
+	compiled_dir        string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path         string
 mut:
 	module_search_paths []string
@@ -36,7 +36,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 
 pub fn (b mut Builder) gen_c(v_files []string) string {
 	t0 := time.ticks()
-	b.parsed_files = parser.parse_files(v_files, b.table)
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
@@ -71,7 +71,7 @@ pub fn (b mut Builder) build_c(v_files []string, out_file string) {
 
 pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
 	t0 := time.ticks()
-	b.parsed_files = parser.parse_files(v_files, b.table)
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
@@ -109,7 +109,7 @@ pub fn (b mut Builder) parse_imports() {
 				panic('cannot import module "$mod" (no .v files in "$import_path")')
 			}
 			// Add all imports referenced by these libs
-			parsed_files := parser.parse_files(v_files, b.table)
+			parsed_files := parser.parse_files(v_files, b.table, b.pref)
 			for file in parsed_files {
 				if file.mod.name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
@@ -132,7 +132,7 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 		verror("$dir doesn't exist")
 	}
 	else if !os.is_dir(dir) {
-		verror("$dir isn't a directory")
+		verror("$dir isn't a directory!")
 	}
 	mut files := os.ls(dir) or {
 		panic(err)
@@ -206,7 +206,7 @@ fn module_path(mod string) string {
 pub fn (b &Builder) find_module_path(mod string) ?string {
 	mod_path := module_path(mod)
 	for search_path in b.module_search_paths {
-		try_path := os.join_path(search_path, mod_path)
+		try_path := os.join_path(search_path,mod_path)
 		if b.pref.verbosity.is_higher_or_equal(.level_three) {
 			println('  >> trying to find $mod in $try_path ..')
 		}

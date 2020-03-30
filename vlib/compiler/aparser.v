@@ -24,7 +24,7 @@ struct Parser {
 	pref                   &pref.Preferences
 mut:
 	scanner                &Scanner
-// Preferences shared from V struct
+	// Preferences shared from V struct
 	tokens                 []Token
 	token_idx              int
 	prev_stuck_token_idx   int
@@ -176,11 +176,11 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		}
 	}
 	mut p := v.new_parser(new_scanner_file(path))
-	path_dir := os.realpath(os.dir(path))
+	path_dir := os.real_path(os.dir(path))
 	p = {
 		p |
 		file_path:path,
-		file_path_dir: path_dir,
+		file_path_dir:path_dir,
 		file_name:path.all_after(os.path_separator),
 		file_platform:path_platform,
 		file_pcguard:path_pcguard,
@@ -418,7 +418,7 @@ fn (p mut Parser) statements_from_text(text string, rcbr bool, fpath string) {
 
 fn (p mut Parser) parse(pass Pass) {
 	p.cgen.line = 0
-	p.cgen.file = cescaped_path(os.realpath(p.file_path))
+	p.cgen.file = cescaped_path(os.real_path(p.file_path))
 	// ///////////////////////////////////
 	p.pass = pass
 	p.token_idx = 0
@@ -451,7 +451,7 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	p.fgen_nl()
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod in ['parser', 'gg2', 'ui', 'uiold', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
+	p.can_chash = p.mod in ['parser', 'gg2', 'ui', 'uiold', 'darwin', 'clipboard', 'webview', 'gen'] // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
 	fq_mod := if p.pref.build_mode == .build_module && p.v.pref.mod.ends_with(p.mod) { p.v.pref.mod }
@@ -720,7 +720,7 @@ fn (p mut Parser) const_decl() {
 			// }
 			continue
 		}
-    var_token_idx := p.cur_tok_index()
+		var_token_idx := p.cur_tok_index()
 		mut name := p.check_name() // `Age = 20`
 		// if !p.pref.building_v && p.mod != 'os' && contains_capital(name) {
 		// p.warn('const names cannot contain uppercase letters, use snake_case instead')
@@ -756,9 +756,9 @@ fn (p mut Parser) const_decl() {
 		if p.first_pass() {
 			p.table.register_const(name, typ, p.mod, is_pub)
 		}
-		// Check to see if this constant exists, and is void. If so, try and get the type again:
+		// Check to see if this constant exists, and is unresolved. If so, try and get the type again:
 		if my_const := p.v.table.find_const(name) {
-			if my_const.typ == 'void' {
+			if my_const.typ == 'unresolved' {
 				for i, v in p.v.table.consts {
 					if v.name == name {
 						p.v.table.consts[i].typ = typ
@@ -872,11 +872,7 @@ fn (p mut Parser) type_decl() {
 				}
 				p.cgen.consts << '#define SumType_${name}_$child_type_name $idx // DEF2'
 				ctype_names << child_type_name
-				sum_variants << if p.mod in ['builtin', 'main'] || child_type_name in builtin_types {
-					child_type_name
-				} else {
-					p.prepend_mod(child_type_name)
-				}
+				sum_variants << if p.mod in ['builtin', 'main'] || child_type_name in builtin_types { child_type_name } else { p.prepend_mod(child_type_name) }
 			}
 			if done {
 				break
@@ -986,7 +982,7 @@ fn (p mut Parser) check_name() string {
 
 fn (p mut Parser) check_string() string {
 	s := p.lit
-	p.check(.str)
+	p.check(.string)
 	return s
 }
 
@@ -1009,7 +1005,7 @@ fn (p &Parser) strtok() string {
 		}
 		return '`$p.lit`'
 	}
-	if p.tok == .str {
+	if p.tok == .string{
 		if p.lit.contains("'") && !p.lit.contains('"') {
 			return '"$p.lit"'
 		}
@@ -1300,7 +1296,7 @@ fn (p &Parser) print_tok() {
 		println(p.lit)
 		return
 	}
-	if p.tok == .str {
+	if p.tok == .string{
 		println('"$p.lit"')
 		return
 	}
@@ -2485,7 +2481,7 @@ struct IndexConfig {
 
 // for debugging only
 fn (p &Parser) fileis(s string) bool {
-	return os.filename(p.scanner.file_path).contains(s)
+	return os.file_name(p.scanner.file_path).contains(s)
 }
 
 // in and dot have higher priority than `!`
@@ -2617,7 +2613,7 @@ fn (p mut Parser) map_init() string {
 		for {
 			key := p.lit
 			keys_gen += 'tos3("$key"), '
-			p.check(.str)
+			p.check(.string)
 			p.check(.colon)
 			p.fspace()
 			t,val_expr := p.tmp_expr()
@@ -2813,6 +2809,13 @@ fn (p mut Parser) array_init() string {
 	p.gen_array_init(real, no_alloc, new_arr_ph, i)
 	typ = 'array_${stringify_pointer(typ)}'
 	p.register_array(typ)
+	if p.tok == .lcbr && i == 0 && p.peek() == .name {
+		// []string{len:10} (V2)
+		for p.tok != .rcbr {
+			p.next()
+		}
+		p.check(.rcbr)
+	}
 	return typ
 }
 
@@ -2958,7 +2961,7 @@ fn (p mut Parser) return_st() {
 	}
 	else {
 		// Don't allow `return val` in functions that don't return anything
-		if p.tok == .name || p.tok == .number || p.tok == .str {
+		if p.tok == .name || p.tok == .number || p.tok == .string{
 			p.error_with_token_index('function `$p.cur_fn.name` should not return a value', p.cur_fn.fn_name_token_idx)
 		}
 		p.genln(deferred_text)

@@ -1,0 +1,10 @@
+/*
+this is a very long comment
+that is on multiple lines
+   and has some formatting in it
+ that should be 
+   preserved.
+*/
+fn main() {
+	println('hello')
+}

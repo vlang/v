@@ -15,6 +15,9 @@ import (
 #flag windows -I @VROOT/thirdparty/freetype/include
 #flag windows -L @VROOT/thirdparty/freetype/win64
 
+#flag solaris -I/opt/local/include/freetype2
+#flag solaris -L/opt/local/lib
+
 #flag darwin -I/usr/local/include/freetype2
 // MacPorts
 #flag darwin -I/opt/local/include/freetype2

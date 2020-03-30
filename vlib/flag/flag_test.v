@@ -3,10 +3,10 @@ import flag
 fn test_if_flag_not_given_return_default_values() {
 	mut fp := flag.new_flag_parser([])
 
-	assert false == fp.bool('a_bool', false, '')
-	&& 42 == fp.int('an_int', 42, '')
-	&& 1.0 == fp.float('a_float', 1.0, '')
-	&& 'stuff' == fp.string('a_string', 'stuff', '')
+	assert false == fp.bool('a_bool', 0, false, '')
+	&& 42 == fp.int('an_int', 0, 42, '')
+	&& 1.0 == fp.float('a_float', 0, 1.0, '')
+	&& 'stuff' == fp.string('a_string', 0, 'stuff', '')
 }
 
 
@@ -24,7 +24,7 @@ fn test_could_define_application_name_and_version() {
 fn test_bool_flags_do_not_need_an_value() {
 	mut fp := flag.new_flag_parser(['--a_bool'])
 
-	assert true == fp.bool('a_bool', false, '')
+	assert true == fp.bool('a_bool', 0, false, '')
 }
 
 fn test_flags_could_be_defined_with_eq() {
@@ -35,11 +35,11 @@ fn test_flags_could_be_defined_with_eq() {
 	'--a_string=stuff',
 	'--a_bool=true'])
 
-	assert 42 == fp.int('an_int', 666, '')
-	&& true == fp.bool('a_bool', false, '')
-	&& true == fp.bool('bool_without', false, '')
-	&& 2.0 == fp.float('a_float', 1.0, '')
-	&& 'stuff' == fp.string('a_string', 'not_stuff', '')
+	assert 42 == fp.int('an_int', 0, 0o666, '')
+	&& true == fp.bool('a_bool', 0, false, '')
+	&& true == fp.bool('bool_without', 0, false, '')
+	&& 2.0 == fp.float('a_float', 0, 1.0, '')
+	&& 'stuff' == fp.string('a_string', 0, 'not_stuff', '')
 }
 
 fn test_values_could_be_defined_without_eq() {
@@ -50,11 +50,11 @@ fn test_values_could_be_defined_without_eq() {
 	'--a_string', 'stuff',
 	'--a_bool', 'true'])
 
-	assert 42 == fp.int('an_int', 666, '')
-	&& true == fp.bool('a_bool', false, '')
-	&& true == fp.bool('bool_without', false, '')
-	&& 2.0 == fp.float('a_float', 1.0, '')
-	&& 'stuff' == fp.string('a_string', 'not_stuff', '')
+	assert 42 == fp.int('an_int', 0, 0o666, '')
+	&& true == fp.bool('a_bool', 0, false, '')
+	&& true == fp.bool('bool_without', 0, false, '')
+	&& 2.0 == fp.float('a_float', 0, 1.0, '')
+	&& 'stuff' == fp.string('a_string', 0, 'not_stuff', '')
 }
 
 fn test_values_could_be_defined_mixed() {
@@ -65,11 +65,11 @@ fn test_values_could_be_defined_mixed() {
 	'--a_string', 'stuff',
 	'--a_bool=true'])
 
-	assert 42 == fp.int('an_int', 666, '')
-	&& true == fp.bool('a_bool', false, '')
-	&& true == fp.bool('bool_without', false, '')
-	&& 2.0 == fp.float('a_float', 1.0, '')
-	&& 'stuff' == fp.string('a_string', 'not_stuff', '')
+	assert 42 == fp.int('an_int', 0, 0o666, '')
+	&& true == fp.bool('a_bool', 0, false, '')
+	&& true == fp.bool('bool_without', 0, false, '')
+	&& 2.0 == fp.float('a_float', 0, 1.0, '')
+	&& 'stuff' == fp.string('a_string', 0, 'not_stuff', '')
 }
 
 fn test_beaware_for_argument_names_with_same_prefix() {
@@ -78,8 +78,8 @@ fn test_beaware_for_argument_names_with_same_prefix() {
 	'--shorter=7'
 	])
 
-	assert 5 == fp.int('short', 666, '')
-	&& 7 == fp.int('shorter', 666, '')
+	assert 5 == fp.int('short', 0, 0o666, '')
+	&& 7 == fp.int('shorter', 0, 0o666, '')
 }
 
 fn test_beaware_for_argument_names_with_same_prefix_inverse() {
@@ -88,8 +88,8 @@ fn test_beaware_for_argument_names_with_same_prefix_inverse() {
 	'--short', '5',
 	])
 
-	assert 5 == fp.int('short', 666, '')
-	&& 7 == fp.int('shorter', 666, '')
+	assert 5 == fp.int('short', 0, 0o666, '')
+	&& 7 == fp.int('shorter', 0, 0o666, '')
 }
 
 fn test_allow_to_skip_executable_path() {
@@ -108,14 +108,14 @@ fn test_none_flag_arguments_are_allowed() {
 	mut fp := flag.new_flag_parser([
 	'file1', '--an_int=2', 'file2', 'file3', '--bool_without', 'file4', '--outfile', 'outfile'])
 
-	assert 2 == fp.int('an_int', 666, '')
-	&& 'outfile' == fp.string('outfile', 'bad', '')
-	&& true == fp.bool('bool_without', false, '')
+	assert 2 == fp.int('an_int', 0, 0o666, '')
+	&& 'outfile' == fp.string('outfile', 0, 'bad', '')
+	&& true == fp.bool('bool_without', 0, false, '')
 }
 
 fn test_finalize_returns_none_flag_arguments_ordered() {
 	mut fp := flag.new_flag_parser(['d', 'b', 'x', 'a', '--outfile', 'outfile'])
-	fp.string('outfile', 'bad', '')
+	fp.string('outfile', 0, 'bad', '')
 
 	finalized := fp.finalize() or {
 		assert false
@@ -133,7 +133,7 @@ fn test_finalize_returns_none_flag_arguments_ordered() {
 fn test_finalize_returns_error_for_unknown_flags() {
 	mut fp := flag.new_flag_parser(['--known', '--unknown'])
 
-	fp.bool('known', false, '')
+	fp.bool('known', 0, false, '')
 
 	finalized := fp.finalize() or {
 		assert err == 'Unknown argument \'unknown\''
@@ -149,11 +149,11 @@ fn test_allow_to_build_usage_message() {
 	fp.version('v0.0.0')
 	fp.description('some short information about this tool')
 
-	fp.int('an_int', 666, 'some int to define')
-	fp.bool('a_bool', false, 'some bool to define')
-	fp.bool('bool_without_but_really_big', false, 'this should appear on the next line')
-	fp.float('a_float', 1.0, 'some float as well')
-	fp.string('a_string', 'not_stuff', 'your credit card number')
+	fp.int('an_int', 0, 0o666, 'some int to define')
+	fp.bool('a_bool', 0, false, 'some bool to define')
+	fp.bool('bool_without_but_really_big', 0, false, 'this should appear on the next line')
+	fp.float('a_float', 0, 1.0, 'some float as well')
+	fp.string('a_string', 0, 'not_stuff', 'your credit card number')
 
 	usage := fp.usage()
 	mut all_strings_found := true
@@ -180,7 +180,7 @@ fn test_if_no_description_given_usage_message_does_not_contain_descpription() {
 	fp.application('flag_tool')
 	fp.version('v0.0.0')
 
-	fp.bool('a_bool', false, '')
+	fp.bool('a_bool', 0, false, '')
 
 	assert !fp.usage().contains('Description:')
 }
@@ -236,10 +236,10 @@ fn test_could_expect_no_free_args() {
 fn test_allow_abreviations() {
 	mut fp := flag.new_flag_parser(['-v', '-o', 'some_file', '-i', '42', '-f', '2.0'])
 
-	v := fp.bool_('version', `v`, false, '')
-	o := fp.string_('output', `o`, 'empty', '')
-	i := fp.int_('count', `i`, 0, '')
-	f := fp.float_('value', `f`, 0.0, '')
+	v := fp.bool('version', `v`, false, '')
+	o := fp.string('output', `o`, 'empty', '')
+	i := fp.int('count', `i`, 0, '')
+	f := fp.float('value', `f`, 0.0, '')
 
 	assert v && o == 'some_file' && i == 42 && f == 2.0
 
@@ -256,8 +256,8 @@ fn test_allow_kebab_options() {
 
 	mut fp := flag.new_flag_parser(['--my-long-flag', 'true', '--my-long-option', long_option_value ])
 
-	my_flag   := fp.bool('my-long-flag',     false,         'flag with long-kebab-name')
-	my_option := fp.string('my-long-option', default_value, 'string with long-kebab-name')
+	my_flag := fp.bool('my-long-flag', 0, false, 'flag with long-kebab-name')
+	my_option := fp.string('my-long-option', 0, default_value, 'string with long-kebab-name')
 
 	assert my_flag == true
 	assert my_option == long_option_value
@@ -324,9 +324,9 @@ fn test_multiple_arguments() {
 fn test_long_options_that_start_with_the_same_letter_as_another_short_option() {
 	mut fp := flag.new_flag_parser([
 		'--vabc', '/abc',
-	])	
-	verbose := fp.bool_('verbose', `v`, false, 'Be more verbose.')
-	vabc    := fp.string_('vabc', `x`, 'default', 'Another option that *may* conflict with v, but *should not*')
+	])
+	verbose := fp.bool('verbose', `v`, false, 'Be more verbose.')
+	vabc    := fp.string('vabc', `x`, 'default', 'Another option that *may* conflict with v, but *should not*')
 	assert verbose == false
 	assert vabc == '/abc'
 }
@@ -335,9 +335,9 @@ fn test_long_options_that_start_with_the_same_letter_as_another_short_option_bot
 	mut fp := flag.new_flag_parser([
 		'-v',
 		'--vabc', '/abc',
-	])	
-	verbose := fp.bool_('verbose', `v`, false, 'Be more verbose.')
-	vabc    := fp.string_('vabc', `x`, 'default', 'Another option that *may* conflict with v, but *should not*')
+	])
+	verbose := fp.bool('verbose', `v`, false, 'Be more verbose.')
+	vabc    := fp.string('vabc', `x`, 'default', 'Another option that *may* conflict with v, but *should not*')
 	assert verbose == true
 	assert vabc == '/abc'
 }

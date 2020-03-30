@@ -16,8 +16,8 @@ pub fn parse_pref(args []string, callback fn(string, &Instance, &pref.Preference
 		args: args
 		current_pos: 0
 	}
-	casted_callback := *(&void_cb(&callback))
-	tmp := p.parse_impl(args, voidptr(obj), casted_callback) or {
+	//tmp := p.parse_impl(args, voidptr(obj), void_cb(callback)) or {
+	tmp := p.parse_impl(args, obj, void_cb(callback)) or {
 		return error(err)
 	}
 	return tmp
@@ -41,8 +41,7 @@ pub fn parse_main_cmd(args []string, callback fn(string, &Instance, &MainCmdPref
 		args: args
 		current_pos: 0
 	}
-	casted_callback := *(&void_cb(&callback))
-	tmp := p.parse_impl(args, voidptr(obj), casted_callback) or {
+	tmp := p.parse_impl(args, obj, void_cb(callback)) or {
 		return error(err)
 	}
 	return tmp

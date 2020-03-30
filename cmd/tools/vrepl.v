@@ -152,14 +152,14 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 			mut temp_line := r.line
 			mut temp_flag := false
 			func_call := r.function_call(r.line)
-			if !(
-				r.line.contains(' ') ||
-				r.line.contains(':') ||
-				r.line.contains('=') ||
-				r.line.contains(',') ||
-				r.line.ends_with('++') ||
-				r.line.ends_with('--') ||
-				r.line == '') && !func_call {
+			filter_line := r.line.replace(r.line.find_between('\'', '\''), '').replace(r.line.find_between('"', '"'), '')
+			if !(filter_line.contains(':') ||
+					filter_line.contains('=') ||
+					filter_line.contains(',') ||
+					filter_line.contains('++') ||
+					filter_line.contains('--') ||
+					filter_line.starts_with('import') ||
+					r.line == '') && !func_call {
 				temp_line = 'println($r.line)'
 				temp_flag = true
 			}
@@ -216,7 +216,7 @@ fn main() {
 	// so that the repl can be launched in parallel by several different
 	// threads by the REPL test runner.
 	args := cmdline.options_after(os.args, ['repl'])
-	replfolder := os.realpath( cmdline.option(args, '-replfolder', '.') )
+	replfolder := os.real_path( cmdline.option(args, '-replfolder', '.') )
 	replprefix := cmdline.option(args, '-replprefix', 'noprefix.')
 	os.chdir( replfolder )
 	if !os.exists(os.getenv('VEXE')) {

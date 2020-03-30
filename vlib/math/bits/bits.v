@@ -9,7 +9,7 @@ const (
 	de_bruijn32tab = [byte(0), 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
 	31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9,
 	]
-	de_bruijn64 = (0x03f79d71b4ca8b09)
+	de_bruijn64 = u64(0x03f79d71b4ca8b09)
 	de_bruijn64tab = [byte(0), 1, 56, 2, 57, 49, 28, 3, 61, 58, 42, 50, 38, 29, 17, 4,
 	62, 47, 59, 36, 45, 43, 51, 22, 53, 39, 33, 30, 24, 18, 12, 5,
 	63, 55, 48, 27, 60, 41, 37, 16, 46, 35, 44, 21, 52, 32, 23, 11,
@@ -18,17 +18,17 @@ const (
 )
 
 const (
-	m0 = 0x5555555555555555 // 01010101 ...
-	m1 = 0x3333333333333333 // 00110011 ...
-	m2 = 0x0f0f0f0f0f0f0f0f // 00001111 ...
-	m3 = 0x00ff00ff00ff00ff // etc.
-	m4 = 0x0000ffff0000ffff
+	m0 = u64(0x5555555555555555) // 01010101 ...
+	m1 = u64(0x3333333333333333) // 00110011 ...
+	m2 = u64(0x0f0f0f0f0f0f0f0f) // 00001111 ...
+	m3 = u64(0x00ff00ff00ff00ff) // etc.
+	m4 = u64(0x0000ffff0000ffff)
 )
 
 const (
 	// save importing math mod just for these
-	max_u32 = 4294967295
-	max_u64 = 18446744073709551615
+	max_u32 = u32(4294967295)
+	max_u64 = u64(18446744073709551615)
 )
 
 // --- LeadingZeros ---
@@ -371,7 +371,7 @@ pub fn sub_64(x u64, y u64, borrow u64) (u64, u64) {
 // --- Full-width multiply ---
 
 const (
-	two32  = 0x1_0000_0000
+	two32  = u64(0x1_0000_0000)
 	mask32 = two32 - 1
 	overflow_error = "Overflow Error"
 	divide_error = "Divide Error"

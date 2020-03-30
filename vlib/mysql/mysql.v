@@ -64,7 +64,7 @@ pub fn (conn Connection) select_db(dbname string) ?bool {
 
 pub fn (conn Connection) change_user(username, password, dbname string) ?bool {
 	mut ret := true
-	if (dbname != '') {
+	if dbname != '' {
 		ret = mysql_change_user(conn.conn, username.str, password.str, dbname.str)
 	} else {
 		ret = mysql_change_user(conn.conn, username.str, password.str, 0)

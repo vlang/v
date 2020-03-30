@@ -106,7 +106,7 @@ pub fn ls(path string) ?[]string {
 	if first_filename != '.' && first_filename != '..' {
 		dir_files << first_filename
 	}
-	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) {
+	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0 {
 		filename := string_from_wide(&u16(find_file_data.cFileName))
 		if filename != '.' && filename != '..' {
 			dir_files << filename.clone()
@@ -173,7 +173,7 @@ pub fn (f mut File) writeln(s string) {
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) ?bool {
 	if path == '.' { return true }
-	apath := os.realpath( path )
+	apath := os.real_path( path )
 	if !C.CreateDirectory(apath.to_wide(), 0) {
 		return error('mkdir failed for "$apath", because CreateDirectory returned ' + get_error_msg(int(C.GetLastError())))
 	}

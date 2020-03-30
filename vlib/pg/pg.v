@@ -3,6 +3,8 @@ module pg
 #flag -lpq
 #flag linux -I/usr/include/postgresql
 #flag darwin -I/opt/local/include/postgresql11
+#flag windows -I @VROOT/thirdparty/pg/include
+#flag windows -L @VROOT/thirdparty/pg/win64
 #include <libpq-fe.h>
 
 pub struct DB {

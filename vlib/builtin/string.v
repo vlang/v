@@ -244,9 +244,10 @@ pub fn (s string) replace_each(vals []string) string {
 			}
 			// We need to remember both the position in the string,
 			// and which rep/with pair it refers to.
-			idxs << RepIndex{
+			idxs << RepIndex {
 				idx:idx
-val_idx:rep_i}
+				val_idx:rep_i
+			}
 			idx++
 			new_len += with.len - rep.len
 		}
@@ -391,10 +392,10 @@ fn (s string) add(a string) string {
 		str: malloc(new_len + 1)
 	}
 	for j in 0..s.len {
-		res[j] = s[j]
+		res.str[j] = s.str[j]
 	}
 	for j in 0..a.len {
-		res[s.len + j] = a[j]
+		res.str[s.len + j] = a.str[j]
 	}
 	res.str[new_len] = `\0` // V strings are not null terminated, but just in case
 	return res
@@ -428,10 +429,10 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	mut start := 0
 	nth_1 := nth - 1
 	for i <= s.len {
-		mut is_delim := s[i] == delim[0]
+		mut is_delim := s.str[i] == delim.str[0]
 		mut j := 0
 		for is_delim && j < delim.len {
-			is_delim = is_delim && s[i + j] == delim[j]
+			is_delim = is_delim && s.str[i + j] == delim.str[j]
 			j++
 		}
 		last := i == s.len - 1
@@ -468,8 +469,8 @@ pub fn (s string) split_into_lines() []string {
 	}
 	mut start := 0
 	for i := 0; i < s.len; i++ {
-		is_lf := s[i] == `\n`
-		is_crlf := i != s.len - 1 && s[i] == `\r` && s[i + 1] == `\n`
+		is_lf := s.str[i] == `\n`
+		is_crlf := i != s.len - 1 && s.str[i] == `\r` && s.str[i + 1] == `\n`
 		is_eol := is_lf || is_crlf
 		is_last := if is_crlf {
 			i == s.len - 2
@@ -549,7 +550,7 @@ pub fn (s string) index_old(p string) int {
 	mut i := 0
 	for i < s.len {
 		mut j := 0
-		for j < p.len && s[i + j] == p[j] {
+		for j < p.len && s.str[i + j] == p.str[j] {
 			j++
 		}
 		if j == p.len {
@@ -567,7 +568,7 @@ pub fn (s string) index(p string) ?int {
 	mut i := 0
 	for i < s.len {
 		mut j := 0
-		for j < p.len && s[i + j] == p[j] {
+		for j < p.len && s.str[i + j] == p.str[j] {
 			j++
 		}
 		if j == p.len {
@@ -586,20 +587,20 @@ fn (s string) index_kmp(p string) int {
 	mut prefix := [0].repeat(p.len)
 	mut j := 0
 	for i := 1; i < p.len; i++ {
-		for p[j] != p[i] && j > 0 {
+		for p.str[j] != p.str[i] && j > 0 {
 			j = prefix[j - 1]
 		}
-		if p[j] == p[i] {
+		if p.str[j] == p.str[i] {
 			j++
 		}
 		prefix[i] = j
 	}
 	j = 0
 	for i in 0..s.len {
-		for p[j] != s[i] && j > 0 {
+		for p.str[j] != s.str[i] && j > 0 {
 			j = prefix[j - 1]
 		}
-		if p[j] == s[i] {
+		if p.str[j] == s.str[i] {
 			j++
 		}
 		if j == p.len {
@@ -626,7 +627,7 @@ pub fn (s string) last_index(p string) ?int {
 	mut i := s.len - p.len
 	for i >= 0 {
 		mut j := 0
-		for j < p.len && s[i + j] == p[j] {
+		for j < p.len && s.str[i + j] == p.str[j] {
 			j++
 		}
 		if j == p.len {
@@ -652,7 +653,7 @@ pub fn (s string) index_after(p string, start int) int {
 	for i < s.len {
 		mut j := 0
 		mut ii := i
-		for j < p.len && s[ii] == p[j] {
+		for j < p.len && s.str[ii] == p.str[j] {
 			j++
 			ii++
 		}
@@ -666,7 +667,7 @@ pub fn (s string) index_after(p string, start int) int {
 
 pub fn (s string) index_byte(c byte) int {
 	for i in 0..s.len {
-		if s[i] == c {
+		if s.str[i] == c {
 			return i
 		}
 	}
@@ -675,7 +676,7 @@ pub fn (s string) index_byte(c byte) int {
 
 pub fn (s string) last_index_byte(c byte) int {
 	for i := s.len - 1; i >= 0; i-- {
-		if s[i] == c {
+		if s.str[i] == c {
 			return i
 		}
 	}
@@ -715,7 +716,7 @@ pub fn (s string) starts_with(p string) bool {
 		return false
 	}
 	for i in 0..p.len {
-		if s[i] != p[i] {
+		if s.str[i] != p.str[i] {
 			return false
 		}
 	}
@@ -1265,5 +1266,67 @@ pub fn (s string) repeat(count int) string {
 		}
 	}
 	ret[s.len * count] = 0
+	return string(ret)
+}
+
+// Allows multi-line strings to be formatted in a way that removes white-space
+// before a delimeter. by default `|` is used.
+// Note: the delimiter has to be a byte at this time. That means surrounding
+// the value in ``.
+//
+// Example:
+// st := 'Hello there,
+//       |this is a string,
+//       |    Everything before the first | is removed'.strip_margin()
+// Returns:
+// Hello there,
+// this is a string,
+//     Everything before the first | is removed
+pub fn (s string) strip_margin(del ...byte) string {
+	mut sep := `|`
+	if del.len >= 1 {
+		// This is a workaround. We can't directly index a var_args array.
+		// Only care about the first one, ignore the rest if more
+		for d in del {
+			// The delimiter is not allowed to be white-space. Will use default
+			if d.is_space() {
+				eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
+				eprintln("    Defaulting to `|`")
+			} else {
+				sep = d
+			}
+			break
+		}
+		if del.len != 1 {
+			eprintln("Warning: `strip_margin` only uses the first argument given")
+		}
+	}
+	// don't know how much space the resulting string will be, but the max it
+	// can be is this big
+	mut ret := malloc(s.len + 1)
+	mut count := 0
+	for i := 0; i < s.len; i++ {
+		if s[i] in [`\n`, `\r`] {
+			ret[count] = s[i]
+			count++
+			// CRLF
+			if s[i] == `\r` && i < s.len - 1 && s[i+1] == `\n` {
+				ret[count] = s[i+1]
+				count++
+				i++
+			}
+
+			for s[i] != sep {
+				i++
+				if i >= s.len {
+					break
+				}
+			}
+		} else {
+			ret[count] = s[i]
+			count++
+		}
+	}
+	ret[count] = 0
 	return string(ret)
 }

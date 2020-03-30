@@ -11,7 +11,9 @@ import (
 pub struct TestSession {
 pub mut:
 	files         []string
+	skip_files    []string
 	vexe          string
+	vroot         string
 	vargs         string
 	failed        bool
 	benchmark     benchmark.Benchmark
@@ -19,9 +21,20 @@ pub mut:
 }
 
 pub fn new_test_session(_vargs string) TestSession {
+    mut skip_files := []string
+	skip_files << '_non_existing_'
+	$if solaris {
+		skip_files << "examples/gg2.v"
+		skip_files << "examples/pico/pico.v"
+		skip_files << "examples/sokol_examples/fonts.v"
+		skip_files << "examples/sokol_examples/drawing.v"
+	}
 	vargs := _vargs.replace('-silent', '')
+	vexe := pref.vexe_path()
 	return TestSession{
-		vexe: pref.vexe_path()
+		vexe: vexe
+		vroot: os.dir(vexe)
+		skip_files: skip_files
 		vargs: vargs
 		show_ok_tests: !_vargs.contains('-silent')
 	}
@@ -36,7 +49,7 @@ pub fn (ts mut TestSession) test() {
 	mut remaining_files := []string
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
-		file := os.realpath(relative_file)
+		file := os.real_path(relative_file)
 		$if windows {
 			if file.contains('sqlite') || file.contains('httpbin') {
 				continue
@@ -91,11 +104,11 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	tls_bench.cstep = idx
 	dot_relative_file := p.get_string_item(idx)
-	relative_file := dot_relative_file.replace('./', '')
-	file := os.realpath(relative_file)
+	relative_file := dot_relative_file.replace(ts.vroot + os.path_separator, '').replace('./', '')
+	file := os.real_path(relative_file)
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
-	fname := os.filename(file)
+	fname := os.file_name(file)
 	generated_binary_fname := if os.user_os() == 'windows' { fname.replace('.v', '.exe') } else { fname.replace('.v', '') }
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
@@ -109,6 +122,12 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	// eprintln('>>> v cmd: $cmd')
 	ts.benchmark.step()
 	tls_bench.step()
+	if relative_file in ts.skip_files {
+	   ts.benchmark.skip()
+	   tls_bench.skip()
+	   eprintln(tls_bench.step_message_skip(relative_file))
+	   return sync.no_result
+	}
 	if show_stats {
 		eprintln(term.h_divider('-'))
 		status := os.system(cmd)

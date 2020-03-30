@@ -177,6 +177,9 @@ pub fn free(ptr voidptr) {
 }
 
 pub fn memdup(src voidptr, sz int) voidptr {
+	if sz == 0 {
+		return vcalloc(1)
+	}
 	mem := malloc(sz)
 	return C.memcpy(mem, src, sz)
 }
@@ -195,28 +198,3 @@ pub fn is_atty(fd int) int {
 		return C.isatty(fd)
 	}
 }
-
-/*
-fn C.va_start()
-fn C.va_end()
-fn C.vsnprintf() int
-fn C.vsprintf() int
-
-pub fn str2_(fmt charptr, ...) string {
-       argptr := C.va_list{}
-        C.va_start(argptr, fmt)
-        len := C.vsnprintf(0, 0, fmt, argptr) + 1
-C.va_end(argptr)
-        buf := malloc(len)
-        C.va_start(argptr, fmt)
-        C.vsprintf(charptr(buf), fmt, argptr)
-        C.va_end(argptr)
-//#ifdef DEBUG_ALLOC
-//        puts("_STR:");
-//        puts(buf);
-//#endif
-        return tos2(buf)
-}
-*/
-
-

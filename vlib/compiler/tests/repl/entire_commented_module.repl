@@ -1,3 +1,0 @@
-import compiler.tests.modules.acommentedmodule
-===output===
-vlib/compiler/tests/modules/acommentedmodule/commentedfile.v:7:1: bad module definition: vlib/compiler/tests/modules/acommentedmodule/commentedfile.v imports module "compiler.tests.modules.acommentedmodule" but vlib/compiler/tests/modules/acommentedmodule/commentedfile.v is defined as module `main`

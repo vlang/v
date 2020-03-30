@@ -4,6 +4,7 @@
 module compiler
 
 import os
+import v.pref
 
 const (
 	single_quote = `\'`
@@ -364,10 +365,10 @@ fn (s mut Scanner) scan() ScanRes {
 	if s.inter_end {
 		if s.text[s.pos] == s.quote {
 			s.inter_end = false
-			return scan_res(.str, '')
+			return scan_res(.string, '')
 		}
 		s.inter_end = false
-		return scan_res(.str, s.ident_string())
+		return scan_res(.string, s.ident_string())
 	}
 	s.skip_whitespace()
 	// end of file
@@ -488,7 +489,7 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.question, '')
 		}
 		single_quote, double_quote {
-			return scan_res(.str, s.ident_string())
+			return scan_res(.string, s.ident_string())
 		}
 		`\`` {
 			// ` // apostrophe balance comment. do not remove
@@ -528,9 +529,9 @@ fn (s mut Scanner) scan() ScanRes {
 				s.pos++
 				if s.text[s.pos] == s.quote {
 					s.inside_string = false
-					return scan_res(.str, '')
+					return scan_res(.string, '')
 				}
-				return scan_res(.str, s.ident_string())
+				return scan_res(.string, s.ident_string())
 			}
 			else {
 				return scan_res(.rcbr, '')
@@ -565,6 +566,7 @@ fn (s mut Scanner) scan() ScanRes {
 			s.pos++
 			name := s.ident_name()
 			// @FN => will be substituted with the name of the current V function
+			// @VEXE => will be substituted with the path to the V compiler
 			// @FILE => will be substituted with the path of the V source file
 			// @LINE => will be substituted with the V line number where it appears (as a string).
 			// @COLUMN => will be substituted with the column where it appears (as a string).
@@ -573,19 +575,23 @@ fn (s mut Scanner) scan() ScanRes {
 			// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @FN)
 			// ... which is useful while debugging/tracing
 			if name == 'FN' {
-				return scan_res(.str, s.fn_name)
+				return scan_res(.string, s.fn_name)
+			}
+			if name == 'VEXE' {
+				vexe := pref.vexe_path()
+				return scan_res(.string, cescaped_path( vexe ) )
 			}
 			if name == 'FILE' {
-				return scan_res(.str, cescaped_path(os.realpath(s.file_path)))
+				return scan_res(.string, cescaped_path(os.real_path(s.file_path)))
 			}
 			if name == 'LINE' {
-				return scan_res(.str, (s.line_nr + 1).str())
+				return scan_res(.string, (s.line_nr + 1).str())
 			}
 			if name == 'COLUMN' {
-				return scan_res(.str, (s.current_column()).str())
+				return scan_res(.string, (s.current_column()).str())
 			}
 			if name == 'VHASH' {
-				return scan_res(.str, vhash())
+				return scan_res(.string, vhash())
 			}
 			if !is_key(name) {
 				s.error('@ must be used before keywords (e.g. `@type string`)')
@@ -983,7 +989,7 @@ fn (s Scanner) line(n int) string {
 }
 
 fn is_name_char(c byte) bool {
-	return c == `_` || c.is_letter()
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
 }
 
 [inline]
@@ -1013,4 +1019,3 @@ fn good_type_name(s string) bool {
 	}
 	return true
 }
-

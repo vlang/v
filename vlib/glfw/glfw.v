@@ -20,8 +20,14 @@ import gl
 #flag darwin -lglfw
 #flag freebsd -I/usr/local/include
 #flag freebsd -Wl,-L/usr/local/lib,-lglfw
+
+#flag solaris -I/opt/local/include
+#flag solaris -L/opt/local/lib
+#flag solaris -lglfw
+
 #flag linux -lglfw
 #flag windows -lgdi32 -lshell32 -lglfw3
+#flag mingw -mwindows
 #include <GLFW/glfw3.h>
 // #flag darwin -framework Carbon
 // #flag darwin -framework Cocoa
@@ -34,7 +40,7 @@ pub const (
 
 pub const (
 	KEY_ESCAPE     = 256
-	key_space     = 32
+	key_space      = 32
 	KEY_LEFT_SUPER = 343
 )
 
@@ -51,24 +57,26 @@ struct TmpGlImportHack {
 }
 
 pub struct WinCfg {
-	width      int
-	height     int
-	title      string
-	ptr        voidptr
-	borderless bool
-	is_modal   int
-	is_browser bool
-	url        string
+	width             int
+	height            int
+	title             string
+	ptr               voidptr
+	borderless        bool
+	is_modal          int
+	is_browser        bool
+	url        		  string
 	always_on_top     bool
+	scale_to_monitor  bool = true
 }
 
 // data  *C.GLFWwindow
 // TODO change data to cobj
 pub struct Window {
-	data  voidptr
-	title string
-	mx    int
-	my    int
+	data    voidptr
+	title   string
+	mx      int
+	my      int
+	scale_  f32
 }
 
 pub struct Size {
@@ -118,13 +126,18 @@ pub fn window_hint(key, val int) {
 	C.glfwWindowHint(key, val)
 }
 
-pub fn create_window(c WinCfg) &glfw.Window {
+pub fn create_window(c glfw.WinCfg) &glfw.Window {
 	if c.borderless {
 		window_hint(C.GLFW_RESIZABLE, 0)
 		window_hint(C.GLFW_DECORATED, 0)
 	}
 	if c.always_on_top {
 		window_hint(C.GLFW_FLOATING, 1)
+	}
+	if c.scale_to_monitor {
+		$if windows {
+			window_hint(C.GLFW_SCALE_TO_MONITOR, 1)
+		}
 	}
 	cwindow := C.glfwCreateWindow(c.width, c.height, c.title.str, 0, 0)
 	if isnil(cwindow) {
@@ -133,9 +146,19 @@ pub fn create_window(c WinCfg) &glfw.Window {
 	}
 	// println('create window wnd=$cwindow ptr==$c.ptr')
 	C.glfwSetWindowUserPointer(cwindow, c.ptr)
+
+	mut scale := f32(1.0)
+	$if windows {
+		C.glfwGetWindowContentScale(cwindow, &scale, &scale)
+	}
+	$else {
+		scale = 1.0
+	}
+
 	window := &glfw.Window {
 		data: cwindow,
 		title: c.title,
+		scale_: scale
 	}
 	return window
 }
@@ -146,6 +169,10 @@ pub fn (w &glfw.Window) set_title(title string) {
 
 pub fn (w &glfw.Window) make_context_current() {
 	C.glfwMakeContextCurrent(w.data)
+}
+
+pub fn (w &glfw.Window) scale() f32 {
+	return w.scale_
 }
 
 pub fn swap_interval(interval int) {
@@ -228,20 +255,29 @@ pub fn (w &glfw.Window) set_clipboard_text(s string) {
 	C.glfwSetClipboardString(w.data, s.str)
 }
 
-pub fn get_cursor_pos(glfw_window voidptr) (f64, f64) {
+pub fn get_cursor_pos(cwindow voidptr) (f64, f64) {
 	x := f64(0)
 	y := f64(0)
-	C.glfwGetCursorPos(glfw_window, &x, &y)
-	return x,y
+	C.glfwGetCursorPos(cwindow, &x, &y)
+
+	mut scale := f32(1.0)
+	$if windows {
+		C.glfwGetWindowContentScale(cwindow, &scale, &scale)
+	}
+	$else {
+		scale = 1.0
+	}
+	return x/scale, y/scale
 }
 
 pub fn (w &glfw.Window) get_cursor_pos() Pos {
 	x := f64(0)
 	y := f64(0)
 	C.glfwGetCursorPos(w.data, &x, &y)
+
 	return Pos {
-		x: int(x)
-		y: int(y)
+		x: int(x/w.scale_)
+		y: int(y/w.scale_)
 	}
 }
 
@@ -286,15 +322,15 @@ fn C.glfwGetFramebufferSize(window &glfw.Window, width &int, height &int) // pix
 
 // get_window_size in screen coordinates
 pub fn (w &glfw.Window) get_window_size() Size {
-	res := Size{ 0, 0 }
-	C.glfwGetWindowSize( w.data, &res.width, &res.height )
+	res := Size {0, 0}
+	C.glfwGetWindowSize(w.data, &res.width, &res.height)
 	return res
 }
 
 // get_framebuffer_size in pixels
 pub fn (w &glfw.Window) get_framebuffer_size() Size {
-	res := Size{ 0, 0 }
-	C.glfwGetFramebufferSize( w.data, &res.width, &res.height )
+	res := Size {0, 0}
+	C.glfwGetFramebufferSize(w.data, &res.width, &res.height)
 	return res
 }
 

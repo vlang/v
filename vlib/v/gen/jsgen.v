@@ -34,6 +34,12 @@ pub fn (g mut JsGen) writeln(s string) {
 	g.out.writeln(s)
 }
 
+fn (g mut JsGen) stmts(stmts []ast.Stmt) {
+	for stmt in stmts {
+		g.stmt(stmt)
+	}
+}
+
 fn (g mut JsGen) stmt(node ast.Stmt) {
 	match node {
 		ast.FnDecl {
@@ -58,11 +64,10 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.AssignStmt {
-			if it.left.len > it.right.len {
-				// TODO: multi return
-			}
+			if it.left.len > it.right.len {}
+			// TODO: multi return
 			else {
-				for i,ident in it.left {
+				for i, ident in it.left {
 					var_info := ident.var_info()
 					var_type_sym := g.table.get_type_symbol(var_info.typ)
 					val := it.right[i]
@@ -90,6 +95,8 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
+		}
+		/*
 			match it.expr {
 				// no ; after an if expression
 				ast.IfExpr {}
@@ -97,7 +104,8 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 					g.writeln(';')
 				}
 	}
-		}
+	*/
+
 		else {
 			verror('jsgen.stmt(): bad node')
 		}
@@ -108,7 +116,7 @@ fn (g mut JsGen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
 		ast.IntegerLiteral {
-			g.write(it.val.str())
+			g.write(it.val)
 		}
 		ast.FloatLiteral {
 			g.write(it.val)
@@ -141,8 +149,8 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		}
 		ast.CallExpr {
 			g.write('${it.name}(')
-			for i, expr in it.args {
-				g.expr(expr)
+			for i, arg in it.args {
+				g.expr(arg.expr)
 				if i != it.args.len - 1 {
 					g.write(', ')
 				}
@@ -161,13 +169,23 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			}
 		}
 		ast.IfExpr {
-			g.write('if (')
-			g.expr(it.cond)
-			g.writeln(') {')
-			for stmt in it.stmts {
-				g.stmt(stmt)
+			for i, branch in it.branches {
+				if i == 0 {
+					g.write('if (')
+					g.expr(branch.cond)
+					g.writeln(') {')
+				}
+				else if i < it.branches.len-1 || !it.has_else {
+					g.write('else if (')
+					g.expr(branch.cond)
+					g.writeln(') {')
+				}
+				else {
+					g.write('else {')
+				}
+				g.stmts(branch.stmts)
+				g.writeln('}')
 			}
-			g.writeln('}')
 		}
 		else {
 			println(term.red('jsgen.expr(): bad node'))

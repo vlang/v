@@ -346,7 +346,7 @@ fn (p mut Parser) fn_decl() {
 	if p.tok == .lt {
 		// instance (dispatch)
 		if p.generic_dispatch.inst.size > 0 {
-			rename_generic_fn_instance(mut f, &p.generic_dispatch)
+			rename_generic_fn_instance(mut f, p.generic_dispatch)
 		}
 		else {
 			f.is_generic = true
@@ -839,9 +839,15 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 						idx = i
 					}
 				}
-				p.cgen.resetln('')
 				var := p.expr_var.name
 				iname := f.args[0].typ // Speaker
+				// remove useless var
+				if p.cgen.is_tmp {
+					p.cgen.tmp_line = p.cgen.tmp_line.replace(' $var', '')
+				}
+				else {
+					p.cgen.cur_line = p.cgen.cur_line.replace(' $var', '')
+				}
 				p.gen('(($f.typ (*)())(${iname}_name_table[${var}._interface_idx][$idx]))(${var}._object')
 				receiver_is_interface = true
 			}
@@ -1109,7 +1115,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
 		}
 		// x64 println gen
-		if p.pref.backend == .x64 && i == 0 && f.name == 'println' && p.tok == .str && p.peek() == .rpar {
+		if p.pref.backend == .x64 && i == 0 && f.name == 'println' && p.tok == .string&& p.peek() == .rpar {
 			//p.x64.gen_print(p.lit)
 		}
 		mut typ := p.bool_expression()
@@ -1308,6 +1314,8 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 				p.check(.comma)
 				p.fspace()
 				p.gen(',')
+			} else if p.tok != .comma {
+				p.gen(',')
 			}
 		}
 	}
@@ -1322,7 +1330,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 	p.check(.rpar)
 	if f.is_generic && !p.scanner.is_fmt {
 		type_map := p.extract_type_inst(f, saved_args)
-		p.dispatch_generic_fn_instance(mut f, &type_map)
+		p.dispatch_generic_fn_instance(mut f, type_map)
 	}
 	if f.is_variadic {
 		p.fn_gen_caller_vargs(f, varg_type, varg_values)
@@ -1499,9 +1507,17 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string,[]string) {
 			p.error_with_token_index('variadic arg index out of range: $va.index/${values.len-1}, vargs are 0 indexed', va.tok_idx)
 		}
 	}
-	if !f.is_method && f.args.len > 1 {
+
+	if types.len == 0 {
+		return last_arg.typ,[]string
+	}
+
+	insert_comma_after_arg := if f.is_method { 2 } else { 1 }
+
+	if f.args.len > insert_comma_after_arg {
 		p.cgen.gen(',')
 	}
+
 	return types[0],values
 }
 
@@ -1509,7 +1525,12 @@ fn (p mut Parser) fn_gen_caller_vargs(f &Fn, varg_type string, values []string) 
 	is_varg := varg_type.starts_with('varg_')
 	if is_varg {
 		// forwarding varg
-		p.cgen.gen('${values[0]}')
+		if values.len == 0 {
+			vargs_struct := p.register_vargs_stuct(varg_type, 1)
+			p.cgen.gen('&($vargs_struct){.len=0}')
+		} else {
+			p.cgen.gen('${values[0]}')
+		}
 	}
 	else {
 		vargs_struct := p.register_vargs_stuct(varg_type, values.len)

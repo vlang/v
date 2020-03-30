@@ -110,7 +110,7 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 	}
 	month := '${t.smonth()}'
 	year := t.year.str()[2..]
-	return match fmt_date {
+mut 	res := match fmt_date {
 		.ddmmyy{
 			'${t.day:02d}|${t.month:02d}|$year'
 		}
@@ -136,7 +136,8 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 			'${t.year}|${t.month:02d}|${t.day:02d}'
 		}
 		else {
-			'unknown enumeration $fmt_date'}}.replace('|', match fmt_dlmtr {
+			'unknown enumeration $fmt_date'}}
+	res = res.replace('|', match fmt_dlmtr {
 		.dot{
 			'.'
 		}
@@ -151,6 +152,7 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 		}
 		else {
 			'unknown enumeration $fmt_dlmtr'}})
+	return res
 }
 
 // get_fmt_str returns a date string with specified FormatDelimiter,

@@ -6,6 +6,7 @@ module scanner
 import (
 	os
 	v.token
+	v.pref
 )
 
 const (
@@ -116,7 +117,7 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 		mut i := start
 		mut i1 := 0
 		for i < end {
-			if txt[i] != num_sep && txt[i] != `o` {
+			if txt[i] != num_sep {
 				b[i1] = txt[i]
 				i1++
 			}
@@ -374,10 +375,10 @@ pub fn (s mut Scanner) scan() token.Token {
 	if s.inter_end {
 		if s.text[s.pos] == s.quote {
 			s.inter_end = false
-			return s.scan_res(.str, '')
+			return s.scan_res(.string, '')
 		}
 		s.inter_end = false
-		return s.scan_res(.str, s.ident_string())
+		return s.scan_res(.string, s.ident_string())
 	}
 	s.skip_whitespace()
 	// end of file
@@ -498,7 +499,7 @@ pub fn (s mut Scanner) scan() token.Token {
 			return s.scan_res(.question, '')
 		}
 		single_quote, double_quote {
-			return s.scan_res(.str, s.ident_string())
+			return s.scan_res(.string, s.ident_string())
 		}
 		`\`` {
 			// ` // apostrophe balance comment. do not remove
@@ -538,9 +539,9 @@ pub fn (s mut Scanner) scan() token.Token {
 				s.pos++
 				if s.text[s.pos] == s.quote {
 					s.inside_string = false
-					return s.scan_res(.str, '')
+					return s.scan_res(.string, '')
 				}
-				return s.scan_res(.str, s.ident_string())
+				return s.scan_res(.string, s.ident_string())
 			}
 			else {
 				return s.scan_res(.rcbr, '')
@@ -575,6 +576,7 @@ pub fn (s mut Scanner) scan() token.Token {
 			s.pos++
 			name := s.ident_name()
 			// @FN => will be substituted with the name of the current V function
+			// @VEXE => will be substituted with the path to the V compiler
 			// @FILE => will be substituted with the path of the V source file
 			// @LINE => will be substituted with the V line number where it appears (as a string).
 			// @COLUMN => will be substituted with the column where it appears (as a string).
@@ -583,19 +585,23 @@ pub fn (s mut Scanner) scan() token.Token {
 			// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @FN)
 			// ... which is useful while debugging/tracing
 			if name == 'FN' {
-				return s.scan_res(.str, s.fn_name)
+				return s.scan_res(.string, s.fn_name)
+			}
+			if name == 'VEXE' {
+				vexe := pref.vexe_path()
+				return s.scan_res(.string, cescaped_path( vexe ) )
 			}
 			if name == 'FILE' {
-				return s.scan_res(.str, cescaped_path(os.realpath(s.file_path)))
+				return s.scan_res(.string, cescaped_path(os.real_path(s.file_path)))
 			}
 			if name == 'LINE' {
-				return s.scan_res(.str, (s.line_nr + 1).str())
+				return s.scan_res(.string, (s.line_nr + 1).str())
 			}
 			if name == 'COLUMN' {
-				return s.scan_res(.str, (s.current_column()).str())
+				return s.scan_res(.string, (s.current_column()).str())
 			}
 			if name == 'VHASH' {
-				return s.scan_res(.str, vhash())
+				return s.scan_res(.string, vhash())
 			}
 			if !token.is_key(name) {
 				s.error('@ must be used before keywords (e.g. `@type string`)')
@@ -756,7 +762,7 @@ pub fn (s mut Scanner) scan() token.Token {
 			}
 			// Multiline comments
 			if nextc == `*` {
-				start := s.pos
+				start := s.pos + 2
 				mut nest_count := 1
 				// Skip comment
 				for nest_count > 0 {
@@ -778,12 +784,9 @@ pub fn (s mut Scanner) scan() token.Token {
 					}
 				}
 				s.pos++
-				end := s.pos + 1
-				comment := s.text[start..end]
-				// if s.is_fmt {
-				if false && s.comments_mode == .parse_comments {
-					s.line_comment = comment
-					return s.scan_res(.mline_comment, s.line_comment)
+				if s.comments_mode == .parse_comments {
+					comment := s.text[start..(s.pos-1)].trim_space()
+					return s.scan_res(.mline_comment, comment)
 				}
 				// Skip if not in fmt mode
 				return s.scan()

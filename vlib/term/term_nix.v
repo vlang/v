@@ -3,6 +3,7 @@ module term
 import os
 
 #include <sys/ioctl.h>
+
 pub struct C.winsize {
 pub:
 	ws_row    u16

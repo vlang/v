@@ -21,11 +21,11 @@ fn C.wyhash(byteptr, u64, u64) u64
 
 
 const (
-	wyp0 = 0xa0761d6478bd642f
-	wyp1 = 0xe7037ed1a0b428db
-	wyp2 = 0x8ebc6af09c88c6e3
-	wyp3 = 0x589965cc75374cc3
-	wyp4 = 0x1d8e4e27c47d124f
+	wyp0 = u64(0xa0761d6478bd642f)
+	wyp1 = u64(0xe7037ed1a0b428db)
+	wyp2 = u64(0x8ebc6af09c88c6e3)
+	wyp3 = u64(0x589965cc75374cc3)
+	wyp4 = u64(0x1d8e4e27c47d124f)
 )
 
 [inline]

@@ -22,7 +22,8 @@ int Foo_testa(Foo* f);
 int Foo_testb(Foo* f);
 int Bar_testa(Bar* b);
 
-int main() {
+int main(int argc, char** argv) {
+	_vinit();
     Bar b = (Bar){
         .a = 122,
     };
@@ -41,13 +42,13 @@ int main() {
     string e = tos3("hello");
     e = testb(111);
 	e = tos3("world");
-	array_int f = new_array_from_c_array(4, 4, sizeof(array_int), (int[]){
+	array_int f = new_array_from_c_array(4, 4, sizeof(int), (int[4]){
         testa(), 2, 3, 4,
 	});
-	array_string g = new_array_from_c_array(2, 2, sizeof(array_string), (string[]){
+	array_string g = new_array_from_c_array(2, 2, sizeof(string), (string[2]){
 		testb(1), tos3("hello"),
 	});
-	array_Foo arr_foo = new_array_from_c_array(1, 1, sizeof(array_Foo), (Foo[]){
+	array_Foo arr_foo = new_array_from_c_array(1, 1, sizeof(Foo), (Foo[1]){
 		a,
 	});
 	Foo af_idx_el = (*(Foo*)array_get(arr_foo, 0));
@@ -90,4 +91,7 @@ int Foo_testb(Foo* f) {
 
 int Bar_testa(Bar* b) {
     return 4;
+}
+
+void _vinit() {
 }

@@ -121,11 +121,11 @@ fn rw_callback(loop *C.picoev_loop, fd, events int, cb_arg voidptr) {
 		buf := (p.buf + fd * MAX_READ)
 		idx := p.idx[fd]
 		mut r := myread(fd, buf, MAX_READ, idx)
-		if (r == 0) {
+		if r == 0 {
 			close_conn(loop, fd)
 			p.idx[fd] = 0
 			return
-		} else if (r == -1) {
+		} else if r == -1 {
 			if errno == C.EAGAIN || errno == C.EWOULDBLOCK {
 				//
 			} else {

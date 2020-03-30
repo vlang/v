@@ -1,0 +1,92 @@
+Usage: v [build flags] ['build'] <file.v|directory>
+
+This command compiles the given target, along with their dependencies, into an executable.
+
+When compiling packages, build ignores files that end in '_test.v'.
+
+When compiling a single main package, build writes the resulting executable to an output file
+named after the build target. ('v abc.v' and 'v abc/' both write either 'abc' or 'abc.exe')
+The '.exe' suffix is added when writing a Windows executable.
+By default, the executable is stored in the same directory as the compiled source code.
+
+The -o flag forces build to write the resulting executable or object to the d output file or directory,
+instead of the default behavior described in the last two paragraphs.
+
+You can put common options inside an environment variable named VFLAGS, so that
+you don't have to repeat them.
+
+You can set it like this: `export VFLAGS="-cc clang -debug"` on *nix,
+`set VFLAGS=-cc msvc` on Windows.
+
+V respects the TMPDIR environment variable, and will put .tmp.c files in TMPDIR/v/ .
+If you have not set it, a suitable platform specific folder (like /tmp) will be used.
+
+The build flags are shared by the build and run commands:
+
+   -b <backend>, -backend <backend>
+      Specify the backend to use while building the executable.
+      Current list of supported backends:
+      * `c` (default)       - V outputs C source code which is passed to a C compiler to be compiled.
+      * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
+      * `x64`               - V outputs Linux 64-bit executable directly (highly experimental!).
+      * `v2`/`experimental` - Invokes the experimental AST-powered V compiler that will replace the
+                              current backends when finished
+
+   -d <flag>[=<value>], -define <flag>[=<value>]
+      Define the provided flag.
+      If value is not provided, it is assumed to be set to `true`.
+      `value` should be `1` or `0` to indicate `true` and `false` respectively otherwise.
+
+   -e <experiment>, -experiments <experiment>
+      Enable the specified experiment.
+      Currently, the only experiment available is: `prealloc`
+
+   -full-rebuild
+      Force a full rebuild of all dependencies.
+      Enabled by default currently until caching works reliably.
+
+   -g
+      Compile the executable in debug mode, allowing code to be debugged more easily.
+
+   -o <output>, -output <output>
+      Force V to output the executable in a specific location
+      (relative to the current working directory if not absolute).
+
+   -obf, -obfuscate
+      Turn on obfuscation for the code being built. Currently only renames symbols.
+
+   -path
+      Specify the order of path V looks up in while searching for imported dependencies,
+      separated by pipes (`|`). In addition to absolute paths, you can
+      also use these special strings too:
+           @vmodules - replaced with the location of the global ~/.vmodules/ folder
+           (modules installed with `v install` are there).
+           @vlib - replaced with the location of the v's vlib folder.
+      Using these, you can arrange for very flexible search orders for you project, for example:
+           -path "/v/my_project_private_modules|@vlib|@vmodules"
+      By default, -path is just "@vlib|@vmodules" .
+
+   -prod
+      Compile the executable in production mode where most optimizations are enabled.
+
+   -prof, -profile
+      Compile the executable with all functions profiled.
+
+   -stats
+      Enable more detailed statistics reporting, while compiling test files.
+      You can use that with `v test` too, for example:
+        v -stats test vlib/
+      ... will run test_ functions inside all _test.v files inside vlib/ ,
+      and will report detailed statistics about how much time each test_ function took, how many
+      assertions were made, how many tests passed/failed and so on.
+
+   -translated
+      Enable features that are discouraged in regular V code but required for translated V code.
+
+   -v, -vv, -vvv
+      Enable varying verbosity in the V compiler while compiling
+
+For C-specific build flags, use `v help build-c`.
+
+See also:
+   `v help run` for documentation regarding `v run`.

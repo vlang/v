@@ -4,10 +4,10 @@
 module math
 
 const (
-	uvnan = 0x7FF8000000000001
-	uvinf = 0x7FF0000000000000
-	uvneginf = 0xFFF0000000000000
-	uvone = 0x3FF0000000000000
+	uvnan = u64(0x7FF8000000000001)
+	uvinf = u64(0x7FF0000000000000)
+	uvneginf = u64(0xFFF0000000000000)
+	uvone = u64(0x3FF0000000000000)
 	mask = 0x7FF
 	shift = 64 - 11 - 1
 	bias = 1023

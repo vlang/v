@@ -56,13 +56,13 @@ __global g_font_path string
 
 fn init_sokol_window() {
 	desc := sg_desc{
-		mtl_device: C.sapp_metal_get_device()
-		mtl_renderpass_descriptor_cb: sapp_metal_get_renderpass_descriptor
-		mtl_drawable_cb: sapp_metal_get_drawable
-		d3d11_device: sapp_d3d11_get_device()
-		d3d11_device_context: sapp_d3d11_get_device_context()
-		d3d11_render_target_view_cb: sapp_d3d11_get_render_target_view
-		d3d11_depth_stencil_view_cb: sapp_d3d11_get_depth_stencil_view
+		mtl_device: sapp.metal_get_device()
+		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
+		mtl_drawable_cb: sapp.metal_get_drawable
+		d3d11_device: sapp.d3d11_get_device()
+		d3d11_device_context: sapp.d3d11_get_device_context()
+		d3d11_render_target_view_cb: sapp.d3d11_get_render_target_view
+		d3d11_depth_stencil_view_cb: sapp.d3d11_get_depth_stencil_view
 	}
 	gfx.setup(&desc)
 	sgl_desc := sgl_desc_t{}
@@ -107,9 +107,9 @@ pub fn new_context(cfg Config) &GG {
 pub fn (gg &GG) draw_text(x, y int, text string, cfg gx.TextCfg) {
 	gg.fons.set_font(gg.font_normal)
 	gg.fons.set_size(cfg.size)
-	ascender := 0.0
-	descender := 0.0
-	lh := 0.0
+	ascender := f32(0.0)
+	descender := f32(0.0)
+	lh := f32(0.0)
 	gg.fons.vert_metrics(&ascender, &descender, &lh)
 	color:= C.sfons_rgba(cfg.color.r, cfg.color.g, cfg.color.b, 255)
 	C.fonsSetColor(gg.fons, color)
@@ -138,20 +138,20 @@ pub fn (gg &GG) run() {
 pub fn (ctx &GG) draw_rect(x, y, w, h f32, c gx.Color) {
 	sgl.c4b(c.r, c.g, c.b, 128)
 	sgl.begin_quads()
-	sgl_v2f(x, y)
-	sgl_v2f(x + w, y)
-	sgl_v2f(x + w, y + h)
-	sgl_v2f(x, y + h)
+	sgl.v2f(x, y)
+	sgl.v2f(x + w, y)
+	sgl.v2f(x + w, y + h)
+	sgl.v2f(x, y + h)
 	sgl.end()
 }
 
 pub fn draw_rect(x, y, w, h f32, c gx.Color) {
 	sgl.c4b(c.r, c.g, c.b, 128)
 	sgl.begin_quads()
-	sgl_v2f(x, y)
-	sgl_v2f(x + w, y)
-	sgl_v2f(x + w, y + h)
-	sgl_v2f(x, y + h)
+	sgl.v2f(x, y)
+	sgl.v2f(x + w, y)
+	sgl.v2f(x + w, y + h)
+	sgl.v2f(x, y + h)
 	sgl.end()
 }
 

@@ -39,9 +39,10 @@ fn C.tcsetattr() int
 //fn C.ioctl() int
 fn C.raise()
 
-// Toggle raw mode of the terminal by changing its attributes
-// Catches SIGUSER (CTRL+C) Signal to reset tty
-fn (r mut Readline) enable_raw_mode() {
+// Enable the raw mode of the terminal
+// In raw mode all keypresses are directly sent to the program and no interpretation is done
+// Catches the SIGUSER (CTRL+C) Signal
+pub fn (r mut Readline) enable_raw_mode() {
   if C.tcgetattr(0, &r.orig_termios) == -1 {
     r.is_tty = false
     r.is_raw = false
@@ -58,9 +59,10 @@ fn (r mut Readline) enable_raw_mode() {
   r.is_tty = true
 }
 
-// Not catching the SIGUSER (CTRL+C) Signal
-fn (r mut Readline) enable_raw_mode_nosig() {
-  if ( C.tcgetattr(0, &r.orig_termios) == -1 ) {
+// Enable the raw mode of the terminal
+// Does not catch the SIGUSER (CTRL+C) Signal
+pub fn (r mut Readline) enable_raw_mode_nosig() {
+  if C.tcgetattr(0, &r.orig_termios) == -1 {
     r.is_tty = false
     r.is_raw = false
     return
@@ -76,16 +78,16 @@ fn (r mut Readline) enable_raw_mode_nosig() {
   r.is_tty = true
 }
 
-// Reset back the terminal to its default value
-fn (r mut Readline) disable_raw_mode() {
+// Disable the raw mode of the terminal
+pub fn (r mut Readline) disable_raw_mode() {
   if r.is_raw {
     C.tcsetattr(0, C.TCSADRAIN, &r.orig_termios)
     r.is_raw = false
   }
 }
 
-// Read single char
-fn (r Readline) read_char() int {
+// Read a single char
+pub fn (r Readline) read_char() int {
   return utf8_getchar()
 }
 
@@ -317,7 +319,7 @@ fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count 
   out[0] = x
   out[1] = y
   for chars_remaining := char_count; chars_remaining > 0; {
-    chars_this_row := if ( (x + chars_remaining) < screen_columns) { chars_remaining } else { screen_columns - x }
+    chars_this_row := if (x + chars_remaining) < screen_columns { chars_remaining } else { screen_columns - x }
     out[0] = x + chars_this_row
     out[1] = y
     chars_remaining -= chars_this_row

@@ -46,8 +46,9 @@ SPENT   462 ms in code_2
 
 
 const (
-	BOK = term.ok_message('OK')
+	BOK = term.ok_message('OK  ')
 	BFAIL = term.fail_message('FAIL')
+	BSKIP  = term.fail_message('SKIP')
 	BSPENT = term.ok_message('SPENT')
 )
 
@@ -60,6 +61,7 @@ pub mut:
 	ntotal           int
 	nok              int
 	nfail            int
+	nskip            int
 	verbose          bool
 	nexpected_steps  int
 	cstep            int
@@ -104,6 +106,12 @@ pub fn (b mut Benchmark) ok() {
 	b.step_end_time = benchmark.now()
 	b.ntotal++
 	b.nok++
+}
+
+pub fn (b mut Benchmark) skip() {
+	b.step_end_time = benchmark.now()
+	b.ntotal++
+	b.nskip++
 }
 
 pub fn (b mut Benchmark) fail_many(n int) {
@@ -169,8 +177,12 @@ pub fn (b &Benchmark) step_message_fail(msg string) string {
 	return b.step_message_with_label(BFAIL, msg)
 }
 
+pub fn (b &Benchmark) step_message_skip(msg string) string {
+	return b.step_message_with_label(BSKIP, msg)
+}
+
 pub fn (b &Benchmark) total_message(msg string) string {
-	mut tmsg := '${msg}\n                 ok, fail, total = ' + term.ok_message('${b.nok:5d}') + ', ' + if b.nfail > 0 { term.fail_message('${b.nfail:5d}') } else { '${b.nfail:5d}' } + ', ' + '${b.ntotal:5d}'
+	mut tmsg := '${msg}\n                 ok, fail, skip, total = ' + term.ok_message('${b.nok:5d}') + ', ' + if b.nfail > 0 { term.fail_message('${b.nfail:5d}') } else { '${b.nfail:5d}' } + ', ' + '${b.nskip:5d}'+ ', ' + '${b.ntotal:5d}'
 	if b.verbose {
 		tmsg = '<=== total time spent $tmsg'
 	}

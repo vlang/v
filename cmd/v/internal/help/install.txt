@@ -1,0 +1,7 @@
+Usage:
+  v install module [module] [module] [...]
+  ^^^^^^^^^^^^^ will install the modules you specified
+Options:
+  -help        - Show usage info.
+  -verbose     - Print more details about the performed operation.
+  -server-url  - When doing network operations, use this vpm server. Can be given multiple times.

@@ -76,7 +76,7 @@ fn (p mut Parser) struct_decl(generic_param_types []string) {
 		}
 	}
 	if name.len == 1 && !p.pref.building_v && !p.pref.is_repl {
-		p.warn('struct names must have more than one character')
+		p.warn('struct names must have more than one character ("$name", len=$name.len, $p.pref.building_v)')
 	}
 	if !is_c && !good_type_name(name) {
 		p.error('bad struct name, e.g. use `HttpRequest` instead of `HTTPRequest`')
@@ -304,7 +304,7 @@ fn (p mut Parser) struct_decl(generic_param_types []string) {
 					.name {
 						val = p.check_name()
 					}
-					.str {
+					.string{
 						val = p.check_string()
 					}
 					else {
@@ -365,7 +365,7 @@ fn (p mut Parser) struct_init(typ_ string) string {
 		t = p.table.find_type(t.name)
 		typ = t.name
 	}
-	if p.gen_struct_init(typ, &t) {
+	if p.gen_struct_init(typ, t) {
 		return typ
 	}
 	ptr := typ.contains('*')

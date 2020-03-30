@@ -13,3 +13,5 @@ pub const (
 	MSG_NOSIGNAL = 0x4000
 )
 
+#flag solaris -lsocket
+

@@ -235,6 +235,7 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 	}
 	req := http.Request{
 		headers: http.parse_headers(headers) //s.split_into_lines())
+		data: strip(body)
 		ws_func: 0
 		user_ptr: 0
 		method: vals[0]
@@ -243,6 +244,7 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 	$if debug {
 		println('req.headers = ')
 		println(req.headers)
+		println('req.data="$req.data"' )
 		println('vweb action = "$action"')
 	}
 	//mut app := T{
@@ -255,9 +257,7 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 	}
 	//}
 	if req.method in methods_with_form {
-		body = strip(body)
-		println('body="$body"' )
-		app.vweb.parse_form(body)
+		app.vweb.parse_form(req.data)
 	}
 	if vals.len < 2 {
 		$if debug {
@@ -330,7 +330,7 @@ fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 			if os.is_dir(file) {
 				ctx.scan_static_directory(directory_path + '/' + file, mount_path + '/' + file)
 			} else if file.contains('.') && ! file.starts_with('.') && ! file.ends_with('.') {
-				ext := os.ext(file)
+				ext := os.file_ext(file)
 
 				// Rudimentary guard against adding files not in mime_types.
 				// Use serve_static directly to add non-standard mime types.

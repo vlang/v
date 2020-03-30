@@ -59,6 +59,9 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 // string representaiton of expr
 pub fn (x Expr) str() string {
 	match x {
+		Ident {
+			return it.name
+		}
 		InfixExpr {
 			return '(${it.left.str()} $it.op.str() ${it.right.str()})'
 		}
@@ -69,9 +72,9 @@ pub fn (x Expr) str() string {
 		*/
 
 		IntegerLiteral {
-			return it.val.str()
+			return it.val
 		}
-		IntegerLiteral {
+		StringLiteral {
 			return '"$it.val"'
 		}
 		else {
