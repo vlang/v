@@ -21,26 +21,37 @@ const (
 )
 
 struct Parser {
-	scanner     &scanner.Scanner
-	file_name   string
+	scanner       		&scanner.Scanner
+	file_name     		string
 mut:
-	tok         token.Token
-	peek_tok    token.Token
+	tok           		token.Token
+	peek_tok      		token.Token
 	// vars []string
-	table       &table.Table
-	is_c        bool
+	table         		&table.Table
+	is_c          		bool
 	// prefix_parse_fns []PrefixParseFn
-	inside_if   bool
-	pref        &pref.Preferences // Preferences shared from V struct
-	builtin_mod bool
-	mod         string
-	attr        string
-	expr_mod    string
-	scope       &ast.Scope
-	imports     map[string]string
-	ast_imports []ast.Import
-	is_amp      bool
-	returns     bool
+	inside_if     		bool
+	pref          		&pref.Preferences // Preferences shared from V struct
+	builtin_mod   		bool
+	mod           		string
+	attr          		string
+	expr_mod      		string
+	scope         		&ast.Scope
+	imports       		map[string]string
+	ast_imports   		[]ast.Import
+	is_amp        		bool
+	returns 			bool
+	in_label_scope  	bool
+	loop_label	  		bool // true is loop label. false is goto label.
+	label_scope 		&ast.Scope
+	label_list 	  		[]Labels
+	prefix_goto_scope 	&ast.Scope
+}
+
+pub struct Labels {
+pub:
+	name string
+	loop bool
 }
 
 // for tests
@@ -52,7 +63,14 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-		
+		label_scope: &ast.Scope{
+			start_pos: 0
+			parent: 0
+		}
+		prefix_goto_scope: &ast.Scope{
+			start_pos: 0
+			parent: 0
+		}
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -76,8 +94,23 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 			start_pos: 0
 			parent: 0
 		}
+		label_scope: &ast.Scope{
+			start_pos: 0
+			parent: 0
+		}
+		prefix_goto_scope: &ast.Scope{
+			start_pos: 0
+			parent: 0
+		}
 		// comments_mode: comments_mode
-		
+		label_scope: &ast.Scope{
+			start_pos: 0
+			parent: 0
+		}
+		prefix_goto_scope: &ast.Scope{
+			start_pos: 0
+			parent: 0
+		}
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -194,12 +227,63 @@ pub fn (p mut Parser) close_scope() {
 	p.scope = p.scope.parent
 }
 
+pub fn (p mut Parser) open_label_scope() {
+	p.label_scope = &ast.Scope{
+		parent: p.scope
+		start_pos: p.tok.pos
+	}
+}
+
+pub fn (p mut Parser) close_label_scope() {
+	p.label_list = p.label_list[0..p.label_list.len - 1]
+	p.label_scope.end_pos = p.tok.pos
+	p.label_scope.parent.children << p.label_scope
+	if p.label_list.len == 0 {
+		p.in_label_scope = false
+	}
+	p.label_scope = p.label_scope.parent 
+}
+
+pub fn (p mut Parser) open_prefix_goto_scope() {
+	p.prefix_goto_scope = &ast.Scope {
+		parent: p.scope
+		start_pos: p.tok.pos
+	}
+}
+
+pub fn (p mut Parser) close_prefix_goto_scope() {
+	p.prefix_goto_scope.end_pos = p.tok.pos
+	p.prefix_goto_scope.parent.children << p.scope
+	p.scope = p.prefix_goto_scope.parent
+}
+
 pub fn (p mut Parser) parse_block() []ast.Stmt {
 	p.open_scope()
 	// println('parse block')
 	stmts := p.parse_block_no_scope()
 	p.close_scope()
 	// println('nr exprs in block = $exprs.len')
+	return stmts
+}
+
+pub fn (p mut Parser) parse_label_block(name string,loop bool) (string,[]ast.Stmt,[]ast.Stmt,[]ast.Stmt) {
+	// append label list.
+	p.label_list << Labels {
+		name: name
+		loop: loop
+	}
+	p.open_label_scope()
+	// println('parse label block')
+	before_loop,stmts,after_loop := p.parse_label_block_no_scope(name,loop)
+	p.close_label_scope()
+	// println('nr exprs in block = $exprs.len')
+	return name,before_loop,stmts,after_loop
+}
+
+pub fn (p mut Parser) parse_prefix_goto(name string) []ast.Stmt {
+	p.open_prefix_goto_scope()	
+	stmts := p.parse_prefix_goto_no_scope(name)
+	p.close_prefix_goto_scope()
 	return stmts
 }
 
@@ -216,6 +300,53 @@ pub fn (p mut Parser) parse_block_no_scope() []ast.Stmt {
 		}
 	}
 	p.check(.rcbr)
+	return stmts
+}
+
+pub fn (p mut Parser) parse_label_block_no_scope(name string,loop bool) ([]ast.Stmt,[]ast.Stmt,[]ast.Stmt) {
+	mut before_loop := []ast.Stmt
+	mut stmts := []ast.Stmt
+	mut after_loop := []ast.Stmt
+	if loop {
+		for {
+			before_loop << p.stmt()
+			// p.warn('after stmt(): tok=$p.tok.str()')
+			if p.tok.kind in [.key_for] {
+				break
+			}
+			p.check(.key_for)
+		}
+	} 
+	for {
+		stmts << p.stmt()
+		// p.warn('after stmt(): tok=$p.tok.str()')
+		if p.tok.kind in [.eof,.rcbr] {
+			break
+		}
+		p.check(.rcbr)
+	}
+	if loop {
+		for {
+			after_loop << p.stmt()
+			// p.warn('after stmt(): tok=$p.tok.str()')
+			if p.tok.kind in [.eof, .rcbr] {
+				break
+			}
+		}
+		p.check(.rcbr)
+	}
+	return before_loop,stmts,after_loop
+}
+
+pub fn (p mut Parser) parse_prefix_goto_no_scope(name string) []ast.Stmt {
+	mut stmts := []ast.Stmt
+	for {
+		stmts << p.stmt()
+		if p.tok.kind in [.eof, .key_goto] {
+			break
+		}
+	}
+	p.check(.key_goto)
 	return stmts
 }
 
@@ -270,7 +401,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 					p.error('wrong pub keyword usage')
 					return ast.Stmt{}
 				}
-	}
+			}
 		}
 		.lsbr {
 			return p.attribute()
@@ -352,6 +483,41 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 				pos: p.tok.position()
 			}
 		}
+		.key_break {
+			tok := p.tok
+			p.next()
+			peek_tok := p.tok
+			name := p.check_name()
+			if p.loop_label{
+				if name == p.label_list[p.label_list.len].name {
+					// current label check.
+					return ast.BreakStmt{
+						name: name
+					}
+				}
+				else if peek_tok.kind == .nl || peek_tok.kind == .semicolon {
+					current_label_name := p.label_list[p.label_list.len].name
+					return ast.BreakStmt{
+						name: current_label_name
+					}
+				}
+				else {
+					p.error('syntax error:invalid loop label $name.')
+					return ast.Stmt{}
+				}
+			}
+			else {
+				if peek_tok.kind == .nl || peek_tok.kind == .semicolon {
+					return ast.BranchStmt {
+						tok: tok
+					}
+				} 
+				else {
+					p.error('syntax error:$name is not loop label.')
+					return ast.Stmt{}
+				}
+			}
+		} 
 		.key_mut {
 			return p.assign_stmt()
 		}
@@ -367,17 +533,46 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		.dollar {
 			return p.comp_if()
 		}
-		.key_continue, .key_break {
+		.key_continue {
 			tok := p.tok
 			p.next()
-			return ast.BranchStmt{
-				tok: tok
+			peek_tok := p.tok
+			name := p.check_name()
+			// check labeled continue.
+			if p.loop_label {
+				// current label check.
+				if name == p.label_list[p.label_list.len].name{
+					return ast.ContinueStmt {
+						name: name
+					}
+				}
+				else if peek_tok.kind == .nl || peek_tok.kind == .semicolon {
+					current_label_name := p.label_list[p.label_list.len].name
+					return ast.ContinueStmt{
+						name: current_label_name
+					}
+				}
+				else {
+					p.error('syntax error:invalid loop label $name.')
+					return ast.Stmt{}
+				}
+			} 
+			else {
+				if peek_tok.kind == .nl || peek_tok.kind == .semicolon{
+					return ast.BranchStmt {
+						tok: tok
+					}
+				} 
+				else {
+					p.error('syntax error:invalid loop label $name.')
+					return ast.Stmt{}
+				}
 			}
 		}
 		.key_unsafe {
 			p.next()
 			stmts := p.parse_block()
-			return ast.UnsafeStmt{
+			return ast.UnsafeStmt {
 				stmts: stmts
 			}
 		}
@@ -400,8 +595,29 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		.key_goto {
 			p.next()
 			name := p.check_name()
-			return ast.GotoStmt{
-				name: name
+			if p.in_label_scope && p.label_list[p.label_list.len].name == name {
+				return ast.GotoStmt {
+					loop: p.loop_label
+					name: name
+				}
+			} 
+			else if !p.in_label_scope {
+				// prefix goto.
+				stmts := p.parse_prefix_goto()
+				return ast.PrefixGotoStmt {
+					in_label_scope: p.in_label_scope
+					loop: p.loop_label
+					stmts: stmts
+					name: name
+				}
+			}
+			else if p.label_list[p.label_list.len].name != name {
+				p.error('syntax error: label $name is not define.')
+				return ast.Stmt{}
+			} 
+			else {
+				p.error('syntax error: invalid label define.')
+				return ast.Stmt{}
 			}
 		}
 		else {
@@ -409,11 +625,41 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
 				return p.assign_stmt()
 			}
+			// label: for
+			else if p.tok.kind == .name && p.peek_tok.kind in [.colon, .key_for]{
+				name := p.check_name()
+				p.check(.colon)
+				// label scope flag check.
+				if !p.in_label_scope{
+					p.in_label_scope = true
+				}
+				// loop label flag check.
+				if !p.loop_label{
+					p.loop_label = true
+				}
+				tok,stmts,before_loop,after_loop := p.parse_label_block(name,p.labeled_loop)
+				return ast.LabeledStmt{
+					tok: tok
+					stmts: stmts
+					before_loop: before_loop
+					after_loop: after_loop
+					name: name
+				}
+			}
 			// `label:`
 			else if p.tok.kind == .name && p.peek_tok.kind == .colon {
 				name := p.check_name()
 				p.check(.colon)
-				return ast.GotoLabel{
+				if !p.in_label_scope{
+					p.in_label_scope = true
+				}
+				tok,stmts,before_loop,after_loop := p.parse_label_block(name,false)
+				return ast.LabeledStmt {
+					tok: tok
+					stmts: stmts
+					// not loop label.
+					before_loop: ast.Stmt[]
+					after_loop: ast.Stmt[]
 					name: name
 				}
 			}
@@ -1005,11 +1251,12 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_stmts = p.parse_block_no_scope()
 			p.close_scope()
 		}
-		mcall_expr := ast.MethodCallExpr{
-			expr: left
+		mcall_expr := ast.CallExpr{
+			left: left
 			name: field_name
 			args: args
 			pos: pos
+			is_method: true
 			or_block: ast.OrExpr{
 				stmts: or_stmts
 			}

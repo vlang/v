@@ -14,12 +14,12 @@ pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLitera
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
 CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | 	
-ConcatExpr | Type | AsCast | TypeOf | StringInterLiteral
+ConcatExpr | Type | AsCast
 
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
-LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GoStmt | LabeledStmt |
+GotoStmt | PrefixGotoStmt | BreakStmt | ContinueStmt |LineComment | MultiLineComment | AssertStmt | UnsafeStmt | Block
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -173,29 +173,16 @@ pub struct CallExpr {
 pub:
 // tok            token.Token
 	pos           token.Position
+	left          Expr // `user` in `user.register()`
+	is_method     bool
 mut:
-// func           Expr
 	name          string
 	args          []CallArg
 	exp_arg_types []table.Type
 	is_c          bool
-	muts          []bool
 	or_block      OrExpr
 	// has_or_block bool
-	return_type   table.Type
-}
-
-pub struct MethodCallExpr {
-pub:
-// tok        token.Token
-	pos           token.Position
-	expr          Expr // `user` in `user.register()`
-	name          string
-	args          []CallArg
-	or_block      OrExpr
-mut:
-	exp_arg_types []table.Type
-	expr_type     table.Type // type of `user`
+	left_type     table.Type // type of `user`
 	receiver_type table.Type // User
 	return_type   table.Type
 }
@@ -230,7 +217,6 @@ pub struct Stmt {
 	//end int
 }
 */
-
 
 pub struct Var {
 pub:
@@ -550,12 +536,36 @@ pub:
 	expr Expr
 }
 
-pub struct GotoLabel {
+pub struct GotoStmt {
+pub:
+	loop bool
+	name string
+}
+
+pub struct PrefixGotoStmt {
+pub:
+	stmts []Stmt
+	in_label_stmt bool
+	loop bool
+	name string
+}
+
+pub struct LabeledStmt {
+pub:
+	name string
+	loop bool
+	stmts []Stmt
+	// loop label statement.
+	before_loop []Stmt
+	after_loop []Stmt
+}
+
+pub struct BreakStmt {
 pub:
 	name string
 }
 
-pub struct GotoStmt {
+pub struct ContinueStmt {
 pub:
 	name string
 }

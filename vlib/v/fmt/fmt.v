@@ -131,7 +131,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 					f.writeln('continue')
 				}
 				else {}
-	}
+			}
 		}
 		ast.ConstDecl {
 			if it.is_pub {
@@ -205,11 +205,21 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
-		ast.GotoLabel {
+		ast.LabelStmt {
 			f.writeln('$it.name:')
-		}
-		ast.GotoStmt {
-			f.writeln('goto $it.name')
+				if it.tok == 'break' {
+					f.writeln(it.stmts)
+					f.writeln('break $it.name')
+				}
+				else if it.tok == 'continue' {
+					f.writeln(it.stmts)
+					f.writeln('continue $it.name')
+				}
+				else if it.tok == 'goto' {
+					f.writeln(it.stmts)
+					f.writeln('goto $it.name')
+				}
+			}
 		}
 		ast.LineComment {
 			f.writeln('// $it.text')
@@ -388,10 +398,19 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(')')
 		}
 		ast.CallExpr {
-			f.write('${it.name}(')
-			f.call_args(it.args)
-			f.write(')')
-			f.or_expr(it.or_block)
+			if it.is_method {
+				f.expr(it.left)
+				f.write('.' + it.name + '(')
+				f.call_args(it.args)
+				f.write(')')
+				f.or_expr(it.or_block)
+			}
+			else {
+				f.write('${it.name}(')
+				f.call_args(it.args)
+				f.write(')')
+				f.or_expr(it.or_block)
+			}
 		}
 		ast.CharLiteral {
 			f.write('`$it.val`')
@@ -509,13 +528,6 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			}
 			f.indent--
 			f.write('}')
-		}
-		ast.MethodCallExpr {
-			f.expr(it.expr)
-			f.write('.' + it.name + '(')
-			f.call_args(it.args)
-			f.write(')')
-			f.or_expr(it.or_block)
 		}
 		ast.None {
 			f.write('none')

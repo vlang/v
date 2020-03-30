@@ -10,6 +10,7 @@ struct C.cJSON {
 	valueint    int
 	valuedouble f32
 	valuestring byteptr
+	name		byteptr
 }
 
 fn jsdecode_int(root &C.cJSON) int {
@@ -183,4 +184,3 @@ fn json_print(json &C.cJSON) string {
 // fn json_array_for_each(val, root &C.cJSON) {
 // #cJSON_ArrayForEach (val ,root)
 // }
-
