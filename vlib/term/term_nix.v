@@ -4,7 +4,7 @@ import os
 
 #include <sys/ioctl.h>
 
-#include <sys/termios.h> // TIOCGWINSZ
+#include <termios.h> // TIOCGWINSZ
 
 pub struct C.winsize {
 pub:
