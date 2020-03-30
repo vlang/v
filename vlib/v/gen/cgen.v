@@ -6,6 +6,7 @@ import (
 	v.table
 	v.depgraph
 	v.token
+	v.pref
 	term
 )
 
@@ -24,6 +25,7 @@ struct Gen {
 	definitions    strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	inits          strings.Builder // contents of `void _vinit(){}`
 	table          &table.Table
+	pref           &pref.Preferences
 mut:
 	file           ast.File
 	fn_decl        &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
@@ -53,7 +55,7 @@ const (
 	'\t\t\t\t\t\t\t\t']
 )
 
-pub fn cgen(files []ast.File, table &table.Table) string {
+pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
 	// println('start cgen2')
 	mut g := Gen{
 		out: strings.new_builder(100)
@@ -61,6 +63,7 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		definitions: strings.new_builder(100)
 		inits: strings.new_builder(100)
 		table: table
+		pref: pref
 		fn_decl: 0
 		autofree: true
 		indent: -1
@@ -554,19 +557,21 @@ fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
 	if g.is_test {
 		g.writeln('{')
 		g.writeln('	g_test_oks++;')
+		g.writeln('	cb_assertion_ok( _STR("${g.file.path}"), ${a.pos.line_nr}, _STR("assert ${s_assertion}"), _STR("${g.fn_decl.name}()") );')
 		// g.writeln('	println(_STR("OK ${g.file.path}:${a.pos.line_nr}: fn ${g.fn_decl.name}(): assert $s_assertion"));')
 		g.writeln('}else{')
 		g.writeln('	g_test_fails++;')
-		g.writeln('	eprintln(_STR("${g.file.path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+		g.writeln('	cb_assertion_failed( _STR("${g.file.path}"), ${a.pos.line_nr}, _STR("assert ${s_assertion}"), _STR("${g.fn_decl.name}()") );')
 		g.writeln('	exit(1);')
+		g.writeln('	// TODO')
+		g.writeln('	// Maybe print all vars in a test function if it fails?')
 		g.writeln('}')
+		return
 	}
-	else {
-		g.writeln('{}else{')
-		g.writeln('	eprintln(_STR("${g.file.path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
-		g.writeln('	exit(1);')
-		g.writeln('}')
-	}
+	g.writeln('{}else{')
+	g.writeln('	eprintln(_STR("${g.file.path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+	g.writeln('	exit(1);')
+	g.writeln('}')
 }
 
 fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
@@ -2491,6 +2496,30 @@ pub fn (g mut Gen) write_tests_main() {
 	g.definitions.writeln('int g_test_fails = 0;')
 	g.writeln('int main() {')
 	g.writeln('\t_vinit();')
+	g.writeln('')
+	all_tfuncs := g.get_all_test_function_names()
+	if g.pref.is_stats {
+		g.writeln('\tBenchedTests bt = start_testing(${all_tfuncs.len}, tos3("$g.pref.path"));')
+	}
+	for t in all_tfuncs {
+		if g.pref.is_stats {
+			g.writeln('\tBenchedTests_testing_step_start(&bt, tos3("$t"));')
+		}
+		g.writeln('\t${t}();')
+		if g.pref.is_stats {
+			g.writeln('\tBenchedTests_testing_step_end(&bt);')
+		}
+	}
+	if g.pref.is_stats {
+		g.writeln('\tBenchedTests_end_testing(&bt);')
+	}
+	g.writeln('')
+	g.writeln('_vcleanup();')
+	g.writeln('\treturn g_test_fails > 0;')
+	g.writeln('}')
+}
+
+fn (g &Gen) get_all_test_function_names() []string {
 	mut tfuncs := []string
 	mut tsuite_begin := ''
 	mut tsuite_end := ''
@@ -2506,17 +2535,15 @@ pub fn (g mut Gen) write_tests_main() {
 		}
 		tfuncs << f.name
 	}
+	mut all_tfuncs := []string
 	if tsuite_begin.len > 0 {
-		g.writeln('\t${tsuite_begin}();\n')
+		all_tfuncs << tsuite_begin
 	}
-	for t in tfuncs {
-		g.writeln('\t${t}();')
-	}
+	all_tfuncs << tfuncs
 	if tsuite_end.len > 0 {
-		g.writeln('\t${tsuite_end}();\n')
+		all_tfuncs << tsuite_end
 	}
-	g.writeln('\treturn 0;')
-	g.writeln('}')
+	return all_tfuncs
 }
 
 fn (g &Gen) is_importing_os() bool {
