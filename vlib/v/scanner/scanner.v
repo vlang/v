@@ -300,11 +300,8 @@ fn (s mut Scanner) ident_dec_number() string {
 		}
 		has_exponential_part = true
 	}
-	if call_method {
-		s.error('calling methods on decimal number literals without brackets around risks ambiguity')
-	}
 	// error check: 1.23.4, 123.e+3.4
-	if s.pos < s.text.len && s.text[s.pos] == `.` {
+	if s.pos < s.text.len && s.text[s.pos] == `.` && !call_method {
 		if has_exponential_part {
 			s.error('exponential part should be integer')
 		}
