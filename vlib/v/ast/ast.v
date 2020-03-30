@@ -16,10 +16,10 @@ PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | Cast
 EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr | 
 Type | AsCast | TypeOf | StringInterLiteral
 
-pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GoStmt | LabeledStmt |
-GotoStmt | PrefixGotoStmt | BreakStmt | ContinueStmt |LineComment | MultiLineComment | AssertStmt | UnsafeStmt | Block
+pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 
+LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -217,6 +217,7 @@ pub struct Stmt {
 	//end int
 }
 */
+
 
 pub struct Var {
 pub:
@@ -536,36 +537,12 @@ pub:
 	expr Expr
 }
 
+pub struct GotoLabel {
+pub:
+	name string
+}
+
 pub struct GotoStmt {
-pub:
-	loop bool
-	name string
-}
-
-pub struct PrefixGotoStmt {
-pub:
-	stmts 			[]Stmt
-	in_label_scope 	bool
-	loop 			bool
-	name 			string
-}
-
-pub struct LabeledStmt {
-pub:
-	name string
-	loop bool
-	stmts []Stmt
-	// loop label statement.
-	before_loop []Stmt
-	after_loop []Stmt
-}
-
-pub struct BreakStmt {
-pub:
-	name string
-}
-
-pub struct ContinueStmt {
 pub:
 	name string
 }

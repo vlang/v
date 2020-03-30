@@ -170,14 +170,10 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	c.stmts(call_expr.or_block.stmts)
 	if call_expr.is_method {
-		// c.expected_type = table.void_type
 		left_type := c.expr(call_expr.left)
 		call_expr.left_type = left_type
 		left_type_sym := c.table.get_type_symbol(left_type)
-
 		method_name := call_expr.name
-		
-
 		// TODO: remove this for actual methods, use only for compiler magic
 		if left_type_sym.kind == .array && method_name in ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice'] {
 			if method_name in ['filter', 'map'] {
@@ -226,8 +222,8 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 			}
 			// TODO: typ optimize.. this node can get processed more than once
 			if call_expr.exp_arg_types.len == 0 {
-				for arg in method.args {
-					call_expr.exp_arg_types << arg.typ
+				for i in 1 .. method.args.len {
+					call_expr.exp_arg_types << method.args[i].typ
 				}
 			}
 			call_expr.receiver_type = method.args[0].typ
