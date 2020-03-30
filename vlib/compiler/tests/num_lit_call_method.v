@@ -21,6 +21,6 @@ fn float_lit_call_method() {
     x4 := .003e2.str()
     assert x4 == '3.e-01'
     x5 := 2.e-3.str() 
-	assert x5 == '2.e-03'
+    assert x5 == '2.e-03'
     // x6 := 5..str()    Syntax `5.` is allowed, but do not call method on it (it's parsed as a range). Use 5.0.str() instead.
 }
