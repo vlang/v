@@ -216,11 +216,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		}
 		ast.LabeledStmt {
 			if it.loop {
-				f.writeln(it.before_loop)
+				f.stmts(it.before_loop)
 			}
-			f.writeln(it.stmts)
+			f.stmts(it.stmts)
 			if it.loop {
-				f.writeln(it.after_loop)
+				f.stmts(it.after_loop)
 			}
 		}
 		ast.LineComment {
