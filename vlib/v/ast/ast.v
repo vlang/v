@@ -698,9 +698,6 @@ pub fn expr_is_call(expr Expr) bool {
 		CallExpr{
 			true
 		}
-		MethodCallExpr{
-			true
-		}
 		else {
 			false}
 	}
