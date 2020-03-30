@@ -388,10 +388,19 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(')')
 		}
 		ast.CallExpr {
-			f.write('${it.name}(')
-			f.call_args(it.args)
-			f.write(')')
-			f.or_expr(it.or_block)
+			if it.is_method {
+				f.expr(it.left)
+				f.write('.' + it.name + '(')
+				f.call_args(it.args)
+				f.write(')')
+				f.or_expr(it.or_block)
+			}
+			else {
+				f.write('${it.name}(')
+				f.call_args(it.args)
+				f.write(')')
+				f.or_expr(it.or_block)
+			}
 		}
 		ast.CharLiteral {
 			f.write('`$it.val`')
@@ -509,13 +518,6 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			}
 			f.indent--
 			f.write('}')
-		}
-		ast.MethodCallExpr {
-			f.expr(it.expr)
-			f.write('.' + it.name + '(')
-			f.call_args(it.args)
-			f.write(')')
-			f.or_expr(it.or_block)
 		}
 		ast.None {
 			f.write('none')

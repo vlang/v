@@ -10,15 +10,15 @@ import (
 
 pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
-AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | 	
-CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | 	
-ConcatExpr | Type | AsCast | TypeOf | StringInterLiteral
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | 
+PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr | 
+EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr | 
+Type | AsCast | TypeOf | StringInterLiteral
 
-pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
+pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 
 LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
@@ -173,29 +173,16 @@ pub struct CallExpr {
 pub:
 // tok            token.Token
 	pos           token.Position
+	left          Expr // `user` in `user.register()`
+	is_method     bool
 mut:
-// func           Expr
 	name          string
 	args          []CallArg
 	exp_arg_types []table.Type
 	is_c          bool
-	muts          []bool
 	or_block      OrExpr
 	// has_or_block bool
-	return_type   table.Type
-}
-
-pub struct MethodCallExpr {
-pub:
-// tok        token.Token
-	pos           token.Position
-	expr          Expr // `user` in `user.register()`
-	name          string
-	args          []CallArg
-	or_block      OrExpr
-mut:
-	exp_arg_types []table.Type
-	expr_type     table.Type // type of `user`
+	left_type     table.Type // type of `user`
 	receiver_type table.Type // User
 	return_type   table.Type
 }
