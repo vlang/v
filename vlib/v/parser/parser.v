@@ -1005,11 +1005,12 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_stmts = p.parse_block_no_scope()
 			p.close_scope()
 		}
-		mcall_expr := ast.MethodCallExpr{
-			expr: left
+		mcall_expr := ast.CallExpr{
+			left: left
 			name: field_name
 			args: args
 			pos: pos
+			is_method: true
 			or_block: ast.OrExpr{
 				stmts: or_stmts
 			}

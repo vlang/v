@@ -578,9 +578,6 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			ast.CallExpr {
 				return_type = it.return_type
 			}
-			ast.MethodCallExpr {
-				return_type = it.return_type
-			}
 			else {
 				panic('expected call')
 			}
@@ -1039,70 +1036,6 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			else {
 				g.write('new_map(1, sizeof($value_typ_str))')
-			}
-		}
-		ast.MethodCallExpr {
-			// TODO: there are still due to unchecked exprs (opt/some fn arg)
-			if it.expr_type == 0 {
-				verror('method receiver type is 0, this means there are some uchecked exprs')
-			}
-			typ_sym := g.table.get_type_symbol(it.receiver_type)
-			// rec_sym := g.table.get_type_symbol(it.receiver_type)
-			mut receiver_name := typ_sym.name
-			if typ_sym.kind == .array && it.name == 'filter' {
-				g.gen_filter(it)
-				return
-			}
-			if typ_sym.kind == .array && it.name in
-			// TODO performance, detect `array` method differently
-			['repeat', 'sort_with_compare', 'free', 'push_many', 'trim',
-			//
-			'first', 'last', 'clone', 'reverse', 'slice'] {
-				// && rec_sym.name == 'array' {
-				// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
-				// `array_byte_clone` => `array_clone`
-				receiver_name = 'array'
-				if it.name in ['last', 'first'] {
-					return_type_str := g.typ(it.return_type)
-					g.write('*($return_type_str*)')
-				}
-			}
-			name := '${receiver_name}_$it.name'.replace('.', '__')
-			// if it.receiver_type != 0 {
-			// g.write('/*${g.typ(it.receiver_type)}*/')
-			// g.write('/*expr_type=${g.typ(it.expr_type)} rec type=${g.typ(it.receiver_type)}*/')
-			// }
-			g.write('${name}(')
-			if table.type_is_ptr(it.receiver_type) && !table.type_is_ptr(it.expr_type) {
-				// The receiver is a reference, but the caller provided a value
-				// Add `&` automatically.
-				// TODO same logic in call_args()
-				g.write('&')
-			}
-			else if !table.type_is_ptr(it.receiver_type) && table.type_is_ptr(it.expr_type) {
-				g.write('/*rec*/*')
-			}
-			g.expr(it.expr)
-			is_variadic := it.exp_arg_types.len > 0 && table.type_is_variadic(it.exp_arg_types[it.exp_arg_types.len - 1])
-			if it.args.len > 0 || is_variadic {
-				g.write(', ')
-			}
-			// /////////
-			/*
-			if name.contains('subkeys') {
-				println('call_args $name $it.arg_types.len')
-				for t in it.arg_types {
-					sym := g.table.get_type_symbol(t)
-					print('$sym.name ')
-				}
-				println('')
-			}
-			*/
-			// ///////
-			g.call_args(it.args, it.exp_arg_types)
-			g.write(')')
-			if it.or_block.stmts.len > 0 {
-				g.or_block(it.or_block.stmts, it.return_type)
 			}
 		}
 		ast.None {
@@ -1673,7 +1606,7 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	}
 }
 
-fn (g mut Gen) return_statement(it ast.Return) {
+fn (g mut Gen) return_statement(node ast.Return) {
 	g.write('return')
 	if g.fn_decl.name == 'main' {
 		g.writeln(' 0;')
@@ -1681,7 +1614,7 @@ fn (g mut Gen) return_statement(it ast.Return) {
 	}
 	fn_return_is_optional := table.type_is_optional(g.fn_decl.return_type)
 	// multiple returns
-	if it.exprs.len > 1 {
+	if node.exprs.len > 1 {
 		g.write(' ')
 		typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		mr_info := typ_sym.info as table.MultiReturn
@@ -1691,10 +1624,10 @@ fn (g mut Gen) return_statement(it ast.Return) {
 			g.write('opt_ok(& ($styp []) { ')
 		}
 		g.write('($styp){')
-		for i, expr in it.exprs {
+		for i, expr in node.exprs {
 			g.write('.arg$i=')
 			g.expr(expr)
-			if i < it.exprs.len - 1 {
+			if i < node.exprs.len - 1 {
 				g.write(',')
 			}
 		}
@@ -1704,36 +1637,39 @@ fn (g mut Gen) return_statement(it ast.Return) {
 		}
 	}
 	// normal return
-	else if it.exprs.len == 1 {
+	else if node.exprs.len == 1 {
 		g.write(' ')
 		// `return opt_ok(expr)` for functions that expect an optional
-		if fn_return_is_optional && !table.type_is_optional(it.types[0]) {
+		if fn_return_is_optional && !table.type_is_optional(node.types[0]) {
 			mut is_none := false
 			mut is_error := false
-			expr0 := it.exprs[0]
+			expr0 := node.exprs[0]
 			match expr0 {
 				ast.None {
 					is_none = true
 				}
 				ast.CallExpr {
-					is_error = true // TODO check name 'error'
+					// TODO: why?
+					if !it.is_method {
+						is_error = true // TODO check name 'error'
+					}
 				}
 				else {}
 	}
 			if !is_none && !is_error {
 				styp := g.typ(g.fn_decl.return_type)[7..] // remove 'Option_'
 				g.write('opt_ok(& ($styp []) { ')
-				g.expr(it.exprs[0])
+				g.expr(node.exprs[0])
 				g.writeln(' }, sizeof($styp));')
 				return
 			}
 			// g.write('/*OPTIONAL*/')
 		}
-		if !table.type_is_ptr(g.fn_decl.return_type) && table.type_is_ptr(it.types[0]) {
+		if !table.type_is_ptr(g.fn_decl.return_type) && table.type_is_ptr(node.types[0]) {
 			// Automatic Dereference
 			g.write('*')
 		}
-		g.expr_with_cast(it.exprs[0], it.types[0], g.fn_decl.return_type)
+		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 	}
 	g.writeln(';')
 }
@@ -2168,7 +2104,7 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 }
 
 // `nums.filter(it % 2 == 0)`
-fn (g mut Gen) gen_filter(node ast.MethodCallExpr) {
+fn (g mut Gen) gen_filter(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
 	buf := g.out.buf[g.stmt_start_pos..]
 	s := string(buf.clone()) // the already generated part of current statement
@@ -2182,12 +2118,12 @@ fn (g mut Gen) gen_filter(node ast.MethodCallExpr) {
 	styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
 	g.write('\nint ${tmp}_len = ')
-	g.expr(node.expr)
+	g.expr(node.left)
 	g.writeln('.len;')
 	g.writeln('$styp $tmp = new_array(0, ${tmp}_len, sizeof($elem_type_str));')
 	g.writeln('for (int i = 0; i < ${tmp}_len; i++) {')
 	g.write('  $elem_type_str it = (($elem_type_str*) ')
-	g.expr(node.expr)
+	g.expr(node.left)
 	g.writeln('.data)[i];')
 	g.write('if (')
 	g.expr(node.args[0].expr) // the first arg is the filter condition
@@ -2204,67 +2140,133 @@ fn (g mut Gen) insert_before(s string) {
 	g.write(cur_line)
 }
 
-fn (g mut Gen) call_expr(it ast.CallExpr) {
-	mut name := it.name
-	is_print := name == 'println'
-	if it.is_c {
-		// Skip "C."
-		g.is_c_call = true
-		name = name[2..].replace('.', '__')
+fn (g mut Gen) call_expr(node ast.CallExpr) {
+	if node.is_method {
+		// TODO: there are still due to unchecked exprs (opt/some fn arg)
+		if node.left_type == 0 {
+			verror('method receiver type is 0, this means there are some uchecked exprs')
+		}
+		typ_sym := g.table.get_type_symbol(node.receiver_type)
+		// rec_sym := g.table.get_type_symbol(node.receiver_type)
+		mut receiver_name := typ_sym.name
+		if typ_sym.kind == .array && node.name == 'filter' {
+			g.gen_filter(node)
+			return
+		}
+		if typ_sym.kind == .array && node.name in
+		// TODO performance, detect `array` method differently
+		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim',
+		//
+		'first', 'last', 'clone', 'reverse', 'slice'] {
+			// && rec_sym.name == 'array' {
+			// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
+			// `array_byte_clone` => `array_clone`
+			receiver_name = 'array'
+			if node.name in ['last', 'first'] {
+				return_type_str := g.typ(node.return_type)
+				g.write('*($return_type_str*)')
+			}
+		}
+		name := '${receiver_name}_$node.name'.replace('.', '__')
+		// if node.receiver_type != 0 {
+		// g.write('/*${g.typ(node.receiver_type)}*/')
+		// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
+		// }
+		g.write('${name}(')
+		if table.type_is_ptr(node.receiver_type) && !table.type_is_ptr(node.left_type) {
+			// The receiver is a reference, but the caller provided a value
+			// Add `&` automatically.
+			// TODO same logic in call_args()
+			g.write('&')
+		}
+		else if !table.type_is_ptr(node.receiver_type) && table.type_is_ptr(node.left_type) {
+			g.write('/*rec*/*')
+		}
+		g.expr(node.left)
+		is_variadic := node.exp_arg_types.len > 0 && table.type_is_variadic(node.exp_arg_types[node.exp_arg_types.len - 1])
+		if node.args.len > 0 || is_variadic {
+			g.write(', ')
+		}
+		// /////////
+		/*
+		if name.contains('subkeys') {
+			println('call_args $name $node.arg_types.len')
+			for t in node.arg_types {
+				sym := g.table.get_type_symbol(t)
+				print('$sym.name ')
+			}
+			println('')
+		}
+		*/
+		// ///////
+		g.call_args(node.args, node.exp_arg_types)
+		g.write(')')
+		if node.or_block.stmts.len > 0 {
+			g.or_block(node.or_block.stmts, node.return_type)
+		}
 	}
 	else {
-		name = c_name(name)
-	}
-	// Generate tmp vars for values that have to be freed.
-	/*
-	mut tmps := []string
-	for arg in it.args {
-		if arg.typ == table.string_type_idx || is_print {
-			tmp := g.new_tmp_var()
-			tmps << tmp
-			g.write('string $tmp = ')
-			g.expr(arg.expr)
-			g.writeln('; //memory')
-		}
-	}
-	*/
-
-	if is_print && it.args[0].typ != table.string_type_idx {
-		typ := it.args[0].typ
-		mut styp := g.typ(typ)
-		sym := g.table.get_type_symbol(typ)
-		if !sym.has_method('str') && !(int(typ) in g.str_types) {
-			// Generate an automatic str() method if this type doesn't have it already
-			if table.type_is_ptr(typ) {
-				styp = styp.replace('*', '')
-			}
-			g.str_types << typ
-			g.definitions.writeln('string ${styp}_str($styp* x) { return tos3("TODO_str"); }')
-		}
-		if g.autofree && !table.type_is_optional(typ) {
-			tmp := g.new_tmp_var()
-			// tmps << tmp
-			g.write('string $tmp = ${styp}_str(')
-			g.expr(it.args[0].expr)
-			g.writeln('); println($tmp); string_free($tmp); //MEM2 $styp')
+		mut name := node.name
+		is_print := name == 'println'
+		if node.is_c {
+			// Skip "C."
+			g.is_c_call = true
+			name = name[2..].replace('.', '__')
 		}
 		else {
-			// `println(int_str(10))`
-			// sym := g.table.get_type_symbol(it.args[0].typ)
-			g.write('println(${styp}_str(')
-			g.expr(it.args[0].expr)
-			g.write('))')
+			name = c_name(name)
 		}
+		// Generate tmp vars for values that have to be freed.
+		/*
+		mut tmps := []string
+		for arg in node.args {
+			if arg.typ == table.string_type_idx || is_print {
+				tmp := g.new_tmp_var()
+				tmps << tmp
+				g.write('string $tmp = ')
+				g.expr(arg.expr)
+				g.writeln('; //memory')
+			}
+		}
+		*/
+
+		if is_print && node.args[0].typ != table.string_type_idx {
+			typ := node.args[0].typ
+			mut styp := g.typ(typ)
+			sym := g.table.get_type_symbol(typ)
+			if !sym.has_method('str') && !(int(typ) in g.str_types) {
+				// Generate an automatic str() method if this type doesn't have it already
+				if table.type_is_ptr(typ) {
+					styp = styp.replace('*', '')
+				}
+				g.str_types << typ
+				g.definitions.writeln('string ${styp}_str($styp* x) { return tos3("TODO_str"); }')
+			}
+			if g.autofree && !table.type_is_optional(typ) {
+				tmp := g.new_tmp_var()
+				// tmps << tmp
+				g.write('string $tmp = ${styp}_str(')
+				g.expr(node.args[0].expr)
+				g.writeln('); println($tmp); string_free($tmp); //MEM2 $styp')
+			}
+			else {
+				// `println(int_str(10))`
+				// sym := g.table.get_type_symbol(node.args[0].typ)
+				g.write('println(${styp}_str(')
+				g.expr(node.args[0].expr)
+				g.write('))')
+			}
+		}
+		else {
+			g.write('${name}(')
+			g.call_args(node.args, node.exp_arg_types)
+			g.write(')')
+		}
+		if node.or_block.stmts.len > 0 {
+			g.or_block(node.or_block.stmts, node.return_type)
+		}
+		g.is_c_call = false
 	}
-	else {
-		g.write('${name}(')
-		g.call_args(it.args, it.exp_arg_types)
-		g.write(')')
-	}
-	if it.or_block.stmts.len > 0 {
-		g.or_block(it.or_block.stmts, it.return_type)
-	}
-	g.is_c_call = false
 }
 
 fn (g mut Gen) or_block(stmts []ast.Stmt, return_type table.Type) {
