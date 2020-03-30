@@ -91,7 +91,7 @@ pub fn (l mut Log) close() {
 }
 
 fn (l mut Log) log_file(s string, level LogLevel) {
-	timestamp := time.now().format_ss()
+	timestamp := time.now().format_ymd_hms()
 	e := tag(level)
 	l.ofile.writeln('$timestamp [$e] $s')
 }
@@ -99,7 +99,7 @@ fn (l mut Log) log_file(s string, level LogLevel) {
 fn (l &Log) log_cli(s string, level LogLevel) {
 	f := tag(level)
 	t := time.now()
-	println('[$f ${t.format_ss()}] $s')
+	println('[$f ${t.format_ymd_hms()}] $s')
 }
 
 fn (l mut Log) send_output(s &string, level LogLevel) {

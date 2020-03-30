@@ -84,7 +84,7 @@ fn test_unix() {
 }
 
 fn test_format_ss() {
-	assert '11.07.1980 21:23:42' == time_to_test.get_fmt_str(.dot, .hhmmss24, .ddmmyyyy)
+	assert '11.07.1980 21:23:42' == time_to_test.format(.dot, .hhmmss24, .ddmmyyyy)
 }
 
 fn test_smonth() {

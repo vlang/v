@@ -162,7 +162,7 @@ pub fn (t Time) relative() string {
 	if secs > 3600 * 24 * 10000 {
 		return ''
 	}
-	return t.md()
+	return t.format_md()
 }
 
 // day_of_week returns the current day of a given year, month, and day,
@@ -250,7 +250,7 @@ pub fn days_in_month(month, year int) ?int {
 pub fn (t Time) str() string {
 	// TODO Define common default format for
 	// `str` and `parse` and use it in both ways
-	return t.format_ss()
+	return t.format_ymd_hms()
 }
 
 fn convert_ctime(t C.tm) Time {

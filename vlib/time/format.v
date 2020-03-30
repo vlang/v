@@ -3,82 +3,82 @@
 // that can be found in the LICENSE file.
 module time
 
-// format returns a date string in "YYYY-MM-DD HH:MM" format (24h).
-pub fn (t Time) format() string {
-	return t.get_fmt_str(.hyphen, .hhmm24, .yyyymmdd)
+// format_ymd_hm returns a date string in "YYYY-MM-DD HH:MM" format (24h).
+pub fn (t Time) format_ymd_hm() string {
+	return t.format(.hyphen, .hhmm24, .yyyymmdd)
 }
 
-// format_ss returns a date string in "YYYY-MM-DD HH:MM:SS" format (24h).
-pub fn (t Time) format_ss() string {
-	return t.get_fmt_str(.hyphen, .hhmmss24, .yyyymmdd)
+// format_ymd_hms returns a date string in "YYYY-MM-DD HH:MM:SS" format (24h).
+pub fn (t Time) format_ymd_hms() string {
+	return t.format(.hyphen, .hhmmss24, .yyyymmdd)
 }
 
-// hhmm returns a date string in "HH:MM" format (24h).
-pub fn (t Time) hhmm() string {
-	return t.get_fmt_time_str(.hhmm24)
+// format_hm returns a date string in "HH:MM" format (24h).
+pub fn (t Time) format_hm() string {
+	return t.format_time(.hhmm24)
 }
 
-// hhmmss returns a date string in "HH:MM:SS" format (24h).
-pub fn (t Time) hhmmss() string {
-	return t.get_fmt_time_str(.hhmmss24)
+// format_hms returns a date string in "HH:MM:SS" format (24h).
+pub fn (t Time) format_hms() string {
+	return t.format_time(.hhmmss24)
 }
 
-// hhmm12 returns a date string in "HH:MM" format (12h).
-pub fn (t Time) hhmm12() string {
-	return t.get_fmt_time_str(.hhmm12)
+// format_hm12 returns a date string in "HH:MM" format (12h).
+pub fn (t Time) format_hm12() string {
+	return t.format_time(.hhmm12)
 }
 
-// ymmdd returns a date string in "YYYY-MM-DD" format.
-pub fn (t Time) ymmdd() string {
-	return t.get_fmt_date_str(.hyphen, .yyyymmdd)
+// format_ymd returns a date string in "YYYY-MM-DD" format.
+pub fn (t Time) format_ymd() string {
+	return t.format_date(.hyphen, .yyyymmdd)
 }
 
-// ddmmy returns a date string in "DD.MM.YYYY" format.
-pub fn (t Time) ddmmy() string {
-	return t.get_fmt_date_str(.dot, .ddmmyyyy)
+// format_dmy returns a date string in "DD.MM.YYYY" format.
+pub fn (t Time) format_dmy() string {
+	return t.format_date(.dot, .ddmmyyyy)
 }
 
-// md returns a date string in "MMM D" format.
-pub fn (t Time) md() string {
-	return t.get_fmt_date_str(.space, .mmmd)
+// format_md returns a date string in "MMM D" format.
+pub fn (t Time) format_md() string {
+	return t.format_date(.space, .mmmd)
 }
 
-// clean returns a date string in a following format:
+// format_clean returns a date string in a following format:
 //  - a date string in "HH:MM" format (24h) for current day
 //  - a date string in "MMM D HH:MM" format (24h) for date of current year
 //  - a date string formatted with format function for other dates
-pub fn (t Time) clean() string {
+pub fn (t Time) format_clean() string {
 	now := time.now()
 	// Today
 	if t.month == now.month && t.year == now.year && t.day == now.day {
-		return t.get_fmt_time_str(.hhmm24)
+		return t.format_time(.hhmm24)
 	}
 	// This year
 	if t.year == now.year {
-		return t.get_fmt_str(.space, .hhmm24, .mmmd)
+		return t.format(.space, .hhmm24, .mmmd)
 	}
-	return t.format()
+	return t.format_ymd_hm()
 }
 
-// clean12 returns a date string in a following format:
+// format_clean12 returns a date string in a following format:
 //  - a date string in "HH:MM" format (12h) for current day
 //  - a date string in "MMM D HH:MM" format (12h) for date of current year
 //  - a date string formatted with format function for other dates
-pub fn (t Time) clean12() string {
+pub fn (t Time) format_clean12() string {
 	now := time.now()
 	// Today
 	if t.month == now.month && t.year == now.year && t.day == now.day {
-		return t.get_fmt_time_str(.hhmm12)
+		return t.format_time(.hhmm12)
 	}
 	// This year
 	if t.year == now.year {
-		return t.get_fmt_str(.space, .hhmm12, .mmmd)
+		return t.format(.space, .hhmm12, .mmmd)
 	}
-	return t.format()
+	return t.format_ymd_hm()
 }
 
-// get_fmt_time_str returns a date string with specified FormatTime type.
-pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
+// format_time returns a date string with specified FormatTime type.
+pub fn (t Time) format_time(fmt_time FormatTime) string {
 	if fmt_time == .no_time {
 		return ''
 	}
@@ -102,9 +102,9 @@ pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
 	}
 }
 
-// get_fmt_time_str returns a date string with specified
+// format_date returns a date string with specified
 // FormatDelimiter and FormatDate type.
-pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate) string {
+pub fn (t Time) format_date(fmt_dlmtr FormatDelimiter, fmt_date FormatDate) string {
 	if fmt_date == .no_date {
 		return ''
 	}
@@ -155,9 +155,9 @@ mut 	res := match fmt_date {
 	return res
 }
 
-// get_fmt_str returns a date string with specified FormatDelimiter,
+// format returns a date string with specified FormatDelimiter,
 // FormatTime type, and FormatDate type.
-pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_date FormatDate) string {
+pub fn (t Time) format(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_date FormatDate) string {
 	if fmt_date == .no_date {
 		if fmt_time == .no_time {
 			// saving one function call although it's checked in
@@ -165,15 +165,15 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 			return ''
 		}
 		else {
-			return t.get_fmt_time_str(fmt_time)
+			return t.format_time(fmt_time)
 		}
 	}
 	else {
 		if fmt_time != .no_time {
-			return t.get_fmt_date_str(fmt_dlmtr, fmt_date) + ' ' + t.get_fmt_time_str(fmt_time)
+			return t.format_date(fmt_dlmtr, fmt_date) + ' ' + t.format_time(fmt_time)
 		}
 		else {
-			return t.get_fmt_date_str(fmt_dlmtr, fmt_date)
+			return t.format_date(fmt_dlmtr, fmt_date)
 		}
 	}
 }

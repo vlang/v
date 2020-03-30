@@ -49,5 +49,5 @@ fn (app mut App) text() {
 }
 
 fn (app mut App) time() {
-	app.vweb.text(time.now().format())
+	app.vweb.text(time.now().format_ymd_hm())
 }
