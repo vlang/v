@@ -234,6 +234,17 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 			call_expr.return_type = method.return_type
 			return method.return_type
 		}
+		// TODO: str methods
+		if left_type_sym.kind == .map && method_name == 'str' {
+			call_expr.receiver_type = table.new_type(c.table.type_idxs['map_string'])
+			call_expr.return_type = table.string_type
+			return table.string_type
+		}
+		if left_type_sym.kind == .array && method_name == 'str' {
+			call_expr.receiver_type = left_type
+			call_expr.return_type = table.string_type
+			return table.string_type
+		}
 		c.error('unknown method: ${left_type_sym.name}.$method_name', call_expr.pos)
 		return table.void_type
 	}
