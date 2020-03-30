@@ -133,9 +133,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				else {}
 			}
 		}
-		ast.BreakStmt {
-			f.write('break $it.name')
-		}	
+		ast.BreakStmt{
+			f.writeln('break $it.name')
+		}
 		ast.ConstDecl {
 			if it.is_pub {
 				f.write('pub ')
@@ -152,7 +152,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln(')\n')
 		}
 		ast.ContinueStmt{
-			f.write('continue $it.name')
+			f.writeln('continue $it.name')
 		}
 		ast.DeferStmt {
 			f.writeln('defer {')
@@ -211,25 +211,17 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
-		ast.LabelStmt {
-			f.writeln('$it.name:')
-				if it.tok == 'break' {
-					f.writeln(it.stmts)
-					f.writeln('break $it.name')
-				}
-				else if it.tok == 'continue' {
-					f.writeln(it.stmts)
-					f.writeln('continue $it.name')
-				}
-				else if it.tok == 'goto' {
-					f.writeln(it.stmts)
-					f.writeln('goto $it.name')
-				}
-			}
+		ast.GotoStmt,ast.PrefixGotoStmt {
+			f.writeln('goto $it.name;')
 		}
-		ast.LabeledLoop { 
-			f.write('$it.name:')
-			f.stmts(it.stmts)
+		ast.LabeledStmt {
+			if it.loop {
+				f.writeln(it.before_loop)
+			}
+			f.writeln(it.stmts)
+			if it.loop {
+				f.writeln(it.after_loop)
+			}
 		}
 		ast.LineComment {
 			f.writeln('// $it.text')

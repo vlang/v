@@ -544,10 +544,10 @@ pub:
 
 pub struct PrefixGotoStmt {
 pub:
-	stmts []Stmt
-	in_label_stmt bool
-	loop bool
-	name string
+	stmts 			[]Stmt
+	in_label_scope 	bool
+	loop 			bool
+	name 			string
 }
 
 pub struct LabeledStmt {

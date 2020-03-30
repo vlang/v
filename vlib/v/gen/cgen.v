@@ -340,14 +340,14 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.Import {}
 		ast.PrefixGotoStmt{
 			if it.loop {
-				g.writeln('goto loop_$name')
+				g.writeln('goto loop_$it.name;')
 			} 
 			else {
-				g.writeln('goto $name')
+				g.writeln('goto $it.name')
 			}
-			g.writeln(it.stmts)
-			if !it.loop && !it.in_label_stmt {
-				g.writeln('$name:')
+			g.stmts(it.stmts)
+			if !it.loop && !it.in_label_scope {
+				g.writeln('$it.name:')
 			} 
 		}
 		ast.Return {
