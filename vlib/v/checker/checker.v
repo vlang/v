@@ -809,16 +809,11 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		}
 		start_scope := c.file.scope.innermost(ident.pos.pos)
 		mut found := true
-		mut var_scope := &ast.Scope(0)
-		mut var := ast.Var{}
-		// var_scope,var = start_scope.find_scope_and_var(ident.name) or {
-		mr := start_scope.find_scope_and_var(ident.name) or {
+		var_scope,var := start_scope.find_scope_and_var(ident.name) or {
 			found = false
 			c.error('not found: $ident.name - POS: $ident.pos.pos', ident.pos)
 			panic('')
 		}
-		var_scope = mr.scope
-		var = mr.var
 		if found {
 			// update the variable
 			// we need to do this here instead of var_decl since some
