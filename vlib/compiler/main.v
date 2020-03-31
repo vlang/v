@@ -743,10 +743,11 @@ pub fn (v &V) get_user_files() []string {
 	is_test := dir.ends_with('_test.v')
 	mut is_internal_module_test := false
 	if is_test {
-		tcontent := os.read_file(dir)or{
+		mut tcontent := os.read_file(dir)or{
 			panic('$dir does not exist')
 		}
-		if tcontent.contains('module ') && !tcontent.contains('module main') {
+		tcontent = tcontent.trim_space()
+		if tcontent.starts_with('module ') && !tcontent.starts_with('module main') {
 			is_internal_module_test = true
 		}
 	}
