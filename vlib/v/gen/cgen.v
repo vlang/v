@@ -406,6 +406,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.Import {}
+		ast.InterfaceDecl {
+			g.writeln('// interface')
+		}
 		ast.Return {
 			if g.defer_stmts.len > 0 {
 				g.write_defer_stmts()

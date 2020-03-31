@@ -19,7 +19,7 @@ Type | AsCast | TypeOf | StringInterLiteral
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
-LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block
+LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -125,6 +125,10 @@ pub:
 	pub_pos     int // pub:
 	pub_mut_pos int // pub mut:
 	is_c        bool
+}
+
+pub struct InterfaceDecl {
+	name string
 }
 
 pub struct StructInit {
