@@ -310,35 +310,35 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			}
 		}
 		.key_break {
-			p.next()
-			tok := p.tok
-				if p.labeled_loop{
+			if p.labeled_loop{
+				tok := p.tok
 				p.next()
 				name := p.check_loop_label() or {
-					p.loop_label_list.delete(p.loop_label_list.len - 1)
+					p.loop_label_list = p.loop_label_list[0..p.loop_label_list.len - 1]
 					return ast.BranchStmt{
 						tok: tok
 					}
 				}
 				for i,labels in p.loop_label_list{
-						last := labels.len - 1
-						for labels != name {
-								p.loop_label_list.delete(last)
+					last := labels.len - 1
+						if name == labels {
+								p.loop_label_list = p.loop_label_list[0..i]
 						}
-						if labels.len == 0 {
+						if p.loop_label_list.len == 0 {
 							p.labeled_loop = false
 						}
 						return ast.BreakStmt{
 							name: name
 						}
-					}
 				}
 			} else {
+				tok := p.tok
+				p.next()
 				return ast.BranchStmt{
 						tok: tok
 				}
-			} 
-		}
+			}
+		} 
 		.key_mut {
 			return p.assign_stmt()
 		}
@@ -355,37 +355,34 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return p.comp_if()
 		}
 		.key_continue{
-			p.next()
-			tok := p.tok
-			// Check Labeled Loop.
 			if p.labeled_loop{
+				tok := p.tok
 				p.next()
-				name := if p.check_loop_label() or {
-					p.loop_label_list.delete(p.loop_label_list.len - 1)
+				name := p.check_loop_label() or {
+					p.loop_label_list = p.loop_label_list[0..p.loop_label_list.len - 1]
 					return ast.BranchStmt{
 						tok: tok
 					}
 				}
-				for i, labels in p.loop_label_list{
+				for i,labels in p.loop_label_list{
 					last := labels.len - 1
-						if p.in_loop_label(name) {
-							for !p.in_loop_label(name){
-								p.loop_label_list.delete(last)
-							}
+						if name == labels {
+								p.loop_label_list = p.loop_label_list[0..i]
 						}
-						if labels.len == 0 {
+						if p.loop_label_list.len == 0 {
 							p.labeled_loop = false
 						}
-						return ast.ContinueStmt{
+						return ast.BreakStmt{
 							name: name
 						}
-					}
 				}
 			} else {
+				tok := p.tok
+				p.next()
 				return ast.BranchStmt{
 						tok: tok
 				}
-			} 
+			}
 		}
 		.key_unsafe {
 			p.next()
@@ -397,8 +394,12 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		.key_defer {
 			p.next()
 			if p.labeled_loop {
+				stmts := p.parse_block()
 				p.labeled_loop = false
-				p.loop_label_list.clear()
+				p.loop_label_list = p.loop_label_list[0..0]
+				return ast.DeferStmt{
+					stmts: stmts
+				}
 			}
 			stmts := p.parse_block()
 			return ast.DeferStmt{
@@ -408,16 +409,16 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		.key_goto {
 			p.next()
 			if p.labeled_loop{
-				name := p.check_loop_label(.name)
+				name := p.check_name()
 				for i, labels in p.loop_label_list{
-					last := labels.len - 1
-					if name in labels {
-						if p.in_loop_label(name) {
-							label.delete(p.loop_label_list.len - 1)
-						}
-						if label.len == 0 {
-							labeled_loop = false
-						}
+					if name == labels {
+							p.loop_label_list = p.loop_label_list[0..i]
+					}
+					if p.loop_label_list.len == 0 {
+						p.labeled_loop = false
+					}
+					return ast.GotoStmt{
+						name: name
 					}
 				}
 				return ast.GotoStmt{
@@ -436,11 +437,11 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 				return p.assign_stmt()
 			}
 			// label: for
-			else if p.token.kind == .name && p.peek_tok.kind in [.colon, keyword_for]{
+			else if p.tok.kind == .name && p.peek_tok.kind in [.colon, .key_for]{
 				name := p.check_name()
 				p.check(.colon)
 				p.loop_label_list << name
-				return ast.LabeledFor{
+				return ast.LabeledLoop{
 					name: name
 				}
 			}
