@@ -124,10 +124,7 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 			i++
 		}
 		b[i1] = 0 // C string compatibility
-		return string{
-			str: b
-			len: i1
-		}
+		return string(b,i1)
 	}
 }
 
@@ -221,7 +218,7 @@ fn (s mut Scanner) ident_oct_number() string {
 fn (s mut Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit := `\0`
-	mut call_method := false  // true for, e.g., 12.str(), 12.3.str(), 12e-3.str()
+	mut call_method := false // true for, e.g., 12.str(), 12.3.str(), 12e-3.str()
 	start_pos := s.pos
 	// scan integer part
 	for s.pos < s.text.len {
@@ -253,7 +250,7 @@ fn (s mut Scanner) ident_dec_number() string {
 					c := s.text[s.pos]
 					if !c.is_digit() {
 						if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
-							if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos+1].is_digit() && s.text[s.pos+1] != `)` {
+							if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos + 1].is_digit() && s.text[s.pos + 1] != `)` {
 								call_method = true
 							}
 							break
@@ -267,10 +264,10 @@ fn (s mut Scanner) ident_dec_number() string {
 				}
 			}
 			else if !(s.text[s.pos] in [`)`, `e`, `E`]) {
-				call_method = true  
+				call_method = true
 				s.pos--
-			} 
-		}	
+			}
+		}
 	}
 	// scan exponential part
 	mut has_exponential_part := false
@@ -284,7 +281,7 @@ fn (s mut Scanner) ident_dec_number() string {
 			c := s.text[s.pos]
 			if !c.is_digit() {
 				if !c.is_letter() || s.inside_string {
-					if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos+1].is_digit() && s.text[s.pos+1] != `)` {
+					if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos + 1].is_digit() && s.text[s.pos + 1] != `)` {
 						call_method = true
 					}
 					break
@@ -589,7 +586,7 @@ pub fn (s mut Scanner) scan() token.Token {
 			}
 			if name == 'VEXE' {
 				vexe := pref.vexe_path()
-				return s.scan_res(.string, cescaped_path( vexe ) )
+				return s.scan_res(.string, cescaped_path(vexe))
 			}
 			if name == 'FILE' {
 				return s.scan_res(.string, cescaped_path(os.real_path(s.file_path)))
@@ -785,7 +782,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				}
 				s.pos++
 				if s.comments_mode == .parse_comments {
-					comment := s.text[start..(s.pos-1)].trim_space()
+					comment := s.text[start..(s.pos - 1)].trim_space()
 					return s.scan_res(.mline_comment, comment)
 				}
 				// Skip if not in fmt mode

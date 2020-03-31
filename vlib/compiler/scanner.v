@@ -120,7 +120,7 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 			i++
 		}
 		b[i1]=0 // C string compatibility
-		return string{str:b len:i1}
+		return string(b, i1)
 	}
 }
 
@@ -260,10 +260,10 @@ fn (s mut Scanner) ident_dec_number() string {
 				}
 			}
 			else if !(s.text[s.pos] in [`)`, `e`, `E`]) {
-				call_method = true  
+				call_method = true
 				s.pos--
-			} 
-		}	
+			}
+		}
 	}
 	// scan exponential part
 	mut has_exponential_part := false

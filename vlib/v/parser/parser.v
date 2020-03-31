@@ -667,7 +667,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	}
 	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c ||
 	//
-	p.tok.lit in table.builtin_type_names) &&
+	(p.builtin_mod && p.tok.lit in table.builtin_type_names)) &&
 	//
 	(p.tok.lit.len == 1 || !p.tok.lit[p.tok.lit.len - 1].is_capital())
 	//
@@ -822,7 +822,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 					p.error('unknown variable `$name`')
 					return node
 				}
-				println('assoc var $name typ=$var.typ')
+				// println('assoc var $name typ=$var.typ')
 				mut fields := []string
 				mut vals := []ast.Expr
 				p.check(.pipe)
