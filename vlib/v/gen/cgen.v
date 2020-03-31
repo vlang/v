@@ -214,8 +214,14 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.write(it.tok.kind.str())
 			g.writeln(';')
 		}
+		ast.BreakStmt {
+			g.writeln('goto outer_$it.name;')
+		}
 		ast.ConstDecl {
 			g.const_decl(it)
+		}
+		ast.ContinueStmt{
+			g.writeln('goto loop_$it.name;')
 		}
 		ast.CompIf {
 			// TODO
@@ -297,6 +303,13 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 			g.writeln('}')
 		}
+		ast.GotoStmt{
+			if it.loop {
+				g.writeln('goto loop_$it.name;')
+			} else {
+				g.writeln('goto $it.name;')
+			}
+		}
 		ast.GlobalDecl {
 			styp := g.typ(it.typ)
 			g.definitions.writeln('$styp $it.name; // global')
@@ -305,29 +318,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			if it.loop{
 				g.writeln('// loop label $it.name')
 				g.stmts(it.before_loop)
-			}
-			if it.tok == 'break'{	
-				g.stmts(it.stmts)
-				g.writeln('goto outer_$name;')
-			}
-			if it.tok == 'continue'{
-				g.stmts(it.stmts)
-				g.writeln('goto loop_$name;')
-			}
-			if it.tok == 'goto'{
-				if it.loop {
-					g.stmts(it.stmts)
-					g.writeln('goto loop_$it.name;')
-				} else {
-					// goto label.
-					g.writeln('$it.name:')
-					g.stmts(it.stmts)
-					g.writeln('goto $it.name;')
-				}
-			}
-			if !isnil(it.after_stmts) && !isnil(it.after_loop) {
-				// after loop block.
-				g.stmts(it.after_stmts)
+			} 
+			g.stmts(it.stmts)
+			if it.loop {
 				g.writeln('loop_$it.name:')
 				g.writeln(';')
 				g.writeln('}')
@@ -335,7 +328,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.writeln('outer_$it.name')
 				g.writeln(';')
 				g.writeln('}')
-			}
+			} 
 		}
 		ast.HashStmt {
 			// #include etc
@@ -345,12 +338,17 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.Import {}
-		ast.LabeledFor{
-			g.writeln('loop_$it.name:')
-			for stmt in it.stmts{
-				g.stmt(stmt)
+		ast.PrefixGotoStmt{
+			if it.loop {
+				g.writeln('goto loop_$name')
+			} 
+			else {
+				g.writeln('goto $name')
 			}
-			g.writeln('outer_$it.name:')
+			g.writeln(it.stmts)
+			if !it.loop && !it.in_label_stmt {
+				g.writeln('$name:')
+			} 
 		}
 		ast.Return {
 			g.return_statement(it)

@@ -74,3 +74,10 @@ fn f2(){
 fn f3(){
     L1: /* label scope not solved. */
 }
+
+fn f4() {
+    if x == 0{
+        goto L1
+    }
+    L1:
+}
