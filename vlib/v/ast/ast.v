@@ -18,8 +18,8 @@ ConcatExpr | Type | AsCast | TypeOf | StringInterLiteral
 
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GoStmt | LabeledStmt |
-GotoStmt | PrefixGotoStmt | BreakStmt | ContinueStmt |LineComment | MultiLineComment | AssertStmt | UnsafeStmt | Block
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 
+LineComment | MultiLineComment | AssertStmt | UnsafeStmt
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -28,11 +28,6 @@ GotoStmt | PrefixGotoStmt | BreakStmt | ContinueStmt |LineComment | MultiLineCom
 pub struct Type {
 pub:
 	typ table.Type
-}
-
-pub struct Block {
-pub:
-	stmts []Stmt
 }
 
 // | IncDecStmt k
@@ -56,9 +51,7 @@ pub:
 
 pub struct StringLiteral {
 pub:
-	val    string
-	is_raw bool
-	is_c   bool
+	val string
 }
 
 // 'name: $name'
@@ -66,7 +59,6 @@ pub struct StringInterLiteral {
 pub:
 	vals       []string
 	exprs      []Expr
-	expr_fmts  []string
 mut:
 	expr_types []table.Type
 }
@@ -161,7 +153,6 @@ pub:
 	rec_mut       bool // is receiver mutable
 	is_c          bool
 	no_body       bool // just a definition `fn C.malloc()`
-	pos           token.Position
 }
 
 pub struct BranchStmt {
@@ -180,7 +171,6 @@ mut:
 	is_c        bool
 	muts        []bool
 	or_block    OrExpr
-	// has_or_block bool
 	return_type table.Type
 }
 
@@ -394,13 +384,8 @@ pub:
 
 pub struct CompIf {
 pub:
-// cond       Expr
-	val        string
+	cond       Expr
 	stmts      []Stmt
-	is_not     bool
-	pos        token.Position
-mut:
-	has_else   bool
 	else_stmts []Stmt
 }
 
@@ -414,18 +399,13 @@ pub:
 
 pub struct ForInStmt {
 pub:
-	key_var   string
-	val_var   string
-	cond      Expr
-	is_range  bool
-	high      Expr // `10` in `for i in 0..10 {`
-	stmts     []Stmt
-	pos       token.Position
-mut:
-	key_type  table.Type
-	val_type  table.Type
-	cond_type table.Type
-	kind      table.Kind // array/map/string
+	key_var  string
+	val_var  string
+	cond     Expr
+	is_range bool
+	high     Expr // `10` in `for i in 0..10 {`
+	stmts    []Stmt
+	pos      token.Position
 }
 
 pub struct ForCStmt {
@@ -554,36 +534,12 @@ pub:
 	expr Expr
 }
 
+pub struct GotoLabel {
+pub:
+	name string
+}
+
 pub struct GotoStmt {
-pub:
-	loop bool
-	name string
-}
-
-pub struct PrefixGotoStmt {
-pub:
-	stmts []Stmt
-	in_label_stmt bool
-	loop bool
-	name string
-}
-
-pub struct LabeledStmt {
-pub:
-	name string
-	loop bool
-	stmts []Stmt
-	// loop label statement.
-	before_loop []Stmt
-	after_loop []Stmt
-}
-
-pub struct BreakStmt {
-pub:
-	name string
-}
-
-pub struct ContinueStmt {
 pub:
 	name string
 }
