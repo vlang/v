@@ -1019,8 +1019,9 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 		index_type := c.expr(node.index)
 		index_type_sym := c.table.get_type_symbol(index_type)
 		// println('index expr left=$typ_sym.name $node.pos.line_nr')
-		// if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) && index_type_sym.kind != .enum_) {
-		if typ_sym.kind in [.array, .array_fixed] && !(table.is_number(index_type) && index_type_sym.kind != .enum_) {
+		// if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) &&
+		// index_type_sym.kind != .enum_) {
+		if typ_sym.kind in [.array, .array_fixed] && !(table.is_number(index_type) || index_type_sym.kind == .enum_) {
 			c.error('non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)', node.pos)
 		}
 		else if typ_sym.kind == .map && table.type_idx(index_type) != table.string_type_idx {
