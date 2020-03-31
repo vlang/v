@@ -1520,6 +1520,13 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		field_name := p.check_name()
 		// p.warn('field $field_name')
 		typ := p.parse_type()
+		/*
+		if name == '_net_module_s' {
+			s := p.table.get_type_symbol(typ)
+			println('XXXX' + s.str())
+		}
+		*/
+
 		// Default value
 		if p.tok.kind == .assign {
 			p.next()
