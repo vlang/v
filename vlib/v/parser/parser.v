@@ -1702,7 +1702,7 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 	}
 	p.next()
 	name := p.check_name()
-	println(name)
+	// println(name)
 	typ := p.parse_type()
 	if p.tok.kind == .assign {
 		p.next()
