@@ -1575,9 +1575,9 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			}
 			else if sym.kind == .array_fixed {
 				// Convert a fixed array to V array when doing `fixed_arr[start..end]`
-				g.write('array_slice(new_array_from_c_array(sizeof(')
+				g.write('array_slice(new_array_from_c_array(_ARR_LEN(')
 				g.expr(node.left)
-				g.write('), sizeof(')
+				g.write('), _ARR_LEN(')
 				g.expr(node.left)
 				g.write('), sizeof(')
 				g.expr(node.left)
