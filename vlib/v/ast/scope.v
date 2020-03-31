@@ -21,23 +21,13 @@ pub fn new_scope(parent &Scope, start_pos int) &Scope {
 	}
 }
 
-pub struct ScopeVar {
-pub:
-	scope &Scope
-	var   Var
-}
-
-// pub fn (s &Scope) find_scope_and_var(name string) ?(&Scope,Var) {
-pub fn (s &Scope) find_scope_and_var(name string) ?ScopeVar {
+pub fn (s &Scope) find_scope_and_var(name string) ?(&Scope,Var) {
 	if name in s.vars {
-		// return s,s.vars[name]
-		return ScopeVar{
-			s,s.vars[name]}
+		return s,s.vars[name]
 	}
 	for sc := s; !isnil(sc.parent); sc = sc.parent {
 		if name in sc.vars {
-			return ScopeVar{
-				sc,sc.vars[name]}
+			return sc,sc.vars[name]
 		}
 	}
 	return none

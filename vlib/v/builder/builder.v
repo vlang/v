@@ -50,7 +50,7 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 		exit(1)
 	}
 	// println('starting cgen...')
-	res := gen.cgen(b.parsed_files, b.table)
+	res := gen.cgen(b.parsed_files, b.table, b.pref)
 	t3 := time.ticks()
 	gen_time := t3 - t2
 	println('C GEN: ${gen_time}ms')

@@ -1646,6 +1646,7 @@ fn (p mut Parser) parse_assign_rhs() []ast.Expr {
 
 fn (p mut Parser) assign_stmt() ast.Stmt {
 	idents := p.parse_assign_lhs()
+	pos := p.tok.position()
 	op := p.tok.kind
 	p.next() // :=, =
 	exprs := p.parse_assign_rhs()
@@ -1676,7 +1677,7 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 		left: idents
 		right: exprs
 		op: op
-		pos: p.tok.position()
+		pos: pos
 	}
 }
 

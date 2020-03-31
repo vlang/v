@@ -170,14 +170,10 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	c.stmts(call_expr.or_block.stmts)
 	if call_expr.is_method {
-		// c.expected_type = table.void_type
 		left_type := c.expr(call_expr.left)
 		call_expr.left_type = left_type
 		left_type_sym := c.table.get_type_symbol(left_type)
-
 		method_name := call_expr.name
-		
-
 		// TODO: remove this for actual methods, use only for compiler magic
 		if left_type_sym.kind == .array && method_name in ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice'] {
 			if method_name in ['filter', 'map'] {
@@ -226,8 +222,8 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 			}
 			// TODO: typ optimize.. this node can get processed more than once
 			if call_expr.exp_arg_types.len == 0 {
-				for arg in method.args {
-					call_expr.exp_arg_types << arg.typ
+				for i in 1 .. method.args.len {
+					call_expr.exp_arg_types << method.args[i].typ
 				}
 			}
 			call_expr.receiver_type = method.args[0].typ
@@ -427,20 +423,23 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
 	// multi return
 	if assign_stmt.left.len > assign_stmt.right.len {
-		right := c.expr(assign_stmt.right[0])
-		right_sym := c.table.get_type_symbol(right)
-		mr_info := right_sym.mr_info()
-		if right_sym.kind != .multi_return {
+		match assign_stmt.right[0] {
+			ast.CallExpr {}
+			else {
+				c.error('assign_stmt: expected call', assign_stmt.pos)
+			}
+	}
+		right_type := c.expr(assign_stmt.right[0])
+		right_type_sym := c.table.get_type_symbol(right_type)
+		mr_info := right_type_sym.mr_info()
+		if right_type_sym.kind != .multi_return {
 			c.error('wrong number of vars', assign_stmt.pos)
 		}
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
 			mut ident := assign_stmt.left[i]
+			mut ident_var_info := ident.var_info()
 			val_type := mr_info.types[i]
-			mut var_info := ident.var_info()
-			var_info.typ = val_type
-			ident.info = var_info
-			assign_stmt.left[i] = ident
 			if assign_stmt.op == .assign {
 				var_type := c.expr(ident)
 				assign_stmt.left_types << var_type
@@ -450,8 +449,11 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
 				}
 			}
+			ident_var_info.typ = val_type
+			ident.info = ident_var_info
+			assign_stmt.left[i] = ident
 			assign_stmt.right_types << val_type
-			scope.update_var_type(ident.name, mr_info.types[i])
+			scope.update_var_type(ident.name, val_type)
 		}
 	}
 	// `a := 1` | `a,b := 1,2`
@@ -473,10 +475,10 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
 				}
 			}
-			assign_stmt.right_types << val_type
 			ident_var_info.typ = val_type
 			ident.info = ident_var_info
 			assign_stmt.left[i] = ident
+			assign_stmt.right_types << val_type
 			scope.update_var_type(ident.name, val_type)
 		}
 	}
@@ -542,7 +544,6 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		}
 		ast.AssignStmt {
 			c.assign_stmt(mut it)
-			c.expected_type = table.void_type
 		}
 		ast.Block {
 			c.stmts(it.stmts)
@@ -808,16 +809,11 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		}
 		start_scope := c.file.scope.innermost(ident.pos.pos)
 		mut found := true
-		mut var_scope := &ast.Scope(0)
-		mut var := ast.Var{}
-		// var_scope,var = start_scope.find_scope_and_var(ident.name) or {
-		mr := start_scope.find_scope_and_var(ident.name) or {
+		mut var_scope,var := start_scope.find_scope_and_var(ident.name) or {
 			found = false
 			c.error('not found: $ident.name - POS: $ident.pos.pos', ident.pos)
 			panic('')
 		}
-		var_scope = mr.scope
-		var = mr.var
 		if found {
 			// update the variable
 			// we need to do this here instead of var_decl since some
@@ -950,11 +946,11 @@ pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
 	node.typ = table.void_type
 	for i, branch in node.branches {
 		match branch.cond {
-			ast.ParExpr{
-				c.error('unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.',				node.pos)
+			ast.ParExpr {
+				c.error('unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.', node.pos)
 			}
 			else {}
-		}
+	}
 		typ := c.expr(branch.cond)
 		if i < node.branches.len - 1 || !node.has_else {
 			typ_sym := c.table.get_type_symbol(typ)

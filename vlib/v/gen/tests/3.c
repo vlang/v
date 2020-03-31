@@ -22,6 +22,17 @@ Option_int get_opt();
 void User_foo(User* u);
 void println(string s);
 void handle_expr(Expr e);
+// >> typeof() support for sum types
+char * v_typeof_sumtype_28(int sidx) { /* Expr */ 
+	switch(sidx) {
+		case 28: return "Expr";
+		case 26: return "IfExpr";
+		case 27: return "IntegerLiteral";
+		default: return "unknown Expr";
+	}
+}
+// << typeof() support for sum types
+
 // TypeDecl
 
 Option_int get_opt() {
@@ -76,8 +87,7 @@ int main(int argc, char** argv) {
 		string err = n.v_error;
 		int errcode = n.ecode;
 		return 0;
-	}
-	;
+	};
 	int a = /*opt*/(*(int*)n.data) + 3;
 	handle_expr(/* sum type cast */ (Expr) {.obj = memdup(&(IfExpr[]) {(IfExpr){
 0}}, sizeof(IfExpr)), .typ = 26 /* IfExpr */});
