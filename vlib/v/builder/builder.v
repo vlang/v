@@ -14,6 +14,7 @@ import (
 
 pub struct Builder {
 pub:
+	mod_file_cacher     &ModFileCacher // used during lookup for v.mod to support @VROOT
 	pref                &pref.Preferences
 	table               &table.Table
 	checker             checker.Checker
@@ -28,6 +29,7 @@ mut:
 pub fn new_builder(pref &pref.Preferences) Builder {
 	table := table.new_table()
 	return Builder{
+		mod_file_cacher: new_mod_file_cacher()
 		pref: pref
 		table: table
 		checker: checker.new_checker(table)
@@ -160,16 +162,24 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 		if file.ends_with('_nix.v') && b.os == .windows {
 			continue
 		}
+		if file.ends_with('_android.v') && b.pref.os != .android {
+			continue
+		}
+		if file.ends_with('_freebsd.v') && b.pref.os != .freebsd {
+			continue
+		}
+		if file.ends_with('_solaris.v') && b.pref.os != .solaris {
+			continue
+		}
 		if file.ends_with('_js.v') && b.os != .js {
 			continue
 		}
 		if file.ends_with('_c.v') && b.os == .js {
 			continue
 		}
-		/*
-		if v.compile_defines_all.len > 0 && file.contains('_d_') {
+		if b.pref.compile_defines_all.len > 0 && file.contains('_d_') {
 			mut allowed := false
-			for cdefine in v.compile_defines {
+			for cdefine in b.pref.compile_defines {
 				file_postfix := '_d_${cdefine}.v'
 				if file.ends_with(file_postfix) {
 					allowed = true
@@ -180,8 +190,6 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 				continue
 			}
 		}
-		*/
-
 		res << os.join_path(dir,file)
 	}
 	return res
