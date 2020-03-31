@@ -40,12 +40,12 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
-	println('PARSE: ${parse_time}ms')
+	b.info('PARSE: ${parse_time}ms')
 	//
 	b.checker.check_files(b.parsed_files)
 	t2 := time.ticks()
 	check_time := t2 - t1
-	println('CHECK: ${check_time}ms')
+	b.info('CHECK: ${check_time}ms')
 	if b.checker.nr_errors > 0 {
 		exit(1)
 	}
@@ -53,14 +53,14 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 	res := gen.cgen(b.parsed_files, b.table, b.pref)
 	t3 := time.ticks()
 	gen_time := t3 - t2
-	println('C GEN: ${gen_time}ms')
-	println('cgen done')
+	b.info('C GEN: ${gen_time}ms')
+	// println('cgen done')
 	// println(res)
 	return res
 }
 
 pub fn (b mut Builder) build_c(v_files []string, out_file string) {
-	println('build_c($out_file)')
+	b.info('build_c($out_file)')
 	mut f := os.create(out_file) or {
 		panic(err)
 	}
@@ -75,15 +75,15 @@ pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
-	println('PARSE: ${parse_time}ms')
+	b.info('PARSE: ${parse_time}ms')
 	b.checker.check_files(b.parsed_files)
 	t2 := time.ticks()
 	check_time := t2 - t1
-	println('CHECK: ${check_time}ms')
+	b.info('CHECK: ${check_time}ms')
 	x64.gen(b.parsed_files, out_file)
 	t3 := time.ticks()
 	gen_time := t3 - t2
-	println('x64 GEN: ${gen_time}ms')
+	b.info('x64 GEN: ${gen_time}ms')
 }
 
 // parse all deps from already parsed files
@@ -193,6 +193,12 @@ fn verror(err string) {
 
 pub fn (b &Builder) log(s string) {
 	if b.pref.verbosity.is_higher_or_equal(.level_two) {
+		println(s)
+	}
+}
+
+pub fn (b &Builder) info(s string) {
+	if b.pref.verbosity.is_higher_or_equal(.level_one) {
 		println(s)
 	}
 }

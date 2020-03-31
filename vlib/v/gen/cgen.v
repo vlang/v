@@ -1974,7 +1974,7 @@ fn (g mut Gen) write_init_function() {
 	g.writeln('}')
 	if g.autofree {
 		g.writeln('void _vcleanup() {')
-		g.writeln('puts("cleaning up...");')
+		//g.writeln('puts("cleaning up...");')
 		if g.is_importing_os() {
 			g.writeln('free(_const_os__args.data);')
 			g.writeln('string_free(_const_os__wd_at_startup);')
@@ -2612,6 +2612,7 @@ pub fn (g mut Gen) write_tests_main() {
 		g.writeln('\tBenchedTests bt = start_testing(${all_tfuncs.len}, tos3("$g.pref.path"));')
 	}
 	for t in all_tfuncs {
+		g.writeln('')
 		if g.pref.is_stats {
 			g.writeln('\tBenchedTests_testing_step_start(&bt, tos3("$t"));')
 		}
@@ -2620,6 +2621,7 @@ pub fn (g mut Gen) write_tests_main() {
 			g.writeln('\tBenchedTests_testing_step_end(&bt);')
 		}
 	}
+	g.writeln('')
 	if g.pref.is_stats {
 		g.writeln('\tBenchedTests_end_testing(&bt);')
 	}

@@ -1095,7 +1095,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	// for i := 0; i < 10; i++ {
 	else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] || p.tok.kind == .semicolon {
 		mut init := ast.Stmt{}
-		mut cond := ast.Expr{}
+		mut cond := p.new_true_expr()
 		// mut inc := ast.Stmt{}
 		mut inc := ast.Expr{}
 		mut has_init := false
@@ -1702,7 +1702,7 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 	}
 	p.next()
 	name := p.check_name()
-	println(name)
+	// println(name)
 	typ := p.parse_type()
 	if p.tok.kind == .assign {
 		p.next()
@@ -1903,4 +1903,8 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 fn verror(s string) {
 	println(s)
 	exit(1)
+}
+
+fn (p &Parser) new_true_expr() ast.Expr {
+	return ast.BoolLiteral{ val: true }
 }
