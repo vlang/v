@@ -2641,14 +2641,30 @@ fn (g &Gen) get_all_test_function_names() []string {
 	for _, f in g.table.fns {
 		if f.name == 'testsuite_begin' {
 			tsuite_begin = f.name
+			continue
 		}
 		if f.name == 'testsuite_end' {
 			tsuite_end = f.name
-		}
-		if !f.name.starts_with('test_') {
 			continue
 		}
-		tfuncs << f.name
+		if f.name.starts_with('test_') {
+			tfuncs << f.name
+			continue
+		}
+		// What follows is for internal module tests
+		// (they are part of a V module, NOT in main)
+		if f.name.contains('.test_') {
+			tfuncs << f.name
+			continue
+		}
+		if f.name.ends_with('.testsuite_begin') {
+			tsuite_begin = f.name
+			continue
+		}
+		if f.name.ends_with('.testsuite_end') {
+			tsuite_end = f.name
+			continue
+		}
 	}
 	mut all_tfuncs := []string
 	if tsuite_begin.len > 0 {
@@ -2658,7 +2674,7 @@ fn (g &Gen) get_all_test_function_names() []string {
 	if tsuite_end.len > 0 {
 		all_tfuncs << tsuite_end
 	}
-	return all_tfuncs
+	return all_tfuncs.map( it.replace('.', '__') )
 }
 
 fn (g &Gen) is_importing_os() bool {
