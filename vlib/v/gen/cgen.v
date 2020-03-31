@@ -302,28 +302,39 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.definitions.writeln('$styp $it.name; // global')
 		}
 		ast.LabeledStmt {
-			match it.tok {
-				'break'{
-					g.stmts(it.stmts)
-					g.writeln('goto outer_$it.name;')
-					g.writeln('outer_$it.name:')
-				}
-				'continue'{
-					g.writeln('loop_$it.name:')
+			if it.loop{
+				g.writeln('// loop label $it.name')
+				g.stmts(it.before_loop)
+			}
+			if it.tok == 'break'{	
+				g.stmts(it.stmts)
+				g.writeln('goto outer_$name;')
+			}
+			if it.tok == 'continue'{
+				g.stmts(it.stmts)
+				g.writeln('goto loop_$name;')
+			}
+			if it.tok == 'goto'{
+				if it.loop {
 					g.stmts(it.stmts)
 					g.writeln('goto loop_$it.name;')
+				} else {
+					// goto label.
+					g.writeln('$it.name:')
+					g.stmts(it.stmts)
+					g.writeln('goto $it.name;')
 				}
-				'goto'{
-					if it.loop_label {
-						g.writeln('loop_$it.name:')
-						g.stmts(it.stmts)
-						g.writeln('goto loop_$it.name;')
-					} else {
-						g.writeln('$it.name:')
-						g.stmts(it.stmts)
-						g.writeln('goto $it.name;')
-					}
-				}
+			}
+			if !isnil(it.after_stmts) && !isnil(it.after_loop) {
+				// after loop block.
+				g.stmts(it.after_stmts)
+				g.writeln('loop_$it.name:')
+				g.writeln(';')
+				g.writeln('}')
+				g.stmts(it.after_loop)
+				g.writeln('outer_$it.name')
+				g.writeln(';')
+				g.writeln('}')
 			}
 		}
 		ast.HashStmt {

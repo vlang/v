@@ -510,10 +510,18 @@ pub:
 }
 
 pub struct LabeledStmt {
+pub:
 	tok string
-	loop bool
-	stmts []Stmt
 	name string
+	loop bool
+	stmts []Stmts
+	// loop label statement.
+	before_loop []Stmt
+	after_stmts []Stmt
+	after_loop []Stmt
+	// generation code.
+	key_break bool
+	key_continue bool
 }
 
 pub struct ArrayInit {

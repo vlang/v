@@ -256,6 +256,7 @@ pub fn (p mut Parser) parse_block_no_scope() []ast.Stmt {
 pub fn (p mut Parser) parse_label_block_no_scope(name string) (string,[]ast.Stmt) {
 	mut stmts := []ast.Stmt
 	for {
+		if 
 		stmts << p.stmt()
 		label_name := p.check_name()
 		match p.tok.kind {
