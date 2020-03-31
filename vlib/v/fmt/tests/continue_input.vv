@@ -1,0 +1,6 @@
+fn test_continue{
+    label:
+    for {
+        
+    }
+}

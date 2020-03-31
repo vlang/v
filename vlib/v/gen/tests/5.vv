@@ -1,0 +1,6 @@
+mut i := 0
+inf_loop:
+for {
+    
+}
+
