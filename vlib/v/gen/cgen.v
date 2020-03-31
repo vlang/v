@@ -32,8 +32,8 @@ mut:
 	tmp_count      int
 	variadic_args  map[string]int
 	is_c_call      bool // e.g. `C.printf("v")`
-	is_assign      bool // inside right part of assign after `=` (val expr)
-	is_assign_expr bool // inside left part of assign expr (for array_set(), etc)
+	is_assign_lhs  bool // inside left part of assign expr (for array_set(), etc)
+	is_assign_rhs  bool // inside right part of assign after `=` (val expr)
 	is_array_set   bool
 	is_amp         bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 	optionals      []string // to avoid duplicates TODO perf, use map
@@ -585,9 +585,9 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mr_var_name := 'mr_$assign_stmt.pos.pos'
 		mr_styp := g.typ(return_type)
 		g.write('$mr_styp $mr_var_name = ')
-		g.is_assign = true
+		g.is_assign_rhs = true
 		g.expr(assign_stmt.right[0])
-		g.is_assign = false
+		g.is_assign_rhs = false
 		if is_optional {
 			g.or_block(mr_var_name, or_stmts, return_type)
 		}
@@ -629,7 +629,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				else {}
 	}
 			gen_or := is_call && table.type_is_optional(return_type)
-			g.is_assign = true
+			g.is_assign_rhs = true
 			if ident.kind == .blank_ident {
 				if is_call {
 					g.expr(val)
@@ -686,7 +686,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.or_block(ident.name, or_stmts, return_type)
 				}
 			}
-			g.is_assign = false
+			g.is_assign_rhs = false
 			g.writeln(';')
 		}
 	}
@@ -1140,7 +1140,7 @@ fn (g mut Gen) assign_expr(node ast.AssignExpr) {
 		rstyp := g.typ(return_type)
 		g.write('$rstyp $tmp_opt =')
 	}
-	g.is_assign = true
+	g.is_assign_rhs = true
 	if ast.expr_is_blank_ident(node.left) {
 		if is_call {
 			g.expr(node.val)
@@ -1152,7 +1152,7 @@ fn (g mut Gen) assign_expr(node ast.AssignExpr) {
 		}
 	}
 	else {
-		g.is_assign_expr = true
+		g.is_assign_lhs = true
 		if table.type_is_optional(node.right_type) {
 			g.right_is_opt = true
 		}
@@ -1172,7 +1172,7 @@ fn (g mut Gen) assign_expr(node ast.AssignExpr) {
 		else if str_add {
 			g.write(', ')
 		}
-		g.is_assign_expr = false
+		g.is_assign_lhs = false
 		g.expr_with_cast(node.val, node.right_type, node.left_type)
 		if g.is_array_set {
 			g.write(' })')
@@ -1186,7 +1186,7 @@ fn (g mut Gen) assign_expr(node ast.AssignExpr) {
 	if gen_or {
 		g.or_block(tmp_opt, or_stmts, return_type)
 	}
-	g.is_assign = false
+	g.is_assign_rhs = false
 }
 
 fn (g mut Gen) infix_expr(node ast.InfixExpr) {
@@ -1434,7 +1434,7 @@ fn (g mut Gen) ident(node ast.Ident) {
 			// `x = 10` => `x.data = 10` (g.right_is_opt == false)
 			// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 			// `println(x)` => `println(*(int*)x.data)`
-			if it.is_optional && !(g.is_assign_expr && g.right_is_opt) {
+			if it.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
 				g.write('/*opt*/')
 				styp := g.typ(it.typ)[7..] // Option_int => int TODO perf?
 				g.write('(*($styp*)${name}.data)')
@@ -1577,7 +1577,7 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 				}
 				else {}
 	}
-			if g.is_assign_expr && !is_selector {
+			if g.is_assign_lhs && !is_selector {
 				g.is_array_set = true
 				g.write('array_set(&')
 				g.expr(node.left)
@@ -1612,7 +1612,7 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 		else if sym.kind == .map {
 			info := sym.info as table.Map
 			elem_type_str := g.typ(info.value_type)
-			if g.is_assign_expr {
+			if g.is_assign_lhs {
 				g.is_array_set = true
 				g.write('map_set(&')
 				g.expr(node.left)
@@ -2187,7 +2187,7 @@ fn (g mut Gen) insert_before(s string) {
 }
 
 fn (g mut Gen) call_expr(node ast.CallExpr) {
-	gen_or := !g.is_assign && node.or_block.stmts.len > 0
+	gen_or := !g.is_assign_rhs && node.or_block.stmts.len > 0
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		styp := g.typ(node.return_type)
