@@ -323,21 +323,21 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.EnumDecl {
 			name := it.name.replace('.', '__')
-			g.definitions.writeln('typedef enum {')
+			g.typedefs.writeln('typedef enum {')
 			for j, val in it.vals {
 				if j < it.default_exprs.len {
-					g.definitions.write('\t${name}_$val = ')
+					g.typedefs.write('\t${name}_$val = ')
 					pos := g.out.len
 					g.expr(it.default_exprs[j])
 					expr := g.out.after(pos)
 					g.out.go_back(expr.len)
-					g.definitions.writeln('$expr ,')
+					g.typedefs.writeln('$expr ,')
 				}
 				else {
-					g.definitions.writeln('\t${name}_$val, // $j')
+					g.typedefs.writeln('\t${name}_$val, // $j')
 				}
 			}
-			g.definitions.writeln('} $name;\n')
+			g.typedefs.writeln('} $name;\n')
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
@@ -1977,7 +1977,7 @@ fn (g mut Gen) write_init_function() {
 	g.writeln('}')
 	if g.autofree {
 		g.writeln('void _vcleanup() {')
-		//g.writeln('puts("cleaning up...");')
+		// g.writeln('puts("cleaning up...");')
 		if g.is_importing_os() {
 			g.writeln('free(_const_os__args.data);')
 			g.writeln('string_free(_const_os__wd_at_startup);')

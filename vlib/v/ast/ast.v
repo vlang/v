@@ -128,7 +128,8 @@ pub:
 }
 
 pub struct InterfaceDecl {
-	name string
+	name        string
+	field_names []string
 }
 
 pub struct StructInit {
@@ -656,34 +657,6 @@ pub struct None {
 pub:
 	foo int // todo
 }
-/*
-enum BinaryOp {
-	sum
-	difference
-	product
-	quotient
-	remainder
-	bitwise_and
-	bitwise_or
-	bitwise_xor
-	left_shift
-	right_shift
-
-	equality
-	inequality
-	less_than
-	less_than_or_equal
-	more_than
-	more_than_or_equal
-
-	in_check
-
-	//These are suffixed with `bool` to prevent conflict with the keyword `or`
-	and_bool
-	or_bool
-}
-*/
-
 
 [inline]
 pub fn expr_is_blank_ident(expr Expr) bool {

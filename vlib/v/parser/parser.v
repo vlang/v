@@ -1592,9 +1592,11 @@ fn (p mut Parser) interface_decl() ast.InterfaceDecl {
 	p.next() // `interface`
 	interface_name := p.check_name()
 	p.check(.lcbr)
+	mut field_names := []string
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		line_nr := p.tok.line_nr
 		name := p.check_name()
+		field_names << name
 		p.fn_args()
 		if p.tok.kind == .name && p.tok.line_nr == line_nr {
 			p.parse_type()
@@ -1603,6 +1605,7 @@ fn (p mut Parser) interface_decl() ast.InterfaceDecl {
 	p.check(.rcbr)
 	return ast.InterfaceDecl{
 		name: interface_name
+		field_names: field_names
 	}
 }
 
@@ -1925,11 +1928,13 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 	}
 }
 
+fn (p &Parser) new_true_expr() ast.Expr {
+	return ast.BoolLiteral{
+		val: true
+	}
+}
+
 fn verror(s string) {
 	println(s)
 	exit(1)
-}
-
-fn (p &Parser) new_true_expr() ast.Expr {
-	return ast.BoolLiteral{ val: true }
 }
