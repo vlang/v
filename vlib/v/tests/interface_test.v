@@ -22,6 +22,8 @@ fn (d Dog) name() string {
 	return 'Dog'
 }
 
+fn test_todo() {}
+
 /*
 interface Speaker {
 	name ()string
