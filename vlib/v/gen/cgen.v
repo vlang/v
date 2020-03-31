@@ -322,16 +322,22 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.defer_stmts << defer_stmt
 		}
 		ast.EnumDecl {
-			g.writeln('//')
-			/*
 			name := it.name.replace('.', '__')
 			g.definitions.writeln('typedef enum {')
-			for i, val in it.vals {
-				g.definitions.writeln('\t${name}_$val, // $i')
+			for j, val in it.vals {
+				if j < it.default_exprs.len {
+					g.definitions.write('\t${name}_$val = ')
+					pos := g.out.len
+					g.expr(it.default_exprs[j])
+					expr := g.out.after(pos)
+					g.out.go_back(expr.len)
+					g.definitions.writeln('$expr ,')
+				}
+				else {
+					g.definitions.writeln('\t${name}_$val, // $j')
+				}
 			}
-			g.definitions.writeln('} $name;')
-			*/
-
+			g.definitions.writeln('} $name;\n')
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
@@ -2070,13 +2076,6 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 			}
 			// table.Alias, table.SumType { TODO
 			table.Alias {}
-			table.Enum {
-				g.definitions.writeln('typedef enum {')
-				for j, val in it.vals {
-					g.definitions.writeln('\t${name}_$val, // $j')
-				}
-				g.definitions.writeln('} $name;\n')
-			}
 			table.SumType {
 				g.definitions.writeln('// Sum type')
 				g.definitions.writeln('
@@ -2359,11 +2358,17 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			g.definitions.writeln('string ${styp}_str($styp* x) { return tos3("TODO_str"); }')
 		}
 		if g.autofree && !table.type_is_optional(typ) {
+			// Create a temporary variable so that the value can be freed
 			tmp := g.new_tmp_var()
 			// tmps << tmp
 			g.write('string $tmp = ${styp}_str(')
 			g.expr(node.args[0].expr)
 			g.writeln('); println($tmp); string_free($tmp); //MEM2 $styp')
+		}
+		else if sym.kind == .enum_ {
+			g.write('println(int_str(')
+			g.expr(node.args[0].expr)
+			g.write('))')
 		}
 		else {
 			// `println(int_str(10))`
