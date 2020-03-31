@@ -148,10 +148,9 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	}
 	if styp.starts_with('C__') {
 		styp = styp[3..]
-	}
-	if styp in ['stat', 'dirent*', 'tm', 'tm*', 'winsize', 'sigaction', 'timeval'] {
-		// TODO perf and other C structs
-		styp = 'struct $styp'
+		if sym.kind == .struct_ {
+			styp = 'struct $styp'
+		}
 	}
 	if table.type_is_optional(t) {
 		styp = 'Option_' + styp
