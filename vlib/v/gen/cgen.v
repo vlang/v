@@ -776,7 +776,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		g.definitions.writeln(');')
 	}
 	if is_main {
-		g.writeln('_vinit();')
+		g.writeln('\t_vinit();')
 		if g.is_importing_os() {
 			if g.autofree {
 				g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
@@ -792,12 +792,12 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	// /////////
 	if is_main {
 		if g.autofree {
-			g.writeln('_vcleanup();')
+			g.writeln('\t_vcleanup();')
 		}
 		if g.is_test {
 			verror('test files cannot have function `main`')
 		}
-		g.writeln('return 0;')
+		g.writeln('\treturn 0;')
 	}
 	if g.defer_stmts.len > 0 {
 		g.write_defer_stmts()
@@ -1567,11 +1567,27 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			is_range = true
 			if sym.kind == .string {
 				g.write('string_substr(')
+				g.expr(node.left)
 			}
 			else if sym.kind == .array {
 				g.write('array_slice(')
+				g.expr(node.left)
 			}
-			g.expr(node.left)
+			else if sym.kind == .array_fixed {
+				// Convert a fixed array to V array when doing `fixed_arr[start..end]`
+				g.write('array_slice(new_array_from_c_array(sizeof(')
+				g.expr(node.left)
+				g.write('), sizeof(')
+				g.expr(node.left)
+				g.write('), sizeof(')
+				g.expr(node.left)
+				g.write('[0]), ')
+				g.expr(node.left)
+				g.write(')')
+			}
+			else {
+				g.expr(node.left)
+			}
 			g.write(', ')
 			if it.has_low {
 				g.expr(it.low)
@@ -2603,7 +2619,7 @@ pub fn (g mut Gen) write_tests_main() {
 		g.writeln('\tBenchedTests_end_testing(&bt);')
 	}
 	g.writeln('')
-	g.writeln('_vcleanup();')
+	g.writeln('\t_vcleanup();')
 	g.writeln('\treturn g_test_fails > 0;')
 	g.writeln('}')
 }

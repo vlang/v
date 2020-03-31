@@ -191,6 +191,7 @@ void reload_so();
 void _vinit();
 void _vcleanup();
 #define sigaction_size sizeof(sigaction);
+#define _ARR_LEN(a) ( (sizeof(a)) / (sizeof((a)[0])) );
 
 // ============== wyhash ==============
 //	Author: Wang Yi

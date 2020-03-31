@@ -1014,20 +1014,30 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 		else {}
 	}
 	node.container_type = typ
+	typ_sym := c.table.get_type_symbol(typ)
 	if !is_range {
-		typ_sym := c.table.get_type_symbol(typ)
 		index_type := c.expr(node.index)
 		index_type_sym := c.table.get_type_symbol(index_type)
 		// println('index expr left=$typ_sym.name $node.pos.line_nr')
-		if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) && index_type_sym.kind != .enum_) {
+		// if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) && index_type_sym.kind != .enum_) {
+		if typ_sym.kind in [.array, .array_fixed] && !(table.is_number(index_type) && index_type_sym.kind != .enum_) {
 			c.error('non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)', node.pos)
 		}
 		else if typ_sym.kind == .map && table.type_idx(index_type) != table.string_type_idx {
-			c.error('non-string map index (type `$typ_sym.name`)', node.pos)
+			c.error('non-string map index (map type `$typ_sym.name`)', node.pos)
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != table.void_type {
 			return value_type
+		}
+	}
+	else if is_range {
+		// array[1..2] => array
+		// fixed_array[1..2] => array
+		if typ_sym.kind == .array_fixed {
+			elem_type := c.table.value_type(typ)
+			idx := c.table.find_or_register_array(elem_type, 1)
+			return table.new_type(idx)
 		}
 	}
 	return typ
