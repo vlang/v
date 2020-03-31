@@ -743,12 +743,21 @@ pub fn (v &V) get_user_files() []string {
 	is_test := dir.ends_with('_test.v')
 	mut is_internal_module_test := false
 	if is_test {
-		mut tcontent := os.read_file(dir)or{
+		tcontent := os.read_file(dir)or{
 			panic('$dir does not exist')
 		}
-		tcontent = tcontent.trim_space()
-		if tcontent.starts_with('module ') && !tcontent.starts_with('module main') {
-			is_internal_module_test = true
+		slines := tcontent.trim_space().split_into_lines()
+		for sline in slines {
+			line := sline.trim_space()
+			if line.len > 2 {
+				if line[0] == `/` && line[1] == `/` {
+					continue
+				}
+				if line.starts_with('module ') && !line.starts_with('module main') {
+					is_internal_module_test = true
+					break
+				}
+			}
 		}
 	}
 	if is_internal_module_test {
