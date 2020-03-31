@@ -1,0 +1,24 @@
+fn test_goto() {
+	goto label
+label:
+}
+
+fn test_prefixed_goto(){
+	label:
+goto label
+}
+
+fn test_loop_label(){
+label:
+    for i := 0; i == 2; i++{
+        if i == 0{
+        break label
+        }
+        if i == 1 {
+        continue label
+        }
+        if i == 2 {
+        goto label
+        }
+    }
+}

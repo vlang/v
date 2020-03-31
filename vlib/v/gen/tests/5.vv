@@ -1,6 +1,40 @@
+// V's Label Statement Test.
+loop_cgen:
 mut i := 0
-inf_loop:
 for {
-    
+    i++
+    for {
+        label:
+        if i == 1 {
+            break loop_cgen
+        }
+        if i == 2 {
+            continue loop_cgen
+        }
+        if i == 3 {
+            break
+        }
+        if i == 4 {
+            continue
+        }
+        if i == 5 {
+            goto label
+        }
+        if i == 6 {
+            goto goto_label
+        }
+    }
+    if i == 7 {
+        goto goto_label
+    }
+    goto_label:
+    if i == 8 {
+        break
+    }
+    if i == 9 {
+        continue
+    }
+    if i == 10 {
+        goto goto_label
+    }
 }
-

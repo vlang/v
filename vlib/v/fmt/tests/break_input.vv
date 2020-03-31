@@ -1,9 +1,0 @@
-fn test_break(){
-    label: 
-    for {
-        i += 1
-        if i == 2{
-            break label
-        }
-    } 
-}
