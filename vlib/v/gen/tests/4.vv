@@ -42,6 +42,11 @@ fn main() {
 
 	ma1, ma2 := 'hello', 'vlang'
 	mr1, mr2 := mr_test()
+
+	opt1, opt2, opt3, opt4 := 'opt1', optional_a(), 'opt3', optional_b()
+	opt_mr1, opt_mr12 := optional_mr() or {
+		// err
+	}
 }
 
 fn mr_test() (int, string) {
@@ -82,3 +87,16 @@ struct Foo{
 	a string
 	b Bar
 }
+
+fn optional_a() ?string {
+	return '111'
+}
+
+fn optional_b() ?string {
+	return '222'
+}
+
+fn optional_mr() ?(int, string) {
+	return 1, '111'
+}
+

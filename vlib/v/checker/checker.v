@@ -423,20 +423,23 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
 	// multi return
 	if assign_stmt.left.len > assign_stmt.right.len {
-		right := c.expr(assign_stmt.right[0])
-		right_sym := c.table.get_type_symbol(right)
-		mr_info := right_sym.mr_info()
-		if right_sym.kind != .multi_return {
+		match assign_stmt.right[0] {
+			ast.CallExpr {}
+			else {
+				c.error('assign_stmt: expected call', assign_stmt.pos)
+			}
+	}
+		right_type := c.expr(assign_stmt.right[0])
+		right_type_sym := c.table.get_type_symbol(right_type)
+		mr_info := right_type_sym.mr_info()
+		if right_type_sym.kind != .multi_return {
 			c.error('wrong number of vars', assign_stmt.pos)
 		}
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
 			mut ident := assign_stmt.left[i]
+			mut ident_var_info := ident.var_info()
 			val_type := mr_info.types[i]
-			mut var_info := ident.var_info()
-			var_info.typ = val_type
-			ident.info = var_info
-			assign_stmt.left[i] = ident
 			if assign_stmt.op == .assign {
 				var_type := c.expr(ident)
 				assign_stmt.left_types << var_type
@@ -446,8 +449,11 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
 				}
 			}
+			ident_var_info.typ = val_type
+			ident.info = ident_var_info
+			assign_stmt.left[i] = ident
 			assign_stmt.right_types << val_type
-			scope.update_var_type(ident.name, mr_info.types[i])
+			scope.update_var_type(ident.name, val_type)
 		}
 	}
 	// `a := 1` | `a,b := 1,2`
@@ -469,10 +475,10 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
 				}
 			}
-			assign_stmt.right_types << val_type
 			ident_var_info.typ = val_type
 			ident.info = ident_var_info
 			assign_stmt.left[i] = ident
+			assign_stmt.right_types << val_type
 			scope.update_var_type(ident.name, val_type)
 		}
 	}
@@ -538,7 +544,6 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		}
 		ast.AssignStmt {
 			c.assign_stmt(mut it)
-			c.expected_type = table.void_type
 		}
 		ast.Block {
 			c.stmts(it.stmts)
@@ -946,11 +951,11 @@ pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
 	node.typ = table.void_type
 	for i, branch in node.branches {
 		match branch.cond {
-			ast.ParExpr{
-				c.error('unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.',				node.pos)
+			ast.ParExpr {
+				c.error('unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.', node.pos)
 			}
 			else {}
-		}
+	}
 		typ := c.expr(branch.cond)
 		if i < node.branches.len - 1 || !node.has_else {
 			typ_sym := c.table.get_type_symbol(typ)
