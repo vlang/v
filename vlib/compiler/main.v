@@ -35,7 +35,7 @@ enum Pass {
 
 pub struct V {
 pub mut:
-	mod_file_cacher     &ModFileCacher // used during lookup for v.mod to support @VROOT
+	mod_file_cacher     &builder.ModFileCacher // used during lookup for v.mod to support @VROOT
 	out_name_c          string // name of the temporary C file
 	files               []string // all V files that need to be parsed and compiled
 	compiled_dir        string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
@@ -68,7 +68,7 @@ pub fn new_v(pref &pref.Preferences) &V {
 	compiled_dir:=if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 
 	return &V{
-		mod_file_cacher: new_mod_file_cacher()
+		mod_file_cacher: builder.new_mod_file_cacher()
 		compiled_dir:compiled_dir// if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 		table: new_table(pref.obfuscate)
 		out_name_c: out_name_c
