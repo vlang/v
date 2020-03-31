@@ -133,6 +133,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				else {}
 			}
 		}
+		ast.BreakStmt {
+			f.write('break $it.name')
+		}	
 		ast.ConstDecl {
 			if it.is_pub {
 				f.write('pub ')
@@ -147,6 +150,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			}
 			f.indent--
 			f.writeln(')\n')
+		}
+		ast.ContinueStmt{
+			f.write('continue $it.name')
 		}
 		ast.DeferStmt {
 			f.writeln('defer {')
@@ -220,6 +226,10 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 					f.writeln('goto $it.name')
 				}
 			}
+		}
+		ast.LabeledLoop { 
+			f.write('$it.name:')
+			f.stmts(it.stmts)
 		}
 		ast.LineComment {
 			f.writeln('// $it.text')
