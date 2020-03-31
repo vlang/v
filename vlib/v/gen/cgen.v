@@ -2674,7 +2674,11 @@ fn (g &Gen) get_all_test_function_names() []string {
 	if tsuite_end.len > 0 {
 		all_tfuncs << tsuite_end
 	}
-	return all_tfuncs.map( it.replace('.', '__') )
+	mut all_tfuncs_c := []string
+	for f in all_tfuncs {
+		all_tfuncs_c << f.replace('.', '__')
+	}
+	return all_tfuncs_c
 }
 
 fn (g &Gen) is_importing_os() bool {
