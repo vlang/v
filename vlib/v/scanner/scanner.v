@@ -221,6 +221,7 @@ fn (s mut Scanner) ident_oct_number() string {
 fn (s mut Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit := `\0`
+	mut call_method := false  // true for, e.g., 12.str(), 12.3.str(), 12e-3.str()
 	start_pos := s.pos
 	// scan integer part
 	for s.pos < s.text.len {
@@ -246,19 +247,30 @@ fn (s mut Scanner) ident_dec_number() string {
 	// scan fractional part
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
-		for s.pos < s.text.len {
-			c := s.text[s.pos]
-			if !c.is_digit() {
-				if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
-					break
-				}
-				else if !has_wrong_digit {
-					has_wrong_digit = true
-					first_wrong_digit = c
+		if s.pos < s.text.len {
+			if s.text[s.pos].is_digit() {
+				for s.pos < s.text.len {
+					c := s.text[s.pos]
+					if !c.is_digit() {
+						if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
+							if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos+1].is_digit() && s.text[s.pos+1] != `)` {
+								call_method = true
+							}
+							break
+						}
+						else if !has_wrong_digit {
+							has_wrong_digit = true
+							first_wrong_digit = c
+						}
+					}
+					s.pos++
 				}
 			}
-			s.pos++
-		}
+			else if !(s.text[s.pos] in [`)`, `e`, `E`]) {
+				call_method = true  
+				s.pos--
+			} 
+		}	
 	}
 	// scan exponential part
 	mut has_exponential_part := false
@@ -272,6 +284,9 @@ fn (s mut Scanner) ident_dec_number() string {
 			c := s.text[s.pos]
 			if !c.is_digit() {
 				if !c.is_letter() || s.inside_string {
+					if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos+1].is_digit() && s.text[s.pos+1] != `)` {
+						call_method = true
+					}
 					break
 				}
 				else if !has_wrong_digit {
@@ -287,7 +302,7 @@ fn (s mut Scanner) ident_dec_number() string {
 		has_exponential_part = true
 	}
 	// error check: 1.23.4, 123.e+3.4
-	if s.pos < s.text.len && s.text[s.pos] == `.` {
+	if s.pos < s.text.len && s.text[s.pos] == `.` && !call_method {
 		if has_exponential_part {
 			s.error('exponential part should be integer')
 		}
