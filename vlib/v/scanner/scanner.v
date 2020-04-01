@@ -994,6 +994,7 @@ fn (s Scanner) line(n int) string {
 	return res.trim_right('\r\n').trim_left('\r\n')
 }
 
+[inline]
 fn is_name_char(c byte) bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
 }
