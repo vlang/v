@@ -8,6 +8,8 @@ fn main() {
 	c := 'a: $a b: $b i: $i'
 	d := 'a: ${a:5s} b: ${b:-5s} i: ${i:20d}'
 	println('a: $a $b xxx')
-	eprintln('c: $c')
+	// QTODO
+	//eprintln('c: $c')
+	eprintln('c: $c .')
 	println(d)
 }
