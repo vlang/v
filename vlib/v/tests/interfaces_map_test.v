@@ -4,6 +4,8 @@ interface Speaker {
 	say() string
 }
 
+/*
+// QTODO
 struct ChatRoom {
 mut:
 	talkers map[string]Speaker
@@ -47,3 +49,4 @@ fn (d &Dog) say() string { return '${d.name} barks "Bau Bau!"' }
 
 struct Human { name string }
 fn (h &Human) say() string { return '${h.name} says "Hello"' }
+*/

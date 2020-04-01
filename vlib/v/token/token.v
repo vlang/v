@@ -121,7 +121,6 @@ pub enum Kind {
 	key_static
 	key_unsafe
 	keyword_end
-
 	_end_
 }
 
@@ -399,7 +398,7 @@ pub fn (tok Token) precedence() int {
 		// .logical_or,
 		.assign, .plus_assign, .minus_assign, .div_assign, .mod_assign, .or_assign, .and_assign,
 		//
-		.left_shift_assign, .right_shift_assign, .mult_assign {
+		.left_shift_assign, .right_shift_assign, .mult_assign, .xor_assign {
 			return int(Precedence.assign)
 		}
 		.key_in, .key_as {
