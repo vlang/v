@@ -36,7 +36,6 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :error
 )
 
-echo Now using V to build V...
 v self -prod
 if %ERRORLEVEL% NEQ 0 (
 	echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
@@ -74,23 +73,20 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :compile_error
 )
 
-echo rebuild from source (twice, in case of C definitions changes)
 v self -prod
 if %ERRORLEVEL% NEQ 0 (
 	echo V failed to build itself with error %ERRORLEVEL%
 	rd /s /q vc
-	del v.pdb
-	del v3.ilk
-	del v3.pdb
+	del v_old.exe
+	del v2.pdb
 	del vc140.pdb
 	del %ObjFile%
 	goto :compile_error
 )
 
 rd /s /q vc
-del v.pdb
-del v3.ilk
-del v3.pdb
+del v_old.exe
+del v2.pdb
 del vc140.pdb
 del %ObjFile%
 
