@@ -21,6 +21,8 @@ fn C.GetConsoleScreenBufferInfo(handle os.HANDLE, info &CONSOLE_SCREEN_BUFFER_IN
 
 // get_terminal_size returns a number of colums and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
+	return 80, 40 // QTODO
+	/*
 	if is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
 		info := CONSOLE_SCREEN_BUFFER_INFO{}
 
@@ -32,4 +34,5 @@ pub fn get_terminal_size() (int, int) {
 	}
 
 	return default_columns_size, default_rows_size
+	*/
 }

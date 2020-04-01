@@ -789,7 +789,11 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			if g.autofree {
 				g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
 			}
-			g.writeln('_const_os__args = os__init_os_args(argc, (byteptr*)argv);')
+			$if windows {
+				g.writeln('_const_os__args = os__init_os_args(argc, (byteptr*)argv);')
+			}	$else {
+				g.writeln('_const_os__args = os__init_os_args_wide(argc, (byteptr*)argv);')
+			}
 		}
 	}
 	g.stmts(it.stmts)
