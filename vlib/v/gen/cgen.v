@@ -176,14 +176,6 @@ pub fn (g mut Gen) write_typedef_types() {
 				styp := typ.name.replace('.', '__')
 				g.definitions.writeln('typedef array $styp;')
 			}
-			.array_fixed {
-				styp := typ.name.replace('.', '__')
-				// array_fixed_char_300 => char x[300]
-				mut fixed := styp[12..]
-				len := styp.after('_')
-				fixed = fixed[..fixed.len - len.len - 1]
-				g.definitions.writeln('typedef $fixed $styp [$len];')
-			}
 			.map {
 				styp := typ.name.replace('.', '__')
 				g.definitions.writeln('typedef map $styp;')
@@ -956,7 +948,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 				// &Foo(0) => ((Foo*)0)
 				g.out.go_back(1)
 			}
-			if it.typ == table.string_type_idx {
+			sym := g.table.get_type_symbol(it.typ)
+			if sym.kind == .string {
 				// `tos(str, len)`, `tos2(str)`
 				if it.has_arg {
 					g.write('tos(')
@@ -965,8 +958,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 					g.write('tos2(')
 				}
 				g.expr(it.expr)
-				sym := g.table.get_type_symbol(it.expr_type)
-				if sym.kind == .array {
+				expr_sym := g.table.get_type_symbol(it.expr_type)
+				if expr_sym.kind == .array {
 					// if we are casting an array, we need to add `.data`
 					g.write('.data')
 				}
@@ -976,6 +969,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 					g.expr(it.arg)
 				}
 				g.write(')')
+			}
+			else if sym.kind == .sum_type {
+				g.expr_with_cast(it.expr, it.expr_type, it.typ)
 			}
 			else {
 				// styp := g.table.type_to_str(it.typ)
@@ -1152,6 +1148,11 @@ fn (g mut Gen) typeof_expr(node ast.TypeOf) {
 		g.write('tos3( /* ${sym.name} */ v_typeof_sumtype_${sum_type_idx}( (')
 		g.expr(node.expr)
 		g.write(').typ ))')
+	}
+	else if sym.kind == .array_fixed {
+		fixed_info := sym.info as table.ArrayFixed
+		elem_sym := g.table.get_type_symbol(fixed_info.elem_type)
+		g.write('tos3("[$fixed_info.size]${elem_sym.name}")')
 	}
 	else {
 		g.write('tos3("${sym.name}")')
@@ -2090,6 +2091,16 @@ void* obj;
 int typ;
 } $name;')
 			}
+			table.ArrayFixed {
+			// .array_fixed {
+				styp := typ.name.replace('.', '__')
+				// array_fixed_char_300 => char x[300]
+				mut fixed := styp[12..]
+				len := styp.after('_')
+				fixed = fixed[..fixed.len - len.len - 1]
+				g.definitions.writeln('typedef $fixed $styp [$len];')
+			// }
+			}
 			else {}
 	}
 	}
@@ -2108,11 +2119,15 @@ fn (g &Gen) sort_structs(types []table.TypeSymbol) []table.TypeSymbol {
 		// create list of deps
 		mut field_deps := []string
 		match t.info {
+			table.ArrayFixed {
+				dep := g.table.get_type_symbol(it.elem_type).name
+				if dep in type_names {
+					field_deps << dep
+				}
+			}
 			table.Struct {
 				info := t.info as table.Struct
 				for field in info.fields {
-					// Need to handle fixed size arrays as well (`[10]Point`)
-					// ft := if field.typ.starts_with('[') { field.typ.all_after(']') } else { field.typ }
 					dep := g.table.get_type_symbol(field.typ).name
 					// skip if not in types list or already in deps
 					if !(dep in type_names) || dep in field_deps || table.type_is_ptr(field.typ) {
