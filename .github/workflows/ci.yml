@@ -242,6 +242,8 @@ jobs:
         #node hi.js
     - name: Test v binaries
       run: ./v -silent build-vbinaries
+    - name: v2 self compilation
+      run: .\v.exe -b v2 -o v2.exe cmd/v && .\v2.exe -b v2 -o v3.exe cmd/v
 
   windows-msvc:
     runs-on: windows-2019

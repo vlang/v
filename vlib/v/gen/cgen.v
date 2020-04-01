@@ -1091,7 +1091,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			escaped_val := it.val.replace_each(['"', '\\"',
 			'\r\n', '\\n',
 			'\n', '\\n'])
-			if g.is_c_call {
+			if g.is_c_call || it.is_c {
 				// In C calls we have to generate C strings
 				// `C.printf("hi")` => `printf("hi");`
 				g.write('"$escaped_val"')
@@ -2376,7 +2376,7 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 				styp = styp.replace('*', '')
 			}
 			g.str_types << typ
-			g.definitions.writeln('string ${styp}_str($styp* x) { return tos3("TODO_str"); }')
+			g.definitions.writeln('string ${styp}_str($styp x) { return tos3("TODO_str"); }')
 		}
 		if g.autofree && !table.type_is_optional(typ) {
 			// Create a temporary variable so that the value can be freed
@@ -2395,6 +2395,10 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			// `println(int_str(10))`
 			// sym := g.table.get_type_symbol(node.args[0].typ)
 			g.write('println(${styp}_str(')
+			if table.type_is_ptr(typ) {
+				// dereference
+				g.write('*')
+			}
 			g.expr(node.args[0].expr)
 			g.write('))')
 		}

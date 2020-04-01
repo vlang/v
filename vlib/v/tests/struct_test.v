@@ -97,7 +97,7 @@ fn test_struct_str() {
 	u := User{
 		'Bob',30}
 	println(u) // make sure the struct is printable
-	// assert u.str() == '{name:"Bob", age:30}'  // TODO
+	// assert u.str() == '{name:"Bob", age:30}'  // QTODO
 }
 
 fn test_at() {
@@ -236,7 +236,6 @@ fn foo_config(c Config) {}
 fn foo2(u User) {}
 
 fn test_config() {
-
 	/*
 	foo_config({
 		n: 10
@@ -247,4 +246,4 @@ fn test_config() {
 		name: 'Peter'
 	})
 	*/
-}
+	}

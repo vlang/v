@@ -117,14 +117,15 @@ pub:
 
 pub struct StructDecl {
 pub:
-	pos         token.Position
-	name        string
-	fields      []Field
-	is_pub      bool
-	mut_pos     int // mut:
-	pub_pos     int // pub:
-	pub_mut_pos int // pub mut:
-	is_c        bool
+	pos           token.Position
+	name          string
+	fields        []Field
+	is_pub        bool
+	mut_pos       int // mut:
+	pub_pos       int // pub:
+	pub_mut_pos   int // pub mut:
+	is_c          bool
+	default_exprs []ast.Expr
 }
 
 pub struct InterfaceDecl {
