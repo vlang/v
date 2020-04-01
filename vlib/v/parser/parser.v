@@ -52,7 +52,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-		
+
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -71,13 +71,13 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		table: table
 		file_name: path
 		pref: pref // &pref.Preferences{}
-		
+
 		scope: &ast.Scope{
 			start_pos: 0
 			parent: 0
 		}
 		// comments_mode: comments_mode
-		
+
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -548,12 +548,14 @@ pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 	return ident
 }
 
-fn (p mut Parser) struct_init() ast.StructInit {
-	typ := p.parse_type()
+fn (p mut Parser) struct_init(short_syntax bool) ast.StructInit {
+	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
 	// sym := p.table.get_type_symbol(typ)
 	// p.warn('struct init typ=$sym.name')
-	p.check(.lcbr)
+	if !short_syntax {
+		p.check(.lcbr)
+	}
 	mut field_names := []string
 	mut exprs := []ast.Expr
 	mut i := 0
@@ -585,7 +587,9 @@ fn (p mut Parser) struct_init() ast.StructInit {
 		fields: field_names
 		pos: p.tok.position()
 	}
-	p.check(.rcbr)
+	if !short_syntax {
+		p.check(.rcbr)
+	}
 	return node
 }
 
@@ -674,7 +678,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	//
 	{
 		// || p.table.known_type(p.tok.lit)) {
-		return p.struct_init()
+		return p.struct_init(false) // short_syntax: false
 	}
 	else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
 		// `Color.green`
@@ -692,7 +696,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-			
+
 			val: val
 			pos: p.tok.position()
 			mod: mod
@@ -782,7 +786,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			node = ast.SizeOf{
 				typ: sizeof_type
 				// type_name: type_name
-				
+
 			}
 		}
 		.key_typeof {
@@ -798,53 +802,17 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		.lcbr {
 			p.next()
 			if p.tok.kind == .string {
-				mut keys := []ast.Expr
-				mut vals := []ast.Expr
-				for p.tok.kind != .rcbr && p.tok.kind != .eof {
-					// p.check(.str)
-					key := p.expr(0)
-					keys << key
-					p.check(.colon)
-					val := p.expr(0)
-					vals << val
-					if p.tok.kind == .comma {
-						p.next()
-					}
-				}
-				node = ast.MapInit{
-					keys: keys
-					vals: vals
-					pos: p.tok.position()
-				}
+				node = p.map_init()
 			}
 			else {
-				name := p.check_name()
-				var := p.scope.find_var(name) or {
-					p.error('unknown variable `$name`')
-					return node
+				if p.peek_tok.kind == .pipe {
+					node = p.assoc()
 				}
-				// println('assoc var $name typ=$var.typ')
-				mut fields := []string
-				mut vals := []ast.Expr
-				p.check(.pipe)
-				for {
-					fields << p.check_name()
-					p.check(.colon)
-					expr := p.expr(0)
-					vals << expr
-					if p.tok.kind == .comma {
-						p.check(.comma)
-					}
-					if p.tok.kind == .rcbr {
-						break
-					}
+				else if p.peek_tok.kind ==  .colon || p.tok.kind == .rcbr {
+					node = p.struct_init(true) // short_syntax: true
 				}
-				node = ast.Assoc{
-					var_name: name
-					fields: fields
-					exprs: vals
-					pos: p.tok.position()
-					typ: var.typ
+				else {
+					p.error('unexpected {')
 				}
 			}
 			p.check(.rcbr)
@@ -1053,7 +1021,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 		left: left
 		right: right
 		// right_type: typ
-		
+
 		op: op
 		pos: pos
 	}
@@ -1374,6 +1342,28 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	}
 }
 
+fn (p mut Parser) map_init() ast.MapInit {
+	pos := p.tok.position()
+	mut keys := []ast.Expr
+	mut vals := []ast.Expr
+	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+		// p.check(.str)
+		key := p.expr(0)
+		keys << key
+		p.check(.colon)
+		val := p.expr(0)
+		vals << val
+		if p.tok.kind == .comma {
+			p.next()
+		}
+	}
+	return ast.MapInit{
+		keys: keys
+		vals: vals
+		pos: pos
+	}
+}
+
 fn (p mut Parser) parse_number_literal() ast.Expr {
 	lit := p.tok.lit
 	mut node := ast.Expr{}
@@ -1458,7 +1448,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		fields << ast.Field{
 			name: name
 			// typ: typ
-			
+
 		}
 		exprs << expr
 		// TODO: once consts are fixed reg here & update in checker
@@ -1940,6 +1930,38 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 		name: name
 		is_pub: is_pub
 		parent_type: parent_type
+	}
+}
+
+fn (p mut Parser) assoc() ast.Assoc{
+	var_name := p.check_name()
+	pos := p.tok.position()
+	var := p.scope.find_var(var_name) or {
+		p.error('unknown variable `$var_name`')
+		return ast.Assoc{}
+	}
+	// println('assoc var $name typ=$var.typ')
+	mut fields := []string
+	mut vals := []ast.Expr
+	p.check(.pipe)
+	for {
+		fields << p.check_name()
+		p.check(.colon)
+		expr := p.expr(0)
+		vals << expr
+		if p.tok.kind == .comma {
+			p.check(.comma)
+		}
+		if p.tok.kind == .rcbr {
+			break
+		}
+	}
+	return ast.Assoc{
+		var_name: var_name
+		fields: fields
+		exprs: vals
+		pos: pos
+		typ: var.typ
 	}
 }
 
