@@ -1,10 +1,10 @@
 module main
 
 interface Speaker {
-	say() string
+	say()string
 }
 
-fn todo() {}
+fn test_todo() {}
 
 /*
 // QTODO

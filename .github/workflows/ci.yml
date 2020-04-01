@@ -141,6 +141,9 @@ jobs:
         ../../vprod -backend x64 -o 1m 1m.v
         echo "Running it..."
         ls
+#    - name: SDL examples
+#      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
+
 #        ./1m
       #run: echo "TODO" #cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
 #    - name: Coveralls GitHub Action

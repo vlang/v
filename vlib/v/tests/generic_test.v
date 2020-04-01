@@ -1,5 +1,5 @@
+fn test_todo() {}
 
-fn todo() {}
 /*
 // QTODO
 fn simple<T>(p T) T {
@@ -127,10 +127,10 @@ fn new_repo<U>(db DB) Repo<U> {
 fn test_generic_struct() {
 	mut a :=  new_repo<User>(DB{})
 	a.model.name = 'joe'
-	mut b := Repo<User>{db: DB{}}
+	mut b := Repo<User>{db: DB{}
+	}
 	b.model.name = 'joe'
 	assert a.model.name == 'joe'
 	assert b.model.name == 'joe'
 }
 */
-
