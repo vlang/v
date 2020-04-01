@@ -70,44 +70,44 @@ pub fn (t Time) format_date(fmt_dlmtr FormatDelimiter, fmt_date FormatDate) stri
 	}
 	month := '${t.smonth()}'
 	year := t.year.str()[2..]
-mut 	res := match fmt_date {
-		.ddmmyy{
+	mut res := match fmt_date {
+		.ddmmyy {
 			'${t.day:02d}|${t.month:02d}|$year'
 		}
-		.ddmmyyyy{
+		.ddmmyyyy {
 			'${t.day:02d}|${t.month:02d}|${t.year}'
 		}
-		.mmddyy{
+		.mmddyy {
 			'${t.month:02d}|${t.day:02d}|$year'
 		}
-		.mmddyyyy{
+		.mmddyyyy {
 			'${t.month:02d}|${t.day:02d}|${t.year}'
 		}
-		.mmmd{
+		.mmmd {
 			'$month|${t.day}'
 		}
-		.mmmdd{
+		.mmmdd {
 			'$month|${t.day:02d}'
 		}
-		.mmmddyyyy{
+		.mmmddyyyy {
 			'$month|${t.day:02d}|${t.year}'
 		}
-		.yyyymmdd{
+		.yyyymmdd {
 			'${t.year}|${t.month:02d}|${t.day:02d}'
 		}
 		else {
 			'unknown enumeration $fmt_date'}}
 	res = res.replace('|', match fmt_dlmtr {
-		.dot{
+		.dot {
 			'.'
 		}
-		.hyphen{
+		.hyphen {
 			'-'
 		}
-		.slash{
+		.slash {
 			'/'
 		}
-		.space{
+		.space {
 			' '
 		}
 		else {
