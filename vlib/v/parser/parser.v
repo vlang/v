@@ -52,7 +52,6 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-		
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -71,13 +70,13 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		table: table
 		file_name: path
 		pref: pref // &pref.Preferences{}
-		
+
 		scope: &ast.Scope{
 			start_pos: 0
 			parent: 0
 		}
 		// comments_mode: comments_mode
-		
+
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -270,7 +269,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 					p.error('wrong pub keyword usage')
 					return ast.Stmt{}
 				}
-	}
+			}
 		}
 		.lsbr {
 			return p.attribute()
@@ -691,7 +690,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-			
+
 			val: val
 			pos: p.tok.position()
 			mod: mod
@@ -781,7 +780,6 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			node = ast.SizeOf{
 				typ: sizeof_type
 				// type_name: type_name
-				
 			}
 		}
 		.key_typeof {
@@ -1052,7 +1050,6 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 		left: left
 		right: right
 		// right_type: typ
-		
 		op: op
 		pos: pos
 	}
@@ -1457,7 +1454,6 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		fields << ast.Field{
 			name: name
 			// typ: typ
-			
 		}
 		exprs << expr
 		// TODO: once consts are fixed reg here & update in checker
@@ -1850,6 +1846,13 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 		if p.tok.kind == .assign {
 			p.next()
 			default_exprs << p.expr(0)
+		}
+		// Allow commas after enum, helpful for
+		// enum Color {
+		//     r,g,b
+		// }
+		if p.tok.kind == .comma {
+			p.next()
 		}
 	}
 	p.check(.rcbr)
