@@ -113,22 +113,22 @@ jobs:
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
     - name: Build V
       run: make -j4 && ./v -cc gcc -o v cmd/v
-    - name: Test V
-      run: ./v -silent test-compiler
-    - name: Test v binaries
-      run: ./v -silent build-vbinaries
-#    - name: Test v->js
-#      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-    - name: Build Vorum
-      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
-    - name: Build vpm
-      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
-    - name: Build V UI examples
-      run: ./v install ui && git clone --depth 1 https://github.com/vlang/ui && cd ui && ../v examples/calculator.v && cd ..
-    - name: Freestanding
-      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
-    - name: v2 self compilation
-      run: ./v -b v2 -o v2 cmd/v && ./v2 -b v2 -o v3 cmd/v && ./v3 -b v2 -o v4 cmd/v
+#    - name: Test V
+#      run: ./v -silent test-compiler
+#    - name: Test v binaries
+#      run: ./v -silent build-vbinaries
+##    - name: Test v->js
+##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+#    - name: Build Vorum
+#      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
+#    - name: Build vpm
+#      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
+#    - name: Build V UI examples
+#      run: ./v install ui && git clone --depth 1 https://github.com/vlang/ui && cd ui && ../v examples/calculator.v && cd ..
+#    - name: Freestanding
+#      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
+    - name: v self compilation
+      run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
 
     - name: x64 machine code generation
       run: |
