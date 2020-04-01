@@ -381,7 +381,9 @@ pub fn (a []int) str() string {
 		val := a[i].str()
 		sb.write(val)
 		//println('"$val"')
-		val.free()
+		if a[i] != 0 {
+			val.free()
+		}
 		if i < a.len - 1 {
 			sb.write(', ')
 		}
