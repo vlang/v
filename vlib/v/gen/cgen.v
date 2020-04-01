@@ -578,6 +578,9 @@ fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
 
 fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// g.write('/*assign_stmt*/')
+	if assign_stmt.is_static {
+		g.write('static ')
+	}
 	if assign_stmt.left.len > assign_stmt.right.len {
 		// multi return
 		mut or_stmts := []ast.Stmt

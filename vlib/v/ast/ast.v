@@ -450,6 +450,7 @@ pub:
 mut:
 	left_types  []table.Type
 	right_types []table.Type
+	is_static   bool // for translated code only
 }
 
 pub struct AsCast {
