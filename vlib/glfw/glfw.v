@@ -51,6 +51,25 @@ pub const (
 	KeyDown  = 264
 )
 
+fn C.glfwGetWindowUserPointer() voidptr
+fn C.glfwGetPrimaryMonitor() voidptr
+fn C.glfwSetWindowUserPointer()
+fn C.glfwSetCursor()
+fn C.glfwGetCursorPos()
+fn C.glfwSetClipboardString()
+fn C.glfwGetWindowContentScale()
+fn C.glfwGetClipboardString()
+fn C.glfwGetKey()
+fn C.glfwGetTime()
+fn C.glfwSetCharModsCallback()
+fn C.glfwSetKeyCallback()
+fn C.glfwPostEmptyEvent()
+fn C.glfwSetScrollCallback()
+fn C.glfwSetWindowSizeCallback()
+fn C.glfwSetMouseButtonCallback()
+fn C.glfwSetCursorPosCallback()
+fn C.glfwSwapBuffers()
+
 // joe-c: fix & remove
 struct TmpGlImportHack {
 	hack gl.TmpGlImportHack
@@ -341,3 +360,4 @@ pub fn (size Size) str() string {
 pub fn get_window_user_pointer(gwnd voidptr) voidptr {
 	return C.glfwGetWindowUserPointer(gwnd)
 }
+

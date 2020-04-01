@@ -48,7 +48,7 @@ pub const (
 )
 
 pub const (
-	ALIGN_LEFT  = 1
+	align_left  = 1
 	ALIGN_RIGHT = 4
 )
 

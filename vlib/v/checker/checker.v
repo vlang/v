@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	max_nr_errors = 100
+	max_nr_errors = 300
 )
 
 pub struct Checker {

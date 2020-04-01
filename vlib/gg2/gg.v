@@ -120,7 +120,7 @@ pub fn (ctx &GG) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
 		color: gx.Black
 		size: default_font_size
-		align: gx.ALIGN_LEFT
+		align: gx.align_left
 	}
 	ctx.draw_text(x, y, text, cfg)
 }
