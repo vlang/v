@@ -125,7 +125,7 @@ pub:
 	pub_pos       int // pub:
 	pub_mut_pos   int // pub mut:
 	is_c          bool
-	default_exprs []ast.Expr
+	default_exprs []Expr
 }
 
 pub struct InterfaceDecl {
