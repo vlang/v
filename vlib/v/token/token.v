@@ -134,7 +134,7 @@ const (
 // Keywords['return'] == .key_return
 fn build_keys() map[string]int {
 	mut res := map[string]int
-	for t := int(Kind.keyword_beg) + 1; t < int(Kind.keyword_end); t++ {
+	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
 		key := token_str[t]
 		res[key] = t
 	}
@@ -144,8 +144,6 @@ fn build_keys() map[string]int {
 // TODO remove once we have `enum Kind { name('name') if('if') ... }`
 fn build_token_str() []string {
 	mut s := [''].repeat(nr_tokens)
-	s[Kind.keyword_beg] = ''
-	s[Kind.keyword_end] = ''
 	s[Kind.eof] = 'eof'
 	s[Kind.name] = 'name'
 	s[Kind.number] = 'number'
@@ -282,21 +280,6 @@ fn (t []Kind) contains(val Kind) bool {
 }
 
 pub fn (t Kind) str() string {
-	if t == .number {
-		return 'number'
-	}
-	if t == .chartoken {
-		return 'char' // '`lit`'
-	}
-	if t == .string {
-		return 'str' // "'lit'"
-	}
-	/*
-	if t < .plus {
-		return lit // string, number etc
-	}
-	*/
-
 	return token_str[int(t)]
 }
 
@@ -311,7 +294,6 @@ pub const (
 	highest_prec = 8
 )
 */
-
 
 pub enum Precedence {
 	lowest
