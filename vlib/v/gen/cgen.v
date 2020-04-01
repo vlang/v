@@ -384,6 +384,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			styp := g.typ(it.typ)
 			g.definitions.writeln('$styp $it.name; // global')
 		}
+		ast.GoStmt {
+			g.writeln('// go')
+			g.expr(it.expr)
+		}
 		ast.GotoLabel {
 			g.writeln('$it.name:')
 		}
@@ -2534,6 +2538,19 @@ fn comp_if_to_ifdef(name string) string {
 		}
 		'no_bounds_checking' {
 			return 'NO_BOUNDS_CHECK'
+		}
+		 'x64' {
+         return 'TARGET_IS_64BIT'
+		 }
+		 'x32' {
+		       return 'TARGET_IS_32BIT'
+		 }
+		'little_endian' {
+			return 'TARGET_ORDER_IS_LITTLE'
+
+		}
+		'big_endian' {
+			return 'TARGET_ORDER_IS_BIG'
 		}
 		else {
 			verror('bad os ifdef name "$name"')

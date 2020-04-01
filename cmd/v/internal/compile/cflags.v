@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module compiler
+module compile
 
 import os
 // parsed cflag
@@ -24,6 +24,8 @@ fn (v &V) get_os_cflags() []CFlag {
 		ctimedefines << v.pref.compile_defines
 	}
 
+// QTODO
+/*
 	for flag in v.table.cflags {
 		if flag.os == '' || (flag.os == 'linux' && v.pref.os == .linux) || (flag.os == 'darwin' && v.pref.os == .mac) || (flag.os == 'freebsd' && v.pref.os == .freebsd) || (flag.os == 'windows' && v.pref.os == .windows) || (flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler != 'msvc') || (flag.os == 'solaris' && v.pref.os == .solaris) {
 			flags << flag
@@ -32,6 +34,7 @@ fn (v &V) get_os_cflags() []CFlag {
 			flags << flag
 		}
 	}
+	*/
 	return flags
 }
 
@@ -63,6 +66,8 @@ fn (cf &CFlag) format() string {
 }
 
 // check if cflag is in table
+/*
+QTODO
 fn (table &Table) has_cflag(cflag CFlag) bool {
 	for cf in table.cflags {
 		if cf.os == cflag.os && cf.name == cflag.name && cf.value == cflag.value {
@@ -146,6 +151,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string, ctimedefines []string
 	}
 	return true
 }
+*/
 
 // TODO: implement msvc specific c_options_before_target and c_options_after_target ...
 fn (cflags []CFlag) c_options_before_target_msvc() string {
