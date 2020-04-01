@@ -4,6 +4,8 @@ interface Speaker {
 	say() string
 }
 
+fn todo() {}
+
 /*
 // QTODO
 struct ChatRoom {

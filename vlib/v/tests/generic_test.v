@@ -1,4 +1,5 @@
 
+fn todo() {}
 /*
 // QTODO
 fn simple<T>(p T) T {
