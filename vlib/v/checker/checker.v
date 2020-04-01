@@ -142,6 +142,10 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		if right.kind in [.array, .map] && infix_expr.op == .key_in {
 			return table.bool_type
 		}
+		// fot type-unresolved consts
+		if left_type == table.void_type || right_type == table.void_type {
+			return table.void_type
+		}
 		c.error('infix expr: cannot use `$right.name` (right) as `$left.name`', infix_expr.pos)
 	}
 	if infix_expr.op.is_relational() {
@@ -338,7 +342,6 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 				if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 					continue
 				}
-				// TODO const bug
 				if typ_sym.kind == .void && arg_typ_sym.kind == .string {
 					continue
 				}
@@ -562,16 +565,31 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.stmts(it.stmts)
 		}
 		ast.ConstDecl {
+			// try to resolve const types by walking from both ends
 			for i, expr in it.exprs {
 				mut field := it.fields[i]
 				typ := c.expr(expr)
-				// TODO: once consts are fixed update here
 				c.table.register_const(table.Var{
 					name: field.name
 					typ: typ
 				})
 				field.typ = typ
 				it.fields[i] = field
+			}
+			reversed_exprs := it.exprs.reverse()
+			mut reversed_fields := it.fields.reverse()
+			for i, expr in reversed_exprs {
+				mut field := reversed_fields[i]
+				typ := c.expr(expr)
+				if typ == table.void_type {
+					c.error("undefined constant `${field.name}` is in use", it.pos)
+				}
+				c.table.register_const(table.Var{
+					name: field.name
+					typ: typ
+				})
+				field.typ = typ
+				reversed_fields[i] = field
 			}
 		}
 		ast.ExprStmt {
