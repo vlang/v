@@ -1,4 +1,4 @@
-fn C.strlen() int
+// fn C.strlen() int
 
 fn test_cstring() {
 	w := c'world'
