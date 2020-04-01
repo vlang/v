@@ -1,3 +1,5 @@
+fn C.strlen() int
+
 fn test_cstring() {
 	w := c'world'
 	hlen := C.strlen(c'hello')

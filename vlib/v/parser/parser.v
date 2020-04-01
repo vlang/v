@@ -896,7 +896,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 				pos: p.tok.position()
 			}
 			p.next()
-			return node
+			// return node // TODO bring back, only allow ++/-- in exprs in translated code
 		}
 		else {
 			return node
