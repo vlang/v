@@ -54,6 +54,9 @@ struct varg_int {
 	int args[0];
 };
 
+// >> typeof() support for sum types
+// << typeof() support for sum types
+
 //
 int main(int argc, char** argv) {
 	_vinit();

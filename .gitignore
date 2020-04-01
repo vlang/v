@@ -76,3 +76,7 @@ cachegrind.out.*
 
 .gdb_history
 /thirdparty/pg
+exe
+vlib/v/tests/inout/hello.v
+vlib/v/tests/inout/hello_devs.v
+vlib/v/tests/inout/os.v

@@ -5,7 +5,7 @@ import (
 	v.gen
 	v.table
 	v.checker
-	v.eval
+	//	v.eval
 	v.pref
 	term
 )
@@ -77,10 +77,11 @@ x := 10
 8+4
 '
 	table := &table.Table{}
-	prog := parse_file(s, table, .skip_comments, &pref.Preferences{})
+	vpref := &pref.Preferences{}
+	prog := parse_file(s, table, .skip_comments, vpref)
 	mut checker := checker.new_checker(table)
 	checker.check(prog)
-	res := gen.cgen([prog], table)
+	res := gen.cgen([prog], table, vpref)
 	println(res)
 }
 
@@ -97,7 +98,8 @@ fn test_one() {
 	]
 	expected := 'int a = 10;int b = -a;int c = 20;'
 	table := table.new_table()
-	mut scope := &ast.Scope{
+	vpref := &pref.Preferences{}
+	scope := &ast.Scope{
 		start_pos: 0
 		parent: 0
 	}
@@ -111,7 +113,7 @@ fn test_one() {
 	}
 	mut checker := checker.new_checker(table)
 	checker.check(program)
-	res := gen.cgen([program], table).replace('\n', '').trim_space().after('#endif')
+	res := gen.cgen([program], table, vpref).replace('\n', '').trim_space().after('#endif')
 	println(res)
 	ok := expected == res
 	println(res)
@@ -193,8 +195,9 @@ fn test_parse_expr() {
 	]
 	mut e := []ast.Stmt
 	table := table.new_table()
+	vpref := &pref.Preferences{}
 	mut checker := checker.new_checker(table)
-	mut scope := &ast.Scope{
+	scope := &ast.Scope{
 		start_pos: 0
 		parent: 0
 	}
@@ -207,7 +210,7 @@ fn test_parse_expr() {
 		scope: scope
 	}
 	checker.check(program)
-	res := gen.cgen([program], table).after('#endif')
+	res := gen.cgen([program], table, vpref).after('#endif')
 	println('========')
 	println(res)
 	println('========')

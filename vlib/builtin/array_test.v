@@ -246,6 +246,7 @@ fn test_slice() {
 	assert a.len == 4
 }
 
+
 fn test_push_many() {
 	mut a := [1, 2, 3]
 	b := [4, 5, 6]
@@ -283,6 +284,8 @@ struct Foooj {
 
 fn test_fixed() {
 	mut nums := [4]int
+	//x := nums[1..3]
+	//assert x.len == 2
 	assert nums[0] == 0
 	assert nums[1] == 0
 	assert nums[2] == 0

@@ -25,7 +25,7 @@ fn test_match_integers() {
     assert match 0 {
         1 { 2 }
         2 { 3 }
-        else 5
+        else { 5 }
     } == 5
 
     assert match 1 {
