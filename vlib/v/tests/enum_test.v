@@ -23,11 +23,9 @@ fn test_enum() {
 	assert Color.red == .red
 	assert Color.blue == .blue
 	assert Color.green == .green
-
 	assert Color.red != .blue
 	assert Color.red != .green
 	assert Color.blue != .green
-
 	mut color := Color.red
 	assert color == .red
 	color = .green
@@ -47,9 +45,15 @@ fn test_match() {
 	color := Color.green
 	num := 3
 	match color {
-		.red { assert false }
-		.green { assert true }
-		else { assert false }
+		.red {
+			assert false
+		}
+		.green {
+			assert true
+		}
+		else {
+			assert false
+		}
 	}
 	println(color)
 	assert num == 3
@@ -70,7 +74,7 @@ fn test_nums() {
 	assert d == -10
 }
 
-
+/*
 enum Expr {
 	BoolExpr(bool)
 	IntExpr(int)
@@ -98,6 +102,8 @@ fn test_typed_enum() {
 	}
 	*/
 }
+*/
+
 /*
 
 fn test_typed_enum() {

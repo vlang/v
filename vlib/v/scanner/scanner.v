@@ -124,10 +124,7 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 			i++
 		}
 		b[i1] = 0 // C string compatibility
-		return string{
-			str: b
-			len: i1
-		}
+		return string(b,i1)
 	}
 }
 
@@ -221,6 +218,7 @@ fn (s mut Scanner) ident_oct_number() string {
 fn (s mut Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit := `\0`
+	mut call_method := false // true for, e.g., 12.str(), 12.3.str(), 12e-3.str()
 	start_pos := s.pos
 	// scan integer part
 	for s.pos < s.text.len {
@@ -246,18 +244,29 @@ fn (s mut Scanner) ident_dec_number() string {
 	// scan fractional part
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
-		for s.pos < s.text.len {
-			c := s.text[s.pos]
-			if !c.is_digit() {
-				if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
-					break
-				}
-				else if !has_wrong_digit {
-					has_wrong_digit = true
-					first_wrong_digit = c
+		if s.pos < s.text.len {
+			if s.text[s.pos].is_digit() {
+				for s.pos < s.text.len {
+					c := s.text[s.pos]
+					if !c.is_digit() {
+						if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
+							if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos + 1].is_digit() && s.text[s.pos + 1] != `)` {
+								call_method = true
+							}
+							break
+						}
+						else if !has_wrong_digit {
+							has_wrong_digit = true
+							first_wrong_digit = c
+						}
+					}
+					s.pos++
 				}
 			}
-			s.pos++
+			else if !(s.text[s.pos] in [`)`, `e`, `E`]) {
+				call_method = true
+				s.pos--
+			}
 		}
 	}
 	// scan exponential part
@@ -272,6 +281,9 @@ fn (s mut Scanner) ident_dec_number() string {
 			c := s.text[s.pos]
 			if !c.is_digit() {
 				if !c.is_letter() || s.inside_string {
+					if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos + 1].is_digit() && s.text[s.pos + 1] != `)` {
+						call_method = true
+					}
 					break
 				}
 				else if !has_wrong_digit {
@@ -287,7 +299,7 @@ fn (s mut Scanner) ident_dec_number() string {
 		has_exponential_part = true
 	}
 	// error check: 1.23.4, 123.e+3.4
-	if s.pos < s.text.len && s.text[s.pos] == `.` {
+	if s.pos < s.text.len && s.text[s.pos] == `.` && !call_method {
 		if has_exponential_part {
 			s.error('exponential part should be integer')
 		}
@@ -574,7 +586,7 @@ pub fn (s mut Scanner) scan() token.Token {
 			}
 			if name == 'VEXE' {
 				vexe := pref.vexe_path()
-				return s.scan_res(.string, cescaped_path( vexe ) )
+				return s.scan_res(.string, cescaped_path(vexe))
 			}
 			if name == 'FILE' {
 				return s.scan_res(.string, cescaped_path(os.real_path(s.file_path)))
@@ -770,7 +782,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				}
 				s.pos++
 				if s.comments_mode == .parse_comments {
-					comment := s.text[start..(s.pos-1)].trim_space()
+					comment := s.text[start..(s.pos - 1)].trim_space()
 					return s.scan_res(.mline_comment, comment)
 				}
 				// Skip if not in fmt mode
@@ -982,8 +994,9 @@ fn (s Scanner) line(n int) string {
 	return res.trim_right('\r\n').trim_left('\r\n')
 }
 
+[inline]
 fn is_name_char(c byte) bool {
-	return c == `_` || c.is_letter()
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
 }
 
 [inline]

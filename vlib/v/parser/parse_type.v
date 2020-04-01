@@ -70,9 +70,10 @@ pub fn (p mut Parser) parse_multi_return_type() table.Type {
 pub fn (p mut Parser) parse_fn_type(name string) table.Type {
 	// p.warn('parse fn')
 	p.check(.key_fn)
-	args, is_variadic := p.fn_args()
+	line_nr := p.tok.line_nr
+	args,is_variadic := p.fn_args()
 	mut return_type := table.void_type
-	if p.tok.kind.is_start_of_type() {
+	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()
 	}
 	func := table.Fn{
@@ -96,7 +97,7 @@ pub fn (p mut Parser) parse_type() table.Type {
 	mut nr_muls := 0
 	for p.tok.kind in [.and, .amp] {
 		if p.tok.kind == .and {
-			nr_muls+=2
+			nr_muls += 2
 		}
 		else {
 			nr_muls++

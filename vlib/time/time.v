@@ -61,7 +61,8 @@ pub enum FormatDelimiter {
 	space
 }
 
-pub struct C.time_t {}
+// TODO: C.time_t. works in v2
+type time_t voidptr
 
 pub struct C.timeval {
 	tv_sec  u64
@@ -70,7 +71,7 @@ pub struct C.timeval {
 
 fn C.localtime(int) &C.tm
 
-fn C.time(int) C.time_t
+fn C.time(int) time_t
 
 // now returns current local time.
 pub fn now() Time {

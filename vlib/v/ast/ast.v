@@ -10,16 +10,16 @@ import (
 
 pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | 
-PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr | 
-EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr | 
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | 	
+PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr | 	
+EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr | 	
 Type | AsCast | TypeOf | StringInterLiteral
 
-pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 
-LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block
+pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
+LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -125,6 +125,11 @@ pub:
 	pub_pos     int // pub:
 	pub_mut_pos int // pub mut:
 	is_c        bool
+}
+
+pub struct InterfaceDecl {
+	name        string
+	field_names []string
 }
 
 pub struct StructInit {
@@ -473,9 +478,10 @@ mut:
 
 pub struct EnumDecl {
 pub:
-	name   string
-	is_pub bool
-	vals   []string
+	name          string
+	is_pub        bool
+	vals          []string
+	default_exprs []Expr
 }
 
 pub struct AliasTypeDecl {
@@ -626,7 +632,7 @@ pub:
 
 pub struct TypeOf {
 pub:
-	expr Expr
+	expr      Expr
 mut:
 	expr_type table.Type
 }
@@ -650,34 +656,6 @@ pub struct None {
 pub:
 	foo int // todo
 }
-/*
-enum BinaryOp {
-	sum
-	difference
-	product
-	quotient
-	remainder
-	bitwise_and
-	bitwise_or
-	bitwise_xor
-	left_shift
-	right_shift
-
-	equality
-	inequality
-	less_than
-	less_than_or_equal
-	more_than
-	more_than_or_equal
-
-	in_check
-
-	//These are suffixed with `bool` to prevent conflict with the keyword `or`
-	and_bool
-	or_bool
-}
-*/
-
 
 [inline]
 pub fn expr_is_blank_ident(expr Expr) bool {

@@ -149,6 +149,10 @@ pub fn is_number(typ Type) bool {
 */
 
 
+pub fn is_number(typ Type) bool {
+	return type_idx(typ) in number_type_idxs
+}
+
 pub const (
 // primitive types
 	void_type_idx = 1

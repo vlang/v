@@ -52,7 +52,6 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-		
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -71,13 +70,13 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		table: table
 		file_name: path
 		pref: pref // &pref.Preferences{}
-		
+
 		scope: &ast.Scope{
 			start_pos: 0
 			parent: 0
 		}
 		// comments_mode: comments_mode
-		
+
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
@@ -270,10 +269,13 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 					p.error('wrong pub keyword usage')
 					return ast.Stmt{}
 				}
-	}
+			}
 		}
 		.lsbr {
 			return p.attribute()
+		}
+		.key_interface {
+			return p.interface_decl()
 		}
 		.key_module {
 			return p.module_decl()
@@ -664,7 +666,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	}
 	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c ||
 	//
-	p.tok.lit in table.builtin_type_names) &&
+	(p.builtin_mod && p.tok.lit in table.builtin_type_names)) &&
 	//
 	(p.tok.lit.len == 1 || !p.tok.lit[p.tok.lit.len - 1].is_capital())
 	//
@@ -688,7 +690,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-			
+
 			val: val
 			pos: p.tok.position()
 			mod: mod
@@ -778,7 +780,6 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			node = ast.SizeOf{
 				typ: sizeof_type
 				// type_name: type_name
-				
 			}
 		}
 		.key_typeof {
@@ -819,7 +820,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 					p.error('unknown variable `$name`')
 					return node
 				}
-				println('assoc var $name typ=$var.typ')
+				// println('assoc var $name typ=$var.typ')
 				mut fields := []string
 				mut vals := []ast.Expr
 				p.check(.pipe)
@@ -1049,7 +1050,6 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 		left: left
 		right: right
 		// right_type: typ
-		
 		op: op
 		pos: pos
 	}
@@ -1095,7 +1095,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	// for i := 0; i < 10; i++ {
 	else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] || p.tok.kind == .semicolon {
 		mut init := ast.Stmt{}
-		mut cond := ast.Expr{}
+		mut cond := p.new_true_expr()
 		// mut inc := ast.Stmt{}
 		mut inc := ast.Expr{}
 		mut has_init := false
@@ -1454,7 +1454,6 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		fields << ast.Field{
 			name: name
 			// typ: typ
-			
 		}
 		exprs << expr
 		// TODO: once consts are fixed reg here & update in checker
@@ -1520,6 +1519,13 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		field_name := p.check_name()
 		// p.warn('field $field_name')
 		typ := p.parse_type()
+		/*
+		if name == '_net_module_s' {
+			s := p.table.get_type_symbol(typ)
+			println('XXXX' + s.str())
+		}
+		*/
+
 		// Default value
 		if p.tok.kind == .assign {
 			p.next()
@@ -1571,6 +1577,31 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
 		is_c: is_c
+	}
+}
+
+fn (p mut Parser) interface_decl() ast.InterfaceDecl {
+	is_pub := p.tok.kind == .key_pub
+	if is_pub {
+		p.next()
+	}
+	p.next() // `interface`
+	interface_name := p.check_name()
+	p.check(.lcbr)
+	mut field_names := []string
+	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+		line_nr := p.tok.line_nr
+		name := p.check_name()
+		field_names << name
+		p.fn_args()
+		if p.tok.kind == .name && p.tok.line_nr == line_nr {
+			p.parse_type()
+		}
+	}
+	p.check(.rcbr)
+	return ast.InterfaceDecl{
+		name: interface_name
+		field_names: field_names
 	}
 }
 
@@ -1695,7 +1726,7 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 	}
 	p.next()
 	name := p.check_name()
-	println(name)
+	// println(name)
 	typ := p.parse_type()
 	if p.tok.kind == .assign {
 		p.next()
@@ -1807,13 +1838,21 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	name := p.prepend_mod(p.check_name())
 	p.check(.lcbr)
 	mut vals := []string
+	mut default_exprs := []ast.Expr
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		val := p.check_name()
 		vals << val
 		// p.warn('enum val $val')
 		if p.tok.kind == .assign {
 			p.next()
-			p.expr(0)
+			default_exprs << p.expr(0)
+		}
+		// Allow commas after enum, helpful for
+		// enum Color {
+		//     r,g,b
+		// }
+		if p.tok.kind == .comma {
+			p.next()
 		}
 	}
 	p.check(.rcbr)
@@ -1828,6 +1867,7 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 		name: name
 		is_pub: is_pub
 		vals: vals
+		default_exprs: default_exprs
 	}
 }
 
@@ -1888,6 +1928,12 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 		name: name
 		is_pub: is_pub
 		parent_type: parent_type
+	}
+}
+
+fn (p &Parser) new_true_expr() ast.Expr {
+	return ast.BoolLiteral{
+		val: true
 	}
 }
 

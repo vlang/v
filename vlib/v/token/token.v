@@ -121,13 +121,15 @@ pub enum Kind {
 	key_static
 	key_unsafe
 	keyword_end
+
+	_end_
 }
 
 const (
 	assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign,
 	.div_assign, .xor_assign, .mod_assign, .or_assign, .and_assign,
 	.right_shift_assign, .left_shift_assign]
-	nr_tokens = 141
+	nr_tokens = int(Kind._end_)
 )
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
