@@ -3,46 +3,6 @@
 // that can be found in the LICENSE file.
 module time
 
-// format_ymd_hm returns a date string in "YYYY-MM-DD HH:MM" format (24h).
-pub fn (t Time) format_ymd_hm() string {
-	return t.format(.hyphen, .hhmm24, .yyyymmdd)
-}
-
-// format_ymd_hms returns a date string in "YYYY-MM-DD HH:MM:SS" format (24h).
-pub fn (t Time) format_ymd_hms() string {
-	return t.format(.hyphen, .hhmmss24, .yyyymmdd)
-}
-
-// format_hm returns a date string in "HH:MM" format (24h).
-pub fn (t Time) format_hm() string {
-	return t.format_time(.hhmm24)
-}
-
-// format_hms returns a date string in "HH:MM:SS" format (24h).
-pub fn (t Time) format_hms() string {
-	return t.format_time(.hhmmss24)
-}
-
-// format_hm12 returns a date string in "HH:MM" format (12h).
-pub fn (t Time) format_hm12() string {
-	return t.format_time(.hhmm12)
-}
-
-// format_ymd returns a date string in "YYYY-MM-DD" format.
-pub fn (t Time) format_ymd() string {
-	return t.format_date(.hyphen, .yyyymmdd)
-}
-
-// format_dmy returns a date string in "DD.MM.YYYY" format.
-pub fn (t Time) format_dmy() string {
-	return t.format_date(.dot, .ddmmyyyy)
-}
-
-// format_md returns a date string in "MMM D" format.
-pub fn (t Time) format_md() string {
-	return t.format_date(.space, .mmmd)
-}
-
 // format_clean returns a date string in a following format:
 //  - a date string in "HH:MM" format (24h) for current day
 //  - a date string in "MMM D HH:MM" format (24h) for date of current year
@@ -57,7 +17,7 @@ pub fn (t Time) format_clean() string {
 	if t.year == now.year {
 		return t.format(.space, .hhmm24, .mmmd)
 	}
-	return t.format_ymd_hm()
+	return t.format(.hyphen, .hhmm24, .yyyymmdd)
 }
 
 // format_clean12 returns a date string in a following format:
@@ -74,7 +34,7 @@ pub fn (t Time) format_clean12() string {
 	if t.year == now.year {
 		return t.format(.space, .hhmm12, .mmmd)
 	}
-	return t.format_ymd_hm()
+	return t.format(.hyphen, .hhmm24, .yyyymmdd)
 }
 
 // format_time returns a date string with specified FormatTime type.

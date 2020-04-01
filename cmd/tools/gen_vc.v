@@ -271,8 +271,8 @@ fn (gen_vc mut GenVC) generate() {
 	last_commit_subject := git_log_v.find_between('Subject:', '\n').trim_space().replace('"', '\\"')
 
 	// log some info
-	gen_vc.logger.debug('last commit time ($git_repo_v): ' + last_commit_time_v.format_ymd_hms())
-	gen_vc.logger.debug('last commit time ($git_repo_vc): ' + last_commit_time_vc.format_ymd_hms())
+	gen_vc.logger.debug('last commit time ($git_repo_v): ' + last_commit_time_v.format(.hyphen, .hhmmss24, .yyyymmdd))
+	gen_vc.logger.debug('last commit time ($git_repo_vc): ' + last_commit_time_vc.format(.hyphen, .hhmmss24, .yyyymmdd))
 	gen_vc.logger.debug('last commit hash ($git_repo_v): $last_commit_hash_v')
 	gen_vc.logger.debug('last commit subject ($git_repo_v): $last_commit_subject')
 

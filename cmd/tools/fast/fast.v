@@ -49,7 +49,7 @@ fn main() {
 	// Place the new row on top
 	table =
 '<tr>
-	<td>${date.format_ymd_hm()}</td>
+	<td>${date.format(.hyphen, .hhmm24, .yyyymmdd)}</td>
 	<td><a target=_blank href="https://github.com/vlang/v/commit/$commit_hash">$commit_hash</a></td>
 	<td>$message</td>
 	<td>${diff1}ms</td>

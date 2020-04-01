@@ -12,38 +12,8 @@ const (
 	}
 )
 
-fn test_now_format_ymd_hm() {
-	t := time.now()
-	u := t.unix
-	assert t.format_ymd_hm() == time.unix(u).format_ymd_hm()
-}
-
 fn test_format_ymd_hm() {
 	assert '11.07.1980 21:23' == time_to_test.format(.dot, .hhmm24, .ddmmyyyy)
-}
-
-fn test_format_hm() {
-	assert '21:23' == time_to_test.format_hm()
-}
-
-fn test_format_hm12() {
-	assert '9:23 p.m.' == time_to_test.format_hm12()
-}
-
-fn test_format_hms() {
-	assert '21:23:42' == time_to_test.format_hms()
-}
-
-fn test_format_ymd() {
-	assert '1980-07-11' == time_to_test.format_ymd()
-}
-
-fn test_format_dmy() {
-	assert '11.07.1980' == time_to_test.format_dmy()
-}
-
-fn test_format_md() {
-	assert 'Jul 11' == time_to_test.format_md()
 }
 
 fn test_format_time() {
