@@ -285,11 +285,11 @@ jobs:
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         .\.github\workflows\windows-install-sdl.bat
-#    - name: Build
-#      run: |
-#        echo %VFLAGS%
-#        echo $VFLAGS
-#        .\make.bat -msvc
+    - name: Build
+      run: |
+        echo %VFLAGS%
+        echo $VFLAGS
+        .\make.bat -msvc
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
