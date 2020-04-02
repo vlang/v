@@ -1,8 +1,13 @@
 module gen
 
 const (
-	c_common_macros = '
+	c_commit_hash_default = '
+#ifndef V_COMMIT_HASH
+#define V_COMMIT_HASH "$vhash()"
+#endif
 
+'
+	c_common_macros = '
 #define EMPTY_STRUCT_DECLARATION
 #define EMPTY_STRUCT_INITIALIZATION 0
 // Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
@@ -39,8 +44,6 @@ const (
 #define V64_PRINTFORMAT "0x%llx"
 #endif
 #endif
-
-#define V_COMMIT_HASH "TODO"
 
 '
 	c_headers = '
