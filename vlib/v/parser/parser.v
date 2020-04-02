@@ -493,7 +493,6 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 				pos: p.tok.position()
 			}
 		}
-<<<<<<< HEAD
 		.key_break {
 			tok := p.tok
 			p.next()
@@ -529,10 +528,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 				}
 			}
 		} 
-		.key_mut {
-=======
 		.key_mut, .key_static {
->>>>>>> upstream/master
 			return p.assign_stmt()
 		}
 		.key_for {
