@@ -1772,12 +1772,14 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 	cond := p.expr(0)
 	p.check(.lcbr)
 	mut branches := []ast.MatchBranch
+	mut have_final_else := false
 	for {
 		mut exprs := []ast.Expr
 		branch_pos := p.tok.position()
 		p.open_scope()
 		// final else
 		if p.tok.kind == .key_else {
+			have_final_else = true
 			p.next()
 		}
 		// Sum type match
@@ -1825,6 +1827,9 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .rcbr {
 			break
 		}
+	}
+	if !have_final_else {
+		p.error('match must be exhaustive')
 	}
 	p.check(.rcbr)
 	return ast.MatchExpr{

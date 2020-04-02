@@ -1116,7 +1116,9 @@ pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {
 
 pub fn (c mut Checker) error(s string, pos token.Position) {
 	c.nr_errors++
-	print_backtrace()
+	//if c.pref.is_verbose {
+		print_backtrace()
+	//}
 	mut path := c.file.path
 	// Get relative path
 	workdir := os.getwd() + os.path_separator
