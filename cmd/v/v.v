@@ -121,7 +121,8 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 		arg := args[i]
 		match arg {
 			'-v' {	res.is_verbose = true	}
-			'-cg' {
+			'-cg' {	res.is_debug = true	}
+			'-cc' {
 				res.ccompiler = cmdline.option(args, '-cc', 'cc')
 				i++
 			}
