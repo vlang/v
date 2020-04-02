@@ -204,7 +204,7 @@ pub fn get_module_filename(handle HANDLE) ?string {
 		for {
 			status := int(C.GetModuleFileNameW(handle, voidptr(&buf), sz))
 			match status {
-				os.success {
+				success {
 					_filename := string_from_wide2(buf, sz)
 					return _filename
 				}

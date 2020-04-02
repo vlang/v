@@ -106,7 +106,6 @@ pub fn (g &Gen) hashes() string {
 	mut res := c_commit_hash_default.replace('@@@', util.vhash() )
 	res += c_current_commit_hash_default.replace('@@@', util.githash( g.pref.building_v ) )
 	return res
-	return c_commit_hash_default + g.typedefs.str() + g.definitions.str() + g.out.str()
 }
 
 pub fn (g mut Gen) init() {
