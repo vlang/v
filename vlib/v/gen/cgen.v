@@ -98,7 +98,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.is_test {
 		g.write_tests_main()
 	}
-	return g.typedefs.str() + g.definitions.str() + g.out.str()
+	return c_commit_hash_default + g.typedefs.str() + g.definitions.str() + g.out.str()
 }
 
 pub fn (g mut Gen) init() {
