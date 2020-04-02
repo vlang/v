@@ -314,8 +314,14 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.write(it.tok.kind.str())
 			g.writeln(';')
 		}
+		ast.BreakStmt{
+			g.writeln('goto outer_$it.name')
+		}
 		ast.ConstDecl {
 			g.const_decl(it)
+		}
+		ast.ContinueStmt{
+			g.writeln('goto loop_$it.name')
 		}
 		ast.CompIf {
 			g.comp_if(it)
@@ -390,11 +396,32 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			styp := g.typ(it.typ)
 			g.definitions.writeln('$styp $it.name; // global')
 		}
-		ast.GotoLabel {
-			g.writeln('$it.name:')
+		ast.LabeledStmt {
+			if it.loop{
+				// generate before loop scope.
+				g.writeln('loop label $it.name')
+				g.stmts(it.before_loop)
+			}
+			else {
+				g.writeln('$it.name:')
+			}
+			g.stmts(it.stmts)
+			if it.loop {
+				// generate after loop scope.
+				g.writeln('loop_$it.name:')
+				g.writeln(';')
+				g.stmts(it.after_loop)
+				g.writeln('outer_$it.name')
+				g.writeln(';')
+			}
 		}
 		ast.GotoStmt {
-			g.writeln('goto $it.name;')
+			if it.loop{
+				g.writeln('goto loop_$it.name')
+			}
+			else{
+				g.writeln('goto $it.name;')
+			}
 		}
 		ast.HashStmt {
 			// #include etc
@@ -404,6 +431,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.Import {}
+		ast.PrefixGotoStmt{
+			if !it.in_label_scope {
+
+			}
+		}
 		ast.Return {
 			if g.defer_stmts.len > 0 {
 				g.write_defer_stmts()

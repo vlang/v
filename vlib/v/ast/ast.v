@@ -19,7 +19,7 @@ ConcatExpr | Type | AsCast
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GoStmt | LabeledStmt |
-LineComment | MultiLineComment | AssertStmt | UnsafeStmt
+BreakStmt | ContinueStmt | PrefixGotoStmt | LineComment | MultiLineComment | AssertStmt | UnsafeStmt
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -509,19 +509,39 @@ pub:
 	expr Expr
 }
 
+pub struct GotoStmt {
+pub:
+	loop bool
+	name string
+}
+
+pub struct PrefixGotoStmt {
+pub:
+	stmts []Stmt
+	in_label_scope bool
+	loop bool
+	name string
+}
+
 pub struct LabeledStmt {
 pub:
-	tok string
 	name string
 	loop bool
-	stmts []Stmts
+	stmts []Stmt
 	// loop label statement.
 	before_loop []Stmt
 	after_stmts []Stmt
 	after_loop []Stmt
-	// generation code.
-	key_break bool
-	key_continue bool
+}
+
+pub struct BreakStmt{
+pub:
+	name string
+}
+
+pub struct ContinueStmt{
+pub:
+	name string
 }
 
 pub struct ArrayInit {
