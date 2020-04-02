@@ -657,7 +657,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					else {}
 	}
 				is_decl := assign_stmt.op == .decl_assign
-				g.write('/*assign_stmt*/')
+				//g.write('/*assign_stmt*/')
 				if is_decl {
 					g.write('$styp ')
 				}
@@ -733,7 +733,11 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	g.reset_tmp_count()
 	is_main := it.name == 'main'
 	if is_main {
-		g.write('int ${it.name}(int argc, char** argv')
+		if g.pref.os == .windows {
+			g.write('int wmain(int argc, wchar_t *argv[], wchar_t *envp[]')
+		} else {
+			g.write('int ${it.name}(int argc, char** argv')
+		}
 	}
 	else {
 		mut name := it.name
@@ -789,9 +793,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			if g.autofree {
 				g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
 			}
-			$if windows {
-				g.writeln('_const_os__args = os__init_os_args_wide(argc, (byteptr*)argv);')
-			}	$else {
+			if g.pref.os == .windows {
+				g.writeln('_const_os__args = os__init_os_args_wide(argc, argv);')
+			}	else {
 				g.writeln('_const_os__args = os__init_os_args(argc, (byteptr*)argv);')
 			}
 		}
