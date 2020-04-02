@@ -48,6 +48,8 @@ fn C.gladLoadGL()
 fn C.glTexImage2D()
 fn C.glPixelStorei()
 fn C.glBlendFunc()
+fn C.glPolygonMode()
+fn C.glDeleteBuffers()
 
 
 
