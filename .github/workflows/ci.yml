@@ -137,7 +137,6 @@ jobs:
         ./v vlib/v/tests/prod_test.v
         ./v vlib/v/tests/cstrings_test.v
         ./v vlib/v/tests/valgrind/valgrind_test.v
-#        ./v vlib/v/tests/live_test.v
         ./v vlib/v/tests/nameof_test.v
         ./v vlib/v/tests/repeated_multiret_values_test.v
         ./v vlib/v/tests/modules/amodule/internal_module_test.v
