@@ -1167,6 +1167,17 @@ fn (g mut Gen) typeof_expr(node ast.TypeOf) {
 	}
 }
 
+fn (g mut Gen) enum_expr(node ast.Expr) {
+	match node {
+		ast.EnumVal {
+			g.write('$it.val.capitalize()')
+		}
+		else {
+			println(term.red('cgen.enum_expr(): bad node ' + typeof(node)))
+		}
+	}
+}
+
 fn (g mut Gen) assign_expr(node ast.AssignExpr) {
 	// g.write('/*assign_expr*/')
 	mut is_call := false
@@ -2395,9 +2406,9 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			g.writeln('); println($tmp); string_free($tmp); //MEM2 $styp')
 		}
 		else if sym.kind == .enum_ {
-			g.write('println(int_str(')
-			g.expr(node.args[0].expr)
-			g.write('))')
+			g.write('println(tos3("')
+			g.enum_expr(node.args[0].expr)
+			g.write('"))')
 		}
 		else {
 			// `println(int_str(10))`
