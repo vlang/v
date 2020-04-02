@@ -18,7 +18,7 @@ Type | AsCast | TypeOf | StringInterLiteral
 
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | LabeledStmt | GotoStmt |
 LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
@@ -28,6 +28,11 @@ LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | Inte
 pub struct Type {
 pub:
 	typ table.Type
+}
+
+pub struct Block {
+pub:
+	stmts []Stmt
 }
 
 // | IncDecStmt k
@@ -52,6 +57,16 @@ pub:
 pub struct StringLiteral {
 pub:
 	val string
+}
+
+// 'name: $name'
+pub struct StringInterLiteral {
+pub:
+	vals       []string
+	exprs      []Expr
+	expr_fmts  []string
+mut:
+	expr_types []table.Type
 }
 
 pub struct CharLiteral {
