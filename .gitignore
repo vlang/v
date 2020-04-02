@@ -66,6 +66,11 @@ info.log
 # vim/emacs editor backup files
 *~
 
+# vim gitignore
+*.swp
+*.swo
+*.swn
+
 thirdparty/freetype/
 thirdparty/sdl2/
 thirdparty/SDL2_image/
@@ -76,3 +81,7 @@ cachegrind.out.*
 
 .gdb_history
 /thirdparty/pg
+exe
+vlib/v/tests/inout/hello.v
+vlib/v/tests/inout/hello_devs.v
+vlib/v/tests/inout/os.v

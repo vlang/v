@@ -85,20 +85,8 @@ fn (b mut BenchedTests) end_testing() {
 
 // ///////////////////////////////////////////////////////////////////
 fn nasserts(n int) string {
-	if n == 0 {
-		return '${n:2d} asserts | '
-	}
 	if n == 1 {
-		return '${n:2d} assert  | '
-	}
-	if n < 10 {
-		return '${n:2d} asserts | '
-	}
-	if n < 100 {
-		return '${n:3d} asserts | '
-	}
-	if n < 1000 {
-		return '${n:4d} asserts | '
+		return '${n:5d} assert  | '
 	}
 	return '${n:5d} asserts | '
 }

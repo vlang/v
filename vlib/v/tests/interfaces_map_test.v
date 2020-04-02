@@ -1,9 +1,13 @@
 module main
 
 interface Speaker {
-	say() string
+	say()string
 }
 
+fn test_todo() {}
+
+/*
+// QTODO
 struct ChatRoom {
 mut:
 	talkers map[string]Speaker
@@ -47,3 +51,4 @@ fn (d &Dog) say() string { return '${d.name} barks "Bau Bau!"' }
 
 struct Human { name string }
 fn (h &Human) say() string { return '${h.name} says "Hello"' }
+*/

@@ -1,3 +1,7 @@
+fn test_todo() {}
+
+/*
+// QTODO
 fn simple<T>(p T) T {
     return p
 }
@@ -58,7 +62,7 @@ fn test_generic_fn() {
     assert_eq(sum([5.1,6.2,7.0]), 18.3)
     assert_eq(plus(i64(4), i64(6)), i64(10))
     a := [1,2,3,4]
-    b := map_f(a, square) 
+    b := map_f(a, square)
     assert_eq(sum(b), 30)     // 1+4+9+16 = 30
     assert_eq(foldl(b, 1, mul_int), 576)   // 1*4*9*16 = 576
     print_nice('str', 8)
@@ -123,9 +127,10 @@ fn new_repo<U>(db DB) Repo<U> {
 fn test_generic_struct() {
 	mut a :=  new_repo<User>(DB{})
 	a.model.name = 'joe'
-	mut b := Repo<User>{db: DB{}}
+	mut b := Repo<User>{db: DB{}
+	}
 	b.model.name = 'joe'
 	assert a.model.name == 'joe'
 	assert b.model.name == 'joe'
 }
-
+*/

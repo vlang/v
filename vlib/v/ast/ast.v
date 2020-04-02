@@ -11,15 +11,16 @@ import (
 pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
 
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral |
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr |
-AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr |
-CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr |
-ConcatExpr | Type | AsCast
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr |
+PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr |
+EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr |
+Type | AsCast | TypeOf | StringInterLiteral
 
-pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GoStmt | LabeledStmt |
-BreakStmt | ContinueStmt | PrefixGotoStmt | LineComment | MultiLineComment | AssertStmt | UnsafeStmt
+pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | LabeledStmt |
+BreakStmt | ContinueStmt | PrefixGotoStmt | LineComment | MultiLineComment | AssertStmt | 
+UnsafeStmt | GoStmt | Block | InterfaceDecl|
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -100,22 +101,31 @@ pub:
 
 pub struct StructDecl {
 pub:
-	pos         token.Position
+	pos           token.Position
+	name          string
+	fields        []Field
+	is_pub        bool
+	mut_pos       int // mut:
+	pub_pos       int // pub:
+	pub_mut_pos   int // pub mut:
+	is_c          bool
+	default_exprs []Expr
+}
+
+pub struct InterfaceDecl {
 	name        string
-	fields      []Field
-	is_pub      bool
-	mut_pos     int // mut:
-	pub_pos     int // pub:
-	pub_mut_pos int // pub mut:
-	is_c        bool
+	field_names []string
 }
 
 pub struct StructInit {
 pub:
-	pos    token.Position
-	typ    table.Type
-	fields []string
-	exprs  []Expr
+	pos            token.Position
+	fields         []string
+	exprs          []Expr
+mut:
+	typ            table.Type
+	expr_types     []table.Type
+	expected_types []table.Type
 }
 
 // import statement
@@ -150,28 +160,18 @@ pub:
 
 pub struct CallExpr {
 pub:
-// tok          token.Token
-	pos         token.Position
-mut:
-// func         Expr
-	name        string
-	args        []CallArg
-	is_c        bool
-	muts        []bool
-	or_block    OrExpr
-	return_type table.Type
-}
-
-pub struct MethodCallExpr {
-pub:
-// tok        token.Token
+// tok            token.Token
 	pos           token.Position
-	expr          Expr // `user` in `user.register()`
+	left          Expr // `user` in `user.register()`
+	is_method     bool
+mut:
 	name          string
 	args          []CallArg
+	exp_arg_types []table.Type
+	is_c          bool
 	or_block      OrExpr
-mut:
-	expr_type     table.Type // type of `user`
+	// has_or_block bool
+	left_type     table.Type // type of `user`
 	receiver_type table.Type // User
 	return_type   table.Type
 }
@@ -425,6 +425,7 @@ pub:
 mut:
 	left_types  []table.Type
 	right_types []table.Type
+	is_static   bool // for translated code only
 }
 
 pub struct AsCast {
@@ -451,9 +452,10 @@ mut:
 
 pub struct EnumDecl {
 pub:
-	name   string
-	is_pub bool
-	vals   []string
+	name          string
+	is_pub        bool
+	vals          []string
+	default_exprs []Expr
 }
 
 pub struct AliasTypeDecl {
@@ -616,6 +618,13 @@ pub:
 	type_name string
 }
 
+pub struct TypeOf {
+pub:
+	expr      Expr
+mut:
+	expr_type table.Type
+}
+
 pub struct LineComment {
 pub:
 	text string
@@ -635,30 +644,26 @@ pub struct None {
 pub:
 	foo int // todo
 }
-/*
-enum BinaryOp {
-	sum
-	difference
-	product
-	quotient
-	remainder
-	bitwise_and
-	bitwise_or
-	bitwise_xor
-	left_shift
-	right_shift
 
-	equality
-	inequality
-	less_than
-	less_than_or_equal
-	more_than
-	more_than_or_equal
-
-	in_check
-
-	//These are suffixed with `bool` to prevent conflict with the keyword `or`
-	and_bool
-	or_bool
+[inline]
+pub fn expr_is_blank_ident(expr Expr) bool {
+	match expr {
+		Ident {
+			return it.kind == .blank_ident
+		}
+		else {
+			return false
+		}
+	}
 }
-*/
+
+[inline]
+pub fn expr_is_call(expr Expr) bool {
+	return match expr {
+		CallExpr{
+			true
+		}
+		else {
+			false}
+	}
+}

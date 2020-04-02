@@ -1,4 +1,4 @@
-module compiler
+module builder
 
 import os
 
@@ -9,20 +9,21 @@ import os
 // ModFileCacher.get(folder) works in such a way, that given this tree:
 // examples/hanoi.v
 // vlib/v.mod
-// vlib/compiler/tests/project_with_c_code/mod1/v.mod
-// vlib/compiler/tests/project_with_c_code/mod1/wrapper.v
+// vlib/v/tests/project_with_c_code/mod1/v.mod
+// vlib/v/tests/project_with_c_code/mod1/wrapper.v
 // -----------------
 // ModFileCacher.get('examples')
 // => ModFileAndFolder{'', 'examples'}
-// ModFileCacher.get('vlib/compiler/tests')
+// ModFileCacher.get('vlib/v/tests')
 // => ModFileAndFolder{'vlib/v.mod', 'vlib'}
-// ModFileCacher.get('vlib/compiler')
+// ModFileCacher.get('vlib/v')
 // => ModFileAndFolder{'vlib/v.mod', 'vlib'}
-// ModFileCacher.get('vlib/project_with_c_code/mod1')
-// => ModFileAndFolder{'vlib/project_with_c_code/mod1/v.mod', 'vlib/project_with_c_code/mod1'}
+// ModFileCacher.get('vlib/v/test/project_with_c_code/mod1')
+// => ModFileAndFolder{'vlib/v/test/project_with_c_code/mod1/v.mod', 'vlib/v/test/project_with_c_code/mod1'}
 
 
-struct ModFileAndFolder {
+pub struct ModFileAndFolder {
+pub:
 	// vmod_file contains the full path of the found 'v.mod' file, or ''
 	// if no 'v.mod' file was found in file_path_dir, or in its parent folders.
 	vmod_file string
@@ -33,18 +34,18 @@ struct ModFileAndFolder {
 	vmod_folder string
 }
 
-struct ModFileCacher {
+pub struct ModFileCacher {
 mut:
 	cache map[string]ModFileAndFolder
 	// folder_files caches os.ls(key)
 	folder_files map[string][]string
 }
 
-fn new_mod_file_cacher() &ModFileCacher {
+pub fn new_mod_file_cacher() &ModFileCacher {
 	return &ModFileCacher{}
 }
 
-fn (mcache &ModFileCacher) dump() {
+pub fn (mcache &ModFileCacher) dump() {
 	$if debug {
 		eprintln('ModFileCacher DUMP:')
 		eprintln('	 ModFileCacher.cache:')
@@ -58,7 +59,7 @@ fn (mcache &ModFileCacher) dump() {
 	}
 }
 
-fn (mcache mut ModFileCacher) get(mfolder string) ModFileAndFolder {
+pub fn (mcache mut ModFileCacher) get(mfolder string) ModFileAndFolder {
 	if mfolder in mcache.cache {
 		return mcache.cache[ mfolder ]
 	}

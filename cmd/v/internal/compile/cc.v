@@ -1,13 +1,22 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module compiler
+module compile
 
 import (
 	os
 	time
 	v.pref
 	term
+)
+
+ pub const (
+         v_version = '0.1.26'
+ )
+
+
+const (
+v_modules_path = pref.default_module_path
 )
 
 fn todo() {
@@ -219,6 +228,8 @@ fn (v mut V) cc() {
 		a << '-c'
 	}
 	else if v.pref.is_cache {
+		/*
+		QTODO
 		builtin_o_path := os.join_path(v_modules_path, 'cache', 'vlib', 'builtin.o')
 		a << builtin_o_path.replace('builtin.o', 'strconv.o') // TODO hack no idea why this is needed
 		if os.exists(builtin_o_path) {
@@ -260,7 +271,9 @@ fn (v mut V) cc() {
 				a << '-framework Cocoa -framework Carbon'
 			}
 		}
+		*/
 	}
+
 	if v.pref.sanitize {
 		a << '-fsanitize=leak'
 	}
@@ -367,7 +380,7 @@ start:
 ==================
 C error. This should never happen.
 
-V compiler version: V $Version $vhash()
+V compiler version: V $v_version $vhash()
 Host OS: ${pref.get_host_os().str()}
 Target OS: $v.pref.os.str()
 
@@ -463,6 +476,8 @@ If you're confident that all of the above is true, please try running V with the
 }
 
 fn (c mut V) cc_windows_cross() {
+	/*
+	QTODO
 	println('Cross compiling for Windows...')
 	if !c.pref.out_name.ends_with('.exe') {
 		c.pref.out_name += '.exe'
@@ -533,6 +548,7 @@ fn (c mut V) cc_windows_cross() {
 	}
 	*/
 	println('Done!')
+	*/
 }
 
 fn (c &V) build_thirdparty_obj_files() {
@@ -547,6 +563,38 @@ fn (c &V) build_thirdparty_obj_files() {
 			}
 		}
 	}
+}
+
+fn (v &V) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
+	obj_path := os.real_path(path)
+	if os.exists(obj_path) {
+		return
+	}
+	println('$obj_path not found, building it...')
+	parent := os.dir(obj_path)
+	files := os.ls(parent)or{
+		panic(err)
+	}
+	mut cfiles := ''
+	for file in files {
+		if file.ends_with('.c') {
+			cfiles += '"' + os.real_path(parent + os.path_separator + file) + '" '
+		}
+	}
+	btarget := moduleflags.c_options_before_target()
+	atarget := moduleflags.c_options_after_target()
+	cmd := '$v.pref.ccompiler $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget '
+	res := os.exec(cmd)or{
+		println('failed thirdparty object build cmd: $cmd')
+		verror(err)
+		return
+	}
+	if res.exit_code != 0 {
+		println('failed thirdparty object build cmd: $cmd')
+		verror(res.output)
+		return
+	}
+	println(res.output)
 }
 
 fn missing_compiler_info() string {
@@ -578,3 +626,11 @@ fn error_context_lines(text, keyword string, before, after int) []string {
 	idx_e := if idx_s + after < lines.len { idx_s + after } else { lines.len }
 	return lines[idx_s..idx_e]
 }
+
+fn vhash() string {
+        mut buf := [50]byte
+        buf[0] = 0
+        C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
+        return tos_clone(buf)
+}
+

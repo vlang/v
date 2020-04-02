@@ -4,15 +4,23 @@
 module main
 
 import (
-	compiler
 	os
 	v.pref
 )
 
+fn set_vroot_folder(vroot_path string) {
+        // Preparation for the compiler module:
+        // VEXE env variable is needed so that compiler.vexe_path()
+        // can return it later to whoever needs it:
+        vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+        os.setenv('VEXE', os.real_path([vroot_path, vname].join(os.path_separator)), true)
+}
+
+
 fn launch_tool(verbosity pref.VerboseLevel, tool_name string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
-	compiler.set_vroot_folder(vroot)
+	set_vroot_folder(vroot)
 
 	tool_args := os.args[1..].join(' ')
 	tool_exe := path_of_executable(os.real_path('$vroot/cmd/tools/$tool_name'))

@@ -24,10 +24,10 @@ pub fn new_test_session(_vargs string) TestSession {
     mut skip_files := []string
 	skip_files << '_non_existing_'
 	$if solaris {
-		skip_files << "examples/gg2.v"
+		skip_files << "examples/gg/gg2.v"
 		skip_files << "examples/pico/pico.v"
-		skip_files << "examples/sokol_examples/fonts.v"
-		skip_files << "examples/sokol_examples/drawing.v"
+		skip_files << "examples/sokol/fonts.v"
+		skip_files << "examples/sokol/drawing.v"
 	}
 	vargs := _vargs.replace('-silent', '')
 	vexe := pref.vexe_path()
@@ -74,7 +74,9 @@ pub fn (ts mut TestSession) test() {
 	}
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	mut pool_of_test_runners := sync.new_pool_processor({
+	// QTODO
+	//mut pool_of_test_runners := sync.new_pool_processor({
+	mut pool_of_test_runners := sync.new_pool_processor(sync.PoolProcessorConfig{
 		callback: worker_trunner
 	})
 	pool_of_test_runners.set_shared_context(ts)

@@ -3,9 +3,7 @@
 // that can be found in the LICENSE file.
 module scanner
 
-import (
-	v.token
-)
+import v.token
 
 fn test_scan() {
 	text := 'println(2 + 3)'
@@ -33,11 +31,11 @@ fn test_scan() {
 	c = 1000000
 	assert c == 1000000
 	// test float conversion and reading
-	d := f64(23000000e-3)
+	d := 23000000e-3
 	assert int(d) == 23000
-	mut e := f64(1.2E3) * f64(-1e-1)
+	mut e := 1.2E3 * -1e-1
 	assert e == -120.0
-	e = f64(1.2E3) * f64(1e-1)
+	e = 1.2E3 * 1e-1
 	assert e == 120.0
 	assert 1.23e+10 == 1.23e10
 	assert 1.23e+10 == 1.23e0010
