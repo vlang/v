@@ -236,10 +236,15 @@ pub fn (g mut Gen) save_main_fn_addr() {
 	g.main_fn_addr = g.buf.len
 }
 
-pub fn (g mut Gen) gen_print_from_expr(expr ast.Expr) {
+pub fn (g mut Gen) gen_print_from_expr(expr ast.Expr, newline bool) {
 	match expr {
 		ast.StringLiteral {
-			g.gen_print(it.val)
+			if newline {
+				g.gen_print(it.val+'\n')
+			}
+			else {
+				g.gen_print(it.val)
+			}
 		}
 		else {}
 	}
@@ -362,7 +367,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.CallExpr {
 			if it.name == 'println' || it.name == 'print' {
 				expr := it.args[0].expr
-				g.gen_print_from_expr(expr)
+				g.gen_print_from_expr(expr, it.name == 'println')
 			}
 			/*
 			g.write('${it.name}(')

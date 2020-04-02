@@ -323,7 +323,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 			return f.return_type
 		}
 		// println can print anything
-		if fn_name == 'println' {
+		if fn_name == 'println' || fn_name == 'print' {
 			c.expected_type = table.string_type
 			call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
 			return f.return_type
