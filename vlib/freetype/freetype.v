@@ -110,16 +110,16 @@ struct C.FT_Glyph_Metrics {
 }
 
 struct C.Glyph {
-	bitmap Bitmap
+	bitmap C.Bitmap
 	bitmap_left int
 	bitmap_top int
 	advance Advance
-	metrics FT_Glyph_Metrics
+	metrics C.FT_Glyph_Metrics
 }
 
 [typedef]
 struct C.FT_Face {
-	glyph &Glyph
+	glyph &C.Glyph
 	family_name charptr
 	style_name charptr
 }
@@ -193,7 +193,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	projection := glm.ortho(0, width, 0, height)// 0 at BOT
 	shader.set_mat4('projection', projection)
 	// FREETYPE
-	ft := FT_Library{0}
+	ft := C.FT_Library{0}
 	// All functions return a value different than 0 whenever
 	// an error occurred
 	mut ret := C.FT_Init_FreeType(&ft)
@@ -386,7 +386,7 @@ pub fn (ctx mut FreeType) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
 		color: gx.Black
 		size: default_font_size
-		align: gx.ALIGN_LEFT
+		align: gx.align_left
 	}
 	ctx.draw_text(x, y, text, cfg)
 }
@@ -451,9 +451,12 @@ pub fn (ctx mut FreeType) text_size(s string) (int, int) {
 	return scaled_x, scaled_y
 }
 
+/*
 pub fn (f FT_Face) str() string {
 	return 'FT_Face{ style_name: ${ptr_str(f.style_name)} family_name: ${ptr_str(f.family_name)} }'
 }
+*/
+
 pub fn (ac []Character) str() string {
 	mut res := []string
 	for c in ac {

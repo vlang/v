@@ -78,7 +78,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		if g.file.path.ends_with('_test.v') {
 			g.is_test = is_test
 		}
-		if g.file.path == '' || is_test || building_v {
+		if g.file.path == '' || is_test || building_v || !g.pref.autofree {
 			// cgen test or building V
 			// println('autofree=false')
 			g.autofree = false
@@ -383,6 +383,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.GlobalDecl {
 			styp := g.typ(it.typ)
 			g.definitions.writeln('$styp $it.name; // global')
+		}
+		ast.GoStmt {
+			g.writeln('// go')
+			g.expr(it.expr)
 		}
 		ast.GotoLabel {
 			g.writeln('$it.name:')
@@ -785,7 +789,11 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			if g.autofree {
 				g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
 			}
-			g.writeln('_const_os__args = os__init_os_args(argc, (byteptr*)argv);')
+			$if windows {
+				g.writeln('_const_os__args = os__init_os_args_wide(argc, (byteptr*)argv);')
+			}	$else {
+				g.writeln('_const_os__args = os__init_os_args(argc, (byteptr*)argv);')
+			}
 		}
 	}
 	g.stmts(it.stmts)
@@ -1156,6 +1164,17 @@ fn (g mut Gen) typeof_expr(node ast.TypeOf) {
 	}
 	else {
 		g.write('tos3("${sym.name}")')
+	}
+}
+
+fn (g mut Gen) enum_expr(node ast.Expr) {
+	match node {
+		ast.EnumVal {
+			g.write('$it.val.capitalize()')
+		}
+		else {
+			println(term.red('cgen.enum_expr(): bad node ' + typeof(node)))
+		}
 	}
 }
 
@@ -2387,9 +2406,9 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			g.writeln('); println($tmp); string_free($tmp); //MEM2 $styp')
 		}
 		else if sym.kind == .enum_ {
-			g.write('println(int_str(')
-			g.expr(node.args[0].expr)
-			g.write('))')
+			g.write('println(tos3("')
+			g.enum_expr(node.args[0].expr)
+			g.write('"))')
 		}
 		else {
 			// `println(int_str(10))`
@@ -2534,6 +2553,19 @@ fn comp_if_to_ifdef(name string) string {
 		}
 		'no_bounds_checking' {
 			return 'NO_BOUNDS_CHECK'
+		}
+		 'x64' {
+         return 'TARGET_IS_64BIT'
+		 }
+		 'x32' {
+		       return 'TARGET_IS_32BIT'
+		 }
+		'little_endian' {
+			return 'TARGET_ORDER_IS_LITTLE'
+
+		}
+		'big_endian' {
+			return 'TARGET_ORDER_IS_BIG'
 		}
 		else {
 			verror('bad os ifdef name "$name"')

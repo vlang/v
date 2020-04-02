@@ -4,7 +4,6 @@
 module main
 
 import (
-	compiler
 	internal.compile
 	internal.flag
 	internal.help
@@ -24,6 +23,11 @@ const (
 	'setup-freetype']
 )
 
+ pub const (
+         v_version = '0.1.26'
+ )
+
+
 fn main() {
 	prefs := flag.MainCmdPreferences{}
 	values := flag.parse_main_cmd(os.args, parse_flags, prefs) or {
@@ -32,7 +36,7 @@ fn main() {
 		exit(1)
 	}
 	if prefs.verbosity.is_higher_or_equal(.level_two) {
-		println('V $compiler.Version $compiler.vhash()')
+		println('V $v_version $vhash()')
 	}
 	if prefs.verbosity.is_higher_or_equal(.level_three) {
 		println('Parsed preferences: ')
@@ -122,9 +126,16 @@ fn main() {
 }
 
 fn print_version_and_exit() {
-	version_hash := compiler.vhash()
-	println('V $compiler.Version $version_hash')
+	version_hash := vhash()
+	println('V $v_version $version_hash')
 	exit(0)
+}
+
+fn vhash() string {
+        mut buf := [50]byte
+        buf[0] = 0
+        C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
+        return tos_clone(buf)
 }
 
 fn invoke_help_and_exit(remaining []string) {

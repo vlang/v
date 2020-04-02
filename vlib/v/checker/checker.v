@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	max_nr_errors = 100
+	max_nr_errors = 300
 )
 
 pub struct Checker {
@@ -76,6 +76,14 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 	// c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
 	// panic('')
 	// }
+	if struct_init.typ == table.void_type {
+		// Short syntax `({foo: bar})`
+		if c.expected_type == table.void_type {
+			c.error('unexpected short struct syntax', struct_init.pos)
+			return table.void_type
+		}
+		struct_init.typ = c.expected_type
+	}
 	typ_sym := c.table.get_type_symbol(struct_init.typ)
 	// println('check struct $typ_sym.name')
 	match typ_sym.kind {

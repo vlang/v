@@ -74,7 +74,9 @@ pub fn (ts mut TestSession) test() {
 	}
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	mut pool_of_test_runners := sync.new_pool_processor({
+	// QTODO
+	//mut pool_of_test_runners := sync.new_pool_processor({
+	mut pool_of_test_runners := sync.new_pool_processor(sync.PoolProcessorConfig{
 		callback: worker_trunner
 	})
 	pool_of_test_runners.set_shared_context(ts)
