@@ -5,7 +5,6 @@ module main
 
 import (
 	internal.compile
-	internal.flag
 	internal.help
 	os
 	os.cmdline
@@ -39,33 +38,33 @@ fn main() {
 		println(util.full_v_version())
 		return
 	}
-	prefs2 := parse_args(args)
-	prefs := flag.MainCmdPreferences{}
-	values := flag.parse_main_cmd(os.args, parse_flags, prefs) or {
-		println('V Error: An error has occurred while parsing flags: ')
-		println(err)
-		exit(1)
-	}
+	prefs2, command := parse_args(args)
+	//println('command = $command')
 	if prefs2.is_verbose {
 		println(util.full_v_version())
 	}
 	if prefs2.is_verbose {
-		println('Parsed preferences: ')
+		//println('args= ')
+		//println(args) // QTODO
+		//println('prefs= ')
 		//println(prefs) // QTODO
-		println('Remaining: $values')
 	}
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
-	if values.len == 0 && prefs.action == .help {
-		invoke_help_and_exit(values)
-	}
-	command := if values.len > 0 { values[0] } else { '' }
 	if command in simple_cmd {
 		// External tools
 		launch_tool(prefs2.is_verbose, 'v' + command)
 		return
 	}
+	if command in ['run', 'build'] || command.ends_with('.v') || os.exists(command) {
+		arg := join_flags_and_argument()
+		compile.compile(command, arg)
+		return
+	}
 	match command {
+		'help' {
+			invoke_help_and_exit(args)
+		}
 		'create', 'init' {
 			launch_tool(prefs2.is_verbose, 'vcreate')
 			return
@@ -83,46 +82,56 @@ fn main() {
 			exit(1)
 		}
 		'symlink' {
-			disallow_unknown_flags(prefs)
 			create_symlink()
 			return
 		}
 		'doc' {
-			disallow_unknown_flags(prefs)
-			if values.len == 1 {
-				println('V Error: Expected argument: Module name to output documentations for')
+			if args.len == 1 {
+				println('v doc [module]')
 				exit(1)
 			}
 			table := table.new_table()
-			println(doc.doc(values[1], table))
+			println(doc.doc(args[1], table))
 			return
 		}
 		'help' {
-			disallow_unknown_flags(prefs)
-			invoke_help_and_exit(values)
+			invoke_help_and_exit(args)
 			return
 		}
 		else {}
-	}
-	if command == 'run' || command == 'build' || command.ends_with('.v') || os.exists(command) {
-		arg := join_flags_and_argument()
-		compile.compile(command, arg)
-		return
 	}
 	eprintln('v $command: unknown command\nRun "v help" for usage.')
 	exit(1)
 }
 
-fn parse_args(args []string) &pref.Preferences{
+fn parse_args(args []string) (&pref.Preferences, string) {
 	mut res := &pref.Preferences{}
-	for i, arg in args {
+	mut command := ''
+	//for i, arg in args {
+	for i := 0 ; i < args.len; i ++ {
+		arg := args[i]
 		match arg {
 			'-v' {	res.is_verbose = true	}
-			'-cg' { res.ccompiler = cmdline.option(args, '-cc', 'cc') }
-			else { }
+			'-cg' {	res.is_debug = true	}
+			'-cc' {
+				res.ccompiler = cmdline.option(args, '-cc', 'cc')
+				i++
+			}
+			'-o' {
+				res.out_name  = cmdline.option(args, '-o', '')
+				i++
+			}
+			'-csource', '-backend' {
+				i++ // TODO
+			}
+			else {
+				if !arg.starts_with('-') && command == '' {
+					command = arg
+				}
+			}
 		}
 	}
-	return res
+	return res, command
 }
 
 fn invoke_help_and_exit(remaining []string) {
@@ -137,15 +146,6 @@ fn invoke_help_and_exit(remaining []string) {
 	}
 	println('V Error: Expected only one help topic to be provided.')
 	println('For usage information, use `v help`.')
-	exit(1)
-}
-
-[inline]
-fn disallow_unknown_flags(prefs flag.MainCmdPreferences) {
-	if prefs.unknown_flag == '' {
-		return
-	}
-	println('V Error: Unexpected flag found: $prefs.unknown_flag')
 	exit(1)
 }
 

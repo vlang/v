@@ -1382,7 +1382,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		}
 	}
 	else {
-		need_par := node.op == .amp // `x & y == 0` => `(x & y) == 0` in C
+		need_par := node.op in [.amp, .pipe, .xor] // `x & y == 0` => `(x & y) == 0` in C
 		if need_par {
 			g.write('(')
 		}

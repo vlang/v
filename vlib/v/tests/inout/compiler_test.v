@@ -5,6 +5,7 @@ fn test_all() {
 	$if windows {
 		return
 	}
+	mut total_errors := 0
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	dir := os.join_path(vroot,'vlib/v/tests/inout')
@@ -25,7 +26,7 @@ fn test_all() {
 			panic(err)
 		}
 		os.rm('exe')
-		x := os.exec('v -o exe -cflags "-w" -cg -backend experimental $program') or {
+		x := os.exec('$vexe -o exe -cflags "-w" -cg $program') or {
 			panic(err)
 		}
 		// os.rm(program)
@@ -50,9 +51,11 @@ fn test_all() {
 			println('\nfound:')
 			println(found)
 			println('============')
+			total_errors++
 		}
 		else {
 			println(term.green('OK'))
 		}
 	}
+	assert total_errors == 0
 }
