@@ -613,7 +613,17 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				}
 			}
 			if unresolved_num != 0 {
-				c.error("$unresolved_num ill-defined consts are in use", it.pos)
+				for i, expr in it.exprs {
+					typ := c.expr(expr)
+					if typ == table.void_type {
+						mut _field := it.fields[i]
+						if !_field.already_reported {
+							_field.already_reported = true
+							it.fields[i] = _field
+							c.error("$unresolved_num ill-defined const `$_field.name`", _field.pos)
+						}
+					}
+				}
 			}
 			for i, field in ordered_fields { // set the fields and exprs as ordered
 				it.fields[i] = field

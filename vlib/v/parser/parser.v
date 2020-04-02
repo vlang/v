@@ -1452,6 +1452,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		expr := p.expr(0)
 		fields << ast.Field{
 			name: name
+			pos: p.tok.position()
 			// typ: typ
 
 		}
@@ -1519,6 +1520,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			p.check(.colon)
 		}
 		field_name := p.check_name()
+		field_pos := p.tok.position()
 		// p.warn('field $field_name')
 		typ := p.parse_type()
 		/*
@@ -1535,6 +1537,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 		ast_fields << ast.Field{
 			name: field_name
+			pos: field_pos
 			typ: typ
 		}
 		fields << table.Field{
