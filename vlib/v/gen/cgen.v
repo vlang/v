@@ -354,7 +354,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 						g.writeln(';')
 					}
 				}
-	}
+			}
 		}
 		ast.FnDecl {
 			g.fn_decl = it // &it
@@ -433,7 +433,13 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.Import {}
 		ast.PrefixGotoStmt{
 			if !it.in_label_scope {
-
+				g.stmts(it.stmts)
+			}
+			if it.loop {
+				g.writeln('goto loop_$it.name')
+			}
+			else {
+				g.writeln('goto $it.name')
 			}
 		}
 		ast.Return {
