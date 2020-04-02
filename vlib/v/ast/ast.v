@@ -110,6 +110,7 @@ mut:
 
 pub struct ConstDecl {
 pub:
+	pos    token.Position
 	fields []Field
 	exprs  []Expr
 	is_pub bool

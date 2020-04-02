@@ -1440,6 +1440,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	if is_pub {
 		p.next()
 	}
+	pos := p.tok.position()
 	p.check(.key_const)
 	p.check(.lpar)
 	mut fields := []ast.Field
@@ -1463,6 +1464,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	}
 	p.check(.rpar)
 	return ast.ConstDecl{
+		pos : pos
 		fields: fields
 		exprs: exprs
 		is_pub: is_pub
