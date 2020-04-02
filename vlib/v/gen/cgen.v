@@ -1096,9 +1096,15 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('sizeof($styp)')
 		}
 		ast.StringLiteral {
+			if it.is_raw {
+				escaped_val := it.val.replace_each(['"', '\\"',
+					'\\', '\\\\'])
+				g.write('tos3("$escaped_val")')
+				return
+			}
 			escaped_val := it.val.replace_each(['"', '\\"',
-			'\r\n', '\\n',
-			'\n', '\\n'])
+				'\r\n', '\\n',
+				'\n', '\\n'])
 			if g.is_c_call || it.is_c {
 				// In C calls we have to generate C strings
 				// `C.printf("hi")` => `printf("hi");`
