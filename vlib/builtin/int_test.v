@@ -70,13 +70,31 @@ fn test_str_methods() {
 	assert u64(-1).str() == '18446744073709551615'
 }
 
-fn test_and() {
-	c:=[1,2,3,4,5]
-	assert c[0] & 1 != 0
-	assert c[1] & 1 == 0
-	assert c[2] & 1 != 0
-	assert c[3] & 1 == 0
-	assert c[4] & 1 != 0
+fn test_and_precendence() {
+	assert (2 & 0 == 0) == ((2 & 0) == 0)
+	assert (2 & 0 != 0) == ((2 & 0) != 0)
+	assert (0 & 0 >= 0) == ((0 & 0) >= 0)
+	assert (0 & 0 <= 0) == ((0 & 0) <= 0)
+	assert (0 & 0 < 1) == ((0 & 0) < 1)
+	assert (1 & 2 > 0) == ((1 & 2) > 0)
+}
+
+fn test_or_precendence() {
+	assert (1 | 0 == 0) == ((1 | 0) == 0)
+	assert (1 | 0 != 1) == ((1 | 0) != 1)
+	assert (1 | 0 >= 2) == ((1 | 0) >= 2)
+	assert (1 | 0 <= 0) == ((1 | 0) <= 0)
+	assert (1 | 0 < 0) == ((1 | 0) < 0)
+	assert (1 | 0 > 1) == ((1 | 0) > 1)
+}
+
+fn test_xor_precendence() {
+	assert (1 ^ 0 == 2) == ((1 ^ 0) == 2)
+	assert (1 ^ 0 != 2) == ((1 ^ 0) != 2)
+	assert (1 ^ 0 >= 0) == ((1 ^ 0) >= 0)
+	assert (1 ^ 0 <= 1) == ((1 ^ 0) <= 1)
+	assert (1 ^ 0 < 0) == ((1 ^ 0) < 0)
+	assert (1 ^ 0 > 1) == ((1 ^ 0) > 1)
 }
 
 fn test_i8_print() {
