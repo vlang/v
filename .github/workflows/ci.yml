@@ -130,6 +130,7 @@ jobs:
     - name: temporary tests
       run: |
         ./v vlib/builtin/array_test.v
+        ./v vlib/builtin/string_test.v
         ./v vlib/v/tests/fn_multiple_returns_test.v
     - name: x64 machine code generation
       run: |
