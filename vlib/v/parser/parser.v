@@ -63,7 +63,6 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-<<<<<<< HEAD
 		label_scope: &ast.Scope{
 			start_pos: 0
 			parent: 0
@@ -74,9 +73,6 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		}
 		in_label_scope: false
 		loop_label: false
-=======
-
->>>>>>> upstream/master
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -95,10 +91,6 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		table: table
 		file_name: path
 		pref: pref // &pref.Preferences{}
-<<<<<<< HEAD
-=======
-
->>>>>>> upstream/master
 		scope: &ast.Scope{
 			start_pos: 0
 			parent: 0
@@ -114,10 +106,6 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		in_label_scope: false
 		loop_label: false
 		// comments_mode: comments_mode
-<<<<<<< HEAD
-=======
-
->>>>>>> upstream/master
 	}
 	p.read_first_token()
 	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
