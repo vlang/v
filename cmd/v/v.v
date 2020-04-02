@@ -121,7 +121,7 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				res.out_name  = cmdline.option(args, '-o', '')
 				i++
 			}
-			'-csource', 'backend' {
+			'-csource', '-backend' {
 				i++ // TODO
 			}
 			else {
