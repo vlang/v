@@ -20,12 +20,7 @@ pub fn vhash() string {
 pub fn full_hash() string {
 	build_hash := vhash()
 	current_hash := githash(false)
-	final_hash := if build_hash == current_hash {
-		build_hash
-	} else {
-		'${build_hash}.${current_hash}'
-	}
-	return final_hash
+	return '${build_hash}.${current_hash}'
 }
 
 // full_v_version() returns the full version of the V compiler
