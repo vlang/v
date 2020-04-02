@@ -235,8 +235,66 @@ pub fn (n int) hex1() string {
 }
 */
 
-pub fn (nn int) hex() string {
-	mut n := u32(nn)
+pub fn (nn byte) hex() string {
+	if nn == 0 {
+		return '0'
+	}
+
+	mut n := nn
+	max := 2
+	mut buf := malloc(max + 1)
+
+	mut index := max
+	buf[index--] = `\0`
+	for n > 0 {
+		d := n & 0xF
+		n = n >> 4
+		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
+	}
+	//buf[index--] = `x`
+	//buf[index]   = `0`
+	index++
+
+	return tos(buf + index, (max - index))
+}
+
+pub fn (nn i8) hex() string {
+	return byte(nn).hex()
+}
+
+pub fn (nn u16) hex() string {
+	if nn == 0 {
+		return '0'
+	}
+	
+	mut n := nn
+	max := 5
+	mut buf := malloc(max + 1)
+
+	mut index := max
+	buf[index--] = `\0`
+	for n > 0 {
+		d := n & 0xF
+		n = n >> 4
+		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
+	}
+	//buf[index--] = `x`
+	//buf[index]   = `0`
+	index++
+
+	return tos(buf + index, (max - index))
+}
+
+pub fn (nn i16) hex() string {
+	return u16(nn).hex()
+}
+
+pub fn (nn u32) hex() string {
+	if nn == 0 {
+		return '0'
+	}
+
+	mut n := nn
 	max := 10
 	mut buf := malloc(max + 1)
 
@@ -254,7 +312,15 @@ pub fn (nn int) hex() string {
 	return tos(buf + index, (max - index))
 }
 
+pub fn (nn int) hex() string {
+	return u32(nn).hex()
+}
+
 pub fn (nn u64) hex() string {
+	if nn == 0 {
+		return '0'
+	}
+	
 	mut n := nn
 	max := 18
 	mut buf := malloc(max + 1)
@@ -276,8 +342,7 @@ pub fn (nn u64) hex() string {
 }
 
 pub fn (nn i64) hex() string {
-	mut n := u64(nn)
-	return n.hex()
+	return u64(nn).hex()
 }
 
 // ----- utilities functions -----
