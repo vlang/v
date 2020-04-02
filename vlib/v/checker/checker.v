@@ -293,6 +293,13 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		if !found {
 			scope := c.file.scope.innermost(call_expr.pos.pos)
 			if var := scope.find_var(fn_name) {
+				
+			}
+		}
+		// check for arg (var) of fn type
+		if !found {
+			scope := c.file.scope.innermost(call_expr.pos.pos)
+			if var := scope.find_var(fn_name) {
 				if var.typ != 0 {
 					vts := c.table.get_type_symbol(var.typ)
 					if vts.kind == .function {

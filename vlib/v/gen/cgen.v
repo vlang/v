@@ -2444,8 +2444,8 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			// tmps << tmp
 			g.write('string $tmp = ${styp}_str(')
 			g.expr(node.args[0].expr)
-			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
-		}
+			g.writeln('); println($tmp); string_free($tmp); //MEM2 $styp')
+}
 		else if sym.kind == .enum_ {
 			g.write('${print_method}(tos3("')
 			g.enum_expr(node.args[0].expr)
