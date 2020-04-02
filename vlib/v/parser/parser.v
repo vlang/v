@@ -257,8 +257,11 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 				.key_fn {
 					return p.fn_decl()
 				}
-				.key_struct, .key_union, .key_interface {
+				.key_struct, .key_union {
 					return p.struct_decl()
+				}
+				.key_interface {
+					return p.interface_decl()
 				}
 				.key_enum {
 					return p.enum_decl()
