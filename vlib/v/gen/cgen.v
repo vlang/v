@@ -8,6 +8,7 @@ import (
 	v.token
 	v.pref
 	term
+	v.util
 )
 
 const (
@@ -98,6 +99,13 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.is_test {
 		g.write_tests_main()
 	}
+	return g.hashes() + g.typedefs.str() + g.definitions.str() + g.out.str()
+}
+
+pub fn (g &Gen) hashes() string {
+	mut res := c_commit_hash_default.replace('@@@', util.vhash() )
+	res += c_current_commit_hash_default.replace('@@@', util.githash( g.pref.building_v ) )
+	return res
 	return c_commit_hash_default + g.typedefs.str() + g.definitions.str() + g.out.str()
 }
 
