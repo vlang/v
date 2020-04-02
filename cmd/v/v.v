@@ -121,6 +121,9 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				res.out_name  = cmdline.option(args, '-o', '')
 				i++
 			}
+			'-csource' {
+				i++ // TODO
+			}
 			else {
 				if !arg.starts_with('-') && command == '' {
 					command = arg
