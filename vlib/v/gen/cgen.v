@@ -2243,8 +2243,7 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 // `nums.filter(it % 2 == 0)`
 fn (g mut Gen) gen_filter(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
-	buf := g.out.buf[g.stmt_start_pos..]
-	s := string(buf.clone()) // the already generated part of current statement
+	s := g.out.after(g.stmt_start_pos) // the already generated part of current statement
 	g.out.go_back(s.len)
 	// println('filter s="$s"')
 	sym := g.table.get_type_symbol(node.return_type)
