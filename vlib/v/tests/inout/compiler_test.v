@@ -26,7 +26,7 @@ fn test_all() {
 			panic(err)
 		}
 		os.rm('exe')
-		x := os.exec('$vexe -o exe -cflags "-w" -cg -backend experimental $program') or {
+		x := os.exec('$vexe -o exe -cflags "-w" -cg $program') or {
 			panic(err)
 		}
 		// os.rm(program)

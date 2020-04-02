@@ -5,7 +5,6 @@ module main
 
 import (
 	internal.compile
-	internal.flag
 	internal.help
 	os
 	os.cmdline
@@ -41,22 +40,14 @@ fn main() {
 	}
 	prefs2, command := parse_args(args)
 	//println('command = $command')
-	//command := if values.len > 0 { values[0] } else { '' }
-	/*
-	prefs := flag.MainCmdPreferences{}
-	values := flag.parse_main_cmd(os.args, parse_flags, prefs) or {
-		println('V Error: An error has occurred while parsing flags: ')
-		println(err)
-		exit(1)
-	}
-	*/
 	if prefs2.is_verbose {
 		println(util.full_v_version())
 	}
 	if prefs2.is_verbose {
-		//println('Parsed preferences: ')
+		//println('args= ')
+		//println(args) // QTODO
+		//println('prefs= ')
 		//println(prefs) // QTODO
-		//println('Remaining: $values')
 	}
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
@@ -152,15 +143,6 @@ fn invoke_help_and_exit(remaining []string) {
 	}
 	println('V Error: Expected only one help topic to be provided.')
 	println('For usage information, use `v help`.')
-	exit(1)
-}
-
-[inline]
-fn disallow_unknown_flags(prefs flag.MainCmdPreferences) {
-	if prefs.unknown_flag == '' {
-		return
-	}
-	println('V Error: Unexpected flag found: $prefs.unknown_flag')
 	exit(1)
 }
 
