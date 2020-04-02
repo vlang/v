@@ -77,6 +77,9 @@ pub fn (x Expr) str() string {
 		ParExpr {
 			return it.expr.str()
 		}
+		IndexExpr {
+			return '${it.left.str()}[${it.index.str()}]'
+		}
 		else {
 			return '[unhandled expr type ${typeof(x)}]'
 		}

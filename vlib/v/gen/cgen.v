@@ -1681,8 +1681,8 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 					is_selector = true
 				}
 				else {}
-	}
-			if g.is_assign_lhs && !is_selector {
+			}
+			if g.is_assign_lhs && !is_selector && node.is_setter {
 				g.is_array_set = true
 				g.write('array_set(&')
 				g.expr(node.left)

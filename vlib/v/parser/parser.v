@@ -436,6 +436,13 @@ pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	op := p.tok.kind
 	p.next()
 	val := p.expr(0)
+	match left {
+		ast.IndexExpr {
+			//it.mark_as_setter()
+			it.is_setter = true
+		}
+		else{}
+	}
 	node := ast.AssignExpr{
 		left: left
 		val: val
