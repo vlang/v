@@ -93,8 +93,12 @@ pub fn (p mut Parser) parse_type() table.Type {
 		p.next()
 		is_optional = true
 	}
-	// &Type
 	mut nr_muls := 0
+	if p.tok.kind == .key_mut {
+		nr_muls++
+		p.next()
+	}
+	// &Type
 	for p.tok.kind in [.and, .amp] {
 		if p.tok.kind == .and {
 			nr_muls += 2
@@ -102,10 +106,6 @@ pub fn (p mut Parser) parse_type() table.Type {
 		else {
 			nr_muls++
 		}
-		p.next()
-	}
-	if p.tok.kind == .key_mut {
-		nr_muls++
 		p.next()
 	}
 	is_c := p.tok.lit == 'C'

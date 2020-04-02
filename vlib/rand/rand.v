@@ -31,3 +31,4 @@ pub fn rand_r(seed &int) int {
 	}
 }
 
+

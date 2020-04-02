@@ -66,6 +66,11 @@ info.log
 # vim/emacs editor backup files
 *~
 
+# vim gitignore
+*.swp
+*.swo
+*.swn
+
 thirdparty/freetype/
 thirdparty/sdl2/
 thirdparty/SDL2_image/

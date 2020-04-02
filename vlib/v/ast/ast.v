@@ -10,15 +10,15 @@ import (
 
 pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | 	
-PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr | 	
-EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr | 	
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral |
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr |
+PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr |
+EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr |
 Type | AsCast | TypeOf | StringInterLiteral
 
-pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | 	
+pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt |
 LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
@@ -117,14 +117,15 @@ pub:
 
 pub struct StructDecl {
 pub:
-	pos         token.Position
-	name        string
-	fields      []Field
-	is_pub      bool
-	mut_pos     int // mut:
-	pub_pos     int // pub:
-	pub_mut_pos int // pub mut:
-	is_c        bool
+	pos           token.Position
+	name          string
+	fields        []Field
+	is_pub        bool
+	mut_pos       int // mut:
+	pub_pos       int // pub:
+	pub_mut_pos   int // pub mut:
+	is_c          bool
+	default_exprs []Expr
 }
 
 pub struct InterfaceDecl {
@@ -135,10 +136,10 @@ pub struct InterfaceDecl {
 pub struct StructInit {
 pub:
 	pos            token.Position
-	typ            table.Type
 	fields         []string
 	exprs          []Expr
 mut:
+	typ            table.Type
 	expr_types     []table.Type
 	expected_types []table.Type
 }
@@ -449,6 +450,7 @@ pub:
 mut:
 	left_types  []table.Type
 	right_types []table.Type
+	is_static   bool // for translated code only
 }
 
 pub struct AsCast {

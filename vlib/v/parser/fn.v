@@ -29,7 +29,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		name: fn_name
 		args: args
 		// tok: tok
-		
+
 		pos: tok.position()
 		is_c: is_c
 		or_block: ast.OrExpr{
@@ -186,9 +186,9 @@ fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 	mut args := []table.Arg
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
-	types_only := p.tok.kind in [.amp] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) || p.peek_tok.kind == .rpar
+	types_only := p.tok.kind in [.amp, .and] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) || p.peek_tok.kind == .rpar
 	if types_only {
-		// p.warn('types only')
+		//p.warn('types only')
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
 			arg_name := 'arg_$arg_no'

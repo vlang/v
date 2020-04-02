@@ -1,4 +1,4 @@
-module compiler
+module compile
 
 import os
 

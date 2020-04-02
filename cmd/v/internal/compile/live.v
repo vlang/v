@@ -1,4 +1,4 @@
-module compiler
+module compile
 
 import (
 	os
@@ -20,6 +20,8 @@ fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
 }
 
 fn (v &V) generate_hotcode_reloading_declarations() {
+	/*
+	QTODO
 	mut cgen := v.cgen
 	if v.pref.os != .windows {
 		if v.pref.is_so {
@@ -45,9 +47,12 @@ void pthread_mutex_unlock(HANDLE *m) {
 			cgen.genln('HANDLE live_fn_mutex = 0;')
 		}
 	}
+	*/
 }
 
 fn (v &V) generate_hotcode_reloading_main_caller() {
+	// QTODO
+	/*
 	if !v.pref.is_live {
 		return
 	}
@@ -72,9 +77,12 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 		cgen.genln('  unsigned long _thread_so;')
 		cgen.genln('  _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);')
 	}
+	*/
 }
 
 fn (v &V) generate_hot_reload_code() {
+	/*
+	QTODO
 	mut cgen := v.cgen
 	// Hot code reloading
 	if v.pref.is_live {
@@ -246,4 +254,5 @@ void reload_so() {
 	if v.pref.is_so {
 		cgen.genln(' int load_so(byteptr path) { return 0; }')
 	}
+	*/
 }

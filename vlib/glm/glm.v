@@ -262,7 +262,7 @@ pub fn identity2(res mut &f32) {
 }
 
 pub fn identity3() []f32 {
-	res := [1.0, 0, 0, 0,
+	res := [f32(1.0), 0, 0, 0,
 	0, 1, 0, 0,
 	0, 0, 1, 0,
 	0, 0, 0, 1,

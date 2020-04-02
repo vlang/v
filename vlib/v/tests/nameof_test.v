@@ -1,4 +1,6 @@
+fn test_todo() {}
 
+/*
 fn simple<T>(p T) string {
 	tname := nameof(T)
 	println("Hello generic, I'm an [$tname]")
@@ -14,3 +16,4 @@ fn test_nameof_on_various_types_in_generic() {
 	assert simple(FunkyStruct{}) == "FunkyStruct"
 	assert simple(test_nameof_on_various_types_in_generic) == "fn ()"
 }
+*/

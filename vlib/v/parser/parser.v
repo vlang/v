@@ -52,6 +52,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
+
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -269,7 +270,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 					p.error('wrong pub keyword usage')
 					return ast.Stmt{}
 				}
-			}
+	}
 		}
 		.lsbr {
 			return p.attribute()
@@ -354,7 +355,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 				pos: p.tok.position()
 			}
 		}
-		.key_mut {
+		.key_mut, .key_static {
 			return p.assign_stmt()
 		}
 		.key_for {
@@ -547,12 +548,14 @@ pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 	return ident
 }
 
-fn (p mut Parser) struct_init() ast.StructInit {
-	typ := p.parse_type()
+fn (p mut Parser) struct_init(short_syntax bool) ast.StructInit {
+	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
 	// sym := p.table.get_type_symbol(typ)
 	// p.warn('struct init typ=$sym.name')
-	p.check(.lcbr)
+	if !short_syntax {
+		p.check(.lcbr)
+	}
 	mut field_names := []string
 	mut exprs := []ast.Expr
 	mut i := 0
@@ -584,7 +587,9 @@ fn (p mut Parser) struct_init() ast.StructInit {
 		fields: field_names
 		pos: p.tok.position()
 	}
-	p.check(.rcbr)
+	if !short_syntax {
+		p.check(.rcbr)
+	}
 	return node
 }
 
@@ -602,7 +607,8 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		}
 	}
 	// Raw string (`s := r'hello \n ')
-	if p.tok.lit == 'r' && p.peek_tok.kind == .string {
+	if p.tok.lit in ['r', 'c'] && p.peek_tok.kind == .string {
+		// QTODO
 		// && p.prev_tok.kind != .str_dollar {
 		return p.string_expr()
 	}
@@ -672,7 +678,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	//
 	{
 		// || p.table.known_type(p.tok.lit)) {
-		return p.struct_init()
+		return p.struct_init(false) // short_syntax: false
 	}
 	else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
 		// `Color.green`
@@ -780,6 +786,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			node = ast.SizeOf{
 				typ: sizeof_type
 				// type_name: type_name
+
 			}
 		}
 		.key_typeof {
@@ -795,53 +802,17 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		.lcbr {
 			p.next()
 			if p.tok.kind == .string {
-				mut keys := []ast.Expr
-				mut vals := []ast.Expr
-				for p.tok.kind != .rcbr && p.tok.kind != .eof {
-					// p.check(.str)
-					key := p.expr(0)
-					keys << key
-					p.check(.colon)
-					val := p.expr(0)
-					vals << val
-					if p.tok.kind == .comma {
-						p.next()
-					}
-				}
-				node = ast.MapInit{
-					keys: keys
-					vals: vals
-					pos: p.tok.position()
-				}
+				node = p.map_init()
 			}
 			else {
-				name := p.check_name()
-				var := p.scope.find_var(name) or {
-					p.error('unknown variable `$name`')
-					return node
+				if p.peek_tok.kind == .pipe {
+					node = p.assoc()
 				}
-				// println('assoc var $name typ=$var.typ')
-				mut fields := []string
-				mut vals := []ast.Expr
-				p.check(.pipe)
-				for {
-					fields << p.check_name()
-					p.check(.colon)
-					expr := p.expr(0)
-					vals << expr
-					if p.tok.kind == .comma {
-						p.check(.comma)
-					}
-					if p.tok.kind == .rcbr {
-						break
-					}
+				else if p.peek_tok.kind ==  .colon || p.tok.kind == .rcbr {
+					node = p.struct_init(true) // short_syntax: true
 				}
-				node = ast.Assoc{
-					var_name: name
-					fields: fields
-					exprs: vals
-					pos: p.tok.position()
-					typ: var.typ
+				else {
+					p.error('unexpected {')
 				}
 			}
 			p.check(.rcbr)
@@ -896,7 +867,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 				pos: p.tok.position()
 			}
 			p.next()
-			return node
+			// return node // TODO bring back, only allow ++/-- in exprs in translated code
 		}
 		else {
 			return node
@@ -1050,6 +1021,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 		left: left
 		right: right
 		// right_type: typ
+
 		op: op
 		pos: pos
 	}
@@ -1370,6 +1342,28 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	}
 }
 
+fn (p mut Parser) map_init() ast.MapInit {
+	pos := p.tok.position()
+	mut keys := []ast.Expr
+	mut vals := []ast.Expr
+	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+		// p.check(.str)
+		key := p.expr(0)
+		keys << key
+		p.check(.colon)
+		val := p.expr(0)
+		vals << val
+		if p.tok.kind == .comma {
+			p.next()
+		}
+	}
+	return ast.MapInit{
+		keys: keys
+		vals: vals
+		pos: pos
+	}
+}
+
 fn (p mut Parser) parse_number_literal() ast.Expr {
 	lit := p.tok.lit
 	mut node := ast.Expr{}
@@ -1454,6 +1448,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		fields << ast.Field{
 			name: name
 			// typ: typ
+
 		}
 		exprs << expr
 		// TODO: once consts are fixed reg here & update in checker
@@ -1488,6 +1483,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		p.next() // .
 	}
 	mut name := p.check_name()
+	mut default_exprs := []ast.Expr
 	// println('struct decl $name')
 	p.check(.lcbr)
 	mut ast_fields := []ast.Field
@@ -1529,7 +1525,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		// Default value
 		if p.tok.kind == .assign {
 			p.next()
-			p.expr(0)
+			default_exprs << p.expr(0)
 		}
 		ast_fields << ast.Field{
 			name: field_name
@@ -1577,6 +1573,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
 		is_c: is_c
+		default_exprs: default_exprs
 	}
 }
 
@@ -1676,6 +1673,10 @@ fn (p mut Parser) parse_assign_rhs() []ast.Expr {
 }
 
 fn (p mut Parser) assign_stmt() ast.Stmt {
+	is_static := p.tok.kind == .key_static
+	if is_static {
+		p.next()
+	}
 	idents := p.parse_assign_lhs()
 	pos := p.tok.position()
 	op := p.tok.kind
@@ -1709,6 +1710,7 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 		right: exprs
 		op: op
 		pos: pos
+		is_static: is_static
 	}
 }
 
@@ -1775,7 +1777,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 			p.next()
 		}
 		// Sum type match
-		else if p.tok.kind == .name && (p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
+		else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
 			// if sym.kind == .sum_type {
 			// p.warn('is sum')
 			// TODO `exprs << ast.Type{...}`
@@ -1849,7 +1851,7 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 		}
 		// Allow commas after enum, helpful for
 		// enum Color {
-		//     r,g,b
+		// r,g,b
 		// }
 		if p.tok.kind == .comma {
 			p.next()
@@ -1928,6 +1930,38 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 		name: name
 		is_pub: is_pub
 		parent_type: parent_type
+	}
+}
+
+fn (p mut Parser) assoc() ast.Assoc{
+	var_name := p.check_name()
+	pos := p.tok.position()
+	var := p.scope.find_var(var_name) or {
+		p.error('unknown variable `$var_name`')
+		return ast.Assoc{}
+	}
+	// println('assoc var $name typ=$var.typ')
+	mut fields := []string
+	mut vals := []ast.Expr
+	p.check(.pipe)
+	for {
+		fields << p.check_name()
+		p.check(.colon)
+		expr := p.expr(0)
+		vals << expr
+		if p.tok.kind == .comma {
+			p.check(.comma)
+		}
+		if p.tok.kind == .rcbr {
+			break
+		}
+	}
+	return ast.Assoc{
+		var_name: var_name
+		fields: fields
+		exprs: vals
+		pos: pos
+		typ: var.typ
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	max_nr_errors = 100
+	max_nr_errors = 300
 )
 
 pub struct Checker {
@@ -76,6 +76,14 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 	// c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
 	// panic('')
 	// }
+	if struct_init.typ == table.void_type {
+		// Short syntax `({foo: bar})`
+		if c.expected_type == table.void_type {
+			c.error('unexpected short struct syntax', struct_init.pos)
+			return table.void_type
+		}
+		struct_init.typ = c.expected_type
+	}
 	typ_sym := c.table.get_type_symbol(struct_init.typ)
 	// println('check struct $typ_sym.name')
 	match typ_sym.kind {
@@ -210,6 +218,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 			}
 			else if !method.is_variadic && call_expr.args.len > no_args {
 				c.error('too many arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $no_args)', call_expr.pos)
+				return method.return_type
 			}
 			// if method_name == 'clone' {
 			// println('CLONE nr args=$method.args.len')
@@ -311,9 +320,10 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		}
 		else if !f.is_variadic && call_expr.args.len > f.args.len {
 			c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)', call_expr.pos)
+			return f.return_type
 		}
 		// println can print anything
-		if fn_name == 'println' {
+		if fn_name == 'println' || fn_name == 'print' {
 			c.expected_type = table.string_type
 			call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
 			return f.return_type
@@ -765,6 +775,9 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.int_type
 		}
 		ast.StringLiteral {
+			if it.is_c {
+				return table.byteptr_type
+			}
 			return table.string_type
 		}
 		ast.StringInterLiteral {
@@ -783,12 +796,6 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			it.expr_type = c.expr(it.expr)
 			return table.string_type
 		}
-		/*
-		ast.UnaryExpr {
-			c.expr(it.left)
-		}
-		*/
-
 		else {}
 		// println('checker.expr(): unhandled node')
 		// TODO: find nil string bug triggered with typeof
