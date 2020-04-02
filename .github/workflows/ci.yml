@@ -257,10 +257,10 @@ jobs:
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         .\.github\workflows\windows-install-sdl.bat
-#    - name: Build
-#      run: |
-#        gcc --version
-#        .\make.bat -gcc
+    - name: Build
+      run: |
+        gcc --version
+        .\make.bat -gcc
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler

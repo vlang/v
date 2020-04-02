@@ -776,21 +776,22 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		.key_sizeof {
 			p.next() // sizeof
 			p.check(.lpar)
-			if p.tok.lit == 'C' {
-				p.next()
-				p.check(.dot)
-			}
 			if p.tok.kind == .amp {
 				p.next()
 			}
-			// type_name := p.check_name()
-			sizeof_type := p.parse_type()
-			p.check(.rpar)
-			node = ast.SizeOf{
-				typ: sizeof_type
-				// type_name: type_name
-
+			if p.tok.lit == 'C' {
+				p.next()
+				p.check(.dot)
+				node = ast.SizeOf{
+					type_name: p.check_name()
+				}
+			} else {
+				sizeof_type := p.parse_type()
+				node = ast.SizeOf{
+					typ: sizeof_type
+				}
 			}
+			p.check(.rpar)
 		}
 		.key_typeof {
 			p.next()

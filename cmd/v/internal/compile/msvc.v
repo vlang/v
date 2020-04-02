@@ -52,7 +52,8 @@ fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 				if value[length - 1] != u16(0) {
 					value[length] = u16(0)
 				}
-				return string_from_wide(value)
+				res := string_from_wide(value)
+				return res
 			}
 		}
 	}

@@ -7,7 +7,6 @@ import (
 	v.depgraph
 	v.token
 	v.pref
-	v.util
 	term
 )
 
@@ -99,13 +98,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.is_test {
 		g.write_tests_main()
 	}
-	return g.hashes() + g.typedefs.str() + g.definitions.str() + g.out.str()
-}
-
-pub fn (g &Gen) hashes() string {
-	mut res := c_commit_hash_default.replace('@@@', util.vhash() )
-	res += c_current_commit_hash_default.replace('@@@', util.githash( g.pref.building_v ) )
-	return res
+	return c_commit_hash_default + g.typedefs.str() + g.definitions.str() + g.out.str()
 }
 
 pub fn (g mut Gen) init() {
@@ -1103,8 +1096,12 @@ fn (g mut Gen) expr(node ast.Expr) {
 		*/
 
 		ast.SizeOf {
-			styp := g.typ(it.typ)
-			g.write('sizeof($styp)')
+			if it.type_name != '' {
+				g.write('sizeof($it.type_name)')
+			} else {
+				styp := g.typ(it.typ)
+				g.write('sizeof($styp)')
+			}
 		}
 		ast.StringLiteral {
 			if it.is_raw {
