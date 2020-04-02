@@ -99,7 +99,7 @@ pub fn (a array) repeat(count int) array {
 		data: vcalloc(size)
 	}
 	for i in 0..count {
-		C.memcpy(arr.data + i * a.len * a.element_size, a.data, a.len * a.element_size)
+		C.memcpy(byteptr(arr.data) + i * a.len * a.element_size, byteptr(a.data), a.len * a.element_size)
 	}
 	return arr
 }
@@ -123,8 +123,8 @@ pub fn (a mut array) insert(i int, val voidptr) {
 	}
 	a.ensure_cap(a.len + 1)
 	size := a.element_size
-	C.memmove(a.data + (i + 1) * size, a.data + i * size, (a.len - i) * size)
-	C.memcpy(a.data + i * size, val, size)
+	C.memmove(byteptr(a.data) + (i + 1) * size, byteptr(a.data) + i * size, (a.len - i) * size)
+	C.memcpy(byteptr(a.data) + i * size, val, size)
 	a.len++
 }
 
@@ -143,7 +143,7 @@ pub fn (a mut array) delete(i int) {
 		}
 	}
 	size := a.element_size
-	C.memmove(a.data + i * size, a.data + (i + 1) * size, (a.len - i) * size)
+	C.memmove(byteptr(a.data) + i * size, byteptr(a.data) + (i + 1) * size, (a.len - i) * size)
 	a.len--
 }
 
