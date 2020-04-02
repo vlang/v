@@ -84,18 +84,18 @@ $if msvc {
 	frames := int( C.CaptureStackBackTrace(skipframes + 1, 100, backtraces, 0) )
 	for i:=0; i < frames; i++ {
 		// fugly pointer arithmetics follows ...
-		s := *voidptr( u64(backtraces) + u64(i*sizeof(voidptr)) )
-		symfa_ok := C.SymFromAddr( handle, *s, &offset, si )
+		s := voidptr( u64(backtraces) + u64(i*sizeof(voidptr)) )
+		symfa_ok := C.SymFromAddr( handle, s, &offset, si )
 		if symfa_ok == 1 {
 			nframe := frames - i - 1
 			mut lineinfo := ''
-			symglfa_ok := C.SymGetLineFromAddr64(handle, *s, &offset, &sline64)
+			symglfa_ok := C.SymGetLineFromAddr64(handle, s, &offset, &sline64)
 			if symglfa_ok == 1 {
 				lineinfo = ' ${sline64.f_file_name}:${sline64.f_line_number}'
 			}
 			else {
 				//cerr := int(C.GetLastError()) println('SymGetLineFromAddr64 failure: $cerr ')
-				lineinfo = ' ?? : address= $s'
+				lineinfo = ' ?? : address= ${&s}'
 			}
 			sfunc := tos3(fname)
 			println('${nframe:-2d}: ${sfunc:-25s}  $lineinfo')
