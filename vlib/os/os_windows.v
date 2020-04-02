@@ -131,8 +131,9 @@ pub fn is_dir(path string) bool {
 */
 
 pub fn open(path string) ?File {
+	mode := 'rb'
 	file := File {
-		cfile: C._wfopen(path.to_wide(), 'rb'.to_wide())
+		cfile: C._wfopen(path.to_wide(), mode.to_wide())
 		opened: true
 	}
 	if isnil(file.cfile) {
@@ -143,8 +144,9 @@ pub fn open(path string) ?File {
 
 // create creates a file at a specified location and returns a writable `File` object.
 pub fn create(path string) ?File {
+	mode := 'wb'
 	file := File {
-		cfile: C._wfopen(path.to_wide(), 'wb'.to_wide())
+		cfile: C._wfopen(path.to_wide(), mode.to_wide())
 		opened: true
 	}
 	if isnil(file.cfile) {
@@ -202,7 +204,7 @@ pub fn get_module_filename(handle HANDLE) ?string {
 		for {
 			status := int(C.GetModuleFileNameW(handle, voidptr(&buf), sz))
 			match status {
-				SUCCESS {
+				success {
 					_filename := string_from_wide2(buf, sz)
 					return _filename
 				}

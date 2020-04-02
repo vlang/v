@@ -8,6 +8,7 @@ import (
 	v.token
 	v.pref
 	term
+	v.util
 )
 
 const (
@@ -98,7 +99,13 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.is_test {
 		g.write_tests_main()
 	}
-	return g.typedefs.str() + g.definitions.str() + g.out.str()
+	return g.hashes() + g.typedefs.str() + g.definitions.str() + g.out.str()
+}
+
+pub fn (g &Gen) hashes() string {
+	mut res := c_commit_hash_default.replace('@@@', util.vhash() )
+	res += c_current_commit_hash_default.replace('@@@', util.githash( g.pref.building_v ) )
+	return res
 }
 
 pub fn (g mut Gen) init() {
@@ -657,7 +664,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					else {}
 	}
 				is_decl := assign_stmt.op == .decl_assign
-				g.write('/*assign_stmt*/')
+				//g.write('/*assign_stmt*/')
 				if is_decl {
 					g.write('$styp ')
 				}
@@ -733,7 +740,11 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	g.reset_tmp_count()
 	is_main := it.name == 'main'
 	if is_main {
-		g.write('int ${it.name}(int argc, char** argv')
+		if g.pref.os == .windows {
+			g.write('int wmain(int argc, wchar_t *argv[], wchar_t *envp[]')
+		} else {
+			g.write('int ${it.name}(int argc, char** argv')
+		}
 	}
 	else {
 		mut name := it.name
@@ -789,9 +800,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			if g.autofree {
 				g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
 			}
-			$if windows {
-				g.writeln('_const_os__args = os__init_os_args_wide(argc, (byteptr*)argv);')
-			}	$else {
+			if g.pref.os == .windows {
+				g.writeln('_const_os__args = os__init_os_args_wide(argc, argv);')
+			}	else {
 				g.writeln('_const_os__args = os__init_os_args(argc, (byteptr*)argv);')
 			}
 		}
@@ -1092,13 +1103,23 @@ fn (g mut Gen) expr(node ast.Expr) {
 		*/
 
 		ast.SizeOf {
-			styp := g.typ(it.typ)
-			g.write('sizeof($styp)')
+			if it.type_name != '' {
+				g.write('sizeof($it.type_name)')
+			} else {
+				styp := g.typ(it.typ)
+				g.write('sizeof($styp)')
+			}
 		}
 		ast.StringLiteral {
+			if it.is_raw {
+				escaped_val := it.val.replace_each(['"', '\\"',
+					'\\', '\\\\'])
+				g.write('tos3("$escaped_val")')
+				return
+			}
 			escaped_val := it.val.replace_each(['"', '\\"',
-			'\r\n', '\\n',
-			'\n', '\\n'])
+				'\r\n', '\\n',
+				'\n', '\\n'])
 			if g.is_c_call || it.is_c {
 				// In C calls we have to generate C strings
 				// `C.printf("hi")` => `printf("hi");`
@@ -2243,8 +2264,7 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 // `nums.filter(it % 2 == 0)`
 fn (g mut Gen) gen_filter(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
-	buf := g.out.buf[g.stmt_start_pos..]
-	s := string(buf.clone()) // the already generated part of current statement
+	s := g.out.after(g.stmt_start_pos) // the already generated part of current statement
 	g.out.go_back(s.len)
 	// println('filter s="$s"')
 	sym := g.table.get_type_symbol(node.return_type)
@@ -2362,7 +2382,13 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 
 fn (g mut Gen) fn_call(node ast.CallExpr) {
 	mut name := node.name
-	is_print := name == 'println'
+	is_print := name == 'println' || name == 'print'
+	print_method := if name == 'println' {
+		'println'
+	}
+	else {
+		'print'
+	}
 	if node.is_c {
 		// Skip "C."
 		g.is_c_call = true
@@ -2384,7 +2410,6 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			}
 		}
 		*/
-
 	if is_print && node.args[0].typ != table.string_type_idx {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
@@ -2403,17 +2428,17 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			// tmps << tmp
 			g.write('string $tmp = ${styp}_str(')
 			g.expr(node.args[0].expr)
-			g.writeln('); println($tmp); string_free($tmp); //MEM2 $styp')
+			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
 		}
 		else if sym.kind == .enum_ {
-			g.write('println(tos3("')
+			g.write('${print_method}(tos3("')
 			g.enum_expr(node.args[0].expr)
 			g.write('"))')
 		}
 		else {
 			// `println(int_str(10))`
 			// sym := g.table.get_type_symbol(node.args[0].typ)
-			g.write('println(${styp}_str(')
+			g.write('${print_method}(${styp}_str(')
 			if table.type_is_ptr(typ) {
 				// dereference
 				g.write('*')
@@ -2683,7 +2708,9 @@ pub fn (g mut Gen) write_tests_main() {
 		g.writeln('\tBenchedTests_end_testing(&bt);')
 	}
 	g.writeln('')
-	g.writeln('\t_vcleanup();')
+	if g.autofree {
+		g.writeln('\t_vcleanup();')
+	}
 	g.writeln('\treturn g_test_fails > 0;')
 	g.writeln('}')
 }

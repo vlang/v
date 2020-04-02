@@ -9,6 +9,7 @@ import (
 	term
 	readline
 	os.cmdline
+	v.util
 )
 
 struct Repl {
@@ -63,8 +64,7 @@ fn (r &Repl) function_call(line string) bool {
 }
 
 pub fn repl_help() {
-	version := v_version()
-	println(version)
+	println(util.full_v_version())
 	println('
   help                   Displays this information.
   Ctrl-C, Ctrl-D, exit   Exits the REPL.
@@ -73,8 +73,7 @@ pub fn repl_help() {
 }
 
 pub fn run_repl(workdir string, vrepl_prefix string) []string {
-	version := v_version()
-	println(version)
+	println(util.full_v_version())
 	println('Use Ctrl-C or `exit` to exit')
 
 	file := os.join_path(workdir, '.${vrepl_prefix}vrepl.v')
@@ -232,10 +231,4 @@ pub fn rerror(s string) {
 	println('V repl error: $s')
 	os.flush()
 	exit(1)
-}
-
-fn v_version() string {
-	vexe := os.getenv('VEXE')
-	vversion_res := os.exec('$vexe -version') or { panic('"$vexe -version" is not working') }
-	return vversion_res.output
 }

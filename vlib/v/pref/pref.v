@@ -32,6 +32,7 @@ pub mut:
 	backend             Backend
 	build_mode          BuildMode
 	verbosity           VerboseLevel
+	is_verbose bool
 	// nofmt            bool   // disable vfmt
 	is_test             bool // `v test string_test.v`
 	is_script           bool // single file mode (`v program.v`), main function can be skipped

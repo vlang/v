@@ -257,8 +257,11 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 				.key_fn {
 					return p.fn_decl()
 				}
-				.key_struct, .key_union, .key_interface {
+				.key_struct, .key_union {
 					return p.struct_decl()
+				}
+				.key_interface {
+					return p.interface_decl()
 				}
 				.key_enum {
 					return p.enum_decl()
@@ -773,21 +776,22 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		.key_sizeof {
 			p.next() // sizeof
 			p.check(.lpar)
-			if p.tok.lit == 'C' {
-				p.next()
-				p.check(.dot)
-			}
 			if p.tok.kind == .amp {
 				p.next()
 			}
-			// type_name := p.check_name()
-			sizeof_type := p.parse_type()
-			p.check(.rpar)
-			node = ast.SizeOf{
-				typ: sizeof_type
-				// type_name: type_name
-
+			if p.tok.lit == 'C' {
+				p.next()
+				p.check(.dot)
+				node = ast.SizeOf{
+					type_name: p.check_name()
+				}
+			} else {
+				sizeof_type := p.parse_type()
+				node = ast.SizeOf{
+					typ: sizeof_type
+				}
 			}
+			p.check(.rpar)
 		}
 		.key_typeof {
 			p.next()
@@ -1770,12 +1774,14 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 	cond := p.expr(0)
 	p.check(.lcbr)
 	mut branches := []ast.MatchBranch
+	mut have_final_else := false
 	for {
 		mut exprs := []ast.Expr
 		branch_pos := p.tok.position()
 		p.open_scope()
 		// final else
 		if p.tok.kind == .key_else {
+			have_final_else = true
 			p.next()
 		}
 		// Sum type match
@@ -1823,6 +1829,9 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .rcbr {
 			break
 		}
+	}
+	if !have_final_else {
+		p.error('match must be exhaustive')
 	}
 	p.check(.rcbr)
 	return ast.MatchExpr{
