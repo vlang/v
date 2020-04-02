@@ -11,6 +11,7 @@ import (
 	v.table
 	v.doc
 	v.pref
+	v.util
 )
 
 const (
@@ -23,11 +24,6 @@ const (
 	'setup-freetype']
 )
 
- pub const (
-         v_version = '0.1.26'
- )
-
-
 fn main() {
 	prefs := flag.MainCmdPreferences{}
 	values := flag.parse_main_cmd(os.args, parse_flags, prefs) or {
@@ -36,7 +32,7 @@ fn main() {
 		exit(1)
 	}
 	if prefs.verbosity.is_higher_or_equal(.level_two) {
-		println('V $v_version $vhash()')
+		println(util.full_v_version())
 	}
 	if prefs.verbosity.is_higher_or_equal(.level_three) {
 		println('Parsed preferences: ')
@@ -126,16 +122,8 @@ fn main() {
 }
 
 fn print_version_and_exit() {
-	version_hash := vhash()
-	println('V $v_version $version_hash')
+	println(util.full_v_version())
 	exit(0)
-}
-
-fn vhash() string {
-        mut buf := [50]byte
-        buf[0] = 0
-        C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
-        return tos_clone(buf)
 }
 
 fn invoke_help_and_exit(remaining []string) {

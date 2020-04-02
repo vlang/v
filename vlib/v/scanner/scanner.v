@@ -7,6 +7,7 @@ import (
 	os
 	v.token
 	v.pref
+	v.util
 )
 
 const (
@@ -593,7 +594,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				return s.new_token(.string, (s.current_column()).str())
 			}
 			if name == 'VHASH' {
-				return s.new_token(.string, vhash())
+				return s.new_token(.string, util.vhash())
 			}
 			if !token.is_key(name) {
 				s.error('@ must be used before keywords (e.g. `@type string`)')
@@ -1031,13 +1032,6 @@ pub fn verror(s string) {
 	println('V error: $s')
 	os.flush()
 	exit(1)
-}
-
-pub fn vhash() string {
-	mut buf := [50]byte
-	buf[0] = 0
-	C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
-	return tos_clone(buf)
 }
 
 pub fn cescaped_path(s string) string {
