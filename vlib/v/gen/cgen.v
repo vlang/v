@@ -2362,7 +2362,13 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 
 fn (g mut Gen) fn_call(node ast.CallExpr) {
 	mut name := node.name
-	is_print := name == 'println'
+	is_print := name == 'println' || name == 'print'
+	print_method := if name == 'println' {
+		'println'
+	}
+	else {
+		'print'
+	}
 	if node.is_c {
 		// Skip "C."
 		g.is_c_call = true
@@ -2384,7 +2390,6 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			}
 		}
 		*/
-
 	if is_print && node.args[0].typ != table.string_type_idx {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
@@ -2403,17 +2408,17 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			// tmps << tmp
 			g.write('string $tmp = ${styp}_str(')
 			g.expr(node.args[0].expr)
-			g.writeln('); println($tmp); string_free($tmp); //MEM2 $styp')
+			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
 		}
 		else if sym.kind == .enum_ {
-			g.write('println(tos3("')
+			g.write('${print_method}(tos3("')
 			g.enum_expr(node.args[0].expr)
 			g.write('"))')
 		}
 		else {
 			// `println(int_str(10))`
 			// sym := g.table.get_type_symbol(node.args[0].typ)
-			g.write('println(${styp}_str(')
+			g.write('${print_method}(${styp}_str(')
 			if table.type_is_ptr(typ) {
 				// dereference
 				g.write('*')
