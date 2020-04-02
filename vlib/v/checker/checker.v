@@ -573,7 +573,6 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.stmts(it.stmts)
 		}
 		ast.ConstDecl {
-			// try to resolve const types by walking from both ends
 			mut unresolved_num:= 0 // number of type-unresolved consts
 			mut ordered_exprs := []ast.Expr
 			mut ordered_fields := []ast.Field
