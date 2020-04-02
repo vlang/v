@@ -134,7 +134,6 @@ jobs:
         ./v vlib/v/tests/fn_multiple_returns_test.v
         ./v vlib/v/tests/return_voidptr_test.v
         ./v vlib/v/tests/voidptr_to_u64_cast_b_test.v
-        ./v vlib/v/tests/prod_test.v
         ./v vlib/v/tests/cstrings_test.v
         ./v vlib/v/tests/valgrind/valgrind_test.v
         ./v vlib/v/tests/nameof_test.v
