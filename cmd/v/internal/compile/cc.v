@@ -7,16 +7,12 @@ import (
 	os
 	time
 	v.pref
+	v.util
 	term
 )
 
- pub const (
-         v_version = '0.1.26'
- )
-
-
 const (
-v_modules_path = pref.default_module_path
+	v_modules_path = pref.default_module_path
 )
 
 fn todo() {
@@ -380,7 +376,7 @@ start:
 ==================
 C error. This should never happen.
 
-V compiler version: V $v_version $vhash()
+V compiler version: ${util.full_v_version()}
 Host OS: ${pref.get_host_os().str()}
 Target OS: $v.pref.os.str()
 
@@ -626,11 +622,3 @@ fn error_context_lines(text, keyword string, before, after int) []string {
 	idx_e := if idx_s + after < lines.len { idx_s + after } else { lines.len }
 	return lines[idx_s..idx_e]
 }
-
-fn vhash() string {
-        mut buf := [50]byte
-        buf[0] = 0
-        C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
-        return tos_clone(buf)
-}
-
