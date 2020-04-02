@@ -916,6 +916,10 @@ pub fn (s mut []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
 
+pub fn (s ustring) str() string {
+   return s.s
+}
+
 pub fn (s string) ustring() ustring {
 	mut res := ustring{
 		s: s
@@ -985,7 +989,7 @@ fn (u ustring) ge(a ustring) bool {
 	return !u.lt(a)
 }
 
-fn (u ustring) add(a ustring) ustring {
+pub fn (u ustring) add(a ustring) ustring {
 	mut res := ustring{
 		s: u.s + a.s
 		runes: new_array(0, u.s.len + a.s.len, sizeof(int))
