@@ -20,12 +20,7 @@ pub fn vhash() string {
 pub fn full_hash() string {
 	build_hash := vhash()
 	current_hash := githash(false)
-	final_hash := if build_hash == current_hash {
-		build_hash
-	} else {
-		'${build_hash}.${current_hash}'
-	}
-	return final_hash
+	return '${build_hash}.${current_hash}'
 }
 
 // full_v_version() returns the full version of the V compiler
@@ -75,10 +70,8 @@ pub fn githash(should_get_from_filesystem bool) string {
 		}
 		break
 	}
-	// TODO: use C.V_CURRENT_COMMIT_HASH at stage 2, after v.c is regenerated
-	// mut buf := [50]byte
-	// buf[0] = 0
-	// C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)
-	// return tos_clone(buf)
-	return 'unknown'
+	mut buf := [50]byte
+	buf[0] = 0
+	C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)
+	return tos_clone(buf)
 }
