@@ -2683,7 +2683,9 @@ pub fn (g mut Gen) write_tests_main() {
 		g.writeln('\tBenchedTests_end_testing(&bt);')
 	}
 	g.writeln('')
-	g.writeln('\t_vcleanup();')
+	if g.autofree {
+		g.writeln('\t_vcleanup();')
+	}
 	g.writeln('\treturn g_test_fails > 0;')
 	g.writeln('}')
 }
