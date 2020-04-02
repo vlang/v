@@ -574,31 +574,56 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		}
 		ast.ConstDecl {
 			// try to resolve const types by walking from both ends
+			mut unresolved_num:= 0 // number of type-unresolved consts
+			mut ordered_exprs := []ast.Expr
+			mut ordered_fields := []ast.Field
 			for i, expr in it.exprs {
 				mut field := it.fields[i]
 				typ := c.expr(expr)
-				c.table.register_const(table.Var{
-					name: field.name
-					typ: typ
-				})
-				field.typ = typ
-				it.fields[i] = field
-			}
-			reversed_exprs := it.exprs.reverse()
-			mut reversed_fields := it.fields.reverse()
-			for i, expr in reversed_exprs {
-				mut field := reversed_fields[i]
-				typ := c.expr(expr)
 				if typ == table.void_type {
-					c.error("undefined constant `${field.name}` is in use", it.pos)
+					unresolved_num++
 				}
-				c.table.register_const(table.Var{
-					name: field.name
-					typ: typ
-				})
-				field.typ = typ
-				reversed_fields[i] = field
+				else { // succeed in resolving type
+					c.table.register_const(table.Var{
+						name: field.name
+						typ: typ
+					})
+					field.typ = typ
+					it.fields[i] = field
+					ordered_exprs << expr
+					ordered_fields << field
+					if unresolved_num == 0 {
+						continue
+					}
+					for j, _expr in it.exprs[0..i]{
+						mut _field := it.fields[j]
+						_typ := c.expr(_expr)
+						if _field.typ == 0 && _typ != table.void_type {
+							// succeed in resolving type
+							c.table.register_const(table.Var{
+								name: _field.name
+								typ: _typ
+							})
+							unresolved_num--
+							_field.typ = _typ
+							it.fields[j] = _field
+							ordered_exprs << _expr
+							ordered_fields << _field
+						}
+					}
+				}
 			}
+			if unresolved_num != 0 {
+				c.error("$unresolved_num ill-defined consts are in use", it.pos)
+			}
+			for i, field in ordered_fields { // set the fields and exprs as ordered
+				it.fields[i] = field
+				it.exprs[i] = ordered_exprs[i]
+			}
+			/*
+			it.exprs = ordered_exprs
+			it.fields = ordered_fields
+			*/
 		}
 		ast.ExprStmt {
 			c.expr(it.expr)
