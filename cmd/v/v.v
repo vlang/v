@@ -56,11 +56,6 @@ fn main() {
 		launch_tool(prefs2.is_verbose, 'v' + command)
 		return
 	}
-	if command in ['run', 'build'] || command.ends_with('.v') || os.exists(command) {
-		arg := join_flags_and_argument()
-		compile.compile(command, arg)
-		return
-	}
 	match command {
 		'help' {
 			invoke_help_and_exit(args)
@@ -99,6 +94,11 @@ fn main() {
 			return
 		}
 		else {}
+	}
+	if command in ['run', 'build'] || command.ends_with('.v') || os.exists(command) {
+		arg := join_flags_and_argument()
+		compile.compile(command, arg)
+		return
 	}
 	eprintln('v $command: unknown command\nRun "v help" for usage.')
 	exit(1)
