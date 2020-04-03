@@ -31,7 +31,6 @@ const (
 	'./vlib/eventbus/eventbus_test.v',
 	'./vlib/os/bare/bare_example_linux.v',
 	'./vlib/szip/szip.v',
-	'./vlib/uiold/examples/users_gui/users.v',
 	'./vlib/vweb/assets/assets.v',
 	'./vlib/vweb/vweb.v',
 	]
