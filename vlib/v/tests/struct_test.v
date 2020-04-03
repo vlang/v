@@ -59,7 +59,11 @@ struct ReservedKeywords {
 
 fn test_empty_struct() {
 	d := &Empty{}
+	d2 := Empty{}
+	println('&empty:')
 	println(d) // != voidptr(0)
+	println('empty:')
+	println(d2) // empty struct print
 	println(sizeof(Empty)) // == 0
 }
 

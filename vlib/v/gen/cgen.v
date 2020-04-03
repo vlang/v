@@ -49,7 +49,7 @@ mut:
 	assign_op      token.Kind // *=, =, etc (for array_set)
 	defer_stmts    []ast.DeferStmt
 	defer_ifdef    string
-	str_types      []int // types that need automatic str() generation
+	str_types      []string// types that need automatic str() generation
 	threaded_fns   []string // for generating unique wrapper types and fns for `go xxx()`
 }
 
@@ -2423,12 +2423,12 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
 		sym := g.table.get_type_symbol(typ)
-		if !sym.has_method('str') && !(int(typ) in g.str_types) {
+		if !sym.has_method('str') && !(styp in g.str_types) {
 			// Generate an automatic str() method if this type doesn't have it already
 			if table.type_is_ptr(typ) {
 				styp = styp.replace('*', '')
 			}
-			g.str_types << typ
+			g.str_types << styp
 			g.gen_str_for_type(sym, styp)
 		}
 		if g.autofree && !table.type_is_optional(typ) {
@@ -2882,9 +2882,11 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 	for field in info.fields {
 		fmt := type_to_fmt(field.typ)
 		g.definitions.write('\t$field.name: $fmt\\n')
-
 	}
-	g.definitions.write('\\n}", ')
+	g.definitions.write('\\n}"')
+	if info.fields.len > 0 {
+		g.definitions.write(', ')
+	}
 	for i, field in info.fields {
 		g.definitions.write('a.' + field.name)
 		if field.typ == table.string_type {
