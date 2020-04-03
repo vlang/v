@@ -232,7 +232,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	}
 	// e.g. 1..9
 	// we just return '1' and don't scan '..9'
-	if s.expect('..', s.pos) {
+	if s.is_expect('..', s.pos) {
 		number := filter_num_sep(s.text.str, start_pos, s.pos)
 		s.pos--
 		return number
@@ -267,7 +267,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	}
 	// scan exponential part
 	mut has_exponential_part := false
-	if s.expect('e', s.pos) || s.expect('E', s.pos) {
+	if s.is_expect('e', s.pos) || s.is_expect('E', s.pos) {
 		s.pos++
 		exp_start_pos := s.pos
 		if s.pos < s.text.len && s.text[s.pos] in [`-`, `+`] {
@@ -312,13 +312,13 @@ fn (s mut Scanner) ident_dec_number() string {
 }
 
 fn (s mut Scanner) ident_number() string {
-	if s.expect('0b', s.pos) {
+	if s.is_expect('0b', s.pos) {
 		return s.ident_bin_number()
 	}
-	else if s.expect('0x', s.pos) {
+	else if s.is_expect('0x', s.pos) {
 		return s.ident_hex_number()
 	}
-	else if s.expect('0o', s.pos) {
+	else if s.is_expect('0o', s.pos) {
 		return s.ident_oct_number()
 	}
 	else {
@@ -333,7 +333,7 @@ fn (s mut Scanner) skip_whitespace() {
 			return
 		}
 		// Count \r\n as one line
-		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos - 1) {
+		if is_nl(s.text[s.pos]) && !s.is_expect('\r\n', s.pos - 1) {
 			s.inc_line_number()
 		}
 		s.pos++
@@ -768,11 +768,11 @@ pub fn (s mut Scanner) scan() token.Token {
 						s.inc_line_number()
 						continue
 					}
-					if s.expect('/*', s.pos) {
+					if s.is_expect('/*', s.pos) {
 						nest_count++
 						continue
 					}
-					if s.expect('*/', s.pos) {
+					if s.is_expect('*/', s.pos) {
 						nest_count--
 					}
 				}
@@ -849,7 +849,7 @@ fn (s mut Scanner) ident_string() string {
 			}
 		}
 		// Don't allow \x00
-		if c == `0` && s.pos > 5 && s.expect('\\x0', s.pos - 3) {
+		if c == `0` && s.pos > 5 && s.is_expect('\\x0', s.pos - 3) {
 			s.error('0 character in a string literal')
 		}
 		// ${var} (ignore in vfmt mode)
@@ -894,7 +894,7 @@ fn (s mut Scanner) ident_char() string {
 		if s.text[s.pos] != slash {
 			len++
 		}
-		double_slash := s.expect('\\\\', s.pos - 2)
+		double_slash := s.is_expect('\\\\', s.pos - 2)
 		if s.text[s.pos] == `\`` && (s.text[s.pos - 1] != slash || double_slash) {
 			// ` // apostrophe balance comment. do not remove
 			if double_slash {
@@ -918,7 +918,7 @@ fn (s mut Scanner) ident_char() string {
 	return if c == "\'" { '\\' + c } else { c }
 }
 
-fn (s &Scanner) expect(want string, start_pos int) bool {
+fn (s &Scanner) is_expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || start_pos >= s.text.len {
 		return false
