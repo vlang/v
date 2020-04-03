@@ -185,7 +185,7 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	// println('setting exp type to $c.expected_type $t.name')
 	// cannot assign to postfix (x = a++)
 	if c.prohibit_postfix(assign_expr.val) {
-		panic('')
+		return
 	}
 	right_type := c.expr(assign_expr.val)
 	assign_expr.right_type = right_type
@@ -462,7 +462,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	// cannot assign to postfix (x := a++)
 	for expr in assign_stmt.right {
 		if c.prohibit_postfix(expr) {
-			panic('')
+			return
 		}
 	}
 	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
