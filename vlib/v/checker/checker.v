@@ -644,6 +644,27 @@ pub fn (c Checker) __prohibit_postfix(expr ast.PostfixExpr) bool {
 	return false
 }
 
+pub fn (c Checker) prohibit_postfix_4(expr ast.Expr) bool {
+	match expr {
+		ast.ParExpr {
+			return c.prohibit_postfix_4(unwrap_par_expr(expr))
+		}
+		ast.PostfixExpr {
+			if it.op in [.inc, .dec] {
+				c.error('\'${it.expr.str()}${it.op.str()}\' is a statement, not an expression', it.pos)
+				return true
+			}
+			return false
+		}
+		ast.AssignExpr {
+			c.prohibit_postfix_4(it.val)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (c mut Checker) stmt(node ast.Stmt) {
 	// c.expected_type = table.void_type
 	match mut node {
