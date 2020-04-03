@@ -70,13 +70,31 @@ fn test_str_methods() {
 	assert u64(-1).str() == '18446744073709551615'
 }
 
-fn test_and() {
-	c:=[1,2,3,4,5]
-	assert c[0] & 1 != 0
-	assert c[1] & 1 == 0
-	assert c[2] & 1 != 0
-	assert c[3] & 1 == 0
-	assert c[4] & 1 != 0
+fn test_and_precendence() {
+	assert (2 & 0 == 0) == ((2 & 0) == 0)
+	assert (2 & 0 != 0) == ((2 & 0) != 0)
+	assert (0 & 0 >= 0) == ((0 & 0) >= 0)
+	assert (0 & 0 <= 0) == ((0 & 0) <= 0)
+	assert (0 & 0 < 1) == ((0 & 0) < 1)
+	assert (1 & 2 > 0) == ((1 & 2) > 0)
+}
+
+fn test_or_precendence() {
+	assert (1 | 0 == 0) == ((1 | 0) == 0)
+	assert (1 | 0 != 1) == ((1 | 0) != 1)
+	assert (1 | 0 >= 2) == ((1 | 0) >= 2)
+	assert (1 | 0 <= 0) == ((1 | 0) <= 0)
+	assert (1 | 0 < 0) == ((1 | 0) < 0)
+	assert (1 | 0 > 1) == ((1 | 0) > 1)
+}
+
+fn test_xor_precendence() {
+	assert (1 ^ 0 == 2) == ((1 ^ 0) == 2)
+	assert (1 ^ 0 != 2) == ((1 ^ 0) != 2)
+	assert (1 ^ 0 >= 0) == ((1 ^ 0) >= 0)
+	assert (1 ^ 0 <= 1) == ((1 ^ 0) <= 1)
+	assert (1 ^ 0 < 0) == ((1 ^ 0) < 0)
+	assert (1 ^ 0 > 1) == ((1 ^ 0) > 1)
 }
 
 fn test_i8_print() {
@@ -157,3 +175,51 @@ fn test_int_decl() {
 	assert typeof(x7) == 'u64'
 }
 
+fn test_int_to_hex() {
+	// array hex
+	st := [byte(`V`),`L`,`A`,`N`,`G`]
+	assert st.hex() == "564c414e47"
+	assert st.hex().len == 10
+
+	st1 := [byte(0x41)].repeat(100)
+	assert st1.hex() == "41".repeat(100)
+
+	//--- int to hex tests
+	c0 := 12
+
+	// 8Bit
+	assert byte(0).hex()   == "0"
+	assert byte(c0).hex()  == "c"
+	assert i8(c0).hex()    == "c"
+	assert byte(127).hex() == "7f"
+	assert i8(127).hex()   == "7f"
+	assert byte(255).hex() == "ff"
+	assert byte(-1).hex()  == "ff"
+
+	// 16bit
+	assert u16(0).hex()      == "0"
+	assert i16(c0).hex()     == "c"
+	assert u16(c0).hex()     == "c"
+	assert i16(32767).hex()  == "7fff"
+	assert u16(32767).hex()  == "7fff"
+	assert i16(-1).hex()     == "ffff"
+	assert u16(65535).hex()  == "ffff"
+
+	// 32bit
+	assert u32(0).hex()           == "0"
+	assert c0.hex()               == "c"
+	assert u32(c0).hex()          == "c"
+	assert 2147483647.hex()       == "7fffffff"
+	assert u32(2147483647).hex()  == "7fffffff"
+	assert (-1).hex()             == "ffffffff"
+	assert u32(4294967295).hex()  == "ffffffff"
+
+	// 64 bit
+	assert u64(0).hex()                      == "0"
+	assert i64(c0).hex()                     == "c"
+	assert u64(c0).hex()                     == "c"
+	assert i64(9223372036854775807).hex()    == "7fffffffffffffff"
+	assert u64(9223372036854775807).hex()    == "7fffffffffffffff"
+	assert i64(-1).hex()                     == "ffffffffffffffff"
+	assert u64(18446744073709551615).hex()   == "ffffffffffffffff"
+}

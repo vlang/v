@@ -150,6 +150,10 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		if right.kind in [.array, .map] && infix_expr.op == .key_in {
 			return table.bool_type
 		}
+		// fot type-unresolved consts
+		if left_type == table.void_type || right_type == table.void_type {
+			return table.void_type
+		}
 		c.error('infix expr: cannot use `$right.name` (right) as `$left.name`', infix_expr.pos)
 	}
 	if infix_expr.op.is_relational() {
@@ -346,7 +350,6 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 				if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 					continue
 				}
-				// TODO const bug
 				if typ_sym.kind == .void && arg_typ_sym.kind == .string {
 					continue
 				}
@@ -570,17 +573,66 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.stmts(it.stmts)
 		}
 		ast.ConstDecl {
+			mut unresolved_num:= 0 // number of type-unresolved consts
+			mut ordered_exprs := []ast.Expr
+			mut ordered_fields := []ast.Field
 			for i, expr in it.exprs {
 				mut field := it.fields[i]
 				typ := c.expr(expr)
-				// TODO: once consts are fixed update here
-				c.table.register_const(table.Var{
-					name: field.name
-					typ: typ
-				})
-				field.typ = typ
-				it.fields[i] = field
+				if typ == table.void_type {
+					unresolved_num++
+				}
+				else { // succeed in resolving type
+					c.table.register_const(table.Var{
+						name: field.name
+						typ: typ
+					})
+					field.typ = typ
+					it.fields[i] = field
+					ordered_exprs << expr
+					ordered_fields << field
+					if unresolved_num == 0 {
+						continue
+					}
+					for j, _expr in it.exprs[0..i]{
+						mut _field := it.fields[j]
+						_typ := c.expr(_expr)
+						if _field.typ == 0 && _typ != table.void_type {
+							// succeed in resolving type
+							c.table.register_const(table.Var{
+								name: _field.name
+								typ: _typ
+							})
+							unresolved_num--
+							_field.typ = _typ
+							it.fields[j] = _field
+							ordered_exprs << _expr
+							ordered_fields << _field
+						}
+					}
+				}
 			}
+			if unresolved_num != 0 {
+				for i, expr in it.exprs {
+					typ := c.expr(expr)
+					if typ == table.void_type {
+						mut _field := it.fields[i]
+						if !_field.already_reported {
+							_field.already_reported = true
+							it.fields[i] = _field
+							c.error("$unresolved_num ill-defined const `$_field.name`", _field.pos)
+						}
+					}
+				}
+			}
+			for i, field in ordered_fields { // set the fields and exprs as ordered
+				it.fields[i] = field
+				it.exprs[i] = ordered_exprs[i]
+			}
+			/*
+			it.exprs = ordered_exprs
+			it.fields = ordered_fields
+			*/
 		}
 		ast.ExprStmt {
 			c.expr(it.expr)
@@ -1116,7 +1168,9 @@ pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {
 
 pub fn (c mut Checker) error(s string, pos token.Position) {
 	c.nr_errors++
-	print_backtrace()
+	//if c.pref.is_verbose {
+		print_backtrace()
+	//}
 	mut path := c.file.path
 	// Get relative path
 	workdir := os.getwd() + os.path_separator

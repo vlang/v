@@ -5,12 +5,13 @@ module main
 
 import (
 	internal.compile
-	internal.flag
 	internal.help
 	os
+	os.cmdline
 	v.table
 	v.doc
 	v.pref
+	v.util
 )
 
 const (
@@ -23,58 +24,49 @@ const (
 	'setup-freetype']
 )
 
- pub const (
-         v_version = '0.1.26'
- )
-
-
 fn main() {
-	prefs := flag.MainCmdPreferences{}
-	values := flag.parse_main_cmd(os.args, parse_flags, prefs) or {
-		println('V Error: An error has occurred while parsing flags: ')
-		println(err)
-		exit(1)
+	args := os.args[1..]
+	//args = 123
+	if args.len == 0 || args[0] in ['-', 'repl'] {
+		// Running `./v` without args launches repl
+		println('For usage information, quit V REPL using `exit` and use `v help`')
+		launch_tool(false, 'vrepl')
+		return
 	}
-	if prefs.verbosity.is_higher_or_equal(.level_two) {
-		println('V $v_version $vhash()')
+	if args.len > 0 && (args[0] in ['version', '-V', '-version', '--version'] || (args[0] == '-v' && args.len == 1) ) {
+		// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
+		println(util.full_v_version())
+		return
 	}
-	if prefs.verbosity.is_higher_or_equal(.level_three) {
-		println('Parsed preferences: ')
+	prefs2, command := parse_args(args)
+	//println('command = $command')
+	if prefs2.is_verbose {
+		println(util.full_v_version())
+	}
+	if prefs2.is_verbose {
+		//println('args= ')
+		//println(args) // QTODO
+		//println('prefs= ')
 		//println(prefs) // QTODO
-		println('Remaining: $values')
-	}
-	// Do a quick check for `v -v`. Too much error has been made this way.
-	if prefs.verbosity == .level_one && values.len == 0 {
-		println("`v -v` now runs V with verbose mode set to level one which doesn't do anything.")
-		println('Did you mean `v -version` instead?')
-		exit(1)
 	}
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
-	if prefs.action == .version {
-		disallow_unknown_flags(prefs)
-		print_version_and_exit()
-	}
-	if values.len == 0 && prefs.action == .help {
-		invoke_help_and_exit(values)
-	}
-	if values.len == 0 || values[0] == '-' || values[0] == 'repl' {
-		// Check for REPL.
-		if values.len == 0 {
-			println('Running REPL as no arguments are provided.')
-			println('For usage information, quit V REPL using `exit` and use `v help`.')
-		}
-		launch_tool(prefs.verbosity, 'vrepl')
-	}
-	command := values[0]
 	if command in simple_cmd {
 		// External tools
-		launch_tool(prefs.verbosity, 'v' + command)
+		launch_tool(prefs2.is_verbose, 'v' + command)
+		return
+	}
+	if command in ['run', 'build'] || command.ends_with('.v') || os.exists(command) {
+		arg := join_flags_and_argument()
+		compile.compile(command, arg)
 		return
 	}
 	match command {
+		'help' {
+			invoke_help_and_exit(args)
+		}
 		'create', 'init' {
-			launch_tool(prefs.verbosity, 'vcreate')
+			launch_tool(prefs2.is_verbose, 'vcreate')
 			return
 		}
 		'translate' {
@@ -82,7 +74,7 @@ fn main() {
 			return
 		}
 		'search', 'install', 'update', 'remove' {
-			launch_tool(prefs.verbosity, 'vpm')
+			launch_tool(prefs2.is_verbose, 'vpm')
 			return
 		}
 		'get' {
@@ -90,52 +82,56 @@ fn main() {
 			exit(1)
 		}
 		'symlink' {
-			disallow_unknown_flags(prefs)
 			create_symlink()
 			return
 		}
 		'doc' {
-			disallow_unknown_flags(prefs)
-			if values.len == 1 {
-				println('V Error: Expected argument: Module name to output documentations for')
+			if args.len == 1 {
+				println('v doc [module]')
 				exit(1)
 			}
 			table := table.new_table()
-			println(doc.doc(values[1], table))
+			println(doc.doc(args[1], table))
 			return
 		}
 		'help' {
-			disallow_unknown_flags(prefs)
-			invoke_help_and_exit(values)
-			return
-		}
-		'version' {
-			disallow_unknown_flags(prefs)
-			print_version_and_exit()
+			invoke_help_and_exit(args)
 			return
 		}
 		else {}
-	}
-	if command == 'run' || command == 'build' || command.ends_with('.v') || os.exists(command) {
-		arg := join_flags_and_argument()
-		compile.compile(command, arg)
-		return
 	}
 	eprintln('v $command: unknown command\nRun "v help" for usage.')
 	exit(1)
 }
 
-fn print_version_and_exit() {
-	version_hash := vhash()
-	println('V $v_version $version_hash')
-	exit(0)
-}
-
-fn vhash() string {
-        mut buf := [50]byte
-        buf[0] = 0
-        C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
-        return tos_clone(buf)
+fn parse_args(args []string) (&pref.Preferences, string) {
+	mut res := &pref.Preferences{}
+	mut command := ''
+	//for i, arg in args {
+	for i := 0 ; i < args.len; i ++ {
+		arg := args[i]
+		match arg {
+			'-v' {	res.is_verbose = true	}
+			'-cg' {	res.is_debug = true	}
+			'-cc' {
+				res.ccompiler = cmdline.option(args, '-cc', 'cc')
+				i++
+			}
+			'-o' {
+				res.out_name  = cmdline.option(args, '-o', '')
+				i++
+			}
+			'-csource', '-backend' {
+				i++ // TODO
+			}
+			else {
+				if !arg.starts_with('-') && command == '' {
+					command = arg
+				}
+			}
+		}
+	}
+	return res, command
 }
 
 fn invoke_help_and_exit(remaining []string) {
@@ -150,15 +146,6 @@ fn invoke_help_and_exit(remaining []string) {
 	}
 	println('V Error: Expected only one help topic to be provided.')
 	println('For usage information, use `v help`.')
-	exit(1)
-}
-
-[inline]
-fn disallow_unknown_flags(prefs flag.MainCmdPreferences) {
-	if prefs.unknown_flag == '' {
-		return
-	}
-	println('V Error: Unexpected flag found: $prefs.unknown_flag')
 	exit(1)
 }
 

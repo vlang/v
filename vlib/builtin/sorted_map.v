@@ -48,7 +48,7 @@ fn new_sorted_map(n, value_bytes int) SortedMap { // TODO: Remove `n`
 fn new_sorted_map_init(n, value_bytes int, keys &string, values voidptr) SortedMap {
 	mut out := new_sorted_map(n, value_bytes)
 	for i in 0 .. n {
-		out.set(keys[i], values + i * value_bytes)
+		out.set(keys[i], byteptr(values) + i * value_bytes)
 	}
 	return out
 }

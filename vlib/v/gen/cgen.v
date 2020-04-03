@@ -8,6 +8,7 @@ import (
 	v.token
 	v.pref
 	term
+	v.util
 )
 
 const (
@@ -98,7 +99,13 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.is_test {
 		g.write_tests_main()
 	}
-	return g.typedefs.str() + g.definitions.str() + g.out.str()
+	return g.hashes() + g.typedefs.str() + g.definitions.str() + g.out.str()
+}
+
+pub fn (g &Gen) hashes() string {
+	mut res := c_commit_hash_default.replace('@@@', util.vhash() )
+	res += c_current_commit_hash_default.replace('@@@', util.githash( g.pref.building_v ) )
+	return res
 }
 
 pub fn (g mut Gen) init() {
@@ -657,7 +664,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					else {}
 	}
 				is_decl := assign_stmt.op == .decl_assign
-				g.write('/*assign_stmt*/')
+				//g.write('/*assign_stmt*/')
 				if is_decl {
 					g.write('$styp ')
 				}
@@ -733,7 +740,11 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	g.reset_tmp_count()
 	is_main := it.name == 'main'
 	if is_main {
-		g.write('int ${it.name}(int argc, char** argv')
+		if g.pref.os == .windows {
+			g.write('int wmain(int argc, wchar_t *argv[], wchar_t *envp[]')
+		} else {
+			g.write('int ${it.name}(int argc, char** argv')
+		}
 	}
 	else {
 		mut name := it.name
@@ -789,9 +800,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			if g.autofree {
 				g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
 			}
-			$if windows {
-				g.writeln('_const_os__args = os__init_os_args_wide(argc, (byteptr*)argv);')
-			}	$else {
+			if g.pref.os == .windows {
+				g.writeln('_const_os__args = os__init_os_args_wide(argc, argv);')
+			}	else {
 				g.writeln('_const_os__args = os__init_os_args(argc, (byteptr*)argv);')
 			}
 		}
@@ -1092,13 +1103,23 @@ fn (g mut Gen) expr(node ast.Expr) {
 		*/
 
 		ast.SizeOf {
-			styp := g.typ(it.typ)
-			g.write('sizeof($styp)')
+			if it.type_name != '' {
+				g.write('sizeof($it.type_name)')
+			} else {
+				styp := g.typ(it.typ)
+				g.write('sizeof($styp)')
+			}
 		}
 		ast.StringLiteral {
+			if it.is_raw {
+				escaped_val := it.val.replace_each(['"', '\\"',
+					'\\', '\\\\'])
+				g.write('tos3("$escaped_val")')
+				return
+			}
 			escaped_val := it.val.replace_each(['"', '\\"',
-			'\r\n', '\\n',
-			'\n', '\\n'])
+				'\r\n', '\\n',
+				'\n', '\\n'])
 			if g.is_c_call || it.is_c {
 				// In C calls we have to generate C strings
 				// `C.printf("hi")` => `printf("hi");`
@@ -1361,7 +1382,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		}
 	}
 	else {
-		need_par := node.op == .amp // `x & y == 0` => `(x & y) == 0` in C
+		need_par := node.op in [.amp, .pipe, .xor] // `x & y == 0` => `(x & y) == 0` in C
 		if need_par {
 			g.write('(')
 		}
@@ -1660,8 +1681,8 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 					is_selector = true
 				}
 				else {}
-	}
-			if g.is_assign_lhs && !is_selector {
+			}
+			if g.is_assign_lhs && !is_selector && node.is_setter {
 				g.is_array_set = true
 				g.write('array_set(&')
 				g.expr(node.left)

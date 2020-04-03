@@ -257,8 +257,11 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 				.key_fn {
 					return p.fn_decl()
 				}
-				.key_struct, .key_union, .key_interface {
+				.key_struct, .key_union {
 					return p.struct_decl()
+				}
+				.key_interface {
+					return p.interface_decl()
 				}
 				.key_enum {
 					return p.enum_decl()
@@ -433,6 +436,13 @@ pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	op := p.tok.kind
 	p.next()
 	val := p.expr(0)
+	match left {
+		ast.IndexExpr {
+			//it.mark_as_setter()
+			it.is_setter = true
+		}
+		else{}
+	}
 	node := ast.AssignExpr{
 		left: left
 		val: val
@@ -773,21 +783,22 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		.key_sizeof {
 			p.next() // sizeof
 			p.check(.lpar)
-			if p.tok.lit == 'C' {
-				p.next()
-				p.check(.dot)
-			}
 			if p.tok.kind == .amp {
 				p.next()
 			}
-			// type_name := p.check_name()
-			sizeof_type := p.parse_type()
-			p.check(.rpar)
-			node = ast.SizeOf{
-				typ: sizeof_type
-				// type_name: type_name
-
+			if p.tok.lit == 'C' {
+				p.next()
+				p.check(.dot)
+				node = ast.SizeOf{
+					type_name: p.check_name()
+				}
+			} else {
+				sizeof_type := p.parse_type()
+				node = ast.SizeOf{
+					typ: sizeof_type
+				}
 			}
+			p.check(.rpar)
 		}
 		.key_typeof {
 			p.next()
@@ -1436,6 +1447,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	if is_pub {
 		p.next()
 	}
+	pos := p.tok.position()
 	p.check(.key_const)
 	p.check(.lpar)
 	mut fields := []ast.Field
@@ -1447,6 +1459,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		expr := p.expr(0)
 		fields << ast.Field{
 			name: name
+			pos: p.tok.position()
 			// typ: typ
 
 		}
@@ -1459,6 +1472,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	}
 	p.check(.rpar)
 	return ast.ConstDecl{
+		pos : pos
 		fields: fields
 		exprs: exprs
 		is_pub: is_pub
@@ -1513,6 +1527,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			p.check(.colon)
 		}
 		field_name := p.check_name()
+		field_pos := p.tok.position()
 		// p.warn('field $field_name')
 		typ := p.parse_type()
 		/*
@@ -1529,6 +1544,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 		ast_fields << ast.Field{
 			name: field_name
+			pos: field_pos
 			typ: typ
 		}
 		fields << table.Field{
@@ -1768,12 +1784,14 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 	cond := p.expr(0)
 	p.check(.lcbr)
 	mut branches := []ast.MatchBranch
+	mut have_final_else := false
 	for {
 		mut exprs := []ast.Expr
 		branch_pos := p.tok.position()
 		p.open_scope()
 		// final else
 		if p.tok.kind == .key_else {
+			have_final_else = true
 			p.next()
 		}
 		// Sum type match
@@ -1821,6 +1839,9 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .rcbr {
 			break
 		}
+	}
+	if !have_final_else {
+		p.error('match must be exhaustive')
 	}
 	p.check(.rcbr)
 	return ast.MatchExpr{
