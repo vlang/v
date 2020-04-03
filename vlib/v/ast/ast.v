@@ -19,7 +19,7 @@ Type | AsCast | TypeOf | StringInterLiteral
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | LabeledStmt | GotoStmt |
-LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
+BreakStmt | ContinueStmt | PrefixGotoStmt | LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -168,6 +168,7 @@ pub:
 	rec_mut       bool // is receiver mutable
 	is_c          bool
 	no_body       bool // just a definition `fn C.malloc()`
+	pos           token.Position
 }
 
 pub struct BranchStmt {
@@ -382,8 +383,13 @@ pub:
 
 pub struct CompIf {
 pub:
-	cond       Expr
+// cond       Expr
+	val        string
 	stmts      []Stmt
+	is_not     bool
+	pos        token.Position
+mut:
+	has_else   bool
 	else_stmts []Stmt
 }
 
@@ -606,6 +612,7 @@ mut:
 pub struct AssertStmt {
 pub:
 	expr Expr
+	pos  token.Position
 }
 
 // `if [x := opt()] {`
@@ -633,6 +640,7 @@ pub:
 
 pub struct SizeOf {
 pub:
+	typ		  table.Type
 	type_name string
 }
 
