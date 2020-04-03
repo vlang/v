@@ -952,7 +952,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		return table.int_type
 	}
 	if ident.name != '_' {
-		c.error('unknown ident: `$ident.name`', ident.pos)
+		c.error('undefined: `$ident.name`', ident.pos)
 	}
 	return table.void_type
 }
@@ -1199,8 +1199,9 @@ pub fn (c mut Checker) error(s string, pos token.Position) {
 		eprintln(final_msg_line)
 	}
 	*/
-
-	println('\n\n')
+	if c.pref.verbosity.is_higher_or_equal(.level_one) {
+		println('\n\n')
+	}
 	if c.nr_errors >= max_nr_errors {
 		exit(1)
 	}
