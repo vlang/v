@@ -7,6 +7,7 @@ import (
 	v.ast
 	v.table
 	v.token
+	v.pref
 	os
 )
 
@@ -20,14 +21,17 @@ mut:
 	file           ast.File
 	nr_errors      int
 	errors         []string
+	error_lines    []int // to avoid printing multiple errors for the same line
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
 	// fn_decl        ast.FnDecl
+	pref        &pref.Preferences // Preferences shared from V struct
 }
 
-pub fn new_checker(table &table.Table) Checker {
+pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 	return Checker{
 		table: table
+		pref: pref
 	}
 }
 
@@ -947,7 +951,6 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 	if ident.is_c {
 		return table.int_type
 	}
-	// TODO
 	if ident.name != '_' {
 		c.error('unknown ident: `$ident.name`', ident.pos)
 	}
@@ -1171,17 +1174,24 @@ pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {
 pub fn (c mut Checker) error(s string, pos token.Position) {
 	c.nr_errors++
 	//if c.pref.is_verbose {
+	if c.pref.verbosity.is_higher_or_equal(.level_one) {
 		print_backtrace()
-	//}
+	}
 	mut path := c.file.path
 	// Get relative path
 	workdir := os.getwd() + os.path_separator
 	if path.starts_with(workdir) {
 		path = path.replace(workdir, '')
 	}
-	final_msg_line := '$path:$pos.line_nr: checker error #$c.nr_errors: $s'
+	mut final_msg_line := '$path:$pos.line_nr: $s'
+	if c.pref.verbosity.is_higher_or_equal(.level_one) {
+		final_msg_line = '$path:$pos.line_nr: checker error #$c.nr_errors: $s'
+	}
 	c.errors << final_msg_line
-	eprintln(final_msg_line)
+	if !(pos.line_nr in c.error_lines) {
+		eprintln(final_msg_line)
+	}
+	c.error_lines << pos.line_nr
 	/*
 	if colored_output {
 		eprintln(term.bold(term.red(final_msg_line)))
