@@ -21,11 +21,7 @@ fn cb_assertion_failed(filename string, line int, sourceline string, funcname st
 	}
 	final_filename := if use_relative_paths { filename } else { os.real_path(filename) }
 	final_funcname := funcname.replace('main__', '').replace('__', '.')
-	mut fail_message := 'FAILED assertion'
-	if color_on {
-		fail_message = term.bold(term.red(fail_message))
-	}
-	eprintln('$final_filename:$line: $fail_message')
+	eprintln('File    : $final_filename:$line')
 	eprintln('Function: $final_funcname')
 	eprintln('Source  : $sourceline')
 }
