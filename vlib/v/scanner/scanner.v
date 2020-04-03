@@ -380,10 +380,8 @@ pub fn (s mut Scanner) scan() token.Token {
 	}
 	// handle each char
 	c := s.text[s.pos]
-	mut nextc := `\0`
-	if s.pos + 1 < s.text.len {
-		nextc = s.text[s.pos + 1]
-	}
+	nextc := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
+
 	// name or keyword
 	if is_name_char(c) {
 		name := s.ident_name()
