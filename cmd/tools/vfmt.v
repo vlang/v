@@ -42,6 +42,10 @@ const (
 )
 
 fn main() {
+	if os.getenv('VFMT_ENABLE') == '' {
+		eprintln('v fmt is disabled for now')
+		exit(1)
+	}
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := join_flags_and_argument()
