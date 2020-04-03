@@ -592,6 +592,11 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.write('}')
 			}
 		}
+		ast.TypeOf {
+			f.write('typeof(')
+			f.expr(it.expr)
+			f.write(')')
+		}
 		else {
 			eprintln('fmt expr: unhandled node ' + typeof(node))
 		}
