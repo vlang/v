@@ -101,6 +101,8 @@ pub struct Field {
 pub:
 	name string
 	// type_idx int
+	pos token.Position
+	already_reported bool
 mut:
 	typ  table.Type
 	// typ2 Type
@@ -108,6 +110,7 @@ mut:
 
 pub struct ConstDecl {
 pub:
+	pos    token.Position
 	fields []Field
 	exprs  []Expr
 	is_pub bool
@@ -342,6 +345,7 @@ pub:
 	index          Expr // [0], [start..end] etc
 mut:
 	container_type table.Type // array, map, fixed array
+	is_setter      bool
 }
 
 pub struct IfExpr {

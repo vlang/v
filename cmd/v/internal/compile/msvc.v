@@ -52,7 +52,8 @@ fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 				if value[length - 1] != u16(0) {
 					value[length] = u16(0)
 				}
-				return string_from_wide(value)
+				res := string_from_wide(value)
+				return res
 			}
 		}
 	}
@@ -71,7 +72,8 @@ struct WindowsKit {
 fn find_windows_kit_root(host_arch string) ?WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
-		rc := C.RegOpenKeyEx(HKEY_LOCAL_MACHINE, 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'.to_wide(), 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY | KEY_ENUMERATE_SUB_KEYS, &root_key)
+		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
+		rc := C.RegOpenKeyEx(HKEY_LOCAL_MACHINE, path.to_wide(), 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY | KEY_ENUMERATE_SUB_KEYS, &root_key)
 		defer {
 			C.RegCloseKey(root_key)
 		}

@@ -3,9 +3,11 @@
 # The V Programming Language
 
 [![Build Status](https://github.com/vlang/v/workflows/CI/badge.svg)](https://github.com/vlang/v/commits/master)
+<a href='https://github.com/sponsors/medvednikov'><img src='https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562'></a>
 <a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
 [![Twitter handle][]][Twitter badge]
 
+**V's backend has just been replaced on April 1, 15k lines of code were removed, some things are broken, we are working hard to fix them all by April 4.**
 
 https://vlang.io
 

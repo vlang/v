@@ -17,7 +17,7 @@ fn set_vroot_folder(vroot_path string) {
 }
 
 
-fn launch_tool(verbosity pref.VerboseLevel, tool_name string) {
+fn launch_tool(is_verbose bool, tool_name string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	set_vroot_folder(vroot)
@@ -26,7 +26,7 @@ fn launch_tool(verbosity pref.VerboseLevel, tool_name string) {
 	tool_exe := path_of_executable(os.real_path('$vroot/cmd/tools/$tool_name'))
 	tool_source := os.real_path('$vroot/cmd/tools/${tool_name}.v')
 	tool_command := '"$tool_exe" $tool_args'
-	if verbosity.is_higher_or_equal(.level_two) {
+	if is_verbose {
 		eprintln('launch_tool vexe        : $vroot')
 		eprintln('launch_tool vroot       : $vroot')
 		eprintln('launch_tool tool_args   : $tool_args')
@@ -57,7 +57,7 @@ fn launch_tool(verbosity pref.VerboseLevel, tool_name string) {
 			should_compile = true
 		}
 	}
-	if verbosity.is_higher_or_equal(.level_two) {
+	if is_verbose {
 		eprintln('launch_tool should_compile: $should_compile')
 	}
 
@@ -68,7 +68,7 @@ fn launch_tool(verbosity pref.VerboseLevel, tool_name string) {
 			compilation_command += '-d vfmt '
 		}
 		compilation_command += '"$tool_source"'
-		if verbosity.is_higher_or_equal(.level_three) {
+		if is_verbose {
 			eprintln('Compiling $tool_name with: "$compilation_command"')
 		}
 		tool_compilation := os.exec(compilation_command) or { panic(err) }
@@ -76,7 +76,7 @@ fn launch_tool(verbosity pref.VerboseLevel, tool_name string) {
 			panic('V tool "$tool_source" could not be compiled\n' + tool_compilation.output)
 		}
 	}
-	if verbosity.is_higher_or_equal(.level_three) {
+	if is_verbose {
 		eprintln('launch_tool running tool command: $tool_command ...')
 	}
 

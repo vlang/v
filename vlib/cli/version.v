@@ -18,7 +18,7 @@ fn version_cmd() Command {
 	}
 }
 
-fn version_func(version_cmd cli.Command) {
+fn version_func(version_cmd Command) {
 	cmd := version_cmd.parent
 	version := '${cmd.name} v${cmd.version}'
 	println(version)

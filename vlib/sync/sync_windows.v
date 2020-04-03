@@ -26,28 +26,15 @@ enum MutexState {
 	destroyed
 }
 
-const (
-	INFINITE = 0xffffffff
-)
-
-// Ref - https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject#return-value
-const (
-	WAIT_ABANDONED     = 0x00000080
-	WAIT_IO_COMPLETION = 0x000000C0
-	WAIT_OBJECT_0      = 0x00000000
-	WAIT_TIMEOUT       = 0x00000102
-	WAIT_FAILED        = 0xFFFFFFFF
-)
-
 pub fn new_mutex() &Mutex {
 	sm := &Mutex{}
 	unsafe {
-		mut m := sm		
+		mut m := sm
 		m.mx = C.CreateMutex(0, false, 0)
 		if isnil(m.mx) {
 			m.state = .broken // handle broken and mutex state are broken
 			return sm
-		}		
+		}
 	}
 	return sm
 }
@@ -61,23 +48,27 @@ pub fn (m mut Mutex) lock() {
 			return
 		}
 	}
-	state := C.WaitForSingleObject(m.mx, INFINITE) // infinite wait
+	state := C.WaitForSingleObject(m.mx, C.INFINITE) // infinite wait
 	/* TODO fix match/enum combo
 	m.state = match state {
-		WAIT_ABANDONED { .abandoned }
-		WAIT_OBJECT_0  { .waiting }
+		C.WAIT_ABANDONED { .abandoned }
+		C.WAIT_OBJECT_0  { .waiting }
 		else           { .broken }
 	}
 	*/
-	mut s := MutexState.broken
-	if state == WAIT_ABANDONED { s = .abandoned }
-	else if state == WAIT_OBJECT_0 { s = .waiting }
-	m.state = s
+	if state == C.WAIT_ABANDONED {
+		m.state = .abandoned
+	// FIXME Use C constant instead
+	} else if state == 0 /* C.WAIT_OBJECT_0 */ {
+		m.state = .waiting
+	} else {
+		m.state = .broken
+	}
 }
 
 pub fn (m mut Mutex) unlock() {
 	if m.state == .waiting {
-		if ReleaseMutex(m.mx) {
+		if C.ReleaseMutex(m.mx) {
 			m.state = .broken
 			return
 		}

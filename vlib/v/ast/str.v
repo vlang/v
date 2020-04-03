@@ -65,20 +65,23 @@ pub fn (x Expr) str() string {
 		InfixExpr {
 			return '(${it.left.str()} $it.op.str() ${it.right.str()})'
 		}
-		/*
 		PrefixExpr {
-			return it.left.str() + it.op.str()
+			return it.op.str() + it.right.str()
 		}
-		*/
-
 		IntegerLiteral {
 			return it.val
 		}
 		StringLiteral {
 			return '"$it.val"'
 		}
+		ParExpr {
+			return it.expr.str()
+		}
+		IndexExpr {
+			return '${it.left.str()}[${it.index.str()}]'
+		}
 		else {
-			return ''
+			return '[unhandled expr type ${typeof(x)}]'
 		}
 	}
 }
@@ -113,7 +116,7 @@ pub fn (node Stmt) str() string {
 			return 'fn ${it.name}() { $it.stmts.len stmts }'
 		}
 		else {
-			return '[unhandled stmt str]'
+			return '[unhandled stmt str type: ${typeof(node)} ]'
 		}
 	}
 }

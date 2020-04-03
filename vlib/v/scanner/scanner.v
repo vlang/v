@@ -7,6 +7,7 @@ import (
 	os
 	v.token
 	v.pref
+	v.util
 )
 
 const (
@@ -20,29 +21,29 @@ const (
 
 pub struct Scanner {
 mut:
-	file_path                string
-	text                     string
-	pos                      int
-	line_nr                  int
-	last_nl_pos              int // for calculating column
-	inside_string            bool
-	inter_start              bool // for hacky string interpolation TODO simplify
-	inter_end                bool
-	debug                    bool
-	line_comment             string
+	file_path                   string
+	text                        string
+	pos                         int
+	line_nr                     int
+	last_nl_pos                 int // for calculating column
+	is_inside_string            bool
+	is_inter_start              bool // for hacky string interpolation TODO simplify
+	is_inter_end                bool
+	is_debug                    bool
+	line_comment                string
 	// prev_tok                 TokenKind
-	started                  bool
-	fn_name                  string // needed for @FN
-	print_line_on_error      bool
-	print_colored_error      bool
-	print_rel_paths_on_error bool
-	quote                    byte // which quote is used to denote current string: ' or "
-	line_ends                []int // the positions of source lines ends   (i.e. \n signs)
-	nr_lines                 int // total number of lines in the source file that were scanned
-	is_vh                    bool // Keep newlines
-	is_fmt                   bool // Used only for skipping ${} in strings, since we need literal
+	is_started                  bool
+	fn_name                     string // needed for @FN
+	is_print_line_on_error      bool
+	is_print_colored_error      bool
+	is_print_rel_paths_on_error bool
+	quote                       byte // which quote is used to denote current string: ' or "
+	line_ends                   []int // the positions of source lines ends   (i.e. \n signs)
+	nr_lines                    int // total number of lines in the source file that were scanned
+	is_vh                       bool // Keep newlines
+	is_fmt                      bool // Used only for skipping ${} in strings, since we need literal
 	// string values when generating formatted code.
-	comments_mode            CommentsMode
+	comments_mode               CommentsMode
 }
 
 pub enum CommentsMode {
@@ -78,9 +79,9 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode) &Scanner {
 pub fn new_scanner(text string, comments_mode CommentsMode) &Scanner {
 	return &Scanner{
 		text: text
-		print_line_on_error: true
-		print_colored_error: true
-		print_rel_paths_on_error: true
+		is_print_line_on_error: true
+		is_print_colored_error: true
+		is_print_rel_paths_on_error: true
 		is_fmt: is_fmt
 		comments_mode: comments_mode
 	}
@@ -131,7 +132,7 @@ fn (s mut Scanner) ident_bin_number() string {
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_bin_digit() && c != num_sep {
-			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
+			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
 			}
 			else if !has_wrong_digit {
@@ -160,7 +161,7 @@ fn (s mut Scanner) ident_hex_number() string {
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_hex_digit() && c != num_sep {
-			if !c.is_letter() || s.inside_string {
+			if !c.is_letter() || s.is_inside_string {
 				break
 			}
 			else if !has_wrong_digit {
@@ -189,7 +190,7 @@ fn (s mut Scanner) ident_oct_number() string {
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_oct_digit() && c != num_sep {
-			if (!c.is_digit() && !c.is_letter()) || s.inside_string {
+			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
 			}
 			else if !has_wrong_digit {
@@ -219,7 +220,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_digit() && c != num_sep {
-			if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
+			if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string {
 				break
 			}
 			else if !has_wrong_digit {
@@ -244,7 +245,7 @@ fn (s mut Scanner) ident_dec_number() string {
 				for s.pos < s.text.len {
 					c := s.text[s.pos]
 					if !c.is_digit() {
-						if !c.is_letter() || c in [`e`, `E`] || s.inside_string {
+						if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string {
 							if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos + 1].is_digit() && s.text[s.pos + 1] != `)` {
 								call_method = true
 							}
@@ -275,7 +276,7 @@ fn (s mut Scanner) ident_dec_number() string {
 		for s.pos < s.text.len {
 			c := s.text[s.pos]
 			if !c.is_digit() {
-				if !c.is_letter() || s.inside_string {
+				if !c.is_letter() || s.is_inside_string {
 					if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos + 1].is_digit() && s.text[s.pos + 1] != `)` {
 						call_method = true
 					}
@@ -353,23 +354,23 @@ pub fn (s mut Scanner) scan() token.Token {
 	// s.fgenln('// LC "$s.line_comment"')
 	// s.line_comment = ''
 	// }
-	if s.started {
+	if s.is_started {
 		s.pos++
 	}
-	s.started = true
+	s.is_started = true
 	if s.pos >= s.text.len {
 		return s.end_of_file()
 	}
-	if !s.inside_string {
+	if !s.is_inside_string {
 		s.skip_whitespace()
 	}
 	// End of $var, start next string
-	if s.inter_end {
+	if s.is_inter_end {
 		if s.text[s.pos] == s.quote {
-			s.inter_end = false
+			s.is_inter_end = false
 			return s.new_token(.string, '')
 		}
-		s.inter_end = false
+		s.is_inter_end = false
 		return s.new_token(.string, s.ident_string())
 	}
 	s.skip_whitespace()
@@ -379,10 +380,8 @@ pub fn (s mut Scanner) scan() token.Token {
 	}
 	// handle each char
 	c := s.text[s.pos]
-	mut nextc := `\0`
-	if s.pos + 1 < s.text.len {
-		nextc = s.text[s.pos + 1]
-	}
+	nextc := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
+
 	// name or keyword
 	if is_name_char(c) {
 		name := s.ident_name()
@@ -394,18 +393,18 @@ pub fn (s mut Scanner) scan() token.Token {
 		}
 		// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 		// at the next ', skip it
-		if s.inside_string {
+		if s.is_inside_string {
 			if next_char == s.quote {
-				s.inter_end = true
-				s.inter_start = false
-				s.inside_string = false
+				s.is_inter_end = true
+				s.is_inter_start = false
+				s.is_inside_string = false
 			}
 		}
 		// end of `$expr`
 		// allow `'$a.b'` and `'$a.c()'`
-		if s.inter_start && next_char != `.` && next_char != `(` {
-			s.inter_end = true
-			s.inter_start = false
+		if s.is_inter_start && next_char != `.` && next_char != `(` {
+			s.is_inter_end = true
+			s.is_inter_start = false
 		}
 		if s.pos == 0 && next_char == ` ` {
 			// If a single letter name at the start of the file, increment
@@ -416,7 +415,7 @@ pub fn (s mut Scanner) scan() token.Token {
 	}
 	// `123`, `.123`
 	else if c.is_digit() || (c == `.` && nextc.is_digit()) {
-		if !s.inside_string {
+		if !s.is_inside_string {
 			// In C ints with `0` prefix are octal (in V they're decimal), so discarding heading zeros is needed.
 			mut start_pos := s.pos
 			for start_pos < s.text.len && s.text[start_pos] == `0` {
@@ -433,12 +432,12 @@ pub fn (s mut Scanner) scan() token.Token {
 		return s.new_token(.number, num)
 	}
 	// Handle `'$fn()'`
-	if c == `)` && s.inter_start {
-		s.inter_end = true
-		s.inter_start = false
+	if c == `)` && s.is_inter_start {
+		s.is_inter_end = true
+		s.is_inter_start = false
 		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
 		if next_char == s.quote {
-			s.inside_string = false
+			s.is_inside_string = false
 		}
 		return s.new_token(.rpar, '')
 	}
@@ -511,13 +510,13 @@ pub fn (s mut Scanner) scan() token.Token {
 		}
 		`{` {
 			// Skip { in `${` in strings
-			if s.inside_string {
+			if s.is_inside_string {
 				return s.scan()
 			}
 			return s.new_token(.lcbr, '')
 		}
 		`$` {
-			if s.inside_string {
+			if s.is_inside_string {
 				return s.new_token(.str_dollar, '')
 			}
 			else {
@@ -527,10 +526,10 @@ pub fn (s mut Scanner) scan() token.Token {
 		`}` {
 			// s = `hello $name !`
 			// s = `hello ${name} !`
-			if s.inside_string {
+			if s.is_inside_string {
 				s.pos++
 				if s.text[s.pos] == s.quote {
-					s.inside_string = false
+					s.is_inside_string = false
 					return s.new_token(.string, '')
 				}
 				return s.new_token(.string, s.ident_string())
@@ -593,7 +592,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				return s.new_token(.string, (s.current_column()).str())
 			}
 			if name == 'VHASH' {
-				return s.new_token(.string, vhash())
+				return s.new_token(.string, util.vhash())
 			}
 			if !token.is_key(name) {
 				s.error('@ must be used before keywords (e.g. `@type string`)')
@@ -815,7 +814,7 @@ fn (s mut Scanner) ident_string() string {
 	q := s.text[s.pos]
 	is_quote := q == single_quote || q == double_quote
 	is_raw := is_quote && s.text[s.pos - 1] == `r`
-	if is_quote && !s.inside_string {
+	if is_quote && !s.is_inside_string {
 		s.quote = q
 	}
 	// if s.file_path.contains('string_test') {
@@ -823,7 +822,7 @@ fn (s mut Scanner) ident_string() string {
 	// println('linenr=$s.line_nr quote=  $qquote ${qquote.str()}')
 	// }
 	mut start := s.pos
-	s.inside_string = false
+	s.is_inside_string = false
 	slash := `\\`
 	for {
 		s.pos++
@@ -853,15 +852,15 @@ fn (s mut Scanner) ident_string() string {
 		}
 		// ${var} (ignore in vfmt mode)
 		if c == `{` && prevc == `$` && !is_raw && !s.is_fmt && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
-			s.inside_string = true
+			s.is_inside_string = true
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
 		}
 		// $var
 		if is_name_char(c) && prevc == `$` && !s.is_fmt && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
-			s.inside_string = true
-			s.inter_start = true
+			s.is_inside_string = true
+			s.is_inter_start = true
 			s.pos -= 2
 			break
 		}
@@ -871,7 +870,7 @@ fn (s mut Scanner) ident_string() string {
 		start++
 	}
 	mut end := s.pos
-	if s.inside_string {
+	if s.is_inside_string {
 		end++
 	}
 	if start > s.pos {}
@@ -935,8 +934,8 @@ fn (s &Scanner) expect(want string, start_pos int) bool {
 
 fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
-	s.started = false
-	s.debug = true
+	s.is_started = false
+	s.is_debug = true
 	fname := s.file_path.all_after(os.path_separator)
 	println('\n===DEBUG TOKENS $fname===')
 	for {
@@ -1031,13 +1030,6 @@ pub fn verror(s string) {
 	println('V error: $s')
 	os.flush()
 	exit(1)
-}
-
-pub fn vhash() string {
-	mut buf := [50]byte
-	buf[0] = 0
-	C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
-	return tos_clone(buf)
 }
 
 pub fn cescaped_path(s string) string {

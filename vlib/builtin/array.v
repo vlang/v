@@ -99,7 +99,7 @@ pub fn (a array) repeat(count int) array {
 		data: vcalloc(size)
 	}
 	for i in 0..count {
-		C.memcpy(arr.data + i * a.len * a.element_size, a.data, a.len * a.element_size)
+		C.memcpy(byteptr(arr.data) + i * a.len * a.element_size, byteptr(a.data), a.len * a.element_size)
 	}
 	return arr
 }
@@ -123,8 +123,8 @@ pub fn (a mut array) insert(i int, val voidptr) {
 	}
 	a.ensure_cap(a.len + 1)
 	size := a.element_size
-	C.memmove(a.data + (i + 1) * size, a.data + i * size, (a.len - i) * size)
-	C.memcpy(a.data + i * size, val, size)
+	C.memmove(byteptr(a.data) + (i + 1) * size, byteptr(a.data) + i * size, (a.len - i) * size)
+	C.memcpy(byteptr(a.data) + i * size, val, size)
 	a.len++
 }
 
@@ -143,7 +143,7 @@ pub fn (a mut array) delete(i int) {
 		}
 	}
 	size := a.element_size
-	C.memmove(a.data + i * size, a.data + (i + 1) * size, (a.len - i) * size)
+	C.memmove(byteptr(a.data) + i * size, byteptr(a.data) + (i + 1) * size, (a.len - i) * size)
 	a.len--
 }
 
@@ -167,7 +167,7 @@ fn (a array) get(i int) voidptr {
 			panic('array.get: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	return a.data + i * a.element_size
+	return byteptr(a.data) + i * a.element_size
 }
 
 // array.first returns the first element of the array
@@ -177,7 +177,7 @@ pub fn (a array) first() voidptr {
 			panic('array.first: array is empty')
 		}
 	}
-	return a.data + 0
+	return a.data
 }
 
 // array.last returns the last element of the array
@@ -187,7 +187,7 @@ pub fn (a array) last() voidptr {
 			panic('array.last: array is empty')
 		}
 	}
-	return a.data + (a.len - 1) * a.element_size
+	return byteptr(a.data) + (a.len - 1) * a.element_size
 }
 
 /*
@@ -242,7 +242,7 @@ fn (a array) slice(start, _end int) array {
 	l := end - start
 	res := array{
 		element_size: a.element_size
-		data: a.data + start * a.element_size
+		data: byteptr(a.data) + start * a.element_size
 		len: l
 		cap: l
 	}
@@ -267,7 +267,7 @@ pub fn (a &array) clone() array {
 		element_size: a.element_size
 		data: vcalloc(size)
 	}
-	C.memcpy(arr.data, a.data, a.cap * a.element_size)
+	C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size)
 	return arr
 }
 
@@ -287,7 +287,7 @@ fn (a &array) slice_clone(start, _end int) array {
 	l := end - start
 	res := array{
 		element_size: a.element_size
-		data: a.data + start * a.element_size
+		data: byteptr(a.data) + start * a.element_size
 		len: l
 		cap: l
 	}
@@ -301,12 +301,12 @@ fn (a mut array) set(i int, val voidptr) {
 			panic('array.set: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	C.memcpy(a.data + a.element_size * i, val, a.element_size)
+	C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size)
 }
 
 fn (a mut array) push(val voidptr) {
 	a.ensure_cap(a.len + 1)
-	C.memcpy(a.data + a.element_size * a.len, val, a.element_size)
+	C.memcpy(byteptr(a.data) + a.element_size * a.len, val, a.element_size)
 	a.len++
 }
 
@@ -318,10 +318,10 @@ pub fn (a3 mut array) push_many(val voidptr, size int) {
 		copy := a3.clone()
 		a3.ensure_cap(a3.len + size)
 		//C.memcpy(a.data, copy.data, copy.element_size * copy.len)
-		C.memcpy(a3.data + a3.element_size * a3.len, copy.data, a3.element_size * size)
+		C.memcpy(byteptr(a3.data) + a3.element_size * a3.len, copy.data, a3.element_size * size)
 	} else {
 		a3.ensure_cap(a3.len + size)
-		C.memcpy(a3.data + a3.element_size * a3.len, val, a3.element_size * size)
+		C.memcpy(byteptr(a3.data) + a3.element_size * a3.len, val, a3.element_size * size)
 	}
 	a3.len += size
 }
@@ -340,7 +340,7 @@ pub fn (a array) reverse() array {
 	}
 	for i in 0..a.len {
 		//C.memcpy(arr.data + i * arr.element_size, &a[a.len - 1 - i], arr.element_size)
-		C.memcpy(arr.data + i * arr.element_size, a.data + (a.len - 1 - i) * arr.element_size, arr.element_size)
+		C.memcpy(byteptr(arr.data) + i * arr.element_size, byteptr(a.data) + (a.len - 1 - i) * arr.element_size, arr.element_size)
 	}
 	return arr
 }
@@ -436,7 +436,7 @@ pub fn copy(dst, src []byte) int {
 	if dst.len > 0 && src.len > 0 {
 		mut min := 0
 		min = if dst.len < src.len { dst.len } else { src.len }
-		C.memcpy(dst.data, src[..min].data, dst.element_size * min)
+		C.memcpy(byteptr(dst.data), src[..min].data, dst.element_size * min)
 		return min
 	}
 	return 0
@@ -607,7 +607,7 @@ pub fn compare_f32(a, b &f32) int {
 pub fn (a array) pointers() []voidptr {
 	mut res := []voidptr
 	for i in 0..a.len {
-		res << a.data + i * a.element_size
+		res << byteptr(a.data) + i * a.element_size
 	}
 	return res
 }

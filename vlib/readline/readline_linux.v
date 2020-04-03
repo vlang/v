@@ -313,7 +313,8 @@ fn shift_cursor(xpos int, yoffset int) {
   print('\x1b[${xpos + 1}G')
 }
 
-fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count int, out mut []int) {
+fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count int, inp []int) []int {
+  mut out := inp
   mut x := x_in
   mut y := y_in
   out[0] = x
@@ -330,15 +331,16 @@ fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count 
     out[0] = 0
     out[1]++
   }
+  return out
 }
 
 // Will redraw the line
 fn (r mut Readline) refresh_line() {
   mut end_of_input := [0, 0]
-  calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.current.len, mut end_of_input)
+  end_of_input = calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.current.len, end_of_input)
   end_of_input[1] += r.current.count('\n'.ustring())
   mut cursor_pos := [0, 0]
-  calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.cursor, mut cursor_pos)
+  cursor_pos = calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.cursor, cursor_pos)
 
   shift_cursor(0, -r.cursor_row_offset)
   term.erase_toend()
@@ -363,9 +365,9 @@ fn (r mut Readline) eof() bool {
 
 fn (r mut Readline) insert_character(c int) {
   if !r.overwrite || r.cursor == r.current.len {
-    r.current = r.current.left(r.cursor).ustring() + utf32_to_str(u32(c)).ustring() + r.current.right(r.cursor).ustring()
+    r.current = r.current.left(r.cursor).ustring().add( utf32_to_str(u32(c)).ustring() ).add( r.current.right(r.cursor).ustring() )
   } else {
-    r.current = r.current.left(r.cursor).ustring() + utf32_to_str(u32(c)).ustring() + r.current.right(r.cursor + 1).ustring()
+    r.current = r.current.left(r.cursor).ustring().add( utf32_to_str(u32(c)).ustring() ).add( r.current.right(r.cursor + 1).ustring() )
   }
   r.cursor++
   // Refresh the line to add the new character
@@ -380,7 +382,7 @@ fn (r mut Readline) delete_character() {
     return
   }
   r.cursor--
-  r.current = r.current.left(r.cursor).ustring() + r.current.right(r.cursor + 1).ustring()
+  r.current = r.current.left(r.cursor).ustring().add( r.current.right(r.cursor + 1).ustring() )
   r.refresh_line()
 }
 
@@ -389,7 +391,7 @@ fn (r mut Readline) suppr_character() {
   if r.cursor > r.current.len {
     return
   }
-  r.current = r.current.left(r.cursor).ustring() + r.current.right(r.cursor + 1).ustring()
+  r.current = r.current.left(r.cursor).ustring().add( r.current.right(r.cursor + 1).ustring() )
   r.refresh_line()
 }
 
@@ -397,7 +399,7 @@ fn (r mut Readline) suppr_character() {
 fn (r mut Readline) commit_line() bool {
   r.previous_lines.insert(1, r.current)
   a := '\n'.ustring()
-  r.current = r.current + a
+  r.current = r.current.add( a )
   r.cursor = r.current.len
   if r.is_tty {
     r.refresh_line()

@@ -84,7 +84,9 @@ $if msvc {
 	frames := int( C.CaptureStackBackTrace(skipframes + 1, 100, backtraces, 0) )
 	for i:=0; i < frames; i++ {
 		// fugly pointer arithmetics follows ...
-		s := *voidptr( u64(backtraces) + u64(i*sizeof(voidptr)) )
+		// FIXME Remove temp variable
+		tmp := u64(backtraces) + u64(i * sizeof(voidptr))
+		s := &voidptr(tmp)
 		symfa_ok := C.SymFromAddr( handle, *s, &offset, si )
 		if symfa_ok == 1 {
 			nframe := frames - i - 1
@@ -95,7 +97,7 @@ $if msvc {
 			}
 			else {
 				//cerr := int(C.GetLastError()) println('SymGetLineFromAddr64 failure: $cerr ')
-				lineinfo = ' ?? : address= $s'
+				lineinfo = ' ?? : address= ${&s}'
 			}
 			sfunc := tos3(fname)
 			println('${nframe:-2d}: ${sfunc:-25s}  $lineinfo')

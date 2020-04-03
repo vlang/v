@@ -1,6 +1,6 @@
 pub const (
-	// c = a // TODO
 	a = b
+	c = a + b
 	b = 1
 	d = (e / 2) + 7
 	e = 9

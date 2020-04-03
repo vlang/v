@@ -2,7 +2,7 @@
 name: Bug report
 about: Bug report
 title: ''
-labels: 'Type: Bug'
+labels: 'Bug'
 assignees: ''
 
 ---
