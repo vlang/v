@@ -1884,7 +1884,7 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 		g.writeln('($styp){')
 	}
 	mut fields := []string
-	mut inited_fields := []string
+	mut inited_fields := []string // TODO this is done in checker, move to ast node
 	if it.fields.len == 0 && it.exprs.len > 0 {
 		// Get fields for {a,b} short syntax. Fields array wasn't set in the parser.
 		for f in info.fields {
@@ -2447,10 +2447,14 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 		else {
 			// `println(int_str(10))`
 			// sym := g.table.get_type_symbol(node.args[0].typ)
+			if table.type_is_ptr(typ) {
+				// ptr_str() for pointers
+				styp = 'ptr'
+			}
 			g.write('${print_method}(${styp}_str(')
 			if table.type_is_ptr(typ) {
 				// dereference
-				g.write('*')
+				//g.write('*')
 			}
 			g.expr(node.args[0].expr)
 			g.write('))')
@@ -2883,7 +2887,7 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 		fmt := type_to_fmt(field.typ)
 		g.definitions.write('\t$field.name: $fmt\\n')
 	}
-	g.definitions.write('\\n}"')
+	g.definitions.write('}"')
 	if info.fields.len > 0 {
 		g.definitions.write(', ')
 	}

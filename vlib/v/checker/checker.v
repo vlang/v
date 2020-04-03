@@ -102,10 +102,12 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 			if struct_init.exprs.len > info.fields.len {
 				c.error('too many fields', struct_init.pos)
 			}
+			mut inited_fields := []string
 			for i, expr in struct_init.exprs {
 				// struct_field info.
 				field_name := if is_short_syntax { info.fields[i].name } else { struct_init.fields[i] }
 				mut field := info.fields[i]
+				inited_fields << field_name
 				mut found_field := false
 				for f in info.fields {
 					if f.name == field_name {
@@ -126,6 +128,15 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 				}
 				struct_init.expr_types << expr_type
 				struct_init.expected_types << field.typ
+			}
+			// Check uninitialized refs
+			for field in info.fields {
+				if field.name in inited_fields {
+					continue
+				}
+				if table.type_is_ptr(field.typ) {
+					c.warn('reference field `Reference.value` must be initialized', struct_init.pos)
+				}
 			}
 		}
 		else {}
@@ -1166,23 +1177,41 @@ pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {
 	return map_type
 }
 
+pub fn (c mut Checker) warn(s string, pos token.Position) {
+	allow_warnings := !c.pref.is_prod // allow warnings only in dev builds
+	c.warn_or_error(s, pos, allow_warnings) // allow warnings only in dev builds
+}
+
 pub fn (c mut Checker) error(s string, pos token.Position) {
-	c.nr_errors++
+	c.warn_or_error(s, pos, false)
+}
+
+fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
+	if !warn {
+		c.nr_errors++
+	}
 	//if c.pref.is_verbose {
 	if c.pref.verbosity.is_higher_or_equal(.level_one) {
 		print_backtrace()
 	}
+	typ := if warn { 'warning' } else { 'error' }
 	kind := if c.pref.verbosity.is_higher_or_equal(.level_one) {
-		'checker error #$c.nr_errors:'
+		'checker $typ #$c.nr_errors:'
 	} else {
-		'error:'
+		'$typ:'
 	}
 	ferror := util.formated_error(kind, s, c.file.path, pos)
 	c.errors << ferror
 	if !(pos.line_nr in c.error_lines) {
-		eprintln(ferror)
+		if warn {
+			println(ferror)
+		} else {
+			eprintln(ferror)
+		}
 	}
-	c.error_lines << pos.line_nr
+	if !warn {
+		c.error_lines << pos.line_nr
+	}
 	if c.pref.verbosity.is_higher_or_equal(.level_one) {
 		println('\n\n')
 	}
