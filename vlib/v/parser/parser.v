@@ -21,26 +21,26 @@ const (
 )
 
 struct Parser {
-	scanner     &scanner.Scanner
-	file_name   string
+	scanner        &scanner.Scanner
+	file_name      string
 mut:
-	tok         token.Token
-	peek_tok    token.Token
+	tok            token.Token
+	peek_tok       token.Token
 	// vars []string
-	table       &table.Table
-	is_c        bool
+	table          &table.Table
+	is_c           bool
 	// prefix_parse_fns []PrefixParseFn
-	inside_if   bool
-	pref        &pref.Preferences // Preferences shared from V struct
-	builtin_mod bool
-	mod         string
-	attr        string
-	expr_mod    string
-	scope       &ast.Scope
-	imports     map[string]string
-	ast_imports []ast.Import
-	is_amp      bool
-	returns     bool
+	is_inside_if   bool
+	pref           &pref.Preferences // Preferences shared from V struct
+	is_builtin_mod bool
+	mod            string
+	attr           string
+	expr_mod       string
+	scope          &ast.Scope
+	imports        map[string]string
+	ast_imports    []ast.Import
+	is_amp         bool
+	is_returns     bool
 }
 
 // for tests
@@ -85,7 +85,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	module_decl := if p.tok.kind == .key_module { p.module_decl() } else { ast.Module{name: 'main'
 	} }
 	p.mod = module_decl.name
-	p.builtin_mod = p.mod == 'builtin'
+	p.is_builtin_mod = p.mod == 'builtin'
 	// imports
 	/*
 	mut imports := []ast.Import
@@ -682,7 +682,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	}
 	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c ||
 	//
-	(p.builtin_mod && p.tok.lit in table.builtin_type_names)) &&
+	(p.is_builtin_mod && p.tok.lit in table.builtin_type_names)) &&
 	//
 	(p.tok.lit.len == 1 || !p.tok.lit[p.tok.lit.len - 1].is_capital())
 	//
@@ -1179,7 +1179,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 }
 
 fn (p mut Parser) if_expr() ast.IfExpr {
-	p.inside_if = true
+	p.is_inside_if = true
 	pos := p.tok.position()
 	mut branches := []ast.IfBranch
 	mut has_else := false
@@ -1223,7 +1223,7 @@ fn (p mut Parser) if_expr() ast.IfExpr {
 		else {
 			cond = p.expr(0)
 		}
-		p.inside_if = false
+		p.is_inside_if = false
 		stmts := p.parse_block()
 		if is_or {
 			p.close_scope()
@@ -1568,7 +1568,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 	}
 	mut ret := 0
-	if p.builtin_mod && t.name in table.builtin_type_names {
+	if p.is_builtin_mod && t.name in table.builtin_type_names {
 		// this allows overiding the builtins type
 		// with the real struct type info parsed from builtin
 		ret = p.table.register_builtin_type_symbol(t)
@@ -1739,7 +1739,7 @@ fn (p mut Parser) hash() ast.HashStmt {
 }
 
 fn (p mut Parser) global_decl() ast.GlobalDecl {
-	if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v && p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
+	if !p.pref.translated && !p.pref.is_live && !p.is_builtin_mod && !p.pref.building_v && p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
 	p.next()

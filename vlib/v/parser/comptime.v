@@ -33,7 +33,7 @@ fn (p mut Parser) comp_if() ast.CompIf {
 			mut stack := 1
 			for {
 				if p.tok.kind == .key_return {
-					p.returns = true
+					p.is_returns = true
 				}
 				if p.tok.kind == .lcbr {
 					stack++
