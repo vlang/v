@@ -25,6 +25,7 @@ struct Gen {
 	typedefs       strings.Builder
 	definitions    strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	inits          strings.Builder // contents of `void _vinit(){}`
+	gowrappers     strings.Builder // all go callsite wrappers
 	table          &table.Table
 	pref           &pref.Preferences
 mut:
@@ -63,6 +64,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		out: strings.new_builder(100)
 		typedefs: strings.new_builder(100)
 		definitions: strings.new_builder(100)
+		gowrappers: strings.new_builder(100)
 		inits: strings.new_builder(100)
 		table: table
 		pref: pref
@@ -100,7 +102,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.is_test {
 		g.write_tests_main()
 	}
-	return g.hashes() + g.typedefs.str() + g.definitions.str() + g.out.str()
+	return g.hashes() + g.typedefs.str() + g.definitions.str() + g.gowrappers.str() + g.out.str()
 }
 
 pub fn (g &Gen) hashes() string {
@@ -2839,22 +2841,26 @@ fn (g mut Gen) go_stmt(node ast.GoStmt) {
 				g.definitions.writeln('\t$styp arg${i+1};')
 			}
 			g.definitions.writeln('} $wrapper_struct_name;')
-			g.definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg) {')
-			g.definitions.write(name + '(')
+			g.definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg);')
+
+			g.gowrappers.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg) {')
+			g.gowrappers.write('\t${name}(')
 			if it.is_method {
-				g.definitions.write('arg->arg0')
+				g.gowrappers.write('arg->arg0')
 				if it.args.len > 0 {
-					g.definitions.write(', ')
+					g.gowrappers.write(', ')
 				}
 			}
 			for i in 0..it.args.len {
-				g.definitions.write('arg->arg${i+1}')
+				g.gowrappers.write('arg->arg${i+1}')
 				if i < it.args.len - 1 {
-					g.definitions.write(', ')
+					g.gowrappers.write(', ')
 				}
 			}
 
-			g.definitions.writeln(');\n return 0; }')
+			g.gowrappers.writeln(');')
+			g.gowrappers.writeln('\treturn 0;')
+			g.gowrappers.writeln('}')
 			g.threaded_fns << name
 		}
 		else{}
@@ -2898,4 +2904,3 @@ fn type_to_fmt(typ table.Type) string {
 	}
 	return '%d'
 }
-

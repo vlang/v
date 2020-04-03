@@ -116,9 +116,7 @@ pub fn (pool mut PoolProcessor) work_on_pointers(items []voidptr) {
 	pool.thread_contexts << [voidptr(0)].repeat(pool.items.len)
 	pool.waitgroup.add(njobs)
 	for i := 0; i < njobs; i++ {
-		// TODO: uncomment when `go func()` works again with v2
-		// go process_in_thread(pool,i)
-		process_in_thread(pool,i)
+		go process_in_thread(pool,i)
 	}
 	pool.waitgroup.wait()
 }
@@ -217,11 +215,11 @@ pub fn (pool &PoolProcessor) get_thread_context(idx int) voidptr {
 
 // TODO: remove everything below this line after generics are fixed:
 pub struct SResult {
-pub:   
+pub:
 	s string
 }
 pub struct IResult {
-pub:   
+pub:
 	i int
 }
 
