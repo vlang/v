@@ -187,7 +187,7 @@ pub:
 mut:
 	name          string
 	args          []CallArg
-	exp_arg_types []table.Type
+	expected_arg_types []table.Type
 	is_c          bool
 	or_block      OrExpr
 	// has_or_block bool
@@ -546,7 +546,7 @@ mut:
 
 pub struct GoStmt {
 pub:
-	expr Expr
+	call_expr Expr
 }
 
 pub struct GotoLabel {

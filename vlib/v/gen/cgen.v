@@ -49,6 +49,7 @@ mut:
 	defer_stmts    []ast.DeferStmt
 	defer_ifdef    string
 	str_types      []int // types that need automatic str() generation
+	threaded_fns   []string // for generating unique wrapper types and fns for `go xxx()`
 }
 
 const (
@@ -392,8 +393,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.definitions.writeln('$styp $it.name; // global')
 		}
 		ast.GoStmt {
-			g.writeln('// go')
-			g.expr(it.expr)
+			g.go_stmt(it)
 		}
 		ast.GotoLabel {
 			g.writeln('$it.name:')
@@ -2369,7 +2369,8 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 		g.write('/*rec*/*')
 	}
 	g.expr(node.left)
-	is_variadic := node.exp_arg_types.len > 0 && table.type_is_variadic(node.exp_arg_types[node.exp_arg_types.len - 1])
+	is_variadic := node.expected_arg_types.len > 0 &&
+		table.type_is_variadic(node.expected_arg_types[node.expected_arg_types.len - 1])
 	if node.args.len > 0 || is_variadic {
 		g.write(', ')
 	}
@@ -2385,7 +2386,7 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 		}
 		*/
 	// ///////
-	g.call_args(node.args, node.exp_arg_types)
+	g.call_args(node.args, node.expected_arg_types)
 	g.write(')')
 	// if node.or_block.stmts.len > 0 {
 	// g.or_block(node.or_block.stmts, node.return_type)
@@ -2461,7 +2462,7 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 	}
 	else {
 		g.write('${name}(')
-		g.call_args(node.args, node.exp_arg_types)
+		g.call_args(node.args, node.expected_arg_types)
 		g.write(')')
 	}
 	// if node.or_block.stmts.len > 0 {
@@ -2802,3 +2803,67 @@ fn (g mut Gen) comp_if(it ast.CompIf) {
 	}
 	g.writeln('#endif')
 }
+
+fn (g mut Gen) go_stmt(node ast.GoStmt) {
+	tmp := g.new_tmp_var()
+	// x := node.call_expr as ast.CallEpxr // TODO
+	match node.call_expr {
+		ast.CallExpr{
+			mut name := it.name
+			if it.is_method {
+				receiver_sym := g.table.get_type_symbol(it.receiver_type)
+				name = receiver_sym.name + '_' + name
+			}
+			g.writeln('// go')
+			wrapper_struct_name := 'thread_arg_' + name
+			g.writeln('$wrapper_struct_name *arg_$tmp = malloc(sizeof(thread_arg_$name));')
+			if it.is_method {
+				g.write('arg_${tmp}->arg0 = ')
+				g.expr(it.left)
+				g.writeln(';')
+			}
+			for i, arg in it.args {
+				g.write('arg_${tmp}->arg${i+1} = ')
+				g.expr(arg.expr)
+				g.writeln(';')
+			}
+			g.writeln('pthread_t thread_$tmp;')
+			wrapper_fn_name := name + '_thread_wrapper'
+			g.writeln('pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, arg_$tmp);')
+			g.writeln('// endgo\n')
+			// Register the wrapper type and function
+			if name in g.threaded_fns {
+				return
+			}
+			g.definitions.writeln('\ntypedef struct $wrapper_struct_name {')
+			if it.is_method {
+				sym := g.table.get_type_symbol(it.receiver_type)
+				g.definitions.writeln('\t$sym.name arg0;')
+			}
+			for i, arg in it.args {
+				sym := g.table.get_type_symbol(arg.typ)
+				g.definitions.writeln('\t$sym.name arg${i+1};')
+			}
+			g.definitions.writeln('} $wrapper_struct_name;')
+			g.definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg) {')
+			g.definitions.write(name + '(')
+			if it.is_method {
+				g.definitions.write('arg->arg0')
+				if it.args.len > 0 {
+					g.definitions.write(', ')
+				}
+			}
+			for i in 0..it.args.len {
+				g.definitions.write('arg->arg${i+1}')
+				if i < it.args.len - 1 {
+					g.definitions.write(', ')
+				}
+			}
+
+			g.definitions.writeln(');\n return 0; }')
+			g.threaded_fns << name
+		}
+		else{}
+	}
+}
+

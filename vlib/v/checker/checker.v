@@ -238,9 +238,9 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 				call_expr.args[i].typ = c.expr(arg.expr)
 			}
 			// TODO: typ optimize.. this node can get processed more than once
-			if call_expr.exp_arg_types.len == 0 {
+			if call_expr.expected_arg_types.len == 0 {
 				for i in 1 .. method.args.len {
-					call_expr.exp_arg_types << method.args[i].typ
+					call_expr.expected_arg_types << method.args[i].typ
 				}
 			}
 			call_expr.receiver_type = method.args[0].typ
@@ -337,9 +337,9 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 			return f.return_type
 		}
 		// TODO: typ optimize.. this node can get processed more than once
-		if call_expr.exp_arg_types.len == 0 {
+		if call_expr.expected_arg_types.len == 0 {
 			for arg in f.args {
-				call_expr.exp_arg_types << arg.typ
+				call_expr.expected_arg_types << arg.typ
 			}
 		}
 		for i, call_arg in call_expr.args {
@@ -693,6 +693,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				scope.update_var_type(it.val_var, value_type)
 			}
 			c.stmts(it.stmts)
+		}
+		ast.GoStmt{
+			c.expr(it.call_expr)
 		}
 		// ast.GlobalDecl {}
 		// ast.HashStmt {}

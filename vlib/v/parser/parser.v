@@ -399,8 +399,18 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		}
 		.key_go {
 			p.next()
+			expr := p.expr(0)
+			//mut call_expr := &ast.CallExpr(0) // TODO
+			match expr {
+				ast.CallExpr {
+					//call_expr = it
+				}
+				else {
+					p.error('expression in `go` must be a function call')
+				}
+			}
 			return ast.GoStmt{
-				expr: p.expr(0)
+				call_expr: expr
 			}
 		}
 		.key_goto {
