@@ -13,8 +13,6 @@ import (
 const (
 	single_quote = `\'`
 	double_quote = `"`
-	error_context_before = 2 // how many lines of source context to print before the pointer line
-	error_context_after = 2 // ^^^ same, but after
 	is_fmt = os.getenv('VEXE').contains('vfmt')
 	num_sep = `_` // char used as number separator
 )
@@ -1027,9 +1025,7 @@ pub fn (s &Scanner) error(msg string) {
 }
 
 pub fn verror(s string) {
-	println('V error: $s')
-	os.flush()
-	exit(1)
+	util.verror('scanner error', s)
 }
 
 pub fn cescaped_path(s string) string {

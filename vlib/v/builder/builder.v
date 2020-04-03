@@ -6,6 +6,7 @@ import (
 	v.ast
 	v.table
 	v.pref
+	v.util
 	v.checker
 	v.parser
 	v.gen
@@ -195,10 +196,6 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 	return res
 }
 
-fn verror(err string) {
-	panic('v error: $err')
-}
-
 pub fn (b &Builder) log(s string) {
 	if b.pref.verbosity.is_higher_or_equal(.level_two) {
 		println(s)
@@ -232,4 +229,8 @@ pub fn (b &Builder) find_module_path(mod string) ?string {
 		}
 	}
 	return error('module "$mod" not found')
+}
+
+fn verror(s string) {
+	util.verror('builder error', s)
 }

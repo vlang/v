@@ -8,6 +8,7 @@ import (
 	v.table
 	v.token
 	v.pref
+	v.util
 	os
 )
 
@@ -922,15 +923,6 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		if !name.contains('.') && !(c.file.mod.name in ['builtin', 'main']) {
 			name = '${c.file.mod.name}.$ident.name'
 		}
-		// hack - const until consts are fixed properly
-		if ident.name == 'v_modules_path' {
-			ident.name = name
-			ident.kind = .constant
-			ident.info = ast.IdentVar{
-				typ: table.string_type
-			}
-			return table.string_type
-		}
 		// constant
 		if constant := c.table.find_const(name) {
 			ident.name = name
@@ -1180,28 +1172,17 @@ pub fn (c mut Checker) error(s string, pos token.Position) {
 	if c.pref.verbosity.is_higher_or_equal(.level_one) {
 		print_backtrace()
 	}
-	mut path := c.file.path
-	// Get relative path
-	workdir := os.getwd() + os.path_separator
-	if path.starts_with(workdir) {
-		path = path.replace(workdir, '')
+	kind := if c.pref.verbosity.is_higher_or_equal(.level_one) {
+		'checker error #$c.nr_errors:'
+	} else {
+		'error:'
 	}
-	mut final_msg_line := '$path:$pos.line_nr: $s'
-	if c.pref.verbosity.is_higher_or_equal(.level_one) {
-		final_msg_line = '$path:$pos.line_nr: checker error #$c.nr_errors: $s'
-	}
-	c.errors << final_msg_line
+	ferror := util.formated_error(kind, s, c.file.path, pos)
+	c.errors << ferror
 	if !(pos.line_nr in c.error_lines) {
-		eprintln(final_msg_line)
+		eprintln(ferror)
 	}
 	c.error_lines << pos.line_nr
-	/*
-	if colored_output {
-		eprintln(term.bold(term.red(final_msg_line)))
-	}else{
-		eprintln(final_msg_line)
-	}
-	*/
 	if c.pref.verbosity.is_higher_or_equal(.level_one) {
 		println('\n\n')
 	}

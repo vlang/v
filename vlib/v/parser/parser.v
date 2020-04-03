@@ -9,15 +9,12 @@ import (
 	v.token
 	v.table
 	v.pref
+	v.util
 	term
 	os
 	// runtime
 	// sync
 	// time
-)
-
-const (
-	colored_output = term.can_show_color_on_stderr()
 )
 
 struct Parser {
@@ -235,7 +232,7 @@ fn (p mut Parser) check(expected token.Kind) {
 	// p.next()
 	// }
 	if p.tok.kind != expected {
-		s := 'syntax error: unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`'
+		s := 'unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`'
 		p.error(s)
 	}
 	p.next()
@@ -328,7 +325,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		}
 		else {
 			// #printf("");
-			p.error('parser: bad top level statement ' + p.tok.str())
+			p.error('bad top level statement ' + p.tok.str())
 			return ast.Stmt{}
 		}
 	}
@@ -499,42 +496,19 @@ fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 
 
 pub fn (p &Parser) error(s string) {
-	print_backtrace()
-	mut path := p.file_name
-	// Get relative path
-	workdir := os.getwd() + os.path_separator
-	if path.starts_with(workdir) {
-		path = path.replace(workdir, '')
+	mut kind := 'error:'
+	if p.pref.verbosity.is_higher_or_equal(.level_one) {
+		print_backtrace()
+		kind = 'parser error:'
 	}
-	final_msg_line := '$path:$p.tok.line_nr: error: $s'
-	if colored_output {
-		eprintln(term.bold(term.red(final_msg_line)))
-	}
-	else {
-		eprintln(final_msg_line)
-	}
-	exit(1)
-}
-
-pub fn (p &Parser) error_at_line(s string, line_nr int) {
-	final_msg_line := '$p.file_name:$line_nr: error: $s'
-	if colored_output {
-		eprintln(term.bold(term.red(final_msg_line)))
-	}
-	else {
-		eprintln(final_msg_line)
-	}
+	ferror := util.formated_error(kind, s, p.file_name, p.tok.position())
+	eprintln(ferror)
 	exit(1)
 }
 
 pub fn (p &Parser) warn(s string) {
-	final_msg_line := '$p.file_name:$p.tok.line_nr: warning: $s'
-	if colored_output {
-		eprintln(term.bold(term.blue(final_msg_line)))
-	}
-	else {
-		eprintln(final_msg_line)
-	}
+	ferror := util.formated_error('warning:', s, p.file_name, p.tok.position())
+	eprintln(ferror)
 }
 
 pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
@@ -839,7 +813,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			p.check(.rcbr)
 		}
 		else {
-			p.error('parser: expr(): bad token `$p.tok.str()`')
+			p.error('expr(): bad token `$p.tok.str()`')
 		}
 	}
 	// Infix
@@ -2003,6 +1977,5 @@ fn (p &Parser) new_true_expr() ast.Expr {
 }
 
 fn verror(s string) {
-	println(s)
-	exit(1)
+	util.verror('parser error', s)
 }

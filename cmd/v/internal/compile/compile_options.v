@@ -7,6 +7,7 @@ import (
 	internal.flag
 	os.cmdline
 	v.pref
+	v.util
 )
 
 fn parse_arguments(args []string) (pref.Preferences, []string) {
@@ -72,6 +73,14 @@ fn parse_arguments(args []string) (pref.Preferences, []string) {
 
 fn parse_options(flag string, f mut flag.Instance, prefs mut pref.Preferences) {
 	match flag {
+		'color' {
+		    f.is_equivalent_to(['color','nocolor'])
+			util.emanager.set_support_color(true)
+		}
+		'nocolor' {
+		    f.is_equivalent_to(['color','nocolor'])
+			util.emanager.set_support_color(false)
+		}
 		'path' {
 			// -path
 			path_str := f.string() or {

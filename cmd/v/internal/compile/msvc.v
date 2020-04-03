@@ -1,6 +1,7 @@
 module compile
 
 import os
+import v.pref
 
 #flag windows -l shell32
 #flag windows -l dbghelp
@@ -225,7 +226,7 @@ pub fn (v mut V) cc_msvc() {
 	}
 	else if v.pref.build_mode == .default_mode {
 		/*
-		b := os.real_path( '$v_modules_path/vlib/builtin.obj' )
+		b := os.real_path( '${pref.default_module_path}/vlib/builtin.obj' )
 		alibs << '"$b"'
 		if !os.exists(b) {
 			println('`builtin.obj` not found')
@@ -235,7 +236,7 @@ pub fn (v mut V) cc_msvc() {
 			if imp == 'webview' {
 				continue
 			}
-			alibs << '"' + os.real_path( '$v_modules_path/vlib/${imp}.obj' ) + '"'
+			alibs << '"' + os.real_path( '${pref.default_module_path}/vlib/${imp}.obj' ) + '"'
 		}
 		*/
 	}

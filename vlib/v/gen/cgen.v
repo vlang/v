@@ -2022,8 +2022,7 @@ fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 }
 
 fn verror(s string) {
-	println('cgen error: $s')
-	exit(1)
+	util.verror('cgen error', s)
 }
 
 fn (g mut Gen) write_init_function() {
