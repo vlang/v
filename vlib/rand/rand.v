@@ -1,7 +1,12 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+
 module rand
+
+fn C.rand() int
+
+fn C.srand(u32)
 
 pub fn seed(s int) {
 	C.srand(s)
@@ -11,24 +16,10 @@ pub fn next(max int) int {
 	return C.rand() % max
 }
 
-fn C.rand() int
-/**
- * rand_r - reentrant pseudo-random number generator
- *
- * @param seed byref reentrant seed, holding current state
- *
- * @return a value between 0 and C.RAND_MAX (inclusive)
- */
-
-
-
-pub fn rand_r(seed &int) int {
-	unsafe{
-		mut rs := seed
-		ns := (*rs * 1103515245 + 12345)
-		*rs = ns
-		return ns & 0x7fffffff
-	}
+// rand_r returns a pseudo-random number;
+// writes a result value to the seed argument.
+pub fn rand_r(seed mut int) int {
+	ns := *seed * 1103515245 + 12345
+	(*seed) = ns
+	return ns & 0x7fffffff
 }
-
-
