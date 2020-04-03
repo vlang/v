@@ -192,6 +192,11 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	// prohibits calls with postfix (somefn(x++))
 	for arg in call_expr.args {
 		match arg.expr {
+			ast.ParExpr {
+				if c.prohibit_postfix_3(it) {
+					panic('')
+				}
+			}
 			ast.PostfixExpr {
 				if c.prohibit_postfix_2(it) {
 					panic('')
@@ -455,9 +460,13 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	// cannot assign to postfix (x := a++)
 	for expr in assign_stmt.right {
 		match expr {
+			ast.ParExpr {
+				if c.prohibit_postfix_3(it) {
+					panic('')
+				}
+			}
 			ast.PostfixExpr {
 				if c.prohibit_postfix_2(it) {
-					// panic('') suppresses a get_type_symbol() panic
 					panic('')
 				}
 			} else {}
@@ -579,16 +588,43 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	return array_init.typ
 }
 
+fn unwrap_par_expr(expr_ ast.Expr) ast.Expr {
+	mut expr := expr_
+	for {
+		match expr {
+			ast.ParExpr {
+				expr = it.expr
+			} else {
+				break
+			}
+		}
+	}
+	return expr
+}
+
 pub fn (c Checker) prohibit_postfix(expr ast.AssignExpr) bool {
-	match expr.val {
+	match unwrap_par_expr(expr.val) {
 		ast.PostfixExpr {
-			return c.prohibit_postfix_2(it)
+			return c.__prohibit_postfix(it)
 		} else {}
 	}
 	return false
 }
 
 pub fn (c Checker) prohibit_postfix_2(expr ast.PostfixExpr) bool {
+	return c.__prohibit_postfix(expr)
+}
+
+pub fn (c Checker) prohibit_postfix_3(expr ast.ParExpr) bool {
+	match unwrap_par_expr(expr.expr) {
+		ast.PostfixExpr {
+			return c.__prohibit_postfix(it)
+		} else {}
+	}
+	return false
+}
+
+pub fn (c Checker) __prohibit_postfix(expr ast.PostfixExpr) bool {
 	if expr.op in [.inc, .dec] {
 		c.error('\'${expr.expr.str()}${expr.op.str()}\' is a statement, not an expression', expr.pos)
 		return true
@@ -804,6 +840,11 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			// int(x++) is invalid
 			tmp := it.expr
 			match tmp {
+				ast.ParExpr {
+					if c.prohibit_postfix_3(it) {
+						panic('')
+					}
+				}
 				ast.PostfixExpr {
 					if c.prohibit_postfix_2(it) {
 						panic('')
@@ -904,6 +945,11 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			// typeof(x++) is invalid
 			tmp := it.expr
 			match tmp {
+				ast.ParExpr {
+					if c.prohibit_postfix_3(it) {
+						panic('')
+					}
+				}
 				ast.PostfixExpr {
 					if c.prohibit_postfix_2(it) {
 						panic('')
