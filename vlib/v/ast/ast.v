@@ -10,16 +10,17 @@ import (
 
 pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | 	
-PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr | 	
-EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr | 	
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral |
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr |
+PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr |
+EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr |
 Type | AsCast | TypeOf | StringInterLiteral
 
-pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | LabeledStmt | GotoStmt |
-BreakStmt | ContinueStmt | PrefixGotoStmt | LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
+pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
+HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | 
+LabeledStmt | GotoStmt | BreakStmt | ContinueStmt | PrefixGotoStmt |
+LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -56,7 +57,9 @@ pub:
 
 pub struct StringLiteral {
 pub:
-	val string
+	val    string
+	is_raw bool
+	is_c   bool
 }
 
 // 'name: $name'
@@ -196,11 +199,10 @@ mut:
 
 pub struct CallArg {
 pub:
-	is_mut        bool
-	expr          Expr
+	is_mut bool
+	expr   Expr
 mut:
-	typ           table.Type
-	expected_type table.Type
+	typ    table.Type
 }
 
 pub struct Return {
@@ -225,6 +227,7 @@ pub struct Stmt {
 	//end int
 }
 */
+
 
 pub struct Var {
 pub:
@@ -313,18 +316,6 @@ mut:
 	right_type table.Type
 }
 
-/*
-// renamed to PrefixExpr
-pub struct UnaryExpr {
-pub:
-// tok_kind token.Kind
-// op    BinaryOp
-	op   token.Kind
-	left Expr
-}
-*/
-
-
 pub struct PostfixExpr {
 pub:
 	op   token.Kind
@@ -336,6 +327,7 @@ pub struct PrefixExpr {
 pub:
 	op    token.Kind
 	right Expr
+	pos   token.Position
 }
 
 pub struct IndexExpr {
@@ -351,27 +343,35 @@ mut:
 
 pub struct IfExpr {
 pub:
-	tok_kind   token.Kind
-	cond       Expr
-	stmts      []Stmt
-	else_stmts []Stmt
-	left       Expr // `a` in `a := if ...`
-	pos        token.Position
+	tok_kind token.Kind
+	branches []IfBranch
+	left     Expr // `a` in `a := if ...`
+	pos      token.Position
 mut:
-	typ        table.Type
-	has_else   bool
+	is_expr  bool
+	typ      table.Type
+	has_else bool
+}
+
+pub struct IfBranch {
+pub:
+	cond  Expr
+	stmts []Stmt
+	pos   token.Position
 }
 
 pub struct MatchExpr {
 pub:
-	tok_kind    token.Kind
-	cond        Expr
-	branches    []MatchBranch
-	pos         token.Position
+	tok_kind      token.Kind
+	cond          Expr
+	branches      []MatchBranch
+	pos           token.Position
 mut:
-is_expr bool // returns a value
-	expr_type   table.Type // type of `x` in `match x {`
-	is_sum_type bool
+	is_expr       bool // returns a value
+	return_type   table.Type
+	cond_type     table.Type // type of `x` in `match x {`
+	expected_type table.Type // for debugging only
+	is_sum_type   bool
 }
 
 pub struct MatchBranch {
@@ -397,19 +397,24 @@ pub struct ForStmt {
 pub:
 	cond   Expr
 	stmts  []Stmt
-	pos    token.Position
 	is_inf bool // `for {}`
+	pos    token.Position
 }
 
 pub struct ForInStmt {
 pub:
-	key_var  string
-	val_var  string
-	cond     Expr
-	is_range bool
-	high     Expr // `10` in `for i in 0..10 {`
-	stmts    []Stmt
-	pos      token.Position
+	key_var   string
+	val_var   string
+	cond      Expr
+	is_range  bool
+	high      Expr // `10` in `for i in 0..10 {`
+	stmts     []Stmt
+	pos       token.Position
+mut:
+	key_type  table.Type
+	val_type  table.Type
+	cond_type table.Type
+	kind      table.Kind // array/map/string
 }
 
 pub struct ForCStmt {
@@ -420,12 +425,14 @@ pub:
 	// inc   Stmt // i++;
 	inc      Expr // i++;
 	stmts    []Stmt
+	pos      token.Position
 }
 
 pub struct ReturnStmt {
+pub:
 	tok_kind token.Kind // or pos
-	pos      token.Position
 	results  []Expr
+	pos      token.Position
 }
 
 // #include etc
@@ -454,8 +461,11 @@ mut:
 
 pub struct AsCast {
 pub:
-	expr Expr
-	typ  table.Type
+	expr      Expr
+	typ       table.Type
+	pos       token.Position
+mut:
+	expr_type table.Type
 }
 
 // e.g. `[unsafe_fn]`
@@ -506,6 +516,11 @@ pub:
 pub struct DeferStmt {
 pub:
 	stmts []Stmt
+mut:
+// TODO: handle this differently
+// v1 excludes non current os ifdefs so
+// the defer's never get added in the first place
+	ifdef string
 }
 
 pub struct UnsafeStmt {
@@ -539,6 +554,7 @@ pub struct GotoStmt {
 pub:
 	loop bool
 	name string
+	pos	token.Position
 }
 
 pub struct PrefixGotoStmt {
@@ -547,6 +563,7 @@ pub:
 	in_label_scope bool
 	loop bool
 	name string
+	pos token.Position
 }
 
 pub struct LabeledStmt {
@@ -563,11 +580,13 @@ pub:
 pub struct BreakStmt{
 pub:
 	name string
+	pos  token.Position
 }
 
 pub struct ContinueStmt{
 pub:
 	name string
+	pos  token.Position
 }
 
 pub struct ArrayInit {
@@ -618,8 +637,10 @@ pub:
 // `if [x := opt()] {`
 pub struct IfGuardExpr {
 pub:
-	var_name string
-	expr     Expr
+	var_name  string
+	expr      Expr
+mut:
+	expr_type table.Type
 }
 
 // `or { ... }`
@@ -636,11 +657,13 @@ pub:
 	fields   []string
 	exprs    []Expr
 	pos      token.Position
+mut:
+	typ      table.Type
 }
 
 pub struct SizeOf {
 pub:
-	typ		  table.Type
+	typ       table.Type
 	type_name string
 }
 

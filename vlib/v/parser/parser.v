@@ -489,6 +489,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			p.next()
 			peek_tok := p.tok
 			name := p.check_name()
+			pos := p.tok.position()
 			if p.loop_label{
 				if name == p.label_list[p.label_list.len].name {
 					// current label check.
@@ -539,18 +540,21 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			p.next()
 			peek_tok := p.tok
 			name := p.check_name()
+			pos := p.tok.position()
 			// check labeled continue.
 			if p.loop_label {
 				// current label check.
 				if name == p.label_list[p.label_list.len].name{
 					return ast.ContinueStmt {
 						name: name
+						pos: pos
 					}
 				}
 				else if peek_tok.kind == .nl || peek_tok.kind == .semicolon {
 					current_label_name := p.label_list[p.label_list.len].name
 					return ast.ContinueStmt{
 						name: current_label_name
+						pos: pos
 					}
 				}
 				else {
@@ -596,10 +600,12 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		.key_goto {
 			p.next()
 			name := p.check_name()
+			pos := p.tok.position()
 			if p.in_label_scope && p.label_list[p.label_list.len].name == name {
 				return ast.GotoStmt {
 					loop: p.loop_label
 					name: name
+					pos: pos
 				}
 			} 
 			else if !p.in_label_scope {
@@ -610,6 +616,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 					in_label_scope: p.in_label_scope
 					loop: p.loop_label
 					name: name
+					pos: pos
 				}
 			}
 			else if p.label_list[p.label_list.len].name != name {
