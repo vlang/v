@@ -184,7 +184,7 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	assign_expr.left_type = left_type
 	// println('setting exp type to $c.expected_type $t.name')
 	// cannot assign to postfix (x = a++)
-	if c.prohibit_postfix_4(assign_expr.val) {
+	if c.prohibit_postfix(assign_expr.val) {
 		panic('')
 	}
 	right_type := c.expr(assign_expr.val)
@@ -202,7 +202,7 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	// prohibits calls with postfix (somefn(x++))
 	for arg in call_expr.args {
-		if c.prohibit_postfix_4(arg.expr) {
+		if c.prohibit_postfix(arg.expr) {
 			panic('')
 		}
 	}
@@ -461,7 +461,7 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	// cannot assign to postfix (x := a++)
 	for expr in assign_stmt.right {
-		if c.prohibit_postfix_4(expr) {
+		if c.prohibit_postfix(expr) {
 			panic('')
 		}
 	}
@@ -581,8 +581,7 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	return array_init.typ
 }
 
-fn unwrap_par_expr(expr_ ast.Expr) ast.Expr {
-	mut expr := expr_
+fn unwrap_par_expr(expr ast.Expr) ast.Expr {
 	for {
 		match expr {
 			ast.ParExpr {
@@ -595,10 +594,10 @@ fn unwrap_par_expr(expr_ ast.Expr) ast.Expr {
 	return expr
 }
 
-pub fn (c Checker) prohibit_postfix_4(expr ast.Expr) bool {
+pub fn (c Checker) prohibit_postfix(expr ast.Expr) bool {
 	match expr {
 		ast.ParExpr {
-			return c.prohibit_postfix_4(unwrap_par_expr(expr))
+			return c.prohibit_postfix(unwrap_par_expr(expr))
 		}
 		ast.PostfixExpr {
 			if it.op in [.inc, .dec] {
@@ -822,7 +821,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CastExpr {
 			// int(x++) is invalid
-			if c.prohibit_postfix_4(it.expr) {
+			if c.prohibit_postfix(it.expr) {
 				panic('')
 			}
 			it.expr_type = c.expr(it.expr)
@@ -917,7 +916,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.TypeOf {
 			// typeof(x++) is invalid
-			if c.prohibit_postfix_4(it.expr) {
+			if c.prohibit_postfix(it.expr) {
 				panic('')
 			}
 			it.expr_type = c.expr(it.expr)
