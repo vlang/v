@@ -184,8 +184,7 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	assign_expr.left_type = left_type
 	// println('setting exp type to $c.expected_type $t.name')
 	// cannot assign to postfix (x = a++)
-	if c.prohibit_postfix(assign_expr) {
-		// panic('') suppresses a get_type_symbol() panic
+	if c.prohibit_postfix_4(assign_expr.val) {
 		panic('')
 	}
 	right_type := c.expr(assign_expr.val)
@@ -203,17 +202,8 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	// prohibits calls with postfix (somefn(x++))
 	for arg in call_expr.args {
-		match arg.expr {
-			ast.ParExpr {
-				if c.prohibit_postfix_3(it) {
-					panic('')
-				}
-			}
-			ast.PostfixExpr {
-				if c.prohibit_postfix_2(it) {
-					panic('')
-				}
-			} else {}
+		if c.prohibit_postfix_4(arg.expr) {
+			panic('')
 		}
 	}
 	c.stmts(call_expr.or_block.stmts)
@@ -471,17 +461,8 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	// cannot assign to postfix (x := a++)
 	for expr in assign_stmt.right {
-		match expr {
-			ast.ParExpr {
-				if c.prohibit_postfix_3(it) {
-					panic('')
-				}
-			}
-			ast.PostfixExpr {
-				if c.prohibit_postfix_2(it) {
-					panic('')
-				}
-			} else {}
+		if c.prohibit_postfix_4(expr) {
+			panic('')
 		}
 	}
 	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
@@ -614,36 +595,6 @@ fn unwrap_par_expr(expr_ ast.Expr) ast.Expr {
 	return expr
 }
 
-pub fn (c Checker) prohibit_postfix(expr ast.AssignExpr) bool {
-	match unwrap_par_expr(expr.val) {
-		ast.PostfixExpr {
-			return c.__prohibit_postfix(it)
-		} else {}
-	}
-	return false
-}
-
-pub fn (c Checker) prohibit_postfix_2(expr ast.PostfixExpr) bool {
-	return c.__prohibit_postfix(expr)
-}
-
-pub fn (c Checker) prohibit_postfix_3(expr ast.ParExpr) bool {
-	match unwrap_par_expr(expr.expr) {
-		ast.PostfixExpr {
-			return c.__prohibit_postfix(it)
-		} else {}
-	}
-	return false
-}
-
-pub fn (c Checker) __prohibit_postfix(expr ast.PostfixExpr) bool {
-	if expr.op in [.inc, .dec] {
-		c.error('\'${expr.expr.str()}${expr.op.str()}\' is a statement, not an expression', expr.pos)
-		return true
-	}
-	return false
-}
-
 pub fn (c Checker) prohibit_postfix_4(expr ast.Expr) bool {
 	match expr {
 		ast.ParExpr {
@@ -655,9 +606,6 @@ pub fn (c Checker) prohibit_postfix_4(expr ast.Expr) bool {
 				return true
 			}
 			return false
-		}
-		ast.AssignExpr {
-			c.prohibit_postfix_4(it.val)
 		}
 		else {
 			return false
@@ -874,18 +822,8 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CastExpr {
 			// int(x++) is invalid
-			tmp := it.expr
-			match tmp {
-				ast.ParExpr {
-					if c.prohibit_postfix_3(it) {
-						panic('')
-					}
-				}
-				ast.PostfixExpr {
-					if c.prohibit_postfix_2(it) {
-						panic('')
-					}
-				} else {}
+			if c.prohibit_postfix_4(it.expr) {
+				panic('')
 			}
 			it.expr_type = c.expr(it.expr)
 			if it.has_arg {
@@ -979,18 +917,8 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.TypeOf {
 			// typeof(x++) is invalid
-			tmp := it.expr
-			match tmp {
-				ast.ParExpr {
-					if c.prohibit_postfix_3(it) {
-						panic('')
-					}
-				}
-				ast.PostfixExpr {
-					if c.prohibit_postfix_2(it) {
-						panic('')
-					}
-				} else {}
+			if c.prohibit_postfix_4(it.expr) {
+				panic('')
 			}
 			it.expr_type = c.expr(it.expr)
 			return table.string_type
