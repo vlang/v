@@ -683,7 +683,7 @@ pub fn get_raw_line() string {
 	} $else {
 		max := size_t(0)
 		mut buf := charptr(0)
-		nr_chars := C.getline(&buf, &max, stdin)
+		nr_chars := C.getline(&buf, &max, C.stdin)
 		//defer { unsafe{ free(buf) } }
 		if nr_chars == 0 || nr_chars == -1 {
 			return ''
@@ -1118,7 +1118,7 @@ pub fn flush_stdout() {
 }
 
 pub fn flush() {
-	C.fflush(stdout)
+	C.fflush(C.stdout)
 }
 
 pub fn mkdir_all(path string) {

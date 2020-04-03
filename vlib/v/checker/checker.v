@@ -944,10 +944,12 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 			return fn_type
 		}
 	}
-	// TODO
-	// c.error('unknown ident: `$ident.name`', ident.pos)
 	if ident.is_c {
 		return table.int_type
+	}
+	// TODO
+	if ident.name != '_' {
+		c.error('unknown ident: `$ident.name`', ident.pos)
 	}
 	return table.void_type
 }
