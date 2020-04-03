@@ -314,37 +314,6 @@ fn (m mut map) cached_rehash(old_cap u32) {
 	m.metas = new_meta
 }
 
-fn (m map) get(key string, out voidptr) bool {
-	mut index,mut meta := m.key_to_index(key)
-	index,meta = meta_less(m.metas, index, meta)
-	for meta == m.metas[index] {
-		kv_index := m.metas[index + 1]
-		if key == m.key_values.data[kv_index].key {
-			C.memcpy(out, m.key_values.data[kv_index].value, m.value_bytes)
-			return true
-		}
-		index += 2
-		meta += probe_inc
-	}
-	return false
-}
-
-fn (m map) get2(key string) voidptr {
-	mut index,mut meta := m.key_to_index(key)
-	index,meta = meta_less(m.metas, index, meta)
-	for meta == m.metas[index] {
-		kv_index := m.metas[index + 1]
-		if key == m.key_values.data[kv_index].key {
-			out := malloc(m.value_bytes)
-			C.memcpy(out, m.key_values.data[kv_index].value, m.value_bytes)
-			return out
-		}
-		index += 2
-		meta += probe_inc
-	}
-	return voidptr(0)
-}
-
 fn (m map) get3(key string, zero voidptr) voidptr {
 	mut index,mut meta := m.key_to_index(key)
 	index,meta = meta_less(m.metas, index, meta)
