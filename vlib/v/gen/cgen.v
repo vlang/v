@@ -557,20 +557,16 @@ fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('// assert')
 	g.write('if( ')
 	g.expr(a.expr)
-	g.write(' )')
 	s_assertion := a.expr.str().replace('"', "\'")
-	mut mod_path := g.file.path
-	$if windows {
-		mod_path = g.file.path.replace('\\', '\\\\')
-	}
+	g.write(' )')
 	if g.is_test {
 		g.writeln('{')
 		g.writeln('	g_test_oks++;')
-		g.writeln('	cb_assertion_ok( _STR("${mod_path}"), ${a.pos.line_nr}, _STR("assert ${s_assertion}"), _STR("${g.fn_decl.name}()") );')
+		g.writeln('	cb_assertion_ok( _STR("${g.file.path}"), ${a.pos.line_nr}, _STR("assert ${s_assertion}"), _STR("${g.fn_decl.name}()") );')
 		// g.writeln('	println(_STR("OK ${g.file.path}:${a.pos.line_nr}: fn ${g.fn_decl.name}(): assert $s_assertion"));')
 		g.writeln('}else{')
 		g.writeln('	g_test_fails++;')
-		g.writeln('	cb_assertion_failed( _STR("${mod_path}"), ${a.pos.line_nr}, _STR("assert ${s_assertion}"), _STR("${g.fn_decl.name}()") );')
+		g.writeln('	cb_assertion_failed( _STR("${g.file.path}"), ${a.pos.line_nr}, _STR("assert ${s_assertion}"), _STR("${g.fn_decl.name}()") );')
 		g.writeln('	exit(1);')
 		g.writeln('	// TODO')
 		g.writeln('	// Maybe print all vars in a test function if it fails?')
@@ -578,7 +574,7 @@ fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
 		return
 	}
 	g.writeln('{}else{')
-	g.writeln('	println(_STR("${mod_path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+	g.writeln('	eprintln(_STR("${g.file.path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
 	g.writeln('	exit(1);')
 	g.writeln('}')
 }
@@ -2027,7 +2023,6 @@ fn verror(s string) {
 
 fn (g mut Gen) write_init_function() {
 	g.writeln('void _vinit() {')
-	g.writeln('init(); // builtin.init')
 	g.writeln(g.inits.str())
 	g.writeln('}')
 	if g.autofree {
@@ -2432,7 +2427,7 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 				styp = styp.replace('*', '')
 			}
 			g.str_types << typ
-			g.definitions.writeln('string ${styp}_str($styp x) { return tos3("TODO_str"); }')
+			g.gen_str_for_type(sym, styp)
 		}
 		if g.autofree && !table.type_is_optional(typ) {
 			// Create a temporary variable so that the value can be freed
@@ -2808,7 +2803,7 @@ fn (g mut Gen) go_stmt(node ast.GoStmt) {
 	// x := node.call_expr as ast.CallEpxr // TODO
 	match node.call_expr {
 		ast.CallExpr{
-			mut name := it.name
+			mut name := it.name.replace('.', '__')
 			if it.is_method {
 				receiver_sym := g.table.get_type_symbol(it.receiver_type)
 				name = receiver_sym.name + '_' + name
@@ -2836,12 +2831,12 @@ fn (g mut Gen) go_stmt(node ast.GoStmt) {
 			}
 			g.definitions.writeln('\ntypedef struct $wrapper_struct_name {')
 			if it.is_method {
-				sym := g.table.get_type_symbol(it.receiver_type)
-				g.definitions.writeln('\t$sym.name arg0;')
+				styp := g.typ(it.receiver_type)
+				g.definitions.writeln('\t$styp arg0;')
 			}
 			for i, arg in it.args {
-				sym := g.table.get_type_symbol(arg.typ)
-				g.definitions.writeln('\t$sym.name arg${i+1};')
+				styp := g.typ(arg.typ)
+				g.definitions.writeln('\t$styp arg${i+1};')
 			}
 			g.definitions.writeln('} $wrapper_struct_name;')
 			g.definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg) {')
@@ -2864,5 +2859,43 @@ fn (g mut Gen) go_stmt(node ast.GoStmt) {
 		}
 		else{}
 	}
+}
+
+// already generated styp, reuse it
+fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
+	s := styp.replace('.', '__')
+	match sym.info {
+		table.Struct{}
+		else {
+			println('str() not a struct $sym.name')
+			return
+		}
+	}
+	info := sym.info as table.Struct
+	g.definitions.write('string ${s}_str($styp a) { return _STR("$styp {\\n')
+	for field in info.fields {
+		fmt := type_to_fmt(field.typ)
+		g.definitions.write('\t$field.name: $fmt\\n')
+
+	}
+	g.definitions.write('\\n}", ')
+	for i, field in info.fields {
+		g.definitions.write('a.' + field.name)
+		if field.typ == table.string_type {
+			g.definitions.write('.len, a.${field.name}.str')
+		}
+		if i < info.fields.len - 1 {
+			g.definitions.write(', ')
+		}
+	}
+	g.definitions.writeln('); }')
+}
+
+fn type_to_fmt(typ table.Type) string {
+	n := int(typ)
+	if n == table.string_type {
+		return '%.*s'
+	}
+	return '%d'
 }
 

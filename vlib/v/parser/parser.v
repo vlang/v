@@ -38,6 +38,7 @@ mut:
 	ast_imports []ast.Import
 	is_amp      bool
 	returns     bool
+	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
 }
 
 // for tests
@@ -668,8 +669,9 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	//
 	(p.builtin_mod && p.tok.lit in table.builtin_type_names)) &&
 	//
-	(p.tok.lit.len == 1 || !p.tok.lit[p.tok.lit.len - 1].is_capital())
+	(p.tok.lit.len == 1 || !p.tok.lit[p.tok.lit.len - 1].is_capital()) &&
 	//
+	!p.inside_match_case
 	{
 		// || p.table.known_type(p.tok.lit)) {
 		return p.struct_init(false) // short_syntax: false
@@ -1779,7 +1781,8 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 			p.next()
 		}
 		// Sum type match
-		else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
+		else if p.tok.kind == .name &&
+			(p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
 			// if sym.kind == .sum_type {
 			// p.warn('is sum')
 			// TODO `exprs << ast.Type{...}`
@@ -1804,7 +1807,9 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		else {
 			// Expression match
 			for {
+				p.inside_match_case = true
 				expr := p.expr(0)
+				p.inside_match_case = false
 				exprs << expr
 				if p.tok.kind != .comma {
 					break
