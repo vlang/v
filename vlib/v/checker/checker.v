@@ -8,6 +8,7 @@ import (
 	v.table
 	v.token
 	v.pref
+	v.util
 	os
 )
 
@@ -101,10 +102,12 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 			if struct_init.exprs.len > info.fields.len {
 				c.error('too many fields', struct_init.pos)
 			}
+			mut inited_fields := []string
 			for i, expr in struct_init.exprs {
 				// struct_field info.
 				field_name := if is_short_syntax { info.fields[i].name } else { struct_init.fields[i] }
 				mut field := info.fields[i]
+				inited_fields << field_name
 				mut found_field := false
 				for f in info.fields {
 					if f.name == field_name {
@@ -125,6 +128,15 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 				}
 				struct_init.expr_types << expr_type
 				struct_init.expected_types << field.typ
+			}
+			// Check uninitialized refs
+			for field in info.fields {
+				if field.name in inited_fields {
+					continue
+				}
+				if table.type_is_ptr(field.typ) {
+					c.warn('reference field `Reference.value` must be initialized', struct_init.pos)
+				}
 			}
 		}
 		else {}
@@ -258,9 +270,9 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 				call_expr.args[i].typ = c.expr(arg.expr)
 			}
 			// TODO: typ optimize.. this node can get processed more than once
-			if call_expr.exp_arg_types.len == 0 {
+			if call_expr.expected_arg_types.len == 0 {
 				for i in 1 .. method.args.len {
-					call_expr.exp_arg_types << method.args[i].typ
+					call_expr.expected_arg_types << method.args[i].typ
 				}
 			}
 			call_expr.receiver_type = method.args[0].typ
@@ -357,9 +369,9 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 			return f.return_type
 		}
 		// TODO: typ optimize.. this node can get processed more than once
-		if call_expr.exp_arg_types.len == 0 {
+		if call_expr.expected_arg_types.len == 0 {
 			for arg in f.args {
-				call_expr.exp_arg_types << arg.typ
+				call_expr.expected_arg_types << arg.typ
 			}
 		}
 		for i, call_arg in call_expr.args {
@@ -773,6 +785,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			}
 			c.stmts(it.stmts)
 		}
+		ast.GoStmt{
+			c.expr(it.call_expr)
+		}
 		// ast.GlobalDecl {}
 		// ast.HashStmt {}
 		ast.Import {}
@@ -1026,15 +1041,6 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		if !name.contains('.') && !(c.file.mod.name in ['builtin', 'main']) {
 			name = '${c.file.mod.name}.$ident.name'
 		}
-		// hack - const until consts are fixed properly
-		if ident.name == 'v_modules_path' {
-			ident.name = name
-			ident.kind = .constant
-			ident.info = ast.IdentVar{
-				typ: table.string_type
-			}
-			return table.string_type
-		}
 		// constant
 		if constant := c.table.find_const(name) {
 			ident.name = name
@@ -1278,34 +1284,41 @@ pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {
 	return map_type
 }
 
+pub fn (c mut Checker) warn(s string, pos token.Position) {
+	allow_warnings := !c.pref.is_prod // allow warnings only in dev builds
+	c.warn_or_error(s, pos, allow_warnings) // allow warnings only in dev builds
+}
+
 pub fn (c mut Checker) error(s string, pos token.Position) {
-	c.nr_errors++
+	c.warn_or_error(s, pos, false)
+}
+
+fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
+	if !warn {
+		c.nr_errors++
+	}
 	//if c.pref.is_verbose {
 	if c.pref.verbosity.is_higher_or_equal(.level_one) {
 		print_backtrace()
 	}
-	mut path := c.file.path
-	// Get relative path
-	workdir := os.getwd() + os.path_separator
-	if path.starts_with(workdir) {
-		path = path.replace(workdir, '')
+	typ := if warn { 'warning' } else { 'error' }
+	kind := if c.pref.verbosity.is_higher_or_equal(.level_one) {
+		'checker $typ #$c.nr_errors:'
+	} else {
+		'$typ:'
 	}
-	mut final_msg_line := '$path:$pos.line_nr: $s'
-	if c.pref.verbosity.is_higher_or_equal(.level_one) {
-		final_msg_line = '$path:$pos.line_nr: checker error #$c.nr_errors: $s'
-	}
-	c.errors << final_msg_line
+	ferror := util.formated_error(kind, s, c.file.path, pos)
+	c.errors << ferror
 	if !(pos.line_nr in c.error_lines) {
-		eprintln(final_msg_line)
+		if warn {
+			println(ferror)
+		} else {
+			eprintln(ferror)
+		}
 	}
-	c.error_lines << pos.line_nr
-	/*
-	if colored_output {
-		eprintln(term.bold(term.red(final_msg_line)))
-	}else{
-		eprintln(final_msg_line)
+	if !warn {
+		c.error_lines << pos.line_nr
 	}
-	*/
 	if c.pref.verbosity.is_higher_or_equal(.level_one) {
 		println('\n\n')
 	}

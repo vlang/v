@@ -11,10 +11,6 @@ import (
 	term
 )
 
-const (
-	v_modules_path = pref.default_module_path
-)
-
 fn todo() {
 }
 
@@ -157,7 +153,7 @@ fn (v mut V) cc() {
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
-		mut out_dir := if v.pref.path.starts_with('vlib') { '$v_modules_path${os.path_separator}cache${os.path_separator}$v.pref.path' } else { '$v_modules_path${os.path_separator}$v.pref.path' }
+		mut out_dir := if v.pref.path.starts_with('vlib') { '${pref.default_module_path}${os.path_separator}cache${os.path_separator}$v.pref.path' } else { '${pref.default_module_path}${os.path_separator}$v.pref.path' }
 		pdir := out_dir.all_before_last(os.path_separator)
 		if !os.is_dir(pdir) {
 			os.mkdir_all(pdir)
@@ -226,7 +222,7 @@ fn (v mut V) cc() {
 	else if v.pref.is_cache {
 		/*
 		QTODO
-		builtin_o_path := os.join_path(v_modules_path, 'cache', 'vlib', 'builtin.o')
+		builtin_o_path := os.join_path(pref.default_module_path, 'cache', 'vlib', 'builtin.o')
 		a << builtin_o_path.replace('builtin.o', 'strconv.o') // TODO hack no idea why this is needed
 		if os.exists(builtin_o_path) {
 			libs = builtin_o_path
@@ -243,7 +239,7 @@ fn (v mut V) cc() {
 				continue
 			}
 			imp_path := imp.replace('.', os.path_separator)
-			path := '$v_modules_path${os.path_separator}cache${os.path_separator}vlib${os.path_separator}${imp_path}.o'
+			path := '${pref.default_module_path}${os.path_separator}cache${os.path_separator}vlib${os.path_separator}${imp_path}.o'
 			// println('adding ${imp_path}.o')
 			if os.exists(path) {
 				libs += ' ' + path
@@ -255,7 +251,7 @@ fn (v mut V) cc() {
 					os.cp('$vdir/thirdparty/ui/ui.o', path)or{
 						panic('error copying ui files')
 					}
-					os.cp('$vdir/thirdparty/ui/ui.vh', v_modules_path + '/vlib/ui.vh')or{
+					os.cp('$vdir/thirdparty/ui/ui.vh', pref.default_module_path + '/vlib/ui.vh')or{
 						panic('error copying ui files')
 					}
 				}
@@ -484,13 +480,13 @@ fn (c mut V) cc_windows_cross() {
 	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_before_target_msvc() } else { cflags.c_options_before_target() }
 	mut libs := ''
 	if false && c.pref.build_mode == .default_mode {
-		libs = '"$v_modules_path/vlib/builtin.o"'
+		libs = '"${pref.default_module_path}/vlib/builtin.o"'
 		if !os.exists(libs) {
 			println('`$libs` not found')
 			exit(1)
 		}
 		for imp in c.table.imports {
-			libs += ' "$v_modules_path/vlib/${imp}.o"'
+			libs += ' "${pref.default_module_path}/vlib/${imp}.o"'
 		}
 	}
 	args += ' $c.out_name_c '
@@ -498,11 +494,11 @@ fn (c mut V) cc_windows_cross() {
 	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_after_target_msvc() } else { cflags.c_options_after_target() }
 
 	/*
-	winroot := '$v_modules_path/winroot'
+	winroot := '${pref.default_module_path}/winroot'
 	if !os.is_dir(winroot) {
 		winroot_url := 'https://github.com/vlang/v/releases/download/v0.1.10/winroot.zip'
 		println('"$winroot" not found.')
-		println('Download it from $winroot_url and save it in $v_modules_path')
+		println('Download it from $winroot_url and save it in ${pref.default_module_path}')
 		println('Unzip it afterwards.\n')
 		println('winroot.zip contains all library and header files needed ' + 'to cross-compile for Windows.')
 		exit(1)
@@ -522,7 +518,7 @@ fn (c mut V) cc_windows_cross() {
 	}
 
 	println(cmd)
-	//cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $v_modules_path/$c.out_name_c'
+	//cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
 	if c.pref.verbosity.is_higher_or_equal(.level_one) {
 		println(cmd)
 	}

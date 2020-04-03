@@ -9,15 +9,12 @@ import (
 	v.token
 	v.table
 	v.pref
+	v.util
 	term
 	os
 	// runtime
 	// sync
 	// time
-)
-
-const (
-	colored_output = term.can_show_color_on_stderr()
 )
 
 struct Parser {
@@ -41,6 +38,7 @@ mut:
 	ast_imports []ast.Import
 	is_amp      bool
 	returns     bool
+	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
 }
 
 // for tests
@@ -235,7 +233,7 @@ fn (p mut Parser) check(expected token.Kind) {
 	// p.next()
 	// }
 	if p.tok.kind != expected {
-		s := 'syntax error: unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`'
+		s := 'unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`'
 		p.error(s)
 	}
 	p.next()
@@ -328,7 +326,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		}
 		else {
 			// #printf("");
-			p.error('parser: bad top level statement ' + p.tok.str())
+			p.error('bad top level statement ' + p.tok.str())
 			return ast.Stmt{}
 		}
 	}
@@ -399,8 +397,18 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		}
 		.key_go {
 			p.next()
+			expr := p.expr(0)
+			//mut call_expr := &ast.CallExpr(0) // TODO
+			match expr {
+				ast.CallExpr {
+					//call_expr = it
+				}
+				else {
+					p.error('expression in `go` must be a function call')
+				}
+			}
 			return ast.GoStmt{
-				expr: p.expr(0)
+				call_expr: expr
 			}
 		}
 		.key_goto {
@@ -489,42 +497,19 @@ fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 
 
 pub fn (p &Parser) error(s string) {
-	print_backtrace()
-	mut path := p.file_name
-	// Get relative path
-	workdir := os.getwd() + os.path_separator
-	if path.starts_with(workdir) {
-		path = path.replace(workdir, '')
+	mut kind := 'error:'
+	if p.pref.verbosity.is_higher_or_equal(.level_one) {
+		print_backtrace()
+		kind = 'parser error:'
 	}
-	final_msg_line := '$path:$p.tok.line_nr: error: $s'
-	if colored_output {
-		eprintln(term.bold(term.red(final_msg_line)))
-	}
-	else {
-		eprintln(final_msg_line)
-	}
-	exit(1)
-}
-
-pub fn (p &Parser) error_at_line(s string, line_nr int) {
-	final_msg_line := '$p.file_name:$line_nr: error: $s'
-	if colored_output {
-		eprintln(term.bold(term.red(final_msg_line)))
-	}
-	else {
-		eprintln(final_msg_line)
-	}
+	ferror := util.formated_error(kind, s, p.file_name, p.tok.position())
+	eprintln(ferror)
 	exit(1)
 }
 
 pub fn (p &Parser) warn(s string) {
-	final_msg_line := '$p.file_name:$p.tok.line_nr: warning: $s'
-	if colored_output {
-		eprintln(term.bold(term.blue(final_msg_line)))
-	}
-	else {
-		eprintln(final_msg_line)
-	}
+	ferror := util.formated_error('warning:', s, p.file_name, p.tok.position())
+	eprintln(ferror)
 }
 
 pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
@@ -684,8 +669,9 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	//
 	(p.builtin_mod && p.tok.lit in table.builtin_type_names)) &&
 	//
-	(p.tok.lit.len == 1 || !p.tok.lit[p.tok.lit.len - 1].is_capital())
+	(p.tok.lit.len == 1 || !p.tok.lit[p.tok.lit.len - 1].is_capital()) &&
 	//
+	!p.inside_match_case
 	{
 		// || p.table.known_type(p.tok.lit)) {
 		return p.struct_init(false) // short_syntax: false
@@ -829,7 +815,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			p.check(.rcbr)
 		}
 		else {
-			p.error('parser: expr(): bad token `$p.tok.str()`')
+			p.error('expr(): bad token `$p.tok.str()`')
 		}
 	}
 	// Infix
@@ -1795,7 +1781,8 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 			p.next()
 		}
 		// Sum type match
-		else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
+		else if p.tok.kind == .name &&
+			(p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
 			// if sym.kind == .sum_type {
 			// p.warn('is sum')
 			// TODO `exprs << ast.Type{...}`
@@ -1820,7 +1807,9 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		else {
 			// Expression match
 			for {
+				p.inside_match_case = true
 				expr := p.expr(0)
+				p.inside_match_case = false
 				exprs << expr
 				if p.tok.kind != .comma {
 					break
@@ -1993,6 +1982,5 @@ fn (p &Parser) new_true_expr() ast.Expr {
 }
 
 fn verror(s string) {
-	println(s)
-	exit(1)
+	util.verror('parser error', s)
 }
