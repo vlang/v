@@ -32,7 +32,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		mod_file_cacher: new_mod_file_cacher()
 		pref: pref
 		table: table
-		checker: checker.new_checker(table)
+		checker: checker.new_checker(table, pref)
 	}
 }
 

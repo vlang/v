@@ -1616,7 +1616,7 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 	mut is_range := false
 	match node.index {
 		ast.RangeExpr {
-			sym := g.table.get_type_symbol(node.container_type)
+			sym := g.table.get_type_symbol(node.left_type)
 			is_range = true
 			if sym.kind == .string {
 				g.write('string_substr(')
@@ -1662,8 +1662,9 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 		else {}
 	}
 	if !is_range {
-		sym := g.table.get_type_symbol(node.container_type)
-		if table.type_is_variadic(node.container_type) {
+		sym := g.table.get_type_symbol(node.left_type)
+		left_is_ptr := table.type_is_ptr(node.left_type)
+		if table.type_is_variadic(node.left_type) {
 			g.expr(node.left)
 			g.write('.args')
 			g.write('[')
@@ -1684,7 +1685,10 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			}
 			if g.is_assign_lhs && !is_selector && node.is_setter {
 				g.is_array_set = true
-				g.write('array_set(&')
+				g.write('array_set(')
+				if !left_is_ptr {
+					g.write('&')
+				}
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
@@ -1719,7 +1723,10 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			elem_type_str := g.typ(info.value_type)
 			if g.is_assign_lhs {
 				g.is_array_set = true
-				g.write('map_set(&')
+				g.write('map_set(')
+				if !left_is_ptr {
+					g.write('&')
+				}
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
@@ -1741,7 +1748,7 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 				g.write(', &($elem_type_str[]){ $zero }))')
 			}
 		}
-		else if sym.kind == .string && !table.type_is_ptr(node.container_type) {
+		else if sym.kind == .string && !table.type_is_ptr(node.left_type) {
 			g.write('string_at(')
 			g.expr(node.left)
 			g.write(', ')

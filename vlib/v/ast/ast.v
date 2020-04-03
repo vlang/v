@@ -335,7 +335,7 @@ pub:
 	left           Expr
 	index          Expr // [0], [start..end] etc
 mut:
-	container_type table.Type // array, map, fixed array
+	left_type table.Type // array, map, fixed array
 	is_setter      bool
 }
 
