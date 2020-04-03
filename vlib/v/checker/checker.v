@@ -582,11 +582,8 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 pub fn (c Checker) prohibit_postfix(expr ast.AssignExpr) bool {
 	match expr.val {
 		ast.PostfixExpr {
-			if it.op in [.inc, .dec] {
-				c.error('\'${it.expr.str()}${it.op.str()}\' is a statement, not an expression', expr.pos)
-				return true
-			}
-		} else { }
+			return c.prohibit_postfix_2(it)
+		} else {}
 	}
 	return false
 }
