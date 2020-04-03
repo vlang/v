@@ -6,15 +6,6 @@ module builtin
 __global g_m2_buf byteptr
 __global g_m2_ptr byteptr
 
-fn init() {
-	$if windows {
-		if is_atty(1) > 0 {
-			C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
-			C.setbuf(C.stdout, 0)
-		}
-	}
-}
-
 pub fn exit(code int) {
 	C.exit(code)
 }

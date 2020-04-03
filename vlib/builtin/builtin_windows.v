@@ -58,6 +58,13 @@ const (
 	SYMOPT_DEBUG = 0x80000000
 )
 
+fn init() {
+	if is_atty(1) > 0 {
+		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
+		C.setbuf(C.stdout, 0)
+	}
+}
+
 fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 
 $if msvc {

@@ -2024,6 +2024,7 @@ fn verror(s string) {
 
 fn (g mut Gen) write_init_function() {
 	g.writeln('void _vinit() {')
+	g.writeln('init(); // builtin.init')
 	g.writeln(g.inits.str())
 	g.writeln('}')
 	if g.autofree {
