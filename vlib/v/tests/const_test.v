@@ -1,4 +1,5 @@
 pub const (
+	c = a
 	a = b
 	c = a + b
 	b = 1
@@ -13,5 +14,5 @@ struct Foo {
 fn test_const() {
 	assert a == 1
 	assert d == 11
-	// assert c == 1 // TODO: This will not build yet
+	assert c == 1
 }

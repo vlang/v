@@ -11,7 +11,7 @@ mut:
 	children  []&Scope
 	start_pos int
 	end_pos   int
-	vars      map[string]Var
+	objects   map[string]ScopeObject
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
@@ -21,25 +21,47 @@ pub fn new_scope(parent &Scope, start_pos int) &Scope {
 	}
 }
 
-pub fn (s &Scope) find_scope_and_var(name string) ?(&Scope,Var) {
-	if name in s.vars {
-		return s,s.vars[name]
+pub fn (s &Scope) find_with_scope(name string) ?(ScopeObject,&Scope) {
+	mut sc := s
+	for {
+		if name in sc.objects {
+			return sc.objects[name],sc
+		}
+		if isnil(sc.parent) {
+			break
+		}
+		sc = sc.parent
 	}
-	for sc := s; !isnil(sc.parent); sc = sc.parent {
-		if name in sc.vars {
-			return sc,sc.vars[name]
+	return none
+}
+
+pub fn (s &Scope) find(name string) ?ScopeObject {
+	for sc := s; ; sc = sc.parent {
+		if name in sc.objects {
+			return sc.objects[name]
+		}
+		if isnil(sc.parent) {
+			break
 		}
 	}
 	return none
 }
 
-pub fn (s &Scope) find_var(name string) ?Var {
-	if name in s.vars {
-		return s.vars[name]
+pub fn (s &Scope) is_known(name string) bool {
+	if _ := s.find(name) {
+		return true
 	}
-	for sc := s; !isnil(sc.parent); sc = sc.parent {
-		if name in sc.vars {
-			return sc.vars[name]
+	return false
+}
+
+
+pub fn (s &Scope) find_var(name string) ?Var {
+	if obj := s.find(name) {
+		match obj {
+			Var {
+				return *it
+			}
+			else {}
 		}
 	}
 	return none
@@ -52,28 +74,24 @@ pub fn (s &Scope) known_var(name string) bool {
 	return false
 }
 
-pub fn (s mut Scope) register_var(var Var) {
-	if x := s.find_var(var.name) {
-		// println('existing var: $var.name')
-		return
-	}
-	s.vars[var.name] = var
-}
-
-pub fn (s mut Scope) override_var(var Var) {
-	s.vars[var.name] = var
-}
-
 pub fn (s mut Scope) update_var_type(name string, typ table.Type) {
-	mut x := s.vars[name]
-	// dont do an insert for no reason
-	if x.typ == typ {
+	match mut s.objects[name] {
+		Var {
+			if it.typ == typ {
+				return
+			}
+			it.typ = typ
+		}
+		else {}
+	}
+}
+
+pub fn (s mut Scope) register(name string, obj ScopeObject) {
+	if x := s.find(name) {
+		// println('existing obect: $name')
 		return
 	}
-	x.typ = typ
-	s.vars[name] = x
-	// TODO
-	// s.vars[name].typ = typ
+	s.objects[name] = obj
 }
 
 pub fn (s &Scope) outermost() &Scope {
@@ -115,42 +133,37 @@ pub fn (s &Scope) innermost(pos int) &Scope {
 	return s
 }
 
-/*
-pub fn (s &Scope) innermost(pos int) ?&Scope {
-	if s.contains(pos) {
-		for s1 in s.children {
-			if s1.contains(pos) {
-				return s1.innermost(pos)
-			}
-		}
-		return s
-	}
-	return none
-}
-*/
-
-
 [inline]
 fn (s &Scope) contains(pos int) bool {
 	return pos >= s.start_pos && pos <= s.end_pos
 }
 
-pub fn (sc &Scope) show(level int) string {
+pub fn (sc &Scope) show(depth int, max_depth int) string {
 	mut out := ''
 	mut indent := ''
-	for _ in 0 .. level * 4 {
+	for _ in 0 .. depth * 4 {
 		indent += ' '
 	}
 	out += '$indent# $sc.start_pos - $sc.end_pos\n'
-	for _, var in sc.vars {
-		out += '$indent  * $var.name - $var.typ\n'
+	for _, obj in sc.objects {
+		match obj {
+			ConstField {
+				out += '$indent  * const: $it.name - $it.typ\n'
+			}
+			Var {
+				out += '$indent  * var: $it.name - $it.typ\n'
+			}
+			else {}
+		}
 	}
-	for child in sc.children {
-		out += child.show(level + 1)
+	if max_depth == 0 || depth < max_depth-1 {
+		for i, _ in sc.children {
+			out += sc.children[i].show(depth + 1, max_depth)
+		}
 	}
 	return out
 }
 
 pub fn (sc &Scope) str() string {
-	return sc.show(0)
+	return sc.show(0, 0)
 }

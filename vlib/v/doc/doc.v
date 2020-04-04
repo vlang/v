@@ -45,7 +45,7 @@ pub fn doc(mod string, table &table.Table) string {
 		if file.ends_with('_test.v') || file.ends_with('_windows.v') || file.ends_with('_macos.v') {
 			continue
 		}
-		file_ast := parser.parse_file(os.join_path(path,file), table, .skip_comments,	&pref.Preferences{})
+		file_ast := parser.parse_file(os.join_path(path,file), table, .skip_comments,	&pref.Preferences{}, &ast.Scope{parent: 0})
 		d.stmts << file_ast.stmts
 	}
 	if d.stmts.len == 0 {

@@ -762,7 +762,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		if name.starts_with('_op_') {
 			name = op_to_fn_name(name)
 		}
-		// type_name := g.table.type_to_str(it.return_type)
+		// type_name := g.table.Type_to_str(it.return_type)
 		type_name := g.typ(it.return_type)
 		g.write('$type_name ${name}(')
 		g.definitions.write('$type_name ${name}(')
@@ -834,34 +834,40 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 
 fn (g mut Gen) free_scope_vars(pos int) {
 	scope := g.file.scope.innermost(pos)
-	for _, var in scope.vars {
-		// println('//////')
-		// println(var.name)
-		// println(var.typ)
-		// if var.typ == 0 {
-		// // TODO why 0?
-		// continue
-		// }
-		sym := g.table.get_type_symbol(var.typ)
-		if sym.kind == .array && !table.type_is_optional(var.typ) {
-			g.writeln('array_free($var.name); // autofreed')
-		}
-		if sym.kind == .string && !table.type_is_optional(var.typ) {
-			// Don't free simple string literals.
-			t := typeof(var.expr)
-			match var.expr {
-				ast.StringLiteral {
-					g.writeln('// str literal')
-					continue
+	for _, obj in scope.objects {
+		match obj {
+			ast.Var {
+				// println('//////')
+				// println(var.name)
+				// println(var.typ)
+				// if var.typ == 0 {
+				// // TODO why 0?
+				// continue
+				// }
+				var := *it
+				sym := g.table.get_type_symbol(var.typ)
+				if sym.kind == .array && !table.type_is_optional(var.typ) {
+					g.writeln('array_free($var.name); // autofreed')
 				}
-				else {
-					// NOTE/TODO: assign_stmt multi returns variables have no expr
-					// since the type comes from the called fns return type
-					g.writeln('// other ' + t)
-					continue
+				if sym.kind == .string && !table.type_is_optional(var.typ) {
+					// Don't free simple string literals.
+					t := typeof(var.expr)
+					match var.expr {
+						ast.StringLiteral {
+							g.writeln('// str literal')
+							continue
+						}
+						else {
+							// NOTE/TODO: assign_stmt multi returns variables have no expr
+							// since the type comes from the called fns return type
+							g.writeln('// other ' + t)
+							continue
+						}
+					}
+					g.writeln('string_free($var.name); // autofreed')
 				}
-	}
-			g.writeln('string_free($var.name); // autofreed')
+			}
+			else {}
 		}
 	}
 }
@@ -995,7 +1001,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.expr_with_cast(it.expr, it.expr_type, it.typ)
 			}
 			else {
-				// styp := g.table.type_to_str(it.typ)
+				// styp := g.table.Type_to_str(it.typ)
 				styp := g.typ(it.typ)
 				// g.write('($styp)(')
 				g.write('(($styp)(')
@@ -1837,13 +1843,12 @@ fn (g mut Gen) return_statement(node ast.Return) {
 fn (g mut Gen) const_decl(node ast.ConstDecl) {
 	for i, field in node.fields {
 		name := c_name(field.name)
-		expr := node.exprs[i]
 		// TODO hack. Cut the generated value and paste it into definitions.
 		pos := g.out.len
-		g.expr(expr)
+		g.expr(field.expr)
 		val := g.out.after(pos)
 		g.out.go_back(val.len)
-		match expr {
+		match field.expr {
 			ast.CharLiteral, ast.IntegerLiteral {
 				// Simple expressions should use a #define
 				// so that we don't pollute the binary with unnecessary global vars
@@ -2155,15 +2160,15 @@ int typ;
 }
 
 // sort structs by dependant fields
-fn (g &Gen) sort_structs(types []table.TypeSymbol) []table.TypeSymbol {
+fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 	mut dep_graph := depgraph.new_dep_graph()
 	// types name list
 	mut type_names := []string
-	for typ in types {
+	for typ in typesa {
 		type_names << typ.name
 	}
 	// loop over types
-	for t in types {
+	for t in typesa {
 		// create list of deps
 		mut field_deps := []string
 		match t.info {

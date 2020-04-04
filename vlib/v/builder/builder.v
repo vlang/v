@@ -25,6 +25,7 @@ pub:
 mut:
 	module_search_paths []string
 	parsed_files        []ast.File
+	global_scope        &ast.Scope
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -34,12 +35,15 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		pref: pref
 		table: table
 		checker: checker.new_checker(table, pref)
+		global_scope: &ast.Scope{
+			parent: 0
+		}
 	}
 }
 
 pub fn (b mut Builder) gen_c(v_files []string) string {
 	t0 := time.ticks()
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
@@ -74,7 +78,7 @@ pub fn (b mut Builder) build_c(v_files []string, out_file string) {
 
 pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
 	t0 := time.ticks()
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
@@ -112,7 +116,7 @@ pub fn (b mut Builder) parse_imports() {
 				panic('cannot import module "$mod" (no .v files in "$import_path")')
 			}
 			// Add all imports referenced by these libs
-			parsed_files := parser.parse_files(v_files, b.table, b.pref)
+			parsed_files := parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 			for file in parsed_files {
 				if file.mod.name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
