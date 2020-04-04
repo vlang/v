@@ -77,6 +77,9 @@ pub fn (x Expr) str() string {
 		StringLiteral {
 			return '"$it.val"'
 		}
+		BoolLiteral {
+			return it.val.str()
+		}
 		ParExpr {
 			return it.expr.str()
 		}
