@@ -2822,20 +2822,25 @@ fn (g mut Gen) go_stmt(node ast.GoStmt) {
 			}
 			g.writeln('// go')
 			wrapper_struct_name := 'thread_arg_' + name
-			g.writeln('$wrapper_struct_name *arg_$tmp = malloc(sizeof(thread_arg_$name));')
+			wrapper_fn_name := name + '_thread_wrapper'
+			arg_tmp_var := 'arg_' + tmp
+			g.writeln('$wrapper_struct_name *$arg_tmp_var = malloc(sizeof(thread_arg_$name));')
 			if it.is_method {
-				g.write('arg_${tmp}->arg0 = ')
+				g.write('${arg_tmp_var}->arg0 = ')
 				g.expr(it.left)
 				g.writeln(';')
 			}
 			for i, arg in it.args {
-				g.write('arg_${tmp}->arg${i+1} = ')
+				g.write('${arg_tmp_var}->arg${i+1} = ')
 				g.expr(arg.expr)
 				g.writeln(';')
 			}
-			g.writeln('pthread_t thread_$tmp;')
-			wrapper_fn_name := name + '_thread_wrapper'
-			g.writeln('pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, arg_$tmp);')
+			if g.pref.os == .windows {
+				g.writeln('CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_fn_name, $arg_tmp_var, 0,0);')
+			} else {
+				g.writeln('pthread_t thread_$tmp;')
+				g.writeln('pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, $arg_tmp_var);')
+			}
 			g.writeln('// endgo\n')
 			// Register the wrapper type and function
 			if name in g.threaded_fns {
