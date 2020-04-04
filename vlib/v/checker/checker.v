@@ -508,6 +508,16 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	// a = []
 	if array_init.exprs.len == 0 {
 		type_sym := c.table.get_type_symbol(c.expected_type)
+		if type_sym.kind != .array {
+			// c.error('array_init: cannot use `[]` with non array.')
+			c.error('array_init: cannot use `[]` with non array. (maybe: `[]Type` instead of `[]`)', array_init.pos)
+			return table.void_type
+		}
+		// TODO: seperate errors once bug is fixed with `x := if expr { ... } else { ... }`
+		// if c.expected_type == table.void_type {
+		// 	c.error('array_init: use `[]Type` instead of `[]`', array_init.pos)
+		// 	return table.void_type
+		// }
 		array_info := type_sym.array_info()
 		array_init.elem_type = array_info.elem_type
 		return c.expected_type
@@ -865,22 +875,28 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 	// first use
 	else if ident.kind == .unresolved {
 		start_scope := c.file.scope.innermost(ident.pos.pos)
-		if var := start_scope.find_var(ident.name) {
-			mut typ := var.typ
-			if typ == 0 {
-				typ = c.expr(var.expr)
+		if obj := start_scope.find(ident.name) {
+			match obj {
+				ast.Var {
+					mut typ := it.typ
+					if typ == 0 {
+						typ = c.expr(it.expr)
+					}
+					is_optional := table.type_is(typ, .optional)
+					ident.kind = .variable
+					ident.info = ast.IdentVar{
+						typ: typ
+						is_optional: is_optional
+					}
+					it.typ = typ
+					// unwrap optional (`println(x)`)
+					if is_optional {
+						return table.type_set(typ, .unset)
+					}
+					return typ
+				}
+				else {}
 			}
-			is_optional := table.type_is(typ, .optional)
-			ident.kind = .variable
-			ident.info = ast.IdentVar{
-				typ: typ
-				is_optional: is_optional
-			}
-			// unwrap optional (`println(x)`)
-			if is_optional {
-				return table.type_set(typ, .unset)
-			}
-			return typ
 		}
 		// prepend mod to look for fn call or const
 		mut name := ident.name
