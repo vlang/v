@@ -372,7 +372,7 @@ pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 	typ_sym := c.table.get_type_symbol(typ)
 	field_name := selector_expr.field
 	// variadic
-	if table.type_is_variadic(typ) {
+	if table.type_is(typ, .variadic) {
 		if field_name == 'len' {
 			return table.int_type
 		}
@@ -401,7 +401,7 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 	}
 	expected_type := c.fn_return_type
 	expected_type_sym := c.table.get_type_symbol(expected_type)
-	exp_is_optional := table.type_is_optional(expected_type)
+	exp_is_optional := table.type_is(expected_type, .optional)
 	mut expected_types := [expected_type]
 	if expected_type_sym.kind == .multi_return {
 		mr_info := expected_type_sym.info as table.MultiReturn
@@ -874,14 +874,15 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 			if typ == 0 {
 				typ = c.expr(var.expr)
 			}
+			is_optional := table.type_is(typ, .optional)
 			ident.kind = .variable
 			ident.info = ast.IdentVar{
 				typ: typ
-				is_optional: table.type_is_optional(typ)
+				is_optional: is_optional
 			}
 			// unwrap optional (`println(x)`)
-			if table.type_is_optional(typ) {
-				return table.type_clear_extra(typ)
+			if is_optional {
+				return table.type_set(typ, .unset)
 			}
 			return typ
 		}

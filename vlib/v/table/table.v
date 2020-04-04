@@ -385,9 +385,9 @@ pub fn (t mut Table) add_placeholder_type(name string) int {
 [inline]
 pub fn (t &Table) value_type(typ Type) Type {
 	typ_sym := t.get_type_symbol(typ)
-	if type_is_variadic(typ) {
+	if type_is(typ, .variadic) {
 		// ...string => string
-		return type_clear_extra(typ)
+		return type_set(typ, .unset)
 	}
 	else if typ_sym.kind == .array {
 		// Check index type

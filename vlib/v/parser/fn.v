@@ -202,7 +202,7 @@ fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 			}
 			mut arg_type := p.parse_type()
 			if is_variadic {
-				arg_type = table.type_to_variadic(arg_type)
+				arg_type = table.type_set(arg_type, .variadic)
 			}
 			if p.tok.kind == .comma {
 				if is_variadic {
@@ -236,7 +236,7 @@ fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 			}
 			mut typ := p.parse_type()
 			if is_variadic {
-				typ = table.type_to_variadic(typ)
+				typ = table.type_set(typ, .variadic)
 			}
 			for arg_name in arg_names {
 				args << table.Arg{
