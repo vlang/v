@@ -509,8 +509,7 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	if array_init.exprs.len == 0 {
 		type_sym := c.table.get_type_symbol(c.expected_type)
 		if type_sym.kind != .array {
-			// c.error('array_init: cannot use `[]` with non array.')
-			c.error('array_init: cannot use `[]` with non array. (maybe: `[]Type` instead of `[]`)', array_init.pos)
+			c.error('array_init: no type specified (maybe: `[]Type` instead of `[]`)', array_init.pos)
 			return table.void_type
 		}
 		// TODO: seperate errors once bug is fixed with `x := if expr { ... } else { ... }`
