@@ -293,12 +293,16 @@ pub fn exec(cmd string) ?Result {
 	}
 
 	proc_info := ProcessInformation{}
-	mut start_info := StartupInfo{}
-	start_info.cb = sizeof(C.PROCESS_INFORMATION)
-	start_info.hStdInput = child_stdin
-	start_info.hStdOutput = child_stdout_write
-	start_info.hStdError = child_stdout_write
-	start_info.dwFlags = u32(C.STARTF_USESTDHANDLES)
+	start_info := StartupInfo{
+		lpReserved: 0
+		lpDesktop: 0
+		lpTitle: 0
+		cb: sizeof(C.PROCESS_INFORMATION)
+		hStdInput: child_stdin
+		hStdOutput: child_stdout_write
+		hStdError: child_stdout_write
+		dwFlags: u32(C.STARTF_USESTDHANDLES)
+	}
 	command_line := [32768]u16
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&command_line), 32768)
 	create_process_ok := C.CreateProcessW(0, command_line, 0, 0, C.TRUE, 0, 0, 0, voidptr(&start_info), voidptr(&proc_info))
