@@ -37,6 +37,7 @@ fn test_eval() {
 	//
 	]
 	table := table.new_table()
+	vpref := &pref.Preferences{}
 	mut scope := &ast.Scope{
 		start_pos: 0
 		parent: 0
@@ -49,7 +50,7 @@ fn test_eval() {
 		stmts: stmts
 		scope: scope
 	}
-	mut checker := checker.new_checker(table)
+	mut checker := checker.new_checker(table, vpref)
 	checker.check(file)
 	mut ev := eval.Eval{}
 	s := ev.eval(file, table)
@@ -79,7 +80,7 @@ x := 10
 	table := &table.Table{}
 	vpref := &pref.Preferences{}
 	prog := parse_file(s, table, .skip_comments, vpref)
-	mut checker := checker.new_checker(table)
+	mut checker := checker.new_checker(table, vpref)
 	checker.check(prog)
 	res := gen.cgen([prog], table, vpref)
 	println(res)
@@ -111,7 +112,7 @@ fn test_one() {
 		stmts: e
 		scope: scope
 	}
-	mut checker := checker.new_checker(table)
+	mut checker := checker.new_checker(table, vpref)
 	checker.check(program)
 	res := gen.cgen([program], table, vpref).replace('\n', '').trim_space().after('#endif')
 	println(res)
@@ -196,7 +197,7 @@ fn test_parse_expr() {
 	mut e := []ast.Stmt
 	table := table.new_table()
 	vpref := &pref.Preferences{}
-	mut checker := checker.new_checker(table)
+	mut checker := checker.new_checker(table, vpref)
 	scope := &ast.Scope{
 		start_pos: 0
 		parent: 0
