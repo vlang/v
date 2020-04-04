@@ -92,17 +92,17 @@ pub fn from_bytes(input []byte) BitField {
 pub fn from_string(input string) BitField {
 	mut output := new(input.len)
 	for i in 0..input.len {
-		if input[i] != 48 {
+		if input[i] != `0` {
 			output.setbit(i)
 		}
 	}
 	return output
 }
 
-// string() converts the bit array to a string of characters ('0' and '1') and
+// str() converts the bit array to a string of characters ('0' and '1') and
 // return the string
 
-pub fn (input BitField) string() string {
+pub fn (input BitField) str() string {
 	mut output := ''
 	for i in 0..input.size {
 		if input.getbit(i) == 1 {
@@ -289,22 +289,6 @@ pub fn join(input1 BitField, input2 BitField) BitField {
 		}
 	}
 	return output
-}
-
-// print(instance BitField) send the content of a bit array to stdout as a
-// string of characters ('0' and '1').
-
-pub fn print(instance BitField) {
-	mut i := 0
-	for i < instance.size {
-		if instance.getbit(i) == 1 {
-			print('1')
-		}
-		else {
-			print('0')
-		}
-		i++
-	}
 }
 
 // getsize() returns the number of bits the array can hold

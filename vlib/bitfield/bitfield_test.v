@@ -177,7 +177,7 @@ fn test_bf_bf2str() {
 			check = check + '0'
 		}
 	}
-	output := input.string()
+	output := input.str()
 	mut result := 1
 	for i in 0..len {
 		if check[i] != output[i] {
@@ -319,4 +319,18 @@ fn test_bf_rotate() {
 		}
 	}
 	assert result == 1
+}
+
+fn test_bf_printing(){
+	rand.seed(time.now().unix)
+	len := 80
+	mut input := bitfield.new(len)
+	for i in 0..len {
+	   if rand.next(2) == 0 {
+		   input.setbit(i)
+	   }
+	}
+	// the following should convert the bitfield input into a string automatically
+	println(input)
+	assert true
 }
