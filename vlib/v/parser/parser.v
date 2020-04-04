@@ -1475,6 +1475,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		p.next() // C
 		p.next() // .
 	}
+	is_typedef := p.attr == 'typedef'
 	mut name := p.check_name()
 	mut default_exprs := []ast.Expr
 	// println('struct decl $name')
@@ -1544,6 +1545,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		name: name
 		info: table.Struct{
 			fields: fields
+			is_typedef: is_typedef
 		}
 	}
 	mut ret := 0

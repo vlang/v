@@ -159,7 +159,10 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 		if sym.kind == .struct_ {
-			styp = 'struct $styp'
+			info := sym.info as table.Struct
+			if !info.is_typedef {
+				styp = 'struct $styp'
+			}
 		}
 	}
 	if table.type_is(t, .optional) {
