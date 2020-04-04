@@ -142,7 +142,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			for i, field in it.fields {
 				name := field.name.after('.')
 				f.write('$name = ')
-				f.expr(it.exprs[i])
+				f.expr(field.expr)
 				f.writeln('')
 			}
 			f.indent--

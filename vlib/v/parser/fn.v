@@ -18,7 +18,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	if p.tok.kind == .key_orelse {
 		p.next()
 		p.open_scope()
-		p.scope.register_var(ast.Var{
+		p.scope.register('err', ast.Var{
 			name: 'err'
 			typ: table.string_type
 		})
@@ -29,7 +29,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		name: fn_name
 		args: args
 		// tok: tok
-
+		mod: p.mod
 		pos: tok.position()
 		is_c: is_c
 		or_block: ast.OrExpr{
@@ -118,7 +118,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	args2,is_variadic := p.fn_args()
 	args << args2
 	for arg in args {
-		p.scope.register_var(ast.Var{
+		p.scope.register(arg.name, ast.Var{
 			name: arg.name
 			typ: arg.typ
 		})
@@ -202,7 +202,7 @@ fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 			}
 			mut arg_type := p.parse_type()
 			if is_variadic {
-				arg_type = table.type_to_variadic(arg_type)
+				arg_type = table.type_set(arg_type, .variadic)
 			}
 			if p.tok.kind == .comma {
 				if is_variadic {
@@ -236,7 +236,7 @@ fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 			}
 			mut typ := p.parse_type()
 			if is_variadic {
-				typ = table.type_to_variadic(typ)
+				typ = table.type_set(typ, .variadic)
 			}
 			for arg_name in arg_names {
 				args << table.Arg{

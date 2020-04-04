@@ -7,6 +7,7 @@ import (
 	v.ast
 	v.checker
 	v.table
+	v.pref
 )
 
 pub type Object = int | string
@@ -23,9 +24,10 @@ pub struct Var {
 }
 
 pub fn (e mut Eval) eval(file ast.File, table &table.Table) string {
+	vpref := &pref.Preferences{}
 	e.table = table
 	mut res := ''
-	e.checker = checker.new_checker(table)
+	e.checker = checker.new_checker(table, vpref)
 	for stmt in file.stmts {
 		res += e.stmt(stmt) + '\n'
 	}
