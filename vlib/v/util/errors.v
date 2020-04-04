@@ -6,7 +6,6 @@ module util
 import os
 import term
 import v.token
-import v.util
 
 // The filepath:line:col: format is the default C compiler error output format.
 // It allows editors and IDE's like emacs to quickly find the errors in the
