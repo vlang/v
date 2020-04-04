@@ -479,10 +479,21 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		styp := g.typ(it.val_type)
 		g.write('for (int $i = 0; $i < ')
 		g.expr(it.cond)
-		g.writeln('.len; $i++) {')
+		cond_type_is_ptr := table.type_is_ptr(it.cond_type)
+		if cond_type_is_ptr {
+			g.writeln('->')
+		} else {
+			g.writeln('.')
+		}
+		g.write('len; $i++) {')
 		g.write('\t$styp $it.val_var = (($styp*)')
 		g.expr(it.cond)
-		g.writeln('.data)[$i];')
+		if cond_type_is_ptr {
+			g.writeln('->')
+		} else {
+			g.writeln('.')
+		}
+		g.write('data)[$i];')
 		g.stmts(it.stmts)
 		g.writeln('}')
 	}
@@ -1705,6 +1716,9 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 				// `x[0] *= y`
 				if g.assign_op in [.mult_assign] {
 					g.write('*($elem_type_str*)array_get(')
+					if left_is_ptr {
+						g.write('*')
+					}
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
@@ -1721,6 +1735,9 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			}
 			else {
 				g.write('(*($elem_type_str*)array_get(')
+				if left_is_ptr {
+					g.write('*')
+				}
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
