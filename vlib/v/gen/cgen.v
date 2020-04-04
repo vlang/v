@@ -1902,7 +1902,8 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 	// info := g.table.get_type_symbol(it.typ).info as table.Struct
 	// println(info.fields.len)
 	styp := g.typ(it.typ)
-	if g.is_amp {
+	is_amp := g.is_amp
+	if is_amp {
 		g.out.go_back(1) // delete the & already generated in `prefix_expr()
 		g.write('($styp*)memdup(&($styp){')
 	}
@@ -1943,7 +1944,7 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 		g.write('0')
 	}
 	g.write('}')
-	if g.is_amp {
+	if is_amp {
 		g.write(', sizeof($styp))')
 	}
 }
