@@ -60,7 +60,7 @@ fn test_if_opt() {
 }
 
 fn for_opt_default() ?string {
-        return error('awww')
+	return error('awww')
 }
 
 fn test_opt_default() {

@@ -1,8 +1,8 @@
 import mod1.submodule as m
 
 fn test_mod1_can_still_be_found_through_parent_project_vmod(){
-   assert 1051 == m.f()
-}   
+	assert 1051 == m.f()
+}
 
 /* 
 NB: this main program is under bin/ , but it still

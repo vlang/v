@@ -12,5 +12,5 @@ module amodule
 // files from the same folder, NOT other _test.v files from it.
 
 fn test_private_isub(){
-  assert private_isub(7,5) == 2
+	assert private_isub(7,5) == 2
 }

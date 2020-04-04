@@ -12,5 +12,5 @@ fn test_imul(){
 }
 
 fn test_private_isub(){
-  assert private_isub(10,6) == 4
+	assert private_isub(10,6) == 4
 }

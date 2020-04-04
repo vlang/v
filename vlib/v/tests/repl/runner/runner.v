@@ -29,7 +29,7 @@ pub fn full_path_to_v(dirs_in int) string {
 	println('vreal   : $vreal')
 	println('myself  : $myself')
 	println('wd      : $wd')
-    */
+	*/
 	return vexec
 }
 

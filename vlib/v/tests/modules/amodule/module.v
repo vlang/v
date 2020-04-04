@@ -11,5 +11,5 @@ pub fn imul(x int, y int) int {
 ///////////////////////////////////////
 
 fn private_isub(x int, y int) int {
-  return x - y
+	return x - y
 }
