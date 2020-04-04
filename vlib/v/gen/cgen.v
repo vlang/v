@@ -1981,17 +1981,21 @@ fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 	if is_variadic {
 		varg_type := expected_types[expected_types.len - 1]
 		struct_name := 'varg_' + g.typ(varg_type).replace('*', '_ptr')
-		len := args.len - arg_no
+		variadic_count := args.len - arg_no
 		varg_type_str := int(varg_type).str()
-		if len > g.variadic_args[varg_type_str] {
-			g.variadic_args[varg_type_str] = len
+		if variadic_count > g.variadic_args[varg_type_str] {
+			g.variadic_args[varg_type_str] = variadic_count
 		}
-		g.write('($struct_name){.len=$len,.args={')
-		for j in arg_no .. args.len {
-			g.ref_or_deref_arg(args[j], varg_type)
-			if j < args.len - 1 {
-				g.write(', ')
+		g.write('($struct_name){.len=$variadic_count,.args={')
+		if variadic_count > 0 {
+			for j in arg_no .. args.len {
+				g.ref_or_deref_arg(args[j], varg_type)
+				if j < args.len - 1 {
+					g.write(', ')
+				}
 			}
+		} else {
+			g.write('0')
 		}
 		g.write('}}')
 	}
