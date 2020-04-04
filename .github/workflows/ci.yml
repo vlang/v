@@ -131,6 +131,11 @@ jobs:
       run: |
         ./v vlib/builtin/array_test.v
         ./v vlib/builtin/string_test.v
+        ./v vlib/strconv/atof_test.v
+        ./v vlib/math/math_test.v
+        ./v vlib/bitfield/bitfield_test.v
+        ./v vlib/os/os_test.v
+        ./v vlib/os/inode_test.v
         ./v vlib/v/tests/fn_multiple_returns_test.v
         ./v vlib/v/tests/return_voidptr_test.v
         ./v vlib/v/tests/voidptr_to_u64_cast_b_test.v
