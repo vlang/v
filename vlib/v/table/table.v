@@ -13,7 +13,6 @@ pub mut:
 	type_idxs map[string]int
 	// fns Hashmap
 	fns       map[string]Fn
-	consts    map[string]Var
 	imports   []string // List of all imports
 	modules   []string // List of all modules registered by the application
 }
@@ -38,8 +37,6 @@ pub struct Var {
 pub:
 	name      string
 	is_mut    bool
-	is_const  bool
-	is_global bool
 mut:
 	typ       Type
 }
@@ -48,23 +45,6 @@ pub fn new_table() &Table {
 	mut t := &Table{}
 	t.register_builtin_type_symbols()
 	return t
-}
-
-pub fn (t mut Table) register_const(v Var) {
-	t.consts[v.name] = v
-}
-
-pub fn (t mut Table) register_global(name string, typ Type) {
-	t.consts[name] = Var{
-		name: name
-		typ: typ
-		is_const: true
-		is_global: true
-		// mod: p.mod
-		// is_mut: true
-		// idx: -1
-		
-	}
 }
 
 // used to compare fn's & for naming anon fn's
@@ -88,15 +68,6 @@ pub fn (f &Fn) signature() string {
 
 pub fn (t &Table) find_fn(name string) ?Fn {
 	f := t.fns[name]
-	if f.name.str != 0 {
-		// TODO
-		return f
-	}
-	return none
-}
-
-pub fn (t &Table) find_const(name string) ?Var {
-	f := t.consts[name]
 	if f.name.str != 0 {
 		// TODO
 		return f

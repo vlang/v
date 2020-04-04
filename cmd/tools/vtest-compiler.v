@@ -7,10 +7,6 @@ import (
 	v.pref
 )
 
-pub const (
-	v_modules_path = os.home_dir() + '.vmodules'
-)
-
 fn main() {
 	args := os.args
 	args_string := args[1..].join(' ')
@@ -62,7 +58,8 @@ fn v_test_compiler(vargs string) {
 	if ret != 0 {
 		eprintln('failed to run v install')
 	}
-	if !os.exists(v_modules_path + '/nedpals/args') {
+	desired_path :=  os.join_path(pref.default_module_path, 'nedpals', 'args')
+	if !(os.exists( desired_path ) && os.is_dir( desired_path )) {
 		eprintln('v failed to install a test module')
 	}
 	vmark.stop()

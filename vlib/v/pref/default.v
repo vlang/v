@@ -4,10 +4,21 @@
 module pref
 
 import os
+import term
 
 pub const (
-	default_module_path = os.home_dir() + '.vmodules'
+	default_module_path = mpath()
 )
+
+fn mpath() string {
+	return os.home_dir() + '.vmodules'
+}
+
+pub fn new_preferences() Preferences {
+	p := Preferences{}
+	p.fill_with_defaults()
+	return p
+}
 
 pub fn (p mut Preferences) fill_with_defaults() {
 	if p.vroot == '' {
@@ -22,7 +33,7 @@ pub fn (p mut Preferences) fill_with_defaults() {
 		p.lookup_path[i] = path.replace('@vlib', vlib_path).replace('@vmodules', default_module_path)
 	}
 	rpath := os.real_path(p.path)
-	if p.out_name == ''{
+	if p.out_name == '' {
 		filename := os.file_name(rpath).trim_space()
 		mut base := filename.all_before_last('.')
 		if base == '' {
@@ -60,6 +71,7 @@ pub fn (p mut Preferences) fill_with_defaults() {
 			}
 		}
 	}
+	p.enable_globals = true
 }
 
 fn default_c_compiler() string {

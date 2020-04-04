@@ -156,7 +156,7 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			eprintln(tls_bench.step_message_fail('${relative_file}\n`$file`\n (\n$r.output\n)'))
+			eprintln(tls_bench.step_message_fail('${relative_file}\n$r.output\n'))
 		}
 		else {
 			ts.benchmark.ok()
