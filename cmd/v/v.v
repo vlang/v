@@ -30,7 +30,7 @@ fn main() {
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		// Running `./v` without args launches repl
 		println('For usage information, quit V REPL using `exit` and use `v help`')
-		launch_tool(false, 'vrepl')
+		util.launch_tool(false, 'vrepl')
 		return
 	}
 	if args.len > 0 && (args[0] in ['version', '-V', '-version', '--version'] || (args[0] == '-v' && args.len == 1) ) {
@@ -53,12 +53,7 @@ fn main() {
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if command in simple_cmd {
 		// External tools
-		launch_tool(prefs2.is_verbose, 'v' + command)
-		return
-	}
-	if command in ['run', 'build'] || command.ends_with('.v') || os.exists(command) {
-		arg := join_flags_and_argument()
-		compile.compile(command, arg)
+		util.launch_tool(prefs2.is_verbose, 'v' + command)
 		return
 	}
 	match command {
@@ -66,7 +61,7 @@ fn main() {
 			invoke_help_and_exit(args)
 		}
 		'create', 'init' {
-			launch_tool(prefs2.is_verbose, 'vcreate')
+			util.launch_tool(prefs2.is_verbose, 'vcreate')
 			return
 		}
 		'translate' {
@@ -74,7 +69,7 @@ fn main() {
 			return
 		}
 		'search', 'install', 'update', 'remove' {
-			launch_tool(prefs2.is_verbose, 'vpm')
+			util.launch_tool(prefs2.is_verbose, 'vpm')
 			return
 		}
 		'get' {
@@ -100,6 +95,11 @@ fn main() {
 		}
 		else {}
 	}
+	if command in ['run', 'build'] || command.ends_with('.v') || os.exists(command) {
+		arg := join_flags_and_argument()
+		compile.compile(command, arg)
+		return
+	}
 	eprintln('v $command: unknown command\nRun "v help" for usage.')
 	exit(1)
 }
@@ -121,10 +121,18 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				res.out_name  = cmdline.option(args, '-o', '')
 				i++
 			}
-			'-csource', '-backend' {
-				i++ // TODO
-			}
 			else {
+				mut should_continue := false
+				for flag_with_param in list_of_flags_with_param {
+					if '-$flag_with_param' == arg {
+						should_continue = true
+						i++
+						break
+					}
+				}
+				if should_continue {
+					continue
+				}
 				if !arg.starts_with('-') && command == '' {
 					command = arg
 				}

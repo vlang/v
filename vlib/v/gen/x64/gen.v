@@ -5,6 +5,7 @@ module x64
 
 import (
 	v.ast
+	v.util
 	// term
 )
 
@@ -387,11 +388,10 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.IfExpr {}
 		else {
 			// println(term.red('x64.expr(): bad node'))
-			}
+		}
 	}
-	}
+}
 
-	fn verror(s string) {
-		println(s)
-		exit(1)
-	}
+fn verror(s string) {
+	util.verror('x64 gen error', s)
+}

@@ -142,7 +142,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			for i, field in it.fields {
 				name := field.name.after('.')
 				f.write('$name = ')
-				f.expr(it.exprs[i])
+				f.expr(field.expr)
 				f.writeln('')
 			}
 			f.indent--
@@ -173,9 +173,13 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			s := it.str(f.table)
 			// f.write(it.str(f.table))
 			f.write(s.replace(f.cur_mod + '.', '')) // `Expr` instead of `ast.Expr` in mod ast
-			f.writeln(' {')
-			f.stmts(it.stmts)
-			f.writeln('}\n')
+			if !it.is_c {
+				f.writeln(' {')
+				f.stmts(it.stmts)
+				f.writeln('}\n')
+			} else {
+				f.writeln('\n')
+			}
 		}
 		ast.ForInStmt {
 			f.write('for ')
@@ -591,6 +595,11 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				}
 				f.write('}')
 			}
+		}
+		ast.TypeOf {
+			f.write('typeof(')
+			f.expr(it.expr)
+			f.write(')')
 		}
 		else {
 			eprintln('fmt expr: unhandled node ' + typeof(node))

@@ -106,7 +106,7 @@ pub fn new_time(t Time) Time {
 }
 
 // unix_time returns Unix time.
-pub fn (t &Time) unix_time() int {
+pub fn (t Time) unix_time() int {
 	if t.unix != 0 {
 		return t.unix
 	}

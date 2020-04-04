@@ -1,5 +1,7 @@
 module main
 
+/*
+QTODO
 import (
 	os
 	flag
@@ -83,3 +85,5 @@ fn main(){
 		analyze_v_file(file)
 	}
 }
+*/
+fn main()  {}

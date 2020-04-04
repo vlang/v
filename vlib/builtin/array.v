@@ -506,12 +506,12 @@ pub fn (a []char) index(v char) int {
 // []int.reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
-	mut _accum := accum_start
+	mut accum_ := accum_start
 	for i in a {
-		_accum = iter(_accum, i)
+		accum_ = iter(accum_, i)
 	}
 
-	return _accum
+	return accum_
 }
 
 // array_eq<T> checks if two arrays contain all the same elements in the same order.

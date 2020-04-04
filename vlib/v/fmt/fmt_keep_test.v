@@ -2,6 +2,7 @@ import (
 	os
 	term
 	benchmark
+	v.ast
 	v.fmt
 	v.parser
 	v.table
@@ -44,7 +45,7 @@ fn test_fmt() {
 			continue
 		}
 		table := table.new_table()
-		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{})
+		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{}, &ast.Scope{parent: 0})
 		result_ocontent := fmt.fmt(file_ast, table)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()

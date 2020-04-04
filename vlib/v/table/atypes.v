@@ -1,3 +1,15 @@
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+//
+// Type layout information (32 bits)
+// flag (8 bits) | nr_muls (8 bits) | idx (16 bits)
+// pack: (int(flag)<<24) | (nr_muls<<16) | u16(idx)
+// unpack:
+//     flag: (int(type)>>24) & 0xff
+//  nr_muls: (int(type)>>16) & 0xff
+//      idx:  u16(type) & 0xffff
+
 module table
 
 import (
@@ -6,7 +18,7 @@ import (
 
 pub type Type int
 
-pub type TypeInfo = Array | ArrayFixed | Map | Struct | 	
+pub type TypeInfo = Array | ArrayFixed | Map | Struct |
 MultiReturn | Alias | Enum | SumType | FnType
 
 pub struct TypeSymbol {
@@ -17,10 +29,9 @@ mut:
 	kind       Kind
 	name       string
 	methods    []Fn
-	// is_sum    bool
 }
 
-pub enum TypeExtra {
+pub enum TypeFlag {
 	unset
 	optional
 	variadic
@@ -35,90 +46,71 @@ pub fn (types []Type) contains(typ Type) bool {
 	return false
 }
 
-// return underlying TypeSymbol idx
+// return TypeSymbol idx for `t`
 [inline]
 pub fn type_idx(t Type) int {
 	return u16(t) & 0xffff
 }
 
-// return nr_muls
+// return nr_muls for `t`
 [inline]
 pub fn type_nr_muls(t Type) int {
 	return (int(t)>>16) & 0xff
 }
 
-// return true if pointer (nr_muls>0)
+// return true if `t` is a pointer (nr_muls>0)
 [inline]
 pub fn type_is_ptr(t Type) bool {
-	return type_nr_muls(t) > 0 // || t == voidptr_type_idx
+	return (int(t)>>16) & 0xff > 0
 }
-// set nr_muls on Type and return it
+// set nr_muls on `t` and return it
 [inline]
 pub fn type_set_nr_muls(t Type, nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('typ_set_nr_muls: nr_muls must be between 0 & 255')
 	}
-	return (int(type_extra(t))<<24) | (nr_muls<<16) | u16(type_idx(t))
+	return (((int(t)>>24) & 0xff)<<24) | (nr_muls<<16) | (u16(t) & 0xffff)
 }
 
-// increments nr_nuls on Type and return it
+// increments nr_nuls on `t` and return it
 [inline]
 pub fn type_to_ptr(t Type) Type {
-	nr_muls := type_nr_muls(t)
+	nr_muls := (int(t)>>16) & 0xff
 	if nr_muls == 255 {
 		panic('type_to_pre: nr_muls is already at max of 255')
 	}
-	return (int(type_extra(t))<<24) | ((nr_muls + 1)<<16) | u16(type_idx(t))
+	return (((int(t)>>24) & 0xff)<<24) | ((nr_muls + 1)<<16) | (u16(t) & 0xffff)
 }
 
-// decrement nr_muls on Type and return it
+// decrement nr_muls on `t` and return it
 [inline]
 pub fn type_deref(t Type) Type {
-	nr_muls := type_nr_muls(t)
+	nr_muls := (int(t)>>16) & 0xff
 	if nr_muls == 0 {
 		panic('deref: type `$t` is not a pointer')
 	}
-	return (int(type_extra(t))<<24) | ((nr_muls - 1)<<16) | u16(type_idx(t))
+	return (((int(t)>>24) & 0xff)<<24) | ((nr_muls - 1)<<16) | (u16(t) & 0xffff)
 }
 
+// return the flag that is set on `t`
 [inline]
-pub fn type_clear_extra(t Type) Type {
-	return type_set_extra(t, .unset)
-}
-
-// return extra info
-[inline]
-pub fn type_extra(t Type) TypeExtra {
+pub fn type_flag(t Type) TypeFlag {
 	return (int(t)>>24) & 0xff
 }
 
-// set extra info
+// set the flag on `t` to `flag` and return it
 [inline]
-pub fn type_set_extra(t Type, extra TypeExtra) Type {
-	return (int(extra)<<24) | (type_nr_muls(t)<<16) | u16(type_idx(t))
+pub fn type_set(t Type, flag TypeFlag) Type {
+	return (int(flag)<<24) | (((int(t)>>16) & 0xff)<<16) | (u16(t) & 0xffff)
 }
 
+// return true if the flag set on `t` is `flag`
 [inline]
-pub fn type_is_optional(t Type) bool {
-	return type_extra(t) == .optional
+pub fn type_is(t Type, flag TypeFlag) bool {
+	return (int(t)>>24) & 0xff == flag
 }
 
-[inline]
-pub fn type_to_optional(t Type) Type {
-	return type_set_extra(t, .optional)
-}
-
-[inline]
-pub fn type_is_variadic(t Type) bool {
-	return type_extra(t) == .variadic
-}
-
-[inline]
-pub fn type_to_variadic(t Type) Type {
-	return type_set_extra(t, .variadic)
-}
-
-// new type with idx of TypeSymbol, not pointer (nr_muls=0)
+// return new type with TypeSymbol idx set to `idx`
 [inline]
 pub fn new_type(idx int) Type {
 	if idx < 1 || idx > 65536 {
@@ -127,34 +119,24 @@ pub fn new_type(idx int) Type {
 	return idx
 }
 
-// return Type idx of TypeSymbol & specify if ptr (nr_muls)
+// return new type with TypeSymbol idx set to `idx` & nr_muls set to `nr_muls`
 [inline]
 pub fn new_type_ptr(idx int, nr_muls int) Type {
 	if idx < 1 || idx > 65536 {
-		panic('typ_ptr: idx must be between 1 & 65536')
+		panic('new_type_ptr: idx must be between 1 & 65536')
 	}
 	if nr_muls < 0 || nr_muls > 255 {
-		panic('typ_ptr: nr_muls must be between 0 & 255')
+		panic('new_type_ptr: nr_muls must be between 0 & 255')
 	}
 	return (nr_muls<<16) | u16(idx)
 }
-
-/*
-pub fn is_number(typ Type) bool {
-	typ_sym := c.table.get_type_symbol(typ)
-	return typ_sym.is_int()
-	//idx := type_idx(typ)
-	//return idx in [int_type_idx, byte_type_idx, u64_type_idx]
-}
-*/
-
 
 pub fn is_number(typ Type) bool {
 	return type_idx(typ) in number_type_idxs
 }
 
 pub const (
-// primitive types
+	// primitive types
 	void_type_idx = 1
 	voidptr_type_idx = 2
 	byteptr_type_idx = 3
@@ -557,6 +539,7 @@ pub fn (kinds []Kind) str() string {
 pub struct Struct {
 pub mut:
 	fields []Field
+	is_typedef bool // C. [typedef]
 }
 
 pub struct Enum {
@@ -630,7 +613,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 			res = vals[vals.len - 2] + '.' + vals[vals.len - 1]
 		}
 	}
-	if type_is_optional(t) {
+	if type_is(t, .optional) {
 		res = '?' + res
 	}
 	nr_muls := type_nr_muls(t)

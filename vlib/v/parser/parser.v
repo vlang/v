@@ -9,6 +9,7 @@ import (
 	v.token
 	v.table
 	v.pref
+	v.util
 	term
 	os
 	// runtime
@@ -16,31 +17,29 @@ import (
 	// time
 )
 
-const (
-	colored_output = term.can_show_color_on_stderr()
-)
-
 struct Parser {
-	scanner     &scanner.Scanner
-	file_name   string
+	scanner      &scanner.Scanner
+	file_name    string
 mut:
-	tok         token.Token
-	peek_tok    token.Token
+	tok          token.Token
+	peek_tok     token.Token
 	// vars []string
-	table       &table.Table
-	is_c        bool
+	table        &table.Table
+	is_c         bool
 	// prefix_parse_fns []PrefixParseFn
-	inside_if   bool
-	pref        &pref.Preferences // Preferences shared from V struct
-	builtin_mod bool
-	mod         string
-	attr        string
-	expr_mod    string
-	scope       &ast.Scope
-	imports     map[string]string
-	ast_imports []ast.Import
-	is_amp      bool
-	returns     bool
+	inside_if    bool
+	pref         &pref.Preferences // Preferences shared from V struct
+	builtin_mod  bool
+	mod          string
+	attr         string
+	expr_mod     string
+	scope        &ast.Scope
+	global_scope &ast.Scope
+	imports      map[string]string
+	ast_imports  []ast.Import
+	is_amp       bool
+	returns      bool
+	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
 }
 
 // for tests
@@ -52,14 +51,17 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		// scope: &ast.Scope{start_pos: 0, parent: 0}
-
+		global_scope: &ast.Scope{
+			start_pos: 0
+			parent: 0
+		}
 	}
 	p.init_parse_fns()
 	p.read_first_token()
 	return p.stmt()
 }
 
-pub fn parse_file(path string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) ast.File {
+pub fn parse_file(path string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
 	// println('parse_file("$path")')
 	// text := os.read_file(path) or {
 	// panic(err)
@@ -76,11 +78,11 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 			start_pos: 0
 			parent: 0
 		}
+		global_scope: global_scope
 		// comments_mode: comments_mode
 
 	}
 	p.read_first_token()
-	// p.scope = &ast.Scope{start_pos: p.tok.position(), parent: 0}
 	// module decl
 	module_decl := if p.tok.kind == .key_module { p.module_decl() } else { ast.Module{name: 'main'
 	} }
@@ -112,6 +114,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		imports: p.ast_imports
 		stmts: stmts
 		scope: p.scope
+		global_scope: p.global_scope
 	}
 }
 
@@ -143,7 +146,7 @@ fn (q mut Queue) run() {
 */
 
 
-pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences) []ast.File {
+pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, global_scope &ast.Scope) []ast.File {
 	/*
 	println('\n\n\nparse_files()')
 	println(paths)
@@ -164,7 +167,7 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences) [
 	mut files := []ast.File
 	for path in paths {
 		// println('parse_files $path')
-		files << parse_file(path, table, .skip_comments, pref)
+		files << parse_file(path, table, .skip_comments, pref, global_scope)
 	}
 	return files
 }
@@ -235,7 +238,7 @@ fn (p mut Parser) check(expected token.Kind) {
 	// p.next()
 	// }
 	if p.tok.kind != expected {
-		s := 'syntax error: unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`'
+		s := 'unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`'
 		p.error(s)
 	}
 	p.next()
@@ -328,7 +331,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		}
 		else {
 			// #printf("");
-			p.error('parser: bad top level statement ' + p.tok.str())
+			p.error('bad top level statement ' + p.tok.str())
 			return ast.Stmt{}
 		}
 	}
@@ -399,8 +402,18 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		}
 		.key_go {
 			p.next()
+			expr := p.expr(0)
+			//mut call_expr := &ast.CallExpr(0) // TODO
+			match expr {
+				ast.CallExpr {
+					//call_expr = it
+				}
+				else {
+					p.error('expression in `go` must be a function call')
+				}
+			}
 			return ast.GoStmt{
-				expr: p.expr(0)
+				call_expr: expr
 			}
 		}
 		.key_goto {
@@ -489,42 +502,19 @@ fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 
 
 pub fn (p &Parser) error(s string) {
-	print_backtrace()
-	mut path := p.file_name
-	// Get relative path
-	workdir := os.getwd() + os.path_separator
-	if path.starts_with(workdir) {
-		path = path.replace(workdir, '')
+	mut kind := 'error:'
+	if p.pref.verbosity.is_higher_or_equal(.level_one) {
+		print_backtrace()
+		kind = 'parser error:'
 	}
-	final_msg_line := '$path:$p.tok.line_nr: error: $s'
-	if colored_output {
-		eprintln(term.bold(term.red(final_msg_line)))
-	}
-	else {
-		eprintln(final_msg_line)
-	}
-	exit(1)
-}
-
-pub fn (p &Parser) error_at_line(s string, line_nr int) {
-	final_msg_line := '$p.file_name:$line_nr: error: $s'
-	if colored_output {
-		eprintln(term.bold(term.red(final_msg_line)))
-	}
-	else {
-		eprintln(final_msg_line)
-	}
+	ferror := util.formated_error(kind, s, p.file_name, p.tok.position())
+	eprintln(ferror)
 	exit(1)
 }
 
 pub fn (p &Parser) warn(s string) {
-	final_msg_line := '$p.file_name:$p.tok.line_nr: warning: $s'
-	if colored_output {
-		eprintln(term.bold(term.blue(final_msg_line)))
-	}
-	else {
-		eprintln(final_msg_line)
-	}
+	ferror := util.formated_error('warning:', s, p.file_name, p.tok.position())
+	eprintln(ferror)
 }
 
 pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
@@ -545,16 +535,9 @@ pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 		kind: .unresolved
 		name: name
 		is_c: is_c
+		mod: p.mod
 		pos: pos
 	}
-	// variable
-	if p.expr_mod.len == 0 {
-		if var := p.scope.find_var(name) {
-			ident.kind = .variable
-			ident.info = ast.IdentVar{}
-		}
-	}
-	// handle consts/fns in checker
 	return ident
 }
 
@@ -684,8 +667,9 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	//
 	(p.builtin_mod && p.tok.lit in table.builtin_type_names)) &&
 	//
-	(p.tok.lit.len == 1 || !p.tok.lit[p.tok.lit.len - 1].is_capital())
+	(p.tok.lit.len in [1,2] || !p.tok.lit[p.tok.lit.len - 1].is_capital()) &&
 	//
+	!p.inside_match_case
 	{
 		// || p.table.known_type(p.tok.lit)) {
 		return p.struct_init(false) // short_syntax: false
@@ -829,7 +813,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			p.check(.rcbr)
 		}
 		else {
-			p.error('parser: expr(): bad token `$p.tok.str()`')
+			p.error('expr(): bad token `$p.tok.str()`')
 		}
 	}
 	// Infix
@@ -955,7 +939,7 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 }
 
 fn (p mut Parser) filter() {
-	p.scope.register_var(ast.Var{
+	p.scope.register('it', ast.Var{
 		name: 'it'
 	})
 }
@@ -981,7 +965,11 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 		if p.tok.kind == .key_orelse {
 			p.next()
 			p.open_scope()
-			p.scope.register_var(ast.Var{
+			p.scope.register('errcode', ast.Var{
+				name: 'errcode'
+				typ: table.int_type
+			})
+			p.scope.register('err', ast.Var{
 				name: 'err'
 				typ: table.string_type
 			})
@@ -1126,7 +1114,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			p.check(.comma)
 			key_var_name = val_var_name
 			val_var_name = p.check_name()
-			p.scope.register_var(ast.Var{
+			p.scope.register(key_var_name, ast.Var{
 				name: key_var_name
 				typ: table.int_type
 			})
@@ -1143,14 +1131,14 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			is_range = true
 			p.check(.dotdot)
 			high_expr = p.expr(0)
-			p.scope.register_var(ast.Var{
+			p.scope.register(val_var_name, ast.Var{
 				name: val_var_name
 				typ: table.int_type
 			})
 		}
 		else {
 			// this type will be set in checker
-			p.scope.register_var(ast.Var{
+			p.scope.register(val_var_name, ast.Var{
 				name: val_var_name
 			})
 		}
@@ -1211,7 +1199,7 @@ fn (p mut Parser) if_expr() ast.IfExpr {
 			var_name := p.check_name()
 			p.check(.decl_assign)
 			expr := p.expr(0)
-			p.scope.register_var(ast.Var{
+			p.scope.register(var_name, ast.Var{
 				name: var_name
 				expr: expr
 			})
@@ -1450,31 +1438,26 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	pos := p.tok.position()
 	p.check(.key_const)
 	p.check(.lpar)
-	mut fields := []ast.Field
-	mut exprs := []ast.Expr
+	mut fields := []ast.ConstField
 	for p.tok.kind != .rpar {
 		name := p.prepend_mod(p.check_name())
+		// name := p.check_name()
 		// println('!!const: $name')
 		p.check(.assign)
 		expr := p.expr(0)
-		fields << ast.Field{
+		field := ast.ConstField{
 			name: name
+			expr: expr
 			pos: p.tok.position()
-			// typ: typ
 
 		}
-		exprs << expr
-		// TODO: once consts are fixed reg here & update in checker
-		// p.table.register_const(table.Var{
-		// name: name
-		// // typ: typ
-		// })
+		fields << field
+		p.global_scope.register(field.name, field)
 	}
 	p.check(.rpar)
 	return ast.ConstDecl{
 		pos : pos
 		fields: fields
-		exprs: exprs
 		is_pub: is_pub
 	}
 }
@@ -1496,6 +1479,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		p.next() // C
 		p.next() // .
 	}
+	is_typedef := p.attr == 'typedef'
 	mut name := p.check_name()
 	mut default_exprs := []ast.Expr
 	// println('struct decl $name')
@@ -1565,6 +1549,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		name: name
 		info: table.Struct{
 			fields: fields
+			is_typedef: is_typedef
 		}
 	}
 	mut ret := 0
@@ -1705,17 +1690,20 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 			p.error('unknown variable `$ident.name`')
 		}
 		if is_decl && ident.kind != .blank_ident {
+			if ident.name.starts_with('__') {
+				p.error('variable names cannot start with `__`')
+			}
 			if p.scope.known_var(ident.name) {
 				p.error('redefinition of `$ident.name`')
 			}
 			if idents.len == exprs.len {
-				p.scope.register_var(ast.Var{
+				p.scope.register(ident.name, ast.Var{
 					name: ident.name
 					expr: exprs[i]
 				})
 			}
 			else {
-				p.scope.register_var(ast.Var{
+				p.scope.register(ident.name, ast.Var{
 					name: ident.name
 				})
 			}
@@ -1750,27 +1738,28 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 		p.next()
 		p.expr(0)
 	}
-	p.table.register_global(name, typ)
 	// p.genln(p.table.cgen_name_type_pair(name, typ))
 	/*
-		mut g := p.table.cgen_name_type_pair(name, typ)
-		if p.tok == .assign {
-			p.next()
-			g += ' = '
-			_,expr := p.tmp_expr()
-			g += expr
-		}
-		// p.genln('; // global')
-		g += '; // global'
-		if !p.cgen.nogen {
-			p.cgen.consts << g
-		}
-		*/
+	mut g := p.table.cgen_name_type_pair(name, typ)
+	if p.tok == .assign {
+		p.next()
+		g += ' = '
+		_,expr := p.tmp_expr()
+		g += expr
+	}
+	// p.genln('; // global')
+	g += '; // global'
+	if !p.cgen.nogen {
+		p.cgen.consts << g
+	}
+	*/
 
-	return ast.GlobalDecl{
+	glob := ast.GlobalDecl{
 		name: name
 		typ: typ
 	}
+	p.global_scope.register(name, glob)
+	return glob
 }
 
 fn (p mut Parser) match_expr() ast.MatchExpr {
@@ -1795,7 +1784,8 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 			p.next()
 		}
 		// Sum type match
-		else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
+		else if p.tok.kind == .name &&
+			(p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() || p.peek_tok.kind == .dot) {
 			// if sym.kind == .sum_type {
 			// p.warn('is sum')
 			// TODO `exprs << ast.Type{...}`
@@ -1806,7 +1796,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 			mut expr := ast.Expr{}
 			expr = x
 			exprs << expr
-			p.scope.register_var(ast.Var{
+			p.scope.register('it', ast.Var{
 				name: 'it'
 				typ: table.type_to_ptr(typ)
 			})
@@ -1820,7 +1810,9 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		else {
 			// Expression match
 			for {
+				p.inside_match_case = true
 				expr := p.expr(0)
+				p.inside_match_case = false
 				exprs << expr
 				if p.tok.kind != .comma {
 					break
@@ -1993,6 +1985,5 @@ fn (p &Parser) new_true_expr() ast.Expr {
 }
 
 fn verror(s string) {
-	println(s)
-	exit(1)
+	util.verror('parser error', s)
 }
