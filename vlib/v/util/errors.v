@@ -59,7 +59,7 @@ pub fn formated_error(kind string /*error or warn*/, emsg string, filepath strin
 	mut source_context := ''
 	//
 	final_position := if emanager.support_color {
-		term.bold(term.white(position))
+		term.bold(position) // term.white(position))
 	} else {
 		position
 	}
