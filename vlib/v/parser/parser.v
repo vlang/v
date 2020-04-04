@@ -1686,6 +1686,9 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 			p.error('unknown variable `$ident.name`')
 		}
 		if is_decl && ident.kind != .blank_ident {
+			if ident.name.starts_with('__') {
+				p.error('variable names cannot start with `__`')
+			}
 			if p.scope.known_var(ident.name) {
 				p.error('redefinition of `$ident.name`')
 			}
