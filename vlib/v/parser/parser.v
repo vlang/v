@@ -667,7 +667,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 	//
 	(p.builtin_mod && p.tok.lit in table.builtin_type_names)) &&
 	//
-	(p.tok.lit.len == 1 || !p.tok.lit[p.tok.lit.len - 1].is_capital()) &&
+	(p.tok.lit.len in [1,2] || !p.tok.lit[p.tok.lit.len - 1].is_capital()) &&
 	//
 	!p.inside_match_case
 	{
