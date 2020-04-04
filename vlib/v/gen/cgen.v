@@ -26,6 +26,7 @@ struct Gen {
 	definitions    strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	inits          strings.Builder // contents of `void _vinit(){}`
 	gowrappers     strings.Builder // all go callsite wrappers
+	stringliterals strings.Builder // all string literals (they depend on tos3() beeing defined
 	table          &table.Table
 	pref           &pref.Preferences
 mut:
@@ -65,6 +66,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		typedefs: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
+		stringliterals: strings.new_builder(100)
 		inits: strings.new_builder(100)
 		table: table
 		pref: pref
@@ -73,6 +75,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		indent: -1
 	}
 	g.init()
+	//
 	mut autofree_used := false
 	for file in files {
 		g.file = file
@@ -102,7 +105,9 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.is_test {
 		g.write_tests_main()
 	}
-	return g.hashes() + g.typedefs.str() + g.definitions.str() + g.gowrappers.str() + g.out.str()
+	//
+	g.finish()
+	return g.hashes() + g.typedefs.str() + g.definitions.str() + g.gowrappers.str() + g.stringliterals.str() + g.out.str()
 }
 
 pub fn (g &Gen) hashes() string {
@@ -125,9 +130,20 @@ pub fn (g mut Gen) init() {
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
+	//
+	g.stringliterals.writeln('')
+	g.stringliterals.writeln('// >> string literal consts')
+	g.stringliterals.writeln('void vinit_string_literals(){')
+}
+
+pub fn (g mut Gen) finish() {
+	g.stringliterals.writeln('}')
+	g.stringliterals.writeln('// << string literal consts')
+	g.stringliterals.writeln('')
 }
 
 pub fn (g mut Gen) write_typeof_functions() {
+	g.writeln('')
 	g.writeln('// >> typeof() support for sum types')
 	for typ in g.table.types {
 		if typ.kind == .sum_type {
@@ -146,6 +162,7 @@ pub fn (g mut Gen) write_typeof_functions() {
 		}
 	}
 	g.writeln('// << typeof() support for sum types')
+	g.writeln('')
 }
 
 // V type to C type
@@ -1870,25 +1887,34 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 		val := g.out.after(pos)
 		g.out.go_back(val.len)
 		match field.expr {
-			ast.CharLiteral, ast.IntegerLiteral {
-				// Simple expressions should use a #define
-				// so that we don't pollute the binary with unnecessary global vars
-				// Do not do this when building a module, otherwise the consts
-				// will not be accessible.
-				g.definitions.write('#define _const_$name ')
-				g.definitions.writeln(val)
+			ast.CharLiteral {
+				g.const_decl_simple_define( name, val )
+			}
+			ast.IntegerLiteral {
+				g.const_decl_simple_define( name, val )
+			}
+			ast.StringLiteral {
+				g.definitions.writeln('string _const_$name; // a string literal, inited later')
+				g.stringliterals.writeln('\t_const_$name = $val;')
 			}
 			else {
 				// Initialize more complex consts in `void _vinit(){}`
 				// (C doesn't allow init expressions that can't be resolved at compile time).
 				styp := g.typ(field.typ)
-				g.definitions.writeln('$styp _const_$name; // inited later') // = ')
-				g.inits.write('_const_$name = ')
-				g.inits.write(val)
-				g.inits.writeln(';')
+				g.definitions.writeln('$styp _const_$name; // inited later')
+				g.inits.writeln('\t_const_$name = $val;')
 			}
 	}
 	}
+}
+
+fn (g mut Gen) const_decl_simple_define(name, val string){
+	// Simple expressions should use a #define
+	// so that we don't pollute the binary with unnecessary global vars
+	// Do not do this when building a module, otherwise the consts
+	// will not be accessible.
+	g.definitions.write('#define _const_$name ')
+	g.definitions.writeln(val)
 }
 
 fn (g mut Gen) struct_init(it ast.StructInit) {
@@ -2056,6 +2082,7 @@ fn verror(s string) {
 
 fn (g mut Gen) write_init_function() {
 	g.writeln('void _vinit() {')
+	g.writeln('\tvinit_string_literals();')
 	g.writeln(g.inits.str())
 	g.writeln('}')
 	if g.autofree {
