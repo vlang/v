@@ -481,17 +481,19 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		g.expr(it.cond)
 		cond_type_is_ptr := table.type_is_ptr(it.cond_type)
 		if cond_type_is_ptr {
-			g.writeln('->len; $i++) {')
+			g.writeln('->')
 		} else {
-			g.writeln('.len; $i++) {')
+			g.writeln('.')
 		}
+		g.write('len; $i++) {')
 		g.write('\t$styp $it.val_var = (($styp*)')
 		g.expr(it.cond)
 		if cond_type_is_ptr {
-			g.writeln('->data)[$i];')
+			g.writeln('->')
 		} else {
-			g.writeln('.data)[$i];')
+			g.writeln('.')
 		}
+		g.write('data)[$i];')
 		g.stmts(it.stmts)
 		g.writeln('}')
 	}
