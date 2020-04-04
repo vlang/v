@@ -26,6 +26,8 @@ struct FileMode {
 	others FilePermission
 }
 
+// inode returns the mode of the file/inode containing inode type and permission information
+// it supports windows for regular files but it doesn't matter if you use owner, group or others when checking permissions on windows
 pub fn inode(path string) FileMode {
 	mut attr := C.stat{}
 	C.stat(path.str, &attr)
