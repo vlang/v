@@ -119,7 +119,7 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 					continue
 				}
 				if table.type_is_ptr(field.typ) {
-					c.warn('reference field `Reference.value` must be initialized', struct_init.pos)
+					c.warn('reference field `${typ_sym.name}.${field.name}` must be initialized', struct_init.pos)
 				}
 			}
 		}
