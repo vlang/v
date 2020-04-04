@@ -26,6 +26,7 @@ mut:
 	error_lines    []int // to avoid printing multiple errors for the same line
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
+	const_decl     string
 	const_deps     []string
 	// fn_decl        ast.FnDecl
 	pref           &pref.Preferences // Preferences shared from V struct
@@ -581,28 +582,23 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			mut needs_order := false
 			mut done_fields := []int
 			for i, field in it.fields {
-				mut set_const := false
-				if c.const_deps.len == 0 {
-					set_const = true
-				}
+				c.const_decl = field.name
 				c.const_deps << field.name
 				typ := c.expr(field.expr)
 				it.fields[i].typ = typ
-				if set_const {
-					for cd in c.const_deps {
-						for j, f in it.fields {
-							if j != i && cd in field_names && cd == f.name && !(j in done_fields) {
-								needs_order = true
-								x := field_order[j]
-								field_order[j] = field_order[i]
-								field_order[i] = x
-								break
-							}
+				for cd in c.const_deps {
+					for j, f in it.fields {
+						if j != i && cd in field_names && cd == f.name && !(j in done_fields) {
+							needs_order = true
+							x := field_order[j]
+							field_order[j] = field_order[i]
+							field_order[i] = x
+							break
 						}
 					}
-					done_fields << i
-					c.const_deps = []
 				}
+				done_fields << i
+				c.const_deps = []
 			}
 			if needs_order {
 				mut ordered_fields := []ast.ConstField
@@ -844,8 +840,8 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		if !name.contains('.') && !(ident.mod in ['builtin', 'main']) {
 			name = '${ident.mod}.$ident.name'
 		}
-		if name in c.const_deps {
-			c.error('cycle in constants', ident.pos)
+		if name == c.const_decl {
+			c.error('cycle in constant `$c.const_decl`', ident.pos)
 			return table.void_type
 		}
 		c.const_deps << name
