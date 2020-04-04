@@ -5,9 +5,11 @@ module checker
 
 import (
 	v.ast
+	v.depgraph
 	v.table
 	v.token
 	v.pref
+	v.util
 	os
 )
 
@@ -24,8 +26,10 @@ mut:
 	error_lines    []int // to avoid printing multiple errors for the same line
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
+	const_decl     string
+	const_deps     []string
 	// fn_decl        ast.FnDecl
-	pref        &pref.Preferences // Preferences shared from V struct
+	pref           &pref.Preferences // Preferences shared from V struct
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -40,13 +44,6 @@ pub fn (c mut Checker) check(ast_file ast.File) {
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
-	/*
-	println('all types:')
-	for t in c.table.types {
-		println(t.name + ' - ' + t.kind.str())
-	}
-	*/
-
 }
 
 pub fn (c mut Checker) check2(ast_file ast.File) []string {
@@ -58,18 +55,6 @@ pub fn (c mut Checker) check2(ast_file ast.File) []string {
 }
 
 pub fn (c mut Checker) check_files(ast_files []ast.File) {
-	// TODO: temp fix, impl proper solution
-	for file in ast_files {
-		c.file = file
-		for stmt in file.stmts {
-			match mut stmt {
-				ast.ConstDecl {
-					c.stmt(*it)
-				}
-				else {}
-	}
-		}
-	}
 	for file in ast_files {
 		c.check(file)
 	}
@@ -101,10 +86,12 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 			if struct_init.exprs.len > info.fields.len {
 				c.error('too many fields', struct_init.pos)
 			}
+			mut inited_fields := []string
 			for i, expr in struct_init.exprs {
 				// struct_field info.
 				field_name := if is_short_syntax { info.fields[i].name } else { struct_init.fields[i] }
 				mut field := info.fields[i]
+				inited_fields << field_name
 				mut found_field := false
 				for f in info.fields {
 					if f.name == field_name {
@@ -125,6 +112,15 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 				}
 				struct_init.expr_types << expr_type
 				struct_init.expected_types << field.typ
+			}
+			// Check uninitialized refs
+			for field in info.fields {
+				if field.name in inited_fields {
+					continue
+				}
+				if table.type_is_ptr(field.typ) {
+					c.warn('reference field `Reference.value` must be initialized', struct_init.pos)
+				}
 			}
 		}
 		else {}
@@ -238,9 +234,9 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 				call_expr.args[i].typ = c.expr(arg.expr)
 			}
 			// TODO: typ optimize.. this node can get processed more than once
-			if call_expr.exp_arg_types.len == 0 {
+			if call_expr.expected_arg_types.len == 0 {
 				for i in 1 .. method.args.len {
-					call_expr.exp_arg_types << method.args[i].typ
+					call_expr.expected_arg_types << method.args[i].typ
 				}
 			}
 			call_expr.receiver_type = method.args[0].typ
@@ -282,8 +278,8 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		mut f := table.Fn{}
 		mut found := false
 		// try prefix with current module as it would have never gotten prefixed
-		if !fn_name.contains('.') && !(c.file.mod.name in ['builtin', 'main']) {
-			name_prefixed := '${c.file.mod.name}.$fn_name'
+		if !fn_name.contains('.') && !(call_expr.mod in ['builtin', 'main']) {
+			name_prefixed := '${call_expr.mod}.$fn_name'
 			if f1 := c.table.find_fn(name_prefixed) {
 				call_expr.name = name_prefixed
 				found = true
@@ -337,9 +333,9 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 			return f.return_type
 		}
 		// TODO: typ optimize.. this node can get processed more than once
-		if call_expr.exp_arg_types.len == 0 {
+		if call_expr.expected_arg_types.len == 0 {
 			for arg in f.args {
-				call_expr.exp_arg_types << arg.typ
+				call_expr.expected_arg_types << arg.typ
 			}
 		}
 		for i, call_arg in call_expr.args {
@@ -377,7 +373,7 @@ pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 	typ_sym := c.table.get_type_symbol(typ)
 	field_name := selector_expr.field
 	// variadic
-	if table.type_is_variadic(typ) {
+	if table.type_is(typ, .variadic) {
 		if field_name == 'len' {
 			return table.int_type
 		}
@@ -406,7 +402,7 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 	}
 	expected_type := c.fn_return_type
 	expected_type_sym := c.table.get_type_symbol(expected_type)
-	exp_is_optional := table.type_is_optional(expected_type)
+	exp_is_optional := table.type_is(expected_type, .optional)
 	mut expected_types := [expected_type]
 	if expected_type_sym.kind == .multi_return {
 		mr_info := expected_type_sym.info as table.MultiReturn
@@ -423,7 +419,7 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
-		// c.error('wrong number of return arguments:\n\texpected: $expected_types.str()\n\tgot: $got_types.str()', return_stmt.pos)
+		// c.error('wrong number of return arguments:\n\texpected: $expected_table.str()\n\tgot: $got_types.str()', return_stmt.pos)
 		c.error('wrong number of return arguments', return_stmt.pos)
 	}
 	for i, exp_typ in expected_types {
@@ -577,66 +573,40 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.stmts(it.stmts)
 		}
 		ast.ConstDecl {
-			mut unresolved_num:= 0 // number of type-unresolved consts
-			mut ordered_exprs := []ast.Expr
-			mut ordered_fields := []ast.Field
-			for i, expr in it.exprs {
-				mut field := it.fields[i]
-				typ := c.expr(expr)
-				if typ == table.void_type {
-					unresolved_num++
-				}
-				else { // succeed in resolving type
-					c.table.register_const(table.Var{
-						name: field.name
-						typ: typ
-					})
-					field.typ = typ
-					it.fields[i] = field
-					ordered_exprs << expr
-					ordered_fields << field
-					if unresolved_num == 0 {
-						continue
-					}
-					for j, _expr in it.exprs[0..i]{
-						mut _field := it.fields[j]
-						_typ := c.expr(_expr)
-						if _field.typ == 0 && _typ != table.void_type {
-							// succeed in resolving type
-							c.table.register_const(table.Var{
-								name: _field.name
-								typ: _typ
-							})
-							unresolved_num--
-							_field.typ = _typ
-							it.fields[j] = _field
-							ordered_exprs << _expr
-							ordered_fields << _field
+			mut field_names := []string
+			mut field_order := []int
+			for i, field in it.fields {
+				field_names << field.name
+				field_order << i
+			}
+			mut needs_order := false
+			mut done_fields := []int
+			for i, field in it.fields {
+				c.const_decl = field.name
+				c.const_deps << field.name
+				typ := c.expr(field.expr)
+				it.fields[i].typ = typ
+				for cd in c.const_deps {
+					for j, f in it.fields {
+						if j != i && cd in field_names && cd == f.name && !(j in done_fields) {
+							needs_order = true
+							x := field_order[j]
+							field_order[j] = field_order[i]
+							field_order[i] = x
+							break
 						}
 					}
 				}
+				done_fields << i
+				c.const_deps = []
 			}
-			if unresolved_num != 0 {
-				for i, expr in it.exprs {
-					typ := c.expr(expr)
-					if typ == table.void_type {
-						mut _field := it.fields[i]
-						if !_field.already_reported {
-							_field.already_reported = true
-							it.fields[i] = _field
-							c.error("$unresolved_num ill-defined const `$_field.name`", _field.pos)
-						}
-					}
+			if needs_order {
+				mut ordered_fields := []ast.ConstField
+				for order in field_order {
+					ordered_fields << it.fields[order]
 				}
+				it.fields = ordered_fields
 			}
-			for i, field in ordered_fields { // set the fields and exprs as ordered
-				it.fields[i] = field
-				it.exprs[i] = ordered_exprs[i]
-			}
-			/*
-			it.exprs = ordered_exprs
-			it.fields = ordered_fields
-			*/
 		}
 		ast.ExprStmt {
 			c.expr(it.expr)
@@ -693,6 +663,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				scope.update_var_type(it.val_var, value_type)
 			}
 			c.stmts(it.stmts)
+		}
+		ast.GoStmt{
+			c.expr(it.call_expr)
 		}
 		// ast.GlobalDecl {}
 		// ast.HashStmt {}
@@ -861,81 +834,83 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 }
 
 pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
-	// println('IDENT: $ident.name - $ident.pos.pos')
-	if ident.kind == .variable {
-		// println('===========================')
-		// c.scope.print_vars(0)
-		// println('===========================')
-		info := ident.info as ast.IdentVar
-		if info.typ != 0 {
-			return info.typ
+	// TODO: move this
+	if c.const_deps.len > 0 {
+		mut name := ident.name
+		if !name.contains('.') && !(ident.mod in ['builtin', 'main']) {
+			name = '${ident.mod}.$ident.name'
 		}
-		start_scope := c.file.scope.innermost(ident.pos.pos)
-		mut found := true
-		mut var_scope,var := start_scope.find_scope_and_var(ident.name) or {
-			found = false
-			c.error('not found: $ident.name - POS: $ident.pos.pos', ident.pos)
-			panic('')
+		if name == c.const_decl {
+			c.error('cycle in constant `$c.const_decl`', ident.pos)
+			return table.void_type
 		}
-		if found {
-			// update the variable
-			// we need to do this here instead of var_decl since some
-			// vars are registered manually for things like for loops etc
-			// NOTE: or consider making those declarations part of those ast nodes
-			mut typ := var.typ
-			// set var type on first use
-			if typ == 0 {
-				typ = c.expr(var.expr)
-				var_scope.update_var_type(var.name, typ)
-			}
-			// update ident
-			ident.kind = .variable
-			ident.info = ast.IdentVar{
-				typ: typ
-				is_optional: table.type_is_optional(typ)
-			}
-			// unwrap optional (`println(x)`)
-			if table.type_is_optional(typ) {
-				return table.type_clear_extra(typ)
-			}
-			return typ
-		}
+		c.const_deps << name
 	}
-	// second use, already resovled in unresolved branch
+	if ident.kind == .blank_ident {
+		return table.void_type
+	}
+	// second use
+	if ident.kind == .variable {
+		info := ident.info as ast.IdentVar
+		return info.typ
+	}
 	else if ident.kind == .constant {
 		info := ident.info as ast.IdentVar
 		return info.typ
 	}
-	// second use, already resovled in unresovled branch
 	else if ident.kind == .function {
 		info := ident.info as ast.IdentFn
 		return info.typ
 	}
-	// Handle indents with unresolved types during the parsing step
-	// (declared after first usage)
+	// first use
 	else if ident.kind == .unresolved {
+		start_scope := c.file.scope.innermost(ident.pos.pos)
+		if var := start_scope.find_var(ident.name) {
+			mut typ := var.typ
+			if typ == 0 {
+				typ = c.expr(var.expr)
+			}
+			is_optional := table.type_is(typ, .optional)
+			ident.kind = .variable
+			ident.info = ast.IdentVar{
+				typ: typ
+				is_optional: is_optional
+			}
+			// unwrap optional (`println(x)`)
+			if is_optional {
+				return table.type_set(typ, .unset)
+			}
+			return typ
+		}
 		// prepend mod to look for fn call or const
 		mut name := ident.name
-		if !name.contains('.') && !(c.file.mod.name in ['builtin', 'main']) {
-			name = '${c.file.mod.name}.$ident.name'
+		if !name.contains('.') && !(ident.mod in ['builtin', 'main']) {
+			name = '${ident.mod}.$ident.name'
 		}
-		// hack - const until consts are fixed properly
-		if ident.name == 'v_modules_path' {
-			ident.name = name
-			ident.kind = .constant
-			ident.info = ast.IdentVar{
-				typ: table.string_type
+		if obj := c.file.global_scope.find(name) {
+			match obj {
+				ast.GlobalDecl {
+					ident.kind = .global
+					ident.info = ast.IdentVar{
+						typ: it.typ
+					}
+					return it.typ
+				}
+				ast.ConstField {
+					mut typ := it.typ
+					if typ == 0 {
+						typ = c.expr(it.expr)
+					}
+					ident.name = name
+					ident.kind = .constant
+					ident.info = ast.IdentVar{
+						typ: typ
+					}
+					it.typ = typ
+					return typ
+				}
+				else {}
 			}
-			return table.string_type
-		}
-		// constant
-		if constant := c.table.find_const(name) {
-			ident.name = name
-			ident.kind = .constant
-			ident.info = ast.IdentVar{
-				typ: constant.typ
-			}
-			return constant.typ
 		}
 		// Function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
@@ -1171,34 +1146,41 @@ pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {
 	return map_type
 }
 
+pub fn (c mut Checker) warn(s string, pos token.Position) {
+	allow_warnings := !c.pref.is_prod // allow warnings only in dev builds
+	c.warn_or_error(s, pos, allow_warnings) // allow warnings only in dev builds
+}
+
 pub fn (c mut Checker) error(s string, pos token.Position) {
-	c.nr_errors++
+	c.warn_or_error(s, pos, false)
+}
+
+fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
+	if !warn {
+		c.nr_errors++
+	}
 	//if c.pref.is_verbose {
 	if c.pref.verbosity.is_higher_or_equal(.level_one) {
 		print_backtrace()
 	}
-	mut path := c.file.path
-	// Get relative path
-	workdir := os.getwd() + os.path_separator
-	if path.starts_with(workdir) {
-		path = path.replace(workdir, '')
+	typ := if warn { 'warning' } else { 'error' }
+	kind := if c.pref.verbosity.is_higher_or_equal(.level_one) {
+		'checker $typ #$c.nr_errors:'
+	} else {
+		'$typ:'
 	}
-	mut final_msg_line := '$path:$pos.line_nr: $s'
-	if c.pref.verbosity.is_higher_or_equal(.level_one) {
-		final_msg_line = '$path:$pos.line_nr: checker error #$c.nr_errors: $s'
-	}
-	c.errors << final_msg_line
+	ferror := util.formated_error(kind, s, c.file.path, pos)
+	c.errors << ferror
 	if !(pos.line_nr in c.error_lines) {
-		eprintln(final_msg_line)
+		if warn {
+			println(ferror)
+		} else {
+			eprintln(ferror)
+		}
 	}
-	c.error_lines << pos.line_nr
-	/*
-	if colored_output {
-		eprintln(term.bold(term.red(final_msg_line)))
-	}else{
-		eprintln(final_msg_line)
+	if !warn {
+		c.error_lines << pos.line_nr
 	}
-	*/
 	if c.pref.verbosity.is_higher_or_equal(.level_one) {
 		println('\n\n')
 	}

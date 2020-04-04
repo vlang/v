@@ -115,7 +115,7 @@ pub fn (p mut Parser) parse_type() table.Type {
 	}
 	mut typ := p.parse_any_type(is_c, nr_muls > 0)
 	if is_optional {
-		typ = table.type_to_optional(typ)
+		typ = table.type_set(typ, .optional)
 	}
 	if nr_muls > 0 {
 		typ = table.type_set_nr_muls(typ, nr_muls)

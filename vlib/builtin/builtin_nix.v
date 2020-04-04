@@ -21,6 +21,10 @@ const (
 fn C.puts(charptr)
 */
 
+fn init() {
+	// Do nothing
+}
+
 pub fn println(s string) {
 	//  TODO: a syscall sys_write on linux works, except for the v repl.
 	//  Probably it is a stdio buffering issue. Needs more testing...

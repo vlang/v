@@ -6,9 +6,10 @@ module main
 import (
 	os
 	os.cmdline
-	compiler
+	v.ast
 	v.pref
 	v.fmt
+	v.util
 	v.parser
 	v.table
 	vhelp
@@ -42,8 +43,12 @@ const (
 )
 
 fn main() {
+	if os.getenv('VFMT_ENABLE') == '' {
+		eprintln('v fmt is disabled for now')
+		exit(1)
+	}
 	toolexe := os.executable()
-	compiler.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
+	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := join_flags_and_argument()
 	foptions := FormatOptions{
 		is_2: '-2' in args
@@ -81,17 +86,17 @@ fn main() {
 	for file in possible_files {
 		if foptions.is_2 {
 			if !file.ends_with('.v') && !file.ends_with('.vv') {
-				compiler.verror('v fmt -2 can only be used on .v or .vv files.\nOffending file: "$file" .')
+				verror('v fmt -2 can only be used on .v or .vv files.\nOffending file: "$file" .')
 				continue
 			}
 		} else {
 			if !file.ends_with('.v') {
-				compiler.verror('v fmt can only be used on .v files.\nOffending file: "$file" .')
+				verror('v fmt can only be used on .v files.\nOffending file: "$file" .')
 				continue
 			}
 		}
 		if !os.exists(file) {
-			compiler.verror('"$file" does not exist.')
+			verror('"$file" does not exist.')
 			continue
 		}
 		files << file
@@ -151,89 +156,20 @@ fn main() {
 }
 
 fn (foptions &FormatOptions) format_file(file string) {
-	if foptions.is_2 {
-		if foptions.is_verbose {
-			eprintln('vfmt2 running fmt.fmt over file: $file')
-		}
-		table := table.new_table()
-		file_ast := parser.parse_file(file, table, .parse_comments, &pref.Preferences{})
-		formatted_content := fmt.fmt(file_ast, table)
-		file_name := os.file_name(file)
-		vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
-		os.write_file(vfmt_output_path, formatted_content )
-		if foptions.is_verbose {
-			eprintln('vfmt2 fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
-		}
-		eprintln('${FORMATTED_FILE_TOKEN}${vfmt_output_path}')
-		return
-	}
-	tmpfolder := os.temp_dir()
-	mut compiler_params := &pref.Preferences{}
-	target_os := file_to_target_os(file)
-	if target_os != '' {
-		//TODO Remove temporary variable once it compiles correctly in C
-		tmp := pref.os_from_string(target_os) or {
-			eprintln('unknown operating system $target_os')
-			return
-		}
-		compiler_params.os = tmp
-	}
-	mut cfile := file
-	mut mod_folder_parent := tmpfolder
-	is_test_file := file.ends_with('_test.v')
-	mod_name,is_module_file := file_to_mod_name_and_is_module_file(file)
-	use_tmp_main_program := is_module_file && !is_test_file
-	mod_folder := os.base_dir(file)
-	if use_tmp_main_program {
-		// TODO: remove the need for this
-		// This makes a small program that imports the module,
-		// so that the module files will get processed by the
-		// vfmt implementation.
-		mod_folder_parent = os.base_dir(mod_folder)
-		mut main_program_content := if mod_name == 'builtin' || mod_name == 'main' { 'fn main(){}\n' } else { 'import ${mod_name}\n' + 'fn main(){}\n' }
-		main_program_file := os.join_path(tmpfolder,'vfmt_tmp_${mod_name}_program.v')
-		if os.exists(main_program_file) {
-			os.rm(main_program_file)
-		}
-		os.write_file(main_program_file, main_program_content)
-		cfile = main_program_file
-		compiler_params.lookup_path = [mod_folder_parent, '@vlib', '@vmodule']
-	}
-	if !is_test_file && mod_name == 'main' {
-		// NB: here, file is guaranteed to be a main. We do not know however
-		// whether it is a standalone v program, or is it a part of a bigger
-		// project, like vorum or vid.
-		cfile = get_compile_name_of_potential_v_project(cfile)
-	}
-	compiler_params.path = cfile
-	compiler_params.mod = mod_name
-	compiler_params.is_test = is_test_file
-	compiler_params.is_script = file.ends_with('.v') || file.ends_with('.vsh')
+	prefs := pref.new_preferences()
 	if foptions.is_verbose {
-		eprintln('vfmt format_file: file: $file')
-		eprintln('vfmt format_file: cfile: $cfile')
-		eprintln('vfmt format_file: is_test_file: $is_test_file')
-		eprintln('vfmt format_file: is_module_file: $is_module_file')
-		eprintln('vfmt format_file: mod_name: $mod_name')
-		eprintln('vfmt format_file: mod_folder: $mod_folder')
-		eprintln('vfmt format_file: mod_folder_parent: $mod_folder_parent')
-		eprintln('vfmt format_file: use_tmp_main_program: $use_tmp_main_program')
-		eprintln('vfmt format_file: compiler_params: ')
-		print_compiler_options( compiler_params )
-		eprintln('-------------------------------------------')
+		eprintln('vfmt2 running fmt.fmt over file: $file')
 	}
-	compiler_params.fill_with_defaults()
+	table := table.new_table()
+	file_ast := parser.parse_file(file, table, .parse_comments, prefs, &ast.Scope{parent: 0})
+	formatted_content := fmt.fmt(file_ast, table)
+	file_name := os.file_name(file)
+	vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
+	os.write_file(vfmt_output_path, formatted_content )
 	if foptions.is_verbose {
-		eprintln('vfmt format_file: compiler_params: AFTER fill_with_defaults() ')
-		print_compiler_options( compiler_params )
+		eprintln('vfmt2 fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
 	}
-	formatted_file_path := foptions.compile_file(file, compiler_params)
-	if use_tmp_main_program {
-		if !foptions.is_debug {
-			os.rm(cfile)
-		}
-	}
-	eprintln('${FORMATTED_FILE_TOKEN}${formatted_file_path}')
+	eprintln('${FORMATTED_FILE_TOKEN}${vfmt_output_path}')
 }
 
 fn print_compiler_options( compiler_params &pref.Preferences ) {
@@ -309,21 +245,6 @@ fn find_working_diff_command() ?string {
 		}
 	}
 	return error('no working diff command found')
-}
-
-fn (foptions &FormatOptions) compile_file(file string, compiler_params &pref.Preferences) string {
-	if foptions.is_verbose {
-		eprintln('> new_v_compiler_with_args            file: $file')
-		eprintln('> new_v_compiler_with_args compiler_params:')
-		print_compiler_options( compiler_params )
-	}
-	mut v := compiler.new_v(compiler_params)
-	v.v_fmt_file = file
-	if foptions.is_all {
-		v.v_fmt_all = true
-	}
-	v.compile()
-	return v.v_fmt_file_result
 }
 
 pub fn (f FormatOptions) str() string {
@@ -434,4 +355,8 @@ fn join_flags_and_argument() []string {
 }
 fn non_empty(arg []string) []string {
 	return arg.filter(it != '')
+}
+
+fn verror(s string){
+	util.verror('vfmt error', s)
 }

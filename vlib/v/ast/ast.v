@@ -20,6 +20,9 @@ pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt |
 LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
+
+pub type ScopeObject = ConstField | GlobalDecl | Var
+
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -110,12 +113,21 @@ mut:
 	// typ2 Type
 }
 
+pub struct ConstField {
+pub:
+	name   string
+	expr   Expr
+	is_pub bool
+	pos    token.Position
+mut:
+	typ    table.Type
+}
+
 pub struct ConstDecl {
 pub:
-	pos    token.Position
-	fields []Field
-	exprs  []Expr
+	fields []ConstField
 	is_pub bool
+	pos    token.Position
 }
 
 pub struct StructDecl {
@@ -184,10 +196,11 @@ pub:
 	pos           token.Position
 	left          Expr // `user` in `user.register()`
 	is_method     bool
+	mod           string
 mut:
 	name          string
 	args          []CallArg
-	exp_arg_types []table.Type
+	expected_arg_types []table.Type
 	is_c          bool
 	or_block      OrExpr
 	// has_or_block bool
@@ -252,6 +265,8 @@ pub:
 	imports []Import
 	stmts   []Stmt
 	scope   &Scope
+	// TODO: consider parent instead of field
+	global_scope &Scope
 }
 
 pub struct IdentFn {
@@ -274,6 +289,7 @@ pub enum IdentKind {
 	blank_ident
 	variable
 	constant
+	global
 	function
 }
 
@@ -283,6 +299,7 @@ pub:
 	value    string
 	is_c     bool
 	tok_kind token.Kind
+	mod      string
 	pos      token.Position
 mut:
 	name     string
@@ -545,7 +562,7 @@ mut:
 
 pub struct GoStmt {
 pub:
-	expr Expr
+	call_expr Expr
 }
 
 pub struct GotoLabel {

@@ -8,6 +8,7 @@ import (
 	os
 	v.builder
 	v.pref
+	v.util
 	strings
 )
 
@@ -216,13 +217,6 @@ fn (v mut V) set_module_lookup_paths() {
         }
 }
 
-
- pub fn verror(s string) {
-         println('V error: $s')
-         os.flush()
-         exit(1)
- }
-
 pub fn (v &V) get_builtin_files() []string {
         // Lookup for built-in folder in lookup path.
         // Assumption: `builtin/` folder implies usable implementation of builtin
@@ -405,4 +399,6 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
         return res
 }
 
-
+pub fn verror(s string) {
+	util.verror('compiler error', s)
+}
