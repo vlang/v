@@ -965,6 +965,10 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 		if p.tok.kind == .key_orelse {
 			p.next()
 			p.open_scope()
+			p.scope.register('errcode', ast.Var{
+				name: 'errcode'
+				typ: table.int_type
+			})
 			p.scope.register('err', ast.Var{
 				name: 'err'
 				typ: table.string_type

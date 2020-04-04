@@ -23,6 +23,10 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 			name: 'err'
 			typ: table.string_type
 		})
+		p.scope.register('errcode', ast.Var{
+			name: 'errcode'
+			typ: table.int_type
+		})
 		or_stmts = p.parse_block_no_scope()
 		p.close_scope()
 	}

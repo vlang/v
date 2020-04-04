@@ -834,10 +834,12 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			it.expr_type = c.expr(it.expr)
 			return table.string_type
 		}
-		else {}
-		// println('checker.expr(): unhandled node')
-		// TODO: find nil string bug triggered with typeof
-		// println('checker.expr(): unhandled node (${typeof(node)})')
+		else {
+			tnode := typeof(node)
+			if tnode != 'unknown v.ast.Expr' {
+				println('checker.expr(): unhandled node with typeof(`${tnode}`)')
+			}
+		}
 	}
 	return table.void_type
 }
