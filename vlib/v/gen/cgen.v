@@ -757,9 +757,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	is_main := it.name == 'main'
 	if is_main {
 		if g.pref.os == .windows {
-			g.write('int wmain(int __argc, wchar_t *__argv[], wchar_t *__envp[]')
+			g.write('int wmain(int ___argc, wchar_t *___argv[], wchar_t *___envp[]')
 		} else {
-			g.write('int ${it.name}(int __argc, char** __argv')
+			g.write('int ${it.name}(int ___argc, char** ___argv')
 		}
 	}
 	else {
@@ -817,9 +817,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 				g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
 			}
 			if g.pref.os == .windows {
-				g.writeln('_const_os__args = os__init_os_args_wide(__argc, __argv);')
+				g.writeln('_const_os__args = os__init_os_args_wide(___argc, ___argv);')
 			}	else {
-				g.writeln('_const_os__args = os__init_os_args(__argc, (byteptr*)__argv);')
+				g.writeln('_const_os__args = os__init_os_args(___argc, (byteptr*)___argv);')
 			}
 		}
 	}
