@@ -141,7 +141,7 @@ fn main() {
 			use_ortho: true // This is needed for 2D drawing
 			create_window: true
 			window_title: 'V Tetris'
-			window_user_ptr: game
+			//window_user_ptr: game
 		})
 		ft: freetype.new_context(gg.Cfg{
 			width: WinWidth

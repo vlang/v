@@ -69,7 +69,7 @@ fn C.glfwSetWindowSizeCallback()
 fn C.glfwSetMouseButtonCallback()
 fn C.glfwSetCursorPosCallback()
 fn C.glfwSwapBuffers()
-fn C.glfwWindowShouldClose()
+fn C.glfwWindowShouldClose() bool
 fn C.glfwSetWindowShouldClose()
 fn C.glfwWaitEvents()
 fn C.glfwPollEvents()

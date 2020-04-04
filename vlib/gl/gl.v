@@ -39,9 +39,9 @@ fn C.glAttachShader()
 fn C.glGetShaderiv()
 fn C.glCompileShader()
 fn C.glShaderSource()
-fn C.glCreateProgram()
+fn C.glCreateProgram() int
 fn C.glClear()
-fn C.glCreateShader()
+fn C.glCreateShader() int
 fn C.glClearColor()
 fn C.glViewport()
 fn C.gladLoadGL()
