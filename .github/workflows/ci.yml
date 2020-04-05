@@ -101,6 +101,8 @@ jobs:
 #      run: |
 #        git clone --depth 1 https://github.com/vlang/vid.git
 #        cd vid && ../v -o vid .
+    - name: Fixed tests
+      run: ./v test-fixed
 
   ubuntu:
     runs-on: ubuntu-18.04
@@ -206,12 +208,14 @@ jobs:
         node-version: 12.x
     - name: Install dependencies
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
-#    - name: Build v
-#      run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+    - name: Build v
+      run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 ##    - name: Test v->js
 ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Fixed tests
+      run: ./v test-fixed
 
   ubuntu-llvm-mingw:
     runs-on: ubuntu-18.04
