@@ -17,7 +17,7 @@ import (
 const (
 	simple_cmd = ['fmt',
 	'up', 'self',
-	'test', 'test-fmt', 'test-compiler',
+	'test', 'test-fmt', 'test-compiler', 'test-fixed',
 	'bin2v',
 	'repl',
 	'build-tools', 'build-examples', 'build-vbinaries',

@@ -19,7 +19,7 @@ Type | AsCast | TypeOf | StringInterLiteral
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt |
-LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
+Comment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -102,12 +102,21 @@ pub:
 	expr Expr
 }
 
+pub struct StructField {
+pub:
+	name string
+	pos token.Position
+	comment Comment
+	default_expr Expr
+mut:
+	typ table.Type
+}
+
 pub struct Field {
 pub:
 	name string
 	// type_idx int
 	pos token.Position
-	already_reported bool
 mut:
 	typ  table.Type
 	// typ2 Type
@@ -134,16 +143,16 @@ pub struct StructDecl {
 pub:
 	pos           token.Position
 	name          string
-	fields        []Field
+	fields        []StructField
 	is_pub        bool
 	mut_pos       int // mut:
 	pub_pos       int // pub:
 	pub_mut_pos   int // pub mut:
 	is_c          bool
-	default_exprs []Expr
 }
 
 pub struct InterfaceDecl {
+pub:
 	name        string
 	field_names []string
 }
@@ -268,6 +277,7 @@ pub:
 	scope   &Scope
 	// TODO: consider parent instead of field
 	global_scope &Scope
+	//comments []Comment
 }
 
 pub struct IdentFn {
@@ -661,14 +671,13 @@ mut:
 	expr_type table.Type
 }
 
-pub struct LineComment {
+pub struct Comment {
 pub:
 	text string
-}
-
-pub struct MultiLineComment {
-pub:
-	text string
+	is_multi bool
+	line_nr int
+	pos token.Position
+	//same_line bool
 }
 
 pub struct ConcatExpr {
