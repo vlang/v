@@ -1,26 +1,20 @@
 module time
-// Include Windows API.
-#include <windows.h>
-#include <timezoneapi.h>
 
-struct C.TIME_ZONE_INFORMATION{
-	C.Bias 		   C.ULONG
-	C.StandardBias C.ULONG
-	C.DatlightBias C.ULONG
-	C.StandardDate C.SYSTEMTIME
-	C.DaylightDate C.SYSTEMTIME
+#flag -lws2_32
+#include <Timezoneapi.h>
+
+struct TimeZoneInfomation{
+	Bias 		 int
+	StandardName [32]u16
+	StandardDate C.SYSTEMTIME
+	StandardBias int
+	DaylightName [32]u16
+	DaylightName C.SYSTEMTIME
+	DaylightBias int
 }
 
-struct C.lpTimeZoneInfomation{
-	C.Bias 		   C.ULONG
-	C.StandardBias C.ULONG
-	C.DatlightBias C.ULONG
-	C.StandardDate C.SYSTEMTIME
-	C.DaylightDate C.SYSTEMTIME
-}
-
-fn C.SetTimeZoneInfomation(TIME_ZONE_INFORMATION *C.lpTimeZoneInfomation) C.BOOL
-fn C.GetTimeZoneInfomation(LPTIME_ZONE_INFORMATION *C.lpTimeZoneInfomation) C.DWORD
+fn SetTimeZoneInfomation(TIME_ZONE_INFORMATION *C.lpTimeZoneInfomation) bool
+fn GetTimeZoneInfomation(LPTIME_ZONE_INFORMATION *C.lpTimeZoneInfomation) 
 
 pub fn() get_system_timezone(){
 	
