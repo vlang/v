@@ -58,7 +58,7 @@ const (
 // Number of bits from the hash stored for each entry
 	hashbits = 24
 	// Number of bits from the hash stored for rehashing
-	cached_hashbits = 16
+	max_cached_hashbits = 16
 	// Initial log-number of buckets in the hashtable
 	init_log_capicity = 5
 	// Initial number of buckets in the hashtable
@@ -142,7 +142,7 @@ mut:
 // highest even index in the hashtable
 	cap         u32
 	// Number of cached hashbits left for rehasing
-	window      byte
+	cached_hashbits      byte
 	// Used for right-shifting out used hashbits
 	shift       byte
 	// Array storing key-values (ordered)
@@ -163,7 +163,7 @@ fn new_map(n, value_bytes int) map {
 	return map{
 		value_bytes: value_bytes
 		cap: init_cap
-		window: cached_hashbits
+		cached_hashbits: max_cached_hashbits
 		shift: init_log_capicity
 		key_values: new_dense_array()
 		metas: &u32(vcalloc(sizeof(u32) * (init_capicity + extra_metas_inc)))
@@ -264,15 +264,15 @@ fn (m mut map) expand() {
 	old_cap := m.cap
 	m.cap = ((m.cap + 2)<<1) - 2
 	// Check if any hashbits are left
-	if m.window == 0 {
-		m.shift += cached_hashbits
-		m.window = cached_hashbits
+	if m.cached_hashbits == 0 {
+		m.shift += max_cached_hashbits
+		m.cached_hashbits = max_cached_hashbits
 		m.rehash()
 	}
 	else {
 		m.cached_rehash(old_cap)
 	}
-	m.window--
+	m.cached_hashbits--
 }
 
 fn (m mut map) rehash() {
