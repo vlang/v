@@ -9,21 +9,23 @@ fn main() {
 	vroot := os.dir(pref.vexe_path())
 	os.chdir(vroot)
 
-	// check if have permission on the target directory
-	tmp_perm_check := '$vroot/tmp_perm_check'
-	os.open_file(tmp_perm_check, 'w+') or {
-		eprintln('cannot compile tool to directory ‘$vroot: $err')
-		exit(1)
-	}
-	os.rm(tmp_perm_check)
-
 	println('Updating V...')
 
 	// git pull
-	s := os.exec('git pull --rebase origin master') or {
+	git_result := os.exec('git pull --rebase origin master') or {
 		panic(err)
 	}
-	println(s.output)
+
+	if git_result.exit_code != 0 {
+		mut err := 'Permission deined'
+		if !git_result.output.contains('Permission denied') {
+			err = '\n$git_result.output'
+		}
+		eprintln('cannot compile to ‘$vroot: $err')
+		exit(1)
+	}
+
+	println(git_result.output)
 
 	$if windows {
 		v_backup_file := 'v_old.exe'
@@ -32,14 +34,14 @@ fn main() {
 		}
 		os.mv('v.exe', v_backup_file)
 
-		s2 := os.exec('make.bat') or {
+		make_result := os.exec('make.bat') or {
 			panic(err)
 		}
-		println(s2.output)
+		println(make_result.output)
 	} $else {
-		s2 := os.exec('make') or {
+		make_result := os.exec('make') or {
 			panic(err)
 		}
-		println(s2.output)
+		println(make_result.output)
 	}
 }

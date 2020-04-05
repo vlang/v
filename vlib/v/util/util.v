@@ -135,15 +135,6 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 	}
 
 	if should_compile {
-		// check if have permission on the target directory
-		exe_dir := os.dir(tool_exe)
-		tmp_perm_check := '$exe_dir/tmp_perm_check'
-		os.open_file(tmp_perm_check, 'w') or {
-			eprintln('cannot compile to directory ‘$exe_dir’: $err')
-			exit(1)
-		}
-		os.rm(tmp_perm_check)
-
 		mut compilation_command := '"$vexe" '
 		compilation_command += '"$tool_source"'
 		if is_verbose {
@@ -151,7 +142,12 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 		}
 		tool_compilation := os.exec(compilation_command) or { panic(err) }
 		if tool_compilation.exit_code != 0 {
-			panic('V tool "$tool_source" could not be compiled\n' + tool_compilation.output)
+			mut err := 'Permission deined'
+			if !tool_compilation.output.contains('Permission denied') {
+				err = '\n$tool_compilation.output'
+			}
+			eprintln('cannot compile to ‘$tool_source: $err')
+			exit(1)
 		}
 	}
 	if is_verbose {
