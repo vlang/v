@@ -35,6 +35,8 @@ jobs:
         tcc -version
         ./v -o v2 cmd/v # Make sure vtcc can build itself
 #        ./v -silent test-compiler
+    - name: Fixed tests
+      run: ./v test-fixed
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 
@@ -127,41 +129,8 @@ jobs:
 #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-    - name: temporary tests
-      run: |
-        ./v vlib/builtin/array_test.v
-        ./v vlib/builtin/string_test.v
-        ./v vlib/strconv/atof_test.v
-        ./v vlib/math/math_test.v
-        ./v vlib/bitfield/bitfield_test.v
-        ./v vlib/os/os_test.v
-        ./v vlib/os/inode_test.v
-        ./v vlib/v/tests/fn_multiple_returns_test.v
-        ./v vlib/v/tests/return_voidptr_test.v
-        ./v vlib/v/tests/voidptr_to_u64_cast_b_test.v
-        ./v vlib/v/tests/cstrings_test.v
-        ./v vlib/v/tests/valgrind/valgrind_test.v
-        ./v vlib/v/tests/nameof_test.v
-        ./v vlib/v/tests/repeated_multiret_values_test.v
-        ./v vlib/v/tests/modules/amodule/internal_module_test.v
-        ./v vlib/v/tests/modules/amodule/another_internal_module_test.v
-        ./v vlib/v/tests/modules/simplemodule/importing_test.v
-        ./v vlib/v/tests/reusable_mut_multiret_values_test.v
-        ./v vlib/v/tests/print_test.v
-        ./v vlib/v/tests/defer_test.v
-        ./v vlib/v/tests/typeof_simple_types_test.v
-        ./v vlib/v/tests/struct_chained_fields_correct_test.v
-        ./v vlib/v/tests/if_expression_test.v
-        ./v vlib/v/tests/backtrace_test.v
-        ./v vlib/v/tests/interfaces_map_test.v
-        ./v vlib/v/tests/fn_expecting_ref_but_returning_struct_test.v
-        ./v vlib/v/tests/inout/compiler_test.v
-        ./v vlib/v/tests/generic_test.v
-        ./v vlib/v/tests/interface_test.v
-        ./v vlib/v/tests/in_expression_test.v
-        ./v vlib/v/tests/attribute_test.v
-        ./v vlib/v/tests/str_gen_test.v
-        ./v vlib/v/tests/enum_hex_test.v
+    - name: Fixed tests
+      run: ./v test-fixed
     - name: x64 machine code generation
       run: |
         ./v -o vprod -prod cmd/v
@@ -295,6 +264,8 @@ jobs:
         echo %VFLAGS%
         echo $VFLAGS
         .\make.bat -msvc
+    - name: Fixed tests
+      run: ./v test-fixed
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
