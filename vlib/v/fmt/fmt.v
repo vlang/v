@@ -341,13 +341,25 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 		else if i == node.pub_mut_pos {
 			f.writeln('pub mut:')
 		}
-		if field.comment.text != '' {
+		if field.comment.text != '' && field.comment.pos.line_nr < field.pos.line_nr {
+			// Comment on the previous line
 			f.write('\t')
 			f.comment(field.comment)
 		}
 		f.write('\t$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
-		f.writeln(f.type_to_str(field.typ))
+		f.write(f.type_to_str(field.typ))
+		//f.write('// $field.pos.line_nr')
+		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
+			// Same line comment
+			f.write(' ')
+			f.comment(field.comment)
+		} else {
+			//if field.comment.text != '' {
+				//f.write (' // com linenr=$field.comment.pos.line_nr')
+			//}
+			f.writeln('')
+		}
 	}
 	f.writeln('}\n')
 }
@@ -669,7 +681,7 @@ fn (f mut Fmt) or_expr(or_block ast.OrExpr) {
 
 fn (f mut Fmt) comment(node ast.Comment) {
 	if !node.text.contains('\n') {
-		f.writeln('// $node.text')
+		f.writeln('// $node.text')// $node.pos.line_nr')
 		return
 	}
 	lines := node.text.split_into_lines()

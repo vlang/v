@@ -341,11 +341,13 @@ pub fn (p mut Parser) check_comment() ast.Comment {
 }
 
 pub fn (p mut Parser) comment() ast.Comment {
+	pos := p.tok.position()
 	text := p.tok.lit
 	p.next()
 	//p.next_with_comment()
 	return ast.Comment{
 		text: text
+		pos: pos
 	}
 }
 
@@ -559,9 +561,7 @@ fn (p mut Parser) struct_init(short_syntax bool) ast.StructInit {
 	is_short_syntax := !(p.peek_tok.kind == .colon || p.tok.kind == .rcbr) // `Vec{a,b,c}`
 	// p.warn(is_short_syntax.str())
 	for p.tok.kind != .rcbr {
-		if p.tok.kind == .comment {
-			p.comment()
-		}
+		p.check_comment()
 		mut field_name := ''
 		if is_short_syntax {
 			expr := p.expr(0)
@@ -580,9 +580,7 @@ fn (p mut Parser) struct_init(short_syntax bool) ast.StructInit {
 		if p.tok.kind == .comma {
 			p.check(.comma)
 		}
-		if p.tok.kind == .comment {
-			p.comment()
-		}
+		p.check_comment()
 	}
 	node := ast.StructInit{
 		typ: typ
@@ -1329,9 +1327,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 			if p.tok.kind == .comma {
 				p.check(.comma)
 			}
-			if p.tok.kind == .comment {
-				p.comment()
-			}
+			//p.check_comment()
 		}
 		line_nr := p.tok.line_nr
 		p.check(.rsbr)
