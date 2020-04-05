@@ -2524,13 +2524,70 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 // to access its fields (`.ok`, `.error` etc)
 // `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
 fn (g mut Gen) or_block(var_name string, stmts []ast.Stmt, return_type table.Type) {
+	mr_styp := g.typ(return_type)
+	mr_styp2 := mr_styp[7..] // remove Option_
 	g.writeln(';') // or')
 	g.writeln('if (!${var_name}.ok) {')
-	g.writeln('string err = ${var_name}.v_error;')
-	g.writeln('int errcode = ${var_name}.ecode;')
-	g.stmts(stmts)
+	g.writeln('\tstring err = ${var_name}.v_error;')
+	g.writeln('\tint errcode = ${var_name}.ecode;')
+
+	last_type, type_of_last_expression := g.type_of_last_statement( stmts )
+	if last_type == 'v.ast.ExprStmt' && type_of_last_expression != 'void' {
+		g.indent++
+		for i, stmt in stmts {
+			if i == stmts.len-1 {
+				g.indent--
+				g.write('\t*(${mr_styp2}*) ${var_name}.data = ')
+			}
+			g.stmt(stmt)
+		}
+	} else {
+		g.stmts(stmts)
+	}
 	g.write('}')
 }
+
+
+fn (g mut Gen) type_of_last_statement(stmts []ast.Stmt) (string,string) {
+	mut last_type := ''
+	mut last_expr_result_type := ''
+	if stmts.len > 0 {
+		last_stmt := stmts[stmts.len-1]
+		last_type = typeof(last_stmt)
+		if last_type == 'v.ast.ExprStmt' {
+			match last_stmt {
+				ast.ExprStmt {
+					it_expr_type := typeof(it.expr)
+					if it_expr_type == 'v.ast.CallExpr' {
+						g.writeln('\t // typeof it_expr_type: $it_expr_type')
+						last_expr_result_type = g.type_of_call_expr(it.expr)
+					}else{
+						last_expr_result_type = it_expr_type
+					}
+				}
+				else {
+					last_expr_result_type = last_type
+				}
+			}
+		}
+	}
+	g.writeln('\t// last_type: $last_type')
+	g.writeln('\t// last_expr_result_type: $last_expr_result_type')
+	return last_type, last_expr_result_type
+}
+
+fn (g mut Gen) type_of_call_expr(node ast.Expr) string {
+	match node {
+		ast.CallExpr {
+			return g.typ(it.return_type)
+		}
+		else {
+			return typeof(node)
+		}
+	}
+	return ''
+}
+
 
 // `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
 fn (g mut Gen) in_optimization(left ast.Expr, right ast.ArrayInit) {
