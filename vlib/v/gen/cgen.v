@@ -221,7 +221,11 @@ pub fn (g mut Gen) write_typedef_types() {
 				info := typ.info as table.FnType
 				func := info.func
 				if !info.has_decl && !info.is_anon {
-					fn_name := if func.is_c { func.name.replace('.', '__') } else { c_name(func.name) }
+					fn_name := if func.is_c {
+						func.name.replace('.', '__')
+					} else {
+						c_name(func.name)
+					}
 					g.definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 					for i, arg in func.args {
 						g.definitions.write(g.typ(arg.typ))
@@ -389,7 +393,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.ForCStmt {
 			g.write('for (')
-			if !it.has_init { g.write('; ') } else { g.stmt(it.init) }
+			if !it.has_init {
+				g.write('; ')
+			} else {
+				g.stmt(it.init)
+			}
 			g.expr(it.cond)
 			g.write('; ')
 			// g.stmt(it.inc)
@@ -403,7 +411,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.ForStmt {
 			g.write('while (')
-			if it.is_inf { g.write('1') } else { g.expr(it.cond) }
+			if it.is_inf {
+				g.write('1')
+			} else {
+				g.expr(it.cond)
+			}
 			g.writeln(') {')
 			g.stmts(it.stmts)
 			g.writeln('}')
@@ -439,7 +451,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.return_statement(it)
 		}
 		ast.StructDecl {
-			name := if it.is_c { it.name.replace('.', '__') } else { c_name(it.name) }
+			name := if it.is_c {
+				it.name.replace('.', '__')
+			} else {
+				c_name(it.name)
+			}
 			// g.writeln('typedef struct {')
 			// for field in it.fields {
 			// field_type_sym := g.table.get_type_symbol(field.typ)
@@ -491,16 +507,28 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		// TODO:
 		// `for num in nums {`
 		g.writeln('// FOR IN')
-		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		i := if it.key_var == '' {
+			g.new_tmp_var()
+		} else {
+			it.key_var
+		}
 		styp := g.typ(it.val_type)
 		g.write('for (int $i = 0; $i < ')
 		g.expr(it.cond)
 		cond_type_is_ptr := table.type_is_ptr(it.cond_type)
-		if cond_type_is_ptr { g.writeln('->') } else { g.writeln('.') }
+		if cond_type_is_ptr {
+			g.writeln('->')
+		} else {
+			g.writeln('.')
+		}
 		g.write('len; $i++) {')
 		g.write('\t$styp $it.val_var = (($styp*)')
 		g.expr(it.cond)
-		if cond_type_is_ptr { g.writeln('->') } else { g.writeln('.') }
+		if cond_type_is_ptr {
+			g.writeln('->')
+		} else {
+			g.writeln('.')
+		}
 		g.write('data)[$i];')
 		g.stmts(it.stmts)
 		g.writeln('}')
@@ -511,7 +539,11 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		val_styp := g.typ(it.val_type)
 		keys_tmp := 'keys_' + g.new_tmp_var()
 		idx := g.new_tmp_var()
-		key := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		key := if it.key_var == '' {
+			g.new_tmp_var()
+		} else {
+			it.key_var
+		}
 		zero := g.type_default(it.val_type)
 		g.write('array_$key_styp $keys_tmp = map_keys(&')
 		g.expr(it.cond)
@@ -525,7 +557,11 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		g.writeln('}')
 	} else if table.type_is(it.cond_type, .variadic) {
 		g.writeln('// FOR IN')
-		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		i := if it.key_var == '' {
+			g.new_tmp_var()
+		} else {
+			it.key_var
+		}
 		styp := g.typ(it.cond_type)
 		g.write('for (int $i = 0; $i < ')
 		g.expr(it.cond)
@@ -536,7 +572,11 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		g.stmts(it.stmts)
 		g.writeln('}')
 	} else if it.kind == .string {
-		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		i := if it.key_var == '' {
+			g.new_tmp_var()
+		} else {
+			it.key_var
+		}
 		g.write('for (int $i = 0; $i < ')
 		g.expr(it.cond)
 		g.writeln('.len; $i++) {')
@@ -696,8 +736,11 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				if !is_fixed_array_init {
 					g.write(' = ')
-					if !is_decl { g.expr_with_cast(val, assign_stmt.left_types[i], 
-							ident_var_info.typ) } else { g.expr(val) }
+					if !is_decl {
+						g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
+					} else {
+						g.expr(val)
+					}
 				} else if is_fixed_array_init {
 					g.write('= {0}')
 				}
@@ -752,13 +795,21 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	g.reset_tmp_count()
 	is_main := it.name == 'main'
 	if is_main {
-		if g.pref.os == .windows { g.write('int wmain(int ___argc, wchar_t *___argv[], wchar_t *___envp[]') } else { g.write('int ${it.name}(int ___argc, char** ___argv') }
+		if g.pref.os == .windows {
+			g.write('int wmain(int ___argc, wchar_t *___argv[], wchar_t *___envp[]')
+		} else {
+			g.write('int ${it.name}(int ___argc, char** ___argv')
+		}
 	} else {
 		mut name := it.name
 		if it.is_method {
 			name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
 		}
-		if it.is_c { name = name.replace('.', '__') } else { name = c_name(name) }
+		if it.is_c {
+			name = name.replace('.', '__')
+		} else {
+			name = c_name(name)
+		}
 		if name.starts_with('_op_') {
 			name = op_to_fn_name(name)
 		}
@@ -770,19 +821,19 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	// Receiver is the first argument
 	/*
 	if it.is_method {
-																	mut styp := g.typ(it.receiver.typ)
-																	// if table.type_nr_muls(it.receiver.typ) > 0 {
-																	// if it.rec_mut {
-																	// styp += '*'
-																	// }
-																	g.write('$styp $it.receiver.name ')
-																	// TODO mut
-																	g.definitions.write('$styp $it.receiver.name')
-																	if it.args.len > 0 {
-																		g.write(', ')
-																		g.definitions.write(', ')
+																		mut styp := g.typ(it.receiver.typ)
+																		// if table.type_nr_muls(it.receiver.typ) > 0 {
+																		// if it.rec_mut {
+																		// styp += '*'
+																		// }
+																		g.write('$styp $it.receiver.name ')
+																		// TODO mut
+																		g.definitions.write('$styp $it.receiver.name')
+																		if it.args.len > 0 {
+																			g.write(', ')
+																			g.definitions.write(', ')
+																		}
 																	}
-																}
 	*/
 	// 
 	g.fn_args(it.args, it.is_variadic)
@@ -802,7 +853,11 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			if g.autofree {
 				g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
 			}
-			if g.pref.os == .windows { g.writeln('_const_os__args = os__init_os_args_wide(___argc, ___argv);') } else { g.writeln('_const_os__args = os__init_os_args(___argc, (byteptr*)___argv);') }
+			if g.pref.os == .windows {
+				g.writeln('_const_os__args = os__init_os_args_wide(___argc, ___argv);')
+			} else {
+				g.writeln('_const_os__args = os__init_os_args(___argc, (byteptr*)___argv);')
+			}
 		}
 	}
 	g.stmts(it.stmts)
@@ -971,7 +1026,11 @@ fn (g mut Gen) expr(node ast.Expr) {
 			sym := g.table.get_type_symbol(it.typ)
 			if sym.kind == .string {
 				// `tos(str, len)`, `tos2(str)`
-				if it.has_arg { g.write('tos(') } else { g.write('tos2(') }
+				if it.has_arg {
+					g.write('tos(')
+				} else {
+					g.write('tos2(')
+				}
 				g.expr(it.expr)
 				expr_sym := g.table.get_type_symbol(it.expr_type)
 				if expr_sym.kind == .array {
@@ -1185,7 +1244,11 @@ fn (g mut Gen) assign_expr(node ast.AssignExpr) {
 		else {}
 	}
 	gen_or := is_call && table.type_is(return_type, .optional)
-	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
+	tmp_opt := if gen_or {
+		g.new_tmp_var()
+	} else {
+		''
+	}
 	if gen_or {
 		rstyp := g.typ(return_type)
 		g.write('$rstyp $tmp_opt =')
@@ -1392,9 +1455,17 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 			}
 		} else {
 			if j > 0 {
-				if is_expr { g.write(' : ') } else { g.write('else ') }
+				if is_expr {
+					g.write(' : ')
+				} else {
+					g.write('else ')
+				}
 			}
-			if is_expr { g.write('(') } else { g.write('if (') }
+			if is_expr {
+				g.write('(')
+			} else {
+				g.write('if (')
+			}
 			for i, expr in branch.exprs {
 				if node.is_sum_type {
 					g.expr(node.cond)
@@ -1420,7 +1491,11 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 					g.write(' || ')
 				}
 			}
-			if is_expr { g.write(') ? ') } else { g.writeln(') {') }
+			if is_expr {
+				g.write(') ? ')
+			} else {
+				g.writeln(') {')
+			}
 		}
 		// g.writeln('/* M sum_type=$node.is_sum_type is_expr=$node.is_expr exp_type=${g.typ(node.expected_type)}*/')
 		if node.is_sum_type && branch.exprs.len > 0 && !node.is_expr {
@@ -1535,7 +1610,11 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 				g.expr(branch.cond)
 				g.writeln(') {')
 			} else if i == node.branches.len - 1 && node.has_else {
-				if is_guard { g.writeln('} if (!$guard_ok) { /* else */') } else { g.writeln('} else {') }
+				if is_guard {
+					g.writeln('} if (!$guard_ok) { /* else */')
+				} else {
+					g.writeln('} else {')
+				}
 			}
 			// Assign ret value
 			// if i == node.stmts.len - 1 && type_sym.kind != .void {}
@@ -1577,7 +1656,11 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 			}
 			g.write(', ')
-			if it.has_low { g.expr(it.low) } else { g.write('0') }
+			if it.has_low {
+				g.expr(it.low)
+			} else {
+				g.write('0')
+			}
 			g.write(', ')
 			if it.has_high {
 				g.expr(it.high)
@@ -1667,10 +1750,10 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			} else {
 				/*
 				g.write('(*($elem_type_str*)map_get2(')
-																																																																g.expr(node.left)
-																																																																g.write(', ')
-																																																																g.expr(node.index)
-																																																																g.write('))')
+																																																																				g.expr(node.left)
+																																																																				g.write(', ')
+																																																																				g.expr(node.index)
+																																																																				g.write('))')
 				*/
 				zero := g.type_default(info.value_type)
 				g.write('(*($elem_type_str*)map_get3(')
@@ -1896,7 +1979,11 @@ fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 		}
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		// when these are fixed we wont need this check
-		if arg_no < expected_types.len { g.ref_or_deref_arg(arg, expected_types[arg_no]) } else { g.expr(arg.expr) }
+		if arg_no < expected_types.len {
+			g.ref_or_deref_arg(arg, expected_types[arg_no])
+		} else {
+			g.expr(arg.expr)
+		}
 		if arg_no < args.len - 1 || is_variadic {
 			g.write(', ')
 		}
@@ -1911,13 +1998,16 @@ fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 			g.variadic_args[varg_type_str] = variadic_count
 		}
 		g.write('($struct_name){.len=$variadic_count,.args={')
-		if variadic_count > 0 { for j in arg_no .. args.len {
-				g.ref_or_deref_arg(args[j], varg_type)if j < args.len - 1 {
+		if variadic_count > 0 {
+			for j in arg_no .. args.len {
+				g.ref_or_deref_arg(args[j], varg_type)
+				if j < args.len - 1 {
 					g.write(', ')
 				}
 			}
-		 } else { g.write('0')
-		 }
+		} else {
+			g.write('0')
+		}
 		g.write('}}')
 	}
 }
@@ -2052,11 +2142,15 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				info := typ.info as table.Struct
 				// g.definitions.writeln('typedef struct {')
 				g.definitions.writeln('struct $name {')
-				if info.fields.len > 0 { for field in info.fields {
+				if info.fields.len > 0 {
+					for field in info.fields {
 						type_name := g.typ(field.typ)
 						field_name := c_name(field.name)
-						g.definitions.writeln('\t$type_name $field_name;')}
-				 } else { g.definitions.writeln('EMPTY_STRUCT_DECLARATION;') }
+						g.definitions.writeln('\t$type_name $field_name;')
+					}
+				} else {
+					g.definitions.writeln('EMPTY_STRUCT_DECLARATION;')
+				}
 				// g.definitions.writeln('} $name;\n')
 				// 
 				g.definitions.writeln('};\n')
@@ -2235,12 +2329,20 @@ fn (g mut Gen) insert_before(s string) {
 
 fn (g mut Gen) call_expr(node ast.CallExpr) {
 	gen_or := !g.is_assign_rhs && node.or_block.stmts.len > 0
-	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
+	tmp_opt := if gen_or {
+		g.new_tmp_var()
+	} else {
+		''
+	}
 	if gen_or {
 		styp := g.typ(node.return_type)
 		g.write('$styp $tmp_opt = ')
 	}
-	if node.is_method { g.method_call(node) } else { g.fn_call(node) }
+	if node.is_method {
+		g.method_call(node)
+	} else {
+		g.fn_call(node)
+	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block.stmts, node.return_type)
 	}
@@ -2293,13 +2395,13 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 	// /////////
 	/*
 	if name.contains('subkeys') {
-																		println('call_args $name $node.arg_types.len')
-																		for t in node.arg_types {
-																			sym := g.table.get_type_symbol(t)
-																			print('$sym.name ')
+																			println('call_args $name $node.arg_types.len')
+																			for t in node.arg_types {
+																				sym := g.table.get_type_symbol(t)
+																				print('$sym.name ')
+																			}
+																			println('')
 																		}
-																		println('')
-																	}
 	*/
 	// ///////
 	g.call_args(node.args, node.expected_arg_types)
@@ -2312,7 +2414,11 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 fn (g mut Gen) fn_call(node ast.CallExpr) {
 	mut name := node.name
 	is_print := name == 'println' || name == 'print'
-	print_method := if name == 'println' { 'println' } else { 'print' }
+	print_method := if name == 'println' {
+		'println'
+	} else {
+		'print'
+	}
 	if node.is_c {
 		// Skip "C."
 		g.is_c_call = true
@@ -2323,15 +2429,15 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 	// Generate tmp vars for values that have to be freed.
 	/*
 	mut tmps := []string
-																	for arg in node.args {
-																		if arg.typ == table.string_type_idx || is_print {
-																			tmp := g.new_tmp_var()
-																			tmps << tmp
-																			g.write('string $tmp = ')
-																			g.expr(arg.expr)
-																			g.writeln('; //memory')
+																		for arg in node.args {
+																			if arg.typ == table.string_type_idx || is_print {
+																				tmp := g.new_tmp_var()
+																				tmps << tmp
+																				g.write('string $tmp = ')
+																				g.expr(arg.expr)
+																				g.writeln('; //memory')
+																			}
 																		}
-																	}
 	*/
 	if is_print && node.args[0].typ != table.string_type_idx {
 		typ := node.args[0].typ
@@ -2457,7 +2563,11 @@ fn (g mut Gen) in_optimization(left ast.Expr, right ast.ArrayInit) {
 			g.write('string_eq(')
 		}
 		g.expr(left)
-		if is_str { g.write(', ') } else { g.write(' == ') }
+		if is_str {
+			g.write(', ')
+		} else {
+			g.write(' == ')
+		}
 		g.expr(array_expr)
 		if is_str {
 			g.write(')')
@@ -2613,11 +2723,11 @@ fn (g Gen) type_default(typ table.Type) string {
 	}
 	/*
 	match idx {
-																	table.bool_type_idx {
-																		return '0'
+																		table.bool_type_idx {
+																			return '0'
+																		}
+																		else {}
 																	}
-																	else {}
-																}
 	*/
 	match sym.name {
 		'string' {
@@ -2634,23 +2744,23 @@ fn (g Gen) type_default(typ table.Type) string {
 	// - Empty ee= (Empty) { . =  {0}  } ;
 	/*
 	return match typ {
-																	'bool'{ '0'}
-																	'string'{ 'tos3("")'}
-																	'i8'{ '0'}
-																	'i16'{ '0'}
-																	'i64'{ '0'}
-																	'u16'{ '0'}
-																	'u32'{ '0'}
-																	'u64'{ '0'}
-																	'byte'{ '0'}
-																	'int'{ '0'}
-																	'rune'{ '0'}
-																	'f32'{ '0.0'}
-																	'f64'{ '0.0'}
-																	'byteptr'{ '0'}
-																	'voidptr'{ '0'}
-																	else { '{0} '}
-																}
+																		'bool'{ '0'}
+																		'string'{ 'tos3("")'}
+																		'i8'{ '0'}
+																		'i16'{ '0'}
+																		'i64'{ '0'}
+																		'u16'{ '0'}
+																		'u32'{ '0'}
+																		'u64'{ '0'}
+																		'byte'{ '0'}
+																		'int'{ '0'}
+																		'rune'{ '0'}
+																		'f32'{ '0.0'}
+																		'f64'{ '0.0'}
+																		'byteptr'{ '0'}
+																		'voidptr'{ '0'}
+																		else { '{0} '}
+																	}
 	*/
 }
 
@@ -2748,13 +2858,21 @@ fn (g mut Gen) comp_if(it ast.CompIf) {
 	}
 	// NOTE: g.defer_ifdef is needed for defers called witin an ifdef
 	// in v1 this code would be completely excluded
-	g.defer_ifdef = if it.is_not { '#ifndef ' + ifdef } else { '#ifdef ' + ifdef }
+	g.defer_ifdef = if it.is_not {
+		'#ifndef ' + ifdef
+	} else {
+		'#ifdef ' + ifdef
+	}
 	// println('comp if stmts $g.file.path:$it.pos.line_nr')
 	g.stmts(it.stmts)
 	g.defer_ifdef = ''
 	if it.has_else {
 		g.writeln('#else')
-		g.defer_ifdef = if it.is_not { '#ifdef ' + ifdef } else { '#ifndef ' + ifdef }
+		g.defer_ifdef = if it.is_not {
+			'#ifdef ' + ifdef
+		} else {
+			'#ifndef ' + ifdef
+		}
 		g.stmts(it.else_stmts)
 		g.defer_ifdef = ''
 	}

@@ -37,11 +37,7 @@ pub fn fmt(file ast.File, table &table.Table) string {
 	for stmt in file.stmts {
 		f.stmt(stmt)
 	}
-	/*
-	for comment in file.comments {
-					println('$comment.line_nr $comment.text')
-				}
-	*/
+	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
 	return f.out.str().trim_space() + '\n'
 }
 
@@ -472,14 +468,6 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.MapInit {
 			f.writeln('{')
 			f.indent++
-			/*
-			mut max := 0
-																											for i, key in it.keys {
-																												if key.len > max {
-																													max = key.len
-																												}
-																											}
-			*/
 			for i, key in it.keys {
 				f.expr(key)
 				// f.write(strings.repeat(` `, max - field.name.len))
@@ -667,7 +655,7 @@ fn short_module(name string) string {
 
 fn (f mut Fmt) if_expr(it ast.IfExpr) {
 	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 
-		1 && it.branches[1].stmts.len == 1
+		1 && it.branches[1].stmts.len == 1 && it.is_expr
 	f.single_line_if = single_line
 	for i, branch in it.branches {
 		if i == 0 {
