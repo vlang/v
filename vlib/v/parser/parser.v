@@ -65,20 +65,17 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	// }
 	mut stmts := []ast.Stmt
 	mut p := Parser{
-		// scanner: scanner.new_scanner(text, comments_mode)
 		scanner: scanner.new_scanner_file(path, comments_mode)
 		table: table
 		file_name: path
-		pref: pref // &pref.Preferences{}
-
+		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
 			parent: 0
 		}
 		global_scope: global_scope
-		// comments_mode: comments_mode
-
 	}
+	// comments_mode: comments_mode
 	p.read_first_token()
 	// module decl
 	module_decl := if p.tok.kind == .key_module { p.module_decl() } else { ast.Module{name: 'main'
@@ -435,8 +432,8 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
 				return p.assign_stmt()
 			}
-			// `label:`
 			else if p.tok.kind == .name && p.peek_tok.kind == .colon {
+				// `label:`
 				name := p.check_name()
 				p.check(.colon)
 				return ast.GotoLabel{
@@ -669,19 +666,16 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			p.expr_mod = ''
 			return node
 		}
-		// fn call
 		else {
+			// fn call
 			// println('calling $p.tok.lit')
 			x := p.call_expr(is_c, mod) // TODO `node,typ :=` should work
 			node = x
 		}
 	}
 	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c ||
-	//
 	(p.builtin_mod && p.tok.lit in table.builtin_type_names)) &&
-	//
 	(p.tok.lit.len in [1,2] || !p.tok.lit[p.tok.lit.len - 1].is_capital()) &&
-	//
 	!p.inside_match_case
 	{
 		// || p.table.known_type(p.tok.lit)) {
@@ -745,13 +739,10 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			}
 			p.next()
 		}
-		// -1, -a, !x, &x, ~x
 		.minus, .amp, .mul, .not, .bit_not {
+			// -1, -a, !x, &x, ~x
 			node = p.prefix_expr()
 		}
-		// .amp {
-		// p.next()
-		// }
 		.key_true, .key_false {
 			node = ast.BoolLiteral{
 				val: p.tok.kind == .key_true
@@ -811,8 +802,8 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 				expr: expr
 			}
 		}
-		// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 		.lcbr {
+			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 			p.next()
 			if p.tok.kind == .string {
 				node = p.map_init()
@@ -858,10 +849,10 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 				pos: pos
 			}
 		}
-		// TODO: handle in later stages since this
-		// will fudge left shift as it makes it right assoc
-		// `arr << 'a'` | `arr << 'a' + 'b'`
 		else if p.tok.kind == .left_shift {
+			// TODO: handle in later stages since this
+			// will fudge left shift as it makes it right assoc
+			// `arr << 'a'` | `arr << 'a' + 'b'`
 			tok := p.tok
 			p.next()
 			right := p.expr(precedence - 1)
@@ -875,8 +866,8 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		else if p.tok.kind.is_infix() {
 			node = p.infix_expr(node)
 		}
-		// Postfix
 		else if p.tok.kind in [.inc, .dec] {
+			// Postfix
 			node = ast.PostfixExpr{
 				op: p.tok.kind
 				expr: node
@@ -1084,8 +1075,8 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	else if p.tok.kind == .key_mut {
 		p.error('`mut` is not required in for loops')
 	}
-	// for i := 0; i < 10; i++ {
 	else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] || p.tok.kind == .semicolon {
+		// for i := 0; i < 10; i++ {
 		mut init := ast.Stmt{}
 		mut cond := p.new_true_expr()
 		// mut inc := ast.Stmt{}
@@ -1127,8 +1118,8 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			pos: pos
 		}
 	}
-	// `for i in vals`, `for i in start .. end`
 	else if p.peek_tok.kind in [.key_in, .comma] {
+		// `for i in vals`, `for i in start .. end`
 		mut key_var_name := ''
 		mut val_var_name := p.check_name()
 		if p.tok.kind == .comma {
