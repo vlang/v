@@ -61,10 +61,10 @@ endif
 	@echo "V has been successfully built"
 
 clean: clean_tmp
+	rm -rf $(TMPTCC)
 	git clean -xf
 
 clean_tmp:
-	rm -rf $(TMPTCC)
 	rm -rf $(TMPVC)
 
 latest_vc: $(TMPVC)/.git/config
