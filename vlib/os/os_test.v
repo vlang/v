@@ -208,6 +208,15 @@ fn test_tmpdir() {
 	os.rm(tfile)
 }
 
+fn test_is_writable_folder() {
+	tmp := os.temp_dir()
+	f := os.is_writable_folder(tmp) or {
+		eprintln('err: $err')
+		assert false
+	}
+	assert f
+}
+
 fn test_make_symlink_check_is_link_and_remove_symlink() {
 	$if windows {
 		// TODO
