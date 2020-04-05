@@ -43,10 +43,10 @@ const (
 )
 
 fn main() {
-	if os.getenv('VFMT_ENABLE') == '' {
-		eprintln('v fmt is disabled for now')
-		exit(1)
-	}
+	//if os.getenv('VFMT_ENABLE') == '' {
+		//eprintln('v fmt is disabled for now')
+		//exit(1)
+	//}
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := join_flags_and_argument()
@@ -153,6 +153,7 @@ fn main() {
 		}
 		exit(1)
 	}
+	println('vfmt done')
 }
 
 fn (foptions &FormatOptions) format_file(file string) {

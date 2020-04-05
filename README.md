@@ -7,7 +7,7 @@
 <a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
 [![Twitter handle][]][Twitter badge]
 
-**V's backend has just been replaced on April 1, 15k lines of code were removed, some things are broken, we are working hard to fix them all by April 4.**
+**V's backend has just been replaced on April 1, 15k lines of code were removed, some things are broken, we are working hard to fix them all by April 5.**
 
 https://vlang.io
 

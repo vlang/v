@@ -6,6 +6,7 @@ module parser
 import (
 	v.ast
 	v.table
+	v.scanner
 )
 
 pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
@@ -21,6 +22,10 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		p.scope.register('err', ast.Var{
 			name: 'err'
 			typ: table.string_type
+		})
+		p.scope.register('errcode', ast.Var{
+			name: 'errcode'
+			typ: table.int_type
 		})
 		or_stmts = p.parse_block_no_scope()
 		p.close_scope()
@@ -103,6 +108,9 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .name {
 		// TODO high order fn
 		name = p.check_name()
+		if !is_c && !p.pref.translated && scanner.contains_capital(name) {
+			p.error('function names cannot contain uppercase letters, use snake_case instead')
+		}
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
 		name = p.tok.kind.str() // op_to_fn_name()

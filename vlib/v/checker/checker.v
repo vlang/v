@@ -119,7 +119,7 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 					continue
 				}
 				if table.type_is_ptr(field.typ) {
-					c.warn('reference field `Reference.value` must be initialized', struct_init.pos)
+					c.warn('reference field `${typ_sym.name}.${field.name}` must be initialized', struct_init.pos)
 				}
 			}
 		}
@@ -355,7 +355,7 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 				}
 				if typ_sym.kind == .array_fixed {}
 				// println('fixed')
-				c.error('!cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`', call_expr.pos)
+				c.error('cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`', call_expr.pos)
 			}
 		}
 		return f.return_type
@@ -508,6 +508,15 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	// a = []
 	if array_init.exprs.len == 0 {
 		type_sym := c.table.get_type_symbol(c.expected_type)
+		if type_sym.kind != .array {
+			c.error('array_init: no type specified (maybe: `[]Type` instead of `[]`)', array_init.pos)
+			return table.void_type
+		}
+		// TODO: seperate errors once bug is fixed with `x := if expr { ... } else { ... }`
+		// if c.expected_type == table.void_type {
+		// 	c.error('array_init: use `[]Type` instead of `[]`', array_init.pos)
+		// 	return table.void_type
+		// }
 		array_info := type_sym.array_info()
 		array_init.elem_type = array_info.elem_type
 		return c.expected_type
@@ -825,10 +834,12 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			it.expr_type = c.expr(it.expr)
 			return table.string_type
 		}
-		else {}
-		// println('checker.expr(): unhandled node')
-		// TODO: find nil string bug triggered with typeof
-		// println('checker.expr(): unhandled node (${typeof(node)})')
+		else {
+			tnode := typeof(node)
+			if tnode != 'unknown v.ast.Expr' {
+				println('checker.expr(): unhandled node with typeof(`${tnode}`)')
+			}
+		}
 	}
 	return table.void_type
 }
@@ -865,22 +876,28 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 	// first use
 	else if ident.kind == .unresolved {
 		start_scope := c.file.scope.innermost(ident.pos.pos)
-		if var := start_scope.find_var(ident.name) {
-			mut typ := var.typ
-			if typ == 0 {
-				typ = c.expr(var.expr)
+		if obj := start_scope.find(ident.name) {
+			match obj {
+				ast.Var {
+					mut typ := it.typ
+					if typ == 0 {
+						typ = c.expr(it.expr)
+					}
+					is_optional := table.type_is(typ, .optional)
+					ident.kind = .variable
+					ident.info = ast.IdentVar{
+						typ: typ
+						is_optional: is_optional
+					}
+					it.typ = typ
+					// unwrap optional (`println(x)`)
+					if is_optional {
+						return table.type_set(typ, .unset)
+					}
+					return typ
+				}
+				else {}
 			}
-			is_optional := table.type_is(typ, .optional)
-			ident.kind = .variable
-			ident.info = ast.IdentVar{
-				typ: typ
-				is_optional: is_optional
-			}
-			// unwrap optional (`println(x)`)
-			if is_optional {
-				return table.type_set(typ, .unset)
-			}
-			return typ
 		}
 		// prepend mod to look for fn call or const
 		mut name := ident.name

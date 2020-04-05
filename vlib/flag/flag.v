@@ -88,7 +88,7 @@ pub struct FlagParser {
 
 pub const (
 	// used for formating usage message
-	SPACE = '                            '
+	space = '                            '
 	UNDERLINE = '-----------------------------------------------'
 	MAX_ARGS_NUMBER = 4048
 )
@@ -447,10 +447,10 @@ pub fn (fs FlagParser) usage() string {
 				}
 			}
 			option_names := '  ' + onames.join(', ')
-			space := if option_names.len > SPACE.len-2 {
-				'\n${SPACE}'
+			space := if option_names.len > space.len-2 {
+				'\n${space}'
 			} else {
-				SPACE[option_names.len..]
+				space[option_names.len..]
 			}
 			use += '${option_names}${space}${f.usage}\n'
 		}

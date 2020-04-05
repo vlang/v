@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 //
 // Type layout information (32 bits)
-// flag (8 bits) | nr_muls (8 bits) | idx (16 bits) 
+// flag (8 bits) | nr_muls (8 bits) | idx (16 bits)
 // pack: (int(flag)<<24) | (nr_muls<<16) | u16(idx)
 // unpack:
 //     flag: (int(type)>>24) & 0xff
@@ -18,7 +18,7 @@ import (
 
 pub type Type int
 
-pub type TypeInfo = Array | ArrayFixed | Map | Struct | 	
+pub type TypeInfo = Array | ArrayFixed | Map | Struct |
 MultiReturn | Alias | Enum | SumType | FnType
 
 pub struct TypeSymbol {
@@ -539,6 +539,7 @@ pub fn (kinds []Kind) str() string {
 pub struct Struct {
 pub mut:
 	fields []Field
+	is_typedef bool // C. [typedef]
 }
 
 pub struct Enum {
@@ -610,6 +611,9 @@ pub fn (table &Table) type_to_str(t Type) string {
 		vals := res.split('.')
 		if vals.len > 2 {
 			res = vals[vals.len - 2] + '.' + vals[vals.len - 1]
+		}
+		if sym.kind == .array {
+			res = '[]' + res
 		}
 	}
 	if type_is(t, .optional) {

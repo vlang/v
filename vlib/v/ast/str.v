@@ -25,6 +25,9 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		receiver = '($node.receiver.name $m$name) '
 	}
 	name := node.name.after('.')
+	if node.is_c {
+		name = 'C.$name'
+	}
 	f.write('fn ${receiver}${name}(')
 	for i, arg in node.args {
 		// skip receiver
@@ -73,6 +76,30 @@ pub fn (x Expr) str() string {
 		}
 		StringLiteral {
 			return '"$it.val"'
+		}
+		StringInterLiteral {
+			res := []string
+			res << "'"
+			for i, val in it.vals {
+				res << val
+				if i>=it.exprs.len {
+					continue
+				}
+				res << '$'
+				if it.expr_fmts[i].len > 0 {
+					res << '{'
+					res << it.exprs[i].str()
+					res << it.expr_fmts[i]
+					res << '}'
+				}else{
+					res << it.exprs[i].str()
+				}
+			}
+			res << "'"
+			return res.join('')
+		}
+		BoolLiteral {
+			return it.val.str()
 		}
 		ParExpr {
 			return it.expr.str()

@@ -1,3 +1,19 @@
+import os
+
+fn foo(a []os.File) {
+}
+
+struct IfExpr {
+}
+
+struct MatchExpr {
+}
+
+type Expr = IfExpr | MatchExpr
+
+fn sum_types(a []Expr) {
+}
+
 fn main() {
 	x := 0xdeadbeef
 	u := 9978654321
