@@ -1,4 +1,5 @@
 struct Foo {
+   x int
 }
 pub fn (f Foo) str() string { return 'Foo{}' }
 
