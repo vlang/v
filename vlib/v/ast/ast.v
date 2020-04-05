@@ -152,6 +152,7 @@ pub:
 }
 
 pub struct InterfaceDecl {
+pub:
 	name        string
 	field_names []string
 }
