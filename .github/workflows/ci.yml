@@ -131,8 +131,8 @@ jobs:
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: Fixed tests
       run: |
-	    ./v vlib/v/tests/backtrace_test.v
-	    ./v test-fixed
+        ./v vlib/v/tests/backtrace_test.v
+        ./v test-fixed
     - name: x64 machine code generation
       run: |
         ./v -o vprod -prod cmd/v
@@ -268,8 +268,8 @@ jobs:
         .\make.bat -msvc
     - name: Fixed tests
       run: |
-	    ./v vlib/v/tests/backtrace_test.v
-	    ./v test-fixed
+        ./v vlib/v/tests/backtrace_test.v
+        ./v test-fixed
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
