@@ -736,7 +736,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				if s.comments_mode == .parse_comments {
 					// Find out if this comment is on its own line (for vfmt)
 					mut is_separate_line_comment := true
-					for j := start-2; s.text[j] != `\n`; j-- {
+					for j := start-2; j >= 0 && s.text[j] != `\n`; j-- {
 						if !(s.text[j] in [`\t`, ` `]) {
 							is_separate_line_comment = false
 						}

@@ -677,7 +677,7 @@ pub:
 	is_multi bool
 	line_nr int
 	pos token.Position
-	same_line bool
+	//same_line bool
 }
 
 pub struct ConcatExpr {
