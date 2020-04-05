@@ -12,9 +12,6 @@ import (
 	v.util
 	term
 	os
-	// runtime
-	// sync
-	// time
 )
 
 struct Parser {
@@ -22,13 +19,11 @@ struct Parser {
 	file_name    string
 mut:
 	tok          token.Token
-	peek_tok     token.Token
-	// vars []string
+	peek_tok     token.Token // sdfsdf
 	table        &table.Table
 	is_c         bool
-	// prefix_parse_fns []PrefixParseFn
 	inside_if    bool
-	pref         &pref.Preferences // Preferences shared from V struct
+	pref         &pref.Preferences
 	builtin_mod  bool
 	mod          string
 	attr         string
@@ -39,23 +34,37 @@ mut:
 	ast_imports  []ast.Import
 	is_amp       bool
 	returns      bool
-	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
+
+	inside_match_case bool
+	comments []ast.Comment
+	// sdfsdfd
+
 }
+
+
+	//inside_match_case bool // to separate `match_expr { }` from `Struct{}`
+	// prefix_parse_fns []PrefixParseFn
+	// vars []string
+
+
+
+
 
 // for tests
 pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	s := scanner.new_scanner(text, .skip_comments)
+	a := 324
 	mut p := Parser{
 		scanner: s
 		table: table
 		pref: &pref.Preferences{}
 		scope: scope
-		// scope: &ast.Scope{start_pos: 0, parent: 0}
 		global_scope: &ast.Scope{
 			start_pos: 0
 			parent: 0
 		}
 	}
+		// scope: &ast.Scope{start_pos: 0, parent: 0}
 	p.init_parse_fns()
 	p.read_first_token()
 	return p.stmt()
@@ -115,6 +124,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		stmts: stmts
 		scope: p.scope
 		global_scope: p.global_scope
+		//comments: p.comments
 	}
 }
 
@@ -222,15 +232,23 @@ pub fn (p mut Parser) parse_block_no_scope() []ast.Stmt {
 	return stmts
 }
 
-fn (p mut Parser) next() {
-	// for {
+/*
+fn (p mut Parser) next_with_comment() {
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()
-	// if !(p.tok.kind in [.line_comment, .mline_comment]) {
-	// break
-	// }
-	// }
-	// println(p.tok.str())
+}
+*/
+
+
+fn (p mut Parser) next() {
+	p.tok = p.peek_tok
+	p.peek_tok = p.scanner.scan()
+	/*
+	if p.tok.kind==.comment {
+		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
+		p.next()
+	}
+	*/
 }
 
 fn (p mut Parser) check(expected token.Kind) {
@@ -319,15 +337,8 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		.key_union {
 			return p.struct_decl()
 		}
-		.line_comment {
-			return p.line_comment()
-		}
-		.mline_comment {
-			comment := p.tok.lit
-			p.next()
-			return ast.MultiLineComment{
-				text: comment
-			}
+		.comment {
+			return p.comment()
 		}
 		else {
 			// #printf("");
@@ -337,10 +348,18 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 	}
 }
 
-pub fn (p mut Parser) line_comment() ast.LineComment {
+// TODO [if vfmt]
+pub fn (p mut Parser) check_comment() ast.Comment {
+	if p.tok.kind == .comment {
+		return p.comment()
+	}
+}
+
+pub fn (p mut Parser) comment() ast.Comment {
 	text := p.tok.lit
 	p.next()
-	return ast.LineComment{
+	//p.next_with_comment()
+	return ast.Comment{
 		text: text
 	}
 }
@@ -367,8 +386,8 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		.key_for {
 			return p.for_statement()
 		}
-		.line_comment {
-			return p.line_comment()
+		.comment {
+			return p.comment()
 		}
 		.key_return {
 			return p.return_stmt()
@@ -555,6 +574,9 @@ fn (p mut Parser) struct_init(short_syntax bool) ast.StructInit {
 	is_short_syntax := !(p.peek_tok.kind == .colon || p.tok.kind == .rcbr) // `Vec{a,b,c}`
 	// p.warn(is_short_syntax.str())
 	for p.tok.kind != .rcbr {
+		if p.tok.kind == .comment {
+			p.comment()
+		}
 		mut field_name := ''
 		if is_short_syntax {
 			expr := p.expr(0)
@@ -572,6 +594,9 @@ fn (p mut Parser) struct_init(short_syntax bool) ast.StructInit {
 		i++
 		if p.tok.kind == .comma {
 			p.check(.comma)
+		}
+		if p.tok.kind == .comment {
+			p.comment()
 		}
 	}
 	node := ast.StructInit{
@@ -709,6 +734,11 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 	// println('\n\nparser.expr()')
 	mut typ := table.void_type
 	mut node := ast.Expr{}
+	//defer {
+		//if p.tok.kind == .comment {
+			//p.comment()
+		//}
+	//}
 	// Prefix
 	match p.tok.kind {
 		.name {
@@ -813,7 +843,10 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			p.check(.rcbr)
 		}
 		else {
-			p.error('expr(): bad token `$p.tok.str()`')
+			if p.tok.kind == .comment {
+				println(p.tok.lit)
+			}
+			p.error('expr(): bad token `$p.tok.kind.str()`')
 		}
 	}
 	// Infix
@@ -1317,6 +1350,9 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 			if p.tok.kind == .comma {
 				p.check(.comma)
 			}
+			if p.tok.kind == .comment {
+				p.comment()
+			}
 		}
 		line_nr := p.tok.line_nr
 		p.check(.rsbr)
@@ -1421,6 +1457,9 @@ fn (p mut Parser) import_stmt() []ast.Import {
 		p.check(.lpar)
 		for p.tok.kind != .rpar {
 			imports << p.parse_import()
+			if p.tok.kind == .comment {
+				p.comment()
+			}
 		}
 		p.check(.rpar)
 	}
@@ -1440,6 +1479,9 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	p.check(.lpar)
 	mut fields := []ast.ConstField
 	for p.tok.kind != .rpar {
+		if p.tok.kind == .comment {
+			p.comment()
+		}
 		name := p.prepend_mod(p.check_name())
 		// name := p.check_name()
 		// println('!!const: $name')
@@ -1481,15 +1523,19 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	}
 	is_typedef := p.attr == 'typedef'
 	mut name := p.check_name()
-	mut default_exprs := []ast.Expr
 	// println('struct decl $name')
 	p.check(.lcbr)
-	mut ast_fields := []ast.Field
+	mut ast_fields := []ast.StructField
 	mut fields := []table.Field
 	mut mut_pos := -1
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
+
 	for p.tok.kind != .rcbr {
+		mut comment := ast.Comment{}
+		if p.tok.kind == .comment {
+			comment = p.comment()
+		}
 		if p.tok.kind == .key_pub {
 			p.check(.key_pub)
 			if p.tok.kind == .key_mut {
@@ -1520,16 +1566,20 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			println('XXXX' + s.str())
 		}
 		*/
-
-		// Default value
+		mut default_expr := ast.Expr{}
 		if p.tok.kind == .assign {
+			// Default value
 			p.next()
-			default_exprs << p.expr(0)
+			default_expr = p.expr(0)
 		}
-		ast_fields << ast.Field{
+		if p.tok.kind == .comment {
+			comment = p.comment()
+		}
+		ast_fields << ast.StructField{
 			name: field_name
 			pos: field_pos
 			typ: typ
+			comment: comment
 		}
 		fields << table.Field{
 			name: field_name
@@ -1574,7 +1624,6 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
 		is_c: is_c
-		default_exprs: default_exprs
 	}
 }
 

@@ -54,7 +54,7 @@ fn main() {
 		is_2: '-2' in args
 		is_c: '-c' in args
 		is_l: '-l' in args
-		is_w: '-w' in args
+		is_w: '-ww' in args
 		is_diff: '-diff' in args
 		is_verbose: '-verbose' in args || '--verbose' in args
 		is_all: '-all' in args || '--all' in args
@@ -153,6 +153,7 @@ fn main() {
 		}
 		exit(1)
 	}
+	println('vfmt done')
 }
 
 fn (foptions &FormatOptions) format_file(file string) {

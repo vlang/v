@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	c_reserved = ['delete', 'exit', 'unix',
-	// 'print',
-	// 'ok',
-	'error', 'calloc', 'malloc', 'free', 'panic',
 	// Full list of C reserved words, from: https://en.cppreference.com/w/c/keyword
-	'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while', ]
+	c_reserved = ['delete', 'exit', 'unix',
+	'error', 'calloc', 'malloc', 'free', 'panic',
+	'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register',
+	'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned', 'void',
+	'volatile', 'while', ]
 )
 
 struct Gen {
@@ -58,6 +58,9 @@ const (
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 	'\t\t\t\t\t\t\t\t']
 )
+
+fn foo(file []ast.File) {}
+fn foo2(file []int) {}
 
 pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
 	// println('start cgen2')
@@ -365,8 +368,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.expr(it.expr)
 			expr := it.expr
 			match expr {
-				// no ; after an if expression
-				ast.IfExpr {}
+				ast.IfExpr {
+					// no ; after an if expression
+				}
 				else {
 					if !g.inside_ternary {
 						g.writeln(';')
@@ -491,8 +495,8 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		g.stmts(it.stmts)
 		g.writeln('}')
 	}
-	// TODO:
 	else if it.kind == .array {
+		// TODO:
 		// `for num in nums {`
 		g.writeln('// FOR IN')
 		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
@@ -658,8 +662,8 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 		}
 	}
-	// `a := 1` | `a,b := 1,2`
 	else {
+		// `a := 1` | `a,b := 1,2`
 		for i, ident in assign_stmt.left {
 			val := assign_stmt.right[i]
 			ident_var_info := ident.var_info()
@@ -1128,20 +1132,6 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.expr(it.right)
 			g.is_amp = false
 		}
-		/*
-		ast.UnaryExpr {
-			// probably not :D
-			if it.op in [.inc, .dec] {
-				g.expr(it.left)
-				g.write(it.op.str())
-			}
-			else {
-				g.write(it.op.str())
-				g.expr(it.left)
-			}
-		}
-		*/
-
 		ast.SizeOf {
 			if it.type_name != '' {
 				g.write('sizeof($it.type_name)')
@@ -1172,8 +1162,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.StringInterLiteral {
 			g.string_inter_literal(it)
 		}
-		// `user := User{name: 'Bob'}`
 		ast.StructInit {
+			// `user := User{name: 'Bob'}`
 			g.struct_init(it)
 		}
 		ast.SelectorExpr {
@@ -1395,8 +1385,8 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			g.write(')')
 		}
 	}
-	// arr << val
 	else if node.op == .left_shift && g.table.get_type_symbol(node.left_type).kind == .array {
+		// arr << val
 		tmp := g.new_tmp_var()
 		sym := g.table.get_type_symbol(node.left_type)
 		info := sym.info as table.Array
@@ -1840,8 +1830,8 @@ fn (g mut Gen) return_statement(node ast.Return) {
 			g.write(' }, sizeof($styp))')
 		}
 	}
-	// normal return
 	else if node.exprs.len == 1 {
+		// normal return
 		g.write(' ')
 		// `return opt_ok(expr)` for functions that expect an optional
 		if fn_return_is_optional && !table.type_is(node.types[0], .optional) {
@@ -2187,8 +2177,9 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				//
 				g.definitions.writeln('};\n')
 			}
-			// table.Alias, table.SumType { TODO
-			table.Alias {}
+			table.Alias {
+				// table.Alias, table.SumType { TODO
+			}
 			table.SumType {
 				g.definitions.writeln('// Sum type')
 				g.definitions.writeln('
@@ -2393,10 +2384,9 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 		g.gen_filter(node)
 		return
 	}
-	if typ_sym.kind == .array && node.name in
 	// TODO performance, detect `array` method differently
+	if typ_sym.kind == .array && node.name in
 	['repeat', 'sort_with_compare', 'free', 'push_many', 'trim',
-	//
 	'first', 'last', 'clone', 'reverse', 'slice'] {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
