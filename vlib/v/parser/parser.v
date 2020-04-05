@@ -34,7 +34,6 @@ mut:
 	ast_imports  []ast.Import
 	is_amp       bool
 	returns      bool
-
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
 	//comments []ast.Comment
 }

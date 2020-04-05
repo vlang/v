@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', 
+	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t']
 	max_len = 80
 )
@@ -25,6 +25,7 @@ mut:
 	single_line_if bool
 	cur_mod        string
 	file           ast.File
+	did_imports bool
 }
 
 pub fn fmt(file ast.File, table &table.Table) string {
@@ -34,6 +35,7 @@ pub fn fmt(file ast.File, table &table.Table) string {
 		indent: 0
 		file: file
 	}
+	f.cur_mod = 'main'
 	for stmt in file.stmts {
 		f.stmt(stmt)
 	}
@@ -77,10 +79,16 @@ fn (f mut Fmt) mod(mod ast.Module) {
 }
 
 fn (f mut Fmt) imports(imports []ast.Import) {
+	if f.did_imports {
+		return
+	}
+	f.did_imports = true
 	if imports.len == 1 {
 		imp_stmt_str := f.imp_stmt_str(imports[0])
 		f.writeln('import ${imp_stmt_str}\n')
-	} else if imports.len > 1 {
+	}
+	//
+ else if imports.len > 1 {
 		f.writeln('import (')
 		f.indent++
 		for imp in imports {
@@ -667,7 +675,7 @@ fn short_module(name string) string {
 }
 
 fn (f mut Fmt) if_expr(it ast.IfExpr) {
-	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 
+	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len ==
 		1 && it.branches[1].stmts.len == 1 && it.is_expr
 	f.single_line_if = single_line
 	for i, branch in it.branches {

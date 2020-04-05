@@ -8,5 +8,9 @@ fn fn_with_if_else() {
 }
 
 fn fn_with_if_else_oneline() {
-	x := if true { 1 } else { 2 }
+	x := if true {
+		1
+	} else {
+		2
+	}
 }

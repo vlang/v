@@ -162,7 +162,9 @@ fn (foptions &FormatOptions) format_file(file string) {
 		eprintln('vfmt2 running fmt.fmt over file: $file')
 	}
 	table := table.new_table()
+	//checker := checker.new_checker(table, prefs)
 	file_ast := parser.parse_file(file, table, .parse_comments, prefs, &ast.Scope{parent: 0})
+	//checker.check(file_ast)
 	formatted_content := fmt.fmt(file_ast, table)
 	file_name := os.file_name(file)
 	vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
