@@ -8,10 +8,6 @@ const (
 	GMT = "0:00Z" 
 )
 
-pub const (
-	localtion = Localtion.get()
-)
-
 struct Zone {
 	name string
 	offset int
