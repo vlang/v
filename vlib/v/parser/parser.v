@@ -35,36 +35,24 @@ mut:
 	is_amp       bool
 	returns      bool
 
-	inside_match_case bool
+	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
 	comments []ast.Comment
-	// sdfsdfd
-
 }
-
-
-	//inside_match_case bool // to separate `match_expr { }` from `Struct{}`
-	// prefix_parse_fns []PrefixParseFn
-	// vars []string
-
-
-
-
 
 // for tests
 pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	s := scanner.new_scanner(text, .skip_comments)
-	a := 324
 	mut p := Parser{
 		scanner: s
 		table: table
 		pref: &pref.Preferences{}
 		scope: scope
+		// scope: &ast.Scope{start_pos: 0, parent: 0}
 		global_scope: &ast.Scope{
 			start_pos: 0
 			parent: 0
 		}
 	}
-		// scope: &ast.Scope{start_pos: 0, parent: 0}
 	p.init_parse_fns()
 	p.read_first_token()
 	return p.stmt()

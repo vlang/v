@@ -361,7 +361,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 	match node {
 		ast.ArrayInit {
 			// `x := []string`
-			if it.exprs.len == 0 && it.typ != 0 {
+			if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
 				f.write(f.table.type_to_str(it.typ))
 			}
 			// `[1,2,3]`
@@ -420,7 +420,8 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.or_expr(it.or_block)
 			}
 			else {
-				f.write('${it.name}(')
+				name := short_module(it.name)
+				f.write('${name}(')
 				f.call_args(it.args)
 				f.write(')')
 				f.or_expr(it.or_block)
@@ -472,7 +473,8 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.write('_')
 			}
 			else {
-				f.write('$it.name')
+				name := short_module(it.name)
+				f.write(name)
 			}
 		}
 		ast.InfixExpr {
@@ -518,8 +520,8 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.writeln(' {')
 			f.indent++
 			for i, branch in it.branches {
-				// normal branch
 				if i < it.branches.len - 1 {
+					// normal branch
 					for j, expr in branch.exprs {
 						f.expr(expr)
 						if j < branch.exprs.len - 1 {
@@ -527,8 +529,8 @@ fn (f mut Fmt) expr(node ast.Expr) {
 						}
 					}
 				}
-				// else branch
 				else {
+					// else branch
 					f.write('else')
 				}
 				if branch.stmts.len == 0 {
@@ -602,12 +604,13 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.StructInit {
 			type_sym := f.table.get_type_symbol(it.typ)
+			name := short_module(type_sym.name)
 			// `Foo{}` on one line if there are no fields
 			if it.fields.len == 0 {
-				f.write('$type_sym.name{}')
+				f.write('$name{}')
 			}
 			else {
-				f.writeln('$type_sym.name{')
+				f.writeln('$name{')
 				for i, field in it.fields {
 					f.write('\t$field: ')
 					f.expr(it.exprs[i])
@@ -675,4 +678,16 @@ fn (f mut Fmt) comment(node ast.Comment) {
 		f.writeln(line)
 	}
 	f.writeln('*/')
+}
+
+// foo.bar.fn() => bar.fn()
+fn short_module(name string) string {
+	if !name.contains('.') {
+		return name
+	}
+	vals := name.split('.')
+	if vals.len < 2 {
+		return name
+	}
+	return vals[vals.len-2] + '.' + vals[vals.len-1]
 }

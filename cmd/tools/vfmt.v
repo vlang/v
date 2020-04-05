@@ -43,10 +43,10 @@ const (
 )
 
 fn main() {
-	if os.getenv('VFMT_ENABLE') == '' {
-		eprintln('v fmt is disabled for now')
-		exit(1)
-	}
+	//if os.getenv('VFMT_ENABLE') == '' {
+		//eprintln('v fmt is disabled for now')
+		//exit(1)
+	//}
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := join_flags_and_argument()
@@ -54,7 +54,7 @@ fn main() {
 		is_2: '-2' in args
 		is_c: '-c' in args
 		is_l: '-l' in args
-		is_w: '-ww' in args
+		is_w: '-w' in args
 		is_diff: '-diff' in args
 		is_verbose: '-verbose' in args || '--verbose' in args
 		is_all: '-all' in args || '--all' in args
