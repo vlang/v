@@ -21,7 +21,7 @@ const (
 fn C.puts(charptr)
 */
 
-fn init() {
+fn builtin_init() {
 	// Do nothing
 }
 

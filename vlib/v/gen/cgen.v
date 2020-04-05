@@ -594,16 +594,20 @@ fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('// assert')
 	g.write('if( ')
 	g.expr(a.expr)
-	s_assertion := a.expr.str().replace('"', "\'")
 	g.write(' )')
+	s_assertion := a.expr.str().replace('"', "\'")
+	mut mod_path := g.file.path
+	$if windows {
+		mod_path = g.file.path.replace('\\', '\\\\')
+	}
 	if g.is_test {
 		g.writeln('{')
 		g.writeln('	g_test_oks++;')
-		g.writeln('	cb_assertion_ok( _STR("${g.file.path}"), ${a.pos.line_nr}, _STR("assert ${s_assertion}"), _STR("${g.fn_decl.name}()") );')
-		// g.writeln('	println(_STR("OK ${g.file.path}:${a.pos.line_nr}: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+		g.writeln('	cb_assertion_ok( _STR("${mod_path}"), ${a.pos.line_nr}, _STR("assert ${s_assertion}"), _STR("${g.fn_decl.name}()") );')
+		// g.writeln('	println(_STR("OK ${mod_path}:${a.pos.line_nr}: fn ${g.fn_decl.name}(): assert $s_assertion"));')
 		g.writeln('}else{')
 		g.writeln('	g_test_fails++;')
-		g.writeln('	cb_assertion_failed( _STR("${g.file.path}"), ${a.pos.line_nr}, _STR("assert ${s_assertion}"), _STR("${g.fn_decl.name}()") );')
+		g.writeln('	cb_assertion_failed( _STR("${mod_path}"), ${a.pos.line_nr}, _STR("assert ${s_assertion}"), _STR("${g.fn_decl.name}()") );')
 		g.writeln('	exit(1);')
 		g.writeln('	// TODO')
 		g.writeln('	// Maybe print all vars in a test function if it fails?')
@@ -611,7 +615,7 @@ fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
 		return
 	}
 	g.writeln('{}else{')
-	g.writeln('	eprintln(_STR("${g.file.path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+	g.writeln('	eprintln(_STR("${mod_path}:${a.pos.line_nr}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
 	g.writeln('	exit(1);')
 	g.writeln('}')
 }
@@ -2072,6 +2076,7 @@ fn verror(s string) {
 
 fn (g mut Gen) write_init_function() {
 	g.writeln('void _vinit() {')
+	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
 	g.writeln(g.inits.str())
 	g.writeln('}')
