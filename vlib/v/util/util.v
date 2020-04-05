@@ -100,10 +100,10 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 	tool_source := os.real_path('$vroot/cmd/tools/${tool_name}.v')
 	tool_command := '"$tool_exe" $tool_args'
 	if is_verbose {
-		eprintln('launch_tool vexe        : $vroot')
-		eprintln('launch_tool vroot       : $vroot')
-		eprintln('launch_tool tool_args   : $tool_args')
-		eprintln('launch_tool tool_command: $tool_command')
+		println('launch_tool vexe        : $vroot')
+		println('launch_tool vroot       : $vroot')
+		println('launch_tool tool_args   : $tool_args')
+		println('launch_tool tool_command: $tool_command')
 	}
 
 	// TODO Caching should be done on the `vlib/v` level.
@@ -131,14 +131,14 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 		}
 	}
 	if is_verbose {
-		eprintln('launch_tool should_compile: $should_compile')
+		println('launch_tool should_compile: $should_compile')
 	}
 
 	if should_compile {
 		mut compilation_command := '"$vexe" '
 		compilation_command += '"$tool_source"'
 		if is_verbose {
-			eprintln('Compiling $tool_name with: "$compilation_command"')
+			println('Compiling $tool_name with: "$compilation_command"')
 		}
 		tool_compilation := os.exec(compilation_command) or { panic(err) }
 		if tool_compilation.exit_code != 0 {
@@ -146,7 +146,7 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 		}
 	}
 	if is_verbose {
-		eprintln('launch_tool running tool command: $tool_command ...')
+		println('launch_tool running tool command: $tool_command ...')
 	}
 
 	exit(os.system(tool_command))
