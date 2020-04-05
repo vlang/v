@@ -86,10 +86,11 @@ pub fn (graph mut DepGraph) add(mod string, deps []string) {
 
 pub fn (graph &DepGraph) resolve() &DepGraph {
 	mut node_names := OrderedDepMap{}
+	mut node_deps := OrderedDepMap{}
 	for node in graph.nodes {
 		node_names.add(node.name, node.deps)
+		node_deps.add(node.name, node.deps)
 	}
-	mut node_deps := node_names
 	mut resolved := new_dep_graph()
 	for node_deps.size() != 0 {
 		mut ready_set := []string

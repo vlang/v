@@ -364,9 +364,11 @@ pub fn (m mut map) delete(key string) {
 			if m.key_values.size <= 32 {
 				return
 			}
-			if (f32(m.key_values.size) / f32(m.key_values.deletes)) < 1 {
+			// Clean up key_values if too many have been deleted
+			if m.key_values.deletes >= (m.key_values.size >> 1) {
 				m.key_values.zeros_to_end()
 				m.rehash()
+				m.key_values.deletes = 0
 			}
 			return
 		}
