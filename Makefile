@@ -57,7 +57,7 @@ ifndef ANDROID
 	$(MAKE) modules
 endif
 endif
-ifdef ALWAYS_CLEAN_TMP
+ifdef V_ALWAYS_CLEAN_TMP
 	$(MAKE) clean_tmp
 endif
 	@echo "V has been successfully built"
