@@ -28,7 +28,7 @@ mut:
 	fn_return_type table.Type // current function's return type
 	const_decl     string
 	const_deps     []string
-	assigned_var_name string
+	//assigned_var_name string
 	// fn_decl        ast.FnDecl
 	pref           &pref.Preferences // Preferences shared from V struct
 }
@@ -479,7 +479,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		for i, _ in assign_stmt.left {
 			mut ident := assign_stmt.left[i]
 			mut ident_var_info := ident.var_info()
-			c.assigned_var_name = ident.name
+			//c.assigned_var_name = ident.name
 			val_type := c.expr(assign_stmt.right[i])
 			if assign_stmt.op == .assign {
 				var_type := c.expr(ident)
@@ -498,7 +498,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		}
 	}
 	c.expected_type = table.void_type
-			c.assigned_var_name = ''
+	//c.assigned_var_name = ''
 }
 
 pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
@@ -997,7 +997,7 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 }
 
 pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
-	if c.expected_type != table.void_type || c.assigned_var_name != '' {
+	if c.expected_type != table.void_type { // || c.assigned_var_name != '' {
 		//sym := c.table.get_type_symbol(c.expected_type)
 		//println('$c.file.path  $node.pos.line_nr IF is expr: checker exp type = ' + sym.name)
 		node.is_expr = true

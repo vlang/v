@@ -26,6 +26,7 @@ mut:
 	cur_mod        string
 	file           ast.File
 	did_imports bool
+	is_assign bool
 }
 
 pub fn fmt(file ast.File, table &table.Table) string {
@@ -130,6 +131,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 					f.write(', ')
 				}
 			}
+			f.is_assign = true
 			f.write(' $it.op.str() ')
 			for i, val in it.right {
 				f.expr(val)
@@ -138,9 +140,15 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				}
 			}
 			f.writeln('')
+			f.is_assign = false
 		}
 		ast.Attr {
 			f.writeln('[$it.name]')
+		}
+		ast.Block {
+			f.writeln('{')
+			f.stmts(it.stmts)
+			f.writeln('}')
 		}
 		ast.BranchStmt {
 			match it.tok.kind {
@@ -676,7 +684,7 @@ fn short_module(name string) string {
 
 fn (f mut Fmt) if_expr(it ast.IfExpr) {
 	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len ==
-		1 && it.branches[1].stmts.len == 1 && it.is_expr
+		1 && it.branches[1].stmts.len == 1 && (it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
 		if i == 0 {
