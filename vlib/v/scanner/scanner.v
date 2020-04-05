@@ -732,17 +732,21 @@ pub fn (s mut Scanner) scan() token.Token {
 				start := s.pos + 1
 				s.ignore_line()
 				s.line_comment = s.text[start + 1..s.pos]
-				// if s.comments_mode == .parse_comments {
-				// println('line c $s.line_comment')
-				// }
 				comment := s.line_comment.trim_space()
-				// s.line_comment = comment
 				if s.comments_mode == .parse_comments {
-					// println('line c "$comment" z=')
+					// Find out if this comment is on its own line (for vfmt)
+					mut is_separate_line_comment := true
+					for j := start-2; s.text[j] != `\n`; j-- {
+						if !(s.text[j] in [`\t`, ` `]) {
+							is_separate_line_comment = false
+						}
+					}
+					if is_separate_line_comment {
+						comment = '|' + comment
+					}
+					s.pos--
 					// fix line_nr, \n was read, and the comment is marked
 					// on the next line
-					s.pos--
-					// println("'" + s.text[s.pos].str() + "'")
 					s.line_nr--
 					return s.new_token(.comment, comment)
 				}

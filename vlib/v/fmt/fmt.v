@@ -681,7 +681,13 @@ fn (f mut Fmt) or_expr(or_block ast.OrExpr) {
 
 fn (f mut Fmt) comment(node ast.Comment) {
 	if !node.text.contains('\n') {
-		f.writeln('// $node.text')// $node.pos.line_nr')
+		is_separate_line := node.text.starts_with('|')
+		if is_separate_line {
+			f.writeln('// ${node.text[1..]}')// $node.pos.line_nr')
+		} else {
+			f.out.go_back(1)
+			f.writeln('// $node.text')
+		}
 		return
 	}
 	lines := node.text.split_into_lines()

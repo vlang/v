@@ -11,8 +11,8 @@ import (
 	v.util
 )
 
+// Full list of C reserved words, from: https://en.cppreference.com/w/c/keyword
 const (
-	// Full list of C reserved words, from: https://en.cppreference.com/w/c/keyword
 	c_reserved = ['delete', 'exit', 'unix',
 	'error', 'calloc', 'malloc', 'free', 'panic',
 	'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register',
@@ -58,9 +58,6 @@ const (
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 	'\t\t\t\t\t\t\t\t']
 )
-
-fn foo(file []ast.File) {}
-fn foo2(file []int) {}
 
 pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
 	// println('start cgen2')
@@ -228,6 +225,7 @@ pub fn (g mut Gen) write_typedef_types() {
 					g.definitions.writeln(');')
 				}
 			}
+			//
 			else {
 				continue
 			}
