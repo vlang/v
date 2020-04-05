@@ -21,6 +21,9 @@ pub fn vhash() string {
 pub fn full_hash() string {
 	build_hash := vhash()
 	current_hash := githash(false)
+	if build_hash == current_hash {
+	   return build_hash
+	}
 	return '${build_hash}.${current_hash}'
 }
 
