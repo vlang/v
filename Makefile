@@ -57,12 +57,15 @@ ifndef ANDROID
 	$(MAKE) modules
 endif
 endif
+	$(MAKE) clean_tmp
 	@echo "V has been successfully built"
 
-clean:
+clean: clean_tmp
+	git clean -xf
+
+clean_tmp:
 	rm -rf $(TMPTCC)
 	rm -rf $(TMPVC)
-	git clean -xf
 
 latest_vc: $(TMPVC)/.git/config
 	cd $(TMPVC) && $(GITCLEANPULL)
