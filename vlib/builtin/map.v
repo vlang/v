@@ -352,7 +352,6 @@ pub fn (m mut map) delete(key string) {
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if key == m.key_values.data[kv_index].key {
-			C.memset(&m.key_values.data[kv_index], 0, sizeof(KeyValue))
 			for (m.metas[index + 2]>>hashbits) > 1 {
 				m.metas[index] = m.metas[index + 2] - probe_inc
 				m.metas[index + 1] = m.metas[index + 3]
@@ -364,6 +363,7 @@ pub fn (m mut map) delete(key string) {
 			if m.key_values.size <= 32 {
 				return
 			}
+			C.memset(&m.key_values.data[kv_index], 0, sizeof(KeyValue))
 			// Clean up key_values if too many have been deleted
 			if m.key_values.deletes >= (m.key_values.size >> 1) {
 				m.key_values.zeros_to_end()
@@ -393,11 +393,16 @@ pub fn (m &map) keys() []string {
 	return keys
 }
 
+[unsafe_fn]
 pub fn (m map) free() {
-	unsafe{
-		free(m.metas)
-		free(m.key_values.data)
+	free(m.metas)
+	for i := u32(0); i < m.key_values.size; i++ {
+		if m.key_values.data[i].key.str == 0 {
+			continue
+		}
+		m.key_values.data[i].key.free()
 	}
+	free(m.key_values.data)
 }
 
 pub fn (m map) print() {
