@@ -221,11 +221,7 @@ pub fn (g mut Gen) write_typedef_types() {
 				info := typ.info as table.FnType
 				func := info.func
 				if !info.has_decl && !info.is_anon {
-					fn_name := if func.is_c {
-						func.name.replace('.', '__')
-					} else {
-						c_name(func.name)
-					}
+					fn_name := if func.is_c { func.name.replace('.', '__') } else { c_name(func.name) }
 					g.definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 					for i, arg in func.args {
 						g.definitions.write(g.typ(arg.typ))
@@ -451,11 +447,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.return_statement(it)
 		}
 		ast.StructDecl {
-			name := if it.is_c {
-				it.name.replace('.', '__')
-			} else {
-				c_name(it.name)
-			}
+			name := if it.is_c { it.name.replace('.', '__') } else { c_name(it.name) }
 			// g.writeln('typedef struct {')
 			// for field in it.fields {
 			// field_type_sym := g.table.get_type_symbol(field.typ)
@@ -507,11 +499,7 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		// TODO:
 		// `for num in nums {`
 		g.writeln('// FOR IN')
-		i := if it.key_var == '' {
-			g.new_tmp_var()
-		} else {
-			it.key_var
-		}
+		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
 		styp := g.typ(it.val_type)
 		g.write('for (int $i = 0; $i < ')
 		g.expr(it.cond)
@@ -539,11 +527,7 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		val_styp := g.typ(it.val_type)
 		keys_tmp := 'keys_' + g.new_tmp_var()
 		idx := g.new_tmp_var()
-		key := if it.key_var == '' {
-			g.new_tmp_var()
-		} else {
-			it.key_var
-		}
+		key := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
 		zero := g.type_default(it.val_type)
 		g.write('array_$key_styp $keys_tmp = map_keys(&')
 		g.expr(it.cond)
@@ -557,11 +541,7 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		g.writeln('}')
 	} else if table.type_is(it.cond_type, .variadic) {
 		g.writeln('// FOR IN')
-		i := if it.key_var == '' {
-			g.new_tmp_var()
-		} else {
-			it.key_var
-		}
+		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
 		styp := g.typ(it.cond_type)
 		g.write('for (int $i = 0; $i < ')
 		g.expr(it.cond)
@@ -572,11 +552,7 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		g.stmts(it.stmts)
 		g.writeln('}')
 	} else if it.kind == .string {
-		i := if it.key_var == '' {
-			g.new_tmp_var()
-		} else {
-			it.key_var
-		}
+		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
 		g.write('for (int $i = 0; $i < ')
 		g.expr(it.cond)
 		g.writeln('.len; $i++) {')
@@ -1244,11 +1220,7 @@ fn (g mut Gen) assign_expr(node ast.AssignExpr) {
 		else {}
 	}
 	gen_or := is_call && table.type_is(return_type, .optional)
-	tmp_opt := if gen_or {
-		g.new_tmp_var()
-	} else {
-		''
-	}
+	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		rstyp := g.typ(return_type)
 		g.write('$rstyp $tmp_opt =')
@@ -2329,11 +2301,7 @@ fn (g mut Gen) insert_before(s string) {
 
 fn (g mut Gen) call_expr(node ast.CallExpr) {
 	gen_or := !g.is_assign_rhs && node.or_block.stmts.len > 0
-	tmp_opt := if gen_or {
-		g.new_tmp_var()
-	} else {
-		''
-	}
+	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		styp := g.typ(node.return_type)
 		g.write('$styp $tmp_opt = ')
@@ -2414,11 +2382,7 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 fn (g mut Gen) fn_call(node ast.CallExpr) {
 	mut name := node.name
 	is_print := name == 'println' || name == 'print'
-	print_method := if name == 'println' {
-		'println'
-	} else {
-		'print'
-	}
+	print_method := if name == 'println' { 'println' } else { 'print' }
 	if node.is_c {
 		// Skip "C."
 		g.is_c_call = true
