@@ -6,9 +6,19 @@ import (
 )
 
 fn main() {
-	println('Updating V...')
 	vroot := os.dir(pref.vexe_path())
 	os.chdir(vroot)
+
+	// check if have permission on the target directory
+	tmp_perm_check := '$vroot/tmp_perm_check'
+	os.open_file(tmp_perm_check, 'w+') or {
+		eprintln('cannot compile tool to directory ‘$vroot: $err')
+		exit(1)
+	}
+	os.rm(tmp_perm_check)
+
+	println('Updating V...')
+
 	// git pull
 	s := os.exec('git pull --rebase origin master') or {
 		panic(err)

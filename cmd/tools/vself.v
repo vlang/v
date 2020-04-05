@@ -10,6 +10,14 @@ fn main() {
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
 
+	// check if have permission on the target directory
+	tmp_perm_check := '$vroot/tmp_perm_check'
+	os.open_file(tmp_perm_check, 'w+') or {
+		eprintln('cannot compile tool to directory ‘$vroot: $err')
+		exit(1)
+	}
+	os.rm(tmp_perm_check)
+
 	mut cmd := '$vexe -o v2 cmd/v'
 	if os.args.len >= 3 && os.args[2] == '-prod' {
 		cmd = '$vexe -o v2 -prod cmd/v'

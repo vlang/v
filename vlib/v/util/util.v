@@ -135,6 +135,15 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 	}
 
 	if should_compile {
+		// check if have permission on the target directory
+		exe_dir := os.dir(tool_exe)
+		tmp_perm_check := '$exe_dir/tmp_perm_check'
+		os.open_file(tmp_perm_check, 'w') or {
+			eprintln('cannot compile to directory ‘$exe_dir’: $err')
+			exit(1)
+		}
+		os.rm(tmp_perm_check)
+
 		mut compilation_command := '"$vexe" '
 		compilation_command += '"$tool_source"'
 		if is_verbose {
