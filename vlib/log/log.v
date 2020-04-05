@@ -58,7 +58,7 @@ pub fn (l mut Log) set_level(level int) {
 		WARN { LogLevel.warn }
 		INFO { LogLevel.info }
 		DEBUG { LogLevel.debug }
-		else { .debug }
+		else { LogLevel.debug }
 	}
 }
 
