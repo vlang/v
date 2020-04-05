@@ -36,7 +36,7 @@ mut:
 	returns      bool
 
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
-	comments []ast.Comment
+	//comments []ast.Comment
 }
 
 // for tests

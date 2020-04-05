@@ -93,7 +93,11 @@ fn (f mut Fmt) imports(imports []ast.Import) {
 
 fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
-	imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
+	imp_alias_suffix := if is_diff {
+		' as ${imp.alias}'
+	} else {
+		''
+	}
 	return '${imp.mod}${imp_alias_suffix}'
 }
 
@@ -271,7 +275,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('')
 		}
 		ast.CompIf {
-			inversion := if it.is_not { '!' } else { '' }
+			inversion := if it.is_not {
+				'!'
+			} else {
+				''
+			}
 			f.writeln('\$if ${inversion}${it.val} {')
 			f.stmts(it.stmts)
 			if it.has_else {
@@ -538,7 +546,11 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(it.field)
 		}
 		ast.StringLiteral {
-			if it.val.contains("'") { f.write('"$it.val"') } else { f.write("'$it.val'") }
+			if it.val.contains("'") {
+				f.write('"$it.val"')
+			} else {
+				f.write("'$it.val'")
+			}
 		}
 		ast.StringInterLiteral {
 			f.write("'")
@@ -637,6 +649,7 @@ fn (f mut Fmt) comment(node ast.Comment) {
 	f.writeln('/*')
 	for line in lines {
 		f.writeln(line)
+		f.empty_line = false
 	}
 	f.writeln('*/')
 }
@@ -669,7 +682,11 @@ fn (f mut Fmt) if_expr(it ast.IfExpr) {
 		} else if i == it.branches.len - 1 && it.has_else {
 			f.write('} else {')
 		}
-		if single_line { f.write(' ') } else { f.writeln('') }
+		if single_line {
+			f.write(' ')
+		} else {
+			f.writeln('')
+		}
 		f.stmts(branch.stmts)
 		if single_line {
 			f.write(' ')

@@ -821,20 +821,20 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	// Receiver is the first argument
 	/*
 	if it.is_method {
-																		mut styp := g.typ(it.receiver.typ)
-																		// if table.type_nr_muls(it.receiver.typ) > 0 {
-																		// if it.rec_mut {
-																		// styp += '*'
-																		// }
-																		g.write('$styp $it.receiver.name ')
-																		// TODO mut
-																		g.definitions.write('$styp $it.receiver.name')
-																		if it.args.len > 0 {
-																			g.write(', ')
-																			g.definitions.write(', ')
-																		}
-																	}
-	*/
+		mut styp := g.typ(it.receiver.typ)
+		// if table.type_nr_muls(it.receiver.typ) > 0 {
+		// if it.rec_mut {
+		// styp += '*'
+		// }
+		g.write('$styp $it.receiver.name ')
+		// TODO mut
+		g.definitions.write('$styp $it.receiver.name')
+		if it.args.len > 0 {
+			g.write(', ')
+			g.definitions.write(', ')
+		}
+	}
+*/
 	// 
 	g.fn_args(it.args, it.is_variadic)
 	if it.no_body {
@@ -1750,11 +1750,11 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 			} else {
 				/*
 				g.write('(*($elem_type_str*)map_get2(')
-																																																																				g.expr(node.left)
-																																																																				g.write(', ')
-																																																																				g.expr(node.index)
-																																																																				g.write('))')
-				*/
+				g.expr(node.left)
+					g.write(', ')
+					g.expr(node.index)
+					g.write('))')
+*/
 				zero := g.type_default(info.value_type)
 				g.write('(*($elem_type_str*)map_get3(')
 				g.expr(node.left)
@@ -2395,14 +2395,14 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 	// /////////
 	/*
 	if name.contains('subkeys') {
-																			println('call_args $name $node.arg_types.len')
-																			for t in node.arg_types {
-																				sym := g.table.get_type_symbol(t)
-																				print('$sym.name ')
-																			}
-																			println('')
-																		}
-	*/
+	println('call_args $name $node.arg_types.len')
+	for t in node.arg_types {
+		sym := g.table.get_type_symbol(t)
+		print('$sym.name ')
+	}
+	println('')
+}
+*/
 	// ///////
 	g.call_args(node.args, node.expected_arg_types)
 	g.write(')')
@@ -2429,16 +2429,16 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 	// Generate tmp vars for values that have to be freed.
 	/*
 	mut tmps := []string
-																		for arg in node.args {
-																			if arg.typ == table.string_type_idx || is_print {
-																				tmp := g.new_tmp_var()
-																				tmps << tmp
-																				g.write('string $tmp = ')
-																				g.expr(arg.expr)
-																				g.writeln('; //memory')
-																			}
-																		}
-	*/
+	for arg in node.args {
+		if arg.typ == table.string_type_idx || is_print {
+			tmp := g.new_tmp_var()
+			tmps << tmp
+			g.write('string $tmp = ')
+			g.expr(arg.expr)
+			g.writeln('; //memory')
+		}
+	}
+*/
 	if is_print && node.args[0].typ != table.string_type_idx {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
@@ -2723,12 +2723,12 @@ fn (g Gen) type_default(typ table.Type) string {
 	}
 	/*
 	match idx {
-																		table.bool_type_idx {
-																			return '0'
-																		}
-																		else {}
-																	}
-	*/
+		table.bool_type_idx {
+			return '0'
+		}
+		else {}
+	}
+*/
 	match sym.name {
 		'string' {
 			return 'tos3("")'
@@ -2744,24 +2744,24 @@ fn (g Gen) type_default(typ table.Type) string {
 	// - Empty ee= (Empty) { . =  {0}  } ;
 	/*
 	return match typ {
-																		'bool'{ '0'}
-																		'string'{ 'tos3("")'}
-																		'i8'{ '0'}
-																		'i16'{ '0'}
-																		'i64'{ '0'}
-																		'u16'{ '0'}
-																		'u32'{ '0'}
-																		'u64'{ '0'}
-																		'byte'{ '0'}
-																		'int'{ '0'}
-																		'rune'{ '0'}
-																		'f32'{ '0.0'}
-																		'f64'{ '0.0'}
-																		'byteptr'{ '0'}
-																		'voidptr'{ '0'}
-																		else { '{0} '}
-																	}
-	*/
+	'bool'{ '0'}
+	'string'{ 'tos3("")'}
+	'i8'{ '0'}
+	'i16'{ '0'}
+	'i64'{ '0'}
+	'u16'{ '0'}
+	'u32'{ '0'}
+	'u64'{ '0'}
+	'byte'{ '0'}
+	'int'{ '0'}
+	'rune'{ '0'}
+	'f32'{ '0.0'}
+	'f64'{ '0.0'}
+	'byteptr'{ '0'}
+	'voidptr'{ '0'}
+	else { '{0} '}
+}
+*/
 }
 
 pub fn (g mut Gen) write_tests_main() {
