@@ -34,6 +34,21 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 			typ: table.int_type
 		})
 		or_stmts = p.parse_block_no_scope()
+		if or_stmts.len > 0 {
+			last_stmt := or_stmts[or_stmts.len - 1]
+			// TODO: better if?
+			match last_stmt {
+				ast.ExprStmt {}
+				ast.Return {}
+				else {
+					// TODO: line number is wrong (two lines back)
+					p.error('last or block statement is invalid, it must be a return statement or an expression')
+				}
+			}
+		} else {
+			// TODO: line number is wrong (two lines back)
+			p.error('or block must not be empty')
+		}
 		p.close_scope()
 	}
 	node := ast.CallExpr{
