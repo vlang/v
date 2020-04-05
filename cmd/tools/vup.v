@@ -17,11 +17,11 @@ fn main() {
 	}
 
 	if git_result.exit_code != 0 {
-		mut err := 'Permission deined'
-		if !git_result.output.contains('Permission denied') {
-			err = '\n$git_result.output'
+		if git_result.output.contains('Permission denied') {
+			eprintln('cannot compile to ‘$vroot: Permission denied')
+		} else {
+			eprintln(git_result.output)
 		}
-		eprintln('cannot compile to ‘$vroot: $err')
 		exit(1)
 	}
 

@@ -21,7 +21,7 @@ fn main() {
 
 	result := os.exec(cmd) or { panic(err) }
 	if result.exit_code != 0 {
-		mut err := 'Permission deined'
+		mut err := 'Permission denied'
 		if !result.output.contains('Permission denied') {
 			err = '\n$result.output'
 		}
