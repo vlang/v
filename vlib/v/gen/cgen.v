@@ -2168,10 +2168,14 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 				info := typ.info as table.Struct
 				// g.definitions.writeln('typedef struct {')
 				g.definitions.writeln('struct $name {')
-				for field in info.fields {
-					type_name := g.typ(field.typ)
-					field_name := c_name(field.name)
-					g.definitions.writeln('\t$type_name $field_name;')
+				if info.fields.len > 0 {
+					for field in info.fields {
+						type_name := g.typ(field.typ)
+						field_name := c_name(field.name)
+						g.definitions.writeln('\t$type_name $field_name;')
+					}
+				} else {
+					g.definitions.writeln('EMPTY_STRUCT_DECLARATION;')
 				}
 				// g.definitions.writeln('} $name;\n')
 				//
