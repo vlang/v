@@ -28,7 +28,7 @@ const (
 		'vlib/v/tests/typeof_simple_types_test.v',
 		'vlib/v/tests/struct_chained_fields_correct_test.v',
 		'vlib/v/tests/if_expression_test.v',
-		'vlib/v/tests/backtrace_test.v',
+//		'vlib/v/tests/backtrace_test.v',
 		'vlib/v/tests/interfaces_map_test.v',
 		'vlib/v/tests/fn_expecting_ref_but_returning_struct_test.v',
 		'vlib/v/tests/inout/compiler_test.v',
