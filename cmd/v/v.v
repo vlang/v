@@ -47,8 +47,8 @@ fn main() {
 		return
 	}
 	prefs, command := parse_args(args)
-	//println('main() command = $command')
 	if prefs.is_verbose {
+		println('command = "$command"')
 		println(util.full_v_version())
 	}
 	if prefs.is_verbose {
@@ -167,6 +167,12 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 	}
 	if command.ends_with('.v') || os.exists(command) {
 		res.path = command
+	}
+	else if command == 'run' {
+		res.path = args[args.len-1]
+	}
+	if res.is_verbose {
+		println('setting pref.path to "$res.path"')
 	}
 	res.fill_with_defaults()
 	return res, command

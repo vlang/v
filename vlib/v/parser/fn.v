@@ -117,7 +117,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
 		if is_method && p.table.get_type_symbol(rec_type).has_method(name) {
-			p.warn('duplicate method `$name`')
+			p.error('duplicate method `$name`')
 		}
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
