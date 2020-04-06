@@ -652,6 +652,12 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.expected_type = table.void_type
 		}
 		ast.FnDecl {
+			//if it.is_method {
+				//sym := c.table.get_type_symbol(it.receiver.typ)
+				//if sym.has_method(it.name) {
+					//c.warn('duplicate method `$it.name`', it.pos)
+				//}
+			//}
 			c.expected_type = table.void_type
 			c.fn_return_type = it.return_type
 			c.stmts(it.stmts)
