@@ -101,7 +101,7 @@ pub fn formated_error(kind string /*error or warn*/, emsg string, filepath strin
 				pointerline << if emanager.support_color { term.bold(term.blue('^')) } else { '^' }
 				break
 			}
-			clines << '${0:5d}| ' + pointerline.join('')
+			clines << '       ' + pointerline.join('')
 		}
 	}
 	source_context += clines.join('\n')
