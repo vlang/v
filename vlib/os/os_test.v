@@ -31,6 +31,7 @@ fn test_open_file() {
 	}
 	mut file := os.open_file(filename, 'w+', 0o666) or {
 		panic(err)
+		os.File{}
 	}
 	file.write(hello)
 	file.close()

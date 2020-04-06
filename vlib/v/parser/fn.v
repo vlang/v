@@ -36,27 +36,6 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		})
 		is_or_block_used = true
 		or_stmts = p.parse_block_no_scope()
-		if or_stmts.len > 0 {
-			last_stmt := or_stmts[or_stmts.len - 1]
-			println(last_stmt)
-			// TODO: better if?
-			match last_stmt {
-				ast.ExprStmt {}
-				ast.Return {}
-				ast.AssertStmt {}
-				// TODO: only when panic or return type fits (checker part)
-				ast.CallExpr {}
-				// TODO: only in for loop, otherwise we get an error
-				ast.BranchStmt {}
-				else {
-					// TODO: line number is wrong (two lines back)
-					p.error('last or block statement is invalid, it must be a return statement or an expression')
-				}
-			}
-		} else {
-			// TODO: line number is wrong (two lines back)
-			p.error('or block must not be empty')
-		}
 		p.close_scope()
 	}
 	node := ast.CallExpr{
