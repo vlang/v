@@ -522,6 +522,20 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		g.write('data)[$i];')
 		g.stmts(it.stmts)
 		g.writeln('}')
+	} else if it.kind == .array_fixed {
+		g.writeln('// FOR IN')
+		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		sym := g.table.get_type_symbol(it.cond_type)
+		info := sym.array_fixed_info()
+		len := info.size
+		styp := g.typ(it.val_type)
+		deref := if table.type_is_ptr(it.cond_type) { '*'} else { '' }
+		g.writeln('for (int $i = 0; $i < $len /* FIXED ARRAY\'S LEN */; $i++) {')
+		g.write('\t$styp $it.val_var = ($deref')
+		g.expr(it.cond)
+		g.writeln(')[$i];')
+		g.stmts(it.stmts)
+		g.writeln('}')
 	} else if it.kind == .map {
 		// `for num in nums {`
 		g.writeln('// FOR IN')
