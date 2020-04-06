@@ -2017,18 +2017,19 @@ fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
 	} else if arg_is_ptr && !expr_is_ptr {
-		if arg.is_mut {
-			sym := g.table.get_type_symbol(expected_type)
-			if sym.kind == .array {
-				// Special case for mutable arrays. We can't `&` function
-				// results,	have to use `(array[]){ expr }[0]` hack.
-				g.write('&/*111*/(array[]){')
-				g.expr(arg.expr)
-				g.write('}[0]')
-				return
-			}
+        sym := g.table.get_type_symbol(expected_type)
+        if arg.is_mut {
+            if sym.kind == .array {
+                // Special case for mutable arrays. We can't `&` function
+                // results,    have to use `(array[]){ expr }[0]` hack.
+                g.write('&/*111*/(array[]){')
+                g.expr(arg.expr)
+                g.write('}[0]')
+                return
+            }
+        } else if sym.kind != .array_fixed {
+			g.write('&/*qq*/')
 		}
-		g.write('&/*qq*/')
 	} else if !arg_is_ptr && expr_is_ptr {
 		// Dereference a pointer if a value is required
 		g.write('*/*d*/')
