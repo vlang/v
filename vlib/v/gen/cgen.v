@@ -435,7 +435,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			// #include etc
 			typ := it.val.all_before(' ')
 			if typ in ['include', 'define'] {
-				g.includes.writeln('#$it.val')
+				g.definitions.writeln('#$it.val')
 			}
 		}
 		ast.Import {}
