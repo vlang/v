@@ -4,7 +4,6 @@
 
 module builtin
 
-#include <dbghelp.h>
 #flag windows -l dbghelp
 
 pub struct SymbolInfo {
