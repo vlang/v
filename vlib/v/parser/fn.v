@@ -40,6 +40,8 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 			match last_stmt {
 				ast.ExprStmt {}
 				ast.Return {}
+				// TODO: only when panic or return type fits (checker part)
+				ast.CallExpr {}
 				// TODO: only in for loop, otherwise we get an error
 				ast.BranchStmt {}
 				else {
