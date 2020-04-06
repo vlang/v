@@ -114,7 +114,7 @@ pub fn type_is(t Type, flag TypeFlag) bool {
 [inline]
 pub fn new_type(idx int) Type {
 	if idx < 1 || idx > 65536 {
-		panic('new_type_id: idx must be between 1 & 65536')
+		panic('new_type_id: idx must be between 1 and 65536')
 	}
 	return idx
 }
@@ -123,7 +123,7 @@ pub fn new_type(idx int) Type {
 [inline]
 pub fn new_type_ptr(idx int, nr_muls int) Type {
 	if idx < 1 || idx > 65536 {
-		panic('new_type_ptr: idx must be between 1 & 65536')
+		panic('new_type_ptr: idx must be between 1 and 65536')
 	}
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('new_type_ptr: nr_muls must be between 0 & 255')
