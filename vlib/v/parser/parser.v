@@ -943,6 +943,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.next()
 		args := p.call_args()
 		mut or_stmts := []ast.Stmt
+		mut is_or_block_used := false
 		if p.tok.kind == .key_orelse {
 			p.next()
 			p.open_scope()
@@ -954,6 +955,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 				name: 'err'
 				typ: table.string_type
 			})
+			is_or_block_used = true
 			or_stmts = p.parse_block_no_scope()
 			p.close_scope()
 		}
@@ -964,8 +966,9 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 			pos: pos
 			is_method: true
 			or_block: ast.OrExpr{
-			stmts: or_stmts
-		}
+				stmts: or_stmts
+				is_used: is_or_block_used
+			}
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr

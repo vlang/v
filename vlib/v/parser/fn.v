@@ -22,6 +22,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	p.check(.lpar)
 	args := p.call_args()
 	mut or_stmts := []ast.Stmt
+	mut is_or_block_used := false
 	if p.tok.kind == .key_orelse {
 		p.next()
 		p.open_scope()
@@ -33,28 +34,8 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 			name: 'errcode'
 			typ: table.int_type
 		})
+		is_or_block_used = true
 		or_stmts = p.parse_block_no_scope()
-		if or_stmts.len > 0 {
-			last_stmt := or_stmts[or_stmts.len - 1]
-			println(last_stmt)
-			// TODO: better if?
-			match last_stmt {
-				ast.ExprStmt {}
-				ast.Return {}
-				ast.AssertStmt {}
-				// TODO: only when panic or return type fits (checker part)
-				ast.CallExpr {}
-				// TODO: only in for loop, otherwise we get an error
-				ast.BranchStmt {}
-				else {
-					// TODO: line number is wrong (two lines back)
-					p.error('last or block statement is invalid, it must be a return statement or an expression')
-				}
-			}
-		} else {
-			// TODO: line number is wrong (two lines back)
-			p.error('or block must not be empty')
-		}
 		p.close_scope()
 	}
 	node := ast.CallExpr{
@@ -64,8 +45,9 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		pos: tok.position()
 		is_c: is_c
 		or_block: ast.OrExpr{
-		stmts: or_stmts
-	}
+			stmts: or_stmts
+			is_used: is_or_block_used
+		}
 	}
 	return node
 }
