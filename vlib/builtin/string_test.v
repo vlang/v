@@ -438,6 +438,7 @@ fn test_trim_left() {
 	// test cutset
 	s = 'banana'
 	assert s.trim_left('ba') == 'nana'
+	assert s.trim_left('ban') == ''
 }
 
 fn test_trim_right() {
@@ -448,6 +449,7 @@ fn test_trim_right() {
 	// test cutset
 	s = 'banana'
 	assert s.trim_right('na') == 'b'
+	assert s.trim_right('ban') == ''
 }
 
 fn test_all_before() {
