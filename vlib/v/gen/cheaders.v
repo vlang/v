@@ -212,7 +212,7 @@ void _vcleanup();
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 
 // ============== wyhash ==============
-//Author: Wang Yi <godspeed_china@yeah.net>
+//Author: Wang Yi 
 #ifndef wyhash_version_gamma
 #define wyhash_version_gamma
 #include <stdint.h>
