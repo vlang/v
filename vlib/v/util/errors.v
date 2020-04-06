@@ -114,7 +114,7 @@ pub fn formated_error(kind string /*error or warn*/, emsg string, filepath strin
 			term.bold(term.bright_blue(kind))
 		}
 	}
-	final_msg := if emanager.support_color { term.bold(emsg) } else { emsg }
+	final_msg := emsg // if emanager.support_color { term.bold(emsg) } else { emsg }
 	final_context := if source_context.len > 0 { '\n$source_context' } else { '' }
 	//
 	return '$final_position $final_kind $final_msg $final_context'.trim_space()
