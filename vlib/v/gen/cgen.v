@@ -1900,7 +1900,7 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 				continue
 			}
 			field_name := c_name(field.name)
-			zero := g.type_default(field.typ)
+			zero := if field.default_val != '' { field.default_val } else { g.type_default(field.typ) }
 			g.writeln('\t.$field_name = $zero,')			// zer0')
 		}
 	}

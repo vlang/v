@@ -557,6 +557,7 @@ pub:
 	name string
 mut:
 	typ  Type
+	default_val string
 }
 
 pub struct Array {

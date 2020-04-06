@@ -107,7 +107,7 @@ pub:
 	name string
 	pos token.Position
 	comment Comment
-	default_expr Expr
+	default_expr string // token literal //Expr
 mut:
 	typ table.Type
 }

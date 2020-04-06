@@ -1540,11 +1540,13 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			println('XXXX' + s.str())
 		}
 		*/
-		mut default_expr := ast.Expr{}
+		mut default_expr := '' // ast.Expr{}
 		if p.tok.kind == .assign {
 			// Default value
 			p.next()
-			default_expr = p.expr(0)
+			default_expr = p.tok.lit
+			p.expr(0)
+			//default_expr = p.expr(0)
 		}
 		if p.tok.kind == .comment {
 			comment = p.comment()
@@ -1554,10 +1556,12 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			pos: field_pos
 			typ: typ
 			comment: comment
+			default_expr: default_expr
 		}
 		fields << table.Field{
 			name: field_name
 			typ: typ
+			default_val: default_expr
 		}
 		// println('struct field $ti.name $field_name')
 	}
