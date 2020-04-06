@@ -151,9 +151,10 @@ TODO
 */
 
 }
+
 pub fn v_calloc(n int) byteptr {
 	return C.calloc(n, 1)
-	}
+}
 
 pub fn vcalloc(n int) byteptr {
 	if n <= 0 {

@@ -277,17 +277,6 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		if fn_name == 'typeof' {
 			return table.string_type
 		}
-		// start hack: until v1 is fixed and c definitions are added for these
-		if fn_name in ['C.calloc', 'C.malloc', 'C.exit', 'C.free'] {
-			for arg in call_expr.args {
-				c.expr(arg.expr)
-			}
-			if fn_name in ['C.calloc', 'C.malloc'] {
-				return table.byteptr_type
-			}
-			return table.void_type
-		}
-		// end hack
 		// look for function in format `mod.fn` or `fn` (main/builtin)
 		mut f := table.Fn{}
 		mut found := false
