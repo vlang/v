@@ -1,11 +1,11 @@
-module compile
+module builder
 
 import (
 	os
 	time
 )
 
-fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
+fn (v &Builder) generate_hotcode_reloading_compiler_flags() []string {
 	mut a := []string
 	if v.pref.is_live || v.pref.is_so {
 		// See 'man dlopen', and test running a GUI program compiled with -live
@@ -19,7 +19,7 @@ fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
 	return a
 }
 
-fn (v &V) generate_hotcode_reloading_declarations() {
+fn (v &Builder) generate_hotcode_reloading_declarations() {
 	/*
 	QTODO
 	mut cgen := v.cgen
@@ -50,7 +50,7 @@ void pthread_mutex_unlock(HANDLE *m) {
 	*/
 }
 
-fn (v &V) generate_hotcode_reloading_main_caller() {
+fn (v &Builder) generate_hotcode_reloading_main_caller() {
 	// QTODO
 	/*
 	if !v.pref.is_live {
@@ -80,7 +80,7 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 	*/
 }
 
-fn (v &V) generate_hot_reload_code() {
+fn (v &Builder) generate_hot_reload_code() {
 	/*
 	QTODO
 	mut cgen := v.cgen

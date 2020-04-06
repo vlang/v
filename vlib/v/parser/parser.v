@@ -508,7 +508,7 @@ fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 
 pub fn (p &Parser) error(s string) {
 	mut kind := 'error:'
-	if p.pref.verbosity.is_higher_or_equal(.level_one) {
+	if p.pref.is_verbose {
 		print_backtrace()
 		kind = 'parser error:'
 	}

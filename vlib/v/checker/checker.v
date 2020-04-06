@@ -1207,11 +1207,11 @@ fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
 		c.nr_errors++
 	}
 	//if c.pref.is_verbose {
-	if c.pref.verbosity.is_higher_or_equal(.level_one) {
+	if c.pref.is_verbose {
 		print_backtrace()
 	}
 	typ := if warn { 'warning' } else { 'error' }
-	kind := if c.pref.verbosity.is_higher_or_equal(.level_one) {
+	kind := if c.pref.is_verbose {
 		'checker $typ #$c.nr_errors:'
 	} else {
 		'$typ:'
@@ -1228,7 +1228,7 @@ fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
 	if !warn {
 		c.error_lines << pos.line_nr
 	}
-	if c.pref.verbosity.is_higher_or_equal(.level_one) {
+	if c.pref.is_verbose {
 		println('\n\n')
 	}
 	if c.nr_errors >= max_nr_errors {
