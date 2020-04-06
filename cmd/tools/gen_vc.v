@@ -143,7 +143,7 @@ fn main() {
 // new GenVC
 fn new_gen_vc(flag_options FlagOptions) &GenVC {
 	mut logger := &log.Log{}
-	logger.set_level(log.DEBUG)
+	logger.set_level(log.Level.debug)
 	if flag_options.log_to == 'file' {
 		logger.set_full_logpath( flag_options.log_file )
 	}
