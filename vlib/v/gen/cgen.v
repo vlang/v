@@ -28,6 +28,7 @@ struct Gen {
 	inits          strings.Builder // contents of `void _vinit(){}`
 	gowrappers     strings.Builder // all go callsite wrappers
 	stringliterals strings.Builder // all string literals (they depend on tos3() beeing defined
+	includes       strings.Builder
 	table          &table.Table
 	pref           &pref.Preferences
 mut:
@@ -69,12 +70,13 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	// println('start cgen2')
 	mut g := gen.Gen{
-		out: strings.new_builder(100)
+		out: strings.new_builder(1000)
 		typedefs: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
 		stringliterals: strings.new_builder(100)
 		inits: strings.new_builder(100)
+		includes: strings.new_builder(100)
 		table: table
 		pref: pref
 		fn_decl: 0
@@ -113,8 +115,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	// 
 	g.finish()
-	return g.hashes() + g.typedefs.str() + g.definitions.str() + g.gowrappers.str() + 
-		g.stringliterals.str() + g.out.str()
+	return g.hashes() + g.includes.str() + g.typedefs.str() + g.definitions.str() + 
+		g.gowrappers.str() + g.stringliterals.str() + g.out.str()
 }
 
 pub fn (g Gen) hashes() string {
@@ -433,7 +435,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			// #include etc
 			typ := it.val.all_before(' ')
 			if typ in ['include', 'define'] {
-				g.definitions.writeln('#$it.val')
+				g.includes.writeln('#$it.val')
 			}
 		}
 		ast.Import {}

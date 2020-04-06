@@ -137,16 +137,25 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	right_type := c.expr(infix_expr.right)
 	infix_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
+	left := c.table.get_type_symbol(left_type)
 	if infix_expr.op == .key_in && !(right.kind in [.array, .map, .string]) {
-		c.error('infix expr: `in` can only be used with array/map/string.', infix_expr.pos)
+		c.error('`in` can only be used with an array/map/string.', infix_expr.pos)
 	}
-	if !c.table.check(right_type, left_type) {
-		left := c.table.get_type_symbol(left_type)
-		// `array << elm`
-		// the expressions have different types (array_x and x)
+	if infix_expr.op == .left_shift {
+		if left.kind != .array && !left.is_int() {
+			//c.error('<< can only be used with numbers and arrays', infix_expr.pos)
+			c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
+		}
 		if left.kind == .array && infix_expr.op == .left_shift {
+			// `array << elm`
+			// the expressions have different types (array_x and x)
+			if right.kind != .array && !c.table.check(c.table.value_type(left_type), right_type) {
+				c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
+			}
 			return table.void_type
 		}
+	}
+	if !c.table.check(right_type, left_type) {
 		// `elm in array`
 		if right.kind in [.array, .map] && infix_expr.op == .key_in {
 			return table.bool_type

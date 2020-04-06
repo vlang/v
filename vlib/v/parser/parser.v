@@ -19,7 +19,7 @@ struct Parser {
 	file_name    string
 mut:
 	tok          token.Token
-	peek_tok     token.Token // sdfsdf
+	peek_tok     token.Token
 	table        &table.Table
 	is_c         bool
 	inside_if    bool
@@ -1744,6 +1744,15 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 fn (p mut Parser) hash() ast.HashStmt {
 	val := p.tok.lit
 	p.next()
+	if val.starts_with('flag') {
+		// #flag linux -lm
+		words := val.split(' ')
+		if words.len > 1 && words[1] in supported_platforms {
+			if p.pref.os == .mac && words[1] == 'darwin' {
+				p.pref.cflags += val.after('darwin')
+			}
+		}
+	}
 	return ast.HashStmt{
 		val: val
 	}
