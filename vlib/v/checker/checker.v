@@ -31,6 +31,7 @@ mut:
 	//assigned_var_name string
 	// fn_decl        ast.FnDecl
 	pref           &pref.Preferences // Preferences shared from V struct
+	in_for_count   int // if checker is currently in an for loop
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -657,6 +658,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.stmts(it.stmts)
 		}
 		ast.ForStmt {
+			c.in_for_count++
 			typ := c.expr(it.cond)
 			if !it.is_inf && table.type_idx(typ) != table.bool_type_idx {
 				c.error('non-bool used as for condition', it.pos)
@@ -664,15 +666,19 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			// TODO: update loop var type
 			// how does this work currenly?
 			c.stmts(it.stmts)
+			c.in_for_count--
 		}
 		ast.ForCStmt {
+			c.in_for_count++
 			c.stmt(it.init)
 			c.expr(it.cond)
 			// c.stmt(it.inc)
 			c.expr(it.inc)
 			c.stmts(it.stmts)
+			c.in_for_count--
 		}
 		ast.ForInStmt {
+			c.in_for_count++
 			typ := c.expr(it.cond)
 			if it.is_range {
 				c.expr(it.high)
@@ -687,7 +693,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 						}
 						else {
 							table.int_type}
-	}
+					}
 					it.key_type = key_type
 					scope.update_var_type(it.key_var, key_type)
 				}
@@ -702,6 +708,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				scope.update_var_type(it.val_var, value_type)
 			}
 			c.stmts(it.stmts)
+			c.in_for_count--
 		}
 		ast.GoStmt{
 			c.expr(it.call_expr)
@@ -715,6 +722,11 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		// ast.StructDecl {}
 		ast.UnsafeStmt {
 			c.stmts(it.stmts)
+		}
+		ast.BranchStmt {
+			if c.in_for_count == 0 {
+				c.error('$it.tok.lit statement not within a loop', it.tok.position())
+			}
 		}
 		else {}
 		// println('checker.stmt(): unhandled node')

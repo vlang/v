@@ -379,7 +379,7 @@ pub fn (s mut Scanner) scan() token.Token {
 		// Check if not .eof to prevent panic
 		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
 		if token.is_key(name) {
-			return s.new_token(token.key_to_token(name), '')
+			return s.new_token(token.key_to_token(name), name)
 		}
 		// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 		// at the next ', skip it
@@ -1019,7 +1019,7 @@ pub fn (s &Scanner) error(msg string) {
 	pos := token.Position{
 		line_nr: s.line_nr
 		pos: s.pos
-	}	 
+	}
 	eprintln(util.formated_error('error', msg, s.file_path, pos))
 	exit(1)
 }
