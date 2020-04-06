@@ -53,13 +53,56 @@ pub fn formated_error(kind string /*error or warn*/, emsg string, filepath strin
 			path = path.replace(workdir, '')
 		}
 	}
-	column := 0
-	position := '${path}:${pos.line_nr+1}:$column:'
-	// QTODO: retrieve source lines around pos.line_nr and add them here
+	//
+	mut column := 0
 	mut source_context := ''
+	source := util.read_file(filepath) or { '' }
+	source_lines := source.split_into_lines()
+	if source.len > pos.pos {
+		mut p := pos.pos
+		for ; p>=0; p-- {
+			if source[p] == `\r` || source[p] == `\n` {
+				break
+			}
+		}
+		column = pos.pos - p
+	}
+	position := '${path}:${pos.line_nr+1}:$column:'
+	//
+	bline := pos.line_nr - error_context_before
+	aline := pos.line_nr + error_context_after
+	mut clines := []string
+	for iline, sline in source_lines {
+		if iline >= bline && iline <= aline {
+			mut cline := '${iline+1:5d}| $sline'
+			if iline == pos.line_nr && emanager.support_color {
+				cline = term.red( cline )
+			}
+			clines << cline
+			//
+			if iline == pos.line_nr {
+				// The pointerline should have the same spaces/tabs as the offending
+				// line, so that it prints the ^ character exactly on the *same spot*
+				// where it is needed. That is the reason we can not just
+				// use strings.repeat(` `, col) to form it.
+				mut pointerline := []string
+				for i, c in cline {
+					if i < column {
+						x := if c.is_space() { c } else { ` ` }
+						pointerline << x.str()
+						continue
+					}
+					pointerline << if emanager.support_color { term.bold(term.blue('^')) } else { '^' }
+					break
+				}
+				clines << '      ' + pointerline.join('')
+			}
+		}
+	}
+	source_context += clines.join('\n')
 	//
 	final_position := if emanager.support_color {
-		term.bold(position) // term.white(position))
+		term.bold(position)
 	} else {
 		position
 	}
@@ -71,7 +114,7 @@ pub fn formated_error(kind string /*error or warn*/, emsg string, filepath strin
 			term.bold(term.bright_blue(kind))
 		}
 	}
-	final_msg := emsg
+	final_msg := if emanager.support_color { term.bold(emsg) } else { emsg }
 	final_context := if source_context.len > 0 { '\n$source_context' } else { '' }
 	//
 	return '$final_position $final_kind $final_msg $final_context'.trim_space()
