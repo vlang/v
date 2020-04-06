@@ -18,7 +18,7 @@ fn main() {
 
 	if git_result.exit_code != 0 {
 		if git_result.output.contains('Permission denied') {
-			eprintln('cannot compile to ‘$vroot: Permission denied')
+			eprintln('have no access ‘$vroot: Permission denied')
 		} else {
 			eprintln(git_result.output)
 		}
