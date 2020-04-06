@@ -31,7 +31,7 @@ pub:
 	hour   int
 	minute int
 	second int
-	unix int
+	unix   u64
 }
 
 pub enum FormatTime {
