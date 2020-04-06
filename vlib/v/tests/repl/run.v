@@ -6,7 +6,7 @@ import benchmark
 
 fn main() {
 	mut logger := log.Log{}
-	logger.set_level(log.Level.debug)
+	logger.set_level(.debug)
 	options := runner.new_options()
 	mut bmark := benchmark.new_benchmark()
 	for file in options.files {
