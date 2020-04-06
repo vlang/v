@@ -97,7 +97,7 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 				// struct_field info.
 				field_name := if is_short_syntax { info.fields[i].name } else { struct_init.fields[i] }
 				if field_name in inited_fields {
-					c.error('struct init: duplicate field `$field_name` for struct `$typ_sym.name`', struct_init.pos)
+					c.error('duplicate field name in struct literal: `$field_name`', struct_init.pos)
 					continue
 				}
 				inited_fields << field_name
