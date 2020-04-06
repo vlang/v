@@ -2959,7 +2959,9 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 
 fn type_to_fmt(typ table.Type) string {
 	n := int(typ)
-	if n == table.string_type || n == table.bool_type {
+	if n == table.string_type {
+		return '\'%.*s\''
+	} else if n == table.bool_type {
 		return '%.*s'
 	}
 	return '%d'
