@@ -181,7 +181,7 @@ jobs:
       run: ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
 
   windows-prebuilt:
-    runs-on: windows-2019
+    runs-on: windows-latest
     steps:
     - name: Download V
       shell: cmd
@@ -225,7 +225,7 @@ jobs:
 #      run: docker build . -f Dockerfile.cross
 
   windows-gcc:
-    runs-on: windows-2019
+    runs-on: windows-latest
     env:
         VFLAGS: -cc gcc
     steps:
@@ -241,6 +241,9 @@ jobs:
       run: |
         gcc --version
         .\make.bat -gcc
+    - name: Fixed tests
+      run: |
+        ./v test-fixed
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
@@ -253,7 +256,7 @@ jobs:
 #      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   windows-msvc:
-    runs-on: windows-2019
+    runs-on: windows-latest
     env:
         VFLAGS: -cc msvc
     steps:
