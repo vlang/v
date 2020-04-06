@@ -411,6 +411,11 @@ pub fn (c mut Checker) check_or_block(call_expr mut ast.CallExpr, ret_type table
 							c.error('wrong return type ‘$type_name‘ in or{} block, expected ‘$expected_type_name‘', it.pos)
 						}
 					}
+					ast.BranchStmt {
+						if !(it.tok.kind in [ .key_continue , .key_break ]) {
+							c.error('no other branch statements than break and continue are allowed to end an or {} block', it.tok.position())
+						}
+					}
 					else {}
 				}
 			} else {
