@@ -65,38 +65,43 @@ pub fn formated_error(kind string /*error or warn*/, emsg string, filepath strin
 				break
 			}
 		}
-		column = pos.pos - p
+		column = util.imax(0, pos.pos - p - 1)
 	}
 	position := '${path}:${pos.line_nr+1}:$column:'
 	//
-	bline := pos.line_nr - error_context_before
-	aline := pos.line_nr + error_context_after
+	bline := util.imax(0, pos.line_nr - error_context_before)
+	aline := util.imin(source_lines.len-1, pos.line_nr + error_context_after)
 	mut clines := []string
-	for iline, sline in source_lines {
-		if iline >= bline && iline <= aline {
-			mut cline := '${iline+1:5d}| $sline'
-			if iline == pos.line_nr && emanager.support_color {
-				cline = term.red( cline )
-			}
-			clines << cline
-			//
-			if iline == pos.line_nr {
-				// The pointerline should have the same spaces/tabs as the offending
-				// line, so that it prints the ^ character exactly on the *same spot*
-				// where it is needed. That is the reason we can not just
-				// use strings.repeat(` `, col) to form it.
-				mut pointerline := []string
-				for i, c in cline {
-					if i < column {
-						x := if c.is_space() { c } else { ` ` }
+	tab_spaces := '    '
+	for iline := bline; iline <= aline; iline++ {
+		sline := source_lines[iline]
+		mut cline := '${iline+1:5d}| ' + sline.replace('\t', tab_spaces)
+		if iline == pos.line_nr && emanager.support_color {
+			cline = term.red( cline )
+		}
+		clines << cline
+		//
+		if iline == pos.line_nr {
+			// The pointerline should have the same spaces/tabs as the offending
+			// line, so that it prints the ^ character exactly on the *same spot*
+			// where it is needed. That is the reason we can not just
+			// use strings.repeat(` `, col) to form it.
+			mut pointerline := []string
+			for i, c in sline {
+				if i < column {
+					mut x := c
+					if x == `\t` {
+						pointerline << tab_spaces
+					}else{
+						x = if x.is_space() { c } else { ` ` }
 						pointerline << x.str()
-						continue
 					}
-					pointerline << if emanager.support_color { term.bold(term.blue('^')) } else { '^' }
-					break
+					continue
 				}
-				clines << '      ' + pointerline.join('')
+				pointerline << if emanager.support_color { term.bold(term.blue('^')) } else { '^' }
+				break
 			}
+			clines << '${0:5d}| ' + pointerline.join('')
 		}
 	}
 	source_context += clines.join('\n')

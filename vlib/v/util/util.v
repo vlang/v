@@ -174,3 +174,14 @@ pub fn read_file(file_path string) ?string {
 	}
 	return raw_text
 }
+
+
+[inline]
+fn imin(a, b int) int {
+    return if a < b { a } else { b }
+}
+
+[inline]
+fn imax(a, b int) int {
+    return if a > b { a } else { b }
+}
