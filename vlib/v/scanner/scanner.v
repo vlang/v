@@ -1016,7 +1016,11 @@ fn good_type_name(s string) bool {
 }
 
 pub fn (s &Scanner) error(msg string) {
-	println('$s.line_nr : $msg')
+	pos := token.Position{
+		line_nr: s.line_nr
+		pos: s.pos
+	}	 
+	eprintln(util.formated_error('error', msg, s.file_path, pos))
 	exit(1)
 }
 
