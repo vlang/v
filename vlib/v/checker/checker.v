@@ -148,11 +148,15 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		if left.kind == .array {
 			// `array << elm`
 			// the expressions have different types (array_x and x)
-			if right.kind == .array && !c.table.check(c.table.value_type(left_type), c.table.value_type(right_type)) {
-				c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
-			} else if right.kind != .array && !c.table.check(c.table.value_type(left_type), right_type) {
-				c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
+			if c.table.check(c.table.value_type(left_type), right_type) {
+				// []T << T
+				return table.void_type
 			}
+			if right.kind == .array && c.table.check(c.table.value_type(left_type), c.table.value_type(right_type)) {
+				// []T << []T
+				return table.void_type
+			}
+			c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
 			return table.void_type
 		}
 	}
