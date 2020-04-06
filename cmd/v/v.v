@@ -169,6 +169,7 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 		res.path = command
 	}
 	else if command == 'run' {
+		res.is_run = true
 		res.path = args[args.len-1]
 	}
 	if res.is_verbose {
