@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	c_reserved = ['delete', 'exit', 'unix', 'error', 'calloc', 'malloc', 'free', 
-		'panic', 'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 
-		'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 
+	c_reserved = ['delete', 'exit', 'unix', 'error', 'calloc', 'malloc', 'free',
+		'panic', 'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline',
+		'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch',
 		'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
 )
 
@@ -58,7 +58,7 @@ mut:
 }
 
 const (
-	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', 
+	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t']
 )
 
@@ -86,7 +86,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		indent: -1
 	}
 	g.init()
-	// 
+	//
 	mut autofree_used := false
 	for file in files {
 		g.file = file
@@ -115,9 +115,9 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.is_test {
 		g.write_tests_main()
 	}
-	// 
+	//
 	g.finish()
-	return g.hashes() + g.includes.str() + g.typedefs.str() + g.typedefs2.str() + 
+	return g.hashes() + g.includes.str() + g.typedefs.str() + g.typedefs2.str() +
 		g.definitions.str() + g.gowrappers.str() + g.stringliterals.str() + g.out.str()
 }
 
@@ -141,7 +141,7 @@ pub fn (g mut Gen) init() {
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
-	// 
+	//
 	g.stringliterals.writeln('')
 	g.stringliterals.writeln('// >> string literal consts')
 	g.stringliterals.writeln('void vinit_string_literals(){')
@@ -205,7 +205,7 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	return styp
 }
 
-// 
+//
 pub fn (g mut Gen) write_typedef_types() {
 	for typ in g.table.types {
 		match typ.kind {
@@ -817,7 +817,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 	}
 */
-	// 
+	//
 	g.fn_args(it.args, it.is_variadic)
 	if it.no_body {
 		// Just a function header.
@@ -1135,7 +1135,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write('tos3("$escaped_val")')
 				return
 			}
-			escaped_val := it.val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', 
+			escaped_val := it.val.replace_each(['"', '\\"', '\r\n', '\\n', '\n',
 				'\\n'])
 			if g.is_c_call || it.is_c {
 				// In C calls we have to generate C strings
@@ -1361,7 +1361,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.write(')')
 		}
-	} else if node.op == .left_shift && g.table.get_type_symbol(node.left_type).kind == 
+	} else if node.op == .left_shift && g.table.get_type_symbol(node.left_type).kind ==
 		.array {
 		// arr << val
 		tmp := g.new_tmp_var()
@@ -1452,7 +1452,7 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 					// sum_type_str
 				} else if type_sym.kind == .string {
 					g.write('string_eq(')
-					// 
+					//
 					g.expr(node.cond)
 					g.write(', ')
 					// g.write('string_eq($tmp, ')
@@ -1547,7 +1547,7 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 	// one line ?:
 	// TODO clean this up once `is` is supported
 	// TODO: make sure only one stmt in each branch
-	if node.is_expr && node.branches.len >= 2 && node.has_else && type_sym.kind != 
+	if node.is_expr && node.branches.len >= 2 && node.has_else && type_sym.kind !=
 		.void {
 		g.inside_ternary = true
 		g.write('(')
@@ -1952,7 +1952,7 @@ fn (g mut Gen) assoc(node ast.Assoc) {
 }
 
 fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
-	is_variadic := expected_types.len > 0 && table.type_is(expected_types[expected_types.len - 
+	is_variadic := expected_types.len > 0 && table.type_is(expected_types[expected_types.len -
 		1], .variadic)
 	mut arg_no := 0
 	for arg in args {
@@ -1996,7 +1996,7 @@ fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 
 [inline]
 fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
-	arg_is_ptr := table.type_is_ptr(expected_type) || table.type_idx(expected_type) in 
+	arg_is_ptr := table.type_is_ptr(expected_type) || table.type_idx(expected_type) in
 		table.pointer_type_idxs
 	expr_is_ptr := table.type_is_ptr(arg.typ) || table.type_idx(arg.typ) in table.pointer_type_idxs
 	if arg.is_mut && !arg_is_ptr {
@@ -2134,7 +2134,7 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 					g.definitions.writeln('EMPTY_STRUCT_DECLARATION;')
 				}
 				// g.definitions.writeln('} $name;\n')
-				// 
+				//
 				g.definitions.writeln('};\n')
 			}
 			table.Alias {
@@ -2201,8 +2201,8 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 	// sort graph
 	dep_graph_sorted := dep_graph.resolve()
 	if !dep_graph_sorted.acyclic {
-		verror('cgen.sort_structs(): the following structs form a dependency cycle:\n' + 
-			dep_graph_sorted.display_cycles() + '\nyou can solve this by making one or both of the dependant struct fields references, eg: field &MyStruct' + 
+		verror('cgen.sort_structs(): the following structs form a dependency cycle:\n' +
+			dep_graph_sorted.display_cycles() + '\nyou can solve this by making one or both of the dependant struct fields references, eg: field &MyStruct' +
 			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
@@ -2339,7 +2339,7 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 		return
 	}
 	// TODO performance, detect `array` method differently
-	if typ_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free', 
+	if typ_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free',
 		'push_many', 'trim', 'first', 'last', 'clone', 'reverse', 'slice'] {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
@@ -2365,7 +2365,7 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 		g.write('/*rec*/*')
 	}
 	g.expr(node.left)
-	is_variadic := node.expected_arg_types.len > 0 && table.type_is(node.expected_arg_types[node.expected_arg_types.len - 
+	is_variadic := node.expected_arg_types.len > 0 && table.type_is(node.expected_arg_types[node.expected_arg_types.len -
 		1], .variadic)
 	if node.args.len > 0 || is_variadic {
 		g.write(', ')
@@ -2947,6 +2947,8 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 		g.definitions.write('a.' + field.name)
 		if field.typ == table.string_type {
 			g.definitions.write('.len, a.${field.name}.str')
+		} else if field.typ == table.bool_type {
+			g.definitions.write(' == true ? 4 : 5, a.${field.name} == true ? "true" : "false"')
 		}
 		if i < info.fields.len - 1 {
 			g.definitions.write(', ')
@@ -2957,7 +2959,7 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 
 fn type_to_fmt(typ table.Type) string {
 	n := int(typ)
-	if n == table.string_type {
+	if n == table.string_type || n == table.bool_type {
 		return '%.*s'
 	}
 	return '%d'
