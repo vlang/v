@@ -89,20 +89,38 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 			}
 			mut inited_fields := []string
 			for i, expr in struct_init.exprs {
+				if is_short_syntax && i >= info.fields.len {
+					// It doesn't make sense to check for fields that don't exist.
+					// We should just stop here.
+					break
+				}
 				// struct_field info.
 				field_name := if is_short_syntax { info.fields[i].name } else { struct_init.fields[i] }
-				mut field := info.fields[i]
-				inited_fields << field_name
-				mut found_field := false
-				for f in info.fields {
-					if f.name == field_name {
-						field = f
-						found_field = true
-						break
-					}
+				if field_name in inited_fields {
+					c.error('struct init: duplicate field `$field_name` for struct `$typ_sym.name`', struct_init.pos)
+					continue
 				}
-				if !found_field {
-					c.error('struct init: no such field `$field_name` for struct `$typ_sym.name`', struct_init.pos)
+				inited_fields << field_name
+				mut field := if is_short_syntax {
+					info.fields[i]
+				} else {
+					// There is no guarantee that `i` will not be out of bounds of `info.fields`
+					// So we just use an empty field as placeholder here.
+					table.Field{}
+				}
+				if !is_short_syntax {
+					mut found_field := false
+					for f in info.fields {
+						if f.name == field_name {
+							field = f
+							found_field = true
+							break
+						}
+					}
+					if !found_field {
+						c.error('struct init: no such field `$field_name` for struct `$typ_sym.name`', struct_init.pos)
+						continue
+					}
 				}
 				c.expected_type = field.typ
 				expr_type := c.expr(expr)
