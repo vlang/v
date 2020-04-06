@@ -24,6 +24,7 @@ const (
 struct Gen {
 	out            strings.Builder
 	typedefs       strings.Builder
+	typedefs2      strings.Builder
 	definitions    strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	inits          strings.Builder // contents of `void _vinit(){}`
 	gowrappers     strings.Builder // all go callsite wrappers
@@ -72,6 +73,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	mut g := gen.Gen{
 		out: strings.new_builder(1000)
 		typedefs: strings.new_builder(100)
+		typedefs2: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
 		stringliterals: strings.new_builder(100)
@@ -115,8 +117,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	// 
 	g.finish()
-	return g.hashes() + g.includes.str() + g.typedefs.str() + g.definitions.str() + 
-		g.gowrappers.str() + g.stringliterals.str() + g.out.str()
+	return g.hashes() + g.includes.str() + g.typedefs.str() + g.typedefs2.str() + 
+		g.definitions.str() + g.gowrappers.str() + g.stringliterals.str() + g.out.str()
 }
 
 pub fn (g Gen) hashes() string {
@@ -192,9 +194,11 @@ pub fn (g mut Gen) typ(t table.Type) string {
 		}
 	}
 	if table.type_is(t, .optional) {
+		// Register an optional
 		styp = 'Option_' + styp
 		if !(styp in g.optionals) {
-			g.definitions.writeln('typedef Option $styp;')
+			// println(styp)
+			g.typedefs2.writeln('typedef Option $styp;')
 			g.optionals << styp
 		}
 	}
@@ -1897,6 +1901,10 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 	if is_struct {
 		for field in info.fields {
 			if field.name in inited_fields {
+				continue
+			}
+			if table.type_is(field.typ, .optional) {
+				// TODO handle/require optionals in inits
 				continue
 			}
 			field_name := c_name(field.name)
