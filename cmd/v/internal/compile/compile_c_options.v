@@ -42,10 +42,6 @@ fn parse_c_options(flag string, f mut flag.Instance, prefs mut pref.Preferences)
 				'keep' {
 					prefs.is_keep_c = true
 				}
-				'prettify' {
-					prefs.is_keep_c = true
-					prefs.is_pretty_c = true
-				}
 				'drop' {} //Default
 				else {
 					println('V error: Unknown argument for `-csource` (`$operation`).')

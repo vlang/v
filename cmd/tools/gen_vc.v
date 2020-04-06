@@ -299,8 +299,6 @@ fn (gen_vc mut GenVC) generate() {
 		gen_vc.assert_file_exists_and_is_not_too_short(c_file, err_msg_gen_c)
 		// embed the latest v commit hash into the c file
 		gen_vc.cmd_exec('sed -i \'1s/^/#define V_COMMIT_HASH "$last_commit_hash_v_short"\\n/\' $c_file')
-		// run clang-format to make the c file more readable
-		gen_vc.cmd_exec('clang-format -i $c_file')
 		// move to vc repo
 		gen_vc.cmd_exec('mv $c_file $git_repo_dir_vc/$c_file')
 		// add new .c file to local vc repo
