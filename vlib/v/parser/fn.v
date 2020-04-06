@@ -40,6 +40,8 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 			match last_stmt {
 				ast.ExprStmt {}
 				ast.Return {}
+				// TODO: only in for loop, otherwise we get an error
+				ast.BranchStmt {}
 				else {
 					// TODO: line number is wrong (two lines back)
 					p.error('last or block statement is invalid, it must be a return statement or an expression')
