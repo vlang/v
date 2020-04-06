@@ -232,6 +232,8 @@ static inline uint64_t _wyread64(const uint8_t *p){ uint64_t v; memcpy(&v, p, 8)
 static inline uint64_t _wyread64(const uint8_t *p){ uint64_t v; memcpy(&v, p, 8); return __builtin_bswap64(v);}
 #elif defined(_MSC_VER)
 static inline uint64_t _wyread64(const uint8_t *p){ uint64_t v; memcpy(&v, p, 8); return _byteswap_uint64(v);}
+#else
+static inline uint64_t _wyread64(const uint8_t *p){ uint64_t v; memcpy(&v, p, 8); return v;}
 #endif
 #endif
 
