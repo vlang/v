@@ -1149,6 +1149,15 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.struct_init(it)
 		}
 		ast.SelectorExpr {
+			// if we try to access .len no fixed array just return it's size
+			sym := g.table.get_type_symbol(it.expr_type)
+			if sym.kind == .array_fixed {
+				if it.field == 'len' {
+					info := sym.array_fixed_info()
+					g.write('$info.size')
+					return
+				}
+			}
 			g.expr(it.expr)
 			// if table.type_nr_muls(it.expr_type) > 0 {
 			if table.type_is_ptr(it.expr_type) {
