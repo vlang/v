@@ -296,6 +296,57 @@ fn test_fixed() {
 	assert nums2[N - 1] == 0
 }
 
+
+fn test_fixed_array_for_in() {
+	mut arr := [8]int
+	for val in arr {
+		assert val == 0 
+	}
+}
+
+fn test_fixed_array_len() {
+	mut arr := [8]int
+	assert arr.len == 8
+}
+
+fn test_fixed_array_index() {
+	mut arr := [8]int
+	assert arr[0] == 0
+}
+
+fn test_fixed_array_assignment() {
+	mut arr := [8]int
+	arr[1] = 5
+	assert arr[1] == 5
+}
+
+
+fn double_each(arr mut [8]int) {
+	for i, v in arr {
+		// throws: error: invalid operands to binary * (have 'array_fixed_int_8' and 'int')
+		// make sure that we dereference
+		arr[i] *= 2
+	}
+}
+
+fn get_len(arr mut[8]int) int {
+	return arr.len
+}
+
+// will fail miserably
+fn test_fixed_array_as_mutable_arg() {
+	mut arr := [8]int
+	// temporary hack?
+	for i, val in arr {
+		arr[i] = i
+	}
+	assert get_len(arr) == 8
+	double_each(mut arr)
+	for i, val in arr {
+		assert (i * 2) == val
+	}
+}
+
 fn modify(numbers mut []int) {
 	numbers[0] = 777
 }
