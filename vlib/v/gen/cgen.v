@@ -1163,7 +1163,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.struct_init(it)
 		}
 		ast.SelectorExpr {
-			// if we try to access .len no fixed array just return it's size
+			// if we try to access .len on fixed array just return it's size
 			sym := g.table.get_type_symbol(it.expr_type)
 			if sym.kind == .array_fixed {
 				if it.field == 'len' {
