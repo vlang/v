@@ -131,6 +131,7 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 
 pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	// println('checker: infix expr(op $infix_expr.op.str())')
+	c.expected_type = table.void_type
 	left_type := c.expr(infix_expr.left)
 	infix_expr.left_type = left_type
 	c.expected_type = left_type
@@ -138,29 +139,31 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	infix_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
-	if infix_expr.op == .key_in && !(right.kind in [.array, .map, .string]) {
-		c.error('`in` can only be used with an array/map/string.', infix_expr.pos)
-	}
 	if infix_expr.op == .left_shift {
 		if left.kind != .array && !left.is_int() {
 			//c.error('<< can only be used with numbers and arrays', infix_expr.pos)
 			c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
+			return table.void_type
 		}
-		if left.kind == .array && infix_expr.op == .left_shift {
+		if left.kind == .array {
 			// `array << elm`
 			// the expressions have different types (array_x and x)
-			if right.kind != .array && !c.table.check(c.table.value_type(left_type), right_type) {
+			if right.kind == .array && !c.table.check(c.table.value_type(left_type), c.table.value_type(right_type)) {
+				c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
+			} else if right.kind != .array && !c.table.check(c.table.value_type(left_type), right_type) {
 				c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
 			}
 			return table.void_type
 		}
 	}
-	if !c.table.check(right_type, left_type) {
-		// `elm in array`
-		if right.kind in [.array, .map] && infix_expr.op == .key_in {
-			return table.bool_type
+	if infix_expr.op == .key_in {
+		if !(right.kind in [.array, .map, .string]) {
+			c.error('`in` can only be used with an array/map/string.', infix_expr.pos)
 		}
-		// fot type-unresolved consts
+		return table.bool_type
+	}
+	if !c.table.check(right_type, left_type) {
+		// for type-unresolved consts
 		if left_type == table.void_type || right_type == table.void_type {
 			return table.void_type
 		}
@@ -173,6 +176,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 }
 
 fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
+	c.expected_type = table.void_type
 	left_type := c.expr(assign_expr.left)
 	c.expected_type = left_type
 	assign_expr.left_type = left_type
