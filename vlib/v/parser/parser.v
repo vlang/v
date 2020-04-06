@@ -434,9 +434,11 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 					name: name
 				}
 			}
+			epos := p.tok.position()
 			expr := p.expr(0)
 			return ast.ExprStmt{
 				expr: expr
+				pos: epos
 			}
 		}
 	}

@@ -408,7 +408,7 @@ pub fn (c mut Checker) check_or_block(call_expr mut ast.CallExpr, ret_type table
 						if !type_fits && !is_panic_or_exit {
 							type_name := c.table.get_type_symbol(c.expr(it.expr)).name
 							expected_type_name := c.table.get_type_symbol(ret_type).name
-							c.error('wrong return type ‘$type_name‘ in or{} block, expected ‘$expected_type_name‘', call_expr.pos)
+							c.error('wrong return type ‘$type_name‘ in or{} block, expected ‘$expected_type_name‘', it.pos)
 						}
 					}
 					else {}
