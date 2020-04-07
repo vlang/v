@@ -140,10 +140,10 @@ pub fn add_common_tool_options<T>(context mut T, fp mut flag.FlagParser) []strin
 	context.workdir = os.real_path(fp.string('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
 	context.v_repo_url = fp.string('vrepo', 0, vgit.remote_v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
 	context.vc_repo_url = fp.string('vcrepo', 0, vgit.remote_vc_repo_url, 'The url of the vc repository. You can clone it
-${flag.SPACE}beforehand, and then just give the local folder
-${flag.SPACE}path here. That will eliminate the network ops
-${flag.SPACE}done by this tool, which is useful, if you want
-${flag.SPACE}to script it/run it in a restrictive vps/docker.
+${flag.space}beforehand, and then just give the local folder
+${flag.space}path here. That will eliminate the network ops
+${flag.space}done by this tool, which is useful, if you want
+${flag.space}to script it/run it in a restrictive vps/docker.
 ')
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
