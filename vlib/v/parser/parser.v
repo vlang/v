@@ -627,7 +627,8 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) && !(name in ['C.stat', 'C.sigaction']) {
+		if (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) && !(name in ['C.stat', 
+			'C.sigaction']) {
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
@@ -660,9 +661,9 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			x := p.call_expr(is_c, mod)			// TODO `node,typ :=` should work
 			node = x
 		}
-	} else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod && p.tok.lit in 
-		table.builtin_type_names)) && (p.tok.lit.len in [1, 2] || !p.tok.lit[p.tok.lit.len - 1].is_capital()) && 
-		!p.inside_match_case {
+	} else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod && 
+		p.tok.lit in table.builtin_type_names)) && (p.tok.lit.len in [1, 2] || !p.tok.lit[p.tok.lit.len - 
+		1].is_capital()) && !p.inside_match_case {
 		// || p.table.known_type(p.tok.lit)) {
 		return p.struct_init(false)		// short_syntax: false
 	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
@@ -1714,17 +1715,19 @@ fn (p mut Parser) hash() ast.HashStmt {
 }
 
 fn (p mut Parser) global_decl() ast.GlobalDecl {
-	if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v && p.mod != 'ui' && 
-		p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
+	if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v && p.mod != 
+		'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
 	p.next()
 	name := p.check_name()
 	// println(name)
 	typ := p.parse_type()
-	if p.tok.kind == .assign {
+	mut expr := ast.Expr{}
+	has_expr := p.tok.kind == .assign
+	if has_expr {
 		p.next()
-		p.expr(0)
+		expr = p.expr(0)
 	}
 	// p.genln(p.table.cgen_name_type_pair(name, typ))
 	/*
@@ -1744,6 +1747,8 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 	glob := ast.GlobalDecl{
 		name: name
 		typ: typ
+		has_expr: has_expr
+		expr: expr
 	}
 	p.global_scope.register(name, glob)
 	return glob

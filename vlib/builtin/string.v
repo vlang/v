@@ -43,12 +43,12 @@ NB: A V string should be/is immutable from the point of view of
 
 
 pub struct string {
-	// mut:
-	// hash_cache int
 pub:
 	str byteptr // points to a C style 0 terminated string of bytes.
 	len int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 }
+	// mut:
+	// hash_cache int
 
 pub struct ustring {
 pub:
@@ -166,8 +166,8 @@ pub fn (s string) replace(rep, with string) string {
 	mut cur_idx := idxs[idx_pos]
 	mut b_i := 0
 	for i := 0; i < s.len; i++ {
-		// Reached the location of rep, replace it with "with"
 		if i == cur_idx {
+			// Reached the location of rep, replace it with "with"
 			for j in 0..with.len {
 				b[b_i] = with[j]
 				b_i++
@@ -180,8 +180,8 @@ pub fn (s string) replace(rep, with string) string {
 				cur_idx = idxs[idx_pos]
 			}
 		}
-		// Rep doesnt start here, just copy
 		else {
+			// Rep doesnt start here, just copy
 			b[b_i] = s[i]
 			b_i++
 		}
@@ -263,8 +263,8 @@ pub fn (s string) replace_each(vals []string) string {
 	mut cur_idx := idxs[idx_pos]
 	mut b_i := 0
 	for i := 0; i < s.len; i++ {
-		// Reached the location of rep, replace it with "with"
 		if i == cur_idx.idx {
+			// Reached the location of rep, replace it with "with"
 			rep := vals[cur_idx.val_idx]
 			with := vals[cur_idx.val_idx + 1]
 			for j in 0..with.len {
@@ -279,8 +279,8 @@ pub fn (s string) replace_each(vals []string) string {
 				cur_idx = idxs[idx_pos]
 			}
 		}
-		// Rep doesnt start here, just copy
 		else {
+			// Rep doesnt start here, just copy
 			b[b_i] = s.str[i]
 			b_i++
 		}

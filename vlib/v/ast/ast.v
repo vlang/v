@@ -265,6 +265,7 @@ pub struct GlobalDecl {
 pub:
 	name string
 	expr Expr
+	has_expr bool
 mut:
 	typ  table.Type
 }

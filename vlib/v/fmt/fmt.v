@@ -11,7 +11,7 @@ import (
 
 const (
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
-	max_len = 100
+	max_len = 90
 )
 
 struct Fmt {
@@ -137,6 +137,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			}
 			f.is_assign = false
 		}
+		ast.AssertStmt {
+			f.write('assert ')
+			f.expr(it.expr)
+			f.writeln('')
+		}
 		ast.Attr {
 			f.writeln('[$it.name]')
 		}
@@ -158,6 +163,16 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		}
 		ast.Comment {
 			f.comment(it)
+		}
+		ast.CompIf {
+			inversion := if it.is_not { '!' } else { '' }
+			f.writeln('\$if ${inversion}${it.val} {')
+			f.stmts(it.stmts)
+			if it.has_else {
+				f.writeln('} \$else {')
+				f.stmts(it.else_stmts)
+			}
+			f.writeln('}')
 		}
 		ast.ConstDecl {
 			if it.is_pub {
@@ -252,6 +267,14 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
+		ast.GlobalDecl {
+			f.write('__global $it.name ')
+			f.write(f.table.type_to_str(it.typ))
+			if it.has_expr {
+				f.write(' = ')
+				f.expr(it.expr)
+			}
+		}
 		ast.GotoLabel {
 			f.writeln('$it.name:')
 		}
@@ -285,29 +308,13 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		ast.StructDecl {
 			f.struct_decl(it)
 		}
-		ast.UnsafeStmt {
-			f.writeln('unsafe {')
-			f.stmts(it.stmts)
-			f.writeln('}')
-		}
-		ast.Import {}
 		ast.TypeDecl {
 			// already handled in f.imports
 			f.type_decl(it)
 		}
-		ast.AssertStmt {
-			f.write('assert ')
-			f.expr(it.expr)
-			f.writeln('')
-		}
-		ast.CompIf {
-			inversion := if it.is_not { '!' } else { '' }
-			f.writeln('\$if ${inversion}${it.val} {')
+		ast.UnsafeStmt {
+			f.writeln('unsafe {')
 			f.stmts(it.stmts)
-			if it.has_else {
-				f.writeln('} \$else {')
-				f.stmts(it.else_stmts)
-			}
 			f.writeln('}')
 		}
 		else {
@@ -574,6 +581,15 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.expr(it.expr)
 			f.write('.')
 			f.write(it.field)
+		}
+		ast.SizeOf {
+			f.writeln('sizeof(')
+			if it.type_name != '' {
+				f.writeln(it.type_name)
+			} else {
+				f.writeln(f.table.type_to_str(it.typ))
+			}
+			f.writeln(')')
 		}
 		ast.StringLiteral {
 			if it.val.contains("'") {

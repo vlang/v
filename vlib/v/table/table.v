@@ -389,34 +389,36 @@ pub fn (t &Table) value_type(typ Type) Type {
 		// ...string => string
 		return type_set(typ, .unset)
 	}
-	else if typ_sym.kind == .array {
+	if typ_sym.kind == .array {
 		// Check index type
 		info := typ_sym.info as Array
 		return info.elem_type
 	}
-	else if typ_sym.kind == .array_fixed {
+	if typ_sym.kind == .array_fixed {
 		info := typ_sym.info as ArrayFixed
 		return info.elem_type
 	}
-	else if typ_sym.kind == .map {
+	if typ_sym.kind == .map {
 		info := typ_sym.info as Map
 		return info.value_type
 	}
-	else if typ_sym.kind in [.byteptr, .string] {
+	if typ_sym.kind == .string && table.type_is_ptr(typ) {
+		// (&string)[i] => string
+		return string_type
+	}
+	if typ_sym.kind in [.byteptr, .string] {
 		return byte_type
 	}
-	else if type_is_ptr(typ) {
+	if type_is_ptr(typ) {
 		// byte* => byte
 		// bytes[0] is a byte, not byte*
 		return type_deref(typ)
 	}
-	else {
-		// TODO: remove when map_string is removed
-		if typ_sym.name == 'map_string' {
-			return string_type
-		}
-		return void_type
+	// TODO: remove when map_string is removed
+	if typ_sym.name == 'map_string' {
+		return string_type
 	}
+	return void_type
 }
 
 pub fn (t &Table) check(got, expected Type) bool {

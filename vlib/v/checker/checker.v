@@ -139,7 +139,8 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 					continue
 				}
 				if table.type_is_ptr(field.typ) {
-					c.warn('reference field `${typ_sym.name}.${field.name}` must be initialized', struct_init.pos)
+					c.warn('reference field `${typ_sym.name}.${field.name}` must be initialized', 
+						struct_init.pos)
 				}
 			}
 		}
@@ -212,7 +213,7 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	if !c.table.check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
-		c.error('cannot assign $right_type_sym.name to $left_type_sym.name', assign_expr.pos)
+		c.error('cannot assign `$right_type_sym.name` to `$left_type_sym.name`', assign_expr.pos)
 	}
 }
 
@@ -224,8 +225,8 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		method_name := call_expr.name
 		// TODO: remove this for actual methods, use only for compiler magic
-		if left_type_sym.kind == .array && method_name in ['filter', 'clone', 'repeat', 'reverse', 'map', 
-			'slice'] {
+		if left_type_sym.kind == .array && method_name in ['filter', 'clone', 'repeat', 'reverse', 
+			'map', 'slice'] {
 			if method_name in ['filter', 'map'] {
 				array_info := left_type_sym.info as table.Array
 				mut scope := c.file.scope.innermost(call_expr.pos.pos)
@@ -252,7 +253,8 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		}
 		if method := c.table.type_find_method(left_type_sym, method_name) {
 			no_args := method.args.len - 1
-			min_required_args := method.args.len - if method.is_variadic && method.args.len > 1 { 2 } else { 1 }
+			min_required_args := method.args.len - if method.is_variadic && method.args.len > 
+				1 { 2 } else { 1 }
 			if call_expr.args.len < min_required_args {
 				c.error('too few arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $min_required_args)', 
 					call_expr.pos)
@@ -479,7 +481,8 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 		return
 	}
 	if return_stmt.exprs.len > 0 && c.fn_return_type == table.void_type {
-		c.error('too many arguments to return, current function does not return anything', return_stmt.pos)
+		c.error('too many arguments to return, current function does not return anything', 
+			return_stmt.pos)
 		return
 	}
 	expected_type := c.fn_return_type
@@ -542,7 +545,8 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 				if !c.table.check(val_type, var_type) {
 					val_type_sym := c.table.get_type_symbol(val_type)
 					var_type_sym := c.table.get_type_symbol(var_type)
-					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
+					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', 
+						assign_stmt.pos)
 				}
 			}
 			ident_var_info.typ = val_type
@@ -568,7 +572,8 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 				if !c.table.check(val_type, var_type) {
 					val_type_sym := c.table.get_type_symbol(val_type)
 					var_type_sym := c.table.get_type_symbol(var_type)
-					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', assign_stmt.pos)
+					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`', 
+						assign_stmt.pos)
 				}
 			}
 			ident_var_info.typ = val_type
@@ -1181,7 +1186,8 @@ pub fn (c mut Checker) index_expr(node mut ast.IndexExpr) table.Type {
 		// index_type_sym.kind != .enum_) {
 		if typ_sym.kind in [.array, .array_fixed] && !(table.is_number(index_type) || index_type_sym.kind == 
 			.enum_) {
-			c.error('non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)', node.pos)
+			c.error('non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)', 
+				node.pos)
 		} else if typ_sym.kind == .map && table.type_idx(index_type) != table.string_type_idx {
 			c.error('non-string map index (map type `$typ_sym.name`)', node.pos)
 		}
@@ -1252,12 +1258,14 @@ pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {
 		if !c.table.check(key_type, key0_type) {
 			key0_type_sym := c.table.get_type_symbol(key0_type)
 			key_type_sym := c.table.get_type_symbol(key_type)
-			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym` for map key', node.pos)
+			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym` for map key', 
+				node.pos)
 		}
 		if !c.table.check(val_type, val0_type) {
 			val0_type_sym := c.table.get_type_symbol(val0_type)
 			val_type_sym := c.table.get_type_symbol(val_type)
-			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym` for map value', node.pos)
+			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym` for map value', 
+				node.pos)
 		}
 	}
 	map_type := table.new_type(c.table.find_or_register_map(key0_type, val0_type))
