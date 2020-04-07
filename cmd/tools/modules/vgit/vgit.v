@@ -74,8 +74,6 @@ pub fn clone_or_pull( remote_git_url string, local_worktree_path string ) {
 	}
 }
 
-//
-
 pub struct VGitContext {
 pub:
 	cc          string = 'cc'     // what compiler to use
