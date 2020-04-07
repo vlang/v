@@ -2952,6 +2952,8 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 		g.definitions.write('a.' + field.name)
 		if field.typ == table.string_type {
 			g.definitions.write('.len, a.${field.name}.str')
+		} else if field.typ == table.bool_type {
+			g.definitions.write(' == true ? 4 : 5, a.${field.name} == true ? "true" : "false"')
 		}
 		if i < info.fields.len - 1 {
 			g.definitions.write(', ')
@@ -2963,6 +2965,8 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 fn type_to_fmt(typ table.Type) string {
 	n := int(typ)
 	if n == table.string_type {
+		return '\'%.*s\''
+	} else if n == table.bool_type {
 		return '%.*s'
 	}
 	return '%d'
