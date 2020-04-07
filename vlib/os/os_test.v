@@ -27,6 +27,7 @@ fn test_open_file() {
 	hello := 'hello world!'
 	os.open_file(filename, 'r+', 0o666) or {
 		assert err == 'No such file or directory'
+		os.File{}
 	}
 	mut file := os.open_file(filename, 'w+', 0o666) or {
 		panic(err)
@@ -212,7 +213,7 @@ fn test_is_writable_folder() {
 	tmp := os.temp_dir()
 	f := os.is_writable_folder(tmp) or {
 		eprintln('err: $err')
-		assert false
+		false
 	}
 	assert f
 }

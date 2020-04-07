@@ -38,11 +38,18 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ || (node.is_variadic && i == 
 			node.args.len - 2)
 		f.write(arg.name)
+		mut s := t.type_to_str(arg.typ)
+		if arg.is_mut {
+			f.write(' mut')
+			if s.starts_with('&') {
+				s = s[1..]
+			}
+		}
 		if should_add_type {
 			if node.is_variadic && is_last_arg {
-				f.write(' ...' + t.type_to_str(arg.typ))
+				f.write(' ...' + s)
 			} else {
-				f.write(' ' + t.type_to_str(arg.typ))
+				f.write(' ' + s)
 			}
 		}
 		if !is_last_arg {

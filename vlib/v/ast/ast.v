@@ -45,6 +45,7 @@ pub struct ExprStmt {
 pub:
 	expr Expr
 	typ  table.Type
+	pos  token.Position
 }
 
 pub struct IntegerLiteral {
@@ -387,6 +388,7 @@ pub:
 	cond  Expr
 	stmts []Stmt
 	pos   token.Position
+	comment Comment
 }
 
 pub struct MatchExpr {
@@ -395,6 +397,7 @@ pub:
 	cond          Expr
 	branches      []MatchBranch
 	pos           token.Position
+	is_mut        bool  // `match mut ast_node {`
 mut:
 	is_expr       bool // returns a value
 	return_type   table.Type
@@ -408,6 +411,7 @@ pub:
 	exprs []Expr
 	stmts []Stmt
 	pos   token.Position
+	comment Comment // comment above `xxx {`
 }
 
 pub struct CompIf {
@@ -647,6 +651,7 @@ mut:
 pub struct OrExpr {
 pub:
 	stmts []Stmt
+	is_used bool // if the or{} block is written down or left out
 	// var_name string
 	// expr     Expr
 }

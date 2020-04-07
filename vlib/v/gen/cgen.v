@@ -2771,7 +2771,12 @@ fn (g Gen) type_default(typ table.Type) string {
 pub fn (g mut Gen) write_tests_main() {
 	g.definitions.writeln('int g_test_oks = 0;')
 	g.definitions.writeln('int g_test_fails = 0;')
-	g.writeln('int main() {')
+	$if windows {
+		g.writeln('int wmain() {')
+	}
+	$else {
+		g.writeln('int main() {')
+	}
 	g.writeln('\t_vinit();')
 	g.writeln('')
 	all_tfuncs := g.get_all_test_function_names()
