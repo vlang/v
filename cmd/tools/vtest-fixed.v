@@ -38,7 +38,6 @@ const (
 		'vlib/net/http/http_test.v',
 		'vlib/net/socket_test.v',
 		'vlib/net/socket_udp_test.v',
-		'vlib/net/urllib/urllib_test.v',
 		'vlib/os/environment_test.v', // Linux only
 		'vlib/rand/pcg32_test.v',
 		'vlib/rand/splitmix64_test.v',
