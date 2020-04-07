@@ -661,11 +661,11 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			x := p.call_expr(is_c, mod)			// TODO `node,typ :=` should work
 			node = x
 		}
-	} else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod && 
-		p.tok.lit in table.builtin_type_names)) && (p.tok.lit.len in [1, 2] || !p.tok.lit[p.tok.lit.len - 
-		1].is_capital()) && !p.inside_match_case {
-		// || p.table.known_type(p.tok.lit)) {
-		return p.struct_init(false)		// short_syntax: false
+	} else if p.peek_tok.kind == .lcbr && !p.inside_match_case &&
+		( is_c || p.tok.lit[0].is_capital() || (p.builtin_mod && p.tok.lit in table.builtin_type_names)	) &&
+		( p.tok.lit.len in [1, 2, 3] || !p.tok.lit[p.tok.lit.len - 1].is_capital() || p.table.known_type(p.tok.lit) ) {
+		// short_syntax: false
+		return p.struct_init(false)
 	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
 		// `Color.green`
 		mut enum_name := p.check_name()
