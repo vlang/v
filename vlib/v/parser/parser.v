@@ -605,7 +605,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		return p.string_expr()
 	}
 	known_var := p.scope.known_var(p.tok.lit)
-	if p.peek_tok.kind == .dot && !known_var && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') == 
+	if p.peek_tok.kind == .dot && !known_var && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') ==
 		p.tok.lit) {
 		if is_c {
 			mod = 'C'
@@ -627,7 +627,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) && !(name in ['C.stat', 
+		if (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) && !(name in ['C.stat',
 			'C.sigaction']) {
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
@@ -1287,7 +1287,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 		}
 	} else {
 		// [1,2,3]
-		for i := 0; p.tok.kind != .rsbr; i++{ 
+		for i := 0; p.tok.kind != .rsbr; i++{
 			expr := p.expr(0)
 			exprs << expr
 			if p.tok.kind == .comma {
@@ -1343,7 +1343,7 @@ fn (p mut Parser) map_init() ast.MapInit {
 fn (p mut Parser) parse_number_literal() ast.Expr {
 	lit := p.tok.lit
 	mut node := ast.Expr{}
-	if lit.contains('.') {
+	if lit.index_any('.eE') >= 0 {
 		node = ast.FloatLiteral{
 			val: lit
 		}
@@ -1715,7 +1715,7 @@ fn (p mut Parser) hash() ast.HashStmt {
 }
 
 fn (p mut Parser) global_decl() ast.GlobalDecl {
-	if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v && p.mod != 
+	if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v && p.mod !=
 		'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
@@ -1775,7 +1775,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			have_final_else = true
 			p.next()
-		} else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() || 
+		} else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
 			p.peek_tok.kind == .dot) {
 			// Sum type match
 			// if sym.kind == .sum_type {
