@@ -1,5 +1,4 @@
 pub const (
-	c = a
 	a = b
 	c = a + b
 	b = 1

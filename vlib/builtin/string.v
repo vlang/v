@@ -857,7 +857,7 @@ pub fn (s string) trim_left(cutset string) string {
 	}
 	cs_arr := cutset.bytes()
 	mut pos := 0
-	for pos <= s.len && s[pos] in cs_arr {
+	for pos < s.len && s[pos] in cs_arr {
 		pos++
 	}
 	return s.right(pos)
@@ -869,10 +869,10 @@ pub fn (s string) trim_right(cutset string) string {
 	}
 	cs_arr := cutset.bytes()
 	mut pos := s.len - 1
-	for pos >= -1 && s[pos] in cs_arr {
+	for pos >= 0 && s[pos] in cs_arr {
 		pos--
 	}
-	return s.left(pos + 1)
+	return if pos < 0 { '' } else { s.left(pos + 1) }
 }
 
 // fn print_cur_thread() {

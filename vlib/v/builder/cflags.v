@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module compile
+module builder
 
 import os
 // parsed cflag
@@ -17,7 +17,7 @@ pub fn (c &CFlag) str() string {
 }
 
 // get flags for current os
-fn (v &V) get_os_cflags() []CFlag {
+fn (v &Builder) get_os_cflags() []CFlag {
 	mut flags := []CFlag
 	mut ctimedefines := []string
 	if v.pref.compile_defines.len > 0 {
@@ -38,7 +38,7 @@ fn (v &V) get_os_cflags() []CFlag {
 	return flags
 }
 
-fn (v &V) get_rest_of_module_cflags(c &CFlag) []CFlag {
+fn (v &Builder) get_rest_of_module_cflags(c &CFlag) []CFlag {
 	mut flags := []CFlag
 	cflags := v.get_os_cflags()
 	for flag in cflags {

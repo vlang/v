@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
-	// tabs = ['', '  ', '    ', '      ', '        ']
-	max_len = 80
+	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t']
+	max_len = 100
 )
 
 struct Fmt {
@@ -24,22 +24,36 @@ mut:
 	line_len       int
 	single_line_if bool
 	cur_mod        string
+	file           ast.File
+	did_imports bool
+	is_assign bool
 }
 
 pub fn fmt(file ast.File, table &table.Table) string {
-	mut f := Fmt{
+	mut f := fmt.Fmt{
 		out: strings.new_builder(1000)
 		table: table
 		indent: 0
+		file: file
 	}
-	f.mod(file.mod)
-	f.imports(file.imports)
+	f.cur_mod = 'main'
 	for stmt in file.stmts {
 		f.stmt(stmt)
 	}
+	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
 	return f.out.str().trim_space() + '\n'
 }
 
+/*
+fn (f mut Fmt) find_comment(line_nr int) {
+	for comment in f.file.comments {
+		if comment.line_nr == line_nr {
+			f.writeln('// FFF $comment.line_nr $comment.text')
+			return
+		}
+	}
+}
+*/
 pub fn (f mut Fmt) write(s string) {
 	if f.indent > 0 && f.empty_line {
 		f.out.write(tabs[f.indent])
@@ -61,18 +75,21 @@ pub fn (f mut Fmt) writeln(s string) {
 }
 
 fn (f mut Fmt) mod(mod ast.Module) {
-	if mod.name != 'main' {
-		f.writeln('module ${mod.name}\n')
-	}
+	f.writeln('module $mod.name\n')
 	f.cur_mod = mod.name
 }
 
 fn (f mut Fmt) imports(imports []ast.Import) {
+	if f.did_imports {
+		return
+	}
+	f.did_imports = true
 	if imports.len == 1 {
 		imp_stmt_str := f.imp_stmt_str(imports[0])
 		f.writeln('import ${imp_stmt_str}\n')
 	}
-	else if imports.len > 1 {
+	//
+ else if imports.len > 1 {
 		f.writeln('import (')
 		f.indent++
 		for imp in imports {
@@ -85,7 +102,11 @@ fn (f mut Fmt) imports(imports []ast.Import) {
 
 fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
-	imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
+	imp_alias_suffix := if is_diff {
+		' as ${imp.alias}'
+	} else {
+		''
+	}
 	return '${imp.mod}${imp_alias_suffix}'
 }
 
@@ -110,6 +131,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 					f.write(', ')
 				}
 			}
+			f.is_assign = true
 			f.write(' $it.op.str() ')
 			for i, val in it.right {
 				f.expr(val)
@@ -118,9 +140,15 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				}
 			}
 			f.writeln('')
+			f.is_assign = false
 		}
 		ast.Attr {
 			f.writeln('[$it.name]')
+		}
+		ast.Block {
+			f.writeln('{')
+			f.stmts(it.stmts)
+			f.writeln('}')
 		}
 		ast.BranchStmt {
 			match it.tok.kind {
@@ -135,6 +163,8 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		}
 		ast.BreakStmt{
 			f.writeln('break $it.name')
+		ast.Comment {
+			f.comment(it)
 		}
 		ast.ConstDecl {
 			if it.is_pub {
@@ -176,12 +206,18 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
+			// println('$it.name find_comment($it.pos.line_nr)')
+			// f.find_comment(it.pos.line_nr)
 			s := it.str(f.table)
 			// f.write(it.str(f.table))
-			f.write(s.replace(f.cur_mod + '.', '')) // `Expr` instead of `ast.Expr` in mod ast
-			f.writeln(' {')
-			f.stmts(it.stmts)
-			f.writeln('}\n')
+			f.write(s.replace(f.cur_mod + '.', ''))			// `Expr` instead of `ast.Expr` in mod ast
+			if !it.is_c {
+				f.writeln(' {')
+				f.stmts(it.stmts)
+				f.writeln('}\n')
+			} else {
+				f.writeln('\n')
+			}
 		}
 		ast.ForInStmt {
 			f.write('for ')
@@ -223,18 +259,16 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				f.stmts(it.after_loop)
 			}
 		}
-		ast.LineComment {
-			f.writeln('// $it.text')
+		ast.Import {
+			f.imports(f.file.imports)
 		}
-		ast.MultiLineComment {
-			f.writeln('/*')
-			f.writeln(it.text)
-			f.writeln('*/')
+		ast.Module {
+			f.mod(it)
 		}
 		ast.Return {
 			f.write('return')
-			// multiple returns
 			if it.exprs.len > 1 {
+				// multiple returns
 				f.write(' ')
 				for i, expr in it.exprs {
 					f.expr(expr)
@@ -242,9 +276,8 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 						f.write(', ')
 					}
 				}
-			}
-			// normal return
-			else if it.exprs.len == 1 {
+			} else if it.exprs.len == 1 {
+				// normal return
 				f.write(' ')
 				f.expr(it.exprs[0])
 			}
@@ -259,8 +292,8 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.Import {}
-		// already handled in f.imports
 		ast.TypeDecl {
+			// already handled in f.imports
 			f.type_decl(it)
 		}
 		ast.AssertStmt {
@@ -269,7 +302,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('')
 		}
 		ast.CompIf {
-			inversion := if it.is_not { '!' } else { '' }
+			inversion := if it.is_not {
+				'!'
+			} else {
+				''
+			}
 			f.writeln('\$if ${inversion}${it.val} {')
 			f.stmts(it.stmts)
 			if it.has_else {
@@ -316,7 +353,8 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 	if node.is_pub {
 		f.write('pub ')
 	}
-	f.writeln('struct $node.name {')
+	name := node.name.after('.')
+	f.writeln('struct $name {')
 	mut max := 0
 	for field in node.fields {
 		if field.name.len > max {
@@ -326,21 +364,35 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 	for i, field in node.fields {
 		if i == node.mut_pos {
 			f.writeln('mut:')
-		}
-		else if i == node.pub_pos {
+		} else if i == node.pub_pos {
 			f.writeln('pub:')
-		}
-		else if i == node.pub_mut_pos {
+		} else if i == node.pub_mut_pos {
 			f.writeln('pub mut:')
+		}
+		if field.comment.text != '' && field.comment.pos.line_nr < field.pos.line_nr {
+			// Comment on the previous line
+			f.write('\t')
+			f.comment(field.comment)
 		}
 		f.write('\t$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
-		f.writeln(f.type_to_str(field.typ))
+		f.write(f.type_to_str(field.typ))
+		// f.write('// $field.pos.line_nr')
+		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
+			// Same line comment
+			f.write('  ')
+			f.comment(field.comment)
+		} else {
+			// if field.comment.text != '' {
+			// f.write (' // com linenr=$field.comment.pos.line_nr')
+			// }
+			f.writeln('')
+		}
 	}
 	f.writeln('}\n')
 }
 
-fn (f &Fmt) type_to_str(t table.Type) string {
+fn (f Fmt) type_to_str(t table.Type) string {
 	res := f.table.type_to_str(t)
 	return res.replace(f.cur_mod + '.', '')
 }
@@ -348,12 +400,11 @@ fn (f &Fmt) type_to_str(t table.Type) string {
 fn (f mut Fmt) expr(node ast.Expr) {
 	match node {
 		ast.ArrayInit {
-			// `x := []string`
-			if it.exprs.len == 0 && it.typ != 0 {
+			if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
+				// `x := []string`
 				f.write(f.table.type_to_str(it.typ))
-			}
-			// `[1,2,3]`
-			else {
+			} else {
+				// `[1,2,3]`
 				// type_sym := f.table.get_type_symbol(it.typ)
 				f.write('[')
 				for i, expr in it.exprs {
@@ -406,9 +457,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.call_args(it.args)
 				f.write(')')
 				f.or_expr(it.or_block)
-			}
-			else {
-				f.write('${it.name}(')
+			} else {
+				name := short_module(it.name)
+				f.write('${name}(')
 				f.call_args(it.args)
 				f.write(')')
 				f.or_expr(it.or_block)
@@ -424,43 +475,14 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(it.val)
 		}
 		ast.IfExpr {
-			single_line := it.branches.len == 2 && it.has_else //
-			&& it.branches[0].stmts.len == 1 && it.branches[1].stmts.len == 1
-			f.single_line_if = single_line
-			for i, branch in it.branches {
-				if i == 0 {
-					f.write('if ')
-					f.expr(branch.cond)
-					f.write(' {')
-				}
-				else if i < it.branches.len - 1 || !it.has_else {
-					f.write('} else if ')
-					f.expr(branch.cond)
-					f.write(' {')
-				}
-				else if i == it.branches.len - 1 && it.has_else {
-					f.write('} else {')
-				}
-				if single_line {
-					f.write(' ')
-				}
-				else {
-					f.writeln('')
-				}
-				f.stmts(branch.stmts)
-				if single_line {
-					f.write(' ')
-				}
-			}
-			f.write('}')
-			f.single_line_if = false
+			f.if_expr(it)
 		}
 		ast.Ident {
 			if it.kind == .blank_ident {
 				f.write('_')
-			}
-			else {
-				f.write('$it.name')
+			} else {
+				name := short_module(it.name)
+				f.write(name)
 			}
 		}
 		ast.InfixExpr {
@@ -481,15 +503,6 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.MapInit {
 			f.writeln('{')
 			f.indent++
-			/*
-			mut max := 0
-			for i, key in it.keys {
-				if key.len > max {
-					max = key.len
-				}
-			}
-				*/
-
 			for i, key in it.keys {
 				f.expr(key)
 				// f.write(strings.repeat(` `, max - field.name.len))
@@ -506,23 +519,21 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.writeln(' {')
 			f.indent++
 			for i, branch in it.branches {
-				// normal branch
 				if i < it.branches.len - 1 {
+					// normal branch
 					for j, expr in branch.exprs {
 						f.expr(expr)
 						if j < branch.exprs.len - 1 {
 							f.write(', ')
 						}
 					}
-				}
-				// else branch
-				else {
+				} else {
+					// else branch
 					f.write('else')
 				}
 				if branch.stmts.len == 0 {
 					f.writeln(' {}')
-				}
-				else {
+				} else {
 					f.writeln(' {')
 					f.stmts(branch.stmts)
 					f.writeln('}')
@@ -564,8 +575,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.StringLiteral {
 			if it.val.contains("'") {
 				f.write('"$it.val"')
-			}
-			else {
+			} else {
 				f.write("'$it.val'")
 			}
 		}
@@ -573,7 +583,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write("'")
 			for i, val in it.vals {
 				f.write(val)
-				if i>=it.exprs.len {
+				if i >= it.exprs.len {
 					continue
 				}
 				f.write('$')
@@ -582,7 +592,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 					f.expr(it.exprs[i])
 					f.write(it.expr_fmts[i])
 					f.write('}')
-				}else{
+				} else {
 					f.expr(it.exprs[i])
 				}
 			}
@@ -590,12 +600,12 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.StructInit {
 			type_sym := f.table.get_type_symbol(it.typ)
+			name := short_module(type_sym.name)
 			// `Foo{}` on one line if there are no fields
 			if it.fields.len == 0 {
-				f.write('$type_sym.name{}')
-			}
-			else {
-				f.writeln('$type_sym.name{')
+				f.write('$name{}')
+			} else {
+				f.writeln('$name{')
 				for i, field in it.fields {
 					f.write('\t$field: ')
 					f.expr(it.exprs[i])
@@ -604,6 +614,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.write('}')
 			}
 		}
+		ast.Type {
+			f.write(f.type_to_str(it.typ))
+		}
 		ast.TypeOf {
 			f.write('typeof(')
 			f.expr(it.expr)
@@ -611,6 +624,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		else {
 			eprintln('fmt expr: unhandled node ' + typeof(node))
+			if typeof(node) != 'unknown v.ast.Expr' {
+				exit(1)
+			}
 		}
 	}
 }
@@ -643,4 +659,66 @@ fn (f mut Fmt) or_expr(or_block ast.OrExpr) {
 		f.stmts(or_block.stmts)
 		f.write('}')
 	}
+}
+
+fn (f mut Fmt) comment(node ast.Comment) {
+	if !node.text.contains('\n') {
+		is_separate_line := node.text.starts_with('|')
+		if is_separate_line {
+			f.writeln('// ${node.text[1..]}')			// $node.pos.line_nr')
+		} else {
+			f.out.go_back(1)
+			f.writeln('// $node.text')
+		}
+		return
+	}
+	lines := node.text.split_into_lines()
+	f.writeln('/*')
+	for line in lines {
+		f.writeln(line)
+		f.empty_line = false
+	}
+	f.writeln('*/')
+}
+
+// foo.bar.fn() => bar.fn()
+fn short_module(name string) string {
+	if !name.contains('.') {
+		return name
+	}
+	vals := name.split('.')
+	if vals.len < 2 {
+		return name
+	}
+	return vals[vals.len - 2] + '.' + vals[vals.len - 1]
+}
+
+fn (f mut Fmt) if_expr(it ast.IfExpr) {
+	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len ==
+		1 && it.branches[1].stmts.len == 1 && (it.is_expr || f.is_assign)
+	f.single_line_if = single_line
+	for i, branch in it.branches {
+		if i == 0 {
+			f.write('if ')
+			f.expr(branch.cond)
+			f.write(' {')
+		} else if i < it.branches.len - 1 || !it.has_else {
+			f.write('} else if ')
+			f.expr(branch.cond)
+			f.write(' {')
+		} else if i == it.branches.len - 1 && it.has_else {
+			f.write('} else {')
+		}
+		if single_line {
+			f.write(' ')
+		} else {
+			f.writeln('')
+		}
+		f.stmts(branch.stmts)
+		if single_line {
+			f.write(' ')
+		}
+	}
+	f.write('}')
+	f.single_line_if = false
 }

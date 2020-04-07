@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	supported_platforms = ['windows', 'mac', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd',
+	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd', 'netbsd',
 	'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 )
 

@@ -313,6 +313,27 @@ fn test_mut_slice() {
 	*/
 }
 
+fn double_up(a mut []int) {
+	for i := 0; i < a.len; i++ {
+		a[i] = a[i]*2
+	}
+}
+
+fn double_up_v2(a mut []int) {
+	for i, val in a {
+		a[i] = a[i]*2 // or val*2, doesn't matter
+	}
+}
+
+fn test_mut_arg() {
+	mut arr := [1,2,3,4,5,6,7,8,9,10]
+	double_up(mut arr)
+	assert arr.str() == '[2, 4, 6, 8, 10, 12, 14, 16, 18, 20]'
+	arr = [1,2,3,4,5,6,7,8,9,10]
+	double_up_v2(mut arr)
+	assert arr.str() == '[2, 4, 6, 8, 10, 12, 14, 16, 18, 20]'
+}
+
 fn test_clone() {
 	nums := [1, 2, 3, 4, 100]
 	nums2 := nums.clone()

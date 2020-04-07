@@ -18,7 +18,7 @@
 *
 **********************************************************************/
 module ftoa
-import math
+//import math
 import math.bits
 
 /******************************************************************************
@@ -101,7 +101,7 @@ fn mul_shift_32(m u32, mul u64, ishift int) u32 {
 
 	hi, lo := bits.mul_64(u64(m), mul)
 	shifted_sum := (lo >> u64(ishift)) + (hi << u64(64-ishift))
-	assert1(shifted_sum <= math.max_u32, "shiftedSum <= math.max_u32")
+	assert1(shifted_sum <= 2147483647, "shiftedSum <= math.max_u32")
 	return u32(shifted_sum)
 }
 

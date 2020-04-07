@@ -4,7 +4,7 @@
 module main
 
 import (
-	internal.compile
+	//internal.compile
 	internal.help
 	os
 	os.cmdline
@@ -12,16 +12,24 @@ import (
 	v.doc
 	v.pref
 	v.util
+	v.builder
 )
 
 const (
 	simple_cmd = ['fmt',
 	'up', 'self',
-	'test', 'test-fmt', 'test-compiler',
+	'test', 'test-fmt', 'test-compiler', 'test-fixed',
 	'bin2v',
 	'repl',
 	'build-tools', 'build-examples', 'build-vbinaries',
 	'setup-freetype']
+
+	list_of_flags_that_allow_duplicates = ['cc','d','define','cf','cflags']
+	//list_of_flags contains a list of flags where an argument is expected past it.
+	list_of_flags_with_param = [
+		'o', 'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'arch',
+			'csource', 'cf', 'cflags', 'path'
+	]
 )
 
 fn main() {
@@ -38,12 +46,12 @@ fn main() {
 		println(util.full_v_version())
 		return
 	}
-	prefs2, command := parse_args(args)
-	//println('command = $command')
-	if prefs2.is_verbose {
+	prefs, command := parse_args(args)
+	if prefs.is_verbose {
+		println('command = "$command"')
 		println(util.full_v_version())
 	}
-	if prefs2.is_verbose {
+	if prefs.is_verbose {
 		//println('args= ')
 		//println(args) // QTODO
 		//println('prefs= ')
@@ -53,7 +61,7 @@ fn main() {
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if command in simple_cmd {
 		// External tools
-		util.launch_tool(prefs2.is_verbose, 'v' + command)
+		util.launch_tool(prefs.is_verbose, 'v' + command)
 		return
 	}
 	match command {
@@ -61,7 +69,7 @@ fn main() {
 			invoke_help_and_exit(args)
 		}
 		'create', 'init' {
-			util.launch_tool(prefs2.is_verbose, 'vcreate')
+			util.launch_tool(prefs.is_verbose, 'vcreate')
 			return
 		}
 		'translate' {
@@ -69,7 +77,7 @@ fn main() {
 			return
 		}
 		'search', 'install', 'update', 'remove' {
-			util.launch_tool(prefs2.is_verbose, 'vpm')
+			util.launch_tool(prefs.is_verbose, 'vpm')
 			return
 		}
 		'get' {
@@ -96,8 +104,7 @@ fn main() {
 		else {}
 	}
 	if command in ['run', 'build'] || command.ends_with('.v') || os.exists(command) {
-		arg := join_flags_and_argument()
-		compile.compile(command, arg)
+		builder.compile(command, prefs)
 		return
 	}
 	eprintln('v $command: unknown command\nRun "v help" for usage.')
@@ -107,12 +114,32 @@ fn main() {
 fn parse_args(args []string) (&pref.Preferences, string) {
 	mut res := &pref.Preferences{}
 	mut command := ''
+	mut command_pos := 0
 	//for i, arg in args {
 	for i := 0 ; i < args.len; i ++ {
 		arg := args[i]
 		match arg {
 			'-v' {	res.is_verbose = true	}
 			'-cg' {	res.is_debug = true	}
+			'-live' {	res.is_solive = true	}
+			'-autofree' {	res.autofree = true	}
+			'-compress' {	res.compress = true	}
+			'-freestanding' {	res.is_bare = true	}
+			'-prod' {	res.is_prod = true	}
+			'-stats' {	res.is_stats = true	}
+			'-obfuscate' {	res.obfuscate = true	}
+			'-translated' {	res.translated = true	}
+			//'-x64' {	res.translated = true	}
+			'-os' {
+				//TODO Remove `tmp` variable when it doesn't error out in C.
+				target_os := cmdline.option(args, '-os', '')
+				tmp := pref.os_from_string(target_os) or {
+				        println('unknown operating system target `$target_os`')
+				        exit(1)
+				}
+				res.os = tmp
+				i++
+			}
 			'-cc' {
 				res.ccompiler = cmdline.option(args, '-cc', 'cc')
 				i++
@@ -121,16 +148,37 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				res.out_name  = cmdline.option(args, '-o', '')
 				i++
 			}
-			'-csource', '-backend' {
-				i++ // TODO
-			}
 			else {
+				mut should_continue := false
+				for flag_with_param in list_of_flags_with_param {
+					if '-$flag_with_param' == arg {
+						should_continue = true
+						i++
+						break
+					}
+				}
+				if should_continue {
+					continue
+				}
 				if !arg.starts_with('-') && command == '' {
 					command = arg
+					command_pos = i
 				}
 			}
 		}
 	}
+	if command.ends_with('.v') || os.exists(command) {
+		res.path = command
+	}
+	else if command == 'run' {
+		res.is_run = true
+		res.path = args[command_pos+1]
+		res.run_args = args[command_pos+1..]
+	}
+	if res.is_verbose {
+		println('setting pref.path to "$res.path"')
+	}
+	res.fill_with_defaults()
 	return res, command
 }
 

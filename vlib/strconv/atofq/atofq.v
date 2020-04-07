@@ -29,7 +29,7 @@ const(
 union Float64u {
 mut:
 	f f64
-	u u64 = u64(0)
+	u u64
 }
 
 // atof_quick return a f64 number from a string in a quick way

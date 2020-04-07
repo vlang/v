@@ -13,7 +13,8 @@ import (
 const (
 	single_quote = `\'`
 	double_quote = `"`
-	is_fmt = os.getenv('VEXE').contains('vfmt')
+	//is_fmt = os.getenv('VEXE').contains('vfmt')
+	is_fmt = os.executable().contains('vfmt')
 	num_sep = `_` // char used as number separator
 )
 
@@ -54,18 +55,9 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode) &Scanner {
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
-	mut raw_text := os.read_file(file_path) or {
-		verror('scanner: failed to open $file_path')
+	raw_text := util.read_file( file_path ) or {
+		verror(err)
 		return 0
-	}
-	// BOM check
-	if raw_text.len >= 3 {
-		c_text := raw_text.str
-		if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
-			// skip three BOM bytes
-			offset_from_begin := 3
-			raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
-		}
 	}
 	mut s := new_scanner(raw_text, comments_mode) // .skip_comments)
 	// s.init_fmt()
@@ -731,19 +723,23 @@ pub fn (s mut Scanner) scan() token.Token {
 				start := s.pos + 1
 				s.ignore_line()
 				s.line_comment = s.text[start + 1..s.pos]
-				// if s.comments_mode == .parse_comments {
-				// println('line c $s.line_comment')
-				// }
 				comment := s.line_comment.trim_space()
-				// s.line_comment = comment
 				if s.comments_mode == .parse_comments {
-					// println('line c "$comment" z=')
+					// Find out if this comment is on its own line (for vfmt)
+					mut is_separate_line_comment := true
+					for j := start-2; j >= 0 && s.text[j] != `\n`; j-- {
+						if !(s.text[j] in [`\t`, ` `]) {
+							is_separate_line_comment = false
+						}
+					}
+					if is_separate_line_comment {
+						comment = '|' + comment
+					}
+					s.pos--
 					// fix line_nr, \n was read, and the comment is marked
 					// on the next line
-					s.pos--
-					// println("'" + s.text[s.pos].str() + "'")
-					// s.line_nr--
-					return s.new_token(.line_comment, comment)
+					s.line_nr--
+					return s.new_token(.comment, comment)
 				}
 				// s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 				// Skip the comment (return the next token)
@@ -775,7 +771,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				s.pos++
 				if s.comments_mode == .parse_comments {
 					comment := s.text[start..(s.pos - 1)].trim_space()
-					return s.new_token(.mline_comment, comment)
+					return s.new_token(.comment, comment)
 				}
 				// Skip if not in fmt mode
 				return s.scan()
@@ -1020,7 +1016,11 @@ fn good_type_name(s string) bool {
 }
 
 pub fn (s &Scanner) error(msg string) {
-	println('$s.line_nr : $msg')
+	pos := token.Position{
+		line_nr: s.line_nr
+		pos: s.pos
+	}	 
+	eprintln(util.formated_error('error', msg, s.file_path, pos))
 	exit(1)
 }
 

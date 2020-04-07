@@ -23,7 +23,7 @@ module strconv
 union Float64u {
 mut:
 	f f64
-	u u64 = u64(0)
+	u u64
 }
 
 /**********************************************************************
@@ -165,9 +165,9 @@ fn is_exp(x byte) bool {
 // The structure is filled by parser, then given to converter.
 pub struct PrepNumber {
 pub mut:
-	negative bool=false // 0 if positive number, 1 if negative
-	exponent int=0 // power of 10 exponent
-	mantissa u64=u64(0) // integer mantissa
+	negative bool // 0 if positive number, 1 if negative
+	exponent int // power of 10 exponent
+	mantissa u64 // integer mantissa
 }
 /**********************************************************************
 *

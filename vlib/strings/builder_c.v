@@ -8,7 +8,7 @@ mut:
 	buf          []byte
 pub mut:
 	len          int
-	initial_size int=1
+	initial_size int = 1
 }
 
 pub fn new_builder(initial_size int) Builder {
