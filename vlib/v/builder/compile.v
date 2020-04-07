@@ -27,7 +27,6 @@ fn get_vtmp_filename(base_file_name, postfix string) string {
 }
 
 pub fn compile(command string, pref &pref.Preferences) {
-	mut remaining := []string
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref)
 	if pref.is_verbose {
@@ -72,22 +71,22 @@ pub fn compile(command string, pref &pref.Preferences) {
 		println('compilation took: ' + tmark.total_duration().str() + 'ms')
 	}
 	if pref.is_test || pref.is_run {
-		b.run_compiled_executable_and_exit(remaining)
+		b.run_compiled_executable_and_exit()
 	}
 	// v.finalize_compilation()
 }
 
-fn (b mut Builder) run_compiled_executable_and_exit(remaining []string) {
+fn (b mut Builder) run_compiled_executable_and_exit() {
 	if b.pref.is_verbose {
 		println('============ running $b.pref.out_name ============')
 	}
 	mut cmd := '"${b.pref.out_name}"'
-	for i in 1 .. remaining.len {
+	for arg in b.pref.run_args {
 		// Determine if there are spaces in the parameters
-		if remaining[i].index_byte(` `) > 0 {
-			cmd += ' "' + remaining[i] + '"'
+		if arg.index_byte(` `) > 0 {
+			cmd += ' "' + arg + '"'
 		} else {
-			cmd += ' ' + remaining[i]
+			cmd += ' ' + arg
 		}
 	}
 	if b.pref.is_verbose {

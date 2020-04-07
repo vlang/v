@@ -114,6 +114,7 @@ fn main() {
 fn parse_args(args []string) (&pref.Preferences, string) {
 	mut res := &pref.Preferences{}
 	mut command := ''
+	mut command_pos := 0
 	//for i, arg in args {
 	for i := 0 ; i < args.len; i ++ {
 		arg := args[i]
@@ -161,6 +162,7 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				}
 				if !arg.starts_with('-') && command == '' {
 					command = arg
+					command_pos = i
 				}
 			}
 		}
@@ -170,7 +172,8 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 	}
 	else if command == 'run' {
 		res.is_run = true
-		res.path = args[args.len-1]
+		res.path = args[command_pos+1]
+		res.run_args = args[command_pos+1..]
 	}
 	if res.is_verbose {
 		println('setting pref.path to "$res.path"')

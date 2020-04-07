@@ -78,6 +78,8 @@ pub mut:
 	compile_defines_all []string // contains both: ['vfmt','another']
 
 	mod                 string
+	run_args []string  // `v run x.v 1 2 3` => `1 2 3`
+
 }
 
 pub fn backend_from_string(s string) ?Backend {
