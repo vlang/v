@@ -270,10 +270,10 @@ jobs:
         echo %VFLAGS%
         echo $VFLAGS
         .\make.bat -msvc
-    - name: Fixed tests
-      run: |
-        ./v vlib/v/tests/backtrace_test.v
-        ./v test-fixed
+#    - name: Fixed tests
+#      run: |
+#        ./v vlib/v/tests/backtrace_test.v
+#        ./v test-fixed
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
