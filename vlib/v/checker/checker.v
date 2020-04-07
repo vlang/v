@@ -394,6 +394,57 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	}
 }
 
+pub fn (c mut Checker) check_or_block(call_expr mut ast.CallExpr, ret_type table.Type) {
+	if call_expr.or_block.is_used {
+		stmts_len := call_expr.or_block.stmts.len
+		if stmts_len != 0 {
+			last_stmt := call_expr.or_block.stmts[stmts_len - 1]
+
+			if c.is_or_block_stmt_valid(last_stmt) {
+				match last_stmt {
+					ast.ExprStmt {
+						type_fits := c.table.check(c.expr(it.expr), ret_type)
+						is_panic_or_exit := is_expr_panic_or_exit(it.expr)
+						if !type_fits && !is_panic_or_exit {
+							type_name := c.table.get_type_symbol(c.expr(it.expr)).name
+							expected_type_name := c.table.get_type_symbol(ret_type).name
+							c.error('wrong return type ‘$type_name‘ in or{} block, expected ‘$expected_type_name‘', it.pos)
+						}
+					}
+					ast.BranchStmt {
+						if !(it.tok.kind in [.key_continue, .key_break]) {
+							c.error('only break and continue are allowed as a final branch statement in an or{} block', it.tok.position())
+						}
+					}
+					else {}
+				}
+			} else {
+				expected_type_name := c.table.get_type_symbol(ret_type).name
+				c.error('last statement in or{} block should return ‘$expected_type_name‘', call_expr.pos)
+			}
+		} else {
+			c.error('require a statement in or{} block', call_expr.pos)
+		}
+	}
+}
+
+fn is_expr_panic_or_exit(expr ast.Expr) bool {
+	match expr {
+		ast.CallExpr { return it.name == 'panic' || it.name == 'exit' }
+		else { return false }
+	}
+}
+
+// TODO: merge to check_or_block when v can handle it
+pub fn (c mut Checker) is_or_block_stmt_valid(stmt ast.Stmt) bool {
+	return match stmt {
+		ast.Return { true }
+		ast.BranchStmt { true }
+		ast.ExprStmt { true }
+		else { false }
+	}
+}
+
 pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.Type {
 	typ := c.expr(selector_expr.expr)
 	if typ == table.void_type_idx {
@@ -795,7 +846,9 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return it.typ
 		}
 		ast.CallExpr {
-			return c.call_expr(mut it)
+			call_ret_type := c.call_expr(mut it)
+			c.check_or_block(mut it, call_ret_type)
+			return call_ret_type
 		}
 		ast.CharLiteral {
 			return table.byte_type

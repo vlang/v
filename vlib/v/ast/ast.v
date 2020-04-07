@@ -44,6 +44,7 @@ pub struct ExprStmt {
 pub:
 	expr Expr
 	typ  table.Type
+	pos  token.Position
 }
 
 pub struct IntegerLiteral {
@@ -647,6 +648,7 @@ mut:
 pub struct OrExpr {
 pub:
 	stmts []Stmt
+	is_used bool // if the or{} block is written down or left out
 	// var_name string
 	// expr     Expr
 }

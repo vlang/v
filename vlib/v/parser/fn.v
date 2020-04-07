@@ -22,6 +22,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	p.check(.lpar)
 	args := p.call_args()
 	mut or_stmts := []ast.Stmt
+	mut is_or_block_used := false
 	if p.tok.kind == .key_orelse {
 		p.next()
 		p.open_scope()
@@ -33,6 +34,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 			name: 'errcode'
 			typ: table.int_type
 		})
+		is_or_block_used = true
 		or_stmts = p.parse_block_no_scope()
 		p.close_scope()
 	}
@@ -43,8 +45,9 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		pos: tok.position()
 		is_c: is_c
 		or_block: ast.OrExpr{
-		stmts: or_stmts
-	}
+			stmts: or_stmts
+			is_used: is_or_block_used
+		}
 	}
 	return node
 }
