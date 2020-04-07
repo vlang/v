@@ -132,7 +132,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 					f.write(', ')
 				}
 			}
-			f.writeln('')
+			if !f.single_line_if {
+				f.writeln('')
+			}
 			f.is_assign = false
 		}
 		ast.Attr {
@@ -206,6 +208,21 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			} else {
 				f.writeln('\n')
 			}
+		}
+		ast.ForCStmt {
+			f.write('for ')
+			if it.has_init {
+				f.single_line_if = true				// to keep all for ;; exprs on the same line
+				f.stmt(it.init)
+				f.single_line_if = false
+			}
+			f.write('; ')
+			f.expr(it.cond)
+			f.write('; ')
+			f.expr(it.inc)
+			f.writeln('{ ')
+			f.stmts(it.stmts)
+			f.writeln('}')
 		}
 		ast.ForInStmt {
 			f.write('for ')
@@ -294,8 +311,10 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		else {
-			eprintln('fmt stmt: unknown node: ' + typeof(node))
-			// exit(1)
+			eprintln('fmt stmt: unhandled node ' + typeof(node))
+			if typeof(node) != 'unknown v.ast.Expr' {
+				exit(1)
+			}
 		}
 	}
 }
