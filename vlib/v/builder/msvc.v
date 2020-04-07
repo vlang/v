@@ -1,4 +1,4 @@
-module compile
+module builder
 
 import os
 import v.pref
@@ -182,7 +182,7 @@ fn find_msvc() ?MsvcResult {
 	}
 }
 
-pub fn (v mut V) cc_msvc() {
+pub fn (v mut Builder) cc_msvc() {
 	r := find_msvc()or{
 		// TODO: code reuse
 		if !v.pref.is_keep_c && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
@@ -281,7 +281,7 @@ pub fn (v mut V) cc_msvc() {
 	cmd := '"$r.full_cl_exe_path" $args'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
-	if v.pref.verbosity.is_higher_or_equal(.level_one) {
+	if v.pref.is_verbose {
 		println('\n========== cl cmd line:')
 		println(cmd)
 		println('==========\n')

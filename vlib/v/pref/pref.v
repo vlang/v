@@ -19,19 +19,12 @@ pub enum Backend {
 	x64          // The x64 backend
 }
 
-pub enum VerboseLevel {
-	clean       // `-verbose 0` or unspecified
-	level_one   // `-v` or `-verbose 1`
-	level_two   // `-vv` or `-verbose 2`
-	level_three // `-vvv` or `-verbose 3`
-}
-
 pub struct Preferences {
 pub mut:
 	os                  OS   // the OS to compile for
 	backend             Backend
 	build_mode          BuildMode
-	verbosity           VerboseLevel
+	//verbosity           VerboseLevel
 	is_verbose bool
 	// nofmt            bool   // disable vfmt
 	is_test             bool // `v test string_test.v`
@@ -85,6 +78,8 @@ pub mut:
 	compile_defines_all []string // contains both: ['vfmt','another']
 
 	mod                 string
+	run_args []string  // `v run x.v 1 2 3` => `1 2 3`
+
 }
 
 pub fn backend_from_string(s string) ?Backend {
@@ -108,7 +103,3 @@ pub fn backend_from_string(s string) ?Backend {
 	}
 }
 
-[inline]
-pub fn (v VerboseLevel) is_higher_or_equal(other VerboseLevel) bool {
-	return int(v) >= int(other)
-}

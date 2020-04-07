@@ -54,20 +54,17 @@ pub fn formated_error(kind string /*error or warn*/, emsg string, filepath strin
 		}
 	}
 	//
-	mut column := 0
 	mut source_context := ''
 	source := util.read_file(filepath) or { '' }
 	source_lines := source.split_into_lines()
-	if source.len > pos.pos {
-		mut p := pos.pos
-		for ; p>=0; p-- {
-			if source[p] == `\r` || source[p] == `\n` {
-				break
-			}
+	mut p := util.imax(0, util.imin(source.len -1, pos.pos))
+	for ; p>=0; p-- {
+		if source[p] == `\r` || source[p] == `\n` {
+			break
 		}
-		column = util.imax(0, pos.pos - p - 1)
 	}
-	position := '${path}:${pos.line_nr+1}:$column:'
+	column := util.imax(0, pos.pos - p - 1)
+	position := '${path}:${pos.line_nr+1}:${util.imax(1,column+1)}:'
 	//
 	bline := util.imax(0, pos.line_nr - error_context_before)
 	aline := util.imin(source_lines.len-1, pos.line_nr + error_context_after)

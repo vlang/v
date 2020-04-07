@@ -150,6 +150,7 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 
 pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	// println('checker: infix expr(op $infix_expr.op.str())')
+	c.expected_type = table.void_type
 	left_type := c.expr(infix_expr.left)
 	infix_expr.left_type = left_type
 	c.expected_type = left_type
@@ -157,29 +158,35 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	infix_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
-	if infix_expr.op == .key_in && !(right.kind in [.array, .map, .string]) {
-		c.error('`in` can only be used with an array/map/string.', infix_expr.pos)
-	}
 	if infix_expr.op == .left_shift {
 		if left.kind != .array && !left.is_int() {
 			//c.error('<< can only be used with numbers and arrays', infix_expr.pos)
 			c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
+			return table.void_type
 		}
-		if left.kind == .array && infix_expr.op == .left_shift {
+		if left.kind == .array {
 			// `array << elm`
 			// the expressions have different types (array_x and x)
-			if right.kind != .array && !c.table.check(c.table.value_type(left_type), right_type) {
-				c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
+			if c.table.check(c.table.value_type(left_type), right_type) {
+				// []T << T
+				return table.void_type
 			}
+			if right.kind == .array && c.table.check(c.table.value_type(left_type), c.table.value_type(right_type)) {
+				// []T << []T
+				return table.void_type
+			}
+			c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
 			return table.void_type
 		}
 	}
-	if !c.table.check(right_type, left_type) {
-		// `elm in array`
-		if right.kind in [.array, .map] && infix_expr.op == .key_in {
-			return table.bool_type
+	if infix_expr.op == .key_in {
+		if !(right.kind in [.array, .map, .string]) {
+			c.error('`in` can only be used with an array/map/string.', infix_expr.pos)
 		}
-		// fot type-unresolved consts
+		return table.bool_type
+	}
+	if !c.table.check(right_type, left_type) {
+		// for type-unresolved consts
 		if left_type == table.void_type || right_type == table.void_type {
 			return table.void_type
 		}
@@ -192,6 +199,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 }
 
 fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
+	c.expected_type = table.void_type
 	left_type := c.expr(assign_expr.left)
 	c.expected_type = left_type
 	assign_expr.left_type = left_type
@@ -292,17 +300,6 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 		if fn_name == 'typeof' {
 			return table.string_type
 		}
-		// start hack: until v1 is fixed and c definitions are added for these
-		if fn_name in ['C.calloc', 'C.malloc', 'C.exit', 'C.free'] {
-			for arg in call_expr.args {
-				c.expr(arg.expr)
-			}
-			if fn_name in ['C.calloc', 'C.malloc'] {
-				return table.byteptr_type
-			}
-			return table.void_type
-		}
-		// end hack
 		// look for function in format `mod.fn` or `fn` (main/builtin)
 		mut f := table.Fn{}
 		mut found := false
@@ -653,6 +650,12 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.expected_type = table.void_type
 		}
 		ast.FnDecl {
+			//if it.is_method {
+				//sym := c.table.get_type_symbol(it.receiver.typ)
+				//if sym.has_method(it.name) {
+					//c.warn('duplicate method `$it.name`', it.pos)
+				//}
+			//}
 			c.expected_type = table.void_type
 			c.fn_return_type = it.return_type
 			c.stmts(it.stmts)
@@ -1219,11 +1222,11 @@ fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
 		c.nr_errors++
 	}
 	//if c.pref.is_verbose {
-	if c.pref.verbosity.is_higher_or_equal(.level_one) {
+	if c.pref.is_verbose {
 		print_backtrace()
 	}
 	typ := if warn { 'warning' } else { 'error' }
-	kind := if c.pref.verbosity.is_higher_or_equal(.level_one) {
+	kind := if c.pref.is_verbose {
 		'checker $typ #$c.nr_errors:'
 	} else {
 		'$typ:'
@@ -1240,7 +1243,7 @@ fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
 	if !warn {
 		c.error_lines << pos.line_nr
 	}
-	if c.pref.verbosity.is_higher_or_equal(.level_one) {
+	if c.pref.is_verbose {
 		println('\n\n')
 	}
 	if c.nr_errors >= max_nr_errors {

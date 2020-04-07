@@ -12,7 +12,7 @@ import (
 const (
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t']
-	max_len = 80
+	max_len = 100
 )
 
 struct Fmt {

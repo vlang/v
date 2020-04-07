@@ -78,7 +78,7 @@ const (
 		'vlib/time/time_test.v',
 		'vlib/time/misc/misc_test.v',
 		'vlib/v/doc/doc_test.v',
-		// 'vlib/v/fmt/fmt_keep_test.v',
+		'vlib/v/fmt/fmt_keep_test.v',
 		'vlib/v/fmt/fmt_test.v',
 		'vlib/v/gen/cgen_test.v',
 		// 'vlib/v/parser/parser_test.v',

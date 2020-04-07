@@ -1,12 +1,15 @@
 module builtin
+
 // <string.h>
 fn C.memcpy(byteptr, byteptr, int) voidptr
 
 
 fn C.memmove(byteptr, byteptr, int) voidptr
 fn C.calloc(int)  byteptr
-// fn C.malloc(int) byteptr
+fn C.malloc(int) byteptr
 fn C.realloc(a byteptr, b int) byteptr
+fn C.free(ptr voidptr)
+fn C.exit(code int)
 
 
 fn C.qsort(voidptr, int, int, voidptr)
