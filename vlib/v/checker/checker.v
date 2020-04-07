@@ -412,8 +412,8 @@ pub fn (c mut Checker) check_or_block(call_expr mut ast.CallExpr, ret_type table
 						}
 					}
 					ast.BranchStmt {
-						if !(it.tok.kind in [ .key_continue , .key_break ]) {
-							c.error('no other branch statements than break and continue are allowed to end an or {} block', it.tok.position())
+						if !(it.tok.kind in [.key_continue, .key_break]) {
+							c.error('only break and continue are allowed as a final branch statement in an or{} block', it.tok.position())
 						}
 					}
 					else {}
