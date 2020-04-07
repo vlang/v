@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 
 // This module follows a similar convention to Rust: `init` makes the
-// structure of the program in the _current_ directory, while `create`
+// structure of the program in the _current_ directory, while `new`
 // makes the program structure in a _sub_ directory. Besides that, the
 // functionality is essentially the same.
 module main
@@ -86,6 +86,7 @@ fn (c &Create)create_git_repo(dir string) {
 	if !os.is_dir('${dir}/.git') {
 		os.exec('git init ${dir}') or {
 			cerror('Unable to create git repo')
+			exit(4)
 		}
 		if !os.exists('${dir}/.gitignore') {
 			mut fl := os.create('${dir}/.gitignore') or {
@@ -151,7 +152,7 @@ fn init() {
 }
 
 fn main() {
-	if 'create' == os.args[1] {
+	if 'new' == os.args[1] {
 		create()
 	} else if 'init' == os.args[1] {
 		init()
