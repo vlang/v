@@ -598,6 +598,11 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		ast.Block {
 			c.stmts(it.stmts)
 		}
+		ast.BranchStmt {
+			if c.in_for_count == 0 {
+				c.error('$it.tok.lit statement not within a loop', it.tok.position())
+			}
+		}
 		// ast.Attr {}
 		ast.CompIf {
 			// c.expr(it.cond)
@@ -725,11 +730,6 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		// ast.StructDecl {}
 		ast.UnsafeStmt {
 			c.stmts(it.stmts)
-		}
-		ast.BranchStmt {
-			if c.in_for_count == 0 {
-				c.error('$it.tok.lit statement not within a loop', it.tok.position())
-			}
 		}
 		else {}
 		// println('checker.stmt(): unhandled node')
