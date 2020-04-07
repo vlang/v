@@ -14,7 +14,6 @@ const (
 		'vlib/cli/flag_test.v',
 		'vlib/clipboard/clipboard_test.v', // Linux only
 		'vlib/crypto/aes/aes_test.v',
-		'vlib/crypto/md5/md5_test.v',
 		'vlib/crypto/rand/rand_test.v',
 		'vlib/crypto/rc4/rc4_test.v',
 		'vlib/crypto/sha1/sha1_test.v',
@@ -54,7 +53,6 @@ const (
 		'vlib/v/tests/fn_variadic_test.v',
 		'vlib/v/tests/live_test.v', // Linux only
 		'vlib/v/tests/match_test.v',
-		'vlib/v/tests/module_test.v',
 		'vlib/v/tests/msvc_test.v',
 		'vlib/v/tests/mut_test.v',
 		'vlib/v/tests/num_lit_call_method_test.v',
@@ -67,7 +65,6 @@ const (
 		'vlib/v/tests/string_interpolation_array_of_structs_test.v',
 		'vlib/v/tests/string_interpolation_struct_test.v',
 		'vlib/v/tests/string_interpolation_variadic_test.v',
-		'vlib/v/tests/struct_test.v',
 		'vlib/v/tests/type_test.v',
 		'vlib/v/tests/typeof_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only

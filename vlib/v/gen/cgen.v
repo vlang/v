@@ -1236,7 +1236,8 @@ fn (g mut Gen) assign_expr(node ast.AssignExpr) {
 		if is_call {
 			g.expr(node.val)
 		} else {
-			g.write('{${g.typ(node.left_type)} _ = ')
+			// g.write('{${g.typ(node.left_type)} _ = ')
+			g.write('{')
 			g.expr(node.val)
 			g.writeln(';}')
 		}
@@ -2966,7 +2967,7 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 fn type_to_fmt(typ table.Type) string {
 	n := int(typ)
 	if n == table.string_type {
-		return '\'%.*s\''
+		return "\'%.*s\'"
 	} else if n == table.bool_type {
 		return '%.*s'
 	}
