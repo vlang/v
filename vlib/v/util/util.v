@@ -142,7 +142,12 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 		}
 		tool_compilation := os.exec(compilation_command) or { panic(err) }
 		if tool_compilation.exit_code != 0 {
-			panic('V tool "$tool_source" could not be compiled\n' + tool_compilation.output)
+			mut err := 'Permission denied'
+			if !tool_compilation.output.contains('Permission denied') {
+				err = '\n$tool_compilation.output'
+			}
+			eprintln('cannot compile ‘$tool_source: $err‘')
+			exit(1)
 		}
 	}
 	if is_verbose {

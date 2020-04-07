@@ -6,14 +6,26 @@ import (
 )
 
 fn main() {
-	println('Updating V...')
 	vroot := os.dir(pref.vexe_path())
 	os.chdir(vroot)
+
+	println('Updating V...')
+
 	// git pull
-	s := os.exec('git pull --rebase origin master') or {
+	git_result := os.exec('git pull --rebase origin master') or {
 		panic(err)
 	}
-	println(s.output)
+
+	if git_result.exit_code != 0 {
+		if git_result.output.contains('Permission denied') {
+			eprintln('have no access ‘$vroot: Permission denied')
+		} else {
+			eprintln(git_result.output)
+		}
+		exit(1)
+	}
+
+	println(git_result.output)
 
 	$if windows {
 		v_backup_file := 'v_old.exe'
@@ -22,14 +34,14 @@ fn main() {
 		}
 		os.mv('v.exe', v_backup_file)
 
-		s2 := os.exec('make.bat') or {
+		make_result := os.exec('make.bat') or {
 			panic(err)
 		}
-		println(s2.output)
+		println(make_result.output)
 	} $else {
-		s2 := os.exec('make') or {
+		make_result := os.exec('make') or {
 			panic(err)
 		}
-		println(s2.output)
+		println(make_result.output)
 	}
 }
