@@ -150,6 +150,7 @@ pub:
 	pub_pos       int // pub:
 	pub_mut_pos   int // pub mut:
 	is_c          bool
+	is_union bool
 }
 
 pub struct InterfaceDecl {

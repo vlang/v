@@ -540,6 +540,7 @@ pub struct Struct {
 pub mut:
 	fields []Field
 	is_typedef bool // C. [typedef]
+	is_union bool
 }
 
 pub struct Enum {

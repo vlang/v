@@ -86,7 +86,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		indent: -1
 	}
 	g.init()
-	//
+	// 
 	mut autofree_used := false
 	for file in files {
 		g.file = file
@@ -115,7 +115,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.is_test {
 		g.write_tests_main()
 	}
-	//
+	// 
 	g.finish()
 	return g.hashes() + g.includes.str() + g.typedefs.str() + g.typedefs2.str() + g.definitions.str() +
 		g.gowrappers.str() + g.stringliterals.str() + g.out.str()
@@ -141,7 +141,7 @@ pub fn (g mut Gen) init() {
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
-	//
+	// 
 	g.stringliterals.writeln('')
 	g.stringliterals.writeln('// >> string literal consts')
 	g.stringliterals.writeln('void vinit_string_literals(){')
@@ -205,7 +205,7 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	return styp
 }
 
-//
+// 
 pub fn (g mut Gen) write_typedef_types() {
 	for typ in g.table.types {
 		match typ.kind {
@@ -460,7 +460,12 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			// g.writeln('\t$field_type_sym.name $field.name;')
 			// }
 			// g.writeln('} $name;')
-			if !it.is_c {
+			if it.is_c {
+				return
+			}
+			if it.is_union {
+				g.typedefs.writeln('typedef union $name $name;')
+			} else {
 				g.typedefs.writeln('typedef struct $name $name;')
 			}
 		}
@@ -817,7 +822,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 	}
 */
-	//
+	// 
 	g.fn_args(it.args, it.is_variadic)
 	if it.no_body {
 		// Just a function header.
@@ -1452,7 +1457,7 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 					// sum_type_str
 				} else if type_sym.kind == .string {
 					g.write('string_eq(')
-					//
+					// 
 					g.expr(node.cond)
 					g.write(', ')
 					// g.write('string_eq($tmp, ')
@@ -2121,7 +2126,11 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 			table.Struct {
 				info := typ.info as table.Struct
 				// g.definitions.writeln('typedef struct {')
-				g.definitions.writeln('struct $name {')
+				if info.is_union {
+					g.definitions.writeln('union $name {')
+				} else {
+					g.definitions.writeln('struct $name {')
+				}
 				if info.fields.len > 0 {
 					for field in info.fields {
 						type_name := g.typ(field.typ)
@@ -2132,7 +2141,7 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 					g.definitions.writeln('EMPTY_STRUCT_DECLARATION;')
 				}
 				// g.definitions.writeln('} $name;\n')
-				//
+				// 
 				g.definitions.writeln('};\n')
 			}
 			table.Alias {

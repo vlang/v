@@ -661,8 +661,8 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			x := p.call_expr(is_c, mod)			// TODO `node,typ :=` should work
 			node = x
 		}
-	} else if p.peek_tok.kind == .lcbr && !p.inside_match_case && (is_c || p.tok.lit[0].is_capital() || 
-		(p.builtin_mod && p.tok.lit in table.builtin_type_names)) && (p.tok.lit.len in [1, 2, 3] || 
+	} else if p.peek_tok.kind == .lcbr && !p.inside_match_case && (is_c || p.tok.lit[0].is_capital() ||
+		(p.builtin_mod && p.tok.lit in table.builtin_type_names)) && (p.tok.lit.len in [1, 2, 3] ||
 		!p.tok.lit[p.tok.lit.len - 1].is_capital() || p.table.known_type(p.tok.lit)) {
 		// short_syntax: false
 		return p.struct_init(false)
@@ -1447,6 +1447,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	if is_pub {
 		p.next()
 	}
+	is_union := p.tok.kind == .key_union
 	if p.tok.kind == .key_struct {
 		p.check(.key_struct)
 	} else {
@@ -1535,6 +1536,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		info: table.Struct{
 			fields: fields
 			is_typedef: is_typedef
+			is_union: is_union
 		}
 	}
 	mut ret := 0
@@ -1558,6 +1560,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
 		is_c: is_c
+		is_union: is_union
 	}
 }
 
