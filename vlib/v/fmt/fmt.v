@@ -654,7 +654,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 
 fn (f mut Fmt) wrap_long_line() {
 	if f.line_len > max_len {
-		if f.out.buf[f.out.buf.len - 1] == ' ' {
+		if f.out.buf[f.out.buf.len - 1] == ` ` {
 			f.out.go_back(1)
 		}
 		f.write('\n' + tabs[f.indent + 1])
