@@ -649,7 +649,6 @@ pub struct OrExpr {
 pub:
 	stmts []Stmt
 	is_used bool // if the or{} block is written down or left out
-	last_stmt_type table.Type
 	// var_name string
 	// expr     Expr
 }
