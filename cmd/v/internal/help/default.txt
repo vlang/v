@@ -10,7 +10,8 @@ Examples:
 
 The commands are:
    build             Build V code in the provided path (default).
-   create            Setup the file structure for a V project.
+   new               Setup the file structure for a V project (in a sub folder).
+   init              Setup the file structure for an already existing V project.
    doc               Generate the documentation for a V module.
    fmt               Format the V code provided.
    repl              Run the REPL.

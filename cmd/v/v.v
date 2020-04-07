@@ -68,7 +68,7 @@ fn main() {
 		'help' {
 			invoke_help_and_exit(args)
 		}
-		'create', 'init' {
+		'new', 'init' {
 			util.launch_tool(prefs.is_verbose, 'vcreate')
 			return
 		}
