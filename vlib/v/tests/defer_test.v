@@ -46,8 +46,7 @@ mut:
 }
 
 fn test_defer_early_exit() {
-	mut sum := Num{
-		0}
+	mut sum := Num{0}
 	for i in 0 .. 10 {
 		set_num(i, mut sum)
 	}
@@ -57,6 +56,6 @@ fn test_defer_early_exit() {
 
 fn test_defer_option() {
 	mut ok := Num{0}
-	set_num_opt(mut ok)
+	set_num_opt(mut ok) or {}
 	assert ok.val == 1
 }
