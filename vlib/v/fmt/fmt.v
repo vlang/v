@@ -235,7 +235,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.expr(it.cond)
 			f.write('; ')
 			f.expr(it.inc)
-			f.writeln('{ ')
+			f.writeln(' {')
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
@@ -439,7 +439,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.writeln('\t$it.var_name |')
 			// TODO StructInit copy pasta
 			for i, field in it.fields {
-				f.write('\t$field: ')
+				f.write('$field: ')
 				f.expr(it.exprs[i])
 				f.writeln('')
 			}
@@ -625,11 +625,13 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.write('$name{}')
 			} else {
 				f.writeln('$name{')
+				f.indent++
 				for i, field in it.fields {
-					f.write('\t$field: ')
+					f.write('$field: ')
 					f.expr(it.exprs[i])
 					f.writeln('')
 				}
+				f.indent--
 				f.write('}')
 			}
 		}
@@ -652,6 +654,9 @@ fn (f mut Fmt) expr(node ast.Expr) {
 
 fn (f mut Fmt) wrap_long_line() {
 	if f.line_len > max_len {
+		if f.out.buf[f.out.buf.len - 1] == ' ' {
+			f.out.go_back(1)
+		}
 		f.write('\n' + tabs[f.indent + 1])
 		f.line_len = 0
 	}
@@ -713,8 +718,8 @@ fn short_module(name string) string {
 }
 
 fn (f mut Fmt) if_expr(it ast.IfExpr) {
-	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 1 && it.branches[1].stmts.len == 
-		1 && (it.is_expr || f.is_assign)
+	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 1 &&
+		it.branches[1].stmts.len == 1 && (it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
 		if branch.comment.text != '' {
