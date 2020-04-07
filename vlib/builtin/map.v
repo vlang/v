@@ -7,6 +7,9 @@ import (
 	strings
 	hash.wyhash
 )
+
+fn C.strcmp(byteptr, byteptr) int
+
 /*
 This is a very fast hashmap implementation. It has several properties that in
 combination makes it very fast. Here is a short explanation of each property.
@@ -241,7 +244,7 @@ fn (m mut map) set(key string, value voidptr) {
 	// While we might have a match
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if key == m.key_values.data[kv_index].key {
+		if C.strcmp(key.str, m.key_values.data[kv_index].key.str) == 0 {
 			C.memcpy(m.key_values.data[kv_index].value, value, m.value_bytes)
 			return
 		}
@@ -317,7 +320,7 @@ fn (m map) get3(key string, zero voidptr) voidptr {
 	index,meta = m.meta_less(index, meta)
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if key == m.key_values.data[kv_index].key {
+		if C.strcmp(key.str, m.key_values.data[kv_index].key.str) == 0 {
 			out := malloc(m.value_bytes)
 			C.memcpy(out, m.key_values.data[kv_index].value, m.value_bytes)
 			return out
@@ -336,7 +339,7 @@ fn (m map) exists(key string) bool {
 	index,meta = m.meta_less(index, meta)
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if key == m.key_values.data[kv_index].key {
+		if C.strcmp(key.str, m.key_values.data[kv_index].key.str) == 0 {
 			return true
 		}
 		index += 2
@@ -351,7 +354,7 @@ pub fn (m mut map) delete(key string) {
 	// Perform backwards shifting
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if key == m.key_values.data[kv_index].key {
+		if C.strcmp(key.str, m.key_values.data[kv_index].key.str) == 0 {
 			for (m.metas[index + 2]>>hashbits) > 1 {
 				m.metas[index] = m.metas[index + 2] - probe_inc
 				m.metas[index + 1] = m.metas[index + 3]
