@@ -1046,7 +1046,6 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 	if ident.is_c {
 		return table.int_type
 	}
-	println(ident.name)
 	if ident.name != '_' {
 		c.error('undefined: `$ident.name`', ident.pos)
 	}
