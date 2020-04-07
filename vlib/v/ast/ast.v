@@ -6,6 +6,7 @@ module ast
 import (
 	v.token
 	v.table
+	v.ast
 )
 
 pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
@@ -107,7 +108,9 @@ pub:
 	name string
 	pos token.Position
 	comment Comment
+	has_default_expr bool
 	default_expr string // token literal //Expr
+	default_expr2 ast.Expr
 mut:
 	typ table.Type
 }

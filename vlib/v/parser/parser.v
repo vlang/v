@@ -687,6 +687,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		else {
 			enum_name = p.prepend_mod(enum_name)
 		}
+		typ := p.parse_type()
 		// p.warn('Color.green $enum_name ' + p.prepend_mod(enum_name) + 'mod=$mod')
 		p.check(.dot)
 		val := p.check_name()
@@ -694,10 +695,10 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name // lp.prepend_mod(enum_name)
-
 			val: val
 			pos: p.tok.position()
 			mod: mod
+			typ: typ
 		}
 	}
 	else {
@@ -1046,11 +1047,13 @@ fn (p &Parser) is_addative() bool {
 // `.green`
 // `pref.BuildMode.default_mode`
 fn (p mut Parser) enum_val() ast.EnumVal {
+	typ := p.parse_type()
 	p.check(.dot)
 	val := p.check_name()
 	return ast.EnumVal{
 		val: val
 		pos: p.tok.position()
+		typ: typ
 	}
 }
 
@@ -1540,13 +1543,13 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			println('XXXX' + s.str())
 		}
 		*/
-		mut default_expr := '' // ast.Expr{}
+		mut default_expr := ast.Expr{}
+		mut has_default_expr := false
 		if p.tok.kind == .assign {
 			// Default value
 			p.next()
-			default_expr = p.tok.lit
-			p.expr(0)
-			//default_expr = p.expr(0)
+			default_expr = p.expr(0)
+			has_default_expr = true
 		}
 		if p.tok.kind == .comment {
 			comment = p.comment()
@@ -1556,12 +1559,14 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			pos: field_pos
 			typ: typ
 			comment: comment
-			default_expr: default_expr
+			has_default_expr: has_default_expr
+			default_expr2: default_expr
 		}
 		fields << table.Field{
 			name: field_name
 			typ: typ
-			default_val: default_expr
+			has_default_expr: has_default_expr
+			default_expr: default_expr
 		}
 		// println('struct field $ti.name $field_name')
 	}

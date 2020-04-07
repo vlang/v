@@ -14,6 +14,7 @@ module table
 
 import (
 	strings
+	v.ast
 )
 
 pub type Type int
@@ -558,6 +559,8 @@ pub:
 mut:
 	typ  Type
 	default_val string
+	has_default_expr bool
+	default_expr ast.Expr
 }
 
 pub struct Array {

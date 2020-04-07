@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	c_reserved = ['delete', 'exit', 'unix', 'error', 'calloc', 'malloc', 'free', 
-		'panic', 'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 
-		'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 
+	c_reserved = ['delete', 'exit', 'unix', 'error', 'calloc', 'malloc', 'free',
+		'panic', 'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline',
+		'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch',
 		'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
 )
 
@@ -58,7 +58,7 @@ mut:
 }
 
 const (
-	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', 
+	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t']
 )
 
@@ -86,7 +86,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		indent: -1
 	}
 	g.init()
-	// 
+	//
 	mut autofree_used := false
 	for file in files {
 		g.file = file
@@ -115,9 +115,9 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.is_test {
 		g.write_tests_main()
 	}
-	// 
+	//
 	g.finish()
-	return g.hashes() + g.includes.str() + g.typedefs.str() + g.typedefs2.str() + 
+	return g.hashes() + g.includes.str() + g.typedefs.str() + g.typedefs2.str() +
 		g.definitions.str() + g.gowrappers.str() + g.stringliterals.str() + g.out.str()
 }
 
@@ -141,7 +141,7 @@ pub fn (g mut Gen) init() {
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
-	// 
+	//
 	g.stringliterals.writeln('')
 	g.stringliterals.writeln('// >> string literal consts')
 	g.stringliterals.writeln('void vinit_string_literals(){')
@@ -178,8 +178,10 @@ pub fn (g mut Gen) write_typeof_functions() {
 
 // V type to C type
 pub fn (g mut Gen) typ(t table.Type) string {
+	// println(int(t))
 	nr_muls := table.type_nr_muls(t)
 	sym := g.table.get_type_symbol(t)
+	// println(sym.name)
 	mut styp := sym.name.replace('.', '__')
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
@@ -205,7 +207,7 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	return styp
 }
 
-// 
+//
 pub fn (g mut Gen) write_typedef_types() {
 	for typ in g.table.types {
 		match typ.kind {
@@ -817,7 +819,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 	}
 */
-	// 
+	//
 	g.fn_args(it.args, it.is_variadic)
 	if it.no_body {
 		// Just a function header.
@@ -1044,10 +1046,10 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.EnumVal {
-			// g.write('/*EnumVal*/${it.mod}${it.enum_name}_$it.val')
 			styp := g.typ(it.typ)
-			g.write(styp)
-			g.write('_$it.val')
+			g.write('/* $it.typ */ ${it.enum_name}_$it.val')
+			// g.write(styp)
+			// g.write('_$it.val')
 		}
 		ast.FloatLiteral {
 			g.write(it.val)
@@ -1135,7 +1137,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write('tos3("$escaped_val")')
 				return
 			}
-			escaped_val := it.val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', 
+			escaped_val := it.val.replace_each(['"', '\\"', '\r\n', '\\n', '\n',
 				'\\n'])
 			if g.is_c_call || it.is_c {
 				// In C calls we have to generate C strings
@@ -1361,7 +1363,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.write(')')
 		}
-	} else if node.op == .left_shift && g.table.get_type_symbol(node.left_type).kind == 
+	} else if node.op == .left_shift && g.table.get_type_symbol(node.left_type).kind ==
 		.array {
 		// arr << val
 		tmp := g.new_tmp_var()
@@ -1452,7 +1454,7 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 					// sum_type_str
 				} else if type_sym.kind == .string {
 					g.write('string_eq(')
-					// 
+					//
 					g.expr(node.cond)
 					g.write(', ')
 					// g.write('string_eq($tmp, ')
@@ -1547,7 +1549,7 @@ fn (g mut Gen) if_expr(node ast.IfExpr) {
 	// one line ?:
 	// TODO clean this up once `is` is supported
 	// TODO: make sure only one stmt in each branch
-	if node.is_expr && node.branches.len >= 2 && node.has_else && type_sym.kind != 
+	if node.is_expr && node.branches.len >= 2 && node.has_else && type_sym.kind !=
 		.void {
 		g.inside_ternary = true
 		g.write('(')
@@ -1861,17 +1863,17 @@ fn (g mut Gen) const_decl_simple_define(name, val string) {
 	g.definitions.writeln(val)
 }
 
-fn (g mut Gen) struct_init(it ast.StructInit) {
+fn (g mut Gen) struct_init(struct_init ast.StructInit) {
 	mut info := table.Struct{}
 	mut is_struct := false
-	sym := g.table.get_type_symbol(it.typ)
+	sym := g.table.get_type_symbol(struct_init.typ)
 	if sym.kind == .struct_ {
 		is_struct = true
 		info = sym.info as table.Struct
 	}
-	// info := g.table.get_type_symbol(it.typ).info as table.Struct
+	// info := g.table.get_type_symbol(struct_init.typ).info as table.Struct
 	// println(info.fields.len)
-	styp := g.typ(it.typ)
+	styp := g.typ(struct_init.typ)
 	is_amp := g.is_amp
 	if is_amp {
 		g.out.go_back(1)		// delete the & already generated in `prefix_expr()
@@ -1881,20 +1883,20 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 	}
 	mut fields := []string
 	mut inited_fields := []string	// TODO this is done in checker, move to ast node
-	if it.fields.len == 0 && it.exprs.len > 0 {
+	if struct_init.fields.len == 0 && struct_init.exprs.len > 0 {
 		// Get fields for {a,b} short syntax. Fields array wasn't set in the parser.
 		for f in info.fields {
 			fields << f.name
 		}
 	} else {
-		fields = it.fields
+		fields = struct_init.fields
 	}
-	// / User set fields
+	// User set fields
 	for i, field in fields {
 		field_name := c_name(field)
 		inited_fields << field
 		g.write('\t.$field_name = ')
-		g.expr_with_cast(it.exprs[i], it.expr_types[i], it.expected_types[i])
+		g.expr_with_cast(struct_init.exprs[i], struct_init.expr_types[i], struct_init.expected_types[i])
 		g.writeln(',')
 	}
 	// The rest of the fields are zeroed.
@@ -1908,11 +1910,39 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 				continue
 			}
 			field_name := c_name(field.name)
-			zero := if field.default_val != '' { field.default_val } else { g.type_default(field.typ) }
-			g.writeln('\t.$field_name = $zero,')			// zer0')
+			initial := ''
+			/*match field.default_expr {
+				ast.EnumVal { initial = '${it.enum_name}_$it.val' }
+				ast.FloatLiteral { initial = it.val }
+				ast.IntegerLiteral { initial = it.val }
+				ast.StringLiteral { initial = it.val }
+				ast.StringInterLiteral {
+					// TODO
+					initial = g.type_default(field.typ)
+				}
+				ast.CharLiteral { initial = it.val }
+				ast.BoolLiteral { initial = if it.val { 'true' } else { 'false' } }
+				ast.ArrayInit {
+					elem_sym := g.table.get_type_symbol(it.elem_type)
+					elem_type_str := elem_sym.name.replace('.', '__')
+					initial = 'new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($elem_type_str), (int[$it.exprs.len]){'
+					for expr in it.exprs {
+						initial += it.expr
+					}
+					initial += '})'
+				}
+				else { initial = g.type_default(field.typ) }
+			}*/
+			g.write('\t.$field_name = ')
+			if field.has_default_expr {
+				g.expr(field.default_expr)
+			} else {
+				g.write(g.type_default(field.typ))
+			}
+			g.writeln(',')
 		}
 	}
-	if it.fields.len == 0 && info.fields.len == 0 {
+	if struct_init.fields.len == 0 && info.fields.len == 0 {
 		g.write('0')
 	}
 	g.write('}')
@@ -1952,7 +1982,7 @@ fn (g mut Gen) assoc(node ast.Assoc) {
 }
 
 fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
-	is_variadic := expected_types.len > 0 && table.type_is(expected_types[expected_types.len - 
+	is_variadic := expected_types.len > 0 && table.type_is(expected_types[expected_types.len -
 		1], .variadic)
 	mut arg_no := 0
 	for arg in args {
@@ -1996,7 +2026,7 @@ fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 
 [inline]
 fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
-	arg_is_ptr := table.type_is_ptr(expected_type) || table.type_idx(expected_type) in 
+	arg_is_ptr := table.type_is_ptr(expected_type) || table.type_idx(expected_type) in
 		table.pointer_type_idxs
 	expr_is_ptr := table.type_is_ptr(arg.typ) || table.type_idx(arg.typ) in table.pointer_type_idxs
 	if arg.is_mut && !arg_is_ptr {
@@ -2134,7 +2164,7 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 					g.definitions.writeln('EMPTY_STRUCT_DECLARATION;')
 				}
 				// g.definitions.writeln('} $name;\n')
-				// 
+				//
 				g.definitions.writeln('};\n')
 			}
 			table.Alias {
@@ -2201,8 +2231,8 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 	// sort graph
 	dep_graph_sorted := dep_graph.resolve()
 	if !dep_graph_sorted.acyclic {
-		verror('cgen.sort_structs(): the following structs form a dependency cycle:\n' + 
-			dep_graph_sorted.display_cycles() + '\nyou can solve this by making one or both of the dependant struct fields references, eg: field &MyStruct' + 
+		verror('cgen.sort_structs(): the following structs form a dependency cycle:\n' +
+			dep_graph_sorted.display_cycles() + '\nyou can solve this by making one or both of the dependant struct fields references, eg: field &MyStruct' +
 			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
@@ -2339,7 +2369,7 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 		return
 	}
 	// TODO performance, detect `array` method differently
-	if typ_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free', 
+	if typ_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free',
 		'push_many', 'trim', 'first', 'last', 'clone', 'reverse', 'slice'] {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
@@ -2365,7 +2395,7 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 		g.write('/*rec*/*')
 	}
 	g.expr(node.left)
-	is_variadic := node.expected_arg_types.len > 0 && table.type_is(node.expected_arg_types[node.expected_arg_types.len - 
+	is_variadic := node.expected_arg_types.len > 0 && table.type_is(node.expected_arg_types[node.expected_arg_types.len -
 		1], .variadic)
 	if node.args.len > 0 || is_variadic {
 		g.write(', ')
