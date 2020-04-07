@@ -1,0 +1,22 @@
+import os
+
+fn foo(a []os.File) {
+}
+
+struct User {
+	age  int
+	name string
+}
+
+fn handle_users(users []User) {
+	println(users.len)
+}
+
+fn (u &User) foo(u2 &User) {
+}
+
+type Expr = IfExpr | IntegerLiteral
+
+fn exprs(e []Expr) {
+	println(e.len)
+}
