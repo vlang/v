@@ -19,7 +19,6 @@ pub:
 	pref                &pref.Preferences
 	table               &table.Table
 	checker             checker.Checker
-	os                  pref.OS // the OS to build for
 	compiled_dir        string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path         string
 mut:
@@ -163,17 +162,16 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && b.os !=
-			.windows {
+		if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && b.pref.os != .windows {
 			continue
 		}
-		if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && b.os != .linux {
+		if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && b.pref.os != .linux {
 			continue
 		}
-		if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && b.os != .mac {
+		if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && b.pref.os != .mac {
 			continue
 		}
-		if file.ends_with('_nix.v') && b.os == .windows {
+		if file.ends_with('_nix.v') && b.pref.os == .windows {
 			continue
 		}
 		if file.ends_with('_android.v') && b.pref.os != .android {
@@ -185,10 +183,10 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 		if file.ends_with('_solaris.v') && b.pref.os != .solaris {
 			continue
 		}
-		if file.ends_with('_js.v') && b.os != .js {
+		if file.ends_with('_js.v') && b.pref.os != .js {
 			continue
 		}
-		if file.ends_with('_c.v') && b.os == .js {
+		if file.ends_with('_c.v') && b.pref.os == .js {
 			continue
 		}
 		if b.pref.compile_defines_all.len > 0 && file.contains('_d_') {
