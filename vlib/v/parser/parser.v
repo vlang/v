@@ -1952,9 +1952,6 @@ fn (p mut Parser) assoc() ast.Assoc {
 	var_name := p.check_name()
 	pos := p.tok.position()
 	var := p.scope.find_var(var_name) or {
-		if p.tok.position().line_nr == 193 {
-			println('unknown2')
-		}
 		p.error('unknown variable `$var_name`')
 		return ast.Assoc{}
 	}
