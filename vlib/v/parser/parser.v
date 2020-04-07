@@ -337,6 +337,7 @@ pub fn (p mut Parser) check_comment() ast.Comment {
 	if p.tok.kind == .comment {
 		return p.comment()
 	}
+	return ast.Comment{}
 }
 
 pub fn (p mut Parser) comment() ast.Comment {
@@ -1182,10 +1183,15 @@ fn (p mut Parser) if_expr() ast.IfExpr {
 	mut has_else := false
 	for p.tok.kind in [.key_if, .key_else] {
 		branch_pos := p.tok.position()
+		mut comment := ast.Comment{}
 		if p.tok.kind == .key_if {
 			p.check(.key_if)
 		}
 		else {
+			//if p.tok.kind == .comment {
+				//p.error('place comments inside {}')
+			//}
+			//comment = p.check_comment()
 			p.check(.key_else)
 			if p.tok.kind == .key_if {
 				p.check(.key_if)
@@ -1195,6 +1201,7 @@ fn (p mut Parser) if_expr() ast.IfExpr {
 				branches << ast.IfBranch{
 					stmts: p.parse_block()
 					pos: branch_pos
+					comment: comment
 				}
 				break
 			}
@@ -1229,6 +1236,7 @@ fn (p mut Parser) if_expr() ast.IfExpr {
 			cond: cond
 			stmts: stmts
 			pos: branch_pos
+			comment: ast.Comment{}// comment
 		}
 		if p.tok.kind != .key_else {
 			break
@@ -1811,6 +1819,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 	mut branches := []ast.MatchBranch
 	mut have_final_else := false
 	for {
+		comment := p.check_comment() // comment before {}
 		mut exprs := []ast.Expr
 		branch_pos := p.tok.position()
 		p.open_scope()
@@ -1862,6 +1871,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 			exprs: exprs
 			stmts: stmts
 			pos: branch_pos
+			comment: comment
 		}
 		p.close_scope()
 		if p.tok.kind == .rcbr {
@@ -1877,6 +1887,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		cond: cond
 		is_sum_type: is_sum_type
 		pos: pos
+		is_mut: is_mut
 	}
 }
 

@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t']
+	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
 	max_len = 100
 )
 
@@ -25,8 +24,8 @@ mut:
 	single_line_if bool
 	cur_mod        string
 	file           ast.File
-	did_imports bool
-	is_assign bool
+	did_imports    bool
+	is_assign      bool
 }
 
 pub fn fmt(file ast.File, table &table.Table) string {
@@ -87,9 +86,7 @@ fn (f mut Fmt) imports(imports []ast.Import) {
 	if imports.len == 1 {
 		imp_stmt_str := f.imp_stmt_str(imports[0])
 		f.writeln('import ${imp_stmt_str}\n')
-	}
-	//
- else if imports.len > 1 {
+	} else if imports.len > 1 {
 		f.writeln('import (')
 		f.indent++
 		for imp in imports {
@@ -102,11 +99,7 @@ fn (f mut Fmt) imports(imports []ast.Import) {
 
 fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
-	imp_alias_suffix := if is_diff {
-		' as ${imp.alias}'
-	} else {
-		''
-	}
+	imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
 	return '${imp.mod}${imp_alias_suffix}'
 }
 
@@ -291,11 +284,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('')
 		}
 		ast.CompIf {
-			inversion := if it.is_not {
-				'!'
-			} else {
-				''
-			}
+			inversion := if it.is_not { '!' } else { '' }
 			f.writeln('\$if ${inversion}${it.val} {')
 			f.stmts(it.stmts)
 			if it.has_else {
@@ -504,10 +493,16 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.MatchExpr {
 			f.write('match ')
+			if it.is_mut {
+				f.write('mut ')
+			}
 			f.expr(it.cond)
 			f.writeln(' {')
 			f.indent++
 			for i, branch in it.branches {
+				if branch.comment.text != '' {
+					f.comment(branch.comment)
+				}
 				if i < it.branches.len - 1 {
 					// normal branch
 					for j, expr in branch.exprs {
@@ -683,10 +678,13 @@ fn short_module(name string) string {
 }
 
 fn (f mut Fmt) if_expr(it ast.IfExpr) {
-	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len ==
-		1 && it.branches[1].stmts.len == 1 && (it.is_expr || f.is_assign)
+	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 1 && it.branches[1].stmts.len == 
+		1 && (it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
+		if branch.comment.text != '' {
+			f.comment(branch.comment)
+		}
 		if i == 0 {
 			f.write('if ')
 			f.expr(branch.cond)
