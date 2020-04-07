@@ -22,7 +22,6 @@ fn cerror(e string){
 	eprintln('\nerror: $e')
 }
 
-[inline]
 fn vmod_content(name, desc string) string {
 	return  [
 		'#V Project#\n',
@@ -34,7 +33,6 @@ fn vmod_content(name, desc string) string {
 	].join('\n')
 }
 
-[inline]
 fn main_content() string {
 	return [
 		'module main\n',
@@ -44,7 +42,6 @@ fn main_content() string {
 	].join('\n')
 }
 
-[inline]
 fn gen_gitignore(name string) string {
 	return [
 		'main',
