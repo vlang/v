@@ -473,7 +473,8 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write('`$it.val`')
 		}
 		ast.EnumVal {
-			f.write(it.enum_name + '.' + it.val)
+      name := short_module(it.enum_name)
+			f.write(name + '.' + it.val)
 		}
 		ast.FloatLiteral {
 			f.write(it.val)
