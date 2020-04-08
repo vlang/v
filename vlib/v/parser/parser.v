@@ -354,10 +354,11 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		}
 		.key_assert {
 			p.next()
+			assert_pos := p.tok.position()
 			expr := p.expr(0)
 			return ast.AssertStmt{
 				expr: expr
-				pos: p.tok.position()
+				pos: assert_pos
 			}
 		}
 		.key_mut, .key_static {

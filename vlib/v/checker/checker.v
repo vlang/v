@@ -676,7 +676,11 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 	// c.expected_type = table.void_type
 	match mut node {
 		ast.AssertStmt {
-			c.expr(it.expr)
+			assert_type := c.expr(it.expr)
+			if assert_type != table.bool_type_idx {
+				atype_name := c.table.get_type_symbol(assert_type).name
+				c.error('assert can be used only with `bool` expressions, but found `${atype_name}` instead', it.pos)
+			}
 		}
 		ast.AssignStmt {
 			c.assign_stmt(mut it)
@@ -875,6 +879,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			if it.has_arg {
 				c.expr(it.arg)
 			}
+			it.typname = c.table.get_type_symbol(it.typ).name
 			return it.typ
 		}
 		ast.CallExpr {

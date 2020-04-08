@@ -72,12 +72,15 @@ pub fn (x Expr) str() string {
 			return it.name
 		}
 		InfixExpr {
-			return '(${it.left.str()} $it.op.str() ${it.right.str()})'
+			return '${it.left.str()} $it.op.str() ${it.right.str()}'
 		}
 		PrefixExpr {
 			return it.op.str() + it.right.str()
 		}
 		IntegerLiteral {
+			return it.val
+		}
+		FloatLiteral {
 			return it.val
 		}
 		StringLiteral {
@@ -112,6 +115,9 @@ pub fn (x Expr) str() string {
 		}
 		IndexExpr {
 			return '${it.left.str()}[${it.index.str()}]'
+		}
+		CastExpr {
+			return '${it.typname}(${it.expr.str()})'
 		}
 		else {
 			return '[unhandled expr type ${typeof(x)}]'

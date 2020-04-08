@@ -626,6 +626,7 @@ pub:
 	expr      Expr // `buf`
 	arg       Expr // `n` in `string(buf, n)`
 	typ       table.Type // `string`
+	typname   string
 mut:
 	expr_type table.Type // `byteptr`
 	has_arg   bool
