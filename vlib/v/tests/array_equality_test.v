@@ -2,6 +2,10 @@ struct Tester {
 	b bool
 }
 
+enum Color {
+	red green blue
+}
+
 fn test_array_equality() {
 	strlist := ["a", "b", "c"]
 	assert strlist == ["a", "b", "c"]
@@ -31,4 +35,11 @@ fn test_array_equality() {
 	assert testerlist != [t, t]
 	assert testerlist != [f, f]
 	assert testerlist != [f, t]
+	colorlist := [Color.red, Color.green, Color.blue]
+	assert colorlist == [Color.red, Color.green, Color.blue]
+	assert colorlist != [Color.red, Color.blue, Color.green]
+	assert colorlist != [Color.green, Color.blue, Color.red]
+	assert colorlist != [Color.green, Color.red, Color.blue]
+	assert colorlist != [Color.blue, Color.green, Color.red]
+	assert colorlist != [Color.blue, Color.red, Color.green]
 }
