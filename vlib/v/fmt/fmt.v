@@ -179,10 +179,18 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				f.write('pub ')
 			}
 			f.writeln('const (')
+			mut max := 0
+			for field in it.fields {
+				if field.name.len > max {
+					max = field.name.len
+				}
+			}
 			f.indent++
 			for i, field in it.fields {
 				name := field.name.after('.')
-				f.write('$name = ')
+				f.write('$name ')
+				f.write(strings.repeat(` `, max - field.name.len))
+				f.write('= ')
 				f.expr(field.expr)
 				f.writeln('')
 			}
