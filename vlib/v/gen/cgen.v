@@ -1391,6 +1391,25 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			g.expr(node.right)
 			g.write('), $tmp, $elem_type_str)')
 		}
+	} else if (node.left_type == node.right_type ) && node.left_type in [ table.f32_type_idx, table.f64_type_idx ] && node.op in [ .eq, .ne ] {
+		// floats should be compared with epsilon
+		if node.left_type == table.f64_type_idx {
+			if node.op == .eq {
+				g.write('f64_eq(')
+			} else {
+				g.write('f64_ne(')
+			}
+		}else{
+			if node.op == .eq {
+				g.write('f32_eq(')
+			} else {
+				g.write('f32_ne(')
+			}
+		}
+		g.expr(node.left)
+		g.write(',')
+		g.expr(node.right)
+		g.write(')')
 	} else {
 		need_par := node.op in [.amp, .pipe, .xor]		// `x & y == 0` => `(x & y) == 0` in C
 		if need_par {

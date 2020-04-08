@@ -7,8 +7,6 @@ import v.pref
 const (
 	skip_test_files = [
 		'vlib/arrays/arrays_test.v',
-		'vlib/builtin/float_test.v',
-		'vlib/builtin/int_test.v',
 		'vlib/builtin/map_test.v',
 		'vlib/cli/command_test.v',
 		'vlib/cli/flag_test.v',
