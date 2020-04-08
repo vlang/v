@@ -1351,8 +1351,8 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			g.definitions.writeln('\tfor (int i = 0; i < a.len; i++) {')
 			if ptr_typ == "string" {
 				g.definitions.writeln('\t\tif (string_ne(*((${ptr_typ}*)(a.data+(i*a.element_size))), *((${ptr_typ}*)(b.data+(i*b.element_size))))) {')
-			} else if sym.kind == .struct_ {
-				g.definitions.writeln('\t\tif (memcmp((void*)(a.data+(i*a.element_size)), (void*)(b.data+(i*b.element_size)), sizeof a)) {')
+			} else if sym.kind in [.enum_, .struct_] {
+				g.definitions.writeln('\t\tif (memcmp((void*)(a.data+(i*a.element_size)), (void*)(b.data+(i*b.element_size)), a.element_size)) {')
 			} else {
 				g.definitions.writeln('\t\tif (*((${ptr_typ}*)(a.data+(i*a.element_size))) != *((${ptr_typ}*)(b.data+(i*b.element_size)))) {')
 			}
