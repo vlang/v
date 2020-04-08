@@ -281,6 +281,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		ast.GotoStmt {
 			f.writeln('goto $it.name')
 		}
+		ast.HashStmt {
+			f.writeln('#$it.val')
+		}
 		ast.Import {
 			f.imports(f.file.imports)
 		}
