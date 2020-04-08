@@ -554,7 +554,6 @@ fn (p mut Parser) struct_init(short_syntax bool) ast.StructInit {
 	mut exprs := []ast.Expr
 	mut i := 0
 	is_short_syntax := p.peek_tok.kind != .colon && p.tok.kind != .rcbr	// `Vec{a,b,c}
-
 	// p.warn(is_short_syntax.str())
 	for p.tok.kind != .rcbr {
 		p.check_comment()
@@ -609,7 +608,8 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		return p.string_expr()
 	}
 	known_var := p.scope.known_var(p.tok.lit)
-	if p.peek_tok.kind == .dot && !known_var && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') == p.tok.lit) {
+	if p.peek_tok.kind == .dot && !known_var && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') ==
+		p.tok.lit) {
 		if is_c {
 			mod = 'C'
 		} else {
@@ -620,7 +620,6 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
-
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
 	if p.peek_tok.kind == .lpar {
@@ -665,11 +664,11 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			x := p.call_expr(is_c, mod)			// TODO `node,typ :=` should work
 			node = x
 		}
-	} else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod && p.tok.lit in
-		table.builtin_type_names)) && !p.inside_match_case && !p.inside_if && !p.inside_for {
+	} else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod &&
+		p.tok.lit in table.builtin_type_names)) && !p.inside_match_case && !p.inside_if && !p.inside_for {
 		// (p.tok.lit.len in [1, 2] || !p.tok.lit[p.tok.lit.len - 1].is_capital()) &&
 		// || p.table.known_type(p.tok.lit)) {
-		return p.struct_init(false) // short_syntax: false
+		return p.struct_init(false)		// short_syntax: false
 	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
 		// `Color.green`
 		mut enum_name := p.check_name()
@@ -1016,13 +1015,6 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 	return expr
 }
 
-// Implementation of Pratt Precedence
-/*
-[inline]
-fn (p &Parser) is_addative() bool {
-	return p.tok.kind in [.plus, .minus] && p.peek_tok.kind in [.number, .name]
-}
-*/
 // `.green`
 // `pref.BuildMode.default_mode`
 fn (p mut Parser) enum_val() ast.EnumVal {
