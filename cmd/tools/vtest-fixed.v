@@ -31,7 +31,6 @@ const (
 		'vlib/net/http/http_test.v',
 		'vlib/net/socket_test.v',
 		'vlib/net/socket_udp_test.v',
-		'vlib/os/environment_test.v', // Linux only
 		'vlib/regex/regex_test.v',
 		'vlib/sqlite/sqlite_test.v', // Linux only
 		'vlib/strconv/ftoa/f32_f64_to_string_test.v',
