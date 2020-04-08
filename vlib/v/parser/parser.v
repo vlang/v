@@ -1879,7 +1879,6 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 		name: name
 		info: table.Enum{
 			vals: vals
-			default_exprs: default_exprs
 		}
 	})
 	return ast.EnumDecl{

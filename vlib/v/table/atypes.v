@@ -545,9 +545,8 @@ pub mut:
 }
 
 pub struct Enum {
-pub mut:
+pub:
 	vals []string
-	default_exprs []ast.Expr
 }
 
 pub struct Alias {

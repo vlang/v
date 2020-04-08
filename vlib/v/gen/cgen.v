@@ -3047,10 +3047,8 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 fn (g mut Gen) gen_str_for_enum(info table.Enum, styp string) {
 	s := styp.replace('.', '__')
 	g.definitions.write('string ${s}_str($styp a) {\n\tswitch(a) {\n')
-	for i, expr in info.default_exprs {
-		val := info.vals[i]
-		int_expr := expr as ast.IntegerLiteral
-		g.definitions.write('\t\tcase $int_expr.val: return tos3("$val");\n')
+	for i, val in info.vals {
+		g.definitions.write('\t\tcase ${s}_$val: return tos3("$val");\n')
 	}
 	g.definitions.write('\t\tdefault: return tos3("unknown enum value"); } }\n')
 }
