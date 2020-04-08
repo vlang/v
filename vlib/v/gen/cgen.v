@@ -334,7 +334,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.gen_assign_stmt(it)
 		}
 		ast.Attr {
-			g.writeln('//[$it.name]')
+			if it.name == 'inline' {
+				g.writeln(it.name)
+			} else {
+				g.writeln('//[$it.name]')
+			}
 		}
 		ast.Block {
 			g.writeln('{')
