@@ -302,6 +302,7 @@ pub fn (s Socket) close() ?int {
 pub const (
 	CRLF = '\r\n'
 	MAX_READ = 400
+	xxx = 400
 	MSG_PEEK = 0x02
 )
 // write - write a string with CRLF after it over the socket s
@@ -316,6 +317,7 @@ pub fn (s Socket) write(str string) ?int {
 
 // read_line - retrieves a line from the socket s (i.e. a string ended with \n)
 pub fn (s Socket) read_line() string {
+	//mut buf2 := [xxx]byte // where C.recv will store the network data
 	mut buf := [MAX_READ]byte // where C.recv will store the network data
 	mut res := '' // The final result, including the ending \n.
 	for {

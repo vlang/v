@@ -30,6 +30,8 @@ mut:
 	const_deps     []string
 	pref           &pref.Preferences // Preferences shared from V struct
 	in_for_count   int // if checker is currently in an for loop
+	// checked_ident  string // to avoid infinit checker loops
+	var_decl_name  string
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -560,8 +562,8 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 
 pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	c.expected_type = table.none_type	// TODO a hack to make `x := if ... work`
-	// multi return
 	if assign_stmt.left.len > assign_stmt.right.len {
+		// multi return
 		match assign_stmt.right[0] {
 			ast.CallExpr {}
 			else {
@@ -604,6 +606,9 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
 			mut ident := assign_stmt.left[i]
+			if assign_stmt.op == .decl_assign {
+				c.var_decl_name = ident.name
+			}
 			mut ident_var_info := ident.var_info()
 			// c.assigned_var_name = ident.name
 			val_type := c.expr(assign_stmt.right[i])
@@ -625,6 +630,7 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 			c.check_expr_opt_call(assign_stmt.right[i], val_type, true)
 		}
 	}
+	c.var_decl_name = ''
 	c.expected_type = table.void_type
 	// c.assigned_var_name = ''
 }
@@ -676,6 +682,19 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 		match array_init.exprs[0] {
 			ast.IntegerLiteral {
 				fixed_size = it.val.int()
+			}
+			ast.Ident {
+				/*
+				QTODO
+				scope := c.file.scope.innermost(array_init.pos.pos)
+				if obj := c.file.global_scope.find(it.name) {
+				} else {
+					c.error(it.name, array_init.pos)
+				}
+				scope.find(it.name) or {
+					c.error('undefined: `$it.name`', array_init.pos)
+				}
+*/
 			}
 			else {
 				c.error('expecting `int` for fixed size', array_init.pos)
@@ -912,7 +931,10 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.f64_type
 		}
 		ast.Ident {
-			return c.ident(mut it)
+			// c.checked_ident = it.name
+			res := c.ident(mut it)
+			// c.checked_ident = ''
+			return res
 		}
 		ast.IfExpr {
 			return c.if_expr(mut it)
@@ -998,6 +1020,10 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 }
 
 pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
+	if ident.name == c.var_decl_name {		// c.checked_ident {
+		c.error('unresolved: `$ident.name`', ident.pos)
+		return table.void_type
+	}
 	// TODO: move this
 	if c.const_deps.len > 0 {
 		mut name := ident.name
