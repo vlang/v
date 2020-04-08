@@ -2500,13 +2500,14 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
 		} else if sym.kind == .enum_ {
 			expr := node.args[0].expr
-			is_selector := match expr {
+			is_var := match expr {
 				ast.SelectorExpr { true }
+				ast.Ident { true }
 				else { false }
 			}
-			g.write(if is_selector { '${print_method}(${styp}_str(' } else { '${print_method}(tos3("' })
+			g.write(if is_var { '${print_method}(${styp}_str(' } else { '${print_method}(tos3("' })
 			g.enum_expr(expr)
-			g.write(if is_selector { '))' } else { '"))' })
+			g.write(if is_var { '))' } else { '"))' })
 		} else {
 			// `println(int_str(10))`
 			// sym := g.table.get_type_symbol(node.args[0].typ)
