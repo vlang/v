@@ -7,22 +7,15 @@ import v.pref
 const (
 	skip_test_files = [
 		'vlib/arrays/arrays_test.v',
-		'vlib/builtin/float_test.v',
-		'vlib/builtin/int_test.v',
 		'vlib/builtin/map_test.v',
 		'vlib/cli/command_test.v',
 		'vlib/cli/flag_test.v',
 		'vlib/clipboard/clipboard_test.v', // Linux only
 		'vlib/crypto/aes/aes_test.v',
-		'vlib/crypto/md5/md5_test.v',
 		'vlib/crypto/rand/rand_test.v',
 		'vlib/crypto/rc4/rc4_test.v',
-		'vlib/crypto/sha1/sha1_test.v',
-		'vlib/crypto/sha256/sha256_test.v',
-		'vlib/crypto/sha512/sha512_test.v',
 		'vlib/encoding/base64/base64_memory_test.v',
 		'vlib/encoding/base64/base64_test.v',
-		'vlib/encoding/csv/csv_test.v',
 		'vlib/encoding/utf8/utf8_util_test.v',
 		'vlib/eventbus/eventbus_test.v',
 		'vlib/flag/flag_test.v',
@@ -32,20 +25,15 @@ const (
 		'vlib/math/complex/complex_test.v',
 		'vlib/math/factorial/factorial_test.v',
 		'vlib/math/fractions/fraction_test.v',
-		'vlib/math/stats/stats_test.v',
 		'vlib/net/ftp/ftp_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/http_test.v',
 		'vlib/net/socket_test.v',
 		'vlib/net/socket_udp_test.v',
-		'vlib/net/urllib/urllib_test.v',
-		'vlib/os/environment_test.v', // Linux only
-		'vlib/rand/pcg32_test.v',
-		'vlib/rand/splitmix64_test.v',
 		'vlib/regex/regex_test.v',
 		'vlib/sqlite/sqlite_test.v', // Linux only
 		'vlib/strconv/ftoa/f32_f64_to_string_test.v',
-		'vlib/v/parser/parser_test.v',
+		//'vlib/v/parser/parser_test.v', // exits early, but it should compile
 		'vlib/v/tests/array_to_string_test.v',
 		'vlib/v/tests/asm_test.v', // Linux only
 		'vlib/v/tests/backtrace_test.v', // TCC only
@@ -55,7 +43,6 @@ const (
 		'vlib/v/tests/fn_variadic_test.v',
 		'vlib/v/tests/live_test.v', // Linux only
 		'vlib/v/tests/match_test.v',
-		'vlib/v/tests/module_test.v',
 		'vlib/v/tests/msvc_test.v',
 		'vlib/v/tests/mut_test.v',
 		'vlib/v/tests/num_lit_call_method_test.v',
@@ -68,7 +55,6 @@ const (
 		'vlib/v/tests/string_interpolation_array_of_structs_test.v',
 		'vlib/v/tests/string_interpolation_struct_test.v',
 		'vlib/v/tests/string_interpolation_variadic_test.v',
-		'vlib/v/tests/struct_test.v',
 		'vlib/v/tests/type_test.v',
 		'vlib/v/tests/typeof_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only

@@ -150,6 +150,7 @@ pub:
 	pub_pos       int // pub:
 	pub_mut_pos   int // pub mut:
 	is_c          bool
+	is_union bool
 }
 
 pub struct InterfaceDecl {
@@ -625,6 +626,7 @@ pub:
 	expr      Expr // `buf`
 	arg       Expr // `n` in `string(buf, n)`
 	typ       table.Type // `string`
+	typname   string
 mut:
 	expr_type table.Type // `byteptr`
 	has_arg   bool

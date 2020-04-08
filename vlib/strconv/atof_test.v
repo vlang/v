@@ -74,5 +74,5 @@ fn test_atof() {
 	// DOUBLE_MINUS_ZERO
 	f1=-0.0
 	assert *ptr == u64(0x8000000000000000)
-	//println("DONE!")
+	println("DONE!")
 }

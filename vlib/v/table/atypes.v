@@ -14,6 +14,7 @@ module table
 
 import (
 	strings
+	v.ast
 )
 
 pub type Type int
@@ -540,10 +541,11 @@ pub struct Struct {
 pub mut:
 	fields []Field
 	is_typedef bool // C. [typedef]
+	is_union bool
 }
 
 pub struct Enum {
-pub mut:
+pub:
 	vals []string
 }
 

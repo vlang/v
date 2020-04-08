@@ -48,9 +48,9 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		pref: &pref.Preferences{}
 		scope: scope
 		global_scope: &ast.Scope{
-		start_pos: 0
-		parent: 0
-	}
+			start_pos: 0
+			parent: 0
+		}
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -69,9 +69,9 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		file_name: path
 		pref: pref
 		scope: &ast.Scope{
-		start_pos: 0
-		parent: 0
-	}
+			start_pos: 0
+			parent: 0
+		}
 		global_scope: global_scope
 	}
 	// comments_mode: comments_mode
@@ -356,10 +356,11 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		}
 		.key_assert {
 			p.next()
+			assert_pos := p.tok.position()
 			expr := p.expr(0)
 			return ast.AssertStmt{
 				expr: expr
-				pos: p.tok.position()
+				pos: assert_pos
 			}
 		}
 		.key_mut, .key_static {
@@ -865,7 +866,7 @@ fn (p mut Parser) prefix_expr() ast.PrefixExpr {
 		p.is_amp = true
 	}
 	p.next()
-	right := p.expr(1)
+	right := p.expr(token.Precedence.prefix)
 	p.is_amp = false
 	return ast.PrefixExpr{
 		op: op
@@ -888,10 +889,10 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			left: left
 			pos: p.tok.position()
 			index: ast.RangeExpr{
-			low: ast.Expr{}
-			high: high
-			has_high: true
-		}
+				low: ast.Expr{}
+				high: high
+				has_high: true
+			}
 		}
 	}
 	expr := p.expr(0)	// `[expr]` or  `[expr..]`
@@ -909,11 +910,11 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			left: left
 			pos: p.tok.position()
 			index: ast.RangeExpr{
-			low: expr
-			high: high
-			has_high: has_high
-			has_low: has_low
-		}
+				low: expr
+				high: high
+				has_high: has_high
+				has_low: has_low
+			}
 		}
 	}
 	// [expr]
@@ -1296,7 +1297,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 		}
 	} else {
 		// [1,2,3]
-		for i := 0; p.tok.kind != .rsbr; i++{
+		for i := 0; p.tok.kind != .rsbr; i++ {
 			expr := p.expr(0)
 			exprs << expr
 			if p.tok.kind == .comma {
@@ -1352,7 +1353,7 @@ fn (p mut Parser) map_init() ast.MapInit {
 fn (p mut Parser) parse_number_literal() ast.Expr {
 	lit := p.tok.lit
 	mut node := ast.Expr{}
-	if lit.contains('.') {
+	if lit.index_any('.eE') >= 0 {
 		node = ast.FloatLiteral{
 			val: lit
 		}
@@ -1456,6 +1457,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	if is_pub {
 		p.next()
 	}
+	is_union := p.tok.kind == .key_union
 	if p.tok.kind == .key_struct {
 		p.check(.key_struct)
 	} else {
@@ -1467,72 +1469,78 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		p.next()		// .
 	}
 	is_typedef := p.attr == 'typedef'
+	no_body := p.peek_tok.kind != .lcbr
+	if !is_c && no_body {
+		p.error('`$p.tok.lit` lacks body')
+	}
 	mut name := p.check_name()
 	// println('struct decl $name')
-	p.check(.lcbr)
 	mut ast_fields := []ast.StructField
 	mut fields := []table.Field
 	mut mut_pos := -1
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
-	for p.tok.kind != .rcbr {
-		mut comment := ast.Comment{}
-		if p.tok.kind == .comment {
-			comment = p.comment()
-		}
-		if p.tok.kind == .key_pub {
-			p.check(.key_pub)
-			if p.tok.kind == .key_mut {
-				p.check(.key_mut)
-				pub_mut_pos = fields.len
-			} else {
-				pub_pos = fields.len
+	if !no_body {
+		p.check(.lcbr)
+		for p.tok.kind != .rcbr {
+			mut comment := ast.Comment{}
+			if p.tok.kind == .comment {
+				comment = p.comment()
 			}
-			p.check(.colon)
-		} else if p.tok.kind == .key_mut {
-			p.check(.key_mut)
-			p.check(.colon)
-			mut_pos = fields.len
-		} else if p.tok.kind == .key_global {
-			p.check(.key_global)
-			p.check(.colon)
-		}
-		field_name := p.check_name()
-		field_pos := p.tok.position()
-		// p.warn('field $field_name')
-		typ := p.parse_type()
-		/*
-		if name == '_net_module_s' {
+			if p.tok.kind == .key_pub {
+				p.check(.key_pub)
+				if p.tok.kind == .key_mut {
+					p.check(.key_mut)
+					pub_mut_pos = fields.len
+				} else {
+					pub_pos = fields.len
+				}
+				p.check(.colon)
+			} else if p.tok.kind == .key_mut {
+				p.check(.key_mut)
+				p.check(.colon)
+				mut_pos = fields.len
+			} else if p.tok.kind == .key_global {
+				p.check(.key_global)
+				p.check(.colon)
+			}
+			field_name := p.check_name()
+			field_pos := p.tok.position()
+			// p.warn('field $field_name')
+			typ := p.parse_type()
+			/*
+			if name == '_net_module_s' {
 			s := p.table.get_type_symbol(typ)
 			println('XXXX' + s.str())
 		}
 */
-		mut default_expr := ''		// ast.Expr{}
-		if p.tok.kind == .assign {
-			// Default value
-			p.next()
-			default_expr = p.tok.lit
-			p.expr(0)
-			// default_expr = p.expr(0)
+			mut default_expr := ''			// ast.Expr{}
+			if p.tok.kind == .assign {
+				// Default value
+				p.next()
+				default_expr = p.tok.lit
+				p.expr(0)
+				// default_expr = p.expr(0)
+			}
+			if p.tok.kind == .comment {
+				comment = p.comment()
+			}
+			ast_fields << ast.StructField{
+				name: field_name
+				pos: field_pos
+				typ: typ
+				comment: comment
+				default_expr: default_expr
+			}
+			fields << table.Field{
+				name: field_name
+				typ: typ
+				default_val: default_expr
+			}
+			// println('struct field $ti.name $field_name')
 		}
-		if p.tok.kind == .comment {
-			comment = p.comment()
-		}
-		ast_fields << ast.StructField{
-			name: field_name
-			pos: field_pos
-			typ: typ
-			comment: comment
-			default_expr: default_expr
-		}
-		fields << table.Field{
-			name: field_name
-			typ: typ
-			default_val: default_expr
-		}
-		// println('struct field $ti.name $field_name')
+		p.check(.rcbr)
 	}
-	p.check(.rcbr)
 	if is_c {
 		name = 'C.$name'
 	} else {
@@ -1542,9 +1550,10 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		kind: .struct_
 		name: name
 		info: table.Struct{
-		fields: fields
-		is_typedef: is_typedef
-	}
+			fields: fields
+			is_typedef: is_typedef
+			is_union: is_union
+		}
 	}
 	mut ret := 0
 	if p.builtin_mod && t.name in table.builtin_type_names {
@@ -1567,6 +1576,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
 		is_c: is_c
+		is_union: is_union
 	}
 }
 
@@ -1877,8 +1887,8 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 		kind: .enum_
 		name: name
 		info: table.Enum{
-		vals: vals
-	}
+			vals: vals
+		}
 	})
 	return ast.EnumDecl{
 		name: name
@@ -1911,8 +1921,8 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 			kind: .sum_type
 			name: p.prepend_mod(name)
 			info: table.SumType{
-			variants: sum_variants
-		}
+				variants: sum_variants
+			}
 		})
 		return ast.SumTypeDecl{
 			name: name
@@ -1938,8 +1948,8 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 		name: p.prepend_mod(name)
 		parent_idx: pid
 		info: table.Alias{
-		foo: ''
-	}
+			foo: ''
+		}
 	})
 	return ast.AliasTypeDecl{
 		name: name

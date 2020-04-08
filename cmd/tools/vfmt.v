@@ -16,7 +16,6 @@ import (
 )
 
 struct FormatOptions {
-	is_2       bool
 	is_l       bool
 	is_c       bool
 	is_w       bool
@@ -51,7 +50,6 @@ fn main() {
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := join_flags_and_argument()
 	foptions := FormatOptions{
-		is_2: '-2' in args
 		is_c: '-c' in args
 		is_l: '-l' in args
 		is_w: '-w' in args
@@ -84,19 +82,12 @@ fn main() {
 	}
 	mut files := []string
 	for file in possible_files {
-		if foptions.is_2 {
-			if !file.ends_with('.v') && !file.ends_with('.vv') {
-				verror('v fmt -2 can only be used on .v or .vv files.\nOffending file: "$file" .')
-				continue
-			}
-		} else {
-			if !file.ends_with('.v') {
-				verror('v fmt can only be used on .v files.\nOffending file: "$file" .')
-				continue
-			}
+		if !file.ends_with('.v') && !file.ends_with('.vv') {
+			verror('v fmt can only be used on .v files.\nOffending file: "$file"')
+			continue
 		}
 		if !os.exists(file) {
-			verror('"$file" does not exist.')
+			verror('"$file" does not exist')
 			continue
 		}
 		files << file
@@ -107,7 +98,7 @@ fn main() {
 	}
 	mut cli_args_no_files := []string
 	for a in os.args {
-		if !a in files {
+		if !(a in files) {
 			cli_args_no_files << a
 		}
 	}
@@ -251,7 +242,7 @@ fn find_working_diff_command() ?string {
 }
 
 pub fn (f FormatOptions) str() string {
-	return 'FormatOptions{ ' + ' is_2: $f.is_2' + ' is_l: $f.is_l' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' + ' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' + ' }'
+	return 'FormatOptions{ is_l: $f.is_l' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' + ' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' + ' }'
 }
 
 fn file_to_target_os(file string) string {
