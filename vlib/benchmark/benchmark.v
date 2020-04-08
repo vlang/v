@@ -182,7 +182,7 @@ pub fn (b &Benchmark) step_message_skip(msg string) string {
 }
 
 pub fn (b &Benchmark) total_message(msg string) string {
-	mut tmsg := '${msg}\n                 ok, fail, skip, total = ' + term.ok_message('${b.nok:5d}') + ', ' + if b.nfail > 0 { term.fail_message('${b.nfail:5d}') } else { '${b.nfail:5d}' } + ', ' + '${b.nskip:5d}'+ ', ' + '${b.ntotal:5d}'
+	mut tmsg := '${msg}\n                 ok, fail, skip, total = ' + term.ok_message('${b.nok:5d}') + ', ' + if b.nfail > 0 { term.red('${b.nfail:5d}') } else { '${b.nfail:5d}' } + ', ' + if b.nskip > 0 { term.bright_yellow('${b.nskip:5d}') } else { '${b.nskip:5d}' } + ', ' + '${b.ntotal:5d}'
 	if b.verbose {
 		tmsg = '<=== total time spent $tmsg'
 	}
