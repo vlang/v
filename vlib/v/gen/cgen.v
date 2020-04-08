@@ -2334,11 +2334,7 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 				}
 				if is_var {
 					styp := g.typ(node.expr_types[i])
-					if !sym.has_method('str') && !(styp in g.str_types) {
-						// Generate an automatic str() method if this type doesn't have it already
-						g.str_types << styp
-						g.gen_str_for_type(sym, styp)
-					}
+					g.gen_str_for_type(sym, styp)
 					g.write('${styp}_str(')
 					g.enum_expr(expr)
 					g.write(')')
@@ -2510,14 +2506,10 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
 		sym := g.table.get_type_symbol(typ)
-		if !sym.has_method('str') && !(styp in g.str_types) {
-			// Generate an automatic str() method if this type doesn't have it already
-			if table.type_is_ptr(typ) {
-				styp = styp.replace('*', '')
-			}
-			g.str_types << styp
-			g.gen_str_for_type(sym, styp)
+		if table.type_is_ptr(typ) {
+			styp = styp.replace('*', '')
 		}
+		g.gen_str_for_type(sym, styp)
 		if g.autofree && !table.type_is(typ, .optional) {
 			// Create a temporary variable so that the value can be freed
 			tmp := g.new_tmp_var()
@@ -2562,6 +2554,9 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 				// g.write('*')
 			}
 			g.expr(node.args[0].expr)
+			if sym.kind ==.struct_ && styp != 'ptr' && !sym.has_method('str') {
+				g.write(', 0') // trailing 0 is initial struct indent count
+			}
 			g.write('))')
 		}
 	} else {
@@ -3042,6 +3037,10 @@ fn (g mut Gen) go_stmt(node ast.GoStmt) {
 
 // already generated styp, reuse it
 fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
+	if sym.has_method('str') || styp in g.str_types {
+		return
+	}
+	g.str_types << styp
 	match sym.info {
 		table.Struct {
 			g.gen_str_for_struct(it, styp)
@@ -3057,7 +3056,7 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 
 fn (g mut Gen) gen_str_for_enum(info table.Enum, styp string) {
 	s := styp.replace('.', '__')
-	g.definitions.write('string ${s}_str($styp a) {\n\tswitch(a) {\n')
+	g.definitions.write('string ${s}_str($styp it) {\n\tswitch(it) {\n')
 	for i, val in info.vals {
 		g.definitions.write('\t\tcase ${s}_$val: return tos3("$val");\n')
 	}
@@ -3065,36 +3064,59 @@ fn (g mut Gen) gen_str_for_enum(info table.Enum, styp string) {
 }
 
 fn (g mut Gen) gen_str_for_struct(info table.Struct, styp string) {
-	s := styp.replace('.', '__')
-	g.definitions.write('string ${s}_str($styp a) { return _STR("$styp {\\n')
-	for field in info.fields {
-		fmt := type_to_fmt(field.typ)
-		g.definitions.write('\t$field.name: $fmt\\n')
+	// TODO: short it if possible
+	// generates all definitions of substructs
+	for i, field in info.fields {
+		sym := g.table.get_type_symbol(field.typ)
+		if sym.kind == .struct_ {
+			field_styp := g.typ(field.typ)
+			g.gen_str_for_type(sym, field_styp)
+		}
 	}
-	g.definitions.write('}"')
+
+	s := styp.replace('.', '__')
+	g.definitions.write('string ${s}_str($styp it, int indent_count) {\n')
+	// generate ident / indent length = 4 spaces
+	g.definitions.write('\tstring indents = tos3("");\n\tfor (int i = 0; i < indent_count; i++) { indents = string_add(indents, tos3("    ")); }\n')
+	g.definitions.write('\treturn _STR("$styp {\\n')
+	for field in info.fields {
+		fmt := g.type_to_fmt(field.typ)
+		g.definitions.write('%.*s    ' + '$field.name: $fmt\\n')
+	}
+	g.definitions.write('%.*s}"')
 	if info.fields.len > 0 {
 		g.definitions.write(', ')
-	}
-	for i, field in info.fields {
-		g.definitions.write('a.' + field.name)
-		if field.typ == table.string_type {
-			g.definitions.write('.len, a.${field.name}.str')
-		} else if field.typ == table.bool_type {
-			g.definitions.write(' ? 4 : 5, a.${field.name} ? "true" : "false"')
+		for i, field in info.fields {
+			sym := g.table.get_type_symbol(field.typ)
+			if sym.kind == .struct_ {
+				field_styp := g.typ(field.typ)
+				g.definitions.write('indents.len, indents.str, ${field_styp}_str(it.$field.name, indent_count + 1).len, ${field_styp}_str(it.$field.name, indent_count + 1).str')
+			} else {
+				g.definitions.write('indents.len, indents.str, it.$field.name')
+				if field.typ == table.string_type {
+					g.definitions.write('.len, it.${field.name}.str')
+				} else if field.typ == table.bool_type {
+					g.definitions.write(' ? 4 : 5, it.${field.name} ? "true" : "false"')
+				}
+				if i < info.fields.len - 1 {
+					g.definitions.write(', ')
+				}
+			}
 		}
-		if i < info.fields.len - 1 {
-			g.definitions.write(', ')
-		}
 	}
-	g.definitions.writeln('); }')
+	g.definitions.writeln(', indents.len, indents.str);\n}')
 }
 
-fn type_to_fmt(typ table.Type) string {
-	n := int(typ)
-	if n == table.string_type {
+fn (g Gen) type_to_fmt(typ table.Type) string {
+	sym := g.table.get_type_symbol(typ)
+	if sym.kind == .struct_ {
+		return "%.*s"
+	} else if typ == table.string_type {
 		return "\'%.*s\'"
-	} else if n == table.bool_type {
+	} else if typ == table.bool_type {
 		return '%.*s'
+	} else if typ in [table.f32_type, table.f64_type] {
+		return '%g' // g removes trailing zeros unlike %f
 	}
 	return '%d'
 }
