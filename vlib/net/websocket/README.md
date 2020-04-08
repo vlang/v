@@ -1,6 +1,6 @@
 # WebSockets Library for V
 
-Originally located at [thecodrr/vws](https://github.com/thecodrr/vws)
+Originally located at [thecodrr/vws](https://github.com/thecodrr/vws) (contains example usage)
 
 **This is still work-in-progress!**
 
