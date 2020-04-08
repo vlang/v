@@ -1,4 +1,4 @@
-module ws
+module websocket
 
 fn (ws mut Client) read_handshake(seckey string){
 	l.d("reading handshake...")

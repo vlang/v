@@ -1,4 +1,4 @@
-module ws
+module websocket
 
 #flag -lssl
 #include <openssl/rand.h>

@@ -1,4 +1,4 @@
-module ws
+module websocket
 
 import (
 	eventbus

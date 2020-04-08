@@ -1,4 +1,4 @@
-module ws
+module websocket
 
 pub fn utf8_validate_str(str string) bool {
 	return utf8_validate(str.str, str.len)
