@@ -2257,6 +2257,7 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 		// }
 		// else {}
 		// }
+		sym := g.table.get_type_symbol(node.expr_types[i])
 		sfmt := node.expr_fmts[i]
 		if sfmt.len > 0 {
 			fspec := sfmt[sfmt.len - 1]
@@ -2264,10 +2265,13 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 				verror('only V strings can be formatted with a ${sfmt} format')
 			}
 			g.write('%' + sfmt[1..])
-		} else if node.expr_types[i] == table.string_type || node.expr_types[i] == table.bool_type {
+		} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind == .enum_ {
 			g.write('%.*s')
 		} else {
-			g.write('%d')
+			match node.exprs[i] {
+				ast.EnumVal { g.write('%.*s') }
+				else { g.write('%d') }
+			}
 		}
 	}
 	g.write('", ')
@@ -2294,7 +2298,39 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.expr(expr)
 			g.write(' ? "true" : "false"')
 		} else {
-			g.expr(expr)
+			sym := g.table.get_type_symbol(node.expr_types[i])
+			if sym.kind == .enum_ {
+				is_var := match node.exprs[i] {
+					ast.SelectorExpr { true }
+					ast.Ident { true }
+					else { false }
+				}
+				if is_var {
+					styp := g.typ(node.expr_types[i])
+					if !(styp in g.str_types) {
+						// Generate an automatic str() method if this type doesn't have it already
+						g.str_types << styp
+						g.gen_str_for_type(sym, styp)
+					}
+					g.write('${styp}_str(')
+					g.enum_expr(expr)
+					g.write(')')
+					g.write('.len, ')
+					g.write('${styp}_str(')
+					g.enum_expr(expr)
+					g.write(').str')
+				} else {
+					g.write('tos3("')
+					g.enum_expr(expr)
+					g.write('")')
+					g.write('.len, ')
+					g.write('"')
+					g.enum_expr(expr)
+					g.write('"')
+				}
+			} else {
+				g.expr(expr)
+			}
 		}
 		if i < node.exprs.len - 1 {
 			g.write(', ')
@@ -2984,9 +3020,9 @@ fn (g mut Gen) gen_str_for_enum(info table.Enum, styp string) {
 	for i, expr in info.default_exprs {
 		val := info.vals[i]
 		int_expr := expr as ast.IntegerLiteral
-		g.definitions.write('\t\tcase $int_expr.val: return _STR("$val");\n')
+		g.definitions.write('\t\tcase $int_expr.val: return tos3("$val");\n')
 	}
-	g.definitions.write('\t\tdefault: return _STR("unknown enum value");\n')
+	g.definitions.write('\t\tdefault: return tos3("unknown enum value");\n')
 	g.definitions.write('\t}\n')
 	g.definitions.write('}')
 }
