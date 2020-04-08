@@ -1355,7 +1355,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			g.definitions.writeln('\treturn true;')
 			g.definitions.writeln('}')
 		}
-		g.write('${styp}_arr_eq(')
+		g.write('${ptr_typ}_arr_eq(')
 		g.expr(node.left)
 		g.write(', ')
 		g.expr(node.right)
