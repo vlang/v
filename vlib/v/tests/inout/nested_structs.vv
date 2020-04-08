@@ -1,0 +1,16 @@
+module main
+
+struct B {
+	pass bool
+	name string
+}
+
+struct A {
+	test bool
+	b B
+}
+
+fn main() {
+	a := A{}
+	println(a)
+}
