@@ -40,7 +40,8 @@ struct Fragment {
 	code OPCode
 }
 
-struct Message {
+pub struct Message {
+	pub:
 	opcode OPCode
 	payload voidptr
 	payload_len int
@@ -117,12 +118,18 @@ fn (ws &Client) parse_uri() &Uri {
 }
 
 pub fn (ws mut Client) connect() int {
-	if ws.state == .connected {
-		l.f("connect: websocket already connected")
-	} else if ws.state == .connecting {
-		l.f("connect: websocket already connecting")
-	} else if ws.state == .open {
-		l.f("connect: websocket already open")
+	match ws.state {
+		.connected {
+			l.f("connect: websocket already connected")
+		}
+		.connecting {
+			l.f("connect: websocket already connecting")
+		}
+		.open {
+			l.f("connect: websocket already open")
+		} else {
+			// do nothing
+		}
 	}
 
 	ws.lock.lock()
