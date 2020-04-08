@@ -1342,6 +1342,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		styp := g.typ(node.left_type)
 		ptr_typ := styp.split('_')[1]
 		if !(ptr_typ in g.array_definitions) {
+			sym := g.table.get_type_symbol(left_sym.array_info().elem_type)
 			g.array_definitions << ptr_typ
 			g.definitions.writeln('bool ${ptr_typ}_arr_eq($styp a, $styp b) {')
 			g.definitions.writeln('\tif (a.len != b.len) {')
@@ -1350,6 +1351,8 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			g.definitions.writeln('\tfor (int i = 0; i < a.len; i++) {')
 			if ptr_typ == "string" {
 				g.definitions.writeln('\t\tif (string_ne(*((${ptr_typ}*)(a.data+(i*a.element_size))), *((${ptr_typ}*)(b.data+(i*b.element_size))))) {')
+			} else if sym.kind == .struct_ {
+				g.definitions.writeln('\t\tif (memcmp((void*)(a.data+(i*a.element_size)), (void*)(b.data+(i*b.element_size)), sizeof a)) {')
 			} else {
 				g.definitions.writeln('\t\tif (*((${ptr_typ}*)(a.data+(i*a.element_size))) != *((${ptr_typ}*)(b.data+(i*b.element_size)))) {')
 			}
