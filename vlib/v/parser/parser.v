@@ -1460,14 +1460,19 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		p.next()		// .
 	}
 	is_typedef := p.attr == 'typedef'
+	no_body := p.peek_tok.kind != .lcbr
+	if !is_c && no_body {
+		p.error('`$p.tok.lit` lacks body')
+	}
 	mut name := p.check_name()
 	// println('struct decl $name')
-	p.check(.lcbr)
 	mut ast_fields := []ast.StructField
 	mut fields := []table.Field
 	mut mut_pos := -1
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
+	if !no_body {
+	p.check(.lcbr)
 	for p.tok.kind != .rcbr {
 		mut comment := ast.Comment{}
 		if p.tok.kind == .comment {
@@ -1526,6 +1531,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		// println('struct field $ti.name $field_name')
 	}
 	p.check(.rcbr)
+	}
 	if is_c {
 		name = 'C.$name'
 	} else {
