@@ -1343,7 +1343,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		ptr_typ := styp.split('_')[1]
 		if !(ptr_typ in g.array_definitions) {
 			g.array_definitions << ptr_typ
-			g.definitions.writeln('bool ${styp}_arr_eq($styp a, $styp b) {')
+			g.definitions.writeln('bool ${ptr_typ}_arr_eq($styp a, $styp b) {')
 			g.definitions.writeln('\tif (a.len != b.len) {')
 			g.definitions.writeln('\t\treturn false;')
 			g.definitions.writeln('\t}')
