@@ -788,6 +788,10 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 	} else {
 		mut name := it.name
+		c := name[0]
+		if c in [`+`, `-`, `*`, `/`] {
+			name = util.replace_op(name)
+		}
 		if it.is_method {
 			name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
 		}
@@ -795,9 +799,6 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			name = name.replace('.', '__')
 		} else {
 			name = c_name(name)
-		}
-		if name.starts_with('_op_') {
-			name = op_to_fn_name(name)
 		}
 		// type_name := g.table.Type_to_str(it.return_type)
 		type_name := g.typ(it.return_type)
@@ -1295,6 +1296,7 @@ fn (g mut Gen) assign_expr(node ast.AssignExpr) {
 }
 
 fn (g mut Gen) infix_expr(node ast.InfixExpr) {
+	left_sym := g.table.get_type_symbol(node.left_type)
 	// println('infix_expr() op="$node.op.str()" line_nr=$node.pos.line_nr')
 	// g.write('/*infix*/')
 	// if it.left_type == table.string_type_idx {
@@ -1410,6 +1412,15 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		}
 		g.expr(node.left)
 		g.write(',')
+		g.expr(node.right)
+		g.write(')')
+	} else if node.op in [.plus, .minus, .mul, .div] && (left_sym.name[0].is_capital() || left_sym.name.contains('.')) {
+		g.write(g.typ(node.left_type))
+		g.write('_')
+		g.write(util.replace_op(node.op.str()))
+		g.write('(')
+		g.expr(node.left)
+		g.write(', ')
 		g.expr(node.right)
 		g.write(')')
 	} else {

@@ -271,11 +271,11 @@ pub fn len_16(x u16) int {
 pub fn len_32(x u32) int {
 	mut y := x
 	mut n := 0
-	if y >= 1<<16 {
+	if y >= (1<<16) {
 		y >>= 16
 		n = 16
 	}
-	if y >= 1<<8 {
+	if y >= (1<<8) {
 		y >>= 8
 		n += 8
 	}
