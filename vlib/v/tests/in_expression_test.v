@@ -21,9 +21,9 @@ fn test_in_expression(){
 	a = true && 3 in arr1
 	assert a == false
 
-	a = true && !2 in arr2
+	a = true && !(2 in arr2)
 	assert a == false
-	a = true && !3 in arr2
+	a = true && !(3 in arr2)
 	assert a == true
 
 	a = 1 in arr1 && true
@@ -51,9 +51,9 @@ fn test_in_expression_with_enum(){
 	a = true && Colors.yellow in arr1
 	assert a == false
 
-	a = true && !Colors.blue in arr2
+	a = true && !(Colors.blue in arr2)
 	assert a == false
-	a = true && !Colors.yellow in arr2
+	a = true && !(Colors.yellow in arr2)
 	assert a == true
 
 	a = Colors.green in arr1 && true
@@ -81,9 +81,9 @@ fn test_in_expression_with_string(){
 	a = true && 'abc' in arr1
 	assert a == false
 
-	a = true && !'bc' in arr2
+	a = true && !('bc' in arr2)
 	assert a == false
-	a = true && !'abc' in arr2
+	a = true && !('abc' in arr2)
 	assert a == true
 
 	a = 'ab' in arr1 && true
@@ -108,9 +108,9 @@ fn test_optimized_in_expression(){
 	a = true && 3 in [1, 2]
 	assert a == false
 
-	a = true && !2 in [0, 2]
+	a = true && !(2 in [0, 2])
 	assert a == false
-	a = true && !3 in [0, 2]
+	a = true && !(3 in [0, 2])
 	assert a == true
 
 	a = 1 in [1, 2] && true
@@ -135,9 +135,9 @@ fn test_optimized_in_expression_with_enum(){
 	a = true && Colors.yellow in [.green, .blue]
 	assert a == false
 
-	a = true && !Colors.blue in [.red, .blue]
+	a = true && !(Colors.blue in [.red, .blue])
 	assert a == false
-	a = true && !Colors.yellow in [.red, .blue]
+	a = true && !(Colors.yellow in [.red, .blue])
 	assert a == true
 
 	a = Colors.green in [.green, .blue] && true
@@ -162,9 +162,9 @@ fn test_optimized_in_expression_with_string(){
 	a = true && 'abc' in ['ab', 'bc']
 	assert a == false
 
-	a = true && !'bc' in ['', 'bc']
+	a = true && !('bc' in ['', 'bc'])
 	assert a == false
-	a = true && !'abc' in ['', 'bc']
+	a = true && !('abc' in ['', 'bc'])
 	assert a == true
 
 	a = 'ab' in ['ab', 'bc'] && true
