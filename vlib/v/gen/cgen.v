@@ -1338,7 +1338,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		g.write(', ')
 		g.expr(node.right)
 		g.write(')')
-	} else if node.op == .eq && left_sym.kind == .array && right_sym.kind == .array {
+	} else if node.op in [.eq, .ne] && left_sym.kind == .array && right_sym.kind == .array {
 		styp := g.typ(node.left_type)
 		ptr_typ := styp.split('_')[1]
 		if !(ptr_typ in g.array_definitions) {
@@ -1355,7 +1355,11 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			g.definitions.writeln('\treturn true;')
 			g.definitions.writeln('}')
 		}
-		g.write('${ptr_typ}_arr_eq(')
+		if node.op == .eq {
+			g.write('${ptr_typ}_arr_eq(')
+		} else {
+			g.write('!${ptr_typ}_arr_eq(')
+		}
 		g.expr(node.left)
 		g.write(', ')
 		g.expr(node.right)
