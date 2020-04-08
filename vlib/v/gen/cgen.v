@@ -502,7 +502,7 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		g.expr(it.cond)
 		g.write('; $i < ')
 		g.expr(it.high)
-		g.writeln('; $i++) { ')
+		g.writeln('; $i++) {')
 		g.writeln('\tint $it.val_var = $i;')
 		g.stmts(it.stmts)
 		g.writeln('}')
@@ -829,7 +829,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		g.writeln(');')
 		return
 	}
-	g.writeln(') { ')
+	g.writeln(') {')
 	if !is_main {
 		g.definitions.writeln(');')
 	}
@@ -972,7 +972,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				} else {
 					len := it.exprs.len
 					g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), ')
-					g.writeln('($elem_type_str[$len]){\t')
+					g.write('($elem_type_str[$len]){\n\t\t')
 					for expr in it.exprs {
 						g.expr(expr)
 						g.write(', ')
