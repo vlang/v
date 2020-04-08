@@ -299,8 +299,8 @@ pub enum Precedence {
 	assign // =
 	eq // == or !=
 	// less_greater // > or <
-	sum // + or -
-	product // * or /
+	sum // + - | ^
+	product // * / << >> &
 	// mod // %
 	prefix // -X or !X
 	postfix // ++ or --

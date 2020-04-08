@@ -1123,9 +1123,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			// g.write('/*pref*/')
 			g.write(it.op.str())
-			//g.write('(')
+			// g.write('(')
 			g.expr(it.right)
-			//g.write(')')
+			// g.write(')')
 			g.is_amp = false
 		}
 		ast.SizeOf {
@@ -1793,7 +1793,7 @@ fn (g mut Gen) return_statement(node ast.Return) {
 		typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		mr_info := typ_sym.info as table.MultiReturn
 		mut styp := g.typ(g.fn_decl.return_type)
-		if fn_return_is_optional {
+		if fn_return_is_optional {			// && !table.type_is(node.types[0], .optional) && node.types[0] !=
 			styp = styp[7..]			// remove 'Option_'
 			g.write('opt_ok(& ($styp []) { ')
 		}
@@ -1812,8 +1812,10 @@ fn (g mut Gen) return_statement(node ast.Return) {
 	} else if node.exprs.len == 1 {
 		// normal return
 		g.write(' ')
+		return_sym := g.table.get_type_symbol(node.types[0])
 		// `return opt_ok(expr)` for functions that expect an optional
-		if fn_return_is_optional && !table.type_is(node.types[0], .optional) {
+		if fn_return_is_optional && !table.type_is(node.types[0], .optional) && return_sym.name !=
+			'Option' {
 			mut is_none := false
 			mut is_error := false
 			expr0 := node.exprs[0]
@@ -1831,7 +1833,7 @@ fn (g mut Gen) return_statement(node ast.Return) {
 			}
 			if !is_none && !is_error {
 				styp := g.typ(g.fn_decl.return_type)[7..]				// remove 'Option_'
-				g.write('opt_ok(& ($styp []) { ')
+				g.write('/*:)$return_sym.name*/opt_ok(&($styp []) { ')
 				g.expr(node.exprs[0])
 				g.writeln(' }, sizeof($styp));')
 				return
@@ -2268,12 +2270,17 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 				verror('only V strings can be formatted with a ${sfmt} format')
 			}
 			g.write('%' + sfmt[1..])
-		} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind == .enum_ {
+		} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind ==
+			.enum_ {
 			g.write('%.*s')
 		} else {
 			match node.exprs[i] {
-				ast.EnumVal { g.write('%.*s') }
-				else { g.write('%d') }
+				ast.EnumVal {
+					g.write('%.*s')
+				}
+				else {
+					g.write('%d')
+				}
 			}
 		}
 	}
@@ -2304,9 +2311,15 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 			sym := g.table.get_type_symbol(node.expr_types[i])
 			if sym.kind == .enum_ {
 				is_var := match node.exprs[i] {
-					ast.SelectorExpr { true }
-					ast.Ident { true }
-					else { false }
+					ast.SelectorExpr {
+						true
+					}
+					ast.Ident {
+						true
+					}
+					else {
+						false
+					}
 				}
 				if is_var {
 					styp := g.typ(node.expr_types[i])
@@ -2504,13 +2517,27 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 		} else if sym.kind == .enum_ {
 			expr := node.args[0].expr
 			is_var := match expr {
-				ast.SelectorExpr { true }
-				ast.Ident { true }
-				else { false }
+				ast.SelectorExpr {
+					true
+				}
+				ast.Ident {
+					true
+				}
+				else {
+					false
+				}
 			}
-			g.write(if is_var { '${print_method}(${styp}_str(' } else { '${print_method}(tos3("' })
+			g.write(if is_var {
+				'${print_method}(${styp}_str('
+			} else {
+				'${print_method}(tos3("'
+			})
 			g.enum_expr(expr)
-			g.write(if is_var { '))' } else { '"))' })
+			g.write(if is_var {
+				'))'
+			} else {
+				'"))'
+			})
 		} else {
 			// `println(int_str(10))`
 			// sym := g.table.get_type_symbol(node.args[0].typ)

@@ -16,7 +16,6 @@ const (
 		'vlib/crypto/rc4/rc4_test.v',
 		'vlib/encoding/base64/base64_memory_test.v',
 		'vlib/encoding/base64/base64_test.v',
-		'vlib/encoding/csv/csv_test.v',
 		'vlib/encoding/utf8/utf8_util_test.v',
 		'vlib/eventbus/eventbus_test.v',
 		'vlib/flag/flag_test.v',
