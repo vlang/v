@@ -863,7 +863,7 @@ fn (p mut Parser) prefix_expr() ast.PrefixExpr {
 		p.is_amp = true
 	}
 	p.next()
-	right := p.expr(1)
+	right := p.expr(token.Precedence.prefix)
 	p.is_amp = false
 	return ast.PrefixExpr{
 		op: op

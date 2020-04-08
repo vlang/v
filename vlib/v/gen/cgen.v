@@ -86,7 +86,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		indent: -1
 	}
 	g.init()
-	// 
+	//
 	mut autofree_used := false
 	for file in files {
 		g.file = file
@@ -115,7 +115,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.is_test {
 		g.write_tests_main()
 	}
-	// 
+	//
 	g.finish()
 	return g.hashes() + g.includes.str() + g.typedefs.str() + g.typedefs2.str() + g.definitions.str() +
 		g.gowrappers.str() + g.stringliterals.str() + g.out.str()
@@ -141,7 +141,7 @@ pub fn (g mut Gen) init() {
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
-	// 
+	//
 	g.stringliterals.writeln('')
 	g.stringliterals.writeln('// >> string literal consts')
 	g.stringliterals.writeln('void vinit_string_literals(){')
@@ -205,7 +205,7 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	return styp
 }
 
-// 
+//
 pub fn (g mut Gen) write_typedef_types() {
 	for typ in g.table.types {
 		match typ.kind {
@@ -821,7 +821,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 	}
 */
-	// 
+	//
 	g.fn_args(it.args, it.is_variadic)
 	if it.no_body {
 		// Just a function header.
@@ -840,9 +840,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 				g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
 			}
 			if g.pref.os == .windows {
-				g.writeln('_const_os__args = os__init_os_args_wide(___argc, ___argv);')
+				g.writeln('\t_const_os__args = os__init_os_args_wide(___argc, ___argv);')
 			} else {
-				g.writeln('_const_os__args = os__init_os_args(___argc, (byteptr*)___argv);')
+				g.writeln('\t_const_os__args = os__init_os_args(___argc, (byteptr*)___argv);')
 			}
 		}
 	}
@@ -1123,7 +1123,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			// g.write('/*pref*/')
 			g.write(it.op.str())
+			//g.write('(')
 			g.expr(it.right)
+			//g.write(')')
 			g.is_amp = false
 		}
 		ast.SizeOf {
@@ -1390,7 +1392,8 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			g.expr(node.right)
 			g.write('), $tmp, $elem_type_str)')
 		}
-	} else if (node.left_type == node.right_type ) && node.left_type in [ table.f32_type_idx, table.f64_type_idx ] && node.op in [ .eq, .ne ] {
+	} else if (node.left_type == node.right_type) && node.left_type in [table.f32_type_idx,
+		table.f64_type_idx] && node.op in [.eq, .ne] {
 		// floats should be compared with epsilon
 		if node.left_type == table.f64_type_idx {
 			if node.op == .eq {
@@ -1398,7 +1401,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			} else {
 				g.write('f64_ne(')
 			}
-		}else{
+		} else {
 			if node.op == .eq {
 				g.write('f32_eq(')
 			} else {
@@ -1475,7 +1478,7 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 					// sum_type_str
 				} else if type_sym.kind == .string {
 					g.write('string_eq(')
-					// 
+					//
 					g.expr(node.cond)
 					g.write(', ')
 					// g.write('string_eq($tmp, ')
@@ -2159,7 +2162,7 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 					g.definitions.writeln('EMPTY_STRUCT_DECLARATION;')
 				}
 				// g.definitions.writeln('} $name;\n')
-				// 
+				//
 				g.definitions.writeln('};\n')
 			}
 			table.Alias {

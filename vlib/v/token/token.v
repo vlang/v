@@ -303,7 +303,7 @@ pub enum Precedence {
 	product // * or /
 	// mod // %
 	prefix // -X or !X
-	postfix
+	postfix // ++ or --
 	call // func(X) or foo.method(X)
 	index // array[index], map[key]
 }
