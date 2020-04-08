@@ -40,7 +40,8 @@ struct Fragment {
 	code OPCode
 }
 
-struct Message {
+pub struct Message {
+	pub:
 	opcode OPCode
 	payload voidptr
 	payload_len int
