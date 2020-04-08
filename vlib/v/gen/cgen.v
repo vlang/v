@@ -2307,7 +2307,7 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 				}
 				if is_var {
 					styp := g.typ(node.expr_types[i])
-					if !(styp in g.str_types) {
+					if !sym.has_method('str') && !(styp in g.str_types) {
 						// Generate an automatic str() method if this type doesn't have it already
 						g.str_types << styp
 						g.gen_str_for_type(sym, styp)
@@ -3015,16 +3015,13 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 
 fn (g mut Gen) gen_str_for_enum(info table.Enum, styp string) {
 	s := styp.replace('.', '__')
-	g.definitions.write('string ${s}_str($styp a) {\n')
-	g.definitions.write('\tswitch(a) {\n')
+	g.definitions.write('string ${s}_str($styp a) {\n\tswitch(a) {\n')
 	for i, expr in info.default_exprs {
 		val := info.vals[i]
 		int_expr := expr as ast.IntegerLiteral
 		g.definitions.write('\t\tcase $int_expr.val: return tos3("$val");\n')
 	}
-	g.definitions.write('\t\tdefault: return tos3("unknown enum value");\n')
-	g.definitions.write('\t}\n')
-	g.definitions.write('}')
+	g.definitions.write('\t\tdefault: return tos3("unknown enum value"); } }\n')
 }
 
 fn (g mut Gen) gen_str_for_struct(info table.Struct, styp string) {
