@@ -397,20 +397,21 @@ pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	}
 }
 
-pub fn (c mut Checker) check_expr_opt_call(x ast.Expr, xtype table.Type, is_return_used bool){
+pub fn (c mut Checker) check_expr_opt_call(x ast.Expr, xtype table.Type, is_return_used bool) {
 	match x {
 		ast.CallExpr {
 			if table.type_is(it.return_type, .optional) {
 				c.check_or_block(it, xtype, is_return_used)
 			}
 		}
-		else{}
+		else {}
 	}
 }
 
 pub fn (c mut Checker) check_or_block(call_expr mut ast.CallExpr, ret_type table.Type, is_ret_used bool) {
 	if !call_expr.or_block.is_used {
-		c.error('${call_expr.name}() returns an option, but you missed to add an `or {}` block to it', call_expr.pos)
+		c.error('${call_expr.name}() returns an option, but you missed to add an `or {}` block to it',
+			call_expr.pos)
 		return
 	}
 	stmts_len := call_expr.or_block.stmts.len
@@ -427,7 +428,8 @@ pub fn (c mut Checker) check_or_block(call_expr mut ast.CallExpr, ret_type table
 	if is_ret_used {
 		if !c.is_last_or_block_stmt_valid(last_stmt) {
 			expected_type_name := c.table.get_type_symbol(ret_type).name
-			c.error('last statement in the `or {}` block should return ‘$expected_type_name‘', call_expr.pos)
+			c.error('last statement in the `or {}` block should return ‘$expected_type_name‘',
+				call_expr.pos)
 			return
 		}
 		match last_stmt {
@@ -439,12 +441,14 @@ pub fn (c mut Checker) check_or_block(call_expr mut ast.CallExpr, ret_type table
 				}
 				type_name := c.table.get_type_symbol(c.expr(it.expr)).name
 				expected_type_name := c.table.get_type_symbol(ret_type).name
-				c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`', it.pos)
+				c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
+					it.pos)
 				return
 			}
 			ast.BranchStmt {
 				if !(it.tok.kind in [.key_continue, .key_break]) {
-					c.error('only break/continue is allowed as a branch statement in the end of an `or {}` block', it.tok.position())
+					c.error('only break/continue is allowed as a branch statement in the end of an `or {}` block',
+						it.tok.position())
 					return
 				}
 			}
@@ -456,18 +460,30 @@ pub fn (c mut Checker) check_or_block(call_expr mut ast.CallExpr, ret_type table
 
 fn is_expr_panic_or_exit(expr ast.Expr) bool {
 	match expr {
-		ast.CallExpr { return it.name in ['panic','exit'] }
-		else { return false }
+		ast.CallExpr {
+			return it.name in ['panic', 'exit']
+		}
+		else {
+			return false
+		}
 	}
 }
 
 // TODO: merge to check_or_block when v can handle it
 pub fn (c mut Checker) is_last_or_block_stmt_valid(stmt ast.Stmt) bool {
 	return match stmt {
-		ast.Return { true }
-		ast.BranchStmt { true }
-		ast.ExprStmt { true }
-		else { false }
+		ast.Return {
+			true
+		}
+		ast.BranchStmt {
+			true
+		}
+		ast.ExprStmt {
+			true
+		}
+		else {
+			false
+		}
 	}
 }
 
@@ -679,7 +695,8 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			assert_type := c.expr(it.expr)
 			if assert_type != table.bool_type_idx {
 				atype_name := c.table.get_type_symbol(assert_type).name
-				c.error('assert can be used only with `bool` expressions, but found `${atype_name}` instead', it.pos)
+				c.error('assert can be used only with `bool` expressions, but found `${atype_name}` instead',
+					it.pos)
 			}
 		}
 		ast.AssignStmt {
