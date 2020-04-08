@@ -5,7 +5,7 @@ fn main() {
 	$if !windows {
 		println('This will get compiled on non-windows platforms.')
 	}
-	// 
+	//
 	$if !linux {
 		println('Only non linux platforms will get this')
 	} $else {
