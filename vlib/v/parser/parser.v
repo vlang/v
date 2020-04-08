@@ -23,6 +23,8 @@ mut:
 	table             &table.Table
 	is_c              bool
 	inside_if         bool
+	inside_for        bool
+	inside_fn         bool
 	pref              &pref.Preferences
 	builtin_mod       bool
 	mod               string
@@ -365,7 +367,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return p.assign_stmt()
 		}
 		.key_for {
-			return p.for_statement()
+			return p.for_stmt()
 		}
 		.comment {
 			return p.comment()
@@ -551,7 +553,8 @@ fn (p mut Parser) struct_init(short_syntax bool) ast.StructInit {
 	mut field_names := []string
 	mut exprs := []ast.Expr
 	mut i := 0
-	is_short_syntax := !(p.peek_tok.kind == .colon || p.tok.kind == .rcbr)	// `Vec{a,b,c}`
+	is_short_syntax := p.peek_tok.kind != .colon && p.tok.kind != .rcbr	// `Vec{a,b,c}
+
 	// p.warn(is_short_syntax.str())
 	for p.tok.kind != .rcbr {
 		p.check_comment()
@@ -606,8 +609,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		return p.string_expr()
 	}
 	known_var := p.scope.known_var(p.tok.lit)
-	if p.peek_tok.kind == .dot && !known_var && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') ==
-		p.tok.lit) {
+	if p.peek_tok.kind == .dot && !known_var && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') == p.tok.lit) {
 		if is_c {
 			mod = 'C'
 		} else {
@@ -618,6 +620,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
+
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
 	if p.peek_tok.kind == .lpar {
@@ -662,11 +665,11 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			x := p.call_expr(is_c, mod)			// TODO `node,typ :=` should work
 			node = x
 		}
-	} else if p.peek_tok.kind == .lcbr && !p.inside_match_case && (is_c || p.tok.lit[0].is_capital() ||
-		(p.builtin_mod && p.tok.lit in table.builtin_type_names)) && (p.tok.lit.len in [1, 2, 3] ||
-		!p.tok.lit[p.tok.lit.len - 1].is_capital() || p.table.known_type(p.tok.lit)) {
-		// short_syntax: false
-		return p.struct_init(false)
+	} else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod && p.tok.lit in
+		table.builtin_type_names)) && !p.inside_match_case && !p.inside_if && !p.inside_for {
+		// (p.tok.lit.len in [1, 2] || !p.tok.lit[p.tok.lit.len - 1].is_capital()) &&
+		// || p.table.known_type(p.tok.lit)) {
+		return p.struct_init(false) // short_syntax: false
 	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
 		// `Color.green`
 		mut enum_name := p.check_name()
@@ -1031,13 +1034,15 @@ fn (p mut Parser) enum_val() ast.EnumVal {
 	}
 }
 
-fn (p mut Parser) for_statement() ast.Stmt {
+fn (p mut Parser) for_stmt() ast.Stmt {
 	p.check(.key_for)
 	pos := p.tok.position()
 	p.open_scope()
+	p.inside_for = true
 	// defer { p.close_scope() }
 	// Infinite loop
 	if p.tok.kind == .lcbr {
+		p.inside_for = false
 		stmts := p.parse_block()
 		p.close_scope()
 		return ast.ForStmt{
@@ -1071,6 +1076,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			// inc = p.stmt()
 			inc = p.expr(0)
 		}
+		p.inside_for = false
 		stmts := p.parse_block()
 		p.close_scope()
 		return ast.ForCStmt{
@@ -1116,6 +1122,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 				name: val_var_name
 			})
 		}
+		p.inside_for = false
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
 		p.close_scope()
@@ -1131,6 +1138,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	}
 	// `for cond {`
 	cond := p.expr(0)
+	p.inside_for = false
 	stmts := p.parse_block()
 	p.close_scope()
 	return ast.ForStmt{
@@ -1141,11 +1149,11 @@ fn (p mut Parser) for_statement() ast.Stmt {
 }
 
 fn (p mut Parser) if_expr() ast.IfExpr {
-	p.inside_if = true
 	pos := p.tok.position()
 	mut branches := []ast.IfBranch
 	mut has_else := false
 	for p.tok.kind in [.key_if, .key_else] {
+		p.inside_if = true
 		branch_pos := p.tok.position()
 		mut comment := ast.Comment{}
 		if p.tok.kind == .key_if {
@@ -1160,6 +1168,7 @@ fn (p mut Parser) if_expr() ast.IfExpr {
 				p.check(.key_if)
 			} else {
 				has_else = true
+				p.inside_if = false
 				branches << ast.IfBranch{
 					stmts: p.parse_block()
 					pos: branch_pos
@@ -1790,7 +1799,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 			// Sum type match
 			// if sym.kind == .sum_type {
 			// p.warn('is sum')
-			// TODO `exprs << ast.Type{...}`
+			// TODO `exprs << ast.Type{...}
 			typ := p.parse_type()
 			x := ast.Type{
 				typ: typ
