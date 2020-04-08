@@ -14,6 +14,7 @@ module table
 
 import (
 	strings
+	v.ast
 )
 
 pub type Type int
@@ -546,6 +547,7 @@ pub mut:
 pub struct Enum {
 pub mut:
 	vals []string
+	default_exprs []ast.Expr
 }
 
 pub struct Alias {

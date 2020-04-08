@@ -86,7 +86,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		indent: -1
 	}
 	g.init()
-	// 
+	//
 	mut autofree_used := false
 	for file in files {
 		g.file = file
@@ -115,7 +115,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.is_test {
 		g.write_tests_main()
 	}
-	// 
+	//
 	g.finish()
 	return g.hashes() + g.includes.str() + g.typedefs.str() + g.typedefs2.str() + g.definitions.str() +
 		g.gowrappers.str() + g.stringliterals.str() + g.out.str()
@@ -141,7 +141,7 @@ pub fn (g mut Gen) init() {
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
-	// 
+	//
 	g.stringliterals.writeln('')
 	g.stringliterals.writeln('// >> string literal consts')
 	g.stringliterals.writeln('void vinit_string_literals(){')
@@ -205,7 +205,7 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	return styp
 }
 
-// 
+//
 pub fn (g mut Gen) write_typedef_types() {
 	for typ in g.table.types {
 		match typ.kind {
@@ -367,7 +367,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 					g.expr(it.default_exprs[j])
 					expr := g.out.after(pos)
 					g.out.go_back(expr.len)
-					g.typedefs.writeln('$expr ,')
+					g.typedefs.writeln('$expr,')
 				} else {
 					g.typedefs.writeln('\t${name}_$val, // $j')
 				}
@@ -821,7 +821,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 	}
 */
-	// 
+	//
 	g.fn_args(it.args, it.is_variadic)
 	if it.no_body {
 		// Just a function header.
@@ -1208,10 +1208,10 @@ fn (g mut Gen) typeof_expr(node ast.TypeOf) {
 fn (g mut Gen) enum_expr(node ast.Expr) {
 	match node {
 		ast.EnumVal {
-			g.write('$it.val.capitalize()')
+			g.write(it.val)
 		}
 		else {
-			println(term.red('cgen.enum_expr(): bad node ' + typeof(node)))
+			g.expr(node)
 		}
 	}
 }
@@ -1475,7 +1475,7 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 					// sum_type_str
 				} else if type_sym.kind == .string {
 					g.write('string_eq(')
-					// 
+					//
 					g.expr(node.cond)
 					g.write(', ')
 					// g.write('string_eq($tmp, ')
@@ -2159,7 +2159,7 @@ fn (g mut Gen) write_types(types []table.TypeSymbol) {
 					g.definitions.writeln('EMPTY_STRUCT_DECLARATION;')
 				}
 				// g.definitions.writeln('} $name;\n')
-				// 
+				//
 				g.definitions.writeln('};\n')
 			}
 			table.Alias {
@@ -2463,9 +2463,14 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			g.expr(node.args[0].expr)
 			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
 		} else if sym.kind == .enum_ {
-			g.write('${print_method}(tos3("')
-			g.enum_expr(node.args[0].expr)
-			g.write('"))')
+			expr := node.args[0].expr
+			is_selector := match expr {
+				ast.SelectorExpr { true }
+				else { false }
+			}
+			g.write(if is_selector { '${print_method}(${styp}_str(' } else { '${print_method}(tos3("' })
+			g.enum_expr(expr)
+			g.write(if is_selector { '))' } else { '"))' })
 		} else {
 			// `println(int_str(10))`
 			// sym := g.table.get_type_symbol(node.args[0].typ)
@@ -2959,15 +2964,35 @@ fn (g mut Gen) go_stmt(node ast.GoStmt) {
 
 // already generated styp, reuse it
 fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
-	s := styp.replace('.', '__')
 	match sym.info {
-		table.Struct {}
+		table.Struct {
+			g.gen_str_for_struct(it, styp)
+		}
+		table.Enum {
+			g.gen_str_for_enum(it, styp)
+		}
 		else {
-			println('str() not a struct $sym.name')
-			return
+			println('cannot generate str() for $sym.name')
 		}
 	}
-	info := sym.info as table.Struct
+}
+
+fn (g mut Gen) gen_str_for_enum(info table.Enum, styp string) {
+	s := styp.replace('.', '__')
+	g.definitions.write('string ${s}_str($styp a) {\n')
+	g.definitions.write('\tswitch(a) {\n')
+	for i, expr in info.default_exprs {
+		val := info.vals[i]
+		int_expr := expr as ast.IntegerLiteral
+		g.definitions.write('\t\tcase $int_expr.val: return _STR("$val");\n')
+	}
+	g.definitions.write('\t\tdefault: return _STR("unknown enum value");\n')
+	g.definitions.write('\t}\n')
+	g.definitions.write('}')
+}
+
+fn (g mut Gen) gen_str_for_struct(info table.Struct, styp string) {
+	s := styp.replace('.', '__')
 	g.definitions.write('string ${s}_str($styp a) { return _STR("$styp {\\n')
 	for field in info.fields {
 		fmt := type_to_fmt(field.typ)
