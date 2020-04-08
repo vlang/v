@@ -14,8 +14,6 @@ const (
 		'vlib/crypto/aes/aes_test.v',
 		'vlib/crypto/rand/rand_test.v',
 		'vlib/crypto/rc4/rc4_test.v',
-		'vlib/crypto/sha256/sha256_test.v',
-		'vlib/crypto/sha512/sha512_test.v',
 		'vlib/encoding/base64/base64_memory_test.v',
 		'vlib/encoding/base64/base64_test.v',
 		'vlib/encoding/csv/csv_test.v',
