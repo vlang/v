@@ -48,7 +48,7 @@ SPENT   462 ms in code_2
 const (
 	BOK = term.ok_message('OK  ')
 	BFAIL = term.fail_message('FAIL')
-	BSKIP  = term.fail_message('SKIP')
+	BSKIP  = term.warn_message('SKIP')
 	BSPENT = term.ok_message('SPENT')
 )
 

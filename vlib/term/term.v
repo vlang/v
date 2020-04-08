@@ -30,6 +30,12 @@ pub fn fail_message(s string) string {
 	return if can_show_color_on_stdout() { red(s) } else { s }
 }
 
+// warn_message returns a colored string with yellow color.
+// If colors are not allowed, returns a given string.
+pub fn warn_message(s string) string {
+	return if can_show_color_on_stdout() { yellow(s) } else { s }
+}
+
 // h_divider returns a horizontal divider line with a dynamic width,
 // that depends on the current terminal settings.
 // If an empty string is passed in, print enough spaces to make a new line
