@@ -1472,65 +1472,65 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
 	if !no_body {
-	p.check(.lcbr)
-	for p.tok.kind != .rcbr {
-		mut comment := ast.Comment{}
-		if p.tok.kind == .comment {
-			comment = p.comment()
-		}
-		if p.tok.kind == .key_pub {
-			p.check(.key_pub)
-			if p.tok.kind == .key_mut {
-				p.check(.key_mut)
-				pub_mut_pos = fields.len
-			} else {
-				pub_pos = fields.len
+		p.check(.lcbr)
+		for p.tok.kind != .rcbr {
+			mut comment := ast.Comment{}
+			if p.tok.kind == .comment {
+				comment = p.comment()
 			}
-			p.check(.colon)
-		} else if p.tok.kind == .key_mut {
-			p.check(.key_mut)
-			p.check(.colon)
-			mut_pos = fields.len
-		} else if p.tok.kind == .key_global {
-			p.check(.key_global)
-			p.check(.colon)
-		}
-		field_name := p.check_name()
-		field_pos := p.tok.position()
-		// p.warn('field $field_name')
-		typ := p.parse_type()
-		/*
-		if name == '_net_module_s' {
+			if p.tok.kind == .key_pub {
+				p.check(.key_pub)
+				if p.tok.kind == .key_mut {
+					p.check(.key_mut)
+					pub_mut_pos = fields.len
+				} else {
+					pub_pos = fields.len
+				}
+				p.check(.colon)
+			} else if p.tok.kind == .key_mut {
+				p.check(.key_mut)
+				p.check(.colon)
+				mut_pos = fields.len
+			} else if p.tok.kind == .key_global {
+				p.check(.key_global)
+				p.check(.colon)
+			}
+			field_name := p.check_name()
+			field_pos := p.tok.position()
+			// p.warn('field $field_name')
+			typ := p.parse_type()
+			/*
+			if name == '_net_module_s' {
 			s := p.table.get_type_symbol(typ)
 			println('XXXX' + s.str())
 		}
 */
-		mut default_expr := ''		// ast.Expr{}
-		if p.tok.kind == .assign {
-			// Default value
-			p.next()
-			default_expr = p.tok.lit
-			p.expr(0)
-			// default_expr = p.expr(0)
+			mut default_expr := ''			// ast.Expr{}
+			if p.tok.kind == .assign {
+				// Default value
+				p.next()
+				default_expr = p.tok.lit
+				p.expr(0)
+				// default_expr = p.expr(0)
+			}
+			if p.tok.kind == .comment {
+				comment = p.comment()
+			}
+			ast_fields << ast.StructField{
+				name: field_name
+				pos: field_pos
+				typ: typ
+				comment: comment
+				default_expr: default_expr
+			}
+			fields << table.Field{
+				name: field_name
+				typ: typ
+				default_val: default_expr
+			}
+			// println('struct field $ti.name $field_name')
 		}
-		if p.tok.kind == .comment {
-			comment = p.comment()
-		}
-		ast_fields << ast.StructField{
-			name: field_name
-			pos: field_pos
-			typ: typ
-			comment: comment
-			default_expr: default_expr
-		}
-		fields << table.Field{
-			name: field_name
-			typ: typ
-			default_val: default_expr
-		}
-		// println('struct field $ti.name $field_name')
-	}
-	p.check(.rcbr)
+		p.check(.rcbr)
 	}
 	if is_c {
 		name = 'C.$name'
