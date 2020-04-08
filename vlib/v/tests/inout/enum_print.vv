@@ -1,9 +1,10 @@
 module main
 
 enum Color {
+	orange
 	green = 5
 	red = 2
-	yellow = 1
+	yellow = 3
 }
 
 struct A{
@@ -13,6 +14,8 @@ struct A{
 fn main() {
 	col := Color.green
 	a := A{color: col}
+	orange := Color.orange
+	println(orange)
 	println(Color.yellow)
 	println(col)
 	println(a.color)
