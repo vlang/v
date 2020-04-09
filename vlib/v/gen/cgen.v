@@ -1343,17 +1343,17 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if node.op in [.eq, .ne] && left_sym.kind == .array && right_sym.kind == .array {
-		styp := g.typ(node.left_type)
-		ptr_typ := styp.split('_')[1]
-		if !(ptr_typ in g.array_definitions) {
+		styp := g.table.value_type(node.left_type)
+		ptr_typ := g.typ(node.left_type).split('_')[1]
+		if !(ptr_typ in g.array_fn_definitions) {
 			sym := g.table.get_type_symbol(left_sym.array_info().elem_type)
-			g.array_definitions << ptr_typ
-			g.definitions.writeln('bool ${ptr_typ}_arr_eq($styp a, $styp b) {')
+			g.array_fn_definitions << ptr_typ
+			g.definitions.writeln('bool ${ptr_typ}_arr_eq(array_${ptr_typ} a, array_${ptr_typ} b) {')
 			g.definitions.writeln('\tif (a.len != b.len) {')
 			g.definitions.writeln('\t\treturn false;')
 			g.definitions.writeln('\t}')
 			g.definitions.writeln('\tfor (int i = 0; i < a.len; i++) {')
-			if ptr_typ == "string" {
+			if styp == table.string_type_idx {
 				g.definitions.writeln('\t\tif (string_ne(*((${ptr_typ}*)(a.data+(i*a.element_size))), *((${ptr_typ}*)(b.data+(i*b.element_size))))) {')
 			} else if sym.kind == .struct_ {
 				g.definitions.writeln('\t\tif (memcmp((void*)(a.data+(i*a.element_size)), (void*)(b.data+(i*b.element_size)), a.element_size)) {')
