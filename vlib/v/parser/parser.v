@@ -1852,13 +1852,12 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	mut fields := []ast.EnumField
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		val := p.check_name()
+		pos := p.tok.position()
 		vals << val
-		pos := token.Position{}
 		mut exprs := []ast.Expr
 		// p.warn('enum val $val')
 		if p.tok.kind == .assign {
 			p.next()
-			pos = p.tok.position()
 			exprs << p.expr(0)
 		}
 		fields << ast.EnumField{val, pos, exprs}
