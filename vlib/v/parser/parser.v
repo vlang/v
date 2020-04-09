@@ -1716,23 +1716,6 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 	}
 }
 
-fn (p mut Parser) hash() ast.HashStmt {
-	val := p.tok.lit
-	p.next()
-	if val.starts_with('flag') {
-		// #flag linux -lm
-		words := val.split(' ')
-		if words.len > 1 && words[1] in supported_platforms {
-			if p.pref.os == .mac && words[1] == 'darwin' {
-				p.pref.cflags += val.after('darwin')
-			}
-		}
-	}
-	return ast.HashStmt{
-		val: val
-	}
-}
-
 fn (p mut Parser) global_decl() ast.GlobalDecl {
 	if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v && p.mod !=
 		'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
