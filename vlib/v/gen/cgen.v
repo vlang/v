@@ -55,6 +55,7 @@ mut:
 	defer_ifdef    string
 	str_types      []string // types that need automatic str() generation
 	threaded_fns   []string // for generating unique wrapper types and fns for `go xxx()`
+	array_fn_definitions []string // array equality functions that have been defined
 }
 
 const (
@@ -1300,7 +1301,6 @@ fn (g mut Gen) assign_expr(node ast.AssignExpr) {
 }
 
 fn (g mut Gen) infix_expr(node ast.InfixExpr) {
-	left_sym := g.table.get_type_symbol(node.left_type)
 	// println('infix_expr() op="$node.op.str()" line_nr=$node.pos.line_nr')
 	// g.write('/*infix*/')
 	// if it.left_type == table.string_type_idx {
@@ -1308,6 +1308,8 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	// }
 	// string + string, string == string etc
 	// g.infix_op = node.op
+	left_sym := g.table.get_type_symbol(node.left_type)
+	right_sym := g.table.get_type_symbol(node.right_type)
 	if node.left_type == table.string_type_idx && node.op != .key_in {
 		fn_name := match node.op {
 			.plus {
@@ -1340,8 +1342,23 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		g.write(', ')
 		g.expr(node.right)
 		g.write(')')
+	} else if node.op in [.eq, .ne] && left_sym.kind == .array && right_sym.kind == .array {
+		styp := g.table.value_type(node.left_type)
+		ptr_typ := g.typ(node.left_type).split('_')[1]
+		if !(ptr_typ in g.array_fn_definitions) {
+			sym := g.table.get_type_symbol(left_sym.array_info().elem_type)
+			g.generate_array_equality_fn(ptr_typ, styp, sym)
+		}
+		if node.op == .eq {
+			g.write('${ptr_typ}_arr_eq(')
+		} else if node.op == .ne {
+			g.write('!${ptr_typ}_arr_eq(')
+		}
+		g.expr(node.left)
+		g.write(', ')
+		g.expr(node.right)
+		g.write(')')
 	} else if node.op == .key_in {
-		right_sym := g.table.get_type_symbol(node.right_type)
 		if right_sym.kind == .array {
 			match node.right {
 				ast.ArrayInit {
@@ -1379,7 +1396,6 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		tmp := g.new_tmp_var()
 		sym := g.table.get_type_symbol(node.left_type)
 		info := sym.info as table.Array
-		right_sym := g.table.get_type_symbol(node.right_type)
 		if right_sym.kind == .array && info.elem_type != node.right_type {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY(&')
@@ -2036,6 +2052,27 @@ fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 		}
 		g.write('}}')
 	}
+}
+
+fn (g mut Gen) generate_array_equality_fn(ptr_typ string, styp table.Type, sym &table.TypeSymbol) {
+	g.array_fn_definitions << ptr_typ
+	g.definitions.writeln('bool ${ptr_typ}_arr_eq(array_${ptr_typ} a, array_${ptr_typ} b) {')
+	g.definitions.writeln('\tif (a.len != b.len) {')
+	g.definitions.writeln('\t\treturn false;')
+	g.definitions.writeln('\t}')
+	g.definitions.writeln('\tfor (int i = 0; i < a.len; i++) {')
+	if styp == table.string_type_idx {
+		g.definitions.writeln('\t\tif (string_ne(*((${ptr_typ}*)(a.data+(i*a.element_size))), *((${ptr_typ}*)(b.data+(i*b.element_size))))) {')
+	} else if sym.kind == .struct_ {
+		g.definitions.writeln('\t\tif (memcmp((void*)(a.data+(i*a.element_size)), (void*)(b.data+(i*b.element_size)), a.element_size)) {')
+	} else {
+		g.definitions.writeln('\t\tif (*((${ptr_typ}*)(a.data+(i*a.element_size))) != *((${ptr_typ}*)(b.data+(i*b.element_size)))) {')
+	}
+	g.definitions.writeln('\t\t\treturn false;')
+	g.definitions.writeln('\t\t}')
+	g.definitions.writeln('\t}')
+	g.definitions.writeln('\treturn true;')
+	g.definitions.writeln('}')
 }
 
 [inline]
