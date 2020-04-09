@@ -43,6 +43,7 @@ pub:
 pub struct IntegerLiteral {
 pub:
 	val string
+	pos token.Position
 }
 
 pub struct FloatLiteral {
