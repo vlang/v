@@ -1,5 +1,6 @@
 struct Tester {
 	b bool
+	i int
 }
 
 enum Color {
@@ -28,13 +29,13 @@ fn test_array_equality() {
 	assert ints != [2, 1, 3]
 	assert ints != [3, 2, 1]
 	assert ints != [3, 1, 2]
-	t := Tester{true}
-	f := Tester{false}
-	testers := [t, f]
-	assert testers == [t, f]
-	assert testers != [t, t]
-	assert testers != [f, f]
-	assert testers != [f, t]
+	a := Tester{true, 100}
+	b := Tester{false, 200}
+	testers := [a, b]
+	assert testers == [a, b]
+	assert testers != [a, a]
+	assert testers != [b, b]
+	assert testers != [b, a]
 	colors := [Color.red, Color.green, Color.blue]
 	assert colors == [Color.red, Color.green, Color.blue]
 	assert colors != [Color.red, Color.blue, Color.green]
