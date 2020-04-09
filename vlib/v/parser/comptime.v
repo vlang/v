@@ -32,8 +32,8 @@ fn (p mut Parser) hash() ast.HashStmt {
                         p.cur_tok_index() - 1)
         }
         flag = flag.replace('@VROOT', vmod_file_location.vmod_folder )
-*/
 			flag = flag.replace('@VROOT', '/Users/alex/code/v/')
+*/
 		}
 		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
 			if flag.contains(deprecated) {

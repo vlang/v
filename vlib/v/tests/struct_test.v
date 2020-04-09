@@ -65,10 +65,7 @@ fn test_empty_struct() {
 	println(d)	// != voidptr(0)
 	println('empty:')
 	println(d2)	// empty struct print
-	println(sizeof(
-	Empty
-	)
-	)	// == 0
+	println(sizeof(Empty))	// == 0
 }
 
 fn test_struct_levels() {
@@ -102,22 +99,22 @@ fn test_struct_levels() {
 }
 
 fn test_struct_str() {
-u := User{'Bob',30}
+	u := User{'Bob', 30}
 	println(u)	// make sure the struct is printable
 	// assert u.str() == '{name:"Bob", age:30}'  // QTODO
 }
 
 fn test_at() {
 	foo := Foo{
-		typ: 'test' // QTODO @type
-		//type: 'test'
+		typ: 'test'
 	}
+	// type: 'test'
 	println(foo.typ)
 }
 
 fn test_reserved_keywords() {
 	// Make sure we can initialize them correctly using full syntax.
-	rk_holder := ReservedKeywords{0,0,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3}
+	rk_holder := ReservedKeywords{0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3}
 	// Test a few as it'll take too long to test all. If it's initialized
 	// correctly, other fields are also probably valid.
 	assert rk_holder.unix == 5
@@ -152,7 +149,7 @@ fn test_default_vals() {
 	d := Def{}
 	assert d.a == 0
 	assert d.b == 7
-	d2 := Def{10,20}
+	d2 := Def{10, 20}
 	assert d2.a == 10
 	assert d2.b == 20
 }
@@ -202,7 +199,7 @@ pub mut:
 }
 
 fn fooo() {
-	a := AttrTest{1,2,3,4,5,6}
+	a := AttrTest{1, 2, 3, 4, 5, 6}
 }
 
 /*
@@ -229,7 +226,7 @@ fn test_fixed_field() {
 */
 struct Config {
 	n   int
-	def int=10
+	def int = 10
 }
 
 fn foo_config(c Config) {
@@ -255,8 +252,16 @@ struct City {
 }
 
 struct Country {
+	name    string
 	capital City
 }
 
 fn test_levels() {
+	c := Country{
+		name: 'UK'
+		capital: {
+			name: 'London'
+			population: 10
+		}
+	}
 }

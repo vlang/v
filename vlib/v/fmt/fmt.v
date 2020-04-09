@@ -653,7 +653,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.write('$name{}')
 			} else if it.fields.len == 0 {
 				// `Foo{1,2,3}` (short syntax )
-				f.write('{')
+				f.write('$name{')
 				for i, expr in it.exprs {
 					f.expr(expr)
 					if i < it.exprs.len - 1 {
