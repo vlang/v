@@ -402,6 +402,9 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 		f.write('\t$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
 		f.write(f.type_to_str(field.typ))
+		if field.default_expr != '' {
+			f.write(' = $field.default_expr')
+		}
 		// f.write('// $field.pos.line_nr')
 		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
 			// Same line comment
@@ -605,13 +608,13 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(it.field)
 		}
 		ast.SizeOf {
-			f.writeln('sizeof(')
+			f.write('sizeof(')
 			if it.type_name != '' {
-				f.writeln(it.type_name)
+				f.write(it.type_name)
 			} else {
-				f.writeln(f.type_to_str(it.typ))
+				f.write(f.type_to_str(it.typ))
 			}
-			f.writeln(')')
+			f.write(')')
 		}
 		ast.StringLiteral {
 			if it.val.contains("'") {
@@ -641,10 +644,23 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.StructInit {
 			type_sym := f.table.get_type_symbol(it.typ)
-			name := short_module(type_sym.name).replace(f.cur_mod + '.', '')			// TODO f.type_to_str?
-			// `Foo{}` on one line if there are no fields
-			if it.fields.len == 0 {
+			mut name := short_module(type_sym.name).replace(f.cur_mod + '.', '')			// TODO f.type_to_str?
+			if name == 'void' {
+				name = ''
+			}
+			if it.fields.len == 0 && it.exprs.len == 0 {
+				// `Foo{}` on one line if there are no fields
 				f.write('$name{}')
+			} else if it.fields.len == 0 {
+				// `Foo{1,2,3}` (short syntax )
+				f.write('{')
+				for i, expr in it.exprs {
+					f.expr(expr)
+					if i < it.exprs.len - 1 {
+						f.write(', ')
+					}
+				}
+				f.write('}')
 			} else {
 				f.writeln('$name{')
 				f.indent++

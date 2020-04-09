@@ -21,9 +21,9 @@ fn (p mut Parser) hash() ast.HashStmt {
 		// #flag linux -lm
 		mut flag := val[5..]
 		// expand `@VROOT` to its absolute path
-		/*
 		if flag.contains('@VROOT') {
-        vmod_file_location := p.v.mod_file_cacher.get( p.file_path_dir )
+			/*
+			vmod_file_location := p.v.mod_file_cacher.get( p.file_path_dir )
         if vmod_file_location.vmod_file.len == 0 {
                 // There was no actual v.mod file found.
                 p.error_with_token_index('To use @VROOT, you need' +
@@ -32,8 +32,9 @@ fn (p mut Parser) hash() ast.HashStmt {
                         p.cur_tok_index() - 1)
         }
         flag = flag.replace('@VROOT', vmod_file_location.vmod_folder )
-}
 */
+			flag = flag.replace('@VROOT', '/Users/alex/code/v/')
+		}
 		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
 			if flag.contains(deprecated) {
 				p.error('${deprecated} had been deprecated, use @VROOT instead.')
