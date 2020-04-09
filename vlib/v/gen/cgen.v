@@ -2620,13 +2620,10 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			}
 			g.write('))')
 		}
-<<<<<<< HEAD
-=======
 		if node.or_block.stmts.len > 0 {
 			g.or_block(node.or_block.stmts, node.return_type)
 		}
 		g.is_c_call = false
->>>>>>> e8492881712877b51f5705c4209889b20df74619
 	} else {
 		g.write('${name}(')
 		g.call_args(node.args, node.expected_arg_types)
