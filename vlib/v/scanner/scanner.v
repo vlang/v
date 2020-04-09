@@ -571,28 +571,23 @@ pub fn (s mut Scanner) scan() token.Token {
 			// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @FN)
 			// ... which is useful while debugging/tracing
 			if name == 'FN' {
-				return s.new_token(.string, s.fn_name, s.fn_name.len)
+				return s.new_token(.string, s.fn_name, 3)
 			}
 			if name == 'VEXE' {
 				vexe := pref.vexe_path()
-				path := cescaped_path(vexe)
-				return s.new_token(.string, path, path.len)
+				return s.new_token(.string, cescaped_path(vexe), 5)
 			}
 			if name == 'FILE' {
-				path := cescaped_path(os.real_path(s.file_path))
-				return s.new_token(.string, path, path.len)
+				return s.new_token(.string, cescaped_path(os.real_path(s.file_path)), 5)
 			}
 			if name == 'LINE' {
-				line := (s.line_nr + 1).str()
-				return s.new_token(.string, line, line.len)
+				return s.new_token(.string, (s.line_nr + 1).str(), 5)
 			}
 			if name == 'COLUMN' {
-				column := s.current_column().str()
-				return s.new_token(.string, column, column.len)
+				return s.new_token(.string, s.current_column().str(), 7)
 			}
 			if name == 'VHASH' {
-				hash := util.vhash()
-				return s.new_token(.string, hash, hash.len)
+				return s.new_token(.string, util.vhash(), 6)
 			}
 			if !token.is_key(name) {
 				s.error('@ must be used before keywords (e.g. `@type string`)')
@@ -749,7 +744,7 @@ pub fn (s mut Scanner) scan() token.Token {
 					if is_separate_line_comment {
 						comment = '|' + comment
 					}
-					return s.new_token(.comment, comment, comment.len)
+					return s.new_token(.comment, comment, comment.len + 2)
 				}
 				// s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 				// Skip the comment (return the next token)
@@ -781,7 +776,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				s.pos++
 				if s.comments_mode == .parse_comments {
 					comment := s.text[start..(s.pos - 1)].trim_space()
-					return s.new_token(.comment, comment, comment.len)
+					return s.new_token(.comment, comment, comment.len + 4)
 				}
 				// Skip if not in fmt mode
 				return s.scan()

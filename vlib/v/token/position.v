@@ -7,7 +7,7 @@ pub struct Position {
 pub:
 	line_nr int // the line number in the source where the token occured
 	pos     int // the position of the token in scanner text
-	len     int // length of the literal
+	len     int // length of the literal in the source
 }
 
 [inline]
