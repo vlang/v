@@ -4,6 +4,7 @@
 module builder
 
 import os
+
 // parsed cflag
 struct CFlag {
 	mod   string // the module in which the flag was given
@@ -23,9 +24,8 @@ fn (v &Builder) get_os_cflags() []CFlag {
 	if v.pref.compile_defines.len > 0 {
 		ctimedefines << v.pref.compile_defines
 	}
-
-// QTODO
-/*
+	// QTODO
+	/*
 	for flag in v.table.cflags {
 		if flag.os == '' || (flag.os == 'linux' && v.pref.os == .linux) || (flag.os == 'darwin' && v.pref.os == .mac) || (flag.os == 'freebsd' && v.pref.os == .freebsd) || (flag.os == 'windows' && v.pref.os == .windows) || (flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler != 'msvc') || (flag.os == 'solaris' && v.pref.os == .solaris) {
 			flags << flag
@@ -34,7 +34,7 @@ fn (v &Builder) get_os_cflags() []CFlag {
 			flags << flag
 		}
 	}
-	*/
+*/
 	return flags
 }
 
@@ -152,7 +152,6 @@ fn (table mut Table) parse_cflag(cflag string, mod string, ctimedefines []string
 	return true
 }
 */
-
 // TODO: implement msvc specific c_options_before_target and c_options_after_target ...
 fn (cflags []CFlag) c_options_before_target_msvc() string {
 	return ''
@@ -204,4 +203,3 @@ fn (cflags []CFlag) c_options_only_object_files() string {
 	}
 	return args.join(' ')
 }
-

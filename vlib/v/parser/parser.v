@@ -327,8 +327,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 				p.next()
 				p.next()
 				return p.top_stmt()
-			}
-			else {
+			} else {
 				p.error('bad top level statement ' + p.tok.str())
 				return ast.Stmt{}
 			}

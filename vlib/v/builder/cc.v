@@ -323,7 +323,7 @@ start:
 	// TODO remove
 	cmd := '${v.pref.ccompiler} $args'
 	// Run
-	if v.pref.is_verbose {
+	if v.pref.is_verbose || v.pref.show_cc {
 		println('\n==========')
 		println(cmd)
 	}

@@ -16,6 +16,13 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 	}
 	mut receiver := ''
 	if node.is_method {
+		mut styp := t.type_to_str(node.receiver.typ)
+		mut m := if node.rec_mut { 'mut ' } else { '' }
+		if node.rec_mut {
+			styp = styp[1..] // remove &
+		}
+		receiver = '($node.receiver.name $m$styp) '
+		/*
 		sym := t.get_type_symbol(node.receiver.typ)
 		name := sym.name.after('.')
 		mut m := if node.rec_mut { 'mut ' } else { '' }
@@ -23,6 +30,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 			m = '&'
 		}
 		receiver = '($node.receiver.name $m$name) '
+*/
 	}
 	name := node.name.after('.')
 	if node.is_c {
@@ -35,8 +43,8 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 			continue
 		}
 		is_last_arg := i == node.args.len - 1
-		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ || (node.is_variadic && i == 
-			node.args.len - 2)
+		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ || (node.is_variadic &&
+			i == node.args.len - 2)
 		f.write(arg.name)
 		mut s := t.type_to_str(arg.typ)
 		if arg.is_mut {
