@@ -5,3 +5,7 @@ A {
         name: ''
     }
 }
+B {
+    pass: false
+    name: ''
+}

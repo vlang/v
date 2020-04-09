@@ -11,6 +11,10 @@ struct A{
 	color Color
 }
 
+fn (c &Color) test() {
+	println(c)
+}
+
 fn main() {
 	col := Color.green
 	a := A{color: col}
@@ -21,4 +25,5 @@ fn main() {
 	println(a.color)
 	println('interp: ${col}')
 	println('interp: ${a.color}')
+	orange.test()
 }

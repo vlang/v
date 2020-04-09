@@ -12,7 +12,6 @@ fn test_all() {
 	files := os.ls(dir) or {
 		panic(err)
 	}
-	println(files)
 	tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
 		println('no compiler tests found')
@@ -25,7 +24,6 @@ fn test_all() {
 		os.cp(path, program) or {
 			panic(err)
 		}
-		os.rm('exe')
 		x := os.exec('$vexe -o exe -cflags "-w" -cg $program') or {
 			panic(err)
 		}
@@ -34,23 +32,25 @@ fn test_all() {
 			println('nope')
 			panic(err)
 		}
+		os.rm('./exe')
 		// println('============')
 		// println(res.output)
 		// println('============')
 		mut expected := os.read_file(program.replace('.v', '') + '.out') or {
 			panic(err)
 		}
-		expected = expected.trim_space()
-		found := res.output.trim_space()
+		expected = expected.trim_space().trim('\n').replace('\r\n', '\n')
+		found := res.output.trim_space().trim('\n').replace('\r\n', '\n')
 		if expected != found {
 			println(term.red('FAIL'))
-			println(x.output.limit(30))
+			// println(x.output.limit(30))
 			println('============')
 			println('expected:')
 			println(expected)
-			println('\nfound:')
-			println(found)
 			println('============')
+			println('found:')
+			println(found)
+			println('============\n')
 			total_errors++
 		}
 		else {

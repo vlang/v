@@ -5,6 +5,10 @@ struct B {
 	name string
 }
 
+fn (b &B) print() {
+	println(b)
+}
+
 struct A {
 	test bool
 	b B
@@ -13,4 +17,6 @@ struct A {
 fn main() {
 	a := A{}
 	println(a)
+	b := B{}
+	b.print()
 }
