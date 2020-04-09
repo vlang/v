@@ -477,7 +477,7 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 // for y == 0 (division by zero) but, unlike Div32, it doesn't panic
 // on a quotient overflow.
 pub fn rem_32(hi u32, lo u32, y u32) u32 {
-	return u32((u64(hi)<<32 | u64(lo)) % u64(y))
+	return u32(((u64(hi)<<32) | u64(lo)) % u64(y))
 }
 
 // rem_64 returns the remainder of (hi, lo) divided by y. Rem64 panics
