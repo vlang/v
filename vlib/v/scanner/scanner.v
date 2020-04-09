@@ -363,7 +363,7 @@ pub fn (s mut Scanner) scan() token.Token {
 		}
 		s.is_inter_end = false
 		ident_string := s.ident_string()
-		return s.new_token(.string, ident_string, ident_string.len)
+		return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
 	}
 	s.skip_whitespace()
 	// end of file
@@ -483,12 +483,12 @@ pub fn (s mut Scanner) scan() token.Token {
 		}
 		single_quote, double_quote {
 			ident_string := s.ident_string()
-			return s.new_token(.string, ident_string, ident_string.len)
+			return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
 		}
 		`\`` {
 			// ` // apostrophe balance comment. do not remove
 			ident_char := s.ident_char()
-			return s.new_token(.chartoken, ident_char, ident_char.len)
+			return s.new_token(.chartoken, ident_char, ident_char.len + 2) // + two quotes
 		}
 		`(` {
 			return s.new_token(.lpar, '', 1)
@@ -527,7 +527,7 @@ pub fn (s mut Scanner) scan() token.Token {
 					return s.new_token(.string, '', 1)
 				}
 				ident_string := s.ident_string()
-				return s.new_token(.string, ident_string, ident_string.len)
+				return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
 			}
 			else {
 				return s.new_token(.rcbr, '', 1)
