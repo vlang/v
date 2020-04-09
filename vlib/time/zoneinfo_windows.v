@@ -4,10 +4,10 @@ module time
 #include <Timezoneapi.h>
 
 // Windows's TimeZone API.
-struct TimeZoneInfomation{
-	Bias 		 u32
-	StandardBias u32
-	DaylightBias u32
+struct C.TIME_ZONE_INFORMATION{
+	Bias 		 int
+	StandardBias int
+	DaylightBias int
 	StandardDate C.SYSTEMTIME
 	DaylightName C.SYSTEMTIME
 }
@@ -23,8 +23,8 @@ struct C.SYSTEMTIME {
 	wMillseconds u16
 }
 
-fn C.SetTimeZoneInfomation(TIME_ZONE_INFORMATION *C.lpTimeZoneInfomation)
-fn C.GetTimeZoneInfomation(LPTIME_ZONE_INFORMATION *C.lpTimeZoneInfomation) 
+fn C.SetTimeZoneInfomation(tz C.TIME_ZONE_INFORMATION) bool
+fn C.GetTimeZoneInfomation(tz *C.TIME_ZONE_INFORMATION) bool
 
 pub fn() get_system_timezone(){
 	
