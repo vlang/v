@@ -2560,45 +2560,42 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			g.write('string $tmp = ${styp}_str(')
 			g.expr(node.args[0].expr)
 			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
-		} else if sym.kind == .enum_ {
+		} else {
+			// println(var) or println println(str.var)
 			expr := node.args[0].expr
 			is_var := match expr {
-				ast.SelectorExpr {
-					true
-				}
-				ast.Ident {
-					true
-				}
-				else {
-					false
-				}
+				ast.SelectorExpr { true }
+				ast.Ident { true }
+				else { false }
 			}
-			g.write(if is_var {
-				'${print_method}(${styp}_str('
-			} else {
-				'${print_method}(tos3("'
-			})
-			g.enum_expr(expr)
-			g.write(if is_var {
-				'))'
-			} else {
-				'"))'
-			})
-		} else {
 			// `println(int_str(10))`
 			// sym := g.table.get_type_symbol(node.args[0].typ)
 			if table.type_is_ptr(typ) {
 				// ptr_str() for pointers
-				styp = 'ptr'
+				// styp = 'ptr'
 			}
-			g.write('${print_method}(${styp}_str(')
+			if sym.kind == .enum_ {
+				if is_var {
+					g.write('${print_method}(${styp}_str(')
+				} else {
+					g.write('${print_method}(tos3("')
+				}
+			} else {
+				g.write('${print_method}(${styp}_str(')
+			}
 			if table.type_is_ptr(typ) {
 				// dereference
-				// g.write('*')
+				g.write('*')
 			}
-			g.expr(node.args[0].expr)
+			if sym.kind == .enum_ {
+				g.enum_expr(expr)
+			} else {
+				g.expr(expr)
+			}
 			if sym.kind ==.struct_ && styp != 'ptr' && !sym.has_method('str') {
 				g.write(', 0') // trailing 0 is initial struct indent count
+			} else if sym.kind == .enum_ && !is_var {
+				g.write('"')
 			}
 			g.write('))')
 		}
