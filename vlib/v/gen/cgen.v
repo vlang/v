@@ -2561,18 +2561,15 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			g.expr(node.args[0].expr)
 			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
 		} else {
-			// println(var) or println println(str.var)
 			expr := node.args[0].expr
 			is_var := match expr {
 				ast.SelectorExpr { true }
 				ast.Ident { true }
 				else { false }
 			}
-			// `println(int_str(10))`
-			// sym := g.table.get_type_symbol(node.args[0].typ)
-			if table.type_is_ptr(typ) {
+			if table.type_is_ptr(typ) && sym.kind != .struct_ {
 				// ptr_str() for pointers
-				// styp = 'ptr'
+				styp = 'ptr'
 			}
 			if sym.kind == .enum_ {
 				if is_var {
@@ -2592,7 +2589,7 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 				}
 			} else {
 				g.write('${print_method}(${styp}_str(')
-				if table.type_is_ptr(typ) {
+				if table.type_is_ptr(typ) && sym.kind == .struct_ {
 					// dereference
 					g.write('*')
 				}
