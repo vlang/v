@@ -42,6 +42,7 @@ mut:
 	label_scope 		&ast.Scope
 	label_list 	  		[]Labels
 	prefix_goto_scope 	&ast.Scope
+  //comments []ast.Comment
 }
 
 pub struct Labels {
@@ -89,6 +90,11 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		scanner: scanner.new_scanner_file(path, comments_mode)
 		table: table
 		file_name: path
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> e8492881712877b51f5705c4209889b20df74619
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
@@ -105,6 +111,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		in_label_scope: false
 		loop_label: false
 		global_scope: global_scope
+		// comments_mode: comments_mode
 	}
 	// comments_mode: comments_mode
 	p.read_first_token()
@@ -342,13 +349,20 @@ pub fn (p mut Parser) parse_prefix_goto_no_scope() []ast.Stmt {
 	p.check(.key_goto)
 	return stmts
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> e8492881712877b51f5705c4209889b20df74619
 /*
 fn (p mut Parser) next_with_comment() {
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()
 }
 */
+<<<<<<< HEAD
+=======
+
+>>>>>>> e8492881712877b51f5705c4209889b20df74619
 fn (p mut Parser) next() {
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()

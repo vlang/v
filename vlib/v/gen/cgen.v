@@ -2599,29 +2599,9 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			g.expr(node.args[0].expr)
 			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
 		} else if sym.kind == .enum_ {
-			expr := node.args[0].expr
-			is_var := match expr {
-				ast.SelectorExpr {
-					true
-				}
-				ast.Ident {
-					true
-				}
-				else {
-					false
-				}
-			}
-			g.write(if is_var {
-				'${print_method}(${styp}_str('
-			} else {
-				'${print_method}(tos3("'
-			})
-			g.enum_expr(expr)
-			g.write(if is_var {
-				'))'
-			} else {
-				'"))'
-			})
+			g.write('${print_method}(tos3("')
+			g.enum_expr(node.args[0].expr)
+			g.write('"))')
 		} else {
 			// `println(int_str(10))`
 			// sym := g.table.get_type_symbol(node.args[0].typ)
@@ -2640,6 +2620,13 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			}
 			g.write('))')
 		}
+<<<<<<< HEAD
+=======
+		if node.or_block.stmts.len > 0 {
+			g.or_block(node.or_block.stmts, node.return_type)
+		}
+		g.is_c_call = false
+>>>>>>> e8492881712877b51f5705c4209889b20df74619
 	} else {
 		g.write('${name}(')
 		g.call_args(node.args, node.expected_arg_types)

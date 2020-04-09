@@ -162,6 +162,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			}
 		}
 <<<<<<< HEAD
+<<<<<<< HEAD
 		ast.BreakStmt{
 			f.writeln('break $it.name')
 =======
@@ -178,6 +179,12 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			}
 			f.writeln('}')
 >>>>>>> upstream/master
+=======
+		ast.BreakStmt{
+			f.writeln('break $it.name')
+		ast.Comment {
+			f.comment(it)
+>>>>>>> e8492881712877b51f5705c4209889b20df74619
 		}
 		ast.ConstDecl {
 			if it.is_pub {
