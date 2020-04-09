@@ -52,6 +52,7 @@ const (
 		'vlib/v/tests/type_test.v',
 		'vlib/v/tests/typeof_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
+		'vlib/v/tests/pointers_str_test.v',
 	]
 )
 
