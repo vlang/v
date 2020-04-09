@@ -344,20 +344,12 @@ pub fn (p mut Parser) parse_prefix_goto_no_scope() []ast.Stmt {
 	p.check(.key_goto)
 	return stmts
 }
-<<<<<<< HEAD
-
-=======
->>>>>>> e8492881712877b51f5705c4209889b20df74619
 /*
 fn (p mut Parser) next_with_comment() {
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()
 }
 */
-<<<<<<< HEAD
-=======
-
->>>>>>> e8492881712877b51f5705c4209889b20df74619
 fn (p mut Parser) next() {
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()
