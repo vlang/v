@@ -55,7 +55,7 @@ mut:
 	defer_ifdef    string
 	str_types      []string // types that need automatic str() generation
 	threaded_fns   []string // for generating unique wrapper types and fns for `go xxx()`
-	array_definitions []string
+	array_fn_definitions []string // array equality functions that have been defined
 }
 
 const (
