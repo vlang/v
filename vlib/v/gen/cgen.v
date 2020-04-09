@@ -1368,7 +1368,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		}
 		if node.op == .eq {
 			g.write('${ptr_typ}_arr_eq(')
-		} else {
+		} else if node.op == .ne {
 			g.write('!${ptr_typ}_arr_eq(')
 		}
 		g.expr(node.left)
