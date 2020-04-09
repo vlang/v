@@ -2545,7 +2545,7 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 */
-	if is_print && node.args[0].typ != table.string_type_idx {
+	if is_print && node.args[0].typ != table.string_type {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
 		sym := g.table.get_type_symbol(typ)
@@ -2578,24 +2578,28 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 				if is_var {
 					g.write('${print_method}(${styp}_str(')
 				} else {
+					// when no var, print string directly
 					g.write('${print_method}(tos3("')
+				}
+				if table.type_is_ptr(typ) {
+					// dereference
+					g.write('*')
+				}
+				g.enum_expr(expr)
+				if !is_var {
+					// end of string
+					g.write('"')
 				}
 			} else {
 				g.write('${print_method}(${styp}_str(')
-			}
-			if table.type_is_ptr(typ) {
-				// dereference
-				g.write('*')
-			}
-			if sym.kind == .enum_ {
-				g.enum_expr(expr)
-			} else {
+				if table.type_is_ptr(typ) {
+					// dereference
+					g.write('*')
+				}
 				g.expr(expr)
-			}
-			if sym.kind ==.struct_ && styp != 'ptr' && !sym.has_method('str') {
-				g.write(', 0') // trailing 0 is initial struct indent count
-			} else if sym.kind == .enum_ && !is_var {
-				g.write('"')
+				if sym.kind ==.struct_ && styp != 'ptr' && !sym.has_method('str') {
+					g.write(', 0') // trailing 0 is initial struct indent count
+				}
 			}
 			g.write('))')
 		}
