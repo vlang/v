@@ -90,11 +90,6 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		scanner: scanner.new_scanner_file(path, comments_mode)
 		table: table
 		file_name: path
-<<<<<<< HEAD
-=======
-
-
->>>>>>> e8492881712877b51f5705c4209889b20df74619
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
