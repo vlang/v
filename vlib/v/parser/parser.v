@@ -320,9 +320,14 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 			return p.comment()
 		}
 		else {
-			// #printf("");
-			p.error('bad top level statement ' + p.tok.str())
-			return ast.Stmt{}
+			if p.pref.is_script && !p.pref.is_test {
+				p.scanner.text = 'fn main() {' + p.scanner.text + '}'
+				p.scanner.is_started = false
+				p.scanner.pos = 0
+				p.next()
+				p.next()
+				return p.top_stmt()
+			}
 		}
 	}
 }
