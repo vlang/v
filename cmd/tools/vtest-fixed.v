@@ -20,8 +20,6 @@ const (
 		'vlib/json/json_test.v',
 		'vlib/math/big/big_test.v',
 		'vlib/math/complex/complex_test.v',
-		'vlib/math/factorial/factorial_test.v',
-		'vlib/math/fractions/fraction_test.v',
 		'vlib/net/ftp/ftp_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/http_test.v',
@@ -56,7 +54,6 @@ const (
 		'vlib/v/tests/typeof_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
 		'vlib/v/tests/pointers_str_test.v',
-		'vlib/vweb/assets/assets_test.v',
 	]
 )
 
