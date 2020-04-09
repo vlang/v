@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
+	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
 	max_len = 90
 )
 
@@ -29,7 +29,7 @@ mut:
 }
 
 pub fn fmt(file ast.File, table &table.Table) string {
-	mut f := fmt.Fmt{
+	mut f := Fmt{
 		out: strings.new_builder(1000)
 		table: table
 		indent: 0
@@ -206,7 +206,8 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			if it.is_pub {
 				f.write('pub ')
 			}
-			f.writeln('enum $it.name {')
+			name := it.name.after('.')
+			f.writeln('enum $name {')
 			for val in it.vals {
 				f.writeln('\t' + val)
 			}
@@ -277,7 +278,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		}
 		ast.GlobalDecl {
 			f.write('__global $it.name ')
-			f.write(f.table.type_to_str(it.typ))
+			f.write(f.type_to_str(it.typ))
 			if it.has_expr {
 				f.write(' = ')
 				f.expr(it.expr)
@@ -343,7 +344,7 @@ fn (f mut Fmt) type_decl(node ast.TypeDecl) {
 			if it.is_pub {
 				f.write('pub ')
 			}
-			ptype := f.table.type_to_str(it.parent_type)
+			ptype := f.type_to_str(it.parent_type)
 			f.write('type $it.name $ptype')
 		}
 		ast.SumTypeDecl {
@@ -353,7 +354,7 @@ fn (f mut Fmt) type_decl(node ast.TypeDecl) {
 			f.write('type $it.name = ')
 			mut sum_type_names := []string
 			for t in it.sub_types {
-				sum_type_names << f.table.type_to_str(t)
+				sum_type_names << f.type_to_str(t)
 			}
 			f.write(sum_type_names.join(' | '))
 		}
@@ -407,7 +408,7 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 	f.writeln('}\n')
 }
 
-fn (f Fmt) type_to_str(t table.Type) string {
+fn (f &Fmt) type_to_str(t table.Type) string {
 	res := f.table.type_to_str(t)
 	return res.replace(f.cur_mod + '.', '')
 }
@@ -417,7 +418,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.ArrayInit {
 			if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
 				// `x := []string`
-				f.write(f.table.type_to_str(it.typ))
+				f.write(f.type_to_str(it.typ))
 			} else {
 				// `[1,2,3]`
 				// type_sym := f.table.get_type_symbol(it.typ)
@@ -435,7 +436,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			}
 		}
 		ast.AsCast {
-			type_str := f.table.type_to_str(it.typ)
+			type_str := f.type_to_str(it.typ)
 			f.expr(it.expr)
 			f.write(' as $type_str')
 		}
@@ -461,7 +462,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(it.val.str())
 		}
 		ast.CastExpr {
-			f.write(f.table.type_to_str(it.typ) + '(')
+			f.write(f.type_to_str(it.typ) + '(')
 			f.expr(it.expr)
 			f.write(')')
 		}
@@ -599,7 +600,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			if it.type_name != '' {
 				f.writeln(it.type_name)
 			} else {
-				f.writeln(f.table.type_to_str(it.typ))
+				f.writeln(f.type_to_str(it.typ))
 			}
 			f.writeln(')')
 		}
@@ -631,7 +632,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.StructInit {
 			type_sym := f.table.get_type_symbol(it.typ)
-			name := short_module(type_sym.name)
+			name := short_module(type_sym.name).replace(f.cur_mod + '.', '')			// TODO f.type_to_str?
 			// `Foo{}` on one line if there are no fields
 			if it.fields.len == 0 {
 				f.write('$name{}')

@@ -35,7 +35,7 @@ mut:
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
-	return checker.Checker{
+	return Checker{
 		table: table
 		pref: pref
 	}

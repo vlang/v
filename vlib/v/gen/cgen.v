@@ -71,7 +71,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	} else {
 	}
 	// println('start cgen2')
-	mut g := gen.Gen{
+	mut g := Gen{
 		out: strings.new_builder(1000)
 		typedefs: strings.new_builder(100)
 		typedefs2: strings.new_builder(100)

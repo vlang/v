@@ -42,7 +42,7 @@ mut:
 // for tests
 pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	s := scanner.new_scanner(text, .skip_comments)
-	mut p := parser.Parser{
+	mut p := Parser{
 		scanner: s
 		table: table
 		pref: &pref.Preferences{}
@@ -63,7 +63,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	// panic(err)
 	// }
 	mut stmts := []ast.Stmt
-	mut p := parser.Parser{
+	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode)
 		table: table
 		file_name: path
