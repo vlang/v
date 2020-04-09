@@ -561,16 +561,14 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 }
 
 pub fn (c mut Checker) enum_decl(decl ast.EnumDecl) {
-	if decl.default_exprs.len > 0 && decl.default_exprs.len < decl.vals.len {
-		c.error("either all fields of an enum have to be initialized or none", decl.pos)
-	}
-	for expr in decl.default_exprs {
-		match expr {
-			ast.IntegerLiteral {}
-			ast.PrefixExpr {}
-			else {
-				println(typeof(expr))
-				c.error("default value for enum has to be an integer", decl.pos)
+	for field in decl.fields {
+		for expr in field.exprs {
+			match expr {
+				ast.IntegerLiteral {}
+				ast.PrefixExpr {}
+				else {
+					c.error("default value for enum has to be an integer", field.pos)
+				}
 			}
 		}
 	}

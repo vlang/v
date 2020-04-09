@@ -494,13 +494,19 @@ mut:
 	typ       table.Type
 }
 
+pub struct EnumField {
+	name  string
+	pos   token.Position
+	exprs []Expr
+}
+
 pub struct EnumDecl {
 pub:
 	name          string
 	is_pub        bool
-	vals          []string
-	default_exprs []Expr
-	pos           token.Position
+	fields        []EnumField
+	// vals          []string
+	// default_exprs []Expr
 }
 
 pub struct AliasTypeDecl {

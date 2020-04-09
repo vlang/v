@@ -1846,18 +1846,22 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	}
 	p.check(.key_enum)
 	name := p.prepend_mod(p.check_name())
-	pos := p.tok.position()
 	p.check(.lcbr)
 	mut vals := []string
-	mut default_exprs := []ast.Expr
+	// mut default_exprs := []ast.Expr
+	mut fields := []ast.EnumField
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		val := p.check_name()
 		vals << val
+		pos := token.Position{}
+		mut exprs := []ast.Expr
 		// p.warn('enum val $val')
 		if p.tok.kind == .assign {
 			p.next()
-			default_exprs << p.expr(0)
+			pos = p.tok.position()
+			exprs << p.expr(0)
 		}
+		fields << ast.EnumField{val, pos, exprs}
 		// Allow commas after enum, helpful for
 		// enum Color {
 		// r,g,b
@@ -1877,9 +1881,9 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	return ast.EnumDecl{
 		name: name
 		is_pub: is_pub
-		vals: vals
-		default_exprs: default_exprs
-		pos: pos
+		// vals: vals
+		// default_exprs: default_exprs
+		fields: fields
 	}
 }
 
