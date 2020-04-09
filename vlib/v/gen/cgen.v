@@ -22,39 +22,39 @@ const (
 )
 
 struct Gen {
-	out            strings.Builder
-	typedefs       strings.Builder
-	typedefs2      strings.Builder
-	definitions    strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	inits          strings.Builder // contents of `void _vinit(){}`
-	gowrappers     strings.Builder // all go callsite wrappers
-	stringliterals strings.Builder // all string literals (they depend on tos3() beeing defined
-	includes       strings.Builder
-	table          &table.Table
-	pref           &pref.Preferences
+	out                  strings.Builder
+	typedefs             strings.Builder
+	typedefs2            strings.Builder
+	definitions          strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	inits                strings.Builder // contents of `void _vinit(){}`
+	gowrappers           strings.Builder // all go callsite wrappers
+	stringliterals       strings.Builder // all string literals (they depend on tos3() beeing defined
+	includes             strings.Builder
+	table                &table.Table
+	pref                 &pref.Preferences
 mut:
-	file           ast.File
-	fn_decl        &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	tmp_count      int
-	variadic_args  map[string]int
-	is_c_call      bool // e.g. `C.printf("v")`
-	is_assign_lhs  bool // inside left part of assign expr (for array_set(), etc)
-	is_assign_rhs  bool // inside right part of assign after `=` (val expr)
-	is_array_set   bool
-	is_amp         bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
-	optionals      []string // to avoid duplicates TODO perf, use map
-	inside_ternary bool // ?: comma separated statements on a single line
-	stmt_start_pos int
-	right_is_opt   bool
-	autofree       bool
-	indent         int
-	empty_line     bool
-	is_test        bool
-	assign_op      token.Kind // *=, =, etc (for array_set)
-	defer_stmts    []ast.DeferStmt
-	defer_ifdef    string
-	str_types      []string // types that need automatic str() generation
-	threaded_fns   []string // for generating unique wrapper types and fns for `go xxx()`
+	file                 ast.File
+	fn_decl              &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	tmp_count            int
+	variadic_args        map[string]int
+	is_c_call            bool // e.g. `C.printf("v")`
+	is_assign_lhs        bool // inside left part of assign expr (for array_set(), etc)
+	is_assign_rhs        bool // inside right part of assign after `=` (val expr)
+	is_array_set         bool
+	is_amp               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	optionals            []string // to avoid duplicates TODO perf, use map
+	inside_ternary       bool // ?: comma separated statements on a single line
+	stmt_start_pos       int
+	right_is_opt         bool
+	autofree             bool
+	indent               int
+	empty_line           bool
+	is_test              bool
+	assign_op            token.Kind // *=, =, etc (for array_set)
+	defer_stmts          []ast.DeferStmt
+	defer_ifdef          string
+	str_types            []string // types that need automatic str() generation
+	threaded_fns         []string // for generating unique wrapper types and fns for `go xxx()`
 	array_fn_definitions []string // array equality functions that have been defined
 }
 
@@ -1858,7 +1858,8 @@ fn (g mut Gen) return_statement(node ast.Return) {
 				}
 				ast.CallExpr {
 					// TODO: why?
-					if !it.is_method {
+					// if !it.is_method {
+					if it.name == 'error' {
 						is_error = true						// TODO check name 'error'
 					}
 				}
@@ -2564,9 +2565,15 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			// println(var) or println println(str.var)
 			expr := node.args[0].expr
 			is_var := match expr {
-				ast.SelectorExpr { true }
-				ast.Ident { true }
-				else { false }
+				ast.SelectorExpr {
+					true
+				}
+				ast.Ident {
+					true
+				}
+				else {
+					false
+				}
 			}
 			// `println(int_str(10))`
 			// sym := g.table.get_type_symbol(node.args[0].typ)
@@ -2597,8 +2604,8 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 					g.write('*')
 				}
 				g.expr(expr)
-				if sym.kind ==.struct_ && styp != 'ptr' && !sym.has_method('str') {
-					g.write(', 0') // trailing 0 is initial struct indent count
+				if sym.kind == .struct_ && styp != 'ptr' && !sym.has_method('str') {
+					g.write(', 0')					// trailing 0 is initial struct indent count
 				}
 			}
 			g.write('))')
@@ -3117,7 +3124,6 @@ fn (g mut Gen) gen_str_for_struct(info table.Struct, styp string) {
 			g.gen_str_for_type(sym, field_styp)
 		}
 	}
-
 	s := styp.replace('.', '__')
 	g.definitions.write('string ${s}_str($styp it, int indent_count) {\n')
 	// generate ident / indent length = 4 spaces
@@ -3154,13 +3160,13 @@ fn (g mut Gen) gen_str_for_struct(info table.Struct, styp string) {
 fn (g Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .struct_ {
-		return "%.*s"
+		return '%.*s'
 	} else if typ == table.string_type {
 		return "\'%.*s\'"
 	} else if typ == table.bool_type {
 		return '%.*s'
 	} else if typ in [table.f32_type, table.f64_type] {
-		return '%g' // g removes trailing zeros unlike %f
+		return '%g'		// g removes trailing zeros unlike %f
 	}
 	return '%d'
 }
