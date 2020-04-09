@@ -119,10 +119,32 @@ pub fn (x Expr) str() string {
 		CastExpr {
 			return '${it.typname}(${it.expr.str()})'
 		}
+		CallExpr {
+			sargs := args2str(it.args)
+			if it.is_method {
+				return '${it.left.str()}.${it.name}($sargs)'
+			}
+			return '${it.mod}.${it.name}($sargs)'
+		}
 		else {
 			return '[unhandled expr type ${typeof(x)}]'
 		}
 	}
+}
+
+pub fn (a CallArg) str() string {
+	if a.is_mut {
+		return 'mut ${a.expr.str()}'
+	}
+	return '${a.expr.str()}'
+}
+
+pub fn args2str(args []CallArg) string {
+	mut res := []string
+	for a in args {
+		res << a.str()
+	}
+	return res.join(', ')
 }
 
 pub fn (node Stmt) str() string {
