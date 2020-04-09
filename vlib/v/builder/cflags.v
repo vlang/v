@@ -24,17 +24,17 @@ fn (v &Builder) get_os_cflags() []CFlag {
 	if v.pref.compile_defines.len > 0 {
 		ctimedefines << v.pref.compile_defines
 	}
-	// QTODO
-	/*
 	for flag in v.table.cflags {
-		if flag.os == '' || (flag.os == 'linux' && v.pref.os == .linux) || (flag.os == 'darwin' && v.pref.os == .mac) || (flag.os == 'freebsd' && v.pref.os == .freebsd) || (flag.os == 'windows' && v.pref.os == .windows) || (flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler != 'msvc') || (flag.os == 'solaris' && v.pref.os == .solaris) {
+		if flag.os == '' || (flag.os == 'linux' && v.pref.os == .linux) || (flag.os == 'darwin' &&
+			v.pref.os == .mac) || (flag.os == 'freebsd' && v.pref.os == .freebsd) || (flag.os == 'windows' &&
+			v.pref.os == .windows) || (flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler !=
+			'msvc') || (flag.os == 'solaris' && v.pref.os == .solaris) {
 			flags << flag
 		}
 		if flag.os in ctimedefines {
 			flags << flag
 		}
 	}
-*/
 	return flags
 }
 
@@ -65,93 +65,6 @@ fn (cf &CFlag) format() string {
 	return '$cf.name $value'.trim_space()
 }
 
-// check if cflag is in table
-/*
-QTODO
-fn (table &Table) has_cflag(cflag CFlag) bool {
-	for cf in table.cflags {
-		if cf.os == cflag.os && cf.name == cflag.name && cf.value == cflag.value {
-			return true
-		}
-	}
-	return false
-}
-
-// parse the flags to (table.cflags) []CFlag
-// Note: clean up big time (joe-c)
-fn (table mut Table) parse_cflag(cflag string, mod string, ctimedefines []string) ?bool {
-	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L', ]
-	flag_orig := cflag.trim_space()
-	mut flag := flag_orig
-	if flag == '' {
-		return true
-	}
-	mut fos := ''
-	mut allowed_os_overrides := ['linux', 'darwin', 'freebsd', 'windows', 'mingw', 'solaris']
-	allowed_os_overrides << ctimedefines
-	for os_override in allowed_os_overrides {
-		if !flag.starts_with( os_override ) { continue }
-		pos := flag.index(' ') or {
-			return none
-		}
-		fos = flag[..pos].trim_space()
-		flag = flag[pos..].trim_space()
-	}
-	for {
-		mut name := ''
-		mut value := ''
-		if flag[0] == `-` {
-			for f in allowed_flags {
-				i := 1 + f.len
-				if i <= flag.len && f == flag[1..i] {
-					name = flag[..i].trim_space()
-					flag = flag[i..].trim_space()
-					break
-				}
-			}
-		}
-		mut index := flag.index(' -') or {
-			-1
-		}
-		for index > -1 {
-			mut has_next := false
-			for f in allowed_flags {
-				i := index + 2 + f.len
-				if i <= flag.len && f == flag[index + 2..i] {
-					value = flag[..index + 1].trim_space()
-					flag = flag[index + 1..].trim_space()
-					has_next = true
-					break
-				}
-			}
-			if has_next {
-				break
-			}
-			index = flag.index_after(' -', index + 1)
-		}
-		if index == -1 {
-			value = flag.trim_space()
-		}
-		if (name in ['-I', '-l', '-L']) && value == '' {
-			hint := if name == '-l' { 'library name' } else { 'path' }
-			return error('bad #flag `$flag_orig`: missing $hint after `$name`')
-		}
-		cf := CFlag{
-			mod: mod
-			os: fos
-			name: name
-			value: value
-		}
-		if !table.has_cflag(cf) {
-			table.cflags << cf
-		}
-		if index == -1 {
-			break
-		}
-	}
-	return true
-}
-*/
 // TODO: implement msvc specific c_options_before_target and c_options_after_target ...
 fn (cflags []CFlag) c_options_before_target_msvc() string {
 	return ''

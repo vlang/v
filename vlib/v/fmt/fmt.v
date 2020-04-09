@@ -451,7 +451,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.writeln('\t$it.var_name |')
 			// TODO StructInit copy pasta
 			for i, field in it.fields {
-				f.write('$field: ')
+				f.write('\t$field: ')
 				f.expr(it.exprs[i])
 				f.writeln('')
 			}
