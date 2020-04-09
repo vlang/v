@@ -500,6 +500,7 @@ pub:
 	is_pub        bool
 	vals          []string
 	default_exprs []Expr
+	pos           token.Position
 }
 
 pub struct AliasTypeDecl {

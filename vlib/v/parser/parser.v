@@ -1846,6 +1846,7 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	}
 	p.check(.key_enum)
 	name := p.prepend_mod(p.check_name())
+	pos := p.tok.position()
 	p.check(.lcbr)
 	mut vals := []string
 	mut default_exprs := []ast.Expr
@@ -1878,6 +1879,7 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 		is_pub: is_pub
 		vals: vals
 		default_exprs: default_exprs
+		pos: pos
 	}
 }
 
