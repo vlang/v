@@ -567,7 +567,11 @@ pub fn (c mut Checker) enum_decl(decl ast.EnumDecl) {
 				ast.IntegerLiteral {}
 				ast.PrefixExpr {}
 				else {
-					c.error("default value for enum has to be an integer", field.pos)
+					mut pos := expr_pos(expr)
+					if pos.pos == 0 {
+						pos = field.pos
+					}
+					c.error("default value for enum has to be an integer", pos)
 				}
 			}
 		}
@@ -1034,6 +1038,42 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 	}
 	return table.void_type
+}
+
+fn expr_pos(node ast.Expr) token.Position {
+	// all uncommented have to be implemented
+	match mut node {
+		ast.ArrayInit { return it.pos }
+		ast.AsCast { return it.pos }
+		ast.AssignExpr { return it.pos }
+		ast.Assoc { return it.pos }
+		// ast.BoolLiteral { }
+		// ast.CastExpr { }
+		ast.CallExpr { return it.pos }
+		// ast.CharLiteral { }
+		ast.EnumVal { return it.pos }
+		// ast.FloatLiteral { }
+		// ast.Ident { }
+		ast.IfExpr { return it.pos }
+		// ast.IfGuardExpr { }
+		ast.IndexExpr { return it.pos }
+		ast.InfixExpr { return it.pos }
+		ast.IntegerLiteral { return it.pos }
+		ast.MapInit { return it.pos }
+		ast.MatchExpr { return it.pos }
+		ast.PostfixExpr { return it.pos }
+		ast.PrefixExpr { return it.pos }
+		// ast.None { }
+		// ast.ParExpr { }
+		ast.SelectorExpr { return it.pos }
+		// ast.SizeOf { }
+		// ast.StringLiteral { }
+		// ast.StringInterLiteral { }
+		ast.StructInit { return it.pos }
+		// ast.Type { }
+		// ast.TypeOf { }
+		else { return token.Position{} }
+	}
 }
 
 pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {

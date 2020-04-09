@@ -1278,6 +1278,7 @@ fn (p mut Parser) string_expr() ast.Expr {
 }
 
 fn (p mut Parser) array_init() ast.ArrayInit {
+	first_pos := p.tok.position()
 	p.check(.lsbr)
 	// p.warn('array_init() exp=$p.expected_type')
 	mut array_type := table.void_type
@@ -1320,11 +1321,18 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	if p.tok.kind == .not {
 		p.next()
 	}
+	last_pos := p.tok.position()
+	len := last_pos.pos - first_pos.pos
+	pos := token.Position{
+		line_nr: first_pos.line_nr,
+		pos: first_pos.pos
+		len: len
+	}
 	return ast.ArrayInit{
 		elem_type: elem_type
 		typ: array_type
 		exprs: exprs
-		pos: p.tok.position()
+		pos: pos
 	}
 }
 
@@ -1352,6 +1360,7 @@ fn (p mut Parser) map_init() ast.MapInit {
 
 fn (p mut Parser) parse_number_literal() ast.Expr {
 	lit := p.tok.lit
+	pos := p.tok.position()
 	mut node := ast.Expr{}
 	if lit.index_any('.eE') >= 0 {
 		node = ast.FloatLiteral{
@@ -1360,6 +1369,7 @@ fn (p mut Parser) parse_number_literal() ast.Expr {
 	} else {
 		node = ast.IntegerLiteral{
 			val: lit
+			pos: pos
 		}
 	}
 	p.next()
@@ -1851,8 +1861,8 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	// mut default_exprs := []ast.Expr
 	mut fields := []ast.EnumField
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
-		val := p.check_name()
 		pos := p.tok.position()
+		val := p.check_name()
 		vals << val
 		mut exprs := []ast.Expr
 		// p.warn('enum val $val')
