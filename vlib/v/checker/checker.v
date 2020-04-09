@@ -1384,7 +1384,7 @@ fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
 	}
 	typ := if warn { 'warning' } else { 'error' }
 	kind := if c.pref.is_verbose { 'checker $typ #$c.nr_errors:' } else { '$typ:' }
-	ferror := util.formated_error(kind, s, c.file.path, pos)
+	ferror := util.formatted_error(kind, s, c.file.path, pos)
 	c.errors << ferror
 	if !(pos.line_nr in c.error_lines) {
 		if warn {

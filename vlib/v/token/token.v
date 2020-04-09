@@ -10,6 +10,7 @@ pub:
 	line_nr int // the line number in the source where the token occured
 	// name_idx int // name table index for O(1) lookup
 	pos     int // the position of the token in scanner text
+	len     int // length of the literal
 }
 
 pub enum Kind {

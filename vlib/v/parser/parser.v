@@ -516,13 +516,13 @@ pub fn (p &Parser) error(s string) {
 		print_backtrace()
 		kind = 'parser error:'
 	}
-	ferror := util.formated_error(kind, s, p.file_name, p.tok.position())
+	ferror := util.formatted_error(kind, s, p.file_name, p.tok.position())
 	eprintln(ferror)
 	exit(1)
 }
 
 pub fn (p &Parser) warn(s string) {
-	ferror := util.formated_error('warning:', s, p.file_name, p.tok.position())
+	ferror := util.formatted_error('warning:', s, p.file_name, p.tok.position())
 	eprintln(ferror)
 }
 
