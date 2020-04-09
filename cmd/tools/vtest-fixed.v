@@ -19,7 +19,6 @@ const (
 		'vlib/flag/flag_test.v',
 		'vlib/json/json_test.v',
 		'vlib/math/big/big_test.v',
-		'vlib/math/bits/bits_test.v',
 		'vlib/math/complex/complex_test.v',
 		'vlib/math/factorial/factorial_test.v',
 		'vlib/math/fractions/fraction_test.v',
