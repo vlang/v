@@ -1,3 +1,5 @@
+fn C.func(arg int) int
+
 fn fn_variadic(arg int, args ...string) {
 	println('Do nothing')
 }

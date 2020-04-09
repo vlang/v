@@ -24,7 +24,7 @@ jobs:
     env:
       VFLAGS: -cc tcc
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Install dependencies
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
     - name: Build v
@@ -35,6 +35,8 @@ jobs:
         tcc -version
         ./v -o v2 cmd/v # Make sure vtcc can build itself
 #        ./v -silent test-compiler
+    - name: Fixed tests
+      run: ./v test-fixed
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 
@@ -44,7 +46,7 @@ jobs:
     steps:
 
     - name: Checkout
-      uses: actions/checkout@v1
+      uses: actions/checkout@v2
 
 #    - name: Build V
 #      uses: spytheman/docker_alpine_v@v7.0
@@ -62,7 +64,7 @@ jobs:
       matrix:
         os: [macOS-latest]
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
       with:
         node-version: 12.x
@@ -99,11 +101,13 @@ jobs:
 #      run: |
 #        git clone --depth 1 https://github.com/vlang/vid.git
 #        cd vid && ../v -o vid .
+    - name: Fixed tests
+      run: ./v test-fixed
 
   ubuntu:
     runs-on: ubuntu-18.04
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
       with:
         node-version: 12.x
@@ -127,38 +131,13 @@ jobs:
 #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-    - name: temporary tests
+    - name: Fixed tests
       run: |
-        ./v vlib/builtin/array_test.v
-        ./v vlib/builtin/string_test.v
-        ./v vlib/v/tests/fn_multiple_returns_test.v
-        ./v vlib/v/tests/return_voidptr_test.v
-        ./v vlib/v/tests/voidptr_to_u64_cast_b_test.v
-        ./v vlib/v/tests/cstrings_test.v
-        ./v vlib/v/tests/valgrind/valgrind_test.v
-        ./v vlib/v/tests/nameof_test.v
-        ./v vlib/v/tests/repeated_multiret_values_test.v
-        ./v vlib/v/tests/modules/amodule/internal_module_test.v
-        ./v vlib/v/tests/modules/amodule/another_internal_module_test.v
-        ./v vlib/v/tests/modules/simplemodule/importing_test.v
-        ./v vlib/v/tests/reusable_mut_multiret_values_test.v
-        ./v vlib/v/tests/print_test.v
-        ./v vlib/v/tests/defer_test.v
-        ./v vlib/v/tests/typeof_simple_types_test.v
-        ./v vlib/v/tests/struct_chained_fields_correct_test.v
-        ./v vlib/v/tests/if_expression_test.v
         ./v vlib/v/tests/backtrace_test.v
-        ./v vlib/v/tests/interfaces_map_test.v
-        ./v vlib/v/tests/fn_expecting_ref_but_returning_struct_test.v
-        ./v vlib/v/tests/inout/compiler_test.v
-        ./v vlib/v/tests/generic_test.v
-        ./v vlib/v/tests/interface_test.v
-        ./v vlib/v/tests/in_expression_test.v
-        ./v vlib/v/tests/attribute_test.v
-        ./v vlib/v/tests/str_gen_test.v
-        ./v vlib/v/tests/enum_hex_test.v
+        ./v test-fixed
     - name: x64 machine code generation
       run: |
+        exit
         ./v -o vprod -prod cmd/v
         cd cmd/tools
         echo "Generating a 1m line V file..."
@@ -224,23 +203,25 @@ jobs:
     env:
       VFLAGS: -cc musl-gcc
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
       with:
         node-version: 12.x
     - name: Install dependencies
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
-#    - name: Build v
-#      run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+    - name: Build v
+      run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 ##    - name: Test v->js
 ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Fixed tests
+      run: ./v test-fixed
 
   ubuntu-llvm-mingw:
     runs-on: ubuntu-18.04
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
 #    - name: Cross-compile V
 #      run: docker build . -f Dockerfile.cross
 
@@ -249,7 +230,7 @@ jobs:
     env:
         VFLAGS: -cc gcc
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x
@@ -277,7 +258,7 @@ jobs:
     env:
         VFLAGS: -cc msvc
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x
@@ -290,6 +271,10 @@ jobs:
         echo %VFLAGS%
         echo $VFLAGS
         .\make.bat -msvc
+#    - name: Fixed tests
+#      run: |
+#        ./v vlib/v/tests/backtrace_test.v
+#        ./v test-fixed
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
@@ -302,7 +287,7 @@ jobs:
   docs-line-len-check:
     runs-on: ubuntu-18.04
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Build
       run: make
     - name: Check docs line length

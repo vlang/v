@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module compile
+module builder
 
 import (
 	os
@@ -14,10 +14,10 @@ import (
 fn todo() {
 }
 
-fn (v &V) no_cc_installed() bool {
+fn (v &Builder) no_cc_installed() bool {
 	$if windows {
 		os.exec('$v.pref.ccompiler -v')or{
-			if v.pref.verbosity.is_higher_or_equal(.level_one) {
+			if v.pref.is_verbose {
 				println('C compiler not found, trying to build with msvc...')
 			}
 			return true
@@ -26,9 +26,12 @@ fn (v &V) no_cc_installed() bool {
 	return false
 }
 
-fn (v mut V) cc() {
+fn (v mut Builder) cc() {
 	if os.executable().contains('vfmt') {
 		return
+	}
+	if v.pref.is_verbose {
+		println('builder.cc() pref.out_name="$v.pref.out_name"')
 	}
 	v.build_thirdparty_obj_files()
 	vexe := pref.vexe_path()
@@ -37,18 +40,6 @@ fn (v mut V) cc() {
 	// for example: `v -o v.c compiler`
 	ends_with_c := v.pref.out_name.ends_with('.c')
 	ends_with_js := v.pref.out_name.ends_with('.js')
-
-	if v.pref.is_pretty_c && !ends_with_js {
-		format_result := os.exec('clang-format -i -style=file "$v.out_name_c"') or {
-			eprintln('clang-format not found')
-			os.Result{exit_code:-1}
-		}
-		if format_result.exit_code > 0 {
-			eprintln('clang-format failed to format $v.out_name_c')
-			eprintln(format_result.output)
-		}
-	}
-
 	if ends_with_c || ends_with_js {
 		// Translating V code to JS by launching vjs.
 		// Using a separate process for V.js is for performance mostly,
@@ -332,7 +323,7 @@ start:
 	// TODO remove
 	cmd := '${v.pref.ccompiler} $args'
 	// Run
-	if v.pref.verbosity.is_higher_or_equal(.level_one) {
+	if v.pref.is_verbose {
 		println('\n==========')
 		println(cmd)
 	}
@@ -406,7 +397,7 @@ If you're confident that all of the above is true, please try running V with the
 	}
 	diff := time.ticks() - ticks
 	// Print the C command
-	if v.pref.verbosity.is_higher_or_equal(.level_one) {
+	if v.pref.is_verbose {
 		println('${v.pref.ccompiler} took $diff ms')
 		println('=========\n')
 	}
@@ -467,7 +458,7 @@ If you're confident that all of the above is true, please try running V with the
 	}
 }
 
-fn (c mut V) cc_windows_cross() {
+fn (c mut Builder) cc_windows_cross() {
 	/*
 	QTODO
 	println('Cross compiling for Windows...')
@@ -543,7 +534,7 @@ fn (c mut V) cc_windows_cross() {
 	*/
 }
 
-fn (c &V) build_thirdparty_obj_files() {
+fn (c &Builder) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
 		if flag.value.ends_with('.o') {
 			rest_of_module_flags := c.get_rest_of_module_cflags(flag)
@@ -557,7 +548,7 @@ fn (c &V) build_thirdparty_obj_files() {
 	}
 }
 
-fn (v &V) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
+fn (v &Builder) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	obj_path := os.real_path(path)
 	if os.exists(obj_path) {
 		return

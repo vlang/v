@@ -366,7 +366,7 @@ pub fn (c Complex) asinh() Complex {
 // Based on
 // http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
 pub fn (c Complex) acosh() Complex {
-	if(c.re > 1) {
+	if c.re > 1 {
 		return c.add(
 			c.pow(2)
 			.subtract(complex(1,0))
@@ -391,7 +391,7 @@ pub fn (c Complex) acosh() Complex {
 // http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
 pub fn (c Complex) atanh() Complex {
 	one := complex(1,0)
-	if(c.re < 1) {
+	if c.re < 1 {
 		return complex(1.0/2,0).multiply(
 			one
 			.add(c)
@@ -421,7 +421,7 @@ pub fn (c Complex) atanh() Complex {
 // http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
 pub fn (c Complex) acoth() Complex {
 	one := complex(1,0)
-	if(c.re < 0 || c.re > 1) {
+	if c.re < 0 || c.re > 1 {
 		return complex(1.0/2,0).multiply(
 			c
 			.add(one)
@@ -479,7 +479,7 @@ pub fn (c Complex) acoth() Complex {
 // http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
 pub fn (c Complex) acsch() Complex {
 	one := complex(1,0)
-	if(c.re < 0) {
+	if c.re < 0 {
 		return one.subtract(
 			one.add(
 				c.pow(2)

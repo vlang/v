@@ -7,8 +7,6 @@
 <a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
 [![Twitter handle][]][Twitter badge]
 
-**V's backend has just been replaced on April 1, 15k lines of code were removed, some things are broken, we are working hard to fix them all by April 4.**
-
 https://vlang.io
 
 Documentation: [vlang.io/docs](https://vlang.io/docs)
@@ -40,7 +38,7 @@ Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/v
 - Built-in ORM
 - C and JavaScript backends
 
-A stable 0.2 release is planned for March 2020. Right now V is in an alpha stage.
+A stable 0.2 release is planned for April 2020. Right now V is in an alpha stage.
 
 ## Installing V from source
 

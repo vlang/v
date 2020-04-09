@@ -227,7 +227,7 @@ pub fn (req &Request) do() ?Response {
 	return resp
 }
 
-fn (req &Request) method_and_url_to_response(method string, url net_dot_urllib.URL) ?Response {
+fn (req &Request) method_and_url_to_response(method string, url urllib.URL) ?Response {
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.path.trim_left('/')

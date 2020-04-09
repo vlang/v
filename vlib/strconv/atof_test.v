@@ -40,7 +40,7 @@ fn test_atof() {
 		// slow atof
 		assert strconv.atof64(src_num_str[c]).strlong() == x.strlong()
 
-		
+
 		// quick atof
 		mut s1 := (atofq.atof_quick(src_num_str[c]).str())
 		mut s2 := (x.str())
@@ -52,7 +52,7 @@ fn test_atof() {
 		n1 := x.strsci(18)
 		n2 := f64(C.atof(src_num_str[c].str)).strsci(18)
 		//println("$n1 $n2")
-		assert n1 == n2		
+		assert n1 == n2
 	}
 
 	// check conversion case 2 string <==> f64
@@ -65,8 +65,8 @@ fn test_atof() {
 
 	// special cases
 	mut f1 := f64(0.0)
-	mut ptr := *u64(&f1)
-	ptr = *u64(&f1)
+	mut ptr := &u64(&f1)
+	ptr = &u64(&f1)
 
 	// DOUBLE_PLUS_ZERO
 	f1=0.0
@@ -74,5 +74,5 @@ fn test_atof() {
 	// DOUBLE_MINUS_ZERO
 	f1=-0.0
 	assert *ptr == u64(0x8000000000000000)
-	//println("DONE!")
+	println("DONE!")
 }

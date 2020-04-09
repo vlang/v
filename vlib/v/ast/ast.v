@@ -20,7 +20,7 @@ pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | 
 LabeledStmt | GotoStmt | BreakStmt | ContinueStmt | PrefixGotoStmt |
-LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
+Comment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -45,6 +45,7 @@ pub struct ExprStmt {
 pub:
 	expr Expr
 	typ  table.Type
+	pos  token.Position
 }
 
 pub struct IntegerLiteral {
@@ -103,12 +104,21 @@ pub:
 	expr Expr
 }
 
+pub struct StructField {
+pub:
+	name string
+	pos token.Position
+	comment Comment
+	default_expr string // token literal //Expr
+mut:
+	typ table.Type
+}
+
 pub struct Field {
 pub:
 	name string
 	// type_idx int
 	pos token.Position
-	already_reported bool
 mut:
 	typ  table.Type
 	// typ2 Type
@@ -135,16 +145,17 @@ pub struct StructDecl {
 pub:
 	pos           token.Position
 	name          string
-	fields        []Field
+	fields        []StructField
 	is_pub        bool
 	mut_pos       int // mut:
 	pub_pos       int // pub:
 	pub_mut_pos   int // pub mut:
 	is_c          bool
-	default_exprs []Expr
+	is_union bool
 }
 
 pub struct InterfaceDecl {
+pub:
 	name        string
 	field_names []string
 }
@@ -256,6 +267,7 @@ pub struct GlobalDecl {
 pub:
 	name string
 	expr Expr
+	has_expr bool
 mut:
 	typ  table.Type
 }
@@ -269,6 +281,7 @@ pub:
 	scope   &Scope
 	// TODO: consider parent instead of field
 	global_scope &Scope
+	//comments []Comment
 }
 
 pub struct IdentFn {
@@ -375,6 +388,7 @@ pub:
 	cond  Expr
 	stmts []Stmt
 	pos   token.Position
+	comment Comment
 }
 
 pub struct MatchExpr {
@@ -383,6 +397,7 @@ pub:
 	cond          Expr
 	branches      []MatchBranch
 	pos           token.Position
+	is_mut        bool  // `match mut ast_node {`
 mut:
 	is_expr       bool // returns a value
 	return_type   table.Type
@@ -396,6 +411,7 @@ pub:
 	exprs []Expr
 	stmts []Stmt
 	pos   token.Position
+	comment Comment // comment above `xxx {`
 }
 
 pub struct CompIf {
@@ -640,6 +656,7 @@ pub:
 	expr      Expr // `buf`
 	arg       Expr // `n` in `string(buf, n)`
 	typ       table.Type // `string`
+	typname   string
 mut:
 	expr_type table.Type // `byteptr`
 	has_arg   bool
@@ -664,6 +681,7 @@ mut:
 pub struct OrExpr {
 pub:
 	stmts []Stmt
+	is_used bool // if the or{} block is written down or left out
 	// var_name string
 	// expr     Expr
 }
@@ -691,14 +709,13 @@ mut:
 	expr_type table.Type
 }
 
-pub struct LineComment {
+pub struct Comment {
 pub:
 	text string
-}
-
-pub struct MultiLineComment {
-pub:
-	text string
+	is_multi bool
+	line_nr int
+	pos token.Position
+	//same_line bool
 }
 
 pub struct ConcatExpr {

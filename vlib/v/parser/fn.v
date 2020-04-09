@@ -6,15 +6,23 @@ module parser
 import (
 	v.ast
 	v.table
+	v.scanner
 )
 
 pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	tok := p.tok
 	name := p.check_name()
-	fn_name := if is_c { 'C.$name' } else if mod.len > 0 { '${mod}.$name' } else { name }
+	fn_name := if is_c {
+		'C.$name'
+	} else if mod.len > 0 {
+		'${mod}.$name'
+	} else {
+		name
+	}
 	p.check(.lpar)
 	args := p.call_args()
 	mut or_stmts := []ast.Stmt
+	mut is_or_block_used := false
 	if p.tok.kind == .key_orelse {
 		p.next()
 		p.open_scope()
@@ -22,18 +30,23 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 			name: 'err'
 			typ: table.string_type
 		})
+		p.scope.register('errcode', ast.Var{
+			name: 'errcode'
+			typ: table.int_type
+		})
+		is_or_block_used = true
 		or_stmts = p.parse_block_no_scope()
 		p.close_scope()
 	}
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
-		// tok: tok
 		mod: p.mod
 		pos: tok.position()
 		is_c: is_c
 		or_block: ast.OrExpr{
 			stmts: or_stmts
+			is_used: is_or_block_used
 		}
 	}
 	return node
@@ -103,9 +116,15 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .name {
 		// TODO high order fn
 		name = p.check_name()
+		if !is_c && !p.pref.translated && scanner.contains_capital(name) {
+			p.error('function names cannot contain uppercase letters, use snake_case instead')
+		}
+		if is_method && p.table.get_type_symbol(rec_type).has_method(name) {
+			p.error('duplicate method `$name`')
+		}
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
-		name = p.tok.kind.str() // op_to_fn_name()
+		name = p.tok.kind.str()		// op_to_fn_name()
 		p.next()
 	}
 	// <T>
@@ -115,7 +134,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		p.check(.gt)
 	}
 	// Args
-	args2,is_variadic := p.fn_args()
+	args2, is_variadic := p.fn_args()
 	args << args2
 	for arg in args {
 		p.scope.register(arg.name, ast.Var{
@@ -138,12 +157,10 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			return_type: return_type
 			is_variadic: is_variadic
 		})
-	}
-	else {
+	} else {
 		if is_c {
 			name = 'C.$name'
-		}
-		else {
+		} else {
 			name = p.prepend_mod(name)
 		}
 		p.table.register_fn(table.Fn{
@@ -154,6 +171,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			is_c: is_c
 		})
 	}
+	// Body
 	mut stmts := []ast.Stmt
 	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
@@ -170,9 +188,9 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		is_pub: is_pub
 		is_variadic: is_variadic
 		receiver: ast.Field{
-			name: rec_name
-			typ: rec_type
-		}
+		name: rec_name
+		typ: rec_type
+	}
 		is_method: is_method
 		rec_mut: rec_mut
 		is_c: is_c
@@ -181,14 +199,15 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 }
 
-fn (p mut Parser) fn_args() ([]table.Arg,bool) {
+fn (p mut Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
 	mut args := []table.Arg
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
-	types_only := p.tok.kind in [.amp, .and] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) || p.peek_tok.kind == .rpar
+	types_only := p.tok.kind in [.amp, .and] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
+		p.peek_tok.kind == .rpar
 	if types_only {
-		//p.warn('types only')
+		// p.warn('types only')
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
 			arg_name := 'arg_$arg_no'
@@ -202,7 +221,7 @@ fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 			}
 			mut arg_type := p.parse_type()
 			if is_variadic {
-				arg_type = table.type_to_variadic(arg_type)
+				arg_type = table.type_set(arg_type, .variadic)
 			}
 			if p.tok.kind == .comma {
 				if is_variadic {
@@ -217,8 +236,7 @@ fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 			}
 			arg_no++
 		}
-	}
-	else {
+	} else {
 		for p.tok.kind != .rpar {
 			mut arg_names := [p.check_name()]
 			// `a, b, c int`
@@ -236,7 +254,7 @@ fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 			}
 			mut typ := p.parse_type()
 			if is_variadic {
-				typ = table.type_to_variadic(typ)
+				typ = table.type_set(typ, .variadic)
 			}
 			for arg_name in arg_names {
 				args << table.Arg{
@@ -255,9 +273,9 @@ fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 		}
 	}
 	p.check(.rpar)
-	return args,is_variadic
+	return args, is_variadic
 }
 
-fn (p &Parser) fileis(s string) bool {
+fn (p Parser) fileis(s string) bool {
 	return p.file_name.contains(s)
 }

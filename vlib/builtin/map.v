@@ -7,6 +7,9 @@ import (
 	strings
 	hash.wyhash
 )
+
+fn C.strcmp(byteptr, byteptr) int
+
 /*
 This is a very fast hashmap implementation. It has several properties that in
 combination makes it very fast. Here is a short explanation of each property.
@@ -58,7 +61,7 @@ const (
 // Number of bits from the hash stored for each entry
 	hashbits = 24
 	// Number of bits from the hash stored for rehashing
-	cached_hashbits = 16
+	max_cached_hashbits = 16
 	// Initial log-number of buckets in the hashtable
 	init_log_capicity = 5
 	// Initial number of buckets in the hashtable
@@ -139,10 +142,10 @@ pub struct map {
 	// Byte size of value
 	value_bytes int
 mut:
-// Index of the highest index in the hashtable
+// highest even index in the hashtable
 	cap         u32
 	// Number of cached hashbits left for rehasing
-	window      byte
+	cached_hashbits      byte
 	// Used for right-shifting out used hashbits
 	shift       byte
 	// Array storing key-values (ordered)
@@ -163,7 +166,7 @@ fn new_map(n, value_bytes int) map {
 	return map{
 		value_bytes: value_bytes
 		cap: init_cap
-		window: cached_hashbits
+		cached_hashbits: max_cached_hashbits
 		shift: init_log_capicity
 		key_values: new_dense_array()
 		metas: &u32(vcalloc(sizeof(u32) * (init_capicity + extra_metas_inc)))
@@ -182,17 +185,17 @@ fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
 
 [inline]
 fn (m map) key_to_index(key string) (u32,u32) {
-	hash := u32(wyhash.wyhash_c(key.str, u64(key.len), 0))
+	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
 	index := hash & m.cap
 	meta := ((hash>>m.shift) & hash_mask) | probe_inc
-	return index,meta
+	return u32(index),u32(meta)
 }
 
 [inline]
-fn meta_less(metas &u32, i u32, m u32) (u32,u32) {
-	mut index := i
-	mut meta := m
-	for meta < metas[index] {
+fn (m map) meta_less(_index u32, _metas u32) (u32,u32) {
+	mut index := _index
+	mut meta := _metas
+	for meta < m.metas[index] {
 		index += 2
 		meta += probe_inc
 	}
@@ -200,37 +203,35 @@ fn meta_less(metas &u32, i u32, m u32) (u32,u32) {
 }
 
 [inline]
-fn (m mut map) meta_greater(ms &u32, i u32, me u32, kvi u32) &u32 {
-	mut metas := ms
-	mut meta := me
-	mut index := i
+fn (m mut map) meta_greater(_index u32, _metas u32, kvi u32) {
+	mut meta := _metas
+	mut index := _index
 	mut kv_index := kvi
-	for metas[index] != 0 {
-		if meta > metas[index] {
-			tmp_meta := metas[index]
-			metas[index] = meta
+	for m.metas[index] != 0 {
+		if meta > m.metas[index] {
+			tmp_meta := m.metas[index]
+			m.metas[index] = meta
 			meta = tmp_meta
-			tmp_index := metas[index + 1]
-			metas[index + 1] = kv_index
+			tmp_index := m.metas[index + 1]
+			m.metas[index + 1] = kv_index
 			kv_index = tmp_index
 		}
 		index += 2
 		meta += probe_inc
 	}
-	metas[index] = meta
-	metas[index + 1] = kv_index
+	m.metas[index] = meta
+	m.metas[index + 1] = kv_index
 	probe_count := (meta>>hashbits) - 1
 	if (probe_count<<1) == m.extra_metas {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.cap + 2 + m.extra_metas)
-		metas = &u32(C.realloc(metas, sizeof(u32) * mem_size))
-		C.memset(metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
+		m.metas = &u32(C.realloc(m.metas, sizeof(u32) * mem_size))
+		C.memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
 		// Should almost never happen
 		if probe_count == 252 {
 			panic('Probe overflow')
 		}
 	}
-	return metas
 }
 
 fn (m mut map) set(key string, value voidptr) {
@@ -239,11 +240,11 @@ fn (m mut map) set(key string, value voidptr) {
 		m.expand()
 	}
 	mut index,mut meta := m.key_to_index(key)
-	index,meta = meta_less(m.metas, index, meta)
+	index,meta = m.meta_less(index, meta)
 	// While we might have a match
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if key == m.key_values.data[kv_index].key {
+		if C.strcmp(key.str, m.key_values.data[kv_index].key.str) == 0 {
 			C.memcpy(m.key_values.data[kv_index].value, value, m.value_bytes)
 			return
 		}
@@ -257,7 +258,7 @@ fn (m mut map) set(key string, value voidptr) {
 	}
 	C.memcpy(kv.value, value, m.value_bytes)
 	kv_index := m.key_values.push(kv)
-	m.metas = m.meta_greater(m.metas, index, meta, kv_index)
+	m.meta_greater(index, meta, kv_index)
 	m.size++
 }
 
@@ -266,15 +267,15 @@ fn (m mut map) expand() {
 	old_cap := m.cap
 	m.cap = ((m.cap + 2)<<1) - 2
 	// Check if any hashbits are left
-	if m.window == 0 {
-		m.shift += cached_hashbits
-		m.window = cached_hashbits
+	if m.cached_hashbits == 0 {
+		m.shift += max_cached_hashbits
+		m.cached_hashbits = max_cached_hashbits
 		m.rehash()
 	}
 	else {
 		m.cached_rehash(old_cap)
 	}
-	m.window--
+	m.cached_hashbits--
 }
 
 fn (m mut map) rehash() {
@@ -287,70 +288,39 @@ fn (m mut map) rehash() {
 		}
 		kv := m.key_values.data[i]
 		mut index,mut meta := m.key_to_index(kv.key)
-		index,meta = meta_less(m.metas, index, meta)
-		m.metas = m.meta_greater(m.metas, index, meta, i)
+		index,meta = m.meta_less(index, meta)
+		m.meta_greater(index, meta, i)
 	}
 }
 
 fn (m mut map) cached_rehash(old_cap u32) {
-	mut new_meta := &u32(vcalloc(sizeof(u32) * (m.cap + 2 + m.extra_metas)))
+	old_metas := m.metas
+	m.metas = &u32(vcalloc(sizeof(u32) * (m.cap + 2 + m.extra_metas)))
 	old_extra_metas := m.extra_metas
 	for i := u32(0); i <= old_cap + old_extra_metas; i += 2 {
-		if m.metas[i] == 0 {
+		if old_metas[i] == 0 {
 			continue
 		}
-		old_meta := m.metas[i]
+		old_meta := old_metas[i]
 		old_probe_count := ((old_meta>>hashbits) - 1)<<1
 		old_index := (i - old_probe_count) & (m.cap>>1)
 		mut index := (old_index | (old_meta<<m.shift)) & m.cap
 		mut meta := (old_meta & hash_mask) | probe_inc
-		index,meta = meta_less(new_meta, index, meta)
-		kv_index := m.metas[i + 1]
-		new_meta = m.meta_greater(new_meta, index, meta, kv_index)
+		index,meta = m.meta_less(index, meta)
+		kv_index := old_metas[i + 1]
+		m.meta_greater(index, meta, kv_index)
 	}
 	unsafe{
-		free(m.metas)
+		free(old_metas)
 	}
-	m.metas = new_meta
-}
-
-fn (m map) get(key string, out voidptr) bool {
-	mut index,mut meta := m.key_to_index(key)
-	index,meta = meta_less(m.metas, index, meta)
-	for meta == m.metas[index] {
-		kv_index := m.metas[index + 1]
-		if key == m.key_values.data[kv_index].key {
-			C.memcpy(out, m.key_values.data[kv_index].value, m.value_bytes)
-			return true
-		}
-		index += 2
-		meta += probe_inc
-	}
-	return false
-}
-
-fn (m map) get2(key string) voidptr {
-	mut index,mut meta := m.key_to_index(key)
-	index,meta = meta_less(m.metas, index, meta)
-	for meta == m.metas[index] {
-		kv_index := m.metas[index + 1]
-		if key == m.key_values.data[kv_index].key {
-			out := malloc(m.value_bytes)
-			C.memcpy(out, m.key_values.data[kv_index].value, m.value_bytes)
-			return out
-		}
-		index += 2
-		meta += probe_inc
-	}
-	return voidptr(0)
 }
 
 fn (m map) get3(key string, zero voidptr) voidptr {
 	mut index,mut meta := m.key_to_index(key)
-	index,meta = meta_less(m.metas, index, meta)
+	index,meta = m.meta_less(index, meta)
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if key == m.key_values.data[kv_index].key {
+		if C.strcmp(key.str, m.key_values.data[kv_index].key.str) == 0 {
 			out := malloc(m.value_bytes)
 			C.memcpy(out, m.key_values.data[kv_index].value, m.value_bytes)
 			return out
@@ -359,7 +329,6 @@ fn (m map) get3(key string, zero voidptr) voidptr {
 		meta += probe_inc
 	}
 	return zero
-	//return voidptr(0)
 }
 
 fn (m map) exists(key string) bool {
@@ -367,10 +336,10 @@ fn (m map) exists(key string) bool {
 		return false
 	}
 	mut index,mut meta := m.key_to_index(key)
-	index,meta = meta_less(m.metas, index, meta)
+	index,meta = m.meta_less(index, meta)
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if key == m.key_values.data[kv_index].key {
+		if C.strcmp(key.str, m.key_values.data[kv_index].key.str) == 0 {
 			return true
 		}
 		index += 2
@@ -381,12 +350,11 @@ fn (m map) exists(key string) bool {
 
 pub fn (m mut map) delete(key string) {
 	mut index,mut meta := m.key_to_index(key)
-	index,meta = meta_less(m.metas, index, meta)
+	index,meta = m.meta_less(index, meta)
 	// Perform backwards shifting
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if key == m.key_values.data[kv_index].key {
-			C.memset(&m.key_values.data[kv_index], 0, sizeof(KeyValue))
+		if C.strcmp(key.str, m.key_values.data[kv_index].key.str) == 0 {
 			for (m.metas[index + 2]>>hashbits) > 1 {
 				m.metas[index] = m.metas[index + 2] - probe_inc
 				m.metas[index + 1] = m.metas[index + 3]
@@ -395,12 +363,15 @@ pub fn (m mut map) delete(key string) {
 			m.size--
 			m.metas[index] = 0
 			m.key_values.deletes++
+			C.memset(&m.key_values.data[kv_index], 0, sizeof(KeyValue))
 			if m.key_values.size <= 32 {
 				return
 			}
-			if (f32(m.key_values.size) / f32(m.key_values.deletes)) < 1 {
+			// Clean up key_values if too many have been deleted
+			if m.key_values.deletes >= (m.key_values.size >> 1) {
 				m.key_values.zeros_to_end()
 				m.rehash()
+				m.key_values.deletes = 0
 			}
 			return
 		}
@@ -425,11 +396,16 @@ pub fn (m &map) keys() []string {
 	return keys
 }
 
+[unsafe_fn]
 pub fn (m map) free() {
-	unsafe{
-		free(m.metas)
-		free(m.key_values.data)
+	free(m.metas)
+	for i := u32(0); i < m.key_values.size; i++ {
+		if m.key_values.data[i].key.str == 0 {
+			continue
+		}
+		m.key_values.data[i].key.free()
 	}
+	free(m.key_values.data)
 }
 
 pub fn (m map) print() {

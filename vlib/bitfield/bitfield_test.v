@@ -54,9 +54,9 @@ fn test_clone_cmp() {
 			input.setbit(i)
 		}
 	}
-	output := bitfield.clone(input)
+	output := input.clone()
 	assert output.getsize() == len
-	assert bitfield.cmp(input, output) == true
+	assert input.cmp(output) == true
 }
 
 fn test_slice_join() {
@@ -75,7 +75,7 @@ fn test_slice_join() {
 		chunk2 := input.slice(point, input.getsize())
 		// concatenate them back into one and compare to the original
 		output := bitfield.join(chunk1, chunk2)
-		if !bitfield.cmp(input, output) {
+		if !input.cmp(output) {
 			result = 0
 		}
 	}
@@ -137,7 +137,7 @@ fn test_bf_from_bytes() {
 	assert result == 1
 }
 
-fn test_bf_from_string() {
+fn test_bf_from_str() {
 	rand.seed(time.now().unix)
 	len := 80
 	mut input := ''
@@ -149,7 +149,7 @@ fn test_bf_from_string() {
 			input = input + '0'
 		}
 	}
-	output := bitfield.from_string(input)
+	output := bitfield.from_str(input)
 	mut result := 1
 	for i in 0..len {
 		if input[i] != output.getbit(i) + 48 {
@@ -177,7 +177,7 @@ fn test_bf_bf2str() {
 			check = check + '0'
 		}
 	}
-	output := input.string()
+	output := input.str()
 	mut result := 1
 	for i in 0..len {
 		if check[i] != output[i] {
@@ -229,7 +229,7 @@ fn test_bf_reverse() {
 			input.setbit(i)
 		}
 	}
-	check := bitfield.clone(input)
+	check := input.clone()
 	output := input.reverse()
 	mut result := 1
 	for i in 0..len {
@@ -279,7 +279,7 @@ fn test_bf_pos() {
 			needle.setbit(r)
 
 			// create the haystack, make sure it contains the needle
-			mut haystack := bitfield.clone(needle)
+			mut haystack := needle.clone()
 
 			// if there is space between the start of the haystack and the sought needle, fill it with zeroes
 			if j > 0 {
@@ -319,4 +319,18 @@ fn test_bf_rotate() {
 		}
 	}
 	assert result == 1
+}
+
+fn test_bf_printing(){
+	rand.seed(time.now().unix)
+	len := 80
+	mut input := bitfield.new(len)
+	for i in 0..len {
+	   if rand.next(2) == 0 {
+		   input.setbit(i)
+	   }
+	}
+	// the following should convert the bitfield input into a string automatically
+	println(input)
+	assert true
 }

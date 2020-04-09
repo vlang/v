@@ -70,9 +70,7 @@ pub enum Kind {
 	lt
 	ge
 	le
-	// comments
-	line_comment
-	mline_comment
+	comment
 	nl
 	dot
 	dotdot
@@ -199,8 +197,7 @@ fn build_token_str() []string {
 	s[Kind.question] = '?'
 	s[Kind.left_shift] = '<<'
 	s[Kind.right_shift] = '>>'
-	s[Kind.line_comment] = '// line comment'
-	s[Kind.mline_comment] = '/* mline comment */'
+	s[Kind.comment] = '// comment'
 	s[Kind.nl] = 'NLL'
 	s[Kind.dollar] = '$'
 	s[Kind.str_dollar] = '$2'
@@ -302,11 +299,11 @@ pub enum Precedence {
 	assign // =
 	eq // == or !=
 	// less_greater // > or <
-	sum // + or -
-	product // * or /
+	sum // + - | ^
+	product // * / << >> &
 	// mod // %
 	prefix // -X or !X
-	postfix
+	postfix // ++ or --
 	call // func(X) or foo.method(X)
 	index // array[index], map[key]
 }

@@ -1,0 +1,7 @@
+A {
+    test: false
+    b: B {
+        pass: false
+        name: ''
+    }
+}

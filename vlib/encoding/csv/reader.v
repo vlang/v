@@ -112,10 +112,12 @@ fn (r mut Reader) read_record() ?[]string {
 	for {
 		// not quoted
 		if line[0] != `"` {
-			i = line.index(r.delimiter.str()) or {
+			// QTODO i = ...
+			j := line.index(r.delimiter.str()) or {
 				// last
 				break
 			}
+			i = j
 			fields << line[..i]
 			line = line[i+1..]
 			continue

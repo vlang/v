@@ -1,0 +1,24 @@
+module main
+
+enum Color {
+	orange
+	green = 5
+	red = 2
+	yellow = 3
+}
+
+struct A{
+	color Color
+}
+
+fn main() {
+	col := Color.green
+	a := A{color: col}
+	orange := Color.orange
+	println(orange)
+	println(Color.yellow)
+	println(col)
+	println(a.color)
+	println('interp: ${col}')
+	println('interp: ${a.color}')
+}

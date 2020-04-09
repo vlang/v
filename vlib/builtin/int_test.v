@@ -12,36 +12,39 @@ fn test_const() {
 }
 
 fn test_float_equal_operator() {
-	mut a := f32(1)
+	b := f32(1.0)
+	mut a := f32(1.0)
 	a += 0.000001
 	a -= 0.000001
-	assert a == 1
-	assert !a.eqbit(1)
-	assert !(a != 1)
-	assert a.nebit(1)
+	assert a == b
+	assert !a.eqbit(1.0)
+	assert !(a != f32(1.0))
+	assert a.nebit(f32(1.0))
 	a += 0.000001
-	assert !(a < 1)
-	assert !a.ltbit(1)
+	assert !(a < 1.0)
+	assert !a.ltbit(1.0)
 	assert !(a <= 1)
 	assert !a.lebit(1)
 	assert a > 1
 	assert a.gtbit(1)
 	assert a >= 1
 	assert a.gebit(1)
+	assert -1 == 1 * -1
+	assert -1.0 == 1.0 * -1.0
 
 	a = f64(1)
 	a += 0.000001
 	a -= 0.000001
-	assert a == 1
-	assert !a.eqbit(1)
-	assert !(a != 1)
+	assert a == f32(1.0)
+	assert !a.eqbit(f32(1.0))
+	assert !(a != f32(1.0))
 	a += 0.000001
-	assert !(a < 1)
-	assert !a.ltbit(1)
-	assert !(a <= 1)
-	assert !a.lebit(1)
-	assert a > 1
-	assert a.gtbit(1)
+	assert !(a < f32(1))
+	assert !a.ltbit(f32(1))
+	assert !(a <= f32(1))
+	assert !a.lebit(f32(1))
+	assert a > f32(1)
+	assert a.gtbit(f32(1))
 	assert a >= 1
 	assert a.gebit(1)
 

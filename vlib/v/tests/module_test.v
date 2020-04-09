@@ -1,10 +1,10 @@
-import os
-import time as t
-import crypto.sha256 as s2
 import (
+	os
+	time as t
+	crypto.sha256
 	math
 	log as l
-	crypto.sha512 as s5
+	crypto.sha512
 )
 
 struct TestAliasInStruct {
@@ -12,7 +12,9 @@ struct TestAliasInStruct {
 }
 
 fn test_import() {
-	assert os.O_RDONLY == os.O_RDONLY && t.month_days[0] == t.month_days[0] && s2.size == s2.size && math.pi == math.pi && l.INFO == l.INFO && s5.size == s5.size
+	info := l.Level.info
+	assert os.O_RDONLY == os.O_RDONLY && t.month_days[0] == t.month_days[0] && sha256.size == 
+		sha256.size && math.pi == math.pi && info == .info && sha512.size == sha512.size
 }
 
 fn test_alias_in_struct_field() {
