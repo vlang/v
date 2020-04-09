@@ -208,8 +208,17 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			}
 			name := it.name.after('.')
 			f.writeln('enum $name {')
-			for val in it.vals {
-				f.writeln('\t' + val)
+			for field in it.fields {
+				f.write('\t$field.name')
+				if field.exprs.len > 0 {
+					f.write(' = ')
+					for expr in field.exprs {
+						f.expr(expr)
+					}
+					f.writeln(',')
+				} else {
+					f.writeln('')
+				}
 			}
 			f.writeln('}\n')
 		}

@@ -363,21 +363,23 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.defer_stmts << defer_stmt
 		}
 		ast.EnumDecl {
-			name := it.name.replace('.', '__')
+			enum_name := it.name.replace('.', '__')
 			g.typedefs.writeln('typedef enum {')
-			for j, val in it.vals {
-				if j < it.default_exprs.len {
-					g.typedefs.write('\t${name}_$val = ')
-					pos := g.out.len
-					g.expr(it.default_exprs[j])
-					expr := g.out.after(pos)
-					g.out.go_back(expr.len)
-					g.typedefs.writeln('$expr,')
-				} else {
-					g.typedefs.writeln('\t${name}_$val, // $j')
+			for field in it.fields {
+				g.typedefs.write('\t${enum_name}_$field.name')
+				if field.exprs.len > 0 {
+					g.typedefs.write(' = ')
 				}
+				for expr in field.exprs {
+					pos := g.out.len
+					g.expr(expr)
+					expr_str := g.out.after(pos)
+					g.out.go_back(expr_str.len)
+					g.typedefs.write('$expr_str')
+				}
+				g.typedefs.writeln(',')
 			}
-			g.typedefs.writeln('} $name;\n')
+			g.typedefs.writeln('} $enum_name;\n')
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)

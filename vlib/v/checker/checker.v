@@ -560,6 +560,20 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 	}
 }
 
+pub fn (c mut Checker) enum_decl(decl ast.EnumDecl) {
+	for field in decl.fields {
+		for expr in field.exprs {
+			match expr {
+				ast.IntegerLiteral {}
+				ast.PrefixExpr {}
+				else {
+					c.error("default value for enum has to be an integer", field.pos)
+				}
+			}
+		}
+	}
+}
+
 pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	c.expected_type = table.none_type	// TODO a hack to make `x := if ... work`
 	if assign_stmt.left.len > assign_stmt.right.len {
@@ -737,9 +751,6 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				c.stmts(it.else_stmts)
 			}
 		}
-		ast.DeferStmt {
-			c.stmts(it.stmts)
-		}
 		ast.ConstDecl {
 			mut field_names := []string
 			mut field_order := []int
@@ -775,6 +786,12 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				}
 				it.fields = ordered_fields
 			}
+		}
+		ast.DeferStmt {
+			c.stmts(it.stmts)
+		}
+		ast.EnumDecl {
+			c.enum_decl(it)
 		}
 		ast.ExprStmt {
 			etype := c.expr(it.expr)
