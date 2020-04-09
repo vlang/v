@@ -1347,24 +1347,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		ptr_typ := g.typ(node.left_type).split('_')[1]
 		if !(ptr_typ in g.array_fn_definitions) {
 			sym := g.table.get_type_symbol(left_sym.array_info().elem_type)
-			g.array_fn_definitions << ptr_typ
-			g.definitions.writeln('bool ${ptr_typ}_arr_eq(array_${ptr_typ} a, array_${ptr_typ} b) {')
-			g.definitions.writeln('\tif (a.len != b.len) {')
-			g.definitions.writeln('\t\treturn false;')
-			g.definitions.writeln('\t}')
-			g.definitions.writeln('\tfor (int i = 0; i < a.len; i++) {')
-			if styp == table.string_type_idx {
-				g.definitions.writeln('\t\tif (string_ne(*((${ptr_typ}*)(a.data+(i*a.element_size))), *((${ptr_typ}*)(b.data+(i*b.element_size))))) {')
-			} else if sym.kind == .struct_ {
-				g.definitions.writeln('\t\tif (memcmp((void*)(a.data+(i*a.element_size)), (void*)(b.data+(i*b.element_size)), a.element_size)) {')
-			} else {
-				g.definitions.writeln('\t\tif (*((${ptr_typ}*)(a.data+(i*a.element_size))) != *((${ptr_typ}*)(b.data+(i*b.element_size)))) {')
-			}
-			g.definitions.writeln('\t\t\treturn false;')
-			g.definitions.writeln('\t\t}')
-			g.definitions.writeln('\t}')
-			g.definitions.writeln('\treturn true;')
-			g.definitions.writeln('}')
+			g.generate_array_equality_fn(ptr_typ, styp, sym)
 		}
 		if node.op == .eq {
 			g.write('${ptr_typ}_arr_eq(')
@@ -2069,6 +2052,27 @@ fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 		}
 		g.write('}}')
 	}
+}
+
+fn (g mut Gen) generate_array_equality_fn(ptr_typ string, styp table.Type, sym &table.TypeSymbol) {
+	g.array_fn_definitions << ptr_typ
+	g.definitions.writeln('bool ${ptr_typ}_arr_eq(array_${ptr_typ} a, array_${ptr_typ} b) {')
+	g.definitions.writeln('\tif (a.len != b.len) {')
+	g.definitions.writeln('\t\treturn false;')
+	g.definitions.writeln('\t}')
+	g.definitions.writeln('\tfor (int i = 0; i < a.len; i++) {')
+	if styp == table.string_type_idx {
+		g.definitions.writeln('\t\tif (string_ne(*((${ptr_typ}*)(a.data+(i*a.element_size))), *((${ptr_typ}*)(b.data+(i*b.element_size))))) {')
+	} else if sym.kind == .struct_ {
+		g.definitions.writeln('\t\tif (memcmp((void*)(a.data+(i*a.element_size)), (void*)(b.data+(i*b.element_size)), a.element_size)) {')
+	} else {
+		g.definitions.writeln('\t\tif (*((${ptr_typ}*)(a.data+(i*a.element_size))) != *((${ptr_typ}*)(b.data+(i*b.element_size)))) {')
+	}
+	g.definitions.writeln('\t\t\treturn false;')
+	g.definitions.writeln('\t\t}')
+	g.definitions.writeln('\t}')
+	g.definitions.writeln('\treturn true;')
+	g.definitions.writeln('}')
 }
 
 [inline]
