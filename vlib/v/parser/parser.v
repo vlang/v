@@ -461,6 +461,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	op := p.tok.kind
 	p.next()
+	pos := p.tok.position()
 	val := p.expr(0)
 	match left {
 		ast.IndexExpr {
@@ -473,7 +474,7 @@ pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 		left: left
 		val: val
 		op: op
-		pos: p.tok.position()
+		pos: pos
 	}
 	return node
 }

@@ -95,8 +95,12 @@ pub fn formatted_error(kind string /*error or warn*/, emsg string, filepath stri
 					}
 					continue
 				}
-				underline := '~'.repeat(pos.len)
-				pointerline << if emanager.support_color { term.bold(term.blue(underline)) } else { underline }
+				if pos.len > 1 {
+					underline := '~'.repeat(pos.len)
+					pointerline << if emanager.support_color { term.bold(term.blue(underline)) } else { underline }
+				}else{
+					pointerline << if emanager.support_color { term.bold(term.blue('^')) } else { '^' }
+				}
 				break
 			}
 			clines << '       ' + pointerline.join('')
