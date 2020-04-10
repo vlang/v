@@ -14,7 +14,6 @@ pub enum BuildMode {
 
 pub enum Backend {
 	c            // The (default) C backend
-	experimental // The experimental v2 backend
 	js           // The JavaScript backend
 	x64          // The x64 backend
 }
@@ -90,10 +89,6 @@ pub fn backend_from_string(s string) ?Backend {
 		}
 		'js' {
 			return .js
-		}
-		'experimental', 'v2' {
-			//TODO Remove in the future once it's considered stable :)
-			return .experimental
 		}
 		'x64' {
 			return .x64
