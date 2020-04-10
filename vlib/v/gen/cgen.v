@@ -407,10 +407,13 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			} else {
 				g.stmt(it.init)
 			}
-			g.expr(it.cond)
+			if it.has_cond {
+				g.expr(it.cond)
+			}
 			g.write('; ')
-			// g.stmt(it.inc)
-			g.expr(it.inc)
+			if it.has_inc {
+				g.expr(it.inc)
+			}
 			g.writeln(') {')
 			g.stmts(it.stmts)
 			g.writeln('}')

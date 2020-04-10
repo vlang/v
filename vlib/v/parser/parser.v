@@ -1059,6 +1059,8 @@ fn (p mut Parser) for_stmt() ast.Stmt {
 		// mut inc := ast.Stmt{}
 		mut inc := ast.Expr{}
 		mut has_init := false
+		mut has_cond := false
+		mut has_inc := false
 		if p.peek_tok.kind in [.assign, .decl_assign] {
 			init = p.assign_stmt()
 			has_init = true
@@ -1070,11 +1072,13 @@ fn (p mut Parser) for_stmt() ast.Stmt {
 		if p.tok.kind != .semicolon {
 			mut typ := table.void_type
 			cond = p.expr(0)
+			has_cond = true
 		}
 		p.check(.semicolon)
 		if p.tok.kind != .lcbr {
 			// inc = p.stmt()
 			inc = p.expr(0)
+			has_inc = true
 		}
 		p.inside_for = false
 		stmts := p.parse_block()
@@ -1082,6 +1086,8 @@ fn (p mut Parser) for_stmt() ast.Stmt {
 		return ast.ForCStmt{
 			stmts: stmts
 			has_init: has_init
+			has_cond: has_cond
+			has_inc: has_inc
 			init: init
 			cond: cond
 			inc: inc

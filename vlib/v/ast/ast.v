@@ -434,7 +434,9 @@ pub:
 	init     Stmt // i := 0;
 	has_init bool
 	cond     Expr // i < 10;
+	has_cond bool
 	inc      Expr // i++;
+	has_inc  bool
 	stmts    []Stmt
 	pos      token.Position
 }
