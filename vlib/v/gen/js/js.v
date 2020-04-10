@@ -23,6 +23,8 @@ struct JsGen {
 	definitions 	strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	pref            &pref.Preferences
 	mut:
+	file			ast.File
+	is_test         bool
 	indent			int
 	stmt_start_pos	int
 	fn_decl			&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
@@ -42,6 +44,8 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	g.init()
 
 	for file in files {
+		g.file = file
+		g.is_test = g.file.path.ends_with('_test.v')
 		g.stmts(file.stmts)
 	}
 
@@ -110,6 +114,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.out.len
 
 	match node {
+		ast.AssertStmt {
+			g.gen_assert_stmt(it)
+		}
 		ast.FnDecl {
 			g.fn_decl = it
 			g.gen_fn_decl(it)
@@ -233,6 +240,29 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			println(term.red('jsgen.expr(): bad node'))
 		}
 	}
+}
+
+fn (g mut JsGen) gen_assert_stmt(a ast.AssertStmt) {
+	g.writeln('// assert')
+	g.write('if( ')
+	g.expr(a.expr)
+	g.write(' ) {')
+	s_assertion := a.expr.str().replace('"', "\'")
+	mut mod_path := g.file.path
+	if g.is_test {
+		g.writeln('	g_test_oks++;')
+		g.writeln('	cb_assertion_ok("${mod_path}", ${a.pos.line_nr+1}, "assert ${s_assertion}", "${g.fn_decl.name}()" );')
+		g.writeln('} else {')
+		g.writeln('	g_test_fails++;')
+		g.writeln('	cb_assertion_failed("${mod_path}", ${a.pos.line_nr+1}, "assert ${s_assertion}", "${g.fn_decl.name}()" );')
+		g.writeln('	exit(1);')
+		g.writeln('}')
+		return
+	}
+	g.writeln('} else {')
+	g.writeln('	eprintln("${mod_path}:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
+	g.writeln('	exit(1);')
+	g.writeln('}')
 }
 
 fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
