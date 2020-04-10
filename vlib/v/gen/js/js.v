@@ -117,6 +117,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		ast.AssertStmt {
 			g.gen_assert_stmt(it)
 		}
+		ast.AssignStmt {
+			g.gen_assign_stmt(it)
+		}
 		ast.FnDecl {
 			g.fn_decl = it
 			g.gen_fn_decl(it)
@@ -124,20 +127,6 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.Return {
 			g.gen_return_stmt(it)
-		}
-		ast.AssignStmt {
-			if it.left.len > it.right.len {}
-			// TODO: multi return
-			else {
-				for i, ident in it.left {
-					var_info := ident.var_info()
-					var_type_sym := g.table.get_type_symbol(var_info.typ)
-					val := it.right[i]
-					g.write('var /* $var_type_sym.name */ $ident.name = ')
-					g.expr(val)
-					g.writeln(';')
-				}
-			}
 		}
 		ast.ForStmt {
 			g.write('while (')
@@ -263,6 +252,56 @@ fn (g mut JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('	eprintln("${mod_path}:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
 	g.writeln('	exit(1);')
 	g.writeln('}')
+}
+
+fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
+	if it.left.len > it.right.len {
+		// multi return
+		doc := strings.new_builder(50)
+		doc.writeln('/**')
+		doc.write('* @type {[')
+		stmt := strings.new_builder(50)
+		stmt.write('const [')
+		for i, ident in it.left {
+			ident_var_info := ident.var_info()
+			styp := g.typ(ident_var_info.typ)
+			doc.write(styp)
+			if ident.kind == .blank_ident {
+				stmt.write('_')
+			} else {
+				stmt.write('$ident.name')				
+			}
+			if i < it.left.len - 1 {
+				doc.write(', ')
+				stmt.write(', ')
+			}
+		}
+		doc.writeln(']}')
+		doc.writeln('*/')
+		stmt.write('] = ')
+		g.write(doc.str() + stmt.str())
+		g.expr(it.right[0])
+		g.writeln(';')
+	}
+	else {
+		// `a := 1` | `a,b := 1,2`
+		for i, ident in it.left {
+			val := it.right[i]
+			ident_var_info := ident.var_info()
+			styp := g.typ(ident_var_info.typ)
+			g.writeln('/**')
+			g.writeln('* @type {$styp}')
+			g.writeln('*/')
+			if ident.kind == .blank_ident {
+				g.write('const _ = ')
+				g.expr(val)
+			} else {
+				g.write('const $ident.name = ')
+				g.expr(val)
+			}
+			g.writeln(';')
+		}
+	}
 }
 
 fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
