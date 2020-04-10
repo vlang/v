@@ -149,6 +149,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		ast.DeferStmt {
 			g.defer_stmts << *it
 		}
+		ast.EnumDecl {
+			g.gen_enum_decl(it)
+		}
 		ast.FnDecl {
 			g.fn_decl = it
 			g.gen_fn_decl(it)
@@ -378,6 +381,26 @@ fn (g mut JsGen) gen_defer_stmts() {
 		g.stmts(defer_stmt.stmts)
 	}
 	g.writeln('}')
+}
+
+fn (g mut JsGen) gen_enum_decl(it ast.EnumDecl) {
+	g.writeln('const $it.name = Object.freeze({')
+	g.indent++
+	for i, field in it.fields {
+		g.write('$field.name: ')
+		if field.has_expr {
+			pos := g.out.len
+			g.expr(field.expr)
+			expr_str := g.out.after(pos)
+			g.out.go_back(expr_str.len)
+			g.write('$expr_str')
+		} else {
+			g.write('$i')
+		}
+		g.writeln(',')
+	}
+	g.indent--
+	g.writeln('});')
 }
 
 fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {

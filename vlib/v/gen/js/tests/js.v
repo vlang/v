@@ -9,6 +9,11 @@ struct done {
     yahoo string
 }
 
+enum POSITION {
+    GO_BACK,
+    DONT_GO_BACK
+}
+
 fn main() {
     v := "done"
     {
