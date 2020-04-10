@@ -107,7 +107,7 @@ pub struct StructField {
 pub:
 	name string
 	pos token.Position
-	comment Comment
+	comments []Comment
 	default_expr string // token literal //Expr
 mut:
 	typ table.Type

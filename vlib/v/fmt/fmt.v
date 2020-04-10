@@ -376,25 +376,46 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 		} else if i == node.pub_mut_pos {
 			f.writeln('pub mut:')
 		}
-		if field.comment.text != '' && field.comment.pos.line_nr < field.pos.line_nr {
-			// Comment on the previous line
-			f.write('\t')
-			f.comment(field.comment)
+
+		mut j := 0
+		// Comments before field
+		for j < field.comments.len {
+			comment := field.comments[j]
+			if comment.text == '' || comment.pos.line_nr >= field.pos.line_nr {
+				break
+			}
+			f.indent++
+			f.comment(comment)
+			f.indent--
+			j++
 		}
+
 		f.write('\t$field.name ')
+
+		// Comments after field name
+		for j < field.comments.len {
+			comment := field.comments[j]
+			if comment.text == '' || comment.pos.line_nr != field.pos.line_nr 
+			|| comment.pos.pos > field.pos.pos {
+				break
+			}
+			f.write('/* $comment.text */')
+			j++
+		}
+
 		f.write(strings.repeat(` `, max - field.name.len))
 		f.write(f.type_to_str(field.typ))
-		// f.write('// $field.pos.line_nr')
-		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
-			// Same line comment
-			f.write('  ')
-			f.comment(field.comment)
-		} else {
-			// if field.comment.text != '' {
-			// f.write (' // com linenr=$field.comment.pos.line_nr')
-			// }
-			f.writeln('')
+
+		// Comments after field type
+		for j < field.comments.len {
+			comment := field.comments[j]
+			if comment.text == '' || comment.pos.line_nr != field.pos.line_nr {
+				break
+			}
+			f.write(' // $comment.text')
+			j++
 		}
+		f.write('\n')
 	}
 	f.writeln('}\n')
 }
@@ -707,8 +728,17 @@ fn (f mut Fmt) comment(node ast.Comment) {
 	lines := node.text.split_into_lines()
 	f.writeln('/*')
 	for line in lines {
-		f.writeln(line)
-		f.empty_line = false
+		mut whitespace := 0
+		for chr in line {
+			if chr == ' '[0] || chr == '\t'[0] {
+				whitespace++
+			} else {
+				break
+			}
+		}
+		res_line := line[whitespace..]
+		f.write('   ')
+		f.writeln(res_line)
 	}
 	f.writeln('*/')
 }

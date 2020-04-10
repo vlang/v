@@ -1475,10 +1475,6 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	if !no_body {
 		p.check(.lcbr)
 		for p.tok.kind != .rcbr {
-			mut comment := ast.Comment{}
-			if p.tok.kind == .comment {
-				comment = p.comment()
-			}
 			if p.tok.kind == .key_pub {
 				p.check(.key_pub)
 				if p.tok.kind == .key_mut {
@@ -1496,9 +1492,20 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 				p.check(.key_global)
 				p.check(.colon)
 			}
+
+			mut comments := []ast.Comment
+			for p.tok.kind == .comment {
+				comments << p.comment()
+				if p.tok.kind == .rcbr {break}
+			}
+
 			field_name := p.check_name()
 			field_pos := p.tok.position()
 			// p.warn('field $field_name')
+			for p.tok.kind == .comment {
+				comments << p.comment()
+				if p.tok.kind == .rcbr {break}
+			}
 			typ := p.parse_type()
 			/*
 			if name == '_net_module_s' {
@@ -1514,14 +1521,18 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 				p.expr(0)
 				// default_expr = p.expr(0)
 			}
-			if p.tok.kind == .comment {
-				comment = p.comment()
+			line_nr := p.tok.line_nr
+			for p.tok.kind != .rcbr && p.tok.kind == .comment && p.tok.line_nr == line_nr {
+				comments << p.comment()
+			}
+			if comments.len == 0 {
+				comments << ast.Comment{}
 			}
 			ast_fields << ast.StructField{
 				name: field_name
 				pos: field_pos
 				typ: typ
-				comment: comment
+				comments: comments
 				default_expr: default_expr
 			}
 			fields << table.Field{

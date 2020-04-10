@@ -1,4 +1,10 @@
 struct User {
+mut:
+	/*
+	   a
+	   b
+	*/
+	// c
 	name            string
 	very_long_field bool
 	age             int
