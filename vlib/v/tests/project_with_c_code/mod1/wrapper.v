@@ -1,7 +1,7 @@
 module mod1
 
-#flag -I @VROOT/c
-#flag @VROOT/c/implementation.o
+#flag -I vlib/v/tests/project_with_c_code/mod1/c
+#flag vlib/v/tests/project_with_c_code/mod1/c/implementation.o
 
 #include "header.h"
 
