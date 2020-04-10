@@ -24,6 +24,7 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 		exit(1)
 	}
 	// println('starting cgen...')
+	// TODO: move gen.cgen() to c.gen()
 	res := gen.cgen(b.parsed_files, b.table, b.pref)
 	t3 := time.ticks()
 	gen_time := t3 - t2
