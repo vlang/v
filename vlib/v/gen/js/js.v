@@ -350,6 +350,7 @@ fn (g mut JsGen) gen_branch_stmt(it ast.BranchStmt) {
 }
 
 fn (g mut JsGen) gen_const_decl(it ast.ConstDecl) {
+	old_indent := g.indent
 	for i, field in it.fields {
 		// TODO hack. Cut the generated value and paste it into definitions.
 		pos := g.out.len
@@ -357,7 +358,9 @@ fn (g mut JsGen) gen_const_decl(it ast.ConstDecl) {
 		val := g.out.after(pos)
 		g.out.go_back(val.len)
 		typ := g.typ(field.typ)
+		g.constants.write('\t')
 		g.constants.writeln(g.doc.gen_typ(typ, field.name))
+		g.constants.write('\t')
 		g.constants.write('$field.name: $val')
 		if i < it.fields.len - 1 {
 			g.constants.writeln(',')
