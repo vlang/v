@@ -62,8 +62,11 @@ pub fn compile(command string, pref &pref.Preferences) {
 			println('all .v files:')
 			println(files)
 		}
-		// b.build_c(files, b.out_name_c)	// v.pref.out_name + '.c')
-		b.build_c(files, pref.out_name + '.c')
+		mut out_name_c := get_vtmp_filename(pref.out_name, '.tmp.c')
+		if pref.is_so {
+			out_name_c = get_vtmp_filename(pref.out_name, '.tmp.so.c')
+		}	   	   
+		b.build_c(files, out_name_c)
 		b.cc()
 	}
 	if pref.is_stats {
