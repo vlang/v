@@ -151,6 +151,7 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.EnumDecl {
 			g.gen_enum_decl(it)
+			g.writeln('')
 		}
 		ast.FnDecl {
 			g.fn_decl = it
