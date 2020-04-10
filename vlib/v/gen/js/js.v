@@ -251,7 +251,7 @@ fn (g mut JsGen) expr(node ast.Expr) {
 fn (g mut JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 	g.write('tos3(`')
 	for i, val in it.vals {
-		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
+		escaped_val := val.replace_each(['`', '\`', '\r\n', '\n'])
 		g.write(escaped_val)
 		if i >= it.exprs.len {
 			continue
@@ -272,8 +272,7 @@ fn (g mut JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 			g.expr(expr)
 			g.write('.str')
 		} else if it.expr_types[i] == table.bool_type {
-			g.expr(expr)
-			g.write(' ? 4 : 5, ')
+			// `expr ? "true" : "false"`
 			g.expr(expr)
 			g.write(' ? "true" : "false"')
 		}  else {
