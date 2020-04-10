@@ -1,3 +1,8 @@
+
+const (
+    i_am_a_const = 21214
+)
+
 struct done {
 	google int
     amazon bool
