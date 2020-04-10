@@ -26,6 +26,7 @@ struct JsGen {
 	doc				&JsDoc
 	mut:
 	file			ast.File
+	inside_ternary  bool
 	is_test         bool
 	indent			int
 	stmt_start_pos	int
@@ -152,6 +153,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		ast.EnumDecl {
 			g.gen_enum_decl(it)
 			g.writeln('')
+		}
+		ast.ExprStmt {
+			g.gen_expr_stmt(it)
 		}
 		ast.FnDecl {
 			g.fn_decl = it
@@ -402,6 +406,21 @@ fn (g mut JsGen) gen_enum_decl(it ast.EnumDecl) {
 	}
 	g.indent--
 	g.writeln('});')
+}
+
+fn (g mut JsGen) gen_expr_stmt(it ast.ExprStmt) {
+	g.expr(it.expr)
+	expr := it.expr
+	match expr {
+		ast.IfExpr {
+			// no ; after an if expression
+		}
+		else {
+			if !g.inside_ternary {
+				g.writeln(';')
+			}
+		}
+	}
 }
 
 fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
