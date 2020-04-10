@@ -393,11 +393,18 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 			f.writeln('pub mut:')
 		}
 
+		if field.comments.len == 0 {
+			f.write('\t$field.name ')
+			f.write(strings.repeat(` `, max - field.name.len))
+			f.writeln(f.type_to_str(field.typ))
+			continue
+		}
+
 		mut j := 0
 		// Comments before field
 		for j < field.comments.len {
 			comment := field.comments[j]
-			if comment.text == '' || comment.pos.line_nr >= field.pos.line_nr {
+			if comment.pos.line_nr >= field.pos.line_nr {
 				break
 			}
 			f.indent++
@@ -412,8 +419,7 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 		// Comments after field name
 		for j < field.comments.len {
 			comment := field.comments[j]
-			if comment.text == '' || comment.pos.line_nr != field.pos.line_nr 
-			|| comment.pos.pos > field.pos.pos {
+			if comment.pos.pos != field.pos.pos {
 				break
 			}
 			f.write('/* $comment.text */')
@@ -426,7 +432,7 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 		// Comments after field type
 		for j < field.comments.len {
 			comment := field.comments[j]
-			if comment.text == '' || comment.pos.line_nr != field.pos.line_nr {
+			if comment.pos.line_nr != field.pos.line_nr {
 				break
 			}
 			f.write(' // $comment.text')
