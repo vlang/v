@@ -10,6 +10,7 @@ import (
 	v.checker
 	v.parser
 	v.gen
+	v.gen.js
 	v.gen.x64
 )
 
@@ -82,7 +83,7 @@ pub fn (b mut Builder) gen_js(v_files []string) string {
 	if b.checker.nr_errors > 0 {
 		exit(1)
 	}
-	res := gen.jsgen(b.parsed_files, b.table, b.pref)
+	res := js.gen(b.parsed_files, b.table, b.pref)
 	t3 := time.ticks()
 	gen_time := t3 - t2
 	b.info('JS GEN: ${gen_time}ms')

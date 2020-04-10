@@ -1,4 +1,4 @@
-module gen
+module js
 
 import (
 	strings
@@ -27,7 +27,7 @@ struct JsGen {
 	fn_decl			&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 }
 
-pub fn jsgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
+pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
 	mut g := JsGen{
 		out: strings.new_builder(100)
 		definitions: strings.new_builder(100)
@@ -103,12 +103,7 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.writeln('')
 		}
 		ast.Return {
-			g.write('return ')
-			if it.exprs.len > 1 {}
-			else {
-				g.expr(it.exprs[0])
-			}
-			g.writeln(';')
+			g.gen_return_stmt(it)
 		}
 		ast.AssignStmt {
 			if it.left.len > it.right.len {}
@@ -164,78 +159,6 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 
 		else {
 			verror('jsgen.stmt(): bad node')
-		}
-	}
-}
-
-fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
-	if it.no_body {
-		return
-	}
-
-	is_main := it.name == 'main'
-	if is_main {
-		// there is no concept of main in JS but we do have iife
-		g.writeln('/* program entry point */')
-		g.write('(function(')
-	} else {
-		mut name := it.name
-		c := name[0]
-		if c in [`+`, `-`, `*`, `/`] {
-			name = util.replace_op(name)
-		}
-
-		type_name := g.typ(it.return_type)
-
-		// generate jsdoc for the function
-		g.writeln('/**')
-		for i, arg in it.args {
-			arg_type_name := g.typ(arg.typ)
-			is_varg := i == it.args.len - 1 && it.is_variadic
-			if is_varg {
-				g.writeln('* @param {...$arg_type_name} $arg.name')
-			} else {
-				g.writeln('* @param {$arg_type_name} $arg.name')
-			}
-		}
-		g.writeln('* @return {$type_name}')
-		g.writeln('*/')
-
-
-		if it.is_method {
-			// javascript has class methods, so we just assign this function on the class prototype
-			className :=  g.table.get_type_symbol(it.receiver.typ).name
-			g.write('${className}.prototype.${name} = ')
-		}
-		g.write('function ${name}(')
-	}
-	g.fn_args(it.args, it.is_variadic)
-	g.writeln(') {')
-
-	if is_main {
-		g.writeln('\t_vinit();')
-	}
-
-	g.stmts(it.stmts)
-	g.writeln('}')
-	if is_main {
-		g.writeln(')();')
-	}
-	g.fn_decl = 0
-}
-
-fn (g mut JsGen) fn_args(args []table.Arg, is_variadic bool) {
-	no_names := args.len > 0 && args[0].name == 'arg_1'
-	for i, arg in args {
-		is_varg := i == args.len - 1 && is_variadic
-		if is_varg {
-			g.write('...$arg.name')
-		} else {
-			g.write(arg.name)
-		}
-		// if its not the last argument
-		if i < args.len - 1 {
-			g.write(', ')
 		}
 	}
 }
@@ -319,4 +242,106 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			println(term.red('jsgen.expr(): bad node'))
 		}
 	}
+}
+
+fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
+	if it.no_body {
+		return
+	}
+
+	is_main := it.name == 'main'
+	if is_main {
+		// there is no concept of main in JS but we do have iife
+		g.writeln('/* program entry point */')
+		g.write('(function(')
+	} else {
+		mut name := it.name
+		c := name[0]
+		if c in [`+`, `-`, `*`, `/`] {
+			name = util.replace_op(name)
+		}
+
+		type_name := g.typ(it.return_type)
+
+		// generate jsdoc for the function
+		g.writeln('/**')
+		for i, arg in it.args {
+			arg_type_name := g.typ(arg.typ)
+			is_varg := i == it.args.len - 1 && it.is_variadic
+			if is_varg {
+				g.writeln('* @param {...$arg_type_name} $arg.name')
+			} else {
+				g.writeln('* @param {$arg_type_name} $arg.name')
+			}
+		}
+		g.writeln('* @return {$type_name}')
+		g.writeln('*/')
+
+
+		if it.is_method {
+			// javascript has class methods, so we just assign this function on the class prototype
+			className :=  g.table.get_type_symbol(it.receiver.typ).name
+			g.write('${className}.prototype.${name} = ')
+		}
+		g.write('function ${name}(')
+	}
+	g.fn_args(it.args, it.is_variadic)
+	g.writeln(') {')
+
+	if is_main {
+		g.writeln('\t_vinit();')
+	}
+
+	g.stmts(it.stmts)
+	g.writeln('}')
+	if is_main {
+		g.writeln(')();')
+	}
+	g.fn_decl = 0
+}
+
+fn (g mut JsGen) fn_args(args []table.Arg, is_variadic bool) {
+	no_names := args.len > 0 && args[0].name == 'arg_1'
+	for i, arg in args {
+		is_varg := i == args.len - 1 && is_variadic
+		if is_varg {
+			g.write('...$arg.name')
+		} else {
+			g.write(arg.name)
+		}
+		// if its not the last argument
+		if i < args.len - 1 {
+			g.write(', ')
+		}
+	}
+}
+
+fn (g mut JsGen) gen_return_stmt(it ast.Return) {
+	g.write('return ')
+
+	if g.fn_decl.name == 'main' {
+		// we can't return anything in main
+		g.writeln('void;')
+		return
+	}
+
+	// multiple returns
+	if it.exprs.len > 1 {
+		g.write('[')
+		for i, expr in it.exprs {
+			g.expr(expr)
+			if i < it.exprs.len - 1 {
+				g.write(', ')
+			}
+		}
+		g.write(']')
+	}
+	else {
+		g.expr(it.exprs[0])
+	}
+	g.writeln(';')
+}
+
+fn verror(s string) {
+	util.verror('jsgen error', s)
 }
