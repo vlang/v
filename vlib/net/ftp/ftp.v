@@ -223,8 +223,9 @@ fn (ftp FTP) pasv() ?DTP {
 		return error('pasive mode not allowed')
 	}
 
-	dtp := new_dtp(data)
-
+	dtp := new_dtp(data) or {
+	   return error(err)
+	}
 	return dtp
 }
 

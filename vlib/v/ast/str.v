@@ -133,6 +133,9 @@ pub fn (x Expr) str() string {
 		SelectorExpr {
 			return '${it.expr.str()}.${it.field}'
 		}
+		TypeOf {
+			return 'typeof(${it.expr.str()})'
+		}
 		CallExpr {
 			sargs := args2str(it.args)
 			if it.is_method {
