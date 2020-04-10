@@ -130,6 +130,9 @@ pub fn (x Expr) str() string {
 		CastExpr {
 			return '${it.typname}(${it.expr.str()})'
 		}
+		SelectorExpr {
+			return '${it.expr.str()}.${it.field}'
+		}
 		CallExpr {
 			sargs := args2str(it.args)
 			if it.is_method {

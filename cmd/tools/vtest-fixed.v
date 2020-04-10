@@ -21,7 +21,6 @@ const (
 		'vlib/net/ftp/ftp_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/http_test.v',
-		'vlib/net/socket_test.v',
 		'vlib/regex/regex_test.v',
 		'vlib/sqlite/sqlite_test.v', // Linux only
 		'vlib/strconv/ftoa/f32_f64_to_string_test.v',
@@ -56,6 +55,7 @@ const (
 fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
+	os.chdir(vroot)
 	args := os.args
 	args_string := args[1..].join(' ')
 	cmd_prefix := args_string.all_before('test-fixed')
