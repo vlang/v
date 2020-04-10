@@ -212,7 +212,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				f.write('\t$field.name')
 				if field.has_expr {
 					f.write(' = ')
-					f.expr(expr)
+					f.expr(field.expr)
 					f.writeln(',')
 				} else {
 					f.writeln('')
