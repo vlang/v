@@ -14,6 +14,7 @@ import (
 const (
 	//TODO
 	js_reserved = ['delete', 'const', 'let', 'var', 'function', 'continue', 'break', 'switch', 'for', 'in', 'of', 'instanceof', 'typeof']
+	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t']
 )
 
 struct JsGen {
@@ -22,10 +23,13 @@ struct JsGen {
 	definitions 	strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	pref            &pref.Preferences
 	mut:
+	file			ast.File
+	is_test         bool
 	indent			int
 	stmt_start_pos	int
 	fn_decl			&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	str_types		[]string // types that need automatic str() generation
+	empty_line		bool
 }
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -36,10 +40,13 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		pref: pref
 		indent: -1
 		fn_decl: 0
+		empty_line: true
 	}
 	g.init()
 
 	for file in files {
+		g.file = file
+		g.is_test = g.file.path.ends_with('_test.v')
 		g.stmts(file.stmts)
 	}
 
@@ -78,12 +85,22 @@ pub fn (g mut JsGen) typ(t table.Type) string {
 
 pub fn (g &JsGen) save() {}
 
+pub fn (g mut JsGen) gen_indent() {
+	if g.indent > 0 && g.empty_line {
+		g.out.write(tabs[g.indent])
+	}
+	g.empty_line = false
+}
+
 pub fn (g mut JsGen) write(s string) {
+	g.gen_indent()
 	g.out.write(s)
 }
 
 pub fn (g mut JsGen) writeln(s string) {
+	g.gen_indent()
 	g.out.writeln(s)
+	g.empty_line = true
 }
 
 fn (g mut JsGen) stmts(stmts []ast.Stmt) {
@@ -98,6 +115,12 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.out.len
 
 	match node {
+		ast.AssertStmt {
+			g.gen_assert_stmt(it)
+		}
+		ast.AssignStmt {
+			g.gen_assign_stmt(it)
+		}
 		ast.FnDecl {
 			g.fn_decl = it
 			g.gen_fn_decl(it)
@@ -105,20 +128,6 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.Return {
 			g.gen_return_stmt(it)
-		}
-		ast.AssignStmt {
-			if it.left.len > it.right.len {}
-			// TODO: multi return
-			else {
-				for i, ident in it.left {
-					var_info := ident.var_info()
-					var_type_sym := g.table.get_type_symbol(var_info.typ)
-					val := it.right[i]
-					g.write('var /* $var_type_sym.name */ $ident.name = ')
-					g.expr(val)
-					g.writeln(';')
-				}
-			}
 		}
 		ast.ForStmt {
 			g.write('while (')
@@ -130,34 +139,12 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.StructDecl {
-			g.writeln('class $it.name {')
-			for field in it.fields {
-				typ := g.typ(field.typ)
-				g.writeln('\t/**')
-				g.writeln('\t* @type {$typ} - ${field.name}') // the type
-				g.writeln('\t*/')
-				g.write('\t')
-				g.write(field.name) // field name
-				g.write(' = ') // seperator
-				g.write('undefined;') //TODO default value for type
-				g.write('\n')
-			}
-			g.writeln('}')
+			g.gen_struct_decl(it)
 			g.writeln('')
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
 		}
-		/*
-			match it.expr {
-				// no ; after an if expression
-				ast.IfExpr {}
-				else {
-					g.writeln(';')
-				}
-	}
-	*/
-
 		else {
 			verror('jsgen.stmt(): bad node')
 		}
@@ -310,6 +297,79 @@ fn (g mut JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 	g.write('`)')
 }
 
+fn (g mut JsGen) gen_assert_stmt(a ast.AssertStmt) {
+	g.writeln('// assert')
+	g.write('if( ')
+	g.expr(a.expr)
+	g.write(' ) {')
+	s_assertion := a.expr.str().replace('"', "\'")
+	mut mod_path := g.file.path
+	if g.is_test {
+		g.writeln('	g_test_oks++;')
+		g.writeln('	cb_assertion_ok("${mod_path}", ${a.pos.line_nr+1}, "assert ${s_assertion}", "${g.fn_decl.name}()" );')
+		g.writeln('} else {')
+		g.writeln('	g_test_fails++;')
+		g.writeln('	cb_assertion_failed("${mod_path}", ${a.pos.line_nr+1}, "assert ${s_assertion}", "${g.fn_decl.name}()" );')
+		g.writeln('	exit(1);')
+		g.writeln('}')
+		return
+	}
+	g.writeln('} else {')
+	g.writeln('	eprintln("${mod_path}:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
+	g.writeln('	exit(1);')
+	g.writeln('}')
+}
+
+fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
+	if it.left.len > it.right.len {
+		// multi return
+		doc := strings.new_builder(50)
+		doc.writeln('/**')
+		doc.write('* @type {[')
+		stmt := strings.new_builder(50)
+		stmt.write('const [')
+		for i, ident in it.left {
+			ident_var_info := ident.var_info()
+			styp := g.typ(ident_var_info.typ)
+			doc.write(styp)
+			if ident.kind == .blank_ident {
+				stmt.write('_')
+			} else {
+				stmt.write('$ident.name')				
+			}
+			if i < it.left.len - 1 {
+				doc.write(', ')
+				stmt.write(', ')
+			}
+		}
+		doc.writeln(']}')
+		doc.writeln('*/')
+		stmt.write('] = ')
+		g.write(doc.str() + stmt.str())
+		g.expr(it.right[0])
+		g.writeln(';')
+	}
+	else {
+		// `a := 1` | `a,b := 1,2`
+		for i, ident in it.left {
+			val := it.right[i]
+			ident_var_info := ident.var_info()
+			styp := g.typ(ident_var_info.typ)
+			g.writeln('/**')
+			g.writeln('* @type {$styp}')
+			g.writeln('*/')
+			if ident.kind == .blank_ident {
+				g.write('const _ = ')
+				g.expr(val)
+			} else {
+				g.write('const $ident.name = ')
+				g.expr(val)
+			}
+			g.writeln(';')
+		}
+	}
+}
+
 fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 	if it.no_body {
 		return
@@ -408,6 +468,7 @@ fn (g mut JsGen) gen_return_stmt(it ast.Return) {
 	g.writeln(';')
 }
 
+
 fn (g mut JsGen) enum_expr(node ast.Expr) {
 	match node {
 		ast.EnumVal {
@@ -431,6 +492,22 @@ fn (g JsGen) type_to_fmt(typ table.Type) string {
 		return '%g'		// g removes trailing zeros unlike %f
 	}
 	return '%d'
+}
+
+fn (g mut JsGen) gen_struct_decl(it ast.StructDecl) {
+	g.writeln('class $it.name {')
+	for field in it.fields {
+		typ := g.typ(field.typ)
+		g.writeln('\t/**')
+		g.writeln('\t* @type {$typ} - ${field.name}') // the type
+		g.writeln('\t*/')
+		g.write('\t')
+		g.write(field.name) // field name
+		g.write(' = ') // seperator
+		g.write('undefined;') //TODO default value for type
+		g.write('\n')
+	}
+	g.writeln('}')
 }
 
 fn verror(s string) {

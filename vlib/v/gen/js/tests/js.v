@@ -12,4 +12,6 @@ fn hello(game_on int, dummy ...string) (int, int) {
     return game_on + 2, 221
 }
 
-fn (it done) method() {}
+fn (it done) method() {
+   a, b := hello(2, 'google', 'not google')
+}
