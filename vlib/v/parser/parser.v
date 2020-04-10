@@ -1712,9 +1712,9 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 		p.next()
 	}
 	idents := p.parse_assign_lhs()
-	pos := p.tok.position()
 	op := p.tok.kind
 	p.next()	// :=, =
+	pos := p.tok.position()
 	exprs := p.parse_assign_rhs()
 	is_decl := op == .decl_assign
 	for i, ident in idents {

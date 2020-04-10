@@ -590,14 +590,21 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		}
 		right_type := c.expr(assign_stmt.right[0])
 		right_type_sym := c.table.get_type_symbol(right_type)
-		mr_info := right_type_sym.mr_info()
 		if right_type_sym.kind != .multi_return {
-			c.error('wrong number of vars', assign_stmt.pos)
+			c.error('expression on the right does not return multiple values, while at least $assign_stmt.left.len are expected', assign_stmt.pos)
+			return
+		}
+		mr_info := right_type_sym.mr_info()
+		if mr_info.types.len < assign_stmt.left.len {
+			c.error('right expression returns only $mr_info.types.len values, but left one expects $assign_stmt.left.len', assign_stmt.pos)
 		}
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
 			mut ident := assign_stmt.left[i]
 			mut ident_var_info := ident.var_info()
+			if i >= mr_info.types.len {
+				continue
+			}
 			val_type := mr_info.types[i]
 			if assign_stmt.op == .assign {
 				var_type := c.expr(ident)
