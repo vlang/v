@@ -56,6 +56,7 @@ pub:
 	val    string
 	is_raw bool
 	is_c   bool
+	pos    token.Position
 }
 
 // 'name: $name'
@@ -64,6 +65,7 @@ pub:
 	vals       []string
 	exprs      []Expr
 	expr_fmts  []string
+	pos        token.Position
 mut:
 	expr_types []table.Type
 }

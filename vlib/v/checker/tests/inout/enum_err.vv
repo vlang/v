@@ -1,0 +1,4 @@
+enum Color {
+    green = 'green',
+    blue,
+}
