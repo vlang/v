@@ -23,6 +23,7 @@ struct JsGen {
 	definitions 	strings.Builder
 	constants		strings.Builder // all global V constants 
 	pref            &pref.Preferences
+	doc				&JsDoc
 	mut:
 	file			ast.File
 	is_test         bool
@@ -33,7 +34,7 @@ struct JsGen {
 }
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
-	mut g := JsGen{
+	mut g := &JsGen{
 		out: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		constants: strings.new_builder(100)
@@ -42,7 +43,9 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		indent: -1
 		fn_decl: 0
 		empty_line: true
+		doc: 0
 	}
+	g.doc = new_jsdoc(g)
 	g.init()
 
 	for file in files {
@@ -296,7 +299,7 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 		}
 		jsdoc.write(']')
 		stmt.write('] = ')
-		g.write(gen_typ_jsdoc(jsdoc.str(), ''))
+		g.writeln(g.doc.gen_typ(jsdoc.str(), ''))
 		g.write(stmt.str())
 		g.expr(it.right[0])
 		g.writeln(';')
@@ -307,7 +310,7 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			val := it.right[i]
 			ident_var_info := ident.var_info()
 			styp := g.typ(ident_var_info.typ)
-			g.write(gen_typ_jsdoc(styp, ident.name))
+			g.writeln(g.doc.gen_typ(styp, ident.name))
 			if ident.kind == .blank_ident {
 				g.write('const _ = ')
 				g.expr(val)
@@ -338,7 +341,7 @@ fn (g mut JsGen) gen_const_decl(it ast.ConstDecl) {
 		val := g.out.after(pos)
 		g.out.go_back(val.len)
 		typ := g.typ(field.typ)
-		g.constants.write(gen_typ_jsdoc(typ, field.name))
+		g.constants.writeln(g.doc.gen_typ(typ, field.name))
 		g.constants.write('$field.name: $val')
 		if i < it.fields.len - 1 {
 			g.constants.writeln(',')
@@ -453,28 +456,18 @@ fn (g mut JsGen) gen_return_stmt(it ast.Return) {
 
 fn (g mut JsGen) gen_struct_decl(it ast.StructDecl) {
 	g.writeln('class $it.name {')
+	g.indent++
 	for field in it.fields {
 		typ := g.typ(field.typ)
-		g.write(gen_typ_jsdoc(typ, field.name))
+		g.writeln(g.doc.gen_typ(typ, field.name))
 		g.write(field.name) // field name
 		g.write(' = ') // seperator
 		g.writeln('undefined;') //TODO default value for type
 	}
+	g.indent--
 	g.writeln('}')
 }
 
 fn verror(s string) {
 	util.verror('jsgen error', s)
-}
-
-fn gen_typ_jsdoc(typ string, name string) string {
-	jsdoc := strings.new_builder(20)
-	jsdoc.writeln('/**')
-	jsdoc.write('* @type {$typ}')
-	if name.len > 0 {
-		jsdoc.write(' - $name')
-	}
-	jsdoc.writeln('')
-	jsdoc.writeln('*/')
-	return jsdoc.str()
 }
