@@ -2,13 +2,9 @@ module big
 
 // Wrapper for https://github.com/kokke/tiny-bignum-c
 
-#flag -I @VROOT/thirdparty/bignum
-#flag @VROOT/thirdparty/bignum/bn.o
+#flag -I thirdparty/bignum
+#flag thirdparty/bignum/bn.o
 #include "bn.h"
-
-const (
-	STRING_BUFFER_SIZE = 8192
-)
 
 pub struct Number {
 	array [32]u32
@@ -77,8 +73,8 @@ pub fn (n Number) str() string {
 }
 
 pub fn (n Number) hexstr() string {
-	mut buf := [STRING_BUFFER_SIZE]byte
-	C.bignum_to_string( &n, buf, STRING_BUFFER_SIZE)
+	mut buf := [8192]byte
+	C.bignum_to_string( &n, buf, 8192)
 	// NB: bignum_to_string , returns the HEXADECIMAL representation of the bignum n
 	s := tos_clone( buf )
 	if s.len == 0 { return '0' }
