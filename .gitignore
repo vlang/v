@@ -84,3 +84,6 @@ cachegrind.out.*
 /thirdparty/pg
 exe
 vlib/v/tests/inout/*.v
+!vlib/v/tests/inout/*_test.v
+vlib/v/checker/tests/inout/*.v
+!vlib/v/checker/tests/inout/*_test.v

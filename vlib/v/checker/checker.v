@@ -1067,8 +1067,8 @@ fn expr_pos(node ast.Expr) token.Position {
 		// ast.ParExpr { }
 		ast.SelectorExpr { return it.pos }
 		// ast.SizeOf { }
-		// ast.StringLiteral { }
-		// ast.StringInterLiteral { }
+		ast.StringLiteral { return it.pos }
+		ast.StringInterLiteral { return it.pos }
 		ast.StructInit { return it.pos }
 		// ast.Type { }
 		// ast.TypeOf { }
