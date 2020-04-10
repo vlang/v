@@ -68,7 +68,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		scanner: scanner.new_scanner_file(path, comments_mode)
 		table: table
 		file_name: path
-		file_name_dir: os.dir( path )
+		file_name_dir: os.dir(path)
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
@@ -78,12 +78,16 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	}
 	// comments_mode: comments_mode
 	p.read_first_token()
-	// module decl
-	module_decl := if p.tok.kind == .key_module { p.module_decl() } else { ast.Module{
-			name: 'main'
-		} }
-	p.mod = module_decl.name
-	p.builtin_mod = p.mod == 'builtin'
+	for p.tok.kind == .comment {
+		mut stmt := ast.Stmt{}		// TODO sum type << bug
+		com := p.comment()
+		stmt = com
+		stmts << stmt
+	}
+	mut mstmt := ast.Stmt{}
+	module_decl := p.module_decl()
+	mstmt = module_decl
+	stmts << mstmt
 	// imports
 	/*
 	mut imports := []ast.Import
@@ -92,7 +96,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	}
 */
 	// TODO: import only mode
-	for  {
+	for {
 		// res := s.scan()
 		if p.tok.kind == .eof {
 			// println('EOF, breaking')
@@ -203,7 +207,7 @@ pub fn (p mut Parser) parse_block_no_scope() []ast.Stmt {
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt
 	if p.tok.kind != .rcbr {
-		for  {
+		for {
 			stmts << p.stmt()
 			// p.warn('after stmt(): tok=$p.tok.str()')
 			if p.tok.kind in [.eof, .rcbr] {
@@ -250,6 +254,10 @@ fn (p mut Parser) check_name() string {
 }
 
 pub fn (p mut Parser) top_stmt() ast.Stmt {
+	if p.fileis('mmm.v') {
+		print('!!stmt()')
+		println(p.tok.kind.str())
+	}
 	match p.tok.kind {
 		.key_pub {
 			match p.peek_tok.kind {
@@ -282,9 +290,6 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		}
 		.key_interface {
 			return p.interface_decl()
-		}
-		.key_module {
-			return p.module_decl()
 		}
 		.key_import {
 			node := p.import_stmt()
@@ -852,14 +857,14 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			// will fudge left shift as it makes it right assoc
 			// `arr << 'a'` | `arr << 'a' + 'b'`
 			tok := p.tok
-			pos :=  tok.position()
+			pos := tok.position()
 			p.next()
 			right := p.expr(precedence - 1)
 			node = ast.InfixExpr{
 				left: node
 				right: right
 				op: tok.kind
-				pos:pos
+				pos: pos
 			}
 		} else if p.tok.kind.is_infix() {
 			node = p.infix_expr(node)
@@ -1348,7 +1353,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	last_pos := p.tok.position()
 	len := last_pos.pos - first_pos.pos
 	pos := token.Position{
-		line_nr: first_pos.line_nr,
+		line_nr: first_pos.line_nr
 		pos: first_pos.pos
 		len: len
 	}
@@ -1403,10 +1408,14 @@ fn (p mut Parser) parse_number_literal() ast.Expr {
 }
 
 fn (p mut Parser) module_decl() ast.Module {
-	p.check(.key_module)
-	mod := p.check_name()
-	full_mod := p.table.qualify_module(mod, p.file_name)
+	mut name := 'main'
+	if p.tok.kind == .key_module {
+		p.check(.key_module)
+		name = p.check_name()
+	}
+	full_mod := p.table.qualify_module(name, p.file_name)
 	p.mod = full_mod
+	p.builtin_mod = p.mod == 'builtin'
 	return ast.Module{
 		name: full_mod
 	}
@@ -1650,7 +1659,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 			pos: p.tok.position()
 		}
 	}
-	for  {
+	for {
 		expr := p.expr(0)
 		exprs << expr
 		if p.tok.kind == .comma {
@@ -1669,7 +1678,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (p mut Parser) parse_assign_lhs() []ast.Ident {
 	mut idents := []ast.Ident
-	for  {
+	for {
 		is_mut := p.tok.kind == .key_mut
 		if is_mut {
 			p.check(.key_mut)
@@ -1696,7 +1705,7 @@ fn (p mut Parser) parse_assign_lhs() []ast.Ident {
 // right hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (p mut Parser) parse_assign_rhs() []ast.Expr {
 	mut exprs := []ast.Expr
-	for  {
+	for {
 		expr := p.expr(0)
 		exprs << expr
 		if p.tok.kind == .comma {
@@ -1804,7 +1813,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 	p.check(.lcbr)
 	mut branches := []ast.MatchBranch
 	mut have_final_else := false
-	for  {
+	for {
 		comment := p.check_comment()		// comment before {}
 		mut exprs := []ast.Expr
 		branch_pos := p.tok.position()
@@ -1838,7 +1847,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 			is_sum_type = true
 		} else {
 			// Expression match
-			for  {
+			for {
 				p.inside_match_case = true
 				expr := p.expr(0)
 				p.inside_match_case = false
@@ -1918,8 +1927,6 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	return ast.EnumDecl{
 		name: name
 		is_pub: is_pub
-		// vals: vals
-		// default_exprs: default_exprs
 		fields: fields
 	}
 }
@@ -1935,7 +1942,7 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 	if p.tok.kind == .assign {
 		// type SumType = A | B | c
 		p.next()
-		for  {
+		for {
 			variant_type := p.parse_type()
 			sum_variants << variant_type
 			if p.tok.kind != .pipe {
@@ -1995,7 +2002,7 @@ fn (p mut Parser) assoc() ast.Assoc {
 	mut fields := []string
 	mut vals := []ast.Expr
 	p.check(.pipe)
-	for  {
+	for {
 		fields << p.check_name()
 		p.check(.colon)
 		expr := p.expr(0)

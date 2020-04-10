@@ -36,7 +36,7 @@ pub fn fmt(file ast.File, table &table.Table) string {
 		file: file
 	}
 	f.cur_mod = 'main'
-	for stmt in file.stmts {
+	for i, stmt in file.stmts {
 		f.stmt(stmt)
 	}
 	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
@@ -279,7 +279,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		ast.ForStmt {
 			f.write('for ')
 			f.expr(it.cond)
-			f.writeln(' {')
+			if it.is_inf {
+				f.writeln('{')
+			} else {
+				f.writeln(' {')
+			}
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}

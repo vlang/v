@@ -466,6 +466,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.InterfaceDecl {
 			g.writeln('// interface')
 		}
+		ast.Module {}
 		ast.Return {
 			if g.defer_stmts.len > 0 {
 				g.write_defer_stmts()

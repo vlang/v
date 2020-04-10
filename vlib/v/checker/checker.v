@@ -60,6 +60,17 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	for file in ast_files {
 		c.check(file)
 	}
+	// Make sure fn main is defined in non lib builds
+	if c.pref.build_mode == .build_module {
+		return
+	}
+	for i, f in c.table.fns {
+		if f.name == 'main' {
+			return
+		}
+	}
+	eprintln('function `main` is undeclared in the main module')
+	exit(1)
 }
 
 pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {

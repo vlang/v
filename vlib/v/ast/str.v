@@ -19,7 +19,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		mut styp := t.type_to_str(node.receiver.typ)
 		mut m := if node.rec_mut { 'mut ' } else { '' }
 		if node.rec_mut {
-			styp = styp[1..] // remove &
+			styp = styp[1..]			// remove &
 		}
 		receiver = '($node.receiver.name $m$styp) '
 		/*
