@@ -112,7 +112,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	g.write_variadic_types()
 	// g.write_str_definitions()
-	g.write_init_function()
+	if g.pref.build_mode != .build_module {
+		// no init in builtin.o
+		g.write_init_function()
+	}
 	if g.is_test {
 		g.write_tests_main()
 	}
@@ -138,18 +141,25 @@ pub fn (g mut Gen) init() {
 	g.write_builtin_types()
 	g.write_typedef_types()
 	g.write_typeof_functions()
-	g.write_str_definitions()
+	if g.pref.build_mode != .build_module {
+		// _STR functions should not be defined in builtin.o
+		g.write_str_fn_definitions()
+	}
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
 	//
 	g.stringliterals.writeln('')
 	g.stringliterals.writeln('// >> string literal consts')
-	g.stringliterals.writeln('void vinit_string_literals(){')
+	if g.pref.build_mode != .build_module {
+		g.stringliterals.writeln('void vinit_string_literals(){')
+	}
 }
 
 pub fn (g mut Gen) finish() {
-	g.stringliterals.writeln('}')
+	if g.pref.build_mode != .build_module {
+		g.stringliterals.writeln('}')
+	}
 	g.stringliterals.writeln('// << string literal consts')
 	g.stringliterals.writeln('')
 }
@@ -352,7 +362,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.ConstDecl {
+			// if g.pref.build_mode != .build_module {
 			g.const_decl(it)
+			// }
 		}
 		ast.CompIf {
 			g.comp_if(it)
@@ -808,6 +820,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		} else {
 			name = c_name(name)
 		}
+		// if g.pref.show_cc && it.is_builtin {
+		// println(name)
+		// }
 		// type_name := g.table.Type_to_str(it.return_type)
 		type_name := g.typ(it.return_type)
 		g.write('$type_name ${name}(')
@@ -832,8 +847,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 */
 	//
 	g.fn_args(it.args, it.is_variadic)
-	if it.no_body {
+	if it.no_body || (g.pref.show_cc && it.is_builtin) {
 		// Just a function header.
+		// Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');')
 		g.writeln(');')
 		return
@@ -1437,8 +1453,8 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		g.write(',')
 		g.expr(node.right)
 		g.write(')')
-	} else if node.op in [.plus, .minus, .mul, .div, .mod] && (left_sym.name[0].is_capital() || left_sym.name.contains('.')) &&
-		left_sym.kind != .alias {
+	} else if node.op in [.plus, .minus, .mul, .div, .mod] && (left_sym.name[0].is_capital() ||
+		left_sym.name.contains('.')) && left_sym.kind != .alias {
 		// !left_sym.is_number() {
 		g.write(g.typ(node.left_type))
 		g.write('_')
@@ -1903,7 +1919,9 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 			}
 			ast.StringLiteral {
 				g.definitions.writeln('string _const_$name; // a string literal, inited later')
-				g.stringliterals.writeln('\t_const_$name = $val;')
+				if g.pref.build_mode != .build_module {
+					g.stringliterals.writeln('\t_const_$name = $val;')
+				}
 			}
 			else {
 				// Initialize more complex consts in `void _vinit(){}`
@@ -2127,7 +2145,7 @@ fn (g mut Gen) write_init_function() {
 	}
 }
 
-fn (g mut Gen) write_str_definitions() {
+fn (g mut Gen) write_str_fn_definitions() {
 	// _STR function can't be defined in vlib
 	g.writeln('
 string _STR(const char *fmt, ...) {

@@ -104,6 +104,8 @@ fn main() {
 		else {}
 	}
 	if command in ['run', 'build'] || command.ends_with('.v') || os.exists(command) {
+		println('command')
+		println(prefs.path)
 		builder.compile(command, prefs)
 		return
 	}
@@ -176,6 +178,10 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 		res.is_run = true
 		res.path = args[command_pos+1]
 		res.run_args = args[command_pos+1..]
+	}
+	if command == 'build' {
+		res.build_mode = .build_module
+		res.path = args[command_pos+1]
 	}
 	if res.is_verbose {
 		println('setting pref.path to "$res.path"')

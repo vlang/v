@@ -222,7 +222,12 @@ void _vcleanup();
 #include <intrin.h>
 #pragma intrinsic(_umul128)
 #endif
-const uint64_t _wyp0=0xa0761d6478bd642full, _wyp1=0xe7037ed1a0b428dbull;
+
+//const uint64_t _wyp0=0xa0761d6478bd642full, _wyp1=0xe7037ed1a0b428dbull;
+#define _wyp0 ((uint64_t)0xa0761d6478bd642full)
+#define _wyp1 ((uint64_t)0xe7037ed1a0b428dbull)
+
+
 #if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
 #define _likely_(x) __builtin_expect(x, 1)
 #else

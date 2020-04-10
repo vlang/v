@@ -301,6 +301,11 @@ fn (v mut Builder) cc() {
 	// add all flags (-I -l -L etc) not .o files
 	a << cflags.c_options_without_object_files()
 	a << libs
+
+	if v.pref.show_cc {
+		a << pref.default_module_path + '/cache/vlib/builtin.o'
+	}
+
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
 	if !v.pref.is_bare && v.pref.build_mode != .build_module && v.pref.os in [.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku] {

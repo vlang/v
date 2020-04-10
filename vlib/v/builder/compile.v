@@ -31,7 +31,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 	mut b := new_builder(pref)
 	if pref.is_verbose {
 		println('builder.compile() pref:')
-		println(pref)
+		// println(pref)
 	}
 	mut tmark := benchmark.new_benchmark()
 	mut files := []string
@@ -65,7 +65,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 		mut out_name_c := get_vtmp_filename(pref.out_name, '.tmp.c')
 		if pref.is_so {
 			out_name_c = get_vtmp_filename(pref.out_name, '.tmp.so.c')
-		}	   	   
+		}
 		b.build_c(files, out_name_c)
 		b.cc()
 	}
@@ -145,6 +145,13 @@ fn (v mut Builder) set_module_lookup_paths() {
 }
 
 pub fn (v Builder) get_builtin_files() []string {
+	if v.pref.build_mode == .build_module && v.pref.path == 'vlib/builtin' {		// .contains('builtin/' +  location {
+		// We are already building builtin.o, no need to import them again
+		if v.pref.is_verbose {
+			println('skipping builtin modules for builtin.o')
+		}
+		return []
+	}
 	// println('get_builtin_files() lookuppath:')
 	// println(v.pref.lookup_path)
 	// Lookup for built-in folder in lookup path.

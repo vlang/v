@@ -196,14 +196,16 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		is_pub: is_pub
 		is_variadic: is_variadic
 		receiver: ast.Field{
-		name: rec_name
-		typ: rec_type
-	}
+			name: rec_name
+			typ: rec_type
+		}
 		is_method: is_method
 		rec_mut: rec_mut
 		is_c: is_c
 		no_body: no_body
 		pos: p.tok.position()
+		is_builtin: p.builtin_mod || p.mod in ['math', 'strconv', 'strconv.ftoa', 'hash.wyhash',
+			'math.bits', 'strings']
 	}
 }
 
