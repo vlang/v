@@ -14,6 +14,7 @@ import (
 const (
 	//TODO
 	js_reserved = ['delete', 'const', 'let', 'var', 'function', 'continue', 'break', 'switch', 'for', 'in', 'of', 'instanceof', 'typeof']
+	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t']
 )
 
 struct JsGen {
@@ -25,6 +26,7 @@ struct JsGen {
 	indent			int
 	stmt_start_pos	int
 	fn_decl			&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	empty_line		bool
 }
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -35,6 +37,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		pref: pref
 		indent: -1
 		fn_decl: 0
+		empty_line: true
 	}
 	g.init()
 
@@ -77,12 +80,22 @@ pub fn (g mut JsGen) typ(t table.Type) string {
 
 pub fn (g &JsGen) save() {}
 
+pub fn (g mut JsGen) gen_indent() {
+	if g.indent > 0 && g.empty_line {
+		g.out.write(tabs[g.indent])
+	}
+	g.empty_line = false
+}
+
 pub fn (g mut JsGen) write(s string) {
+	g.gen_indent()
 	g.out.write(s)
 }
 
 pub fn (g mut JsGen) writeln(s string) {
+	g.gen_indent()
 	g.out.writeln(s)
+	g.empty_line = true
 }
 
 fn (g mut JsGen) stmts(stmts []ast.Stmt) {
