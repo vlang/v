@@ -500,9 +500,10 @@ mut:
 }
 
 pub struct EnumField {
-	name  string
-	pos   token.Position
-	exprs []Expr
+	name     string
+	pos      token.Position
+	expr     Expr
+	has_expr bool
 }
 
 pub struct EnumDecl {
