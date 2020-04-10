@@ -40,6 +40,16 @@ pub fn compile(command string, pref &pref.Preferences) {
 		files << pref.path
 		b.set_module_lookup_paths()
 		b.build_x64(files, pref.out_name)
+	} else if pref.backend == .js {
+		//TODO files << b.get_builtin_files()
+		files << b.get_user_files()
+		b.set_module_lookup_paths()
+		if pref.is_verbose {
+			println('all .v files:')
+			println(files)
+		}
+		b.build_js(files, pref.out_name + '.js')
+		//TODO run the file
 	} else {
 		if os.user_os() != 'windows' && pref.ccompiler == 'msvc' {
 			verror('Cannot build with msvc on ${os.user_os()}')

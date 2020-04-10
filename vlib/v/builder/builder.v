@@ -25,6 +25,7 @@ mut:
 	parsed_files        []ast.File
 	global_scope        &ast.Scope
 	out_name_c          string
+	out_name_js			string
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -67,6 +68,27 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 	return res
 }
 
+pub fn (b mut Builder) gen_js(v_files []string) string {
+	t0 := time.ticks()
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
+	b.parse_imports()
+	t1 := time.ticks()
+	parse_time := t1 - t0
+	b.info('PARSE: ${parse_time}ms')
+	b.checker.check_files(b.parsed_files)
+	t2 := time.ticks()
+	check_time := t2 - t1
+	b.info('CHECK: ${check_time}ms')
+	if b.checker.nr_errors > 0 {
+		exit(1)
+	}
+	res := gen.jsgen(b.parsed_files, b.table, b.pref)
+	t3 := time.ticks()
+	gen_time := t3 - t2
+	b.info('JS GEN: ${gen_time}ms')
+	return res
+}
+
 pub fn (b mut Builder) build_c(v_files []string, out_file string) {
 	b.out_name_c = out_file
 	b.info('build_c($out_file)')
@@ -76,6 +98,16 @@ pub fn (b mut Builder) build_c(v_files []string, out_file string) {
 	f.writeln(b.gen_c(v_files))
 	f.close()
 	// os.write_file(out_file, b.gen_c(v_files))
+}
+
+pub fn (b mut Builder) build_js(v_files []string, out_file string) {
+	b.out_name_js = out_file
+	b.info('build_js($out_file)')
+	mut f := os.create(out_file) or {
+		panic(err)
+	}
+	f.writeln(b.gen_js(v_files))
+	f.close()
 }
 
 pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
