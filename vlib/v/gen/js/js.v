@@ -257,29 +257,28 @@ fn (g mut JsGen) gen_assert_stmt(a ast.AssertStmt) {
 fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 	if it.left.len > it.right.len {
 		// multi return
-		doc := strings.new_builder(50)
-		doc.writeln('/**')
-		doc.write('* @type {[')
+		jsdoc := strings.new_builder(50)
+		jsdoc.write('[')
 		stmt := strings.new_builder(50)
 		stmt.write('const [')
 		for i, ident in it.left {
 			ident_var_info := ident.var_info()
 			styp := g.typ(ident_var_info.typ)
-			doc.write(styp)
+			jsdoc.write(styp)
 			if ident.kind == .blank_ident {
 				stmt.write('_')
 			} else {
 				stmt.write('$ident.name')				
 			}
 			if i < it.left.len - 1 {
-				doc.write(', ')
+				jsdoc.write(', ')
 				stmt.write(', ')
 			}
 		}
-		doc.writeln(']}')
-		doc.writeln('*/')
+		jsdoc.write(']')
 		stmt.write('] = ')
-		g.write(doc.str() + stmt.str())
+		g.write_jsdoc(jsdoc.str(), '')
+		g.write(stmt.str())
 		g.expr(it.right[0])
 		g.writeln(';')
 	}
@@ -289,9 +288,7 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			val := it.right[i]
 			ident_var_info := ident.var_info()
 			styp := g.typ(ident_var_info.typ)
-			g.writeln('/**')
-			g.writeln('* @type {$styp}')
-			g.writeln('*/')
+			g.write_jsdoc(styp, ident.name)
 			if ident.kind == .blank_ident {
 				g.write('const _ = ')
 				g.expr(val)
@@ -406,9 +403,7 @@ fn (g mut JsGen) gen_struct_decl(it ast.StructDecl) {
 	g.writeln('class $it.name {')
 	for field in it.fields {
 		typ := g.typ(field.typ)
-		g.writeln('\t/**')
-		g.writeln('\t* @type {$typ} - ${field.name}') // the type
-		g.writeln('\t*/')
+		g.write_jsdoc(typ, field.name)
 		g.write('\t')
 		g.write(field.name) // field name
 		g.write(' = ') // seperator
@@ -420,4 +415,14 @@ fn (g mut JsGen) gen_struct_decl(it ast.StructDecl) {
 
 fn verror(s string) {
 	util.verror('jsgen error', s)
+}
+
+fn (g mut JsGen) write_jsdoc(typ string, name string){
+	g.writeln('/**')
+	g.write('* @type {$typ}')
+	if name.len > 0 {
+		g.write(' - $name')
+	}
+	g.writeln('')
+	g.writeln('*/')
 }
