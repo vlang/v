@@ -960,6 +960,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
+		p.check(.rpar)
 		mut or_stmts := []ast.Stmt
 		mut is_or_block_used := false
 		if p.tok.kind == .key_orelse {

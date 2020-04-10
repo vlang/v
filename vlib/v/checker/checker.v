@@ -215,7 +215,7 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	if !c.table.check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
-		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name` ', assign_expr.pos)
+		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name` ', expr_pos(assign_expr.val))
 	}
 	c.check_expr_opt_call(assign_expr.val, right_type, true)
 }
