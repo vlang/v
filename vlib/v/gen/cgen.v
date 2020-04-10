@@ -799,7 +799,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	} else {
 		mut name := it.name
 		c := name[0]
-		if c in [`+`, `-`, `*`, `/`] {
+		if c in [`+`, `-`, `*`, `/`, `%`] {
 			name = util.replace_op(name)
 		}
 		if it.is_method {
@@ -1439,7 +1439,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		g.write(',')
 		g.expr(node.right)
 		g.write(')')
-	} else if node.op in [.plus, .minus, .mul, .div] && (left_sym.name[0].is_capital() || left_sym.name.contains('.')) &&
+	} else if node.op in [.plus, .minus, .mul, .div, .mod] && (left_sym.name[0].is_capital() || left_sym.name.contains('.')) &&
 		left_sym.kind != .alias {
 		// !left_sym.is_number() {
 		g.write(g.typ(node.left_type))
