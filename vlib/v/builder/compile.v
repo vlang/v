@@ -39,6 +39,10 @@ pub fn compile(command string, pref &pref.Preferences) {
 		.c { b.compile_c(files, pref) }
 		.js { b.compile_js(files, pref) }
 		.x64 { b.compile_x64(files, pref) }
+		else {
+			eprintln('backend not implemented `$pref.backend`')
+			exit(1)
+		}
 	}
 	if pref.is_stats {
 		tmark.stop()
