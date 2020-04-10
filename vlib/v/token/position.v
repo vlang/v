@@ -10,6 +10,10 @@ pub:
 	len     int // length of the literal in the source
 }
 
+pub fn (pos Position) str() string {
+	return 'Position{ line_nr: $pos.line_nr, pos: $pos.pos, len: $pos.len }'
+}
+
 [inline]
 pub fn (tok &Token) position() Position {
 	return Position{

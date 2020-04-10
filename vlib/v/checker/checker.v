@@ -706,7 +706,7 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 		idx := c.table.find_or_register_array(elem_type, 1)
 		array_init.typ = table.new_type(idx)
 		array_init.elem_type = elem_type
-	} else if array_init.exprs.len == 1 && array_init.elem_type != table.void_type {
+	} else if array_init.is_fixed && array_init.exprs.len == 1 && array_init.elem_type != table.void_type {
 		// [50]byte
 		mut fixed_size := 1
 		match array_init.exprs[0] {
@@ -714,19 +714,23 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 				fixed_size = it.val.int()
 			}
 			ast.Ident {
-				/*
-				QTODO
-				scope := c.file.scope.innermost(array_init.pos.pos)
-				if obj := c.file.global_scope.find(it.name) {
+				//if obj := c.file.global_scope.find_const(it.name) {
+				//if  obj := scope.find(it.name) {
+				//scope := c.file.scope.innermost(array_init.pos.pos)
+				//eprintln('scope: ${scope.str()}')
+				//scope.find(it.name) or {
+				//	c.error('undefined: `$it.name`', array_init.pos)
+				//}
+				mut full_const_name := if it.mod == 'main' { it.name } else {it.mod + '.' + it.name }
+				if  obj := c.file.global_scope.find_const( full_const_name ) {
+					cf := ast.ConstField(obj)
+					if cint := is_const_integer(cf) {
+						fixed_size = cint.val.int()
+					}
 				} else {
-					c.error(it.name, array_init.pos)
+					c.error('non existant integer const $full_const_name while initializing the size of a static array', array_init.pos)
 				}
-				scope.find(it.name) or {
-					c.error('undefined: `$it.name`', array_init.pos)
-				}
-*/
-			}
-			else {
+			} else {
 				c.error('expecting `int` for fixed size', array_init.pos)
 			}
 		}
@@ -735,6 +739,16 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 		array_init.typ = array_type
 	}
 	return array_init.typ
+}
+
+fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
+	match cfield.expr {
+		ast.IntegerLiteral {
+			return *it
+		}
+		else {}
+	}
+	return none
 }
 
 fn (c mut Checker) stmt(node ast.Stmt) {

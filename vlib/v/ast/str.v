@@ -85,6 +85,9 @@ pub fn (x Expr) str() string {
 		PrefixExpr {
 			return it.op.str() + it.right.str()
 		}
+		CharLiteral {
+			return '`$it.val`'
+		}
 		IntegerLiteral {
 			return it.val
 		}

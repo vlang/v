@@ -513,19 +513,28 @@ fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 	return node
 }
 */
+
 pub fn (p &Parser) error(s string) {
+	p.error_with_pos(s, p.tok.position())
+}
+
+pub fn (p &Parser) warn(s string) {
+	p.warn_with_pos(s, p.tok.position())
+}
+
+pub fn (p &Parser) error_with_pos(s string, pos token.Position) {
 	mut kind := 'error:'
 	if p.pref.is_verbose {
 		print_backtrace()
 		kind = 'parser error:'
 	}
-	ferror := util.formatted_error(kind, s, p.file_name, p.tok.position())
+	ferror := util.formatted_error(kind, s, p.file_name, pos)
 	eprintln(ferror)
 	exit(1)
 }
 
-pub fn (p &Parser) warn(s string) {
-	ferror := util.formatted_error('warning:', s, p.file_name, p.tok.position())
+pub fn (p &Parser) warn_with_pos(s string, pos token.Position) {
+	ferror := util.formatted_error('warning:', s, p.file_name, pos)
 	eprintln(ferror)
 }
 
@@ -1298,6 +1307,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	mut array_type := table.void_type
 	mut elem_type := table.void_type
 	mut exprs := []ast.Expr
+	is_fixed := false
 	if p.tok.kind == .rsbr {
 		// []typ => `[]` and `typ` must be on the same line
 		line_nr := p.tok.line_nr
@@ -1311,7 +1321,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 			array_type = table.new_type(idx)
 		}
 	} else {
-		// [1,2,3]
+		// [1,2,3] or [const]byte
 		for i := 0; p.tok.kind != .rsbr; i++ {
 			expr := p.expr(0)
 			exprs << expr
@@ -1325,7 +1335,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 		// [100]byte
 		if exprs.len == 1 && p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
 			elem_type = p.parse_type()
-			// p.warn('fixed size array')
+			is_fixed = true
 		}
 	}
 	// !
@@ -1343,6 +1353,8 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 		len: len
 	}
 	return ast.ArrayInit{
+		is_fixed: is_fixed
+		mod: p.mod
 		elem_type: elem_type
 		typ: array_type
 		exprs: exprs

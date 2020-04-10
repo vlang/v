@@ -588,6 +588,8 @@ pub struct ArrayInit {
 pub:
 	pos       token.Position
 	exprs     []Expr
+	is_fixed  bool
+	mod       string
 mut:
 	elem_type table.Type
 	typ       table.Type

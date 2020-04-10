@@ -723,7 +723,7 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				mut is_fixed_array_init := false
 				match val {
 					ast.ArrayInit {
-						is_fixed_array_init = right_sym.kind == .array_fixed
+						is_fixed_array_init = it.is_fixed
 					}
 					else {}
 				}
@@ -740,15 +740,15 @@ fn (g mut Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						return
 					}
 				}
-				if !is_fixed_array_init {
+				if is_fixed_array_init {
+					g.write('= {0}')
+				} else {
 					g.write(' = ')
 					if !is_decl {
 						g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
 					} else {
 						g.expr(val)
 					}
-				} else if is_fixed_array_init {
-					g.write('= {0}')
 				}
 				if gen_or {
 					g.or_block(ident.name, or_stmts, return_type)
