@@ -129,6 +129,8 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			'-stats' {	res.is_stats = true	}
 			'-obfuscate' {	res.obfuscate = true	}
 			'-translated' {	res.translated = true	}
+			'-showcc' {	res.show_cc = true	}
+			'-keepc' {	res.is_keep_c = true	}
 			//'-x64' {	res.translated = true	}
 			'-os' {
 				//TODO Remove `tmp` variable when it doesn't error out in C.

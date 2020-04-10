@@ -7,9 +7,11 @@ import (
 	v.ast
 	v.table
 	v.scanner
+	v.token
 )
 
 pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
+	first_pos := p.tok.position()
 	tok := p.tok
 	name := p.check_name()
 	fn_name := if is_c {
@@ -21,6 +23,13 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	}
 	p.check(.lpar)
 	args := p.call_args()
+	last_pos := p.tok.position()
+	p.check(.rpar)
+	pos := token.Position{
+		line_nr: first_pos.line_nr
+		pos: first_pos.pos
+		len: last_pos.pos - first_pos.pos + last_pos.len
+	}
 	mut or_stmts := []ast.Stmt
 	mut is_or_block_used := false
 	if p.tok.kind == .key_orelse {
@@ -42,7 +51,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		name: fn_name
 		args: args
 		mod: p.mod
-		pos: tok.position()
+		pos: pos
 		is_c: is_c
 		or_block: ast.OrExpr{
 			stmts: or_stmts
@@ -69,7 +78,6 @@ pub fn (p mut Parser) call_args() []ast.CallArg {
 			p.check(.comma)
 		}
 	}
-	p.check(.rpar)
 	return args
 }
 

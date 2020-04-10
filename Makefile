@@ -94,10 +94,10 @@ $(TMPVC)/.git/config:
 	$(MAKE) fresh_vc
 
 selfcompile:
-	./v -csource keep -cg -o v cmd/v
+	./v -keepc -cg -o v cmd/v
 
 selfcompile-static:
-	./v -csource keep -cg -cflags '--static' -o v-static cmd/v
+	./v -keepc -cg -cflags '--static' -o v-static cmd/v
 
 modules: module_builtin module_strings module_strconv
 module_builtin:

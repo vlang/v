@@ -41,7 +41,7 @@ pub fn new_error_manager() &EManager {
 	return &EManager{ support_color: term.can_show_color_on_stderr() }
 }
 
-pub fn formated_error(kind string /*error or warn*/, emsg string, filepath string, pos token.Position) string {
+pub fn formatted_error(kind string /*error or warn*/, emsg string, filepath string, pos token.Position) string {
 	mut path := filepath
 	verror_paths_override := os.getenv('VERROR_PATHS')
 	if verror_paths_override == 'absolute' {
@@ -95,7 +95,12 @@ pub fn formated_error(kind string /*error or warn*/, emsg string, filepath strin
 					}
 					continue
 				}
-				pointerline << if emanager.support_color { term.bold(term.blue('^')) } else { '^' }
+				if pos.len > 1 {
+					underline := '~'.repeat(pos.len)
+					pointerline << if emanager.support_color { term.bold(term.blue(underline)) } else { underline }
+				}else{
+					pointerline << if emanager.support_color { term.bold(term.blue('^')) } else { '^' }
+				}
 				break
 			}
 			clines << '       ' + pointerline.join('')

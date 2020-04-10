@@ -16,7 +16,8 @@ import (
 
 struct Parser {
 	scanner           &scanner.Scanner
-	file_name         string
+	file_name         string // "/home/user/hello.v"
+	file_name_dir     string // "/home/user"
 mut:
 	tok               token.Token
 	peek_tok          token.Token
@@ -42,7 +43,7 @@ mut:
 // for tests
 pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	s := scanner.new_scanner(text, .skip_comments)
-	mut p := parser.Parser{
+	mut p := Parser{
 		scanner: s
 		table: table
 		pref: &pref.Preferences{}
@@ -63,10 +64,11 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	// panic(err)
 	// }
 	mut stmts := []ast.Stmt
-	mut p := parser.Parser{
+	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode)
 		table: table
 		file_name: path
+		file_name_dir: os.dir( path )
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
@@ -320,9 +322,17 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 			return p.comment()
 		}
 		else {
-			// #printf("");
-			p.error('bad top level statement ' + p.tok.str())
-			return ast.Stmt{}
+			if p.pref.is_script && !p.pref.is_test {
+				p.scanner.text = 'fn main() {' + p.scanner.text + '}'
+				p.scanner.is_started = false
+				p.scanner.pos = 0
+				p.next()
+				p.next()
+				return p.top_stmt()
+			} else {
+				p.error('bad top level statement ' + p.tok.str())
+				return ast.Stmt{}
+			}
 		}
 	}
 }
@@ -451,6 +461,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	op := p.tok.kind
 	p.next()
+	pos := p.tok.position()
 	val := p.expr(0)
 	match left {
 		ast.IndexExpr {
@@ -463,7 +474,7 @@ pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 		left: left
 		val: val
 		op: op
-		pos: p.tok.position()
+		pos: pos
 	}
 	return node
 }
@@ -508,13 +519,13 @@ pub fn (p &Parser) error(s string) {
 		print_backtrace()
 		kind = 'parser error:'
 	}
-	ferror := util.formated_error(kind, s, p.file_name, p.tok.position())
+	ferror := util.formatted_error(kind, s, p.file_name, p.tok.position())
 	eprintln(ferror)
 	exit(1)
 }
 
 pub fn (p &Parser) warn(s string) {
-	ferror := util.formated_error('warning:', s, p.file_name, p.tok.position())
+	ferror := util.formatted_error('warning:', s, p.file_name, p.tok.position())
 	eprintln(ferror)
 }
 
@@ -832,13 +843,14 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			// will fudge left shift as it makes it right assoc
 			// `arr << 'a'` | `arr << 'a' + 'b'`
 			tok := p.tok
+			pos :=  tok.position()
 			p.next()
 			right := p.expr(precedence - 1)
 			node = ast.InfixExpr{
 				left: node
 				right: right
 				op: tok.kind
-				pos: tok.position()
+				pos:pos
 			}
 		} else if p.tok.kind.is_infix() {
 			node = p.infix_expr(node)
@@ -948,6 +960,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
+		p.check(.rpar)
 		mut or_stmts := []ast.Stmt
 		mut is_or_block_used := false
 		if p.tok.kind == .key_orelse {
@@ -1051,6 +1064,8 @@ fn (p mut Parser) for_stmt() ast.Stmt {
 		// mut inc := ast.Stmt{}
 		mut inc := ast.Expr{}
 		mut has_init := false
+		mut has_cond := false
+		mut has_inc := false
 		if p.peek_tok.kind in [.assign, .decl_assign] {
 			init = p.assign_stmt()
 			has_init = true
@@ -1062,11 +1077,13 @@ fn (p mut Parser) for_stmt() ast.Stmt {
 		if p.tok.kind != .semicolon {
 			mut typ := table.void_type
 			cond = p.expr(0)
+			has_cond = true
 		}
 		p.check(.semicolon)
 		if p.tok.kind != .lcbr {
 			// inc = p.stmt()
 			inc = p.expr(0)
+			has_inc = true
 		}
 		p.inside_for = false
 		stmts := p.parse_block()
@@ -1074,6 +1091,8 @@ fn (p mut Parser) for_stmt() ast.Stmt {
 		return ast.ForCStmt{
 			stmts: stmts
 			has_init: has_init
+			has_cond: has_cond
+			has_inc: has_inc
 			init: init
 			cond: cond
 			inc: inc
@@ -1219,13 +1238,15 @@ fn (p mut Parser) string_expr() ast.Expr {
 	}
 	mut node := ast.Expr{}
 	val := p.tok.lit
-	node = ast.StringLiteral{
-		val: val
-		is_raw: is_raw
-		is_c: is_cstr
-	}
+	pos := p.tok.position()
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
+		node = ast.StringLiteral{
+			val: val
+			is_raw: is_raw
+			is_c: is_cstr
+			pos: pos
+		}
 		return node
 	}
 	mut exprs := []ast.Expr
@@ -1265,11 +1286,13 @@ fn (p mut Parser) string_expr() ast.Expr {
 		vals: vals
 		exprs: exprs
 		expr_fmts: efmts
+		pos: pos
 	}
 	return node
 }
 
 fn (p mut Parser) array_init() ast.ArrayInit {
+	first_pos := p.tok.position()
 	p.check(.lsbr)
 	// p.warn('array_init() exp=$p.expected_type')
 	mut array_type := table.void_type
@@ -1312,11 +1335,18 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	if p.tok.kind == .not {
 		p.next()
 	}
+	last_pos := p.tok.position()
+	len := last_pos.pos - first_pos.pos
+	pos := token.Position{
+		line_nr: first_pos.line_nr,
+		pos: first_pos.pos
+		len: len
+	}
 	return ast.ArrayInit{
 		elem_type: elem_type
 		typ: array_type
 		exprs: exprs
-		pos: p.tok.position()
+		pos: pos
 	}
 }
 
@@ -1344,6 +1374,7 @@ fn (p mut Parser) map_init() ast.MapInit {
 
 fn (p mut Parser) parse_number_literal() ast.Expr {
 	lit := p.tok.lit
+	pos := p.tok.position()
 	mut node := ast.Expr{}
 	if lit.index_any('.eE') >= 0 {
 		node = ast.FloatLiteral{
@@ -1352,6 +1383,7 @@ fn (p mut Parser) parse_number_literal() ast.Expr {
 	} else {
 		node = ast.IntegerLiteral{
 			val: lit
+			pos: pos
 		}
 	}
 	p.next()
@@ -1681,9 +1713,9 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 		p.next()
 	}
 	idents := p.parse_assign_lhs()
-	pos := p.tok.position()
 	op := p.tok.kind
 	p.next()	// :=, =
+	pos := p.tok.position()
 	exprs := p.parse_assign_rhs()
 	is_decl := op == .decl_assign
 	for i, ident in idents {
@@ -1716,23 +1748,6 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 		op: op
 		pos: pos
 		is_static: is_static
-	}
-}
-
-fn (p mut Parser) hash() ast.HashStmt {
-	val := p.tok.lit
-	p.next()
-	if val.starts_with('flag') {
-		// #flag linux -lm
-		words := val.split(' ')
-		if words.len > 1 && words[1] in supported_platforms {
-			if p.pref.os == .mac && words[1] == 'darwin' {
-				p.pref.cflags += val.after('darwin')
-			}
-		}
-	}
-	return ast.HashStmt{
-		val: val
 	}
 }
 
@@ -1868,15 +1883,21 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	name := p.prepend_mod(p.check_name())
 	p.check(.lcbr)
 	mut vals := []string
-	mut default_exprs := []ast.Expr
+	// mut default_exprs := []ast.Expr
+	mut fields := []ast.EnumField
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
+		pos := p.tok.position()
 		val := p.check_name()
 		vals << val
+		mut expr := ast.Expr{}
+		mut has_expr := false
 		// p.warn('enum val $val')
 		if p.tok.kind == .assign {
 			p.next()
-			default_exprs << p.expr(0)
+			expr = p.expr(0)
+			has_expr = true
 		}
+		fields << ast.EnumField{val, pos, expr, has_expr}
 		// Allow commas after enum, helpful for
 		// enum Color {
 		// r,g,b
@@ -1896,8 +1917,9 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	return ast.EnumDecl{
 		name: name
 		is_pub: is_pub
-		vals: vals
-		default_exprs: default_exprs
+		// vals: vals
+		// default_exprs: default_exprs
+		fields: fields
 	}
 }
 

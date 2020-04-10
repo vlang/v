@@ -211,6 +211,9 @@ fn replace_op(s string) string {
 		`/` {
 			'_div'
 		}
+		`%` {
+			'_mod'
+		}
 		else {
 			''
 		}

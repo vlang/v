@@ -22,39 +22,40 @@ const (
 )
 
 struct Gen {
-	out            strings.Builder
-	typedefs       strings.Builder
-	typedefs2      strings.Builder
-	definitions    strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	inits          strings.Builder // contents of `void _vinit(){}`
-	gowrappers     strings.Builder // all go callsite wrappers
-	stringliterals strings.Builder // all string literals (they depend on tos3() beeing defined
-	includes       strings.Builder
-	table          &table.Table
-	pref           &pref.Preferences
+	out                  strings.Builder
+	typedefs             strings.Builder
+	typedefs2            strings.Builder
+	definitions          strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	inits                strings.Builder // contents of `void _vinit(){}`
+	gowrappers           strings.Builder // all go callsite wrappers
+	stringliterals       strings.Builder // all string literals (they depend on tos3() beeing defined
+	includes             strings.Builder
+	table                &table.Table
+	pref                 &pref.Preferences
 mut:
-	file           ast.File
-	fn_decl        &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	tmp_count      int
-	variadic_args  map[string]int
-	is_c_call      bool // e.g. `C.printf("v")`
-	is_assign_lhs  bool // inside left part of assign expr (for array_set(), etc)
-	is_assign_rhs  bool // inside right part of assign after `=` (val expr)
-	is_array_set   bool
-	is_amp         bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
-	optionals      []string // to avoid duplicates TODO perf, use map
-	inside_ternary bool // ?: comma separated statements on a single line
-	stmt_start_pos int
-	right_is_opt   bool
-	autofree       bool
-	indent         int
-	empty_line     bool
-	is_test        bool
-	assign_op      token.Kind // *=, =, etc (for array_set)
-	defer_stmts    []ast.DeferStmt
-	defer_ifdef    string
-	str_types      []string // types that need automatic str() generation
-	threaded_fns   []string // for generating unique wrapper types and fns for `go xxx()`
+	file                 ast.File
+	fn_decl              &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	tmp_count            int
+	variadic_args        map[string]int
+	is_c_call            bool // e.g. `C.printf("v")`
+	is_assign_lhs        bool // inside left part of assign expr (for array_set(), etc)
+	is_assign_rhs        bool // inside right part of assign after `=` (val expr)
+	is_array_set         bool
+	is_amp               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	optionals            []string // to avoid duplicates TODO perf, use map
+	inside_ternary       bool // ?: comma separated statements on a single line
+	stmt_start_pos       int
+	right_is_opt         bool
+	autofree             bool
+	indent               int
+	empty_line           bool
+	is_test              bool
+	assign_op            token.Kind // *=, =, etc (for array_set)
+	defer_stmts          []ast.DeferStmt
+	defer_ifdef          string
+	str_types            []string // types that need automatic str() generation
+	threaded_fns         []string // for generating unique wrapper types and fns for `go xxx()`
+	array_fn_definitions []string // array equality functions that have been defined
 }
 
 const (
@@ -70,7 +71,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	} else {
 	}
 	// println('start cgen2')
-	mut g := gen.Gen{
+	mut g := Gen{
 		out: strings.new_builder(1000)
 		typedefs: strings.new_builder(100)
 		typedefs2: strings.new_builder(100)
@@ -334,7 +335,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.gen_assign_stmt(it)
 		}
 		ast.Attr {
-			g.writeln('//[$it.name]')
+			if it.name == 'inline' {
+				g.writeln(it.name)
+			} else {
+				g.writeln('//[$it.name]')
+			}
 		}
 		ast.Block {
 			g.writeln('{')
@@ -358,21 +363,21 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.defer_stmts << defer_stmt
 		}
 		ast.EnumDecl {
-			name := it.name.replace('.', '__')
+			enum_name := it.name.replace('.', '__')
 			g.typedefs.writeln('typedef enum {')
-			for j, val in it.vals {
-				if j < it.default_exprs.len {
-					g.typedefs.write('\t${name}_$val = ')
+			for field in it.fields {
+				g.typedefs.write('\t${enum_name}_$field.name')
+				if field.has_expr {
+					g.typedefs.write(' = ')
 					pos := g.out.len
-					g.expr(it.default_exprs[j])
-					expr := g.out.after(pos)
-					g.out.go_back(expr.len)
-					g.typedefs.writeln('$expr,')
-				} else {
-					g.typedefs.writeln('\t${name}_$val, // $j')
+					g.expr(field.expr)
+					expr_str := g.out.after(pos)
+					g.out.go_back(expr_str.len)
+					g.typedefs.write('$expr_str')
 				}
+				g.typedefs.writeln(',')
 			}
-			g.typedefs.writeln('} $name;\n')
+			g.typedefs.writeln('} $enum_name;\n')
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
@@ -400,10 +405,13 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			} else {
 				g.stmt(it.init)
 			}
-			g.expr(it.cond)
+			if it.has_cond {
+				g.expr(it.cond)
+			}
 			g.write('; ')
-			// g.stmt(it.inc)
-			g.expr(it.inc)
+			if it.has_inc {
+				g.expr(it.inc)
+			}
 			g.writeln(') {')
 			g.stmts(it.stmts)
 			g.writeln('}')
@@ -789,7 +797,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	} else {
 		mut name := it.name
 		c := name[0]
-		if c in [`+`, `-`, `*`, `/`] {
+		if c in [`+`, `-`, `*`, `/`, `%`] {
 			name = util.replace_op(name)
 		}
 		if it.is_method {
@@ -1296,7 +1304,6 @@ fn (g mut Gen) assign_expr(node ast.AssignExpr) {
 }
 
 fn (g mut Gen) infix_expr(node ast.InfixExpr) {
-	left_sym := g.table.get_type_symbol(node.left_type)
 	// println('infix_expr() op="$node.op.str()" line_nr=$node.pos.line_nr')
 	// g.write('/*infix*/')
 	// if it.left_type == table.string_type_idx {
@@ -1304,6 +1311,8 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	// }
 	// string + string, string == string etc
 	// g.infix_op = node.op
+	left_sym := g.table.get_type_symbol(node.left_type)
+	right_sym := g.table.get_type_symbol(node.right_type)
 	if node.left_type == table.string_type_idx && node.op != .key_in {
 		fn_name := match node.op {
 			.plus {
@@ -1336,8 +1345,23 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		g.write(', ')
 		g.expr(node.right)
 		g.write(')')
+	} else if node.op in [.eq, .ne] && left_sym.kind == .array && right_sym.kind == .array {
+		styp := g.table.value_type(node.left_type)
+		ptr_typ := g.typ(node.left_type).split('_')[1]
+		if !(ptr_typ in g.array_fn_definitions) {
+			sym := g.table.get_type_symbol(left_sym.array_info().elem_type)
+			g.generate_array_equality_fn(ptr_typ, styp, sym)
+		}
+		if node.op == .eq {
+			g.write('${ptr_typ}_arr_eq(')
+		} else if node.op == .ne {
+			g.write('!${ptr_typ}_arr_eq(')
+		}
+		g.expr(node.left)
+		g.write(', ')
+		g.expr(node.right)
+		g.write(')')
 	} else if node.op == .key_in {
-		right_sym := g.table.get_type_symbol(node.right_type)
 		if right_sym.kind == .array {
 			match node.right {
 				ast.ArrayInit {
@@ -1375,7 +1399,6 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		tmp := g.new_tmp_var()
 		sym := g.table.get_type_symbol(node.left_type)
 		info := sym.info as table.Array
-		right_sym := g.table.get_type_symbol(node.right_type)
 		if right_sym.kind == .array && info.elem_type != node.right_type {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY(&')
@@ -1414,7 +1437,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		g.write(',')
 		g.expr(node.right)
 		g.write(')')
-	} else if node.op in [.plus, .minus, .mul, .div] && (left_sym.name[0].is_capital() || left_sym.name.contains('.')) &&
+	} else if node.op in [.plus, .minus, .mul, .div, .mod] && (left_sym.name[0].is_capital() || left_sym.name.contains('.')) &&
 		left_sym.kind != .alias {
 		// !left_sym.is_number() {
 		g.write(g.typ(node.left_type))
@@ -1838,7 +1861,8 @@ fn (g mut Gen) return_statement(node ast.Return) {
 				}
 				ast.CallExpr {
 					// TODO: why?
-					if !it.is_method {
+					// if !it.is_method {
+					if it.name == 'error' {
 						is_error = true						// TODO check name 'error'
 					}
 				}
@@ -2032,6 +2056,27 @@ fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 		}
 		g.write('}}')
 	}
+}
+
+fn (g mut Gen) generate_array_equality_fn(ptr_typ string, styp table.Type, sym &table.TypeSymbol) {
+	g.array_fn_definitions << ptr_typ
+	g.definitions.writeln('bool ${ptr_typ}_arr_eq(array_${ptr_typ} a, array_${ptr_typ} b) {')
+	g.definitions.writeln('\tif (a.len != b.len) {')
+	g.definitions.writeln('\t\treturn false;')
+	g.definitions.writeln('\t}')
+	g.definitions.writeln('\tfor (int i = 0; i < a.len; i++) {')
+	if styp == table.string_type_idx {
+		g.definitions.writeln('\t\tif (string_ne(*((${ptr_typ}*)(a.data+(i*a.element_size))), *((${ptr_typ}*)(b.data+(i*b.element_size))))) {')
+	} else if sym.kind == .struct_ {
+		g.definitions.writeln('\t\tif (memcmp((void*)(a.data+(i*a.element_size)), (void*)(b.data+(i*b.element_size)), a.element_size)) {')
+	} else {
+		g.definitions.writeln('\t\tif (*((${ptr_typ}*)(a.data+(i*a.element_size))) != *((${ptr_typ}*)(b.data+(i*b.element_size)))) {')
+	}
+	g.definitions.writeln('\t\t\treturn false;')
+	g.definitions.writeln('\t\t}')
+	g.definitions.writeln('\t}')
+	g.definitions.writeln('\treturn true;')
+	g.definitions.writeln('}')
 }
 
 [inline]
@@ -2504,7 +2549,7 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 */
-	if is_print && node.args[0].typ != table.string_type_idx {
+	if is_print && node.args[0].typ != table.string_type {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
 		sym := g.table.get_type_symbol(typ)
@@ -2519,7 +2564,7 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			g.write('string $tmp = ${styp}_str(')
 			g.expr(node.args[0].expr)
 			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
-		} else if sym.kind == .enum_ {
+		} else {
 			expr := node.args[0].expr
 			is_var := match expr {
 				ast.SelectorExpr {
@@ -2532,32 +2577,36 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 					false
 				}
 			}
-			g.write(if is_var {
-				'${print_method}(${styp}_str('
-			} else {
-				'${print_method}(tos3("'
-			})
-			g.enum_expr(expr)
-			g.write(if is_var {
-				'))'
-			} else {
-				'"))'
-			})
-		} else {
-			// `println(int_str(10))`
-			// sym := g.table.get_type_symbol(node.args[0].typ)
-			if table.type_is_ptr(typ) {
+			if table.type_is_ptr(typ) && sym.kind != .struct_ {
 				// ptr_str() for pointers
 				styp = 'ptr'
 			}
-			g.write('${print_method}(${styp}_str(')
-			if table.type_is_ptr(typ) {
-				// dereference
-				// g.write('*')
-			}
-			g.expr(node.args[0].expr)
-			if sym.kind ==.struct_ && styp != 'ptr' && !sym.has_method('str') {
-				g.write(', 0') // trailing 0 is initial struct indent count
+			if sym.kind == .enum_ {
+				if is_var {
+					g.write('${print_method}(${styp}_str(')
+				} else {
+					// when no var, print string directly
+					g.write('${print_method}(tos3("')
+				}
+				if table.type_is_ptr(typ) {
+					// dereference
+					g.write('*')
+				}
+				g.enum_expr(expr)
+				if !is_var {
+					// end of string
+					g.write('"')
+				}
+			} else {
+				g.write('${print_method}(${styp}_str(')
+				if table.type_is_ptr(typ) && sym.kind == .struct_ {
+					// dereference
+					g.write('*')
+				}
+				g.expr(expr)
+				if sym.kind == .struct_ && styp != 'ptr' && !sym.has_method('str') {
+					g.write(', 0')					// trailing 0 is initial struct indent count
+				}
 			}
 			g.write('))')
 		}
@@ -3075,7 +3124,6 @@ fn (g mut Gen) gen_str_for_struct(info table.Struct, styp string) {
 			g.gen_str_for_type(sym, field_styp)
 		}
 	}
-
 	s := styp.replace('.', '__')
 	g.definitions.write('string ${s}_str($styp it, int indent_count) {\n')
 	// generate ident / indent length = 4 spaces
@@ -3112,13 +3160,13 @@ fn (g mut Gen) gen_str_for_struct(info table.Struct, styp string) {
 fn (g Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .struct_ {
-		return "%.*s"
+		return '%.*s'
 	} else if typ == table.string_type {
 		return "\'%.*s\'"
 	} else if typ == table.bool_type {
 		return '%.*s'
 	} else if typ in [table.f32_type, table.f64_type] {
-		return '%g' // g removes trailing zeros unlike %f
+		return '%g'		// g removes trailing zeros unlike %f
 	}
 	return '%d'
 }

@@ -8,7 +8,7 @@ fn test_all() {
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	dir := os.join_path(vroot,'vlib/v/tests/inout')
+	dir := os.join_path(vroot,'vlib/v/checker/tests/inout')
 	files := os.ls(dir) or {
 		panic(err)
 	}
@@ -24,26 +24,16 @@ fn test_all() {
 		os.cp(path, program) or {
 			panic(err)
 		}
-		x := os.exec('$vexe -o exe -cflags "-w" -cg $program') or {
+		res := os.exec('$vexe $program') or {
 			panic(err)
 		}
-		// os.rm(program)
-		res := os.exec('./exe') or {
-			println('nope')
-			panic(err)
-		}
-		os.rm('./exe')
-		// println('============')
-		// println(res.output)
-		// println('============')
 		mut expected := os.read_file(program.replace('.v', '') + '.out') or {
 			panic(err)
 		}
-		expected = expected.trim_space().trim('\n').replace('\r\n', '\n')
-		found := res.output.trim_space().trim('\n').replace('\r\n', '\n')
+		expected = expected.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n', '\n').trim('\n')
+		found := res.output.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n', '\n').trim('\n')
 		if expected != found {
 			println(term.red('FAIL'))
-			// println(x.output.limit(30))
 			println('============')
 			println('expected:')
 			println(expected)

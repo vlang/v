@@ -15,7 +15,6 @@ import (
 
 pub struct Builder {
 pub:
-	mod_file_cacher     &ModFileCacher // used during lookup for v.mod to support @VROOT
 	pref                &pref.Preferences
 	table               &table.Table
 	checker             checker.Checker
@@ -33,7 +32,6 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 	table := table.new_table()
 	return builder.Builder{
-		mod_file_cacher: new_mod_file_cacher()
 		pref: pref
 		table: table
 		checker: checker.new_checker(table, pref)

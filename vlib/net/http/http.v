@@ -28,11 +28,11 @@ mut:
 pub struct FetchConfig {
 pub mut:
 	method     string
-	data       string=''
-	params     map[string]string=map[string]string
-	headers    map[string]string=map[string]string
-	cookies    map[string]string=map[string]string
-	user_agent string='v'
+	data       string
+	params     map[string]string
+	headers    map[string]string
+	cookies    map[string]string
+	user_agent string//='v' QTODO
 	verbose    bool=false
 }
 

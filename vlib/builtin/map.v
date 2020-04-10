@@ -363,10 +363,10 @@ pub fn (m mut map) delete(key string) {
 			m.size--
 			m.metas[index] = 0
 			m.key_values.deletes++
+			C.memset(&m.key_values.data[kv_index], 0, sizeof(KeyValue))
 			if m.key_values.size <= 32 {
 				return
 			}
-			C.memset(&m.key_values.data[kv_index], 0, sizeof(KeyValue))
 			// Clean up key_values if too many have been deleted
 			if m.key_values.deletes >= (m.key_values.size >> 1) {
 				m.key_values.zeros_to_end()

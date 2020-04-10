@@ -35,7 +35,7 @@ mut:
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
-	return checker.Checker{
+	return Checker{
 		table: table
 		pref: pref
 	}
@@ -164,7 +164,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	if infix_expr.op == .left_shift {
 		if left.kind != .array && !left.is_int() {
 			// c.error('<< can only be used with numbers and arrays', infix_expr.pos)
-			c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
+			c.error('cannot shift type $right.name into $left.name', expr_pos(infix_expr.right))
 			return table.void_type
 		}
 		if left.kind == .array {
@@ -178,7 +178,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 				// []T << []T
 				return table.void_type
 			}
-			c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
+			c.error('cannot shift type $right.name into $left.name', expr_pos(infix_expr.right))
 			return table.void_type
 		}
 	}
@@ -215,7 +215,7 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	if !c.table.check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
-		c.error('cannot assign `$right_type_sym.name` to `$left_type_sym.name`', assign_expr.pos)
+		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name` ', expr_pos(assign_expr.val))
 	}
 	c.check_expr_opt_call(assign_expr.val, right_type, true)
 }
@@ -560,6 +560,24 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 	}
 }
 
+pub fn (c mut Checker) enum_decl(decl ast.EnumDecl) {
+	for field in decl.fields {
+		if field.has_expr {
+			match field.expr {
+				ast.IntegerLiteral {}
+				ast.PrefixExpr {}
+				else {
+					pos := expr_pos(field.expr)
+					if pos.pos == 0 {
+						pos = field.pos
+					}
+					c.error("default value for enum has to be an integer", pos)
+				}
+			}
+		}
+	}
+}
+
 pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	c.expected_type = table.none_type	// TODO a hack to make `x := if ... work`
 	if assign_stmt.left.len > assign_stmt.right.len {
@@ -572,14 +590,21 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		}
 		right_type := c.expr(assign_stmt.right[0])
 		right_type_sym := c.table.get_type_symbol(right_type)
-		mr_info := right_type_sym.mr_info()
 		if right_type_sym.kind != .multi_return {
-			c.error('wrong number of vars', assign_stmt.pos)
+			c.error('expression on the right does not return multiple values, while at least $assign_stmt.left.len are expected', assign_stmt.pos)
+			return
+		}
+		mr_info := right_type_sym.mr_info()
+		if mr_info.types.len < assign_stmt.left.len {
+			c.error('right expression returns only $mr_info.types.len values, but left one expects $assign_stmt.left.len', assign_stmt.pos)
 		}
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
 			mut ident := assign_stmt.left[i]
 			mut ident_var_info := ident.var_info()
+			if i >= mr_info.types.len {
+				continue
+			}
 			val_type := mr_info.types[i]
 			if assign_stmt.op == .assign {
 				var_type := c.expr(ident)
@@ -737,9 +762,6 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				c.stmts(it.else_stmts)
 			}
 		}
-		ast.DeferStmt {
-			c.stmts(it.stmts)
-		}
 		ast.ConstDecl {
 			mut field_names := []string
 			mut field_order := []int
@@ -775,6 +797,12 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				}
 				it.fields = ordered_fields
 			}
+		}
+		ast.DeferStmt {
+			c.stmts(it.stmts)
+		}
+		ast.EnumDecl {
+			c.enum_decl(it)
 		}
 		ast.ExprStmt {
 			etype := c.expr(it.expr)
@@ -1017,6 +1045,53 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 	}
 	return table.void_type
+}
+
+fn expr_pos(node ast.Expr) token.Position {
+	// all uncommented have to be implemented
+	match mut node {
+		ast.ArrayInit { return it.pos }
+		ast.AsCast { return it.pos }
+		ast.AssignExpr { return it.pos }
+		ast.Assoc { return it.pos }
+		// ast.BoolLiteral { }
+		// ast.CastExpr { }
+		ast.CallExpr { return it.pos }
+		// ast.CharLiteral { }
+		ast.EnumVal { return it.pos }
+		// ast.FloatLiteral { }
+		// ast.Ident { }
+		ast.IfExpr { return it.pos }
+		// ast.IfGuardExpr { }
+		ast.IndexExpr { return it.pos }
+		ast.InfixExpr {
+			left_pos := expr_pos(it.left)
+			right_pos := expr_pos(it.right)
+			if left_pos.pos == 0 || right_pos.pos == 0 {
+				return it.pos
+			}
+			return token.Position{
+				line_nr: it.pos.line_nr
+				pos: left_pos.pos
+				len: right_pos.pos - left_pos.pos + right_pos.len
+			}
+		}
+		ast.IntegerLiteral { return it.pos }
+		ast.MapInit { return it.pos }
+		ast.MatchExpr { return it.pos }
+		ast.PostfixExpr { return it.pos }
+		ast.PrefixExpr { return it.pos }
+		// ast.None { }
+		// ast.ParExpr { }
+		ast.SelectorExpr { return it.pos }
+		// ast.SizeOf { }
+		ast.StringLiteral { return it.pos }
+		ast.StringInterLiteral { return it.pos }
+		ast.StructInit { return it.pos }
+		// ast.Type { }
+		// ast.TypeOf { }
+		else { return token.Position{} }
+	}
 }
 
 pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
@@ -1367,7 +1442,7 @@ fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
 	}
 	typ := if warn { 'warning' } else { 'error' }
 	kind := if c.pref.is_verbose { 'checker $typ #$c.nr_errors:' } else { '$typ:' }
-	ferror := util.formated_error(kind, s, c.file.path, pos)
+	ferror := util.formatted_error(kind, s, c.file.path, pos)
 	c.errors << ferror
 	if !(pos.line_nr in c.error_lines) {
 		if warn {

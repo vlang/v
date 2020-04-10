@@ -236,11 +236,10 @@ fn test_bits(){
 	// 32 bit
 	i = 1
 	for x in 0..32 {
-		v0 := (u32(i) << x)
+		v0 := u32(i) << x
 		v1 := v0 - 1
 		hi, lo := mul_32(v0, v1)
-		//C.printf("x:%08x [%llu,%llu] %llu\n", v0, hi, lo, u64(v0 * v1))
-		assert (u64(hi) << 32) | (u64(lo)) == u64(v0 * v1)
+		assert (u64(hi) << 32) | (u64(lo)) == u64(v0) * u64(v1)
 	}
 
 	// 64 bit

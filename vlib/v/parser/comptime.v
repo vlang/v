@@ -1,14 +1,59 @@
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module parser
 
 import (
 	v.ast
 	v.pref
+	v.vmod
 )
 
 const (
-	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd', 'netbsd',
-	'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
+	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
+		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 )
+
+// // #include, #flag, #v
+fn (p mut Parser) hash() ast.HashStmt {
+	val := p.tok.lit
+	p.next()
+	if val.starts_with('flag') {
+		// #flag linux -lm
+		mut flag := val[5..]
+		// expand `@VROOT` to its absolute path
+		if flag.contains('@VROOT') {
+			vmod_file_location := vmod.mod_file_cacher.get( p.file_name_dir )
+			if vmod_file_location.vmod_file.len == 0 {
+				// There was no actual v.mod file found.
+				p.error('To use @VROOT, you need' +
+					' to have a "v.mod" file in ${p.file_name_dir},' +
+					' or in one of its parent folders.')
+			}
+			flag = flag.replace('@VROOT', vmod_file_location.vmod_folder )
+		}
+		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
+			if flag.contains(deprecated) {
+				p.error('${deprecated} had been deprecated, use @VROOT instead.')
+			}
+		}
+		// println('adding flag "$flag"')
+		p.table.parse_cflag(flag, p.mod, p.pref.compile_defines_all) or {
+			p.error(err)
+		}
+		/*
+		words := val.split(' ')
+		if words.len > 1 && words[1] in supported_platforms {
+			if p.pref.os == .mac && words[1] == 'darwin' {
+				p.pref.cflags += val.after('darwin')
+			}
+		}
+*/
+	}
+	return ast.HashStmt{
+		val: val
+	}
+}
 
 fn (p mut Parser) comp_if() ast.CompIf {
 	pos := p.tok.position()
@@ -31,14 +76,13 @@ fn (p mut Parser) comp_if() ast.CompIf {
 			p.check(.lcbr)
 			// p.warn('skipping $if $val os=$os p.pref.os=$p.pref.os')
 			mut stack := 1
-			for {
+			for  {
 				if p.tok.kind == .key_return {
 					p.returns = true
 				}
 				if p.tok.kind == .lcbr {
 					stack++
-				}
-				else if p.tok.kind == .rcbr {
+				} else if p.tok.kind == .rcbr {
 					stack--
 				}
 				if p.tok.kind == .eof {
@@ -74,8 +118,9 @@ fn (p mut Parser) comp_if() ast.CompIf {
 	return node
 }
 
+// TODO import warning bug
 const (
-	todo_delete_me = pref.OS.linux // TODO import warning bug
+	todo_delete_me = pref.OS.linux
 )
 
 fn os_from_string(os string) pref.OS {
