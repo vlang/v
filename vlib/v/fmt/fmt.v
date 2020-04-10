@@ -392,50 +392,33 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 		} else if i == node.pub_mut_pos {
 			f.writeln('pub mut:')
 		}
-
 		if field.comments.len == 0 {
 			f.write('\t$field.name ')
 			f.write(strings.repeat(` `, max - field.name.len))
 			f.writeln(f.type_to_str(field.typ))
 			continue
 		}
-
 		mut j := 0
 		// Comments before field
-		for j < field.comments.len {
-			comment := field.comments[j]
-			if comment.pos.line_nr >= field.pos.line_nr {
-				break
-			}
+		comments := field.comments
+		for j < comments.len && comments[j].pos.line_nr < field.pos.line_nr {
 			f.indent++
 			f.empty_line = true
-			f.comment(comment)
+			f.comment(comments[j])
 			f.indent--
 			j++
 		}
-
 		f.write('\t$field.name ')
-
 		// Comments after field name
-		for j < field.comments.len {
-			comment := field.comments[j]
-			if comment.pos.pos != field.pos.pos {
-				break
-			}
-			f.write('/* $comment.text */')
+		for j < comments.len && comments[j].pos.pos == field.pos.pos{
+			f.write('/* ${comments[j].text} */')
 			j++
 		}
-
 		f.write(strings.repeat(` `, max - field.name.len))
 		f.write(f.type_to_str(field.typ))
-
 		// Comments after field type
-		for j < field.comments.len {
-			comment := field.comments[j]
-			if comment.pos.line_nr != field.pos.line_nr {
-				break
-			}
-			f.write(' // $comment.text')
+		for j < comments.len && comments[j].pos.line_nr == field.pos.line_nr {
+			f.write(' // ${comments[j].text}')
 			j++
 		}
 		f.write('\n')
