@@ -11,3 +11,5 @@ fn main() {
 fn hello(game_on int, dummy ...string) int {
     return game_on + 2
 }
+
+fn (it done) method() {}

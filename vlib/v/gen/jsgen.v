@@ -184,9 +184,7 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 		if c in [`+`, `-`, `*`, `/`] {
 			name = util.replace_op(name)
 		}
-		if it.is_method {
-			name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
-		}
+
 		type_name := g.typ(it.return_type)
 
 		// generate jsdoc for the function
@@ -202,6 +200,13 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 		}
 		g.writeln('* @return {$type_name}')
 		g.writeln('*/')
+
+
+		if it.is_method {
+			// javascript has class methods, so we just assign this function on the class prototype
+			className :=  g.table.get_type_symbol(it.receiver.typ).name
+			g.write('${className}.prototype.${name} = ')
+		}
 		g.write('function ${name}(')
 	}
 	g.fn_args(it.args, it.is_variadic)
