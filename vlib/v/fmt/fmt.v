@@ -401,7 +401,7 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 		}
 		mut j := 0
 		// Handle comments before field
-		for j < comments.len && comments[j].pos.line_nr < field.pos.line_nr {
+		for j < comments.len && comments[j].pos.pos < field.pos.pos {
 			f.indent++
 			f.empty_line = true
 			f.comment(comments[j])
@@ -417,7 +417,7 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 		f.write(strings.repeat(` `, max - field.name.len))
 		f.write(f.type_to_str(field.typ))
 		// Handle comments after field type
-		for j < comments.len && comments[j].pos.line_nr == field.pos.line_nr {
+		for j < comments.len {
 			f.write(' // ${comments[j].text}') // TODO: maybe handle in a function
 			j++
 		}
