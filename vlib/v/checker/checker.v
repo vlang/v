@@ -164,7 +164,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	if infix_expr.op == .left_shift {
 		if left.kind != .array && !left.is_int() {
 			// c.error('<< can only be used with numbers and arrays', infix_expr.pos)
-			c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
+			c.error('cannot shift type $right.name into $left.name', expr_pos(infix_expr.right))
 			return table.void_type
 		}
 		if left.kind == .array {
@@ -178,7 +178,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 				// []T << []T
 				return table.void_type
 			}
-			c.error('incompatible types: $left.name << $right.name', infix_expr.pos)
+			c.error('cannot shift type $right.name into $left.name', expr_pos(infix_expr.right))
 			return table.void_type
 		}
 	}
