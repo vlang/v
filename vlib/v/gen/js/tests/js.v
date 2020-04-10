@@ -6,8 +6,12 @@ struct done {
 
 fn main() {
     v := "done"
+    {
+        blo := "block"
+    }
 }
 
+[inline]
 fn hello(game_on int, dummy ...string) (int, int) {
     return game_on + 2, 221
 }

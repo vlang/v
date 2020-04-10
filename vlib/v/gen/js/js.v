@@ -123,6 +123,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		ast.Attr {
 			g.gen_attr(it)
 		}
+		ast.Block {
+			g.gen_block(it)
+		}
 		ast.FnDecl {
 			g.fn_decl = it
 			g.gen_fn_decl(it)
@@ -306,6 +309,12 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 
 fn (g mut JsGen) gen_attr(it ast.Attr) {
 	g.writeln('/* [$it.name] */')
+}
+
+fn (g mut JsGen) gen_block(it ast.Block) {
+	g.writeln('{')
+	g.stmts(it.stmts)
+	g.writeln('}')
 }
 
 fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
