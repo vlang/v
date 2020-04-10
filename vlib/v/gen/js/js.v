@@ -404,11 +404,9 @@ fn (g mut JsGen) gen_struct_decl(it ast.StructDecl) {
 	for field in it.fields {
 		typ := g.typ(field.typ)
 		g.write_jsdoc(typ, field.name)
-		g.write('\t')
 		g.write(field.name) // field name
 		g.write(' = ') // seperator
-		g.write('undefined;') //TODO default value for type
-		g.write('\n')
+		g.writeln('undefined;') //TODO default value for type
 	}
 	g.writeln('}')
 }
