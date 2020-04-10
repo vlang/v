@@ -1228,7 +1228,6 @@ fn (p mut Parser) if_expr() ast.IfExpr {
 }
 
 fn (p mut Parser) string_expr() ast.Expr {
-	first_pos := p.tok.position()
 	is_raw := p.tok.kind == .name && p.tok.lit == 'r'
 	is_cstr := p.tok.kind == .name && p.tok.lit == 'c'
 	if is_raw || is_cstr {
@@ -1236,14 +1235,9 @@ fn (p mut Parser) string_expr() ast.Expr {
 	}
 	mut node := ast.Expr{}
 	val := p.tok.lit
+	pos := p.tok.position()
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
-		last_pos := p.tok.position()
-		pos := token.Position{
-			line_nr: first_pos.line_nr
-			pos: first_pos.pos
-			len: last_pos.pos - first_pos.pos
-		}
 		node = ast.StringLiteral{
 			val: val
 			is_raw: is_raw
@@ -1284,12 +1278,6 @@ fn (p mut Parser) string_expr() ast.Expr {
 			}
 		}
 		efmts << efmt.join('')
-	}
-	last_pos := p.tok.position()
-	pos := token.Position{
-		line_nr: first_pos.line_nr
-		pos: first_pos.pos
-		len: last_pos.pos - first_pos.pos
 	}
 	node = ast.StringInterLiteral{
 		vals: vals
