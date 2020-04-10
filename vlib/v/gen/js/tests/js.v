@@ -18,6 +18,9 @@ fn main() {
 
 [inline]
 fn hello(game_on int, dummy ...string) (int, int) {
+    defer {
+        do := "not"
+    }
     return game_on + 2, 221
 }
 

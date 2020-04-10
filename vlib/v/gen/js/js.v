@@ -29,6 +29,7 @@ struct JsGen {
 	is_test         bool
 	indent			int
 	stmt_start_pos	int
+	defer_stmts     []ast.DeferStmt
 	fn_decl			&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	empty_line		bool
 }
@@ -142,12 +143,21 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		ast.ConstDecl {
 			g.gen_const_decl(it)
 		}
+		ast.CompIf {
+			// skip: JS has no compile time if
+		}
+		ast.DeferStmt {
+			g.defer_stmts << *it
+		}
 		ast.FnDecl {
 			g.fn_decl = it
 			g.gen_fn_decl(it)
 			g.writeln('')
 		}
 		ast.Return {
+			if g.defer_stmts.len > 0 {
+				g.gen_defer_stmts()
+			}
 			g.gen_return_stmt(it)
 		}
 		ast.ForStmt {
@@ -333,6 +343,12 @@ fn (g mut JsGen) gen_block(it ast.Block) {
 	g.writeln('}')
 }
 
+fn (g mut JsGen) gen_branch_stmt(it ast.BranchStmt) {
+	// continue or break
+	g.write(it.tok.kind.str())
+	g.writeln(';')
+}
+
 fn (g mut JsGen) gen_const_decl(it ast.ConstDecl) {
 	for i, field in it.fields {
 		// TODO hack. Cut the generated value and paste it into definitions.
@@ -350,10 +366,15 @@ fn (g mut JsGen) gen_const_decl(it ast.ConstDecl) {
 	g.constants.writeln('')
 }
 
-fn (g mut JsGen) gen_branch_stmt(it ast.BranchStmt) {
-	// continue or break
-	g.write(it.tok.kind.str())
-	g.writeln(';')
+fn (g mut JsGen) gen_defer_stmts() {
+	g.writeln('{')
+	g.indent++
+	g.writeln('// defer')
+	g.indent--
+	for defer_stmt in g.defer_stmts {
+		g.stmts(defer_stmt.stmts)
+	}
+	g.writeln('}')
 }
 
 fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
