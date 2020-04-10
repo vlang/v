@@ -40,7 +40,6 @@ const (
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/option_test.v',
 		'vlib/v/tests/pointers_test.v',
-		'vlib/v/tests/project_with_c_code/main_test.v',
 		'vlib/v/tests/project_with_modules_having_submodules/bin/a_program_under_bin_can_find_mod1_test.v',
 		'vlib/v/tests/project_with_modules_having_submodules/tests/submodule_test.v',
 		'vlib/v/tests/repl/repl_test.v',

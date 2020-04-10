@@ -6,6 +6,7 @@ module parser
 import (
 	v.ast
 	v.pref
+	v.vmod
 )
 
 const (
@@ -22,18 +23,14 @@ fn (p mut Parser) hash() ast.HashStmt {
 		mut flag := val[5..]
 		// expand `@VROOT` to its absolute path
 		if flag.contains('@VROOT') {
-			/*
-			vmod_file_location := p.v.mod_file_cacher.get( p.file_path_dir )
-        if vmod_file_location.vmod_file.len == 0 {
-                // There was no actual v.mod file found.
-                p.error_with_token_index('To use @VROOT, you need' +
-                        ' to have a "v.mod" file in ${p.file_path_dir},' +
-                        ' or in one of its parent folders.',
-                        p.cur_tok_index() - 1)
-        }
-        flag = flag.replace('@VROOT', vmod_file_location.vmod_folder )
-			flag = flag.replace('@VROOT', '/Users/alex/code/v/')
-*/
+			vmod_file_location := vmod.mod_file_cacher.get( p.file_name_dir )
+			if vmod_file_location.vmod_file.len == 0 {
+				// There was no actual v.mod file found.
+				p.error('To use @VROOT, you need' +
+					' to have a "v.mod" file in ${p.file_name_dir},' +
+					' or in one of its parent folders.')
+			}
+			flag = flag.replace('@VROOT', vmod_file_location.vmod_folder )
 		}
 		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
 			if flag.contains(deprecated) {

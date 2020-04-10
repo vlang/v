@@ -1,7 +1,6 @@
-module builder
+module vmod
 
 import os
-
 
 // This file provides a caching mechanism for seeking quickly whether a
 // given folder has a v.mod file in it or in any of its parent folders.
@@ -144,3 +143,7 @@ fn (mcache mut ModFileCacher) get_files(cfolder string) []string {
 	mcache.folder_files[ cfolder ] = files
 	return files
 }
+
+pub const (
+	mod_file_cacher = new_mod_file_cacher() // used during lookup for v.mod to support @VROOT
+)

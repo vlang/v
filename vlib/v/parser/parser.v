@@ -16,7 +16,8 @@ import (
 
 struct Parser {
 	scanner           &scanner.Scanner
-	file_name         string
+	file_name         string // "/home/user/hello.v"
+	file_name_dir     string // "/home/user"
 mut:
 	tok               token.Token
 	peek_tok          token.Token
@@ -67,6 +68,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		scanner: scanner.new_scanner_file(path, comments_mode)
 		table: table
 		file_name: path
+		file_name_dir: os.dir( path )
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
