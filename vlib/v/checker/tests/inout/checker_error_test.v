@@ -24,14 +24,12 @@ fn test_all() {
 		os.cp(path, program) or {
 			panic(err)
 		}
-		res := os.exec('$vexe -o exe -cflags "-w" -cg $program') or {
+		res := os.exec('$vexe $program') or {
 			panic(err)
 		}
-		os.rm('./exe.c')
 		mut expected := os.read_file(program.replace('.v', '') + '.out') or {
 			panic(err)
 		}
-
 		expected = expected.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n', '\n').trim('\n')
 		found := res.output.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n', '\n').trim('\n')
 		if expected != found {
