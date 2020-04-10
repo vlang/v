@@ -160,31 +160,10 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && b.pref.os != .windows {
+		if b.pref.backend == .c && !b.should_compile_c(file) {
 			continue
 		}
-		if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && b.pref.os != .linux {
-			continue
-		}
-		if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && b.pref.os != .mac {
-			continue
-		}
-		if file.ends_with('_nix.v') && b.pref.os == .windows {
-			continue
-		}
-		if file.ends_with('_android.v') && b.pref.os != .android {
-			continue
-		}
-		if file.ends_with('_freebsd.v') && b.pref.os != .freebsd {
-			continue
-		}
-		if file.ends_with('_solaris.v') && b.pref.os != .solaris {
-			continue
-		}
-		if file.ends_with('_js.v') && b.pref.os != .js {
-			continue
-		}
-		if file.ends_with('_c.v') && b.pref.os == .js {
+		if b.pref.backend == .js && !b.should_compile_js(file) {
 			continue
 		}
 		if b.pref.compile_defines_all.len > 0 && file.contains('_d_') {
@@ -203,6 +182,71 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 		res << os.join_path(dir, file)
 	}
 	return res
+}
+
+[inline]
+fn (b Builder) should_compile_c(file string) bool {
+	if !file.ends_with('.c.v') && file.split('.').len > 2 {
+		// Probably something like `a.js.v`.
+		return false
+	}
+	// TODO Remove after vc is deployed and files have been moved
+	if file.ends_with('_js.v') {
+		return false
+	}
+	if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && b.pref.os != .windows {
+		return false
+	}
+	if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && b.pref.os != .linux {
+		return false
+	}
+	if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && b.pref.os != .mac {
+		return false
+	}
+	if file.ends_with('_nix.v') && b.pref.os == .windows {
+		return false
+	}
+	if file.ends_with('_android.v') && b.pref.os != .android {
+		return false
+	}
+	if file.ends_with('_freebsd.v') && b.pref.os != .freebsd {
+		return false
+	}
+	if file.ends_with('_solaris.v') && b.pref.os != .solaris {
+		return false
+	}
+	// End of TODO
+	if file.ends_with('_windows.c.v') && b.pref.os != .windows {
+		return false
+	}
+	if file.ends_with('_linux.c.v') && b.pref.os != .linux {
+		return false
+	}
+	if file.ends_with('_darwin.c.v') && b.pref.os != .mac {
+		return false
+	}
+	if file.ends_with('_nix.c.v') && b.pref.os == .windows {
+		return false
+	}
+	if file.ends_with('_android.c.v') && b.pref.os != .android {
+		return false
+	}
+	if file.ends_with('_freebsd.c.v') && b.pref.os != .freebsd {
+		return false
+	}
+	if file.ends_with('_solaris.c.v') && b.pref.os != .solaris {
+		return false
+	}
+	return true
+}
+
+[inline]
+fn (b Builder) should_compile_js(file string) bool {
+	if !file.ends_with('.js.v') && file.split('.').len > 2 {
+		// Probably something like `a.c.v`.
+		return false
+	}
+	return true
 }
 
 pub fn (b Builder) log(s string) {
