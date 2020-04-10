@@ -17,13 +17,11 @@ const (
 		'vlib/eventbus/eventbus_test.v',
 		'vlib/flag/flag_test.v',
 		'vlib/json/json_test.v',
-		'vlib/math/big/big_test.v',
 		'vlib/math/complex/complex_test.v',
 		'vlib/net/ftp/ftp_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/http_test.v',
 		'vlib/net/socket_test.v',
-		'vlib/net/socket_udp_test.v',
 		'vlib/regex/regex_test.v',
 		'vlib/sqlite/sqlite_test.v', // Linux only
 		'vlib/strconv/ftoa/f32_f64_to_string_test.v',
