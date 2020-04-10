@@ -32,44 +32,5 @@ fn (g mut JsGen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 }
 
 fn (g mut JsGen) gen_str_for_struct(info table.Struct, styp string) {
-	// TODO: short it if possible
-	// generates all definitions of substructs
-	for i, field in info.fields {
-		sym := g.table.get_type_symbol(field.typ)
-		if sym.kind == .struct_ {
-			field_styp := g.typ(field.typ)
-			g.gen_str_for_type(sym, field_styp)
-		}
-	}
-	s := styp.replace('.', '__')
-	g.definitions.write('string ${s}_str($styp it, int indent_count) {\n')
-	// generate ident / indent length = 4 spaces
-	g.definitions.write('\tstring indents = tos3("");\n\tfor (int i = 0; i < indent_count; i++) { indents = string_add(indents, tos3("    ")); }\n')
-	g.definitions.write('\treturn _STR("$styp {\\n')
-	for field in info.fields {
-		fmt := g.type_to_fmt(field.typ)
-		g.definitions.write('%.*s    ' + '$field.name: $fmt\\n')
-	}
-	g.definitions.write('%.*s}"')
-	if info.fields.len > 0 {
-		g.definitions.write(', ')
-		for i, field in info.fields {
-			sym := g.table.get_type_symbol(field.typ)
-			if sym.kind == .struct_ {
-				field_styp := g.typ(field.typ)
-				g.definitions.write('indents.len, indents.str, ${field_styp}_str(it.$field.name, indent_count + 1).len, ${field_styp}_str(it.$field.name, indent_count + 1).str')
-			} else {
-				g.definitions.write('indents.len, indents.str, it.$field.name')
-				if field.typ == table.string_type {
-					g.definitions.write('.len, it.${field.name}.str')
-				} else if field.typ == table.bool_type {
-					g.definitions.write(' ? 4 : 5, it.${field.name} ? "true" : "false"')
-				}
-				if i < info.fields.len - 1 {
-					g.definitions.write(', ')
-				}
-			}
-		}
-	}
-	g.definitions.writeln(', indents.len, indents.str);\n}')
+	// TODO	
 }
