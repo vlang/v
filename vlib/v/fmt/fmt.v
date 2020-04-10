@@ -747,17 +747,8 @@ fn (f mut Fmt) comment(node ast.Comment) {
 	lines := node.text.split_into_lines()
 	f.writeln('/*')
 	for line in lines {
-		mut whitespace := 0
-		for chr in line {
-			if chr == ` ` || chr == `\t` {
-				whitespace++
-			} else {
-				break
-			}
-		}
-		res_line := line[whitespace..]
 		f.write('   ')
-		f.writeln(res_line)
+		f.writeln(line.trim_space())
 	}
 	f.writeln('*/')
 }
