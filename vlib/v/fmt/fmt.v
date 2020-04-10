@@ -760,7 +760,7 @@ fn (f mut Fmt) comment(node ast.Comment) {
 	for line in lines {
 		mut whitespace := 0
 		for chr in line {
-			if chr == ' '[0] || chr == '\t'[0] {
+			if chr == ` ` || chr == `\t` {
 				whitespace++
 			} else {
 				break
