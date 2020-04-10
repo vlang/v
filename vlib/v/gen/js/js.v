@@ -25,6 +25,7 @@ struct JsGen {
 	indent			int
 	stmt_start_pos	int
 	fn_decl			&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	str_types		[]string // types that need automatic str() generation
 }
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -182,6 +183,9 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		ast.StringLiteral {
 			g.write('tos3("$it.val")')
 		}
+		ast.StringInterLiteral {
+			g.gen_string_inter_literal(it)
+		}
 		ast.InfixExpr {
 			g.expr(it.left)
 			g.write(' $it.op.str() ')
@@ -242,6 +246,68 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			println(term.red('jsgen.expr(): bad node'))
 		}
 	}
+}
+
+fn (g mut JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
+	g.write('tos3(`')
+	for i, val in it.vals {
+		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
+		g.write(escaped_val)
+		if i >= it.exprs.len {
+			continue
+		}
+		expr := it.exprs[i]
+		sfmt := it.expr_fmts[i]
+		g.write('\${')
+		if sfmt.len > 0 {
+			fspec := sfmt[sfmt.len - 1]
+			if fspec == `s` && it.expr_types[i] == table.string_type {
+				g.expr(expr)
+				g.write('.str')
+			} else {
+				g.expr(expr)
+			}
+		} else if it.expr_types[i] == table.string_type {
+			// `name.str`
+			g.expr(expr)
+			g.write('.str')
+		} else if it.expr_types[i] == table.bool_type {
+			g.expr(expr)
+			g.write(' ? 4 : 5, ')
+			g.expr(expr)
+			g.write(' ? "true" : "false"')
+		}  else {
+			sym := g.table.get_type_symbol(it.expr_types[i])
+			if sym.kind == .enum_ {
+				is_var := match it.exprs[i] {
+					ast.SelectorExpr {
+						true
+					}
+					ast.Ident {
+						true
+					}
+					else {
+						false
+					}
+				}
+				if is_var {
+					styp := g.typ(it.expr_types[i])
+					g.gen_str_for_type(sym, styp)
+					g.write('${styp}_str(')
+					g.enum_expr(expr)
+					g.write(').str')
+				} else {
+					g.write('"')
+					g.enum_expr(expr)
+					g.write('"')
+				}
+			} else {
+				g.expr(expr)
+			}
+		}
+		g.write('}')
+	}
+	g.write('`)')
 }
 
 fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
@@ -340,6 +406,31 @@ fn (g mut JsGen) gen_return_stmt(it ast.Return) {
 		g.expr(it.exprs[0])
 	}
 	g.writeln(';')
+}
+
+fn (g mut JsGen) enum_expr(node ast.Expr) {
+	match node {
+		ast.EnumVal {
+			g.write(it.val)
+		}
+		else {
+			g.expr(node)
+		}
+	}
+}
+
+fn (g JsGen) type_to_fmt(typ table.Type) string {
+	sym := g.table.get_type_symbol(typ)
+	if sym.kind == .struct_ {
+		return '%.*s'
+	} else if typ == table.string_type {
+		return "\'%.*s\'"
+	} else if typ == table.bool_type {
+		return '%.*s'
+	} else if typ in [table.f32_type, table.f64_type] {
+		return '%g'		// g removes trailing zeros unlike %f
+	}
+	return '%d'
 }
 
 fn verror(s string) {
