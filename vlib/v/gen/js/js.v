@@ -175,7 +175,6 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.StructDecl {
 			g.gen_struct_decl(it)
-			g.writeln('')
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
@@ -188,6 +187,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 
 fn (g mut JsGen) expr(node ast.Expr) {
 	// println('cgen expr()')
+	print(typeof(node))
+	print(' ')
+	println(node)
 	match node {
 		ast.IntegerLiteral {
 			g.write(it.val)
@@ -213,13 +215,18 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
 			type_sym := g.table.get_type_symbol(it.typ)
-			g.writeln('/*$type_sym.name*/{')
+			g.writeln('new ${type_sym.name}(')
+			g.indent++
 			for i, field in it.fields {
-				g.write('\t$field : ')
 				g.expr(it.exprs[i])
-				g.writeln(', ')
+				g.write(' /* $field */')
+				if i < it.fields.len-1 {
+					g.write(', ')				
+				}
+				g.writeln('')
 			}
-			g.write('}')
+			g.indent--
+			g.write(')')
 		}
 		ast.CallExpr {
 			g.write('${it.name}(')
@@ -503,15 +510,22 @@ fn (g mut JsGen) gen_return_stmt(it ast.Return) {
 }
 
 fn (g mut JsGen) gen_struct_decl(it ast.StructDecl) {
-	g.writeln('class $it.name {')
+  g.writeln('class $it.name {')
+	g.indent++
+	g.write('constructor(')
+	for i, field in it.fields {
+		g.write('/* ${g.typ(field.typ)} */ $field.name')
+		if i < it.fields.len-1 { g.write(', ') }
+	}
+	g.writeln(') {')
 	g.indent++
 	for field in it.fields {
-		typ := g.typ(field.typ)
+    typ := g.typ(field.typ)
 		g.writeln(g.doc.gen_typ(typ, field.name))
-		g.write(field.name) // field name
-		g.write(' = ') // seperator
-		g.writeln('undefined;') //TODO default value for type
+	  g.writeln('this.$field.name = $field.name')
 	}
+	g.indent--
+	g.writeln('}')
 	g.indent--
 	g.writeln('}')
 }
