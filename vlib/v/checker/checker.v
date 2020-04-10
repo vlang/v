@@ -562,12 +562,12 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 
 pub fn (c mut Checker) enum_decl(decl ast.EnumDecl) {
 	for field in decl.fields {
-		for expr in field.exprs {
-			match expr {
+		if field.has_expr {
+			match field.expr {
 				ast.IntegerLiteral {}
 				ast.PrefixExpr {}
 				else {
-					mut pos := expr_pos(expr)
+					pos := expr_pos(field.expr)
 					if pos.pos == 0 {
 						pos = field.pos
 					}
@@ -1057,7 +1057,18 @@ fn expr_pos(node ast.Expr) token.Position {
 		ast.IfExpr { return it.pos }
 		// ast.IfGuardExpr { }
 		ast.IndexExpr { return it.pos }
-		ast.InfixExpr { return it.pos }
+		ast.InfixExpr {
+			left_pos := expr_pos(it.left)
+			right_pos := expr_pos(it.right)
+			if left_pos.pos == 0 || right_pos.pos == 0 {
+				return it.pos
+			}
+			return token.Position{
+				line_nr: it.pos.line_nr
+				pos: left_pos.pos
+				len: right_pos.pos - left_pos.pos + right_pos.len
+			}
+		}
 		ast.IntegerLiteral { return it.pos }
 		ast.MapInit { return it.pos }
 		ast.MatchExpr { return it.pos }

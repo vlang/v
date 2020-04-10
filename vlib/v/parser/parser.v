@@ -842,13 +842,14 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			// will fudge left shift as it makes it right assoc
 			// `arr << 'a'` | `arr << 'a' + 'b'`
 			tok := p.tok
+			pos :=  tok.position()
 			p.next()
 			right := p.expr(precedence - 1)
 			node = ast.InfixExpr{
 				left: node
 				right: right
 				op: tok.kind
-				pos: tok.position()
+				pos:pos
 			}
 		} else if p.tok.kind.is_infix() {
 			node = p.infix_expr(node)
@@ -1887,13 +1888,15 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 		pos := p.tok.position()
 		val := p.check_name()
 		vals << val
-		mut exprs := []ast.Expr
+		mut expr := ast.Expr{}
+		mut has_expr := false
 		// p.warn('enum val $val')
 		if p.tok.kind == .assign {
 			p.next()
-			exprs << p.expr(0)
+			expr = p.expr(0)
+			has_expr = true
 		}
-		fields << ast.EnumField{val, pos, exprs}
+		fields << ast.EnumField{val, pos, expr, has_expr}
 		// Allow commas after enum, helpful for
 		// enum Color {
 		// r,g,b

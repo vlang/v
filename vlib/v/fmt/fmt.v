@@ -210,11 +210,9 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('enum $name {')
 			for field in it.fields {
 				f.write('\t$field.name')
-				if field.exprs.len > 0 {
+				if field.has_expr {
 					f.write(' = ')
-					for expr in field.exprs {
-						f.expr(expr)
-					}
+					f.expr(expr)
 					f.writeln(',')
 				} else {
 					f.writeln('')
