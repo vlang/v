@@ -104,8 +104,8 @@ fn main() {
 		else {}
 	}
 	if command in ['run', 'build'] || command.ends_with('.v') || os.exists(command) {
-		println('command')
-		println(prefs.path)
+		//println('command')
+		//println(prefs.path)
 		builder.compile(command, prefs)
 		return
 	}
