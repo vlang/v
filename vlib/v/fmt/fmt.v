@@ -74,8 +74,11 @@ pub fn (f mut Fmt) writeln(s string) {
 }
 
 fn (f mut Fmt) mod(mod ast.Module) {
-	f.writeln('module $mod.name\n')
 	f.cur_mod = mod.name
+	if mod.is_skipped {
+		return
+	}
+	f.writeln('module $mod.name\n')
 }
 
 fn (f mut Fmt) imports(imports []ast.Import) {

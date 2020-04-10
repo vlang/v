@@ -254,10 +254,6 @@ fn (p mut Parser) check_name() string {
 }
 
 pub fn (p mut Parser) top_stmt() ast.Stmt {
-	if p.fileis('mmm.v') {
-		print('!!stmt()')
-		println(p.tok.kind.str())
-	}
 	match p.tok.kind {
 		.key_pub {
 			match p.peek_tok.kind {
@@ -518,7 +514,6 @@ fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 	return node
 }
 */
-
 pub fn (p &Parser) error(s string) {
 	p.error_with_pos(s, p.tok.position())
 }
@@ -1409,7 +1404,8 @@ fn (p mut Parser) parse_number_literal() ast.Expr {
 
 fn (p mut Parser) module_decl() ast.Module {
 	mut name := 'main'
-	if p.tok.kind == .key_module {
+	is_skipped := p.tok.kind != .key_module
+	if !is_skipped {
 		p.check(.key_module)
 		name = p.check_name()
 	}
@@ -1418,6 +1414,7 @@ fn (p mut Parser) module_decl() ast.Module {
 	p.builtin_mod = p.mod == 'builtin'
 	return ast.Module{
 		name: full_mod
+		is_skipped: is_skipped
 	}
 }
 

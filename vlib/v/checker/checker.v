@@ -61,7 +61,7 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 		c.check(file)
 	}
 	// Make sure fn main is defined in non lib builds
-	if c.pref.build_mode == .build_module {
+	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
 	}
 	for i, f in c.table.fns {

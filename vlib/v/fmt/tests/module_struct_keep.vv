@@ -1,0 +1,10 @@
+module module_fmt
+
+pub struct MyStruct {
+mut:
+	value int
+}
+
+pub fn (m MyStruct) foo() bool {
+	return true
+}

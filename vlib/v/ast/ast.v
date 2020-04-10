@@ -96,6 +96,7 @@ pub:
 	name string
 	path string
 	expr Expr
+	is_skipped bool // module main can be skipped in single file programs
 }
 
 pub struct StructField {
