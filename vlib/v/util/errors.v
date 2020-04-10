@@ -64,7 +64,7 @@ pub fn formatted_error(kind string /*error or warn*/, emsg string, filepath stri
 		}
 	}
 	column := util.imax(0, pos.pos - p - 1)
-	position := '${path}:${pos.line_nr+1}:${util.imax(1,column+1)}:'
+	position := '${path}:${pos.line_nr+1}:${util.imax(1,column)}:'
 	//
 	bline := util.imax(0, pos.line_nr - error_context_before)
 	aline := util.imin(source_lines.len-1, pos.line_nr + error_context_after)
