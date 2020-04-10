@@ -135,16 +135,6 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		ast.ExprStmt {
 			g.expr(it.expr)
 		}
-		/*
-			match it.expr {
-				// no ; after an if expression
-				ast.IfExpr {}
-				else {
-					g.writeln(';')
-				}
-	}
-	*/
-
 		else {
 			verror('jsgen.stmt(): bad node')
 		}
