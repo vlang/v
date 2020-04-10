@@ -129,19 +129,7 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.StructDecl {
-			g.writeln('class $it.name {')
-			for field in it.fields {
-				typ := g.typ(field.typ)
-				g.writeln('\t/**')
-				g.writeln('\t* @type {$typ} - ${field.name}') // the type
-				g.writeln('\t*/')
-				g.write('\t')
-				g.write(field.name) // field name
-				g.write(' = ') // seperator
-				g.write('undefined;') //TODO default value for type
-				g.write('\n')
-			}
-			g.writeln('}')
+			g.gen_struct_decl(it)
 			g.writeln('')
 		}
 		ast.ExprStmt {
@@ -340,6 +328,22 @@ fn (g mut JsGen) gen_return_stmt(it ast.Return) {
 		g.expr(it.exprs[0])
 	}
 	g.writeln(';')
+}
+
+fn (g mut JsGen) gen_struct_decl(it ast.StructDecl) {
+	g.writeln('class $it.name {')
+	for field in it.fields {
+		typ := g.typ(field.typ)
+		g.writeln('\t/**')
+		g.writeln('\t* @type {$typ} - ${field.name}') // the type
+		g.writeln('\t*/')
+		g.write('\t')
+		g.write(field.name) // field name
+		g.write(' = ') // seperator
+		g.write('undefined;') //TODO default value for type
+		g.write('\n')
+	}
+	g.writeln('}')
 }
 
 fn verror(s string) {
