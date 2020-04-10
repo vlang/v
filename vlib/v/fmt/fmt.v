@@ -64,7 +64,6 @@ pub fn (f mut Fmt) write(s string) {
 }
 
 pub fn (f mut Fmt) writeln(s string) {
-	if s == '// d' {println(f.empty_line)}
 	if f.indent > 0 && f.empty_line {
 		// println(f.indent.str() + s)
 		f.out.write(tabs[f.indent])
