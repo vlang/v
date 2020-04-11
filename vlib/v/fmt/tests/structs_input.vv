@@ -5,7 +5,7 @@ a
 b
 */
 //c
-	name string
+/*d*/	name string
 	very_long_field bool
 	age int
 }

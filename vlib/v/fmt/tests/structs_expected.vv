@@ -5,6 +5,7 @@ mut:
 	   b
 	*/
 	// c
+	// d
 	name            string
 	very_long_field bool
 	age             int

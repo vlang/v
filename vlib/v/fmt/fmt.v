@@ -402,6 +402,9 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 		mut j := 0
 		// Handle comments before field
 		for j < comments.len && comments[j].pos.pos < field.pos.pos {
+			if comments[j].pos.line_nr == field.pos.line_nr {
+				f.writeln('')
+			}
 			f.indent++
 			f.empty_line = true
 			f.comment(comments[j])
