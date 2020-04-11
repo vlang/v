@@ -1307,7 +1307,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	mut array_type := table.void_type
 	mut elem_type := table.void_type
 	mut exprs := []ast.Expr
-	is_fixed := false
+	mut is_fixed := false
 	if p.tok.kind == .rsbr {
 		// []typ => `[]` and `typ` must be on the same line
 		line_nr := p.tok.line_nr
@@ -1685,6 +1685,7 @@ fn (p mut Parser) parse_assign_lhs() []ast.Ident {
 			p.check(.key_static)
 		}
 		mut ident := p.parse_ident(false)
+		ident.is_mut = is_mut
 		ident.info = ast.IdentVar{
 			is_mut: is_mut
 			is_static: is_static
@@ -1741,10 +1742,12 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 				p.scope.register(ident.name, ast.Var{
 					name: ident.name
 					expr: exprs[i]
+					is_mut: ident.is_mut || p.inside_for
 				})
 			} else {
 				p.scope.register(ident.name, ast.Var{
 					name: ident.name
+					is_mut: ident.is_mut || p.inside_for
 				})
 			}
 		}

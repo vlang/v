@@ -74,7 +74,7 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 		}
 	}
 	eprintln('function `main` is undeclared in the main module')
-	//eprintln(ast_files[0].mod.name)
+	// eprintln(ast_files[0].mod.name)
 	exit(1)
 }
 
@@ -228,10 +228,22 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	if ast.expr_is_blank_ident(assign_expr.left) {
 		return
 	}
+	match assign_expr.left {
+		ast.Ident {
+			scope := c.file.scope.innermost(assign_expr.pos.pos)
+			if v := scope.find_var(it.name) {
+				if !v.is_mut {
+					c.error('`$it.name` is immutable, declare it with `mut`', assign_expr.pos)
+				}
+			}
+		}
+		else {}
+	}
 	if !c.table.check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
-		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name` ', expr_pos(assign_expr.val))
+		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name` ',
+			expr_pos(assign_expr.val))
 	}
 	c.check_expr_opt_call(assign_expr.val, right_type, true)
 }
@@ -539,10 +551,8 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 		c.error('too many arguments to return, current function does not return anything',
 			return_stmt.pos)
 		return
-	}
-	else if return_stmt.exprs.len == 0 && c.fn_return_type != table.void_type {
-		c.error('too few arguments to return',
-			return_stmt.pos)
+	} else if return_stmt.exprs.len == 0 && c.fn_return_type != table.void_type {
+		c.error('too few arguments to return', return_stmt.pos)
 		return
 	}
 	if return_stmt.exprs.len == 0 {
@@ -588,11 +598,11 @@ pub fn (c mut Checker) enum_decl(decl ast.EnumDecl) {
 				ast.IntegerLiteral {}
 				ast.PrefixExpr {}
 				else {
-					pos := expr_pos(field.expr)
+					mut pos := expr_pos(field.expr)
 					if pos.pos == 0 {
 						pos = field.pos
 					}
-					c.error("default value for enum has to be an integer", pos)
+					c.error('default value for enum has to be an integer', pos)
 				}
 			}
 		}
@@ -612,12 +622,14 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		right_type := c.expr(assign_stmt.right[0])
 		right_type_sym := c.table.get_type_symbol(right_type)
 		if right_type_sym.kind != .multi_return {
-			c.error('expression on the right does not return multiple values, while at least $assign_stmt.left.len are expected', assign_stmt.pos)
+			c.error('expression on the right does not return multiple values, while at least $assign_stmt.left.len are expected',
+				assign_stmt.pos)
 			return
 		}
 		mr_info := right_type_sym.mr_info()
 		if mr_info.types.len < assign_stmt.left.len {
-			c.error('right expression returns only $mr_info.types.len values, but left one expects $assign_stmt.left.len', assign_stmt.pos)
+			c.error('right expression returns only $mr_info.types.len values, but left one expects $assign_stmt.left.len',
+				assign_stmt.pos)
 		}
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
@@ -730,23 +742,26 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 				fixed_size = it.val.int()
 			}
 			ast.Ident {
-				//if obj := c.file.global_scope.find_const(it.name) {
-				//if  obj := scope.find(it.name) {
-				//scope := c.file.scope.innermost(array_init.pos.pos)
-				//eprintln('scope: ${scope.str()}')
-				//scope.find(it.name) or {
-				//	c.error('undefined: `$it.name`', array_init.pos)
-				//}
-				mut full_const_name := if it.mod == 'main' { it.name } else {it.mod + '.' + it.name }
-				if  obj := c.file.global_scope.find_const( full_const_name ) {
+				// if obj := c.file.global_scope.find_const(it.name) {
+				// if  obj := scope.find(it.name) {
+				// scope := c.file.scope.innermost(array_init.pos.pos)
+				// eprintln('scope: ${scope.str()}')
+				// scope.find(it.name) or {
+				// c.error('undefined: `$it.name`', array_init.pos)
+				// }
+				mut full_const_name := if it.mod == 'main' { it.name } else { it.mod + '.' +
+						it.name }
+				if obj := c.file.global_scope.find_const(full_const_name) {
 					cf := ast.ConstField(obj)
 					if cint := is_const_integer(cf) {
 						fixed_size = cint.val.int()
 					}
 				} else {
-					c.error('non existant integer const $full_const_name while initializing the size of a static array', array_init.pos)
+					c.error('non existant integer const $full_const_name while initializing the size of a static array',
+						array_init.pos)
 				}
-			} else {
+			}
+			else {
 				c.error('expecting `int` for fixed size', array_init.pos)
 			}
 		}
@@ -1085,20 +1100,36 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 fn expr_pos(node ast.Expr) token.Position {
 	// all uncommented have to be implemented
 	match mut node {
-		ast.ArrayInit { return it.pos }
-		ast.AsCast { return it.pos }
-		ast.AssignExpr { return it.pos }
-		ast.Assoc { return it.pos }
-		// ast.BoolLiteral { }
-		// ast.CastExpr { }
-		ast.CallExpr { return it.pos }
-		// ast.CharLiteral { }
-		ast.EnumVal { return it.pos }
-		// ast.FloatLiteral { }
+		ast.ArrayInit {
+			return it.pos
+		}
+		ast.AsCast {
+			return it.pos
+		}
 		// ast.Ident { }
-		ast.IfExpr { return it.pos }
+		ast.AssignExpr {
+			return it.pos
+		}
+		// ast.CastExpr { }
+		ast.Assoc {
+			return it.pos
+		}
+		// ast.BoolLiteral { }
+		ast.CallExpr {
+			return it.pos
+		}
+		// ast.CharLiteral { }
+		ast.EnumVal {
+			return it.pos
+		}
+		// ast.FloatLiteral { }
+		ast.IfExpr {
+			return it.pos
+		}
 		// ast.IfGuardExpr { }
-		ast.IndexExpr { return it.pos }
+		ast.IndexExpr {
+			return it.pos
+		}
 		ast.InfixExpr {
 			left_pos := expr_pos(it.left)
 			right_pos := expr_pos(it.right)
@@ -1111,21 +1142,41 @@ fn expr_pos(node ast.Expr) token.Position {
 				len: right_pos.pos - left_pos.pos + right_pos.len
 			}
 		}
-		ast.IntegerLiteral { return it.pos }
-		ast.MapInit { return it.pos }
-		ast.MatchExpr { return it.pos }
-		ast.PostfixExpr { return it.pos }
-		ast.PrefixExpr { return it.pos }
+		ast.IntegerLiteral {
+			return it.pos
+		}
+		ast.MapInit {
+			return it.pos
+		}
+		ast.MatchExpr {
+			return it.pos
+		}
+		ast.PostfixExpr {
+			return it.pos
+		}
 		// ast.None { }
+		ast.PrefixExpr {
+			return it.pos
+		}
 		// ast.ParExpr { }
-		ast.SelectorExpr { return it.pos }
+		ast.SelectorExpr {
+			return it.pos
+		}
 		// ast.SizeOf { }
-		ast.StringLiteral { return it.pos }
-		ast.StringInterLiteral { return it.pos }
-		ast.StructInit { return it.pos }
+		ast.StringLiteral {
+			return it.pos
+		}
+		ast.StringInterLiteral {
+			return it.pos
+		}
 		// ast.Type { }
+		ast.StructInit {
+			return it.pos
+		}
 		// ast.TypeOf { }
-		else { return token.Position{} }
+		else {
+			return token.Position{}
+		}
 	}
 }
 

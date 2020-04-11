@@ -105,6 +105,7 @@ pub:
 	pos          token.Position
 	comment      Comment
 	default_expr string // token literal //Expr
+	attr string
 mut:
 	typ          table.Type
 }
@@ -302,6 +303,7 @@ pub:
 	tok_kind token.Kind
 	mod      string
 	pos      token.Position
+	is_mut bool
 mut:
 	name     string
 	kind     IdentKind

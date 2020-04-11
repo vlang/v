@@ -574,8 +574,15 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				if branch.stmts.len == 0 {
 					f.writeln(' {}')
 				} else {
+					// TODO single line branches
+					// if branch.stmts.len < 2 {
+					// f.write(' { ')
+					// } else {
 					f.writeln(' {')
+					// f.single_line_if = true
+					// }
 					f.stmts(branch.stmts)
+					// f.single_line_if = false
 					f.writeln('}')
 				}
 			}
