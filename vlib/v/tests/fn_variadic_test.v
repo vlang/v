@@ -49,12 +49,20 @@ fn test_fn_variadic_forward() {
 	assert variadic_forward_a('a','b','c') == 'abc'
 }
 
-fn variadic_test_no_args(name string, groups ...VaTestGroup) {
+fn fn_variadic_with_arg_no_vargs(name string, groups ...VaTestGroup) {
 	assert groups.len == 0
 }
 
-fn test_fn_variadic_no_args() {
-	variadic_test_no_args('marko')
+fn test_fn_variadic_with_arg_no_vargs() {
+	fn_variadic_with_arg_no_vargs('marko')
+}
+
+fn fn_variadic_only_with_no_vargs(groups ...VaTestGroup) {
+	assert groups.len == 0
+}
+
+fn test_variadic_only_with_no_vargs() {
+	fn_variadic_only_with_no_vargs()
 }
 
 struct VaTestStruct {}
