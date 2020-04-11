@@ -98,6 +98,11 @@ fn (g mut JsGen) to_js_typ(typ string) string {
 		} else {
 			if typ.starts_with('array_') {
 				styp = g.to_js_typ(typ.replace('array_', '')) + '[]'
+			} else if typ.starts_with('map_') {
+				tokens := typ.split('_')
+				styp = 'Map<${tokens[1]}, ${tokens[2]}>'
+			} else {
+				styp = typ
 			}
 		}
 	}
@@ -205,7 +210,7 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.expr(it.expr)
 		}
 		else {
-			verror('jsgen.stmt(): bad node')
+			verror('jsgen.stmt(): bad node ${typeof(node)}')
 		}
 	}
 }
@@ -215,6 +220,9 @@ fn (g mut JsGen) expr(node ast.Expr) {
 	match node {
 		ast.ArrayInit {
 			g.gen_array_init_expr(it)
+		}
+		ast.MapInit {
+			g.gen_map_init_expr(it)
 		}
 		ast.IntegerLiteral {
 			g.write(it.val)
@@ -603,6 +611,33 @@ fn (g mut JsGen) fn_args(args []table.Arg, is_variadic bool) {
 		if i < args.len - 1 {
 			g.write(', ')
 		}
+	}
+}
+
+fn (g mut JsGen) gen_map_init_expr(it ast.MapInit) {
+	key_typ_sym := g.table.get_type_symbol(it.key_type)
+	value_typ_sym := g.table.get_type_symbol(it.value_type)
+	key_typ_str := key_typ_sym.name.replace('.', '__')
+	value_typ_str := value_typ_sym.name.replace('.', '__')
+	if it.vals.len > 0 {
+		g.writeln('new Map([')
+		g.indent++
+		for i, key in it.keys {
+			val := it.vals[i]
+			g.write('[')
+			g.expr(key)
+			g.write(', ')
+			g.expr(val)
+			g.write(']')
+			if i < it.keys.len - 1 {
+				g.write(',')
+			}
+			g.writeln('')
+		}
+		g.indent--
+		g.write('])')
+	} else {
+		g.write('new Map()')
 	}
 }
 
