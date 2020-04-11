@@ -35,7 +35,7 @@ struct JsGen {
 	defer_stmts     []ast.DeferStmt
 	fn_decl			&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	str_types		[]string // types that need automatic str() generation
-	method_fn_decls map[string][]ast.FnDecl
+	method_fn_decls map[string][]ast.Stmt
 	empty_line		bool
 }
 
@@ -78,9 +78,10 @@ pub fn (g mut JsGen) find_class_methods(stmts []ast.Stmt) {
 					// Found struct method, store it to be generated along with the class.
 					className :=  g.table.get_type_symbol(it.receiver.typ).name
 					// Workaround until `map[key] << val` works.
+					println('found fn for class $className')
 					arr := g.method_fn_decls[className]
-					arr << ast.FnDecl(it)
-					println(arr.len)
+					arr << stmt
+					g.method_fn_decls[className] = arr
 				}
 			}
 			else {}
@@ -164,6 +165,7 @@ pub fn (g mut JsGen) new_tmp_var() string {
 fn (g mut JsGen) stmts(stmts []ast.Stmt) {
 	g.indent++
 	for stmt in stmts {
+		println(stmt)
 		g.stmt(stmt)
 	}
 	g.indent--
@@ -822,19 +824,71 @@ fn (g mut JsGen) enum_expr(node ast.Expr) {
 	}
 }
 
-fn (g mut JsGen) gen_struct_decl(it ast.StructDecl) {
-  g.writeln('class $it.name {')
+fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
+  	g.writeln('class $node.name {')
 	g.indent++
-	g.writeln(g.doc.gen_ctor(it.fields))
+	g.writeln(g.doc.gen_ctor(node.fields))
 	g.writeln('constructor(values) {')
 	g.indent++
-	for field in it.fields {
+	for field in node.fields {
     typ := g.typ(field.typ)
 		g.writeln(g.doc.gen_typ(typ, field.name))
 	  g.writeln('this.$field.name = values.$field.name')
 	}
 	g.indent--
 	g.writeln('}')
+
+	println(node.name)
+	fns := g.method_fn_decls[node.name]
+	for cfn in fns {
+		// TODO: Fix this hack for type conversion
+		// Directly converting to FnDecl gives
+		// error: conversion to non-scalar type requested
+		match cfn {
+			ast.FnDecl {
+				// generate function in class
+				if it.no_body {
+					continue
+				}
+				has_go := fn_has_go(it)
+
+				mut name := it.name
+				c := name[0]
+				if c in [`+`, `-`, `*`, `/`] {
+					name = util.replace_op(name)
+				}
+
+				type_name := g.typ(it.return_type)
+
+				// generate jsdoc for the function
+				g.writeln('/**')
+				for i, arg in it.args {
+					arg_type_name := g.typ(arg.typ)
+					is_varg := i == it.args.len - 1 && it.is_variadic
+					if is_varg {
+						g.writeln('* @param {...$arg_type_name} $arg.name')
+					} else {
+						g.writeln('* @param {$arg_type_name} $arg.name')
+					}
+				}
+				g.writeln('* @return {$type_name}')
+				g.writeln('*/')
+
+				if has_go {
+					g.write('async ')
+				}
+				g.write('${name}(')
+				g.fn_args(it.args, it.is_variadic)
+				g.writeln(') {')
+				println('gen body')
+				g.stmts(it.stmts)
+				g.writeln('}')
+			}
+			else {}
+		}
+
+	}
+
 	g.indent--
 	g.writeln('}')
 }
