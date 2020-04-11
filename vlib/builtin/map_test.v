@@ -146,8 +146,8 @@ fn test_various_map_value() {
 	assert m17['test'] == u64(0)
 
 	mut m18 := map[string]&int
-	m18['test'] = &int(0)
-	assert m18['test'] == &int(0)
+	m18['test'] = 0
+	assert m18['test'] == 0
 }
 
 
