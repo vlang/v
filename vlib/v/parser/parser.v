@@ -1555,13 +1555,20 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			println('XXXX' + s.str())
 		}
 */
-			mut default_expr := ''			// ast.Expr{}
+			mut default_expr := ast.Expr{}
+			mut has_default_expr := false
 			if p.tok.kind == .assign {
 				// Default value
 				p.next()
-				default_expr = p.tok.lit
-				p.expr(0)
-				// default_expr = p.expr(0)
+				// default_expr = p.tok.lit
+				// p.expr(0)
+				default_expr = p.expr(0)
+				match default_expr {
+					ast.EnumVal { it.typ = typ }
+					// TODO: implement all types??
+					else {}
+				}
+				has_default_expr = true
 			}
 			if p.tok.kind == .comment {
 				comment = p.comment()
@@ -1572,11 +1579,13 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 				typ: typ
 				comment: comment
 				default_expr: default_expr
+				has_default_expr: has_default_expr
 			}
 			fields << table.Field{
 				name: field_name
 				typ: typ
-				default_val: default_expr
+				default_expr: default_expr
+				has_default_expr: has_default_expr
 			}
 			// println('struct field $ti.name $field_name')
 		}
