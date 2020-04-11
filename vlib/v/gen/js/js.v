@@ -172,7 +172,7 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.gen_for_c_stmt(it)
 		}
 		ast.ForInStmt {
-			g.gen_for_in_stml(it)
+			g.gen_for_in_stmt(it)
 		}
 		ast.Return {
 			if g.defer_stmts.len > 0 {
@@ -516,7 +516,7 @@ fn (g mut JsGen) gen_for_c_stmt(it ast.ForCStmt) {
 	g.inside_loop = false
 }
 
-fn (g mut JsGen) gen_for_in_stml(it ast.ForInStmt) {
+fn (g mut JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 	if it.is_range {
 		// `for x in 1..10 {`
 		i := it.val_var
