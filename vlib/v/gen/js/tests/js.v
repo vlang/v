@@ -21,6 +21,10 @@ fn main() {
     }
 
     for i := 0; i < 10; i++ {}
+
+    for i, x in 'hello' {}
+
+    for x in 1..10 {}
 }
 
 [inline]

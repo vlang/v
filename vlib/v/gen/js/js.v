@@ -26,6 +26,7 @@ struct JsGen {
 	doc				&JsDoc
 	mut:
 	file			ast.File
+	tmp_count		int
 	inside_ternary  bool
 	inside_loop		bool
 	is_test         bool
@@ -78,7 +79,6 @@ pub fn (g JsGen) hashes() string {
 
 // V type to JS type
 pub fn (g mut JsGen) typ(t table.Type) string {
-	nr_muls := table.type_nr_muls(t)
 	sym := g.table.get_type_symbol(t)
 	mut styp := sym.name.replace('.', '__')
 	if styp.starts_with('JS__') {
@@ -113,6 +113,11 @@ pub fn (g mut JsGen) writeln(s string) {
 	g.gen_indent()
 	g.out.writeln(s)
 	g.empty_line = true
+}
+
+pub fn (g mut JsGen) new_tmp_var() string {
+	g.tmp_count++
+	return 'tmp$g.tmp_count'
 }
 
 fn (g mut JsGen) stmts(stmts []ast.Stmt) {
@@ -165,6 +170,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.ForCStmt {
 			g.gen_for_c_stmt(it)
+		}
+		ast.ForInStmt {
+			g.gen_for_in_stml(it)
 		}
 		ast.Return {
 			if g.defer_stmts.len > 0 {
@@ -326,7 +334,7 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			val := it.right[i]
 			ident_var_info := ident.var_info()
 			styp := g.typ(ident_var_info.typ)
-			
+
 			if !g.inside_loop {
 				g.writeln(g.doc.gen_typ(styp, ident.name))
 			}
@@ -506,6 +514,35 @@ fn (g mut JsGen) gen_for_c_stmt(it ast.ForCStmt) {
 	g.stmts(it.stmts)
 	g.writeln('}')
 	g.inside_loop = false
+}
+
+fn (g mut JsGen) gen_for_in_stml(it ast.ForInStmt) {
+	if it.is_range {
+		// `for x in 1..10 {`
+		i := it.val_var
+		g.inside_loop = true
+		g.write('for (let $i = ')
+		g.expr(it.cond)
+		g.write('; $i < ')
+		g.expr(it.high)
+		g.writeln('; ++$i) {')
+		g.inside_loop = false
+		g.stmts(it.stmts)
+		g.writeln('}')
+	} else if it.kind == .string {
+		// `for x in 'hello' {`
+		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		g.inside_loop = true
+		g.write('for (let $i = 0; $i < ')
+		g.expr(it.cond)
+		g.writeln('.len; ++$i) {')
+		g.inside_loop = false
+		g.write('\tlet $it.val_var = ')
+		g.expr(it.cond)
+		g.writeln('.str[$i];')
+		g.stmts(it.stmts)
+		g.writeln('}')
+	}
 }
 
 fn (g mut JsGen) fn_args(args []table.Arg, is_variadic bool) {
