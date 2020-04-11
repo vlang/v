@@ -107,12 +107,16 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		p.next()
 		rec_name = p.check_name()
 		rec_mut = p.tok.kind == .key_mut
+		is_amp := p.peek_tok.kind == .amp
 		// if rec_mut {
 		// p.check(.key_mut)
 		// }
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type()
+		if is_amp && rec_mut {
+			p.error('use `(f mut Foo)` or `(f &Foo)` instead of `(f mut &Foo)`')
+		}
 		args << table.Arg{
 			name: rec_name
 			is_mut: rec_mut

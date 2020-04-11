@@ -64,12 +64,17 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
 	}
+	if ast_files.len > 1 && ast_files[0].mod.name == 'builtin' {
+		// TODO hack to fix vv tests
+		return
+	}
 	for i, f in c.table.fns {
 		if f.name == 'main' {
 			return
 		}
 	}
 	eprintln('function `main` is undeclared in the main module')
+	//eprintln(ast_files[0].mod.name)
 	exit(1)
 }
 
@@ -531,7 +536,7 @@ pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 	c.expected_type = c.fn_return_type
 	if return_stmt.exprs.len > 0 && c.fn_return_type == table.void_type {
-		c.error('1too many arguments to return, current function does not return anything',
+		c.error('too many arguments to return, current function does not return anything',
 			return_stmt.pos)
 		return
 	}
