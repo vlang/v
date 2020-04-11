@@ -38,6 +38,7 @@ const (
 #define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
 #undef TCCSKIP
 #define TCCSKIP(x)
+#include <byteswap.h>
 #endif
 
 // for __offset_of
@@ -228,30 +229,34 @@ void _vcleanup();
 #define _wyp1 ((uint64_t)0xe7037ed1a0b428dbull)
 
 
-#if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
+#if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__) || defined(__TINYC__)
 #define _likely_(x) __builtin_expect(x, 1)
 #else
 #define _likely_(x) (x)
 #endif
-#ifndef WYHASH_LITTLE_ENDIAN
-#if defined(_WIN32) || defined(__LITTLE_ENDIAN__) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+
+#if defined(TARGET_ORDER_IS_LITTLE)
 #define WYHASH_LITTLE_ENDIAN 1
-#elif defined(__BIG_ENDIAN__) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#elif defined(TARGET_ORDER_IS_BIG)
 #define WYHASH_LITTLE_ENDIAN 0
 #endif
-#endif
+
 #if (WYHASH_LITTLE_ENDIAN)
-static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v;}
-static inline uint64_t _wyr4(const uint8_t *p) { unsigned v; memcpy(&v, p, 4); return v;}
+  static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v;}
+  static inline uint64_t _wyr4(const uint8_t *p) { unsigned v; memcpy(&v, p, 4); return v;}
 #else
 #if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
-static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return __builtin_bswap64(v);}
-static inline uint64_t _wyr4(const uint8_t *p) { unsigned v; memcpy(&v, p, 4); return __builtin_bswap32(v);}
+  static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return __builtin_bswap64(v);}
+  static inline uint64_t _wyr4(const uint8_t *p) { unsigned v; memcpy(&v, p, 4); return __builtin_bswap32(v);}
 #elif defined(_MSC_VER)
-static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return _byteswap_uint64(v);}
-static inline uint64_t _wyr4(const uint8_t *p) { unsigned v; memcpy(&v, p, 4); return _byteswap_ulong(v);}
+  static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return _byteswap_uint64(v);}
+  static inline uint64_t _wyr4(const uint8_t *p) { unsigned v; memcpy(&v, p, 4); return _byteswap_ulong(v);}
+#elif defined(__TINYC__)
+  static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return bswap_64(v);}
+  static inline uint64_t _wyr4(const uint8_t *p) { unsigned v; memcpy(&v, p, 4); return bswap_32(v);}
 #endif
 #endif
+
 static inline uint64_t _wyr3(const uint8_t *p, unsigned k) { return (((uint64_t)p[0]) << 16) | (((uint64_t)p[k >> 1]) << 8) | p[k - 1];}
 static inline uint64_t _wyrotr(uint64_t v, unsigned k) { return (v >> k) | (v << (64 - k));}
 static inline void _wymix128(uint64_t A, uint64_t B, uint64_t *C, uint64_t *D){
