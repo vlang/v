@@ -41,15 +41,16 @@ const (
 		'vlib/v/tests/typeof_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
 		'vlib/v/tests/pointers_str_test.v',
-		'vlib/v/tests/live_test.v', // Linux & Solaris only, but since live does not work with v2, just skip everywhere
-		'vlib/v/tests/asm_test.v', // skip everywhere for now
+					   
+		'vlib/v/tests/live_test.v', // Linux & Solaris only; since live does not actually work for now with v2, just skip
+		'vlib/v/tests/asm_test.v', // skip everywhere for now, works on linux with cc != tcc
+		'vlib/sqlite/sqlite_test.v', // works only on ubuntu with installed sqlite
+		'vlib/clipboard/clipboard_test.v', // needs code changes to make it compile with v2
 	]
 	skip_on_linux = [
-		'vlib/clipboard/clipboard_test.v',
-	]				   
+	]
 	skip_on_non_linux = [
-		'vlib/sqlite/sqlite_test.v',
-	]							  
+	]
 )
 
 fn main() {
