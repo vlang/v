@@ -189,12 +189,6 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		ast.ForInStmt {
 			g.gen_for_in_stmt(it)
 		}
-		ast.Return {
-			if g.defer_stmts.len > 0 {
-				g.gen_defer_stmts()
-			}
-			g.gen_return_stmt(it)
-		}
 		ast.ForStmt {
 			g.gen_for_stmt(it)
 		}
@@ -207,11 +201,27 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		ast.GotoStmt {
 			// skip: JS has no goto
 		}
+		ast.HashStmt {
+			// skip: nothing with # in JS
+		}
+		ast.Import {}
+		ast.InterfaceDecl {
+			// TODO skip: interfaces not implemented yet
+		}
+		ast.Return {
+			if g.defer_stmts.len > 0 {
+				g.gen_defer_stmts()
+			}
+			g.gen_return_stmt(it)
+		}
 		ast.StructDecl {
 			g.gen_struct_decl(it)
 		}
-		ast.ExprStmt {
-			g.expr(it.expr)
+		ast.TypeDecl {
+			// skip JS has no typedecl
+		}
+		ast.UnsafeStmt {
+			g.stmts(it.stmts)
 		}
 		else {
 			verror('jsgen.stmt(): bad node ${typeof(node)}')
