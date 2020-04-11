@@ -1276,16 +1276,17 @@ fn (p mut Parser) string_expr() ast.Expr {
 		if p.tok.kind == .colon {
 			efmt << ':'
 			p.next()
-		}
-		// ${num:-2d}
-		if p.tok.kind == .minus {
-			efmt << '-'
-			p.next()
-		}
-		// ${num:2d}
-		if p.tok.kind == .number {
-			efmt << p.tok.lit
-			p.next()
+
+			// ${num:-2d}
+			if p.tok.kind == .minus {
+				efmt << '-'
+				p.next()
+			}
+			// ${num:2d}
+			if p.tok.kind == .number {
+				efmt << p.tok.lit
+				p.next()
+			}
 			if p.tok.lit.len == 1 {
 				efmt << p.tok.lit
 				p.next()

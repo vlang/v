@@ -397,16 +397,32 @@ fn test_to_num() {
 	f := '71.5 hasdf'
 	// QTODO
 	//assert f.f32() == 71.5
-	b := 1.52345
-	mut a := '${b:.03f}'
-	assert a == '1.523'
-	num := 7
-	a = '${num:03d}'
 	vals := ['9']
 	assert vals[0].int() == 9
 	big := '93993993939322'
 	assert big.u64() == 93993993939322
 	assert big.i64() == 93993993939322
+}
+
+fn test_inter_format_string() {
+	float_num := 1.52345
+	float_num_string := '-${float_num:.03f}-'
+	assert float_num_string == '-1.523-'
+	int_num := 7
+	int_num_string := '-${int_num:03d}-'
+	assert int_num_string == '-007-'
+	ch := `a`
+	ch_string := '-${ch:c}-'
+	assert ch_string == '-a-'
+	hex_n := 192
+	hex_n_string := '-${hex_n:x}-'
+	assert hex_n_string == '-c0-'
+	oct_n := 192
+	oct_n_string := '-${oct_n:o}-'
+	assert oct_n_string == '-300-'
+	str := 'abc'
+	str_string := '-${str:s}-'
+	assert str_string == '-abc-'
 }
 
 fn test_hash() {
@@ -687,4 +703,3 @@ fn test_split_into_lines() {
 		assert line == line_content
 	}
 }
-
