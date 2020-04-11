@@ -778,9 +778,6 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		.key_sizeof {
 			p.next()			// sizeof
 			p.check(.lpar)
-			if p.tok.kind == .amp {
-				p.next()
-			}
 			if p.tok.lit == 'C' {
 				p.next()
 				p.check(.dot)
@@ -1276,7 +1273,6 @@ fn (p mut Parser) string_expr() ast.Expr {
 		if p.tok.kind == .colon {
 			efmt << ':'
 			p.next()
-
 			// ${num:-2d}
 			if p.tok.kind == .minus {
 				efmt << '-'
