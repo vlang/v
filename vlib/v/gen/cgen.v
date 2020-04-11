@@ -2132,6 +2132,14 @@ fn (g mut Gen) write_init_function() {
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
 	g.writeln(g.inits.str())
+	for mod_name in g.table.imports {
+		init_fn_name := '${mod_name}.init'
+		if _ := g.table.find_fn(init_fn_name) {
+			mod_c_name := mod_name.replace('.', '__')
+			init_fn_c_name := '${mod_c_name}__init'
+			g.writeln('\t${init_fn_c_name}();')
+		}
+	}
 	g.writeln('}')
 	if g.autofree {
 		g.writeln('void _vcleanup() {')
