@@ -34,6 +34,7 @@ struct JsGen {
 	stmt_start_pos	int
 	defer_stmts     []ast.DeferStmt
 	fn_decl			&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	str_types		[]string // types that need automatic str() generation
 	empty_line		bool
 }
 
@@ -237,6 +238,9 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		ast.StringLiteral {
 			g.write('"$it.val"')
 		}
+		ast.StringInterLiteral {
+			g.gen_string_inter_literal(it)
+		}
 		ast.InfixExpr {
 			g.expr(it.left)
 			g.write(' $it.op.str() ')
@@ -294,6 +298,53 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			println(term.red('jsgen.expr(): bad node'))
 		}
 	}
+}
+
+fn (g mut JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
+	g.write('tos3(`')
+	for i, val in it.vals {
+		escaped_val := val.replace_each(['`', '\`', '\r\n', '\n'])
+		g.write(escaped_val)
+		if i >= it.exprs.len {
+			continue
+		}
+		expr := it.exprs[i]
+		sfmt := it.expr_fmts[i]
+		g.write('\${')
+		if sfmt.len > 0 {
+			fspec := sfmt[sfmt.len - 1]
+			if fspec == `s` && it.expr_types[i] == table.string_type {
+				g.expr(expr)
+				g.write('.str')
+			} else {
+				g.expr(expr)
+			}
+		} else if it.expr_types[i] == table.string_type {
+			// `name.str`
+			g.expr(expr)
+			g.write('.str')
+		} else if it.expr_types[i] == table.bool_type {
+			// `expr ? "true" : "false"`
+			g.expr(expr)
+			g.write(' ? "true" : "false"')
+		}  else {
+			sym := g.table.get_type_symbol(it.expr_types[i])
+
+			match sym.kind {
+				.struct_ {
+					g.expr(expr)
+					if sym.has_method('str') {
+						g.write('.str()')					
+					}
+				}
+				else {
+					g.expr(expr)
+				}
+			}
+		}
+		g.write('}')
+	}
+	g.write('`)')
 }
 
 fn (g mut JsGen) gen_array_init_expr(it ast.ArrayInit) {
@@ -717,6 +768,18 @@ fn (g mut JsGen) gen_return_stmt(it ast.Return) {
 		g.expr(it.exprs[0])
 	}
 	g.writeln(';')
+}
+
+
+fn (g mut JsGen) enum_expr(node ast.Expr) {
+	match node {
+		ast.EnumVal {
+			g.write(it.val)
+		}
+		else {
+			g.expr(node)
+		}
+	}
 }
 
 fn (g mut JsGen) gen_struct_decl(it ast.StructDecl) {
