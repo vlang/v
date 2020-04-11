@@ -33,7 +33,7 @@ const (
 )
 
 fn main() {
-	args := os.args[1..]
+	args := util.join_env_vflags_and_os_args()[1..]
 	//args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		// Running `./v` without args launches repl
@@ -182,7 +182,8 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 	else if command == 'run' {
 		res.is_run = true
 		res.path = args[command_pos+1]
-		res.run_args = args[command_pos+1..]
+		res.run_args = if command_pos+1 < args.len { args[command_pos+2..] } else { []string }
+		eprintln('res.run_args: ' + res.run_args.join(' '))
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
