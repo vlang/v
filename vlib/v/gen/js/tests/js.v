@@ -22,6 +22,8 @@ fn main() {
 
     pos := POSITION.GO_BACK
 
+    dun := i_am_a_const * 20
+
     for i := 0; i < 10; i++ {}
 
     for i, x in 'hello' {}

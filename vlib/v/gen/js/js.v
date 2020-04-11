@@ -250,13 +250,16 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			styp := g.typ(it.typ)
 			g.write('${styp}.${it.val}')
 		}
+		ast.FloatLiteral {
+			g.write(it.val)
+		}
+		ast.Ident {
+			g.gen_ident(it)
+		}
 		ast.MapInit {
 			g.gen_map_init_expr(it)
 		}
 		ast.IntegerLiteral {
-			g.write(it.val)
-		}
-		ast.FloatLiteral {
 			g.write(it.val)
 		}
 		/*
@@ -842,6 +845,18 @@ fn (g mut JsGen) gen_struct_init(it ast.StructInit) {
 	}
 	g.indent--
 	g.write('})')
+}
+
+fn (g mut JsGen) gen_ident(node ast.Ident) {	
+	if node.kind == .constant {
+		g.write('CONSTANTS.')
+	}
+
+	// TODO js_name
+	name := node.name
+	// TODO `is`
+	// TODO handle optionals
+	g.write(name)
 }
 
 fn verror(s string) {
