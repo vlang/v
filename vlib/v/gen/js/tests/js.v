@@ -44,6 +44,9 @@ fn hello(game_on int, dummy ...string) (int, int) {
     defer {
         do := "not"
     }
+    for dd in dummy {
+        l := dd
+    }
     return game_on + 2, 221
 }
 

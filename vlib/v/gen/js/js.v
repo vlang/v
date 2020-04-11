@@ -567,7 +567,7 @@ fn (g mut JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.inside_loop = false
 		g.stmts(it.stmts)
 		g.writeln('}')
-	} else if it.kind == .array {
+	} else if it.kind == .array || table.type_is(it.cond_type, .variadic) {
 		// `for num in nums {`
 		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
 		styp := g.typ(it.val_type)
@@ -578,9 +578,8 @@ fn (g mut JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.inside_loop = false
 		g.write('\tlet $it.val_var = ')
 		g.expr(it.cond)
-		g.write('[$i];')
+		g.writeln('[$i];')
 		g.stmts(it.stmts)
-		g.writeln('')
 		g.writeln('}')
 	} else if it.kind == .map {
 		// `for key, val in map[string]int {`
