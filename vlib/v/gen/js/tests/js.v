@@ -19,6 +19,8 @@ fn main() {
     {
         blo := "block"
     }
+
+    for i := 0; i < 10; i++ {}
 }
 
 [inline]

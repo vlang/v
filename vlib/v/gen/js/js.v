@@ -27,6 +27,7 @@ struct JsGen {
 	mut:
 	file			ast.File
 	inside_ternary  bool
+	inside_loop		bool
 	is_test         bool
 	indent			int
 	stmt_start_pos	int
@@ -162,6 +163,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.gen_fn_decl(it)
 			g.writeln('')
 		}
+		ast.ForCStmt {
+			g.gen_for_c_stmt(it)
+		}
 		ast.Return {
 			if g.defer_stmts.len > 0 {
 				g.gen_defer_stmts()
@@ -265,6 +269,10 @@ fn (g mut JsGen) expr(node ast.Expr) {
 				g.writeln('}')
 			}
 		}
+		ast.PostfixExpr {
+			g.expr(it.expr)
+			g.write(it.op.str())
+		}
 		else {
 			println(term.red('jsgen.expr(): bad node'))
 		}
@@ -328,15 +336,30 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			val := it.right[i]
 			ident_var_info := ident.var_info()
 			styp := g.typ(ident_var_info.typ)
-			g.writeln(g.doc.gen_typ(styp, ident.name))
+			
+			if !g.inside_loop {
+				g.writeln(g.doc.gen_typ(styp, ident.name))
+			}
+			
+			if g.inside_loop {
+				g.write('let ')
+			} else {
+				g.write('const ')
+			}
+
 			if ident.kind == .blank_ident {
-				g.write('const _ = ')
+				g.write('_ = ')
 				g.expr(val)
 			} else {
-				g.write('const $ident.name = ')
+				g.write('$ident.name = ')
 				g.expr(val)
 			}
-			g.writeln(';')
+
+			if g.inside_loop {
+				g.write("; ")
+			} else {
+				g.writeln(';')
+			}
 		}
 	}
 }
@@ -477,6 +500,27 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 		g.writeln(')();')
 	}
 	g.fn_decl = 0
+}
+
+fn (g mut JsGen) gen_for_c_stmt(it ast.ForCStmt) {
+	g.inside_loop = true
+	g.write('for (')
+	if it.has_init {
+		g.stmt(it.init)
+	} else {
+		g.write('; ')
+	}
+	if it.has_cond {
+		g.expr(it.cond)
+	}
+	g.write('; ')
+	if it.has_inc {
+		g.expr(it.inc)
+	}
+	g.writeln(') {')
+	g.stmts(it.stmts)
+	g.writeln('}')
+	g.inside_loop = false
 }
 
 fn (g mut JsGen) fn_args(args []table.Arg, is_variadic bool) {
