@@ -3,7 +3,7 @@ const (
     i_am_a_const = 21214
 )
 
-struct done {
+struct Companies {
 	google int
     amazon bool
     yahoo string
@@ -17,7 +17,7 @@ enum POSITION {
 fn main() {
     v := "done"
     {
-        blo := "block"
+        _ := "block"
     }
 
     for i := 0; i < 10; i++ {}
@@ -32,5 +32,12 @@ fn hello(game_on int, dummy ...string) (int, int) {
 }
 
 fn (it done) method() {
+
+    ss := Companies {
+        google: 2
+        amazon: true
+        yahoo: "hello"
+	}
+
    a, b := hello(2, 'google', 'not google')
 }

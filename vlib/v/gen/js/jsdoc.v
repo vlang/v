@@ -1,6 +1,9 @@
 module js
 
-import strings
+import (
+	strings
+	v.ast
+)
 
 struct JsDoc {
 	gen &JsGen
@@ -47,5 +50,19 @@ fn (d mut JsDoc) gen_typ(typ string, name string) string {
 		d.write(' - $name')
 	}
 	d.write(' */')
+	return d.out.str()
+}
+
+fn (d mut JsDoc) gen_ctor(fields []ast.StructField) string {
+	d.reset()
+	d.writeln('/**')
+	d.write('* @param {{')
+	for i, field in fields {
+		d.write('$field.name: ${d.gen.typ(field.typ)}')
+		if i < fields.len-1 { d.write(', ') }
+	}
+	d.writeln('}} values - values for this class fields')
+	d.writeln('* @constructor')
+	d.write('*/')
 	return d.out.str()
 }

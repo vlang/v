@@ -195,9 +195,6 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 
 fn (g mut JsGen) expr(node ast.Expr) {
 	// println('cgen expr()')
-	print(typeof(node))
-	print(' ')
-	println(node)
 	match node {
 		ast.IntegerLiteral {
 			g.write(it.val)
@@ -222,19 +219,7 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			type_sym := g.table.get_type_symbol(it.typ)
-			g.writeln('new ${type_sym.name}(')
-			g.indent++
-			for i, field in it.fields {
-				g.expr(it.exprs[i])
-				g.write(' /* $field */')
-				if i < it.fields.len-1 {
-					g.write(', ')				
-				}
-				g.writeln('')
-			}
-			g.indent--
-			g.write(')')
+			g.gen_struct_init(it)
 		}
 		ast.CallExpr {
 			g.write('${it.name}(')
@@ -320,11 +305,9 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			ident_var_info := ident.var_info()
 			styp := g.typ(ident_var_info.typ)
 			jsdoc.write(styp)
-			if ident.kind == .blank_ident {
-				stmt.write('_')
-			} else {
-				stmt.write('$ident.name')				
-			}
+
+			stmt.write('$ident.name')
+
 			if i < it.left.len - 1 {
 				jsdoc.write(', ')
 				stmt.write(', ')
@@ -353,7 +336,7 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			} else {
 				g.write('const ')
 			}
-			
+
 			g.write('$ident.name = ')
 			g.expr(val)
 
@@ -570,22 +553,34 @@ fn (g mut JsGen) gen_return_stmt(it ast.Return) {
 fn (g mut JsGen) gen_struct_decl(it ast.StructDecl) {
   g.writeln('class $it.name {')
 	g.indent++
-	g.write('constructor(')
-	for i, field in it.fields {
-		g.write('/* ${g.typ(field.typ)} */ $field.name')
-		if i < it.fields.len-1 { g.write(', ') }
-	}
-	g.writeln(') {')
+	g.writeln(g.doc.gen_ctor(it.fields))
+	g.writeln('constructor(values) {')
 	g.indent++
 	for field in it.fields {
     typ := g.typ(field.typ)
 		g.writeln(g.doc.gen_typ(typ, field.name))
-	  g.writeln('this.$field.name = $field.name')
+	  g.writeln('this.$field.name = values.$field.name')
 	}
 	g.indent--
 	g.writeln('}')
 	g.indent--
 	g.writeln('}')
+}
+
+fn (g mut JsGen) gen_struct_init(it ast.StructInit) {
+	type_sym := g.table.get_type_symbol(it.typ)
+	g.writeln('new ${type_sym.name}({')
+	g.indent++
+	for i, field in it.fields {
+		g.write('$field: ')
+		g.expr(it.exprs[i])
+		if i < it.fields.len - 1 {
+			g.write(', ')				
+		}
+		g.writeln('')
+	}
+	g.indent--
+	g.write('})')
 }
 
 fn verror(s string) {
