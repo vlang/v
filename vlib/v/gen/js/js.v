@@ -582,6 +582,16 @@ fn (g mut JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.stmts(it.stmts)
 		g.writeln('')
 		g.writeln('}')
+	} else if it.kind == .map {
+		// `for key, val in map[string]int {`
+		key_styp := g.typ(it.key_type)
+		val_styp := g.typ(it.val_type)
+		key := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		g.write('for (let [$key, $it.val_var] of ')
+		g.expr(it.cond)
+		g.writeln(') {')
+		g.stmts(it.stmts)
+		g.writeln('}')
 	} else if it.kind == .string {
 		// `for x in 'hello' {`
 		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }

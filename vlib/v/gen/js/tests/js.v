@@ -29,7 +29,14 @@ fn main() {
     arr := [1,2,3,4,5]
     for a in arr {}
 
-    ma := map[string]string
+    ma := {
+        'str':  "done"
+        'ddo': "baba"
+    }
+
+    for m, n in ma {
+        iss := m
+    }
 }
 
 [inline]
