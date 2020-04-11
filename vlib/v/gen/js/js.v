@@ -264,31 +264,17 @@ fn (g mut JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 			g.write(' ? "true" : "false"')
 		}  else {
 			sym := g.table.get_type_symbol(it.expr_types[i])
-			if sym.kind == .enum_ {
-				is_var := match it.exprs[i] {
-					ast.SelectorExpr {
-						true
-					}
-					ast.Ident {
-						true
-					}
-					else {
-						false
+
+			match sym.kind {
+				.struct_ {
+					g.expr(expr)
+					if sym.has_method('str') {
+						g.write('.str()')					
 					}
 				}
-				if is_var {
-					styp := g.typ(it.expr_types[i])
-					g.gen_str_for_type(sym, styp)
-					g.write('${styp}_str(')
-					g.enum_expr(expr)
-					g.write(').str')
-				} else {
-					g.write('"')
-					g.enum_expr(expr)
-					g.write('"')
+				else {
+					g.expr(expr)
 				}
-			} else {
-				g.expr(expr)
 			}
 		}
 		g.write('}')
@@ -477,20 +463,6 @@ fn (g mut JsGen) enum_expr(node ast.Expr) {
 			g.expr(node)
 		}
 	}
-}
-
-fn (g JsGen) type_to_fmt(typ table.Type) string {
-	sym := g.table.get_type_symbol(typ)
-	if sym.kind == .struct_ {
-		return '%.*s'
-	} else if typ == table.string_type {
-		return "\'%.*s\'"
-	} else if typ == table.bool_type {
-		return '%.*s'
-	} else if typ in [table.f32_type, table.f64_type] {
-		return '%g'		// g removes trailing zeros unlike %f
-	}
-	return '%d'
 }
 
 fn (g mut JsGen) gen_struct_decl(it ast.StructDecl) {
