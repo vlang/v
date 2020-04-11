@@ -348,6 +348,7 @@ fn (g mut JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 		g.write('}')
 	}
 	g.write('`)')
+}
 
 fn (g mut JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
