@@ -1555,6 +1555,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			}
 			line_nr := p.tok.line_nr
 			for p.tok.kind != .rcbr && p.tok.kind == .comment && p.tok.line_nr == line_nr {
+				if p.tok.lit.contains('\n') {break}
 				comments << p.comment()
 			}
 			ast_fields << ast.StructField{

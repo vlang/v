@@ -5,9 +5,12 @@ a
 b
 */
 //c
-/*d*/	name string
-	very_long_field bool
-	age int
+/*d*/	name string/*e*//*
+f
+g
+*/
+very_long_field bool
+age int
 }
 
 struct Foo {

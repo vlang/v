@@ -6,7 +6,11 @@ mut:
 	*/
 	// c
 	// d
-	name            string
+	name            string // e
+	/*
+	   f
+	   g
+	*/
 	very_long_field bool
 	age             int
 }
