@@ -54,7 +54,7 @@ const (
 #define V64_PRINTFORMAT "0x%"PRIx64
 #elif defined(__WIN32__)
 #define V64_PRINTFORMAT "0x%I64x"
-#elif defined(__LINUX__) && defined(__LP64__)
+#elif defined(__linux__) && defined(__LP64__)
 #define V64_PRINTFORMAT "0x%lx"
 #else
 #define V64_PRINTFORMAT "0x%llx"

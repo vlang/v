@@ -508,6 +508,7 @@ fn (g mut Gen) write_defer_stmts() {
 		if defer_stmt.ifdef.len > 0 {
 			g.writeln(defer_stmt.ifdef)
 			g.stmts(defer_stmt.stmts)
+			g.writeln('')
 			g.writeln('#endif')
 		} else {
 			g.stmts(defer_stmt.stmts)
@@ -2755,6 +2756,7 @@ fn op_to_fn_name(name string) string {
 
 fn comp_if_to_ifdef(name string) string {
 	match name {
+		// platforms/os-es:
 		'windows' {
 			return '_WIN32'
 		}
@@ -2785,26 +2787,35 @@ fn comp_if_to_ifdef(name string) string {
 		'android' {
 			return '__ANDROID__'
 		}
-		'js' {
-			return '_VJS'
-		}
 		'solaris' {
 			return '__sun'
 		}
 		'haiku' {
 			return '__haiku__'
 		}
-		'tinyc' {
-			return 'tinyc'
-		}
-		'debug' {
-			return '_VDEBUG'
-		}
 		'linux_or_macos' {
 			return ''
 		}
+		//
+		'js' {
+			return '_VJS'
+		}
+		// compilers:
+		'tinyc' {
+			return '__TINYC__'
+		}
+		'clang' {
+			return '__clang__'
+		}
 		'mingw' {
 			return '__MINGW32__'
+		}
+		'msvc' {
+			return '_MSC_VER'
+		}
+		// other:
+		'debug' {
+			return '_VDEBUG'
 		}
 		'glibc' {
 			return '__GLIBC__'
@@ -3015,24 +3026,24 @@ fn (g mut Gen) comp_if(it ast.CompIf) {
 	// NOTE: g.defer_ifdef is needed for defers called witin an ifdef
 	// in v1 this code would be completely excluded
 	g.defer_ifdef = if it.is_not {
-		'#ifndef ' + ifdef
+		'\n#ifndef ' + ifdef
 	} else {
-		'#ifdef ' + ifdef
+		'\n#ifdef ' + ifdef
 	}
 	// println('comp if stmts $g.file.path:$it.pos.line_nr')
 	g.stmts(it.stmts)
 	g.defer_ifdef = ''
 	if it.has_else {
-		g.writeln('#else')
+		g.writeln('\n#else')
 		g.defer_ifdef = if it.is_not {
-			'#ifdef ' + ifdef
+			'\n#ifdef ' + ifdef
 		} else {
-			'#ifndef ' + ifdef
+			'\n#ifndef ' + ifdef
 		}
 		g.stmts(it.else_stmts)
 		g.defer_ifdef = ''
 	}
-	g.writeln('#endif')
+	g.writeln('\n#endif')
 }
 
 fn (g mut Gen) go_stmt(node ast.GoStmt) {
