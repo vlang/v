@@ -752,10 +752,9 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 				mut full_const_name := if it.mod == 'main' { it.name } else { it.mod + '.' +
 						it.name }
 				if obj := c.file.global_scope.find_const(full_const_name) {
-					cf := ast.ConstField(obj)
-					if cint := is_const_integer(cf) {
-						fixed_size = cint.val.int()
-					}
+				   if cint := const_int_value( obj ) {
+					  fixed_size = cint
+				   }
 				} else {
 					c.error('non existant integer const $full_const_name while initializing the size of a static array',
 						array_init.pos)
@@ -770,6 +769,13 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 		array_init.typ = array_type
 	}
 	return array_init.typ
+}
+
+fn const_int_value(cfield ast.ConstField) ?int {
+	if cint := is_const_integer(cfield) {
+		return cint.val.int()
+	}
+	return none   
 }
 
 fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
