@@ -1,7 +1,7 @@
 module main
 
 interface Speaker {
-	say()string
+	say() string
 }
 
 fn test_todo() {}
@@ -23,7 +23,7 @@ fn (r mut ChatRoom) add(name string, s Speaker) {
 	r.talkers[name] = s
 }
 
-fn test_using_a_map_of_speaker_interfaces(){
+fn test_using_a_map_of_speaker_interfaces() {
 	mut room := new_room()
 	room.add('my cat', Cat{name: 'Tigga'} )
 	room.add('my dog', Dog{name: 'Pirin'} )

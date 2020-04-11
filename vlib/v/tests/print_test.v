@@ -1,3 +1,3 @@
 fn test_print() {
-    println(2.0)
+	println(2.0)
 }

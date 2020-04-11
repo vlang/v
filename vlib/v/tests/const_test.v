@@ -6,10 +6,6 @@ pub const (
 	e = 9
 )
 
-struct Foo {
-	
-}	
-
 fn test_const() {
 	assert a == 1
 	assert d == 11

@@ -1,5 +1,7 @@
 struct Foo {
-   x int
+	x int
+}
+
 }
 pub fn (f Foo) str() string { return 'Foo{}' }
 
@@ -21,4 +23,4 @@ fn test_ref_fn_arg() {
 }
 */
 
-fn test_dummy(){}
+fn test_dummy() {}

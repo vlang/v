@@ -8,13 +8,13 @@ enum Color {
 }
 
 fn test_array_equality() {
-	strs := ["a", "b", "c"]
-	assert strs == ["a", "b", "c"]
-	assert strs != ["a", "c", "b"]
-	assert strs != ["b", "c", "a"]
-	assert strs != ["b", "a", "c"]
-	assert strs != ["c", "b", "a"]
-	assert strs != ["c", "a", "b"]
+	strs := ['a', 'b', 'c']
+	assert strs == ['a', 'b', 'c']
+	assert strs != ['a', 'c', 'b']
+	assert strs != ['b', 'c', 'a']
+	assert strs != ['b', 'a', 'c']
+	assert strs != ['c', 'b', 'a']
+	assert strs != ['c', 'a', 'b']
 	bools := [true, true, false]
 	assert bools == [true, true, false]
 	assert bools != [true, false, false]

@@ -16,7 +16,7 @@ fn test_fn_variadic() {
 	group2 := VaTestGroup{
 		name: 'admins'
 	}
-	variadic_test('joe',group1,group2)
+	variadic_test('joe', group1, group2)
 }
 
 /*
@@ -32,7 +32,6 @@ fn test_fn_variadic_generic() {
 	assert variadic_test_generic(111, 'hello', 'v') == '111 hello v'
 }
 */
-
 // forwarding
 fn variadic_forward_a(a ...string) string {
 	return variadic_forward_b(a)
@@ -46,7 +45,7 @@ fn variadic_forward_b(a ...string) string {
 }
 
 fn test_fn_variadic_forward() {
-	assert variadic_forward_a('a','b','c') == 'abc'
+	assert variadic_forward_a('a', 'b', 'c') == 'abc'
 }
 
 fn variadic_test_no_args(name string, groups ...VaTestGroup) {
@@ -77,7 +76,7 @@ fn test_fn_variadic_method() {
 	group2 := VaTestGroup{
 		name: 'admins'
 	}
-	a.variadic_method('marko',group1,group2)
+	a.variadic_method('marko', group1, group2)
 }
 
 fn test_fn_variadic_method_no_args() {
