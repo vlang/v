@@ -198,7 +198,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 			return table.void_type
 		}
 	}
-	if infix_expr.op == .key_in {
+	if infix_expr.op in [.key_in, .not_in] {
 		if !(right.kind in [.array, .map, .string]) {
 			c.error('`in` can only be used with an array/map/string.', infix_expr.pos)
 		}
@@ -209,7 +209,8 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		if left_type == table.void_type || right_type == table.void_type {
 			return table.void_type
 		}
-		c.error('infix expr: cannot use `$right.name` (right) as `$left.name`', infix_expr.pos)
+		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`',
+			infix_expr.pos)
 	}
 	if infix_expr.op.is_relational() {
 		return table.bool_type
@@ -752,9 +753,9 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 				mut full_const_name := if it.mod == 'main' { it.name } else { it.mod + '.' +
 						it.name }
 				if obj := c.file.global_scope.find_const(full_const_name) {
-				   if cint := const_int_value( obj ) {
-					  fixed_size = cint
-				   }
+					if cint := const_int_value(obj) {
+						fixed_size = cint
+					}
 				} else {
 					c.error('non existant integer const $full_const_name while initializing the size of a static array',
 						array_init.pos)
@@ -775,7 +776,7 @@ fn const_int_value(cfield ast.ConstField) ?int {
 	if cint := is_const_integer(cfield) {
 		return cint.val.int()
 	}
-	return none   
+	return none
 }
 
 fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {

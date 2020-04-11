@@ -1376,7 +1376,10 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		g.write(', ')
 		g.expr(node.right)
 		g.write(')')
-	} else if node.op == .key_in {
+	} else if node.op in [.key_in, .not_in] {
+		if node.op == .not_in {
+			g.write('!')
+		}
 		if right_sym.kind == .array {
 			match node.right {
 				ast.ArrayInit {
