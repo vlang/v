@@ -633,10 +633,10 @@ fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
 	if g.is_test {
 		g.writeln('{')
 		g.writeln('	g_test_oks++;')
-		g.writeln('	cb_assertion_ok( _STR("${mod_path}"), ${a.pos.line_nr+1}, _STR("assert ${s_assertion}"), _STR("${g.fn_decl.name}()") );')
+		g.writeln('	cb_assertion_ok( tos3("${mod_path}"), ${a.pos.line_nr+1}, tos3("assert ${s_assertion}"), tos3("${g.fn_decl.name}()") );')
 		g.writeln('}else{')
 		g.writeln('	g_test_fails++;')
-		g.writeln('	cb_assertion_failed( _STR("${mod_path}"), ${a.pos.line_nr+1}, _STR("assert ${s_assertion}"), _STR("${g.fn_decl.name}()") );')
+		g.writeln('	cb_assertion_failed( tos3("${mod_path}"), ${a.pos.line_nr+1}, tos3("assert ${s_assertion}"), tos3("${g.fn_decl.name}()") );')
 		g.writeln('	exit(1);')
 		g.writeln('	// TODO')
 		g.writeln('	// Maybe print all vars in a test function if it fails?')
@@ -644,7 +644,7 @@ fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
 		return
 	}
 	g.writeln('{}else{')
-	g.writeln('	eprintln(_STR("${mod_path}:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+	g.writeln('	eprintln( tos3("${mod_path}:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
 	g.writeln('	exit(1);')
 	g.writeln('}')
 }
