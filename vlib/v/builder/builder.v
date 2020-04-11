@@ -190,32 +190,6 @@ fn (b Builder) should_compile_c(file string) bool {
 		// Probably something like `a.js.v`.
 		return false
 	}
-	// TODO Remove after vc is deployed and files have been moved
-	if file.ends_with('_js.v') {
-		return false
-	}
-	if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && b.pref.os != .windows {
-		return false
-	}
-	if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && b.pref.os != .linux {
-		return false
-	}
-	if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && b.pref.os != .mac {
-		return false
-	}
-	if file.ends_with('_nix.v') && b.pref.os == .windows {
-		return false
-	}
-	if file.ends_with('_android.v') && b.pref.os != .android {
-		return false
-	}
-	if file.ends_with('_freebsd.v') && b.pref.os != .freebsd {
-		return false
-	}
-	if file.ends_with('_solaris.v') && b.pref.os != .solaris {
-		return false
-	}
-	// End of TODO
 	if file.ends_with('_windows.c.v') && b.pref.os != .windows {
 		return false
 	}
