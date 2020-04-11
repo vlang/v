@@ -8,54 +8,58 @@ import (
 	hash.wyhash
 )
 
-fn C.strcmp(byteptr, byteptr) int
+fn C.memcmp(byteptr, byteptr, int) int
 
 /*
-This is a very fast hashmap implementation. It has several properties that in
-combination makes it very fast. Here is a short explanation of each property.
-After reading this you should have a basic understanding of how it works:
+This is a highly optimized hashmap implementation. It has several traits that 
+in combination makes it very fast and memory efficient. Here is a short expl-
+anation of each trait. After reading this you should have a basic understand-
+ing of how it functions:
 
-1. |Hash-function (Wyhash)|. Wyhash is the fastest hash-function passing SMHash-
-er, so it was an easy choice.
+Hash-function: Wyhash. Wyhash is the fastest hash-function for short keys pa-
+ssing SMHasher, so it was an obvious choice.
 
-2. |Open addressing (Robin Hood Hashing)|. With this method, a hash collision is
-resolved by probing. As opposed to linear probing, Robin Hood hashing has a sim-
-ple but clever twist: As new keys are inserted, old keys are shifted around in a
-way such that all keys stay reasonably close to the slot they originally hash to.
+Open addressing: Robin Hood Hashing.
+With this method, a hash-collision is 
+resolved by probing. As opposed to linear probing, Robin Hood hashing has a
+simple but clever twist: As new keys are inserted, old keys are shifted arou-
+nd in a way such that all keys stay reasonably close to the slot they origin-
+ally hash to. A new key may displace a key already inserted if its probe cou-
+nt is larger than that of the key at the current position. 
 
-3. |Memory layout|. Key-value pairs are stored in a `DenseArray`, with an avera-
-ge of roughly 6.25% unused memory, as opposed to most other dynamic array imple-
-mentations with a growth factor of 1.5 or 2. The key-values keep their index in
-the array - they are not probed. Instead, this implementation uses another array
-"metas" storing "meta"s (meta-data). Each Key-value has a corresponding meta. A
-meta stores a reference to its key-value, and its index in "metas" is determined
-by the hash of the key and probing. A meta also stores bits from the hash (for
-faster rehashing etc.) and how far away it is from the index it was originally
-hashed to (probe_count). probe_count is 0 if empty, 1 if not probed, 2 if probed
-by 1, etc..
+Key-value pairs are stored in a `DenseArray`. This is a dynamic array with a
+very low volume of unused memory, at the cost of more re-allocations when in-
+serting elements. It also preserves the order of the key-values. This array
+is named `key_values`. Instead of probing a new key-value, this map probes
+two 32-bit numbers collectively.  The first number has its 8 most significant
+bits reserved for the probe-count and the remaining 24 bits are cached bits
+from the hash which are utilized for faster re-hashing. This number is often
+referred to as `meta`. The other 32-bit number is the index at which the
+key-value was pushed to in `key_values`. Both of these numbers are stored in
+a sparse array `metas`. The `meta`s and `kv_index`s are stored at even and 
+odd indices, respectively:
 
-meta (64 bit) =  kv_index (32 bit) | probe_count (8 bits) | hashbits (24 bits)
-metas = [meta, 0, meta, 0, meta, meta, meta, 0, ...]
-key_values = [kv, kv, kv, kv, kv, ...]
+metas = [meta, kv_index, 0, 0, meta, kv_index, 0, 0, meta, kv_index, ...]
+key_values = [kv, kv, kv, ...]
 
-4. |Power of two size array|. The size of metas is a power of two. This makes it
-possible to find a bucket from a hash code by using "hash & (SIZE -1)" instead
-of "abs(hash) % SIZE". Modulo is extremely expensive so using '&' is a big perf-
-ormance improvement. The general concern with this is that you only use the low-
-er bits of the hash and that can cause more collisions. This is solved by using
-good hash-function.
+The size of metas is a power of two. This enables the use of bitwise AND to 
+convert the 64-bit hash to a bucket/index that doesn't overflow metas. If the
+size is power of two you can use "hash & (SIZE - 1)" instead of "hash % SIZE".
+Modulo is extremely expensive so using '&' is a big performance improvement.
+The general concern with this approach is that you only make use of the lower
+bits of the hash which can cause more collisions. This is solved by using a 
+well-dispersed hash-function.
 
-5. |Extra metas|. The hashmap keeps track of the highest probe_count. The trick
-is to allocate extra_metas > max(probe_count), so you never have to do any boun-
-ds-checking because the extra metas ensures that an element will never go beyond
-the last index.
+The hashmap keeps track of the highest probe_count. The trick is to allocate
+`extra_metas` > max(probe_count), so you never have to do any bounds-checking
+since the extra meta memory ensures that a meta will never go beyond the last
+index.
 
-6. |Cached rehashing|. When the load_factor of the map exceeds the max_load_fac-
-tor the size of metas is doubled and all the elements need to be "rehashed" to
-find the index in the new array. Instead of rehashing completely, it simply uses
-the hashbits stored in the meta.
+When the `load_factor` of the map exceeds the `max_load_factor` the size of 
+metas is doubled and all the key-values are "rehashed" to find the index for 
+their meta's in the new array. Instead of rehashing completely, it simply us-
+es the cached-hashbits stored in the meta, resulting in much faster rehashing. 
 */
-
 
 const (
 // Number of bits from the hash stored for each entry
@@ -78,6 +82,17 @@ const (
 	// Used for incrementing the probe-count
 	probe_inc = u32(0x01000000)
 )
+
+// This function is intended to be fast when 
+// the strings are very likely to be equal
+// TODO: add branch prediction hints
+[inline]
+fn fast_string_eq(a, b string) bool {
+	if a.len != b.len {
+		return false
+	}
+	return C.memcmp(a.str, b.str, b.len) == 0
+}
 
 struct KeyValue {
 	key   string
@@ -107,7 +122,7 @@ fn new_dense_array() DenseArray {
 }
 
 // Push element to array and return index
-// The growth-factor is roughly 12.5 `(x + (x >> 3))`
+// The growth-factor is roughly 1.125 `(x + (x >> 3))`
 [inline]
 fn (d mut DenseArray) push(kv KeyValue) u32 {
 	if d.cap == d.size {
@@ -142,7 +157,7 @@ pub struct map {
 	// Byte size of value
 	value_bytes int
 mut:
-// highest even index in the hashtable
+	// highest even index in the hashtable
 	cap         u32
 	// Number of cached hashbits left for rehasing
 	cached_hashbits      byte
@@ -151,18 +166,18 @@ mut:
 	// Array storing key-values (ordered)
 	key_values  DenseArray
 	// Pointer to meta-data:
-	// Odd indices stores index in `key_values`.
-	// Even indices stores probe_count and hashbits.
+	// Odd indices store kv_index.
+	// Even indices store probe_count and hashbits.
 	metas       &u32
 	// Extra metas that allows for no ranging when incrementing
 	// index in the hashmap
 	extra_metas u32
 pub mut:
-// Number of key-values currently in the hashmap
+	// Number of key-values currently in the hashmap
 	size        int
 }
 
-fn new_map(n, value_bytes int) map {
+fn new_map(value_bytes int) map {
 	return map{
 		value_bytes: value_bytes
 		cap: init_cap
@@ -176,7 +191,7 @@ fn new_map(n, value_bytes int) map {
 }
 
 fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
-	mut out := new_map(n, value_bytes)
+	mut out := new_map(value_bytes)
 	for i in 0 .. n {
 		out.set(keys[i], byteptr(values) + i * value_bytes)
 	}
@@ -244,7 +259,7 @@ fn (m mut map) set(key string, value voidptr) {
 	// While we might have a match
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if C.strcmp(key.str, m.key_values.data[kv_index].key.str) == 0 {
+		if fast_string_eq(key, m.key_values.data[kv_index].key) {
 			C.memcpy(m.key_values.data[kv_index].value, value, m.value_bytes)
 			return
 		}
@@ -320,7 +335,7 @@ fn (m map) get3(key string, zero voidptr) voidptr {
 	index,meta = m.meta_less(index, meta)
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if C.strcmp(key.str, m.key_values.data[kv_index].key.str) == 0 {
+		if fast_string_eq(key, m.key_values.data[kv_index].key) {
 			out := malloc(m.value_bytes)
 			C.memcpy(out, m.key_values.data[kv_index].value, m.value_bytes)
 			return out
@@ -332,14 +347,11 @@ fn (m map) get3(key string, zero voidptr) voidptr {
 }
 
 fn (m map) exists(key string) bool {
-	if m.value_bytes == 0 {
-		return false
-	}
 	mut index,mut meta := m.key_to_index(key)
 	index,meta = m.meta_less(index, meta)
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if C.strcmp(key.str, m.key_values.data[kv_index].key.str) == 0 {
+		if fast_string_eq(key, m.key_values.data[kv_index].key) {
 			return true
 		}
 		index += 2
@@ -354,7 +366,7 @@ pub fn (m mut map) delete(key string) {
 	// Perform backwards shifting
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if C.strcmp(key.str, m.key_values.data[kv_index].key.str) == 0 {
+		if fast_string_eq(key, m.key_values.data[kv_index].key) {
 			for (m.metas[index + 2]>>hashbits) > 1 {
 				m.metas[index] = m.metas[index + 2] - probe_inc
 				m.metas[index + 1] = m.metas[index + 3]
@@ -380,11 +392,9 @@ pub fn (m mut map) delete(key string) {
 	}
 }
 
+// TODO: add optimization in case of no deletes
 pub fn (m &map) keys() []string {
 	mut keys := [''].repeat(m.size)
-	if m.value_bytes == 0 {
-		return keys
-	}
 	mut j := 0
 	for i := u32(0); i < m.key_values.size; i++ {
 		if m.key_values.data[i].key.str == 0 {
@@ -406,10 +416,6 @@ pub fn (m map) free() {
 		m.key_values.data[i].key.free()
 	}
 	free(m.key_values.data)
-}
-
-pub fn (m map) print() {
-	println('TODO')
 }
 
 pub fn (m map_string) str() string {
