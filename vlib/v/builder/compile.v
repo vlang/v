@@ -139,7 +139,7 @@ fn (v mut Builder) set_module_lookup_paths() {
 	v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
 	v.module_search_paths << v.pref.lookup_path
 	if v.pref.is_verbose {
-		v.log('v.module_lookup_paths')		// : $v.module_lookup_paths')
+		v.log('v.module_search_paths:')
 		println(v.module_search_paths)
 	}
 }

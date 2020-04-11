@@ -848,7 +848,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 */
 	//
 	g.fn_args(it.args, it.is_variadic)
-	if it.no_body || (g.pref.show_cc && it.is_builtin) {
+	if it.no_body || (g.pref.is_cache && it.is_builtin) {
 		// Just a function header.
 		// Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');')

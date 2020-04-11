@@ -169,7 +169,13 @@ fn (v mut Builder) cc() {
 			}
 		}
 	}
-	if v.pref.ccompiler.contains('clang') || guessed_compiler == 'clang' {
+	//
+	is_cc_clang := v.pref.ccompiler.contains('clang') || guessed_compiler == 'clang'
+	is_cc_tcc  := v.pref.ccompiler.contains('tcc') || guessed_compiler == 'tcc'
+	is_cc_gcc  := v.pref.ccompiler.contains('gcc') || guessed_compiler == 'gcc'
+	is_cc_msvc := v.pref.ccompiler.contains('msvc') || guessed_compiler == 'msvc'
+	//
+	if is_cc_clang {
 		if debug_mode {
 			debug_options = '-g -O0 -no-pie'
 		}
@@ -182,7 +188,7 @@ fn (v mut Builder) cc() {
 			optimization_options += ' -flto'
 		}
 	}
-	if v.pref.ccompiler.contains('gcc') || guessed_compiler == 'gcc' {
+	if is_cc_gcc {
 		if debug_mode {
 			debug_options = '-g3 -no-pie'
 		}
@@ -302,8 +308,17 @@ fn (v mut Builder) cc() {
 	a << cflags.c_options_without_object_files()
 	a << libs
 
-	if v.pref.show_cc {
-		a << pref.default_module_path + '/cache/vlib/builtin.o'
+	if v.pref.is_cache {
+		cached_files := ['builtin.o', 'math.o']
+		for cfile in cached_files {
+			ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile)
+			if os.exists(ofile) {
+				a << ofile
+			}
+		}
+		if !is_cc_tcc {
+			a << '-Xlinker -z -Xlinker muldefs'
+		}
 	}
 
 	// Without these libs compilation will fail on Linux

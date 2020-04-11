@@ -132,6 +132,7 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			'-obfuscate' {	res.obfuscate = true	}
 			'-translated' {	res.translated = true	}
 			'-showcc' {	res.show_cc = true	}
+			'-cache' {	res.is_cache = true	}
 			'-keepc' {	res.is_keep_c = true	}
 			//'-x64' {	res.translated = true	}
 			'-os' {
@@ -142,6 +143,10 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				        exit(1)
 				}
 				res.os = tmp
+				i++
+			}
+			'-cflags' {
+				res.cflags = cmdline.option(args, '-cflags', '')
 				i++
 			}
 			'-cc' {

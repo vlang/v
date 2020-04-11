@@ -7,6 +7,7 @@ import (
 	v.table
 	v.pref
 	v.util
+	v.vmod
 	v.checker
 	v.parser
 	v.gen
@@ -109,7 +110,7 @@ pub fn (b mut Builder) parse_imports() {
 			if mod in done_imports {
 				continue
 			}
-			import_path := b.find_module_path(mod) or {
+			import_path := b.find_module_path(mod, ast_file.path) or {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
 				// break
 				// println('module_search_paths:')
@@ -267,9 +268,16 @@ fn module_path(mod string) string {
 	return mod.replace('.', os.path_separator)
 }
 
-pub fn (b Builder) find_module_path(mod string) ?string {
+pub fn (b Builder) find_module_path(mod string, fpath string) ?string {
+	// support @VROOT/v.mod relative paths:
+	vmod_file_location := vmod.mod_file_cacher.get( fpath )
 	mod_path := module_path(mod)
-	for search_path in b.module_search_paths {
+	mut module_lookup_paths := []string
+	if vmod_file_location.vmod_file.len != 0 && !(vmod_file_location.vmod_folder in b.module_search_paths) {
+		module_lookup_paths << vmod_file_location.vmod_folder
+	}
+	module_lookup_paths << b.module_search_paths
+	for search_path in module_lookup_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if b.pref.is_verbose {
 			println('  >> trying to find $mod in $try_path ..')
@@ -281,7 +289,8 @@ pub fn (b Builder) find_module_path(mod string) ?string {
 			return try_path
 		}
 	}
-	return error('module "$mod" not found')
+	smodule_lookup_paths := module_lookup_paths.join(', ')
+	return error('module "$mod" not found in:\n$smodule_lookup_paths')
 }
 
 fn verror(s string) {
