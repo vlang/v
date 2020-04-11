@@ -35,6 +35,7 @@ struct JsGen {
 	defer_stmts     []ast.DeferStmt
 	fn_decl			&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	str_types		[]string // types that need automatic str() generation
+	method_fn_decls map[string][]ast.FnDecl
 	empty_line		bool
 }
 
@@ -53,6 +54,13 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	g.doc = new_jsdoc(g)
 	g.init()
 
+	// Get class methods
+	for file in files {
+		g.file = file
+		g.is_test = g.file.path.ends_with('_test.v')
+		g.find_class_methods(file.stmts)
+	}
+
 	for file in files {
 		g.file = file
 		g.is_test = g.file.path.ends_with('_test.v')
@@ -60,6 +68,24 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	}
 	g.finish()
 	return g.hashes() + g.definitions.str() + g.constants.str() + g.out.str()
+}
+
+pub fn (g mut JsGen) find_class_methods(stmts []ast.Stmt) {
+	for stmt in stmts {
+		match stmt {
+			ast.FnDecl {
+				if it.is_method {
+					// Found struct method, store it to be generated along with the class.
+					className :=  g.table.get_type_symbol(it.receiver.typ).name
+					// Workaround until `map[key] << val` works.
+					arr := g.method_fn_decls[className]
+					arr << ast.FnDecl(it)
+					println(arr.len)
+				}
+			}
+			else {}
+		}
+	}
 }
 
 pub fn (g mut JsGen) init() {
@@ -538,6 +564,10 @@ fn (g mut JsGen) gen_expr_stmt(it ast.ExprStmt) {
 }
 
 fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
+	if it.is_method {
+		// Struct methods are handled by class generation code.
+		return
+	}
 	if it.no_body {
 		return
 	}
@@ -574,12 +604,6 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 		g.writeln('* @return {$type_name}')
 		g.writeln('*/')
 
-
-		if it.is_method {
-			// javascript has class methods, so we just assign this function on the class prototype
-			className :=  g.table.get_type_symbol(it.receiver.typ).name
-			g.write('${className}.prototype.${name} = ')
-		}
 		if has_go {
 			g.write('async ')
 		}
