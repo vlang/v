@@ -497,6 +497,10 @@ fn test_filter() {
 	println(arr.filter(it % 2 == 0 || it % 3 == 0))
 	assert true
 	assert [1,2,3].len == 3
+	mut mut_arr := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+	mut_arr = mut_arr.filter(it < 4)
+	assert mut_arr.len == 3
+
 	// TODO
 	//assert arr.filter(arr % 2).len == 5
 }

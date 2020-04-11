@@ -344,6 +344,8 @@ fn test_lower() {
 	assert s.to_lower() == 'have a nice day!'
 	s = 'hi'
 	assert s.to_lower() == 'hi'
+	assert 'aloha!'[0] == `a`
+	assert 'aloha!'[5] == `!`
 }
 
 fn test_upper() {
