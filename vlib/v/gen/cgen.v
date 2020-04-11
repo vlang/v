@@ -1111,10 +1111,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.match_expr(it)
 		}
 		ast.MapInit {
-			key_typ_sym := g.table.get_type_symbol(it.key_type)
-			value_typ_sym := g.table.get_type_symbol(it.value_type)
-			key_typ_str := key_typ_sym.name.replace('.', '__')
-			value_typ_str := value_typ_sym.name.replace('.', '__')
+			key_typ_str := g.typ(it.key_type)
+			value_typ_str := g.typ(it.value_type)
 			size := it.vals.len
 			if size > 0 {
 				g.write('new_map_init($size, sizeof($value_typ_str), (${key_typ_str}[$size]){')
@@ -1160,7 +1158,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write('sizeof($it.type_name)')
 			} else {
 				styp := g.typ(it.typ)
-				g.write('sizeof($styp)')
+				g.write('sizeof(/*typ*/$styp)')
 			}
 		}
 		ast.StringLiteral {
@@ -2863,8 +2861,7 @@ fn (g Gen) type_default(typ table.Type) string {
 		return 'new_array(0, 1, sizeof($elem_type_str))'
 	}
 	if sym.kind == .map {
-		value_sym := g.table.get_type_symbol(sym.map_info().value_type)
-		value_type_str := value_sym.name.replace('.', '__')
+		value_type_str := g.typ(sym.map_info().value_type)
 		return 'new_map(1, sizeof($value_type_str))'
 	}
 	// Always set pointers to 0
