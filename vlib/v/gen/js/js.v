@@ -204,13 +204,18 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
 			type_sym := g.table.get_type_symbol(it.typ)
-			g.writeln('/*$type_sym.name*/{')
+			g.writeln('new ${type_sym.name}(')
+			g.indent++
 			for i, field in it.fields {
-				g.write('\t$field : ')
 				g.expr(it.exprs[i])
-				g.writeln(', ')
+				g.write(' /* $field */')
+				if i < it.fields.len-1 {
+					g.write(', ')				
+				}
+				g.writeln('')
 			}
-			g.write('}')
+			g.indent--
+			g.write(')')
 		}
 		ast.CallExpr {
 			g.write('${it.name}(')
