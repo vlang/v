@@ -256,6 +256,9 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		ast.Ident {
 			g.gen_ident(it)
 		}
+		ast.IfExpr {
+			g.gen_if_expr(it)
+		}
 		ast.MapInit {
 			g.gen_map_init_expr(it)
 		}
@@ -277,7 +280,13 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		}
 		ast.InfixExpr {
 			g.expr(it.left)
-			g.write(' $it.op.str() ')
+			
+			mut op := it.op.str()
+			// in js == is non-strict & === is strict, always do strict
+			if op == '==' { op = '===' }
+			else if op == '!=' { op = '!==' }
+			
+			g.write(' $op ')
 			g.expr(it.right)
 		}
 		// `user := User{name: 'Bob'}`
@@ -296,26 +305,6 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		}
 		ast.Ident {
 			g.write('$it.name')
-		}
-
-		ast.IfExpr {
-			for i, branch in it.branches {
-				if i == 0 {
-					g.write('if (')
-					g.expr(branch.cond)
-					g.writeln(') {')
-				}
-				else if i < it.branches.len-1 || !it.has_else {
-					g.write('else if (')
-					g.expr(branch.cond)
-					g.writeln(') {')
-				}
-				else {
-					g.write('else {')
-				}
-				g.stmts(branch.stmts)
-				g.writeln('}')
-			}
 		}
 		ast.PostfixExpr {
 			g.expr(it.expr)
@@ -857,6 +846,61 @@ fn (g mut JsGen) gen_ident(node ast.Ident) {
 	// TODO `is`
 	// TODO handle optionals
 	g.write(name)
+}
+
+
+fn (g mut JsGen) gen_if_expr(node ast.IfExpr) {
+	type_sym := g.table.get_type_symbol(node.typ)
+
+	// one line ?:
+	if node.is_expr && node.branches.len >= 2 && node.has_else && type_sym.kind != .void {
+		// `x := if a > b {  } else if { } else { }`
+		g.write('(')
+		g.inside_ternary = true
+		for i, branch in node.branches {
+			if i > 0 {
+				g.write(' : ')
+			}
+			if i < node.branches.len - 1 || !node.has_else {
+				g.expr(branch.cond)
+				g.write(' ? ')
+			}
+			g.stmts(branch.stmts)
+		}
+		g.inside_ternary = false
+		g.write(')')
+	} else {
+		//mut is_guard = false
+		for i, branch in node.branches {
+			if i == 0 {
+				match branch.cond {
+					ast.IfGuardExpr {
+						// TODO optionals
+					}
+					else {
+						g.write('if (')
+						g.expr(branch.cond)
+						g.writeln(') {')
+					}
+				}
+			} else if i < node.branches.len - 1 || !node.has_else {
+				g.write('} else if (')
+				g.expr(branch.cond)
+				g.writeln(') {')
+			} else if i == node.branches.len - 1 && node.has_else {
+				/* if is_guard {
+					//g.writeln('} if (!$guard_ok) { /* else */')
+				} else { */
+				g.writeln('} else {')
+				//}
+			}
+			g.stmts(branch.stmts)
+		}
+		/* if is_guard {
+			g.write('}')
+		} */
+		g.writeln('}')
+	}
 }
 
 fn verror(s string) {

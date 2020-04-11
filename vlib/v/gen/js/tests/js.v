@@ -58,7 +58,7 @@ fn hello(game_on int, dummy ...string) (int, int) {
     return game_on + 2, 221
 }
 
-fn (it done) method() {
+fn (it done) method() int {
 
     ss := Companies {
         google: 2
@@ -67,4 +67,10 @@ fn (it done) method() {
 	}
 
    a, b := hello(2, 'google', 'not google')
+  
+   glue := if a > 2 { 'more_glue' } else if a > 5 {'more glueee'} else { 'less glue' } 
+
+    if a != 2 {}
+
+   return 0
 }
