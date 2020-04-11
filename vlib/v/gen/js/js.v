@@ -130,17 +130,28 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.StructDecl {
 			g.writeln('class $it.name {')
+			g.indent++
+			g.write('constructor(')
+			for i, field in it.fields {
+				g.write('/* ${g.typ(field.typ)} */ $field.name')
+				if i < it.fields.len-1 { g.write(', ') }
+			}
+			g.writeln(') {')
+			g.indent++
 			for field in it.fields {
 				typ := g.typ(field.typ)
 				g.writeln('\t/**')
 				g.writeln('\t* @type {$typ} - ${field.name}') // the type
 				g.writeln('\t*/')
 				g.write('\t')
-				g.write(field.name) // field name
+				g.write('this.$field.name') // field name
 				g.write(' = ') // seperator
-				g.write('undefined;') //TODO default value for type
+				g.write('$field.name;') //TODO default value for type
 				g.write('\n')
 			}
+			g.indent--
+			g.writeln('}')
+			g.indent--
 			g.writeln('}')
 			g.writeln('')
 		}
@@ -165,6 +176,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 
 fn (g mut JsGen) expr(node ast.Expr) {
 	// println('cgen expr()')
+	print(typeof(node))
+	print(' ')
+	println(node)
 	match node {
 		ast.IntegerLiteral {
 			g.write(it.val)
