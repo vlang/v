@@ -377,7 +377,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.EnumDecl {
 			enum_name := it.name.replace('.', '__')
 			g.typedefs.writeln('typedef enum {')
-			for field in it.fields {
+			for j, field in it.fields {
 				g.typedefs.write('\t${enum_name}_$field.name')
 				if field.has_expr {
 					g.typedefs.write(' = ')
@@ -387,7 +387,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 					g.out.go_back(expr_str.len)
 					g.typedefs.write('$expr_str')
 				}
-				g.typedefs.writeln(',')
+				g.typedefs.writeln(', // $j')
 			}
 			g.typedefs.writeln('} $enum_name;\n')
 		}
@@ -529,7 +529,6 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		g.stmts(it.stmts)
 		g.writeln('}')
 	} else if it.kind == .array {
-		// TODO:
 		// `for num in nums {`
 		g.writeln('// FOR IN')
 		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
@@ -554,7 +553,7 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		g.stmts(it.stmts)
 		g.writeln('}')
 	} else if it.kind == .map {
-		// `for num in nums {`
+		// `for key, val in map {`
 		g.writeln('// FOR IN')
 		key_styp := g.typ(it.key_type)
 		val_styp := g.typ(it.val_type)
@@ -1740,11 +1739,11 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 		} else if sym.kind == .array {
 			info := sym.info as table.Array
 			elem_type_str := g.typ(info.elem_type)
-			// `vals[i].field = x` is an exception and requires `array_get`:
-			// `(*(Val*)array_get(vals, i)).field = x ;`
 			mut is_selector := false
 			match node.left {
 				ast.SelectorExpr {
+					// `vals[i].field = x` is an exception and requires `array_get`:
+					// `(*(Val*)array_get(vals, i)).field = x;`
 					is_selector = true
 				}
 				else {}
@@ -1758,9 +1757,24 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
-				g.write(', &($elem_type_str[]) { ')
+				mut need_wrapper := true
+				/*
+				match node.right {
+					ast.EnumVal, ast.Ident {
+						// `&x` is enough for variables and enums
+						// `&(Foo[]){ ... }` is only needed for function calls and literals
+						need_wrapper = false
+					}
+					else {}
+				}
+*/
+				if need_wrapper {
+					g.write(', &($elem_type_str[]) { ')
+				} else {
+					g.write(', &')
+				}
 				// `x[0] *= y`
-				if g.assign_op in [.mult_assign] {
+				if g.assign_op in [.mult_assign, .plus_assign, .minus_assign, .div_assign] {
 					g.write('*($elem_type_str*)array_get(')
 					if left_is_ptr {
 						g.write('*')
@@ -1772,6 +1786,15 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 					op := match g.assign_op {
 						.mult_assign {
 							'*'
+						}
+						.plus_assign {
+							'+'
+						}
+						.minus_assign {
+							'-'
+						}
+						.div_assign {
+							'-'
 						}
 						else {
 							''
