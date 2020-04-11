@@ -1286,24 +1286,15 @@ pub fn (s string) repeat(count int) string {
 // Hello there,
 // this is a string,
 //     Everything before the first | is removed
-pub fn (s string) strip_margin(del ...byte) string {
-	mut sep := `|`
-	if del.len >= 1 {
-		// This is a workaround. We can't directly index a var_args array.
-		// Only care about the first one, ignore the rest if more
-		for d in del {
-			// The delimiter is not allowed to be white-space. Will use default
-			if d.is_space() {
-				eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
-				eprintln("    Defaulting to `|`")
-			} else {
-				sep = d
-			}
-			break
-		}
-		if del.len != 1 {
-			eprintln("Warning: `strip_margin` only uses the first argument given")
-		}
+pub fn (s string) strip_margin() string {
+   return s.strip_margin_custom(`|`)
+}
+pub fn (s string) strip_margin_custom(del byte) string {
+	mut sep := del
+	if sep.is_space() {
+		eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
+		eprintln("    Defaulting to `|`")
+		sep = `|`
 	}
 	// don't know how much space the resulting string will be, but the max it
 	// can be is this big
