@@ -230,7 +230,7 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		*/
 
 		ast.StringLiteral {
-			g.write('tos3("$it.val")')
+			g.write('"$it.val"')
 		}
 		ast.InfixExpr {
 			g.expr(it.left)
@@ -514,7 +514,11 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 	}
 
 	g.stmts(it.stmts)
-	g.writeln('}')
+	if it.is_method {
+		g.write('};')
+	} else {
+		g.writeln('}')
+	}
 	if is_main {
 		g.writeln(')();')
 	}
@@ -576,11 +580,11 @@ fn (g mut JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.inside_loop = true
 		g.write('for (let $i = 0; $i < ')
 		g.expr(it.cond)
-		g.writeln('.len; ++$i) {')
+		g.writeln('.length; ++$i) {')
 		g.inside_loop = false
 		g.write('\tlet $it.val_var = ')
 		g.expr(it.cond)
-		g.writeln('.str[$i];')
+		g.writeln('[$i];')
 		g.stmts(it.stmts)
 		g.writeln('}')
 	}
