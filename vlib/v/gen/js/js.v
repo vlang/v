@@ -201,6 +201,12 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		ast.GoStmt {
 			g.gen_go_stmt(it)
 		}
+		ast.GotoLabel {
+			g.writeln('$it.name:')
+		}
+		ast.GotoStmt {
+			// skip: JS has no goto
+		}
 		ast.StructDecl {
 			g.gen_struct_decl(it)
 		}
