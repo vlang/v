@@ -183,7 +183,6 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 		res.is_run = true
 		res.path = args[command_pos+1]
 		res.run_args = if command_pos+1 < args.len { args[command_pos+2..] } else { []string }
-		eprintln('res.run_args: ' + res.run_args.join(' '))
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
