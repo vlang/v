@@ -25,6 +25,9 @@ fn main() {
     for i, x in 'hello' {}
 
     for x in 1..10 {}
+
+    arr := [1,2,3,4,5]
+    for a in arr {}
 }
 
 [inline]

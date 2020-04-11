@@ -84,16 +84,25 @@ pub fn (g mut JsGen) typ(t table.Type) string {
 	if styp.starts_with('JS__') {
 		styp = styp[4..]
 	}
-	match styp {
+	return g.to_js_typ(styp)
+}
+
+fn (g mut JsGen) to_js_typ(typ string) string {
+	mut styp := ''
+	match typ {
 		'int' {
 			styp = 'number'
 		}
 		'bool' {
 			styp = 'boolean'
-		} else {}
+		} else {
+			if typ.starts_with('array_') {
+				styp = g.to_js_typ(typ.replace('array_', '')) + '[]'
+			}
+		}
 	}
 	return styp
-}
+} 
 
 pub fn (g &JsGen) save() {}
 
@@ -204,6 +213,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 fn (g mut JsGen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
+		ast.ArrayInit {
+			g.gen_array_init_expr(it)
+		}
 		ast.IntegerLiteral {
 			g.write(it.val)
 		}
@@ -277,6 +289,20 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			println(term.red('jsgen.expr(): bad node'))
 		}
 	}
+}
+
+fn (g mut JsGen) gen_array_init_expr(it ast.ArrayInit) {
+	type_sym := g.table.get_type_symbol(it.typ)
+	if type_sym.kind != .array_fixed {
+		g.write('[')
+		for i, expr in it.exprs {
+			g.expr(expr)
+			if i < it.exprs.len - 1 {
+				g.write(', ')
+			}
+		}
+		g.write(']')
+	} else {}
 }
 
 fn (g mut JsGen) gen_assert_stmt(a ast.AssertStmt) {
@@ -528,6 +554,21 @@ fn (g mut JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.writeln('; ++$i) {')
 		g.inside_loop = false
 		g.stmts(it.stmts)
+		g.writeln('}')
+	} else if it.kind == .array {
+		// `for num in nums {`
+		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		styp := g.typ(it.val_type)
+		g.inside_loop = true
+		g.write('for (let $i = 0; $i < ')
+		g.expr(it.cond)
+		g.writeln('.length; ++$i) {')
+		g.inside_loop = false
+		g.write('\tlet $it.val_var = ')
+		g.expr(it.cond)
+		g.write('[$i];')
+		g.stmts(it.stmts)
+		g.writeln('')
 		g.writeln('}')
 	} else if it.kind == .string {
 		// `for x in 'hello' {`
