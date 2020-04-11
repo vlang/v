@@ -324,11 +324,8 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		}
 		else {
 			if p.pref.is_script && !p.pref.is_test {
-				p.scanner.text = 'fn main() {' + p.scanner.text + '}'
-				p.scanner.is_started = false
-				p.scanner.pos = 0
-				p.next()
-				p.next()
+				p.scanner.add_fn_main_and_rescan()
+				p.read_first_token()
 				return p.top_stmt()
 			} else {
 				p.error('bad top level statement ' + p.tok.str())
