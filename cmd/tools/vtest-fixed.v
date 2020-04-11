@@ -47,10 +47,8 @@ const (
 		'vlib/sqlite/sqlite_test.v', // works only on ubuntu with installed sqlite
 		'vlib/clipboard/clipboard_test.v', // needs code changes to make it compile with v2
 	]
-	skip_on_linux = [
-	]
-	skip_on_non_linux = [
-	]
+	skip_on_linux = []string
+	skip_on_non_linux = []string
 )
 
 fn main() {
