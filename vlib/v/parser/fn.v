@@ -83,6 +83,7 @@ pub fn (p mut Parser) call_args() []ast.CallArg {
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
 	// p.table.clear_vars()
+	pos := p.tok.position()
 	p.open_scope()
 	is_deprecated := p.attr == 'deprecated'
 	is_pub := p.tok.kind == .key_pub
@@ -207,7 +208,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		rec_mut: rec_mut
 		is_c: is_c
 		no_body: no_body
-		pos: p.tok.position()
+		pos: pos
 		is_builtin: p.builtin_mod || p.mod in ['math', 'strconv', 'strconv.ftoa', 'hash.wyhash',
 			'math.bits', 'strings']
 	}

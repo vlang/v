@@ -32,6 +32,7 @@ mut:
 	in_for_count   int // if checker is currently in an for loop
 	// checked_ident  string // to avoid infinit checker loops
 	var_decl_name  string
+	returns        bool
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -250,6 +251,9 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 }
 
 pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
+	if call_expr.name == 'panic' {
+		c.returns = true
+	}
 	c.stmts(call_expr.or_block.stmts)
 	if call_expr.is_method {
 		left_type := c.expr(call_expr.left)
@@ -876,6 +880,11 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.expected_type = table.void_type
 			c.fn_return_type = it.return_type
 			c.stmts(it.stmts)
+			if !it.is_c && !it.no_body && it.return_type != table.void_type && !c.returns &&
+				!(it.name in ['panic', 'exit']) {
+				c.error('missing return at end of function `$it.name`', it.pos)
+			}
+			c.returns = false
 		}
 		ast.ForStmt {
 			c.in_for_count++
@@ -937,6 +946,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		ast.Import {}
 		// ast.GlobalDecl {}
 		ast.Return {
+			c.returns = true
 			c.return_stmt(mut it)
 		}
 		// ast.StructDecl {}
