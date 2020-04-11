@@ -41,12 +41,14 @@ const (
 		'vlib/v/tests/typeof_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
 		'vlib/v/tests/pointers_str_test.v',
+		'vlib/v/tests/live_test.v', // Linux & Solaris only, but since live does not work with v2, just skip everywhere
+		'vlib/v/tests/asm_test.v', // skip everywhere for now
 	]
+	skip_on_linux = [
+		'vlib/clipboard/clipboard_test.v',
+	]				   
 	skip_on_non_linux = [
-		'vlib/clipboard/clipboard_test.v', // Linux only
-		'vlib/sqlite/sqlite_test.v', // Linux only
-		'vlib/v/tests/asm_test.v', // Linux only
-		'vlib/v/tests/live_test.v', // Linux only
+		'vlib/sqlite/sqlite_test.v',
 	]							  
 )
 
@@ -65,6 +67,9 @@ fn main() {
 	tsession.skip_files << skip_test_files
 	$if !linux {
 	   tsession.skip_files << skip_on_non_linux
+	}
+	$if linux {
+	   tsession.skip_files << skip_on_linux
 	}
 	tsession.test()
 	eprintln(tsession.benchmark.total_message(title))
