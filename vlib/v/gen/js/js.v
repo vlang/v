@@ -195,13 +195,7 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.gen_return_stmt(it)
 		}
 		ast.ForStmt {
-			g.write('while (')
-			g.expr(it.cond)
-			g.writeln(') {')
-			for stmt in it.stmts {
-				g.stmt(stmt)
-			}
-			g.writeln('}')
+			g.gen_for_stmt(it)
 		}
 		ast.GoStmt {
 			g.gen_go_stmt(it)
@@ -615,6 +609,18 @@ fn (g mut JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.stmts(it.stmts)
 		g.writeln('}')
 	}
+}
+
+fn (g mut JsGen) gen_for_stmt(it ast.ForStmt) {
+	g.write('while (')
+	if it.is_inf {
+		g.write('true')
+	} else {
+		g.expr(it.cond)
+	}
+	g.writeln(') {')
+	g.stmts(it.stmts)
+	g.writeln('}')
 }
 
 fn (g mut JsGen) fn_args(args []table.Arg, is_variadic bool) {
