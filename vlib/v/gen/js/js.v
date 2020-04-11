@@ -353,14 +353,9 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			} else {
 				g.write('const ')
 			}
-
-			if ident.kind == .blank_ident {
-				g.write('_ = ')
-				g.expr(val)
-			} else {
-				g.write('$ident.name = ')
-				g.expr(val)
-			}
+			
+			g.write('$ident.name = ')
+			g.expr(val)
 
 			if g.inside_loop {
 				g.write("; ")
