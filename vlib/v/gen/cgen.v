@@ -885,13 +885,12 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		if g.is_test {
 			verror('test files cannot have function `main`')
 		}
-		if g.defer_stmts.len > 0 {
-			g.write_defer_stmts()
-		}
-		g.writeln('\treturn 0;')
 	}
-	else if g.defer_stmts.len > 0 {
+	if g.defer_stmts.len > 0 {
 		g.write_defer_stmts()
+	}
+	if is_main {
+		g.writeln('\treturn 0;')
 	}
 	g.writeln('}')
 	g.defer_stmts = []
