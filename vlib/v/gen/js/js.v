@@ -203,6 +203,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			}
 			g.writeln('}')
 		}
+		ast.GoStmt {
+			g.gen_go_stmt(it)
+		}
 		ast.StructDecl {
 			g.gen_struct_decl(it)
 		}
@@ -477,12 +480,16 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 	if it.no_body {
 		return
 	}
-
+	has_go := fn_has_go(it)
 	is_main := it.name == 'main'
 	if is_main {
 		// there is no concept of main in JS but we do have iife
 		g.writeln('/* program entry point */')
-		g.write('(function(')
+		g.write('(')
+		if has_go {
+			g.write('async ')
+		}
+		g.write('function(')
 	} else {
 		mut name := it.name
 		c := name[0]
@@ -511,6 +518,9 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 			// javascript has class methods, so we just assign this function on the class prototype
 			className :=  g.table.get_type_symbol(it.receiver.typ).name
 			g.write('${className}.prototype.${name} = ')
+		}
+		if has_go {
+			g.write('async ')
 		}
 		g.write('function ${name}(')
 	}
@@ -623,6 +633,33 @@ fn (g mut JsGen) fn_args(args []table.Arg, is_variadic bool) {
 	}
 }
 
+fn (g mut JsGen) gen_go_stmt(node ast.GoStmt) {
+	// x := node.call_expr as ast.CallEpxr // TODO
+	match node.call_expr {
+		ast.CallExpr { 
+			mut name := it.name
+			if it.is_method {
+				receiver_sym := g.table.get_type_symbol(it.receiver_type)
+				name = receiver_sym.name + '.' + name
+			}
+			g.writeln('await new Promise(function(resolve){')
+			g.indent++
+			g.write('${name}(')
+			for i, arg in it.args {
+				g.expr(arg.expr)
+				if i < it.args.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.writeln(');')
+			g.writeln('resolve();')
+			g.indent--
+			g.writeln('});')
+		}
+		else { }
+	}
+}
+
 fn (g mut JsGen) gen_map_init_expr(it ast.MapInit) {
 	key_typ_sym := g.table.get_type_symbol(it.key_type)
 	value_typ_sym := g.table.get_type_symbol(it.value_type)
@@ -711,4 +748,16 @@ fn (g mut JsGen) gen_struct_init(it ast.StructInit) {
 
 fn verror(s string) {
 	util.verror('jsgen error', s)
+}
+
+fn fn_has_go(it ast.FnDecl) bool {
+	mut has_go := false
+	for stmt in it.stmts {
+		match stmt {
+			ast.GoStmt {
+				has_go = true
+			} else {}
+		}
+	}
+	return has_go
 }

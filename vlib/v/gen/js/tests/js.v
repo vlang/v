@@ -37,7 +37,11 @@ fn main() {
     for m, n in ma {
         iss := m
     }
+
+    go async(0, "hello")
 }
+
+fn async(num int, def string) {}
 
 [inline]
 fn hello(game_on int, dummy ...string) (int, int) {
