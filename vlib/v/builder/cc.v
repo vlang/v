@@ -317,7 +317,9 @@ fn (v mut Builder) cc() {
 			}
 		}
 		if !is_cc_tcc {
-			a << '-Xlinker -z -Xlinker muldefs'
+			$if linux {
+				a << '-Xlinker -z -Xlinker muldefs'
+			}
 		}
 	}
 
