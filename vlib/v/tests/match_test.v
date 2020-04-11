@@ -64,30 +64,29 @@ fn test_match_integers() {
     assert a == -2
 }
 
-fn test_match_enums(){
-    mut b := Color.red
-    match b{
-        .red {
-            b = .green
-        }
-        .green {
-            b = .blue
-        }
-        else {
-            println('b is ${b.str()}')
-            b = .red
-        }
-    }
-    assert b == .green
-
-    match b{
-        .red {
-            b = .green
-        }
-        else {
-            println('b is ${b.str()}')
-            b = .blue
-        }
-    }
-    assert b == .blue
+fn test_match_enums() {
+	mut b := Color.red
+	match b {
+		.red {
+			b = .green
+		}
+		.green {
+			b = .blue
+		}
+		else {
+			println('b is ${b.str()}')
+			b = .red
+		}
+	}
+	assert b == .green
+	match b {
+		.red {
+			b = .green
+		}
+		else {
+			println('b is ${b.str()}')
+			b = .blue
+		}
+	}
+	assert b == .blue
 }

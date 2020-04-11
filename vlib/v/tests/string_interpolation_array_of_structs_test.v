@@ -8,14 +8,13 @@
 // can generate the default method for a struct, then the b) case of
 // this test will be done by *that* test, and so the testing will
 // be incomplete.
-
 struct Man {
-	name string
-	age int
+	name      string
+	age       int
 	interests []string
 }
 
-fn test_default_struct_array_of_structs_interpolation(){
+fn test_default_struct_array_of_structs_interpolation() {
 	people := [
 		Man{'Superman', 30, ['flying','fighting evil','being nice']},
 		Man{'Bilbo Baggins', 111, ['exploring', 'hiding']},
@@ -30,5 +29,5 @@ fn test_default_struct_array_of_structs_interpolation(){
 	assert s.contains('age: 111')
 	assert s.contains('interests: ["exploring", "hiding"]')
 	assert s.contains('}]')
-	//println(s)
+	// println(s)
 }
