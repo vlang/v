@@ -45,10 +45,5 @@ pub fn parse_rfc2822(s string) ?Time {
 	count := C.snprintf(charptr(tmstr), (s.len *  2), '%s-%02d-%s %s', fields[3].str, mm,
 		fields[1].str, fields[4].str)
 
-	t := parse(tos(tmstr, count)) or {
-		// FIXME Remove this when optional forwarding is fixed.
-		return error('Invalid time format: $s')
-	}
-
-	return t
+	return parse(tos(tmstr, count))
 }
