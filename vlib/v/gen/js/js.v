@@ -235,6 +235,21 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		ast.ArrayInit {
 			g.gen_array_init_expr(it)
 		}
+		ast.BoolLiteral {
+			if it.val == true {
+				g.write('true')
+			}
+			else {
+				g.write('false')
+			}
+		}
+		ast.CharLiteral {
+			g.write("'$it.val'")
+		}
+		ast.EnumVal {
+			styp := g.typ(it.typ)
+			g.write('${styp}.${it.val}')
+		}
 		ast.MapInit {
 			g.gen_map_init_expr(it)
 		}
@@ -279,14 +294,7 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		ast.Ident {
 			g.write('$it.name')
 		}
-		ast.BoolLiteral {
-			if it.val == true {
-				g.write('true')
-			}
-			else {
-				g.write('false')
-			}
-		}
+
 		ast.IfExpr {
 			for i, branch in it.branches {
 				if i == 0 {
@@ -431,8 +439,13 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 		for i, ident in it.left {
 			val := it.right[i]
 			ident_var_info := ident.var_info()
-			styp := g.typ(ident_var_info.typ)
-
+			mut styp := g.typ(ident_var_info.typ)
+			
+			if typeof(val) == 'v.ast.EnumVal' {
+				// we want the type of the enum value
+				styp = 'number'
+			}
+			
 			if !g.inside_loop {
 				g.writeln(g.doc.gen_typ(styp, ident.name))
 			}

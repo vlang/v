@@ -20,6 +20,8 @@ fn main() {
         _ := "block"
     }
 
+    pos := POSITION.GO_BACK
+
     for i := 0; i < 10; i++ {}
 
     for i, x in 'hello' {}
