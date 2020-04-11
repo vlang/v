@@ -24,7 +24,6 @@ const (
 		'vlib/regex/regex_test.v',
 		'vlib/sqlite/sqlite_test.v', // Linux only
 		'vlib/strconv/ftoa/f32_f64_to_string_test.v',
-		//'vlib/v/parser/parser_test.v', // exits early, but it should compile
 		'vlib/v/tests/array_to_string_test.v',
 		'vlib/v/tests/asm_test.v', // Linux only
 		'vlib/v/tests/backtrace_test.v', // TCC only
@@ -39,8 +38,6 @@ const (
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/option_test.v',
 		'vlib/v/tests/pointers_test.v',
-		'vlib/v/tests/project_with_modules_having_submodules/bin/a_program_under_bin_can_find_mod1_test.v',
-		'vlib/v/tests/project_with_modules_having_submodules/tests/submodule_test.v',
 		'vlib/v/tests/repl/repl_test.v',
 		'vlib/v/tests/string_interpolation_array_of_structs_test.v',
 		'vlib/v/tests/string_interpolation_struct_test.v',
