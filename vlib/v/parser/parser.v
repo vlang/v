@@ -813,12 +813,17 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			if p.tok.kind == .string {
 				node = p.map_init()
 			} else {
+				// it should be a struct
 				if p.peek_tok.kind == .pipe {
 					node = p.assoc()
 				} else if p.peek_tok.kind == .colon || p.tok.kind == .rcbr {
 					node = p.struct_init(true)					// short_syntax: true
+				} else if p.tok.kind == .name {
+					p.next()
+					lit := if p.tok.lit != '' { p.tok.lit } else { p.tok.kind.str() }
+					p.error('unexpected ‘$lit‘, expecting ‘:‘')
 				} else {
-					p.error('unexpected {')
+					p.error('unexpected ‘$p.tok.lit‘, expecting struct key')
 				}
 			}
 			p.check(.rcbr)
