@@ -953,17 +953,18 @@ fn (p mut Parser) filter() {
 
 fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
+	mut name_pos := p.tok.position()
 	field_name := p.check_name()
 	is_filter := field_name in ['filter', 'map']
 	if is_filter {
 		p.open_scope()
+		name_pos = p.tok.position()
 		p.filter()
 		// wrong tok position when using defer
 		// defer {
 		// p.close_scope()
 		// }
 	}
-	pos := p.tok.position()
 	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
@@ -986,6 +987,12 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_stmts = p.parse_block_no_scope()
 			p.close_scope()
 		}
+		end_pos := p.tok.position()
+		pos := token.Position{
+			line_nr: name_pos.line_nr
+			pos: name_pos.pos
+			len: end_pos.pos - name_pos.pos
+		}
 		mcall_expr := ast.CallExpr{
 			left: left
 			name: field_name
@@ -1007,7 +1014,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	sel_expr := ast.SelectorExpr{
 		expr: left
 		field: field_name
-		pos: p.tok.position()
+		pos: name_pos
 	}
 	mut node := ast.Expr{}
 	node = sel_expr
