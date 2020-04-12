@@ -728,7 +728,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				start := s.pos + 1
 				s.ignore_line()
 				s.line_comment = s.text[start + 1..s.pos]
-				comment := s.line_comment.trim_space()
+				mut comment := s.line_comment.trim_space()
 				s.pos--
 				// fix line_nr, \n was read, and the comment is marked
 				// on the next line

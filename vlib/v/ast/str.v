@@ -32,7 +32,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		receiver = '($node.receiver.name $m$name) '
 */
 	}
-	name := node.name.after('.')
+	mut name := node.name.after('.')
 	if node.is_c {
 		name = 'C.$name'
 	}
