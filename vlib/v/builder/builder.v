@@ -55,8 +55,8 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 	t2 := time.ticks()
 	check_time := t2 - t1
 	b.info('CHECK: ${check_time}ms')
-	if b.checker.nr_errors > 0 {
-		exit(1)
+	if b.checker.nr_issues > 0 {
+		b.print_issues(b.checker.issues)
 	}
 	// println('starting cgen...')
 	res := gen.cgen(b.parsed_files, b.table, b.pref)
@@ -265,6 +265,19 @@ pub fn (b Builder) find_module_path(mod string, fpath string) ?string {
 	}
 	smodule_lookup_paths := module_lookup_paths.join(', ')
 	return error('module "$mod" not found in:\n$smodule_lookup_paths')
+}
+
+fn (b &Builder) print_issues(issues []ast.Issue) {
+	for issue in issues {
+		kind := if b.pref.is_verbose { '$issue.reporter $issue.typ #$b.checker.nr_issues:' } else { '$issue.typ:' }
+		ferror := util.formatted_error(kind, issue.message, issue.file_path, issue.pos)
+		if issue.typ == .warn {
+			println(ferror)
+		} else {
+			eprintln(ferror)
+		}
+	}
+	exit(1)
 }
 
 fn verror(s string) {

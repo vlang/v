@@ -21,8 +21,8 @@ pub struct Checker {
 	table          &table.Table
 mut:
 	file           ast.File
-	nr_errors      int
-	errors         []string
+	nr_issues      int
+	issues         []ast.Issue
 	error_lines    []int // to avoid printing multiple errors for the same line
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
@@ -49,12 +49,12 @@ pub fn (c mut Checker) check(ast_file ast.File) {
 	}
 }
 
-pub fn (c mut Checker) check2(ast_file ast.File) []string {
+pub fn (c mut Checker) check2(ast_file ast.File) []ast.Issue {
 	c.file = ast_file
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
-	return c.errors
+	return c.issues
 }
 
 pub fn (c mut Checker) check_files(ast_files []ast.File) {
@@ -1542,37 +1542,28 @@ pub fn (c mut Checker) warn(s string, pos token.Position) {
 	c.warn_or_error(s, pos, allow_warnings)	// allow warnings only in dev builds
 }
 
-pub fn (c mut Checker) error(s string, pos token.Position) {
-	c.warn_or_error(s, pos, false)
+pub fn (c mut Checker) error(message string, pos token.Position) {
+	c.warn_or_error(message, pos, false)
 }
 
-fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
-	if !warn {
-		c.nr_errors++
-	}
+fn (c mut Checker) warn_or_error(message string, pos token.Position, warn bool) {
+	c.nr_issues++
+	// add backtrace to issue struct, how?
 	// if c.pref.is_verbose {
-	if c.pref.is_verbose {
-		print_backtrace()
-	}
-	typ := if warn { 'warning' } else { 'error' }
-	kind := if c.pref.is_verbose { 'checker $typ #$c.nr_errors:' } else { '$typ:' }
-	ferror := util.formatted_error(kind, s, c.file.path, pos)
-	c.errors << ferror
+	//	print_backtrace()
+	// }
 	if !(pos.line_nr in c.error_lines) {
-		if warn {
-			println(ferror)
-		} else {
-			eprintln(ferror)
+		typ := if warn { ast.IssueType.warn } else { ast.IssueType.error }
+		c.issues << ast.Issue{
+			typ: typ
+			reporter: ast.Reporter.checker
+			pos: pos
+			file_path: c.file.path
+			message: message
 		}
 	}
 	if !warn {
 		c.error_lines << pos.line_nr
-	}
-	if c.pref.is_verbose {
-		println('\n\n')
-	}
-	if c.nr_errors >= max_nr_errors {
-		exit(1)
 	}
 }
 
