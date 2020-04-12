@@ -1077,10 +1077,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.EnumVal {
-			// g.write('/*EnumVal*/${it.mod}${it.enum_name}_$it.val')
+			// g.write('${it.mod}${it.enum_name}_$it.val')
 			styp := g.typ(it.typ)
-			g.write(styp)
-			g.write('_$it.val')
+			g.write('${styp}_$it.val')
 		}
 		ast.FloatLiteral {
 			g.write(it.val)
@@ -1971,17 +1970,17 @@ fn (g mut Gen) const_decl_simple_define(name, val string) {
 	g.definitions.writeln(val)
 }
 
-fn (g mut Gen) struct_init(it ast.StructInit) {
+fn (g mut Gen) struct_init(struct_init ast.StructInit) {
 	mut info := table.Struct{}
 	mut is_struct := false
-	sym := g.table.get_type_symbol(it.typ)
+	sym := g.table.get_type_symbol(struct_init.typ)
 	if sym.kind == .struct_ {
 		is_struct = true
 		info = sym.info as table.Struct
 	}
 	// info := g.table.get_type_symbol(it.typ).info as table.Struct
 	// println(info.fields.len)
-	styp := g.typ(it.typ)
+	styp := g.typ(struct_init.typ)
 	is_amp := g.is_amp
 	if is_amp {
 		g.out.go_back(1)		// delete the & already generated in `prefix_expr()
@@ -1991,20 +1990,20 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 	}
 	mut fields := []string
 	mut inited_fields := []string	// TODO this is done in checker, move to ast node
-	if it.fields.len == 0 && it.exprs.len > 0 {
+	if struct_init.fields.len == 0 && struct_init.exprs.len > 0 {
 		// Get fields for {a,b} short syntax. Fields array wasn't set in the parser.
 		for f in info.fields {
 			fields << f.name
 		}
 	} else {
-		fields = it.fields
+		fields = struct_init.fields
 	}
-	// / User set fields
+	// User set fields
 	for i, field in fields {
 		field_name := c_name(field)
 		inited_fields << field
 		g.write('\t.$field_name = ')
-		g.expr_with_cast(it.exprs[i], it.expr_types[i], it.expected_types[i])
+		g.expr_with_cast(struct_init.exprs[i], struct_init.expr_types[i], struct_init.expected_types[i])
 		g.writeln(',')
 	}
 	// The rest of the fields are zeroed.
@@ -2018,11 +2017,16 @@ fn (g mut Gen) struct_init(it ast.StructInit) {
 				continue
 			}
 			field_name := c_name(field.name)
-			zero := if field.default_val != '' { field.default_val } else { g.type_default(field.typ) }
-			g.writeln('\t.$field_name = $zero,')			// zer0')
+			if field.has_default_expr {
+				g.expr(field.default_expr)
+				g.writeln(',')
+			} else {
+				zero := g.type_default(field.typ)
+				g.writeln('\t.$field_name = $zero,')
+			}
 		}
 	}
-	if it.fields.len == 0 && info.fields.len == 0 {
+	if struct_init.fields.len == 0 && info.fields.len == 0 {
 		g.write('0')
 	}
 	g.write('}')

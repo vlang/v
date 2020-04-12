@@ -216,10 +216,8 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				if field.has_expr {
 					f.write(' = ')
 					f.expr(field.expr)
-					f.writeln(',')
-				} else {
-					f.writeln('')
 				}
+				f.writeln('')
 			}
 			f.writeln('}\n')
 		}
@@ -407,8 +405,8 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 		f.write('\t$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
 		f.write(f.type_to_str(field.typ))
-		if field.default_expr != '' {
-			f.write(' = $field.default_expr')
+		if field.has_default_expr {
+			f.write(' = ${field.default_expr.str()}')
 		}
 		// f.write('// $field.pos.line_nr')
 		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {

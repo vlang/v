@@ -101,13 +101,14 @@ pub:
 
 pub struct StructField {
 pub:
-	name         string
-	pos          token.Position
-	comment      Comment
-	default_expr string // token literal //Expr
-	attr string
+	name             string
+	pos              token.Position
+	comment          Comment
+	default_expr     Expr
+	has_default_expr bool
+	attr             string
 mut:
-	typ          table.Type
+	typ              table.Type
 }
 
 pub struct Field {
