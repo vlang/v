@@ -3207,7 +3207,8 @@ fn (g mut Gen) gen_str_for_struct(info table.Struct, styp string) {
 			sym := g.table.get_type_symbol(field.typ)
 			if sym.kind == .struct_ {
 				field_styp := g.typ(field.typ)
-				g.definitions.write('indents.len, indents.str, ${field_styp}_str(it.$field.name, indent_count + 1).len, ${field_styp}_str(it.$field.name, indent_count + 1).str')
+				second_str_param := if sym.has_method('str') { '' } else { ', indent_count + 1' }
+				g.definitions.write('indents.len, indents.str, ${field_styp}_str(it.$field.name$second_str_param).len, ${field_styp}_str(it.$field.name$second_str_param).str')
 			} else {
 				g.definitions.write('indents.len, indents.str, it.$field.name')
 				if field.typ == table.string_type {
@@ -3215,9 +3216,9 @@ fn (g mut Gen) gen_str_for_struct(info table.Struct, styp string) {
 				} else if field.typ == table.bool_type {
 					g.definitions.write(' ? 4 : 5, it.${field.name} ? "true" : "false"')
 				}
-				if i < info.fields.len - 1 {
-					g.definitions.write(', ')
-				}
+			}
+			if i < info.fields.len - 1 {
+				g.definitions.write(', ')
 			}
 		}
 	}
