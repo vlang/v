@@ -590,7 +590,7 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 		type_name := g.typ(it.return_type)
 
 		// generate jsdoc for the function
-		g.writeln(g.doc.gen_fn(it))
+		g.write(g.doc.gen_fn(it))
 
 		if has_go {
 			g.write('async ')
@@ -830,22 +830,19 @@ fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
 				// generate function in class
 				g.fn_decl = it
 
-				has_go := fn_has_go(it)
-
 				mut name := it.name
 				c := name[0]
 				if c in [`+`, `-`, `*`, `/`] {
 					name = util.replace_op(name)
 				}
 
-				type_name := g.typ(it.return_type)
-
 				// generate jsdoc for the function
 				g.writeln(g.doc.gen_fn(it))
 
-				if has_go {
+				if fn_has_go(it) {
 					g.write('async ')
 				}
+
 				g.write('${name}(')
 				g.fn_args(it.args, it.is_variadic)
 				g.writeln(') {')

@@ -67,8 +67,9 @@ fn (d mut JsDoc) gen_ctor(fields []ast.StructField) string {
 	return d.out.str()
 }
 
-fn (d mut JsDoc) gen_fn(it ast.FnDecl) {
+fn (d mut JsDoc) gen_fn(it ast.FnDecl) string {
 	d.reset()
+	type_name := d.gen.typ(it.return_type)
 	d.writeln('/**')
 	for i, arg in it.args {
 		arg_type_name := d.gen.typ(arg.typ)
@@ -80,6 +81,6 @@ fn (d mut JsDoc) gen_fn(it ast.FnDecl) {
 		}
 	}
 	d.writeln('* @return {$type_name}')
-	d.writeln('*/')
+	d.write('*/')
 	return d.out.str()
 }
