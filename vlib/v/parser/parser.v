@@ -1841,7 +1841,6 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 	cond := p.expr(0)
 	p.check(.lcbr)
 	mut branches := []ast.MatchBranch
-	mut have_final_else := false
 	for {
 		comment := p.check_comment()		// comment before {}
 		mut exprs := []ast.Expr
@@ -1849,7 +1848,6 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		p.open_scope()
 		// final else
 		if p.tok.kind == .key_else {
-			have_final_else = true
 			p.next()
 		} else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names ||
 				(p.tok.lit[0].is_capital() && !p.tok.lit.is_upper()) || p.peek_tok.kind == .dot) {
@@ -1899,9 +1897,6 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .rcbr {
 			break
 		}
-	}
-	if !have_final_else {
-		p.error('match must be exhaustive')
 	}
 	p.check(.rcbr)
 	return ast.MatchExpr{

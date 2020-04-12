@@ -1325,15 +1325,24 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	}
 	c.expected_type = cond_type
 	mut ret_type := table.void_type
+	mut has_else := false
+	mut nr_exprs := 0
 	for branch in node.branches {
-		for expr in branch.exprs {
-			c.expected_type = cond_type
-			typ := c.expr(expr)
-			typ_sym := c.table.get_type_symbol(typ)
-			// TODO:
-			if typ_sym.kind == .sum_type {
+		if branch.exprs.len > 0 {
+			nr_exprs += branch.exprs.len
+			for expr in branch.exprs {
+				c.expected_type = cond_type
+				typ := c.expr(expr)
+				typ_sym := c.table.get_type_symbol(typ)
+				// TODO:
+				if typ_sym.kind == .sum_type {
+				}
 			}
+		} else {
+			// a branch with no exprs is the `else` branch
+			has_else = true
 		}
+
 		c.stmts(branch.stmts)
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
@@ -1350,6 +1359,21 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 					// return typ
 				}
 			}
+		}
+	}
+
+	if !has_else {
+		mut is_exhaustive := false
+		typ_sym := c.table.get_type_symbol(cond_type)
+		if typ_sym.kind == .enum_ {
+			// the number of exprs must be the same as the number
+			// of values in an enum
+			enum_info := typ_sym.enum_info()
+			is_exhaustive = enum_info.vals.len == nr_exprs
+		}
+
+		if !is_exhaustive {
+			c.error('match must be exhaustive', node.pos)
 		}
 	}
 	// if ret_type != table.void_type {

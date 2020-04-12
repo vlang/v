@@ -116,3 +116,34 @@ fn test_match_enums() {
 	}
 	assert b == .blue
 }
+
+fn test_match_exhaustive_enum() {
+	mut b := Color.red
+	match b {
+		.red {
+			b = .green
+		}
+		.green {
+			b = .blue
+		}
+		.blue {
+			b = .red
+		}
+	}
+	assert b == .green
+	match b {
+		.blue {
+			b = .green
+		}
+		.green, .red {
+			b = .blue
+		}
+	}
+	assert b == .blue
+	match b {
+		.red, .green, .blue {
+			b = .red
+		}
+	}
+	assert b == .red
+}
