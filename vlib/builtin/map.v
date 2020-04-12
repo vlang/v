@@ -30,7 +30,7 @@ nt is larger than that of the key at the current position.
 namic array with a very low volume of unused memory, at the cost of more rea-
 llocations when inserting elements. It also preserves the order of the key-v-
 alues. This array is named `key_values`. Instead of probing a new key-value,
-this map probes two 32-bit numbers collectively.  The first number has its 8
+this map probes two 32-bit numbers collectively. The first number has its 8
 most significant bits reserved for the probe-count and the remaining 24 bits
 are cached bits from the hash which are utilized for faster re-hashing. This
 number is often referred to as `meta`. The other 32-bit number is the index
@@ -55,7 +55,7 @@ cking since the extra meta memory ensures that a meta will never go beyond
 the last index.
 
 6. Cached rehashing. When the `load_factor` of the map exceeds the `max_load_
-factor` the size of metas is doubled and all the key-values are "rehashed" to 
+factor` the size of metas is doubled and all the key-values are "rehashed" to
 find the index for their meta's in the new array. Instead of rehashing compl-
 etely, it simply uses the cached-hashbits stored in the meta, resulting in
 much faster rehashing.
