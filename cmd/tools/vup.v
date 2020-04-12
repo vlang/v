@@ -26,6 +26,9 @@ fn main() {
 	}
 
 	println(git_result.output)
+	if git_result.output.contains("master is up to date") {
+		return
+	}
 
 	$if windows {
 		v_backup_file := 'v_old.exe'
