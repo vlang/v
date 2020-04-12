@@ -19,6 +19,8 @@ const (
 
 struct JsGen {
 	out   			strings.Builder
+	namespaces		map[string]strings.Builder
+	namespace 		string
 	table 			&table.Table
 	definitions 	strings.Builder
 	pref            &pref.Preferences
@@ -57,17 +59,42 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	// Get class methods
 	for file in files {
 		g.file = file
+		g.enter_namespace(g.file.mod.name)
 		g.is_test = g.file.path.ends_with('_test.v')
 		g.find_class_methods(file.stmts)
+		g.escape_namespace()
 	}
 
 	for file in files {
 		g.file = file
+		g.enter_namespace(g.file.mod.name)
 		g.is_test = g.file.path.ends_with('_test.v')
 		g.stmts(file.stmts)
+		// store the current namespace
+		g.escape_namespace()
 	}
 	g.finish()
-	return g.hashes() + g.definitions.str() + g.constants.str() + g.out.str()
+	mut out := g.hashes() + g.definitions.str() + g.constants.str()
+	for key in g.namespaces.keys() {
+		out += '/* namespace: $key */\n'
+		out += g.namespaces[key].str()
+	}
+	return out
+}
+
+pub fn (g mut JsGen) enter_namespace(n string) {
+	g.namespace = n
+	if g.namespaces[g.namespace].len == 0 {
+		// create a new namespace
+		g.out = strings.new_builder(100)
+	} else {
+		g.out = g.namespaces[g.namespace]
+	}
+}
+
+pub fn (g mut JsGen) escape_namespace() {
+	g.namespaces[g.namespace] = g.out
+	g.namespace = ""
 }
 
 pub fn (g mut JsGen) find_class_methods(stmts []ast.Stmt) {
