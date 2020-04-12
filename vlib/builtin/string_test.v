@@ -331,38 +331,6 @@ fn test_runes() {
 	assert last.len == 2
 }
 
-fn test_lower() {
-	mut s := 'A'
-	assert s.to_lower() == 'a'
-	assert s.to_lower().len == 1
-	s = 'HELLO'
-	assert s.to_lower() == 'hello'
-	assert s.to_lower().len == 5
-	s = 'Aloha'
-	assert s.to_lower() == 'aloha'
-	s = 'Have A nice Day!'
-	assert s.to_lower() == 'have a nice day!'
-	s = 'hi'
-	assert s.to_lower() == 'hi'
-	assert 'aloha!'[0] == `a`
-	assert 'aloha!'[5] == `!`
-}
-
-fn test_upper() {
-	mut s := 'a'
-	assert s.to_upper() == 'A'
-	assert s.to_upper().len == 1
-	s = 'hello'
-	assert s.to_upper() == 'HELLO'
-	assert s.to_upper().len == 5
-	s = 'Aloha'
-	assert s.to_upper() == 'ALOHA'
-	s = 'have a nice day!'
-	assert s.to_upper() == 'HAVE A NICE DAY!'
-	s = 'hi'
-	assert s.to_upper() == 'HI'
-}
-
 fn test_left_right() {
 	s := 'ALOHA'
 	assert s.left(3) == 'ALO'
@@ -520,23 +488,78 @@ fn test_count() {
 	assert 'bbaabb'.count('aa') == 1
 }
 
+fn test_lower() {
+	mut s := 'A'
+	assert !s.is_lower()
+	assert s.to_lower() == 'a'
+	assert s.to_lower().len == 1
+	s = 'HELLO'
+	assert !s.is_lower()
+	assert s.to_lower() == 'hello'
+	assert s.to_lower().len == 5
+	s = 'Aloha'
+	assert !s.is_lower()
+	assert s.to_lower() == 'aloha'
+	s = 'Have A nice Day!'
+	assert !s.is_lower()
+	assert s.to_lower() == 'have a nice day!'
+	s = 'hi'
+	assert s.is_lower()
+	assert s.to_lower() == 'hi'
+	assert 'aloha!'[0] == `a`
+	assert 'aloha!'[5] == `!`
+}
+
+fn test_upper() {
+	mut s := 'a'
+	assert !s.is_upper()
+	assert s.to_upper() == 'A'
+	assert s.to_upper().len == 1
+	s = 'hello'
+	assert !s.is_upper()
+	assert s.to_upper() == 'HELLO'
+	assert s.to_upper().len == 5
+	s = 'Aloha'
+	assert !s.is_upper()
+	assert s.to_upper() == 'ALOHA'
+	s = 'have a nice day!'
+	assert !s.is_upper()
+	assert s.to_upper() == 'HAVE A NICE DAY!'
+	s = 'HI'
+	assert s.is_upper()
+	assert s.to_upper() == 'HI'
+}
+
 fn test_capitalize() {
 	mut s := 'hello'
+	assert !s.is_capital()
 	assert s.capitalize() == 'Hello'
 	s = 'test'
+	assert !s.is_capital()
 	assert s.capitalize() == 'Test'
     s = 'i am ray'
+	assert !s.is_capital()
 	assert s.capitalize() == 'I am ray'
 	s = ''
+	assert !s.is_capital()
 	assert s.capitalize() == ''
+	s = 'TEST IT'
+	assert !s.is_capital()
+	assert s.capitalize() == 'Test it'
+	s = 'Test it'
+	assert s.is_capital()
+	assert s.capitalize() == 'Test it'
 }
 
 fn test_title() {
-	s := 'hello world'
+	mut s := 'hello world'
+	assert !s.is_title()
 	assert s.title() == 'Hello World'
-	s.to_upper()
+	s = 'HELLO WORLD'
+	assert !s.is_title()
 	assert s.title() == 'Hello World'
-	s.to_lower()
+	s = 'Hello World'
+	assert s.is_title()
 	assert s.title() == 'Hello World'
 }
 

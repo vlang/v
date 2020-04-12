@@ -744,12 +744,30 @@ pub fn (s string) to_lower() string {
 	return tos(b, s.len)
 }
 
+pub fn (s string) is_lower() bool {
+	for i in 0..s.len {
+		if s[i] >= `A` && s[i] <= `Z` {
+			return false
+		}
+	}
+	return true
+}
+
 pub fn (s string) to_upper() string {
 	mut b := malloc(s.len + 1)
 	for i in 0..s.len {
 		b[i] = C.toupper(s.str[i])
 	}
 	return tos(b, s.len)
+}
+
+pub fn (s string) is_upper() bool {
+	for i in 0..s.len {
+		if s[i] >= `a` && s[i] <= `z` {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn (s string) capitalize() string {
@@ -761,6 +779,18 @@ pub fn (s string) capitalize() string {
 	return cap
 }
 
+pub fn (s string) is_capital() bool {
+	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
+		return false
+	}
+	for i in 1..s.len {
+		if s[i] >= `A` && s[i] <= `Z` {
+			return false
+		}
+	}
+	return true
+}
+
 pub fn (s string) title() string {
 	words := s.split(' ')
 	mut tit := []string
@@ -769,6 +799,16 @@ pub fn (s string) title() string {
 	}
 	title := tit.join(' ')
 	return title
+}
+
+pub fn (s string) is_title() bool {
+	words := s.split(' ')
+	for word in words {
+		if !word.is_capital() {
+			return false
+		}
+	}
+	return true
 }
 
 // 'hey [man] how you doin'
