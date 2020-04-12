@@ -20,7 +20,7 @@ struct FooBar {
 
 fn test_typeof_on_structs() {
 	assert typeof(FooBar{}) == 'FooBar'
-	astruct_static := [2]
+	astruct_static := [2]FooBar
 	astruct_dynamic := [FooBar{}, FooBar{}]
 	assert typeof(astruct_static) == '[2]FooBar'
 	assert typeof(astruct_dynamic) == 'array_FooBar'
