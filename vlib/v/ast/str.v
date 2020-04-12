@@ -36,6 +36,9 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 	if node.is_c {
 		name = 'C.$name'
 	}
+	if node.is_js {
+		name = 'JS.$name'
+	}
 	f.write('fn ${receiver}${name}(')
 	for i, arg in node.args {
 		// skip receiver

@@ -23,6 +23,7 @@ mut:
 	peek_tok          token.Token
 	table             &table.Table
 	is_c              bool
+	is_js			  bool
 	inside_if         bool
 	inside_for        bool
 	inside_fn         bool
@@ -544,7 +545,7 @@ pub fn (p &Parser) warn_with_pos(s string, pos token.Position) {
 	eprintln(ferror)
 }
 
-pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
+pub fn (p mut Parser) parse_ident(is_c, is_js bool) ast.Ident {
 	// p.warn('name ')
 	pos := p.tok.position()
 	mut name := p.check_name()
@@ -562,6 +563,7 @@ pub fn (p mut Parser) parse_ident(is_c bool) ast.Ident {
 		kind: .unresolved
 		name: name
 		is_c: is_c
+		is_js: is_js
 		mod: p.mod
 		pos: pos
 	}
@@ -617,6 +619,7 @@ fn (p mut Parser) struct_init(short_syntax bool) ast.StructInit {
 pub fn (p mut Parser) name_expr() ast.Expr {
 	mut node := ast.Expr{}
 	is_c := p.tok.lit == 'C'
+	is_js := p.tok.lit == 'JS'
 	mut mod := ''
 	// p.warn('resetting')
 	p.expr_mod = ''
@@ -628,16 +631,18 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		}
 	}
 	// Raw string (`s := r'hello \n ')
-	if p.tok.lit in ['r', 'c'] && p.peek_tok.kind == .string {
+	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string {
 		// QTODO
 		// && p.prev_tok.kind != .str_dollar {
 		return p.string_expr()
 	}
 	known_var := p.scope.known_var(p.tok.lit)
-	if p.peek_tok.kind == .dot && !known_var && (is_c || p.known_import(p.tok.lit) || p.mod.all_after('.') ==
+	if p.peek_tok.kind == .dot && !known_var && (is_c || is_js || p.known_import(p.tok.lit) || p.mod.all_after('.') ==
 		p.tok.lit) {
 		if is_c {
 			mod = 'C'
+		} else if is_js {
+			mod = 'JS'
 		} else {
 			// prepend the full import
 			mod = p.imports[p.tok.lit]
@@ -687,10 +692,10 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		} else {
 			// fn call
 			// println('calling $p.tok.lit')
-			x := p.call_expr(is_c, mod)			// TODO `node,typ :=` should work
+			x := p.call_expr(is_c, is_js, mod)			// TODO `node,typ :=` should work
 			node = x
 		}
-	} else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod &&
+	} else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || is_js || (p.builtin_mod &&
 		p.tok.lit in table.builtin_type_names)) && !p.inside_match_case && !p.inside_if && !p.inside_for {
 		// (p.tok.lit.len in [1, 2] || !p.tok.lit[p.tok.lit.len - 1].is_capital()) &&
 		// || p.table.known_type(p.tok.lit)) {
@@ -716,7 +721,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		}
 	} else {
 		mut ident := ast.Ident{}
-		ident = p.parse_ident(is_c)
+		ident = p.parse_ident(is_c, is_js)
 		node = ident
 	}
 	p.expr_mod = ''
@@ -1260,6 +1265,11 @@ fn (p mut Parser) string_expr() ast.Expr {
 	if is_raw || is_cstr {
 		p.next()
 	}
+	is_jsstr := p.tok.kind == .name && p.tok.lit == 'js'
+	if is_jsstr {
+		p.next()
+		p.next()
+	}
 	mut node := ast.Expr{}
 	val := p.tok.lit
 	pos := p.tok.position()
@@ -1269,6 +1279,7 @@ fn (p mut Parser) string_expr() ast.Expr {
 			val: val
 			is_raw: is_raw
 			is_c: is_cstr
+			is_js: is_jsstr
 			pos: pos
 		}
 		return node
@@ -1521,13 +1532,14 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		p.check(.key_union)
 	}
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
+	is_js := p.tok.lit == 'JS' && p.peek_tok.kind == .dot
 	if is_c {
-		p.next()		// C
+		p.next()		// C || JS
 		p.next()		// .
 	}
 	is_typedef := p.attr == 'typedef'
 	no_body := p.peek_tok.kind != .lcbr
-	if !is_c && no_body {
+	if !is_c && !is_js && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
 	mut name := p.check_name()
@@ -1614,6 +1626,8 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	}
 	if is_c {
 		name = 'C.$name'
+	} else if is_js {
+		name = 'JS.$name'
 	} else {
 		name = p.prepend_mod(name)
 	}
@@ -1647,6 +1661,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
 		is_c: is_c
+		is_js: is_js
 		is_union: is_union
 	}
 }
@@ -1713,7 +1728,7 @@ fn (p mut Parser) parse_assign_lhs() []ast.Ident {
 		if is_static {
 			p.check(.key_static)
 		}
-		mut ident := p.parse_ident(false)
+		mut ident := p.parse_ident(false, false)
 		ident.is_mut = is_mut
 		ident.info = ast.IdentVar{
 			is_mut: is_mut

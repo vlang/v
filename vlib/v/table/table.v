@@ -25,6 +25,7 @@ pub:
 	return_type Type
 	is_variadic bool
 	is_c        bool
+	is_js		bool
 }
 
 pub struct Arg {

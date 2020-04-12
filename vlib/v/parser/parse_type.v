@@ -109,11 +109,12 @@ pub fn (p mut Parser) parse_type() table.Type {
 		p.next()
 	}
 	is_c := p.tok.lit == 'C'
-	if is_c {
+	is_js := p.tok.lit == 'JS'
+	if is_c || is_js {
 		p.next()
 		p.check(.dot)
 	}
-	mut typ := p.parse_any_type(is_c, nr_muls > 0)
+	mut typ := p.parse_any_type(is_c, is_js, nr_muls > 0)
 	if is_optional {
 		typ = table.type_set(typ, .optional)
 	}
@@ -123,10 +124,13 @@ pub fn (p mut Parser) parse_type() table.Type {
 	return typ
 }
 
-pub fn (p mut Parser) parse_any_type(is_c, is_ptr bool) table.Type {
+pub fn (p mut Parser) parse_any_type(is_c bool, is_js bool, is_ptr bool) table.Type {
 	mut name := p.tok.lit
 	if is_c {
 		name = 'C.$name'
+	}
+	if is_js {
+		name = 'JS.$name'
 	}
 	// `module.Type`
 	else if p.peek_tok.kind == .dot {
