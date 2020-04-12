@@ -3207,7 +3207,6 @@ fn (g mut Gen) gen_str_for_struct(info table.Struct, styp string) {
 			sym := g.table.get_type_symbol(field.typ)
 			if sym.kind == .struct_ {
 				field_styp := g.typ(field.typ)
-				has_str := sym.has_method('str')
 				second_str_param := if sym.has_method('str') { '' } else { ', indent_count + 1' }
 				g.definitions.write('indents.len, indents.str, ${field_styp}_str(it.$field.name$second_str_param).len, ${field_styp}_str(it.$field.name$second_str_param).str')
 			} else {
