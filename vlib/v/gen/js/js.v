@@ -857,12 +857,11 @@ fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.writeln('constructor(values) {')
 	g.indent++
 	for field in node.fields {
-    typ := g.typ(field.typ)
-		g.writeln(g.doc.gen_typ(typ, field.name))
-	  g.writeln('this.$field.name = values.$field.name')
+    	g.writeln('this.$field.name = values.$field.name')
 	}
 	g.indent--
 	g.writeln('}')
+	g.writeln('')
 
 	fns := g.method_fn_decls[node.name]
 	for cfn in fns {
