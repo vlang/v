@@ -5,9 +5,9 @@ module time
 
 // Windows's TimeZone API.
 struct C.TIME_ZONE_INFORMATION{
-	Bias 		 int
-	StandardBias int
-	DaylightBias int
+	Bias 		 C.LONG
+	StandardBias C.LONG
+	DaylightBias C.LONG
 	StandardDate C.SYSTEMTIME
 	DaylightName C.SYSTEMTIME
 }
