@@ -779,7 +779,7 @@ pub fn (s string) capitalize() string {
 	return cap
 }
 
-pub fn (s string) is_capitalized() bool {
+pub fn (s string) is_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false
 	}
@@ -801,10 +801,10 @@ pub fn (s string) title() string {
 	return title
 }
 
-pub fn (s string) is_titled() bool {
+pub fn (s string) is_title() bool {
 	words := s.split(' ')
 	for word in words {
-		if !word.is_capitalized() {
+		if !word.is_capital() {
 			return false
 		}
 	}

@@ -532,34 +532,34 @@ fn test_upper() {
 
 fn test_capitalize() {
 	mut s := 'hello'
-	assert !s.is_capitalized()
+	assert !s.is_capital()
 	assert s.capitalize() == 'Hello'
 	s = 'test'
-	assert !s.is_capitalized()
+	assert !s.is_capital()
 	assert s.capitalize() == 'Test'
     s = 'i am ray'
-	assert !s.is_capitalized()
+	assert !s.is_capital()
 	assert s.capitalize() == 'I am ray'
 	s = ''
-	assert !s.is_capitalized()
+	assert !s.is_capital()
 	assert s.capitalize() == ''
 	s = 'TEST IT'
-	assert !s.is_capitalized()
+	assert !s.is_capital()
 	assert s.capitalize() == 'Test it'
 	s = 'Test it'
-	assert s.is_capitalized()
+	assert s.is_capital()
 	assert s.capitalize() == 'Test it'
 }
 
 fn test_title() {
 	mut s := 'hello world'
-	assert !s.is_titled()
+	assert !s.is_title()
 	assert s.title() == 'Hello World'
 	s = 'HELLO WORLD'
-	assert !s.is_titled()
+	assert !s.is_title()
 	assert s.title() == 'Hello World'
 	s = 'Hello World'
-	assert s.is_titled()
+	assert s.is_title()
 	assert s.title() == 'Hello World'
 }
 
