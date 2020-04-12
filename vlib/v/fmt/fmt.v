@@ -216,10 +216,8 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				if field.has_expr {
 					f.write(' = ')
 					f.expr(field.expr)
-					f.writeln(',')
-				} else {
-					f.writeln('')
 				}
+				f.writeln('')
 			}
 			f.writeln('}\n')
 		}
