@@ -631,8 +631,18 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 		}
 		g.write('${name}(')
 	}
-	g.fn_args(it.args, it.is_variadic)
+	mut args := it.args
+	if it.is_method {
+		args = args[1..]
+	}
+	g.fn_args(args, it.is_variadic)
 	g.writeln(') {')
+
+	if it.is_method {
+		g.indent++
+		g.writeln('const ${it.args[0].name} = this;')
+		g.indent--
+	}
 
 	g.stmts(it.stmts)
 	g.write('}')
