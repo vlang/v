@@ -3177,9 +3177,9 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 		table.Enum {
 			g.gen_str_for_enum(it, styp)
 		}
-		else {
+		table.Alias {
 			g.gen_str_default(sym, styp)
-		}
+		} else {}
 	}
 }
 
