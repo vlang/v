@@ -99,7 +99,7 @@ pub fn (g mut JsGen) finish() {
 		constants := g.constants.str()
 		g.constants = strings.new_builder(100)
 		g.constants.writeln('const CONSTANTS = Object.freeze({')
-		g.constants.writeln(constants)
+		g.constants.write(constants)
 		g.constants.writeln('});')
 		g.constants.writeln('')
 	}
@@ -204,6 +204,7 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.Block {
 			g.gen_block(it)
+			g.writeln('')
 		}
 		ast.BranchStmt {
 			g.gen_branch_stmt(it)
@@ -231,15 +232,19 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.ForCStmt {
 			g.gen_for_c_stmt(it)
+			g.writeln('')
 		}
 		ast.ForInStmt {
 			g.gen_for_in_stmt(it)
+			g.writeln('')
 		}
 		ast.ForStmt {
 			g.gen_for_stmt(it)
+			g.writeln('')
 		}
 		ast.GoStmt {
 			g.gen_go_stmt(it)
+			g.writeln('')
 		}
 		ast.GotoLabel {
 			g.writeln('$it.name:')
@@ -478,13 +483,19 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			val := it.right[i]
 			ident_var_info := ident.var_info()
 			mut styp := g.typ(ident_var_info.typ)
-			
-			if typeof(val) == 'v.ast.EnumVal' {
-				// we want the type of the enum value
-				styp = 'number'
+		
+			match val {
+				ast.EnumVal {
+					// we want the type of the enum value not the enum
+					styp = 'number'
+				}
+				ast.StructInit {
+					// no need to print jsdoc for structs
+					styp = ''
+				} else {}
 			}
 			
-			if !g.inside_loop {
+			if !g.inside_loop && styp.len > 0 {
 				g.writeln(g.doc.gen_typ(styp, ident.name))
 			}
 			
@@ -543,14 +554,11 @@ fn (g mut JsGen) gen_const_decl(it ast.ConstDecl) {
 }
 
 fn (g mut JsGen) gen_defer_stmts() {
-	g.writeln('{')
-	g.indent++
-	g.writeln('// defer')
-	g.indent--
+	g.writeln('(function defer() {')
 	for defer_stmt in g.defer_stmts {
 		g.stmts(defer_stmt.stmts)
 	}
-	g.writeln('}')
+	g.writeln('})();')
 }
 
 fn (g mut JsGen) gen_enum_decl(it ast.EnumDecl) {
@@ -961,6 +969,7 @@ fn (g mut JsGen) gen_if_expr(node ast.IfExpr) {
 			g.write('}')
 		} */
 		g.writeln('}')
+		g.writeln('')
 	}
 }
 
