@@ -348,9 +348,9 @@ pub fn (c mut Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 		// TODO: impl typeof properly (probably not going to be a fn call)
 		return table.string_type
 	}
-	//if c.fileis('json_test.v') {
-		//println(fn_name)
-	//}
+	// if c.fileis('json_test.v') {
+	// println(fn_name)
+	// }
 	if fn_name == 'json.encode' {
 	}
 	// look for function in format `mod.fn` or `fn` (main/builtin)
