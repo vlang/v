@@ -1,6 +1,6 @@
-<h1 align="center">
-	<img width="80" src="https://raw.githubusercontent.com/donnisnoni95/v-logo/master/dist/v-logo.svg?sanitize=true">
-</h1>
+<p align="center">
+    <img width="80" src="https://raw.githubusercontent.com/donnisnoni95/v-logo/master/dist/v-logo.svg?sanitize=true">
+</p>
 
 <h1 align="center">The V Programming Language</h1>
 
@@ -19,7 +19,7 @@
 [![Sponsor](https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562)](https://github.com/sponsors/medvednikov)
 [![Patreon](https://img.shields.io/badge/patreon-donate-yellow.svg)](https://patreon.com/vlang)
 [![Twitter handle][]][Twitter badge]
-![Discord](https://img.shields.io/discord/592103645835821068?label=Discord)
+[![Discord](discord.gg/vlang)](https://img.shields.io/discord/592103645835821068?label=Discord)
 
 </div>
 
