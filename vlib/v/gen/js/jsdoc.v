@@ -66,3 +66,20 @@ fn (d mut JsDoc) gen_ctor(fields []ast.StructField) string {
 	d.write('*/')
 	return d.out.str()
 }
+
+fn (d mut JsDoc) gen_fn(it ast.FnDecl) {
+	d.reset()
+	d.writeln('/**')
+	for i, arg in it.args {
+		arg_type_name := d.gen.typ(arg.typ)
+		is_varg := i == it.args.len - 1 && it.is_variadic
+		if is_varg {
+			d.writeln('* @param {...$arg_type_name} $arg.name')
+		} else {
+			d.writeln('* @param {$arg_type_name} $arg.name')
+		}
+	}
+	d.writeln('* @return {$type_name}')
+	d.writeln('*/')
+	return d.out.str()
+}

@@ -590,18 +590,7 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 		type_name := g.typ(it.return_type)
 
 		// generate jsdoc for the function
-		g.writeln('/**')
-		for i, arg in it.args {
-			arg_type_name := g.typ(arg.typ)
-			is_varg := i == it.args.len - 1 && it.is_variadic
-			if is_varg {
-				g.writeln('* @param {...$arg_type_name} $arg.name')
-			} else {
-				g.writeln('* @param {$arg_type_name} $arg.name')
-			}
-		}
-		g.writeln('* @return {$type_name}')
-		g.writeln('*/')
+		g.writeln(g.doc.gen_fn(it))
 
 		if has_go {
 			g.write('async ')
@@ -616,11 +605,7 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 	}
 
 	g.stmts(it.stmts)
-	if it.is_method {
-		g.write('};')
-	} else {
-		g.writeln('}')
-	}
+	g.writeln('}')
 	if is_main {
 		g.writeln(')();')
 	}
@@ -859,19 +844,8 @@ fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
 				type_name := g.typ(it.return_type)
 
 				// generate jsdoc for the function
-				g.writeln('/**')
-				for i, arg in it.args {
-					arg_type_name := g.typ(arg.typ)
-					is_varg := i == it.args.len - 1 && it.is_variadic
-					if is_varg {
-						g.writeln('* @param {...$arg_type_name} $arg.name')
-					} else {
-						g.writeln('* @param {$arg_type_name} $arg.name')
-					}
-				}
-				g.writeln('* @return {$type_name}')
-				g.writeln('*/')
-
+				g.writeln(g.doc.gen_fn(it))
+				
 				if has_go {
 					g.write('async ')
 				}
