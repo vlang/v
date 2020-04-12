@@ -220,3 +220,25 @@ fn replace_op(s string) string {
 	}
 	return s[..s.len - 1] + suffix
 }
+
+pub fn join_env_vflags_and_os_args() []string {
+	vosargs := os.getenv('VOSARGS')
+	if vosargs != '' {
+		return non_empty(vosargs.split(' '))
+	}
+	mut args := []string
+	vflags := os.getenv('VFLAGS')
+	if vflags != '' {
+		args << os.args[0]
+		args << vflags.split(' ')
+		if os.args.len > 1 {
+			args << os.args[1..]
+		}
+		return non_empty(args)
+	}
+	return non_empty(os.args)
+}
+
+fn non_empty(arg []string) []string {
+	return arg.filter(it != '')
+}

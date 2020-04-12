@@ -20,13 +20,12 @@ fn test_person_str() {
 
 struct Foo {}
 
-type Expr = Foo | BoolExpr |  BinExpr | UnaryExpr | DeclExprA | DeclExprB
+type Expr = Foo | BoolExpr | BinExpr | UnaryExpr | DeclExprA | DeclExprB
 
 type DeclExpr = DeclExprA | DeclExprB
 
 struct BoolExpr {
 	foo int
-
 }
 
 struct BinExpr {
@@ -45,7 +44,7 @@ fn expr1() Expr {
 	mut e := Expr{}
 	e = BinExpr{'binexpr'}
 	return e
-	//return BinExpr{}
+	// return BinExpr{}
 }
 
 fn expr() Expr {
@@ -53,15 +52,12 @@ fn expr() Expr {
 }
 
 struct UnaryExpr {
-
 }
 
 fn handle_expr(e Expr) {
-
 }
 
 fn handle_decl_expr(de DeclExpr) {
-
 }
 
 fn parse_bool() BoolExpr {
@@ -77,7 +73,6 @@ fn test_sum_type_cast() {
 fn test_sum_types() {
 	b := parse_bool()
 	handle_expr(b)
-
 	de := DeclExprA{}
 	handle_expr(de)
 	handle_decl_expr(de)

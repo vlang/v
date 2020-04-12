@@ -35,6 +35,7 @@ struct JsGen {
 	defer_stmts     []ast.DeferStmt
 	fn_decl			&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	str_types		[]string // types that need automatic str() generation
+	method_fn_decls map[string][]ast.Stmt
 	empty_line		bool
 }
 
@@ -53,6 +54,13 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	g.doc = new_jsdoc(g)
 	g.init()
 
+	// Get class methods
+	for file in files {
+		g.file = file
+		g.is_test = g.file.path.ends_with('_test.v')
+		g.find_class_methods(file.stmts)
+	}
+
 	for file in files {
 		g.file = file
 		g.is_test = g.file.path.ends_with('_test.v')
@@ -60,6 +68,24 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	}
 	g.finish()
 	return g.hashes() + g.definitions.str() + g.constants.str() + g.out.str()
+}
+
+pub fn (g mut JsGen) find_class_methods(stmts []ast.Stmt) {
+	for stmt in stmts {
+		match stmt {
+			ast.FnDecl {
+				if it.is_method {
+					// Found struct method, store it to be generated along with the class.
+					className :=  g.table.get_type_symbol(it.receiver.typ).name
+					// Workaround until `map[key] << val` works.
+					arr := g.method_fn_decls[className]
+					arr << stmt
+					g.method_fn_decls[className] = arr
+				}
+			}
+			else {}
+		}
+	}
 }
 
 pub fn (g mut JsGen) init() {
@@ -73,7 +99,7 @@ pub fn (g mut JsGen) finish() {
 }
 
 pub fn (g JsGen) hashes() string {
-	res := '// V_COMMIT_HASH ${util.vhash()}\n'
+	mut res := '// V_COMMIT_HASH ${util.vhash()}\n'
 	res += '// V_CURRENT_COMMIT_HASH ${util.githash(g.pref.building_v)}\n\n'
 	return res
 }
@@ -148,6 +174,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.out.len
 
 	match node {
+		ast.Module {
+			// TODO: Implement namespaces
+		}
 		ast.AssertStmt {
 			g.gen_assert_stmt(it)
 		}
@@ -231,7 +260,6 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 }
 
 fn (g mut JsGen) expr(node ast.Expr) {
-	// println('cgen expr()')
 	match node {
 		ast.ArrayInit {
 			g.gen_array_init_expr(it)
@@ -545,9 +573,18 @@ fn (g mut JsGen) gen_expr_stmt(it ast.ExprStmt) {
 }
 
 fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
+	if it.is_method {
+		// Struct methods are handled by class generation code.
+		return
+	}
 	if it.no_body {
 		return
 	}
+	g.gen_method_decl(it)
+}
+
+fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
+	g.fn_decl = &it
 	has_go := fn_has_go(it)
 	is_main := it.name == 'main'
 	if is_main {
@@ -568,29 +605,15 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 		type_name := g.typ(it.return_type)
 
 		// generate jsdoc for the function
-		g.writeln('/**')
-		for i, arg in it.args {
-			arg_type_name := g.typ(arg.typ)
-			is_varg := i == it.args.len - 1 && it.is_variadic
-			if is_varg {
-				g.writeln('* @param {...$arg_type_name} $arg.name')
-			} else {
-				g.writeln('* @param {$arg_type_name} $arg.name')
-			}
-		}
-		g.writeln('* @return {$type_name}')
-		g.writeln('*/')
+		g.writeln(g.doc.gen_fn(it))
 
-
-		if it.is_method {
-			// javascript has class methods, so we just assign this function on the class prototype
-			className :=  g.table.get_type_symbol(it.receiver.typ).name
-			g.write('${className}.prototype.${name} = ')
-		}
 		if has_go {
 			g.write('async ')
 		}
-		g.write('function ${name}(')
+		if !it.is_method {
+			g.write('function ')
+		}
+		g.write('${name}(')
 	}
 	g.fn_args(it.args, it.is_variadic)
 	g.writeln(') {')
@@ -600,11 +623,7 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 	}
 
 	g.stmts(it.stmts)
-	if it.is_method {
-		g.write('};')
-	} else {
-		g.writeln('}')
-	}
+	g.writeln('}')
 	if is_main {
 		g.writeln(')();')
 	}
@@ -805,19 +824,34 @@ fn (g mut JsGen) enum_expr(node ast.Expr) {
 	}
 }
 
-fn (g mut JsGen) gen_struct_decl(it ast.StructDecl) {
-  g.writeln('class $it.name {')
+fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
+  	g.writeln('class $node.name {')
 	g.indent++
-	g.writeln(g.doc.gen_ctor(it.fields))
+	g.writeln(g.doc.gen_ctor(node.fields))
 	g.writeln('constructor(values) {')
 	g.indent++
-	for field in it.fields {
+	for field in node.fields {
     typ := g.typ(field.typ)
 		g.writeln(g.doc.gen_typ(typ, field.name))
 	  g.writeln('this.$field.name = values.$field.name')
 	}
 	g.indent--
 	g.writeln('}')
+
+	fns := g.method_fn_decls[node.name]
+	for cfn in fns {
+		// TODO: Fix this hack for type conversion
+		// Directly converting to FnDecl gives
+		// error: conversion to non-scalar type requested
+		match cfn {
+			ast.FnDecl {
+				g.gen_method_decl(it)
+			}
+			else {}
+		}
+
+	}
+
 	g.indent--
 	g.writeln('}')
 }

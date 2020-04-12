@@ -1,4 +1,3 @@
-
 struct Foo {
 	bar int
 mut:
@@ -20,6 +19,6 @@ fn test_adding_to_mutable_string_field() {
 	assert foo.bar == 10
 	assert foo.str == 'hi'
 	foo.str += '!'
-	eprintln( foo.str )
+	eprintln(foo.str)
 	assert foo.str == 'hi!'
 }

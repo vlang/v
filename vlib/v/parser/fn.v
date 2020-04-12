@@ -83,6 +83,7 @@ pub fn (p mut Parser) call_args() []ast.CallArg {
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
 	// p.table.clear_vars()
+	pos := p.tok.position()
 	p.open_scope()
 	is_deprecated := p.attr == 'deprecated'
 	is_pub := p.tok.kind == .key_pub
@@ -107,12 +108,16 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		p.next()
 		rec_name = p.check_name()
 		rec_mut = p.tok.kind == .key_mut
+		is_amp := p.peek_tok.kind == .amp
 		// if rec_mut {
 		// p.check(.key_mut)
 		// }
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type()
+		if is_amp && rec_mut {
+			p.error('use `(f mut Foo)` or `(f &Foo)` instead of `(f mut &Foo)`')
+		}
 		args << table.Arg{
 			name: rec_name
 			is_mut: rec_mut
@@ -196,14 +201,16 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		is_pub: is_pub
 		is_variadic: is_variadic
 		receiver: ast.Field{
-		name: rec_name
-		typ: rec_type
-	}
+			name: rec_name
+			typ: rec_type
+		}
 		is_method: is_method
 		rec_mut: rec_mut
 		is_c: is_c
 		no_body: no_body
-		pos: p.tok.position()
+		pos: pos
+		is_builtin: p.builtin_mod || p.mod in ['math', 'strconv', 'strconv.ftoa', 'hash.wyhash',
+			'math.bits', 'strings']
 	}
 }
 

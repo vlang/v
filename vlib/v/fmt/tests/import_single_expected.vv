@@ -1,1 +1,4 @@
 import os
+
+fn main() {
+}

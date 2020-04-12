@@ -77,6 +77,14 @@ pub fn new_scanner(text string, comments_mode CommentsMode) &Scanner {
 	}
 }
 
+pub fn (s &Scanner) add_fn_main_and_rescan() {
+	s.text = 'fn main() {' + s.text + '}'
+	s.is_started = false
+	s.pos = 0
+	s.line_nr = 0
+	s.last_nl_pos = 0
+}
+
 fn (s &Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token {
 	return token.Token{
 		kind: tok_kind
@@ -712,6 +720,10 @@ pub fn (s mut Scanner) scan() token.Token {
 				s.pos++
 				return s.new_token(.ne, '', 2)
 			}
+			else if nextc == `i` && s.text[s.pos+2] == `n` && s.text[s.pos+3].is_space() {
+				s.pos += 2
+				return s.new_token(.not_in, '', 3)
+			}
 			else {
 				return s.new_token(.not, '', 1)
 			}
@@ -728,7 +740,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				start := s.pos + 1
 				s.ignore_line()
 				s.line_comment = s.text[start + 1..s.pos]
-				comment := s.line_comment.trim_space()
+				mut comment := s.line_comment.trim_space()
 				s.pos--
 				// fix line_nr, \n was read, and the comment is marked
 				// on the next line

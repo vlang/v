@@ -3,3 +3,6 @@ import (
 	os
 	math.complex as c
 )
+
+fn main() {
+}

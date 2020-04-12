@@ -19,7 +19,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		mut styp := t.type_to_str(node.receiver.typ)
 		mut m := if node.rec_mut { 'mut ' } else { '' }
 		if node.rec_mut {
-			styp = styp[1..] // remove &
+			styp = styp[1..]			// remove &
 		}
 		receiver = '($node.receiver.name $m$styp) '
 		/*
@@ -32,7 +32,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		receiver = '($node.receiver.name $m$name) '
 */
 	}
-	name := node.name.after('.')
+	mut name := node.name.after('.')
 	if node.is_c {
 		name = 'C.$name'
 	}
@@ -85,6 +85,9 @@ pub fn (x Expr) str() string {
 		PrefixExpr {
 			return it.op.str() + it.right.str()
 		}
+		CharLiteral {
+			return '`$it.val`'
+		}
 		IntegerLiteral {
 			return it.val
 		}
@@ -126,6 +129,15 @@ pub fn (x Expr) str() string {
 		}
 		CastExpr {
 			return '${it.typname}(${it.expr.str()})'
+		}
+		SelectorExpr {
+			return '${it.expr.str()}.${it.field}'
+		}
+		TypeOf {
+			return 'typeof(${it.expr.str()})'
+		}
+		EnumVal {
+			return '.${it.val}'
 		}
 		CallExpr {
 			sargs := args2str(it.args)

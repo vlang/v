@@ -34,7 +34,7 @@ fn test_enum() {
 
 fn test_in() {
 	color := Color.red
-	num := 3 // used to be an expr bug before `in`
+	num := 3	// used to be an expr bug before `in`
 	assert color in [.red, .green]
 	assert num == 3
 	println(color)
@@ -103,9 +103,7 @@ fn test_typed_enum() {
 	*/
 }
 */
-
 /*
-
 fn test_typed_enum() {
 	Expr i = { .obj = 10, .typ = IntExpr_type };
 	Expr expr = { .obj = true, .typ = BoolExpr_type };

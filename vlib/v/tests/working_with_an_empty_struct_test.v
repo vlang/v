@@ -5,7 +5,7 @@ fn new_s() EmptyStruct {
 	return EmptyStruct{}
 }
 
-fn test_using_an_empty_struct_compiles_and_works(){
+fn test_using_an_empty_struct_compiles_and_works() {
 	s := new_s()
 	eprintln('s: $s')
 	assert true

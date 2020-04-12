@@ -96,16 +96,19 @@ pub:
 	name string
 	path string
 	expr Expr
+	is_skipped bool // module main can be skipped in single file programs
 }
 
 pub struct StructField {
 pub:
-	name         string
-	pos          token.Position
-	comment      Comment
-	default_expr string // token literal //Expr
+	name             string
+	pos              token.Position
+	comment          Comment
+	default_expr     Expr
+	has_default_expr bool
+	attr             string
 mut:
-	typ          table.Type
+	typ              table.Type
 }
 
 pub struct Field {
@@ -185,6 +188,7 @@ pub:
 	rec_mut       bool // is receiver mutable
 	is_c          bool
 	no_body       bool // just a definition `fn C.malloc()`
+	is_builtin    bool // this function is defined in builtin/strconv
 	pos           token.Position
 }
 
@@ -300,6 +304,7 @@ pub:
 	tok_kind token.Kind
 	mod      string
 	pos      token.Position
+	is_mut bool
 mut:
 	name     string
 	kind     IdentKind
@@ -587,6 +592,8 @@ pub struct ArrayInit {
 pub:
 	pos       token.Position
 	exprs     []Expr
+	is_fixed  bool
+	mod       string
 mut:
 	elem_type table.Type
 	typ       table.Type

@@ -68,7 +68,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		scanner: scanner.new_scanner_file(path, comments_mode)
 		table: table
 		file_name: path
-		file_name_dir: os.dir( path )
+		file_name_dir: os.dir(path)
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
@@ -78,12 +78,16 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	}
 	// comments_mode: comments_mode
 	p.read_first_token()
-	// module decl
-	module_decl := if p.tok.kind == .key_module { p.module_decl() } else { ast.Module{
-			name: 'main'
-		} }
-	p.mod = module_decl.name
-	p.builtin_mod = p.mod == 'builtin'
+	for p.tok.kind == .comment {
+		mut stmt := ast.Stmt{}		// TODO sum type << bug
+		com := p.comment()
+		stmt = com
+		stmts << stmt
+	}
+	mut mstmt := ast.Stmt{}
+	module_decl := p.module_decl()
+	mstmt = module_decl
+	stmts << mstmt
 	// imports
 	/*
 	mut imports := []ast.Import
@@ -92,7 +96,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	}
 */
 	// TODO: import only mode
-	for  {
+	for {
 		// res := s.scan()
 		if p.tok.kind == .eof {
 			// println('EOF, breaking')
@@ -203,7 +207,7 @@ pub fn (p mut Parser) parse_block_no_scope() []ast.Stmt {
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt
 	if p.tok.kind != .rcbr {
-		for  {
+		for {
 			stmts << p.stmt()
 			// p.warn('after stmt(): tok=$p.tok.str()')
 			if p.tok.kind in [.eof, .rcbr] {
@@ -283,9 +287,6 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		.key_interface {
 			return p.interface_decl()
 		}
-		.key_module {
-			return p.module_decl()
-		}
 		.key_import {
 			node := p.import_stmt()
 			p.ast_imports << node
@@ -323,11 +324,8 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		}
 		else {
 			if p.pref.is_script && !p.pref.is_test {
-				p.scanner.text = 'fn main() {' + p.scanner.text + '}'
-				p.scanner.is_started = false
-				p.scanner.pos = 0
-				p.next()
-				p.next()
+				p.scanner.add_fn_main_and_rescan()
+				p.read_first_token()
 				return p.top_stmt()
 			} else {
 				p.error('bad top level statement ' + p.tok.str())
@@ -484,7 +482,16 @@ fn (p mut Parser) attribute() ast.Attr {
 	if p.tok.kind == .key_if {
 		p.next()
 	}
-	name := p.check_name()
+	mut name := p.check_name()
+	if p.tok.kind == .colon {
+		p.next()
+		if p.tok.kind == .name {
+			name += p.check_name()
+		} else if p.tok.kind == .string {
+			name += p.tok.lit
+			p.next()
+		}
+	}
 	p.check(.rsbr)
 	p.attr = name
 	return ast.Attr{
@@ -514,18 +521,26 @@ fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 }
 */
 pub fn (p &Parser) error(s string) {
+	p.error_with_pos(s, p.tok.position())
+}
+
+pub fn (p &Parser) warn(s string) {
+	p.warn_with_pos(s, p.tok.position())
+}
+
+pub fn (p &Parser) error_with_pos(s string, pos token.Position) {
 	mut kind := 'error:'
 	if p.pref.is_verbose {
 		print_backtrace()
 		kind = 'parser error:'
 	}
-	ferror := util.formatted_error(kind, s, p.file_name, p.tok.position())
+	ferror := util.formatted_error(kind, s, p.file_name, pos)
 	eprintln(ferror)
 	exit(1)
 }
 
-pub fn (p &Parser) warn(s string) {
-	ferror := util.formatted_error('warning:', s, p.file_name, p.tok.position())
+pub fn (p &Parser) warn_with_pos(s string, pos token.Position) {
+	ferror := util.formatted_error('warning:', s, p.file_name, pos)
 	eprintln(ferror)
 }
 
@@ -772,9 +787,6 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 		.key_sizeof {
 			p.next()			// sizeof
 			p.check(.lpar)
-			if p.tok.kind == .amp {
-				p.next()
-			}
 			if p.tok.lit == 'C' {
 				p.next()
 				p.check(.dot)
@@ -804,12 +816,17 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			if p.tok.kind == .string {
 				node = p.map_init()
 			} else {
+				// it should be a struct
 				if p.peek_tok.kind == .pipe {
 					node = p.assoc()
 				} else if p.peek_tok.kind == .colon || p.tok.kind == .rcbr {
 					node = p.struct_init(true)					// short_syntax: true
+				} else if p.tok.kind == .name {
+					p.next()
+					lit := if p.tok.lit != '' { p.tok.lit } else { p.tok.kind.str() }
+					p.error('unexpected ‘$lit‘, expecting ‘:‘')
 				} else {
-					p.error('unexpected {')
+					p.error('unexpected ‘$p.tok.lit‘, expecting struct key')
 				}
 			}
 			p.check(.rcbr)
@@ -843,14 +860,14 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			// will fudge left shift as it makes it right assoc
 			// `arr << 'a'` | `arr << 'a' + 'b'`
 			tok := p.tok
-			pos :=  tok.position()
+			pos := tok.position()
 			p.next()
 			right := p.expr(precedence - 1)
 			node = ast.InfixExpr{
 				left: node
 				right: right
 				op: tok.kind
-				pos:pos
+				pos: pos
 			}
 		} else if p.tok.kind.is_infix() {
 			node = p.infix_expr(node)
@@ -945,17 +962,18 @@ fn (p mut Parser) filter() {
 
 fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
+	mut name_pos := p.tok.position()
 	field_name := p.check_name()
 	is_filter := field_name in ['filter', 'map']
 	if is_filter {
 		p.open_scope()
+		name_pos = p.tok.position()
 		p.filter()
 		// wrong tok position when using defer
 		// defer {
 		// p.close_scope()
 		// }
 	}
-	pos := p.tok.position()
 	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
@@ -978,6 +996,12 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_stmts = p.parse_block_no_scope()
 			p.close_scope()
 		}
+		end_pos := p.tok.position()
+		pos := token.Position{
+			line_nr: name_pos.line_nr
+			pos: name_pos.pos
+			len: end_pos.pos - name_pos.pos
+		}
 		mcall_expr := ast.CallExpr{
 			left: left
 			name: field_name
@@ -999,7 +1023,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	sel_expr := ast.SelectorExpr{
 		expr: left
 		field: field_name
-		pos: p.tok.position()
+		pos: name_pos
 	}
 	mut node := ast.Expr{}
 	node = sel_expr
@@ -1265,16 +1289,16 @@ fn (p mut Parser) string_expr() ast.Expr {
 		if p.tok.kind == .colon {
 			efmt << ':'
 			p.next()
-		}
-		// ${num:-2d}
-		if p.tok.kind == .minus {
-			efmt << '-'
-			p.next()
-		}
-		// ${num:2d}
-		if p.tok.kind == .number {
-			efmt << p.tok.lit
-			p.next()
+			// ${num:-2d}
+			if p.tok.kind == .minus {
+				efmt << '-'
+				p.next()
+			}
+			// ${num:2d}
+			if p.tok.kind == .number {
+				efmt << p.tok.lit
+				p.next()
+			}
 			if p.tok.lit.len == 1 {
 				efmt << p.tok.lit
 				p.next()
@@ -1298,6 +1322,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	mut array_type := table.void_type
 	mut elem_type := table.void_type
 	mut exprs := []ast.Expr
+	mut is_fixed := false
 	if p.tok.kind == .rsbr {
 		// []typ => `[]` and `typ` must be on the same line
 		line_nr := p.tok.line_nr
@@ -1311,7 +1336,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 			array_type = table.new_type(idx)
 		}
 	} else {
-		// [1,2,3]
+		// [1,2,3] or [const]byte
 		for i := 0; p.tok.kind != .rsbr; i++ {
 			expr := p.expr(0)
 			exprs << expr
@@ -1325,7 +1350,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 		// [100]byte
 		if exprs.len == 1 && p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
 			elem_type = p.parse_type()
-			// p.warn('fixed size array')
+			is_fixed = true
 		}
 	}
 	// !
@@ -1338,11 +1363,13 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	last_pos := p.tok.position()
 	len := last_pos.pos - first_pos.pos
 	pos := token.Position{
-		line_nr: first_pos.line_nr,
+		line_nr: first_pos.line_nr
 		pos: first_pos.pos
 		len: len
 	}
 	return ast.ArrayInit{
+		is_fixed: is_fixed
+		mod: p.mod
 		elem_type: elem_type
 		typ: array_type
 		exprs: exprs
@@ -1391,12 +1418,18 @@ fn (p mut Parser) parse_number_literal() ast.Expr {
 }
 
 fn (p mut Parser) module_decl() ast.Module {
-	p.check(.key_module)
-	mod := p.check_name()
-	full_mod := p.table.qualify_module(mod, p.file_name)
+	mut name := 'main'
+	is_skipped := p.tok.kind != .key_module
+	if !is_skipped {
+		p.check(.key_module)
+		name = p.check_name()
+	}
+	full_mod := p.table.qualify_module(name, p.file_name)
 	p.mod = full_mod
+	p.builtin_mod = p.mod == 'builtin'
 	return ast.Module{
 		name: full_mod
+		is_skipped: is_skipped
 	}
 }
 
@@ -1538,13 +1571,24 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			println('XXXX' + s.str())
 		}
 */
-			mut default_expr := ''			// ast.Expr{}
+			mut default_expr := ast.Expr{}
+			mut has_default_expr := false
 			if p.tok.kind == .assign {
 				// Default value
 				p.next()
-				default_expr = p.tok.lit
-				p.expr(0)
-				// default_expr = p.expr(0)
+				// default_expr = p.tok.lit
+				// p.expr(0)
+				default_expr = p.expr(0)
+				match default_expr {
+					ast.EnumVal { it.typ = typ }
+					// TODO: implement all types??
+					else {}
+				}
+				has_default_expr = true
+			}
+			mut attr := ast.Attr{}
+			if p.tok.kind == .lsbr {
+				attr = p.attribute()
 			}
 			if p.tok.kind == .comment {
 				comment = p.comment()
@@ -1555,11 +1599,14 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 				typ: typ
 				comment: comment
 				default_expr: default_expr
+				has_default_expr: has_default_expr
+				attr: attr.name
 			}
 			fields << table.Field{
 				name: field_name
 				typ: typ
-				default_val: default_expr
+				default_expr: default_expr
+				has_default_expr: has_default_expr
 			}
 			// println('struct field $ti.name $field_name')
 		}
@@ -1638,7 +1685,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 			pos: p.tok.position()
 		}
 	}
-	for  {
+	for {
 		expr := p.expr(0)
 		exprs << expr
 		if p.tok.kind == .comma {
@@ -1657,7 +1704,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (p mut Parser) parse_assign_lhs() []ast.Ident {
 	mut idents := []ast.Ident
-	for  {
+	for {
 		is_mut := p.tok.kind == .key_mut
 		if is_mut {
 			p.check(.key_mut)
@@ -1667,6 +1714,7 @@ fn (p mut Parser) parse_assign_lhs() []ast.Ident {
 			p.check(.key_static)
 		}
 		mut ident := p.parse_ident(false)
+		ident.is_mut = is_mut
 		ident.info = ast.IdentVar{
 			is_mut: is_mut
 			is_static: is_static
@@ -1684,7 +1732,7 @@ fn (p mut Parser) parse_assign_lhs() []ast.Ident {
 // right hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (p mut Parser) parse_assign_rhs() []ast.Expr {
 	mut exprs := []ast.Expr
-	for  {
+	for {
 		expr := p.expr(0)
 		exprs << expr
 		if p.tok.kind == .comma {
@@ -1723,10 +1771,12 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 				p.scope.register(ident.name, ast.Var{
 					name: ident.name
 					expr: exprs[i]
+					is_mut: ident.is_mut || p.inside_for
 				})
 			} else {
 				p.scope.register(ident.name, ast.Var{
 					name: ident.name
+					is_mut: ident.is_mut || p.inside_for
 				})
 			}
 		}
@@ -1792,7 +1842,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 	p.check(.lcbr)
 	mut branches := []ast.MatchBranch
 	mut have_final_else := false
-	for  {
+	for {
 		comment := p.check_comment()		// comment before {}
 		mut exprs := []ast.Expr
 		branch_pos := p.tok.position()
@@ -1801,8 +1851,8 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			have_final_else = true
 			p.next()
-		} else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
-			p.peek_tok.kind == .dot) {
+		} else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names ||
+				(p.tok.lit[0].is_capital() && !p.tok.lit.is_upper()) || p.peek_tok.kind == .dot) {
 			// Sum type match
 			// if sym.kind == .sum_type {
 			// p.warn('is sum')
@@ -1826,7 +1876,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 			is_sum_type = true
 		} else {
 			// Expression match
-			for  {
+			for {
 				p.inside_match_case = true
 				expr := p.expr(0)
 				p.inside_match_case = false
@@ -1906,8 +1956,6 @@ fn (p mut Parser) enum_decl() ast.EnumDecl {
 	return ast.EnumDecl{
 		name: name
 		is_pub: is_pub
-		// vals: vals
-		// default_exprs: default_exprs
 		fields: fields
 	}
 }
@@ -1923,7 +1971,7 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 	if p.tok.kind == .assign {
 		// type SumType = A | B | c
 		p.next()
-		for  {
+		for {
 			variant_type := p.parse_type()
 			sum_variants << variant_type
 			if p.tok.kind != .pipe {
@@ -1983,7 +2031,7 @@ fn (p mut Parser) assoc() ast.Assoc {
 	mut fields := []string
 	mut vals := []ast.Expr
 	p.check(.pipe)
-	for  {
+	for {
 		fields << p.check_name()
 		p.check(.colon)
 		expr := p.expr(0)

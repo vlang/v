@@ -744,12 +744,30 @@ pub fn (s string) to_lower() string {
 	return tos(b, s.len)
 }
 
+pub fn (s string) is_lower() bool {
+	for i in 0..s.len {
+		if s[i] >= `A` && s[i] <= `Z` {
+			return false
+		}
+	}
+	return true
+}
+
 pub fn (s string) to_upper() string {
 	mut b := malloc(s.len + 1)
 	for i in 0..s.len {
 		b[i] = C.toupper(s.str[i])
 	}
 	return tos(b, s.len)
+}
+
+pub fn (s string) is_upper() bool {
+	for i in 0..s.len {
+		if s[i] >= `a` && s[i] <= `z` {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn (s string) capitalize() string {
@@ -761,6 +779,18 @@ pub fn (s string) capitalize() string {
 	return cap
 }
 
+pub fn (s string) is_capital() bool {
+	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
+		return false
+	}
+	for i in 1..s.len {
+		if s[i] >= `A` && s[i] <= `Z` {
+			return false
+		}
+	}
+	return true
+}
+
 pub fn (s string) title() string {
 	words := s.split(' ')
 	mut tit := []string
@@ -769,6 +799,16 @@ pub fn (s string) title() string {
 	}
 	title := tit.join(' ')
 	return title
+}
+
+pub fn (s string) is_title() bool {
+	words := s.split(' ')
+	for word in words {
+		if !word.is_capital() {
+			return false
+		}
+	}
+	return true
 }
 
 // 'hey [man] how you doin'
@@ -1286,24 +1326,15 @@ pub fn (s string) repeat(count int) string {
 // Hello there,
 // this is a string,
 //     Everything before the first | is removed
-pub fn (s string) strip_margin(del ...byte) string {
-	mut sep := `|`
-	if del.len >= 1 {
-		// This is a workaround. We can't directly index a var_args array.
-		// Only care about the first one, ignore the rest if more
-		for d in del {
-			// The delimiter is not allowed to be white-space. Will use default
-			if d.is_space() {
-				eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
-				eprintln("    Defaulting to `|`")
-			} else {
-				sep = d
-			}
-			break
-		}
-		if del.len != 1 {
-			eprintln("Warning: `strip_margin` only uses the first argument given")
-		}
+pub fn (s string) strip_margin() string {
+   return s.strip_margin_custom(`|`)
+}
+pub fn (s string) strip_margin_custom(del byte) string {
+	mut sep := del
+	if sep.is_space() {
+		eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
+		eprintln("    Defaulting to `|`")
+		sep = `|`
 	}
 	// don't know how much space the resulting string will be, but the max it
 	// can be is this big

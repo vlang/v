@@ -447,7 +447,7 @@ pub fn (fs FlagParser) usage() string {
 				}
 			}
 			option_names := '  ' + onames.join(', ')
-			xspace := ''
+			mut xspace := ''
 			if option_names.len > space.len-2 {
 				xspace = '\n${space}'
 			} else {

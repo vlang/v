@@ -133,7 +133,6 @@ jobs:
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: Fixed tests
       run: |
-        ./v vlib/v/tests/backtrace_test.v
         ./v test-fixed
     - name: x64 machine code generation
       run: |
@@ -271,14 +270,13 @@ jobs:
         echo %VFLAGS%
         echo $VFLAGS
         .\make.bat -msvc
-#    - name: Fixed tests
-#      run: |
-#        ./v vlib/v/tests/backtrace_test.v
-#        ./v test-fixed
+    - name: Fixed tests
+      run: |
+        ./v test-fixed
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
-      ## v.js dosent work on windows
+#      ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
 #    - name: Test v binaries
