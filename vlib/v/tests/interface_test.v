@@ -24,14 +24,16 @@ fn (d Dog) name() string {
 
 fn test_todo() {}
 
-/*
 interface Speaker {
 	name ()string
-	speak()}
+	speak()
+	}
 
+/*
 interface Speak2er {
 	name ()string
-	speak()}
+	speak()
+	}
 
 struct Foo {
 	speaker  Speaker

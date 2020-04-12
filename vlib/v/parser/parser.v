@@ -482,7 +482,16 @@ fn (p mut Parser) attribute() ast.Attr {
 	if p.tok.kind == .key_if {
 		p.next()
 	}
-	name := p.check_name()
+	mut name := p.check_name()
+	if p.tok.kind == .colon {
+		p.next()
+		if p.tok.kind == .name {
+			name += p.check_name()
+		} else if p.tok.kind == .string {
+			name += p.tok.lit
+			p.next()
+		}
+	}
 	p.check(.rsbr)
 	p.attr = name
 	return ast.Attr{
@@ -1577,6 +1586,10 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 				}
 				has_default_expr = true
 			}
+			mut attr := ast.Attr{}
+			if p.tok.kind == .lsbr {
+				attr = p.attribute()
+			}
 			if p.tok.kind == .comment {
 				comment = p.comment()
 			}
@@ -1587,6 +1600,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 				comment: comment
 				default_expr: default_expr
 				has_default_expr: has_default_expr
+				attr: attr.name
 			}
 			fields << table.Field{
 				name: field_name

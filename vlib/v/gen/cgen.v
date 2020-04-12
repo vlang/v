@@ -338,6 +338,13 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
+		ast.InterfaceDecl {
+			g.writeln('//interface')
+			g.writeln('struct $it.name {')
+			g.writeln('\tvoid* _object;')
+			g.writeln('\tint _interface_idx;')
+			g.writeln('};')
+		}
 		ast.AssertStmt {
 			g.gen_assert_stmt(it)
 		}
@@ -2339,6 +2346,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 					field_deps << dep
 				}
 			}
+			// table.Interface {}
 			else {}
 		}
 		// add type and dependant types to graph
