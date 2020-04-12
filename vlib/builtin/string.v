@@ -43,12 +43,12 @@ NB: A V string should be/is immutable from the point of view of
 
 
 pub struct string {
-	// mut:
-	// hash_cache int
 pub:
 	str byteptr // points to a C style 0 terminated string of bytes.
 	len int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 }
+	// mut:
+	// hash_cache int
 
 pub struct ustring {
 pub:
@@ -166,8 +166,8 @@ pub fn (s string) replace(rep, with string) string {
 	mut cur_idx := idxs[idx_pos]
 	mut b_i := 0
 	for i := 0; i < s.len; i++ {
-		// Reached the location of rep, replace it with "with"
 		if i == cur_idx {
+			// Reached the location of rep, replace it with "with"
 			for j in 0..with.len {
 				b[b_i] = with[j]
 				b_i++
@@ -180,8 +180,8 @@ pub fn (s string) replace(rep, with string) string {
 				cur_idx = idxs[idx_pos]
 			}
 		}
-		// Rep doesnt start here, just copy
 		else {
+			// Rep doesnt start here, just copy
 			b[b_i] = s[i]
 			b_i++
 		}
@@ -263,8 +263,8 @@ pub fn (s string) replace_each(vals []string) string {
 	mut cur_idx := idxs[idx_pos]
 	mut b_i := 0
 	for i := 0; i < s.len; i++ {
-		// Reached the location of rep, replace it with "with"
 		if i == cur_idx.idx {
+			// Reached the location of rep, replace it with "with"
 			rep := vals[cur_idx.val_idx]
 			with := vals[cur_idx.val_idx + 1]
 			for j in 0..with.len {
@@ -279,8 +279,8 @@ pub fn (s string) replace_each(vals []string) string {
 				cur_idx = idxs[idx_pos]
 			}
 		}
-		// Rep doesnt start here, just copy
 		else {
+			// Rep doesnt start here, just copy
 			b[b_i] = s.str[i]
 			b_i++
 		}
@@ -744,12 +744,30 @@ pub fn (s string) to_lower() string {
 	return tos(b, s.len)
 }
 
+pub fn (s string) is_lower() bool {
+	for i in 0..s.len {
+		if s[i] >= `A` && s[i] <= `Z` {
+			return false
+		}
+	}
+	return true
+}
+
 pub fn (s string) to_upper() string {
 	mut b := malloc(s.len + 1)
 	for i in 0..s.len {
 		b[i] = C.toupper(s.str[i])
 	}
 	return tos(b, s.len)
+}
+
+pub fn (s string) is_upper() bool {
+	for i in 0..s.len {
+		if s[i] >= `a` && s[i] <= `z` {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn (s string) capitalize() string {
@@ -761,6 +779,18 @@ pub fn (s string) capitalize() string {
 	return cap
 }
 
+pub fn (s string) is_capital() bool {
+	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
+		return false
+	}
+	for i in 1..s.len {
+		if s[i] >= `A` && s[i] <= `Z` {
+			return false
+		}
+	}
+	return true
+}
+
 pub fn (s string) title() string {
 	words := s.split(' ')
 	mut tit := []string
@@ -769,6 +799,16 @@ pub fn (s string) title() string {
 	}
 	title := tit.join(' ')
 	return title
+}
+
+pub fn (s string) is_title() bool {
+	words := s.split(' ')
+	for word in words {
+		if !word.is_capital() {
+			return false
+		}
+	}
+	return true
 }
 
 // 'hey [man] how you doin'
@@ -857,7 +897,7 @@ pub fn (s string) trim_left(cutset string) string {
 	}
 	cs_arr := cutset.bytes()
 	mut pos := 0
-	for pos <= s.len && s[pos] in cs_arr {
+	for pos < s.len && s[pos] in cs_arr {
 		pos++
 	}
 	return s.right(pos)
@@ -869,10 +909,10 @@ pub fn (s string) trim_right(cutset string) string {
 	}
 	cs_arr := cutset.bytes()
 	mut pos := s.len - 1
-	for pos >= -1 && s[pos] in cs_arr {
+	for pos >= 0 && s[pos] in cs_arr {
 		pos--
 	}
-	return s.left(pos + 1)
+	return if pos < 0 { '' } else { s.left(pos + 1) }
 }
 
 // fn print_cur_thread() {
@@ -1286,24 +1326,15 @@ pub fn (s string) repeat(count int) string {
 // Hello there,
 // this is a string,
 //     Everything before the first | is removed
-pub fn (s string) strip_margin(del ...byte) string {
-	mut sep := `|`
-	if del.len >= 1 {
-		// This is a workaround. We can't directly index a var_args array.
-		// Only care about the first one, ignore the rest if more
-		for d in del {
-			// The delimiter is not allowed to be white-space. Will use default
-			if d.is_space() {
-				eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
-				eprintln("    Defaulting to `|`")
-			} else {
-				sep = d
-			}
-			break
-		}
-		if del.len != 1 {
-			eprintln("Warning: `strip_margin` only uses the first argument given")
-		}
+pub fn (s string) strip_margin() string {
+   return s.strip_margin_custom(`|`)
+}
+pub fn (s string) strip_margin_custom(del byte) string {
+	mut sep := del
+	if sep.is_space() {
+		eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
+		eprintln("    Defaulting to `|`")
+		sep = `|`
 	}
 	// don't know how much space the resulting string will be, but the max it
 	// can be is this big

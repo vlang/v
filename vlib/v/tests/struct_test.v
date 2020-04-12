@@ -23,10 +23,11 @@ struct User {
 }
 
 struct Foo {
-	@type string
+	typ string
 }
 
-struct Empty {}
+struct Empty {
+}
 
 // We need to make sure that this compiles with all the reserved names.
 struct ReservedKeywords {
@@ -35,7 +36,7 @@ struct ReservedKeywords {
 	unix     int
 	error    int
 	malloc   int
-	calloc     int
+	calloc   int
 	free     int
 	panic    int
 	auto     int
@@ -61,10 +62,10 @@ fn test_empty_struct() {
 	d := &Empty{}
 	d2 := Empty{}
 	println('&empty:')
-	println(d) // != voidptr(0)
+	println(d)	// != voidptr(0)
 	println('empty:')
-	println(d2) // empty struct print
-	println(sizeof(Empty)) // == 0
+	println(d2)	// empty struct print
+	println(sizeof(Empty))	// == 0
 }
 
 fn test_struct_levels() {
@@ -98,23 +99,22 @@ fn test_struct_levels() {
 }
 
 fn test_struct_str() {
-	u := User{
-		'Bob',30}
-	println(u) // make sure the struct is printable
+	u := User{'Bob', 30}
+	println(u)	// make sure the struct is printable
 	// assert u.str() == '{name:"Bob", age:30}'  // QTODO
 }
 
 fn test_at() {
 	foo := Foo{
-		@type: 'test'
+		typ: 'test'
 	}
-	println(foo.@type)
+	// type: 'test'
+	println(foo.typ)
 }
 
 fn test_reserved_keywords() {
 	// Make sure we can initialize them correctly using full syntax.
-	rk_holder := ReservedKeywords{
-		0,0,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3}
+	rk_holder := ReservedKeywords{0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3}
 	// Test a few as it'll take too long to test all. If it's initialized
 	// correctly, other fields are also probably valid.
 	assert rk_holder.unix == 5
@@ -126,7 +126,7 @@ fn test_reserved_keywords() {
 	// Make sure partial initialization works too.
 	assert rk_holder2.inline == 9
 	assert rk_holder2.volatile == 11
-	assert rk_holder2.while == 0 // Zero value as not specified.
+	assert rk_holder2.while == 0	// Zero value as not specified.
 }
 
 struct User2 {
@@ -142,15 +142,14 @@ fn test_mutable_fields() {
 
 struct Def {
 	a int
-	b int=7
+	b int = 7
 }
 
 fn test_default_vals() {
 	d := Def{}
 	assert d.a == 0
 	assert d.b == 7
-	d2 := Def{
-		10,20}
+	d2 := Def{10, 20}
 	assert d2.a == 10
 	assert d2.b == 20
 }
@@ -161,7 +160,7 @@ fn test_assoc_with_vars() {
 	}
 	merged := {
 		def2 |
-		a:42
+		a: 42
 	}
 	assert merged.a == 42
 	assert merged.b == 7
@@ -184,8 +183,7 @@ fn test_assoc_with_constants() {
 	again := { const_def | b: 22 }
 	assert again.a == 100
 	assert again.b == 22
-	*/
-
+*/
 }
 
 struct AttrTest {
@@ -197,13 +195,11 @@ pub:
 	d int // public immmutable (readonly)
 pub mut:
 	e int // public, but mutable only in parent module
-__global:
 	f int // public and mutable both inside and outside parent module
 }
 
 fn fooo() {
-	a := AttrTest{
-		1,2,3,4,5,6}
+	a := AttrTest{1, 2, 3, 4, 5, 6}
 }
 
 /*
@@ -228,16 +224,16 @@ fn test_fixed_field() {
 	//}
 }
 */
-
-
 struct Config {
 	n   int
-	def int=10
+	def int = 10
 }
 
-fn foo_config(c Config) {}
+fn foo_config(c Config) {
+}
 
-fn foo2(u User) {}
+fn foo2(u User) {
+}
 
 fn test_config() {
 	foo_config({
@@ -248,4 +244,24 @@ fn test_config() {
 	foo2({
 		name: 'Peter'
 	})
+}
+
+struct City {
+	name       string
+	population int
+}
+
+struct Country {
+	name    string
+	capital City
+}
+
+fn test_levels() {
+	c := Country{
+		name: 'UK'
+		capital: {
+			name: 'London'
+			population: 10
+		}
+	}
 }

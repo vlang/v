@@ -5,7 +5,7 @@
 module base64
 
 const (
-	Index = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	index = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	62, 63, 62, 62, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0, 0, 0,
 	0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
@@ -13,8 +13,8 @@ const (
 	30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
 	47, 48, 49, 50, 51]!!
 
-	EndingTable = [0, 2, 1]
-	EncodingTable = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+	ending_table = [0, 2, 1]
+	enc_table = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 )
 
 /**
@@ -84,19 +84,19 @@ pub fn decode_in_buffer(data &string, buffer byteptr) int {
 		mut char_c := 0
 		mut char_d := 0
 		if i < input_length {
-			char_a = Index[d[i]]
+			char_a = index[d[i]]
 			i++
 		}
 		if i < input_length {
-			char_b = Index[d[i]]
+			char_b = index[d[i]]
 			i++
 		}
 		if i < input_length {
-			char_c = Index[d[i]]
+			char_c = index[d[i]]
 			i++
 		}
 		if i < input_length {
-			char_d = Index[d[i]]
+			char_d = index[d[i]]
 			i++
 		}
 
@@ -124,13 +124,13 @@ pub fn encode_in_buffer(data &string, buffer byteptr) int {
 	mut i := 0
 	mut j := 0
 
-	mut d	   := &byte(0)
-	mut b	   := &byte(0)
-	mut etable := &byte(0)
+	mut d	   := byteptr(0)
+	mut b	   := byteptr(0)
+	mut etable := byteptr(0)
 	unsafe{
 		d = data.str
 		b = buffer
-		etable = EncodingTable.str
+		etable = enc_table.str
 	}
 
 	for i < input_length {
@@ -160,7 +160,7 @@ pub fn encode_in_buffer(data &string, buffer byteptr) int {
 		j += 4
 	}
 
-	padding_length := EndingTable[input_length % 3]
+	padding_length := ending_table[input_length % 3]
 	for i = 0; i < padding_length; i++ {
 		b[output_length - 1 - i] = `=`
 	}

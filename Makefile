@@ -57,12 +57,17 @@ ifndef ANDROID
 	$(MAKE) modules
 endif
 endif
+ifdef V_ALWAYS_CLEAN_TMP
+	$(MAKE) clean_tmp
+endif
 	@echo "V has been successfully built"
 
-clean:
+clean: clean_tmp
+	git clean -xf
+
+clean_tmp:
 	rm -rf $(TMPTCC)
 	rm -rf $(TMPVC)
-	git clean -xf
 
 latest_vc: $(TMPVC)/.git/config
 	cd $(TMPVC) && $(GITCLEANPULL)
@@ -89,10 +94,10 @@ $(TMPVC)/.git/config:
 	$(MAKE) fresh_vc
 
 selfcompile:
-	./v -csource keep -cg -o v cmd/v
+	./v -keepc -cg -o v cmd/v
 
 selfcompile-static:
-	./v -csource keep -cg -cflags '--static' -o v-static cmd/v
+	./v -keepc -cg -cflags '--static' -o v-static cmd/v
 
 modules: module_builtin module_strings module_strconv
 module_builtin:

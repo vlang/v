@@ -1,0 +1,7 @@
+vlib/v/checker/tests/inout/void_fn_as_value.v:5:8: error: unknown fn: x
+    3| fn main() {
+    4|   mut a := 'aa'
+    5|   a += x('a','b')
+              ~~~~~~~~~~
+    6|   mut b := 'abcdef'
+    7| }

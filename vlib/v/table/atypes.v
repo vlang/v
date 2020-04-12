@@ -14,6 +14,7 @@ module table
 
 import (
 	strings
+	v.ast
 )
 
 pub type Type int
@@ -540,10 +541,11 @@ pub struct Struct {
 pub mut:
 	fields []Field
 	is_typedef bool // C. [typedef]
+	is_union bool
 }
 
 pub struct Enum {
-pub mut:
+pub:
 	vals []string
 }
 
@@ -557,6 +559,9 @@ pub:
 	name string
 mut:
 	typ  Type
+	default_expr ast.Expr
+	has_default_expr bool
+	default_val string
 }
 
 pub struct Array {
@@ -612,7 +617,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 		if vals.len > 2 {
 			res = vals[vals.len - 2] + '.' + vals[vals.len - 1]
 		}
-		if sym.kind == .array {
+		if sym.kind == .array && !res.starts_with('[]') {
 			res = '[]' + res
 		}
 	}

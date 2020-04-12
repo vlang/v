@@ -1,5 +1,7 @@
 struct Foo {
+	x int
 }
+
 pub fn (f Foo) str() string { return 'Foo{}' }
 
 fn process_foo(foo &Foo) {
@@ -20,4 +22,4 @@ fn test_ref_fn_arg() {
 }
 */
 
-fn test_dummy(){}
+fn test_dummy() {}

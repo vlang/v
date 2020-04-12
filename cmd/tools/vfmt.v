@@ -16,7 +16,6 @@ import (
 )
 
 struct FormatOptions {
-	is_2       bool
 	is_l       bool
 	is_c       bool
 	is_w       bool
@@ -49,9 +48,8 @@ fn main() {
 	//}
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
-	args := join_flags_and_argument()
+	args := util.join_env_vflags_and_os_args()
 	foptions := FormatOptions{
-		is_2: '-2' in args
 		is_c: '-c' in args
 		is_l: '-l' in args
 		is_w: '-w' in args
@@ -84,19 +82,12 @@ fn main() {
 	}
 	mut files := []string
 	for file in possible_files {
-		if foptions.is_2 {
-			if !file.ends_with('.v') && !file.ends_with('.vv') {
-				verror('v fmt -2 can only be used on .v or .vv files.\nOffending file: "$file" .')
-				continue
-			}
-		} else {
-			if !file.ends_with('.v') {
-				verror('v fmt can only be used on .v files.\nOffending file: "$file" .')
-				continue
-			}
+		if !file.ends_with('.v') && !file.ends_with('.vv') {
+			verror('v fmt can only be used on .v files.\nOffending file: "$file"')
+			continue
 		}
 		if !os.exists(file) {
-			verror('"$file" does not exist.')
+			verror('"$file" does not exist')
 			continue
 		}
 		files << file
@@ -107,7 +98,7 @@ fn main() {
 	}
 	mut cli_args_no_files := []string
 	for a in os.args {
-		if !a in files {
+		if !(a in files) {
 			cli_args_no_files << a
 		}
 	}
@@ -153,7 +144,6 @@ fn main() {
 		}
 		exit(1)
 	}
-	println('vfmt done')
 }
 
 fn (foptions &FormatOptions) format_file(file string) {
@@ -162,7 +152,9 @@ fn (foptions &FormatOptions) format_file(file string) {
 		eprintln('vfmt2 running fmt.fmt over file: $file')
 	}
 	table := table.new_table()
+	//checker := checker.new_checker(table, prefs)
 	file_ast := parser.parse_file(file, table, .parse_comments, prefs, &ast.Scope{parent: 0})
+	//checker.check(file_ast)
 	formatted_content := fmt.fmt(file_ast, table)
 	file_name := os.file_name(file)
 	vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
@@ -249,7 +241,7 @@ fn find_working_diff_command() ?string {
 }
 
 pub fn (f FormatOptions) str() string {
-	return 'FormatOptions{ ' + ' is_2: $f.is_2' + ' is_l: $f.is_l' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' + ' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' + ' }'
+	return 'FormatOptions{ is_l: $f.is_l' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' + ' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' + ' }'
 }
 
 fn file_to_target_os(file string) string {
@@ -331,31 +323,6 @@ fn get_compile_name_of_potential_v_project(file string) string {
 		}
 	}
 	return pfolder
-}
-
-//TODO Move join_flags_and_argument() and non_empty() into `cmd/internal` when v.mod work correctly
-//to prevent code duplication with `cmd/v` (cmd/v/flag.v)
-fn join_flags_and_argument() []string {
-	vosargs := os.getenv('VOSARGS')
-	if vosargs != '' {
-		return non_empty(vosargs.split(' '))
-	}
-
-	mut args := []string
-	vflags := os.getenv('VFLAGS')
-	if vflags != '' {
-		args << os.args[0]
-		args << vflags.split(' ')
-		if os.args.len > 1 {
-			args << os.args[1..]
-		}
-		return non_empty(args)
-	}
-
-	return non_empty(os.args)
-}
-fn non_empty(arg []string) []string {
-	return arg.filter(it != '')
 }
 
 fn verror(s string){

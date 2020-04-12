@@ -39,5 +39,5 @@ fn test_scan() {
 	assert e == 120.0
 	assert 1.23e+10 == 1.23e10
 	assert 1.23e+10 == 1.23e0010
-	assert -1.23e+10 == 1.23e0010 * -1.0
+	assert (-1.23e+10) == (1.23e0010 * -1.0)
 }

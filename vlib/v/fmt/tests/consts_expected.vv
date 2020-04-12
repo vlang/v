@@ -1,5 +1,7 @@
 const (
-	pi = 3.14
+	pi     = 3.14
+	phi    = 1.618
+	eulers = 2.7182
 )
 
 pub const (

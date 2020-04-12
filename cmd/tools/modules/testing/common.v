@@ -124,7 +124,7 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	// eprintln('>>> v cmd: $cmd')
 	ts.benchmark.step()
 	tls_bench.step()
-	if relative_file in ts.skip_files {
+	if relative_file.replace('\\', '/') in ts.skip_files {
 	   ts.benchmark.skip()
 	   tls_bench.skip()
 	   eprintln(tls_bench.step_message_skip(relative_file))

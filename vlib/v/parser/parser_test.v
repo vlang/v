@@ -79,7 +79,8 @@ x := 10
 '
 	table := &table.Table{}
 	vpref := &pref.Preferences{}
-	prog := parse_file(s, table, .skip_comments, vpref)
+	gscope := &ast.Scope{ parent: 0 }
+	prog := parse_file(s, table, .skip_comments, vpref, gscope)
 	mut checker := checker.new_checker(table, vpref)
 	checker.check(prog)
 	res := gen.cgen([prog], table, vpref)
@@ -111,6 +112,7 @@ fn test_one() {
 	program := ast.File{
 		stmts: e
 		scope: scope
+		global_scope: scope
 	}
 	mut checker := checker.new_checker(table, vpref)
 	checker.check(program)
@@ -209,6 +211,7 @@ fn test_parse_expr() {
 	program := ast.File{
 		stmts: e
 		scope: scope
+		global_scope: scope
 	}
 	checker.check(program)
 	res := gen.cgen([program], table, vpref).after('#endif')

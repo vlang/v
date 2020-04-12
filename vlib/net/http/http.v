@@ -28,11 +28,11 @@ mut:
 pub struct FetchConfig {
 pub mut:
 	method     string
-	data       string=''
-	params     map[string]string=map[string]string
-	headers    map[string]string=map[string]string
-	cookies    map[string]string=map[string]string
-	user_agent string='v'
+	data       string
+	params     map[string]string
+	headers    map[string]string
+	cookies    map[string]string
+	user_agent string//='v' QTODO
 	verbose    bool=false
 }
 
@@ -227,7 +227,7 @@ pub fn (req &Request) do() ?Response {
 	return resp
 }
 
-fn (req &Request) method_and_url_to_response(method string, url net_dot_urllib.URL) ?Response {
+fn (req &Request) method_and_url_to_response(method string, url urllib.URL) ?Response {
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.path.trim_left('/')

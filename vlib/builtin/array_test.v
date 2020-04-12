@@ -452,6 +452,8 @@ fn test_in() {
 	assert 3 in a
 	assert !(4 in a)
 	assert !(0 in a)
+	assert 0 !in a
+	assert 4 !in a
 }
 
 fn sum(prev int, curr int) int {
@@ -490,6 +492,17 @@ fn test_filter() {
 	d := c.filter(it.len > 1)
 	assert d[0] == 'is'
 	assert d[1] == 'awesome'
+	////////
+	arr :=[1,2,3,4,5,6,7,8,9,10]
+	println(arr.filter(it % 2 == 0 || it % 3 == 0))
+	assert true
+	assert [1,2,3].len == 3
+	mut mut_arr := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+	mut_arr = mut_arr.filter(it < 4)
+	assert mut_arr.len == 3
+
+	// TODO
+	//assert arr.filter(arr % 2).len == 5
 }
 
 fn test_map() {

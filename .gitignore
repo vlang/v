@@ -27,6 +27,7 @@ fns.txt
 /cmd/tools/vtest
 /cmd/tools/vtest-compiler
 /cmd/tools/vtest-fmt
+/cmd/tools/vtest-fixed
 /cmd/tools/vfmt
 /cmd/tools/vbin2v
 /cmd/tools/vup
@@ -82,6 +83,8 @@ cachegrind.out.*
 .gdb_history
 /thirdparty/pg
 exe
-vlib/v/tests/inout/hello.v
-vlib/v/tests/inout/hello_devs.v
-vlib/v/tests/inout/os.v
+vlib/v/tests/inout/*.v
+!vlib/v/tests/inout/*_test.v
+vlib/v/checker/tests/inout/*.v
+vlib/v/checker/tests/inout/*.c
+!vlib/v/checker/tests/inout/*_test.v

@@ -135,7 +135,7 @@ immutable by default. To be able to change the value of the variable, you have t
 
 Try compiling the program above after removing `mut` from the first line.
 
-Please note the difference between `:=` and `=`  
+Please note the difference between `:=` and `=`
 `:=` is used for declaring and initializing, `=` is used for assigning.
 
 ```v
@@ -1069,10 +1069,10 @@ fn test_hello() {
 
 All test functions have to be placed in `*_test.v` files and begin with `test_`.
 
-You can also define a special test function: `testsuite_begin`, which will be 
+You can also define a special test function: `testsuite_begin`, which will be
 run *before* all other test functions in a `_test.v` file.
 
-You can also define a special test function: `testsuite_end`, which will be 
+You can also define a special test function: `testsuite_end`, which will be
 run *after* all other test functions in a `_test.v` file.
 
 To run the tests do `v hello_test.v`.
@@ -1295,7 +1295,7 @@ Module {
 ```
 NB: @VROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
 Any .v file beside or below the folder where the v.mod file is, can use #flag @VROOT/abc to refer to this folder.
-The @VROOT folder is also *prepended* to the module lookup path, so you can *import* other 
+The @VROOT folder is also *prepended* to the module lookup path, so you can *import* other
 modules under your @VROOT, by just naming them.
 
 The instructions above will make V look for an compiled .o file in your module folder/c/implementation.o .
@@ -1335,7 +1335,6 @@ To debug issues with the generated C code, you can pass these flags:
 
 - `-cg` - produces a less optimized executable with more debug information in it.
 - `-keep_c` - keep the generated C file, so your debugger can also use it.
-- `-pretty_c` - run clang-format over the generated C file, so it looks nicer and is easier to read.
 - `-show_c_cmd` - prints the C command that is used to build the program.
 
 For best debugging experience, you can pass all of them at the same time: `v -cg -keep_c -pretty_c -show_c_cmd yourprogram.v` , then just run your debugger (gdb/lldb) or IDE with the produced executable `yourprogram`.

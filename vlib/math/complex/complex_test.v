@@ -168,6 +168,8 @@ fn test_complex_mulinv() {
 	mut c2 := cmplx.complex(0.067568,-0.094595)
 	mut result := c1.mulinv()
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	println(c2.str())
+	println(result.str())
 	assert result.str().eq(c2.str())
 	c1 = cmplx.complex(-3,4)
 	c2 = cmplx.complex(-0.12,-0.16)

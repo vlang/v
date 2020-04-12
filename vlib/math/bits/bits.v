@@ -271,11 +271,11 @@ pub fn len_16(x u16) int {
 pub fn len_32(x u32) int {
 	mut y := x
 	mut n := 0
-	if y >= 1<<16 {
+	if y >= (1<<16) {
 		y >>= 16
 		n = 16
 	}
-	if y >= 1<<8 {
+	if y >= (1<<8) {
 		y >>= 8
 		n += 8
 	}
@@ -477,7 +477,7 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 // for y == 0 (division by zero) but, unlike Div32, it doesn't panic
 // on a quotient overflow.
 pub fn rem_32(hi u32, lo u32, y u32) u32 {
-	return u32((u64(hi)<<32 | u64(lo)) % u64(y))
+	return u32(((u64(hi)<<32) | u64(lo)) % u64(y))
 }
 
 // rem_64 returns the remainder of (hi, lo) divided by y. Rem64 panics

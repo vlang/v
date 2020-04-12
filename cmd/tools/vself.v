@@ -19,12 +19,17 @@ fn main() {
 		println('V self compiling...')
 	}
 
-	s2 := os.exec(cmd) or { panic(err) }
-	if s2.output.len > 0 {
-		println(s2.output)
-	}
-	if s2.exit_code != 0 {
+	result := os.exec(cmd) or { panic(err) }
+	if result.exit_code != 0 {
+		mut err := 'Permission denied'
+		if !result.output.contains('Permission denied') {
+			err = '\n$result.output'
+		}
+		eprintln('cannot compile to ‘$vroot: $err')
 		exit(1)
+	}
+	if result.output.len > 0 {
+		println(result.output)
 	}
 
 	v_file := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }

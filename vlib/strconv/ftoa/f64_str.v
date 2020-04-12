@@ -1,6 +1,6 @@
 /**********************************************************************
 *
-* f32 to string 
+* f32 to string
 *
 * Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
 * Use of this source code is governed by an MIT license
@@ -9,11 +9,11 @@
 * This file contains the f64 to string functions
 *
 * These functions are based on the work of:
-* Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN 
-* Conference on Programming Language Design and ImplementationJune 2018 
+* Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN
+* Conference on Programming Language Design and ImplementationJune 2018
 * Pages 270–282 https://doi.org/10.1145/3192366.3192369
 *
-* inspired by the Go version here: 
+* inspired by the Go version here:
 * https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 *
 **********************************************************************/
@@ -28,14 +28,14 @@ mut:
 // dec64 is a floating decimal type representing m * 10^e.
 struct Dec64 {
 mut:
-	m u64 = u64(0)
+	m u64 = 0
 	e int = 0
 }
 
 // support union for convert f64 to u64
 union Uf64 {
 mut:
-	f f64 = f64(0)
+	f f64 = 0
 	u u64
 }
 
@@ -107,7 +107,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int) string {
 	mut x := 0
 	for x < (out_len-disp-1) {
 		buf[y - x] = `0` + byte(out%10)
-		out /= 10 
+		out /= 10
 		i++
 		x++
 	}

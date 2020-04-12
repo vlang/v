@@ -90,7 +90,7 @@ pub fn new_socket(family int, _type int, proto int) ?Socket {
 	// This is needed so that there are no problems with reusing the
 	// same port after the application exits.
 	C.setsockopt(sockfd, C.SOL_SOCKET, C.SO_REUSEADDR, &one, sizeof(int))
-	if sockfd == 0 {
+	if sockfd == -1 {
 		return error('net.socket: failed')
 	}
 	s := Socket{
@@ -383,4 +383,3 @@ pub fn (s Socket) get_port() int {
 	C.getsockname(s.sockfd, &addr, &size)
 	return C.ntohs(addr.sin_port)
 }
-

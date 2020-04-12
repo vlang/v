@@ -6,32 +6,32 @@ module bits
 fn test_bits(){
 	mut i := 0
 	mut i1:= u64(0)
-	
+
 	//
 	// --- LeadingZeros ---
 	//
-	
+
 	// 8 bit
 	i = 1
 	for x in 0..8 {
 		//C.printf("x:%02x lz: %d cmp: %d\n", i << x, leading_zeros_8(i << x), 7-x)
 		assert leading_zeros_8(byte(i << x)) == 7 - x
 	}
-	
+
 	// 16 bit
 	i = 1
 	for x in 0..16 {
 		//C.printf("x:%04x lz: %d cmp: %d\n", u16(i) << x, leading_zeros_16(u16(i) << x), 15-x)
 		assert leading_zeros_16(u16(i) << x) == 15 - x
 	}
-	
+
 	// 32 bit
 	i = 1
 	for x in 0..32 {
 		//C.printf("x:%08x lz: %d cmp: %d\n", u32(i) << x, leading_zeros_32(u32(i) << x), 31-x)
 		assert leading_zeros_32(u32(i) << x) == 31 - x
 	}
-	
+
 	// 64 bit
 	i = 1
 	for x in 0..64 {
@@ -50,7 +50,7 @@ fn test_bits(){
 		assert ones_count_8(byte(i)) == x
 		i = (i << 1) + 1
 	}
-	
+
 	// 16 bit
 	i = 0
 	for x in 0..17 {
@@ -58,7 +58,7 @@ fn test_bits(){
 		assert ones_count_16(u16(i)) == x
 		i = (i << 1) + 1
 	}
-	
+
 	// 32 bit
 	i = 0
 	for x in 0..33 {
@@ -66,7 +66,7 @@ fn test_bits(){
 		assert ones_count_32(u32(i)) == x
 		i = (i << 1) + 1
 	}
-	
+
 	// 64 bit
 	i1 = 0
 	for x in 0..65 {
@@ -76,7 +76,7 @@ fn test_bits(){
 	}
 
 	//
-	// --- rotate_left/right --- 
+	// --- rotate_left/right ---
 	//
 	assert rotate_left_8( 0x12 , 4) == 0x21
 	assert rotate_left_16( 0x1234 , 8) == 0x3412
@@ -86,7 +86,7 @@ fn test_bits(){
 	//
 	// --- reverse ---
 	//
-	
+
 	// 8 bit
 	i = 0
 	for x in 0..9 {
@@ -102,7 +102,7 @@ fn test_bits(){
 		assert reverse_8(byte(i)) == rv
 		i = (i << 1) + 1
 	}
-	
+
 	// 16 bit
 	i = 0
 	for x in 0..17 {
@@ -118,7 +118,7 @@ fn test_bits(){
 		assert reverse_16(u16(i)) == rv
 		i = (i << 1) + 1
 	}
-	
+
 	// 32 bit
 	i = 0
 	for x in 0..33 {
@@ -134,7 +134,7 @@ fn test_bits(){
 		assert reverse_32(u32(i)) == rv
 		i = (i << 1) + 1
 	}
-	
+
 	// 64 bit
 	i1 = 0
 	for x in 0..64 {
@@ -190,7 +190,7 @@ fn test_bits(){
 	//
 	// --- sub ---
 	//
-	
+
 	// 32 bit
 	i = 1
 	for x in 1..32 {
@@ -202,7 +202,7 @@ fn test_bits(){
 
 		diff, borrow_out = sub_32(v0, v1, u32(1))
 		//C.printf("x:%08x [%llu,%llu] %08x\n", u32(i) << x, diff, borrow_out, v0 - v1)
-		assert diff == (v1 - 1) 
+		assert diff == (v1 - 1)
 		assert borrow_out == u32(0)
 
 		diff, borrow_out = sub_32(v1, v0, u32(1))
@@ -221,7 +221,7 @@ fn test_bits(){
 
 		diff, borrow_out = sub_64(v0, v1, u64(1))
 		//C.printf("x:%08x [%llu,%llu] %08x\n", u64(i) << x, diff, borrow_out, v0 - v1)
-		assert diff == (v1 - 1) 
+		assert diff == (v1 - 1)
 		assert borrow_out == u64(0)
 
 		diff, borrow_out = sub_64(v1, v0, u64(1))
@@ -239,8 +239,7 @@ fn test_bits(){
 		v0 := u32(i) << x
 		v1 := v0 - 1
 		hi, lo := mul_32(v0, v1)
-		//C.printf("x:%08x [%llu,%llu] %llu\n", v0, hi, lo, u64(v0 * v1))
-		assert (u64(hi) << 32) | (u64(lo)) == u64(v0 * v1)
+		assert (u64(hi) << 32) | (u64(lo)) == u64(v0) * u64(v1)
 	}
 
 	// 64 bit
@@ -285,5 +284,5 @@ fn test_bits(){
 		assert rem == rem1
 		assert rem == rem_64(hi, lo, y)
 	}
-	
+
 }

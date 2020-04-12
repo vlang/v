@@ -447,12 +447,13 @@ pub fn (fs FlagParser) usage() string {
 				}
 			}
 			option_names := '  ' + onames.join(', ')
-			space := if option_names.len > space.len-2 {
-				'\n${space}'
+			mut xspace := ''
+			if option_names.len > space.len-2 {
+				xspace = '\n${space}'
 			} else {
-				space[option_names.len..]
+				xspace = space[option_names.len..]
 			}
-			use += '${option_names}${space}${f.usage}\n'
+			use += '${option_names}${xspace}${f.usage}\n'
 		}
 	}
 
