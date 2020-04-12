@@ -1821,8 +1821,8 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			have_final_else = true
 			p.next()
-		} else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
-			p.peek_tok.kind == .dot) {
+		} else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names ||
+				(p.tok.lit[0].is_capital() && !p.tok.lit.is_upper()) || p.peek_tok.kind == .dot) {
 			// Sum type match
 			// if sym.kind == .sum_type {
 			// p.warn('is sum')
