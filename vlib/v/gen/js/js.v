@@ -130,6 +130,15 @@ fn (g mut JsGen) to_js_typ(typ string) string {
 		}
 		'bool' {
 			styp = 'boolean'
+		}
+		'voidptr' {
+			styp = 'Object'
+		} 
+		'byteptr' {
+			styp = 'string'
+		}
+		'charptr' {
+			styp = 'string'
 		} else {
 			if typ.starts_with('array_') {
 				styp = g.to_js_typ(typ.replace('array_', '')) + '[]'
@@ -624,10 +633,6 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 	}
 	g.fn_args(it.args, it.is_variadic)
 	g.writeln(') {')
-
-	if is_main {
-		g.writeln('\t_vinit();')
-	}
 
 	g.stmts(it.stmts)
 	g.write('}')
