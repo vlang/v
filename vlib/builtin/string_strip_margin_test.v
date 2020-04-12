@@ -42,7 +42,7 @@ fn test_strip_margins_alternate_delim() {
 	                       ].join('\n')
 	alternate_delimiter_stripped := 'This has a different delim,
 	                                #but that is ok
-                                    #because everything works'.strip_margin(`#`)
+                                    #because everything works'.strip_margin_custom(`#`)
 	assert alternate_delimiter_stripped == alternate_delimiter
 }
 
@@ -99,7 +99,7 @@ fn test_strip_margins_space_delimiter() {
 	                    'revert back to default behavior.',
 	                   ].join('\n')
 	space_delimiter_stripped := 'Using a white-space char will
-		|revert back to default behavior.'.strip_margin(`\n`)
+		|revert back to default behavior.'.strip_margin_custom(`\n`)
 	assert space_delimiter == space_delimiter_stripped
 }
 

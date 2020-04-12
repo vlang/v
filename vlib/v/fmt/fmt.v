@@ -16,6 +16,7 @@ const (
 
 struct Fmt {
 	out            strings.Builder
+	out_imports    strings.Builder
 	table          &table.Table
 mut:
 	indent         int
@@ -26,21 +27,35 @@ mut:
 	file           ast.File
 	did_imports    bool
 	is_assign      bool
+	auto_imports   []string // automatically inserted imports that the user forgot to specify
+	import_pos     int // position of the imports in the resulting string for later autoimports insertion
 }
 
 pub fn fmt(file ast.File, table &table.Table) string {
 	mut f := Fmt{
 		out: strings.new_builder(1000)
+		out_imports: strings.new_builder(200)
 		table: table
 		indent: 0
 		file: file
 	}
 	f.cur_mod = 'main'
-	for stmt in file.stmts {
+	for i, stmt in file.stmts {
+		// TODO `if stmt is ast.Import`
+		match stmt {
+			ast.Import {
+				// Just remember the position of the imports for now
+				f.import_pos = f.out.len
+				// f.imports(f.file.imports)
+			}
+			else {}
+		}
 		f.stmt(stmt)
 	}
 	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
-	return f.out.str().trim_space() + '\n'
+	f.imports(f.file.imports)	// now that we have all autoimports, handle them
+	res := f.out.str().trim_space() + '\n'
+	return res[..f.import_pos] + f.out_imports.str() + res[f.import_pos..]
 }
 
 /*
@@ -74,8 +89,11 @@ pub fn (f mut Fmt) writeln(s string) {
 }
 
 fn (f mut Fmt) mod(mod ast.Module) {
-	f.writeln('module $mod.name\n')
 	f.cur_mod = mod.name
+	if mod.is_skipped {
+		return
+	}
+	f.writeln('module $mod.name\n')
 }
 
 fn (f mut Fmt) imports(imports []ast.Import) {
@@ -83,17 +101,19 @@ fn (f mut Fmt) imports(imports []ast.Import) {
 		return
 	}
 	f.did_imports = true
+	// f.import_pos = f.out.len
 	if imports.len == 1 {
 		imp_stmt_str := f.imp_stmt_str(imports[0])
-		f.writeln('import ${imp_stmt_str}\n')
+		f.out_imports.writeln('import ${imp_stmt_str}\n')
 	} else if imports.len > 1 {
-		f.writeln('import (')
-		f.indent++
+		f.out_imports.writeln('import (')
+		// f.indent++
 		for imp in imports {
-			f.writeln(f.imp_stmt_str(imp))
+			f.out_imports.write('\t')
+			f.out_imports.writeln(f.imp_stmt_str(imp))
 		}
-		f.indent--
-		f.writeln(')\n')
+		// f.indent--
+		f.out_imports.writeln(')\n')
 	}
 }
 
@@ -213,10 +233,8 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				if field.has_expr {
 					f.write(' = ')
 					f.expr(field.expr)
-					f.writeln(',')
-				} else {
-					f.writeln('')
 				}
+				f.writeln('')
 			}
 			f.writeln('}\n')
 		}
@@ -279,7 +297,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 		ast.ForStmt {
 			f.write('for ')
 			f.expr(it.cond)
-			f.writeln(' {')
+			if it.is_inf {
+				f.writeln('{')
+			} else {
+				f.writeln(' {')
+			}
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
@@ -301,7 +323,8 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			f.writeln('#$it.val')
 		}
 		ast.Import {
-			f.imports(f.file.imports)
+			// Imports are handled after the file is formatted, to automatically add necessary modules
+			// f.imports(f.file.imports)
 		}
 		ast.Module {
 			f.mod(it)
@@ -400,8 +423,8 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 		f.write('\t$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
 		f.write(f.type_to_str(field.typ))
-		if field.default_expr != '' {
-			f.write(' = $field.default_expr')
+		if field.has_default_expr {
+			f.write(' = ${field.default_expr.str()}')
 		}
 		// f.write('// $field.pos.line_nr')
 		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
@@ -477,19 +500,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(')')
 		}
 		ast.CallExpr {
-			if it.is_method {
-				f.expr(it.left)
-				f.write('.' + it.name + '(')
-				f.call_args(it.args)
-				f.write(')')
-				f.or_expr(it.or_block)
-			} else {
-				name := short_module(it.name)
-				f.write('${name}(')
-				f.call_args(it.args)
-				f.write(')')
-				f.or_expr(it.or_block)
-			}
+			f.call_expr(it)
 		}
 		ast.CharLiteral {
 			f.write('`$it.val`')
@@ -567,8 +578,15 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				if branch.stmts.len == 0 {
 					f.writeln(' {}')
 				} else {
+					// TODO single line branches
+					// if branch.stmts.len < 2 {
+					// f.write(' { ')
+					// } else {
 					f.writeln(' {')
+					// f.single_line_if = true
+					// }
 					f.stmts(branch.stmts)
+					// f.single_line_if = false
 					f.writeln('}')
 				}
 			}
@@ -788,4 +806,41 @@ fn (f mut Fmt) if_expr(it ast.IfExpr) {
 	}
 	f.write('}')
 	f.single_line_if = false
+}
+
+fn (f mut Fmt) call_expr(node ast.CallExpr) {
+	if node.is_method {
+		match node.left {
+			ast.Ident {
+				// `time.now()` without `time imported` is processed as a method call with `time` being
+				// a `node.left` expression. Import `time` automatically.
+				// TODO fetch all available modules
+				if it.name in ['time', 'os', 'strings', 'math', 'json'] {
+					if !(it.name in f.auto_imports) {
+						f.auto_imports << it.name
+						f.file.imports << ast.Import{
+							mod: it.name
+							alias: it.name
+						}
+					}
+					println(it.name + '!!')
+					for imp in f.file.imports {
+						println(imp.mod)
+					}
+				}
+			}
+			else {}
+		}
+		f.expr(node.left)
+		f.write('.' + node.name + '(')
+		f.call_args(node.args)
+		f.write(')')
+		f.or_expr(node.or_block)
+	} else {
+		name := short_module(node.name)
+		f.write('${name}(')
+		f.call_args(node.args)
+		f.write(')')
+		f.or_expr(node.or_block)
+	}
 }

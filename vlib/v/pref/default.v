@@ -3,8 +3,10 @@
 // that can be found in the LICENSE file.
 module pref
 
-import os
-import term
+import (
+	os
+	term
+)
 
 pub const (
 	default_module_path = mpath()
@@ -42,7 +44,6 @@ pub fn (p mut Preferences) fill_with_defaults() {
 		}
 		target_dir := if os.is_dir(rpath) { rpath } else { os.dir(rpath) }
 		p.out_name = os.join_path(target_dir, base)
-
 		if rpath == '$p.vroot/cmd/v' && os.is_dir('vlib/compiler') {
 			// Building V? Use v2, since we can't overwrite a running
 			// executable on Windows + the precompiled V is more
@@ -61,7 +62,7 @@ pub fn (p mut Preferences) fill_with_defaults() {
 	if p.ccompiler == '' {
 		p.ccompiler = default_c_compiler()
 	}
-	p.is_test = p.path.ends_with('_test.v')
+	p.is_test = p.path.ends_with('_test.v') || p.path.ends_with('.vv')
 	p.is_script = p.path.ends_with('.v') || p.path.ends_with('.vsh')
 	if p.third_party_option == '' {
 		p.third_party_option = p.cflags

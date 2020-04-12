@@ -70,7 +70,7 @@ pub fn (b mut Builder) compile_c(files []string, pref &pref.Preferences) {
 	mut out_name_c := get_vtmp_filename(pref.out_name, '.tmp.c')
 	if pref.is_so {
 		out_name_c = get_vtmp_filename(pref.out_name, '.tmp.so.c')
-	}	   	   
+	}
 	b.build_c(files, out_name_c)
 	b.cc()
 }

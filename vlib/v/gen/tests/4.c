@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
 	});
 	Foo af_idx_el = (*(Foo*)array_get(arr_foo, 0));
 	string foo_a = af_idx_el.a;
-    map_string_string m1 = new_map(1, sizeof(string));
+    map_string_string m1 = new_map(sizeof(string));
     map_string_int m2 = new_map_init(2, sizeof(int), (string[2]){tos3("v"), tos3("lang"), }, (int[2]){1, 2, });
     string ma1 = tos3("hello");
     string ma2 = tos3("vlang");

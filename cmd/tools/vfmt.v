@@ -48,7 +48,7 @@ fn main() {
 	//}
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
-	args := join_flags_and_argument()
+	args := util.join_env_vflags_and_os_args()
 	foptions := FormatOptions{
 		is_c: '-c' in args
 		is_l: '-l' in args
@@ -144,7 +144,6 @@ fn main() {
 		}
 		exit(1)
 	}
-	println('vfmt done')
 }
 
 fn (foptions &FormatOptions) format_file(file string) {
@@ -324,31 +323,6 @@ fn get_compile_name_of_potential_v_project(file string) string {
 		}
 	}
 	return pfolder
-}
-
-//TODO Move join_flags_and_argument() and non_empty() into `cmd/internal` when v.mod work correctly
-//to prevent code duplication with `cmd/v` (cmd/v/flag.v)
-fn join_flags_and_argument() []string {
-	vosargs := os.getenv('VOSARGS')
-	if vosargs != '' {
-		return non_empty(vosargs.split(' '))
-	}
-
-	mut args := []string
-	vflags := os.getenv('VFLAGS')
-	if vflags != '' {
-		args << os.args[0]
-		args << vflags.split(' ')
-		if os.args.len > 1 {
-			args << os.args[1..]
-		}
-		return non_empty(args)
-	}
-
-	return non_empty(os.args)
-}
-fn non_empty(arg []string) []string {
-	return arg.filter(it != '')
 }
 
 fn verror(s string){

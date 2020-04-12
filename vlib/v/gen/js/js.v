@@ -174,6 +174,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.out.len
 
 	match node {
+		ast.Module {
+			// TODO: Implement namespaces
+		}
 		ast.AssertStmt {
 			g.gen_assert_stmt(it)
 		}

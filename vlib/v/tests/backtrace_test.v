@@ -2,10 +2,10 @@
  Test for backtrace capability
 */
 fn a_method() {
-	print_backtrace() 
+	print_backtrace()
 }
 
 fn test_backtrace() {
 	a_method()
-	//panic('hi')
+	// panic('hi')
 }

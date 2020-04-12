@@ -55,3 +55,10 @@ fn test_implicit_str() {
 	text := '$i' + '42'
 	assert text == '4242'
 }
+
+fn test_string_interpolation_percent_escaping(){
+	test := 'hello'
+	hello := 'world'
+	x := '%.*s$hello$test |${hello:-30s}|'
+	assert x == '%.*sworldhello |world                         |'
+}

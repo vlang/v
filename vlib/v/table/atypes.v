@@ -559,6 +559,8 @@ pub:
 	name string
 mut:
 	typ  Type
+	default_expr ast.Expr
+	has_default_expr bool
 	default_val string
 }
 
