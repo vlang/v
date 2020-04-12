@@ -830,9 +830,6 @@ fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
 				// generate function in class
 				g.fn_decl = it
 
-				if it.no_body {
-					continue
-				}
 				has_go := fn_has_go(it)
 
 				mut name := it.name
@@ -845,7 +842,7 @@ fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
 
 				// generate jsdoc for the function
 				g.writeln(g.doc.gen_fn(it))
-				
+
 				if has_go {
 					g.write('async ')
 				}
