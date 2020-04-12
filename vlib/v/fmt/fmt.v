@@ -823,10 +823,9 @@ fn (f mut Fmt) call_expr(node ast.CallExpr) {
 							alias: it.name
 						}
 					}
-					println(it.name + '!!')
-					for imp in f.file.imports {
-						println(imp.mod)
-					}
+					// for imp in f.file.imports {
+					// println(imp.mod)
+					// }
 				}
 			}
 			else {}
