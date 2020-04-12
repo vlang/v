@@ -2,7 +2,7 @@ enum Colors {
 	red green blue yellow
 }
 
-fn test_in_expression(){
+fn test_in_expression() {
 	mut a := false
 	arr1 := [1, 2]
 	arr2 := [0, 2]
@@ -15,24 +15,23 @@ fn test_in_expression(){
 	assert a == true
 	a = false && 0 in arr3
 	assert a == false
-
 	a = true && 0 in arr1
 	assert a == false
 	a = true && 3 in arr1
 	assert a == false
-
 	a = true && !(2 in arr2)
 	assert a == false
 	a = true && !(3 in arr2)
 	assert a == true
-
 	a = 1 in arr1 && true
 	assert a == true
 	a = 1 in arr1 && false
 	assert a == false
 }
-/* not implemented
-fn test_in_expression_with_enum(){
+
+/*
+not implemented
+fn test_in_expression_with_enum() {
 	mut a := false
 	arr1 := [Colors.green, .blue]
 	arr2 := [Colors.red, .blue]
@@ -62,7 +61,7 @@ fn test_in_expression_with_enum(){
 	assert a == false
 }
 */
-fn test_in_expression_with_string(){
+fn test_in_expression_with_string() {
 	mut a := false
 	arr1 := ['ab', 'bc']
 	arr2 := ['', 'bc']
@@ -75,24 +74,21 @@ fn test_in_expression_with_string(){
 	assert a == true
 	a = false && '' in arr3
 	assert a == false
-
 	a = true && '' in arr1
 	assert a == false
 	a = true && 'abc' in arr1
 	assert a == false
-
 	a = true && !('bc' in arr2)
 	assert a == false
 	a = true && !('abc' in arr2)
 	assert a == true
-
 	a = 'ab' in arr1 && true
 	assert a == true
 	a = 'ab' in arr1 && false
 	assert a == false
 }
 
-fn test_optimized_in_expression(){
+fn test_optimized_in_expression() {
 	mut a := false
 	a = true && 2 in [1, 2]
 	assert a == true
@@ -102,24 +98,21 @@ fn test_optimized_in_expression(){
 	assert a == true
 	a = false && 0 in [1, 0]
 	assert a == false
-
 	a = true && 0 in [1, 2]
 	assert a == false
 	a = true && 3 in [1, 2]
 	assert a == false
-
 	a = true && !(2 in [0, 2])
 	assert a == false
 	a = true && !(3 in [0, 2])
 	assert a == true
-
 	a = 1 in [1, 2] && true
 	assert a == true
 	a = 1 in [1, 2] && false
 	assert a == false
 }
 
-fn test_optimized_in_expression_with_enum(){
+fn test_optimized_in_expression_with_enum() {
 	mut a := false
 	a = true && Colors.blue in [.green, .blue]
 	assert a == true
@@ -129,24 +122,21 @@ fn test_optimized_in_expression_with_enum(){
 	assert a == true
 	a = false && Colors.red in [.green, .red]
 	assert a == false
-
 	a = true && Colors.red in [.green, .blue]
 	assert a == false
 	a = true && Colors.yellow in [.green, .blue]
 	assert a == false
-
 	a = true && !(Colors.blue in [.red, .blue])
 	assert a == false
 	a = true && !(Colors.yellow in [.red, .blue])
 	assert a == true
-
 	a = Colors.green in [.green, .blue] && true
 	assert a == true
 	a = Colors.green in [.green, .blue] && false
 	assert a == false
 }
 
-fn test_optimized_in_expression_with_string(){
+fn test_optimized_in_expression_with_string() {
 	mut a := false
 	a = true && 'bc' in ['ab', 'bc']
 	assert a == true
@@ -156,17 +146,14 @@ fn test_optimized_in_expression_with_string(){
 	assert a == true
 	a = false && '' in ['ab', '']
 	assert a == false
-
 	a = true && '' in ['ab', 'bc']
 	assert a == false
 	a = true && 'abc' in ['ab', 'bc']
 	assert a == false
-
 	a = true && !('bc' in ['', 'bc'])
 	assert a == false
 	a = true && !('abc' in ['', 'bc'])
 	assert a == true
-
 	a = 'ab' in ['ab', 'bc'] && true
 	assert a == true
 	a = 'ab' in ['ab', 'bc'] && false

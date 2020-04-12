@@ -7,6 +7,7 @@ import (
 	v.table
 	v.pref
 	v.util
+	v.vmod
 	v.checker
 	v.parser
 	v.gen
@@ -54,7 +55,7 @@ pub fn (b mut Builder) parse_imports() {
 			if mod in done_imports {
 				continue
 			}
-			import_path := b.find_module_path(mod) or {
+			import_path := b.find_module_path(mod, ast_file.path) or {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
 				// break
 				// println('module_search_paths:')
@@ -105,31 +106,10 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && b.pref.os != .windows {
+		if b.pref.backend == .c && !b.should_compile_c(file) {
 			continue
 		}
-		if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && b.pref.os != .linux {
-			continue
-		}
-		if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && b.pref.os != .mac {
-			continue
-		}
-		if file.ends_with('_nix.v') && b.pref.os == .windows {
-			continue
-		}
-		if file.ends_with('_android.v') && b.pref.os != .android {
-			continue
-		}
-		if file.ends_with('_freebsd.v') && b.pref.os != .freebsd {
-			continue
-		}
-		if file.ends_with('_solaris.v') && b.pref.os != .solaris {
-			continue
-		}
-		if file.ends_with('_js.v') && b.pref.os != .js {
-			continue
-		}
-		if file.ends_with('_c.v') && b.pref.os == .js {
+		if b.pref.backend == .js && !b.should_compile_js(file) {
 			continue
 		}
 		if b.pref.compile_defines_all.len > 0 && file.contains('_d_') {
@@ -150,6 +130,45 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	return res
 }
 
+[inline]
+fn (b Builder) should_compile_c(file string) bool {
+	if !file.ends_with('.c.v') && file.split('.').len > 2 {
+		// Probably something like `a.js.v`.
+		return false
+	}
+	if file.ends_with('_windows.c.v') && b.pref.os != .windows {
+		return false
+	}
+	if file.ends_with('_linux.c.v') && b.pref.os != .linux {
+		return false
+	}
+	if file.ends_with('_darwin.c.v') && b.pref.os != .mac {
+		return false
+	}
+	if file.ends_with('_nix.c.v') && b.pref.os == .windows {
+		return false
+	}
+	if file.ends_with('_android.c.v') && b.pref.os != .android {
+		return false
+	}
+	if file.ends_with('_freebsd.c.v') && b.pref.os != .freebsd {
+		return false
+	}
+	if file.ends_with('_solaris.c.v') && b.pref.os != .solaris {
+		return false
+	}
+	return true
+}
+
+[inline]
+fn (b Builder) should_compile_js(file string) bool {
+	if !file.ends_with('.js.v') && file.split('.').len > 2 {
+		// Probably something like `a.c.v`.
+		return false
+	}
+	return true
+}
+
 pub fn (b Builder) log(s string) {
 	if b.pref.is_verbose {
 		println(s)
@@ -168,9 +187,16 @@ fn module_path(mod string) string {
 	return mod.replace('.', os.path_separator)
 }
 
-pub fn (b Builder) find_module_path(mod string) ?string {
+pub fn (b Builder) find_module_path(mod string, fpath string) ?string {
+	// support @VROOT/v.mod relative paths:
+	vmod_file_location := vmod.mod_file_cacher.get( fpath )
 	mod_path := module_path(mod)
-	for search_path in b.module_search_paths {
+	mut module_lookup_paths := []string
+	if vmod_file_location.vmod_file.len != 0 && !(vmod_file_location.vmod_folder in b.module_search_paths) {
+		module_lookup_paths << vmod_file_location.vmod_folder
+	}
+	module_lookup_paths << b.module_search_paths
+	for search_path in module_lookup_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if b.pref.is_verbose {
 			println('  >> trying to find $mod in $try_path ..')
@@ -182,7 +208,8 @@ pub fn (b Builder) find_module_path(mod string) ?string {
 			return try_path
 		}
 	}
-	return error('module "$mod" not found')
+	smodule_lookup_paths := module_lookup_paths.join(', ')
+	return error('module "$mod" not found in:\n$smodule_lookup_paths')
 }
 
 fn verror(s string) {

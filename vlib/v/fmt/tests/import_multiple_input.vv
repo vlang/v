@@ -1,2 +1,5 @@
 import math
 import os
+
+fn main() {
+}

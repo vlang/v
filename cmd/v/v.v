@@ -33,7 +33,7 @@ const (
 )
 
 fn main() {
-	args := os.args[1..]
+	args := util.join_env_vflags_and_os_args()[1..]
 	//args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		// Running `./v` without args launches repl
@@ -103,7 +103,9 @@ fn main() {
 		}
 		else {}
 	}
-	if command in ['run', 'build'] || command.ends_with('.v') || os.exists(command) {
+	if command in ['run', 'build-module'] || command.ends_with('.v') || os.exists(command) {
+		//println('command')
+		//println(prefs.path)
 		builder.compile(command, prefs)
 		return
 	}
@@ -130,6 +132,7 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			'-obfuscate' {	res.obfuscate = true	}
 			'-translated' {	res.translated = true	}
 			'-showcc' {	res.show_cc = true	}
+			'-cache' {	res.is_cache = true	}
 			'-keepc' {	res.is_keep_c = true	}
 			//'-x64' {	res.translated = true	}
 			'-os' {
@@ -140,6 +143,10 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				        exit(1)
 				}
 				res.os = tmp
+				i++
+			}
+			'-cflags' {
+				res.cflags = cmdline.option(args, '-cflags', '')
 				i++
 			}
 			'-cc' {
@@ -182,7 +189,11 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 	else if command == 'run' {
 		res.is_run = true
 		res.path = args[command_pos+1]
-		res.run_args = args[command_pos+1..]
+		res.run_args = if command_pos+1 < args.len { args[command_pos+2..] } else { []string }
+	}
+	if command == 'build-module' {
+		res.build_mode = .build_module
+		res.path = args[command_pos+1]
 	}
 	if res.is_verbose {
 		println('setting pref.path to "$res.path"')

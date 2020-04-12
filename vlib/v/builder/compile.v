@@ -31,7 +31,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 	mut b := new_builder(pref)
 	if pref.is_verbose {
 		println('builder.compile() pref:')
-		println(pref)
+		// println(pref)
 	}
 	mut tmark := benchmark.new_benchmark()
 	mut files := []string
@@ -114,12 +114,19 @@ fn (v mut Builder) set_module_lookup_paths() {
 	v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
 	v.module_search_paths << v.pref.lookup_path
 	if v.pref.is_verbose {
-		v.log('v.module_lookup_paths')		// : $v.module_lookup_paths')
+		v.log('v.module_search_paths:')
 		println(v.module_search_paths)
 	}
 }
 
 pub fn (v Builder) get_builtin_files() []string {
+	if v.pref.build_mode == .build_module && v.pref.path == 'vlib/builtin' {		// .contains('builtin/' +  location {
+		// We are already building builtin.o, no need to import them again
+		if v.pref.is_verbose {
+			println('skipping builtin modules for builtin.o')
+		}
+		return []
+	}
 	// println('get_builtin_files() lookuppath:')
 	// println(v.pref.lookup_path)
 	// Lookup for built-in folder in lookup path.

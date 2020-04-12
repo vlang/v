@@ -44,6 +44,7 @@ pub enum Kind {
 	str_dollar
 	left_shift
 	right_shift
+	not_in // !in
 	// at // @
 	assign // =
 	decl_assign // :=
@@ -167,6 +168,7 @@ fn build_token_str() []string {
 	s[Kind.dotdot] = '..'
 	s[Kind.ellipsis] = '...'
 	s[Kind.comma] = ','
+	s[Kind.not_in] = '!in'
 	// s[Kind.at] = '@'
 	s[Kind.semicolon] = ';'
 	s[Kind.colon] = ':'
@@ -381,7 +383,7 @@ pub fn (tok Token) precedence() int {
 		.left_shift_assign, .right_shift_assign, .mult_assign, .xor_assign {
 			return int(Precedence.assign)
 		}
-		.key_in, .key_as {
+		.key_in, .not_in, .key_as {
 			return int(Precedence.in_as)
 		}
 		.logical_or, .and {
@@ -421,7 +423,7 @@ pub fn (k Kind) is_start_of_type() bool {
 pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in,
 	//
-	.key_as, .ge, .le, .logical_or, .xor,
+	.key_as, .ge, .le, .logical_or, .xor, .not_in,
 	//
 	.and, .dot, .pipe, .amp, .left_shift, .right_shift]
 }

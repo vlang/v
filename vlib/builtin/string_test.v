@@ -331,36 +331,6 @@ fn test_runes() {
 	assert last.len == 2
 }
 
-fn test_lower() {
-	mut s := 'A'
-	assert s.to_lower() == 'a'
-	assert s.to_lower().len == 1
-	s = 'HELLO'
-	assert s.to_lower() == 'hello'
-	assert s.to_lower().len == 5
-	s = 'Aloha'
-	assert s.to_lower() == 'aloha'
-	s = 'Have A nice Day!'
-	assert s.to_lower() == 'have a nice day!'
-	s = 'hi'
-	assert s.to_lower() == 'hi'
-}
-
-fn test_upper() {
-	mut s := 'a'
-	assert s.to_upper() == 'A'
-	assert s.to_upper().len == 1
-	s = 'hello'
-	assert s.to_upper() == 'HELLO'
-	assert s.to_upper().len == 5
-	s = 'Aloha'
-	assert s.to_upper() == 'ALOHA'
-	s = 'have a nice day!'
-	assert s.to_upper() == 'HAVE A NICE DAY!'
-	s = 'hi'
-	assert s.to_upper() == 'HI'
-}
-
 fn test_left_right() {
 	s := 'ALOHA'
 	assert s.left(3) == 'ALO'
@@ -397,16 +367,32 @@ fn test_to_num() {
 	f := '71.5 hasdf'
 	// QTODO
 	//assert f.f32() == 71.5
-	b := 1.52345
-	mut a := '${b:.03f}'
-	assert a == '1.523'
-	num := 7
-	a = '${num:03d}'
 	vals := ['9']
 	assert vals[0].int() == 9
 	big := '93993993939322'
 	assert big.u64() == 93993993939322
 	assert big.i64() == 93993993939322
+}
+
+fn test_inter_format_string() {
+	float_num := 1.52345
+	float_num_string := '-${float_num:.03f}-'
+	assert float_num_string == '-1.523-'
+	int_num := 7
+	int_num_string := '-${int_num:03d}-'
+	assert int_num_string == '-007-'
+	ch := `a`
+	ch_string := '-${ch:c}-'
+	assert ch_string == '-a-'
+	hex_n := 192
+	hex_n_string := '-${hex_n:x}-'
+	assert hex_n_string == '-c0-'
+	oct_n := 192
+	oct_n_string := '-${oct_n:o}-'
+	assert oct_n_string == '-300-'
+	str := 'abc'
+	str_string := '-${str:s}-'
+	assert str_string == '-abc-'
 }
 
 fn test_hash() {
@@ -502,23 +488,78 @@ fn test_count() {
 	assert 'bbaabb'.count('aa') == 1
 }
 
+fn test_lower() {
+	mut s := 'A'
+	assert !s.is_lower()
+	assert s.to_lower() == 'a'
+	assert s.to_lower().len == 1
+	s = 'HELLO'
+	assert !s.is_lower()
+	assert s.to_lower() == 'hello'
+	assert s.to_lower().len == 5
+	s = 'Aloha'
+	assert !s.is_lower()
+	assert s.to_lower() == 'aloha'
+	s = 'Have A nice Day!'
+	assert !s.is_lower()
+	assert s.to_lower() == 'have a nice day!'
+	s = 'hi'
+	assert s.is_lower()
+	assert s.to_lower() == 'hi'
+	assert 'aloha!'[0] == `a`
+	assert 'aloha!'[5] == `!`
+}
+
+fn test_upper() {
+	mut s := 'a'
+	assert !s.is_upper()
+	assert s.to_upper() == 'A'
+	assert s.to_upper().len == 1
+	s = 'hello'
+	assert !s.is_upper()
+	assert s.to_upper() == 'HELLO'
+	assert s.to_upper().len == 5
+	s = 'Aloha'
+	assert !s.is_upper()
+	assert s.to_upper() == 'ALOHA'
+	s = 'have a nice day!'
+	assert !s.is_upper()
+	assert s.to_upper() == 'HAVE A NICE DAY!'
+	s = 'HI'
+	assert s.is_upper()
+	assert s.to_upper() == 'HI'
+}
+
 fn test_capitalize() {
 	mut s := 'hello'
+	assert !s.is_capital()
 	assert s.capitalize() == 'Hello'
 	s = 'test'
+	assert !s.is_capital()
 	assert s.capitalize() == 'Test'
     s = 'i am ray'
+	assert !s.is_capital()
 	assert s.capitalize() == 'I am ray'
 	s = ''
+	assert !s.is_capital()
 	assert s.capitalize() == ''
+	s = 'TEST IT'
+	assert !s.is_capital()
+	assert s.capitalize() == 'Test it'
+	s = 'Test it'
+	assert s.is_capital()
+	assert s.capitalize() == 'Test it'
 }
 
 fn test_title() {
-	s := 'hello world'
+	mut s := 'hello world'
+	assert !s.is_title()
 	assert s.title() == 'Hello World'
-	s.to_upper()
+	s = 'HELLO WORLD'
+	assert !s.is_title()
 	assert s.title() == 'Hello World'
-	s.to_lower()
+	s = 'Hello World'
+	assert s.is_title()
 	assert s.title() == 'Hello World'
 }
 
@@ -687,4 +728,3 @@ fn test_split_into_lines() {
 		assert line == line_content
 	}
 }
-

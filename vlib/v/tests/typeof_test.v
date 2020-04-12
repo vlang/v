@@ -1,4 +1,3 @@
-
 fn test_typeof_on_simple_expressions() {
 	a := 123
 	assert typeof(42) == 'int'
@@ -8,7 +7,7 @@ fn test_typeof_on_simple_expressions() {
 	assert typeof(a) == 'int'
 }
 
-fn test_typeof_on_atypes(){
+fn test_typeof_on_atypes() {
 	aint := []int
 	astring := []string
 	assert typeof(aint) == 'array_int'
@@ -19,15 +18,16 @@ struct FooBar {
 	x int
 }
 
-fn test_typeof_on_structs(){
-	assert typeof(FooBar{}) == "FooBar"
-	astruct_static := [2]FooBar
+fn test_typeof_on_structs() {
+	assert typeof(FooBar{}) == 'FooBar'
+	astruct_static := [2]
 	astruct_dynamic := [FooBar{}, FooBar{}]
 	assert typeof(astruct_static) == '[2]FooBar'
 	assert typeof(astruct_dynamic) == 'array_FooBar'
 }
 
 type MySumType = int | f32 | FooBar
+
 pub fn (ms MySumType) str() string {
 	match ms {
 		int { return it.str() }
@@ -37,7 +37,7 @@ pub fn (ms MySumType) str() string {
 	}
 }
 
-fn test_typeof_on_sumtypes(){
+fn test_typeof_on_sumtypes() {
 	a := MySumType(32)
 	b := MySumType(f32(123.0))
 	c := MySumType(FooBar{x:43})
@@ -66,7 +66,7 @@ fn test_typeof_on_sumtypes_of_structs() {
 	a := fexpr(1)
 	b := fexpr(2)
 	c := fexpr(3)
-	d := ExprType( UnaryExpr{} )
+	d := ExprType(UnaryExpr{})
 	assert typeof(a) == 'UnaryExpr'
 	assert typeof(b) == 'BinExpr'
 	assert typeof(c) == 'BoolExpr'

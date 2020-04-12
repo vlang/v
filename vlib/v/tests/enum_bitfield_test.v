@@ -17,14 +17,12 @@ fn test_enum_bitfield() {
 	a.perm.set(.write)
 	a.perm.toggle(.execute)
 	a.perm.clear(.write)
-	//a.perm.set(.other)
-
+	// a.perm.set(.other)
 	assert a.perm.has(.read)
 	assert a.perm.has(.execute)
 	assert !a.perm.has(.write)
 	assert !a.perm.has(.other)
-
-	mut b := BfPermission.read // TODO:  this does nothing currenty just sets the type
+	mut b := BfPermission.read	// TODO:  this does nothing currenty just sets the type
 	b.set(.write)
 	b.set(.other)
 	assert b.has(.write)

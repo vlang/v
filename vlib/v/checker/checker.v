@@ -32,6 +32,7 @@ mut:
 	in_for_count   int // if checker is currently in an for loop
 	// checked_ident  string // to avoid infinit checker loops
 	var_decl_name  string
+	returns        bool
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -60,6 +61,22 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	for file in ast_files {
 		c.check(file)
 	}
+	// Make sure fn main is defined in non lib builds
+	if c.pref.build_mode == .build_module || c.pref.is_test {
+		return
+	}
+	if ast_files.len > 1 && ast_files[0].mod.name == 'builtin' {
+		// TODO hack to fix vv tests
+		return
+	}
+	for i, f in c.table.fns {
+		if f.name == 'main' {
+			return
+		}
+	}
+	eprintln('function `main` is undeclared in the main module')
+	// eprintln(ast_files[0].mod.name)
+	exit(1)
 }
 
 pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
@@ -182,7 +199,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 			return table.void_type
 		}
 	}
-	if infix_expr.op == .key_in {
+	if infix_expr.op in [.key_in, .not_in] {
 		if !(right.kind in [.array, .map, .string]) {
 			c.error('`in` can only be used with an array/map/string.', infix_expr.pos)
 		}
@@ -193,7 +210,8 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		if left_type == table.void_type || right_type == table.void_type {
 			return table.void_type
 		}
-		c.error('infix expr: cannot use `$right.name` (right) as `$left.name`', infix_expr.pos)
+		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`',
+			infix_expr.pos)
 	}
 	if infix_expr.op.is_relational() {
 		return table.bool_type
@@ -212,10 +230,22 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	if ast.expr_is_blank_ident(assign_expr.left) {
 		return
 	}
+	match assign_expr.left {
+		ast.Ident {
+			scope := c.file.scope.innermost(assign_expr.pos.pos)
+			if v := scope.find_var(it.name) {
+				if !v.is_mut {
+					c.error('`$it.name` is immutable, declare it with `mut`', assign_expr.pos)
+				}
+			}
+		}
+		else {}
+	}
 	if !c.table.check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
-		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name` ', expr_pos(assign_expr.val))
+		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name` ',
+			expr_pos(assign_expr.val))
 	}
 	c.check_expr_opt_call(assign_expr.val, right_type, true)
 }
@@ -223,180 +253,194 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 pub fn (c mut Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	c.stmts(call_expr.or_block.stmts)
 	if call_expr.is_method {
-		left_type := c.expr(call_expr.left)
-		call_expr.left_type = left_type
-		left_type_sym := c.table.get_type_symbol(left_type)
-		method_name := call_expr.name
-		// TODO: remove this for actual methods, use only for compiler magic
-		if left_type_sym.kind == .array && method_name in ['filter', 'clone', 'repeat', 'reverse',
-			'map', 'slice'] {
-			if method_name in ['filter', 'map'] {
-				array_info := left_type_sym.info as table.Array
-				mut scope := c.file.scope.innermost(call_expr.pos.pos)
-				scope.update_var_type('it', array_info.elem_type)
-			}
-			for i, arg in call_expr.args {
-				c.expr(arg.expr)
-			}
-			// need to return `array_xxx` instead of `array`
-			call_expr.return_type = left_type
-			if method_name == 'clone' {
-				// in ['clone', 'str'] {
-				call_expr.receiver_type = table.type_to_ptr(left_type)
-				// call_expr.return_type = call_expr.receiver_type
-			} else {
-				call_expr.receiver_type = left_type
-			}
-			return left_type
-		} else if left_type_sym.kind == .array && method_name in ['first', 'last'] {
-			info := left_type_sym.info as table.Array
-			call_expr.return_type = info.elem_type
-			call_expr.receiver_type = left_type
-			return info.elem_type
+		return c.call_method(call_expr)
+	}
+	return c.call_fn(call_expr)
+}
+
+pub fn (c mut Checker) call_method(call_expr mut ast.CallExpr) table.Type {
+	left_type := c.expr(call_expr.left)
+	call_expr.left_type = left_type
+	left_type_sym := c.table.get_type_symbol(left_type)
+	method_name := call_expr.name
+	// TODO: remove this for actual methods, use only for compiler magic
+	if left_type_sym.kind == .array && method_name in ['filter', 'clone', 'repeat', 'reverse',
+		'map', 'slice'] {
+		if method_name in ['filter', 'map'] {
+			array_info := left_type_sym.info as table.Array
+			mut scope := c.file.scope.innermost(call_expr.pos.pos)
+			scope.update_var_type('it', array_info.elem_type)
 		}
-		if method := c.table.type_find_method(left_type_sym, method_name) {
-			no_args := method.args.len - 1
-			min_required_args := method.args.len - if method.is_variadic && method.args.len >
-				1 { 2 } else { 1 }
-			if call_expr.args.len < min_required_args {
-				c.error('too few arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $min_required_args)',
-					call_expr.pos)
-			} else if !method.is_variadic && call_expr.args.len > no_args {
-				c.error('too many arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $no_args)',
-					call_expr.pos)
-				return method.return_type
-			}
-			// if method_name == 'clone' {
-			// println('CLONE nr args=$method.args.len')
-			// }
-			// call_expr.args << method.args[0].typ
-			// call_expr.exp_arg_types << method.args[0].typ
-			for i, arg in call_expr.args {
-				c.expected_type = if method.is_variadic && i >= method.args.len - 1 {
-					method.args[method.args.len - 1].typ
-				} else {
-					method.args[i + 1].typ
-				}
-				call_expr.args[i].typ = c.expr(arg.expr)
-			}
-			// TODO: typ optimize.. this node can get processed more than once
-			if call_expr.expected_arg_types.len == 0 {
-				for i in 1 .. method.args.len {
-					call_expr.expected_arg_types << method.args[i].typ
-				}
-			}
-			call_expr.receiver_type = method.args[0].typ
-			call_expr.return_type = method.return_type
+		for i, arg in call_expr.args {
+			c.expr(arg.expr)
+		}
+		// need to return `array_xxx` instead of `array`
+		call_expr.return_type = left_type
+		if method_name == 'clone' {
+			// in ['clone', 'str'] {
+			call_expr.receiver_type = table.type_to_ptr(left_type)
+			// call_expr.return_type = call_expr.receiver_type
+		} else {
+			call_expr.receiver_type = left_type
+		}
+		return left_type
+	} else if left_type_sym.kind == .array && method_name in ['first', 'last'] {
+		info := left_type_sym.info as table.Array
+		call_expr.return_type = info.elem_type
+		call_expr.receiver_type = left_type
+		return info.elem_type
+	}
+	if method := c.table.type_find_method(left_type_sym, method_name) {
+		no_args := method.args.len - 1
+		min_required_args := method.args.len - if method.is_variadic && method.args.len > 1 { 2 } else { 1 }
+		if call_expr.args.len < min_required_args {
+			c.error('too few arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $min_required_args)',
+				call_expr.pos)
+		} else if !method.is_variadic && call_expr.args.len > no_args {
+			c.error('too many arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $no_args)',
+				call_expr.pos)
 			return method.return_type
 		}
-		// TODO: str methods
-		if left_type_sym.kind == .map && method_name == 'str' {
-			call_expr.receiver_type = table.new_type(c.table.type_idxs['map_string'])
-			call_expr.return_type = table.string_type
-			return table.string_type
-		}
-		if left_type_sym.kind == .array && method_name == 'str' {
-			call_expr.receiver_type = left_type
-			call_expr.return_type = table.string_type
-			return table.string_type
-		}
-		c.error('unknown method: ${left_type_sym.name}.$method_name', call_expr.pos)
-		return table.void_type
-	} else {
-		fn_name := call_expr.name
-		// TODO: impl typeof properly (probably not going to be a fn call)
-		if fn_name == 'typeof' {
-			return table.string_type
-		}
-		// look for function in format `mod.fn` or `fn` (main/builtin)
-		mut f := table.Fn{}
-		mut found := false
-		// try prefix with current module as it would have never gotten prefixed
-		if !fn_name.contains('.') && !(call_expr.mod in ['builtin', 'main']) {
-			name_prefixed := '${call_expr.mod}.$fn_name'
-			if f1 := c.table.find_fn(name_prefixed) {
-				call_expr.name = name_prefixed
-				found = true
-				f = f1
+		// if method_name == 'clone' {
+		// println('CLONE nr args=$method.args.len')
+		// }
+		// call_expr.args << method.args[0].typ
+		// call_expr.exp_arg_types << method.args[0].typ
+		for i, arg in call_expr.args {
+			c.expected_type = if method.is_variadic && i >= method.args.len - 1 {
+				method.args[method.args.len - 1].typ
+			} else {
+				method.args[i + 1].typ
 			}
-		}
-		// already prefixed (mod.fn) or C/builtin/main
-		if !found {
-			if f1 := c.table.find_fn(fn_name) {
-				found = true
-				f = f1
-			}
-		}
-		// check for arg (var) of fn type
-		if !found {
-			scope := c.file.scope.innermost(call_expr.pos.pos)
-			if var := scope.find_var(fn_name) {
-				if var.typ != 0 {
-					vts := c.table.get_type_symbol(var.typ)
-					if vts.kind == .function {
-						info := vts.info as table.FnType
-						f = info.func
-						found = true
-					}
-				}
-			}
-		}
-		if !found {
-			c.error('unknown fn: $fn_name', call_expr.pos)
-			return table.void_type
-		}
-		call_expr.return_type = f.return_type
-		if f.is_c || call_expr.is_c {
-			for arg in call_expr.args {
-				c.expr(arg.expr)
-			}
-			return f.return_type
-		}
-		min_required_args := if f.is_variadic { f.args.len - 1 } else { f.args.len }
-		if call_expr.args.len < min_required_args {
-			c.error('too few arguments in call to `$fn_name` ($call_expr.args.len instead of $min_required_args)',
-				call_expr.pos)
-		} else if !f.is_variadic && call_expr.args.len > f.args.len {
-			c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)',
-				call_expr.pos)
-			return f.return_type
-		}
-		// println can print anything
-		if fn_name == 'println' || fn_name == 'print' {
-			c.expected_type = table.string_type
-			call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
-			return f.return_type
+			call_expr.args[i].typ = c.expr(arg.expr)
 		}
 		// TODO: typ optimize.. this node can get processed more than once
 		if call_expr.expected_arg_types.len == 0 {
-			for arg in f.args {
-				call_expr.expected_arg_types << arg.typ
+			for i in 1 .. method.args.len {
+				call_expr.expected_arg_types << method.args[i].typ
 			}
 		}
-		for i, call_arg in call_expr.args {
-			arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
-			c.expected_type = arg.typ
-			typ := c.expr(call_arg.expr)
-			call_expr.args[i].typ = typ
-			typ_sym := c.table.get_type_symbol(typ)
-			arg_typ_sym := c.table.get_type_symbol(arg.typ)
-			if !c.table.check(typ, arg.typ) {
-				// str method, allow type with str method if fn arg is string
-				if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
-					continue
+		call_expr.receiver_type = method.args[0].typ
+		call_expr.return_type = method.return_type
+		return method.return_type
+	}
+	// TODO: str methods
+	if left_type_sym.kind == .map && method_name == 'str' {
+		call_expr.receiver_type = table.new_type(c.table.type_idxs['map_string'])
+		call_expr.return_type = table.string_type
+		return table.string_type
+	}
+	if left_type_sym.kind == .array && method_name == 'str' {
+		call_expr.receiver_type = left_type
+		call_expr.return_type = table.string_type
+		return table.string_type
+	}
+	c.error('unknown method: ${left_type_sym.name}.$method_name', call_expr.pos)
+	return table.void_type
+}
+
+pub fn (c mut Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
+	if call_expr.name == 'panic' {
+		c.returns = true
+	}
+	fn_name := call_expr.name
+	if fn_name == 'typeof' {
+		// TODO: impl typeof properly (probably not going to be a fn call)
+		return table.string_type
+	}
+	// if c.fileis('json_test.v') {
+	// println(fn_name)
+	// }
+	if fn_name == 'json.encode' {
+	}
+	// look for function in format `mod.fn` or `fn` (main/builtin)
+	mut f := table.Fn{}
+	mut found := false
+	// try prefix with current module as it would have never gotten prefixed
+	if !fn_name.contains('.') && !(call_expr.mod in ['builtin', 'main']) {
+		name_prefixed := '${call_expr.mod}.$fn_name'
+		if f1 := c.table.find_fn(name_prefixed) {
+			call_expr.name = name_prefixed
+			found = true
+			f = f1
+		}
+	}
+	// already prefixed (mod.fn) or C/builtin/main
+	if !found {
+		if f1 := c.table.find_fn(fn_name) {
+			found = true
+			f = f1
+		}
+	}
+	// check for arg (var) of fn type
+	if !found {
+		scope := c.file.scope.innermost(call_expr.pos.pos)
+		if var := scope.find_var(fn_name) {
+			if var.typ != 0 {
+				vts := c.table.get_type_symbol(var.typ)
+				if vts.kind == .function {
+					info := vts.info as table.FnType
+					f = info.func
+					found = true
 				}
-				if typ_sym.kind == .void && arg_typ_sym.kind == .string {
-					continue
-				}
-				if typ_sym.kind == .array_fixed {
-				}
-				// println('fixed')
-				c.error('cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`',
-					call_expr.pos)
 			}
+		}
+	}
+	if !found {
+		c.error('unknown fn: $fn_name', call_expr.pos)
+		return table.void_type
+	}
+	call_expr.return_type = f.return_type
+	if f.is_c || call_expr.is_c {
+		for arg in call_expr.args {
+			c.expr(arg.expr)
 		}
 		return f.return_type
 	}
+	min_required_args := if f.is_variadic { f.args.len - 1 } else { f.args.len }
+	if call_expr.args.len < min_required_args {
+		c.error('too few arguments in call to `$fn_name` ($call_expr.args.len instead of $min_required_args)',
+			call_expr.pos)
+	} else if !f.is_variadic && call_expr.args.len > f.args.len {
+		c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)',
+			call_expr.pos)
+		return f.return_type
+	}
+	// println can print anything
+	if fn_name == 'println' || fn_name == 'print' {
+		c.expected_type = table.string_type
+		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
+		return f.return_type
+	}
+	// TODO: typ optimize.. this node can get processed more than once
+	if call_expr.expected_arg_types.len == 0 {
+		for arg in f.args {
+			call_expr.expected_arg_types << arg.typ
+		}
+	}
+	for i, call_arg in call_expr.args {
+		arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
+		c.expected_type = arg.typ
+		typ := c.expr(call_arg.expr)
+		call_expr.args[i].typ = typ
+		typ_sym := c.table.get_type_symbol(typ)
+		arg_typ_sym := c.table.get_type_symbol(arg.typ)
+		if !c.table.check(typ, arg.typ) {
+			// str method, allow type with str method if fn arg is string
+			if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
+				continue
+			}
+			if typ_sym.kind == .void && arg_typ_sym.kind == .string {
+				continue
+			}
+			if typ_sym.kind == .array_fixed {
+			}
+			// println('fixed')
+			c.error('cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`',
+				call_expr.pos)
+		}
+	}
+	return f.return_type
 }
 
 pub fn (c mut Checker) check_expr_opt_call(x ast.Expr, xtype table.Type, is_return_used bool) {
@@ -519,12 +563,15 @@ pub fn (c mut Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 // TODO: non deferred
 pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 	c.expected_type = c.fn_return_type
-	if return_stmt.exprs.len == 0 {
-		return
-	}
 	if return_stmt.exprs.len > 0 && c.fn_return_type == table.void_type {
 		c.error('too many arguments to return, current function does not return anything',
 			return_stmt.pos)
+		return
+	} else if return_stmt.exprs.len == 0 && c.fn_return_type != table.void_type {
+		c.error('too few arguments to return', return_stmt.pos)
+		return
+	}
+	if return_stmt.exprs.len == 0 {
 		return
 	}
 	expected_type := c.fn_return_type
@@ -571,7 +618,7 @@ pub fn (c mut Checker) enum_decl(decl ast.EnumDecl) {
 					if pos.pos == 0 {
 						pos = field.pos
 					}
-					c.error("default value for enum has to be an integer", pos)
+					c.error('default value for enum has to be an integer', pos)
 				}
 			}
 		}
@@ -591,12 +638,14 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		right_type := c.expr(assign_stmt.right[0])
 		right_type_sym := c.table.get_type_symbol(right_type)
 		if right_type_sym.kind != .multi_return {
-			c.error('expression on the right does not return multiple values, while at least $assign_stmt.left.len are expected', assign_stmt.pos)
+			c.error('expression on the right does not return multiple values, while at least $assign_stmt.left.len are expected',
+				assign_stmt.pos)
 			return
 		}
 		mr_info := right_type_sym.mr_info()
 		if mr_info.types.len < assign_stmt.left.len {
-			c.error('right expression returns only $mr_info.types.len values, but left one expects $assign_stmt.left.len', assign_stmt.pos)
+			c.error('right expression returns only $mr_info.types.len values, but left one expects $assign_stmt.left.len',
+				assign_stmt.pos)
 		}
 		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 		for i, _ in assign_stmt.left {
@@ -701,7 +750,7 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 		idx := c.table.find_or_register_array(elem_type, 1)
 		array_init.typ = table.new_type(idx)
 		array_init.elem_type = elem_type
-	} else if array_init.exprs.len == 1 && array_init.elem_type != table.void_type {
+	} else if array_init.is_fixed && array_init.exprs.len == 1 && array_init.elem_type != table.void_type {
 		// [50]byte
 		mut fixed_size := 1
 		match array_init.exprs[0] {
@@ -709,17 +758,23 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 				fixed_size = it.val.int()
 			}
 			ast.Ident {
-				/*
-				QTODO
-				scope := c.file.scope.innermost(array_init.pos.pos)
-				if obj := c.file.global_scope.find(it.name) {
+				// if obj := c.file.global_scope.find_const(it.name) {
+				// if  obj := scope.find(it.name) {
+				// scope := c.file.scope.innermost(array_init.pos.pos)
+				// eprintln('scope: ${scope.str()}')
+				// scope.find(it.name) or {
+				// c.error('undefined: `$it.name`', array_init.pos)
+				// }
+				mut full_const_name := if it.mod == 'main' { it.name } else { it.mod + '.' +
+						it.name }
+				if obj := c.file.global_scope.find_const(full_const_name) {
+					if cint := const_int_value(obj) {
+						fixed_size = cint
+					}
 				} else {
-					c.error(it.name, array_init.pos)
+					c.error('non existant integer const $full_const_name while initializing the size of a static array',
+						array_init.pos)
 				}
-				scope.find(it.name) or {
-					c.error('undefined: `$it.name`', array_init.pos)
-				}
-*/
 			}
 			else {
 				c.error('expecting `int` for fixed size', array_init.pos)
@@ -730,6 +785,23 @@ pub fn (c mut Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 		array_init.typ = array_type
 	}
 	return array_init.typ
+}
+
+fn const_int_value(cfield ast.ConstField) ?int {
+	if cint := is_const_integer(cfield) {
+		return cint.val.int()
+	}
+	return none
+}
+
+fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
+	match cfield.expr {
+		ast.IntegerLiteral {
+			return *it
+		}
+		else {}
+	}
+	return none
 }
 
 fn (c mut Checker) stmt(node ast.Stmt) {
@@ -819,6 +891,11 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.expected_type = table.void_type
 			c.fn_return_type = it.return_type
 			c.stmts(it.stmts)
+			if !it.is_c && !it.no_body && it.return_type != table.void_type && !c.returns &&
+				!(it.name in ['panic', 'exit']) {
+				c.error('missing return at end of function `$it.name`', it.pos)
+			}
+			c.returns = false
 		}
 		ast.ForStmt {
 			c.in_for_count++
@@ -880,6 +957,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		ast.Import {}
 		// ast.GlobalDecl {}
 		ast.Return {
+			c.returns = true
 			c.return_stmt(mut it)
 		}
 		// ast.StructDecl {}
@@ -1050,20 +1128,36 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 fn expr_pos(node ast.Expr) token.Position {
 	// all uncommented have to be implemented
 	match mut node {
-		ast.ArrayInit { return it.pos }
-		ast.AsCast { return it.pos }
-		ast.AssignExpr { return it.pos }
-		ast.Assoc { return it.pos }
-		// ast.BoolLiteral { }
-		// ast.CastExpr { }
-		ast.CallExpr { return it.pos }
-		// ast.CharLiteral { }
-		ast.EnumVal { return it.pos }
-		// ast.FloatLiteral { }
+		ast.ArrayInit {
+			return it.pos
+		}
+		ast.AsCast {
+			return it.pos
+		}
 		// ast.Ident { }
-		ast.IfExpr { return it.pos }
+		ast.AssignExpr {
+			return it.pos
+		}
+		// ast.CastExpr { }
+		ast.Assoc {
+			return it.pos
+		}
+		// ast.BoolLiteral { }
+		ast.CallExpr {
+			return it.pos
+		}
+		// ast.CharLiteral { }
+		ast.EnumVal {
+			return it.pos
+		}
+		// ast.FloatLiteral { }
+		ast.IfExpr {
+			return it.pos
+		}
 		// ast.IfGuardExpr { }
-		ast.IndexExpr { return it.pos }
+		ast.IndexExpr {
+			return it.pos
+		}
 		ast.InfixExpr {
 			left_pos := expr_pos(it.left)
 			right_pos := expr_pos(it.right)
@@ -1076,21 +1170,41 @@ fn expr_pos(node ast.Expr) token.Position {
 				len: right_pos.pos - left_pos.pos + right_pos.len
 			}
 		}
-		ast.IntegerLiteral { return it.pos }
-		ast.MapInit { return it.pos }
-		ast.MatchExpr { return it.pos }
-		ast.PostfixExpr { return it.pos }
-		ast.PrefixExpr { return it.pos }
+		ast.IntegerLiteral {
+			return it.pos
+		}
+		ast.MapInit {
+			return it.pos
+		}
+		ast.MatchExpr {
+			return it.pos
+		}
+		ast.PostfixExpr {
+			return it.pos
+		}
 		// ast.None { }
+		ast.PrefixExpr {
+			return it.pos
+		}
 		// ast.ParExpr { }
-		ast.SelectorExpr { return it.pos }
+		ast.SelectorExpr {
+			return it.pos
+		}
 		// ast.SizeOf { }
-		ast.StringLiteral { return it.pos }
-		ast.StringInterLiteral { return it.pos }
-		ast.StructInit { return it.pos }
+		ast.StringLiteral {
+			return it.pos
+		}
+		ast.StringInterLiteral {
+			return it.pos
+		}
 		// ast.Type { }
+		ast.StructInit {
+			return it.pos
+		}
 		// ast.TypeOf { }
-		else { return token.Position{} }
+		else {
+			return token.Position{}
+		}
 	}
 }
 
@@ -1460,4 +1574,8 @@ fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
 	if c.nr_errors >= max_nr_errors {
 		exit(1)
 	}
+}
+
+fn (p Checker) fileis(s string) bool {
+	return p.file.path.contains(s)
 }
