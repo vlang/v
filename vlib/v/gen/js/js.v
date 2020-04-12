@@ -630,10 +630,13 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 	}
 
 	g.stmts(it.stmts)
-	g.writeln('}')
+	g.write('}')
 	if is_main {
 		g.writeln(')();')
+	} else {
+		g.writeln('')
 	}
+	
 	g.fn_decl = 0
 }
 
