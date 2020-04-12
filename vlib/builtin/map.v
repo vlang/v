@@ -177,7 +177,11 @@ pub mut:
 	size        int
 }
 
-fn new_map(value_bytes int) map {
+// TODO: remove this after vc is regenerated.
+fn new_map(n, value_bytes int) map {
+   return new_map_1(value_bytes)
+}
+fn new_map_1(value_bytes int) map {
 	return map{
 		value_bytes: value_bytes
 		cap: init_cap
@@ -191,7 +195,7 @@ fn new_map(value_bytes int) map {
 }
 
 fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
-	mut out := new_map(value_bytes)
+	mut out := new_map_1(value_bytes)
 	for i in 0 .. n {
 		out.set(keys[i], byteptr(values) + i * value_bytes)
 	}

@@ -1127,7 +1127,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				}
 				g.write('})')
 			} else {
-				g.write('new_map(sizeof($value_typ_str))')
+				g.write('new_map_1(sizeof($value_typ_str))')
 			}
 		}
 		ast.None {
@@ -2902,7 +2902,7 @@ fn (g Gen) type_default(typ table.Type) string {
 	}
 	if sym.kind == .map {
 		value_type_str := g.typ(sym.map_info().value_type)
-		return 'new_map(sizeof($value_type_str))'
+		return 'new_map_1(sizeof($value_type_str))'
 	}
 	// Always set pointers to 0
 	if table.type_is_ptr(typ) {
