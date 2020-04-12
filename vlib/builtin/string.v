@@ -770,7 +770,7 @@ pub fn (s string) is_upper() bool {
 	return true
 }
 
-pub fn (s string) to_capital() string {
+pub fn (s string) capitalize() string {
 	if s.len == 0 {
 		return ''
 	}
@@ -779,7 +779,7 @@ pub fn (s string) to_capital() string {
 	return cap
 }
 
-pub fn (s string) is_capital() bool {
+pub fn (s string) is_capitalized() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false
 	}
@@ -791,20 +791,20 @@ pub fn (s string) is_capital() bool {
 	return true
 }
 
-pub fn (s string) to_title() string {
+pub fn (s string) title() string {
 	words := s.split(' ')
 	mut tit := []string
 	for word in words {
-		tit << word.to_capital()
+		tit << word.capitalize()
 	}
 	title := tit.join(' ')
 	return title
 }
 
-pub fn (s string) is_title() bool {
+pub fn (s string) is_titled() bool {
 	words := s.split(' ')
 	for word in words {
-		if !word.is_capital() {
+		if !word.is_capitalized() {
 			return false
 		}
 	}

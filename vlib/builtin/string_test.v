@@ -530,37 +530,37 @@ fn test_upper() {
 	assert s.to_upper() == 'HI'
 }
 
-fn test_capital() {
+fn test_capitalize() {
 	mut s := 'hello'
-	assert !s.is_capital()
-	assert s.to_capital() == 'Hello'
+	assert !s.is_capitalized()
+	assert s.capitalize() == 'Hello'
 	s = 'test'
-	assert !s.is_capital()
-	assert s.to_capital() == 'Test'
+	assert !s.is_capitalized()
+	assert s.capitalize() == 'Test'
     s = 'i am ray'
-	assert !s.is_capital()
-	assert s.to_capital() == 'I am ray'
+	assert !s.is_capitalized()
+	assert s.capitalize() == 'I am ray'
 	s = ''
-	assert !s.is_capital()
-	assert s.to_capital() == ''
+	assert !s.is_capitalized()
+	assert s.capitalize() == ''
 	s = 'TEST IT'
-	assert !s.is_capital()
-	assert s.to_capital() == 'Test it'
+	assert !s.is_capitalized()
+	assert s.capitalize() == 'Test it'
 	s = 'Test it'
-	assert s.is_capital()
-	assert s.to_capital() == 'Test it'
+	assert s.is_capitalized()
+	assert s.capitalize() == 'Test it'
 }
 
 fn test_title() {
 	mut s := 'hello world'
-	assert !s.is_title()
-	assert s.to_title() == 'Hello World'
+	assert !s.is_titled()
+	assert s.title() == 'Hello World'
 	s = 'HELLO WORLD'
-	assert !s.is_title()
-	assert s.to_title() == 'Hello World'
+	assert !s.is_titled()
+	assert s.title() == 'Hello World'
 	s = 'Hello World'
-	assert s.is_title()
-	assert s.to_title() == 'Hello World'
+	assert s.is_titled()
+	assert s.title() == 'Hello World'
 }
 
 fn test_for_loop() {
