@@ -78,7 +78,6 @@ pub fn (g mut JsGen) find_class_methods(stmts []ast.Stmt) {
 					// Found struct method, store it to be generated along with the class.
 					className :=  g.table.get_type_symbol(it.receiver.typ).name
 					// Workaround until `map[key] << val` works.
-					println('found fn for class $className')
 					arr := g.method_fn_decls[className]
 					arr << stmt
 					g.method_fn_decls[className] = arr
@@ -165,7 +164,6 @@ pub fn (g mut JsGen) new_tmp_var() string {
 fn (g mut JsGen) stmts(stmts []ast.Stmt) {
 	g.indent++
 	for stmt in stmts {
-		println(stmt)
 		g.stmt(stmt)
 	}
 	g.indent--
@@ -258,7 +256,6 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 }
 
 fn (g mut JsGen) expr(node ast.Expr) {
-	// println('cgen expr()')
 	match node {
 		ast.ArrayInit {
 			g.gen_array_init_expr(it)
@@ -838,7 +835,6 @@ fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.indent--
 	g.writeln('}')
 
-	println(node.name)
 	fns := g.method_fn_decls[node.name]
 	for cfn in fns {
 		// TODO: Fix this hack for type conversion
@@ -847,6 +843,8 @@ fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
 		match cfn {
 			ast.FnDecl {
 				// generate function in class
+				g.fn_decl = it
+
 				if it.no_body {
 					continue
 				}
@@ -880,7 +878,6 @@ fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
 				g.write('${name}(')
 				g.fn_args(it.args, it.is_variadic)
 				g.writeln(') {')
-				println('gen body')
 				g.stmts(it.stmts)
 				g.writeln('}')
 			}
