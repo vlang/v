@@ -5,7 +5,7 @@ module util
 
 import os
 import term
-import v.token
+import v.ast
 
 // The filepath:line:col: format is the default C compiler error output format.
 // It allows editors and IDE's like emacs to quickly find the errors in the
@@ -41,7 +41,7 @@ pub fn new_error_manager() &EManager {
 	return &EManager{ support_color: term.can_show_color_on_stderr() }
 }
 
-pub fn formatted_error(kind string /*error or warn*/, emsg string, filepath string, pos token.Position) string {
+pub fn formatted_error(kind string /*error or warn*/, emsg string, filepath string, pos ast.Position) string {
 	mut path := filepath
 	verror_paths_override := os.getenv('VERROR_PATHS')
 	if verror_paths_override == 'absolute' {

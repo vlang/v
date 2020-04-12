@@ -1125,7 +1125,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 	return table.void_type
 }
 
-fn expr_pos(node ast.Expr) token.Position {
+fn expr_pos(node ast.Expr) ast.Position {
 	// all uncommented have to be implemented
 	match mut node {
 		ast.ArrayInit {
@@ -1164,7 +1164,7 @@ fn expr_pos(node ast.Expr) token.Position {
 			if left_pos.pos == 0 || right_pos.pos == 0 {
 				return it.pos
 			}
-			return token.Position{
+			return ast.Position{
 				line_nr: it.pos.line_nr
 				pos: left_pos.pos
 				len: right_pos.pos - left_pos.pos + right_pos.len
@@ -1203,7 +1203,7 @@ fn expr_pos(node ast.Expr) token.Position {
 		}
 		// ast.TypeOf { }
 		else {
-			return token.Position{}
+			return ast.Position{}
 		}
 	}
 }
@@ -1537,16 +1537,16 @@ pub fn (c mut Checker) map_init(node mut ast.MapInit) table.Type {
 	return map_type
 }
 
-pub fn (c mut Checker) warn(s string, pos token.Position) {
+pub fn (c mut Checker) warn(s string, pos ast.Position) {
 	allow_warnings := !c.pref.is_prod	// allow warnings only in dev builds
 	c.warn_or_error(s, pos, allow_warnings)	// allow warnings only in dev builds
 }
 
-pub fn (c mut Checker) error(s string, pos token.Position) {
+pub fn (c mut Checker) error(s string, pos ast.Position) {
 	c.warn_or_error(s, pos, false)
 }
 
-fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
+fn (c mut Checker) warn_or_error(s string, pos ast.Position, warn bool) {
 	if !warn {
 		c.nr_errors++
 	}

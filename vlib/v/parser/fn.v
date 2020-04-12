@@ -25,7 +25,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	args := p.call_args()
 	last_pos := p.tok.position()
 	p.check(.rpar)
-	pos := token.Position{
+	pos := ast.Position{
 		line_nr: first_pos.line_nr
 		pos: first_pos.pos
 		len: last_pos.pos - first_pos.pos + last_pos.len

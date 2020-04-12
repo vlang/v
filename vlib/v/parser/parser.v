@@ -528,7 +528,7 @@ pub fn (p &Parser) warn(s string) {
 	p.warn_with_pos(s, p.tok.position())
 }
 
-pub fn (p &Parser) error_with_pos(s string, pos token.Position) {
+pub fn (p &Parser) error_with_pos(s string, pos ast.Position) {
 	mut kind := 'error:'
 	if p.pref.is_verbose {
 		print_backtrace()
@@ -539,7 +539,7 @@ pub fn (p &Parser) error_with_pos(s string, pos token.Position) {
 	exit(1)
 }
 
-pub fn (p &Parser) warn_with_pos(s string, pos token.Position) {
+pub fn (p &Parser) warn_with_pos(s string, pos ast.Position) {
 	ferror := util.formatted_error('warning:', s, p.file_name, pos)
 	eprintln(ferror)
 }
@@ -997,7 +997,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 			p.close_scope()
 		}
 		end_pos := p.tok.position()
-		pos := token.Position{
+		pos := ast.Position{
 			line_nr: name_pos.line_nr
 			pos: name_pos.pos
 			len: end_pos.pos - name_pos.pos
@@ -1362,7 +1362,7 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	}
 	last_pos := p.tok.position()
 	len := last_pos.pos - first_pos.pos
-	pos := token.Position{
+	pos := ast.Position{
 		line_nr: first_pos.line_nr
 		pos: first_pos.pos
 		len: len

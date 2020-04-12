@@ -8,6 +8,7 @@ import (
 	v.token
 	v.pref
 	v.util
+	v.ast
 )
 
 const (
@@ -1033,7 +1034,7 @@ fn good_type_name(s string) bool {
 }
 
 pub fn (s &Scanner) error(msg string) {
-	pos := token.Position{
+	pos := ast.Position{
 		line_nr: s.line_nr
 		pos: s.pos
 	}

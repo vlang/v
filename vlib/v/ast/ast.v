@@ -37,13 +37,13 @@ pub struct ExprStmt {
 pub:
 	expr Expr
 	typ  table.Type
-	pos  token.Position
+	pos  Position
 }
 
 pub struct IntegerLiteral {
 pub:
 	val string
-	pos token.Position
+	pos Position
 }
 
 pub struct FloatLiteral {
@@ -56,7 +56,7 @@ pub:
 	val    string
 	is_raw bool
 	is_c   bool
-	pos    token.Position
+	pos    Position
 }
 
 // 'name: $name'
@@ -65,7 +65,7 @@ pub:
 	vals       []string
 	exprs      []Expr
 	expr_fmts  []string
-	pos        token.Position
+	pos        Position
 mut:
 	expr_types []table.Type
 }
@@ -83,7 +83,7 @@ pub:
 // `foo.bar`
 pub struct SelectorExpr {
 pub:
-	pos       token.Position
+	pos       Position
 	expr      Expr
 	field     string
 mut:
@@ -102,7 +102,7 @@ pub:
 pub struct StructField {
 pub:
 	name             string
-	pos              token.Position
+	pos              Position
 	comment          Comment
 	default_expr     Expr
 	has_default_expr bool
@@ -114,7 +114,7 @@ mut:
 pub struct Field {
 pub:
 	name string
-	pos  token.Position
+	pos  Position
 mut:
 	typ  table.Type
 }
@@ -124,7 +124,7 @@ pub:
 	name   string
 	expr   Expr
 	is_pub bool
-	pos    token.Position
+	pos    Position
 mut:
 	typ    table.Type
 }
@@ -133,12 +133,12 @@ pub struct ConstDecl {
 pub:
 	fields []ConstField
 	is_pub bool
-	pos    token.Position
+	pos    Position
 }
 
 pub struct StructDecl {
 pub:
-	pos         token.Position
+	pos         Position
 	name        string
 	fields      []StructField
 	is_pub      bool
@@ -157,7 +157,7 @@ pub:
 
 pub struct StructInit {
 pub:
-	pos            token.Position
+	pos            Position
 	fields         []string
 	exprs          []Expr
 mut:
@@ -169,7 +169,7 @@ mut:
 // import statement
 pub struct Import {
 pub:
-	pos   token.Position
+	pos   Position
 	mod   string
 	alias string
 }
@@ -189,7 +189,7 @@ pub:
 	is_c          bool
 	no_body       bool // just a definition `fn C.malloc()`
 	is_builtin    bool // this function is defined in builtin/strconv
-	pos           token.Position
+	pos           Position
 }
 
 pub struct BranchStmt {
@@ -199,7 +199,7 @@ pub:
 
 pub struct CallExpr {
 pub:
-	pos                token.Position
+	pos                Position
 	left               Expr // `user` in `user.register()`
 	is_method          bool
 	mod                string
@@ -224,7 +224,7 @@ mut:
 
 pub struct Return {
 pub:
-	pos   token.Position
+	pos   Position
 	exprs []Expr
 mut:
 	types []table.Type
@@ -250,7 +250,7 @@ pub:
 	is_mut bool
 mut:
 	typ    table.Type
-	pos    token.Position
+	pos    Position
 }
 
 pub struct GlobalDecl {
@@ -303,7 +303,7 @@ pub:
 	is_c     bool
 	tok_kind token.Kind
 	mod      string
-	pos      token.Position
+	pos      Position
 	is_mut bool
 mut:
 	name     string
@@ -326,7 +326,7 @@ pub fn (i &Ident) var_info() IdentVar {
 pub struct InfixExpr {
 pub:
 	op         token.Kind
-	pos        token.Position
+	pos        Position
 	left       Expr
 	right      Expr
 mut:
@@ -338,19 +338,19 @@ pub struct PostfixExpr {
 pub:
 	op   token.Kind
 	expr Expr
-	pos  token.Position
+	pos  Position
 }
 
 pub struct PrefixExpr {
 pub:
 	op    token.Kind
 	right Expr
-	pos   token.Position
+	pos   Position
 }
 
 pub struct IndexExpr {
 pub:
-	pos       token.Position
+	pos       Position
 	left      Expr
 	index     Expr // [0], [start..end] etc
 mut:
@@ -363,7 +363,7 @@ pub:
 	tok_kind token.Kind
 	branches []IfBranch
 	left     Expr // `a` in `a := if ...`
-	pos      token.Position
+	pos      Position
 mut:
 	is_expr  bool
 	typ      table.Type
@@ -374,7 +374,7 @@ pub struct IfBranch {
 pub:
 	cond    Expr
 	stmts   []Stmt
-	pos     token.Position
+	pos     Position
 	comment Comment
 }
 
@@ -383,7 +383,7 @@ pub:
 	tok_kind      token.Kind
 	cond          Expr
 	branches      []MatchBranch
-	pos           token.Position
+	pos           Position
 	is_mut        bool // `match mut ast_node {`
 mut:
 	is_expr       bool // returns a value
@@ -397,7 +397,7 @@ pub struct MatchBranch {
 pub:
 	exprs   []Expr
 	stmts   []Stmt
-	pos     token.Position
+	pos     Position
 	comment Comment // comment above `xxx {`
 }
 
@@ -406,7 +406,7 @@ pub:
 	val        string
 	stmts      []Stmt
 	is_not     bool
-	pos        token.Position
+	pos        Position
 mut:
 	has_else   bool
 	else_stmts []Stmt
@@ -417,7 +417,7 @@ pub:
 	cond   Expr
 	stmts  []Stmt
 	is_inf bool // `for {}`
-	pos    token.Position
+	pos    Position
 }
 
 pub struct ForInStmt {
@@ -428,7 +428,7 @@ pub:
 	is_range  bool
 	high      Expr // `10` in `for i in 0..10 {`
 	stmts     []Stmt
-	pos       token.Position
+	pos       Position
 mut:
 	key_type  table.Type
 	val_type  table.Type
@@ -445,14 +445,14 @@ pub:
 	inc      Expr // i++;
 	has_inc  bool
 	stmts    []Stmt
-	pos      token.Position
+	pos      Position
 }
 
 pub struct ReturnStmt {
 pub:
 	tok_kind token.Kind // or pos
 	results  []Expr
-	pos      token.Position
+	pos      Position
 }
 
 // #include etc
@@ -472,7 +472,7 @@ pub:
 	left        []Ident
 	right       []Expr
 	op          token.Kind
-	pos         token.Position
+	pos         Position
 mut:
 	left_types  []table.Type
 	right_types []table.Type
@@ -483,7 +483,7 @@ pub struct AsCast {
 pub:
 	expr      Expr
 	typ       table.Type
-	pos       token.Position
+	pos       Position
 mut:
 	expr_type table.Type
 }
@@ -499,14 +499,14 @@ pub:
 	enum_name string
 	val       string
 	mod       string // for full path `mod_Enum_val`
-	pos       token.Position
+	pos       Position
 mut:
 	typ       table.Type
 }
 
 pub struct EnumField {
 	name     string
-	pos      token.Position
+	pos      Position
 	expr     Expr
 	has_expr bool
 }
@@ -565,7 +565,7 @@ pub:
 pub struct AssignExpr {
 pub:
 	op         token.Kind
-	pos        token.Position
+	pos        Position
 	left       Expr
 	val        Expr
 mut:
@@ -590,7 +590,7 @@ pub:
 
 pub struct ArrayInit {
 pub:
-	pos       token.Position
+	pos       Position
 	exprs     []Expr
 	is_fixed  bool
 	mod       string
@@ -601,7 +601,7 @@ mut:
 
 pub struct MapInit {
 pub:
-	pos        token.Position
+	pos        Position
 	keys       []Expr
 	vals       []Expr
 mut:
@@ -633,7 +633,7 @@ mut:
 pub struct AssertStmt {
 pub:
 	expr Expr
-	pos  token.Position
+	pos  Position
 }
 
 // `if [x := opt()] {`
@@ -657,7 +657,7 @@ pub:
 	var_name string
 	fields   []string
 	exprs    []Expr
-	pos      token.Position
+	pos      Position
 mut:
 	typ      table.Type
 }
@@ -680,7 +680,7 @@ pub:
 	text     string
 	is_multi bool
 	line_nr  int
-	pos      token.Position
+	pos      Position
 }
 
 pub struct ConcatExpr {

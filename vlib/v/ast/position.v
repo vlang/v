@@ -1,7 +1,9 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module token
+module ast
+
+import v.token
 
 pub struct Position {
 pub:
@@ -15,7 +17,7 @@ pub fn (pos Position) str() string {
 }
 
 [inline]
-pub fn (tok &Token) position() Position {
+pub fn (tok &token.Token) position() Position {
 	return Position{
 		line_nr: tok.line_nr - 1
 		pos: tok.pos
