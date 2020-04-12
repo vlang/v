@@ -1,4 +1,3 @@
-module os
 
 fn main() {
 	test := 'hello'
