@@ -570,6 +570,11 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 	if it.no_body {
 		return
 	}
+	g.gen_method_decl(it)
+}
+
+fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
+	g.fn_decl = &it
 	has_go := fn_has_go(it)
 	is_main := it.name == 'main'
 	if is_main {
@@ -590,12 +595,15 @@ fn (g mut JsGen) gen_fn_decl(it ast.FnDecl) {
 		type_name := g.typ(it.return_type)
 
 		// generate jsdoc for the function
-		g.write(g.doc.gen_fn(it))
+		g.writeln(g.doc.gen_fn(it))
 
 		if has_go {
 			g.write('async ')
 		}
-		g.write('function ${name}(')
+		if !it.is_method {
+			g.write('function ')
+		}
+		g.write('${name}(')
 	}
 	g.fn_args(it.args, it.is_variadic)
 	g.writeln(') {')
@@ -827,27 +835,7 @@ fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
 		// error: conversion to non-scalar type requested
 		match cfn {
 			ast.FnDecl {
-				// generate function in class
-				g.fn_decl = it
-
-				mut name := it.name
-				c := name[0]
-				if c in [`+`, `-`, `*`, `/`] {
-					name = util.replace_op(name)
-				}
-
-				// generate jsdoc for the function
-				g.writeln(g.doc.gen_fn(it))
-
-				if fn_has_go(it) {
-					g.write('async ')
-				}
-
-				g.write('${name}(')
-				g.fn_args(it.args, it.is_variadic)
-				g.writeln(') {')
-				g.stmts(it.stmts)
-				g.writeln('}')
+				g.gen_method_decl(it)
 			}
 			else {}
 		}
