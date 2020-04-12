@@ -1,4 +1,4 @@
-module ast
+module scanner
 
 import v.token
 
@@ -9,13 +9,7 @@ pub enum Reporter {
 	gen
 }
 
-pub enum IssueType {
-	warn
-	error
-}
-
-pub struct Issue {
-	typ       IssueType
+pub struct Error {
 	message   string
 	file_path string
 	pos       token.Position

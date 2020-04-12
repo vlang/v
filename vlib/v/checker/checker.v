@@ -10,6 +10,7 @@ import (
 	v.token
 	v.pref
 	v.util
+	v.scanner
 	os
 )
 
@@ -21,8 +22,9 @@ pub struct Checker {
 	table          &table.Table
 mut:
 	file           ast.File
-	nr_issues      int
-	issues         []ast.Issue
+	nr_errors      int
+	errors         []scanner.Error
+	warnings       []scanner.Warning
 	error_lines    []int // to avoid printing multiple errors for the same line
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
@@ -49,12 +51,12 @@ pub fn (c mut Checker) check(ast_file ast.File) {
 	}
 }
 
-pub fn (c mut Checker) check2(ast_file ast.File) []ast.Issue {
+pub fn (c mut Checker) check2(ast_file ast.File) []scanner.Error {
 	c.file = ast_file
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
-	return c.issues
+	return c.errors
 }
 
 pub fn (c mut Checker) check_files(ast_files []ast.File) {
@@ -1547,23 +1549,29 @@ pub fn (c mut Checker) error(message string, pos token.Position) {
 }
 
 fn (c mut Checker) warn_or_error(message string, pos token.Position, warn bool) {
-	c.nr_issues++
 	// add backtrace to issue struct, how?
 	// if c.pref.is_verbose {
 	//	print_backtrace()
 	// }
-	if !(pos.line_nr in c.error_lines) {
-		typ := if warn { ast.IssueType.warn } else { ast.IssueType.error }
-		c.issues << ast.Issue{
-			typ: typ
-			reporter: ast.Reporter.checker
+	if !warn {
+		c.nr_errors++
+		if !(pos.line_nr in c.error_lines) {
+			c.errors << scanner.Error{
+				reporter: scanner.Reporter.checker
+				pos: pos
+				file_path: c.file.path
+				message: message
+			}
+			c.error_lines << pos.line_nr
+		}
+	} else {
+		c.warnings << scanner.Warning{
+			reporter: scanner.Reporter.checker
 			pos: pos
 			file_path: c.file.path
 			message: message
 		}
-	}
-	if !warn {
-		c.error_lines << pos.line_nr
+
 	}
 }
 
