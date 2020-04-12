@@ -136,6 +136,9 @@ pub fn (x Expr) str() string {
 		TypeOf {
 			return 'typeof(${it.expr.str()})'
 		}
+		EnumVal {
+			return '.${it.val}'
+		}
 		CallExpr {
 			sargs := args2str(it.args)
 			if it.is_method {
