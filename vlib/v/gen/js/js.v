@@ -641,6 +641,7 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 	} else {
 		g.writeln('')
 	}
+	g.writeln('')
 	
 	g.fn_decl = 0
 }
