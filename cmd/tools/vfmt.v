@@ -144,7 +144,6 @@ fn main() {
 		}
 		exit(1)
 	}
-	println('vfmt done')
 }
 
 fn (foptions &FormatOptions) format_file(file string) {
