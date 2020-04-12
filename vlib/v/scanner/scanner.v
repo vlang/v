@@ -720,7 +720,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				s.pos++
 				return s.new_token(.ne, '', 2)
 			}
-			else if nextc == `i` && s.text[s.pos+2] == `n` && !s.text[s.pos+3].is_letter() {
+			else if nextc == `i` && s.text[s.pos+2] == `n` && s.text[s.pos+3] == ` ` {
 				s.pos += 2
 				return s.new_token(.not_in, '', 3)
 			}
