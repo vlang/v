@@ -16,49 +16,49 @@ in combination makes it very fast and memory efficient. Here is a short expl-
 anation of each trait. After reading this you should have a basic understand-
 ing of how it functions:
 
-Hash-function: Wyhash. Wyhash is the fastest hash-function for short keys pa-
-ssing SMHasher, so it was an obvious choice.
+1. Hash-function: Wyhash. Wyhash is the fastest hash-function for short keys
+passing SMHasher, so it was an obvious choice.
 
-Open addressing: Robin Hood Hashing.
-With this method, a hash-collision is 
+2. Open addressing: Robin Hood Hashing. With this method, a hash-collision is
 resolved by probing. As opposed to linear probing, Robin Hood hashing has a
 simple but clever twist: As new keys are inserted, old keys are shifted arou-
 nd in a way such that all keys stay reasonably close to the slot they origin-
 ally hash to. A new key may displace a key already inserted if its probe cou-
 nt is larger than that of the key at the current position. 
 
-Key-value pairs are stored in a `DenseArray`. This is a dynamic array with a
-very low volume of unused memory, at the cost of more re-allocations when in-
-serting elements. It also preserves the order of the key-values. This array
-is named `key_values`. Instead of probing a new key-value, this map probes
-two 32-bit numbers collectively.  The first number has its 8 most significant
-bits reserved for the probe-count and the remaining 24 bits are cached bits
-from the hash which are utilized for faster re-hashing. This number is often
-referred to as `meta`. The other 32-bit number is the index at which the
-key-value was pushed to in `key_values`. Both of these numbers are stored in
-a sparse array `metas`. The `meta`s and `kv_index`s are stored at even and 
-odd indices, respectively:
+3. Memory layout: key-value pairs are stored in a `DenseArray`. This is a dy-
+namic array with a very low volume of unused memory, at the cost of more rea-
+llocations when inserting elements. It also preserves the order of the key-v-
+alues. This array is named `key_values`. Instead of probing a new key-value,
+this map probes two 32-bit numbers collectively.  The first number has its 8
+most significant bits reserved for the probe-count and the remaining 24 bits
+are cached bits from the hash which are utilized for faster re-hashing. This
+number is often referred to as `meta`. The other 32-bit number is the index
+at which the key-value was pushed to in `key_values`. Both of these numbers
+are stored in a sparse array `metas`. The `meta`s and `kv_index`s are stored
+at even and odd indices, respectively:
 
 metas = [meta, kv_index, 0, 0, meta, kv_index, 0, 0, meta, kv_index, ...]
 key_values = [kv, kv, kv, ...]
 
-The size of metas is a power of two. This enables the use of bitwise AND to 
-convert the 64-bit hash to a bucket/index that doesn't overflow metas. If the
-size is power of two you can use "hash & (SIZE - 1)" instead of "hash % SIZE".
-Modulo is extremely expensive so using '&' is a big performance improvement.
-The general concern with this approach is that you only make use of the lower
-bits of the hash which can cause more collisions. This is solved by using a 
-well-dispersed hash-function.
+4. The size of metas is a power of two. This enables the use of bitwise AND
+to  convert the 64-bit hash to a bucket/index that doesn't overflow metas. If
+the size is power of two you can use "hash & (SIZE - 1)" instead of "hash %
+SIZE". Modulo is extremely expensive so using '&' is a big performance impro-
+vement. The general concern with this approach is that you only make use of
+the lower bits of the hash which can cause more collisions. This is solved by
+using a well-dispersed hash-function.
 
-The hashmap keeps track of the highest probe_count. The trick is to allocate
-`extra_metas` > max(probe_count), so you never have to do any bounds-checking
-since the extra meta memory ensures that a meta will never go beyond the last
-index.
+5. The hashmap keeps track of the highest probe_count. The trick is to alloc-
+ate `extra_metas` > max(probe_count), so you never have to do any bounds-che-
+cking since the extra meta memory ensures that a meta will never go beyond 
+the last index.
 
-When the `load_factor` of the map exceeds the `max_load_factor` the size of 
-metas is doubled and all the key-values are "rehashed" to find the index for 
-their meta's in the new array. Instead of rehashing completely, it simply us-
-es the cached-hashbits stored in the meta, resulting in much faster rehashing. 
+6. Cached rehashing. When the `load_factor` of the map exceeds the `max_load_
+factor` the size of metas is doubled and all the key-values are "rehashed" to 
+find the index for their meta's in the new array. Instead of rehashing compl-
+etely, it simply uses the cached-hashbits stored in the meta, resulting in
+much faster rehashing.
 */
 
 const (
@@ -177,7 +177,7 @@ pub mut:
 	size        int
 }
 
-fn new_map(n, value_bytes int) map {
+fn new_map(value_bytes int) map {
 	return map{
 		value_bytes: value_bytes
 		cap: init_cap
@@ -191,7 +191,7 @@ fn new_map(n, value_bytes int) map {
 }
 
 fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
-	mut out := new_map(n, value_bytes)
+	mut out := new_map(value_bytes)
 	for i in 0 .. n {
 		out.set(keys[i], byteptr(values) + i * value_bytes)
 	}
