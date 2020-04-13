@@ -2405,18 +2405,11 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 				verror('only V strings can be formatted with a ${sfmt} format')
 			}
 			g.write('%' + sfmt[1..])
-		} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind ==
-			.enum_ {
+		} else if node.expr_types[i] in [table.string_type, table.bool_type, table.f32_type,
+				table.f64_type] || sym.kind in [.enum_, .array, .array_fixed] {
 			g.write('%.*s')
 		} else {
-			match node.exprs[i] {
-				ast.EnumVal {
-					g.write('%.*s')
-				}
-				else {
-					g.write('%d')
-				}
-			}
+			g.write('%d')
 		}
 	}
 	g.write('", ')
@@ -2428,21 +2421,25 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 			if fspec == `s` && node.expr_types[i] == table.string_type {
 				g.expr(expr)
 				g.write('.str')
-			} else {
+			}
+			else {
 				g.expr(expr)
 			}
-		} else if node.expr_types[i] == table.string_type {
+		}
+		else if node.expr_types[i] == table.string_type {
 			// `name.str, name.len,`
 			g.expr(expr)
 			g.write('.len, ')
 			g.expr(expr)
 			g.write('.str')
-		} else if node.expr_types[i] == table.bool_type {
+		}
+		else if node.expr_types[i] == table.bool_type {
 			g.expr(expr)
 			g.write(' ? 4 : 5, ')
 			g.expr(expr)
 			g.write(' ? "true" : "false"')
-		} else {
+		}
+		else {
 			sym := g.table.get_type_symbol(node.expr_types[i])
 			if sym.kind == .enum_ {
 				is_var := match node.exprs[i] {
@@ -2475,7 +2472,19 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 					g.enum_expr(expr)
 					g.write('"')
 				}
-			} else {
+			}
+			else if node.expr_types[i] in [table.f32_type, table.f64_type, table.array_type,
+						table.map_type] || sym.kind in [.array, .array_fixed] {
+				styp := g.typ(node.expr_types[i])
+				g.write('${styp}_str(')
+				g.expr(expr)
+				g.write(')')
+				g.write('.len, ')
+				g.write('${styp}_str(')
+				g.expr(expr)
+				g.write(').str')
+			}
+			else {
 				g.expr(expr)
 			}
 		}
