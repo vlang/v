@@ -22,7 +22,6 @@ const (
 		'vlib/net/http/http_test.v',
 		'vlib/regex/regex_test.v',
 		'vlib/strconv/ftoa/f32_f64_to_string_test.v',
-		'vlib/v/tests/array_to_string_test.v',
 		'vlib/v/tests/enum_bitfield_test.v',
 		'vlib/v/tests/fixed_array_test.v',
 		'vlib/v/tests/fn_test.v',
@@ -32,7 +31,7 @@ const (
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/option_test.v',
 		'vlib/v/tests/pointers_test.v',
-		'vlib/v/tests/repl/repl_test.v',					   
+		'vlib/v/tests/repl/repl_test.v',
 		'vlib/v/tests/string_interpolation_array_of_structs_test.v',
 		'vlib/v/tests/string_interpolation_struct_test.v',
 		'vlib/v/tests/string_interpolation_variadic_test.v',
@@ -40,7 +39,7 @@ const (
 		'vlib/v/tests/typeof_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
 		'vlib/v/tests/pointers_str_test.v',
-					   
+
 		'vlib/v/tests/live_test.v', // Linux & Solaris only; since live does not actually work for now with v2, just skip
 		'vlib/v/tests/asm_test.v', // skip everywhere for now, works on linux with cc != tcc
 		'vlib/sqlite/sqlite_test.v', // works only on ubuntu with installed sqlite
