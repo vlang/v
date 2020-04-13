@@ -10,6 +10,7 @@ import (
 	v.vmod
 	v.checker
 	v.parser
+	v.scanner
 	v.gen
 	v.gen.x64
 )
@@ -56,6 +57,7 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 	check_time := t2 - t1
 	b.info('CHECK: ${check_time}ms')
 	if b.checker.nr_errors > 0 {
+		b.print_errors(b.checker.errors)
 		exit(1)
 	}
 	// println('starting cgen...')
@@ -265,6 +267,14 @@ pub fn (b Builder) find_module_path(mod string, fpath string) ?string {
 	}
 	smodule_lookup_paths := module_lookup_paths.join(', ')
 	return error('module "$mod" not found in:\n$smodule_lookup_paths')
+}
+
+fn (b &Builder) print_errors(errors []scanner.Error) {
+	for err in errors {
+		kind := if b.pref.is_verbose { '$err.reporter error #$b.checker.nr_errors:' } else { 'error:' }
+		ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+		eprintln(ferror)
+	}
 }
 
 fn verror(s string) {

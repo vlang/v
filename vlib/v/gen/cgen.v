@@ -628,9 +628,11 @@ fn (g mut Gen) expr_with_cast(expr ast.Expr, got_type, exp_type table.Type) {
 
 fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('// assert')
-	g.write('if( ')
+	g.inside_ternary = true
+	g.write('if (')
 	g.expr(a.expr)
-	g.write(' )')
+	g.write(')')
+	g.inside_ternary = false
 	s_assertion := a.expr.str().replace('"', "\'")
 	mut mod_path := g.file.path
 	$if windows {
@@ -1336,7 +1338,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	// g.infix_op = node.op
 	left_sym := g.table.get_type_symbol(node.left_type)
 	right_sym := g.table.get_type_symbol(node.right_type)
-	if node.left_type == table.string_type_idx && node.op != .key_in {
+	if node.left_type == table.string_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
 			.plus {
 				'string_add('
@@ -1495,7 +1497,8 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
-	is_expr := node.is_expr && node.return_type != table.void_type
+	was_inside_ternary := g.inside_ternary
+	is_expr := (node.is_expr && node.return_type != table.void_type) || was_inside_ternary
 	if is_expr {
 		g.inside_ternary = true
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
@@ -1513,11 +1516,13 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 	for j, branch in node.branches {
 		if j == node.branches.len - 1 {
 			// last block is an `else{}`
-			if is_expr {
-				// TODO too many branches. maybe separate ?: matches
-				g.write(' : ')
-			} else {
-				g.writeln('else {')
+			if node.branches.len > 1 {
+				if is_expr {
+					// TODO too many branches. maybe separate ?: matches
+					g.write(' : ')
+				} else {
+					g.writeln('else {')
+				}
 			}
 		} else {
 			if j > 0 {
@@ -1582,11 +1587,11 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 			}
 		}
 		g.stmts(branch.stmts)
-		if !g.inside_ternary {
+		if !g.inside_ternary && node.branches.len > 1 {
 			g.writeln('}')
 		}
 	}
-	g.inside_ternary = false
+	g.inside_ternary = was_inside_ternary
 }
 
 fn (g mut Gen) ident(node ast.Ident) {
