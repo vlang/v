@@ -543,6 +543,14 @@ pub fn (s string) substr(start, end int) string {
 	return res
 }
 
+pub fn (s string) has_prefix(pfx string) bool {
+	return s.len >= pfx.len && s.substr(0, pfx.len) == pfx
+}
+
+pub fn (s string) has_suffix(sfx string) bool {
+	return s.len >= sfx.len && s.substr(s.len-sfx.len, s.len) == sfx
+}
+
 pub fn (s string) index_old(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1

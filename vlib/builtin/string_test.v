@@ -728,3 +728,13 @@ fn test_split_into_lines() {
 		assert line == line_content
 	}
 }
+
+fn test_prefix() {
+	assert "this is a sentence".has_prefix("this is")
+	assert !"this is a sentence".has_prefix("this a")
+}
+
+fn test_suffix() {
+	assert "this is a sentence".has_suffix("a sentence")
+	assert !"this is a sentence".has_suffix("is sentence")
+}
