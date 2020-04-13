@@ -395,6 +395,13 @@ fn test_inter_format_string() {
 	assert str_string == '-abc-'
 }
 
+fn test_array_to_string() {
+	a := ['1', '2', '3']
+	assert '$a' == '["1", "2", "3"]'
+	b := ['a', 'b']
+	assert '$b' == '["a", "b"]'
+}
+
 fn test_hash() {
 	s := '10000'
 	assert s.hash() == 46730161
