@@ -3171,7 +3171,7 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 	if styp in g.str_types {
 		return
 	}
-	if styp in ['array_string', 'v__pref__OS', 'bitfield__BitField', 'glm__Mat4'] {
+	if styp in ['v__pref__OS', 'bitfield__BitField', 'glm__Mat4'] {
 		return
 	}
 	g.str_types << styp
