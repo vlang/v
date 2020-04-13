@@ -37,7 +37,9 @@ fn main() {
 	//args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		// Running `./v` without args launches repl
-		println('For usage information, quit V REPL using `exit` and use `v help`')
+		if args.len == 0 {
+			println('For usage information, quit V REPL using `exit` and use `v help`')
+		}
 		util.launch_tool(false, 'vrepl')
 		return
 	}

@@ -129,7 +129,7 @@ pub fn (b mut Builder) parse_imports() {
 			for file in parsed_files {
 				if file.mod.name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					panic('bad module definition: ${ast_file.path} imports module "$mod" but $file.path is defined as module `$file.mod.name`')
+					verror('bad module definition: ${ast_file.path} imports module "$mod" but $file.path is defined as module `$file.mod.name`')
 				}
 			}
 			b.parsed_files << parsed_files
