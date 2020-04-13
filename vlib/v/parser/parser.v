@@ -1969,8 +1969,23 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 	name := p.check_name()
 	mut sum_variants := []table.Type
 	if p.tok.kind == .assign {
+		p.next()  // TODO require `=`
+	}
+	if p.tok.kind == .key_fn {
+		// function type: `type mycallback fn(string, int)`
+		fn_name := p.prepend_mod(name)
+		fn_type := p.parse_fn_type(fn_name)
+		return ast.FnTypeDecl{
+			name: fn_name
+			is_pub: is_pub
+			typ: fn_type
+		}
+	}
+	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
+	if p.tok.kind == .pipe {
+		p.check(.pipe)
+		sum_variants << first_type
 		// type SumType = A | B | c
-		p.next()
 		for {
 			variant_type := p.parse_type()
 			sum_variants << variant_type
@@ -1992,18 +2007,8 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 			sub_types: sum_variants
 		}
 	}
-	// function type: `type mycallback fn(string, int)`
-	if p.tok.kind == .key_fn {
-		fn_name := p.prepend_mod(name)
-		fn_type := p.parse_fn_type(fn_name)
-		return ast.FnTypeDecl{
-			name: fn_name
-			is_pub: is_pub
-			typ: fn_type
-		}
-	}
 	// type MyType int
-	parent_type := p.parse_type()
+	parent_type := first_type
 	pid := table.type_idx(parent_type)
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .alias
