@@ -890,6 +890,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			// c.warn('duplicate method `$it.name`', it.pos)
 			// }
 			// }
+			if f := c.table.find_fn(it.name) {
+				c.warn('redefinition of `$it.name`', it.pos)
+			}
 			c.expected_type = table.void_type
 			c.fn_return_type = it.return_type
 			c.stmts(it.stmts)
@@ -1551,7 +1554,7 @@ pub fn (c mut Checker) error(message string, pos token.Position) {
 fn (c mut Checker) warn_or_error(message string, pos token.Position, warn bool) {
 	// add backtrace to issue struct, how?
 	// if c.pref.is_verbose {
-	//	print_backtrace()
+	// print_backtrace()
 	// }
 	if !warn {
 		c.nr_errors++
@@ -1571,7 +1574,6 @@ fn (c mut Checker) warn_or_error(message string, pos token.Position, warn bool) 
 			file_path: c.file.path
 			message: message
 		}
-
 	}
 }
 

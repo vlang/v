@@ -141,7 +141,7 @@ fn vpm_install(module_names []string) {
 		if vcs == '' {
 			vcs = supported_vcs_systems[0]
 		}
-		if !vcs in supported_vcs_systems {
+		if vcs !in supported_vcs_systems {
 			errors++
 			println('Skipping module "$name", since it uses an unsupported VCS {$vcs} .')
 			continue

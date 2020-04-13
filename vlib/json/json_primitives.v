@@ -13,11 +13,12 @@ struct C.cJSON {
 }
 
 pub fn decode() voidptr {
-
+	return 0
 }
 
-pub fn encode() voidptr {
-
+pub fn encode(x voidptr) string {
+	// compiler implementation
+	return ''
 }
 
 fn jsdecode_int(root &C.cJSON) int {
