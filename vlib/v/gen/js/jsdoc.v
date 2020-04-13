@@ -72,6 +72,7 @@ fn (d mut JsDoc) gen_fn(it ast.FnDecl) string {
 	type_name := d.gen.typ(it.return_type)
 	d.writeln('/**')
 	for i, arg in it.args {
+		if it.is_method && i == 0 { continue }
 		arg_type_name := d.gen.typ(arg.typ)
 		is_varg := i == it.args.len - 1 && it.is_variadic
 		if is_varg {

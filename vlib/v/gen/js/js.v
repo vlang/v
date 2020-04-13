@@ -126,7 +126,7 @@ pub fn (g mut JsGen) finish() {
 		constants := g.constants.str()
 		g.constants = strings.new_builder(100)
 		g.constants.writeln('const CONSTANTS = Object.freeze({')
-		g.constants.writeln(constants)
+		g.constants.write(constants)
 		g.constants.writeln('});')
 		g.constants.writeln('')
 	}
@@ -157,6 +157,15 @@ fn (g mut JsGen) to_js_typ(typ string) string {
 		}
 		'bool' {
 			styp = 'boolean'
+		}
+		'voidptr' {
+			styp = 'Object'
+		} 
+		'byteptr' {
+			styp = 'string'
+		}
+		'charptr' {
+			styp = 'string'
 		} else {
 			if typ.starts_with('array_') {
 				styp = g.to_js_typ(typ.replace('array_', '')) + '[]'
@@ -222,6 +231,7 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.Block {
 			g.gen_block(it)
+			g.writeln('')
 		}
 		ast.BranchStmt {
 			g.gen_branch_stmt(it)
@@ -249,15 +259,19 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.ForCStmt {
 			g.gen_for_c_stmt(it)
+			g.writeln('')
 		}
 		ast.ForInStmt {
 			g.gen_for_in_stmt(it)
+			g.writeln('')
 		}
 		ast.ForStmt {
 			g.gen_for_stmt(it)
+			g.writeln('')
 		}
 		ast.GoStmt {
 			g.gen_go_stmt(it)
+			g.writeln('')
 		}
 		ast.GotoLabel {
 			g.writeln('$it.name:')
@@ -496,13 +510,19 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			val := it.right[i]
 			ident_var_info := ident.var_info()
 			mut styp := g.typ(ident_var_info.typ)
-			
-			if typeof(val) == 'v.ast.EnumVal' {
-				// we want the type of the enum value
-				styp = 'number'
+		
+			match val {
+				ast.EnumVal {
+					// we want the type of the enum value not the enum
+					styp = 'number'
+				}
+				ast.StructInit {
+					// no need to print jsdoc for structs
+					styp = ''
+				} else {}
 			}
 			
-			if !g.inside_loop {
+			if !g.inside_loop && styp.len > 0 {
 				g.writeln(g.doc.gen_typ(styp, ident.name))
 			}
 			
@@ -561,14 +581,11 @@ fn (g mut JsGen) gen_const_decl(it ast.ConstDecl) {
 }
 
 fn (g mut JsGen) gen_defer_stmts() {
-	g.writeln('{')
-	g.indent++
-	g.writeln('// defer')
-	g.indent--
+	g.writeln('(function defer() {')
 	for defer_stmt in g.defer_stmts {
 		g.stmts(defer_stmt.stmts)
 	}
-	g.writeln('}')
+	g.writeln('})();')
 }
 
 fn (g mut JsGen) gen_enum_decl(it ast.EnumDecl) {
@@ -649,11 +666,17 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 		}
 		g.write('${name}(')
 	}
-	g.fn_args(it.args, it.is_variadic)
+	mut args := it.args
+	if it.is_method {
+		args = args[1..]
+	}
+	g.fn_args(args, it.is_variadic)
 	g.writeln(') {')
 
-	if is_main {
-		g.writeln('\t_vinit();')
+	if it.is_method {
+		g.indent++
+		g.writeln('const ${it.args[0].name} = this;')
+		g.indent--
 	}
 
 	g.stmts(it.stmts)
@@ -663,6 +686,7 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 	} else {
 		g.writeln('')
 	}
+	g.writeln('')
 	
 	g.fn_decl = 0
 }
@@ -868,12 +892,11 @@ fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.writeln('constructor(values) {')
 	g.indent++
 	for field in node.fields {
-    typ := g.typ(field.typ)
-		g.writeln(g.doc.gen_typ(typ, field.name))
-	  g.writeln('this.$field.name = values.$field.name')
+    	g.writeln('this.$field.name = values.$field.name')
 	}
 	g.indent--
 	g.writeln('}')
+	g.writeln('')
 
 	fns := g.method_fn_decls[node.name]
 	for cfn in fns {
@@ -973,6 +996,7 @@ fn (g mut JsGen) gen_if_expr(node ast.IfExpr) {
 			g.write('}')
 		} */
 		g.writeln('}')
+		g.writeln('')
 	}
 }
 

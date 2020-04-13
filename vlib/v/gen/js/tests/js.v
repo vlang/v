@@ -58,7 +58,7 @@ fn hello(game_on int, dummy ...string) (int, int) {
     return game_on + 2, 221
 }
 
-fn (it done) method() int {
+fn (it Companies) method() int {
 
     ss := Companies {
         google: 2
