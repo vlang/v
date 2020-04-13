@@ -29,6 +29,7 @@ mut:
 	is_assign      bool
 	auto_imports   []string // automatically inserted imports that the user forgot to specify
 	import_pos     int // position of the imports in the resulting string for later autoimports insertion
+	used_imports   []string // to remove unused imports
 }
 
 pub fn fmt(file ast.File, table &table.Table) string {
@@ -109,6 +110,9 @@ fn (f mut Fmt) imports(imports []ast.Import) {
 		f.out_imports.writeln('import (')
 		// f.indent++
 		for imp in imports {
+			if !(imp.mod in f.used_imports) {
+				continue
+			}
 			f.out_imports.write('\t')
 			f.out_imports.writeln(f.imp_stmt_str(imp))
 		}
@@ -257,6 +261,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			} else {
 				f.writeln('\n')
 			}
+			// Mark all function's used type so that they are not removed from imports
+			for arg in it.args {
+				f.mark_types_module_as_used(arg.typ)
+			}
+			f.mark_types_module_as_used(it.return_type)
 		}
 		ast.ForCStmt {
 			f.write('for ')
@@ -815,7 +824,7 @@ fn (f mut Fmt) call_expr(node ast.CallExpr) {
 				// `time.now()` without `time imported` is processed as a method call with `time` being
 				// a `node.left` expression. Import `time` automatically.
 				// TODO fetch all available modules
-				if it.name in ['time', 'os', 'strings', 'math', 'json'] {
+				if it.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
 					if !(it.name in f.auto_imports) {
 						f.auto_imports << it.name
 						f.file.imports << ast.Import{
@@ -837,9 +846,31 @@ fn (f mut Fmt) call_expr(node ast.CallExpr) {
 		f.or_expr(node.or_block)
 	} else {
 		name := short_module(node.name)
+		f.mark_module_as_used(name)
 		f.write('${name}(')
 		f.call_args(node.args)
 		f.write(')')
 		f.or_expr(node.or_block)
 	}
+}
+
+fn (f mut Fmt) mark_types_module_as_used(typ table.Type) {
+	sym := f.table.get_type_symbol(typ)
+	f.mark_module_as_used(sym.name)
+}
+
+// `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
+fn (f mut Fmt) mark_module_as_used(name string) {
+	if !name.contains('.') {
+		return
+	}
+	pos := name.last_index('.') or {
+		0
+	}
+	mod := name[..pos]
+	if mod in f.used_imports {
+		return
+	}
+	f.used_imports << mod
+	// println('marking module $mod as used')
 }
