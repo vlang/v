@@ -1338,7 +1338,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	// g.infix_op = node.op
 	left_sym := g.table.get_type_symbol(node.left_type)
 	right_sym := g.table.get_type_symbol(node.right_type)
-	if node.left_type == table.string_type_idx && node.op != .key_in {
+	if node.left_type == table.string_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
 			.plus {
 				'string_add('
