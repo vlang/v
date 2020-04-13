@@ -6,8 +6,6 @@ module rand
 
 fn C.rand() int
 
-fn C.srand(u32)
-
 pub fn seed(s int) {
 	C.srand(s)
 }
