@@ -3174,19 +3174,7 @@ fn (g mut Gen) go_stmt(node ast.GoStmt) {
 
 // already generated styp, reuse it
 fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
-	if styp in g.str_types {
-		return
-	}
-	// no preferences
-	if styp.starts_with('v__pref__') {
-		return
-	}
-	// no builtin bitfields
-	if styp.starts_with('bitfield__') {
-		return
-	}
-	// no glm stuff
-	if styp.starts_with('glm__') {
+	if sym.has_method('str') || styp in g.str_types {
 		return
 	}
 	g.str_types << styp
