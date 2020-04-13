@@ -29,6 +29,8 @@ fn main() {
 	println(git_result.output)
 	v_hash := util.githash(false)
 	current_hash := util.githash(true)
+	print(v_hash)
+	print(current_hash)
 	if v_hash == current_hash { 
 		return 
 	}
