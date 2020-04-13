@@ -1317,6 +1317,7 @@ fn (p mut Parser) string_expr() ast.Expr {
 
 fn (p mut Parser) array_init() ast.ArrayInit {
 	first_pos := p.tok.position()
+	mut last_pos := token.Position{}
 	p.check(.lsbr)
 	// p.warn('array_init() exp=$p.expected_type')
 	mut array_type := table.void_type
@@ -1346,6 +1347,8 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 			// p.check_comment()
 		}
 		line_nr := p.tok.line_nr
+
+		last_pos = p.tok.position()
 		p.check(.rsbr)
 		// [100]byte
 		if exprs.len == 1 && p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
@@ -1355,17 +1358,17 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	}
 	// !
 	if p.tok.kind == .not {
+		last_pos = p.tok.position()
 		p.next()
 	}
 	if p.tok.kind == .not {
+		last_pos = p.tok.position()
 		p.next()
 	}
-	last_pos := p.tok.position()
-	len := last_pos.pos - first_pos.pos
 	pos := token.Position{
 		line_nr: first_pos.line_nr
 		pos: first_pos.pos
-		len: len
+		len: last_pos.pos - first_pos.pos + last_pos.len
 	}
 	return ast.ArrayInit{
 		is_fixed: is_fixed
