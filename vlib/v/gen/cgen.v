@@ -3196,8 +3196,8 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 
 fn (g mut Gen) gen_str_default(sym table.TypeSymbol, styp string) {
 
-	mut convertor := 'error'
-	mut typename := 'error'
+	mut convertor := ''
+	mut typename := ''
 	if sym.parent_idx in table.integer_type_idxs {
 		convertor = 'int'
 		typename = 'int'
