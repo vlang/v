@@ -3179,14 +3179,14 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 	}
 	g.str_types << styp
 	match sym.info {
-		table.Struct {
-			g.gen_str_for_struct(it, styp)
+		table.Alias {
+			g.gen_str_default(sym, styp)
 		}
 		table.Enum {
 			g.gen_str_for_enum(it, styp)
 		}
-		table.Alias {
-			g.gen_str_default(sym, styp)
+		table.Struct {
+			g.gen_str_for_struct(it, styp)
 		}
 		else {
 			verror('could not generate string method for type \'${styp}\'')
