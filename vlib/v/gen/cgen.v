@@ -3172,15 +3172,15 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 		return
 	}
 	// no preferences
-	if styp.has_prefix('v__pref__') {
+	if styp.starts_with('v__pref__') {
 		return
 	}
 	// no builtin bitfields
-	if styp.has_prefix('bitfield__') {
+	if styp.starts_with('bitfield__') {
 		return
 	}
 	// no glm stuff
-	if styp.has_prefix('glm__') {
+	if styp.starts_with('glm__') {
 		return
 	}
 	g.str_types << styp
