@@ -577,7 +577,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				if branch.comment.text != '' {
 					f.comment(branch.comment)
 				}
-				if i < it.branches.len - 1 {
+				if !branch.is_else {
 					// normal branch
 					for j, expr in branch.exprs {
 						f.expr(expr)

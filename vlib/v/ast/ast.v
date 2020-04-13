@@ -399,6 +399,7 @@ pub:
 	stmts   []Stmt
 	pos     token.Position
 	comment Comment // comment above `xxx {`
+	is_else bool
 }
 
 pub struct CompIf {

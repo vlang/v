@@ -1323,6 +1323,18 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	if cond_type == 0 {
 		c.error('match 0 cond type', node.pos)
 	}
+	// check for exhaustion when match is expr
+	if node.is_sum_type && node.is_expr && !node.branches[node.branches.len - 1].is_else {
+		type_sym := c.table.get_type_symbol(cond_type)
+		info := type_sym.info as table.SumType
+		mut used_sum_types_count := 0
+		for branch in node.branches {
+			used_sum_types_count += branch.exprs.len
+		}
+		if used_sum_types_count < info.variants.len {
+			c.error('match must be exhaustive', node.pos)
+		}
+	}
 	c.expected_type = cond_type
 	mut ret_type := table.void_type
 	for branch in node.branches {
