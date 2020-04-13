@@ -88,7 +88,6 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		out += '\n\t};'
 		out += '\n})();'
 	}
-	out += '\nmain.main();'
 	return out
 }
 
@@ -668,24 +667,38 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 	g.fn_decl = &it
 	has_go := fn_has_go(it)
 	is_main := it.name == 'main'
-	mut name := it.name
-	c := name[0]
-	if c in [`+`, `-`, `*`, `/`] {
-		name = util.replace_op(name)
-	}
+	if is_main {
+		// there is no concept of main in JS but we do have iife
+		g.writeln('/* program entry point */')
+		g.write('(')
+		if has_go {
+			g.write('async ')
+		}
+		g.write('function(')
+	} else {
+		mut name := it.name
+		c := name[0]
+		if c in [`+`, `-`, `*`, `/`] {
+			name = util.replace_op(name)
+		}
 
-	type_name := g.typ(it.return_type)
+		type_name := g.typ(it.return_type)
 
-	// generate jsdoc for the function
-	g.writeln(g.doc.gen_fn(it))
+		// generate jsdoc for the function
+		g.writeln(g.doc.gen_fn(it))
 
-	if has_go {
-		g.write('async ')
+		if has_go {
+			g.write('async ')
+		}
+		if !it.is_method {
+			g.write('function ')
+		}
+		g.write('${name}(')
+
+		if it.is_pub {
+			g.push_pub_var(name)
+		}
 	}
-	if !it.is_method {
-		g.write('function ')
-	}
-	g.write('${name}(')
 
 	mut args := it.args
 	if it.is_method {
@@ -701,11 +714,11 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 	}
 
 	g.stmts(it.stmts)
-	g.writeln('}')
-
-	if it.is_pub || is_main {
-		g.push_pub_var(name)
+	g.write('}')
+	if is_main {
+		g.write(')();')
 	}
+	g.writeln('')
 	
 	g.fn_decl = 0
 }
