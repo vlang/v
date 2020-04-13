@@ -80,6 +80,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		// private scope
 		out += g.namespaces[key].str()
 		// public scope
+		out += '\n\t/* module exports */'
 		out += '\n\treturn {'
 		for pub_var in g.namespaces_pub[key] {
 			out += '\n\t\t$pub_var,'
@@ -87,6 +88,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		out += '\n\t};'
 		out += '\n})();'
 	}
+	out += '\nmain.main();'
 	return out
 }
 
@@ -701,7 +703,7 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 	g.stmts(it.stmts)
 	g.writeln('}')
 
-	if it.is_pub {
+	if it.is_pub || is_main {
 		g.push_pub_var(name)
 	}
 	
