@@ -1,0 +1,13 @@
+type A = int | string | f64
+
+fn main() {
+	x := A('test')
+	res := match x {
+		int {
+			'int'
+		}
+		string {
+			'string'
+		}
+	}
+}

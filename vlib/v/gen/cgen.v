@@ -1514,8 +1514,8 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 	// g.writeln(';') // $it.blocks.len')
 	// mut sum_type_str = ''
 	for j, branch in node.branches {
-		if j == node.branches.len - 1 {
-			// last block is an `else{}`
+		is_last := j == node.branches.len - 1
+		if branch.is_else || node.is_expr && is_last {
 			if node.branches.len > 1 {
 				if is_expr {
 					// TODO too many branches. maybe separate ?: matches
@@ -1588,7 +1588,7 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 		}
 		g.stmts(branch.stmts)
 		if !g.inside_ternary && node.branches.len > 1 {
-			g.writeln('}')
+			g.write('}')
 		}
 	}
 	g.inside_ternary = was_inside_ternary
