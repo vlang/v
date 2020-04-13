@@ -3168,10 +3168,7 @@ fn (g mut Gen) go_stmt(node ast.GoStmt) {
 
 // already generated styp, reuse it
 fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
-	if styp in g.str_types {
-		return
-	}
-	if styp in ['v__pref__OS', 'bitfield__BitField', 'glm__Mat4'] {
+	if styp in g.str_types || 'v__pref' in styp {
 		return
 	}
 	g.str_types << styp
@@ -3183,7 +3180,9 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 			g.gen_str_for_enum(it, styp)
 		}
 		table.Alias {
-			g.gen_str_default(sym, styp)
+			if !(sym.parent_idx in [table.array_type_idx, table.map_type_idx]) {
+				g.gen_str_default(sym, styp)
+			}
 		} else {}
 	}
 }
