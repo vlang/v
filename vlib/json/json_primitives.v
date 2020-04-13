@@ -13,6 +13,14 @@ struct C.cJSON {
 	name		byteptr
 }
 
+pub fn decode() voidptr {
+
+}
+
+pub fn encode() voidptr {
+
+}
+
 fn jsdecode_int(root &C.cJSON) int {
 	if isnil(root) {
 		return 0

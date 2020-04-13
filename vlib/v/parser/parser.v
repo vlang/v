@@ -482,7 +482,16 @@ fn (p mut Parser) attribute() ast.Attr {
 	if p.tok.kind == .key_if {
 		p.next()
 	}
-	name := p.check_name()
+	mut name := p.check_name()
+	if p.tok.kind == .colon {
+		p.next()
+		if p.tok.kind == .name {
+			name += p.check_name()
+		} else if p.tok.kind == .string {
+			name += p.tok.lit
+			p.next()
+		}
+	}
 	p.check(.rsbr)
 	p.attr = name
 	return ast.Attr{
@@ -953,17 +962,18 @@ fn (p mut Parser) filter() {
 
 fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
+	mut name_pos := p.tok.position()
 	field_name := p.check_name()
 	is_filter := field_name in ['filter', 'map']
 	if is_filter {
 		p.open_scope()
+		name_pos = p.tok.position()
 		p.filter()
 		// wrong tok position when using defer
 		// defer {
 		// p.close_scope()
 		// }
 	}
-	pos := p.tok.position()
 	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
@@ -986,6 +996,12 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_stmts = p.parse_block_no_scope()
 			p.close_scope()
 		}
+		end_pos := p.tok.position()
+		pos := token.Position{
+			line_nr: name_pos.line_nr
+			pos: name_pos.pos
+			len: end_pos.pos - name_pos.pos
+		}
 		mcall_expr := ast.CallExpr{
 			left: left
 			name: field_name
@@ -1007,7 +1023,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	sel_expr := ast.SelectorExpr{
 		expr: left
 		field: field_name
-		pos: p.tok.position()
+		pos: name_pos
 	}
 	mut node := ast.Expr{}
 	node = sel_expr
@@ -1570,6 +1586,10 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 				}
 				has_default_expr = true
 			}
+			mut attr := ast.Attr{}
+			if p.tok.kind == .lsbr {
+				attr = p.attribute()
+			}
 			if p.tok.kind == .comment {
 				comment = p.comment()
 			}
@@ -1580,6 +1600,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 				comment: comment
 				default_expr: default_expr
 				has_default_expr: has_default_expr
+				attr: attr.name
 			}
 			fields << table.Field{
 				name: field_name

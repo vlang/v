@@ -1,3 +1,6 @@
 import math as m
 import os
 import math.complex as c
+
+fn main() {
+}

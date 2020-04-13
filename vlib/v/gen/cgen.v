@@ -338,6 +338,13 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
+		ast.InterfaceDecl {
+			g.writeln('//interface')
+			g.writeln('struct $it.name {')
+			g.writeln('\tvoid* _object;')
+			g.writeln('\tint _interface_idx;')
+			g.writeln('};')
+		}
 		ast.AssertStmt {
 			g.gen_assert_stmt(it)
 		}
@@ -621,9 +628,11 @@ fn (g mut Gen) expr_with_cast(expr ast.Expr, got_type, exp_type table.Type) {
 
 fn (g mut Gen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('// assert')
-	g.write('if( ')
+	g.inside_ternary = true
+	g.write('if (')
 	g.expr(a.expr)
-	g.write(' )')
+	g.write(')')
+	g.inside_ternary = false
 	s_assertion := a.expr.str().replace('"', "\'")
 	mut mod_path := g.file.path
 	$if windows {
@@ -1127,7 +1136,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				}
 				g.write('})')
 			} else {
-				g.write('new_map(1, sizeof($value_typ_str))')
+				g.write('new_map_1(sizeof($value_typ_str))')
 			}
 		}
 		ast.None {
@@ -1329,7 +1338,7 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	// g.infix_op = node.op
 	left_sym := g.table.get_type_symbol(node.left_type)
 	right_sym := g.table.get_type_symbol(node.right_type)
-	if node.left_type == table.string_type_idx && node.op != .key_in {
+	if node.left_type == table.string_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
 			.plus {
 				'string_add('
@@ -1488,7 +1497,8 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
-	is_expr := node.is_expr && node.return_type != table.void_type
+	was_inside_ternary := g.inside_ternary
+	is_expr := (node.is_expr && node.return_type != table.void_type) || was_inside_ternary
 	if is_expr {
 		g.inside_ternary = true
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
@@ -1506,11 +1516,13 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 	for j, branch in node.branches {
 		if j == node.branches.len - 1 {
 			// last block is an `else{}`
-			if is_expr {
-				// TODO too many branches. maybe separate ?: matches
-				g.write(' : ')
-			} else {
-				g.writeln('else {')
+			if node.branches.len > 1 {
+				if is_expr {
+					// TODO too many branches. maybe separate ?: matches
+					g.write(' : ')
+				} else {
+					g.writeln('else {')
+				}
 			}
 		} else {
 			if j > 0 {
@@ -1575,11 +1587,11 @@ fn (g mut Gen) match_expr(node ast.MatchExpr) {
 			}
 		}
 		g.stmts(branch.stmts)
-		if !g.inside_ternary {
+		if !g.inside_ternary && node.branches.len > 1 {
 			g.writeln('}')
 		}
 	}
-	g.inside_ternary = false
+	g.inside_ternary = was_inside_ternary
 }
 
 fn (g mut Gen) ident(node ast.Ident) {
@@ -2339,6 +2351,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 					field_deps << dep
 				}
 			}
+			// table.Interface {}
 			else {}
 		}
 		// add type and dependant types to graph
@@ -2363,7 +2376,7 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write('_STR("')
 	// Build the string with %
 	for i, val in node.vals {
-		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
+		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
 		g.write(escaped_val)
 		if i >= node.exprs.len {
 			continue
@@ -2902,7 +2915,7 @@ fn (g Gen) type_default(typ table.Type) string {
 	}
 	if sym.kind == .map {
 		value_type_str := g.typ(sym.map_info().value_type)
-		return 'new_map(1, sizeof($value_type_str))'
+		return 'new_map_1(sizeof($value_type_str))'
 	}
 	// Always set pointers to 0
 	if table.type_is_ptr(typ) {
@@ -3207,7 +3220,8 @@ fn (g mut Gen) gen_str_for_struct(info table.Struct, styp string) {
 			sym := g.table.get_type_symbol(field.typ)
 			if sym.kind == .struct_ {
 				field_styp := g.typ(field.typ)
-				g.definitions.write('indents.len, indents.str, ${field_styp}_str(it.$field.name, indent_count + 1).len, ${field_styp}_str(it.$field.name, indent_count + 1).str')
+				second_str_param := if sym.has_method('str') { '' } else { ', indent_count + 1' }
+				g.definitions.write('indents.len, indents.str, ${field_styp}_str(it.$field.name$second_str_param).len, ${field_styp}_str(it.$field.name$second_str_param).str')
 			} else {
 				g.definitions.write('indents.len, indents.str, it.$field.name')
 				if field.typ == table.string_type {
@@ -3215,9 +3229,9 @@ fn (g mut Gen) gen_str_for_struct(info table.Struct, styp string) {
 				} else if field.typ == table.bool_type {
 					g.definitions.write(' ? 4 : 5, it.${field.name} ? "true" : "false"')
 				}
-				if i < info.fields.len - 1 {
-					g.definitions.write(', ')
-				}
+			}
+			if i < info.fields.len - 1 {
+				g.definitions.write(', ')
 			}
 		}
 	}

@@ -1,0 +1,8 @@
+module checker
+
+struct Test {}
+
+fn main() {
+	t := Test{}
+	println(t.sdd)
+}
