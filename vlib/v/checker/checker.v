@@ -890,9 +890,6 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			// c.warn('duplicate method `$it.name`', it.pos)
 			// }
 			// }
-			if f := c.table.find_fn(it.name) {
-				c.warn('redefinition of `$it.name`', it.pos)
-			}
 			c.expected_type = table.void_type
 			c.fn_return_type = it.return_type
 			c.stmts(it.stmts)
