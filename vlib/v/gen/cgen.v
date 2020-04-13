@@ -324,11 +324,17 @@ pub fn (g mut Gen) reset_tmp_count() {
 
 fn (g mut Gen) stmts(stmts []ast.Stmt) {
 	g.indent++
+	if g.inside_ternary {
+		g.write(' ( ')
+	}
 	for i, stmt in stmts {
 		g.stmt(stmt)
 		if g.inside_ternary && i < stmts.len - 1 {
 			g.write(', ')
 		}
+	}
+	if g.inside_ternary {
+		g.write(' ) ')
 	}
 	g.indent--
 }
