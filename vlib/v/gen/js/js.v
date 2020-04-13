@@ -207,11 +207,11 @@ pub fn (g mut JsGen) gen_indent() {
 	g.empty_line = false
 }
 
-pub fn (g mut JsGen) indent_up() {
+pub fn (g mut JsGen) inc_indent() {
 	g.indents[g.namespace] = g.indents[g.namespace] + 1
 }
 
-pub fn (g mut JsGen) indent_down() {
+pub fn (g mut JsGen) dec_indent() {
 	g.indents[g.namespace] = g.indents[g.namespace] - 1
 }
 
@@ -232,11 +232,11 @@ pub fn (g mut JsGen) new_tmp_var() string {
 }
 
 fn (g mut JsGen) stmts(stmts []ast.Stmt) {
-	g.indent_up()
+	g.inc_indent()
 	for stmt in stmts {
 		g.stmt(stmt)
 	}
-	g.indent_down()
+	g.dec_indent()
 }
 
 fn (g mut JsGen) stmt(node ast.Stmt) {
@@ -616,7 +616,7 @@ fn (g mut JsGen) gen_defer_stmts() {
 
 fn (g mut JsGen) gen_enum_decl(it ast.EnumDecl) {
 	g.writeln('const $it.name = Object.freeze({')
-	g.indent_up()
+	g.inc_indent()
 	for i, field in it.fields {
 		g.write('$field.name: ')
 		if field.has_expr {
@@ -630,7 +630,7 @@ fn (g mut JsGen) gen_enum_decl(it ast.EnumDecl) {
 		}
 		g.writeln(',')
 	}
-	g.indent_down()
+	g.dec_indent()
 	g.writeln('});')
 	if it.is_pub {
 		g.push_pub_var(it.name)
@@ -708,9 +708,9 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 	g.writeln(') {')
 
 	if it.is_method {
-		g.indent_up()
+		g.inc_indent()
 		g.writeln('const ${it.args[0].name} = this;')
-		g.indent_down()
+		g.dec_indent()
 	}
 
 	g.stmts(it.stmts)
@@ -835,7 +835,7 @@ fn (g mut JsGen) gen_go_stmt(node ast.GoStmt) {
 				name = receiver_sym.name + '.' + name
 			}
 			g.writeln('await new Promise(function(resolve){')
-			g.indent_up()
+			g.inc_indent()
 			g.write('${name}(')
 			for i, arg in it.args {
 				g.expr(arg.expr)
@@ -845,7 +845,7 @@ fn (g mut JsGen) gen_go_stmt(node ast.GoStmt) {
 			}
 			g.writeln(');')
 			g.writeln('resolve();')
-			g.indent_down()
+			g.dec_indent()
 			g.writeln('});')
 		}
 		else { }
@@ -859,7 +859,7 @@ fn (g mut JsGen) gen_map_init_expr(it ast.MapInit) {
 	value_typ_str := value_typ_sym.name.replace('.', '__')
 	if it.vals.len > 0 {
 		g.writeln('new Map([')
-		g.indent_up()
+		g.inc_indent()
 		for i, key in it.keys {
 			val := it.vals[i]
 			g.write('[')
@@ -872,7 +872,7 @@ fn (g mut JsGen) gen_map_init_expr(it ast.MapInit) {
 			}
 			g.writeln('')
 		}
-		g.indent_down()
+		g.dec_indent()
 		g.write('])')
 	} else {
 		g.write('new Map()')
@@ -919,14 +919,14 @@ fn (g mut JsGen) enum_expr(node ast.Expr) {
 
 fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
   	g.writeln('class $node.name {')
-	g.indent_up()
+	g.inc_indent()
 	g.writeln(g.doc.gen_ctor(node.fields))
 	g.writeln('constructor(values) {')
-	g.indent_up()
+	g.inc_indent()
 	for field in node.fields {
     	g.writeln('this.$field.name = values.$field.name')
 	}
-	g.indent_down()
+	g.dec_indent()
 	g.writeln('}')
 	g.writeln('')
 
@@ -944,7 +944,7 @@ fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
 
 	}
 
-	g.indent_down()
+	g.dec_indent()
 	g.writeln('}')
 
 	if node.is_pub {
@@ -955,7 +955,7 @@ fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
 fn (g mut JsGen) gen_struct_init(it ast.StructInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
 	g.writeln('new ${type_sym.name}({')
-	g.indent_up()
+	g.inc_indent()
 	for i, field in it.fields {
 		g.write('$field: ')
 		g.expr(it.exprs[i])
@@ -964,7 +964,7 @@ fn (g mut JsGen) gen_struct_init(it ast.StructInit) {
 		}
 		g.writeln('')
 	}
-	g.indent_down()
+	g.dec_indent()
 	g.write('})')
 }
 
