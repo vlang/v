@@ -1,0 +1,13 @@
+enum Color {
+	red
+	green
+	blue
+}
+
+fn non_exhaustive_match() {
+	match Color.red {
+		.blue, .green {
+			println('My favorite color !')
+		}
+	}
+}

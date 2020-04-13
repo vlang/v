@@ -1,0 +1,7 @@
+vlib/v/checker/tests/inout/non_exhaustive_match.v:8:8: error: match must be exhaustive
+    6|
+    7| fn non_exhaustive_match() {
+    8|     match Color.red {
+                 ~~~~~
+    9|         .blue, .green {
+   10|             println('My favorite color !')
