@@ -3,6 +3,7 @@ module main
 import (
 	os
 	v.pref
+	v.util
 )
 
 fn main() {
@@ -26,8 +27,10 @@ fn main() {
 	}
 
 	println(git_result.output)
-	if git_result.output.contains("master is up to date") {
-		return
+	v_hash := util.githash(false)
+	current_hash := util.githash(true)
+	if v_hash == current_hash { 
+		return 
 	}
 
 	$if windows {
