@@ -3034,16 +3034,55 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 	}
 	g.str_types << styp
 	match sym.info {
-		table.Struct {
-			g.gen_str_for_struct(it, styp)
+		table.Alias {
+			g.gen_str_default(sym, styp)
 		}
 		table.Enum {
 			g.gen_str_for_enum(it, styp)
 		}
+		table.Struct {
+			g.gen_str_for_struct(it, styp)
+		}
 		else {
-			println('cannot generate str() for $sym.name')
+			verror('could not generate string method for type \'${styp}\'')
 		}
 	}
+}
+
+fn (g mut Gen) gen_str_default(sym table.TypeSymbol, styp string) {
+
+	mut convertor := ''
+	mut typename := ''
+	if sym.parent_idx in table.integer_type_idxs {
+		convertor = 'int'
+		typename = 'int'
+	}
+	else if sym.parent_idx == table.f32_type_idx {
+		convertor = 'float'
+		typename = 'f32'
+	}
+	else if sym.parent_idx == table.f64_type_idx {
+		convertor = 'double'
+		typename = 'f64'
+	}
+	else if sym.parent_idx == table.bool_type_idx {
+		convertor = 'bool'
+		typename = 'bool'
+	}
+	else {
+		verror('could not generate string method for type \'${styp}\'')
+	}
+
+	g.definitions.writeln('string ${styp}_str($styp it) {')
+	if convertor == 'bool' {
+		g.definitions.writeln('\tstring tmp1 = string_add(tos3("${styp}("), (${convertor})it ? tos3("true") : tos3("false"));')
+	} else {
+		g.definitions.writeln('\tstring tmp1 = string_add(tos3("${styp}("), tos3(${typename}_str((${convertor})it).str));')
+	}
+	g.definitions.writeln('\tstring tmp2 = string_add(tmp1, tos3(")"));')
+	g.definitions.writeln('\tstring_free(tmp1);')
+	g.definitions.writeln('\treturn tmp2;')
+	g.definitions.writeln('}')
 }
 
 fn (g mut Gen) gen_str_for_enum(info table.Enum, styp string) {
