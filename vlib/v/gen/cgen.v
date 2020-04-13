@@ -3186,7 +3186,7 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 			g.gen_str_for_enum(it, styp)
 		}
 		table.Alias {
-			if !(sym.parent_idx in [table.array_type_idx, table.map_type_idx]) {
+			if sym.parent_idx !in [table.array_type_idx, table.map_type_idx] {
 				g.gen_str_default(sym, styp)
 			} else {
 				verror('could not generate string method for type \'${styp}\'')
