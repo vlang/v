@@ -32,7 +32,7 @@ const (
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/option_test.v',
 		'vlib/v/tests/pointers_test.v',
-		'vlib/v/tests/repl/repl_test.v',
+		'vlib/v/tests/repl/repl_test.v',					   
 		'vlib/v/tests/string_interpolation_array_of_structs_test.v',
 		'vlib/v/tests/string_interpolation_struct_test.v',
 		'vlib/v/tests/string_interpolation_variadic_test.v',
