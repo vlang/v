@@ -529,7 +529,11 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.write('_')
 			} else {
 				name := short_module(it.name)
+				//f.write('<$it.name => $name>')
 				f.write(name)
+				if name.contains('.') {
+					f.mark_module_as_used(name)
+				}
 			}
 		}
 		ast.InfixExpr {
@@ -669,6 +673,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.StructInit {
 			type_sym := f.table.get_type_symbol(it.typ)
+			//f.write('<old name: $type_sym.name>')
 			mut name := short_module(type_sym.name).replace(f.cur_mod + '.', '')			// TODO f.type_to_str?
 			if name == 'void' {
 				name = ''

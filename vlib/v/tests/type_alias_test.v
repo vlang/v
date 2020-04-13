@@ -5,6 +5,21 @@ type Myf64 f64
 fn test_type_alias() {
 	i := Myint(10)
 	assert i + 100 == 110
-	f := Myf64(10.4)
-	assert f + 0.5 == 10.9
+	f := Myf32(7.4)
+	assert f + f32(0.6) == f32(8.0)
+	g := Myf64(10.4)
+	assert g + 0.5 == 10.9
+}
+
+type Myint_2 = int
+type Myf32_2 = f32
+type Myf64_2 = f64
+
+fn test_type_alias_v2() {
+	i := Myint_2(10)
+	assert i + 100 == 110
+	f := Myf32_2(7.4)
+	assert f + f32(0.6) == f32(8.0)
+	g := Myf64_2(10.4)
+	assert g + 0.5 == 10.9
 }
