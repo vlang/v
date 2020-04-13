@@ -60,6 +60,7 @@ mut:
 	str_types            []string // types that need automatic str() generation
 	threaded_fns         []string // for generating unique wrapper types and fns for `go xxx()`
 	array_fn_definitions []string // array equality functions that have been defined
+	is_json_fn           bool // inside json.encode()
 }
 
 const (
@@ -1935,49 +1936,6 @@ fn (g mut Gen) assoc(node ast.Assoc) {
 	}
 }
 
-fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
-	is_variadic := expected_types.len > 0 && table.type_is(expected_types[expected_types.len -
-		1], .variadic)
-	mut arg_no := 0
-	for arg in args {
-		if is_variadic && arg_no == expected_types.len - 1 {
-			break
-		}
-		// some c fn definitions dont have args (cfns.v) or are not updated in checker
-		// when these are fixed we wont need this check
-		if arg_no < expected_types.len {
-			g.ref_or_deref_arg(arg, expected_types[arg_no])
-		} else {
-			g.expr(arg.expr)
-		}
-		if arg_no < args.len - 1 || is_variadic {
-			g.write(', ')
-		}
-		arg_no++
-	}
-	if is_variadic {
-		varg_type := expected_types[expected_types.len - 1]
-		struct_name := 'varg_' + g.typ(varg_type).replace('*', '_ptr')
-		variadic_count := args.len - arg_no
-		varg_type_str := int(varg_type).str()
-		if variadic_count > g.variadic_args[varg_type_str] {
-			g.variadic_args[varg_type_str] = variadic_count
-		}
-		g.write('($struct_name){.len=$variadic_count,.args={')
-		if variadic_count > 0 {
-			for j in arg_no .. args.len {
-				g.ref_or_deref_arg(args[j], varg_type)
-				if j < args.len - 1 {
-					g.write(', ')
-				}
-			}
-		} else {
-			g.write('0')
-		}
-		g.write('}}')
-	}
-}
-
 fn (g mut Gen) generate_array_equality_fn(ptr_typ string, styp table.Type, sym &table.TypeSymbol) {
 	g.array_fn_definitions << ptr_typ
 	g.definitions.writeln('bool ${ptr_typ}_arr_eq(array_${ptr_typ} a, array_${ptr_typ} b) {')
@@ -1997,32 +1955,6 @@ fn (g mut Gen) generate_array_equality_fn(ptr_typ string, styp table.Type, sym &
 	g.definitions.writeln('\t}')
 	g.definitions.writeln('\treturn true;')
 	g.definitions.writeln('}')
-}
-
-[inline]
-fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
-	arg_is_ptr := table.type_is_ptr(expected_type) || table.type_idx(expected_type) in table.pointer_type_idxs
-	expr_is_ptr := table.type_is_ptr(arg.typ) || table.type_idx(arg.typ) in table.pointer_type_idxs
-	if arg.is_mut && !arg_is_ptr {
-		g.write('&/*mut*/')
-	} else if arg_is_ptr && !expr_is_ptr {
-		if arg.is_mut {
-			sym := g.table.get_type_symbol(expected_type)
-			if sym.kind == .array {
-				// Special case for mutable arrays. We can't `&` function
-				// results,	have to use `(array[]){ expr }[0]` hack.
-				g.write('&/*111*/(array[]){')
-				g.expr(arg.expr)
-				g.write('}[0]')
-				return
-			}
-		}
-		g.write('&/*qq*/')
-	} else if !arg_is_ptr && expr_is_ptr {
-		// Dereference a pointer if a value is required
-		g.write('*/*d*/')
-	}
-	g.expr_with_cast(arg.expr, arg.typ, expected_type)
 }
 
 fn verror(s string) {
@@ -2375,182 +2307,6 @@ fn (g mut Gen) insert_before(s string) {
 	g.out.go_back(cur_line.len)
 	g.writeln(s)
 	g.write(cur_line)
-}
-
-fn (g mut Gen) call_expr(node ast.CallExpr) {
-	gen_or := !g.is_assign_rhs && node.or_block.stmts.len > 0
-	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
-	if gen_or {
-		styp := g.typ(node.return_type)
-		g.write('$styp $tmp_opt = ')
-	}
-	if node.is_method {
-		g.method_call(node)
-	} else {
-		g.fn_call(node)
-	}
-	if gen_or {
-		g.or_block(tmp_opt, node.or_block.stmts, node.return_type)
-	}
-}
-
-fn (g mut Gen) method_call(node ast.CallExpr) {
-	// TODO: there are still due to unchecked exprs (opt/some fn arg)
-	if node.left_type == 0 {
-		verror('method receiver type is 0, this means there are some uchecked exprs')
-	}
-	typ_sym := g.table.get_type_symbol(node.receiver_type)
-	// rec_sym := g.table.get_type_symbol(node.receiver_type)
-	mut receiver_name := typ_sym.name
-	if typ_sym.kind == .array && node.name == 'filter' {
-		g.gen_filter(node)
-		return
-	}
-	// TODO performance, detect `array` method differently
-	if typ_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free', 'push_many',
-		'trim', 'first', 'last', 'clone', 'reverse', 'slice'] {
-		// && rec_sym.name == 'array' {
-		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
-		// `array_byte_clone` => `array_clone`
-		receiver_name = 'array'
-		if node.name in ['last', 'first'] {
-			return_type_str := g.typ(node.return_type)
-			g.write('*($return_type_str*)')
-		}
-	}
-	name := '${receiver_name}_$node.name'.replace('.', '__')
-	// if node.receiver_type != 0 {
-	// g.write('/*${g.typ(node.receiver_type)}*/')
-	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
-	// }
-	g.write('${name}(')
-	if table.type_is_ptr(node.receiver_type) && !table.type_is_ptr(node.left_type) {
-		// The receiver is a reference, but the caller provided a value
-		// Add `&` automatically.
-		// TODO same logic in call_args()
-		g.write('&')
-	} else if !table.type_is_ptr(node.receiver_type) && table.type_is_ptr(node.left_type) {
-		g.write('/*rec*/*')
-	}
-	g.expr(node.left)
-	is_variadic := node.expected_arg_types.len > 0 && table.type_is(node.expected_arg_types[node.expected_arg_types.len -
-		1], .variadic)
-	if node.args.len > 0 || is_variadic {
-		g.write(', ')
-	}
-	// /////////
-	/*
-	if name.contains('subkeys') {
-	println('call_args $name $node.arg_types.len')
-	for t in node.arg_types {
-		sym := g.table.get_type_symbol(t)
-		print('$sym.name ')
-	}
-	println('')
-}
-*/
-	// ///////
-	g.call_args(node.args, node.expected_arg_types)
-	g.write(')')
-	// if node.or_block.stmts.len > 0 {
-	// g.or_block(node.or_block.stmts, node.return_type)
-	// }
-}
-
-fn (g mut Gen) fn_call(node ast.CallExpr) {
-	mut name := node.name
-	is_print := name == 'println' || name == 'print'
-	print_method := if name == 'println' { 'println' } else { 'print' }
-	if node.is_c {
-		// Skip "C."
-		g.is_c_call = true
-		name = name[2..].replace('.', '__')
-	} else {
-		name = c_name(name)
-	}
-	// Generate tmp vars for values that have to be freed.
-	/*
-	mut tmps := []string
-	for arg in node.args {
-		if arg.typ == table.string_type_idx || is_print {
-			tmp := g.new_tmp_var()
-			tmps << tmp
-			g.write('string $tmp = ')
-			g.expr(arg.expr)
-			g.writeln('; //memory')
-		}
-	}
-*/
-	if is_print && node.args[0].typ != table.string_type {
-		typ := node.args[0].typ
-		mut styp := g.typ(typ)
-		sym := g.table.get_type_symbol(typ)
-		if table.type_is_ptr(typ) {
-			styp = styp.replace('*', '')
-		}
-		g.gen_str_for_type(sym, styp)
-		if g.autofree && !table.type_is(typ, .optional) {
-			// Create a temporary variable so that the value can be freed
-			tmp := g.new_tmp_var()
-			// tmps << tmp
-			g.write('string $tmp = ${styp}_str(')
-			g.expr(node.args[0].expr)
-			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
-		} else {
-			expr := node.args[0].expr
-			is_var := match expr {
-				ast.SelectorExpr {
-					true
-				}
-				ast.Ident {
-					true
-				}
-				else {
-					false
-				}
-			}
-			if table.type_is_ptr(typ) && sym.kind != .struct_ {
-				// ptr_str() for pointers
-				styp = 'ptr'
-			}
-			if sym.kind == .enum_ {
-				if is_var {
-					g.write('${print_method}(${styp}_str(')
-				} else {
-					// when no var, print string directly
-					g.write('${print_method}(tos3("')
-				}
-				if table.type_is_ptr(typ) {
-					// dereference
-					g.write('*')
-				}
-				g.enum_expr(expr)
-				if !is_var {
-					// end of string
-					g.write('"')
-				}
-			} else {
-				g.write('${print_method}(${styp}_str(')
-				if table.type_is_ptr(typ) && sym.kind == .struct_ {
-					// dereference
-					g.write('*')
-				}
-				g.expr(expr)
-				if sym.kind == .struct_ && styp != 'ptr' && !sym.has_method('str') {
-					g.write(', 0')					// trailing 0 is initial struct indent count
-				}
-			}
-			g.write('))')
-		}
-	} else {
-		g.write('${name}(')
-		g.call_args(node.args, node.expected_arg_types)
-		g.write(')')
-	}
-	// if node.or_block.stmts.len > 0 {
-	// g.or_block(node.or_block.stmts, node.return_type)
-	// }
-	g.is_c_call = false
 }
 
 // If user is accessing the return value eg. in assigment, pass the variable name.
@@ -3044,35 +2800,29 @@ fn (g mut Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
 			g.gen_str_for_struct(it, styp)
 		}
 		else {
-			verror('could not generate string method for type \'${styp}\'')
+			verror("could not generate string method for type \'${styp}\'")
 		}
 	}
 }
 
 fn (g mut Gen) gen_str_default(sym table.TypeSymbol, styp string) {
-
 	mut convertor := ''
 	mut typename := ''
 	if sym.parent_idx in table.integer_type_idxs {
 		convertor = 'int'
 		typename = 'int'
-	}
-	else if sym.parent_idx == table.f32_type_idx {
+	} else if sym.parent_idx == table.f32_type_idx {
 		convertor = 'float'
 		typename = 'f32'
-	}
-	else if sym.parent_idx == table.f64_type_idx {
+	} else if sym.parent_idx == table.f64_type_idx {
 		convertor = 'double'
 		typename = 'f64'
-	}
-	else if sym.parent_idx == table.bool_type_idx {
+	} else if sym.parent_idx == table.bool_type_idx {
 		convertor = 'bool'
 		typename = 'bool'
+	} else {
+		verror("could not generate string method for type \'${styp}\'")
 	}
-	else {
-		verror('could not generate string method for type \'${styp}\'')
-	}
-
 	g.definitions.writeln('string ${styp}_str($styp it) {')
 	if convertor == 'bool' {
 		g.definitions.writeln('\tstring tmp1 = string_add(tos3("${styp}("), (${convertor})it ? tos3("true") : tos3("false"));')

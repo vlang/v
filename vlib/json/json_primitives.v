@@ -13,6 +13,7 @@ struct C.cJSON {
 }
 
 pub fn decode() voidptr {
+	// compiler implementation
 	return 0
 }
 
@@ -129,51 +130,51 @@ fn jsdecode_bool(root &C.cJSON) bool {
 }
 
 // ///////////////////
-fn jsencode_int(val int) &C.cJSON {
+fn encode_int(val int) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-fn jsencode_i8(val i8) &C.cJSON {
+fn encode_i8(val i8) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-fn jsencode_i16(val i16) &C.cJSON {
+fn encode_i16(val i16) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-fn jsencode_i64(val i64) &C.cJSON {
+fn encode_i64(val i64) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-fn jsencode_byte(val byte) &C.cJSON {
+fn encode_byte(val byte) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-fn jsencode_u16(val u16) &C.cJSON {
+fn encode_u16(val u16) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-fn jsencode_u32(val u32) &C.cJSON {
+fn encode_u32(val u32) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-fn jsencode_u64(val u64) &C.cJSON {
+fn encode_u64(val u64) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-fn jsencode_f32(val f32) &C.cJSON {
+fn encode_f32(val f32) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-fn jsencode_f64(val f64) &C.cJSON {
+fn encode_f64(val f64) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-fn jsencode_bool(val bool) &C.cJSON {
+fn encode_bool(val bool) &C.cJSON {
 	return C.cJSON_CreateBool(val)
 }
 
-fn jsencode_string(val string) &C.cJSON {
+fn encode_string(val string) &C.cJSON {
 	return C.cJSON_CreateString(val.str)
 }
 // ///////////////////////

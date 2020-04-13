@@ -76,6 +76,13 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 	return none
 }
 
+pub fn (t &Table) known_fn(name string) bool {
+	t.find_fn(name) or {
+		return false
+	}
+	return true
+}
+
 pub fn (t mut Table) register_fn(new_fn Fn) {
 	// println('reg fn $new_fn.name nr_args=$new_fn.args.len')
 	t.fns[new_fn.name] = new_fn
@@ -134,7 +141,7 @@ pub fn (t &Table) type_has_method(s &TypeSymbol, name string) bool {
 pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 	// println('type_find_method($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	mut ts := s
-	for  {
+	for {
 		if method := ts.find_method(name) {
 			return method
 		}
@@ -158,7 +165,7 @@ pub fn (t &Table) struct_has_field(s &TypeSymbol, name string) bool {
 pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 	// println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	mut ts := s
-	for  {
+	for {
 		if field := ts.find_field(name) {
 			return field
 		}
