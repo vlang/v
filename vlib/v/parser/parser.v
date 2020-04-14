@@ -38,6 +38,7 @@ mut:
 	is_amp            bool
 	returns           bool
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
+	is_stmt_ident     bool // true while the beginning of a statement is an ident/selector
 }
 
 // for tests
@@ -355,6 +356,7 @@ pub fn (p mut Parser) comment() ast.Comment {
 }
 
 pub fn (p mut Parser) stmt() ast.Stmt {
+	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
 			stmts := p.parse_block()
@@ -727,6 +729,8 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 	// println('\n\nparser.expr()')
 	mut typ := table.void_type
 	mut node := ast.Expr{}
+	is_stmt_ident := p.is_stmt_ident
+	p.is_stmt_ident = false
 	// defer {
 	// if p.tok.kind == .comment {
 	// p.comment()
@@ -736,6 +740,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 	match p.tok.kind {
 		.name {
 			node = p.name_expr()
+			p.is_stmt_ident = is_stmt_ident
 		}
 		.string {
 			node = p.string_expr()
@@ -844,6 +849,7 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 			node = p.assign_expr(node)
 		} else if p.tok.kind == .dot {
 			node = p.dot_expr(node)
+			p.is_stmt_ident = is_stmt_ident
 		} else if p.tok.kind == .lsbr {
 			node = p.index_expr(node)
 		} else if p.tok.kind == .key_as {
@@ -855,10 +861,8 @@ pub fn (p mut Parser) expr(precedence int) ast.Expr {
 				typ: typ
 				pos: pos
 			}
-		} else if p.tok.kind == .left_shift {
-			// TODO: handle in later stages since this
-			// will fudge left shift as it makes it right assoc
-			// `arr << 'a'` | `arr << 'a' + 'b'`
+		} else if p.tok.kind == .left_shift && p.is_stmt_ident {
+			// arr << elem
 			tok := p.tok
 			pos := tok.position()
 			p.next()
