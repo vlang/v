@@ -1650,7 +1650,8 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 					g.write(', &')
 				}
 				// `x[0] *= y`
-				if g.assign_op in [.mult_assign, .plus_assign, .minus_assign, .div_assign] {
+				if g.assign_op != .assign && g.assign_op in token.assign_tokens {
+					// TODO move this
 					g.write('*($elem_type_str*)array_get(')
 					if left_is_ptr {
 						g.write('*')
@@ -1670,7 +1671,25 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 							'-'
 						}
 						.div_assign {
-							'-'
+							'/'
+						}
+						.xor_assign {
+							'^'
+						}
+						.mod_assign {
+							'%'
+						}
+						.or_assign {
+							'|'
+						}
+						.and_assign {
+							'&'
+						}
+						.left_shift_assign {
+							'<<'
+						}
+						.right_shift_assign {
+							'>>'
 						}
 						else {
 							''
