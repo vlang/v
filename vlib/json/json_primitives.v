@@ -12,7 +12,7 @@ struct C.cJSON {
 	valuestring byteptr
 }
 
-pub fn decode() voidptr {
+pub fn decode() ?voidptr {
 	// compiler implementation
 	return 0
 }

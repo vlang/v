@@ -181,7 +181,7 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 			if part.contains('=') {
 				_parts := part.split('=')
 				name = _parts[0]
-				val = _parts[1] 
+				val = _parts[1]
 			}
 			if !is_cookie_name_valid(name) {
 				continue
@@ -294,7 +294,7 @@ fn sanitize(valid fn(byte) bool, v string) string {
 	buf := v.bytes()
 	mut bytes := v.bytes()
 	for i, _ in buf {
-		if (!valid(buf[i])) {
+		if !valid(buf[i]) {
 			bytes.delete(i)
 		}
 	}
@@ -372,10 +372,10 @@ pub fn is_cookie_domain_name(_s string) bool {
 			// No '_' allowed here (in contrast to package net).
 			ok = true
 			part_len++
-		} else if (`0` <= c && c <= `9`) {
+		} else if `0` <= c && c <= `9` {
 			// fine
 			part_len++
-		} else if (c == `-`) {
+		} else if c == `-` {
 			// Byte before dash cannot be dot.
 			if last == `.` {
 				return false
@@ -419,10 +419,13 @@ fn is_cookie_name_valid(name string) bool {
 	if name == '' {
 		return false
 	}
+	// TODO
+	/*
 	for b in name.bytes() {
 		if !(b in arrays.range<byte>(33, 126)) {
 			return false
 		}
 	}
+	*/
 	return true
 }

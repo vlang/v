@@ -1,5 +1,6 @@
 module arrays
 
+/*
 pub fn range<T>(start, end T) []T {
 	mut res := []T
 	for i := start; i < end; i++ {
@@ -7,3 +8,4 @@ pub fn range<T>(start, end T) []T {
 	}
 	return res
 }
+*/
