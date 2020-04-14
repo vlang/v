@@ -692,6 +692,19 @@ fn test_hex(){
 	assert st1.hex() == "41".repeat(100)
 }
 
+fn test_left_shift_precendence() {
+	mut arr := []int
+	arr << 1 + 1
+	arr << 1 - 1
+	arr << 2 / 1
+	arr << 2 * 1
+
+	assert arr[0] == 2
+	assert arr[1] == 0
+	assert arr[2] == 2
+	assert arr[3] == 2
+}
+
 fn test_array_with_cap() {
 	a := []int{cap:10, len:1 }
 	//assert a.len == 1
