@@ -1355,68 +1355,79 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 		}
 		else {}
 	}
-	if !node.branches[node.branches.len - 1].is_else {
-		mut used_values_count := 0
-		for bi, branch in node.branches {
-			used_values_count += branch.exprs.len
-			for bi_ei, bexpr in branch.exprs {
-				match bexpr {
-					ast.Type {
-						tidx := table.type_idx(it.typ)
-						stidx := tidx.str()
-						all_possible_left_subtypes[stidx] = all_possible_left_subtypes[stidx] +
-							1
-					}
-					ast.EnumVal {
-						all_possible_left_enum_vals[it.val] = all_possible_left_enum_vals[it.val] +
-							1
-					}
-					else {}
-				}
+	mut has_else := node.branches[node.branches.len - 1].is_else
+	if !has_else {
+		for i, branch in node.branches {
+			if branch.is_else && i != node.branches.len - 1 {
+				c.error('`else` must be the last branch of `match`', branch.pos)
+				has_else = true
+				break
 			}
 		}
-		mut err := false
-		mut err_details := 'match must be exhaustive'
-		unhandled := []string
-		match type_sym.info {
-			table.SumType {
-				for k, v in all_possible_left_subtypes {
-					if v == 0 {
-						err = true
-						unhandled << '`' + c.table.type_to_str(table.new_type(k.int())) + '`'
-					}
-					if v > 1 {
-						err = true
-						multiple_type_name := '`' + c.table.type_to_str(table.new_type(k.int())) +
-							'`'
-						c.error('a match case for $multiple_type_name is handled more than once',
-							node.pos)
-					}
-				}
-			}
-			table.Enum {
-				for k, v in all_possible_left_enum_vals {
-					if v == 0 {
-						err = true
-						unhandled << '`.$k`'
-					}
-					if v > 1 {
-						err = true
-						multiple_enum_val := '`.$k`'
-						c.error('a match case for $multiple_enum_val is handled more than once',
-							node.pos)
+
+		if !has_else {
+			mut used_values_count := 0
+			for bi, branch in node.branches {
+				used_values_count += branch.exprs.len
+				for bi_ei, bexpr in branch.exprs {
+					match bexpr {
+						ast.Type {
+							tidx := table.type_idx(it.typ)
+							stidx := tidx.str()
+							all_possible_left_subtypes[stidx] = all_possible_left_subtypes[stidx] +
+								1
+						}
+						ast.EnumVal {
+							all_possible_left_enum_vals[it.val] = all_possible_left_enum_vals[it.val] +
+								1
+						}
+						else {}
 					}
 				}
 			}
-			else {
-				err = true
+			mut err := false
+			mut err_details := 'match must be exhaustive'
+			unhandled := []string
+			match type_sym.info {
+				table.SumType {
+					for k, v in all_possible_left_subtypes {
+						if v == 0 {
+							err = true
+							unhandled << '`' + c.table.type_to_str(table.new_type(k.int())) + '`'
+						}
+						if v > 1 {
+							err = true
+							multiple_type_name := '`' + c.table.type_to_str(table.new_type(k.int())) +
+								'`'
+							c.error('a match case for $multiple_type_name is handled more than once',
+								node.pos)
+						}
+					}
+				}
+				table.Enum {
+					for k, v in all_possible_left_enum_vals {
+						if v == 0 {
+							err = true
+							unhandled << '`.$k`'
+						}
+						if v > 1 {
+							err = true
+							multiple_enum_val := '`.$k`'
+							c.error('a match case for $multiple_enum_val is handled more than once',
+								node.pos)
+						}
+					}
+				}
+				else {
+					err = true
+				}
 			}
-		}
-		if err {
-			if unhandled.len > 0 {
-				err_details += ' (add match branches for: ' + unhandled.join(', ') + ' or an else{} branch)'
+			if err {
+				if unhandled.len > 0 {
+					err_details += ' (add match branches for: ' + unhandled.join(', ') + ' or an else{} branch)'
+				}
+				c.error(err_details, node.pos)
 			}
-			c.error(err_details, node.pos)
 		}
 	}
 	c.expected_type = cond_type
