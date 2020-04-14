@@ -1348,9 +1348,12 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 		}
 		line_nr := p.tok.line_nr
 
-		// NB: do not remove the next line without testing
-		// v selfcompilation with tcc first
-		tcc_stack_bug := 12345
+		$if tinyc {
+			// NB: do not remove the next line without testing
+			// v selfcompilation with tcc first
+			tcc_stack_bug := 12345
+		}
+	   
 		last_pos = p.tok.position()
 
 		p.check(.rsbr)
