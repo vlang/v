@@ -11,3 +11,9 @@ fn test_const() {
 	assert d == 11
 	assert c == 1
 }
+
+pub const aa = 22
+
+fn test_single_const() {
+	assert aa == 22
+}

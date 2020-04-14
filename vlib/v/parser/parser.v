@@ -1488,9 +1488,34 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	}
 	pos := p.tok.position()
 	p.check(.key_const)
-	p.check(.lpar)
-	mut fields := []ast.ConstField
-	for p.tok.kind != .rpar {
+	if p.tok.kind == .lpar {
+		p.check(.lpar)
+		mut fields := []ast.ConstField
+		for p.tok.kind != .rpar {
+			if p.tok.kind == .comment {
+				p.comment()
+			}
+			name := p.prepend_mod(p.check_name())
+			// name := p.check_name()
+			// println('!!const: $name')
+			p.check(.assign)
+			expr := p.expr(0)
+			field := ast.ConstField{
+				name: name
+				expr: expr
+				pos: p.tok.position()
+			}
+			fields << field
+			p.global_scope.register(field.name, field)
+		}
+		p.check(.rpar)
+		return ast.ConstDecl{
+			pos: pos
+			fields: fields
+			is_pub: is_pub
+		}
+	} else {
+		mut fields := []ast.ConstField
 		if p.tok.kind == .comment {
 			p.comment()
 		}
@@ -1506,12 +1531,11 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 		}
 		fields << field
 		p.global_scope.register(field.name, field)
-	}
-	p.check(.rpar)
-	return ast.ConstDecl{
-		pos: pos
-		fields: fields
-		is_pub: is_pub
+		return ast.ConstDecl{
+			pos: pos
+			fields: fields
+			is_pub: is_pub
+		}
 	}
 }
 
