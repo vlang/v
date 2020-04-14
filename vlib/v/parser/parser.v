@@ -1348,7 +1348,11 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 		}
 		line_nr := p.tok.line_nr
 
+		// NB: do not remove the next line without testing
+		// v selfcompilation with tcc first
+		tcc_stack_bug := 12345
 		last_pos = p.tok.position()
+
 		p.check(.rsbr)
 		// [100]byte
 		if exprs.len == 1 && p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
