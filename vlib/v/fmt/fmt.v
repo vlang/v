@@ -143,7 +143,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			for i, ident in it.left {
 				var_info := ident.var_info()
 				if var_info.is_mut {
-					f.write('mut ')
+					f.write('var ')
 				}
 				f.expr(ident)
 				if i < it.left.len - 1 {
@@ -578,7 +578,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.MatchExpr {
 			f.write('match ')
 			if it.is_mut {
-				f.write('mut ')
+				f.write('var ')
 			}
 			f.expr(it.cond)
 			f.writeln(' {')
