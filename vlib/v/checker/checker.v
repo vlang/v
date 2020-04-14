@@ -1332,26 +1332,85 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	if cond_type == 0 {
 		c.error('match 0 cond type', node.pos)
 	}
+	type_sym := c.table.get_type_symbol(cond_type)
+
+	// all_possible_left_subtypes is a histogram of
+	// type => how many times it was used in the match
+	mut all_possible_left_subtypes := map[string]int
+	// all_possible_left_enum_vals is a histogram of
+	// enum value name => how many times it was used in the match
+	mut all_possible_left_enum_vals := map[string]int
+	match type_sym.info {
+		table.SumType {
+			for v in it.variants {
+				all_possible_left_subtypes[ int(v).str() ] = 0
+			}
+		}
+		table.Enum {
+			for v in it.vals {
+				all_possible_left_enum_vals[v] = 0
+			}
+		}
+		else {}
+	}
 	if !node.branches[node.branches.len - 1].is_else {
 		mut used_values_count := 0
-		for branch in node.branches {
+		for bi, branch in node.branches {
 			used_values_count += branch.exprs.len
+			for bi_ei, bexpr in branch.exprs {
+				match bexpr {
+					ast.Type {
+						tidx := table.type_idx(it.typ)
+						stidx := tidx.str()
+						all_possible_left_subtypes[ stidx ] = all_possible_left_subtypes[ stidx ] + 1
+					}
+					ast.EnumVal {
+						all_possible_left_enum_vals[ it.val ] = all_possible_left_enum_vals[ it.val ] + 1
+					}
+					else{}
+				}
+			}
 		}
-		type_sym := c.table.get_type_symbol(cond_type)
-		mut err := false 
+		mut err := false
+		mut err_details := 'match must be exhaustive'
+		unhandled := []string
 		match type_sym.info {
 			table.SumType {
-				err = used_values_count < it.variants.len
+				for k,v in all_possible_left_subtypes {
+					if v == 0 {
+						err = true
+						unhandled << '`' + c.table.type_to_str( table.new_type( k.int() ) ) + '`'
+					}
+					if v > 1 {
+						err = true
+						multiple_type_name := '`' + c.table.type_to_str( table.new_type( k.int() ) ) + '`'
+						c.error('a match case for $multiple_type_name is handled more than once', node.pos)
+					}
+				}
 			}
 			table.Enum {
-				err = used_values_count < it.vals.len
+				for k,v in all_possible_left_enum_vals {
+					if v == 0 {
+						err = true
+						unhandled << '`.$k`'
+					}
+					if v > 1 {
+						err = true
+						multiple_enum_val := '`.$k`'
+						c.error('a match case for $multiple_enum_val is handled more than once', node.pos)
+					}
+				}
 			}
-			else { err = false }
+			else { err = true }
 		}
 		if err {
-			c.error('match must be exhaustive', node.pos)
+			if unhandled.len > 0 {
+				err_details += ' (add match branches for: ' + unhandled.join(', ') + ' or an else{} branch)'
+			}
+			c.error(err_details, node.pos)
 		}
 	}
+
 	c.expected_type = cond_type
 	mut ret_type := table.void_type
 	for branch in node.branches {
