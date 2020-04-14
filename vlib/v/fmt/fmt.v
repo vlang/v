@@ -98,28 +98,28 @@ fn (f mut Fmt) mod(mod ast.Module) {
 }
 
 fn (f mut Fmt) imports(imports []ast.Import) {
-	if f.did_imports {
+	if f.did_imports || imports.len == 0 {
 		return
 	}
-	f.did_imports = true
 	// f.import_pos = f.out.len
+	f.did_imports = true
+	/*
 	if imports.len == 1 {
 		imp_stmt_str := f.imp_stmt_str(imports[0])
 		f.out_imports.writeln('import ${imp_stmt_str}\n')
 	} else if imports.len > 1 {
-		f.out_imports.writeln('import (')
-		// f.indent++
-		for imp in imports {
-			if !(imp.mod in f.used_imports) {
-				// TODO bring back once only unused imports are removed
-				// continue
-			}
-			f.out_imports.write('\t')
-			f.out_imports.writeln(f.imp_stmt_str(imp))
+*/
+	f.out_imports.writeln('import (')
+	for imp in imports {
+		if !(imp.mod in f.used_imports) {
+			// TODO bring back once only unused imports are removed
+			// continue
 		}
-		// f.indent--
-		f.out_imports.writeln(')\n')
+		f.out_imports.write('\t')
+		f.out_imports.writeln(f.imp_stmt_str(imp))
 	}
+	f.out_imports.writeln(')\n')
+	// }
 }
 
 fn (f Fmt) imp_stmt_str(imp ast.Import) string {
@@ -555,7 +555,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.MapInit {
 			if it.keys.len == 0 {
 				if it.value_type == 0 {
-					f.write('map[string]int') // TODO
+					f.write('map[string]int')					// TODO
 					return
 				}
 				f.write('map[string]')
