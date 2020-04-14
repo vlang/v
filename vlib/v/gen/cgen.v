@@ -827,16 +827,16 @@ fn (g mut Gen) free_scope_vars(pos int) {
 				// // TODO why 0?
 				// continue
 				// }
-				var := *it
-				sym := g.table.get_type_symbol(var.typ)
-				is_optional := table.type_is(var.typ, .optional)
+				v := *it
+				sym := g.table.get_type_symbol(v.typ)
+				is_optional := table.type_is(v.typ, .optional)
 				if sym.kind == .array && !is_optional {
-					g.writeln('array_free($var.name); // autofreed')
+					g.writeln('array_free($v.name); // autofreed')
 				}
 				if sym.kind == .string && !is_optional {
 					// Don't free simple string literals.
-					t := typeof(var.expr)
-					match var.expr {
+					t := typeof(v.expr)
+					match v.expr {
 						ast.StringLiteral {
 							g.writeln('// str literal')
 							continue
@@ -848,7 +848,7 @@ fn (g mut Gen) free_scope_vars(pos int) {
 							continue
 						}
 					}
-					g.writeln('string_free($var.name); // autofreed')
+					g.writeln('string_free($v.name); // autofreed')
 				}
 			}
 			else {}

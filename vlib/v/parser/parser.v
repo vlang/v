@@ -371,7 +371,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 				pos: assert_pos
 			}
 		}
-		.key_mut, .key_static {
+		.key_mut, .key_static, .key_var {
 			return p.assign_stmt()
 		}
 		.key_for {
@@ -1081,7 +1081,7 @@ fn (p mut Parser) for_stmt() ast.Stmt {
 			pos: pos
 			is_inf: true
 		}
-	} else if p.tok.kind == .key_mut {
+	} else if p.tok.kind in [.key_mut, .key_var] {
 		p.error('`mut` is not required in for loops')
 	} else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] || p.tok.kind == .semicolon {
 		// `for i := 0; i < 10; i++ {`
@@ -1733,9 +1733,9 @@ fn (p mut Parser) return_stmt() ast.Return {
 fn (p mut Parser) parse_assign_lhs() []ast.Ident {
 	mut idents := []ast.Ident
 	for {
-		is_mut := p.tok.kind == .key_mut
+		is_mut := p.tok.kind == .key_mut || p.tok.kind == .key_var
 		if is_mut {
-			p.check(.key_mut)
+			p.next()
 		}
 		is_static := p.tok.kind == .key_static
 		if is_static {
@@ -1785,7 +1785,8 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 	is_decl := op == .decl_assign
 	for i, ident in idents {
 		if op == .decl_assign && scanner.contains_capital(ident.name) {
-			p.error_with_pos('variable names cannot contain uppercase letters, use snake_case instead', ident.pos)
+			p.error_with_pos('variable names cannot contain uppercase letters, use snake_case instead',
+				ident.pos)
 		}
 		known_var := p.scope.known_var(ident.name)
 		if !is_decl && !known_var {
@@ -1864,7 +1865,7 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 fn (p mut Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.position()
 	p.check(.key_match)
-	is_mut := p.tok.kind == .key_mut
+	is_mut := p.tok.kind in [.key_mut, .key_var]
 	mut is_sum_type := false
 	if is_mut {
 		p.next()
@@ -2069,7 +2070,7 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 fn (p mut Parser) assoc() ast.Assoc {
 	var_name := p.check_name()
 	pos := p.tok.position()
-	var := p.scope.find_var(var_name) or {
+	v := p.scope.find_var(var_name) or {
 		p.error('unknown variable `$var_name`')
 		return ast.Assoc{}
 	}
@@ -2094,7 +2095,7 @@ fn (p mut Parser) assoc() ast.Assoc {
 		fields: fields
 		exprs: vals
 		pos: pos
-		typ: var.typ
+		typ: v.typ
 	}
 }
 

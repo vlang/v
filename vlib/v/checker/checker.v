@@ -386,9 +386,9 @@ pub fn (c mut Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	// check for arg (var) of fn type
 	if !found {
 		scope := c.file.scope.innermost(call_expr.pos.pos)
-		if var := scope.find_var(fn_name) {
-			if var.typ != 0 {
-				vts := c.table.get_type_symbol(var.typ)
+		if v := scope.find_var(fn_name) {
+			if v.typ != 0 {
+				vts := c.table.get_type_symbol(v.typ)
 				if vts.kind == .function {
 					info := vts.info as table.FnType
 					f = info.func
@@ -1018,14 +1018,14 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.Assoc {
 			scope := c.file.scope.innermost(it.pos.pos)
-			var := scope.find_var(it.var_name) or {
+			v := scope.find_var(it.var_name) or {
 				panic(err)
 			}
 			for i, _ in it.fields {
 				c.expr(it.exprs[i])
 			}
-			it.typ = var.typ
-			return var.typ
+			it.typ = v.typ
+			return v.typ
 		}
 		ast.BoolLiteral {
 			return table.bool_type

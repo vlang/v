@@ -102,10 +102,16 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	mut rec_mut := false
 	mut args := []table.Arg
 	if p.tok.kind == .lpar {
+		p.next()		// (
 		is_method = true
-		p.next()
+		rec_mut = p.tok.kind == .key_var
+		if rec_mut {
+			p.next()			// `var`
+		}
 		rec_name = p.check_name()
-		rec_mut = p.tok.kind == .key_mut
+		if !rec_mut {
+			rec_mut = p.tok.kind == .key_mut
+		}
 		is_amp := p.peek_tok.kind == .amp
 		// if rec_mut {
 		// p.check(.key_mut)
