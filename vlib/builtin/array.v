@@ -373,7 +373,7 @@ pub fn (a []string) str() string {
 }
 
 // []byte.str returns a string representation of the array of bytes
-// => '[a, b, c]'
+// => '[`a`, `b`, `c`]'
 pub fn (a []byte) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write('[')
