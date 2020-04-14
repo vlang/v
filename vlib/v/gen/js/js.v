@@ -350,6 +350,11 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.CallExpr {
+			g.expr(it.left)
+			if it.is_method {
+				// example: foo.bar.baz()
+				g.write('.')
+			}
 			g.write('${it.name}(')
 			for i, arg in it.args {
 				g.expr(arg.expr)
@@ -413,7 +418,9 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			// `user := User{name: 'Bob'}`
 			g.gen_struct_init(it)
 		}
-
+		ast.SelectorExpr {
+			g.gen_selector_expr(it)
+		}
 		else {
 			println(term.red('jsgen.expr(): bad node'))
 		}
@@ -980,6 +987,10 @@ fn (g mut JsGen) gen_ident(node ast.Ident) {
 	g.write(name)
 }
 
+fn (g mut JsGen) gen_selector_expr(it ast.SelectorExpr) {
+	g.expr(it.expr)
+	g.write('.$it.field')
+}
 
 fn (g mut JsGen) gen_if_expr(node ast.IfExpr) {
 	type_sym := g.table.get_type_symbol(node.typ)
