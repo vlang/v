@@ -3,11 +3,9 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import (
-	v.ast
-	v.table
-	strings
-)
+import v.ast
+import v.table
+import strings
 
 const (
 	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
@@ -109,16 +107,19 @@ fn (f mut Fmt) imports(imports []ast.Import) {
 		f.out_imports.writeln('import ${imp_stmt_str}\n')
 	} else if imports.len > 1 {
 */
-	f.out_imports.writeln('import (')
+	// f.out_imports.writeln('import (')
 	for imp in imports {
 		if !(imp.mod in f.used_imports) {
 			// TODO bring back once only unused imports are removed
 			// continue
 		}
-		f.out_imports.write('\t')
+		// f.out_imports.write('\t')
+		// f.out_imports.writeln(f.imp_stmt_str(imp))
+		f.out_imports.write('import ')
 		f.out_imports.writeln(f.imp_stmt_str(imp))
 	}
-	f.out_imports.writeln(')\n')
+	f.out_imports.writeln('')
+	// f.out_imports.writeln(')\n')
 	// }
 }
 

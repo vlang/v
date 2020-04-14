@@ -3,16 +3,14 @@
 // that can be found in the LICENSE file.
 module parser
 
-import (
-	v.scanner
-	v.ast
-	v.token
-	v.table
-	v.pref
-	v.util
-	term
-	os
-)
+import v.scanner
+import v.ast
+import v.token
+import v.table
+import v.pref
+import v.util
+import term
+import os
 
 struct Parser {
 	scanner           &scanner.Scanner

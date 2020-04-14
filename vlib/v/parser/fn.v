@@ -3,12 +3,10 @@
 // that can be found in the LICENSE file.
 module parser
 
-import (
-	v.ast
-	v.table
-	v.scanner
-	v.token
-)
+import v.ast
+import v.table
+import v.scanner
+import v.token
 
 pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	first_pos := p.tok.position()

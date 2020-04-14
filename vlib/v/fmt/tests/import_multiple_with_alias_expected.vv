@@ -1,7 +1,5 @@
-import (
-	os
-	math
-)
+import os
+import math
 
 fn main() {
 	// println(m.pi)

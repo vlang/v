@@ -3,16 +3,14 @@
 // that can be found in the LICENSE file.
 module gen
 
-import (
-	strings
-	v.ast
-	v.table
-	v.pref
-	v.token
-	v.util
-	v.depgraph
-	term
-)
+import strings
+import v.ast
+import v.table
+import v.pref
+import v.token
+import v.util
+import v.depgraph
+import term
 
 const (
 	c_reserved = ['delete', 'exit', 'unix', 'error', 'calloc', 'malloc', 'free', 'panic', 'auto',
@@ -563,12 +561,12 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
 		if cond_type_is_ptr {
 			g.writeln('for (int $i = 0; $i < ${atmp}->len; $i++) {')
-		}else{
+		} else {
 			g.writeln('for (int $i = 0; $i < ${atmp}.len; $i++) {')
 		}
 		if cond_type_is_ptr {
 			g.writeln('\t$styp $it.val_var = (($styp*)${atmp}->data)[$i];')
-		}else{
+		} else {
 			g.writeln('\t$styp $it.val_var = (($styp*)${atmp}.data)[$i];')
 		}
 		g.stmts(it.stmts)
@@ -2200,8 +2198,8 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 				verror('only V strings can be formatted with a ${sfmt} format')
 			}
 			g.write('%' + sfmt[1..])
-		} else if node.expr_types[i] in [table.string_type, table.bool_type] ||
-						sym.kind in [.enum_, .array, .array_fixed] {
+		} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind in
+			[.enum_, .array, .array_fixed] {
 			g.write('%.*s')
 		} else if node.expr_types[i] in [table.f32_type, table.f64_type] {
 			g.write('%f')

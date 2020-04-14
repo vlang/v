@@ -1,6 +1,4 @@
-import (
-	os
-)
+import os
 
 fn main() {
 }
