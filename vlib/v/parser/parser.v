@@ -1919,8 +1919,8 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		// p.warn('match block')
 		stmts := p.parse_block()
 		pos := token.Position{
-			line_nr: match_first_pos.line_nr
-			pos: match_first_pos.pos
+			line_nr: branch_first_pos.line_nr
+			pos: branch_first_pos.pos
 			len: branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
 		}
 		branches << ast.MatchBranch{
