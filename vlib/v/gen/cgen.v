@@ -212,9 +212,13 @@ pub fn (g mut Gen) typ(t table.Type) string {
 	if table.type_is(t, .optional) {
 		// Register an optional
 		styp = 'Option_' + styp
+		if table.type_is_ptr(t) {
+			styp = styp.replace('*', '_ptr')
+		}
 		if !(styp in g.optionals) {
 			// println(styp)
-			g.typedefs2.writeln('typedef Option $styp;')
+			x := styp			// .replace('*', '_ptr')			// handle option ptrs
+			g.typedefs2.writeln('typedef Option $x;')
 			g.optionals << styp
 		}
 	}
@@ -1744,7 +1748,11 @@ fn (g mut Gen) return_statement(node ast.Return) {
 		mut styp := g.typ(g.fn_decl.return_type)
 		if fn_return_is_optional {			// && !table.type_is(node.types[0], .optional) && node.types[0] !=
 			styp = styp[7..]			// remove 'Option_'
-			g.write('opt_ok(& ($styp []) { ')
+			mut x := styp
+			if x.ends_with('_ptr') {
+				x = x.replace('_ptr', '*')
+			}
+			g.write('opt_ok(&($x/*X*/[]) { ')
 		}
 		g.write('($styp){')
 		for i, expr in node.exprs {
@@ -1783,9 +1791,13 @@ fn (g mut Gen) return_statement(node ast.Return) {
 			}
 			if !is_none && !is_error {
 				styp := g.typ(g.fn_decl.return_type)[7..]				// remove 'Option_'
-				g.write('/*:)$return_sym.name*/opt_ok(&($styp []) { ')
+				mut x := styp
+				if x.ends_with('_ptr') {
+					x = x.replace('_ptr', '*')
+				}
+				g.write('/*:)$return_sym.name*/opt_ok(&($x[]) { ')
 				g.expr(node.exprs[0])
-				g.writeln(' }, sizeof($styp));')
+				g.writeln(' }, sizeof($x));')
 				return
 			}
 			// g.write('/*OPTIONAL*/')

@@ -141,7 +141,8 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		p.next()
 	}
 	// <T>
-	if p.tok.kind == .lt {
+	is_generic := p.tok.kind == .lt
+	if is_generic {
 		p.next()
 		p.next()
 		p.check(.gt)
@@ -169,6 +170,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			args: args
 			return_type: return_type
 			is_variadic: is_variadic
+			is_generic: is_generic
 		})
 	} else {
 		if is_c {
@@ -185,6 +187,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			return_type: return_type
 			is_variadic: is_variadic
 			is_c: is_c
+			is_generic: is_generic
 		})
 	}
 	// Body

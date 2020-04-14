@@ -704,3 +704,8 @@ fn test_left_shift_precendence() {
 	assert arr[2] == 2
 	assert arr[3] == 2
 }
+
+fn test_array_with_cap() {
+	a := []int{cap:10, len:1 }
+	//assert a.len == 1
+}

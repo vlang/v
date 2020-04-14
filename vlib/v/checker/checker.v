@@ -444,6 +444,9 @@ pub fn (c mut Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 			if typ_sym.kind == .void && arg_typ_sym.kind == .string {
 				continue
 			}
+			if f.is_generic {
+				continue
+			}
 			if typ_sym.kind == .array_fixed {
 			}
 			// println('fixed')
@@ -1333,7 +1336,6 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 		c.error('match 0 cond type', node.pos)
 	}
 	type_sym := c.table.get_type_symbol(cond_type)
-
 	// all_possible_left_subtypes is a histogram of
 	// type => how many times it was used in the match
 	mut all_possible_left_subtypes := map[string]int
@@ -1343,7 +1345,7 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	match type_sym.info {
 		table.SumType {
 			for v in it.variants {
-				all_possible_left_subtypes[ int(v).str() ] = 0
+				all_possible_left_subtypes[int(v).str()] = 0
 			}
 		}
 		table.Enum {
@@ -1362,12 +1364,14 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 					ast.Type {
 						tidx := table.type_idx(it.typ)
 						stidx := tidx.str()
-						all_possible_left_subtypes[ stidx ] = all_possible_left_subtypes[ stidx ] + 1
+						all_possible_left_subtypes[stidx] = all_possible_left_subtypes[stidx] +
+							1
 					}
 					ast.EnumVal {
-						all_possible_left_enum_vals[ it.val ] = all_possible_left_enum_vals[ it.val ] + 1
+						all_possible_left_enum_vals[it.val] = all_possible_left_enum_vals[it.val] +
+							1
 					}
-					else{}
+					else {}
 				}
 			}
 		}
@@ -1376,20 +1380,22 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 		unhandled := []string
 		match type_sym.info {
 			table.SumType {
-				for k,v in all_possible_left_subtypes {
+				for k, v in all_possible_left_subtypes {
 					if v == 0 {
 						err = true
-						unhandled << '`' + c.table.type_to_str( table.new_type( k.int() ) ) + '`'
+						unhandled << '`' + c.table.type_to_str(table.new_type(k.int())) + '`'
 					}
 					if v > 1 {
 						err = true
-						multiple_type_name := '`' + c.table.type_to_str( table.new_type( k.int() ) ) + '`'
-						c.error('a match case for $multiple_type_name is handled more than once', node.pos)
+						multiple_type_name := '`' + c.table.type_to_str(table.new_type(k.int())) +
+							'`'
+						c.error('a match case for $multiple_type_name is handled more than once',
+							node.pos)
 					}
 				}
 			}
 			table.Enum {
-				for k,v in all_possible_left_enum_vals {
+				for k, v in all_possible_left_enum_vals {
 					if v == 0 {
 						err = true
 						unhandled << '`.$k`'
@@ -1397,11 +1403,14 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 					if v > 1 {
 						err = true
 						multiple_enum_val := '`.$k`'
-						c.error('a match case for $multiple_enum_val is handled more than once', node.pos)
+						c.error('a match case for $multiple_enum_val is handled more than once',
+							node.pos)
 					}
 				}
 			}
-			else { err = true }
+			else {
+				err = true
+			}
 		}
 		if err {
 			if unhandled.len > 0 {
@@ -1410,7 +1419,6 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 			c.error(err_details, node.pos)
 		}
 	}
-
 	c.expected_type = cond_type
 	mut ret_type := table.void_type
 	for branch in node.branches {
