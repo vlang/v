@@ -16,7 +16,6 @@ const (
 		'vlib/eventbus/eventbus_test.v',
 		'vlib/flag/flag_test.v',
 		'vlib/json/json_test.v',
-		'vlib/math/complex/complex_test.v',
 		'vlib/net/ftp/ftp_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/http_test.v',
