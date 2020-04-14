@@ -250,7 +250,6 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 	if g.is_json_fn {
 		g.write('json__json_print(')
 		g.gen_json_for_type(node.args[0].typ)
-		println('XAXAXAX')
 		json_type_str = g.table.get_type_symbol(node.args[0].typ).name
 	}
 	if node.is_c {

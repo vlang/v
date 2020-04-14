@@ -215,6 +215,15 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`',
 			infix_expr.pos)
 	}
+	if left_type == table.bool_type && infix_expr.op !in [.eq, .ne, .logical_or, .and] {
+		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
+			infix_expr.pos)
+	} else if left_type == table.string_type && !(infix_expr.op in [.plus, .eq, .ne, .lt, .gt, .le,
+		.ge]) {
+		// TODO broken !in
+		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `&&`',
+			infix_expr.pos)
+	}
 	if infix_expr.op.is_relational() {
 		return table.bool_type
 	}
