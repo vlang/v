@@ -1496,7 +1496,7 @@ fn (p mut Parser) import_stmt() []ast.Import {
 		}
 		p.check(.rpar)
 	} else {
-		p.warn('`import module` has been deprecated, use `import ( module )` instead')
+		// p.warn('`import module` has been deprecated, use `import ( module )` instead')
 		imports << p.parse_import()
 	}
 	return imports
