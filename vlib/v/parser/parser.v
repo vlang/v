@@ -1785,7 +1785,7 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 	is_decl := op == .decl_assign
 	for i, ident in idents {
 		if op == .decl_assign && scanner.contains_capital(ident.name) {
-			p.error('variable names cannot contain uppercase letters, use snake_case instead')
+			p.error_with_pos('variable names cannot contain uppercase letters, use snake_case instead', ident.pos)
 		}
 		known_var := p.scope.known_var(ident.name)
 		if !is_decl && !known_var {
