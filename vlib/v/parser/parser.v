@@ -1784,6 +1784,9 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 	exprs := p.parse_assign_rhs()
 	is_decl := op == .decl_assign
 	for i, ident in idents {
+		if op == .decl_assign && scanner.contains_capital(ident.name) {
+			p.error('variable names cannot contain uppercase letters, use snake_case instead')
+		}
 		known_var := p.scope.known_var(ident.name)
 		if !is_decl && !known_var {
 			p.error('unknown variable `$ident.name`')
