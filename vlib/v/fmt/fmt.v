@@ -553,6 +553,15 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(it.val)
 		}
 		ast.MapInit {
+			if it.keys.len == 0 {
+				if it.value_type == 0 {
+					f.write('map[string]int') // TODO
+					return
+				}
+				f.write('map[string]')
+				f.write(f.type_to_str(it.value_type))
+				return
+			}
 			f.writeln('{')
 			f.indent++
 			for i, key in it.keys {

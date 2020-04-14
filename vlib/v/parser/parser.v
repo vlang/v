@@ -1351,15 +1351,12 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 			// p.check_comment()
 		}
 		line_nr := p.tok.line_nr
-
 		$if tinyc {
 			// NB: do not remove the next line without testing
 			// v selfcompilation with tcc first
 			tcc_stack_bug := 12345
 		}
-	   
 		last_pos = p.tok.position()
-
 		p.check(.rsbr)
 		// [100]byte
 		if exprs.len == 1 && p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
@@ -1375,6 +1372,22 @@ fn (p mut Parser) array_init() ast.ArrayInit {
 	if p.tok.kind == .not {
 		last_pos = p.tok.position()
 		p.next()
+	}
+	if p.tok.kind == .lcbr && exprs.len == 0 {
+		// `[]int{ len: 10, cap: 100}` syntax
+		p.next()
+		for p.tok.kind != .rcbr {
+			key := p.check_name()
+			p.check(.colon)
+			if !(key in ['len', 'cap', 'init']) {
+				p.error('wrong field `$key`, expecting `len`, `cap`, or `init`')
+			}
+			p.expr(0)
+			if p.tok.kind != .rcbr {
+				p.check(.comma)
+			}
+		}
+		p.check(.rcbr)
 	}
 	pos := token.Position{
 		line_nr: first_pos.line_nr
@@ -1594,7 +1607,9 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 				// p.expr(0)
 				default_expr = p.expr(0)
 				match default_expr {
-					ast.EnumVal { it.typ = typ }
+					ast.EnumVal {
+						it.typ = typ
+					}
 					// TODO: implement all types??
 					else {}
 				}
@@ -1865,8 +1880,8 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
-		} else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names ||
-				(p.tok.lit[0].is_capital() && !p.tok.lit.is_upper()) || p.peek_tok.kind == .dot) {
+		} else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names || (p.tok.lit[0].is_capital() &&
+			!p.tok.lit.is_upper()) || p.peek_tok.kind == .dot) {
 			// Sum type match
 			// if sym.kind == .sum_type {
 			// p.warn('is sum')
@@ -1993,7 +2008,7 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 	name := p.check_name()
 	mut sum_variants := []table.Type
 	if p.tok.kind == .assign {
-		p.next()  // TODO require `=`
+		p.next()		// TODO require `=`
 	}
 	if p.tok.kind == .key_fn {
 		// function type: `type mycallback fn(string, int)`
@@ -2005,7 +2020,7 @@ fn (p mut Parser) type_decl() ast.TypeDecl {
 			typ: fn_type
 		}
 	}
-	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
+	first_type := p.parse_type()	// need to parse the first type before we can check if it's `type A = X | Y`
 	if p.tok.kind == .pipe {
 		p.check(.pipe)
 		sum_variants << first_type

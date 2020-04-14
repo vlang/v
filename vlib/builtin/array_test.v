@@ -691,3 +691,8 @@ fn test_hex(){
 	st1 := [byte(0x41)].repeat(100)
 	assert st1.hex() == "41".repeat(100)
 }
+
+fn test_array_with_cap() {
+	a := []int{cap:10, len:1 }
+	//assert a.len == 1
+}
