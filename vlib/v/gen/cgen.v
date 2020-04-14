@@ -548,31 +548,30 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		g.writeln('}')
 	} else if it.kind == .array {
 		// `for num in nums {`
-		g.writeln('// FOR IN')
-		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		g.writeln('// FOR IN array')
 		styp := g.typ(it.val_type)
-		g.write('for (int $i = 0; $i < ')
-		g.expr(it.cond)
 		cond_type_is_ptr := table.type_is_ptr(it.cond_type)
-		if cond_type_is_ptr {
-			g.writeln('->')
-		} else {
-			g.writeln('.')
-		}
-		g.write('len; $i++) {')
-		g.write('\t$styp $it.val_var = (($styp*)')
+		atmp := g.new_tmp_var()
+		atmp_type := if cond_type_is_ptr { 'array *' } else { 'array' }
+		g.write('${atmp_type} ${atmp} = ')
 		g.expr(it.cond)
+		g.writeln(';')
+		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
 		if cond_type_is_ptr {
-			g.writeln('->')
-		} else {
-			g.writeln('.')
+			g.writeln('for (int $i = 0; $i < ${atmp}->len; $i++) {')
+		}else{
+			g.writeln('for (int $i = 0; $i < ${atmp}.len; $i++) {')
 		}
-		g.write('data)[$i];')
+		if cond_type_is_ptr {
+			g.writeln('\t$styp $it.val_var = (($styp*)${atmp}->data)[$i];')
+		}else{
+			g.writeln('\t$styp $it.val_var = (($styp*)${atmp}.data)[$i];')
+		}
 		g.stmts(it.stmts)
 		g.writeln('}')
 	} else if it.kind == .map {
 		// `for key, val in map {`
-		g.writeln('// FOR IN')
+		g.writeln('// FOR IN map')
 		key_styp := g.typ(it.key_type)
 		val_styp := g.typ(it.val_type)
 		keys_tmp := 'keys_' + g.new_tmp_var()
@@ -590,7 +589,7 @@ fn (g mut Gen) for_in(it ast.ForInStmt) {
 		g.stmts(it.stmts)
 		g.writeln('}')
 	} else if table.type_is(it.cond_type, .variadic) {
-		g.writeln('// FOR IN')
+		g.writeln('// FOR IN cond_type/variadic')
 		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
 		styp := g.typ(it.cond_type)
 		g.write('for (int $i = 0; $i < ')
