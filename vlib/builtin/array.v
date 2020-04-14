@@ -372,6 +372,27 @@ pub fn (a []string) str() string {
 	return sb.str()
 }
 
+// []byte.str returns a string representation of the array of bytes
+// => '[`a`, `b`, `c`]'
+pub fn (a []byte) str() string {
+	mut sb := strings.new_builder(a.len * 3)
+	sb.write('[')
+	for i in 0..a.len {
+		val := a[i].str()
+		sb.write('`')
+		sb.write(val)
+		sb.write('`')
+		if a[i] != 0 {
+			val.free()
+		}
+		if i < a.len - 1 {
+			sb.write(', ')
+		}
+	}
+	sb.write(']')
+	return sb.str()
+}
+
 // []int.str returns a string representation of the array of ints
 // => '[1, 2, 3]'
 pub fn (a []int) str() string {
