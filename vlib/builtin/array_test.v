@@ -691,3 +691,16 @@ fn test_hex(){
 	st1 := [byte(0x41)].repeat(100)
 	assert st1.hex() == "41".repeat(100)
 }
+
+fn test_left_shift_precendence() {
+	mut arr := []int
+	arr << 1 + 1
+	arr << 1 - 1
+	arr << 2 / 1
+	arr << 2 * 1
+
+	assert arr[0] == 2
+	assert arr[1] == 0
+	assert arr[2] == 2
+	assert arr[3] == 2
+}
