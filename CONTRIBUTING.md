@@ -30,7 +30,7 @@ They are resolved later in the type checker.
 
 5. `v/table` V creates one table object that is shared by all parsers. It
 contains all types, consts, and functions, as well as several helpers to search
-for objects by name, register new objects, modify type's fields, etc.
+for objects by name, register new objects, modify types' fields, etc.
 
 6. `v/checker`. Type checker and resolver. It processes the AST and makes sure
 the types are correct. Unresolved types are resolved, type information is added
