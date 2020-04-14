@@ -43,7 +43,8 @@ fn main() {
 		util.launch_tool(false, 'vrepl')
 		return
 	}
-	if args.len > 0 && (args[0] in ['version', '-V', '-version', '--version'] || (args[0] == '-v' && args.len == 1) ) {
+	os_args := os.args[1..]
+	if os_args.len > 0 && (os_args[0] in ['version', '-V', '-version', '--version'] || (os_args[0] == '-v' && os_args.len == 1) ) {
 		// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
 		println(util.full_v_version())
 		return
