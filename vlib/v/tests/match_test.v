@@ -116,13 +116,3 @@ fn test_match_enums() {
 	}
 	assert b == .blue
 }
-
-fn test_simple_match_expr() {
-	Asd := 1
-	res := match Asd {
-		1 { 'foo' }
-		2 { 'test' }
-		else { '' }
-	}
-	assert res == 'foo'
-}
