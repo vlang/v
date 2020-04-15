@@ -8,7 +8,7 @@ import v.table
 import v.scanner
 import v.token
 
-pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
+pub fn (var p Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	first_pos := p.tok.position()
 	tok := p.tok
 	name := p.check_name()
@@ -59,7 +59,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 	return node
 }
 
-pub fn (p mut Parser) call_args() []ast.CallArg {
+pub fn (var p Parser) call_args() []ast.CallArg {
 	var args := []ast.CallArg
 	for p.tok.kind != .rpar {
 		var is_mut := false
@@ -79,7 +79,7 @@ pub fn (p mut Parser) call_args() []ast.CallArg {
 	return args
 }
 
-fn (p mut Parser) fn_decl() ast.FnDecl {
+fn (var p Parser) fn_decl() ast.FnDecl {
 	// p.table.clear_vars()
 	pos := p.tok.position()
 	p.open_scope()
@@ -118,7 +118,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		// }
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
-		rec_type = p.parse_type()
+		rec_type = p.parse_type_with_mut(rec_mut)
 		if is_amp && rec_mut {
 			p.error('use `(f mut Foo)` or `(f &Foo)` instead of `(f mut &Foo)`')
 		}
@@ -224,7 +224,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 }
 
-fn (p mut Parser) fn_args() ([]table.Arg, bool) {
+fn (var p Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
 	var args := []table.Arg
 	var is_variadic := false
