@@ -1,0 +1,5 @@
+vlib/v/checker/tests/inout/struct_name.v:1:8: error: struct name must be capital
+    1| struct abc {
+              ~~~
+    2|
+    3| }

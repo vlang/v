@@ -140,6 +140,7 @@ pub struct StructDecl {
 pub:
 	pos         token.Position
 	name        string
+	name_pos    token.Position
 	fields      []StructField
 	is_pub      bool
 	mut_pos     int // mut:
