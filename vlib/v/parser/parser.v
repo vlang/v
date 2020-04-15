@@ -691,9 +691,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			x := p.call_expr(is_c, mod)			// TODO `node,typ :=` should work
 			node = x
 		}
-	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
-		!p.inside_for {
-		// && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod && Sp.tok.lit in table.builtin_type_names))
+	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if && !p.inside_for {
 		return p.struct_init(false)		// short_syntax: false
 	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
 		// `Color.green`
@@ -1794,10 +1792,6 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 	exprs := p.parse_assign_rhs()
 	is_decl := op == .decl_assign
 	for i, ident in idents {
-		if op == .decl_assign && scanner.contains_capital(ident.name) {
-			p.error_with_pos('variable names cannot contain uppercase letters, use snake_case instead',
-				ident.pos)
-		}
 		known_var := p.scope.known_var(ident.name)
 		if !is_decl && !known_var {
 			p.error('unknown variable `$ident.name`')

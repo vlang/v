@@ -663,6 +663,12 @@ pub fn (c mut Checker) enum_decl(decl ast.EnumDecl) {
 
 pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	c.expected_type = table.none_type	// TODO a hack to make `x := if ... work`
+	// check variablename for beginning with capital letter 'Abc'
+	for ident in assign_stmt.left {
+		if assign_stmt.op == .decl_assign && scanner.contains_capital(ident.name) {
+			c.error('variable names cannot contain uppercase letters, use snake_case instead', ident.pos)
+		}
+	}
 	if assign_stmt.left.len > assign_stmt.right.len {
 		// multi return
 		match assign_stmt.right[0] {
