@@ -346,6 +346,17 @@ pub fn (c mut Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		call_expr.return_type = table.string_type
 		return table.string_type
 	}
+	// call struct field fn type
+	// TODO: can we use SelectorExpr for all?
+	if field := c.table.struct_find_field(left_type_sym, method_name) {
+		field_type_sym := c.table.get_type_symbol(field.typ)
+		if field_type_sym.kind == .function {
+			call_expr.is_method = false
+			info := field_type_sym.info as table.FnType
+			call_expr.return_type = info.func.return_type
+			return info.func.return_type
+		}
+	}
 	c.error('unknown method: ${left_type_sym.name}.$method_name', call_expr.pos)
 	return table.void_type
 }
