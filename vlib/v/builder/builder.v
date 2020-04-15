@@ -10,6 +10,7 @@ import (
 	v.vmod
 	v.checker
 	v.parser
+	v.scanner
 	v.gen
 	v.gen.js
 	v.gen.x64
@@ -72,7 +73,7 @@ pub fn (b mut Builder) parse_imports() {
 			for file in parsed_files {
 				if file.mod.name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					panic('bad module definition: ${ast_file.path} imports module "$mod" but $file.path is defined as module `$file.mod.name`')
+					verror('bad module definition: ${ast_file.path} imports module "$mod" but $file.path is defined as module `$file.mod.name`')
 				}
 			}
 			b.parsed_files << parsed_files
@@ -210,6 +211,14 @@ pub fn (b Builder) find_module_path(mod string, fpath string) ?string {
 	}
 	smodule_lookup_paths := module_lookup_paths.join(', ')
 	return error('module "$mod" not found in:\n$smodule_lookup_paths')
+}
+
+fn (b &Builder) print_errors(errors []scanner.Error) {
+	for err in errors {
+		kind := if b.pref.is_verbose { '$err.reporter error #$b.checker.nr_errors:' } else { 'error:' }
+		ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+		eprintln(ferror)
+	}
 }
 
 fn verror(s string) {

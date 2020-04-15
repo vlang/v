@@ -3,11 +3,9 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import (
-	v.ast
-	v.table
-	strings
-)
+import v.ast
+import v.table
+import strings
 
 const (
 	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
@@ -29,6 +27,7 @@ mut:
 	is_assign      bool
 	auto_imports   []string // automatically inserted imports that the user forgot to specify
 	import_pos     int // position of the imports in the resulting string for later autoimports insertion
+	used_imports   []string // to remove unused imports
 }
 
 pub fn fmt(file ast.File, table &table.Table) string {
@@ -97,24 +96,31 @@ fn (f mut Fmt) mod(mod ast.Module) {
 }
 
 fn (f mut Fmt) imports(imports []ast.Import) {
-	if f.did_imports {
+	if f.did_imports || imports.len == 0 {
 		return
 	}
-	f.did_imports = true
 	// f.import_pos = f.out.len
+	f.did_imports = true
+	/*
 	if imports.len == 1 {
 		imp_stmt_str := f.imp_stmt_str(imports[0])
 		f.out_imports.writeln('import ${imp_stmt_str}\n')
 	} else if imports.len > 1 {
-		f.out_imports.writeln('import (')
-		// f.indent++
-		for imp in imports {
-			f.out_imports.write('\t')
-			f.out_imports.writeln(f.imp_stmt_str(imp))
+*/
+	// f.out_imports.writeln('import (')
+	for imp in imports {
+		if !(imp.mod in f.used_imports) {
+			// TODO bring back once only unused imports are removed
+			// continue
 		}
-		// f.indent--
-		f.out_imports.writeln(')\n')
+		// f.out_imports.write('\t')
+		// f.out_imports.writeln(f.imp_stmt_str(imp))
+		f.out_imports.write('import ')
+		f.out_imports.writeln(f.imp_stmt_str(imp))
 	}
+	f.out_imports.writeln('')
+	// f.out_imports.writeln(')\n')
+	// }
 }
 
 fn (f Fmt) imp_stmt_str(imp ast.Import) string {
@@ -137,7 +143,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			for i, ident in it.left {
 				var_info := ident.var_info()
 				if var_info.is_mut {
-					f.write('mut ')
+					f.write('var ')
 				}
 				f.expr(ident)
 				if i < it.left.len - 1 {
@@ -257,6 +263,11 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			} else {
 				f.writeln('\n')
 			}
+			// Mark all function's used type so that they are not removed from imports
+			for arg in it.args {
+				f.mark_types_module_as_used(arg.typ)
+			}
+			f.mark_types_module_as_used(it.return_type)
 		}
 		ast.ForCStmt {
 			f.write('for ')
@@ -520,7 +531,11 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.write('_')
 			} else {
 				name := short_module(it.name)
+				// f.write('<$it.name => $name>')
 				f.write(name)
+				if name.contains('.') {
+					f.mark_module_as_used(name)
+				}
 			}
 		}
 		ast.InfixExpr {
@@ -539,6 +554,15 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			f.write(it.val)
 		}
 		ast.MapInit {
+			if it.keys.len == 0 {
+				if it.value_type == 0 {
+					f.write('map[string]int')					// TODO
+					return
+				}
+				f.write('map[string]')
+				f.write(f.type_to_str(it.value_type))
+				return
+			}
 			f.writeln('{')
 			f.indent++
 			for i, key in it.keys {
@@ -554,7 +578,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.MatchExpr {
 			f.write('match ')
 			if it.is_mut {
-				f.write('mut ')
+				f.write('var ')
 			}
 			f.expr(it.cond)
 			f.writeln(' {')
@@ -563,7 +587,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				if branch.comment.text != '' {
 					f.comment(branch.comment)
 				}
-				if i < it.branches.len - 1 {
+				if !branch.is_else {
 					// normal branch
 					for j, expr in branch.exprs {
 						f.expr(expr)
@@ -660,6 +684,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		}
 		ast.StructInit {
 			type_sym := f.table.get_type_symbol(it.typ)
+			// f.write('<old name: $type_sym.name>')
 			mut name := short_module(type_sym.name).replace(f.cur_mod + '.', '')			// TODO f.type_to_str?
 			if name == 'void' {
 				name = ''
@@ -815,7 +840,7 @@ fn (f mut Fmt) call_expr(node ast.CallExpr) {
 				// `time.now()` without `time imported` is processed as a method call with `time` being
 				// a `node.left` expression. Import `time` automatically.
 				// TODO fetch all available modules
-				if it.name in ['time', 'os', 'strings', 'math', 'json'] {
+				if it.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
 					if !(it.name in f.auto_imports) {
 						f.auto_imports << it.name
 						f.file.imports << ast.Import{
@@ -823,10 +848,9 @@ fn (f mut Fmt) call_expr(node ast.CallExpr) {
 							alias: it.name
 						}
 					}
-					println(it.name + '!!')
-					for imp in f.file.imports {
-						println(imp.mod)
-					}
+					// for imp in f.file.imports {
+					// println(imp.mod)
+					// }
 				}
 			}
 			else {}
@@ -838,9 +862,31 @@ fn (f mut Fmt) call_expr(node ast.CallExpr) {
 		f.or_expr(node.or_block)
 	} else {
 		name := short_module(node.name)
+		f.mark_module_as_used(name)
 		f.write('${name}(')
 		f.call_args(node.args)
 		f.write(')')
 		f.or_expr(node.or_block)
 	}
+}
+
+fn (f mut Fmt) mark_types_module_as_used(typ table.Type) {
+	sym := f.table.get_type_symbol(typ)
+	f.mark_module_as_used(sym.name)
+}
+
+// `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
+fn (f mut Fmt) mark_module_as_used(name string) {
+	if !name.contains('.') {
+		return
+	}
+	pos := name.last_index('.') or {
+		0
+	}
+	mod := name[..pos]
+	if mod in f.used_imports {
+		return
+	}
+	f.used_imports << mod
+	// println('marking module $mod as used')
 }

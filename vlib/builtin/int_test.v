@@ -100,6 +100,16 @@ fn test_xor_precendence() {
 	assert (1 ^ 0 > 1) == ((1 ^ 0) > 1)
 }
 
+fn test_left_shift_precendence() {
+	assert (2 << 4 | 3) == ((2 << 4) | 3)
+	assert (2 << 4 | 3) != (2 << (4 | 3))
+}
+
+fn test_right_shift_precendence() {
+	assert (256 >> 4 | 3) == ((256 >> 4) | 3)
+	assert (256 >> 4 | 3) != (256 >> (4 | 3))
+}
+
 fn test_i8_print() {
 	b := i8(0)
 	println(b)

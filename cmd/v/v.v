@@ -37,11 +37,14 @@ fn main() {
 	//args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		// Running `./v` without args launches repl
-		println('For usage information, quit V REPL using `exit` and use `v help`')
+		if args.len == 0 {
+			println('For usage information, quit V REPL using `exit` and use `v help`')
+		}
 		util.launch_tool(false, 'vrepl')
 		return
 	}
-	if args.len > 0 && (args[0] in ['version', '-V', '-version', '--version'] || (args[0] == '-v' && args.len == 1) ) {
+	os_args := os.args[1..]
+	if os_args.len > 0 && (os_args[0] in ['version', '-V', '-version', '--version'] || (os_args[0] == '-v' && os_args.len == 1) ) {
 		// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
 		println(util.full_v_version())
 		return
@@ -188,12 +191,16 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 	}
 	else if command == 'run' {
 		res.is_run = true
-		res.path = args[command_pos+1]
-		res.run_args = if command_pos+1 < args.len { args[command_pos+2..] } else { []string }
+		if command_pos > args.len {
+			eprintln('v run: no v files listed')
+			exit(1)
+		}
+		res.path = args[command_pos + 1]
+		res.run_args = args[command_pos+2..]
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
-		res.path = args[command_pos+1]
+		res.path = args[command_pos + 1]
 	}
 	if res.is_verbose {
 		println('setting pref.path to "$res.path"')

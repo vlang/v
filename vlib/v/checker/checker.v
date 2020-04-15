@@ -10,6 +10,7 @@ import (
 	v.token
 	v.pref
 	v.util
+	v.scanner
 	os
 )
 
@@ -22,7 +23,8 @@ pub struct Checker {
 mut:
 	file           ast.File
 	nr_errors      int
-	errors         []string
+	errors         []scanner.Error
+	warnings       []scanner.Warning
 	error_lines    []int // to avoid printing multiple errors for the same line
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
@@ -49,7 +51,7 @@ pub fn (c mut Checker) check(ast_file ast.File) {
 	}
 }
 
-pub fn (c mut Checker) check2(ast_file ast.File) []string {
+pub fn (c mut Checker) check2(ast_file ast.File) []scanner.Error {
 	c.file = ast_file
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
@@ -213,6 +215,15 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`',
 			infix_expr.pos)
 	}
+	if left_type == table.bool_type && !(infix_expr.op in [.eq, .ne, .logical_or, .and]) {
+		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
+			infix_expr.pos)
+	} else if left_type == table.string_type && !(infix_expr.op in [.plus, .eq, .ne, .lt, .gt,
+		.le, .ge]) {
+		// TODO broken !in
+		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `&&`',
+			infix_expr.pos)
+	}
 	if infix_expr.op.is_relational() {
 		return table.bool_type
 	}
@@ -244,7 +255,7 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	if !c.table.check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
-		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name` ',
+		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name`',
 			expr_pos(assign_expr.val))
 	}
 	c.check_expr_opt_call(assign_expr.val, right_type, true)
@@ -335,6 +346,17 @@ pub fn (c mut Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		call_expr.return_type = table.string_type
 		return table.string_type
 	}
+	// call struct field fn type
+	// TODO: can we use SelectorExpr for all?
+	if field := c.table.struct_find_field(left_type_sym, method_name) {
+		field_type_sym := c.table.get_type_symbol(field.typ)
+		if field_type_sym.kind == .function {
+			call_expr.is_method = false
+			info := field_type_sym.info as table.FnType
+			call_expr.return_type = info.func.return_type
+			return info.func.return_type
+		}
+	}
 	c.error('unknown method: ${left_type_sym.name}.$method_name', call_expr.pos)
 	return table.void_type
 }
@@ -375,9 +397,9 @@ pub fn (c mut Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	// check for arg (var) of fn type
 	if !found {
 		scope := c.file.scope.innermost(call_expr.pos.pos)
-		if var := scope.find_var(fn_name) {
-			if var.typ != 0 {
-				vts := c.table.get_type_symbol(var.typ)
+		if v := scope.find_var(fn_name) {
+			if v.typ != 0 {
+				vts := c.table.get_type_symbol(v.typ)
 				if vts.kind == .function {
 					info := vts.info as table.FnType
 					f = info.func
@@ -431,6 +453,9 @@ pub fn (c mut Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 				continue
 			}
 			if typ_sym.kind == .void && arg_typ_sym.kind == .string {
+				continue
+			}
+			if f.is_generic {
 				continue
 			}
 			if typ_sym.kind == .array_fixed {
@@ -627,6 +652,12 @@ pub fn (c mut Checker) enum_decl(decl ast.EnumDecl) {
 
 pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	c.expected_type = table.none_type	// TODO a hack to make `x := if ... work`
+	// check variablename for beginning with capital letter 'Abc'
+	for ident in assign_stmt.left {
+		if assign_stmt.op == .decl_assign && scanner.contains_capital(ident.name) {
+			c.error('variable names cannot contain uppercase letters, use snake_case instead', ident.pos)
+		}
+	}
 	if assign_stmt.left.len > assign_stmt.right.len {
 		// multi return
 		match assign_stmt.right[0] {
@@ -940,7 +971,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				value_type := c.table.value_type(typ)
 				if value_type == table.void_type {
 					typ_sym := c.table.get_type_symbol(typ)
-					c.error('for in: cannot index `$typ_sym.name`', it.pos)
+					c.error('for in: cannot index `$typ_sym.name`', expr_pos(it.cond))
 				}
 				it.cond_type = typ
 				it.kind = sym.kind
@@ -1004,14 +1035,14 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.Assoc {
 			scope := c.file.scope.innermost(it.pos.pos)
-			var := scope.find_var(it.var_name) or {
+			v := scope.find_var(it.var_name) or {
 				panic(err)
 			}
 			for i, _ in it.fields {
 				c.expr(it.exprs[i])
 			}
-			it.typ = var.typ
-			return var.typ
+			it.typ = v.typ
+			return v.typ
 		}
 		ast.BoolLiteral {
 			return table.bool_type
@@ -1321,6 +1352,101 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	if cond_type == 0 {
 		c.error('match 0 cond type', node.pos)
 	}
+	type_sym := c.table.get_type_symbol(cond_type)
+	// all_possible_left_subtypes is a histogram of
+	// type => how many times it was used in the match
+	mut all_possible_left_subtypes := map[string]int
+	// all_possible_left_enum_vals is a histogram of
+	// enum value name => how many times it was used in the match
+	mut all_possible_left_enum_vals := map[string]int
+	match type_sym.info {
+		table.SumType {
+			for v in it.variants {
+				all_possible_left_subtypes[int(v).str()] = 0
+			}
+		}
+		table.Enum {
+			for v in it.vals {
+				all_possible_left_enum_vals[v] = 0
+			}
+		}
+		else {}
+	}
+	mut has_else := node.branches[node.branches.len - 1].is_else
+	if !has_else {
+		for i, branch in node.branches {
+			if branch.is_else && i != node.branches.len - 1 {
+				c.error('`else` must be the last branch of `match`', branch.pos)
+				has_else = true
+				break
+			}
+		}
+
+		if !has_else {
+			mut used_values_count := 0
+			for bi, branch in node.branches {
+				used_values_count += branch.exprs.len
+				for bi_ei, bexpr in branch.exprs {
+					match bexpr {
+						ast.Type {
+							tidx := table.type_idx(it.typ)
+							stidx := tidx.str()
+							all_possible_left_subtypes[stidx] = all_possible_left_subtypes[stidx] +
+								1
+						}
+						ast.EnumVal {
+							all_possible_left_enum_vals[it.val] = all_possible_left_enum_vals[it.val] +
+								1
+						}
+						else {}
+					}
+				}
+			}
+			mut err := false
+			mut err_details := 'match must be exhaustive'
+			unhandled := []string
+			match type_sym.info {
+				table.SumType {
+					for k, v in all_possible_left_subtypes {
+						if v == 0 {
+							err = true
+							unhandled << '`' + c.table.type_to_str(table.new_type(k.int())) + '`'
+						}
+						if v > 1 {
+							err = true
+							multiple_type_name := '`' + c.table.type_to_str(table.new_type(k.int())) +
+								'`'
+							c.error('a match case for $multiple_type_name is handled more than once',
+								node.pos)
+						}
+					}
+				}
+				table.Enum {
+					for k, v in all_possible_left_enum_vals {
+						if v == 0 {
+							err = true
+							unhandled << '`.$k`'
+						}
+						if v > 1 {
+							err = true
+							multiple_enum_val := '`.$k`'
+							c.error('a match case for $multiple_enum_val is handled more than once',
+								node.pos)
+						}
+					}
+				}
+				else {
+					err = true
+				}
+			}
+			if err {
+				if unhandled.len > 0 {
+					err_details += ' (add match branches for: ' + unhandled.join(', ') + ' or an else{} branch)'
+				}
+				c.error(err_details, node.pos)
+			}
+		}
+	}
 	c.expected_type = cond_type
 	mut ret_type := table.void_type
 	for branch in node.branches {
@@ -1542,38 +1668,38 @@ pub fn (c mut Checker) warn(s string, pos token.Position) {
 	c.warn_or_error(s, pos, allow_warnings)	// allow warnings only in dev builds
 }
 
-pub fn (c mut Checker) error(s string, pos token.Position) {
-	c.warn_or_error(s, pos, false)
+pub fn (c mut Checker) error(message string, pos token.Position) {
+	c.warn_or_error(message, pos, false)
 }
 
-fn (c mut Checker) warn_or_error(s string, pos token.Position, warn bool) {
+fn (c mut Checker) warn_or_error(message string, pos token.Position, warn bool) {
+	// add backtrace to issue struct, how?
+	// if c.pref.is_verbose {
+	// print_backtrace()
+	// }
 	if !warn {
 		c.nr_errors++
-	}
-	// if c.pref.is_verbose {
-	if c.pref.is_verbose {
-		print_backtrace()
-	}
-	typ := if warn { 'warning' } else { 'error' }
-	kind := if c.pref.is_verbose { 'checker $typ #$c.nr_errors:' } else { '$typ:' }
-	ferror := util.formatted_error(kind, s, c.file.path, pos)
-	c.errors << ferror
-	if !(pos.line_nr in c.error_lines) {
-		if warn {
-			println(ferror)
-		} else {
-			eprintln(ferror)
+		if !(pos.line_nr in c.error_lines) {
+			c.errors << scanner.Error{
+				reporter: scanner.Reporter.checker
+				pos: pos
+				file_path: c.file.path
+				message: message
+			}
+			c.error_lines << pos.line_nr
+		}
+	} else {
+		c.warnings << scanner.Warning{
+			reporter: scanner.Reporter.checker
+			pos: pos
+			file_path: c.file.path
+			message: message
 		}
 	}
-	if !warn {
-		c.error_lines << pos.line_nr
-	}
-	if c.pref.is_verbose {
-		println('\n\n')
-	}
-	if c.nr_errors >= max_nr_errors {
-		exit(1)
-	}
+}
+
+fn (p Checker) fileis(s string) bool {
+	return p.file.path.contains(s)
 }
 
 fn (p Checker) fileis(s string) bool {

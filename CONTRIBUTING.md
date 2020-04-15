@@ -5,7 +5,8 @@ possible.  One of V's goals is to be open to developers with different levels
 of experience in compiler development. Compilers don't need to be black boxes
 full of magic that only few people understand.
 
-The V compiler is modular, and can by used by other applications. It is located in `cmd/v/` and `vlib/v/`.
+The V compiler is modular, and can be used by other applications. It is located
+in `cmd/v/` and `vlib/v/`.
 
 The main files are:
 
@@ -61,25 +62,25 @@ accordingly in the steps below.)
 1. Fork https://github.com/vlang/v using GitHub's interface to your own account.
 Let's say that the forked repository is at
 `https://github.com/YOUR_GITHUB_USERNAME/v` .
-2. Clone the main v repository https://github.com/vlang/v to a local folder on your computer, say named nv/ 
+2. Clone the main v repository https://github.com/vlang/v to a local folder on your computer, say named nv/
 (`git clone https://github.com/vlang/v nv`)
 3. `cd nv`
-4. `git remote add pullrequest https://github.com/YOUR_GITHUB_USERNAME/v`  
+4. `git remote add pullrequest https://github.com/YOUR_GITHUB_USERNAME/v`
 NB: the remote named `pullrequest` should point to YOUR own forked repo, not the main v repository!
-After this, your local cloned repository is prepared for making pullrequests, 
+After this, your local cloned repository is prepared for making pullrequests,
 and you can just do normal git operations such as: `git pull` `git status` and so on.
 
-1. When finished with a feature/bugfix/change, you can: 
+5. When finished with a feature/bugfix/change, you can:
 `git checkout -b fix_alabala`
-2. `git push pullrequest`  # (NOTE: the `pullrequest` remote was setup on step 4)
-3. On GitHub's web interface, go to: https://github.com/vlang/v/pulls  
+6. `git push pullrequest`  # (NOTE: the `pullrequest` remote was setup on step 4)
+7. On GitHub's web interface, go to: https://github.com/vlang/v/pulls
 
 Here the UI shows a dialog with a button to make a new pull request based on
-the new pushed branch. 
+the new pushed branch.
 (Example dialog: https://url4e.com/gyazo/images/364edc04.png)
-4. After making your pullrequest (aka, PR), you can continue to work on the
+8. After making your pullrequest (aka, PR), you can continue to work on the
 branch `fix_alabala` ... just do again `git push pullrequest` when you have more commits.
-5. If there are merge conflicts, or a branch lags too much behind V's master,
+9. If there are merge conflicts, or a branch lags too much behind V's master,
 you can do the following:
    1. `git pull --rebase origin master` # solve conflicts and do `git rebase --continue`
    2. `git push pullrequest -f` # this will overwrite your current remote branch with the updated version of your changes.
@@ -95,7 +96,7 @@ Git is very flexible, so there are other ways to accomplish the same thing.
 ## Using Github's hub CLI tool
 
 You can download the `hub` tool from https://hub.github.com/ . Using
-`hub`, you will not need to go through the (sometimes) slow website 
+`hub`, you will not need to go through the (sometimes) slow website
 to make PRs. Most remote operations can be done through the `hub` CLI
 command.
 
@@ -115,7 +116,7 @@ NB: You still need to have a GitHub account.
 5. `git commit -am "math: add a new function copysign"`
 
 ### Testing your commits locally:
-You can test locally whether your changes have not broken something by 
+You can test locally whether your changes have not broken something by
 running: `v test-compiler`
 
 ### Publishing your commits to GitHub:
@@ -134,7 +135,7 @@ Optionally, you can track the status of your PR CI tests with:
 ### Fixing failing tests:
 If everything is OK, after 5-10 minutes, the CI tests should pass for
 all platforms. If not, visit the URLs for the failing CI jobs, see
-which tests have failed and then fix them by making more changes. Just use 
+which tests have failed and then fix them by making more changes. Just use
 `git push pullrequest` to publish your changes. The CI tests will
 run with your updated code. Use `hub ci-status --verbose` to monitor
 their status.

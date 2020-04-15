@@ -162,7 +162,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
 	os.write_file(vfmt_output_path, formatted_content )
 	if foptions.is_verbose {
-		eprintln('vfmt2 fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
+		eprintln('fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
 	}
 	eprintln('${FORMATTED_FILE_TOKEN}${vfmt_output_path}')
 }

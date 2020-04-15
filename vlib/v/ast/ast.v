@@ -400,10 +400,11 @@ mut:
 
 pub struct MatchBranch {
 pub:
-	exprs   []Expr
-	stmts   []Stmt
+	exprs   []Expr // left side
+	stmts   []Stmt // right side
 	pos     token.Position
 	comment Comment // comment above `xxx {`
+	is_else bool
 }
 
 pub struct CompIf {
