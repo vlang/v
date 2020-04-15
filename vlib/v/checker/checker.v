@@ -1353,6 +1353,9 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 		c.error('match 0 cond type', node.pos)
 	}
 	type_sym := c.table.get_type_symbol(cond_type)
+	if type_sym.kind != .sum_type {
+		node.is_sum_type = false
+	}
 	// all_possible_left_subtypes is a histogram of
 	// type => how many times it was used in the match
 	mut all_possible_left_subtypes := map[string]int
