@@ -20,7 +20,6 @@ const (
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/http_test.v',
 		'vlib/regex/regex_test.v',
-		'vlib/v/tests/const_embed_test.v',
 		'vlib/v/tests/enum_bitfield_test.v',
 		'vlib/v/tests/fixed_array_test.v',
 		'vlib/v/tests/fn_test.v',

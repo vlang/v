@@ -18,17 +18,19 @@ import (
 
 pub struct Builder {
 pub:
-	pref                &pref.Preferences
-	table               &table.Table
-	checker             checker.Checker
-	compiled_dir        string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
-	module_path         string
+	pref                 &pref.Preferences
+	table                &table.Table
+	checker              checker.Checker
+	compiled_dir         string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
+	module_path          string
 mut:
-	module_search_paths []string
-	parsed_files        []ast.File
-	global_scope        &ast.Scope
-	out_name_c          string
-	out_name_js			string
+	module_search_paths  []string
+	builtin_parsed_files []ast.File
+	user_parsed_files    []ast.File
+	import_parsed_files  []ast.File
+	global_scope         &ast.Scope
+	out_name_c           string
+	out_name_js			 string
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -49,8 +51,12 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 // parse all deps from already parsed files
 pub fn (b mut Builder) parse_imports() {
 	mut done_imports := []string
-	for i in 0 .. b.parsed_files.len {
-		ast_file := b.parsed_files[i]
+	mut all_parsed_files := []ast.File
+	all_parsed_files << b.builtin_parsed_files
+	all_parsed_files << b.user_parsed_files
+
+	for i in 0 .. all_parsed_files.len {
+		ast_file := all_parsed_files[i]
 		for _, imp in ast_file.imports {
 			mod := imp.mod
 			if mod in done_imports {
@@ -76,7 +82,8 @@ pub fn (b mut Builder) parse_imports() {
 					verror('bad module definition: ${ast_file.path} imports module "$mod" but $file.path is defined as module `$file.mod.name`')
 				}
 			}
-			b.parsed_files << parsed_files
+			all_parsed_files << parsed_files
+			b.import_parsed_files << parsed_files
 			done_imports << mod
 		}
 	}
@@ -99,7 +106,7 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	if b.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}
-	files.sort()
+	//files.sort()
 	for file in files {
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
 			continue

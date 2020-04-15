@@ -3,20 +3,25 @@ module builder
 import (
 	time
 	os
+	v.ast
 	v.parser
 	v.pref
 	v.gen
 )
 
-pub fn (b mut Builder) gen_c(v_files []string) string {
+pub fn (b mut Builder) gen_c(builtin_files, user_files []string) string {
 	t0 := time.ticks()
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
+	b.builtin_parsed_files = parser.parse_files(builtin_files, b.table, b.pref, b.global_scope)
+	b.user_parsed_files = parser.parse_files(user_files, b.table, b.pref, b.global_scope)
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
 	b.info('PARSE: ${parse_time}ms')
-	//
-	b.checker.check_files(b.parsed_files)
+	mut parsed_files := []ast.File
+	parsed_files << b.builtin_parsed_files
+	parsed_files << b.import_parsed_files
+	parsed_files << b.user_parsed_files
+	b.checker.check_files(parsed_files)
 	t2 := time.ticks()
 	check_time := t2 - t1
 	b.info('CHECK: ${check_time}ms')
@@ -25,8 +30,7 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 		exit(1)
 	}
 	// println('starting cgen...')
-	// TODO: move gen.cgen() to c.gen()
-	res := gen.cgen(b.parsed_files, b.table, b.pref)
+	res := gen.cgen(parsed_files, b.table, b.pref)
 	t3 := time.ticks()
 	gen_time := t3 - t2
 	b.info('C GEN: ${gen_time}ms')
@@ -35,18 +39,18 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 	return res
 }
 
-pub fn (b mut Builder) build_c(v_files []string, out_file string) {
+pub fn (b mut Builder) build_c(builtin_files, user_files []string, out_file string) {
 	b.out_name_c = out_file
 	b.info('build_c($out_file)')
 	mut f := os.create(out_file) or {
 		panic(err)
 	}
-	f.writeln(b.gen_c(v_files))
+	f.writeln(b.gen_c(builtin_files, user_files))
 	f.close()
 	// os.write_file(out_file, b.gen_c(v_files))
 }
 
-pub fn (b mut Builder) compile_c(files []string, pref &pref.Preferences) {
+pub fn (b mut Builder) compile_c(pref &pref.Preferences) {
 	if os.user_os() != 'windows' && pref.ccompiler == 'msvc' {
 		verror('Cannot build with msvc on ${os.user_os()}')
 	}
@@ -54,26 +58,25 @@ pub fn (b mut Builder) compile_c(files []string, pref &pref.Preferences) {
 	// println('compile2()')
 	if pref.is_verbose {
 		println('all .v files before:')
-		println(files)
+		//println(files)
 	}
 	// v1 compiler files
 	// v.add_v_files_to_compile()
 	// v.files << v.dir
 	// v2 compiler
 	// b.set_module_lookup_paths()
-	files << b.get_builtin_files()
-	files << b.get_user_files()
+	builtin_files := b.get_builtin_files()
+	user_files := b.get_user_files()
 	b.set_module_lookup_paths()
 	if pref.is_verbose {
 		println('all .v files:')
-		println(files)
+		println(builtin_files)
+		println(user_files)
 	}
 	mut out_name_c := get_vtmp_filename(pref.out_name, '.tmp.c')
 	if pref.is_so {
 		out_name_c = get_vtmp_filename(pref.out_name, '.tmp.so.c')
 	}
-	b.build_c(files, out_name_c)
+	b.build_c(builtin_files, user_files, out_name_c)
 	b.cc()
 }
-
-
