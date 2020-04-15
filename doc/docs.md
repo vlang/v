@@ -124,16 +124,16 @@ Unlike most other languages, V only allows defining variables in functions.
 Global (module level) variables are not allowed. There's no global state in V.
 
 ```v
-mut age := 20
+var age := 20
 println(age)
 age = 21
 println(age)
 ```
 
 To change the value of the variable use `=`. In V, variables are
-immutable by default. To be able to change the value of the variable, you have to declare it with `mut`.
+immutable by default. To be able to change the value of the variable, you have to declare it with `var`.
 
-Try compiling the program above after removing `mut` from the first line.
+Try compiling the program above after removing `var` from the first line.
 
 Please note the difference between `:=` and `=`
 `:=` is used for declaring and initializing, `=` is used for assigning.
@@ -198,7 +198,7 @@ bobby := name + 'by' // + is used to concatenate strings
 println(bobby) // "Bobby"
 
 println(bobby[1..3]) // "ob"
-mut s := 'hello '
+var s := 'hello '
 s += 'world' // `+=` is used to append to a string
 println(s) // "hello world"
 ```
@@ -248,7 +248,7 @@ println(s) // "hello\nworld"
 ## Arrays
 
 ```v
-mut nums := [1, 2, 3]
+var nums := [1, 2, 3]
 println(nums) // "[1, 2, 3]"
 println(nums[1]) // "2"
 
@@ -258,7 +258,7 @@ println(nums) // "[1, 2, 3, 4]"
 nums << [5, 6, 7]
 println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
 
-mut names := ['John']
+var names := ['John']
 names << 'Peter'
 names << 'Sam'
 // names << 10  <-- This will not compile. `names` is an array of strings.
@@ -398,7 +398,7 @@ If an index is required, an alternative form `for index, value in` can be used.
 Note, that the value is read-only. If you need to modify the array while looping, you have to use indexing:
 
 ```v
-mut numbers := [1, 2, 3, 4, 5]
+var numbers := [1, 2, 3, 4, 5]
 for i, num in numbers {
     println(num)
     numbers[i] = 0
@@ -406,8 +406,8 @@ for i, num in numbers {
 ```
 
 ```v
-mut sum := 0
-mut i := 0
+var sum := 0
+var i := 0
 for i <= 100 {
     sum += i
     i++
@@ -422,7 +422,7 @@ The loop will stop iterating once the boolean condition evaluates to false.
 Again, there are no parentheses surrounding the condition, and the braces are always required.
 
 ```v
-mut num := 0
+var num := 0
 for {
     num++
     if num >= 10 {
@@ -448,7 +448,7 @@ Finally, there's the traditional C style `for` loop. It's safer than the `while`
 because with the latter it's easy to forget to update the counter and get
 stuck in an infinite loop.
 
-Here `i` doesn't need to be declared with `mut` since it's always going to be mutable by definition.
+Here `i` doesn't need to be declared with `var` since it's always going to be mutable by definition.
 
 ## Match
 
@@ -546,12 +546,12 @@ Their access modifiers can be changed with
 ```v
 struct Foo {
     a int   // private immutable (default)
-mut:
+var:
     b int   // private mutable
     c int   // (you can list multiple fields with the same access modifier)
 pub:
     d int   // public immmutable (readonly)
-pub mut:
+pub var:
     e int   // public, but mutable only in parent module
 __global:
     f int   // public and mutable both inside and outside parent module
@@ -622,15 +622,15 @@ It is possible to modify function arguments by using the same keyword `mut`:
 
 ```v
 struct User {
-mut:
+var:
     is_registered bool
 }
 
-fn (u mut User) register() {
+fn (var u User) register() {
     u.is_registered = true
 }
 
-mut user := User{}
+var user := User{}
 println(user.is_registered) // "false"
 user.register()
 println(user.is_registered) // "true"
@@ -640,18 +640,18 @@ In this example, the receiver (which is simply the first argument) is marked as 
 so `register()` can change the user object. The same works with non-receiver arguments:
 
 ```v
-fn multiply_by_2(arr mut []int) {
+fn multiply_by_2(var arr []int) {
     for i in 0..arr.len {
         arr[i] *= 2
     }
 }
 
-mut nums := [1, 2, 3]
-multiply_by_2(mut nums)
+var nums := [1, 2, 3]
+multiply_by_2(var nums)
 println(nums) // "[2, 4, 6]"
 ```
 
-Note, that you have to add `mut` before `nums` when calling this function. This makes
+Note, that you have to add `var` before `nums` when calling this function. This makes
 it clear that the function being called will modify the value.
 
 It is preferable to return values instead of modifying arguments.
@@ -662,7 +662,7 @@ For this reason V doesn't allow to modify primitive args like integers, only
 complex types like arrays and maps.
 
 Use `user.register()` or `user = register(user)`
-instead of `register(mut user)`.
+instead of `register(var user)`.
 
 V makes it easy to return a modified version of an object:
 
@@ -719,7 +719,7 @@ fn (foo &Foo) bar() {
 ```
 
 `foo` is still immutable and can't be changed. For that,
-`(foo mut Foo)` has to be used.
+`(var foo Foo)` has to be used.
 
 In general, V references are similar to Go pointers and C++ references.
 For example, a tree structure definition would look like this:
@@ -902,7 +902,7 @@ enum Color {
     red green blue
 }
 
-mut color := Color.red
+var color := Color.red
 // V knows that `color` is a `Color`. No need to use `color = Color.green` here.
 color = .green
 println(color) // "1"  TODO: print "green"?
@@ -1370,7 +1370,7 @@ serializers for anything:
 ```v
 // TODO: not implemented yet
 fn decode<T>(data string) T {
-    mut result := T{}
+    var result := T{}
     for field in T.fields {
         if field.typ == 'string' {
             result.$field = get_string(data, field.name)
@@ -1383,7 +1383,7 @@ fn decode<T>(data string) T {
 
 // generates to:
 fn decode_User(data string) User {
-    mut result := User{}
+    var result := User{}
     result.name = get_string(data, 'name')
     result.age = get_int(data, 'age')
     return result
@@ -1477,7 +1477,7 @@ Run `v translate test.cpp` and V will generate `test.v`:
 
 ```v
 fn main {
-        mut s := []
+    var s := []
     s << 'V is '
     s << 'awesome'
     println(s.len)
@@ -1612,13 +1612,13 @@ in
 interface
 match
 module
-mut
 none
 or
 pub
 return
 struct
 type
+var
 ```
 
 ## Appendix II: Operators
