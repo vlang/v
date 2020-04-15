@@ -1,4 +1,4 @@
-vlib/v/checker/tests/inout/struct_name.v:1:8: error: struct name must be capital
+vlib/v/checker/tests/inout/struct_name.v:1:8: struct name must begin with capital letter
     1| struct abc {
               ~~~
     2|
