@@ -35,6 +35,7 @@ mut:
 	ast_imports       []ast.Import
 	is_amp            bool
 	returns           bool
+	inside_match      bool // to separate `match A { }` from `Struct{}`
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
 	is_stmt_ident     bool // true while the beginning of a statement is an ident/selector
 }
@@ -691,7 +692,7 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			node = x
 		}
 	} else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod &&
-		p.tok.lit in table.builtin_type_names)) && !p.inside_match_case && !p.inside_if && !p.inside_for {
+		p.tok.lit in table.builtin_type_names)) && !p.inside_match && !p.inside_match_case && !p.inside_if && !p.inside_for {
 		// (p.tok.lit.len in [1, 2] || !p.tok.lit[p.tok.lit.len - 1].is_capital()) &&
 		// || p.table.known_type(p.tok.lit)) {
 		return p.struct_init(false)		// short_syntax: false
@@ -1864,6 +1865,7 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 
 fn (p mut Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.position()
+	p.inside_match = true
 	p.check(.key_match)
 	is_mut := p.tok.kind in [.key_mut, .key_var]
 	var is_sum_type := false
@@ -1871,6 +1873,7 @@ fn (p mut Parser) match_expr() ast.MatchExpr {
 		p.next()
 	}
 	cond := p.expr(0)
+	p.inside_match = false
 	p.check(.lcbr)
 	var branches := []ast.MatchBranch
 	for {
