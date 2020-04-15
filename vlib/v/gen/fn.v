@@ -242,6 +242,19 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 }
 
 fn (g mut Gen) fn_call(node ast.CallExpr) {
+	// call struct field with fn type
+	// TODO: test node.left instead
+	// left & left_type will be `x` and `x type` in `x.fieldfn()`
+	// will be `0` for `foo()`
+	if node.left_type != 0 {
+		g.expr(node.left)
+		if table.type_is_ptr(node.left_type) {
+			g.write('->')
+		}
+		else {
+			g.write('.')
+		}
+	}
 	mut name := node.name
 	is_print := name == 'println' || name == 'print'
 	print_method := if name == 'println' { 'println' } else { 'print' }

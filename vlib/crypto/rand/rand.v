@@ -9,7 +9,7 @@ const (
 )
 
 // NOTE: temp until we have []bytes(buff)
-fn c_array_to_bytes_tmp(len, buffer voidptr) []byte {
+fn c_array_to_bytes_tmp(len int, buffer voidptr) []byte {
 
 	mut arr := []byte
 	arr = make(len, 1, 1)

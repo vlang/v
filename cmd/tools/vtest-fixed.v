@@ -10,7 +10,7 @@ const (
 		'vlib/cli/command_test.v',
 		'vlib/cli/flag_test.v',
 		'vlib/crypto/aes/aes_test.v',
-		'vlib/crypto/rand/rand_test.v',
+		'vlib/crypto/rand/rand_test.v', // macOS only
 		'vlib/crypto/rc4/rc4_test.v',
 		'vlib/encoding/utf8/utf8_util_test.v',
 		'vlib/eventbus/eventbus_test.v',

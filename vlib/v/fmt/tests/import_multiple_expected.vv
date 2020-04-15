@@ -1,7 +1,5 @@
-import (
-	math
-	os
-)
+import math
+import os
 
 const (
 	mypi = math.pi

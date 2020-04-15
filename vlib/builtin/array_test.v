@@ -21,6 +21,26 @@ fn test_pointer() {
 	assert *d_arr[1][0] == 1
 }
 
+fn test_assign() {
+	arr := [2, 4, 8, 16, 32, 64, 128]
+
+	arr[0] = 2
+	arr[1] &= 255
+	arr[2] |= 255
+	arr[3] <<= 4
+	arr[4] >>= 4
+	arr[5] %= 5
+	arr[6] ^= 3
+
+	assert arr[0] == 2
+	assert arr[1] == 4 & 255
+	assert arr[2] == 8 | 255
+	assert arr[3] == 16 << 4
+	assert arr[4] == 32 >> 4
+	assert arr[5] == 64 % 5
+	assert arr[6] == 128 ^ 3
+}
+
 fn test_ints() {
 	mut a := [1, 5, 2, 3]
 	assert a.len == 4
@@ -690,4 +710,22 @@ fn test_hex(){
 
 	st1 := [byte(0x41)].repeat(100)
 	assert st1.hex() == "41".repeat(100)
+}
+
+fn test_left_shift_precendence() {
+	mut arr := []int
+	arr << 1 + 1
+	arr << 1 - 1
+	arr << 2 / 1
+	arr << 2 * 1
+
+	assert arr[0] == 2
+	assert arr[1] == 0
+	assert arr[2] == 2
+	assert arr[3] == 2
+}
+
+fn test_array_with_cap() {
+	a := []int{cap:10, len:1 }
+	//assert a.len == 1
 }

@@ -3,13 +3,14 @@
 // that can be found in the LICENSE file.
 module builtin
 
-import strings
+import (
+	strings
+)
 
 pub struct array {
 pub:
-// Using a void pointer allows to implement arrays without generics and without generating
+	data         voidptr// Using a void pointer allows to implement arrays without generics and without generating
 // extra code for every type.
-	data         voidptr
 	len          int
 	cap          int
 	element_size int
