@@ -1710,7 +1710,7 @@ fn (g mut Gen) index_expr(node ast.IndexExpr) {
 		} else if sym.kind == .map {
 			info := sym.info as table.Map
 			elem_type_str := g.typ(info.value_type)
-			if g.is_assign_lhs {
+			if g.is_assign_lhs && !g.is_array_set {
 				g.is_array_set = true
 				g.write('map_set(')
 				if !left_is_ptr {
