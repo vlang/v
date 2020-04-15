@@ -1278,7 +1278,6 @@ fn (p mut Parser) string_expr() ast.Expr {
 			val: val
 			is_raw: is_raw
 			is_c: is_cstr
-			is_js: is_jsstr
 			pos: pos
 		}
 		return node

@@ -129,7 +129,7 @@ pub fn (p mut Parser) parse_any_type(is_c bool, is_js bool, is_ptr bool) table.T
 	if is_c {
 		name = 'C.$name'
 	}
-	if is_js {
+	else if is_js {
 		name = 'JS.$name'
 	}
 	// `module.Type`

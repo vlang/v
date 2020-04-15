@@ -1701,7 +1701,3 @@ fn (c mut Checker) warn_or_error(message string, pos token.Position, warn bool) 
 fn (p Checker) fileis(s string) bool {
 	return p.file.path.contains(s)
 }
-
-fn (p Checker) fileis(s string) bool {
-	return p.file.path.contains(s)
-}
