@@ -21,6 +21,7 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 	check_time := t2 - t1
 	b.info('CHECK: ${check_time}ms')
 	if b.checker.nr_errors > 0 {
+		b.print_errors(b.checker.errors)
 		exit(1)
 	}
 	// println('starting cgen...')
