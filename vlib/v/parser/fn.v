@@ -8,12 +8,14 @@ import v.table
 import v.scanner
 import v.token
 
-pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
+pub fn (p mut Parser) call_expr(is_c bool, is_js bool, mod string) ast.CallExpr {
 	first_pos := p.tok.position()
 	tok := p.tok
 	name := p.check_name()
 	fn_name := if is_c {
 		'C.$name'
+	} else if is_js {
+		'JS.$name'
 	} else if mod.len > 0 {
 		'${mod}.$name'
 	} else {
@@ -51,6 +53,7 @@ pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
 		mod: p.mod
 		pos: pos
 		is_c: is_c
+		is_js: is_js
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			is_used: is_or_block_used
@@ -89,9 +92,10 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		p.next()
 	}
 	p.check(.key_fn)
-	// C.
+	// C. || JS.
 	is_c := p.tok.kind == .name && p.tok.lit == 'C'
-	if is_c {
+	is_js := p.tok.kind == .name && p.tok.lit == 'JS'
+	if is_c || is_js {
 		p.next()
 		p.check(.dot)
 	}
@@ -133,7 +137,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .name {
 		// TODO high order fn
 		name = p.check_name()
-		if !is_c && !p.pref.translated && scanner.contains_capital(name) {
+		if !is_js && !is_c && !p.pref.translated && scanner.contains_capital(name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
 		if is_method && p.table.get_type_symbol(rec_type).has_method(name) {
@@ -179,6 +183,8 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	} else {
 		if is_c {
 			name = 'C.$name'
+		} else if is_js {
+			name = 'JS.$name'
 		} else {
 			name = p.prepend_mod(name)
 		}
@@ -191,6 +197,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			return_type: return_type
 			is_variadic: is_variadic
 			is_c: is_c
+			is_js: is_js
 			is_generic: is_generic
 		})
 	}
@@ -217,6 +224,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		is_method: is_method
 		rec_mut: rec_mut
 		is_c: is_c
+		is_js: is_js
 		no_body: no_body
 		pos: pos
 		is_builtin: p.builtin_mod || p.mod in ['math', 'strconv', 'strconv.ftoa', 'hash.wyhash',

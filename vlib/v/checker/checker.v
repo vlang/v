@@ -413,7 +413,7 @@ pub fn (c mut Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 		return table.void_type
 	}
 	call_expr.return_type = f.return_type
-	if f.is_c || call_expr.is_c {
+	if f.is_c || call_expr.is_c || f.is_js || call_expr.is_js {
 		for arg in call_expr.args {
 			c.expr(arg.expr)
 		}
@@ -922,7 +922,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.expected_type = table.void_type
 			c.fn_return_type = it.return_type
 			c.stmts(it.stmts)
-			if !it.is_c && !it.no_body && it.return_type != table.void_type && !c.returns &&
+			if !it.is_c && !it.is_js && !it.no_body && it.return_type != table.void_type && !c.returns &&
 				!(it.name in ['panic', 'exit']) {
 				c.error('missing return at end of function `$it.name`', it.pos)
 			}

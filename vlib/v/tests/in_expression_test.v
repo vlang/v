@@ -17,12 +17,10 @@ fn test_in_expression() {
 	assert a == true
 	a = false && 0 in arr3
 	assert a == false
-
 	a = true && 0 in arr1
 	assert a == false
 	a = true && 3 in arr1
 	assert a == false
-
 	a = true && !(2 in arr2)
 	assert a == false
 	a = true && !(3 in arr2)
@@ -90,7 +88,6 @@ fn test_in_expression_with_string() {
 	assert a == false
 	a = true && 'abc' in arr1
 	assert a == false
-
 	a = true && !('bc' in arr2)
 	assert a == false
 	a = true && !('abc' in arr2)
@@ -118,12 +115,10 @@ fn test_optimized_in_expression() {
 	assert a == true
 	a = false && 0 in [1, 0]
 	assert a == false
-
 	a = true && 0 in [1, 2]
 	assert a == false
 	a = true && 3 in [1, 2]
 	assert a == false
-
 	a = true && !(2 in [0, 2])
 	assert a == false
 	a = true && !(3 in [0, 2])
@@ -151,12 +146,10 @@ fn test_optimized_in_expression_with_enum() {
 	assert a == true
 	a = false && Colors.red in [.green, .red]
 	assert a == false
-
 	a = true && Colors.red in [.green, .blue]
 	assert a == false
 	a = true && Colors.yellow in [.green, .blue]
 	assert a == false
-
 	a = true && !(Colors.blue in [.red, .blue])
 	assert a == false
 	a = true && !(Colors.yellow in [.red, .blue])
@@ -184,12 +177,10 @@ fn test_optimized_in_expression_with_string() {
 	assert a == true
 	a = false && '' in ['ab', '']
 	assert a == false
-
 	a = true && '' in ['ab', 'bc']
 	assert a == false
 	a = true && 'abc' in ['ab', 'bc']
 	assert a == false
-
 	a = true && !('bc' in ['', 'bc'])
 	assert a == false
 	a = true && !('abc' in ['', 'bc'])
