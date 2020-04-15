@@ -256,7 +256,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			s := it.str(f.table)
 			// f.write(it.str(f.table))
 			f.write(s.replace(f.cur_mod + '.', ''))			// `Expr` instead of `ast.Expr` in mod ast
-			if !it.is_c || !it.is_js {
+			if !it.is_c && !it.is_js {
 				f.writeln(' {')
 				f.stmts(it.stmts)
 				f.writeln('}\n')
