@@ -17,16 +17,18 @@ import (
 
 pub struct Builder {
 pub:
-	pref                &pref.Preferences
-	table               &table.Table
-	checker             checker.Checker
-	compiled_dir        string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
-	module_path         string
+	pref                 &pref.Preferences
+	table                &table.Table
+	checker              checker.Checker
+	compiled_dir         string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
+	module_path          string
 mut:
-	module_search_paths []string
-	parsed_files        []ast.File
-	global_scope        &ast.Scope
-	out_name_c          string
+	module_search_paths  []string
+	builtin_parsed_files []ast.File
+	user_parsed_files    []ast.File
+	import_parsed_files  []ast.File
+	global_scope         &ast.Scope
+	out_name_c           string
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -44,15 +46,19 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	}
 }
 
-pub fn (b mut Builder) gen_c(v_files []string) string {
+pub fn (b mut Builder) gen_c(builtin_files, user_files []string) string {
 	t0 := time.ticks()
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
+	b.builtin_parsed_files = parser.parse_files(builtin_files, b.table, b.pref, b.global_scope)
+	b.user_parsed_files = parser.parse_files(user_files, b.table, b.pref, b.global_scope)
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
 	b.info('PARSE: ${parse_time}ms')
-	//
-	b.checker.check_files(b.parsed_files)
+	mut parsed_files := []ast.File
+	parsed_files << b.builtin_parsed_files
+	parsed_files << b.import_parsed_files
+	parsed_files << b.user_parsed_files
+	b.checker.check_files(parsed_files)
 	t2 := time.ticks()
 	check_time := t2 - t1
 	b.info('CHECK: ${check_time}ms')
@@ -61,7 +67,7 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 		exit(1)
 	}
 	// println('starting cgen...')
-	res := gen.cgen(b.parsed_files, b.table, b.pref)
+	res := gen.cgen(parsed_files, b.table, b.pref)
 	t3 := time.ticks()
 	gen_time := t3 - t2
 	b.info('C GEN: ${gen_time}ms')
@@ -70,33 +76,38 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 	return res
 }
 
-pub fn (b mut Builder) build_c(v_files []string, out_file string) {
+pub fn (b mut Builder) build_c(builtin_files, user_files []string, out_file string) {
 	b.out_name_c = out_file
 	b.info('build_c($out_file)')
 	mut f := os.create(out_file) or {
 		panic(err)
 	}
-	f.writeln(b.gen_c(v_files))
+	f.writeln(b.gen_c(builtin_files, user_files))
 	f.close()
 	// os.write_file(out_file, b.gen_c(v_files))
 }
 
-pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
+pub fn (b mut Builder) build_x64(builtin_files, user_files []string, out_file string) {
 	$if !linux {
 		println('v -x64 can only generate Linux binaries for now')
 		println('You are not on a Linux system, so you will not ' + 'be able to run the resulting executable')
 	}
 	t0 := time.ticks()
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
+	b.builtin_parsed_files = parser.parse_files(builtin_files, b.table, b.pref, b.global_scope)
+	b.user_parsed_files = parser.parse_files(user_files, b.table, b.pref, b.global_scope)
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
 	b.info('PARSE: ${parse_time}ms')
-	b.checker.check_files(b.parsed_files)
+	mut parsed_files := []ast.File
+	parsed_files << b.builtin_parsed_files
+	parsed_files << b.import_parsed_files
+	parsed_files << b.user_parsed_files
+	b.checker.check_files(parsed_files)
 	t2 := time.ticks()
 	check_time := t2 - t1
 	b.info('CHECK: ${check_time}ms')
-	x64.gen(b.parsed_files, out_file)
+	x64.gen(parsed_files, out_file)
 	t3 := time.ticks()
 	gen_time := t3 - t2
 	b.info('x64 GEN: ${gen_time}ms')
@@ -105,8 +116,12 @@ pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
 // parse all deps from already parsed files
 pub fn (b mut Builder) parse_imports() {
 	mut done_imports := []string
-	for i in 0 .. b.parsed_files.len {
-		ast_file := b.parsed_files[i]
+	mut all_parsed_files := []ast.File
+	all_parsed_files << b.builtin_parsed_files
+	all_parsed_files << b.user_parsed_files
+
+	for i in 0 .. all_parsed_files.len {
+		ast_file := all_parsed_files[i]
 		for _, imp in ast_file.imports {
 			mod := imp.mod
 			if mod in done_imports {
@@ -132,7 +147,8 @@ pub fn (b mut Builder) parse_imports() {
 					verror('bad module definition: ${ast_file.path} imports module "$mod" but $file.path is defined as module `$file.mod.name`')
 				}
 			}
-			b.parsed_files << parsed_files
+			all_parsed_files << parsed_files
+			b.import_parsed_files << parsed_files
 			done_imports << mod
 		}
 	}
@@ -155,7 +171,7 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	if b.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}
-	files.sort()
+	//files.sort()
 	for file in files {
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
 			continue
