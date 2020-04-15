@@ -865,7 +865,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 				elem_sym := g.table.get_type_symbol(it.elem_type)
 				elem_type_str := g.typ(it.elem_type)
 				if it.exprs.len == 0 {
-					g.write('new_array($it.exprs.len, $it.exprs.len, sizeof($elem_type_str))')
+					// use __new_array to fix conflicts when the name of the variable is new_array
+					g.write('__new_array($it.exprs.len, $it.exprs.len, sizeof($elem_type_str))')
 				} else {
 					len := it.exprs.len
 					g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), ')
