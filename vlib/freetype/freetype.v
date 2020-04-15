@@ -63,9 +63,7 @@ struct Character {
 }
 
 [typedef]
-struct C.FT_Library {
-	_z int
-}
+struct C.FT_Library {}
 
 pub struct FreeType {
 	shader    gl.Shader
@@ -79,7 +77,7 @@ pub struct FreeType {
 	line_vbo  u32
 	vbo       u32
 	chars     []Character
-	face      C.FT_Face
+	face      &C.FT_FaceRec
 	scale     int // retina = 2 , normal = 1
 mut:
 	utf_runes []string
@@ -118,15 +116,16 @@ struct C.Glyph {
 }
 
 [typedef]
-struct C.FT_Face {
+struct C.FT_FaceRec {
 	glyph &C.Glyph
 	family_name charptr
 	style_name charptr
 }
+///type FT_Face &C.FT_FaceRec
 
 fn C.FT_Load_Char(voidptr, i64, int) int
 
-fn ft_load_char(face C.FT_Face, code i64) Character {
+fn ft_load_char(face &C.FT_FaceRec, code i64) Character {
 	//println('\nftload_char( code=$code)')
 	//C.printf('face=%p\n', face)
 	//C.printf('cobj=%p\n', _face.cobj)
@@ -141,10 +140,10 @@ fn ft_load_char(face C.FT_Face, code i64) Character {
 	mut texture := 0
 	C.glGenTextures(1, &texture)
 	C.glBindTexture(C.GL_TEXTURE_2D, texture)
-	fgwidth := face.glyph.bitmap.width
-	fgrows  := face.glyph.bitmap.rows
+	fgwidth := (*face).glyph.bitmap.width
+	fgrows  := (*face).glyph.bitmap.rows
 	C.glTexImage2D(C.GL_TEXTURE_2D, 0, C.GL_RED, fgwidth,  fgrows,
-		0, C.GL_RED, C.GL_UNSIGNED_BYTE, face.glyph.bitmap.buffer)
+		0, C.GL_RED, C.GL_UNSIGNED_BYTE, (*face).glyph.bitmap.buffer)
 	// Set texture options
 	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_S, C.GL_CLAMP_TO_EDGE)
 	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_T, C.GL_CLAMP_TO_EDGE)
@@ -158,11 +157,11 @@ fn ft_load_char(face C.FT_Face, code i64) Character {
 
 		// Note: advance is number of 1/64 pixels
 		// Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
-		horizontal_bearing_px:  gg.vec2(face.glyph.metrics.horiBearingX >> 6, face.glyph.metrics.horiBearingY >> 6)
-		vertical_bearing_px:    gg.vec2(face.glyph.metrics.vertBearingX >> 6, face.glyph.metrics.vertBearingY >> 6) // not used for now
+		horizontal_bearing_px:  gg.vec2((*face).glyph.metrics.horiBearingX >> 6, (*face).glyph.metrics.horiBearingY >> 6)
+		vertical_bearing_px:    gg.vec2((*face).glyph.metrics.vertBearingX >> 6, (*face).glyph.metrics.vertBearingY >> 6) // not used for now
 
-		horizontal_advance_px:  face.glyph.metrics.horiAdvance >> 6
-		vertical_advance_px:    face.glyph.metrics.vertAdvance >> 6
+		horizontal_advance_px:  (*face).glyph.metrics.horiAdvance >> 6
+		vertical_advance_px:    (*face).glyph.metrics.vertAdvance >> 6
 	}
 }
 
@@ -193,7 +192,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	projection := glm.ortho(0, width, 0, height)// 0 at BOT
 	shader.set_mat4('projection', projection)
 	// FREETYPE
-	ft := C.FT_Library{0}
+	ft := C.FT_Library{}
 	// All functions return a value different than 0 whenever
 	// an error occurred
 	mut ret := C.FT_Init_FreeType(&ft)
@@ -215,7 +214,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 		return 0
 	}
 	println('Trying to load font from $font_path')
-	face := C.FT_Face{}
+	face := &C.FT_FaceRec{}
 	ret = int(C.FT_New_Face(ft, font_path.str, 0, &face))
 	if ret != 0	{
 		println('freetype: failed to load the font (error=$ret)')
