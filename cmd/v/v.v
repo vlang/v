@@ -184,13 +184,12 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 	}
 	else if command == 'run' {
 		res.is_run = true
-		if command_pos + 1 < args.len {
-			res.path = args[command_pos + 1]
-			res.run_args = args[command_pos+2..]
-		} else {
+		if command_pos > args.len {
 			eprintln('v run: no v files listed')
 			exit(1)
 		}
+		res.path = args[command_pos + 1]
+		res.run_args = args[command_pos+2..]
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
