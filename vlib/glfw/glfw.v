@@ -77,7 +77,7 @@ fn C.glfwSwapInterval()
 fn C.glfwMakeContextCurrent()
 fn C.glfwSetWindowTitle()
 fn C.glfwTerminate()
-fn C.glfwCreateWindow(w int, h int, title charptr, m voidptr, sh voidptr) voidptr
+fn C.glfwCreateWindow()
 fn C.glfwWindowHint()
 fn C.glfwDestroyWindow()
 fn C.glfwInit()

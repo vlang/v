@@ -124,13 +124,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	//
 	g.finish()
-	return g.hashes() +
-		'\n// V includes:\n' + g.includes.str() +
-		'\n// V typedefs:\n' + g.typedefs.str() + g.typedefs2.str() +
-		'\n// V definitions:\n' + g.definitions.str() +
-		'\n// V gowrappers:\n' + g.gowrappers.str() +
-		'\n// V stringliterals:\n' + g.stringliterals.str() +
-		'\n// V out\n' + g.out.str()
+	return g.hashes() + g.includes.str() + g.typedefs.str() + g.typedefs2.str() + g.definitions.str() +
+		g.gowrappers.str() + g.stringliterals.str() + g.out.str()
 }
 
 pub fn (g Gen) hashes() string {
@@ -483,10 +478,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.HashStmt {
 			// #include etc
 			typ := it.val.all_before(' ')
-			if typ == 'include' {
-				g.includes.writeln('#$it.val')
-			}
-			if typ == 'define' {
+			if typ in ['include', 'define'] {
 				g.definitions.writeln('#$it.val')
 			}
 		}
