@@ -1,11 +1,12 @@
 module parser
-
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-import v.table
+import (
+	v.table
+)
 
-pub fn (var p Parser) parse_array_type() table.Type {
+pub fn (p mut Parser) parse_array_type() table.Type {
 	p.check(.lsbr)
 	// fixed array
 	if p.tok.kind == .number {
@@ -19,7 +20,7 @@ pub fn (var p Parser) parse_array_type() table.Type {
 	// array
 	p.check(.rsbr)
 	elem_type := p.parse_type()
-	var nr_dims := 1
+	mut nr_dims := 1
 	for p.tok.kind == .lsbr {
 		p.check(.lsbr)
 		p.check(.rsbr)
@@ -29,7 +30,7 @@ pub fn (var p Parser) parse_array_type() table.Type {
 	return table.new_type(idx)
 }
 
-pub fn (var p Parser) parse_map_type() table.Type {
+pub fn (p mut Parser) parse_map_type() table.Type {
 	p.next()
 	if p.tok.kind != .lsbr {
 		return table.map_type
@@ -47,15 +48,16 @@ pub fn (var p Parser) parse_map_type() table.Type {
 	return table.new_type(idx)
 }
 
-pub fn (var p Parser) parse_multi_return_type() table.Type {
+pub fn (p mut Parser) parse_multi_return_type() table.Type {
 	p.check(.lpar)
-	var mr_types := []table.Type
+	mut mr_types := []table.Type
 	for {
 		mr_type := p.parse_type()
 		mr_types << mr_type
 		if p.tok.kind == .comma {
 			p.check(.comma)
-		} else {
+		}
+		else {
 			break
 		}
 	}
@@ -65,12 +67,12 @@ pub fn (var p Parser) parse_multi_return_type() table.Type {
 }
 
 // given anon name based off signature when `name` is blank
-pub fn (var p Parser) parse_fn_type(name string) table.Type {
+pub fn (p mut Parser) parse_fn_type(name string) table.Type {
 	// p.warn('parse fn')
 	p.check(.key_fn)
 	line_nr := p.tok.line_nr
-	args, is_variadic := p.fn_args()
-	var return_type := table.void_type
+	args,is_variadic := p.fn_args()
+	mut return_type := table.void_type
 	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()
 	}
@@ -84,22 +86,14 @@ pub fn (var p Parser) parse_fn_type(name string) table.Type {
 	return table.new_type(idx)
 }
 
-pub fn (var p Parser) parse_type_with_mut(is_mut bool) table.Type {
-	typ := p.parse_type()
-	if is_mut {
-		return table.type_set_nr_muls(typ, 1)
-	}
-	return typ
-}
-
-pub fn (var p Parser) parse_type() table.Type {
+pub fn (p mut Parser) parse_type() table.Type {
 	// optional
-	var is_optional := false
+	mut is_optional := false
 	if p.tok.kind == .question {
 		p.next()
 		is_optional = true
 	}
-	var nr_muls := 0
+	mut nr_muls := 0
 	if p.tok.kind == .key_mut {
 		nr_muls++
 		p.next()
@@ -108,7 +102,8 @@ pub fn (var p Parser) parse_type() table.Type {
 	for p.tok.kind in [.and, .amp] {
 		if p.tok.kind == .and {
 			nr_muls += 2
-		} else {
+		}
+		else {
 			nr_muls++
 		}
 		p.next()
@@ -118,7 +113,7 @@ pub fn (var p Parser) parse_type() table.Type {
 		p.next()
 		p.check(.dot)
 	}
-	var typ := p.parse_any_type(is_c, nr_muls > 0)
+	mut typ := p.parse_any_type(is_c, nr_muls > 0)
 	if is_optional {
 		typ = table.type_set(typ, .optional)
 	}
@@ -128,12 +123,13 @@ pub fn (var p Parser) parse_type() table.Type {
 	return typ
 }
 
-pub fn (var p Parser) parse_any_type(is_c, is_ptr bool) table.Type {
-	var name := p.tok.lit
+pub fn (p mut Parser) parse_any_type(is_c, is_ptr bool) table.Type {
+	mut name := p.tok.lit
 	if is_c {
 		name = 'C.$name'
-	} else if p.peek_tok.kind == .dot {
-		// `module.Type`
+	}
+	// `module.Type`
+	else if p.peek_tok.kind == .dot {
 		// /if !(p.tok.lit in p.table.imports) {
 		if !p.known_import(name) {
 			println(p.table.imports)
@@ -143,10 +139,12 @@ pub fn (var p Parser) parse_any_type(is_c, is_ptr bool) table.Type {
 		p.check(.dot)
 		// prefix with full module
 		name = '${p.imports[name]}.$p.tok.lit'
-	} else if p.expr_mod != '' {
+	}
+	else if p.expr_mod != '' {
 		name = p.expr_mod + '.' + name
-	} else if !(p.mod in ['builtin', 'main']) && !(name in table.builtin_type_names) {
-		// `Foo` in module `mod` means `mod.Foo`
+	}
+	// `Foo` in module `mod` means `mod.Foo`
+	else if !(p.mod in ['builtin', 'main']) && !(name in table.builtin_type_names) {
 		name = p.mod + '.' + name
 	}
 	// p.warn('get type $name')
@@ -226,7 +224,7 @@ pub fn (var p Parser) parse_any_type(is_c, is_ptr bool) table.Type {
 				// struct / enum / placeholder
 				else {
 					// struct / enum
-					var idx := p.table.find_type_idx(name)
+					mut idx := p.table.find_type_idx(name)
 					if idx > 0 {
 						return table.new_type(idx)
 					}
@@ -235,7 +233,7 @@ pub fn (var p Parser) parse_any_type(is_c, is_ptr bool) table.Type {
 					// println('NOT FOUND: $name - adding placeholder - $idx')
 					return table.new_type(idx)
 				}
-			}
+	}
 		}
 	}
 }

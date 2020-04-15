@@ -4,23 +4,24 @@
 module ast
 
 // These methods are used only by vfmt, vdoc, and for debugging.
-import v.table
-import strings
+import (
+	v.table
+	strings
+)
 
 pub fn (node &FnDecl) str(t &table.Table) string {
-	var f := strings.new_builder(30)
+	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write('pub ')
 	}
-	var receiver := ''
+	mut receiver := ''
 	if node.is_method {
-		var styp := t.type_to_str(node.receiver.typ)
-		var m := if node.rec_mut { 'var ' } else { '' }
+		mut styp := t.type_to_str(node.receiver.typ)
+		mut m := if node.rec_mut { 'mut ' } else { '' }
 		if node.rec_mut {
 			styp = styp[1..]			// remove &
 		}
-		// receiver = '($node.receiver.name $m$styp) '
-		receiver = '($m$node.receiver.name $styp) '
+		receiver = '($node.receiver.name $m$styp) '
 		/*
 		sym := t.get_type_symbol(node.receiver.typ)
 		name := sym.name.after('.')
@@ -31,7 +32,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		receiver = '($node.receiver.name $m$name) '
 */
 	}
-	var name := node.name.after('.')
+	mut name := node.name.after('.')
 	if node.is_c {
 		name = 'C.$name'
 	}
@@ -45,7 +46,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ || (node.is_variadic &&
 			i == node.args.len - 2)
 		f.write(arg.name)
-		var s := t.type_to_str(arg.typ)
+		mut s := t.type_to_str(arg.typ)
 		if arg.is_mut {
 			f.write(' mut')
 			if s.starts_with('&') {
@@ -159,7 +160,7 @@ pub fn (a CallArg) str() string {
 }
 
 pub fn args2str(args []CallArg) string {
-	var res := []string
+	mut res := []string
 	for a in args {
 		res << a.str()
 	}
@@ -169,7 +170,7 @@ pub fn args2str(args []CallArg) string {
 pub fn (node Stmt) str() string {
 	match node {
 		AssignStmt {
-			var out := ''
+			mut out := ''
 			for i, ident in it.left {
 				var_info := ident.var_info()
 				if var_info.is_mut {
