@@ -85,7 +85,7 @@ pub fn (c mut Checker) struct_decl(decl ast.StructDecl) {
 	splitted_full_name := decl.name.split('.')
 	is_builtin := splitted_full_name[0] == 'builtin'
 	name := splitted_full_name.last()
-	if !(name[0].is_capital() || decl.is_c || is_builtin || name in table.builtin_type_names) {
+	if !name[0].is_capital() && !decl.is_c && !is_builtin && name !in table.builtin_type_names {
 		pos := token.Position{
 			line_nr: decl.pos.line_nr
 			pos: decl.pos.pos + 7
