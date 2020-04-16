@@ -2973,7 +2973,7 @@ fn (g Gen) type_to_fmt(typ table.Type) string {
 	if sym.kind in [.struct_, .array, .array_fixed] {
 		return '%.*s'
 	} else if typ == table.string_type {
-		return '\\"%.*s\\"'
+		return "\'%.*s\'"
 	} else if typ == table.bool_type {
 		return '%.*s'
 	} else if typ in [table.f32_type, table.f64_type] {
