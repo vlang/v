@@ -696,7 +696,8 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			x := p.call_expr(is_c, is_js, mod)			// TODO `node,typ :=` should work
 			node = x
 		}
-	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if && !p.inside_for {
+	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
+		!p.inside_for {
 		return p.struct_init(false)		// short_syntax: false
 	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
 		// `Color.green`
@@ -1564,7 +1565,6 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	if !is_c && !is_js && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
-	name_pos := p.tok.position()
 	var name := p.check_name()
 	// println('struct decl $name')
 	var ast_fields := []ast.StructField
@@ -1686,7 +1686,6 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	}
 	return ast.StructDecl{
 		name: name
-		name_pos: name_pos
 		is_pub: is_pub
 		fields: ast_fields
 		pos: pos
