@@ -670,8 +670,13 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	c.expected_type = table.none_type	// TODO a hack to make `x := if ... work`
 	// check variablename for beginning with capital letter 'Abc'
 	for ident in assign_stmt.left {
-		if assign_stmt.op == .decl_assign && scanner.contains_capital(ident.name) {
+		is_decl := assign_stmt.op == .decl_assign
+		if is_decl && scanner.contains_capital(ident.name) {
 			c.error('variable names cannot contain uppercase letters, use snake_case instead', ident.pos)
+		} else if is_decl && ident.kind != .blank_ident {
+			if ident.name.starts_with('__') {
+				c.error('variable names cannot start with `__`', ident.pos)
+			}
 		}
 	}
 	if assign_stmt.left.len > assign_stmt.right.len {
@@ -998,6 +1003,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.in_for_count--
 		}
 		ast.GoStmt {
+			if !is_call_expr(it.call_expr) {
+				c.error('expression in `go` must be a function call', expr_pos(it.call_expr))1
+			}
 			c.expr(it.call_expr)
 		}
 		// ast.HashStmt {}
@@ -1017,6 +1025,13 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			// println('checker.stmt(): unhandled node')
 			// println('checker.stmt(): unhandled node (${typeof(node)})')
 		}
+	}
+}
+
+fn is_call_expr(expr ast.Expr) bool {
+	return match expr {
+		ast.CallExpr { true }
+		else { false }
 	}
 }
 
