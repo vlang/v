@@ -42,10 +42,10 @@ fn help_func(help_cmd Command) {
 		for flag in cmd.flags {
 			mut flag_name := ''
 			if flag.abbrev != '' {
-				abbrev_indent := ' '.repeat(ABBREV_INDENT-(flag.abbrev.len+1))
+				abbrev_indent := ' '.repeat(max(ABBREV_INDENT-(flag.abbrev.len+1), 1))
 				flag_name = '-${flag.abbrev}${abbrev_indent}--${flag.name}'
 			} else {
-				abbrev_indent := ' '.repeat(ABBREV_INDENT-(flag.abbrev.len))
+				abbrev_indent := ' '.repeat(max(ABBREV_INDENT-(flag.abbrev.len), 1))
 				flag_name = '${abbrev_indent}--${flag.name}'
 			}
 			mut required := ''
@@ -54,7 +54,7 @@ fn help_func(help_cmd Command) {
 			}
 
 			base_indent := ' '.repeat(BASE_INDENT)
-			description_indent := ' '.repeat(DESCRIPTION_INDENT-flag_name.len)
+			description_indent := ' '.repeat(max(DESCRIPTION_INDENT-flag_name.len, 1))
 			help += '${base_indent}${flag_name}${description_indent}${flag.description}${required}\n'
 		}
 		help += '\n'
@@ -63,7 +63,7 @@ fn help_func(help_cmd Command) {
 		help += 'Commands:\n'
 		for command in cmd.commands {
 			base_indent := ' '.repeat(BASE_INDENT)
-			description_indent := ' '.repeat(DESCRIPTION_INDENT-command.name.len)
+			description_indent := ' '.repeat(max(DESCRIPTION_INDENT-command.name.len, 1))
 
 			help += '${base_indent}${command.name}${description_indent}${command.description}\n'
 		}
@@ -71,4 +71,8 @@ fn help_func(help_cmd Command) {
 	}
 
 	print(help)
+}
+
+fn max(a, b int) int {
+	return if a > b {a} else {b}
 }
