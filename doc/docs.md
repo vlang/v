@@ -914,7 +914,9 @@ There is no explicit declaration of intent, no "implements" keyword.
 
 ```v
 enum Color {
-    red green blue
+    red
+    green
+    blue
 }
 
 var color := Color.red
