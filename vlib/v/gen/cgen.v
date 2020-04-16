@@ -865,7 +865,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 				elem_sym := g.table.get_type_symbol(it.elem_type)
 				elem_type_str := g.typ(it.elem_type)
 				if it.exprs.len == 0 {
-					g.write('new_array($it.exprs.len, $it.exprs.len, sizeof($elem_type_str))')
+					// use __new_array to fix conflicts when the name of the variable is new_array
+					g.write('__new_array($it.exprs.len, $it.exprs.len, sizeof($elem_type_str))')
 				} else {
 					len := it.exprs.len
 					g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), ')
@@ -1290,9 +1291,9 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		if right_sym.kind == .array && info.elem_type != node.right_type {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY(&')
-			g.expr_with_cast(node.left, node.right_type, node.left_type)
+			g.expr(node.left)
 			g.write(', (')
-			g.expr(node.right)
+			g.expr_with_cast(node.right, node.right_type, node.left_type)
 			styp := g.typ(node.left_type)
 			g.write('), $tmp, $styp)')
 		} else {
@@ -1300,9 +1301,9 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			elem_type_str := g.typ(info.elem_type)
 			// g.write('array_push(&')
 			g.write('_PUSH(&')
-			g.expr_with_cast(node.left, node.right_type, info.elem_type)
+			g.expr(node.left)
 			g.write(', (')
-			g.expr(node.right)
+			g.expr_with_cast(node.right, node.right_type, info.elem_type)
 			g.write('), $tmp, $elem_type_str)')
 		}
 	} else if (node.left_type == node.right_type) && node.left_type in [table.f32_type_idx,
@@ -2221,7 +2222,7 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 			[.enum_, .array, .array_fixed] {
 			g.write('%.*s')
 		} else if node.expr_types[i] in [table.f32_type, table.f64_type] {
-			g.write('%f')
+			g.write('%g')
 		} else {
 			g.write('%d')
 		}

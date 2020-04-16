@@ -256,7 +256,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 			s := it.str(f.table)
 			// f.write(it.str(f.table))
 			f.write(s.replace(f.cur_mod + '.', ''))			// `Expr` instead of `ast.Expr` in mod ast
-			if !it.is_c {
+			if !it.is_c && !it.is_js {
 				f.writeln(' {')
 				f.stmts(it.stmts)
 				f.writeln('}\n')
@@ -453,7 +453,13 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 }
 
 fn (f &Fmt) type_to_str(t table.Type) string {
-	res := f.table.type_to_str(t)
+	mut res := f.table.type_to_str(t)
+	// type_ptr => &type
+	if res.ends_with('_ptr') {
+		res = res[0 .. res.len-4]
+		start_pos := 2 * res.count('[]')
+		res = res[0 .. start_pos] + '&' + res[start_pos .. res.len]
+	}
 	return res.replace(f.cur_mod + '.', '')
 }
 

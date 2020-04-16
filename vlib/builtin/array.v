@@ -28,6 +28,10 @@ fn new_array(mylen int, cap int, elm_size int) array {
 	return arr
 }
 
+fn __new_array(mylen int, cap int, elm_size int) array {
+	return new_array(mylen, cap, elm_size)
+}
+
 // TODO
 pub fn make(len int, cap int, elm_size int) array {
 	return new_array(len, cap, elm_size)

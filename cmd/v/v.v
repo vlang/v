@@ -160,6 +160,13 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				res.out_name  = cmdline.option(args, '-o', '')
 				i++
 			}
+			'-b' {
+				b := pref.backend_from_string(cmdline.option(args, '-b', 'c')) or {
+					continue
+				}
+				res.backend = b
+				i++
+			}
 			else {
 				mut should_continue := false
 				for flag_with_param in list_of_flags_with_param {
