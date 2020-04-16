@@ -2918,7 +2918,7 @@ fn (var g Gen) gen_str_for_struct(info table.Struct, styp string) {
 		g.definitions.write(', ')
 		for i, field in info.fields {
 			sym := g.table.get_type_symbol(field.typ)
-			if sym.kind == .struct_ {
+			if sym.kind in [.struct_, .array, .array_fixed] {
 				field_styp := g.typ(field.typ)
 				second_str_param := if sym.has_method('str') { '' } else { ', indent_count + 1' }
 				g.definitions.write('indents.len, indents.str, ${field_styp}_str(it.$field.name$second_str_param).len, ${field_styp}_str(it.$field.name$second_str_param).str')
@@ -2940,7 +2940,7 @@ fn (var g Gen) gen_str_for_struct(info table.Struct, styp string) {
 
 fn (g Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
-	if sym.kind == .struct_ {
+	if sym.kind in [.struct_, .array, .array_fixed] {
 		return '%.*s'
 	} else if typ == table.string_type {
 		return "\'%.*s\'"
