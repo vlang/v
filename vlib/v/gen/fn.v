@@ -18,7 +18,13 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	is_main := it.name == 'main'
 	if is_main {
 		if g.pref.os == .windows {
-			g.write('int wmain(int ___argc, wchar_t *___argv[], wchar_t *___envp[]')
+			if g.is_gui_app() {
+				// GUI application
+				g.writeln('int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd')
+			} else {
+				// Console application
+				g.writeln('int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]')
+			}
 		} else {
 			g.write('int ${it.name}(int ___argc, char** ___argv')
 		}
@@ -75,6 +81,14 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		g.definitions.writeln(');')
 	}
 	if is_main {
+		if g.pref.os == .windows && g.is_gui_app() {
+			g.writeln('\ttypedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);')
+			g.writeln('\tHMODULE shell32_module = LoadLibrary(L"shell32.dll");')
+			g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
+			g.writeln('\tint ___argc;')
+			g.writeln('\twchar_t** ___argv = CommandLineToArgvW(cmd_line, &___argc);')
+		}
+
 		g.writeln('\t_vinit();')
 		if g.is_importing_os() {
 			if g.autofree {
@@ -434,4 +448,15 @@ fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 		g.write('*/*d*/')
 	}
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
+}
+
+fn (g mut Gen) is_gui_app() bool {
+	$if windows {
+		for cf in g.table.cflags {
+			if cf.value == 'gdi32' {
+				return true
+			}
+		}
+	}
+	return false
 }
