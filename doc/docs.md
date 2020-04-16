@@ -1028,7 +1028,7 @@ user := users_repo.find_by_id(1)?
 post := posts_repo.find_by_id(1)?
 ```
 Generics enables you to write flexible, reusable functions and types that can work with any type.
-generics method declarations have a type parameter section delimited by angle brackets '<T>' that precedes the method's return type.
+generics method declarations have a type parameter section delimited by angle brackets " <T> " that precedes the method's return type.
 
 ## Concurrency
 
