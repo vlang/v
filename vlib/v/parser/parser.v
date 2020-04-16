@@ -242,8 +242,7 @@ fn (p mut Parser) check(expected token.Kind) {
 	// p.next()
 	// }
 	if p.tok.kind != expected {
-		s := 'unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`'
-		p.error(s)
+		p.error('unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`')
 	}
 	p.next()
 }
@@ -420,9 +419,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 				ast.CallExpr {
 					// call_expr = it
 				}
-				else {
-					p.error('expression in `go` must be a function call')
-				}
+				else {}
 			}
 			return ast.GoStmt{
 				call_expr: expr
@@ -1808,9 +1805,6 @@ fn (p mut Parser) assign_stmt() ast.Stmt {
 			p.error('unknown variable `$ident.name`')
 		}
 		if is_decl && ident.kind != .blank_ident {
-			if ident.name.starts_with('__') {
-				p.error('variable names cannot start with `__`')
-			}
 			if p.scope.known_var(ident.name) {
 				p.error('redefinition of `$ident.name`')
 			}
