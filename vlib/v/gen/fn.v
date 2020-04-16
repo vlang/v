@@ -16,10 +16,9 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	g.reset_tmp_count()
 	is_main := it.name == 'main'
-	is_gui_app := g.is_gui_app()
 	if is_main {
 		if g.pref.os == .windows {
-			if is_gui_app {
+			if g.is_gui_app() {
 				// GUI application
 				g.writeln('int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd')
 			} else {
@@ -82,7 +81,7 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 		g.definitions.writeln(');')
 	}
 	if is_main {
-		if g.pref.os == .windows && is_gui_app {
+		if g.pref.os == .windows && g.is_gui_app() {
 			g.writeln('\ttypedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);')
 			g.writeln('\tHMODULE shell32_module = LoadLibrary(L"shell32.dll");')
 			g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
