@@ -123,56 +123,51 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array {
 			info := type_sym.info as table.Struct
-			is_short_syntax := struct_init.fields.len == 0
-			if struct_init.exprs.len > info.fields.len {
+			if struct_init.is_short && struct_init.fields.len > info.fields.len {
 				c.error('too many fields', struct_init.pos)
 			}
 			mut inited_fields := []string
-			for i, expr in struct_init.exprs {
-				if is_short_syntax && i >= info.fields.len {
-					// It doesn't make sense to check for fields that don't exist.
-					// We should just stop here.
-					break
-				}
-				// struct_field info.
-				field_name := if is_short_syntax { info.fields[i].name } else { struct_init.fields[i] }
-				if field_name in inited_fields {
-					c.error('duplicate field name in struct literal: `$field_name`', struct_init.pos)
-					continue
-				}
-				inited_fields << field_name
-				mut field := if is_short_syntax {
-					info.fields[i]
+			for i, field in struct_init._fields {
+				mut info_field := table.Field{}
+				mut field_name := ''
+				if struct_init.is_short {
+					if i >= info.fields.len {
+						// It doesn't make sense to check for fields that don't exist.
+						// We should just stop here.
+						break
+					}
+					info_field = info.fields[i]
+					field_name = info_field.name
+					struct_init._fields[i].name = field_name
 				} else {
-					// There is no guarantee that `i` will not be out of bounds of `info.fields`
-					// So we just use an empty field as placeholder here.
-					table.Field{}
-				}
-				if !is_short_syntax {
-					mut found_field := false
+					field_name = field.name
+					mut exists := false
 					for f in info.fields {
 						if f.name == field_name {
-							field = f
-							found_field = true
+							info_field = f
+							exists = true
 							break
 						}
 					}
-					if !found_field {
-						c.error('struct init: no such field `$field_name` for struct `$type_sym.name`',
-							struct_init.pos)
+					if !exists {
+						c.error('struct init: no such field `$field.name` for struct `$type_sym.name`', field.pos)
+						continue
+					}
+					if field_name in inited_fields {
+						c.error('duplicate field name in struct literal: `$field_name`', field.pos)
 						continue
 					}
 				}
-				c.expected_type = field.typ
-				expr_type := c.expr(expr)
+				inited_fields << field_name
+				c.expected_type = info_field.typ
+				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
-				field_type_sym := c.table.get_type_symbol(field.typ)
-				if !c.table.check(expr_type, field.typ) {
-					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$field.name`',
-						struct_init.pos)
+				field_type_sym := c.table.get_type_symbol(info_field.typ)
+				if !c.table.check(expr_type, info_field.typ) {
+					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`', field.pos)
 				}
-				struct_init.expr_types << expr_type
-				struct_init.expected_types << field.typ
+				struct_init._fields[i].typ = expr_type
+				struct_init._fields[i].expected_type = info_field.typ
 			}
 			// Check uninitialized refs
 			for field in info.fields {
@@ -206,7 +201,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	if infix_expr.op == .left_shift {
 		if left.kind != .array && !left.is_int() {
 			// c.error('<< can only be used with numbers and arrays', infix_expr.pos)
-			c.error('cannot shift type $right.name into $left.name', expr_pos(infix_expr.right))
+			c.error('cannot shift type $right.name into $left.name', infix_expr.right.position())
 			return table.void_type
 		}
 		if left.kind == .array {
@@ -220,7 +215,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 				// []T << []T
 				return table.void_type
 			}
-			c.error('cannot shift type $right.name into $left.name', expr_pos(infix_expr.right))
+			c.error('cannot shift type $right.name into $left.name', infix_expr.right.position())
 			return table.void_type
 		}
 	}
@@ -279,7 +274,7 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
 		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name`',
-			expr_pos(assign_expr.val))
+			assign_expr.val.position())
 	}
 	c.check_expr_opt_call(assign_expr.val, right_type, true)
 }
@@ -662,7 +657,7 @@ pub fn (c mut Checker) enum_decl(decl ast.EnumDecl) {
 				ast.IntegerLiteral {}
 				ast.PrefixExpr {}
 				else {
-					mut pos := expr_pos(field.expr)
+					mut pos := field.expr.position()
 					if pos.pos == 0 {
 						pos = field.pos
 					}
@@ -999,7 +994,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 				value_type := c.table.value_type(typ)
 				if value_type == table.void_type {
 					typ_sym := c.table.get_type_symbol(typ)
-					c.error('for in: cannot index `$typ_sym.name`', expr_pos(it.cond))
+					c.error('for in: cannot index `$typ_sym.name`', it.cond.position())
 				}
 				it.cond_type = typ
 				it.kind = sym.kind
@@ -1011,7 +1006,7 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		}
 		ast.GoStmt {
 			if !is_call_expr(it.call_expr) {
-				c.error('expression in `go` must be a function call', expr_pos(it.call_expr))1
+				c.error('expression in `go` must be a function call', it.call_expr.position())
 			}
 			c.expr(it.call_expr)
 		}
@@ -1194,89 +1189,6 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 		}
 	}
 	return table.void_type
-}
-
-fn expr_pos(node ast.Expr) token.Position {
-	// all uncommented have to be implemented
-	match mut node {
-		ast.ArrayInit {
-			return it.pos
-		}
-		ast.AsCast {
-			return it.pos
-		}
-		// ast.Ident { }
-		ast.AssignExpr {
-			return it.pos
-		}
-		// ast.CastExpr { }
-		ast.Assoc {
-			return it.pos
-		}
-		// ast.BoolLiteral { }
-		ast.CallExpr {
-			return it.pos
-		}
-		// ast.CharLiteral { }
-		ast.EnumVal {
-			return it.pos
-		}
-		// ast.FloatLiteral { }
-		ast.IfExpr {
-			return it.pos
-		}
-		// ast.IfGuardExpr { }
-		ast.IndexExpr {
-			return it.pos
-		}
-		ast.InfixExpr {
-			left_pos := expr_pos(it.left)
-			right_pos := expr_pos(it.right)
-			if left_pos.pos == 0 || right_pos.pos == 0 {
-				return it.pos
-			}
-			return token.Position{
-				line_nr: it.pos.line_nr
-				pos: left_pos.pos
-				len: right_pos.pos - left_pos.pos + right_pos.len
-			}
-		}
-		ast.IntegerLiteral {
-			return it.pos
-		}
-		ast.MapInit {
-			return it.pos
-		}
-		ast.MatchExpr {
-			return it.pos
-		}
-		ast.PostfixExpr {
-			return it.pos
-		}
-		// ast.None { }
-		ast.PrefixExpr {
-			return it.pos
-		}
-		// ast.ParExpr { }
-		ast.SelectorExpr {
-			return it.pos
-		}
-		// ast.SizeOf { }
-		ast.StringLiteral {
-			return it.pos
-		}
-		ast.StringInterLiteral {
-			return it.pos
-		}
-		// ast.Type { }
-		ast.StructInit {
-			return it.pos
-		}
-		// ast.TypeOf { }
-		else {
-			return token.Position{}
-		}
-	}
 }
 
 pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {

@@ -577,8 +577,7 @@ fn (var p Parser) struct_init(short_syntax bool) ast.StructInit {
 	if !short_syntax {
 		p.check(.lcbr)
 	}
-	var field_names := []string
-	var exprs := []ast.Expr
+	var fields := []ast.StructInitField
 	var i := 0
 	is_short_syntax := p.peek_tok.kind != .colon && p.tok.kind != .rcbr	// `Vec{a,b,c}
 	// p.warn(is_short_syntax.str())
@@ -587,15 +586,27 @@ fn (var p Parser) struct_init(short_syntax bool) ast.StructInit {
 		var field_name := ''
 		if is_short_syntax {
 			expr := p.expr(0)
-			exprs << expr
+			fields << ast.StructInitField{
+				// name will be set later in checker
+				expr: expr
+				pos: expr.position()
+			}
 		} else {
+			first_field_pos := p.tok.position()
 			field_name = p.check_name()
-			field_names << field_name
-		}
-		if !is_short_syntax {
 			p.check(.colon)
 			expr := p.expr(0)
-			exprs << expr
+			last_field_pos := expr.position()
+			field_pos := token.Position{
+				line_nr: first_field_pos.line_nr
+				pos: first_field_pos.pos
+				len: last_field_pos.pos - first_field_pos.pos + last_field_pos.len
+			}
+			fields << ast.StructInitField{
+				name: field_name
+				expr: expr
+				pos: field_pos
+			}
 		}
 		i++
 		if p.tok.kind == .comma {
@@ -603,14 +614,15 @@ fn (var p Parser) struct_init(short_syntax bool) ast.StructInit {
 		}
 		p.check_comment()
 	}
-	node := ast.StructInit{
-		typ: typ
-		exprs: exprs
-		fields: field_names
-		pos: p.tok.position()
-	}
+	pos := p.tok.position()
 	if !short_syntax {
 		p.check(.rcbr)
+	}
+	node := ast.StructInit{
+		typ: typ
+		_fields: fields
+		pos: pos
+		is_short: is_short_syntax
 	}
 	return node
 }
