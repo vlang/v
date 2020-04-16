@@ -126,7 +126,9 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 		match arg {
 			'-v' {	res.is_verbose = true	}
 			'-cg' {	res.is_debug = true	}
-			'-live' {	res.is_solive = true	}
+			'-live' { res.is_live = true }
+			'-solive' {	res.is_solive = true res.is_so = true }
+			'-shared' { res.is_so = true }
 			'-autofree' {	res.autofree = true	}
 			'-compress' {	res.compress = true	}
 			'-freestanding' {	res.is_bare = true	}

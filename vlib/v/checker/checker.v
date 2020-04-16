@@ -60,25 +60,29 @@ pub fn (c mut Checker) check2(ast_file ast.File) []scanner.Error {
 }
 
 pub fn (c mut Checker) check_files(ast_files []ast.File) {
+	mut all_mods := map[string]int
 	for file in ast_files {
 		c.check(file)
+		all_mods[ file.mod.name ] = all_mods[ file.mod.name ] + 1
 	}
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
 	}
-	if ast_files.len > 1 && ast_files[0].mod.name == 'builtin' {
-		// TODO hack to fix vv tests
+	if c.pref.is_so {
+		// shared libs do not need to have a main
 		return
 	}
-	for i, f in c.table.fns {
-		if f.name == 'main' {
-			return
+	// check that a main program has a `fn main(){}` function:
+	if all_mods['main'] > 0 {
+		for i, f in c.table.fns {
+			if f.name == 'main' {
+				return
+			}
 		}
+		c.error('function `main` is undeclared in the main module', token.Position{})
+		exit(1)
 	}
-	eprintln('function `main` is undeclared in the main module')
-	// eprintln(ast_files[0].mod.name)
-	exit(1)
 }
 
 pub fn (c mut Checker) struct_decl(decl ast.StructDecl) {
