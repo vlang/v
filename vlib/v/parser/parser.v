@@ -618,6 +618,7 @@ fn (p mut Parser) struct_init(short_syntax bool) ast.StructInit {
 pub fn (p mut Parser) name_expr() ast.Expr {
 	var node := ast.Expr{}
 	if p.inside_is {
+		p.inside_is = false
 		return ast.Type{
 			typ: p.parse_type()
 		}
@@ -1054,7 +1055,6 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.inside_is = true
 	}
 	right = p.expr(precedence)
-	p.inside_is = false
 	var expr := ast.Expr{}
 	expr = ast.InfixExpr{
 		left: left
