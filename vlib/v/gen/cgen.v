@@ -1291,9 +1291,9 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 		if right_sym.kind == .array && info.elem_type != node.right_type {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY(&')
-			g.expr_with_cast(node.left, node.right_type, node.left_type)
+			g.expr(node.left)
 			g.write(', (')
-			g.expr(node.right)
+			g.expr_with_cast(node.right, node.right_type, node.left_type)
 			styp := g.typ(node.left_type)
 			g.write('), $tmp, $styp)')
 		} else {
@@ -1301,9 +1301,9 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 			elem_type_str := g.typ(info.elem_type)
 			// g.write('array_push(&')
 			g.write('_PUSH(&')
-			g.expr_with_cast(node.left, node.right_type, info.elem_type)
+			g.expr(node.left)
 			g.write(', (')
-			g.expr(node.right)
+			g.expr_with_cast(node.right, node.right_type, info.elem_type)
 			g.write('), $tmp, $elem_type_str)')
 		}
 	} else if (node.left_type == node.right_type) && node.left_type in [table.f32_type_idx,
