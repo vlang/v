@@ -1,0 +1,14 @@
+const (
+	x = &Test{}
+	y = []&Test
+	z = &[]&Test
+)
+
+fn test_type_ptr() {
+	a := &Test{}
+	b := []&Test
+	c := &[]&Test
+}
+
+struct Test {
+}
