@@ -31,7 +31,7 @@ mut:
 }
 
 pub fn fmt(file ast.File, table &table.Table) string {
-	mut f := Fmt{
+	var f := Fmt{
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 		table: table
@@ -205,7 +205,7 @@ fn (f mut Fmt) stmt(node ast.Stmt) {
 				f.write('pub ')
 			}
 			f.writeln('const (')
-			mut max := 0
+			var max := 0
 			for field in it.fields {
 				if field.name.len > max {
 					max = field.name.len
@@ -393,7 +393,7 @@ fn (f mut Fmt) type_decl(node ast.TypeDecl) {
 				f.write('pub ')
 			}
 			f.write('type $it.name = ')
-			mut sum_type_names := []string
+			var sum_type_names := []string
 			for t in it.sub_types {
 				sum_type_names << f.type_to_str(t)
 			}
@@ -412,7 +412,7 @@ fn (f mut Fmt) struct_decl(node ast.StructDecl) {
 	}
 	name := node.name.after('.')
 	f.writeln('struct $name {')
-	mut max := 0
+	var max := 0
 	for field in node.fields {
 		if field.name.len > max {
 			max = field.name.len
@@ -691,7 +691,7 @@ fn (f mut Fmt) expr(node ast.Expr) {
 		ast.StructInit {
 			type_sym := f.table.get_type_symbol(it.typ)
 			// f.write('<old name: $type_sym.name>')
-			mut name := short_module(type_sym.name).replace(f.cur_mod + '.', '')			// TODO f.type_to_str?
+			var name := short_module(type_sym.name).replace(f.cur_mod + '.', '')			// TODO f.type_to_str?
 			if name == 'void' {
 				name = ''
 			}
@@ -773,7 +773,7 @@ fn (f mut Fmt) or_expr(or_block ast.OrExpr) {
 fn (f mut Fmt) comment(node ast.Comment) {
 	if !node.text.contains('\n') {
 		is_separate_line := node.text.starts_with('|')
-		mut s := if is_separate_line { node.text[1..] } else { node.text }
+		var s := if is_separate_line { node.text[1..] } else { node.text }
 		if s == '' {
 			s = '//'
 		} else {
