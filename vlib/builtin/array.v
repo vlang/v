@@ -3,13 +3,14 @@
 // that can be found in the LICENSE file.
 module builtin
 
-import strings
+import (
+	strings
+)
 
 pub struct array {
 pub:
-// Using a void pointer allows to implement arrays without generics and without generating
+	data         voidptr// Using a void pointer allows to implement arrays without generics and without generating
 // extra code for every type.
-	data         voidptr
 	len          int
 	cap          int
 	element_size int
@@ -25,6 +26,10 @@ fn new_array(mylen int, cap int, elm_size int) array {
 		data: vcalloc(cap_ * elm_size)
 	}
 	return arr
+}
+
+fn __new_array(mylen int, cap int, elm_size int) array {
+	return new_array(mylen, cap, elm_size)
 }
 
 // TODO
@@ -364,6 +369,27 @@ pub fn (a []string) str() string {
 		sb.write('"')
 		sb.write(val)
 		sb.write('"')
+		if i < a.len - 1 {
+			sb.write(', ')
+		}
+	}
+	sb.write(']')
+	return sb.str()
+}
+
+// []byte.str returns a string representation of the array of bytes
+// => '[`a`, `b`, `c`]'
+pub fn (a []byte) str() string {
+	mut sb := strings.new_builder(a.len * 3)
+	sb.write('[')
+	for i in 0..a.len {
+		val := a[i].str()
+		sb.write('`')
+		sb.write(val)
+		sb.write('`')
+		if a[i] != 0 {
+			val.free()
+		}
 		if i < a.len - 1 {
 			sb.write(', ')
 		}

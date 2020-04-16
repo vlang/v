@@ -10,19 +10,17 @@ const (
 		'vlib/cli/command_test.v',
 		'vlib/cli/flag_test.v',
 		'vlib/crypto/aes/aes_test.v',
-		'vlib/crypto/rand/rand_test.v',
+		'vlib/crypto/rand/rand_test.v', // macOS only
 		'vlib/crypto/rc4/rc4_test.v',
 		'vlib/encoding/utf8/utf8_util_test.v',
 		'vlib/eventbus/eventbus_test.v',
 		'vlib/flag/flag_test.v',
 		'vlib/json/json_test.v',
-		'vlib/math/complex/complex_test.v',
 		'vlib/net/ftp/ftp_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/http_test.v',
 		'vlib/regex/regex_test.v',
-		'vlib/strconv/ftoa/f32_f64_to_string_test.v',
-		'vlib/v/tests/array_to_string_test.v',
+		'vlib/v/tests/const_embed_test.v',
 		'vlib/v/tests/enum_bitfield_test.v',
 		'vlib/v/tests/fixed_array_test.v',
 		'vlib/v/tests/fn_test.v',
@@ -40,7 +38,8 @@ const (
 		'vlib/v/tests/typeof_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
 		'vlib/v/tests/pointers_str_test.v',
-					   
+		'vlib/net/http/cookie_test.v',
+
 		'vlib/v/tests/live_test.v', // Linux & Solaris only; since live does not actually work for now with v2, just skip
 		'vlib/v/tests/asm_test.v', // skip everywhere for now, works on linux with cc != tcc
 		'vlib/sqlite/sqlite_test.v', // works only on ubuntu with installed sqlite

@@ -6,10 +6,9 @@
 // flag (8 bits) | nr_muls (8 bits) | idx (16 bits)
 // pack: (int(flag)<<24) | (nr_muls<<16) | u16(idx)
 // unpack:
-//     flag: (int(type)>>24) & 0xff
-//  nr_muls: (int(type)>>16) & 0xff
-//      idx:  u16(type) & 0xffff
-
+// flag: (int(type)>>24) & 0xff
+// nr_muls: (int(type)>>16) & 0xff
+// idx:  u16(type) & 0xffff
 module table
 
 import (
@@ -19,8 +18,7 @@ import (
 
 pub type Type int
 
-pub type TypeInfo = Array | ArrayFixed | Map | Struct |
-MultiReturn | Alias | Enum | SumType | FnType
+pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn | Alias | Enum | SumType | FnType
 
 pub struct TypeSymbol {
 pub:
@@ -56,59 +54,60 @@ pub fn type_idx(t Type) int {
 // return nr_muls for `t`
 [inline]
 pub fn type_nr_muls(t Type) int {
-	return (int(t)>>16) & 0xff
+	return (int(t) >> 16) & 0xff
 }
 
 // return true if `t` is a pointer (nr_muls>0)
 [inline]
 pub fn type_is_ptr(t Type) bool {
-	return (int(t)>>16) & 0xff > 0
+	return (int(t) >> 16) & 0xff > 0
 }
+
 // set nr_muls on `t` and return it
 [inline]
 pub fn type_set_nr_muls(t Type, nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('typ_set_nr_muls: nr_muls must be between 0 & 255')
 	}
-	return (((int(t)>>24) & 0xff)<<24) | (nr_muls<<16) | (u16(t) & 0xffff)
+	return (((int(t) >> 24) & 0xff) << 24) | (nr_muls << 16) | (u16(t) & 0xffff)
 }
 
 // increments nr_nuls on `t` and return it
 [inline]
 pub fn type_to_ptr(t Type) Type {
-	nr_muls := (int(t)>>16) & 0xff
+	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 255 {
 		panic('type_to_pre: nr_muls is already at max of 255')
 	}
-	return (((int(t)>>24) & 0xff)<<24) | ((nr_muls + 1)<<16) | (u16(t) & 0xffff)
+	return (((int(t) >> 24) & 0xff) << 24) | ((nr_muls + 1) << 16) | (u16(t) & 0xffff)
 }
 
 // decrement nr_muls on `t` and return it
 [inline]
 pub fn type_deref(t Type) Type {
-	nr_muls := (int(t)>>16) & 0xff
+	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 0 {
 		panic('deref: type `$t` is not a pointer')
 	}
-	return (((int(t)>>24) & 0xff)<<24) | ((nr_muls - 1)<<16) | (u16(t) & 0xffff)
+	return (((int(t) >> 24) & 0xff) << 24) | ((nr_muls - 1) << 16) | (u16(t) & 0xffff)
 }
 
 // return the flag that is set on `t`
 [inline]
 pub fn type_flag(t Type) TypeFlag {
-	return (int(t)>>24) & 0xff
+	return (int(t) >> 24) & 0xff
 }
 
 // set the flag on `t` to `flag` and return it
 [inline]
 pub fn type_set(t Type, flag TypeFlag) Type {
-	return (int(flag)<<24) | (((int(t)>>16) & 0xff)<<16) | (u16(t) & 0xffff)
+	return (int(flag) << 24) | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
 }
 
 // return true if the flag set on `t` is `flag`
 [inline]
 pub fn type_is(t Type, flag TypeFlag) bool {
-	return (int(t)>>24) & 0xff == flag
+	return (int(t) >> 24) & 0xff == flag
 }
 
 // return new type with TypeSymbol idx set to `idx`
@@ -122,14 +121,14 @@ pub fn new_type(idx int) Type {
 
 // return new type with TypeSymbol idx set to `idx` & nr_muls set to `nr_muls`
 [inline]
-pub fn new_type_ptr(idx int, nr_muls int) Type {
+pub fn new_type_ptr(idx, nr_muls int) Type {
 	if idx < 1 || idx > 65536 {
 		panic('new_type_ptr: idx must be between 1 & 65536')
 	}
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('new_type_ptr: nr_muls must be between 0 & 255')
 	}
-	return (nr_muls<<16) | u16(idx)
+	return (nr_muls << 16) | u16(idx)
 }
 
 pub fn is_number(typ Type) bool {
@@ -137,62 +136,64 @@ pub fn is_number(typ Type) bool {
 }
 
 pub const (
-	// primitive types
-	void_type_idx = 1
+	void_type_idx    = 1
 	voidptr_type_idx = 2
 	byteptr_type_idx = 3
 	charptr_type_idx = 4
-	i8_type_idx = 5
-	i16_type_idx = 6
-	int_type_idx = 7
-	i64_type_idx = 8
-	byte_type_idx = 9
-	u16_type_idx = 10
-	u32_type_idx = 11
-	u64_type_idx = 12
-	f32_type_idx = 13
-	f64_type_idx = 14
-	char_type_idx = 15
-	bool_type_idx = 16
-	none_type_idx = 17
-	// advanced / defined from v structs
-	string_type_idx = 18
-	array_type_idx = 19
-	map_type_idx = 20
+	i8_type_idx      = 5
+	i16_type_idx     = 6
+	int_type_idx     = 7
+	i64_type_idx     = 8
+	byte_type_idx    = 9
+	u16_type_idx     = 10
+	u32_type_idx     = 11
+	u64_type_idx     = 12
+	f32_type_idx     = 13
+	f64_type_idx     = 14
+	char_type_idx    = 15
+	bool_type_idx    = 16
+	none_type_idx    = 17
+	string_type_idx  = 18
+	array_type_idx   = 19
+	map_type_idx     = 20
 )
 
 pub const (
-	number_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx]
+	integer_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
+		u16_type_idx, u32_type_idx, u64_type_idx]
+	float_type_idxs   = [f32_type_idx, f64_type_idx]
+	number_type_idxs  = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
+		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx]
 	pointer_type_idxs = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 )
 
 pub const (
-	void_type = new_type(void_type_idx)
+	void_type    = new_type(void_type_idx)
 	voidptr_type = new_type(voidptr_type_idx)
 	byteptr_type = new_type(byteptr_type_idx)
 	charptr_type = new_type(charptr_type_idx)
-	i8_type = new_type(i8_type_idx)
-	int_type = new_type(int_type_idx)
-	i16_type = new_type(i16_type_idx)
-	i64_type = new_type(i64_type_idx)
-	byte_type = new_type(byte_type_idx)
-	u16_type = new_type(u16_type_idx)
-	u32_type = new_type(u32_type_idx)
-	u64_type = new_type(u64_type_idx)
-	f32_type = new_type(f32_type_idx)
-	f64_type = new_type(f64_type_idx)
-	char_type = new_type(char_type_idx)
-	bool_type = new_type(bool_type_idx)
-	none_type = new_type(none_type_idx)
-	string_type = new_type(string_type_idx)
-	array_type = new_type(array_type_idx)
-	map_type = new_type(map_type_idx)
+	i8_type      = new_type(i8_type_idx)
+	int_type     = new_type(int_type_idx)
+	i16_type     = new_type(i16_type_idx)
+	i64_type     = new_type(i64_type_idx)
+	byte_type    = new_type(byte_type_idx)
+	u16_type     = new_type(u16_type_idx)
+	u32_type     = new_type(u32_type_idx)
+	u64_type     = new_type(u64_type_idx)
+	f32_type     = new_type(f32_type_idx)
+	f64_type     = new_type(f64_type_idx)
+	char_type    = new_type(char_type_idx)
+	bool_type    = new_type(bool_type_idx)
+	none_type    = new_type(none_type_idx)
+	string_type  = new_type(string_type_idx)
+	array_type   = new_type(array_type_idx)
+	map_type     = new_type(map_type_idx)
 )
 
 pub const (
-	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16', 'u32', 'u64',
-	'f32', 'f64', 'string', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed', 'map', 'struct',
-	'mapnode', 'ustring', 'size_t']
+	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64',
+		'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed',
+		'map', 'struct', 'mapnode', 'ustring', 'size_t']
 )
 
 pub struct MultiReturn {
@@ -309,8 +310,6 @@ pub fn (t TypeSymbol) str() string {
 	return t.name
 }
 */
-
-
 pub fn (t mut Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found
@@ -439,89 +438,90 @@ pub fn (t &TypeSymbol) is_number() bool {
 
 pub fn (k Kind) str() string {
 	k_str := match k {
-		.placeholder{
+		.placeholder {
 			'placeholder'
 		}
-		.void{
+		.void {
 			'void'
 		}
-		.voidptr{
+		.voidptr {
 			'voidptr'
 		}
-		.charptr{
+		.charptr {
 			'charptr'
 		}
-		.byteptr{
+		.byteptr {
 			'byteptr'
 		}
-		.struct_{
+		.struct_ {
 			'struct'
 		}
-		.int{
+		.int {
 			'int'
 		}
-		.i8{
+		.i8 {
 			'i8'
 		}
-		.i16{
+		.i16 {
 			'i16'
 		}
-		.i64{
+		.i64 {
 			'i64'
 		}
-		.byte{
+		.byte {
 			'byte'
 		}
-		.u16{
+		.u16 {
 			'u16'
 		}
-		.u32{
+		.u32 {
 			'u32'
 		}
-		.u64{
+		.u64 {
 			'u64'
 		}
-		.f32{
+		.f32 {
 			'f32'
 		}
-		.f64{
+		.f64 {
 			'f64'
 		}
-		.string{
+		.string {
 			'string'
 		}
-		.char{
+		.char {
 			'char'
 		}
-		.bool{
+		.bool {
 			'bool'
 		}
-		.none_{
+		.none_ {
 			'none'
 		}
-		.array{
+		.array {
 			'array'
 		}
-		.array_fixed{
+		.array_fixed {
 			'array_fixed'
 		}
-		.map{
+		.map {
 			'map'
 		}
-		.multi_return{
+		.multi_return {
 			'multi_return'
 		}
-		.sum_type{
+		.sum_type {
 			'sum_type'
 		}
-		.alias{
+		.alias {
 			'alias'
 		}
-		.enum_{
+		.enum_ {
 			'enum'
 		}
 		else {
-			'unknown'}
+			'unknown'
+		}
 	}
 	return k_str
 }
@@ -539,9 +539,9 @@ pub fn (kinds []Kind) str() string {
 
 pub struct Struct {
 pub mut:
-	fields []Field
+	fields     []Field
 	is_typedef bool // C. [typedef]
-	is_union bool
+	is_union   bool
 }
 
 pub struct Enum {
@@ -556,12 +556,13 @@ pub:
 
 pub struct Field {
 pub:
-	name string
+	name             string
 mut:
-	typ  Type
-	default_expr ast.Expr
+	typ              Type
+	default_expr     ast.Expr
 	has_default_expr bool
-	default_val string
+	default_val      string
+	attr             string
 }
 
 pub struct Array {
@@ -607,8 +608,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 	mut res := sym.name
 	if sym.kind == .array {
 		res = res.replace('array_', '[]')
-	}
-	else if sym.kind == .map {
+	} else if sym.kind == .map {
 		res = res.replace('map_string_', 'map[string]')
 	}
 	// mod.submod.submod2.Type => submod2.Type
@@ -632,7 +632,6 @@ pub fn (table &Table) type_to_str(t Type) string {
 	if res.starts_with(cur_mod +'.') {
 	res = res[cur_mod.len+1.. ]
 	}
-	*/
-
+*/
 	return res
 }

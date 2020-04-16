@@ -56,6 +56,7 @@ pub:
 	val    string
 	is_raw bool
 	is_c   bool
+	is_js  bool
 	pos    token.Position
 }
 
@@ -146,6 +147,7 @@ pub:
 	pub_pos     int // pub:
 	pub_mut_pos int // pub mut:
 	is_c        bool
+	is_js       bool
 	is_union    bool
 }
 
@@ -187,6 +189,7 @@ pub:
 	is_method     bool
 	rec_mut       bool // is receiver mutable
 	is_c          bool
+	is_js		  bool
 	no_body       bool // just a definition `fn C.malloc()`
 	is_builtin    bool // this function is defined in builtin/strconv
 	pos           token.Position
@@ -208,6 +211,7 @@ mut:
 	args               []CallArg
 	expected_arg_types []table.Type
 	is_c               bool
+	is_js			   bool
 	or_block           OrExpr
 	left_type          table.Type // type of `user`
 	receiver_type      table.Type // User
@@ -301,6 +305,7 @@ pub struct Ident {
 pub:
 	value    string
 	is_c     bool
+	is_js    bool
 	tok_kind token.Kind
 	mod      string
 	pos      token.Position
@@ -395,10 +400,11 @@ mut:
 
 pub struct MatchBranch {
 pub:
-	exprs   []Expr
-	stmts   []Stmt
+	exprs   []Expr // left side
+	stmts   []Stmt // right side
 	pos     token.Position
 	comment Comment // comment above `xxx {`
+	is_else bool
 }
 
 pub struct CompIf {

@@ -12,6 +12,7 @@ import (
 	v.parser
 	v.scanner
 	v.gen
+	v.gen.js
 	v.gen.x64
 )
 
@@ -27,6 +28,7 @@ mut:
 	parsed_files        []ast.File
 	global_scope        &ast.Scope
 	out_name_c          string
+	out_name_js			string
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -42,64 +44,6 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		}
 		compiled_dir: compiled_dir
 	}
-}
-
-pub fn (b mut Builder) gen_c(v_files []string) string {
-	t0 := time.ticks()
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
-	b.parse_imports()
-	t1 := time.ticks()
-	parse_time := t1 - t0
-	b.info('PARSE: ${parse_time}ms')
-	//
-	b.checker.check_files(b.parsed_files)
-	t2 := time.ticks()
-	check_time := t2 - t1
-	b.info('CHECK: ${check_time}ms')
-	if b.checker.nr_errors > 0 {
-		b.print_errors(b.checker.errors)
-		exit(1)
-	}
-	// println('starting cgen...')
-	res := gen.cgen(b.parsed_files, b.table, b.pref)
-	t3 := time.ticks()
-	gen_time := t3 - t2
-	b.info('C GEN: ${gen_time}ms')
-	// println('cgen done')
-	// println(res)
-	return res
-}
-
-pub fn (b mut Builder) build_c(v_files []string, out_file string) {
-	b.out_name_c = out_file
-	b.info('build_c($out_file)')
-	mut f := os.create(out_file) or {
-		panic(err)
-	}
-	f.writeln(b.gen_c(v_files))
-	f.close()
-	// os.write_file(out_file, b.gen_c(v_files))
-}
-
-pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
-	$if !linux {
-		println('v -x64 can only generate Linux binaries for now')
-		println('You are not on a Linux system, so you will not ' + 'be able to run the resulting executable')
-	}
-	t0 := time.ticks()
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
-	b.parse_imports()
-	t1 := time.ticks()
-	parse_time := t1 - t0
-	b.info('PARSE: ${parse_time}ms')
-	b.checker.check_files(b.parsed_files)
-	t2 := time.ticks()
-	check_time := t2 - t1
-	b.info('CHECK: ${check_time}ms')
-	x64.gen(b.parsed_files, out_file)
-	t3 := time.ticks()
-	gen_time := t3 - t2
-	b.info('x64 GEN: ${gen_time}ms')
 }
 
 // parse all deps from already parsed files
@@ -129,7 +73,7 @@ pub fn (b mut Builder) parse_imports() {
 			for file in parsed_files {
 				if file.mod.name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					panic('bad module definition: ${ast_file.path} imports module "$mod" but $file.path is defined as module `$file.mod.name`')
+					verror('bad module definition: ${ast_file.path} imports module "$mod" but $file.path is defined as module `$file.mod.name`')
 				}
 			}
 			b.parsed_files << parsed_files

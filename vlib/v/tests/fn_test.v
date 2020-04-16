@@ -153,7 +153,11 @@ struct MySt {
 fn test_fn_type_call() {
     mut arr := []MyFn
     arr << MyFn(test)
-    assert arr[0](10) == 1010
+	// TODO: `arr[0](10)`
+	// assert arr[0](10) == 1010
+	x1 := arr[0]
+	x2 := x1(10)
+	assert x2 == 1010
 
     st := MySt{f:test}
     assert st.f(10) == 1010

@@ -18,12 +18,12 @@ pub fn complex(re f64, im f64) Complex {
 
 // To String method
 pub fn (c Complex) str() string {
-	mut out := '$c.re'
+	mut out := '${c.re:f}'
 	out += if c.im >= 0 {
-		'+$c.im'
+		'+${c.im:f}'
 	}
 	else {
-		'$c.im'
+		'${c.im:f}'
 	}
 	out += 'i'
 	return out

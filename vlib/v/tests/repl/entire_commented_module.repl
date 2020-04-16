@@ -1,3 +1,3 @@
 import v.tests.modules.acommentedmodule
 ===output===
-vlib/v/tests/modules/acommentedmodule/commentedfile.v:7:1: bad module definition: vlib/v/tests/modules/acommentedmodule/commentedfile.v imports module "v.tests.modules.acommentedmodule" but vlib/v/tests/modules/acommentedmodule/commentedfile.v is defined as module `main`
+builder error: bad module definition: .entire_commented_module.repl.vrepl_temp.v imports module "v.tests.modules.acommentedmodule" but vlib/v/tests/modules/acommentedmodule/commentedfile.v is defined as module `main`
