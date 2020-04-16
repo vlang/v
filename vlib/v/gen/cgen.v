@@ -1103,8 +1103,23 @@ fn (var g Gen) typeof_expr(node ast.TypeOf) {
 		g.write(').typ ))')
 	} else if sym.kind == .array_fixed {
 		fixed_info := sym.info as table.ArrayFixed
-		elem_sym := g.table.get_type_symbol(fixed_info.elem_type)
-		g.write('tos3("[$fixed_info.size]${elem_sym.name}")')
+		typ_name := g.table.get_type_name(fixed_info.elem_type)
+		g.write('tos3("[$fixed_info.size]${typ_name}")')
+	} else if sym.kind == .function {
+		info := sym.info as table.FnType
+		fn_info := info.func
+		mut repr := 'fn ('
+		for i, arg in fn_info.args {
+			if i > 0 {
+				repr += ', '
+			}
+			repr += g.table.get_type_name(arg.typ)
+		}
+		repr += ')'
+		if fn_info.return_type != table.void_type {
+			repr += ' ${g.table.get_type_name(fn_info.return_type)}'
+		}
+		g.write('tos3("$repr")')
 	} else {
 		g.write('tos3("${sym.name}")')
 	}

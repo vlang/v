@@ -17,8 +17,12 @@ type AnotherSumType = XxYyZz | int
 type SuperSumType = MySumType | AnotherSumType | string
 
 fn test_typeof_for_builtin_int_types() {
+	assert typeof(i8(1)) == 'i8'
+	assert typeof(i16(1)) == 'i16'
 	assert typeof(1) == 'int'
 	assert typeof(i64(1)) == 'i64'
+	assert typeof(byte(1)) == 'byte'
+	assert typeof(u16(1)) == 'u16'
 	assert typeof(u32(1)) == 'u32'
 	assert typeof(u64(1)) == 'u64'
 }
