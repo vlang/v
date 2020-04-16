@@ -7,8 +7,6 @@ import v.pref
 const (
 	skip_test_files = [
 		'vlib/arrays/arrays_test.v',
-		'vlib/cli/command_test.v',
-		'vlib/cli/flag_test.v',
 		'vlib/crypto/aes/aes_test.v',
 		'vlib/crypto/rand/rand_test.v', // macOS only
 		'vlib/crypto/rc4/rc4_test.v',

@@ -1,13 +1,15 @@
 module cli
 
+type CallbackFn fn(cmd Command)
+
 pub struct Command {
 pub mut:
 	name string
 	description string
 	version string
-	pre_execute fn(cmd Command)
-	execute fn(cmd Command)
-	post_execute fn(cmd Command)
+	pre_execute CallbackFn
+	execute CallbackFn
+	post_execute CallbackFn
 
 	disable_help bool
 	disable_version bool
