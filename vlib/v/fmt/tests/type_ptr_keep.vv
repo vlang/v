@@ -1,7 +1,7 @@
 const (
-	A  = &Test{}
-	B  = []&Test
-	C_ = &[]&Test
+	x  = &Test{}
+	y  = []&Test
+	z = &[]&Test
 )
 
 fn test_type_ptr() {
