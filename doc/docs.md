@@ -924,7 +924,7 @@ var color := Color.red
 color = .green
 println(color) // "1"  TODO: print "green"?
 ```
-An enumeration, also referred to as enum is a simultaneous definition of a nominal enumerated type as well as a set of constructors, that can be used to create or pattern-match values of the corresponding enumerated type.enables you to work with those values in a type-safe way within your code.
+An enumeration, also referred to as enum is a simultaneous definition of a nominal enumerated type,as well as a set of constructors, that can be used to create or pattern-match values of the corresponding enumerated type.enables you to work with those values in a type-safe way within your code.
 
 Enumerations are declared with the keyword `enum`.
 
@@ -1030,8 +1030,8 @@ posts_repo := new_repo<Post>(db)
 user := users_repo.find_by_id(1)?
 post := posts_repo.find_by_id(1)?
 ```
-Generics enables you to write flexible, reusable functions and types that can work with any type.
-generics method declarations have a type parameter section delimited by angle brackets `<T>` that precedes the method's return type.
+Generic enable you to write flexible, reusable functions and types.
+Generic method declarations have a type parameter section delimited by angle brackets `<T>` that precedes the method's return type.
 
 ## Concurrency
 
