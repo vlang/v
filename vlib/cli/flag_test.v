@@ -49,8 +49,8 @@ fn test_if_float_flag_parses() {
 	}
 
 	flag.parse(['--flag', '3.14159']) or { panic(err) }
-	assert flag.value.f32() == 3.14159
+	assert flag.value.f64() == 3.14159
 
 	flag.parse(['--flag=3.14159']) or { panic(err) }
-	assert flag.value.f32() == 3.14159
+	assert flag.value.f64() == 3.14159
 }
