@@ -204,6 +204,13 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	panic('get_type_symbol: invalid type (typ=$typ idx=${idx}). This should never happen')
 }
 
+[inline]
+pub fn (t &Table) get_type_name(typ Type) string {
+	typ_sym := t.get_type_symbol(typ)
+	return typ_sym.name
+}
+
+
 // this will override or register builtin type
 // allows prexisitng types added in register_builtins
 // to be overriden with their real type info
