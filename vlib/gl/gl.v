@@ -11,6 +11,8 @@ module gl
 // joe-c: fix & remove
 pub enum TmpGlImportHack{ non_empty }
 
+fn C.gladLoadGL() int
+
 fn C.glDisable()
 fn C.glEnable()
 fn C.glScissor()
@@ -44,7 +46,6 @@ fn C.glClear()
 fn C.glCreateShader() int
 fn C.glClearColor()
 fn C.glViewport()
-fn C.gladLoadGL()
 fn C.glTexImage2D()
 fn C.glPixelStorei()
 fn C.glBlendFunc()
@@ -52,10 +53,9 @@ fn C.glPolygonMode()
 fn C.glDeleteBuffers()
 
 
-
 pub fn init_glad() {
 	ok := C.gladLoadGL()
-	if isnil(ok) {
+	if ok == 0 {
 		println('Failed to initialize glad OpenGL context')
 		exit(1)
 	}
