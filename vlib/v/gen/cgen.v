@@ -2222,7 +2222,7 @@ fn (g mut Gen) string_inter_literal(node ast.StringInterLiteral) {
 			[.enum_, .array, .array_fixed] {
 			g.write('%.*s')
 		} else if node.expr_types[i] in [table.f32_type, table.f64_type] {
-			g.write('%f')
+			g.write('%g')
 		} else {
 			g.write('%d')
 		}
