@@ -2253,6 +2253,8 @@ fn (var g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.write('%.*s')
 		} else if node.expr_types[i] in [table.f32_type, table.f64_type] {
 			g.write('%g')
+		} else if sym.kind == .struct_ && !sym.has_method('str') {
+			g.write('%.*s')
 		} else {
 			g.write('%d')
 		}
@@ -2324,6 +2326,16 @@ fn (var g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				g.write('${styp}_str(')
 				g.expr(expr)
 				g.write(').str')
+			} else if sym.kind == .struct_ && !sym.has_method('str') {
+				styp := g.typ(node.expr_types[i])
+				g.gen_str_for_type(sym, styp)
+				g.write('${styp}_str(')
+				g.expr(expr)
+				g.write(',0)')
+				g.write('.len, ')
+				g.write('${styp}_str(')
+				g.expr(expr)
+				g.write(',0).str')
 			} else {
 				g.expr(expr)
 			}
@@ -2936,7 +2948,7 @@ fn (var g Gen) gen_str_for_struct(info table.Struct, styp string) {
 		g.definitions.write(', ')
 		for i, field in info.fields {
 			sym := g.table.get_type_symbol(field.typ)
-			if sym.kind == .struct_ {
+			if sym.kind in [.struct_, .array, .array_fixed] {
 				field_styp := g.typ(field.typ)
 				second_str_param := if sym.has_method('str') { '' } else { ', indent_count + 1' }
 				g.definitions.write('indents.len, indents.str, ${field_styp}_str(it.$field.name$second_str_param).len, ${field_styp}_str(it.$field.name$second_str_param).str')
@@ -2958,7 +2970,7 @@ fn (var g Gen) gen_str_for_struct(info table.Struct, styp string) {
 
 fn (g Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
-	if sym.kind == .struct_ {
+	if sym.kind in [.struct_, .array, .array_fixed] {
 		return '%.*s'
 	} else if typ == table.string_type {
 		return "\'%.*s\'"
