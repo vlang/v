@@ -1515,9 +1515,9 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	pos := p.tok.position()
 	p.check(.key_const)
 	if p.tok.kind != .lpar {
-		p.error('`const` must use group mode, e.g., const (a = 2)')
+		p.error('consts must be grouped, e.g.\nconst (\n\ta = 1\n)')
 	}
-	p.check(.lpar)
+	p.next() // (
 	var fields := []ast.ConstField
 	for p.tok.kind != .rpar {
 		if p.tok.kind == .comment {
