@@ -50,7 +50,7 @@ pub:
     scroll_x f32
     scroll_y f32
     num_touches int
-    touches [8]sapp_touchpoint
+    touches [8]C.sapp_touchpoint
     window_width int
     window_height int
     framebuffer_width int
