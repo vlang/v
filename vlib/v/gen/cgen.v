@@ -1844,6 +1844,9 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 			ast.IntegerLiteral {
 				g.const_decl_simple_define(name, val)
 			}
+			ast.FloatLiteral {
+				g.const_decl_simple_define(name, val)
+			}
 			ast.StringLiteral {
 				g.definitions.writeln('string _const_$name; // a string literal, inited later')
 				if g.pref.build_mode != .build_module {
