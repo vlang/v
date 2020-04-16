@@ -696,11 +696,8 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 			x := p.call_expr(is_c, is_js, mod)			// TODO `node,typ :=` should work
 			node = x
 		}
-	} else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || is_c || is_js || (p.builtin_mod &&
-		p.tok.lit in table.builtin_type_names)) && !p.inside_match && !p.inside_match_case && !p.inside_if &&
+	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for {
-		// (p.tok.lit.len in [1, 2] || !p.tok.lit[p.tok.lit.len - 1].is_capital()) &&
-		// || p.table.known_type(p.tok.lit)) {
 		return p.struct_init(false)		// short_syntax: false
 	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
 		// `Color.green`
@@ -1546,6 +1543,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 
 // structs and unions
 fn (p mut Parser) struct_decl() ast.StructDecl {
+	first_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -1574,6 +1572,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	var mut_pos := -1
 	var pub_pos := -1
 	var pub_mut_pos := -1
+	var last_pos := token.Position{}
 	if !no_body {
 		p.check(.lcbr)
 		for p.tok.kind != .rcbr {
@@ -1649,6 +1648,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			}
 			// println('struct field $ti.name $field_name')
 		}
+		last_pos = p.tok.position()
 		p.check(.rcbr)
 	}
 	if is_c {
@@ -1679,11 +1679,16 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		p.error('cannot register type `$name`, another type with this name exists')
 	}
 	p.expr_mod = ''
+	pos := token.Position{
+		line_nr: first_pos.line_nr
+		pos: first_pos.pos
+		len: last_pos.pos - first_pos.pos + last_pos.len
+	}
 	return ast.StructDecl{
 		name: name
 		is_pub: is_pub
 		fields: ast_fields
-		pos: p.tok.position()
+		pos: pos
 		mut_pos: mut_pos
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos

@@ -81,6 +81,21 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	exit(1)
 }
 
+pub fn (c mut Checker) struct_decl(decl ast.StructDecl) {
+	splitted_full_name := decl.name.split('.')
+	is_builtin := splitted_full_name[0] == 'builtin'
+	name := splitted_full_name.last()
+	if !name[0].is_capital() && !decl.is_c && !is_builtin && name !in table.builtin_type_names {
+		pos := token.Position{
+			line_nr: decl.pos.line_nr
+			pos: decl.pos.pos + 7
+			len: name.len
+		}
+		c.error('struct name must begin with capital letter', pos)
+	}
+	// && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod && Sp.tok.lit in table.builtin_type_names))
+}
+
 pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 	// typ := c.table.find_type(struct_init.typ.typ.name) or {
 	// c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
@@ -94,15 +109,16 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 		}
 		struct_init.typ = c.expected_type
 	}
-	typ_sym := c.table.get_type_symbol(struct_init.typ)
+	type_sym := c.table.get_type_symbol(struct_init.typ)
+
 	// println('check struct $typ_sym.name')
-	match typ_sym.kind {
+	match type_sym.kind {
 		.placeholder {
-			c.error('unknown struct: $typ_sym.name', struct_init.pos)
+			c.error('unknown struct: $type_sym.name', struct_init.pos)
 		}
 		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array {
-			info := typ_sym.info as table.Struct
+			info := type_sym.info as table.Struct
 			is_short_syntax := struct_init.fields.len == 0
 			if struct_init.exprs.len > info.fields.len {
 				c.error('too many fields', struct_init.pos)
@@ -138,7 +154,7 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 						}
 					}
 					if !found_field {
-						c.error('struct init: no such field `$field_name` for struct `$typ_sym.name`',
+						c.error('struct init: no such field `$field_name` for struct `$type_sym.name`',
 							struct_init.pos)
 						continue
 					}
@@ -160,7 +176,7 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 					continue
 				}
 				if table.type_is_ptr(field.typ) {
-					c.warn('reference field `${typ_sym.name}.${field.name}` must be initialized',
+					c.warn('reference field `${type_sym.name}.${field.name}` must be initialized',
 						struct_init.pos)
 				}
 			}
@@ -991,7 +1007,9 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.returns = true
 			c.return_stmt(mut it)
 		}
-		// ast.StructDecl {}
+		ast.StructDecl {
+			c.struct_decl(it)
+		}
 		ast.UnsafeStmt {
 			c.stmts(it.stmts)
 		}
