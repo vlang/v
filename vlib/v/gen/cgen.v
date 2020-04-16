@@ -126,15 +126,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	//
 	g.finish()
-	return g.hashes() +
-		'\n// V typedefs:\n' + g.typedefs.str() +
-		'\n// V typedefs2:\n' + g.typedefs2.str() +
-		'\n// V cheaders:\n' + g.cheaders.str() +
-		'\n// V includes:\n' + g.includes.str() +
-		'\n// V definitions:\n' + g.definitions.str() +
-		'\n// V gowrappers:\n' + g.gowrappers.str() +
-		'\n// V stringliterals:\n' + g.stringliterals.str() +
-		'\n// V out\n' + g.out.str()
+	return g.hashes() + '\n// V typedefs:\n' + g.typedefs.str() + '\n// V typedefs2:\n' + g.typedefs2.str() +
+		'\n// V cheaders:\n' + g.cheaders.str() + '\n// V includes:\n' + g.includes.str() + '\n// V definitions:\n' +
+		g.definitions.str() + '\n// V gowrappers:\n' + g.gowrappers.str() + '\n// V stringliterals:\n' +
+		g.stringliterals.str() + '\n// V out\n' + g.out.str()
 }
 
 pub fn (g Gen) hashes() string {
@@ -1211,6 +1206,10 @@ fn (g mut Gen) infix_expr(node ast.InfixExpr) {
 	// string + string, string == string etc
 	// g.infix_op = node.op
 	left_sym := g.table.get_type_symbol(node.left_type)
+	if node.op == .key_is {
+		g.is_expr(node)
+		return
+	}
 	right_sym := g.table.get_type_symbol(node.right_type)
 	if node.left_type == table.string_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
@@ -2826,6 +2825,12 @@ fn (g mut Gen) go_stmt(node ast.GoStmt) {
 		}
 		else {}
 	}
+}
+
+fn (g mut Gen) is_expr(node ast.InfixExpr) {
+	g.expr(node.left)
+	g.write('.typ == ')
+	g.expr(node.right)
 }
 
 // already generated styp, reuse it

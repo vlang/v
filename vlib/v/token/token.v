@@ -101,6 +101,7 @@ pub enum Kind {
 	key_import_const
 	key_in
 	key_interface
+	key_is
 	// key_it
 	key_match
 	key_module
@@ -246,6 +247,7 @@ fn build_token_str() []string {
 	s[Kind.key_select] = 'select'
 	s[Kind.key_none] = 'none'
 	s[Kind.key_offsetof] = '__offsetof'
+	s[Kind.key_is] = 'is'
 	s[Kind.key_var] = 'var'
 	return s
 }
@@ -385,7 +387,7 @@ pub fn (tok Token) precedence() int {
 		.left_shift_assign, .right_shift_assign, .mult_assign, .xor_assign {
 			return int(Precedence.assign)
 		}
-		.key_in, .not_in, .key_as {
+		.key_in, .not_in, .key_as, .key_is {
 			return int(Precedence.in_as)
 		}
 		.logical_or, .and {
@@ -425,7 +427,7 @@ pub fn (k Kind) is_start_of_type() bool {
 pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in,
 	//
-	.key_as, .ge, .le, .logical_or, .xor, .not_in,
+	.key_as, .ge, .le, .logical_or, .xor, .not_in, .key_is,
 	//
 	.and, .dot, .pipe, .amp, .left_shift, .right_shift]
 }

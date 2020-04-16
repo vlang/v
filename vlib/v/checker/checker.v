@@ -196,6 +196,9 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	left_type := c.expr(infix_expr.left)
 	infix_expr.left_type = left_type
 	c.expected_type = left_type
+	if infix_expr.op == .key_is {
+		return table.bool_type
+	}
 	right_type := c.expr(infix_expr.right)
 	infix_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
@@ -1709,6 +1712,9 @@ pub fn (c mut Checker) warn(s string, pos token.Position) {
 }
 
 pub fn (c mut Checker) error(message string, pos token.Position) {
+	if c.pref.is_verbose {
+		print_backtrace()
+	}
 	c.warn_or_error(message, pos, false)
 }
 

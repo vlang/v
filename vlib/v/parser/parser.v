@@ -21,7 +21,7 @@ mut:
 	peek_tok          token.Token
 	table             &table.Table
 	is_c              bool
-	is_js			  bool
+	is_js             bool
 	inside_if         bool
 	inside_for        bool
 	inside_fn         bool
@@ -39,6 +39,7 @@ mut:
 	inside_match      bool // to separate `match A { }` from `Struct{}`
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
 	is_stmt_ident     bool // true while the beginning of a statement is an ident/selector
+	inside_is         bool // `is Type`, expecting type
 }
 
 // for tests
@@ -616,6 +617,11 @@ fn (p mut Parser) struct_init(short_syntax bool) ast.StructInit {
 
 pub fn (p mut Parser) name_expr() ast.Expr {
 	var node := ast.Expr{}
+	if p.inside_is {
+		return ast.Type{
+			typ: p.parse_type()
+		}
+	}
 	is_c := p.tok.lit == 'C'
 	is_js := p.tok.lit == 'JS'
 	var mod := ''
@@ -635,8 +641,8 @@ pub fn (p mut Parser) name_expr() ast.Expr {
 		return p.string_expr()
 	}
 	known_var := p.scope.known_var(p.tok.lit)
-	if p.peek_tok.kind == .dot && !known_var && (is_c || is_js || p.known_import(p.tok.lit) || p.mod.all_after('.') ==
-		p.tok.lit) {
+	if p.peek_tok.kind == .dot && !known_var && (is_c || is_js || p.known_import(p.tok.lit) ||
+		p.mod.all_after('.') == p.tok.lit) {
 		if is_c {
 			mod = 'C'
 		} else if is_js {
@@ -1044,7 +1050,11 @@ fn (p mut Parser) infix_expr(left ast.Expr) ast.Expr {
 	pos := p.tok.position()
 	p.next()
 	var right := ast.Expr{}
+	if op == .key_is {
+		p.inside_is = true
+	}
 	right = p.expr(precedence)
+	p.inside_is = false
 	var expr := ast.Expr{}
 	expr = ast.InfixExpr{
 		left: left
@@ -1511,7 +1521,7 @@ fn (p mut Parser) const_decl() ast.ConstDecl {
 	if p.tok.kind != .lpar {
 		p.error('consts must be grouped, e.g.\nconst (\n\ta = 1\n)')
 	}
-	p.next() // (
+	p.next()	// (
 	var fields := []ast.ConstField
 	for p.tok.kind != .rpar {
 		if p.tok.kind == .comment {
