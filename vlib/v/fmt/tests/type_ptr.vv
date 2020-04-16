@@ -1,6 +1,6 @@
 const (
-	A = &Test{}
-	B = []&Test
+	A  = &Test{}
+	B  = []&Test
 	C_ = &[]&Test
 )
 
