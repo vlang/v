@@ -1853,6 +1853,9 @@ fn (var g Gen) const_decl(node ast.ConstDecl) {
 			ast.CharLiteral {
 				g.const_decl_simple_define(name, val)
 			}
+			ast.FloatLiteral {
+				g.const_decl_simple_define(name, val)
+			}
 			ast.IntegerLiteral {
 				g.const_decl_simple_define(name, val)
 			}
