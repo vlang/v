@@ -30,7 +30,6 @@ const (
 		'vlib/v/tests/pointers_test.v',
 		'vlib/v/tests/repl/repl_test.v',
 		'vlib/v/tests/string_interpolation_array_of_structs_test.v',
-		'vlib/v/tests/string_interpolation_struct_test.v',
 		'vlib/v/tests/string_interpolation_variadic_test.v',
 		'vlib/v/tests/type_test.v',
 		'vlib/v/tests/typeof_test.v',

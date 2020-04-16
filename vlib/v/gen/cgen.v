@@ -2231,7 +2231,7 @@ fn (var g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 			g.write('%' + sfmt[1..])
 		} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind in
-			[.enum_, .array, .array_fixed] {
+			[.enum_, .array, .array_fixed, .struct_] {
 			g.write('%.*s')
 		} else if node.expr_types[i] in [table.f32_type, table.f64_type] {
 			g.write('%g')
@@ -2306,6 +2306,20 @@ fn (var g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				g.write('${styp}_str(')
 				g.expr(expr)
 				g.write(').str')
+			} else if sym.kind == .struct_ {
+				if !sym.has_method('str') {
+					styp := g.typ(node.expr_types[i])
+					g.gen_str_for_type(sym, styp)
+					g.write('${styp}_str(')
+					g.expr(expr)
+					g.write(',0)')
+					g.write('.len, ')
+					g.write('${styp}_str(')
+					g.expr(expr)
+					g.write(',0).str')
+				} else {
+					g.expr(expr)
+				}
 			} else {
 				g.expr(expr)
 			}
@@ -2943,7 +2957,7 @@ fn (g Gen) type_to_fmt(typ table.Type) string {
 	if sym.kind in [.struct_, .array, .array_fixed] {
 		return '%.*s'
 	} else if typ == table.string_type {
-		return "\'%.*s\'"
+		return '\\"%.*s\\"'
 	} else if typ == table.bool_type {
 		return '%.*s'
 	} else if typ in [table.f32_type, table.f64_type] {
