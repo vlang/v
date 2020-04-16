@@ -169,7 +169,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	scale := cfg.scale
 	// Can only have text in ortho mode
 	if !cfg.use_ortho {
-		return &FreeType{}
+		return &FreeType{face:0}
 	}
 	width := cfg.width * scale
 	height := cfg.height * scale
@@ -205,19 +205,16 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 		font_path = 'RobotoMono-Regular.ttf'
 	}
 	if !os.exists(font_path) {
-		exe_path := os.executable()
-		exe_dir := os.base_dir(exe_path)
-		font_path = '$exe_dir/$font_path'
+		font_path = os.resource_abs_path(font_path)
 	}
 	if !os.exists(font_path) {
-		println('failed to load $font_path')
+		eprintln('freetype: font "$font_path" does not exist')
 		return 0
 	}
-	println('Trying to load font from $font_path')
-	face := &C.FT_FaceRec{}
+	face := &C.FT_FaceRec{glyph:0}
 	ret = int(C.FT_New_Face(ft, font_path.str, 0, &face))
 	if ret != 0	{
-		println('freetype: failed to load the font (error=$ret)')
+		eprintln('freetype: failed to load font (error=$ret) from path: $font_path')
 		exit(1)
 	}
 	// Set size to load glyphs as

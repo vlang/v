@@ -403,7 +403,6 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	// global keys
 	match key {
 		k_escape {
-			eprintln('should close')
 			glfw.set_should_close(wnd, true)
 		}
 		k_space {
