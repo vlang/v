@@ -2231,10 +2231,12 @@ fn (var g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 			g.write('%' + sfmt[1..])
 		} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind in
-			[.enum_, .array, .array_fixed, .struct_] {
+			[.enum_, .array, .array_fixed] {
 			g.write('%.*s')
 		} else if node.expr_types[i] in [table.f32_type, table.f64_type] {
 			g.write('%g')
+		} else if sym.kind == .struct_ && !sym.has_method('str') {
+			g.write('%.*s')
 		} else {
 			g.write('%d')
 		}
