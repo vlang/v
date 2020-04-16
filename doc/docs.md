@@ -322,7 +322,7 @@ println(upper) // ['HELLO', 'WORLD']
 ## Maps
 
 ```v
-mut m := map[string]int // Only maps with string keys are allowed for now
+var m := map[string]int // Only maps with string keys are allowed for now
 m['one'] = 1
 m['two'] = 2
 println(m['one']) // "1"
@@ -557,7 +557,7 @@ button.widget.set_pos(x,y)
 
 Struct fields are private and immutable by default (making structs immutable as well).
 Their access modifiers can be changed with
-`pub` and `mut`. In total, there are 5 possible options:
+`pub` and `var`. In total, there are 5 possible options:
 
 ```v
 struct Foo {
@@ -588,7 +588,6 @@ pub:
 It's easy to see from this definition that `string` is an immutable type.
 The byte pointer with the string data is not accessible outside `builtin` at all.
 `len` field is public, but not mutable:
-
 ```v
 fn main() {
     str := 'hello'
@@ -634,7 +633,7 @@ This is achieved by lack of global variables and all function arguments being im
 even when references are passed.
 
 V is not a pure functional language however.
-It is possible to modify function arguments by using the same keyword `mut`:
+It is possible to modify function arguments by using the same keyword `var`:
 
 ```v
 struct User {
