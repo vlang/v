@@ -465,6 +465,7 @@ pub:
 pub struct HashStmt {
 pub:
 	val string
+	mod string
 }
 
 // filter(), map()

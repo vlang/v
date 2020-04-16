@@ -1,3 +1,5 @@
 struct abc {
 
 }
+
+fn main(){}

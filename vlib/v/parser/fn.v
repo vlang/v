@@ -7,6 +7,7 @@ import v.ast
 import v.table
 import v.scanner
 import v.token
+import v.util
 
 pub fn (p mut Parser) call_expr(is_c bool, is_js bool, mod string) ast.CallExpr {
 	first_pos := p.tok.position()
@@ -227,8 +228,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		is_js: is_js
 		no_body: no_body
 		pos: pos
-		is_builtin: p.builtin_mod || p.mod in ['math', 'strconv', 'strconv.ftoa', 'hash.wyhash',
-			'math.bits', 'strings']
+		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 	}
 }
 

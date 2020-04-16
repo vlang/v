@@ -52,6 +52,7 @@ fn (p mut Parser) hash() ast.HashStmt {
 	}
 	return ast.HashStmt{
 		val: val
+		mod: p.mod
 	}
 }
 
