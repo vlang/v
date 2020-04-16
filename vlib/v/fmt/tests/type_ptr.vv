@@ -1,8 +1,14 @@
-struct Test {
-}
+const (
+	A = &Test{}
+	B = []&Test
+	C_ = &[]&Test
+)
 
 fn test_type_ptr() {
 	a := &Test{}
 	c := []&Test
 	b := &[]&Test
+}
+
+struct Test {
 }
