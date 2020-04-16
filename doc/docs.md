@@ -77,6 +77,8 @@ Functions can be used before their declaration:
 This is true for all declarations in V and eliminates the need of header files
 or thinking about the order of files and declarations.
 
+<p>&nbsp;</p>
+
 ```v
 fn foo() (int, int) {
     return 2, 3
@@ -100,7 +102,7 @@ fn private_function() {
 }
 ```
 
-## Variables
+## Consts & variables
 
 ```v
 name := 'Bob'
@@ -244,6 +246,20 @@ For raw strings, prepend `r`. Raw strings are not escaped:
 s := r'hello\nworld'
 println(s) // "hello\nworld"
 ```
+
+## Imports
+
+```v
+import os
+
+fn main() {
+    println('Enter your name:')
+    name := os.get_line()
+    println('Hello, $name!')
+}
+```
+
+Modules can be imported using keyword `import`. When using types, functions, and consts from other modules, the full path must be specified. In the example above, `name := get_name()` wouldn't work. That means that it's always clear from which module a function is called
 
 ## Arrays
 
