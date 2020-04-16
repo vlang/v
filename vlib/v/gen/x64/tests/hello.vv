@@ -1,3 +1,3 @@
 fn main() {
-	println('hello from x64')
+	print('hello from x64')
 }

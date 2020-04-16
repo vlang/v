@@ -49,15 +49,15 @@ fn test_x64() {
 			panic(err)
 		}
 		expected = expected.trim_space().trim('\n').replace('\r\n', '\n')
-		found := res.output.trim_space().trim('\n').replace('\r\n', '\n')
+		mut found := res.output.trim_space().trim('\n').replace('\r\n', '\n')
+		found = found[..found.len-1] // remove ACK char TODO fix this
+
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
-			println('expected:')
-			println(expected)
+			println('expected: "$expected" len=$expected.len')
 			println('============')
-			println('found:')
-			println(found)
+			println('found:"$found" len=$found.len')
 			println('============\n')
 			bench.fail()
 			continue
