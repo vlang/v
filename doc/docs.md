@@ -322,7 +322,7 @@ println(upper) // ['HELLO', 'WORLD']
 ## Maps
 
 ```v
-var m := map[string]int // Only maps with string keys are allowed for now
+mut m := map[string]int // Only maps with string keys are allowed for now
 m['one'] = 1
 m['two'] = 2
 println(m['one']) // "1"
@@ -557,7 +557,7 @@ button.widget.set_pos(x,y)
 
 Struct fields are private and immutable by default (making structs immutable as well).
 Their access modifiers can be changed with
-`pub` and `var`. In total, there are 5 possible options:
+`pub` and `mut`. In total, there are 5 possible options:
 
 ```v
 struct Foo {
@@ -588,6 +588,7 @@ pub:
 It's easy to see from this definition that `string` is an immutable type.
 The byte pointer with the string data is not accessible outside `builtin` at all.
 `len` field is public, but not mutable:
+
 ```v
 fn main() {
     str := 'hello'
@@ -633,7 +634,7 @@ This is achieved by lack of global variables and all function arguments being im
 even when references are passed.
 
 V is not a pure functional language however.
-It is possible to modify function arguments by using the same keyword `var`:
+It is possible to modify function arguments by using the same keyword `mut`:
 
 ```v
 struct User {
@@ -914,7 +915,9 @@ There is no explicit declaration of intent, no "implements" keyword.
 
 ```v
 enum Color {
-    red green blue
+    red
+    green
+    blue
 }
 
 var color := Color.red
@@ -922,6 +925,8 @@ var color := Color.red
 color = .green
 println(color) // "1"  TODO: print "green"?
 ```
+An enumeration, also referred to as enum is a simultaneous definition of a nominal enumerated type as well as a set of constructors, that can be used to create or pattern-match values of the corresponding enumerated type.enables you to work with those values in a type-safe way within your code.
+Enumerations are declared with the keyword enum.
 
 ## Option/Result types & error handling
 
@@ -1025,7 +1030,8 @@ posts_repo := new_repo<Post>(db)
 user := users_repo.find_by_id(1)?
 post := posts_repo.find_by_id(1)?
 ```
-
+Generics enables you to write flexible, reusable functions and types that can work with any type.
+generics method declarations have a type parameter section delimited by angle brackets '<T>' that precedes the method's return type.
 ## Concurrency
 
 The concurrency model is very similar to Go. To run `foo()` concurrently, just
