@@ -1841,10 +1841,10 @@ fn (g mut Gen) const_decl(node ast.ConstDecl) {
 			ast.CharLiteral {
 				g.const_decl_simple_define(name, val)
 			}
-			ast.IntegerLiteral {
+			ast.FloatLiteral {
 				g.const_decl_simple_define(name, val)
 			}
-			ast.FloatLiteral {
+			ast.IntegerLiteral {
 				g.const_decl_simple_define(name, val)
 			}
 			ast.StringLiteral {
