@@ -926,7 +926,7 @@ println(color) // "1"  TODO: print "green"?
 ```
 An enumeration, also referred to as enum is a simultaneous definition of a nominal enumerated type as well as a set of constructors, that can be used to create or pattern-match values of the corresponding enumerated type.enables you to work with those values in a type-safe way within your code.
 
-Enumerations are declared with the keyword enum.
+Enumerations are declared with the keyword `enum`.
 
 ## Option/Result types & error handling
 
