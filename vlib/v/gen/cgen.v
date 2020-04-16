@@ -1911,7 +1911,7 @@ fn (var g Gen) struct_init(struct_init ast.StructInit) {
 		fields = struct_init.fields
 	}*/
 	// User set fields
-	for i, field in struct_init._fields {
+	for i, field in struct_init.fields {
 		field_name := c_name(field.name)
 		inited_fields << field.name
 		g.write('\t.$field_name = ')

@@ -570,6 +570,7 @@ pub fn (var p Parser) parse_ident(is_c, is_js bool) ast.Ident {
 }
 
 fn (var p Parser) struct_init(short_syntax bool) ast.StructInit {
+	first_pos := p.tok.position()
 	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
 	// sym := p.table.get_type_symbol(typ)
@@ -614,14 +615,18 @@ fn (var p Parser) struct_init(short_syntax bool) ast.StructInit {
 		}
 		p.check_comment()
 	}
-	pos := p.tok.position()
+	last_pos := p.tok.position()
 	if !short_syntax {
 		p.check(.rcbr)
 	}
 	node := ast.StructInit{
 		typ: typ
-		_fields: fields
-		pos: pos
+		fields: fields
+		pos: token.Position{
+			line_nr: first_pos.line_nr
+			pos: first_pos.pos
+			len: last_pos.pos - first_pos.pos + last_pos.len
+		}
 		is_short: is_short_syntax
 	}
 	return node

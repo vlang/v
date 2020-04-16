@@ -127,7 +127,7 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 				c.error('too many fields', struct_init.pos)
 			}
 			mut inited_fields := []string
-			for i, field in struct_init._fields {
+			for i, field in struct_init.fields {
 				mut info_field := table.Field{}
 				mut field_name := ''
 				if struct_init.is_short {
@@ -138,7 +138,7 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 					}
 					info_field = info.fields[i]
 					field_name = info_field.name
-					struct_init._fields[i].name = field_name
+					struct_init.fields[i].name = field_name
 				} else {
 					field_name = field.name
 					mut exists := false
@@ -166,8 +166,8 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 				if !c.table.check(expr_type, info_field.typ) {
 					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`', field.pos)
 				}
-				struct_init._fields[i].typ = expr_type
-				struct_init._fields[i].expected_type = info_field.typ
+				struct_init.fields[i].typ = expr_type
+				struct_init.fields[i].expected_type = info_field.typ
 			}
 			// Check uninitialized refs
 			for field in info.fields {

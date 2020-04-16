@@ -169,15 +169,11 @@ mut:
 
 pub struct StructInit {
 pub:
-	pos            token.Position
-	_fields        []StructInitField
-	fields         []string
-	exprs          []Expr
-	is_short       bool
+	pos      token.Position
+	fields   []StructInitField
+	is_short bool
 mut:
-	typ            table.Type
-	expr_types     []table.Type
-	expected_types []table.Type
+	typ      table.Type
 }
 
 // import statement
