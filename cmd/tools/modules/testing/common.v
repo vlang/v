@@ -20,23 +20,8 @@ pub mut:
 	show_ok_tests bool
 }
 
-
-struct MessageHandler {
-pub mut:
-	messages []string
-	message_idx int
-	mtx &sync.Mutex
-}
-
-const (
-	messages = MessageHandler{
-		mtx: sync.new_mutex()
-	}
-)
-
-
 pub fn new_test_session(_vargs string) TestSession {
-    mut skip_files := []string
+	mut skip_files := []string
 	skip_files << '_non_existing_'
 	$if solaris {
 		skip_files << "examples/gg/gg2.v"
@@ -94,6 +79,10 @@ pub fn (ts mut TestSession) test() {
 	mut pool_of_test_runners := sync.new_pool_processor(sync.PoolProcessorConfig{
 		callback: worker_trunner
 	})
+	// for handling messages across threads
+	pool_of_test_runners.message_handler = &sync.TestMessageHandler{
+		mtx: sync.new_mutex()
+	}
 	pool_of_test_runners.set_shared_context(ts)
 	$if msvc {
 		// NB: MSVC can not be launched in parallel, without giving it
@@ -108,24 +97,24 @@ pub fn (ts mut TestSession) test() {
 	eprintln(term.h_divider('-'))
 }
 
-fn next_message() {
-	messages.mtx.lock()
+fn next_message(m mut sync.TestMessageHandler) {
+	m.mtx.lock()
 	defer {
-		messages.messages.clear()
-		messages.mtx.unlock()
+		m.messages.clear()
+		m.mtx.unlock()
 	}
-	for i, msg in messages.messages {
-		messages.message_idx++
+	for msg in m.messages {
+		m.message_idx++
 		eprintln(msg.
-			replace("TMP1", "${messages.message_idx:1d}").
-			replace("TMP2", "${messages.message_idx:2d}").
-			replace("TMP3", "${messages.message_idx:3d}")
+			replace("TMP1", "${m.message_idx:1d}").
+			replace("TMP2", "${m.message_idx:2d}").
+			replace("TMP3", "${m.message_idx:3d}")
 		)
 	}
 }
 
 fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
-	defer { next_message() }
+	defer { next_message(p.message_handler) }
 	mut ts := &TestSession(p.get_shared_context())
 	tmpd := os.temp_dir()
 	show_stats := '-stats' in ts.vargs.split(' ')
@@ -159,11 +148,11 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	if relative_file.replace('\\', '/') in ts.skip_files {
 	   ts.benchmark.skip()
 	   tls_bench.skip()
-	   messages.messages << tls_bench.step_message_skip(relative_file)
+	   p.message_handler.messages << tls_bench.step_message_skip(relative_file)
 	   return sync.no_result
 	}
 	if show_stats {
-		messages.messages << term.h_divider('-')
+		p.message_handler.messages << term.h_divider('-')
 		status := os.system(cmd)
 		if status == 0 {
 			ts.benchmark.ok()
@@ -181,20 +170,20 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			messages.messages << tls_bench.step_message_fail(relative_file)
+			p.message_handler.messages << tls_bench.step_message_fail(relative_file)
 			return sync.no_result
 		}
 		if r.exit_code != 0 {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			messages.messages << tls_bench.step_message_fail('${relative_file}\n$r.output\n')
+			p.message_handler.messages << tls_bench.step_message_fail('${relative_file}\n$r.output\n')
 		}
 		else {
 			ts.benchmark.ok()
 			tls_bench.ok()
 			if ts.show_ok_tests {
-				messages.messages << tls_bench.step_message_ok(relative_file)
+				p.message_handler.messages << tls_bench.step_message_ok(relative_file)
 			}
 		}
 	}
