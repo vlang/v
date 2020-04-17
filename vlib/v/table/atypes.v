@@ -11,10 +11,8 @@
 // idx:  u16(type) & 0xffff
 module table
 
-import (
-	strings
-	v.ast
-)
+import strings
+import v.ast
 
 pub type Type int
 
@@ -28,6 +26,7 @@ mut:
 	kind       Kind
 	name       string
 	methods    []Fn
+	mod        string
 }
 
 pub enum TypeFlag {
@@ -310,7 +309,7 @@ pub fn (t TypeSymbol) str() string {
 	return t.name
 }
 */
-pub fn (t mut Table) register_builtin_type_symbols() {
+pub fn (var t Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found
 	t.register_type_symbol(TypeSymbol{
@@ -527,7 +526,7 @@ pub fn (k Kind) str() string {
 }
 
 pub fn (kinds []Kind) str() string {
-	mut kinds_str := ''
+	var kinds_str := ''
 	for i, k in kinds {
 		kinds_str += k.str()
 		if i < kinds.len - 1 {
@@ -594,7 +593,7 @@ pub:
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
 	if sym.kind == .multi_return {
-		mut res := '('
+		var res := '('
 		mr_info := sym.info as MultiReturn
 		for i, typ in mr_info.types {
 			res += table.type_to_str(typ)
@@ -605,7 +604,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 		res += ')'
 		return res
 	}
-	mut res := sym.name
+	var res := sym.name
 	if sym.kind == .array {
 		res = res.replace('array_', '[]')
 	} else if sym.kind == .map {
