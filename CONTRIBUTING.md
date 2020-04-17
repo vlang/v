@@ -8,7 +8,7 @@ full of magic that only few people understand.
 The V compiler is modular, and can be used by other applications. It is located
 in `cmd/v/` and `vlib/v/`.
 
-The most important and usefult command to remember when working on the V compiler is
+The most important and useful command to remember when working on the V compiler is
 `v self`.
 It rebuilds the V compiler.
 
