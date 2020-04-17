@@ -1748,12 +1748,13 @@ fn (var p Parser) interface_decl() ast.InterfaceDecl {
 }
 
 fn (var p Parser) return_stmt() ast.Return {
+	first_pos := p.tok.position()
 	p.next()
 	// return expressions
 	var exprs := []ast.Expr
 	if p.tok.kind == .rcbr {
 		return ast.Return{
-			pos: p.tok.position()
+			pos: first_pos
 		}
 	}
 	for {
@@ -1765,11 +1766,15 @@ fn (var p Parser) return_stmt() ast.Return {
 			break
 		}
 	}
-	stmt := ast.Return{
+	last_pos := exprs.last().position()
+	return ast.Return{
 		exprs: exprs
-		pos: p.tok.position()
+		pos: token.Position{
+			line_nr: first_pos.line_nr
+			pos: first_pos.pos
+			len: last_pos.pos - first_pos.pos + last_pos.len
+		}
 	}
-	return stmt
 }
 
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`

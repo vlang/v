@@ -644,8 +644,8 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 		if !c.table.check(got_typ, exp_typ) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			exp_typ_sym := c.table.get_type_symbol(exp_typ)
-			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument',
-				return_stmt.pos)
+			pos := return_stmt.exprs[i].position()
+			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument', pos)
 		}
 	}
 }
