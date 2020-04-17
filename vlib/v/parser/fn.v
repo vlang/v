@@ -180,6 +180,7 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 			return_type: return_type
 			is_variadic: is_variadic
 			is_generic: is_generic
+			is_pub: is_pub
 		})
 	} else {
 		if is_c {
@@ -200,6 +201,7 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 			is_c: is_c
 			is_js: is_js
 			is_generic: is_generic
+			is_pub: is_pub
 		})
 	}
 	// Body

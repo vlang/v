@@ -26,8 +26,8 @@ mut:
 	inside_for        bool
 	inside_fn         bool
 	pref              &pref.Preferences
-	builtin_mod       bool
-	mod               string
+	builtin_mod       bool // are we in the `builtin` module?
+	mod               string // current module name
 	attr              string
 	expr_mod          string
 	scope             &ast.Scope
@@ -1690,6 +1690,7 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 			is_typedef: is_typedef
 			is_union: is_union
 		}
+		mod: p.mod
 	}
 	var ret := 0
 	if p.builtin_mod && t.name in table.builtin_type_names {
