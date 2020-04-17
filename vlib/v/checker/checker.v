@@ -322,7 +322,7 @@ pub fn (c mut Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		return info.elem_type
 	}
 	if method := c.table.type_find_method(left_type_sym, method_name) {
-		if !method.is_pub && !c.is_builtin_mod && left_type_sym.mod != c.mod && left_type_sym.mod != '' { // method.mod != c.mod {
+		if !method.is_pub && !c.is_builtin_mod && !c.pref.is_test && left_type_sym.mod != c.mod && left_type_sym.mod != '' { // method.mod != c.mod {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
 			//println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
