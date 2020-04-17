@@ -62,10 +62,17 @@ pub fn (c mut Checker) check2(ast_file ast.File) []scanner.Error {
 }
 
 pub fn (c mut Checker) check_files(ast_files []ast.File) {
-	mut all_mods := map[string]int
+	mut has_main_fn := false
 	for file in ast_files {
 		c.check(file)
-		all_mods[ file.mod.name ] = all_mods[ file.mod.name ] + 1
+		if file.mod.name == 'main' {
+			if fn_decl := get_main_fn_decl(file) {
+				has_main_fn = true
+				if fn_decl.is_pub {
+					c.error('function `main` cannot be declared public', fn_decl.pos)
+				}
+			}
+		}
 	}
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
@@ -75,20 +82,21 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 		// shared libs do not need to have a main
 		return
 	}
-	// check that a main program has a `fn main(){}` function:
-	if all_mods['main'] > 0 {
-		for i, f in c.table.fns {
-			if f.name == 'main' {
-				if f.is_pub {
-					c.error('function `main` cannot be declared public', token.Position{})
-					exit(1)
-				}
-				return
+	if !has_main_fn {
+		c.error('function `main` must be declared in the main module', token.Position{})
+	}
+}
+
+fn get_main_fn_decl(file ast.File) ?ast.FnDecl {
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl {
+			fn_decl := stmt as ast.FnDecl
+			if fn_decl.name == 'main' {
+				return fn_decl
 			}
 		}
-		c.error('function `main` is undeclared in the main module', token.Position{})
-		exit(1)
 	}
+	return none
 }
 
 pub fn (c mut Checker) struct_decl(decl ast.StructDecl) {
