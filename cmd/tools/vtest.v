@@ -1,12 +1,10 @@
 module main
 
-import (
-	os
-	os.cmdline
-	testing
-)
+import os
+import os.cmdline
+import testing
 
-pub fn main() {
+fn main() {
 	args := os.args
 	if args.last() == 'test' {
 		println('Usage:')

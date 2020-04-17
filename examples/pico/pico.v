@@ -36,6 +36,6 @@ pub fn callback(req picohttpparser.Request, res mut picohttpparser.Response) {
 	}
 }
 
-pub fn main() {
+fn main() {
 	picoev.new(8088, &callback).serve()
 }
