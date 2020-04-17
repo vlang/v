@@ -551,8 +551,11 @@ pub fn (var p Parser) name_expr() ast.Expr {
 	var node := ast.Expr{}
 	if p.inside_is {
 		p.inside_is = false
+		// get type position before moving to next
+		type_pos := p.tok.position()
 		return ast.Type{
 			typ: p.parse_type()
+			pos: type_pos
 		}
 	}
 	is_c := p.tok.lit == 'C'
