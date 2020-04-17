@@ -136,7 +136,6 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 		tls_bench.set_total_expected_steps(ts.benchmark.nexpected_steps)
 		p.set_thread_context(idx, tls_bench)
 	}
-	tls_bench.cstep = idx
 	tls_bench.no_cstep = true
 	dot_relative_file := p.get_string_item(idx)
 	relative_file := dot_relative_file.replace(ts.vroot + os.path_separator, '').replace('./', '')

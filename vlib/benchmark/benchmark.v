@@ -102,7 +102,9 @@ pub fn (b mut Benchmark) stop() {
 
 pub fn (b mut Benchmark) step() {
 	b.step_start_time = benchmark.now()
-	b.cstep++
+	if !b.no_cstep {
+		b.cstep++
+	}
 }
 
 pub fn (b mut Benchmark) fail() {
