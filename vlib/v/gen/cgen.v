@@ -248,8 +248,14 @@ pub fn (var g Gen) write_typedef_types() {
 			.function {
 				info := typ.info as table.FnType
 				func := info.func
-				if !info.has_decl && !info.is_anon {
-					fn_name := if func.is_c { func.name.replace('.', '__') } else { c_name(func.name) }
+				if !info.has_decl {
+					fn_name := if func.is_c { 
+						func.name.replace('.', '__') 
+					} else if info.is_anon {
+						typ.name
+					} else { 
+						c_name(func.name) 
+					}
 					g.definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 					for i, arg in func.args {
 						g.definitions.write(g.typ(arg.typ))
@@ -1084,6 +1090,33 @@ fn (var g Gen) expr(node ast.Expr) {
 		}
 		ast.TypeOf {
 			g.typeof_expr(it)
+		}
+		ast.AnonFn {
+			sym := g.table.get_type_symbol(it.typ)
+			func := it.decl
+
+			// TODO: Fix hack and write function implementation directly to definitions
+			pos := g.out.len
+			type_name := g.typ(func.return_type)
+			g.write('$type_name ${sym.name}_impl(')
+			g.fn_args(func.args, func.is_variadic)
+			g.writeln(') {')
+			g.stmts(func.stmts)
+			if g.autofree {
+				g.free_scope_vars(func.pos.pos - 1)
+			}
+			if g.defer_stmts.len > 0 {
+				g.write_defer_stmts()
+			}
+			g.out.writeln('}')
+			g.defer_stmts = []
+			g.fn_decl = 0
+
+			fn_body := g.out.after(pos)
+			g.definitions.write(fn_body)
+			g.out.go_back(fn_body.len)
+
+			g.out.write('&${sym.name}_impl')
 		}
 		else {
 			// #printf("node=%d\n", node.typ);

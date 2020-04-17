@@ -1198,6 +1198,9 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			it.expr_type = c.expr(it.expr)
 			return table.string_type
 		}
+		ast.AnonFn {
+			return it.typ
+		}
 		else {
 			tnode := typeof(node)
 			if tnode != 'unknown v.ast.Expr' {

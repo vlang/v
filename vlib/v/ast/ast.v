@@ -10,7 +10,7 @@ import (
 
 pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr | Type | AsCast | TypeOf | StringInterLiteral
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr | Type | AsCast | TypeOf | StringInterLiteral | AnonFn
 
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | Comment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
 
@@ -184,6 +184,13 @@ pub:
 	alias string
 }
 
+pub struct AnonFn {
+pub:
+	decl FnDecl
+mut:
+	typ table.Type
+}
+
 pub struct FnDecl {
 pub:
 	name          string
@@ -193,11 +200,12 @@ pub:
 	is_deprecated bool
 	is_pub        bool
 	is_variadic   bool
+	is_anon       bool
 	receiver      Field
 	is_method     bool
 	rec_mut       bool // is receiver mutable
 	is_c          bool
-	is_js		  bool
+	is_js         bool
 	no_body       bool // just a definition `fn C.malloc()`
 	is_builtin    bool // this function is defined in builtin/strconv
 	pos           token.Position

@@ -234,6 +234,58 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 	}
 }
 
+fn (var p Parser) anon_fn() ast.AnonFn {
+	pos := p.tok.position()
+	p.open_scope()
+	p.check(.key_fn)
+
+	// TODO generics
+
+	args, is_variadic := p.fn_args()
+	for arg in args {
+		p.scope.register(arg.name, ast.Var{
+			name: arg.name
+			typ: arg.typ
+		})
+	}
+
+	var return_type := table.void_type
+	if p.tok.kind.is_start_of_type() {
+		return_type = p.parse_type()
+	}
+
+	var stmts := []ast.Stmt
+	no_body := p.tok.kind != .lcbr
+	if p.tok.kind == .lcbr {
+		stmts = p.parse_block()
+	}
+	p.close_scope()
+
+	func := table.Fn{
+		args: args
+		is_variadic: is_variadic
+		return_type: return_type
+	}
+	idx := p.table.find_or_register_fn_type(func, false)
+	typ := table.new_type(idx)
+	name := p.table.get_type_name(typ)
+
+	return ast.AnonFn{
+		decl: ast.FnDecl{
+			name: name
+			stmts: stmts
+			return_type: return_type
+			args: args
+			is_variadic: is_variadic
+			is_method: false
+			is_anon: true
+			no_body: no_body
+			pos: pos
+		}
+		typ: typ
+	}
+}
+
 fn (var p Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
 	var args := []table.Arg
