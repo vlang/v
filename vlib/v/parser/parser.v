@@ -859,6 +859,9 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 			}
 			p.check(.rcbr)
 		}
+		.key_fn {
+			node = p.anon_fn()
+		}
 		else {
 			if p.tok.kind == .comment {
 				println(p.tok.lit)
