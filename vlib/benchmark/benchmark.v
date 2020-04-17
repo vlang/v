@@ -158,18 +158,18 @@ pub fn (b &Benchmark) step_message_with_label(label string, msg string) string {
 	if b.nexpected_steps > 0 {
 		mut sprogress := ''
 		if b.nexpected_steps < 10 {
-			sprogress = if !b.no_cstep { '${b.cstep:1d}/${b.nexpected_steps:1d}' } else {
-				'TMP1/${b.nexpected_steps:1d}'
+			sprogress = if b.no_cstep { 'TMP1/${b.nexpected_steps:1d}' } else {
+				'${b.cstep:1d}/${b.nexpected_steps:1d}'
 			}
 		}
 		if b.nexpected_steps >= 10 && b.nexpected_steps < 100 {
-			sprogress = if !b.no_cstep { '${b.cstep:2d}/${b.nexpected_steps:2d}' } else {
-				'TMP1/${b.nexpected_steps:2d}'
+			sprogress = if b.no_cstep { 'TMP2/${b.nexpected_steps:2d}' } else {
+				'${b.cstep:2d}/${b.nexpected_steps:2d}'
 			}
 		}
 		if b.nexpected_steps >= 100 && b.nexpected_steps < 1000 {
-			sprogress = if !b.no_cstep { '${b.cstep:3d}/${b.nexpected_steps:3d}' } else {
-				'TMP1/${b.nexpected_steps:3d}'
+			sprogress = if b.no_cstep { 'TMP3/${b.nexpected_steps:3d}' } else {
+				'${b.cstep:3d}/${b.nexpected_steps:3d}'
 			}
 		}
 		timed_line = b.tdiff_in_ms('[${sprogress}] $msg', b.step_start_time, b.step_end_time)
