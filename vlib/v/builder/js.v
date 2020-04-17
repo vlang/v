@@ -40,14 +40,14 @@ pub fn (b mut Builder) build_js(v_files []string, out_file string) {
 	f.close()
 }
 
-pub fn (b mut Builder) compile_js(pref &pref.Preferences) {
+pub fn (b mut Builder) compile_js() {
 	//TODO files << b.get_builtin_files()
 	files := b.get_user_files()
 	b.set_module_lookup_paths()
-	if pref.is_verbose {
+	if b.pref.is_verbose {
 		println('all .v files:')
 		println(files)
 	}
-	b.build_js(files, pref.out_name + '.js')
+	b.build_js(files, b.pref.out_name + '.js')
 	//TODO run the file
 }

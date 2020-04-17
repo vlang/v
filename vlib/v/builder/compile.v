@@ -35,9 +35,9 @@ pub fn compile(command string, pref &pref.Preferences) {
 	}
 	mut tmark := benchmark.new_benchmark()
 	match pref.backend {
-		.c { b.compile_c(pref) }
-		.js { b.compile_js(pref) }
-		.x64 { b.compile_x64(pref) }
+		.c { b.compile_c() }
+		.js { b.compile_js() }
+		.x64 { b.compile_x64() }
 		else {
 			eprintln('backend not implemented `$pref.backend`')
 			exit(1)
