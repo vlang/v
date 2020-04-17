@@ -18,6 +18,7 @@ struct Parser {
 	file_name_dir     string // "/home/user"
 mut:
 	tok               token.Token
+	prev_tok          token.Token
 	peek_tok          token.Token
 	table             &table.Table
 	is_c              bool
@@ -228,6 +229,7 @@ fn (p mut Parser) next_with_comment() {
 }
 */
 fn (var p Parser) next() {
+	p.prev_tok = p.tok
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()
 	/*
@@ -571,9 +573,7 @@ pub fn (var p Parser) name_expr() ast.Expr {
 		}
 	}
 	// Raw string (`s := r'hello \n ')
-	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string {
-		// QTODO
-		// && p.prev_tok.kind != .str_dollar {
+	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && p.prev_tok.kind != .str_dollar {
 		return p.string_expr()
 	}
 	known_var := p.scope.known_var(p.tok.lit)
