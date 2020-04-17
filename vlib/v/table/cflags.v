@@ -3,12 +3,12 @@
 // that can be found in the LICENSE file.
 module table
 
-import v.builder
+import v.cflag
 
 // check if cflag is in table
-fn (table &Table) has_cflag(cflag builder.CFlag) bool {
+fn (table &Table) has_cflag(cflg cflag.CFlag) bool {
 	for cf in table.cflags {
-		if cf.os == cflag.os && cf.name == cflag.name && cf.value == cflag.value {
+		if cf.os == cflg.os && cf.name == cflg.name && cf.value == cflg.value {
 			return true
 		}
 	}
@@ -76,7 +76,7 @@ pub fn (var table Table) parse_cflag(cflag, mod string, ctimedefines []string) ?
 			hint := if name == '-l' { 'library name' } else { 'path' }
 			return error('bad #flag `$flag_orig`: missing $hint after `$name`')
 		}
-		cf := builder.CFlag{
+		cf := cflag.CFlag{
 			mod: mod
 			os: fos
 			name: name
