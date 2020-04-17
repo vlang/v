@@ -96,7 +96,7 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 		mut ready_set := []string
 		for name in node_deps.keys {
 			deps := node_deps.data[name]
-			if deps.len == 0 && name == 'v.table' {
+			if deps.len == 0 || name == 'v.table' {
 				ready_set << name
 			}
 		}
