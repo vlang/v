@@ -10,6 +10,7 @@
 [Docs](https://vlang.io/docs) |
 [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) |
 [Speed](https://fast.vlang.io/)
+[Contributing](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
 
 </div>
 
@@ -189,14 +190,6 @@ Hello from V.js
 
 https://github.com/vlang/v/wiki/Troubleshooting
 
-
-## Contributing
-
-Code structure:
-
-https://github.com/vlang/v/blob/master/CONTRIBUTING.md
-
-If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
 
 [Twitter handle]: https://img.shields.io/twitter/follow/v_language.svg?style=social&label=Follow
 [Twitter badge]: https://twitter.com/v_language
