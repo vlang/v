@@ -20,6 +20,21 @@ pub mut:
 	show_ok_tests bool
 }
 
+
+struct MessageHandler {
+	pub mut:
+		messages []string
+		message_idx int
+		mtx &sync.Mutex
+}
+
+const (
+	messages = MessageHandler{
+		mtx: sync.new_mutex()
+	}
+)
+
+
 pub fn new_test_session(_vargs string) TestSession {
     mut skip_files := []string
 	skip_files << '_non_existing_'
@@ -90,10 +105,27 @@ pub fn (ts mut TestSession) test() {
 	}
 	pool_of_test_runners.work_on_pointers(remaining_files.pointers())
 	ts.benchmark.stop()
-	eprintln(term.h_divider('-'))
+	messages.messages << term.h_divider('-')
+}
+
+fn next_message() {
+	messages.mtx.lock()
+	defer {
+		messages.messages.clear()
+		messages.mtx.unlock()
+	}
+	for i, msg in messages.messages {
+		messages.message_idx++
+		eprintln(msg.
+			replace("TMP1", "${messages.message_idx:1d}").
+			replace("TMP2", "${messages.message_idx:2d}").
+			replace("TMP3", "${messages.message_idx:3d}")
+		)
+	}
 }
 
 fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
+	defer { next_message() }
 	mut ts := &TestSession(p.get_shared_context())
 	tmpd := os.temp_dir()
 	show_stats := '-stats' in ts.vargs.split(' ')
@@ -104,7 +136,6 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 		tls_bench.set_total_expected_steps(ts.benchmark.nexpected_steps)
 		p.set_thread_context(idx, tls_bench)
 	}
-	tls_bench.cstep = idx
 	dot_relative_file := p.get_string_item(idx)
 	relative_file := dot_relative_file.replace(ts.vroot + os.path_separator, '').replace('./', '')
 	file := os.real_path(relative_file)
@@ -127,11 +158,11 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	if relative_file.replace('\\', '/') in ts.skip_files {
 	   ts.benchmark.skip()
 	   tls_bench.skip()
-	   eprintln(tls_bench.step_message_skip(relative_file))
+	   messages.messages << tls_bench.step_message_skip(relative_file)
 	   return sync.no_result
 	}
 	if show_stats {
-		eprintln(term.h_divider('-'))
+		messages.messages << term.h_divider('-')
 		status := os.system(cmd)
 		if status == 0 {
 			ts.benchmark.ok()
@@ -149,20 +180,20 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			eprintln(tls_bench.step_message_fail(relative_file))
+			messages.messages << tls_bench.step_message_fail(relative_file)
 			return sync.no_result
 		}
 		if r.exit_code != 0 {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			eprintln(tls_bench.step_message_fail('${relative_file}\n$r.output\n'))
+			messages.messages << tls_bench.step_message_fail('${relative_file}\n$r.output\n')
 		}
 		else {
 			ts.benchmark.ok()
 			tls_bench.ok()
 			if ts.show_ok_tests {
-				eprintln(tls_bench.step_message_ok(relative_file))
+				messages.messages << tls_bench.step_message_ok(relative_file)
 			}
 		}
 	}
