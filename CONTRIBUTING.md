@@ -8,6 +8,17 @@ full of magic that only few people understand.
 The V compiler is modular, and can be used by other applications. It is located
 in `cmd/v/` and `vlib/v/`.
 
+The most important and usefult command to remember when working on the V compiler is
+`v self`.
+It rebuilds the V compiler.
+
+Be careful, if you introduce a breaking change and rebuild V, you will no longer be able to use V to build
+itself. So it's a good idea to make a backup copy of a working compiler executable.
+
+But don't worry, you can always simply run `make`, it will download the C version of the compiler
+and rebuild it from scratch.
+
+
 The main files are:
 
 1. `cmd/v/v.v`. The entry point.
