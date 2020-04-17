@@ -124,6 +124,26 @@ fn (var p Parser) match_expr() ast.MatchExpr {
 				p.parse_type()
 			}
 			is_sum_type = true
+			// Make sure a variable used for the sum type match
+			var var_name := ''
+			match cond {
+				ast.Ident {
+					var_name = it.name
+				}
+				else {
+					// p.error('only variables can be used in sum types matches')
+				}
+			}
+			if var_name != '' {
+				// Register a shadow variable with the actual type
+				// (this replaces the old `it`)
+				// TODO doesn't work right now
+				p.scope.register(var_name, ast.Var{
+					name: var_name
+					typ: table.type_to_ptr(typ)
+				})
+				// println(var_name)
+			}
 		} else {
 			// Expression match
 			for {
@@ -172,4 +192,3 @@ fn (var p Parser) match_expr() ast.MatchExpr {
 		is_mut: is_mut
 	}
 }
-
