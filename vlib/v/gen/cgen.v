@@ -1918,22 +1918,22 @@ fn (var g Gen) struct_init(struct_init ast.StructInit) {
 	} else {
 		g.writeln('($styp){')
 	}
-	var fields := []string
+	// var fields := []string
 	var inited_fields := []string	// TODO this is done in checker, move to ast node
-	if struct_init.fields.len == 0 && struct_init.exprs.len > 0 {
+	/*if struct_init.fields.len == 0 && struct_init.exprs.len > 0 {
 		// Get fields for {a,b} short syntax. Fields array wasn't set in the parser.
 		for f in info.fields {
 			fields << f.name
 		}
 	} else {
 		fields = struct_init.fields
-	}
+	}*/
 	// User set fields
-	for i, field in fields {
-		field_name := c_name(field)
-		inited_fields << field
+	for i, field in struct_init.fields {
+		field_name := c_name(field.name)
+		inited_fields << field.name
 		g.write('\t.$field_name = ')
-		g.expr_with_cast(struct_init.exprs[i], struct_init.expr_types[i], struct_init.expected_types[i])
+		g.expr_with_cast(field.expr, field.typ, field.expected_type)
 		g.writeln(',')
 	}
 	// The rest of the fields are zeroed.

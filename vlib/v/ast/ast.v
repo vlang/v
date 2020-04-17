@@ -157,15 +157,23 @@ pub:
 	field_names []string
 }
 
+pub struct StructInitField {
+pub:
+	name          string
+	expr          Expr
+	pos			  token.Position
+mut:
+	typ           table.Type
+	expected_type table.Type
+}
+
 pub struct StructInit {
 pub:
-	pos            token.Position
-	fields         []string
-	exprs          []Expr
+	pos      token.Position
+	fields   []StructInitField
+	is_short bool
 mut:
-	typ            table.Type
-	expr_types     []table.Type
-	expected_types []table.Type
+	typ      table.Type
 }
 
 // import statement
@@ -720,6 +728,89 @@ pub fn expr_is_call(expr Expr) bool {
 		}
 		else {
 			false
+		}
+	}
+}
+
+fn (expr Expr) position() token.Position {
+	// all uncommented have to be implemented
+	match mut expr {
+		ArrayInit {
+			return it.pos
+		}
+		AsCast {
+			return it.pos
+		}
+		// ast.Ident { }
+		AssignExpr {
+			return it.pos
+		}
+		// ast.CastExpr { }
+		Assoc {
+			return it.pos
+		}
+		// ast.BoolLiteral { }
+		CallExpr {
+			return it.pos
+		}
+		// ast.CharLiteral { }
+		EnumVal {
+			return it.pos
+		}
+		// ast.FloatLiteral { }
+		IfExpr {
+			return it.pos
+		}
+		// ast.IfGuardExpr { }
+		IndexExpr {
+			return it.pos
+		}
+		InfixExpr {
+			left_pos := it.left.position()
+			right_pos := it.right.position()
+			if left_pos.pos == 0 || right_pos.pos == 0 {
+				return it.pos
+			}
+			return token.Position{
+				line_nr: it.pos.line_nr
+				pos: left_pos.pos
+				len: right_pos.pos - left_pos.pos + right_pos.len
+			}
+		}
+		IntegerLiteral {
+			return it.pos
+		}
+		MapInit {
+			return it.pos
+		}
+		MatchExpr {
+			return it.pos
+		}
+		PostfixExpr {
+			return it.pos
+		}
+		// ast.None { }
+		PrefixExpr {
+			return it.pos
+		}
+		// ast.ParExpr { }
+		SelectorExpr {
+			return it.pos
+		}
+		// ast.SizeOf { }
+		StringLiteral {
+			return it.pos
+		}
+		StringInterLiteral {
+			return it.pos
+		}
+		// ast.Type { }
+		StructInit {
+			return it.pos
+		}
+		// ast.TypeOf { }
+		else {
+			return token.Position{}
 		}
 	}
 }

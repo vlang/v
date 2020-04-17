@@ -695,15 +695,15 @@ fn (f mut Fmt) expr(node ast.Expr) {
 			if name == 'void' {
 				name = ''
 			}
-			if it.fields.len == 0 && it.exprs.len == 0 {
+			if it.fields.len == 0 {
 				// `Foo{}` on one line if there are no fields
 				f.write('$name{}')
 			} else if it.fields.len == 0 {
 				// `Foo{1,2,3}` (short syntax )
 				f.write('$name{')
-				for i, expr in it.exprs {
-					f.expr(expr)
-					if i < it.exprs.len - 1 {
+				for i, field in it.fields {
+					f.expr(field.expr)
+					if i < it.fields.len - 1 {
 						f.write(', ')
 					}
 				}
@@ -712,8 +712,8 @@ fn (f mut Fmt) expr(node ast.Expr) {
 				f.writeln('$name{')
 				f.indent++
 				for i, field in it.fields {
-					f.write('$field: ')
-					f.expr(it.exprs[i])
+					f.write('$field.name: ')
+					f.expr(field.expr)
 					f.writeln('')
 				}
 				f.indent--
