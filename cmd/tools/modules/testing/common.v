@@ -56,7 +56,7 @@ pub fn new_test_session(_vargs string) TestSession {
 }
 
 pub fn (ts mut TestSession) init() {
-	ts.benchmark = benchmark.new_benchmark()
+	ts.benchmark = benchmark.new_benchmark_no_cstep()
 }
 
 pub fn (ts mut TestSession) test() {
@@ -136,6 +136,8 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 		tls_bench.set_total_expected_steps(ts.benchmark.nexpected_steps)
 		p.set_thread_context(idx, tls_bench)
 	}
+	tls_bench.cstep = idx
+	tls_bench.no_cstep = true
 	dot_relative_file := p.get_string_item(idx)
 	relative_file := dot_relative_file.replace(ts.vroot + os.path_separator, '').replace('./', '')
 	file := os.real_path(relative_file)
@@ -266,7 +268,7 @@ pub fn building_any_v_binaries_failed() bool {
 	'$vexe -o v_prod_cg -prod -cg cmd/v',
 	'$vexe -o v_prod    -prod     cmd/v',
 	]
-	mut bmark := benchmark.new_benchmark()
+	mut bmark := benchmark.new_benchmark_no_cstep()
 	for cmd in v_build_commands {
 		bmark.step()
 		if build_v_cmd_failed(cmd) {

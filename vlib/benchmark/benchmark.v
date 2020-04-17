@@ -64,6 +64,8 @@ pub mut:
 	nskip            int
 	verbose          bool
 	nexpected_steps  int
+	cstep            int
+	no_cstep         bool
 	bok              string
 	bfail            string
 }
@@ -72,6 +74,14 @@ pub fn new_benchmark() Benchmark {
 	return Benchmark{
 		bench_start_time: benchmark.now()
 		verbose: true
+	}
+}
+
+pub fn new_benchmark_no_cstep() Benchmark {
+	return Benchmark{
+		bench_start_time: benchmark.now()
+		verbose: true
+		no_cstep: true
 	}
 }
 
@@ -92,6 +102,7 @@ pub fn (b mut Benchmark) stop() {
 
 pub fn (b mut Benchmark) step() {
 	b.step_start_time = benchmark.now()
+	b.cstep++
 }
 
 pub fn (b mut Benchmark) fail() {
@@ -147,13 +158,19 @@ pub fn (b &Benchmark) step_message_with_label(label string, msg string) string {
 	if b.nexpected_steps > 0 {
 		mut sprogress := ''
 		if b.nexpected_steps < 10 {
-			sprogress = 'TMP1/${b.nexpected_steps:1d}'
+			sprogress = if !b.no_cstep { '${b.cstep:1d}/${b.nexpected_steps:1d}' } else {
+				'TMP1/${b.nexpected_steps:1d}'
+			}
 		}
 		if b.nexpected_steps >= 10 && b.nexpected_steps < 100 {
-			sprogress = 'TMP2/${b.nexpected_steps:2d}'
+			sprogress = if !b.no_cstep { '${b.cstep:2d}/${b.nexpected_steps:2d}' } else {
+				'TMP1/${b.nexpected_steps:2d}'
+			}
 		}
 		if b.nexpected_steps >= 100 && b.nexpected_steps < 1000 {
-			sprogress = 'TMP3/${b.nexpected_steps:3d}'
+			sprogress = if !b.no_cstep { '${b.cstep:3d}/${b.nexpected_steps:3d}' } else {
+				'TMP1/${b.nexpected_steps:3d}'
+			}
 		}
 		timed_line = b.tdiff_in_ms('[${sprogress}] $msg', b.step_start_time, b.step_end_time)
 	}
