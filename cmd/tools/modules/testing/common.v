@@ -268,7 +268,7 @@ pub fn building_any_v_binaries_failed() bool {
 	'$vexe -o v_prod_cg -prod -cg cmd/v',
 	'$vexe -o v_prod    -prod     cmd/v',
 	]
-	mut bmark := benchmark.new_benchmark_no_cstep()
+	mut bmark := benchmark.new_benchmark()
 	for cmd in v_build_commands {
 		bmark.step()
 		if build_v_cmd_failed(cmd) {
