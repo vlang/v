@@ -24,6 +24,7 @@ pub type ScopeObject = ConstField | GlobalDecl | Var
 pub struct Type {
 pub:
 	typ table.Type
+	pos token.Position
 }
 
 pub struct Block {

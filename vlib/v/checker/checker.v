@@ -198,6 +198,11 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	infix_expr.left_type = left_type
 	c.expected_type = left_type
 	if infix_expr.op == .key_is {
+		type_expr := infix_expr.right as ast.Type
+		typ_sym := c.table.get_type_symbol(type_expr.typ)
+		if typ_sym.kind == .placeholder {
+			c.error('is: type `${typ_sym.name}` does not exist', type_expr.pos)
+		}
 		return table.bool_type
 	}
 	right_type := c.expr(infix_expr.right)
