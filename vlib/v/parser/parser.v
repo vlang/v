@@ -1456,7 +1456,7 @@ fn (var p Parser) parse_number_literal() ast.Expr {
 	lit := p.tok.lit
 	pos := p.tok.position()
 	var node := ast.Expr{}
-	if lit.index_any('.eE') >= 0 && lit.left(2) !in ['0x', '0X', '0o', '0O', '0b', '0B'] {
+	if lit.index_any('.eE') >= 0 && lit[..2] !in ['0x', '0X', '0o', '0O', '0b', '0B'] {
 		node = ast.FloatLiteral{
 			val: lit
 		}
