@@ -105,7 +105,7 @@ pub fn (ts mut TestSession) test() {
 	}
 	pool_of_test_runners.work_on_pointers(remaining_files.pointers())
 	ts.benchmark.stop()
-	messages.messages << term.h_divider('-')
+	eprintln(term.h_divider('-'))
 }
 
 fn next_message() {
