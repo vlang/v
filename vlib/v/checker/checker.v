@@ -66,15 +66,10 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	for file in ast_files {
 		c.check(file)
 		if file.mod.name == 'main' {
-			for stmt in file.stmts {
-				if stmt is ast.FnDecl {
-					fn_decl := stmt as ast.FnDecl
-					if fn_decl.name == 'main' {
-						has_main_fn = true
-						if fn_decl.is_pub {
-							c.error('function `main` cannot be declared public', fn_decl.pos)
-						}
-					}
+			if fn_decl := get_main_fn_decl(file) {
+				has_main_fn = true
+				if fn_decl.is_pub {
+					c.error('function `main` cannot be declared public', fn_decl.pos)
 				}
 			}
 		}
@@ -90,6 +85,18 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	if !has_main_fn {
 		c.error('function `main` must be declared in the main module', token.Position{})
 	}
+}
+
+fn get_main_fn_decl(file ast.File) ?ast.FnDecl {
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl {
+			fn_decl := stmt as ast.FnDecl
+			if fn_decl.name == 'main' {
+				return fn_decl
+			}
+		}
+	}
+	return none
 }
 
 pub fn (c mut Checker) struct_decl(decl ast.StructDecl) {
