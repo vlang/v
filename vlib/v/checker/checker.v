@@ -35,6 +35,8 @@ mut:
 	// checked_ident  string // to avoid infinit checker loops
 	var_decl_name  string
 	returns        bool
+	mod string  // current module name
+	is_builtin_mod bool // are we in `builtin`?
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -150,7 +152,7 @@ pub fn (c mut Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 						}
 					}
 					if !exists {
-						c.error('struct init: no such field `$field.name` for struct `$type_sym.name`', field.pos)
+						c.error('unknown field `$field.name` in struct literal of type `$type_sym.name`', field.pos)
 						continue
 					}
 					if field_name in inited_fields {
@@ -320,6 +322,12 @@ pub fn (c mut Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		return info.elem_type
 	}
 	if method := c.table.type_find_method(left_type_sym, method_name) {
+		if !method.is_pub && !c.is_builtin_mod && !c.pref.is_test && left_type_sym.mod != c.mod && left_type_sym.mod != '' { // method.mod != c.mod {
+			// If a private method is called outside of the module
+			// its receiver type is defined in, show an error.
+			//println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
+			c.error('method `${left_type_sym.name}.$method_name` is private', call_expr.pos)
+		}
 		no_args := method.args.len - 1
 		min_required_args := method.args.len - if method.is_variadic && method.args.len > 1 { 2 } else { 1 }
 		if call_expr.args.len < min_required_args {
@@ -644,8 +652,8 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 		if !c.table.check(got_typ, exp_typ) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			exp_typ_sym := c.table.get_type_symbol(exp_typ)
-			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument',
-				return_stmt.pos)
+			pos := return_stmt.exprs[i].position()
+			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument', pos)
 		}
 	}
 }
@@ -1012,6 +1020,11 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		}
 		// ast.HashStmt {}
 		ast.Import {}
+		ast.Module {
+			c.mod = it.name
+			c.is_builtin_mod = it.name == 'builtin'
+		}
+
 		// ast.GlobalDecl {}
 		ast.Return {
 			c.returns = true
@@ -1635,7 +1648,14 @@ fn (c mut Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	// if c.pref.is_verbose {
 	// print_backtrace()
 	// }
-	if !warn {
+	if warn {
+		c.warnings << scanner.Warning{
+			reporter: scanner.Reporter.checker
+			pos: pos
+			file_path: c.file.path
+			message: message
+		}
+	} else {
 		c.nr_errors++
 		if !(pos.line_nr in c.error_lines) {
 			c.errors << scanner.Error{
@@ -1646,16 +1666,10 @@ fn (c mut Checker) warn_or_error(message string, pos token.Position, warn bool) 
 			}
 			c.error_lines << pos.line_nr
 		}
-	} else {
-		c.warnings << scanner.Warning{
-			reporter: scanner.Reporter.checker
-			pos: pos
-			file_path: c.file.path
-			message: message
-		}
 	}
 }
 
+// for debugging only
 fn (p Checker) fileis(s string) bool {
 	return p.file.path.contains(s)
 }
