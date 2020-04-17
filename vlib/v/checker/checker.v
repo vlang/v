@@ -79,6 +79,10 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	if all_mods['main'] > 0 {
 		for i, f in c.table.fns {
 			if f.name == 'main' {
+				if f.is_pub {
+					c.error('function `main` cannot be declared public', token.Position{})
+					exit(1)
+				}
 				return
 			}
 		}

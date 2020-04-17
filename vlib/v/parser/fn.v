@@ -144,9 +144,6 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 		if is_method && p.table.get_type_symbol(rec_type).has_method(name) {
 			p.error('duplicate method `$name`')
 		}
-		if is_pub && name == 'main' {
-			p.error('main fn cannot be declared public')
-		}
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
 		name = p.tok.kind.str()		// op_to_fn_name()
