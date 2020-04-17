@@ -52,7 +52,7 @@ pub fn fmt(file ast.File, table &table.Table) string {
 		f.stmt(stmt)
 	}
 	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
-	f.imports(f.file.imports)	// now that we have all autoimports, handle them
+	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
 	return res[..f.import_pos] + f.out_imports.str() + res[f.import_pos..]
 }
@@ -251,7 +251,7 @@ fn (var f Fmt) stmt(node ast.Stmt) {
 			// f.find_comment(it.pos.line_nr)
 			s := it.str(f.table)
 			// f.write(it.str(f.table))
-			f.write(s.replace(f.cur_mod + '.', ''))			// `Expr` instead of `ast.Expr` in mod ast
+			f.write(s.replace(f.cur_mod + '.', '')) // `Expr` instead of `ast.Expr` in mod ast
 			if !it.is_c && !it.is_js {
 				f.writeln(' {')
 				f.stmts(it.stmts)
@@ -268,7 +268,7 @@ fn (var f Fmt) stmt(node ast.Stmt) {
 		ast.ForCStmt {
 			f.write('for ')
 			if it.has_init {
-				f.single_line_if = true				// to keep all for ;; exprs on the same line
+				f.single_line_if = true // to keep all for ;; exprs on the same line
 				f.stmt(it.init)
 				f.single_line_if = false
 			}
@@ -558,7 +558,7 @@ fn (var f Fmt) expr(node ast.Expr) {
 		ast.MapInit {
 			if it.keys.len == 0 {
 				if it.value_type == 0 {
-					f.write('map[string]int')					// TODO
+					f.write('map[string]int') // TODO
 					return
 				}
 				f.write('map[string]')
@@ -648,7 +648,7 @@ fn (var f Fmt) expr(node ast.Expr) {
 		ast.StructInit {
 			type_sym := f.table.get_type_symbol(it.typ)
 			// f.write('<old name: $type_sym.name>')
-			var name := short_module(type_sym.name).replace(f.cur_mod + '.', '')			// TODO f.type_to_str?
+			var name := short_module(type_sym.name).replace(f.cur_mod + '.', '') // TODO f.type_to_str?
 			if name == 'void' {
 				name = ''
 			}
@@ -737,7 +737,8 @@ fn (var f Fmt) comment(node ast.Comment) {
 			s = '// ' + s
 		}
 		if !is_separate_line {
-			f.out.go_back(1)			// delete the generated \n
+			f.remove_new_line() // delete the generated \n
+			f.write(' ')
 		}
 		f.writeln(s)
 		return
@@ -888,7 +889,7 @@ fn (var f Fmt) match_expr(it ast.MatchExpr) {
 fn (var f Fmt) remove_new_line() {
 	var i := 0
 	for i = f.out.len - 1; i >= 0; i-- {
-		if !f.out.buf[i].is_space() {			// != `\n` {
+		if !f.out.buf[i].is_space() { // != `\n` {
 			break
 		}
 	}
