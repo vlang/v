@@ -22,10 +22,10 @@ pub mut:
 
 
 struct MessageHandler {
-	pub mut:
-		messages []string
-		message_idx int
-		mtx &sync.Mutex
+pub mut:
+	messages []string
+	message_idx int
+	mtx &sync.Mutex
 }
 
 const (
