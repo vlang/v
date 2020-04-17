@@ -16,7 +16,7 @@ fn handle(e Expr) string {
 	match e {
 		IntegerLiteral {
 			assert it.val == '12'
-			assert e.val == '12'
+			// assert e.val == '12'
 			return 'int'
 		}
 		IfExpr {
