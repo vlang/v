@@ -18,7 +18,7 @@ pub fn (c &CFlag) str() string {
 }
 
 // format flag
-fn (cf &CFlag) format() string {
+pub fn (cf &CFlag) format() string {
 	mut value := cf.value
 	if cf.name in ['-l', '-Wa', '-Wl', '-Wp'] && value.len > 0 {
 		return '${cf.name}${value}'.trim_space()

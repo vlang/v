@@ -3,8 +3,8 @@ module builder
 import v.cflag
 
 // get flags for current os
-fn (v &Builder) get_os_cflags() []CFlag {
-	mut flags := []CFlag
+fn (v &Builder) get_os_cflags() []cflag.CFlag {
+	mut flags := []cflag.CFlag
 	mut ctimedefines := []string
 	if v.pref.compile_defines.len > 0 {
 		ctimedefines << v.pref.compile_defines
@@ -23,8 +23,8 @@ fn (v &Builder) get_os_cflags() []CFlag {
 	return flags
 }
 
-fn (v &Builder) get_rest_of_module_cflags(c &CFlag) []CFlag {
-	mut flags := []CFlag
+fn (v &Builder) get_rest_of_module_cflags(c &cflag.CFlag) []cflag.CFlag {
+	mut flags := []cflag.CFlag
 	cflags := v.get_os_cflags()
 	for flag in cflags {
 		if c.mod == flag.mod {
