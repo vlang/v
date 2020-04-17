@@ -644,11 +644,7 @@ pub fn (c mut Checker) return_stmt(return_stmt mut ast.Return) {
 		if !c.table.check(got_typ, exp_typ) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			exp_typ_sym := c.table.get_type_symbol(exp_typ)
-			pos := token.Position{
-				line_nr: return_stmt.pos.line_nr
-				pos: return_stmt.pos.pos + 7
-				len: return_stmt.pos.len - 7
-			}
+			pos := return_stmt.exprs[i].position()
 			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument', pos)
 		}
 	}
