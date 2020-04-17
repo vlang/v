@@ -34,11 +34,10 @@ pub fn compile(command string, pref &pref.Preferences) {
 		// println(pref)
 	}
 	mut tmark := benchmark.new_benchmark()
-	mut files := []string
 	match pref.backend {
-		.c { b.compile_c(files, pref) }
-		.js { b.compile_js(files, pref) }
-		.x64 { b.compile_x64(files, pref) }
+		.c { b.compile_c(pref) }
+		.js { b.compile_js(pref) }
+		.x64 { b.compile_x64(pref) }
 		else {
 			eprintln('backend not implemented `$pref.backend`')
 			exit(1)
@@ -213,10 +212,7 @@ pub fn (v Builder) get_user_files() []string {
 			v.log('> add all .v files from directory "${dir}" ...')
 		}
 		// Add .v files from the directory being compiled
-		files := v.v_files_from_dir(dir)
-		for file in files {
-			user_files << file
-		}
+		user_files << v.v_files_from_dir(dir)
 	}
 	if user_files.len == 0 {
 		println('No input .v files')

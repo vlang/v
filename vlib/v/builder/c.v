@@ -46,7 +46,7 @@ pub fn (b mut Builder) build_c(v_files []string, out_file string) {
 	// os.write_file(out_file, b.gen_c(v_files))
 }
 
-pub fn (b mut Builder) compile_c(files []string, pref &pref.Preferences) {
+pub fn (b mut Builder) compile_c(pref &pref.Preferences) {
 	if os.user_os() != 'windows' && pref.ccompiler == 'msvc' {
 		verror('Cannot build with msvc on ${os.user_os()}')
 	}
@@ -54,14 +54,14 @@ pub fn (b mut Builder) compile_c(files []string, pref &pref.Preferences) {
 	// println('compile2()')
 	if pref.is_verbose {
 		println('all .v files before:')
-		println(files)
+		//println(files)
 	}
 	// v1 compiler files
 	// v.add_v_files_to_compile()
 	// v.files << v.dir
 	// v2 compiler
 	// b.set_module_lookup_paths()
-	files << b.get_builtin_files()
+	mut files := b.get_builtin_files()
 	files << b.get_user_files()
 	b.set_module_lookup_paths()
 	if pref.is_verbose {
@@ -75,5 +75,3 @@ pub fn (b mut Builder) compile_c(files []string, pref &pref.Preferences) {
 	b.build_c(files, out_name_c)
 	b.cc()
 }
-
-

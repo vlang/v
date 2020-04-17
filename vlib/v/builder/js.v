@@ -40,9 +40,9 @@ pub fn (b mut Builder) build_js(v_files []string, out_file string) {
 	f.close()
 }
 
-pub fn (b mut Builder) compile_js(files []string, pref &pref.Preferences) {
+pub fn (b mut Builder) compile_js(pref &pref.Preferences) {
 	//TODO files << b.get_builtin_files()
-	files << b.get_user_files()
+	files := b.get_user_files()
 	b.set_module_lookup_paths()
 	if pref.is_verbose {
 		println('all .v files:')

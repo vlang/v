@@ -30,9 +30,9 @@ pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
 	b.info('x64 GEN: ${gen_time}ms')
 }
 
-pub fn (b mut Builder) compile_x64(files []string, pref &pref.Preferences) {
+pub fn (b mut Builder) compile_x64(pref &pref.Preferences) {
 	// v.files << v.v_files_from_dir(os.join_path(v.pref.vlib_path,'builtin','bare'))
-	files << pref.path
+	files := [pref.path]
 	b.set_module_lookup_paths()
-	b.build_x64(files, pref.out_name)	
+	b.build_x64(files, pref.out_name)
 }
