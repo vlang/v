@@ -54,7 +54,7 @@ fn test_parse_invalid_cflags() {
 }
 
 fn parse_valid_flag(t &table.Table, flag string) {
-	t.parse_cflag(flag, module_name, cdefines) or { // Do nothing
+	t.parse_cflag(flag, module_name, cdefines) or {
 	}
 }
 
