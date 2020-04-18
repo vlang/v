@@ -682,6 +682,12 @@ pub fn (c mut Checker) enum_decl(decl ast.EnumDecl) {
 				ast.IntegerLiteral {}
 				ast.PrefixExpr {}
 				else {
+					if field.expr is ast.Ident {
+						expr := field.expr as ast.Ident
+						if expr.is_c {
+							continue
+						}
+					}
 					mut pos := field.expr.position()
 					if pos.pos == 0 {
 						pos = field.pos
