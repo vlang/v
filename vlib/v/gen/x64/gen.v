@@ -46,7 +46,7 @@ pub fn gen(files []ast.File, out_name string) {
 	mut g := Gen{
 		sect_header_name_pos: 0
 		// buf: []
-		
+
 		out_name: out_name
 	}
 	g.generate_elf_header()
@@ -366,9 +366,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {}
 		ast.CallExpr {
-			if it.name == 'println' || it.name == 'print' {
+			if it.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := it.args[0].expr
-				g.gen_print_from_expr(expr, it.name == 'println')
+				g.gen_print_from_expr(expr, it.name in ['println', 'eprintln'])
 			}
 			/*
 			g.write('${it.name}(')

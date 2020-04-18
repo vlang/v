@@ -39,16 +39,14 @@ pub const (
 )
 
 pub const (
-	KEY_ESCAPE     = 256
+	key_escape     = 256
 	key_space      = 32
-	KEY_LEFT_SUPER = 343
-)
+	key_left_super = 343
 
-pub const (
-	KeyUp    = 265
-	KeyLeft  = 263
-	KeyRight = 262
-	KeyDown  = 264
+	key_up    = 265
+	key_left  = 263
+	key_right = 262
+	key_down  = 264
 )
 
 fn C.glfwGetWindowUserPointer() voidptr
@@ -77,7 +75,7 @@ fn C.glfwSwapInterval()
 fn C.glfwMakeContextCurrent()
 fn C.glfwSetWindowTitle()
 fn C.glfwTerminate()
-fn C.glfwCreateWindow()
+fn C.glfwCreateWindow(w int, h int, title charptr, m voidptr, sh voidptr) voidptr
 fn C.glfwWindowHint()
 fn C.glfwDestroyWindow()
 fn C.glfwInit()
@@ -373,4 +371,3 @@ pub fn (size Size) str() string {
 pub fn get_window_user_pointer(gwnd voidptr) voidptr {
 	return C.glfwGetWindowUserPointer(gwnd)
 }
-

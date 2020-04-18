@@ -1,4 +1,4 @@
-module checker
+module main
 
 struct Test {}
 

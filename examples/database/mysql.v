@@ -1,6 +1,6 @@
 // import mysql
 
-// pub fn main() {
+// fn main() {
 // 	conn := mysql.connect('localhost', 'root', '', 'mysql')
 // 	res := conn.query('show tables')
 // 	for row in res.rows() {

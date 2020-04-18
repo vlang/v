@@ -7,8 +7,9 @@ import v.ast
 import v.table
 import v.scanner
 import v.token
+import v.util
 
-pub fn (p mut Parser) call_expr(is_c bool, is_js bool, mod string) ast.CallExpr {
+pub fn (var p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 	first_pos := p.tok.position()
 	tok := p.tok
 	name := p.check_name()
@@ -62,7 +63,7 @@ pub fn (p mut Parser) call_expr(is_c bool, is_js bool, mod string) ast.CallExpr 
 	return node
 }
 
-pub fn (p mut Parser) call_args() []ast.CallArg {
+pub fn (var p Parser) call_args() []ast.CallArg {
 	var args := []ast.CallArg
 	for p.tok.kind != .rpar {
 		var is_mut := false
@@ -82,7 +83,7 @@ pub fn (p mut Parser) call_args() []ast.CallArg {
 	return args
 }
 
-fn (p mut Parser) fn_decl() ast.FnDecl {
+fn (var p Parser) fn_decl() ast.FnDecl {
 	// p.table.clear_vars()
 	pos := p.tok.position()
 	p.open_scope()
@@ -122,7 +123,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		// }
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
-		rec_type = p.parse_type()
+		rec_type = p.parse_type_with_mut(rec_mut)
 		if is_amp && rec_mut {
 			p.error('use `(f mut Foo)` or `(f &Foo)` instead of `(f mut &Foo)`')
 		}
@@ -179,6 +180,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			return_type: return_type
 			is_variadic: is_variadic
 			is_generic: is_generic
+			is_pub: is_pub
 		})
 	} else {
 		if is_c {
@@ -199,6 +201,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			is_c: is_c
 			is_js: is_js
 			is_generic: is_generic
+			is_pub: is_pub
 		})
 	}
 	// Body
@@ -227,12 +230,63 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		is_js: is_js
 		no_body: no_body
 		pos: pos
-		is_builtin: p.builtin_mod || p.mod in ['math', 'strconv', 'strconv.ftoa', 'hash.wyhash',
-			'math.bits', 'strings']
+		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 	}
 }
 
-fn (p mut Parser) fn_args() ([]table.Arg, bool) {
+fn (var p Parser) anon_fn() ast.AnonFn {
+	pos := p.tok.position()
+	p.open_scope()
+	p.check(.key_fn)
+
+	// TODO generics
+
+	args, is_variadic := p.fn_args()
+	for arg in args {
+		p.scope.register(arg.name, ast.Var{
+			name: arg.name
+			typ: arg.typ
+		})
+	}
+
+	var return_type := table.void_type
+	if p.tok.kind.is_start_of_type() {
+		return_type = p.parse_type()
+	}
+
+	var stmts := []ast.Stmt
+	no_body := p.tok.kind != .lcbr
+	if p.tok.kind == .lcbr {
+		stmts = p.parse_block()
+	}
+	p.close_scope()
+
+	func := table.Fn{
+		args: args
+		is_variadic: is_variadic
+		return_type: return_type
+	}
+	idx := p.table.find_or_register_fn_type(func, false)
+	typ := table.new_type(idx)
+	name := p.table.get_type_name(typ)
+
+	return ast.AnonFn{
+		decl: ast.FnDecl{
+			name: name
+			stmts: stmts
+			return_type: return_type
+			args: args
+			is_variadic: is_variadic
+			is_method: false
+			is_anon: true
+			no_body: no_body
+			pos: pos
+		}
+		typ: typ
+	}
+}
+
+fn (var p Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
 	var args := []table.Arg
 	var is_variadic := false

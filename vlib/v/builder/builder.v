@@ -1,20 +1,19 @@
 module builder
 
-import (
-	os
-	time
-	v.ast
-	v.table
-	v.pref
-	v.util
-	v.vmod
-	v.checker
-	v.parser
-	v.scanner
-	v.gen
-	v.gen.js
-	v.gen.x64
-)
+import os
+import time
+import v.ast
+import v.table
+import v.pref
+import v.util
+import v.vmod
+import v.checker
+import v.parser
+import v.scanner
+import v.gen
+import v.gen.js
+import v.gen.x64
+import v.depgraph
 
 pub struct Builder {
 pub:
@@ -28,14 +27,14 @@ mut:
 	parsed_files        []ast.File
 	global_scope        &ast.Scope
 	out_name_c          string
-	out_name_js			string
+	out_name_js         string
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
 	rdir := os.real_path(pref.path)
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 	table := table.new_table()
-	return builder.Builder{
+	return Builder{
 		pref: pref
 		table: table
 		checker: checker.new_checker(table, pref)
@@ -48,8 +47,10 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 
 // parse all deps from already parsed files
 pub fn (b mut Builder) parse_imports() {
-	mut done_imports := []string
-	for i in 0 .. b.parsed_files.len {
+	var done_imports := []string
+	// NB: b.parsed_files is appended in the loop,
+	// so we can not use the shorter `for in` form.
+	for i := 0; i < b.parsed_files.len; i++ {
 		ast_file := b.parsed_files[i]
 		for _, imp in ast_file.imports {
 			mod := imp.mod
@@ -80,10 +81,63 @@ pub fn (b mut Builder) parse_imports() {
 			done_imports << mod
 		}
 	}
+	b.resolve_deps()
+}
+
+pub fn (b mut Builder) resolve_deps() {
+	graph := b.import_graph()
+	deps_resolved := graph.resolve()
+	if !deps_resolved.acyclic {
+		eprintln('warning: import cycle detected between the following modules: \n' + deps_resolved.display_cycles())
+		// TODO: error, when v itself does not have v.table -> v.ast -> v.table cycles anymore
+		return
+	}
+	if b.pref.is_verbose {
+		eprintln('------ resolved dependencies graph: ------')
+		eprintln(deps_resolved.display())
+		eprintln('------------------------------------------')
+	}
+	var mods := []string
+	for node in deps_resolved.nodes {
+		mods << node.name
+	}
+	if b.pref.is_verbose {
+		eprintln('------ imported modules: ------')
+		eprintln(mods.str())
+		eprintln('-------------------------------')
+	}
+	var reordered_parsed_files := []ast.File
+	for m in mods {
+		for pf in b.parsed_files {
+			if m == pf.mod.name {
+				reordered_parsed_files << pf
+				// eprintln('pf.mod.name: $pf.mod.name | pf.path: $pf.path')
+			}
+		}
+	}
+	b.parsed_files = reordered_parsed_files
+}
+
+// graph of all imported modules
+pub fn (b &Builder) import_graph() &depgraph.DepGraph {
+	var builtins := util.builtin_module_parts
+	builtins << 'builtin'
+	var graph := depgraph.new_dep_graph()
+	for p in b.parsed_files {
+		var deps := []string
+		if p.mod.name !in builtins {
+			deps << 'builtin'
+		}
+		for _, m in p.imports {
+			deps << m.mod
+		}
+		graph.add(p.mod.name, deps)
+	}
+	return graph
 }
 
 pub fn (b Builder) v_files_from_dir(dir string) []string {
-	mut res := []string
+	var res := []string
 	if !os.exists(dir) {
 		if dir == 'compiler' && os.is_dir('vlib') {
 			println('looks like you are trying to build V with an old command')
@@ -93,7 +147,7 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	} else if !os.is_dir(dir) {
 		verror("$dir isn't a directory!")
 	}
-	mut files := os.ls(dir) or {
+	var files := os.ls(dir) or {
 		panic(err)
 	}
 	if b.pref.is_verbose {
@@ -114,7 +168,7 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 			continue
 		}
 		if b.pref.compile_defines_all.len > 0 && file.contains('_d_') {
-			mut allowed := false
+			var allowed := false
 			for cdefine in b.pref.compile_defines {
 				file_postfix := '_d_${cdefine}.v'
 				if file.ends_with(file_postfix) {
@@ -188,11 +242,11 @@ fn module_path(mod string) string {
 	return mod.replace('.', os.path_separator)
 }
 
-pub fn (b Builder) find_module_path(mod string, fpath string) ?string {
+pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
-	vmod_file_location := vmod.mod_file_cacher.get( fpath )
+	vmod_file_location := vmod.mod_file_cacher.get(fpath)
 	mod_path := module_path(mod)
-	mut module_lookup_paths := []string
+	var module_lookup_paths := []string
 	if vmod_file_location.vmod_file.len != 0 && !(vmod_file_location.vmod_folder in b.module_search_paths) {
 		module_lookup_paths << vmod_file_location.vmod_folder
 	}

@@ -33,7 +33,7 @@ const (
 )
 
 fn main() {
-	args := util.join_env_vflags_and_os_args()[1..]
+	args := os.args[1..]
 	//args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		// Running `./v` without args launches repl
@@ -43,13 +43,13 @@ fn main() {
 		util.launch_tool(false, 'vrepl')
 		return
 	}
-	os_args := os.args[1..]
-	if os_args.len > 0 && (os_args[0] in ['version', '-V', '-version', '--version'] || (os_args[0] == '-v' && os_args.len == 1) ) {
+	if args.len > 0 && (args[0] in ['version', '-V', '-version', '--version'] || (args[0] == '-v' && args.len == 1) ) {
 		// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
 		println(util.full_v_version())
 		return
 	}
-	prefs, command := parse_args(args)
+	args_and_flags := util.join_env_vflags_and_os_args()[1..]
+	prefs, command := parse_args(args_and_flags)
 	if prefs.is_verbose {
 		println('command = "$command"')
 		println(util.full_v_version())
@@ -100,10 +100,6 @@ fn main() {
 			println(doc.doc(args[1], table))
 			return
 		}
-		'help' {
-			invoke_help_and_exit(args)
-			return
-		}
 		else {}
 	}
 	if command in ['run', 'build-module'] || command.ends_with('.v') || os.exists(command) {
@@ -126,7 +122,9 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 		match arg {
 			'-v' {	res.is_verbose = true	}
 			'-cg' {	res.is_debug = true	}
-			'-live' {	res.is_solive = true	}
+			'-live' { res.is_live = true }
+			'-solive' {	res.is_solive = true res.is_so = true }
+			'-shared' { res.is_so = true }
 			'-autofree' {	res.autofree = true	}
 			'-compress' {	res.compress = true	}
 			'-freestanding' {	res.is_bare = true	}

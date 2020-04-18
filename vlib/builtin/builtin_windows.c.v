@@ -4,7 +4,7 @@
 
 module builtin
 
-#include <dbghelp.h>
+// dbghelp.h is already included in cheaders.v
 #flag windows -l dbghelp
 
 pub struct SymbolInfo {

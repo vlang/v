@@ -12,6 +12,10 @@ pub const (
 	v_version = '0.1.26'
 )
 
+pub const (
+	builtin_module_parts = ['math.bits' /* needed by strconv.ftoa */, 'strconv', 'strconv.ftoa', 'hash.wyhash', 'strings']
+)
+
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
 pub fn vhash() string {
 	mut buf := [50]byte

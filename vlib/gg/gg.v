@@ -55,6 +55,7 @@ pub:
 	scale int
 }
 
+pub type RenderFn fn()
 pub struct GG {
 	shader    gl.Shader
 	// use_ortho bool
@@ -70,7 +71,7 @@ pub mut:
 	width     int
 	height    int
 	window &glfw.Window
-	render_fn fn()
+	render_fn RenderFn
 }
 
 

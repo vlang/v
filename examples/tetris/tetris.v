@@ -13,6 +13,15 @@ import math
 import freetype
 
 const (
+	k_up = glfw.key_up
+	k_left = glfw.key_left
+	k_right = glfw.key_right
+	k_down = glfw.key_down
+	k_escape = glfw.key_escape
+	k_space = glfw.key_space
+)
+
+const (
 	BlockSize = 20 // pixels
 	FieldHeight = 20 // # of blocks
 	FieldWidth = 10
@@ -134,16 +143,17 @@ struct Game {
 
 fn main() {
 	glfw.init_glfw()
-	mut game := &Game{
-		gg: gg.new_context(gg.Cfg {
+
+	gconfig := gg.Cfg {
 			width: WinWidth
 			height: WinHeight
 			use_ortho: true // This is needed for 2D drawing
 			create_window: true
 			window_title: 'V Tetris'
 			//window_user_ptr: game
-		})
-		ft: freetype.new_context(gg.Cfg{
+	}
+
+	fconfig := gg.Cfg{
 			width: WinWidth
 			height: WinHeight
 			use_ortho: true
@@ -151,7 +161,10 @@ fn main() {
 			font_size: 18
 			scale: 2
 			window_user_ptr: 0
-		})
+	}
+	mut game := &Game{
+		gg: gg.new_context(gconfig)
+		ft: freetype.new_context(fconfig)
 	}
 	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works
 	game.init_game()
@@ -389,10 +402,10 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	mut game := &Game(glfw.get_window_user_pointer(wnd))
 	// global keys
 	match key {
-		glfw.KEY_ESCAPE {
+		k_escape {
 			glfw.set_should_close(wnd, true)
 		}
-		glfw.key_space {
+		k_space {
 			if game.state == .running {
 				game.state = .paused
 			} else if game.state == .paused {
@@ -410,31 +423,31 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	}
 	// keys while game is running
 	match key {
-	glfw.KeyUp {
-		// Rotate the tetro
-		old_rotation_idx := game.rotation_idx
-		game.rotation_idx++
-		if game.rotation_idx == tetro_size {
-			game.rotation_idx = 0
-		}
-		game.get_tetro()
-		if !game.move_right(0) {
-			game.rotation_idx = old_rotation_idx
+		k_up {
+			// Rotate the tetro
+			old_rotation_idx := game.rotation_idx
+			game.rotation_idx++
+			if game.rotation_idx == tetro_size {
+				game.rotation_idx = 0
+			}
 			game.get_tetro()
+			if !game.move_right(0) {
+				game.rotation_idx = old_rotation_idx
+				game.get_tetro()
+			}
+			if game.pos_x < 0 {
+				//game.pos_x = 1
+			}
 		}
-		if game.pos_x < 0 {
-			//game.pos_x = 1
+		k_left {
+			game.move_right(-1)
 		}
-	}
-	glfw.KeyLeft {
-		game.move_right(-1)
-	}
-	glfw.KeyRight {
-		game.move_right(1)
-	}
-	glfw.KeyDown {
-		game.move_tetro() // drop faster when the player presses <down>
-	}
-	else { }
+		k_right {
+			game.move_right(1)
+		}
+		k_down {
+			game.move_tetro() // drop faster when the player presses <down>
+		}
+		else { }
 	}
 }

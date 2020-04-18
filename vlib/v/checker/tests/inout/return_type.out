@@ -1,0 +1,6 @@
+vlib/v/checker/tests/inout/return_type.v:2:9: error: cannot use `int` as type `bool` in return argument
+    1| fn test() bool {
+    2|     return 100
+                  ~~~
+    3| }
+    4|

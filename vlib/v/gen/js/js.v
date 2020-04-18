@@ -27,7 +27,7 @@ struct JsGen {
 	pref            &pref.Preferences
 	doc				&JsDoc
 	mut:
-	constants		strings.Builder // all global V constants 
+	constants		strings.Builder // all global V constants
 	file			ast.File
 	tmp_count		int
 	inside_ternary  bool
@@ -178,7 +178,7 @@ fn (g mut JsGen) to_js_typ(typ string) string {
 		}
 		'voidptr' {
 			styp = 'Object'
-		} 
+		}
 		'byteptr' {
 			styp = 'string'
 		}
@@ -196,7 +196,7 @@ fn (g mut JsGen) to_js_typ(typ string) string {
 		}
 	}
 	return styp
-} 
+}
 
 pub fn (g &JsGen) save() {}
 
@@ -385,12 +385,12 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		}
 		ast.InfixExpr {
 			g.expr(it.left)
-			
+
 			mut op := it.op.str()
 			// in js == is non-strict & === is strict, always do strict
 			if op == '==' { op = '===' }
 			else if op == '!=' { op = '!==' }
-			
+
 			g.write(' $op ')
 			g.expr(it.right)
 		}
@@ -461,7 +461,7 @@ fn (g mut JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 				.struct_ {
 					g.expr(expr)
 					if sym.has_method('str') {
-						g.write('.str()')					
+						g.write('.str()')
 					}
 				}
 				else {
@@ -543,7 +543,7 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			val := it.right[i]
 			ident_var_info := ident.var_info()
 			mut styp := g.typ(ident_var_info.typ)
-		
+
 			match val {
 				ast.EnumVal {
 					// we want the type of the enum value not the enum
@@ -554,11 +554,11 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 					styp = ''
 				} else {}
 			}
-			
+
 			if !g.inside_loop && styp.len > 0 {
 				g.writeln(g.doc.gen_typ(styp, ident.name))
 			}
-			
+
 			if g.inside_loop || ident.is_mut {
 				g.write('let ')
 			} else {
@@ -726,7 +726,7 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 		g.write(')();')
 	}
 	g.writeln('')
-	
+
 	g.fn_decl = 0
 }
 
@@ -835,7 +835,7 @@ fn (g mut JsGen) fn_args(args []table.Arg, is_variadic bool) {
 fn (g mut JsGen) gen_go_stmt(node ast.GoStmt) {
 	// x := node.call_expr as ast.CallEpxr // TODO
 	match node.call_expr {
-		ast.CallExpr { 
+		ast.CallExpr {
 			mut name := it.name
 			if it.is_method {
 				receiver_sym := g.table.get_type_symbol(it.receiver_type)
@@ -964,10 +964,10 @@ fn (g mut JsGen) gen_struct_init(it ast.StructInit) {
 	g.writeln('new ${type_sym.name}({')
 	g.inc_indent()
 	for i, field in it.fields {
-		g.write('$field: ')
-		g.expr(it.exprs[i])
+		g.write('$field.name: ')
+		g.expr(field.expr)
 		if i < it.fields.len - 1 {
-			g.write(', ')				
+			g.write(', ')
 		}
 		g.writeln('')
 	}
@@ -975,7 +975,7 @@ fn (g mut JsGen) gen_struct_init(it ast.StructInit) {
 	g.write('})')
 }
 
-fn (g mut JsGen) gen_ident(node ast.Ident) {	
+fn (g mut JsGen) gen_ident(node ast.Ident) {
 	if node.kind == .constant {
 		g.write('CONSTANTS.')
 	}

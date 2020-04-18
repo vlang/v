@@ -1,4 +1,4 @@
-module checker
+module main
 
 fn main() {
   mut a := 'aa'

@@ -272,6 +272,7 @@ jobs:
         .\make.bat -msvc
     - name: Fixed tests
       run: |
+        ./v -cg cmd\tools\vtest-fixed.v
         ./v test-fixed
 #    - name: Test
 #      run: |

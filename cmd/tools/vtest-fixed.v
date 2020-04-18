@@ -7,8 +7,6 @@ import v.pref
 const (
 	skip_test_files = [
 		'vlib/arrays/arrays_test.v',
-		'vlib/cli/command_test.v',
-		'vlib/cli/flag_test.v',
 		'vlib/crypto/aes/aes_test.v',
 		'vlib/crypto/rand/rand_test.v', // macOS only
 		'vlib/crypto/rc4/rc4_test.v',
@@ -20,7 +18,6 @@ const (
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/http_test.v',
 		'vlib/regex/regex_test.v',
-		'vlib/v/tests/const_embed_test.v',
 		'vlib/v/tests/enum_bitfield_test.v',
 		'vlib/v/tests/fixed_array_test.v',
 		'vlib/v/tests/fn_test.v',
@@ -31,11 +28,8 @@ const (
 		'vlib/v/tests/option_test.v',
 		'vlib/v/tests/pointers_test.v',
 		'vlib/v/tests/repl/repl_test.v',
-		'vlib/v/tests/string_interpolation_array_of_structs_test.v',
-		'vlib/v/tests/string_interpolation_struct_test.v',
 		'vlib/v/tests/string_interpolation_variadic_test.v',
 		'vlib/v/tests/type_test.v',
-		'vlib/v/tests/typeof_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
 		'vlib/v/tests/pointers_str_test.v',
 		'vlib/net/http/cookie_test.v',

@@ -1,12 +1,8 @@
 fn match_expr() {
 	a := 10
 	match a {
-		10 {
-			println('10')
-		}
-		20 {
-			println('20')
-		}
+		10 { println('10') }
+		20 { println('20') }
 		else {}
 	}
 }
@@ -14,14 +10,8 @@ fn match_expr() {
 fn match_expr_assignment() {
 	a := 20
 	b := match a {
-		10 {
-			10
-		}
-		5 {
-			5
-		}
-		else {
-			2
-		}
+		10 { 10 }
+		5 { 5 }
+		else { 2 }
 	}
 }
