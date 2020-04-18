@@ -160,7 +160,7 @@ pub fn (v Builder) get_user_files() []string {
 	if v.pref.is_live {
 		user_files << os.join_path(preludes_path, 'live_main.v')
 	}
-	if v.pref.is_solive {
+	if v.pref.is_live && v.pref.is_shared {
 		user_files << os.join_path(preludes_path, 'live_shared.v')
 	}
 	if v.pref.is_test {
