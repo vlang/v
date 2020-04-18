@@ -62,3 +62,16 @@ fn test_string_interpolation_percent_escaping(){
 	x := '%.*s$hello$test |${hello:-30s}|'
 	assert x == '%.*sworldhello |world                         |'
 }
+
+fn test_string_interpolation_string_prefix() {
+	// `r`, `c` and `js` are also used as a string prefix.
+	r := 'r'
+	rr := '$r$r'
+	assert rr == 'rr'
+	c := 'c'
+	cc := '$c$c'
+	assert cc == 'cc'
+	js := 'js'
+	jsjs := '$js$js'
+	assert jsjs == 'jsjs'
+}
