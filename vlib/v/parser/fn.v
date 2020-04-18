@@ -85,7 +85,7 @@ pub fn (var p Parser) call_args() []ast.CallArg {
 
 fn (var p Parser) fn_decl() ast.FnDecl {
 	// p.table.clear_vars()
-	pos := p.tok.position()
+	start_pos := p.tok.position()
 	p.open_scope()
 	is_deprecated := p.attr == 'deprecated'
 	is_pub := p.tok.kind == .key_pub
@@ -165,9 +165,11 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 			typ: arg.typ
 		})
 	}
+	var end_pos := p.prev_tok.position()
 	// Return type
 	var return_type := table.void_type
 	if p.tok.kind.is_start_of_type() {
+		end_pos = p.tok.position()
 		return_type = p.parse_type()
 	}
 	// Register
@@ -229,7 +231,7 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 		is_c: is_c
 		is_js: is_js
 		no_body: no_body
-		pos: pos
+		pos: start_pos.extend(end_pos)
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 	}
 }
