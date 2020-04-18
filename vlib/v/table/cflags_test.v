@@ -60,7 +60,6 @@ fn parse_valid_flag(t &table.Table, flag string) {
 
 fn assert_parse_invalid_flag(t &table.Table, flag string) {
 	t.parse_cflag(flag, module_name, cdefines) or {
-		assert true
 		return
 	}
 	assert false
