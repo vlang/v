@@ -53,6 +53,7 @@ mut:
 	waitgroup       &WaitGroup
 	shared_context  voidptr
 	thread_contexts []voidptr
+	message_handler &TestMessageHandler
 }
 
 pub type ThreadCB fn(p &PoolProcessor, idx int, task_id int)voidptr
@@ -60,6 +61,13 @@ pub type ThreadCB fn(p &PoolProcessor, idx int, task_id int)voidptr
 pub struct PoolProcessorConfig {
 	maxjobs  int
 	callback ThreadCB
+}
+
+pub struct TestMessageHandler {
+pub mut:
+	messages []string
+	message_idx int
+	mtx &Mutex
 }
 
 // new_pool_processor returns a new PoolProcessor instance.
