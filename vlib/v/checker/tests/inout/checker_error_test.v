@@ -24,7 +24,8 @@ fn test_all() {
 		os.cp(path, program) or {
 			panic(err)
 		}
-		res := os.exec('$vexe $program') or {
+		// -prod so that warn are errors
+		res := os.exec('$vexe -prod $program') or {
 			panic(err)
 		}
 		mut expected := os.read_file(program.replace('.v', '') + '.out') or {

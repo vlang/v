@@ -945,11 +945,12 @@ fn (var p Parser) import_stmt() []ast.Import {
 }
 
 fn (var p Parser) const_decl() ast.ConstDecl {
+	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
 	}
-	pos := p.tok.position()
+	end_pos := p.tok.position()
 	p.check(.key_const)
 	if p.tok.kind != .lpar {
 		p.error('consts must be grouped, e.g.\nconst (\n\ta = 1\n)')
@@ -975,7 +976,7 @@ fn (var p Parser) const_decl() ast.ConstDecl {
 	}
 	p.check(.rpar)
 	return ast.ConstDecl{
-		pos: pos
+		pos: start_pos.extend(end_pos)
 		fields: fields
 		is_pub: is_pub
 	}
@@ -1000,14 +1001,10 @@ fn (var p Parser) return_stmt() ast.Return {
 			break
 		}
 	}
-	last_pos := exprs.last().position()
+	end_pos := exprs.last().position()
 	return ast.Return{
 		exprs: exprs
-		pos: token.Position{
-			line_nr: first_pos.line_nr
-			pos: first_pos.pos
-			len: last_pos.pos - first_pos.pos + last_pos.len
-		}
+		pos: first_pos.extend(end_pos)
 	}
 }
 
@@ -1054,10 +1051,12 @@ fn (var p Parser) global_decl() ast.GlobalDecl {
 
 fn (var p Parser) enum_decl() ast.EnumDecl {
 	is_pub := p.tok.kind == .key_pub
+	start_pos := p.tok.position()
 	if is_pub {
 		p.next()
 	}
 	p.check(.key_enum)
+	end_pos := p.tok.position()
 	name := p.prepend_mod(p.check_name())
 	p.check(.lcbr)
 	var vals := []string
@@ -1101,15 +1100,19 @@ fn (var p Parser) enum_decl() ast.EnumDecl {
 		name: name
 		is_pub: is_pub
 		fields: fields
+		pos: start_pos.extend(end_pos)
 	}
 }
 
 fn (var p Parser) type_decl() ast.TypeDecl {
+	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
 	}
 	p.check(.key_type)
+	end_pos := p.tok.position()
+	decl_pos := start_pos.extend(end_pos)
 	name := p.check_name()
 	var sum_variants := []table.Type
 	if p.tok.kind == .assign {
@@ -1123,6 +1126,7 @@ fn (var p Parser) type_decl() ast.TypeDecl {
 			name: fn_name
 			is_pub: is_pub
 			typ: fn_type
+			pos: decl_pos
 		}
 	}
 	first_type := p.parse_type()	// need to parse the first type before we can check if it's `type A = X | Y`
@@ -1149,6 +1153,7 @@ fn (var p Parser) type_decl() ast.TypeDecl {
 			name: name
 			is_pub: is_pub
 			sub_types: sum_variants
+			pos: decl_pos
 		}
 	}
 	// type MyType int
@@ -1166,6 +1171,7 @@ fn (var p Parser) type_decl() ast.TypeDecl {
 		name: name
 		is_pub: is_pub
 		parent_type: parent_type
+		pos: decl_pos
 	}
 }
 
