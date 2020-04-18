@@ -482,11 +482,11 @@ fn (var f Fmt) expr(node ast.Expr) {
 						f.wrap_long_line()
 					}
 					f.expr(expr)
-					if i < it.exprs.len - 1 {
-						f.write(', ')
-					}
 					if line_nr < pos.line_nr {
+						// Previous element was on a different line, add a newline
 						f.writeln('')
+					} else if i < it.exprs.len - 1 {
+						f.write(', ')
 					}
 					line_nr = pos.line_nr
 				}

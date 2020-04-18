@@ -1,0 +1,12 @@
+fn make_flag(a, b, c string) string {
+	return ''
+}
+
+fn main() {
+	// Set up flags
+	expected_flags := [
+		make_flag('solaris', '-L', '/opt/local/lib')
+		make_flag('darwin', '-framework', 'Cocoa')
+		make_flag('windows', '-l', 'gdi32')
+	]
+}
