@@ -22,7 +22,7 @@ pub fn (var table Table) parse_cflag(cflg, mod string, ctimedefines []string) ?b
 	flag_orig := cflg.trim_space()
 	var flag := flag_orig
 	if flag == '' {
-		return true
+		return none
 	}
 	var fos := ''
 	var allowed_os_overrides := ['linux', 'darwin', 'freebsd', 'windows', 'mingw', 'solaris']
