@@ -3,12 +3,12 @@
 // that can be found in the LICENSE file.
 module table
 
-import v.builder
+import v.cflag
 
 // check if cflag is in table
-fn (table &Table) has_cflag(cflag builder.CFlag) bool {
+fn (table &Table) has_cflag(flag cflag.CFlag) bool {
 	for cf in table.cflags {
-		if cf.os == cflag.os && cf.name == cflag.name && cf.value == cflag.value {
+		if cf.os == flag.os && cf.name == flag.name && cf.value == flag.value {
 			return true
 		}
 	}
@@ -17,9 +17,9 @@ fn (table &Table) has_cflag(cflag builder.CFlag) bool {
 
 // parse the flags to (table.cflags) []CFlag
 // Note: clean up big time (joe-c)
-pub fn (var table Table) parse_cflag(cflag, mod string, ctimedefines []string) ?bool {
+pub fn (var table Table) parse_cflag(cflg, mod string, ctimedefines []string) ?bool {
 	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L']
-	flag_orig := cflag.trim_space()
+	flag_orig := cflg.trim_space()
 	var flag := flag_orig
 	if flag == '' {
 		return true
@@ -76,7 +76,7 @@ pub fn (var table Table) parse_cflag(cflag, mod string, ctimedefines []string) ?
 			hint := if name == '-l' { 'library name' } else { 'path' }
 			return error('bad #flag `$flag_orig`: missing $hint after `$name`')
 		}
-		cf := builder.CFlag{
+		cf := cflag.CFlag{
 			mod: mod
 			os: fos
 			name: name

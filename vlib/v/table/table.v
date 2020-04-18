@@ -4,7 +4,7 @@
 module table
 
 import os
-import v.builder
+import v.cflag
 
 pub struct Table {
 pub mut:
@@ -13,7 +13,7 @@ pub mut:
 	fns       map[string]Fn
 	imports   []string // List of all imports
 	modules   []string // List of all modules registered by the application
-	cflags    []builder.CFlag // TODO a different module? importing builder from table feels weird
+	cflags    []cflag.CFlag
 }
 
 pub struct Fn {

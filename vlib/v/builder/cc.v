@@ -6,6 +6,7 @@ module builder
 import (
 	os
 	time
+	v.cflag
 	v.pref
 	v.util
 	term
@@ -570,7 +571,7 @@ fn (c &Builder) build_thirdparty_obj_files() {
 	}
 }
 
-fn (v &Builder) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
+fn (v &Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CFlag) {
 	obj_path := os.real_path(path)
 	if os.exists(obj_path) {
 		return

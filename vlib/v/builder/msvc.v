@@ -2,6 +2,7 @@ module builder
 
 import os
 import v.pref
+import v.cflag
 
 #flag windows -l shell32
 #flag windows -l dbghelp
@@ -304,7 +305,7 @@ pub fn (v mut Builder) cc_msvc() {
 	os.rm(out_name_obj)
 }
 
-fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
+fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
 	msvc := find_msvc()or{
 		println('Could not find visual studio')
 		return
@@ -355,7 +356,7 @@ mut:
 	other_flags []string
 }
 
-fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
+fn (cflags []cflag.CFlag) msvc_string_flags() MsvcStringFlags {
 	mut real_libs := []string
 	mut inc_paths := []string
 	mut lib_paths := []string
