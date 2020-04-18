@@ -209,7 +209,7 @@ pub fn (v mut Builder) cc_msvc() {
 		a << '/Zi'
 		a << '/MDd'
 	}
-	if v.pref.is_so {
+	if v.pref.is_shared {
 		if !v.pref.out_name.ends_with('.dll') {
 			v.pref.out_name += '.dll'
 		}

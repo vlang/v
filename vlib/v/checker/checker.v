@@ -78,7 +78,7 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
 	}
-	if c.pref.is_so {
+	if c.pref.is_shared {
 		// shared libs do not need to have a main
 		return
 	}

@@ -126,7 +126,7 @@ fn (v mut Builder) cc() {
 		}
 	}
 
-	if !v.pref.is_so
+	if !v.pref.is_shared
 		&& v.pref.build_mode != .build_module
 		&& os.user_os() == 'windows'
 		&& !v.pref.out_name.ends_with('.exe')
@@ -136,7 +136,7 @@ fn (v mut Builder) cc() {
 
 	// linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.pref.out_name')
-	if v.pref.is_so {
+	if v.pref.is_shared {
 		a << '-shared -fPIC ' // -Wl,-z,defs'
 		v.pref.out_name += '.so'
 	}
@@ -210,8 +210,13 @@ fn (v mut Builder) cc() {
 	if v.pref.ccompiler != 'msvc' && v.pref.os != .freebsd {
 		a << '-Werror=implicit-function-declaration'
 	}
-	for f in v.generate_hotcode_reloading_compiler_flags() {
-		a << f
+	if v.pref.is_shared || v.pref.is_live {
+		if v.pref.os == .linux || os.user_os() == 'linux' {
+			a << '-rdynamic'
+		}
+		if v.pref.os == .mac || os.user_os() == 'mac' {
+			a << '-flat_namespace'
+		}
 	}
 	mut libs := '' // builtin.o os.o http.o etc
 	if v.pref.build_mode == .build_module {
