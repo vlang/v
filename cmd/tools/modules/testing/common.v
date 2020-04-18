@@ -9,8 +9,9 @@ import (
 )
 
 pub struct TestMessageHandler {
-pub mut:
+mut:
 	messages []string
+pub mut:
 	message_idx int
 	mtx &sync.Mutex
 }
@@ -26,6 +27,12 @@ pub mut:
 	benchmark     benchmark.Benchmark
 	show_ok_tests bool
 	message_handler &TestMessageHandler
+}
+
+pub fn (mh mut TestMessageHandler) append_message(msg string) {
+	mh.mtx.lock()
+	mh.messages << msg
+	mh.mtx.unlock()
 }
 
 pub fn new_test_session(_vargs string) TestSession {
@@ -105,7 +112,7 @@ pub fn (ts mut TestSession) test() {
 	eprintln(term.h_divider('-'))
 }
 
-fn next_message(m mut TestMessageHandler) {
+pub fn (m mut TestMessageHandler) display_message() {
 	m.mtx.lock()
 	defer {
 		m.messages.clear()
@@ -123,7 +130,7 @@ fn next_message(m mut TestMessageHandler) {
 
 fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
-	defer { next_message(ts.message_handler) }
+	defer { ts.message_handler.display_message() }
 	tmpd := os.temp_dir()
 	show_stats := '-stats' in ts.vargs.split(' ')
 	// tls_bench is used to format the step messages/timings
@@ -156,11 +163,11 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	if relative_file.replace('\\', '/') in ts.skip_files {
 	   ts.benchmark.skip()
 	   tls_bench.skip()
-	   ts.message_handler.messages << tls_bench.step_message_skip(relative_file)
+	   ts.message_handler.append_message(tls_bench.step_message_skip(relative_file))
 	   return sync.no_result
 	}
 	if show_stats {
-		ts.message_handler.messages << term.h_divider('-')
+		ts.message_handler.append_message(term.h_divider('-'))
 		status := os.system(cmd)
 		if status == 0 {
 			ts.benchmark.ok()
@@ -178,20 +185,20 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.message_handler.messages << tls_bench.step_message_fail(relative_file)
+			ts.message_handler.append_message(tls_bench.step_message_fail(relative_file))
 			return sync.no_result
 		}
 		if r.exit_code != 0 {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.message_handler.messages << tls_bench.step_message_fail('${relative_file}\n$r.output\n')
+			ts.message_handler.append_message(tls_bench.step_message_fail('${relative_file}\n$r.output\n'))
 		}
 		else {
 			ts.benchmark.ok()
 			tls_bench.ok()
 			if ts.show_ok_tests {
-				ts.message_handler.messages << tls_bench.step_message_ok(relative_file)
+				ts.message_handler.append_message(tls_bench.step_message_ok(relative_file))
 			}
 		}
 	}
