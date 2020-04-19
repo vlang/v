@@ -1,0 +1,5 @@
+vlib/v/checker/tests/inout/bit_op_wrong_left_type_err.v:2:6: error: operator & not defined on left type `f64`
+    1| fn main() {
+    2|     0.5 & 1
+			   ^
+    3| }
