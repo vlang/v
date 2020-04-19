@@ -7,7 +7,7 @@
 <div align="center">
 
 [vlang.io](https://vlang.io) |
-[Docs](https://vlang.io/docs) |
+[Docs](https://github.com/vlang/v/blob/master/doc/docs.md) |
 [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) |
 [Speed](https://fast.vlang.io/) |
 [Contributing](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
