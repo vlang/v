@@ -1,10 +1,8 @@
-<p align="center">
+<div align="center">
+<p>
     <img width="80" src="https://raw.githubusercontent.com/donnisnoni95/v-logo/master/dist/v-logo.svg?sanitize=true">
 </p>
-
-<h1 align="center">The V Programming Language</h1>
-
-<div align="center">
+<h1>The V Programming Language</h1>
 
 [vlang.io](https://vlang.io) |
 [Docs](https://vlang.io/docs) |
@@ -13,14 +11,13 @@
 [Contributing](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
 
 </div>
-
 <div align="center">
 
-[![Build Status](https://github.com/vlang/v/workflows/CI/badge.svg)](https://github.com/vlang/v/commits/master)
-[![Sponsor](https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562)](https://github.com/sponsors/medvednikov)
-<a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
-[![Twitter handle][]][Twitter badge]
-[![Discord](https://img.shields.io/discord/592103645835821068?label=Discord)](https://discord.gg/vlang)
+[![Build Status][WorkflowBadge]][WorkflowUrl]
+[![Sponsor][SponsorBadge]][SponsorUrl]
+[![Patreon][PatreonBadge]][PatreonUrl]
+[![Discord][DiscordBadge]][DiscordUrl]
+[![Twitter][TwitterUrl]][TwitterBadge]
 
 </div>
 
@@ -190,6 +187,14 @@ Hello from V.js
 
 https://github.com/vlang/v/wiki/Troubleshooting
 
+[WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
+[DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
+[PatreonBadge]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges
+[SponsorBadge]: https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562
+[TwitterBadge]: https://twitter.com/v_language
 
-[Twitter handle]: https://img.shields.io/twitter/follow/v_language.svg?style=social&label=Follow
-[Twitter badge]: https://twitter.com/v_language
+[WorkflowUrl]: https://github.com/vlang/v/commits/master
+[DiscordUrl]: https://discord.gg/vlang
+[PatreonUrl]: https://patreon.com/vlang
+[SponsorUrl]: https://github.com/sponsors/medvednikov
+[TwitterUrl]: https://img.shields.io/twitter/follow/v_language.svg?style=flatl&label=Follow&logo=twitter&logoColor=white&color=1da1f2
