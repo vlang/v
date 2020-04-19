@@ -24,7 +24,7 @@ fn (var p Parser) for_stmt() ast.Stmt {
 			is_inf: true
 		}
 	} else if p.tok.kind in [.key_mut, .key_var] {
-		p.error('`mut` is not needed in for loops')
+		p.error('`var` is not needed in for loops')
 	} else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] || p.tok.kind == .semicolon {
 		// `for i := 0; i < 10; i++ {`
 		var init := ast.Stmt{}
