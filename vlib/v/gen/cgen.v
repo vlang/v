@@ -3003,23 +3003,29 @@ fn (var g Gen) gen_str_for_struct(info table.Struct, styp string) {
 fn (var g Gen) gen_str_for_array(info table.Array, styp string) {
 	s := styp.replace('.', '__')
 	sym := g.table.get_type_symbol(info.elem_type)
+	field_styp := g.typ(info.elem_type)
 	if sym.kind == .struct_ && !sym.has_method('str') {
-		field_styp := g.typ(info.elem_type)
 		g.gen_str_for_type(sym, field_styp)
-		g.definitions.write('string ${s}_str($styp a) {\n')
-		g.definitions.write('\tstrings__Builder sb = strings__new_builder(a.len * 10);\n')
-		g.definitions.write('\tstrings__Builder_write(&sb, tos3("["));\n')
-		g.definitions.write('\tfor (int i = 0; i < a.len; i++) {\n')
-		g.definitions.write('\t\t${field_styp} it = (*(${field_styp}*)array_get(a, i));\n')
-		g.definitions.write('\t\tif (i != a.len-1) {\n')
-		g.definitions.write('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));\n')
-		g.definitions.write('\t\t\tstrings__Builder_write(&sb, tos3(", "));\n')
-		g.definitions.write('\t\t} else {\n')
-		g.definitions.write('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));\n\t\t}\n\t}\n')
-		g.definitions.write('\tstrings__Builder_write(&sb, tos3("]"));\n')
-		g.definitions.write('\treturn strings__Builder_str(&sb);\n')
-		g.definitions.write('}\n')
 	}
+	g.definitions.writeln('string ${s}_str($styp a) {')
+	g.definitions.writeln('\tstrings__Builder sb = strings__new_builder(a.len * 10);')
+	g.definitions.writeln('\tstrings__Builder_write(&sb, tos3("["));')
+	g.definitions.writeln('\tfor (int i = 0; i < a.len; i++) {')
+	g.definitions.writeln('\t\t${field_styp} it = (*(${field_styp}*)array_get(a, i));')
+	if sym.kind == .struct_ && !sym.has_method('str') {
+		g.definitions.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));')
+	} else if sym.kind in [.f32, .f64] {
+		g.definitions.writeln('\t\t\tstrings__Builder_write(&sb, _STR("%g", it));')
+	} else {
+		g.definitions.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
+	}
+	g.definitions.writeln('\t\tif (i != a.len-1) {')
+	g.definitions.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
+	g.definitions.writeln('\t\t}')
+	g.definitions.writeln('\t}')
+	g.definitions.writeln('\tstrings__Builder_write(&sb, tos3("]"));')
+	g.definitions.writeln('\treturn strings__Builder_str(&sb);')
+	g.definitions.writeln('}')
 }
 
 fn (g Gen) type_to_fmt(typ table.Type) string {
