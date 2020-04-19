@@ -1054,13 +1054,13 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			if it.is_range {
 				high_type := c.expr(it.high)
 				if typ in table.integer_type_idxs && high_type !in table.integer_type_idxs {
-					c.error('range type is not match.', it.cond.position())
+					c.error('range type do not match', it.cond.position())
 				} else if typ in table.float_type_idxs || high_type in table.float_type_idxs {
-					c.error('range type can not be float.', it.cond.position())
+					c.error('range type can not be float', it.cond.position())
 				} else if typ == table.bool_type_idx || high_type == table.bool_type_idx {
-					c.error('range type can not be bool.', it.cond.position())
+					c.error('range type can not be bool', it.cond.position())
 				} else if typ == table.string_type_idx || high_type == table.string_type_idx {
-					c.error('range type can not be string.', it.cond.position())
+					c.error('range type can not be string', it.cond.position())
 				}
 				c.expr(it.high)
 			} else {
