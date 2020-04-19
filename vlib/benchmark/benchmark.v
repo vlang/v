@@ -54,10 +54,8 @@ const (
 
 pub struct Benchmark {
 pub mut:
-	bench_start_time i64
-	bench_end_time   i64
-	step_start_time  i64
-	step_end_time    i64
+	bench_timer      time.Timer
+	step_timer       time.Timer
 	ntotal           int
 	nok              int
 	nfail            int
@@ -72,14 +70,14 @@ pub mut:
 
 pub fn new_benchmark() Benchmark {
 	return Benchmark{
-		bench_start_time: benchmark.now()
+		bench_timer: time.new_timer()
 		verbose: true
 	}
 }
 
 pub fn new_benchmark_no_cstep() Benchmark {
 	return Benchmark{
-		bench_start_time: benchmark.now()
+		bench_timer: time.new_timer()
 		verbose: true
 		no_cstep: true
 	}
@@ -87,7 +85,7 @@ pub fn new_benchmark_no_cstep() Benchmark {
 
 pub fn new_benchmark_pointer() &Benchmark {
 	return &Benchmark{
-		bench_start_time: benchmark.now()
+		bench_timer: time.new_timer()
 		verbose: true
 	}
 }
@@ -97,48 +95,48 @@ pub fn (b mut Benchmark) set_total_expected_steps(n int) {
 }
 
 pub fn (b mut Benchmark) stop() {
-	b.bench_end_time = benchmark.now()
+	b.bench_timer.stop()
 }
 
 pub fn (b mut Benchmark) step() {
-	b.step_start_time = benchmark.now()
+	b.step_timer.restart()
 	if !b.no_cstep {
 		b.cstep++
 	}
 }
 
 pub fn (b mut Benchmark) fail() {
-	b.step_end_time = benchmark.now()
+	b.step_timer.stop()
 	b.ntotal++
 	b.nfail++
 }
 
 pub fn (b mut Benchmark) ok() {
-	b.step_end_time = benchmark.now()
+	b.step_timer.stop()
 	b.ntotal++
 	b.nok++
 }
 
 pub fn (b mut Benchmark) skip() {
-	b.step_end_time = benchmark.now()
+	b.step_timer.stop()
 	b.ntotal++
 	b.nskip++
 }
 
 pub fn (b mut Benchmark) fail_many(n int) {
-	b.step_end_time = benchmark.now()
+	b.step_timer.stop()
 	b.ntotal += n
 	b.nfail += n
 }
 
 pub fn (b mut Benchmark) ok_many(n int) {
-	b.step_end_time = benchmark.now()
+	b.step_timer.stop()
 	b.ntotal += n
 	b.nok += n
 }
 
 pub fn (b mut Benchmark) neither_fail_nor_ok() {
-	b.step_end_time = benchmark.now()
+	b.step_timer.stop()
 }
 
 pub fn start() Benchmark {
@@ -149,7 +147,7 @@ pub fn start() Benchmark {
 
 pub fn (b mut Benchmark) measure(label string) i64 {
 	b.ok()
-	res := b.step_end_time - b.step_start_time
+	res := b.step_timer.elapsed()
 	println(b.step_message_with_label(BSPENT, 'in $label'))
 	b.step()
 	return res
@@ -174,10 +172,10 @@ pub fn (b &Benchmark) step_message_with_label(label string, msg string) string {
 				'${b.cstep:3d}/${b.nexpected_steps:3d}'
 			}
 		}
-		timed_line = b.tdiff_in_ms('[${sprogress}] $msg', b.step_start_time, b.step_end_time)
+		timed_line = b.tdiff_in_ms('[${sprogress}] $msg', b.step_timer.elapsed())
 	}
 	else {
-		timed_line = b.tdiff_in_ms(msg, b.step_start_time, b.step_end_time)
+		timed_line = b.tdiff_in_ms(msg, b.step_timer.elapsed())
 	}
 	return '${label:-5s}${timed_line}'
 }
@@ -203,22 +201,17 @@ pub fn (b &Benchmark) total_message(msg string) string {
 	if b.verbose {
 		tmsg = '<=== total time spent $tmsg'
 	}
-	return '  ' + b.tdiff_in_ms(tmsg, b.bench_start_time, b.bench_end_time)
+	return '  ' + b.tdiff_in_ms(tmsg, b.bench_timer.elapsed())
 }
 
 pub fn (b &Benchmark) total_duration() i64 {
-	return (b.bench_end_time - b.bench_start_time)
+	return b.bench_timer.elapsed()
 }
 
 // //////////////////////////////////////////////////////////////////
-fn (b &Benchmark) tdiff_in_ms(s string, sticks i64, eticks i64) string {
+fn (b &Benchmark) tdiff_in_ms(s string, tdiff i64) string {
 	if b.verbose {
-		tdiff := (eticks - sticks)
 		return '${tdiff:6d} ms $s'
 	}
 	return s
-}
-
-fn now() i64 {
-	return time.ticks()
 }
