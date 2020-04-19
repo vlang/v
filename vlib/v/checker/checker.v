@@ -304,7 +304,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`',
 			infix_expr.pos)
 	}
-	if infix_expr.op in [.amp, .pipe, .xor, .mod] {
+	if infix_expr.op in [.amp, .pipe, .xor] {
 	    if !left.is_int() {
 			c.error('operator ${infix_expr.op.str()} not defined on left type `$left.name`', infix_expr.pos)
 		}
