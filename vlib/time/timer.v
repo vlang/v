@@ -9,7 +9,7 @@ module time
 pub struct Timer {
 	pause_start i64
 pub:
-	start_ticks i64 = ticks()
+	start_ticks i64
 	end_ticks   i64
 }
 
@@ -18,7 +18,8 @@ pub fn (t mut Timer) start() {
 	if t.pause_start == 0 {
 		t.start_ticks = ticks()
 	} else {
-		// We were paused, so pretend like the time we were paused didn't happen
+		// We were paused, so pretend like the time we were paused didn't
+		// happen
 		t.start_ticks += ticks() - t.pause_start
 	}
 	t.end_ticks = 0
