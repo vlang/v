@@ -249,12 +249,12 @@ pub fn (var g Gen) write_typedef_types() {
 				info := typ.info as table.FnType
 				func := info.func
 				if !info.has_decl {
-					fn_name := if func.is_c { 
-						func.name.replace('.', '__') 
+					fn_name := if func.is_c {
+						func.name.replace('.', '__')
 					} else if info.is_anon {
 						typ.name
-					} else { 
-						c_name(func.name) 
+					} else {
+						c_name(func.name)
 					}
 					g.definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 					for i, arg in func.args {
@@ -3010,11 +3010,41 @@ fn (var g Gen) gen_str_for_array(info table.Array, styp string) {
 		g.definitions.write('\tstrings__Builder_write(&sb, tos3("["));\n')
 		g.definitions.write('\tfor (int i = 0; i < a.len; i++) {\n')
 		g.definitions.write('\t\t${field_styp} it = (*(${field_styp}*)array_get(a, i));\n')
-		g.definitions.write('\t\tif (i != a.len-1) {\n')
 		g.definitions.write('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));\n')
+		g.definitions.write('\t\tif (i != a.len-1) {\n')
 		g.definitions.write('\t\t\tstrings__Builder_write(&sb, tos3(", "));\n')
-		g.definitions.write('\t\t} else {\n')
-		g.definitions.write('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));\n\t\t}\n\t}\n')
+		g.definitions.write('\t\t}\n')
+		g.definitions.write('\t}\n')
+		g.definitions.write('\tstrings__Builder_write(&sb, tos3("]"));\n')
+		g.definitions.write('\treturn strings__Builder_str(&sb);\n')
+		g.definitions.write('}\n')
+	} else if sym.kind in [.f32, .f64] {
+		field_styp := g.typ(info.elem_type)
+		g.definitions.write('string ${s}_str($styp a) {\n')
+		g.definitions.write('\tstrings__Builder sb = strings__new_builder(a.len * 10);\n')
+		g.definitions.write('\tstrings__Builder_write(&sb, tos3("["));\n')
+		g.definitions.write('\tfor (int i = 0; i < a.len; i++) {\n')
+		g.definitions.write('\t\t${field_styp} it = (*(${field_styp}*)array_get(a, i));\n')
+		g.definitions.write('\t\t\tstrings__Builder_write(&sb, _STR("%g", it));\n')
+		g.definitions.write('\t\tif (i != a.len-1) {\n')
+		g.definitions.write('\t\t\tstrings__Builder_write(&sb, tos3(", "));\n')
+		g.definitions.write('\t\t}\n')
+		g.definitions.write('\t}\n')
+		g.definitions.write('\tstrings__Builder_write(&sb, tos3("]"));\n')
+		g.definitions.write('\treturn strings__Builder_str(&sb);\n')
+		g.definitions.write('}\n')
+	} else {
+		field_styp := g.typ(info.elem_type)
+		g.definitions.write('string ${s}_str($styp a) {\n')
+		g.definitions.write('\tstrings__Builder sb = strings__new_builder(a.len * 10);\n')
+		g.definitions.write('\tstrings__Builder_write(&sb, tos3("["));\n')
+		g.definitions.write('\tfor (int i = 0; i < a.len; i++) {\n')
+		g.definitions.write('\t\t${field_styp} it = (*(${field_styp}*)array_get(a, i));\n')
+		g.definitions.write('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));\n')
+		g.definitions.write('\t\tif (i != a.len-1) {\n')
+		g.definitions.write('\t\t\tstrings__Builder_write(&sb, tos3(", "));\n')
+		g.definitions.write('\t\t}\n')
+		g.definitions.write('\t}\n')
 		g.definitions.write('\tstrings__Builder_write(&sb, tos3("]"));\n')
 		g.definitions.write('\treturn strings__Builder_str(&sb);\n')
 		g.definitions.write('}\n')

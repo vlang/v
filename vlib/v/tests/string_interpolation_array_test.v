@@ -14,7 +14,7 @@ struct Man {
 	interests []string
 }
 
-fn test_default_struct_array_of_structs_interpolation() {
+fn test_array_of_structs_interpolation() {
 	people := [
 		Man{'Superman', 30, ['flying','fighting evil','being nice']},
 		Man{'Bilbo Baggins', 111, ['exploring', 'hiding']},
@@ -30,4 +30,49 @@ fn test_default_struct_array_of_structs_interpolation() {
 	assert s.contains('interests: ["exploring", "hiding"]')
 	assert s.contains('}]')
 	// println(s)
+}
+
+fn test_array_of_floats_interpolation() {
+	// f64 array
+	aa := [1.2, 3.4, 5.67]
+	assert '$aa' == '[1.2, 3.4, 5.67]'
+	// f32 array
+	bb := [f32(1.2), 3.4, 5.67]
+	assert '$bb' == '[1.2, 3.4, 5.67]'
+}
+
+fn test_array_of_bools_interpolation() {
+	aa := [true, false, true]
+	assert '$aa' == '[true, false, true]'
+}
+
+fn test_array_of_ints_interpolation() {
+	// int
+	a1 := [11, 22, 33]
+	assert '$a1' == '[11, 22, 33]'
+	// u32
+	a2 := [u32(11), 22, 33]
+	assert '$a2' == '[11, 22, 33]'
+	// i16
+	b1 := [i16(11), 22, 33]
+	assert '$b1' == '[11, 22, 33]'
+	// u16
+	b2 := [u16(11), 22, 33]
+	assert '$b2' == '[11, 22, 33]'
+	// i64
+	c1 := [i64(11), 22, 33]
+	assert '$c1' == '[11, 22, 33]'
+	// u64
+	c2 := [u64(11), 22, 33]
+	assert '$c2' == '[11, 22, 33]'
+}
+
+fn test_array_of_bytes_interpolation() {
+	aa := [`a`, `b`, `c`]
+	assert '$aa' == '[a, b, c]'
+}
+
+fn test_array_of_strings_interpolation() {
+	aa := ['aa', 'bb', 'cc']
+	assert '$aa' == '["aa", "bb", "cc"]'
 }
