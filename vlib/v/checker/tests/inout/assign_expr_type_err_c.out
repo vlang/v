@@ -1,0 +1,6 @@
+vlib/v/checker/tests/inout/assign_expr_type_err_c.v:3:7: error: operator -= not defined on left type `string` and right type `string`
+    1| fn main() {
+    2|     mut a := 'hello'
+	3|     a -= 'world'
+                ~~~~~~~			 
+    4| }
