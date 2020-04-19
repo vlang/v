@@ -327,6 +327,8 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	// println('setting exp type to $c.expected_type $t.name')
 	right_type := c.expr(assign_expr.val)
 	assign_expr.right_type = right_type
+	right := c.table.get_type_symbol(right_type)
+	left := c.table.get_type_symbol(left_type)
 	if ast.expr_is_blank_ident(assign_expr.left) {
 		return
 	}
@@ -346,6 +348,37 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 		right_type_sym := c.table.get_type_symbol(right_type)
 		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name`',
 			assign_expr.val.position())
+	}
+	else if assign_expr.op == .plus_assign {
+		no_str_related_err := left_type == table.string_type && right_type == table.string_type
+		no_ptr_related_err := (left.is_pointer() || left.is_int()) && (right.is_pointer() || right.is_int())
+		no_num_related_err := left.is_number() && right.is_number()
+		if !no_str_related_err && !no_ptr_related_err && !no_num_related_err {
+			c.error('operator += not defined on left type `$left.name` and right type `$right.name`', assign_expr.pos)
+		}
+	}
+	else if assign_expr.op == .minus_assign {
+		no_ptr_related_err := (left.is_pointer() || left.is_int()) && (right.is_pointer() || right.is_int())
+		no_num_related_err := left.is_number() && right.is_number()
+		if !no_ptr_related_err && !no_num_related_err {
+			c.error('operator -= not defined on left type `$left.name` and right type `$right.name`', assign_expr.pos)
+		}
+	}
+	else if assign_expr.op in [.mult_assign, .div_assign] {
+		if !left.is_number() {
+			c.error('operator ${assign_expr.op.str()} not defined on left type `$left.name`', assign_expr.pos)
+		}
+		else if !right.is_number() {
+			c.error('operator ${assign_expr.op.str()} not defined on right type `$right.name`', assign_expr.pos)
+		}
+	}
+	else if assign_expr.op in [.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign, .right_shift_assign] {
+		if !left.is_int() {
+			c.error('operator ${assign_expr.op.str()} not defined on left type `$left.name`', assign_expr.pos)
+		}
+		else if !right.is_int() {
+			c.error('operator ${assign_expr.op.str()} not defined on right type `$right.name`', assign_expr.pos)
+		}
 	}
 	c.check_expr_opt_call(assign_expr.val, right_type, true)
 }

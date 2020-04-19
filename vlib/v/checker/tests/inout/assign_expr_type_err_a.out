@@ -1,0 +1,6 @@
+vlib/v/checker/tests/inout/assign_expr_type_err_a.v:3:8: error: operator <<= not defined on right type `f64`
+    1| fn main() {
+    2|     mut a := 10
+    3|     a <<= 0.5
+                 ~~~
+    4| }

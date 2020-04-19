@@ -1,0 +1,6 @@
+struct Foo { }
+
+fn main() {
+	mut a := Foo{ }
+	a += Foo{ }
+}
