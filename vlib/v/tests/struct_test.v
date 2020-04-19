@@ -265,3 +265,44 @@ fn test_levels() {
 		}
 	}
 }
+
+// Struct where an inizialized field is after a non-initilized field.
+struct StructWithDefaultValues1 {
+	field_required int
+	field_optional int = 5
+}
+
+// Struct where an inizialized field is before a non-initilized field.
+struct StructWithDefaultValues2 {
+	field_optional  int = 3
+	field_required  int
+}
+
+// Struct where an inizialized field is before several non-initilized fields.
+struct StructWithDefaultValues3 {
+	field_optional     int = 2
+	field_required     int
+	field_required_too int
+}
+
+fn test_struct_with_default_values_init() {
+	s1 := StructWithDefaultValues1{ field_required: 5 }
+	s2 := StructWithDefaultValues2{ field_required: 5 }
+	// Partially initialized
+	s3 := StructWithDefaultValues3{ field_required: 5 }
+
+	assert s1.field_optional == 5
+	assert s2.field_optional == 3
+	assert s3.field_optional == 2
+}
+
+fn test_struct_with_default_values_no_init() {
+	// Don't inititialize
+	s1 := StructWithDefaultValues1{}
+	s2 := StructWithDefaultValues2{}
+	s3 := StructWithDefaultValues3{}
+
+	assert s1.field_optional == 5
+	assert s2.field_optional == 3
+	assert s3.field_optional == 2
+}
