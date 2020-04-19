@@ -7,10 +7,10 @@ module time
 // start and end are # of ms since start of system.
 // When end_ticks == 0, this means the timer is actively "running"
 pub struct Timer {
-	pause_start i64 = 0
+	pause_start i64
 pub:
 	start_ticks i64 = ticks()
-	end_ticks   i64 = 0
+	end_ticks   i64
 }
 
 // start Starts the timer. If the timer was paused, restarts counting.
