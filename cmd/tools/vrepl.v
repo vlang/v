@@ -89,17 +89,22 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 	mut r := Repl{}
 	mut readline := readline.Readline{}
 	vexe := os.getenv('VEXE')
+	mut is_exception := false
+
 	for {
-		if r.indent == 0 {
+		if is_exception {
+			prompt = ''
+		} else if r.indent == 0 {
 			prompt = '>>> '
-		}
-		else {
+		} else {
 			prompt = '... '
 		}
 		mut line := readline.read_line(prompt) or {
-			break
+			is_exception = true
+			continue
 		}
 		if line.trim_space() == '' && line.ends_with('\n') {
+			is_exception = true
 			continue
 		}
 		line = line.trim_space()
@@ -108,14 +113,17 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 		}
 		r.line = line
 		if r.line == '\n' {
+			is_exception = true
 			continue
 		}
 		if r.line == 'clear' {
 			term.erase_display('2')
+			is_exception = true
 			continue
 		}
 		if r.line == 'help' {
 			repl_help()
+			is_exception = true
 			continue
 		}
 		if r.line.starts_with('fn') {
@@ -132,6 +140,7 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 				}
 			}
 			if r.indent > 0 {
+				is_exception = true
 				continue
 			}
 			r.line = ''
@@ -184,6 +193,7 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 			}
 			print_output(s)
 		}
+		is_exception = false
 	}
 	return r.lines
 }
