@@ -310,7 +310,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		}
 	    else if !right.is_int() {
 			c.error('operator ${infix_expr.op.str()} not defined on right type `$right.name`', infix_expr.pos)
-		}
+	    }
 	}
 	if left_type == table.bool_type && !(infix_expr.op in [.eq, .ne, .logical_or, .and]) {
 		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
