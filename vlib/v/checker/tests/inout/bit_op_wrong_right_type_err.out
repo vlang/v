@@ -1,0 +1,5 @@
+vlib/v/checker/tests/inout/bit_op_wrong_right_type_err.v:2:4: error: operator | not defined on right type `f64`
+    1| fn main() {
+    2|     1 | 0.5
+             ^
+    3| }
