@@ -327,6 +327,8 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	// println('setting exp type to $c.expected_type $t.name')
 	right_type := c.expr(assign_expr.val)
 	assign_expr.right_type = right_type
+	right := c.table.get_type_symbol(right_type)
+	left := c.table.get_type_symbol(left_type)
 	if ast.expr_is_blank_ident(assign_expr.left) {
 		return
 	}
