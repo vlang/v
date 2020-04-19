@@ -469,14 +469,29 @@ fn (var f Fmt) expr(node ast.Expr) {
 				// `[1,2,3]`
 				// type_sym := f.table.get_type_symbol(it.typ)
 				f.write('[')
+				var inc_indent := false
+				var line_nr := node.position().line_nr // to have the same newlines between array elements
 				for i, expr in it.exprs {
+					pos := expr.position()
+					if i == 0 && line_nr < pos.line_nr {
+						f.writeln('')
+						f.indent++
+						inc_indent = true
+					}
 					if i > 0 && it.exprs.len > 1 {
 						f.wrap_long_line()
 					}
 					f.expr(expr)
-					if i < it.exprs.len - 1 {
+					if line_nr < pos.line_nr {
+						// Previous element was on a different line, add a newline
+						f.writeln('')
+					} else if i < it.exprs.len - 1 {
 						f.write(', ')
 					}
+					line_nr = pos.line_nr
+				}
+				if inc_indent {
+					f.indent--
 				}
 				f.write(']')
 			}

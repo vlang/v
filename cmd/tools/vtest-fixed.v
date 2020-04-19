@@ -8,7 +8,6 @@ const (
 	skip_test_files = [
 		'vlib/arrays/arrays_test.v',
 		'vlib/crypto/aes/aes_test.v',
-		'vlib/crypto/rand/rand_test.v', // macOS only
 		'vlib/crypto/rc4/rc4_test.v',
 		'vlib/encoding/utf8/utf8_util_test.v',
 		'vlib/eventbus/eventbus_test.v',
@@ -22,12 +21,10 @@ const (
 		'vlib/v/tests/fixed_array_test.v',
 		'vlib/v/tests/fn_test.v',
 		'vlib/v/tests/fn_variadic_test.v',
-		'vlib/v/tests/msvc_test.v',
 		'vlib/v/tests/mut_test.v',
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/option_test.v',
 		'vlib/v/tests/pointers_test.v',
-		'vlib/v/tests/repl/repl_test.v',
 		'vlib/v/tests/string_interpolation_variadic_test.v',
 		'vlib/v/tests/type_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only

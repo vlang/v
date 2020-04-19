@@ -66,11 +66,8 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	for file in ast_files {
 		c.check(file)
 		if file.mod.name == 'main' {
-			if fn_decl := get_main_fn_decl(file) {
+			if c.check_file_in_main(file) {
 				has_main_fn = true
-				if fn_decl.is_pub {
-					c.error('function `main` cannot be declared public', fn_decl.pos)
-				}
 			}
 		}
 	}
@@ -78,7 +75,7 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
 	}
-	if c.pref.is_so {
+	if c.pref.is_shared {
 		// shared libs do not need to have a main
 		return
 	}
@@ -87,16 +84,71 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	}
 }
 
-fn get_main_fn_decl(file ast.File) ?ast.FnDecl {
+const (
+	no_pub_in_main_warning = 'in module main cannot be declared public'
+)
+
+// do checks specific to files in main module
+// returns `true` if a main function is in the file
+fn (c mut Checker) check_file_in_main(file ast.File) bool {
+	mut has_main_fn := false
 	for stmt in file.stmts {
-		if stmt is ast.FnDecl {
-			fn_decl := stmt as ast.FnDecl
-			if fn_decl.name == 'main' {
-				return fn_decl
+		match stmt {
+			ast.ConstDecl {
+				if it.is_pub {
+					c.warn('const $no_pub_in_main_warning', it.pos)
+				}
 			}
+			ast.ConstField {
+				if it.is_pub {
+					c.warn('const field `$it.name` $no_pub_in_main_warning', it.pos)
+				}
+			}
+			ast.EnumDecl {
+				if it.is_pub {
+					c.warn('enum `$it.name` $no_pub_in_main_warning', it.pos)
+				}
+			}
+			ast.FnDecl {
+				if it.name == 'main' {
+					has_main_fn = true
+					if it.is_pub {
+						c.error('function `main` cannot be declared public', it.pos)
+					}
+				} else {
+					if it.is_pub {
+						c.warn('function `$it.name` $no_pub_in_main_warning', it.pos)
+					}
+				}
+			}
+			ast.StructDecl {
+				if it.is_pub {
+					c.warn('struct `$it.name` $no_pub_in_main_warning', it.pos)
+				}
+			}
+			ast.TypeDecl {
+				type_decl := stmt as ast.TypeDecl
+				if type_decl is ast.AliasTypeDecl {
+					alias_decl := type_decl as ast.AliasTypeDecl
+					if alias_decl.is_pub {
+						c.warn('type alias `$alias_decl.name` $no_pub_in_main_warning', alias_decl.pos)
+					}
+				} else if type_decl is ast.SumTypeDecl {
+					sum_decl := type_decl as ast.SumTypeDecl
+					if sum_decl.is_pub {
+						c.warn('sum type `$sum_decl.name` $no_pub_in_main_warning', sum_decl.pos)
+					}
+				} else if type_decl is ast.FnTypeDecl {
+					fn_decl := type_decl as ast.FnTypeDecl
+					if fn_decl.is_pub {
+						c.warn('type alias `$fn_decl.name` $no_pub_in_main_warning', fn_decl.pos)
+					}
+				}
+			}
+			else {}
 		}
 	}
-	return none
+	return has_main_fn
 }
 
 pub fn (c mut Checker) struct_decl(decl ast.StructDecl) {

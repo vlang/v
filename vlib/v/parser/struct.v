@@ -8,7 +8,7 @@ import v.table
 import v.token
 
 fn (var p Parser) struct_decl() ast.StructDecl {
-	first_pos := p.tok.position()
+	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -30,6 +30,7 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 	if !is_c && !is_js && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
+	end_pos := p.tok.position()
 	var name := p.check_name()
 	// println('struct decl $name')
 	var ast_fields := []ast.StructField
@@ -37,7 +38,6 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 	var mut_pos := -1
 	var pub_pos := -1
 	var pub_mut_pos := -1
-	var last_pos := token.Position{}
 	if !no_body {
 		p.check(.lcbr)
 		for p.tok.kind != .rcbr {
@@ -113,7 +113,6 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 			}
 			// println('struct field $ti.name $field_name')
 		}
-		last_pos = p.tok.position()
 		p.check(.rcbr)
 	}
 	if is_c {
@@ -145,16 +144,11 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 		p.error('cannot register type `$name`, another type with this name exists')
 	}
 	p.expr_mod = ''
-	pos := token.Position{
-		line_nr: first_pos.line_nr
-		pos: first_pos.pos
-		len: last_pos.pos - first_pos.pos + last_pos.len
-	}
 	return ast.StructDecl{
 		name: name
 		is_pub: is_pub
 		fields: ast_fields
-		pos: pos
+		pos: start_pos.extend(end_pos)
 		mut_pos: mut_pos
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos

@@ -213,7 +213,6 @@ fn (s mut Scanner) ident_oct_number() string {
 fn (s mut Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit := `\0`
-	mut call_method := false // true for, e.g., 12.str(), 12.3.str(), 12e-3.str()
 	start_pos := s.pos
 	// scan integer part
 	for s.pos < s.text.len {
@@ -229,23 +228,21 @@ fn (s mut Scanner) ident_dec_number() string {
 		}
 		s.pos++
 	}
-	// e.g. 1..9
-	// we just return '1' and don't scan '..9'
-	if s.expect('..', s.pos) {
-		number := filter_num_sep(s.text.str, start_pos, s.pos)
-		s.pos--
-		return number
-	}
+	mut call_method := false  // true for, e.g., 5.str(), 5.5.str(), 5e5.str()
+	mut is_range := false  // true for, e.g., 5..10
+	mut is_float_without_fraction := false  // true for, e.g. 5.
 	// scan fractional part
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
 		if s.pos < s.text.len {
+			// 5.5, 5.5.str()
 			if s.text[s.pos].is_digit() {
 				for s.pos < s.text.len {
 					c := s.text[s.pos]
 					if !c.is_digit() {
 						if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string {
-							if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos + 1].is_digit() && s.text[s.pos + 1] != `)` {
+							// 5.5.str()
+							if c == `.` && s.pos + 1 < s.text.len && s.text[s.pos + 1].is_letter() {
 								call_method = true
 							}
 							break
@@ -258,17 +255,30 @@ fn (s mut Scanner) ident_dec_number() string {
 					s.pos++
 				}
 			}
-			else if !(s.text[s.pos] in [`)`, `e`, `E`]) {
+			// 5.. (a range)
+			else if s.text[s.pos] == `.` {
+				is_range = true
+				s.pos--
+			}
+			// 5.e5
+			else if s.text[s.pos] in [`e`, `E`] { }
+			// 5.str()
+			else if s.text[s.pos].is_letter() {
 				call_method = true
+				s.pos--
+			}
+			// 5.
+			else if s.text[s.pos] != `)` {
+				is_float_without_fraction = true 
 				s.pos--
 			}
 		}
 	}
 	// scan exponential part
-	mut has_exponential_part := false
-	if s.expect('e', s.pos) || s.expect('E', s.pos) {
+	mut has_exp := false
+	if s.pos < s.text.len && s.text[s.pos] in [`e`, `E`] {
+		has_exp = true
 		s.pos++
-		exp_start_pos := s.pos
 		if s.pos < s.text.len && s.text[s.pos] in [`-`, `+`] {
 			s.pos++
 		}
@@ -276,7 +286,8 @@ fn (s mut Scanner) ident_dec_number() string {
 			c := s.text[s.pos]
 			if !c.is_digit() {
 				if !c.is_letter() || s.is_inside_string {
-					if c == `.` && s.pos + 1 < s.text.len && !s.text[s.pos + 1].is_digit() && s.text[s.pos + 1] != `)` {
+					// 5e5.str()
+					if c == `.` && s.pos + 1 < s.text.len && s.text[s.pos + 1].is_letter() {
 						call_method = true
 					}
 					break
@@ -288,22 +299,23 @@ fn (s mut Scanner) ident_dec_number() string {
 			}
 			s.pos++
 		}
-		if exp_start_pos == s.pos {
-			s.error('exponent has no digits')
-		}
-		has_exponential_part = true
+	}
+	// error check: wrong digit
+	if has_wrong_digit {
+		s.error('this number has unsuitable digit `${first_wrong_digit.str()}`')
+	}
+	// error check: 5e
+	else if s.text[s.pos - 1] in [`e`, `E`] {
+		s.error('exponent has no digits')
 	}
 	// error check: 1.23.4, 123.e+3.4
-	if s.pos < s.text.len && s.text[s.pos] == `.` && !call_method {
-		if has_exponential_part {
+	else if s.pos < s.text.len && s.text[s.pos] == `.` && !is_range && !is_float_without_fraction && !call_method {
+		if has_exp {
 			s.error('exponential part should be integer')
 		}
 		else {
 			s.error('too many decimal points in number')
 		}
-	}
-	if has_wrong_digit {
-		s.error('this number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--

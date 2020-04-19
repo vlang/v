@@ -5,20 +5,6 @@ import (
 	time
 )
 
-fn (v &Builder) generate_hotcode_reloading_compiler_flags() []string {
-	mut a := []string
-	if v.pref.is_live || v.pref.is_so {
-		// See 'man dlopen', and test running a GUI program compiled with -live
-		if v.pref.os == .linux || os.user_os() == 'linux' {
-			a << '-rdynamic'
-		}
-		if v.pref.os == .mac || os.user_os() == 'mac' {
-			a << '-flat_namespace'
-		}
-	}
-	return a
-}
-
 fn (v &Builder) generate_hotcode_reloading_declarations() {
 	/*
 	QTODO

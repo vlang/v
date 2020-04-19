@@ -249,12 +249,12 @@ pub fn (var g Gen) write_typedef_types() {
 				info := typ.info as table.FnType
 				func := info.func
 				if !info.has_decl {
-					fn_name := if func.is_c { 
-						func.name.replace('.', '__') 
+					fn_name := if func.is_c {
+						func.name.replace('.', '__')
 					} else if info.is_anon {
 						typ.name
-					} else { 
-						c_name(func.name) 
+					} else {
+						c_name(func.name)
 					}
 					g.definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 					for i, arg in func.args {
@@ -1980,13 +1980,14 @@ fn (var g Gen) struct_init(struct_init ast.StructInit) {
 				continue
 			}
 			field_name := c_name(field.name)
+			g.write('\t.$field_name = ')
 			if field.has_default_expr {
 				g.expr(field.default_expr)
-				g.writeln(',')
+
 			} else {
-				zero := g.type_default(field.typ)
-				g.writeln('\t.$field_name = $zero,')
+				g.write(g.type_default(field.typ))
 			}
+			g.writeln(',')
 		}
 	}
 	if struct_init.fields.len == 0 && info.fields.len == 0 {

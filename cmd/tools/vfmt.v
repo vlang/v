@@ -235,7 +235,7 @@ fn find_working_diff_command() ?string {
 	return error('no working diff command found')
 }
 
-pub fn (f FormatOptions) str() string {
+fn (f FormatOptions) str() string {
 	return 'FormatOptions{ is_l: $f.is_l' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' +
 		' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' + ' }'
 }

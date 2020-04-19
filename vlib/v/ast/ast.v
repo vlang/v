@@ -3,10 +3,8 @@
 // that can be found in the LICENSE file.
 module ast
 
-import (
-	v.token
-	v.table
-)
+import v.token
+import v.table
 
 pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
 
@@ -95,9 +93,9 @@ mut:
 // module declaration
 pub struct Module {
 pub:
-	name string
-	path string
-	expr Expr
+	name       string
+	path       string
+	expr       Expr
 	is_skipped bool // module main can be skipped in single file programs
 }
 
@@ -162,7 +160,7 @@ pub struct StructInitField {
 pub:
 	name          string
 	expr          Expr
-	pos			  token.Position
+	pos           token.Position
 mut:
 	typ           table.Type
 	expected_type table.Type
@@ -189,7 +187,7 @@ pub struct AnonFn {
 pub:
 	decl FnDecl
 mut:
-	typ table.Type
+	typ  table.Type
 }
 
 pub struct FnDecl {
@@ -228,7 +226,7 @@ mut:
 	args               []CallArg
 	expected_arg_types []table.Type
 	is_c               bool
-	is_js			   bool
+	is_js              bool
 	or_block           OrExpr
 	left_type          table.Type // type of `user`
 	receiver_type      table.Type // User
@@ -326,7 +324,7 @@ pub:
 	tok_kind token.Kind
 	mod      string
 	pos      token.Position
-	is_mut bool
+	is_mut   bool
 mut:
 	name     string
 	kind     IdentKind
@@ -537,11 +535,11 @@ pub struct EnumField {
 
 pub struct EnumDecl {
 pub:
-	name          string
-	is_pub        bool
-	fields        []EnumField
-	// vals          []string
+	name   string
+	is_pub bool
+	fields []EnumField
 	// default_exprs []Expr
+	pos    token.Position
 }
 
 pub struct AliasTypeDecl {
@@ -549,6 +547,7 @@ pub:
 	name        string
 	is_pub      bool
 	parent_type table.Type
+	pos         token.Position
 }
 
 pub struct SumTypeDecl {
@@ -556,6 +555,7 @@ pub:
 	name      string
 	is_pub    bool
 	sub_types []table.Type
+	pos       token.Position
 }
 
 pub struct FnTypeDecl {
@@ -563,6 +563,7 @@ pub:
 	name   string
 	is_pub bool
 	typ    table.Type
+	pos    token.Position
 }
 
 // TODO: handle this differently
@@ -720,30 +721,22 @@ pub:
 [inline]
 pub fn expr_is_blank_ident(expr Expr) bool {
 	match expr {
-		Ident {
-			return it.kind == .blank_ident
-		}
-		else {
-			return false
-		}
+		Ident { return it.kind == .blank_ident }
+		else { return false }
 	}
 }
 
 [inline]
 pub fn expr_is_call(expr Expr) bool {
 	return match expr {
-		CallExpr {
-			true
-		}
-		else {
-			false
-		}
+		CallExpr { true }
+		else { false }
 	}
 }
 
 fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
-	match mut expr {
+	match var expr {
 		ArrayInit {
 			return it.pos
 		}

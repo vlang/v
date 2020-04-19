@@ -259,7 +259,7 @@ fn main() {
 }
 ```
 
-Modules can be imported using keyword `import`. When using types, functions, and consts from other modules, the full path must be specified. In the example above, `name := get_name()` wouldn't work. That means that it's always clear from which module a function is called
+Modules can be imported using keyword `import`. When using types, functions, and consts from other modules, the full path must be specified. In the example above, `name := get_line()` wouldn't work. That means that it's always clear from which module a function is called
 
 ## Arrays
 
