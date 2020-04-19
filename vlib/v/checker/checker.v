@@ -305,12 +305,12 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 			infix_expr.pos)
 	}
 	if infix_expr.op in [.amp, .pipe, .xor] {
-	    if !left.is_int() {
+		if !left.is_int() {
 			c.error('operator ${infix_expr.op.str()} not defined on left type `$left.name`', infix_expr.pos)
 		}
-	    else if !right.is_int() {
+		else if !right.is_int() {
 			c.error('operator ${infix_expr.op.str()} not defined on right type `$right.name`', infix_expr.pos)
-	    }
+		}
 	}
 	if left_type == table.bool_type && !(infix_expr.op in [.eq, .ne, .logical_or, .and]) {
 		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
