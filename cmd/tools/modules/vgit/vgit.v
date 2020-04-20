@@ -133,7 +133,16 @@ pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 	// which should be a valid working V executable.
 }
 
-pub fn add_common_tool_options<T>(context mut T, fp mut flag.FlagParser) []string {
+pub struct VGitOptions {
+mut:
+	workdir       string // the working folder (typically /tmp), where the tool will write
+	v_repo_url    string // the url of the V repository. It can be a local folder path, if you want to eliminate network operations...
+	vc_repo_url   string // the url of the vc repository. It can be a local folder path, if you want to eliminate network operations...
+	show_help     bool // whether to show the usage screen
+	verbose       bool // should the tool be much more verbose
+}
+
+pub fn add_common_tool_options(context mut VGitOptions, fp mut flag.FlagParser) []string {
 	tdir := os.temp_dir()
 	context.workdir = os.real_path(fp.string('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
 	context.v_repo_url = fp.string('vrepo', 0, vgit.remote_v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
