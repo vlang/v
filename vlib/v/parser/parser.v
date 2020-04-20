@@ -192,11 +192,13 @@ pub fn (var p Parser) open_scope() {
 }
 
 pub fn (var p Parser) close_scope() {
-	for v in p.scope.unused_vars() {
-		if p.pref.is_prod {
-			p.error_with_pos('Unused variable: $v.name', v.pos)
-		} else {
-			p.warn_with_pos('Unused variable: $v.name', v.pos)
+	if !p.pref.is_test {
+		for v in p.scope.unused_vars() {
+			if p.pref.is_prod {
+				p.error_with_pos('Unused variable: $v.name', v.pos)
+			} else {
+				p.warn_with_pos('Unused variable: $v.name', v.pos)
+			}
 		}
 	}
 	p.scope.clear_unused_vars()
