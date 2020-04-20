@@ -18,9 +18,11 @@ const (
 	'default'
 	'do'
 	'double'
-	'extern', 'float', 'inline', 'int', 'long', 'register', 'restrict', 'short', 'signed'
-	'sizeof'
-	'static', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
+	'extern'
+	'float'
+	'inline', 'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static'
+	'switch'
+	'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
 )
 
 fn foo(t token.Token) {
@@ -2930,3 +2932,4 @@ fn (g Gen) type_to_fmt(typ table.Type) string {
 	}
 	return '%d'
 }
+

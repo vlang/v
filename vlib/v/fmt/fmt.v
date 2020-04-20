@@ -54,7 +54,7 @@ pub fn fmt(file ast.File, table &table.Table) string {
 	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
 	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
-	return res[..f.import_pos] + f.out_imports.str() + res[f.import_pos..]
+	return res[..f.import_pos] + f.out_imports.str() + res[f.import_pos..] + '\n'
 }
 
 /*
@@ -933,3 +933,4 @@ fn (var f Fmt) mark_module_as_used(name string) {
 	f.used_imports << mod
 	// println('marking module $mod as used')
 }
+

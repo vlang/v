@@ -82,7 +82,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	// comments_mode: comments_mode
 	p.read_first_token()
 	for p.tok.kind == .comment {
-		var stmt := ast.Stmt{}		// TODO sum type << bug
+		var stmt := ast.Stmt{} // TODO sum type << bug
 		com := p.comment()
 		stmt = com
 		stmts << stmt
@@ -419,9 +419,7 @@ pub fn (var p Parser) stmt() ast.Stmt {
 			expr := p.expr(0)
 			// mut call_expr := &ast.CallExpr(0) // TODO
 			match expr {
-				ast.CallExpr {
-					// call_expr = it
-				}
+				ast.CallExpr { // call_expr = it }
 				else {}
 			}
 			return ast.GoStmt{
@@ -602,7 +600,8 @@ pub fn (var p Parser) name_expr() ast.Expr {
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
 		if (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) && !(name in ['C.stat',
-			'C.sigaction']) {
+			'C.sigaction'
+		]) {
 			// TODO handle C.stat()
 			var to_typ := p.parse_type()
 			if p.is_amp {
@@ -617,7 +616,7 @@ pub fn (var p Parser) name_expr() ast.Expr {
 			// TODO, string(b, len)
 			if p.tok.kind == .comma && table.type_idx(to_typ) == table.string_type_idx {
 				p.check(.comma)
-				arg = p.expr(0)				// len
+				arg = p.expr(0) // len
 				has_arg = true
 			}
 			p.check(.rpar)
@@ -632,12 +631,12 @@ pub fn (var p Parser) name_expr() ast.Expr {
 		} else {
 			// fn call
 			// println('calling $p.tok.lit')
-			x := p.call_expr(is_c, is_js, mod)			// TODO `node,typ :=` should work
+			x := p.call_expr(is_c, is_js, mod) // TODO `node,typ :=` should work
 			node = x
 		}
 	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for {
-		return p.struct_init(false)		// short_syntax: false
+		return p.struct_init(false) // short_syntax: false
 	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
 		// `Color.green`
 		var enum_name := p.check_name()
@@ -668,7 +667,7 @@ pub fn (var p Parser) name_expr() ast.Expr {
 
 fn (var p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	// left == `a` in `a[0]`
-	p.next()	// [
+	p.next() // [
 	var has_low := true
 	if p.tok.kind == .dotdot {
 		has_low = false
@@ -686,7 +685,7 @@ fn (var p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			}
 		}
 	}
-	expr := p.expr(0)	// `[expr]` or  `[expr..]`
+	expr := p.expr(0) // `[expr]` or  `[expr..]`
 	var has_high := false
 	if p.tok.kind == .dotdot {
 		// [start..end] or [start..]
@@ -955,7 +954,7 @@ fn (var p Parser) const_decl() ast.ConstDecl {
 	if p.tok.kind != .lpar {
 		p.error('consts must be grouped, e.g.\nconst (\n\ta = 1\n)')
 	}
-	p.next()	// (
+	p.next() // (
 	var fields := []ast.ConstField
 	for p.tok.kind != .rpar {
 		if p.tok.kind == .comment {
@@ -1116,7 +1115,7 @@ fn (var p Parser) type_decl() ast.TypeDecl {
 	name := p.check_name()
 	var sum_variants := []table.Type
 	if p.tok.kind == .assign {
-		p.next()		// TODO require `=`
+		p.next() // TODO require `=`
 	}
 	if p.tok.kind == .key_fn {
 		// function type: `type mycallback fn(string, int)`
@@ -1129,7 +1128,7 @@ fn (var p Parser) type_decl() ast.TypeDecl {
 			pos: decl_pos
 		}
 	}
-	first_type := p.parse_type()	// need to parse the first type before we can check if it's `type A = X | Y`
+	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
 	if p.tok.kind == .pipe {
 		p.check(.pipe)
 		sum_variants << first_type
@@ -1216,3 +1215,4 @@ fn (p &Parser) new_true_expr() ast.Expr {
 fn verror(s string) {
 	util.verror('parser error', s)
 }
+
