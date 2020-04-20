@@ -3,38 +3,33 @@
 // that can be found in the LICENSE file.
 module main
 
-import (
-	//internal.compile
-	internal.help
-	os
-	os.cmdline
-	v.table
-	v.doc
-	v.pref
-	v.util
-	v.builder
-)
+import internal.help
+import os
+import os.cmdline
+import v.table
+import v.doc
+import v.pref
+import v.util
+import v.builder
 
 const (
-	simple_cmd = ['fmt',
-	'up', 'self',
-	'test', 'test-fmt', 'test-compiler', 'test-fixed',
-	'bin2v',
-	'repl',
-	'build-tools', 'build-examples', 'build-vbinaries',
-	'setup-freetype']
-
-	list_of_flags_that_allow_duplicates = ['cc','d','define','cf','cflags']
-	//list_of_flags contains a list of flags where an argument is expected past it.
-	list_of_flags_with_param = [
-		'o', 'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'arch',
-			'csource', 'cf', 'cflags', 'path'
+	simple_cmd                          = ['fmt', 'up'
+	'self', 'test'
+	'test-fmt', 'test-compiler', 'test-fixed', 'bin2v'
+	'repl'
+	'build-tools'
+	'build-examples', 'build-vbinaries', 'setup-freetype'
 	]
+	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
+	list_of_flags_with_param            = [
+		'o'
+		'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'arch', 'csource'
+		'cf', 'cflags', 'path']
 )
 
 fn main() {
 	args := os.args[1..]
-	//args = 123
+	// args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		// Running `./v` without args launches repl
 		if args.len == 0 {
@@ -43,7 +38,8 @@ fn main() {
 		util.launch_tool(false, 'vrepl')
 		return
 	}
-	if args.len > 0 && (args[0] in ['version', '-V', '-version', '--version'] || (args[0] == '-v' && args.len == 1) ) {
+	if args.len > 0 && (args[0] in ['version', '-V', '-version', '--version'] || (args[0] ==
+		'-v' && args.len == 1)) {
 		// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
 		println(util.full_v_version())
 		return
@@ -55,10 +51,10 @@ fn main() {
 		println(util.full_v_version())
 	}
 	if prefs.is_verbose {
-		//println('args= ')
-		//println(args) // QTODO
-		//println('prefs= ')
-		//println(prefs) // QTODO
+		// println('args= ')
+		// println(args) // QTODO
+		// println('prefs= ')
+		// println(prefs) // QTODO
 	}
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
@@ -103,8 +99,8 @@ fn main() {
 		else {}
 	}
 	if command in ['run', 'build-module'] || command.ends_with('.v') || os.exists(command) {
-		//println('command')
-		//println(prefs.path)
+		// println('command')
+		// println(prefs.path)
 		builder.compile(command, prefs)
 		return
 	}
@@ -113,35 +109,68 @@ fn main() {
 }
 
 fn parse_args(args []string) (&pref.Preferences, string) {
-	mut res := &pref.Preferences{}
-	mut command := ''
-	mut command_pos := 0
-	//for i, arg in args {
-	for i := 0 ; i < args.len; i ++ {
+	var res := &pref.Preferences{}
+	var command := ''
+	var command_pos := 0
+	// for i, arg in args {
+	for i := 0; i < args.len; i++ {
 		arg := args[i]
 		match arg {
-			'-v' {	res.is_verbose = true	}
-			'-cg' {	res.is_debug = true	}
-			'-live' { res.is_live = true }
-			'-sharedlive' {	res.is_live = true res.is_shared = true }
-			'-shared' { res.is_shared = true }
-			'-autofree' {	res.autofree = true	}
-			'-compress' {	res.compress = true	}
-			'-freestanding' {	res.is_bare = true	}
-			'-prod' {	res.is_prod = true	}
-			'-stats' {	res.is_stats = true	}
-			'-obfuscate' {	res.obfuscate = true	}
-			'-translated' {	res.translated = true	}
-			'-showcc' {	res.show_cc = true	}
-			'-cache' {	res.is_cache = true	}
-			'-keepc' {	res.is_keep_c = true	}
-			//'-x64' {	res.translated = true	}
+			'-v' {
+				res.is_verbose = true
+			}
+			'-cg' {
+				res.is_debug = true
+			}
+			'-live' {
+				res.is_live = true
+			}
+			'-sharedlive' {
+				res.is_live = true
+				res.is_shared = true
+			}
+			'-shared' {
+				res.is_shared = true
+			}
+			'-autofree' {
+				res.autofree = true
+			}
+			'-compress' {
+				res.compress = true
+			}
+			'-freestanding' {
+				res.is_bare = true
+			}
+			'-prod' {
+				res.is_prod = true
+			}
+			'-stats' {
+				res.is_stats = true
+			}
+			'-obfuscate' {
+				res.obfuscate = true
+			}
+			'-translated' {
+				res.translated = true
+			}
+			'-showcc' {
+				res.show_cc = true
+			}
+			'-cache' {
+				res.is_cache = true
+			}
+			'-keepc' {
+				res.is_keep_c = true
+			}
+			'-x64' {
+				res.backend = .x64
+			}
 			'-os' {
-				//TODO Remove `tmp` variable when it doesn't error out in C.
+				// TODO Remove `tmp` variable when it doesn't error out in C.
 				target_os := cmdline.option(args, '-os', '')
 				tmp := pref.os_from_string(target_os) or {
-				        println('unknown operating system target `$target_os`')
-				        exit(1)
+					println('unknown operating system target `$target_os`')
+					exit(1)
 				}
 				res.os = tmp
 				i++
@@ -155,7 +184,7 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				i++
 			}
 			'-o' {
-				res.out_name  = cmdline.option(args, '-o', '')
+				res.out_name = cmdline.option(args, '-o', '')
 				i++
 			}
 			'-b' {
@@ -166,7 +195,7 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				i++
 			}
 			else {
-				mut should_continue := false
+				var should_continue := false
 				for flag_with_param in list_of_flags_with_param {
 					if '-$flag_with_param' == arg {
 						should_continue = true
@@ -186,15 +215,14 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 	}
 	if command.ends_with('.v') || os.exists(command) {
 		res.path = command
-	}
-	else if command == 'run' {
+	} else if command == 'run' {
 		res.is_run = true
 		if command_pos > args.len {
 			eprintln('v run: no v files listed')
 			exit(1)
 		}
 		res.path = args[command_pos + 1]
-		res.run_args = args[command_pos+2..]
+		res.run_args = args[command_pos + 2..]
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
@@ -209,12 +237,8 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 
 fn invoke_help_and_exit(remaining []string) {
 	match remaining.len {
-		0, 1 {
-			help.print_and_exit('default')
-		}
-		2 {
-			help.print_and_exit(remaining[1])
-		}
+		0, 1 { help.print_and_exit('default') }
+		2 { help.print_and_exit(remaining[1]) }
 		else {}
 	}
 	println('V Error: Expected only one help topic to be provided.')
@@ -227,21 +251,24 @@ fn create_symlink() {
 		return
 	}
 	vexe := pref.vexe_path()
-	mut link_path := '/usr/local/bin/v'
-	mut ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
+	var link_path := '/usr/local/bin/v'
+	var ret := os.exec('ln -sf $vexe $link_path') or {
+		panic(err)
+	}
 	if ret.exit_code == 0 {
 		println('Symlink "$link_path" has been created')
-	}
-	else if os.system('uname -o | grep -q \'[A/a]ndroid\'') == 0 {
+	} else if os.system("uname -o | grep -q \'[A/a]ndroid\'") == 0 {
 		println('Failed to create symlink "$link_path". Trying again with Termux path for Android.')
 		link_path = '/data/data/com.termux/files/usr/bin/v'
-		ret = os.exec('ln -sf $vexe $link_path') or { panic(err) }
+		ret = os.exec('ln -sf $vexe $link_path') or {
+			panic(err)
+		}
 		if ret.exit_code == 0 {
 			println('Symlink "$link_path" has been created')
 		} else {
 			println('Failed to create symlink "$link_path". Try again with sudo.')
 		}
 	} else {
-			println('Failed to create symlink "$link_path". Try again with sudo.')
+		println('Failed to create symlink "$link_path". Try again with sudo.')
 	}
 }

@@ -551,7 +551,7 @@ pub fn (c mut Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 		}
 	}
 	if !found {
-		c.error('unknown fn: $fn_name', call_expr.pos)
+		c.error('unknown function: $fn_name', call_expr.pos)
 		return table.void_type
 	}
 	call_expr.return_type = f.return_type

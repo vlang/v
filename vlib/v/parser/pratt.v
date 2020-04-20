@@ -67,7 +67,7 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 			node = ast.None{}
 		}
 		.key_sizeof {
-			p.next()			// sizeof
+			p.next() // sizeof
 			p.check(.lpar)
 			if p.tok.lit == 'C' {
 				p.next()
@@ -102,7 +102,7 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 				if p.peek_tok.kind == .pipe {
 					node = p.assoc()
 				} else if p.peek_tok.kind == .colon || p.tok.kind == .rcbr {
-					node = p.struct_init(true)					// short_syntax: true
+					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()
 					lit := if p.tok.lit != '' { p.tok.lit } else { p.tok.kind.str() }
@@ -112,6 +112,11 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 				}
 			}
 			p.check(.rcbr)
+		}
+		.key_fn {
+			// Anonymous function
+			node = p.anon_fn()
+			return node
 		}
 		else {
 			if p.tok.kind == .comment {

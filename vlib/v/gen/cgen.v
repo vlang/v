@@ -17,10 +17,10 @@ const (
 		'char'
 	'default'
 	'do'
-	'double', 'extern', 'float', 'inline', 'int', 'long', 'register', 'restrict', 'short',
-		'signed'
-	'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while'
-	]
+	'double'
+	'extern', 'float', 'inline', 'int', 'long', 'register', 'restrict', 'short', 'signed'
+	'sizeof'
+	'static', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
 )
 
 fn foo(t token.Token) {
@@ -1853,6 +1853,22 @@ fn (var g Gen) const_decl(node ast.ConstDecl) {
 		g.expr(field.expr)
 		val := g.out.after(pos)
 		g.out.go_back(val.len)
+		/*
+		if field.typ == table.byte_type {
+			g.const_decl_simple_define(name, val)
+			return
+		}
+*/
+		/*
+		if table.is_number(field.typ) {
+			g.const_decl_simple_define(name, val)
+		} else if field.typ == table.string_type {
+			g.definitions.writeln('string _const_$name; // a string literal, inited later')
+			if g.pref.build_mode != .build_module {
+				g.stringliterals.writeln('\t_const_$name = $val;')
+			}
+		} else {
+*/
 		match field.expr {
 			ast.CharLiteral {
 				g.const_decl_simple_define(name, val)
