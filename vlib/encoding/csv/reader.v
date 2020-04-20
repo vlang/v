@@ -115,6 +115,7 @@ fn (r mut Reader) read_record() ?[]string {
 			// QTODO i = ...
 			j := line.index(r.delimiter.str()) or {
 				// last
+				fields << line[..line.len]
 				break
 			}
 			i = j
