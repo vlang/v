@@ -75,3 +75,15 @@ fn test_string_interpolation_string_prefix() {
 	jsjs := '$js$js'
 	assert jsjs == 'jsjs'
 }
+
+fn test_inttypes_string_interpolation() {
+	s := i16(-23456)
+	us := u16(54321)
+	i := -1622999040
+	ui := u32(3421958087)
+	l := i64(-7694555558525237396)
+	ul := u64(17234006112912956370)
+	assert '$s $us' == '-23456 54321'
+	assert '$ui $i' == '3421958087 -1622999040'
+	assert '$l $ul' == '-7694555558525237396 17234006112912956370'
+}
