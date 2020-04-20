@@ -875,6 +875,7 @@ fn (var p Parser) parse_number_literal() ast.Expr {
 	if lit.index_any('.eE') >= 0 && lit[..2] !in ['0x', '0X', '0o', '0O', '0b', '0B'] {
 		node = ast.FloatLiteral{
 			val: lit
+			pos: pos
 		}
 	} else {
 		node = ast.IntegerLiteral{
@@ -1210,10 +1211,10 @@ fn (var p Parser) assoc() ast.Assoc {
 fn (p &Parser) new_true_expr() ast.Expr {
 	return ast.BoolLiteral{
 		val: true
+		pos: p.tok.position()
 	}
 }
 
 fn verror(s string) {
 	util.verror('parser error', s)
 }
-
