@@ -48,6 +48,7 @@ pub:
 pub struct FloatLiteral {
 pub:
 	val string
+	pos token.Position
 }
 
 pub struct StringLiteral {
@@ -73,11 +74,13 @@ mut:
 pub struct CharLiteral {
 pub:
 	val string
+	pos token.Position
 }
 
 pub struct BoolLiteral {
 pub:
 	val bool
+	pos token.Position
 }
 
 // `foo.bar`
@@ -751,15 +754,21 @@ fn (expr Expr) position() token.Position {
 		Assoc {
 			return it.pos
 		}
-		// ast.BoolLiteral { }
+		BoolLiteral {
+			return it.pos
+		}
 		CallExpr {
 			return it.pos
 		}
-		// ast.CharLiteral { }
+		CharLiteral {
+			return it.pos
+		}
 		EnumVal {
 			return it.pos
 		}
-		// ast.FloatLiteral { }
+		FloatLiteral {
+			return it.pos
+		}
 		IfExpr {
 			return it.pos
 		}

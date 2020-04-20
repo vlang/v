@@ -270,11 +270,6 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
 	if infix_expr.op == .left_shift {
-		if left.kind != .array && !left.is_int() {
-			// c.error('<< can only be used with numbers and arrays', infix_expr.pos)
-			c.error('cannot shift type $right.name into $left.name', infix_expr.right.position())
-			return table.void_type
-		}
 		if left.kind == .array {
 			// `array << elm`
 			// the expressions have different types (array_x and x)
@@ -287,6 +282,12 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 				return table.void_type
 			}
 			c.error('cannot shift type $right.name into $left.name', infix_expr.right.position())
+			return table.void_type
+		} else if !left.is_int() {
+			c.error('cannot shift type $right.name into non-integer type $left.name', infix_expr.left.position())
+			return table.void_type
+		} else if !right.is_int() {
+			c.error('cannot shift non-integer type $right.name into type $left.name', infix_expr.right.position())
 			return table.void_type
 		}
 	}
@@ -302,20 +303,12 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		}
 		return table.bool_type
 	}
-	if !c.table.check(right_type, left_type) {
-		// for type-unresolved consts
-		if left_type == table.void_type || right_type == table.void_type {
-			return table.void_type
-		}
-		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`',
-			infix_expr.pos)
-	}
-	if infix_expr.op in [.amp, .pipe, .xor] {
+	if infix_expr.op in [.amp, .pipe, .xor, .mod] {
 		if !left.is_int() {
-			c.error('operator ${infix_expr.op.str()} not defined on left type `$left.name`', infix_expr.pos)
+			c.error('left type of `${infix_expr.op.str()}` cannot be non-integer type $left.name', infix_expr.left.position())
 		}
 		else if !right.is_int() {
-			c.error('operator ${infix_expr.op.str()} not defined on right type `$right.name`', infix_expr.pos)
+			c.error('right type of `${infix_expr.op.str()}` cannot be non-integer type $right.name', infix_expr.right.position())
 		}
 	}
 	if left_type == table.bool_type && !(infix_expr.op in [.eq, .ne, .logical_or, .and]) {
@@ -326,6 +319,13 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		// TODO broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `&&`',
 			infix_expr.pos)
+	}
+	if !c.table.check(right_type, left_type) {
+		// for type-unresolved consts
+		if left_type == table.void_type || right_type == table.void_type {
+			return table.void_type
+		}
+		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`', infix_expr.pos)
 	}
 	if infix_expr.op.is_relational() {
 		return table.bool_type

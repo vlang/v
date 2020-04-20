@@ -29,6 +29,7 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 		.chartoken {
 			node = ast.CharLiteral{
 				val: p.tok.lit
+				pos: p.tok.position()
 			}
 			p.next()
 		}
@@ -39,6 +40,7 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 		.key_true, .key_false {
 			node = ast.BoolLiteral{
 				val: p.tok.kind == .key_true
+				pos: p.tok.position()
 			}
 			p.next()
 		}
