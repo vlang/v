@@ -82,6 +82,8 @@ $if msvc {
 	defer { C.SymCleanup(handle) }
 
 	options := C.SymSetOptions(SYMOPT_DEBUG | SYMOPT_LOAD_LINES | SYMOPT_UNDNAME)
+	_ = options
+
 	syminitok := C.SymInitialize( handle, 0, 1)
 	if syminitok != 1 {
 		println('Failed getting process: Aborting backtrace.\n')
