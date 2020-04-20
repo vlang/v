@@ -119,10 +119,10 @@ pub fn (s mut Scope) register_unused_variable(name string, pos token.Position) {
 }
 
 pub fn (s mut Scope) remove_unused_variable(name string) {
-	mut cur := s
+	mut sc := s
 	for !isnil(cur) {
-		cur.unused_vars.delete(name)
-		cur = cur.parent
+		sc.unused_vars.delete(name)
+		sc = sc.parent
 	}
 }
 
