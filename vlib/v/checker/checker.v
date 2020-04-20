@@ -366,6 +366,8 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	}
 	// Single side check
 	match assign_expr.op {
+		// No need to do single side check for =. Put it first for speed.  
+		.assign { }
 		.plus_assign {
 			if !left.is_number() && left_type != table.string_type && !left.is_pointer() {
 				c.error('operator += not defined on left operand type `$left.name`', assign_expr.left.position())
