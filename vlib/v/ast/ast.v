@@ -751,6 +751,7 @@ fn (expr Expr) position() token.Position {
 		CharLiteral { return it.pos }
 		EnumVal { return it.pos }
 		FloatLiteral { return it.pos }
+		Ident { return it.pos }
 		IfExpr { return it.pos }
 		// ast.IfGuardExpr { }
 		IndexExpr { return it.pos }
