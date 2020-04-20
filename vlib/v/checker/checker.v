@@ -303,12 +303,19 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		}
 		return table.bool_type
 	}
-	if infix_expr.op in [.amp, .pipe, .xor, .mod] {
+	if infix_expr.op in [.amp, .pipe, .xor] {
 		if !left.is_int() {
 			c.error('left type of `${infix_expr.op.str()}` cannot be non-integer type $left.name', infix_expr.left.position())
 		}
 		else if !right.is_int() {
 			c.error('right type of `${infix_expr.op.str()}` cannot be non-integer type $right.name', infix_expr.right.position())
+		}
+	}
+	if infix_expr.op == .mod {
+		if left.is_int() && !right.is_int() {
+			c.error('right type of `${infix_expr.op.str()}` cannot be non-integer type $right.name', infix_expr.right.position())
+		} else if !left.is_int() && right.is_int() {
+			c.error('left type of `${infix_expr.op.str()}` cannot be non-integer type $left.name', infix_expr.left.position())
 		}
 	}
 	if left_type == table.bool_type && !(infix_expr.op in [.eq, .ne, .logical_or, .and]) {
