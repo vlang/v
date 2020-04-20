@@ -128,10 +128,8 @@ pub fn (s mut Scope) remove_unused_variable(name string) {
 
 pub fn (s mut Scope) unused_variables() []UnusedVar {
 	ret := []UnusedVar
-	for k, v in s.unused_vars {
-		if k != '_' {
-			ret << v
-		}
+	for _, v in s.unused_vars {
+		ret << v
 	}
 	return ret
 }
