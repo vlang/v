@@ -1,4 +1,0 @@
-fn main() {
-	mut a := 'hello'
-	a -= 'world'
-}
