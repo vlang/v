@@ -114,11 +114,11 @@ pub fn (s mut Scope) register(name string, obj ScopeObject) {
 	s.objects[name] = obj
 }
 
-pub fn (s mut Scope) register_unused_variable(name string, pos token.Position) {
+pub fn (s mut Scope) register_unused_var(name string, pos token.Position) {
 	s.unused_vars[name] = UnusedVar{name, pos}
 }
 
-pub fn (s mut Scope) remove_unused_variable(name string) {
+pub fn (s mut Scope) remove_unused_var(name string) {
 	mut sc := s
 	for !isnil(sc) {
 		sc.unused_vars.delete(name)
@@ -126,7 +126,7 @@ pub fn (s mut Scope) remove_unused_variable(name string) {
 	}
 }
 
-pub fn (s mut Scope) unused_variables() []UnusedVar {
+pub fn (s mut Scope) unused_vars() []UnusedVar {
 	ret := []UnusedVar
 	for _, v in s.unused_vars {
 		ret << v
@@ -134,7 +134,7 @@ pub fn (s mut Scope) unused_variables() []UnusedVar {
 	return ret
 }
 
-pub fn (s mut Scope) clear_unused_variables() {
+pub fn (s mut Scope) clear_unused_vars() {
 	s.unused_vars = map[string]UnusedVar
 }
 

@@ -16,7 +16,7 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 	// Prefix
 	match p.tok.kind {
 		.name {
-			p.scope.remove_unused_variable(p.tok.lit)
+			p.scope.remove_unused_var(p.tok.lit)
 			node = p.name_expr()
 			p.is_stmt_ident = is_stmt_ident
 		}

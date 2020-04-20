@@ -192,14 +192,14 @@ pub fn (var p Parser) open_scope() {
 }
 
 pub fn (var p Parser) close_scope() {
-	for v in p.scope.unused_variables() {
+	for v in p.scope.unused_vars() {
 		if p.pref.is_prod {
 			p.error_with_pos('Unused variable: $v.name', v.pos)
 		} else {
 			p.warn_with_pos('Unused variable: $v.name', v.pos)
 		}
 	}
-	p.scope.clear_unused_variables()
+	p.scope.clear_unused_vars()
 	p.scope.end_pos = p.tok.pos
 	p.scope.parent.children << p.scope
 	p.scope = p.scope.parent
@@ -385,7 +385,7 @@ pub fn (var p Parser) stmt() ast.Stmt {
 		}
 		.key_mut, .key_static, .key_var {
 			if p.peek_tok.kind == .name && p.peek_tok.lit != '_' {
-				p.scope.register_unused_variable(p.peek_tok.lit, p.peek_tok.position())
+				p.scope.register_unused_var(p.peek_tok.lit, p.peek_tok.position())
 			}
 			return p.assign_stmt()
 		}
@@ -456,7 +456,7 @@ pub fn (var p Parser) stmt() ast.Stmt {
 				pos := p.tok.position()
 				ret := p.assign_stmt()
 				if register_unused && lit != '_' {
-					p.scope.register_unused_variable(lit, pos)
+					p.scope.register_unused_var(lit, pos)
 				}
 				return ret
 			} else if p.tok.kind == .name && p.peek_tok.kind == .colon {
@@ -467,7 +467,7 @@ pub fn (var p Parser) stmt() ast.Stmt {
 					name: name
 				}
 			} else if p.tok.kind == .name {
-				p.scope.remove_unused_variable(p.tok.lit)
+				p.scope.remove_unused_var(p.tok.lit)
 			}
 			epos := p.tok.position()
 			expr := p.expr(0)
@@ -1017,7 +1017,7 @@ fn (var p Parser) return_stmt() ast.Return {
 	}
 	for {
 		if p.tok.kind == .name {
-			p.scope.remove_unused_variable(p.tok.lit)
+			p.scope.remove_unused_var(p.tok.lit)
 		}
 		expr := p.expr(0)
 		exprs << expr
