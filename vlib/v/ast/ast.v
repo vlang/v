@@ -740,42 +740,20 @@ pub fn expr_is_call(expr Expr) bool {
 fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
 	match var expr {
-		ArrayInit {
-			return it.pos
-		}
-		AsCast {
-			return it.pos
-		}
+		ArrayInit { return it.pos }
+		AsCast { return it.pos }
 		// ast.Ident { }
-		AssignExpr {
-			return it.pos
-		}
+		AssignExpr { return it.pos }
 		// ast.CastExpr { }
-		Assoc {
-			return it.pos
-		}
-		BoolLiteral {
-			return it.pos
-		}
-		CallExpr {
-			return it.pos
-		}
-		CharLiteral {
-			return it.pos
-		}
-		EnumVal {
-			return it.pos
-		}
-		FloatLiteral {
-			return it.pos
-		}
-		IfExpr {
-			return it.pos
-		}
+		Assoc { return it.pos }
+		BoolLiteral { return it.pos }
+		CallExpr { return it.pos }
+		CharLiteral { return it.pos }
+		EnumVal { return it.pos }
+		FloatLiteral { return it.pos }
+		IfExpr { return it.pos }
 		// ast.IfGuardExpr { }
-		IndexExpr {
-			return it.pos
-		}
+		IndexExpr { return it.pos }
 		InfixExpr {
 			left_pos := it.left.position()
 			right_pos := it.right.position()
@@ -788,40 +766,20 @@ fn (expr Expr) position() token.Position {
 				len: right_pos.pos - left_pos.pos + right_pos.len
 			}
 		}
-		IntegerLiteral {
-			return it.pos
-		}
-		MapInit {
-			return it.pos
-		}
-		MatchExpr {
-			return it.pos
-		}
-		PostfixExpr {
-			return it.pos
-		}
+		IntegerLiteral { return it.pos }
+		MapInit { return it.pos }
+		MatchExpr { return it.pos }
+		PostfixExpr { return it.pos }
 		// ast.None { }
-		PrefixExpr {
-			return it.pos
-		}
+		PrefixExpr { return it.pos }
 		// ast.ParExpr { }
-		SelectorExpr {
-			return it.pos
-		}
+		SelectorExpr { return it.pos }
 		// ast.SizeOf { }
-		StringLiteral {
-			return it.pos
-		}
-		StringInterLiteral {
-			return it.pos
-		}
+		StringLiteral { return it.pos }
+		StringInterLiteral { return it.pos }
 		// ast.Type { }
-		StructInit {
-			return it.pos
-		}
+		StructInit { return it.pos }
 		// ast.TypeOf { }
-		else {
-			return token.Position{}
-		}
+		else { return token.Position{} }
 	}
 }
