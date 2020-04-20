@@ -386,7 +386,7 @@ pub fn (var p Parser) stmt() ast.Stmt {
 			}
 		}
 		.key_mut, .key_static, .key_var {
-			if p.peek_tok.kind == .name && p.peek_tok.lit != '_' {
+			if p.peek_tok.kind == .name && p.peek_tok.lit != '_' && !p.peek_tok.lit.starts_with('__') {
 				p.scope.register_unused_var(p.peek_tok.lit, p.peek_tok.position())
 			}
 			return p.assign_stmt()
@@ -457,7 +457,7 @@ pub fn (var p Parser) stmt() ast.Stmt {
 				lit := p.tok.lit
 				pos := p.tok.position()
 				ret := p.assign_stmt()
-				if register_unused && lit != '_' {
+				if register_unused && lit != '_' && !lit.starts_with('__') {
 					p.scope.register_unused_var(lit, pos)
 				}
 				return ret
