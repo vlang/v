@@ -20,9 +20,10 @@ const (
 	'double'
 	'extern'
 	'float'
-	'inline', 'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static'
-	'switch'
-	'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
+	'inline'
+	'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch'
+	'typedef'
+	'union', 'unsigned', 'void', 'volatile', 'while']
 )
 
 fn foo(t token.Token) {
@@ -1331,14 +1332,6 @@ fn (var g Gen) infix_expr(node ast.InfixExpr) {
 			g.write('), $tmp, $styp)')
 		} else {
 			// push a single element
-			/*
-			elem_type_str := g.typ(info.elem_type)
-			g.write('_PUSH(&')
-			g.expr(node.left)
-			g.write(', (')
-			g.expr_with_cast(node.right, node.right_type, info.elem_type)
-			g.write('), $tmp, $elem_type_str)')
-*/
 			elem_type_str := g.typ(info.elem_type)
 			g.write('array_push(&')
 			g.expr(node.left)
