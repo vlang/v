@@ -49,9 +49,12 @@ fn test_x64() {
 			panic(err)
 		}
 		expected = expected.trim_space().trim('\n').replace('\r\n', '\n')
-		mut found := res.output.trim_space().trim('\n').replace('\r\n', '\n')
-		found = found[..found.len-1] // remove ACK char TODO fix this
-
+		var found := res.output.trim_space().trim('\n').replace('\r\n', '\n')
+		// remove ACK char TODO fix this in x64
+		buf := [byte(0x06)]
+		ack := string(buf)
+		found = found.replace(ack, '')
+		found = found.trim_space()
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
@@ -72,4 +75,3 @@ fn test_x64() {
 		exit(1)
 	}
 }
-

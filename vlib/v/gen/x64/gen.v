@@ -27,6 +27,7 @@ enum Register {
 	rax
 	rdi
 	rsi
+	rbp
 	edx
 	rdx
 	r12
@@ -212,6 +213,13 @@ fn (var g Gen) syscall() {
 
 pub fn (var g Gen) ret() {
 	g.write8(0xc3)
+}
+
+pub fn (var g Gen) push(reg Register) {
+	match reg {
+		.rbp { g.write8(0x55) }
+		else {}
+	}
 }
 
 // returns label's relative address
