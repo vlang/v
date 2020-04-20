@@ -386,11 +386,10 @@ pub fn (var p Parser) stmt() ast.Stmt {
 			}
 		}
 		.key_mut, .key_static, .key_var {
-			ret := p.assign_stmt()
 			if p.peek_tok.kind == .name && p.peek_tok.lit != '_' {
 				p.scope.register_unused_variable(p.peek_tok.lit, p.peek_tok.position())
 			}
-			return ret
+			return p.assign_stmt()
 		}
 		.key_for {
 			return p.for_stmt()
