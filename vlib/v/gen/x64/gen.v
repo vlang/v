@@ -27,6 +27,7 @@ enum Register {
 	rax
 	rdi
 	rsi
+	rbp
 	edx
 	rdx
 	r12
@@ -194,11 +195,14 @@ fn (var g Gen) mov64(reg Register, val i64) {
 }
 
 fn (var g Gen) call(addr int) {
-	// rel := g.abs_to_rel_addr(addr)
-	// rel := 0xffffffff - int(abs(addr - g.buf.len))-1
-	println('call addr=$addr rel_addr=$addr pos=$g.buf.len')
+	// Need to calculate the difference between current position (position after the e8 call)
+	// and the function to call.
+	// +5 is to get the posistion "e8 xx xx xx xx"
+	// Not sure about the -1.
+	rel := 0xffffffff - (g.buf.len + 5 - addr - 1)
+	println('call addr=$addr.hex() rel_addr=$rel.hex() pos=$g.buf.len')
 	g.write8(0xe8)
-	g.write32(addr)
+	g.write32(rel)
 }
 
 fn (var g Gen) syscall() {
@@ -209,6 +213,13 @@ fn (var g Gen) syscall() {
 
 pub fn (var g Gen) ret() {
 	g.write8(0xc3)
+}
+
+pub fn (var g Gen) push(reg Register) {
+	match reg {
+		.rbp { g.write8(0x55) }
+		else {}
+	}
 }
 
 // returns label's relative address
@@ -300,10 +311,14 @@ pub fn (g &Gen) writeln(s string) {
 }
 
 pub fn (var g Gen) call_fn(name string) {
+	println('call fn $name')
 	if !name.contains('__') {
-		return
+		// return
 	}
 	addr := g.fn_addr[name]
+	if addr == 0 {
+		verror('fn addr of `$name` = 0')
+	}
 	g.call(int(addr))
 	println('call $name $addr')
 }
@@ -313,8 +328,11 @@ fn (var g Gen) stmt(node ast.Stmt) {
 		ast.ConstDecl {}
 		ast.FnDecl {
 			is_main := it.name == 'main'
+			println('saving addr $it.name $g.buf.len.hex()')
 			if is_main {
 				g.save_main_fn_addr()
+			} else {
+				g.register_function_address(it.name)
 			}
 			for arg in it.args {
 			}
@@ -324,11 +342,14 @@ fn (var g Gen) stmt(node ast.Stmt) {
 			if is_main {
 				println('end of main: gen exit')
 				g.gen_exit()
-				// g.write32(0x88888888)
+				// return
 			}
-			// g.ret()
+			g.ret()
 		}
-		ast.Return {}
+		ast.Return {
+			g.gen_exit()
+			g.ret()
+		}
 		ast.AssignStmt {}
 		ast.ForStmt {}
 		ast.StructDecl {}
@@ -360,17 +381,9 @@ fn (var g Gen) expr(node ast.Expr) {
 			if it.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := it.args[0].expr
 				g.gen_print_from_expr(expr, it.name in ['println', 'eprintln'])
+				return
 			}
-			/*
-			g.write('${it.name}(')
-			for i, expr in it.args {
-				g.expr(expr)
-				if i != it.args.len - 1 {
-					g.write(', ')
-				}
-			}
-			g.write(')')
-*/
+			g.call_fn(it.name)
 		}
 		ast.ArrayInit {}
 		ast.Ident {}

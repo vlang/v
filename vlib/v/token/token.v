@@ -98,7 +98,6 @@ pub enum Kind {
 	key_goto
 	key_if
 	key_import
-	key_import_const
 	key_in
 	key_interface
 	key_is
@@ -234,7 +233,6 @@ fn build_token_str() []string {
 	s[Kind.key_enum] = 'enum'
 	s[Kind.key_interface] = 'interface'
 	s[Kind.key_pub] = 'pub'
-	s[Kind.key_import_const] = 'import_const'
 	s[Kind.key_in] = 'in'
 	s[Kind.key_atomic] = 'atomic'
 	s[Kind.key_orelse] = 'or'
@@ -267,7 +265,7 @@ pub fn is_key(key string) bool {
 }
 
 pub fn is_decl(t Kind) bool {
-	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_import_const, .key_pub, .eof]
+	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_pub, .eof]
 }
 
 pub fn (t Kind) is_assign() bool {
