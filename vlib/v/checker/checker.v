@@ -303,7 +303,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		}
 		return table.bool_type
 	}
-	if infix_expr.op in [.amp, .pipe, .xor] {
+	if infix_expr.op in [.amp, .pipe, .xor, .left_shift, .right_shift] {
 		if !left.is_int() {
 			c.error('left type of `${infix_expr.op.str()}` cannot be non-integer type $left.name', infix_expr.left.position())
 		}
