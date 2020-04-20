@@ -449,7 +449,7 @@ pub fn (var p Parser) stmt() ast.Stmt {
 			// `x := ...`
 			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
 				mut register_unused := false
-				if p.peek_tok.kind in [.decl_assign] {
+				if p.peek_tok.kind == .decl_assign {
 					register_unused = true
 				}
 				lit := p.tok.lit
