@@ -1,4 +1,4 @@
-vlib/v/checker/tests/inout/shift_op_wrong_left_type_err.v:2:2: error: cannot shift type int into non-integer type f64
+vlib/v/checker/tests/inout/shift_op_wrong_left_type_err.v:2:2: error: left type of `<<` cannot be non-integer type f64
     1| fn main() {
     2|     0.5 << 1
            ~~~
