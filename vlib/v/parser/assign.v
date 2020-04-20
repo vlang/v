@@ -53,8 +53,8 @@ fn (var p Parser) assign_stmt() ast.Stmt {
 // TODO: is it possible to merge with AssignStmt?
 pub fn (var p Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	op := p.tok.kind
-	p.next()
 	pos := p.tok.position()
+	p.next()
 	val := p.expr(0)
 	match left {
 		ast.IndexExpr {
