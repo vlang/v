@@ -10,4 +10,5 @@ fn main() {
 			'string'
 		}
 	}
+	_ = res
 }
