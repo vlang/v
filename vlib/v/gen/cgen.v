@@ -80,6 +80,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		x := 10 // line
 		// sep
 		y := 20
+		_ = x
+		_ = y
 	} else {
 	}
 	// println('start cgen2')
@@ -873,7 +875,7 @@ fn (var g Gen) expr(node ast.Expr) {
 		ast.ArrayInit {
 			type_sym := g.table.get_type_symbol(it.typ)
 			if type_sym.kind != .array_fixed {
-				elem_sym := g.table.get_type_symbol(it.elem_type)
+				// elem_sym := g.table.get_type_symbol(it.elem_type)
 				elem_type_str := g.typ(it.elem_type)
 				if it.exprs.len == 0 {
 					// use __new_array to fix conflicts when the name of the variable is new_array
@@ -1772,8 +1774,8 @@ fn (var g Gen) return_statement(node ast.Return) {
 	// multiple returns
 	if node.exprs.len > 1 {
 		g.write(' ')
-		typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
-		mr_info := typ_sym.info as table.MultiReturn
+		// typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
+		// mr_info := typ_sym.info as table.MultiReturn
 		var styp := g.typ(g.fn_decl.return_type)
 		if fn_return_is_optional { // && !table.type_is(node.types[0], .optional) && node.types[0] !=
 			styp = styp[7..] // remove 'Option_'
@@ -1931,7 +1933,7 @@ fn (var g Gen) struct_init(struct_init ast.StructInit) {
 	}
 */
 	// User set fields
-	for i, field in struct_init.fields {
+	for _, field in struct_init.fields {
 		field_name := c_name(field.name)
 		inited_fields << field.name
 		g.write('\t.$field_name = ')

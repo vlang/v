@@ -1223,7 +1223,6 @@ pub fn (a []string) join(del string) string {
 	// Go thru every string and copy its every char one by one
 	for i, val in a {
 		for j in 0..val.len {
-			c := val[j]
 			res.str[idx] = val.str[j]
 			idx++
 		}

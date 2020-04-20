@@ -43,6 +43,7 @@ fn (var p Parser) array_init() ast.ArrayInit {
 			// NB: do not remove the next line without testing
 			// v selfcompilation with tcc first
 			tcc_stack_bug := 12345
+			_ = tcc_stack_bug
 		}
 		last_pos = p.tok.position()
 		p.check(.rsbr)

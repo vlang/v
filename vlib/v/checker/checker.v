@@ -1487,7 +1487,7 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 
 		if !has_else {
 			mut used_values_count := 0
-			for bi, branch in node.branches {
+			for _, branch in node.branches {
 				used_values_count += branch.exprs.len
 				for bi_ei, bexpr in branch.exprs {
 					match bexpr {
