@@ -65,8 +65,19 @@ fn builtin_init() {
 	}
 }
 
-fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
+fn print_backtrace_skipping_top_frames(skipframes int) bool {
+	$if msvc {
+		return print_backtrace_skipping_top_frames_msvc(skipframes)
 
+	}
+	$if mingw {
+		return print_backtrace_skipping_top_frames_mingw(skipframes)
+	}
+	println('print_backtrace_skipping_top_frames is not implemented')
+	return false
+}
+
+fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 $if msvc {
 	mut offset := u64(0)
 	backtraces := [100]voidptr
@@ -88,58 +99,41 @@ $if msvc {
 		return true
 	}
 
-	frames := int( C.CaptureStackBackTrace(skipframes + 1, 100, backtraces, 0) )
-	for i:=0; i < frames; i++ {
-		// fugly pointer arithmetics follows ...
-		// FIXME Remove temp variable
-		tmp := u64(backtraces) + u64(i * sizeof(voidptr))
-		s := &voidptr(tmp)
-		symfa_ok := C.SymFromAddr( handle, *s, &offset, si )
-		if symfa_ok == 1 {
+	frames := int(C.CaptureStackBackTrace(skipframes + 1, 100, backtraces, 0))
+	for i in 0..frames {
+		frame_addr := backtraces[i]
+		if C.SymFromAddr(handle, frame_addr, &offset, si) == 1 {
 			nframe := frames - i - 1
 			mut lineinfo := ''
-			symglfa_ok := C.SymGetLineFromAddr64(handle, *s, &offset, &sline64)
-			if symglfa_ok == 1 {
-				lineinfo = ' ${sline64.f_file_name}:${sline64.f_line_number}'
-			}
-			else {
-				//cerr := int(C.GetLastError()) println('SymGetLineFromAddr64 failure: $cerr ')
-				lineinfo = ' ?? : address= ${&s}'
+			if C.SymGetLineFromAddr64(handle, frame_addr, &offset, &sline64) == 1 {
+				file_name := tos3(sline64.f_file_name)
+				lineinfo = '${file_name}:${sline64.f_line_number}'
+			} else {
+				addr :
+				lineinfo = '?? : address = 0x${&frame_addr:x}'
 			}
 			sfunc := tos3(fname)
 			println('${nframe:-2d}: ${sfunc:-25s}  $lineinfo')
-		}
-		else {
+		} else {
 			// https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes
 			cerr := int(C.GetLastError())
 			if cerr == 87 {
 				println('SymFromAddr failure: $cerr = The parameter is incorrect)')
-			}
-			else if cerr == 487 {
+			} else if cerr == 487 {
 				// probably caused because the .pdb isn't in the executable folder
 				println('SymFromAddr failure: $cerr = Attempt to access invalid address (Verify that you have the .pdb file in the right folder.)')
-			}
-			else {
+			} else {
 				println('SymFromAddr failure: $cerr (see https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes)')
 			}
 		}
 	}
 	return true
-}
-$else {
-	println('TODO: Not implemented on Windows without msvc.')
+} $else {
 	return false
 }
 }
-
 
 fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
-	println('TODO: print_backtrace_skipping_top_frames_mingw($skipframes)')
-	return false
-}
-
-fn print_backtrace_skipping_top_frames_nix(skipframes int) bool {
-	println('not implemented, see builtin_nix.v')
 	return false
 }
 

@@ -21,26 +21,6 @@ fn on_panic(f fn(int)int) {
 }
 */
 
-pub fn print_backtrace_skipping_top_frames(skipframes int) {
-	$if windows {
-		$if msvc {
-			if print_backtrace_skipping_top_frames_msvc(skipframes) {
-				return
-			}
-		}
-		$if mingw {
-			if print_backtrace_skipping_top_frames_mingw(skipframes) {
-				return
-			}
-		}
-	} $else {
-		if print_backtrace_skipping_top_frames_nix(skipframes) {
-			return
-		}
-	}
-	println('print_backtrace_skipping_top_frames is not implemented on this platform for now...\n')
-}
-
 pub fn print_backtrace() {
 	// at the time of backtrace_symbols_fd call, the C stack would look something like this:
 	// 1 frame for print_backtrace_skipping_top_frames
