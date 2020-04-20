@@ -1,4 +1,4 @@
-vlib/v/checker/tests/inout/in_array_mismatch_type.v:2:7: error: the data type on the left of `in` does not match the array item type.
+vlib/v/checker/tests/inout/in_array_mismatch_type.v:2:7: error: the data type on the left of `in` does not match the array item type
     1| fn main() {
     2|     if 1 in ['1', '2'] {
                 ~~

@@ -292,12 +292,12 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	}
 	if infix_expr.op in [.key_in, .not_in] {
 		if !(right.kind in [.array, .map, .string]) {
-			c.error('`in` can only be used with an array/map/string.', infix_expr.pos)
+			c.error('`in` can only be used with an array/map/string', infix_expr.pos)
 		}
 		if right.kind == .array {
 			right_sym := c.table.get_type_symbol(right.array_info().elem_type)
 			if left.kind != .alias && left.kind != right_sym.kind {
-				c.error('the data type on the left of `in` does not match the array item type.', infix_expr.pos)
+				c.error('the data type on the left of `in` does not match the array item type', infix_expr.pos)
 			}
 		}
 		return table.bool_type
