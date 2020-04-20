@@ -418,8 +418,9 @@ pub fn (var p Parser) stmt() ast.Stmt {
 			p.next()
 			expr := p.expr(0)
 			// mut call_expr := &ast.CallExpr(0) // TODO
+			// { call_expr = it }
 			match expr {
-				ast.CallExpr { // call_expr = it }
+				ast.CallExpr {}
 				else {}
 			}
 			return ast.GoStmt{
