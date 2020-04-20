@@ -61,7 +61,7 @@ ifdef V_ALWAYS_CLEAN_TMP
 	$(MAKE) clean_tmp
 endif
 	@echo "V has been successfully built"
-	@v -version
+	@./v -version
 
 clean: clean_tmp
 	git clean -xf
