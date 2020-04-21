@@ -1,4 +1,4 @@
-vlib/v/checker/tests/inout/div_op_wrong_right_type_err_b.v:2:10: error: right type of `/` cannot be type array_int
+vlib/v/checker/tests/inout/div_op_wrong_right_type_err_b.v:2:10: error: mismatched types `int` and `array_int`
     1| fn main() {
     2|     10 / [1,2,3]
                 ~~~~~~~

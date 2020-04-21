@@ -1,4 +1,4 @@
-vlib/v/checker/tests/inout/add_op_wrong_left_type_err_a.v:3:5: error: left type of `+` cannot be type A
+vlib/v/checker/tests/inout/add_op_wrong_left_type_err_a.v:3:5: error: mismatched types `A` and `int`
     1| struct A{}
     2| fn main() {
     3|     A{} + 10
