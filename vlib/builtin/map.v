@@ -139,12 +139,11 @@ fn (d mut DenseArray) push(kv KeyValue) u32 {
 fn (d DenseArray) get(i int) voidptr {
 	$if !no_bounds_checking? {
 		if i < 0 || i >= d.size {
-			panic('array.get: index out of range (i == $i, d.size == $d.size)')
+			panic('DenseArray.get: index out of range (i == $i, d.len == $d.size)')
 		}
 	}
 	return byteptr(d.data) + i * sizeof(KeyValue)
 }
-
 
 // Move all zeros to the end of the array
 // and resize array
