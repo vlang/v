@@ -262,6 +262,11 @@ pub fn (mut g Gen) sub32(reg Register, val int) {
 	g.write8(0x48)
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
+	g.write32(val)
+}
+
+fn (mut g Gen) leave() {
+	g.write8(0xc9)
 }
 
 // returns label's relative address
@@ -452,6 +457,7 @@ fn (mut g Gen) fn_decl(it ast.FnDecl) {
 		// return
 	}
 	if !is_main {
+		// g.leave()
 		g.pop(.rbp)
 	}
 	g.ret()
