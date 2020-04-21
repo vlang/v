@@ -316,16 +316,18 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 			c.error('right type of `${infix_expr.op.str()}` cannot be non-integer type $right.name', infix_expr.right.position())
 		} else if !left.is_int() && right.is_int() {
 			c.error('left type of `${infix_expr.op.str()}` cannot be non-integer type $left.name', infix_expr.left.position())
-		} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] {
+		} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
+			!left.has_method(infix_expr.op.str()) {
 			c.error('left type of `${infix_expr.op.str()}` cannot be type $left.name', infix_expr.left.position())
-		} else if right.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] {
+		} else if right.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
+			!right.has_method(infix_expr.op.str()) {
 			c.error('right type of `${infix_expr.op.str()}` cannot be type $right.name', infix_expr.right.position())
 		}
 	}
 	if infix_expr.op in [.plus, .minus, .mul, .div] {
-		if left.kind in [.array, .array_fixed, .map, .struct_] {
+		if left.kind in [.array, .array_fixed, .map, .struct_] && !left.has_method(infix_expr.op.str()) {
 			c.error('left type of `${infix_expr.op.str()}` cannot be type $left.name', infix_expr.left.position())
-		} else if right.kind in [.array, .array_fixed, .map, .struct_] {
+		} else if right.kind in [.array, .array_fixed, .map, .struct_] && !right.has_method(infix_expr.op.str()) {
 			c.error('right type of `${infix_expr.op.str()}` cannot be type $right.name', infix_expr.right.position())
 		}
 	}
