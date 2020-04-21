@@ -269,7 +269,7 @@ pub fn (mut g Gen) write_typedef_types() {
 			.function {
 				info := typ.info as table.FnType
 				func := info.func
-				if !info.has_decl {
+				if !info.has_decl && !info.is_anon {
 					fn_name := if func.is_c {
 						func.name.replace('.', '__')
 					} else if info.is_anon {
@@ -762,6 +762,18 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					or_stmts = it.or_block.stmts
 					return_type = it.return_type
 				}
+				ast.AnonFn {
+					g.expr(*it)
+					// TODO: no buffer fiddling
+					fsym := g.table.get_type_symbol(it.typ)
+					ret_styp := g.typ(it.decl.return_type)
+					g.write('$ret_styp (*$ident.name) (')
+					def_pos := g.definitions.len
+					g.fn_args(it.decl.args, it.decl.is_variadic)
+					g.definitions.go_back(g.definitions.len - def_pos)
+					g.writeln(') = &${fsym.name};')
+					continue
+				}
 				else {}
 			}
 			gen_or := is_call && table.type_is(return_type, .optional)
@@ -1104,28 +1116,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.typeof_expr(it)
 		}
 		ast.AnonFn {
-			sym := g.table.get_type_symbol(it.typ)
-			func := it.decl
-			// TODO: Fix hack and write function implementation directly to definitions
+			// TODO: dont fiddle with buffers
 			pos := g.out.len
-			type_name := g.typ(func.return_type)
-			g.write('$type_name ${sym.name}_impl(')
-			g.fn_args(func.args, func.is_variadic)
-			g.writeln(') {')
-			g.stmts(func.stmts)
-			if g.autofree {
-				g.free_scope_vars(func.pos.pos - 1)
-			}
-			if g.defer_stmts.len > 0 {
-				g.write_defer_stmts()
-			}
-			g.out.writeln('}')
-			g.defer_stmts = []
-			g.fn_decl = 0
+			def_pos := g.definitions.len
+			g.stmt(it.decl)
 			fn_body := g.out.after(pos)
+			g.definitions.go_back(g.definitions.len - def_pos)
 			g.definitions.write(fn_body)
 			g.out.go_back(fn_body.len)
-			g.out.write('&${sym.name}_impl')
 		}
 		else {
 			// #printf("node=%d\n", node.typ);

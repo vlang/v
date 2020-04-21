@@ -238,7 +238,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 
 fn (mut p Parser) anon_fn() ast.AnonFn {
 	pos := p.tok.position()
-	p.open_scope()
+	// p.open_scope()
 	p.check(.key_fn)
 	// TODO generics
 	args, is_variadic := p.fn_args()
@@ -257,15 +257,17 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block()
 	}
-	p.close_scope()
+	// p.close_scope()
 	func := table.Fn{
 		args: args
 		is_variadic: is_variadic
 		return_type: return_type
 	}
-	idx := p.table.find_or_register_fn_type(func, false)
+	name := 'anon_${p.tok.pos}_$func.signature()'
+	func.name = name
+	idx := p.table.find_or_register_fn_type(func, true, false)
 	typ := table.new_type(idx)
-	name := p.table.get_type_name(typ)
+	//name := p.table.get_type_name(typ)
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name

@@ -1341,6 +1341,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.string_type
 		}
 		ast.AnonFn {
+			c.stmts(it.decl.stmts)
 			return it.typ
 		}
 		else {
@@ -1441,7 +1442,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		}
 		// Function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
-			fn_type := table.new_type(c.table.find_or_register_fn_type(func, true))
+			fn_type := table.new_type(c.table.find_or_register_fn_type(func, false, true))
 			ident.name = name
 			ident.kind = .function
 			ident.info = ast.IdentFn{
