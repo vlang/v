@@ -125,6 +125,11 @@ fn test_fns() {
 }
 
 fn test_anon_fn() {
+	f1 := fn(a int){
+		println('hello from f1')
+	}
+
+	f1(1)
 	/*
 	high_fn(fn (x int) int {
 		println('hello')
@@ -165,3 +170,4 @@ fn test_fn_type_call() {
 	st1 := &MySt{f:test}
     assert st1.f(10) == 1010
 }
+

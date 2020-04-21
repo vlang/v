@@ -238,7 +238,7 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 
 fn (var p Parser) anon_fn() ast.AnonFn {
 	pos := p.tok.position()
-	p.open_scope()
+	// p.open_scope()
 	p.check(.key_fn)
 
 	// TODO generics
@@ -261,7 +261,7 @@ fn (var p Parser) anon_fn() ast.AnonFn {
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block()
 	}
-	p.close_scope()
+	// p.close_scope()
 
 	func := table.Fn{
 		args: args
@@ -284,6 +284,7 @@ fn (var p Parser) anon_fn() ast.AnonFn {
 			no_body: no_body
 			pos: pos
 		}
+		// decl: func1
 		typ: typ
 	}
 }
