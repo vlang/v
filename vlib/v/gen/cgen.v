@@ -2284,6 +2284,10 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.write('%g')
 		} else if sym.kind == .struct_ && !sym.has_method('str') {
 			g.write('%.*s')
+		} else if node.expr_types[i] == table.i16_type {
+		        g.write('%hd')
+		} else if node.expr_types[i] == table.u16_type {
+		        g.write('%hu')
 		} else if node.expr_types[i] == table.u32_type {
 		        g.write('%u')
 		} else if node.expr_types[i] == table.i64_type {
