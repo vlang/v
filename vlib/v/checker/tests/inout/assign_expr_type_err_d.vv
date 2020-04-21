@@ -1,6 +1,4 @@
-struct Foo { }
-
 fn main() {
-	mut a := Foo{ }
-	a += Foo{ }
+	mut foo := 1.5
+	foo /= true
 }

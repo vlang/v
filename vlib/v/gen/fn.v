@@ -310,12 +310,13 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 		if table.type_is_ptr(typ) {
 			styp = styp.replace('*', '')
 		}
-		g.gen_str_for_type(sym, styp)
+		mut str_fn_name := styp_to_str_fn_name(styp)
+		g.gen_str_for_type(sym, styp, str_fn_name)
 		if g.autofree && !table.type_is(typ, .optional) {
 			// Create a temporary variable so that the value can be freed
 			tmp := g.new_tmp_var()
 			// tmps << tmp
-			g.write('string $tmp = ${styp}_str(')
+			g.write('string $tmp = ${str_fn_name}(')
 			g.expr(node.args[0].expr)
 			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
 		} else {
@@ -334,10 +335,11 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 			if table.type_is_ptr(typ) && sym.kind != .struct_ {
 				// ptr_str() for pointers
 				styp = 'ptr'
+				str_fn_name = 'ptr_str'
 			}
 			if sym.kind == .enum_ {
 				if is_var {
-					g.write('${print_method}(${styp}_str(')
+					g.write('${print_method}(${str_fn_name}(')
 				} else {
 					// when no var, print string directly
 					g.write('${print_method}(tos3("')
@@ -352,7 +354,7 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 					g.write('"')
 				}
 			} else {
-				g.write('${print_method}(${styp}_str(')
+				g.write('${print_method}(${str_fn_name}(')
 				if table.type_is_ptr(typ) && sym.kind == .struct_ {
 					// dereference
 					g.write('*')

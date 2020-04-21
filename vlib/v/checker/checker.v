@@ -313,9 +313,22 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	}
 	if infix_expr.op == .mod {
 		if left.is_int() && !right.is_int() {
-			c.error('right type of `${infix_expr.op.str()}` cannot be non-integer type $right.name', infix_expr.right.position())
+			c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
 		} else if !left.is_int() && right.is_int() {
-			c.error('left type of `${infix_expr.op.str()}` cannot be non-integer type $left.name', infix_expr.left.position())
+			c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
+		} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
+			!left.has_method(infix_expr.op.str()) {
+			c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
+		} else if right.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
+			!right.has_method(infix_expr.op.str()) {
+			c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
+		}
+	}
+	if infix_expr.op in [.plus, .minus, .mul, .div] {
+		if left.kind in [.array, .array_fixed, .map, .struct_] && !left.has_method(infix_expr.op.str()) {
+			c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
+		} else if right.kind in [.array, .array_fixed, .map, .struct_] && !right.has_method(infix_expr.op.str()) {
+			c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
 		}
 	}
 	if left_type == table.bool_type && !(infix_expr.op in [.eq, .ne, .logical_or, .and]) {
@@ -364,42 +377,49 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 		}
 		else {}
 	}
+	// Single side check
+	match assign_expr.op {
+		.assign { } // No need to do single side check for =. But here put it first for speed.
+		.plus_assign {
+			if !left.is_number() && left_type != table.string_type && !left.is_pointer() {
+				c.error('operator += not defined on left operand type `$left.name`', assign_expr.left.position())
+			}
+			else if !right.is_number() && right_type != table.string_type && !right.is_pointer() {
+				c.error('operator += not defined on right operand type `$right.name`', assign_expr.val.position())
+			}
+		}
+		.minus_assign {
+			if !left.is_number() && !left.is_pointer() {
+				c.error('operator -= not defined on left operand type `$left.name`', assign_expr.left.position())
+			}
+			else if !right.is_number() && !right.is_pointer() {
+				c.error('operator -= not defined on right operand type `$right.name`', assign_expr.val.position())
+			}
+		}
+		.mult_assign, .div_assign {
+			if !left.is_number() {
+				c.error('operator ${assign_expr.op.str()} not defined on left operand type `$left.name`', assign_expr.left.position())
+			}
+			else if !right.is_number() {
+				c.error('operator ${assign_expr.op.str()} not defined on right operand type `$right.name`', assign_expr.val.position())
+			}
+		}
+		.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign, .right_shift_assign {
+			if !left.is_int() {
+				c.error('operator ${assign_expr.op.str()} not defined on left operand type `$left.name`', assign_expr.left.position())
+			}
+			else if !right.is_int() {
+				c.error('operator ${assign_expr.op.str()} not defined on right operand type `$right.name`', assign_expr.val.position())
+			}
+		}
+		else { }
+	}
+	// Dual sides check (compatibility check)
 	if !c.table.check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
 		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name`',
 			assign_expr.val.position())
-	}
-	else if assign_expr.op == .plus_assign {
-		no_str_related_err := left_type == table.string_type && right_type == table.string_type
-		no_ptr_related_err := (left.is_pointer() || left.is_int()) && (right.is_pointer() || right.is_int())
-		no_num_related_err := left.is_number() && right.is_number()
-		if !no_str_related_err && !no_ptr_related_err && !no_num_related_err {
-			c.error('operator += not defined on left type `$left.name` and right type `$right.name`', assign_expr.pos)
-		}
-	}
-	else if assign_expr.op == .minus_assign {
-		no_ptr_related_err := (left.is_pointer() || left.is_int()) && (right.is_pointer() || right.is_int())
-		no_num_related_err := left.is_number() && right.is_number()
-		if !no_ptr_related_err && !no_num_related_err {
-			c.error('operator -= not defined on left type `$left.name` and right type `$right.name`', assign_expr.pos)
-		}
-	}
-	else if assign_expr.op in [.mult_assign, .div_assign] {
-		if !left.is_number() {
-			c.error('operator ${assign_expr.op.str()} not defined on left type `$left.name`', assign_expr.pos)
-		}
-		else if !right.is_number() {
-			c.error('operator ${assign_expr.op.str()} not defined on right type `$right.name`', assign_expr.pos)
-		}
-	}
-	else if assign_expr.op in [.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign, .right_shift_assign] {
-		if !left.is_int() {
-			c.error('operator ${assign_expr.op.str()} not defined on left type `$left.name`', assign_expr.pos)
-		}
-		else if !right.is_int() {
-			c.error('operator ${assign_expr.op.str()} not defined on right type `$right.name`', assign_expr.pos)
-		}
 	}
 	c.check_expr_opt_call(assign_expr.val, right_type, true)
 }
@@ -1334,6 +1354,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.string_type
 		}
 		ast.AnonFn {
+			c.stmts(it.decl.stmts)
 			return it.typ
 		}
 		else {
@@ -1434,7 +1455,7 @@ pub fn (c mut Checker) ident(ident mut ast.Ident) table.Type {
 		}
 		// Function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
-			fn_type := table.new_type(c.table.find_or_register_fn_type(func, true))
+			fn_type := table.new_type(c.table.find_or_register_fn_type(func, false, true))
 			ident.name = name
 			ident.kind = .function
 			ident.info = ast.IdentFn{

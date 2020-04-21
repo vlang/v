@@ -38,17 +38,7 @@ pub fn println(s string) {
 	C.printf('%.*s\n', s.len, s.str)
 }
 
-fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
-	println('not implemented, see builtin_windows.v')
-	return false
-}
-
-fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
-	println('not implemented, see builtin_windows.v')
-	return false
-}
-
-fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
+fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 	skipframes := xskipframes + 2
 	$if macos {
 		return print_backtrace_skipping_top_frames_mac(skipframes)
@@ -65,6 +55,7 @@ fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 	$if openbsd {
 		return print_backtrace_skipping_top_frames_freebsd(skipframes)
 	}
+	println('print_backtrace_skipping_top_frames is not implemented')
 	return false
 }
 

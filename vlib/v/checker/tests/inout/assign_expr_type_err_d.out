@@ -1,6 +1,6 @@
-vlib/v/checker/tests/inout/assign_expr_type_err_d.v:5:7: error: operator += not defined on left type `Foo` and right type `Foo`
-    3| fn main() {
-    4|     mut a := Foo{ }
-    5|     a += Foo{ }
-                ~~~
-    6| }
+vlib/v/checker/tests/inout/assign_expr_type_err_d.v:3:9: error: operator /= not defined on right operand type `bool`
+    1| fn main() {
+    2|     mut foo := 1.5
+    3|     foo /= true
+                  ~~~~
+    4| }

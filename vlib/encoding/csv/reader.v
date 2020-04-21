@@ -77,6 +77,9 @@ fn (r mut Reader) read_line() ?string {
 				// no valid line endings found
 				return err_invalid_le
 			}
+		} else {
+			// No line ending on file
+			i = r.data.len-1
 		}
 	}
 	mut line := r.data[r.row_pos..i]
@@ -115,6 +118,7 @@ fn (r mut Reader) read_record() ?[]string {
 			// QTODO i = ...
 			j := line.index(r.delimiter.str()) or {
 				// last
+				fields << line[..line.len]
 				break
 			}
 			i = j

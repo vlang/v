@@ -7,10 +7,10 @@ import v.ast
 import v.table
 import v.token
 
-pub fn (var p Parser) expr(precedence int) ast.Expr {
+pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	// println('\n\nparser.expr()')
-	var typ := table.void_type
-	var node := ast.Expr{}
+	mut typ := table.void_type
+	mut node := ast.Expr{}
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
 	// Prefix
@@ -175,19 +175,19 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 	return node
 }
 
-fn (var p Parser) infix_expr(left ast.Expr) ast.Expr {
+fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	op := p.tok.kind
 	// mut typ := p.
 	// println('infix op=$op.str()')
 	precedence := p.tok.precedence()
 	pos := p.tok.position()
 	p.next()
-	var right := ast.Expr{}
+	mut right := ast.Expr{}
 	if op == .key_is {
 		p.inside_is = true
 	}
 	right = p.expr(precedence)
-	var expr := ast.Expr{}
+	mut expr := ast.Expr{}
 	expr = ast.InfixExpr{
 		left: left
 		right: right
@@ -197,7 +197,7 @@ fn (var p Parser) infix_expr(left ast.Expr) ast.Expr {
 	return expr
 }
 
-fn (var p Parser) prefix_expr() ast.PrefixExpr {
+fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	pos := p.tok.position()
 	op := p.tok.kind
 	if op == .amp {

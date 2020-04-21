@@ -1,4 +1,4 @@
 fn main() {
-	mut a := true
-	a *= false
+	mut foo := 10
+	foo %= 'hello'
 }
