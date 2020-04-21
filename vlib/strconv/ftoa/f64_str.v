@@ -77,13 +77,19 @@ const(
 	maxexp64    = 2047
 )
 
-fn (d Dec64) get_string_64(neg bool, i_n_digit int) string {
+fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	n_digit          := i_n_digit + 1
+	pad_digit        := i_pad_digit + 1
 	mut out          := d.m
 	mut out_len      := decimal_len_64(out)
 	out_len_original := out_len
 
-	mut buf := [byte(0)].repeat(out_len + 6 + 1 +1) // sign + mant_len + . +  e + e_sign + exp_len(2) + \0
+	mut fw_zeros := 0
+	if pad_digit > out_len {
+		fw_zeros = pad_digit - out_len
+	}
+
+	mut buf := [byte(0)].repeat(out_len + 6 + 1 +1 + fw_zeros) // sign + mant_len + . +  e + e_sign + exp_len(2) + \0
 	mut i := 0
 
 	if neg {
@@ -96,11 +102,12 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int) string {
 		disp = 1
 	}
 
+	// rounding last used digit
 	if n_digit < out_len {
-		//println("orig: ${out_len_original}")
-		out += ten_pow_table_64[out_len - n_digit] + 1  // round to up
-		out /= ten_pow_table_64[out_len - n_digit]
+		out += ten_pow_table_64[out_len - n_digit - 1] * 5   // round to up
+		out /= ten_pow_table_64[out_len - n_digit ]
 		out_len = n_digit
+		//println("orig: ${out_len_original} new len: ${out_len}")
 	}
 
 	y := i + out_len
@@ -121,6 +128,11 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int) string {
 	if y-x >= 0 {
 		buf[y - x] = `0` + byte(out%10)
 		i++
+	}
+
+	for fw_zeros > 0 {
+		buf[i++] = `0`
+		fw_zeros--
 	}
 
 	/*
@@ -384,5 +396,30 @@ pub fn f64_to_str(f f64, n_digit int) string {
 		d = f64_to_decimal(mant, exp)
 	}
 	//println("${d.m} ${d.e}")
-	return d.get_string_64(neg, n_digit)
+	return d.get_string_64(neg, n_digit, 0)
+}
+
+// f64_to_str return a string in scientific notation with max n_digit after the dot
+pub fn f64_to_str_pad(f f64, n_digit int) string {
+	mut u1 := Uf64{}
+	u1.f = f
+	u := u1.u
+
+	neg   := (u>>(mantbits64+expbits64)) != 0
+	mant  := u & ((u64(1)<<mantbits64) - u64(1))
+	exp   := (u >> mantbits64) & ((u64(1)<<expbits64) - u64(1))
+	//println("s:${neg} mant:${mant} exp:${exp} float:${f} byte:${u1.u:016lx}")
+
+	// Exit early for easy cases.
+	if (exp == maxexp64) || (exp == 0 && mant == 0) {
+		return get_string_special(neg, exp == 0, mant == 0)
+	}
+
+	mut d, ok := f64_to_decimal_exact_int(mant, exp)
+	if !ok {
+		//println("to_decimal")
+		d = f64_to_decimal(mant, exp)
+	}
+	//println("DEBUG: ${d.m} ${d.e}")
+	return d.get_string_64(neg, n_digit, n_digit)
 }
