@@ -11,7 +11,6 @@ import v.util
 
 pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 	first_pos := p.tok.position()
-	tok := p.tok
 	name := p.check_name()
 	fn_name := if is_c {
 		'C.$name'

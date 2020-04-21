@@ -4,6 +4,7 @@
 module ast
 
 import v.table
+import v.token
 
 pub struct Scope {
 mut:
@@ -11,7 +12,13 @@ mut:
 	children  []&Scope
 	start_pos int
 	end_pos   int
+	unused_vars map[string]UnusedVar
 	objects   map[string]ScopeObject
+}
+
+pub struct UnusedVar {
+	name string
+	pos token.Position
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
@@ -105,6 +112,30 @@ pub fn (s mut Scope) register(name string, obj ScopeObject) {
 		return
 	}
 	s.objects[name] = obj
+}
+
+pub fn (s mut Scope) register_unused_var(name string, pos token.Position) {
+	s.unused_vars[name] = UnusedVar{name, pos}
+}
+
+pub fn (s mut Scope) remove_unused_var(name string) {
+	mut sc := s
+	for !isnil(sc) {
+		sc.unused_vars.delete(name)
+		sc = sc.parent
+	}
+}
+
+pub fn (s mut Scope) unused_vars() []UnusedVar {
+	ret := []UnusedVar
+	for _, v in s.unused_vars {
+		ret << v
+	}
+	return ret
+}
+
+pub fn (s mut Scope) clear_unused_vars() {
+	s.unused_vars = map[string]UnusedVar
 }
 
 pub fn (s &Scope) outermost() &Scope {

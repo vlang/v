@@ -4,4 +4,4 @@ vlib/v/checker/tests/inout/struct_unknown_field.v:8:9: error: unknown field `bar
     8|         bar: false
                ~~~~~~~~~~
     9|     }
-   10| }
+   10|      _ = t

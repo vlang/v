@@ -16,6 +16,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	// Prefix
 	match p.tok.kind {
 		.name {
+			p.scope.remove_unused_var(p.tok.lit)
 			node = p.name_expr()
 			p.is_stmt_ident = is_stmt_ident
 		}
@@ -78,6 +79,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					type_name: p.check_name()
 				}
 			} else {
+				p.scope.remove_unused_var(p.tok.lit)
 				sizeof_type := p.parse_type()
 				node = ast.SizeOf{
 					typ: sizeof_type
@@ -102,6 +104,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			} else {
 				// it should be a struct
 				if p.peek_tok.kind == .pipe {
+					p.scope.remove_unused_var(p.tok.lit)
 					node = p.assoc()
 				} else if p.peek_tok.kind == .colon || p.tok.kind == .rcbr {
 					node = p.struct_init(true) // short_syntax: true

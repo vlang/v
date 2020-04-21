@@ -43,7 +43,6 @@ fn (var p Parser) for_stmt() ast.Stmt {
 		// Allow `for i = 0; i < ...`
 		p.check(.semicolon)
 		if p.tok.kind != .semicolon {
-			var typ := table.void_type
 			cond = p.expr(0)
 			has_cond = true
 		}
