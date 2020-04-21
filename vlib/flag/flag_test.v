@@ -276,8 +276,11 @@ fn test_not_provided_option_is_not_returned() {
 					//Everything should not return
 					return
 				}
+				return
 			}
+			return
 		}
+		return
 	}
 	//If we reach here, one of them returned a value.
 	assert false
