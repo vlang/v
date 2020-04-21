@@ -782,15 +782,15 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					return_type = it.return_type
 				}
 				ast.AnonFn {
-					g.expr(*it)
 					// TODO: no buffer fiddling
-					fsym := g.table.get_type_symbol(it.typ)
 					ret_styp := g.typ(it.decl.return_type)
 					g.write('$ret_styp (*$ident.name) (')
 					def_pos := g.definitions.len
 					g.fn_args(it.decl.args, it.decl.is_variadic)
 					g.definitions.go_back(g.definitions.len - def_pos)
-					g.writeln(') = &${fsym.name};')
+					g.write(') = ')
+					g.expr(*it)
+					g.writeln(';')
 					continue
 				}
 				else {}
@@ -1140,9 +1140,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			def_pos := g.definitions.len
 			g.stmt(it.decl)
 			fn_body := g.out.after(pos)
+			g.out.go_back(fn_body.len)
 			g.definitions.go_back(g.definitions.len - def_pos)
 			g.definitions.write(fn_body)
-			g.out.go_back(fn_body.len)
+			fsym := g.table.get_type_symbol(it.typ)
+			g.write('&${fsym.name}')
 		}
 		else {
 			// #printf("node=%d\n", node.typ);

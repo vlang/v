@@ -107,6 +107,10 @@ fn high_fn(f fn(int) int) {
 
 }
 
+fn high_fn_no_ret(f fn(int)) {
+	f(111)
+}
+
 fn high_fn_array(f fn(a []int) []int) {
 
 }
@@ -135,12 +139,16 @@ fn test_anon_fn() {
 	}
 
 	f2(1)
-	/*
-	high_fn(fn (x int) int {
-		println('hello')
-		return x + 1
+
+	// TODO: fix return
+	// high_fn(fn (x int) int {
+	// 	println('hello')
+	// 	return x + 1
+	// })
+
+	high_fn_no_ret(fn (x int) {
+		println('hello $x')
 	})
-*/
 }
 
 fn assert_in_bool_fn(v int) bool {
