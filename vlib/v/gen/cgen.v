@@ -24,9 +24,19 @@ const (
 	'int'
 	'long'
 	'register'
-	'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned'
+	'restrict'
+	'short'
+	'signed'
+	'sizeof'
+	'static'
+	'switch'
+	'typedef'
+	'union'
+	'unsigned'
 	'void'
-	'volatile', 'while']
+	'volatile'
+	'while'
+	]
 )
 
 fn foo(t token.Token) {

@@ -107,11 +107,11 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 	var rec_mut := false
 	var args := []table.Arg
 	if p.tok.kind == .lpar {
-		p.next()		// (
+		p.next() // (
 		is_method = true
-		rec_mut = p.tok.kind == .key_var
+		rec_mut = p.tok.kind in [.key_var, .key_mut]
 		if rec_mut {
-			p.next()			// `var`
+			p.next() // `var`
 		}
 		rec_name = p.check_name()
 		if !rec_mut {
@@ -146,7 +146,7 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
-		name = p.tok.kind.str()		// op_to_fn_name()
+		name = p.tok.kind.str() // op_to_fn_name()
 		p.next()
 	}
 	// <T>
@@ -240,9 +240,7 @@ fn (var p Parser) anon_fn() ast.AnonFn {
 	pos := p.tok.position()
 	p.open_scope()
 	p.check(.key_fn)
-
 	// TODO generics
-
 	args, is_variadic := p.fn_args()
 	for arg in args {
 		p.scope.register(arg.name, ast.Var{
@@ -250,19 +248,16 @@ fn (var p Parser) anon_fn() ast.AnonFn {
 			typ: arg.typ
 		})
 	}
-
 	var return_type := table.void_type
 	if p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()
 	}
-
 	var stmts := []ast.Stmt
 	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block()
 	}
 	p.close_scope()
-
 	func := table.Fn{
 		args: args
 		is_variadic: is_variadic
@@ -271,7 +266,6 @@ fn (var p Parser) anon_fn() ast.AnonFn {
 	idx := p.table.find_or_register_fn_type(func, false)
 	typ := table.new_type(idx)
 	name := p.table.get_type_name(typ)
-
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name
