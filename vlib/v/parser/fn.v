@@ -9,7 +9,7 @@ import v.scanner
 import v.token
 import v.util
 
-pub fn (var p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
+pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 	first_pos := p.tok.position()
 	tok := p.tok
 	name := p.check_name()
@@ -31,8 +31,8 @@ pub fn (var p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 		pos: first_pos.pos
 		len: last_pos.pos - first_pos.pos + last_pos.len
 	}
-	var or_stmts := []ast.Stmt
-	var is_or_block_used := false
+	mut or_stmts := []ast.Stmt
+	mut is_or_block_used := false
 	if p.tok.kind == .key_orelse {
 		p.next()
 		p.open_scope()
@@ -63,10 +63,10 @@ pub fn (var p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 	return node
 }
 
-pub fn (var p Parser) call_args() []ast.CallArg {
-	var args := []ast.CallArg
+pub fn (mut p Parser) call_args() []ast.CallArg {
+	mut args := []ast.CallArg
 	for p.tok.kind != .rpar {
-		var is_mut := false
+		mut is_mut := false
 		if p.tok.kind == .key_mut {
 			p.check(.key_mut)
 			is_mut = true
@@ -83,7 +83,7 @@ pub fn (var p Parser) call_args() []ast.CallArg {
 	return args
 }
 
-fn (var p Parser) fn_decl() ast.FnDecl {
+fn (mut p Parser) fn_decl() ast.FnDecl {
 	// p.table.clear_vars()
 	start_pos := p.tok.position()
 	p.open_scope()
@@ -101,17 +101,17 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 		p.check(.dot)
 	}
 	// Receiver?
-	var rec_name := ''
-	var is_method := false
-	var rec_type := table.void_type
-	var rec_mut := false
-	var args := []table.Arg
+	mut rec_name := ''
+	mut is_method := false
+	mut rec_type := table.void_type
+	mut rec_mut := false
+	mut args := []table.Arg
 	if p.tok.kind == .lpar {
-		p.next()		// (
+		p.next() // (
 		is_method = true
-		rec_mut = p.tok.kind == .key_var
+		rec_mut = p.tok.kind in [.key_var, .key_mut]
 		if rec_mut {
-			p.next()			// `var`
+			p.next() // `var`
 		}
 		rec_name = p.check_name()
 		if !rec_mut {
@@ -134,7 +134,7 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 		}
 		p.check(.rpar)
 	}
-	var name := ''
+	mut name := ''
 	if p.tok.kind == .name {
 		// TODO high order fn
 		name = p.check_name()
@@ -146,7 +146,7 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
-		name = p.tok.kind.str()		// op_to_fn_name()
+		name = p.tok.kind.str() // op_to_fn_name()
 		p.next()
 	}
 	// <T>
@@ -165,16 +165,16 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 			typ: arg.typ
 		})
 	}
-	var end_pos := p.prev_tok.position()
+	mut end_pos := p.prev_tok.position()
 	// Return type
-	var return_type := table.void_type
+	mut return_type := table.void_type
 	if p.tok.kind.is_start_of_type() {
 		end_pos = p.tok.position()
 		return_type = p.parse_type()
 	}
 	// Register
 	if is_method {
-		var type_sym := p.table.get_type_symbol(rec_type)
+		mut type_sym := p.table.get_type_symbol(rec_type)
 		// p.warn('reg method $type_sym.name . $name ()')
 		type_sym.register_method(table.Fn{
 			name: name
@@ -207,7 +207,7 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 		})
 	}
 	// Body
-	var stmts := []ast.Stmt
+	mut stmts := []ast.Stmt
 	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block()
@@ -236,13 +236,11 @@ fn (var p Parser) fn_decl() ast.FnDecl {
 	}
 }
 
-fn (var p Parser) anon_fn() ast.AnonFn {
+fn (mut p Parser) anon_fn() ast.AnonFn {
 	pos := p.tok.position()
 	// p.open_scope()
 	p.check(.key_fn)
-
 	// TODO generics
-
 	args, is_variadic := p.fn_args()
 	for arg in args {
 		p.scope.register(arg.name, ast.Var{
@@ -250,20 +248,17 @@ fn (var p Parser) anon_fn() ast.AnonFn {
 			typ: arg.typ
 		})
 	}
-
-	var return_type := table.void_type
+	mut return_type := table.void_type
 	if p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()
 	}
-
-	var stmts := []ast.Stmt
+	mut stmts := []ast.Stmt
 	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block()
 	}
 	// p.close_scope()
-
-	mut func := table.Fn{
+	func := table.Fn{
 		args: args
 		is_variadic: is_variadic
 		return_type: return_type
@@ -273,7 +268,6 @@ fn (var p Parser) anon_fn() ast.AnonFn {
 	idx := p.table.find_or_register_fn_type(func, true, false)
 	typ := table.new_type(idx)
 	//name := p.table.get_type_name(typ)
-
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name
@@ -290,16 +284,16 @@ fn (var p Parser) anon_fn() ast.AnonFn {
 	}
 }
 
-fn (var p Parser) fn_args() ([]table.Arg, bool) {
+fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
-	var args := []table.Arg
-	var is_variadic := false
+	mut args := []table.Arg
+	mut is_variadic := false
 	// `int, int, string` (no names, just types)
 	types_only := p.tok.kind in [.amp, .and] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
 		p.peek_tok.kind == .rpar
 	if types_only {
 		// p.warn('types only')
-		var arg_no := 1
+		mut arg_no := 1
 		for p.tok.kind != .rpar {
 			arg_name := 'arg_$arg_no'
 			is_mut := p.tok.kind == .key_mut
@@ -310,7 +304,7 @@ fn (var p Parser) fn_args() ([]table.Arg, bool) {
 				p.check(.ellipsis)
 				is_variadic = true
 			}
-			var arg_type := p.parse_type()
+			mut arg_type := p.parse_type()
 			if is_variadic {
 				arg_type = table.type_set(arg_type, .variadic)
 			}
@@ -329,7 +323,7 @@ fn (var p Parser) fn_args() ([]table.Arg, bool) {
 		}
 	} else {
 		for p.tok.kind != .rpar {
-			var arg_names := [p.check_name()]
+			mut arg_names := [p.check_name()]
 			// `a, b, c int`
 			for p.tok.kind == .comma {
 				p.check(.comma)
@@ -343,7 +337,7 @@ fn (var p Parser) fn_args() ([]table.Arg, bool) {
 				p.check(.ellipsis)
 				is_variadic = true
 			}
-			var typ := p.parse_type()
+			mut typ := p.parse_type()
 			if is_variadic {
 				typ = table.type_set(typ, .variadic)
 			}

@@ -1,0 +1,14 @@
+fn print_greeting(){
+	println('hello from x64')
+}
+
+fn print_number() {
+	println('123')
+}
+
+fn main() {
+	println('start')
+	print_greeting()
+	print_number()
+	println('end')
+}
