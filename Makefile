@@ -52,10 +52,7 @@ else
 ifdef ANDROID
 	chmod 755 v
 endif
-	./v self
-ifndef ANDROID
-	$(MAKE) modules
-endif
+	@./v self -prod
 endif
 ifdef V_ALWAYS_CLEAN_TMP
 	$(MAKE) clean_tmp
@@ -99,11 +96,3 @@ selfcompile:
 
 selfcompile-static:
 	./v -keepc -cg -cflags '--static' -o v-static cmd/v
-
-modules: module_builtin module_strings module_strconv
-module_builtin:
-	#./v build module vlib/builtin > /dev/null
-module_strings:
-	#./v build module vlib/strings > /dev/null
-module_strconv:
-	#./v build module vlib/strconv > /dev/null
