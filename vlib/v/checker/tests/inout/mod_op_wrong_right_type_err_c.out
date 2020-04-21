@@ -1,0 +1,6 @@
+vlib/v/checker/tests/inout/mod_op_wrong_right_type_err_c.v:4:6: error: right type of `%` cannot be non-integer type A
+    2| fn main() {
+    3|     a := A{}
+    4|     1 % a
+               ^
+    5| }

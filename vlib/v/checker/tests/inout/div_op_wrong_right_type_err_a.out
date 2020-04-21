@@ -1,0 +1,6 @@
+vlib/v/checker/tests/inout/div_op_wrong_right_type_err_a.v:3:10: error: right type of `/` cannot be type A
+    1| struct A{}
+    2| fn main() {
+    3|     10 / A{}
+                ~~~
+    4| }

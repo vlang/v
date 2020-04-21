@@ -1,0 +1,6 @@
+vlib/v/checker/tests/inout/div_op_wrong_left_type_err_a.v:3:5: error: left type of `/` cannot be type A
+    1| struct A{}
+    2| fn main() {
+    3|     A{} / 10
+           ~~~
+    4| }

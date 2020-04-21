@@ -1,0 +1,6 @@
+vlib/v/checker/tests/inout/mul_op_wrong_left_type_err_c.v:3:5: error: left type of `*` cannot be type map_string_int
+    1| fn main() {
+    2|     a := map[string]int
+    3|     a * 10
+           ^
+    4| }
