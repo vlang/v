@@ -64,7 +64,7 @@ enum Size {
 }
 
 pub fn gen(files []ast.File, out_name string) {
-	var g := Gen{
+	mut g := Gen{
 		sect_header_name_pos: 0
 		out_name: out_name
 	}
@@ -91,18 +91,18 @@ pub fn (g &Gen) pos() i64 {
 	return g.buf.len
 }
 
-fn (var g Gen) write8(n int) {
+fn (mut g Gen) write8(n int) {
 	// write 1 byte
 	g.buf << byte(n)
 }
 
-fn (var g Gen) write16(n int) {
+fn (mut g Gen) write16(n int) {
 	// write 2 bytes
 	g.buf << byte(n)
 	g.buf << byte(n >> 8)
 }
 
-fn (var g Gen) write32(n int) {
+fn (mut g Gen) write32(n int) {
 	// write 4 bytes
 	g.buf << byte(n)
 	g.buf << byte(n >> 8)
@@ -110,7 +110,7 @@ fn (var g Gen) write32(n int) {
 	g.buf << byte(n >> 24)
 }
 
-fn (var g Gen) write64(n i64) {
+fn (mut g Gen) write64(n i64) {
 	// write 8 bytes
 	g.buf << byte(n)
 	g.buf << byte(n >> 8)
@@ -122,7 +122,7 @@ fn (var g Gen) write64(n i64) {
 	g.buf << byte(n >> 56)
 }
 
-fn (var g Gen) write64_at(n, at i64) {
+fn (mut g Gen) write64_at(n, at i64) {
 	// write 8 bytes
 	g.buf[at] = byte(n)
 	g.buf[at + 1] = byte(n >> 8)
@@ -134,7 +134,7 @@ fn (var g Gen) write64_at(n, at i64) {
 	g.buf[at + 7] = byte(n >> 56)
 }
 
-fn (var g Gen) write32_at(at i64, n int) {
+fn (mut g Gen) write32_at(at i64, n int) {
 	// write 4 bytes
 	g.buf[at] = byte(n)
 	g.buf[at + 1] = byte(n >> 8)
@@ -142,13 +142,13 @@ fn (var g Gen) write32_at(at i64, n int) {
 	g.buf[at + 3] = byte(n >> 24)
 }
 
-fn (var g Gen) write_string(s string) {
+fn (mut g Gen) write_string(s string) {
 	for c in s {
 		g.write8(int(c))
 	}
 }
 
-fn (var g Gen) inc(reg Register) {
+fn (mut g Gen) inc(reg Register) {
 	g.write16(0xff49)
 	match reg {
 		.r12 { g.write8(0xc4) }
@@ -156,7 +156,7 @@ fn (var g Gen) inc(reg Register) {
 	}
 }
 
-fn (var g Gen) cmp(reg Register, size Size, val i64) {
+fn (mut g Gen) cmp(reg Register, size Size, val i64) {
 	g.write8(0x49)
 	// Second byte depends on the size of the value
 	match size {
@@ -180,7 +180,7 @@ fn abs(a i64) i64 {
 	}
 }
 
-fn (var g Gen) jle(addr i64) {
+fn (mut g Gen) jle(addr i64) {
 	// Calculate the relative offset to jump to
 	// (`addr` is absolute address)
 	offset := 0xff - int(abs(addr - g.buf.len)) - 1
@@ -188,7 +188,7 @@ fn (var g Gen) jle(addr i64) {
 	g.write8(offset)
 }
 
-fn (var g Gen) jl(addr i64) {
+fn (mut g Gen) jl(addr i64) {
 	offset := 0xff - int(abs(addr - g.buf.len)) - 1
 	g.write8(0x7c)
 	g.write8(offset)
@@ -198,13 +198,13 @@ fn (g &Gen) abs_to_rel_addr(addr i64) int {
 	return int(abs(addr - g.buf.len)) - 1
 }
 
-fn (var g Gen) jmp(addr i64) {
+fn (mut g Gen) jmp(addr i64) {
 	offset := 0xff - g.abs_to_rel_addr(addr)
 	g.write8(0xe9)
 	g.write8(offset)
 }
 
-fn (var g Gen) mov64(reg Register, val i64) {
+fn (mut g Gen) mov64(reg Register, val i64) {
 	match reg {
 		.rsi {
 			g.write8(0x48)
@@ -217,7 +217,7 @@ fn (var g Gen) mov64(reg Register, val i64) {
 	g.write64(val)
 }
 
-fn (var g Gen) call(addr int) {
+fn (mut g Gen) call(addr int) {
 	// Need to calculate the difference between current position (position after the e8 call)
 	// and the function to call.
 	// +5 is to get the posistion "e8 xx xx xx xx"
@@ -228,17 +228,17 @@ fn (var g Gen) call(addr int) {
 	g.write32(rel)
 }
 
-fn (var g Gen) syscall() {
+fn (mut g Gen) syscall() {
 	// g.write(0x050f)
 	g.write8(0x0f)
 	g.write8(0x05)
 }
 
-pub fn (var g Gen) ret() {
+pub fn (mut g Gen) ret() {
 	g.write8(0xc3)
 }
 
-pub fn (var g Gen) push(reg Register) {
+pub fn (mut g Gen) push(reg Register) {
 	if reg < .r8 {
 		g.write8(0x50 + reg)
 	} else {
@@ -253,40 +253,48 @@ pub fn (var g Gen) push(reg Register) {
 */
 }
 
-pub fn (var g Gen) pop(reg Register) {
+pub fn (mut g Gen) pop(reg Register) {
 	g.write8(0x58 + reg)
 	// TODO r8...
 }
 
+pub fn (mut g Gen) sub32(reg Register, val int) {
+	g.write8(0x48)
+	g.write8(0x81)
+	g.write8(0xe8 + reg) // TODO rax is different?
+}
+
 // returns label's relative address
-pub fn (var g Gen) gen_loop_start(from int) int {
+pub fn (mut g Gen) gen_loop_start(from int) int {
 	g.mov(.r12, from)
 	label := g.buf.len
 	g.inc(.r12)
 	return label
 }
 
-pub fn (var g Gen) gen_loop_end(to, label int) {
+pub fn (mut g Gen) gen_loop_end(to, label int) {
 	g.cmp(.r12, ._8, to)
 	g.jl(label)
 }
 
-pub fn (var g Gen) save_main_fn_addr() {
+pub fn (mut g Gen) save_main_fn_addr() {
 	g.main_fn_addr = g.buf.len
 }
 
-pub fn (var g Gen) gen_print_from_expr(expr ast.Expr, newline bool) {
+pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, newline bool) {
 	match expr {
-		ast.StringLiteral { if newline {
+		ast.StringLiteral {
+			if newline {
 				g.gen_print(it.val + '\n')
 			} else {
 				g.gen_print(it.val)
-			} }
+			}
+		}
 		else {}
 	}
 }
 
-pub fn (var g Gen) gen_print(s string) {
+pub fn (mut g Gen) gen_print(s string) {
 	//
 	// qq := s + '\n'
 	//
@@ -301,14 +309,14 @@ pub fn (var g Gen) gen_print(s string) {
 	g.syscall()
 }
 
-pub fn (var g Gen) gen_exit() {
+pub fn (mut g Gen) gen_exit() {
 	// Return 0
 	g.mov(.edi, 0) // ret value
 	g.mov(.eax, 60)
 	g.syscall()
 }
 
-fn (var g Gen) mov(reg Register, val int) {
+fn (mut g Gen) mov(reg Register, val int) {
 	match reg {
 		.eax, .rax {
 			g.write8(0xb8)
@@ -334,7 +342,7 @@ fn (var g Gen) mov(reg Register, val int) {
 	g.write32(val)
 }
 
-pub fn (var g Gen) register_function_address(name string) {
+pub fn (mut g Gen) register_function_address(name string) {
 	addr := g.pos()
 	// println('reg fn addr $name $addr')
 	g.fn_addr[name] = addr
@@ -346,7 +354,7 @@ pub fn (g &Gen) write(s string) {
 pub fn (g &Gen) writeln(s string) {
 }
 
-pub fn (var g Gen) call_fn(name string) {
+pub fn (mut g Gen) call_fn(name string) {
 	println('call fn $name')
 	if !name.contains('__') {
 		// return
@@ -359,7 +367,7 @@ pub fn (var g Gen) call_fn(name string) {
 	println('call $name $addr')
 }
 
-fn (var g Gen) stmt(node ast.Stmt) {
+fn (mut g Gen) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
 			g.assign_stmt(it)
@@ -383,7 +391,7 @@ fn (var g Gen) stmt(node ast.Stmt) {
 	}
 }
 
-fn (var g Gen) expr(node ast.Expr) {
+fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
 		ast.AssignExpr {}
@@ -416,13 +424,13 @@ fn (var g Gen) expr(node ast.Expr) {
 	}
 }
 
-fn (var g Gen) assign_stmt(node ast.AssignStmt) {
+fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
 	for i, ident in node.left {
 	}
 }
 
-fn (var g Gen) fn_decl(it ast.FnDecl) {
+fn (mut g Gen) fn_decl(it ast.FnDecl) {
 	is_main := it.name == 'main'
 	println('saving addr $it.name $g.buf.len.hex()')
 	if is_main {
@@ -430,6 +438,8 @@ fn (var g Gen) fn_decl(it ast.FnDecl) {
 	} else {
 		g.register_function_address(it.name)
 		g.push(.rbp)
+		// g.write32(SEVENS)
+		g.sub32(.rsp, 0x10)
 	}
 	for arg in it.args {
 	}
