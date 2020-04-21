@@ -11,7 +11,6 @@ const (
 		'vlib/crypto/rc4/rc4_test.v',
 		'vlib/encoding/utf8/utf8_util_test.v',
 		'vlib/eventbus/eventbus_test.v',
-		'vlib/flag/flag_test.v',
 		'vlib/json/json_test.v',
 		'vlib/net/ftp/ftp_test.v',
 		'vlib/net/http/http_httpbin_test.v',

@@ -291,25 +291,25 @@ pub fn (fs mut FlagParser) int(name string, abbr byte, idefault int, usage strin
 
 // float_multi returns all instances of values associated with the flags provided
 // In the case that none were found, it returns an empty array.
-pub fn (fs mut FlagParser) float_multi(name string, abbr byte, usage string) []f32 {
+pub fn (fs mut FlagParser) float_multi(name string, abbr byte, usage string) []f64 {
 	fs.add_flag(name, abbr, usage, '<multiple floats>')
 	parsed := fs.parse_value(name, abbr)
-	mut value := []f32
+	mut value := []f64
 	for val in parsed {
-		value << val.f32()
+		value << val.f64()
 	}
 	return value
 }
 
 // float_opt returns an optional that returns the value associated with the flag.
 // In the situation that the flag was not provided, it returns null.
-pub fn (fs mut FlagParser) float_opt(name string, abbr byte, usage string) ?f32 {
+pub fn (fs mut FlagParser) float_opt(name string, abbr byte, usage string) ?f64 {
 	fs.add_flag(name, abbr, usage, '<float>')
 	parsed := fs.parse_value(name, abbr)
 	if parsed.len == 0 {
 		return error("parameter '$name' not provided")
 	}
-	return parsed[0].f32()
+	return parsed[0].f64()
 }
 
 // defining and parsing a float flag
@@ -319,7 +319,7 @@ pub fn (fs mut FlagParser) float_opt(name string, abbr byte, usage string) ?f32 
 //      the default value is returned
 // version with abbr
 //TODO error handling for invalid string to float conversion
-pub fn (fs mut FlagParser) float(name string, abbr byte, fdefault f32, usage string) f32 {
+pub fn (fs mut FlagParser) float(name string, abbr byte, fdefault f64, usage string) f64 {
 	value := fs.float_opt(name, abbr, usage) or {
 		return fdefault
 	}
