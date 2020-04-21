@@ -74,10 +74,18 @@ fn (var p Parser) for_stmt() ast.Stmt {
 			p.check(.comma)
 			key_var_name = val_var_name
 			val_var_name = p.check_name()
+			if p.scope.known_var(key_var_name) {
+				p.error('repeat name in for statement')
+			}
+			if p.scope.known_var(val_var_name) {
+				p.error('repeat name in for statement')
+			}
 			p.scope.register(key_var_name, ast.Var{
 				name: key_var_name
 				typ: table.int_type
 			})
+		} else if p.scope.known_var(val_var_name) {
+			p.error('repeat name in for statement')
 		}
 		p.check(.key_in)
 		if p.tok.kind == .name && p.tok.lit in [key_var_name, val_var_name] {
