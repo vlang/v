@@ -2285,17 +2285,17 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		} else if sym.kind == .struct_ && !sym.has_method('str') {
 			g.write('%.*s')
 		} else if node.expr_types[i] == table.i16_type {
-		        g.write('%hd')
+		        g.write('%"PRId16"')
 		} else if node.expr_types[i] == table.u16_type {
-		        g.write('%hu')
+		        g.write('%"PRIu16"')
 		} else if node.expr_types[i] == table.u32_type {
-		        g.write('%u')
+		        g.write('%"PRIu32"')
 		} else if node.expr_types[i] == table.i64_type {
-		        g.write('%lld')
+		        g.write('%"PRId64"')
 		} else if node.expr_types[i] == table.u64_type {
-		        g.write('%llu')
+		        g.write('%"PRIu64"')
 		} else {
-			g.write('%d')
+			g.write('%"PRId32"')
 		}
 	}
 	g.write('", ')
