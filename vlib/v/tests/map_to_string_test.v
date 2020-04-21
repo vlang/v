@@ -6,9 +6,9 @@ struct Test {
 
 fn test_interpolation_map_to_string() {
 	a := map[string]string
-	a['1'] = "one"
-	a['2'] = "two"
-	a['3'] = "three"
+	a['1'] = 'one'
+	a['2'] = 'two'
+	a['3'] = 'three'
 	assert '$a' == 'map_string_string{1: one, 2: two, 3: three}'
 	b := map[string]int
 	b['1'] = 1
@@ -25,4 +25,3 @@ fn test_interpolation_map_to_string() {
 	d['3'] = Test{false, 2, 'ghi'}
 	assert '$d'.replace('\n', '').replace('\'', '"') == 'map_string_Test{1: Test {    a: true    b: 0    y: "abc"}, 2: Test {    a: true    b: 1    y: "def"}, 3: Test {    a: false    b: 2    y: "ghi"}}'
 }
-
