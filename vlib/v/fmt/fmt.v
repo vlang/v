@@ -863,6 +863,18 @@ fn (var f Fmt) match_expr(it ast.MatchExpr) {
 			single_line = false
 			break
 		}
+		if branch.stmts.len == 0 {
+			continue
+		}
+		stmt := branch.stmts[0]
+		if stmt is ast.ExprStmt {
+			// If expressions inside match branches can't be one a single line
+			expr_stmt := stmt as ast.ExprStmt
+			if !expr_is_single_line(expr_stmt.expr) {
+				single_line = false
+				break
+			}
+		}
 	}
 	for i, branch in it.branches {
 		if branch.comment.text != '' {
@@ -932,4 +944,12 @@ fn (var f Fmt) mark_module_as_used(name string) {
 	}
 	f.used_imports << mod
 	// println('marking module $mod as used')
+}
+
+fn expr_is_single_line(expr ast.Expr) bool {
+	match expr {
+		ast.IfExpr { return false }
+		else {}
+	}
+	return true
 }

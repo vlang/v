@@ -21,18 +21,41 @@ mut:
 }
 
 // string_addr map[string]i64
+// The registers are ordered for faster generation
+// push rax => 50
+// push rcx => 51 etc
 enum Register {
+	rax
+	rcx
+	rdx
+	rbx
+	rsp
+	rbp
+	rsi
+	rdi
 	eax
 	edi
-	rax
-	rdi
-	rsi
-	rbp
 	edx
-	rdx
+	r8
+	r9
+	r10
+	r11
 	r12
+	r13
+	r14
+	r15
 }
 
+/*
+rax // 0
+	rcx // 1
+	rdx // 2
+	rbx // 3
+	rsp // 4
+	rbp // 5
+	rsi // 6
+	rdi // 7
+*/
 enum Size {
 	_8
 	_16
@@ -216,10 +239,23 @@ pub fn (var g Gen) ret() {
 }
 
 pub fn (var g Gen) push(reg Register) {
+	if reg < .r8 {
+		g.write8(0x50 + reg)
+	} else {
+		g.write8(0x41)
+		g.write8(0x50 + reg - 8)
+	}
+	/*
 	match reg {
 		.rbp { g.write8(0x55) }
 		else {}
 	}
+*/
+}
+
+pub fn (var g Gen) pop(reg Register) {
+	g.write8(0x58 + reg)
+	// TODO r8...
 }
 
 // returns label's relative address
@@ -274,7 +310,7 @@ pub fn (var g Gen) gen_exit() {
 
 fn (var g Gen) mov(reg Register, val int) {
 	match reg {
-		.eax {
+		.eax, .rax {
 			g.write8(0xb8)
 		}
 		.edi {
@@ -325,37 +361,22 @@ pub fn (var g Gen) call_fn(name string) {
 
 fn (var g Gen) stmt(node ast.Stmt) {
 	match node {
-		ast.ConstDecl {}
-		ast.FnDecl {
-			is_main := it.name == 'main'
-			println('saving addr $it.name $g.buf.len.hex()')
-			if is_main {
-				g.save_main_fn_addr()
-			} else {
-				g.register_function_address(it.name)
-			}
-			for arg in it.args {
-			}
-			for stmt in it.stmts {
-				g.stmt(stmt)
-			}
-			if is_main {
-				println('end of main: gen exit')
-				g.gen_exit()
-				// return
-			}
-			g.ret()
+		ast.AssignStmt {
+			g.assign_stmt(it)
 		}
+		ast.ConstDecl {}
+		ast.ExprStmt {
+			g.expr(it.expr)
+		}
+		ast.FnDecl {
+			g.fn_decl(it)
+		}
+		ast.ForStmt {}
 		ast.Return {
 			g.gen_exit()
 			g.ret()
 		}
-		ast.AssignStmt {}
-		ast.ForStmt {}
 		ast.StructDecl {}
-		ast.ExprStmt {
-			g.expr(it.expr)
-		}
 		else {
 			println('x64.stmt(): bad node')
 		}
@@ -393,6 +414,37 @@ fn (var g Gen) expr(node ast.Expr) {
 			// println(term.red('x64.expr(): bad node'))
 		}
 	}
+}
+
+fn (var g Gen) assign_stmt(node ast.AssignStmt) {
+	// `a := 1` | `a,b := 1,2`
+	for i, ident in node.left {
+	}
+}
+
+fn (var g Gen) fn_decl(it ast.FnDecl) {
+	is_main := it.name == 'main'
+	println('saving addr $it.name $g.buf.len.hex()')
+	if is_main {
+		g.save_main_fn_addr()
+	} else {
+		g.register_function_address(it.name)
+		g.push(.rbp)
+	}
+	for arg in it.args {
+	}
+	for stmt in it.stmts {
+		g.stmt(stmt)
+	}
+	if is_main {
+		println('end of main: gen exit')
+		g.gen_exit()
+		// return
+	}
+	if !is_main {
+		g.pop(.rbp)
+	}
+	g.ret()
 }
 
 fn verror(s string) {

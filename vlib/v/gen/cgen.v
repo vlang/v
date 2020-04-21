@@ -21,9 +21,12 @@ const (
 	'extern'
 	'float'
 	'inline'
-	'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch'
-	'typedef'
-	'union', 'unsigned', 'void', 'volatile', 'while']
+	'int'
+	'long'
+	'register'
+	'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned'
+	'void'
+	'volatile', 'while']
 )
 
 fn foo(t token.Token) {
@@ -435,9 +438,11 @@ fn (var g Gen) stmt(node ast.Stmt) {
 			// no ; after an if expression }
 			match expr {
 				ast.IfExpr {}
-				else { if !g.inside_ternary {
+				else {
+					if !g.inside_ternary {
 						g.writeln(';')
-					} }
+					}
+				}
 			}
 		}
 		ast.FnDecl {
@@ -1340,7 +1345,8 @@ fn (var g Gen) infix_expr(node ast.InfixExpr) {
 			g.write(' })')
 		}
 	} else if (node.left_type == node.right_type) && node.left_type in [table.f32_type_idx,
-		table.f64_type_idx] && node.op in [.eq, .ne] {
+		table.f64_type_idx
+	] && node.op in [.eq, .ne] {
 		// floats should be compared with epsilon
 		if node.left_type == table.f64_type_idx {
 			if node.op == .eq {
@@ -1649,15 +1655,9 @@ fn (var g Gen) index_expr(node ast.IndexExpr) {
 		} else if sym.kind == .array {
 			info := sym.info as table.Array
 			elem_type_str := g.typ(info.elem_type)
-			var is_selector := false
-			match node.left {
-				ast.SelectorExpr {
-					// `vals[i].field = x` is an exception and requires `array_get`:
-					// `(*(Val*)array_get(vals, i)).field = x;`
-					is_selector = true
-				}
-				else {}
-			}
+			// `vals[i].field = x` is an exception and requires `array_get`:
+			// `(*(Val*)array_get(vals, i)).field = x;`
+			is_selector := node.left is ast.SelectorExpr
 			if g.is_assign_lhs && !is_selector && node.is_setter {
 				g.is_array_set = true
 				g.write('array_set(')
@@ -1810,8 +1810,6 @@ fn (var g Gen) return_statement(node ast.Return) {
 					is_none = true
 				}
 				ast.CallExpr {
-					// TODO: why?
-					// if !it.is_method {
 					if it.name == 'error' {
 						is_error = true // TODO check name 'error'
 					}
@@ -2925,4 +2923,3 @@ fn (g Gen) type_to_fmt(typ table.Type) string {
 	}
 	return '%d'
 }
-
