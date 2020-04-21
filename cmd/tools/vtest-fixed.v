@@ -31,8 +31,6 @@ const (
 
 		'vlib/v/tests/live_test.v', // Linux & Solaris only; since live does not actually work for now with v2, just skip
 		'vlib/v/tests/asm_test.v', // skip everywhere for now, works on linux with cc != tcc
-		'vlib/sqlite/sqlite_test.v', // works only on ubuntu with installed sqlite
-		'vlib/clipboard/clipboard_test.v', // needs code changes to make it compile with v2
 	]
 	skip_on_linux = []string
 	skip_on_non_linux = []string

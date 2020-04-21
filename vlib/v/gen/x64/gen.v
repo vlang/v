@@ -439,7 +439,7 @@ fn (mut g Gen) fn_decl(it ast.FnDecl) {
 		g.register_function_address(it.name)
 		g.push(.rbp)
 		// g.write32(SEVENS)
-		g.sub32(.rsp, 0x10)
+		// g.sub32(.rsp, 0x10)
 	}
 	for arg in it.args {
 	}
