@@ -29,6 +29,7 @@ const (
 		'vlib/v/tests/pointers_str_test.v',
 		'vlib/net/http/cookie_test.v',
 		'vlib/clipboard/clipboard_test.v',
+		'vlib/sqlite/sqlite_test.v',
 
 		'vlib/v/tests/live_test.v', // Linux & Solaris only; since live does not actually work for now with v2, just skip
 		'vlib/v/tests/asm_test.v', // skip everywhere for now, works on linux with cc != tcc
