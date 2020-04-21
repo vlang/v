@@ -347,6 +347,24 @@ fn (mut g Gen) mov(reg Register, val int) {
 	g.write32(val)
 }
 
+/*
+fn (mut g Gen) mov_reg(a, b Register) {
+	match a {
+		.rbp {
+			g.write8(0x48)
+			g.write8(0x89)
+		}
+		else {}
+	}
+}
+*/
+// generates `mov rbp, rsp`
+fn (mut g Gen) mov_rbp_rsp() {
+	g.write8(0x48)
+	g.write8(0x89)
+	g.write8(0xe5)
+}
+
 pub fn (mut g Gen) register_function_address(name string) {
 	addr := g.pos()
 	// println('reg fn addr $name $addr')
@@ -390,7 +408,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.ret()
 		}
 		ast.StructDecl {}
-		ast.Module {}
 		else {
 			println('x64.stmt(): bad node: ' + typeof(node))
 		}
@@ -443,8 +460,9 @@ fn (mut g Gen) fn_decl(it ast.FnDecl) {
 		g.save_main_fn_addr()
 	} else {
 		g.register_function_address(it.name)
-		g.push(.rbp)
 		// g.write32(SEVENS)
+		g.push(.rbp)
+		g.mov_rbp_rsp()
 		// g.sub32(.rsp, 0x10)
 	}
 	for arg in it.args {
@@ -458,8 +476,7 @@ fn (mut g Gen) fn_decl(it ast.FnDecl) {
 		// return
 	}
 	if !is_main {
-		// g.leave()
-		g.pop(.rbp)
+		g.leave() // g.pop(.rbp)
 	}
 	g.ret()
 }
