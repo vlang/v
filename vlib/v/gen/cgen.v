@@ -53,6 +53,7 @@ struct Gen {
 	inits                strings.Builder // contents of `void _vinit(){}`
 	gowrappers           strings.Builder // all go callsite wrappers
 	stringliterals       strings.Builder // all string literals (they depend on tos3() beeing defined
+	auto_str_funcs       strings.Builder // function bodies of all auto generated _str funcs
 	table                &table.Table
 	pref                 &pref.Preferences
 mut:
@@ -105,6 +106,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		definitions: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
 		stringliterals: strings.new_builder(100)
+		auto_str_funcs: strings.new_builder(100)
 		inits: strings.new_builder(100)
 		table: table
 		pref: pref
@@ -147,10 +149,17 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	//
 	g.finish()
-	return g.hashes() + '\n// V typedefs:\n' + g.typedefs.str() + '\n// V typedefs2:\n' + g.typedefs2.str() +
-		'\n// V cheaders:\n' + g.cheaders.str() + '\n// V includes:\n' + g.includes.str() + '\n// V definitions:\n' +
-		g.definitions.str() + '\n// V gowrappers:\n' + g.gowrappers.str() + '\n// V stringliterals:\n' +
-		g.stringliterals.str() + '\n// V out\n' + g.out.str()
+	return g.hashes() +
+		'\n// V typedefs:\n' + g.typedefs.str() +
+		'\n// V typedefs2:\n' + g.typedefs2.str() +
+		'\n// V cheaders:\n' + g.cheaders.str() +
+		'\n// V includes:\n' + g.includes.str() +
+		'\n// V definitions:\n' + g.definitions.str() +
+		'\n// V gowrappers:\n' + g.gowrappers.str() +
+		'\n// V stringliterals:\n' + g.stringliterals.str() +
+		'\n// V auto str functions:\n' + g.auto_str_funcs.str() +
+		'\n// V out\n' + g.out.str() +
+		'\n// THE END.'
 }
 
 pub fn (g Gen) hashes() string {
@@ -428,19 +437,29 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.EnumDecl {
 			enum_name := it.name.replace('.', '__')
 			g.typedefs.writeln('typedef enum {')
+			mut cur_enum_expr := ''
+			mut cur_enum_offset := 0
 			for j, field in it.fields {
-				g.typedefs.write('\t${enum_name}_$field.name')
+				g.typedefs.write('\t${enum_name}_${field.name}')
 				if field.has_expr {
 					g.typedefs.write(' = ')
 					pos := g.out.len
 					g.expr(field.expr)
 					expr_str := g.out.after(pos)
 					g.out.go_back(expr_str.len)
-					g.typedefs.write('$expr_str')
+					g.typedefs.write(expr_str)
+					cur_enum_expr = expr_str
+					cur_enum_offset = 0
 				}
-				g.typedefs.writeln(', // $j')
+				cur_value := if cur_enum_offset > 0 {
+				   '${cur_enum_expr}+${cur_enum_offset}'
+				} else {
+				   cur_enum_expr
+				}
+				g.typedefs.writeln(', // ${cur_value}')
+				cur_enum_offset++
 			}
-			g.typedefs.writeln('} $enum_name;\n')
+			g.typedefs.writeln('} ${enum_name};\n')
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
@@ -2302,12 +2321,13 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				}
 				if is_var {
 					styp := g.typ(node.expr_types[i])
-					g.gen_str_for_type(sym, styp)
-					g.write('${styp}_str(')
+					str_fn_name := styp_to_str_fn_name(styp)
+					g.gen_str_for_type(sym, styp, str_fn_name)
+					g.write('${str_fn_name}(')
 					g.enum_expr(expr)
 					g.write(')')
 					g.write('.len, ')
-					g.write('${styp}_str(')
+					g.write('${str_fn_name}(')
 					g.enum_expr(expr)
 					g.write(').str')
 				} else {
@@ -2321,22 +2341,24 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				}
 			} else if sym.kind in [.array, .array_fixed] {
 				styp := g.typ(node.expr_types[i])
-				g.gen_str_for_type(sym, styp)
-				g.write('${styp}_str(')
+				str_fn_name := styp_to_str_fn_name(styp)
+				g.gen_str_for_type(sym, styp, str_fn_name)
+				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(')')
 				g.write('.len, ')
-				g.write('${styp}_str(')
+				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(').str')
 			} else if sym.kind == .struct_ && !sym.has_method('str') {
 				styp := g.typ(node.expr_types[i])
-				g.gen_str_for_type(sym, styp)
-				g.write('${styp}_str(')
+				str_fn_name := styp_to_str_fn_name(styp)
+				g.gen_str_for_type(sym, styp, str_fn_name)
+				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(',0)')
 				g.write('.len, ')
-				g.write('${styp}_str(')
+				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(',0).str')
 			} else {
@@ -2792,22 +2814,28 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 	g.expr(node.right)
 }
 
+fn styp_to_str_fn_name(styp string) string {
+	res := styp.replace('.', '__').replace('*','_ptr') + '_str'
+	return res
+}
+
 // already generated styp, reuse it
-fn (mut g Gen) gen_str_for_type(sym table.TypeSymbol, styp string) {
-	if sym.has_method('str') || styp in g.str_types {
+fn (mut g Gen) gen_str_for_type(sym table.TypeSymbol, styp string, str_fn_name string) {
+	already_generated_key := '${styp}:${str_fn_name}'
+	if sym.has_method('str') ||  already_generated_key in g.str_types {
 		return
 	}
-	g.str_types << styp
+	g.str_types << already_generated_key
 	match sym.info {
-		table.Alias { g.gen_str_default(sym, styp) }
-		table.Array { g.gen_str_for_array(it, styp) }
-		table.Enum { g.gen_str_for_enum(it, styp) }
-		table.Struct { g.gen_str_for_struct(it, styp) }
-		else { verror("could not generate string method for type \'${styp}\'") }
+		table.Alias { g.gen_str_default(sym, styp, str_fn_name) }
+		table.Array { g.gen_str_for_array(it, styp, str_fn_name) }
+		table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
+		table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
+		else { verror("could not generate string method $str_fn_name for type \'${styp}\'") }
 	}
 }
 
-fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string) {
+fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string, str_fn_name string) {
 	mut convertor := ''
 	mut typename := ''
 	if sym.parent_idx in table.integer_type_idxs {
@@ -2825,97 +2853,127 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string) {
 	} else {
 		verror("could not generate string method for type \'${styp}\'")
 	}
-	g.definitions.writeln('string ${styp}_str($styp it) {')
+	g.definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) {')
 	if convertor == 'bool' {
-		g.definitions.writeln('\tstring tmp1 = string_add(tos3("${styp}("), (${convertor})it ? tos3("true") : tos3("false"));')
+		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(tos3("${styp}("), (${convertor})it ? tos3("true") : tos3("false"));')
 	} else {
-		g.definitions.writeln('\tstring tmp1 = string_add(tos3("${styp}("), tos3(${typename}_str((${convertor})it).str));')
+		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(tos3("${styp}("), tos3(${typename}_str((${convertor})it).str));')
 	}
-	g.definitions.writeln('\tstring tmp2 = string_add(tmp1, tos3(")"));')
-	g.definitions.writeln('\tstring_free(tmp1);')
-	g.definitions.writeln('\treturn tmp2;')
-	g.definitions.writeln('}')
+	g.auto_str_funcs.writeln('\tstring tmp2 = string_add(tmp1, tos3(")"));')
+	g.auto_str_funcs.writeln('\tstring_free(tmp1);')
+	g.auto_str_funcs.writeln('\treturn tmp2;')
+	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_enum(info table.Enum, styp string) {
+fn (mut g Gen) gen_str_for_enum(info table.Enum, styp string, str_fn_name string) {
 	s := styp.replace('.', '__')
-	g.definitions.write('string ${s}_str($styp it) {\n\tswitch(it) {\n')
+	g.definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { /* gen_str_for_enum */')
+	g.auto_str_funcs.writeln('\tswitch(it) {')
 	for i, val in info.vals {
-		g.definitions.write('\t\tcase ${s}_$val: return tos3("$val");\n')
+		g.auto_str_funcs.writeln('\t\tcase ${s}_$val: return tos3("$val");')
 	}
-	g.definitions.write('\t\tdefault: return tos3("unknown enum value"); } }\n')
+	g.auto_str_funcs.writeln('\t\tdefault: return tos3("unknown enum value");')
+	g.auto_str_funcs.writeln('\t}')
+	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string) {
+fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name string) {
 	// TODO: short it if possible
 	// generates all definitions of substructs
+	mut fnames2strfunc := map[string]string
 	for i, field in info.fields {
 		sym := g.table.get_type_symbol(field.typ)
-		if sym.kind == .struct_ {
+		if sym.kind in [.struct_, .array, .array_fixed, .enum_] {
 			field_styp := g.typ(field.typ)
-			g.gen_str_for_type(sym, field_styp)
+			field_fn_name := styp_to_str_fn_name( field_styp )
+			fnames2strfunc[ field_styp ] = field_fn_name
+			g.gen_str_for_type(sym, field_styp, field_fn_name)
 		}
 	}
-	s := styp.replace('.', '__')
-	g.definitions.write('string ${s}_str($styp it, int indent_count) {\n')
+	g.definitions.writeln('string ${str_fn_name}($styp x, int indent_count); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp x, int indent_count) {')
+	mut clean_struct_v_type_name := styp.replace('__','.')
+	if styp.ends_with('*') {
+		deref_typ := styp.replace('*', '')
+		g.auto_str_funcs.writeln('\t${deref_typ} *it = x;')
+		clean_struct_v_type_name = '&' + clean_struct_v_type_name.replace('*', '')
+	}else{
+		deref_typ := styp
+		g.auto_str_funcs.writeln('\t${deref_typ} *it = &x;')
+	}
 	// generate ident / indent length = 4 spaces
-	g.definitions.write('\tstring indents = tos3("");\n\tfor (int i = 0; i < indent_count; i++) { indents = string_add(indents, tos3("    ")); }\n')
-	g.definitions.write('\treturn _STR("$styp {\\n')
+	g.auto_str_funcs.writeln('\tstring indents = tos3("");')
+	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; i++) {')
+	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, tos3("    "));')
+	g.auto_str_funcs.writeln('\t}')
+	g.auto_str_funcs.writeln('\treturn _STR("${clean_struct_v_type_name} {\\n"')
 	for field in info.fields {
 		fmt := g.type_to_fmt(field.typ)
-		g.definitions.write('%.*s    ' + '$field.name: $fmt\\n')
+		g.auto_str_funcs.writeln('\t\t"%.*s    ' + '$field.name: $fmt\\n"')
 	}
-	g.definitions.write('%.*s}"')
+	g.auto_str_funcs.write('\t\t"%.*s}"')
 	if info.fields.len > 0 {
-		g.definitions.write(', ')
+		g.auto_str_funcs.write(',\n\t\t')
 		for i, field in info.fields {
 			sym := g.table.get_type_symbol(field.typ)
-			if sym.kind in [.struct_, .array, .array_fixed] {
-				field_styp := g.typ(field.typ)
-				second_str_param := if sym.has_method('str') { '' } else { ', indent_count + 1' }
-				g.definitions.write('indents.len, indents.str, ${field_styp}_str(it.$field.name$second_str_param).len, ${field_styp}_str(it.$field.name$second_str_param).str')
+			has_custom_str := sym.has_method('str')
+			second_str_param := if has_custom_str {''} else {', indent_count + 1'}
+			field_styp := g.typ(field.typ)
+			field_styp_fn_name := if has_custom_str {'${field_styp}_str'} else {fnames2strfunc[ field_styp ]}
+			if sym.kind  == .enum_ {
+				g.auto_str_funcs.write('indents.len, indents.str, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ).len, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ).str  ')
+			}else if sym.kind in [.struct_, .array, .array_fixed] {
+				g.auto_str_funcs.write('indents.len, indents.str, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ).len, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ).str  ')
 			} else {
-				g.definitions.write('indents.len, indents.str, it.$field.name')
+				g.auto_str_funcs.write('indents.len, indents.str, it->${field.name}')
 				if field.typ == table.string_type {
-					g.definitions.write('.len, it.${field.name}.str')
+					g.auto_str_funcs.write('.len, it->${field.name}.str')
 				} else if field.typ == table.bool_type {
-					g.definitions.write(' ? 4 : 5, it.${field.name} ? "true" : "false"')
+					g.auto_str_funcs.write(' ? 4 : 5, it->${field.name} ? "true" : "false"')
 				}
 			}
 			if i < info.fields.len - 1 {
-				g.definitions.write(', ')
+				g.auto_str_funcs.write(',\n\t\t')
 			}
 		}
 	}
-	g.definitions.writeln(', indents.len, indents.str);\n}')
+	g.auto_str_funcs.writeln(',')
+	g.auto_str_funcs.writeln('\t\tindents.len, indents.str);')
+	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_array(info table.Array, styp string) {
-	s := styp.replace('.', '__')
+fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name string) {
 	sym := g.table.get_type_symbol(info.elem_type)
 	field_styp := g.typ(info.elem_type)
 	if sym.kind == .struct_ && !sym.has_method('str') {
-		g.gen_str_for_type(sym, field_styp)
+		g.gen_str_for_type(sym, field_styp, styp_to_str_fn_name(field_styp) )
 	}
-	g.definitions.writeln('string ${s}_str($styp a) {')
-	g.definitions.writeln('\tstrings__Builder sb = strings__new_builder(a.len * 10);')
-	g.definitions.writeln('\tstrings__Builder_write(&sb, tos3("["));')
-	g.definitions.writeln('\tfor (int i = 0; i < a.len; i++) {')
-	g.definitions.writeln('\t\t${field_styp} it = (*(${field_styp}*)array_get(a, i));')
+	g.definitions.writeln('string ${str_fn_name}($styp a); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
+	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(a.len * 10);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("["));')
+	g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; i++) {')
+	g.auto_str_funcs.writeln('\t\t${field_styp} it = (*(${field_styp}*)array_get(a, i));')
 	if sym.kind == .struct_ && !sym.has_method('str') {
-		g.definitions.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));')
+		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));')
 	} else if sym.kind in [.f32, .f64] {
-		g.definitions.writeln('\t\t\tstrings__Builder_write(&sb, _STR("%g", it));')
+		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _STR("%g", it));')
 	} else {
-		g.definitions.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
+		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
 	}
-	g.definitions.writeln('\t\tif (i != a.len-1) {')
-	g.definitions.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
-	g.definitions.writeln('\t\t}')
-	g.definitions.writeln('\t}')
-	g.definitions.writeln('\tstrings__Builder_write(&sb, tos3("]"));')
-	g.definitions.writeln('\treturn strings__Builder_str(&sb);')
-	g.definitions.writeln('}')
+	g.auto_str_funcs.writeln('\t\tif (i != a.len-1) {')
+	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
+	g.auto_str_funcs.writeln('\t\t}')
+	g.auto_str_funcs.writeln('\t}')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("]"));')
+	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('}')
 }
 
 fn (g Gen) type_to_fmt(typ table.Type) string {
@@ -2925,6 +2983,8 @@ fn (g Gen) type_to_fmt(typ table.Type) string {
 	} else if typ == table.string_type {
 		return "\'%.*s\'"
 	} else if typ == table.bool_type {
+		return '%.*s'
+	} else if sym.kind == .enum_ {
 		return '%.*s'
 	} else if typ in [table.f32_type, table.f64_type] {
 		return '%g' // g removes trailing zeros unlike %f
