@@ -2282,7 +2282,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.write('%.*s')
 		} else if node.expr_types[i] in [table.f32_type, table.f64_type] {
 			g.write('%g')
-		} else if sym.kind == .struct_ && !sym.has_method('str') {
+		} else if sym.kind in [.struct_, .map] && !sym.has_method('str') {
 			g.write('%.*s')
 		} else {
 			g.write('%d')
@@ -2342,6 +2342,17 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					g.write('"')
 				}
 			} else if sym.kind in [.array, .array_fixed] {
+				styp := g.typ(node.expr_types[i])
+				str_fn_name := styp_to_str_fn_name(styp)
+				g.gen_str_for_type(sym, styp, str_fn_name)
+				g.write('${str_fn_name}(')
+				g.expr(expr)
+				g.write(')')
+				g.write('.len, ')
+				g.write('${str_fn_name}(')
+				g.expr(expr)
+				g.write(').str')
+			} else if sym.kind == .map && !sym.has_method('str') {
 				styp := g.typ(node.expr_types[i])
 				str_fn_name := styp_to_str_fn_name(styp)
 				g.gen_str_for_type(sym, styp, str_fn_name)
@@ -2833,6 +2844,7 @@ fn (mut g Gen) gen_str_for_type(sym table.TypeSymbol, styp string, str_fn_name s
 		table.Array { g.gen_str_for_array(it, styp, str_fn_name) }
 		table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
 		table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
+		table.Map { g.gen_str_for_map(it, styp, str_fn_name) }
 		else { verror("could not generate string method $str_fn_name for type \'${styp}\'") }
 	}
 }
@@ -2887,7 +2899,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	mut fnames2strfunc := map[string]string
 	for i, field in info.fields {
 		sym := g.table.get_type_symbol(field.typ)
-		if sym.kind in [.struct_, .array, .array_fixed, .enum_] {
+		if sym.kind in [.struct_, .array, .array_fixed, .map, .enum_] {
 			field_styp := g.typ(field.typ)
 			field_fn_name := styp_to_str_fn_name( field_styp )
 			fnames2strfunc[ field_styp ] = field_fn_name
@@ -2978,9 +2990,51 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 	g.auto_str_funcs.writeln('}')
 }
 
+fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) {
+	key_sym := g.table.get_type_symbol(info.key_type)
+	key_styp := g.typ(info.key_type)
+	if key_sym.kind == .struct_ && !key_sym.has_method('str') {
+		g.gen_str_for_type(key_sym, key_styp, styp_to_str_fn_name(key_styp))
+	}
+	val_sym := g.table.get_type_symbol(info.value_type)
+	val_styp := g.typ(info.value_type)
+	if val_sym.kind == .struct_ && !val_sym.has_method('str') {
+		g.gen_str_for_type(val_sym, val_styp, styp_to_str_fn_name(val_styp))
+	}
+	zero := g.type_default(info.value_type)
+	g.definitions.writeln('string ${str_fn_name}($styp m); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp m) { /* gen_str_for_map */')
+	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(m.key_values.size*10);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("$styp"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("{"));')
+	g.auto_str_funcs.writeln('\tfor (uint i = 0; i < m.key_values.size; i++) {')
+	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, (*(string*)DenseArray_get(m.key_values, i)));')
+	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3(": "));')
+	g.auto_str_funcs.write('\t$val_styp it = (*($val_styp*)map_get3(')
+	g.auto_str_funcs.write('m, (*(string*)DenseArray_get(m.key_values, i))')
+	g.auto_str_funcs.write(', ')
+	g.auto_str_funcs.writeln(' &($val_styp[]) { $zero }));')
+	if val_sym.kind == .string {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, it);')
+	} else if val_sym.kind == .struct_ && !val_sym.has_method('str') {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${val_styp}_str(it,0));')
+	} else if val_sym.kind in [.f32, .f64] {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", it));')
+	} else {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${val_styp}_str(it));')
+	}
+	g.auto_str_funcs.writeln('\t\tif (i != m.key_values.size-1) {')
+	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
+	g.auto_str_funcs.writeln('\t\t}')
+	g.auto_str_funcs.writeln('\t}')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("}"));')
+	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('}')
+}
+
 fn (g Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
-	if sym.kind in [.struct_, .array, .array_fixed] {
+	if sym.kind in [.struct_, .array, .array_fixed, .map] {
 		return '%.*s'
 	} else if typ == table.string_type {
 		return "\'%.*s\'"
