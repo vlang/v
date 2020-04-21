@@ -1,0 +1,5 @@
+vlib/v/checker/tests/inout/mod_op_wrong_left_type_err_a.v:2:2: error: mismatched types `f64` and `int`
+    1| fn main() {
+    2|     0.5 % 1
+           ~~~
+    3| }
