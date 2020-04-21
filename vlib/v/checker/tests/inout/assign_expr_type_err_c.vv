@@ -1,4 +1,4 @@
 fn main() {
-	mut a := 'hello'
-	a -= 'world'
+	mut foo := 'hello'
+	foo *= 10
 }

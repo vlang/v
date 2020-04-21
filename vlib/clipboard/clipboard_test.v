@@ -14,10 +14,14 @@ fn run_test(is_primary bool){
 
 fn test_primary(){
 	$if linux {
-		run_test(true)
+		return
+		//run_test(true)
 	}
 }
 
 fn test_clipboard(){
+	$if linux {
+		return
+	}
 	run_test(false)
 }

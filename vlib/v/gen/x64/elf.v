@@ -30,10 +30,14 @@ const (
 const (
 	segment_start = 0x400000
 	PLACEHOLDER   = 0
+	SEVENS        = 0x77777777
 )
 
-pub fn (var g Gen) generate_elf_header() {
-	g.buf << [byte(mag0), mag1, mag2, mag3]
+pub fn (mut g Gen) generate_elf_header() {
+	g.buf << [byte(mag0), mag1
+	mag2
+	mag3
+	]
 	g.buf << elfclass64 // file class
 	g.buf << elfdata2lsb // data encoding
 	g.buf << ev_current // file version
@@ -66,11 +70,12 @@ pub fn (var g Gen) generate_elf_header() {
 	g.write64(0x1000) // p_align
 	// user code starts here at
 	// address: 00070 and a half
+	println('code_start_pos = $g.buf.len.hex()')
 	g.code_start_pos = g.buf.len
 	g.call(PLACEHOLDER) // call main function, it's not guaranteed to be the first, we don't know its address yet
 }
 
-pub fn (var g Gen) generate_elf_footer() {
+pub fn (mut g Gen) generate_elf_footer() {
 	// Return 0
 	/*
 	g.mov(.edi, 0) // ret value
@@ -95,7 +100,7 @@ pub fn (var g Gen) generate_elf_footer() {
 	// -5 is for "e8 00 00 00 00"
 	g.write32_at(g.code_start_pos + 1, int(g.main_fn_addr - g.code_start_pos) - 5)
 	// Create the binary
-	var f := os.create(g.out_name) or {
+	mut f := os.create(g.out_name) or {
 		panic(err)
 	}
 	os.chmod(g.out_name, 0o775) // make it an executable

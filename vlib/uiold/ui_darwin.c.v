@@ -6,7 +6,7 @@ module uiold
 #include <Cocoa/Cocoa.h>
 #include <Carbon/Carbon.h>
 
-__global default_font *C.NSFont
+__global default_font &C.NSFont
 
 
 fn focus_app(next, event, data voidptr) {

@@ -107,6 +107,10 @@ fn high_fn(f fn(int) int) {
 
 }
 
+fn high_fn_no_ret(f fn(int)) {
+	f(111)
+}
+
 fn high_fn_array(f fn(a []int) []int) {
 
 }
@@ -125,12 +129,26 @@ fn test_fns() {
 }
 
 fn test_anon_fn() {
-	/*
-	high_fn(fn (x int) int {
-		println('hello')
-		return x + 1
+	f1 := fn(a int){
+		println('hello from f1')
+	}
+
+	f1(1)
+	f2 := fn(a int){
+		println('hello from f2')
+	}
+
+	f2(1)
+
+	// TODO: fix return
+	// high_fn(fn (x int) int {
+	// 	println('hello')
+	// 	return x + 1
+	// })
+
+	high_fn_no_ret(fn (x int) {
+		println('hello $x')
 	})
-*/
 }
 
 fn assert_in_bool_fn(v int) bool {
@@ -165,3 +183,4 @@ fn test_fn_type_call() {
 	st1 := &MySt{f:test}
     assert st1.f(10) == 1010
 }
+
