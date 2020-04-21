@@ -263,14 +263,16 @@ fn (var p Parser) anon_fn() ast.AnonFn {
 	}
 	// p.close_scope()
 
-	func := table.Fn{
+	mut func := table.Fn{
 		args: args
 		is_variadic: is_variadic
 		return_type: return_type
 	}
-	idx := p.table.find_or_register_fn_type(func, false)
+	name := 'anon_${p.tok.pos}_$func.signature()'
+	func.name = name
+	idx := p.table.find_or_register_fn_type(func, true, false)
 	typ := table.new_type(idx)
-	name := p.table.get_type_name(typ)
+	//name := p.table.get_type_name(typ)
 
 	return ast.AnonFn{
 		decl: ast.FnDecl{
@@ -284,7 +286,6 @@ fn (var p Parser) anon_fn() ast.AnonFn {
 			no_body: no_body
 			pos: pos
 		}
-		// decl: func1
 		typ: typ
 	}
 }

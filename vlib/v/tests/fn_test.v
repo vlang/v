@@ -130,6 +130,11 @@ fn test_anon_fn() {
 	}
 
 	f1(1)
+	f2 := fn(a int){
+		println('hello from f2')
+	}
+
+	f2(1)
 	/*
 	high_fn(fn (x int) int {
 		println('hello')
