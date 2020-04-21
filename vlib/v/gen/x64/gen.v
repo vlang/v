@@ -390,8 +390,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.ret()
 		}
 		ast.StructDecl {}
+		ast.Module {}
 		else {
-			println('x64.stmt(): bad node')
+			println('x64.stmt(): bad node: ' + typeof(node))
 		}
 	}
 }
