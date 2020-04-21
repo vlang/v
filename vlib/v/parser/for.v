@@ -80,6 +80,9 @@ fn (var p Parser) for_stmt() ast.Stmt {
 			})
 		}
 		p.check(.key_in)
+		if p.tok.kind == .name && p.tok.lit in [key_var_name, val_var_name] {
+			p.error('repeat name in for statement')
+		}
 		// arr_expr
 		cond := p.expr(0)
 		// 0 .. 10
