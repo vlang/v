@@ -65,11 +65,17 @@ const(
 
 // max 46 char
 // -3.40282346638528859811704183484516925440e+38
-fn (d Dec32) get_string_32(neg bool, i_n_digit int) string {
+fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string {
 	n_digit          := i_n_digit + 1
+	pad_digit        := i_pad_digit + 1
 	mut out          := d.m
 	mut out_len      := decimal_len_32(out)
 	out_len_original := out_len
+
+	mut fw_zeros := 0
+	if pad_digit > out_len {
+		fw_zeros = pad_digit -out_len
+	}
 
 	mut buf := [byte(0)].repeat(out_len + 5 + 1 +1) // sign + mant_len + . +  e + e_sign + exp_len(2) + \0
 	mut i := 0
@@ -86,7 +92,7 @@ fn (d Dec32) get_string_32(neg bool, i_n_digit int) string {
 
 	if n_digit < out_len {
 		//println("orig: ${out_len_original}")
-		out += ten_pow_table_32[out_len - n_digit] + 1  // round to up
+		out += ten_pow_table_32[out_len - n_digit - 1] * 5  // round to up
 		out /= ten_pow_table_32[out_len - n_digit]
 		out_len = n_digit
 	}
@@ -109,6 +115,11 @@ fn (d Dec32) get_string_32(neg bool, i_n_digit int) string {
 	if y-x >= 0 {
 		buf[y - x] = `0` + byte(out%10)
 		i++
+	}
+
+	for fw_zeros > 0 {
+		buf[i++] = `0`
+		fw_zeros--
 	}
 
 	/*
@@ -341,5 +352,32 @@ pub fn f32_to_str(f f32, n_digit int) string {
 	}
 
 	//println("${d.m} ${d.e}")
-	return d.get_string_32(neg, n_digit)
+	return d.get_string_32(neg, n_digit,0)
+}
+
+// f32_to_str return a string in scientific notation with max n_digit after the dot
+pub fn f32_to_str_pad(f f32, n_digit int) string {
+	mut u1 := Uf32{}
+	u1.f = f
+	u := u1.u
+
+	neg   := (u>>(mantbits32+expbits32)) != 0
+	mant  := u & ((u32(1)<<mantbits32) - u32(1))
+	exp   := (u >> mantbits32) & ((u32(1)<<expbits32) - u32(1))
+
+	//println("${neg} ${mant} e ${exp-bias32}")
+
+	// Exit early for easy cases.
+	if (exp == maxexp32) || (exp == 0 && mant == 0) {
+		return get_string_special(neg, exp == 0, mant == 0)
+	}
+
+	mut d, ok := f32_to_decimal_exact_int(mant, exp)
+	if !ok {
+		//println("with exp form")
+		d = f32_to_decimal(mant, exp)
+	}
+
+	//println("${d.m} ${d.e}")
+	return d.get_string_32(neg, n_digit, n_digit)
 }
