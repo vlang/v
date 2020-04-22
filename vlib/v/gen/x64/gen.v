@@ -177,17 +177,30 @@ fn (mut g Gen) cmp(reg Register, size Size, val i64) {
 	g.write8(int(val))
 }
 
+fn (mut g Gen) get_var_offset(var_name string) int {
+	offset := g.var_offset[var_name]
+	if offset == 0 {
+		panic('0 offset for var `$var_name`')
+	}
+	return offset
+}
+
 // `a == 1`
 // `cmp DWORD [rbp-0x4],0x1`
 fn (mut g Gen) cmp_var(var_name string, val int) {
 	g.write8(0x81) // 83 for 1 byte?
 	g.write8(0x7d)
-	offset := g.var_offset[var_name]
-	if offset == 0 {
-		verror('cmp_var 0 offset $var_name')
-	}
+	offset := g.get_var_offset(var_name)
 	g.write8(0xff - offset + 1)
 	g.write32(val)
+}
+
+// `add DWORD [rbp-0x4], 1`
+fn (mut g Gen) inc_var(var_name string) {
+	g.write16(0x4581) // 83 for 1 byte
+	offset := g.get_var_offset(var_name)
+	g.write8(0xff - offset + 1)
+	g.write32(1)
 }
 
 // Returns the position of the address to jump to (set later).
@@ -437,18 +450,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
+		ast.ArrayInit {}
 		ast.AssignExpr {}
-		ast.IntegerLiteral {}
-		ast.FloatLiteral {}
-		/*
-		ast.UnaryExpr {
-			g.expr(it.left)
-		}
-*/
-		ast.StringLiteral {}
-		ast.InfixExpr {}
-		// `user := User{name: 'Bob'}`
-		ast.StructInit {}
 		ast.CallExpr {
 			if it.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := it.args[0].expr
@@ -457,12 +460,19 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			g.call_fn(it.name)
 		}
-		ast.ArrayInit {}
+		ast.FloatLiteral {}
 		ast.Ident {}
-		ast.BoolLiteral {}
 		ast.IfExpr {
 			g.if_expr(it)
 		}
+		ast.InfixExpr {}
+		ast.IntegerLiteral {}
+		ast.PostfixExpr {
+			g.postfix_expr(it)
+		}
+		ast.StringLiteral {}
+		ast.StructInit {}
+		ast.BoolLiteral {}
 		else {
 			// println(term.red('x64.expr(): bad node'))
 		}
@@ -561,6 +571,17 @@ fn (mut g Gen) fn_decl(it ast.FnDecl) {
 		g.leave() // g.pop(.rbp)
 	}
 	g.ret()
+}
+
+fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
+	if !(node.expr is ast.Ident) {
+		return
+	}
+	ident := node.expr as ast.Ident
+	var_name := ident.name
+	if node.op == .inc {
+		g.inc_var(var_name)
+	}
 }
 
 fn verror(s string) {

@@ -13,6 +13,10 @@ fn test() {
 	if a == 2 {
 		println('a == 2')
 	}
+	a++
+	if a == 2 {
+		println('now a == 2')
+	}
 }
 
 fn main() {
