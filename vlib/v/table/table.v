@@ -45,14 +45,14 @@ mut:
 }
 
 pub fn new_table() &Table {
-	var t := &Table{}
+	mut t := &Table{}
 	t.register_builtin_type_symbols()
 	return t
 }
 
 // used to compare fn's & for naming anon fn's
 pub fn (f &Fn) signature() string {
-	var sig := ''
+	mut sig := ''
 	for i, arg in f.args {
 		// TODO: for now ignore mut/pts in sig for now
 		typ := type_set_nr_muls(arg.typ, 0)
@@ -142,7 +142,7 @@ pub fn (t &Table) type_has_method(s &TypeSymbol, name string) bool {
 // search from current type up through each parent looking for method
 pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 	// println('type_find_method($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
-	var ts := s
+	mut ts := s
 	for {
 		if method := ts.find_method(name) {
 			return method
@@ -166,7 +166,7 @@ pub fn (t &Table) struct_has_field(s &TypeSymbol, name string) bool {
 // search from current type up through each parent looking for field
 pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 	// println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
-	var ts := s
+	mut ts := s
 	for {
 		if field := ts.find_field(name) {
 			return field
@@ -369,7 +369,7 @@ pub fn (var t Table) find_or_register_array_fixed(elem_type Type, size, nr_dims 
 }
 
 pub fn (var t Table) find_or_register_multi_return(mr_typs []Type) int {
-	var name := 'multi_return'
+	mut name := 'multi_return'
 	for mr_typ in mr_typs {
 		mr_type_sym := t.get_type_symbol(mr_typ)
 		name += '_$mr_type_sym.name'

@@ -47,7 +47,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 
 // parse all deps from already parsed files
 pub fn (b mut Builder) parse_imports() {
-	var done_imports := []string
+	mut done_imports := []string
 	// NB: b.parsed_files is appended in the loop,
 	// so we can not use the shorter `for in` form.
 	for i := 0; i < b.parsed_files.len; i++ {
@@ -97,7 +97,7 @@ pub fn (b mut Builder) resolve_deps() {
 		eprintln(deps_resolved.display())
 		eprintln('------------------------------------------')
 	}
-	var mods := []string
+	mut mods := []string
 	for node in deps_resolved.nodes {
 		mods << node.name
 	}
@@ -106,7 +106,7 @@ pub fn (b mut Builder) resolve_deps() {
 		eprintln(mods.str())
 		eprintln('-------------------------------')
 	}
-	var reordered_parsed_files := []ast.File
+	mut reordered_parsed_files := []ast.File
 	for m in mods {
 		for pf in b.parsed_files {
 			if m == pf.mod.name {
@@ -120,11 +120,11 @@ pub fn (b mut Builder) resolve_deps() {
 
 // graph of all imported modules
 pub fn (b &Builder) import_graph() &depgraph.DepGraph {
-	var builtins := util.builtin_module_parts
+	mut builtins := util.builtin_module_parts
 	builtins << 'builtin'
-	var graph := depgraph.new_dep_graph()
+	mut graph := depgraph.new_dep_graph()
 	for p in b.parsed_files {
-		var deps := []string
+		mut deps := []string
 		if p.mod.name !in builtins {
 			deps << 'builtin'
 		}
@@ -137,7 +137,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 }
 
 pub fn (b Builder) v_files_from_dir(dir string) []string {
-	var res := []string
+	mut res := []string
 	if !os.exists(dir) {
 		if dir == 'compiler' && os.is_dir('vlib') {
 			println('looks like you are trying to build V with an old command')
@@ -147,7 +147,7 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	} else if !os.is_dir(dir) {
 		verror("$dir isn't a directory!")
 	}
-	var files := os.ls(dir) or {
+	mut files := os.ls(dir) or {
 		panic(err)
 	}
 	if b.pref.is_verbose {
@@ -168,7 +168,7 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 			continue
 		}
 		if b.pref.compile_defines_all.len > 0 && file.contains('_d_') {
-			var allowed := false
+			mut allowed := false
 			for cdefine in b.pref.compile_defines {
 				file_postfix := '_d_${cdefine}.v'
 				if file.ends_with(file_postfix) {
@@ -246,7 +246,7 @@ pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
 	vmod_file_location := vmod.mod_file_cacher.get(fpath)
 	mod_path := module_path(mod)
-	var module_lookup_paths := []string
+	mut module_lookup_paths := []string
 	if vmod_file_location.vmod_file.len != 0 && !(vmod_file_location.vmod_folder in b.module_search_paths) {
 		module_lookup_paths << vmod_file_location.vmod_folder
 	}

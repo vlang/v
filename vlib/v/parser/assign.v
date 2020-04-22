@@ -73,7 +73,7 @@ pub fn (var p Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 }
 
 fn (var p Parser) parse_assign_lhs() []ast.Ident {
-	var idents := []ast.Ident
+	mut idents := []ast.Ident
 	for {
 		is_mut := p.tok.kind == .key_mut || p.tok.kind == .key_var
 		if is_mut {
@@ -83,7 +83,7 @@ fn (var p Parser) parse_assign_lhs() []ast.Ident {
 		if is_static {
 			p.check(.key_static)
 		}
-		var ident := p.parse_ident(false, false)
+		mut ident := p.parse_ident(false, false)
 		ident.is_mut = is_mut
 		ident.info = ast.IdentVar{
 			is_mut: is_mut
@@ -101,7 +101,7 @@ fn (var p Parser) parse_assign_lhs() []ast.Ident {
 
 // right hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (var p Parser) parse_assign_rhs() []ast.Expr {
-	var exprs := []ast.Expr
+	mut exprs := []ast.Expr
 	for {
 		expr := p.expr(0)
 		exprs << expr

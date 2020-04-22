@@ -9,12 +9,12 @@ import v.token
 
 fn (var p Parser) if_expr() ast.IfExpr {
 	pos := p.tok.position()
-	var branches := []ast.IfBranch
-	var has_else := false
+	mut branches := []ast.IfBranch
+	mut has_else := false
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
 		branch_pos := p.tok.position()
-		var comment := ast.Comment{}
+		mut comment := ast.Comment{}
 		if p.tok.kind == .key_if {
 			p.check(.key_if)
 		} else {
@@ -36,8 +36,8 @@ fn (var p Parser) if_expr() ast.IfExpr {
 				break
 			}
 		}
-		var cond := ast.Expr{}
-		var is_or := false
+		mut cond := ast.Expr{}
+		mut is_or := false
 		// `if x := opt() {`
 		if p.peek_tok.kind == .decl_assign {
 			is_or = true
@@ -83,21 +83,21 @@ fn (var p Parser) match_expr() ast.MatchExpr {
 	p.inside_match = true
 	p.check(.key_match)
 	is_mut := p.tok.kind in [.key_mut, .key_var]
-	var is_sum_type := false
+	mut is_sum_type := false
 	if is_mut {
 		p.next()
 	}
 	cond := p.expr(0)
 	p.inside_match = false
 	p.check(.lcbr)
-	var branches := []ast.MatchBranch
+	mut branches := []ast.MatchBranch
 	for {
 		branch_first_pos := p.tok.position()
 		comment := p.check_comment()		// comment before {}
-		var exprs := []ast.Expr
+		mut exprs := []ast.Expr
 		p.open_scope()
 		// final else
-		var is_else := false
+		mut is_else := false
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
@@ -111,7 +111,7 @@ fn (var p Parser) match_expr() ast.MatchExpr {
 			x := ast.Type{
 				typ: typ
 			}
-			var expr := ast.Expr{}
+			mut expr := ast.Expr{}
 			expr = x
 			exprs << expr
 			p.scope.register('it', ast.Var{
@@ -125,7 +125,7 @@ fn (var p Parser) match_expr() ast.MatchExpr {
 			}
 			is_sum_type = true
 			// Make sure a variable used for the sum type match
-			var var_name := ''
+			mut var_name := ''
 			match cond {
 				ast.Ident {
 					var_name = it.name

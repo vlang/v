@@ -1963,7 +1963,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	} else {
 		g.writeln('($styp){')
 	}
-	// var fields := []string
+	// mut fields := []string
 	mut inited_fields := []string // TODO this is done in checker, move to ast node
 	/*
 	if struct_init.fields.len == 0 && struct_init.exprs.len > 0 {

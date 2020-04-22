@@ -31,17 +31,17 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 		p.error('`$p.tok.lit` lacks body')
 	}
 	end_pos := p.tok.position()
-	var name := p.check_name()
+	mut name := p.check_name()
 	// println('struct decl $name')
-	var ast_fields := []ast.StructField
-	var fields := []table.Field
-	var mut_pos := -1
-	var pub_pos := -1
-	var pub_mut_pos := -1
+	mut ast_fields := []ast.StructField
+	mut fields := []table.Field
+	mut mut_pos := -1
+	mut pub_pos := -1
+	mut pub_mut_pos := -1
 	if !no_body {
 		p.check(.lcbr)
 		for p.tok.kind != .rcbr {
-			var comment := ast.Comment{}
+			mut comment := ast.Comment{}
 			if p.tok.kind == .comment {
 				comment = p.comment()
 			}
@@ -72,8 +72,8 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 			println('XXXX' + s.str())
 		}
 */
-			var default_expr := ast.Expr{}
-			var has_default_expr := false
+			mut default_expr := ast.Expr{}
+			mut has_default_expr := false
 			if p.tok.kind == .assign {
 				// Default value
 				p.next()
@@ -89,7 +89,7 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 				}
 				has_default_expr = true
 			}
-			var attr := ast.Attr{}
+			mut attr := ast.Attr{}
 			if p.tok.kind == .lsbr {
 				attr = p.attribute()
 			}
@@ -132,7 +132,7 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 		}
 		mod: p.mod
 	}
-	var ret := 0
+	mut ret := 0
 	if p.builtin_mod && t.name in table.builtin_type_names {
 		// this allows overiding the builtins type
 		// with the real struct type info parsed from builtin
@@ -167,13 +167,13 @@ fn (var p Parser) struct_init(short_syntax bool) ast.StructInit {
 	if !short_syntax {
 		p.check(.lcbr)
 	}
-	var fields := []ast.StructInitField
-	var i := 0
+	mut fields := []ast.StructInitField
+	mut i := 0
 	is_short_syntax := p.peek_tok.kind != .colon && p.tok.kind != .rcbr	// `Vec{a,b,c}
 	// p.warn(is_short_syntax.str())
 	for p.tok.kind != .rcbr {
 		p.check_comment()
-		var field_name := ''
+		mut field_name := ''
 		if is_short_syntax {
 			expr := p.expr(0)
 			fields << ast.StructInitField{
@@ -229,7 +229,7 @@ fn (var p Parser) interface_decl() ast.InterfaceDecl {
 	p.next()	// `interface`
 	interface_name := p.check_name()
 	p.check(.lcbr)
-	var field_names := []string
+	mut field_names := []string
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		line_nr := p.tok.line_nr
 		name := p.check_name()

@@ -537,7 +537,7 @@ pub fn (k Kind) str() string {
 }
 
 pub fn (kinds []Kind) str() string {
-	var kinds_str := ''
+	mut kinds_str := ''
 	for i, k in kinds {
 		kinds_str += k.str()
 		if i < kinds.len - 1 {
@@ -604,7 +604,7 @@ pub:
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
 	if sym.kind == .multi_return {
-		var res := '('
+		mut res := '('
 		mr_info := sym.info as MultiReturn
 		for i, typ in mr_info.types {
 			res += table.type_to_str(typ)
@@ -615,7 +615,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 		res += ')'
 		return res
 	}
-	var res := sym.name
+	mut res := sym.name
 	if sym.kind == .array {
 		res = res.replace('array_', '[]')
 	} else if sym.kind == .map {
