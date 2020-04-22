@@ -38,16 +38,14 @@ fn ret_none() ?int {
 }
 
 fn test_option_for_base_type_without_variable() {
-	val := err_call(true) or {
-		panic(err)
+	mut val := err_call(true) or {
+		assert false
+		0
 	}
 	assert val == 42
-	println('hm')
-	val2 := ret_none() or {
-		println('yep')
+	val = ret_none() or {
 		return
 	}
-	println('$val2 should have been `none`')
 	assert false
 	// This is invalid:
 	// x := 5 or {
@@ -60,7 +58,6 @@ fn test_if_opt() {
 		assert val == 42
 	}
 	assert 1 == 1
-	println('nice')
 }
 
 fn for_opt_default() ?string {
@@ -136,23 +133,18 @@ fn opt_ptr(a &int) ?&int {
 	if isnil(a) {
 		return none
 	}
-	//
-	else {
-
-	}
 	return a
 }
 
 fn test_opt_ptr() {
 	a := 3
-	r1 := opt_ptr(&a) or {
+	mut r := opt_ptr(&a) or {
 		&int(0)
 	}
-	assert r1 == &a
-	r2 := opt_ptr(&int(0)) or {
+	assert r == &a
+	r = opt_ptr(&int(0)) or {
 		return
 	}
-	println('`$r2` should be none')
 	assert false
 }
 
