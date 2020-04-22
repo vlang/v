@@ -16,7 +16,7 @@ import v.ast
 
 pub type Type int
 
-pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn | Alias | Enum | SumType | FnType
+pub type TypeInfo = Array | ArrayFixed | Map | Struct | Interface | MultiReturn | Alias | Enum | SumType | FnType
 
 pub struct TypeSymbol {
 pub:
@@ -160,10 +160,18 @@ pub const (
 
 pub const (
 	integer_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx, u32_type_idx, u64_type_idx]
+		u16_type_idx
+	u32_type_idx
+	u64_type_idx
+	]
 	float_type_idxs   = [f32_type_idx, f64_type_idx]
 	number_type_idxs  = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx]
+		u16_type_idx
+	u32_type_idx
+	u64_type_idx
+	f32_type_idx
+	f64_type_idx
+	]
 	pointer_type_idxs = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 	string_type_idxs  = [string_type_idx, ustring_type_idx]
 )
@@ -194,8 +202,10 @@ pub const (
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64',
-		'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'ustring', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed',
-		'map', 'struct', 'mapnode', 'size_t']
+		'u16'
+	'u32', 'u64', 'f32', 'f64', 'string', 'ustring', 'char', 'byte', 'bool', 'none', 'array',
+		'array_fixed', 'map'
+	'struct', 'mapnode', 'size_t']
 )
 
 pub struct MultiReturn {
@@ -242,6 +252,7 @@ pub enum Kind {
 	alias
 	enum_
 	function
+	interface_
 }
 
 pub fn (t &TypeSymbol) str() string {
@@ -251,60 +262,40 @@ pub fn (t &TypeSymbol) str() string {
 [inline]
 pub fn (t &TypeSymbol) enum_info() Enum {
 	match t.info {
-		Enum {
-			return it
-		}
-		else {
-			panic('TypeSymbol.enum_info(): no enum info for type: $t.name')
-		}
+		Enum { return it }
+		else { panic('TypeSymbol.enum_info(): no enum info for type: $t.name') }
 	}
 }
 
 [inline]
 pub fn (t &TypeSymbol) mr_info() MultiReturn {
 	match t.info {
-		MultiReturn {
-			return it
-		}
-		else {
-			panic('TypeSymbol.mr_info(): no multi return info for type: $t.name')
-		}
+		MultiReturn { return it }
+		else { panic('TypeSymbol.mr_info(): no multi return info for type: $t.name') }
 	}
 }
 
 [inline]
 pub fn (t &TypeSymbol) array_info() Array {
 	match t.info {
-		Array {
-			return it
-		}
-		else {
-			panic('TypeSymbol.array_info(): no array info for type: $t.name')
-		}
+		Array { return it }
+		else { panic('TypeSymbol.array_info(): no array info for type: $t.name') }
 	}
 }
 
 [inline]
 pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 	match t.info {
-		ArrayFixed {
-			return it
-		}
-		else {
-			panic('TypeSymbol.array_fixed(): no array fixed info for type: $t.name')
-		}
+		ArrayFixed { return it }
+		else { panic('TypeSymbol.array_fixed(): no array fixed info for type: $t.name') }
 	}
 }
 
 [inline]
 pub fn (t &TypeSymbol) map_info() Map {
 	match t.info {
-		Map {
-			return it
-		}
-		else {
-			panic('TypeSymbol.map_info(): no map info for type: $t.name')
-		}
+		Map { return it }
+		else { panic('TypeSymbol.map_info(): no map info for type: $t.name') }
 	}
 }
 
@@ -313,7 +304,7 @@ pub fn (t TypeSymbol) str() string {
 	return t.name
 }
 */
-pub fn (var t Table) register_builtin_type_symbols() {
+pub fn (mut t Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found
 	t.register_type_symbol(TypeSymbol{
@@ -445,99 +436,40 @@ pub fn (t &TypeSymbol) is_number() bool {
 
 pub fn (k Kind) str() string {
 	k_str := match k {
-		.placeholder {
-			'placeholder'
-		}
-		.void {
-			'void'
-		}
-		.voidptr {
-			'voidptr'
-		}
-		.charptr {
-			'charptr'
-		}
-		.byteptr {
-			'byteptr'
-		}
-		.struct_ {
-			'struct'
-		}
-		.int {
-			'int'
-		}
-		.i8 {
-			'i8'
-		}
-		.i16 {
-			'i16'
-		}
-		.i64 {
-			'i64'
-		}
-		.byte {
-			'byte'
-		}
-		.u16 {
-			'u16'
-		}
-		.u32 {
-			'u32'
-		}
-		.u64 {
-			'u64'
-		}
-		.f32 {
-			'f32'
-		}
-		.f64 {
-			'f64'
-		}
-		.string {
-			'string'
-		}
-		.ustring {
-			'ustring'
-		}
-		.char {
-			'char'
-		}
-		.bool {
-			'bool'
-		}
-		.none_ {
-			'none'
-		}
-		.array {
-			'array'
-		}
-		.array_fixed {
-			'array_fixed'
-		}
-		.map {
-			'map'
-		}
-		.multi_return {
-			'multi_return'
-		}
-		.sum_type {
-			'sum_type'
-		}
-		.alias {
-			'alias'
-		}
-		.enum_ {
-			'enum'
-		}
-		else {
-			'unknown'
-		}
+		.placeholder { 'placeholder' }
+		.void { 'void' }
+		.voidptr { 'voidptr' }
+		.charptr { 'charptr' }
+		.byteptr { 'byteptr' }
+		.struct_ { 'struct' }
+		.int { 'int' }
+		.i8 { 'i8' }
+		.i16 { 'i16' }
+		.i64 { 'i64' }
+		.byte { 'byte' }
+		.u16 { 'u16' }
+		.u32 { 'u32' }
+		.u64 { 'u64' }
+		.f32 { 'f32' }
+		.f64 { 'f64' }
+		.string { 'string' }
+		.char { 'char' }
+		.bool { 'bool' }
+		.none_ { 'none' }
+		.array { 'array' }
+		.array_fixed { 'array_fixed' }
+		.map { 'map' }
+		.multi_return { 'multi_return' }
+		.sum_type { 'sum_type' }
+		.alias { 'alias' }
+		.enum_ { 'enum' }
+		else { 'unknown' }
 	}
 	return k_str
 }
 
 pub fn (kinds []Kind) str() string {
-	var kinds_str := ''
+	mut kinds_str := ''
 	for i, k in kinds {
 		kinds_str += k.str()
 		if i < kinds.len - 1 {
@@ -552,6 +484,10 @@ pub mut:
 	fields     []Field
 	is_typedef bool // C. [typedef]
 	is_union   bool
+}
+
+pub struct Interface {
+	gen_types []string
 }
 
 pub struct Enum {
@@ -604,7 +540,7 @@ pub:
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
 	if sym.kind == .multi_return {
-		var res := '('
+		mut res := '('
 		mr_info := sym.info as MultiReturn
 		for i, typ in mr_info.types {
 			res += table.type_to_str(typ)
@@ -615,7 +551,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 		res += ')'
 		return res
 	}
-	var res := sym.name
+	mut res := sym.name
 	if sym.kind == .array {
 		res = res.replace('array_', '[]')
 	} else if sym.kind == .map {

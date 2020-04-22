@@ -333,6 +333,14 @@ fn (mut f Fmt) stmt(node ast.Stmt) {
 			// Imports are handled after the file is formatted, to automatically add necessary modules
 			// f.imports(f.file.imports)
 		}
+		ast.InterfaceDecl {
+			f.writeln('interface $it.name {')
+			for method in it.methods {
+				f.write('\t')
+				f.writeln(method.str(f.table).after('fn '))
+			}
+			f.writeln('}\n')
+		}
 		ast.Module {
 			f.mod(it)
 		}
