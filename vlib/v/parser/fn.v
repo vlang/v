@@ -208,7 +208,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut stmts := []ast.Stmt
 	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
-		stmts = p.parse_block()
+		stmts = p.parse_block_no_scope()
 	}
 	p.close_scope()
 	p.attr = ''
@@ -253,7 +253,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	mut stmts := []ast.Stmt
 	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
-		stmts = p.parse_block()
+		stmts = p.parse_block_no_scope()
 	}
 	p.close_scope()
 	func := table.Fn{
