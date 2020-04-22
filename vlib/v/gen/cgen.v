@@ -228,6 +228,24 @@ pub fn (mut g Gen) write_typeof_functions() {
 
 // V type to C type
 pub fn (mut g Gen) typ(t table.Type) string {
+	mut styp := g.base_typ(t)
+	if table.type_is(t, .optional) {
+		// Register an optional
+		styp = 'Option_' + styp
+		if table.type_is_ptr(t) {
+			styp = styp.replace('*', '_ptr')
+		}
+		if !(styp in g.optionals) {
+			// println(styp)
+			x := styp // .replace('*', '_ptr')			// handle option ptrs
+			g.typedefs2.writeln('typedef Option $x;')
+			g.optionals << styp
+		}
+	}
+	return styp
+}
+
+pub fn (mut g Gen) base_typ(t table.Type) string {
 	nr_muls := table.type_nr_muls(t)
 	sym := g.table.get_type_symbol(t)
 	mut styp := sym.name.replace('.', '__')
@@ -241,19 +259,6 @@ pub fn (mut g Gen) typ(t table.Type) string {
 			if !info.is_typedef {
 				styp = 'struct $styp'
 			}
-		}
-	}
-	if table.type_is(t, .optional) {
-		// Register an optional
-		styp = 'Option_' + styp
-		if table.type_is_ptr(t) {
-			styp = styp.replace('*', '_ptr')
-		}
-		if !(styp in g.optionals) {
-			// println(styp)
-			x := styp // .replace('*', '_ptr')			// handle option ptrs
-			g.typedefs2.writeln('typedef Option $x;')
-			g.optionals << styp
 		}
 	}
 	return styp
@@ -733,12 +738,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		// multi return
 		mut or_stmts := []ast.Stmt
 		mut return_type := table.void_type
-		match assign_stmt.right[0] {
-			ast.CallExpr {
-				or_stmts = it.or_block.stmts
-				return_type = it.return_type
-			}
-			else {}
+		if assign_stmt.right[0] is ast.CallExpr {
+			it := assign_stmt.right[0] as ast.CallExpr
+			or_stmts = it.or_block.stmts
+			return_type = it.return_type
 		}
 		is_optional := table.type_is(return_type, .optional)
 		mr_var_name := 'mr_$assign_stmt.pos.pos'
@@ -762,8 +765,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			g.expr(ident)
 			if is_optional {
-				mr_styp2 := mr_styp[7..] // remove Option_
-				g.writeln(' = (*(${mr_styp2}*)${mr_var_name}.data).arg$i;')
+				mr_base_styp := g.base_typ(return_type)
+				g.writeln(' = (*(${mr_base_styp}*)${mr_var_name}.data).arg$i;')
 			} else {
 				g.writeln(' = ${mr_var_name}.arg$i;')
 			}
@@ -819,7 +822,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if is_decl {
 					g.write('$styp ')
 				}
-				g.expr(ident)
+				g.ident(ident)
 				if g.autofree && right_sym.kind in [.array, .string] {
 					if g.gen_clone_assignment(val, right_sym, true) {
 						g.writeln(';')
@@ -1554,21 +1557,18 @@ fn (mut g Gen) ident(node ast.Ident) {
 		g.write('_const_')
 	}
 	name := c_name(node.name)
-	// TODO `is`
-	match node.info {
-		ast.IdentVar {
-			// x ?int
-			// `x = 10` => `x.data = 10` (g.right_is_opt == false)
-			// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
-			// `println(x)` => `println(*(int*)x.data)`
-			if it.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
-				g.write('/*opt*/')
-				styp := g.typ(it.typ)[7..] // Option_int => int TODO perf?
-				g.write('(*($styp*)${name}.data)')
-				return
-			}
+	if node.info is ast.IdentVar {
+		ident_var := node.info as ast.IdentVar
+		// x ?int
+		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
+		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
+		// `println(x)` => `println(*(int*)x.data)`
+		if ident_var.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
+			g.write('/*opt*/')
+			styp := g.base_typ(ident_var.typ)
+			g.write('(*($styp*)${name}.data)')
+			return
 		}
-		else {}
 	}
 	g.write(name)
 }
@@ -1821,14 +1821,12 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		g.write(' ')
 		// typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		// mr_info := typ_sym.info as table.MultiReturn
-		mut styp := g.typ(g.fn_decl.return_type)
+		mut styp := ''
 		if fn_return_is_optional { // && !table.type_is(node.types[0], .optional) && node.types[0] !=
-			styp = styp[7..] // remove 'Option_'
-			mut x := styp
-			if x.ends_with('_ptr') {
-				x = x.replace('_ptr', '*')
-			}
-			g.write('opt_ok(&($x/*X*/[]) { ')
+			styp = g.base_typ(g.fn_decl.return_type)
+			g.write('opt_ok(&($styp/*X*/[]) { ')
+		} else {
+			styp = g.typ(g.fn_decl.return_type)
 		}
 		g.write('($styp){')
 		for i, expr in node.exprs {
@@ -1864,14 +1862,10 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				else {}
 			}
 			if !is_none && !is_error {
-				styp := g.typ(g.fn_decl.return_type)[7..] // remove 'Option_'
-				mut x := styp
-				if x.ends_with('_ptr') {
-					x = x.replace('_ptr', '*')
-				}
-				g.write('/*:)$return_sym.name*/opt_ok(&($x[]) { ')
+				styp := g.base_typ(g.fn_decl.return_type)
+				g.write('/*:)$return_sym.name*/opt_ok(&($styp[]) { ')
 				g.expr(node.exprs[0])
-				g.writeln(' }, sizeof($x));')
+				g.writeln(' }, sizeof($styp));')
 				return
 			}
 			// g.write('/*OPTIONAL*/')
@@ -2454,8 +2448,7 @@ fn (mut g Gen) insert_before(s string) {
 // to access its fields (`.ok`, `.error` etc)
 // `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
 fn (mut g Gen) or_block(var_name string, stmts []ast.Stmt, return_type table.Type) {
-	mr_styp := g.typ(return_type)
-	mr_styp2 := mr_styp[7..] // remove Option_
+	mr_styp := g.base_typ(return_type)
 	g.writeln(';') // or')
 	g.writeln('if (!${var_name}.ok) {')
 	g.writeln('\tstring err = ${var_name}.v_error;')
@@ -2466,7 +2459,7 @@ fn (mut g Gen) or_block(var_name string, stmts []ast.Stmt, return_type table.Typ
 		for i, stmt in stmts {
 			if i == stmts.len - 1 {
 				g.indent--
-				g.write('\t*(${mr_styp2}*) ${var_name}.data = ')
+				g.write('\t*(${mr_styp}*) ${var_name}.data = ')
 			}
 			g.stmt(stmt)
 		}

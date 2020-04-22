@@ -277,7 +277,7 @@ static inline void _wymix128(uint64_t A, uint64_t B, uint64_t *C, uint64_t *D){
 }
 static inline uint64_t wyhash(const void *key, uint64_t len, uint64_t seed){
 	const uint8_t *p=(const uint8_t *)key;
-	uint64_t i=len, see1=seed; 
+	uint64_t i=len, see1=seed;
 	start:
 	if(_likely_(i<=16)){
 	#ifndef	WYHASH_CONDOM
@@ -289,7 +289,7 @@ static inline uint64_t wyhash(const void *key, uint64_t len, uint64_t seed){
 			if(_likely_(i>=4))	_wymix128(_wyr4(p)^_wyp0,_wyr4(p+i-4)^_wyp1, &seed, &see1);
 			else if (_likely_(i))	_wymix128(_wyr3(p,i)^_wyp0,_wyp1, &seed, &see1);
 			else	_wymix128(_wyp0,_wyp1, &seed, &see1);
-		} 
+		}
   		else	_wymix128(_wyr8(p)^_wyp0,_wyr8(p+i-8)^_wyp1, &seed, &see1);
 	#endif
 		_wymix128(len,_wyp0, &seed, &see1);
@@ -303,18 +303,18 @@ static inline uint64_t wyhash64(uint64_t A, uint64_t B){
 	_wymix128(0,0,&A,&B);
 	return	A^B;
 }
-static inline uint64_t wyrand(uint64_t *seed){ 
+static inline uint64_t wyrand(uint64_t *seed){
 	*seed+=_wyp0;
 	uint64_t	a=0, b=0;
 	_wymix128(*seed,*seed^_wyp1,&a,&b);
 	return	a^b;
 }
-static inline double wy2u01(uint64_t r) { 
-	const double _wynorm=1.0/(1ull<<52); 
+static inline double wy2u01(uint64_t r) {
+	const double _wynorm=1.0/(1ull<<52);
 	return (r>>12)*_wynorm;
 }
-static inline double wy2gau(uint64_t r) { 
-	const double _wynorm=1.0/(1ull<<20); 
+static inline double wy2gau(uint64_t r) {
+	const double _wynorm=1.0/(1ull<<20);
 	return ((r&0x1fffff)+((r>>21)&0x1fffff)+((r>>42)&0x1fffff))*_wynorm-3.0;
 }
 #endif
@@ -335,7 +335,6 @@ typedef uint32_t rune;
 typedef float f32;
 typedef double f64;
 typedef unsigned char* byteptr;
-typedef int* intptr;
 typedef void* voidptr;
 typedef char* charptr;
 typedef struct array array;

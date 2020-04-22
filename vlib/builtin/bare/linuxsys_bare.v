@@ -363,7 +363,7 @@ pub fn sys_munmap(addr voidptr, len u64) errno {
 }
 
 // 22  sys_pipe  int *filedes
-pub fn sys_pipe(filedes intptr) errno {
+pub fn sys_pipe(filedes &int) errno {
 	return errno(sys_call1(22, u64(filedes)))
 }
 
@@ -415,7 +415,7 @@ pub fn sys_getuid() int {
 }
 
 // 247 sys_waitid  int which pid_t upid  struct siginfo *infop int options struct rusage *ru
-pub fn sys_waitid (which wi_which, pid int, infop intptr, options wp_sys, ru voidptr) errno {
+pub fn sys_waitid (which wi_which, pid int, infop &int, options wp_sys, ru voidptr) errno {
 	return errno(sys_call5(247, u64(which), u64(pid), u64(infop), u64(options), u64(ru)))
 }
 

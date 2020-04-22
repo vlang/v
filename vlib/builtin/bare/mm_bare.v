@@ -17,7 +17,7 @@ pub fn mm_alloc(size u64) (byteptr, errno) {
 
 	a, e := sys_mmap(0, n_bytes, mem_prot, mem_flags, -1, 0)
 	if e == .enoerror {
-		mut ap := intptr(a)
+		mut ap := &int(a)
 		*ap = pages
 		return byteptr(a+4), e
 	}
@@ -25,7 +25,7 @@ pub fn mm_alloc(size u64) (byteptr, errno) {
 }
 
 pub fn mm_free(addr byteptr) errno {
-	ap := intptr(addr-4)
+	ap := &int(addr-4)
 	size := u64(*ap) * u64(linux_mem.page_size)
 
 	return sys_munmap(ap, size)
