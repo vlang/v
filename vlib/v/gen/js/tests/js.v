@@ -10,7 +10,7 @@ struct Companies {
 }
 
 enum POSITION {
-    GO_BACK,
+    GO_BACK
     DONT_GO_BACK
 }
 
@@ -67,8 +67,8 @@ fn (it Companies) method() int {
 	}
 
    a, b := hello(2, 'google', 'not google')
-  
-   glue := if a > 2 { 'more_glue' } else if a > 5 {'more glueee'} else { 'less glue' } 
+
+   glue := if a > 2 { 'more_glue' } else if a > 5 {'more glueee'} else { 'less glue' }
 
     if a != 2 {}
 
