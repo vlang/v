@@ -122,8 +122,8 @@ struct Ray {
 
 // material types, used in radiance()
 enum Refl_t {
-	diff,
-	spec,
+	diff
+	spec
 	refr
 }
 

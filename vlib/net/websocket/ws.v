@@ -48,20 +48,20 @@ pub struct Message {
 }
 
 pub enum OPCode {
-	continuation = 0x00,
-	text_frame = 0x01,
-	binary_frame = 0x02,
-	close = 0x08,
-	ping = 0x09,
+	continuation = 0x00
+	text_frame = 0x01
+	binary_frame = 0x02
+	close = 0x08
+	ping = 0x09
 	pong = 0x0A
 }
 
 enum State {
-	connecting = 0,
-	connected,
-	open,
-    closing,
-	closed 
+	connecting = 0
+	connected
+	open
+    closing
+	closed
 }
 
 struct Uri {
@@ -73,15 +73,15 @@ struct Uri {
 }
 
 enum Flag {
-	has_accept,
-	has_connection,
+	has_accept
+	has_connection
 	has_upgrade
 }
 
 struct Frame {
 	mut:
 	fin bool
-	rsv1 bool 
+	rsv1 bool
 	rsv2 bool
 	rsv3 bool
 	opcode OPCode
@@ -145,7 +145,7 @@ pub fn (ws mut Client) connect() int {
 	ai_socktype := C.SOCK_STREAM
 
 	handshake := "GET ${uri.resource}${uri.querystring} HTTP/1.1\r\nHost: ${uri.hostname}:${uri.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${seckey}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-	
+
 	socket := net.new_socket(ai_family, ai_socktype, 0) or {
 		l.f(err)
 		return -1
@@ -155,7 +155,7 @@ pub fn (ws mut Client) connect() int {
 		l.f(err)
 		return -1
 	}
-	
+
 	optval := 1
 	ws.socket.setsockopt(C.SOL_SOCKET, C.SO_KEEPALIVE, &optval) or {
 		l.f(err)
@@ -169,7 +169,7 @@ pub fn (ws mut Client) connect() int {
 	ws.lock.lock()
 	ws.state = .connected
 	ws.lock.unlock()
-	
+
 	res := ws.write_to_server(handshake.str, handshake.len)
 	if res <= 0 {
 		l.f("Handshake failed.")
@@ -193,7 +193,7 @@ pub fn (ws mut Client) connect() int {
 
 pub fn (ws mut Client) close(code int, message string){
 	if ws.state != .closed && ws.socket.sockfd > 1 {
-		
+
 		ws.lock.lock()
 		ws.state = .closing
 		ws.lock.unlock()
@@ -310,7 +310,7 @@ pub fn (ws mut Client) write(payload byteptr, payload_len int, code OPCode) int 
 	}
 	l.d("write: ${bytes_written} bytes written.")
 	free_data:
-	unsafe { 
+	unsafe {
 		free(payload)
 		frame_buf.free()
 		header.free()
@@ -325,20 +325,20 @@ pub fn (ws mut Client) listen() {
 		ws.read()
 	}
 	l.i("Listener stopped as websocket was closed.")
-} 
+}
 
 pub fn (ws mut Client) read() int {
 	mut bytes_read := u64(0)
-	
+
 	initial_buffer := u64(256)
 	mut header_len := 2
 	header_len_offset := 2
 	extended_payload16_end_byte := 4
 	extended_payload64_end_byte := 10
-	
+
 	mut payload_len := u64(0)
 	mut data := C.calloc(initial_buffer, 1)//[`0`].repeat(int(max_buffer))
-	
+
 	mut frame := Frame{}
 	mut frame_size := u64(header_len)
 
@@ -434,7 +434,7 @@ pub fn (ws mut Client) read() int {
 			}
 		}
 	}
-	
+
 	// unmask the payload
 	if frame.mask {
 		for i in 0..payload_len {
@@ -446,7 +446,7 @@ pub fn (ws mut Client) read() int {
 		ws.close(0, "")
 		goto free_data
 		return -1
-	} else if frame.opcode in [.text_frame, .binary_frame] { 
+	} else if frame.opcode in [.text_frame, .binary_frame] {
 		data_node:
 		l.d("read: recieved text_frame or binary_frame")
 		mut payload := malloc(sizeof(byte) * int(payload_len) + 1)
@@ -526,7 +526,7 @@ pub fn (ws mut Client) read() int {
 			return -1
 		}
 		goto data_node
-		return 0 
+		return 0
 	}
 	else if frame.opcode == .ping {
 		l.d("read: ping")
@@ -595,7 +595,7 @@ pub fn (ws mut Client) read() int {
 	ws.send_error_event("Recieved unsupported opcode: ${frame.opcode}")
 	ws.close(1002, "Unsupported opcode")
 	free_data:
-	unsafe { 
+	unsafe {
 		free(data)
 	}
 	return -1
