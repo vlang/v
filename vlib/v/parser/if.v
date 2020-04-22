@@ -7,7 +7,7 @@ import v.ast
 import v.table
 import v.token
 
-fn (p mut Parser) if_expr() ast.IfExpr {
+fn (mut p Parser) if_expr() ast.IfExpr {
 	pos := p.tok.position()
 	mut branches := []ast.IfBranch
 	mut has_else := false
@@ -78,7 +78,7 @@ fn (p mut Parser) if_expr() ast.IfExpr {
 	}
 }
 
-fn (p mut Parser) match_expr() ast.MatchExpr {
+fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.position()
 	p.inside_match = true
 	p.check(.key_match)

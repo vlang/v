@@ -7,7 +7,7 @@ import v.ast
 import v.table
 import v.token
 
-fn (p mut Parser) for_stmt() ast.Stmt {
+fn (mut p Parser) for_stmt() ast.Stmt {
 	p.check(.key_for)
 	pos := p.tok.position()
 	p.open_scope()

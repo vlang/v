@@ -233,7 +233,7 @@ pub fn (mut p Parser) parse_block_no_scope() []ast.Stmt {
 }
 
 /*
-fn (p mut Parser) next_with_comment() {
+fn (mut p Parser) next_with_comment() {
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()
 }
@@ -501,7 +501,7 @@ fn (mut p Parser) attribute() ast.Attr {
 }
 
 /*
-fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
+fn (mut p Parser) range_expr(low ast.Expr) ast.Expr {
 	// ,table.Type) {
 	if p.tok.kind != .dotdot {
 		p.next()
