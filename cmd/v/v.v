@@ -109,9 +109,9 @@ fn main() {
 }
 
 fn parse_args(args []string) (&pref.Preferences, string) {
-	var res := &pref.Preferences{}
-	var command := ''
-	var command_pos := 0
+	mut res := &pref.Preferences{}
+	mut command := ''
+	mut command_pos := 0
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
@@ -198,7 +198,7 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				i++
 			}
 			else {
-				var should_continue := false
+				mut should_continue := false
 				for flag_with_param in list_of_flags_with_param {
 					if '-$flag_with_param' == arg {
 						should_continue = true
@@ -254,8 +254,8 @@ fn create_symlink() {
 		return
 	}
 	vexe := pref.vexe_path()
-	var link_path := '/usr/local/bin/v'
-	var ret := os.exec('ln -sf $vexe $link_path') or {
+	mut link_path := '/usr/local/bin/v'
+	mut ret := os.exec('ln -sf $vexe $link_path') or {
 		panic(err)
 	}
 	if ret.exit_code == 0 {
