@@ -107,6 +107,9 @@ pub fn (s mut Scope) update_var_type(name string, typ table.Type) {
 }
 
 pub fn (s mut Scope) register(name string, obj ScopeObject) {
+	if name == "_" {
+		return
+	}
 	if x := s.find(name) {
 		// println('existing obect: $name')
 		return
