@@ -7,7 +7,7 @@ import v.ast
 import v.table
 import v.token
 
-fn (var p Parser) array_init() ast.ArrayInit {
+fn (p mut Parser) array_init() ast.ArrayInit {
 	first_pos := p.tok.position()
 	mut last_pos := token.Position{}
 	p.check(.lsbr)
@@ -93,7 +93,7 @@ fn (var p Parser) array_init() ast.ArrayInit {
 	}
 }
 
-fn (var p Parser) map_init() ast.MapInit {
+fn (p mut Parser) map_init() ast.MapInit {
 	pos := p.tok.position()
 	mut keys := []ast.Expr
 	mut vals := []ast.Expr

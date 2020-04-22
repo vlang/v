@@ -313,7 +313,7 @@ pub fn (t TypeSymbol) str() string {
 	return t.name
 }
 */
-pub fn (var t Table) register_builtin_type_symbols() {
+pub fn (t mut Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found
 	t.register_type_symbol(TypeSymbol{

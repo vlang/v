@@ -7,7 +7,7 @@ import v.ast
 import v.table
 import v.token
 
-fn (var p Parser) struct_decl() ast.StructDecl {
+fn (p mut Parser) struct_decl() ast.StructDecl {
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -158,7 +158,7 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 	}
 }
 
-fn (var p Parser) struct_init(short_syntax bool) ast.StructInit {
+fn (p mut Parser) struct_init(short_syntax bool) ast.StructInit {
 	first_pos := p.tok.position()
 	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
@@ -221,7 +221,7 @@ fn (var p Parser) struct_init(short_syntax bool) ast.StructInit {
 	return node
 }
 
-fn (var p Parser) interface_decl() ast.InterfaceDecl {
+fn (p mut Parser) interface_decl() ast.InterfaceDecl {
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
