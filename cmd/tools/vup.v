@@ -51,7 +51,7 @@ fn main() {
 		println(make_result.output)
 	}
 
-	_ := os.exec('v cmd/tools/vup') or {
+	_ := os.exec('v cmd/tools/vup.v') or {
 		panic(err)
 	}
 }
