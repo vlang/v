@@ -8,6 +8,45 @@ import v.table
 import v.token
 
 fn (mut p Parser) struct_decl() ast.StructDecl {
+<!--
+
+Please title your PR as follows: `time: fix foo bar`.
+Always start with the thing you are fixing, then describe the fix.
+Don't use past tense (e.g. "fixed foo bar").
+
+Explain what your PR does and why.
+
+If you are adding a new function, please document it and add tests:
+
+```
+// foo does foo and bar
+fn foo() {
+
+// file_test.v
+fn test_foo() {
+    assert foo() == ...
+    ...
+}
+```
+
+If you are fixing a bug, please add a test that covers it.
+
+Before submitting a PR, please:
+  A) run the tests with `v test-compiler` .
+  B) make sure, that V can still compile itself:
+```shell
+./v -o v cmd/v
+./v -o v cmd/v
+```
+
+I try to process PRs as soon as possible. They should be handled within 24 hours.
+
+Applying labels to PRs is not needed.
+
+Thanks a lot for your contribution!
+
+-->
+
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -22,8 +61,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
 	is_js := p.tok.lit == 'JS' && p.peek_tok.kind == .dot
 	if is_c {
-		p.next()		// C || JS
-		p.next()		// .
+		p.next() // C || JS
+		p.next() // .
 	}
 	is_typedef := p.attr == 'typedef'
 	no_body := p.peek_tok.kind != .lcbr
@@ -81,9 +120,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				// p.expr(0)
 				default_expr = p.expr(0)
 				match default_expr {
-					ast.EnumVal {
-						it.typ = typ
-					}
+					ast.EnumVal { it.typ = typ }
 					// TODO: implement all types??
 					else {}
 				}
@@ -169,15 +206,15 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	}
 	mut fields := []ast.StructInitField
 	mut i := 0
-	is_short_syntax := p.peek_tok.kind != .colon && p.tok.kind != .rcbr	// `Vec{a,b,c}
+	is_short_syntax := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
 	// p.warn(is_short_syntax.str())
 	for p.tok.kind != .rcbr {
 		p.check_comment()
 		mut field_name := ''
 		if is_short_syntax {
 			expr := p.expr(0)
+			// name will be set later in checker
 			fields << ast.StructInitField{
-				// name will be set later in checker
 				expr: expr
 				pos: expr.position()
 			}
@@ -226,23 +263,52 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	if is_pub {
 		p.next()
 	}
-	p.next()	// `interface`
+	p.next() // `interface`
 	interface_name := p.check_name()
+	//println('interface decl $interface_name')
 	p.check(.lcbr)
-	mut field_names := []string
+	// Declare the type
+	t := table.TypeSymbol{
+		kind: .interface_
+		name: interface_name
+		info: table.Struct{
+			//is_interface: true
+		}
+	}
+	typ := p.table.register_type_symbol(t)
+	ts := p.table.get_type_symbol(typ) // TODO t vs ts
+	// Parse methods
+	mut methods := []ast.FnDecl
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		line_nr := p.tok.line_nr
 		name := p.check_name()
-		field_names << name
-		p.fn_args()
-		if p.tok.kind == .name && p.tok.line_nr == line_nr {
-			p.parse_type()
+		println(name)
+		// field_names << name
+		args2, _ := p.fn_args()
+		mut args := [table.Arg{
+			name: 'x'
+			typ: typ
+		}]
+		args << args2
+		mut method := ast.FnDecl{
+			name: name
+			args: args
+			return_type: table.void_type
 		}
+		if p.tok.kind == .name && p.tok.line_nr == line_nr {
+			method.return_type = p.parse_type()
+		}
+		methods << method
+		//println('register method $name')
+		ts.register_method(table.Fn{
+			name: name
+			args: args
+			return_type: method.return_type
+		})
 	}
 	p.check(.rcbr)
 	return ast.InterfaceDecl{
 		name: interface_name
-		field_names: field_names
+		methods: methods
 	}
 }
-

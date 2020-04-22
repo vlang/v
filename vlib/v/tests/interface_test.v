@@ -22,12 +22,40 @@ fn (d Dog) name() string {
 	return 'Dog'
 }
 
-fn test_todo() {}
+fn test_todo() {
+	if true {}
+	//
+	else{}
+}
 
 interface Speaker {
-	name ()string
+	name() string
 	speak()
+}
+
+/*
+fn perform_speak(s Speaker) {
+	s.speak()
+	assert true
+	/*
+	name := s.name()
+       assert name == 'Dog' || name == 'Cat'
+       println(s.name())
+*/
+}
+
+fn test_perform_speak() {
+	dog := Dog{}
+	perform_speak(dog)
+	cat := Cat{}
+	perform_speak(cat)
+	// perform_speakers([dog, cat])
+	/*
+	f := Foo {
+		speaker: dog
 	}
+*/
+}
 
 /*
 interface Speak2er {
@@ -40,37 +68,8 @@ struct Foo {
 	speakers []Speaker
 }
 
-fn perform_speak(s Speaker) {
-	if true {
-		// QTODO
-		return
-	}
-	s.speak()
-	assert true
-	name := s.name()
-	assert name == 'Dog' || name == 'Cat'
-	println(s.name())
-}
-
 fn perform_speakers(speakers []Speaker) {}
 
-fn test_perform_speak() {
-	if true {
-		// QTODO
-		return
-	}
-	dog := Dog{}
-	perform_speak(dog)
-	cat := Cat{}
-	perform_speak(cat)
-	// perform_speakers([dog, cat])
-	/*
-	f := Foo {
-		speaker: dog
-	}
-	*/
-
-}
 
 interface Register {
 	register()}
@@ -92,4 +91,5 @@ fn test_register() {
 	f.register()
 	handle_reg(f)
 }
+*/
 */

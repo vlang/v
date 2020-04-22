@@ -3,13 +3,11 @@
 // that can be found in the LICENSE file.
 module gen
 
-import (
-	v.ast
-	v.table
-	v.util
-)
+import v.ast
+import v.table
+import v.util
 
-fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
+fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	if it.is_c {
 		// || it.no_body {
 		return
@@ -88,7 +86,6 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 			g.writeln('\tint ___argc;')
 			g.writeln('\twchar_t** ___argv = CommandLineToArgvW(cmd_line, &___argc);')
 		}
-
 		g.writeln('\t_vinit();')
 		if g.is_importing_os() {
 			if g.autofree {
@@ -126,11 +123,11 @@ fn (g mut Gen) gen_fn_decl(it ast.FnDecl) {
 	g.fn_decl = 0
 }
 
-fn (g mut Gen) fn_args(args []table.Arg, is_variadic bool) {
+fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) {
 	no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
 		arg_type_sym := g.table.get_type_symbol(arg.typ)
-		mut arg_type_name := g.typ(arg.typ)		// arg_type_sym.name.replace('.', '__')
+		mut arg_type_name := g.typ(arg.typ) // arg_type_sym.name.replace('.', '__')
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
 			varg_type_str := int(arg.typ).str()
@@ -175,7 +172,7 @@ fn (g mut Gen) fn_args(args []table.Arg, is_variadic bool) {
 	}
 }
 
-fn (g mut Gen) call_expr(node ast.CallExpr) {
+fn (mut g Gen) call_expr(node ast.CallExpr) {
 	gen_or := !g.is_assign_rhs && node.or_block.stmts.len > 0
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
@@ -192,21 +189,37 @@ fn (g mut Gen) call_expr(node ast.CallExpr) {
 	}
 }
 
-fn (g mut Gen) method_call(node ast.CallExpr) {
+fn (mut g Gen) method_call(node ast.CallExpr) {
 	// TODO: there are still due to unchecked exprs (opt/some fn arg)
 	if node.left_type == 0 {
 		verror('method receiver type is 0, this means there are some uchecked exprs')
 	}
 	typ_sym := g.table.get_type_symbol(node.receiver_type)
-	// rec_sym := g.table.get_type_symbol(node.receiver_type)
 	mut receiver_name := typ_sym.name
+	if typ_sym.kind == .interface_ {
+		g.writeln('// interface method call')
+		// `((void (*)())(Speaker_name_table[s._interface_idx][1]))(s._object);`
+		g.write('((void (*)())(${receiver_name}_name_table[')
+		g.expr(node.left)
+		g.write('._interface_idx][1]))(')
+		g.expr(node.left)
+		g.writeln('._object );')
+		return
+	}
+	// rec_sym := g.table.get_type_symbol(node.receiver_type)
 	if typ_sym.kind == .array && node.name == 'filter' {
 		g.gen_filter(node)
 		return
 	}
 	// TODO performance, detect `array` method differently
 	if typ_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free', 'push_many',
-		'trim', 'first', 'last', 'clone', 'reverse', 'slice'] {
+		'trim'
+	'first'
+	'last'
+	'clone'
+	'reverse'
+	'slice'
+	] {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 		// `array_byte_clone` => `array_clone`
@@ -255,7 +268,7 @@ fn (g mut Gen) method_call(node ast.CallExpr) {
 	// }
 }
 
-fn (g mut Gen) fn_call(node ast.CallExpr) {
+fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// call struct field with fn type
 	// TODO: test node.left instead
 	// left & left_type will be `x` and `x type` in `x.fieldfn()`
@@ -264,8 +277,7 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 		g.expr(node.left)
 		if table.type_is_ptr(node.left_type) {
 			g.write('->')
-		}
-		else {
+		} else {
 			g.write('.')
 		}
 	}
@@ -322,15 +334,9 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 		} else {
 			expr := node.args[0].expr
 			is_var := match expr {
-				ast.SelectorExpr {
-					true
-				}
-				ast.Ident {
-					true
-				}
-				else {
-					false
-				}
+				ast.SelectorExpr { true }
+				ast.Ident { true }
+				else { false }
 			}
 			if table.type_is_ptr(typ) && sym.kind != .struct_ {
 				// ptr_str() for pointers
@@ -361,7 +367,7 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 				}
 				g.expr(expr)
 				if sym.kind == .struct_ && styp != 'ptr' && !sym.has_method('str') {
-					g.write(', 0')					// trailing 0 is initial struct indent count
+					g.write(', 0') // trailing 0 is initial struct indent count
 				}
 			}
 			g.write('))')
@@ -381,10 +387,10 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 	}
 }
 
-fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
+fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 	is_variadic := expected_types.len > 0 && table.type_is(expected_types[expected_types.len -
 		1], .variadic)
-	is_forwarding_varg := args.len > 0 && table.type_is(args[args.len-1].typ, .variadic)
+	is_forwarding_varg := args.len > 0 && table.type_is(args[args.len - 1].typ, .variadic)
 	gen_vargs := is_variadic && !is_forwarding_varg
 	mut arg_no := 0
 	for arg in args {
@@ -427,7 +433,7 @@ fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 }
 
 [inline]
-fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
+fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 	arg_is_ptr := table.type_is_ptr(expected_type) || table.type_idx(expected_type) in table.pointer_type_idxs
 	expr_is_ptr := table.type_is_ptr(arg.typ) || table.type_idx(arg.typ) in table.pointer_type_idxs
 	if arg.is_mut && !arg_is_ptr {
@@ -454,7 +460,7 @@ fn (g mut Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
 }
 
-fn (g mut Gen) is_gui_app() bool {
+fn (mut g Gen) is_gui_app() bool {
 	$if windows {
 		for cf in g.table.cflags {
 			if cf.value == 'gdi32' {

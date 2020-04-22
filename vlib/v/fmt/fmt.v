@@ -333,6 +333,14 @@ fn (mut f Fmt) stmt(node ast.Stmt) {
 			// Imports are handled after the file is formatted, to automatically add necessary modules
 			// f.imports(f.file.imports)
 		}
+		ast.InterfaceDecl {
+			f.writeln('interface $it.name {')
+			for method in it.methods {
+				f.write('\t')
+				f.writeln(method.str(f.table).after('fn '))
+			}
+			f.writeln('}\n')
+		}
 		ast.Module {
 			f.mod(it)
 		}
@@ -452,9 +460,9 @@ fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
 	// type_ptr => &type
 	if res.ends_with('_ptr') {
-		res = res[0..res.len - 4]
+		res = res[0 .. res.len - 4]
 		start_pos := 2 * res.count('[]')
-		res = res[0..start_pos] + '&' + res[start_pos..res.len]
+		res = res[0 .. start_pos] + '&' + res[start_pos .. res.len]
 	}
 	return res.replace(f.cur_mod + '.', '')
 }
