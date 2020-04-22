@@ -622,7 +622,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) && !(name in ['C.stat',
+		if !known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) && !(name in ['C.stat',
 			'C.sigaction'
 		]) {
 			// TODO handle C.stat()

@@ -1361,6 +1361,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.string_type
 		}
 		ast.AnonFn {
+			c.fn_return_type = it.decl.return_type
 			c.stmts(it.decl.stmts)
 			return it.typ
 		}

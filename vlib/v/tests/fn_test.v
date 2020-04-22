@@ -104,7 +104,8 @@ fn test_mut_ptr() {
 }
 
 fn high_fn(f fn(int) int) {
-
+	x := f(111)
+	println('x == $x')
 }
 
 fn high_fn_no_ret(f fn(int)) {
@@ -132,19 +133,19 @@ fn test_anon_fn() {
 	f1 := fn(a int){
 		println('hello from f1')
 	}
-
 	f1(1)
-	f2 := fn(a int){
+	
+	f2 := fn(a int) int {
 		println('hello from f2')
+		return 10
 	}
+	f2res := f2(1)
+	println('f2res == $f2res')
+	// assert f2res == 10
 
-	f2(1)
-
-	// TODO: fix return
-	// high_fn(fn (x int) int {
-	// 	println('hello')
-	// 	return x + 1
-	// })
+	high_fn(fn (x int) int {
+		return x + 1
+	})
 
 	high_fn_no_ret(fn (x int) {
 		println('hello $x')
