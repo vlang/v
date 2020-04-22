@@ -384,9 +384,11 @@ fn (g mut Gen) fn_call(node ast.CallExpr) {
 fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 	is_variadic := expected_types.len > 0 && table.type_is(expected_types[expected_types.len -
 		1], .variadic)
+	is_forwarding_varg := args.len > 0 && table.type_is(args[args.len-1].typ, .variadic)
+	gen_vargs := is_variadic && !is_forwarding_varg
 	mut arg_no := 0
 	for arg in args {
-		if is_variadic && arg_no == expected_types.len - 1 {
+		if gen_vargs && arg_no == expected_types.len - 1 {
 			break
 		}
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
@@ -396,12 +398,12 @@ fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 		} else {
 			g.expr(arg.expr)
 		}
-		if arg_no < args.len - 1 || is_variadic {
+		if arg_no < args.len - 1 || gen_vargs {
 			g.write(', ')
 		}
 		arg_no++
 	}
-	if is_variadic {
+	if is_variadic && !is_forwarding_varg {
 		varg_type := expected_types[expected_types.len - 1]
 		struct_name := 'varg_' + g.typ(varg_type).replace('*', '_ptr')
 		variadic_count := args.len - arg_no

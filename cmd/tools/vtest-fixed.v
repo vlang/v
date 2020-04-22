@@ -18,7 +18,6 @@ const (
 		'vlib/regex/regex_test.v',
 		'vlib/v/tests/enum_bitfield_test.v',
 		'vlib/v/tests/fixed_array_test.v',
-		'vlib/v/tests/fn_variadic_test.v',
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/option_test.v',
 		'vlib/v/tests/pointers_test.v',
