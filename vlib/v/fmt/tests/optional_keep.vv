@@ -1,0 +1,5 @@
+pub fn test() ?&SomeType {
+}
+
+struct SomeType {
+}
