@@ -83,15 +83,14 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 }
 
 fn (mut p Parser) fn_decl() ast.FnDecl {
-	// p.table.clear_vars()
 	start_pos := p.tok.position()
-	p.open_scope()
 	is_deprecated := p.attr == 'deprecated'
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
 	}
 	p.check(.key_fn)
+	p.open_scope()
 	// C. || JS.
 	is_c := p.tok.kind == .name && p.tok.lit == 'C'
 	is_js := p.tok.kind == .name && p.tok.lit == 'JS'
@@ -237,8 +236,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 
 fn (mut p Parser) anon_fn() ast.AnonFn {
 	pos := p.tok.position()
-	// p.open_scope()
 	p.check(.key_fn)
+	p.open_scope()
 	// TODO generics
 	args, is_variadic := p.fn_args()
 	for arg in args {
@@ -256,7 +255,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block()
 	}
-	// p.close_scope()
+	p.close_scope()
 	func := table.Fn{
 		args: args
 		is_variadic: is_variadic
