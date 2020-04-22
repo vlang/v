@@ -141,6 +141,7 @@ fn test_anon_fn() {
 	}
 	f2res := f2(1)
 	println('f2res == $f2res')
+	// TODO/FIXME: assert bug? uncomment to see
 	// assert f2res == 10
 
 	high_fn(fn (x int) int {
