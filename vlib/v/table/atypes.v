@@ -153,8 +153,9 @@ pub const (
 	bool_type_idx    = 16
 	none_type_idx    = 17
 	string_type_idx  = 18
-	array_type_idx   = 19
-	map_type_idx     = 20
+	ustring_type_idx = 19
+	array_type_idx   = 20
+	map_type_idx     = 21
 )
 
 pub const (
@@ -164,6 +165,7 @@ pub const (
 	number_type_idxs  = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
 		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx]
 	pointer_type_idxs = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
+	string_type_idxs  = [string_type_idx, ustring_type_idx]
 )
 
 pub const (
@@ -185,14 +187,15 @@ pub const (
 	bool_type    = new_type(bool_type_idx)
 	none_type    = new_type(none_type_idx)
 	string_type  = new_type(string_type_idx)
+	ustring_type = new_type(ustring_type_idx)
 	array_type   = new_type(array_type_idx)
 	map_type     = new_type(map_type_idx)
 )
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64',
-		'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed',
-		'map', 'struct', 'mapnode', 'ustring', 'size_t']
+		'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'ustring', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed',
+		'map', 'struct', 'mapnode', 'size_t']
 )
 
 pub struct MultiReturn {
@@ -229,6 +232,7 @@ pub enum Kind {
 	bool
 	none_
 	string
+	ustring
 	array
 	array_fixed
 	map
@@ -389,6 +393,10 @@ pub fn (var t Table) register_builtin_type_symbols() {
 		name: 'string'
 	})
 	t.register_type_symbol(TypeSymbol{
+		kind: .ustring
+		name: 'ustring'
+	})
+	t.register_type_symbol(TypeSymbol{
 		kind: .array
 		name: 'array'
 	})
@@ -487,6 +495,9 @@ pub fn (k Kind) str() string {
 		}
 		.string {
 			'string'
+		}
+		.ustring {
+			'ustring'
 		}
 		.char {
 			'char'

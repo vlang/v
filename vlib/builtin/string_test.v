@@ -366,7 +366,7 @@ fn test_to_num() {
 	assert s.u64() == 7
 	f := '71.5 hasdf'
 	// QTODO
-	//assert f.f32() == 71.5
+	assert f.f32() == 71.5
 	vals := ['9']
 	assert vals[0].int() == 9
 	big := '93993993939322'

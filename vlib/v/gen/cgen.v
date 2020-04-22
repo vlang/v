@@ -1285,7 +1285,23 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		return
 	}
 	right_sym := g.table.get_type_symbol(node.right_type)
-	if node.left_type == table.string_type_idx && node.op != .key_in && node.op != .not_in {
+	if node.left_type == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
+		fn_name := match node.op {
+			.plus { 'ustring_add(' }
+			.eq { 'ustring_eq(' }
+			.ne { 'ustring_ne(' }
+			.lt { 'ustring_lt(' }
+			.le { 'ustring_le(' }
+			.gt { 'ustring_gt(' }
+			.ge { 'ustring_ge(' }
+			else { '/*node error*/' }
+		}
+		g.write(fn_name)
+		g.expr(node.left)
+		g.write(', ')
+		g.expr(node.right)
+		g.write(')')
+	} else if node.left_type == table.string_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
 			.plus { 'string_add(' }
 			.eq { 'string_eq(' }
