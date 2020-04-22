@@ -689,7 +689,7 @@ fn register(u User) User {
 user = register(user)
 ```
 
-## High order functions
+## Anonymous & high order functions
 
 ```v
 fn sqr(n int) int {
@@ -702,6 +702,17 @@ fn run(value int, op fn(int) int) int {
 
 fn main()  {
     println(run(5, sqr)) // "25"
+    
+    // Anonymous functions can be declared inside other functions:
+    double_fn := fn(n int) int {
+        return n + n
+    }
+    println(run(5, double_fn)) // "10"
+    
+    // Functions can be passed around without assigning them to variables:
+    res := run(5, fn(n int) int {
+        return n + n
+    })
 }
 ```
 

@@ -6,4 +6,5 @@ fn main() {
 		2 { 'test' }
 		else { '' }
 	}
+	_ = res
 }

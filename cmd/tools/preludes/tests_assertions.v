@@ -11,7 +11,7 @@ import term
 // / since it is done in normal V code, instead of in embedded C ...
 // //////////////////////////////////////////////////////////////////
 fn cb_assertion_failed(filename string, line int, sourceline string, funcname string) {
-	color_on := term.can_show_color_on_stderr()
+	// color_on := term.can_show_color_on_stderr()
 	use_relative_paths := match os.getenv('VERROR_PATHS') {
 		'absolute'{
 			false

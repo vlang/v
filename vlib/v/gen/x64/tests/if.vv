@@ -1,0 +1,20 @@
+fn test() {
+	a := 1
+	if a == 1 {
+		println('a == 1')
+		b := 2
+		if b == 2 {
+			println('b == 2')
+		}
+		//if b != 2 {
+			//println('b != 2')
+		//}
+	}
+	if a == 2 {
+		println('a == 2')
+	}
+}
+
+fn main() {
+	test()
+}

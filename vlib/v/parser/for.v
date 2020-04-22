@@ -43,7 +43,6 @@ fn (var p Parser) for_stmt() ast.Stmt {
 		// Allow `for i = 0; i < ...`
 		p.check(.semicolon)
 		if p.tok.kind != .semicolon {
-			var typ := table.void_type
 			cond = p.expr(0)
 			has_cond = true
 		}
@@ -74,12 +73,23 @@ fn (var p Parser) for_stmt() ast.Stmt {
 			p.check(.comma)
 			key_var_name = val_var_name
 			val_var_name = p.check_name()
+			if p.scope.known_var(key_var_name) {
+				p.error('redefinition of `$key_var_name`')
+			}
+			if p.scope.known_var(val_var_name) {
+				p.error('redefinition of `$val_var_name`')
+			}
 			p.scope.register(key_var_name, ast.Var{
 				name: key_var_name
 				typ: table.int_type
 			})
+		} else if p.scope.known_var(val_var_name) {
+			p.error('redefinition of `$val_var_name`')
 		}
 		p.check(.key_in)
+		if p.tok.kind == .name && p.tok.lit in [key_var_name, val_var_name] {
+			p.error('redefinition of `$p.tok.lit`')
+		}
 		// arr_expr
 		cond := p.expr(0)
 		// 0 .. 10

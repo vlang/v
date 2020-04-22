@@ -174,7 +174,7 @@ fn (v mut Builder) cc() {
 	is_cc_clang := v.pref.ccompiler.contains('clang') || guessed_compiler == 'clang'
 	is_cc_tcc  := v.pref.ccompiler.contains('tcc') || guessed_compiler == 'tcc'
 	is_cc_gcc  := v.pref.ccompiler.contains('gcc') || guessed_compiler == 'gcc'
-	is_cc_msvc := v.pref.ccompiler.contains('msvc') || guessed_compiler == 'msvc'
+	// is_cc_msvc := v.pref.ccompiler.contains('msvc') || guessed_compiler == 'msvc'
 	//
 	if is_cc_clang {
 		if debug_mode {

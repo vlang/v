@@ -125,6 +125,9 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			'-live' {
 				res.is_live = true
 			}
+			'-repl' {
+				res.is_repl = true
+			}
 			'-sharedlive' {
 				res.is_live = true
 				res.is_shared = true

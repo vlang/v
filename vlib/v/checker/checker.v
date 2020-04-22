@@ -492,7 +492,11 @@ pub fn (c mut Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 			} else {
 				method.args[i + 1].typ
 			}
-			call_expr.args[i].typ = c.expr(arg.expr)
+			arg_typ := c.expr(arg.expr)
+			call_expr.args[i].typ = arg_typ
+			if method.is_variadic && table.type_is(arg_typ, .variadic) && call_expr.args.len-1 > i  {
+				c.error('when forwarding a varg variable, it must be the final argument', call_expr.pos)
+			}
 		}
 		// TODO: typ optimize.. this node can get processed more than once
 		if call_expr.expected_arg_types.len == 0 {
@@ -616,6 +620,9 @@ pub fn (c mut Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 		call_expr.args[i].typ = typ
 		typ_sym := c.table.get_type_symbol(typ)
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)
+		if f.is_variadic && table.type_is(typ, .variadic) && call_expr.args.len-1 > i {
+			c.error('when forwarding a varg variable, it must be the final argument', call_expr.pos)
+		}
 		if !c.table.check(typ, arg.typ) {
 			// str method, allow type with str method if fn arg is string
 			if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
@@ -1354,6 +1361,7 @@ pub fn (c mut Checker) expr(node ast.Expr) table.Type {
 			return table.string_type
 		}
 		ast.AnonFn {
+			c.fn_return_type = it.decl.return_type
 			c.stmts(it.decl.stmts)
 			return it.typ
 		}
@@ -1515,7 +1523,7 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 
 		if !has_else {
 			mut used_values_count := 0
-			for bi, branch in node.branches {
+			for _, branch in node.branches {
 				used_values_count += branch.exprs.len
 				for bi_ei, bexpr in branch.exprs {
 					match bexpr {
