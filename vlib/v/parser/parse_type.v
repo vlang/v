@@ -5,7 +5,7 @@ module parser
 // that can be found in the LICENSE file.
 import v.table
 
-pub fn (p mut Parser) parse_array_type() table.Type {
+pub fn (mut p Parser) parse_array_type() table.Type {
 	p.check(.lsbr)
 	// fixed array
 	if p.tok.kind == .number {
@@ -19,7 +19,7 @@ pub fn (p mut Parser) parse_array_type() table.Type {
 	// array
 	p.check(.rsbr)
 	elem_type := p.parse_type()
-	var nr_dims := 1
+	mut nr_dims := 1
 	for p.tok.kind == .lsbr {
 		p.check(.lsbr)
 		p.check(.rsbr)
@@ -29,7 +29,7 @@ pub fn (p mut Parser) parse_array_type() table.Type {
 	return table.new_type(idx)
 }
 
-pub fn (p mut Parser) parse_map_type() table.Type {
+pub fn (mut p Parser) parse_map_type() table.Type {
 	p.next()
 	if p.tok.kind != .lsbr {
 		return table.map_type
@@ -47,9 +47,9 @@ pub fn (p mut Parser) parse_map_type() table.Type {
 	return table.new_type(idx)
 }
 
-pub fn (p mut Parser) parse_multi_return_type() table.Type {
+pub fn (mut p Parser) parse_multi_return_type() table.Type {
 	p.check(.lpar)
-	var mr_types := []table.Type
+	mut mr_types := []table.Type
 	for {
 		mr_type := p.parse_type()
 		mr_types << mr_type
@@ -65,12 +65,12 @@ pub fn (p mut Parser) parse_multi_return_type() table.Type {
 }
 
 // given anon name based off signature when `name` is blank
-pub fn (p mut Parser) parse_fn_type(name string) table.Type {
+pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 	// p.warn('parse fn')
 	p.check(.key_fn)
 	line_nr := p.tok.line_nr
 	args, is_variadic := p.fn_args()
-	var return_type := table.void_type
+	mut return_type := table.void_type
 	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()
 	}
@@ -84,7 +84,7 @@ pub fn (p mut Parser) parse_fn_type(name string) table.Type {
 	return table.new_type(idx)
 }
 
-pub fn (p mut Parser) parse_type_with_mut(is_mut bool) table.Type {
+pub fn (mut p Parser) parse_type_with_mut(is_mut bool) table.Type {
 	typ := p.parse_type()
 	if is_mut {
 		return table.type_set_nr_muls(typ, 1)
@@ -92,14 +92,14 @@ pub fn (p mut Parser) parse_type_with_mut(is_mut bool) table.Type {
 	return typ
 }
 
-pub fn (p mut Parser) parse_type() table.Type {
+pub fn (mut p Parser) parse_type() table.Type {
 	// optional
-	var is_optional := false
+	mut is_optional := false
 	if p.tok.kind == .question {
 		p.next()
 		is_optional = true
 	}
-	var nr_muls := 0
+	mut nr_muls := 0
 	if p.tok.kind == .key_mut {
 		nr_muls++
 		p.next()
@@ -119,7 +119,7 @@ pub fn (p mut Parser) parse_type() table.Type {
 		p.next()
 		p.check(.dot)
 	}
-	var typ := p.parse_any_type(is_c, is_js, nr_muls > 0)
+	mut typ := p.parse_any_type(is_c, is_js, nr_muls > 0)
 	if is_optional {
 		typ = table.type_set(typ, .optional)
 	}
@@ -129,8 +129,8 @@ pub fn (p mut Parser) parse_type() table.Type {
 	return typ
 }
 
-pub fn (p mut Parser) parse_any_type(is_c, is_js, is_ptr bool) table.Type {
-	var name := p.tok.lit
+pub fn (mut p Parser) parse_any_type(is_c, is_js, is_ptr bool) table.Type {
+	mut name := p.tok.lit
 	if is_c {
 		name = 'C.$name'
 	} else if is_js {
@@ -229,7 +229,7 @@ pub fn (p mut Parser) parse_any_type(is_c, is_js, is_ptr bool) table.Type {
 				else {
 					// struct / enum / placeholder
 					// struct / enum
-					var idx := p.table.find_type_idx(name)
+					mut idx := p.table.find_type_idx(name)
 					if idx > 0 {
 						return table.new_type(idx)
 					}

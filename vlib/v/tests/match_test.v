@@ -9,8 +9,8 @@ pub fn (c Color) str() string {
 }
 
 fn test_match_integers() {
-	var a := 3
-	var b := 0
+	mut a := 3
+	mut b := 0
 	match a {
 		2 { println('two') }
 		3 {
@@ -63,7 +63,7 @@ fn test_match_integers() {
 }
 
 fn test_match_enums() {
-	var b := Color.red
+	mut b := Color.red
 	match b {
 		.red { b = .green }
 		.green { b = .blue }

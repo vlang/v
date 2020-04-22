@@ -7,7 +7,7 @@ import v.ast
 import v.table
 import v.token
 
-fn (var p Parser) for_stmt() ast.Stmt {
+fn (mut p Parser) for_stmt() ast.Stmt {
 	p.check(.key_for)
 	pos := p.tok.position()
 	p.open_scope()
@@ -27,13 +27,13 @@ fn (var p Parser) for_stmt() ast.Stmt {
 		p.error('`var` is not needed in for loops')
 	} else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] || p.tok.kind == .semicolon {
 		// `for i := 0; i < 10; i++ {`
-		var init := ast.Stmt{}
-		var cond := p.new_true_expr()
+		mut init := ast.Stmt{}
+		mut cond := p.new_true_expr()
 		// mut inc := ast.Stmt{}
-		var inc := ast.Expr{}
-		var has_init := false
-		var has_cond := false
-		var has_inc := false
+		mut inc := ast.Expr{}
+		mut has_init := false
+		mut has_cond := false
+		mut has_inc := false
 		if p.peek_tok.kind in [.assign, .decl_assign] {
 			init = p.assign_stmt()
 			has_init = true
@@ -67,8 +67,8 @@ fn (var p Parser) for_stmt() ast.Stmt {
 		}
 	} else if p.peek_tok.kind in [.key_in, .comma] {
 		// `for i in vals`, `for i in start .. end`
-		var key_var_name := ''
-		var val_var_name := p.check_name()
+		mut key_var_name := ''
+		mut val_var_name := p.check_name()
 		if p.tok.kind == .comma {
 			p.check(.comma)
 			key_var_name = val_var_name
@@ -95,8 +95,8 @@ fn (var p Parser) for_stmt() ast.Stmt {
 		// 0 .. 10
 		// start := p.tok.lit.int()
 		// TODO use RangeExpr
-		var high_expr := ast.Expr{}
-		var is_range := false
+		mut high_expr := ast.Expr{}
+		mut is_range := false
 		if p.tok.kind == .dotdot {
 			is_range = true
 			p.check(.dotdot)

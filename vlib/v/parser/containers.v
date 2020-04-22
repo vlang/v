@@ -7,15 +7,15 @@ import v.ast
 import v.table
 import v.token
 
-fn (var p Parser) array_init() ast.ArrayInit {
+fn (mut p Parser) array_init() ast.ArrayInit {
 	first_pos := p.tok.position()
-	var last_pos := token.Position{}
+	mut last_pos := token.Position{}
 	p.check(.lsbr)
 	// p.warn('array_init() exp=$p.expected_type')
-	var array_type := table.void_type
-	var elem_type := table.void_type
-	var exprs := []ast.Expr
-	var is_fixed := false
+	mut array_type := table.void_type
+	mut elem_type := table.void_type
+	mut exprs := []ast.Expr
+	mut is_fixed := false
 	if p.tok.kind == .rsbr {
 		// []typ => `[]` and `typ` must be on the same line
 		line_nr := p.tok.line_nr
@@ -93,10 +93,10 @@ fn (var p Parser) array_init() ast.ArrayInit {
 	}
 }
 
-fn (var p Parser) map_init() ast.MapInit {
+fn (mut p Parser) map_init() ast.MapInit {
 	pos := p.tok.position()
-	var keys := []ast.Expr
-	var vals := []ast.Expr
+	mut keys := []ast.Expr
+	mut vals := []ast.Expr
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		// p.check(.str)
 		key := p.expr(0)

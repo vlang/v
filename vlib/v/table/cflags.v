@@ -17,15 +17,15 @@ fn (table &Table) has_cflag(flag cflag.CFlag) bool {
 
 // parse the flags to (table.cflags) []CFlag
 // Note: clean up big time (joe-c)
-pub fn (var table Table) parse_cflag(cflg, mod string, ctimedefines []string) ?bool {
+pub fn (table mut Table) parse_cflag(cflg, mod string, ctimedefines []string) ?bool {
 	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L']
 	flag_orig := cflg.trim_space()
-	var flag := flag_orig
+	mut flag := flag_orig
 	if flag == '' {
 		return none
 	}
-	var fos := ''
-	var allowed_os_overrides := ['linux', 'darwin', 'freebsd', 'windows', 'mingw', 'solaris']
+	mut fos := ''
+	mut allowed_os_overrides := ['linux', 'darwin', 'freebsd', 'windows', 'mingw', 'solaris']
 	allowed_os_overrides << ctimedefines
 	for os_override in allowed_os_overrides {
 		if !flag.starts_with(os_override) {
@@ -38,8 +38,8 @@ pub fn (var table Table) parse_cflag(cflg, mod string, ctimedefines []string) ?b
 		flag = flag[pos..].trim_space()
 	}
 	for {
-		var name := ''
-		var value := ''
+		mut name := ''
+		mut value := ''
 		if flag[0] == `-` {
 			for f in allowed_flags {
 				i := 1 + f.len
@@ -50,11 +50,11 @@ pub fn (var table Table) parse_cflag(cflg, mod string, ctimedefines []string) ?b
 				}
 			}
 		}
-		var index := flag.index(' -') or {
+		mut index := flag.index(' -') or {
 			-1
 		}
 		for index > -1 {
-			var has_next := false
+			mut has_next := false
 			for f in allowed_flags {
 				i := index + 2 + f.len
 				if i <= flag.len && f == flag[index + 2..i] {
