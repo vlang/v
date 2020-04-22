@@ -97,10 +97,10 @@ jobs:
       run:  ./v symlink && v -o v2 cmd/v
 #    - name: Test vsh
 #      run:  ./v examples/v_script.vsh
-#    - name: Test vid
-#      run: |
-#        git clone --depth 1 https://github.com/vlang/vid.git
-#        cd vid && ../v -o vid .
+    - name: Test vid
+      run: |
+        git clone --depth 1 https://github.com/vlang/vid.git
+        cd vid && ../v -o vid .
     - name: Fixed tests
       run: ./v test-fixed
 
