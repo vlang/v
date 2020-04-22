@@ -18,6 +18,8 @@ mut:
 	main_fn_addr         i64
 	code_start_pos       i64 // location of the start of the assembly instructions
 	fn_addr              map[string]i64
+	var_offset           map[string]int // local var stack offset
+	stack_var_pos        int
 }
 
 // string_addr map[string]i64
@@ -70,12 +72,15 @@ pub fn gen(files []ast.File, out_name string) {
 	}
 	g.generate_elf_header()
 	for file in files {
-		for stmt in file.stmts {
-			g.stmt(stmt)
-			g.writeln('')
-		}
+		g.stmts(file.stmts)
 	}
 	g.generate_elf_footer()
+}
+
+pub fn (mut g Gen) stmts(stmts []ast.Stmt) {
+	for stmt in stmts {
+		g.stmt(stmt)
+	}
 }
 
 /*
@@ -170,6 +175,27 @@ fn (mut g Gen) cmp(reg Register, size Size, val i64) {
 		else { panic('unhandled cmp') }
 	}
 	g.write8(int(val))
+}
+
+// `a == 1`
+// `cmp DWORD [rbp-0x4],0x1`
+fn (mut g Gen) cmp_var(var_name string, val int) {
+	g.write8(0x81) // 83 for 1 byte?
+	g.write8(0x7d)
+	offset := g.var_offset[var_name]
+	if offset == 0 {
+		verror('cmp_var 0 offset $var_name')
+	}
+	g.write8(0xff - offset + 1)
+	g.write32(val)
+}
+
+// Returns the position of the address to jump to (set later).
+fn (mut g Gen) jne() int {
+	g.write16(0x850f)
+	pos := g.pos()
+	g.write32(PLACEHOLDER)
+	return pos
 }
 
 fn abs(a i64) i64 {
@@ -371,12 +397,6 @@ pub fn (mut g Gen) register_function_address(name string) {
 	g.fn_addr[name] = addr
 }
 
-pub fn (g &Gen) write(s string) {
-}
-
-pub fn (g &Gen) writeln(s string) {
-}
-
 pub fn (mut g Gen) call_fn(name string) {
 	println('call fn $name')
 	if !name.contains('__') {
@@ -440,17 +460,79 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.ArrayInit {}
 		ast.Ident {}
 		ast.BoolLiteral {}
-		ast.IfExpr {}
+		ast.IfExpr {
+			g.if_expr(it)
+		}
 		else {
 			// println(term.red('x64.expr(): bad node'))
 		}
 	}
 }
 
+fn (mut g Gen) allocate_var(name string, size, initial_val int) {
+	// `a := 3`  =>
+	// `move DWORD [rbp-0x4],0x3`
+	match size {
+		1 {
+			// BYTE
+			g.write8(0xc6)
+			g.write8(0x45)
+		}
+		4 {
+			// DWORD
+			g.write8(0xc7)
+			g.write8(0x45)
+		}
+		8 {
+			// QWORD
+			g.write8(0x48)
+			g.write8(0xc7)
+			g.write8(0x45)
+		}
+		else {
+			verror('allocate_var: bad size $size')
+		}
+	}
+	// Generate N in `[rbp-N]`
+	g.write8(0xff - (g.stack_var_pos + size) + 1)
+	g.stack_var_pos += size
+	g.var_offset[name] = g.stack_var_pos
+	// Generate the value assigned to the variable
+	g.write32(initial_val)
+	println('allocate_var(size=$size, initial_val=$initial_val)')
+}
+
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
 	for i, ident in node.left {
+		match node.right[0] {
+			ast.IntegerLiteral {
+				print(it.val)
+				g.allocate_var(ident.name, 4, it.val.int())
+			}
+			else {}
+		}
 	}
+}
+
+fn (mut g Gen) if_expr(node ast.IfExpr) {
+	branch := node.branches[0]
+	infix_expr := branch.cond as ast.InfixExpr
+	mut jne_addr := 0 // location of `jne *00 00 00 00*`
+	match infix_expr.left {
+		ast.Ident {
+			lit := infix_expr.right as ast.IntegerLiteral
+			g.cmp_var(it.name, lit.val.int())
+			jne_addr = g.jne()
+		}
+		else {}
+	}
+	g.stmts(branch.stmts)
+	// Now that we know where we need to jump if the condition is false, update the `jne` call.
+	// The value is the relative address, difference between current position and the location
+	// after `jne 00 00 00 00`
+	println('after if g.pos=$g.pos() jneaddr=$jne_addr')
+	g.write32_at(jne_addr, g.pos() - jne_addr - 4) // 4 is for "00 00 00 00"
 }
 
 fn (mut g Gen) fn_decl(it ast.FnDecl) {
