@@ -403,7 +403,7 @@ fn (g mut Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 		}
 		arg_no++
 	}
-	if is_variadic && !is_forwarding_varg {
+	if gen_vargs {
 		varg_type := expected_types[expected_types.len - 1]
 		struct_name := 'varg_' + g.typ(varg_type).replace('*', '_ptr')
 		variadic_count := args.len - arg_no
