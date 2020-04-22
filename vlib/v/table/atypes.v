@@ -620,12 +620,12 @@ pub fn (table &Table) type_to_str(t Type) string {
 			res = '[]' + res
 		}
 	}
-	if type_is(t, .optional) {
-		res = '?' + res
-	}
 	nr_muls := type_nr_muls(t)
 	if nr_muls > 0 {
 		res = strings.repeat(`&`, nr_muls) + res
+	}
+	if type_is(t, .optional) {
+		res = '?' + res
 	}
 	/*
 	if res.starts_with(cur_mod +'.') {
