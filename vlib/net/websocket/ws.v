@@ -144,7 +144,7 @@ pub fn (ws mut Client) connect() int {
 	ai_family := C.AF_INET
 	ai_socktype := C.SOCK_STREAM
 
-	handshake := "GET ${uri.resource}${uri.querystring} HTTP/1.1\r\nHost: ${uri.hostname}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nAccept-Encoding: identity\r\nAccept-Language: en-US\r\nSec-WebSocket-Key: ${seckey}\r\nSec-WebSocket-Version: 13\r\n\r\n"
+	handshake := "GET ${uri.resource}${uri.querystring} HTTP/1.1\r\nHost: ${uri.hostname}:${uri.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${seckey}\r\nSec-WebSocket-Version: 13\r\n\r\n"
 	println(handshake)
 	
 	socket := net.new_socket(ai_family, ai_socktype, 0) or {
