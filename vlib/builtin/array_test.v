@@ -415,9 +415,8 @@ fn test_struct_print() {
 	}
 	a.b << b
 	a.b << b
-	println('QTODO: v2 struct .str() methods')
-	//assert a.str() == '{Test [{1 2}, {1 2}] }'
-	// assert b.str() == '{1 2}'
+	assert a.str() == '{Test [{1 2}, {1 2}]}'
+	assert b.str() == '{1 2}'
 	assert a.b.str() == '[{1 2}, {1 2}]'
 }
 
@@ -527,8 +526,8 @@ fn test_filter() {
 
 fn test_map() {
 	// QTODO
-	println(1)
 	/*
+	println(1)
 	a := [1, 2, 3, 4, 5, 6]
 	b := a.map(it * 10)
 	assert b.len == 6
@@ -550,14 +549,13 @@ fn test_map() {
 
 fn test_array_str() {
 	numbers := [1, 2, 3]
-	// assert numbers == [1,2,3]
+	assert numbers == [1,2,3]
 	numbers2 := [numbers, [4, 5, 6]] // dup str() bug
 	assert true
-	/*
-	QTODO
 	assert numbers.str() == '[1, 2, 3]'
-	assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
-	*/
+	// QTODO
+	//assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
+
 }
 
 fn test_eq() {
