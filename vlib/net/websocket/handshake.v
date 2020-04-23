@@ -54,7 +54,7 @@ fn (ws mut Client) handshake_handler(handshake_response, seckey string){
 				}
 				ws.flags << .has_accept
 				unsafe {
-					response.free()
+					challenge.free()
 				}
 			} else {}
 		}
