@@ -74,7 +74,7 @@ pub fn (x &AesCbc) encrypt_blocks(dst mut []byte, src_ []byte) {
 		} else {
 			src = src[x.block_size..]
 		}
-		*dst = dst[x.block_size..]
+		(*dst) = dst[x.block_size..]
 	}
 
 	// Save the iv for the next crypt_blocks call.

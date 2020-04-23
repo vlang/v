@@ -12,7 +12,7 @@ pub mut:
 	unsafe {
 		mut e := &int(0)
 		e = a.data + y*a.maxx + x
-		*e = newval
+		(*e) = newval
 	}
 }
 [inline] pub fn (a &A2D) get(x,y int) int {

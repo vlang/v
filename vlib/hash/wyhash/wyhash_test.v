@@ -28,9 +28,7 @@ fn test_wyhash() {
 	}
 }
 
-fn test_rand_u64() {
-	// QTODO
-	/*
+fn test_rand_u64() {	
 	seed := u64(111)
 	mut rand_nos := []u64
 	for _ in 0..40 {
@@ -39,7 +37,6 @@ fn test_rand_u64() {
 			assert rand_no != r
 		}
 		rand_nos << rand_no
-	}
-	*/
+	}	
 	assert true
 }
