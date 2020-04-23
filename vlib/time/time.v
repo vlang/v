@@ -135,7 +135,7 @@ pub fn (t Time) unix_time() int {
 	return make_unix_time(tt)
 }
 
-// add_days returns a new time struct with an added number of seconds.
+// add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
 	// TODO Add(d time.Duration)
 	return unix(t.unix + seconds)
@@ -284,41 +284,41 @@ fn convert_ctime(t C.tm) Time {
 pub type Duration i64
 
 pub const(
-	nano_second  = Duration(1)
-	micro_second = Duration(1000) * nano_second
-	milli_second = Duration(1000) * micro_second
-	second       = Duration(1000) * milli_second
+	nanosecond  = Duration(1)
+	microsecond = Duration(1000) * nanosecond
+	millisecond = Duration(1000) * microsecond
+	second       = Duration(1000) * millisecond
 	minute       = Duration(60) * second
 	hour         = Duration(60) * minute
 )
 
-// nanoseconds Returns the duration as an integer number of nanoseconds
+// nanoseconds returns the duration as an integer number of nanoseconds.
 pub fn (d Duration) nanoseconds() i64 { return i64(d) }
 
-// micro_seconds Returns the duration as an integer number of microseconds
+// microseconds returns the duration as an integer number of microseconds.
 pub fn (d Duration) microseconds() i64 { return i64(d) / 1000 }
 
-// milli_seconds Returns the duration as an integer number of milliseconds
+// milliseconds returns the duration as an integer number of milliseconds.
 pub fn (d Duration) milliseconds() i64 { return i64(d) / 1_000_000 }
 
 // The following functions return floating point numbers because it's common to
 // consider all of them in sub-one intervals
 
-// nanoseconds Returns the duration as a floating point number of hours
+// seconds returns the duration as a floating point number of hours.
 pub fn (d Duration) seconds() f64 {
 	sec := d / second
 	nsec := d % second
 	return f64(sec) + f64(nsec)/1e9
 }
 
-// nanoseconds Returns the duration as a floating point number of hours
+// minutes returns the duration as a floating point number of hours.
 pub fn (d Duration) minutes() f64 {
 	min := d / minute
 	nsec := d % minute
 	return f64(min) + f64(nsec)/(60*1e9)
 }
 
-// hours Returns the duration as a floating point number of hours
+// hours returns the duration as a floating point number of hours.
 pub fn (d Duration) hours() f64 {
 	hr := d / hour
 	nsec := d % hour

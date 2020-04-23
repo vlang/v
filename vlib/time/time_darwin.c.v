@@ -17,7 +17,7 @@ struct C.mach_timebase_info_data_t {
 }
 
 fn init_time_base() C.mach_timebase_info_data_t {
-	mut tb := C.mach_timebase_info_data_t
+	mut tb := C.mach_timebase_info_data_t{}
 	C.mach_timebase_info(&tb)
 	return tb
 }
