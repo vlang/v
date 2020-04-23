@@ -304,14 +304,14 @@ pub fn (d Duration) milliseconds() i64 { return i64(d) / 1_000_000 }
 // The following functions return floating point numbers because it's common to
 // consider all of them in sub-one intervals
 
-// seconds returns the duration as a floating point number of hours.
+// seconds returns the duration as a floating point number of seconds.
 pub fn (d Duration) seconds() f64 {
 	sec := d / second
 	nsec := d % second
 	return f64(sec) + f64(nsec)/1e9
 }
 
-// minutes returns the duration as a floating point number of hours.
+// minutes returns the duration as a floating point number of minutes.
 pub fn (d Duration) minutes() f64 {
 	min := d / minute
 	nsec := d % minute
