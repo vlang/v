@@ -30,12 +30,12 @@ struct C.timespec {
 fn C.clock_gettime(int, &C.timespec)
 
 fn sys_mono_now() u64 {
-	//$if macos {
-		//return sys_mono_now_darwin()
-	//} $else {
+	$if macos {
+		return sys_mono_now_darwin()
+	} $else {
 		ts := C.timespec{}
 		C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
 		return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
-	//}
+	}
 }
 
