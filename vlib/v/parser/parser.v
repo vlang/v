@@ -302,6 +302,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		}
 		.key_import {
 			node := p.import_stmt()
+			if node.len == 0 {
+				return p.top_stmt()
+			}
 			p.ast_imports << node
 			return node[0]
 		}
