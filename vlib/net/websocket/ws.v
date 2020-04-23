@@ -604,9 +604,6 @@ pub fn (ws mut Client) read() int {
 }
 
 fn (ws mut Client) send_control_frame(code OPCode, frame_typ string, payload []byte) int {
-	println(frame_typ)
-	println(code)
-	println(payload)
 	if ws.socket.sockfd <= 0 {
 		l.e("No socket opened.")
 		goto free_data
