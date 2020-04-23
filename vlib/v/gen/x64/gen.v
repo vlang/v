@@ -211,6 +211,18 @@ fn (mut g Gen) jne() int {
 	return pos
 }
 
+fn (mut g Gen) jge() int {
+	g.write16(0x8d0f)
+	pos := g.pos()
+	g.write32(PLACEHOLDER)
+	return pos
+}
+
+fn (mut g Gen) jmp(addr int) {
+	g.write8(0xe9)
+	g.write32(addr) // 0xffffff
+}
+
 fn abs(a i64) i64 {
 	return if a < 0 {
 		-a
@@ -237,12 +249,13 @@ fn (g &Gen) abs_to_rel_addr(addr i64) int {
 	return int(abs(addr - g.buf.len)) - 1
 }
 
+/*
 fn (mut g Gen) jmp(addr i64) {
 	offset := 0xff - g.abs_to_rel_addr(addr)
 	g.write8(0xe9)
 	g.write8(offset)
 }
-
+*/
 fn (mut g Gen) mov64(reg Register, val i64) {
 	match reg {
 		.rsi {
@@ -435,7 +448,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.FnDecl {
 			g.fn_decl(it)
 		}
-		ast.ForStmt {}
+		ast.ForStmt {
+			g.for_stmt(it)
+		}
 		ast.Return {
 			g.gen_exit()
 			g.ret()
@@ -535,7 +550,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.cmp_var(it.name, lit.val.int())
 			jne_addr = g.jne()
 		}
-		else {}
+		else {
+			verror('unhandled infix.left')
+		}
 	}
 	g.stmts(branch.stmts)
 	// Now that we know where we need to jump if the condition is false, update the `jne` call.
@@ -543,6 +560,29 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// after `jne 00 00 00 00`
 	println('after if g.pos=$g.pos() jneaddr=$jne_addr')
 	g.write32_at(jne_addr, g.pos() - jne_addr - 4) // 4 is for "00 00 00 00"
+}
+
+fn (mut g Gen) for_stmt(node ast.ForStmt) {
+	infix_expr := node.cond as ast.InfixExpr
+	// g.mov(.eax, 0x77777777)
+	mut jump_addr := 0 // location of `jne *00 00 00 00*`
+	start := g.pos()
+	match infix_expr.left {
+		ast.Ident {
+			lit := infix_expr.right as ast.IntegerLiteral
+			g.cmp_var(it.name, lit.val.int())
+			jump_addr = g.jge()
+		}
+		else {
+			verror('unhandled infix.left')
+		}
+	}
+	g.stmts(node.stmts)
+	// Go back to `cmp ...`
+	// Diff between `jmp 00 00 00 00 X` and `cmp`
+	g.jmp(0xffffffff - (g.pos() + 5 - start) + 1)
+	// Update the jump addr to current pos
+	g.write32_at(jump_addr, g.pos() - jump_addr - 4) // 4 is for "00 00 00 00"
 }
 
 fn (mut g Gen) fn_decl(it ast.FnDecl) {
