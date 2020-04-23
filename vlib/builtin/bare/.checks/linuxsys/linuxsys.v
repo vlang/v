@@ -25,12 +25,12 @@ fn check_fork_minimal () {
 	e := sys_waitid(.p_pid, child, intptr(siginfo.data) , .wexited, 0)
 
 	assert e == .enoerror
-	//println(i64_tos(buffer0,80,siginfo[sig_index.si_code],16))
-	assert siginfo[sig_index.si_code] == int(wi_si_code.cld_exited)
-	assert siginfo[sig_index.si_pid] == child
-	assert siginfo[sig_index.si_status] == ec
-	assert siginfo[sig_index.si_signo] == int(signo.sigchld)
-	assert siginfo[sig_index.si_uid] == sys_getuid()
+	//println(i64_tos(buffer0,80,siginfo[Sig_index.si_code],16))
+	assert siginfo[Sig_index.si_code] == int(Wi_si_code.cld_exited)
+	assert siginfo[Sig_index.si_pid] == child
+	assert siginfo[Sig_index.si_status] == ec
+	assert siginfo[Sig_index.si_signo] == int(Signo.sigchld)
+	assert siginfo[Sig_index.si_uid] == sys_getuid()
 }
 
 fn check_read_write_pipe() {
@@ -131,36 +131,36 @@ fn check_munmap_fail() {
 }
 
 fn check_mmap_one_page() {
-	mp := int(mm_prot.prot_read) | int(mm_prot.prot_write)
-	mf := int(map_flags.map_private) | int(map_flags.map_anonymous)
-	mut a, e := sys_mmap(0, u64(linux_mem.page_size), mm_prot(mp), map_flags(mf), -1, 0)
+	mp := int(Mm_prot.prot_read) | int(Mm_prot.prot_write)
+	mf := int(Map_flags.map_private) | int(Map_flags.map_anonymous)
+	mut a, e := sys_mmap(0, u64(Linux_mem.page_size), Mm_prot(mp), Map_flags(mf), -1, 0)
 
 	assert e == .enoerror
 	assert a != byteptr(-1)
 
-	for i in 0..int(linux_mem.page_size) {
+	for i in 0..int(Linux_mem.page_size) {
 		b := i & 0xFF
 		a[i] = b
 		assert a[i] == b
 	}
 
-	ec := sys_munmap(a, u64(linux_mem.page_size))
+	ec := sys_munmap(a, u64(Linux_mem.page_size))
 	assert ec == .enoerror
 }
 
 fn check_mm_pages() {
-	for i in 0 .. int(linux_mem.page_size)-4 {
+	for i in 0 .. int(Linux_mem.page_size)-4 {
 		assert u32(1) == mm_pages(u64(i))
 	}
-	for i in int(linux_mem.page_size)-3 .. (int(linux_mem.page_size)*2)-4 {
+	for i in int(Linux_mem.page_size)-3 .. (int(Linux_mem.page_size)*2)-4 {
 		assert u32(2) == mm_pages(u64(i))
 	}
-	for i in (int(linux_mem.page_size)*2)-3 .. (int(linux_mem.page_size)*3)-4 {
+	for i in (int(Linux_mem.page_size)*2)-3 .. (int(Linux_mem.page_size)*3)-4 {
 		assert u32(3) == mm_pages(u64(i))
 	}
 }
 
-//pub fn mm_alloc(size u64) (voidptr, errno)
+//pub fn mm_alloc(size u64) (voidptr, Errno)
 
 fn check_mm_alloc() {
 	for i in 1 .. 2000 {
