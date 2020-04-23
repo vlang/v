@@ -233,7 +233,7 @@ pub fn (mut p Parser) parse_block_no_scope() []ast.Stmt {
 }
 
 /*
-fn (p mut Parser) next_with_comment() {
+fn (mut p Parser) next_with_comment() {
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()
 }
@@ -302,6 +302,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		}
 		.key_import {
 			node := p.import_stmt()
+			if node.len == 0 {
+				return p.top_stmt()
+			}
 			p.ast_imports << node
 			return node[0]
 		}
@@ -501,7 +504,7 @@ fn (mut p Parser) attribute() ast.Attr {
 }
 
 /*
-fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
+fn (mut p Parser) range_expr(low ast.Expr) ast.Expr {
 	// ,table.Type) {
 	if p.tok.kind != .dotdot {
 		p.next()
@@ -1083,7 +1086,12 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	p.check(.key_enum)
 	end_pos := p.tok.position()
-	name := p.prepend_mod(p.check_name())
+
+	enum_name := p.check_name()
+	if enum_name.len > 0 && !enum_name[0].is_capital() {
+		verror('enum name `$enum_name` must begin with a capital letter')
+	}
+	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
 	mut vals := []string
 	// mut default_exprs := []ast.Expr

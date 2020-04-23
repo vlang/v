@@ -1,10 +1,10 @@
 module builtin
 
-pub enum linux_mem {
+pub enum Linux_mem {
 	page_size = 4096
 }
 
-pub enum wp_sys {
+pub enum Wp_sys {
 	wnohang = 0x00000001
 	wuntraced = 0x00000002
 	wstopped = 0x00000002
@@ -17,13 +17,13 @@ pub enum wp_sys {
 }
 
 // First argument to waitid:
-pub enum wi_which {
+pub enum Wi_which {
 	p_all = 0
 	p_pid = 1
 	p_pgid = 2
 }
 
-pub enum wi_si_code {
+pub enum Wi_si_code {
 	cld_exited = 1 // child has exited
 	cld_killed = 2 // child was killed
 	cld_dumped = 3 // child terminated abnormally
@@ -55,7 +55,7 @@ pub enum wi_si_code {
 		3 The si_code field can be used to determine how to
 			interpret this field.
 
-	si_code, set to one of (enum wi_si_code), offset 0x08, int index 0x02:
+	si_code, set to one of (enum Wi_si_code), offset 0x08, int index 0x02:
 		CLD_EXITED (child called _exit(2));
 		CLD_KILLED (child killed by signal);
 		CLD_DUMPED (child  killed by signal, and dumped core);
@@ -64,7 +64,7 @@ pub enum wi_si_code {
 		CLD_CONTINUED (child continued by SIGCONT).
 */
 
-pub enum sig_index {
+pub enum Sig_index {
 	si_signo = 0x00
 	si_code = 0x02
 	si_pid = 0x04
@@ -73,7 +73,7 @@ pub enum sig_index {
 	si_size = 0x80
 }
 
-pub enum signo {
+pub enum Signo {
 	sigint = 2	// Interactive attention signal.
 	sigill = 4	// Illegal instruction.
 	sigabrt = 6	// Abnormal termination.
@@ -108,7 +108,7 @@ pub enum signo {
 }
 
 
-pub enum fcntl {
+pub enum Fcntl {
 	fd_cloexec = 0x00000001
 	f_dupfd = 0x00000000
 	f_exlck = 0x00000004
@@ -168,7 +168,7 @@ pub enum fcntl {
 	o_wronly = 0x00000001
 }
 
-pub enum errno {
+pub enum Errno {
 	enoerror = 0x00000000
 	e2big = 0x00000007
 	eacces = 0x0000000d
@@ -206,7 +206,7 @@ pub enum errno {
 	exdev = 0x00000012
 }
 
-pub enum mm_prot {
+pub enum Mm_prot {
 	prot_read = 0x1
 	prot_write = 0x2
 	prot_exec = 0x4
@@ -215,7 +215,7 @@ pub enum mm_prot {
 	prot_growsup = 0x02000000
 }
 
-pub enum map_flags {
+pub enum Map_flags {
 	map_shared = 0x01
 	map_private = 0x02
 	map_shared_validate = 0x03
@@ -322,59 +322,59 @@ fn sys_call5(scn, arg1, arg2, arg3, arg4, arg5 u64) u64
 fn sys_call6(scn, arg1, arg2, arg3, arg4, arg5, arg6 u64) u64
 
 
-fn split_int_errno(rc_in u64) (i64, errno) {
+fn split_int_errno(rc_in u64) (i64, Errno) {
 	rc := i64(rc_in)
 	if rc < 0 {
-		return i64(-1), errno(-rc)
+		return i64(-1), Errno(-rc)
 	}
-	return rc, errno.enoerror
+	return rc, Errno.enoerror
 }
 
 // 0 sys_read unsigned int fd char *buf size_t count
-pub fn sys_read (fd i64, buf byteptr, count u64) (i64, errno) {
+pub fn sys_read (fd i64, buf byteptr, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(0, u64(fd), u64(buf), count))
 }
 
 // 1 sys_write unsigned int fd, const char *buf, size_t count
-pub fn sys_write(fd i64, buf byteptr, count u64) (i64, errno) {
+pub fn sys_write(fd i64, buf byteptr, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(1, u64(fd), u64(buf), count))
 }
 
-pub fn sys_open(filename byteptr, flags fcntl, mode int) (i64, errno) {
+pub fn sys_open(filename byteptr, flags Fcntl, mode int) (i64, Errno) {
 	//2 sys_open  const char *filename  int flags int mode
 	return split_int_errno(sys_call3(2, u64(filename), u64(flags), u64(mode)))
 }
 
-pub fn sys_close(fd i64) errno {
+pub fn sys_close(fd i64) Errno {
 	// 3 sys_close unsigned int fd
-	return errno(-i64(sys_call1(3, u64(fd))))
+	return Errno(-i64(sys_call1(3, u64(fd))))
 }
 
 // 9 sys_mmap unsigned long addr  unsigned long len unsigned long prot  unsigned long flags unsigned long fd  unsigned long off
-pub fn sys_mmap(addr byteptr, len u64, prot mm_prot, flags map_flags, fildes u64, off u64) (byteptr, errno) {
+pub fn sys_mmap(addr byteptr, len u64, prot Mm_prot, flags Map_flags, fildes u64, off u64) (byteptr, Errno) {
 	rc := sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off)
 	a, e := split_int_errno(rc)
 	return byteptr(a), e
 }
 
-pub fn sys_munmap(addr voidptr, len u64) errno {
+pub fn sys_munmap(addr voidptr, len u64) Errno {
 	// 11 sys_munmap  unsigned long addr  size_t len
-	return errno(-sys_call2(11, u64(addr), len))
+	return Errno(-sys_call2(11, u64(addr), len))
 }
 
 // 22  sys_pipe  int *filedes
-pub fn sys_pipe(filedes intptr) errno {
-	return errno(sys_call1(22, u64(filedes)))
+pub fn sys_pipe(filedes &int) Errno {
+	return Errno(sys_call1(22, u64(filedes)))
 }
 
 // 24 sys_sched_yield
-pub fn sys_sched_yield() errno {
-	return errno(sys_call0(24))
+pub fn sys_sched_yield() Errno {
+	return Errno(sys_call0(24))
 }
 
-pub fn sys_madvise(addr voidptr, len u64, advice int) errno {
+pub fn sys_madvise(addr voidptr, len u64, advice int) Errno {
 	// 28 sys_madvise unsigned long start size_t len_in int behavior
-	return errno(sys_call3(28, u64(addr), len, u64(advice)))
+	return Errno(sys_call3(28, u64(addr), len, u64(advice)))
 }
 
 // 39 sys_getpid
@@ -393,7 +393,7 @@ pub fn sys_vfork() int {
 }
 
 // 33  sys_dup2  unsigned int oldfd  unsigned int newfd
-pub fn sys_dup2 (oldfd, newfd int) (i64, errno) {
+pub fn sys_dup2 (oldfd, newfd int) (i64, Errno) {
 	return split_int_errno(sys_call2(33, u64(oldfd),u64(newfd)))
 }
 
@@ -415,8 +415,8 @@ pub fn sys_getuid() int {
 }
 
 // 247 sys_waitid  int which pid_t upid  struct siginfo *infop int options struct rusage *ru
-pub fn sys_waitid (which wi_which, pid int, infop intptr, options wp_sys, ru voidptr) errno {
-	return errno(sys_call5(247, u64(which), u64(pid), u64(infop), u64(options), u64(ru)))
+pub fn sys_waitid (which Wi_which, pid int, infop &int, options Wp_sys, ru voidptr) Errno {
+	return Errno(sys_call5(247, u64(which), u64(pid), u64(infop), u64(options), u64(ru)))
 }
 
 

@@ -48,6 +48,10 @@ enum Register {
 	r15
 }
 
+const (
+	fn_arg_registers = [x64.Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
+)
+
 /*
 rax // 0
 	rcx // 1
@@ -177,17 +181,30 @@ fn (mut g Gen) cmp(reg Register, size Size, val i64) {
 	g.write8(int(val))
 }
 
+fn (mut g Gen) get_var_offset(var_name string) int {
+	offset := g.var_offset[var_name]
+	if offset == 0 {
+		panic('0 offset for var `$var_name`')
+	}
+	return offset
+}
+
 // `a == 1`
 // `cmp DWORD [rbp-0x4],0x1`
 fn (mut g Gen) cmp_var(var_name string, val int) {
 	g.write8(0x81) // 83 for 1 byte?
 	g.write8(0x7d)
-	offset := g.var_offset[var_name]
-	if offset == 0 {
-		verror('cmp_var 0 offset $var_name')
-	}
+	offset := g.get_var_offset(var_name)
 	g.write8(0xff - offset + 1)
 	g.write32(val)
+}
+
+// `add DWORD [rbp-0x4], 1`
+fn (mut g Gen) inc_var(var_name string) {
+	g.write16(0x4581) // 83 for 1 byte
+	offset := g.get_var_offset(var_name)
+	g.write8(0xff - offset + 1)
+	g.write32(1)
 }
 
 // Returns the position of the address to jump to (set later).
@@ -196,6 +213,18 @@ fn (mut g Gen) jne() int {
 	pos := g.pos()
 	g.write32(PLACEHOLDER)
 	return pos
+}
+
+fn (mut g Gen) jge() int {
+	g.write16(0x8d0f)
+	pos := g.pos()
+	g.write32(PLACEHOLDER)
+	return pos
+}
+
+fn (mut g Gen) jmp(addr int) {
+	g.write8(0xe9)
+	g.write32(addr) // 0xffffff
 }
 
 fn abs(a i64) i64 {
@@ -224,12 +253,13 @@ fn (g &Gen) abs_to_rel_addr(addr i64) int {
 	return int(abs(addr - g.buf.len)) - 1
 }
 
+/*
 fn (mut g Gen) jmp(addr i64) {
 	offset := 0xff - g.abs_to_rel_addr(addr)
 	g.write8(0xe9)
 	g.write8(offset)
 }
-
+*/
 fn (mut g Gen) mov64(reg Register, val i64) {
 	match reg {
 		.rsi {
@@ -241,6 +271,17 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 		}
 	}
 	g.write64(val)
+}
+
+fn (mut g Gen) mov_from_reg(var_offset int, reg Register) {
+	// 89 7d fc                mov    DWORD PTR [rbp-0x4],edi
+	g.write8(0x89)
+	match reg {
+		.edi, .rdi { g.write8(0x7d) }
+		.rsi { g.write8(0x75) }
+		else { verror('mov_from_reg $reg') }
+	}
+	g.write8(0xff - var_offset + 1)
 }
 
 fn (mut g Gen) call(addr int) {
@@ -285,6 +326,13 @@ pub fn (mut g Gen) pop(reg Register) {
 }
 
 pub fn (mut g Gen) sub32(reg Register, val int) {
+	g.write8(0x48)
+	g.write8(0x81)
+	g.write8(0xe8 + reg) // TODO rax is different?
+	g.write32(val)
+}
+
+pub fn (mut g Gen) add(reg Register, val int) {
 	g.write8(0x48)
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
@@ -352,7 +400,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 		.eax, .rax {
 			g.write8(0xb8)
 		}
-		.edi {
+		.edi, .rdi {
 			g.write8(0xbf)
 		}
 		.edx {
@@ -373,7 +421,6 @@ fn (mut g Gen) mov(reg Register, val int) {
 	g.write32(val)
 }
 
-/*
 fn (mut g Gen) mov_reg(a, b Register) {
 	match a {
 		.rbp {
@@ -383,7 +430,7 @@ fn (mut g Gen) mov_reg(a, b Register) {
 		else {}
 	}
 }
-*/
+
 // generates `mov rbp, rsp`
 fn (mut g Gen) mov_rbp_rsp() {
 	g.write8(0x48)
@@ -397,14 +444,22 @@ pub fn (mut g Gen) register_function_address(name string) {
 	g.fn_addr[name] = addr
 }
 
-pub fn (mut g Gen) call_fn(name string) {
+pub fn (mut g Gen) call_fn(node ast.CallExpr) {
+	name := node.name
 	println('call fn $name')
-	if !name.contains('__') {
-		// return
-	}
 	addr := g.fn_addr[name]
 	if addr == 0 {
 		verror('fn addr of `$name` = 0')
+	}
+	// Copy values to registers (calling convention)
+	g.mov(.eax, 0)
+	for i in 0 .. node.args.len {
+		expr := node.args[i].expr
+		int_lit := expr as ast.IntegerLiteral
+		g.mov(fn_arg_registers[i], int_lit.val.int())
+	}
+	if node.args.len > 6 {
+		verror('more than 6 args not allowed for now')
 	}
 	g.call(int(addr))
 	println('call $name $addr')
@@ -422,7 +477,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.FnDecl {
 			g.fn_decl(it)
 		}
-		ast.ForStmt {}
+		ast.ForStmt {
+			g.for_stmt(it)
+		}
 		ast.Return {
 			g.gen_exit()
 			g.ret()
@@ -437,32 +494,29 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
+		ast.ArrayInit {}
 		ast.AssignExpr {}
-		ast.IntegerLiteral {}
-		ast.FloatLiteral {}
-		/*
-		ast.UnaryExpr {
-			g.expr(it.left)
-		}
-*/
-		ast.StringLiteral {}
-		ast.InfixExpr {}
-		// `user := User{name: 'Bob'}`
-		ast.StructInit {}
 		ast.CallExpr {
 			if it.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := it.args[0].expr
 				g.gen_print_from_expr(expr, it.name in ['println', 'eprintln'])
 				return
 			}
-			g.call_fn(it.name)
+			g.call_fn(it)
 		}
-		ast.ArrayInit {}
+		ast.FloatLiteral {}
 		ast.Ident {}
-		ast.BoolLiteral {}
 		ast.IfExpr {
 			g.if_expr(it)
 		}
+		ast.InfixExpr {}
+		ast.IntegerLiteral {}
+		ast.PostfixExpr {
+			g.postfix_expr(it)
+		}
+		ast.StringLiteral {}
+		ast.StructInit {}
+		ast.BoolLiteral {}
 		else {
 			// println(term.red('x64.expr(): bad node'))
 		}
@@ -525,7 +579,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.cmp_var(it.name, lit.val.int())
 			jne_addr = g.jne()
 		}
-		else {}
+		else {
+			verror('unhandled infix.left')
+		}
 	}
 	g.stmts(branch.stmts)
 	// Now that we know where we need to jump if the condition is false, update the `jne` call.
@@ -535,32 +591,78 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	g.write32_at(jne_addr, g.pos() - jne_addr - 4) // 4 is for "00 00 00 00"
 }
 
-fn (mut g Gen) fn_decl(it ast.FnDecl) {
-	is_main := it.name == 'main'
-	println('saving addr $it.name $g.buf.len.hex()')
+fn (mut g Gen) for_stmt(node ast.ForStmt) {
+	infix_expr := node.cond as ast.InfixExpr
+	// g.mov(.eax, 0x77777777)
+	mut jump_addr := 0 // location of `jne *00 00 00 00*`
+	start := g.pos()
+	match infix_expr.left {
+		ast.Ident {
+			lit := infix_expr.right as ast.IntegerLiteral
+			g.cmp_var(it.name, lit.val.int())
+			jump_addr = g.jge()
+		}
+		else {
+			verror('unhandled infix.left')
+		}
+	}
+	g.stmts(node.stmts)
+	// Go back to `cmp ...`
+	// Diff between `jmp 00 00 00 00 X` and `cmp`
+	g.jmp(0xffffffff - (g.pos() + 5 - start) + 1)
+	// Update the jump addr to current pos
+	g.write32_at(jump_addr, g.pos() - jump_addr - 4) // 4 is for "00 00 00 00"
+}
+
+fn (mut g Gen) fn_decl(node ast.FnDecl) {
+	is_main := node.name == 'main'
+	println('saving addr $node.name $g.buf.len.hex()')
 	if is_main {
 		g.save_main_fn_addr()
 	} else {
-		g.register_function_address(it.name)
+		g.register_function_address(node.name)
 		// g.write32(SEVENS)
 		g.push(.rbp)
 		g.mov_rbp_rsp()
-		// g.sub32(.rsp, 0x10)
+		g.sub32(.rsp, 0x20)
 	}
-	for arg in it.args {
+	if node.args.len > 0 {
+		// g.mov(.r12, 0x77777777)
 	}
-	for stmt in it.stmts {
-		g.stmt(stmt)
+	// Copy values from registers to local vars (calling convention)
+	mut offset := 0
+	for i in 0 .. node.args.len {
+		name := node.args[i].name
+		// TODO optimize. Right now 2 mov's are used instead of 1.
+		g.allocate_var(name, 4, 0)
+		// `mov DWORD PTR [rbp-0x4],edi`
+		offset += 4
+		g.mov_from_reg(offset, fn_arg_registers[i])
 	}
+	//
+	g.stmts(node.stmts)
 	if is_main {
 		println('end of main: gen exit')
 		g.gen_exit()
 		// return
 	}
 	if !is_main {
-		g.leave() // g.pop(.rbp)
+		g.leave()
+		// g.add(.rsp, 0x20)
+		// g.pop(.rbp)
 	}
 	g.ret()
+}
+
+fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
+	if !(node.expr is ast.Ident) {
+		return
+	}
+	ident := node.expr as ast.Ident
+	var_name := ident.name
+	if node.op == .inc {
+		g.inc_var(var_name)
+	}
 }
 
 fn verror(s string) {

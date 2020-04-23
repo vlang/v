@@ -8,7 +8,7 @@ fn test_x64() {
 		eprintln('x64 tests can only be run on Linux for now.')
 		exit(0)
 	}
-	var bench := benchmark.new_benchmark()
+	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	dir := os.join_path(vroot, 'vlib/v/gen/x64/tests')
@@ -45,11 +45,11 @@ fn test_x64() {
 			eprintln(res.output)
 			continue
 		}
-		var expected := os.read_file('$dir/${test}.out') or {
+		mut expected := os.read_file('$dir/${test}.out') or {
 			panic(err)
 		}
 		expected = expected.trim_space().trim('\n').replace('\r\n', '\n')
-		var found := res.output.trim_space().trim('\n').replace('\r\n', '\n')
+		mut found := res.output.trim_space().trim('\n').replace('\r\n', '\n')
 		// remove ACK char TODO fix this in x64
 		buf := [byte(0x06)]
 		ack := string(buf)

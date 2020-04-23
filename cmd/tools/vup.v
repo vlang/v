@@ -36,20 +36,30 @@ fn main() {
 	}
 
 	$if windows {
-		v_backup_file := 'v_old.exe'
-		if os.exists(v_backup_file) {
-			os.rm(v_backup_file)
-		}
-		os.mv('v.exe', v_backup_file)
+		backup('v.exe')
 
 		make_result := os.exec('make.bat') or {
 			panic(err)
 		}
 		println(make_result.output)
+
+		backup('cmd/tools/vup.exe')
 	} $else {
 		make_result := os.exec('make') or {
 			panic(err)
 		}
 		println(make_result.output)
 	}
+
+	_ := os.exec('v cmd/tools/vup.v') or {
+		panic(err)
+	}
+}
+
+fn backup(file string) {
+	backup_file := '${file}_old.exe'
+	if os.exists(backup_file) {
+		os.rm(backup_file)
+	}
+	os.mv(file, backup_file)
 }

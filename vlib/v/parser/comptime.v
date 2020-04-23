@@ -15,7 +15,7 @@ const (
 )
 
 // // #include, #flag, #v
-fn (p mut Parser) hash() ast.HashStmt {
+fn (mut p Parser) hash() ast.HashStmt {
 	val := p.tok.lit
 	p.next()
 	if val.starts_with('flag') {
@@ -56,7 +56,7 @@ fn (p mut Parser) hash() ast.HashStmt {
 	}
 }
 
-fn (p mut Parser) comp_if() ast.CompIf {
+fn (mut p Parser) comp_if() ast.CompIf {
 	pos := p.tok.position()
 	p.next()
 	p.check(.key_if)
@@ -98,14 +98,17 @@ fn (p mut Parser) comp_if() ast.CompIf {
 			}
 		}
 	}
+	mut is_opt := false
 	if p.tok.kind == .question {
 		p.next()
+		is_opt = true
 	}
 	if !skip_os {
 		stmts = p.parse_block()
 	}
 	mut node := ast.CompIf{
 		is_not: is_not
+		is_opt: is_opt
 		pos: pos
 		val: val
 		stmts: stmts

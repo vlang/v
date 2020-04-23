@@ -184,7 +184,8 @@ fn (g mut JsGen) to_js_typ(typ string) string {
 		}
 		'charptr' {
 			styp = 'string'
-		} else {
+		}
+		else {
 			if typ.starts_with('array_') {
 				styp = g.to_js_typ(typ.replace('array_', '')) + '[]'
 			} else if typ.starts_with('map_') {

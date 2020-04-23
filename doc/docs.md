@@ -562,12 +562,12 @@ Their access modifiers can be changed with
 ```v
 struct Foo {
     a int   // private immutable (default)
-var:
+mut:
     b int   // private mutable
     c int   // (you can list multiple fields with the same access modifier)
 pub:
     d int   // public immmutable (readonly)
-pub var:
+pub mut:
     e int   // public, but mutable only in parent module
 __global:
     f int   // public and mutable both inside and outside parent module
@@ -637,7 +637,7 @@ It is possible to modify function arguments by using the same keyword `mut`:
 
 ```v
 struct User {
-var:
+mut:
     is_registered bool
 }
 
@@ -1000,18 +1000,19 @@ println(resp.body)
 ```
 
 `http.get` returns `?http.Response`. It was called with `?`, so the error is propagated to the calling function
-(which must return an optional) or in case of `main` leads to a panic.
+(which must return an optional) or in case of `main()` leads to a panic.
 Basically the code above is a shorter version of
 
 ```v
 resp := http.get(url) or {
-    panic(err)
+    return error(err)
 }
 println(resp.body)
 ```
 
 V does not have a way to force unwrap an optional (like Rust's `unwrap()`
 or Swift's `!`). You have to use `or { panic(err) }` instead.
+
 
 ## Generics
 

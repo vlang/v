@@ -191,7 +191,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			name = p.prepend_mod(name)
 		}
 		if _ := p.table.find_fn(name) {
-			p.error('redefinition of `$name`')
+			p.error('redefinition of function `$name`')
 		}
 		p.table.register_fn(table.Fn{
 			name: name

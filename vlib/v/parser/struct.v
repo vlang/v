@@ -7,7 +7,7 @@ import v.ast
 import v.table
 import v.token
 
-fn (var p Parser) struct_decl() ast.StructDecl {
+fn (mut p Parser) struct_decl() ast.StructDecl {
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -22,8 +22,8 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
 	is_js := p.tok.lit == 'JS' && p.peek_tok.kind == .dot
 	if is_c {
-		p.next()		// C || JS
-		p.next()		// .
+		p.next() // C || JS
+		p.next() // .
 	}
 	is_typedef := p.attr == 'typedef'
 	no_body := p.peek_tok.kind != .lcbr
@@ -31,17 +31,17 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 		p.error('`$p.tok.lit` lacks body')
 	}
 	end_pos := p.tok.position()
-	var name := p.check_name()
+	mut name := p.check_name()
 	// println('struct decl $name')
-	var ast_fields := []ast.StructField
-	var fields := []table.Field
-	var mut_pos := -1
-	var pub_pos := -1
-	var pub_mut_pos := -1
+	mut ast_fields := []ast.StructField
+	mut fields := []table.Field
+	mut mut_pos := -1
+	mut pub_pos := -1
+	mut pub_mut_pos := -1
 	if !no_body {
 		p.check(.lcbr)
 		for p.tok.kind != .rcbr {
-			var comment := ast.Comment{}
+			mut comment := ast.Comment{}
 			if p.tok.kind == .comment {
 				comment = p.comment()
 			}
@@ -72,8 +72,8 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 			println('XXXX' + s.str())
 		}
 */
-			var default_expr := ast.Expr{}
-			var has_default_expr := false
+			mut default_expr := ast.Expr{}
+			mut has_default_expr := false
 			if p.tok.kind == .assign {
 				// Default value
 				p.next()
@@ -81,15 +81,13 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 				// p.expr(0)
 				default_expr = p.expr(0)
 				match default_expr {
-					ast.EnumVal {
-						it.typ = typ
-					}
+					ast.EnumVal { it.typ = typ }
 					// TODO: implement all types??
 					else {}
 				}
 				has_default_expr = true
 			}
-			var attr := ast.Attr{}
+			mut attr := ast.Attr{}
 			if p.tok.kind == .lsbr {
 				attr = p.attribute()
 			}
@@ -132,7 +130,7 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 		}
 		mod: p.mod
 	}
-	var ret := 0
+	mut ret := 0
 	if p.builtin_mod && t.name in table.builtin_type_names {
 		// this allows overiding the builtins type
 		// with the real struct type info parsed from builtin
@@ -158,7 +156,7 @@ fn (var p Parser) struct_decl() ast.StructDecl {
 	}
 }
 
-fn (var p Parser) struct_init(short_syntax bool) ast.StructInit {
+fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	first_pos := p.tok.position()
 	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
@@ -167,17 +165,17 @@ fn (var p Parser) struct_init(short_syntax bool) ast.StructInit {
 	if !short_syntax {
 		p.check(.lcbr)
 	}
-	var fields := []ast.StructInitField
-	var i := 0
-	is_short_syntax := p.peek_tok.kind != .colon && p.tok.kind != .rcbr	// `Vec{a,b,c}
+	mut fields := []ast.StructInitField
+	mut i := 0
+	is_short_syntax := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
 	// p.warn(is_short_syntax.str())
 	for p.tok.kind != .rcbr {
 		p.check_comment()
-		var field_name := ''
+		mut field_name := ''
 		if is_short_syntax {
 			expr := p.expr(0)
+			// name will be set later in checker
 			fields << ast.StructInitField{
-				// name will be set later in checker
 				expr: expr
 				pos: expr.position()
 			}
@@ -221,28 +219,57 @@ fn (var p Parser) struct_init(short_syntax bool) ast.StructInit {
 	return node
 }
 
-fn (var p Parser) interface_decl() ast.InterfaceDecl {
+fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
 	}
-	p.next()	// `interface`
+	p.next() // `interface`
 	interface_name := p.check_name()
+	//println('interface decl $interface_name')
 	p.check(.lcbr)
-	var field_names := []string
+	// Declare the type
+	t := table.TypeSymbol{
+		kind: .interface_
+		name: interface_name
+		info: table.Struct{
+			//is_interface: true
+		}
+	}
+	typ := p.table.register_type_symbol(t)
+	ts := p.table.get_type_symbol(typ) // TODO t vs ts
+	// Parse methods
+	mut methods := []ast.FnDecl
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		line_nr := p.tok.line_nr
 		name := p.check_name()
-		field_names << name
-		p.fn_args()
-		if p.tok.kind == .name && p.tok.line_nr == line_nr {
-			p.parse_type()
+		println(name)
+		// field_names << name
+		args2, _ := p.fn_args()
+		mut args := [table.Arg{
+			name: 'x'
+			typ: typ
+		}]
+		args << args2
+		mut method := ast.FnDecl{
+			name: name
+			args: args
+			return_type: table.void_type
 		}
+		if p.tok.kind == .name && p.tok.line_nr == line_nr {
+			method.return_type = p.parse_type()
+		}
+		methods << method
+		//println('register method $name')
+		ts.register_method(table.Fn{
+			name: name
+			args: args
+			return_type: method.return_type
+		})
 	}
 	p.check(.rcbr)
 	return ast.InterfaceDecl{
 		name: interface_name
-		field_names: field_names
+		methods: methods
 	}
 }
-

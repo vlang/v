@@ -1,9 +1,9 @@
 module builtin
 
 const (
-	mem_prot = mm_prot(int(mm_prot.prot_read) | int(mm_prot.prot_write))
-	mem_flags = map_flags(int(map_flags.map_private) | int(map_flags.map_anonymous))
-	page_size = u64(linux_mem.page_size)
+	mem_prot = Mm_prot(int(Mm_prot.prot_read) | int(Mm_prot.prot_write))
+	mem_flags = Map_flags(int(Map_flags.map_private) | int(Map_flags.map_anonymous))
+	page_size = u64(Linux_mem.page_size)
 )
 
 pub fn mm_pages(size u64) u32 {
@@ -11,22 +11,22 @@ pub fn mm_pages(size u64) u32 {
 	return u32(pages)
 }
 
-pub fn mm_alloc(size u64) (byteptr, errno) {
+pub fn mm_alloc(size u64) (byteptr, Errno) {
 	pages := mm_pages(size)
-	n_bytes := u64(pages*u32(linux_mem.page_size))
+	n_bytes := u64(pages*u32(Linux_mem.page_size))
 
 	a, e := sys_mmap(0, n_bytes, mem_prot, mem_flags, -1, 0)
 	if e == .enoerror {
-		mut ap := intptr(a)
+		mut ap := &int(a)
 		*ap = pages
 		return byteptr(a+4), e
 	}
 	return byteptr(0), e
 }
 
-pub fn mm_free(addr byteptr) errno {
-	ap := intptr(addr-4)
-	size := u64(*ap) * u64(linux_mem.page_size)
+pub fn mm_free(addr byteptr) Errno {
+	ap := &int(addr-4)
+	size := u64(*ap) * u64(Linux_mem.page_size)
 
 	return sys_munmap(ap, size)
 }

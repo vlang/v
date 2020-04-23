@@ -2,13 +2,9 @@ import os
 import term
 
 fn test_all() {
-	$if windows {
-		return
-	}
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
-	vroot := os.dir(vexe)
-	dir := os.join_path(vroot,'vlib/v/tests/inout')
+	dir := 'vlib/v/tests/inout'
 	files := os.ls(dir) or {
 		panic(err)
 	}
@@ -18,13 +14,13 @@ fn test_all() {
 		assert false
 	}
 	for test in tests {
-		path := os.join_path(dir,test)
+		path := os.join_path(dir, test).replace('\\', '/')
 		print(test + ' ')
 		program := path.replace('.vv', '.v')
 		os.cp(path, program) or {
 			panic(err)
 		}
-		x := os.exec('$vexe -o exe -cflags "-w" -cg $program') or {
+		_ := os.exec('$vexe -o exe -cflags "-w" -cg $program') or {
 			panic(err)
 		}
 		// os.rm(program)

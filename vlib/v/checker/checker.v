@@ -471,13 +471,13 @@ pub fn (c mut Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 			//println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
 			c.error('method `${left_type_sym.name}.$method_name` is private', call_expr.pos)
 		}
-		no_args := method.args.len - 1
+		nr_args := if method.args.len == 0 {  0 } else {method.args.len - 1}
 		min_required_args := method.args.len - if method.is_variadic && method.args.len > 1 { 2 } else { 1 }
 		if call_expr.args.len < min_required_args {
 			c.error('too few arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $min_required_args)',
 				call_expr.pos)
-		} else if !method.is_variadic && call_expr.args.len > no_args {
-			c.error('too many arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $no_args)',
+		} else if !method.is_variadic && call_expr.args.len > nr_args {
+			c.error('!too many arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $nr_args)',
 				call_expr.pos)
 			return method.return_type
 		}
@@ -530,7 +530,7 @@ pub fn (c mut Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 			return info.func.return_type
 		}
 	}
-	c.error('unknown method: ${left_type_sym.name}.$method_name', call_expr.pos)
+	c.error('unknown method: `${left_type_sym.name}.$method_name`', call_expr.pos)
 	return table.void_type
 }
 

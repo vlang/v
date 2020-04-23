@@ -109,12 +109,13 @@ fn main() {
 }
 
 fn parse_args(args []string) (&pref.Preferences, string) {
-	var res := &pref.Preferences{}
-	var command := ''
-	var command_pos := 0
+	mut res := &pref.Preferences{}
+	mut command := ''
+	mut command_pos := 0
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
+		current_args := args[i..]
 		match arg {
 			'-v' {
 				res.is_verbose = true
@@ -169,36 +170,46 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				res.backend = .x64
 			}
 			'-os' {
-				// TODO Remove `tmp` variable when it doesn't error out in C.
-				target_os := cmdline.option(args, '-os', '')
-				tmp := pref.os_from_string(target_os) or {
+				target_os := cmdline.option(current_args, '-os', '')
+				i++
+				target_os_kind := pref.os_from_string(target_os) or {
+					if target_os == 'cross' {
+						res.output_cross_c = true
+						continue
+					}
 					println('unknown operating system target `$target_os`')
 					exit(1)
 				}
-				res.os = tmp
-				i++
+				res.os = target_os_kind
 			}
 			'-cflags' {
-				res.cflags = cmdline.option(args, '-cflags', '')
+				res.cflags = cmdline.option(current_args, '-cflags', '')
+				i++
+			}
+			'-define', '-d' {
+				if current_args.len > 1 {
+					define := current_args[1]
+					parse_define(mut res, define)
+				}
 				i++
 			}
 			'-cc' {
-				res.ccompiler = cmdline.option(args, '-cc', 'cc')
+				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
 				i++
 			}
 			'-o' {
-				res.out_name = cmdline.option(args, '-o', '')
+				res.out_name = cmdline.option(current_args, '-o', '')
 				i++
 			}
 			'-b' {
-				b := pref.backend_from_string(cmdline.option(args, '-b', 'c')) or {
+				b := pref.backend_from_string(cmdline.option(current_args, '-b', 'c')) or {
 					continue
 				}
 				res.backend = b
 				i++
 			}
 			else {
-				var should_continue := false
+				mut should_continue := false
 				for flag_with_param in list_of_flags_with_param {
 					if '-$flag_with_param' == arg {
 						should_continue = true
@@ -254,8 +265,8 @@ fn create_symlink() {
 		return
 	}
 	vexe := pref.vexe_path()
-	var link_path := '/usr/local/bin/v'
-	var ret := os.exec('ln -sf $vexe $link_path') or {
+	mut link_path := '/usr/local/bin/v'
+	mut ret := os.exec('ln -sf $vexe $link_path') or {
 		panic(err)
 	}
 	if ret.exit_code == 0 {
@@ -274,4 +285,30 @@ fn create_symlink() {
 	} else {
 		println('Failed to create symlink "$link_path". Try again with sudo.')
 	}
+}
+
+fn parse_define(prefs mut pref.Preferences, define string) {
+    define_parts := define.split('=')
+    if define_parts.len == 1 {
+        prefs.compile_defines << define
+        prefs.compile_defines_all << define
+        return
+    }
+    if define_parts.len == 2 {
+        prefs.compile_defines_all << define_parts[0]
+        match define_parts[1] {
+            '0' {}
+            '1' {
+                prefs.compile_defines << define_parts[0]
+            }
+            else {
+                println('V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
+                    'Expected `0` or `1`.')
+                exit(1)
+            }
+        }
+        return
+    }
+    println('V error: Unknown define argument: ${define}. Expected at most one `=`.')
+    exit(1)
 }
