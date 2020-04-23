@@ -562,12 +562,12 @@ Their access modifiers can be changed with
 ```v
 struct Foo {
     a int   // private immutable (default)
-var:
+mut:
     b int   // private mutable
     c int   // (you can list multiple fields with the same access modifier)
 pub:
     d int   // public immmutable (readonly)
-pub var:
+pub mut:
     e int   // public, but mutable only in parent module
 __global:
     f int   // public and mutable both inside and outside parent module
@@ -637,7 +637,7 @@ It is possible to modify function arguments by using the same keyword `mut`:
 
 ```v
 struct User {
-var:
+mut:
     is_registered bool
 }
 
