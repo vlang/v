@@ -24,9 +24,9 @@ const (
 
 fn C._mkgmtime(&C.tm) time_t
 
-fn C.QueryPerformanceCounter(*C.LARGE_INTEGER) C.BOOL
+fn C.QueryPerformanceCounter(&C.LARGE_INTEGER) C.BOOL
 
-fn C.QueryPerformanceFrequency(*C.LARGE_INTEGER) C.BOOL
+fn C.QueryPerformanceFrequency(&C.LARGE_INTEGER) C.BOOL
 
 fn make_unix_time(t C.tm) int {
 	return int(C._mkgmtime(&t))
