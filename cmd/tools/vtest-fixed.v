@@ -7,8 +7,6 @@ import v.pref
 const (
 	skip_test_files = [
 		'vlib/arrays/arrays_test.v',
-		'vlib/crypto/aes/aes_test.v',
-		'vlib/crypto/rc4/rc4_test.v',
 		'vlib/eventbus/eventbus_test.v',
 		'vlib/json/json_test.v',
 		'vlib/net/ftp/ftp_test.v',
