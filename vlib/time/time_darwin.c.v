@@ -8,13 +8,15 @@ const (
 	time_base = init_time_base()
 )
 
-fn C.mach_absolute_time() u64
-fn C.mach_timebase_info(&C.mach_timebase_info_data_t)
-
+[typedef]
 struct C.mach_timebase_info_data_t {
 	numer u64
 	denom u64
 }
+
+fn C.mach_absolute_time() u64
+fn C.mach_timebase_info(&C.mach_timebase_info_data_t)
+
 struct InternalTimeBase {
 	numer u64
 	denom u64

@@ -12,6 +12,7 @@ struct C.tm {
 	tm_sec  int
 }
 
+[typedef]
 struct C.LARGE_INTEGER {
 	QuadPart i64
 }
