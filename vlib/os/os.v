@@ -891,6 +891,10 @@ pub fn executable() string {
 // it relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
 // all cases, but it should be better, than just using os.args[0] directly.
 fn executable_fallback() string {
+	if os.args.len == 0 {
+		// we are early in the bootstrap, os.args has not been initialized yet :-|
+		return ''
+	}
 	mut exepath := os.args[0]
 	if !os.is_abs_path(exepath) {
 		if exepath.contains( os.path_separator ) {
