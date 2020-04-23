@@ -199,8 +199,9 @@ pub fn (mut g Gen) init() {
 		}
 		g.comptime_defines.writeln('')
 	}
-
-
+	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
+		g.comptime_defines.writeln('#define _VDEBUG (1)')
+	}
 }
 
 pub fn (mut g Gen) finish() {
