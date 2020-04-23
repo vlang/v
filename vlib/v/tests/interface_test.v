@@ -56,6 +56,7 @@ fn test_perform_speak() {
 	}
 */
 }
+*/
 
 /*
 interface Speak2er {
@@ -91,5 +92,4 @@ fn test_register() {
 	f.register()
 	handle_reg(f)
 }
-*/
 */

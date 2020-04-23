@@ -332,6 +332,13 @@ pub fn (mut g Gen) sub32(reg Register, val int) {
 	g.write32(val)
 }
 
+pub fn (mut g Gen) add(reg Register, val int) {
+	g.write8(0x48)
+	g.write8(0x81)
+	g.write8(0xe8 + reg) // TODO rax is different?
+	g.write32(val)
+}
+
 fn (mut g Gen) leave() {
 	g.write8(0xc9)
 }
@@ -617,7 +624,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		// g.write32(SEVENS)
 		g.push(.rbp)
 		g.mov_rbp_rsp()
-		// g.sub32(.rsp, 0x10)
+		g.sub32(.rsp, 0x20)
 	}
 	if node.args.len > 0 {
 		// g.mov(.r12, 0x77777777)
@@ -640,7 +647,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		// return
 	}
 	if !is_main {
-		g.leave() // g.pop(.rbp)
+		g.leave()
+		// g.add(.rsp, 0x20)
+		// g.pop(.rbp)
 	}
 	g.ret()
 }
