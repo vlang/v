@@ -433,6 +433,15 @@ pub:
 	is_not     bool
 	pos        token.Position
 mut:
+/*
+`$if xyz? {}` => this compile time `if` is optional,
+and .is_opt reflects the presence of ? at the end.
+When .is_opt is true, the code should compile, even
+if `xyz` is NOT defined.
+If .is_opt is false, then when `xyz` is not defined,
+the compilation will fail.
+*/
+	is_opt     bool
 	has_else   bool
 	else_stmts []Stmt
 }

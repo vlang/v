@@ -54,6 +54,7 @@ struct Gen {
 	gowrappers           strings.Builder // all go callsite wrappers
 	stringliterals       strings.Builder // all string literals (they depend on tos3() beeing defined
 	auto_str_funcs       strings.Builder // function bodies of all auto generated _str funcs
+	comptime_defines     strings.Builder // custom defines, given by -d/-define flags on the CLI
 	table                &table.Table
 	pref                 &pref.Preferences
 mut:
@@ -109,6 +110,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		gowrappers: strings.new_builder(100)
 		stringliterals: strings.new_builder(100)
 		auto_str_funcs: strings.new_builder(100)
+		comptime_defines: strings.new_builder(100)
 		inits: strings.new_builder(100)
 		table: table
 		pref: pref
@@ -151,7 +153,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	//
 	g.finish()
-	return g.hashes() + '\n// V typedefs:\n' + g.typedefs.str() + '\n// V typedefs2:\n' + g.typedefs2.str() +
+	return g.hashes() + g.comptime_defines.str() + '\n// V typedefs:\n' + g.typedefs.str() + '\n// V typedefs2:\n' + g.typedefs2.str() +
 		'\n// V cheaders:\n' + g.cheaders.str() + '\n// V includes:\n' + g.includes.str() + '\n// V definitions:\n' +
 		g.definitions.str() + g.interface_table() + '\n// V gowrappers:\n' + g.gowrappers.str() + '\n// V stringliterals:\n' +
 		g.stringliterals.str() + '\n// V auto str functions:\n' + g.auto_str_funcs.str() + '\n// V out\n' +
@@ -187,6 +189,18 @@ pub fn (mut g Gen) init() {
 	if g.pref.build_mode != .build_module {
 		g.stringliterals.writeln('void vinit_string_literals(){')
 	}
+
+	if g.pref.compile_defines_all.len > 0 {
+		g.comptime_defines.writeln('// V compile time defines by -d or -define flags:')
+		g.comptime_defines.writeln('//     All custom defines      : ' + g.pref.compile_defines_all.join(','))
+		g.comptime_defines.writeln('//     Turned ON custom defines: ' + g.pref.compile_defines.join(','))
+		for cdefine in g.pref.compile_defines {
+			g.comptime_defines.writeln('#define CUSTOM_DEFINE_${cdefine}')
+		}
+		g.comptime_defines.writeln('')
+	}
+
+
 }
 
 pub fn (mut g Gen) finish() {
@@ -2536,7 +2550,7 @@ fn op_to_fn_name(name string) string {
 	}
 }
 
-fn comp_if_to_ifdef(name string) string {
+fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 	match name {
 		// platforms/os-es:
 		'windows' { return '_WIN32' }
@@ -2563,12 +2577,17 @@ fn comp_if_to_ifdef(name string) string {
 		'debug' { return '_VDEBUG' }
 		'glibc' { return '__GLIBC__' }
 		'prealloc' { return 'VPREALLOC' }
-		'no_bounds_checking' { return 'NO_BOUNDS_CHECK' }
+		'no_bounds_checking' { return 'CUSTOM_DEFINE_no_bounds_checking' }
 		'x64' { return 'TARGET_IS_64BIT' }
 		'x32' { return 'TARGET_IS_32BIT' }
 		'little_endian' { return 'TARGET_ORDER_IS_LITTLE' }
 		'big_endian' { return 'TARGET_ORDER_IS_BIG' }
-		else { verror('bad os ifdef name "$name"') }
+		else {
+			if is_comptime_optional || g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all {
+				return 'CUSTOM_DEFINE_${name}'
+			}
+			verror('bad os ifdef name "$name"')
+		}
 	}
 	// verror('bad os ifdef name "$name"')
 	return ''
@@ -2738,7 +2757,7 @@ fn (g Gen) is_importing_os() bool {
 }
 
 fn (mut g Gen) comp_if(it ast.CompIf) {
-	ifdef := comp_if_to_ifdef(it.val)
+	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
 	if it.is_not {
 		g.writeln('\n#ifndef ' + ifdef)
 		g.writeln('// #if not $it.val')

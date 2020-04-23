@@ -9,7 +9,6 @@ const (
 		'vlib/arrays/arrays_test.v',
 		'vlib/eventbus/eventbus_test.v',
 		'vlib/json/json_test.v',
-		'vlib/net/ftp/ftp_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/http_test.v',
 		'vlib/regex/regex_test.v',

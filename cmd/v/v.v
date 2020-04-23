@@ -115,6 +115,7 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
+		current_args := args[i..]
 		match arg {
 			'-v' {
 				res.is_verbose = true
@@ -170,7 +171,7 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			}
 			'-os' {
 				// TODO Remove `tmp` variable when it doesn't error out in C.
-				target_os := cmdline.option(args, '-os', '')
+				target_os := cmdline.option(current_args, '-os', '')
 				tmp := pref.os_from_string(target_os) or {
 					println('unknown operating system target `$target_os`')
 					exit(1)
@@ -179,19 +180,26 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				i++
 			}
 			'-cflags' {
-				res.cflags = cmdline.option(args, '-cflags', '')
+				res.cflags = cmdline.option(current_args, '-cflags', '')
+				i++
+			}
+			'-define', '-d' {
+				if current_args.len > 1 {
+					define := current_args[1]
+					parse_define(mut res, define)
+				}
 				i++
 			}
 			'-cc' {
-				res.ccompiler = cmdline.option(args, '-cc', 'cc')
+				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
 				i++
 			}
 			'-o' {
-				res.out_name = cmdline.option(args, '-o', '')
+				res.out_name = cmdline.option(current_args, '-o', '')
 				i++
 			}
 			'-b' {
-				b := pref.backend_from_string(cmdline.option(args, '-b', 'c')) or {
+				b := pref.backend_from_string(cmdline.option(current_args, '-b', 'c')) or {
 					continue
 				}
 				res.backend = b
@@ -274,4 +282,30 @@ fn create_symlink() {
 	} else {
 		println('Failed to create symlink "$link_path". Try again with sudo.')
 	}
+}
+
+fn parse_define(prefs mut pref.Preferences, define string) {
+    define_parts := define.split('=')
+    if define_parts.len == 1 {
+        prefs.compile_defines << define
+        prefs.compile_defines_all << define
+        return
+    }
+    if define_parts.len == 2 {
+        prefs.compile_defines_all << define_parts[0]
+        match define_parts[1] {
+            '0' {}
+            '1' {
+                prefs.compile_defines << define_parts[0]
+            }
+            else {
+                println('V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
+                    'Expected `0` or `1`.')
+                exit(1)
+            }
+        }
+        return
+    }
+    println('V error: Unknown define argument: ${define}. Expected at most one `=`.')
+    exit(1)
 }

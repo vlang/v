@@ -98,14 +98,17 @@ fn (mut p Parser) comp_if() ast.CompIf {
 			}
 		}
 	}
+	mut is_opt := false
 	if p.tok.kind == .question {
 		p.next()
+		is_opt = true
 	}
 	if !skip_os {
 		stmts = p.parse_block()
 	}
 	mut node := ast.CompIf{
 		is_not: is_not
+		is_opt: is_opt
 		pos: pos
 		val: val
 		stmts: stmts

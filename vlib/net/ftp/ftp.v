@@ -127,10 +127,7 @@ pub fn (ftp FTP) login(user, passwd string) bool {
 		return false
 	}
 
-	mut data := ''
-	mut code := 0
-
-	code, data = ftp.read()
+	mut code, data := ftp.read()
 	if code == LoggedIn {
 		return true
 	}
