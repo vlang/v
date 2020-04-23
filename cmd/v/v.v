@@ -170,17 +170,14 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				res.backend = .x64
 			}
 			'-os' {
+				// TODO Remove `tmp` variable when it doesn't error out in C.
 				target_os := cmdline.option(current_args, '-os', '')
-				i++
-				target_os_kind := pref.os_from_string(target_os) or {
-					if target_os == 'cross' {
-						res.output_cross_c = true
-						continue
-					}
+				tmp := pref.os_from_string(target_os) or {
 					println('unknown operating system target `$target_os`')
 					exit(1)
 				}
-				res.os = target_os_kind
+				res.os = tmp
+				i++
 			}
 			'-cflags' {
 				res.cflags = cmdline.option(current_args, '-cflags', '')
