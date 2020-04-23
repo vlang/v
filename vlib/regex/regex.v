@@ -1413,7 +1413,7 @@ pub fn (re RE) get_query() string {
 * Matching
 *
 ******************************************************************************/
-enum match_state{
+enum Match_state{
 	start = 0
 	stop
 	end
@@ -1428,7 +1428,7 @@ enum match_state{
 	ist_quant_ng // match negative ,group quantifier check
 }
 
-fn state_str(s match_state) string {
+fn state_str(s Match_state) string {
 	match s{
 		.start        { return "start" }
 		.stop         { return "stop" }
@@ -1461,7 +1461,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	mut i := 0                       // source string index
 	mut ch := u32(0)                 // examinated char
 	mut char_len := 0                // utf8 examinated char len
-	mut m_state := match_state.start // start point for the matcher FSM
+	mut m_state := Match_state.start // start point for the matcher FSM
 
 	mut pc := -1                     // program counter
 	mut state := StateObj{}          // actual state

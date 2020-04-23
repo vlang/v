@@ -1,23 +1,23 @@
 module forkedtest
 
-pub fn run (op fn(), label string, code wi_si_code, status int) int {
+pub fn run (op fn(), label string, code Wi_si_code, status int) int {
 	child := sys_fork()
 	if child == 0 {
 		op()
 		sys_exit(0)
 	}
 
-	siginfo := [0].repeat(int(sig_index.si_size))
+	siginfo := [0].repeat(int(Sig_index.si_size))
 
 	e := sys_waitid(.p_pid, child, intptr(&siginfo[0]), .wexited, 0)
 
 	assert e == .enoerror
-	assert siginfo[int(sig_index.si_pid)] == child
-	assert siginfo[int(sig_index.si_signo)] == int(signo.sigchld)
-	assert siginfo[int(sig_index.si_uid)] == sys_getuid()
+	assert siginfo[int(Sig_index.si_pid)] == child
+	assert siginfo[int(Sig_index.si_signo)] == int(Signo.sigchld)
+	assert siginfo[int(Sig_index.si_uid)] == sys_getuid()
 
-	r_code := siginfo[sig_index.si_code]
-	r_status := siginfo[sig_index.si_status]
+	r_code := siginfo[Sig_index.si_code]
+	r_status := siginfo[Sig_index.si_status]
 
 	print("+++ ")
 	print(label)
@@ -47,4 +47,3 @@ pub fn run (op fn(), label string, code wi_si_code, status int) int {
 pub fn normal_run (op fn(), label string) int {
 	return run (op, label, .cld_exited, 0)
 }
-

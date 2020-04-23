@@ -1083,7 +1083,12 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	p.check(.key_enum)
 	end_pos := p.tok.position()
-	name := p.prepend_mod(p.check_name())
+
+	enum_name := p.check_name()
+	if enum_name.len > 0 && !enum_name[0].is_capital() {
+		verror('enum name `$enum_name` must begin with a capital letter')
+	}
+	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
 	mut vals := []string
 	// mut default_exprs := []ast.Expr
