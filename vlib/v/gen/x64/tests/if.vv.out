@@ -6,3 +6,8 @@ hello
 hello
 hello
 hello
+===args===
+foo
+foo(1)
+foo(2)
+foo

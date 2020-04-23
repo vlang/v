@@ -27,7 +27,25 @@ fn loop() {
 	}
 }
 
+fn foo(a int) {
+	println('foo')
+	if a == 1 {
+		println('foo(1)')
+	}
+	a++
+	if a == 1 {
+		println('foo(2)')
+	}
+}
+
+fn args() {
+	println('===args===')
+	args(1)
+	args(2)
+}
+
 fn main() {
 	test()
 	loop()
+	args()
 }

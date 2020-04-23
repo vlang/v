@@ -48,6 +48,10 @@ enum Register {
 	r15
 }
 
+const (
+	fn_arg_registers = [x64.Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
+)
+
 /*
 rax // 0
 	rcx // 1
@@ -269,6 +273,17 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 	g.write64(val)
 }
 
+fn (mut g Gen) mov_from_reg(var_offset int, reg Register) {
+	// 89 7d fc                mov    DWORD PTR [rbp-0x4],edi
+	g.write8(0x89)
+	match reg {
+		.edi, .rdi { g.write8(0x7d) }
+		.rsi { g.write8(0x75) }
+		else { verror('mov_from_reg $reg') }
+	}
+	g.write8(0xff - var_offset + 1)
+}
+
 fn (mut g Gen) call(addr int) {
 	// Need to calculate the difference between current position (position after the e8 call)
 	// and the function to call.
@@ -378,7 +393,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 		.eax, .rax {
 			g.write8(0xb8)
 		}
-		.edi {
+		.edi, .rdi {
 			g.write8(0xbf)
 		}
 		.edx {
@@ -399,7 +414,6 @@ fn (mut g Gen) mov(reg Register, val int) {
 	g.write32(val)
 }
 
-/*
 fn (mut g Gen) mov_reg(a, b Register) {
 	match a {
 		.rbp {
@@ -409,7 +423,7 @@ fn (mut g Gen) mov_reg(a, b Register) {
 		else {}
 	}
 }
-*/
+
 // generates `mov rbp, rsp`
 fn (mut g Gen) mov_rbp_rsp() {
 	g.write8(0x48)
@@ -423,14 +437,22 @@ pub fn (mut g Gen) register_function_address(name string) {
 	g.fn_addr[name] = addr
 }
 
-pub fn (mut g Gen) call_fn(name string) {
+pub fn (mut g Gen) call_fn(node ast.CallExpr) {
+	name := node.name
 	println('call fn $name')
-	if !name.contains('__') {
-		// return
-	}
 	addr := g.fn_addr[name]
 	if addr == 0 {
 		verror('fn addr of `$name` = 0')
+	}
+	// Copy values to registers (calling convention)
+	g.mov(.eax, 0)
+	for i in 0 .. node.args.len {
+		expr := node.args[i].expr
+		int_lit := expr as ast.IntegerLiteral
+		g.mov(fn_arg_registers[i], int_lit.val.int())
+	}
+	if node.args.len > 6 {
+		verror('more than 6 args not allowed for now')
 	}
 	g.call(int(addr))
 	println('call $name $addr')
@@ -473,7 +495,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.gen_print_from_expr(expr, it.name in ['println', 'eprintln'])
 				return
 			}
-			g.call_fn(it.name)
+			g.call_fn(it)
 		}
 		ast.FloatLiteral {}
 		ast.Ident {}
@@ -585,23 +607,33 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.write32_at(jump_addr, g.pos() - jump_addr - 4) // 4 is for "00 00 00 00"
 }
 
-fn (mut g Gen) fn_decl(it ast.FnDecl) {
-	is_main := it.name == 'main'
-	println('saving addr $it.name $g.buf.len.hex()')
+fn (mut g Gen) fn_decl(node ast.FnDecl) {
+	is_main := node.name == 'main'
+	println('saving addr $node.name $g.buf.len.hex()')
 	if is_main {
 		g.save_main_fn_addr()
 	} else {
-		g.register_function_address(it.name)
+		g.register_function_address(node.name)
 		// g.write32(SEVENS)
 		g.push(.rbp)
 		g.mov_rbp_rsp()
 		// g.sub32(.rsp, 0x10)
 	}
-	for arg in it.args {
+	if node.args.len > 0 {
+		// g.mov(.r12, 0x77777777)
 	}
-	for stmt in it.stmts {
-		g.stmt(stmt)
+	// Copy values from registers to local vars (calling convention)
+	mut offset := 0
+	for i in 0 .. node.args.len {
+		name := node.args[i].name
+		// TODO optimize. Right now 2 mov's are used instead of 1.
+		g.allocate_var(name, 4, 0)
+		// `mov DWORD PTR [rbp-0x4],edi`
+		offset += 4
+		g.mov_from_reg(offset, fn_arg_registers[i])
 	}
+	//
+	g.stmts(node.stmts)
 	if is_main {
 		println('end of main: gen exit')
 		g.gen_exit()
