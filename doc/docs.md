@@ -1000,18 +1000,19 @@ println(resp.body)
 ```
 
 `http.get` returns `?http.Response`. It was called with `?`, so the error is propagated to the calling function
-(which must return an optional) or in case of `main` leads to a panic.
+(which must return an optional) or in case of `main()` leads to a panic.
 Basically the code above is a shorter version of
 
 ```v
 resp := http.get(url) or {
-    panic(err)
+    return error(err)
 }
 println(resp.body)
 ```
 
 V does not have a way to force unwrap an optional (like Rust's `unwrap()`
 or Swift's `!`). You have to use `or { panic(err) }` instead.
+
 
 ## Generics
 
