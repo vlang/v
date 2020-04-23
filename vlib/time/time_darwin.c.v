@@ -15,11 +15,15 @@ struct C.mach_timebase_info_data_t {
 	numer u64
 	denom u64
 }
+struct InternalTimeBase {
+	numer u64
+	denom u64
+}
 
-fn init_time_base() C.mach_timebase_info_data_t {
+fn init_time_base() InternalTimeBase {
 	mut tb := C.mach_timebase_info_data_t{}
 	C.mach_timebase_info(&tb)
-	return tb
+	return InternalTimeBase{numer:tb.numer, denom:tb.denom}
 }
 
 fn sys_mono_now_darwin() u64 {

@@ -18,6 +18,7 @@ struct C.LARGE_INTEGER {
 
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
+	// Windows: don't store the LARGE_INTEGER, just the QuadPart
 	start_time = init_win_time_start()
 	freq_time  = init_win_time_freq()
 )
@@ -32,22 +33,22 @@ fn make_unix_time(t C.tm) int {
 	return int(C._mkgmtime(&t))
 }
 
-fn init_win_time_freq() C.LARGE_INTEGER {
+fn init_win_time_freq() u64 {
 	mut f := C.LARGE_INTEGER{}
 	_ := C.QueryPerformanceFrequency(&f)
-	return f
+	return u64(f.QuadPart)
 }
 
-fn init_win_time_start() C.LARGE_INTEGER {
+fn init_win_time_start() u64 {
 	mut s := C.LARGE_INTEGER{}
 	_ := C.QueryPerformanceCounter(&s)
-	return s
+	return u64(s.QuadPart)
 }
 
 fn sys_mono_now() u64 {
 	mut tm := C.LARGE_INTEGER{}
 	_ := C.QueryPerformanceCounter(&tm) // XP or later never fail
-	return mul_div(tm.QuadPart - start_time.QuadPart, 1_000_000_000, freq_time.QuadPart)
+	return mul_div(u64(tm.QuadPart) - start_time, 1_000_000_000, freq_time)
 }
 
 fn mul_div(val, numer, denom u64) u64 {
