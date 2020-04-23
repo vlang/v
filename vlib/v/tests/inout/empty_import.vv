@@ -1,0 +1,7 @@
+import (
+	// no module
+)
+
+fn main() {
+	println('empty import')
+}
