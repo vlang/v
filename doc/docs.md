@@ -1011,8 +1011,8 @@ println(resp.body)
 ```
 
 V does not have a way to force unwrap an optional (like Rust's `unwrap()`
-or Swift's `!`). You may use `or { panic(err) }` instead.
-Propagation with `?` is preferred (safer) over forced unwrap.
+or Swift's `!`). You have to use `or { panic(err) }` instead.
+
 
 ## Generics
 
