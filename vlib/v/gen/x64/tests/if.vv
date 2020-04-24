@@ -46,6 +46,6 @@ fn args() {
 
 fn main() {
 	test()
-	//loop()
-	args()
+	loop()
+	//args()
 }
