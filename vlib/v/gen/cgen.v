@@ -2760,11 +2760,9 @@ fn (g Gen) is_importing_os() bool {
 fn (mut g Gen) comp_if(it ast.CompIf) {
 	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
 	if it.is_not {
-		g.writeln('\n#ifndef ' + ifdef)
-		g.writeln('// #if not $it.val')
+		g.writeln('\n// \$if !${it.val} {\n#ifndef ' + ifdef)
 	} else {
-		g.writeln('\n#ifdef ' + ifdef)
-		g.writeln('// #if $it.val')
+		g.writeln('\n// \$if  ${it.val} {\n#ifdef ' + ifdef)
 	}
 	// NOTE: g.defer_ifdef is needed for defers called witin an ifdef
 	// in v1 this code would be completely excluded
@@ -2786,7 +2784,7 @@ fn (mut g Gen) comp_if(it ast.CompIf) {
 		g.stmts(it.else_stmts)
 		g.defer_ifdef = ''
 	}
-	g.writeln('\n#endif')
+	g.writeln('\n// } ${it.val}\n#endif\n')
 }
 
 fn (mut g Gen) go_stmt(node ast.GoStmt) {
