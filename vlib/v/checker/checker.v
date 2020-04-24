@@ -163,23 +163,23 @@ pub fn (c mut Checker) struct_decl(decl ast.StructDecl) {
 		}
 		c.error('struct name must begin with capital letter', pos)
 	}
-    
+
 	for fi, _ in decl.fields {
 		if decl.fields[fi].has_default_expr {
 			c.expected_type = decl.fields[fi].typ
 			field_expr_type := c.expr(decl.fields[fi].default_expr)
-			if !c.table.check( field_expr_type, decl.fields[fi].typ ) { 
+			if !c.table.check( field_expr_type, decl.fields[fi].typ ) {
 				field_expr_type_sym := c.table.get_type_symbol( field_expr_type )
 				field_type_sym := c.table.get_type_symbol( decl.fields[fi].typ )
 				field_name := decl.fields[fi].name
 				fet_name := field_expr_type_sym.name
 				ft_name := field_type_sym.name
 				c.error('default expression for field `${field_name}` '+
-					'has type `${fet_name}`, but should be `${ft_name}`', 
-					decl.fields[fi].default_expr.position() 
+					'has type `${fet_name}`, but should be `${ft_name}`',
+					decl.fields[fi].default_expr.position()
 				)
-			}             
-		}        
+			}
+		}
 	}
 	// && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod && Sp.tok.lit in table.builtin_type_names))
 }
@@ -310,14 +310,22 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		}
 	}
 	if infix_expr.op in [.key_in, .not_in] {
-		if !(right.kind in [.array, .map, .string]) {
-			c.error('`in` can only be used with an array/map/string', infix_expr.pos)
-		}
 		if right.kind == .array {
 			right_sym := c.table.get_type_symbol(right.array_info().elem_type)
 			if left.kind != .alias && left.kind != right_sym.kind {
 				c.error('the data type on the left of `in` does not match the array item type', infix_expr.pos)
 			}
+		} else if right.kind == .map {
+			key_sym := c.table.get_type_symbol(right.map_info().key_type)
+			if left.kind != .alias && left.kind != key_sym.kind {
+				c.error('the data type on the left of `in` does not match the map key type', infix_expr.pos)
+			}
+		} else if right.kind == .string {
+			if left.kind != .alias && left.kind != .string {
+				c.error('the data type on the left of `in` must be a string', infix_expr.pos)
+			}
+		} else {
+			c.error('`in` can only be used with an array/map/string', infix_expr.pos)
 		}
 		return table.bool_type
 	}

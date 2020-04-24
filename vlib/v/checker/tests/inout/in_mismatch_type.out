@@ -1,0 +1,34 @@
+vlib/v/checker/tests/inout/in_mismatch_type.v:2:7: error: the data type on the left of `in` does not match the array item type
+    1| fn main() {
+    2|     if 1 in ['1', '2'] {
+                ~~
+    3|         println('ok')
+    4|     }
+vlib/v/checker/tests/inout/in_mismatch_type.v:8:7: error: the data type on the left of `in` does not match the map key type
+    6|         'test': 1
+    7|     }
+    8|     if 2 in m {
+                ~~
+    9|         println('yeah')
+   10|     }
+vlib/v/checker/tests/inout/in_mismatch_type.v:11:7: error: the data type on the left of `in` must be a string
+    9|         println('yeah')
+   10|     }
+   11|     if 3 in 'test' {
+                ~~
+   12|         println('dope')
+   13|     }
+vlib/v/checker/tests/inout/in_mismatch_type.v:14:9: error: the data type on the left of `in` must be a string
+   12|         println('dope')
+   13|     }
+   14|     if `a` in 'abcd' {
+                  ~~
+   15|         println("oh no :'(")
+   16|     }
+vlib/v/checker/tests/inout/in_mismatch_type.v:17:7: error: `in` can only be used with an array/map/string
+   15|         println("oh no :'(")
+   16|     }
+   17|     if 1 in 12 {
+                ~~
+   18|         println('right')
+   19|     }

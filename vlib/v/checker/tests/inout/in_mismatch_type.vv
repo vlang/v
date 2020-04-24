@@ -1,0 +1,20 @@
+fn main() {
+	if 1 in ['1', '2'] {
+		println('ok')
+	}
+	m := {
+		'test': 1
+	}
+	if 2 in m {
+		println('yeah')
+	}
+	if 3 in 'test' {
+		println('dope')
+	}
+	if `a` in 'abcd' {
+		println("oh no :'(")
+	}
+	if 1 in 12 {
+		println('right')
+	}
+}
