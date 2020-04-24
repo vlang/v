@@ -863,7 +863,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 				}
 				if is_fixed_array_init {
-					g.write('= {0}')
+					g.write(' = ')
+					g.expr(val)
 				} else {
 					g.write(' = ')
 					if !is_decl {
@@ -972,6 +973,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.write('\n})')
 				}
 			} else {
+				g.write('{')
+				for i, expr in it.exprs {
+					g.expr(expr)
+					if i != it.exprs.len - 1 {
+						g.write(', ')
+					}
+				}
+				g.write('}')
 			}
 		}
 		ast.AsCast {

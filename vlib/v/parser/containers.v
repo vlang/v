@@ -47,20 +47,17 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		last_pos = p.tok.position()
 		p.check(.rsbr)
-		// [100]byte
 		if exprs.len == 1 && p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
+			// [100]byte
 			elem_type = p.parse_type()
 			is_fixed = true
+		} else if p.tok.kind == .not && p.peek_tok.kind == .not {
+			// [1,2,3]!!
+			p.next()
+			p.next()
+			last_pos = p.tok.position()
+			is_fixed = true
 		}
-	}
-	// !
-	if p.tok.kind == .not {
-		last_pos = p.tok.position()
-		p.next()
-	}
-	if p.tok.kind == .not {
-		last_pos = p.tok.position()
-		p.next()
 	}
 	if p.tok.kind == .lcbr && exprs.len == 0 {
 		// `[]int{ len: 10, cap: 100}` syntax
