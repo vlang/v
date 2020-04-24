@@ -147,35 +147,34 @@ pub fn start() Benchmark {
 
 pub fn (b mut Benchmark) measure(label string) i64 {
 	b.ok()
-	res := b.step_timer.elapsed().milliseconds()
+	res := b.step_timer.elapsed().microseconds()
 	println(b.step_message_with_label(BSPENT, 'in $label'))
 	b.step()
 	return res
 }
 
 pub fn (b &Benchmark) step_message_with_label(label string, msg string) string {
-	mut timed_line := ''
-	if b.nexpected_steps > 0 {
+	timed_line := b.tdiff_in_ms(msg, b.step_timer.elapsed().microseconds())
+	if b.nexpected_steps > 1 {
 		mut sprogress := ''
 		if b.nexpected_steps < 10 {
 			sprogress = if b.no_cstep { 'TMP1/${b.nexpected_steps:1d}' } else {
 				'${b.cstep:1d}/${b.nexpected_steps:1d}'
 			}
-		}
-		if b.nexpected_steps >= 10 && b.nexpected_steps < 100 {
+		} else if b.nexpected_steps >= 10 && b.nexpected_steps < 100 {
 			sprogress = if b.no_cstep { 'TMP2/${b.nexpected_steps:2d}' } else {
 				'${b.cstep:2d}/${b.nexpected_steps:2d}'
 			}
-		}
-		if b.nexpected_steps >= 100 && b.nexpected_steps < 1000 {
+		} else if b.nexpected_steps >= 100 && b.nexpected_steps < 1000 {
 			sprogress = if b.no_cstep { 'TMP3/${b.nexpected_steps:3d}' } else {
 				'${b.cstep:3d}/${b.nexpected_steps:3d}'
 			}
+		} else {
+			sprogress = if b.no_cstep { 'TMP4/${b.nexpected_steps:4d}' } else {
+				'${b.cstep:4d}/${b.nexpected_steps:4d}'
+			}
 		}
-		timed_line = b.tdiff_in_ms('[${sprogress}] $msg', b.step_timer.elapsed().milliseconds())
-	}
-	else {
-		timed_line = b.tdiff_in_ms(msg, b.step_timer.elapsed().milliseconds())
+		return '${label:-5s} [${sprogress}] ${timed_line}'
 	}
 	return '${label:-5s}${timed_line}'
 }
@@ -201,9 +200,17 @@ pub fn (b &Benchmark) total_message(msg string) string {
 	if b.verbose {
 		tmsg = '<=== total time spent $tmsg'
 	}
-	return '  ' + b.tdiff_in_ms(tmsg, b.bench_timer.elapsed().milliseconds())
+	mut spaces := '    '
+	if b.nexpected_steps > 1 {
+		// NB: the formula below accounts for the progress bar [step/total]
+		str_steps := '$b.nexpected_steps'
+		x := 4 + str_steps.len * 2 + 5
+		spaces = ' '.repeat(x)
+	}
+	return spaces + b.tdiff_in_ms(tmsg, b.bench_timer.elapsed().microseconds())
 }
 
+// .total_duration - returns the duration in ms
 pub fn (b &Benchmark) total_duration() i64 {
 	return b.bench_timer.elapsed().milliseconds()
 }
@@ -211,7 +218,7 @@ pub fn (b &Benchmark) total_duration() i64 {
 // //////////////////////////////////////////////////////////////////
 fn (b &Benchmark) tdiff_in_ms(s string, tdiff i64) string {
 	if b.verbose {
-		return '${tdiff:6d} ms $s'
+		return '${tdiff/1000.0:9.3f} ms $s'
 	}
 	return s
 }
