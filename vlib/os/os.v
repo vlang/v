@@ -467,28 +467,30 @@ pub fn sigint_to_signal_name(si int) string {
 	$if linux {
 		// From `man 7 signal` on linux:
 		match si {
-			30, 10, 16 {
+			// TODO dependent on platform
+			// works only on x86/ARM/most others
+			10 /*, 30, 16 */ {
 				return 'SIGUSR1'
 			}
-			31, 12, 17 {
+			12 /*, 31, 17 */ {
 				return 'SIGUSR2'
 			}
-			20, 17, 18 {
+			17 /*, 20, 18 */ {
 				return 'SIGCHLD'
 			}
-			19, 18, 25 {
+			18 /*, 19, 25 */ {
 				return 'SIGCONT'
 			}
-			17, 19, 23 {
+			19 /*, 17, 23 */ {
 				return 'SIGSTOP'
 			}
-			18, 20, 24 {
+			20 /*, 18, 24 */ {
 				return 'SIGTSTP'
 			}
-			21, 21, 26 {
+			21 /*, 26 */ {
 				return 'SIGTTIN'
 			}
-			22, 22, 27 {
+			22 /*, 27 */ {
 				return 'SIGTTOU'
 			}
 			// /////////////////////////////

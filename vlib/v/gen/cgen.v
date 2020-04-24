@@ -407,13 +407,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
-		ast.InterfaceDecl {
-			g.writeln('//interface')
-			g.writeln('typedef struct {')
-			g.writeln('\tvoid* _object;')
-			g.writeln('\tint _interface_idx;')
-			g.writeln('} $it.name;')
-		}
 		ast.AssertStmt {
 			g.gen_assert_stmt(it)
 		}
@@ -549,7 +542,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Import {}
 		ast.InterfaceDecl {
-			g.writeln('// interface')
+			g.writeln('//interface')
+			g.writeln('typedef struct {')
+			g.writeln('\tvoid* _object;')
+			g.writeln('\tint _interface_idx;')
+			g.writeln('} $it.name;')
 		}
 		ast.Module {}
 		ast.Return {
@@ -2562,7 +2559,6 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		'openbsd' { return '__OpenBSD__' }
 		'netbsd' { return '__NetBSD__' }
 		'dragonfly' { return '__DragonFly__' }
-		'msvc' { return '_MSC_VER' }
 		'android' { return '__ANDROID__' }
 		'solaris' { return '__sun' }
 		'haiku' { return '__haiku__' }
