@@ -3044,6 +3044,8 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i],0));')
 	} else if sym.kind in [.f32, .f64] {
 		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _STR("%g", a[i]));')
+	} else if sym.kind == .string {
+		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _STR("\\"%.*s\\"", a[i].len, a[i].str));')
 	} else {
 		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i]));')
 	}
