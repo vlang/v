@@ -2409,11 +2409,11 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				g.write(',0).str')
 			} else if g.typ(  node.expr_types[i] ).starts_with('Option') {
 				str_fn_name := 'Option_str'
-				g.write('${str_fn_name}((Option)')
+				g.write('${str_fn_name}(*(Option*)&')
 				g.expr(expr)
 				g.write(')')
 				g.write('.len, ')
-				g.write('${str_fn_name}((Option)')
+				g.write('${str_fn_name}(*(Option*)&')
 				g.expr(expr)
 				g.write(').str')
 			} else {
