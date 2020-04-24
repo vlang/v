@@ -192,7 +192,7 @@ pub fn (mut p Parser) open_scope() {
 }
 
 pub fn (mut p Parser) close_scope() {
-	if !p.pref.is_repl {
+	if !p.pref.is_repl && !scanner.is_fmt {
 		for v in p.scope.unused_vars() {
 			if p.pref.is_prod {
 				p.error_with_pos('Unused variable: $v.name', v.pos)
@@ -201,7 +201,7 @@ pub fn (mut p Parser) close_scope() {
 			}
 		}
 	}
-  p.scope.clear_unused_vars()
+	p.scope.clear_unused_vars()
 	p.scope.end_pos = p.tok.pos
 	p.scope.parent.children << p.scope
 	p.scope = p.scope.parent

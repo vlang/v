@@ -77,26 +77,48 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 // string representaiton of expr
 pub fn (x Expr) str() string {
 	match x {
-		Ident {
-			return it.name
+		BoolLiteral {
+			return it.val.str()
 		}
-		InfixExpr {
-			return '${it.left.str()} $it.op.str() ${it.right.str()}'
+		CastExpr {
+			return '${it.typname}(${it.expr.str()})'
 		}
-		PrefixExpr {
-			return it.op.str() + it.right.str()
+		CallExpr {
+			sargs := args2str(it.args)
+			if it.is_method {
+				return '${it.left.str()}.${it.name}($sargs)'
+			}
+			return '${it.mod}.${it.name}($sargs)'
 		}
 		CharLiteral {
 			return '`$it.val`'
 		}
-		IntegerLiteral {
-			return it.val
+		EnumVal {
+			return '.${it.val}'
 		}
 		FloatLiteral {
 			return it.val
 		}
-		StringLiteral {
-			return '"$it.val"'
+		Ident {
+			return it.name
+		}
+		IndexExpr {
+			return '${it.left.str()}[${it.index.str()}]'
+		}
+		IntegerLiteral {
+			return it.val
+		}
+		InfixExpr {
+			return '${it.left.str()} $it.op.str() ${it.right.str()}'
+		}
+		ParExpr {
+			return it.expr.str()
+		}
+		PrefixExpr {
+			return it.op.str() + it.right.str()
+		}
+		SelectorExpr {
+			return '${it.expr.str()}.${it.field}'
 		}
 		StringInterLiteral {
 			res := []string
@@ -119,33 +141,11 @@ pub fn (x Expr) str() string {
 			res << "'"
 			return res.join('')
 		}
-		BoolLiteral {
-			return it.val.str()
-		}
-		ParExpr {
-			return it.expr.str()
-		}
-		IndexExpr {
-			return '${it.left.str()}[${it.index.str()}]'
-		}
-		CastExpr {
-			return '${it.typname}(${it.expr.str()})'
-		}
-		SelectorExpr {
-			return '${it.expr.str()}.${it.field}'
+		StringLiteral {
+			return '"$it.val"'
 		}
 		TypeOf {
 			return 'typeof(${it.expr.str()})'
-		}
-		EnumVal {
-			return '.${it.val}'
-		}
-		CallExpr {
-			sargs := args2str(it.args)
-			if it.is_method {
-				return '${it.left.str()}.${it.name}($sargs)'
-			}
-			return '${it.mod}.${it.name}($sargs)'
 		}
 		else {
 			return '[unhandled expr type ${typeof(x)}]'

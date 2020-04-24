@@ -13,7 +13,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 	mut has_else := false
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
-		branch_pos := p.tok.position()
+		start_pos := p.tok.position()
 		mut comment := ast.Comment{}
 		if p.tok.kind == .key_if {
 			p.check(.key_if)
@@ -28,9 +28,10 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			} else {
 				has_else = true
 				p.inside_if = false
+				end_pos := p.prev_tok.position()
 				branches << ast.IfBranch{
 					stmts: p.parse_block()
-					pos: branch_pos
+					pos: start_pos.extend(end_pos)
 					comment: comment
 				}
 				break
@@ -56,6 +57,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		} else {
 			cond = p.expr(0)
 		}
+		end_pos := p.prev_tok.position()
 		p.inside_if = false
 		stmts := p.parse_block()
 		if is_or {
@@ -64,7 +66,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		branches << ast.IfBranch{
 			cond: cond
 			stmts: stmts
-			pos: branch_pos
+			pos: start_pos.extend(end_pos)
 			comment: ast.Comment{}
 		}
 		if p.tok.kind != .key_else {
