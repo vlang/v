@@ -2315,6 +2315,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.write('%"PRId64"')
 		} else if node.expr_types[i] == table.u64_type {
 			g.write('%"PRIu64"')
+		} else if g.typ( node.expr_types[i] ).starts_with('Option') {
+			g.write('%.*s')
 		} else {
 			g.write('%"PRId32"')
 		}
@@ -2405,6 +2407,15 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(',0).str')
+			} else if g.typ(  node.expr_types[i] ).starts_with('Option') {
+				str_fn_name := 'Option_str'
+				g.write('${str_fn_name}((Option)')
+				g.expr(expr)
+				g.write(')')
+				g.write('.len, ')
+				g.write('${str_fn_name}((Option)')
+				g.expr(expr)
+				g.write(').str')
 			} else {
 				g.expr(expr)
 			}
