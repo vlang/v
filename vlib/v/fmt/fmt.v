@@ -643,7 +643,7 @@ fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(')')
 		}
 		ast.StringLiteral {
-			if it.val.contains("'") {
+			if it.val.contains("'") && !it.val.contains('"') {
 				f.write('"$it.val"')
 			} else {
 				f.write("'$it.val'")
