@@ -52,13 +52,17 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			// [100]byte
 			elem_type = p.parse_type()
 			is_fixed = true
-		} else if p.tok.kind == .not && p.peek_tok.kind == .not {
-			// [1,2,3]!!
-			p.next()
-			p.next()
-			last_pos = p.tok.position()
-			is_fixed = true
-			has_val = true
+		} else {
+			if p.tok.kind == .not {
+				last_pos = p.tok.position()
+				p.next()
+			}
+			if p.tok.kind == .not {
+				last_pos = p.tok.position()
+				p.next()
+				is_fixed = true
+				has_val = true
+			}
 		}
 	}
 	if p.tok.kind == .lcbr && exprs.len == 0 {
