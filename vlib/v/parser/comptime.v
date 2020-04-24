@@ -72,7 +72,7 @@ fn (mut p Parser) comp_if() ast.CompIf {
 		// `$if os {` for a different target, skip everything inside
 		// to avoid compilation errors (like including <windows.h> or calling WinAPI fns
 		// on non-Windows systems)
-		if ((!is_not && os != p.pref.os) || (is_not && os == p.pref.os)) && !p.pref.output_cross_c {
+		if !p.scanner.is_fmt && ((!is_not && os != p.pref.os) || (is_not && os == p.pref.os)) && !p.pref.output_cross_c {
 			skip_os = true
 			p.check(.lcbr)
 			// p.warn('skipping $if $val os=$os p.pref.os=$p.pref.os')
