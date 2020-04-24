@@ -10,15 +10,13 @@ fn main() {
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
 
-	mut cmd := '$vexe -o v2 cmd/v'
-	if os.args.len >= 3 && os.args[2] == '-prod' {
-		cmd = '$vexe -o v2 -prod cmd/v'
-		println('V self compiling (-prod mode)...')
-	}
-	else {
-		println('V self compiling...')
-	}
+	self_idx := os.args.index('self')
+	args := os.args[1..self_idx]
+	args_str := args.join(' ')
+	options := if args.len > 0 { '($args_str)' } else { '' }
+	println('V self compiling ${options}...')
 
+	cmd := '$vexe -o v2 $args_str cmd/v'
 	result := os.exec(cmd) or { panic(err) }
 	if result.exit_code != 0 {
 		mut err := 'Permission denied'
