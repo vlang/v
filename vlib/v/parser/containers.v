@@ -16,6 +16,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut elem_type := table.void_type
 	mut exprs := []ast.Expr
 	mut is_fixed := false
+	mut has_val := false
 	if p.tok.kind == .rsbr {
 		// []typ => `[]` and `typ` must be on the same line
 		line_nr := p.tok.line_nr
@@ -57,6 +58,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			p.next()
 			last_pos = p.tok.position()
 			is_fixed = true
+			has_val = true
 		}
 	}
 	if p.tok.kind == .lcbr && exprs.len == 0 {
@@ -82,6 +84,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	}
 	return ast.ArrayInit{
 		is_fixed: is_fixed
+		has_val: has_val
 		mod: p.mod
 		elem_type: elem_type
 		typ: array_type

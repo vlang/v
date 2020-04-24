@@ -845,8 +845,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else {
 				right_sym := g.table.get_type_symbol(assign_stmt.right_types[i])
 				mut is_fixed_array_init := false
+				mut has_val := false
 				match val {
-					ast.ArrayInit { is_fixed_array_init = it.is_fixed }
+					ast.ArrayInit {
+						is_fixed_array_init = it.is_fixed
+						has_val = it.has_val
+					}
 					else {}
 				}
 				is_decl := assign_stmt.op == .decl_assign
@@ -863,8 +867,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 				}
 				if is_fixed_array_init {
-					g.write(' = ')
-					g.expr(val)
+					if has_val {
+						g.write(' = ')
+						g.expr(val)
+					} else {
+						g.write(' = {0}')
+					}
 				} else {
 					g.write(' = ')
 					if !is_decl {
