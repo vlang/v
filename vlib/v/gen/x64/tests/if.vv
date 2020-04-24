@@ -28,24 +28,27 @@ fn loop() {
 }
 
 fn foo(a int) {
-	println('foo')
+	println('foo:')
 	if a == 1 {
-		println('foo(1)')
+		println('a == 1')
 	}
 	a++
-	if a == 1 {
-		println('foo(2)')
+	if a == 2 {
+		println('a == 2')
+	}
+	if a == 3 {
+		println('a == 3')
 	}
 }
 
 fn args() {
 	println('===args===')
-	args(1)
-	args(2)
+	foo(1)
+	foo(2)
 }
 
 fn main() {
 	test()
 	loop()
-	//args()
+	args()
 }
