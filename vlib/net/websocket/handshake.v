@@ -3,7 +3,7 @@ module websocket
 fn (ws mut Client) read_handshake(seckey string){
 	l.d("reading handshake...")
 	mut bytes_read := 0
-	max_buffer := 256
+	max_buffer := 1024
 	buffer_size := 1
 	mut buffer := malloc(max_buffer)
 
@@ -37,21 +37,24 @@ fn (ws mut Client) handshake_handler(handshake_response, seckey string){
 		keys := lines[i].split(":")
 
 		match keys[0] {
-			"Upgrade" {
-				ws.flags << Flag.has_upgrade
+			"Upgrade", "upgrade" {
+				ws.flags << .has_upgrade
 			}
-			"Connection" {
-				ws.flags << Flag.has_connection
+			"Connection", "connection" {
+				ws.flags << .has_connection
 			}
-			"Sec-WebSocket-Accept" {
+			"Sec-WebSocket-Accept", "sec-websocket-accept" {
 				l.d("comparing hashes")
-				response := create_key_challenge_response(seckey)
-				if keys[1].trim_space() != response {
+				l.d("seckey: ${seckey}")
+				challenge := create_key_challenge_response(seckey)
+				l.d("challenge: ${challenge}")
+				l.d("response: ${keys[1]}")
+				if keys[1].trim_space() != challenge {
 					l.e("handshake_handler: Sec-WebSocket-Accept header does not match computed sha1/base64 response.")
 				}
-				ws.flags << Flag.has_accept
+				ws.flags << .has_accept
 				unsafe {
-					response.free()
+					challenge.free()
 				}
 			} else {}
 		}

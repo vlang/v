@@ -6,7 +6,7 @@ import (
 	encoding.base64
 	eventbus
 	sync
-	logger
+	net.websocket.logger
 )
 
 const (
@@ -144,8 +144,10 @@ pub fn (ws mut Client) connect() int {
 	ai_family := C.AF_INET
 	ai_socktype := C.SOCK_STREAM
 
+	l.d("handshake header:")
 	handshake := "GET ${uri.resource}${uri.querystring} HTTP/1.1\r\nHost: ${uri.hostname}:${uri.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${seckey}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-
+	l.d(handshake)
+	
 	socket := net.new_socket(ai_family, ai_socktype, 0) or {
 		l.f(err)
 		return -1
@@ -215,10 +217,10 @@ pub fn (ws mut Client) close(code int, message string){
 		}
 
 		if ws.ssl != C.NULL {
-			SSL_shutdown(ws.ssl)
-			SSL_free(ws.ssl)
+			C.SSL_shutdown(ws.ssl)
+			C.SSL_free(ws.ssl)
 			if ws.sslctx != C.NULL {
-				SSL_CTX_free(ws.sslctx)
+				C.SSL_CTX_free(ws.sslctx)
 			}
 		} else {
 			if C.shutdown(ws.socket.sockfd, C.SHUT_WR) == -1 {
