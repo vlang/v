@@ -1510,100 +1510,7 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	if type_sym.kind != .sum_type {
 		node.is_sum_type = false
 	}
-	// all_possible_left_subtypes is a histogram of
-	// type => how many times it was used in the match
-	mut all_possible_left_subtypes := map[string]int
-	// all_possible_left_enum_vals is a histogram of
-	// enum value name => how many times it was used in the match
-	mut all_possible_left_enum_vals := map[string]int
-	match type_sym.info {
-		table.SumType {
-			for v in it.variants {
-				all_possible_left_subtypes[int(v).str()] = 0
-			}
-		}
-		table.Enum {
-			for v in it.vals {
-				all_possible_left_enum_vals[v] = 0
-			}
-		}
-		else {}
-	}
-	mut has_else := node.branches[node.branches.len - 1].is_else
-	if !has_else {
-		for i, branch in node.branches {
-			if branch.is_else && i != node.branches.len - 1 {
-				c.error('`else` must be the last branch of `match`', branch.pos)
-				has_else = true
-				break
-			}
-		}
-
-		if !has_else {
-			mut used_values_count := 0
-			for _, branch in node.branches {
-				used_values_count += branch.exprs.len
-				for bi_ei, bexpr in branch.exprs {
-					match bexpr {
-						ast.Type {
-							tidx := table.type_idx(it.typ)
-							stidx := tidx.str()
-							all_possible_left_subtypes[stidx] = all_possible_left_subtypes[stidx] +
-								1
-						}
-						ast.EnumVal {
-							all_possible_left_enum_vals[it.val] = all_possible_left_enum_vals[it.val] +
-								1
-						}
-						else {}
-					}
-				}
-			}
-			mut err := false
-			mut err_details := 'match must be exhaustive'
-			unhandled := []string
-			match type_sym.info {
-				table.SumType {
-					for k, v in all_possible_left_subtypes {
-						if v == 0 {
-							err = true
-							unhandled << '`' + c.table.type_to_str(table.new_type(k.int())) + '`'
-						}
-						if v > 1 {
-							err = true
-							multiple_type_name := '`' + c.table.type_to_str(table.new_type(k.int())) +
-								'`'
-							c.error('a match case for $multiple_type_name is handled more than once',
-								node.pos)
-						}
-					}
-				}
-				table.Enum {
-					for k, v in all_possible_left_enum_vals {
-						if v == 0 {
-							err = true
-							unhandled << '`.$k`'
-						}
-						if v > 1 {
-							err = true
-							multiple_enum_val := '`.$k`'
-							c.error('a match case for $multiple_enum_val is handled more than once',
-								node.pos)
-						}
-					}
-				}
-				else {
-					err = true
-				}
-			}
-			if err {
-				if unhandled.len > 0 {
-					err_details += ' (add match branches for: ' + unhandled.join(', ') + ' or an else{} branch)'
-				}
-				c.error(err_details, node.pos)
-			}
-		}
-	}
+	c.match_exprs(mut node, type_sym)
 	c.expected_type = cond_type
 	mut ret_type := table.void_type
 	for branch in node.branches {
@@ -1641,6 +1548,77 @@ pub fn (c mut Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	node.cond_type = cond_type
 	// println('!m $expr_type')
 	return ret_type
+}
+
+fn (mut c Checker) match_exprs(node mut ast.MatchExpr, type_sym table.TypeSymbol) {
+	// branch_exprs is a histogram of how many times
+	// an expr was used in the match
+	mut branch_exprs := map[string]int
+	for branch in node.branches {
+		for expr in branch.exprs {
+			mut key := ''
+			match expr {
+				ast.Type {
+					key = c.table.type_to_str(it.typ)
+				}
+				ast.EnumVal {
+					key = it.val
+				}
+				else {
+					key = expr.str()
+				}
+			}
+			val := if key in branch_exprs { branch_exprs[key] } else { 0 }
+			if val == 1 {
+				c.error('match case `$key` is handled more than once', branch.pos)
+			}
+			branch_exprs[key] = val + 1
+		}
+	}
+	// check that expressions are exhaustive
+	// this is achieved either by putting an else
+	// or, when the match is on a sum type or an enum
+	// by listing all variants or values
+	if !node.branches[node.branches.len - 1].is_else {
+		for i, branch in node.branches {
+			if branch.is_else && i != node.branches.len - 1 {
+				c.error('`else` must be the last branch of `match`', branch.pos)
+				return
+			}
+		}
+		mut err := false
+		mut err_details := 'match must be exhaustive'
+		unhandled := []string
+		match type_sym.info {
+			table.SumType {
+				for v in it.variants {
+					v_str := c.table.type_to_str(v)
+					if v_str !in branch_exprs {
+						err = true
+						unhandled << '`$v_str`'
+					}
+				}
+			}
+			table.Enum {
+				for v in it.vals {
+					if v !in branch_exprs {
+						err = true
+						unhandled << '`.$v`'
+					}
+				}
+			}
+			else {
+				println('else')
+				err = true
+			}
+		}
+		if err {
+			if unhandled.len > 0 {
+				err_details += ' (add match branches for: ' + unhandled.join(', ') + ' or `else {}` at the end)'
+			}
+			c.error(err_details, node.pos)
+		}
+	}
 }
 
 pub fn (c mut Checker) if_expr(node mut ast.IfExpr) table.Type {
