@@ -130,6 +130,17 @@ pub fn new_type_ptr(idx, nr_muls int) Type {
 	return (nr_muls << 16) | u16(idx)
 }
 
+[inline]
+pub fn is_float(typ Type) bool {
+	return type_idx(typ) in float_type_idxs
+}
+
+[inline]
+pub fn is_int(typ Type) bool {
+	return type_idx(typ) in integer_type_idxs
+}
+
+[inline]
 pub fn is_number(typ Type) bool {
 	return type_idx(typ) in number_type_idxs
 }
