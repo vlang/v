@@ -163,6 +163,24 @@ pub fn (c mut Checker) struct_decl(decl ast.StructDecl) {
 		}
 		c.error('struct name must begin with capital letter', pos)
 	}
+    
+	for fi, _ in decl.fields {
+		if decl.fields[fi].has_default_expr {
+			c.expected_type = decl.fields[fi].typ
+			field_expr_type := c.expr(decl.fields[fi].default_expr)
+			if !c.table.check( field_expr_type, decl.fields[fi].typ ) { 
+				field_expr_type_sym := c.table.get_type_symbol( field_expr_type )
+				field_type_sym := c.table.get_type_symbol( decl.fields[fi].typ )
+				field_name := decl.fields[fi].name
+				fet_name := field_expr_type_sym.name
+				ft_name := field_type_sym.name
+				c.error('default expression for field `${field_name}` '+
+					'has type `${fet_name}`, but should be `${ft_name}`', 
+					decl.fields[fi].default_expr.position() 
+				)
+			}             
+		}        
+	}
 	// && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod && Sp.tok.lit in table.builtin_type_names))
 }
 
