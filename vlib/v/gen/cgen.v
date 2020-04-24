@@ -2349,7 +2349,20 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.expr(expr)
 		} else {
 			sym := g.table.get_type_symbol(node.expr_types[i])
-			if sym.kind == .enum_ {
+			if table.type_is(node.expr_types[i], .variadic) {
+				styp := g.typ(node.expr_types[i])
+				str_fn_name := styp_to_str_fn_name(styp)
+				g.gen_str_for_type(sym, styp, str_fn_name)
+				g.gen_str_for_varg(styp, str_fn_name)
+				g.write('varg_${str_fn_name}(')
+				g.expr(expr)
+				g.write(')')
+				g.write('.len, ')
+				g.write('varg_${str_fn_name}(')
+				g.expr(expr)
+				g.write(').str')
+			}
+			else if sym.kind == .enum_ {
 				is_var := match node.exprs[i] {
 					ast.SelectorExpr { true }
 					ast.Ident { true }
@@ -3068,6 +3081,22 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("}"));')
+	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('}')
+}
+
+fn (mut g Gen) gen_str_for_varg(styp, str_fn_name string) {
+	g.definitions.writeln('string varg_${str_fn_name}(varg_$styp it); // auto')
+	g.auto_str_funcs.writeln('string varg_${str_fn_name}(varg_$styp it) {')
+	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(it.len);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("["));')
+	g.auto_str_funcs.writeln('\tfor(int i=0; i<it.len; i++) {')
+	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${str_fn_name}(it.args[i], 0));')
+	g.auto_str_funcs.writeln('\t\tif (i < it.len-1) {')
+	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
+	g.auto_str_funcs.writeln('\t\t}')
+	g.auto_str_funcs.writeln('\t}')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("]"));')
 	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
 	g.auto_str_funcs.writeln('}')
 }
