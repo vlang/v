@@ -16,5 +16,5 @@ vlib/v/checker/tests/inout/unnecessary_parenthesis.v:6:4: error: unnecessary `()
     5|         println("oh no :'(")
     6|     } else if (1 == 3) {
              ~~~~~~~~~~~~~~~~
-    7|         println('what\'s wrong with physics ????')
+    7|         println("what's wrong with physics ????")
     8|     }
