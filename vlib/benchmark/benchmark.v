@@ -54,8 +54,8 @@ const (
 
 pub struct Benchmark {
 pub mut:
-	bench_timer      time.Timer
-	step_timer       time.Timer
+	bench_timer      time.StopWatch
+	step_timer       time.StopWatch
 	ntotal           int
 	nok              int
 	nfail            int
@@ -70,14 +70,14 @@ pub mut:
 
 pub fn new_benchmark() Benchmark {
 	return Benchmark{
-		bench_timer: time.new_timer()
+		bench_timer: time.new_stopwatch()
 		verbose: true
 	}
 }
 
 pub fn new_benchmark_no_cstep() Benchmark {
 	return Benchmark{
-		bench_timer: time.new_timer()
+		bench_timer: time.new_stopwatch()
 		verbose: true
 		no_cstep: true
 	}
@@ -85,7 +85,7 @@ pub fn new_benchmark_no_cstep() Benchmark {
 
 pub fn new_benchmark_pointer() &Benchmark {
 	return &Benchmark{
-		bench_timer: time.new_timer()
+		bench_timer: time.new_stopwatch()
 		verbose: true
 	}
 }
@@ -147,7 +147,7 @@ pub fn start() Benchmark {
 
 pub fn (b mut Benchmark) measure(label string) i64 {
 	b.ok()
-	res := b.step_timer.elapsed()
+	res := b.step_timer.elapsed().milliseconds()
 	println(b.step_message_with_label(BSPENT, 'in $label'))
 	b.step()
 	return res
@@ -172,10 +172,10 @@ pub fn (b &Benchmark) step_message_with_label(label string, msg string) string {
 				'${b.cstep:3d}/${b.nexpected_steps:3d}'
 			}
 		}
-		timed_line = b.tdiff_in_ms('[${sprogress}] $msg', b.step_timer.elapsed())
+		timed_line = b.tdiff_in_ms('[${sprogress}] $msg', b.step_timer.elapsed().milliseconds())
 	}
 	else {
-		timed_line = b.tdiff_in_ms(msg, b.step_timer.elapsed())
+		timed_line = b.tdiff_in_ms(msg, b.step_timer.elapsed().milliseconds())
 	}
 	return '${label:-5s}${timed_line}'
 }
@@ -201,11 +201,11 @@ pub fn (b &Benchmark) total_message(msg string) string {
 	if b.verbose {
 		tmsg = '<=== total time spent $tmsg'
 	}
-	return '  ' + b.tdiff_in_ms(tmsg, b.bench_timer.elapsed())
+	return '  ' + b.tdiff_in_ms(tmsg, b.bench_timer.elapsed().milliseconds())
 }
 
 pub fn (b &Benchmark) total_duration() i64 {
-	return b.bench_timer.elapsed()
+	return b.bench_timer.elapsed().milliseconds()
 }
 
 // //////////////////////////////////////////////////////////////////
