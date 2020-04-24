@@ -2880,6 +2880,7 @@ fn (mut g Gen) gen_str_for_type(sym table.TypeSymbol, styp, str_fn_name string) 
 	match sym.info {
 		table.Alias { g.gen_str_default(sym, styp, str_fn_name) }
 		table.Array { g.gen_str_for_array(it, styp, str_fn_name) }
+		table.ArrayFixed { g.gen_str_for_array_fixed(it, styp, str_fn_name) }
 		table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
 		table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
 		table.Map { g.gen_str_for_map(it, styp, str_fn_name) }
@@ -3022,6 +3023,33 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
 	}
 	g.auto_str_funcs.writeln('\t\tif (i != a.len-1) {')
+	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
+	g.auto_str_funcs.writeln('\t\t}')
+	g.auto_str_funcs.writeln('\t}')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("]"));')
+	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('}')
+}
+
+fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name string) {
+	sym := g.table.get_type_symbol(info.elem_type)
+	field_styp := g.typ(info.elem_type)
+	if sym.kind == .struct_ && !sym.has_method('str') {
+		g.gen_str_for_type(sym, field_styp, styp_to_str_fn_name(field_styp))
+	}
+	g.definitions.writeln('string ${str_fn_name}($styp a); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
+	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder($info.size * 10);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("["));')
+	g.auto_str_funcs.writeln('\tfor (int i = 0; i < $info.size; i++) {')
+	if sym.kind == .struct_ && !sym.has_method('str') {
+		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i],0));')
+	} else if sym.kind in [.f32, .f64] {
+		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _STR("%g", a[i]));')
+	} else {
+		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i]));')
+	}
+	g.auto_str_funcs.writeln('\t\tif (i != $info.size-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
