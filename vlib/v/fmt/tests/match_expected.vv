@@ -9,7 +9,7 @@ fn match_expr() {
 
 fn match_expr_assignment() {
 	a := 20
-	b := match a {
+	_ := match a {
 		10 { 10 }
 		5 { 5 }
 		else { 2 }
