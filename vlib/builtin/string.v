@@ -340,12 +340,7 @@ fn (s string) eq(a string) bool {
 	if s.len != a.len {
 		return false
 	}
-	for i in 0..s.len {
-		if s[i] != a[i] {
-			return false
-		}
-	}
-	return true
+	return C.memcmp(s.str, a.str, a.len) == 0
 }
 
 // !=
