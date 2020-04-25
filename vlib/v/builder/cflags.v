@@ -36,4 +36,3 @@ fn (v &Builder) get_rest_of_module_cflags(c &cflag.CFlag) []cflag.CFlag {
 	}
 	return flags
 }
-

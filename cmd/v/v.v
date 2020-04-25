@@ -146,8 +146,9 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				res.is_bare = true
 			}
 			'-prof', '-profile' {
-				eprintln('TODO: -prof')
+				res.profile_file = cmdline.option(current_args, '-profile', '-')
 				res.is_prof = true
+				i++
 			}
 			'-prod' {
 				res.is_prod = true

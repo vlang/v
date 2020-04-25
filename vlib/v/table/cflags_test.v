@@ -19,7 +19,7 @@ fn test_parse_valid_cflags() {
 		make_flag('darwin', '-framework', 'Cocoa'),
 		make_flag('windows', '-l', 'gdi32'),
 		make_flag(no_os, '-l', 'mysqlclient'),
-		make_flag(no_os, no_name, '-test'),
+		make_flag(no_os, no_name, '-test')
 	]
 	parse_valid_flag(t, '-lmysqlclient')
 	parse_valid_flag(t, '-test')

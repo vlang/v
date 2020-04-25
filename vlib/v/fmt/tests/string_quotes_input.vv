@@ -1,0 +1,11 @@
+fn main() {
+	"Hello world !"
+	'This is correct !'
+	"It's okay"
+	'This is "too"'
+	// TODO
+	// 'I\'m not correctly formatted' => "I'm not correctly formatted"
+	// "\"Everything on the internet is true\" - Albert Einstein, 1965" => '"Everything on the internet is true" - Albert Einstein, 1965'
+	'I\'m out of idea "_"'
+	// "Definitely out \":'(\"" => 'Definitely out ":\'("'
+}

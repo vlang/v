@@ -112,7 +112,7 @@ fn test_no_line_ending() {
 
 	mut row_count := 0
 	for {
-		row := csv_reader.read() or {
+		_row := csv_reader.read() or {
 			break
 		}
 		row_count++

@@ -13,9 +13,24 @@ fn match_expr() {
 
 fn match_expr_assignment() {
     a := 20
-	b := match a {
+	_ := match a {
 		10 { 10	}
 		5 {	5 }
 		else { 2 }
 	}
+}
+
+fn match_branch_comment() {
+ a := 1
+     	match a {
+	  1 { println('1') }
+	     2 {
+	println('2')
+	 }
+	 else {
+
+
+// do nothing
+ }
+  }
 }

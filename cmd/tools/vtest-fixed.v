@@ -13,10 +13,8 @@ const (
 		'vlib/net/http/http_test.v',
 		'vlib/regex/regex_test.v',
 		'vlib/v/tests/enum_bitfield_test.v',
-		'vlib/v/tests/fixed_array_test.v',
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/pointers_test.v',
-		'vlib/v/tests/string_interpolation_variadic_test.v',
 		'vlib/v/tests/type_test.v',
 		'vlib/v/tests/interface_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only

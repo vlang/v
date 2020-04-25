@@ -8,9 +8,9 @@ import v.table
 
 pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr | Type | AsCast | TypeOf | StringInterLiteral | AnonFn
+pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral | CastExpr | CallExpr | CharLiteral | ConcatExpr | EnumVal | FloatLiteral | IfExpr | Ident | IfGuardExpr | InfixExpr | IndexExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringLiteral | StringInterLiteral | StructInit | Type | TypeOf
 
-pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | Comment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
+pub type Stmt = AssignStmt | AssertStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl | TypeDecl | UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -211,6 +211,7 @@ pub:
 	is_js         bool
 	no_body       bool // just a definition `fn C.malloc()`
 	is_builtin    bool // this function is defined in builtin/strconv
+	ctdefine      string // has [if myflag] tag
 	pos           token.Position
 }
 
@@ -235,6 +236,7 @@ mut:
 	left_type          table.Type // type of `user`
 	receiver_type      table.Type // User
 	return_type        table.Type
+	should_be_skipped  bool
 }
 
 pub struct CallArg {
@@ -426,14 +428,9 @@ pub:
 	is_else bool
 }
 
-pub struct CompIf {
-pub:
-	val        string
-	stmts      []Stmt
-	is_not     bool
-	pos        token.Position
-mut:
+
 /*
+CompIf.is_opt:
 `$if xyz? {}` => this compile time `if` is optional,
 and .is_opt reflects the presence of ? at the end.
 When .is_opt is true, the code should compile, even
@@ -441,6 +438,14 @@ if `xyz` is NOT defined.
 If .is_opt is false, then when `xyz` is not defined,
 the compilation will fail.
 */
+
+pub struct CompIf {
+pub:
+	val        string
+	stmts      []Stmt
+	is_not     bool
+	pos        token.Position
+mut:
 	is_opt     bool
 	has_else   bool
 	else_stmts []Stmt
@@ -630,6 +635,7 @@ pub:
 	pos       token.Position
 	exprs     []Expr
 	is_fixed  bool
+	has_val   bool
 	mod       string
 mut:
 	elem_type table.Type

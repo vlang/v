@@ -348,7 +348,7 @@ pub fn (mut g Gen) push(reg Register) {
 		.rbp { g.write8(0x55) }
 		else {}
 	}
-*/
+	*/
 	g.println('push $reg')
 }
 

@@ -68,7 +68,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			g.definitions.write(', ')
 		}
 	}
-*/
+	*/
 	//
 	g.fn_args(it.args, it.is_variadic)
 	if it.no_body || (g.pref.is_cache && it.is_builtin) {
@@ -102,6 +102,25 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			}
 		}
 	}
+	// Profiling mode? Start counting at the beginning of the function (save current time).
+	if g.pref.is_prof {
+		if is_main {
+			g.writeln('')
+			g.writeln('\tatexit(vprint_profile_stats);')
+			g.writeln('')
+		}
+		if it.name == 'time.sys_mono_now' {
+			g.defer_profile_code = ''
+		} else {
+			fn_profile_counter_name := 'vpc_${g.last_fn_c_name}'
+			g.writeln('')
+			g.writeln('\tdouble _PROF_FN_START = time__sys_mono_now(); ${fn_profile_counter_name}_calls++; // $it.name')
+			g.writeln('')
+			g.defer_profile_code = '\t${fn_profile_counter_name} += time__sys_mono_now() - _PROF_FN_START;'
+			g.pcs_declarations.writeln('double ${fn_profile_counter_name} = 0.0; u64 ${fn_profile_counter_name}_calls = 0;')
+			g.pcs[g.last_fn_c_name] = fn_profile_counter_name
+		}
+	}
 	g.stmts(it.stmts)
 	// ////////////
 	if g.autofree {
@@ -116,15 +135,41 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			verror('test files cannot have function `main`')
 		}
 	}
-	if g.defer_stmts.len > 0 {
-		g.write_defer_stmts()
-	}
+	g.write_defer_stmts_when_needed()
 	if is_main {
+		if g.pref.is_prof {
+			g.pcs_declarations.writeln('void vprint_profile_stats(){')
+			if g.pref.profile_file == '-' {
+				for pfn_name, pcounter_name in g.pcs {
+					g.pcs_declarations.writeln('\tif (${pcounter_name}_calls) printf("%llu %f %f ${pfn_name} \\n", ${pcounter_name}_calls, $pcounter_name, $pcounter_name / ${pcounter_name}_calls );')
+				}
+			} else {
+				g.pcs_declarations.writeln('\tFILE * fp;')
+				g.pcs_declarations.writeln('\tfp = fopen ("${g.pref.profile_file}", "w+");')
+				for pfn_name, pcounter_name in g.pcs {
+					g.pcs_declarations.writeln('\tif (${pcounter_name}_calls) fprintf(fp, "%llu %f %f ${pfn_name} \\n", ${pcounter_name}_calls, $pcounter_name, $pcounter_name / ${pcounter_name}_calls );')
+				}
+				g.pcs_declarations.writeln('\tfclose(fp);')
+			}
+			g.pcs_declarations.writeln('}')
+		}
 		g.writeln('\treturn 0;')
 	}
 	g.writeln('}')
 	g.defer_stmts = []
 	g.fn_decl = 0
+}
+
+fn (mut g Gen) write_defer_stmts_when_needed() {
+	if g.defer_profile_code.len > 0 {
+		g.writeln('')
+		g.writeln('\t// defer_profile_code')
+		g.writeln(g.defer_profile_code)
+		g.writeln('')
+	}
+	if g.defer_stmts.len > 0 {
+		g.write_defer_stmts()
+	}
 }
 
 fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) {
@@ -177,6 +222,9 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) {
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr) {
+	if node.should_be_skipped {
+		return
+	}
 	gen_or := !g.is_assign_rhs && node.or_block.stmts.len > 0
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
@@ -217,12 +265,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	// TODO performance, detect `array` method differently
 	if typ_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free', 'push_many',
-		'trim'
-	'first'
-	'last'
-	'clone'
-	'reverse'
-	'slice'
+		'trim',
+		'first',
+		'last',
+		'clone',
+		'reverse',
+		'slice'
 	] {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
@@ -248,8 +296,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('/*rec*/*')
 	}
 	g.expr(node.left)
-	is_variadic := node.expected_arg_types.len > 0 && 
-		node.expected_arg_types[node.expected_arg_types.len -1].flag_is(.variadic)
+	is_variadic := node.expected_arg_types.len > 0 && node.expected_arg_types[node.expected_arg_types.len -
+		1].flag_is(.variadic)
 	if node.args.len > 0 || is_variadic {
 		g.write(', ')
 	}
@@ -263,7 +311,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	println('')
 }
-*/
+	*/
 	// ///////
 	g.call_args(node.args, node.expected_arg_types)
 	g.write(')')
@@ -318,7 +366,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.writeln('; //memory')
 		}
 	}
-*/
+	*/
 	if is_print && node.args[0].typ != table.string_type {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
@@ -326,8 +374,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if typ.is_ptr() {
 			styp = styp.replace('*', '')
 		}
-		mut str_fn_name := styp_to_str_fn_name(styp)
-		g.gen_str_for_type(sym, styp, str_fn_name)
+		mut str_fn_name := g.gen_str_for_type_with_styp(typ, styp)
 		if g.autofree && !typ.flag_is(.optional) {
 			// Create a temporary variable so that the value can be freed
 			tmp := g.new_tmp_var()
@@ -370,7 +417,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					g.write('*')
 				}
 				g.expr(expr)
-				if sym.kind == .struct_ && styp != 'ptr' && !sym.has_method('str') {
+				if !typ.flag_is(.variadic) && sym.kind == .struct_ && styp != 'ptr' && !sym.has_method('str') {
 					g.write(', 0') // trailing 0 is initial struct indent count
 				}
 			}
@@ -392,8 +439,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 }
 
 fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
-	is_variadic := expected_types.len > 0 &&
-		expected_types[expected_types.len - 1].flag_is(.variadic)
+	is_variadic := expected_types.len > 0 && expected_types[expected_types.len - 1].flag_is(.variadic)
 	is_forwarding_varg := args.len > 0 && args[args.len - 1].typ.flag_is(.variadic)
 	gen_vargs := is_variadic && !is_forwarding_varg
 	mut arg_no := 0

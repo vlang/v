@@ -2,14 +2,13 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module x64
+
 /*
 This file is unused right now, since binaries without sections
 are generated.
 
 But it will be necessary once we have dynamic linking.
 */
-
-
 enum SectionType {
 	null = 0
 	progbits = 1
@@ -31,7 +30,7 @@ struct SectionConfig {
 	entsize i64
 }
 
-fn (g mut Gen) section_header(c SectionConfig) {
+fn (mut g Gen) section_header(c SectionConfig) {
 	g.write32(g.sect_header_name_pos)
 	g.sect_header_name_pos += c.name.len + 1
 	g.write32(int(c.typ))
@@ -156,4 +155,3 @@ fn genobj() {
 	})
 	*/
 }
-
