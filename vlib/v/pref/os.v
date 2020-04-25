@@ -107,11 +107,6 @@ pub fn (o OS) str() string {
 		.haiku {
 			return 'Haiku'
 		}
-		else {
-			//TODO Remove when V is smart enough to know that there's no other possibilities
-			//should never be reached as all enum types have been enumerated
-			panic('unknown OS enum type: $o')
-		}
 	}
 }
 
