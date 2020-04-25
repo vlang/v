@@ -211,6 +211,7 @@ pub:
 	is_js         bool
 	no_body       bool // just a definition `fn C.malloc()`
 	is_builtin    bool // this function is defined in builtin/strconv
+	ctdefine      string // has [if myflag] tag
 	pos           token.Position
 }
 
@@ -235,6 +236,7 @@ mut:
 	left_type          table.Type // type of `user`
 	receiver_type      table.Type // User
 	return_type        table.Type
+	should_be_skipped  bool
 }
 
 pub struct CallArg {

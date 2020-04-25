@@ -224,6 +224,9 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) {
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr) {
+	if node.should_be_skipped {
+		return
+	}
 	gen_or := !g.is_assign_rhs && node.or_block.stmts.len > 0
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {

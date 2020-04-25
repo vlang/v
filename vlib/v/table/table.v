@@ -27,6 +27,7 @@ pub:
 	is_generic  bool
 	is_pub      bool
 	mod         string
+	ctdefine    string // compile time define. myflag, when [if myflag] tag
 }
 
 pub struct Arg {

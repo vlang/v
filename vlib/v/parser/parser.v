@@ -31,6 +31,7 @@ mut:
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
 	attr              string
+	attr_ctdefine     string
 	expr_mod          string
 	scope             &ast.Scope
 	global_scope      &ast.Scope
@@ -490,8 +491,10 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 
 fn (mut p Parser) attribute() ast.Attr {
 	p.check(.lsbr)
+	mut is_if_attr := false
 	if p.tok.kind == .key_if {
 		p.next()
+		is_if_attr = true
 	}
 	mut name := p.check_name()
 	if p.tok.kind == .colon {
@@ -505,6 +508,9 @@ fn (mut p Parser) attribute() ast.Attr {
 	}
 	p.check(.rsbr)
 	p.attr = name
+	if is_if_attr {
+		p.attr_ctdefine = name
+	}
 	return ast.Attr{
 		name: name
 	}

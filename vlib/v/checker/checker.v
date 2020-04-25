@@ -120,6 +120,11 @@ fn (c mut Checker) check_file_in_main(file ast.File) bool {
 						c.warn('function `$it.name` $no_pub_in_main_warning', it.pos)
 					}
 				}
+				if it.ctdefine.len > 0 {
+					if it.return_type != table.void_type {
+						c.error('only functions that do NOT return values can have `[if ${it.ctdefine}]` tags', it.pos)
+					}
+				}
 			}
 			ast.StructDecl {
 				if it.is_pub {
@@ -497,6 +502,9 @@ pub fn (c mut Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 			//println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
 			c.error('method `${left_type_sym.name}.$method_name` is private', call_expr.pos)
 		}
+		if method.return_type == table.void_type && method.ctdefine.len > 0 && method.ctdefine !in c.pref.compile_defines {
+			call_expr.should_be_skipped = true
+		}
 		nr_args := if method.args.len == 0 {  0 } else {method.args.len - 1}
 		min_required_args := method.args.len - if method.is_variadic && method.args.len > 1 { 2 } else { 1 }
 		if call_expr.args.len < min_required_args {
@@ -612,6 +620,11 @@ pub fn (c mut Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 		return table.void_type
 	}
 	call_expr.return_type = f.return_type
+
+	if f.return_type == table.void_type && f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {
+		call_expr.should_be_skipped = true
+	}
+
 	if f.is_c || call_expr.is_c || f.is_js || call_expr.is_js {
 		for arg in call_expr.args {
 			c.expr(arg.expr)
