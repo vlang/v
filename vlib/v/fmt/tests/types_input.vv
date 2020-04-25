@@ -4,7 +4,15 @@
    type    FooBar=   Foo |     Bar
    pub type   PublicBar = Foo | Bar | FooBar
 
+type   Uint =   u16 | u64
+	| u32
+	    | byte
+type
+Float =
+	f32 |
+	f64
+
  // Alias type
      type  MyInt    int
-	 
+
  pub type Abc f32

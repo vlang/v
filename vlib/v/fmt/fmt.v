@@ -384,6 +384,7 @@ fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			for t in it.sub_types {
 				sum_type_names << f.type_to_str(t)
 			}
+			sum_type_names.sort()
 			f.write(sum_type_names.join(' | '))
 		}
 		else {
