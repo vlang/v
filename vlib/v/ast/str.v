@@ -24,7 +24,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		sym := t.get_type_symbol(node.receiver.typ)
 		name := sym.name.after('.')
 		mut m := if node.rec_mut { 'mut ' } else { '' }
-		if !node.rec_mut && table.type_is_ptr(node.receiver.typ) {
+		if !node.rec_mut && node.receiver.typ.is_ptr() {
 			m = '&'
 		}
 		receiver = '($node.receiver.name $m$name) '

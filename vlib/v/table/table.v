@@ -194,7 +194,7 @@ pub fn (t &Table) find_type(name string) ?TypeSymbol {
 [inline]
 pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	// println('get_type_symbol $typ')
-	idx := type_idx(typ)
+	idx := typ.idx()
 	if idx > 0 {
 		return &t.types[idx]
 	}
@@ -272,7 +272,7 @@ pub fn (t &Table) known_type(name string) bool {
 [inline]
 pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	return 'array_${elem_type_sym.name}' + if type_is_ptr(elem_type) {
+	return 'array_${elem_type_sym.name}' + if elem_type.is_ptr() {
 		'_ptr'
 	} else {
 		''
@@ -286,7 +286,7 @@ pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
 [inline]
 pub fn (t &Table) array_fixed_name(elem_type Type, size, nr_dims int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	return 'array_fixed_${elem_type_sym.name}_${size}' + if type_is_ptr(elem_type) {
+	return 'array_fixed_${elem_type_sym.name}_${size}' + if elem_type.is_ptr() {
 		'_ptr'
 	} else {
 		''
@@ -301,7 +301,7 @@ pub fn (t &Table) array_fixed_name(elem_type Type, size, nr_dims int) string {
 pub fn (t &Table) map_name(key_type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
 	value_type_sym := t.get_type_symbol(value_type)
-	suffix := if type_is_ptr(value_type) { '_ptr' } else { '' }
+	suffix := if value_type.is_ptr() { '_ptr' } else { '' }
 	return 'map_${key_type_sym.name}_${value_type_sym.name}' + suffix
 	// return 'map_${value_type_sym.name}' + suffix
 }
@@ -413,9 +413,9 @@ pub fn (mut t Table) add_placeholder_type(name string) int {
 [inline]
 pub fn (t &Table) value_type(typ Type) Type {
 	typ_sym := t.get_type_symbol(typ)
-	if type_is(typ, .variadic) {
+	if typ.flag_is(.variadic) {
 		// ...string => string
-		return type_set(typ, .unset)
+		return typ.set_flag(.unset)
 	}
 	if typ_sym.kind == .array {
 		// Check index type
@@ -430,17 +430,17 @@ pub fn (t &Table) value_type(typ Type) Type {
 		info := typ_sym.info as Map
 		return info.value_type
 	}
-	if typ_sym.kind == .string && type_is_ptr(typ) {
+	if typ_sym.kind == .string && typ.is_ptr() {
 		// (&string)[i] => string
 		return string_type
 	}
 	if typ_sym.kind in [.byteptr, .string] {
 		return byte_type
 	}
-	if type_is_ptr(typ) {
+	if typ.is_ptr() {
 		// byte* => byte
 		// bytes[0] is a byte, not byte*
-		return type_deref(typ)
+		return typ.deref()
 	}
 	// TODO: remove when map_string is removed
 	if typ_sym.name == 'map_string' {
@@ -450,10 +450,10 @@ pub fn (t &Table) value_type(typ Type) Type {
 }
 
 pub fn (t &Table) check(got, expected Type) bool {
-	got_idx := type_idx(got)
-	exp_idx := type_idx(expected)
-	// got_is_ptr := type_is_ptr(got)
-	exp_is_ptr := type_is_ptr(expected)
+	got_idx := got.idx()
+	exp_idx := expected.idx()
+	// got_is_ptr := got.is_ptr()
+	exp_is_ptr := expected.is_ptr()
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
 	// # NOTE: use idxs here, and symbols below for perf
 	if got_idx == none_type_idx {
@@ -504,7 +504,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// }
 	if got_type_sym.kind == .array_fixed && exp_type_sym.kind == .byteptr {
 		info := got_type_sym.info as ArrayFixed
-		if type_idx(info.elem_type) == byte_type_idx {
+		if info.elem_type.idx() == byte_type_idx {
 			return true
 		}
 	}

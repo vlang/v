@@ -632,7 +632,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			mut to_typ := p.parse_type()
 			if p.is_amp {
 				// Handle `&Foo(0)`
-				to_typ = table.type_to_ptr(to_typ)
+				to_typ = to_typ.to_ptr()
 			}
 			p.check(.lpar)
 			mut expr := ast.Expr{}
@@ -640,7 +640,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			mut has_arg := false
 			expr = p.expr(0)
 			// TODO, string(b, len)
-			if p.tok.kind == .comma && table.type_idx(to_typ) == table.string_type_idx {
+			if p.tok.kind == .comma && to_typ.idx() == table.string_type_idx {
 				p.check(.comma)
 				arg = p.expr(0) // len
 				has_arg = true
@@ -1192,7 +1192,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	// type MyType int
 	parent_type := first_type
-	pid := table.type_idx(parent_type)
+	pid := parent_type.idx()
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .alias
 		name: p.prepend_mod(name)

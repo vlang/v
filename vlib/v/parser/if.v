@@ -118,7 +118,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			exprs << expr
 			p.scope.register('it', ast.Var{
 				name: 'it'
-				typ: table.type_to_ptr(typ)
+				typ: typ.to_ptr()
 			})
 			// TODO
 			if p.tok.kind == .comma {
@@ -142,7 +142,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				// TODO doesn't work right now
 				p.scope.register(var_name, ast.Var{
 					name: var_name
-					typ: table.type_to_ptr(typ)
+					typ: typ.to_ptr()
 				})
 				// println(var_name)
 			}

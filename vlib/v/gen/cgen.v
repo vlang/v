@@ -237,10 +237,10 @@ pub fn (mut g Gen) write_typeof_functions() {
 // V type to C type
 pub fn (mut g Gen) typ(t table.Type) string {
 	mut styp := g.base_typ(t)
-	if table.type_is(t, .optional) {
+	if t.flag_is(.optional) {
 		// Register an optional
 		styp = 'Option_' + styp
-		if table.type_is_ptr(t) {
+		if t.is_ptr() {
 			styp = styp.replace('*', '_ptr')
 		}
 		if !(styp in g.optionals) {
@@ -254,7 +254,7 @@ pub fn (mut g Gen) typ(t table.Type) string {
 }
 
 pub fn (mut g Gen) base_typ(t table.Type) string {
-	nr_muls := table.type_nr_muls(t)
+	nr_muls := t.nr_muls()
 	sym := g.table.get_type_symbol(t)
 	mut styp := sym.name.replace('.', '__')
 	if nr_muls > 0 {
@@ -615,7 +615,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		// `for num in nums {`
 		g.writeln('// FOR IN array')
 		styp := g.typ(it.val_type)
-		cond_type_is_ptr := table.type_is_ptr(it.cond_type)
+		cond_type_is_ptr := it.cond_type.is_ptr()
 		atmp := g.new_tmp_var()
 		atmp_type := if cond_type_is_ptr { 'array *' } else { 'array' }
 		g.write('${atmp_type} ${atmp} = ')
@@ -650,7 +650,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		}
 		g.stmts(it.stmts)
 		g.writeln('}')
-	} else if table.type_is(it.cond_type, .variadic) {
+	} else if it.cond_type.flag_is(.variadic) {
 		g.writeln('// FOR IN cond_type/variadic')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		styp := g.typ(it.cond_type)
@@ -688,7 +688,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, exp_type table.Type) {
 				got_sym := g.table.get_type_symbol(got_type)
 				got_styp := g.typ(got_type)
 				exp_styp := g.typ(exp_type)
-				got_idx := table.type_idx(got_type)
+				got_idx := got_type.idx()
 				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&(${got_styp}[]) {')
 				g.expr(expr)
 				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
@@ -745,7 +745,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			or_stmts = it.or_block.stmts
 			return_type = it.return_type
 		}
-		is_optional := table.type_is(return_type, .optional)
+		is_optional := return_type.flag_is(.optional)
 		mr_var_name := 'mr_$assign_stmt.pos.pos'
 		mr_styp := g.typ(return_type)
 		g.write('$mr_styp $mr_var_name = ')
@@ -802,7 +802,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				else {}
 			}
-			gen_or := is_call && table.type_is(return_type, .optional)
+			gen_or := is_call && return_type.flag_is(.optional)
 			g.is_assign_rhs = true
 			if ident.kind == .blank_ident {
 				if is_call {
@@ -893,7 +893,7 @@ fn (mut g Gen) free_scope_vars(pos int) {
 				// }
 				v := *it
 				sym := g.table.get_type_symbol(v.typ)
-				is_optional := table.type_is(v.typ, .optional)
+				is_optional := v.typ.flag_is(.optional)
 				if sym.kind == .array && !is_optional {
 					g.writeln('array_free($v.name); // autofreed')
 				}
@@ -966,7 +966,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.out.go_back(1)
 			}
 			sym := g.table.get_type_symbol(it.typ)
-			if sym.kind == .string && !table.type_is_ptr(it.typ) {
+			if sym.kind == .string && !it.typ.is_ptr() {
 				// `string(x)` needs `tos()`, but not `&string(x)
 				// `tos(str, len)`, `tos2(str)`
 				if it.has_arg {
@@ -1113,8 +1113,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.SelectorExpr {
 			g.expr(it.expr)
-			// if table.type_nr_muls(it.expr_type) > 0 {
-			if table.type_is_ptr(it.expr_type) {
+			// if it.expr_type.nr_muls() > 0 {
+			if it.expr_type.is_ptr() {
 				g.write('->')
 			} else {
 				// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
@@ -1128,7 +1128,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.Type {
 			// match sum Type
 			// g.write('/* Type */')
-			type_idx := table.type_idx(it.typ)
+			type_idx := it.typ.idx()
 			sym := g.table.get_type_symbol(it.typ)
 			g.write('$type_idx /* $sym.name */')
 		}
@@ -1159,7 +1159,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
-		sum_type_idx := table.type_idx(node.expr_type)
+		sum_type_idx := node.expr_type.idx()
 		g.write('tos3( /* ${sym.name} */ v_typeof_sumtype_${sum_type_idx}( (')
 		g.expr(node.expr)
 		g.write(').typ ))')
@@ -1207,7 +1207,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 		}
 		else {}
 	}
-	gen_or := is_call && table.type_is(return_type, .optional)
+	gen_or := is_call && return_type.flag_is(.optional)
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		rstyp := g.typ(return_type)
@@ -1225,7 +1225,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 		}
 	} else {
 		g.is_assign_lhs = true
-		if table.type_is(node.right_type, .optional) {
+		if node.right_type.flag_is(.optional) {
 			g.right_is_opt = true
 		}
 		mut str_add := false
@@ -1390,8 +1390,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
 			g.write(' })')
 		}
-	} else if (node.left_type == node.right_type) && table.is_float(node.left_type) && node.op in
-		[.eq, .ne] {
+	} else if (node.left_type == node.right_type) && node.left_type.is_float() && node.op in [.eq, .ne] {
 		// floats should be compared with epsilon
 		if node.left_type == table.f64_type_idx {
 			if node.op == .eq {
@@ -1687,8 +1686,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	}
 	if !is_range {
 		sym := g.table.get_type_symbol(node.left_type)
-		left_is_ptr := table.type_is_ptr(node.left_type)
-		if table.type_is(node.left_type, .variadic) {
+		left_is_ptr := node.left_type.is_ptr()
+		if node.left_type.flag_is(.variadic) {
 			g.expr(node.left)
 			g.write('.args')
 			g.write('[')
@@ -1789,7 +1788,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.index)
 				g.write(', &($elem_type_str[]){ $zero }))')
 			}
-		} else if sym.kind == .string && !table.type_is_ptr(node.left_type) {
+		} else if sym.kind == .string && !node.left_type.is_ptr() {
 			g.write('string_at(')
 			g.expr(node.left)
 			g.write(', ')
@@ -1810,14 +1809,14 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		g.writeln(' 0;')
 		return
 	}
-	fn_return_is_optional := table.type_is(g.fn_decl.return_type, .optional)
+	fn_return_is_optional := g.fn_decl.return_type.flag_is(.optional)
 	// multiple returns
 	if node.exprs.len > 1 {
 		g.write(' ')
 		// typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		// mr_info := typ_sym.info as table.MultiReturn
 		mut styp := ''
-		if fn_return_is_optional { // && !table.type_is(node.types[0], .optional) && node.types[0] !=
+		if fn_return_is_optional { // && !node.types[0].flag_is(.optional) && node.types[0] !=
 			styp = g.base_typ(g.fn_decl.return_type)
 			g.write('opt_ok(&($styp/*X*/[]) { ')
 		} else {
@@ -1840,7 +1839,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		g.write(' ')
 		return_sym := g.table.get_type_symbol(node.types[0])
 		// `return opt_ok(expr)` for functions that expect an optional
-		if fn_return_is_optional && !table.type_is(node.types[0], .optional) && return_sym.name !=
+		if fn_return_is_optional && !node.types[0].flag_is(.optional) && return_sym.name !=
 			'Option' {
 			mut is_none := false
 			mut is_error := false
@@ -1865,7 +1864,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			}
 			// g.write('/*OPTIONAL*/')
 		}
-		if !table.type_is_ptr(g.fn_decl.return_type) && table.type_is_ptr(node.types[0]) {
+		if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 			// Automatic Dereference
 			g.write('*')
 		}
@@ -1978,7 +1977,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			if field.name in inited_fields {
 				continue
 			}
-			if table.type_is(field.typ, .optional) {
+			if field.typ.flag_is(.optional) {
 				// TODO handle/require optionals in inits
 				continue
 			}
@@ -2236,7 +2235,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 				for field in info.fields {
 					dep := g.table.get_type_symbol(field.typ).name
 					// skip if not in types list or already in deps
-					if !(dep in type_names) || dep in field_deps || table.type_is_ptr(field.typ) {
+					if !(dep in type_names) || dep in field_deps || field.typ.is_ptr() {
 						continue
 					}
 					field_deps << dep
@@ -2664,7 +2663,7 @@ fn (g Gen) type_default(typ table.Type) string {
 		return 'new_map_1(sizeof($value_type_str))'
 	}
 	// Always set pointers to 0
-	if table.type_is_ptr(typ) {
+	if typ.is_ptr() {
 		return '0'
 	}
 	// User struct defined in another module.
