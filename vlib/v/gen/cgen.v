@@ -2913,16 +2913,16 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	styp := g.typ(node.typ)
 	expr_type_sym := g.table.get_type_symbol(node.expr_type)
 	if expr_type_sym.kind == .sum_type {
+		/*
 		g.write('/* as */ *($styp*)')
 		g.expr(node.expr)
 		g.write('.obj')
-		/*
+*/
 		g.write('/* as */ *($styp*)__as_cast(')
 		g.expr(node.expr)
 		g.write('.obj, ')
 		g.expr(node.expr)
 		g.write('.typ, /*expected:*/$node.typ)')
-*/
 	}
 }
 

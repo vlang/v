@@ -17,7 +17,7 @@ pub:
 }
 
 // Internal function, used by V (`nums := []int`)
-fn new_array(mylen int, cap int, elm_size int) array {
+fn __new_array(mylen int, cap int, elm_size int) array {
 	cap_ := if cap == 0 { 1 } else { cap }
 	arr := array{
 		len: mylen
@@ -27,14 +27,21 @@ fn new_array(mylen int, cap int, elm_size int) array {
 	}
 	return arr
 }
+fn new_array(mylen int, cap int, elm_size int) array {
+	cap_ := if cap == 0 { 1 } else { cap }
+	arr := array{
+		len: mylen
+		cap: cap_
+		element_size: elm_size
+		data: vcalloc(cap_ * elm_size)
+	}
+	return arr
 
-fn __new_array(mylen int, cap int, elm_size int) array {
-	return new_array(mylen, cap, elm_size)
 }
 
 // TODO
 pub fn make(len int, cap int, elm_size int) array {
-	return new_array(len, cap, elm_size)
+	return __new_array(len, cap, elm_size)
 }
 
 /*
