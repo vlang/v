@@ -55,6 +55,8 @@ struct Gen {
 	stringliterals       strings.Builder // all string literals (they depend on tos3() beeing defined
 	auto_str_funcs       strings.Builder // function bodies of all auto generated _str funcs
 	comptime_defines     strings.Builder // custom defines, given by -d/-define flags on the CLI
+	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
+	pcs                  map[string]string // -prof profile counter fn_names => fn counter name
 	table                &table.Table
 	pref                 &pref.Preferences
 mut:
@@ -79,6 +81,7 @@ mut:
 	assign_op            token.Kind // *=, =, etc (for array_set)
 	defer_stmts          []ast.DeferStmt
 	defer_ifdef          string
+	defer_profile_code   string
 	str_types            []string // types that need automatic str() generation
 	threaded_fns         []string // for generating unique wrapper types and fns for `go xxx()`
 	array_fn_definitions []string // array equality functions that have been defined
@@ -113,6 +116,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		auto_str_funcs: strings.new_builder(100)
 		comptime_defines: strings.new_builder(100)
 		inits: strings.new_builder(100)
+		pcs_declarations: strings.new_builder(100)
 		table: table
 		pref: pref
 		fn_decl: 0
@@ -154,11 +158,34 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	//
 	g.finish()
-	return g.hashes() + g.comptime_defines.str() + '\n// V typedefs:\n' + g.typedefs.str() +
-		'\n// V typedefs2:\n' + g.typedefs2.str() + '\n// V cheaders:\n' + g.cheaders.str() + '\n// V includes:\n' +
-		g.includes.str() + '\n// V definitions:\n' + g.definitions.str() + g.interface_table() + '\n// V gowrappers:\n' +
-		g.gowrappers.str() + '\n// V stringliterals:\n' + g.stringliterals.str() + '\n// V auto str functions:\n' +
-		g.auto_str_funcs.str() + '\n// V out\n' + g.out.str() + '\n// THE END.'
+	//
+	b := strings.new_builder(250000)
+	b.writeln(g.hashes())
+	b.writeln(g.comptime_defines.str())
+	b.writeln('\n// V typedefs:')
+	b.writeln(g.typedefs.str())
+	b.writeln('\n// V typedefs2:')
+	b.writeln(g.typedefs2.str())
+	b.writeln('\n// V cheaders:')
+	b.writeln(g.cheaders.str())
+	b.writeln('\n// V includes:')
+	b.writeln(g.includes.str())
+	b.writeln('\n// V definitions:')
+	b.writeln(g.definitions.str())
+	b.writeln('\n// V profile counters:')
+	b.writeln(g.pcs_declarations.str())
+	b.writeln('\n// V interface table:')
+	b.writeln(g.interface_table())
+	b.writeln('\n// V gowrappers:')
+	b.writeln(g.gowrappers.str())
+	b.writeln('\n// V stringliterals:')
+	b.writeln(g.stringliterals.str())
+	b.writeln('\n// V auto str functions:')
+	b.writeln(g.auto_str_funcs.str())
+	b.writeln('\n// V out')
+	b.writeln(g.out.str())
+	b.writeln('\n// THE END.')
+	return b.str()
 }
 
 pub fn (g Gen) hashes() string {
@@ -483,7 +510,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			fn_start_pos := g.out.len
 			g.fn_decl = it // &it
 			g.gen_fn_decl(it)
-			if g.last_fn_c_name in g.pref.printfn_list {
+			if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
 				println(g.out.after(fn_start_pos))
 			}
 			g.writeln('')
@@ -554,9 +581,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {}
 		ast.Return {
-			if g.defer_stmts.len > 0 {
-				g.write_defer_stmts()
-			}
+			g.write_defer_stmts_when_needed()
 			g.return_statement(it)
 		}
 		ast.StructDecl {

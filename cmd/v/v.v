@@ -146,7 +146,6 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				res.is_bare = true
 			}
 			'-prof', '-profile' {
-				eprintln('TODO: -prof')
 				res.is_prof = true
 			}
 			'-prod' {
