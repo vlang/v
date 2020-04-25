@@ -195,8 +195,11 @@ pub fn (mut p Parser) open_scope() {
 }
 
 pub fn (mut p Parser) close_scope() {
-	if !p.pref.is_repl && !scanner.is_fmt {
+	if !p.pref.is_repl && !p.scanner.is_fmt {
 		for v in p.scope.unused_vars() {
+			if v.name.len > 0 && v.name[0]==`_` {
+				continue
+			}
 			if p.pref.is_prod {
 				p.error_with_pos('Unused variable: $v.name', v.pos)
 			} else {
