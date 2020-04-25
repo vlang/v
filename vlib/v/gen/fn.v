@@ -141,8 +141,17 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	if is_main {
 		if g.pref.is_prof {
 			g.pcs_declarations.writeln('void vprint_profile_stats(){')
-			for pfn_name, pcounter_name in g.pcs {
-				g.pcs_declarations.writeln('\tif (${pcounter_name}_calls) printf("%llu %f %f ${pfn_name} \\n", ${pcounter_name}_calls, $pcounter_name, $pcounter_name / ${pcounter_name}_calls );')
+			if g.pref.profile_file == '-' {
+				for pfn_name, pcounter_name in g.pcs {
+					g.pcs_declarations.writeln('\tif (${pcounter_name}_calls) printf("%llu %f %f ${pfn_name} \\n", ${pcounter_name}_calls, $pcounter_name, $pcounter_name / ${pcounter_name}_calls );')
+				}
+			}else{
+				g.pcs_declarations.writeln('\tFILE * fp;')
+				g.pcs_declarations.writeln('\tfp = fopen ("${g.pref.profile_file}", "w+");')
+				for pfn_name, pcounter_name in g.pcs {
+					g.pcs_declarations.writeln('\tif (${pcounter_name}_calls) fprintf(fp, "%llu %f %f ${pfn_name} \\n", ${pcounter_name}_calls, $pcounter_name, $pcounter_name / ${pcounter_name}_calls );')
+				}
+				g.pcs_declarations.writeln('\tfclose(fp);')
 			}
 			g.pcs_declarations.writeln('}')
 		}
