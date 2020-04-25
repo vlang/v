@@ -1080,6 +1080,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					it.pos)
 			}
 		}
+		// ast.Attr {}
 		ast.AssignStmt {
 			c.assign_stmt(mut it)
 		}
@@ -1091,7 +1092,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				c.error('$it.tok.lit statement not within a loop', it.tok.position())
 			}
 		}
-		// ast.Attr {}
 		ast.CompIf {
 			// c.expr(it.cond)
 			c.stmts(it.stmts)
@@ -1162,17 +1162,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			}
 			c.returns = false
 		}
-		ast.ForStmt {
-			c.in_for_count++
-			typ := c.expr(it.cond)
-			if !it.is_inf && typ.idx() != table.bool_type_idx {
-				c.error('non-bool used as for condition', it.pos)
-			}
-			// TODO: update loop var type
-			// how does this work currenly?
-			c.stmts(it.stmts)
-			c.in_for_count--
-		}
 		ast.ForCStmt {
 			c.in_for_count++
 			c.stmt(it.init)
@@ -1222,8 +1211,20 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.stmts(it.stmts)
 			c.in_for_count--
 		}
+		ast.ForStmt {
+			c.in_for_count++
+			typ := c.expr(it.cond)
+			if !it.is_inf && typ.idx() != table.bool_type_idx {
+				c.error('non-bool used as for condition', it.pos)
+			}
+			// TODO: update loop var type
+			// how does this work currenly?
+			c.stmts(it.stmts)
+			c.in_for_count--
+		}
+		// ast.GlobalDecl {}
 		ast.GoStmt {
-			if !is_call_expr(it.call_expr) {
+			if !(it.call_expr is ast.CallExpr) {
 				c.error('expression in `go` must be a function call', it.call_expr.position())
 			}
 			c.expr(it.call_expr)
@@ -1234,7 +1235,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.mod = it.name
 			c.is_builtin_mod = it.name == 'builtin'
 		}
-		// ast.GlobalDecl {}
 		ast.Return {
 			c.returns = true
 			c.return_stmt(mut it)
@@ -1249,13 +1249,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			// println('checker.stmt(): unhandled node')
 			// println('checker.stmt(): unhandled node (${typeof(node)})')
 		}
-	}
-}
-
-fn is_call_expr(expr ast.Expr) bool {
-	return match expr {
-		ast.CallExpr { true }
-		else { false }
 	}
 }
 
