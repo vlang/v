@@ -11,3 +11,16 @@ type Float = f32 | f64
 type MyInt int
 
 pub type Abc f32
+
+// Fn type decl
+type EmptyFn = fn ()
+
+type OneArgFn = fn (i int)
+
+type TwoDiffArgs = fn (i int, s string) bool
+
+type TwoSameArgs = fn (i, j int) string
+
+type VarArgs = fn (s ...string) int
+
+type NOVarArgs = fn (i int, s ...string) f64
