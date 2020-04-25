@@ -5,6 +5,8 @@ module x64
 
 import v.ast
 import v.util
+import term
+import strings
 
 pub struct Gen {
 	out_name             string
@@ -20,6 +22,7 @@ mut:
 	fn_addr              map[string]i64
 	var_offset           map[string]int // local var stack offset
 	stack_var_pos        int
+	debug_pos            int
 }
 
 // string_addr map[string]i64
@@ -197,6 +200,7 @@ fn (mut g Gen) cmp_var(var_name string, val int) {
 	offset := g.get_var_offset(var_name)
 	g.write8(0xff - offset + 1)
 	g.write32(val)
+	g.println('cmp var `$var_name` $val')
 }
 
 // `add DWORD [rbp-0x4], 1`
@@ -205,6 +209,7 @@ fn (mut g Gen) inc_var(var_name string) {
 	offset := g.get_var_offset(var_name)
 	g.write8(0xff - offset + 1)
 	g.write32(1)
+	g.println('inc_var `$var_name`')
 }
 
 // Returns the position of the address to jump to (set later).
@@ -212,6 +217,7 @@ fn (mut g Gen) jne() int {
 	g.write16(0x850f)
 	pos := g.pos()
 	g.write32(PLACEHOLDER)
+	g.println('jne')
 	return pos
 }
 
@@ -219,12 +225,14 @@ fn (mut g Gen) jge() int {
 	g.write16(0x8d0f)
 	pos := g.pos()
 	g.write32(PLACEHOLDER)
+	g.println('jne')
 	return pos
 }
 
 fn (mut g Gen) jmp(addr int) {
 	g.write8(0xe9)
 	g.write32(addr) // 0xffffff
+	g.println('jmp')
 }
 
 fn abs(a i64) i64 {
@@ -241,12 +249,30 @@ fn (mut g Gen) jle(addr i64) {
 	offset := 0xff - int(abs(addr - g.buf.len)) - 1
 	g.write8(0x7e)
 	g.write8(offset)
+	g.println('jle')
+}
+
+fn (mut g Gen) println(comment string) {
+	addr := g.debug_pos.hex()
+	// println('$g.debug_pos "$addr"')
+	print(term.red(strings.repeat(`0`, 6 - addr.len) + addr + '  '))
+	for i := g.debug_pos; i < g.buf.len; i++ {
+		s := g.buf[i].hex()
+		if s.len == 1 {
+			print(term.blue('0'))
+		}
+		print(term.blue(g.buf[i].hex()) + ' ')
+	}
+	g.debug_pos = g.buf.len
+	print(' ' + comment)
+	println('')
 }
 
 fn (mut g Gen) jl(addr i64) {
 	offset := 0xff - int(abs(addr - g.buf.len)) - 1
 	g.write8(0x7c)
 	g.write8(offset)
+	g.println('jl')
 }
 
 fn (g &Gen) abs_to_rel_addr(addr i64) int {
@@ -271,6 +297,7 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 		}
 	}
 	g.write64(val)
+	g.println('mov64 $reg, $val')
 }
 
 fn (mut g Gen) mov_from_reg(var_offset int, reg Register) {
@@ -282,6 +309,7 @@ fn (mut g Gen) mov_from_reg(var_offset int, reg Register) {
 		else { verror('mov_from_reg $reg') }
 	}
 	g.write8(0xff - var_offset + 1)
+	g.println('mov from reg')
 }
 
 fn (mut g Gen) call(addr int) {
@@ -290,19 +318,22 @@ fn (mut g Gen) call(addr int) {
 	// +5 is to get the posistion "e8 xx xx xx xx"
 	// Not sure about the -1.
 	rel := 0xffffffff - (g.buf.len + 5 - addr - 1)
-	println('call addr=$addr.hex() rel_addr=$rel.hex() pos=$g.buf.len')
+	// println('call addr=$addr.hex() rel_addr=$rel.hex() pos=$g.buf.len')
 	g.write8(0xe8)
 	g.write32(rel)
+	// g.println('fn call')
 }
 
 fn (mut g Gen) syscall() {
 	// g.write(0x050f)
 	g.write8(0x0f)
 	g.write8(0x05)
+	g.println('syscall')
 }
 
 pub fn (mut g Gen) ret() {
 	g.write8(0xc3)
+	g.println('ret')
 }
 
 pub fn (mut g Gen) push(reg Register) {
@@ -318,11 +349,13 @@ pub fn (mut g Gen) push(reg Register) {
 		else {}
 	}
 */
+	g.println('push $reg')
 }
 
 pub fn (mut g Gen) pop(reg Register) {
 	g.write8(0x58 + reg)
 	// TODO r8...
+	g.println('pop $reg')
 }
 
 pub fn (mut g Gen) sub32(reg Register, val int) {
@@ -330,6 +363,7 @@ pub fn (mut g Gen) sub32(reg Register, val int) {
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write32(val)
+	g.println('sub $reg,0x$val.hex()')
 }
 
 pub fn (mut g Gen) add(reg Register, val int) {
@@ -337,10 +371,12 @@ pub fn (mut g Gen) add(reg Register, val int) {
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write32(val)
+	g.println('add $reg,0x$val.hex()')
 }
 
 fn (mut g Gen) leave() {
 	g.write8(0xc9)
+	g.println('leave')
 }
 
 // returns label's relative address
@@ -419,6 +455,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 		}
 	}
 	g.write32(val)
+	g.println('mov $reg, $val')
 }
 
 fn (mut g Gen) mov_reg(a, b Register) {
@@ -436,6 +473,7 @@ fn (mut g Gen) mov_rbp_rsp() {
 	g.write8(0x48)
 	g.write8(0x89)
 	g.write8(0xe5)
+	g.println('mov rbp,rsp')
 }
 
 pub fn (mut g Gen) register_function_address(name string) {
@@ -446,13 +484,13 @@ pub fn (mut g Gen) register_function_address(name string) {
 
 pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 	name := node.name
-	println('call fn $name')
+	// println('call fn $name')
 	addr := g.fn_addr[name]
 	if addr == 0 {
 		verror('fn addr of `$name` = 0')
 	}
 	// Copy values to registers (calling convention)
-	g.mov(.eax, 0)
+	// g.mov(.eax, 0)
 	for i in 0 .. node.args.len {
 		expr := node.args[i].expr
 		int_lit := expr as ast.IntegerLiteral
@@ -462,7 +500,8 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 		verror('more than 6 args not allowed for now')
 	}
 	g.call(int(addr))
-	println('call $name $addr')
+	g.println('fn call `${name}()`')
+	// println('call $name $addr')
 }
 
 fn (mut g Gen) stmt(node ast.Stmt) {
@@ -480,6 +519,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.ForStmt {
 			g.for_stmt(it)
 		}
+		ast.Module {}
 		ast.Return {
 			g.gen_exit()
 			g.ret()
@@ -548,12 +588,14 @@ fn (mut g Gen) allocate_var(name string, size, initial_val int) {
 		}
 	}
 	// Generate N in `[rbp-N]`
-	g.write8(0xff - (g.stack_var_pos + size) + 1)
+	n := g.stack_var_pos + size
+	g.write8(0xff - n + 1)
 	g.stack_var_pos += size
 	g.var_offset[name] = g.stack_var_pos
 	// Generate the value assigned to the variable
 	g.write32(initial_val)
-	println('allocate_var(size=$size, initial_val=$initial_val)')
+	// println('allocate_var(size=$size, initial_val=$initial_val)')
+	g.println('mov DWORD [rbp-0x$n],$initial_val (Aallocate var `$name`)')
 }
 
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
@@ -561,11 +603,24 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	for i, ident in node.left {
 		match node.right[0] {
 			ast.IntegerLiteral {
-				print(it.val)
 				g.allocate_var(ident.name, 4, it.val.int())
 			}
-			else {}
+			ast.InfixExpr {
+				g.infix_expr(it)
+				g.allocate_var(ident.name, 4, 0)
+			}
+			else {
+				verror('assign_stmt unhandled expr')
+			}
 		}
+	}
+}
+
+fn (mut g Gen) infix_expr(node ast.InfixExpr) {
+	println('infix expr op=$node.op')
+	match node.op {
+		.plus {}
+		else {}
 	}
 }
 
@@ -587,7 +642,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// Now that we know where we need to jump if the condition is false, update the `jne` call.
 	// The value is the relative address, difference between current position and the location
 	// after `jne 00 00 00 00`
-	println('after if g.pos=$g.pos() jneaddr=$jne_addr')
+	// println('after if g.pos=$g.pos() jneaddr=$jne_addr')
 	g.write32_at(jne_addr, g.pos() - jne_addr - 4) // 4 is for "00 00 00 00"
 }
 
@@ -612,18 +667,22 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.jmp(0xffffffff - (g.pos() + 5 - start) + 1)
 	// Update the jump addr to current pos
 	g.write32_at(jump_addr, g.pos() - jump_addr - 4) // 4 is for "00 00 00 00"
+	g.println('jpm after for')
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
+	println(term.green('\n$node.name:'))
+	g.stack_var_pos = 0
 	is_main := node.name == 'main'
-	println('saving addr $node.name $g.buf.len.hex()')
+	// println('saving addr $node.name $g.buf.len.hex()')
 	if is_main {
 		g.save_main_fn_addr()
 	} else {
 		g.register_function_address(node.name)
-		// g.write32(SEVENS)
-		g.push(.rbp)
-		g.mov_rbp_rsp()
+	}
+	g.push(.rbp)
+	g.mov_rbp_rsp()
+	if !is_main {
 		g.sub32(.rsp, 0x20)
 	}
 	if node.args.len > 0 {
@@ -642,7 +701,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	//
 	g.stmts(node.stmts)
 	if is_main {
-		println('end of main: gen exit')
+		// println('end of main: gen exit')
 		g.gen_exit()
 		// return
 	}

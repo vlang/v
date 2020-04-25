@@ -38,7 +38,7 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 	key_type := p.parse_type()
 	// key_type_sym := p.get_type_symbol(key_type)
 	// if key_type_sym.kind != .string {
-	if table.type_idx(key_type) != table.string_type_idx {
+	if key_type.idx() != table.string_type_idx {
 		p.error('maps can only have string keys for now')
 	}
 	p.check(.rsbr)
@@ -87,7 +87,7 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 pub fn (mut p Parser) parse_type_with_mut(is_mut bool) table.Type {
 	typ := p.parse_type()
 	if is_mut {
-		return table.type_set_nr_muls(typ, 1)
+		return typ.set_nr_muls(1)
 	}
 	return typ
 }
@@ -121,10 +121,10 @@ pub fn (mut p Parser) parse_type() table.Type {
 	}
 	mut typ := p.parse_any_type(is_c, is_js, nr_muls > 0)
 	if is_optional {
-		typ = table.type_set(typ, .optional)
+		typ = typ.set_flag(.optional)
 	}
 	if nr_muls > 0 {
-		typ = table.type_set_nr_muls(typ, nr_muls)
+		typ = typ.set_nr_muls(nr_muls)
 	}
 	return typ
 }

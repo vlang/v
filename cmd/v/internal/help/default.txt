@@ -4,31 +4,36 @@ Usage:
    v [options] [command] [arguments]
 
 Examples:
-   v hello.v         Compile the file `hello.v` and output it as `hello` or `hello.exe`.
-   v run hello.v     Same as above but also run the produced executable immediately after compilation.
-   v -o h.c hello.v  Translate `hello.v` to `h.c`. Do not compile further.
+   v hello.v                 Compile the file `hello.v` and output it as `hello` or `hello.exe`.
+   v run hello.v             Same as above but also run the produced executable immediately after compilation.
+   v -keepc -cg run hello.v  Same as above, but make debugging easier (in case your program crashes).
+   v -o h.c hello.v          Translate `hello.v` to `h.c`. Do not compile further.
 
-The commands are:
-   build             Build V code in the provided path (default).
+V supports the following commands:
+* New project scaffolding:
    new               Setup the file structure for a V project (in a sub folder).
    init              Setup the file structure for an already existing V project.
-   doc               Generate the documentation for a V module.
-   fmt               Format the V code provided.
-   repl              Run the REPL.
+* Ordinary development:
    run               Compile and run a V program.
-   symlink           Create a symbolic link for V.
    test              Run all test files in the provided directory.
-   translate         Translate C code to V (coming soon in 0.3).
+   fmt               Format the V code provided.
+   doc               Generate the documentation for a V module.
+   repl              Run the REPL.
+* Installation/self updating:
+   symlink           Create a symbolic link for V.
    up                Run the V self-updater.
    self [-prod]      Run the V self-compiler, use -prod to optimize compilation.
    version           Print the version text and exits.
-
+* Module/package management:   
    install           Install a module from VPM.
    remove            Remove a module that was installed from VPM.
    search            Search for a module from VPM.
    update            Update an installed module from VPM.
+* Others:
+   build             Build a V code in the provided path (the default, so you can skip the word `build`).
+   translate         Translate C code to V (coming soon in 0.3).
 
-Use "v help <command>" for more information about a command, example: `v help build`
+Use "v help <command>" for more information about a command, example: `v help build`, `v help build-c`
 Use "v help other" to see less frequently used commands.
 
 Note: Help is required to write more help topics.

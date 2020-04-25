@@ -20,7 +20,21 @@ const (
 	days_per_400_years = 365 * 400 + 97
 	days_per_100_years = 365 * 100 + 24
 	days_per_4_years = 365 * 4 + 1
-	days_before = [0, 31, 31 + 28, 31 + 28 + 31, 31 + 28 + 31 + 30, 31 + 28 + 31 + 30 + 31, 31 + 28 + 31 + 30 + 31 + 30, 31 + 28 + 31 + 30 + 31 + 30 + 31, 31 + 28 + 31 + 30 + 31 + 30 + 31 + 31, 31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30, 31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31, 31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30, 31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31, ]
+	days_before = [
+		0,
+		31,
+		31 + 28,
+		31 + 28 + 31,
+		31 + 28 + 31 + 30,
+		31 + 28 + 31 + 30 + 31,
+		31 + 28 + 31 + 30 + 31 + 30,
+		31 + 28 + 31 + 30 + 31 + 30 + 31,
+		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,
+		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,
+		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
+		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
+		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
+	]
 )
 
 pub struct Time {
@@ -121,7 +135,7 @@ pub fn (t Time) unix_time() int {
 	return make_unix_time(tt)
 }
 
-// add_days returns a new time struct with an added number of seconds.
+// add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
 	// TODO Add(d time.Duration)
 	return unix(t.unix + seconds)
@@ -264,4 +278,49 @@ fn convert_ctime(t C.tm) Time {
 		second: t.tm_sec
 		unix: make_unix_time(t)
 	}
+}
+
+// A lot of these are taken from the Go library
+pub type Duration i64
+
+pub const(
+	nanosecond  = Duration(1)
+	microsecond = Duration(1000) * nanosecond
+	millisecond = Duration(1000) * microsecond
+	second       = Duration(1000) * millisecond
+	minute       = Duration(60) * second
+	hour         = Duration(60) * minute
+)
+
+// nanoseconds returns the duration as an integer number of nanoseconds.
+pub fn (d Duration) nanoseconds() i64 { return i64(d) }
+
+// microseconds returns the duration as an integer number of microseconds.
+pub fn (d Duration) microseconds() i64 { return i64(d) / 1000 }
+
+// milliseconds returns the duration as an integer number of milliseconds.
+pub fn (d Duration) milliseconds() i64 { return i64(d) / 1_000_000 }
+
+// The following functions return floating point numbers because it's common to
+// consider all of them in sub-one intervals
+
+// seconds returns the duration as a floating point number of seconds.
+pub fn (d Duration) seconds() f64 {
+	sec := d / second
+	nsec := d % second
+	return f64(sec) + f64(nsec)/1e9
+}
+
+// minutes returns the duration as a floating point number of minutes.
+pub fn (d Duration) minutes() f64 {
+	min := d / minute
+	nsec := d % minute
+	return f64(min) + f64(nsec)/(60*1e9)
+}
+
+// hours returns the duration as a floating point number of hours.
+pub fn (d Duration) hours() f64 {
+	hr := d / hour
+	nsec := d % hour
+	return f64(hr) + f64(nsec)/(60*60*1e9)
 }

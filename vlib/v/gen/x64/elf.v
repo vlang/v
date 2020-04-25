@@ -72,7 +72,9 @@ pub fn (mut g Gen) generate_elf_header() {
 	// address: 00070 and a half
 	println('code_start_pos = $g.buf.len.hex()')
 	g.code_start_pos = g.buf.len
+	g.debug_pos = g.buf.len
 	g.call(PLACEHOLDER) // call main function, it's not guaranteed to be the first, we don't know its address yet
+	g.println('call fn main')
 }
 
 pub fn (mut g Gen) generate_elf_footer() {
@@ -106,5 +108,5 @@ pub fn (mut g Gen) generate_elf_footer() {
 	os.chmod(g.out_name, 0o775) // make it an executable
 	f.write_bytes(g.buf.data, g.buf.len)
 	f.close()
-	println('x64 elf binary has been successfully generated')
+	println('\nx64 elf binary has been successfully generated')
 }

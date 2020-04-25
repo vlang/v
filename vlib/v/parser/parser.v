@@ -20,6 +20,7 @@ mut:
 	tok               token.Token
 	prev_tok          token.Token
 	peek_tok          token.Token
+	peek_tok2         token.Token
 	table             &table.Table
 	is_c              bool
 	is_js             bool
@@ -179,10 +180,12 @@ pub fn (p &Parser) init_parse_fns() {
 }
 
 pub fn (mut p Parser) read_first_token() {
-	// need to call next() twice to get peek token and current token
+	// need to call next() three times to get peek token 1 & 2 and current token
+	p.next()
 	p.next()
 	p.next()
 }
+
 
 pub fn (mut p Parser) open_scope() {
 	p.scope = &ast.Scope{
@@ -192,7 +195,7 @@ pub fn (mut p Parser) open_scope() {
 }
 
 pub fn (mut p Parser) close_scope() {
-	if !p.pref.is_repl {
+	if !p.pref.is_repl && !scanner.is_fmt {
 		for v in p.scope.unused_vars() {
 			if p.pref.is_prod {
 				p.error_with_pos('Unused variable: $v.name', v.pos)
@@ -201,7 +204,7 @@ pub fn (mut p Parser) close_scope() {
 			}
 		}
 	}
-  p.scope.clear_unused_vars()
+	p.scope.clear_unused_vars()
 	p.scope.end_pos = p.tok.pos
 	p.scope.parent.children << p.scope
 	p.scope = p.scope.parent
@@ -241,7 +244,8 @@ fn (mut p Parser) next_with_comment() {
 fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
-	p.peek_tok = p.scanner.scan()
+	p.peek_tok = p.peek_tok2
+	p.peek_tok2 = p.scanner.scan()
 	/*
 	if p.tok.kind==.comment {
 		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
@@ -632,7 +636,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			mut to_typ := p.parse_type()
 			if p.is_amp {
 				// Handle `&Foo(0)`
-				to_typ = table.type_to_ptr(to_typ)
+				to_typ = to_typ.to_ptr()
 			}
 			p.check(.lpar)
 			mut expr := ast.Expr{}
@@ -640,7 +644,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			mut has_arg := false
 			expr = p.expr(0)
 			// TODO, string(b, len)
-			if p.tok.kind == .comma && table.type_idx(to_typ) == table.string_type_idx {
+			if p.tok.kind == .comma && to_typ.idx() == table.string_type_idx {
 				p.check(.comma)
 				arg = p.expr(0) // len
 				has_arg = true
@@ -1192,7 +1196,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	// type MyType int
 	parent_type := first_type
-	pid := table.type_idx(parent_type)
+	pid := parent_type.idx()
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .alias
 		name: p.prepend_mod(name)

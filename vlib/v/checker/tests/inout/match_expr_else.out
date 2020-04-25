@@ -1,4 +1,4 @@
-vlib/v/checker/tests/inout/match_expr_else.v:5:6: error: match must be exhaustive (add match branches for: `f64` or an else{} branch)
+vlib/v/checker/tests/inout/match_expr_else.v:5:6: error: match must be exhaustive (add match branches for: `f64` or `else {}` at the end)
     3| fn main() {
     4|     x := A('test')
     5|     _ = match x {

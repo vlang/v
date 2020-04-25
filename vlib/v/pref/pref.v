@@ -77,8 +77,8 @@ pub mut:
 	compile_defines_all []string // contains both: ['vfmt','another']
 
 	mod                 string
-	run_args []string  // `v run x.v 1 2 3` => `1 2 3`
-
+	run_args            []string // `v run x.v 1 2 3` => `1 2 3`
+	printfn_list        []string // a list of generated function names, whose source should be shown, for debugging
 }
 
 pub fn backend_from_string(s string) ?Backend {
@@ -97,4 +97,3 @@ pub fn backend_from_string(s string) ?Backend {
 		}
 	}
 }
-

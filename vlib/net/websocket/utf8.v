@@ -49,7 +49,7 @@ fn (s mut Utf8State) seq(r0 bool, r1 bool, is_tail bool) bool {
 fn (s mut Utf8State) next_state (c byte) {
 	//sequence 1
 	if s.index == 0 {
-		if ((c >= 0x00 + 1 && c <= 0x7F) || c == 0x00) {
+		if (c >= 0x00 + 1 && c <= 0x7F) || c == 0x00 {
 			return
 		}
 		s.index++

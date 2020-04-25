@@ -48,7 +48,7 @@ fn create_key_challenge_response(seckey string) string {
 fn get_nonce() string {
 	mut nonce := []byte
 	alphanum := "0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz"
-	for i in 0..16 {
+	for i in 0..18 {
 		nonce << alphanum[rand.next(61)]
 	}
 	return string(byteptr(nonce.data))

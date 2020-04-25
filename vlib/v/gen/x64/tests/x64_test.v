@@ -30,7 +30,7 @@ fn test_x64() {
 		full_test_path := os.real_path(test)
 		println('x.v: $wrkdir/x.v')
 		os.system('cp ${dir}/${test} $wrkdir/x.v') // cant run .vv file
-		x := os.exec('$vexe -o exe -x64 $wrkdir/x.v') or {
+		os.exec('$vexe -o exe -x64 $wrkdir/x.v') or {
 			bench.fail()
 			eprintln(bench.step_message_fail('x64 $test failed'))
 			continue

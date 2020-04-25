@@ -170,3 +170,10 @@ pub fn is_atty(fd int) int {
 		return C.isatty(fd)
 	}
 }
+
+fn __as_cast(obj voidptr, obj_type, expected_type int) voidptr {
+	if obj_type != expected_type {
+		panic('as cast: cannot cast $obj_type to $expected_type')
+	}
+	return obj
+}

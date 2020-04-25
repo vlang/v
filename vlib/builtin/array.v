@@ -17,7 +17,7 @@ pub:
 }
 
 // Internal function, used by V (`nums := []int`)
-fn new_array(mylen int, cap int, elm_size int) array {
+fn __new_array(mylen int, cap int, elm_size int) array {
 	cap_ := if cap == 0 { 1 } else { cap }
 	arr := array{
 		len: mylen
@@ -28,13 +28,9 @@ fn new_array(mylen int, cap int, elm_size int) array {
 	return arr
 }
 
-fn __new_array(mylen int, cap int, elm_size int) array {
-	return new_array(mylen, cap, elm_size)
-}
-
 // TODO
 pub fn make(len int, cap int, elm_size int) array {
-	return new_array(len, cap, elm_size)
+	return __new_array(len, cap, elm_size)
 }
 
 /*
@@ -194,38 +190,6 @@ pub fn (a array) last() voidptr {
 	}
 	return byteptr(a.data) + (a.len - 1) * a.element_size
 }
-
-/*
-// array.left returns a new array using the same buffer as the given array
-// with the first `n` elements of the given array.
-fn (a array) left(n int) array {
-//	$if !no_bounds_checking? {
-//		if n < 0 {
-//			panic('array.left: index is negative (n == $n)')
-//		}
-//	}
-	if n >= a.len {
-		return a.slice(0, a.len)
-	}
-	return a.slice(0, n)
-}
-
-// array.right returns an array using same buffer as the given array
-// but starting with the element of the given array beyond the index `n`.
-// If `n` is bigger or equal to the length of the given array,
-// returns an empty array of the same type as the given array.
-fn (a array) right(n int) array {
-//	$if !no_bounds_checking? {
-//		if n < 0 {
-//			panic('array.right: index is negative (n == $n)')
-//		}
-//	}
-	if n >= a.len {
-		return new_array(0, 0, a.element_size)
-	}
-	return a.slice(n, a.len)
-}
-*/
 
 // array.slice returns an array using the same buffer as original array
 // but starting from the `start` element and ending with the element before

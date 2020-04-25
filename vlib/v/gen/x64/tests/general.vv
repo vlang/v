@@ -1,4 +1,4 @@
-fn test() {
+fn if_test() {
 	a := 1
 	if a == 1 {
 		println('a == 1')
@@ -28,24 +28,44 @@ fn loop() {
 }
 
 fn foo(a int) {
-	println('foo')
+	println('foo:')
 	if a == 1 {
-		println('foo(1)')
+		println('a == 1')
 	}
 	a++
-	if a == 1 {
-		println('foo(2)')
+	if a == 2 {
+		println('a == 2')
+	}
+	if a == 3 {
+		println('a == 3')
 	}
 }
 
 fn args() {
 	println('===args===')
-	args(1)
-	args(2)
+	foo(1)
+	foo(2)
 }
 
+/*
+fn expr() {
+	println('===expr===')
+	a := 1
+	b := 2
+	c := a + b
+	println('c==')
+	if c == 0 {
+		println('0')
+	}
+	if c == 3 {
+		println('3')
+	}
+}
+*/
+
 fn main() {
-	test()
-	//loop()
+	if_test()
+	loop()
 	args()
+	//expr()
 }

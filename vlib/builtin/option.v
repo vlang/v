@@ -21,6 +21,16 @@ struct Option {
 	is_none bool
 }
 
+pub fn (o Option) str() string {
+   if o.ok && !o.is_none {
+	  return 'Option{ data: ' + o.data[0..32].hex() + ' }'
+   }
+   if o.is_none {
+	  return 'Option{ none }'	  
+   }
+   return 'Option{ error: "${o.error}" }'
+}
+
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
 fn opt_ok(data voidptr, size int) Option {
 	if size >= 400 {
@@ -52,4 +62,3 @@ pub fn error_with_code(s string, code int) Option {
 		ecode: code
 	}
 }
-
