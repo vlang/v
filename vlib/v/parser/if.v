@@ -95,7 +95,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	mut branches := []ast.MatchBranch
 	for {
 		branch_first_pos := p.tok.position()
-		comment := p.check_comment()		// comment before {}
+		comment := p.check_comment() // comment before {}
 		mut exprs := []ast.Expr
 		p.open_scope()
 		// final else

@@ -1,13 +1,11 @@
-import (
-	os
-	term
-	benchmark
-	v.ast
-	v.fmt
-	v.parser
-	v.table
-	v.pref
-)
+import os
+import term
+import benchmark
+import v.ast
+import v.fmt
+import v.parser
+import v.table
+import v.pref
 
 const (
 	error_missing_vexe = 1
@@ -47,7 +45,9 @@ fn test_fmt() {
 			continue
 		}
 		table := table.new_table()
-		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{}, &ast.Scope{parent: 0})
+		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{}, &ast.Scope{
+			parent: 0
+		})
 		result_ocontent := fmt.fmt(file_ast, table)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()

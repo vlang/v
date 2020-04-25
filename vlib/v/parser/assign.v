@@ -14,7 +14,7 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 	}
 	idents := p.parse_assign_lhs()
 	op := p.tok.kind
-	p.next()	// :=, =
+	p.next() // :=, =
 	pos := p.tok.position()
 	exprs := p.parse_assign_rhs()
 	is_decl := op == .decl_assign

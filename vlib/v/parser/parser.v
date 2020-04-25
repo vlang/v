@@ -99,7 +99,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	for p.tok.kind == .key_import {
 		imports << p.import_stmt()
 	}
-*/
+	*/
 	// TODO: import only mode
 	for {
 		// res := s.scan()
@@ -164,7 +164,7 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 	}
 	time.sleep_ms(100)
 	return q.parsed_ast_files
-*/
+	*/
 	// ///////////////
 	mut files := []ast.File
 	for path in paths {
@@ -187,7 +187,6 @@ pub fn (mut p Parser) read_first_token() {
 	p.next()
 }
 
-
 pub fn (mut p Parser) open_scope() {
 	p.scope = &ast.Scope{
 		parent: p.scope
@@ -198,7 +197,7 @@ pub fn (mut p Parser) open_scope() {
 pub fn (mut p Parser) close_scope() {
 	if !p.pref.is_repl && !p.scanner.is_fmt {
 		for v in p.scope.unused_vars() {
-			if v.name.len > 0 && v.name[0]==`_` {
+			if v.name.len > 0 && v.name[0] == `_` {
 				continue
 			}
 			if p.pref.is_prod {
@@ -255,7 +254,7 @@ fn (mut p Parser) next() {
 		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
 		p.next()
 	}
-*/
+	*/
 }
 
 fn (mut p Parser) check(expected token.Kind) {
@@ -638,9 +637,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if !known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) && !(name in ['C.stat',
-			'C.sigaction'
-		]) {
+		if !known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) &&
+			!(name in ['C.stat', 'C.sigaction']) {
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
@@ -1080,7 +1078,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if !p.cgen.nogen {
 		p.cgen.consts << g
 	}
-*/
+	*/
 	glob := ast.GlobalDecl{
 		name: name
 		typ: typ
@@ -1099,7 +1097,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	p.check(.key_enum)
 	end_pos := p.tok.position()
-
 	enum_name := p.check_name()
 	if enum_name.len > 0 && !enum_name[0].is_capital() {
 		verror('enum name `$enum_name` must begin with a capital letter')

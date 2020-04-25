@@ -1,7 +1,8 @@
 fn test_as() {
 	a := sum_expr() as Bar
+	_ := a
 }
 
 fn test_cast() {
-	f := f32(0)
+	_ := f32(0)
 }

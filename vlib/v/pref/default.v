@@ -3,10 +3,8 @@
 // that can be found in the LICENSE file.
 module pref
 
-import (
-	os
-	term
-)
+import os
+import term
 
 pub const (
 	default_module_path = mpath()
@@ -22,7 +20,7 @@ pub fn new_preferences() Preferences {
 	return p
 }
 
-pub fn (p mut Preferences) fill_with_defaults() {
+pub fn (mut p Preferences) fill_with_defaults() {
 	if p.vroot == '' {
 		// Location of all vlib files
 		p.vroot = os.dir(vexe_path())

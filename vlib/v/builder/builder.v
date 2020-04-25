@@ -46,7 +46,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 }
 
 // parse all deps from already parsed files
-pub fn (b mut Builder) parse_imports() {
+pub fn (mut b Builder) parse_imports() {
 	mut done_imports := []string
 	// NB: b.parsed_files is appended in the loop,
 	// so we can not use the shorter `for in` form.
@@ -84,7 +84,7 @@ pub fn (b mut Builder) parse_imports() {
 	b.resolve_deps()
 }
 
-pub fn (b mut Builder) resolve_deps() {
+pub fn (mut b Builder) resolve_deps() {
 	graph := b.import_graph()
 	deps_resolved := graph.resolve()
 	if !deps_resolved.acyclic {
