@@ -4,7 +4,7 @@ import term
 fn test_all() {
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
-	//vroot := os.dir(vexe)
+	// vroot := os.dir(vexe)
 	dir := 'vlib/v/checker/tests/inout'
 	files := os.ls(dir) or {
 		panic(err)
@@ -28,8 +28,10 @@ fn test_all() {
 		mut expected := os.read_file(program.replace('.v', '') + '.out') or {
 			panic(err)
 		}
-		expected = expected.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n', '\n').trim('\n')
-		found := res.output.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n', '\n').trim('\n')
+		expected = expected.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n',
+			'\n').trim('\n')
+		found := res.output.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n',
+			'\n').trim('\n')
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
@@ -40,8 +42,7 @@ fn test_all() {
 			println(found)
 			println('============\n')
 			total_errors++
-		}
-		else {
+		} else {
 			println(term.green('OK'))
 		}
 	}

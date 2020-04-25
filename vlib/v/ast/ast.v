@@ -6,11 +6,11 @@ module ast
 import v.token
 import v.table
 
-pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
+pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral | CastExpr | CallExpr | CharLiteral | ConcatExpr | EnumVal | FloatLiteral | IfExpr | Ident | IfGuardExpr | InfixExpr | IndexExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringLiteral | StringInterLiteral | StructInit | Type | TypeOf
+pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral | CallExpr | CastExpr | CharLiteral | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf
 
-pub type Stmt = AssignStmt | AssertStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl | TypeDecl | UnsafeStmt
+pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl | TypeDecl | UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -428,7 +428,6 @@ pub:
 	is_else bool
 }
 
-
 /*
 CompIf.is_opt:
 `$if xyz? {}` => this compile time `if` is optional,
@@ -438,7 +437,6 @@ if `xyz` is NOT defined.
 If .is_opt is false, then when `xyz` is not defined,
 the compilation will fail.
 */
-
 pub struct CompIf {
 pub:
 	val        string

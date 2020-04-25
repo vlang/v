@@ -394,8 +394,8 @@ fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 					}
 				}
 				is_last_arg := i == fn_info.args.len - 1
-				should_add_type := is_last_arg || fn_info.args[i + 1].typ != arg.typ ||
-					(fn_info.is_variadic && i == fn_info.args.len - 2)
+				should_add_type := is_last_arg || fn_info.args[i + 1].typ != arg.typ || (fn_info.is_variadic &&
+					i == fn_info.args.len - 2)
 				if should_add_type {
 					if fn_info.is_variadic && is_last_arg {
 						f.write(' ...' + s)

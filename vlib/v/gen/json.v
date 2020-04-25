@@ -3,10 +3,8 @@
 // that can be found in the LICENSE file.
 module gen
 
-import (
-	v.table
-	strings
-)
+import v.table
+import strings
 
 // TODO replace with comptime code generation.
 // TODO remove cJSON dependency.
@@ -19,7 +17,7 @@ import (
 // return res;
 // }
 // Codegen json_decode/encode funcs
-fn (g mut Gen) gen_json_for_type(typ table.Type) {
+fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	mut dec := strings.new_builder(100)
 	mut enc := strings.new_builder(100)
 	sym := g.table.get_type_symbol(typ)
@@ -73,7 +71,7 @@ Option ${dec_fn.name}(cJSON* root, $t* res) {
     }
   }
 '
-*/
+	*/
 	// Code gen encoder
 	enc_fn_name := js_enc_name(sym.name)
 	enc.writeln('

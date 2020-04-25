@@ -16,7 +16,7 @@ import v.ast
 
 pub type Type int
 
-pub type TypeInfo = Array | ArrayFixed | Map | Struct | Interface | MultiReturn | Alias | Enum | SumType | FnType
+pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map | MultiReturn | Struct | SumType
 
 pub struct TypeSymbol {
 pub:
