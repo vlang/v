@@ -320,6 +320,11 @@ fn (mut f Fmt) stmt(node ast.Stmt) {
 				f.expr(it.expr)
 			}
 		}
+		ast.GoStmt {
+			f.write('go ')
+			f.expr(it.call_expr)
+			f.writeln('')
+		}
 		ast.GotoLabel {
 			f.writeln('$it.name:')
 		}
@@ -373,12 +378,6 @@ fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('unsafe {')
 			f.stmts(it.stmts)
 			f.writeln('}')
-		}
-		else {
-			eprintln('fmt stmt: unhandled node ' + typeof(node))
-			if typeof(node) != 'unknown v.ast.Expr' {
-				exit(1)
-			}
 		}
 	}
 }
@@ -822,25 +821,23 @@ fn (mut f Fmt) if_expr(it ast.IfExpr) {
 
 fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	if node.is_method {
-		match node.left {
-			ast.Ident {
-				// `time.now()` without `time imported` is processed as a method call with `time` being
-				// a `node.left` expression. Import `time` automatically.
-				// TODO fetch all available modules
-				if it.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
-					if !(it.name in f.auto_imports) {
-						f.auto_imports << it.name
-						f.file.imports << ast.Import{
-							mod: it.name
-							alias: it.name
-						}
+		if node.left is ast.Ident {
+			it := node.left as ast.Ident
+			// `time.now()` without `time imported` is processed as a method call with `time` being
+			// a `node.left` expression. Import `time` automatically.
+			// TODO fetch all available modules
+			if it.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
+				if !(it.name in f.auto_imports) {
+					f.auto_imports << it.name
+					f.file.imports << ast.Import{
+						mod: it.name
+						alias: it.name
 					}
-					// for imp in f.file.imports {
-					// println(imp.mod)
-					// }
 				}
+				// for imp in f.file.imports {
+				// println(imp.mod)
+				// }
 			}
-			else {}
 		}
 		f.expr(node.left)
 		f.write('.' + node.name + '(')
