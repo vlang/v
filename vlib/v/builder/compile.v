@@ -169,6 +169,9 @@ pub fn (v Builder) get_user_files() []string {
 	if v.pref.is_test && v.pref.is_stats {
 		user_files << os.join_path(preludes_path, 'tests_with_stats.v')
 	}
+	if v.pref.is_prof {
+		user_files << os.join_path(preludes_path, 'profiled_program.v')
+	}
 	is_test := dir.ends_with('_test.v')
 	mut is_internal_module_test := false
 	if is_test {
