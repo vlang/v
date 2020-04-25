@@ -174,6 +174,15 @@ fn utf8_len(c byte) int {
 	return b
 }
 
+// Calculate string length for formatting, i.e. number of "characters"
+fn utf8_str_len(s string) int {
+	mut c := 0
+	for i := 0; i < s.len; i += utf8_len(s[i]) {
+		c++
+	}
+	return c
+}
+
 // Reads an utf8 character from standard input
 pub fn utf8_getchar() int {
 	c := C.getchar()

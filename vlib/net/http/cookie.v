@@ -266,9 +266,6 @@ pub fn (c &Cookie) str() string {
 		.same_site_strict_mode {
 			b.write('; SameSite=Strict')
 		}
-		else {
-			// Do nothing
-		}
 	}
 	return b.str()
 }
@@ -415,13 +412,10 @@ fn is_cookie_name_valid(name string) bool {
 	if name == '' {
 		return false
 	}
-	// TODO
-	/*
-	for b in name.bytes() {
-		if !(b in arrays.range<byte>(33, 126)) {
+	for b in name {
+		if b < 33 || b > 126 {
 			return false
 		}
 	}
-	*/
 	return true
 }

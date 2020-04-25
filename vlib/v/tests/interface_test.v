@@ -36,10 +36,8 @@ interface Speaker {
 fn perform_speak(s Speaker) {
 	s.speak()
 	assert true
-	/*
 	name := s.name()
        assert name == 'Dog' || name == 'Cat'
-*/
        println(s.name())
 }
 
@@ -48,13 +46,15 @@ fn test_perform_speak() {
 	perform_speak(dog)
 	cat := Cat{}
 	perform_speak(cat)
-	// perform_speakers([dog, cat])
+	//perform_speakers([dog, cat])
 	/*
 	f := Foo {
 		speaker: dog
 	}
 */
 }
+
+//fn perform_speakers(speakers []Speaker) {}
 
 /*
 interface Speak2er {
@@ -67,7 +67,6 @@ struct Foo {
 	speakers []Speaker
 }
 
-fn perform_speakers(speakers []Speaker) {}
 
 
 interface Register {

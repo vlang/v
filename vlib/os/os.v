@@ -662,6 +662,13 @@ pub fn file_name(path string) string {
 	return path.all_after(path_separator)
 }
 
+// input returns a one-line string from stdin, after printing a prompt
+pub fn input(prompt string) string {
+	print(prompt)
+	flush()
+	return get_line()
+}
+
 // get_line returns a one-line string from stdin
 pub fn get_line() string {
 	str := get_raw_line()

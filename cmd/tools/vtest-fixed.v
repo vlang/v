@@ -11,15 +11,13 @@ const (
 		'vlib/json/json_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/http_test.v',
-		'vlib/regex/regex_test.v',
 		'vlib/v/tests/enum_bitfield_test.v',
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/pointers_test.v',
 		'vlib/v/tests/type_test.v',
-		'vlib/v/tests/interface_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
 		'vlib/v/tests/pointers_str_test.v',
-		'vlib/net/http/cookie_test.v',
+		'vlib/net/http/cookie_test.v', // ok, but should be skipped on ubuntu-musl, since there is no openssl there
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/sqlite/sqlite_test.v',
 
