@@ -1,9 +1,7 @@
 module builder
 
-import (
-	os
-	time
-)
+import os
+import time
 
 fn (v &Builder) generate_hotcode_reloading_declarations() {
 	/*

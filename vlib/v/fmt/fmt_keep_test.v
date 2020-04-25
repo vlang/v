@@ -1,13 +1,11 @@
-import (
-	os
-	term
-	benchmark
-	v.ast
-	v.fmt
-	v.parser
-	v.table
-	v.pref
-)
+import os
+import term
+import benchmark
+import v.ast
+import v.fmt
+import v.parser
+import v.table
+import v.pref
 
 const (
 	error_missing_vexe = 1
@@ -45,7 +43,9 @@ fn test_fmt() {
 			continue
 		}
 		table := table.new_table()
-		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{}, &ast.Scope{parent: 0})
+		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{}, &ast.Scope{
+			parent: 0
+		})
 		result_ocontent := fmt.fmt(file_ast, table)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
@@ -54,7 +54,7 @@ fn test_fmt() {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue
 			}
-			vfmt_result_file := os.join_path(tmpfolder,'vfmt_run_over_${ifilename}')
+			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
 			os.write_file(vfmt_result_file, result_ocontent)
 			os.system('$diff_cmd --minimal  --text   --unified=2 --show-function-line="fn " "$opath" "$vfmt_result_file"')
 			continue

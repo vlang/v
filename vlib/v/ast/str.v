@@ -28,9 +28,9 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 			m = '&'
 		}
 		receiver = '($node.receiver.name $m$name) '
-*/
+		*/
 	}
-	mut name := node.name.after('.')
+	mut name := if node.is_anon { '' } else { node.name.after('.') }
 	if node.is_c {
 		name = 'C.$name'
 	}

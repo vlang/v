@@ -1,10 +1,12 @@
 fn fn_contains_index_expr() {
 	arr := [1, 2, 3, 4, 5]
 	a := 1 in arr[0..]
-	b := 1 in arr[..2]
-	c := 1 in arr[1..3]
+	_ := a
+	_ := 1 in arr[..2]
+	_ := 1 in arr[1..3]
 	d := arr[2]
-	e := arr[2..]
-	f := arr[..2]
-	g := arr[1..3]
+	_ := d
+	_ := arr[2..]
+	_ := arr[..2]
+	_ := arr[1..3]
 }

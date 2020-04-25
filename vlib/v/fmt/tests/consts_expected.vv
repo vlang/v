@@ -1,7 +1,22 @@
 const (
-	pi     = 3.14
-	phi    = 1.618
-	eulers = 2.7182
+	pi                  = 3.14
+	phi                 = 1.618
+	eulers              = 2.7182
+	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
+		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
+	one_line_supported  = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
+		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
+	another_const       = [
+		'a', 'b',
+		'c', 'd', 'e',
+		'f'
+	]
+)
+
+const (
+	i_am_a_very_long_constant_name_so_i_stand_alone_and_my_length_is_over_90_characters = [
+		'testforit'
+	]
 )
 
 pub const (

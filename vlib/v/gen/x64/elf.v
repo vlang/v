@@ -34,9 +34,10 @@ const (
 )
 
 pub fn (mut g Gen) generate_elf_header() {
-	g.buf << [byte(mag0), mag1
-	mag2
-	mag3
+	g.buf << [byte(mag0),
+		mag1,
+		mag2,
+		mag3
 	]
 	g.buf << elfclass64 // file class
 	g.buf << elfdata2lsb // data encoding
@@ -83,7 +84,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 	g.mov(.edi, 0) // ret value
 	g.mov(.eax, 60)
 	g.syscall()
-*/
+	*/
 	// Strings table
 	// Loop thru all strings and set the right addresses
 	for i, s in g.strings {

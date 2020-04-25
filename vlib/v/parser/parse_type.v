@@ -87,7 +87,7 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 pub fn (mut p Parser) parse_type_with_mut(is_mut bool) table.Type {
 	typ := p.parse_type()
 	if is_mut {
-		return table.type_set_nr_muls(typ, 1)
+		return typ.set_nr_muls(1)
 	}
 	return typ
 }
@@ -124,7 +124,7 @@ pub fn (mut p Parser) parse_type() table.Type {
 		typ = typ.set_flag(.optional)
 	}
 	if nr_muls > 0 {
-		typ = table.type_set_nr_muls(typ, nr_muls)
+		typ = typ.set_nr_muls(nr_muls)
 	}
 	return typ
 }

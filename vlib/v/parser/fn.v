@@ -170,6 +170,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		end_pos = p.tok.position()
 		return_type = p.parse_type()
 	}
+	ctdefine := p.attr_ctdefine
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec_type)
@@ -181,6 +182,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_variadic: is_variadic
 			is_generic: is_generic
 			is_pub: is_pub
+			ctdefine: ctdefine
 		})
 	} else {
 		if is_c {
@@ -202,6 +204,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_js: is_js
 			is_generic: is_generic
 			is_pub: is_pub
+			ctdefine: ctdefine
 		})
 	}
 	// Body
@@ -212,6 +215,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	p.close_scope()
 	p.attr = ''
+	p.attr_ctdefine = ''
 	return ast.FnDecl{
 		name: name
 		stmts: stmts
@@ -231,6 +235,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		no_body: no_body
 		pos: start_pos.extend(end_pos)
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
+		ctdefine: ctdefine
 	}
 }
 
@@ -265,7 +270,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	func.name = name
 	idx := p.table.find_or_register_fn_type(func, true, false)
 	typ := table.new_type(idx)
-	//name := p.table.get_type_name(typ)
+	// name := p.table.get_type_name(typ)
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name

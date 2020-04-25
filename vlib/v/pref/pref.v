@@ -31,6 +31,7 @@ pub mut:
 	is_live             bool // main program that contains live/hot code
 	is_shared               bool // an ordinary shared library, -shared, no matter if it is live or not
 	is_prof             bool // benchmark every function
+	profile_file        string // the profile results will be stored inside profile_file
 	translated          bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	is_prod             bool // use "-O2"
 	obfuscate           bool // `v -obf program.v`, renames functions to "f_XXX"
@@ -77,8 +78,8 @@ pub mut:
 	compile_defines_all []string // contains both: ['vfmt','another']
 
 	mod                 string
-	run_args []string  // `v run x.v 1 2 3` => `1 2 3`
-
+	run_args            []string // `v run x.v 1 2 3` => `1 2 3`
+	printfn_list        []string // a list of generated function names, whose source should be shown, for debugging
 }
 
 pub fn backend_from_string(s string) ?Backend {
@@ -97,4 +98,3 @@ pub fn backend_from_string(s string) ?Backend {
 		}
 	}
 }
-

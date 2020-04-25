@@ -41,11 +41,7 @@ The build flags are shared by the build and run commands:
       Enable the specified experiment.
       Currently, the only experiment available is: `prealloc`
 
-   -full-rebuild
-      Force a full rebuild of all dependencies.
-      Enabled by default currently until caching works reliably.
-
-   -g
+   -cg
       Compile the executable in debug mode, allowing code to be debugged more easily.
 
    -o <output>, -output <output>
@@ -69,8 +65,15 @@ The build flags are shared by the build and run commands:
    -prod
       Compile the executable in production mode where most optimizations are enabled.
 
-   -prof, -profile
+   -prof, -profile <file.txt>
       Compile the executable with all functions profiled.
+      The profile results will be stored in `file.txt`.
+      The format is 4 fields, separated by a space, for each v function:
+         a) how many times it was called
+         b) how much *nanoseconds in total* it took
+         c) an average for each function (i.e. (b) / (a) )
+         d) the function name
+      NB: if you want to output the profile info to stdout, use `-profile -`.
 
    -stats
       Enable more detailed statistics reporting, while compiling test files.

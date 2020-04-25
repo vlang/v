@@ -16,7 +16,7 @@ import v.ast
 
 pub type Type int
 
-pub type TypeInfo = Array | ArrayFixed | Map | Struct | Interface | MultiReturn | Alias | Enum | SumType | FnType
+pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map | MultiReturn | Struct | SumType
 
 pub struct TypeSymbol {
 pub:
@@ -64,7 +64,7 @@ pub fn (t Type) is_ptr() bool {
 
 // set nr_muls on `t` and return it
 [inline]
-pub fn type_set_nr_muls(t Type, nr_muls int) Type {
+pub fn (t Type) set_nr_muls(nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('typ_set_nr_muls: nr_muls must be between 0 & 255')
 	}
@@ -171,17 +171,17 @@ pub const (
 
 pub const (
 	integer_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx
-	u32_type_idx
-	u64_type_idx
+		u16_type_idx,
+		u32_type_idx,
+		u64_type_idx
 	]
 	float_type_idxs   = [f32_type_idx, f64_type_idx]
 	number_type_idxs  = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx
-	u32_type_idx
-	u64_type_idx
-	f32_type_idx
-	f64_type_idx
+		u16_type_idx,
+		u32_type_idx,
+		u64_type_idx,
+		f32_type_idx,
+		f64_type_idx
 	]
 	pointer_type_idxs = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 	string_type_idxs  = [string_type_idx, ustring_type_idx]
@@ -213,11 +213,11 @@ pub const (
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64',
-		'u16'
-	'u32'
-	'u64', 'f32', 'f64', 'string', 'ustring', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed'
-	'map', 'struct'
-	'mapnode', 'size_t']
+		'u16',
+		'u32',
+		'u64', 'f32', 'f64', 'string', 'ustring', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed',
+		'map', 'struct',
+		'mapnode', 'size_t']
 )
 
 pub struct MultiReturn {
@@ -591,6 +591,6 @@ pub fn (table &Table) type_to_str(t Type) string {
 	if res.starts_with(cur_mod +'.') {
 	res = res[cur_mod.len+1.. ]
 	}
-*/
+	*/
 	return res
 }

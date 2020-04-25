@@ -20,6 +20,7 @@ mut:
 	tok               token.Token
 	prev_tok          token.Token
 	peek_tok          token.Token
+	peek_tok2         token.Token
 	table             &table.Table
 	is_c              bool
 	is_js             bool
@@ -30,6 +31,7 @@ mut:
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
 	attr              string
+	attr_ctdefine     string
 	expr_mod          string
 	scope             &ast.Scope
 	global_scope      &ast.Scope
@@ -97,7 +99,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	for p.tok.kind == .key_import {
 		imports << p.import_stmt()
 	}
-*/
+	*/
 	// TODO: import only mode
 	for {
 		// res := s.scan()
@@ -162,7 +164,7 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 	}
 	time.sleep_ms(100)
 	return q.parsed_ast_files
-*/
+	*/
 	// ///////////////
 	mut files := []ast.File
 	for path in paths {
@@ -179,7 +181,8 @@ pub fn (p &Parser) init_parse_fns() {
 }
 
 pub fn (mut p Parser) read_first_token() {
-	// need to call next() twice to get peek token and current token
+	// need to call next() three times to get peek token 1 & 2 and current token
+	p.next()
 	p.next()
 	p.next()
 }
@@ -192,8 +195,11 @@ pub fn (mut p Parser) open_scope() {
 }
 
 pub fn (mut p Parser) close_scope() {
-	if !p.pref.is_repl && !scanner.is_fmt {
+	if !p.pref.is_repl && !p.scanner.is_fmt {
 		for v in p.scope.unused_vars() {
+			if v.name.len > 0 && v.name[0] == `_` {
+				continue
+			}
 			if p.pref.is_prod {
 				p.error_with_pos('Unused variable: $v.name', v.pos)
 			} else {
@@ -241,13 +247,14 @@ fn (mut p Parser) next_with_comment() {
 fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
-	p.peek_tok = p.scanner.scan()
+	p.peek_tok = p.peek_tok2
+	p.peek_tok2 = p.scanner.scan()
 	/*
 	if p.tok.kind==.comment {
 		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
 		p.next()
 	}
-*/
+	*/
 }
 
 fn (mut p Parser) check(expected token.Kind) {
@@ -483,8 +490,10 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 
 fn (mut p Parser) attribute() ast.Attr {
 	p.check(.lsbr)
+	mut is_if_attr := false
 	if p.tok.kind == .key_if {
 		p.next()
+		is_if_attr = true
 	}
 	mut name := p.check_name()
 	if p.tok.kind == .colon {
@@ -498,6 +507,9 @@ fn (mut p Parser) attribute() ast.Attr {
 	}
 	p.check(.rsbr)
 	p.attr = name
+	if is_if_attr {
+		p.attr_ctdefine = name
+	}
 	return ast.Attr{
 		name: name
 	}
@@ -625,9 +637,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if !known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) && !(name in ['C.stat',
-			'C.sigaction'
-		]) {
+		if !known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) &&
+			!(name in ['C.stat', 'C.sigaction']) {
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
@@ -1067,7 +1078,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if !p.cgen.nogen {
 		p.cgen.consts << g
 	}
-*/
+	*/
 	glob := ast.GlobalDecl{
 		name: name
 		typ: typ
@@ -1086,7 +1097,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	p.check(.key_enum)
 	end_pos := p.tok.position()
-
 	enum_name := p.check_name()
 	if enum_name.len > 0 && !enum_name[0].is_capital() {
 		verror('enum name `$enum_name` must begin with a capital letter')
