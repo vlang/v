@@ -402,7 +402,7 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 			scope := c.file.scope.innermost(assign_expr.pos.pos)
 			if v := scope.find_var(it.name) {
 				if !v.is_mut {
-					c.error('`$it.name` is immutable, declare it with `var` to assign to it', assign_expr.pos)
+					c.error('`$it.name` is immutable, declare it with `mut` to assign to it', assign_expr.pos)
 				}
 			}
 		}
