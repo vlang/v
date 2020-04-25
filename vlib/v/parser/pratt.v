@@ -11,12 +11,14 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	// println('\n\nparser.expr()')
 	mut typ := table.void_type
 	mut node := ast.Expr{}
-	expr_prev_tok_line_nr := p.prev_tok.line_nr
+	is_stmt_ident := p.is_stmt_ident
+	p.is_stmt_ident = false
 	// Prefix
 	match p.tok.kind {
 		.name {
 			p.scope.remove_unused_var(p.tok.lit)
 			node = p.name_expr()
+			p.is_stmt_ident = is_stmt_ident
 		}
 		.string {
 			node = p.string_expr()
@@ -134,6 +136,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			node = p.assign_expr(node)
 		} else if p.tok.kind == .dot {
 			node = p.dot_expr(node)
+			p.is_stmt_ident = is_stmt_ident
 		} else if p.tok.kind == .lsbr {
 			node = p.index_expr(node)
 		} else if p.tok.kind == .key_as {
@@ -145,7 +148,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				typ: typ
 				pos: pos
 			}
-		} else if p.tok.kind == .left_shift && p.tok.line_nr != expr_prev_tok_line_nr {
+		} else if p.tok.kind == .left_shift && p.is_stmt_ident {
 			// arr << elem
 			tok := p.tok
 			pos := tok.position()

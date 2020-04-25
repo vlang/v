@@ -40,6 +40,7 @@ mut:
 	returns           bool
 	inside_match      bool // to separate `match A { }` from `Struct{}`
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
+	is_stmt_ident     bool // true while the beginning of a statement is an ident/selector
 	inside_is         bool // `is Type`, expecting type
 }
 
@@ -374,6 +375,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 }
 
 pub fn (mut p Parser) stmt() ast.Stmt {
+	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
 			stmts := p.parse_block()
