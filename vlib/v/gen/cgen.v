@@ -14,28 +14,28 @@ import term
 
 const (
 	c_reserved = ['delete', 'exit', 'unix', 'error', 'calloc', 'malloc', 'free', 'panic', 'auto',
-		'char'
-	'default'
-	'do'
-	'double'
-	'extern'
-	'float'
-	'inline'
-	'int'
-	'long'
-	'register'
-	'restrict'
-	'short'
-	'signed'
-	'sizeof'
-	'static'
-	'switch'
-	'typedef'
-	'union'
-	'unsigned'
-	'void'
-	'volatile'
-	'while'
+		'char',
+		'default',
+		'do',
+		'double',
+		'extern',
+		'float',
+		'inline',
+		'int',
+		'long',
+		'register',
+		'restrict',
+		'short',
+		'signed',
+		'sizeof',
+		'static',
+		'switch',
+		'typedef',
+		'union',
+		'unsigned',
+		'void',
+		'volatile',
+		'while'
 	]
 )
 
@@ -1420,7 +1420,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
 			g.write(' })')
 		}
-	} else if (node.left_type == node.right_type) && node.left_type.is_float() && node.op in [.eq, .ne] {
+	} else if (node.left_type == node.right_type) && node.left_type.is_float() && node.op in
+		[.eq, .ne] {
 		// floats should be compared with epsilon
 		if node.left_type == table.f64_type_idx {
 			if node.op == .eq {
@@ -1748,7 +1749,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 					else {}
 				}
-*/
+				*/
 				if need_wrapper {
 					g.write(', &($elem_type_str[]) { ')
 				} else {
@@ -1810,7 +1811,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write(', ')
 					g.expr(node.index)
 					g.write('))')
-*/
+				*/
 				zero := g.type_default(info.value_type)
 				g.write('(*($elem_type_str*)map_get3(')
 				g.expr(node.left)
@@ -1916,7 +1917,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			g.const_decl_simple_define(name, val)
 			return
 		}
-*/
+		*/
 		/*
 		if table.is_number(field.typ) {
 			g.const_decl_simple_define(name, val)
@@ -1926,7 +1927,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				g.stringliterals.writeln('\t_const_$name = $val;')
 			}
 		} else {
-*/
+		*/
 		match field.expr {
 			ast.CharLiteral {
 				g.const_decl_simple_define(name, val)
@@ -1992,7 +1993,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	} else {
 		fields = struct_init.fields
 	}
-*/
+	*/
 	// User set fields
 	for _, field in struct_init.fields {
 		field_name := c_name(field.name)
@@ -2378,8 +2379,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(').str')
-			}
-			else if sym.kind == .enum_ {
+			} else if sym.kind == .enum_ {
 				is_var := match node.exprs[i] {
 					ast.SelectorExpr { true }
 					ast.Ident { true }
@@ -2718,7 +2718,7 @@ fn (g Gen) type_default(typ table.Type) string {
 		}
 		else {}
 	}
-*/
+	*/
 	match sym.name {
 		'string' { return 'tos3("")' }
 		'rune' { return '0' }
@@ -2747,7 +2747,7 @@ fn (g Gen) type_default(typ table.Type) string {
 	'voidptr'{ '0'}
 	else { '{0} '}
 }
-*/
+	*/
 }
 
 pub fn (mut g Gen) write_tests_main() {
@@ -2948,7 +2948,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.write('/* as */ *($styp*)')
 		g.expr(node.expr)
 		g.write('.obj')
-*/
+		*/
 		g.write('/* as */ *($styp*)__as_cast(')
 		g.expr(node.expr)
 		g.write('.obj, ')

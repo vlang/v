@@ -1,13 +1,11 @@
-import (
-	os
-	v.pref
-	v.builder
-	term
-)
+import os
+import v.pref
+import v.builder
+import term
 
 const (
-	nr_tests = 4
-	term_ok = term.ok_message('OK')
+	nr_tests  = 4
+	term_ok   = term.ok_message('OK')
 	term_fail = term.fail_message('FAIL')
 )
 
@@ -35,8 +33,7 @@ fn test_c_files() {
 		}
 		if compare_texts(res, ctext, path) {
 			println('${term_ok} ${i}')
-		}
-		else {
+		} else {
 			assert false
 		}
 	}
@@ -56,7 +53,6 @@ fn compare_texts(a, b, path string) bool {
 		return false
 	}
 	*/
-
 	for i, line_a in lines_a {
 		if i >= lines_b.len {
 			println(line_a)

@@ -71,7 +71,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			s := p.table.get_type_symbol(typ)
 			println('XXXX' + s.str())
 		}
-*/
+			*/
 			mut default_expr := ast.Expr{}
 			mut has_default_expr := false
 			if p.tok.kind == .assign {

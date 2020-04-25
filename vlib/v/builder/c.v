@@ -1,14 +1,12 @@
 module builder
 
-import (
-	time
-	os
-	v.parser
-	v.pref
-	v.gen
-)
+import time
+import os
+import v.parser
+import v.pref
+import v.gen
 
-pub fn (b mut Builder) gen_c(v_files []string) string {
+pub fn (mut b Builder) gen_c(v_files []string) string {
 	t0 := time.ticks()
 	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 	b.parse_imports()
@@ -35,7 +33,7 @@ pub fn (b mut Builder) gen_c(v_files []string) string {
 	return res
 }
 
-pub fn (b mut Builder) build_c(v_files []string, out_file string) {
+pub fn (mut b Builder) build_c(v_files []string, out_file string) {
 	b.out_name_c = out_file
 	b.info('build_c($out_file)')
 	mut f := os.create(out_file) or {
@@ -46,7 +44,7 @@ pub fn (b mut Builder) build_c(v_files []string, out_file string) {
 	// os.write_file(out_file, b.gen_c(v_files))
 }
 
-pub fn (b mut Builder) compile_c() {
+pub fn (mut b Builder) compile_c() {
 	if os.user_os() != 'windows' && b.pref.ccompiler == 'msvc' {
 		verror('Cannot build with msvc on ${os.user_os()}')
 	}
@@ -54,7 +52,7 @@ pub fn (b mut Builder) compile_c() {
 	// println('compile2()')
 	if b.pref.is_verbose {
 		println('all .v files before:')
-		//println(files)
+		// println(files)
 	}
 	// v1 compiler files
 	// v.add_v_files_to_compile()

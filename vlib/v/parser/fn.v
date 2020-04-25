@@ -270,7 +270,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	func.name = name
 	idx := p.table.find_or_register_fn_type(func, true, false)
 	typ := table.new_type(idx)
-	//name := p.table.get_type_name(typ)
+	// name := p.table.get_type_name(typ)
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name

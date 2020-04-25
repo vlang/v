@@ -106,7 +106,7 @@ fn (mut f Fmt) imports(imports []ast.Import) {
 		imp_stmt_str := f.imp_stmt_str(imports[0])
 		f.out_imports.writeln('import ${imp_stmt_str}\n')
 	} else if imports.len > 1 {
-*/
+	*/
 	// f.out_imports.writeln('import (')
 	for imp in imports {
 		if !(imp.mod in f.used_imports) {
@@ -443,9 +443,9 @@ fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
 	// type_ptr => &type
 	if res.ends_with('_ptr') {
-		res = res[0 .. res.len - 4]
+		res = res[0..res.len - 4]
 		start_pos := 2 * res.count('[]')
-		res = res[0 .. start_pos] + '&' + res[start_pos .. res.len]
+		res = res[0..start_pos] + '&' + res[start_pos..res.len]
 	}
 	return res.replace(f.cur_mod + '.', '')
 }

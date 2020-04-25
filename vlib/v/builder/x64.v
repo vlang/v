@@ -1,15 +1,13 @@
 module builder
 
-import (
-	time
-	os
-	v.parser
-	v.pref
-	v.gen
-	v.gen.x64
-)
+import time
+import os
+import v.parser
+import v.pref
+import v.gen
+import v.gen.x64
 
-pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
+pub fn (mut b Builder) build_x64(v_files []string, out_file string) {
 	$if !linux {
 		println('v -x64 can only generate Linux binaries for now')
 		println('You are not on a Linux system, so you will not ' + 'be able to run the resulting executable')
@@ -30,9 +28,9 @@ pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
 	b.info('x64 GEN: ${gen_time}ms')
 }
 
-pub fn (b mut Builder) compile_x64() {
+pub fn (mut b Builder) compile_x64() {
 	// v.files << v.v_files_from_dir(os.join_path(v.pref.vlib_path,'builtin','bare'))
-	files := [b.pref.path]
+	files := [ b.pref.path]
 	b.set_module_lookup_paths()
 	b.build_x64(files, b.pref.out_name)
 }

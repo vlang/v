@@ -3,12 +3,10 @@
 // that can be found in the LICENSE file.
 module eval
 
-import (
-	v.ast
-	v.checker
-	v.table
-	v.pref
-)
+import v.ast
+import v.checker
+import v.table
+import v.pref
 
 pub type Object = int | string
 
@@ -23,7 +21,7 @@ pub struct Var {
 	value Object
 }
 
-pub fn (e mut Eval) eval(file ast.File, table &table.Table) string {
+pub fn (mut e Eval) eval(file ast.File, table &table.Table) string {
 	vpref := &pref.Preferences{}
 	e.table = table
 	mut res := ''
@@ -36,29 +34,24 @@ pub fn (e mut Eval) eval(file ast.File, table &table.Table) string {
 
 fn print_object(o Object) {
 	match o {
-		int {
-			println(it)
-		}
-		else {
-			println('unknown object')
-		}
+		int { println(it) }
+		else { println('unknown object') }
 	}
 }
 
 pub fn (o Object) str() string {
 	match o {
-		int {
-			return it.str()
-		}
-		else {
-			println('unknown object')
-		}
+		int { return it.str() }
+		else { println('unknown object') }
 	}
 	return ''
 }
 
-fn (e mut Eval) stmt(node ast.Stmt) string {
+fn (mut e Eval) stmt(node ast.Stmt) string {
 	match node {
+		ast.AssignStmt {
+			// TODO; replaced VarDecl
+		}
 		ast.ExprStmt {
 			o := e.expr(it.expr)
 			print('out: ')
@@ -66,22 +59,19 @@ fn (e mut Eval) stmt(node ast.Stmt) string {
 			return o.str()
 		}
 		// ast.StructDecl {
-		// println('s decl')
+		//	println('s decl')
 		// }
-		ast.AssignStmt {
-			// TODO; replaced VarDecl
-		}
 		// ast.VarDecl {
-		// 	e.vars[it.name] = Var{
-		// 		value: e.expr(it.expr)
-		// 	}
+		//	e.vars[it.name] = Var{
+		//		value: e.expr(it.expr)
+		//	}
 		// }
 		else {}
 	}
 	return '>>'
 }
 
-fn (e mut Eval) expr(node ast.Expr) Object {
+fn (mut e Eval) expr(node ast.Expr) Object {
 	match node {
 		ast.IntegerLiteral {
 			return it.val
@@ -98,14 +88,10 @@ fn (e mut Eval) expr(node ast.Expr) Object {
 			left := e.expr(it.left) as int
 			right := e.expr(it.right) as int
 			match it.op {
-				.plus {
-					return left + right
-				}
-				.mul {
-					return left * right
-				}
+				.plus { return left + right }
+				.mul { return left * right }
 				else {}
-	}
+			}
 		}
 		else {}
 	}
