@@ -310,14 +310,22 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		}
 	}
 	if infix_expr.op in [.key_in, .not_in] {
-		if !(right.kind in [.array, .map, .string]) {
-			c.error('`in` can only be used with an array/map/string', infix_expr.pos)
-		}
 		if right.kind == .array {
 			right_sym := c.table.get_type_symbol(right.array_info().elem_type)
-			if left.kind != .alias && left.kind != right_sym.kind {
+			if left.kind != right_sym.kind {
 				c.error('the data type on the left of `in` does not match the array item type', infix_expr.pos)
 			}
+		} else if right.kind == .map {
+			key_sym := c.table.get_type_symbol(right.map_info().key_type)
+			if left.kind != key_sym.kind {
+				c.error('the data type on the left of `in` does not match the map key type', infix_expr.pos)
+			}
+		} else if right.kind == .string {
+			if left.kind != .string {
+				c.error('the data type on the left of `in` must be a string', infix_expr.pos)
+			}
+		} else {
+			c.error('`in` can only be used with an array/map/string', infix_expr.pos)
 		}
 		return table.bool_type
 	}
@@ -1156,15 +1164,16 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 		ast.ForInStmt {
 			c.in_for_count++
 			typ := c.expr(it.cond)
+			typ_idx := table.type_idx(typ)
 			if it.is_range {
-				high_type := c.expr(it.high)
-				if typ in table.integer_type_idxs && high_type !in table.integer_type_idxs {
+				high_type_idx := table.type_idx(c.expr(it.high))
+				if typ_idx in table.integer_type_idxs && high_type_idx !in table.integer_type_idxs {
 					c.error('range types do not match', it.cond.position())
-				} else if typ in table.float_type_idxs || high_type in table.float_type_idxs {
+				} else if typ_idx in table.float_type_idxs || high_type_idx in table.float_type_idxs {
 					c.error('range type can not be float', it.cond.position())
-				} else if typ == table.bool_type_idx || high_type == table.bool_type_idx {
+				} else if typ_idx == table.bool_type_idx || high_type_idx == table.bool_type_idx {
 					c.error('range type can not be bool', it.cond.position())
-				} else if typ == table.string_type_idx || high_type == table.string_type_idx {
+				} else if typ_idx == table.string_type_idx || high_type_idx == table.string_type_idx {
 					c.error('range type can not be string', it.cond.position())
 				}
 				c.expr(it.high)

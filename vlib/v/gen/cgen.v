@@ -1397,9 +1397,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
 			g.write(' })')
 		}
-	} else if (node.left_type == node.right_type) && node.left_type in [table.f32_type_idx,
-		table.f64_type_idx
-	] && node.op in [.eq, .ne] {
+	} else if (node.left_type == node.right_type) && table.is_float(node.left_type) && node.op in [.eq, .ne] {
 		// floats should be compared with epsilon
 		if node.left_type == table.f64_type_idx {
 			if node.op == .eq {
