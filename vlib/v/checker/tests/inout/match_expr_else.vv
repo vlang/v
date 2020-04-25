@@ -10,4 +10,32 @@ fn main() {
 			'string'
 		}
 	}
+	_ := match x {
+		int {
+			'int'
+		}
+		string {
+			'string'
+		}
+		f64 {
+			'f64'
+		}
+		else {
+			'else'
+		}
+	}
+	_ := match x {
+		int {
+			'int'
+		}
+		string {
+			'string'
+		}
+		else {
+			'else'
+		}
+		f64 {
+			'f64'
+		}
+	}
 }

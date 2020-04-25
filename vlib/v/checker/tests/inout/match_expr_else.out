@@ -5,3 +5,17 @@ vlib/v/checker/tests/inout/match_expr_else.v:5:6: error: match must be exhaustiv
                ~~~~~~~~~
     6|         int {
     7|             'int'
+vlib/v/checker/tests/inout/match_expr_else.v:23:3: error: match expression is exhaustive, `else` is unnecessary
+   21|             'f64'
+   22|         }
+   23|         else {
+               ~~~~~~
+   24|             'else'
+   25|         }
+vlib/v/checker/tests/inout/match_expr_else.v:34:3: error: `else` must be the last branch of `match`
+   32|             'string'
+   33|         }
+   34|         else {
+               ~~~~~~
+   35|             'else'
+   36|         }

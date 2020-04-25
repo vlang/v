@@ -55,10 +55,6 @@ fn test_match_expression_on_sumtype_full(){
 			c = 2
 			eprintln('hi')
 			'a string'
-		}else{
-			c = 3
-			eprintln('hi')
-			'unknown'
 		}
 	}
 	assert res == 'an integer'

@@ -21,7 +21,6 @@ fn tag(l Level) string {
 		.warn  { term.yellow('WARN ') }
 		.info  { term.white('INFO ') }
 		.debug { term.blue('DEBUG') }
-		else { '     ' }
 	}
 }
 

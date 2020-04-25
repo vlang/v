@@ -292,22 +292,22 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 				.array {
 					right_sym := c.table.get_type_symbol(right.array_info().elem_type)
 					if left.kind != right_sym.kind {
-						c.error('the data type on the left of `in` does not match the array item type', 
+						c.error('the data type on the left of `in` does not match the array item type',
 							infix_expr.pos)
 					}
 				}
 				.map {
 					key_sym := c.table.get_type_symbol(right.map_info().key_type)
 					if left.kind != key_sym.kind {
-						c.error('the data type on the left of `in` does not match the map key type', 
+						c.error('the data type on the left of `in` does not match the map key type',
 							infix_expr.pos)
-					}	
-				} 
+					}
+				}
 				.string {
 					if left.kind != .string {
 						c.error('the data type on the left of `in` must be a string', infix_expr.pos)
 					}
-				} 
+				}
 				else {
 					c.error('`in` can only be used with an array/map/string', infix_expr.pos)
 				}
@@ -365,10 +365,10 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
 			} else if !left.is_int() && right.is_int() {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-			} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] && 
+			} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
 				!left.has_method(infix_expr.op.str()) {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-			} else if right.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] && 
+			} else if right.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
 				!right.has_method(infix_expr.op.str()) {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
 			}
@@ -377,7 +377,7 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	}
 	// TODO: Absorb this block into the above single side check block to accelerate.
 	if left_type == table.bool_type && !(infix_expr.op in [.eq, .ne, .logical_or, .and]) {
-		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`', 
+		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
 			infix_expr.pos)
 	} else if left_type == table.string_type && !(infix_expr.op in [.plus, .eq, .ne, .lt, .gt, .le, .ge]) {
 		// TODO broken !in
@@ -1601,46 +1601,57 @@ fn (mut c Checker) match_exprs(node mut ast.MatchExpr, type_sym table.TypeSymbol
 	// this is achieved either by putting an else
 	// or, when the match is on a sum type or an enum
 	// by listing all variants or values
-	if !node.branches[node.branches.len - 1].is_else {
+	mut is_exhaustive := true
+	mut unhandled := []string
+	match type_sym.info {
+		table.SumType {
+			for v in it.variants {
+				v_str := c.table.type_to_str(v)
+				if v_str !in branch_exprs {
+					is_exhaustive = false
+					unhandled << '`$v_str`'
+				}
+			}
+		}
+		table.Enum {
+			for v in it.vals {
+				if v !in branch_exprs {
+					is_exhaustive = false
+					unhandled << '`.$v`'
+				}
+			}
+		}
+		else {
+			is_exhaustive = false
+		}
+	}
+	mut else_branch := node.branches[node.branches.len - 1]
+	mut has_else := else_branch.is_else
+	if !has_else {
 		for i, branch in node.branches {
 			if branch.is_else && i != node.branches.len - 1 {
 				c.error('`else` must be the last branch of `match`', branch.pos)
-				return
+				else_branch = branch
+				has_else = true
 			}
-		}
-		mut err := false
-		mut err_details := 'match must be exhaustive'
-		unhandled := []string
-		match type_sym.info {
-			table.SumType {
-				for v in it.variants {
-					v_str := c.table.type_to_str(v)
-					if v_str !in branch_exprs {
-						err = true
-						unhandled << '`$v_str`'
-					}
-				}
-			}
-			table.Enum {
-				for v in it.vals {
-					if v !in branch_exprs {
-						err = true
-						unhandled << '`.$v`'
-					}
-				}
-			}
-			else {
-				println('else')
-				err = true
-			}
-		}
-		if err {
-			if unhandled.len > 0 {
-				err_details += ' (add match branches for: ' + unhandled.join(', ') + ' or `else {}` at the end)'
-			}
-			c.error(err_details, node.pos)
 		}
 	}
+	if is_exhaustive {
+		if has_else {
+			c.error('match expression is exhaustive, `else` is unnecessary', else_branch.pos)
+		}
+		return
+	}
+	if has_else {
+		return
+	}
+	mut err_details := 'match must be exhaustive'
+	if unhandled.len > 0 {
+		err_details += ' (add match branches for: ' + unhandled.join(', ') + ' or `else {}` at the end)'
+	} else {
+		err_details += ' (add `else {}` at the end)'
+	}
+	c.error(err_details, node.pos)
 }
 
 pub fn (mut c Checker) if_expr(node mut ast.IfExpr) table.Type {
