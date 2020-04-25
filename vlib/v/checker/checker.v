@@ -292,13 +292,15 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 				.array {
 					right_sym := c.table.get_type_symbol(right.array_info().elem_type)
 					if left.kind != right_sym.kind {
-						c.error('the data type on the left of `in` does not match the array item type', infix_expr.pos)
+						c.error('the data type on the left of `in` does not match the array item type', 
+							infix_expr.pos)
 					}
 				}
 				.map {
 					key_sym := c.table.get_type_symbol(right.map_info().key_type)
 					if left.kind != key_sym.kind {
-						c.error('the data type on the left of `in` does not match the map key type', infix_expr.pos)
+						c.error('the data type on the left of `in` does not match the map key type', 
+							infix_expr.pos)
 					}	
 				} 
 				.string {
@@ -351,11 +353,11 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		}
 		.amp, .pipe, .xor {
 			if !left.is_int() {
-			  c.error('left type of `${infix_expr.op.str()}` cannot be non-integer type $left.name',
-				  infix_expr.left.position())
+				c.error('left type of `${infix_expr.op.str()}` cannot be non-integer type $left.name',
+					infix_expr.left.position())
 			} else if !right.is_int() {
-			  c.error('right type of `${infix_expr.op.str()}` cannot be non-integer type $right.name',
-				  infix_expr.right.position())
+				c.error('right type of `${infix_expr.op.str()}` cannot be non-integer type $right.name',
+					infix_expr.right.position())
 			}
 		}
 		.mod {
@@ -363,9 +365,11 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
 			} else if !left.is_int() && right.is_int() {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-			} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] && !left.has_method(infix_expr.op.str()) {
+			} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] && 
+				!left.has_method(infix_expr.op.str()) {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-			} else if right.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] && !right.has_method(infix_expr.op.str()) {
+			} else if right.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] && 
+				!right.has_method(infix_expr.op.str()) {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
 			}
 		}
@@ -373,10 +377,12 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	}
 	// TODO: Absorb this block into the above single side check block to accelerate.
 	if left_type == table.bool_type && !(infix_expr.op in [.eq, .ne, .logical_or, .and]) {
-		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`', infix_expr.pos)
+		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`', 
+			infix_expr.pos)
 	} else if left_type == table.string_type && !(infix_expr.op in [.plus, .eq, .ne, .lt, .gt, .le, .ge]) {
 		// TODO broken !in
-		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `&&`', infix_expr.pos)
+		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `&&`',
+			infix_expr.pos)
 	}
 	// Dual sides check (compatibility check)
 	if !c.table.check(right_type, left_type) {
