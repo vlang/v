@@ -275,97 +275,106 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	left_type := c.expr(infix_expr.left)
 	infix_expr.left_type = left_type
 	c.expected_type = left_type
-	if infix_expr.op == .key_is {
-		type_expr := infix_expr.right as ast.Type
-		typ_sym := c.table.get_type_symbol(type_expr.typ)
-		if typ_sym.kind == .placeholder {
-			c.error('is: type `${typ_sym.name}` does not exist', type_expr.pos)
-		}
-		return table.bool_type
-	}
 	right_type := c.expr(infix_expr.right)
 	infix_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
-	if infix_expr.op == .left_shift {
-		if left.kind == .array {
-			// `array << elm`
-			// the expressions have different types (array_x and x)
-			if c.table.check(c.table.value_type(left_type), right_type) {
-				// []T << T
+	// Single side check
+	match infix_expr.op {
+		// Place these branches according to ops' usage frequency to accelerate.
+		// TODO: First branch includes ops where single side check is not needed, or needed but hasn't been implemented.
+		.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift { }
+		.key_in, .not_in {
+			match right.kind {
+				.array {
+					right_sym := c.table.get_type_symbol(right.array_info().elem_type)
+					if left.kind != right_sym.kind {
+						c.error('the data type on the left of `in` does not match the array item type', infix_expr.pos)
+					}
+				}
+				.map {
+					key_sym := c.table.get_type_symbol(right.map_info().key_type)
+					if left.kind != key_sym.kind {
+						c.error('the data type on the left of `in` does not match the map key type', infix_expr.pos)
+					}	
+				} 
+				.string {
+					if left.kind != .string {
+						c.error('the data type on the left of `in` must be a string', infix_expr.pos)
+					}
+				} 
+				else {
+					c.error('`in` can only be used with an array/map/string', infix_expr.pos)
+				}
+			}
+			return table.bool_type
+		}
+		.plus, .minus, .mul, .div {
+			if !left.is_number() && !left.has_method(infix_expr.op.str()) {
+				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
+			} else if !right.is_number() && !right.has_method(infix_expr.op.str()) {
+				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
+			}
+		}
+		.left_shift {
+			if left.kind == .array {
+				// `array << elm`
+				// the expressions have different types (array_x and x)
+				if c.table.check(c.table.value_type(left_type), right_type) {
+					// []T << T
+					return table.void_type
+				}
+				if right.kind == .array && c.table.check(c.table.value_type(left_type), c.table.value_type(right_type)) {
+					// []T << []T
+					return table.void_type
+				}
+				c.error('cannot shift type $right.name into $left.name', infix_expr.right.position())
+				return table.void_type
+			} else if !left.is_int() {
+				c.error('cannot shift type $right.name into non-integer type $left.name', infix_expr.left.position())
+				return table.void_type
+			} else if !right.is_int() {
+				c.error('cannot shift non-integer type $right.name into type $left.name', infix_expr.right.position())
 				return table.void_type
 			}
-			if right.kind == .array && c.table.check(c.table.value_type(left_type), c.table.value_type(right_type)) {
-				// []T << []T
-				return table.void_type
+		}
+		.key_is {
+			type_expr := infix_expr.right as ast.Type
+			typ_sym := c.table.get_type_symbol(type_expr.typ)
+			if typ_sym.kind == .placeholder {
+				c.error('is: type `${typ_sym.name}` does not exist', type_expr.pos)
 			}
-			c.error('cannot shift type $right.name into $left.name', infix_expr.right.position())
-			return table.void_type
-		} else if !left.is_int() {
-			c.error('cannot shift type $right.name into non-integer type $left.name', infix_expr.left.position())
-			return table.void_type
-		} else if !right.is_int() {
-			c.error('cannot shift non-integer type $right.name into type $left.name', infix_expr.right.position())
-			return table.void_type
+			return table.bool_type
 		}
-	}
-	if infix_expr.op in [.key_in, .not_in] {
-		if right.kind == .array {
-			right_sym := c.table.get_type_symbol(right.array_info().elem_type)
-			if left.kind != right_sym.kind {
-				c.error('the data type on the left of `in` does not match the array item type', infix_expr.pos)
+		.amp, .pipe, .xor {
+			if !left.is_int() {
+				c.error('left type of `${infix_expr.op.str()}` cannot be non-integer type $left.name', infix_expr.left.position())
 			}
-		} else if right.kind == .map {
-			key_sym := c.table.get_type_symbol(right.map_info().key_type)
-			if left.kind != key_sym.kind {
-				c.error('the data type on the left of `in` does not match the map key type', infix_expr.pos)
+			else if !right.is_int() {
+				c.error('right type of `${infix_expr.op.str()}` cannot be non-integer type $right.name', infix_expr.right.position())
 			}
-		} else if right.kind == .string {
-			if left.kind != .string {
-				c.error('the data type on the left of `in` must be a string', infix_expr.pos)
+		}
+		.mod {
+			if left.is_int() && !right.is_int() {
+				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
+			} else if !left.is_int() && right.is_int() {
+				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
+			} else if !left.is_int() && !left.has_method(infix_expr.op.str()) {
+				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
+			} else if !right.is_int() && !right.has_method(infix_expr.op.str()) {
+				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
 			}
-		} else {
-			c.error('`in` can only be used with an array/map/string', infix_expr.pos)
 		}
-		return table.bool_type
+		else { }
 	}
-	if infix_expr.op in [.amp, .pipe, .xor] {
-		if !left.is_int() {
-			c.error('left type of `${infix_expr.op.str()}` cannot be non-integer type $left.name', infix_expr.left.position())
-		}
-		else if !right.is_int() {
-			c.error('right type of `${infix_expr.op.str()}` cannot be non-integer type $right.name', infix_expr.right.position())
-		}
-	}
-	if infix_expr.op == .mod {
-		if left.is_int() && !right.is_int() {
-			c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
-		} else if !left.is_int() && right.is_int() {
-			c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-		} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
-			!left.has_method(infix_expr.op.str()) {
-			c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-		} else if right.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
-			!right.has_method(infix_expr.op.str()) {
-			c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
-		}
-	}
-	if infix_expr.op in [.plus, .minus, .mul, .div] {
-		if left.kind in [.array, .array_fixed, .map, .struct_] && !left.has_method(infix_expr.op.str()) {
-			c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-		} else if right.kind in [.array, .array_fixed, .map, .struct_] && !right.has_method(infix_expr.op.str()) {
-			c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
-		}
-	}
+	// TODO: Absorb this block into the above single side check block to accelerate.
 	if left_type == table.bool_type && !(infix_expr.op in [.eq, .ne, .logical_or, .and]) {
-		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
-			infix_expr.pos)
-	} else if left_type == table.string_type && !(infix_expr.op in [.plus, .eq, .ne, .lt, .gt,
-		.le, .ge]) {
+		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`', infix_expr.pos)
+	} else if left_type == table.string_type && !(infix_expr.op in [.plus, .eq, .ne, .lt, .gt, .le, .ge]) {
 		// TODO broken !in
-		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `&&`',
-			infix_expr.pos)
+		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `&&`', infix_expr.pos)
 	}
+	// Dual sides check (compatibility check)
 	if !c.table.check(right_type, left_type) {
 		// for type-unresolved consts
 		if left_type == table.void_type || right_type == table.void_type {
@@ -373,10 +382,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		}
 		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`', infix_expr.pos)
 	}
-	if infix_expr.op.is_relational() {
-		return table.bool_type
-	}
-	return left_type
+	return if infix_expr.op.is_relational() { table.bool_type } else { left_type }
 }
 
 fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
