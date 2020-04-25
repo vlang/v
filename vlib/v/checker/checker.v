@@ -155,6 +155,40 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 	return has_main_fn
 }
 
+pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
+	match node {
+		ast.AliasTypeDecl {
+			typ_sym := c.table.get_type_symbol(it.parent_type)
+			if typ_sym.kind == .placeholder {
+				c.error("type `$typ_sym.name` doesn't exist", it.pos)
+			}
+		}
+		ast.FnTypeDecl {
+			typ_sym := c.table.get_type_symbol(it.typ)
+			fn_typ_info := typ_sym.info as table.FnType
+			fn_info := fn_typ_info.func
+			ret_sym := c.table.get_type_symbol(fn_info.return_type)
+			if ret_sym.kind == .placeholder {
+				c.error("type `$ret_sym.name` doesn't exist", it.pos)
+			}
+			for arg in fn_info.args {
+				arg_sym := c.table.get_type_symbol(arg.typ)
+				if arg_sym.kind == .placeholder {
+					c.error("type `$arg_sym.name` doesn't exist", it.pos)
+				}
+			}
+		}
+		ast.SumTypeDecl {
+			for typ in it.sub_types {
+				typ_sym := c.table.get_type_symbol(typ)
+				if typ_sym.kind == .placeholder {
+					c.error("type `$typ_sym.name` doesn't exist", it.pos)
+				}
+			}
+		}
+	}
+}
+
 pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 	splitted_full_name := decl.name.split('.')
 	is_builtin := splitted_full_name[0] == 'builtin'
@@ -1241,6 +1275,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.StructDecl {
 			c.struct_decl(it)
+		}
+		ast.TypeDecl {
+			c.type_decl(it)
 		}
 		ast.UnsafeStmt {
 			c.stmts(it.stmts)
