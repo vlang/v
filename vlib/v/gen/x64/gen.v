@@ -602,9 +602,25 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
 	for i, ident in node.left {
 		match node.right[0] {
-			ast.IntegerLiteral { g.allocate_var(ident.name, 4, it.val.int()) }
-			else {}
+			ast.IntegerLiteral {
+				g.allocate_var(ident.name, 4, it.val.int())
+			}
+			ast.InfixExpr {
+				g.infix_expr(it)
+				g.allocate_var(ident.name, 4, 0)
+			}
+			else {
+				verror('assign_stmt unhandled expr')
+			}
 		}
+	}
+}
+
+fn (mut g Gen) infix_expr(node ast.InfixExpr) {
+	println('infix expr op=$node.op')
+	match node.op {
+		.plus {}
+		else {}
 	}
 }
 
