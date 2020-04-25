@@ -226,14 +226,15 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	p.next() // `interface`
 	interface_name := p.check_name()
-	//println('interface decl $interface_name')
+	// println('interface decl $interface_name')
 	p.check(.lcbr)
 	// Declare the type
 	t := table.TypeSymbol{
 		kind: .interface_
 		name: interface_name
-		info: table.Struct{
-			//is_interface: true
+		info: table.Interface{
+			gen_types: []
+			foo: 'foo'
 		}
 	}
 	typ := p.table.register_type_symbol(t)
@@ -260,7 +261,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			method.return_type = p.parse_type()
 		}
 		methods << method
-		//println('register method $name')
+		// println('register method $name')
 		ts.register_method(table.Fn{
 			name: name
 			args: args

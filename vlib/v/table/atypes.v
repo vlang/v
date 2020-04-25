@@ -214,9 +214,10 @@ pub const (
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64',
 		'u16'
-	'u32', 'u64', 'f32', 'f64', 'string', 'ustring', 'char', 'byte', 'bool', 'none', 'array',
-		'array_fixed', 'map'
-	'struct', 'mapnode', 'size_t']
+	'u32'
+	'u64', 'f32', 'f64', 'string', 'ustring', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed'
+	'map', 'struct'
+	'mapnode', 'size_t']
 )
 
 pub struct MultiReturn {
@@ -499,6 +500,7 @@ pub mut:
 
 pub struct Interface {
 	gen_types []string
+	foo       string
 }
 
 pub struct Enum {

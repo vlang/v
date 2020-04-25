@@ -153,11 +153,11 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	//
 	g.finish()
-	return g.hashes() + g.comptime_defines.str() + '\n// V typedefs:\n' + g.typedefs.str() + '\n// V typedefs2:\n' + g.typedefs2.str() +
-		'\n// V cheaders:\n' + g.cheaders.str() + '\n// V includes:\n' + g.includes.str() + '\n// V definitions:\n' +
-		g.definitions.str() + g.interface_table() + '\n// V gowrappers:\n' + g.gowrappers.str() + '\n// V stringliterals:\n' +
-		g.stringliterals.str() + '\n// V auto str functions:\n' + g.auto_str_funcs.str() + '\n// V out\n' +
-		g.out.str() + '\n// THE END.'
+	return g.hashes() + g.comptime_defines.str() + '\n// V typedefs:\n' + g.typedefs.str() +
+		'\n// V typedefs2:\n' + g.typedefs2.str() + '\n// V cheaders:\n' + g.cheaders.str() + '\n// V includes:\n' +
+		g.includes.str() + '\n// V definitions:\n' + g.definitions.str() + g.interface_table() + '\n// V gowrappers:\n' +
+		g.gowrappers.str() + '\n// V stringliterals:\n' + g.stringliterals.str() + '\n// V auto str functions:\n' +
+		g.auto_str_funcs.str() + '\n// V out\n' + g.out.str() + '\n// THE END.'
 }
 
 pub fn (g Gen) hashes() string {
@@ -189,7 +189,6 @@ pub fn (mut g Gen) init() {
 	if g.pref.build_mode != .build_module {
 		g.stringliterals.writeln('void vinit_string_literals(){')
 	}
-
 	if g.pref.compile_defines_all.len > 0 {
 		g.comptime_defines.writeln('// V compile time defines by -d or -define flags:')
 		g.comptime_defines.writeln('//     All custom defines      : ' + g.pref.compile_defines_all.join(','))
@@ -2313,7 +2312,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.write('%"PRId64"')
 		} else if node.expr_types[i] == table.u64_type {
 			g.write('%"PRIu64"')
-		} else if g.typ( node.expr_types[i] ).starts_with('Option') {
+		} else if g.typ(node.expr_types[i]).starts_with('Option') {
 			g.write('%.*s')
 		} else {
 			g.write('%"PRId32"')
@@ -2405,7 +2404,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(',0).str')
-			} else if g.typ(  node.expr_types[i] ).starts_with('Option') {
+			} else if g.typ(node.expr_types[i]).starts_with('Option') {
 				str_fn_name := 'Option_str'
 				g.write('${str_fn_name}(*(Option*)&')
 				g.expr(expr)
@@ -2560,34 +2559,84 @@ fn op_to_fn_name(name string) string {
 fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 	match name {
 		// platforms/os-es:
-		'windows' { return '_WIN32' }
-		'mac' { return '__APPLE__' }
-		'macos' { return '__APPLE__' }
-		'linux' { return '__linux__' }
-		'freebsd' { return '__FreeBSD__' }
-		'openbsd' { return '__OpenBSD__' }
-		'netbsd' { return '__NetBSD__' }
-		'dragonfly' { return '__DragonFly__' }
-		'android' { return '__ANDROID__' }
-		'solaris' { return '__sun' }
-		'haiku' { return '__haiku__' }
-		'linux_or_macos' { return '' }
+		'windows' {
+			return '_WIN32'
+		}
+		'mac' {
+			return '__APPLE__'
+		}
+		'macos' {
+			return '__APPLE__'
+		}
+		'linux' {
+			return '__linux__'
+		}
+		'freebsd' {
+			return '__FreeBSD__'
+		}
+		'openbsd' {
+			return '__OpenBSD__'
+		}
+		'netbsd' {
+			return '__NetBSD__'
+		}
+		'dragonfly' {
+			return '__DragonFly__'
+		}
+		'android' {
+			return '__ANDROID__'
+		}
+		'solaris' {
+			return '__sun'
+		}
+		'haiku' {
+			return '__haiku__'
+		}
+		'linux_or_macos' {
+			return ''
+		}
 		//
-		'js' { return '_VJS' }
+		'js' {
+			return '_VJS'
+		}
 		// compilers:
-		'tinyc' { return '__TINYC__' }
-		'clang' { return '__clang__' }
-		'mingw' { return '__MINGW32__' }
-		'msvc' { return '_MSC_VER' }
+		'tinyc' {
+			return '__TINYC__'
+		}
+		'clang' {
+			return '__clang__'
+		}
+		'mingw' {
+			return '__MINGW32__'
+		}
+		'msvc' {
+			return '_MSC_VER'
+		}
 		// other:
-		'debug' { return '_VDEBUG' }
-		'glibc' { return '__GLIBC__' }
-		'prealloc' { return 'VPREALLOC' }
-		'no_bounds_checking' { return 'CUSTOM_DEFINE_no_bounds_checking' }
-		'x64' { return 'TARGET_IS_64BIT' }
-		'x32' { return 'TARGET_IS_32BIT' }
-		'little_endian' { return 'TARGET_ORDER_IS_LITTLE' }
-		'big_endian' { return 'TARGET_ORDER_IS_BIG' }
+		'debug' {
+			return '_VDEBUG'
+		}
+		'glibc' {
+			return '__GLIBC__'
+		}
+		'prealloc' {
+			return 'VPREALLOC'
+		}
+		'no_bounds_checking' {
+			return 'CUSTOM_DEFINE_no_bounds_checking'
+		}
+		'x64' {
+			return 'TARGET_IS_64BIT'
+		}
+		'x32' {
+			return 'TARGET_IS_32BIT'
+		}
+		'little_endian' {
+			return 'TARGET_ORDER_IS_LITTLE'
+		}
+		'big_endian' {
+			return 'TARGET_ORDER_IS_BIG'
+		}
 		else {
 			if is_comptime_optional || g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all {
 				return 'CUSTOM_DEFINE_${name}'
@@ -3129,6 +3178,7 @@ fn (v &Gen) interface_table() string {
 			continue
 		}
 		info := t.info as table.Interface
+		println(info.gen_types)
 		// interface_name is for example Speaker
 		interface_name := t.name
 		mut methods := ''

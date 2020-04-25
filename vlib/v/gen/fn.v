@@ -203,7 +203,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.left)
 		g.write('._interface_idx][1]))(')
 		g.expr(node.left)
-		g.writeln('._object );')
+		g.write('._object)')
 		return
 	}
 	// rec_sym := g.table.get_type_symbol(node.receiver_type)

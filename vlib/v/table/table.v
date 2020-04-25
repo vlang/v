@@ -119,13 +119,11 @@ pub fn (s &TypeSymbol) has_field(name string) bool {
 
 pub fn (s &TypeSymbol) find_field(name string) ?Field {
 	match s.info {
-		Struct {
-			for field in it.fields {
+		Struct { for field in it.fields {
 				if field.name == name {
 					return field
 				}
-			}
-		}
+			} }
 		else {}
 	}
 	return none
@@ -390,7 +388,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	return t.register_type_symbol(mr_type)
 }
 
-pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool) int {
+pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon, has_decl bool) int {
 	name := if f.name.len == 0 { 'anon_fn_$f.signature()' } else { f.name }
 	return t.register_type_symbol(TypeSymbol{
 		kind: .function
@@ -485,6 +483,16 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// # NOTE: use symbols from this point on for perf
 	got_type_sym := t.get_type_symbol(got)
 	exp_type_sym := t.get_type_symbol(expected)
+	//
+	if exp_type_sym.kind == .interface_ {
+		info := got_type_sym.info as Interface
+		println('gen_types before')
+		println(info.gen_types)
+		info.gen_types << got_type_sym.name
+		println('adding gen_type $got_type_sym.name')
+		println(info.gen_types)
+		return true
+	}
 	// allow enum value to be used as int
 	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) || (exp_type_sym.is_int() &&
 		got_type_sym.kind == .enum_) {
