@@ -2965,7 +2965,7 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 
 [inline]
 fn styp_to_str_fn_name(styp string) string {
-	return styp + '_str'
+	return styp.replace('*', '_ptr') + '_str'
 }
 
 [inline]
