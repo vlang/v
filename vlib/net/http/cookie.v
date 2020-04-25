@@ -266,9 +266,6 @@ pub fn (c &Cookie) str() string {
 		.same_site_strict_mode {
 			b.write('; SameSite=Strict')
 		}
-		else {
-			// Do nothing
-		}
 	}
 	return b.str()
 }
