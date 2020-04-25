@@ -334,7 +334,7 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 		}
 		// A new Unicode character. Load it and cache it.
 		if !found && _rune.len > 0 && _rune[0] > 32 {
-			c := _rune[0]
+			//c := _rune[0]
 			//println('cant draw rune "$_rune" code=$c, loading')
 			//continue
 			ch = ft_load_char(ctx.face, _rune.utf32_code())
