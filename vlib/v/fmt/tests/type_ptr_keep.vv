@@ -5,9 +5,9 @@ const (
 )
 
 fn test_type_ptr() {
-	a := &Test{}
-	b := []&Test
-	c := &[]&Test
+	_ := &Test{}
+	_ := []&Test
+	_ := &[]&Test
 }
 
 struct Test {

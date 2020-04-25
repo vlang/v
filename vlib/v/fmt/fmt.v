@@ -464,25 +464,29 @@ fn (mut f Fmt) expr(node ast.Expr) {
 				// type_sym := f.table.get_type_symbol(it.typ)
 				f.write('[')
 				mut inc_indent := false
-				mut line_nr := node.position().line_nr // to have the same newlines between array elements
+				mut last_line_nr := node.position().line_nr // to have the same newlines between array elements
 				for i, expr in it.exprs {
-					pos := expr.position()
-					if i == 0 && line_nr < pos.line_nr {
+					line_nr := expr.position().line_nr
+					if last_line_nr < line_nr {
+						if !inc_indent {
+							f.indent++
+							inc_indent = true
+						}
 						f.writeln('')
-						f.indent++
-						inc_indent = true
 					}
-					if i > 0 && it.exprs.len > 1 {
-						f.wrap_long_line()
+					is_new_line := last_line_nr < line_nr || f.wrap_long_line()
+					if !is_new_line && i > 0 {
+						f.write(' ')
 					}
 					f.expr(expr)
-					if line_nr < pos.line_nr {
-						// Previous element was on a different line, add a newline
-						f.writeln('')
-					} else if i < it.exprs.len - 1 {
-						f.write(', ')
+					if i == it.exprs.len - 1 {
+						if is_new_line {
+							f.writeln('')
+						}
+					} else {
+						f.write(',')
 					}
-					line_nr = pos.line_nr
+					last_line_nr = line_nr
 				}
 				if inc_indent {
 					f.indent--
@@ -710,14 +714,16 @@ fn (mut f Fmt) expr(node ast.Expr) {
 	}
 }
 
-fn (mut f Fmt) wrap_long_line() {
-	if f.line_len > max_len {
-		if f.out.buf[f.out.buf.len - 1] == ` ` {
-			f.out.go_back(1)
-		}
-		f.write('\n' + tabs[f.indent + 1])
-		f.line_len = 0
+fn (mut f Fmt) wrap_long_line() bool {
+	if f.line_len <= max_len {
+		return false
 	}
+	if f.out.buf[f.out.buf.len - 1] == ` ` {
+		f.out.go_back(1)
+	}
+	f.write('\n' + tabs[f.indent + 1])
+	f.line_len = 0
+	return true
 }
 
 fn (mut f Fmt) call_args(args []ast.CallArg) {
