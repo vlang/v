@@ -18,7 +18,6 @@ const (
 		'vlib/v/tests/type_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
 		'vlib/v/tests/pointers_str_test.v',
-		'vlib/net/http/cookie_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/sqlite/sqlite_test.v',
 
