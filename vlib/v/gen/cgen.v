@@ -573,11 +573,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Import {}
 		ast.InterfaceDecl {
-			g.writeln('//interface')
-			g.writeln('typedef struct {')
-			g.writeln('\tvoid* _object;')
-			g.writeln('\tint _interface_idx;')
-			g.writeln('} $it.name;')
+			g.definitions.writeln('//interface')
+			g.definitions.writeln('typedef struct {')
+			g.definitions.writeln('\tvoid* _object;')
+			g.definitions.writeln('\tint _interface_idx;')
+			g.definitions.writeln('} $it.name;')
 		}
 		ast.Module {}
 		ast.Return {
@@ -1301,7 +1301,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 				g.write(', ')
 			}
 			g.is_assign_lhs = false
-			//right_sym := g.table.get_type_symbol(node.right_type)
+			// right_sym := g.table.get_type_symbol(node.right_type)
 			// left_sym := g.table.get_type_symbol(node.left_type)
 			mut cloned := false
 			// !g.is_array_set

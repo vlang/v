@@ -249,11 +249,22 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	typ_sym := g.table.get_type_symbol(node.receiver_type)
 	mut receiver_name := typ_sym.name
 	if typ_sym.kind == .interface_ {
+		// Find the index of the method
+		mut idx := -1
+		for i, method in typ_sym.methods {
+			if method.name == node.name {
+				idx = i
+			}
+		}
+		if idx == -1 {
+			verror('method_call: cannot find interface method index')
+		}
+		sret_type := g.typ(node.return_type)
 		g.writeln('// interface method call')
 		// `((void (*)())(Speaker_name_table[s._interface_idx][1]))(s._object);`
-		g.write('((void (*)())(${receiver_name}_name_table[')
+		g.write('(($sret_type (*)())(${receiver_name}_name_table[')
 		g.expr(node.left)
-		g.write('._interface_idx][1]))(')
+		g.write('._interface_idx][$idx]))(')
 		g.expr(node.left)
 		g.write('._object)')
 		return
@@ -443,16 +454,32 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 	is_forwarding_varg := args.len > 0 && args[args.len - 1].typ.flag_is(.variadic)
 	gen_vargs := is_variadic && !is_forwarding_varg
 	mut arg_no := 0
-	for arg in args {
+	for i, arg in args {
 		if gen_vargs && arg_no == expected_types.len - 1 {
 			break
 		}
+		// if arg.typ.name.starts_with('I') {
+		// }
+		mut is_interface := false
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		// when these are fixed we wont need this check
 		if arg_no < expected_types.len {
+			if expected_types[arg_no] != 0 {
+				// Cast a type to interface
+				// `foo(dog)` => `foo(I_Dog_to_Animal(dog))`
+				exp_sym := g.table.get_type_symbol(expected_types[arg_no])
+				sym := g.table.get_type_symbol(arg.typ)
+				if exp_sym.kind == .interface_ {
+					g.write('I_${sym.name}_to_${exp_sym.name}(')
+					is_interface = true
+				}
+			}
 			g.ref_or_deref_arg(arg, expected_types[arg_no])
 		} else {
 			g.expr(arg.expr)
+		}
+		if is_interface {
+			g.write(')')
 		}
 		if arg_no < args.len - 1 || gen_vargs {
 			g.write(', ')
