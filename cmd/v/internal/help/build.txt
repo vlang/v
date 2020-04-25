@@ -41,11 +41,7 @@ The build flags are shared by the build and run commands:
       Enable the specified experiment.
       Currently, the only experiment available is: `prealloc`
 
-   -full-rebuild
-      Force a full rebuild of all dependencies.
-      Enabled by default currently until caching works reliably.
-
-   -g
+   -cg
       Compile the executable in debug mode, allowing code to be debugged more easily.
 
    -o <output>, -output <output>
