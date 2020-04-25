@@ -2434,7 +2434,7 @@ fn (mut g Gen) gen_filter(node ast.CallExpr) {
 	g.write('\nint ${tmp}_len = ')
 	g.expr(node.left)
 	g.writeln('.len;')
-	g.writeln('$styp $tmp = new_array(0, ${tmp}_len, sizeof($elem_type_str));')
+	g.writeln('$styp $tmp = __new_array(0, ${tmp}_len, sizeof($elem_type_str));')
 	g.writeln('for (int i = 0; i < ${tmp}_len; i++) {')
 	g.write('  $elem_type_str it = (($elem_type_str*) ')
 	g.expr(node.left)
@@ -2656,7 +2656,7 @@ fn (g Gen) type_default(typ table.Type) string {
 	if sym.kind == .array {
 		elem_sym := g.table.get_type_symbol(sym.array_info().elem_type)
 		elem_type_str := elem_sym.name.replace('.', '__')
-		return 'new_array(0, 1, sizeof($elem_type_str))'
+		return '__new_array(0, 1, sizeof($elem_type_str))'
 	}
 	if sym.kind == .map {
 		value_type_str := g.typ(sym.map_info().value_type)
