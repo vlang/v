@@ -247,23 +247,7 @@ fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
-			// println('$it.name find_comment($it.pos.line_nr)')
-			// f.find_comment(it.pos.line_nr)
-			s := it.str(f.table)
-			// f.write(it.str(f.table))
-			f.write(s.replace(f.cur_mod + '.', '')) // `Expr` instead of `ast.Expr` in mod ast
-			if !it.is_c && !it.is_js {
-				f.writeln(' {')
-				f.stmts(it.stmts)
-				f.writeln('}\n')
-			} else {
-				f.writeln('\n')
-			}
-			// Mark all function's used type so that they are not removed from imports
-			for arg in it.args {
-				f.mark_types_module_as_used(arg.typ)
-			}
-			f.mark_types_module_as_used(it.return_type)
+			f.fn_decl(it)
 		}
 		ast.ForCStmt {
 			f.write('for ')
@@ -468,6 +452,9 @@ fn (f &Fmt) type_to_str(t table.Type) string {
 
 fn (mut f Fmt) expr(node ast.Expr) {
 	match node {
+		ast.AnonFn {
+			f.fn_decl(it.decl)
+		}
 		ast.ArrayInit {
 			if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
 				// `x := []string`
@@ -780,6 +767,28 @@ fn (mut f Fmt) comment(node ast.Comment) {
 		f.empty_line = false
 	}
 	f.writeln('*/')
+}
+
+fn (mut f Fmt) fn_decl(node ast.FnDecl) {
+	// println('$it.name find_comment($it.pos.line_nr)')
+	// f.find_comment(it.pos.line_nr)
+	s := node.str(f.table)
+	f.write(s.replace(f.cur_mod + '.', '')) // `Expr` instead of `ast.Expr` in mod ast
+	if !node.is_c && !node.is_js {
+		f.writeln(' {')
+		f.stmts(node.stmts)
+		f.write('}')
+		if !node.is_anon {
+			f.writeln('\n')
+		}
+	} else {
+		f.writeln('\n')
+	}
+	// Mark all function's used type so that they are not removed from imports
+	for arg in node.args {
+		f.mark_types_module_as_used(arg.typ)
+	}
+	f.mark_types_module_as_used(node.return_type)
 }
 
 // foo.bar.fn() => bar.fn()
