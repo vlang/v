@@ -37,6 +37,14 @@ fn test_all() {
 		}
 		expected = expected.trim_space().trim('\n').replace('\r\n', '\n')
 		found := res.output.trim_space().trim('\n').replace('\r\n', '\n')
+		if expected.contains('V panic:') {
+			// panic include backtraces, so can't do char by char comparison
+			panic_msg := expected.find_between('V panic:', '\n').trim_space()
+			if found.contains('V panic:') && found.contains(panic_msg) {
+				println(term.green('OK (panic)'))
+				continue
+			}
+		}
 		if expected != found {
 			println(term.red('FAIL'))
 			// println(x.output.limit(30))
@@ -48,8 +56,7 @@ fn test_all() {
 			println(found)
 			println('============\n')
 			total_errors++
-		}
-		else {
+		} else {
 			println(term.green('OK'))
 		}
 	}

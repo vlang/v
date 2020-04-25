@@ -104,6 +104,24 @@ fn test_in_expression_with_string() {
 	assert a == false
 }
 
+fn test_in_expression_in_map() {
+	m := {
+		'one': 1
+		'two': 2
+		'three': 3
+	}
+	assert 'one' in m
+	assert 'four' !in m
+}
+
+fn test_in_expression_in_string() {
+	s := 'abcd'
+	assert 'a' in s
+	assert 'ab' in s
+	assert 'abcd' in s
+	assert 'dbca' !in s
+}
+
 fn test_optimized_in_expression() {
 	mut a := false
 	a = true && 2 in [1, 2]

@@ -46,19 +46,19 @@ pub fn (types []Type) contains(typ Type) bool {
 
 // return TypeSymbol idx for `t`
 [inline]
-pub fn type_idx(t Type) int {
+pub fn (t Type) idx() int {
 	return u16(t) & 0xffff
 }
 
 // return nr_muls for `t`
 [inline]
-pub fn type_nr_muls(t Type) int {
+pub fn (t Type) nr_muls() int {
 	return (int(t) >> 16) & 0xff
 }
 
 // return true if `t` is a pointer (nr_muls>0)
 [inline]
-pub fn type_is_ptr(t Type) bool {
+pub fn (t Type) is_ptr() bool {
 	return (int(t) >> 16) & 0xff > 0
 }
 
@@ -73,7 +73,7 @@ pub fn type_set_nr_muls(t Type, nr_muls int) Type {
 
 // increments nr_nuls on `t` and return it
 [inline]
-pub fn type_to_ptr(t Type) Type {
+pub fn (t Type) to_ptr() Type {
 	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 255 {
 		panic('type_to_pre: nr_muls is already at max of 255')
@@ -83,7 +83,7 @@ pub fn type_to_ptr(t Type) Type {
 
 // decrement nr_muls on `t` and return it
 [inline]
-pub fn type_deref(t Type) Type {
+pub fn (t Type) deref() Type {
 	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 0 {
 		panic('deref: type `$t` is not a pointer')
@@ -93,19 +93,19 @@ pub fn type_deref(t Type) Type {
 
 // return the flag that is set on `t`
 [inline]
-pub fn type_flag(t Type) TypeFlag {
+pub fn (t Type) flag() TypeFlag {
 	return (int(t) >> 24) & 0xff
 }
 
 // set the flag on `t` to `flag` and return it
 [inline]
-pub fn type_set(t Type, flag TypeFlag) Type {
+pub fn (t Type) set_flag(flag TypeFlag) Type {
 	return (int(flag) << 24) | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
 }
 
 // return true if the flag set on `t` is `flag`
 [inline]
-pub fn type_is(t Type, flag TypeFlag) bool {
+pub fn (t Type) flag_is(flag TypeFlag) bool {
 	return (int(t) >> 24) & 0xff == flag
 }
 
@@ -130,8 +130,19 @@ pub fn new_type_ptr(idx, nr_muls int) Type {
 	return (nr_muls << 16) | u16(idx)
 }
 
-pub fn is_number(typ Type) bool {
-	return type_idx(typ) in number_type_idxs
+[inline]
+pub fn (typ Type) is_float() bool {
+	return typ.idx() in float_type_idxs
+}
+
+[inline]
+pub fn (typ Type) is_int() bool {
+	return typ.idx() in integer_type_idxs
+}
+
+[inline]
+pub fn (typ Type) is_number() bool {
+	return typ.idx() in number_type_idxs
 }
 
 pub const (
@@ -203,9 +214,10 @@ pub const (
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64',
 		'u16'
-	'u32', 'u64', 'f32', 'f64', 'string', 'ustring', 'char', 'byte', 'bool', 'none', 'array',
-		'array_fixed', 'map'
-	'struct', 'mapnode', 'size_t']
+	'u32'
+	'u64', 'f32', 'f64', 'string', 'ustring', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed'
+	'map', 'struct'
+	'mapnode', 'size_t']
 )
 
 pub struct MultiReturn {
@@ -488,6 +500,7 @@ pub mut:
 
 pub struct Interface {
 	gen_types []string
+	foo       string
 }
 
 pub struct Enum {
@@ -567,11 +580,11 @@ pub fn (table &Table) type_to_str(t Type) string {
 			res = '[]' + res
 		}
 	}
-	nr_muls := type_nr_muls(t)
+	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
-	if type_is(t, .optional) {
+	if t.flag_is(.optional) {
 		res = '?' + res
 	}
 	/*

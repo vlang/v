@@ -52,7 +52,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	/*
 	if it.is_method {
 		mut styp := g.typ(it.receiver.typ)
-		// if table.type_nr_muls(it.receiver.typ) > 0 {
+		// if it.receiver.typ.nr_muls() > 0 {
 		// if it.rec_mut {
 		// styp += '*'
 		// }
@@ -153,7 +153,7 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) {
 			g.write(arg_type_name)
 			g.definitions.write(arg_type_name)
 		} else {
-			mut nr_muls := table.type_nr_muls(arg.typ)
+			mut nr_muls := arg.typ.nr_muls()
 			s := arg_type_name + ' ' + arg.name
 			if arg.is_mut {
 				// mut arg needs one *
@@ -203,7 +203,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.left)
 		g.write('._interface_idx][1]))(')
 		g.expr(node.left)
-		g.writeln('._object );')
+		g.write('._object)')
 		return
 	}
 	// rec_sym := g.table.get_type_symbol(node.receiver_type)
@@ -235,17 +235,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
 	// }
 	g.write('${name}(')
-	if table.type_is_ptr(node.receiver_type) && !table.type_is_ptr(node.left_type) {
+	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
 		g.write('&')
-	} else if !table.type_is_ptr(node.receiver_type) && table.type_is_ptr(node.left_type) {
+	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() {
 		g.write('/*rec*/*')
 	}
 	g.expr(node.left)
-	is_variadic := node.expected_arg_types.len > 0 && table.type_is(node.expected_arg_types[node.expected_arg_types.len -
-		1], .variadic)
+	is_variadic := node.expected_arg_types.len > 0 && 
+		node.expected_arg_types[node.expected_arg_types.len -1].flag_is(.variadic)
 	if node.args.len > 0 || is_variadic {
 		g.write(', ')
 	}
@@ -275,7 +275,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// will be `0` for `foo()`
 	if node.left_type != 0 {
 		g.expr(node.left)
-		if table.type_is_ptr(node.left_type) {
+		if node.left_type.is_ptr() {
 			g.write('->')
 		} else {
 			g.write('.')
@@ -319,12 +319,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
 		sym := g.table.get_type_symbol(typ)
-		if table.type_is_ptr(typ) {
+		if typ.is_ptr() {
 			styp = styp.replace('*', '')
 		}
 		mut str_fn_name := styp_to_str_fn_name(styp)
 		g.gen_str_for_type(sym, styp, str_fn_name)
-		if g.autofree && !table.type_is(typ, .optional) {
+		if g.autofree && !typ.flag_is(.optional) {
 			// Create a temporary variable so that the value can be freed
 			tmp := g.new_tmp_var()
 			// tmps << tmp
@@ -338,7 +338,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				ast.Ident { true }
 				else { false }
 			}
-			if table.type_is_ptr(typ) && sym.kind != .struct_ {
+			if typ.is_ptr() && sym.kind != .struct_ {
 				// ptr_str() for pointers
 				styp = 'ptr'
 				str_fn_name = 'ptr_str'
@@ -350,7 +350,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					// when no var, print string directly
 					g.write('${print_method}(tos3("')
 				}
-				if table.type_is_ptr(typ) {
+				if typ.is_ptr() {
 					// dereference
 					g.write('*')
 				}
@@ -361,7 +361,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				}
 			} else {
 				g.write('${print_method}(${str_fn_name}(')
-				if table.type_is_ptr(typ) && sym.kind == .struct_ {
+				if typ.is_ptr() && sym.kind == .struct_ {
 					// dereference
 					g.write('*')
 				}
@@ -388,9 +388,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 }
 
 fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
-	is_variadic := expected_types.len > 0 && table.type_is(expected_types[expected_types.len -
-		1], .variadic)
-	is_forwarding_varg := args.len > 0 && table.type_is(args[args.len - 1].typ, .variadic)
+	is_variadic := expected_types.len > 0 &&
+		expected_types[expected_types.len - 1].flag_is(.variadic)
+	is_forwarding_varg := args.len > 0 && args[args.len - 1].typ.flag_is(.variadic)
 	gen_vargs := is_variadic && !is_forwarding_varg
 	mut arg_no := 0
 	for arg in args {
@@ -434,8 +434,8 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 
 [inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
-	arg_is_ptr := table.type_is_ptr(expected_type) || table.type_idx(expected_type) in table.pointer_type_idxs
-	expr_is_ptr := table.type_is_ptr(arg.typ) || table.type_idx(arg.typ) in table.pointer_type_idxs
+	arg_is_ptr := expected_type.is_ptr() || expected_type.idx() in table.pointer_type_idxs
+	expr_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in table.pointer_type_idxs
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
 	} else if arg_is_ptr && !expr_is_ptr {

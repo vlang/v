@@ -133,10 +133,11 @@ pub fn new_shader(name string) Shader {
 	gl.shader_source(vertex_shader, 1, vertex_src, 0)
 	gl.compile_shader(vertex_shader)
 	if gl.shader_compile_status(vertex_shader) == 0 {
-		log := gl.shader_info_log(vertex_shader)
-		println('shader $vertex_shader compilation failed')
-		println('shader source = $vertex_src')
-		println('shader failed to compile')
+		cerror := gl.shader_info_log(vertex_shader)
+		eprintln('vertex ${vertex_shader} shader compilation failed')
+		eprintln('shader source = ${vertex_src}')
+		eprintln('failed to compile, with error')
+		eprintln(cerror)
 		exit(1)
 	}
 	// fragment shader
@@ -145,8 +146,11 @@ pub fn new_shader(name string) Shader {
 	gl.shader_source(fragment_shader, 1, fragment_src, 0)
 	gl.compile_shader(fragment_shader)
 	if gl.shader_compile_status(fragment_shader) == 0 {
-		println('fragment $fragment_shader shader compilation failed')
-		println('shader failed to compile')
+		cerror := gl.shader_info_log(fragment_shader)
+		eprintln('fragment ${fragment_shader} shader compilation failed')
+		eprintln('shader source = ${fragment_src}')
+		eprintln('failed to compile, with error')
+		eprintln(cerror)
 		exit(1)
 	}
 	// link shaders
@@ -157,10 +161,12 @@ pub fn new_shader(name string) Shader {
 	// check for linking errors
 	success := gl.get_program_link_status(shader_program)
 	if success == 0 {
-		println('shader compilation failed')
-		println('vertex source = $vertex_src')
-		println('fragment source = $fragment_src')
-		println('shader failed to compile')
+		cerror := gl.shader_info_log(shader_program)
+		eprintln('shader program linking failed')
+		eprintln('vertex source = ${vertex_src}')
+		eprintln('fragment source = ${fragment_src}')
+		eprintln('failed to compile, with error')
+		eprintln(cerror)
 		exit(1)
 	}
 	shader := Shader {

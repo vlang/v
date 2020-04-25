@@ -107,10 +107,6 @@ pub fn read_set_cookies(h map[string][]string) []&Cookie {
 					c.http_only = true
 					continue
 				}
-				'httponly' {
-					c.http_only = true
-					continue
-				}
 				'domain' {
 					c.domain = val
 					continue

@@ -18,6 +18,7 @@ const (
 		'vlib/v/tests/pointers_test.v',
 		'vlib/v/tests/string_interpolation_variadic_test.v',
 		'vlib/v/tests/type_test.v',
+		'vlib/v/tests/interface_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
 		'vlib/v/tests/pointers_str_test.v',
 		'vlib/net/http/cookie_test.v',
