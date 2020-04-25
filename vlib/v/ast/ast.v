@@ -428,14 +428,9 @@ pub:
 	is_else bool
 }
 
-pub struct CompIf {
-pub:
-	val        string
-	stmts      []Stmt
-	is_not     bool
-	pos        token.Position
-mut:
+
 /*
+CompIf.is_opt:
 `$if xyz? {}` => this compile time `if` is optional,
 and .is_opt reflects the presence of ? at the end.
 When .is_opt is true, the code should compile, even
@@ -443,6 +438,14 @@ if `xyz` is NOT defined.
 If .is_opt is false, then when `xyz` is not defined,
 the compilation will fail.
 */
+
+pub struct CompIf {
+pub:
+	val        string
+	stmts      []Stmt
+	is_not     bool
+	pos        token.Position
+mut:
 	is_opt     bool
 	has_else   bool
 	else_stmts []Stmt
