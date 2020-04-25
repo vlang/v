@@ -845,8 +845,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else {
 				right_sym := g.table.get_type_symbol(assign_stmt.right_types[i])
 				mut is_fixed_array_init := false
+				mut has_val := false
 				match val {
-					ast.ArrayInit { is_fixed_array_init = it.is_fixed }
+					ast.ArrayInit {
+						is_fixed_array_init = it.is_fixed
+						has_val = it.has_val
+					}
 					else {}
 				}
 				is_decl := assign_stmt.op == .decl_assign
@@ -863,7 +867,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 				}
 				if is_fixed_array_init {
-					g.write('= {0}')
+					if has_val {
+						g.write(' = ')
+						g.expr(val)
+					} else {
+						g.write(' = {0}')
+					}
 				} else {
 					g.write(' = ')
 					if !is_decl {
@@ -972,6 +981,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.write('\n})')
 				}
 			} else {
+				g.write('{')
+				for i, expr in it.exprs {
+					g.expr(expr)
+					if i != it.exprs.len - 1 {
+						g.write(', ')
+					}
+				}
+				g.write('}')
 			}
 		}
 		ast.AsCast {
@@ -1265,32 +1282,43 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 			g.write(' = string_add(')
 			str_add = true
 		}
-		g.assign_op = node.op
-		g.expr(node.left)
-		// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
-		if !g.is_array_set && !str_add {
-			g.write(' $node.op.str() ')
-		} else if str_add {
-			g.write(', ')
-		}
-		g.is_assign_lhs = false
 		right_sym := g.table.get_type_symbol(node.right_type)
-		// left_sym := g.table.get_type_symbol(node.left_type)
-		mut cloned := false
-		// !g.is_array_set
-		if g.autofree && right_sym.kind in [.array, .string] {
-			if g.gen_clone_assignment(node.val, right_sym, false) {
-				cloned = true
+		if right_sym.kind == .array_fixed && node.op == .assign {
+			right := node.val as ast.ArrayInit
+			for j, expr in right.exprs {
+				g.expr(node.left)
+				g.write('[$j] = ')
+				g.expr(expr)
+				g.writeln(';')
 			}
-		}
-		if !cloned {
-			g.expr_with_cast(node.val, node.right_type, node.left_type)
-		}
-		if g.is_array_set {
-			g.write(' })')
-			g.is_array_set = false
-		} else if str_add {
-			g.write(')')
+		} else {
+			g.assign_op = node.op
+			g.expr(node.left)
+			// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
+			if !g.is_array_set && !str_add {
+				g.write(' $node.op.str() ')
+			} else if str_add {
+				g.write(', ')
+			}
+			g.is_assign_lhs = false
+			//right_sym := g.table.get_type_symbol(node.right_type)
+			// left_sym := g.table.get_type_symbol(node.left_type)
+			mut cloned := false
+			// !g.is_array_set
+			if g.autofree && right_sym.kind in [.array, .string] {
+				if g.gen_clone_assignment(node.val, right_sym, false) {
+					cloned = true
+				}
+			}
+			if !cloned {
+				g.expr_with_cast(node.val, node.right_type, node.left_type)
+			}
+			if g.is_array_set {
+				g.write(' })')
+				g.is_array_set = false
+			} else if str_add {
+				g.write(')')
+			}
 		}
 		g.right_is_opt = false
 	}

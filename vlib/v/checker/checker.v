@@ -998,8 +998,13 @@ pub fn (mut c Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 				c.error('expected array element with type `$elem_type_sym.name`', array_init.pos)
 			}
 		}
-		idx := c.table.find_or_register_array(elem_type, 1)
-		array_init.typ = table.new_type(idx)
+		if array_init.is_fixed {
+			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len, 1)
+			array_init.typ = table.new_type(idx)
+		} else {
+			idx := c.table.find_or_register_array(elem_type, 1)
+			array_init.typ = table.new_type(idx)
+		}
 		array_init.elem_type = elem_type
 	} else if array_init.is_fixed && array_init.exprs.len == 1 && array_init.elem_type != table.void_type {
 		// [50]byte

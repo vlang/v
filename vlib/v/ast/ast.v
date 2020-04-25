@@ -635,6 +635,7 @@ pub:
 	pos       token.Position
 	exprs     []Expr
 	is_fixed  bool
+	has_val   bool
 	mod       string
 mut:
 	elem_type table.Type
