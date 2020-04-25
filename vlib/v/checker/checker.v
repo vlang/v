@@ -1271,10 +1271,13 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', it.pos)
 					// c.error('only $info.variants can be casted to `$typ`', it.pos)
 				}
-			} else {
+			}
+			//
+			else {
 				c.error('cannot cast non sum type `$type_sym.name` using `as`', it.pos)
 			}
-			return it.typ
+			return it.typ.to_ptr()
+			//return it.typ
 		}
 		ast.AssignExpr {
 			c.assign_expr(mut it)

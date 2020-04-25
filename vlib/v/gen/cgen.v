@@ -1993,7 +1993,7 @@ fn (mut g Gen) const_decl_simple_define(name, val string) {
 }
 
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
-	mut info := table.Struct{}
+	mut info := &table.Struct{}
 	mut is_struct := false
 	sym := g.table.get_type_symbol(struct_init.typ)
 	if sym.kind == .struct_ {
@@ -2977,17 +2977,25 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.expr(node.expr)
 		g.write('.obj')
 		*/
-		g.write('/* as */ *($styp*)__as_cast(')
+		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
+		g.write('/* as */ ($styp*)__as_cast(')
 		g.expr(node.expr)
-		g.write('.obj, ')
+		g.write(dot)
+		g.write('obj, ')
 		g.expr(node.expr)
-		g.write('.typ, /*expected:*/$node.typ)')
+		g.write(dot)
+		g.write('typ, /*expected:*/$node.typ)')
 	}
 }
 
 fn (mut g Gen) is_expr(node ast.InfixExpr) {
 	g.expr(node.left)
-	g.write('.typ == ')
+	if node.left_type.is_ptr() {
+		g.write('->')
+	} else {
+		g.write('.')
+	}
+	g.write('typ == ')
 	g.expr(node.right)
 }
 
