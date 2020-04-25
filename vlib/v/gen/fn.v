@@ -326,13 +326,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if typ.is_ptr() {
 			styp = styp.replace('*', '')
 		}
-		mut str_fn_name := styp_to_str_fn_name(styp)
-		g.gen_str_for_type(sym, styp, str_fn_name)
-		is_varg := typ.flag_is(.variadic)
-		if is_varg {
-			g.gen_str_for_varg(styp, str_fn_name)
-			str_fn_name = 'varg_$str_fn_name'
-		}
+		mut str_fn_name := g.gen_str_for_type_with_styp(typ, styp)
 		if g.autofree && !typ.flag_is(.optional) {
 			// Create a temporary variable so that the value can be freed
 			tmp := g.new_tmp_var()
@@ -375,7 +369,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					g.write('*')
 				}
 				g.expr(expr)
-				if !is_varg && sym.kind == .struct_ && styp != 'ptr' && !sym.has_method('str') {
+				if !typ.flag_is(.variadic) && sym.kind == .struct_ && styp != 'ptr' && !sym.has_method('str') {
 					g.write(', 0') // trailing 0 is initial struct indent count
 				}
 			}

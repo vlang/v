@@ -2345,15 +2345,12 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		} else {
 			sym := g.table.get_type_symbol(node.expr_types[i])
 			if node.expr_types[i].flag_is(.variadic) {
-				styp := g.typ(node.expr_types[i])
-				str_fn_name := styp_to_str_fn_name(styp)
-				g.gen_str_for_type(sym, styp, str_fn_name)
-				g.gen_str_for_varg(styp, str_fn_name)
-				g.write('varg_${str_fn_name}(')
+				str_fn_name := g.gen_str_for_type(node.expr_types[i])
+				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(')')
 				g.write('.len, ')
-				g.write('varg_${str_fn_name}(')
+				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(').str')
 			}
@@ -2364,9 +2361,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					else { false }
 				}
 				if is_var {
-					styp := g.typ(node.expr_types[i])
-					str_fn_name := styp_to_str_fn_name(styp)
-					g.gen_str_for_type(sym, styp, str_fn_name)
+					str_fn_name := g.gen_str_for_type(node.expr_types[i])
 					g.write('${str_fn_name}(')
 					g.enum_expr(expr)
 					g.write(')')
@@ -2384,9 +2379,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					g.write('"')
 				}
 			} else if sym.kind in [.array, .array_fixed] {
-				styp := g.typ(node.expr_types[i])
-				str_fn_name := styp_to_str_fn_name(styp)
-				g.gen_str_for_type(sym, styp, str_fn_name)
+				str_fn_name := g.gen_str_for_type(node.expr_types[i])
 				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(')')
@@ -2395,9 +2388,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				g.expr(expr)
 				g.write(').str')
 			} else if sym.kind == .map && !sym.has_method('str') {
-				styp := g.typ(node.expr_types[i])
-				str_fn_name := styp_to_str_fn_name(styp)
-				g.gen_str_for_type(sym, styp, str_fn_name)
+				str_fn_name := g.gen_str_for_type(node.expr_types[i])
 				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(')')
@@ -2406,9 +2397,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				g.expr(expr)
 				g.write(').str')
 			} else if sym.kind == .struct_ && !sym.has_method('str') {
-				styp := g.typ(node.expr_types[i])
-				str_fn_name := styp_to_str_fn_name(styp)
-				g.gen_str_for_type(sym, styp, str_fn_name)
+				str_fn_name := g.gen_str_for_type(node.expr_types[i])
 				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(',0)')
@@ -2949,27 +2938,45 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 	g.expr(node.right)
 }
 
+[inline]
 fn styp_to_str_fn_name(styp string) string {
-	res := styp.replace('.', '__').replace('*', '_ptr') + '_str'
-	return res
+	return styp + '_str'
+}
+
+[inline]
+fn (mut g Gen) gen_str_for_type(typ table.Type) string {
+	styp := g.typ(typ)
+	return g.gen_str_for_type_with_styp(typ, styp)
 }
 
 // already generated styp, reuse it
-fn (mut g Gen) gen_str_for_type(sym table.TypeSymbol, styp, str_fn_name string) {
+fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
+	sym := g.table.get_type_symbol(typ)
+	str_fn_name := styp_to_str_fn_name(styp)
 	already_generated_key := '${styp}:${str_fn_name}'
-	if sym.has_method('str') || already_generated_key in g.str_types {
-		return
+	// generate for type
+	if !sym.has_method('str') && !(already_generated_key in g.str_types) {
+		g.str_types << already_generated_key
+		match sym.info {
+			table.Alias { g.gen_str_default(sym, styp, str_fn_name) }
+			table.Array { g.gen_str_for_array(it, styp, str_fn_name) }
+			table.ArrayFixed { g.gen_str_for_array_fixed(it, styp, str_fn_name) }
+			table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
+			table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
+			table.Map { g.gen_str_for_map(it, styp, str_fn_name) }
+			else { verror("could not generate string method $str_fn_name for type \'${styp}\'") }
+		}
 	}
-	g.str_types << already_generated_key
-	match sym.info {
-		table.Alias { g.gen_str_default(sym, styp, str_fn_name) }
-		table.Array { g.gen_str_for_array(it, styp, str_fn_name) }
-		table.ArrayFixed { g.gen_str_for_array_fixed(it, styp, str_fn_name) }
-		table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
-		table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
-		table.Map { g.gen_str_for_map(it, styp, str_fn_name) }
-		else { verror("could not generate string method $str_fn_name for type \'${styp}\'") }
+	// if varg, generate str for varg
+	if typ.flag_is(.variadic) {
+		varg_already_generated_key := 'varg_$already_generated_key'
+		if !(varg_already_generated_key in g.str_types) {
+			g.gen_str_for_varg(styp, str_fn_name)
+			g.str_types << varg_already_generated_key
+		}
+		return 'varg_$str_fn_name'
 	}
+	return str_fn_name
 }
 
 fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
@@ -3026,9 +3033,8 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 		sym := g.table.get_type_symbol(field.typ)
 		if sym.kind in [.struct_, .array, .array_fixed, .map, .enum_] {
 			field_styp := g.typ(field.typ)
-			field_fn_name := styp_to_str_fn_name(field_styp)
+			field_fn_name := g.gen_str_for_type_with_styp(field.typ, field_styp)
 			fnames2strfunc[field_styp] = field_fn_name
-			g.gen_str_for_type(sym, field_styp, field_fn_name)
 		}
 	}
 	g.definitions.writeln('string ${str_fn_name}($styp x, int indent_count); // auto')
@@ -3091,7 +3097,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	sym := g.table.get_type_symbol(info.elem_type)
 	field_styp := g.typ(info.elem_type)
 	if sym.kind == .struct_ && !sym.has_method('str') {
-		g.gen_str_for_type(sym, field_styp, styp_to_str_fn_name(field_styp))
+		g.gen_str_for_type_with_styp(info.elem_type, field_styp)
 	}
 	g.definitions.writeln('string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
@@ -3119,7 +3125,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	sym := g.table.get_type_symbol(info.elem_type)
 	field_styp := g.typ(info.elem_type)
 	if sym.kind == .struct_ && !sym.has_method('str') {
-		g.gen_str_for_type(sym, field_styp, styp_to_str_fn_name(field_styp))
+		g.gen_str_for_type_with_styp(info.elem_type, field_styp)
 	}
 	g.definitions.writeln('string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
@@ -3148,12 +3154,12 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	key_sym := g.table.get_type_symbol(info.key_type)
 	key_styp := g.typ(info.key_type)
 	if key_sym.kind == .struct_ && !key_sym.has_method('str') {
-		g.gen_str_for_type(key_sym, key_styp, styp_to_str_fn_name(key_styp))
+		g.gen_str_for_type_with_styp(info.key_type, key_styp)
 	}
 	val_sym := g.table.get_type_symbol(info.value_type)
 	val_styp := g.typ(info.value_type)
 	if val_sym.kind == .struct_ && !val_sym.has_method('str') {
-		g.gen_str_for_type(val_sym, val_styp, styp_to_str_fn_name(val_styp))
+		g.gen_str_for_type_with_styp(info.value_type, val_styp)
 	}
 	zero := g.type_default(info.value_type)
 	g.definitions.writeln('string ${str_fn_name}($styp m); // auto')
@@ -3187,11 +3193,6 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 }
 
 fn (mut g Gen) gen_str_for_varg(styp, str_fn_name string) {
-	already_generated_key := '${styp}:varg_${str_fn_name}'
-	if already_generated_key in g.str_types {
-		return
-	}
-	g.str_types << already_generated_key
 	g.definitions.writeln('string varg_${str_fn_name}(varg_$styp it); // auto')
 	g.auto_str_funcs.writeln('string varg_${str_fn_name}(varg_$styp it) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(it.len);')
