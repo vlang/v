@@ -229,6 +229,7 @@ fn simple_log(txt string) {
 * Token Structs
 *
 ******************************************************************************/
+pub type FnValidator fn (byte) bool
 struct Token{
 mut:
 	ist u32 = u32(0)
@@ -249,7 +250,7 @@ mut:
 	rep             int    = 0
 
 	// validator function pointer
-	validator fn (byte) bool
+	validator FnValidator
 
 	// groups variables
 	group_rep          int = 0     // repetition of the group
@@ -291,6 +292,8 @@ mut:
 	group_stack_index int = -1  // continuous save on capturing groups
 }
 
+pub type FnLog fn (string)
+
 pub
 struct RE {
 pub mut:
@@ -321,7 +324,7 @@ pub mut:
 
 	// Debug/log
 	debug int            = 0   // enable in order to have the unroll of the code 0 = NO_DEBUG, 1 = LIGHT 2 = VERBOSE
-	log_func fn (string) = simple_log  // log function, can be customized by the user
+	log_func FnLog = simple_log  // log function, can be customized by the user
 	query string         = ""  // query string
 }
 
@@ -376,7 +379,7 @@ pub fn (re RE) get_group(group_name string) (int, int) {
 ******************************************************************************/
 struct BslsStruct {
 	ch u32                   // meta char
-	validator fn (byte) bool // validator function pointer
+	validator FnValidator // validator function pointer
 }
 
 const(
@@ -463,7 +466,7 @@ mut:
 	cc_type int = CC_NULL      // type of cc token
 	ch0 u32     = u32(0)       // first char of the interval a-b  a in this case
 	ch1 u32     = u32(0)	   // second char of the interval a-b b in this case
-	validator fn (byte) bool   // validator function pointer
+	validator FnValidator      // validator function pointer
 }
 
 enum CharClass_parse_state {
@@ -476,7 +479,7 @@ enum CharClass_parse_state {
 
 fn (re RE) get_char_class(pc int) string {
 	buf := [byte(0)].repeat(re.cc.len)
-	mut buf_ptr := *byte(&buf)
+	mut buf_ptr := &byte(&buf)
 
 	mut cc_i := re.prog[pc].cc_index
 	mut i := 0
@@ -1224,7 +1227,8 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 	// DEBUG PRINT REGEX GENERATED CODE
 	//******************************************
 	if re.debug > 0 {
-		re.log_func(re.get_code())
+		gc := re.get_code()
+		re.log_func( gc )
 	}
 	//******************************************
 
@@ -1442,7 +1446,6 @@ fn state_str(s Match_state) string {
 		.ist_quant_n  { return "ist_quant_n" }
 		.ist_quant_pg { return "ist_quant_pg" }
 		.ist_quant_ng { return "ist_quant_ng" }
-		else { return "UNKN" }
 	}
 }
 
@@ -1484,7 +1487,8 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		h_buf.write("flags: ")
 		h_buf.write("${re.flag:8x}".replace(" ","0"))
 		h_buf.write("\n")
-		re.log_func(h_buf.str())
+		sss := h_buf.str()
+		re.log_func(sss)
 	}
 
 	for m_state != .end {
@@ -1507,7 +1511,8 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			// end of the input text
 			if i >= in_txt_len {
 				buf2.write("# ${step_count:3d} END OF INPUT TEXT\n")
-				re.log_func(buf2.str())
+				sss := buf2.str()
+				re.log_func(sss)
 			}else{
 
 				// print only the exe instruction
@@ -1559,7 +1564,8 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						}
 						buf2.write(" (#${group_index})\n")
 					}
-					re.log_func(buf2.str())
+					sss2 := buf2.str()
+					re.log_func( sss2 )
 				}
 			}
 			step_count++
@@ -2171,12 +2177,12 @@ pub fn regex(in_query string) (RE,int,int){
 	return re, re_err, err_pos
 }
 
-// new_regex create a REgex of small size, usually sufficient for ordinary use
+// new_regex create a RE of small size, usually sufficient for ordinary use
 pub fn new_regex() RE {
 	return new_regex_by_size(1)
 }
 
-// new_regex_by_size create a REgex of large size, mult specify the scale factor of the memory that will be allocated
+// new_regex_by_size create a RE of large size, mult specify the scale factor of the memory that will be allocated
 pub fn new_regex_by_size(mult int) RE {
 	mut re := RE{}
 	re.prog = [Token{}].repeat(MAX_CODE_LEN*mult)       // max program length, default 256 istructions
