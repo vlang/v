@@ -237,7 +237,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			foo: 'foo'
 		}
 	}
-	typ := p.table.register_type_symbol(t)
+	typ := table.new_type(p.table.register_type_symbol(t))
 	ts := p.table.get_type_symbol(typ) // TODO t vs ts
 	// Parse methods
 	mut methods := []ast.FnDecl

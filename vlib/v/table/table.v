@@ -485,7 +485,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 	exp_type_sym := t.get_type_symbol(expected)
 	//
 	if exp_type_sym.kind == .interface_ {
-		info := got_type_sym.info as Interface
+		info := exp_type_sym.info as Interface
 		println('gen_types before')
 		println(info.gen_types)
 		info.gen_types << got_type_sym.name

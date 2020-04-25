@@ -27,17 +27,6 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 	}
 	return arr
 }
-fn new_array(mylen int, cap int, elm_size int) array {
-	cap_ := if cap == 0 { 1 } else { cap }
-	arr := array{
-		len: mylen
-		cap: cap_
-		element_size: elm_size
-		data: vcalloc(cap_ * elm_size)
-	}
-	return arr
-
-}
 
 // TODO
 pub fn make(len int, cap int, elm_size int) array {
