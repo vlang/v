@@ -375,6 +375,44 @@ fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			ptype := f.type_to_str(it.parent_type)
 			f.write('type $it.name $ptype')
 		}
+		ast.FnTypeDecl {
+			if it.is_pub {
+				f.write('pub ')
+			}
+			typ_sym := f.table.get_type_symbol(it.typ)
+			fn_typ_info := typ_sym.info as table.FnType
+			fn_info := fn_typ_info.func
+			fn_name := it.name.replace(f.cur_mod + '.', '')
+			f.write('type $fn_name = fn (')
+			for i, arg in fn_info.args {
+				f.write(arg.name)
+				mut s := f.table.type_to_str(arg.typ)
+				if arg.is_mut {
+					f.write('mut ')
+					if s.starts_with('&') {
+						s = s[1..]
+					}
+				}
+				is_last_arg := i == fn_info.args.len - 1
+				should_add_type := is_last_arg || fn_info.args[i + 1].typ != arg.typ || (fn_info.is_variadic &&
+					i == fn_info.args.len - 2)
+				if should_add_type {
+					if fn_info.is_variadic && is_last_arg {
+						f.write(' ...' + s)
+					} else {
+						f.write(' ' + s)
+					}
+				}
+				if !is_last_arg {
+					f.write(', ')
+				}
+			}
+			f.write(')')
+			if fn_info.return_type.idx() != table.void_type_idx {
+				ret_str := f.table.type_to_str(fn_info.return_type)
+				f.write(' ' + ret_str)
+			}
+		}
 		ast.SumTypeDecl {
 			if it.is_pub {
 				f.write('pub ')
@@ -384,10 +422,8 @@ fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			for t in it.sub_types {
 				sum_type_names << f.type_to_str(t)
 			}
+			sum_type_names.sort()
 			f.write(sum_type_names.join(' | '))
-		}
-		else {
-			eprintln('fmt type_decl: unknown ' + typeof(node))
 		}
 	}
 	f.writeln('\n')
