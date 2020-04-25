@@ -943,6 +943,9 @@ pub fn (c mut Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 			mut ident_var_info := ident.var_info()
 			// c.assigned_var_name = ident.name
 			val_type := c.expr(assign_stmt.right[i])
+			if val_type == table.void_type {
+				c.error('expression does not return a value', assign_stmt.right[i].position())
+			}
 			if assign_stmt.op == .assign {
 				var_type := c.expr(ident)
 				assign_stmt.left_types << var_type
