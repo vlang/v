@@ -2344,7 +2344,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.expr(expr)
 		} else {
 			sym := g.table.get_type_symbol(node.expr_types[i])
-			if table.type_is(node.expr_types[i], .variadic) {
+			if node.expr_types[i].flag_is(.variadic) {
 				styp := g.typ(node.expr_types[i])
 				str_fn_name := styp_to_str_fn_name(styp)
 				g.gen_str_for_type(sym, styp, str_fn_name)
@@ -3187,6 +3187,11 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 }
 
 fn (mut g Gen) gen_str_for_varg(styp, str_fn_name string) {
+	already_generated_key := '${styp}:varg_${str_fn_name}'
+	if already_generated_key in g.str_types {
+		return
+	}
+	g.str_types << already_generated_key
 	g.definitions.writeln('string varg_${str_fn_name}(varg_$styp it); // auto')
 	g.auto_str_funcs.writeln('string varg_${str_fn_name}(varg_$styp it) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(it.len);')
