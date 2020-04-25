@@ -945,13 +945,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 		}
 		ast.AsCast {
-			styp := g.typ(it.typ)
-			expr_type_sym := g.table.get_type_symbol(it.expr_type)
-			if expr_type_sym.kind == .sum_type {
-				g.write('/* as */ *($styp*)')
-				g.expr(it.expr)
-				g.write('.obj')
-			}
+			g.as_cast(it)
 		}
 		ast.AssignExpr {
 			g.assign_expr(it)
@@ -1396,7 +1390,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
 			g.write(' })')
 		}
-	} else if (node.left_type == node.right_type) && table.is_float(node.left_type) && node.op in [.eq, .ne] {
+	} else if (node.left_type == node.right_type) && table.is_float(node.left_type) && node.op in
+		[.eq, .ne] {
 		// floats should be compared with epsilon
 		if node.left_type == table.f64_type_idx {
 			if node.op == .eq {
@@ -2908,6 +2903,26 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 			g.threaded_fns << name
 		}
 		else {}
+	}
+}
+
+fn (mut g Gen) as_cast(node ast.AsCast) {
+	// Make sure the sum type can be cast to this type (the types
+	// are the same), otherwise panic.
+	// g.insert_before('
+	styp := g.typ(node.typ)
+	expr_type_sym := g.table.get_type_symbol(node.expr_type)
+	if expr_type_sym.kind == .sum_type {
+		g.write('/* as */ *($styp*)')
+		g.expr(node.expr)
+		g.write('.obj')
+		/*
+		g.write('/* as */ *($styp*)__as_cast(')
+		g.expr(node.expr)
+		g.write('.obj, ')
+		g.expr(node.expr)
+		g.write('.typ, /*expected:*/$node.typ)')
+*/
 	}
 }
 
