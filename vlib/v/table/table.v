@@ -55,7 +55,7 @@ pub fn (f &Fn) signature() string {
 	mut sig := ''
 	for i, arg in f.args {
 		// TODO: for now ignore mut/pts in sig for now
-		typ := type_set_nr_muls(arg.typ, 0)
+		typ := arg.typ.set_nr_muls(0)
 		// if arg.is_mut {
 		// sig += 'mut_'
 		// }

@@ -64,7 +64,7 @@ pub fn (t Type) is_ptr() bool {
 
 // set nr_muls on `t` and return it
 [inline]
-pub fn type_set_nr_muls(t Type, nr_muls int) Type {
+pub fn (t Type) set_nr_muls(nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('typ_set_nr_muls: nr_muls must be between 0 & 255')
 	}
