@@ -540,6 +540,14 @@ fn (mut f Fmt) expr(node ast.Expr) {
 		ast.CharLiteral {
 			f.write('`$it.val`')
 		}
+		ast.ConcatExpr {
+			for i, val in it.vals {
+				if i != 0 {
+					f.write(' + ')
+				}
+				f.expr(val)
+			}
+		}
 		ast.EnumVal {
 			name := short_module(it.enum_name)
 			f.write(name + '.' + it.val)
