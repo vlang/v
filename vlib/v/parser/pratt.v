@@ -161,6 +161,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				pos: pos
 			}
 		} else if p.tok.kind.is_infix() {
+			// return early for deref assign `*x = 2` goes to prefix expr
+			if p.tok.kind == .mul && p.tok.line_nr != p.prev_tok.line_nr && p.peek_tok2.kind == .assign {
+				return node
+			}
+			// continue on infix expr
 			node = p.infix_expr(node)
 		} else if p.tok.kind in [.inc, .dec] {
 			// Postfix

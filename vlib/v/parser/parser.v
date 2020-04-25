@@ -20,6 +20,7 @@ mut:
 	tok               token.Token
 	prev_tok          token.Token
 	peek_tok          token.Token
+	peek_tok2         token.Token
 	table             &table.Table
 	is_c              bool
 	is_js             bool
@@ -179,10 +180,12 @@ pub fn (p &Parser) init_parse_fns() {
 }
 
 pub fn (mut p Parser) read_first_token() {
-	// need to call next() twice to get peek token and current token
+	// need to call next() three times to get peek token 1 & 2 and current token
+	p.next()
 	p.next()
 	p.next()
 }
+
 
 pub fn (mut p Parser) open_scope() {
 	p.scope = &ast.Scope{
@@ -241,7 +244,8 @@ fn (mut p Parser) next_with_comment() {
 fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
-	p.peek_tok = p.scanner.scan()
+	p.peek_tok = p.peek_tok2
+	p.peek_tok2 = p.scanner.scan()
 	/*
 	if p.tok.kind==.comment {
 		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
