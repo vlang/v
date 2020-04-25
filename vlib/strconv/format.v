@@ -8,7 +8,6 @@
 *
 * This file contains the printf/sprintf functions
 *
-* TODO: th_separator, g for float, e,f uppercase for float
 **********************************************************************/
 module strconv
 import strconv.ftoa
@@ -28,7 +27,6 @@ enum Char_parse_state {
 	check_float_in,
 
 	reset_params
-
 }
 
 enum Align_text {
@@ -201,17 +199,17 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 
 /******************************************************************************
 *
-* Write to string builder functions
+* Single format functions
 *
 ******************************************************************************/
 struct BF_param {
-	pad_ch       byte       = ` `
-	len0         int        = -1
-	len1         int        = 6
-	positive     bool       = true      
-	sign_flag    bool       = false
-	allign       Align_text = .right
-	rm_tail_zero bool       = false    // remove the tails zeros from floats
+	pad_ch       byte       = ` `     // padding char
+	len0         int        = -1      // default len for whole the number or string
+	len1         int        = 6       // number of decimal digits, if needed
+	positive     bool       = true    // mandatory: the sign of the number passed   
+	sign_flag    bool       = false   // flag for print sign as prefix in padding
+	allign       Align_text = .right  // alignment of the string
+	rm_tail_zero bool       = false   // remove the tail zeros from floats
 }
 
 pub fn format_str(s string, p BF_param) string {
