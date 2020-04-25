@@ -19,3 +19,18 @@ fn match_expr_assignment() {
 		else { 2 }
 	}
 }
+
+fn match_branch_comment() {
+ a := 1
+     	match a {
+	  1 { println('1') }
+	     2 {
+	println('2')
+	 }
+	 else {
+
+
+// do nothing
+ }
+  }
+}
