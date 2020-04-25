@@ -60,6 +60,7 @@ struct Gen {
 mut:
 	file                 ast.File
 	fn_decl              &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	last_fn_c_name       string
 	tmp_count            int
 	variadic_args        map[string]int
 	is_c_call            bool // e.g. `C.printf("v")`
@@ -479,8 +480,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
+			fn_start_pos := g.out.len
 			g.fn_decl = it // &it
 			g.gen_fn_decl(it)
+			if g.last_fn_c_name in g.pref.printfn_list {
+				println(g.out.after(fn_start_pos))
+			}
 			g.writeln('')
 		}
 		ast.ForCStmt {

@@ -19,12 +19,15 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			if g.is_gui_app() {
 				// GUI application
 				g.writeln('int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd')
+				g.last_fn_c_name = 'wWinMain'
 			} else {
 				// Console application
 				g.writeln('int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]')
+				g.last_fn_c_name = 'wmain'
 			}
 		} else {
 			g.write('int ${it.name}(int ___argc, char** ___argv')
+			g.last_fn_c_name = it.name
 		}
 	} else {
 		mut name := it.name
@@ -46,6 +49,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// type_name := g.table.Type_to_str(it.return_type)
 		type_name := g.typ(it.return_type)
 		g.write('$type_name ${name}(')
+		g.last_fn_c_name = name
 		g.definitions.write('$type_name ${name}(')
 	}
 	// Receiver is the first argument

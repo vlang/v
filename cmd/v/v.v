@@ -145,6 +145,10 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			'-freestanding' {
 				res.is_bare = true
 			}
+			'-prof', '-profile' {
+				eprintln('TODO: -prof')
+				res.is_prof = true
+			}
 			'-prod' {
 				res.is_prod = true
 			}
@@ -182,8 +186,12 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				}
 				res.os = target_os_kind
 			}
+			'-printfn' {
+				res.printfn_list << cmdline.option(current_args, '-printfn', '')
+				i++
+			}
 			'-cflags' {
-				res.cflags = cmdline.option(current_args, '-cflags', '')
+				res.cflags += ' ' + cmdline.option(current_args, '-cflags', '')
 				i++
 			}
 			'-define', '-d' {
