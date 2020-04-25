@@ -284,6 +284,7 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		// Place these branches according to ops' usage frequency to accelerate.
 		// TODO: First branch includes ops where single side check is not needed, or needed but hasn't been implemented.
 		.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift { }
+		// TODO: Some of the checks are not single side. Should find a better way to organize them.
 		.key_in, .not_in {
 			match right.kind {
 				.array {
