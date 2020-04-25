@@ -557,6 +557,10 @@ fn (mut f Fmt) expr(node ast.Expr) {
 				}
 			}
 		}
+		ast.IfGuardExpr {
+			f.write(it.var_name + ' := ')
+			f.expr(it.expr)
+		}
 		ast.InfixExpr {
 			f.expr(it.left)
 			f.write(' $it.op.str() ')
@@ -600,9 +604,10 @@ fn (mut f Fmt) expr(node ast.Expr) {
 		ast.None {
 			f.write('none')
 		}
-		ast.IfGuardExpr {
-			f.write(it.var_name + ' := ')
-			f.expr(it.expr)
+		ast.OrExpr {
+			// shouldn't happen, an or expression
+			// is always linked to a call expr
+			panic('fmt: OrExpr should to linked to CallExpr')
 		}
 		ast.ParExpr {
 			f.write('(')
@@ -701,12 +706,6 @@ fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('typeof(')
 			f.expr(it.expr)
 			f.write(')')
-		}
-		else {
-			eprintln('fmt expr: unhandled node ' + typeof(node))
-			if typeof(node) != 'unknown v.ast.Expr' {
-				exit(1)
-			}
 		}
 	}
 }
