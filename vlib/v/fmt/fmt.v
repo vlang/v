@@ -742,7 +742,7 @@ fn (mut f Fmt) call_args(args []ast.CallArg) {
 }
 
 fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
-	if or_block.stmts.len > 0 {
+	if or_block.is_used {
 		f.writeln(' or {')
 		f.stmts(or_block.stmts)
 		f.write('}')
