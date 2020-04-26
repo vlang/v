@@ -60,10 +60,12 @@ pub fn (mut c Checker) check2(ast_file ast.File) []scanner.Error {
 }
 
 pub fn (mut c Checker) check_files(ast_files []ast.File) {
+	mut has_main_mod_file := false
 	mut has_main_fn := false
 	for file in ast_files {
 		c.check(file)
 		if file.mod.name == 'main' {
+			has_main_mod_file = true
 			if c.check_file_in_main(file) {
 				has_main_fn = true
 			}
@@ -77,7 +79,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 		// shared libs do not need to have a main
 		return
 	}
-	if !has_main_fn {
+	if has_main_mod_file && !has_main_fn {
 		c.error('function `main` must be declared in the main module', token.Position{})
 	}
 }
