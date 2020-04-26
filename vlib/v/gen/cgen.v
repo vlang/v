@@ -271,7 +271,7 @@ pub fn (mut g Gen) typ(t table.Type) string {
 		if t.is_ptr() {
 			styp = styp.replace('*', '_ptr')
 		}
-		if !(styp in g.optionals) {
+		if styp !in g.optionals {
 			// println(styp)
 			x := styp // .replace('*', '_ptr')			// handle option ptrs
 			g.typedefs2.writeln('typedef Option $x;')
@@ -1377,7 +1377,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	} else if node.op in [.eq, .ne] && left_sym.kind == .array && right_sym.kind == .array {
 		styp := g.table.value_type(node.left_type)
 		ptr_typ := g.typ(node.left_type).split('_')[1]
-		if !(ptr_typ in g.array_fn_definitions) {
+		if ptr_typ !in g.array_fn_definitions {
 			sym := g.table.get_type_symbol(left_sym.array_info().elem_type)
 			g.generate_array_equality_fn(ptr_typ, styp, sym)
 		}
@@ -2197,7 +2197,7 @@ fn (mut g Gen) write_builtin_types() {
 fn (mut g Gen) write_sorted_types() {
 	mut types := []table.TypeSymbol // structs that need to be sorted
 	for typ in g.table.types {
-		if !(typ.name in builtins) {
+		if typ.name !in builtins {
 			types << typ
 		}
 	}
@@ -2294,7 +2294,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 				for field in info.fields {
 					dep := g.table.get_type_symbol(field.typ).name
 					// skip if not in types list or already in deps
-					if !(dep in type_names) || dep in field_deps || field.typ.is_ptr() {
+					if dep !in type_names || dep in field_deps || field.typ.is_ptr() {
 						continue
 					}
 					field_deps << dep
@@ -3016,7 +3016,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	str_fn_name := styp_to_str_fn_name(styp)
 	already_generated_key := '${styp}:${str_fn_name}'
 	// generate for type
-	if !sym.has_method('str') && !(already_generated_key in g.str_types) {
+	if !sym.has_method('str') && already_generated_key !in g.str_types {
 		g.str_types << already_generated_key
 		match sym.info {
 			table.Alias { g.gen_str_default(sym, styp, str_fn_name) }
@@ -3031,7 +3031,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	// if varg, generate str for varg
 	if typ.flag_is(.variadic) {
 		varg_already_generated_key := 'varg_$already_generated_key'
-		if !(varg_already_generated_key in g.str_types) {
+		if varg_already_generated_key !in g.str_types {
 			g.gen_str_for_varg(styp, str_fn_name)
 			g.str_types << varg_already_generated_key
 		}

@@ -71,7 +71,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		for p.tok.kind != .rcbr {
 			key := p.check_name()
 			p.check(.colon)
-			if !(key in ['len', 'cap', 'init']) {
+			if key !in ['len', 'cap', 'init'] {
 				p.error('wrong field `$key`, expecting `len`, `cap`, or `init`')
 			}
 			p.expr(0)

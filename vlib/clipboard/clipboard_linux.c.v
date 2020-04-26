@@ -123,7 +123,7 @@ fn new_clipboard() &Clipboard {
 // Initialize a new clipboard of the given selection type.
 // We can initialize multiple clipboard instances and use them separately
 fn new_x11_clipboard(selection AtomType) &Clipboard {
-	if !(selection in [.clipboard, .primary, .secondary]) {
+	if selection !in [.clipboard, .primary, .secondary] {
 		panic("Wrong AtomType. Must be one of .primary, .secondary or .clipboard.")
 	}
 

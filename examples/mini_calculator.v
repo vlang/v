@@ -7,7 +7,7 @@ const (
 	NUMERIC_CHAR = [`0`,`1`,`2`,`3`,`4`,`5`,`6`,`7`,`8`,`9`,`.`,`e`,`E`]
 )
 
-// Convert expression to Reverse Polish Notation. 
+// Convert expression to Reverse Polish Notation.
 fn expr_to_rev_pol(expr string) ?[]string {
 	if expr == '' {
 		return error('err: empty expression')
@@ -27,11 +27,11 @@ fn expr_to_rev_pol(expr string) ?[]string {
 		else if end_pos==pos {
 			op := expr[pos].str()
 			match op {
-				'(' { 
+				'(' {
 					stack << op
 				}
 				'*', '/' {
-					for stack.len>0 && !(stack.last() in ['(', '+', '-']) {
+					for stack.len>0 && stack.last() !in ['(', '+', '-'] {
 						rev_pol << stack.last()
 						stack.delete(stack.len-1)
 					}
@@ -60,7 +60,7 @@ fn expr_to_rev_pol(expr string) ?[]string {
 	}
 	for stack.len>0 {
 		top := stack.last()
-		rev_pol << top 
+		rev_pol << top
 		stack.delete(stack.len-1)
 	}
 	return rev_pol
@@ -83,7 +83,7 @@ fn eval_rev_pol(rev_pol []string) ?f64 {
 					'+' { stack << oprand_l+oprand_r }
 					'-' { stack << oprand_l-oprand_r }
 					'*' { stack << oprand_l*oprand_r }
-					'/' { 
+					'/' {
 						if oprand_r == 0 {
 							return error('err: divide by zero')
 						}
@@ -102,7 +102,7 @@ fn eval_rev_pol(rev_pol []string) ?f64 {
 
 fn is_num_string(str string) bool {
 	for c in str {
-		if !(c in NUMERIC_CHAR) {
+		if c !in NUMERIC_CHAR {
 			return false
 		}
 	}
@@ -125,7 +125,7 @@ fn main() {
 			eprintln(err)
 			continue
 		}
-		res := eval_rev_pol(rev_pol) or { 
+		res := eval_rev_pol(rev_pol) or {
 			eprintln(err)
 			continue
 		}

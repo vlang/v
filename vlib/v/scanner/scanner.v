@@ -269,7 +269,7 @@ fn (s mut Scanner) ident_dec_number() string {
 			}
 			// 5.
 			else if s.text[s.pos] != `)` {
-				is_float_without_fraction = true 
+				is_float_without_fraction = true
 				s.pos--
 			}
 		}
@@ -761,7 +761,7 @@ pub fn (s mut Scanner) scan() token.Token {
 					// Find out if this comment is on its own line (for vfmt)
 					mut is_separate_line_comment := true
 					for j := start-2; j >= 0 && s.text[j] != `\n`; j-- {
-						if !(s.text[j] in [`\t`, ` `]) {
+						if s.text[j] !in [`\t`, ` `] {
 							is_separate_line_comment = false
 						}
 					}
