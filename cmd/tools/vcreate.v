@@ -8,9 +8,7 @@
 // functionality is essentially the same.
 module main
 
-import (
-	os
-)
+import os
 
 struct Create {
 mut:

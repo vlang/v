@@ -1,12 +1,10 @@
 module main
 
-import (
-	net.http
-	os
-	os.cmdline
-	json
-	vhelp
-)
+import os
+import os.cmdline
+import net.http
+import json
+import vhelp
 
 const (
 	default_vpm_server_urls = ['https://vpm.best', 'https://vpm.vlang.io']

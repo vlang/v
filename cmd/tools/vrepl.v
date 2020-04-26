@@ -4,13 +4,11 @@
 
 module main
 
-import (
-	os
-	term
-	readline
-	os.cmdline
-	v.util
-)
+import os
+import term
+import readline
+import os.cmdline
+import v.util
 
 struct Repl {
 mut:

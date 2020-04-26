@@ -1,9 +1,7 @@
 module main
 
-import (
-	os
-	testing
-)
+import os
+import testing
 
 fn main() {
 	args := os.args

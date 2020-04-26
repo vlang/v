@@ -1,11 +1,9 @@
 module main
 
-import (
-	hash.fnv1a
-	hash.wyhash
-	rand
-	time
-)
+import hash.fnv1a
+import hash.wyhash
+import rand
+import time
 
 fn main() {
 	sample_size := 10000000

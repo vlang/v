@@ -1,11 +1,9 @@
 module main
 
-import (
-	os
-	testing
-	benchmark
-	v.pref
-)
+import os
+import testing
+import benchmark
+import v.pref
 
 fn main() {
 	args := os.args

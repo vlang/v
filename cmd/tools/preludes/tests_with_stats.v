@@ -7,10 +7,8 @@ module main
 // / look & feel of the results is easy, since it is done in normal V
 // / code, instead of in embedded C ...
 // /////////////////////////////////////////////////////////////////////
-import (
-	os
-	benchmark
-)
+import os
+import benchmark
 
 const (
 	INNER_INDENT = '     '

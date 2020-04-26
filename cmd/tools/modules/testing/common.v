@@ -1,12 +1,10 @@
 module testing
 
-import (
-	os
-	term
-	benchmark
-	sync
-	v.pref
-)
+import os
+import term
+import benchmark
+import sync
+import v.pref
 
 pub struct TestMessageHandler {
 mut:

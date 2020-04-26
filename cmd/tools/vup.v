@@ -1,10 +1,8 @@
 module main
 
-import (
-	os
-	v.pref
-	v.util
-)
+import os
+import v.pref
+import v.util
 
 fn main() {
 	vroot := os.dir(pref.vexe_path())

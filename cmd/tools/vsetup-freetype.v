@@ -1,9 +1,7 @@
 module main
 
-import (
-	os
-	v.pref
-)
+import os
+import v.pref
 
 fn main() {
 	$if windows {

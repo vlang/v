@@ -16,14 +16,12 @@
 
 module main
 
-import (
-	os
-	log
-	flag
-	time
-	vweb
-	net.urllib
-)
+import os
+import log
+import flag
+import time
+import vweb
+import net.urllib
 
 // git credentials
 const(
