@@ -203,18 +203,22 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		}
 		c.error('struct name must begin with capital letter', pos)
 	}
-	for fi, _ in decl.fields {
-		if decl.fields[fi].has_default_expr {
-			c.expected_type = decl.fields[fi].typ
-			field_expr_type := c.expr(decl.fields[fi].default_expr)
-			if !c.table.check(field_expr_type, decl.fields[fi].typ) {
+	for fi, field in decl.fields {
+		sym := c.table.get_type_symbol(field.typ)
+		if sym.kind == .placeholder {
+			c.error('unknown type `$sym.name`', field.pos)
+		}
+		if field.has_default_expr {
+			c.expected_type = field.typ
+			field_expr_type := c.expr(field.default_expr)
+			if !c.table.check(field_expr_type, field.typ) {
 				field_expr_type_sym := c.table.get_type_symbol(field_expr_type)
-				field_type_sym := c.table.get_type_symbol(decl.fields[fi].typ)
-				field_name := decl.fields[fi].name
+				field_type_sym := c.table.get_type_symbol(field.typ)
+				field_name := field.name
 				fet_name := field_expr_type_sym.name
 				ft_name := field_type_sym.name
 				c.error('default expression for field `${field_name}` ' + 'has type `${fet_name}`, but should be `${ft_name}`',
-					decl.fields[fi].default_expr.position())
+					field.default_expr.position())
 			}
 		}
 	}
