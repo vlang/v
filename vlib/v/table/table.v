@@ -487,11 +487,11 @@ pub fn (t &Table) check(got, expected Type) bool {
 	//
 	if exp_type_sym.kind == .interface_ {
 		info := exp_type_sym.info as Interface
-		println('gen_types before')
-		println(info.gen_types)
+		// println('gen_types before')
+		// println(info.gen_types)
 		info.gen_types << got_type_sym.name
-		println('adding gen_type $got_type_sym.name')
-		println(info.gen_types)
+		// println('adding gen_type $got_type_sym.name')
+		// println(info.gen_types)
 		return true
 	}
 	// allow enum value to be used as int
