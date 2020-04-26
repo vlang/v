@@ -724,6 +724,7 @@ fn test_left_shift_precendence() {
 }
 
 fn test_array_with_cap() {
-	a := []int{cap:10, len:1 }
-	//assert a.len == 1
+	a4 := []int{cap:10, len:1 }
+	assert a4.len == 1
+	assert a4.cap == 10
 }

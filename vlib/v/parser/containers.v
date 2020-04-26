@@ -70,16 +70,32 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	if exprs.len == 0 && p.tok.kind != .lcbr && has_type {
 		p.warn_with_pos('use `x := []Type{}` instead of `x := []Type`', last_pos)
 	}
+	mut has_len := false
+	mut has_cap := false
+	mut len_expr := ast.Expr{}
+	mut cap_expr := ast.Expr{}
 	if p.tok.kind == .lcbr && exprs.len == 0 {
 		// `[]int{ len: 10, cap: 100}` syntax
 		p.next()
 		for p.tok.kind != .rcbr {
 			key := p.check_name()
 			p.check(.colon)
-			if key !in ['len', 'cap', 'init'] {
-				p.error('wrong field `$key`, expecting `len`, `cap`, or `init`')
+			match key {
+				'len' {
+					has_len = true
+					len_expr = p.expr(0)
+				}
+				'cap' {
+					has_cap = true
+					cap_expr = p.expr(0)
+				}
+				'default' {
+					p.expr(0)
+				}
+				else {
+					p.error('wrong field `$key`, expecting `len`, `cap`, or `default`')
+				}
 			}
-			p.expr(0)
 			if p.tok.kind != .rcbr {
 				p.check(.comma)
 			}
@@ -99,6 +115,10 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		typ: array_type
 		exprs: exprs
 		pos: pos
+		has_len: has_len
+		len_expr: len_expr
+		has_cap: has_cap
+		cap_expr: cap_expr
 	}
 }
 
