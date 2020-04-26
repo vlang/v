@@ -68,7 +68,7 @@ fn expr_to_rev_pol(expr string) ?[]string {
 
 // Evaluate the result of Reverse Polish Notation.
 fn eval_rev_pol(rev_pol []string) ?f64 {
-	mut stack := []f64
+	mut stack := []f64{}
 	for item in rev_pol {
 		if is_num_string(item) {
 			stack << item.f64()

@@ -52,7 +52,7 @@ pub fn connect(config pg.Config) ?DB {
 fn res_to_rows(res voidptr) []pg.Row {
 	nr_rows := C.PQntuples(res)
 	nr_cols := C.PQnfields(res)
-	mut rows := []pg.Row
+	mut rows := []pg.Row{}
 	for i in 0..nr_rows {
 		mut row := Row{}
 		for j in 0..nr_cols {

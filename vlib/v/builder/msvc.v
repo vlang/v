@@ -223,7 +223,7 @@ pub fn (mut v Builder) cc_msvc() {
 		v.pref.out_name += '.exe'
 	}
 	v.pref.out_name = os.real_path(v.pref.out_name)
-	// alibs := []string // builtin.o os.o http.o etc
+	// alibs := []string{} // builtin.o os.o http.o etc
 	if v.pref.build_mode == .build_module {
 		// Compile only
 		a << '/c'

@@ -39,7 +39,7 @@ pub fn option(args []string, param string, def string) string {
 // what: ['test']
 // ret: ['-stat']
 pub fn options_before(args []string, what []string) []string {
-	mut args_before := []string {}
+	mut args_before := []string{}
 	for a in args {
 		if a in what {
 			break

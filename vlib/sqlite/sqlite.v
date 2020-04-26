@@ -63,10 +63,10 @@ pub fn (db DB) exec(query string) ([]Row,int) {
 	C.sqlite3_prepare_v2(db.conn, query.str, -1, &stmt, 0)
 	nr_cols := C.sqlite3_column_count(stmt)
 	mut res := 0
-	mut rows := []Row
+	mut rows := []Row{}
 	for {
 		res = C.sqlite3_step(stmt)
-		// Result Code SQLITE_ROW; Another row is available 
+		// Result Code SQLITE_ROW; Another row is available
 		if res != 100 {
 			break
 		}

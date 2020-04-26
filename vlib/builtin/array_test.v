@@ -4,7 +4,7 @@ const (
 )
 
 fn test_pointer() {
-	mut arr := []&int
+	mut arr := []&int{}
 	a := 1
 	b := 2
 	c := 3

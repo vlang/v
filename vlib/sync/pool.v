@@ -178,7 +178,7 @@ pub fn (pool &PoolProcessor) get_int_item(idx int) int {
 // TODO: uncomment, when generics work again
 // get_results - can be called to get a list of type safe results.
 //pub fn (pool &PoolProcessor) get_results<T>() []T {
-//	mut res := []T
+//	mut res := []T{}
 //	for i in 0 .. pool.results.len {
 //		res << *(&T(pool.results[i]))
 //	}
@@ -234,14 +234,14 @@ pub fn (pool mut PoolProcessor) work_on_items_i(items []int) {
 }
 
 pub fn (pool &PoolProcessor) get_results_s() []SResult {
-	mut res := []SResult
+	mut res := []SResult{}
 	for i in 0 .. pool.results.len {
 		res << *(&SResult(pool.results[i]))
 	}
 	return res
 }
 pub fn (pool &PoolProcessor) get_results_i() []IResult {
-	mut res := []IResult
+	mut res := []IResult{}
 	for i in 0 .. pool.results.len {
 		res << *(&IResult(pool.results[i]))
 	}

@@ -15,7 +15,7 @@ fn sum<T>(l []T) T {
 }
 
 fn map_f<T,U>(l []T, f fn(T)U) []U {
-    mut r := []U
+    mut r := []U{}
     for e in l {
         r << f(e)
     }

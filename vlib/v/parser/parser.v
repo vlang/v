@@ -95,7 +95,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	stmts << mstmt
 	// imports
 	/*
-	mut imports := []ast.Import
+	mut imports := []ast.Import{}
 	for p.tok.kind == .key_import {
 		imports << p.import_stmt()
 	}
@@ -1102,7 +1102,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
 	mut vals := []string{}
-	// mut default_exprs := []ast.Expr
+	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.position()
