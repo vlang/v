@@ -2232,7 +2232,7 @@ pub fn (re mut RE) find(in_txt string) (int,int) {
 // find all the non overlapping occurrences of the match pattern
 pub fn (re mut RE) find_all(in_txt string) []int {
 	mut i := 0
-	mut res := []int
+	mut res := []int{}
 	mut ls := -1
 	for i < in_txt.len {
 		s,e := re.find(in_txt[i..])

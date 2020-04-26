@@ -1,7 +1,5 @@
-import (
-	vweb.assets
-	os
-)
+import vweb.assets
+import os
 
 // clean_cache_dir used before and after tests that write to a cache directory.
 // Because of parallel compilation and therefore test running,

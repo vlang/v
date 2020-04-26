@@ -1,0 +1,6 @@
+vlib/v/checker/tests/mod_op_wrong_left_type_err_c.v:4:2: error: mismatched types `A` and `int`
+    2| fn main() {
+    3|     a := A{}
+    4|     a % 1
+           ^
+    5| }

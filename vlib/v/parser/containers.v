@@ -9,7 +9,7 @@ import v.token
 
 fn (mut p Parser) array_init() ast.ArrayInit {
 	first_pos := p.tok.position()
-	mut last_pos := token.Position{}
+	mut last_pos := p.tok.position()
 	p.check(.lsbr)
 	// p.warn('array_init() exp=$p.expected_type')
 	mut array_type := table.void_type
@@ -68,7 +68,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 	}
 	if exprs.len == 0 && p.tok.kind != .lcbr && has_type {
-		p.warn('use `x := []Type{}` instead of `x := []Type`')
+		p.warn_with_pos('use `x := []Type{}` instead of `x := []Type`', last_pos)
 	}
 	if p.tok.kind == .lcbr && exprs.len == 0 {
 		// `[]int{ len: 10, cap: 100}` syntax

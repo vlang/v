@@ -9,7 +9,7 @@ const (
 fn main() {
 	rand.seed(time.now().unix)
 	rand.next(MAX) // skip the first
-	mut arr := []int
+	mut arr := []int{}
 	for _ in 0..LEN {
 		arr << rand.next(MAX)
 	}
@@ -33,7 +33,7 @@ fn quick_sort(arr mut []int, l int, r int) {
 	quick_sort(mut arr, sep+1, r)
 }
 
-[inline] 
+[inline]
 fn swap(arr mut []int, i int, j int) {
 	temp := arr[i]
 	arr[i] = arr[j]

@@ -109,13 +109,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_method = true
 		rec_mut = p.tok.kind in [.key_var, .key_mut]
 		if rec_mut {
-			p.next() // `var`
+			p.next() // `mut`
 		}
 		rec_name = p.check_name()
 		if !rec_mut {
 			rec_mut = p.tok.kind == .key_mut
 		}
-		is_amp := p.peek_tok.kind == .amp
+		is_amp := p.tok.kind == .amp
 		// if rec_mut {
 		// p.check(.key_mut)
 		// }
@@ -123,7 +123,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type_with_mut(rec_mut)
 		if is_amp && rec_mut {
-			p.error('use `(f mut Foo)` or `(f &Foo)` instead of `(f mut &Foo)`')
+			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
 		}
 		args << table.Arg{
 			name: rec_name
@@ -157,11 +157,27 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Args
 	args2, is_variadic := p.fn_args()
 	args << args2
-	for arg in args {
+	for i, arg in args {
+		if p.scope.known_var(arg.name) {
+			p.error('redefinition of parameter `$arg.name`')
+		}
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
 			typ: arg.typ
+			is_mut: arg.is_mut
 		})
+		// Do not allow `mut` with simple types
+		// TODO move to checker?
+		if arg.is_mut {
+			if i == 0 && is_method {
+				continue
+			}
+			sym := p.table.get_type_symbol(arg.typ)
+			if sym.kind !in [.array, .struct_, .map, .placeholder] && !arg.typ.is_ptr() {
+				p.error('mutable arguments are only allowed for arrays, maps, and structs\n' +
+					'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`')
+			}
+		}
 	}
 	mut end_pos := p.prev_tok.position()
 	// Return type

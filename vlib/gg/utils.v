@@ -1,13 +1,11 @@
 module gg
 
-import (
-	gl
-	gx
-	math
-)
+import gl
+import gx
+import math
 
 fn arc_vertices(x, y, r, start_angle, end_angle f32, segments int) []f32 {
-	mut vertices := []f32
+	mut vertices := []f32{}
 	start_rads := start_angle * 0.0174533 // deg -> rad approx
 	end_rads := end_angle * 0.0174533
 	increment := (end_rads - start_rads) / segments

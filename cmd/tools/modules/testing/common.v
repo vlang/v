@@ -34,7 +34,7 @@ pub fn (mh mut TestMessageHandler) append_message(msg string) {
 }
 
 pub fn new_test_session(_vargs string) TestSession {
-	mut skip_files := []string
+	mut skip_files := []string{}
 	skip_files << '_non_existing_'
 	$if solaris {
 		skip_files << "examples/gg/gg2.v"
@@ -59,7 +59,7 @@ pub fn (ts mut TestSession) init() {
 
 pub fn (ts mut TestSession) test() {
 	ts.init()
-	mut remaining_files := []string
+	mut remaining_files := []string{}
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.real_path(relative_file)
@@ -225,7 +225,7 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	eprintln('v compiler args: "$vargs"')
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
-	mut mains := []string
+	mut mains := []string{}
 	for f in files {
 		if !f.contains('modules') && !f.contains('preludes') {
 			$if windows {

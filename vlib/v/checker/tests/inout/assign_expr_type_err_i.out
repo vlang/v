@@ -1,6 +1,0 @@
-vlib/v/checker/tests/inout/assign_expr_type_err_i.v:3:9: error: cannot assign `string` to variable `foo` of type `f64`
-    1| fn main() {
-    2|     mut foo := 1.5
-    3|     foo += 'hello'
-                  ~~~~~~~
-    4| }

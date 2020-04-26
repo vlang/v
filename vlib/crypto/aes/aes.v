@@ -7,9 +7,7 @@
 
 module aes
 
-import (
-	crypto.internal.subtle
-)
+import crypto.internal.subtle
 
 pub const (
 	// The AES block size in bytes.

@@ -1,6 +1,4 @@
-import (
-	eventbus
-)
+import eventbus
 
 struct EventData {
 	data	string
@@ -10,7 +8,7 @@ fn test_eventbus(){
 	ev_data := &EventData{'hello'}
 	mut eb := eventbus.new()
 	eb.subscriber.subscribe_once("on_test", on_test)
-	
+
 	assert eb.has_subscriber("on_test")
 	assert eb.subscriber.is_subscribed("on_test")
 

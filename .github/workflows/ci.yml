@@ -214,6 +214,8 @@ jobs:
 #      run: ./v -silent build-vbinaries
 ##    - name: Test v->js
 ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: quick debug
+      run: ./v -stats vlib/strconv/format_test.v
     - name: Fixed tests
       run: ./v test-fixed
 
@@ -270,6 +272,8 @@ jobs:
         echo %VFLAGS%
         echo $VFLAGS
         .\make.bat -msvc
+    - name: quick debug
+      run: ./v -stats vlib/strconv/format_test.v
     - name: Fixed tests
       run: |
         ./v -cg cmd\tools\vtest-fixed.v

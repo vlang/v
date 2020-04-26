@@ -1,13 +1,11 @@
 module main
 
-import (
-	cli
-	os
-)
+import cli
+import os
 
 fn main() {
 	mut cmd := cli.Command{
-		name: 'cli', 
+		name: 'cli',
 		description: 'An example of the cli library',
 		version: '1.0.0',
 		parent: 0
@@ -22,7 +20,7 @@ fn main() {
 		parent: 0
 	}
 	greet_cmd.add_flag(cli.Flag{
-		flag: .string, 
+		flag: .string,
 		required: true,
 		name: 'language',
 		abbrev: 'l',

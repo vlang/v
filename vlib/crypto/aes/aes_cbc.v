@@ -13,10 +13,8 @@
 
 module aes
 
-import (
-	crypto.cipher
-	crypto.internal.subtle
-)
+import crypto.cipher
+import crypto.internal.subtle
 
 struct AesCbc {
 mut:

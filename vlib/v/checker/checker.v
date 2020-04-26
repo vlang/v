@@ -360,6 +360,17 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		.left_shift {
 			if left.kind == .array {
 				// `array << elm`
+				match infix_expr.left {
+					ast.Ident {
+
+					}
+					ast.SelectorExpr {
+
+					}
+					else {
+						println('typeof: ${typeof(infix_expr.left)}')
+					}
+				}
 				// the expressions have different types (array_x and x)
 				if c.table.check(c.table.value_type(left_type), right_type) {
 					// []T << T
@@ -450,6 +461,7 @@ fn (mut c Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	if ast.expr_is_blank_ident(assign_expr.left) {
 		return
 	}
+	// Make sure the variable is mutable
 	match assign_expr.left {
 		ast.Ident {
 			scope := c.file.scope.innermost(assign_expr.pos.pos)
@@ -457,6 +469,20 @@ fn (mut c Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 				if !v.is_mut {
 					c.error('`$it.name` is immutable, declare it with `mut` to assign to it',
 						assign_expr.pos)
+				}
+			}
+		}
+		ast.IndexExpr {
+			// `m[key] = val`
+			if it.left is ast.Ident {
+				ident := it.left as ast.Ident
+				// TODO copy pasta
+				scope := c.file.scope.innermost(assign_expr.pos.pos)
+				if v := scope.find_var(ident.name) {
+					if !v.is_mut {
+						c.error('`$ident.name` is immutable, declare it with `mut` to assign to it',
+							assign_expr.pos)
+					}
 				}
 			}
 		}
@@ -1202,6 +1228,15 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			// c.warn('duplicate method `$it.name`', it.pos)
 			// }
 			// }
+			if !it.is_c {
+				// Make sure all types are valid
+				for arg in it.args {
+					sym := c.table.get_type_symbol(arg.typ)
+					if sym.kind == .placeholder {
+						c.error('unknown type `$sym.name`', it.pos)
+					}
+				}
+			}
 			c.expected_type = table.void_type
 			c.fn_return_type = it.return_type
 			c.stmts(it.stmts)

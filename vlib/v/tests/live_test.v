@@ -1,7 +1,5 @@
-import (
-	os
-	time
-)
+import os
+import time
 
 const (
 	vexe                = os.getenv('VEXE')

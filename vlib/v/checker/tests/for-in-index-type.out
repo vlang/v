@@ -1,0 +1,6 @@
+vlib/v/checker/tests/for-in-index-type.v:2:11: error: for in: cannot index `int`
+    1| fn main() {
+    2|     for a in 52 {
+                    ~~
+    3|         println(a)
+    4|     }

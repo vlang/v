@@ -1,0 +1,5 @@
+vlib/v/checker/tests/no_fn_main.v:1:1: error: function `main` must be declared in the main module
+    1| fn no_main() {
+       ^
+    2|     println('Hello world !')
+    3| }

@@ -70,7 +70,7 @@ fn main(){
 		exit(0)
 	}
 
-	mut files := []string
+	mut files := []string{}
 	locations := fp.finalize() or { eprintln('Error: ' + err) exit(1) }
 	for xloc in locations {
 		loc := os.real_path(xloc)

@@ -1,9 +1,7 @@
 module cli
 
-import (
-	term
-	strings
-)
+import term
+import strings
 
 const (
 	BASE_INDENT = 2

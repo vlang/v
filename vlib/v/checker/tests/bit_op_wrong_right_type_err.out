@@ -1,0 +1,5 @@
+vlib/v/checker/tests/bit_op_wrong_right_type_err.v:2:6: error: right type of `|` cannot be non-integer type f64
+    1| fn main() {
+    2|     1 | 0.5
+               ~~~
+    3| }

@@ -22,7 +22,7 @@ fn test_pointer() {
 }
 
 fn test_assign() {
-	arr := [2, 4, 8, 16, 32, 64, 128]
+	mut arr := [2, 4, 8, 16, 32, 64, 128]
 
 	arr[0] = 2
 	arr[1] &= 255
@@ -99,7 +99,7 @@ struct K {
 }
 
 fn test_empty() {
-	mut chunks := []Chunk
+	mut chunks := []Chunk{}
 	a := Chunk{}
 	assert chunks.len == 0
 	chunks << a
@@ -111,7 +111,7 @@ fn test_empty() {
 }
 
 fn test_push() {
-	mut a := []int
+	mut a := []int{}
 	a << 1
 	a << 3
 	assert a[1] == 3
@@ -145,7 +145,7 @@ fn test_insert() {
 // assert a[4] == 5
 // assert a[3] == 2
 // assert a.len == 5
-// mut b := []f64
+// mut b := []f64{}
 // assert b.len == 0
 // b.insert(0, f64(1.1))
 // assert b.len == 1
@@ -155,12 +155,12 @@ fn test_insert() {
 // It depends on array.insert
 // -----------------------------
 // fn test_prepend() {
-// mut a := []int
+// mut a := []int{}
 // assert a.len == 0
 // a.prepend(1)
 // assert a.len == 1
 // assert a[0] == 1
-// mut b := []f64
+// mut b := []f64{}
 // assert b.len == 0
 // b.prepend(f64(1.1))
 // assert b.len == 1
@@ -289,7 +289,7 @@ fn test_reverse() {
 	for i, _ in d {
 		assert d[i] == b[b.len - i - 1]
 	}
-	e := []int
+	e := []int{}
 	f := e.reverse()
 	assert f.len == 0
 }
@@ -711,7 +711,7 @@ fn test_hex(){
 }
 
 fn test_left_shift_precendence() {
-	mut arr := []int
+	mut arr := []int{}
 	arr << 1 + 1
 	arr << 1 - 1
 	arr << 2 / 1

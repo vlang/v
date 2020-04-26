@@ -1,14 +1,12 @@
 module parser
 
-import (
-	v.ast
-	v.gen
-	v.table
-	v.checker
-	//	v.eval
-	v.pref
-	term
-)
+import v.ast
+import v.gen
+import v.table
+import v.checker
+//import v.eval
+import v.pref
+import term
 
 fn test_eval() {
 	/*
