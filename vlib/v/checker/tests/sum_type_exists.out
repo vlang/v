@@ -1,0 +1,5 @@
+vlib/v/checker/tests/sum_type_exists.v:1:1: error: type `Nope` doesn't exist
+    1| type Miscellaneous = Nope | Inexistant | int
+       ~~~~~~~~~~~~~~~~~~
+    2|
+    3| fn main() {
