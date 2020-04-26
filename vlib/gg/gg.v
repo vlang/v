@@ -4,14 +4,12 @@
 
 module gg
 
-import (
-	stbi
-	glm
-	gl
-	gx
-	os
-	glfw
-)
+import stbi
+import glm
+import gl
+import gx
+import os
+import glfw
 
 pub struct Vec2 {
 pub:
@@ -434,7 +432,7 @@ pub fn (ctx &GG) draw_filled_arc(x, y, r, start_angle, end_angle f32, segments i
 	ctx.use_color_shader(color)
 
 	
-	mut vertices := []f32
+	mut vertices := []f32{}
 	vertices << [x, y] !
 	vertices << arc_vertices(x, y, r, start_angle, end_angle, segments)
 	ctx.bind_vertices(vertices)
@@ -448,7 +446,7 @@ pub fn (ctx &GG) draw_circle(x, y, r f32, color gx.Color) {
 
 pub fn (ctx &GG) draw_rounded_rect(x, y, w, h, r f32, color gx.Color) {
 	ctx.use_color_shader(color)
-	mut vertices := []f32
+	mut vertices := []f32{}
 	segments := 6 + int(r / 8)
 
 	// Create a rounded rectangle using a triangle fan mesh.
@@ -467,7 +465,7 @@ pub fn (ctx &GG) draw_rounded_rect(x, y, w, h, r f32, color gx.Color) {
 
 pub fn (ctx &GG) draw_empty_rounded_rect(x, y, w, h, r f32, color gx.Color) {
 	ctx.use_color_shader(color)
-	mut vertices := []f32
+	mut vertices := []f32{}
 	segments := 6 + int(r / 8)
 
 	vertices << arc_vertices(x + w - r, y + h - r, r, 0, 90, segments)
