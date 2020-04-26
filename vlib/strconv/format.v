@@ -812,7 +812,11 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 			// string
 			else if ch == `s` {
 				s1 := *(&string(pt[p_index]))
-				pad_ch = ` ` // for now we use only space
+				pad_ch = `0`
+				$if glibc {
+					// glibc is special ...
+					pad_ch = ` `
+				}
 				res.write(format_str(s1, {pad_ch: pad_ch, len0: len0, allign: allign}))
 				
 				status = .reset_params
