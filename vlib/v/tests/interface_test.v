@@ -37,8 +37,8 @@ fn perform_speak(s Speaker) {
 	s.speak()
 	assert true
 	name := s.name()
-       assert name == 'Dog' || name == 'Cat'
-       println(s.name())
+	assert name == 'Dog' || name == 'Cat'
+	println(s.name())
 }
 
 fn test_perform_speak() {
@@ -54,7 +54,7 @@ fn test_perform_speak() {
 */
 }
 
-//fn perform_speakers(speakers []Speaker) {}
+fn perform_speakers(speakers []Speaker) {}
 
 /*
 interface Speak2er {

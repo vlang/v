@@ -3,10 +3,8 @@
 // that can be found in the LICENSE file.
 module builtin
 
-import (
-	strings
-	hash.wyhash
-)
+import strings
+import hash.wyhash
 
 fn C.memcmp(byteptr, byteptr, int) int
 

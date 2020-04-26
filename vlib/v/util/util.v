@@ -3,17 +3,16 @@
 // that can be found in the LICENSE file.
 module util
 
-import (
-	os
-	v.pref
-)
+import os
+import v.pref
 
 pub const (
 	v_version = '0.1.26'
 )
 
+// math.bits is needed by strconv.ftoa
 pub const (
-	builtin_module_parts = ['math.bits' /* needed by strconv.ftoa */, 'strconv', 'strconv.ftoa', 'hash.wyhash', 'strings']
+	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash.wyhash', 'strings']
 )
 
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
@@ -47,7 +46,7 @@ pub fn full_v_version() string {
 // NB: githash(true) must be called only when v detects that it builds itself.
 // For all other programs, githash(false) should be used.
 pub fn githash(should_get_from_filesystem bool) string {
-	for  {
+	for {
 		// The `for` construct here is used as a goto substitute.
 		// The code in this function will break out of the `for`
 		// if it detects an error and can not continue.
@@ -113,7 +112,9 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 	mut should_compile := false
 	if !os.exists(tool_exe) {
 		should_compile = true
-	} else {
+	}
+	//
+	else {
 		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(vexe) {
 			// v was recompiled, maybe after v up ...
 			// rebuild the tool too just in case
@@ -203,24 +204,12 @@ fn imax(a, b int) int {
 fn replace_op(s string) string {
 	last_char := s[s.len - 1]
 	suffix := match last_char {
-		`+` {
-			'_plus'
-		}
-		`-` {
-			'_minus'
-		}
-		`*` {
-			'_mult'
-		}
-		`/` {
-			'_div'
-		}
-		`%` {
-			'_mod'
-		}
-		else {
-			''
-		}
+		`+` { '_plus' }
+		`-` { '_minus' }
+		`*` { '_mult' }
+		`/` { '_div' }
+		`%` { '_mod' }
+		else { '' }
 	}
 	return s[..s.len - 1] + suffix
 }
@@ -230,7 +219,7 @@ pub fn join_env_vflags_and_os_args() []string {
 	if vosargs != '' {
 		return non_empty(vosargs.split(' '))
 	}
-	mut args := []string
+	mut args := []string{}
 	vflags := os.getenv('VFLAGS')
 	if vflags != '' {
 		args << os.args[0]

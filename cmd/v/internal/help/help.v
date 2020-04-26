@@ -1,11 +1,8 @@
 module help
 
-//TODO: move this file outside internal, and merge it with cmd/tools/modules/vhelp/vhelp.v .
-
-import (
-	os
-	v.pref
-)
+// TODO: move this file outside internal, and merge it with cmd/tools/modules/vhelp/vhelp.v .
+import os
+import v.pref
 
 const (
 	unknown_topic = 'V Error: Unknown help topic provided. Use `v help` for usage information.'

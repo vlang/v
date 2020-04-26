@@ -91,7 +91,7 @@ fn (mcache mut ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 			}else{
 				mcache.mark_folders_with_vmod( folders_so_far, res )
 			}
-			return []string, res
+			return []string{}, res
 		}
 		files := mcache.get_files( cfolder )
 		if 'v.mod' in files {
@@ -99,7 +99,7 @@ fn (mcache mut ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 			// if its source folder is different
 			res := ModFileAndFolder{ vmod_file: os.join_path( cfolder, 'v.mod'), vmod_folder: cfolder }
 			return folders_so_far, res
-		}		
+		}
 		if mcache.check_for_stop( cfolder, files ) {
 			break
 		}
@@ -139,7 +139,7 @@ fn (mcache mut ModFileCacher) get_files(cfolder string) []string {
 	if cfolder in mcache.folder_files {
 		return mcache.folder_files[ cfolder ]
 	}
-	mut files := []string
+	mut files := []string{}
 	if os.exists( cfolder ) && os.is_dir(cfolder) {
 		if listing := os.ls(cfolder) {
 			files = listing

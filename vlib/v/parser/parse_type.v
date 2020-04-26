@@ -49,7 +49,7 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 
 pub fn (mut p Parser) parse_multi_return_type() table.Type {
 	p.check(.lpar)
-	mut mr_types := []table.Type
+	mut mr_types := []table.Type{}
 	for {
 		mr_type := p.parse_type()
 		mr_types << mr_type
@@ -148,7 +148,7 @@ pub fn (mut p Parser) parse_any_type(is_c, is_js, is_ptr bool) table.Type {
 		name = '${p.imports[name]}.$p.tok.lit'
 	} else if p.expr_mod != '' {
 		name = p.expr_mod + '.' + name
-	} else if !(p.mod in ['builtin', 'main']) && !(name in table.builtin_type_names) {
+	} else if p.mod !in ['builtin', 'main'] && name !in table.builtin_type_names {
 		// `Foo` in module `mod` means `mod.Foo`
 		name = p.mod + '.' + name
 	}

@@ -73,7 +73,7 @@ pub fn (mut p Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 }
 
 fn (mut p Parser) parse_assign_lhs() []ast.Ident {
-	mut idents := []ast.Ident
+	mut idents := []ast.Ident{}
 	for {
 		is_mut := p.tok.kind == .key_mut || p.tok.kind == .key_var
 		if is_mut {
@@ -101,7 +101,7 @@ fn (mut p Parser) parse_assign_lhs() []ast.Ident {
 
 // right hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) parse_assign_rhs() []ast.Expr {
-	mut exprs := []ast.Expr
+	mut exprs := []ast.Expr{}
 	for {
 		expr := p.expr(0)
 		exprs << expr

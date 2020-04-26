@@ -271,7 +271,7 @@ pub fn (mut g Gen) typ(t table.Type) string {
 		if t.is_ptr() {
 			styp = styp.replace('*', '_ptr')
 		}
-		if !(styp in g.optionals) {
+		if styp !in g.optionals {
 			// println(styp)
 			x := styp // .replace('*', '_ptr')			// handle option ptrs
 			g.typedefs2.writeln('typedef Option $x;')
@@ -768,7 +768,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 	if assign_stmt.left.len > assign_stmt.right.len {
 		// multi return
-		mut or_stmts := []ast.Stmt
+		mut or_stmts := []ast.Stmt{}
 		mut return_type := table.void_type
 		if assign_stmt.right[0] is ast.CallExpr {
 			it := assign_stmt.right[0] as ast.CallExpr
@@ -810,7 +810,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			ident_var_info := ident.var_info()
 			styp := g.typ(ident_var_info.typ)
 			mut is_call := false
-			mut or_stmts := []ast.Stmt
+			mut or_stmts := []ast.Stmt{}
 			mut return_type := table.void_type
 			match val {
 				ast.CallExpr {
@@ -1244,7 +1244,7 @@ fn (mut g Gen) enum_expr(node ast.Expr) {
 fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 	// g.write('/*assign_expr*/')
 	mut is_call := false
-	mut or_stmts := []ast.Stmt
+	mut or_stmts := []ast.Stmt{}
 	mut return_type := table.void_type
 	match node.val {
 		ast.CallExpr {
@@ -1377,7 +1377,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	} else if node.op in [.eq, .ne] && left_sym.kind == .array && right_sym.kind == .array {
 		styp := g.table.value_type(node.left_type)
 		ptr_typ := g.typ(node.left_type).split('_')[1]
-		if !(ptr_typ in g.array_fn_definitions) {
+		if ptr_typ !in g.array_fn_definitions {
 			sym := g.table.get_type_symbol(left_sym.array_info().elem_type)
 			g.generate_array_equality_fn(ptr_typ, styp, sym)
 		}
@@ -2011,7 +2011,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.writeln('($styp){')
 	}
 	// mut fields := []string
-	mut inited_fields := []string // TODO this is done in checker, move to ast node
+	mut inited_fields := []string{} // TODO this is done in checker, move to ast node
 	/*
 	if struct_init.fields.len == 0 && struct_init.exprs.len > 0 {
 		// Get fields for {a,b} short syntax. Fields array wasn't set in the parser.
@@ -2182,7 +2182,7 @@ const (
 )
 
 fn (mut g Gen) write_builtin_types() {
-	mut builtin_types := []table.TypeSymbol // builtin types
+	mut builtin_types := []table.TypeSymbol{} // builtin types
 	// builtin types need to be on top
 	// everything except builtin will get sorted
 	for builtin_name in builtins {
@@ -2195,9 +2195,9 @@ fn (mut g Gen) write_builtin_types() {
 // Sort the types, make sure types that are referenced by other types
 // are added before them.
 fn (mut g Gen) write_sorted_types() {
-	mut types := []table.TypeSymbol // structs that need to be sorted
+	mut types := []table.TypeSymbol{} // structs that need to be sorted
 	for typ in g.table.types {
-		if !(typ.name in builtins) {
+		if typ.name !in builtins {
 			types << typ
 		}
 	}
@@ -2268,7 +2268,7 @@ int typ;
 fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 	mut dep_graph := depgraph.new_dep_graph()
 	// types name list
-	mut type_names := []string
+	mut type_names := []string{}
 	for typ in typesa {
 		type_names << typ.name
 	}
@@ -2278,7 +2278,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 			continue
 		}
 		// create list of deps
-		mut field_deps := []string
+		mut field_deps := []string{}
 		match t.info {
 			table.ArrayFixed {
 				dep := g.table.get_type_symbol(it.elem_type).name
@@ -2294,7 +2294,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 				for field in info.fields {
 					dep := g.table.get_type_symbol(field.typ).name
 					// skip if not in types list or already in deps
-					if !(dep in type_names) || dep in field_deps || field.typ.is_ptr() {
+					if dep !in type_names || dep in field_deps || field.typ.is_ptr() {
 						continue
 					}
 					field_deps << dep
@@ -2314,7 +2314,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
-	mut types_sorted := []table.TypeSymbol
+	mut types_sorted := []table.TypeSymbol{}
 	for node in dep_graph_sorted.nodes {
 		types_sorted << g.table.types[g.table.type_idxs[node.name]]
 	}
@@ -2815,7 +2815,7 @@ pub fn (mut g Gen) write_tests_main() {
 }
 
 fn (g Gen) get_all_test_function_names() []string {
-	mut tfuncs := []string
+	mut tfuncs := []string{}
 	mut tsuite_begin := ''
 	mut tsuite_end := ''
 	for _, f in g.table.fns {
@@ -2846,7 +2846,7 @@ fn (g Gen) get_all_test_function_names() []string {
 			continue
 		}
 	}
-	mut all_tfuncs := []string
+	mut all_tfuncs := []string{}
 	if tsuite_begin.len > 0 {
 		all_tfuncs << tsuite_begin
 	}
@@ -2854,7 +2854,7 @@ fn (g Gen) get_all_test_function_names() []string {
 	if tsuite_end.len > 0 {
 		all_tfuncs << tsuite_end
 	}
-	mut all_tfuncs_c := []string
+	mut all_tfuncs_c := []string{}
 	for f in all_tfuncs {
 		all_tfuncs_c << f.replace('.', '__')
 	}
@@ -3016,7 +3016,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	str_fn_name := styp_to_str_fn_name(styp)
 	already_generated_key := '${styp}:${str_fn_name}'
 	// generate for type
-	if !sym.has_method('str') && !(already_generated_key in g.str_types) {
+	if !sym.has_method('str') && already_generated_key !in g.str_types {
 		g.str_types << already_generated_key
 		match sym.info {
 			table.Alias { g.gen_str_default(sym, styp, str_fn_name) }
@@ -3031,7 +3031,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	// if varg, generate str for varg
 	if typ.flag_is(.variadic) {
 		varg_already_generated_key := 'varg_$already_generated_key'
-		if !(varg_already_generated_key in g.str_types) {
+		if varg_already_generated_key !in g.str_types {
 			g.gen_str_for_varg(styp, str_fn_name)
 			g.str_types << varg_already_generated_key
 		}
@@ -3132,10 +3132,14 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 				g.auto_str_funcs.write('indents.len, indents.str, ')
 				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ).len, ')
 				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ).str  ')
-			} else if sym.kind in [.struct_, .array, .array_fixed] {
+			} else if sym.kind == .struct_ {
 				g.auto_str_funcs.write('indents.len, indents.str, ')
 				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ).len, ')
 				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ).str  ')
+			} else if sym.kind in [.array, .array_fixed] {
+				g.auto_str_funcs.write('indents.len, indents.str, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}).len, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}).str  ')
 			} else {
 				g.auto_str_funcs.write('indents.len, indents.str, it->${field.name}')
 				if field.typ == table.string_type {
@@ -3167,11 +3171,11 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; i++) {')
 	g.auto_str_funcs.writeln('\t\t${field_styp} it = (*(${field_styp}*)array_get(a, i));')
 	if sym.kind == .struct_ && !sym.has_method('str') {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));')
 	} else if sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _STR("%g", it));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", it));')
 	} else {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
 	}
 	g.auto_str_funcs.writeln('\t\tif (i != a.len-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
@@ -3194,13 +3198,13 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("["));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < $info.size; i++) {')
 	if sym.kind == .struct_ && !sym.has_method('str') {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i],0));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i],0));')
 	} else if sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _STR("%g", a[i]));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", a[i]));')
 	} else if sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _STR("\\"%.*s\\"", a[i].len, a[i].str));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\\"%.*s\\"", a[i].len, a[i].str));')
 	} else {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i]));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i]));')
 	}
 	g.auto_str_funcs.writeln('\t\tif (i != $info.size-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')

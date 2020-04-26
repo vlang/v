@@ -2,13 +2,11 @@ module main
 
 /*
 QTODO
-import (
-	os
-	flag
-	strings
-	compiler
-	v.pref
-)
+import os
+import flag
+import strings
+import compiler
+import v.pref
 
 const (
 	tool_version = '0.0.1'

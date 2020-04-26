@@ -1,9 +1,7 @@
 module main
 
-import (
-	os
-	testing
-)
+import os
+import testing
 
 const (
 	known_failing_exceptions = ['./examples/vweb/vweb_example.v',

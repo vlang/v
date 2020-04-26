@@ -293,7 +293,7 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 }
 
 fn (ctx mut Context) parse_form(s string) {
-	if !(ctx.req.method in methods_with_form) {
+	if ctx.req.method !in methods_with_form {
 		return
 	}
 	//pos := s.index('\r\n\r\n')

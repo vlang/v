@@ -90,7 +90,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			buffer := [100]byteptr
 			nr_ptrs := backtrace(buffer, 100)
 			nr_actual_frames := nr_ptrs - skipframes
-			mut sframes := []string
+			mut sframes := []string{}
 			//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
 			csymbols := backtrace_symbols(&buffer[skipframes], nr_actual_frames)
 			for i in 0 .. nr_actual_frames {

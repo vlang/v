@@ -1,13 +1,13 @@
 const (
 	x = &Test{}
-	y = []&Test
-	z = &[]&Test
+	y = []&Test{}
+	z = &[]&Test{}
 )
 
 fn test_type_ptr() {
 	_ := &Test{}
-	_ := []&Test
-	_ := &[]&Test
+	_ := []&Test{}
+	_ := &[]&Test{}
 }
 
 struct Test {

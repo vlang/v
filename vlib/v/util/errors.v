@@ -68,7 +68,7 @@ pub fn formatted_error(kind string /*error or warn*/, emsg string, filepath stri
 	//
 	bline := util.imax(0, pos.line_nr - error_context_before)
 	aline := util.imin(source_lines.len-1, pos.line_nr + error_context_after)
-	mut clines := []string
+	mut clines := []string{}
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline]
@@ -83,7 +83,7 @@ pub fn formatted_error(kind string /*error or warn*/, emsg string, filepath stri
 			// line, so that it prints the ^ character exactly on the *same spot*
 			// where it is needed. That is the reason we can not just
 			// use strings.repeat(` `, col) to form it.
-			mut pointerline := []string
+			mut pointerline := []string{}
 			for i, c in sline {
 				if i < column {
 					mut x := c

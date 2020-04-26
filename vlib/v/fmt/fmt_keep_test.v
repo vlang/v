@@ -28,7 +28,7 @@ fn test_fmt() {
 	mut fmt_bench := benchmark.new_benchmark()
 	keep_input_files := os.walk_ext('$vroot/vlib/v/fmt/tests', '_keep.vv')
 	expected_input_files := os.walk_ext('$vroot/vlib/v/fmt/tests', '_expected.vv')
-	mut input_files := []string
+	mut input_files := []string{}
 	input_files << keep_input_files
 	input_files << expected_input_files
 	fmt_bench.set_total_expected_steps(input_files.len)

@@ -1,9 +1,7 @@
-import (
-	os
-	flag
-	scripting
-	vgit
-)
+import os
+import flag
+import scripting
+import vgit
 
 const (
 	tool_version = '0.0.5'

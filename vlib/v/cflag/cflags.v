@@ -41,7 +41,7 @@ fn (cflags []CFlag) c_options_after_target_msvc() string {
 
 fn (cflags []CFlag) c_options_before_target() string {
 	// -I flags, optimization flags and so on
-	mut args := []string
+	mut args := []string{}
 	for flag in cflags {
 		if flag.name != '-l' {
 			args << flag.format()
@@ -52,7 +52,7 @@ fn (cflags []CFlag) c_options_before_target() string {
 
 fn (cflags []CFlag) c_options_after_target() string {
 	// -l flags (libs)
-	mut args := []string
+	mut args := []string{}
 	for flag in cflags {
 		if flag.name == '-l' {
 			args << flag.format()
@@ -62,7 +62,7 @@ fn (cflags []CFlag) c_options_after_target() string {
 }
 
 fn (cflags []CFlag) c_options_without_object_files() string {
-	mut args := []string
+	mut args := []string{}
 	for flag in cflags {
 		if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {
 			continue
@@ -73,7 +73,7 @@ fn (cflags []CFlag) c_options_without_object_files() string {
 }
 
 fn (cflags []CFlag) c_options_only_object_files() string {
-	mut args := []string
+	mut args := []string{}
 	for flag in cflags {
 		if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {
 			args << flag.format()

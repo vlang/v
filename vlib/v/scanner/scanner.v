@@ -3,19 +3,18 @@
 // that can be found in the LICENSE file.
 module scanner
 
-import (
-	os
-	v.token
-	v.pref
-	v.util
-)
+import os
+import v.token
+import v.pref
+import v.util
 
 const (
 	single_quote = `\'`
 	double_quote = `"`
 	//is_fmt = os.getenv('VEXE').contains('vfmt')
 	is_fmt = os.executable().contains('vfmt')
-	num_sep = `_` // char used as number separator
+// char used as number separator
+	num_sep = `_`
 )
 
 pub struct Scanner {
@@ -255,21 +254,22 @@ fn (s mut Scanner) ident_dec_number() string {
 					s.pos++
 				}
 			}
-			// 5.. (a range)
 			else if s.text[s.pos] == `.` {
+			// 5.. (a range)
 				is_range = true
 				s.pos--
 			}
+			else if s.text[s.pos] in [`e`, `E`] {
 			// 5.e5
-			else if s.text[s.pos] in [`e`, `E`] { }
-			// 5.str()
+			}
 			else if s.text[s.pos].is_letter() {
+			// 5.str()
 				call_method = true
 				s.pos--
 			}
-			// 5.
 			else if s.text[s.pos] != `)` {
-				is_float_without_fraction = true 
+			// 5.
+				is_float_without_fraction = true
 				s.pos--
 			}
 		}
@@ -300,16 +300,16 @@ fn (s mut Scanner) ident_dec_number() string {
 			s.pos++
 		}
 	}
-	// error check: wrong digit
 	if has_wrong_digit {
+	// error check: wrong digit
 		s.error('this number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
-	// error check: 5e
 	else if s.text[s.pos - 1] in [`e`, `E`] {
+	// error check: 5e
 		s.error('exponent has no digits')
 	}
-	// error check: 1.23.4, 123.e+3.4
 	else if s.pos < s.text.len && s.text[s.pos] == `.` && !is_range && !is_float_without_fraction && !call_method {
+	// error check: 1.23.4, 123.e+3.4
 		if has_exp {
 			s.error('exponential part should be integer')
 		}
@@ -425,8 +425,8 @@ pub fn (s mut Scanner) scan() token.Token {
 		}
 		return s.new_token(.name, name, name.len)
 	}
-	// `123`, `.123`
 	else if c.is_digit() || (c == `.` && nextc.is_digit()) {
+	// `123`, `.123`
 		if !s.is_inside_string {
 			// In C ints with `0` prefix are octal (in V they're decimal), so discarding heading zeros is needed.
 			mut start_pos := s.pos
@@ -669,17 +669,15 @@ pub fn (s mut Scanner) scan() token.Token {
 			}
 		}
 		0xE2 {
-			// case `≠`:
 			if nextc == 0x89 && s.text[s.pos + 2] == 0xA0 {
+			// case `≠`:
 				s.pos += 2
 				return s.new_token(.ne, '', 3)
 			}
-			// ⩽
 			else if nextc == 0x89 && s.text[s.pos + 2] == 0xBD {
 				s.pos += 2
 				return s.new_token(.le, '', 3)
 			}
-			// ⩾
 			else if nextc == 0xA9 && s.text[s.pos + 2] == 0xBE {
 				s.pos += 2
 				return s.new_token(.ge, '', 3)
@@ -761,7 +759,7 @@ pub fn (s mut Scanner) scan() token.Token {
 					// Find out if this comment is on its own line (for vfmt)
 					mut is_separate_line_comment := true
 					for j := start-2; j >= 0 && s.text[j] != `\n`; j-- {
-						if !(s.text[j] in [`\t`, ` `]) {
+						if s.text[j] !in [`\t`, ` `] {
 							is_separate_line_comment = false
 						}
 					}
