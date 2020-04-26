@@ -18,14 +18,19 @@ fn test_format(){
 	temp_s = strconv.v_sprintf(sc0    ,a0 ,b0 ,c0 ,s0     ,b0 ,&b0 ,f0, f1, ch0)
 	C.sprintf(buf, sc0.str,a0 ,b0 ,c0 ,s0.str ,b0 ,&b0 ,f0, f1, ch0)
     
-    eprintln( tos2(buf) )
+	$if debug {
+		eprintln('C sprintf:')
+		eprintln( tos2(buf) )
+		eprintln( tos2(buf).bytes().hex() )
+        eprintln('V sprintf:')
         eprintln( temp_s )
-            eprintln( tos2(buf).bytes().hex() )
-                eprintln( temp_s.bytes().hex() )
-                
-	//println("$temp_s${tos2(buf)}")
-	assert tos2(buf) == temp_s
-
+        eprintln( temp_s.bytes().hex() )
+	}
+    
+	$if macos {
+		assert tos2(buf) == temp_s
+	}
+    
 	a := byte(12)
 	b := i16(13)
 	c := 14
