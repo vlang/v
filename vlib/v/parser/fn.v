@@ -158,6 +158,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	args2, is_variadic := p.fn_args()
 	args << args2
 	for i, arg in args {
+		if p.scope.known_var(arg.name) {
+			p.error('redefinition of parameter `$arg.name`')
+		}
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
 			typ: arg.typ
