@@ -63,7 +63,7 @@ pub fn (f Flag) str() string {
 	+'            desc: $f.val_desc'
 }
 pub fn (af []Flag) str() string {
-	mut res := []string
+	mut res := []string{}
 	res << '\n  []Flag = ['
 	for f in af {
 		res << f.str()
@@ -140,8 +140,8 @@ fn (fs mut FlagParser) add_flag(name string, abbr byte, usage string, desc strin
 //  - found arguments and corresponding values are removed from args list
 fn (fs mut FlagParser) parse_value(longhand string, shorthand byte) []string {
 	full := '--$longhand'
-	mut found_entries := []string
-	mut to_delete := []int
+	mut found_entries := []string{}
+	mut to_delete := []int{}
 	mut should_skip_one := false
 	for i, arg in fs.args {
 		if should_skip_one {
@@ -257,7 +257,7 @@ pub fn (fs mut FlagParser) bool(name string, abbr byte, bdefault bool, usage str
 pub fn (fs mut FlagParser) int_multi(name string, abbr byte, usage string) []int {
 	fs.add_flag(name, abbr, usage, '<multiple ints>')
 	parsed := fs.parse_value(name, abbr)
-	mut value := []int
+	mut value := []int{}
 	for val in parsed {
 		value << val.int()
 	}
@@ -294,7 +294,7 @@ pub fn (fs mut FlagParser) int(name string, abbr byte, idefault int, usage strin
 pub fn (fs mut FlagParser) float_multi(name string, abbr byte, usage string) []f64 {
 	fs.add_flag(name, abbr, usage, '<multiple floats>')
 	parsed := fs.parse_value(name, abbr)
-	mut value := []f64
+	mut value := []f64{}
 	for val in parsed {
 		value << val.f64()
 	}
@@ -421,7 +421,7 @@ pub fn (fs FlagParser) usage() string {
 			use += 'This application does not expect any arguments\n\n'
 			goto end_of_arguments_handling
 		}
-		mut s:= []string
+		mut s:= []string{}
 		if positive_min_arg { s << 'at least $fs.min_free_args' }
 		if positive_max_arg { s << 'at most $fs.max_free_args' }
 		if positive_min_arg && positive_max_arg && fs.min_free_args == fs.max_free_args {

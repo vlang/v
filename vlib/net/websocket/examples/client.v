@@ -1,13 +1,11 @@
 module main
 
-import (
-	net.websocket
-	eventbus
-	time
-	readline
-	term
-	benchmark
-)
+import net.websocket
+import eventbus
+import time
+import readline
+import term
+import benchmark
 
 const (
 	eb = eventbus.new()

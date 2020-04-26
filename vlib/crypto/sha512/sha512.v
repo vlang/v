@@ -7,10 +7,8 @@
 // Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01
 module sha512
 
-import (
-	crypto
-	encoding.binary
-)
+import crypto
+import encoding.binary
 
 pub const (
 // size is the size, in bytes, of a SHA-512 checksum.
@@ -322,4 +320,3 @@ pub fn hexhash_512_224(s string) string {
 pub fn hexhash_512_256(s string) string {
 	return sum512_256(s.bytes()).hex()
 }
-

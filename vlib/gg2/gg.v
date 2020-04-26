@@ -3,16 +3,15 @@
 // that can be found in the LICENSE file.
 module gg2
 
-import (
-	glm
-	gx
-	os
-	sokol
-	sokol.sapp
-	sokol.sgl
-	sokol.gfx
-	sokol.sfons
-)
+import glm
+import gx
+import os
+import sokol
+import sokol.sapp
+import sokol.sgl
+import sokol.gfx
+import sokol.sfons
+
 const (
 	default_font_size = 24
 )

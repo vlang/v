@@ -74,7 +74,7 @@ fn main() {
 		eprintln('vfmt env_vflags_and_os_args: ' + args.str())
 		eprintln('vfmt possible_files: ' + possible_files.str())
 	}
-	mut files := []string
+	mut files := []string{}
 	for file in possible_files {
 		if !file.ends_with('.v') && !file.ends_with('.vv') {
 			verror('v fmt can only be used on .v files.\nOffending file: "$file"')
@@ -90,7 +90,7 @@ fn main() {
 		vhelp.show_topic('fmt')
 		exit(0)
 	}
-	mut cli_args_no_files := []string
+	mut cli_args_no_files := []string{}
 	for a in os.args {
 		if a !in files {
 			cli_args_no_files << a
@@ -287,7 +287,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	all_files_in_pfolder := os.ls(pfolder) or {
 		panic(err)
 	}
-	mut vfiles := []string
+	mut vfiles := []string{}
 	for f in all_files_in_pfolder {
 		vf := os.join_path(pfolder, f)
 		if f.starts_with('.') || !f.ends_with('.v') || os.is_dir(vf) {

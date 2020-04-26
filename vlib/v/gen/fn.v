@@ -367,7 +367,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	// Generate tmp vars for values that have to be freed.
 	/*
-	mut tmps := []string
+	mut tmps := []string{}
 	for arg in node.args {
 		if arg.typ == table.string_type_idx || is_print {
 			tmp := g.new_tmp_var()

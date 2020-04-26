@@ -77,7 +77,7 @@ mut:
 }
 
 fn init_os_args_wide(argc int, argv &byteptr) []string {
-	mut args := []string
+	mut args := []string{}
 	for i in 0..argc {
 		args << string_from_wide(&u16(argv[i]))
 	}
@@ -86,7 +86,7 @@ fn init_os_args_wide(argc int, argv &byteptr) []string {
 
 pub fn ls(path string) ?[]string {
 	mut find_file_data := Win32finddata{}
-	mut dir_files := []string
+	mut dir_files := []string{}
 	// We can also check if the handle is valid. but using is_dir instead
 	// h_find_dir := C.FindFirstFile(path.str, &find_file_data)
 	// if (INVALID_HANDLE_VALUE == h_find_dir) {

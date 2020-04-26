@@ -20,7 +20,7 @@ fn (context Context) header() {
 	println('module ${context.module_name}')
 	println('')
 	allfiles := context.files.join(' ')
-	mut options := []string
+	mut options := []string{}
 	if context.prefix.len > 0 {
 		options << '-p ${context.prefix}'
 	}

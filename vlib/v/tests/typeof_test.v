@@ -8,8 +8,8 @@ fn test_typeof_on_simple_expressions() {
 }
 
 fn test_typeof_on_atypes() {
-	aint := []int
-	astring := []string
+	aint := []int{}
+	astring := []string{}
 	assert typeof(aint) == 'array_int'
 	assert typeof(astring) == 'array_string'
 }

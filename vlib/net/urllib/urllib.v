@@ -257,7 +257,7 @@ fn escape(s string, mode EncodingMode) string {
 		return s
 	}
 	buf := [byte(0)].repeat(64)
-	mut t := []byte
+	mut t := []byte{}
 	required := s.len + 2 * hex_count
 	if required <= buf.len {
 		t = buf[..required]
@@ -883,7 +883,7 @@ pub fn (v Values) encode() string {
 		return ''
 	}
 	mut buf := strings.new_builder(200)
-	mut keys := []string
+	mut keys := []string{}
 	for k, _ in v.data {
 		keys << k
 	}
@@ -922,7 +922,7 @@ fn resolve_path(base, ref string) string {
 	if full == '' {
 		return ''
 	}
-	mut dst := []string
+	mut dst := []string{}
 	src := full.split('/')
 	for _, elem in src {
 		match elem {
@@ -1131,4 +1131,3 @@ fn unhex(c byte) byte {
 	}
 	return 0
 }
-

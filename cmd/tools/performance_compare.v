@@ -51,7 +51,7 @@ fn (c Context) compare_versions() {
 
 	// The first is the baseline, against which all the others will be compared.
 	// It is the fastest, since hello_world.v has only a single println in it,
-	mut perf_files := []string
+	mut perf_files := []string{}
 	perf_files << c.compare_v_performance('source_hello', [
 		'vprod @DEBUG@ -o source.c examples/hello_world.v',
 		'vprod         -o source.c examples/hello_world.v',
@@ -147,7 +147,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 	timestamp_b,_ := vgit.line_to_timestamp_and_commit(scripting.run('cd $c.b/ ; git rev-list -n1 --timestamp HEAD'))
 	debug_option_a := if timestamp_a > 1570877641 { '-g     ' } else { '-debug ' }
 	debug_option_b := if timestamp_b > 1570877641 { '-g     ' } else { '-debug ' }
-	mut hyperfine_commands_arguments := []string
+	mut hyperfine_commands_arguments := []string{}
 	for cmd in commands {
 		println(cmd)
 	}

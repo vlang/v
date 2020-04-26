@@ -1,10 +1,8 @@
 module log
 
-import (
-	os
-	time
-	term
-)
+import os
+import time
+import term
 
 pub enum Level {
 	fatal = 1

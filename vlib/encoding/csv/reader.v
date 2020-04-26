@@ -46,7 +46,7 @@ pub fn (r mut Reader) read() ?[]string {
 
 // Once we have multi dimensional array
 // pub fn (r mut Reader) read_all() ?[][]string {
-// 	mut records := []string
+// 	mut records := []string{}
 // 	for {
 // 		record := r.read_record() or {
 // 			if error(err).error == err_eof.error {
@@ -110,7 +110,7 @@ fn (r mut Reader) read_record() ?[]string {
 		}
 		break
 	}
-	mut fields := []string
+	mut fields := []string{}
 	mut i := -1
 	for {
 		// not quoted

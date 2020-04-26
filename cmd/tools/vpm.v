@@ -275,7 +275,7 @@ fn vpm_help() {
 }
 
 fn vcs_used_in_dir(dir string) ?[]string {
-	mut vcs := []string
+	mut vcs := []string{}
 	for repo_subfolder in supported_vcs_folders {
 		checked_folder := os.real_path(os.join_path(dir,repo_subfolder))
 		if os.is_dir(checked_folder) {
@@ -292,7 +292,7 @@ fn get_installed_modules() []string {
 	dirs := os.ls(settings.vmodules_path) or {
 		return []
 	}
-	mut modules := []string
+	mut modules := []string{}
 	for dir in dirs {
 		adir := os.join_path(settings.vmodules_path,dir)
 		if dir in excluded_dirs || !os.is_dir(adir) {
@@ -323,7 +323,7 @@ fn get_all_modules() []string {
 	}
 	s := r.text
 	mut read_len := 0
-	mut modules := []string
+	mut modules := []string{}
 	for read_len < s.len {
 		mut start_token := '<a href="/mod'
 		end_token := '</a>'
@@ -359,7 +359,7 @@ fn resolve_dependencies(name, module_path string, module_names []string) {
 		return
 	}
 	vmod := parse_vmod(data)
-	mut deps := []string
+	mut deps := []string{}
 	// filter out dependencies that were already specified by the user
 	for d in vmod.deps {
 		if d !in module_names {
@@ -440,7 +440,7 @@ fn verbose_println(s string) {
 }
 
 fn get_module_meta_info(name string) ?Mod {
-	mut errors := []string
+	mut errors := []string{}
 	for server_url in default_vpm_server_urls {
 		modurl := server_url + '/jsmod/$name'
 		verbose_println('Retrieving module metadata from: $modurl ...')

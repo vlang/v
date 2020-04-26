@@ -3,11 +3,9 @@
 // that can be found in the LICENSE file.
 module http
 
-import (
-	time
-	arrays
-	strings
-)
+import time
+import arrays
+import strings
 
 pub struct Cookie {
 pub mut:

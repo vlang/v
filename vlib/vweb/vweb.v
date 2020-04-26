@@ -4,13 +4,11 @@
 
 module vweb
 
-import (
-	os
-	net
-	net.http
-	net.urllib
-	strings
-)
+import os
+import net
+import net.http
+import net.urllib
+import strings
 
 pub const (
 	methods_with_form = ['POST', 'PUT', 'PATCH']
@@ -186,7 +184,7 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 		return
 		//continue
 	}
-	mut headers := []string
+	mut headers := []string{}
 	mut body := ''
 	mut in_headers := true
 	mut len := 0

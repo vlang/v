@@ -1,10 +1,8 @@
 module main
 
-import (
-	vweb
-	vweb.assets
-	time
-)
+import vweb
+import vweb.assets
+import time
 
 const (
 	port = 8081

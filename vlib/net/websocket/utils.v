@@ -1,12 +1,10 @@
 module websocket
 
-import (
-	time
-	rand
-	math
-	crypto.sha1
-	encoding.base64
-)
+import time
+import rand
+import math
+import crypto.sha1
+import encoding.base64
 
 fn htonl64(payload_len u64) byteptr {
 	mut ret := malloc(8)
@@ -18,7 +16,7 @@ fn htonl64(payload_len u64) byteptr {
 	ret[4] = byte(((payload_len & (u64(0xff) << 24)) >> 24) & 0xff)
 	ret[5] = byte(((payload_len & (u64(0xff) << 16)) >> 16) & 0xff)
 	ret[6] = byte(((payload_len & (u64(0xff) << 8)) >> 8) & 0xff)
-	ret[7] = byte(((payload_len & (u64(0xff) << 0)) >> 0) & 0xff) 
+	ret[7] = byte(((payload_len & (u64(0xff) << 0)) >> 0) & 0xff)
 	return ret
 }
 
@@ -46,7 +44,7 @@ fn create_key_challenge_response(seckey string) string {
 }
 
 fn get_nonce() string {
-	mut nonce := []byte
+	mut nonce := []byte{}
 	alphanum := "0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz"
 	for i in 0..18 {
 		nonce << alphanum[rand.next(61)]
