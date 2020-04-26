@@ -377,7 +377,7 @@ fn (cb &Clipboard) pick_target(prop Property) C.Atom {
 }
 
 fn (cb &Clipboard) get_atoms(types ...AtomType) []C.Atom {
-	mut atoms := []C.Atom
+	mut atoms := []C.Atom{}
 	for typ in types {
 		atoms << cb.atoms[typ]
 	}

@@ -46,7 +46,7 @@ pub fn read_set_cookies(h map[string][]string) []&Cookie {
 	if cookie_count == 0 {
 		return []
 	}
-	mut cookies := []&Cookie
+	mut cookies := []&Cookie{}
 	for _, line in cookies_s {
 		mut parts := line.trim_space().split(';')
 		if parts.len == 1 && parts[0] == '' {
@@ -153,7 +153,7 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 	if lines.len == 0 {
 		return []
 	}
-	mut cookies := []&Cookie
+	mut cookies := []&Cookie{}
 	for _, _line in lines {
 		mut line := _line.trim_space()
 		mut part := ''

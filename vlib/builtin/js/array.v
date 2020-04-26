@@ -15,7 +15,7 @@ pub:
 }
 
 /*
-// Private function, used by V (`nums := []int`)
+// Private function, used by V (`nums := []int{}`)
 fn new_array(mylen, cap, elm_size int) array {
 	arr := array {
 		len: mylen
@@ -130,6 +130,5 @@ pub fn (arr mut array) push_many(val voidptr, size int) {
 }
 
 pub fn free(voidptr) {
-	
-}
 
+}
