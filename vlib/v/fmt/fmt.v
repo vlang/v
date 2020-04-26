@@ -492,43 +492,7 @@ fn (mut f Fmt) expr(node ast.Expr) {
 			f.fn_decl(it.decl)
 		}
 		ast.ArrayInit {
-			if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
-				// `x := []string`
-				f.write(f.type_to_str(it.typ))
-			} else {
-				// `[1,2,3]`
-				// type_sym := f.table.get_type_symbol(it.typ)
-				f.write('[')
-				mut inc_indent := false
-				mut last_line_nr := node.position().line_nr // to have the same newlines between array elements
-				for i, expr in it.exprs {
-					line_nr := expr.position().line_nr
-					if last_line_nr < line_nr {
-						if !inc_indent {
-							f.indent++
-							inc_indent = true
-						}
-						f.writeln('')
-					}
-					is_new_line := last_line_nr < line_nr || f.wrap_long_line()
-					if !is_new_line && i > 0 {
-						f.write(' ')
-					}
-					f.expr(expr)
-					if i == it.exprs.len - 1 {
-						if is_new_line {
-							f.writeln('')
-						}
-					} else {
-						f.write(',')
-					}
-					last_line_nr = line_nr
-				}
-				if inc_indent {
-					f.indent--
-				}
-				f.write(']')
-			}
+			f.array_init(it)
 		}
 		ast.AsCast {
 			type_str := f.type_to_str(it.typ)
@@ -1019,4 +983,44 @@ fn expr_is_single_line(expr ast.Expr) bool {
 		else {}
 	}
 	return true
+}
+
+fn (mut f Fmt) array_init(it ast.ArrayInit) {
+	if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
+		// `x := []string`
+		f.write(f.type_to_str(it.typ))
+		return
+	}
+	// `[1,2,3]`
+	// type_sym := f.table.get_type_symbol(it.typ)
+	f.write('[')
+	mut inc_indent := false
+	mut last_line_nr := it.pos.line_nr // to have the same newlines between array elements
+	for i, expr in it.exprs {
+		line_nr := expr.position().line_nr
+		if last_line_nr < line_nr {
+			if !inc_indent {
+				f.indent++
+				inc_indent = true
+			}
+			f.writeln('')
+		}
+		is_new_line := last_line_nr < line_nr || f.wrap_long_line()
+		if !is_new_line && i > 0 {
+			f.write(' ')
+		}
+		f.expr(expr)
+		if i == it.exprs.len - 1 {
+			if is_new_line {
+				f.writeln('')
+			}
+		} else {
+			f.write(',')
+		}
+		last_line_nr = line_nr
+	}
+	if inc_indent {
+		f.indent--
+	}
+	f.write(']')
 }

@@ -193,7 +193,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			name = p.prepend_mod(name)
 		}
 		if _ := p.table.find_fn(name) {
-			p.error('redefinition of function `$name`')
+			p.fn_redefinition_error(name)
 		}
 		p.table.register_fn(table.Fn{
 			name: name
@@ -364,6 +364,17 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	return args, is_variadic
 }
 
-fn (p Parser) fileis(s string) bool {
+fn (p &Parser) fileis(s string) bool {
 	return p.file_name.contains(s)
+}
+
+fn (mut p Parser) fn_redefinition_error(name string) {
+	// Find where this function was already declared
+	// TODO
+	/*
+	for file in p.ast_files {
+
+	}
+	*/
+	p.error('redefinition of function `$name`')
 }
