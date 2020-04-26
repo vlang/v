@@ -161,6 +161,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
 			typ: arg.typ
+			is_mut: arg.is_mut
 		})
 	}
 	mut end_pos := p.prev_tok.position()

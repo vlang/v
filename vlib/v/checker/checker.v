@@ -450,6 +450,7 @@ fn (mut c Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	if ast.expr_is_blank_ident(assign_expr.left) {
 		return
 	}
+	// Make sure the variable is mutable
 	match assign_expr.left {
 		ast.Ident {
 			scope := c.file.scope.innermost(assign_expr.pos.pos)
@@ -457,6 +458,20 @@ fn (mut c Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 				if !v.is_mut {
 					c.error('`$it.name` is immutable, declare it with `mut` to assign to it',
 						assign_expr.pos)
+				}
+			}
+		}
+		ast.IndexExpr {
+			// `m[key] = val`
+			if it.left is ast.Ident {
+				ident := it.left as ast.Ident
+				// TODO copy pasta
+				scope := c.file.scope.innermost(assign_expr.pos.pos)
+				if v := scope.find_var(ident.name) {
+					if !v.is_mut {
+						c.error('`$ident.name` is immutable, declare it with `mut` to assign to it',
+							assign_expr.pos)
+					}
 				}
 			}
 		}
