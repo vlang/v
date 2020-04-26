@@ -1217,6 +1217,15 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			// c.warn('duplicate method `$it.name`', it.pos)
 			// }
 			// }
+			if !it.is_c {
+				// Make sure all types are valid
+				for arg in it.args {
+					sym := c.table.get_type_symbol(arg.typ)
+					if sym.kind == .placeholder {
+						c.error('unknown type `$sym.name`', it.pos)
+					}
+				}
+			}
 			c.expected_type = table.void_type
 			c.fn_return_type = it.return_type
 			c.stmts(it.stmts)
