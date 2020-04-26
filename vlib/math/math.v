@@ -115,7 +115,7 @@ pub fn digits(_n, base int) []int {
 		sign = -1
 		n = -n
 	}
-	mut res := []int
+	mut res := []int{}
 	for n != 0 {
 		res << (n % base) * sign
 		n /= base
