@@ -109,7 +109,7 @@ fn (mut f Fmt) imports(imports []ast.Import) {
 	*/
 	// f.out_imports.writeln('import (')
 	for imp in imports {
-		if !(imp.mod in f.used_imports) {
+		if imp.mod !in f.used_imports {
 			// TODO bring back once only unused imports are removed
 			// continue
 		}
@@ -886,7 +886,7 @@ fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			// a `node.left` expression. Import `time` automatically.
 			// TODO fetch all available modules
 			if it.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
-				if !(it.name in f.auto_imports) {
+				if it.name !in f.auto_imports {
 					f.auto_imports << it.name
 					f.file.imports << ast.Import{
 						mod: it.name

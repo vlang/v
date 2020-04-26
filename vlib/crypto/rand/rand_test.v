@@ -18,7 +18,7 @@ fn test_crypto_rand_read() {
 		return
 	}
 	assert r2.len == no_bytes
-	
+
 	mut difference := 0
 	for i, _ in r1 {
 		difference += if r1[i] == r2[i] {0} else {1}
@@ -42,7 +42,7 @@ fn test_crypto_rand_int_u64() {
 			return
 		}
 		n := int(r)
-		if !(n in unique) {
+		if n !in unique {
 			unique << n
 		}
 	}

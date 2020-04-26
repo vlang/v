@@ -180,7 +180,7 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) {
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
 			varg_type_str := int(arg.typ).str()
-			if !(varg_type_str in g.variadic_args) {
+			if varg_type_str !in g.variadic_args {
 				g.variadic_args[varg_type_str] = 0
 			}
 			arg_type_name = 'varg_' + g.typ(arg.typ).replace('*', '_ptr')

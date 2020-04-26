@@ -376,10 +376,10 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		else { }
 	}
 	// TODO: Absorb this block into the above single side check block to accelerate.
-	if left_type == table.bool_type && !(infix_expr.op in [.eq, .ne, .logical_or, .and]) {
+	if left_type == table.bool_type && infix_expr.op !in [.eq, .ne, .logical_or, .and] {
 		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
 			infix_expr.pos)
-	} else if left_type == table.string_type && !(infix_expr.op in [.plus, .eq, .ne, .lt, .gt, .le, .ge]) {
+	} else if left_type == table.string_type && infix_expr.op !in [.plus, .eq, .ne, .lt, .gt, .le, .ge] {
 		// TODO broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `&&`',
 			infix_expr.pos)
@@ -602,7 +602,7 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	mut f := table.Fn{}
 	mut found := false
 	// try prefix with current module as it would have never gotten prefixed
-	if !fn_name.contains('.') && !(call_expr.mod in ['builtin', 'main']) {
+	if !fn_name.contains('.') && call_expr.mod !in ['builtin', 'main'] {
 		name_prefixed := '${call_expr.mod}.$fn_name'
 		if f1 := c.table.find_fn(name_prefixed) {
 			call_expr.name = name_prefixed
@@ -746,7 +746,7 @@ pub fn (mut c Checker) check_or_block(call_expr mut ast.CallExpr, ret_type table
 				return
 			}
 			ast.BranchStmt {
-				if !(it.tok.kind in [.key_continue, .key_break]) {
+				if it.tok.kind !in [.key_continue, .key_break] {
 					c.error('only break/continue is allowed as a branch statement in the end of an `or {}` block',
 						it.tok.position())
 					return
@@ -1123,7 +1123,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				it.fields[i].typ = typ
 				for cd in c.const_deps {
 					for j, f in it.fields {
-						if j != i && cd in field_names && cd == f.name && !(j in done_fields) {
+						if j != i && cd in field_names && cd == f.name && j !in done_fields {
 							needs_order = true
 							x := field_order[j]
 							field_order[j] = field_order[i]
@@ -1165,7 +1165,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.fn_return_type = it.return_type
 			c.stmts(it.stmts)
 			if !it.is_c && !it.is_js && !it.no_body && it.return_type != table.void_type &&
-				!c.returns && !(it.name in ['panic', 'exit']) {
+				!c.returns && it.name !in ['panic', 'exit'] {
 				c.error('missing return at end of function `$it.name`', it.pos)
 			}
 			c.returns = false
@@ -1286,7 +1286,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			type_sym := c.table.get_type_symbol(it.typ)
 			if expr_type_sym.kind == .sum_type {
 				info := expr_type_sym.info as table.SumType
-				if !(it.typ in info.variants) {
+				if it.typ !in info.variants {
 					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', it.pos)
 					// c.error('only $info.variants can be casted to `$typ`', it.pos)
 				}
@@ -1437,7 +1437,7 @@ pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
 	// TODO: move this
 	if c.const_deps.len > 0 {
 		mut name := ident.name
-		if !name.contains('.') && !(ident.mod in ['builtin', 'main']) {
+		if !name.contains('.') && ident.mod !in ['builtin', 'main'] {
 			name = '${ident.mod}.$ident.name'
 		}
 		if name == c.const_decl {
@@ -1487,7 +1487,7 @@ pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
 		}
 		// prepend mod to look for fn call or const
 		mut name := ident.name
-		if !name.contains('.') && !(ident.mod in ['builtin', 'main']) {
+		if !name.contains('.') && ident.mod !in ['builtin', 'main'] {
 			name = '${ident.mod}.$ident.name'
 		}
 		if obj := c.file.global_scope.find(name) {
@@ -1791,7 +1791,7 @@ pub fn (mut c Checker) enum_val(node mut ast.EnumVal) table.Type {
 	info := typ_sym.enum_info()
 	// rintln('checker: x = $info.x enum val $c.expected_type $typ_sym.name')
 	// println(info.vals)
-	if !(node.val in info.vals) {
+	if node.val !in info.vals {
 		c.error('enum `$typ_sym.name` does not have a value `$node.val`', node.pos)
 	}
 	node.typ = typ
@@ -1862,7 +1862,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 		}
 	} else {
 		c.nr_errors++
-		if !(pos.line_nr in c.error_lines) {
+		if pos.line_nr !in c.error_lines {
 			c.errors << scanner.Error{
 				reporter: scanner.Reporter.checker
 				pos: pos

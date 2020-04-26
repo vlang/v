@@ -207,7 +207,7 @@ pub fn (req &Request) do() ?Response {
 			return error(err)
 		}
 		resp = qresp
-		if !(resp.status_code in [301, 302, 303, 307, 308]) {
+		if resp.status_code !in [301, 302, 303, 307, 308] {
 			break
 		}
 		// follow any redirects
@@ -315,13 +315,13 @@ fn parse_response(resp string) Response {
 fn (req &Request) build_request_headers(method, host_name, path string) string {
 	ua := req.user_agent
 	mut uheaders := []string
-	if !('Host' in req.headers) {
+	if 'Host' !in req.headers {
 		uheaders << 'Host: $host_name\r\n'
 	}
-	if !('User-Agent' in req.headers) {
+	if 'User-Agent' !in req.headers {
 		uheaders << 'User-Agent: $ua\r\n'
 	}
-	if req.data.len > 0 && !('Content-Length' in req.headers) {
+	if req.data.len > 0 && 'Content-Length' !in req.headers {
 		uheaders << 'Content-Length: ${req.data.len}\r\n'
 	}
 	for key, val in req.headers {

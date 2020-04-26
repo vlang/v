@@ -92,7 +92,7 @@ fn main() {
 	}
 	mut cli_args_no_files := []string
 	for a in os.args {
-		if !(a in files) {
+		if a !in files {
 			cli_args_no_files << a
 		}
 	}

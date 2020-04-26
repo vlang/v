@@ -364,7 +364,7 @@ fn resolve_dependencies(name, module_path string, module_names []string) {
 	mut deps := []string
 	// filter out dependencies that were already specified by the user
 	for d in vmod.deps {
-		if !(d in module_names) {
+		if d !in module_names {
 			deps << d
 		}
 	}

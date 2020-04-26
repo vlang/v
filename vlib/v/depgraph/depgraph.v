@@ -24,7 +24,7 @@ mut:
 }
 
 pub fn (o mut OrderedDepMap) set(name string, deps []string) {
-	if !(name in o.data) {
+	if name !in o.data {
 		o.keys << name
 	}
 	o.data[name] = deps
@@ -33,7 +33,7 @@ pub fn (o mut OrderedDepMap) set(name string, deps []string) {
 pub fn (o mut OrderedDepMap) add(name string, deps []string) {
 	mut d := o.data[name]
 	for dep in deps {
-		if !(dep in d) {
+		if dep !in d {
 			d << dep
 		}
 	}
@@ -45,7 +45,7 @@ pub fn (o &OrderedDepMap) get(name string) []string {
 }
 
 pub fn (o mut OrderedDepMap) delete(name string) {
-	if !(name in o.data) {
+	if name !in o.data {
 		panic('delete: no such key: $name')
 	}
 	for i, _ in o.keys {
@@ -60,7 +60,7 @@ pub fn (o mut OrderedDepMap) delete(name string) {
 pub fn (o mut OrderedDepMap) apply_diff(name string, deps []string) {
 	mut diff := []string
 	for dep in o.data[name] {
-		if !(dep in deps) {
+		if dep !in deps {
 			diff << dep
 		}
 	}
@@ -141,7 +141,7 @@ pub fn (graph &DepGraph) display_cycles() string {
 	mut out := '\n'
 	for node in graph.nodes {
 		for dep in node.deps {
-			if !(dep in node_names) {
+			if dep !in node_names {
 				continue
 			}
 			dn := node_names[dep]
