@@ -1,0 +1,5 @@
+fn main() {
+	for i in 10..10.5 {
+		println(i)
+	}
+}

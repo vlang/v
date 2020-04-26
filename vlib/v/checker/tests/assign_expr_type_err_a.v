@@ -1,0 +1,4 @@
+fn main() {
+	mut foo := 0.5
+	foo <<= 1
+}
