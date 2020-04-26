@@ -364,11 +364,7 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		.left_shift {
 			if left.kind == .array {
 				// `array << elm`
-				match infix_expr.left {
-					ast.Ident {}
-					ast.SelectorExpr {}
-					else { println('typeof: ${typeof(infix_expr.left)}') }
-				}
+				c.array_shift_expr(infix_expr.left)
 				// the expressions have different types (array_x and x)
 				if c.table.check(c.table.value_type(left_type), right_type) {
 					// []T << T
@@ -443,6 +439,32 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		table.bool_type
 	} else {
 		left_type
+	}
+}
+
+fn (mut c Checker) array_shift_expr(expr ast.Expr) {
+	match expr {
+		ast.Ident {
+			if !it.is_mut {
+				c.error('`$it.name` is immutable, declare it with `mut` to append items to it', it.pos)
+			}
+		}
+		ast.SelectorExpr {
+			// retrieve table.Field
+			struct_info := c.table.get_type_symbol(it.expr_type).struct_info()
+			field_info := struct_info.get_field(it.field)
+			if !field_info.is_mut {
+				type_str := c.table.type_to_str(it.expr_type)
+				c.error('field `$it.field` of struct `${type_str}` is immutable', it.pos)
+			}
+			c.array_shift_expr(it.expr)
+		}
+		ast.IndexExpr {
+			c.array_shift_expr(it.left)
+		}
+		else {
+			c.error('unexpected expression `${typeof(expr)}`', expr.position())
+		}
 	}
 }
 

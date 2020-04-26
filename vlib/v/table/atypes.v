@@ -311,6 +311,14 @@ pub fn (t &TypeSymbol) map_info() Map {
 	}
 }
 
+[inline]
+pub fn (t &TypeSymbol) struct_info() Struct {
+	match t.info {
+		Struct { return it }
+		else { panic('TypeSymbol.struct_info(): no struct info for type: $t.name') }
+	}
+}
+
 /*
 pub fn (t TypeSymbol) str() string {
 	return t.name
@@ -522,6 +530,9 @@ mut:
 	has_default_expr bool
 	default_val      string
 	attr             string
+	is_pub           bool
+	is_mut           bool
+	is_global        bool
 }
 
 pub struct Array {
@@ -593,4 +604,20 @@ pub fn (table &Table) type_to_str(t Type) string {
 	}
 	*/
 	return res
+}
+
+pub fn (s Struct) find_field(name string) ?Field {
+	for field in s.fields {
+		if field.name == name {
+			return field
+		}
+	}
+	return none
+}
+
+pub fn (s Struct) get_field(name string) Field {
+	if field := s.find_field(name) {
+		return field
+	}
+	panic('unknown field `$name`')
 }

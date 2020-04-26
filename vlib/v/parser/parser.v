@@ -694,8 +694,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			mod: mod
 		}
 	} else {
-		mut ident := ast.Ident{}
-		ident = p.parse_ident(is_c, is_js)
+		mut ident := p.parse_ident(is_c, is_js)
+		if orig_var := p.scope.find_var(ident.name) {
+			ident.is_mut = orig_var.is_mut
+		}
 		node = ident
 	}
 	p.expr_mod = ''
