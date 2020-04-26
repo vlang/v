@@ -1,4 +1,5 @@
 import strconv
+import net.urllib
 fn test_format(){
 	mut buf    := [1024]byte
 	mut temp_s := ""
@@ -16,6 +17,12 @@ fn test_format(){
 	sc0 := "ciao: [%-08u] %d %hhd [%08s]\nr2: [%08X] [%p] [%-20.4f] [%-20.4f] [%c]\n"
 	temp_s = strconv.v_sprintf(sc0    ,a0 ,b0 ,c0 ,s0     ,b0 ,&b0 ,f0, f1, ch0)
 	C.sprintf(buf, sc0.str,a0 ,b0 ,c0 ,s0.str ,b0 ,&b0 ,f0, f1, ch0)
+    
+    eprintln( tos2(buf) )
+        eprintln( temp_s )
+            eprintln( tos2(buf).bytes().hex() )
+                eprintln( temp_s.bytes().hex() )
+                
 	//println("$temp_s${tos2(buf)}")
 	assert tos2(buf) == temp_s
 
