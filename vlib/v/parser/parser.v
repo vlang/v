@@ -963,6 +963,7 @@ fn (mut p Parser) import_stmt() []ast.Import {
 	p.check(.key_import)
 	mut imports := []ast.Import
 	if p.tok.kind == .lpar {
+		p.warn('`import()` has been deprecated, use `import x` instead. run `v fmt` to handle the transition')
 		p.check(.lpar)
 		for p.tok.kind != .rpar {
 			imports << p.parse_import()

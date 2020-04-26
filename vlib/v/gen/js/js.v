@@ -1,15 +1,13 @@
 module js
 
-import (
-	strings
-	v.ast
-	v.table
-	v.depgraph
-	v.token
-	v.pref
-	term
-	v.util
-)
+import strings
+import v.ast
+import v.table
+import v.depgraph
+import v.token
+import v.pref
+import term
+import v.util
 
 const (
 	//TODO
@@ -98,7 +96,9 @@ pub fn (g mut JsGen) enter_namespace(n string) {
 		g.out = strings.new_builder(100)
 		g.indents[g.namespace] = 0
 		g.out.writeln('const $n = (function () {')
-	} else {
+	}
+	//
+	else {
 		g.out = g.namespaces[g.namespace]
 	}
 }
