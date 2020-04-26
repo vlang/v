@@ -1,5 +1,8 @@
 fn test_nested_maps() {
-	x := map[string]map[string]int
+	if true{}
+	//
+	else{}
+	mut x := map[string]map[string]int
 	x["a"] = map[string]int
 	assert x["a"]["b"] == 0
 	x["a"]["b"] = 5

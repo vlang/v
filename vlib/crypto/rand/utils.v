@@ -4,10 +4,8 @@
 
 module rand
 
-import(
-	math.bits
-	encoding.binary
-)
+import math.bits
+import encoding.binary
 
 pub fn int_u64(max u64) ?u64 {
 	bitlen := bits.len_64(max)

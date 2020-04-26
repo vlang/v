@@ -5,21 +5,26 @@ struct Test {
 }
 
 fn test_interpolation_map_to_string() {
-	a := map[string]string
+	if true {
+
+	}
+	//
+	else{}
+	mut a := map[string]string
 	a['1'] = 'one'
 	a['2'] = 'two'
 	a['3'] = 'three'
 	assert '$a' == 'map_string_string{1: one, 2: two, 3: three}'
-	b := map[string]int
+	mut b := map[string]int
 	b['1'] = 1
 	b['2'] = 2
 	b['3'] = 3
 	assert '$b' == 'map_string_int{1: 1, 2: 2, 3: 3}'
-	c := map[string]bool
+	mut c := map[string]bool
 	c['1'] = true
 	c['2'] = false
 	assert '$c' == 'map_string_bool{1: true, 2: false}'
-	d := map[string]Test
+	mut d := map[string]Test
 	d['1'] = Test{true, 0, 'abc'}
 	d['2'] = Test{true, 1, 'def'}
 	d['3'] = Test{false, 2, 'ghi'}
