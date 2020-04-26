@@ -12,7 +12,6 @@
 module strconv
 import strconv.ftoa
 import strings
-import math
 
 enum Char_parse_state {
 	start,
@@ -794,7 +793,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				x := *(&f64(pt[p_index]))
 				mut positive := x >= f64(0.0)
 				mut s := ""
-				tx := math.abs(x)
+				tx := fabs(x)
 				if tx < 999_999.0 && tx >= 0.00001 {
 					//println("Here g format_fl [$tx]")
 					len1 = if len1 >= 0 { len1+1 } else { def_len1 }
@@ -830,4 +829,11 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 	}
 
 	return res.str()
+}
+
+fn fabs(x f64) f64 {
+	if x < 0.0 {
+		return -x
+	}
+	return x
 }
