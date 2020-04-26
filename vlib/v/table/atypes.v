@@ -507,6 +507,7 @@ pub mut:
 }
 
 pub struct Interface {
+mut:
 	gen_types []string
 	foo       string
 }

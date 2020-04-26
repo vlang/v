@@ -56,7 +56,6 @@ struct Gen {
 	auto_str_funcs       strings.Builder // function bodies of all auto generated _str funcs
 	comptime_defines     strings.Builder // custom defines, given by -d/-define flags on the CLI
 	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
-	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	table                &table.Table
 	pref                 &pref.Preferences
 mut:
@@ -86,6 +85,7 @@ mut:
 	threaded_fns         []string // for generating unique wrapper types and fns for `go xxx()`
 	array_fn_definitions []string // array equality functions that have been defined
 	is_json_fn           bool // inside json.encode()
+	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 }
 
 const (

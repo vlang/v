@@ -292,10 +292,11 @@ pub struct File {
 pub:
 	path         string
 	mod          Module
-	imports      []Import
 	stmts        []Stmt
 	scope        &Scope
 	global_scope &Scope
+mut:
+	imports      []Import
 }
 
 pub struct IdentFn {

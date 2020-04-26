@@ -26,7 +26,6 @@ fn (mut g Gen) profile_fn(fn_name string, is_main bool){
 	}
 }
 
-        
 pub fn (mut g Gen) gen_vprint_profile_stats() {
 	g.pcs_declarations.writeln('void vprint_profile_stats(){')
 	fstring := '"%14llu %14.3fms %14.0fns %s \\n"'
