@@ -1,0 +1,5 @@
+vlib/v/checker/tests/inout/alias_type_exists.v:1:1: error: type `Bird` doesn't exist
+    1| type Pigeon = Bird
+       ~~~~~~~~~~~
+    2|
+    3| fn main() {
