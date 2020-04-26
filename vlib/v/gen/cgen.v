@@ -3132,10 +3132,14 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 				g.auto_str_funcs.write('indents.len, indents.str, ')
 				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ).len, ')
 				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ).str  ')
-			} else if sym.kind in [.struct_, .array, .array_fixed] {
+			} else if sym.kind == .struct_ {
 				g.auto_str_funcs.write('indents.len, indents.str, ')
 				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ).len, ')
 				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ).str  ')
+			} else if sym.kind in [.array, .array_fixed] {
+				g.auto_str_funcs.write('indents.len, indents.str, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}).len, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}).str  ')
 			} else {
 				g.auto_str_funcs.write('indents.len, indents.str, it->${field.name}')
 				if field.typ == table.string_type {
@@ -3167,11 +3171,11 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; i++) {')
 	g.auto_str_funcs.writeln('\t\t${field_styp} it = (*(${field_styp}*)array_get(a, i));')
 	if sym.kind == .struct_ && !sym.has_method('str') {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));')
 	} else if sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _STR("%g", it));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", it));')
 	} else {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
 	}
 	g.auto_str_funcs.writeln('\t\tif (i != a.len-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
@@ -3194,13 +3198,13 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("["));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < $info.size; i++) {')
 	if sym.kind == .struct_ && !sym.has_method('str') {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i],0));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i],0));')
 	} else if sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _STR("%g", a[i]));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", a[i]));')
 	} else if sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _STR("\\"%.*s\\"", a[i].len, a[i].str));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\\"%.*s\\"", a[i].len, a[i].str));')
 	} else {
-		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i]));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i]));')
 	}
 	g.auto_str_funcs.writeln('\t\tif (i != $info.size-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
