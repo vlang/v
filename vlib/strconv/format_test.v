@@ -1,6 +1,17 @@
+import os
 import strconv
-import net.urllib
+
 fn test_format(){
+
+	if os.getenv('FORCE_FORMAT_TEST') != '1' {
+		$if !macos {
+			eprintln('This test is done only on macos for now.')
+			eprintln('LibC sprintfs implementations on other platforms have too much variation in edge cases.')
+			eprintln('If you still want to do it, use `FORCE_FORMAT_TEST=1 ./v -cg vlib/strconv/format_test.v`')
+			exit(0)
+		}
+	}
+    
 	mut buf    := [1024]byte
 	mut temp_s := ""
 	a0  := u32(10)
@@ -27,10 +38,8 @@ fn test_format(){
         eprintln( temp_s.bytes().hex() )
 	}
     
-	$if macos {
-		assert tos2(buf) == temp_s
-	}
-    
+	assert tos2(buf) == temp_s
+
 	a := byte(12)
 	b := i16(13)
 	c := 14
