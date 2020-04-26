@@ -223,7 +223,7 @@ pub fn (s string) replace_each(vals []string) string {
 		return s
 	}
 	if vals.len % 2 != 0 {
-		println('string.replace_many(): odd number of strings')
+		println('string.replace_each(): odd number of strings')
 		return s
 	}
 	// `rep` - string to replace
