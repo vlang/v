@@ -247,7 +247,7 @@ fn test_range() {
 }
 
 fn test_passing_empty() {
-	data := []f64
+	data := []f64{}
 	assert stats.freq(data,0) == 0
 	assert stats.mean(data) == f64(0)
 	assert stats.geometric_mean(data) == f64(0)
@@ -263,5 +263,4 @@ fn test_passing_empty() {
 	assert stats.min(data) == f64(0)
 	assert stats.max(data) == f64(0)
 	assert stats.range(data) == f64(0)
-} 
-
+}

@@ -12,8 +12,8 @@ fn expr_to_rev_pol(expr string) ?[]string {
 	if expr == '' {
 		return error('err: empty expression')
 	}
-	mut stack := []string
-	mut rev_pol := []string
+	mut stack := []string{}
+	mut rev_pol := []string{}
 	mut pos := 0
 	for pos<expr.len {
 		mut end_pos := pos

@@ -2,11 +2,9 @@
 // but since Wayland isn't extremely adopted, we are covering almost all Linux distros.
 module clipboard
 
-import (
-	time
-	sync
-	math
-)
+import time
+import sync
+import math
 
 #flag -lX11
 #include <X11/Xlib.h>

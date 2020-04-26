@@ -1,8 +1,6 @@
 module main
 
-import (
-	some_module
-)
+import some_module
 
 fn main(){
 	mut sub := some_module.get_subscriber()

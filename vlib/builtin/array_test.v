@@ -145,7 +145,7 @@ fn test_insert() {
 // assert a[4] == 5
 // assert a[3] == 2
 // assert a.len == 5
-// mut b := []f64
+// mut b := []f64{}
 // assert b.len == 0
 // b.insert(0, f64(1.1))
 // assert b.len == 1
@@ -155,12 +155,12 @@ fn test_insert() {
 // It depends on array.insert
 // -----------------------------
 // fn test_prepend() {
-// mut a := []int
+// mut a := []int{}
 // assert a.len == 0
 // a.prepend(1)
 // assert a.len == 1
 // assert a[0] == 1
-// mut b := []f64
+// mut b := []f64{}
 // assert b.len == 0
 // b.prepend(f64(1.1))
 // assert b.len == 1

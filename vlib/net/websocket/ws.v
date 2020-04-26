@@ -1,13 +1,11 @@
 module websocket
 
-import (
-	net
-	net.urllib
-	encoding.base64
-	eventbus
-	sync
-	net.websocket.logger
-)
+import net
+import net.urllib
+import encoding.base64
+import eventbus
+import sync
+import net.websocket.logger
 
 const (
 	l = logger.new("ws")
@@ -147,7 +145,7 @@ pub fn (ws mut Client) connect() int {
 	l.d("handshake header:")
 	handshake := "GET ${uri.resource}${uri.querystring} HTTP/1.1\r\nHost: ${uri.hostname}:${uri.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${seckey}\r\nSec-WebSocket-Version: 13\r\n\r\n"
 	l.d(handshake)
-	
+
 	socket := net.new_socket(ai_family, ai_socktype, 0) or {
 		l.f(err)
 		return -1
@@ -542,7 +540,7 @@ pub fn (ws mut Client) read() int {
 			goto free_data
 			return -1
 		}
-		mut payload := []byte
+		mut payload := []byte{}
 		if payload_len > 0 {
 			payload = [`0`].repeat(int(payload_len))
 			C.memcpy(payload.data, &data[header_len], payload_len)

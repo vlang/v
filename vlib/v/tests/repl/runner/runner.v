@@ -130,7 +130,7 @@ $diff
 pub fn new_options() RunnerOptions {
 	vexec := full_path_to_v(5)
 	mut wd := os.getwd()
-	mut files := []string
+	mut files := []string{}
 	if os.args.len > 1 {
 		files = os.args[1..]
 	} else {
@@ -148,7 +148,7 @@ pub fn new_options() RunnerOptions {
 pub fn new_prod_options() RunnerOptions {
 	wd := os.getwd()
 	vexec := full_path_to_v(4)
-	mut files := []string
+	mut files := []string{}
 	if os.args.len > 1 {
 		files = os.args[1..]
 	} else {

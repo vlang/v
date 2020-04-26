@@ -3,7 +3,7 @@ import rand
 import time
 
 fn show_u64s(a []u64){
-   mut res := []string
+   mut res := []string{}
    for x in a {
 	  res << x.str()
    }
@@ -32,5 +32,5 @@ fn test_splitmix64_reproducibility() {
 	len := randoms1.len
 	for i in 0..len {
 		assert randoms1[i] == randoms2[i]
-	}	
+	}
 }

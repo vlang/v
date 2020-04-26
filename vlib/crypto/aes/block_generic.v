@@ -37,9 +37,7 @@
 
 module aes
 
-import (
-	encoding.binary
-)
+import encoding.binary
 
 // Encrypt one block from src into dst, using the expanded key xk.
 fn encrypt_block_generic(xk []u32, dst, src []byte) {
@@ -168,7 +166,7 @@ fn expand_key_generic(key []byte, enc mut []u32, dec mut []u32) {
 		}
 		enc[i] = binary.big_endian_u32(key[4*i..])
 	}
-	
+
 	for i < enc.len {
 		mut t := enc[i-1]
 		if i%nk == 0 {

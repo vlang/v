@@ -1,11 +1,9 @@
 module main
 
-import (
-	vweb
-	time
-	pg
-	json
-)
+import vweb
+import time
+import pg
+import json
 
 pub struct App {
 mut:
@@ -74,4 +72,3 @@ pub fn (app mut App) articles() {
 fn (app mut App) time() {
 	app.vweb.text(time.now().format())
 }
-

@@ -3,10 +3,8 @@
 * String to float Test
 *
 **********************************************************************/
-import (
-	strconv
-	strconv.atofq
-)
+import strconv
+import strconv.atofq
 
 fn test_atof() {
 	//

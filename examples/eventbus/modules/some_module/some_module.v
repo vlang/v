@@ -1,8 +1,6 @@
 module some_module
 
-import (
-	eventbus
-)
+import eventbus
 
 const (
 	eb = eventbus.new()

@@ -10,11 +10,11 @@ fn main() {
 	min_str_len := 20
 	max_str_len := 40
 	println('Generating $sample_size strings between $min_str_len - $max_str_len chars long...')
-	mut bytepile := []byte
+	mut bytepile := []byte{}
 	for _ in 0 .. sample_size * max_str_len {
 		bytepile << byte(40 + rand.next(125 - 40))
 	}
-	mut str_lens := []int
+	mut str_lens := []int{}
 	for _ in 0 .. sample_size {
 		str_lens << min_str_len + rand.next(max_str_len - min_str_len)
 	}
