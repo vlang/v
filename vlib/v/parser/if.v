@@ -124,6 +124,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				typ: typ.to_ptr()
 				pos: cond_pos
 				is_used: true
+				is_mut: is_mut
 			})
 			// TODO
 			if p.tok.kind == .comma {
