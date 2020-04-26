@@ -1,6 +1,4 @@
-import (
-	os
-)
+import os
 
 fn test_syscallwrappers() {
 	if true { return }

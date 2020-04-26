@@ -3,9 +3,7 @@
 // that can be found in the LICENSE file.
 module builtin
 
-import (
-	strconv.ftoa
-)
+import strconv.ftoa
 
 #include <float.h>
 // ----- f64 to string functions -----

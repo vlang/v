@@ -3,9 +3,7 @@
 // that can be found in the LICENSE file.
 module builtin
 
-import (
-	strings
-)
+import strings
 
 pub struct array {
 pub:
