@@ -361,15 +361,9 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 			if left.kind == .array {
 				// `array << elm`
 				match infix_expr.left {
-					ast.Ident {
-
-					}
-					ast.SelectorExpr {
-
-					}
-					else {
-						println('typeof: ${typeof(infix_expr.left)}')
-					}
+					ast.Ident {}
+					ast.SelectorExpr {}
+					else { println('typeof: ${typeof(infix_expr.left)}') }
 				}
 				// the expressions have different types (array_x and x)
 				if c.table.check(c.table.value_type(left_type), right_type) {
@@ -1047,6 +1041,16 @@ pub fn (mut c Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	}
 	// a = []
 	if array_init.exprs.len == 0 {
+		if array_init.has_cap {
+			if c.expr(array_init.cap_expr) != table.int_type {
+				c.error('array cap needs to be an int', array_init.pos)
+			}
+		}
+		if array_init.has_len {
+			if c.expr(array_init.len_expr) != table.int_type {
+				c.error('array len needs to be an int', array_init.pos)
+			}
+		}
 		type_sym := c.table.get_type_symbol(c.expected_type)
 		if type_sym.kind != .array {
 			c.error('array_init: no type specified (maybe: `[]Type` instead of `[]`)', array_init.pos)

@@ -13,7 +13,8 @@ pub mut:
 
 pub fn new_builder(initial_size int) Builder {
 	return Builder{
-		buf: make(0, initial_size, 1)
+		//buf: make(0, initial_size)
+		buf: []byte{cap: initial_size}
 		initial_size: initial_size
 	}
 }
@@ -86,7 +87,9 @@ pub fn (b mut Builder) free() {
 	unsafe{
 		free(b.buf.data)
 	}
-	b.buf = make(0, b.initial_size, 1)
+	// QTODO checker bug
+	s := b.initial_size
+	b.buf = []byte{cap: s}
 	b.len = 0
 }
 
