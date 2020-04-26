@@ -996,12 +996,20 @@ pub fn (mut c Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	}
 	// [1,2,3]
 	if array_init.exprs.len > 0 && array_init.elem_type == table.void_type {
+		expecting_interface_array := c.expected_type != 0 &&
+			c.table.get_type_symbol( c.table.value_type(c.expected_type) ).kind ==		.interface_
+		//if expecting_interface_array {
+			//println('ex $c.expected_type')
+		//}
 		for i, expr in array_init.exprs {
 			typ := c.expr(expr)
 			// The first element's type
 			if i == 0 {
 				elem_type = typ
 				c.expected_type = typ
+				continue
+			}
+			if expecting_interface_array {
 				continue
 			}
 			if !c.table.check(elem_type, typ) {
