@@ -170,7 +170,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				continue
 			}
 			sym := p.table.get_type_symbol(arg.typ)
-			if sym.kind !in [.array, .struct_, .map, .placeholder] {
+			if sym.kind !in [.array, .struct_, .map, .placeholder] && !arg.typ.is_ptr() {
 				p.error('mutable arguments are only allowed for arrays, maps, and structs\n' +
 					'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`')
 			}
