@@ -23,19 +23,21 @@ mut:
 	data map[string][]string
 }
 
-pub fn (o mut OrderedDepMap) set(name string, deps []string) {
+pub fn (mut o OrderedDepMap) set(name string, deps []string) {
 	if name !in o.data {
 		o.keys << name
 	}
 	o.data[name] = deps
 }
 
-pub fn (o mut OrderedDepMap) add(name string, deps []string) {
+pub fn (mut o OrderedDepMap) add(name string, deps []string) {
 	mut d := o.data[name]
 	for dep in deps {
 		if dep !in d {
 			d << dep
 		}
+		//
+		else{}
 	}
 	o.set(name, d)
 }
@@ -44,7 +46,7 @@ pub fn (o &OrderedDepMap) get(name string) []string {
 	return o.data[name]
 }
 
-pub fn (o mut OrderedDepMap) delete(name string) {
+pub fn (mut o OrderedDepMap) delete(name string) {
 	if name !in o.data {
 		panic('delete: no such key: $name')
 	}
@@ -57,8 +59,8 @@ pub fn (o mut OrderedDepMap) delete(name string) {
 	o.data.delete(name)
 }
 
-pub fn (o mut OrderedDepMap) apply_diff(name string, deps []string) {
-	mut diff := []string
+pub fn (mut o OrderedDepMap) apply_diff(name string, deps []string) {
+	mut diff := []string{}
 	for dep in o.data[name] {
 		if dep !in deps {
 			diff << dep
@@ -77,7 +79,7 @@ pub fn new_dep_graph() &DepGraph {
 	}
 }
 
-pub fn (graph mut DepGraph) add(mod string, deps []string) {
+pub fn (mut graph DepGraph) add(mod string, deps []string) {
 	graph.nodes << DepGraphNode{
 		name: mod
 		deps: deps.clone()
@@ -93,7 +95,7 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 	}
 	mut resolved := new_dep_graph()
 	for node_deps.size() != 0 {
-		mut ready_set := []string
+		mut ready_set := []string{}
 		for name in node_deps.keys {
 			deps := node_deps.data[name]
 			if deps.len == 0 {

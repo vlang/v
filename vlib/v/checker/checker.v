@@ -246,7 +246,7 @@ pub fn (mut c Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 			if struct_init.is_short && struct_init.fields.len > info.fields.len {
 				c.error('too many fields', struct_init.pos)
 			}
-			mut inited_fields := []string
+			mut inited_fields := []string{}
 			for i, field in struct_init.fields {
 				mut info_field := table.Field{}
 				mut field_name := ''
@@ -318,11 +318,11 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
 	// Single side check
+	// Place these branches according to ops' usage frequency to accelerate.
+	// TODO: First branch includes ops where single side check is not needed, or needed but hasn't been implemented.
+	// TODO: Some of the checks are not single side. Should find a better way to organize them.
 	match infix_expr.op {
-		// Place these branches according to ops' usage frequency to accelerate.
-		// TODO: First branch includes ops where single side check is not needed, or needed but hasn't been implemented.
-		.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift { }
-		// TODO: Some of the checks are not single side. Should find a better way to organize them.
+		.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
 		.key_in, .not_in {
 			match right.kind {
 				.array {
@@ -409,13 +409,14 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
 			}
 		}
-		else { }
+		else {}
 	}
 	// TODO: Absorb this block into the above single side check block to accelerate.
 	if left_type == table.bool_type && infix_expr.op !in [.eq, .ne, .logical_or, .and] {
 		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
 			infix_expr.pos)
-	} else if left_type == table.string_type && infix_expr.op !in [.plus, .eq, .ne, .lt, .gt, .le, .ge] {
+	} else if left_type == table.string_type && infix_expr.op !in [.plus, .eq, .ne, .lt, .gt,
+		.le, .ge] {
 		// TODO broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `&&`',
 			infix_expr.pos)
@@ -429,7 +430,11 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`',
 			infix_expr.pos)
 	}
-	return if infix_expr.op.is_relational() { table.bool_type } else { left_type }
+	return if infix_expr.op.is_relational() {
+		table.bool_type
+	} else {
+		left_type
+	}
 }
 
 fn (mut c Checker) assign_expr(assign_expr mut ast.AssignExpr) {
@@ -860,7 +865,7 @@ pub fn (mut c Checker) return_stmt(return_stmt mut ast.Return) {
 		mr_info := expected_type_sym.info as table.MultiReturn
 		expected_types = mr_info.types
 	}
-	mut got_types := []table.Type
+	mut got_types := []table.Type{}
 	for expr in return_stmt.exprs {
 		typ := c.expr(expr)
 		got_types << typ
@@ -1032,11 +1037,11 @@ pub fn (mut c Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	}
 	// [1,2,3]
 	if array_init.exprs.len > 0 && array_init.elem_type == table.void_type {
-		expecting_interface_array := c.expected_type != 0 &&
-			c.table.get_type_symbol( c.table.value_type(c.expected_type) ).kind ==		.interface_
-		//if expecting_interface_array {
-			//println('ex $c.expected_type')
-		//}
+		expecting_interface_array := c.expected_type != 0 && c.table.get_type_symbol(c.table.value_type(c.expected_type)).kind ==
+			.interface_
+		// if expecting_interface_array {
+		// println('ex $c.expected_type')
+		// }
 		for i, expr in array_init.exprs {
 			typ := c.expr(expr)
 			// The first element's type
@@ -1144,14 +1149,14 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			}
 		}
 		ast.ConstDecl {
-			mut field_names := []string
-			mut field_order := []int
+			mut field_names := []string{}
+			mut field_order := []int{}
 			for i, field in it.fields {
 				field_names << field.name
 				field_order << i
 			}
 			mut needs_order := false
-			mut done_fields := []int
+			mut done_fields := []int{}
 			for i, field in it.fields {
 				c.const_decl = field.name
 				c.const_deps << field.name
@@ -1172,7 +1177,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				c.const_deps = []
 			}
 			if needs_order {
-				mut ordered_fields := []ast.ConstField
+				mut ordered_fields := []ast.ConstField{}
 				for order in field_order {
 					ordered_fields << it.fields[order]
 				}
@@ -1322,13 +1327,12 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', it.pos)
 					// c.error('only $info.variants can be casted to `$typ`', it.pos)
 				}
-			}
-			//
-			else {
+			} else {
+				//
 				c.error('cannot cast non sum type `$type_sym.name` using `as`', it.pos)
 			}
 			return it.typ.to_ptr()
-			//return it.typ
+			// return it.typ
 		}
 		ast.AssignExpr {
 			c.assign_expr(mut it)
@@ -1642,28 +1646,22 @@ fn (mut c Checker) match_exprs(node mut ast.MatchExpr, type_sym table.TypeSymbol
 	// or, when the match is on a sum type or an enum
 	// by listing all variants or values
 	mut is_exhaustive := true
-	mut unhandled := []string
+	mut unhandled := []string{}
 	match type_sym.info {
-		table.SumType {
-			for v in it.variants {
+		table.SumType { for v in it.variants {
 				v_str := c.table.type_to_str(v)
 				if v_str !in branch_exprs {
 					is_exhaustive = false
 					unhandled << '`$v_str`'
 				}
-			}
-		}
-		table.Enum {
-			for v in it.vals {
+			} }
+		table.Enum { for v in it.vals {
 				if v !in branch_exprs {
 					is_exhaustive = false
 					unhandled << '`.$v`'
 				}
-			}
-		}
-		else {
-			is_exhaustive = false
-		}
+			} }
+		else { is_exhaustive = false }
 	}
 	mut else_branch := node.branches[node.branches.len - 1]
 	mut has_else := else_branch.is_else

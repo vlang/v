@@ -88,7 +88,7 @@ fn (mut d Doc) write_fn_signatures(fn_signatures []string) {
 }
 
 fn (d Doc) get_fn_signatures(filter_fn FilterFn) []string {
-	mut fn_signatures := []string
+	mut fn_signatures := []string{}
 	for stmt in d.stmts {
 		match stmt {
 			ast.FnDecl {

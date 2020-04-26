@@ -9,7 +9,7 @@ import v.token
 
 fn (mut p Parser) if_expr() ast.IfExpr {
 	pos := p.tok.position()
-	mut branches := []ast.IfBranch
+	mut branches := []ast.IfBranch{}
 	mut has_else := false
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
@@ -92,11 +92,11 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	cond := p.expr(0)
 	p.inside_match = false
 	p.check(.lcbr)
-	mut branches := []ast.MatchBranch
+	mut branches := []ast.MatchBranch{}
 	for {
 		branch_first_pos := p.tok.position()
 		comment := p.check_comment() // comment before {}
-		mut exprs := []ast.Expr
+		mut exprs := []ast.Expr{}
 		p.open_scope()
 		// final else
 		mut is_else := false

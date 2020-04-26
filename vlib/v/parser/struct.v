@@ -33,8 +33,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	end_pos := p.tok.position()
 	mut name := p.check_name()
 	// println('struct decl $name')
-	mut ast_fields := []ast.StructField
-	mut fields := []table.Field
+	mut ast_fields := []ast.StructField{}
+	mut fields := []table.Field{}
 	mut mut_pos := -1
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
@@ -165,7 +165,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	if !short_syntax {
 		p.check(.lcbr)
 	}
-	mut fields := []ast.StructInitField
+	mut fields := []ast.StructInitField{}
 	mut i := 0
 	is_short_syntax := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
 	// p.warn(is_short_syntax.str())
@@ -240,7 +240,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	typ := table.new_type(p.table.register_type_symbol(t))
 	ts := p.table.get_type_symbol(typ) // TODO t vs ts
 	// Parse methods
-	mut methods := []ast.FnDecl
+	mut methods := []ast.FnDecl{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		line_nr := p.tok.line_nr
 		name := p.check_name()

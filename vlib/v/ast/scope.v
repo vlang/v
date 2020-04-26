@@ -58,6 +58,8 @@ pub fn (s &Scope) is_known(name string) bool {
 	if _ := s.find(name) {
 		return true
 	}
+	//
+	else{}
 	return false
 }
 
@@ -130,7 +132,7 @@ pub fn (s mut Scope) remove_unused_var(name string) {
 }
 
 pub fn (s mut Scope) unused_vars() []UnusedVar {
-	ret := []UnusedVar
+	ret := []UnusedVar{}
 	for _, v in s.unused_vars {
 		ret << v
 	}

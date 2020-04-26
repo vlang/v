@@ -30,7 +30,7 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 		pos: first_pos.pos
 		len: last_pos.pos - first_pos.pos + last_pos.len
 	}
-	mut or_stmts := []ast.Stmt
+	mut or_stmts := []ast.Stmt{}
 	mut is_or_block_used := false
 	if p.tok.kind == .key_orelse {
 		p.next()
@@ -63,7 +63,7 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 }
 
 pub fn (mut p Parser) call_args() []ast.CallArg {
-	mut args := []ast.CallArg
+	mut args := []ast.CallArg{}
 	for p.tok.kind != .rpar {
 		mut is_mut := false
 		if p.tok.kind == .key_mut {
@@ -103,7 +103,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_method := false
 	mut rec_type := table.void_type
 	mut rec_mut := false
-	mut args := []table.Arg
+	mut args := []table.Arg{}
 	if p.tok.kind == .lpar {
 		p.next() // (
 		is_method = true
@@ -208,7 +208,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		})
 	}
 	// Body
-	mut stmts := []ast.Stmt
+	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope()
@@ -255,7 +255,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	if p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()
 	}
-	mut stmts := []ast.Stmt
+	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope()
@@ -289,7 +289,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 
 fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
-	mut args := []table.Arg
+	mut args := []table.Arg{}
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
 	types_only := p.tok.kind in [.amp, .and] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||

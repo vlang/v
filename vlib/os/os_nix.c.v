@@ -19,7 +19,7 @@ const (
 fn C.symlink(charptr, charptr) int
 
 fn init_os_args(argc int, argv &byteptr) []string {
-	mut args := []string
+	mut args := []string{}
 	//mut args := []string(make(0, argc, sizeof(string)))
 	//mut args := []string{len:argc}
 	for i in 0 .. argc {
@@ -31,7 +31,7 @@ fn init_os_args(argc int, argv &byteptr) []string {
 }
 
 pub fn ls(path string) ?[]string {
-	mut res := []string
+	mut res := []string{}
 	dir := C.opendir(path.str)
 	if isnil(dir) {
 		return error('ls() couldnt open dir "$path"')

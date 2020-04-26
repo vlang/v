@@ -47,7 +47,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 
 // parse all deps from already parsed files
 pub fn (mut b Builder) parse_imports() {
-	mut done_imports := []string
+	mut done_imports := []string{}
 	// NB: b.parsed_files is appended in the loop,
 	// so we can not use the shorter `for in` form.
 	for i := 0; i < b.parsed_files.len; i++ {
@@ -97,7 +97,7 @@ pub fn (mut b Builder) resolve_deps() {
 		eprintln(deps_resolved.display())
 		eprintln('------------------------------------------')
 	}
-	mut mods := []string
+	mut mods := []string{}
 	for node in deps_resolved.nodes {
 		mods << node.name
 	}
@@ -106,7 +106,7 @@ pub fn (mut b Builder) resolve_deps() {
 		eprintln(mods.str())
 		eprintln('-------------------------------')
 	}
-	mut reordered_parsed_files := []ast.File
+	mut reordered_parsed_files := []ast.File{}
 	for m in mods {
 		for pf in b.parsed_files {
 			if m == pf.mod.name {
@@ -124,7 +124,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 	builtins << 'builtin'
 	mut graph := depgraph.new_dep_graph()
 	for p in b.parsed_files {
-		mut deps := []string
+		mut deps := []string{}
 		if p.mod.name !in builtins {
 			deps << 'builtin'
 		}
@@ -137,7 +137,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 }
 
 pub fn (b Builder) v_files_from_dir(dir string) []string {
-	mut res := []string
+	mut res := []string{}
 	if !os.exists(dir) {
 		if dir == 'compiler' && os.is_dir('vlib') {
 			println('looks like you are trying to build V with an old command')
@@ -246,7 +246,7 @@ pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
 	vmod_file_location := vmod.mod_file_cacher.get(fpath)
 	mod_path := module_path(mod)
-	mut module_lookup_paths := []string
+	mut module_lookup_paths := []string{}
 	if vmod_file_location.vmod_file.len != 0 && vmod_file_location.vmod_folder !in b.module_search_paths {
 		module_lookup_paths << vmod_file_location.vmod_folder
 	}

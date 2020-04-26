@@ -219,7 +219,7 @@ pub fn join_env_vflags_and_os_args() []string {
 	if vosargs != '' {
 		return non_empty(vosargs.split(' '))
 	}
-	mut args := []string
+	mut args := []string{}
 	vflags := os.getenv('VFLAGS')
 	if vflags != '' {
 		args << os.args[0]

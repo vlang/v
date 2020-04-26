@@ -24,7 +24,7 @@ fn C.readdir(voidptr) C.dirent
 
 
 pub const (
-	args = []string
+	args = []string{}
 	MAX_PATH = 4096
 )
 
@@ -245,7 +245,7 @@ fn read_ulines(path string) ?[]ustring {
 		return error(err)
 	}
 	// mut ulines := new_array(0, lines.len, sizeof(ustring))
-	mut ulines := []ustring
+	mut ulines := []ustring{}
 	for myline in lines {
 		// ulines[i] = ustr
 		ulines << myline.ustring()
@@ -722,7 +722,7 @@ pub fn get_raw_line() string {
 
 pub fn get_lines() []string {
 	mut line := ''
-	mut inputstr := []string
+	mut inputstr := []string{}
 	for {
 		line = get_line()
 		if line.len <= 0 {
@@ -1043,7 +1043,7 @@ pub fn is_abs_path(path string) bool {
 
 // join returns path as string from string parameter(s).
 pub fn join_path(base string, dirs ...string) string {
-	mut result := []string
+	mut result := []string{}
 	result << base.trim_right('\\/')
 	for d in dirs {
 		result << d
@@ -1059,7 +1059,7 @@ pub fn walk_ext(path, ext string) []string {
 	mut files := os.ls(path) or {
 		return []
 	}
-	mut res := []string
+	mut res := []string{}
 	separator := if path.ends_with(os.path_separator) { '' } else { os.path_separator }
 	for i, file in files {
 		if file.starts_with('.') {

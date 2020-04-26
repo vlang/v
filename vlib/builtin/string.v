@@ -144,7 +144,7 @@ pub fn (s string) replace(rep, with string) string {
 	}
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
-	mut idxs := []int
+	mut idxs := []int{}
 	mut idx := 0
 	for {
 		idx = s.index_after(rep, idx)
@@ -231,7 +231,7 @@ pub fn (s string) replace_each(vals []string) string {
 	// Remember positions of all rep strings, and calculate the length
 	// of the new string to do just one allocation.
 	mut new_len := s.len
-	mut idxs := []RepIndex
+	mut idxs := []RepIndex{}
 	mut idx := 0
 	for rep_i := 0; rep_i < vals.len; rep_i += 2 {
 		// vals: ['rep1, 'with1', 'rep2', 'with2']
@@ -407,7 +407,7 @@ The last returned element has the remainder of the string, even if
 the remainder contains more `delim` substrings.
 */
 pub fn (s string) split_nth(delim string, nth int) []string {
-	mut res := []string
+	mut res := []string{}
 	mut i := 0
 	if delim.len == 0 {
 		i = 1
@@ -458,7 +458,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 }
 
 pub fn (s string) split_into_lines() []string {
-	mut res := []string
+	mut res := []string{}
 	if s.len == 0 {
 		return res
 	}
@@ -788,7 +788,7 @@ pub fn (s string) is_capital() bool {
 
 pub fn (s string) title() string {
 	words := s.split(' ')
-	mut tit := []string
+	mut tit := []string{}
 	for word in words {
 		tit << word.capitalize()
 	}

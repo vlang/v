@@ -62,7 +62,7 @@ fn (mut p Parser) comp_if() ast.CompIf {
 		p.next()
 	}
 	val := p.check_name()
-	mut stmts := []ast.Stmt
+	mut stmts := []ast.Stmt{}
 	mut skip_os := false
 	if val in supported_platforms {
 		os := os_from_string(val)

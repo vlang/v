@@ -33,15 +33,9 @@ pub fn compile(command string, pref &pref.Preferences) {
 	}
 	mut tmark := benchmark.new_benchmark()
 	match pref.backend {
-		.c {
-			b.compile_c()
-		}
-		.js {
-			b.compile_js()
-		}
-		.x64 {
-			b.compile_x64()
-		}
+		.c { b.compile_c() }
+		.js { b.compile_js() }
+		.x64 { b.compile_x64() }
 	}
 	if pref.is_stats {
 		tmark.stop()
@@ -153,7 +147,7 @@ pub fn (v Builder) get_user_files() []string {
 	v.log('get_v_files($dir)')
 	// Need to store user files separately, because they have to be added after
 	// libs, but we dont know	which libs need to be added yet
-	mut user_files := []string
+	mut user_files := []string{}
 	// See cmd/tools/preludes/README.md for more info about what preludes are
 	vroot := os.dir(pref.vexe_path())
 	preludes_path := os.join_path(vroot, 'cmd', 'tools', 'preludes')

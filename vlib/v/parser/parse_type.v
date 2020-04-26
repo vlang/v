@@ -49,7 +49,7 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 
 pub fn (mut p Parser) parse_multi_return_type() table.Type {
 	p.check(.lpar)
-	mut mr_types := []table.Type
+	mut mr_types := []table.Type{}
 	for {
 		mr_type := p.parse_type()
 		mr_types << mr_type

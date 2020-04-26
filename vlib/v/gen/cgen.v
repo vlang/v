@@ -768,7 +768,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 	if assign_stmt.left.len > assign_stmt.right.len {
 		// multi return
-		mut or_stmts := []ast.Stmt
+		mut or_stmts := []ast.Stmt{}
 		mut return_type := table.void_type
 		if assign_stmt.right[0] is ast.CallExpr {
 			it := assign_stmt.right[0] as ast.CallExpr
@@ -810,7 +810,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			ident_var_info := ident.var_info()
 			styp := g.typ(ident_var_info.typ)
 			mut is_call := false
-			mut or_stmts := []ast.Stmt
+			mut or_stmts := []ast.Stmt{}
 			mut return_type := table.void_type
 			match val {
 				ast.CallExpr {
@@ -1244,7 +1244,7 @@ fn (mut g Gen) enum_expr(node ast.Expr) {
 fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 	// g.write('/*assign_expr*/')
 	mut is_call := false
-	mut or_stmts := []ast.Stmt
+	mut or_stmts := []ast.Stmt{}
 	mut return_type := table.void_type
 	match node.val {
 		ast.CallExpr {
@@ -2011,7 +2011,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.writeln('($styp){')
 	}
 	// mut fields := []string
-	mut inited_fields := []string // TODO this is done in checker, move to ast node
+	mut inited_fields := []string{} // TODO this is done in checker, move to ast node
 	/*
 	if struct_init.fields.len == 0 && struct_init.exprs.len > 0 {
 		// Get fields for {a,b} short syntax. Fields array wasn't set in the parser.
@@ -2182,7 +2182,7 @@ const (
 )
 
 fn (mut g Gen) write_builtin_types() {
-	mut builtin_types := []table.TypeSymbol // builtin types
+	mut builtin_types := []table.TypeSymbol{} // builtin types
 	// builtin types need to be on top
 	// everything except builtin will get sorted
 	for builtin_name in builtins {
@@ -2195,7 +2195,7 @@ fn (mut g Gen) write_builtin_types() {
 // Sort the types, make sure types that are referenced by other types
 // are added before them.
 fn (mut g Gen) write_sorted_types() {
-	mut types := []table.TypeSymbol // structs that need to be sorted
+	mut types := []table.TypeSymbol{} // structs that need to be sorted
 	for typ in g.table.types {
 		if typ.name !in builtins {
 			types << typ
@@ -2268,7 +2268,7 @@ int typ;
 fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 	mut dep_graph := depgraph.new_dep_graph()
 	// types name list
-	mut type_names := []string
+	mut type_names := []string{}
 	for typ in typesa {
 		type_names << typ.name
 	}
@@ -2278,7 +2278,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 			continue
 		}
 		// create list of deps
-		mut field_deps := []string
+		mut field_deps := []string{}
 		match t.info {
 			table.ArrayFixed {
 				dep := g.table.get_type_symbol(it.elem_type).name
@@ -2314,7 +2314,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
-	mut types_sorted := []table.TypeSymbol
+	mut types_sorted := []table.TypeSymbol{}
 	for node in dep_graph_sorted.nodes {
 		types_sorted << g.table.types[g.table.type_idxs[node.name]]
 	}
@@ -2815,7 +2815,7 @@ pub fn (mut g Gen) write_tests_main() {
 }
 
 fn (g Gen) get_all_test_function_names() []string {
-	mut tfuncs := []string
+	mut tfuncs := []string{}
 	mut tsuite_begin := ''
 	mut tsuite_end := ''
 	for _, f in g.table.fns {
@@ -2846,7 +2846,7 @@ fn (g Gen) get_all_test_function_names() []string {
 			continue
 		}
 	}
-	mut all_tfuncs := []string
+	mut all_tfuncs := []string{}
 	if tsuite_begin.len > 0 {
 		all_tfuncs << tsuite_begin
 	}
@@ -2854,7 +2854,7 @@ fn (g Gen) get_all_test_function_names() []string {
 	if tsuite_end.len > 0 {
 		all_tfuncs << tsuite_end
 	}
-	mut all_tfuncs_c := []string
+	mut all_tfuncs_c := []string{}
 	for f in all_tfuncs {
 		all_tfuncs_c << f.replace('.', '__')
 	}

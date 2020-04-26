@@ -68,7 +68,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	// text := os.read_file(path) or {
 	// panic(err)
 	// }
-	mut stmts := []ast.Stmt
+	mut stmts := []ast.Stmt{}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode)
 		table: table
@@ -166,7 +166,7 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 	return q.parsed_ast_files
 	*/
 	// ///////////////
-	mut files := []ast.File
+	mut files := []ast.File{}
 	for path in paths {
 		// println('parse_files $path')
 		files << parse_file(path, table, .skip_comments, pref, global_scope)
@@ -221,7 +221,7 @@ pub fn (mut p Parser) parse_block() []ast.Stmt {
 
 pub fn (mut p Parser) parse_block_no_scope() []ast.Stmt {
 	p.check(.lcbr)
-	mut stmts := []ast.Stmt
+	mut stmts := []ast.Stmt{}
 	if p.tok.kind != .rcbr {
 		for {
 			stmts << p.stmt()
@@ -775,7 +775,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.next()
 		args := p.call_args()
 		p.check(.rpar)
-		mut or_stmts := []ast.Stmt
+		mut or_stmts := []ast.Stmt{}
 		mut is_or_block_used := false
 		if p.tok.kind == .key_orelse {
 			p.next()
@@ -859,9 +859,9 @@ fn (mut p Parser) string_expr() ast.Expr {
 		}
 		return node
 	}
-	mut exprs := []ast.Expr
-	mut vals := []string
-	mut efmts := []string
+	mut exprs := []ast.Expr{}
+	mut vals := []string{}
+	mut efmts := []string{}
 	// Handle $ interpolation
 	for p.tok.kind == .string {
 		vals << p.tok.lit
@@ -871,7 +871,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		}
 		p.check(.str_dollar)
 		exprs << p.expr(0)
-		mut efmt := []string
+		mut efmt := []string{}
 		if p.tok.kind == .colon {
 			efmt << ':'
 			p.next()
@@ -961,7 +961,7 @@ fn (mut p Parser) parse_import() ast.Import {
 
 fn (mut p Parser) import_stmt() []ast.Import {
 	p.check(.key_import)
-	mut imports := []ast.Import
+	mut imports := []ast.Import{}
 	if p.tok.kind == .lpar {
 		p.warn('`import()` has been deprecated, use `import x` instead. run `v fmt` to handle the transition')
 		p.check(.lpar)
@@ -991,7 +991,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		p.error('consts must be grouped, e.g.\nconst (\n\ta = 1\n)')
 	}
 	p.next() // (
-	mut fields := []ast.ConstField
+	mut fields := []ast.ConstField{}
 	for p.tok.kind != .rpar {
 		if p.tok.kind == .comment {
 			p.comment()
@@ -1021,7 +1021,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	first_pos := p.tok.position()
 	p.next()
 	// return expressions
-	mut exprs := []ast.Expr
+	mut exprs := []ast.Expr{}
 	if p.tok.kind == .rcbr {
 		return ast.Return{
 			pos: first_pos
@@ -1101,9 +1101,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
-	mut vals := []string
+	mut vals := []string{}
 	// mut default_exprs := []ast.Expr
-	mut fields := []ast.EnumField
+	mut fields := []ast.EnumField{}
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.position()
 		val := p.check_name()
@@ -1156,7 +1156,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	end_pos := p.tok.position()
 	decl_pos := start_pos.extend(end_pos)
 	name := p.check_name()
-	mut sum_variants := []table.Type
+	mut sum_variants := []table.Type{}
 	if p.tok.kind == .assign {
 		p.next() // TODO require `=`
 	}
@@ -1225,8 +1225,8 @@ fn (mut p Parser) assoc() ast.Assoc {
 		return ast.Assoc{}
 	}
 	// println('assoc var $name typ=$var.typ')
-	mut fields := []string
-	mut vals := []ast.Expr
+	mut fields := []string{}
+	mut vals := []ast.Expr{}
 	p.check(.pipe)
 	for {
 		fields << p.check_name()

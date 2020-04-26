@@ -531,7 +531,7 @@ pub fn compare_f32(a, b &f32) int {
 // a.pointers() returns a new array, where each element
 // is the address of the corresponding element in a.
 pub fn (a array) pointers() []voidptr {
-	mut res := []voidptr
+	mut res := []voidptr{}
 	for i in 0..a.len {
 		res << byteptr(a.data) + i * a.element_size
 	}

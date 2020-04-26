@@ -418,7 +418,7 @@ fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				f.write('pub ')
 			}
 			f.write('type $it.name = ')
-			mut sum_type_names := []string
+			mut sum_type_names := []string{}
 			for t in it.sub_types {
 				sum_type_names << f.type_to_str(t)
 			}
@@ -989,6 +989,7 @@ fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
 		// `x := []string`
 		f.write(f.type_to_str(it.typ))
+		f.write('{}')
 		return
 	}
 	// `[1,2,3]`

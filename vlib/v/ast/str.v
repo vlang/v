@@ -121,7 +121,7 @@ pub fn (x Expr) str() string {
 			return '${it.expr.str()}.${it.field}'
 		}
 		StringInterLiteral {
-			res := []string
+			res := []string{}
 			res << "'"
 			for i, val in it.vals {
 				res << val
@@ -161,7 +161,7 @@ pub fn (a CallArg) str() string {
 }
 
 pub fn args2str(args []CallArg) string {
-	mut res := []string
+	mut res := []string{}
 	for a in args {
 		res << a.str()
 	}

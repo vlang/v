@@ -22,13 +22,15 @@ struct MsvcResult {
 // shell32 for RegOpenKeyExW etc
 // Mimics a HKEY
 type RegKey voidptr
+
 // Taken from the windows SDK
 const (
-	HKEY_LOCAL_MACHINE = RegKey(0x80000002)// as RegKey
-	KEY_QUERY_VALUE = (0x0001)
-	KEY_WOW64_32KEY = (0x0200)
+	HKEY_LOCAL_MACHINE     = RegKey(0x80000002)
+	KEY_QUERY_VALUE        = (0x0001)
+	KEY_WOW64_32KEY        = (0x0200)
 	KEY_ENUMERATE_SUB_KEYS = (0x0008)
 )
+
 // Given a root key look for one of the subkeys in 'versions' and get the path
 fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 	$if windows {
@@ -41,7 +43,7 @@ fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 					continue
 				}
 				alloc_length := (required_bytes + 2)
-				mut value := &u16(malloc(alloc_length))
+				mut value := &&u16(malloc(alloc_length))
 				if isnil(value) {
 					continue
 				}
@@ -75,7 +77,8 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
-		rc := C.RegOpenKeyEx(HKEY_LOCAL_MACHINE, path.to_wide(), 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY | KEY_ENUMERATE_SUB_KEYS, &root_key)
+		rc := C.RegOpenKeyEx(HKEY_LOCAL_MACHINE, path.to_wide(), 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY |
+			KEY_ENUMERATE_SUB_KEYS, &root_key)
 		defer {
 			C.RegCloseKey(root_key)
 		}
@@ -83,12 +86,12 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 			return error('Unable to open root key')
 		}
 		// Try and find win10 kit
-		kit_root := find_windows_kit_internal(root_key, ['KitsRoot10', 'KitsRoot81'])or{
+		kit_root := find_windows_kit_internal(root_key, ['KitsRoot10', 'KitsRoot81']) or {
 			return error('Unable to find a windows kit')
 		}
 		kit_lib := kit_root + 'Lib'
 		// println(kit_lib)
-		files := os.ls(kit_lib)or{
+		files := os.ls(kit_lib) or {
 			panic(err)
 		}
 		mut highest_path := ''
@@ -121,7 +124,7 @@ struct VsInstallation {
 	exe_path     string
 }
 
-fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
+fn find_vs(vswhere_dir, host_arch string) ?VsInstallation {
 	$if !windows {
 		return error('Host OS does not support finding a Vs installation')
 	}
@@ -129,17 +132,17 @@ fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 	// VSWhere is guaranteed to be installed at this location now
 	// If its not there then end user needs to update their visual studio
 	// installation!
-	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')or{
+	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') or {
 		return error(err)
 	}
 	// println('res: "$res"')
-	version := os.read_file('$res.output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt')or{
+	version := os.read_file('$res.output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
 		println('Unable to find msvc version')
 		return error('Unable to find vs installation')
 	}
 	version2 := version // TODO remove. cgen option bug if expr
 	// println('version: $version')
-	v := if version.ends_with('\n') { version2[..version.len - 2] } else {version2 }
+	v := if version.ends_with('\n') { version2[..version.len - 2] } else { version2 }
 	lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\$host_arch'
 	include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
 	if os.exists('$lib_path\\vcruntime.lib') {
@@ -160,10 +163,10 @@ fn find_msvc() ?MsvcResult {
 		processor_architecture := os.getenv('PROCESSOR_ARCHITECTURE')
 		vswhere_dir := if processor_architecture == 'x86' { '%ProgramFiles%' } else { '%ProgramFiles(x86)%' }
 		host_arch := if processor_architecture == 'x86' { 'X86' } else { 'X64' }
-		wk := find_windows_kit_root(host_arch)or{
+		wk := find_windows_kit_root(host_arch) or {
 			return error('Unable to find windows sdk')
 		}
-		vs := find_vs(vswhere_dir, host_arch)or{
+		vs := find_vs(vswhere_dir, host_arch) or {
 			return error('Unable to find visual studio')
 		}
 		return MsvcResult{
@@ -183,8 +186,8 @@ fn find_msvc() ?MsvcResult {
 	}
 }
 
-pub fn (v mut Builder) cc_msvc() {
-	r := find_msvc()or{
+pub fn (mut v Builder) cc_msvc() {
+	r := find_msvc() or {
 		// TODO: code reuse
 		if !v.pref.is_keep_c && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 			os.rm(v.out_name_c)
@@ -204,8 +207,7 @@ pub fn (v mut Builder) cc_msvc() {
 		a << '/MD'
 		a << '/Zi'
 		a << '/DNDEBUG'
-	}
-	else {
+	} else {
 		a << '/Zi'
 		a << '/MDd'
 	}
@@ -215,8 +217,7 @@ pub fn (v mut Builder) cc_msvc() {
 		}
 		// Build dll
 		a << '/LD'
-	}
-	else if !v.pref.out_name.ends_with('.exe') {
+	} else if !v.pref.out_name.ends_with('.exe') {
 		v.pref.out_name += '.exe'
 	}
 	v.pref.out_name = os.real_path(v.pref.out_name)
@@ -224,8 +225,7 @@ pub fn (v mut Builder) cc_msvc() {
 	if v.pref.build_mode == .build_module {
 		// Compile only
 		a << '/c'
-	}
-	else if v.pref.build_mode == .default_mode {
+	} else if v.pref.build_mode == .default_mode {
 		/*
 		b := os.real_path( '${pref.default_module_path}/vlib/builtin.obj' )
 		alibs << '"$b"'
@@ -288,7 +288,7 @@ pub fn (v mut Builder) cc_msvc() {
 		println('==========\n')
 	}
 	// println('$cmd')
-	res := os.exec(cmd)or{
+	res := os.exec(cmd) or {
 		println(err)
 		verror('msvc error')
 		return
@@ -306,7 +306,7 @@ pub fn (v mut Builder) cc_msvc() {
 }
 
 fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
-	msvc := find_msvc()or{
+	msvc := find_msvc() or {
 		println('Could not find visual studio')
 		return
 	}
@@ -319,7 +319,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
 	}
 	println('$obj_path not found, building it (with msvc)...')
 	parent := os.dir(obj_path)
-	files := os.ls(parent)or{
+	files := os.ls(parent) or {
 		panic(err)
 	}
 	mut cfiles := ''
@@ -335,7 +335,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
 	cmd := '"$msvc.full_cl_exe_path" /volatile:ms /Zi /DNDEBUG $include_string /c $btarget $cfiles $atarget /Fo"$obj_path"'
 	// NB: the quotes above ARE balanced.
 	println('thirdparty cmd line: $cmd')
-	res := os.exec(cmd)or{
+	res := os.exec(cmd) or {
 		println('msvc: failed thirdparty object build cmd: $cmd')
 		verror(err)
 		return
@@ -357,10 +357,10 @@ mut:
 }
 
 fn (cflags []cflag.CFlag) msvc_string_flags() MsvcStringFlags {
-	mut real_libs := []string
-	mut inc_paths := []string
-	mut lib_paths := []string
-	mut other_flags := []string
+	mut real_libs := []string{}
+	mut inc_paths := []string{}
+	mut lib_paths := []string{}
+	mut other_flags := []string{}
 	for flag in cflags {
 		// println('fl: $flag.name | flag arg: $flag.value')
 		// We need to see if the flag contains -l
@@ -374,11 +374,9 @@ fn (cflags []cflag.CFlag) msvc_string_flags() MsvcStringFlags {
 			// TODO: we should look for .defs aswell
 			lib_lib := flag.value + '.lib'
 			real_libs << lib_lib
-		}
-		else if flag.name == '-I' {
+		} else if flag.name == '-I' {
 			inc_paths << flag.format()
-		}
-		else if flag.name == '-L' {
+		} else if flag.name == '-L' {
 			lib_paths << flag.value
 			lib_paths << flag.value + os.path_separator + 'msvc'
 			// The above allows putting msvc specific .lib files in a subfolder msvc/ ,
@@ -386,24 +384,21 @@ fn (cflags []cflag.CFlag) msvc_string_flags() MsvcStringFlags {
 			// NB: gcc is smart enough to not need .lib files at all in most cases, the .dll is enough.
 			// When both a msvc .lib file and .dll file are present in the same folder,
 			// as for example for glfw3, compilation with gcc would fail.
-		}
-		else if flag.value.ends_with('.o') {
+		} else if flag.value.ends_with('.o') {
 			// msvc expects .obj not .o
 			other_flags << '"${flag.value}bj"'
-		}
-		else {
+		} else {
 			other_flags << flag.value
 		}
 	}
-	mut lpaths := []string
+	mut lpaths := []string{}
 	for l in lib_paths {
 		lpaths << '/LIBPATH:"' + os.real_path(l) + '"'
 	}
 	return MsvcStringFlags{
-		real_libs:real_libs
-		inc_paths:inc_paths
-		lib_paths:lpaths
-		other_flags:other_flags
+		real_libs: real_libs
+		inc_paths: inc_paths
+		lib_paths: lpaths
+		other_flags: other_flags
 	}
-
 }
