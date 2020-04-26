@@ -109,14 +109,14 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			g.writeln('\tatexit(vprint_profile_stats);')
 			g.writeln('')
 		}
-		if it.name == 'time.sys_mono_now' {
+		if it.name == 'time.vpc_now' {
 			g.defer_profile_code = ''
 		} else {
 			fn_profile_counter_name := 'vpc_${g.last_fn_c_name}'
 			g.writeln('')
-			g.writeln('\tdouble _PROF_FN_START = time__sys_mono_now(); ${fn_profile_counter_name}_calls++; // $it.name')
+			g.writeln('\tdouble _PROF_FN_START = time__vpc_now(); ${fn_profile_counter_name}_calls++; // $it.name')
 			g.writeln('')
-			g.defer_profile_code = '\t${fn_profile_counter_name} += time__sys_mono_now() - _PROF_FN_START;'
+			g.defer_profile_code = '\t${fn_profile_counter_name} += time__vpc_now() - _PROF_FN_START;'
 			g.pcs_declarations.writeln('double ${fn_profile_counter_name} = 0.0; u64 ${fn_profile_counter_name}_calls = 0;')
 			g.pcs[g.last_fn_c_name] = fn_profile_counter_name
 		}
