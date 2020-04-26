@@ -14,23 +14,23 @@ import strconv.ftoa
 import strings
 
 enum Char_parse_state {
-	start,
-	norm_char,
-	field_char,
-	pad_ch,
-	len_set_start,
-	len_set_in,
+	start
+	norm_char
+	field_char
+	pad_ch
+	len_set_start
+	len_set_in
 
-	check_type,
-	check_float,
-	check_float_in,
+	check_type
+	check_float
+	check_float_in
 
 	reset_params
 }
 
 enum Align_text {
-	right = 0,
-	left,
+	right = 0
+	left
 	center
 }
 
@@ -127,6 +127,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 	}
 
 	// allocate exp+32 chars for the return string
+	//mut res := []byte{len:exp+32,init:`0`}
 	mut res := [`0`].repeat(exp+32) // TODO: Slow!! is there other possibilities to allocate this?
 	mut r_i := 0  // result string buffer index
 
@@ -205,7 +206,7 @@ struct BF_param {
 	pad_ch       byte       = ` `     // padding char
 	len0         int        = -1      // default len for whole the number or string
 	len1         int        = 6       // number of decimal digits, if needed
-	positive     bool       = true    // mandatory: the sign of the number passed   
+	positive     bool       = true    // mandatory: the sign of the number passed
 	sign_flag    bool       = false   // flag for print sign as prefix in padding
 	allign       Align_text = .right  // alignment of the string
 	rm_tail_zero bool       = false   // remove the tail zeros from floats
@@ -219,13 +220,13 @@ pub fn format_str(s string, p BF_param) string {
 	mut res := strings.new_builder(s.len + dif)
 	if p.allign == .right {
 		for i1 :=0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)						
+			res.write_b(p.pad_ch)
 		}
 	}
 	res.write(s)
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)						
+			res.write_b(p.pad_ch)
 		}
 	}
 	return res.str()
@@ -258,19 +259,17 @@ pub fn format_dec(d u64, p BF_param) string {
 			s = "-" + d.str()
 		}
 	}
-				
 	dif := p.len0 - s.len + sign_len_diff
 
 	if p.allign == .right {
 		for i1 :=0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)						
+			res.write_b(p.pad_ch)
 		}
 	}
-	
 	res.write(s)
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)						
+			res.write_b(p.pad_ch)
 		}
 	}
 	return res.str()
@@ -279,6 +278,12 @@ pub fn format_dec(d u64, p BF_param) string {
 pub fn format_fl(f f64, p BF_param) string {
 	mut s  := ""
 	mut fs := f64_to_str_lnd(if f >= 0.0 {f} else {-f}, p.len1)
+	
+	// error!!
+	if fs[0] == `[` {
+		return fs
+	}
+	
 	if p.rm_tail_zero {
 		fs = remove_tail_zeros(fs)
 	}
@@ -312,14 +317,13 @@ pub fn format_fl(f f64, p BF_param) string {
 
 	if p.allign == .right {
 		for i1 :=0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)						
+			res.write_b(p.pad_ch)
 		}
 	}
-	
 	res.write(s)
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)						
+			res.write_b(p.pad_ch)
 		}
 	}
 
@@ -361,13 +365,13 @@ pub fn format_es(f f64, p BF_param) string {
 	dif := p.len0 - s.len + sign_len_diff
 	if p.allign == .right {
 		for i1 :=0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)						
+			res.write_b(p.pad_ch)
 		}
 	}
 	res.write(s)
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)						
+			res.write_b(p.pad_ch)
 		}
 	}
 	return res.str()
@@ -411,7 +415,6 @@ pub fn remove_tail_zeros(s string) string {
 	if tmp.str[tmp.len-1] == `.` {
 		return tmp[..tmp.len-1]
 	}
-	
 	return tmp
 }
 
@@ -442,7 +445,6 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 	mut ch1 := `0`  // +1 char if present else `0`
 	mut ch2 := `0`  // +2 char if present else `0`
 
-
 	mut status := Char_parse_state.norm_char
 	for i < str.len {
 		if status == .reset_params {
@@ -459,13 +461,11 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 		}
 
 		ch := str[i]
-		
 		if ch != `%` && status == .norm_char {
 			res.write_b(ch)
 			i++
 			continue
-		} 
-
+		}
 		if ch == `%` && status == .norm_char {
 			status = .field_char
 			i++
@@ -500,7 +500,6 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					fc_ch2 = str[i+2]
 				}
 			}
-			
 			if ch == `+` {
 				sign = true
 				i++
@@ -531,8 +530,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				mut s := *(&string(pt[p_index]))
 				s = s[..len]
 				p_index++
-				res.write(s)				
-
+				res.write(s)
 				status = .reset_params
 				i += 3
 				continue
@@ -607,8 +605,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					i++
 					continue
 				}
-			} 
-
+			}
 			else if ch == `h` {
 				if ch1 == `0` {
 					ch1 = `h`
@@ -668,7 +665,6 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				}
 
 				res.write(format_dec(d1,{positive: positive, pad_ch: pad_ch, len0: len0, sign_flag: sign, allign: allign}))
-				
 				status = .reset_params
 				p_index++
 				i++
@@ -812,9 +808,8 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 			// string
 			else if ch == `s` {
 				s1 := *(&string(pt[p_index]))
-				pad_ch = `0`
+				pad_ch = ` `
 				res.write(format_str(s1, {pad_ch: pad_ch, len0: len0, allign: allign}))
-				
 				status = .reset_params
 				p_index++
 				i++
@@ -825,7 +820,6 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 		status = .reset_params
 		p_index++
 		i++
-		
 	}
 
 	return res.str()
