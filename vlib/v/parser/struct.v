@@ -257,7 +257,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			args: args
 			return_type: table.void_type
 		}
-		if p.tok.kind == .name && p.tok.line_nr == line_nr {
+		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 			method.return_type = p.parse_type()
 		}
 		methods << method
