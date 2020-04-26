@@ -205,7 +205,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 	}
 	for fi, field in decl.fields {
 		sym := c.table.get_type_symbol(field.typ)
-		if sym.kind == .placeholder {
+		if sym.kind == .placeholder && !decl.is_c && !sym.name.starts_with('C.') {
 			c.error('unknown type `$sym.name`', field.pos)
 		}
 		if field.has_default_expr {
@@ -1855,8 +1855,11 @@ pub fn (mut c Checker) enum_val(node mut ast.EnumVal) table.Type {
 		c.error('not an enum (name=$node.enum_name) (type_idx=0)', node.pos)
 	}
 	typ := table.new_type(typ_idx)
+	if typ == table.void_type {
+		c.error('not an enum', node.pos)
+	}
 	typ_sym := c.table.get_type_symbol(typ)
-	// println('tname=$typ.name')
+	// println('tname=$typ_sym.name $node.pos.line_nr $c.file.path')
 	if typ_sym.kind != .enum_ {
 		c.error('not an enum', node.pos)
 	}
