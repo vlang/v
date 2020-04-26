@@ -78,9 +78,10 @@ const(
 )
 
 fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
-	n_digit          := i_n_digit + 1
+	mut n_digit          := i_n_digit + 1
 	pad_digit        := i_pad_digit + 1
 	mut out          := d.m
+	mut d_exp        := d.e
 	mut out_len      := decimal_len_64(out)
 	out_len_original := out_len
 
@@ -104,10 +105,19 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 
 	// rounding last used digit
 	if n_digit < out_len {
+		//println("out:[$out]")
 		out += ten_pow_table_64[out_len - n_digit - 1] * 5   // round to up
 		out /= ten_pow_table_64[out_len - n_digit ]
+		//println("out1:[$out] ${d.m / ten_pow_table_64[out_len - n_digit ]}")
+		if d.m / ten_pow_table_64[out_len - n_digit ] < out {
+			d_exp += 1
+			n_digit += 1
+		}
+
+		//println("cmp: ${d.m/ten_pow_table_64[out_len - n_digit ]} ${out/ten_pow_table_64[out_len - n_digit ]}")
+
 		out_len = n_digit
-		//println("orig: ${out_len_original} new len: ${out_len}")
+		//println("orig: ${out_len_original} new len: ${out_len} out:[$out]")
 	}
 
 	y := i + out_len
@@ -147,7 +157,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	buf[i]=`e`
 	i++
 
-	mut exp := d.e + out_len_original - 1
+	mut exp := d_exp + out_len_original - 1
 	if exp < 0 {
 		buf[i]=`-`
 		i++
