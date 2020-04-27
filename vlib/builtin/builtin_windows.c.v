@@ -107,10 +107,8 @@ $if msvc {
 		if C.SymFromAddr(handle, frame_addr, &offset, si) == 1 {
 			nframe := frames - i - 1
 			mut lineinfo := ''
-			println(offset)
 			if C.SymGetLineFromAddr64(handle, frame_addr, &offset, &sline64) == 1 {
-				s := sline64.f_file_name
-				file_name := tos3(s)
+				file_name := tos3(sline64.f_file_name)
 				lineinfo = '${file_name}:${sline64.f_line_number}'
 			} else {
 				addr :
