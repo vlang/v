@@ -364,7 +364,7 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		.left_shift {
 			if left.kind == .array {
 				// `array << elm`
-				c.array_shift_expr(infix_expr.left)
+				c.fail_if_immutable(infix_expr.left)
 				// the expressions have different types (array_x and x)
 				if c.table.check(c.table.value_type(left_type), right_type) {
 					// []T << T
@@ -442,26 +442,51 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 	}
 }
 
-fn (mut c Checker) array_shift_expr(expr ast.Expr) {
+fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 	match expr {
 		ast.Ident {
-			if !it.is_mut {
-				c.error('`$it.name` is immutable, declare it with `mut` to append items to it',
-					it.pos)
+			scope := c.file.scope.innermost(expr.position().pos)
+			if v := scope.find_var(it.name) {
+				if !v.is_mut && !v.typ.is_ptr() {
+					c.error('`$it.name` is immutable, declare it with `mut` to make it mutable',
+						it.pos)
+				}
 			}
+		}
+		ast.IndexExpr {
+			c.fail_if_immutable(it.left)
+		}
+		ast.ParExpr {
+			c.fail_if_immutable(it.expr)
+		}
+		ast.PrefixExpr {
+			c.fail_if_immutable(it.right)
 		}
 		ast.SelectorExpr {
 			// retrieve table.Field
-			struct_info := c.table.get_type_symbol(it.expr_type).struct_info()
-			field_info := struct_info.get_field(it.field)
-			if !field_info.is_mut {
-				type_str := c.table.type_to_str(it.expr_type)
-				c.error('field `$it.field` of struct `${type_str}` is immutable', it.pos)
+			typ_sym := c.table.get_type_symbol(it.expr_type)
+			match typ_sym.kind {
+				.struct_ {
+					struct_info := typ_sym.info as table.Struct
+					field_info := struct_info.get_field(it.field)
+					if !field_info.is_mut {
+						type_str := c.table.type_to_str(it.expr_type)
+						c.error('field `$it.field` of struct `${type_str}` is immutable', it.pos)
+					}
+					c.fail_if_immutable(it.expr)
+				}
+				.array, .string {
+					// This should only happen in `builtin`
+					// TODO Remove `crypto.rand` when possible (see vlib/crypto/rand/rand.v,
+					// if `c_array_to_bytes_tmp` doesn't exist, then it's safe to remove it)
+					if c.file.mod.name !in ['builtin', 'crypto.rand'] {
+						c.error('`$typ_sym.kind` can not be modified', expr.position())
+					}
+				}
+				else {
+					c.error('unexpected symbol `${typ_sym.kind}`', expr.position())
+				}
 			}
-			c.array_shift_expr(it.expr)
-		}
-		ast.IndexExpr {
-			c.array_shift_expr(it.left)
 		}
 		else {
 			c.error('unexpected expression `${typeof(expr)}`', expr.position())
@@ -483,32 +508,7 @@ fn (mut c Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 		return
 	}
 	// Make sure the variable is mutable
-	match assign_expr.left {
-		ast.Ident {
-			scope := c.file.scope.innermost(assign_expr.pos.pos)
-			if v := scope.find_var(it.name) {
-				if !v.is_mut {
-					c.error('`$it.name` is immutable, declare it with `mut` to assign to it',
-						assign_expr.pos)
-				}
-			}
-		}
-		ast.IndexExpr {
-			// `m[key] = val`
-			if it.left is ast.Ident {
-				ident := it.left as ast.Ident
-				// TODO copy pasta
-				scope := c.file.scope.innermost(assign_expr.pos.pos)
-				if v := scope.find_var(ident.name) {
-					if !v.is_mut {
-						c.error('`$ident.name` is immutable, declare it with `mut` to assign to it',
-							assign_expr.pos)
-					}
-				}
-			}
-		}
-		else {}
-	}
+	c.fail_if_immutable(assign_expr.left)
 	// Single side check
 	match assign_expr.op {
 		.assign {} // No need to do single side check for =. But here put it first for speed.
