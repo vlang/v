@@ -169,7 +169,7 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				res.is_cache = true
 			}
 			'-keepc' {
-				res.is_keep_c = true
+				res.keep_c = true
 			}
 			'-x64' {
 				res.backend = .x64

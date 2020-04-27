@@ -442,7 +442,7 @@ If you're confident that all of the above is true, please try running V with the
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
 	*/
-	if !v.pref.is_keep_c && v.out_name_c != 'v.c' {
+	if !v.pref.keep_c && v.out_name_c != 'v.c' {
 		os.rm(v.out_name_c)
 	}
 	if v.pref.compress {

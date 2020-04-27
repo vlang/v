@@ -40,7 +40,7 @@ pub mut:
 	sanitize            bool // use Clang's new "-fsanitize" option
 	is_debug            bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines           bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
-	is_keep_c           bool // -keep_c , tell v to leave the generated .tmp.c alone (since by default v will delete them after c backend finishes)
+	keep_c              bool // -keepc , tell v to leave the generated .tmp.c alone (since by default v will delete them after c backend finishes)
 	show_cc             bool // -showcc, print cc command
 	// NB: passing -cg instead of -g will set is_vlines to false and is_g to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
