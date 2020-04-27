@@ -274,6 +274,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.gen_filter(node)
 		return
 	}
+	if node.name == 'str' && !typ_sym.has_method('str') {
+		g.gen_str_for_type(node.receiver_type)
+	}
 	// TODO performance, detect `array` method differently
 	if typ_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free', 'push_many',
 		'trim',
