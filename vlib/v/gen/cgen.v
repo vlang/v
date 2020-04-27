@@ -56,7 +56,7 @@ struct Gen {
 	auto_str_funcs       strings.Builder // function bodies of all auto generated _str funcs
 	comptime_defines     strings.Builder // custom defines, given by -d/-define flags on the CLI
 	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
-	pcs                  map[string]string // -prof profile counter fn_names => fn counter name
+	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	table                &table.Table
 	pref                 &pref.Preferences
 mut:
@@ -159,6 +159,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	//
 	g.finish()
 	//
+    
 	b := strings.new_builder(250000)
 	b.writeln(g.hashes())
 	b.writeln(g.comptime_defines.str())
@@ -237,6 +238,10 @@ pub fn (mut g Gen) finish() {
 	}
 	g.stringliterals.writeln('// << string literal consts')
 	g.stringliterals.writeln('')
+
+	if g.pref.is_prof {
+		g.gen_vprint_profile_stats()
+	}
 }
 
 pub fn (mut g Gen) write_typeof_functions() {
