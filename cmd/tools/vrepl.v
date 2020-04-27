@@ -5,9 +5,8 @@
 module main
 
 import os
-import term
-import readline
 import os.cmdline
+import term
 import v.util
 
 struct Repl {
@@ -85,7 +84,6 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 		os.rm(temp_file[..temp_file.len - 2])
 	}
 	mut r := Repl{}
-	mut readline := readline.Readline{}
 	vexe := os.getenv('VEXE')
 	for {
 		if r.indent == 0 {
@@ -94,9 +92,8 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 		else {
 			prompt = '... '
 		}
-		mut line := readline.read_line(prompt) or {
-			break
-		}
+		mut line := os.input(prompt)
+
 		if line.trim_space() == '' && line.ends_with('\n') {
 			continue
 		}
