@@ -435,7 +435,7 @@ pub fn (fs FlagParser) usage() string {
 	if fs.flags.len > 0 {
 		use += 'Options:\n'
 		for f in fs.flags {
-			mut onames:=[]string
+			mut onames := []string{}
 			if f.abbr != 0 {
 				onames << '-${f.abbr.str()}'
 			}
