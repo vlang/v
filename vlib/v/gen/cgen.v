@@ -159,7 +159,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	//
 	g.finish()
 	//
-    
+
 	b := strings.new_builder(250000)
 	b.writeln(g.hashes())
 	b.writeln(g.comptime_defines.str())
@@ -3162,7 +3162,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
 	}
-	g.auto_str_funcs.writeln('\t\tif (i != a.len-1) {')
+	g.auto_str_funcs.writeln('\t\tif (i < a.len-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
@@ -3187,11 +3187,11 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	} else if sym.kind in [.f32, .f64] {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", a[i]));')
 	} else if sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\\"%.*s\\"", a[i].len, a[i].str));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\'", a[i].len, a[i].str));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i]));')
 	}
-	g.auto_str_funcs.writeln('\t\tif (i != $info.size-1) {')
+	g.auto_str_funcs.writeln('\t\tif (i < ${info.size-1}) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
@@ -3218,14 +3218,14 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("{"));')
 	g.auto_str_funcs.writeln('\tfor (unsigned int i = 0; i < m.key_values.size; i++) {')
 	g.auto_str_funcs.writeln('\t\tstring key = (*(string*)DenseArray_get(m.key_values, i));')
-	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\\"%.*s\\"", key.len, key.str));')
+	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\'", key.len, key.str));')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3(": "));')
 	g.auto_str_funcs.write('\t$val_styp it = (*($val_styp*)map_get3(')
 	g.auto_str_funcs.write('m, (*(string*)DenseArray_get(m.key_values, i))')
 	g.auto_str_funcs.write(', ')
 	g.auto_str_funcs.writeln(' &($val_styp[]) { $zero }));')
 	if val_sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\\"%.*s\\"", it.len, it.str));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\'", it.len, it.str));')
 	} else if val_sym.kind == .struct_ && !val_sym.has_method('str') {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${val_styp}_str(it,0));')
 	} else if val_sym.kind in [.f32, .f64] {

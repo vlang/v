@@ -22,7 +22,7 @@ fn test_vargs_string_interpolation() {
 	assert results.contains('age: 30')
 	assert results.contains('}, Man {')
 	//
-	assert results.contains('interests: ["programming"')
+	assert results.contains("interests: ['programming'")
 	assert results.contains("name: 'Me'")
 	//
 	assert results.contains('}]')
