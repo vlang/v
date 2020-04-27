@@ -1061,7 +1061,7 @@ pub fn walk_ext(path, ext string) []string {
 	}
 	mut res := []string{}
 	separator := if path.ends_with(os.path_separator) { '' } else { os.path_separator }
-	for i, file in files {
+	for file in files {
 		if file.starts_with('.') {
 			continue
 		}

@@ -67,12 +67,16 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 	} else if p.peek_tok.kind in [.key_in, .comma] {
 		// `for i in vals`, `for i in start .. end`
+		mut val_var_pos := p.tok.position()
 		mut key_var_name := ''
 		mut val_var_name := p.check_name()
 		if p.tok.kind == .comma {
 			p.check(.comma)
+			key_var_pos := val_var_pos
+			val_var_pos = p.tok.position()
 			key_var_name = val_var_name
 			val_var_name = p.check_name()
+			
 			if p.scope.known_var(key_var_name) {
 				p.error('redefinition of key iteration variable `$key_var_name`')
 			}
@@ -82,6 +86,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			p.scope.register(key_var_name, ast.Var{
 				name: key_var_name
 				typ: table.int_type
+				pos: key_var_pos
 			})
 		} else if p.scope.known_var(val_var_name) {
 			p.error('redefinition of value iteration variable `$val_var_name`')
@@ -104,11 +109,13 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			p.scope.register(val_var_name, ast.Var{
 				name: val_var_name
 				typ: table.int_type
+				pos: val_var_pos
 			})
 		} else {
 			// this type will be set in checker
 			p.scope.register(val_var_name, ast.Var{
 				name: val_var_name
+				pos: val_var_pos
 			})
 		}
 		p.inside_for = false

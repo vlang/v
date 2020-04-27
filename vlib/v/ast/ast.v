@@ -270,12 +270,13 @@ pub struct Stmt {
 */
 pub struct Var {
 pub:
-	name   string
-	expr   Expr
-	is_mut bool
+	name    string
+	expr    Expr
+	is_mut  bool
 mut:
-	typ    table.Type
-	pos    token.Position
+	typ     table.Type
+	pos     token.Position
+	is_used bool
 }
 
 pub struct GlobalDecl {

@@ -426,7 +426,7 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 	is_forwarding_varg := args.len > 0 && args[args.len - 1].typ.flag_is(.variadic)
 	gen_vargs := is_variadic && !is_forwarding_varg
 	mut arg_no := 0
-	for i, arg in args {
+	for arg in args {
 		if gen_vargs && arg_no == expected_types.len - 1 {
 			break
 		}

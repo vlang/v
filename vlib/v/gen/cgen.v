@@ -480,7 +480,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.typedefs.writeln('typedef enum {')
 			mut cur_enum_expr := ''
 			mut cur_enum_offset := 0
-			for j, field in it.fields {
+			for field in it.fields {
 				g.typedefs.write('\t${enum_name}_${field.name}')
 				if field.has_expr {
 					g.typedefs.write(' = ')
@@ -1918,7 +1918,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 }
 
 fn (mut g Gen) const_decl(node ast.ConstDecl) {
-	for i, field in node.fields {
+	for field in node.fields {
 		name := c_name(field.name)
 		// TODO hack. Cut the generated value and paste it into definitions.
 		pos := g.out.len
@@ -3061,7 +3061,7 @@ fn (mut g Gen) gen_str_for_enum(info table.Enum, styp, str_fn_name string) {
 	g.definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { /* gen_str_for_enum */')
 	g.auto_str_funcs.writeln('\tswitch(it) {')
-	for i, val in info.vals {
+	for val in info.vals {
 		g.auto_str_funcs.writeln('\t\tcase ${s}_$val: return tos3("$val");')
 	}
 	g.auto_str_funcs.writeln('\t\tdefault: return tos3("unknown enum value");')
@@ -3075,7 +3075,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	mut fnames2strfunc := {
 		'': ''
 	} // map[string]string // TODO vfmt bug
-	for i, field in info.fields {
+	for field in info.fields {
 		sym := g.table.get_type_symbol(field.typ)
 		if sym.kind in [.struct_, .array, .array_fixed, .map, .enum_] {
 			field_styp := g.typ(field.typ)

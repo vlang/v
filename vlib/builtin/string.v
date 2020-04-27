@@ -832,7 +832,7 @@ fn (ar []string) contains(val string) bool {
 
 // TODO generic
 fn (ar []int) contains(val int) bool {
-	for i, s in ar {
+	for s in ar {
 		if s == val {
 			return true
 		}
@@ -1206,7 +1206,7 @@ pub fn (a []string) join(del string) string {
 		return ''
 	}
 	mut len := 0
-	for i, val in a {
+	for val in a {
 		len += val.len + del.len
 	}
 	len -= del.len

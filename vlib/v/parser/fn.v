@@ -37,10 +37,14 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 		p.scope.register('err', ast.Var{
 			name: 'err'
 			typ: table.string_type
+			pos: p.tok.position()
+			is_used: true
 		})
 		p.scope.register('errcode', ast.Var{
 			name: 'errcode'
 			typ: table.int_type
+			pos: p.tok.position()
+			is_used: true
 		})
 		is_or_block_used = true
 		or_stmts = p.parse_block_no_scope()
@@ -164,6 +168,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			name: arg.name
 			typ: arg.typ
 			is_mut: arg.is_mut
+			pos: p.tok.position()
+			is_used: true
 		})
 		// Do not allow `mut` with simple types
 		// TODO move to checker?
@@ -264,6 +270,8 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
 			typ: arg.typ
+			pos: p.tok.position()
+			is_used: true
 		})
 	}
 	mut return_type := table.void_type

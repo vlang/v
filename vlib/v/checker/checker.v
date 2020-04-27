@@ -203,7 +203,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		}
 		c.error('struct name must begin with capital letter', pos)
 	}
-	for fi, field in decl.fields {
+	for field in decl.fields {
 		sym := c.table.get_type_symbol(field.typ)
 		if sym.kind == .placeholder && !decl.is_c && !sym.name.starts_with('C.') {
 			c.error('unknown type `$sym.name`', field.pos)
@@ -554,7 +554,7 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 			mut scope := c.file.scope.innermost(call_expr.pos.pos)
 			scope.update_var_type('it', array_info.elem_type)
 		}
-		for i, arg in call_expr.args {
+		for arg in call_expr.args {
 			c.expr(arg.expr)
 		}
 		// need to return `array_xxx` instead of `array`

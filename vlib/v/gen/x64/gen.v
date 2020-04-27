@@ -600,7 +600,7 @@ fn (mut g Gen) allocate_var(name string, size, initial_val int) {
 
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
-	for i, ident in node.left {
+	for ident in node.left {
 		match node.right[0] {
 			ast.IntegerLiteral {
 				g.allocate_var(ident.name, 4, it.val.int())

@@ -43,12 +43,14 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		if p.peek_tok.kind == .decl_assign {
 			is_or = true
 			p.open_scope()
+			var_pos := p.tok.position()
 			var_name := p.check_name()
 			p.check(.decl_assign)
 			expr := p.expr(0)
 			p.scope.register(var_name, ast.Var{
 				name: var_name
 				expr: expr
+				pos: var_pos
 			})
 			cond = ast.IfGuardExpr{
 				var_name: var_name
@@ -89,6 +91,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	if is_mut {
 		p.next()
 	}
+	cond_pos := p.tok.position()
 	cond := p.expr(0)
 	p.inside_match = false
 	p.check(.lcbr)
@@ -119,6 +122,8 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			p.scope.register('it', ast.Var{
 				name: 'it'
 				typ: typ.to_ptr()
+				pos: cond_pos
+				is_used: true
 			})
 			// TODO
 			if p.tok.kind == .comma {
