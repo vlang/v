@@ -3181,7 +3181,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	} else if sym.kind in [.f32, .f64] {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", a[i]));')
 	} else if sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\\"%.*s\\"", a[i].len, a[i].str));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\'", a[i].len, a[i].str));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i]));')
 	}
@@ -3212,14 +3212,14 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("{"));')
 	g.auto_str_funcs.writeln('\tfor (unsigned int i = 0; i < m.key_values.size; i++) {')
 	g.auto_str_funcs.writeln('\t\tstring key = (*(string*)DenseArray_get(m.key_values, i));')
-	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\\"%.*s\\"", key.len, key.str));')
+	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\'", key.len, key.str));')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3(": "));')
 	g.auto_str_funcs.write('\t$val_styp it = (*($val_styp*)map_get3(')
 	g.auto_str_funcs.write('m, (*(string*)DenseArray_get(m.key_values, i))')
 	g.auto_str_funcs.write(', ')
 	g.auto_str_funcs.writeln(' &($val_styp[]) { $zero }));')
 	if val_sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\\"%.*s\\"", it.len, it.str));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\'", it.len, it.str));')
 	} else if val_sym.kind == .struct_ && !val_sym.has_method('str') {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${val_styp}_str(it,0));')
 	} else if val_sym.kind in [.f32, .f64] {
@@ -3257,7 +3257,7 @@ fn (g Gen) type_to_fmt(typ table.Type) string {
 	if sym.kind in [.struct_, .array, .array_fixed, .map] {
 		return '%.*s'
 	} else if typ == table.string_type {
-		return '\\"%.*s\\"'
+		return "\'%.*s\'"
 	} else if typ == table.bool_type {
 		return '%.*s'
 	} else if sym.kind == .enum_ {

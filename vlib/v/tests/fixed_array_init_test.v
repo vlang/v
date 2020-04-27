@@ -1,11 +1,11 @@
 fn test_fixed_array_init() {
 	a1 := ['1', '2', '3']!!
 	assert typeof(a1) == '[3]string'
-	assert '$a1' == '["1", "2", "3"]'
+	assert '$a1' == "['1', '2', '3']"
 
 	a2 := ['a', 'b']!!
 	assert typeof(a2) == '[2]string'
-	assert '$a2' == '["a", "b"]'
+	assert '$a2' == "['a', 'b']"
 
 	c1 := [1, 2, 3]!!
 	assert typeof(c1) == '[3]int'

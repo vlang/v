@@ -50,6 +50,6 @@ fn test_array_of_bytes() {
 
 fn test_array_of_strings() {
 	aa := ['aa', 'bb', 'cc']
-	assert aa.str() == '["aa", "bb", "cc"]'
-	assert '$aa' == '["aa", "bb", "cc"]'
+	assert aa.str() == "['aa', 'bb', 'cc']"
+	assert '$aa' == "['aa', 'bb', 'cc']"
 }

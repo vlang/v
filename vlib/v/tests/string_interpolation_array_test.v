@@ -21,13 +21,13 @@ fn test_array_of_structs_interpolation() {
 	]
 	s := '$people' // the compiler should generate code for both a) and b)
 	assert s.contains('Man {')
-	assert s.contains('name: "Superman"')
+	assert s.contains("name: 'Superman'")
 	assert s.contains('age: 30')
-	assert s.contains('"being nice"')
+	assert s.contains("'being nice'")
 	assert s.contains('}, Man {')
-	assert s.contains('name: "Bilbo Baggins"')
+	assert s.contains("name: 'Bilbo Baggins'")
 	assert s.contains('age: 111')
-	assert s.contains('interests: ["exploring", "hiding"]')
+	assert s.contains("interests: ['exploring', 'hiding']")
 	assert s.contains('}]')
 	// println(s)
 }
@@ -74,5 +74,5 @@ fn test_array_of_bytes_interpolation() {
 
 fn test_array_of_strings_interpolation() {
 	aa := ['aa', 'bb', 'cc']
-	assert '$aa' == '["aa", "bb", "cc"]'
+	assert '$aa' == "['aa', 'bb', 'cc']"
 }

@@ -168,7 +168,7 @@ fn test_insert() {
 // }
 fn test_strings() {
 	a := ['a', 'b', 'c']
-	assert a.str() == '["a", "b", "c"]'
+	assert a.str() == "['a', 'b', 'c']"
 }
 
 /*
