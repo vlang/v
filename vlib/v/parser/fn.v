@@ -284,7 +284,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		stmts = p.parse_block_no_scope()
 	}
 	p.close_scope()
-	func := table.Fn{
+	mut func := table.Fn{
 		args: args
 		is_variadic: is_variadic
 		return_type: return_type

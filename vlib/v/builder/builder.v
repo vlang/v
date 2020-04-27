@@ -17,12 +17,12 @@ import v.depgraph
 
 pub struct Builder {
 pub:
-	pref                &pref.Preferences
 	table               &table.Table
 	checker             checker.Checker
 	compiled_dir        string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path         string
 mut:
+	pref                &pref.Preferences
 	module_search_paths []string
 	parsed_files        []ast.File
 	global_scope        &ast.Scope

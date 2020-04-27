@@ -7,11 +7,12 @@ import strings
 
 pub struct array {
 pub:
+	element_size int
+pub mut:
 	data         voidptr// Using a void pointer allows to implement arrays without generics and without generating
 // extra code for every type.
 	len          int
 	cap          int
-	element_size int
 }
 
 // Internal function, used by V (`nums := []int`)

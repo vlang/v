@@ -18,7 +18,6 @@ pub mut:
 
 pub struct Fn {
 pub:
-	name        string
 	args        []Arg
 	return_type Type
 	is_variadic bool
@@ -28,6 +27,8 @@ pub:
 	is_pub      bool
 	mod         string
 	ctdefine    string // compile time define. myflag, when [if myflag] tag
+pub mut:
+	name        string
 }
 
 pub struct Arg {

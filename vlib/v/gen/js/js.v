@@ -16,15 +16,15 @@ const (
 )
 
 struct JsGen {
-	out   			strings.Builder
+	table           &table.Table
+	definitions     strings.Builder
+	pref            &pref.Preferences
+mut:
+	out             strings.Builder
 	namespaces		map[string]strings.Builder
 	namespaces_pub	map[string][]string
-	namespace 		string
-	table 			&table.Table
-	definitions 	strings.Builder
-	pref            &pref.Preferences
+	namespace       string
 	doc				&JsDoc
-	mut:
 	constants		strings.Builder // all global V constants
 	file			ast.File
 	tmp_count		int

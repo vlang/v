@@ -5,6 +5,7 @@ struct User {
 }
 
 struct A {
+mut:
 	m map[string]int
 	users map[string]User
 }
@@ -24,7 +25,7 @@ fn test_map() {
 	assert 'hi' in m
 	mut sum := 0
 	// Test `for in`
-	for key, val in m {
+	for _, val in m {
 		sum += val
 	}
 	assert sum == 80 + 101
