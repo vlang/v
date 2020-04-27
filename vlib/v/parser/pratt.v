@@ -193,14 +193,12 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.inside_is = true
 	}
 	right = p.expr(precedence)
-	mut expr := ast.Expr{}
-	expr = ast.InfixExpr{
+	return ast.InfixExpr{
 		left: left
 		right: right
 		op: op
 		pos: pos
 	}
-	return expr
 }
 
 fn (mut p Parser) prefix_expr() ast.PrefixExpr {

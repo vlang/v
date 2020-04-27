@@ -51,7 +51,7 @@ pub:
 	// hash_cache int
 
 pub struct ustring {
-pub:
+pub mut:
 	s     string
 	runes []int
 	len   int

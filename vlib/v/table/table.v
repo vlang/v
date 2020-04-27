@@ -18,7 +18,6 @@ pub mut:
 
 pub struct Fn {
 pub:
-	name        string
 	args        []Arg
 	return_type Type
 	is_variadic bool
@@ -28,6 +27,8 @@ pub:
 	is_pub      bool
 	mod         string
 	ctdefine    string // compile time define. myflag, when [if myflag] tag
+pub mut:
+	name        string
 }
 
 pub struct Arg {
@@ -486,7 +487,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 	exp_type_sym := t.get_type_symbol(expected)
 	//
 	if exp_type_sym.kind == .interface_ {
-		info := exp_type_sym.info as Interface
+		mut info := exp_type_sym.info as Interface
 		// println('gen_types before')
 		// println(info.gen_types)
 		info.gen_types << got_type_sym.name

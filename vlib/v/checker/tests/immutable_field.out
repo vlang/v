@@ -1,0 +1,6 @@
+vlib/v/checker/tests/immutable_field.v:8:4: error: field `i1` of struct `A` is immutable
+    6| fn main() {
+    7|     a := A{1}
+    8|     a.i1 = 2
+             ~~
+    9| }

@@ -38,6 +38,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut mut_pos := -1
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
+	mut is_field_mut := false
+	mut is_field_pub := false
+	mut is_field_global := false
 	if !no_body {
 		p.check(.lcbr)
 		for p.tok.kind != .rcbr {
@@ -50,17 +53,29 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				if p.tok.kind == .key_mut {
 					p.check(.key_mut)
 					pub_mut_pos = fields.len
+					is_field_pub = true
+					is_field_mut = true
+					is_field_global = false
 				} else {
 					pub_pos = fields.len
+					is_field_pub = true
+					is_field_mut = false
+					is_field_global = false
 				}
 				p.check(.colon)
 			} else if p.tok.kind == .key_mut {
 				p.check(.key_mut)
 				p.check(.colon)
 				mut_pos = fields.len
+				is_field_pub = false
+				is_field_mut = true
+				is_field_global = false
 			} else if p.tok.kind == .key_global {
 				p.check(.key_global)
 				p.check(.colon)
+				is_field_pub = true
+				is_field_mut = true
+				is_field_global = true
 			}
 			field_name := p.check_name()
 			field_pos := p.tok.position()
@@ -108,6 +123,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				typ: typ
 				default_expr: default_expr
 				has_default_expr: has_default_expr
+				is_pub: is_field_pub
+				is_mut: is_field_mut
+				is_global: is_field_global
 			}
 			// println('struct field $ti.name $field_name')
 		}

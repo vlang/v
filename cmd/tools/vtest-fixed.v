@@ -24,8 +24,8 @@ const (
 		'vlib/v/tests/live_test.v', // Linux & Solaris only; since live does not actually work for now with v2, just skip
 		'vlib/v/tests/asm_test.v', // skip everywhere for now, works on linux with cc != tcc
 	]
-	skip_on_linux = []string
-	skip_on_non_linux = []string
+	skip_on_linux = []string{}
+	skip_on_non_linux = []string{}
 )
 
 fn main() {

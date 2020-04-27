@@ -3,7 +3,7 @@ import v.cflag
 
 const (
 	module_name = 'main'
-	cdefines    = []string
+	cdefines    = []string{}
 	no_name     = ''
 	no_flag     = ''
 	no_os       = ''

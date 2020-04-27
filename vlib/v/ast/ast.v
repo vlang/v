@@ -134,9 +134,10 @@ mut:
 
 pub struct ConstDecl {
 pub:
-	fields []ConstField
 	is_pub bool
 	pos    token.Position
+pub mut:
+	fields []ConstField
 }
 
 pub struct StructDecl {
@@ -162,10 +163,10 @@ pub:
 
 pub struct StructInitField {
 pub:
-	name          string
 	expr          Expr
 	pos           token.Position
 mut:
+	name          string
 	typ           table.Type
 	expected_type table.Type
 }
@@ -173,10 +174,10 @@ mut:
 pub struct StructInit {
 pub:
 	pos      token.Position
-	fields   []StructInitField
 	is_short bool
 mut:
 	typ      table.Type
+	fields   []StructInitField
 }
 
 // import statement
@@ -198,7 +199,6 @@ pub struct FnDecl {
 pub:
 	name          string
 	stmts         []Stmt
-	return_type   table.Type
 	args          []table.Arg
 	is_deprecated bool
 	is_pub        bool
@@ -213,6 +213,8 @@ pub:
 	is_builtin    bool // this function is defined in builtin/strconv
 	ctdefine      string // has [if myflag] tag
 	pos           token.Position
+pub mut:
+	return_type   table.Type
 }
 
 pub struct BranchStmt {
@@ -224,10 +226,10 @@ pub struct CallExpr {
 pub:
 	pos                token.Position
 	left               Expr // `user` in `user.register()`
-	is_method          bool
 	mod                string
 mut:
 	name               string
+	is_method          bool
 	args               []CallArg
 	expected_arg_types []table.Type
 	is_c               bool
@@ -292,10 +294,11 @@ pub struct File {
 pub:
 	path         string
 	mod          Module
-	imports      []Import
 	stmts        []Stmt
 	scope        &Scope
 	global_scope &Scope
+mut:
+	imports      []Import
 }
 
 pub struct IdentFn {
@@ -331,11 +334,11 @@ pub:
 	tok_kind token.Kind
 	mod      string
 	pos      token.Position
-	is_mut   bool
 mut:
 	name     string
 	kind     IdentKind
 	info     IdentInfo
+	is_mut   bool
 }
 
 pub fn (i &Ident) var_info() IdentVar {
@@ -508,11 +511,11 @@ pub:
 
 pub struct AssignStmt {
 pub:
-	left        []Ident
 	right       []Expr
 	op          token.Kind
 	pos         token.Position
-mut:
+pub mut:
+	left        []Ident
 	left_types  []table.Type
 	right_types []table.Type
 	is_static   bool // for translated code only
@@ -670,8 +673,8 @@ pub:
 	expr      Expr // `buf`
 	arg       Expr // `n` in `string(buf, n)`
 	typ       table.Type // `string`
-	typname   string
 mut:
+	typname   string
 	expr_type table.Type // `byteptr`
 	has_arg   bool
 }

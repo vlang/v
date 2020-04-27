@@ -109,21 +109,16 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		} else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names || (p.tok.lit[0].is_capital() &&
 			!p.tok.lit.is_upper()) || p.peek_tok.kind == .dot) {
 			// Sum type match
-			// if sym.kind == .sum_type {
-			// p.warn('is sum')
-			// TODO `exprs << ast.Type{...}
 			typ := p.parse_type()
-			x := ast.Type{
+			exprs << ast.Type{
 				typ: typ
 			}
-			mut expr := ast.Expr{}
-			expr = x
-			exprs << expr
 			p.scope.register('it', ast.Var{
 				name: 'it'
 				typ: typ.to_ptr()
 				pos: cond_pos
 				is_used: true
+				is_mut: is_mut
 			})
 			// TODO
 			if p.tok.kind == .comma {

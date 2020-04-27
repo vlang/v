@@ -565,7 +565,7 @@ pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
 	if p.expr_mod.len > 0 {
 		name = '${p.expr_mod}.$name'
 	}
-	mut ident := ast.Ident{
+	return ast.Ident{
 		kind: .unresolved
 		name: name
 		is_c: is_c
@@ -573,7 +573,6 @@ pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
 		mod: p.mod
 		pos: pos
 	}
-	return ident
 }
 
 pub fn (mut p Parser) name_expr() ast.Expr {
@@ -694,9 +693,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			mod: mod
 		}
 	} else {
-		mut ident := ast.Ident{}
-		ident = p.parse_ident(is_c, is_js)
-		node = ident
+		node = p.parse_ident(is_c, is_js)
 	}
 	p.expr_mod = ''
 	return node

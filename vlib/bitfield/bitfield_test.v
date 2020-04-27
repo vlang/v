@@ -141,7 +141,7 @@ fn test_bf_from_str() {
 	rand.seed(time.now().unix)
 	len := 80
 	mut input := ''
-	for i in 0..len {
+	for _ in 0..len {
 		if rand.next(2) == 1 {
 			input = input + '1'
 		}
@@ -244,7 +244,7 @@ fn test_bf_resize() {
 	rand.seed(time.now().unix)
 	len := 80
 	mut input := bitfield.new(rand.next(len) + 1)
-	for i in 0..100 {
+	for _ in 0..100 {
 		input.resize(rand.next(len) + 1)
 		input.setbit(input.getsize() - 1)
 	}

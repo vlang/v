@@ -4,8 +4,9 @@
 module time
 
 pub struct StopWatch {
+mut:
 	pause_time u64
-pub:
+pub mut:
 	start      u64
 	end        u64
 }
