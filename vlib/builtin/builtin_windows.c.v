@@ -33,11 +33,12 @@ pub mut:
 }
 
 pub struct Line64 {
-	f_size_of_struct u32
 	f_key voidptr
 	f_line_number u32
 	f_file_name byteptr
 	f_address u64
+mut:
+	f_size_of_struct u32
 }
 
 fn C.SymSetOptions(symoptions u32) u32 // returns the current options mask
