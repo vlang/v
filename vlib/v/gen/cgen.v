@@ -1127,6 +1127,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 				// `C.printf("hi")` => `printf("hi");`
 				g.write('"$escaped_val"')
 			} else {
+				// TODO calculate the literal's length in V, it's a bit tricky with all the
+				// escape characters.
+				// Clang and GCC optimize `strlen("lorem ipsum")` to `11`
+				// g.write('tos4("$escaped_val", strlen("$escaped_val"))')
+				// g.write('tos4("$escaped_val", $it.val.len)')
+				// g.write('_SLIT("$escaped_val")')
 				g.write('tos3("$escaped_val")')
 			}
 		}
@@ -2727,7 +2733,7 @@ fn (g Gen) type_default(typ table.Type) string {
 	}
 	*/
 	match sym.name {
-		'string' { return 'tos3("")' }
+		'string' { return '(string){.str=""}' }
 		'rune' { return '0' }
 		else {}
 	}
