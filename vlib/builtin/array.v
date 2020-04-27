@@ -53,6 +53,7 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 }
 
 // Private function. Doubles array capacity if needed
+[inline]
 fn (a mut array) ensure_cap(required int) {
 	if required <= a.cap {
 		return
