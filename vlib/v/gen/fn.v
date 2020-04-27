@@ -71,7 +71,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	*/
 	//
 	g.fn_args(it.args, it.is_variadic)
-	if it.no_body || (g.pref.is_cache && it.is_builtin) {
+	if it.no_body || (g.pref.use_cache && it.is_builtin) {
 		// Just a function header.
 		// Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');')
@@ -104,7 +104,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
 	if g.pref.is_prof {
-	    g.profile_fn( it.name, is_main )
+		g.profile_fn(it.name, is_main)
 	}
 	g.stmts(it.stmts)
 	// ////////////

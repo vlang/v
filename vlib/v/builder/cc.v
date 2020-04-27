@@ -215,7 +215,7 @@ fn (mut v Builder) cc() {
 	mut libs := '' // builtin.o os.o http.o etc
 	if v.pref.build_mode == .build_module {
 		a << '-c'
-	} else if v.pref.is_cache {
+	} else if v.pref.use_cache {
 		/*
 		QTODO
 		builtin_o_path := os.join_path(pref.default_module_path, 'cache', 'vlib', 'builtin.o')
@@ -305,13 +305,18 @@ fn (mut v Builder) cc() {
 	// add all flags (-I -l -L etc) not .o files
 	a << cflags.c_options_without_object_files()
 	a << libs
-	if v.pref.is_cache {
-		cached_files := [ 'builtin.o', 'math.o']
-		for cfile in cached_files {
-			ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile)
-			if os.exists(ofile) {
-				a << ofile
+	if v.pref.use_cache {
+		//vexe := pref.vexe_path()
+
+		cached_modules:= [ 'builtin', 'os' ]//, 'math']
+		for cfile in cached_modules{
+			ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile + '.o')
+			if !os.exists(ofile) {
+				println('${cfile}.o is missing. Building...')
+				println('$vexe build-module vlib/$cfile')
+				os.system('$vexe build-module vlib/$cfile')
 			}
+			a << ofile
 		}
 		if !is_cc_tcc {
 			$if linux {
