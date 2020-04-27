@@ -130,14 +130,14 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 }
 
 fn (mut g Gen) write_defer_stmts_when_needed() {
+	if g.defer_stmts.len > 0 {
+		g.write_defer_stmts()
+	}
 	if g.defer_profile_code.len > 0 {
 		g.writeln('')
 		g.writeln('\t// defer_profile_code')
 		g.writeln(g.defer_profile_code)
 		g.writeln('')
-	}
-	if g.defer_stmts.len > 0 {
-		g.write_defer_stmts()
 	}
 }
 
