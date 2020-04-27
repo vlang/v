@@ -18,12 +18,12 @@ fn test_vargs_string_interpolation() {
 	results := my_variadic_function(superman, man)
 	assert results.contains('Man {')
 	//
-	assert results.contains("name: 'Superman'")
+	assert results.contains('name: "Superman"')
 	assert results.contains('age: 30')
 	assert results.contains('}, Man {')
 	//
 	assert results.contains('interests: ["programming"')
-	assert results.contains("name: 'Me'")
+	assert results.contains('name: "Me"')
 	//
 	assert results.contains('}]')
 	//

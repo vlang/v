@@ -159,7 +159,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	//
 	g.finish()
 	//
-    
+
 	b := strings.new_builder(250000)
 	b.writeln(g.hashes())
 	b.writeln(g.comptime_defines.str())
@@ -3156,7 +3156,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
 	}
-	g.auto_str_funcs.writeln('\t\tif (i != a.len-1) {')
+	g.auto_str_funcs.writeln('\t\tif (i < a.len-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
@@ -3185,7 +3185,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i]));')
 	}
-	g.auto_str_funcs.writeln('\t\tif (i != $info.size-1) {')
+	g.auto_str_funcs.writeln('\t\tif (i < ${info.size-1}) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
@@ -3257,7 +3257,7 @@ fn (g Gen) type_to_fmt(typ table.Type) string {
 	if sym.kind in [.struct_, .array, .array_fixed, .map] {
 		return '%.*s'
 	} else if typ == table.string_type {
-		return "\'%.*s\'"
+		return '\\"%.*s\\"'
 	} else if typ == table.bool_type {
 		return '%.*s'
 	} else if sym.kind == .enum_ {

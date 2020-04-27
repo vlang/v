@@ -2,10 +2,10 @@ A {
     test: false
     b: B {
         pass: false
-        name: ''
+        name: ""
     }
 }
 B {
     pass: false
-    name: ''
+    name: ""
 }

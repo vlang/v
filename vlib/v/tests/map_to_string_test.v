@@ -32,7 +32,7 @@ fn test_interpolation_map_to_string() {
 	s := '$e'
 	assert s.contains('{"1": Test {')
 	assert s.contains('a: true')
-	assert s.contains("y: 'abc'")
+	assert s.contains('y: "abc"')
 	assert s.contains('}, "2": Test {')
-	assert s.contains("y: 'def'")
+	assert s.contains('y: "def"')
 }
