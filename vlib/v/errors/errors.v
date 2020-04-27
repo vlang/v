@@ -1,4 +1,4 @@
-module scanner
+module errors
 
 import v.token
 
@@ -15,4 +15,11 @@ pub struct Error {
 	pos       token.Position
 	reporter  Reporter
 	backtrace string
+}
+
+pub struct Warning {
+	message   string
+	file_path string
+	pos       token.Position
+	reporter  Reporter
 }

@@ -64,7 +64,7 @@ pub mut:
 	// generating_vh    bool
 	fast                bool // use tcc/x64 codegen
 	enable_globals      bool // allow __global for low level code
-	// is_fmt bool
+	is_fmt              bool
 	is_bare             bool
 	lookup_path         []string
 	output_cross_c      bool

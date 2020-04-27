@@ -9,7 +9,7 @@ import v.table
 import v.token
 import v.pref
 import v.util
-import v.scanner
+import v.errors
 import os
 
 const (
@@ -21,8 +21,8 @@ pub struct Checker {
 mut:
 	file           ast.File
 	nr_errors      int
-	errors         []scanner.Error
-	warnings       []scanner.Warning
+	errors         []errors.Error
+	warnings       []errors.Warning
 	error_lines    []int // to avoid printing multiple errors for the same line
 	expected_type  table.Type
 	fn_return_type table.Type // current function's return type
@@ -51,7 +51,7 @@ pub fn (mut c Checker) check(ast_file ast.File) {
 	}
 }
 
-pub fn (mut c Checker) check2(ast_file ast.File) []scanner.Error {
+pub fn (mut c Checker) check2(ast_file ast.File) []errors.Error {
 	c.file = ast_file
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
@@ -944,7 +944,7 @@ pub fn (mut c Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	// check variablename for beginning with capital letter 'Abc'
 	for ident in assign_stmt.left {
 		is_decl := assign_stmt.op == .decl_assign
-		if is_decl && scanner.contains_capital(ident.name) {
+		if is_decl && util.contains_capital(ident.name) {
 			c.error('variable names cannot contain uppercase letters, use snake_case instead',
 				ident.pos)
 		} else if is_decl && ident.kind != .blank_ident {
@@ -1930,8 +1930,8 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	// print_backtrace()
 	// }
 	if warn {
-		c.warnings << scanner.Warning{
-			reporter: scanner.Reporter.checker
+		c.warnings << errors.Warning{
+			reporter: errors.Reporter.checker
 			pos: pos
 			file_path: c.file.path
 			message: message
@@ -1939,8 +1939,8 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	} else {
 		c.nr_errors++
 		if pos.line_nr !in c.error_lines {
-			c.errors << scanner.Error{
-				reporter: scanner.Reporter.checker
+			c.errors << errors.Error{
+				reporter: errors.Reporter.checker
 				pos: pos
 				file_path: c.file.path
 				message: message
@@ -1951,6 +1951,6 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 }
 
 // for debugging only
-fn (p Checker) fileis(s string) bool {
-	return p.file.path.contains(s)
+fn (c &Checker) fileis(s string) bool {
+	return c.file.path.contains(s)
 }

@@ -9,7 +9,7 @@ import v.util
 import v.vmod
 import v.checker
 import v.parser
-import v.scanner
+import v.errors
 import v.gen
 import v.gen.js
 import v.gen.x64
@@ -267,7 +267,7 @@ pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 	return error('module "$mod" not found in:\n$smodule_lookup_paths')
 }
 
-fn (b &Builder) print_errors(errors []scanner.Error) {
+fn (b &Builder) print_errors(errors []errors.Error) {
 	for err in errors {
 		kind := if b.pref.is_verbose { '$err.reporter error #$b.checker.nr_errors:' } else { 'error:' }
 		ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)

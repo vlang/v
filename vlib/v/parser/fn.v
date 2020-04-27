@@ -5,7 +5,6 @@ module parser
 
 import v.ast
 import v.table
-import v.scanner
 import v.token
 import v.util
 
@@ -136,7 +135,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .name {
 		// TODO high order fn
 		name = p.check_name()
-		if !is_js && !is_c && !p.pref.translated && scanner.contains_capital(name) {
+		if !is_js && !is_c && !p.pref.translated && util.contains_capital(name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
 		if is_method && p.table.get_type_symbol(rec_type).has_method(name) {
