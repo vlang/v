@@ -63,6 +63,12 @@ fn expr() {
 }
 */
 
+
+struct User {
+	age int
+	nr_orders int
+}
+
 fn main() {
 	if_test()
 	loop()

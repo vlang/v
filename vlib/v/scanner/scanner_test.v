@@ -8,7 +8,7 @@ import v.token
 fn test_scan() {
 	text := 'println(2 + 3)'
 	mut scanner := new_scanner(text, .skip_comments)
-	mut token_kinds := []token.Kind
+	mut token_kinds := []token.Kind{}
 	for {
 		tok := scanner.scan()
 		if tok.kind == .eof {

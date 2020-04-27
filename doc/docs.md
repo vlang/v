@@ -253,8 +253,7 @@ println(s) // "hello\nworld"
 import os
 
 fn main() {
-    println('Enter your name:')
-    name := os.get_line()
+    name := os.input('Enter your name:')
     println('Hello, $name!')
 }
 ```
@@ -283,8 +282,11 @@ println('Alex' in names) // "false"
 
 names = [] // The array is now empty
 
+// Declare an empty array:
+users := []User{}
+
 // We can also preallocate a certain amount of elements.
-ids := [0].repeat(50) // This creates an array with 50 zeros
+ids := []int{ len: 50, default: 0 } // This creates an array with 50 zeros
 ```
 
 Array type is determined by the first element: `[1, 2, 3]` is an array of ints (`[]int`).
@@ -330,6 +332,7 @@ println(m['bad_key']) // "0"
 println('bad_key' in m) // Use `in` to detect whether such key exists
 m.delete('two')
 
+// Short syntax
 numbers := {
     'one': 1,
     'two': 2

@@ -26,18 +26,6 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 	return arr
 }
 
-// TODO
-pub fn make(len int, cap int, elm_size int) array {
-	return __new_array(len, cap, elm_size)
-}
-
-/*
-struct Foo {
-	a []string
-	b [][]string
-}
-*/
-
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 	cap_ := if cap == 0 { 1 } else { cap }
@@ -65,6 +53,7 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 }
 
 // Private function. Doubles array capacity if needed
+[inline]
 fn (a mut array) ensure_cap(required int) {
 	if required <= a.cap {
 		return

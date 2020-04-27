@@ -56,7 +56,7 @@ struct Gen {
 	auto_str_funcs       strings.Builder // function bodies of all auto generated _str funcs
 	comptime_defines     strings.Builder // custom defines, given by -d/-define flags on the CLI
 	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
-	pcs                  map[string]string // -prof profile counter fn_names => fn counter name
+	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	table                &table.Table
 	pref                 &pref.Preferences
 mut:
@@ -159,6 +159,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	//
 	g.finish()
 	//
+    
 	b := strings.new_builder(250000)
 	b.writeln(g.hashes())
 	b.writeln(g.comptime_defines.str())
@@ -237,6 +238,10 @@ pub fn (mut g Gen) finish() {
 	}
 	g.stringliterals.writeln('// << string literal consts')
 	g.stringliterals.writeln('')
+
+	if g.pref.is_prof {
+		g.gen_vprint_profile_stats()
+	}
 }
 
 pub fn (mut g Gen) write_typeof_functions() {
@@ -963,33 +968,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
 	match node {
 		ast.ArrayInit {
-			type_sym := g.table.get_type_symbol(it.typ)
-			if type_sym.kind != .array_fixed {
-				// elem_sym := g.table.get_type_symbol(it.elem_type)
-				elem_type_str := g.typ(it.elem_type)
-				if it.exprs.len == 0 {
-					// use __new_array to fix conflicts when the name of the variable is new_array
-					g.write('__new_array($it.exprs.len, $it.exprs.len, sizeof($elem_type_str))')
-				} else {
-					len := it.exprs.len
-					g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), ')
-					g.write('($elem_type_str[$len]){\n\t\t')
-					for expr in it.exprs {
-						g.expr(expr)
-						g.write(', ')
-					}
-					g.write('\n})')
-				}
-			} else {
-				g.write('{')
-				for i, expr in it.exprs {
-					g.expr(expr)
-					if i != it.exprs.len - 1 {
-						g.write(', ')
-					}
-				}
-				g.write('}')
-			}
+			g.array_init(it)
 		}
 		ast.AsCast {
 			g.as_cast(it)
@@ -3345,4 +3324,46 @@ ${interface_name} I_${cctype}_to_${interface_name}(${cctype} x) {
 		}
 	}
 	return sb.str()
+}
+
+fn (mut g Gen) array_init(it ast.ArrayInit) {
+	type_sym := g.table.get_type_symbol(it.typ)
+	if type_sym.kind != .array_fixed {
+		// elem_sym := g.table.get_type_symbol(it.elem_type)
+		elem_type_str := g.typ(it.elem_type)
+		if it.exprs.len == 0 {
+			g.write('__new_array(')
+			if it.has_len {
+				g.expr(it.len_expr)
+				g.write(', ')
+			} else {
+				g.write('0, ')
+			}
+			if it.has_cap {
+				g.expr(it.cap_expr)
+				g.write(', ')
+			} else {
+				g.write('0, ')
+			}
+			g.write('sizeof($elem_type_str))')
+		} else {
+			len := it.exprs.len
+			g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), ')
+			g.write('($elem_type_str[$len]){\n\t\t')
+			for expr in it.exprs {
+				g.expr(expr)
+				g.write(', ')
+			}
+			g.write('\n})')
+		}
+	} else {
+		g.write('{')
+		for i, expr in it.exprs {
+			g.expr(expr)
+			if i != it.exprs.len - 1 {
+				g.write(', ')
+			}
+		}
+		g.write('}')
+	}
 }

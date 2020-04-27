@@ -461,7 +461,7 @@ pub fn (ws mut Client) read() int {
 					data: payload
 					len: payload_len
 				}
-				mut frags := []Fragment
+				mut frags := []Fragment{}
 				mut size := u64(0)
 				for f in ws.fragments {
 					if f.len > 0 {

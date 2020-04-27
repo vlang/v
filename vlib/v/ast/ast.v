@@ -635,6 +635,10 @@ pub:
 	is_fixed  bool
 	has_val   bool
 	mod       string
+	len_expr  Expr
+	has_len   bool
+	has_cap   bool
+	cap_expr  Expr
 mut:
 	elem_type table.Type
 	typ       table.Type

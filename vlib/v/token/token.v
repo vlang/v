@@ -314,8 +314,7 @@ pub enum Precedence {
 }
 
 pub fn build_precedences() []Precedence {
-	mut p := []Precedence{}
-	p = make(100, 100, sizeof(Precedence))
+	mut p := []Precedence{len:100, cap:100}
 	p[Kind.assign] = .assign
 	p[Kind.eq] = .eq
 	p[Kind.ne] = .eq

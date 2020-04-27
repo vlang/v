@@ -40,7 +40,7 @@ fn test_eval() {
 		start_pos: 0
 		parent: 0
 	}
-	mut stmts := []ast.Stmt
+	mut stmts := []ast.Stmt{}
 	for input in inputs {
 		stmts << parse_stmt(input, table, scope)
 	}
@@ -103,7 +103,7 @@ fn test_one() {
 		start_pos: 0
 		parent: 0
 	}
-	mut e := []ast.Stmt
+	mut e := []ast.Stmt{}
 	for line in input {
 		e << parse_stmt(line, table, scope)
 	}
@@ -194,7 +194,7 @@ fn test_parse_expr() {
 	'-a + 1;',
 	'2 + 2;',
 	]
-	mut e := []ast.Stmt
+	mut e := []ast.Stmt{}
 	table := table.new_table()
 	vpref := &pref.Preferences{}
 	mut checker := checker.new_checker(table, vpref)

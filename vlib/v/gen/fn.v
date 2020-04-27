@@ -104,22 +104,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
 	if g.pref.is_prof {
-		if is_main {
-			g.writeln('')
-			g.writeln('\tatexit(vprint_profile_stats);')
-			g.writeln('')
-		}
-		if it.name == 'time.sys_mono_now' {
-			g.defer_profile_code = ''
-		} else {
-			fn_profile_counter_name := 'vpc_${g.last_fn_c_name}'
-			g.writeln('')
-			g.writeln('\tdouble _PROF_FN_START = time__sys_mono_now(); ${fn_profile_counter_name}_calls++; // $it.name')
-			g.writeln('')
-			g.defer_profile_code = '\t${fn_profile_counter_name} += time__sys_mono_now() - _PROF_FN_START;'
-			g.pcs_declarations.writeln('double ${fn_profile_counter_name} = 0.0; u64 ${fn_profile_counter_name}_calls = 0;')
-			g.pcs[g.last_fn_c_name] = fn_profile_counter_name
-		}
+	    g.profile_fn( it.name, is_main )
 	}
 	g.stmts(it.stmts)
 	// ////////////
@@ -137,22 +122,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	g.write_defer_stmts_when_needed()
 	if is_main {
-		if g.pref.is_prof {
-			g.pcs_declarations.writeln('void vprint_profile_stats(){')
-			if g.pref.profile_file == '-' {
-				for pfn_name, pcounter_name in g.pcs {
-					g.pcs_declarations.writeln('\tif (${pcounter_name}_calls) printf("%llu %f %f ${pfn_name} \\n", ${pcounter_name}_calls, $pcounter_name, $pcounter_name / ${pcounter_name}_calls );')
-				}
-			} else {
-				g.pcs_declarations.writeln('\tFILE * fp;')
-				g.pcs_declarations.writeln('\tfp = fopen ("${g.pref.profile_file}", "w+");')
-				for pfn_name, pcounter_name in g.pcs {
-					g.pcs_declarations.writeln('\tif (${pcounter_name}_calls) fprintf(fp, "%llu %f %f ${pfn_name} \\n", ${pcounter_name}_calls, $pcounter_name, $pcounter_name / ${pcounter_name}_calls );')
-				}
-				g.pcs_declarations.writeln('\tfclose(fp);')
-			}
-			g.pcs_declarations.writeln('}')
-		}
 		g.writeln('\treturn 0;')
 	}
 	g.writeln('}')
@@ -273,6 +242,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if typ_sym.kind == .array && node.name == 'filter' {
 		g.gen_filter(node)
 		return
+	}
+	if node.name == 'str' && !typ_sym.has_method('str') {
+		g.gen_str_for_type(node.receiver_type)
 	}
 	// TODO performance, detect `array` method differently
 	if typ_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free', 'push_many',

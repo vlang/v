@@ -203,18 +203,22 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		}
 		c.error('struct name must begin with capital letter', pos)
 	}
-	for fi, _ in decl.fields {
-		if decl.fields[fi].has_default_expr {
-			c.expected_type = decl.fields[fi].typ
-			field_expr_type := c.expr(decl.fields[fi].default_expr)
-			if !c.table.check(field_expr_type, decl.fields[fi].typ) {
+	for fi, field in decl.fields {
+		sym := c.table.get_type_symbol(field.typ)
+		if sym.kind == .placeholder && !decl.is_c && !sym.name.starts_with('C.') {
+			c.error('unknown type `$sym.name`', field.pos)
+		}
+		if field.has_default_expr {
+			c.expected_type = field.typ
+			field_expr_type := c.expr(field.default_expr)
+			if !c.table.check(field_expr_type, field.typ) {
 				field_expr_type_sym := c.table.get_type_symbol(field_expr_type)
-				field_type_sym := c.table.get_type_symbol(decl.fields[fi].typ)
-				field_name := decl.fields[fi].name
+				field_type_sym := c.table.get_type_symbol(field.typ)
+				field_name := field.name
 				fet_name := field_expr_type_sym.name
 				ft_name := field_type_sym.name
 				c.error('default expression for field `${field_name}` ' + 'has type `${fet_name}`, but should be `${ft_name}`',
-					decl.fields[fi].default_expr.position())
+					field.default_expr.position())
 			}
 		}
 	}
@@ -361,15 +365,9 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 			if left.kind == .array {
 				// `array << elm`
 				match infix_expr.left {
-					ast.Ident {
-
-					}
-					ast.SelectorExpr {
-
-					}
-					else {
-						println('typeof: ${typeof(infix_expr.left)}')
-					}
+					ast.Ident {}
+					ast.SelectorExpr {}
+					else { println('typeof: ${typeof(infix_expr.left)}') }
 				}
 				// the expressions have different types (array_x and x)
 				if c.table.check(c.table.value_type(left_type), right_type) {
@@ -1047,6 +1045,16 @@ pub fn (mut c Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	}
 	// a = []
 	if array_init.exprs.len == 0 {
+		if array_init.has_cap {
+			if c.expr(array_init.cap_expr) != table.int_type {
+				c.error('array cap needs to be an int', array_init.pos)
+			}
+		}
+		if array_init.has_len {
+			if c.expr(array_init.len_expr) != table.int_type {
+				c.error('array len needs to be an int', array_init.pos)
+			}
+		}
 		type_sym := c.table.get_type_symbol(c.expected_type)
 		if type_sym.kind != .array {
 			c.error('array_init: no type specified (maybe: `[]Type` instead of `[]`)', array_init.pos)
@@ -1847,8 +1855,11 @@ pub fn (mut c Checker) enum_val(node mut ast.EnumVal) table.Type {
 		c.error('not an enum (name=$node.enum_name) (type_idx=0)', node.pos)
 	}
 	typ := table.new_type(typ_idx)
+	if typ == table.void_type {
+		c.error('not an enum', node.pos)
+	}
 	typ_sym := c.table.get_type_symbol(typ)
-	// println('tname=$typ.name')
+	// println('tname=$typ_sym.name $node.pos.line_nr $c.file.path')
 	if typ_sym.kind != .enum_ {
 		c.error('not an enum', node.pos)
 	}

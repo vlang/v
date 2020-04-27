@@ -18,7 +18,7 @@ fn http_fetch_mock(_methods []string, _config FetchConfig) ?[]Response {
 	url := 'https://httpbin.org/'
 	methods := if _methods.len == 0 { ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] } else { _methods }
 	mut config := _config
-	mut result := []Response
+	mut result := []Response{}
 	// Note: httpbin doesn't support head
 	for method in methods {
 		lmethod := method.to_lower()

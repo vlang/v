@@ -41,7 +41,7 @@ pub fn (r Result) num_fields() int {
 }
 
 pub fn (r Result) rows() []Row {
-	mut rows := []Row
+	mut rows := []Row{}
 	nr_cols := r.num_fields()
 	for rr := r.fetch_row(); rr; rr = r.fetch_row() {
 		mut row := Row{}
@@ -58,7 +58,7 @@ pub fn (r Result) rows() []Row {
 }
 
 pub fn (r Result) fetch_fields() []Field {
-	mut fields := []Field
+	mut fields := []Field{}
 	nr_cols := r.num_fields()
 	orig_fields := mysql_fetch_fields(r.result)
 	for i in 0..nr_cols {
@@ -90,7 +90,7 @@ pub fn (r Result) fetch_fields() []Field {
 
 pub fn (f Field) str() string {
 	return '
-{	
+{
 	name: "$f.name"
 	org_name: "$f.org_name"
 	table: "$f.table"

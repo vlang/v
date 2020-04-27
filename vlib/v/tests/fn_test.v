@@ -134,7 +134,7 @@ fn test_anon_fn() {
 		println('hello from f1')
 	}
 	f1(1)
-	
+
 	f2 := fn(a int) int {
 		println('hello from f2')
 		return 10
@@ -171,7 +171,7 @@ struct MySt {
 	f MyFn
 }
 fn test_fn_type_call() {
-    mut arr := []MyFn
+    mut arr := []MyFn{}
     arr << MyFn(test)
 	// TODO: `arr[0](10)`
 	// assert arr[0](10) == 1010
@@ -185,4 +185,3 @@ fn test_fn_type_call() {
 	st1 := &MySt{f:test}
     assert st1.f(10) == 1010
 }
-
