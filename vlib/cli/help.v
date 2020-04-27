@@ -91,9 +91,9 @@ fn pretty_description(s string) string {
 	// Give us enough room, better a little bigger than smaller
 	mut acc := strings.new_builder(((s.len / chars_per_line) + 1) * (width + 1))
 
-	mut i := chars_per_line - 1
+	mut i := chars_per_line - 2
 	mut j := 0
-	for ; i < s.len ; i += chars_per_line - 1 {
+	for ; i < s.len ; i += chars_per_line - 2 {
 		for s.str[i] != ` ` { i-- }
 		// indent was already done the first iteration
 		if j != 0 { acc.write(indent) }
