@@ -519,6 +519,18 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.ForStmt {
 			g.for_stmt(it)
 		}
+		ast.HashStmt {
+			words := it.val.split(' ')
+			for word in words {
+				if word.len != 2 {
+					verror('opcodes format: xx xx xx xx')
+				}
+				b := C.strtol(word.str, 0, 16)
+				// b := word.byte()
+				// println('"$word" $b')
+				g.write8(b)
+			}
+		}
 		ast.Module {}
 		ast.Return {
 			g.gen_exit()
@@ -530,6 +542,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 	}
 }
+
+fn C.strtol() int
 
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
