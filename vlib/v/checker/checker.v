@@ -446,7 +446,8 @@ fn (mut c Checker) array_shift_expr(expr ast.Expr) {
 	match expr {
 		ast.Ident {
 			if !it.is_mut {
-				c.error('`$it.name` is immutable, declare it with `mut` to append items to it', it.pos)
+				c.error('`$it.name` is immutable, declare it with `mut` to append items to it',
+					it.pos)
 			}
 		}
 		ast.SelectorExpr {

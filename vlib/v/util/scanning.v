@@ -40,5 +40,5 @@ pub fn cescaped_path(s string) string {
 }
 
 pub fn is_fmt() bool {
-	return os.executable().contains('vfmt')    
+	return os.executable().contains('vfmt')
 }
