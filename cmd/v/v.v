@@ -112,7 +112,6 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 	mut res := &pref.Preferences{}
 	mut command := ''
 	mut command_pos := 0
-	res.is_fmt = util.is_fmt()
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]

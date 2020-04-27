@@ -142,6 +142,7 @@ fn main() {
 
 fn (foptions &FormatOptions) format_file(file string) {
 	prefs := pref.new_preferences()
+    prefs.is_fmt = util.is_fmt()
 	if foptions.is_verbose {
 		eprintln('vfmt2 running fmt.fmt over file: $file')
 	}
