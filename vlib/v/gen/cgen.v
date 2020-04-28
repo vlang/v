@@ -58,6 +58,7 @@ struct Gen {
 	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
 	table                &table.Table
 	pref                 &pref.Preferences
+	module_built         string
 mut:
 	file                 ast.File
 	fn_decl              &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
@@ -86,6 +87,8 @@ mut:
 	array_fn_definitions []string // array equality functions that have been defined
 	is_json_fn           bool // inside json.encode()
 	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
+	attr string
+	is_builtin_mod bool
 }
 
 const (
@@ -122,6 +125,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		fn_decl: 0
 		autofree: true
 		indent: -1
+		module_built: pref.path.after('vlib/')
 	}
 	g.init()
 	//
@@ -159,7 +163,6 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	//
 	g.finish()
 	//
-
 	b := strings.new_builder(250000)
 	b.writeln(g.hashes())
 	b.writeln(g.comptime_defines.str())
@@ -238,7 +241,6 @@ pub fn (mut g Gen) finish() {
 	}
 	g.stringliterals.writeln('// << string literal consts')
 	g.stringliterals.writeln('')
-
 	if g.pref.is_prof {
 		g.gen_vprint_profile_stats()
 	}
@@ -446,8 +448,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.gen_assign_stmt(it)
 		}
 		ast.Attr {
+			g.attr = it.name
 			if it.name == 'inline' {
-				g.writeln(it.name)
+				//g.writeln(it.name)
 			} else {
 				g.writeln('//[$it.name]')
 			}
@@ -512,11 +515,29 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
+			mut skip := false
+			pos := g.out.buf.len
+			if g.pref.build_mode==.build_module {
+				if !it.name.starts_with(g.module_built + '.'){
+					// Skip functions that don't have to be generated
+					// for this module.
+					skip =  true
+				}
+				if g.is_builtin_mod && g.module_built == 'builtin' {
+					skip=false
+				}
+				if !skip {
+					println('build module `$g.module_built` fn `$it.name`')
+				}
+			}
 			fn_start_pos := g.out.len
 			g.fn_decl = it // &it
 			g.gen_fn_decl(it)
 			if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
 				println(g.out.after(fn_start_pos))
+			}
+			if skip {
+				g.out.go_back_to(pos)
 			}
 			g.writeln('')
 		}
@@ -584,7 +605,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.definitions.writeln('\tint _interface_idx;')
 			g.definitions.writeln('} $it.name;')
 		}
-		ast.Module {}
+		ast.Module {
+			g.is_builtin_mod = it.name=='builtin'
+		}
 		ast.Return {
 			g.write_defer_stmts_when_needed()
 			g.return_statement(it)

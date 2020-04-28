@@ -12,6 +12,10 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// || it.no_body {
 		return
 	}
+	if g.attr == 'inline' {
+		g.write('inline ')
+		g.attr = ''
+	}
 	g.reset_tmp_count()
 	is_main := it.name == 'main'
 	if is_main {
