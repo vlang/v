@@ -677,6 +677,9 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 		c.returns = true
 	}
 	fn_name := call_expr.name
+	if fn_name == 'main' {
+		c.error('the `main` function cannot be called in the program', call_expr.pos)
+	}
 	if fn_name == 'typeof' {
 		// TODO: impl typeof properly (probably not going to be a fn call)
 		return table.string_type
