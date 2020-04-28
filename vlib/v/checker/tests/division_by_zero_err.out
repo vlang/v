@@ -1,0 +1,5 @@
+vlib/v/checker/tests/division_by_zero_err.v:2:12: error: the integer division by zero is not allowed
+    1| fn main() {
+    2|     println(1/0)
+                     ^
+    3| }
