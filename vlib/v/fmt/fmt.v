@@ -39,7 +39,7 @@ pub fn fmt(file ast.File, table &table.Table) string {
 		file: file
 	}
 	f.cur_mod = 'main'
-	for i, stmt in file.stmts {
+	for stmt in file.stmts {
 		// TODO `if stmt is ast.Import`
 		match stmt {
 			ast.Import {
@@ -69,7 +69,14 @@ fn (f mut Fmt) find_comment(line_nr int) {
 */
 pub fn (mut f Fmt) write(s string) {
 	if f.indent > 0 && f.empty_line {
-		f.out.write(tabs[f.indent])
+		if f.indent < tabs.len {
+			f.out.write(tabs[f.indent])
+		} else {
+			// too many indents, do it the slow way:
+			for i in 0 .. f.indent {
+				f.out.write('\t')
+			}
+		}
 		f.line_len += f.indent * 4
 	}
 	f.out.write(s)
@@ -208,7 +215,7 @@ fn (mut f Fmt) stmt(node ast.Stmt) {
 				}
 			}
 			f.indent++
-			for i, field in it.fields {
+			for field in it.fields {
 				name := field.name.after('.')
 				f.write('$name ')
 				f.write(strings.repeat(` `, max - field.name.len))
@@ -694,7 +701,7 @@ fn (mut f Fmt) expr(node ast.Expr) {
 			} else {
 				f.writeln('$name{')
 				f.indent++
-				for i, field in it.fields {
+				for field in it.fields {
 					f.write('$field.name: ')
 					f.expr(field.expr)
 					f.writeln('')
@@ -886,7 +893,7 @@ fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.writeln(' {')
 	f.indent++
 	mut single_line := true
-	for i, branch in it.branches {
+	for branch in it.branches {
 		if branch.stmts.len > 1 {
 			single_line = false
 			break
@@ -907,7 +914,7 @@ fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 			break
 		}
 	}
-	for i, branch in it.branches {
+	for branch in it.branches {
 		if branch.comment.text != '' {
 			f.comment(branch.comment)
 		}
