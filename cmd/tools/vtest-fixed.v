@@ -10,7 +10,6 @@ const (
 		'vlib/eventbus/eventbus_test.v',
 		'vlib/json/json_test.v',
 		'vlib/net/http/http_httpbin_test.v',
-		'vlib/net/http/http_test.v',
 		'vlib/v/tests/enum_bitfield_test.v',
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/pointers_test.v',

@@ -251,6 +251,7 @@ pub enum Kind {
 	f32
 	f64
 	char
+	size_t
 	bool
 	none_
 	string
@@ -416,7 +417,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		name: 'map'
 	})
 	t.register_type_symbol(TypeSymbol{
-		kind: .placeholder
+		kind: .size_t
 		name: 'size_t'
 	})
 	// TODO: remove. for v1 map compatibility
@@ -475,6 +476,7 @@ pub fn (k Kind) str() string {
 		.string { 'string' }
 		.char { 'char' }
 		.bool { 'bool' }
+		.size_t { 'size_t' }
 		.none_ { 'none' }
 		.array { 'array' }
 		.array_fixed { 'array_fixed' }
