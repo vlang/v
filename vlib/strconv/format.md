@@ -1,12 +1,12 @@
 # v_printf/v_sprintf
 
-These are the implementation in v of the `printf` and `sprintf` functions used in C.
+These are v implementations of the C language `printf` and `sprintf` functions.
 
-***Note: These function are in C platform dependents, in V these are instead platform independents.***
+***Note: These functions are platform dependent in C, but in V they are platform independent.***
 
 ### v_sprintf
 
-`v_sprintf` has a variable number of parameters, the first is fixed and is a string that specify the format of the next parameters.
+`v_sprintf` has a variable number of parameters. The first is a format string to control the appearance of the final string. Each format specifier (%s, %d, etc.) in the format string is replaced by the textual version of the following parameters.
 
 ```v
 import strconv
@@ -23,11 +23,11 @@ Hello World!
 
 ### v_printf
 
-`v_printf` is the same of `v_sprintf` but print on the `stdout`, it doesn't return a string.
+`v_printf` creates the same modified string as `v_sprintf`, using the same format specifiers, but it will immediately print the modified string to stdout instead of returning a string.
 
 ### Syntax
 
-The syntax for a format placeholder is:
+The syntax for a format specifier is:
 
 ```
 %[parameter][flags][width][.precision][length]type
@@ -35,19 +35,19 @@ The syntax for a format placeholder is:
 
 #### Flags field
 
-The Flags field can be zero or more (in any order) of:
+The Flags field may be zero or more (in any order) of:
 
 | Character   | Description                                                  |
 | ----------- | ------------------------------------------------------------ |
-| `-` (minus) | Left-align the output of this placeholder. (The default is to right-align the output.) |
-| `+` (plus)  | Prepends a plus for positive signed-numeric types. positive = `+`, negative = `-`. (The default doesn't prepend anything in front of positive numbers.) |
+| `-` (minus) | Left-align the output of this specifier. (The default is to right-align the output.) |
+| `+` (plus)  | Prepends a plus for positive signed-numeric types. positive = `+`, negative = `-`. (The default doesn't prepend anything to positive numbers.) |
 | `0` (zero)  | When the 'width' option is specified, prepends zeros for numeric types. (The default prepends spaces.) For example, `printf("%4X",3)` produces `   3`, while `printf("%04X",3)` produces `0003`. |
 
 #### Width field
 
-The Width field specifies a *maximum* number of characters to output, and is typically used to pad fixed-width fields in tabulated output, it cause truncation of oversized fields.
+The Width field specifies a *maximum* number of characters to output, and is typically used to pad fixed-width fields in tabulated output, it causes truncation of oversized fields.
 
-The width field may be omitted, or a numeric integer value, or a dynamic value when passed as another argument when indicated by an asterisk `*`. For example, `v_printf("%*.s", 5, my_string)` will result in `   mystring` being printed, with a total width of 5 characters.
+The width field may be omitted, or it may be a numeric integer value, or may also be specified by a parameter when indicated by an asterisk `*`. For example, `v_printf("%*.s", 5, my_string)` will result in `   mystring` being printed, with a total width of 5 characters.
 
 #### Length field 
 
@@ -55,10 +55,10 @@ The Length field can be omitted or be any of:
 
 | Character | Description                                                  |
 | --------- | ------------------------------------------------------------ |
-| `hh`      | For integer types, causes `printf` to expect an `byte`or `i8` argument. |
+| `hh`      | For integer types, causes `printf` to expect an `byte` or `i8` argument. |
 | `h`       | For integer types, causes `printf` to expect an `int16` or `u16` argument. |
-| `l`       | For integer types, causes `printf` to expect a `i64`or `u64` argument. |
-| `ll`      | For integer types, causes `printf` to expect a `i64`or `u64` argument. |
+| `l`       | For integer types, causes `printf` to expect an `i64` or `u64` argument. |
+| `ll`      | For integer types, causes `printf` to expect an `i64` or `u64` argument. |
 |           |                                                              |
 |           |                                                              |
 
@@ -209,7 +209,7 @@ for x < 12 {
 
 ## Utility functions
 
-In the format module are present some utility functions:
+The format module also has some utility functions:
 
 ```v
 // calling struct
