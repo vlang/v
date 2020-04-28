@@ -1902,6 +1902,10 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			if !is_none && !is_error {
 				styp := g.base_typ(g.fn_decl.return_type)
 				g.write('/*:)$return_sym.name*/opt_ok(&($styp[]) { ')
+				if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
+					// Automatic Dereference for optional
+					g.write('*')
+				}
 				g.expr(node.exprs[0])
 				g.writeln(' }, sizeof($styp));')
 				return
