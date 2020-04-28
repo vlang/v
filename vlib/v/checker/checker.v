@@ -647,12 +647,7 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		return method.return_type
 	}
 	// TODO: str methods
-	if left_type_sym.kind == .map && method_name == 'str' {
-		call_expr.receiver_type = table.new_type(c.table.type_idxs['map_string'])
-		call_expr.return_type = table.string_type
-		return table.string_type
-	}
-	if left_type_sym.kind == .array && method_name == 'str' {
+	if method_name == 'str' {
 		call_expr.receiver_type = left_type
 		call_expr.return_type = table.string_type
 		return table.string_type
