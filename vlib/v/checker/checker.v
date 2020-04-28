@@ -691,6 +691,7 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	// look for function in format `mod.fn` or `fn` (main/builtin)
 	mut f := table.Fn{}
 	mut found := false
+	mut found_in_args := false
 	// try prefix with current module as it would have never gotten prefixed
 	if !fn_name.contains('.') && call_expr.mod !in ['builtin', 'main'] {
 		name_prefixed := '${call_expr.mod}.$fn_name'
@@ -717,6 +718,7 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 					info := vts.info as table.FnType
 					f = info.func
 					found = true
+					found_in_args = true
 				}
 			}
 		}
@@ -724,6 +726,12 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	if !found {
 		c.error('unknown function: $fn_name', call_expr.pos)
 		return table.void_type
+	}
+	if !found_in_args && call_expr.mod in ['builtin', 'main'] {
+		scope := c.file.scope.innermost(call_expr.pos.pos)
+		if _ := scope.find_var(fn_name) {
+			c.error('ambiguous call to: `$fn_name`', call_expr.pos)
+		}
 	}
 	call_expr.return_type = f.return_type
 	if f.return_type == table.void_type && f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {
