@@ -484,11 +484,11 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 					// TODO Remove `crypto.rand` when possible (see vlib/crypto/rand/rand.v,
 					// if `c_array_to_bytes_tmp` doesn't exist, then it's safe to remove it)
 					if c.file.mod.name !in ['builtin', 'crypto.rand'] {
-						c.error('`$typ_sym.kind` can not be modified', expr.position())
+						c.error('`$typ_sym.kind` can not be modified', it.pos)
 					}
 				}
 				else {
-					c.error('unexpected symbol `${typ_sym.kind}`', expr.position())
+					c.error('unexpected symbol `${typ_sym.kind}`', it.pos)
 				}
 			}
 		}
@@ -1802,20 +1802,14 @@ pub fn (mut c Checker) if_expr(node mut ast.IfExpr) table.Type {
 }
 
 pub fn (mut c Checker) postfix_expr(node ast.PostfixExpr) table.Type {
-	/*
-	match node.expr {
-		ast.IdentVar {
-			println('postfix identvar')
-		}
-		else {}
-	}
-	*/
 	typ := c.expr(node.expr)
 	typ_sym := c.table.get_type_symbol(typ)
 	// if !typ.is_number() {
 	if !typ_sym.is_number() {
 		println(typ_sym.kind.str())
 		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)', node.pos)
+	} else {
+		c.fail_if_immutable(node.expr)
 	}
 	return typ
 }
