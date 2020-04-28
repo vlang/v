@@ -57,7 +57,6 @@ pub fn formatted_error(kind, emsg, filepath string, pos token.Position) string {
 		}
 	}
 	//
-	mut source_context := ''
 	source := read_file(filepath) or {
 		''
 	}
@@ -71,7 +70,7 @@ pub fn formatted_error(kind, emsg, filepath string, pos token.Position) string {
 	}
 	column := imax(0, pos.pos - p - 1)
 	position := '${path}:${pos.line_nr+1}:${util.imax(1,column+1)}:'
-	source_context += source_context(source, column, pos).join('\n')
+	scontext := source_context(source, column, pos).join('\n')
 	final_position := if emanager.support_color { term.bold(position) } else { position }
 	mut final_kind := kind
 	if emanager.support_color {
@@ -82,7 +81,7 @@ pub fn formatted_error(kind, emsg, filepath string, pos token.Position) string {
 		}
 	}
 	final_msg := emsg // if emanager.support_color { term.bold(emsg) } else { emsg }
-	final_context := if source_context.len > 0 { '\n$source_context' } else { '' }
+	final_context := if scontext.len > 0 { '\n$scontext' } else { '' }
 	//
 	return '$final_position $final_kind $final_msg $final_context'.trim_space()
 }
