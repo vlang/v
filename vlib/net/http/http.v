@@ -12,7 +12,7 @@ const (
 )
 
 pub struct Request {
-pub:
+pub mut:
 	method     string
 	headers    map[string]string
 	cookies    map[string]string
