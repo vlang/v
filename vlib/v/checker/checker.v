@@ -203,7 +203,13 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		}
 		c.error('struct name must begin with capital letter', pos)
 	}
+	mut field_names := []string{}
 	for field in decl.fields {
+		if field.name in field_names {
+			c.error('field name `$field.name` duplicate', field.pos)
+		} else {
+			field_names << field.name
+		}
 		sym := c.table.get_type_symbol(field.typ)
 		if sym.kind == .placeholder && !decl.is_c && !sym.name.starts_with('C.') {
 			c.error('unknown type `$sym.name`', field.pos)
