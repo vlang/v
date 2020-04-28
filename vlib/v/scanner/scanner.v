@@ -833,7 +833,7 @@ fn (s &Scanner) count_symbol_before(p int, sym byte) int {
 fn (s mut Scanner) ident_string() string {
 	q := s.text[s.pos]
 	is_quote := q == single_quote || q == double_quote
-	is_raw := is_quote && s.text[s.pos - 1] == `r`
+	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r`
 	if is_quote && !s.is_inside_string {
 		s.quote = q
 	}
