@@ -136,7 +136,6 @@ pub fn bfand(input1 BitField, input2 BitField) BitField {
 	mut output := new(size)
 	for i in 0..bitnslots {
 		output.field[i] = input1.field[i] & input2.field[i]
-		i++
 	}
 	output.cleartail()
 	return output
@@ -149,7 +148,6 @@ pub fn bfnot(input BitField) BitField {
 	mut output := new(size)
 	for i in 0..bitnslots {
 		output.field[i] = ~input.field[i]
-		i++
 	}
 	output.cleartail()
 	return output
@@ -164,7 +162,6 @@ pub fn bfor(input1 BitField, input2 BitField) BitField {
 	mut output := new(size)
 	for i in 0..bitnslots {
 		output.field[i] = input1.field[i] | input2.field[i]
-		i++
 	}
 	output.cleartail()
 	return output
@@ -179,7 +176,6 @@ pub fn bfxor(input1 BitField, input2 BitField) BitField {
 	mut output := new(size)
 	for i in 0..bitnslots {
 		output.field[i] = input1.field[i] ^ input2.field[i]
-		i++
 	}
 	output.cleartail()
 	return output
@@ -241,7 +237,6 @@ pub fn (instance BitField) clone() BitField {
 	mut output := new(instance.size)
 	for i in 0..bitnslots {
 		output.field[i] = instance.field[i]
-		i++
 	}
 	return output
 }
