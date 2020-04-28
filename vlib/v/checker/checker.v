@@ -730,7 +730,7 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	if !found_in_args && call_expr.mod in ['builtin', 'main'] {
 		scope := c.file.scope.innermost(call_expr.pos.pos)
 		if _ := scope.find_var(fn_name) {
-			c.error('ambiguous call to: `$fn_name`', call_expr.pos)
+			c.error('ambiguous call to: `$fn_name`, may refer to fn `$fn_name` or variable `$fn_name`', call_expr.pos)
 		}
 	}
 	call_expr.return_type = f.return_type
