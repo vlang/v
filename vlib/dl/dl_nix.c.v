@@ -4,7 +4,7 @@ module dl
 
 fn C.dlopen(filename charptr, flags int) voidptr
 fn C.dlsym(handle voidptr, symbol charptr) voidptr
-fn C.dlclose(handle voidptr) bool
+fn C.dlclose(handle voidptr) int
 
 pub const (
 	RTLD_NOW = C.RTLD_NOW
