@@ -181,11 +181,11 @@ fn (foptions &FormatOptions) post_process_file(file, formatted_file_path string)
 		return
 	}
 	if foptions.is_diff {
-		diff_cmd := find_working_diff_command() or {
+		diff_cmd := util.find_working_diff_command() or {
 			eprintln('No working "diff" CLI command found.')
 			return
 		}
-		os.system('$diff_cmd --minimal  --text   --unified=2 --show-function-line="fn " "$file" "$formatted_file_path" ')
+		println(util.color_compare_files(diff_cmd, file, formatted_file_path))
 		return
 	}
 	fc := os.read_file(file) or {
@@ -224,17 +224,6 @@ fn (foptions &FormatOptions) post_process_file(file, formatted_file_path string)
 	print(formatted_fc)
 }
 
-fn find_working_diff_command() ?string {
-	for diffcmd in ['colordiff', 'diff', 'colordiff.exe', 'diff.exe'] {
-		p := os.exec('$diffcmd --version') or {
-			continue
-		}
-		if p.exit_code == 0 {
-			return diffcmd
-		}
-	}
-	return error('no working diff command found')
-}
 
 fn (f FormatOptions) str() string {
 	return 'FormatOptions{ is_l: $f.is_l' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' +

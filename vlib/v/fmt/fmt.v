@@ -73,7 +73,7 @@ pub fn (mut f Fmt) write(s string) {
 			f.out.write(tabs[f.indent])
 		} else {
 			// too many indents, do it the slow way:
-			for i in 0 .. f.indent {
+			for _ in 0 .. f.indent {
 				f.out.write('\t')
 			}
 		}

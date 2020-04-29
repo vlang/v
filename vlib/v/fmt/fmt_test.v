@@ -6,6 +6,7 @@ import v.fmt
 import v.parser
 import v.table
 import v.pref
+import v.util
 
 const (
 	error_missing_vexe = 1
@@ -22,9 +23,7 @@ fn test_fmt() {
 	}
 	vroot := os.dir(vexe)
 	tmpfolder := os.temp_dir()
-	diff_cmd := find_working_diff_command() or {
-		''
-	}
+	diff_cmd := util.find_working_diff_command() or { '' }
 	mut fmt_bench := benchmark.new_benchmark()
 	// Lookup the existing test _input.vv files:
 	input_files := os.walk_ext('$vroot/vlib/v/fmt/tests', '_input.vv')
@@ -58,7 +57,7 @@ fn test_fmt() {
 			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
 			os.write_file(vfmt_result_file, result_ocontent)
-			os.system('$diff_cmd --minimal  --text   --unified=2 --show-function-line="fn " "$opath" "$vfmt_result_file"')
+            eprintln(util.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
 		fmt_bench.ok()
@@ -70,16 +69,4 @@ fn test_fmt() {
 	if fmt_bench.nfail > 0 {
 		exit(error_failed_tests)
 	}
-}
-
-fn find_working_diff_command() ?string {
-	for diffcmd in ['colordiff', 'diff', 'colordiff.exe', 'diff.exe'] {
-		p := os.exec('$diffcmd --version') or {
-			continue
-		}
-		if p.exit_code == 0 {
-			return diffcmd
-		}
-	}
-	return error('no working diff command found')
 }

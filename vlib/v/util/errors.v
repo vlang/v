@@ -156,3 +156,27 @@ pub fn verror(kind, s string) {
 	}
 	exit(1)
 }
+
+pub fn find_working_diff_command() ?string {
+	for diffcmd in ['colordiff', 'diff', 'colordiff.exe', 'diff.exe'] {
+		p := os.exec('$diffcmd --version') or {
+			continue
+		}
+		if p.exit_code == 0 {
+			return diffcmd
+		}
+	}
+	return error('no working diff command found')
+}
+
+pub fn color_compare_files(diff_cmd, file1, file2 string) string {
+	if diff_cmd != '' {
+		full_cmd := '$diff_cmd --minimal --text --unified=2 ' +
+		        ' --show-function-line="fn " "$file1" "$file2" '
+		x := os.exec(full_cmd) or {
+			return 'comparison command: `${full_cmd}` failed'
+        }
+        return x.output
+    }
+    return ''
+}
