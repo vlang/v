@@ -951,6 +951,10 @@ pub fn (s mut []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
 
+pub fn (s string) str() string {
+	return s
+}
+
 pub fn (s ustring) str() string {
    return s.s
 }

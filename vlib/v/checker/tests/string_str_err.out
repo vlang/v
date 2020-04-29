@@ -1,5 +1,0 @@
-vlib/v/checker/tests/string_str_err.v:2:16: error: unknown method: `string.str`
-    1| fn main() {
-    2|     println('aaa'.str())
-                         ~~~~~
-    3| }
