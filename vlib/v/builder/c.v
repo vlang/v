@@ -18,6 +18,9 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 	t2 := time.ticks()
 	check_time := t2 - t1
 	b.info('CHECK: ${check_time}ms')
+	if b.checker.nr_warnings > 0 {
+		b.print_warnings(b.checker.warnings)
+	}
 	if b.checker.nr_errors > 0 {
 		b.print_errors(b.checker.errors)
 		exit(1)

@@ -275,6 +275,15 @@ fn (b &Builder) print_errors(errors []errors.Error) {
 	}
 }
 
+fn (b &Builder) print_warnings(warnings []errors.Warning) {
+	for err in warnings {
+		kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_errors:' } else { 'warning:' }
+		ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+		eprintln(ferror)
+	}
+}
+
+
 fn verror(s string) {
 	util.verror('builder error', s)
 }

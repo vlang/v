@@ -21,6 +21,7 @@ pub struct Checker {
 mut:
 	file           ast.File
 	nr_errors      int
+	nr_warnings    int
 	errors         []errors.Error
 	warnings       []errors.Warning
 	error_lines    []int // to avoid printing multiple errors for the same line
@@ -1969,6 +1970,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	// print_backtrace()
 	// }
 	if warn {
+		c.nr_warnings++
 		c.warnings << errors.Warning{
 			reporter: errors.Reporter.checker
 			pos: pos
