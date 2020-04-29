@@ -167,6 +167,10 @@ pub fn (v Builder) get_user_files() []string {
 		user_files << os.join_path(preludes_path, 'profiled_program.v')
 	}
 	is_test := dir.ends_with('_test.v')
+	if v.pref.is_run {
+		println('use `v x_test.v` instead of `v run x_test.v`')
+		exit(1)
+	}
 	mut is_internal_module_test := false
 	if is_test {
 		tcontent := os.read_file(dir) or {
