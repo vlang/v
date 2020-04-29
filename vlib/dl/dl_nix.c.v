@@ -4,6 +4,7 @@ module dl
 
 fn C.dlopen(filename charptr, flags int) voidptr
 fn C.dlsym(handle voidptr, symbol charptr) voidptr
+fn C.dlclose(handle voidptr) bool
 
 pub const (
 	RTLD_NOW = C.RTLD_NOW
@@ -12,6 +13,10 @@ pub const (
 
 pub fn open(filename string, flags int) voidptr {
 	return C.dlopen(filename.str, flags)
+}
+
+pub fn close(handle voidptr) bool {
+	return C.dlclose(handle) == 0
 }
 
 pub fn sym(handle voidptr, symbol string) voidptr {
