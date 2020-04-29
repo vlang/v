@@ -167,7 +167,7 @@ pub fn (v Builder) get_user_files() []string {
 		user_files << os.join_path(preludes_path, 'profiled_program.v')
 	}
 	is_test := dir.ends_with('_test.v')
-	if v.pref.is_run {
+	if v.pref.is_run && is_test {
 		println('use `v x_test.v` instead of `v run x_test.v`')
 		exit(1)
 	}
