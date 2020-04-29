@@ -267,22 +267,23 @@ pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 	return error('module "$mod" not found in:\n$smodule_lookup_paths')
 }
 
-fn (b &Builder) print_errors(errors []errors.Error) {
-	for err in errors {
-		kind := if b.pref.is_verbose { '$err.reporter error #$b.checker.nr_errors:' } else { 'error:' }
-		ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
-		eprintln(ferror)
+fn (b &Builder) print_warnings_and_errors(){
+	if b.checker.nr_warnings > 0 {
+		for err in b.checker.warnings {
+			kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_warnings:' } else { 'warning:' }
+			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+			eprintln(ferror)
+		}
+	}
+	if b.checker.nr_errors > 0 {
+		for err in b.checker.errors {
+			kind := if b.pref.is_verbose { '$err.reporter error #$b.checker.nr_errors:' } else { 'error:' }
+			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+			eprintln(ferror)
+		}
+		exit(1)
 	}
 }
-
-fn (b &Builder) print_warnings(warnings []errors.Warning) {
-	for err in warnings {
-		kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_errors:' } else { 'warning:' }
-		ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
-		eprintln(ferror)
-	}
-}
-
 
 fn verror(s string) {
 	util.verror('builder error', s)

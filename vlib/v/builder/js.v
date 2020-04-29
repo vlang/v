@@ -18,9 +18,7 @@ pub fn (mut b Builder) gen_js(v_files []string) string {
 	t2 := time.ticks()
 	check_time := t2 - t1
 	b.info('CHECK: ${check_time}ms')
-	if b.checker.nr_errors > 0 {
-		exit(1)
-	}
+	b.print_warnings_and_errors()
 	res := js.gen(b.parsed_files, b.table, b.pref)
 	t3 := time.ticks()
 	gen_time := t3 - t2
