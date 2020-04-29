@@ -356,7 +356,7 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		}
 		.plus, .minus, .mul, .div {
 			if infix_expr.op == .div &&
-				(infix_expr.right is ast.IntegerLiteral && infix_expr.right.str().int() == 0 ||
+				(infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() == '0' ||
 				infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0) {
 				c.error('division by zero', infix_expr.right.position())
 			}
