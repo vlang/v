@@ -849,3 +849,79 @@ fn (expr Expr) position() token.Position {
 		}
 	}
 }
+
+fn (stmt Stmt) position() token.Position {
+	match mut stmt {
+		AssertStmt {
+			return it.pos
+		}
+		AssignStmt {
+			return it.pos
+		}
+		// Attr {
+		// }
+		// Block {
+		// }
+		// BranchStmt {
+		// }
+		Comment {
+			return it.pos
+		}
+		CompIf {
+			return it.pos
+		}
+		ConstDecl {
+			return it.pos
+		}
+		// DeferStmt {
+		// }
+		EnumDecl {
+			return it.pos
+		}
+		ExprStmt {
+			return it.pos
+		}
+		FnDecl {
+			return it.pos
+		}
+		ForCStmt {
+			return it.pos
+		}
+		ForInStmt {
+			return it.pos
+		}
+		ForStmt {
+			return it.pos
+		}
+		// GlobalDecl {
+		// }
+		// GoStmt {
+		// }
+		// GotoLabel {
+		// }
+		// GotoStmt {
+		// }
+		// HashStmt {
+		// }
+		Import {
+			return it.pos
+		}
+		// InterfaceDecl {
+		// }
+		// Module {
+		// }
+		Return {
+			return it.pos
+		}
+		StructDecl {
+			return it.pos
+		}
+		// TypeDecl {
+		// }
+		// UnsafeStmt {
+		// }
+		else {
+			return token.Position{}
+		}
+	}
+}
