@@ -12,7 +12,7 @@ import v.util
 const (
 	//TODO
 	js_reserved = ['delete', 'const', 'let', 'var', 'function', 'continue', 'break', 'switch', 'for', 'in', 'of', 'instanceof', 'typeof', 'do']
-	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t']
+	level_indent = '\t'
 )
 
 struct JsGen {
@@ -203,7 +203,7 @@ pub fn (g &JsGen) save() {}
 
 pub fn (g mut JsGen) gen_indent() {
 	if g.indents[g.namespace] > 0 && g.empty_line {
-		g.out.write(tabs[g.indents[g.namespace]])
+		g.out.write(level_indent.repeat(g.indents[g.namespace]))
 	}
 	g.empty_line = false
 }

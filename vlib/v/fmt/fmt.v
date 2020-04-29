@@ -8,8 +8,8 @@ import v.table
 import strings
 
 const (
-	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
-	max_len = 90
+	level_indent = '\t'
+	max_len      = 90
 )
 
 struct Fmt {
@@ -69,15 +69,9 @@ fn (f mut Fmt) find_comment(line_nr int) {
 */
 pub fn (mut f Fmt) write(s string) {
 	if f.indent > 0 && f.empty_line {
-		if f.indent < tabs.len {
-			f.out.write(tabs[f.indent])
-		} else {
-			// too many indents, do it the slow way:
-			for _ in 0 .. f.indent {
-				f.out.write('\t')
-			}
-		}
-		f.line_len += f.indent * 4
+		indent := level_indent.repeat(f.indent)
+		f.out.write(indent)
+		f.line_len += indent.len * 4
 	}
 	f.out.write(s)
 	f.line_len += s.len
@@ -86,8 +80,7 @@ pub fn (mut f Fmt) write(s string) {
 
 pub fn (mut f Fmt) writeln(s string) {
 	if f.indent > 0 && f.empty_line {
-		// println(f.indent.str() + s)
-		f.out.write(tabs[f.indent])
+		f.out.write(level_indent.repeat(f.indent))
 	}
 	f.out.writeln(s)
 	f.empty_line = true
@@ -728,7 +721,7 @@ fn (mut f Fmt) wrap_long_line() bool {
 	if f.out.buf[f.out.buf.len - 1] == ` ` {
 		f.out.go_back(1)
 	}
-	f.write('\n' + tabs[f.indent + 1])
+	f.write('\n' + level_indent.repeat(f.indent + 1))
 	f.line_len = 0
 	return true
 }
