@@ -115,6 +115,12 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 					if it.is_pub {
 						c.error('function `main` cannot be declared public', it.pos)
 					}
+					if it.args.len > 0 {
+						c.error('function `main` cannot have arguments', it.pos)
+					}
+					if it.return_type != table.void_type {
+						c.error('function `main` cannot return values', it.pos)
+					}
 				} else {
 					if it.is_pub {
 						c.warn('function `$it.name` $no_pub_in_main_warning', it.pos)
