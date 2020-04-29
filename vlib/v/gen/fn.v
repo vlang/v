@@ -247,7 +247,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.gen_filter(node)
 		return
 	}
-	if typ_sym.kind in [.map, .array, .array_fixed, .struct_, .enum_, .alias] && node.name == 'str' {
+	if node.name == 'str' {
 		mut styp := g.typ(node.receiver_type)
 		if node.receiver_type.is_ptr() {
 			styp = styp.replace('*', '')
