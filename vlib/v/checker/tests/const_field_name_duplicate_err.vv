@@ -1,0 +1,7 @@
+const (
+	aaa = 1
+	aaa = 2
+)
+fn main() {
+	println(aaa)
+}

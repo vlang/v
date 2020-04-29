@@ -1271,6 +1271,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			mut field_names := []string{}
 			mut field_order := []int{}
 			for i, field in it.fields {
+				if field.name in field_names {
+					c.error('field name `$field.name` duplicate', field.pos)
+				}
 				field_names << field.name
 				field_order << i
 			}
