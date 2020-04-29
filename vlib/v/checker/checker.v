@@ -34,6 +34,7 @@ mut:
 	// checked_ident  string // to avoid infinit checker loops
 	var_decl_name  string
 	returns        bool
+	scope_returns  bool
 	mod            string // current module name
 	is_builtin_mod bool // are we in `builtin`?
 }
@@ -1398,6 +1399,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.Return {
 			c.returns = true
 			c.return_stmt(mut it)
+			c.scope_returns = true
 		}
 		ast.StructDecl {
 			c.struct_decl(it)
@@ -1416,10 +1418,20 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 }
 
 fn (mut c Checker) stmts(stmts []ast.Stmt) {
+	mut unreachable := token.Position{line_nr: -1}
 	c.expected_type = table.void_type
 	for stmt in stmts {
+		if c.scope_returns {
+			if unreachable.line_nr == -1 {
+				unreachable = stmt.position()
+			}
+		}
 		c.stmt(stmt)
 	}
+	if unreachable.line_nr >= 0 {
+		c.warn('unreachable code', unreachable)
+	}
+	c.scope_returns = false
 	c.expected_type = table.void_type
 }
 
