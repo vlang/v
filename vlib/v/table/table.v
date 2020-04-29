@@ -201,7 +201,7 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 		return &t.types[idx]
 	}
 	// this should never happen
-	panic('get_type_symbol: invalid type (typ=$typ idx=${idx}). This should never happen')
+	panic('get_type_symbol: invalid type (typ=$typ idx=${idx}). Compiler bug. This should never happen')
 }
 
 [inline]

@@ -211,7 +211,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		c.error('struct name must begin with capital letter', pos)
 	}
 	for i, field in decl.fields {
-		for j in 0..i {
+		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
 				c.error('field name `$field.name` duplicate', field.pos)
 			}
@@ -367,9 +367,8 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 			return table.bool_type
 		}
 		.plus, .minus, .mul, .div {
-			if infix_expr.op == .div &&
-				(infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() == '0' ||
-				infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0) {
+			if infix_expr.op == .div && (infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() ==
+				'0' || infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0) {
 				c.error('division by zero', infix_expr.right.position())
 			}
 			if left.kind in [.array, .array_fixed, .map, .struct_] && !left.has_method(infix_expr.op.str()) {
@@ -743,7 +742,8 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	if !found_in_args && call_expr.mod in ['builtin', 'main'] {
 		scope := c.file.scope.innermost(call_expr.pos.pos)
 		if _ := scope.find_var(fn_name) {
-			c.error('ambiguous call to: `$fn_name`, may refer to fn `$fn_name` or variable `$fn_name`', call_expr.pos)
+			c.error('ambiguous call to: `$fn_name`, may refer to fn `$fn_name` or variable `$fn_name`',
+				call_expr.pos)
 		}
 	}
 	call_expr.return_type = f.return_type
@@ -1117,26 +1117,48 @@ pub fn (mut c Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	}
 	// [1,2,3]
 	if array_init.exprs.len > 0 && array_init.elem_type == table.void_type {
-		expecting_interface_array := c.expected_type != 0 && c.table.get_type_symbol(c.table.value_type(c.expected_type)).kind ==
-			.interface_
+		mut expected_value_type := table.void_type
+		mut expecting_interface_array := false
+		cap := array_init.exprs.len
+		mut interface_types := []table.Type{cap: cap}
+		if c.expected_type != 0 {
+			expected_value_type = c.table.value_type(c.expected_type)
+			if c.table.get_type_symbol(expected_value_type).kind == .interface_ {
+				// Array of interfaces? (`[dog, cat]`) Save the interface type (`Animal`)
+				expecting_interface_array = true
+				array_init.interface_type = expected_value_type
+				array_init.is_interface = true
+			}
+		}
+		// expecting_interface_array := c.expected_type != 0 &&
+		// c.table.get_type_symbol(c.table.value_type(c.expected_type)).kind ==			.interface_
+		//
 		// if expecting_interface_array {
 		// println('ex $c.expected_type')
 		// }
 		for i, expr in array_init.exprs {
 			typ := c.expr(expr)
+			if expecting_interface_array {
+				if i == 0 {
+					elem_type = expected_value_type
+					c.expected_type = elem_type
+				}
+				interface_types << typ
+				continue
+			}
 			// The first element's type
 			if i == 0 {
 				elem_type = typ
 				c.expected_type = typ
 				continue
 			}
-			if expecting_interface_array {
-				continue
-			}
 			if !c.table.check(elem_type, typ) {
 				elem_type_sym := c.table.get_type_symbol(elem_type)
 				c.error('expected array element with type `$elem_type_sym.name`', array_init.pos)
 			}
+		}
+		if expecting_interface_array {
+			array_init.interface_types = interface_types
 		}
 		if array_init.is_fixed {
 			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len, 1)

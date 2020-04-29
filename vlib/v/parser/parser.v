@@ -201,9 +201,9 @@ pub fn (mut p Parser) close_scope() {
 				ast.Var {
 					if !it.is_used && !it.name.starts_with('__') {
 						if p.pref.is_prod {
-							p.error_with_pos('Unused variable: $it.name', it.pos)
+							p.error_with_pos('unused variable: `$it.name`', it.pos)
 						} else {
-							p.warn_with_pos('Unused variable: $it.name', it.pos)
+							p.warn_with_pos('unused variable: `$it.name`', it.pos)
 						}
 					}
 				}
@@ -1249,7 +1249,6 @@ fn (mut p Parser) assoc() ast.Assoc {
 		fields: fields
 		exprs: vals
 		pos: pos
-		// typ: v.typ
 	}
 }
 

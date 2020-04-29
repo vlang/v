@@ -87,8 +87,8 @@ mut:
 	array_fn_definitions []string // array equality functions that have been defined
 	is_json_fn           bool // inside json.encode()
 	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
-	attr string
-	is_builtin_mod bool
+	attr                 string
+	is_builtin_mod       bool
 }
 
 const (
@@ -450,7 +450,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.Attr {
 			g.attr = it.name
 			if it.name == 'inline' {
-				//g.writeln(it.name)
+				// g.writeln(it.name)
 			} else {
 				g.writeln('//[$it.name]')
 			}
@@ -517,14 +517,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.FnDecl {
 			mut skip := false
 			pos := g.out.buf.len
-			if g.pref.build_mode==.build_module {
-				if !it.name.starts_with(g.module_built + '.'){
+			if g.pref.build_mode == .build_module {
+				if !it.name.starts_with(g.module_built + '.') {
 					// Skip functions that don't have to be generated
 					// for this module.
-					skip =  true
+					skip = true
 				}
 				if g.is_builtin_mod && g.module_built == 'builtin' {
-					skip=false
+					skip = false
 				}
 				if !skip {
 					println('build module `$g.module_built` fn `$it.name`')
@@ -606,7 +606,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.definitions.writeln('} $it.name;')
 		}
 		ast.Module {
-			g.is_builtin_mod = it.name=='builtin'
+			g.is_builtin_mod = it.name == 'builtin'
 		}
 		ast.Return {
 			g.write_defer_stmts_when_needed()
@@ -1176,7 +1176,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('.')
 			}
 			if it.expr_type == 0 {
-				verror('cgen: SelectorExpr typ=0 field=$it.field')
+				verror('cgen: SelectorExpr typ=0 field=$it.field $g.file.path $it.pos.line_nr')
 			}
 			g.write(c_name(it.field))
 		}
@@ -3361,35 +3361,7 @@ ${interface_name} I_${cctype}_to_${interface_name}(${cctype} x) {
 
 fn (mut g Gen) array_init(it ast.ArrayInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
-	if type_sym.kind != .array_fixed {
-		// elem_sym := g.table.get_type_symbol(it.elem_type)
-		elem_type_str := g.typ(it.elem_type)
-		if it.exprs.len == 0 {
-			g.write('__new_array(')
-			if it.has_len {
-				g.expr(it.len_expr)
-				g.write(', ')
-			} else {
-				g.write('0, ')
-			}
-			if it.has_cap {
-				g.expr(it.cap_expr)
-				g.write(', ')
-			} else {
-				g.write('0, ')
-			}
-			g.write('sizeof($elem_type_str))')
-		} else {
-			len := it.exprs.len
-			g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), ')
-			g.write('($elem_type_str[$len]){\n\t\t')
-			for expr in it.exprs {
-				g.expr(expr)
-				g.write(', ')
-			}
-			g.write('\n})')
-		}
-	} else {
+	if type_sym.kind == .array_fixed {
 		g.write('{')
 		for i, expr in it.exprs {
 			g.expr(expr)
@@ -3398,5 +3370,41 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 			}
 		}
 		g.write('}')
+		return
 	}
+	// elem_sym := g.table.get_type_symbol(it.elem_type)
+	elem_type_str := g.typ(it.elem_type)
+	if it.exprs.len == 0 {
+		g.write('__new_array(')
+		if it.has_len {
+			g.expr(it.len_expr)
+			g.write(', ')
+		} else {
+			g.write('0, ')
+		}
+		if it.has_cap {
+			g.expr(it.cap_expr)
+			g.write(', ')
+		} else {
+			g.write('0, ')
+		}
+		g.write('sizeof($elem_type_str))')
+		return
+	}
+	len := it.exprs.len
+	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), ')
+	g.write('($elem_type_str[$len]){\n\t\t')
+	for i, expr in it.exprs {
+		if it.is_interface {
+			sym := g.table.get_type_symbol(it.interface_types[i])
+			isym := g.table.get_type_symbol(it.interface_type)
+			g.write('I_${sym.name}_to_${isym.name}(')
+		}
+		g.expr(expr)
+		if it.is_interface {
+			g.write(')')
+		}
+		g.write(', ')
+	}
+	g.write('\n})')
 }

@@ -996,7 +996,12 @@ fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
 		// `x := []string`
 		f.write(f.type_to_str(it.typ))
-		f.write('{}')
+		f.write('{')
+		if it.has_cap {
+			f.write('cap: ')
+			f.expr(it.cap_expr)
+		}
+		f.write('}')
 		return
 	}
 	// `[1,2,3]`
