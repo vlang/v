@@ -12,6 +12,10 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// || it.no_body {
 		return
 	}
+	if g.attr == 'inline' {
+		g.write('inline ')
+		g.attr = ''
+	}
 	g.reset_tmp_count()
 	is_main := it.name == 'main'
 	if is_main {
@@ -71,7 +75,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	*/
 	//
 	g.fn_args(it.args, it.is_variadic)
-	if it.no_body || (g.pref.is_cache && it.is_builtin) {
+	if it.no_body || (g.pref.use_cache && it.is_builtin) {
 		// Just a function header.
 		// Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');')
@@ -104,7 +108,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
 	if g.pref.is_prof {
-	    g.profile_fn( it.name, is_main )
+		g.profile_fn(it.name, is_main)
 	}
 	g.stmts(it.stmts)
 	// ////////////
@@ -130,14 +134,14 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 }
 
 fn (mut g Gen) write_defer_stmts_when_needed() {
+	if g.defer_stmts.len > 0 {
+		g.write_defer_stmts()
+	}
 	if g.defer_profile_code.len > 0 {
 		g.writeln('')
 		g.writeln('\t// defer_profile_code')
 		g.writeln(g.defer_profile_code)
 		g.writeln('')
-	}
-	if g.defer_stmts.len > 0 {
-		g.write_defer_stmts()
 	}
 }
 
@@ -243,8 +247,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.gen_filter(node)
 		return
 	}
-	if node.name == 'str' && !typ_sym.has_method('str') {
-		g.gen_str_for_type(node.receiver_type)
+	if node.name == 'str' {
+		mut styp := g.typ(node.receiver_type)
+		if node.receiver_type.is_ptr() {
+			styp = styp.replace('*', '')
+		}
+		g.gen_str_for_type_with_styp(node.receiver_type, styp)
 	}
 	// TODO performance, detect `array` method differently
 	if typ_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free', 'push_many',
@@ -426,7 +434,7 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 	is_forwarding_varg := args.len > 0 && args[args.len - 1].typ.flag_is(.variadic)
 	gen_vargs := is_variadic && !is_forwarding_varg
 	mut arg_no := 0
-	for i, arg in args {
+	for arg in args {
 		if gen_vargs && arg_no == expected_types.len - 1 {
 			break
 		}

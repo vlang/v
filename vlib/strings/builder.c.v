@@ -6,6 +6,7 @@ module strings
 pub struct Builder {
 mut:
 	buf          []byte
+	str_calls    int
 pub mut:
 	len          int
 	initial_size int = 1
@@ -46,6 +47,11 @@ pub fn (b mut Builder) go_back(n int) {
 	b.len -= n
 }
 
+pub fn (b mut Builder) go_back_to(pos int) {
+	b.buf.trim(pos)
+	b.len = pos
+}
+
 pub fn (b mut Builder) writeln(s string) {
 	// for c in s {
 	// b.buf << c
@@ -78,9 +84,20 @@ pub fn (b &Builder) after(n int) string {
 	return string(copy)
 }
 
+// NB: in order to avoid memleaks and additional memory copies, after a call to b.str(),
+// the builder b will be empty. The returned string *owns* the accumulated data so far.
 pub fn (b mut Builder) str() string {
+	b.str_calls++
+	if b.str_calls > 1 {
+		panic('builder.str() should be called just once.\n' +
+			'If you want to reuse a builder, call b.free() first.')
+	}
 	b.buf << `\0`
-	return string(b.buf,b.len)
+	s := string(b.buf,b.len)
+	bis := b.initial_size
+	b.buf = []byte{cap: bis}
+	b.len = 0
+	return s
 }
 
 pub fn (b mut Builder) free() {
@@ -91,5 +108,5 @@ pub fn (b mut Builder) free() {
 	s := b.initial_size
 	b.buf = []byte{cap: s}
 	b.len = 0
+	b.str_calls = 0
 }
-

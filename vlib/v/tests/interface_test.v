@@ -46,7 +46,7 @@ fn test_perform_speak() {
 	perform_speak(dog)
 	cat := Cat{}
 	perform_speak(cat)
-	//perform_speakers([dog, cat])
+	perform_speakers([dog, cat])
 	/*
 	f := Foo {
 		speaker: dog
@@ -56,21 +56,9 @@ fn test_perform_speak() {
 
 fn perform_speakers(speakers []Speaker) {}
 
-/*
-interface Speak2er {
-	name ()string
-	speak()
-	}
-
-struct Foo {
-	speaker  Speaker
-	speakers []Speaker
-}
-
-
-
 interface Register {
-	register()}
+	register()
+}
 
 struct RegTest {
 	a int
@@ -81,12 +69,19 @@ fn (f RegTest) register() {}
 fn handle_reg(r Register) {}
 
 fn test_register() {
-	if true {
-		// QTODO
-		return
-	}
 	f := RegTest{}
 	f.register()
 	handle_reg(f)
 }
-*/
+
+interface Speaker2 {
+	name() string
+	speak()
+}
+
+
+struct Foo {
+	speaker  Speaker
+	speakers []Speaker
+}
+

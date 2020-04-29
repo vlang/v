@@ -1,4 +1,4 @@
 fn main() {
-	l := []int{}
+	mut l := []int{}
 	l << 'test'
 }

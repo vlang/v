@@ -40,11 +40,11 @@ pub mut:
 	sanitize            bool // use Clang's new "-fsanitize" option
 	is_debug            bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines           bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
-	is_keep_c           bool // -keep_c , tell v to leave the generated .tmp.c alone (since by default v will delete them after c backend finishes)
+	keep_c              bool // -keepc , tell v to leave the generated .tmp.c alone (since by default v will delete them after c backend finishes)
 	show_cc             bool // -showcc, print cc command
 	// NB: passing -cg instead of -g will set is_vlines to false and is_g to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
-	is_cache            bool // turns on v usage of the module cache to speed up compilation.
+	use_cache            bool // turns on v usage of the module cache to speed up compilation.
 	is_stats            bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	no_auto_free        bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	// TODO Convert this into a []string
@@ -64,7 +64,7 @@ pub mut:
 	// generating_vh    bool
 	fast                bool // use tcc/x64 codegen
 	enable_globals      bool // allow __global for low level code
-	// is_fmt bool
+	is_fmt              bool
 	is_bare             bool
 	lookup_path         []string
 	output_cross_c      bool

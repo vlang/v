@@ -1,6 +1,6 @@
 fn test_array_to_string_conversion() {
 	a := ['1', '2', '3', '4']
-	assert a.str() == '["1", "2", "3", "4"]'
+	assert a.str() == "['1', '2', '3', '4']"
 
 	b := [1, 2, 3, 4]
 	assert b.str() == '[1, 2, 3, 4]'
@@ -17,7 +17,7 @@ fn test_array_to_string_conversion() {
 
 fn test_interpolation_array_to_string() {
 	a := ['1', '2', '3']
-	assert '$a' == '["1", "2", "3"]'
+	assert '$a' == "['1', '2', '3']"
 
 	b := [1, 2, 3, 4]
 	assert '$b' == '[1, 2, 3, 4]'

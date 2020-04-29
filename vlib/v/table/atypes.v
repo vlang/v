@@ -66,7 +66,7 @@ pub fn (t Type) is_ptr() bool {
 [inline]
 pub fn (t Type) set_nr_muls(nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
-		panic('typ_set_nr_muls: nr_muls must be between 0 & 255')
+		panic('set_nr_muls: nr_muls must be between 0 & 255')
 	}
 	return (((int(t) >> 24) & 0xff) << 24) | (nr_muls << 16) | (u16(t) & 0xffff)
 }
@@ -76,7 +76,7 @@ pub fn (t Type) set_nr_muls(nr_muls int) Type {
 pub fn (t Type) to_ptr() Type {
 	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 255 {
-		panic('type_to_pre: nr_muls is already at max of 255')
+		panic('to_ptr: nr_muls is already at max of 255')
 	}
 	return (((int(t) >> 24) & 0xff) << 24) | ((nr_muls + 1) << 16) | (u16(t) & 0xffff)
 }
@@ -251,6 +251,7 @@ pub enum Kind {
 	f32
 	f64
 	char
+	size_t
 	bool
 	none_
 	string
@@ -308,6 +309,14 @@ pub fn (t &TypeSymbol) map_info() Map {
 	match t.info {
 		Map { return it }
 		else { panic('TypeSymbol.map_info(): no map info for type: $t.name') }
+	}
+}
+
+[inline]
+pub fn (t &TypeSymbol) struct_info() Struct {
+	match t.info {
+		Struct { return it }
+		else { panic('TypeSymbol.struct_info(): no struct info for type: $t.name') }
 	}
 }
 
@@ -408,7 +417,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		name: 'map'
 	})
 	t.register_type_symbol(TypeSymbol{
-		kind: .placeholder
+		kind: .size_t
 		name: 'size_t'
 	})
 	// TODO: remove. for v1 map compatibility
@@ -467,6 +476,7 @@ pub fn (k Kind) str() string {
 		.string { 'string' }
 		.char { 'char' }
 		.bool { 'bool' }
+		.size_t { 'size_t' }
 		.none_ { 'none' }
 		.array { 'array' }
 		.array_fixed { 'array_fixed' }
@@ -499,6 +509,7 @@ pub mut:
 }
 
 pub struct Interface {
+mut:
 	gen_types []string
 	foo       string
 }
@@ -522,6 +533,9 @@ mut:
 	has_default_expr bool
 	default_val      string
 	attr             string
+	is_pub           bool
+	is_mut           bool
+	is_global        bool
 }
 
 pub struct Array {
@@ -593,4 +607,20 @@ pub fn (table &Table) type_to_str(t Type) string {
 	}
 	*/
 	return res
+}
+
+pub fn (s Struct) find_field(name string) ?Field {
+	for field in s.fields {
+		if field.name == name {
+			return field
+		}
+	}
+	return none
+}
+
+pub fn (s Struct) get_field(name string) Field {
+	if field := s.find_field(name) {
+		return field
+	}
+	panic('unknown field `$name`')
 }

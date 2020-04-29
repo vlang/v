@@ -165,11 +165,11 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			'-showcc' {
 				res.show_cc = true
 			}
-			'-cache' {
-				res.is_cache = true
+			'-usecache' {
+				res.use_cache = true
 			}
 			'-keepc' {
-				res.is_keep_c = true
+				res.keep_c = true
 			}
 			'-x64' {
 				res.backend = .x64

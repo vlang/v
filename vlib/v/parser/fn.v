@@ -5,7 +5,6 @@ module parser
 
 import v.ast
 import v.table
-import v.scanner
 import v.token
 import v.util
 
@@ -38,10 +37,14 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 		p.scope.register('err', ast.Var{
 			name: 'err'
 			typ: table.string_type
+			pos: p.tok.position()
+			is_used: true
 		})
 		p.scope.register('errcode', ast.Var{
 			name: 'errcode'
 			typ: table.int_type
+			pos: p.tok.position()
+			is_used: true
 		})
 		is_or_block_used = true
 		or_stmts = p.parse_block_no_scope()
@@ -136,7 +139,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .name {
 		// TODO high order fn
 		name = p.check_name()
-		if !is_js && !is_c && !p.pref.translated && scanner.contains_capital(name) {
+		if !is_js && !is_c && !p.pref.translated && util.contains_capital(name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
 		if is_method && p.table.get_type_symbol(rec_type).has_method(name) {
@@ -165,6 +168,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			name: arg.name
 			typ: arg.typ
 			is_mut: arg.is_mut
+			pos: p.tok.position()
+			is_used: true
 		})
 		// Do not allow `mut` with simple types
 		// TODO move to checker?
@@ -265,6 +270,8 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
 			typ: arg.typ
+			pos: p.tok.position()
+			is_used: true
 		})
 	}
 	mut return_type := table.void_type
@@ -277,7 +284,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		stmts = p.parse_block_no_scope()
 	}
 	p.close_scope()
-	func := table.Fn{
+	mut func := table.Fn{
 		args: args
 		is_variadic: is_variadic
 		return_type: return_type

@@ -1,4 +1,0 @@
-fn main() {
-	l := []int{}
-	l << 'test'
-}

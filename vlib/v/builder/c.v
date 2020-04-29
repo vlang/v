@@ -18,10 +18,7 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 	t2 := time.ticks()
 	check_time := t2 - t1
 	b.info('CHECK: ${check_time}ms')
-	if b.checker.nr_errors > 0 {
-		b.print_errors(b.checker.errors)
-		exit(1)
-	}
+	b.print_warnings_and_errors()
 	// println('starting cgen...')
 	// TODO: move gen.cgen() to c.gen()
 	res := gen.cgen(b.parsed_files, b.table, b.pref)

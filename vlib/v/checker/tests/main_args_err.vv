@@ -1,0 +1,3 @@
+fn main(a string) {
+	println(a)
+}

@@ -32,11 +32,13 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 					name: ident.name
 					expr: exprs[i]
 					is_mut: ident.is_mut || p.inside_for
+					pos: ident.pos
 				})
 			} else {
 				p.scope.register(ident.name, ast.Var{
 					name: ident.name
 					is_mut: ident.is_mut || p.inside_for
+					pos: ident.pos
 				})
 			}
 		}

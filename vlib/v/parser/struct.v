@@ -38,6 +38,10 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut mut_pos := -1
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
+	mut global_pos := -1
+	mut is_field_mut := false
+	mut is_field_pub := false
+	mut is_field_global := false
 	if !no_body {
 		p.check(.lcbr)
 		for p.tok.kind != .rcbr {
@@ -48,19 +52,44 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			if p.tok.kind == .key_pub {
 				p.check(.key_pub)
 				if p.tok.kind == .key_mut {
+					if pub_mut_pos != -1 {
+						p.error('redefinition of `pub mut` section')
+					}
 					p.check(.key_mut)
 					pub_mut_pos = fields.len
+					is_field_pub = true
+					is_field_mut = true
+					is_field_global = false
 				} else {
+					if pub_pos != -1 {
+						p.error('redefinition of `pub` section')
+					}
 					pub_pos = fields.len
+					is_field_pub = true
+					is_field_mut = false
+					is_field_global = false
 				}
 				p.check(.colon)
 			} else if p.tok.kind == .key_mut {
+				if mut_pos != -1 {
+					p.error('redefinition of `mut` section')
+				}
 				p.check(.key_mut)
 				p.check(.colon)
 				mut_pos = fields.len
+				is_field_pub = false
+				is_field_mut = true
+				is_field_global = false
 			} else if p.tok.kind == .key_global {
+				if global_pos != -1 {
+					p.error('redefinition of `global` section')
+				}
 				p.check(.key_global)
 				p.check(.colon)
+				global_pos = fields.len
+				is_field_pub = true
+				is_field_mut = true
+				is_field_global = true
 			}
 			field_name := p.check_name()
 			field_pos := p.tok.position()
@@ -108,6 +137,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				typ: typ
 				default_expr: default_expr
 				has_default_expr: has_default_expr
+				is_pub: is_field_pub
+				is_mut: is_field_mut
+				is_global: is_field_global
 			}
 			// println('struct field $ti.name $field_name')
 		}

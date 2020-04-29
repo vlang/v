@@ -1,6 +1,7 @@
 module runner
 
 import os
+import v.util
 
 pub struct RunnerOptions {
 pub:
@@ -33,18 +34,9 @@ pub fn full_path_to_v(dirs_in int) string {
 	return vexec
 }
 
-fn find_working_diff_command() ?string {
-	for diffcmd in ['colordiff', 'diff', 'colordiff.exe', 'diff.exe'] {
-		p := os.exec('$diffcmd --version') or { continue }
-		if p.exit_code == 0 { return diffcmd }
-	}
-	return error('no working diff command found')
-}
-
 fn diff_files( file_result, file_expected string ) string {
-	diffcmd := find_working_diff_command() or { return err }
-	diff := os.exec('$diffcmd   --minimal  --text   --unified=2  ${file_result}  ${file_expected}') or { return 'found diff command "$diffcmd" does not work' }
-	return diff.output
+	diffcmd := util.find_working_diff_command() or { return err }
+	return util.color_compare_files(diffcmd, file_result, file_expected)
 }
 
 pub fn run_repl_file(wd string, vexec string, file string) ?string {

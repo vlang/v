@@ -7,11 +7,12 @@ import strings
 
 pub struct array {
 pub:
+	element_size int
+pub mut:
 	data         voidptr// Using a void pointer allows to implement arrays without generics and without generating
 // extra code for every type.
 	len          int
 	cap          int
-	element_size int
 }
 
 // Internal function, used by V (`nums := []int`)
@@ -317,9 +318,9 @@ pub fn (a []string) str() string {
 	sb.write('[')
 	for i in 0..a.len {
 		val := a[i]
-		sb.write('"')
+		sb.write("\'")
 		sb.write(val)
-		sb.write('"')
+		sb.write("\'")
 		if i < a.len - 1 {
 			sb.write(', ')
 		}

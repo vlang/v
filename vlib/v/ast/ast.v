@@ -134,9 +134,10 @@ mut:
 
 pub struct ConstDecl {
 pub:
-	fields []ConstField
 	is_pub bool
 	pos    token.Position
+pub mut:
+	fields []ConstField
 }
 
 pub struct StructDecl {
@@ -162,10 +163,10 @@ pub:
 
 pub struct StructInitField {
 pub:
-	name          string
 	expr          Expr
 	pos           token.Position
 mut:
+	name          string
 	typ           table.Type
 	expected_type table.Type
 }
@@ -173,10 +174,10 @@ mut:
 pub struct StructInit {
 pub:
 	pos      token.Position
-	fields   []StructInitField
 	is_short bool
 mut:
 	typ      table.Type
+	fields   []StructInitField
 }
 
 // import statement
@@ -198,7 +199,6 @@ pub struct FnDecl {
 pub:
 	name          string
 	stmts         []Stmt
-	return_type   table.Type
 	args          []table.Arg
 	is_deprecated bool
 	is_pub        bool
@@ -213,6 +213,8 @@ pub:
 	is_builtin    bool // this function is defined in builtin/strconv
 	ctdefine      string // has [if myflag] tag
 	pos           token.Position
+pub mut:
+	return_type   table.Type
 }
 
 pub struct BranchStmt {
@@ -224,10 +226,10 @@ pub struct CallExpr {
 pub:
 	pos                token.Position
 	left               Expr // `user` in `user.register()`
-	is_method          bool
 	mod                string
 mut:
 	name               string
+	is_method          bool
 	args               []CallArg
 	expected_arg_types []table.Type
 	is_c               bool
@@ -270,12 +272,13 @@ pub struct Stmt {
 */
 pub struct Var {
 pub:
-	name   string
-	expr   Expr
-	is_mut bool
+	name    string
+	expr    Expr
+	is_mut  bool
 mut:
-	typ    table.Type
-	pos    token.Position
+	typ     table.Type
+	pos     token.Position
+	is_used bool
 }
 
 pub struct GlobalDecl {
@@ -291,10 +294,11 @@ pub struct File {
 pub:
 	path         string
 	mod          Module
-	imports      []Import
 	stmts        []Stmt
 	scope        &Scope
 	global_scope &Scope
+mut:
+	imports      []Import
 }
 
 pub struct IdentFn {
@@ -330,11 +334,11 @@ pub:
 	tok_kind token.Kind
 	mod      string
 	pos      token.Position
-	is_mut   bool
 mut:
 	name     string
 	kind     IdentKind
 	info     IdentInfo
+	is_mut   bool
 }
 
 pub fn (i &Ident) var_info() IdentVar {
@@ -507,11 +511,11 @@ pub:
 
 pub struct AssignStmt {
 pub:
-	left        []Ident
 	right       []Expr
 	op          token.Kind
 	pos         token.Position
-mut:
+pub mut:
+	left        []Ident
 	left_types  []table.Type
 	right_types []table.Type
 	is_static   bool // for translated code only
@@ -630,18 +634,21 @@ pub:
 
 pub struct ArrayInit {
 pub:
-	pos       token.Position
-	exprs     []Expr
-	is_fixed  bool
-	has_val   bool
-	mod       string
-	len_expr  Expr
-	has_len   bool
-	has_cap   bool
-	cap_expr  Expr
+	pos             token.Position
+	exprs           []Expr
+	is_fixed        bool
+	has_val         bool
+	mod             string
+	len_expr        Expr
+	has_len         bool
+	has_cap         bool
+	cap_expr        Expr
 mut:
-	elem_type table.Type
-	typ       table.Type
+	is_interface    bool // array of interfaces e.g. `[]Animal` `[Dog{}, Cat{}]`
+	interface_types []table.Type // [Dog, Cat]
+	interface_type  table.Type // Animal
+	elem_type       table.Type
+	typ             table.Type
 }
 
 pub struct MapInit {
@@ -669,8 +676,8 @@ pub:
 	expr      Expr // `buf`
 	arg       Expr // `n` in `string(buf, n)`
 	typ       table.Type // `string`
-	typname   string
 mut:
+	typname   string
 	expr_type table.Type // `byteptr`
 	has_arg   bool
 }
@@ -840,6 +847,82 @@ fn (expr Expr) position() token.Position {
 			return it.pos
 		}
 		// ast.TypeOf { }
+		else {
+			return token.Position{}
+		}
+	}
+}
+
+fn (stmt Stmt) position() token.Position {
+	match mut stmt {
+		AssertStmt {
+			return it.pos
+		}
+		AssignStmt {
+			return it.pos
+		}
+		// Attr {
+		// }
+		// Block {
+		// }
+		// BranchStmt {
+		// }
+		Comment {
+			return it.pos
+		}
+		CompIf {
+			return it.pos
+		}
+		ConstDecl {
+			return it.pos
+		}
+		// DeferStmt {
+		// }
+		EnumDecl {
+			return it.pos
+		}
+		ExprStmt {
+			return it.pos
+		}
+		FnDecl {
+			return it.pos
+		}
+		ForCStmt {
+			return it.pos
+		}
+		ForInStmt {
+			return it.pos
+		}
+		ForStmt {
+			return it.pos
+		}
+		// GlobalDecl {
+		// }
+		// GoStmt {
+		// }
+		// GotoLabel {
+		// }
+		// GotoStmt {
+		// }
+		// HashStmt {
+		// }
+		Import {
+			return it.pos
+		}
+		// InterfaceDecl {
+		// }
+		// Module {
+		// }
+		Return {
+			return it.pos
+		}
+		StructDecl {
+			return it.pos
+		}
+		// TypeDecl {
+		// }
+		// UnsafeStmt {
+		// }
 		else {
 			return token.Position{}
 		}
