@@ -81,7 +81,7 @@ interface Speaker2 {
 
 
 struct Foo {
-	//speaker  Speaker
-	//speakers []Speaker
+	speaker  Speaker
+	speakers []Speaker
 }
 

@@ -599,11 +599,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Import {}
 		ast.InterfaceDecl {
-			g.definitions.writeln('//interface')
-			g.definitions.writeln('typedef struct {')
-			g.definitions.writeln('\tvoid* _object;')
-			g.definitions.writeln('\tint _interface_idx;')
-			g.definitions.writeln('} $it.name;')
+			// definitions are sorted and added in write_types
 		}
 		ast.Module {
 			g.is_builtin_mod = it.name == 'builtin'
@@ -2271,6 +2267,13 @@ int typ;
 				g.definitions.writeln('typedef $fixed $styp [$len];')
 				// }
 			}
+			table.Interface {
+				g.definitions.writeln('//interface')
+				g.definitions.writeln('typedef struct {')
+				g.definitions.writeln('\tvoid* _object;')
+				g.definitions.writeln('\tint _interface_idx;')
+				g.definitions.writeln('} $typ.name;')
+			}
 			else {}
 		}
 	}
@@ -2287,6 +2290,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 	// loop over types
 	for t in typesa {
 		if t.kind == .interface_ {
+			dep_graph.add(t.name, [])
 			continue
 		}
 		// create list of deps
