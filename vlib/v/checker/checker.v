@@ -481,6 +481,10 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 		}
 		ast.SelectorExpr {
 			// retrieve table.Field
+			if it.expr_type == 0 {
+				c.error('0 type in SelectorExpr', expr.position())
+				return
+			}
 			typ_sym := c.table.get_type_symbol(it.expr_type)
 			match typ_sym.kind {
 				.struct_ {
