@@ -1,42 +1,7 @@
-fns.txt
-*.dSYM
-*_test
-
-/v
-/v2
-/v3
-/vprod
-/v-static
-/v_old
-/v_g
-/v_cg
-/v_prod
-/v_prod_cg
-/v_prod_g
-/vjs
-
-/v.c
-/v.*.c
-/v.c.out
-
-/cmd/tools/check-md
-/cmd/tools/performance_compare
-/cmd/tools/oldv
-/cmd/tools/vrepl
-/cmd/tools/vself
-/cmd/tools/vtest
-/cmd/tools/vtest-compiler
-/cmd/tools/vtest-fmt
-/cmd/tools/vtest-fixed
-/cmd/tools/vfmt
-/cmd/tools/vbin2v
-/cmd/tools/vup
-/cmd/tools/vpm
-/cmd/tools/vcreate
-/cmd/tools/vbuild-examples
-/cmd/tools/vbuild-tools
-/cmd/tools/vbuild-vbinaries
-
+# ignore all build binaries
+* 
+!*/
+!*.*
 *.exe
 *.o
 *.so
@@ -48,44 +13,52 @@ fns.txt
 *.pdb
 *.dll
 *.lib
-
-#
-# macOS.gitignore
-#
-# General
-.DS_Store
-
-# Thumbnails
-._*
-.vrepl_temp.v
+*.bak
 a.out
-vlib/os/bare/bare_example_linux
 
-info.log
-.vscode/**
+# ignore v build files
+/v.c
+/v.*.c
+/v.c.out
+.vrepl_temp.v
+fns.txt
 
-# vim/emacs editor backup files
+# ignore temp directories
+/temp
+/tmp
+
+# unignore special files without extension
+!.github/PULL_REQUEST_TEMPLATE
+!.editorconfig
+!.gitattributes
+!.gitignore
+!BSDmakefile
+!Dockerfile
+!Dockerfile.alpine
+!Dockerfile.cross
+!LICENSE
+!Makefile
+
+# ignore editor files
+.idea
+.project
+.classpath
+.c9
+*.launch
+.settings/
+*.sublime-workspace
+.vscode/
 *~
-
-# vim gitignore
 *.swp
 *.swo
 *.swn
 
-thirdparty/freetype/
-thirdparty/sdl2/
-thirdparty/SDL2_image/
-thirdparty/SDL2_mixer/
-thirdparty/SDL2_ttf/
-
+# ignore debugger files
 cachegrind.out.*
-
 .gdb_history
-/thirdparty/pg
-exe
-vlib/v/tests/inout/*.v
-!vlib/v/tests/inout/*_test.v
-vlib/v/checker/tests/inout/*.v
-vlib/v/checker/tests/inout/*.c
-!vlib/v/checker/tests/inout/*_test.v
-vlib/v/checker/tests/*.v
+*.dSYM
+
+# ignore system files
+.DS_Store
+._*
+thumbs.db
