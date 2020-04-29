@@ -2,14 +2,16 @@ module dl
 
 #include <dlfcn.h>
 
-fn C.dlopen(filename charptr, flags int) voidptr
-fn C.dlsym(handle voidptr, symbol charptr) voidptr
-fn C.dlclose(handle voidptr) int
-
 pub const (
 	RTLD_NOW = C.RTLD_NOW
-	DL_EXT = '.so'
+	DL_EXT   = '.so'
 )
+
+fn C.dlopen(filename charptr, flags int) voidptr
+
+fn C.dlsym(handle voidptr, symbol charptr) voidptr
+
+fn C.dlclose(handle voidptr) int
 
 // open loads the dynamic shared object.
 pub fn open(filename string, flags int) voidptr {

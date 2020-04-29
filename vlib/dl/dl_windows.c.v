@@ -2,11 +2,13 @@ module dl
 
 pub const (
 	RTLD_NOW = 0
-	DL_EXT = '.dll'
+	DL_EXT   = '.dll'
 )
 
 fn C.LoadLibrary(libfilename C.LPCWSTR) voidptr
+
 fn C.GetProcAddress(handle voidptr, procname C.LPCSTR) voidptr
+
 fn C.FreeLibrary(handle voidptr) bool
 
 // open loads a given module into the address space of the calling process.

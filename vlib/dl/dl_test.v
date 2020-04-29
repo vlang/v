@@ -8,7 +8,6 @@ fn test_dl() {
 	$if windows {
 		run_test_invalid_lib_windows()
 		run_test_valid_lib_windows()
-
 		run_test_invalid_sym_windows()
 		run_test_valid_sym_windows()
 		return
