@@ -651,7 +651,7 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		return method.return_type
 	}
 	// TODO: str methods
-	if method_name == 'str' {
+	if left_type_sym.kind in [.array, .array_fixed, .map, .struct_, .enum_] && method_name == 'str' {
 		call_expr.receiver_type = left_type
 		call_expr.return_type = table.string_type
 		return table.string_type
