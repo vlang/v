@@ -1126,13 +1126,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			expr: expr
 			has_expr: has_expr
 		}
-		// Allow commas after enum, helpful for
-		// enum Color {
-		// r,g,b
-		// }
-		if p.tok.kind == .comma {
-			p.next()
-		}
 	}
 	p.check(.rcbr)
 	p.table.register_type_symbol(table.TypeSymbol{
