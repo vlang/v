@@ -974,7 +974,12 @@ pub fn (mut c Checker) return_stmt(return_stmt mut ast.Return) {
 }
 
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
-	for field in decl.fields {
+	for i, field in decl.fields {
+		for j in 0..i {
+			if field.name == decl.fields[j].name {
+				c.error('field name `$field.name` duplicate', field.pos)
+			}
+		}
 		if field.has_expr {
 			match field.expr {
 				ast.IntegerLiteral {}
