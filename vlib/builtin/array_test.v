@@ -340,7 +340,7 @@ fn double_up(a mut []int) {
 }
 
 fn double_up_v2(a mut []int) {
-	for i, val in a {
+	for i, _ in a {
 		a[i] = a[i]*2 // or val*2, doesn't matter
 	}
 }
@@ -528,7 +528,7 @@ fn test_map() {
 	nums := [1, 2, 3, 4, 5, 6]
 	strs := ['v', 'is', 'awesome']
 
-	assert nums.map(it * 10) == [10, 20, 30, 40, 50, 60, 70]
+	assert nums.map(it * 10) == [10, 20, 30, 40, 50, 60]
 	assert nums.map('$it') == ['1', '2', '3', '4', '5', '6']
 	assert nums.map(it % 2 == 0) == [false, true, false, true, false, true]
 
