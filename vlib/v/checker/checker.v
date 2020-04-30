@@ -599,6 +599,7 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 	left_type_sym := c.table.get_type_symbol(left_type)
 	method_name := call_expr.name
 	// TODO: remove this for actual methods, use only for compiler magic
+	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in ['filter', 'clone', 'repeat', 'reverse',
 		'map', 'slice'] {
 		if method_name in ['filter', 'map'] {
@@ -606,24 +607,28 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 			mut scope := c.file.scope.innermost(call_expr.pos.pos)
 			scope.update_var_type('it', array_info.elem_type)
 		}
+
+		mut arg_type := left_type
 		for arg in call_expr.args {
-			c.expr(arg.expr)
+			arg_type = c.expr(arg.expr)
 		}
-		// need to return `array_xxx` instead of `array`
+
 		call_expr.return_type = left_type
-		if method_name == 'clone' {
+		call_expr.receiver_type = left_type
+		if method_name == 'map' && call_expr.args.len == 1 {
+			call_expr.return_type = c.table.find_or_register_array(arg_type, 1)
+		} else if method_name == 'clone' {
+			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
 			call_expr.receiver_type = left_type.to_ptr()
 			// call_expr.return_type = call_expr.receiver_type
-		} else {
-			call_expr.receiver_type = left_type
 		}
-		return left_type
+		return call_expr.return_type
 	} else if left_type_sym.kind == .array && method_name in ['first', 'last'] {
 		info := left_type_sym.info as table.Array
 		call_expr.return_type = info.elem_type
 		call_expr.receiver_type = left_type
-		return info.elem_type
+		return call_expr.return_type
 	}
 	if method := c.table.type_find_method(left_type_sym, method_name) {
 		if !method.is_pub && !c.is_builtin_mod && !c.pref.is_test && left_type_sym.mod != c.mod &&
