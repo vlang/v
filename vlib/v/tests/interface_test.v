@@ -46,6 +46,7 @@ fn test_perform_speak() {
 	perform_speak(dog)
 	cat := Cat{}
 	perform_speak(cat)
+	perform_speak(Cat{})
 	perform_speakers([dog, cat])
 	/*
 	f := Foo {

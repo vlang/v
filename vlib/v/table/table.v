@@ -490,7 +490,9 @@ pub fn (t &Table) check(got, expected Type) bool {
 		mut info := exp_type_sym.info as Interface
 		// println('gen_types before')
 		// println(info.gen_types)
-		info.gen_types << got_type_sym.name
+		if got_type_sym.name !in info.gen_types {
+			info.gen_types << got_type_sym.name
+		}
 		// println('adding gen_type $got_type_sym.name')
 		// println(info.gen_types)
 		return true
