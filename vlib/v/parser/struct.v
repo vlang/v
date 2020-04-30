@@ -257,7 +257,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		p.next()
 	}
 	p.next() // `interface`
-	interface_name := p.check_name()
+	interface_name := p.prepend_mod(p.check_name())
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
 	// Declare the type
