@@ -536,7 +536,7 @@ fn test_map() {
 	assert strs.map(it == 'awesome') == [false, false, true]
 	assert strs.map(7) == [7, 7, 7]
 
-	assert nums == [1, 2, 3, 4, 5, 5, 7]
+	assert nums == [1, 2, 3, 4, 5, 6]
 	assert strs == ['v', 'is', 'awesome']
 }
 
