@@ -104,16 +104,15 @@ mut:
 }
 
 [inline]
+[unsafe_fn]
 fn new_dense_array(value_bytes int) DenseArray {
-	unsafe {
-		return DenseArray{
-			value_bytes: value_bytes
-			cap: 8
-			size: 0
-			deletes: 0
-			keys: &string(malloc(8 * sizeof(string)))
-			values: malloc(8 * value_bytes)
-		}
+	return DenseArray{
+		value_bytes: value_bytes
+		cap: 8
+		size: 0
+		deletes: 0
+		keys: &string(malloc(8 * sizeof(string)))
+		values: malloc(8 * value_bytes)
 	}
 }
 
@@ -154,7 +153,7 @@ fn (d mut DenseArray) zeros_to_end() {
 			tmp_key := d.keys[count]
 			d.keys[count] = d.keys[i]
 			d.keys[i] = tmp_key
-			// swap values (TODO: optimize)
+			// swap values (TODO: optimize memswap)
 			C.memcpy(tmp_value, d.values + count * d.value_bytes, d.value_bytes)
 			C.memcpy(d.values + count * d.value_bytes, d.values + i * d.value_bytes, d.value_bytes)
 			C.memcpy(d.values + i * d.value_bytes, tmp_value, d.value_bytes)
@@ -193,10 +192,6 @@ pub mut:
 	size        int
 }
 
-// TODO: remove this after vc is regenerated.
-fn new_map(n, value_bytes int) map {
-   return new_map_1(value_bytes)
-}
 fn new_map_1(value_bytes int) map {
 	return map{
 		value_bytes: value_bytes
@@ -349,9 +344,7 @@ fn (m map) get3(key string, zero voidptr) voidptr {
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if fast_string_eq(key, m.key_values.keys[kv_index]) {
-			out := malloc(m.value_bytes)
-			C.memcpy(out, m.key_values.values + kv_index * m.value_bytes, m.value_bytes)
-			return out
+			return m.key_values.values + kv_index * m.value_bytes
 		}
 		index += 2
 		meta += probe_inc
