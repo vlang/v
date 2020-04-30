@@ -50,7 +50,7 @@ pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 pub fn (mut c Checker) check(ast_file ast.File) {
 	c.file = ast_file
 	for i, ast_import in ast_file.imports {
-		for j in 0..i {
+		for j in 0 .. i {
 			if ast_import.mod == ast_file.imports[j].mod {
 				c.error('module name `$ast_import.mod` duplicate', ast_import.pos)
 			}
@@ -976,7 +976,7 @@ pub fn (mut c Checker) return_stmt(return_stmt mut ast.Return) {
 
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	for i, field in decl.fields {
-		for j in 0..i {
+		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
 				c.error('field name `$field.name` duplicate', field.pos)
 			}
@@ -1439,7 +1439,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 }
 
 fn (mut c Checker) stmts(stmts []ast.Stmt) {
-	mut unreachable := token.Position{line_nr: -1}
+	mut unreachable := token.Position{
+		line_nr: -1
+	}
 	c.expected_type = table.void_type
 	for stmt in stmts {
 		if c.scope_returns {
@@ -1877,7 +1879,8 @@ pub fn (mut c Checker) if_expr(node mut ast.IfExpr) table.Type {
 					// p.warn('if expr ret $type_sym.name')
 					t := c.expr(it.expr)
 					if is_ternary && t != first_typ {
-						c.error('mismatched types `${c.table.type_to_str(first_typ)}` and `${c.table.type_to_str(t)}`', node.pos)
+						c.error('mismatched types `${c.table.type_to_str(first_typ)}` and `${c.table.type_to_str(t)}`',
+							node.pos)
 					}
 					node.typ = t
 					return t

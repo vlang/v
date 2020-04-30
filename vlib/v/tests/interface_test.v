@@ -1,3 +1,4 @@
+
 struct Dog {
 	breed string
 }
@@ -28,10 +29,6 @@ fn test_todo() {
 	else{}
 }
 
-interface Speaker {
-	name() string
-	speak()
-}
 
 fn perform_speak(s Speaker) {
 	s.speak()
@@ -46,6 +43,7 @@ fn test_perform_speak() {
 	perform_speak(dog)
 	cat := Cat{}
 	perform_speak(cat)
+	perform_speak(Cat{})
 	perform_speakers([dog, cat])
 	/*
 	f := Foo {
@@ -83,5 +81,10 @@ interface Speaker2 {
 struct Foo {
 	speaker  Speaker
 	speakers []Speaker
+}
+
+interface Speaker {
+	name() string
+	speak()
 }
 

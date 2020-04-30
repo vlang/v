@@ -33,10 +33,11 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 pub fn (mut b Builder) build_c(v_files []string, out_file string) {
 	b.out_name_c = out_file
 	b.info('build_c($out_file)')
+	output := b.gen_c(v_files)
 	mut f := os.create(out_file) or {
 		panic(err)
 	}
-	f.writeln(b.gen_c(v_files))
+	f.writeln(output)
 	f.close()
 	// os.write_file(out_file, b.gen_c(v_files))
 }

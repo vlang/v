@@ -110,7 +110,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .lpar {
 		p.next() // (
 		is_method = true
-		rec_mut = p.tok.kind in [.key_var, .key_mut]
+		rec_mut = p.tok.kind == .key_mut
 		if rec_mut {
 			p.next() // `mut`
 		}
