@@ -31,7 +31,7 @@
 --regex-V=/^[[:blank:]]*\}[[:blank:]]*$//{scope=pop}{placeholder}
 
 ## Variables:
---regex-V=/^[[:blank:]]*(mut[[:blank:]]*)([a-zA-Z_][0-9a-zA-Z_]+)[[:blank:]]*:=/\2/v/{scope=ref}
+--regex-V=/^[[:blank:]]*(mut[[:blank:]]+)?([a-zA-Z_][0-9a-zA-Z_]+)[[:blank:]]*:=/\2/v/
 
 ## Consts:
 --regex-V=/^(pub)?[[:blank:]]*const[[:blank:]]+\([[:blank:]]*/const/c/{scope=push}
