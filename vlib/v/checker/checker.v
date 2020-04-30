@@ -48,6 +48,13 @@ pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 
 pub fn (mut c Checker) check(ast_file ast.File) {
 	c.file = ast_file
+	for i, ast_import in ast_file.imports {
+		for j in 0..i {
+			if ast_import.mod == ast_file.imports[j].mod {
+				c.error('module name `$ast_import.mod` duplicate', ast_import.pos)
+			}
+		}
+	}
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
