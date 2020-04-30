@@ -532,7 +532,7 @@ fn test_map() {
 	assert nums.map('$it') == ['1', '2', '3', '4', '5', '6']
 	assert nums.map(it % 2 == 0) == [false, true, false, true, false, true]
 
-	assert strs.map(it.to_tupper()) == ['V', 'IS', 'AWESOME']
+	assert strs.map(it.to_upper()) == ['V', 'IS', 'AWESOME']
 	assert strs.map(it == 'awesome') == [false, false, true]
 	assert strs.map(7) == [7, 7, 7]
 
