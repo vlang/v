@@ -1,0 +1,3 @@
+fn char_backtick() {
+	`\``
+}

@@ -40,14 +40,10 @@ pub fn fmt(file ast.File, table &table.Table) string {
 	}
 	f.cur_mod = 'main'
 	for stmt in file.stmts {
-		// TODO `if stmt is ast.Import`
-		match stmt {
-			ast.Import {
-				// Just remember the position of the imports for now
-				f.import_pos = f.out.len
-				// f.imports(f.file.imports)
-			}
-			else {}
+		if stmt is ast.Import {
+			// Just remember the position of the imports for now
+			f.import_pos = f.out.len
+			// f.imports(f.file.imports)
 		}
 		f.stmt(stmt)
 	}

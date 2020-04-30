@@ -929,9 +929,6 @@ fn (s mut Scanner) ident_char() string {
 			s.error('invalid character literal (more than one character)\n' + 'use quotes for strings, backticks for characters')
 		}
 	}
-	if c == '\\`' {
-		return '`'
-	}
 	// Escapes a `'` character
 	return if c == "\'" { '\\' + c } else { c }
 }

@@ -5,7 +5,7 @@ fn fn_variadic(arg int, args ...string) {
 }
 
 fn fn_with_assign_stmts() {
-	a, b := fn_with_multi_return()
+	_, _ := fn_with_multi_return()
 }
 
 fn fn_with_multi_return() (int, string) {
