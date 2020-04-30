@@ -29,6 +29,7 @@ mut:
 	fn_return_type table.Type // current function's return type
 	const_decl     string
 	const_deps     []string
+	const_names    []string
 	pref           &pref.Preferences // Preferences shared from V struct
 	in_for_count   int // if checker is currently in an for loop
 	// checked_ident  string // to avoid infinit checker loops
@@ -1271,6 +1272,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			mut field_names := []string{}
 			mut field_order := []int{}
 			for i, field in it.fields {
+				if field.name in c.const_names {
+					c.error('field name `$field.name` duplicate', field.pos)
+				}
+				c.const_names << field.name
 				field_names << field.name
 				field_order << i
 			}
@@ -1873,7 +1878,7 @@ pub fn (mut c Checker) if_expr(node mut ast.IfExpr) table.Type {
 					t := c.expr(it.expr)
 					if is_ternary && t != first_typ {
 						c.error('mismatched types `${c.table.type_to_str(first_typ)}` and `${c.table.type_to_str(t)}`', node.pos)
-					}					
+					}
 					node.typ = t
 					return t
 				}
