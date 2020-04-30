@@ -106,7 +106,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
-		} else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names || (p.tok.lit[0].is_capital() &&
+		} else if p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot) && (p.tok.lit in table.builtin_type_names || (p.tok.lit[0].is_capital() &&
 			!p.tok.lit.is_upper()) || p.peek_tok.kind == .dot) {
 			// Sum type match
 			typ := p.parse_type()

@@ -1,9 +1,8 @@
-module main
-
 enum Color {
-    green = 'green'
-    yellow = 1+1
+    green
+    yellow
     blue
+	green
 }
 
 fn main(){

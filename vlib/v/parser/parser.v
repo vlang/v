@@ -1002,6 +1002,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		if p.tok.kind == .comment {
 			p.comment()
 		}
+		pos := p.tok.position()
 		name := p.prepend_mod(p.check_name())
 		// name := p.check_name()
 		// println('!!const: $name')
@@ -1010,7 +1011,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		field := ast.ConstField{
 			name: name
 			expr: expr
-			pos: p.tok.position()
+			pos: pos
 		}
 		fields << field
 		p.global_scope.register(field.name, field)
@@ -1124,13 +1125,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			pos: pos
 			expr: expr
 			has_expr: has_expr
-		}
-		// Allow commas after enum, helpful for
-		// enum Color {
-		// r,g,b
-		// }
-		if p.tok.kind == .comma {
-			p.next()
 		}
 	}
 	p.check(.rcbr)
