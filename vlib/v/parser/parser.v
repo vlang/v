@@ -398,7 +398,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				pos: assert_pos
 			}
 		}
-		.key_mut, .key_static, .key_var {
+		.key_mut, .key_static {
 			return p.assign_stmt()
 		}
 		.key_for {

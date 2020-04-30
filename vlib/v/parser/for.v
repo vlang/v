@@ -23,8 +23,8 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			pos: pos
 			is_inf: true
 		}
-	} else if p.tok.kind in [.key_mut, .key_var] {
-		p.error('`var` is not needed in for loops')
+	} else if p.tok.kind == .key_mut {
+		p.error('`mut` is not needed in for loops')
 	} else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] || p.tok.kind == .semicolon {
 		// `for i := 0; i < 10; i++ {`
 		mut init := ast.Stmt{}
@@ -76,7 +76,6 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			val_var_pos = p.tok.position()
 			key_var_name = val_var_name
 			val_var_name = p.check_name()
-			
 			if p.scope.known_var(key_var_name) {
 				p.error('redefinition of key iteration variable `$key_var_name`')
 			}
