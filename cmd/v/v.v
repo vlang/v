@@ -174,6 +174,9 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			'-x64' {
 				res.backend = .x64
 			}
+			'-print_v_files' {
+				res.print_v_files = true
+			}
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')
 				i++

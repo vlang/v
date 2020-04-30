@@ -1,0 +1,44 @@
+## TODO: support more precise struct/const/enum fields
+
+--langdef=V
+--map-V=+.v
+--map-V=+.vv
+--map-V=+.vsh
+--kinddef-V=m,imodule,imported modules
+--kinddef-V=M,module,modules
+--kinddef-V=C,cfunction,cfunctions
+--kinddef-V=f,function,functions
+--kinddef-V=h,method,functions
+--kinddef-V=c,const,constants
+--kinddef-V=v,variable,variables
+--kinddef-V=s,struct,structs
+--kinddef-V=e,enum,enums
+--kinddef-V=i,interface,interfaces
+--kinddef-V=S,sfield,struct field
+--kinddef-V=E,efield,enum field
+--_roledef-V=m.imported,imported module
+--_roledef-V=M.declared,module declaration
+--regex-V=/^module[[:blank:]]+([0-9a-zA-Z]+)[[:blank:]]*$/\1/M/{_role=declared}{scope=push}
+--regex-V=/^import[[:blank:]]+(([0-9a-zA-Z]+)?|.*\.([a-zA-Z_][0-9a-zA-Z]+))[[:blank:]]*$/\2\3/m/{_role=imported}{scope=ref}
+--regex-V=/^[[:blank:]]*fn[[:blank:]]+C\.([a-zA-Z_][0-9a-zA-Z_]*)\(/C.\1/C/
+--regex-V=/^(pub)?[[:blank:]]*fn[[:blank:]]+([a-zA-Z_][0-9a-zA-Z_]*)\(/\2/f/
+--regex-V=/^(pub)?[[:blank:]]*fn[[:blank:]]+\(.*\)[[:blank:]]*([a-zA-Z_][0-9a-zA-Z_]*)\(/\2/h/
+--regex-V=/^(pub)?[[:blank:]]*struct[[:blank:]]+([a-zA-Z_][0-9a-zA-Z_]*)[[:blank:]]*\{/\2/s/{scope=push}
+--regex-V=/^(pub)?[[:blank:]]*enum[[:blank:]]+([a-zA-Z_][0-9a-zA-Z_]*)[[:blank:]]*\{/\2/e/{scope=push}
+--regex-V=/^(pub)?[[:blank:]]*interface[[:blank:]]+([a-zA-Z_][0-9a-zA-Z_]*)[[:blank:]]*\{/\2/i/{scope=push}
+--regex-V=/^[[:blank:]]*([a-zA-Z_][0-9a-zA-Z_]+)[[:blank:]]*(,)?[[:blank:]]*(\/\/.*)?$/\1/E/{scope=ref}
+--regex-V=/^[[:blank:]]*([a-zA-Z_][0-9a-zA-Z_]+)[[:blank:]]+\??\&?(\[[0-9]*\])?([a-zA-Z_][0-9a-zA-Z_.]+)[[:blank:]]*(\/\/.*)?$/\1/S/{scope=ref}
+--regex-V=/^[[:blank:]]*\}[[:blank:]]*$//{scope=pop}{placeholder}
+
+## Variables:
+--regex-V=/^[[:blank:]]*(mut[[:blank:]]+)?([a-zA-Z_][0-9a-zA-Z_]+)[[:blank:]]*:=/\2/v/
+
+## Consts:
+--regex-V=/^(pub)?[[:blank:]]*const[[:blank:]]+\([[:blank:]]*/const/c/{scope=push}
+##NB: the next variable regexp should work only inside const ( ), but currently works for ordinary assignments too:
+--regex-V=/^[[:blank:]]*([a-zA-Z_][0-9a-zA-Z_]+)[[:blank:]]*=/\1/v/{scope=ref}
+--regex-V=/^[[:blank:]]*\)[[:blank:]]*$//{scope=pop}{placeholder}
+
+--extras=+q
+--extras=+r
+--fields=+r

@@ -89,6 +89,18 @@ The build flags are shared by the build and run commands:
    -v, -vv, -vvv
       Enable varying verbosity in the V compiler while compiling
 
+   -print_v_files
+      Just print the list of all parsed .v files, then stop processing further.
+      This is useful for running external processing tools:
+        ./v -print_v_files cmd/v | etags -L -
+      ... will generate a TAGS file, that emacs can then use to jump
+      to the definition of functions used by v itself. For vim:
+        ./v -print_v_files cmd/v | ctags -L -
+      ... will generate a simillar tags file, that vi compatible editors can use.
+      NB: an useful, although not entirely accurate regexp based Universal Ctags options file
+      for V is located in `.ctags.d/v.ctags` . If you use https://ctags.io/ , it will be used
+      up automatically, or you can specify it explicitly with --options=.ctags.d/v.ctags .
+
 For C-specific build flags, use `v help build-c`.
 
 See also:

@@ -2272,7 +2272,7 @@ int typ;
 				g.definitions.writeln('typedef struct {')
 				g.definitions.writeln('\tvoid* _object;')
 				g.definitions.writeln('\tint _interface_idx;')
-				g.definitions.writeln('} $typ.name;')
+				g.definitions.writeln('} $name;')
 			}
 			else {}
 		}
@@ -3350,7 +3350,7 @@ fn (v &Gen) interface_table() string {
 		info := t.info as table.Interface
 		println(info.gen_types)
 		// interface_name is for example Speaker
-		interface_name := t.name
+		interface_name := t.name.replace('.', '__')
 		mut methods := ''
 		mut generated_casting_functions := ''
 		sb.writeln('// NR gen_types= $info.gen_types.len')

@@ -497,6 +497,11 @@ pub fn (t &Table) check(got, expected Type) bool {
 		// println(info.gen_types)
 		return true
 	}
+	if exp_type_sym.kind == .function && got_type_sym.kind == .int {
+		// TODO temporary
+		// fn == 0
+		return true
+	}
 	// allow enum value to be used as int
 	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) || (exp_type_sym.is_int() &&
 		got_type_sym.kind == .enum_) {
