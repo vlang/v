@@ -340,7 +340,7 @@ fn double_up(a mut []int) {
 }
 
 fn double_up_v2(a mut []int) {
-	for i, val in a {
+	for i, _ in a {
 		a[i] = a[i]*2 // or val*2, doesn't matter
 	}
 }
@@ -525,26 +525,19 @@ fn test_filter() {
 }
 
 fn test_map() {
-	// QTODO
-	/*
-	println(1)
-	a := [1, 2, 3, 4, 5, 6]
-	b := a.map(it * 10)
-	assert b.len == 6
-	assert b[0] == 10
-	assert b[1] == 20
-	assert b[2] == 30
-	c := ['v', 'is', 'awesome']
-	d := c.map(it.to_upper())
-	assert d[0] == 'V'
-	assert d[1] == 'IS'
-	assert d[2] == 'AWESOME'
-	bools := c.map(it == 'v')
-	assert bools.len == 3
-	assert bools[0] == true
-	assert bools[1] == false
-	assert bools[2] == false
-	*/
+	nums := [1, 2, 3, 4, 5, 6]
+	strs := ['v', 'is', 'awesome']
+
+	assert nums.map(it * 10) == [10, 20, 30, 40, 50, 60]
+	assert nums.map('$it') == ['1', '2', '3', '4', '5', '6']
+	assert nums.map(it % 2 == 0) == [false, true, false, true, false, true]
+
+	assert strs.map(it.to_upper()) == ['V', 'IS', 'AWESOME']
+	assert strs.map(it == 'awesome') == [false, false, true]
+	assert strs.map(7) == [7, 7, 7]
+
+	assert nums == [1, 2, 3, 4, 5, 6]
+	assert strs == ['v', 'is', 'awesome']
 }
 
 fn test_array_str() {

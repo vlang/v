@@ -2494,6 +2494,41 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write(')')
 }
 
+// `nums.map(it % 2 == 0)`
+fn (mut g Gen) gen_map(node ast.CallExpr) {
+	tmp := g.new_tmp_var()
+	s := g.out.after(g.stmt_start_pos) // the already generated part of current statement
+	g.out.go_back(s.len)
+	// println('filter s="$s"')
+	ret_typ := g.typ(node.return_type)
+	//inp_typ := g.typ(node.receiver_type)
+	ret_sym := g.table.get_type_symbol(node.return_type)
+	inp_sym := g.table.get_type_symbol(node.receiver_type)
+	ret_info := ret_sym.info as table.Array
+	ret_elem_type := g.typ(ret_info.elem_type)
+	inp_info := inp_sym.info as table.Array
+	inp_elem_type := g.typ(inp_info.elem_type)
+	if inp_sym.kind != .array {
+		verror('map() requires an array')
+	}
+	g.writeln('')
+	g.write('int ${tmp}_len = ')
+	g.expr(node.left)
+	g.writeln('.len;')
+	g.writeln('$ret_typ $tmp = __new_array(0, ${tmp}_len, sizeof($ret_elem_type));')
+	g.writeln('for (int i = 0; i < ${tmp}_len; i++) {')
+	g.write('$inp_elem_type it = (($inp_elem_type*) ')
+	g.expr(node.left)
+	g.writeln('.data)[i];')
+	g.write('$ret_elem_type ti = ')
+	g.expr(node.args[0].expr) // the first arg is the filter condition
+	g.writeln(';')
+	g.writeln('array_push(&$tmp, &ti);')
+	g.writeln('}')
+	g.write(s)
+	g.write(tmp)
+}
+
 // `nums.filter(it % 2 == 0)`
 fn (mut g Gen) gen_filter(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
