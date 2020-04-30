@@ -121,7 +121,7 @@ fn new_dense_array(value_bytes int) DenseArray {
 [inline]
 fn (d mut DenseArray) push(key string, value voidptr) u32 {
 	if d.cap == d.size {
-		d.cap += d.cap>>3
+		d.cap += d.cap >> 3
 		d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
 		d.values = C.realloc(d.values, d.value_bytes * d.cap)
 	}
@@ -153,7 +153,7 @@ fn (d mut DenseArray) zeros_to_end() {
 			tmp_key := d.keys[count]
 			d.keys[count] = d.keys[i]
 			d.keys[i] = tmp_key
-			// swap values (TODO: optimize memswap)
+			// swap values (TODO: optimize)
 			C.memcpy(tmp_value, d.values + count * d.value_bytes, d.value_bytes)
 			C.memcpy(d.values + count * d.value_bytes, d.values + i * d.value_bytes, d.value_bytes)
 			C.memcpy(d.values + i * d.value_bytes, tmp_value, d.value_bytes)
@@ -163,7 +163,7 @@ fn (d mut DenseArray) zeros_to_end() {
 	free(tmp_value)
 	d.deletes = 0
 	d.size = count
-	d.cap = if count < 8 { 8 } else { count }
+	d.cap = if count < 8 { u32(8) } else { count }
 	d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
 	d.values = C.realloc(d.values, d.value_bytes * d.cap)
 }
@@ -214,7 +214,7 @@ fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
 }
 
 [inline]
-fn (m map) key_to_index(key string) (u32,u32) {
+fn (m &map) key_to_index(key string) (u32,u32) {
 	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
 	index := hash & m.cap
 	meta := ((hash>>m.shift) & hash_mask) | probe_inc
@@ -222,7 +222,7 @@ fn (m map) key_to_index(key string) (u32,u32) {
 }
 
 [inline]
-fn (m map) meta_less(_index u32, _metas u32) (u32,u32) {
+fn (m &map) meta_less(_index u32, _metas u32) (u32,u32) {
 	mut index := _index
 	mut meta := _metas
 	for meta < m.metas[index] {
@@ -298,8 +298,8 @@ fn (m mut map) expand() {
 	}
 	else {
 		m.cached_rehash(old_cap)
+		m.cached_hashbits--
 	}
-	m.cached_hashbits--
 }
 
 fn (m mut map) rehash() {

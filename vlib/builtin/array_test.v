@@ -168,7 +168,7 @@ fn test_insert() {
 // }
 fn test_strings() {
 	a := ['a', 'b', 'c']
-	assert a.str() == '["a", "b", "c"]'
+	assert a.str() == "['a', 'b', 'c']"
 }
 
 /*
@@ -551,6 +551,7 @@ fn test_array_str() {
 	numbers := [1, 2, 3]
 	assert numbers == [1,2,3]
 	numbers2 := [numbers, [4, 5, 6]] // dup str() bug
+	_=numbers2
 	assert true
 	assert numbers.str() == '[1, 2, 3]'
 	// QTODO
@@ -724,6 +725,10 @@ fn test_left_shift_precendence() {
 }
 
 fn test_array_with_cap() {
-	a := []int{cap:10, len:1 }
-	//assert a.len == 1
+	a4 := []int{cap:10, len:1 }
+	assert a4.len == 1
+	assert a4.cap == 10
+	a5 := []int{len:1, cap:10}
+	assert a5.len == 1
+	assert a5.cap == 10
 }

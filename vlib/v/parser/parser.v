@@ -196,15 +196,21 @@ pub fn (mut p Parser) open_scope() {
 
 pub fn (mut p Parser) close_scope() {
 	if !p.pref.is_repl && !p.scanner.is_fmt {
-		for v in p.scope.unused_vars() {
-			if p.pref.is_prod {
-				p.error_with_pos('Unused variable: $v.name', v.pos)
-			} else {
-				p.warn_with_pos('Unused variable: $v.name', v.pos)
+		for _, obj in p.scope.objects {
+			match obj {
+				ast.Var {
+					if !it.is_used && !it.name.starts_with('__') {
+						if p.pref.is_prod {
+							p.error_with_pos('unused variable: `$it.name`', it.pos)
+						} else {
+							p.warn_with_pos('unused variable: `$it.name`', it.pos)
+						}
+					}
+				}
+				else {}
 			}
 		}
 	}
-	p.scope.clear_unused_vars()
 	p.scope.end_pos = p.tok.pos
 	p.scope.parent.children << p.scope
 	p.scope = p.scope.parent
@@ -393,9 +399,6 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			}
 		}
 		.key_mut, .key_static, .key_var {
-			if p.peek_tok.kind == .name && p.peek_tok.lit != '_' && !p.peek_tok.lit.starts_with('__') {
-				p.scope.register_unused_var(p.peek_tok.lit, p.peek_tok.position())
-			}
 			return p.assign_stmt()
 		}
 		.key_for {
@@ -457,14 +460,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 		else {
 			// `x := ...`
 			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
-				register_unused := p.peek_tok.kind == .decl_assign
-				lit := p.tok.lit
-				pos := p.tok.position()
-				ret := p.assign_stmt()
-				if register_unused && lit != '_' && !lit.starts_with('__') {
-					p.scope.register_unused_var(lit, pos)
-				}
-				return ret
+				return p.assign_stmt()
 			} else if p.tok.kind == .name && p.peek_tok.kind == .colon {
 				// `label:`
 				name := p.check_name()
@@ -472,8 +468,6 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				return ast.GotoLabel{
 					name: name
 				}
-			} else if p.tok.kind == .name {
-				p.scope.remove_unused_var(p.tok.lit)
 			}
 			epos := p.tok.position()
 			expr := p.expr(0)
@@ -571,7 +565,7 @@ pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
 	if p.expr_mod.len > 0 {
 		name = '${p.expr_mod}.$name'
 	}
-	mut ident := ast.Ident{
+	return ast.Ident{
 		kind: .unresolved
 		name: name
 		is_c: is_c
@@ -579,7 +573,6 @@ pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
 		mod: p.mod
 		pos: pos
 	}
-	return ident
 }
 
 pub fn (mut p Parser) name_expr() ast.Expr {
@@ -609,7 +602,16 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && p.prev_tok.kind != .str_dollar {
 		return p.string_expr()
 	}
-	known_var := p.scope.known_var(p.tok.lit)
+	mut known_var := false
+	if obj := p.scope.find(p.tok.lit) {
+		match mut obj {
+			ast.Var {
+				known_var = true
+				it.is_used = true
+			}
+			else {}
+		}
+	}
 	if p.peek_tok.kind == .dot && !known_var && (is_c || is_js || p.known_import(p.tok.lit) ||
 		p.mod.all_after('.') == p.tok.lit) {
 		if is_c {
@@ -691,9 +693,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			mod: mod
 		}
 	} else {
-		mut ident := ast.Ident{}
-		ident = p.parse_ident(is_c, is_js)
-		node = ident
+		node = p.parse_ident(is_c, is_js)
 	}
 	p.expr_mod = ''
 	return node
@@ -753,6 +753,8 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 fn (mut p Parser) filter() {
 	p.scope.register('it', ast.Var{
 		name: 'it'
+		pos: p.tok.position()
+		is_used: true
 	})
 }
 
@@ -783,10 +785,14 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			p.scope.register('errcode', ast.Var{
 				name: 'errcode'
 				typ: table.int_type
+				pos: p.tok.position()
+				is_used: true
 			})
 			p.scope.register('err', ast.Var{
 				name: 'err'
 				typ: table.string_type
+				pos: p.tok.position()
+				is_used: true
 			})
 			is_or_block_used = true
 			or_stmts = p.parse_block_no_scope()
@@ -996,6 +1002,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		if p.tok.kind == .comment {
 			p.comment()
 		}
+		pos := p.tok.position()
 		name := p.prepend_mod(p.check_name())
 		// name := p.check_name()
 		// println('!!const: $name')
@@ -1004,7 +1011,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		field := ast.ConstField{
 			name: name
 			expr: expr
-			pos: p.tok.position()
+			pos: pos
 		}
 		fields << field
 		p.global_scope.register(field.name, field)
@@ -1028,9 +1035,6 @@ fn (mut p Parser) return_stmt() ast.Return {
 		}
 	}
 	for {
-		if p.tok.kind == .name {
-			p.scope.remove_unused_var(p.tok.lit)
-		}
 		expr := p.expr(0)
 		exprs << expr
 		if p.tok.kind == .comma {
@@ -1121,13 +1125,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			pos: pos
 			expr: expr
 			has_expr: has_expr
-		}
-		// Allow commas after enum, helpful for
-		// enum Color {
-		// r,g,b
-		// }
-		if p.tok.kind == .comma {
-			p.next()
 		}
 	}
 	p.check(.rcbr)
@@ -1220,10 +1217,11 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 fn (mut p Parser) assoc() ast.Assoc {
 	var_name := p.check_name()
 	pos := p.tok.position()
-	v := p.scope.find_var(var_name) or {
+	mut v := p.scope.find_var(var_name) or {
 		p.error('unknown variable `$var_name`')
 		return ast.Assoc{}
 	}
+	v.is_used = true
 	// println('assoc var $name typ=$var.typ')
 	mut fields := []string{}
 	mut vals := []ast.Expr{}
@@ -1245,7 +1243,6 @@ fn (mut p Parser) assoc() ast.Assoc {
 		fields: fields
 		exprs: vals
 		pos: pos
-		typ: v.typ
 	}
 }
 

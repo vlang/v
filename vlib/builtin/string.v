@@ -51,7 +51,7 @@ pub:
 	// hash_cache int
 
 pub struct ustring {
-pub:
+pub mut:
 	s     string
 	runes []int
 	len   int
@@ -333,7 +333,7 @@ pub fn (s string) u64() u64 {
 
 // ==
 fn (s string) eq(a string) bool {
-	if isnil(s.str) {
+	if s.str == 0 {
 		// should never happen
 		panic('string.eq(): nil string')
 	}
@@ -832,7 +832,7 @@ fn (ar []string) contains(val string) bool {
 
 // TODO generic
 fn (ar []int) contains(val int) bool {
-	for i, s in ar {
+	for s in ar {
 		if s == val {
 			return true
 		}
@@ -949,6 +949,10 @@ pub fn (s mut []string) sort_ignore_case() {
 
 pub fn (s mut []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
+}
+
+pub fn (s string) str() string {
+	return s
 }
 
 pub fn (s ustring) str() string {
@@ -1206,7 +1210,7 @@ pub fn (a []string) join(del string) string {
 		return ''
 	}
 	mut len := 0
-	for i, val in a {
+	for val in a {
 		len += val.len + del.len
 	}
 	len -= del.len

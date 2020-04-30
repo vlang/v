@@ -7,11 +7,12 @@ import strings
 
 pub struct array {
 pub:
+	element_size int
+pub mut:
 	data         voidptr// Using a void pointer allows to implement arrays without generics and without generating
 // extra code for every type.
 	len          int
 	cap          int
-	element_size int
 }
 
 // Internal function, used by V (`nums := []int`)
@@ -25,18 +26,6 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 	}
 	return arr
 }
-
-// TODO
-pub fn make(len int, cap int, elm_size int) array {
-	return __new_array(len, cap, elm_size)
-}
-
-/*
-struct Foo {
-	a []string
-	b [][]string
-}
-*/
 
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
@@ -65,6 +54,7 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 }
 
 // Private function. Doubles array capacity if needed
+[inline]
 fn (a mut array) ensure_cap(required int) {
 	if required <= a.cap {
 		return
@@ -328,9 +318,9 @@ pub fn (a []string) str() string {
 	sb.write('[')
 	for i in 0..a.len {
 		val := a[i]
-		sb.write('"')
+		sb.write("\'")
 		sb.write(val)
-		sb.write('"')
+		sb.write("\'")
 		if i < a.len - 1 {
 			sb.write(', ')
 		}

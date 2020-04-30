@@ -5,14 +5,14 @@ fn test_sb() {
 	sb.write('hi')
 	sb.write('!')
 	sb.write('hello')
-	assert sb.str() == 'hi!hello'
 	assert sb.len == 8
+	assert sb.str() == 'hi!hello'
+	assert sb.len == 0
 	sb = strings.new_builder(10)
 	sb.write('a')
 	sb.write('b')
-	println(sb.str())
-	assert sb.str() == 'ab'
 	assert sb.len == 2
+	assert sb.str() == 'ab'
 }
 
 const (

@@ -6,6 +6,7 @@ fn for_in_loop() {
 
 fn for_in_loop_with_counter() {
 	for i, item in arr {
+		println(i)
 		println(item)
 	}
 }

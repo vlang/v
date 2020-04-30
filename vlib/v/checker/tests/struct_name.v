@@ -1,5 +1,0 @@
-struct abc {
-
-}
-
-fn main(){}

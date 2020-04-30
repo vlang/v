@@ -39,15 +39,11 @@ pub fn fmt(file ast.File, table &table.Table) string {
 		file: file
 	}
 	f.cur_mod = 'main'
-	for i, stmt in file.stmts {
-		// TODO `if stmt is ast.Import`
-		match stmt {
-			ast.Import {
-				// Just remember the position of the imports for now
-				f.import_pos = f.out.len
-				// f.imports(f.file.imports)
-			}
-			else {}
+	for stmt in file.stmts {
+		if stmt is ast.Import {
+			// Just remember the position of the imports for now
+			f.import_pos = f.out.len
+			// f.imports(f.file.imports)
 		}
 		f.stmt(stmt)
 	}
@@ -69,7 +65,14 @@ fn (f mut Fmt) find_comment(line_nr int) {
 */
 pub fn (mut f Fmt) write(s string) {
 	if f.indent > 0 && f.empty_line {
-		f.out.write(tabs[f.indent])
+		if f.indent < tabs.len {
+			f.out.write(tabs[f.indent])
+		} else {
+			// too many indents, do it the slow way:
+			for _ in 0 .. f.indent {
+				f.out.write('\t')
+			}
+		}
 		f.line_len += f.indent * 4
 	}
 	f.out.write(s)
@@ -208,7 +211,7 @@ fn (mut f Fmt) stmt(node ast.Stmt) {
 				}
 			}
 			f.indent++
-			for i, field in it.fields {
+			for field in it.fields {
 				name := field.name.after('.')
 				f.write('$name ')
 				f.write(strings.repeat(` `, max - field.name.len))
@@ -694,7 +697,7 @@ fn (mut f Fmt) expr(node ast.Expr) {
 			} else {
 				f.writeln('$name{')
 				f.indent++
-				for i, field in it.fields {
+				for field in it.fields {
 					f.write('$field.name: ')
 					f.expr(field.expr)
 					f.writeln('')
@@ -886,7 +889,7 @@ fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.writeln(' {')
 	f.indent++
 	mut single_line := true
-	for i, branch in it.branches {
+	for branch in it.branches {
 		if branch.stmts.len > 1 {
 			single_line = false
 			break
@@ -907,7 +910,7 @@ fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 			break
 		}
 	}
-	for i, branch in it.branches {
+	for branch in it.branches {
 		if branch.comment.text != '' {
 			f.comment(branch.comment)
 		}
@@ -989,7 +992,12 @@ fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
 		// `x := []string`
 		f.write(f.type_to_str(it.typ))
-		f.write('{}')
+		f.write('{')
+		if it.has_cap {
+			f.write('cap: ')
+			f.expr(it.cap_expr)
+		}
+		f.write('}')
 		return
 	}
 	// `[1,2,3]`

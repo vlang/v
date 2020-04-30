@@ -11,8 +11,6 @@ import v.util
 const (
 	single_quote = `\'`
 	double_quote = `"`
-	//is_fmt = os.getenv('VEXE').contains('vfmt')
-	is_fmt = os.executable().contains('vfmt')
 // char used as number separator
 	num_sep = `_`
 )
@@ -66,14 +64,15 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode) &Scanner {
 
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode) &Scanner {
-	return &Scanner{
+	s := &Scanner{
 		text: text
 		is_print_line_on_error: true
 		is_print_colored_error: true
 		is_print_rel_paths_on_error: true
-		is_fmt: is_fmt
+		is_fmt: util.is_fmt()
 		comments_mode: comments_mode
 	}
+	return s
 }
 
 pub fn (s &Scanner) add_fn_main_and_rescan() {
@@ -97,7 +96,7 @@ fn (s &Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token 
 fn (s mut Scanner) ident_name() string {
 	start := s.pos
 	s.pos++
-	for s.pos < s.text.len && (is_name_char(s.text[s.pos]) || s.text[s.pos].is_digit()) {
+	for s.pos < s.text.len && (util.is_name_char(s.text[s.pos]) || s.text[s.pos].is_digit()) {
 		s.pos++
 	}
 	name := s.text[start..s.pos]
@@ -340,11 +339,11 @@ fn (s mut Scanner) ident_number() string {
 fn (s mut Scanner) skip_whitespace() {
 	// if s.is_vh { println('vh') return }
 	for s.pos < s.text.len && s.text[s.pos].is_space() {
-		if is_nl(s.text[s.pos]) && s.is_vh {
+		if util.is_nl(s.text[s.pos]) && s.is_vh {
 			return
 		}
 		// Count \r\n as one line
-		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos - 1) {
+		if util.is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos - 1) {
 			s.inc_line_number()
 		}
 		s.pos++
@@ -395,7 +394,7 @@ pub fn (s mut Scanner) scan() token.Token {
 	nextc := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
 
 	// name or keyword
-	if is_name_char(c) {
+	if util.is_name_char(c) {
 		name := s.ident_name()
 		// tmp hack to detect . in ${}
 		// Check if not .eof to prevent panic
@@ -595,10 +594,10 @@ pub fn (s mut Scanner) scan() token.Token {
 			}
 			if name == 'VEXE' {
 				vexe := pref.vexe_path()
-				return s.new_token(.string, cescaped_path(vexe), 5)
+				return s.new_token(.string, util.cescaped_path(vexe), 5)
 			}
 			if name == 'FILE' {
-				return s.new_token(.string, cescaped_path(os.real_path(s.file_path)), 5)
+				return s.new_token(.string, util.cescaped_path(os.real_path(s.file_path)), 5)
 			}
 			if name == 'LINE' {
 				return s.new_token(.string, (s.line_nr + 1).str(), 5)
@@ -820,7 +819,7 @@ fn (s &Scanner) current_column() int {
 	return s.pos - s.last_nl_pos
 }
 
-fn (s Scanner) count_symbol_before(p int, sym byte) int {
+fn (s &Scanner) count_symbol_before(p int, sym byte) int {
 	mut count := 0
 	for i := p; i >= 0; i-- {
 		if s.text[i] != sym {
@@ -834,7 +833,7 @@ fn (s Scanner) count_symbol_before(p int, sym byte) int {
 fn (s mut Scanner) ident_string() string {
 	q := s.text[s.pos]
 	is_quote := q == single_quote || q == double_quote
-	is_raw := is_quote && s.text[s.pos - 1] == `r`
+	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r`
 	if is_quote && !s.is_inside_string {
 		s.quote = q
 	}
@@ -879,7 +878,7 @@ fn (s mut Scanner) ident_string() string {
 			break
 		}
 		// $var
-		if is_name_char(c) && prevc == `$` && !s.is_fmt && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+		if util.is_name_char(c) && prevc == `$` && !s.is_fmt && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2
@@ -929,9 +928,6 @@ fn (s mut Scanner) ident_char() string {
 		if u.len != 1 {
 			s.error('invalid character literal (more than one character)\n' + 'use quotes for strings, backticks for characters')
 		}
-	}
-	if c == '\\`' {
-		return '`'
 	}
 	// Escapes a `'` character
 	return if c == "\'" { '\\' + c } else { c }
@@ -997,51 +993,6 @@ fn (s mut Scanner) inc_line_number() {
 	}
 }
 
-fn (s Scanner) line(n int) string {
-	mut res := ''
-	if n >= 0 && n < s.line_ends.len {
-		nline_start := if n == 0 { 0 } else { s.line_ends[n - 1] }
-		nline_end := s.line_ends[n]
-		if nline_start <= nline_end {
-			res = s.text[nline_start..nline_end]
-		}
-	}
-	return res.trim_right('\r\n').trim_left('\r\n')
-}
-
-[inline]
-fn is_name_char(c byte) bool {
-	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
-}
-
-[inline]
-fn is_nl(c byte) bool {
-	return c == `\r` || c == `\n`
-}
-
-fn contains_capital(s string) bool {
-	for c in s {
-		if c >= `A` && c <= `Z` {
-			return true
-		}
-	}
-	return false
-}
-
-// HTTPRequest  bad
-// HttpRequest  good
-fn good_type_name(s string) bool {
-	if s.len < 4 {
-		return true
-	}
-	for i in 2 .. s.len {
-		if s[i].is_capital() && s[i - 1].is_capital() && s[i - 2].is_capital() {
-			return false
-		}
-	}
-	return true
-}
-
 pub fn (s &Scanner) error(msg string) {
 	pos := token.Position{
 		line_nr: s.line_nr
@@ -1053,8 +1004,4 @@ pub fn (s &Scanner) error(msg string) {
 
 pub fn verror(s string) {
 	util.verror('scanner error', s)
-}
-
-pub fn cescaped_path(s string) string {
-	return s.replace('\\', '\\\\')
 }

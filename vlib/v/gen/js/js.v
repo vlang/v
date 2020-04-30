@@ -16,15 +16,15 @@ const (
 )
 
 struct JsGen {
-	out   			strings.Builder
+	table           &table.Table
+	definitions     strings.Builder
+	pref            &pref.Preferences
+mut:
+	out             strings.Builder
 	namespaces		map[string]strings.Builder
 	namespaces_pub	map[string][]string
-	namespace 		string
-	table 			&table.Table
-	definitions 	strings.Builder
-	pref            &pref.Preferences
+	namespace       string
 	doc				&JsDoc
-	mut:
 	constants		strings.Builder // all global V constants
 	file			ast.File
 	tmp_count		int
@@ -110,7 +110,7 @@ pub fn (g mut JsGen) escape_namespace() {
 
 pub fn (g mut JsGen) push_pub_var(s string) {
 	// Workaround until `m[key]<<val` works.
-	arr := g.namespaces_pub[g.namespace]
+	mut arr := g.namespaces_pub[g.namespace]
 	arr << s
 	g.namespaces_pub[g.namespace] = arr
 }
@@ -123,7 +123,7 @@ pub fn (g mut JsGen) find_class_methods(stmts []ast.Stmt) {
 					// Found struct method, store it to be generated along with the class.
 					class_name :=  g.table.get_type_symbol(it.receiver.typ).name
 					// Workaround until `map[key] << val` works.
-					arr := g.method_fn_decls[class_name]
+					mut arr := g.method_fn_decls[class_name]
 					arr << stmt
 					g.method_fn_decls[class_name] = arr
 				}

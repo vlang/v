@@ -1,9 +1,9 @@
 module main
 
 enum Color {
-    green = 'green',
-    yellow = 1+1,
-    blue,
+    green = 'green'
+    yellow = 1+1
+    blue
 }
 
 fn main(){

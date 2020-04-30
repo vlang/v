@@ -43,12 +43,14 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		if p.peek_tok.kind == .decl_assign {
 			is_or = true
 			p.open_scope()
+			var_pos := p.tok.position()
 			var_name := p.check_name()
 			p.check(.decl_assign)
 			expr := p.expr(0)
 			p.scope.register(var_name, ast.Var{
 				name: var_name
 				expr: expr
+				pos: var_pos
 			})
 			cond = ast.IfGuardExpr{
 				var_name: var_name
@@ -89,6 +91,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	if is_mut {
 		p.next()
 	}
+	cond_pos := p.tok.position()
 	cond := p.expr(0)
 	p.inside_match = false
 	p.check(.lcbr)
@@ -103,22 +106,19 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
-		} else if p.tok.kind == .name && (p.tok.lit in table.builtin_type_names || (p.tok.lit[0].is_capital() &&
+		} else if p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot) && (p.tok.lit in table.builtin_type_names || (p.tok.lit[0].is_capital() &&
 			!p.tok.lit.is_upper()) || p.peek_tok.kind == .dot) {
 			// Sum type match
-			// if sym.kind == .sum_type {
-			// p.warn('is sum')
-			// TODO `exprs << ast.Type{...}
 			typ := p.parse_type()
-			x := ast.Type{
+			exprs << ast.Type{
 				typ: typ
 			}
-			mut expr := ast.Expr{}
-			expr = x
-			exprs << expr
 			p.scope.register('it', ast.Var{
 				name: 'it'
 				typ: typ.to_ptr()
+				pos: cond_pos
+				is_used: true
+				is_mut: is_mut
 			})
 			// TODO
 			if p.tok.kind == .comma {

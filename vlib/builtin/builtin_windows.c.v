@@ -33,6 +33,7 @@ pub mut:
 }
 
 pub struct Line64 {
+pub mut:
 	f_size_of_struct u32
 	f_key voidptr
 	f_line_number u32

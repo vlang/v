@@ -1,10 +1,15 @@
 import os
 import term
 
+fn clean_line_endings(s string) string {
+	return s.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n', '\n').trim('\n')
+}
+
 fn test_all() {
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
-	// vroot := os.dir(vexe)
+	vroot := os.dir(vexe)
+	os.chdir(vroot)
 	dir := 'vlib/v/checker/tests'
 	files := os.ls(dir) or {
 		panic(err)
@@ -16,8 +21,8 @@ fn test_all() {
 	}
 	for test in tests {
 		path := os.join_path(dir, test).replace('\\', '/')
-		print(test + ' ')
 		program := path.replace('.vv', '.v')
+		print(program + ' ')
 		os.cp(path, program) or {
 			panic(err)
 		}
@@ -28,10 +33,8 @@ fn test_all() {
 		mut expected := os.read_file(program.replace('.v', '') + '.out') or {
 			panic(err)
 		}
-		expected = expected.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n',
-			'\n').trim('\n')
-		found := res.output.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n',
-			'\n').trim('\n')
+		expected = clean_line_endings(expected)
+		found := clean_line_endings(res.output)
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
@@ -44,6 +47,7 @@ fn test_all() {
 			total_errors++
 		} else {
 			println(term.green('OK'))
+			os.rm( program )
 		}
 	}
 	assert total_errors == 0

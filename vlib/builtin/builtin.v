@@ -50,7 +50,7 @@ pub fn panic(s string) {
 }
 
 pub fn eprintln(s string) {
-	if isnil(s.str) {
+	if s.str == 0 {
 		panic('eprintln(NIL)')
 	}
 	$if !windows {
@@ -65,7 +65,7 @@ pub fn eprintln(s string) {
 }
 
 pub fn eprint(s string) {
-	if isnil(s.str) {
+	if s.str == 0 {
 		panic('eprint(NIL)')
 	}
 	$if !windows {
