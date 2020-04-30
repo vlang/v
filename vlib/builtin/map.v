@@ -157,7 +157,7 @@ fn (d mut DenseArray) zeros_to_end() {
 	}
 	d.deletes = 0
 	d.size = count
-	d.cap = if count < 8 { 8 } else { count }
+	d.cap = if count < 8 { u32(8) } else { count }
 	d.data = &KeyValue(C.realloc(d.data, sizeof(KeyValue) * d.cap))
 }
 
