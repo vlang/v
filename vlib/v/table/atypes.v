@@ -530,8 +530,7 @@ pub mut:
 
 pub struct Interface {
 mut:
-	gen_types []string
-	foo       string
+	types []Type
 }
 
 pub struct Enum {
@@ -632,6 +631,22 @@ pub fn (table &Table) type_to_str(t Type) string {
 	}
 	*/
 	return res
+}
+
+pub fn (t &TypeSymbol) has_method(name string) bool {
+	t.find_method(name) or {
+		return false
+	}
+	return true
+}
+
+pub fn (t &TypeSymbol) find_method(name string) ?Fn {
+	for method in t.methods {
+		if method.name == name {
+			return method
+		}
+	}
+	return none
 }
 
 pub fn (s Struct) find_field(name string) ?Field {

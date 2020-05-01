@@ -96,41 +96,6 @@ pub fn (mut t TypeSymbol) register_method(new_fn Fn) {
 	t.methods << new_fn
 }
 
-pub fn (t &TypeSymbol) has_method(name string) bool {
-	t.find_method(name) or {
-		return false
-	}
-	return true
-}
-
-pub fn (t &TypeSymbol) find_method(name string) ?Fn {
-	for method in t.methods {
-		if method.name == name {
-			return method
-		}
-	}
-	return none
-}
-
-pub fn (s &TypeSymbol) has_field(name string) bool {
-	s.find_field(name) or {
-		return false
-	}
-	return true
-}
-
-pub fn (s &TypeSymbol) find_field(name string) ?Field {
-	match s.info {
-		Struct { for field in it.fields {
-				if field.name == name {
-					return field
-				}
-			} }
-		else {}
-	}
-	return none
-}
-
 pub fn (t &Table) type_has_method(s &TypeSymbol, name string) bool {
 	// println('type_has_method($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	if _ := t.type_find_method(s, name) {
@@ -168,8 +133,11 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 	// println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	mut ts := s
 	for {
-		if field := ts.find_field(name) {
-			return field
+		if ts.info is Struct {
+			struct_info := ts.info as Struct
+			if field := struct_info.find_field(name) {
+				return field
+			}
 		}
 		if ts.parent_idx == 0 {
 			break
@@ -177,6 +145,14 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 		ts = &t.types[ts.parent_idx]
 	}
 	return none
+}
+
+pub fn (t &Table) interface_add_type(inter mut Interface, typ Type) bool {
+	typ_sym := t.get_type_symbol(typ)
+	if typ !in inter.types && typ_sym.kind != .interface_ {
+		inter.types << typ
+	}
+	return true
 }
 
 [inline]
@@ -491,15 +467,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// Handle expected interface
 	if exp_type_sym.kind == .interface_ {
 		mut info := exp_type_sym.info as Interface
-		// println('gen_types before')
-		// println(info.gen_types)
-		if got_type_sym.name !in info.gen_types && got_type_sym.kind != .interface_ {
-			// TODO `got` should never be an interface?
-			info.gen_types << got_type_sym.name
-		}
-		// println('adding gen_type $got_type_sym.name')
-		// println(info.gen_types)
-		return true
+		return t.interface_add_type(info, got)
 	}
 	// Handle expected interface array
 	/*

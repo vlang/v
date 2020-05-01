@@ -279,26 +279,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.left_type == 0 {
 		verror('method receiver type is 0, this means there are some uchecked exprs')
 	}
+	mut receiver_type_name := g.cc_typ(node.receiver_type)
 	typ_sym := g.table.get_type_symbol(node.receiver_type)
-	// mut receiver_type_name := g.typ(node.receiver_type)
-	mut receiver_type_name := typ_sym.name.replace('.', '__') // TODO g.typ() ?
 	if typ_sym.kind == .interface_ {
-		// Find the index of the method
-		mut idx := -1
-		for i, method in typ_sym.methods {
-			if method.name == node.name {
-				idx = i
-			}
-		}
-		if idx == -1 {
-			verror('method_call: cannot find interface method index')
-		}
-		sret_type := g.typ(node.return_type)
-		g.writeln('// interface method call')
-		// `((void (*)())(Speaker_name_table[s._interface_idx][1]))(s._object);`
-		g.write('(($sret_type (*)())(${receiver_type_name}_name_table[')
+		// Speaker_name_table[s._interface_idx].speak(s._object)
+		g.write('${c_name(receiver_type_name)}_name_table[')
 		g.expr(node.left)
-		g.write('._interface_idx][$idx]))(')
+		g.write('._interface_idx].${node.name}(')
 		g.expr(node.left)
 		g.write('._object)')
 		return

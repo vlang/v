@@ -291,7 +291,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 }
 
 // V type to C type
-pub fn (mut g Gen) typ(t table.Type) string {
+fn (g mut Gen) typ(t table.Type) string {
 	mut styp := g.base_typ(t)
 	if t.flag_is(.optional) {
 		// Register an optional
@@ -309,13 +309,20 @@ pub fn (mut g Gen) typ(t table.Type) string {
 	return styp
 }
 
-pub fn (mut g Gen) base_typ(t table.Type) string {
+fn (g Gen) base_typ(t table.Type) string {
+	mut styp := g.cc_typ(t)
 	nr_muls := t.nr_muls()
-	sym := g.table.get_type_symbol(t)
-	mut styp := sym.name.replace('.', '__')
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
+	return styp
+}
+
+// cc_typ returns the Cleaned Concrete Type name, *without ptr*,
+// i.e. it's always just Cat, not Cat_ptr:
+fn (g Gen) cc_typ(t table.Type) string {
+	sym := g.table.get_type_symbol(t)
+	mut styp := sym.name.replace('.', '__')
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 		if sym.kind == .struct_ {
@@ -330,6 +337,12 @@ pub fn (mut g Gen) base_typ(t table.Type) string {
 
 //
 pub fn (mut g Gen) write_typedef_types() {
+	g.typedefs.writeln('
+typedef struct {
+	void* _object;
+	int _interface_idx;
+} _Interface;
+')
 	for typ in g.table.types {
 		match typ.kind {
 			.alias {
@@ -341,6 +354,9 @@ pub fn (mut g Gen) write_typedef_types() {
 			.array {
 				styp := typ.name.replace('.', '__')
 				g.definitions.writeln('typedef array $styp;')
+			}
+			.interface_ {
+				g.definitions.writeln('typedef _Interface ${c_name(typ.name)};')
 			}
 			.map {
 				styp := typ.name.replace('.', '__')
@@ -2277,13 +2293,6 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				g.definitions.writeln('typedef $fixed $styp [$len];')
 				// }
 			}
-			table.Interface {
-				g.definitions.writeln('//interface')
-				g.definitions.writeln('typedef struct {')
-				g.definitions.writeln('\tvoid* _object;')
-				g.definitions.writeln('\tint _interface_idx;')
-				g.definitions.writeln('} $name;')
-			}
 			else {}
 		}
 	}
@@ -3375,59 +3384,69 @@ fn (g Gen) type_to_fmt(typ table.Type) string {
 }
 
 // Generates interface table and interface indexes
-// TODO remove all `replace()`
-fn (v &Gen) interface_table() string {
+fn (g &Gen) interface_table() string {
 	mut sb := strings.new_builder(100)
-	for _, t in v.table.types {
-		if t.kind != .interface_ {
+	for ityp in g.table.types {
+		if ityp.kind != .interface_ {
 			continue
 		}
-		info := t.info as table.Interface
+		inter_info := ityp.info as table.Interface
+		sb.writeln('// NR interfaced types= $inter_info.types.len')
 		// interface_name is for example Speaker
-		interface_name := t.name.replace('.', '__')
-		mut methods := ''
-		mut generated_casting_functions := ''
-		sb.writeln('// NR gen_types= $info.gen_types.len')
-		for i, gen_type in info.gen_types {
-			// ptr_ctype can be for example Cat OR Cat_ptr:
-			ptr_ctype := gen_type.replace('*', '_ptr').replace('.', '__')
+		interface_name := c_name(ityp.name)
+		// generate a struct that references interface methods
+		methods_struct_name := 'struct _${interface_name}_interface_methods'
+		mut methods_typ_def := strings.new_builder(100)
+		mut methods_struct_def := strings.new_builder(100)
+		methods_struct_def.writeln('$methods_struct_name {')
+		for method in ityp.methods {
+			typ_name := '_${interface_name}_${method.name}_fn'
+			ret_styp := g.typ(method.return_type)
+			methods_typ_def.write('typedef $ret_styp (*$typ_name)(void* _')
+			// the first param is the receiver, it's handled by `void*` above
+			for i in 1..method.args.len {
+				arg := method.args[i]
+				methods_typ_def.write(', ${g.typ(arg.typ)} $arg.name')
+			}
+			// g.fn_args(method.args[1..], method.is_variadic)
+			methods_typ_def.writeln(');')
+			methods_struct_def.writeln('\t$typ_name ${c_name(method.name)};')
+		}
+		methods_struct_def.writeln('};')
+		// generate an array of the interface methods for the structs using the interface
+		// as well as case functions from the struct to the interface
+		mut methods_struct := strings.new_builder(100)
+		methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[$inter_info.types.len] = {')
+		mut cast_functions := strings.new_builder(100)
+		cast_functions.write('// Casting functions for interface "${interface_name}"')
+		for i, st in inter_info.types {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
-			cctype := gen_type.replace('*', '').replace('.', '__')
+			cctype := g.cc_typ(st)
 			// Speaker_Cat_index = 0
-			interface_index_name := '_${interface_name}_${ptr_ctype}_index'
-			generated_casting_functions += '
-${interface_name} I_${cctype}_to_${interface_name}(${cctype}* x) {
-  return (${interface_name}){
-           ._object = (void*) memdup(x, sizeof(${cctype})),
-           ._interface_idx = ${interface_index_name} };
-}
-'
-			methods += '{\n'
-			for j, method in t.methods {
-				// Cat_speak
-				methods += ' (void*)    ${cctype}_${method.name}'
-				if j < t.methods.len - 1 {
-					methods += ', \n'
-				}
+			interface_index_name := '_${interface_name}_${cctype}_index'
+			cast_functions.writeln('
+_Interface I_${cctype}_to_Interface(${cctype} x) {
+	return (_Interface) {
+		._object = (void*) memdup(&x, sizeof(${cctype})),
+		._interface_idx = ${interface_index_name}
+	};
+}')
+			methods_struct.writeln('\t($methods_struct_name) {')
+			for method in ityp.methods {
+				// .speak = Cat_speak
+				methods_struct.writeln('\t\t.${c_name(method.name)} = ${cctype}_${method.name},')
 			}
-			methods += '\n},\n\n'
+			methods_struct.writeln('\t},')
 			sb.writeln('int ${interface_index_name} = $i;')
 		}
-		if info.gen_types.len > 0 {
-			// methods = '{TCCSKIP(0)}'
-			// }
-			sb.writeln('void* (* ${interface_name}_name_table[][$t.methods.len]) = ' + '{ \n $methods \n }; ')
-		} else {
-			// The line below is needed so that C compilation succeeds,
-			// even if no interface methods are called.
-			// See https://github.com/zenith391/vgtk3/issues/7
-			sb.writeln('void* (* ${interface_name}_name_table[][1]) = ' + '{ {NULL} }; ')
-		}
-		if generated_casting_functions.len > 0 {
-			sb.writeln('// Casting functions for interface "${interface_name}" :')
-			sb.writeln(generated_casting_functions)
-		}
+		methods_struct.writeln('};')
+		// add line return after interface index declarations
+		sb.writeln('')
+		sb.writeln(methods_typ_def.str())
+		sb.writeln(methods_struct_def.str())
+		sb.writeln(methods_struct.str())
+		sb.writeln(cast_functions.str())
 	}
 	return sb.str()
 }
@@ -3471,11 +3490,6 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		if it.is_interface {
 			// sym := g.table.get_type_symbol(it.interface_types[i])
 			// isym := g.table.get_type_symbol(it.interface_type)
-			/*
-			interface_styp := g.typ(it.interface_type)
-			styp := g.typ(it.interface_types[i])
-			g.write('I_${styp}_to_${interface_styp}(')
-			*/
 			g.interface_call(it.interface_types[i], it.interface_type)
 		}
 		g.expr(expr)
@@ -3490,10 +3504,11 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 // `ui.foo(button)` =>
 // `ui__foo(I_ui__Button_to_ui__Widget(` ...
 fn (g &Gen) interface_call(typ, interface_type table.Type) {
-	interface_styp := g.typ(interface_type).replace('*', '')
-	styp := g.typ(typ).replace('*', '')
-	g.write('I_${styp}_to_${interface_styp}(')
-	if !typ.is_ptr() {
-		g.write('&')
-	}
+	interface_styp := g.cc_typ(interface_type)
+	styp := g.cc_typ(typ)
+	g.write('/* $interface_styp */ I_${styp}_to_Interface(')
+	// TODO Find out why this was here
+	// if !typ.is_ptr() {
+	// 	g.write('&')
+	// }
 }

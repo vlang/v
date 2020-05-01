@@ -265,8 +265,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		kind: .interface_
 		name: interface_name
 		info: table.Interface{
-			gen_types: []
-			foo: 'foo'
+			types: []
 		}
 	}
 	typ := table.new_type(p.table.register_type_symbol(t))
