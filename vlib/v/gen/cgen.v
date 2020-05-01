@@ -2215,7 +2215,8 @@ string _STR(const char *fmt, int nfmts, ...) {
 				v_panic(tos3("Invaid format specifier"));
 			}					
 		} else {
-			_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
+			if (k)
+				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
 		}
 		fmt += k+1;
 	}
