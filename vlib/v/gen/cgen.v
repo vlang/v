@@ -36,7 +36,8 @@ const (
 		'unsigned',
 		'void',
 		'volatile',
-		'while'
+		'while',
+		'new'
 	]
 )
 
@@ -92,7 +93,6 @@ mut:
 	attr                 string
 	is_builtin_mod       bool
 	hotcode_fn_names     []string
-	//
 	fn_main              &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
 }
 
@@ -263,7 +263,7 @@ pub fn (mut g Gen) finish() {
 	if g.fn_main != 0 {
 		g.out.writeln('')
 		g.fn_decl = g.fn_main
-		g.gen_fn_decl( g.fn_main )
+		g.gen_fn_decl(g.fn_main)
 	}
 }
 

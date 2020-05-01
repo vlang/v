@@ -23,11 +23,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		g.write('inline ')
 	}
 	//
-	is_livefn     := g.attr == 'live'
-	is_livemain   := g.pref.is_livemain && is_livefn
+	is_livefn := g.attr == 'live'
+	is_livemain := g.pref.is_livemain && is_livefn
 	is_liveshared := g.pref.is_liveshared && is_livefn
-	is_livemode   := g.pref.is_livemain || g.pref.is_liveshared
-	is_live_wrap  := is_livefn && is_livemode
+	is_livemode := g.pref.is_livemain || g.pref.is_liveshared
+	is_live_wrap := is_livefn && is_livemode
 	if is_livefn && !is_livemode {
 		eprintln('INFO: compile with `v -live $g.pref.path `, if you want to use the [live] function ${it.name} .')
 	}
@@ -66,7 +66,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// println(name)
 		// }
 		// type_name := g.table.Type_to_str(it.return_type)
-
 		// Live functions are protected by a mutex, because otherwise they
 		// can be changed by the live reload thread, *while* they are
 		// running, with unpredictable results (usually just crashing).
@@ -89,7 +88,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 				g.definitions.write('$type_name ${impl_fn_name}(')
 				g.write('$type_name ${impl_fn_name}(')
 			}
-		}else{
+		} else {
 			g.definitions.write('$type_name ${name}(')
 			g.write('$type_name ${name}(')
 		}
@@ -102,7 +101,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 		g.definitions.writeln(');')
 		g.writeln(') {')
-
 		if is_livemain {
 			// The live function just calls its implementation dual, while ensuring
 			// that the call is wrapped by the mutex lock & unlock calls.
@@ -119,8 +117,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 				live_fncall = '${type_name} res = ${live_fncall}'
 				live_fnreturn = 'return res;'
 			}
-			g.definitions.writeln('$type_name ${name}('+fn_args_list.join(', ')+');')
-			g.hotcode_definitions.writeln('$type_name ${name}('+fn_args_list.join(', ')+'){')
+			g.definitions.writeln('$type_name ${name}(' + fn_args_list.join(', ') + ');')
+			g.hotcode_definitions.writeln('$type_name ${name}(' + fn_args_list.join(', ') +
+				'){')
 			g.hotcode_definitions.writeln('  pthread_mutex_lock(&live_fn_mutex);')
 			g.hotcode_definitions.writeln('  $live_fncall')
 			g.hotcode_definitions.writeln('  pthread_mutex_unlock(&live_fn_mutex);')
@@ -148,7 +147,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			}
 		}
 	}
-
 	if g.pref.is_livemain && is_main {
 		g.generate_hotcode_reloading_main_caller()
 	}
@@ -513,7 +511,7 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 				exp_styp := g.typ(expected_types[arg_no]) // g.table.get_type_symbol(expected_types[arg_no])
 				styp := g.typ(arg.typ) // g.table.get_type_symbol(arg.typ)
 				if exp_sym.kind == .interface_ {
-					g.write('/*i*/I_${styp}_to_${exp_styp}(')
+					g.write('I_${styp}_to_${exp_styp}(')
 					is_interface = true
 				}
 			}
