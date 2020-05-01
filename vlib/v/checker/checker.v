@@ -918,7 +918,6 @@ pub fn (mut c Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 	// println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
 	typ_sym := c.table.get_type_symbol(typ)
 	field_name := selector_expr.field
-	println('SELECTOR EXPR: $c.file.path:$selector_expr.pos.line_nr:$selector_expr.pos.pos - $typ_sym.name - $field_name')
 	// variadic
 	if typ.flag_is(.variadic) {
 		if field_name == 'len' {
