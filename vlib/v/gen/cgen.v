@@ -2437,7 +2437,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		// validate format
 		// only floats should have precision specifier
 		if fields.len > 2 || fields.len == 2 && !(node.expr_types[i].is_float()) ||
-		node.expr_types[i].is_signed() && !(fspec in [`d`, `c`]) ||
+		node.expr_types[i].is_signed() && !(fspec in [`d`, `c`, `x`, `X`, `o`]) ||
 		node.expr_types[i].is_unsigned() && !(fspec in [`u`, `x`, `X`, `o`, `c`]) ||
 		node.expr_types[i].is_float() && !(fspec in [`E`, `F`, `G`, `e`, `f`, `g`, `e`]) {
 			verror('illegal format specifier ${fspec:c} for type ${g.table.get_type_name(node.expr_types[i])}')
