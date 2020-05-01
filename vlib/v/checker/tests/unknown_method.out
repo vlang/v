@@ -1,6 +1,6 @@
 vlib/v/checker/tests/unknown_method.v:7:12: error: unknown method: `Test.sdd`
-    5| fn main() {
-    6|     t := Test{}
-    7|     println(t.sdd())
-                     ~~~~~
-    8| }
+    5 | fn main() {
+    6 |     t := Test{}
+    7 |     println(t.sdd())
+      |               ~~~~~
+    8 | }

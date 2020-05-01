@@ -1,6 +1,6 @@
 vlib/v/checker/tests/multi_const_field_name_duplicate_err.v:2:8: error: field name `aaa` duplicate
-    1| const (aaa = 1)
-    2| const (aaa = 2)
-              ~~~
-    3| fn main() {
-    4|     println(aaa)
+    1 | const (aaa = 1)
+    2 | const (aaa = 2)
+      |        ~~~
+    3 | fn main() {
+    4 |     println(aaa)
