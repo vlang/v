@@ -2178,27 +2178,41 @@ string _STR(const char *fmt, int nfmts, ...) {
 	va_start(argptr, nfmts);
 	for (int i=0; i<nfmts; i++) {
 		int k = strlen(fmt);
-		char f = fmt[k-1];
-		char fup = f & 0xdf; // toupper
-		bool l = fmt[k-2] == '+"'l'"+';
-		bool ll = l && fmt[k-3] == '+"'l'"+';
-		if (f == '+"'u'"+' || fup == '+"'X'"+' || f == '+"'o'"+' || f == '+"'d'"+' || f == '+"'c'"+') { // int...
-			if (ll) _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+16, va_arg(argptr, long long));
-			else if (l) _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+10, va_arg(argptr, long));
-			else _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+8, va_arg(argptr, int));
-		} else if (fup >= '+"'E'"+' && fup <= '+"'G'"+') { // floating point
-			_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+10, va_arg(argptr, double));
-		} else if (f == '+"'s'"+') { // v string
-			string s = va_arg(argptr, string);
-			if (fmt[k-4] == '+"'*'"+') { // %*.*s
-				int fwidth = va_arg(argptr, int);
-				if (fwidth < 0) 
-					fwidth -= (s.len - utf8_str_len(s));
-				else
-					fwidth += (s.len - utf8_str_len(s));
-				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+fwidth-4, fwidth, s.len, s.str);
-			} else { // %.*s
-				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+s.len-4, s.len, s.str);
+		bool is_fspec = false;
+		for (int j=0; j<k; j++) {
+			if (fmt[j] == '+"'%'"+') {
+				j++;
+				if(fmt[j] != '+"'%'"+') {
+					is_fspec = true;
+					break;
+				}
+			}
+		}
+		if (is_fspec) {
+			char f = fmt[k-1];
+			char fup = f & 0xdf; // toupper
+			bool l = fmt[k-2] == '+"'l'"+';
+			bool ll = l && fmt[k-3] == '+"'l'"+';
+			if (f == '+"'u'"+' || fup == '+"'X'"+' || f == '+"'o'"+' || f == '+"'d'"+' || f == '+"'c'"+') { // int...
+				if (ll) _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+16, va_arg(argptr, long long));
+				else if (l) _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+10, va_arg(argptr, long));
+				else _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+8, va_arg(argptr, int));
+			} else if (fup >= '+"'E'"+' && fup <= '+"'G'"+') { // floating point
+				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+10, va_arg(argptr, double));
+			} else if (f == '+"'s'"+') { // v string
+				string s = va_arg(argptr, string);
+				if (fmt[k-4] == '+"'*'"+') { // %*.*s
+					int fwidth = va_arg(argptr, int);
+					if (fwidth < 0) 
+						fwidth -= (s.len - utf8_str_len(s));
+					else
+						fwidth += (s.len - utf8_str_len(s));
+					_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+fwidth-4, fwidth, s.len, s.str);
+				} else { // %.*s
+					_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+s.len-4, s.len, s.str);
+				}
+			} else {
+				v_panic(tos3("Invaid format specifier"));
 			}					
 		} else {
 			_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
@@ -3226,7 +3240,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\treturn _STR("${clean_struct_v_type_name} {\\n"')
 	for field in info.fields {
 		fmt := g.type_to_fmt(field.typ)
-		g.auto_str_funcs.writeln('\t\t"%.*s\\000    ' + '$field.name: $fmt\\000\\n"')
+		g.auto_str_funcs.writeln('\t\t"%.*s\\000    ' + '$field.name: $fmt\\n"')
 	}
 	g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2*(info.fields.len+2)+1}')
 	if info.fields.len > 0 {
@@ -3277,7 +3291,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	if sym.kind == .struct_ && !sym.has_method('str') {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));')
 	} else if sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g\\000", 1, it));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, it));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
 	}
@@ -3304,7 +3318,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	if sym.kind == .struct_ && !sym.has_method('str') {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i],0));')
 	} else if sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g\\000", 1, a[i]));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, a[i]));')
 	} else if sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 1, a[i]));')
 	} else {
