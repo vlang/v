@@ -92,9 +92,7 @@ mut:
 }
 
 const (
-	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t'
-	]
+	level_indent = '\t'
 )
 
 pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -395,7 +393,7 @@ pub fn (g Gen) save() {
 
 pub fn (mut g Gen) write(s string) {
 	if g.indent > 0 && g.empty_line {
-		g.out.write(tabs[g.indent])
+		g.out.write(level_indent.repeat(g.indent))
 		// g.line_len += g.indent * 4
 	}
 	g.out.write(s)
@@ -404,7 +402,7 @@ pub fn (mut g Gen) write(s string) {
 
 pub fn (mut g Gen) writeln(s string) {
 	if g.indent > 0 && g.empty_line {
-		g.out.write(tabs[g.indent])
+		g.out.write(level_indent.repeat(g.indent))
 	}
 	g.out.writeln(s)
 	g.empty_line = true
