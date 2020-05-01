@@ -2010,13 +2010,13 @@ pub fn (mut c Checker) map_init(node mut ast.MapInit) table.Type {
 		if !c.table.check(key_type, key0_type) {
 			key0_type_sym := c.table.get_type_symbol(key0_type)
 			key_type_sym := c.table.get_type_symbol(key_type)
-			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym` for map key',
+			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym.name` for map key',
 				node.pos)
 		}
 		if !c.table.check(val_type, val0_type) {
 			val0_type_sym := c.table.get_type_symbol(val0_type)
 			val_type_sym := c.table.get_type_symbol(val_type)
-			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym` for map value',
+			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym.name` for map value',
 				node.pos)
 		}
 	}

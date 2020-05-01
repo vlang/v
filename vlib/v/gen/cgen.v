@@ -4,6 +4,7 @@
 module gen
 
 import strings
+import strconv
 import v.ast
 import v.table
 import v.pref
@@ -203,7 +204,8 @@ pub fn (mut g Gen) init() {
 	g.cheaders.writeln('#include <inttypes.h>') // int64_t etc
 	g.cheaders.writeln(c_builtin_types)
 	g.cheaders.writeln(c_headers)
-	g.definitions.writeln('\nstring _STR(const char*, ...);\n')
+	g.definitions.writeln('\nvoid _STR_PRINT_ARG(const char*, char**, int*, int*, int, ...);\n')
+	g.definitions.writeln('\nstring _STR(const char*, int, ...);\n')
 	g.definitions.writeln('\nstring _STR_TMP(const char*, ...);\n')
 	g.write_builtin_types()
 	g.write_typedef_types()
@@ -2151,15 +2153,61 @@ fn (mut g Gen) write_init_function() {
 fn (mut g Gen) write_str_fn_definitions() {
 	// _STR function can't be defined in vlib
 	g.writeln('
-string _STR(const char *fmt, ...) {
+void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, int guess, ...) {
+	va_list args;
+	va_start(args, guess);
+	for(;;) {
+		if (guess < *memsize - *nbytes) {
+			guess = vsnprintf(*refbufp + *nbytes, *memsize - *nbytes, fmt, args);
+			if (guess < *memsize - *nbytes) { // result did fit into buffer
+				*nbytes += guess;
+				return;
+			}
+		}
+		// increase buffer (somewhat exponentially)
+		*memsize += (*memsize + *memsize) / 3 + guess;
+		*refbufp = realloc(*refbufp, *memsize);
+	}
+}
+
+string _STR(const char *fmt, int nfmts, ...) {
 	va_list argptr;
-	va_start(argptr, fmt);
-	size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
+	int memsize = 128;
+	int nbytes = 0;
+	char* buf = malloc(memsize);
+	va_start(argptr, nfmts);
+	for (int i=0; i<nfmts; i++) {
+		int k = strlen(fmt);
+		char f = fmt[k-1];
+		char fup = f & 0xdf; // toupper
+		bool l = fmt[k-2] == '+"'l'"+';
+		bool ll = l && fmt[k-3] == '+"'l'"+';
+		if (f == '+"'u'"+' || fup == '+"'X'"+' || f == '+"'o'"+' || f == '+"'d'"+' || f == '+"'c'"+') { // int...
+			if (ll) _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+16, va_arg(argptr, long long));
+			else if (l) _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+10, va_arg(argptr, long));
+			else _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+8, va_arg(argptr, int));
+		} else if (fup >= '+"'E'"+' && fup <= '+"'G'"+') { // floating point
+			_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+10, va_arg(argptr, double));
+		} else if (f == '+"'s'"+') { // v string
+			string s = va_arg(argptr, string);
+			if (fmt[k-4] == '+"'*'"+') { // %*.*s
+				int fwidth = va_arg(argptr, int);
+				if (fwidth < 0) 
+					fwidth -= (s.len - utf8_str_len(s));
+				else
+					fwidth += (s.len - utf8_str_len(s));
+				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+fwidth-4, fwidth, s.len, s.str);
+			} else { // %.*s
+				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+s.len-4, s.len, s.str);
+			}					
+		} else {
+			_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
+		}
+		fmt += k+1;
+	}
 	va_end(argptr);
-	byte* buf = malloc(len);
-	va_start(argptr, fmt);
-	vsprintf((char *)buf, fmt, argptr);
-	va_end(argptr);
+	buf[nbytes] = 0;
+	buf = realloc(buf, nbytes+1);
 #ifdef DEBUG_ALLOC
 	puts("_STR:");
 	puts(buf);
@@ -2340,89 +2388,128 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write('_STR("')
 	// Build the string with %
+	mut fieldwidths := []int{}
+	mut specs := []byte{}
+	mut num_fmts := 1
 	for i, val in node.vals {
 		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
 		g.write(escaped_val)
 		if i >= node.exprs.len {
+			fieldwidths << 0
+			specs << `_`
 			continue
 		}
-		// TODO: fix match, sum type false positive
-		// match node.expr_types[i] {
-		// table.string_type {
-		// g.write('%.*s')
-		// }
-		// table.int_type {
-		// g.write('%d')
-		// }
-		// else {}
-		// }
+		num_fmts++
 		sym := g.table.get_type_symbol(node.expr_types[i])
 		sfmt := node.expr_fmts[i]
+		mut fspec := `_` // placeholder
+		mut fmt := ''    // field width and precision
 		if sfmt.len > 0 {
-			fspec := sfmt[sfmt.len - 1]
-			if fspec == `s` && node.expr_types[i] != table.string_type {
-				verror('only V strings can be formatted with a ${sfmt} format')
+			// analyze and validate format specifier
+			if sfmt[sfmt.len - 1] in [`E`, `F`, `G`, `e`, `f`, `g`, `e`,
+				`d`, `u`, `x`, `X`, `o`, `c`, `s`] {
+					fspec = sfmt[sfmt.len - 1]
+				}
+			fmt = if fspec == `_` {
+				sfmt[1..sfmt.len]
+			} else {
+				sfmt[1..sfmt.len - 1]
 			}
-			g.write('%' + sfmt[1..])
-		} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind in
-			[.enum_, .array, .array_fixed] {
-			g.write('%.*s')
-		} else if node.expr_types[i] in [table.f32_type, table.f64_type] {
-			g.write('%g')
-		} else if sym.kind in [.struct_, .map] && !sym.has_method('str') {
-			g.write('%.*s')
-		} else if node.expr_types[i] == table.i16_type {
-			g.write('%"PRId16"')
-		} else if node.expr_types[i] == table.u16_type {
-			g.write('%"PRIu16"')
-		} else if node.expr_types[i] == table.u32_type {
-			g.write('%"PRIu32"')
-		} else if node.expr_types[i] == table.i64_type {
-			g.write('%"PRId64"')
-		} else if node.expr_types[i] == table.u64_type {
-			g.write('%"PRIu64"')
-		} else if g.typ(node.expr_types[i]).starts_with('Option') {
-			g.write('%.*s')
-		} else {
-			g.write('%"PRId32"')
 		}
+		if fspec == `_` { // set default representation for type if still missing
+			if node.expr_types[i].is_float() {
+				fspec = `g`
+			} else if node.expr_types[i].is_signed() {
+				fspec = `d`
+			} else if node.expr_types[i].is_unsigned() {
+				fspec = `u`
+			} else if node.expr_types[i] in [table.string_type, table.bool_type] ||
+				sym.kind in [.enum_, .array, .array_fixed, .struct_, .map] ||
+				g.typ(node.expr_types[i]).starts_with('Option') ||
+				sym.has_method('str') {
+				fspec = `s`
+			} else {
+				// default to int - TODO: should better be checked
+				fspec = `d`
+			}
+		}
+		fields := fmt.split('.')
+		// validate format
+		// only floats should have precision specifier
+		if fields.len > 2 || fields.len == 2 && !(node.expr_types[i].is_float()) ||
+		node.expr_types[i].is_signed() && !(fspec in [`d`, `c`]) ||
+		node.expr_types[i].is_unsigned() && !(fspec in [`u`, `x`, `X`, `o`, `c`]) ||
+		node.expr_types[i].is_float() && !(fspec in [`E`, `F`, `G`, `e`, `f`, `g`, `e`]) {
+			verror('illegal format specifier ${fspec:c} for type ${g.table.get_type_name(node.expr_types[i])}')
+		}
+		// make sure that format paramters are valid numbers
+		for j, f in fields {
+			for k, c in f {
+				if (c < `0` || c > `9`) &&
+					!(j == 0 && k == 0 && (node.expr_types[i].is_number() && c == `+` || c == `-`)) {
+					verror('illegal character ${c:c} in format specifier ${fmt}')
+				}
+			}
+		}
+		specs << fspec
+		fieldwidths << if fields.len == 0 {
+			0
+		} else {
+			strconv.atoi(fields[0])
+		}
+		// write correct format specifier to intermediate string
+		g.write('%')
+		if fspec == `s` {
+			if fields.len == 0 || strconv.atoi(fields[0]) == 0 {
+				g.write('.*s')
+			} else {
+				g.write('*.*s')
+			}
+		} else if node.expr_types[i].is_float() {
+			g.write('$fmt${fspec:c}')
+		} else if node.expr_types[i].is_int() {
+			if fspec == `c` {
+				if node.expr_types[i].idx() in [table.i64_type_idx table.f64_type_idx] {
+					verror("64 bit integer types cannot be interpolated as character")
+				} else {
+					g.write('${fmt}c')
+				}
+			} else {
+				g.write('${fmt}"PRI${fspec:c}')
+				if node.expr_types[i] in [table.i8_type, table.byte_type] {
+					g.write('8')
+				} else if node.expr_types[i] in [table.i16_type, table.u16_type] {
+					g.write('16')
+				} else if node.expr_types[i] in [table.i64_type, table.u64_type] {
+					g.write('64')
+				} else {
+					g.write('32')
+				}
+				g.write('"')
+			}
+		} else {
+			// TODO: better check this case
+			g.write('${fmt}"PRId32"')
+		}
+		g.write('\\000')
 	}
-	g.write('", ')
+	g.write('", $num_fmts, ')
 	// Build args
 	for i, expr in node.exprs {
-		sfmt := node.expr_fmts[i]
-		if sfmt.len > 0 {
-			fspec := sfmt[sfmt.len - 1]
-			if fspec == `s` && node.expr_types[i] == table.string_type {
-				g.expr(expr)
-				g.write('.str')
-			} else {
-				g.expr(expr)
-			}
-		} else if node.expr_types[i] == table.string_type {
-			// `name.str, name.len,`
+		if node.expr_types[i] == table.string_type {
 			g.expr(expr)
-			g.write('.len, ')
-			g.expr(expr)
-			g.write('.str')
 		} else if node.expr_types[i] == table.bool_type {
 			g.expr(expr)
-			g.write(' ? 4 : 5, ')
+			g.write(' ? _SLIT("true") : _SLIT("false")')
+		} else if node.expr_types[i].is_number() || specs[i] == `d` {
 			g.expr(expr)
-			g.write(' ? "true" : "false"')
-		} else if node.expr_types[i] in [table.f32_type, table.f64_type] {
-			g.expr(expr)
-		} else {
+		} else if specs[i] == `s` {
 			sym := g.table.get_type_symbol(node.expr_types[i])
 			if node.expr_types[i].flag_is(.variadic) {
 				str_fn_name := g.gen_str_for_type(node.expr_types[i])
 				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(')')
-				g.write('.len, ')
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(').str')
 			} else if sym.kind == .enum_ {
 				is_var := match node.exprs[i] {
 					ast.SelectorExpr { true }
@@ -2434,58 +2521,29 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					g.write('${str_fn_name}(')
 					g.enum_expr(expr)
 					g.write(')')
-					g.write('.len, ')
-					g.write('${str_fn_name}(')
-					g.enum_expr(expr)
-					g.write(').str')
 				} else {
 					g.write('tos3("')
 					g.enum_expr(expr)
 					g.write('")')
-					g.write('.len, ')
-					g.write('"')
-					g.enum_expr(expr)
-					g.write('"')
 				}
-			} else if sym.kind in [.array, .array_fixed] {
+			} else if sym.has_method('str') || sym.kind in [.array, .array_fixed, .map, .struct_] {
 				str_fn_name := g.gen_str_for_type(node.expr_types[i])
 				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(')')
-				g.write('.len, ')
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(').str')
-			} else if sym.kind == .map && !sym.has_method('str') {
-				str_fn_name := g.gen_str_for_type(node.expr_types[i])
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(')')
-				g.write('.len, ')
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(').str')
-			} else if sym.kind == .struct_ && !sym.has_method('str') {
-				str_fn_name := g.gen_str_for_type(node.expr_types[i])
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(',0)')
-				g.write('.len, ')
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(',0).str')
 			} else if g.typ(node.expr_types[i]).starts_with('Option') {
 				str_fn_name := 'Option_str'
 				g.write('${str_fn_name}(*(Option*)&')
 				g.expr(expr)
 				g.write(')')
-				g.write('.len, ')
-				g.write('${str_fn_name}(*(Option*)&')
-				g.expr(expr)
-				g.write(').str')
 			} else {
-				g.expr(expr)
+				verror('cannot convert to string')
 			}
+		} else {
+			g.expr(expr)
+		}
+		if specs[i] == `s` && fieldwidths[i] != 0 {
+			g.write(', ${fieldwidths[i]}')
 		}
 		if i < node.exprs.len - 1 {
 			g.write(', ')

@@ -218,7 +218,7 @@ pub fn (b &Benchmark) total_duration() i64 {
 // //////////////////////////////////////////////////////////////////
 fn (b &Benchmark) tdiff_in_ms(s string, tdiff i64) string {
 	if b.verbose {
-		return '${tdiff/1000.0:9.3f} ms $s'
+		return '${f64(tdiff)/1000.0:9.3f} ms $s'
 	}
 	return s
 }

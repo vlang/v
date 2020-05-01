@@ -141,6 +141,16 @@ pub fn (typ Type) is_int() bool {
 }
 
 [inline]
+pub fn (typ Type) is_signed() bool {
+	return typ.idx() in signed_integer_type_idxs
+}
+
+[inline]
+pub fn (typ Type) is_unsigned() bool {
+	return typ.idx() in unsigned_integer_type_idxs
+}
+
+[inline]
 pub fn (typ Type) is_number() bool {
 	return typ.idx() in number_type_idxs
 }
@@ -175,6 +185,8 @@ pub const (
 		u32_type_idx,
 		u64_type_idx
 	]
+	signed_integer_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx]
+	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx]
 	float_type_idxs   = [f32_type_idx, f64_type_idx]
 	number_type_idxs  = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
 		u16_type_idx,
