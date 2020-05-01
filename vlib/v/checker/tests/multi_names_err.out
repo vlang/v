@@ -1,0 +1,5 @@
+vlib/v/checker/tests/multi_names_err.v:2:2: error: multiple names is not allowed
+    1 | fn main() {
+    2 |     a a a a := 1
+      |     ^
+    3 | }
