@@ -1249,7 +1249,7 @@ The comment must start with the name of the definition.
 
 An overview of the module must be placed in the first comment right after the module's name.
 
-To generate documentation, run `v doc path/to/module` (TODO this is temporarily disabled).
+To generate documentation use vdoc, for example `v doc net.http`.
 
 ## Profiling
 
