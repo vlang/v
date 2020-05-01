@@ -1725,12 +1725,12 @@ pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
 	if ident.is_c {
 		return table.int_type
 	}
+	if ident.name != '_' {
+		c.error('undefined: `$ident.name`', ident.pos)
+	}
 	if c.table.known_type(ident.name) {
 		// e.g. `User`  in `json.decode(User, '...')`
 		return table.void_type
-	}
-	if ident.name != '_' {
-		c.error('undefined: `$ident.name`', ident.pos)
 	}
 	return table.void_type
 }
