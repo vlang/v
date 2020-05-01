@@ -242,6 +242,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('._object)')
 		return
 	}
+	if typ_sym.kind == .array && node.name == 'map' {
+		g.gen_map(node)
+		return
+	}
 	// rec_sym := g.table.get_type_symbol(node.receiver_type)
 	if typ_sym.kind == .array && node.name == 'filter' {
 		g.gen_filter(node)
