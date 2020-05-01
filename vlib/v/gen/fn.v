@@ -101,7 +101,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 		g.definitions.writeln(');')
 		g.writeln(') {')
-		if is_livemain {
+		if is_live_wrap {
 			// The live function just calls its implementation dual, while ensuring
 			// that the call is wrapped by the mutex lock & unlock calls.
 			// Adding the mutex lock/unlock inside the body of the implementation
