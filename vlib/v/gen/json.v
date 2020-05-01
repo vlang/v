@@ -25,54 +25,25 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	if sym.name in ['int', 'string', 'bool'] {
 		return
 	}
-	// println('gen_json_for_type( $typ.name )')
-	// Register decoder fn
-	/*
-	mut dec_fn := Fn{
-		mod: p.mod
-		typ: 'Option_$typ.name'
-		name: js_dec_name(t)
-	}
-	if p.table.known_fn(dec_fn.name) {
-		// Already registered? Skip.
-		return
-	}
-
+	// println('gen_json_for_type($typ.name)')
 	// decode_TYPE funcs receive an actual cJSON* object to decode
 	// cJSON_Parse(str) call is added by the compiler
-	arg := Var{
-		typ: 'cJSON*'
-	}
-	dec_fn.args << arg
-	p.table.register_fn(dec_fn)
-	// Register encoder fn
-	mut enc_fn := Fn{
-		mod: p.mod
-		typ: 'cJSON*'
-		name: js_enc_name(t)
-	}
-	// encode_TYPE funcs receive an object to encode
-	enc_arg := Var{
-		typ: t
-	}
-	enc_fn.args << enc_arg
-	p.table.register_fn(enc_fn)
 	// Code gen decoder
-	dec += '
-//$t $dec_fn.name (cJSON* root) {
-Option ${dec_fn.name}(cJSON* root, $t* res) {
-//  $t res;
+	dec_fn_name := js_dec_name(sym.name)
+	dec.writeln('
+Option ${dec_fn_name}(cJSON* root, $styp* res) {
+//  $styp res;
   if (!root) {
     const char *error_ptr = cJSON_GetErrorPtr();
     if (error_ptr != NULL)	{
-      fprintf(stderr, "Error in decode() for $t error_ptr=: %%s\\n", error_ptr);
+      fprintf(stderr, "Error in decode() for $styp error_ptr=: %%s\\n", error_ptr);
 //      printf("\\nbad js=%%s\\n", js.str);
       return v_error(tos2(error_ptr));
     }
   }
-'
-	*/
+')
 	// Code gen encoder
+	// encode_TYPE funcs receive an object to encode
 	enc_fn_name := js_enc_name(sym.name)
 	enc.writeln('
 cJSON* ${enc_fn_name}($styp val) {
@@ -111,7 +82,7 @@ cJSON* ${enc_fn_name}($styp val) {
 	// p.cgen.fns << '$dec return opt_ok(res); \n}'
 	dec.writeln('return opt_ok(res, sizeof(*res)); \n}')
 	enc.writeln('\treturn o;\n}')
-	// g.definitions.writeln(dec.str())
+	g.definitions.writeln(dec.str())
 	g.gowrappers.writeln(enc.str())
 }
 
