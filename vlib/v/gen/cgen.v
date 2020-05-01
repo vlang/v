@@ -37,7 +37,7 @@ const (
 		'void',
 		'volatile',
 		'while',
-		'new'
+		//'new'
 	]
 )
 
@@ -2225,7 +2225,7 @@ string _STR(const char *fmt, int nfmts, ...) {
 				string s = va_arg(argptr, string);
 				if (fmt[k-4] == '+"'*'"+') { // %*.*s
 					int fwidth = va_arg(argptr, int);
-					if (fwidth < 0) 
+					if (fwidth < 0)
 						fwidth -= (s.len - utf8_str_len(s));
 					else
 						fwidth += (s.len - utf8_str_len(s));
@@ -2235,7 +2235,7 @@ string _STR(const char *fmt, int nfmts, ...) {
 				}
 			} else {
 				v_panic(tos3("Invaid format specifier"));
-			}					
+			}
 		} else {
 			if (k)
 				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
