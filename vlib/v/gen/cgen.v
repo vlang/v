@@ -2549,18 +2549,24 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					node.expr_types[i]
 				}
 				str_fn_name := g.gen_str_for_type(val_type)
-				g.write('${str_fn_name}(')
 				if is_p {
-					g.write('*(')
+					g.write('string_add(_SLIT("&"), ${str_fn_name}(*(')
+				} else {
+					g.write('${str_fn_name}(')
 				}
 				g.expr(expr)
-				if is_p {
-					g.write(')')
-				}
 				if sym.kind == .struct_ && !sym.has_method('str') {
-					g.write(',0)')
+					if is_p {
+						g.write('),0))')
+					} else {
+						g.write(',0)')
+					}
 				} else {
-					g.write(')')
+					if is_p {
+						g.write(')))')
+					} else {
+						g.write(')')
+					}
 				}
 			} else if g.typ(node.expr_types[i]).starts_with('Option') {
 				str_fn_name := 'Option_str'
