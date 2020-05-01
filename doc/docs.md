@@ -1227,13 +1227,14 @@ v fmt file.v
 ```
 
 It's recommended to set up your editor, so that vfmt runs on every save.
+A vfmt run is usually pretty cheap (takes <30ms).
 
-Always run vfmt before pushing your code.
+Always run `v fmt file.v` before pushing your code.
 
-## writing_documentation
+## Writing Documentation
 
 The way it works is very similar to Go. It's very simple: there's no need to
-write documentation for your code, vdoc will generate it from the source code.
+write separate documentation for your code, vdoc will generate it from the source code.
 
 Documentation for each function/type/const must be placed right before the declaration:
 
@@ -1248,8 +1249,31 @@ The comment must start with the name of the definition.
 
 An overview of the module must be placed in the first comment right after the module's name.
 
-To generate documentation, run `v doc path/to/module` (TODO this is
-temporarily disabled).
+To generate documentation, run `v doc path/to/module` (TODO this is temporarily disabled).
+
+## Profiling
+
+V has good support for profiling your programs: `v -profile profile.txt run file.v`
+That will produce a profile.txt file, which you can then analyze.
+
+The generated profile.txt file will have lines with 4 columns:
+a) how many times a function was called
+b) how much time in total a function took (in ms)
+c) how much time on average, a call to a function took (in ns)
+d) the name of the v function
+
+You can sort on column 3 (average time per function) using:
+`sort -n -k3 profile.txt|tail`
+
+You can also use stop watches to measure just portions of your code explicitly:
+```v
+import time
+fn main(){
+    sw := time.new_stopwatch()
+    println('Hello world')
+    println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')
+}
+```
 
 # Advanced Topics
 
