@@ -3364,6 +3364,7 @@ fn (g Gen) type_to_fmt(typ table.Type) string {
 }
 
 // Generates interface table and interface indexes
+// TODO remove all `replace()`
 fn (v &Gen) interface_table() string {
 	mut sb := strings.new_builder(100)
 	for _, t in v.table.types {
@@ -3378,10 +3379,10 @@ fn (v &Gen) interface_table() string {
 		sb.writeln('// NR gen_types= $info.gen_types.len')
 		for i, gen_type in info.gen_types {
 			// ptr_ctype can be for example Cat OR Cat_ptr:
-			ptr_ctype := gen_type.replace('*', '_ptr')
+			ptr_ctype := gen_type.replace('*', '_ptr').replace('.', '__')
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
-			cctype := gen_type.replace('*', '')
+			cctype := gen_type.replace('*', '').replace('.', '__')
 			// Speaker_Cat_index = 0
 			interface_index_name := '_${interface_name}_${ptr_ctype}_index'
 			generated_casting_functions += '
@@ -3457,9 +3458,11 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 	g.write('($elem_type_str[$len]){\n\t\t')
 	for i, expr in it.exprs {
 		if it.is_interface {
-			sym := g.table.get_type_symbol(it.interface_types[i])
-			isym := g.table.get_type_symbol(it.interface_type)
-			g.write('I_${sym.name}_to_${isym.name}(')
+			// sym := g.table.get_type_symbol(it.interface_types[i])
+			// isym := g.table.get_type_symbol(it.interface_type)
+			interface_styp := g.typ(it.interface_type)
+			styp := g.typ(it.interface_types[i])
+			g.write('I_${styp}_to_${interface_styp}(')
 		}
 		g.expr(expr)
 		if it.is_interface {

@@ -277,7 +277,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		verror('method receiver type is 0, this means there are some uchecked exprs')
 	}
 	typ_sym := g.table.get_type_symbol(node.receiver_type)
-	mut receiver_name := typ_sym.name
+	// mut receiver_type_name := g.typ(node.receiver_type)
+	mut receiver_type_name := typ_sym.name.replace('.', '__') // TODO g.typ() ?
 	if typ_sym.kind == .interface_ {
 		// Find the index of the method
 		mut idx := -1
@@ -292,7 +293,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		sret_type := g.typ(node.return_type)
 		g.writeln('// interface method call')
 		// `((void (*)())(Speaker_name_table[s._interface_idx][1]))(s._object);`
-		g.write('(($sret_type (*)())(${receiver_name}_name_table[')
+		g.write('(($sret_type (*)())(${receiver_type_name}_name_table[')
 		g.expr(node.left)
 		g.write('._interface_idx][$idx]))(')
 		g.expr(node.left)
@@ -327,13 +328,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 		// `array_byte_clone` => `array_clone`
-		receiver_name = 'array'
+		receiver_type_name = 'array'
 		if node.name in ['last', 'first'] {
 			return_type_str := g.typ(node.return_type)
 			g.write('*($return_type_str*)')
 		}
 	}
-	name := '${receiver_name}_$node.name'.replace('.', '__')
+	name := '${receiver_type_name}_$node.name'.replace('.', '__')
 	// if node.receiver_type != 0 {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
@@ -509,9 +510,10 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 				// Cast a type to interface
 				// `foo(dog)` => `foo(I_Dog_to_Animal(dog))`
 				exp_sym := g.table.get_type_symbol(expected_types[arg_no])
-				sym := g.table.get_type_symbol(arg.typ)
+				exp_styp := g.typ(expected_types[arg_no]) // g.table.get_type_symbol(expected_types[arg_no])
+				styp := g.typ(arg.typ) // g.table.get_type_symbol(arg.typ)
 				if exp_sym.kind == .interface_ {
-					g.write('I_${sym.name}_to_${exp_sym.name}(')
+					g.write('/*i*/I_${styp}_to_${exp_styp}(')
 					is_interface = true
 				}
 			}
