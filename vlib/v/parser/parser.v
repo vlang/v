@@ -472,6 +472,8 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				return ast.GotoLabel{
 					name: name
 				}
+			} else if p.tok.kind == .name && p.peek_tok.kind == .name {
+				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
 			}
 			epos := p.tok.position()
 			expr := p.expr(0)
