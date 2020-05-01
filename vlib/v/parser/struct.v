@@ -276,7 +276,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		line_nr := p.tok.line_nr
 		name := p.check_name()
-		println(name)
 		// field_names << name
 		args2, _ := p.fn_args()
 		mut args := [table.Arg{
