@@ -18,17 +18,16 @@ struct Context {
 
 fn main() {
 	glfw.init_glfw()
-	ctx:= &Context{
-		gg: gg.new_context(gg.Cfg {
+	gconfig := gg.Cfg {
 			width: Size
 			height: Size
 			use_ortho: true
 			create_window: true
 			window_title: 'Graph builder'
-			window_user_ptr: ctx
 			always_on_top: true
-		})
 	}
+	ctx := &Context{ gg: gg.new_context(gconfig) }
+	ctx.gg.window.set_user_ptr( ctx )
 	go update() // update the scene in the background in case the window isn't focused
 	for {
 		if ctx.gg.window.should_close() {
