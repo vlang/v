@@ -97,7 +97,7 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline]
-		mut cline := '${iline+1:5d}| ' + sline.replace('\t', tab_spaces)
+		mut cline := sline.replace('\t', tab_spaces)
 		if iline == pos.line_nr && emanager.support_color {
 			cline = if kind.contains('error') {
 				term.red(cline)
@@ -105,7 +105,7 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 				term.magenta(cline)
 			}
 		}
-		clines << cline
+		clines << '${iline+1:5d} | ' + cline
 		//
 		if iline == pos.line_nr {
 			// The pointerline should have the same spaces/tabs as the offending
@@ -146,7 +146,7 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 				}
 				break
 			}
-			clines << '       ' + pointerline.join('')
+			clines << '      | ' + pointerline.join('')
 		}
 	}
 	return clines

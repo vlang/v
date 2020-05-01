@@ -1,6 +1,6 @@
 vlib/v/checker/tests/immutable_array_field_assign.v:9:4: error: field `i` of struct `A` is immutable
-    7|         i: [0]
-    8|     }
-    9|     a.i[0] = 3
-             ^
-   10| }
+    7 |         i: [0]
+    8 |     }
+    9 |     a.i[0] = 3
+      |       ^
+   10 | }
