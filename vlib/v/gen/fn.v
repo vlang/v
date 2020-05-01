@@ -12,25 +12,40 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// || it.no_body {
 		return
 	}
+	is_main := it.name == 'main'
+	//
+	if is_main && g.pref.is_liveshared {
+		return
+	}
+	//
+	fn_start_pos := g.out.len
 	if g.attr == 'inline' {
 		g.write('inline ')
-		g.attr = ''
 	}
+	//
+	is_livefn     := g.attr == 'live'
+	is_livemain   := g.pref.is_livemain && is_livefn
+	is_liveshared := g.pref.is_liveshared && is_livefn
+	is_livemode   := g.pref.is_livemain || g.pref.is_liveshared
+	is_live_wrap  := is_livefn && is_livemode
+	if is_livefn && !is_livemode {
+		eprintln('INFO: compile with `v -live $g.pref.path `, if you want to use the [live] function ${it.name} .')
+	}
+	//
 	g.reset_tmp_count()
-	is_main := it.name == 'main'
 	if is_main {
 		if g.pref.os == .windows {
 			if g.is_gui_app() {
 				// GUI application
-				g.writeln('int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd')
+				g.writeln('int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd){')
 				g.last_fn_c_name = 'wWinMain'
 			} else {
 				// Console application
-				g.writeln('int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]')
+				g.writeln('int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]){')
 				g.last_fn_c_name = 'wmain'
 			}
 		} else {
-			g.write('int ${it.name}(int ___argc, char** ___argv')
+			g.writeln('int main(int ___argc, char** ___argv){')
 			g.last_fn_c_name = it.name
 		}
 	} else {
@@ -51,40 +66,67 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// println(name)
 		// }
 		// type_name := g.table.Type_to_str(it.return_type)
-		type_name := g.typ(it.return_type)
-		g.write('$type_name ${name}(')
-		g.last_fn_c_name = name
-		g.definitions.write('$type_name ${name}(')
-	}
-	// Receiver is the first argument
-	/*
-	if it.is_method {
-		mut styp := g.typ(it.receiver.typ)
-		// if it.receiver.typ.nr_muls() > 0 {
-		// if it.rec_mut {
-		// styp += '*'
-		// }
-		g.write('$styp $it.receiver.name ')
-		// TODO mut
-		g.definitions.write('$styp $it.receiver.name')
-		if it.args.len > 0 {
-			g.write(', ')
-			g.definitions.write(', ')
+
+		// Live functions are protected by a mutex, because otherwise they
+		// can be changed by the live reload thread, *while* they are
+		// running, with unpredictable results (usually just crashing).
+		// For this purpose, the actual body of the live function,
+		// is put under a non publicly accessible function, that is prefixed
+		// with 'impl_live_' .
+		if is_livemain {
+			g.hotcode_fn_names << name
 		}
-	}
-	*/
-	//
-	g.fn_args(it.args, it.is_variadic)
-	if it.no_body || (g.pref.use_cache && it.is_builtin) {
-		// Just a function header.
-		// Builtin function bodies are defined in builtin.o
+		mut impl_fn_name := if is_live_wrap { 'impl_live_${name}' } else { name }
+		g.last_fn_c_name = impl_fn_name
+		type_name := g.typ(it.return_type)
+		//
+		if is_live_wrap {
+			if is_livemain {
+				g.definitions.write('$type_name (* ${impl_fn_name})(')
+				g.write('$type_name no_impl_${name}(')
+			}
+			if is_liveshared {
+				g.definitions.write('$type_name ${impl_fn_name}(')
+				g.write('$type_name ${impl_fn_name}(')
+			}
+		}else{
+			g.definitions.write('$type_name ${name}(')
+			g.write('$type_name ${name}(')
+		}
+		fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
+		if it.no_body || (g.pref.use_cache && it.is_builtin) {
+			// Just a function header. Builtin function bodies are defined in builtin.o
+			g.definitions.writeln(');')
+			g.writeln(');')
+			return
+		}
 		g.definitions.writeln(');')
-		g.writeln(');')
-		return
-	}
-	g.writeln(') {')
-	if !is_main {
-		g.definitions.writeln(');')
+		g.writeln(') {')
+
+		if is_livemain {
+			// The live function just calls its implementation dual, while ensuring
+			// that the call is wrapped by the mutex lock & unlock calls.
+			// Adding the mutex lock/unlock inside the body of the implementation
+			// function is not reliable, because the implementation function can do
+			// an early exit, which will leave the mutex locked.
+			mut fn_args_list := []string{}
+			for ia, fa in fargs {
+				fn_args_list << '${fargtypes[ia]} ${fa}'
+			}
+			mut live_fncall := '${impl_fn_name}(' + fargs.join(', ') + ');'
+			mut live_fnreturn := ''
+			if type_name != 'void' {
+				live_fncall = '${type_name} res = ${live_fncall}'
+				live_fnreturn = 'return res;'
+			}
+			g.definitions.writeln('$type_name ${name}('+fn_args_list.join(', ')+');')
+			g.hotcode_definitions.writeln('$type_name ${name}('+fn_args_list.join(', ')+'){')
+			g.hotcode_definitions.writeln('  pthread_mutex_lock(&live_fn_mutex);')
+			g.hotcode_definitions.writeln('  $live_fncall')
+			g.hotcode_definitions.writeln('  pthread_mutex_unlock(&live_fn_mutex);')
+			g.hotcode_definitions.writeln('  $live_fnreturn')
+			g.hotcode_definitions.writeln('}')
+		}
 	}
 	if is_main {
 		if g.pref.os == .windows && g.is_gui_app() {
@@ -105,6 +147,10 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 				g.writeln('\t_const_os__args = os__init_os_args(___argc, (byteptr*)___argv);')
 			}
 		}
+	}
+
+	if g.pref.is_livemain && is_main {
+		g.generate_hotcode_reloading_main_caller()
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
 	if g.pref.is_prof {
@@ -130,7 +176,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	g.writeln('}')
 	g.defer_stmts = []
-	g.fn_decl = 0
+	if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
+		println(g.out.after(fn_start_pos))
+	}
 }
 
 fn (mut g Gen) write_defer_stmts_when_needed() {
@@ -145,7 +193,9 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 	}
 }
 
-fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) {
+fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) {
+	mut fargs := []string{}
+	mut fargtypes := []string{}
 	no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
 		arg_type_sym := g.table.get_type_symbol(arg.typ)
@@ -164,6 +214,8 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) {
 			if !info.is_anon {
 				g.write(arg_type_name + ' ' + arg.name)
 				g.definitions.write(arg_type_name + ' ' + arg.name)
+				fargs << arg.name
+				fargtypes << arg_type_name
 			} else {
 				g.write('${g.typ(func.return_type)} (*$arg.name)(')
 				g.definitions.write('${g.typ(func.return_type)} (*$arg.name)(')
@@ -174,6 +226,8 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) {
 		} else if no_names {
 			g.write(arg_type_name)
 			g.definitions.write(arg_type_name)
+			fargs << ''
+			fargtypes << arg_type_name
 		} else {
 			mut nr_muls := arg.typ.nr_muls()
 			s := arg_type_name + ' ' + arg.name
@@ -186,12 +240,15 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) {
 			// }
 			g.write(s)
 			g.definitions.write(s)
+			fargs << arg.name
+			fargtypes << arg_type_name
 		}
 		if i < args.len - 1 {
 			g.write(', ')
 			g.definitions.write(', ')
 		}
 	}
+	return fargs, fargtypes
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr) {

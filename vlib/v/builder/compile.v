@@ -151,10 +151,10 @@ pub fn (v Builder) get_user_files() []string {
 	// See cmd/tools/preludes/README.md for more info about what preludes are
 	vroot := os.dir(pref.vexe_path())
 	preludes_path := os.join_path(vroot, 'cmd', 'tools', 'preludes')
-	if v.pref.is_live {
+	if v.pref.is_livemain {
 		user_files << os.join_path(preludes_path, 'live_main.v')
 	}
-	if v.pref.is_live && v.pref.is_shared {
+	if v.pref.is_liveshared {
 		user_files << os.join_path(preludes_path, 'live_shared.v')
 	}
 	if v.pref.is_test {

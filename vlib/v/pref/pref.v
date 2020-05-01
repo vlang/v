@@ -28,8 +28,9 @@ pub mut:
 	// nofmt            bool   // disable vfmt
 	is_test             bool // `v test string_test.v`
 	is_script           bool // single file mode (`v program.v`), main function can be skipped
-	is_live             bool // main program that contains live/hot code
-	is_shared               bool // an ordinary shared library, -shared, no matter if it is live or not
+	is_livemain         bool // main program that contains live/hot code
+	is_liveshared       bool // a shared library, that will be used in a -live main program
+	is_shared           bool // an ordinary shared library, -shared, no matter if it is live or not
 	is_prof             bool // benchmark every function
 	profile_file        string // the profile results will be stored inside profile_file
 	translated          bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
@@ -80,7 +81,7 @@ pub mut:
 	mod                 string
 	run_args            []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list        []string // a list of generated function names, whose source should be shown, for debugging
-	print_v_files       bool     // when true, just print the list of all parsed .v files then stop. 
+	print_v_files       bool     // when true, just print the list of all parsed .v files then stop.
 }
 
 pub fn backend_from_string(s string) ?Backend {

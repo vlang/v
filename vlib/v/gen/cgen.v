@@ -56,6 +56,7 @@ struct Gen {
 	auto_str_funcs       strings.Builder // function bodies of all auto generated _str funcs
 	comptime_defines     strings.Builder // custom defines, given by -d/-define flags on the CLI
 	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
+	hotcode_definitions  strings.Builder // -live declarations & functions
 	table                &table.Table
 	pref                 &pref.Preferences
 	module_built         string
@@ -89,6 +90,9 @@ mut:
 	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	attr                 string
 	is_builtin_mod       bool
+	hotcode_fn_names     []string
+	//
+	fn_main              &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
 }
 
 const (
@@ -120,9 +124,11 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		comptime_defines: strings.new_builder(100)
 		inits: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
+		hotcode_definitions: strings.new_builder(100)
 		table: table
 		pref: pref
 		fn_decl: 0
+		fn_main: 0
 		autofree: true
 		indent: -1
 		module_built: pref.path.after('vlib/')
@@ -182,6 +188,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	b.writeln(g.interface_table())
 	b.writeln('\n// V gowrappers:')
 	b.writeln(g.gowrappers.str())
+	b.writeln('\n// V hotcode definitions:')
+	b.writeln(g.hotcode_definitions.str())
 	b.writeln('\n// V stringliterals:')
 	b.writeln(g.stringliterals.str())
 	b.writeln('\n// V auto str functions:')
@@ -233,6 +241,9 @@ pub fn (mut g Gen) init() {
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
 		g.comptime_defines.writeln('#define _VDEBUG (1)')
 	}
+	if g.pref.is_livemain || g.pref.is_liveshared {
+		g.generate_hotcode_reloading_declarations()
+	}
 }
 
 pub fn (mut g Gen) finish() {
@@ -243,6 +254,14 @@ pub fn (mut g Gen) finish() {
 	g.stringliterals.writeln('')
 	if g.pref.is_prof {
 		g.gen_vprint_profile_stats()
+	}
+	if g.pref.is_livemain || g.pref.is_liveshared {
+		g.generate_hotcode_reloader_code()
+	}
+	if g.fn_main != 0 {
+		g.out.writeln('')
+		g.fn_decl = g.fn_main
+		g.gen_fn_decl( g.fn_main )
 	}
 }
 
@@ -449,11 +468,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Attr {
 			g.attr = it.name
-			if it.name == 'inline' {
-				// g.writeln(it.name)
-			} else {
-				g.writeln('//[$it.name]')
-			}
+			g.writeln('// Attr: [$it.name]')
 		}
 		ast.Block {
 			g.writeln('{')
@@ -530,16 +545,20 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					println('build module `$g.module_built` fn `$it.name`')
 				}
 			}
-			fn_start_pos := g.out.len
 			g.fn_decl = it // &it
-			g.gen_fn_decl(it)
-			if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
-				println(g.out.after(fn_start_pos))
+			if it.name == 'main' {
+				// just remember `it`; main code will be generated in finish()
+				g.fn_main = it
+			} else {
+				g.gen_fn_decl(it)
 			}
+			g.fn_decl = 0
 			if skip {
 				g.out.go_back_to(pos)
 			}
 			g.writeln('')
+			// g.attr has to be reset after each function
+			g.attr = ''
 		}
 		ast.ForCStmt {
 			g.write('for (')
@@ -2123,6 +2142,9 @@ fn verror(s string) {
 }
 
 fn (mut g Gen) write_init_function() {
+	if g.pref.is_liveshared {
+		return
+	}
 	g.writeln('void _vinit() {')
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
