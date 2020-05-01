@@ -22,14 +22,14 @@ fn test_stopwatch_time_between_pause_and_start_should_be_skipped_in_elapsed() {
 	time.sleep_ms(10)
 	// eprintln('${sw.elapsed().milliseconds()}ms')
 	assert sw.elapsed().milliseconds() >= 10
-	$if stopwatch {
+	$if stopwatch ? {
 		assert sw.elapsed().milliseconds() < 20
 	}
 	sw.start()
 	time.sleep_ms(10) // B
 	// Here, sw.elapsed() should be ~10ms (from A) + ~10ms (from B) >= 20ms
 	assert sw.elapsed().milliseconds() >= 20
-	$if stopwatch {
+	$if stopwatch ? {
 		assert sw.elapsed().milliseconds() < 30
 	}
 }
