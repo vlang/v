@@ -3349,7 +3349,6 @@ fn (v &Gen) interface_table() string {
 			continue
 		}
 		info := t.info as table.Interface
-		println(info.gen_types)
 		// interface_name is for example Speaker
 		interface_name := t.name.replace('.', '__')
 		mut methods := ''
