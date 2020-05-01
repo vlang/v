@@ -687,13 +687,17 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		return table.string_type
 	}
 	// call struct field fn type
-	// TODO: can we use SelectorExpr for all?
+	// TODO: can we use SelectorExpr for all? this dosent really belong here
 	if field := c.table.struct_find_field(left_type_sym, method_name) {
 		field_type_sym := c.table.get_type_symbol(field.typ)
 		if field_type_sym.kind == .function {
 			call_expr.is_method = false
 			info := field_type_sym.info as table.FnType
 			call_expr.return_type = info.func.return_type
+			// TODO: check args (do it once for all of the above)
+			for i, arg in call_expr.args {
+				arg_typ := c.expr(arg.expr)
+			}
 			return info.func.return_type
 		}
 	}
@@ -914,6 +918,7 @@ pub fn (mut c Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 	// println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
 	typ_sym := c.table.get_type_symbol(typ)
 	field_name := selector_expr.field
+	println('SELECTOR EXPR: $c.file.path:$selector_expr.pos.line_nr:$selector_expr.pos.pos - $typ_sym.name - $field_name')
 	// variadic
 	if typ.flag_is(.variadic) {
 		if field_name == 'len' {
