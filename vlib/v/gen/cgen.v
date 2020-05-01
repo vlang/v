@@ -3226,9 +3226,9 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\treturn _STR("${clean_struct_v_type_name} {\\n"')
 	for field in info.fields {
 		fmt := g.type_to_fmt(field.typ)
-		g.auto_str_funcs.writeln('\t\t"%.*s    ' + '$field.name: $fmt\\n"')
+		g.auto_str_funcs.writeln('\t\t"%.*s\\000    ' + '$field.name: $fmt\\000\\n"')
 	}
-	g.auto_str_funcs.write('\t\t"%.*s}"')
+	g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2*(info.fields.len+2)+1}')
 	if info.fields.len > 0 {
 		g.auto_str_funcs.write(',\n\t\t')
 		for i, field in info.fields {
@@ -3238,23 +3238,18 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 			field_styp := g.typ(field.typ)
 			field_styp_fn_name := if has_custom_str { '${field_styp}_str' } else { fnames2strfunc[field_styp] }
 			if sym.kind == .enum_ {
-				g.auto_str_funcs.write('indents.len, indents.str, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ).len, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ).str  ')
+				g.auto_str_funcs.write('indents, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ) ')
 			} else if sym.kind == .struct_ {
-				g.auto_str_funcs.write('indents.len, indents.str, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ).len, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ).str  ')
+				g.auto_str_funcs.write('indents, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ) ')
 			} else if sym.kind in [.array, .array_fixed] {
-				g.auto_str_funcs.write('indents.len, indents.str, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}).len, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}).str  ')
+				g.auto_str_funcs.write('indents, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}) ')
 			} else {
-				g.auto_str_funcs.write('indents.len, indents.str, it->${field.name}')
-				if field.typ == table.string_type {
-					g.auto_str_funcs.write('.len, it->${field.name}.str')
-				} else if field.typ == table.bool_type {
-					g.auto_str_funcs.write(' ? 4 : 5, it->${field.name} ? "true" : "false"')
+				g.auto_str_funcs.write('indents, it->${field.name}')
+				if field.typ == table.bool_type {
+					g.auto_str_funcs.write(' ? _SLIT("true") : _SLIT("false")')
 				}
 			}
 			if i < info.fields.len - 1 {
@@ -3263,7 +3258,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 		}
 	}
 	g.auto_str_funcs.writeln(',')
-	g.auto_str_funcs.writeln('\t\tindents.len, indents.str);')
+	g.auto_str_funcs.writeln('\t\tindents);')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -3282,7 +3277,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	if sym.kind == .struct_ && !sym.has_method('str') {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));')
 	} else if sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", it));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g\\000", 1, it));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
 	}
@@ -3309,9 +3304,9 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	if sym.kind == .struct_ && !sym.has_method('str') {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i],0));')
 	} else if sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", a[i]));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g\\000", 1, a[i]));')
 	} else if sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\'", a[i].len, a[i].str));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 1, a[i]));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i]));')
 	}
@@ -3342,18 +3337,18 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("{"));')
 	g.auto_str_funcs.writeln('\tfor (unsigned int i = 0; i < m.key_values.size; i++) {')
 	g.auto_str_funcs.writeln('\t\tstring key = (*(string*)DenseArray_get(m.key_values, i));')
-	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\'", key.len, key.str));')
+	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 1, key));')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3(": "));')
 	g.auto_str_funcs.write('\t$val_styp it = (*($val_styp*)map_get3(')
 	g.auto_str_funcs.write('m, (*(string*)DenseArray_get(m.key_values, i))')
 	g.auto_str_funcs.write(', ')
 	g.auto_str_funcs.writeln(' &($val_styp[]) { $zero }));')
 	if val_sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\'", it.len, it.str));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 1, it));')
 	} else if val_sym.kind == .struct_ && !val_sym.has_method('str') {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${val_styp}_str(it,0));')
 	} else if val_sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", it));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g\\000", 1, it));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${val_styp}_str(it));')
 	}
@@ -3385,17 +3380,17 @@ fn (mut g Gen) gen_str_for_varg(styp, str_fn_name string) {
 fn (g Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind in [.struct_, .array, .array_fixed, .map] {
-		return '%.*s'
+		return '%.*s\\000'
 	} else if typ == table.string_type {
-		return "\'%.*s\'"
+		return "\'%.*s\\000\'"
 	} else if typ == table.bool_type {
-		return '%.*s'
+		return '%.*s\\000'
 	} else if sym.kind == .enum_ {
-		return '%.*s'
+		return '%.*s\\000'
 	} else if typ in [table.f32_type, table.f64_type] {
-		return '%g' // g removes trailing zeros unlike %f
+		return '%g\\000' // g removes trailing zeros unlike %f
 	}
-	return '%d'
+	return '%d\\000'
 }
 
 // Generates interface table and interface indexes
