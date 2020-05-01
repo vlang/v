@@ -685,13 +685,17 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		return table.string_type
 	}
 	// call struct field fn type
-	// TODO: can we use SelectorExpr for all?
+	// TODO: can we use SelectorExpr for all? this dosent really belong here
 	if field := c.table.struct_find_field(left_type_sym, method_name) {
 		field_type_sym := c.table.get_type_symbol(field.typ)
 		if field_type_sym.kind == .function {
 			call_expr.is_method = false
 			info := field_type_sym.info as table.FnType
 			call_expr.return_type = info.func.return_type
+			// TODO: check args (do it once for all of the above)
+			for arg in call_expr.args {
+				c.expr(arg.expr)
+			}
 			return info.func.return_type
 		}
 	}
