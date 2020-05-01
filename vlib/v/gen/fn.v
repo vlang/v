@@ -52,9 +52,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// }
 		// type_name := g.table.Type_to_str(it.return_type)
 		type_name := g.typ(it.return_type)
-		g.write('$type_name ${name}(')
+		g.write('static $type_name ${name}(')
 		g.last_fn_c_name = name
-		g.definitions.write('$type_name ${name}(')
+		g.definitions.write('static $type_name ${name}(')
 	}
 	// Receiver is the first argument
 	/*
