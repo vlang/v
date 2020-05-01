@@ -63,7 +63,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt()
 }
 
-pub fn parse_file(path string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
 	// println('parse_file("$path")')
 	// text := os.read_file(path) or {
 	// panic(err)
@@ -71,7 +71,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	mut stmts := []ast.Stmt{}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode)
-		table: table
+		table: b_table
 		file_name: path
 		file_name_dir: os.dir(path)
 		pref: pref
@@ -102,9 +102,13 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	*/
 	// TODO: import only mode
 	for {
-		// res := s.scan()
 		if p.tok.kind == .eof {
-			// println('EOF, breaking')
+			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
+				stmts << ast.FnDecl {
+					name: 'main'
+					return_type: table.void_type
+				}
+			}
 			break
 		}
 		// println('stmt at ' + p.tok.str())
@@ -350,7 +354,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		}
 		else {
 			if p.pref.is_script && !p.pref.is_test {
-				p.scanner.add_fn_main_and_rescan()
+				p.scanner.add_fn_main_and_rescan(p.tok.pos-1)
 				p.read_first_token()
 				return p.top_stmt()
 			} else {
@@ -468,6 +472,8 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				return ast.GotoLabel{
 					name: name
 				}
+			} else if p.tok.kind == .name && p.peek_tok.kind == .name {
+				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
 			}
 			epos := p.tok.position()
 			expr := p.expr(0)

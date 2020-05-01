@@ -1,6 +1,6 @@
 vlib/v/checker/tests/left_shift_err.v:3:7: error: cannot shift type string into array_int
-    1| fn main() {
-    2|     mut l := []int{}
-    3|     l << 'test'
-                ~~~~~~
-    4| }
+    1 | fn main() {
+    2 |     mut l := []int{}
+    3 |     l << 'test'
+      |          ~~~~~~
+    4 | }

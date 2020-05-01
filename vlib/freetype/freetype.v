@@ -9,6 +9,12 @@ import gx
 import gg
 import glm
 import gl
+/*
+TODO
+!!!!!!
+Use a font atlas
+!!!!!!
+*/
 
 #flag windows -I @VROOT/thirdparty/freetype/include
 #flag windows -L @VROOT/thirdparty/freetype/win64

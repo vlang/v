@@ -2596,7 +2596,7 @@ fn (mut g Gen) gen_map(node ast.CallExpr) {
 	g.out.go_back(s.len)
 	// println('filter s="$s"')
 	ret_typ := g.typ(node.return_type)
-	//inp_typ := g.typ(node.receiver_type)
+	// inp_typ := g.typ(node.receiver_type)
 	ret_sym := g.table.get_type_symbol(node.return_type)
 	inp_sym := g.table.get_type_symbol(node.receiver_type)
 	ret_info := ret_sym.info as table.Array
@@ -3046,11 +3046,12 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	// x := node.call_expr as ast.CallEpxr // TODO
 	match node.call_expr {
 		ast.CallExpr {
-			mut name := it.name.replace('.', '__')
+			mut name := it.name // .replace('.', '__')
 			if it.is_method {
 				receiver_sym := g.table.get_type_symbol(it.receiver_type)
 				name = receiver_sym.name + '_' + name
 			}
+			name = name.replace('.', '__')
 			g.writeln('// go')
 			wrapper_struct_name := 'thread_arg_' + name
 			wrapper_fn_name := name + '_thread_wrapper'

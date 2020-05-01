@@ -75,12 +75,17 @@ pub fn new_scanner(text string, comments_mode CommentsMode) &Scanner {
 	return s
 }
 
-pub fn (s &Scanner) add_fn_main_and_rescan() {
-	s.text = 'fn main() {' + s.text + '}'
-	s.is_started = false
-	s.pos = 0
-	s.line_nr = 0
-	s.last_nl_pos = 0
+pub fn (s &Scanner) add_fn_main_and_rescan(pos int) {
+	if pos > 0 {
+		s.text = s.text[..pos] + 'fn main() {' + s.text[pos..] + '}'
+		s.pos = pos
+		s.is_started = false
+	} else {
+		s.text = 'fn main() {' + s.text + '}'
+		s.pos = 0
+		s.line_nr = 0
+		s.is_started = false
+	}
 }
 
 fn (s &Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token {

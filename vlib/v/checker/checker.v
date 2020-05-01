@@ -607,12 +607,10 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 			mut scope := c.file.scope.innermost(call_expr.pos.pos)
 			scope.update_var_type('it', array_info.elem_type)
 		}
-
 		mut arg_type := left_type
 		for arg in call_expr.args {
 			arg_type = c.expr(arg.expr)
 		}
-
 		call_expr.return_type = left_type
 		call_expr.receiver_type = left_type
 		if method_name == 'map' && call_expr.args.len == 1 {
@@ -687,13 +685,17 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		return table.string_type
 	}
 	// call struct field fn type
-	// TODO: can we use SelectorExpr for all?
+	// TODO: can we use SelectorExpr for all? this dosent really belong here
 	if field := c.table.struct_find_field(left_type_sym, method_name) {
 		field_type_sym := c.table.get_type_symbol(field.typ)
 		if field_type_sym.kind == .function {
 			call_expr.is_method = false
 			info := field_type_sym.info as table.FnType
 			call_expr.return_type = info.func.return_type
+			// TODO: check args (do it once for all of the above)
+			for arg in call_expr.args {
+				c.expr(arg.expr)
+			}
 			return info.func.return_type
 		}
 	}
@@ -717,6 +719,13 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	// println(fn_name)
 	// }
 	if fn_name == 'json.encode' {
+	}
+	if fn_name == 'json.decode' {
+		ident := call_expr.args[0].expr as ast.Ident
+		// sym := c.table.find_type(ident.name)
+		idx := c.table.find_type_idx(ident.name)
+		println('js.decode t=$ident.name')
+		return table.Type(idx)
 	}
 	// look for function in format `mod.fn` or `fn` (main/builtin)
 	mut f := table.Fn{}
@@ -1718,6 +1727,10 @@ pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
 	}
 	if ident.name != '_' {
 		c.error('undefined: `$ident.name`', ident.pos)
+	}
+	if c.table.known_type(ident.name) {
+		// e.g. `User`  in `json.decode(User, '...')`
+		return table.void_type
 	}
 	return table.void_type
 }
