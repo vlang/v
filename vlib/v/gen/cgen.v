@@ -2956,8 +2956,9 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 				receiver_sym := g.table.get_type_symbol(it.receiver_type)
 				name = receiver_sym.name + '_' + name
 			}
+			name = name.replace('.', '__')
 			g.writeln('// go')
-			wrapper_struct_name := 'thread_arg_' + name.replace('.', '__')
+			wrapper_struct_name := 'thread_arg_' + name
 			wrapper_fn_name := name + '_thread_wrapper'
 			arg_tmp_var := 'arg_' + tmp
 			g.writeln('$wrapper_struct_name *$arg_tmp_var = malloc(sizeof(thread_arg_$name));')
