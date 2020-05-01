@@ -2541,10 +2541,22 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					g.write('")')
 				}
 			} else if sym.has_method('str') || sym.kind in [.array, .array_fixed, .map, .struct_] {
-				str_fn_name := g.gen_str_for_type(node.expr_types[i])
+				is_p := node.expr_types[i].is_ptr()
+				val_type := if is_p {
+					node.expr_types[i].deref()
+				} else {
+					node.expr_types[i]
+				}
+				str_fn_name := g.gen_str_for_type(val_type)
 				g.write('${str_fn_name}(')
+				if is_p {
+					g.write('*(')
+				}
 				g.expr(expr)
-				if sym.kind == .struct_ {
+				if is_p {
+					g.write(')')
+				}
+				if sym.kind == .struct_ && !sym.has_method('str') {
 					g.write(',0)')
 				} else {
 					g.write(')')
