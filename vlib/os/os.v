@@ -137,30 +137,30 @@ pub fn file_size(path string) int {
 	return s.st_size
 }
 
-pub fn mv(old, new string) {
+pub fn mv(old, newv string) {
 	$if windows {
-		C._wrename(old.to_wide(), new.to_wide())
+		C._wrename(old.to_wide(), newv.to_wide())
 	} $else {
-		C.rename(charptr(old.str), charptr(new.str))
+		C.rename(charptr(old.str), charptr(newv.str))
 	}
 }
 
 fn C.CopyFile(&u32, &u32, int) int
 // TODO implement actual cp for linux
-pub fn cp(old, new string) ?bool {
+pub fn cp(old, newv string) ?bool {
 	$if windows {
 		_old := old.replace('/', '\\')
-		_new := new.replace('/', '\\')
+		_new := newv.replace('/', '\\')
 		C.CopyFile(_old.to_wide(), _new.to_wide(), false)
 		result := C.GetLastError()
 		if result == 0 {
 			return true
 		}
 		else {
-			return error_with_code('failed to copy $old to $new', int(result))
+			return error_with_code('failed to copy $old to $newv', int(result))
 		}
 	} $else {
-		os.system('cp "$old" "$new"')
+		os.system('cp "$old" "$newv"')
 		return true // TODO make it return true or error when cp for linux is implemented
 	}
 }

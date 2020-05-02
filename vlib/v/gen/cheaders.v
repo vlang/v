@@ -65,6 +65,9 @@ const (
 	c_headers = '
 
 // c_headers
+#ifdef __cplusplus
+#include <execinfo.h>
+#endif
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
 

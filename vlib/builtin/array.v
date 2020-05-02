@@ -19,10 +19,10 @@ pub mut:
 fn __new_array(mylen int, cap int, elm_size int) array {
 	cap_ := if cap == 0 { 1 } else { cap }
 	arr := array{
+    element_size: elm_size
+    data: vcalloc(cap_ * elm_size)
 		len: mylen
 		cap: cap_
-		element_size: elm_size
-		data: vcalloc(cap_ * elm_size)
 	}
 	return arr
 }
@@ -32,10 +32,10 @@ fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 	cap_ := if cap == 0 { 1 } else { cap }
 
 	arr := array{
+    element_size: elm_size
+    data: vcalloc(cap_ * elm_size)
 		len: len
 		cap: cap
-		element_size: elm_size
-		data: vcalloc(cap_ * elm_size)
 	}
 	// TODO Write all memory functions (like memcpy) in V
 	C.memcpy(arr.data, c_array, len * elm_size)
@@ -45,10 +45,10 @@ fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 // Private function, used by V (`nums := [1, 2, 3] !`)
 fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) array {
 	arr := array{
+    element_size: elm_size
+    data: c_array
 		len: len
 		cap: cap
-		element_size: elm_size
-		data: c_array
 	}
 	return arr
 }
@@ -82,10 +82,10 @@ pub fn (a array) repeat(count int) array {
 		size = a.element_size
 	}
 	arr := array{
+    element_size: a.element_size
+    data: vcalloc(size)
 		len: count * a.len
 		cap: count * a.len
-		element_size: a.element_size
-		data: vcalloc(size)
 	}
 	for i in 0..count {
 		C.memcpy(byteptr(arr.data) + i * a.len * a.element_size, byteptr(a.data), a.len * a.element_size)
@@ -219,10 +219,10 @@ pub fn (a &array) clone() array {
 		size++
 	}
 	arr := array{
+    element_size: a.element_size
+    data: vcalloc(size)
 		len: a.len
 		cap: a.cap
-		element_size: a.element_size
-		data: vcalloc(size)
 	}
 	C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size)
 	return arr
@@ -290,10 +290,10 @@ pub fn (a array) reverse() array {
 		return a
 	}
 	arr := array{
+    element_size: a.element_size
+    data: vcalloc(a.cap * a.element_size)
 		len: a.len
 		cap: a.cap
-		element_size: a.element_size
-		data: vcalloc(a.cap * a.element_size)
 	}
 	for i in 0..a.len {
 		//C.memcpy(arr.data + i * arr.element_size, &a[a.len - 1 - i], arr.element_size)

@@ -36,7 +36,12 @@ const (
 		'unsigned',
 		'void',
 		'volatile',
+<<<<<<< HEAD
 		'while'
+=======
+		'while',
+		'new'
+>>>>>>> 00e1548126fbf951c7ab4c7e158ac7e6acd105c3
 	]
 )
 
@@ -436,6 +441,11 @@ pub fn (mut g Gen) new_tmp_var() string {
 	return 'tmp$g.tmp_count'
 }
 
+pub fn (mut g Gen) curr_tmp_var() string {
+	return 'tmp$g.tmp_count'
+}
+
+
 pub fn (mut g Gen) reset_tmp_count() {
 	g.tmp_count = 0
 }
@@ -552,7 +562,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// just remember `it`; main code will be generated in finish()
 				g.fn_main = it
 			} else {
+				if it.name == 'backtrace' || it.name == 'backtrace_symbols' || it.name == 'backtrace_symbols_fd' {
+  					g.write('#ifndef __cplusplus\n')
+				}
 				g.gen_fn_decl(it)
+				if it.name == 'backtrace' || it.name == 'backtrace_symbols' || it.name == 'backtrace_symbols_fd' {
+					g.write('#endif')
+				}
 			}
 			g.fn_decl = 0
 			if skip {
@@ -1109,12 +1125,22 @@ fn (mut g Gen) expr(node ast.Expr) {
 			value_typ_str := g.typ(it.value_type)
 			size := it.vals.len
 			if size > 0 {
-				g.write('new_map_init($size, sizeof($value_typ_str), (${key_typ_str}[$size]){')
+        			g.write('new_map_init($size, sizeof($value_typ_str),\n')
+				g.write('#ifdef __cplusplus\n')
+        			g.write('new ${key_typ_str}[$size]{\n')
+        			g.write('#else\n')
+        			g.write('(${key_typ_str}[$size]){\n')
+        			g.write('#endif\n')
 				for expr in it.keys {
 					g.expr(expr)
 					g.write(', ')
 				}
-				g.write('}, (${value_typ_str}[$size]){')
+				g.write('}, \n')
+				g.write('#ifdef __cplusplus\n')
+                                g.write('new ${value_typ_str}[$size]{\n')
+                                g.write('#else\n')
+                                g.write('(${value_typ_str}[$size]){\n')
+                                g.write('#endif\n')
 				for expr in it.vals {
 					g.expr(expr)
 					g.write(', ')
@@ -2034,6 +2060,12 @@ fn (mut g Gen) const_decl_init_later(name, val string, typ table.Type) {
 }
 
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
+	skip_init := ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'strconv__Float64u', 'struct stat', 'struct addrinfo']
+	styp := g.typ(struct_init.typ)
+	if styp in skip_init {
+		g.go_back_out(3)
+		return
+	}
 	mut info := &table.Struct{}
 	mut is_struct := false
 	sym := g.table.get_type_symbol(struct_init.typ)
@@ -2043,7 +2075,6 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	// info := g.table.get_type_symbol(it.typ).info as table.Struct
 	// println(info.fields.len)
-	styp := g.typ(struct_init.typ)
 	is_amp := g.is_amp
 	if is_amp {
 		g.out.go_back(1) // delete the & already generated in `prefix_expr()
@@ -2098,6 +2129,10 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if is_amp {
 		g.write(', sizeof($styp))')
 	}
+}
+
+fn (mut g Gen) go_back_out(n int) {
+	g.out.go_back(n)
 }
 
 // { user | name: 'new name' }
@@ -3454,8 +3489,12 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		return
 	}
 	len := it.exprs.len
-	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), ')
-	g.write('($elem_type_str[$len]){\n\t\t')
+	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str),\n')
+	g.write('#ifdef __cplusplus\n')
+	g.write('new $elem_type_str[$len]{\n\t')
+	g.write('#else\n')
+	g.write('($elem_type_str[$len]){\n\t')
+	g.write('#endif\n')
 	for i, expr in it.exprs {
 		if it.is_interface {
 			// sym := g.table.get_type_symbol(it.interface_types[i])
