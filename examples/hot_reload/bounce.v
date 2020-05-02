@@ -34,7 +34,7 @@ fn main() {
 		main_wnd: 0
 		draw_fn: 0
 	}
-	window := glfw.create_window(glfw.WinCfg {
+	window := glfw.create_window(glfw.WinCfg{
 		width: width
 		height: height
 		borderless: false
@@ -42,11 +42,11 @@ fn main() {
 		ptr: game
 		always_on_top: true
 	})
-	//window.onkeydown(key_down)
+	// window.onkeydown(key_down)
 	game.main_wnd = window
 	window.make_context_current()
 	gg.init_gg()
-	game.gg = gg.new_context(gg.Cfg {
+	game.gg = gg.new_context(gg.Cfg{
 		width: width
 		height: height
 		font_size: 20
@@ -69,9 +69,9 @@ fn main() {
 
 const (
 	width = 50
-	red   = gx.rgb(255,0,0)
-	green = gx.rgb(0,255,0)
-	blue  = gx.rgb(0,0,255)
+	red   = gx.rgb(255, 0, 0)
+	green = gx.rgb(0, 255, 0)
+	blue  = gx.rgb(0, 0, 255)
 )
 
 // Try uncommenting or changing the lines inside the live functions.
@@ -79,27 +79,28 @@ const (
 [live]
 fn (game &Game) draw() {
 	game.gg.draw_rect(game.x, game.y, width, width, blue)
-	//	game.gg.draw_rect(game.x, game.y, width, width, gx.rgb(128,10,255))
+	game.gg.draw_rect(550 - game.x + 10, 200 - game.y + 50, width, width, gx.rgb(128, 10, 255))
+	game.gg.draw_rect(game.x - 20, 250 - game.y, width, width, gx.rgb(128, 240, 155))
 }
 
 [live]
-fn (game mut Game) update_model() {
-//    game.x = 0 game.y = 0 game.dx = 1 game.dy = 1
-//    game.dx = 3 game.dy = 3
+fn (mut game Game) update_model() {
+	// game.x = 0 game.y = 0 game.dx = 1 game.dy = 1
+	// game.dx = 3 game.dy = 3
 	speed := 2
 	game.x += speed * game.dx
-	game.y += speed * game.dy 
+	game.y += speed * game.dy
 	if game.y >= game.height - width || game.y <= 0 {
-		game.dy = - game.dy
+		game.dy = -game.dy
 	}
 	if game.x >= game.width - width || game.x <= 0 {
-		game.dx = - game.dx
+		game.dx = -game.dx
 	}
 }
 
-fn (game mut Game) run() {
+fn (mut game Game) run() {
 	for {
-		game.update_model()		
+		game.update_model()
 		glfw.post_empty_event() // Refresh
 		time.sleep_ms(17)
 	}

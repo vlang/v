@@ -215,6 +215,14 @@ Both single and double quotes can be used to denote strings. For consistency,
 Interpolation syntax is pretty simple. It also works with fields:
 `'age = $user.age'`. If you need more complex expressions, use `${}`: `'can register = ${user.age > 13}'`.
 
+Format specifiers similar to those in C's `printf()` are supported, too. `f`, `g`, `x`, etc. are optional
+and specify the output format. The compiler takes care of the storage size, so there is no `hd` or `llu`.
+
+```v
+println('x = ${x:12.3f}'`
+println('${item:-20} ${n:20d})
+```
+
 All operators in V must have values of the same type on both sides. This code will not compile if `age` is an `int`:
 
 ```v
@@ -1249,7 +1257,7 @@ The comment must start with the name of the definition.
 
 An overview of the module must be placed in the first comment right after the module's name.
 
-To generate documentation, run `v doc path/to/module` (TODO this is temporarily disabled).
+To generate documentation use vdoc, for example `v doc net.http`.
 
 ## Profiling
 

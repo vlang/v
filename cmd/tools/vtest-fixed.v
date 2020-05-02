@@ -7,7 +7,6 @@ import v.pref
 const (
 	skip_test_files = [
 		'vlib/arrays/arrays_test.v',
-		'vlib/eventbus/eventbus_test.v',
 		'vlib/json/json_test.v',
 		'vlib/v/tests/enum_bitfield_test.v',
 		'vlib/v/tests/num_lit_call_method_test.v',
@@ -21,7 +20,6 @@ const (
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/sqlite/sqlite_test.v',
 
-		'vlib/v/tests/live_test.v', // Linux & Solaris only; since live does not actually work for now with v2, just skip
 		'vlib/v/tests/asm_test.v', // skip everywhere for now, works on linux with cc != tcc
 	]
 	skip_on_linux = []string{}

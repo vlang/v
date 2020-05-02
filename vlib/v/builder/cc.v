@@ -95,6 +95,7 @@ fn (mut v Builder) cc() {
 		'-Wno-unused-parameter', '-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces',
 			'-Wno-unused-label'
 	]
+	mut linker_flags := []string{}
 	// TCC on Linux by default, unless -cc was provided
 	// TODO if -cc = cc, TCC is still used, default compiler should be
 	// used instead.
@@ -131,11 +132,15 @@ fn (mut v Builder) cc() {
 	// linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.pref.out_name')
 	if v.pref.is_shared {
-		a << '-shared -fPIC ' // -Wl,-z,defs'
+		linker_flags << '-shared'
+		a << '-fPIC' // -Wl,-z,defs'
 		v.pref.out_name += '.so'
 	}
 	if v.pref.is_bare {
-		a << '-fno-stack-protector -static -ffreestanding -nostdlib'
+		a << '-fno-stack-protector'
+		a << '-ffreestanding'
+		linker_flags << '-static'
+		linker_flags << '-nostdlib'
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
@@ -199,14 +204,14 @@ fn (mut v Builder) cc() {
 		a << optimization_options
 	}
 	if debug_mode && os.user_os() != 'windows' {
-		a << ' -rdynamic ' // needed for nicer symbolic backtraces
+		linker_flags << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
 	if v.pref.ccompiler != 'msvc' && v.pref.os != .freebsd {
 		a << '-Werror=implicit-function-declaration'
 	}
-	if v.pref.is_shared || v.pref.is_live {
+	if v.pref.is_liveshared || v.pref.is_livemain {
 		if v.pref.os == .linux || os.user_os() == 'linux' {
-			a << '-rdynamic'
+			linker_flags << '-rdynamic'
 		}
 		if v.pref.os == .mac || os.user_os() == 'mac' {
 			a << '-flat_namespace'
@@ -320,7 +325,8 @@ fn (mut v Builder) cc() {
 		}
 		if !is_cc_tcc {
 			$if linux {
-				a << '-Xlinker -z -Xlinker muldefs'
+				linker_flags << '-Xlinker -z'
+				linker_flags << '-Xlinker muldefs'
 			}
 		}
 	}
@@ -328,20 +334,21 @@ fn (mut v Builder) cc() {
 	// || os.user_os() == 'linux'
 	if !v.pref.is_bare && v.pref.build_mode != .build_module && v.pref.os in [ .linux, .freebsd,
 		.openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
-		a << '-lm -lpthread '
+		linker_flags << '-lm'
+		linker_flags << '-lpthread'
 		// -ldl is a Linux only thing. BSDs have it in libc.
 		if v.pref.os == .linux {
-			a << ' -ldl '
+			linker_flags << '-ldl'
 		}
 		if v.pref.os == .freebsd {
 			// FreeBSD: backtrace needs execinfo library while linking
-			a << ' -lexecinfo '
+			linker_flags << '-lexecinfo'
 		}
 	}
 	if !v.pref.is_bare && v.pref.os == .js && os.user_os() == 'linux' {
-		a << '-lm'
+		linker_flags << '-lm'
 	}
-	args := a.join(' ')
+	args := a.join(' ') + linker_flags.join(' ')
 	start:
 	todo()
 	// TODO remove

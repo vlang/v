@@ -1,6 +1,7 @@
+module main
+
 // Build this example with
 // v -live message.v
-module main
 
 import time
 
@@ -15,7 +16,3 @@ fn main() {
 		time.sleep_ms(500)
 	}
 }
-
-
-
-

@@ -16,7 +16,7 @@ fn pmessage() {
 
 fn main() {
 	println('START')
-	for i := 0; i<6*100; i++ {
+	for i := 0; i<3*100; i++ {
 		pmessage()
 		time.sleep_ms(10)
 	}
@@ -41,7 +41,7 @@ fn testsuite_end() {
 	eprintln('source: $source_file')
 	eprintln('output: $output_file')
 	$if !windows {
-		os.system('cat $output_file')
+		os.system('cat $output_file | sort | uniq -c | sort -n')
 	}
 	println('---------------------------------------------------------------------------')
 	output_lines := os.read_lines(output_file) or {
@@ -57,8 +57,8 @@ fn testsuite_end() {
 	println('---------------------------------------------------------------------------')
 	assert histogram['START'] > 0
 	assert histogram['END'] > 0
-	assert histogram['CHANGED'] + histogram['ANOTHER'] > 0
 	assert histogram['ORIGINAL'] > 0
+	assert histogram['CHANGED'] + histogram['ANOTHER'] > 0
 }
 
 fn change_source(new string) {
@@ -75,7 +75,7 @@ fn test_live_program_can_be_compiled() {
 	eprintln('Compiling and running with: $cmd')
 	res := os.system(cmd)
 	eprintln('... running in the background')
-	time.sleep_ms(3000)
+	time.sleep_ms(1500)
 	assert res == 0
 }
 
@@ -90,6 +90,6 @@ fn test_live_program_can_be_changed_2() {
 }
 
 fn test_live_program_has_ended() {
-	time.sleep_ms(10 * 1000)
+	time.sleep_ms(3500)
 	assert true
 }

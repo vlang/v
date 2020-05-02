@@ -35,6 +35,9 @@ fn perform_speak(s Speaker) {
 	assert true
 	name := s.name()
 	assert name == 'Dog' || name == 'Cat'
+	//if s is Dog {
+		//assert name == 'Dog'
+	//}
 	println(s.name())
 }
 

@@ -401,3 +401,18 @@ fn (mut p Parser) fn_redefinition_error(name string) {
 	*/
 	p.error('redefinition of function `$name`')
 }
+
+fn have_fn_main(stmts []ast.Stmt) bool {
+	mut has_main_fn := false
+	for stmt in stmts {
+		match stmt {
+			ast.FnDecl {
+				if it.name == 'main' {
+					has_main_fn = true
+				}
+			}
+			else {}
+		}
+	}
+	return has_main_fn
+}
