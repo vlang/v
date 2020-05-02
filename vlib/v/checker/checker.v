@@ -399,7 +399,7 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 					// []T << []T
 					return table.void_type
 				}
-				c.error('cannot shift type $right.name into $left.name', infix_expr.right.position())
+				c.error('cannot append `$right.name` to `$left.name`', infix_expr.right.position())
 				return table.void_type
 			} else if !left.is_int() {
 				c.error('cannot shift type $right.name into non-integer type $left.name', infix_expr.left.position())
@@ -1033,14 +1033,13 @@ pub fn (mut c Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		if assign_stmt.left.len != right_len {
 			c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${call_expr.name}()` returns $right_len value(s)',
 				assign_stmt.pos)
-				return
+			return
 		}
-	}
-	else {
+	} else {
 		if assign_stmt.left.len != assign_stmt.right.len {
 			c.error('assignment mismatch: $assign_stmt.left.len variable(s) $assign_stmt.right.len value(s)',
 				assign_stmt.pos)
-				return
+			return
 		}
 	}
 	mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
