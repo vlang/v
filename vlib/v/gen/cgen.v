@@ -36,12 +36,7 @@ const (
 		'unsigned',
 		'void',
 		'volatile',
-<<<<<<< HEAD
-		'while'
-=======
 		'while',
-		'new'
->>>>>>> 00e1548126fbf951c7ab4c7e158ac7e6acd105c3
 	]
 )
 
