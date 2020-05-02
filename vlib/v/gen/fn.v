@@ -559,12 +559,12 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 	arg_is_ptr := expected_type.is_ptr() || expected_type.idx() in table.pointer_type_idxs
 	expr_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in table.pointer_type_idxs
+	exp_sym := g.table.get_type_symbol(expected_type)
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
 	} else if arg_is_ptr && !expr_is_ptr {
 		if arg.is_mut {
-			sym := g.table.get_type_symbol(expected_type)
-			if sym.kind == .array {
+			if exp_sym.kind == .array {
 				// Special case for mutable arrays. We can't `&` function
 				// results,	have to use `(array[]){ expr }[0]` hack.
 				g.write('&/*111*/(array[]){')
@@ -576,7 +576,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 		if !g.is_json_fn {
 			g.write('&/*qq*/')
 		}
-	} else if !arg_is_ptr && expr_is_ptr {
+	} else if !arg_is_ptr && expr_is_ptr && exp_sym.kind != .interface_ {
 		// Dereference a pointer if a value is required
 		g.write('*/*d*/')
 	}

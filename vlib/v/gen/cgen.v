@@ -1995,6 +1995,14 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.IntegerLiteral {
 				g.const_decl_simple_define(name, val)
 			}
+			ast.ArrayInit {
+				if it.is_fixed {
+					styp := g.typ(it.typ)
+					g.definitions.writeln('$styp _const_$name = $val; // fixed array const')
+				} else {
+					g.const_decl_init_later(name, val, field.typ)
+				}
+			}
 			ast.StringLiteral {
 				g.definitions.writeln('string _const_$name; // a string literal, inited later')
 				if g.pref.build_mode != .build_module {
@@ -2002,11 +2010,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
-				// Initialize more complex consts in `void _vinit(){}`
-				// (C doesn't allow init expressions that can't be resolved at compile time).
-				styp := g.typ(field.typ)
-				g.definitions.writeln('$styp _const_$name; // inited later')
-				g.inits.writeln('\t_const_$name = $val;')
+				g.const_decl_init_later(name, val, field.typ)
 			}
 		}
 	}
@@ -2019,6 +2023,14 @@ fn (mut g Gen) const_decl_simple_define(name, val string) {
 	// will not be accessible.
 	g.definitions.write('#define _const_$name ')
 	g.definitions.writeln(val)
+}
+
+fn (mut g Gen) const_decl_init_later(name, val string, typ table.Type) {
+	// Initialize more complex consts in `void _vinit(){}`
+	// (C doesn't allow init expressions that can't be resolved at compile time).
+	styp := g.typ(typ)
+	g.definitions.writeln('$styp _const_$name; // inited later')
+	g.inits.writeln('\t_const_$name = $val;')
 }
 
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
@@ -2171,7 +2183,6 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('}')
 	}
 }
-
 
 const (
 	builtins = ['string', 'array', 'KeyValue', 'DenseArray', 'map', 'Option']
@@ -2377,7 +2388,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		// only floats should have precision specifier
 		if fields.len > 2 || fields.len == 2 && !(node.expr_types[i].is_float()) || node.expr_types[i].is_signed() &&
 			!(fspec in [`d`, `c`, `x`, `X`, `o`]) || node.expr_types[i].is_unsigned() && !(fspec in [`u`,
-			`x`, `X`, `o`, `c`]) || node.expr_types[i].is_float() && !(fspec in [`E`, `F`, `G`, `e`, `f`,
+			`x`, `X`, `o`, `c`]) || node.expr_types[i].is_float() && !(fspec in [`E`, `F`, `G`,
+			`e`, `f`,
 			`g`, `e`]) {
 			verror('illegal format specifier ${fspec:c} for type ${g.table.get_type_name(node.expr_types[i])}')
 		}
@@ -3374,9 +3386,9 @@ fn (v &Gen) interface_table() string {
 			// Speaker_Cat_index = 0
 			interface_index_name := '_${interface_name}_${ptr_ctype}_index'
 			generated_casting_functions += '
-${interface_name} I_${cctype}_to_${interface_name}(${cctype} x) {
+${interface_name} I_${cctype}_to_${interface_name}(${cctype}* x) {
   return (${interface_name}){
-           ._object = (void*) memdup(&x, sizeof(${cctype})),
+           ._object = (void*) memdup(x, sizeof(${cctype})),
            ._interface_idx = ${interface_index_name} };
 }
 '
@@ -3470,4 +3482,7 @@ fn (g &Gen) interface_call(typ, interface_type table.Type) {
 	interface_styp := g.typ(interface_type).replace('*', '')
 	styp := g.typ(typ).replace('*', '')
 	g.write('I_${styp}_to_${interface_styp}(')
+	if !typ.is_ptr() {
+		g.write('&')
+	}
 }
