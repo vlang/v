@@ -113,6 +113,11 @@ pub fn (s mut Scope) register(name string, obj ScopeObject) {
 	s.objects[name] = obj
 }
 
+pub fn (s mut Scope) register_force(name string, obj ScopeObject) {
+	s.objects[name] = obj
+}
+
+
 pub fn (s &Scope) outermost() &Scope {
 	mut sc := s
 	for !isnil(sc.parent) {
