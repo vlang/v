@@ -900,7 +900,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 				efmt << p.tok.lit
 				p.next()
 			}
-			if p.tok.lit.len == 1 {
+			if p.tok.kind == .name && p.tok.lit.len == 1 {
 				efmt << p.tok.lit
 				p.next()
 			}
