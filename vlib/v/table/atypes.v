@@ -12,7 +12,6 @@
 module table
 
 import strings
-import v.ast
 
 pub type Type int
 
@@ -536,12 +535,17 @@ pub:
 	foo string
 }
 
+// NB: FExpr here is a actually an ast.Expr . 
+// It should always be used by casting to ast.Expr, using ast.fe2ex()/ast.ex2fe()
+// That hack is needed to break an import cycle between v.ast and v.table .
+type FExpr = voidptr | byteptr
+
 pub struct Field {
 pub:
 	name             string
 mut:
 	typ              Type
-	default_expr     ast.Expr
+	default_expr     FExpr
 	has_default_expr bool
 	default_val      string
 	attr             string

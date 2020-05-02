@@ -2084,7 +2084,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			field_name := c_name(field.name)
 			g.write('\t.$field_name = ')
 			if field.has_default_expr {
-				g.expr(field.default_expr)
+				g.expr( ast.fe2ex(field.default_expr) )
 			} else {
 				g.write(g.type_default(field.typ))
 			}
@@ -2249,12 +2249,16 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				// table.Alias, table.SumType { TODO
 			}
 			table.SumType {
-				g.definitions.writeln('// Sum type')
-				g.definitions.writeln('
-				typedef struct {
-void* obj;
-int typ;
-} $name;')
+				g.definitions.writeln('')
+				g.definitions.writeln('// Sum type $name = ')
+				for sv in it.variants {
+					g.definitions.writeln('//          | ${sv:4d} = ${g.typ(sv):-20s}')
+				}
+				g.definitions.writeln('typedef struct {')
+				g.definitions.writeln('    void* obj;')
+				g.definitions.writeln('    int typ;')
+				g.definitions.writeln('} $name;')
+				g.definitions.writeln('')
 			}
 			table.ArrayFixed {
 				// .array_fixed {
