@@ -1024,7 +1024,7 @@ pub fn (mut c Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		right_type0 := c.expr(assign_stmt.right[0])
 		assign_stmt.right_types = [right_type0]
 		right_type_sym0 := c.table.get_type_symbol(right_type0)
-		mut right_len := if right_type0 == table.void_type { 0 } else { 1 }
+		mut right_len := if right_type0 == table.void_type { 0 } else { assign_stmt.right.len }
 		if right_type_sym0.kind == .multi_return {
 			assign_stmt.right_types = right_type_sym0.mr_info().types
 			right_len = assign_stmt.right_types.len
