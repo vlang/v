@@ -36,7 +36,7 @@ const (
 		'unsigned',
 		'void',
 		'volatile',
-		'while',
+		'while'
 	]
 )
 
