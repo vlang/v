@@ -4,31 +4,31 @@
 module builtin
 /*
 struct Option2<T> {
-	data T
-	error string
 	ecode int
 	ok bool
 	is_none bool
+        error string
+	data T
 }
 */
 
 
 struct Option {
-	data    [400]byte
-	error   string
 	ecode   int
 	ok      bool
 	is_none bool
+	error   string
+	data    [400]byte
 }
 
 pub fn (o Option) str() string {
    if o.ok && !o.is_none {
-	  return 'Option{ data: ' + o.data[0..32].hex() + ' }'
+	  return 'Option{ ecode: 0, ok: false, is_none: false, error: "", data: ' + o.data[0..32].hex() + ' }'
    }
    if o.is_none {
 	  return 'Option{ none }'	  
    }
-   return 'Option{ error: "${o.error}" }'
+   return 'Option{ ecode: 0, ok: false, is_none: false, error: "${o.error}" }'
 }
 
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
@@ -37,6 +37,7 @@ fn opt_ok(data voidptr, size int) Option {
 		panic('option size too big: $size (max is 400), this is a temporary limit')
 	}
 	res := Option{
+		ecode: 0
 		ok: true
 	}
 	C.memcpy(res.data, data, size)
@@ -46,19 +47,26 @@ fn opt_ok(data voidptr, size int) Option {
 // used internally when returning `none`
 fn opt_none() Option {
 	return Option{
+		ecode: 0
+		ok: false
 		is_none: true
 	}
 }
 
 pub fn error(s string) Option {
 	return Option{
+		ecode: 0
+                ok: false
+                is_none: false
 		error: s
 	}
 }
 
 pub fn error_with_code(s string, code int) Option {
 	return Option{
-		error: s
 		ecode: code
+                ok: false
+                is_none: true
+		error: s
 	}
 }

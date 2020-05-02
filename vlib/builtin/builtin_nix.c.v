@@ -88,11 +88,13 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		// backtrace is not available on Android.
 		$if glibc {
 			buffer := [100]byteptr
-			nr_ptrs := backtrace(buffer, 100)
+			vptr := voidptr(buffer)
+			nr_ptrs := backtrace(&vptr, 100)
 			nr_actual_frames := nr_ptrs - skipframes
 			mut sframes := []string{}
 			//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
-			csymbols := backtrace_symbols(&buffer[skipframes], nr_actual_frames)
+			tvptr := voidptr(&buffer[skipframes])
+			csymbols := backtrace_symbols(&tvptr, nr_actual_frames)
 			for i in 0 .. nr_actual_frames {
 				sframes << tos2( byteptr( voidptr(csymbols[i]) ) )
 			}
@@ -110,7 +112,8 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				buf := [1000]byte
 				mut output := ''
 				for C.fgets(charptr(buf), 1000, f) != 0 {
-					output += tos(buf, vstrlen(buf))
+					bufbp := byteptr(buf)
+					output += tos2(bufbp)
 				}
 				output = output.trim_space() + ':'
 				if C.pclose(f) != 0 {

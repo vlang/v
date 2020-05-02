@@ -106,8 +106,8 @@ pub fn tos3(s charptr) string {
 
 pub fn (a string) clone() string {
 	mut b := string{
-		len: a.len
 		str: malloc(a.len + 1)
+		len: a.len
 	}
 	for i in 0..a.len {
 		b.str[i] = a.str[i]
@@ -383,8 +383,8 @@ fn (s string) ge(a string) bool {
 fn (s string) add(a string) string {
 	new_len := a.len + s.len
 	mut res := string{
-		len: new_len
 		str: malloc(new_len + 1)
+		len: new_len
 	}
 	for j in 0..s.len {
 		res.str[j] = s.str[j]
@@ -521,8 +521,8 @@ pub fn (s string) substr(start, end int) string {
 	}
 	len := end - start
 	mut res := string{
-		len: len
 		str: malloc(len + 1)
+		len: len
 	}
 	for i in 0..len {
 		res.str[i] = s.str[start + i]
@@ -1247,8 +1247,8 @@ pub fn (s string) reverse() string {
 		return s
 	}
 	mut res := string{
-		len: s.len
 		str: malloc(s.len)
+		len: s.len
 	}
 	for i := s.len - 1; i >= 0; i-- {
 		res.str[s.len - i - 1] = s[i]
