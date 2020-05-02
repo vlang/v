@@ -384,7 +384,7 @@ mut:
 }
 
 // TODO: default array/struct str methods
-pub fn (ta []Test2) str() string {
+fn (ta []Test2) str() string {
 	mut s := '['
 	for i, t in ta {
 		s += t.str()
@@ -396,11 +396,11 @@ pub fn (ta []Test2) str() string {
 	return s
 }
 
-pub fn (t Test2) str() string {
+fn (t Test2) str() string {
 	return '{$t.one $t.two}'
 }
 
-pub fn (t Test) str() string {
+fn (t Test) str() string {
 	return '{$t.a $t.b}'
 }
 
@@ -524,17 +524,58 @@ fn test_filter() {
 	//assert arr.filter(arr % 2).len == 5
 }
 
+fn map_test_helper_1(i int) int {
+	return i * i
+}
+fn map_test_helper_2(i int, b string) int {
+	return i + b.len
+}
+fn map_test_helper_3(i int, b []string) int {
+	return i + b.map(it.len)[i % b.len]
+}
+
 fn test_map() {
 	nums := [1, 2, 3, 4, 5, 6]
 	strs := ['v', 'is', 'awesome']
 
+	//assert nums.map() == <error>
+	//assert nums.map(it, 'excessive') == <error>
+
+	// identity
+	assert nums.map(it) == [1, 2, 3, 4, 5, 6]
+	assert strs.map(it) == ['v', 'is', 'awesome']
+	assert nums.map(it - it) == [0,0,0,0,0,0]
+	assert nums.map(it - it)[0] == 0
+
+	// type switch
 	assert nums.map(it * 10) == [10, 20, 30, 40, 50, 60]
+	assert nums.map(it * it) == [1, 4, 9, 16, 25, 36]
 	assert nums.map('$it') == ['1', '2', '3', '4', '5', '6']
 	assert nums.map(it % 2 == 0) == [false, true, false, true, false, true]
 
 	assert strs.map(it.to_upper()) == ['V', 'IS', 'AWESOME']
 	assert strs.map(it == 'awesome') == [false, false, true]
+	assert strs.map(it.len in nums) == [true, true, false]
 	assert strs.map(7) == [7, 7, 7]
+
+	// external func
+	assert nums.map(map_test_helper_1(it)) == [1, 4, 9, 16, 25, 36]
+	assert nums.map(map_test_helper_2(it, 'bb')) == [3, 4, 5, 6, 7, 8]
+	assert nums.map(map_test_helper_3(it, strs)) == [3, 9, 4, 6, 12, 7]
+
+	// empty array as input
+	assert []int{len:0}.map(it * 2) == []
+
+	// nested maps (where it is of same type)
+	assert nums.map( strs.map(7) == [7, 7, 7] ) == [true, true, true, true, true, true]
+	assert nums.map( '$it' + strs.map('a')[0] ) == ['1a', '2a', '3a', '4a', '5a', '6a']
+	assert nums.map( it + strs.map(7)[0] ) == [8, 9, 10, 11, 12, 13]
+	assert nums.map( it + strs.map(it.len)[0] ) == [2, 3, 4, 5, 6, 7]
+	assert strs.map( it.len + strs.map(it.len)[0] ) == [2, 3, 8]
+
+	// nested (different it types)
+	assert strs.map( it[ nums.map(it - it)[0] ] ) == [`v`, `i`, `a`]
+	assert nums[0..3].map('$it' + strs.map(it)[it-1]) == ['1v','2is','3awesome']
 
 	assert nums == [1, 2, 3, 4, 5, 6]
 	assert strs == ['v', 'is', 'awesome']

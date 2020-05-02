@@ -756,8 +756,9 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	}
 }
 
-fn (mut p Parser) filter() {
-	p.scope.register('it', ast.Var{
+fn (mut p Parser) scope_register_it() {
+    // force new 'it' even if it exists in parent scope
+	p.scope.register_force('it', ast.Var{
 		name: 'it'
 		pos: p.tok.position()
 		is_used: true
@@ -772,7 +773,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if is_filter {
 		p.open_scope()
 		name_pos = p.tok.position()
-		p.filter()
+		p.scope_register_it()
 		// wrong tok position when using defer
 		// defer {
 		// p.close_scope()
@@ -782,6 +783,9 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
+		if is_filter && args.len != 1 {
+			p.error('needs exactly 1 argument')
+		}
 		p.check(.rpar)
 		mut or_stmts := []ast.Stmt{}
 		mut is_or_block_used := false
