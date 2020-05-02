@@ -36,11 +36,11 @@ const (
 		'unsigned',
 		'void',
 		'volatile',
-		'while',
-		//'new'
+		'while'
 	]
 )
 
+// 'new'
 fn foo(t token.Token) {
 	util.full_hash()
 }
@@ -2172,103 +2172,6 @@ fn (mut g Gen) write_init_function() {
 	}
 }
 
-fn (mut g Gen) write_str_fn_definitions() {
-	// _STR function can't be defined in vlib
-	g.writeln('
-void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, int guess, ...) {
-	va_list args;
-	va_start(args, guess);
-	for(;;) {
-		if (guess < *memsize - *nbytes) {
-			guess = vsnprintf(*refbufp + *nbytes, *memsize - *nbytes, fmt, args);
-			if (guess < *memsize - *nbytes) { // result did fit into buffer
-				*nbytes += guess;
-				return;
-			}
-		}
-		// increase buffer (somewhat exponentially)
-		*memsize += (*memsize + *memsize) / 3 + guess;
-		*refbufp = realloc(*refbufp, *memsize);
-	}
-}
-
-string _STR(const char *fmt, int nfmts, ...) {
-	va_list argptr;
-	int memsize = 128;
-	int nbytes = 0;
-	char* buf = malloc(memsize);
-	va_start(argptr, nfmts);
-	for (int i=0; i<nfmts; i++) {
-		int k = strlen(fmt);
-		bool is_fspec = false;
-		for (int j=0; j<k; j++) {
-			if (fmt[j] == '+"'%'"+') {
-				j++;
-				if(fmt[j] != '+"'%'"+') {
-					is_fspec = true;
-					break;
-				}
-			}
-		}
-		if (is_fspec) {
-			char f = fmt[k-1];
-			char fup = f & 0xdf; // toupper
-			bool l = fmt[k-2] == '+"'l'"+';
-			bool ll = l && fmt[k-3] == '+"'l'"+';
-			if (f == '+"'u'"+' || fup == '+"'X'"+' || f == '+"'o'"+' || f == '+"'d'"+' || f == '+"'c'"+') { // int...
-				if (ll) _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+16, va_arg(argptr, long long));
-				else if (l) _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+10, va_arg(argptr, long));
-				else _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+8, va_arg(argptr, int));
-			} else if (fup >= '+"'E'"+' && fup <= '+"'G'"+') { // floating point
-				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+10, va_arg(argptr, double));
-			} else if (f == '+"'s'"+') { // v string
-				string s = va_arg(argptr, string);
-				if (fmt[k-4] == '+"'*'"+') { // %*.*s
-					int fwidth = va_arg(argptr, int);
-					if (fwidth < 0)
-						fwidth -= (s.len - utf8_str_len(s));
-					else
-						fwidth += (s.len - utf8_str_len(s));
-					_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+fwidth-4, fwidth, s.len, s.str);
-				} else { // %.*s
-					_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+s.len-4, s.len, s.str);
-				}
-			} else {
-				v_panic(tos3("Invaid format specifier"));
-			}
-		} else {
-			if (k)
-				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
-		}
-		fmt += k+1;
-	}
-	va_end(argptr);
-	buf[nbytes] = 0;
-	buf = realloc(buf, nbytes+1);
-#ifdef DEBUG_ALLOC
-	puts("_STR:");
-	puts(buf);
-#endif
-	return tos2(buf);
-}
-
-string _STR_TMP(const char *fmt, ...) {
-	va_list argptr;
-	va_start(argptr, fmt);
-	//size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
-	va_end(argptr);
-	va_start(argptr, fmt);
-	vsprintf((char *)g_str_buf, fmt, argptr);
-	va_end(argptr);
-#ifdef DEBUG_ALLOC
-	//puts("_STR_TMP:");
-	//puts(g_str_buf);
-#endif
-	return tos2(g_str_buf);
-} // endof _STR_TMP
-
-')
-}
 
 const (
 	builtins = ['string', 'array', 'KeyValue', 'DenseArray', 'map', 'Option']
@@ -2440,13 +2343,13 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		sym := g.table.get_type_symbol(node.expr_types[i])
 		sfmt := node.expr_fmts[i]
 		mut fspec := `_` // placeholder
-		mut fmt := ''    // field width and precision
+		mut fmt := '' // field width and precision
 		if sfmt.len > 0 {
 			// analyze and validate format specifier
 			if sfmt[sfmt.len - 1] in [`E`, `F`, `G`, `e`, `f`, `g`, `e`,
 				`d`, `u`, `x`, `X`, `o`, `c`, `s`] {
-					fspec = sfmt[sfmt.len - 1]
-				}
+				fspec = sfmt[sfmt.len - 1]
+			}
 			fmt = if fspec == `_` {
 				sfmt[1..sfmt.len]
 			} else {
@@ -2460,9 +2363,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				fspec = `d`
 			} else if node.expr_types[i].is_unsigned() {
 				fspec = `u`
-			} else if node.expr_types[i] in [table.string_type, table.bool_type] ||
-				sym.kind in [.enum_, .array, .array_fixed, .struct_, .map] ||
-				g.typ(node.expr_types[i]).starts_with('Option') ||
+			} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind in
+				[.enum_, .array, .array_fixed, .struct_, .map] || g.typ(node.expr_types[i]).starts_with('Option') ||
 				sym.has_method('str') {
 				fspec = `s`
 			} else {
@@ -2473,17 +2375,17 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		fields := fmt.split('.')
 		// validate format
 		// only floats should have precision specifier
-		if fields.len > 2 || fields.len == 2 && !(node.expr_types[i].is_float()) ||
-		node.expr_types[i].is_signed() && !(fspec in [`d`, `c`, `x`, `X`, `o`]) ||
-		node.expr_types[i].is_unsigned() && !(fspec in [`u`, `x`, `X`, `o`, `c`]) ||
-		node.expr_types[i].is_float() && !(fspec in [`E`, `F`, `G`, `e`, `f`, `g`, `e`]) {
+		if fields.len > 2 || fields.len == 2 && !(node.expr_types[i].is_float()) || node.expr_types[i].is_signed() &&
+			!(fspec in [`d`, `c`, `x`, `X`, `o`]) || node.expr_types[i].is_unsigned() && !(fspec in [`u`,
+			`x`, `X`, `o`, `c`]) || node.expr_types[i].is_float() && !(fspec in [`E`, `F`, `G`, `e`, `f`,
+			`g`, `e`]) {
 			verror('illegal format specifier ${fspec:c} for type ${g.table.get_type_name(node.expr_types[i])}')
 		}
 		// make sure that format paramters are valid numbers
 		for j, f in fields {
 			for k, c in f {
-				if (c < `0` || c > `9`) &&
-					!(j == 0 && k == 0 && (node.expr_types[i].is_number() && c == `+` || c == `-`)) {
+				if (c < `0` || c > `9`) && !(j == 0 && k == 0 && (node.expr_types[i].is_number() &&
+					c == `+` || c == `-`)) {
 					verror('illegal character ${c:c} in format specifier ${fmt}')
 				}
 			}
@@ -2506,8 +2408,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.write('$fmt${fspec:c}')
 		} else if node.expr_types[i].is_int() {
 			if fspec == `c` {
-				if node.expr_types[i].idx() in [table.i64_type_idx table.f64_type_idx] {
-					verror("64 bit integer types cannot be interpolated as character")
+				if node.expr_types[i].idx() in [table.i64_type_idx, table.f64_type_idx] {
+					verror('64 bit integer types cannot be interpolated as character')
 				} else {
 					g.write('${fmt}c')
 				}
@@ -2565,11 +2467,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				}
 			} else if sym.has_method('str') || sym.kind in [.array, .array_fixed, .map, .struct_] {
 				is_p := node.expr_types[i].is_ptr()
-				val_type := if is_p {
-					node.expr_types[i].deref()
-				} else {
-					node.expr_types[i]
-				}
+				val_type := if is_p { node.expr_types[i].deref() } else { node.expr_types[i] }
 				str_fn_name := g.gen_str_for_type(val_type)
 				if is_p {
 					g.write('string_add(_SLIT("&"), ${str_fn_name}(*(')
@@ -3550,9 +3448,12 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		if it.is_interface {
 			// sym := g.table.get_type_symbol(it.interface_types[i])
 			// isym := g.table.get_type_symbol(it.interface_type)
+			/*
 			interface_styp := g.typ(it.interface_type)
 			styp := g.typ(it.interface_types[i])
 			g.write('I_${styp}_to_${interface_styp}(')
+			*/
+			g.interface_call(it.interface_types[i], it.interface_type)
 		}
 		g.expr(expr)
 		if it.is_interface {
@@ -3561,4 +3462,12 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		g.write(', ')
 	}
 	g.write('\n})')
+}
+
+// `ui.foo(button)` =>
+// `ui__foo(I_ui__Button_to_ui__Widget(` ...
+fn (g &Gen) interface_call(typ, interface_type table.Type) {
+	interface_styp := g.typ(interface_type).replace('*', '')
+	styp := g.typ(typ).replace('*', '')
+	g.write('I_${styp}_to_${interface_styp}(')
 }

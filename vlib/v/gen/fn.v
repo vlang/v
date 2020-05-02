@@ -89,6 +89,10 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 				g.write('$type_name ${impl_fn_name}(')
 			}
 		} else {
+			if !it.is_pub {
+				g.write('static ')
+				g.definitions.write('static ')
+			}
 			g.definitions.write('$type_name ${name}(')
 			g.write('$type_name ${name}(')
 		}
@@ -508,10 +512,11 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 				// Cast a type to interface
 				// `foo(dog)` => `foo(I_Dog_to_Animal(dog))`
 				exp_sym := g.table.get_type_symbol(expected_types[arg_no])
-				exp_styp := g.typ(expected_types[arg_no]) // g.table.get_type_symbol(expected_types[arg_no])
-				styp := g.typ(arg.typ) // g.table.get_type_symbol(arg.typ)
+				// exp_styp := g.typ(expected_types[arg_no]) // g.table.get_type_symbol(expected_types[arg_no])
+				// styp := g.typ(arg.typ) // g.table.get_type_symbol(arg.typ)
 				if exp_sym.kind == .interface_ {
-					g.write('I_${styp}_to_${exp_styp}(')
+					g.interface_call(arg.typ, expected_types[arg_no])
+					// g.write('/*Z*/I_${styp}_to_${exp_styp}(')
 					is_interface = true
 				}
 			}

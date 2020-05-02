@@ -1019,8 +1019,37 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 
 pub fn (mut c Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
-	// check variablename for beginning with capital letter 'Abc'
-	for ident in assign_stmt.left {
+	if assign_stmt.right[0] is ast.CallExpr {
+		call_expr := assign_stmt.right[0] as ast.CallExpr
+		right_type0 := c.expr(assign_stmt.right[0])
+		assign_stmt.right_types = [right_type0]
+		right_type_sym0 := c.table.get_type_symbol(right_type0)
+		mut right_len := if right_type0 == table.void_type { 0 } else { assign_stmt.right.len }
+		if right_type_sym0.kind == .multi_return {
+			assign_stmt.right_types = right_type_sym0.mr_info().types
+			right_len = assign_stmt.right_types.len
+		}
+		if assign_stmt.left.len != right_len {
+			c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${call_expr.name}()` returns $right_len value(s)',
+				assign_stmt.pos)
+				return
+		}
+	}
+	else {
+		if assign_stmt.left.len != assign_stmt.right.len {
+			c.error('assignment mismatch: $assign_stmt.left.len variable(s) $assign_stmt.right.len value(s)',
+				assign_stmt.pos)
+				return
+		}
+	}
+	mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
+	for i, _ in assign_stmt.left {
+		mut ident := assign_stmt.left[i]
+		if assign_stmt.right_types.len < assign_stmt.right.len {
+			assign_stmt.right_types << c.expr(assign_stmt.right[i])
+		}
+		val_type := assign_stmt.right_types[i]
+		// check variable name for beginning with capital letter 'Abc'
 		is_decl := assign_stmt.op == .decl_assign
 		if is_decl && util.contains_capital(ident.name) {
 			c.error('variable names cannot contain uppercase letters, use snake_case instead',
@@ -1030,83 +1059,27 @@ pub fn (mut c Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 				c.error('variable names cannot start with `__`', ident.pos)
 			}
 		}
-	}
-	if assign_stmt.left.len > assign_stmt.right.len {
-		// multi return
-		match assign_stmt.right[0] {
-			ast.CallExpr {}
-			else { c.error('assign_stmt: expected call', assign_stmt.pos) }
+		if assign_stmt.op == .decl_assign {
+			c.var_decl_name = ident.name
 		}
-		right_type := c.expr(assign_stmt.right[0])
-		right_type_sym := c.table.get_type_symbol(right_type)
-		if right_type_sym.kind != .multi_return {
-			c.error('expression on the right does not return multiple values, while at least $assign_stmt.left.len are expected',
-				assign_stmt.pos)
-			return
+		mut ident_var_info := ident.var_info()
+		// c.assigned_var_name = ident.name
+		if assign_stmt.op == .assign {
+			var_type := c.expr(ident)
+			assign_stmt.left_types << var_type
+			if !c.table.check(val_type, var_type) {
+				val_type_sym := c.table.get_type_symbol(val_type)
+				var_type_sym := c.table.get_type_symbol(var_type)
+				c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`',
+					assign_stmt.pos)
+			}
 		}
-		mr_info := right_type_sym.mr_info()
-		if mr_info.types.len < assign_stmt.left.len {
-			c.error('right expression returns only $mr_info.types.len values, but left one expects $assign_stmt.left.len',
-				assign_stmt.pos)
-		}
-		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
-		for i, _ in assign_stmt.left {
-			mut ident := assign_stmt.left[i]
-			mut ident_var_info := ident.var_info()
-			if i >= mr_info.types.len {
-				continue
-			}
-			val_type := mr_info.types[i]
-			if assign_stmt.op == .assign {
-				var_type := c.expr(ident)
-				assign_stmt.left_types << var_type
-				if !c.table.check(val_type, var_type) {
-					val_type_sym := c.table.get_type_symbol(val_type)
-					var_type_sym := c.table.get_type_symbol(var_type)
-					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`',
-						assign_stmt.pos)
-				}
-			}
-			ident_var_info.typ = val_type
-			ident.info = ident_var_info
-			assign_stmt.left[i] = ident
-			assign_stmt.right_types << val_type
-			scope.update_var_type(ident.name, val_type)
-		}
-		c.check_expr_opt_call(assign_stmt.right[0], right_type, true)
-	} else {
-		// `a := 1` | `a,b := 1,2`
-		if assign_stmt.left.len != assign_stmt.right.len {
-			c.error('wrong number of vars', assign_stmt.pos)
-		}
-		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
-		for i, _ in assign_stmt.left {
-			mut ident := assign_stmt.left[i]
-			if assign_stmt.op == .decl_assign {
-				c.var_decl_name = ident.name
-			}
-			mut ident_var_info := ident.var_info()
-			// c.assigned_var_name = ident.name
-			val_type := c.expr(assign_stmt.right[i])
-			if val_type == table.void_type {
-				c.error('expression does not return a value', assign_stmt.right[i].position())
-			}
-			if assign_stmt.op == .assign {
-				var_type := c.expr(ident)
-				assign_stmt.left_types << var_type
-				if !c.table.check(val_type, var_type) {
-					val_type_sym := c.table.get_type_symbol(val_type)
-					var_type_sym := c.table.get_type_symbol(var_type)
-					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`',
-						assign_stmt.pos)
-				}
-			}
-			ident_var_info.typ = val_type
-			ident.info = ident_var_info
-			assign_stmt.left[i] = ident
-			assign_stmt.right_types << val_type
-			scope.update_var_type(ident.name, val_type)
-			c.check_expr_opt_call(assign_stmt.right[i], val_type, true)
+		ident_var_info.typ = val_type
+		ident.info = ident_var_info
+		assign_stmt.left[i] = ident
+		scope.update_var_type(ident.name, val_type)
+		if i < assign_stmt.right.len { // only once for multi return
+			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i], true)
 		}
 	}
 	c.var_decl_name = ''
