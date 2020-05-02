@@ -1,7 +1,7 @@
 module mysql
 
 pub struct Result {
-	result &MYSQL_RES
+	result &C.MYSQL_RES
 }
 
 pub struct Row {
@@ -33,11 +33,11 @@ pub struct Field {
 }
 
 pub fn (r Result) fetch_row() &byteptr {
-	return mysql_fetch_row(r.result)
+	return C.mysql_fetch_row(r.result)
 }
 
 pub fn (r Result) num_fields() int {
-	return mysql_num_fields(r.result)
+	return C.mysql_num_fields(r.result)
 }
 
 pub fn (r Result) rows() []Row {
@@ -60,7 +60,7 @@ pub fn (r Result) rows() []Row {
 pub fn (r Result) fetch_fields() []Field {
 	mut fields := []Field{}
 	nr_cols := r.num_fields()
-	orig_fields := mysql_fetch_fields(r.result)
+	orig_fields := C.mysql_fetch_fields(r.result)
 	for i in 0..nr_cols {
 		fields << Field{
 			name: string(orig_fields[i].name)
@@ -116,5 +116,5 @@ pub fn (f Field) str() string {
 }
 
 pub fn (r Result) free() {
-	mysql_free_result(r.result)
+	C.mysql_free_result(r.result)
 }
