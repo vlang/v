@@ -757,8 +757,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 }
 
 fn (mut p Parser) scope_register_it() {
-    // force new 'it' even if it exists in parent scope
-	p.scope.register_force('it', ast.Var{
+	p.scope.register('it', ast.Var{
 		name: 'it'
 		pos: p.tok.position()
 		is_used: true

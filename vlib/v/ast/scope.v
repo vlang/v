@@ -106,17 +106,12 @@ pub fn (s mut Scope) register(name string, obj ScopeObject) {
 	if name == '_' {
 		return
 	}
-	if _ := s.find(name) {
+	if name in s.objects {
 		// println('existing obect: $name')
 		return
 	}
 	s.objects[name] = obj
 }
-
-pub fn (s mut Scope) register_force(name string, obj ScopeObject) {
-	s.objects[name] = obj
-}
-
 
 pub fn (s &Scope) outermost() &Scope {
 	mut sc := s
