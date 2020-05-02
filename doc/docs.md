@@ -1396,12 +1396,16 @@ Check out [socket.v for an example of calling C code from V](https://github.com/
 To debug issues with the generated C code, you can pass these flags:
 
 - `-cg` - produces a less optimized executable with more debug information in it.
-- `-keep_c` - keep the generated C file, so your debugger can also use it.
-- `-show_c_cmd` - prints the C command that is used to build the program.
+- `-keepc` - keep the generated C file, so your debugger can also use it.
+- `-showcc` - prints the C command that is used to build the program.
 
-For best debugging experience, you can pass all of them at the same time: `v -cg -keep_c -pretty_c -show_c_cmd yourprogram.v` , then just run your debugger (gdb/lldb) or IDE with the produced executable `yourprogram`.
+For best debugging experience, you can pass all of them at the same time: `v -cg -keepc -showcc yourprogram.v` , then just run your debugger (gdb/lldb) or IDE with the produced executable `yourprogram`.
 
 If you just want to inspect the generated C code, without compiling it further, you can also use: `-o file.c`. This will make V produce the `file.c` then stop.
+
+If you want to see the generated C source code for *just* a single C function, for example `main`, you can use: `-printfn main -o file.c` .
+
+To see a detailed list of all flags that V supports, use `v help`, `v help build`, `v help build-c` .
 
 ## Compile time if
 

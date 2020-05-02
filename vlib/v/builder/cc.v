@@ -550,7 +550,7 @@ fn (mut c Builder) cc_windows_cross() {
 	/*
 	if c.pref.build_mode != .build_module {
 		link_cmd := 'lld-link $obj_name $winroot/lib/libcmt.lib ' + '$winroot/lib/libucrt.lib $winroot/lib/kernel32.lib $winroot/lib/libvcruntime.lib ' + '$winroot/lib/uuid.lib'
-		if c.pref.show_c_cmd {
+		if c.pref.show_cc {
 			println(link_cmd)
 		}
 		if os.system(link_cmd) != 0 {
