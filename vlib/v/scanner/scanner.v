@@ -898,9 +898,9 @@ fn (s mut Scanner) ident_string() string {
 	if s.is_inside_string {
 		end++
 	}
-	if start > s.pos {}
-	else {
+	if start <= s.pos {
 		lit = s.text[start..end]
+		lit = lit.replace('\\\n', '')
 	}
 	return lit
 }
