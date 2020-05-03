@@ -278,7 +278,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.left_type == 0 {
 		verror('method receiver type is 0, this means there are some uchecked exprs')
 	}
-	mut receiver_type_name := g.cc_typ(node.receiver_type)
+	mut receiver_type_name := g.cc_type(node.receiver_type)
 	typ_sym := g.table.get_type_symbol(node.receiver_type)
 	if typ_sym.kind == .interface_ {
 		// Speaker_name_table[s._interface_idx].speak(s._object)

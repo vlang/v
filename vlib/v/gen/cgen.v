@@ -283,8 +283,8 @@ pub fn (mut g Gen) write_typeof_functions() {
 }
 
 // V type to C type
-fn (g mut Gen) typ(t table.Type) string {
-	mut styp := g.base_typ(t)
+fn (mut g Gen) typ(t table.Type) string {
+	mut styp := g.base_type(t)
 	if t.flag_is(.optional) {
 		// Register an optional
 		styp = 'Option_' + styp
@@ -301,8 +301,8 @@ fn (g mut Gen) typ(t table.Type) string {
 	return styp
 }
 
-fn (g Gen) base_typ(t table.Type) string {
-	mut styp := g.cc_typ(t)
+fn (g &Gen) base_type(t table.Type) string {
+	mut styp := g.cc_type(t)
 	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
@@ -310,9 +310,9 @@ fn (g Gen) base_typ(t table.Type) string {
 	return styp
 }
 
-// cc_typ returns the Cleaned Concrete Type name, *without ptr*,
+// cc_type returns the Cleaned Concrete Type name, *without ptr*,
 // i.e. it's always just Cat, not Cat_ptr:
-fn (g Gen) cc_typ(t table.Type) string {
+fn (g &Gen) cc_type(t table.Type) string {
 	sym := g.table.get_type_symbol(t)
 	mut styp := sym.name.replace('.', '__')
 	if styp.starts_with('C__') {
@@ -850,7 +850,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			g.expr(ident)
 			if is_optional {
-				mr_base_styp := g.base_typ(return_type)
+				mr_base_styp := g.base_type(return_type)
 				g.writeln(' = (*(${mr_base_styp}*)${mr_var_name}.data).arg$i;')
 			} else {
 				g.writeln(' = ${mr_var_name}.arg$i;')
@@ -1657,7 +1657,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		// `println(x)` => `println(*(int*)x.data)`
 		if ident_var.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
 			g.write('/*opt*/')
-			styp := g.base_typ(ident_var.typ)
+			styp := g.base_type(ident_var.typ)
 			g.write('(*($styp*)${name}.data)')
 			return
 		}
@@ -1915,7 +1915,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// mr_info := typ_sym.info as table.MultiReturn
 		mut styp := ''
 		if fn_return_is_optional { // && !node.types[0].flag_is(.optional) && node.types[0] !=
-			styp = g.base_typ(g.fn_decl.return_type)
+			styp = g.base_type(g.fn_decl.return_type)
 			g.write('opt_ok(&($styp/*X*/[]) { ')
 		} else {
 			styp = g.typ(g.fn_decl.return_type)
@@ -1954,7 +1954,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				else {}
 			}
 			if !is_none && !is_error {
-				styp := g.base_typ(g.fn_decl.return_type)
+				styp := g.base_type(g.fn_decl.return_type)
 				g.write('/*:)$return_sym.name*/opt_ok(&($styp[]) { ')
 				if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 					// Automatic Dereference for optional
@@ -2608,7 +2608,7 @@ fn (mut g Gen) insert_before(s string) {
 // to access its fields (`.ok`, `.error` etc)
 // `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
 fn (mut g Gen) or_block(var_name string, stmts []ast.Stmt, return_type table.Type) {
-	mr_styp := g.base_typ(return_type)
+	mr_styp := g.base_type(return_type)
 	g.writeln(';') // or')
 	g.writeln('if (!${var_name}.ok) {')
 	g.writeln('\tstring err = ${var_name}.v_error;')
@@ -3398,7 +3398,7 @@ fn (g &Gen) interface_table() string {
 			ret_styp := g.typ(method.return_type)
 			methods_typ_def.write('typedef $ret_styp (*$typ_name)(void* _')
 			// the first param is the receiver, it's handled by `void*` above
-			for i in 1..method.args.len {
+			for i in 1 .. method.args.len {
 				arg := method.args[i]
 				methods_typ_def.write(', ${g.typ(arg.typ)} $arg.name')
 			}
@@ -3418,7 +3418,7 @@ fn (g &Gen) interface_table() string {
 		for i, st in inter_info.types {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
-			cctype := g.cc_typ(st)
+			cctype := g.cc_type(st)
 			// Speaker_Cat_index = 0
 			interface_index_name := '_${interface_name}_${cctype}_index'
 			cast_functions.writeln('
@@ -3438,7 +3438,7 @@ _Interface I_${cctype}_to_Interface(${cctype} x) {
 					methods_wrapper.write(' ${method_call}_method_wrapper(')
 					methods_wrapper.write('${cctype}* ${method.args[0].name}')
 					// TODO g.fn_args
-					for j in 1..method.args.len {
+					for j in 1 .. method.args.len {
 						arg := method.args[j]
 						methods_wrapper.write(', ${g.typ(arg.typ)} $arg.name')
 					}
@@ -3448,7 +3448,7 @@ _Interface I_${cctype}_to_Interface(${cctype} x) {
 						methods_wrapper.write('return ')
 					}
 					methods_wrapper.write('${method_call}(*${method.args[0].name}')
-					for j in 1..method.args.len {
+					for j in 1 .. method.args.len {
 						methods_wrapper.write(', ${method.args[j].name}')
 					}
 					methods_wrapper.writeln(');')
@@ -3526,11 +3526,11 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 // `ui.foo(button)` =>
 // `ui__foo(I_ui__Button_to_ui__Widget(` ...
 fn (g &Gen) interface_call(typ, interface_type table.Type) {
-	interface_styp := g.cc_typ(interface_type)
-	styp := g.cc_typ(typ)
+	interface_styp := g.cc_type(interface_type)
+	styp := g.cc_type(typ)
 	g.write('/* $interface_styp */ I_${styp}_to_Interface(')
 	// TODO Find out why this was here
 	// if !typ.is_ptr() {
-	// 	g.write('&')
+	// g.write('&')
 	// }
 }
