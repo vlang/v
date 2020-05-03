@@ -1470,7 +1470,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write('array_push(&')
 			g.expr(node.left)
 			g.write(', &($elem_type_str[]){ ')
+			elem_sym := g.table.get_type_symbol(info.elem_type)
+			if elem_sym.kind == .interface_ {
+				g.interface_call(node.right_type, info.elem_type)
+			}
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
+			if elem_sym.kind == .interface_ {
+				g.write(')')
+			}
 			g.write(' })')
 		}
 	} else if (node.left_type == node.right_type) && node.left_type.is_float() && node.op in

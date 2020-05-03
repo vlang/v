@@ -469,6 +469,9 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if exp_idx == voidptr_type_idx || got_idx == voidptr_type_idx {
 		return true
 	}
+	if exp_idx == any_type_idx || got_idx == any_type_idx {
+		return true
+	}
 	if (exp_idx in pointer_type_idxs || exp_idx in number_type_idxs) && (got_idx in pointer_type_idxs ||
 		got_idx in number_type_idxs) {
 		return true
@@ -485,7 +488,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// # NOTE: use symbols from this point on for perf
 	got_type_sym := t.get_type_symbol(got)
 	exp_type_sym := t.get_type_symbol(expected)
-	//
+	// Handle expected interface
 	if exp_type_sym.kind == .interface_ {
 		mut info := exp_type_sym.info as Interface
 		// println('gen_types before')
@@ -498,6 +501,13 @@ pub fn (t &Table) check(got, expected Type) bool {
 		// println(info.gen_types)
 		return true
 	}
+	// Handle expected interface array
+	/*
+	if exp_type_sym.kind == .array && t.get_type_symbol(t.value_type(exp_idx)).kind == .interface_ {
+		return true
+	}
+	*/
+	//
 	if exp_type_sym.kind == .function && got_type_sym.kind == .int {
 		// TODO temporary
 		// fn == 0

@@ -391,7 +391,7 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 				// `array << elm`
 				c.fail_if_immutable(infix_expr.left)
 				// the expressions have different types (array_x and x)
-				if c.table.check(c.table.value_type(left_type), right_type) {
+				if c.table.check(right_type, c.table.value_type(left_type)) { // , right_type) {
 					// []T << T
 					return table.void_type
 				}
@@ -400,7 +400,7 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 					return table.void_type
 				}
 				s := left.name.replace('array_', '[]')
-				c.error('cannot append `$right.name` to `$s', infix_expr.right.position())
+				c.error('cannot append `$right.name` to `$s`', infix_expr.right.position())
 				return table.void_type
 			} else if !left.is_int() {
 				c.error('cannot shift type $right.name into non-integer type $left.name', infix_expr.left.position())

@@ -91,3 +91,11 @@ interface Speaker {
 	speak()
 }
 
+
+fn test_interface_array() {
+	mut animals := []Speaker{}
+	animals = [ Cat{}, Dog{} ]
+	animals << Cat{}
+	assert true
+	assert animals.len == 3
+}

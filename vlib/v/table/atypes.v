@@ -176,6 +176,7 @@ pub const (
 	ustring_type_idx = 19
 	array_type_idx   = 20
 	map_type_idx     = 21
+	any_type_idx     = 22
 )
 
 pub const (
@@ -220,6 +221,7 @@ pub const (
 	ustring_type = new_type(ustring_type_idx)
 	array_type   = new_type(array_type_idx)
 	map_type     = new_type(map_type_idx)
+	any_type     = new_type(any_type_idx)
 )
 
 pub const (
@@ -227,7 +229,7 @@ pub const (
 		'u16',
 		'u32',
 		'u64', 'f32', 'f64', 'string', 'ustring', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed',
-		'map', 'struct',
+		'map', 'any', 'struct',
 		'mapnode', 'size_t']
 )
 
@@ -270,6 +272,7 @@ pub enum Kind {
 	array
 	array_fixed
 	map
+	any
 	struct_
 	multi_return
 	sum_type
@@ -428,6 +431,10 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		name: 'map'
 	})
 	t.register_type_symbol(TypeSymbol{
+		kind: .any
+		name: 'any'
+	})
+	t.register_type_symbol(TypeSymbol{
 		kind: .size_t
 		name: 'size_t'
 	})
@@ -466,6 +473,7 @@ pub fn (t &TypeSymbol) is_number() bool {
 	return t.is_int() || t.is_float()
 }
 
+// for debugging/errors only, perf is not an issue
 pub fn (k Kind) str() string {
 	k_str := match k {
 		.placeholder { 'placeholder' }
@@ -496,6 +504,7 @@ pub fn (k Kind) str() string {
 		.sum_type { 'sum_type' }
 		.alias { 'alias' }
 		.enum_ { 'enum' }
+		.any { 'any' }
 		else { 'unknown' }
 	}
 	return k_str
@@ -535,7 +544,7 @@ pub:
 	foo string
 }
 
-// NB: FExpr here is a actually an ast.Expr . 
+// NB: FExpr here is a actually an ast.Expr .
 // It should always be used by casting to ast.Expr, using ast.fe2ex()/ast.ex2fe()
 // That hack is needed to break an import cycle between v.ast and v.table .
 type FExpr = voidptr | byteptr
