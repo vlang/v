@@ -171,6 +171,8 @@ extern wchar_t **_wenviron;
 #include <pthread.h>
 #endif
 
+// g_live_info is used by live.info()
+void* g_live_info = NULL;
 
 //============================== HELPER C MACROS =============================*/
 //#define tos4(s, slen) ((string){.str=(s), .len=(slen)})

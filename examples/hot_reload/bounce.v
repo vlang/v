@@ -79,8 +79,8 @@ const (
 [live]
 fn (game &Game) draw() {
 	game.gg.draw_rect(game.x, game.y, width, width, blue)
-	game.gg.draw_rect(550 - game.x + 10, 200 - game.y + 50, width, width, gx.rgb(128, 10, 255))
-	game.gg.draw_rect(game.x - 20, 250 - game.y, width, width, gx.rgb(128, 240, 155))
+	game.gg.draw_rect(550 - game.x + 10, 200 - game.y + 50, width, width, gx.rgb(228, 10, 55))
+	game.gg.draw_rect(game.x - 25, 250 - game.y, width, width, gx.rgb(28, 240, 55))
 }
 
 [live]
