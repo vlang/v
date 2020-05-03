@@ -470,7 +470,7 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 	match expr {
 		ast.Ident {
-			scope := c.file.scope.innermost(expr.position().pos)
+			scope := c.file.scope.innermost(it.pos.pos)
 			if v := scope.find_var(it.name) {
 				if !v.is_mut && !v.typ.is_ptr() {
 					c.error('`$it.name` is immutable, declare it with `mut` to make it mutable',
@@ -490,7 +490,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 		ast.SelectorExpr {
 			// retrieve table.Field
 			if it.expr_type == 0 {
-				c.error('0 type in SelectorExpr', expr.position())
+				c.error('0 type in SelectorExpr', it.pos)
 				return
 			}
 			typ_sym := c.table.get_type_symbol(it.expr_type)
