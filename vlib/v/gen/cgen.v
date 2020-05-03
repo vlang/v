@@ -3425,7 +3425,7 @@ _Interface I_${cctype}_to_Interface(${cctype} x) {
 		._interface_idx = ${interface_index_name}
 	};
 }')
-			methods_struct.writeln('\t($methods_struct_name) {')
+			methods_struct.writeln('\t{')
 			for method in ityp.methods {
 				// .speak = Cat_speak
 				mut method_call := '${cctype}_${method.name}'
