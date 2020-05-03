@@ -11,15 +11,18 @@ fn (d Cat) name() string {
 	return 'Cat'
 }
 
-fn (d Cat) speak() {
+fn (d Cat) speak(s string) {
+	assert s == 'Hi !'
 	println('meow')
 }
 
-fn (d Dog) speak() {
+fn (d Dog) speak(s string) {
+	assert s == 'Hi !'
 	println('woof')
 }
 
 fn (d Dog) name() string {
+	assert d.breed == 'Labrador Retriever'
 	return 'Dog'
 }
 
@@ -31,7 +34,7 @@ fn test_todo() {
 
 
 fn perform_speak(s Speaker) {
-	s.speak()
+	s.speak('Hi !')
 	assert true
 	name := s.name()
 	assert name == 'Dog' || name == 'Cat'
@@ -42,7 +45,7 @@ fn perform_speak(s Speaker) {
 }
 
 fn test_perform_speak() {
-	dog := Dog{}
+	dog := Dog{breed: 'Labrador Retriever'}
 	perform_speak(dog)
 	cat := Cat{}
 	perform_speak(cat)
@@ -88,7 +91,7 @@ struct Foo {
 
 interface Speaker {
 	name() string
-	speak()
+	speak(s string)
 }
 
 

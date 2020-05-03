@@ -180,23 +180,23 @@ pub const (
 )
 
 pub const (
-	integer_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
+	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
 		u16_type_idx,
 		u32_type_idx,
 		u64_type_idx
 	]
-	signed_integer_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx]
+	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx]
 	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx]
-	float_type_idxs   = [f32_type_idx, f64_type_idx]
-	number_type_idxs  = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
+	float_type_idxs            = [f32_type_idx, f64_type_idx]
+	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
 		u16_type_idx,
 		u32_type_idx,
 		u64_type_idx,
 		f32_type_idx,
 		f64_type_idx
 	]
-	pointer_type_idxs = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
-	string_type_idxs  = [string_type_idx, ustring_type_idx]
+	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
+	string_type_idxs           = [string_type_idx, ustring_type_idx]
 )
 
 pub const (
@@ -530,8 +530,7 @@ pub mut:
 
 pub struct Interface {
 mut:
-	gen_types []string
-	foo       string
+	types []Type
 }
 
 pub struct Enum {
@@ -547,7 +546,7 @@ pub:
 // NB: FExpr here is a actually an ast.Expr .
 // It should always be used by casting to ast.Expr, using ast.fe2ex()/ast.ex2fe()
 // That hack is needed to break an import cycle between v.ast and v.table .
-type FExpr = voidptr | byteptr
+type FExpr = byteptr | voidptr
 
 pub struct Field {
 pub:
@@ -632,6 +631,22 @@ pub fn (table &Table) type_to_str(t Type) string {
 	}
 	*/
 	return res
+}
+
+pub fn (t &TypeSymbol) has_method(name string) bool {
+	t.find_method(name) or {
+		return false
+	}
+	return true
+}
+
+pub fn (t &TypeSymbol) find_method(name string) ?Fn {
+	for method in t.methods {
+		if method.name == name {
+			return method
+		}
+	}
+	return none
 }
 
 pub fn (s Struct) find_field(name string) ?Field {
