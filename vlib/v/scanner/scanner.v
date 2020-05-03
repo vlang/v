@@ -76,12 +76,14 @@ pub fn new_scanner(text string, comments_mode CommentsMode) &Scanner {
 }
 
 pub fn (s &Scanner) add_fn_main_and_rescan(pos int) {
+	// NB: the text may have ended in // comment, which would hide the ending }
+	// To avoid that, we need a \n right before it.
 	if pos > 0 {
-		s.text = s.text[..pos] + 'fn main() {' + s.text[pos..] + '}'
+		s.text = s.text[..pos] + 'fn main() {' + s.text[pos..] + '\n}'
 		s.pos = pos
 		s.is_started = false
 	} else {
-		s.text = 'fn main() {' + s.text + '}'
+		s.text = 'fn main() {' + s.text + '\n}'
 		s.pos = 0
 		s.line_nr = 0
 		s.is_started = false
