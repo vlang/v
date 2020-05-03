@@ -84,6 +84,12 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 		$if windows {
 			os.rm(file[..file.len - 2] + '.exe')
 			os.rm(temp_file[..temp_file.len - 2] + '.exe')
+			$if msvc {
+				os.rm(file[..file.len - 2] + '.ilk')
+				os.rm(file[..file.len - 2] + '.pdb')
+				os.rm(temp_file[..temp_file.len - 2] + '.ilk')
+				os.rm(temp_file[..temp_file.len - 2] + '.pdb')
+			}
 		} $else {
 			os.rm(file[..file.len - 2])
 			os.rm(temp_file[..temp_file.len - 2])
