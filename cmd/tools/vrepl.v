@@ -81,8 +81,13 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 		println('')
 		os.rm(file)
 		os.rm(temp_file)
-		os.rm(file[..file.len - 2])
-		os.rm(temp_file[..temp_file.len - 2])
+		$if windows {
+			os.rm(file[..file.len - 2] + '.exe')
+			os.rm(temp_file[..temp_file.len - 2] + '.exe')
+		} $else {
+			os.rm(file[..file.len - 2])
+			os.rm(temp_file[..temp_file.len - 2])
+		}
 	}
 	mut r := Repl{}
 	mut readline := readline.Readline{}
