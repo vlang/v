@@ -148,6 +148,7 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 }
 
 pub fn (t &Table) interface_add_type(inter mut Interface, typ Type) bool {
+	// TODO Verify `typ` implements `inter`
 	typ_sym := t.get_type_symbol(typ)
 	if typ !in inter.types && typ_sym.kind != .interface_ {
 		inter.types << typ

@@ -103,14 +103,6 @@ const (
 )
 
 pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
-	if true { // if
-		x := 10 // line
-		// sep
-		y := 20
-		_ = x
-		_ = y
-	} else {
-	}
 	// println('start cgen2')
 	mut g := Gen{
 		out: strings.new_builder(1000)
@@ -1201,7 +1193,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.SelectorExpr {
 			g.expr(it.expr)
-			// if it.expr_type.nr_muls() > 0 {
 			if it.expr_type.is_ptr() {
 				g.write('->')
 			} else {
@@ -3408,7 +3399,7 @@ fn (g &Gen) interface_table() string {
 				arg := method.args[i]
 				methods_typ_def.write(', ${g.typ(arg.typ)} $arg.name')
 			}
-			// g.fn_args(method.args[1..], method.is_variadic)
+			// TODO g.fn_args(method.args[1..], method.is_variadic)
 			methods_typ_def.writeln(');')
 			methods_struct_def.writeln('\t$typ_name ${c_name(method.name)};')
 		}
@@ -3419,6 +3410,8 @@ fn (g &Gen) interface_table() string {
 		methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[$inter_info.types.len] = {')
 		mut cast_functions := strings.new_builder(100)
 		cast_functions.write('// Casting functions for interface "${interface_name}"')
+		mut methods_wrapper := strings.new_builder(100)
+		methods_wrapper.writeln('// Methods wrapper for interface "${interface_name}"')
 		for i, st in inter_info.types {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
@@ -3435,7 +3428,32 @@ _Interface I_${cctype}_to_Interface(${cctype} x) {
 			methods_struct.writeln('\t($methods_struct_name) {')
 			for method in ityp.methods {
 				// .speak = Cat_speak
-				methods_struct.writeln('\t\t.${c_name(method.name)} = ${cctype}_${method.name},')
+				mut method_call := '${cctype}_${method.name}'
+				if !method.args[0].typ.is_ptr() {
+					// inline void Cat_speak_method_wrapper(Cat c) { return Cat_speak(*c); }
+					methods_wrapper.write('static inline ${g.typ(method.return_type)}')
+					methods_wrapper.write(' ${method_call}_method_wrapper(')
+					methods_wrapper.write('${cctype}* ${method.args[0].name}')
+					// TODO g.fn_args
+					for j in 1..method.args.len {
+						arg := method.args[j]
+						methods_wrapper.write(', ${g.typ(arg.typ)} $arg.name')
+					}
+					methods_wrapper.writeln(') {')
+					methods_wrapper.write('\t')
+					if method.return_type != table.void_type {
+						methods_wrapper.write('return ')
+					}
+					methods_wrapper.write('${method_call}(*${method.args[0].name}')
+					for j in 1..method.args.len {
+						methods_wrapper.write(', ${method.args[j].name}')
+					}
+					methods_wrapper.writeln(');')
+					methods_wrapper.writeln('}')
+					// .speak = Cat_speak_method_wrapper
+					method_call += '_method_wrapper'
+				}
+				methods_struct.writeln('\t\t.${c_name(method.name)} = $method_call,')
 			}
 			methods_struct.writeln('\t},')
 			sb.writeln('int ${interface_index_name} = $i;')
@@ -3443,6 +3461,7 @@ _Interface I_${cctype}_to_Interface(${cctype} x) {
 		methods_struct.writeln('};')
 		// add line return after interface index declarations
 		sb.writeln('')
+		sb.writeln(methods_wrapper.str())
 		sb.writeln(methods_typ_def.str())
 		sb.writeln(methods_struct_def.str())
 		sb.writeln(methods_struct.str())

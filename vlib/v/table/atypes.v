@@ -58,7 +58,7 @@ pub fn (t Type) nr_muls() int {
 // return true if `t` is a pointer (nr_muls>0)
 [inline]
 pub fn (t Type) is_ptr() bool {
-	return (int(t) >> 16) & 0xff > 0
+	return t.nr_muls() > 0
 }
 
 // set nr_muls on `t` and return it

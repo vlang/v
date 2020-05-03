@@ -50,8 +50,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 	} else {
 		mut name := it.name
-		c := name[0]
-		if c in [`+`, `-`, `*`, `/`, `%`] {
+		if name[0] in [`+`, `-`, `*`, `/`, `%`] {
 			name = util.replace_op(name)
 		}
 		if it.is_method {
@@ -287,7 +286,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.left)
 		g.write('._interface_idx].${node.name}(')
 		g.expr(node.left)
-		g.write('._object)')
+		g.write('._object')
+		if node.args.len > 0 {
+			g.write(', ')
+			g.call_args(node.args, node.expected_arg_types)
+		}
+		g.write(')')
 		return
 	}
 	if typ_sym.kind == .array && node.name == 'map' {
@@ -485,9 +489,8 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 	is_variadic := expected_types.len > 0 && expected_types[expected_types.len - 1].flag_is(.variadic)
 	is_forwarding_varg := args.len > 0 && args[args.len - 1].typ.flag_is(.variadic)
 	gen_vargs := is_variadic && !is_forwarding_varg
-	mut arg_no := 0
-	for arg in args {
-		if gen_vargs && arg_no == expected_types.len - 1 {
+	for i, arg in args {
+		if gen_vargs && i == expected_types.len - 1 {
 			break
 		}
 		// if arg.typ.name.starts_with('I') {
@@ -495,42 +498,42 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 		mut is_interface := false
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		// when these are fixed we wont need this check
-		if arg_no < expected_types.len {
-			if expected_types[arg_no] != 0 {
+		if i < expected_types.len {
+			if expected_types[i] != 0 {
 				// Cast a type to interface
 				// `foo(dog)` => `foo(I_Dog_to_Animal(dog))`
-				exp_sym := g.table.get_type_symbol(expected_types[arg_no])
+				exp_sym := g.table.get_type_symbol(expected_types[i])
 				// exp_styp := g.typ(expected_types[arg_no]) // g.table.get_type_symbol(expected_types[arg_no])
 				// styp := g.typ(arg.typ) // g.table.get_type_symbol(arg.typ)
 				if exp_sym.kind == .interface_ {
-					g.interface_call(arg.typ, expected_types[arg_no])
+					g.interface_call(arg.typ, expected_types[i])
 					// g.write('/*Z*/I_${styp}_to_${exp_styp}(')
 					is_interface = true
 				}
 			}
-			g.ref_or_deref_arg(arg, expected_types[arg_no])
+			g.ref_or_deref_arg(arg, expected_types[i])
 		} else {
 			g.expr(arg.expr)
 		}
 		if is_interface {
 			g.write(')')
 		}
-		if arg_no < args.len - 1 || gen_vargs {
+		if i < args.len - 1 || gen_vargs {
 			g.write(', ')
 		}
-		arg_no++
 	}
+	arg_nr := expected_types.len - 1
 	if gen_vargs {
 		varg_type := expected_types[expected_types.len - 1]
 		struct_name := 'varg_' + g.typ(varg_type).replace('*', '_ptr')
-		variadic_count := args.len - arg_no
+		variadic_count := args.len - arg_nr
 		varg_type_str := int(varg_type).str()
 		if variadic_count > g.variadic_args[varg_type_str] {
 			g.variadic_args[varg_type_str] = variadic_count
 		}
 		g.write('($struct_name){.len=$variadic_count,.args={')
 		if variadic_count > 0 {
-			for j in arg_no .. args.len {
+			for j in arg_nr .. args.len {
 				g.ref_or_deref_arg(args[j], varg_type)
 				if j < args.len - 1 {
 					g.write(', ')
