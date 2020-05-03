@@ -16,6 +16,7 @@ fn (d Cat) speak() {
 }
 
 fn (d Dog) speak() {
+	assert d.breed == 'Labrador Retriever'
 	println('woof')
 }
 
@@ -42,7 +43,7 @@ fn perform_speak(s Speaker) {
 }
 
 fn test_perform_speak() {
-	dog := Dog{}
+	dog := Dog{breed: 'Labrador Retriever'}
 	perform_speak(dog)
 	cat := Cat{}
 	perform_speak(cat)
