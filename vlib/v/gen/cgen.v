@@ -3422,9 +3422,9 @@ fn (g &Gen) interface_table() string {
 			// Speaker_Cat_index = 0
 			interface_index_name := '_${interface_name}_${cctype}_index'
 			cast_functions.writeln('
-_Interface I_${cctype}_to_Interface(${cctype} x) {
+_Interface I_${cctype}_to_Interface(${cctype}* x) {
 	return (_Interface) {
-		._object = (void*) memdup(&x, sizeof(${cctype})),
+		._object = (void*) memdup(x, sizeof(${cctype})),
 		._interface_idx = ${interface_index_name}
 	};
 }')
@@ -3529,8 +3529,7 @@ fn (g &Gen) interface_call(typ, interface_type table.Type) {
 	interface_styp := g.cc_type(interface_type)
 	styp := g.cc_type(typ)
 	g.write('/* $interface_styp */ I_${styp}_to_Interface(')
-	// TODO Find out why this was here
-	// if !typ.is_ptr() {
-	// g.write('&')
-	// }
+	if !typ.is_ptr() {
+		g.write('&')
+	}
 }
