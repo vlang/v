@@ -399,7 +399,8 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 					// []T << []T
 					return table.void_type
 				}
-				c.error('cannot append `$right.name` to `$left.name`', infix_expr.right.position())
+				s := left.name.replace('array_', '[]')
+				c.error('cannot append `$right.name` to `$s', infix_expr.right.position())
 				return table.void_type
 			} else if !left.is_int() {
 				c.error('cannot shift type $right.name into non-integer type $left.name', infix_expr.left.position())
