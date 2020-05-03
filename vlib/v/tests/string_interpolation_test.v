@@ -102,6 +102,9 @@ fn test_utf8_string_interpolation() {
 	e := '\u20AC' // Eurosign
 	// TODO: this fails with MSVC and tcc
 	// assert '100.00 $e' == '100.00 €'
+	m2 := 'Москва́' // cyrillic а́: combination of U+0430 and U+0301, UTF-8: d0 b0 cc 81
+	d := 'Antonín Dvořák' // latin á: U+00E1, UTF-8: c3 a1
+	assert ':${m2:7}:${d:-15}:' == ': Москва́:Antonín Dvořák :'
 }
 
 struct S {
