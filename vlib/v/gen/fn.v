@@ -479,6 +479,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			}
 			g.write('))')
 		}
+	} else if g.pref.is_debug && node.name == 'panic' {
+		paline := node.pos.line_nr + 1
+		pafile := g.fn_decl.file
+		pafn := g.fn_decl.name.after('.')
+		pamod := g.fn_decl.name.all_before_last('.')
+		g.write('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"),  ')
+		g.call_args(node.args, node.expected_arg_types)
+		g.write(')')
 	} else {
 		g.write('${name}(')
 		g.call_args(node.args, node.expected_arg_types)

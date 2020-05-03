@@ -255,6 +255,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_js: is_js
 		no_body: no_body
 		pos: start_pos.extend(end_pos)
+		file: p.file_name
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		ctdefine: ctdefine
 	}
@@ -305,6 +306,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			is_anon: true
 			no_body: no_body
 			pos: pos
+			file: p.file_name
 		}
 		typ: typ
 	}

@@ -106,6 +106,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
 				stmts << ast.FnDecl {
 					name: 'main'
+					file: p.file_name
 					return_type: table.void_type
 				}
 			}
