@@ -12,7 +12,7 @@ const (
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/pointers_test.v',
 		'vlib/v/tests/type_test.v',
-		//'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
+		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
 		'vlib/v/tests/pointers_str_test.v',
 		'vlib/net/http/http_httpbin_test.v', // fails on ubuntu-musl, because of missing openssl
 		'vlib/net/http/http_test.v', // fails on ubuntu-musl, because of missing openssl

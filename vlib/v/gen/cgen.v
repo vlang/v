@@ -964,22 +964,22 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 }
 
 fn (mut g Gen) free_scope_vars(pos int) {
+	println('free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
 	for _, obj in scope.objects {
 		match obj {
 			ast.Var {
-				// println('//////')
-				// println(var.name)
-				// println(var.typ)
 				// if var.typ == 0 {
 				// // TODO why 0?
 				// continue
 				// }
 				v := *it
+				println(v.name)
+				// println(v.typ)
 				sym := g.table.get_type_symbol(v.typ)
 				is_optional := v.typ.flag_is(.optional)
 				if sym.kind == .array && !is_optional {
-					g.writeln('array_free($v.name); // autofreed')
+					g.writeln('\tarray_free($v.name); // autofreed')
 				}
 				if sym.kind == .string && !is_optional {
 					// Don't free simple string literals.
@@ -2084,7 +2084,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			field_name := c_name(field.name)
 			g.write('\t.$field_name = ')
 			if field.has_default_expr {
-				g.expr( ast.fe2ex(field.default_expr) )
+				g.expr(ast.fe2ex(field.default_expr))
 			} else {
 				g.write(g.type_default(field.typ))
 			}

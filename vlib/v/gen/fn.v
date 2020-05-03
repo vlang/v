@@ -161,6 +161,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	g.stmts(it.stmts)
 	// ////////////
 	if g.autofree {
+		// println('\n\ncalling free for fn $it.name')
 		g.free_scope_vars(it.pos.pos - 1)
 	}
 	// /////////
