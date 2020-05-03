@@ -15,7 +15,7 @@ fn test_all() {
 	}
 	for test in tests {
 		path := os.join_path(dir, test).replace('\\', '/')
-		print(test + ' ')
+		print(path + ' ')
 		program := path.replace('.vv', '.v')
 		os.cp(path, program) or {
 			panic(err)
