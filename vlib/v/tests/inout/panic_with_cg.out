@@ -1,0 +1,6 @@
+================ V panic ================
+   module: buggy_function
+ function: buggy_function()
+  message: panicing...
+     file: vlib/v/tests/inout/panic_with_cg.v
+     line: 3

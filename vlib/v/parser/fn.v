@@ -257,6 +257,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		no_body: no_body
 		pos: start_pos.extend(end_pos)
 		body_pos: body_start_pos
+		file: p.file_name
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		ctdefine: ctdefine
 	}
