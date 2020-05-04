@@ -63,38 +63,38 @@ struct Gen {
 	pref                 &pref.Preferences
 	module_built         string
 mut:
-	file                 ast.File
-	fn_decl              &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	last_fn_c_name       string
-	tmp_count            int
-	variadic_args        map[string]int
-	is_c_call            bool // e.g. `C.printf("v")`
-	is_assign_lhs        bool // inside left part of assign expr (for array_set(), etc)
-	is_assign_rhs        bool // inside right part of assign after `=` (val expr)
-	is_array_set         bool
-	is_amp               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
-	optionals            []string // to avoid duplicates TODO perf, use map
-	inside_ternary       bool // ?: comma separated statements on a single line
-	stmt_start_pos       int
-	right_is_opt         bool
-	autofree             bool
-	indent               int
-	empty_line           bool
-	is_test              bool
-	assign_op            token.Kind // *=, =, etc (for array_set)
-	defer_stmts          []ast.DeferStmt
-	defer_ifdef          string
-	defer_profile_code   string
-	str_types            []string // types that need automatic str() generation
-	threaded_fns         []string // for generating unique wrapper types and fns for `go xxx()`
-	array_fn_definitions []string // array equality functions that have been defined
-	struct_fn_definitions[]string // struct equality functions that have been defined
-	is_json_fn           bool // inside json.encode()
-	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
-	attr                 string
-	is_builtin_mod       bool
-	hotcode_fn_names     []string
-	fn_main              &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
+	file                   ast.File
+	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	last_fn_c_name         string
+	tmp_count              int
+	variadic_args          map[string]int
+	is_c_call              bool // e.g. `C.printf("v")`
+	is_assign_lhs          bool // inside left part of assign expr (for array_set(), etc)
+	is_assign_rhs          bool // inside right part of assign after `=` (val expr)
+	is_array_set           bool
+	is_amp                 bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	optionals              []string // to avoid duplicates TODO perf, use map
+	inside_ternary         bool // ?: comma separated statements on a single line
+	stmt_start_pos         int
+	right_is_opt           bool
+	autofree               bool
+	indent                 int
+	empty_line             bool
+	is_test                bool
+	assign_op              token.Kind // *=, =, etc (for array_set)
+	defer_stmts            []ast.DeferStmt
+	defer_ifdef            string
+	defer_profile_code     string
+	str_types              []string // types that need automatic str() generation
+	threaded_fns           []string // for generating unique wrapper types and fns for `go xxx()`
+	array_fn_definitions   []string // array equality functions that have been defined
+	struct_fn_definitions  []string // struct equality functions that have been defined
+	is_json_fn             bool // inside json.encode()
+	pcs                    []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
+	attr                   string
+	is_builtin_mod         bool
+	hotcode_fn_names       []string
+	fn_main                &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
 }
 
 const (
