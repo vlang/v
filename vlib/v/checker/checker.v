@@ -1093,6 +1093,18 @@ pub fn (mut c Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	mut elem_type := table.void_type
 	// []string - was set in parser
 	if array_init.typ != table.void_type {
+		if array_init.exprs.len == 0 {
+			if array_init.has_cap {
+				if c.expr(array_init.cap_expr) != table.int_type {
+					c.error('array cap needs to be an int', array_init.pos)
+				}
+			}
+			if array_init.has_len {
+				if c.expr(array_init.len_expr) != table.int_type {
+					c.error('array len needs to be an int', array_init.pos)
+				}
+			}
+		}
 		return array_init.typ
 	}
 	// a = []
