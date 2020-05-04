@@ -21,22 +21,30 @@ mut:
 	draw_fn  voidptr
 }
 
+const (
+	window_width = 400
+	window_height = 300
+	width = 50
+	red   = gx.rgb(255, 0, 0)
+	green = gx.rgb(0, 255, 0)
+	blue  = gx.rgb(0, 0, 255)
+	black = gx.rgb(0, 0, 0)
+)
+
 fn main() {
 	glfw.init_glfw()
-	width := 600
-	height := 300
 	mut game := &Game{
 		gg: 0
 		dx: 2
 		dy: 2
-		height: height
-		width: width
+		height: window_height
+		width: window_width
 		main_wnd: 0
 		draw_fn: 0
 	}
 	window := glfw.create_window(glfw.WinCfg{
-		width: width
-		height: height
+		width: window_width
+		height: window_height
 		borderless: false
 		title: 'Hot code reloading demo'
 		ptr: game
@@ -47,8 +55,8 @@ fn main() {
 	window.make_context_current()
 	gg.init_gg()
 	game.gg = gg.new_context(gg.Cfg{
-		width: width
-		height: height
+		width: window_width
+		height: window_height
 		font_size: 20
 		use_ortho: true
 		window_user_ptr: 0
@@ -67,26 +75,18 @@ fn main() {
 	}
 }
 
-const (
-	width = 50
-	red   = gx.rgb(255, 0, 0)
-	green = gx.rgb(0, 255, 0)
-	blue  = gx.rgb(0, 0, 255)
-)
 
 // Try uncommenting or changing the lines inside the live functions.
 // Guess what will happen:
 [live]
 fn (game &Game) draw() {
 	game.gg.draw_rect(game.x, game.y, width, width, blue)
-	game.gg.draw_rect(550 - game.x + 10, 200 - game.y + 50, width, width, gx.rgb(128, 10, 255))
-	game.gg.draw_rect(game.x - 20, 250 - game.y, width, width, gx.rgb(128, 240, 155))
+	game.gg.draw_rect(window_width - width - game.x + 10, 200 - game.y + width, width, width, gx.rgb(228, 10, 55))
+	game.gg.draw_rect(game.x - 25, 250 - game.y, width, width, gx.rgb(28, 240, 55))
 }
 
 [live]
 fn (mut game Game) update_model() {
-	// game.x = 0 game.y = 0 game.dx = 1 game.dy = 1
-	// game.dx = 3 game.dy = 3
 	speed := 2
 	game.x += speed * game.dx
 	game.y += speed * game.dy
@@ -102,6 +102,15 @@ fn (mut game Game) run() {
 	for {
 		game.update_model()
 		glfw.post_empty_event() // Refresh
-		time.sleep_ms(17)
+		time.sleep_ms(17) // 60fps
 	}
 }
+
+
+
+
+
+
+
+
+

@@ -14,7 +14,7 @@ pub fn isnil(v voidptr) bool {
 }
 
 pub fn panic(s string) {
-	println('V panic: ' + s)
+	eprintln('V panic: ' + s)
 	exit(1)
 }
 

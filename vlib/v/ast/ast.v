@@ -213,6 +213,8 @@ pub:
 	is_builtin    bool // this function is defined in builtin/strconv
 	ctdefine      string // has [if myflag] tag
 	pos           token.Position
+	body_pos      token.Position
+	file          string
 pub mut:
 	return_type   table.Type
 }
@@ -927,4 +929,20 @@ fn (stmt Stmt) position() token.Position {
 			return token.Position{}
 		}
 	}
+}
+
+// TODO: remove this fugly hack :-|
+// fe2ex/1 and ex2fe/1 are used to convert back and forth from
+// table.FExpr to ast.Expr , which in turn is needed to break
+// a dependency cycle between v.ast and v.table, for the single
+// field table.Field.default_expr, which should be ast.Expr
+pub fn fe2ex(x table.FExpr) Expr {
+	res := Expr{}
+	C.memcpy(&res, &x, sizeof(Expr))
+	return res
+}
+pub fn ex2fe(x Expr) table.FExpr {
+	res := table.FExpr{}
+	C.memcpy(&res, &x, sizeof(table.FExpr))
+	return res
 }

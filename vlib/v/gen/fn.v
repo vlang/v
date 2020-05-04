@@ -50,8 +50,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 	} else {
 		mut name := it.name
-		c := name[0]
-		if c in [`+`, `-`, `*`, `/`, `%`] {
+		if name[0] in [`+`, `-`, `*`, `/`, `%`] {
 			name = util.replace_op(name)
 		}
 		if it.is_method {
@@ -161,7 +160,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	g.stmts(it.stmts)
 	// ////////////
 	if g.autofree {
-		g.free_scope_vars(it.pos.pos - 1)
+		// println('\n\ncalling free for fn $it.name')
+		g.free_scope_vars(it.body_pos.pos)
 	}
 	// /////////
 	if is_main {
@@ -278,28 +278,20 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.left_type == 0 {
 		verror('method receiver type is 0, this means there are some uchecked exprs')
 	}
+	mut receiver_type_name := g.cc_type(node.receiver_type)
 	typ_sym := g.table.get_type_symbol(node.receiver_type)
-	// mut receiver_type_name := g.typ(node.receiver_type)
-	mut receiver_type_name := typ_sym.name.replace('.', '__') // TODO g.typ() ?
 	if typ_sym.kind == .interface_ {
-		// Find the index of the method
-		mut idx := -1
-		for i, method in typ_sym.methods {
-			if method.name == node.name {
-				idx = i
-			}
-		}
-		if idx == -1 {
-			verror('method_call: cannot find interface method index')
-		}
-		sret_type := g.typ(node.return_type)
-		g.writeln('// interface method call')
-		// `((void (*)())(Speaker_name_table[s._interface_idx][1]))(s._object);`
-		g.write('(($sret_type (*)())(${receiver_type_name}_name_table[')
+		// Speaker_name_table[s._interface_idx].speak(s._object)
+		g.write('${c_name(receiver_type_name)}_name_table[')
 		g.expr(node.left)
-		g.write('._interface_idx][$idx]))(')
+		g.write('._interface_idx].${node.name}(')
 		g.expr(node.left)
-		g.write('._object)')
+		g.write('._object')
+		if node.args.len > 0 {
+			g.write(', ')
+			g.call_args(node.args, node.expected_arg_types)
+		}
+		g.write(')')
 		return
 	}
 	if typ_sym.kind == .array && node.name == 'map' {
@@ -478,6 +470,17 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			}
 			g.write('))')
 		}
+	} else if g.pref.is_debug && node.name == 'panic' {
+		paline := node.pos.line_nr + 1
+		pafile := g.fn_decl.file.replace('\\', '/')
+		pafn := g.fn_decl.name.after('.')
+		mut pamod := g.fn_decl.name.all_before_last('.')
+		if pamod == pafn {
+			pamod == 'builtin'
+		}
+		g.write('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"),  ')
+		g.call_args(node.args, node.expected_arg_types)
+		g.write(')')
 	} else {
 		g.write('${name}(')
 		g.call_args(node.args, node.expected_arg_types)
@@ -497,9 +500,8 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 	is_variadic := expected_types.len > 0 && expected_types[expected_types.len - 1].flag_is(.variadic)
 	is_forwarding_varg := args.len > 0 && args[args.len - 1].typ.flag_is(.variadic)
 	gen_vargs := is_variadic && !is_forwarding_varg
-	mut arg_no := 0
-	for arg in args {
-		if gen_vargs && arg_no == expected_types.len - 1 {
+	for i, arg in args {
+		if gen_vargs && i == expected_types.len - 1 {
 			break
 		}
 		// if arg.typ.name.starts_with('I') {
@@ -507,42 +509,42 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 		mut is_interface := false
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		// when these are fixed we wont need this check
-		if arg_no < expected_types.len {
-			if expected_types[arg_no] != 0 {
+		if i < expected_types.len {
+			if expected_types[i] != 0 {
 				// Cast a type to interface
 				// `foo(dog)` => `foo(I_Dog_to_Animal(dog))`
-				exp_sym := g.table.get_type_symbol(expected_types[arg_no])
+				exp_sym := g.table.get_type_symbol(expected_types[i])
 				// exp_styp := g.typ(expected_types[arg_no]) // g.table.get_type_symbol(expected_types[arg_no])
 				// styp := g.typ(arg.typ) // g.table.get_type_symbol(arg.typ)
 				if exp_sym.kind == .interface_ {
-					g.interface_call(arg.typ, expected_types[arg_no])
+					g.interface_call(arg.typ, expected_types[i])
 					// g.write('/*Z*/I_${styp}_to_${exp_styp}(')
 					is_interface = true
 				}
 			}
-			g.ref_or_deref_arg(arg, expected_types[arg_no])
+			g.ref_or_deref_arg(arg, expected_types[i])
 		} else {
 			g.expr(arg.expr)
 		}
 		if is_interface {
 			g.write(')')
 		}
-		if arg_no < args.len - 1 || gen_vargs {
+		if i < args.len - 1 || gen_vargs {
 			g.write(', ')
 		}
-		arg_no++
 	}
+	arg_nr := expected_types.len - 1
 	if gen_vargs {
 		varg_type := expected_types[expected_types.len - 1]
 		struct_name := 'varg_' + g.typ(varg_type).replace('*', '_ptr')
-		variadic_count := args.len - arg_no
+		variadic_count := args.len - arg_nr
 		varg_type_str := int(varg_type).str()
 		if variadic_count > g.variadic_args[varg_type_str] {
 			g.variadic_args[varg_type_str] = variadic_count
 		}
 		g.write('($struct_name){.len=$variadic_count,.args={')
 		if variadic_count > 0 {
-			for j in arg_no .. args.len {
+			for j in arg_nr .. args.len {
 				g.ref_or_deref_arg(args[j], varg_type)
 				if j < args.len - 1 {
 					g.write(', ')
@@ -559,12 +561,12 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 	arg_is_ptr := expected_type.is_ptr() || expected_type.idx() in table.pointer_type_idxs
 	expr_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in table.pointer_type_idxs
+	exp_sym := g.table.get_type_symbol(expected_type)
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
 	} else if arg_is_ptr && !expr_is_ptr {
 		if arg.is_mut {
-			sym := g.table.get_type_symbol(expected_type)
-			if sym.kind == .array {
+			if exp_sym.kind == .array {
 				// Special case for mutable arrays. We can't `&` function
 				// results,	have to use `(array[]){ expr }[0]` hack.
 				g.write('&/*111*/(array[]){')
@@ -576,7 +578,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 		if !g.is_json_fn {
 			g.write('&/*qq*/')
 		}
-	} else if !arg_is_ptr && expr_is_ptr {
+	} else if !arg_is_ptr && expr_is_ptr && exp_sym.kind != .interface_ {
 		// Dereference a pointer if a value is required
 		g.write('*/*d*/')
 	}

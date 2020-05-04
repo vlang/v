@@ -16,15 +16,16 @@ struct C.Window{}
 fn C.XInitThreads() int
 fn C.XCloseDisplay(d &Display)
 fn C.XFlush(d &Display)
-fn C.XDestroyWindow(d &Display, w Window)
-fn C.XNextEvent(d Display, e &XEvent)
-fn C.XSetSelectionOwner(d &Display, a C.Atom, w Window, time int)
-fn C.XGetSelectionOwner(d &Display, a C.Atom) Window
-fn C.XChangeProperty(d &Display, requestor Window, property C.Atom, typ C.Atom, format int, mode int, data voidptr, nelements int) int
-fn C.XSendEvent(d &Display, requestor Window, propogate int, mask i64, event &XEvent)
+fn C.XDestroyWindow(d &Display, w C.Window)
+fn C.XNextEvent(d C.Display, e &XEvent)
+fn C.XSetSelectionOwner(d &Display, a C.Atom, w C.Window, time int)
+fn C.XGetSelectionOwner(d &Display, a C.Atom) C.Window
+fn C.XChangeProperty(d &Display, requestor C.Window, property C.Atom, typ C.Atom, format int, mode int, data voidptr, nelements int) int
+fn C.XSendEvent(d &Display, requestor C.Window, propogate int, mask i64, event &XEvent)
 fn C.XInternAtom(d &Display, typ byteptr, only_if_exists int) C.Atom
-fn C.XCreateSimpleWindow(d &Display, root Window, x int, y int, width u32, height u32, border_width u32, border u64, background u64) Window
-fn C.XOpenDisplay(name byteptr) &Display
+fn C.XCreateSimpleWindow(d &Display, root C.Window, x int, y int, width u32, height u32, border_width u32,
+	border u64, background u64) C.Window
+fn C.XOpenDisplay(name byteptr) &C.Display
 fn C.XConvertSelection(d &Display, selection C.Atom, target C.Atom, property C.Atom, requestor Window, time int) int
 fn C.XSync(d &Display, discard int) int
 fn C.XGetWindowProperty(d &Display, w Window, property C.Atom, offset i64, length i64, delete int, req_type C.Atom, actual_type_return &C.Atom, actual_format_return &int, nitems &i64, bytes_after_return &i64, prop_return &byteptr) int
@@ -38,9 +39,9 @@ fn C.XFree()
 struct C.XSelectionRequestEvent{
 	mut:
 	selection C.Atom
-	display &Display	/* Display the event was read from */
-	owner Window
-	requestor Window
+	display &C.Display	/* Display the event was read from */
+	owner C.Window
+	requestor C.Window
 	target C.Atom
 	property C.Atom
 	time int
@@ -49,20 +50,20 @@ struct C.XSelectionEvent{
 	mut:
 	@type int
 	selection C.Atom
-	display &Display	/* Display the event was read from */
-	requestor Window
+	display &C.Display	/* Display the event was read from */
+	requestor C.Window
 	target C.Atom
 	property C.Atom
 	time int
 }
 struct C.XSelectionClearEvent{
 	mut:
-	window Window
+	window C.Window
 	selection C.Atom
 }
 struct C.XDestroyWindowEvent {
 	mut:
-	window Window
+	window C.Window
 }
 struct C.XEvent{
 	mut:
@@ -96,10 +97,10 @@ enum AtomType {
 }
 
 pub struct Clipboard {
-	display &Display
+	display &C.Display
 	mut:
 	selection C.Atom //the selection atom
-	window Window
+	window C.Window
 	atoms []C.Atom
 	mutex &sync.Mutex
 	text string // text data sent or received
@@ -157,14 +158,14 @@ fn (cb &Clipboard) check_availability() bool {
 
 fn (cb mut Clipboard) free() {
 	C.XDestroyWindow(cb.display, cb.window)
-	cb.window = Window(C.None)
+	cb.window = C.Window(C.None)
 	//FIX ME: program hangs when closing display
 	//XCloseDisplay(cb.display)
 }
 
 fn (cb mut Clipboard) clear(){
 	cb.mutex.lock()
-	C.XSetSelectionOwner(cb.display, cb.selection, Window(C.None), C.CurrentTime)
+	C.XSetSelectionOwner(cb.display, cb.selection, C.Window(C.None), C.CurrentTime)
 	C.XFlush(cb.display)
 	cb.is_owner = false
 	cb.text = ""
@@ -181,7 +182,7 @@ fn (cb &Clipboard) take_ownership(){
 }
 
 fn (cb mut Clipboard) set_text(text string) bool {
-	if cb.window == Window(C.None) {return false}
+	if cb.window == C.Window(C.None) {return false}
 	cb.mutex.lock()
 	cb.text = text
 	cb.is_owner = true
@@ -194,7 +195,7 @@ fn (cb mut Clipboard) set_text(text string) bool {
 }
 
 fn (cb mut Clipboard) get_text() string {
-	if cb.window == Window(C.None) {return ""}
+	if cb.window == C.Window(C.None) {return ""}
 	if cb.is_owner {
 		return cb.text
 	}
@@ -320,7 +321,7 @@ fn (cb mut Clipboard) intern_atoms(){
 	}
 }
 
-fn read_property(d &Display, w Window, p C.Atom) Property {
+fn read_property(d &C.Display, w C.Window, p C.Atom) Property {
 	actual_type := C.Atom(0)
 	actual_format := 0
 	nitems := 0
@@ -409,13 +410,13 @@ fn new_atom(value int) &C.Atom {
 	return atom
 }
 
-fn create_xwindow(display &Display) Window {
+fn create_xwindow(display &C.Display) C.Window {
 	n := C.DefaultScreen(display)
 	return C.XCreateSimpleWindow(display, C.RootWindow(display, n), 0, 0, 1, 1,
 		0, C.BlackPixel(display, n), C.WhitePixel(display, n))
 }
 
-fn new_display() &Display {
+fn new_display() &C.Display {
 	return C.XOpenDisplay(C.NULL)
 }
 

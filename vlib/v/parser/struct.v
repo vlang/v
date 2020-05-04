@@ -135,7 +135,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			fields << table.Field{
 				name: field_name
 				typ: typ
-				default_expr: default_expr
+				default_expr: ast.ex2fe(default_expr)
 				has_default_expr: has_default_expr
 				is_pub: is_field_pub
 				is_mut: is_field_mut
@@ -265,8 +265,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		kind: .interface_
 		name: interface_name
 		info: table.Interface{
-			gen_types: []
-			foo: 'foo'
+			types: []
 		}
 	}
 	typ := table.new_type(p.table.register_type_symbol(t))
@@ -286,6 +285,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		mut method := ast.FnDecl{
 			name: name
 			args: args
+			file: p.file_name
 			return_type: table.void_type
 		}
 		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {

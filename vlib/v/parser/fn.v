@@ -231,6 +231,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Body
 	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
+	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope()
 	}
@@ -255,6 +256,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_js: is_js
 		no_body: no_body
 		pos: start_pos.extend(end_pos)
+		body_pos: body_start_pos
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		ctdefine: ctdefine
 	}

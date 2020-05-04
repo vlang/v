@@ -2,6 +2,7 @@ module dl
 
 pub const (
 	RTLD_NOW = 0
+	RTLD_LAZY = 0
 	DL_EXT   = '.dll'
 )
 

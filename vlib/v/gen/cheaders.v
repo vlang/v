@@ -171,6 +171,8 @@ extern wchar_t **_wenviron;
 #include <pthread.h>
 #endif
 
+// g_live_info is used by live.info()
+void* g_live_info = NULL;
 
 //============================== HELPER C MACROS =============================*/
 //#define tos4(s, slen) ((string){.str=(s), .len=(slen)})
@@ -202,6 +204,21 @@ extern wchar_t **_wenviron;
 #define macro_f32_le(a, b) (a <= b)
 #define macro_f32_gt(a, b) (a >  b)
 #define macro_f32_ge(a, b) (a >= b)
+
+#if defined(__MINGW32__) || defined(__MINGW64__)
+#undef PRId64
+#undef PRIi64
+#undef PRIo64
+#undef PRIu64
+#undef PRIx64
+#undef PRIX64
+#define PRId64 "lld"
+#define PRIi64 "lli"
+#define PRIo64 "llo"
+#define PRIu64 "llu"
+#define PRIx64 "llx"
+#define PRIX64 "llX"
+#endif
 
 //================================== GLOBALS =================================*/
 byte g_str_buf[1024];

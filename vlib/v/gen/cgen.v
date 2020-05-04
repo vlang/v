@@ -103,14 +103,6 @@ const (
 )
 
 pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
-	if true { // if
-		x := 10 // line
-		// sep
-		y := 20
-		_ = x
-		_ = y
-	} else {
-	}
 	// println('start cgen2')
 	mut g := Gen{
 		out: strings.new_builder(1000)
@@ -291,8 +283,8 @@ pub fn (mut g Gen) write_typeof_functions() {
 }
 
 // V type to C type
-pub fn (mut g Gen) typ(t table.Type) string {
-	mut styp := g.base_typ(t)
+fn (mut g Gen) typ(t table.Type) string {
+	mut styp := g.base_type(t)
 	if t.flag_is(.optional) {
 		// Register an optional
 		styp = 'Option_' + styp
@@ -309,13 +301,20 @@ pub fn (mut g Gen) typ(t table.Type) string {
 	return styp
 }
 
-pub fn (mut g Gen) base_typ(t table.Type) string {
+fn (g &Gen) base_type(t table.Type) string {
+	mut styp := g.cc_type(t)
 	nr_muls := t.nr_muls()
-	sym := g.table.get_type_symbol(t)
-	mut styp := sym.name.replace('.', '__')
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
+	return styp
+}
+
+// cc_type returns the Cleaned Concrete Type name, *without ptr*,
+// i.e. it's always just Cat, not Cat_ptr:
+fn (g &Gen) cc_type(t table.Type) string {
+	sym := g.table.get_type_symbol(t)
+	mut styp := sym.name.replace('.', '__')
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 		if sym.kind == .struct_ {
@@ -330,6 +329,12 @@ pub fn (mut g Gen) base_typ(t table.Type) string {
 
 //
 pub fn (mut g Gen) write_typedef_types() {
+	g.typedefs.writeln('
+typedef struct {
+	void* _object;
+	int _interface_idx;
+} _Interface;
+')
 	for typ in g.table.types {
 		match typ.kind {
 			.alias {
@@ -341,6 +346,9 @@ pub fn (mut g Gen) write_typedef_types() {
 			.array {
 				styp := typ.name.replace('.', '__')
 				g.definitions.writeln('typedef array $styp;')
+			}
+			.interface_ {
+				g.definitions.writeln('typedef _Interface ${c_name(typ.name)};')
 			}
 			.map {
 				styp := typ.name.replace('.', '__')
@@ -842,7 +850,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			g.expr(ident)
 			if is_optional {
-				mr_base_styp := g.base_typ(return_type)
+				mr_base_styp := g.base_type(return_type)
 				g.writeln(' = (*(${mr_base_styp}*)${mr_var_name}.data).arg$i;')
 			} else {
 				g.writeln(' = ${mr_var_name}.arg$i;')
@@ -964,22 +972,22 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 }
 
 fn (mut g Gen) free_scope_vars(pos int) {
+	println('free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
 	for _, obj in scope.objects {
 		match obj {
 			ast.Var {
-				// println('//////')
-				// println(var.name)
-				// println(var.typ)
 				// if var.typ == 0 {
 				// // TODO why 0?
 				// continue
 				// }
 				v := *it
+				println(v.name)
+				// println(v.typ)
 				sym := g.table.get_type_symbol(v.typ)
 				is_optional := v.typ.flag_is(.optional)
 				if sym.kind == .array && !is_optional {
-					g.writeln('array_free($v.name); // autofreed')
+					g.writeln('\tarray_free($v.name); // autofreed')
 				}
 				if sym.kind == .string && !is_optional {
 					// Don't free simple string literals.
@@ -1185,7 +1193,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.SelectorExpr {
 			g.expr(it.expr)
-			// if it.expr_type.nr_muls() > 0 {
 			if it.expr_type.is_ptr() {
 				g.write('->')
 			} else {
@@ -1470,7 +1477,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write('array_push(&')
 			g.expr(node.left)
 			g.write(', &($elem_type_str[]){ ')
+			elem_sym := g.table.get_type_symbol(info.elem_type)
+			if elem_sym.kind == .interface_ {
+				g.interface_call(node.right_type, info.elem_type)
+			}
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
+			if elem_sym.kind == .interface_ {
+				g.write(')')
+			}
 			g.write(' })')
 		}
 	} else if (node.left_type == node.right_type) && node.left_type.is_float() && node.op in
@@ -1643,7 +1657,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		// `println(x)` => `println(*(int*)x.data)`
 		if ident_var.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
 			g.write('/*opt*/')
-			styp := g.base_typ(ident_var.typ)
+			styp := g.base_type(ident_var.typ)
 			g.write('(*($styp*)${name}.data)')
 			return
 		}
@@ -1901,7 +1915,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// mr_info := typ_sym.info as table.MultiReturn
 		mut styp := ''
 		if fn_return_is_optional { // && !node.types[0].flag_is(.optional) && node.types[0] !=
-			styp = g.base_typ(g.fn_decl.return_type)
+			styp = g.base_type(g.fn_decl.return_type)
 			g.write('opt_ok(&($styp/*X*/[]) { ')
 		} else {
 			styp = g.typ(g.fn_decl.return_type)
@@ -1940,7 +1954,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				else {}
 			}
 			if !is_none && !is_error {
-				styp := g.base_typ(g.fn_decl.return_type)
+				styp := g.base_type(g.fn_decl.return_type)
 				g.write('/*:)$return_sym.name*/opt_ok(&($styp[]) { ')
 				if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 					// Automatic Dereference for optional
@@ -1995,6 +2009,14 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.IntegerLiteral {
 				g.const_decl_simple_define(name, val)
 			}
+			ast.ArrayInit {
+				if it.is_fixed {
+					styp := g.typ(it.typ)
+					g.definitions.writeln('$styp _const_$name = $val; // fixed array const')
+				} else {
+					g.const_decl_init_later(name, val, field.typ)
+				}
+			}
 			ast.StringLiteral {
 				g.definitions.writeln('string _const_$name; // a string literal, inited later')
 				if g.pref.build_mode != .build_module {
@@ -2002,11 +2024,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
-				// Initialize more complex consts in `void _vinit(){}`
-				// (C doesn't allow init expressions that can't be resolved at compile time).
-				styp := g.typ(field.typ)
-				g.definitions.writeln('$styp _const_$name; // inited later')
-				g.inits.writeln('\t_const_$name = $val;')
+				g.const_decl_init_later(name, val, field.typ)
 			}
 		}
 	}
@@ -2019,6 +2037,14 @@ fn (mut g Gen) const_decl_simple_define(name, val string) {
 	// will not be accessible.
 	g.definitions.write('#define _const_$name ')
 	g.definitions.writeln(val)
+}
+
+fn (mut g Gen) const_decl_init_later(name, val string, typ table.Type) {
+	// Initialize more complex consts in `void _vinit(){}`
+	// (C doesn't allow init expressions that can't be resolved at compile time).
+	styp := g.typ(typ)
+	g.definitions.writeln('$styp _const_$name; // inited later')
+	g.inits.writeln('\t_const_$name = $val;')
 }
 
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
@@ -2072,7 +2098,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			field_name := c_name(field.name)
 			g.write('\t.$field_name = ')
 			if field.has_default_expr {
-				g.expr(field.default_expr)
+				g.expr(ast.fe2ex(field.default_expr))
 			} else {
 				g.write(g.type_default(field.typ))
 			}
@@ -2172,7 +2198,6 @@ fn (mut g Gen) write_init_function() {
 	}
 }
 
-
 const (
 	builtins = ['string', 'array', 'KeyValue', 'DenseArray', 'map', 'Option']
 )
@@ -2238,12 +2263,16 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				// table.Alias, table.SumType { TODO
 			}
 			table.SumType {
-				g.definitions.writeln('// Sum type')
-				g.definitions.writeln('
-				typedef struct {
-void* obj;
-int typ;
-} $name;')
+				g.definitions.writeln('')
+				g.definitions.writeln('// Sum type $name = ')
+				for sv in it.variants {
+					g.definitions.writeln('//          | ${sv:4d} = ${g.typ(sv):-20s}')
+				}
+				g.definitions.writeln('typedef struct {')
+				g.definitions.writeln('    void* obj;')
+				g.definitions.writeln('    int typ;')
+				g.definitions.writeln('} $name;')
+				g.definitions.writeln('')
 			}
 			table.ArrayFixed {
 				// .array_fixed {
@@ -2254,13 +2283,6 @@ int typ;
 				fixed = fixed[..fixed.len - len.len - 1]
 				g.definitions.writeln('typedef $fixed $styp [$len];')
 				// }
-			}
-			table.Interface {
-				g.definitions.writeln('//interface')
-				g.definitions.writeln('typedef struct {')
-				g.definitions.writeln('\tvoid* _object;')
-				g.definitions.writeln('\tint _interface_idx;')
-				g.definitions.writeln('} $name;')
 			}
 			else {}
 		}
@@ -2377,7 +2399,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		// only floats should have precision specifier
 		if fields.len > 2 || fields.len == 2 && !(node.expr_types[i].is_float()) || node.expr_types[i].is_signed() &&
 			!(fspec in [`d`, `c`, `x`, `X`, `o`]) || node.expr_types[i].is_unsigned() && !(fspec in [`u`,
-			`x`, `X`, `o`, `c`]) || node.expr_types[i].is_float() && !(fspec in [`E`, `F`, `G`, `e`, `f`,
+			`x`, `X`, `o`, `c`]) || node.expr_types[i].is_float() && !(fspec in [`E`, `F`, `G`,
+			`e`, `f`,
 			`g`, `e`]) {
 			verror('illegal format specifier ${fspec:c} for type ${g.table.get_type_name(node.expr_types[i])}')
 		}
@@ -2585,7 +2608,7 @@ fn (mut g Gen) insert_before(s string) {
 // to access its fields (`.ok`, `.error` etc)
 // `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
 fn (mut g Gen) or_block(var_name string, stmts []ast.Stmt, return_type table.Type) {
-	mr_styp := g.base_typ(return_type)
+	mr_styp := g.base_type(return_type)
 	g.writeln(';') // or')
 	g.writeln('if (!${var_name}.ok) {')
 	g.writeln('\tstring err = ${var_name}.v_error;')
@@ -3352,59 +3375,100 @@ fn (g Gen) type_to_fmt(typ table.Type) string {
 }
 
 // Generates interface table and interface indexes
-// TODO remove all `replace()`
-fn (v &Gen) interface_table() string {
+fn (g &Gen) interface_table() string {
 	mut sb := strings.new_builder(100)
-	for _, t in v.table.types {
-		if t.kind != .interface_ {
+	for ityp in g.table.types {
+		if ityp.kind != .interface_ {
 			continue
 		}
-		info := t.info as table.Interface
+		inter_info := ityp.info as table.Interface
+		if inter_info.types.len == 0 {
+			continue
+		}
+		sb.writeln('// NR interfaced types= $inter_info.types.len')
 		// interface_name is for example Speaker
-		interface_name := t.name.replace('.', '__')
-		mut methods := ''
-		mut generated_casting_functions := ''
-		sb.writeln('// NR gen_types= $info.gen_types.len')
-		for i, gen_type in info.gen_types {
-			// ptr_ctype can be for example Cat OR Cat_ptr:
-			ptr_ctype := gen_type.replace('*', '_ptr').replace('.', '__')
+		interface_name := c_name(ityp.name)
+		// generate a struct that references interface methods
+		methods_struct_name := 'struct _${interface_name}_interface_methods'
+		mut methods_typ_def := strings.new_builder(100)
+		mut methods_struct_def := strings.new_builder(100)
+		methods_struct_def.writeln('$methods_struct_name {')
+		for method in ityp.methods {
+			typ_name := '_${interface_name}_${method.name}_fn'
+			ret_styp := g.typ(method.return_type)
+			methods_typ_def.write('typedef $ret_styp (*$typ_name)(void* _')
+			// the first param is the receiver, it's handled by `void*` above
+			for i in 1 .. method.args.len {
+				arg := method.args[i]
+				methods_typ_def.write(', ${g.typ(arg.typ)} $arg.name')
+			}
+			// TODO g.fn_args(method.args[1..], method.is_variadic)
+			methods_typ_def.writeln(');')
+			methods_struct_def.writeln('\t$typ_name ${c_name(method.name)};')
+		}
+		methods_struct_def.writeln('};')
+		// generate an array of the interface methods for the structs using the interface
+		// as well as case functions from the struct to the interface
+		mut methods_struct := strings.new_builder(100)
+		methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[$inter_info.types.len] = {')
+		mut cast_functions := strings.new_builder(100)
+		cast_functions.write('// Casting functions for interface "${interface_name}"')
+		mut methods_wrapper := strings.new_builder(100)
+		methods_wrapper.writeln('// Methods wrapper for interface "${interface_name}"')
+		for i, st in inter_info.types {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
-			cctype := gen_type.replace('*', '').replace('.', '__')
+			cctype := g.cc_type(st)
 			// Speaker_Cat_index = 0
-			interface_index_name := '_${interface_name}_${ptr_ctype}_index'
-			generated_casting_functions += '
-${interface_name} I_${cctype}_to_${interface_name}(${cctype} x) {
-  return (${interface_name}){
-           ._object = (void*) memdup(&x, sizeof(${cctype})),
-           ._interface_idx = ${interface_index_name} };
-}
-'
-			methods += '{\n'
-			for j, method in t.methods {
-				// Cat_speak
-				methods += ' (void*)    ${cctype}_${method.name}'
-				if j < t.methods.len - 1 {
-					methods += ', \n'
+			interface_index_name := '_${interface_name}_${cctype}_index'
+			cast_functions.writeln('
+_Interface I_${cctype}_to_Interface(${cctype}* x) {
+	return (_Interface) {
+		._object = (void*) memdup(x, sizeof(${cctype})),
+		._interface_idx = ${interface_index_name}
+	};
+}')
+			methods_struct.writeln('\t{')
+			for method in ityp.methods {
+				// .speak = Cat_speak
+				mut method_call := '${cctype}_${method.name}'
+				if !method.args[0].typ.is_ptr() {
+					// inline void Cat_speak_method_wrapper(Cat c) { return Cat_speak(*c); }
+					methods_wrapper.write('static inline ${g.typ(method.return_type)}')
+					methods_wrapper.write(' ${method_call}_method_wrapper(')
+					methods_wrapper.write('${cctype}* ${method.args[0].name}')
+					// TODO g.fn_args
+					for j in 1 .. method.args.len {
+						arg := method.args[j]
+						methods_wrapper.write(', ${g.typ(arg.typ)} $arg.name')
+					}
+					methods_wrapper.writeln(') {')
+					methods_wrapper.write('\t')
+					if method.return_type != table.void_type {
+						methods_wrapper.write('return ')
+					}
+					methods_wrapper.write('${method_call}(*${method.args[0].name}')
+					for j in 1 .. method.args.len {
+						methods_wrapper.write(', ${method.args[j].name}')
+					}
+					methods_wrapper.writeln(');')
+					methods_wrapper.writeln('}')
+					// .speak = Cat_speak_method_wrapper
+					method_call += '_method_wrapper'
 				}
+				methods_struct.writeln('\t\t.${c_name(method.name)} = $method_call,')
 			}
-			methods += '\n},\n\n'
+			methods_struct.writeln('\t},')
 			sb.writeln('int ${interface_index_name} = $i;')
 		}
-		if info.gen_types.len > 0 {
-			// methods = '{TCCSKIP(0)}'
-			// }
-			sb.writeln('void* (* ${interface_name}_name_table[][$t.methods.len]) = ' + '{ \n $methods \n }; ')
-		} else {
-			// The line below is needed so that C compilation succeeds,
-			// even if no interface methods are called.
-			// See https://github.com/zenith391/vgtk3/issues/7
-			sb.writeln('void* (* ${interface_name}_name_table[][1]) = ' + '{ {NULL} }; ')
-		}
-		if generated_casting_functions.len > 0 {
-			sb.writeln('// Casting functions for interface "${interface_name}" :')
-			sb.writeln(generated_casting_functions)
-		}
+		methods_struct.writeln('};')
+		// add line return after interface index declarations
+		sb.writeln('')
+		sb.writeln(methods_wrapper.str())
+		sb.writeln(methods_typ_def.str())
+		sb.writeln(methods_struct_def.str())
+		sb.writeln(methods_struct.str())
+		sb.writeln(cast_functions.str())
 	}
 	return sb.str()
 }
@@ -3448,11 +3512,6 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		if it.is_interface {
 			// sym := g.table.get_type_symbol(it.interface_types[i])
 			// isym := g.table.get_type_symbol(it.interface_type)
-			/*
-			interface_styp := g.typ(it.interface_type)
-			styp := g.typ(it.interface_types[i])
-			g.write('I_${styp}_to_${interface_styp}(')
-			*/
 			g.interface_call(it.interface_types[i], it.interface_type)
 		}
 		g.expr(expr)
@@ -3467,7 +3526,10 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 // `ui.foo(button)` =>
 // `ui__foo(I_ui__Button_to_ui__Widget(` ...
 fn (g &Gen) interface_call(typ, interface_type table.Type) {
-	interface_styp := g.typ(interface_type).replace('*', '')
-	styp := g.typ(typ).replace('*', '')
-	g.write('I_${styp}_to_${interface_styp}(')
+	interface_styp := g.cc_type(interface_type)
+	styp := g.cc_type(typ)
+	g.write('/* $interface_styp */ I_${styp}_to_Interface(')
+	if !typ.is_ptr() {
+		g.write('&')
+	}
 }

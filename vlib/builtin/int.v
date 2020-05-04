@@ -345,6 +345,14 @@ pub fn (nn i64) hex() string {
 	return u64(nn).hex()
 }
 
+pub fn (nn voidptr) str() string {
+	return u64(nn).hex()
+}
+
+pub fn (nn byteptr) str() string {
+	return u64(nn).hex()
+}
+
 // ----- utilities functions -----
 
 pub fn (a []byte) contains(val byte) bool {

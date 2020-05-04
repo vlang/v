@@ -391,7 +391,7 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 				// `array << elm`
 				c.fail_if_immutable(infix_expr.left)
 				// the expressions have different types (array_x and x)
-				if c.table.check(c.table.value_type(left_type), right_type) {
+				if c.table.check(right_type, c.table.value_type(left_type)) { // , right_type) {
 					// []T << T
 					return table.void_type
 				}
@@ -399,7 +399,8 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 					// []T << []T
 					return table.void_type
 				}
-				c.error('cannot shift type $right.name into $left.name', infix_expr.right.position())
+				s := left.name.replace('array_', '[]')
+				c.error('cannot append `$right.name` to `$s`', infix_expr.right.position())
 				return table.void_type
 			} else if !left.is_int() {
 				c.error('cannot shift type $right.name into non-integer type $left.name', infix_expr.left.position())
@@ -470,7 +471,7 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 	match expr {
 		ast.Ident {
-			scope := c.file.scope.innermost(expr.position().pos)
+			scope := c.file.scope.innermost(it.pos.pos)
 			if v := scope.find_var(it.name) {
 				if !v.is_mut && !v.typ.is_ptr() {
 					c.error('`$it.name` is immutable, declare it with `mut` to make it mutable',
@@ -490,7 +491,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 		ast.SelectorExpr {
 			// retrieve table.Field
 			if it.expr_type == 0 {
-				c.error('0 type in SelectorExpr', expr.position())
+				c.error('0 type in SelectorExpr', it.pos)
 				return
 			}
 			typ_sym := c.table.get_type_symbol(it.expr_type)
@@ -1033,14 +1034,13 @@ pub fn (mut c Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		if assign_stmt.left.len != right_len {
 			c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${call_expr.name}()` returns $right_len value(s)',
 				assign_stmt.pos)
-				return
+			return
 		}
-	}
-	else {
+	} else {
 		if assign_stmt.left.len != assign_stmt.right.len {
 			c.error('assignment mismatch: $assign_stmt.left.len variable(s) $assign_stmt.right.len value(s)',
 				assign_stmt.pos)
-				return
+			return
 		}
 	}
 	mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
@@ -1093,6 +1093,18 @@ pub fn (mut c Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	mut elem_type := table.void_type
 	// []string - was set in parser
 	if array_init.typ != table.void_type {
+		if array_init.exprs.len == 0 {
+			if array_init.has_cap {
+				if c.expr(array_init.cap_expr) != table.int_type {
+					c.error('array cap needs to be an int', array_init.pos)
+				}
+			}
+			if array_init.has_len {
+				if c.expr(array_init.len_expr) != table.int_type {
+					c.error('array len needs to be an int', array_init.pos)
+				}
+			}
+		}
 		return array_init.typ
 	}
 	// a = []

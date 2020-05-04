@@ -106,6 +106,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
 				stmts << ast.FnDecl {
 					name: 'main'
+					file: p.file_name
 					return_type: table.void_type
 				}
 			}
@@ -757,8 +758,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 }
 
 fn (mut p Parser) scope_register_it() {
-    // force new 'it' even if it exists in parent scope
-	p.scope.register_force('it', ast.Var{
+	p.scope.register('it', ast.Var{
 		name: 'it'
 		pos: p.tok.position()
 		is_used: true
@@ -901,7 +901,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 				efmt << p.tok.lit
 				p.next()
 			}
-			if p.tok.lit.len == 1 {
+			if p.tok.kind == .name && p.tok.lit.len == 1 {
 				efmt << p.tok.lit
 				p.next()
 			}

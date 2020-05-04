@@ -1,3 +1,7 @@
+## V 0.1.25
+*1 Apr 2020*
+- The entire compiler has been re-written with an AST parser. The code is now a lot cleaner and more maintainable. ~15k lines of old compiler code were removed.
+
 ## V 0.1.24
 *31 Dec 2019*
 
