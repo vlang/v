@@ -3429,7 +3429,8 @@ _Interface I_${cctype}_to_Interface(${cctype}* x) {
 	};
 }')
 			methods_struct.writeln('\t{')
-			for method in ityp.methods {
+			st_sym := g.table.get_type_symbol(st)
+			for method in st_sym.methods {
 				// .speak = Cat_speak
 				mut method_call := '${cctype}_${method.name}'
 				if !method.args[0].typ.is_ptr() {

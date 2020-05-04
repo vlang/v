@@ -7,11 +7,13 @@ struct Cat {
 	breed string
 }
 
-fn (d Cat) name() string {
+fn (mut c Cat) name() string {
+	assert c.breed == 'Persian'
 	return 'Cat'
 }
 
-fn (d Cat) speak(s string) {
+fn (c &Cat) speak(s string) {
+	assert c.breed == 'Persian'
 	assert s == 'Hi !'
 	println('meow')
 }
@@ -32,7 +34,6 @@ fn test_todo() {
 	else{}
 }
 
-
 fn perform_speak(s Animal) {
 	s.speak('Hi !')
 	assert true
@@ -47,9 +48,9 @@ fn perform_speak(s Animal) {
 fn test_perform_speak() {
 	dog := Dog{breed: 'Labrador Retriever'}
 	perform_speak(dog)
-	cat := Cat{}
+	cat := Cat{breed: 'Persian'}
 	perform_speak(cat)
-	perform_speak(Cat{})
+	perform_speak(Cat{breed: 'Persian'})
 	handle_animals([dog, cat])
 	/*
 	f := Foo {
@@ -93,7 +94,6 @@ interface Animal {
 	name() string
 	speak(s string)
 }
-
 
 fn test_interface_array() {
 	mut animals := []Animal{}
