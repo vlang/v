@@ -728,3 +728,14 @@ fn test_split_into_lines() {
 		assert line == line_content
 	}
 }
+
+fn test_string_literal_with_backslash(){
+    a := 'Hello\
+          World'
+    assert a == 'HelloWorld'
+
+	b := 'One\
+		  Two\
+		  Three'
+	assert b == 'OneTwoThree'
+}
