@@ -342,6 +342,9 @@ fn test_struct_equality() {
 		}
 	}
 
+	assert Empty{} == Empty{}
+	assert Foo{"a"} != Foo{"b"}
+
 	assert tallinn == tallinn
 	assert tallinn == tallinn2
 	assert tallinn != helsinki
