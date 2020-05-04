@@ -133,14 +133,14 @@ fn (d mut DenseArray) push(key string, value voidptr) u32 {
 }
 
 // Private function. Used to implement array[] operator
-// fn (d DenseArray) get(i int) voidptr {
-// 	$if !no_bounds_checking? {
-// 		if i < 0 || i >= d.size {
-// 			panic('DenseArray.get: index out of range (i == $i, d.len == $d.size)')
-// 		}
-// 	}
-// 	return byteptr(d.data) + i * sizeof(KeyValue)
-// }
+fn (d DenseArray) get(i int) voidptr {
+	$if !no_bounds_checking? {
+		if i < 0 || i >= d.size {
+			panic('DenseArray.get: index out of range (i == $i, d.len == $d.size)')
+		}
+	}
+	return byteptr(d.keys) + i * sizeof(string)
+}
 
 // Move all zeros to the end of the array
 // and resize array
