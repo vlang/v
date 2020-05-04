@@ -23,18 +23,26 @@ fn test_all() {
 		os.cp(path, program) or {
 			panic(err)
 		}
-		compilation := os.exec('$vexe -o exe -cflags "-w" -cg $program') or {
+		compilation := os.exec('$vexe -o test -cflags "-w" -cg $program') or {
 			panic(err)
 		}
 		if compilation.exit_code != 0 {
 			panic('compilation failed: $compilation.output')
 		}
 		// os.rm(program)
-		res := os.exec('./exe') or {
+		res := os.exec('./test') or {
 			println('nope')
 			panic(err)
 		}
-		os.rm('./exe')
+		$if windows {
+			os.rm('./test.exe')
+			$if msvc {
+				os.rm('./test.ilk')
+				os.rm('./test.pdb')
+			}
+		} $else {
+			os.rm('./test')
+		}
 		// println('============')
 		// println(res.output)
 		// println('============')
