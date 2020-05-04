@@ -2428,7 +2428,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				g.write('*.*s')
 			}
-		} else if node.expr_types[i].is_float() {
+		} else if node.expr_types[i].is_float() || node.expr_types[i].is_pointer() {
 			g.write('$fmt${fspec:c}')
 		} else if node.expr_types[i].is_pointer() {
 			if fspec == `p` {
