@@ -307,6 +307,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			is_anon: true
 			no_body: no_body
 			pos: pos
+			file: p.file_name
 		}
 		typ: typ
 	}
