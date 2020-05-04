@@ -55,7 +55,7 @@ fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 	$if openbsd {
 		return print_backtrace_skipping_top_frames_freebsd(skipframes)
 	}
-	println('print_backtrace_skipping_top_frames is not implemented')
+	println('print_backtrace_skipping_top_frames is not implemented. skipframes: $skipframes')
 	return false
 }
 
