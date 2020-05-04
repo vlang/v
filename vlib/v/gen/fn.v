@@ -476,7 +476,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		pafn := g.fn_decl.name.after('.')
 		mut pamod := g.fn_decl.name.all_before_last('.')
 		if pamod == pafn {
-			pamod == 'builtin'
+			pamod = if g.fn_decl.is_builtin { 'builtin' } else { 'main' }
 		}
 		g.write('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"),  ')
 		g.call_args(node.args, node.expected_arg_types)

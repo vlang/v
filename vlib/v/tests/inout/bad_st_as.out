@@ -1,5 +1,5 @@
 Foo
 ================ V panic ================
-   module: __as_cast
+   module: builtin
  function: __as_cast()
   message: as cast: cannot cast
