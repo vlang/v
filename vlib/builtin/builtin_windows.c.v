@@ -74,7 +74,7 @@ fn print_backtrace_skipping_top_frames(skipframes int) bool {
 	$if mingw {
 		return print_backtrace_skipping_top_frames_mingw(skipframes)
 	}
-	println('print_backtrace_skipping_top_frames is not implemented')
+	eprintln('print_backtrace_skipping_top_frames is not implemented')
 	return false
 }
 
@@ -97,7 +97,7 @@ $if msvc {
 
 	syminitok := C.SymInitialize( handle, 0, 1)
 	if syminitok != 1 {
-		println('Failed getting process: Aborting backtrace.\n')
+		eprintln('Failed getting process: Aborting backtrace.\n')
 		return true
 	}
 
@@ -115,17 +115,17 @@ $if msvc {
 				lineinfo = '?? : address = 0x${&frame_addr:x}'
 			}
 			sfunc := tos3(fname)
-			println('${nframe:-2d}: ${sfunc:-25s}  $lineinfo')
+			eprintln('${nframe:-2d}: ${sfunc:-25s}  $lineinfo')
 		} else {
 			// https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes
 			cerr := int(C.GetLastError())
 			if cerr == 87 {
-				println('SymFromAddr failure: $cerr = The parameter is incorrect)')
+				eprintln('SymFromAddr failure: $cerr = The parameter is incorrect)')
 			} else if cerr == 487 {
 				// probably caused because the .pdb isn't in the executable folder
-				println('SymFromAddr failure: $cerr = Attempt to access invalid address (Verify that you have the .pdb file in the right folder.)')
+				eprintln('SymFromAddr failure: $cerr = Attempt to access invalid address (Verify that you have the .pdb file in the right folder.)')
 			} else {
-				println('SymFromAddr failure: $cerr (see https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes)')
+				eprintln('SymFromAddr failure: $cerr (see https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes)')
 			}
 		}
 	}

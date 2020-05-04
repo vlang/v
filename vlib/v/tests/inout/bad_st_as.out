@@ -3,6 +3,6 @@ Foo
    module: __as_cast
  function: __as_cast()
      file: vlib/builtin/builtin.v
-     line: 176
+     line: 177
   message: as cast: cannot cast 47 to 48
 =========================================
