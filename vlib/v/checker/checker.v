@@ -658,16 +658,13 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		// call_expr.args << method.args[0].typ
 		// call_expr.exp_arg_types << method.args[0].typ
 		for i, arg in call_expr.args {
-			exp_arg_typ := if method.is_variadic && i >= method.args.len - 1 {
-				method.args[method.args.len - 1].typ
-			} else {
-				method.args[i + 1].typ
-			}
+			exp_arg_typ := if method.is_variadic && i >= method.args.len - 1 { method.args[method.args.len -
+					1].typ } else { method.args[i + 1].typ }
 			c.expected_type = exp_arg_typ
 			got_arg_typ := c.expr(arg.expr)
 			call_expr.args[i].typ = got_arg_typ
-			if method.is_variadic && got_arg_typ.flag_is(.variadic) && call_expr.args.len - 1 >
-				i {
+			if method.is_variadic && got_arg_typ.flag_is(.variadic) && call_expr.args.len -
+				1 > i {
 				c.error('when forwarding a varg variable, it must be the final argument', call_expr.pos)
 			}
 			if !c.table.check(got_arg_typ, exp_arg_typ) {
@@ -1752,6 +1749,10 @@ pub fn (mut c Checker) match_expr(node mut ast.MatchExpr) table.Type {
 			c.expected_type = cond_type
 			typ := c.expr(expr)
 			typ_sym := c.table.get_type_symbol(typ)
+			if !node.is_sum_type && !c.table.check(typ, cond_type) {
+				exp_sym := c.table.get_type_symbol(cond_type)
+				c.error('cannot use `$typ_sym.name` as `$exp_sym.name` in `match`', node.pos)
+			}
 			// TODO:
 			if typ_sym.kind == .sum_type {
 			}
@@ -1787,7 +1788,7 @@ pub fn (mut c Checker) match_expr(node mut ast.MatchExpr) table.Type {
 fn (mut c Checker) match_exprs(node mut ast.MatchExpr, type_sym table.TypeSymbol) {
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
-	mut branch_exprs := map[string]int
+	mut branch_exprs := map[string]int{}
 	for branch in node.branches {
 		for expr in branch.exprs {
 			mut key := ''

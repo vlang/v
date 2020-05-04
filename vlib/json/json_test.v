@@ -8,7 +8,7 @@ struct Employee {
 fn test_simple() {
 	x := Employee{'Peter', 28}
 	s := json.encode(x)
-	assert s	== '{"name":"Peter","age":28}'
+	assert s == '{"name":"Peter","age":28}'
 	y := json.decode(Employee, s) or {
 		assert false
 	}
