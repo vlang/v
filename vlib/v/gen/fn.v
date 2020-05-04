@@ -200,6 +200,7 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 	mut fargtypes := []string{}
 	no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
+		caname := c_name(arg.name)
 		arg_type_sym := g.table.get_type_symbol(arg.typ)
 		mut arg_type_name := g.typ(arg.typ) // arg_type_sym.name.replace('.', '__')
 		is_varg := i == args.len - 1 && is_variadic
@@ -214,13 +215,13 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 			info := arg_type_sym.info as table.FnType
 			func := info.func
 			if !info.is_anon {
-				g.write(arg_type_name + ' ' + arg.name)
-				g.definitions.write(arg_type_name + ' ' + arg.name)
-				fargs << arg.name
+				g.write(arg_type_name + ' ' + caname)
+				g.definitions.write(arg_type_name + ' ' + caname)
+				fargs << caname
 				fargtypes << arg_type_name
 			} else {
-				g.write('${g.typ(func.return_type)} (*$arg.name)(')
-				g.definitions.write('${g.typ(func.return_type)} (*$arg.name)(')
+				g.write('${g.typ(func.return_type)} (*$caname)(')
+				g.definitions.write('${g.typ(func.return_type)} (*$caname)(')
 				g.fn_args(func.args, func.is_variadic)
 				g.write(')')
 				g.definitions.write(')')
@@ -232,17 +233,17 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 			fargtypes << arg_type_name
 		} else {
 			mut nr_muls := arg.typ.nr_muls()
-			s := arg_type_name + ' ' + arg.name
+			s := arg_type_name + ' ' + caname
 			if arg.is_mut {
 				// mut arg needs one *
 				nr_muls = 1
 			}
 			// if nr_muls > 0 && !is_varg {
-			// s = arg_type_name + strings.repeat(`*`, nr_muls) + ' ' + arg.name
+			// s = arg_type_name + strings.repeat(`*`, nr_muls) + ' ' + caname
 			// }
 			g.write(s)
 			g.definitions.write(s)
-			fargs << arg.name
+			fargs << caname
 			fargtypes << arg_type_name
 		}
 		if i < args.len - 1 {
