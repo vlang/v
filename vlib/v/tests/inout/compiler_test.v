@@ -23,8 +23,11 @@ fn test_all() {
 		os.cp(path, program) or {
 			panic(err)
 		}
-		_ := os.exec('$vexe -o exe -cflags "-w" -cg $program') or {
+		compilation := os.exec('$vexe -o exe -cflags "-w" -cg $program') or {
 			panic(err)
+		}
+		if compilation.exit_code != 0 {
+			panic('compilation failed: $compilation.output')
 		}
 		// os.rm(program)
 		res := os.exec('./exe') or {
