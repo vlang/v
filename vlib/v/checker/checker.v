@@ -260,6 +260,9 @@ pub fn (mut c Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 		struct_init.typ = c.expected_type
 	}
 	type_sym := c.table.get_type_symbol(struct_init.typ)
+	if !type_sym.is_public && type_sym.mod != c.mod {
+		c.warn('type `$type_sym.name` is private', struct_init.pos)
+	}
 	// println('check struct $typ_sym.name')
 	match type_sym.kind {
 		.placeholder {

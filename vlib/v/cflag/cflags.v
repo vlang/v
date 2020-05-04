@@ -6,7 +6,7 @@ module cflag
 import os
 
 // parsed cflag
-struct CFlag {
+pub struct CFlag {
 	mod   string // the module in which the flag was given
 	os    string // eg. windows | darwin | linux
 	name  string // eg. -I

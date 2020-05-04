@@ -12,7 +12,7 @@ import v.util
 import term
 import os
 
-struct Parser {
+pub struct Parser {
 	scanner           &scanner.Scanner
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
@@ -1202,6 +1202,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			info: table.SumType{
 				variants: sum_variants
 			}
+			is_public: is_pub
 		})
 		return ast.SumTypeDecl{
 			name: name
@@ -1220,6 +1221,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		info: table.Alias{
 			foo: ''
 		}
+		is_public: is_pub
 	})
 	return ast.AliasTypeDecl{
 		name: name

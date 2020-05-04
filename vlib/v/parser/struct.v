@@ -161,6 +161,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_union: is_union
 		}
 		mod: p.mod
+		is_public: is_pub
 	}
 	mut ret := 0
 	if p.builtin_mod && t.name in table.builtin_type_names {
