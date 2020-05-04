@@ -100,7 +100,7 @@ mut:
 	size        u32
 	deletes     u32
 	keys        &string
-	values      voidptr
+	values      byteptr
 }
 
 [inline]
@@ -344,7 +344,7 @@ fn (m map) get3(key string, zero voidptr) voidptr {
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if fast_string_eq(key, m.key_values.keys[kv_index]) {
-			return m.key_values.values + kv_index * m.value_bytes
+			return voidptr(m.key_values.values + kv_index * m.value_bytes)
 		}
 		index += 2
 		meta += probe_inc
