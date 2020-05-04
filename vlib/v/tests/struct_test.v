@@ -309,43 +309,42 @@ fn test_struct_with_default_values_no_init() {
 
 fn test_struct_equality() {
 	tallinn := City {
-		name: "Tallinn",
+		name: "Tallinn"
 		population: 430000
 	}
 	tallinn2 := City {
-		name: "Tallinn",
+		name: "Tallinn"
 		population: 430000
 	}
 
 	tallinn_bad1 := City {
-		name: "Tallinn",
+		name: "Tallinn"
 		population: 0
 	}
 	tallinn_bad2 := City {
-		name: "",
+		name: ""
 		population: 0
 	}
-
-	tartu := City {
-		name: "Tartu",
-		population: 96000
+	helsinki := City {
+		name: "Helsinki"
+		population: 650000
 	}
 
 	estonia := Country {
-		name: "Estonia",
+		name: "Estonia"
 		capital: tallinn
 	}
 	finland := Country {
-		name: "Finland",
+		name: "Finland"
 		capital: City {
-			name: "Helsinki",
+			name: "Helsinki"
 			population: 650000
 		}
 	}
 
 	assert tallinn == tallinn
 	assert tallinn == tallinn2
-	assert tallinn != tartu
+	assert tallinn != helsinki
 	assert tallinn != tallinn_bad1
 	assert tallinn != tallinn_bad2
 
