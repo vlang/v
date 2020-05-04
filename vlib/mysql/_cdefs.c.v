@@ -25,36 +25,36 @@ struct C.MYSQL_FIELD {
 	@type            int     /* Type of field. See mysql_com.h for types */
 }
 
-fn C.mysql_init(mysql &MYSQL) &MYSQL
-fn C.mysql_real_connect(mysql &MYSQL, host byteptr, user byteptr, passwd byteptr, db byteptr, port u32, unix_socket byteptr, clientflag u64) &MYSQL
-fn C.mysql_query(mysql &MYSQL, q byteptr) int
-fn C.mysql_select_db(mysql &MYSQL, db byteptr) int
-fn C.mysql_change_user(mysql &MYSQL, user byteptr, password byteptr, db byteptr) bool
-fn C.mysql_affected_rows(mysql &MYSQL) u64
-fn C.mysql_options(mysql &MYSQL, option int, arg voidptr) int
-fn C.mysql_get_option(mysql &MYSQL, option int, arg voidptr) int
-fn C.mysql_num_fields(res &MYSQL_RES) int
+fn C.mysql_init(mysql &C.MYSQL) &C.MYSQL
+fn C.mysql_real_connect(mysql &C.MYSQL, host byteptr, user byteptr, passwd byteptr, db byteptr, port u32, unix_socket byteptr, clientflag u64) &C.MYSQL
+fn C.mysql_query(mysql &C.MYSQL, q byteptr) int
+fn C.mysql_select_db(mysql &C.MYSQL, db byteptr) int
+fn C.mysql_change_user(mysql &C.MYSQL, user byteptr, password byteptr, db byteptr) bool
+fn C.mysql_affected_rows(mysql &C.MYSQL) u64
+fn C.mysql_options(mysql &C.MYSQL, option int, arg voidptr) int
+fn C.mysql_get_option(mysql &C.MYSQL, option int, arg voidptr) int
+fn C.mysql_num_fields(res &C.MYSQL_RES) int
 fn C.mysql_autocommit(mysql MYSQL, mode bool)
 fn C.mysql_refresh(mysql MYSQL, options u32) int
 fn C.mysql_reset_connection(mysql MYSQL) int
 fn C.mysql_ping(mysql MYSQL) int
-fn C.mysql_store_result(mysql &MYSQL) &MYSQL_RES
-fn C.mysql_fetch_row(res &MYSQL_RES) &byteptr
-fn C.mysql_fetch_fields(res &MYSQL_RES) &MYSQL_FIELD
-fn C.mysql_free_result(res &MYSQL_RES)
-fn C.mysql_real_escape_string_quote(mysql &MYSQL, to byteptr, from byteptr, len u64, quote byte) u64
-fn C.mysql_close(sock &MYSQL)
+fn C.mysql_store_result(mysql &C.MYSQL) &C.MYSQL_RES
+fn C.mysql_fetch_row(res &C.MYSQL_RES) &byteptr
+fn C.mysql_fetch_fields(res &C.MYSQL_RES) &C.MYSQL_FIELD
+fn C.mysql_free_result(res &C.MYSQL_RES)
+fn C.mysql_real_escape_string_quote(mysql &C.MYSQL, to byteptr, from byteptr, len u64, quote byte) u64
+fn C.mysql_close(sock &C.MYSQL)
 
 /* INFO & VERSION */
-fn C.mysql_info(mysql &MYSQL) byteptr
-fn C.mysql_get_host_info(mysql &MYSQL) byteptr
-fn C.mysql_get_server_info(mysql &MYSQL) byteptr
-fn C.mysql_get_server_version(mysql &MYSQL) u64
+fn C.mysql_info(mysql &C.MYSQL) byteptr
+fn C.mysql_get_host_info(mysql &C.MYSQL) byteptr
+fn C.mysql_get_server_info(mysql &C.MYSQL) byteptr
+fn C.mysql_get_server_version(mysql &C.MYSQL) u64
 fn C.mysql_get_client_version() u64
 fn C.mysql_get_client_info() byteptr
 
 /* DEBUG & ERROR INFO */
-fn C.mysql_error(mysql &MYSQL) byteptr
-fn C.mysql_errno(mysql &MYSQL) int
-fn C.mysql_dump_debug_info(mysql &MYSQL) int
+fn C.mysql_error(mysql &C.MYSQL) byteptr
+fn C.mysql_errno(mysql &C.MYSQL) int
+fn C.mysql_dump_debug_info(mysql &C.MYSQL) int
 fn C.mysql_debug(debug byteptr)
