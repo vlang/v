@@ -18,7 +18,7 @@ pub fn print_and_exit(topic string) {
 		println(unknown_topic)
 		exit(1)
 	}
-	target_topic := os.join_path(vroot, 'cmd', 'v', 'internal', 'help', '${topic}.txt')
+	target_topic := os.join_path(vroot, 'cmd', 'v', 'help', '${topic}.txt')
 	content := os.read_file(target_topic) or {
 		println(unknown_topic)
 		exit(1)

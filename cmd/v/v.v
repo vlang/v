@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module main
 
-import internal.help
+import help
 import os
 import os.cmdline
 import v.table
