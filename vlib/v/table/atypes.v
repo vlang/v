@@ -130,6 +130,12 @@ pub fn new_type_ptr(idx, nr_muls int) Type {
 	return (nr_muls << 16) | u16(idx)
 }
 
+// built in pointers (voidptr, byteptr, charptr)
+[inline]
+pub fn (typ Type) is_pointer() bool {
+	return typ.idx() in pointer_type_idxs
+}
+
 [inline]
 pub fn (typ Type) is_float() bool {
 	return typ.idx() in float_type_idxs

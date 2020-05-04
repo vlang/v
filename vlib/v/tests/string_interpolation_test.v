@@ -79,10 +79,13 @@ fn test_string_interpolation_string_prefix() {
 fn test_inttypes_string_interpolation() {
 	c := i8(-103)
 	uc := byte(217)
+	uc2 := byte(13)
 	s := i16(-23456)
 	us := u16(54321)
 	i := -1622999040
 	ui := u32(3421958087)
+	vp := voidptr(ui)
+	bp := byteptr(15541149836)
 	l := i64(-7694555558525237396)
 	ul := u64(17234006112912956370)
 	assert '$s $us' == '-23456 54321'
@@ -91,6 +94,12 @@ fn test_inttypes_string_interpolation() {
 	assert '>${s:11}:${us:-13}<' == '>     -23456:54321        <'
 	assert '0x${ul:-19x}:${l:22d}' == '0xef2b7d4001165bd2   :  -7694555558525237396'
 	assert '${c:5}${uc:-7}x' == ' -103217    x'
+	assert '${c:x}:${uc:x}:${uc2:02X}' == '99:d9:0D'
+	assert '${s:X}:${us:x}:${u16(uc):04x}' == 'A460:d431:00d9'
+	assert '${i:x}:${ui:X}:${int(s):x}' == '9f430000:CBF6EFC7:ffffa460'
+	assert '${l:x}:${ul:X}' == '9537727cad98876c:EF2B7D4001165BD2'
+	// TODO this does not work on Windows
+	// assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c'
 }
 
 fn test_utf8_string_interpolation() {
