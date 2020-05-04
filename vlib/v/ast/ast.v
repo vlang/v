@@ -213,6 +213,7 @@ pub:
 	is_builtin    bool // this function is defined in builtin/strconv
 	ctdefine      string // has [if myflag] tag
 	pos           token.Position
+	body_pos      token.Position
 	file          string
 pub mut:
 	return_type   table.Type
