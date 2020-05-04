@@ -721,13 +721,14 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	// println(fn_name)
 	// }
 	if fn_name == 'json.encode' {
-	}
-	if fn_name == 'json.decode' {
-		ident := call_expr.args[0].expr as ast.Ident
-		// sym := c.table.find_type(ident.name)
-		idx := c.table.find_type_idx(ident.name)
-		println('js.decode t=$ident.name')
-		return table.Type(idx)
+	} else if fn_name == 'json.decode' {
+		expr := call_expr.args[0].expr
+		if !(expr is ast.Type) {
+			c.error('json.decode: first argument needs to be a type', call_expr.pos)
+			return table.void_type
+		}
+		typ := expr as ast.Type
+		return typ.typ.set_flag(.optional)
 	}
 	// look for function in format `mod.fn` or `fn` (main/builtin)
 	mut f := table.Fn{}

@@ -31,8 +31,9 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	// Code gen decoder
 	dec_fn_name := js_dec_name(sym.name)
 	dec.writeln('
-Option ${dec_fn_name}(cJSON* root, $styp* res) {
-//  $styp res;
+//Option ${dec_fn_name}(cJSON* root, $styp* res) {
+Option ${dec_fn_name}(cJSON* root) {
+  $styp res;
   if (!root) {
     const char *error_ptr = cJSON_GetErrorPtr();
     if (error_ptr != NULL)	{
@@ -70,7 +71,7 @@ cJSON* ${enc_fn_name}($styp val) {
 			g.gen_json_for_type(field.typ)
 			dec_name := js_dec_name(field_type)
 			if is_js_prim(field_type) {
-				dec.writeln(' res->$field.name = $dec_name (js_get(' + 'root, "$name"))')
+				dec.writeln(' res . $field.name = $dec_name (js_get(' + 'root, "$name"))')
 			} else {
 				dec.writeln(' $dec_name (js_get(root, "$name"), & (res->$field.name))')
 			}
@@ -80,7 +81,7 @@ cJSON* ${enc_fn_name}($styp val) {
 	}
 	// cJSON_delete
 	// p.cgen.fns << '$dec return opt_ok(res); \n}'
-	dec.writeln('return opt_ok(res, sizeof(*res)); \n}')
+	dec.writeln('return opt_ok(&res, sizeof(res)); \n}')
 	enc.writeln('\treturn o;\n}')
 	g.definitions.writeln(dec.str())
 	g.gowrappers.writeln(enc.str())

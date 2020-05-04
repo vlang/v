@@ -32,7 +32,7 @@ mut:
 	mod               string // current module name
 	attr              string
 	attr_ctdefine     string
-	expr_mod          string
+	expr_mod          string // for constructing full type names in parse_type()
 	scope             &ast.Scope
 	global_scope      &ast.Scope
 	imports           map[string]string
@@ -104,7 +104,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	for {
 		if p.tok.kind == .eof {
 			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
-				stmts << ast.FnDecl {
+				stmts << ast.FnDecl{
 					name: 'main'
 					file: p.file_name
 					return_type: table.void_type
@@ -355,7 +355,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		}
 		else {
 			if p.pref.is_script && !p.pref.is_test {
-				p.scanner.add_fn_main_and_rescan(p.tok.pos-1)
+				p.scanner.add_fn_main_and_rescan(p.tok.pos - 1)
 				p.read_first_token()
 				return p.top_stmt()
 			} else {
@@ -588,8 +588,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.inside_is = false
 		// get type position before moving to next
 		type_pos := p.tok.position()
+		typ := p.parse_type()
 		return ast.Type{
-			typ: p.parse_type()
+			typ: typ
 			pos: type_pos
 		}
 	}
@@ -1062,8 +1063,8 @@ fn (mut p Parser) return_stmt() ast.Return {
 
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) global_decl() ast.GlobalDecl {
-	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v && p.mod !=
-		'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
+	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v &&
+		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
 	p.next()

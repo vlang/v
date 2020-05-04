@@ -383,12 +383,22 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	mut name := node.name
 	is_print := name == 'println' || name == 'print'
 	print_method := if name == 'println' { 'println' } else { 'print' }
-	g.is_json_fn = name == 'json.encode'
+	is_json_encode := name == 'json.encode'
+	is_json_decode := name == 'json.decode'
+	g.is_json_fn = is_json_encode || is_json_decode
 	mut json_type_str := ''
 	if g.is_json_fn {
-		g.write('json__json_print(')
-		g.gen_json_for_type(node.args[0].typ)
-		json_type_str = g.table.get_type_symbol(node.args[0].typ).name
+		if name == 'json.encode' {
+			g.write('json__json_print(')
+			g.gen_json_for_type(node.args[0].typ)
+			json_type_str = g.table.get_type_symbol(node.args[0].typ).name
+		} else {
+			g.insert_before('// json.decode')
+			ast_type := node.args[0].expr as ast.Type
+			// `json.decode(User, s)` => json.decode_User(s)
+			sym := g.table.get_type_symbol(ast_type.typ)
+			name += '_' + sym.name
+		}
 	}
 	if node.is_c {
 		// Skip "C."
@@ -397,8 +407,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	} else {
 		name = c_name(name)
 	}
-	if g.is_json_fn {
-		// `json__decode` => `json__decode_User`
+	if is_json_encode {
+		// `json__encode` => `json__encode_User`
 		name += '_' + json_type_str
 	}
 	// Generate tmp vars for values that have to be freed.
@@ -476,14 +486,25 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		pafn := g.fn_decl.name.after('.')
 		mut pamod := g.fn_decl.name.all_before_last('.')
 		if pamod == pafn {
-			pamod = if g.fn_decl.is_builtin { 'builtin' } else { 'main' }
+			pamod = if g.fn_decl.is_builtin {
+				'builtin'
+			} else {
+				'main'
+			}
 		}
 		g.write('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"),  ')
 		g.call_args(node.args, node.expected_arg_types)
 		g.write(')')
 	} else {
 		g.write('${name}(')
-		g.call_args(node.args, node.expected_arg_types)
+		if is_json_decode {
+			g.write('json__json_parse(')
+			// Skip the first argument in json.decode which is a type
+			// its name was already used to generate the function call
+			g.call_args(node.args[1..], node.expected_arg_types)
+		} else {
+			g.call_args(node.args, node.expected_arg_types)
+		}
 		g.write(')')
 	}
 	// if node.or_block.stmts.len > 0 {

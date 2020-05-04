@@ -6,6 +6,7 @@ module json
 #flag -I @VROOT/thirdparty/cJSON
 #flag @VROOT/thirdparty/cJSON/cJSON.o
 #include "cJSON.h"
+#define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
 struct C.cJSON {
 	valueint    int
 	valuedouble f32
@@ -22,84 +23,84 @@ pub fn encode(x voidptr) string {
 	return ''
 }
 
-fn jsdecode_int(root &C.cJSON) int {
+fn decode_int(root &C.cJSON) int {
 	if isnil(root) {
 		return 0
 	}
 	return root.valueint
 }
 
-fn jsdecode_i8(root &C.cJSON) i8 {
+fn decode_i8(root &C.cJSON) i8 {
 	if isnil(root) {
 		return i8(0)
 	}
 	return i8(root.valueint)
 }
 
-fn jsdecode_i16(root &C.cJSON) i16 {
+fn decode_i16(root &C.cJSON) i16 {
 	if isnil(root) {
 		return i16(0)
 	}
 	return i16(root.valueint)
 }
 
-fn jsdecode_i64(root &C.cJSON) i64 {
+fn decode_i64(root &C.cJSON) i64 {
 	if isnil(root) {
 		return i64(0)
 	}
 	return i64(root.valuedouble) // i64 is double in C
 }
 
-fn jsdecode_byte(root &C.cJSON) byte {
+fn decode_byte(root &C.cJSON) byte {
 	if isnil(root) {
 		return byte(0)
 	}
 	return byte(root.valueint)
 }
 
-fn jsdecode_u16(root &C.cJSON) u16 {
+fn decode_u16(root &C.cJSON) u16 {
 	if isnil(root) {
 		return u16(0)
 	}
 	return u16(root.valueint)
 }
 
-fn jsdecode_u32(root &C.cJSON) u32 {
+fn decode_u32(root &C.cJSON) u32 {
 	if isnil(root) {
 		return u32(0)
 	}
 	return u32(root.valueint)
 }
 
-fn jsdecode_u64(root &C.cJSON) u64 {
+fn decode_u64(root &C.cJSON) u64 {
 	if isnil(root) {
 		return u64(0)
 	}
 	return u64(root.valueint)
 }
 
-fn jsdecode_f32(root &C.cJSON) f32 {
+fn decode_f32(root &C.cJSON) f32 {
 	if isnil(root) {
 		return f32(0)
 	}
 	return root.valuedouble
 }
 
-fn jsdecode_f64(root &C.cJSON) f64 {
+fn decode_f64(root &C.cJSON) f64 {
 	if isnil(root) {
 		return f64(0)
 	}
 	return f64(root.valuedouble)
 }
 
-fn jsdecode_string(root &C.cJSON) string {
+fn decode_string(root &C.cJSON) string {
 	if isnil(root) {
 		return ''
 	}
 	if isnil(root.valuestring) {
 		return ''
 	}
-	// println('jsdecode string valuestring="$root.valuestring"')
+	// println('decode string valuestring="$root.valuestring"')
 	// return tos(root.valuestring, _strlen(root.valuestring))
 	return tos_clone(root.valuestring) // , _strlen(root.valuestring))
 }
@@ -122,7 +123,7 @@ fn C.cJSON_Parse() &C.cJSON
 fn C.cJSON_PrintUnformatted() byteptr
 
 
-fn jsdecode_bool(root &C.cJSON) bool {
+fn decode_bool(root &C.cJSON) bool {
 	if isnil(root) {
 		return false
 	}
