@@ -33,7 +33,7 @@ fn test_todo() {
 }
 
 
-fn perform_speak(s Speaker) {
+fn perform_speak(s Animal) {
 	s.speak('Hi !')
 	assert true
 	name := s.name()
@@ -50,7 +50,7 @@ fn test_perform_speak() {
 	cat := Cat{}
 	perform_speak(cat)
 	perform_speak(Cat{})
-	perform_speakers([dog, cat])
+	handle_animals([dog, cat])
 	/*
 	f := Foo {
 		speaker: dog
@@ -58,7 +58,7 @@ fn test_perform_speak() {
 */
 }
 
-fn perform_speakers(speakers []Speaker) {}
+fn handle_animals(a []Animal) {}
 
 interface Register {
 	register()
@@ -85,18 +85,18 @@ interface Speaker2 {
 
 
 struct Foo {
-	speaker  Speaker
-	speakers []Speaker
+	animal Animal
+	animals []Animal
 }
 
-interface Speaker {
+interface Animal {
 	name() string
 	speak(s string)
 }
 
 
 fn test_interface_array() {
-	mut animals := []Speaker{}
+	mut animals := []Animal{}
 	animals = [ Cat{}, Dog{} ]
 	animals << Cat{}
 	assert true
