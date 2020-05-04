@@ -3393,6 +3393,7 @@ fn (g &Gen) interface_table() string {
 		mut methods_typ_def := strings.new_builder(100)
 		mut methods_struct_def := strings.new_builder(100)
 		methods_struct_def.writeln('$methods_struct_name {')
+		mut imethods := map[string]string{} // a map from speak -> _Speaker_speak_fn
 		for method in ityp.methods {
 			typ_name := '_${interface_name}_${method.name}_fn'
 			ret_styp := g.typ(method.return_type)
@@ -3405,6 +3406,7 @@ fn (g &Gen) interface_table() string {
 			// TODO g.fn_args(method.args[1..], method.is_variadic)
 			methods_typ_def.writeln(');')
 			methods_struct_def.writeln('\t$typ_name ${c_name(method.name)};')
+			imethods[method.name] = typ_name
 		}
 		methods_struct_def.writeln('};')
 		// generate an array of the interface methods for the structs using the interface
@@ -3431,6 +3433,10 @@ _Interface I_${cctype}_to_Interface(${cctype}* x) {
 			methods_struct.writeln('\t{')
 			st_sym := g.table.get_type_symbol(st)
 			for method in st_sym.methods {
+				if method.name !in imethods {
+					// a method that is not part of the interface should be just skipped
+					continue
+				}
 				// .speak = Cat_speak
 				mut method_call := '${cctype}_${method.name}'
 				if !method.args[0].typ.is_ptr() {
