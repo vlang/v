@@ -900,11 +900,29 @@ fn (s mut Scanner) ident_string() string {
 	if s.is_inside_string {
 		end++
 	}
-	if start > s.pos {}
-	else {
-		lit = s.text[start..end]
+	if start <= s.pos {
+		if s.text[start..end].contains('\\\n') {
+			lit = trim_slash_line_break(s.text[start..end])
+		} else {
+			lit = s.text[start..end]
+		}
 	}
 	return lit
+}
+
+fn trim_slash_line_break(s string) string {
+	mut start := 0
+	mut ret_str := s
+	for {
+		idx := ret_str.index_after('\\\n', start)
+		if idx != -1 {
+			ret_str = ret_str[..idx] + ret_str[idx+2..].trim_left(' \n\t\v\f\r')
+			start = idx
+		} else {
+			break
+		}
+	}
+	return ret_str
 }
 
 fn (s mut Scanner) ident_char() string {
