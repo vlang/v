@@ -51,7 +51,7 @@ fn test_perform_speak() {
 	cat := Cat{breed: 'Persian'}
 	perform_speak(cat)
 	perform_speak(Cat{breed: 'Persian'})
-	// handle_animals([dog, cat])
+	handle_animals([dog, cat])
 	/*
 	f := Foo {
 		speaker: dog
