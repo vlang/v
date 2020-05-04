@@ -86,7 +86,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.position()
 	p.inside_match = true
 	p.check(.key_match)
-	is_mut := p.tok.kind in [.key_mut, .key_var]
+	is_mut := p.tok.kind == .key_mut
 	mut is_sum_type := false
 	if is_mut {
 		p.next()
@@ -106,8 +106,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
-		} else if p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot) && (p.tok.lit in table.builtin_type_names || (p.tok.lit[0].is_capital() &&
-			!p.tok.lit.is_upper()) || p.peek_tok.kind == .dot) {
+		} else if p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot) &&
+			(p.tok.lit in table.builtin_type_names || (p.tok.lit[0].is_capital() && !p.tok.lit.is_upper()) ||
+			p.peek_tok.kind == .dot) {
 			// Sum type match
 			typ := p.parse_type()
 			exprs << ast.Type{
@@ -139,11 +140,11 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			if var_name != '' {
 				// Register a shadow variable with the actual type
 				// (this replaces the old `it`)
-				// TODO doesn't work right now
-				p.scope.register(var_name, ast.Var{
-					name: var_name
-					typ: typ.to_ptr()
-				})
+				// TODO doesn't work right now (fixed, uncomment when merging)
+				// p.scope.register(var_name, ast.Var{
+				// 	name: var_name
+				// 	typ: typ.to_ptr()
+				// })
 				// println(var_name)
 			}
 		} else {

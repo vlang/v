@@ -106,7 +106,7 @@ pub fn (s mut Scope) register(name string, obj ScopeObject) {
 	if name == '_' {
 		return
 	}
-	if _ := s.find(name) {
+	if name in s.objects {
 		// println('existing obect: $name')
 		return
 	}

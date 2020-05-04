@@ -308,7 +308,7 @@ pub fn exec(cmd string) ?Result {
 	create_process_ok := C.CreateProcessW(0, command_line, 0, 0, C.TRUE, 0, 0, 0, voidptr(&start_info), voidptr(&proc_info))
 	if !create_process_ok {
 		error_msg := get_error_msg(int(C.GetLastError()))
-		return error('exec failed (CreateProcess): $error_msg')
+		return error('exec failed (CreateProcess): $error_msg cmd: $cmd')
 	}
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)

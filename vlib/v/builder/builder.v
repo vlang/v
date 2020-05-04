@@ -82,6 +82,13 @@ pub fn (mut b Builder) parse_imports() {
 		}
 	}
 	b.resolve_deps()
+	//
+	if b.pref.print_v_files {
+		for p in b.parsed_files {
+			println(p.path)
+		}
+		exit(0)        
+	}
 }
 
 pub fn (mut b Builder) resolve_deps() {

@@ -4,6 +4,7 @@
 module gen
 
 import strings
+import strconv
 import v.ast
 import v.table
 import v.pref
@@ -39,6 +40,7 @@ const (
 	]
 )
 
+// 'new'
 fn foo(t token.Token) {
 	util.full_hash()
 }
@@ -56,6 +58,7 @@ struct Gen {
 	auto_str_funcs       strings.Builder // function bodies of all auto generated _str funcs
 	comptime_defines     strings.Builder // custom defines, given by -d/-define flags on the CLI
 	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
+	hotcode_definitions  strings.Builder // -live declarations & functions
 	table                &table.Table
 	pref                 &pref.Preferences
 	module_built         string
@@ -89,6 +92,8 @@ mut:
 	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	attr                 string
 	is_builtin_mod       bool
+	hotcode_fn_names     []string
+	fn_main              &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
 }
 
 const (
@@ -98,14 +103,6 @@ const (
 )
 
 pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
-	if true { // if
-		x := 10 // line
-		// sep
-		y := 20
-		_ = x
-		_ = y
-	} else {
-	}
 	// println('start cgen2')
 	mut g := Gen{
 		out: strings.new_builder(1000)
@@ -120,9 +117,11 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		comptime_defines: strings.new_builder(100)
 		inits: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
+		hotcode_definitions: strings.new_builder(100)
 		table: table
 		pref: pref
 		fn_decl: 0
+		fn_main: 0
 		autofree: true
 		indent: -1
 		module_built: pref.path.after('vlib/')
@@ -182,6 +181,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	b.writeln(g.interface_table())
 	b.writeln('\n// V gowrappers:')
 	b.writeln(g.gowrappers.str())
+	b.writeln('\n// V hotcode definitions:')
+	b.writeln(g.hotcode_definitions.str())
 	b.writeln('\n// V stringliterals:')
 	b.writeln(g.stringliterals.str())
 	b.writeln('\n// V auto str functions:')
@@ -203,7 +204,8 @@ pub fn (mut g Gen) init() {
 	g.cheaders.writeln('#include <inttypes.h>') // int64_t etc
 	g.cheaders.writeln(c_builtin_types)
 	g.cheaders.writeln(c_headers)
-	g.definitions.writeln('\nstring _STR(const char*, ...);\n')
+	g.definitions.writeln('\nvoid _STR_PRINT_ARG(const char*, char**, int*, int*, int, ...);\n')
+	g.definitions.writeln('\nstring _STR(const char*, int, ...);\n')
 	g.definitions.writeln('\nstring _STR_TMP(const char*, ...);\n')
 	g.write_builtin_types()
 	g.write_typedef_types()
@@ -233,6 +235,9 @@ pub fn (mut g Gen) init() {
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
 		g.comptime_defines.writeln('#define _VDEBUG (1)')
 	}
+	if g.pref.is_livemain || g.pref.is_liveshared {
+		g.generate_hotcode_reloading_declarations()
+	}
 }
 
 pub fn (mut g Gen) finish() {
@@ -243,6 +248,14 @@ pub fn (mut g Gen) finish() {
 	g.stringliterals.writeln('')
 	if g.pref.is_prof {
 		g.gen_vprint_profile_stats()
+	}
+	if g.pref.is_livemain || g.pref.is_liveshared {
+		g.generate_hotcode_reloader_code()
+	}
+	if g.fn_main != 0 {
+		g.out.writeln('')
+		g.fn_decl = g.fn_main
+		g.gen_fn_decl(g.fn_main)
 	}
 }
 
@@ -270,8 +283,8 @@ pub fn (mut g Gen) write_typeof_functions() {
 }
 
 // V type to C type
-pub fn (mut g Gen) typ(t table.Type) string {
-	mut styp := g.base_typ(t)
+fn (mut g Gen) typ(t table.Type) string {
+	mut styp := g.base_type(t)
 	if t.flag_is(.optional) {
 		// Register an optional
 		styp = 'Option_' + styp
@@ -288,13 +301,20 @@ pub fn (mut g Gen) typ(t table.Type) string {
 	return styp
 }
 
-pub fn (mut g Gen) base_typ(t table.Type) string {
+fn (g &Gen) base_type(t table.Type) string {
+	mut styp := g.cc_type(t)
 	nr_muls := t.nr_muls()
-	sym := g.table.get_type_symbol(t)
-	mut styp := sym.name.replace('.', '__')
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
+	return styp
+}
+
+// cc_type returns the Cleaned Concrete Type name, *without ptr*,
+// i.e. it's always just Cat, not Cat_ptr:
+fn (g &Gen) cc_type(t table.Type) string {
+	sym := g.table.get_type_symbol(t)
+	mut styp := sym.name.replace('.', '__')
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 		if sym.kind == .struct_ {
@@ -309,6 +329,12 @@ pub fn (mut g Gen) base_typ(t table.Type) string {
 
 //
 pub fn (mut g Gen) write_typedef_types() {
+	g.typedefs.writeln('
+typedef struct {
+	void* _object;
+	int _interface_idx;
+} _Interface;
+')
 	for typ in g.table.types {
 		match typ.kind {
 			.alias {
@@ -320,6 +346,9 @@ pub fn (mut g Gen) write_typedef_types() {
 			.array {
 				styp := typ.name.replace('.', '__')
 				g.definitions.writeln('typedef array $styp;')
+			}
+			.interface_ {
+				g.definitions.writeln('typedef _Interface ${c_name(typ.name)};')
 			}
 			.map {
 				styp := typ.name.replace('.', '__')
@@ -449,11 +478,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Attr {
 			g.attr = it.name
-			if it.name == 'inline' {
-				// g.writeln(it.name)
-			} else {
-				g.writeln('//[$it.name]')
-			}
+			g.writeln('// Attr: [$it.name]')
 		}
 		ast.Block {
 			g.writeln('{')
@@ -530,16 +555,20 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					println('build module `$g.module_built` fn `$it.name`')
 				}
 			}
-			fn_start_pos := g.out.len
 			g.fn_decl = it // &it
-			g.gen_fn_decl(it)
-			if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
-				println(g.out.after(fn_start_pos))
+			if it.name == 'main' {
+				// just remember `it`; main code will be generated in finish()
+				g.fn_main = it
+			} else {
+				g.gen_fn_decl(it)
 			}
+			g.fn_decl = 0
 			if skip {
 				g.out.go_back_to(pos)
 			}
 			g.writeln('')
+			// g.attr has to be reset after each function
+			g.attr = ''
 		}
 		ast.ForCStmt {
 			g.write('for (')
@@ -821,7 +850,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			g.expr(ident)
 			if is_optional {
-				mr_base_styp := g.base_typ(return_type)
+				mr_base_styp := g.base_type(return_type)
 				g.writeln(' = (*(${mr_base_styp}*)${mr_var_name}.data).arg$i;')
 			} else {
 				g.writeln(' = ${mr_var_name}.arg$i;')
@@ -943,22 +972,22 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 }
 
 fn (mut g Gen) free_scope_vars(pos int) {
+	println('free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
 	for _, obj in scope.objects {
 		match obj {
 			ast.Var {
-				// println('//////')
-				// println(var.name)
-				// println(var.typ)
 				// if var.typ == 0 {
 				// // TODO why 0?
 				// continue
 				// }
 				v := *it
+				println(v.name)
+				// println(v.typ)
 				sym := g.table.get_type_symbol(v.typ)
 				is_optional := v.typ.flag_is(.optional)
 				if sym.kind == .array && !is_optional {
-					g.writeln('array_free($v.name); // autofreed')
+					g.writeln('\tarray_free($v.name); // autofreed')
 				}
 				if sym.kind == .string && !is_optional {
 					// Don't free simple string literals.
@@ -1164,7 +1193,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.SelectorExpr {
 			g.expr(it.expr)
-			// if it.expr_type.nr_muls() > 0 {
 			if it.expr_type.is_ptr() {
 				g.write('->')
 			} else {
@@ -1449,7 +1477,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write('array_push(&')
 			g.expr(node.left)
 			g.write(', &($elem_type_str[]){ ')
+			elem_sym := g.table.get_type_symbol(info.elem_type)
+			if elem_sym.kind == .interface_ {
+				g.interface_call(node.right_type, info.elem_type)
+			}
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
+			if elem_sym.kind == .interface_ {
+				g.write(')')
+			}
 			g.write(' })')
 		}
 	} else if (node.left_type == node.right_type) && node.left_type.is_float() && node.op in
@@ -1622,7 +1657,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		// `println(x)` => `println(*(int*)x.data)`
 		if ident_var.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
 			g.write('/*opt*/')
-			styp := g.base_typ(ident_var.typ)
+			styp := g.base_type(ident_var.typ)
 			g.write('(*($styp*)${name}.data)')
 			return
 		}
@@ -1880,7 +1915,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// mr_info := typ_sym.info as table.MultiReturn
 		mut styp := ''
 		if fn_return_is_optional { // && !node.types[0].flag_is(.optional) && node.types[0] !=
-			styp = g.base_typ(g.fn_decl.return_type)
+			styp = g.base_type(g.fn_decl.return_type)
 			g.write('opt_ok(&($styp/*X*/[]) { ')
 		} else {
 			styp = g.typ(g.fn_decl.return_type)
@@ -1919,7 +1954,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				else {}
 			}
 			if !is_none && !is_error {
-				styp := g.base_typ(g.fn_decl.return_type)
+				styp := g.base_type(g.fn_decl.return_type)
 				g.write('/*:)$return_sym.name*/opt_ok(&($styp[]) { ')
 				if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 					// Automatic Dereference for optional
@@ -1974,6 +2009,14 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.IntegerLiteral {
 				g.const_decl_simple_define(name, val)
 			}
+			ast.ArrayInit {
+				if it.is_fixed {
+					styp := g.typ(it.typ)
+					g.definitions.writeln('$styp _const_$name = $val; // fixed array const')
+				} else {
+					g.const_decl_init_later(name, val, field.typ)
+				}
+			}
 			ast.StringLiteral {
 				g.definitions.writeln('string _const_$name; // a string literal, inited later')
 				if g.pref.build_mode != .build_module {
@@ -1981,11 +2024,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
-				// Initialize more complex consts in `void _vinit(){}`
-				// (C doesn't allow init expressions that can't be resolved at compile time).
-				styp := g.typ(field.typ)
-				g.definitions.writeln('$styp _const_$name; // inited later')
-				g.inits.writeln('\t_const_$name = $val;')
+				g.const_decl_init_later(name, val, field.typ)
 			}
 		}
 	}
@@ -1998,6 +2037,14 @@ fn (mut g Gen) const_decl_simple_define(name, val string) {
 	// will not be accessible.
 	g.definitions.write('#define _const_$name ')
 	g.definitions.writeln(val)
+}
+
+fn (mut g Gen) const_decl_init_later(name, val string, typ table.Type) {
+	// Initialize more complex consts in `void _vinit(){}`
+	// (C doesn't allow init expressions that can't be resolved at compile time).
+	styp := g.typ(typ)
+	g.definitions.writeln('$styp _const_$name; // inited later')
+	g.inits.writeln('\t_const_$name = $val;')
 }
 
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
@@ -2051,7 +2098,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			field_name := c_name(field.name)
 			g.write('\t.$field_name = ')
 			if field.has_default_expr {
-				g.expr(field.default_expr)
+				g.expr(ast.fe2ex(field.default_expr))
 			} else {
 				g.write(g.type_default(field.typ))
 			}
@@ -2123,6 +2170,9 @@ fn verror(s string) {
 }
 
 fn (mut g Gen) write_init_function() {
+	if g.pref.is_liveshared {
+		return
+	}
 	g.writeln('void _vinit() {')
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
@@ -2146,43 +2196,6 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('free(_const_strconv__ftoa__powers_of_10.data);')
 		g.writeln('}')
 	}
-}
-
-fn (mut g Gen) write_str_fn_definitions() {
-	// _STR function can't be defined in vlib
-	g.writeln('
-string _STR(const char *fmt, ...) {
-	va_list argptr;
-	va_start(argptr, fmt);
-	size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
-	va_end(argptr);
-	byte* buf = malloc(len);
-	va_start(argptr, fmt);
-	vsprintf((char *)buf, fmt, argptr);
-	va_end(argptr);
-#ifdef DEBUG_ALLOC
-	puts("_STR:");
-	puts(buf);
-#endif
-	return tos2(buf);
-}
-
-string _STR_TMP(const char *fmt, ...) {
-	va_list argptr;
-	va_start(argptr, fmt);
-	//size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
-	va_end(argptr);
-	va_start(argptr, fmt);
-	vsprintf((char *)g_str_buf, fmt, argptr);
-	va_end(argptr);
-#ifdef DEBUG_ALLOC
-	//puts("_STR_TMP:");
-	//puts(g_str_buf);
-#endif
-	return tos2(g_str_buf);
-} // endof _STR_TMP
-
-')
 }
 
 const (
@@ -2250,12 +2263,16 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				// table.Alias, table.SumType { TODO
 			}
 			table.SumType {
-				g.definitions.writeln('// Sum type')
-				g.definitions.writeln('
-				typedef struct {
-void* obj;
-int typ;
-} $name;')
+				g.definitions.writeln('')
+				g.definitions.writeln('// Sum type $name = ')
+				for sv in it.variants {
+					g.definitions.writeln('//          | ${sv:4d} = ${g.typ(sv):-20s}')
+				}
+				g.definitions.writeln('typedef struct {')
+				g.definitions.writeln('    void* obj;')
+				g.definitions.writeln('    int typ;')
+				g.definitions.writeln('} $name;')
+				g.definitions.writeln('')
 			}
 			table.ArrayFixed {
 				// .array_fixed {
@@ -2266,13 +2283,6 @@ int typ;
 				fixed = fixed[..fixed.len - len.len - 1]
 				g.definitions.writeln('typedef $fixed $styp [$len];')
 				// }
-			}
-			table.Interface {
-				g.definitions.writeln('//interface')
-				g.definitions.writeln('typedef struct {')
-				g.definitions.writeln('\tvoid* _object;')
-				g.definitions.writeln('\tint _interface_idx;')
-				g.definitions.writeln('} $typ.name;')
 			}
 			else {}
 		}
@@ -2340,89 +2350,128 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write('_STR("')
 	// Build the string with %
+	mut fieldwidths := []int{}
+	mut specs := []byte{}
+	mut num_fmts := 1
 	for i, val in node.vals {
 		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
 		g.write(escaped_val)
 		if i >= node.exprs.len {
+			fieldwidths << 0
+			specs << `_`
 			continue
 		}
-		// TODO: fix match, sum type false positive
-		// match node.expr_types[i] {
-		// table.string_type {
-		// g.write('%.*s')
-		// }
-		// table.int_type {
-		// g.write('%d')
-		// }
-		// else {}
-		// }
+		num_fmts++
 		sym := g.table.get_type_symbol(node.expr_types[i])
 		sfmt := node.expr_fmts[i]
+		mut fspec := `_` // placeholder
+		mut fmt := '' // field width and precision
 		if sfmt.len > 0 {
-			fspec := sfmt[sfmt.len - 1]
-			if fspec == `s` && node.expr_types[i] != table.string_type {
-				verror('only V strings can be formatted with a ${sfmt} format')
+			// analyze and validate format specifier
+			if sfmt[sfmt.len - 1] in [`E`, `F`, `G`, `e`, `f`, `g`, `e`,
+				`d`, `u`, `x`, `X`, `o`, `c`, `s`] {
+				fspec = sfmt[sfmt.len - 1]
 			}
-			g.write('%' + sfmt[1..])
-		} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind in
-			[.enum_, .array, .array_fixed] {
-			g.write('%.*s')
-		} else if node.expr_types[i] in [table.f32_type, table.f64_type] {
-			g.write('%g')
-		} else if sym.kind in [.struct_, .map] && !sym.has_method('str') {
-			g.write('%.*s')
-		} else if node.expr_types[i] == table.i16_type {
-			g.write('%"PRId16"')
-		} else if node.expr_types[i] == table.u16_type {
-			g.write('%"PRIu16"')
-		} else if node.expr_types[i] == table.u32_type {
-			g.write('%"PRIu32"')
-		} else if node.expr_types[i] == table.i64_type {
-			g.write('%"PRId64"')
-		} else if node.expr_types[i] == table.u64_type {
-			g.write('%"PRIu64"')
-		} else if g.typ(node.expr_types[i]).starts_with('Option') {
-			g.write('%.*s')
-		} else {
-			g.write('%"PRId32"')
+			fmt = if fspec == `_` {
+				sfmt[1..sfmt.len]
+			} else {
+				sfmt[1..sfmt.len - 1]
+			}
 		}
+		if fspec == `_` { // set default representation for type if still missing
+			if node.expr_types[i].is_float() {
+				fspec = `g`
+			} else if node.expr_types[i].is_signed() {
+				fspec = `d`
+			} else if node.expr_types[i].is_unsigned() {
+				fspec = `u`
+			} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind in
+				[.enum_, .array, .array_fixed, .struct_, .map] || g.typ(node.expr_types[i]).starts_with('Option') ||
+				sym.has_method('str') {
+				fspec = `s`
+			} else {
+				// default to int - TODO: should better be checked
+				fspec = `d`
+			}
+		}
+		fields := fmt.split('.')
+		// validate format
+		// only floats should have precision specifier
+		if fields.len > 2 || fields.len == 2 && !(node.expr_types[i].is_float()) || node.expr_types[i].is_signed() &&
+			!(fspec in [`d`, `c`, `x`, `X`, `o`]) || node.expr_types[i].is_unsigned() && !(fspec in [`u`,
+			`x`, `X`, `o`, `c`]) || node.expr_types[i].is_float() && !(fspec in [`E`, `F`, `G`,
+			`e`, `f`,
+			`g`, `e`]) {
+			verror('illegal format specifier ${fspec:c} for type ${g.table.get_type_name(node.expr_types[i])}')
+		}
+		// make sure that format paramters are valid numbers
+		for j, f in fields {
+			for k, c in f {
+				if (c < `0` || c > `9`) && !(j == 0 && k == 0 && (node.expr_types[i].is_number() &&
+					c == `+` || c == `-`)) {
+					verror('illegal character ${c:c} in format specifier ${fmt}')
+				}
+			}
+		}
+		specs << fspec
+		fieldwidths << if fields.len == 0 {
+			0
+		} else {
+			strconv.atoi(fields[0])
+		}
+		// write correct format specifier to intermediate string
+		g.write('%')
+		if fspec == `s` {
+			if fields.len == 0 || strconv.atoi(fields[0]) == 0 {
+				g.write('.*s')
+			} else {
+				g.write('*.*s')
+			}
+		} else if node.expr_types[i].is_float() {
+			g.write('$fmt${fspec:c}')
+		} else if node.expr_types[i].is_int() {
+			if fspec == `c` {
+				if node.expr_types[i].idx() in [table.i64_type_idx, table.f64_type_idx] {
+					verror('64 bit integer types cannot be interpolated as character')
+				} else {
+					g.write('${fmt}c')
+				}
+			} else {
+				g.write('${fmt}"PRI${fspec:c}')
+				if node.expr_types[i] in [table.i8_type, table.byte_type] {
+					g.write('8')
+				} else if node.expr_types[i] in [table.i16_type, table.u16_type] {
+					g.write('16')
+				} else if node.expr_types[i] in [table.i64_type, table.u64_type] {
+					g.write('64')
+				} else {
+					g.write('32')
+				}
+				g.write('"')
+			}
+		} else {
+			// TODO: better check this case
+			g.write('${fmt}"PRId32"')
+		}
+		g.write('\\000')
 	}
-	g.write('", ')
+	g.write('", $num_fmts, ')
 	// Build args
 	for i, expr in node.exprs {
-		sfmt := node.expr_fmts[i]
-		if sfmt.len > 0 {
-			fspec := sfmt[sfmt.len - 1]
-			if fspec == `s` && node.expr_types[i] == table.string_type {
-				g.expr(expr)
-				g.write('.str')
-			} else {
-				g.expr(expr)
-			}
-		} else if node.expr_types[i] == table.string_type {
-			// `name.str, name.len,`
+		if node.expr_types[i] == table.string_type {
 			g.expr(expr)
-			g.write('.len, ')
-			g.expr(expr)
-			g.write('.str')
 		} else if node.expr_types[i] == table.bool_type {
 			g.expr(expr)
-			g.write(' ? 4 : 5, ')
+			g.write(' ? _SLIT("true") : _SLIT("false")')
+		} else if node.expr_types[i].is_number() || specs[i] == `d` {
 			g.expr(expr)
-			g.write(' ? "true" : "false"')
-		} else if node.expr_types[i] in [table.f32_type, table.f64_type] {
-			g.expr(expr)
-		} else {
+		} else if specs[i] == `s` {
 			sym := g.table.get_type_symbol(node.expr_types[i])
 			if node.expr_types[i].flag_is(.variadic) {
 				str_fn_name := g.gen_str_for_type(node.expr_types[i])
 				g.write('${str_fn_name}(')
 				g.expr(expr)
 				g.write(')')
-				g.write('.len, ')
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(').str')
 			} else if sym.kind == .enum_ {
 				is_var := match node.exprs[i] {
 					ast.SelectorExpr { true }
@@ -2434,64 +2483,88 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					g.write('${str_fn_name}(')
 					g.enum_expr(expr)
 					g.write(')')
-					g.write('.len, ')
-					g.write('${str_fn_name}(')
-					g.enum_expr(expr)
-					g.write(').str')
 				} else {
 					g.write('tos3("')
 					g.enum_expr(expr)
 					g.write('")')
-					g.write('.len, ')
-					g.write('"')
-					g.enum_expr(expr)
-					g.write('"')
 				}
-			} else if sym.kind in [.array, .array_fixed] {
-				str_fn_name := g.gen_str_for_type(node.expr_types[i])
-				g.write('${str_fn_name}(')
+			} else if sym.has_method('str') || sym.kind in [.array, .array_fixed, .map, .struct_] {
+				is_p := node.expr_types[i].is_ptr()
+				val_type := if is_p { node.expr_types[i].deref() } else { node.expr_types[i] }
+				str_fn_name := g.gen_str_for_type(val_type)
+				if is_p {
+					g.write('string_add(_SLIT("&"), ${str_fn_name}(*(')
+				} else {
+					g.write('${str_fn_name}(')
+				}
 				g.expr(expr)
-				g.write(')')
-				g.write('.len, ')
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(').str')
-			} else if sym.kind == .map && !sym.has_method('str') {
-				str_fn_name := g.gen_str_for_type(node.expr_types[i])
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(')')
-				g.write('.len, ')
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(').str')
-			} else if sym.kind == .struct_ && !sym.has_method('str') {
-				str_fn_name := g.gen_str_for_type(node.expr_types[i])
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(',0)')
-				g.write('.len, ')
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(',0).str')
+				if sym.kind == .struct_ && !sym.has_method('str') {
+					if is_p {
+						g.write('),0))')
+					} else {
+						g.write(',0)')
+					}
+				} else {
+					if is_p {
+						g.write(')))')
+					} else {
+						g.write(')')
+					}
+				}
 			} else if g.typ(node.expr_types[i]).starts_with('Option') {
 				str_fn_name := 'Option_str'
 				g.write('${str_fn_name}(*(Option*)&')
 				g.expr(expr)
 				g.write(')')
-				g.write('.len, ')
-				g.write('${str_fn_name}(*(Option*)&')
-				g.expr(expr)
-				g.write(').str')
 			} else {
-				g.expr(expr)
+				verror('cannot convert to string')
 			}
+		} else {
+			g.expr(expr)
+		}
+		if specs[i] == `s` && fieldwidths[i] != 0 {
+			g.write(', ${fieldwidths[i]}')
 		}
 		if i < node.exprs.len - 1 {
 			g.write(', ')
 		}
 	}
 	g.write(')')
+}
+
+// `nums.map(it % 2 == 0)`
+fn (mut g Gen) gen_map(node ast.CallExpr) {
+	tmp := g.new_tmp_var()
+	s := g.out.after(g.stmt_start_pos) // the already generated part of current statement
+	g.out.go_back(s.len)
+	// println('filter s="$s"')
+	ret_typ := g.typ(node.return_type)
+	// inp_typ := g.typ(node.receiver_type)
+	ret_sym := g.table.get_type_symbol(node.return_type)
+	inp_sym := g.table.get_type_symbol(node.receiver_type)
+	ret_info := ret_sym.info as table.Array
+	ret_elem_type := g.typ(ret_info.elem_type)
+	inp_info := inp_sym.info as table.Array
+	inp_elem_type := g.typ(inp_info.elem_type)
+	if inp_sym.kind != .array {
+		verror('map() requires an array')
+	}
+	g.writeln('')
+	g.write('int ${tmp}_len = ')
+	g.expr(node.left)
+	g.writeln('.len;')
+	g.writeln('$ret_typ $tmp = __new_array(0, ${tmp}_len, sizeof($ret_elem_type));')
+	g.writeln('for (int i = 0; i < ${tmp}_len; i++) {')
+	g.write('\t$inp_elem_type it = (($inp_elem_type*) ')
+	g.expr(node.left)
+	g.writeln('.data)[i];')
+	g.write('\t$ret_elem_type ti = ')
+	g.expr(node.args[0].expr) // the first arg is the filter condition
+	g.writeln(';')
+	g.writeln('\tarray_push(&$tmp, &ti);')
+	g.writeln('}')
+	g.write(s)
+	g.write(tmp)
 }
 
 // `nums.filter(it % 2 == 0)`
@@ -2535,7 +2608,7 @@ fn (mut g Gen) insert_before(s string) {
 // to access its fields (`.ok`, `.error` etc)
 // `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
 fn (mut g Gen) or_block(var_name string, stmts []ast.Stmt, return_type table.Type) {
-	mr_styp := g.base_typ(return_type)
+	mr_styp := g.base_type(return_type)
 	g.writeln(';') // or')
 	g.writeln('if (!${var_name}.ok) {')
 	g.writeln('\tstring err = ${var_name}.v_error;')
@@ -2916,11 +2989,12 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	// x := node.call_expr as ast.CallEpxr // TODO
 	match node.call_expr {
 		ast.CallExpr {
-			mut name := it.name.replace('.', '__')
+			mut name := it.name // .replace('.', '__')
 			if it.is_method {
 				receiver_sym := g.table.get_type_symbol(it.receiver_type)
 				name = receiver_sym.name + '_' + name
 			}
+			name = name.replace('.', '__')
 			g.writeln('// go')
 			wrapper_struct_name := 'thread_arg_' + name
 			wrapper_fn_name := name + '_thread_wrapper'
@@ -3133,9 +3207,9 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\treturn _STR("${clean_struct_v_type_name} {\\n"')
 	for field in info.fields {
 		fmt := g.type_to_fmt(field.typ)
-		g.auto_str_funcs.writeln('\t\t"%.*s    ' + '$field.name: $fmt\\n"')
+		g.auto_str_funcs.writeln('\t\t"%.*s\\000    ' + '$field.name: $fmt\\n"')
 	}
-	g.auto_str_funcs.write('\t\t"%.*s}"')
+	g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2*(info.fields.len+1)}')
 	if info.fields.len > 0 {
 		g.auto_str_funcs.write(',\n\t\t')
 		for i, field in info.fields {
@@ -3145,23 +3219,18 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 			field_styp := g.typ(field.typ)
 			field_styp_fn_name := if has_custom_str { '${field_styp}_str' } else { fnames2strfunc[field_styp] }
 			if sym.kind == .enum_ {
-				g.auto_str_funcs.write('indents.len, indents.str, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ).len, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ).str  ')
+				g.auto_str_funcs.write('indents, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ) ')
 			} else if sym.kind == .struct_ {
-				g.auto_str_funcs.write('indents.len, indents.str, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ).len, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ).str  ')
+				g.auto_str_funcs.write('indents, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ) ')
 			} else if sym.kind in [.array, .array_fixed] {
-				g.auto_str_funcs.write('indents.len, indents.str, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}).len, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}).str  ')
+				g.auto_str_funcs.write('indents, ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}) ')
 			} else {
-				g.auto_str_funcs.write('indents.len, indents.str, it->${field.name}')
-				if field.typ == table.string_type {
-					g.auto_str_funcs.write('.len, it->${field.name}.str')
-				} else if field.typ == table.bool_type {
-					g.auto_str_funcs.write(' ? 4 : 5, it->${field.name} ? "true" : "false"')
+				g.auto_str_funcs.write('indents, it->${field.name}')
+				if field.typ == table.bool_type {
+					g.auto_str_funcs.write(' ? _SLIT("true") : _SLIT("false")')
 				}
 			}
 			if i < info.fields.len - 1 {
@@ -3170,7 +3239,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 		}
 	}
 	g.auto_str_funcs.writeln(',')
-	g.auto_str_funcs.writeln('\t\tindents.len, indents.str);')
+	g.auto_str_funcs.writeln('\t\tindents);')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -3189,7 +3258,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	if sym.kind == .struct_ && !sym.has_method('str') {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));')
 	} else if sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", it));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, it));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
 	}
@@ -3216,9 +3285,9 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	if sym.kind == .struct_ && !sym.has_method('str') {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i],0));')
 	} else if sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", a[i]));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, a[i]));')
 	} else if sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\'", a[i].len, a[i].str));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(a[i]));')
 	}
@@ -3249,18 +3318,18 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("{"));')
 	g.auto_str_funcs.writeln('\tfor (unsigned int i = 0; i < m.key_values.size; i++) {')
 	g.auto_str_funcs.writeln('\t\tstring key = (*(string*)DenseArray_get(m.key_values, i));')
-	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\'", key.len, key.str));')
+	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, key));')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3(": "));')
 	g.auto_str_funcs.write('\t$val_styp it = (*($val_styp*)map_get3(')
 	g.auto_str_funcs.write('m, (*(string*)DenseArray_get(m.key_values, i))')
 	g.auto_str_funcs.write(', ')
 	g.auto_str_funcs.writeln(' &($val_styp[]) { $zero }));')
 	if val_sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\'", it.len, it.str));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, it));')
 	} else if val_sym.kind == .struct_ && !val_sym.has_method('str') {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${val_styp}_str(it,0));')
 	} else if val_sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", it));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, it));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${val_styp}_str(it));')
 	}
@@ -3292,73 +3361,114 @@ fn (mut g Gen) gen_str_for_varg(styp, str_fn_name string) {
 fn (g Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind in [.struct_, .array, .array_fixed, .map] {
-		return '%.*s'
+		return '%.*s\\000'
 	} else if typ == table.string_type {
-		return "\'%.*s\'"
+		return "\'%.*s\\000\'"
 	} else if typ == table.bool_type {
-		return '%.*s'
+		return '%.*s\\000'
 	} else if sym.kind == .enum_ {
-		return '%.*s'
+		return '%.*s\\000'
 	} else if typ in [table.f32_type, table.f64_type] {
-		return '%g' // g removes trailing zeros unlike %f
+		return '%g\\000' // g removes trailing zeros unlike %f
 	}
-	return '%d'
+	return '%d\\000'
 }
 
 // Generates interface table and interface indexes
-fn (v &Gen) interface_table() string {
+fn (g &Gen) interface_table() string {
 	mut sb := strings.new_builder(100)
-	for _, t in v.table.types {
-		if t.kind != .interface_ {
+	for ityp in g.table.types {
+		if ityp.kind != .interface_ {
 			continue
 		}
-		info := t.info as table.Interface
-		println(info.gen_types)
+		inter_info := ityp.info as table.Interface
+		if inter_info.types.len == 0 {
+			continue
+		}
+		sb.writeln('// NR interfaced types= $inter_info.types.len')
 		// interface_name is for example Speaker
-		interface_name := t.name
-		mut methods := ''
-		mut generated_casting_functions := ''
-		sb.writeln('// NR gen_types= $info.gen_types.len')
-		for i, gen_type in info.gen_types {
-			// ptr_ctype can be for example Cat OR Cat_ptr:
-			ptr_ctype := gen_type.replace('*', '_ptr')
+		interface_name := c_name(ityp.name)
+		// generate a struct that references interface methods
+		methods_struct_name := 'struct _${interface_name}_interface_methods'
+		mut methods_typ_def := strings.new_builder(100)
+		mut methods_struct_def := strings.new_builder(100)
+		methods_struct_def.writeln('$methods_struct_name {')
+		for method in ityp.methods {
+			typ_name := '_${interface_name}_${method.name}_fn'
+			ret_styp := g.typ(method.return_type)
+			methods_typ_def.write('typedef $ret_styp (*$typ_name)(void* _')
+			// the first param is the receiver, it's handled by `void*` above
+			for i in 1 .. method.args.len {
+				arg := method.args[i]
+				methods_typ_def.write(', ${g.typ(arg.typ)} $arg.name')
+			}
+			// TODO g.fn_args(method.args[1..], method.is_variadic)
+			methods_typ_def.writeln(');')
+			methods_struct_def.writeln('\t$typ_name ${c_name(method.name)};')
+		}
+		methods_struct_def.writeln('};')
+		// generate an array of the interface methods for the structs using the interface
+		// as well as case functions from the struct to the interface
+		mut methods_struct := strings.new_builder(100)
+		methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[$inter_info.types.len] = {')
+		mut cast_functions := strings.new_builder(100)
+		cast_functions.write('// Casting functions for interface "${interface_name}"')
+		mut methods_wrapper := strings.new_builder(100)
+		methods_wrapper.writeln('// Methods wrapper for interface "${interface_name}"')
+		for i, st in inter_info.types {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
-			cctype := gen_type.replace('*', '')
+			cctype := g.cc_type(st)
 			// Speaker_Cat_index = 0
-			interface_index_name := '_${interface_name}_${ptr_ctype}_index'
-			generated_casting_functions += '
-${interface_name} I_${cctype}_to_${interface_name}(${cctype} x) {
-  return (${interface_name}){
-           ._object = (void*) memdup(&x, sizeof(${cctype})),
-           ._interface_idx = ${interface_index_name} };
-}
-'
-			methods += '{\n'
-			for j, method in t.methods {
-				// Cat_speak
-				methods += ' (void*)    ${cctype}_${method.name}'
-				if j < t.methods.len - 1 {
-					methods += ', \n'
+			interface_index_name := '_${interface_name}_${cctype}_index'
+			cast_functions.writeln('
+_Interface I_${cctype}_to_Interface(${cctype}* x) {
+	return (_Interface) {
+		._object = (void*) memdup(x, sizeof(${cctype})),
+		._interface_idx = ${interface_index_name}
+	};
+}')
+			methods_struct.writeln('\t{')
+			for method in ityp.methods {
+				// .speak = Cat_speak
+				mut method_call := '${cctype}_${method.name}'
+				if !method.args[0].typ.is_ptr() {
+					// inline void Cat_speak_method_wrapper(Cat c) { return Cat_speak(*c); }
+					methods_wrapper.write('static inline ${g.typ(method.return_type)}')
+					methods_wrapper.write(' ${method_call}_method_wrapper(')
+					methods_wrapper.write('${cctype}* ${method.args[0].name}')
+					// TODO g.fn_args
+					for j in 1 .. method.args.len {
+						arg := method.args[j]
+						methods_wrapper.write(', ${g.typ(arg.typ)} $arg.name')
+					}
+					methods_wrapper.writeln(') {')
+					methods_wrapper.write('\t')
+					if method.return_type != table.void_type {
+						methods_wrapper.write('return ')
+					}
+					methods_wrapper.write('${method_call}(*${method.args[0].name}')
+					for j in 1 .. method.args.len {
+						methods_wrapper.write(', ${method.args[j].name}')
+					}
+					methods_wrapper.writeln(');')
+					methods_wrapper.writeln('}')
+					// .speak = Cat_speak_method_wrapper
+					method_call += '_method_wrapper'
 				}
+				methods_struct.writeln('\t\t.${c_name(method.name)} = $method_call,')
 			}
-			methods += '\n},\n\n'
+			methods_struct.writeln('\t},')
 			sb.writeln('int ${interface_index_name} = $i;')
 		}
-		if info.gen_types.len > 0 {
-			// methods = '{TCCSKIP(0)}'
-			// }
-			sb.writeln('void* (* ${interface_name}_name_table[][$t.methods.len]) = ' + '{ \n $methods \n }; ')
-		} else {
-			// The line below is needed so that C compilation succeeds,
-			// even if no interface methods are called.
-			// See https://github.com/zenith391/vgtk3/issues/7
-			sb.writeln('void* (* ${interface_name}_name_table[][1]) = ' + '{ {NULL} }; ')
-		}
-		if generated_casting_functions.len > 0 {
-			sb.writeln('// Casting functions for interface "${interface_name}" :')
-			sb.writeln(generated_casting_functions)
-		}
+		methods_struct.writeln('};')
+		// add line return after interface index declarations
+		sb.writeln('')
+		sb.writeln(methods_wrapper.str())
+		sb.writeln(methods_typ_def.str())
+		sb.writeln(methods_struct_def.str())
+		sb.writeln(methods_struct.str())
+		sb.writeln(cast_functions.str())
 	}
 	return sb.str()
 }
@@ -3400,9 +3510,9 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 	g.write('($elem_type_str[$len]){\n\t\t')
 	for i, expr in it.exprs {
 		if it.is_interface {
-			sym := g.table.get_type_symbol(it.interface_types[i])
-			isym := g.table.get_type_symbol(it.interface_type)
-			g.write('I_${sym.name}_to_${isym.name}(')
+			// sym := g.table.get_type_symbol(it.interface_types[i])
+			// isym := g.table.get_type_symbol(it.interface_type)
+			g.interface_call(it.interface_types[i], it.interface_type)
 		}
 		g.expr(expr)
 		if it.is_interface {
@@ -3411,4 +3521,15 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		g.write(', ')
 	}
 	g.write('\n})')
+}
+
+// `ui.foo(button)` =>
+// `ui__foo(I_ui__Button_to_ui__Widget(` ...
+fn (g &Gen) interface_call(typ, interface_type table.Type) {
+	interface_styp := g.cc_type(interface_type)
+	styp := g.cc_type(typ)
+	g.write('/* $interface_styp */ I_${styp}_to_Interface(')
+	if !typ.is_ptr() {
+		g.write('&')
+	}
 }

@@ -6,6 +6,7 @@ module util
 import os
 import term
 import v.token
+import time
 
 // The filepath:line:col: format is the default C compiler error output format.
 // It allows editors and IDE's like emacs to quickly find the errors in the
@@ -70,14 +71,14 @@ pub fn formatted_error(kind, emsg, filepath string, pos token.Position) string {
 	}
 	column := imax(0, pos.pos - p - 1)
 	position := '${path}:${pos.line_nr+1}:${util.imax(1,column+1)}:'
-	scontext := source_context(source, column, pos).join('\n')
+	scontext := source_context(kind, source, column, pos).join('\n')
 	final_position := if emanager.support_color { term.bold(position) } else { position }
 	mut final_kind := kind
 	if emanager.support_color {
 		final_kind = if kind.contains('error') {
 			term.bold(term.red(kind))
 		} else {
-			term.bold(term.bright_blue(kind))
+			term.bold(term.magenta(kind))
 		}
 	}
 	final_msg := emsg // if emanager.support_color { term.bold(emsg) } else { emsg }
@@ -86,7 +87,7 @@ pub fn formatted_error(kind, emsg, filepath string, pos token.Position) string {
 	return '$final_position $final_kind $final_msg $final_context'.trim_space()
 }
 
-pub fn source_context(source string, column int, pos token.Position) []string {
+pub fn source_context(kind, source string, column int, pos token.Position) []string {
 	mut clines := []string{}
 	if source.len == 0 {
 		return clines
@@ -97,11 +98,15 @@ pub fn source_context(source string, column int, pos token.Position) []string {
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline]
-		mut cline := '${iline+1:5d}| ' + sline.replace('\t', tab_spaces)
+		mut cline := sline.replace('\t', tab_spaces)
 		if iline == pos.line_nr && emanager.support_color {
-			cline = term.red(cline)
+			cline = if kind.contains('error') {
+				term.red(cline)
+			} else {
+				term.magenta(cline)
+			}
 		}
-		clines << cline
+		clines << '${iline+1:5d} | ' + cline
 		//
 		if iline == pos.line_nr {
 			// The pointerline should have the same spaces/tabs as the offending
@@ -142,7 +147,7 @@ pub fn source_context(source string, column int, pos token.Position) []string {
 				}
 				break
 			}
-			clines << '       ' + pointerline.join('')
+			clines << '      | ' + pointerline.join('')
 		}
 	}
 	return clines
@@ -179,4 +184,17 @@ pub fn color_compare_files(diff_cmd, file1, file2 string) string {
         return x.output
     }
     return ''
+}
+
+fn color_compare_strings(diff_cmd string, expected string, found string) string {
+	cdir := os.cache_dir()
+	ctime := time.sys_mono_now()
+	e_file := os.join_path(cdir, '${ctime}.expected.txt')
+	f_file := os.join_path(cdir, '${ctime}.found.txt')
+	os.write_file( e_file, expected)
+	os.write_file( f_file, found)
+	res := util.color_compare_files(diff_cmd, e_file, f_file)
+	os.rm( e_file )
+	os.rm( f_file )
+	return res
 }

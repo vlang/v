@@ -110,7 +110,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .lpar {
 		p.next() // (
 		is_method = true
-		rec_mut = p.tok.kind in [.key_var, .key_mut]
+		rec_mut = p.tok.kind == .key_mut
 		if rec_mut {
 			p.next() // `mut`
 		}
@@ -231,6 +231,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Body
 	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
+	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope()
 	}
@@ -255,6 +256,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_js: is_js
 		no_body: no_body
 		pos: start_pos.extend(end_pos)
+		body_pos: body_start_pos
+		file: p.file_name
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		ctdefine: ctdefine
 	}
@@ -305,6 +308,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			is_anon: true
 			no_body: no_body
 			pos: pos
+			file: p.file_name
 		}
 		typ: typ
 	}
@@ -400,4 +404,19 @@ fn (mut p Parser) fn_redefinition_error(name string) {
 	}
 	*/
 	p.error('redefinition of function `$name`')
+}
+
+fn have_fn_main(stmts []ast.Stmt) bool {
+	mut has_main_fn := false
+	for stmt in stmts {
+		match stmt {
+			ast.FnDecl {
+				if it.name == 'main' {
+					has_main_fn = true
+				}
+			}
+			else {}
+		}
+	}
+	return has_main_fn
 }

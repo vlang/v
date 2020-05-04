@@ -191,7 +191,8 @@ fn (mut f Fmt) stmt(node ast.Stmt) {
 		}
 		ast.CompIf {
 			inversion := if it.is_not { '!' } else { '' }
-			f.writeln('\$if ${inversion}${it.val} {')
+			is_opt := if it.is_opt { ' ?' } else { '' }
+			f.writeln('\$if ${inversion}${it.val}${is_opt} {')
 			f.stmts(it.stmts)
 			if it.has_else {
 				f.writeln('} \$else {')
@@ -306,6 +307,7 @@ fn (mut f Fmt) stmt(node ast.Stmt) {
 				f.write(' = ')
 				f.expr(it.expr)
 			}
+			f.writeln('')
 		}
 		ast.GoStmt {
 			f.write('go ')

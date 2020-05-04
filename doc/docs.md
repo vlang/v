@@ -215,6 +215,14 @@ Both single and double quotes can be used to denote strings. For consistency,
 Interpolation syntax is pretty simple. It also works with fields:
 `'age = $user.age'`. If you need more complex expressions, use `${}`: `'can register = ${user.age > 13}'`.
 
+Format specifiers similar to those in C's `printf()` are supported, too. `f`, `g`, `x`, etc. are optional
+and specify the output format. The compiler takes care of the storage size, so there is no `hd` or `llu`.
+
+```v
+println('x = ${x:12.3f}'`
+println('${item:-20} ${n:20d})
+```
+
 All operators in V must have values of the same type on both sides. This code will not compile if `age` is an `int`:
 
 ```v
@@ -1227,13 +1235,14 @@ v fmt file.v
 ```
 
 It's recommended to set up your editor, so that vfmt runs on every save.
+A vfmt run is usually pretty cheap (takes <30ms).
 
-Always run vfmt before pushing your code.
+Always run `v fmt file.v` before pushing your code.
 
-## writing_documentation
+## Writing Documentation
 
 The way it works is very similar to Go. It's very simple: there's no need to
-write documentation for your code, vdoc will generate it from the source code.
+write separate documentation for your code, vdoc will generate it from the source code.
 
 Documentation for each function/type/const must be placed right before the declaration:
 
@@ -1248,8 +1257,31 @@ The comment must start with the name of the definition.
 
 An overview of the module must be placed in the first comment right after the module's name.
 
-To generate documentation, run `v doc path/to/module` (TODO this is
-temporarily disabled).
+To generate documentation use vdoc, for example `v doc net.http`.
+
+## Profiling
+
+V has good support for profiling your programs: `v -profile profile.txt run file.v`
+That will produce a profile.txt file, which you can then analyze.
+
+The generated profile.txt file will have lines with 4 columns:
+a) how many times a function was called
+b) how much time in total a function took (in ms)
+c) how much time on average, a call to a function took (in ns)
+d) the name of the v function
+
+You can sort on column 3 (average time per function) using:
+`sort -n -k3 profile.txt|tail`
+
+You can also use stop watches to measure just portions of your code explicitly:
+```v
+import time
+fn main(){
+    sw := time.new_stopwatch()
+    println('Hello world')
+    println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')
+}
+```
 
 # Advanced Topics
 
@@ -1364,12 +1396,16 @@ Check out [socket.v for an example of calling C code from V](https://github.com/
 To debug issues with the generated C code, you can pass these flags:
 
 - `-cg` - produces a less optimized executable with more debug information in it.
-- `-keep_c` - keep the generated C file, so your debugger can also use it.
-- `-show_c_cmd` - prints the C command that is used to build the program.
+- `-keepc` - keep the generated C file, so your debugger can also use it.
+- `-showcc` - prints the C command that is used to build the program.
 
-For best debugging experience, you can pass all of them at the same time: `v -cg -keep_c -pretty_c -show_c_cmd yourprogram.v` , then just run your debugger (gdb/lldb) or IDE with the produced executable `yourprogram`.
+For best debugging experience, you can pass all of them at the same time: `v -cg -keepc -showcc yourprogram.v` , then just run your debugger (gdb/lldb) or IDE with the produced executable `yourprogram`.
 
 If you just want to inspect the generated C code, without compiling it further, you can also use: `-o file.c`. This will make V produce the `file.c` then stop.
+
+If you want to see the generated C source code for *just* a single C function, for example `main`, you can use: `-printfn main -o file.c` .
+
+To see a detailed list of all flags that V supports, use `v help`, `v help build`, `v help build-c` .
 
 ## Compile time if
 

@@ -75,12 +75,19 @@ pub fn new_scanner(text string, comments_mode CommentsMode) &Scanner {
 	return s
 }
 
-pub fn (s &Scanner) add_fn_main_and_rescan() {
-	s.text = 'fn main() {' + s.text + '}'
-	s.is_started = false
-	s.pos = 0
-	s.line_nr = 0
-	s.last_nl_pos = 0
+pub fn (s &Scanner) add_fn_main_and_rescan(pos int) {
+	// NB: the text may have ended in // comment, which would hide the ending }
+	// To avoid that, we need a \n right before it.
+	if pos > 0 {
+		s.text = s.text[..pos] + 'fn main() {' + s.text[pos..] + '\n}'
+		s.pos = pos
+		s.is_started = false
+	} else {
+		s.text = 'fn main() {' + s.text + '\n}'
+		s.pos = 0
+		s.line_nr = 0
+		s.is_started = false
+	}
 }
 
 fn (s &Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token {
@@ -893,11 +900,29 @@ fn (s mut Scanner) ident_string() string {
 	if s.is_inside_string {
 		end++
 	}
-	if start > s.pos {}
-	else {
-		lit = s.text[start..end]
+	if start <= s.pos {
+		if s.text[start..end].contains('\\\n') {
+			lit = trim_slash_line_break(s.text[start..end])
+		} else {
+			lit = s.text[start..end]
+		}
 	}
 	return lit
+}
+
+fn trim_slash_line_break(s string) string {
+	mut start := 0
+	mut ret_str := s
+	for {
+		idx := ret_str.index_after('\\\n', start)
+		if idx != -1 {
+			ret_str = ret_str[..idx] + ret_str[idx+2..].trim_left(' \n\t\v\f\r')
+			start = idx
+		} else {
+			break
+		}
+	}
+	return ret_str
 }
 
 fn (s mut Scanner) ident_char() string {

@@ -1,9 +1,5 @@
 module main
 
-import os
-import time
-
-const (
-	os_used = os.MAX_PATH
-	time_used = time.now()
-)
+// This prelude is loaded in every v program compiled with -live,
+// but only for the shared library.
+import live.shared

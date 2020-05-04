@@ -1,3 +1,4 @@
+
 struct Dog {
 	breed string
 }
@@ -10,15 +11,18 @@ fn (d Cat) name() string {
 	return 'Cat'
 }
 
-fn (d Cat) speak() {
+fn (d Cat) speak(s string) {
+	assert s == 'Hi !'
 	println('meow')
 }
 
-fn (d Dog) speak() {
+fn (d Dog) speak(s string) {
+	assert s == 'Hi !'
 	println('woof')
 }
 
 fn (d Dog) name() string {
+	assert d.breed == 'Labrador Retriever'
 	return 'Dog'
 }
 
@@ -28,25 +32,25 @@ fn test_todo() {
 	else{}
 }
 
-interface Speaker {
-	name() string
-	speak()
-}
 
-fn perform_speak(s Speaker) {
-	s.speak()
+fn perform_speak(s Animal) {
+	s.speak('Hi !')
 	assert true
 	name := s.name()
 	assert name == 'Dog' || name == 'Cat'
+	//if s is Dog {
+		//assert name == 'Dog'
+	//}
 	println(s.name())
 }
 
 fn test_perform_speak() {
-	dog := Dog{}
+	dog := Dog{breed: 'Labrador Retriever'}
 	perform_speak(dog)
 	cat := Cat{}
 	perform_speak(cat)
-	perform_speakers([dog, cat])
+	perform_speak(Cat{})
+	handle_animals([dog, cat])
 	/*
 	f := Foo {
 		speaker: dog
@@ -54,7 +58,7 @@ fn test_perform_speak() {
 */
 }
 
-fn perform_speakers(speakers []Speaker) {}
+fn handle_animals(a []Animal) {}
 
 interface Register {
 	register()
@@ -81,7 +85,20 @@ interface Speaker2 {
 
 
 struct Foo {
-	speaker  Speaker
-	speakers []Speaker
+	animal Animal
+	animals []Animal
 }
 
+interface Animal {
+	name() string
+	speak(s string)
+}
+
+
+fn test_interface_array() {
+	mut animals := []Animal{}
+	animals = [ Cat{}, Dog{} ]
+	animals << Cat{}
+	assert true
+	assert animals.len == 3
+}

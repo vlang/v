@@ -50,7 +50,7 @@ pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 pub fn (mut c Checker) check(ast_file ast.File) {
 	c.file = ast_file
 	for i, ast_import in ast_file.imports {
-		for j in 0..i {
+		for j in 0 .. i {
 			if ast_import.mod == ast_file.imports[j].mod {
 				c.error('module name `$ast_import.mod` duplicate', ast_import.pos)
 			}
@@ -391,7 +391,7 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 				// `array << elm`
 				c.fail_if_immutable(infix_expr.left)
 				// the expressions have different types (array_x and x)
-				if c.table.check(c.table.value_type(left_type), right_type) {
+				if c.table.check(right_type, c.table.value_type(left_type)) { // , right_type) {
 					// []T << T
 					return table.void_type
 				}
@@ -399,7 +399,8 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 					// []T << []T
 					return table.void_type
 				}
-				c.error('cannot shift type $right.name into $left.name', infix_expr.right.position())
+				s := left.name.replace('array_', '[]')
+				c.error('cannot append `$right.name` to `$s`', infix_expr.right.position())
 				return table.void_type
 			} else if !left.is_int() {
 				c.error('cannot shift type $right.name into non-integer type $left.name', infix_expr.left.position())
@@ -470,7 +471,7 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 	match expr {
 		ast.Ident {
-			scope := c.file.scope.innermost(expr.position().pos)
+			scope := c.file.scope.innermost(it.pos.pos)
 			if v := scope.find_var(it.name) {
 				if !v.is_mut && !v.typ.is_ptr() {
 					c.error('`$it.name` is immutable, declare it with `mut` to make it mutable',
@@ -490,7 +491,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 		ast.SelectorExpr {
 			// retrieve table.Field
 			if it.expr_type == 0 {
-				c.error('0 type in SelectorExpr', expr.position())
+				c.error('0 type in SelectorExpr', it.pos)
 				return
 			}
 			typ_sym := c.table.get_type_symbol(it.expr_type)
@@ -599,6 +600,7 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 	left_type_sym := c.table.get_type_symbol(left_type)
 	method_name := call_expr.name
 	// TODO: remove this for actual methods, use only for compiler magic
+	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in ['filter', 'clone', 'repeat', 'reverse',
 		'map', 'slice'] {
 		if method_name in ['filter', 'map'] {
@@ -606,24 +608,27 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 			mut scope := c.file.scope.innermost(call_expr.pos.pos)
 			scope.update_var_type('it', array_info.elem_type)
 		}
+		// map/filter are supposed to have 1 arg only
+		mut arg_type := left_type
 		for arg in call_expr.args {
-			c.expr(arg.expr)
+			arg_type = c.expr(arg.expr)
 		}
-		// need to return `array_xxx` instead of `array`
 		call_expr.return_type = left_type
-		if method_name == 'clone' {
+		call_expr.receiver_type = left_type
+		if method_name == 'map' {
+			call_expr.return_type = c.table.find_or_register_array(arg_type, 1)
+		} else if method_name == 'clone' {
+			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
 			call_expr.receiver_type = left_type.to_ptr()
 			// call_expr.return_type = call_expr.receiver_type
-		} else {
-			call_expr.receiver_type = left_type
 		}
-		return left_type
+		return call_expr.return_type
 	} else if left_type_sym.kind == .array && method_name in ['first', 'last'] {
 		info := left_type_sym.info as table.Array
 		call_expr.return_type = info.elem_type
 		call_expr.receiver_type = left_type
-		return info.elem_type
+		return call_expr.return_type
 	}
 	if method := c.table.type_find_method(left_type_sym, method_name) {
 		if !method.is_pub && !c.is_builtin_mod && !c.pref.is_test && left_type_sym.mod != c.mod &&
@@ -682,13 +687,17 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		return table.string_type
 	}
 	// call struct field fn type
-	// TODO: can we use SelectorExpr for all?
+	// TODO: can we use SelectorExpr for all? this dosent really belong here
 	if field := c.table.struct_find_field(left_type_sym, method_name) {
 		field_type_sym := c.table.get_type_symbol(field.typ)
 		if field_type_sym.kind == .function {
 			call_expr.is_method = false
 			info := field_type_sym.info as table.FnType
 			call_expr.return_type = info.func.return_type
+			// TODO: check args (do it once for all of the above)
+			for arg in call_expr.args {
+				c.expr(arg.expr)
+			}
 			return info.func.return_type
 		}
 	}
@@ -712,6 +721,13 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	// println(fn_name)
 	// }
 	if fn_name == 'json.encode' {
+	}
+	if fn_name == 'json.decode' {
+		ident := call_expr.args[0].expr as ast.Ident
+		// sym := c.table.find_type(ident.name)
+		idx := c.table.find_type_idx(ident.name)
+		println('js.decode t=$ident.name')
+		return table.Type(idx)
 	}
 	// look for function in format `mod.fn` or `fn` (main/builtin)
 	mut f := table.Fn{}
@@ -976,7 +992,7 @@ pub fn (mut c Checker) return_stmt(return_stmt mut ast.Return) {
 
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	for i, field in decl.fields {
-		for j in 0..i {
+		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
 				c.error('field name `$field.name` duplicate', field.pos)
 			}
@@ -1005,8 +1021,36 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 
 pub fn (mut c Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
-	// check variablename for beginning with capital letter 'Abc'
-	for ident in assign_stmt.left {
+	if assign_stmt.right[0] is ast.CallExpr {
+		call_expr := assign_stmt.right[0] as ast.CallExpr
+		right_type0 := c.expr(assign_stmt.right[0])
+		assign_stmt.right_types = [right_type0]
+		right_type_sym0 := c.table.get_type_symbol(right_type0)
+		mut right_len := if right_type0 == table.void_type { 0 } else { assign_stmt.right.len }
+		if right_type_sym0.kind == .multi_return {
+			assign_stmt.right_types = right_type_sym0.mr_info().types
+			right_len = assign_stmt.right_types.len
+		}
+		if assign_stmt.left.len != right_len {
+			c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${call_expr.name}()` returns $right_len value(s)',
+				assign_stmt.pos)
+			return
+		}
+	} else {
+		if assign_stmt.left.len != assign_stmt.right.len {
+			c.error('assignment mismatch: $assign_stmt.left.len variable(s) $assign_stmt.right.len value(s)',
+				assign_stmt.pos)
+			return
+		}
+	}
+	mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
+	for i, _ in assign_stmt.left {
+		mut ident := assign_stmt.left[i]
+		if assign_stmt.right_types.len < assign_stmt.right.len {
+			assign_stmt.right_types << c.expr(assign_stmt.right[i])
+		}
+		val_type := assign_stmt.right_types[i]
+		// check variable name for beginning with capital letter 'Abc'
 		is_decl := assign_stmt.op == .decl_assign
 		if is_decl && util.contains_capital(ident.name) {
 			c.error('variable names cannot contain uppercase letters, use snake_case instead',
@@ -1016,83 +1060,27 @@ pub fn (mut c Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 				c.error('variable names cannot start with `__`', ident.pos)
 			}
 		}
-	}
-	if assign_stmt.left.len > assign_stmt.right.len {
-		// multi return
-		match assign_stmt.right[0] {
-			ast.CallExpr {}
-			else { c.error('assign_stmt: expected call', assign_stmt.pos) }
+		if assign_stmt.op == .decl_assign {
+			c.var_decl_name = ident.name
 		}
-		right_type := c.expr(assign_stmt.right[0])
-		right_type_sym := c.table.get_type_symbol(right_type)
-		if right_type_sym.kind != .multi_return {
-			c.error('expression on the right does not return multiple values, while at least $assign_stmt.left.len are expected',
-				assign_stmt.pos)
-			return
+		mut ident_var_info := ident.var_info()
+		// c.assigned_var_name = ident.name
+		if assign_stmt.op == .assign {
+			var_type := c.expr(ident)
+			assign_stmt.left_types << var_type
+			if !c.table.check(val_type, var_type) {
+				val_type_sym := c.table.get_type_symbol(val_type)
+				var_type_sym := c.table.get_type_symbol(var_type)
+				c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`',
+					assign_stmt.pos)
+			}
 		}
-		mr_info := right_type_sym.mr_info()
-		if mr_info.types.len < assign_stmt.left.len {
-			c.error('right expression returns only $mr_info.types.len values, but left one expects $assign_stmt.left.len',
-				assign_stmt.pos)
-		}
-		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
-		for i, _ in assign_stmt.left {
-			mut ident := assign_stmt.left[i]
-			mut ident_var_info := ident.var_info()
-			if i >= mr_info.types.len {
-				continue
-			}
-			val_type := mr_info.types[i]
-			if assign_stmt.op == .assign {
-				var_type := c.expr(ident)
-				assign_stmt.left_types << var_type
-				if !c.table.check(val_type, var_type) {
-					val_type_sym := c.table.get_type_symbol(val_type)
-					var_type_sym := c.table.get_type_symbol(var_type)
-					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`',
-						assign_stmt.pos)
-				}
-			}
-			ident_var_info.typ = val_type
-			ident.info = ident_var_info
-			assign_stmt.left[i] = ident
-			assign_stmt.right_types << val_type
-			scope.update_var_type(ident.name, val_type)
-		}
-		c.check_expr_opt_call(assign_stmt.right[0], right_type, true)
-	} else {
-		// `a := 1` | `a,b := 1,2`
-		if assign_stmt.left.len != assign_stmt.right.len {
-			c.error('wrong number of vars', assign_stmt.pos)
-		}
-		mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
-		for i, _ in assign_stmt.left {
-			mut ident := assign_stmt.left[i]
-			if assign_stmt.op == .decl_assign {
-				c.var_decl_name = ident.name
-			}
-			mut ident_var_info := ident.var_info()
-			// c.assigned_var_name = ident.name
-			val_type := c.expr(assign_stmt.right[i])
-			if val_type == table.void_type {
-				c.error('expression does not return a value', assign_stmt.right[i].position())
-			}
-			if assign_stmt.op == .assign {
-				var_type := c.expr(ident)
-				assign_stmt.left_types << var_type
-				if !c.table.check(val_type, var_type) {
-					val_type_sym := c.table.get_type_symbol(val_type)
-					var_type_sym := c.table.get_type_symbol(var_type)
-					c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`',
-						assign_stmt.pos)
-				}
-			}
-			ident_var_info.typ = val_type
-			ident.info = ident_var_info
-			assign_stmt.left[i] = ident
-			assign_stmt.right_types << val_type
-			scope.update_var_type(ident.name, val_type)
-			c.check_expr_opt_call(assign_stmt.right[i], val_type, true)
+		ident_var_info.typ = val_type
+		ident.info = ident_var_info
+		assign_stmt.left[i] = ident
+		scope.update_var_type(ident.name, val_type)
+		if i < assign_stmt.right.len { // only once for multi return
+			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i], true)
 		}
 	}
 	c.var_decl_name = ''
@@ -1105,6 +1093,18 @@ pub fn (mut c Checker) array_init(array_init mut ast.ArrayInit) table.Type {
 	mut elem_type := table.void_type
 	// []string - was set in parser
 	if array_init.typ != table.void_type {
+		if array_init.exprs.len == 0 {
+			if array_init.has_cap {
+				if c.expr(array_init.cap_expr) != table.int_type {
+					c.error('array cap needs to be an int', array_init.pos)
+				}
+			}
+			if array_init.has_len {
+				if c.expr(array_init.len_expr) != table.int_type {
+					c.error('array len needs to be an int', array_init.pos)
+				}
+			}
+		}
 		return array_init.typ
 	}
 	// a = []
@@ -1439,7 +1439,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 }
 
 fn (mut c Checker) stmts(stmts []ast.Stmt) {
-	mut unreachable := token.Position{line_nr: -1}
+	mut unreachable := token.Position{
+		line_nr: -1
+	}
 	c.expected_type = table.void_type
 	for stmt in stmts {
 		if c.scope_returns {
@@ -1712,6 +1714,10 @@ pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
 	if ident.name != '_' {
 		c.error('undefined: `$ident.name`', ident.pos)
 	}
+	if c.table.known_type(ident.name) {
+		// e.g. `User`  in `json.decode(User, '...')`
+		return table.void_type
+	}
 	return table.void_type
 }
 
@@ -1877,7 +1883,8 @@ pub fn (mut c Checker) if_expr(node mut ast.IfExpr) table.Type {
 					// p.warn('if expr ret $type_sym.name')
 					t := c.expr(it.expr)
 					if is_ternary && t != first_typ {
-						c.error('mismatched types `${c.table.type_to_str(first_typ)}` and `${c.table.type_to_str(t)}`', node.pos)
+						c.error('mismatched types `${c.table.type_to_str(first_typ)}` and `${c.table.type_to_str(t)}`',
+							node.pos)
 					}
 					node.typ = t
 					return t
@@ -2002,13 +2009,13 @@ pub fn (mut c Checker) map_init(node mut ast.MapInit) table.Type {
 		if !c.table.check(key_type, key0_type) {
 			key0_type_sym := c.table.get_type_symbol(key0_type)
 			key_type_sym := c.table.get_type_symbol(key_type)
-			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym` for map key',
+			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym.name` for map key',
 				node.pos)
 		}
 		if !c.table.check(val_type, val0_type) {
 			val0_type_sym := c.table.get_type_symbol(val0_type)
 			val_type_sym := c.table.get_type_symbol(val_type)
-			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym` for map value',
+			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym.name` for map value',
 				node.pos)
 		}
 	}

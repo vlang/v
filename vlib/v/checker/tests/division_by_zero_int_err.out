@@ -1,5 +1,5 @@
 vlib/v/checker/tests/division_by_zero_int_err.v:2:12: error: division by zero
-    1| fn main() {
-    2|     println(1/0)
-                     ^
-    3| }
+    1 | fn main() {
+    2 |     println(1/0)
+      |               ^
+    3 | }

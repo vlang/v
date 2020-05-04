@@ -123,14 +123,14 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			'-cg' {
 				res.is_debug = true
 			}
-			'-live' {
-				res.is_live = true
-			}
 			'-repl' {
 				res.is_repl = true
 			}
+			'-live' {
+				res.is_livemain = true
+			}
 			'-sharedlive' {
-				res.is_live = true
+				res.is_liveshared = true
 				res.is_shared = true
 			}
 			'-shared' {
@@ -173,6 +173,9 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			}
 			'-x64' {
 				res.backend = .x64
+			}
+			'-print_v_files' {
+				res.print_v_files = true
 			}
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')

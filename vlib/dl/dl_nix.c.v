@@ -4,6 +4,7 @@ module dl
 
 pub const (
 	RTLD_NOW = C.RTLD_NOW
+	RTLD_LAZY = C.RTLD_LAZY
 	DL_EXT   = '.so'
 )
 

@@ -174,6 +174,56 @@ fn utf8_len(c byte) int {
 	return b
 }
 
+// Calculate string length for in number of codepoints
+fn utf8_str_len(s string) int {
+	mut l := 0
+	for i := 0; i < s.len; i++ {
+		l++
+		c := s.str[i]
+		if (c & (1 << 7)) != 0 {
+			for t := byte(1 << 6); (c & t) != 0; t >>= 1 {
+				i++
+			}
+		}
+	}
+	return l
+}
+
+// Calculate string length for formatting, i.e. number of "characters"
+fn utf8_str_visible_length(s string) int {
+	mut l := 0
+	mut ul := 1
+	for i := 0; i < s.len; i+=ul {
+		ul = 1
+		c := s.str[i]
+		if (c & (1 << 7)) != 0 {
+			for t := byte(1 << 6); (c & t) != 0; t >>= 1 {
+				ul++
+			}
+		}
+		if i + ul > s.len { // incomplete UTF-8 sequence
+			return l
+		}
+		l++
+		// recognize combining characters
+		if c == 0xcc || c == 0xcd {
+			r := (u16(c) << 8) | s.str[i+1]
+			if r >= 0xcc80 && r < 0xcdb0 { // diacritical marks
+				l--
+			}
+		} else if c == 0xe1 || c == 0xe2 || c == 0xef {
+			r := (u32(c) << 16) | (u32(s.str[i+1]) << 8) | s.str[i+2]
+			if r >= 0xe1aab0 && r < 0xe1ac80 // diacritical marks extended
+			|| r >= 0xe1b780 && r < 0xe1b880 // diacritical marks supplement
+			|| r >= 0xe28390 && r < 0xe28480 // diacritical marks for symbols
+			|| r >= 0xefb8a0 && r < 0xefb8b0 { // half marks
+				l--
+			}
+		}
+	}
+	return l
+}
+
 // Reads an utf8 character from standard input
 pub fn utf8_getchar() int {
 	c := C.getchar()

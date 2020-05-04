@@ -1,12 +1,13 @@
-// Build this example with
-// v -live message.v
 module main
 
+// Build this example with `v -live message.v`
 import time
+import live
 
 [live]
 fn print_message() {
-	println('Hello! Modify this message while the program is running.')
+	info := live.info()
+	println('OK reloads: ${info.reloads_ok:4d} | Total reloads: ${info.reloads:4d} | Hello! Modify this message while the program is running.')
 }
 
 fn main() {
@@ -15,7 +16,3 @@ fn main() {
 		time.sleep_ms(500)
 	}
 }
-
-
-
-

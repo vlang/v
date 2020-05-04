@@ -63,7 +63,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt()
 }
 
-pub fn parse_file(path string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
 	// println('parse_file("$path")')
 	// text := os.read_file(path) or {
 	// panic(err)
@@ -71,7 +71,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	mut stmts := []ast.Stmt{}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode)
-		table: table
+		table: b_table
 		file_name: path
 		file_name_dir: os.dir(path)
 		pref: pref
@@ -102,9 +102,14 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	*/
 	// TODO: import only mode
 	for {
-		// res := s.scan()
 		if p.tok.kind == .eof {
-			// println('EOF, breaking')
+			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
+				stmts << ast.FnDecl {
+					name: 'main'
+					file: p.file_name
+					return_type: table.void_type
+				}
+			}
 			break
 		}
 		// println('stmt at ' + p.tok.str())
@@ -350,7 +355,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		}
 		else {
 			if p.pref.is_script && !p.pref.is_test {
-				p.scanner.add_fn_main_and_rescan()
+				p.scanner.add_fn_main_and_rescan(p.tok.pos-1)
 				p.read_first_token()
 				return p.top_stmt()
 			} else {
@@ -398,7 +403,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				pos: assert_pos
 			}
 		}
-		.key_mut, .key_static, .key_var {
+		.key_mut, .key_static {
 			return p.assign_stmt()
 		}
 		.key_for {
@@ -468,6 +473,8 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				return ast.GotoLabel{
 					name: name
 				}
+			} else if p.tok.kind == .name && p.peek_tok.kind == .name {
+				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
 			}
 			epos := p.tok.position()
 			expr := p.expr(0)
@@ -750,7 +757,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	}
 }
 
-fn (mut p Parser) filter() {
+fn (mut p Parser) scope_register_it() {
 	p.scope.register('it', ast.Var{
 		name: 'it'
 		pos: p.tok.position()
@@ -766,7 +773,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if is_filter {
 		p.open_scope()
 		name_pos = p.tok.position()
-		p.filter()
+		p.scope_register_it()
 		// wrong tok position when using defer
 		// defer {
 		// p.close_scope()
@@ -776,6 +783,9 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
+		if is_filter && args.len != 1 {
+			p.error('needs exactly 1 argument')
+		}
 		p.check(.rpar)
 		mut or_stmts := []ast.Stmt{}
 		mut is_or_block_used := false
@@ -891,7 +901,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 				efmt << p.tok.lit
 				p.next()
 			}
-			if p.tok.lit.len == 1 {
+			if p.tok.kind == .name && p.tok.lit.len == 1 {
 				efmt << p.tok.lit
 				p.next()
 			}
@@ -1052,7 +1062,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) global_decl() ast.GlobalDecl {
-	if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v && p.mod !=
+	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v && p.mod !=
 		'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
