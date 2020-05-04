@@ -2368,8 +2368,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		mut fmt := '' // field width and precision
 		if sfmt.len > 0 {
 			// analyze and validate format specifier
-			if sfmt[sfmt.len - 1] in [`E`, `F`, `G`, `e`, `f`, `g`, `e`,
-				`d`, `u`, `x`, `X`, `o`, `c`, `s`] {
+			if sfmt[sfmt.len - 1] in [`E`, `F`, `G`, `e`, `f`, `g`,
+				`d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`] {
 				fspec = sfmt[sfmt.len - 1]
 			}
 			fmt = if fspec == `_` {
@@ -2385,6 +2385,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				fspec = `d`
 			} else if node.expr_types[i].is_unsigned() {
 				fspec = `u`
+			} else if node.expr_types[i].is_pointer() {
+				fspec = `p`
 			} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind in
 				[.enum_, .array, .array_fixed, .struct_, .map] || g.typ(node.expr_types[i]).starts_with('Option') ||
 				sym.has_method('str') {
@@ -2400,8 +2402,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if fields.len > 2 || fields.len == 2 && !(node.expr_types[i].is_float()) || node.expr_types[i].is_signed() &&
 			!(fspec in [`d`, `c`, `x`, `X`, `o`]) || node.expr_types[i].is_unsigned() && !(fspec in [`u`,
 			`x`, `X`, `o`, `c`]) || node.expr_types[i].is_float() && !(fspec in [`E`, `F`, `G`,
-			`e`, `f`,
-			`g`, `e`]) {
+			`e`, `f`, `g`]) || node.expr_types[i].is_pointer() && fspec != `p` {
 			verror('illegal format specifier ${fspec:c} for type ${g.table.get_type_name(node.expr_types[i])}')
 		}
 		// make sure that format paramters are valid numbers
@@ -2427,7 +2428,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				g.write('*.*s')
 			}
-		} else if node.expr_types[i].is_float() {
+		} else if node.expr_types[i].is_float() || node.expr_types[i].is_pointer() {
 			g.write('$fmt${fspec:c}')
 		} else if node.expr_types[i].is_int() {
 			if fspec == `c` {
@@ -2463,8 +2464,23 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		} else if node.expr_types[i] == table.bool_type {
 			g.expr(expr)
 			g.write(' ? _SLIT("true") : _SLIT("false")')
-		} else if node.expr_types[i].is_number() || specs[i] == `d` {
-			g.expr(expr)
+		} else if node.expr_types[i].is_number() || node.expr_types[i].is_pointer() || specs[i] == `d` {
+			if node.expr_types[i].is_signed() && specs[i] in [`x`, `X`, `o`] {
+				// convert to unsigned first befors C's integer propagation strikes
+				if node.expr_types[i] == table.i8_type {
+					g.write('(byte)(')
+				} else if node.expr_types[i] == table.i16_type {
+					g.write('(u16)(')
+				} else if node.expr_types[i] == table.int_type {
+					g.write('(u32)(')
+				} else {
+					g.write('(u64)(')
+				}
+				g.expr(expr)
+				g.write(')')
+			} else {
+				g.expr(expr)
+			}
 		} else if specs[i] == `s` {
 			sym := g.table.get_type_symbol(node.expr_types[i])
 			if node.expr_types[i].flag_is(.variadic) {
