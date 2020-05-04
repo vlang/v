@@ -2402,7 +2402,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if fields.len > 2 || fields.len == 2 && !(node.expr_types[i].is_float()) || node.expr_types[i].is_signed() &&
 			!(fspec in [`d`, `c`, `x`, `X`, `o`]) || node.expr_types[i].is_unsigned() && !(fspec in [`u`,
 			`x`, `X`, `o`, `c`]) || node.expr_types[i].is_float() && !(fspec in [`E`, `F`, `G`,
-			`e`, `f`, `g`]) || node.expr_types[i].is_pointer() && fspec != `p` {
+			`e`, `f`, `g`]) || node.expr_types[i].is_pointer() && !(fspec in [`p`, `x`, `X`]) {
 			verror('illegal format specifier ${fspec:c} for type ${g.table.get_type_name(node.expr_types[i])}')
 		}
 		// make sure that format paramters are valid numbers
@@ -2428,8 +2428,14 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				g.write('*.*s')
 			}
-		} else if node.expr_types[i].is_float() || node.expr_types[i].is_pointer() {
+		} else if node.expr_types[i].is_float() {
 			g.write('$fmt${fspec:c}')
+		} else if node.expr_types[i].is_pointer() {
+			if fspec == `p` {
+				g.write('${fmt}p')
+			} else {
+				g.write('${fmt}l${fspec:c}')
+			}
 		} else if node.expr_types[i].is_int() {
 			if fspec == `c` {
 				if node.expr_types[i].idx() in [table.i64_type_idx, table.f64_type_idx] {
