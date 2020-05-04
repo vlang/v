@@ -174,8 +174,23 @@ fn utf8_len(c byte) int {
 	return b
 }
 
-// Calculate string length for formatting, i.e. number of "characters"
+// Calculate string length for in number of codepoints
 fn utf8_str_len(s string) int {
+	mut l := 0
+	for i := 0; i < s.len; i++ {
+		l++
+		c := s.str[i]
+		if (c & (1 << 7)) != 0 {
+			for t := byte(1 << 6); (c & t) != 0; t >>= 1 {
+				i++
+			}
+		}
+	}
+	return l
+}
+
+// Calculate string length for formatting, i.e. number of "characters"
+fn utf8_str_visible_length(s string) int {
 	mut l := 0
 	mut ul := 1
 	for i := 0; i < s.len; i+=ul {
