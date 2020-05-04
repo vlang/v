@@ -32,12 +32,16 @@ pub fn print_backtrace() {
 
 // replaces panic when -debug arg is passed
 fn panic_debug(line_no int, file, mod, fn_name, s string) {
+	// NB: the order here is important for a stabler test output
+	// module is less likely to change than function, etc...
+	// During edits, the line number will change most frequently,
+	// so it is last
 	eprintln('================ V panic ================')
 	eprintln('   module: $mod')
 	eprintln(' function: ${fn_name}()')
+	eprintln('  message: $s')
 	eprintln('     file: $file')
 	eprintln('     line: ' + line_no.str())
-	eprintln('  message: $s')
 	eprintln('=========================================')
 	print_backtrace_skipping_top_frames(1)
 	C.exit(1)

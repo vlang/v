@@ -45,10 +45,13 @@ fn test_all() {
 			n_found := normalize_panic_message( found, vroot )
 			n_expected := normalize_panic_message( expected, vroot )
 			if found.contains('================ V panic ================') {
-				if n_found == n_expected {
+				if n_found.contains(n_expected) {
 					println(term.green('OK (panic)'))
 					continue
 				} else {
+					// Both have panics, but there was a difference...
+					// Pass the normalized strings for further reporting.
+					// There is no point in comparing the backtraces too.
 					found = n_found
 					expected = n_expected
 				}
@@ -75,9 +78,7 @@ fn test_all() {
 }
 
 fn normalize_panic_message(message string, vroot string) string {
-	panic_line_before_backtrace := '========================================='
-	// panic include backtraces and absolute file paths, so can't do char by char comparison
-	mut msg := message.all_before(panic_line_before_backtrace) + panic_line_before_backtrace
+	mut msg := message.all_before('=========================================')
 	msg = msg.replace(vroot + os.path_separator, '')
 	msg = msg.trim_space()
 	return msg

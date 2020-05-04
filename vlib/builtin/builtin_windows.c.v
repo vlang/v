@@ -69,7 +69,6 @@ fn builtin_init() {
 fn print_backtrace_skipping_top_frames(skipframes int) bool {
 	$if msvc {
 		return print_backtrace_skipping_top_frames_msvc(skipframes)
-
 	}
 	$if mingw {
 		return print_backtrace_skipping_top_frames_mingw(skipframes)
@@ -131,11 +130,13 @@ $if msvc {
 	}
 	return true
 } $else {
+	eprintln('print_backtrace_skipping_top_frames_msvc must be called only when the compiler is msvc')
 	return false
 }
 }
 
 fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
+	eprintln('print_backtrace_skipping_top_frames_mingw is not implemented')
 	return false
 }
 
