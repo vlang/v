@@ -9,7 +9,9 @@ Options:
   -diff Display only diffs between the formatted source and the original source.
   -l    List files whose formatting differs from vfmt.
   -w    Write result to (source) file(s) instead of to stdout.
-  -2    Use the new V parser/vfmt. NB: this is EXPERIMENTAL for now.
-          The new vfmt is much faster and more forgiving.
-          It also may EAT some of your code for now.
-          Please be careful, and make frequent BACKUPS, when running with -vfmt2 .
+ -debug Print the kinds of encountered AST statements/expressions on stderr.
+
+NB: vfmt after 2020/04/01 is based on the new AST compiler code, and
+thus is much faster, and more flexible than before.
+It may also EAT some of your code for now, so please be careful, and
+make frequent BACKUPS.

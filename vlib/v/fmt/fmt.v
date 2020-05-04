@@ -28,15 +28,17 @@ mut:
 	auto_imports   []string // automatically inserted imports that the user forgot to specify
 	import_pos     int // position of the imports in the resulting string for later autoimports insertion
 	used_imports   []string // to remove unused imports
+	is_debug       bool
 }
 
-pub fn fmt(file ast.File, table &table.Table) string {
+pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 	mut f := Fmt{
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 		table: table
 		indent: 0
 		file: file
+		is_debug: is_debug
 	}
 	f.cur_mod = 'main'
 	for stmt in file.stmts {
@@ -141,6 +143,9 @@ fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 }
 
 fn (mut f Fmt) stmt(node ast.Stmt) {
+	if f.is_debug {
+		eprintln('stmt: ${node.position():-42} | node: ${typeof(node):-20}')
+	}
 	match node {
 		ast.AssignStmt {
 			for i, ident in it.left {
@@ -492,6 +497,9 @@ fn (f &Fmt) type_to_str(t table.Type) string {
 }
 
 fn (mut f Fmt) expr(node ast.Expr) {
+	if f.is_debug {
+		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | ${node.str()}')
+	}
 	match node {
 		ast.AnonFn {
 			f.fn_decl(it.decl)

@@ -152,7 +152,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		parent: 0
 	})
 	// checker.check(file_ast)
-	formatted_content := fmt.fmt(file_ast, table)
+	formatted_content := fmt.fmt(file_ast, table, foptions.is_debug)
 	file_name := os.file_name(file)
 	vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
 	os.write_file(vfmt_output_path, formatted_content)

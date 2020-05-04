@@ -45,7 +45,7 @@ fn test_fmt() {
 		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{}, &ast.Scope{
 			parent: 0
 		})
-		result_ocontent := fmt.fmt(file_ast, table)
+		result_ocontent := fmt.fmt(file_ast, table, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('file ${ipath} after formatting, does not look as expected.'))
