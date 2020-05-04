@@ -472,7 +472,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	} else if g.pref.is_debug && node.name == 'panic' && g.fn_decl.name != '__as_cast' {
 		paline := node.pos.line_nr + 1
-		pafile := g.fn_decl.file
+		pafile := g.fn_decl.file.replace('\\', '/')
 		pafn := g.fn_decl.name.after('.')
 		mut pamod := g.fn_decl.name.all_before_last('.')
 		if pamod == pafn {
