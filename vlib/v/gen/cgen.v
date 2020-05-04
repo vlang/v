@@ -690,7 +690,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.expr(it.high)
 		g.writeln('; $i++) {')
 		if it.val_var != '_' {
-			g.writeln('\tint $it.val_var = $i;')
+			g.writeln('\tint ${c_name(it.val_var)} = $i;')
 		}
 		g.stmts(it.stmts)
 		g.writeln('}')
@@ -708,7 +708,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		op_field := if cond_type_is_ptr { '->' } else { '.' }
 		g.writeln('for (int $i = 0; $i < ${atmp}${op_field}len; $i++) {')
 		if it.val_var != '_' {
-			g.writeln('\t$styp $it.val_var = (($styp*)${atmp}${op_field}data)[$i];')
+			g.writeln('\t$styp ${c_name(it.val_var)} = (($styp*)${atmp}${op_field}data)[$i];')
 		}
 		g.stmts(it.stmts)
 		g.writeln('}')
@@ -727,7 +727,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; $idx++) {')
 		g.writeln('\t$key_styp $key = (($key_styp*)${keys_tmp}.data)[$idx];')
 		if it.val_var != '_' {
-			g.write('\t$val_styp $it.val_var = (*($val_styp*)map_get3(')
+			g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)map_get3(')
 			g.expr(it.cond)
 			g.writeln(', $key, &($val_styp[]){ $zero }));')
 		}
@@ -740,7 +740,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.write('for (int $i = 0; $i < ')
 		g.expr(it.cond)
 		g.writeln('.len; $i++) {')
-		g.write('$styp $it.val_var = ')
+		g.write('$styp ${c_name(it.val_var)} = ')
 		g.expr(it.cond)
 		g.writeln('.args[$i];')
 		g.stmts(it.stmts)
@@ -751,7 +751,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.expr(it.cond)
 		g.writeln('.len; $i++) {')
 		if it.val_var != '_' {
-			g.write('byte $it.val_var = ')
+			g.write('byte ${c_name(it.val_var)} = ')
 			g.expr(it.cond)
 			g.writeln('.str[$i];')
 		}
