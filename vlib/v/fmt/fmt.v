@@ -596,10 +596,16 @@ fn (mut f Fmt) expr(node ast.Expr) {
 		ast.MapInit {
 			if it.keys.len == 0 {
 				if it.value_type == 0 {
-					f.write('map[string]int') // TODO
+					typ_sym := f.table.get_type_symbol(it.typ)
+					minfo := typ_sym.info as table.Map
+					mk := f.table.get_type_symbol(minfo.key_type).name
+					mv := f.table.get_type_symbol(minfo.value_type).name
+					f.write('map[${mk}]${mv}{}')
 					return
 				}
-				f.write('map[string]')
+				f.write('map[')
+				f.write(f.type_to_str(it.key_type))
+				f.write(']')
 				f.write(f.type_to_str(it.value_type))
 				return
 			}
@@ -1001,6 +1007,26 @@ fn expr_is_single_line(expr ast.Expr) bool {
 fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
 		// `x := []string`
+		typ_sym := f.table.get_type_symbol(it.typ)
+		if typ_sym.kind == .array && typ_sym.name.starts_with('array_map') {
+			ainfo := typ_sym.info as table.Array
+			map_typ_sym := f.table.get_type_symbol( ainfo.elem_type )
+			minfo := map_typ_sym.info as table.Map
+			mk := f.table.get_type_symbol(minfo.key_type).name
+			mv := f.table.get_type_symbol(minfo.value_type).name
+			for _ in 0..ainfo.nr_dims {
+				f.write('[]')
+			}
+			f.write('map[${mk}]${mv}')
+			f.write('{')
+			if it.has_cap {
+				f.write('cap: ')
+				f.expr(it.cap_expr)
+			}
+			f.write('}')
+			return
+		}
+
 		f.write(f.type_to_str(it.typ))
 		f.write('{')
 		if it.has_cap {
