@@ -57,9 +57,9 @@ string _STR(const char *fmt, int nfmts, ...) {
 				if (fmt[k-4] == '*') { // %*.*s
 					int fwidth = va_arg(argptr, int);
 					if (fwidth < 0)
-						fwidth -= (s.len - utf8_str_len(s));
+						fwidth -= (s.len - utf8_str_visible_length(s));
 					else
-						fwidth += (s.len - utf8_str_len(s));
+						fwidth += (s.len - utf8_str_visible_length(s));
 					_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+fwidth-4, fwidth, s.len, s.str);
 				} else { // %.*s
 					_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+s.len-4, s.len, s.str);
