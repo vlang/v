@@ -529,8 +529,15 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if got_type_sym.kind == .function && exp_type_sym.kind == .function {
 		got_info := got_type_sym.info as FnType
 		exp_info := exp_type_sym.info as FnType
-		if got_info.func.signature() == exp_info.func.signature() {
-			return true
+		if got_info.func.args.len == exp_info.func.args.len {
+			mut matching := false
+			for i, arg in got_info.func.args {
+				exp_arg := exp_info.func.args[i]
+				matching = arg.typ.idx() == exp_arg.typ.idx() || exp_arg.typ == table.voidptr_type
+			}
+			if matching {
+				return true
+			}
 		}
 	}
 	if got_idx != exp_idx {

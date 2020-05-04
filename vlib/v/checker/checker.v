@@ -658,16 +658,27 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		// call_expr.args << method.args[0].typ
 		// call_expr.exp_arg_types << method.args[0].typ
 		for i, arg in call_expr.args {
-			c.expected_type = if method.is_variadic && i >= method.args.len - 1 {
+			exp_arg_typ := if method.is_variadic && i >= method.args.len - 1 {
 				method.args[method.args.len - 1].typ
 			} else {
 				method.args[i + 1].typ
 			}
-			arg_typ := c.expr(arg.expr)
-			call_expr.args[i].typ = arg_typ
-			if method.is_variadic && arg_typ.flag_is(.variadic) && call_expr.args.len - 1 >
+			c.expected_type = exp_arg_typ
+			got_arg_typ := c.expr(arg.expr)
+			call_expr.args[i].typ = got_arg_typ
+			if method.is_variadic && got_arg_typ.flag_is(.variadic) && call_expr.args.len - 1 >
 				i {
 				c.error('when forwarding a varg variable, it must be the final argument', call_expr.pos)
+			}
+			if !c.table.check(got_arg_typ, exp_arg_typ) {
+				got_arg_sym := c.table.get_type_symbol(got_arg_typ)
+				exp_arg_sym := c.table.get_type_symbol(exp_arg_typ)
+				// str method, allow type with str method if fn arg is string
+				if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
+					continue
+				}
+				c.error('cannot use type `$got_arg_sym.str()` as type `$exp_arg_sym.str()` in argument ${i+1} to `${left_type_sym.name}.$method_name`',
+					call_expr.pos)
 			}
 		}
 		// TODO: typ optimize.. this node can get processed more than once
