@@ -65,7 +65,7 @@ fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	$if macos {
 		buffer := [100]byteptr
 		nr_ptrs := backtrace(buffer, 100)
-		backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 1)
+		backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
 	}
 	return true
 }
@@ -74,7 +74,7 @@ fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
 	$if freebsd {
 		buffer := [100]byteptr
 		nr_ptrs := backtrace(buffer, 100)
-		backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 1)
+		backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
 	}
 	return true
 }
@@ -104,7 +104,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				// taken from os, to avoid depending on the os module inside builtin.v
 				f := C.popen(cmd.str, 'r')
 				if isnil(f) {
-					println(sframe)
+					eprintln(sframe)
 					continue
 				}
 				buf := [1000]byte
@@ -114,7 +114,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				}
 				output = output.trim_space() + ':'
 				if C.pclose(f) != 0 {
-					println(sframe)
+					eprintln(sframe)
 					continue
 				}
 				if output in ['??:0:', '??:?:'] {
@@ -124,13 +124,13 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				// NB: it is shortened here to just d. , just so that it fits, and so
 				// that the common error file:lineno: line format is enforced.
 				output = output.replace(' (discriminator', ': (d.')
-				println('${output:-46s} | ${addr:14s} | $beforeaddr')
+				eprintln('${output:-46s} | ${addr:14s} | $beforeaddr')
 			}
 			// backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 			return true
 		} $else {
-			println('backtrace_symbols_fd is missing, so printing backtraces is not available.\n')
-			println('Some libc implementations like musl simply do not provide it.')
+			eprintln('backtrace_symbols_fd is missing, so printing backtraces is not available.\n')
+			eprintln('Some libc implementations like musl simply do not provide it.')
 		}
 	}
 	return false

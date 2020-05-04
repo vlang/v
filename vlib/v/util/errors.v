@@ -6,6 +6,7 @@ module util
 import os
 import term
 import v.token
+import time
 
 // The filepath:line:col: format is the default C compiler error output format.
 // It allows editors and IDE's like emacs to quickly find the errors in the
@@ -183,4 +184,17 @@ pub fn color_compare_files(diff_cmd, file1, file2 string) string {
         return x.output
     }
     return ''
+}
+
+fn color_compare_strings(diff_cmd string, expected string, found string) string {
+	cdir := os.cache_dir()
+	ctime := time.sys_mono_now()
+	e_file := os.join_path(cdir, '${ctime}.expected.txt')
+	f_file := os.join_path(cdir, '${ctime}.found.txt')
+	os.write_file( e_file, expected)
+	os.write_file( f_file, found)
+	res := util.color_compare_files(diff_cmd, e_file, f_file)
+	os.rm( e_file )
+	os.rm( f_file )
+	return res
 }

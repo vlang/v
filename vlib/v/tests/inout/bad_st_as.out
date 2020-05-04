@@ -1,2 +1,5 @@
 Foo
-V panic: as cast: cannot cast
+================ V panic ================
+   module: __as_cast
+ function: __as_cast()
+  message: as cast: cannot cast
