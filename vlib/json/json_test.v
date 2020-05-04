@@ -1,5 +1,22 @@
 import json
 
+struct Employee {
+	name string
+	age int
+}
+
+fn test_simple() {
+	x := Employee{'Peter', 28}
+	s := json.encode(x)
+	assert s	== '{"name":"Peter","age":28}'
+	y := json.decode(Employee, s) or {
+		assert false
+	}
+	assert y.name == 'Peter'
+	assert y.age == 28
+}
+
+/*
 struct User {
 	age       	int
 	nums      	[]int
@@ -43,3 +60,4 @@ fn test_raw_json_field() {
     assert color.point == '{"Y":123}'
     assert color.space == 'YCbCr'
 }
+*/

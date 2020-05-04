@@ -25,6 +25,9 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	if sym.name in ['int', 'string', 'bool'] {
 		return
 	}
+	if sym.kind == .array {
+		return
+	}
 	// println('gen_json_for_type($typ.name)')
 	// decode_TYPE funcs receive an actual cJSON* object to decode
 	// cJSON_Parse(str) call is added by the compiler
@@ -55,6 +58,9 @@ cJSON* ${enc_fn_name}($styp val) {
 		// enc += p.encode_array(t)
 	}
 	// Range through fields
+	if !(sym.info is table.Struct) {
+		verror('json: $sym.name is not struct')
+	}
 	info := sym.info as table.Struct
 	for field in info.fields {
 		if field.attr == 'skip' {
@@ -71,11 +77,10 @@ cJSON* ${enc_fn_name}($styp val) {
 			g.gen_json_for_type(field.typ)
 			dec_name := js_dec_name(field_type)
 			if is_js_prim(field_type) {
-				dec.writeln(' res . $field.name = $dec_name (js_get(' + 'root, "$name"))')
+				dec.writeln(' res . $field.name = $dec_name (js_get(' + 'root, "$name"));')
 			} else {
-				dec.writeln(' $dec_name (js_get(root, "$name"), & (res->$field.name))')
+				dec.writeln(' $dec_name (js_get(root, "$name"), & (res . $field.name));')
 			}
-			dec.writeln(';')
 		}
 		enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.$field.name));')
 	}

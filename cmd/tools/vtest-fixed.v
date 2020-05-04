@@ -7,7 +7,6 @@ import v.pref
 const (
 	skip_test_files = [
 		'vlib/arrays/arrays_test.v',
-		'vlib/json/json_test.v',
 		'vlib/v/tests/enum_bitfield_test.v',
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/pointers_test.v',
