@@ -435,6 +435,11 @@ pub fn (t &Table) check(got, expected Type) bool {
 	exp_is_ptr := expected.is_ptr()
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
 	// # NOTE: use idxs here, and symbols below for perf
+	if got_idx == exp_idx {
+		// this is returning true even if one type is a ptr
+		// and the other is not, is this correct behaviour?
+		return true
+	}
 	if got_idx == none_type_idx {
 		// TODO
 		return true
@@ -531,20 +536,17 @@ pub fn (t &Table) check(got, expected Type) bool {
 		exp_info := exp_type_sym.info as FnType
 		if got_info.func.args.len == exp_info.func.args.len {
 			mut matching := false
-			for i, arg in got_info.func.args {
+			for i, got_arg in got_info.func.args {
 				exp_arg := exp_info.func.args[i]
-				matching = arg.typ.idx() == exp_arg.typ.idx() || exp_arg.typ == table.voidptr_type
+				matching = t.check(got_arg.typ, exp_arg.typ)
+				if !matching {
+					return false
+				}
 			}
-			if matching {
-				return true
-			}
+			return matching
 		}
 	}
-	if got_idx != exp_idx {
-		// && got.typ.name != expected.typ.name*/
-		return false
-	}
-	return true
+	return false
 }
 
 // Once we have a module format we can read from module file instead
