@@ -88,6 +88,7 @@ mut:
 	str_types            []string // types that need automatic str() generation
 	threaded_fns         []string // for generating unique wrapper types and fns for `go xxx()`
 	array_fn_definitions []string // array equality functions that have been defined
+	struct_fn_definitions[]string // struct equality functions that have been defined
 	is_json_fn           bool // inside json.encode()
 	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	attr                 string
@@ -1422,6 +1423,21 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(', ')
 		g.expr(node.right)
 		g.write(')')
+	} else if node.op in [.eq, .ne] && left_sym.kind == .struct_ && right_sym.kind == .struct_ {
+		styp := g.table.value_type(node.left_type)
+		ptr_typ := g.typ(node.left_type)
+		if ptr_typ !in g.struct_fn_definitions {
+			g.generate_struct_equality_fn(ptr_typ, styp)
+		}
+		if node.op == .eq {
+			g.write('${ptr_typ}_struct_eq(')
+		} else if node.op == .ne {
+			g.write('!${ptr_typ}_struct_eq(')
+		}
+		g.expr(node.left)
+		g.write(', ')
+		g.expr(node.right)
+		g.write(')')
 	} else if node.op in [.key_in, .not_in] {
 		if node.op == .not_in {
 			g.write('!')
@@ -2154,12 +2170,24 @@ fn (mut g Gen) generate_array_equality_fn(ptr_typ string, styp table.Type, sym &
 	if styp == table.string_type_idx {
 		g.definitions.writeln('\t\tif (string_ne(*((${ptr_typ}*)((byte*)a.data+(i*a.element_size))), *((${ptr_typ}*)((byte*)b.data+(i*b.element_size))))) {')
 	} else if sym.kind == .struct_ {
+		// NOTE: Look at generate_struct_equality_fn() for notes
 		g.definitions.writeln('\t\tif (memcmp((byte*)a.data+(i*a.element_size), (byte*)b.data+(i*b.element_size), a.element_size)) {')
 	} else {
 		g.definitions.writeln('\t\tif (*((${ptr_typ}*)((byte*)a.data+(i*a.element_size))) != *((${ptr_typ}*)((byte*)b.data+(i*b.element_size)))) {')
 	}
 	g.definitions.writeln('\t\t\treturn false;')
 	g.definitions.writeln('\t\t}')
+	g.definitions.writeln('\t}')
+	g.definitions.writeln('\treturn true;')
+	g.definitions.writeln('}')
+}
+
+fn (mut g Gen) generate_struct_equality_fn(ptr_typ string, styp table.Type) {
+	// FIXME: Field-by-field comparison would be more foolproof
+	g.struct_fn_definitions << ptr_typ
+	g.definitions.writeln('bool ${ptr_typ}_struct_eq(${ptr_typ} a, ${ptr_typ} b) {')
+	g.definitions.writeln('\tif (memcmp((byte*)&a, (byte*)&b, sizeof(struct ${ptr_typ}))) {')
+	g.definitions.writeln('\t\treturn false;')
 	g.definitions.writeln('\t}')
 	g.definitions.writeln('\treturn true;')
 	g.definitions.writeln('}')

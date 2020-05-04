@@ -199,7 +199,7 @@ pub mut:
 }
 
 fn fooo() {
-	a := AttrTest{1, 2, 3, 4, 5, 6}
+	_ := AttrTest{1, 2, 3, 4, 5, 6}
 }
 
 /*
@@ -257,7 +257,7 @@ struct Country {
 }
 
 fn test_levels() {
-	c := Country{
+	_ := Country{
 		name: 'UK'
 		capital: {
 			name: 'London'
@@ -305,4 +305,52 @@ fn test_struct_with_default_values_no_init() {
 	assert s1.field_optional == 5
 	assert s2.field_optional == 3
 	assert s3.field_optional == 2
+}
+
+fn test_struct_equality() {
+	tallinn := City {
+		name: "Tallinn",
+		population: 430000
+	}
+	tallinn2 := City {
+		name: "Tallinn",
+		population: 430000
+	}
+
+	tallinn_bad1 := City {
+		name: "Tallinn",
+		population: 0
+	}
+	tallinn_bad2 := City {
+		name: "",
+		population: 0
+	}
+
+	tartu := City {
+		name: "Tartu",
+		population: 96000
+	}
+
+	estonia := Country {
+		name: "Estonia",
+		capital: tallinn
+	}
+	finland := Country {
+		name: "Finland",
+		capital: City {
+			name: "Helsinki",
+			population: 650000
+		}
+	}
+
+	assert tallinn == tallinn
+	assert tallinn == tallinn2
+	assert tallinn != tartu
+	assert tallinn != tallinn_bad1
+	assert tallinn != tallinn_bad2
+
+	assert estonia == estonia
+	assert estonia != finland
+	assert estonia.capital == estonia.capital
+	assert estonia.capital != finland.capital
 }
