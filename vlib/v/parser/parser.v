@@ -605,7 +605,6 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		if p.tok.kind == .lcbr && p.peek_tok.kind == .rcbr {
 			p.next()
 			p.next()
-			eprintln('-----------------------------------------')
 		}
 		return ast.MapInit{
 			typ: map_type
