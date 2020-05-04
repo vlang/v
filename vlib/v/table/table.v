@@ -535,15 +535,13 @@ pub fn (t &Table) check(got, expected Type) bool {
 		got_info := got_type_sym.info as FnType
 		exp_info := exp_type_sym.info as FnType
 		if got_info.func.args.len == exp_info.func.args.len {
-			mut matching := false
 			for i, got_arg in got_info.func.args {
 				exp_arg := exp_info.func.args[i]
-				matching = t.check(got_arg.typ, exp_arg.typ)
-				if !matching {
+				if !t.check(got_arg.typ, exp_arg.typ) {
 					return false
 				}
 			}
-			return matching
+			return true
 		}
 	}
 	return false
