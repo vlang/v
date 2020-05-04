@@ -92,43 +92,42 @@ fn fast_string_eq(a, b string) bool {
 	return C.memcmp(a.str, b.str, b.len) == 0
 }
 
-struct KeyValue {
-	key   string
-mut:
-	value voidptr
-}
-
 // Dynamic array with very low growth factor
 struct DenseArray {
+	value_bytes int
 mut:
-	cap     u32
-	size    u32
-	deletes u32
-	data    &KeyValue
+	cap         u32
+	size        u32
+	deletes     u32
+	keys        &string
+	values      byteptr
 }
 
 [inline]
-fn new_dense_array() DenseArray {
-	unsafe{
-		return DenseArray{
-			cap: 8
-			size: 0
-			deletes: 0
-			data: &KeyValue(malloc(8 * sizeof(KeyValue)))
-		}
+[unsafe_fn]
+fn new_dense_array(value_bytes int) DenseArray {
+	return DenseArray{
+		value_bytes: value_bytes
+		cap: 8
+		size: 0
+		deletes: 0
+		keys: &string(malloc(8 * sizeof(string)))
+		values: malloc(8 * value_bytes)
 	}
 }
 
 // Push element to array and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 [inline]
-fn (d mut DenseArray) push(kv KeyValue) u32 {
+fn (d mut DenseArray) push(key string, value voidptr) u32 {
 	if d.cap == d.size {
-		d.cap += d.cap>>3
-		d.data = &KeyValue(C.realloc(d.data, sizeof(KeyValue) * d.cap))
+		d.cap += d.cap >> 3
+		d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
+		d.values = C.realloc(d.values, d.value_bytes * d.cap)
 	}
 	push_index := d.size
-	d.data[push_index] = kv
+	d.keys[push_index] = key
+	C.memcpy(d.values + push_index * d.value_bytes, value, d.value_bytes)
 	d.size++
 	return push_index
 }
@@ -140,25 +139,33 @@ fn (d DenseArray) get(i int) voidptr {
 			panic('DenseArray.get: index out of range (i == $i, d.len == $d.size)')
 		}
 	}
-	return byteptr(d.data) + i * sizeof(KeyValue)
+	return byteptr(d.keys) + i * sizeof(string)
 }
 
 // Move all zeros to the end of the array
 // and resize array
 fn (d mut DenseArray) zeros_to_end() {
+	mut tmp_value := malloc(d.value_bytes)
 	mut count := u32(0)
 	for i in 0 .. d.size {
-		if d.data[i].key.str != 0 {
-			tmp := d.data[count]
-			d.data[count] = d.data[i]
-			d.data[i] = tmp
+		if d.keys[i].str != 0 {
+			// swap keys
+			tmp_key := d.keys[count]
+			d.keys[count] = d.keys[i]
+			d.keys[i] = tmp_key
+			// swap values (TODO: optimize)
+			C.memcpy(tmp_value, d.values + count * d.value_bytes, d.value_bytes)
+			C.memcpy(d.values + count * d.value_bytes, d.values + i * d.value_bytes, d.value_bytes)
+			C.memcpy(d.values + i * d.value_bytes, tmp_value, d.value_bytes)
 			count++
 		}
 	}
+	free(tmp_value)
 	d.deletes = 0
 	d.size = count
 	d.cap = if count < 8 { u32(8) } else { count }
-	d.data = &KeyValue(C.realloc(d.data, sizeof(KeyValue) * d.cap))
+	d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
+	d.values = C.realloc(d.values, d.value_bytes * d.cap)
 }
 
 pub struct map {
@@ -185,17 +192,13 @@ pub mut:
 	size        int
 }
 
-// TODO: remove this after vc is regenerated.
-fn new_map(n, value_bytes int) map {
-   return new_map_1(value_bytes)
-}
 fn new_map_1(value_bytes int) map {
 	return map{
 		value_bytes: value_bytes
 		cap: init_cap
 		cached_hashbits: max_cached_hashbits
 		shift: init_log_capicity
-		key_values: new_dense_array()
+		key_values: new_dense_array(value_bytes)
 		metas: &u32(vcalloc(sizeof(u32) * (init_capicity + extra_metas_inc)))
 		extra_metas: extra_metas_inc
 		size: 0
@@ -271,20 +274,14 @@ fn (m mut map) set(key string, value voidptr) {
 	// While we might have a match
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if fast_string_eq(key, m.key_values.data[kv_index].key) {
-			C.memcpy(m.key_values.data[kv_index].value, value, m.value_bytes)
+		if fast_string_eq(key, m.key_values.keys[kv_index]) {
+			C.memcpy(m.key_values.values + kv_index * m.value_bytes , value, m.value_bytes)
 			return
 		}
 		index += 2
 		meta += probe_inc
 	}
-	// Match not possible anymore
-	kv := KeyValue{
-		key: key
-		value: malloc(m.value_bytes)
-	}
-	C.memcpy(kv.value, value, m.value_bytes)
-	kv_index := m.key_values.push(kv)
+	kv_index := m.key_values.push(key, value)
 	m.meta_greater(index, meta, kv_index)
 	m.size++
 }
@@ -301,8 +298,8 @@ fn (m mut map) expand() {
 	}
 	else {
 		m.cached_rehash(old_cap)
+		m.cached_hashbits--
 	}
-	m.cached_hashbits--
 }
 
 fn (m mut map) rehash() {
@@ -310,11 +307,10 @@ fn (m mut map) rehash() {
 	m.metas = &u32(C.realloc(m.metas, meta_bytes))
 	C.memset(m.metas, 0, meta_bytes)
 	for i := u32(0); i < m.key_values.size; i++ {
-		if m.key_values.data[i].key.str == 0 {
+		if m.key_values.keys[i].str == 0 {
 			continue
 		}
-		kv := m.key_values.data[i]
-		mut index,mut meta := m.key_to_index(kv.key)
+		mut index,mut meta := m.key_to_index(m.key_values.keys[i])
 		index,meta = m.meta_less(index, meta)
 		m.meta_greater(index, meta, i)
 	}
@@ -347,8 +343,8 @@ fn (m map) get3(key string, zero voidptr) voidptr {
 	index,meta = m.meta_less(index, meta)
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if fast_string_eq(key, m.key_values.data[kv_index].key) {
-			return m.key_values.data[kv_index].value
+		if fast_string_eq(key, m.key_values.keys[kv_index]) {
+			return voidptr(m.key_values.values + kv_index * m.value_bytes)
 		}
 		index += 2
 		meta += probe_inc
@@ -361,7 +357,7 @@ fn (m map) exists(key string) bool {
 	index,meta = m.meta_less(index, meta)
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if fast_string_eq(key, m.key_values.data[kv_index].key) {
+		if fast_string_eq(key, m.key_values.keys[kv_index]) {
 			return true
 		}
 		index += 2
@@ -376,7 +372,7 @@ pub fn (m mut map) delete(key string) {
 	// Perform backwards shifting
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
-		if fast_string_eq(key, m.key_values.data[kv_index].key) {
+		if fast_string_eq(key, m.key_values.keys[kv_index]) {
 			for (m.metas[index + 2]>>hashbits) > 1 {
 				m.metas[index] = m.metas[index + 2] - probe_inc
 				m.metas[index + 1] = m.metas[index + 3]
@@ -385,7 +381,7 @@ pub fn (m mut map) delete(key string) {
 			m.size--
 			m.metas[index] = 0
 			m.key_values.deletes++
-			C.memset(&m.key_values.data[kv_index], 0, sizeof(KeyValue))
+			C.memset(&m.key_values.keys[kv_index], 0, sizeof(string))
 			if m.key_values.size <= 32 {
 				return
 			}
@@ -407,10 +403,10 @@ pub fn (m &map) keys() []string {
 	mut keys := [''].repeat(m.size)
 	mut j := 0
 	for i := u32(0); i < m.key_values.size; i++ {
-		if m.key_values.data[i].key.str == 0 {
+		if m.key_values.keys[i].str == 0 {
 			continue
 		}
-		keys[j] = m.key_values.data[i].key
+		keys[j] = m.key_values.keys[i]
 		j++
 	}
 	return keys
@@ -420,12 +416,13 @@ pub fn (m &map) keys() []string {
 pub fn (m map) free() {
 	free(m.metas)
 	for i := u32(0); i < m.key_values.size; i++ {
-		if m.key_values.data[i].key.str == 0 {
+		if m.key_values.keys[i].str == 0 {
 			continue
 		}
-		m.key_values.data[i].key.free()
+		m.key_values.keys[i].free()
 	}
-	free(m.key_values.data)
+	free(m.key_values.keys)
+	free(m.key_values.values)
 }
 
 pub fn (m map_string) str() string {
