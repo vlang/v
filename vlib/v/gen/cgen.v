@@ -1933,11 +1933,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 
 	// got to do a correct check for multireturn
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
-	mut fn_return_is_multi := match sym.kind {
-		.multi_return { true }
-		else { false }
-	}
-	fn_return_is_multi = fn_return_is_multi
+	mut fn_return_is_multi := sym.kind == .multi_return
 
 	// optional multi not supported
 	if fn_return_is_multi && !fn_return_is_optional {
