@@ -2654,18 +2654,19 @@ fn (mut g Gen) insert_before(s string) {
 // to access its fields (`.ok`, `.error` etc)
 // `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
 fn (mut g Gen) or_block(var_name string, stmts []ast.Stmt, return_type table.Type) {
+	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
 	g.writeln(';') // or')
-	g.writeln('if (!${var_name}.ok) {')
-	g.writeln('\tstring err = ${var_name}.v_error;')
-	g.writeln('\tint errcode = ${var_name}.ecode;')
+	g.writeln('if (!${cvar_name}.ok) {')
+	g.writeln('\tstring err = ${cvar_name}.v_error;')
+	g.writeln('\tint errcode = ${cvar_name}.ecode;')
 	last_type, type_of_last_expression := g.type_of_last_statement(stmts)
 	if last_type == 'v.ast.ExprStmt' && type_of_last_expression != 'void' {
 		g.indent++
 		for i, stmt in stmts {
 			if i == stmts.len - 1 {
 				g.indent--
-				g.write('\t*(${mr_styp}*) ${var_name}.data = ')
+				g.write('\t*(${mr_styp}*) ${cvar_name}.data = ')
 			}
 			g.stmt(stmt)
 		}
