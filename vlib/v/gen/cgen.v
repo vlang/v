@@ -1963,7 +1963,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		if fn_return_is_optional {
 			g.write(' }, sizeof($styp))')
 		}
-	} else if node.exprs.len == 1 {
+	} else if node.exprs.len >= 1 {
 		// normal return
 		g.write(' ')
 		return_sym := g.table.get_type_symbol(node.types[0])
