@@ -111,7 +111,7 @@ $if msvc {
 				lineinfo = '${file_name}:${sline64.f_line_number}'
 			} else {
 				addr :
-				lineinfo = '?? : address = 0x${&frame_addr:x}'
+				lineinfo = '?? : address = 0x${(&frame_addr):x}'
 			}
 			sfunc := tos3(fname)
 			eprintln('${nframe:-2d}: ${sfunc:-25s}  $lineinfo')
