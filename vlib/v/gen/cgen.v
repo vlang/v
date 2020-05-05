@@ -89,6 +89,7 @@ mut:
 	threaded_fns         []string // for generating unique wrapper types and fns for `go xxx()`
 	array_fn_definitions []string // array equality functions that have been defined
 	is_json_fn           bool // inside json.encode()
+	json_types           []string // to avoid json gen duplicates
 	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	attr                 string
 	is_builtin_mod       bool
@@ -2470,7 +2471,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		} else if node.expr_types[i] == table.bool_type {
 			g.expr(expr)
 			g.write(' ? _SLIT("true") : _SLIT("false")')
-		} else if node.expr_types[i].is_number() || node.expr_types[i].is_pointer() || specs[i] == `d` {
+		} else if node.expr_types[i].is_number() || node.expr_types[i].is_pointer() || specs[i] ==
+			`d` {
 			if node.expr_types[i].is_signed() && specs[i] in [`x`, `X`, `o`] {
 				// convert to unsigned first befors C's integer propagation strikes
 				if node.expr_types[i] == table.i8_type {
@@ -3445,7 +3447,6 @@ fn (g &Gen) interface_table() string {
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(st)
 			// Speaker_Cat_index = 0
-
 			interface_index_name := '_${interface_name}_${cctype}_index'
 			cast_functions.writeln('
 _Interface I_${cctype}_to_Interface_${interface_name}(${cctype}* x) {

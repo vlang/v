@@ -26,9 +26,13 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 		return
 	}
 	if sym.kind == .array {
+		// return
+	}
+	if sym.name in g.json_types {
 		return
 	}
-	// println('gen_json_for_type($typ.name)')
+	g.json_types << sym.name
+	// println('gen_json_for_type($sym.name)')
 	// decode_TYPE funcs receive an actual cJSON* object to decode
 	// cJSON_Parse(str) call is added by the compiler
 	// Code gen decoder
@@ -52,37 +56,41 @@ Option ${dec_fn_name}(cJSON* root) {
 	enc.writeln('
 cJSON* ${enc_fn_name}($styp val) {
 \tcJSON *o = cJSON_CreateObject();')
-	// Handle arrays
 	if sym.kind == .array {
-		// dec += p.decode_array(t)
-		// enc += p.encode_array(t)
-	}
-	// Range through fields
-	if !(sym.info is table.Struct) {
-		verror('json: $sym.name is not struct')
-	}
-	info := sym.info as table.Struct
-	for field in info.fields {
-		if field.attr == 'skip' {
-			continue
+		// Handle arrays
+		value_type := g.table.value_type(typ)
+		g.gen_json_for_type(value_type)
+		dec.writeln(g.decode_array(value_type))
+		// enc += g.encode_array(t)
+	} else {
+		// Structs. Range through fields
+		if !(sym.info is table.Struct) {
+			verror('json: $sym.name is not struct')
 		}
-		name := if field.attr.starts_with('json:') { field.attr[5..] } else { field.name }
-		field_type := g.typ(field.typ)
-		enc_name := js_enc_name(field_type)
-		if field.attr == 'raw' {
-			dec.writeln(' res->$field.name = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
-		} else {
-			// Now generate decoders for all field types in this struct
-			// need to do it here so that these functions are generated first
-			g.gen_json_for_type(field.typ)
-			dec_name := js_dec_name(field_type)
-			if is_js_prim(field_type) {
-				dec.writeln(' res . $field.name = $dec_name (js_get(' + 'root, "$name"));')
-			} else {
-				dec.writeln(' $dec_name (js_get(root, "$name"), & (res . $field.name));')
+		info := sym.info as table.Struct
+		for field in info.fields {
+			if field.attr == 'skip' {
+				continue
 			}
+			name := if field.attr.starts_with('json:') { field.attr[5..] } else { field.name }
+			field_type := g.typ(field.typ)
+			enc_name := js_enc_name(field_type)
+			if field.attr == 'raw' {
+				dec.writeln(' res->$field.name = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
+			} else {
+				// Now generate decoders for all field types in this struct
+				// need to do it here so that these functions are generated first
+				g.gen_json_for_type(field.typ)
+				dec_name := js_dec_name(field_type)
+				if is_js_prim(field_type) {
+					dec.writeln(' res . $field.name = $dec_name (js_get(root, "$name"));')
+				} else {
+					// dec.writeln(' $dec_name (js_get(root, "$name"), & (res . $field.name));')
+					dec.writeln('  res . $field.name = *($field_type*) $dec_name (js_get(root,"$name")).data;')
+				}
+			}
+			enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.$field.name));')
 		}
-		enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.$field.name));')
 	}
 	// cJSON_delete
 	// p.cgen.fns << '$dec return opt_ok(res); \n}'
@@ -105,4 +113,26 @@ fn js_dec_name(typ string) string {
 fn is_js_prim(typ string) bool {
 	return typ == 'int' || typ == 'string' || typ == 'bool' || typ == 'f32' || typ == 'f64' ||
 		typ == 'i8' || typ == 'i16' || typ == 'i64' || typ == 'u16' || typ == 'u32' || typ == 'u64'
+}
+
+fn (mut g Gen) decode_array(value_type table.Type) string {
+	styp := g.typ(value_type)
+	fn_name := js_dec_name(styp)
+	// If we have `[]Profile`, have to register a Profile en(de)coder first
+	g.gen_json_for_type(value_type)
+	mut s := ''
+	if is_js_prim(styp) {
+		s = '$styp val = ${fn_name}(jsval); '
+	} else {
+		s = '\t$styp val; ${fn_name}(jsval, &val); '
+	}
+	return '
+res = __new_array(0, 0, sizeof($styp));
+const cJSON *jsval = NULL;
+cJSON_ArrayForEach(jsval, root)
+{
+$s
+  array_push(&res, &val);
+}
+'
 }
