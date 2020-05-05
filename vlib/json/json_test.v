@@ -49,11 +49,11 @@ fn test_parse_user() {
     assert u.typ == 1
 }
 
-/*
 fn test_encode_user(){
 	usr := User{ age: 10, nums: [1,2,3], last_name: 'Johnson', is_registered: true, typ: 0}
 	expected := '{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0}'
 	out := json.encode(usr)
+	println(out)
 	assert out == expected
 }
 
@@ -70,4 +70,4 @@ fn test_raw_json_field() {
     assert color.point == '{"Y":123}'
     assert color.space == 'YCbCr'
 }
-*/
+

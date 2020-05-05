@@ -61,6 +61,7 @@ cJSON* ${enc_fn_name}($styp val) {
 		value_type := g.table.value_type(typ)
 		g.gen_json_for_type(value_type)
 		dec.writeln(g.decode_array(value_type))
+		enc.writeln(g.encode_array(value_type))
 		// enc += g.encode_array(t)
 	} else {
 		// Structs. Range through fields
@@ -76,7 +77,7 @@ cJSON* ${enc_fn_name}($styp val) {
 			field_type := g.typ(field.typ)
 			enc_name := js_enc_name(field_type)
 			if field.attr == 'raw' {
-				dec.writeln(' res->$field.name = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
+				dec.writeln(' res . $field.name = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
 			} else {
 				// Now generate decoders for all field types in this struct
 				// need to do it here so that these functions are generated first
@@ -133,6 +134,17 @@ cJSON_ArrayForEach(jsval, root)
 {
 $s
   array_push(&res, &val);
+}
+'
+}
+
+fn (mut g Gen) encode_array(value_type table.Type) string {
+	styp := g.typ(value_type)
+	fn_name := js_enc_name(styp)
+	return '
+o = cJSON_CreateArray();
+for (int i = 0; i < val.len; i++){
+  cJSON_AddItemToArray(o, $fn_name (  (($styp*)val.data)[i]  ));
 }
 '
 }
