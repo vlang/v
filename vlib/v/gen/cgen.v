@@ -2576,10 +2576,11 @@ fn (mut g Gen) gen_map(node ast.CallExpr) {
 	g.expr(node.left)
 	g.writeln('.len;')
 	g.writeln('$ret_typ $tmp = __new_array(0, ${tmp}_len, sizeof($ret_elem_type));')
-	g.writeln('for (int i = 0; i < ${tmp}_len; i++) {')
+	i := g.new_tmp_var()
+	g.writeln('for (int $i = 0; $i < ${tmp}_len; $i++) {')
 	g.write('\t$inp_elem_type it = (($inp_elem_type*) ')
 	g.expr(node.left)
-	g.writeln('.data)[i];')
+	g.writeln('.data)[$i];')
 	g.write('\t$ret_elem_type ti = ')
 	g.expr(node.args[0].expr) // the first arg is the filter condition
 	g.writeln(';')
