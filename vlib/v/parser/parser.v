@@ -42,7 +42,7 @@ mut:
 	inside_match      bool // to separate `match A { }` from `Struct{}`
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
 	is_stmt_ident     bool // true while the beginning of a statement is an ident/selector
-	inside_is         bool // `is Type`, expecting type
+	expecting_type    bool // `is Type`, expecting type
 }
 
 // for tests
@@ -584,8 +584,8 @@ pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
 
 pub fn (mut p Parser) name_expr() ast.Expr {
 	mut node := ast.Expr{}
-	if p.inside_is {
-		p.inside_is = false
+	if p.expecting_type {
+		p.expecting_type = false
 		// get type position before moving to next
 		type_pos := p.tok.position()
 		typ := p.parse_type()

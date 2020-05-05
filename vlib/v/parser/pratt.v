@@ -62,7 +62,12 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			node = p.if_expr()
 		}
 		.lsbr {
-			node = p.array_init()
+			if p.expecting_type {
+				// parse json.decode type (`json.decode([]User, s)`)
+				node = p.name_expr()
+			} else {
+				node = p.array_init()
+			}
 		}
 		.key_none {
 			p.next()
@@ -190,7 +195,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	p.next()
 	mut right := ast.Expr{}
 	if op == .key_is {
-		p.inside_is = true
+		p.expecting_type = true
 	}
 	right = p.expr(precedence)
 	return ast.InfixExpr{

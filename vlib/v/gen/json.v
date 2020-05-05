@@ -124,7 +124,7 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 	if is_js_prim(styp) {
 		s = '$styp val = ${fn_name}(jsval); '
 	} else {
-		s = '\t$styp val; ${fn_name}(jsval, &val); '
+		s = '\t$styp val = *($styp*) ${fn_name}(jsval).data; '
 	}
 	return '
 res = __new_array(0, 0, sizeof($styp));

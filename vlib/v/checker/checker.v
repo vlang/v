@@ -735,7 +735,8 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	} else if fn_name == 'json.decode' {
 		expr := call_expr.args[0].expr
 		if !(expr is ast.Type) {
-			c.error('json.decode: first argument needs to be a type', call_expr.pos)
+			typ := typeof(expr)
+			c.error('json.decode: first argument needs to be a type, got `$typ`', call_expr.pos)
 			return table.void_type
 		}
 		typ := expr as ast.Type
