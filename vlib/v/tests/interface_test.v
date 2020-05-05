@@ -137,18 +137,14 @@ interface Animal {
 	speak(s string)
 }
 
-// utility function to convert to string, as a sample
-fn (a Animal) str() string {
-	return 'Animal: type:${typeof(a)}, name:' + a.name() + '.'
-}
-
 fn test_interface_array() {
 	println('Test on array of animals ...')
 	mut animals := []Animal{}
 	animals = [ Cat{}, Dog{breed: 'Labrador Retriever'} ]
 	animals << Cat{}
 	assert true
-	println('Animals array contains: ${animals.str()}') // explicit call to 'str' function
-	println('Animals array contains: ${animals}') // implicit call to 'str' function
+	// TODO .str() from the real types should be called
+	// println('Animals array contains: ${animals.str()}') // explicit call to 'str' function
+	// println('Animals array contains: ${animals}') // implicit call to 'str' function
 	assert animals.len == 3
 }
