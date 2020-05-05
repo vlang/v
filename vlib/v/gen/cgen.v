@@ -36,7 +36,8 @@ const (
 		'unsigned',
 		'void',
 		'volatile',
-		'while'
+		'while',
+		'new'
 	]
 )
 
@@ -359,7 +360,7 @@ typedef struct {
 				info := typ.info as table.FnType
 				func := info.func
 				sym := g.table.get_type_symbol(func.return_type)
-				is_multi :=  sym.kind == .multi_return
+				is_multi := sym.kind == .multi_return
 				is_fn_sig := func.name == ''
 				if !info.has_decl && (!info.is_anon || is_fn_sig) && !is_multi {
 					fn_name := if func.is_c {
@@ -834,7 +835,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	if return_type != 0 {
 		sym := g.table.get_type_symbol(return_type)
 		// the left vs. right is ugly and should be removed
-		is_multi = sym.kind == .multi_return || assign_stmt.left.len > assign_stmt.right.len || 
+		is_multi = sym.kind == .multi_return || assign_stmt.left.len > assign_stmt.right.len ||
 			assign_stmt.left.len > 1
 	}
 	if is_multi {
@@ -1926,11 +1927,9 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		return
 	}
 	fn_return_is_optional := g.fn_decl.return_type.flag_is(.optional)
-
 	// got to do a correct check for multireturn
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
 	fn_return_is_multi := sym.kind == .multi_return
-
 	// optional multi not supported
 	if fn_return_is_multi && !fn_return_is_optional {
 		g.write(' ')
