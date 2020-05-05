@@ -359,11 +359,7 @@ typedef struct {
 				info := typ.info as table.FnType
 				func := info.func
 				sym := g.table.get_type_symbol(func.return_type)
-				is_multi := match sym.kind {
-					.multi_return { true }
-					else { false }
-				}
-
+				is_multi :=  sym.kind == .multi_return
 				is_fn_sig := func.name == ''
 				if !info.has_decl && (!info.is_anon || is_fn_sig) && !is_multi {
 					fn_name := if func.is_c {
