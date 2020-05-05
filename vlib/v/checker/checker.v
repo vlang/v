@@ -395,12 +395,25 @@ pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 			if left.kind == .array {
 				// `array << elm`
 				c.fail_if_immutable(infix_expr.left)
+				left_value_type := c.table.value_type(left_type)
+				left_value_sym := c.table.get_type_symbol(left_value_type)
+				if left_value_sym.kind == .interface_ {
+					if right.kind != .array {
+						// []Animal << Cat
+						c.type_implements(right_type, left_value_type, infix_expr.right.position())
+					} else {
+						// []Animal << Cat
+						c.type_implements(c.table.value_type(right_type), left_value_type,
+							infix_expr.right.position())
+					}
+					return table.void_type
+				}
 				// the expressions have different types (array_x and x)
-				if c.table.check(right_type, c.table.value_type(left_type)) { // , right_type) {
+				if c.table.check(right_type, left_value_type) { // , right_type) {
 					// []T << T
 					return table.void_type
 				}
-				if right.kind == .array && c.table.check(c.table.value_type(left_type), c.table.value_type(right_type)) {
+				if right.kind == .array && c.table.check(left_value_type, c.table.value_type(right_type)) {
 					// []T << []T
 					return table.void_type
 				}
@@ -831,6 +844,17 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 		if f.is_variadic && typ.flag_is(.variadic) && call_expr.args.len - 1 > i {
 			c.error('when forwarding a varg variable, it must be the final argument', call_expr.pos)
 		}
+		// Handle expected interface
+		if arg_typ_sym.kind == .interface_ {
+			c.type_implements(typ, arg.typ, call_arg.expr.position())
+			continue
+		}
+		// Handle expected interface array
+		/*
+		if exp_type_sym.kind == .array && t.get_type_symbol(t.value_type(exp_idx)).kind == .interface_ {
+			return true
+		}
+		*/
 		if !c.table.check(typ, arg.typ) {
 			// str method, allow type with str method if fn arg is string
 			if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
@@ -844,12 +868,30 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 			}
 			if typ_sym.kind == .array_fixed {
 			}
-			// println('fixed')
 			c.error('cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`',
 				call_expr.pos)
 		}
 	}
 	return f.return_type
+}
+
+fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position) {
+	typ_sym := c.table.get_type_symbol(typ)
+	inter_sym := c.table.get_type_symbol(inter_typ)
+	styp := c.table.type_to_str(typ)
+	for imethod in inter_sym.methods {
+		if method := typ_sym.find_method(imethod.name) {
+			if !imethod.is_same_method_as(method) {
+				c.error('`$styp` incorrectly implements method `$imethod.name`', pos)
+			}
+			continue
+		}
+		c.error("`$styp` doesn't implement method `$imethod.name`", pos)
+	}
+	mut inter_info := inter_sym.info as table.Interface
+	if typ !in inter_info.types && typ_sym.kind != .interface_ {
+		inter_info.types << typ
+	}
 }
 
 pub fn (mut c Checker) check_expr_opt_call(x ast.Expr, xtype table.Type, is_return_used bool) {
