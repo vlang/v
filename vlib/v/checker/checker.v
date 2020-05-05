@@ -89,7 +89,9 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 		// shared libs do not need to have a main
 		return
 	}
-	if has_main_mod_file && !has_main_fn {
+	if !has_main_mod_file {
+		c.error('projet must include a `main` module or be a shared library (compile with `v -shared`)', token.Position{})
+	} else if !has_main_fn {
 		c.error('function `main` must be declared in the main module', token.Position{})
 	}
 }
