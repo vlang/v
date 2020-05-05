@@ -244,6 +244,7 @@ fn test_config() {
 	foo2({
 		name: 'Peter'
 	})
+	foo2(name: 'Peter')
 }
 
 struct City {

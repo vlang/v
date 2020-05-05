@@ -200,12 +200,12 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	}
 	mut fields := []ast.StructInitField{}
 	mut i := 0
-	is_short_syntax := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
+	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
 	// p.warn(is_short_syntax.str())
-	for p.tok.kind != .rcbr {
+	for p.tok.kind != .rcbr && p.tok.kind != .rpar {
 		p.check_comment()
 		mut field_name := ''
-		if is_short_syntax {
+		if no_keys {
 			expr := p.expr(0)
 			// name will be set later in checker
 			fields << ast.StructInitField{
@@ -247,7 +247,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			pos: first_pos.pos
 			len: last_pos.pos - first_pos.pos + last_pos.len
 		}
-		is_short: is_short_syntax
+		is_short: no_keys
 	}
 	return node
 }

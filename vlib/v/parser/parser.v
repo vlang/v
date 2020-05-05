@@ -704,6 +704,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			pos: p.tok.position()
 			mod: mod
 		}
+	} else if p.peek_tok.kind == .colon && p.prev_tok.kind != .str_dollar {
+		// `foo(key:val, key2:val2)`
+		return p.struct_init(true) // short_syntax:true
 	} else {
 		node = p.parse_ident(is_c, is_js)
 	}
