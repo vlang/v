@@ -3268,7 +3268,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	sym := g.table.get_type_symbol(info.elem_type)
 	field_styp := g.typ(info.elem_type)
-	if sym.kind == .struct_ && !sym.has_method('str') {
+	if sym.kind in [.struct_, .map] && !sym.has_method('str') {
 		g.gen_str_for_type_with_styp(info.elem_type, field_styp)
 	}
 	g.definitions.writeln('string ${str_fn_name}($styp a); // auto')
@@ -3444,7 +3444,7 @@ fn (g &Gen) interface_table() string {
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(st)
 			// Speaker_Cat_index = 0
-            
+
 			interface_index_name := '_${interface_name}_${cctype}_index'
 			cast_functions.writeln('
 _Interface I_${cctype}_to_Interface_${interface_name}(${cctype}* x) {
