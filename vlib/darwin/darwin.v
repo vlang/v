@@ -41,7 +41,7 @@ pub fn resource_path() string {
 	mut buffer := malloc(buffer_size)
 	buffer[0] = 0
 	conv_result := C.CFURLGetFileSystemRepresentation(resource_dir_url, true, buffer, buffer_size)
-	if(conv_result == 0) {
+	if conv_result == 0 {
 		panic('CFURLGetFileSystemRepresentation failed')
 	}
 	result := string(buffer)
