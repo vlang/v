@@ -76,3 +76,10 @@ fn test_array_of_strings_interpolation() {
 	aa := ['aa', 'bb', 'cc']
 	assert '$aa' == "['aa', 'bb', 'cc']"
 }
+
+fn test_array_of_map_interpolation() {
+	mut a := []map[string]int{}
+	a << {'a': 1, 'b': 2}
+	a << {'c': 3, 'd': 4}
+	assert '$a' == "[{'a': 1, 'b': 2}, {'c': 3, 'd': 4}]"
+}
