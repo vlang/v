@@ -43,15 +43,7 @@ fn sys_mono_now() u64 {
 // It should NOT call *any other v function*, just C functions and casts.
 [inline]
 fn vpc_now() u64 {
-	$if macos {
-		tm := C.mach_absolute_time()
-		if time_base.denom == 0 {
-			C.mach_timebase_info(&time_base)
-		}
-		return (tm - start_time) * time_base.numer / time_base.denom
-	} $else {    
-		ts := C.timespec{}
-		C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
-		return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
-	}
+	ts := C.timespec{}
+	C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
+	return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
 }

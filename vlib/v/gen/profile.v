@@ -12,15 +12,16 @@ fn (mut g Gen) profile_fn(fn_name string, is_main bool){
 		g.writeln('\tatexit(vprint_profile_stats);')
 		g.writeln('')
 	}
-	if fn_name == 'time.vpc_now' {
+	if fn_name.starts_with('time.vpc_now') {
 		g.defer_profile_code = ''
 	} else {
+		measure_fn_name := if g.pref.os == .mac { 'time__vpc_now_darwin' } else { 'time__vpc_now' }
 		fn_profile_counter_name := 'vpc_${g.last_fn_c_name}'
 		fn_profile_counter_name_calls := '${fn_profile_counter_name}_calls'
 		g.writeln('')
-		g.writeln('\tdouble _PROF_FN_START = time__vpc_now(); ${fn_profile_counter_name_calls}++; // $fn_name')
+		g.writeln('\tdouble _PROF_FN_START = ${measure_fn_name}(); ${fn_profile_counter_name_calls}++; // $fn_name')
 		g.writeln('')
-		g.defer_profile_code = '\t${fn_profile_counter_name} += time__vpc_now() - _PROF_FN_START;'
+		g.defer_profile_code = '\t${fn_profile_counter_name} += ${measure_fn_name}() - _PROF_FN_START;'
 		g.pcs_declarations.writeln('double ${fn_profile_counter_name} = 0.0; u64 ${fn_profile_counter_name_calls} = 0;')
 		g.pcs << ProfileCounterMeta{ g.last_fn_c_name, fn_profile_counter_name, fn_profile_counter_name_calls }
 	}
