@@ -93,7 +93,7 @@ fn main() {
 				exit(1)
 			}
 			table := table.new_table()
-			println(doc.doc(args[1], table))
+			println(doc.doc(args[1], table, prefs))
 			return
 		}
 		else {}

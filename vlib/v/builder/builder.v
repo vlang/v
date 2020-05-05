@@ -87,7 +87,7 @@ pub fn (mut b Builder) parse_imports() {
 		for p in b.parsed_files {
 			println(p.path)
 		}
-		exit(0)        
+		exit(0)
 	}
 }
 
@@ -144,7 +144,6 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 }
 
 pub fn (b Builder) v_files_from_dir(dir string) []string {
-	mut res := []string{}
 	if !os.exists(dir) {
 		if dir == 'compiler' && os.is_dir('vlib') {
 			println('looks like you are trying to build V with an old command')
@@ -160,75 +159,7 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	if b.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}
-	files.sort()
-	for file in files {
-		if !file.ends_with('.v') && !file.ends_with('.vh') {
-			continue
-		}
-		if file.ends_with('_test.v') {
-			continue
-		}
-		if b.pref.backend == .c && !b.should_compile_c(file) {
-			continue
-		}
-		if b.pref.backend == .js && !b.should_compile_js(file) {
-			continue
-		}
-		if b.pref.compile_defines_all.len > 0 && file.contains('_d_') {
-			mut allowed := false
-			for cdefine in b.pref.compile_defines {
-				file_postfix := '_d_${cdefine}.v'
-				if file.ends_with(file_postfix) {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				continue
-			}
-		}
-		res << os.join_path(dir, file)
-	}
-	return res
-}
-
-[inline]
-fn (b Builder) should_compile_c(file string) bool {
-	if !file.ends_with('.c.v') && file.split('.').len > 2 {
-		// Probably something like `a.js.v`.
-		return false
-	}
-	if file.ends_with('_windows.c.v') && b.pref.os != .windows {
-		return false
-	}
-	if file.ends_with('_linux.c.v') && b.pref.os != .linux {
-		return false
-	}
-	if file.ends_with('_darwin.c.v') && b.pref.os != .mac {
-		return false
-	}
-	if file.ends_with('_nix.c.v') && b.pref.os == .windows {
-		return false
-	}
-	if file.ends_with('_android.c.v') && b.pref.os != .android {
-		return false
-	}
-	if file.ends_with('_freebsd.c.v') && b.pref.os != .freebsd {
-		return false
-	}
-	if file.ends_with('_solaris.c.v') && b.pref.os != .solaris {
-		return false
-	}
-	return true
-}
-
-[inline]
-fn (b Builder) should_compile_js(file string) bool {
-	if !file.ends_with('.js.v') && file.split('.').len > 2 {
-		// Probably something like `a.c.v`.
-		return false
-	}
-	return true
+	return b.pref.should_compile_filtered_files(dir, files)
 }
 
 pub fn (b Builder) log(s string) {
@@ -274,7 +205,7 @@ pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 	return error('module "$mod" not found in:\n$smodule_lookup_paths')
 }
 
-fn (b &Builder) print_warnings_and_errors(){
+fn (b &Builder) print_warnings_and_errors() {
 	if b.checker.nr_warnings > 0 {
 		for err in b.checker.warnings {
 			kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_warnings:' } else { 'warning:' }
