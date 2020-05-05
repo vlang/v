@@ -3303,12 +3303,14 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; i++) {')
 	g.auto_str_funcs.writeln('\t\t${field_styp} it = (*(${field_styp}*)array_get(a, i));')
 	if sym.kind == .struct_ && !sym.has_method('str') {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it,0));')
+		g.auto_str_funcs.writeln('\t\tstring x = ${field_styp}_str(it,0);')
 	} else if sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, it));')
+		g.auto_str_funcs.writeln('\t\tstring x = _STR("%g", 1, it);')
 	} else {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${field_styp}_str(it));')
+		g.auto_str_funcs.writeln('\t\tstring x = ${field_styp}_str(it);')
 	}
+	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, x);')
+	g.auto_str_funcs.writeln('\t\tstring_free(x);')
 	g.auto_str_funcs.writeln('\t\tif (i < a.len-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')
 	g.auto_str_funcs.writeln('\t\t}')
