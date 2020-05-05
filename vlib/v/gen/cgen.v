@@ -358,7 +358,14 @@ typedef struct {
 			.function {
 				info := typ.info as table.FnType
 				func := info.func
-				if !info.has_decl && !info.is_anon {
+				sym := g.table.get_type_symbol(func.return_type)
+				is_multi := match sym.kind {
+					.multi_return { true }
+					else { false }
+				}
+
+				is_fn_sig := func.name == ''
+				if !info.has_decl && (!info.is_anon || is_fn_sig) && !is_multi {
 					fn_name := if func.is_c {
 						func.name.replace('.', '__')
 					} else if info.is_anon {
@@ -556,6 +563,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					println('build module `$g.module_built` fn `$it.name`')
 				}
 			}
+			keep_fn_decl := g.fn_decl
 			g.fn_decl = it // &it
 			if it.name == 'main' {
 				// just remember `it`; main code will be generated in finish()
@@ -563,7 +571,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			} else {
 				g.gen_fn_decl(it)
 			}
-			g.fn_decl = 0
+			g.fn_decl = keep_fn_decl
 			if skip {
 				g.out.go_back_to(pos)
 			}
@@ -820,15 +828,22 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	if assign_stmt.is_static {
 		g.write('static ')
 	}
-	if assign_stmt.left.len > assign_stmt.right.len {
+	mut return_type := table.void_type
+	if assign_stmt.right[0] is ast.CallExpr {
+		it := assign_stmt.right[0] as ast.CallExpr
+		return_type = it.return_type
+	}
+	mut is_multi := false
+	// json_test failed w/o this check
+	if return_type != 0 {
+		sym := g.table.get_type_symbol(return_type)
+		// the left vs. right is ugly and should be removed
+		is_multi = sym.kind == .multi_return || assign_stmt.left.len > assign_stmt.right.len || 
+			assign_stmt.left.len > 1
+	}
+	if is_multi {
 		// multi return
 		mut or_stmts := []ast.Stmt{}
-		mut return_type := table.void_type
-		if assign_stmt.right[0] is ast.CallExpr {
-			it := assign_stmt.right[0] as ast.CallExpr
-			or_stmts = it.or_block.stmts
-			return_type = it.return_type
-		}
 		is_optional := return_type.flag_is(.optional)
 		mr_var_name := 'mr_$assign_stmt.pos.pos'
 		mr_styp := g.typ(return_type)
@@ -865,7 +880,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			styp := g.typ(ident_var_info.typ)
 			mut is_call := false
 			mut or_stmts := []ast.Stmt{}
-			mut return_type := table.void_type
+			blank_assign := ident.kind == .blank_ident
 			match val {
 				ast.CallExpr {
 					is_call = true
@@ -874,6 +889,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				ast.AnonFn {
 					// TODO: no buffer fiddling
+					if blank_assign {
+						g.write('{')
+					}
 					ret_styp := g.typ(it.decl.return_type)
 					g.write('$ret_styp (*$ident.name) (')
 					def_pos := g.definitions.len
@@ -882,13 +900,16 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write(') = ')
 					g.expr(*it)
 					g.writeln(';')
+					if blank_assign {
+						g.write('}')
+					}
 					continue
 				}
 				else {}
 			}
 			gen_or := is_call && return_type.flag_is(.optional)
 			g.is_assign_rhs = true
-			if ident.kind == .blank_ident {
+			if blank_assign {
 				if is_call {
 					g.expr(val)
 				} else {
@@ -1909,8 +1930,17 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		return
 	}
 	fn_return_is_optional := g.fn_decl.return_type.flag_is(.optional)
-	// multiple returns
-	if node.exprs.len > 1 {
+
+	// got to do a correct check for multireturn
+	sym := g.table.get_type_symbol(g.fn_decl.return_type)
+	mut fn_return_is_multi := match sym.kind {
+		.multi_return { true }
+		else { false }
+	}
+	fn_return_is_multi = fn_return_is_multi
+
+	// optional multi not supported
+	if fn_return_is_multi && !fn_return_is_optional {
 		g.write(' ')
 		// typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		// mr_info := typ_sym.info as table.MultiReturn

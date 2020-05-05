@@ -369,11 +369,12 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 
 pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon, has_decl bool) int {
 	name := if f.name.len == 0 { 'anon_fn_$f.signature()' } else { f.name }
+	anon := f.name.len == 0 || is_anon
 	return t.register_type_symbol(TypeSymbol{
 		kind: .function
 		name: name
 		info: FnType{
-			is_anon: f.name.len == 0 || is_anon
+			is_anon: anon
 			has_decl: has_decl
 			func: f
 		}

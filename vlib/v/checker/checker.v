@@ -1609,8 +1609,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return table.string_type
 		}
 		ast.AnonFn {
+			keep_ret_type := c.fn_return_type
 			c.fn_return_type = it.decl.return_type
 			c.stmts(it.decl.stmts)
+			c.fn_return_type = keep_ret_type
 			return it.typ
 		}
 		else {
