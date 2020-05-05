@@ -103,6 +103,12 @@ jobs:
         cd vid && ../v -o vid .
     - name: Fixed tests
       run: ./v test-fixed
+    - name: Build V UI examples
+      run: |
+        cd ..
+        git clone --depth 1 https://github.com/vlang/ui
+        cd ui
+        ../v examples/rectangles.v
 
   ubuntu:
     runs-on: ubuntu-18.04
