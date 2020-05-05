@@ -6,7 +6,7 @@ pub struct Result {
 
 pub struct Row {
 pub mut:
-	cols []string
+	vals []string
 }
 
 pub struct Field {
@@ -47,9 +47,9 @@ pub fn (r Result) rows() []Row {
 		mut row := Row{}
 		for i in 0..nr_cols {
 			if rr[i] == 0 {
-				row.cols << ''
+				row.vals << ''
 			} else {
-				row.cols << string(rr[i])
+				row.vals << string(rr[i])
 			}
 		}
 		rows << row
@@ -65,7 +65,7 @@ pub fn (r Result) maps() []map[string]string {
 	for i in 0..rows.len {
 		mut map_val := map[string]string
 		for j in 0..fields.len {
-			map_val[fields[j].name] = rows[i].cols[j]
+			map_val[fields[j].name] = rows[i].vals[j]
 		}
 		array_map << map_val
 	}
