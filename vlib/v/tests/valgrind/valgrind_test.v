@@ -33,7 +33,7 @@ fn test_all() {
 		full_test_path := os.real_path(test)
 		println('x.v: $wrkdir/x.v')
 		os.system('cp ${dir}/${test} $wrkdir/x.v') // cant run .vv file
-		res := os.exec('$vexe -cflags "-w" -verbose=3 -manual-free=false -csource keep -cg $wrkdir/x.v') or {
+		res := os.exec('$vexe -cflags "-w" -verbose=3 -autofree -csource keep -cg $wrkdir/x.v') or {
 			bench.fail()
 			eprintln(bench.step_message_fail('valgrind $test failed'))
 			continue
