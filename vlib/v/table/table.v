@@ -440,8 +440,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 		// and the other is not, is this correct behaviour?
 		return true
 	}
-	if got_idx == none_type_idx {
-		// TODO
+	if got_idx == none_type_idx && expected.flag_is(.optional) {
 		return true
 	}
 	// allow pointers to be initialized with 0. TODO: use none instead
