@@ -57,22 +57,19 @@ pub fn (r Result) rows() []Row {
 	return rows
 }
 
+// maps return rows with `map` of columns instead `array` of columns
 pub fn (r Result) maps() []map[string]string {
 	mut array_map := []map[string]string{}
 	rows := r.rows()
+	fields := r.fetch_fields()
 	for i in 0..rows.len {
-		array_map << r.create_map_value(rows[i])
+		mut map_val := map[string]string
+		for j in 0..fields.len {
+			map_val[fields[j].name] = rows[i].vals[j]
+		}
+		array_map << map_val
 	}
 	return array_map
-}
-
-fn (r Result) create_map_value(row Row) map[string]string {
-	mut map_ := map[string]string
-	fields := r.fetch_fields()
-	for i in 0..fields.len {
-		map_[fields[i].name] = row.vals[i]
-	}
-	return map_
 }
 
 pub fn (r Result) fetch_fields() []Field {
