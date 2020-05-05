@@ -1512,6 +1512,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CastExpr {
 			it.expr_type = c.expr(it.expr)
+			sym := c.table.get_type_symbol(it.expr_type)
+			if it.typ == table.string_type && sym.name !in ['byte', 'array_byte', 'byteptr'] {
+				c.error('cannot cast type `$sym.name` to string', it.pos)
+			}
 			if it.has_arg {
 				c.expr(it.arg)
 			}
