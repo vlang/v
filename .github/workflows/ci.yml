@@ -105,9 +105,9 @@ jobs:
       run: ./v test-fixed
     - name: Build V UI examples
       run: |
-        cd ..
         git clone --depth 1 https://github.com/vlang/ui
         cd ui
+        ln -s $(pwd) ~/.vmodules/ui
         ../v examples/rectangles.v
 
   ubuntu:
