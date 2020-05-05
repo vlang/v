@@ -1516,6 +1516,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.expr(it.arg)
 			}
 			it.typname = c.table.get_type_symbol(it.typ).name
+			if it.typ == table.string_type && !it.has_arg && it.expr_type.is_number() && !it.expr_type.is_ptr() {
+				// s := c.table.get_type_symbol(it.expr_type)
+				c.error('use `number.str()` instead of `string(number)`', it.pos)
+			}
 			return it.typ
 		}
 		ast.CallExpr {

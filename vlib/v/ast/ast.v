@@ -678,6 +678,7 @@ pub:
 	expr      Expr // `buf`
 	arg       Expr // `n` in `string(buf, n)`
 	typ       table.Type // `string`
+	pos token.Position
 mut:
 	typname   string
 	expr_type table.Type // `byteptr`

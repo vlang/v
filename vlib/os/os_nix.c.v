@@ -18,7 +18,7 @@ const (
 
 fn C.symlink(charptr, charptr) int
 
-fn init_os_args(argc int, argv &byteptr) []string {
+fn init_os_args(argc int, argv &&byte) []string {
 	mut args := []string{}
 	//mut args := []string(make(0, argc, sizeof(string)))
 	//mut args := []string{len:argc}
