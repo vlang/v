@@ -1032,7 +1032,7 @@ V combines `Option` and `Result` into one type, so you don't need to decide whic
 The amount of work required to "upgrade" a function to an optional function is minimal:
 you have to add a `?` to the return type and return an error when something goes wrong.
 
-If you don't need to return an error message, you can simply `return none` (more efficient equivalent of `return ""`).
+If you don't need to return an error message, you can simply `return none` (more efficient equivalent of `return error("")`).
 
 This is the primary way of handling errors in V. They are still values, like in Go,
 but the advantage is that errors can't be unhandled, and handling them is a lot less verbose.
