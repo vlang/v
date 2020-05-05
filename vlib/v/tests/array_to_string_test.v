@@ -31,3 +31,10 @@ fn test_interpolation_array_to_string() {
 	e := [i64(1), 2, 3]
 	assert '$e' == '[1, 2, 3]'
 }
+
+fn test_interpolation_array_of_map_to_string() {
+	mut ams := []map[string]string{}
+	ams << {'a': 'b', 'c': 'd'}
+	ams << {'e': 'f', 'g': 'h'}
+	assert '$ams' == "[{'a': 'b', 'c': 'd'}, {'e': 'f', 'g': 'h'}]"
+}

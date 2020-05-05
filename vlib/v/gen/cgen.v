@@ -3204,7 +3204,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	} // map[string]string // TODO vfmt bug
 	for field in info.fields {
 		sym := g.table.get_type_symbol(field.typ)
-		if sym.kind in [.struct_, .array, .array_fixed, .map, .enum_] {
+		if !sym.has_method('str') {
 			field_styp := g.typ(field.typ)
 			field_fn_name := g.gen_str_for_type_with_styp(field.typ, field_styp)
 			fnames2strfunc[field_styp] = field_fn_name
@@ -3268,7 +3268,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	sym := g.table.get_type_symbol(info.elem_type)
 	field_styp := g.typ(info.elem_type)
-	if sym.kind == .struct_ && !sym.has_method('str') {
+	if !sym.has_method('str') {
 		g.gen_str_for_type_with_styp(info.elem_type, field_styp)
 	}
 	g.definitions.writeln('string ${str_fn_name}($styp a); // auto')
@@ -3296,7 +3296,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name string) {
 	sym := g.table.get_type_symbol(info.elem_type)
 	field_styp := g.typ(info.elem_type)
-	if sym.kind == .struct_ && !sym.has_method('str') {
+	if !sym.has_method('str') {
 		g.gen_str_for_type_with_styp(info.elem_type, field_styp)
 	}
 	g.definitions.writeln('string ${str_fn_name}($styp a); // auto')
@@ -3325,12 +3325,12 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	key_sym := g.table.get_type_symbol(info.key_type)
 	key_styp := g.typ(info.key_type)
-	if key_sym.kind == .struct_ && !key_sym.has_method('str') {
+	if !key_sym.has_method('str') {
 		g.gen_str_for_type_with_styp(info.key_type, key_styp)
 	}
 	val_sym := g.table.get_type_symbol(info.value_type)
 	val_styp := g.typ(info.value_type)
-	if val_sym.kind == .struct_ && !val_sym.has_method('str') {
+	if !val_sym.has_method('str') {
 		g.gen_str_for_type_with_styp(info.value_type, val_styp)
 	}
 	zero := g.type_default(info.value_type)
@@ -3444,7 +3444,7 @@ fn (g &Gen) interface_table() string {
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(st)
 			// Speaker_Cat_index = 0
-            
+
 			interface_index_name := '_${interface_name}_${cctype}_index'
 			cast_functions.writeln('
 _Interface I_${cctype}_to_Interface_${interface_name}(${cctype}* x) {

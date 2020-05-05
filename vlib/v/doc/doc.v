@@ -17,7 +17,7 @@ mut:
 
 type FilterFn = fn (node ast.FnDecl) bool
 
-pub fn doc(mod string, table &table.Table) string {
+pub fn doc(mod string, table &table.Table, prefs &pref.Preferences) string {
 	mut d := Doc{
 		out: strings.new_builder(1000)
 		table: table
@@ -35,17 +35,12 @@ pub fn doc(mod string, table &table.Table) string {
 	files := os.ls(path) or {
 		panic(err)
 	}
-	for file in files {
-		if !file.ends_with('.v') {
-			continue
-		}
-		if file.ends_with('_test.v') || file.ends_with('_windows.c.v') || file.ends_with('_macos.c.v') {
-			continue
-		}
-		file_ast := parser.parse_file(os.join_path(path, file), table, .skip_comments, &pref.Preferences{},
-			&ast.Scope{
+	filtered_files := prefs.should_compile_filtered_files(path, files)
+	for file in filtered_files {
+		fscope := &ast.Scope{
 			parent: 0
-		})
+		}
+		file_ast := parser.parse_file(file, table, .skip_comments, prefs, fscope)
 		d.stmts << file_ast.stmts
 	}
 	if d.stmts.len == 0 {
@@ -59,8 +54,8 @@ pub fn doc(mod string, table &table.Table) string {
 	d.print_methods()
 	/*
 	for stmt in file_ast.stmts {
-			d.stmt(stmt)
-		}
+		d.stmt(stmt)
+	}
 	println(path)
 	*/
 	return d.out.str().trim_space()
