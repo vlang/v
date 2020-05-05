@@ -495,6 +495,7 @@ fn (mut p Parser) attribute() ast.Attr {
 	}
 	mut name := p.check_name()
 	if p.tok.kind == .colon {
+		name += ':'
 		p.next()
 		if p.tok.kind == .name {
 			name += p.check_name()
