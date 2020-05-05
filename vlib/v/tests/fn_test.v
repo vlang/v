@@ -120,6 +120,58 @@ fn high_fn_multi_return(a int, b fn (c []int, d []string) ([]int, []string)) {
 
 }
 
+fn high_fn_return_single_anon() (fn(int)f32) {
+	_ := 1
+	correct := fn(n int)f32 {
+		return n * n
+	}
+	return correct
+}
+fn high_fn_return_multi_anons() (fn(int)f32, fn(int)string) {
+	// parsing trap
+	_ := fn(n int)byte {
+		return 0x00
+	}
+	correct_second := fn(n int)string {
+		return '$n'
+	}
+	correct_first := fn(n int)f32 {
+		return n * n
+	}
+	// parsing trap
+	_ := fn(n int)[]int {
+		return [n]
+	}
+	return correct_first, correct_second
+}
+fn high_fn_return_named_fn() (fn(int)int) {
+	return sqr
+}
+fn test_high_fn_ret_anons() {
+	param := 13
+	func_sqr1 := high_fn_return_single_anon()
+	assert func_sqr1(param) == param * param
+
+	func_sqr2, func_repr := high_fn_return_multi_anons()
+	assert func_sqr2(param) == (param * param)
+	assert func_repr(param) == '$param'
+
+	top_lvl_sqr := high_fn_return_named_fn()
+	assert top_lvl_sqr(param) == param * param
+}
+
+fn high_fn_applier(arg int, func fn(a int)string) string {
+	return func(arg)
+}
+fn test_high_fn_applier() {
+	arg := 13
+	expect := '$arg $arg'
+	func := fn (arg int) string {
+		return '$arg $arg'
+	}
+	assert expect == high_fn_applier(arg, func)
+}
+
 fn sqr(x int) int {
 	return x * x
 }
