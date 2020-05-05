@@ -107,6 +107,7 @@ jobs:
       run: |
         git clone --depth 1 https://github.com/vlang/ui
         cd ui
+        mkdir -p ~/.vmodules
         ln -s $(pwd) ~/.vmodules/ui
         ../v examples/rectangles.v
 
