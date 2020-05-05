@@ -26,6 +26,11 @@ fn (c Cat) name_detailed(pet_name string) string {
 	return '$pet_name the ${typeof(c)}, breed:${c.breed}'
 }
 
+// utility function to convert to string, as a sample
+fn (c Cat) str() string {
+	return 'Cat: $c.breed'
+}
+
 fn (d Dog) speak(s string) {
 	assert s == 'Hi !'
 	println('woof')
@@ -39,6 +44,9 @@ fn (d Dog) name() string {
 fn (d Dog) name_detailed(pet_name string) string {
 	return '$pet_name the ${typeof(d)}, breed:${d.breed}'
 }
+
+// do not add to Dog the utility function 'str', as a sample
+
 
 fn test_todo() {
 	if true {}
@@ -129,10 +137,18 @@ interface Animal {
 	speak(s string)
 }
 
+// utility function to convert to string, as a sample
+fn (a Animal) str() string {
+	return 'Animal: type:${typeof(a)}, name:' + a.name() + '.'
+}
+
 fn test_interface_array() {
+	println('Test on array of animals ...')
 	mut animals := []Animal{}
-	animals = [ Cat{}, Dog{} ]
+	animals = [ Cat{}, Dog{breed: 'Labrador Retriever'} ]
 	animals << Cat{}
 	assert true
+	println('Animals array contains: ${animals.str()}') // explicit call to 'str' function
+	println('Animals array contains: ${animals}') // implicit call to 'str' function
 	assert animals.len == 3
 }
