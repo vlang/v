@@ -159,6 +159,7 @@ pub:
 	name        string
 	field_names []string
 	methods     []FnDecl
+	pos token.Position
 }
 
 pub struct StructInitField {

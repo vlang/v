@@ -1,4 +1,3 @@
-
 struct Dog {
 	breed string
 }
@@ -46,11 +45,10 @@ fn (d Dog) name_detailed(pet_name string) string {
 }
 
 // do not add to Dog the utility function 'str', as a sample
-
-
 fn test_todo() {
-	if true {}
-	else {}
+	if true {
+	} else {
+	}
 }
 
 fn perform_speak(a Animal) {
@@ -58,24 +56,30 @@ fn perform_speak(a Animal) {
 	assert true
 	name := a.name()
 	assert name == 'Dog' || name == 'Cat'
-	//if a is Dog {
-		//assert name == 'Dog'
-	//}
+	// if a is Dog {
+	// assert name == 'Dog'
+	// }
 	println(a.name())
 }
 
 fn test_perform_speak() {
-	dog := Dog{breed: 'Labrador Retriever'}
+	dog := Dog{
+		breed: 'Labrador Retriever'
+	}
 	perform_speak(dog)
-	cat := Cat{breed: 'Persian'}
+	cat := Cat{
+		breed: 'Persian'
+	}
 	perform_speak(cat)
-	perform_speak(Cat{breed: 'Persian'})
+	perform_speak(Cat{
+		breed: 'Persian'
+	})
 	handle_animals([dog, cat])
 	/*
 	f := Foo {
 		speaker: dog
 	}
-*/
+	*/
 }
 
 fn perform_name_detailed(a Animal) {
@@ -85,22 +89,24 @@ fn perform_name_detailed(a Animal) {
 }
 
 fn test_perform_name_detailed() {
-	dog := Dog{breed: 'Labrador Retriever'}
+	dog := Dog{
+		breed: 'Labrador Retriever'
+	}
 	println('Test on Dog: $dog ...')
 	perform_name_detailed(dog)
-
 	cat := Cat{}
 	println('Test on Cat: $cat ...')
 	perform_speak(cat)
-
 	println('Test on another Cat: ...')
-	perform_speak(Cat{breed: 'Persian'})
-
+	perform_speak(Cat{
+		breed: 'Persian'
+	})
 	println('Test (dummy/empty) on array of animals ...')
 	handle_animals([dog, cat])
 }
 
-fn handle_animals(a []Animal) {}
+fn handle_animals(a []Animal) {
+}
 
 interface Register {
 	register()
@@ -110,9 +116,11 @@ struct RegTest {
 	a int
 }
 
-fn (f RegTest) register() {}
+fn (f RegTest) register() {
+}
 
-fn handle_reg(r Register) {}
+fn handle_reg(r Register) {
+}
 
 fn test_register() {
 	f := RegTest{}
@@ -125,9 +133,8 @@ interface Speaker2 {
 	speak()
 }
 
-
 struct Foo {
-	animal Animal
+	animal  Animal
 	animals []Animal
 }
 
@@ -140,7 +147,9 @@ interface Animal {
 fn test_interface_array() {
 	println('Test on array of animals ...')
 	mut animals := []Animal{}
-	animals = [ Cat{}, Dog{breed: 'Labrador Retriever'} ]
+	animals = [Cat{}, Dog{
+		breed: 'Labrador Retriever'
+	}]
 	animals << Cat{}
 	assert true
 	// TODO .str() from the real types should be called

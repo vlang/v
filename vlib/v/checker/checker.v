@@ -90,7 +90,8 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 		return
 	}
 	if !has_main_mod_file {
-		c.error('projet must include a `main` module or be a shared library (compile with `v -shared`)', token.Position{})
+		c.error('projet must include a `main` module or be a shared library (compile with `v -shared`)',
+			token.Position{})
 	} else if !has_main_fn {
 		c.error('function `main` must be declared in the main module', token.Position{})
 	}
@@ -886,7 +887,8 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 	for imethod in inter_sym.methods {
 		if method := typ_sym.find_method(imethod.name) {
 			if !imethod.is_same_method_as(method) {
-				c.error('`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.name`, expected `${c.table.fn_to_str(imethod)}`', pos)
+				c.error('`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.name`, expected `${c.table.fn_to_str(imethod)}`',
+					pos)
 			}
 			continue
 		}
@@ -1474,6 +1476,16 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		// ast.HashStmt {}
 		ast.Import {}
+		ast.InterfaceDecl {
+			if !it.name[0].is_capital() {
+				pos := token.Position{
+					line_nr: it.pos.line_nr
+					pos: it.pos.pos + 'interface'.len
+					len: it.name.len
+				}
+				c.error('interface name must begin with capital letter', pos)
+			}
+		}
 		ast.Module {
 			c.mod = it.name
 			c.is_builtin_mod = it.name == 'builtin'
@@ -1561,8 +1573,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.CastExpr {
 			it.expr_type = c.expr(it.expr)
 			sym := c.table.get_type_symbol(it.expr_type)
-			if it.typ == table.string_type && !(sym.kind in [.byte, .byteptr] ||
-				sym.kind == .array && sym.name == 'array_byte') {
+			if it.typ == table.string_type && !(sym.kind in [.byte, .byteptr] || sym.kind ==
+				.array && sym.name == 'array_byte') {
 				type_name := c.table.type_to_str(it.expr_type)
 				c.error('cannot cast type `$type_name` to string', it.pos)
 			}

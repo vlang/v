@@ -6,6 +6,7 @@ module parser
 import v.ast
 import v.table
 import v.token
+import v.util
 
 fn (mut p Parser) struct_decl() ast.StructDecl {
 	start_pos := p.tok.position()
@@ -255,6 +256,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 }
 
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {
+	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -278,11 +280,15 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		line_nr := p.tok.line_nr
 		name := p.check_name()
+		if util.contains_capital(name) {
+			p.error('interface methods cannot contain uppercase letters, use snake_case instead')
+		}
 		// field_names << name
 		args2, _ := p.fn_args()
 		mut args := [table.Arg{
 			name: 'x'
 			typ: typ
+			is_hidden: true
 		}]
 		args << args2
 		mut method := ast.FnDecl{
@@ -306,5 +312,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	return ast.InterfaceDecl{
 		name: interface_name
 		methods: methods
+		pos: start_pos
 	}
 }

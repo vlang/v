@@ -40,7 +40,11 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 	f.write('fn ${receiver}${name}(')
 	for i, arg in node.args {
 		// skip receiver
+		// if (node.is_method || node.is_interface) && i == 0 {
 		if node.is_method && i == 0 {
+			continue
+		}
+		if arg.is_hidden {
 			continue
 		}
 		is_last_arg := i == node.args.len - 1

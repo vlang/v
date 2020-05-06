@@ -33,9 +33,10 @@ pub mut:
 
 pub struct Arg {
 pub:
-	name   string
-	is_mut bool
-	typ    Type
+	name      string
+	is_mut    bool
+	typ       Type
+	is_hidden bool // interface first arg
 }
 
 pub struct Var {
