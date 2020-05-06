@@ -678,6 +678,7 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 		for i, arg in call_expr.args {
 			exp_arg_typ := if method.is_variadic && i >= method.args.len - 1 { method.args[method.args.len -
 					1].typ } else { method.args[i + 1].typ }
+			exp_arg_sym := c.table.get_type_symbol(exp_arg_typ)
 			c.expected_type = exp_arg_typ
 			got_arg_typ := c.expr(arg.expr)
 			call_expr.args[i].typ = got_arg_typ
@@ -685,9 +686,12 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 				1 > i {
 				c.error('when forwarding a varg variable, it must be the final argument', call_expr.pos)
 			}
+			if exp_arg_sym.kind == .interface_ {
+				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
+				continue
+			}
 			if !c.table.check(got_arg_typ, exp_arg_typ) {
 				got_arg_sym := c.table.get_type_symbol(got_arg_typ)
-				exp_arg_sym := c.table.get_type_symbol(exp_arg_typ)
 				// str method, allow type with str method if fn arg is string
 				if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
 					continue
@@ -882,7 +886,7 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 	for imethod in inter_sym.methods {
 		if method := typ_sym.find_method(imethod.name) {
 			if !imethod.is_same_method_as(method) {
-				c.error('`$styp` incorrectly implements method `$imethod.name`', pos)
+				c.error('`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.name`, expected `${c.table.fn_to_str(imethod)}`', pos)
 			}
 			continue
 		}
