@@ -59,10 +59,10 @@ for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Instal
 	set InstallDir=%%i
 )
 
-if exist %InstallDir%\Common7\Tools\vsdevcmd.bat (
-	call %InstallDir%\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
-) else if exist "%VsWhereDir%/Microsoft Visual Studio 14.0/Common7/Tools/vsdevcmd.bat" (
-	call "%VsWhereDir%/Microsoft Visual Studio 14.0/Common7/Tools/vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
+if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
+	call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
+) else if exist "%VsWhereDir%\Microsoft Visual Studio 14.0\Common7\Tools\vsdevcmd.bat" (
+	call "%VsWhereDir%\Microsoft Visual Studio 14.0\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
 ) else (
 	goto :no_compiler
 )
