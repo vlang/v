@@ -1477,11 +1477,12 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		// ast.HashStmt {}
 		ast.Import {}
 		ast.InterfaceDecl {
-			if !it.name[0].is_capital() {
+			name := it.name.after('.')
+			if !name[0].is_capital() {
 				pos := token.Position{
 					line_nr: it.pos.line_nr
 					pos: it.pos.pos + 'interface'.len
-					len: it.name.len
+					len: name.len
 				}
 				c.error('interface name must begin with capital letter', pos)
 			}
