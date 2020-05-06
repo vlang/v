@@ -3310,7 +3310,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 		g.auto_str_funcs.writeln('\t\tstring x = ${field_styp}_str(it);')
 	}
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, x);')
-	if info.elem_type != table.bool_type {
+	if g.pref.autofree && info.elem_type != table.bool_type {
 		// no need to free "true"/"false" literals
 		g.auto_str_funcs.writeln('\t\tstring_free(x);')
 	}
@@ -3319,7 +3319,10 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos3("]"));')
-	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\tstring res = strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_free(&sb);')
+	// g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\treturn res;')
 	g.auto_str_funcs.writeln('}')
 }
 

@@ -106,7 +106,7 @@ pub fn (b mut Builder) free() {
 	}
 	// QTODO checker bug
 	s := b.initial_size
-	b.buf = []byte{cap: s}
+	//b.buf = []byte{cap: s}
 	b.len = 0
 	b.str_calls = 0
 }
