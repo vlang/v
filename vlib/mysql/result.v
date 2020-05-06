@@ -49,7 +49,7 @@ pub fn (r Result) rows() []Row {
 			if rr[i] == 0 {
 				row.vals << ''
 			} else {
-				row.vals << string(rr[i])
+				row.vals << rr[i].str()
 			}
 		}
 		rows << row
