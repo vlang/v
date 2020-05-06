@@ -33,3 +33,20 @@ fn test_fixed_array_struct_string_interpolation() {
 	assert s.contains('vb: [1.1, 2.32, 3.3, 4.4, 5, 6, 7, 8.9]')
 	assert s.contains('}')
 }
+
+struct Info {
+	name string
+	dict map[string]int
+}
+
+fn test_struct_map_field_string_interpolation() {
+	info := Info{
+		name: 'test'
+		dict: {'a': 1, 'b': 2}
+	}
+	s := '$info'
+	assert s.contains('Info {')
+	assert s.contains("name: 'test'")
+	assert s.contains("dict: {'a': 1, 'b': 2}")
+	assert s.contains('}')
+}
