@@ -1,3 +1,37 @@
+## V 0.1.27
+*5 May 2020*
+- vfmt has been re-written from scratch using the new AST parser. It's much faster, cleaner, and can format
+files with compilation errors.
+- `strconv, `sprintf`, and `printf` in native V, without any libc calls.
+- Interfaces are now a lot more stable and have all expected features.
+- Lots of x64 backend improvements: function calls, if expressions, for loops, local variables.
+- `map()` and `filter()` methods can now be chained.
+- New `[]int{cap:cap, len:len}` syntax for initializing array length and capacity.
+- New `is` keyword for checking the type of sum types and interfaces.
+- `as` can now be used to cast interfaces and sum types.
+- Profiling with `-profile`. Prints a nice table with detailed information about every single function call:
+number of calls, average time per call, total time per function.
+- `import(xxx)` syntax has been removed in favor of `import xxx` for simplicity and greppability.
+- Lots of fixes and improvements in the type checker.
+- `time.StopWatch`
+- `dl` module for dynamic loading.
+- Automatic `str()` method generation for every single type, including all arrays and fixed size arrays.
+- Short struct initialization syntax for imitating named function args: `foo(bar:0, baz:1)`.
+- New operator `!in`.
+- Performance improvements in critical parts of the builtin data structures (array, map).
+- High order functions improvements (functions can now be returned etc).
+- Anonymous functions that can be defined inside other functions.
+- Built-in JSON module is back.
+- Closures.
+- Lots and lots of new tests added, including output tests that test error messages.
+- Multiple errors are now printed, the compiler no longer stops after the first error.
+- Thew new JS backend using the AST parser (almost complete).
+- Variadic functions.
+- `net.websocket` module (early stage).
+- `vlib` is now memory leak free, lots of `autofree` improvements.
+- Simplified and cleaned up `cmd/v`, `v.builder`.
+
+
 ## V 0.1.25
 *1 Apr 2020*
 - The entire compiler has been re-written with an AST parser. The code is now a lot cleaner and more maintainable. ~15k lines of old compiler code were removed.
