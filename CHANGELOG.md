@@ -1,8 +1,9 @@
 ## V 0.1.27
 *5 May 2020*
+
 - vfmt has been re-written from scratch using the new AST parser. It's much faster, cleaner, and can format
 files with compilation errors.
-- `strconv, `sprintf`, and `printf` in native V, without any libc calls.
+- `strconv`, `sprintf`, and `printf` in native V, without any libc calls.
 - Interfaces are now a lot more stable and have all expected features.
 - Lots of x64 backend improvements: function calls, if expressions, for loops, local variables.
 - `map()` and `filter()` methods can now be chained.
@@ -30,16 +31,16 @@ number of calls, average time per call, total time per function.
 - `net.websocket` module (early stage).
 - `vlib` is now memory leak free, lots of `autofree` improvements.
 - Simplified and cleaned up `cmd/v`, `v.builder`.
+- V UI was updated to work with the new backend.
 
 
 ## V 0.1.25
 *1 Apr 2020*
+
 - The entire compiler has been re-written with an AST parser. The code is now a lot cleaner and more maintainable. ~15k lines of old compiler code were removed.
 
 ## V 0.1.24
 *31 Dec 2019*
-
-The last release before 0.2.
 
 - A new parser/generator built on top of an AST that simplifies code greatly and allows to implement new
   backends much faster.
