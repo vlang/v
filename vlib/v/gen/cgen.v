@@ -1548,11 +1548,11 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.write(', &($elem_type_str[]){ ')
 			elem_sym := g.table.get_type_symbol(info.elem_type)
-			if elem_sym.kind == .interface_ {
+			if elem_sym.kind == .interface_  && node.right_type != info.elem_type{
 				g.interface_call(node.right_type, info.elem_type)
 			}
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
-			if elem_sym.kind == .interface_ {
+			if elem_sym.kind == .interface_ && node.right_type != info.elem_type{
 				g.write(')')
 			}
 			g.write(' })')
@@ -3535,7 +3535,7 @@ fn (g &Gen) interface_table() string {
 			cast_functions.writeln('
 _Interface I_${cctype}_to_Interface_${interface_name}(${cctype}* x) {
 	return (_Interface) {
-		._object = (void*) memdup(x, sizeof(${cctype})),
+		._object = (void*) (x),
 		._interface_idx = ${interface_index_name}
 	};
 }')
