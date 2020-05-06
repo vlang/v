@@ -49,7 +49,6 @@ goto :success
 :msvc_strap
 echo Attempting to build v.c  with MSVC...
 set VsWhereDir=%ProgramFiles(x86)%
-set Vs2015InstallDir="%VsWhereDir%\Microsoft Visual Studio 14.0"
 set HostArch=x64
 if "%PROCESSOR_ARCHITECTURE%" == "x86" (
 	echo Using x86 Build Tools...
@@ -62,8 +61,8 @@ for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Instal
 
 if exist %InstallDir%\Common7\Tools\vsdevcmd.bat (
 	call %InstallDir%\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
-) else if exist %Vs2015InstallDir%\Common7\Tools\vsdevcmd.bat (
-	call %Vs2015InstallDir%\Common7\Tools\vsdevcmd.bat -arch=%HostArch% -host_arch=%HostArch% -no_logo
+) else if exist "%VsWhereDir%\Microsoft Visual Studio 14.0\Common7\Tools\vsdevcmd.bat" (
+	call "%VsWhereDir%\Microsoft Visual Studio 14.0\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
 ) else (
 	goto :no_compiler
 )
