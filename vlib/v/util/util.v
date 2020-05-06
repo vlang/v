@@ -150,7 +150,7 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 			if !tool_compilation.output.contains('Permission denied') {
 				err = '\n$tool_compilation.output'
 			}
-			eprintln('cannot compile ‘$tool_source: $err‘')
+			eprintln('cannot compile `$tool_source`: $err')
 			exit(1)
 		}
 	}

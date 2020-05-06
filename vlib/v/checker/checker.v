@@ -883,7 +883,7 @@ pub fn (mut c Checker) check_or_block(call_expr mut ast.CallExpr, ret_type table
 	if is_ret_used {
 		if !c.is_last_or_block_stmt_valid(last_stmt) {
 			expected_type_name := c.table.get_type_symbol(ret_type).name
-			c.error('last statement in the `or {}` block should return ‘$expected_type_name‘',
+			c.error('last statement in the `or {}` block should return `$expected_type_name`',
 				call_expr.pos)
 			return
 		}

@@ -113,9 +113,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				} else if p.tok.kind == .name {
 					p.next()
 					lit := if p.tok.lit != '' { p.tok.lit } else { p.tok.kind.str() }
-					p.error('unexpected ‘$lit‘, expecting ‘:‘')
+					p.error('unexpected `$lit`, expecting `:`')
 				} else {
-					p.error('unexpected ‘$p.tok.lit‘, expecting struct key')
+					p.error('unexpected `$p.tok.lit`, expecting struct key')
 				}
 			}
 			p.check(.rcbr)
