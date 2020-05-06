@@ -759,6 +759,8 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 			c.error('json.decode: first argument needs to be a type, got `$typ`', call_expr.pos)
 			return table.void_type
 		}
+		c.expected_type = table.string_type
+		call_expr.args[1].typ = c.expr(call_expr.args[1].expr)
 		typ := expr as ast.Type
 		return typ.typ.set_flag(.optional)
 	}

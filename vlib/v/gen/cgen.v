@@ -1270,7 +1270,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('.')
 			}
 			if it.expr_type == 0 {
-				verror('cgen: SelectorExpr typ=0 field=$it.field $g.file.path $it.pos.line_nr')
+				verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `${it.expr}` | field: `$it.field` | file: $g.file.path | line: $it.pos.line_nr')
 			}
 			g.write(c_name(it.field))
 		}
