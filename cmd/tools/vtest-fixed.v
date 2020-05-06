@@ -17,6 +17,7 @@ const (
 	skip_on_musl        = [
 		'vlib/net/http/http_test.v',
 		'vlib/net/http/cookie_test.v',
+        'vlib/sqlite/sqlite_test.v',
 		'vlib/clipboard/clipboard_test.v',
 	]
 	skip_on_linux       = []string{}
