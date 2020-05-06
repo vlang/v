@@ -759,6 +759,8 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 			c.error('json.decode: first argument needs to be a type, got `$typ`', call_expr.pos)
 			return table.void_type
 		}
+		c.expected_type = table.string_type
+		call_expr.args[1].typ = c.expr(call_expr.args[1].expr)
 		typ := expr as ast.Type
 		return typ.typ.set_flag(.optional)
 	}
@@ -1728,6 +1730,11 @@ pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
 		info := ident.info as ast.IdentFn
 		return info.typ
 	} else if ident.kind == .unresolved {
+		// prepend mod to look for fn call or const
+		mut name := ident.name
+		if !name.contains('.') && ident.mod !in ['builtin', 'main'] {
+			name = '${ident.mod}.$ident.name'
+		}
 		// first use
 		start_scope := c.file.scope.innermost(ident.pos.pos)
 		if obj := start_scope.find(ident.name) {
@@ -1737,26 +1744,33 @@ pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
 					if typ == 0 {
 						typ = c.expr(it.expr)
 					}
-					is_optional := typ.flag_is(.optional)
-					ident.kind = .variable
-					ident.info = ast.IdentVar{
-						typ: typ
-						is_optional: is_optional
+					sym := c.table.get_type_symbol(typ)
+					if sym.info is table.FnType {
+						// anon/local fn assigned to new variable uses this
+						info := sym.info as table.FnType
+						fn_type := table.new_type(c.table.find_or_register_fn_type(info.func, true, true))
+						ident.kind = .function
+						ident.info = ast.IdentFn{
+							typ: fn_type
+						}
+						return fn_type
+					} else {
+						is_optional := typ.flag_is(.optional)
+						ident.kind = .variable
+						ident.info = ast.IdentVar{
+							typ: typ
+							is_optional: is_optional
+						}
+						it.typ = typ
+						// unwrap optional (`println(x)`)
+						if is_optional {
+							return typ.set_flag(.unset)
+						}
+						return typ
 					}
-					it.typ = typ
-					// unwrap optional (`println(x)`)
-					if is_optional {
-						return typ.set_flag(.unset)
-					}
-					return typ
 				}
 				else {}
 			}
-		}
-		// prepend mod to look for fn call or const
-		mut name := ident.name
-		if !name.contains('.') && ident.mod !in ['builtin', 'main'] {
-			name = '${ident.mod}.$ident.name'
 		}
 		if obj := c.file.global_scope.find(name) {
 			match obj {
@@ -1783,7 +1797,7 @@ pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
 				else {}
 			}
 		}
-		// Function object (not a call), e.g. `onclick(my_click)`
+		// Non-anon-function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
 			fn_type := table.new_type(c.table.find_or_register_fn_type(func, false, true))
 			ident.name = name

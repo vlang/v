@@ -367,7 +367,8 @@ typedef struct {
 				sym := g.table.get_type_symbol(func.return_type)
 				is_multi := sym.kind == .multi_return
 				is_fn_sig := func.name == ''
-				if !info.has_decl && (!info.is_anon || is_fn_sig) && !is_multi {
+				not_anon := !info.is_anon
+				if !info.has_decl && !is_multi && (not_anon || is_fn_sig) {
 					fn_name := if func.is_c {
 						func.name.replace('.', '__')
 					} else if info.is_anon {
@@ -890,8 +891,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					or_stmts = it.or_block.stmts
 					return_type = it.return_type
 				}
+				// TODO: no buffer fiddling
 				ast.AnonFn {
-					// TODO: no buffer fiddling
 					if blank_assign {
 						g.write('{')
 					}
@@ -907,6 +908,23 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.write('}')
 					}
 					continue
+				}
+				ast.Ident {
+					if it.info is ast.IdentFn {
+						thing := it.info as ast.IdentFn
+						sym := g.table.get_type_symbol(thing.typ)
+						info := sym.info as table.FnType
+						func := info.func
+						ret_styp := g.typ(func.return_type)
+						g.write('$ret_styp (*$ident.name) (')
+						def_pos := g.definitions.len
+						g.fn_args(func.args, func.is_variadic)
+						g.definitions.go_back(g.definitions.len - def_pos)
+						g.write(') = ')
+						g.expr(*it)
+						g.writeln(';')
+						continue
+					}
 				}
 				else {}
 			}
@@ -1252,7 +1270,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('.')
 			}
 			if it.expr_type == 0 {
-				verror('cgen: SelectorExpr typ=0 field=$it.field $g.file.path $it.pos.line_nr')
+				verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `${it.expr}` | field: `$it.field` | file: $g.file.path | line: $it.pos.line_nr')
 			}
 			g.write(c_name(it.field))
 		}
