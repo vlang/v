@@ -43,6 +43,8 @@ jobs:
   alpine-docker-musl-gcc:
     name: alpine-musl
     runs-on: ubuntu-latest
+    env:
+      V_CI_MUSL: 1
     steps:
 
     - name: Checkout
@@ -208,6 +210,7 @@ jobs:
     runs-on: ubuntu-18.04
     env:
       VFLAGS: -cc musl-gcc
+      V_CI_MUSL: 1
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
