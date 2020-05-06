@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module builder
 
-import benchmark
+import time
 import os
 import v.pref
 import v.util
@@ -31,15 +31,14 @@ pub fn compile(command string, pref &pref.Preferences) {
 		println('builder.compile() pref:')
 		// println(pref)
 	}
-	mut tmark := benchmark.new_benchmark()
+	mut sw := time.new_stopwatch()
 	match pref.backend {
 		.c { b.compile_c() }
 		.js { b.compile_js() }
 		.x64 { b.compile_x64() }
 	}
 	if pref.is_stats {
-		tmark.stop()
-		println('compilation took: ' + tmark.total_duration().str() + 'ms')
+		println('compilation took: ${sw.elapsed().milliseconds()} ms')
 	}
 	if pref.is_test || pref.is_run {
 		b.run_compiled_executable_and_exit()

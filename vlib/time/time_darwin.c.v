@@ -36,3 +36,14 @@ fn sys_mono_now_darwin() u64 {
 	}
 	return (tm - start_time) * time_base.numer / time_base.denom
 }
+
+// NB: vpc_now_darwin is used by `v -profile` .
+// It should NOT call *any other v function*, just C functions and casts.
+[inline]
+fn vpc_now_darwin() u64 {
+	tm := C.mach_absolute_time()
+	if time_base.denom == 0 {
+		C.mach_timebase_info(&time_base)
+	}
+	return (tm - start_time) * time_base.numer / time_base.denom
+}

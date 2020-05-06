@@ -399,6 +399,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// `json.decode(User, s)` => json.decode_User(s)
 			sym := g.table.get_type_symbol(ast_type.typ)
 			name += '_' + sym.name
+			g.gen_json_for_type(ast_type.typ)
 		}
 	}
 	if node.is_c {

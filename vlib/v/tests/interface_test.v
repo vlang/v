@@ -8,14 +8,27 @@ struct Cat {
 }
 
 fn (mut c Cat) name() string {
-	assert c.breed == 'Persian'
+	if c.breed != '' {
+		assert c.breed == 'Persian'
+	}
 	return 'Cat'
 }
 
 fn (c &Cat) speak(s string) {
-	assert c.breed == 'Persian'
+	if c.breed != '' {
+		assert c.breed == 'Persian'
+	}
 	assert s == 'Hi !'
 	println('meow')
+}
+
+fn (c Cat) name_detailed(pet_name string) string {
+	return '$pet_name the ${typeof(c)}, breed:${c.breed}'
+}
+
+// utility function to convert to string, as a sample
+fn (c Cat) str() string {
+	return 'Cat: $c.breed'
 }
 
 fn (d Dog) speak(s string) {
@@ -28,21 +41,27 @@ fn (d Dog) name() string {
 	return 'Dog'
 }
 
-fn test_todo() {
-	if true {}
-	//
-	else{}
+fn (d Dog) name_detailed(pet_name string) string {
+	return '$pet_name the ${typeof(d)}, breed:${d.breed}'
 }
 
-fn perform_speak(s Animal) {
-	s.speak('Hi !')
+// do not add to Dog the utility function 'str', as a sample
+
+
+fn test_todo() {
+	if true {}
+	else {}
+}
+
+fn perform_speak(a Animal) {
+	a.speak('Hi !')
 	assert true
-	name := s.name()
+	name := a.name()
 	assert name == 'Dog' || name == 'Cat'
-	//if s is Dog {
+	//if a is Dog {
 		//assert name == 'Dog'
 	//}
-	println(s.name())
+	println(a.name())
 }
 
 fn test_perform_speak() {
@@ -57,6 +76,28 @@ fn test_perform_speak() {
 		speaker: dog
 	}
 */
+}
+
+fn perform_name_detailed(a Animal) {
+	name_full := a.name_detailed('MyPet')
+	println(name_full)
+	assert name_full.starts_with('MyPet the Dog') || name_full.starts_with('MyPet the Cat')
+}
+
+fn test_perform_name_detailed() {
+	dog := Dog{breed: 'Labrador Retriever'}
+	println('Test on Dog: $dog ...')
+	perform_name_detailed(dog)
+
+	cat := Cat{}
+	println('Test on Cat: $cat ...')
+	perform_speak(cat)
+
+	println('Test on another Cat: ...')
+	perform_speak(Cat{breed: 'Persian'})
+
+	println('Test (dummy/empty) on array of animals ...')
+	handle_animals([dog, cat])
 }
 
 fn handle_animals(a []Animal) {}
@@ -92,13 +133,22 @@ struct Foo {
 
 interface Animal {
 	name() string
+	name_detailed(pet_name string) string
 	speak(s string)
 }
 
+// utility function to convert to string, as a sample
+fn (a Animal) str() string {
+	return 'Animal: type:${typeof(a)}, name:' + a.name() + '.'
+}
+
 fn test_interface_array() {
+	println('Test on array of animals ...')
 	mut animals := []Animal{}
-	animals = [ Cat{}, Dog{} ]
+	animals = [ Cat{}, Dog{breed: 'Labrador Retriever'} ]
 	animals << Cat{}
 	assert true
+	println('Animals array contains: ${animals.str()}') // explicit call to 'str' function
+	println('Animals array contains: ${animals}') // implicit call to 'str' function
 	assert animals.len == 3
 }

@@ -4,13 +4,17 @@
 
 V is a statically typed compiled programming language designed for building maintainable software.
 
-It's similar to Go and is also influenced by Oberon, Rust, Swift.
+It's similar to Go and is also influenced by Oberon, Rust, Swift, Python.
 
 V is a very simple language. Going through this documentation will take you about half an hour,
 and by the end of it you will learn pretty much the entire language.
 
+The language promotes writing simple and clear code with a minimal amount of abstractions.
+
 Despite being simple, it gives a lot of power to the developer. Anything you can do in other languages,
 you can do in V.
+
+
 
 ## Hello World
 
@@ -945,6 +949,46 @@ color = .green
 println(color) // "1"  TODO: print "green"?
 ```
 
+## Sum types
+
+```v
+type Expr = BinaryExpr | UnaryExpr | IfExpr 
+
+struct BinaryExpr{ ... }
+struct UnaryExpr{ ... }
+struct IfExpr{ ... }
+
+struct CallExpr {
+	args []Expr
+	...
+}
+
+fn (p mut Parser) expr(precedence int) ast.Expr {
+	match p.tok {
+		.key_if { return IfExpr{} }
+		...
+		else    { return BinaryExpr{} }
+	}
+}
+
+fn gen(expr Expr) {
+	match expr {
+		.key_if { gen_if(it) }
+		...
+	}
+}
+
+fn gen_if(expr IfExpr) {
+	...
+}
+```
+
+To check whether a sum type is a certain type, use `is`:
+
+```v
+println(expr is IfExpr)
+```
+
 ## Option/Result types & error handling
 
 ```v
@@ -988,7 +1032,7 @@ V combines `Option` and `Result` into one type, so you don't need to decide whic
 The amount of work required to "upgrade" a function to an optional function is minimal:
 you have to add a `?` to the return type and return an error when something goes wrong.
 
-If you don't need to return an error, you can simply `return none`.
+If you don't need to return an error message, you can simply `return none` (more efficient equivalent of `return error("")`).
 
 This is the primary way of handling errors in V. They are still values, like in Go,
 but the advantage is that errors can't be unhandled, and handling them is a lot less verbose.

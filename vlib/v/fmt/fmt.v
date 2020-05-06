@@ -691,36 +691,7 @@ fn (mut f Fmt) expr(node ast.Expr) {
 			f.write("'")
 		}
 		ast.StructInit {
-			type_sym := f.table.get_type_symbol(it.typ)
-			// f.write('<old name: $type_sym.name>')
-			mut name := short_module(type_sym.name).replace(f.cur_mod + '.', '') // TODO f.type_to_str?
-			if name == 'void' {
-				name = ''
-			}
-			if it.fields.len == 0 {
-				// `Foo{}` on one line if there are no fields
-				f.write('$name{}')
-			} else if it.fields.len == 0 {
-				// `Foo{1,2,3}` (short syntax )
-				f.write('$name{')
-				for i, field in it.fields {
-					f.expr(field.expr)
-					if i < it.fields.len - 1 {
-						f.write(', ')
-					}
-				}
-				f.write('}')
-			} else {
-				f.writeln('$name{')
-				f.indent++
-				for field in it.fields {
-					f.write('$field.name: ')
-					f.expr(field.expr)
-					f.writeln('')
-				}
-				f.indent--
-				f.write('}')
-			}
+			f.struct_init(it)
 		}
 		ast.Type {
 			f.write(f.type_to_str(it.typ))
@@ -1010,11 +981,11 @@ fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		typ_sym := f.table.get_type_symbol(it.typ)
 		if typ_sym.kind == .array && typ_sym.name.starts_with('array_map') {
 			ainfo := typ_sym.info as table.Array
-			map_typ_sym := f.table.get_type_symbol( ainfo.elem_type )
+			map_typ_sym := f.table.get_type_symbol(ainfo.elem_type)
 			minfo := map_typ_sym.info as table.Map
 			mk := f.table.get_type_symbol(minfo.key_type).name
 			mv := f.table.get_type_symbol(minfo.value_type).name
-			for _ in 0..ainfo.nr_dims {
+			for _ in 0 .. ainfo.nr_dims {
 				f.write('[]')
 			}
 			f.write('map[${mk}]${mv}')
@@ -1026,7 +997,6 @@ fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			f.write('}')
 			return
 		}
-
 		f.write(f.type_to_str(it.typ))
 		f.write('{')
 		if it.has_cap {
@@ -1068,4 +1038,39 @@ fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		f.indent--
 	}
 	f.write(']')
+}
+
+fn (mut f Fmt) struct_init(it ast.StructInit) {
+	type_sym := f.table.get_type_symbol(it.typ)
+	// f.write('<old name: $type_sym.name>')
+	mut name := short_module(type_sym.name).replace(f.cur_mod + '.', '') // TODO f.type_to_str?
+	if name == 'void' {
+		name = ''
+	}
+	if it.fields.len == 0 {
+		// `Foo{}` on one line if there are no fields
+		f.write('$name{}')
+	} else if it.fields.len == 0 {
+		// `Foo{1,2,3}` (short syntax )
+		// if name != '' {
+		f.write('$name{')
+		// }
+		for i, field in it.fields {
+			f.expr(field.expr)
+			if i < it.fields.len - 1 {
+				f.write(', ')
+			}
+		}
+		f.write('}')
+	} else {
+		f.writeln('$name{')
+		f.indent++
+		for field in it.fields {
+			f.write('$field.name: ')
+			f.expr(field.expr)
+			f.writeln('')
+		}
+		f.indent--
+		f.write('}')
+	}
 }

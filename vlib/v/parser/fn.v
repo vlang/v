@@ -22,7 +22,7 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 	}
 	if fn_name == 'json.decode' {
 		// Makes name_expr() parse the type (`User` in `json.decode(User, txt)`)`
-		p.inside_is = true
+		p.expecting_type = true
 		p.expr_mod = ''
 	}
 	p.check(.lpar)

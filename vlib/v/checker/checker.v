@@ -89,7 +89,9 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 		// shared libs do not need to have a main
 		return
 	}
-	if has_main_mod_file && !has_main_fn {
+	if !has_main_mod_file {
+		c.error('projet must include a `main` module or be a shared library (compile with `v -shared`)', token.Position{})
+	} else if !has_main_fn {
 		c.error('function `main` must be declared in the main module', token.Position{})
 	}
 }
@@ -735,7 +737,8 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	} else if fn_name == 'json.decode' {
 		expr := call_expr.args[0].expr
 		if !(expr is ast.Type) {
-			c.error('json.decode: first argument needs to be a type', call_expr.pos)
+			typ := typeof(expr)
+			c.error('json.decode: first argument needs to be a type, got `$typ`', call_expr.pos)
 			return table.void_type
 		}
 		typ := expr as ast.Type
@@ -1515,6 +1518,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.expr(it.arg)
 			}
 			it.typname = c.table.get_type_symbol(it.typ).name
+			if it.typ == table.string_type && !it.has_arg && it.expr_type.is_number() && !it.expr_type.is_ptr() {
+				// s := c.table.get_type_symbol(it.expr_type)
+				c.error('use `number.str()` instead of `string(number)`', it.pos)
+			}
 			return it.typ
 		}
 		ast.CallExpr {
@@ -1609,8 +1616,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return table.string_type
 		}
 		ast.AnonFn {
+			keep_ret_type := c.fn_return_type
 			c.fn_return_type = it.decl.return_type
 			c.stmts(it.decl.stmts)
+			c.fn_return_type = keep_ret_type
 			return it.typ
 		}
 		else {

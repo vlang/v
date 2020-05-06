@@ -123,6 +123,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			if p.tok.kind == .comment {
 				comment = p.comment()
 			}
+			// TODO merge table and ast Fields?
 			ast_fields << ast.StructField{
 				name: field_name
 				pos: field_pos
@@ -140,6 +141,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_pub: is_field_pub
 				is_mut: is_field_mut
 				is_global: is_field_global
+				attr: attr.name
 			}
 			// println('struct field $ti.name $field_name')
 		}
