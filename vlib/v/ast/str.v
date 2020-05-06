@@ -50,10 +50,13 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		is_last_arg := i == node.args.len - 1
 		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ || (node.is_variadic &&
 			i == node.args.len - 2)
+		if arg.is_mut {
+			f.write('mut ')
+		}
 		f.write(arg.name)
 		mut s := t.type_to_str(arg.typ)
 		if arg.is_mut {
-			f.write(' mut')
+			// f.write(' mut')
 			if s.starts_with('&') {
 				s = s[1..]
 			}
