@@ -11,8 +11,13 @@ import math
 
 // X11
 struct C.Display{}
-struct C.Atom{}
-struct C.Window{}
+
+[typedef]
+struct C.Atom
+
+[typedef]
+struct C.Window
+
 fn C.XInitThreads() int
 fn C.XCloseDisplay(d &Display)
 fn C.XFlush(d &Display)
@@ -46,6 +51,8 @@ struct C.XSelectionRequestEvent{
 	property C.Atom
 	time int
 }
+
+[typedef]
 struct C.XSelectionEvent{
 	mut:
 	@type int
@@ -56,15 +63,20 @@ struct C.XSelectionEvent{
 	property C.Atom
 	time int
 }
+
+[typedef]
 struct C.XSelectionClearEvent{
 	mut:
 	window C.Window
 	selection C.Atom
 }
+
 struct C.XDestroyWindowEvent {
 	mut:
 	window C.Window
 }
+
+[typedef]
 struct C.XEvent{
 	mut:
 	@type int
