@@ -41,6 +41,9 @@ fn C.BlackPixel() voidptr
 fn C.WhitePixel() voidptr
 fn C.XFree()
 
+fn todo_del(){}
+
+[typedef]
 struct C.XSelectionRequestEvent{
 	mut:
 	selection C.Atom
@@ -71,6 +74,7 @@ struct C.XSelectionClearEvent{
 	selection C.Atom
 }
 
+[typedef]
 struct C.XDestroyWindowEvent {
 	mut:
 	window C.Window

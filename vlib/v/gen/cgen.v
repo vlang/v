@@ -300,6 +300,11 @@ fn (mut g Gen) typ(t table.Type) string {
 			g.optionals << styp
 		}
 	}
+	/*
+	if styp.starts_with('C__') {
+		return styp[3..]
+	}
+	*/
 	return styp
 }
 
@@ -1175,12 +1180,16 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.is_amp = false
 		}
 		ast.SizeOf {
-			if it.type_name != '' {
-				g.write('sizeof($it.type_name)')
-			} else {
-				styp := g.typ(it.typ)
-				g.write('sizeof(/*typ*/$styp)')
+			mut styp := it.type_name
+			if it.type_name == '' {
+				styp = g.typ(it.typ)
 			}
+			/*
+			if styp.starts_with('C__') {
+				styp = styp[3..]
+			}
+			*/
+			g.write('sizeof($styp)')
 		}
 		ast.StringLiteral {
 			if it.is_raw {
@@ -2851,7 +2860,10 @@ fn (g Gen) type_default(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .array {
 		elem_sym := g.table.get_type_symbol(sym.array_info().elem_type)
-		elem_type_str := elem_sym.name.replace('.', '__')
+		mut elem_type_str := elem_sym.name.replace('.', '__')
+		if elem_type_str.starts_with('C__') {
+			elem_type_str = elem_type_str[3..]
+		}
 		return '__new_array(0, 1, sizeof($elem_type_str))'
 	}
 	if sym.kind == .map {
