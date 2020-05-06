@@ -12,11 +12,12 @@ const (
 		'vlib/v/tests/type_test.v',
 		'vlib/v/tests/pointers_str_test.v',
 		'vlib/arrays/arrays_test.v',
-		'vlib/net/http/http_httpbin_test.v'
+		'vlib/net/http/http_httpbin_test.v',
 	]
 	skip_on_musl        = [
 		'vlib/net/http/http_test.v',
-		'vlib/net/http/cookie_test.v'
+		'vlib/net/http/cookie_test.v',
+		'vlib/clipboard/clipboard_test.v',
 	]
 	skip_on_linux       = []string{}
 	skip_on_non_linux   = []string{}
