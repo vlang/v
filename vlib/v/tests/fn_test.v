@@ -65,6 +65,14 @@ fn modify_array(a mut []int) {
 	// a << 888
 }
 
+fn modify_array2(mut a []int) {
+	a[0] = 10
+	for i in 0 .. a.len {
+		a[i] = a[i] * 2
+	}
+	// a << 888
+}
+
 fn test_mut_array() {
 	mut nums := [1, 2, 3]
 	modify_array(mut nums)

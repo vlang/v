@@ -358,16 +358,20 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 		}
 	} else {
 		for p.tok.kind != .rpar {
+			mut is_mut := p.tok.kind == .key_mut
+			if is_mut {
+				p.next()
+			}
 			mut arg_names := [p.check_name()]
 			// `a, b, c int`
 			for p.tok.kind == .comma {
 				p.check(.comma)
 				arg_names << p.check_name()
 			}
-			is_mut := p.tok.kind == .key_mut
-			// if is_mut {
-			// p.check(.key_mut)
-			// }
+			if p.tok.kind == .key_mut {
+				// TODO remove old syntax
+				is_mut = true
+			}
 			if p.tok.kind == .ellipsis {
 				p.check(.ellipsis)
 				is_variadic = true
