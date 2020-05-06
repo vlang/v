@@ -98,6 +98,7 @@ fn test_inttypes_string_interpolation() {
 	assert '${s:X}:${us:x}:${u16(uc):04x}' == 'A460:d431:00d9'
 	assert '${i:x}:${ui:X}:${int(s):x}' == '9f430000:CBF6EFC7:ffffa460'
 	assert '${l:x}:${ul:X}' == '9537727cad98876c:EF2B7D4001165BD2'
+	// default pointer format is platform dependent, so try a few
 	assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c' ||
 		'${vp:p}:$bp' == 'CBF6EFC7:39E53208C' ||
 		'${vp:p}:$bp' == '00000000CBF6EFC7:000000039E53208C'
