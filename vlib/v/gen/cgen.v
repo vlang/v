@@ -3271,7 +3271,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 			} else if sym.kind == .struct_ {
 				g.auto_str_funcs.write('indents, ')
 				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ) ')
-			} else if sym.kind in [.array, .array_fixed] {
+			} else if sym.kind in [.array, .array_fixed, .map] {
 				g.auto_str_funcs.write('indents, ')
 				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}) ')
 			} else {
