@@ -98,8 +98,9 @@ fn test_inttypes_string_interpolation() {
 	assert '${s:X}:${us:x}:${u16(uc):04x}' == 'A460:d431:00d9'
 	assert '${i:x}:${ui:X}:${int(s):x}' == '9f430000:CBF6EFC7:ffffa460'
 	assert '${l:x}:${ul:X}' == '9537727cad98876c:EF2B7D4001165BD2'
-	// TODO this does not work on Windows
-	// assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c'
+	assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c' ||
+		'${vp:p}:$bp' == 'CBF6EFC7:39E53208C' ||
+		'${vp:p}:$bp' == '00000000CBF6EFC7:000000039E53208C'
 }
 
 fn test_utf8_string_interpolation() {
@@ -109,8 +110,7 @@ fn test_utf8_string_interpolation() {
 	assert '$a $st $m' == 'à-côté Sträßle 10€'
 	assert '>${a:10}< >${st:-8}< >${m:5}<-' == '>    à-côté< >Sträßle < >  10€<-'
 	e := '\u20AC' // Eurosign
-	// TODO: this fails with MSVC and tcc
-	// assert '100.00 $e' == '100.00 €'
+	assert '100.00 $e' == '100.00 €'
 	m2 := 'Москва́' // cyrillic а́: combination of U+0430 and U+0301, UTF-8: d0 b0 cc 81
 	d := 'Antonín Dvořák' // latin á: U+00E1, UTF-8: c3 a1
 	assert ':${m2:7}:${d:-15}:' == ': Москва́:Antonín Dvořák :'
