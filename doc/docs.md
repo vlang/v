@@ -223,8 +223,8 @@ Format specifiers similar to those in C's `printf()` are supported, too. `f`, `g
 and specify the output format. The compiler takes care of the storage size, so there is no `hd` or `llu`.
 
 ```v
-println('x = ${x:12.3f}'`
-println('${item:-20} ${n:20d})
+println('x = ${x:12.3f}')
+println('${item:-20} ${n:20d}')
 ```
 
 All operators in V must have values of the same type on both sides. This code will not compile if `age` is an `int`:
