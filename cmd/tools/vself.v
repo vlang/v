@@ -21,7 +21,7 @@ fn main() {
 		if !result.output.contains('Permission denied') {
 			err = '\n$result.output'
 		}
-		eprintln('cannot compile to ‘$vroot: $err')
+		eprintln('cannot compile to `$vroot`: $err')
 		exit(1)
 	}
 	if result.output.len > 0 {
