@@ -109,7 +109,8 @@ fn test_utf8_string_interpolation() {
 	m := '10€'
 	assert '$a $st $m' == 'à-côté Sträßle 10€'
 	assert '>${a:10}< >${st:-8}< >${m:5}<-' == '>    à-côté< >Sträßle < >  10€<-'
-	e := '\u20AC' // Eurosign
+	// e := '\u20AC' // Eurosign doesn' work with MSVC and tcc
+	e := '€'
 	assert '100.00 $e' == '100.00 €'
 	m2 := 'Москва́' // cyrillic а́: combination of U+0430 and U+0301, UTF-8: d0 b0 cc 81
 	d := 'Antonín Dvořák' // latin á: U+00E1, UTF-8: c3 a1
