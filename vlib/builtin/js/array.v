@@ -98,11 +98,17 @@ pub fn (a array) reverse() array {
 	return a
 }
 
+// array.clone_static returns an independent copy of a given array
+// It should be used only in -autofree generated code.
+fn (a array) clone_static() array {
+       return a.clone()
+}
+
 pub fn (a array) clone() array {
 	return a
 }
 
-pub fn (a array) free() {
+pub fn (a &array) free() {
 }
 
 // "[ 'a', 'b', 'c' ]"
