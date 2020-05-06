@@ -175,6 +175,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_mut: arg.is_mut
 			pos: p.tok.position()
 			is_used: true
+			is_arg: true
 		})
 		// Do not allow `mut` with simple types
 		// TODO move to checker?
@@ -280,6 +281,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			typ: arg.typ
 			pos: p.tok.position()
 			is_used: true
+			is_arg: true
 		})
 	}
 	mut return_type := table.void_type

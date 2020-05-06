@@ -134,12 +134,12 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	for file in files {
 		g.file = file
 		// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
-		building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
+//		building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
 		is_test := g.file.path.ends_with('.vv') || g.file.path.ends_with('_test.v')
 		if g.file.path.ends_with('_test.v') {
 			g.is_test = is_test
 		}
-		if g.file.path == '' || is_test || building_v || !g.pref.autofree {
+		if g.file.path == '' || is_test || !g.pref.autofree {
 			// cgen test or building V
 			// println('autofree=false')
 			g.autofree = false
@@ -646,6 +646,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Return {
 			g.write_defer_stmts_when_needed()
+			g.write_autofree_stmts_when_needed(it)
 			g.return_statement(it)
 		}
 		ast.StructDecl {
@@ -980,7 +981,7 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 		if add_eq {
 			g.write('=')
 		}
-		g.write(' array_clone(&')
+		g.write(' array_clone_static(')
 		g.expr(val)
 		g.write(')')
 	} else if g.autofree && right_sym.kind == .string && is_ident {
@@ -988,15 +989,16 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 			g.write('=')
 		}
 		// `str1 = str2` => `str1 = str2.clone()`
-		g.write(' string_clone(')
+		g.write(' string_clone_static(')
 		g.expr(val)
 		g.write(')')
 	}
 	return true
 }
 
-fn (mut g Gen) free_scope_vars(pos int) {
-	println('free_scope_vars($pos)')
+fn (mut g Gen) autofree_scope_vars(pos int) string {
+	//	eprintln('> free_scope_vars($pos)')
+	mut freeing_code := ''
 	scope := g.file.scope.innermost(pos)
 	for _, obj in scope.objects {
 		match obj {
@@ -1006,33 +1008,55 @@ fn (mut g Gen) free_scope_vars(pos int) {
 				// continue
 				// }
 				v := *it
-				println(v.name)
-				// println(v.typ)
-				sym := g.table.get_type_symbol(v.typ)
 				is_optional := v.typ.flag_is(.optional)
-				if sym.kind == .array && !is_optional {
-					g.writeln('\tarray_free($v.name); // autofreed')
+				if is_optional {
+					// TODO: free optionals
+					continue
 				}
-				if sym.kind == .string && !is_optional {
-					// Don't free simple string literals.
-					t := typeof(v.expr)
-					match v.expr {
-						ast.StringLiteral {
-							g.writeln('// str literal')
-							continue
-						}
-						else {
-							// NOTE/TODO: assign_stmt multi returns variables have no expr
-							// since the type comes from the called fns return type
-							g.writeln('// other ' + t)
-							continue
-						}
-					}
-					g.writeln('string_free($v.name); // autofreed')
-				}
+				freeing_code += g.autofree_variable(v)
 			}
 			else {}
 		}
+	}
+	return freeing_code
+}
+
+fn (g &Gen) autofree_variable(v ast.Var) string {
+	sym := g.table.get_type_symbol(v.typ)
+	//	eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
+	if sym.kind == .array {
+		return g.autofree_var_call('array_free', v)
+	}
+	if sym.kind == .string {
+		// Don't free simple string literals.
+		t := typeof(v.expr)
+		match v.expr {
+			ast.StringLiteral {
+				return '// str literal\n'
+			}
+			else {
+				// NOTE/TODO: assign_stmt multi returns variables have no expr
+				// since the type comes from the called fns return type
+				return '// other ' + t + '\n'
+			}
+		}
+		return g.autofree_var_call('string_free', v)
+	}
+	if sym.has_method('free') {
+		return g.autofree_var_call(c_name(sym.name) + '_free', v)
+	}
+	return ''
+}
+
+fn (g &Gen) autofree_var_call(free_fn_name string, v ast.Var) string {
+	if v.is_arg {
+		// fn args should not be autofreed
+		return ''
+	}
+	if v.typ.is_ptr() {
+		return '\t${free_fn_name}($v.name); // autofreed ptr var\n'
+	}else{
+		return '\t${free_fn_name}(&$v.name); // autofreed var\n'
 	}
 }
 
@@ -2221,10 +2245,10 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('void _vcleanup() {')
 		// g.writeln('puts("cleaning up...");')
 		if g.is_importing_os() {
-			g.writeln('free(_const_os__args.data);')
-			g.writeln('string_free(_const_os__wd_at_startup);')
+			g.writeln('array_free(&_const_os__args);')
+			g.writeln('string_free(&_const_os__wd_at_startup);')
 		}
-		g.writeln('free(_const_strconv__ftoa__powers_of_10.data);')
+		g.writeln('array_free(&_const_strconv__ftoa__powers_of_10);')
 		g.writeln('}')
 	}
 }
@@ -3215,7 +3239,7 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
 		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(tos3("${styp}("), tos3(${typename}_str((${convertor})it).str));')
 	}
 	g.auto_str_funcs.writeln('\tstring tmp2 = string_add(tmp1, tos3(")"));')
-	g.auto_str_funcs.writeln('\tstring_free(tmp1);')
+	g.auto_str_funcs.writeln('\tstring_free(&tmp1);')
 	g.auto_str_funcs.writeln('\treturn tmp2;')
 	g.auto_str_funcs.writeln('}')
 }
@@ -3324,7 +3348,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, x);')
 	if g.pref.autofree && info.elem_type != table.bool_type {
 		// no need to free "true"/"false" literals
-		g.auto_str_funcs.writeln('\t\tstring_free(x);')
+		g.auto_str_funcs.writeln('\t\tstring_free(&x);')
 	}
 	g.auto_str_funcs.writeln('\t\tif (i < a.len-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos3(", "));')

@@ -159,11 +159,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	g.stmts(it.stmts)
 	// ////////////
-	if g.autofree {
-		// println('\n\ncalling free for fn $it.name')
-		g.free_scope_vars(it.body_pos.pos)
-	}
-	// /////////
 	if is_main {
 		if g.autofree {
 			g.writeln('\t_vcleanup();')
@@ -173,6 +168,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 	}
 	g.write_defer_stmts_when_needed()
+	// /////////
+	if g.autofree {
+		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
+		g.writeln( g.autofree_scope_vars(it.body_pos.pos) )
+	}
 	if is_main {
 		g.writeln('\treturn 0;')
 	}
@@ -181,6 +181,17 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
 		println(g.out.after(fn_start_pos))
 	}
+}
+
+fn (mut g Gen) write_autofree_stmts_when_needed(r ast.Return) {
+	// TODO: write_autofree_stmts_when_needed should account for the current local scope vars.
+	// TODO: write_autofree_stmts_when_needed should not free the returned variables.
+	// It may require rewriting g.return_statement to assign the expressions
+	// to temporary variables, then protecting *them* from autofreeing ...
+	g.writeln('/* autofreeings before return:              -------')
+	//g.write( g.autofree_scope_vars(r.pos.pos) )
+	g.write( g.autofree_scope_vars(g.fn_decl.body_pos.pos) )
+	g.writeln('--------------------------------------------------- */')
 }
 
 fn (mut g Gen) write_defer_stmts_when_needed() {
@@ -440,7 +451,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// tmps << tmp
 			g.write('string $tmp = ${str_fn_name}(')
 			g.expr(node.args[0].expr)
-			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
+			g.writeln('); ${print_method}($tmp); string_free(&$tmp); //MEM2 $styp')
 		} else {
 			expr := node.args[0].expr
 			is_var := match expr {

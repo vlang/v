@@ -278,6 +278,7 @@ pub:
 	name    string
 	expr    Expr
 	is_mut  bool
+	is_arg  bool // fn args should not be autofreed
 mut:
 	typ     table.Type
 	pos     token.Position
