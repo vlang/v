@@ -16,7 +16,6 @@ const (
 		'vlib/net/http/http_httpbin_test.v', // fails on ubuntu-musl, because of missing openssl
 		'vlib/net/http/http_test.v', // fails on ubuntu-musl, because of missing openssl
 		'vlib/net/http/cookie_test.v', // ok, but should be skipped on ubuntu-musl, since there is no openssl there
-		'vlib/clipboard/clipboard_test.v',
 		'vlib/sqlite/sqlite_test.v',
 
 		'vlib/v/tests/asm_test.v', // skip everywhere for now, works on linux with cc != tcc
