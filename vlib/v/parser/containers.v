@@ -21,7 +21,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	if p.tok.kind == .rsbr {
 		// []typ => `[]` and `typ` must be on the same line
 		line_nr := p.tok.line_nr
-		p.check(.rsbr)
+		p.next()
 		// []string
 		if p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
 			elem_type = p.parse_type()
@@ -37,7 +37,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			expr := p.expr(0)
 			exprs << expr
 			if p.tok.kind == .comma {
-				p.check(.comma)
+				p.next()
 			}
 			// p.check_comment()
 		}
