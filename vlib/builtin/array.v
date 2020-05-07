@@ -212,6 +212,12 @@ fn (a array) slice2(start, _end int, end_max bool) array {
 	return a.slice(start, end)
 }
 
+// array.clone_static returns an independent copy of a given array
+// It should be used only in -autofree generated code.
+fn (a array) clone_static() array {
+	return a.clone()
+}
+
 // array.clone returns an independent copy of a given array
 pub fn (a &array) clone() array {
 	mut size := a.cap * a.element_size
@@ -304,7 +310,7 @@ pub fn (a array) reverse() array {
 
 // pub fn (a []int) free() {
 [unsafe_fn]
-pub fn (a array) free() {
+pub fn (a &array) free() {
 	// if a.is_slice {
 	// return
 	// }

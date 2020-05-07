@@ -33,9 +33,10 @@ pub mut:
 
 pub struct Arg {
 pub:
-	name   string
-	is_mut bool
-	typ    Type
+	name      string
+	is_mut    bool
+	typ       Type
+	is_hidden bool // interface first arg
 }
 
 pub struct Var {
@@ -69,6 +70,21 @@ pub fn (f &Fn) signature() string {
 	}
 	sig += '_$f.return_type'
 	return sig
+}
+
+pub fn (f &Fn) is_same_method_as(func &Fn) bool {
+	if f.return_type != func.return_type {
+		return false
+	}
+	if f.args.len != func.args.len {
+		return false
+	}
+	for i in 1 .. f.args.len {
+		if f.args[i].typ != func.args[i].typ {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn (t &Table) find_fn(name string) ?Fn {
@@ -145,15 +161,6 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 		ts = &t.types[ts.parent_idx]
 	}
 	return none
-}
-
-pub fn (t &Table) interface_add_type(inter mut Interface, typ Type) bool {
-	// TODO Verify `typ` implements `inter`
-	typ_sym := t.get_type_symbol(typ)
-	if typ !in inter.types && typ_sym.kind != .interface_ {
-		inter.types << typ
-	}
-	return true
 }
 
 [inline]
@@ -470,17 +477,6 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// # NOTE: use symbols from this point on for perf
 	got_type_sym := t.get_type_symbol(got)
 	exp_type_sym := t.get_type_symbol(expected)
-	// Handle expected interface
-	if exp_type_sym.kind == .interface_ {
-		mut info := exp_type_sym.info as Interface
-		return t.interface_add_type(info, got)
-	}
-	// Handle expected interface array
-	/*
-	if exp_type_sym.kind == .array && t.get_type_symbol(t.value_type(exp_idx)).kind == .interface_ {
-		return true
-	}
-	*/
 	//
 	if exp_type_sym.kind == .function && got_type_sym.kind == .int {
 		// TODO temporary

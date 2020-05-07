@@ -417,7 +417,7 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 			for sy := 0; sy < 2; sy ++ {
 				for sx := 0; sx < 2; sx ++ {
 					r = Vec{0,0,0}
-					for s in 0..samps {
+					for _ in 0..samps {
 						r1 := v_2 * rand_f64()
 						dx := if r1 < v_1 { math.sqrt(r1) - v_1 } else { v_1 - math.sqrt(v_2 - r1) }
 
@@ -473,10 +473,11 @@ fn main() {
 	image := ray_trace(width, height, samples, file_name, scene_id)
 	t2:=time.ticks()
 
-	eprintln('\nRendering finished. Took: ${t2-t1:5d}ms')
+
+	eprintln('\nRendering finished. Took: ${(t2-t1):5}ms')
 
 	image.save_as_ppm( file_name )
 	t3:=time.ticks()
 
-	eprintln('Image saved as [${file_name}]. Took: ${t3-t2:5d}ms')
+	eprintln('Image saved as [${file_name}]. Took: ${(t3-t2):5}ms')
 }

@@ -103,12 +103,12 @@ cJSON* ${enc_fn_name}($styp val) {
 
 fn js_enc_name(typ string) string {
 	name := 'json__encode_$typ'
-	return name
+	return name.replace('.', '__')
 }
 
 fn js_dec_name(typ string) string {
 	name := 'json__decode_$typ'
-	return name
+	return name.replace('.', '__')
 }
 
 fn is_js_prim(typ string) bool {

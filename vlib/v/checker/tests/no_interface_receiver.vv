@@ -1,0 +1,5 @@
+interface Animal {
+	speak()
+}
+
+fn (a Animal) str() {}

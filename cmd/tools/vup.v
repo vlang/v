@@ -17,7 +17,7 @@ fn main() {
 
 	if git_result.exit_code != 0 {
 		if git_result.output.contains('Permission denied') {
-			eprintln('have no access ‘$vroot: Permission denied')
+			eprintln('have no access `$vroot`: Permission denied')
 		} else {
 			eprintln(git_result.output)
 		}
@@ -29,8 +29,8 @@ fn main() {
 	current_hash := util.githash(true)
 	// println(v_hash)
 	// println(current_hash)
-	if v_hash == current_hash { 
-		return 
+	if v_hash == current_hash {
+		return
 	}
 
 	$if windows {

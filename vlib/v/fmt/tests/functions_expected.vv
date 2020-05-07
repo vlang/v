@@ -54,6 +54,10 @@ fn (f Foo) fn_with_optional() ?int {
 	return 40
 }
 
+fn mut_array(mut a []int) {
+	println(1)
+}
+
 fn fn_with_ref_return() &Foo {
 	return &Foo{}
 }

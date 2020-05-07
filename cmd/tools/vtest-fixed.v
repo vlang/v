@@ -5,26 +5,31 @@ import testing
 import v.pref
 
 const (
-	skip_test_files = [
-		'vlib/arrays/arrays_test.v',
+	skip_test_files     = [
 		'vlib/v/tests/enum_bitfield_test.v',
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/pointers_test.v',
 		'vlib/v/tests/type_test.v',
-		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
 		'vlib/v/tests/pointers_str_test.v',
-		'vlib/net/http/http_httpbin_test.v', // fails on ubuntu-musl, because of missing openssl
-		'vlib/net/http/http_test.v', // fails on ubuntu-musl, because of missing openssl
-		'vlib/net/http/cookie_test.v', // ok, but should be skipped on ubuntu-musl, since there is no openssl there
-		'vlib/clipboard/clipboard_test.v',
-		'vlib/sqlite/sqlite_test.v',
-
-		'vlib/v/tests/asm_test.v', // skip everywhere for now, works on linux with cc != tcc
+		'vlib/arrays/arrays_test.v',
+		'vlib/net/http/http_httpbin_test.v',
 	]
-	skip_on_linux = []string{}
-	skip_on_non_linux = []string{}
+	skip_on_musl        = [
+		'vlib/net/http/http_test.v',
+		'vlib/net/http/cookie_test.v',
+        'vlib/sqlite/sqlite_test.v',
+		'vlib/clipboard/clipboard_test.v',
+	]
+	skip_on_linux       = []string{}
+	skip_on_non_linux   = []string{}
+	skip_on_windows     = []string{}
+	skip_on_non_windows = []string{}
+	skip_on_macos       = []string{}
+	skip_on_non_macos   = []string{}
 )
 
+// NB: musl misses openssl, thus the http tests can not be done there
+// NB: http_httpbin_test.v: fails with 'cgen error: json: map_string_string is not struct'
 fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -33,16 +38,32 @@ fn main() {
 	args_string := args[1..].join(' ')
 	cmd_prefix := args_string.all_before('test-fixed')
 	title := 'testing all fixed tests'
-	all_test_files := os.walk_ext( os.join_path(vroot,'vlib'), '_test.v')
+	all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix)
 	tsession.files << all_test_files
 	tsession.skip_files << skip_test_files
+	//
+	if os.getenv('V_CI_MUSL').len > 0 {
+		tsession.skip_files << skip_on_musl
+	}
 	$if !linux {
-	   tsession.skip_files << skip_on_non_linux
+		tsession.skip_files << skip_on_non_linux
 	}
 	$if linux {
-	   tsession.skip_files << skip_on_linux
+		tsession.skip_files << skip_on_linux
+	}
+	$if windows {
+		tsession.skip_files << skip_on_windows
+	}
+	$if !windows {
+		tsession.skip_files << skip_on_non_windows
+	}
+	$if macos {
+		tsession.skip_files << skip_on_macos
+	}
+	$if !macos {
+		tsession.skip_files << skip_on_non_macos
 	}
 	tsession.test()
 	eprintln(tsession.benchmark.total_message(title))

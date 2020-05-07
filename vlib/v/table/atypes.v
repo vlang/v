@@ -641,6 +641,26 @@ pub fn (table &Table) type_to_str(t Type) string {
 	return res
 }
 
+pub fn(t &Table) fn_to_str(func &Fn) string {
+	mut sb := strings.new_builder(20)
+	sb.write('${func.name}(')
+	for i in 1 .. func.args.len {
+		arg := func.args[i]
+		sb.write('$arg.name')
+		if i == func.args.len - 1 || func.args[i + 1].typ != arg.typ {
+			sb.write(' ${t.type_to_str(arg.typ)}')
+		}
+		if i != func.args.len - 1 {
+			sb.write(', ')
+		}
+	}
+	sb.write(')')
+	if func.return_type != table.void_type {
+		sb.write(' ${t.type_to_str(func.return_type)}')
+	}
+	return sb.str()
+}
+
 pub fn (t &TypeSymbol) has_method(name string) bool {
 	t.find_method(name) or {
 		return false

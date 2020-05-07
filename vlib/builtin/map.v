@@ -413,7 +413,7 @@ pub fn (m &map) keys() []string {
 }
 
 [unsafe_fn]
-pub fn (m map) free() {
+pub fn (m &map) free() {
 	free(m.metas)
 	for i := u32(0); i < m.key_values.size; i++ {
 		if m.key_values.keys[i].str == 0 {

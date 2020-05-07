@@ -44,6 +44,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 rd /s /q vc
+del v_old.exe
 goto :success
 
 :msvc_strap
@@ -61,6 +62,8 @@ for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Instal
 
 if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
 	call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
+) else if exist "%VsWhereDir%\Microsoft Visual Studio 14.0\Common7\Tools\vsdevcmd.bat" (
+	call "%VsWhereDir%\Microsoft Visual Studio 14.0\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
 ) else (
 	goto :no_compiler
 )
@@ -79,17 +82,12 @@ v self
 if %ERRORLEVEL% NEQ 0 (
 	echo V failed to build itself with error %ERRORLEVEL%
 	rd /s /q vc
-	del v_old.exe
-	del v2.pdb
-	del vc140.pdb
 	del %ObjFile%
 	goto :compile_error
 )
 
 rd /s /q vc
 del v_old.exe
-del v2.pdb
-del vc140.pdb
 del %ObjFile%
 
 goto :success

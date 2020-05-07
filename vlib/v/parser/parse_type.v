@@ -21,7 +21,7 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 	elem_type := p.parse_type()
 	mut nr_dims := 1
 	for p.tok.kind == .lsbr {
-		p.check(.lsbr)
+		p.next()
 		p.check(.rsbr)
 		nr_dims++
 	}
@@ -54,7 +54,7 @@ pub fn (mut p Parser) parse_multi_return_type() table.Type {
 		mr_type := p.parse_type()
 		mr_types << mr_type
 		if p.tok.kind == .comma {
-			p.check(.comma)
+			p.next()
 		} else {
 			break
 		}

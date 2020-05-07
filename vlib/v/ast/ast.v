@@ -159,6 +159,7 @@ pub:
 	name        string
 	field_names []string
 	methods     []FnDecl
+	pos token.Position
 }
 
 pub struct StructInitField {
@@ -205,6 +206,7 @@ pub:
 	is_variadic   bool
 	is_anon       bool
 	receiver      Field
+	receiver_pos  token.Position
 	is_method     bool
 	rec_mut       bool // is receiver mutable
 	is_c          bool
@@ -277,6 +279,7 @@ pub:
 	name    string
 	expr    Expr
 	is_mut  bool
+	is_arg  bool // fn args should not be autofreed
 mut:
 	typ     table.Type
 	pos     token.Position
@@ -678,7 +681,7 @@ pub:
 	expr      Expr // `buf`
 	arg       Expr // `n` in `string(buf, n)`
 	typ       table.Type // `string`
-	pos token.Position
+	pos       token.Position
 mut:
 	typname   string
 	expr_type table.Type // `byteptr`
@@ -777,7 +780,9 @@ fn (expr Expr) position() token.Position {
 		AssignExpr {
 			return it.pos
 		}
-		// ast.CastExpr { }
+		CastExpr {
+			return it.pos
+		}
 		Assoc {
 			return it.pos
 		}

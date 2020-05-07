@@ -70,8 +70,7 @@ string _STR(const char *fmt, int nfmts, ...) {
 				//v_panic(tos3('Invaid format specifier'));
 			}
 		} else {
-			if (k)
-				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
+			_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
 		}
 		fmt += k+1;
 	}

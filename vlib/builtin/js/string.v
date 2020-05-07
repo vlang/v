@@ -26,6 +26,11 @@ pub fn tos(s byteptr) string {
 	}	
 }	
 
+// string.clone_static returns an independent copy of a given array
+// It should be used only in -autofree generated code.
+fn (a string) clone_static() string {
+	return a.clone()
+}
 
 pub fn (a string) clone() string {
 	return a
@@ -241,17 +246,8 @@ pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
 
-pub fn (s string) free() {
+pub fn (s &string) free() {
 }
-
-/*
-fn (arr []string) free() {
-	for s in arr {
-		s.free()
-	}
-	C.free(arr.data)
-}
-*/
 
 // all_before('23:34:45.234', '.') == '23:34:45'
 pub fn (s string) all_before(dot string) string {

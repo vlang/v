@@ -75,7 +75,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 	for p.tok.kind != .rpar {
 		mut is_mut := false
 		if p.tok.kind == .key_mut {
-			p.check(.key_mut)
+			p.next()
 			is_mut = true
 		}
 		e := p.expr(0)
@@ -109,6 +109,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Receiver?
 	mut rec_name := ''
 	mut is_method := false
+	mut receiver_pos := token.Position{}
 	mut rec_type := table.void_type
 	mut rec_mut := false
 	mut args := []table.Arg{}
@@ -119,11 +120,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if rec_mut {
 			p.next() // `mut`
 		}
+		rec_start_pos := p.tok.position()
 		rec_name = p.check_name()
 		if !rec_mut {
 			rec_mut = p.tok.kind == .key_mut
 		}
 		is_amp := p.tok.kind == .amp
+		receiver_pos = rec_start_pos.extend(p.tok.position())
 		// if rec_mut {
 		// p.check(.key_mut)
 		// }
@@ -175,6 +178,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_mut: arg.is_mut
 			pos: p.tok.position()
 			is_used: true
+			is_arg: true
 		})
 		// Do not allow `mut` with simple types
 		// TODO move to checker?
@@ -255,6 +259,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			name: rec_name
 			typ: rec_type
 		}
+		receiver_pos: receiver_pos
 		is_method: is_method
 		rec_mut: rec_mut
 		is_c: is_c
@@ -280,6 +285,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			typ: arg.typ
 			pos: p.tok.position()
 			is_used: true
+			is_arg: true
 		})
 	}
 	mut return_type := table.void_type
@@ -333,10 +339,10 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			arg_name := 'arg_$arg_no'
 			is_mut := p.tok.kind == .key_mut
 			if is_mut {
-				p.check(.key_mut)
+				p.next()
 			}
 			if p.tok.kind == .ellipsis {
-				p.check(.ellipsis)
+				p.next()
 				is_variadic = true
 			}
 			mut arg_type := p.parse_type()
@@ -358,18 +364,22 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 		}
 	} else {
 		for p.tok.kind != .rpar {
+			mut is_mut := p.tok.kind == .key_mut
+			if is_mut {
+				p.next()
+			}
 			mut arg_names := [p.check_name()]
 			// `a, b, c int`
 			for p.tok.kind == .comma {
-				p.check(.comma)
+				p.next()
 				arg_names << p.check_name()
 			}
-			is_mut := p.tok.kind == .key_mut
-			// if is_mut {
-			// p.check(.key_mut)
-			// }
+			if p.tok.kind == .key_mut {
+				// TODO remove old syntax
+				is_mut = true
+			}
 			if p.tok.kind == .ellipsis {
-				p.check(.ellipsis)
+				p.next()
 				is_variadic = true
 			}
 			mut typ := p.parse_type()
