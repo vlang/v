@@ -3231,7 +3231,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 			table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
 			table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
 			table.Map { g.gen_str_for_map(it, styp, str_fn_name) }
-			else { verror("could not generate string method $str_fn_name for type \'${styp}\'") }
+			else { verror("could not generate string method $str_fn_name for type \'${styp}\' | sym.name: ${sym.name}") }
 		}
 	}
 	// if varg, generate str for varg
