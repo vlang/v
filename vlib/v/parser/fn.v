@@ -125,8 +125,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if !rec_mut {
 			rec_mut = p.tok.kind == .key_mut
 		}
-		is_amp := p.tok.kind == .amp
+        
 		receiver_pos = rec_start_pos.extend(p.tok.position())
+		is_amp := p.tok.kind == .amp
+
 		// if rec_mut {
 		// p.check(.key_mut)
 		// }
