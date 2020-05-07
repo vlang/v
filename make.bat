@@ -44,6 +44,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 rd /s /q vc
+del v_old.exe
 goto :success
 
 :msvc_strap
@@ -81,15 +82,12 @@ v self
 if %ERRORLEVEL% NEQ 0 (
 	echo V failed to build itself with error %ERRORLEVEL%
 	rd /s /q vc
-	del v_old.exe
-	del vc140.pdb
 	del %ObjFile%
 	goto :compile_error
 )
 
 rd /s /q vc
 del v_old.exe
-del vc140.pdb
 del %ObjFile%
 
 goto :success
