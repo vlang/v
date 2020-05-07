@@ -1069,7 +1069,7 @@ fn (g &Gen) autofree_variable(v ast.Var) string {
 			else {
 				// NOTE/TODO: assign_stmt multi returns variables have no expr
 				// since the type comes from the called fns return type
-				return '// other ' + t + '\n'
+				// return '// other ' + t + '\n'
 			}
 		}
 		return g.autofree_var_call('string_free', v)
