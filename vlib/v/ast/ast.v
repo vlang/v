@@ -206,6 +206,7 @@ pub:
 	is_variadic   bool
 	is_anon       bool
 	receiver      Field
+	receiver_pos  token.Position
 	is_method     bool
 	rec_mut       bool // is receiver mutable
 	is_c          bool
