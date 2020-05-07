@@ -2125,7 +2125,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	styp := g.typ(struct_init.typ)
 	is_amp := g.is_amp
 	if is_amp {
-		g.out.go_back(1) // delete the & already generated in `prefix_expr()
+		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 		g.write('($styp*)memdup(&($styp){')
 	} else {
 		g.writeln('($styp){')
@@ -2151,8 +2151,10 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.writeln(',')
 	}
 	// The rest of the fields are zeroed.
+	mut nr_info_fields := 0
 	if sym.kind == .struct_ {
 		info := sym.info as table.Struct
+		nr_info_fields = info.fields.len
 		for field in info.fields {
 			if field.name in inited_fields {
 				continue
@@ -2170,9 +2172,10 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			}
 			g.writeln(',')
 		}
-		if struct_init.fields.len == 0 && info.fields.len == 0 {
-			g.write('0')
-		}
+	}
+	// if struct_init.fields.len == 0 && info.fields.len == 0 {
+	if struct_init.fields.len == 0 && nr_info_fields == 0 {
+		g.write('0')
 	}
 	g.write('}')
 	if is_amp {
