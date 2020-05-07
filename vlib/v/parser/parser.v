@@ -316,12 +316,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			return p.interface_decl()
 		}
 		.key_import {
-			node := p.import_stmt()
-			if node.len == 0 {
-				return p.top_stmt()
-			}
-			p.ast_imports << node
-			return node[0]
+			return p.import_stmt()
 		}
 		.key_global {
 			return p.global_decl()
@@ -962,8 +957,12 @@ fn (mut p Parser) module_decl() ast.Module {
 	}
 }
 
-fn (mut p Parser) parse_import() ast.Import {
+fn (mut p Parser) import_stmt() ast.Import {
+	p.check(.key_import)
 	pos := p.tok.position()
+	if p.tok.kind == .lpar {
+		p.error_with_pos('`import()` has been deprecated, use `import x` instead', pos)
+	}
 	mut mod_name := p.check_name()
 	mut mod_alias := mod_name
 	for p.tok.kind == .dot {
@@ -978,31 +977,13 @@ fn (mut p Parser) parse_import() ast.Import {
 	}
 	p.imports[mod_alias] = mod_name
 	p.table.imports << mod_name
-	return ast.Import{
+	node := ast.Import{
 		mod: mod_name
 		alias: mod_alias
 		pos: pos
 	}
-}
-
-fn (mut p Parser) import_stmt() []ast.Import {
-	p.check(.key_import)
-	mut imports := []ast.Import{}
-	if p.tok.kind == .lpar {
-		p.warn('`import()` has been deprecated, use `import x` instead. run `v fmt` to handle the transition')
-		p.check(.lpar)
-		for p.tok.kind != .rpar {
-			imports << p.parse_import()
-			if p.tok.kind == .comment {
-				p.comment()
-			}
-		}
-		p.check(.rpar)
-	} else {
-		// p.warn('`import module` has been deprecated, use `import ( module )` instead')
-		imports << p.parse_import()
-	}
-	return imports
+	p.ast_imports << node
+	return node
 }
 
 fn (mut p Parser) const_decl() ast.ConstDecl {
