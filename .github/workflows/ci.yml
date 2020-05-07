@@ -155,6 +155,8 @@ jobs:
         ../../vprod -backend x64 -o 1m 1m.v
         echo "Running it..."
         ls
+    - name: V self compilation with -autofree
+      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 #    - name: SDL examples
 #      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
 

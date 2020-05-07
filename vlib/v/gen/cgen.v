@@ -1053,7 +1053,9 @@ fn (mut g Gen) autofree_scope_vars(pos int) string {
 
 fn (g &Gen) autofree_variable(v ast.Var) string {
 	sym := g.table.get_type_symbol(v.typ)
-	// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
+	// if v.name.contains('output2') {
+	eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
+	// }
 	if sym.kind == .array {
 		return g.autofree_var_call('array_free', v)
 	}
