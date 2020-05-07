@@ -43,6 +43,7 @@ NB: A V string should be/is immutable from the point of view of
 
 
 pub struct string {
+	is_lit bool
 pub:
 	str byteptr // points to a C style 0 terminated string of bytes.
 	len int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
@@ -103,6 +104,15 @@ pub fn tos3(s charptr) string {
 		len: C.strlen(s)
 	}
 }
+
+pub fn tos_lit(s charptr) string {
+	return string{
+		str: byteptr(s)
+		len: C.strlen(s)
+		is_lit:true
+	}
+}
+
 
 // string.clone_static returns an independent copy of a given array
 // It should be used only in -autofree generated code.
@@ -1172,6 +1182,7 @@ pub fn (c byte) is_letter() bool {
 }
 
 pub fn (s &string) free() {
+	if s.is_lit {return}
 	free(s.str)
 }
 

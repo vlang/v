@@ -1061,7 +1061,6 @@ fn (g &Gen) autofree_variable(v ast.Var) string {
 	}
 	if sym.kind == .string {
 		// Don't free simple string literals.
-		t := typeof(v.expr)
 		match v.expr {
 			ast.StringLiteral {
 				return '// str literal\n'
@@ -1069,6 +1068,7 @@ fn (g &Gen) autofree_variable(v ast.Var) string {
 			else {
 				// NOTE/TODO: assign_stmt multi returns variables have no expr
 				// since the type comes from the called fns return type
+				t := typeof(v.expr)
 				return '// other ' + t + '\n'
 			}
 		}
