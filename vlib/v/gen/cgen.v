@@ -134,7 +134,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	for file in files {
 		g.file = file
 		// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
-//		building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
+		// building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
 		is_test := g.file.path.ends_with('.vv') || g.file.path.ends_with('_test.v')
 		if g.file.path.ends_with('_test.v') {
 			g.is_test = is_test
@@ -1015,7 +1015,7 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 }
 
 fn (mut g Gen) autofree_scope_vars(pos int) string {
-	//	eprintln('> free_scope_vars($pos)')
+	// eprintln('> free_scope_vars($pos)')
 	mut freeing_code := ''
 	scope := g.file.scope.innermost(pos)
 	for _, obj in scope.objects {
@@ -1041,7 +1041,7 @@ fn (mut g Gen) autofree_scope_vars(pos int) string {
 
 fn (g &Gen) autofree_variable(v ast.Var) string {
 	sym := g.table.get_type_symbol(v.typ)
-	//	eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
+	// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
 	if sym.kind == .array {
 		return g.autofree_var_call('array_free', v)
 	}
@@ -1073,7 +1073,7 @@ fn (g &Gen) autofree_var_call(free_fn_name string, v ast.Var) string {
 	}
 	if v.typ.is_ptr() {
 		return '\t${free_fn_name}($v.name); // autofreed ptr var\n'
-	}else{
+	} else {
 		return '\t${free_fn_name}(&$v.name); // autofreed var\n'
 	}
 }
@@ -1548,11 +1548,11 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.write(', &($elem_type_str[]){ ')
 			elem_sym := g.table.get_type_symbol(info.elem_type)
-			if elem_sym.kind == .interface_  && node.right_type != info.elem_type{
+			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.interface_call(node.right_type, info.elem_type)
 			}
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
-			if elem_sym.kind == .interface_ && node.right_type != info.elem_type{
+			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.write(')')
 			}
 			g.write(' })')
@@ -2121,15 +2121,7 @@ fn (mut g Gen) const_decl_init_later(name, val string, typ table.Type) {
 }
 
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
-	mut info := &table.Struct{}
-	mut is_struct := false
 	sym := g.table.get_type_symbol(struct_init.typ)
-	if sym.kind == .struct_ {
-		is_struct = true
-		info = sym.info as table.Struct
-	}
-	// info := g.table.get_type_symbol(it.typ).info as table.Struct
-	// println(info.fields.len)
 	styp := g.typ(struct_init.typ)
 	is_amp := g.is_amp
 	if is_amp {
@@ -2159,7 +2151,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.writeln(',')
 	}
 	// The rest of the fields are zeroed.
-	if is_struct {
+	if sym.kind == .struct_ {
+		info := sym.info as table.Struct
 		for field in info.fields {
 			if field.name in inited_fields {
 				continue
@@ -2177,9 +2170,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			}
 			g.writeln(',')
 		}
-	}
-	if struct_init.fields.len == 0 && info.fields.len == 0 {
-		g.write('0')
+		if struct_init.fields.len == 0 && info.fields.len == 0 {
+			g.write('0')
+		}
 	}
 	g.write('}')
 	if is_amp {
@@ -2539,11 +2532,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.write('\\000')
 		}
 	}
-	num_string_parts := if end_string {
-		node.exprs.len+1
-	} else {
-		node.exprs.len
-	}
+	num_string_parts := if end_string { node.exprs.len + 1 } else { node.exprs.len }
 	g.write('", $num_string_parts, ')
 	// Build args
 	for i, expr in node.exprs {
