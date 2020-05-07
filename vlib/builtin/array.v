@@ -17,7 +17,7 @@ pub mut:
 
 // Internal function, used by V (`nums := []int`)
 fn __new_array(mylen int, cap int, elm_size int) array {
-	cap_ := if cap == 0 { 1 } else { cap }
+	cap_ := if cap < mylen { mylen } else { cap }
 	arr := array{
 		len: mylen
 		cap: cap_
@@ -29,7 +29,7 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
-	cap_ := if cap == 0 { 1 } else { cap }
+	cap_ := if cap < len { len } else { cap }
 
 	arr := array{
 		len: len
