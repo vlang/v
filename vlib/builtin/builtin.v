@@ -142,10 +142,13 @@ pub fn v_calloc(n int) byteptr {
 }
 
 pub fn vcalloc(n int) byteptr {
-	if n <= 0 {
+	if n < 0 {
+		panic('calloc(<=0)')
+	} else if n == 0 {
 		return byteptr(0)
+	} else {
+		return C.calloc(n, 1)
 	}
-	return C.calloc(n, 1)
 }
 
 [unsafe_fn]
