@@ -130,6 +130,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	g.init()
 	//
+	mut tests_inited := false
 	mut autofree_used := false
 	for file in files {
 		g.file = file
@@ -147,6 +148,12 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 			g.autofree = true
 			autofree_used = true
 		}
+		// anon fn may include assert and thus this needs
+		// to be included before any test contents are written
+		if g.is_test && !tests_inited {
+			g.write_tests_main()
+			tests_inited = true
+		}
 		g.stmts(file.stmts)
 	}
 	if autofree_used {
@@ -157,9 +164,6 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.pref.build_mode != .build_module {
 		// no init in builtin.o
 		g.write_init_function()
-	}
-	if g.is_test {
-		g.write_tests_main()
 	}
 	//
 	g.finish()
@@ -856,7 +860,15 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		g.expr(assign_stmt.right[0])
 		g.is_assign_rhs = false
 		if is_optional {
-			g.or_block(mr_var_name, or_stmts, return_type)
+			val := assign_stmt.right[0]
+			match val {
+				ast.CallExpr {
+					or_stmts = it.or_block.stmts
+					return_type = it.return_type
+					g.or_block(mr_var_name, or_stmts, return_type)
+				}
+				else {}
+			}
 		}
 		g.writeln(';')
 		for i, ident in assign_stmt.left {
@@ -1972,22 +1984,37 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 }
 
 fn (mut g Gen) return_statement(node ast.Return) {
-	g.write('return')
+	g.write('return ')
 	if g.fn_decl.name == 'main' {
-		g.writeln(' 0;')
+		g.writeln('0;')
 		return
 	}
-	fn_return_is_optional := g.fn_decl.return_type.flag_is(.optional)
 	// got to do a correct check for multireturn
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
 	fn_return_is_multi := sym.kind == .multi_return
-	// optional multi not supported
-	if fn_return_is_multi && !fn_return_is_optional {
-		g.write(' ')
+	fn_return_is_optional := g.fn_decl.return_type.flag_is(.optional)
+	// handle none/error for optional
+	if fn_return_is_optional {
+		optional_none := node.exprs[0] is ast.None
+		mut optional_error := false
+		match node.exprs[0] {
+			ast.CallExpr {
+				optional_error = it.name == 'error'
+			}
+			else {false}
+		}
+		if optional_none || optional_error {
+			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+			g.write(';')
+			return
+		}
+	}
+	// regular cases
+	if fn_return_is_multi { // not_optional_none { //&& !fn_return_is_optional {
 		// typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		// mr_info := typ_sym.info as table.MultiReturn
 		mut styp := ''
-		if fn_return_is_optional { // && !node.types[0].flag_is(.optional) && node.types[0] !=
+		if fn_return_is_optional {
 			styp = g.base_type(g.fn_decl.return_type)
 			g.write('opt_ok(&($styp/*X*/[]) { ')
 		} else {
@@ -2007,18 +2034,12 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		}
 	} else if node.exprs.len >= 1 {
 		// normal return
-		g.write(' ')
 		return_sym := g.table.get_type_symbol(node.types[0])
 		// `return opt_ok(expr)` for functions that expect an optional
 		if fn_return_is_optional && !node.types[0].flag_is(.optional) && return_sym.name !=
 			'Option' {
-			mut is_none := false
 			mut is_error := false
-			expr0 := node.exprs[0]
-			match expr0 {
-				ast.None {
-					is_none = true
-				}
+			match node.exprs[0] {
 				ast.CallExpr {
 					if it.name == 'error' {
 						is_error = true // TODO check name 'error'
@@ -2026,14 +2047,19 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				}
 				else {}
 			}
-			if !is_none && !is_error {
+			if !is_error {
 				styp := g.base_type(g.fn_decl.return_type)
 				g.write('/*:)$return_sym.name*/opt_ok(&($styp[]) { ')
 				if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 					// Automatic Dereference for optional
 					g.write('*')
 				}
-				g.expr(node.exprs[0])
+				for i, expr in node.exprs {
+					g.expr(expr)
+					if i < node.exprs.len - 1 {
+						g.write(', ')
+					}
+				}
 				g.writeln(' }, sizeof($styp));')
 				return
 			}
