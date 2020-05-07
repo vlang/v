@@ -1029,12 +1029,12 @@ fn main() {
 
 V combines `Option` and `Result` into one type, so you don't need to decide which one to use.
 
-The amount of work required to "upgrade" a function to an optional function is minimal:
+The amount of work required to "upgrade" a function to an optional function is minimal;
 you have to add a `?` to the return type and return an error when something goes wrong.
 
-If you don't need to return an error message, you can simply `return none` (this is a more efficient equivalent to `return error("")`).
+If you don't need to return an error message, you can simply `return none` (this is a more efficient equivalent of `return error("")`).
 
-This is the primary way of handling errors in V. They are still values, like in Go,
+This is the primary mechanism for error handling in V. They are still values, like in Go,
 but the advantage is that errors can't be unhandled, and handling them is a lot less verbose.
 
 `err` is defined inside an `or` block and is set to the string message passed
@@ -1054,9 +1054,10 @@ resp := http.get(url)?
 println(resp.body)
 ```
 
-`http.get` returns `?http.Response`. It was called with `?`, so the error is propagated to the calling function
-(which must return an optional) or if it is used in the `main()` function will cause a panic.
-Basically the code above is a shorter version of
+`http.get` returns `?http.Response`. Because it was called with `?`, the error will be propagated to the calling function
+(which must return an optional). If it is used in the `main()` function it will cause a panic.
+
+The code above is essentially a condensed version of
 
 ```v
 resp := http.get(url) or {
@@ -1065,8 +1066,8 @@ resp := http.get(url) or {
 println(resp.body)
 ```
 
-V does not have a way to forcibly "unwrap" an optional (like Rust's `unwrap()`
-or Swift's `!`). You have to use `or { panic(err) }` instead.
+V does not have a way to forcibly "unwrap" an optional (as other languages do, for instance Rust's `unwrap()`
+or Swift's `!`). To do this use `or { panic(err) }` instead.
 
 ## Generics
 
@@ -1225,7 +1226,7 @@ fn read_log() {
 
 ## ORM
 
-(alpha)
+(this is still in an alpha state)
 
 V has a built-in ORM (object-relational mapping) which supports Postgres, and will soon support MySQL and SQLite.
 
