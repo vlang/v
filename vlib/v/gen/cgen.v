@@ -2425,16 +2425,18 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// Build the string with %
 	mut fieldwidths := []int{}
 	mut specs := []byte{}
-	mut num_fmts := 1
+	mut end_string := false
 	for i, val in node.vals {
 		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
-		g.write(escaped_val)
 		if i >= node.exprs.len {
-			fieldwidths << 0
-			specs << `_`
+			if escaped_val.len > 0 {
+				end_string = true
+				g.write('\\000')
+				g.write(escaped_val)
+			}
 			continue
 		}
-		num_fmts++
+		g.write(escaped_val)
 		sym := g.table.get_type_symbol(node.expr_types[i])
 		sfmt := node.expr_fmts[i]
 		mut fspec := `_` // placeholder
@@ -2507,7 +2509,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			if fspec == `p` {
 				g.write('${fmt}p')
 			} else {
-				g.write('${fmt}l${fspec:c}')
+				g.write('${fmt}"PRI${fspec:c}PTR"')
 			}
 		} else if node.expr_types[i].is_int() {
 			if fspec == `c` {
@@ -2533,9 +2535,16 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			// TODO: better check this case
 			g.write('${fmt}"PRId32"')
 		}
-		g.write('\\000')
+		if i < node.exprs.len - 1 {
+			g.write('\\000')
+		}
 	}
-	g.write('", $num_fmts, ')
+	num_string_parts := if end_string {
+		node.exprs.len+1
+	} else {
+		node.exprs.len
+	}
+	g.write('", $num_string_parts, ')
 	// Build args
 	for i, expr in node.exprs {
 		if node.expr_types[i] == table.string_type {
