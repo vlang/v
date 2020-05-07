@@ -331,7 +331,7 @@ upper := words.map(it.to_upper())
 println(upper) // ['HELLO', 'WORLD']
 ```
 
-`it` is a special variable that refers to the element of the array currently being processed in filter/map methods.
+`it` is a builtin variable which refers to element currently being processed in filter/map methods.
 
 ## Maps
 
