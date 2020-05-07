@@ -1998,10 +1998,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		optional_none := node.exprs[0] is ast.None
 		mut optional_error := false
 		match node.exprs[0] {
-			ast.CallExpr {
-				optional_error = it.name == 'error'
-			}
-			else {false}
+			ast.CallExpr { optional_error = it.name == 'error' }
+			else { false }
 		}
 		if optional_none || optional_error {
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
