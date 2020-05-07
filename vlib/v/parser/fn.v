@@ -109,6 +109,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Receiver?
 	mut rec_name := ''
 	mut is_method := false
+	mut receiver_pos := token.Position{}
 	mut rec_type := table.void_type
 	mut rec_mut := false
 	mut args := []table.Arg{}
@@ -119,11 +120,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if rec_mut {
 			p.next() // `mut`
 		}
+		rec_start_pos := p.tok.position()
 		rec_name = p.check_name()
 		if !rec_mut {
 			rec_mut = p.tok.kind == .key_mut
 		}
 		is_amp := p.tok.kind == .amp
+		receiver_pos = rec_start_pos.extend(p.tok.position())
 		// if rec_mut {
 		// p.check(.key_mut)
 		// }
@@ -256,6 +259,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			name: rec_name
 			typ: rec_type
 		}
+		receiver_pos: receiver_pos
 		is_method: is_method
 		rec_mut: rec_mut
 		is_c: is_c

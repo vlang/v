@@ -1385,12 +1385,15 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.check_expr_opt_call(it.expr, etype, false)
 		}
 		ast.FnDecl {
-			// if it.is_method {
-			// sym := c.table.get_type_symbol(it.receiver.typ)
-			// if sym.has_method(it.name) {
-			// c.warn('duplicate method `$it.name`', it.pos)
-			// }
-			// }
+			if it.is_method {
+				sym := c.table.get_type_symbol(it.receiver.typ)
+				if sym.kind == .interface_ {
+					c.error('interaces cannot be used as method receiver', it.receiver_pos)
+				}
+				// if sym.has_method(it.name) {
+				// c.warn('duplicate method `$it.name`', it.pos)
+				// }
+			}
 			if !it.is_c {
 				// Make sure all types are valid
 				for arg in it.args {
@@ -1748,7 +1751,8 @@ pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
 					if sym.info is table.FnType {
 						// anon/local fn assigned to new variable uses this
 						info := sym.info as table.FnType
-						fn_type := table.new_type(c.table.find_or_register_fn_type(info.func, true, true))
+						fn_type := table.new_type(c.table.find_or_register_fn_type(info.func,
+							true, true))
 						ident.kind = .function
 						ident.info = ast.IdentFn{
 							typ: fn_type
