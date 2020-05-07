@@ -142,6 +142,9 @@ pub fn v_calloc(n int) byteptr {
 }
 
 pub fn vcalloc(n int) byteptr {
+	if n <= 0 {
+		return byteptr(0)
+	}
 	return C.calloc(n, 1)
 }
 

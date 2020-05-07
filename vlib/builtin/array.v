@@ -33,7 +33,7 @@ fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 
 	arr := array{
 		len: len
-		cap: cap
+		cap: cap_
 		element_size: elm_size
 		data: vcalloc(cap_ * elm_size)
 	}
