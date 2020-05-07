@@ -42,211 +42,211 @@ fn JS.Math.trunc(x f64) f64
 
 // Returns the absolute value.
 [inline]
-fn abs(a f64) f64 {
+pub fn abs(a f64) f64 {
 	return JS.Math.abs(a)
 }
 
 // acos calculates inverse cosine (arccosine).
 [inline]
-fn acos(a f64) f64 {
+pub fn acos(a f64) f64 {
 	return JS.Math.acos(a)
 }
 
 // asin calculates inverse sine (arcsine).
 [inline]
-fn asin(a f64) f64 {
+pub fn asin(a f64) f64 {
 	return JS.Math.asin(a)
 }
 
 // atan calculates inverse tangent (arctangent).
 [inline]
-fn atan(a f64) f64 {
+pub fn atan(a f64) f64 {
 	return JS.Math.atan(a)
 }
 
 // atan2 calculates inverse tangent with two arguments, returns the angle between the X axis and the point.
 [inline]
-fn atan2(a, b f64) f64 {
+pub fn atan2(a, b f64) f64 {
 	return JS.Math.atan2(a, b)
 }
 
 // cbrt calculates cubic root.
 [inline]
-fn cbrt(a f64) f64 {
+pub fn cbrt(a f64) f64 {
 	return JS.Math.cbrt(a)
 }
 
 // ceil returns the nearest f64 greater or equal to the provided value.
 [inline]
-fn ceil(a f64) f64 {
+pub fn ceil(a f64) f64 {
 	return JS.Math.ceil(a)
 }
 
 // cos calculates cosine.
 [inline]
-fn cos(a f64) f64 {
+pub fn cos(a f64) f64 {
 	return JS.Math.cos(a)
 }
 
 // cosf calculates cosine. (float32). This doesn't exist in JS
 [inline]
-fn cosf(a f32) f32 {
+pub fn cosf(a f32) f32 {
 	return f32(JS.Math.cos(a))
 }
 
 // cosh calculates hyperbolic cosine.
 [inline]
-fn cosh(a f64) f64 {
+pub fn cosh(a f64) f64 {
 	return JS.Math.cosh(a)
 }
 
 // exp calculates exponent of the number (math.pow(math.E, a)).
 [inline]
-fn exp(a f64) f64 {
+pub fn exp(a f64) f64 {
 	return JS.Math.exp(a)
 }
 
 // erf computes the error function value
 [inline]
-fn erf(a f64) f64 {
+pub fn erf(a f64) f64 {
 	return JS.Math.erf(a)
 }
 
 // erfc computes the complementary error function value
 [inline]
-fn erfc(a f64) f64 {
+pub fn erfc(a f64) f64 {
 	return JS.Math.erfc(a)
 }
 
 // exp2 returns the base-2 exponential function of a (math.pow(2, a)).
 [inline]
-fn exp2(a f64) f64 {
+pub fn exp2(a f64) f64 {
 	return JS.Math.exp2(a)
 }
 
 // floor returns the nearest f64 lower or equal of the provided value.
 [inline]
-fn floor(a f64) f64 {
+pub fn floor(a f64) f64 {
 	return JS.Math.floor(a)
 }
 
 // fmod returns the floating-point remainder of number / denom (rounded towards zero):
 [inline]
-fn fmod(a, b f64) f64 {
+pub fn fmod(a, b f64) f64 {
 	return JS.Math.fmod(a, b)
 }
 
 // gamma computes the gamma function value
 [inline]
-fn gamma(a f64) f64 {
+pub fn gamma(a f64) f64 {
 	return JS.Math.tgamma(a)
 }
 
 // Returns hypotenuse of a right triangle.
 [inline]
-fn hypot(a, b f64) f64 {
+pub fn hypot(a, b f64) f64 {
 	return JS.Math.hypot(a, b)
 }
 
 // log calculates natural (base-e) logarithm of the provided value.
 [inline]
-fn log(a f64) f64 {
+pub fn log(a f64) f64 {
 	return JS.Math.log(a)
 }
 
 // log2 calculates base-2 logarithm of the provided value.
 [inline]
-fn log2(a f64) f64 {
+pub fn log2(a f64) f64 {
 	return JS.Math.log2(a)
 }
 
 // log10 calculates the common (base-10) logarithm of the provided value.
 [inline]
-fn log10(a f64) f64 {
+pub fn log10(a f64) f64 {
 	return JS.Math.log10(a)
 }
 
 // log_gamma computes the log-gamma function value
 [inline]
-fn log_gamma(a f64) f64 {
+pub fn log_gamma(a f64) f64 {
 	return JS.Math.lgamma(a)
 }
 
 // log_n calculates base-N logarithm of the provided value.
 [inline]
-fn log_n(a, b f64) f64 {
+pub fn log_n(a, b f64) f64 {
 	return JS.Math.log(a) / JS.Math.log(b)
 }
 
 // pow returns base raised to the provided power.
 [inline]
-fn pow(a, b f64) f64 {
+pub fn pow(a, b f64) f64 {
 	return JS.Math.pow(a, b)
 }
 
 // powf returns base raised to the provided power. (float32)
 [inline]
-fn powf(a, b f32) f32 {
+pub fn powf(a, b f32) f32 {
 	return f32(JS.Math.pow(a, b))
 }
 
 // round returns the integer nearest to the provided value.
 [inline]
-fn round(f f64) f64 {
+pub fn round(f f64) f64 {
 	return JS.Math.round(f)
 }
 
 // sin calculates sine.
 [inline]
-fn sin(a f64) f64 {
+pub fn sin(a f64) f64 {
 	return JS.Math.sin(a)
 }
 
 // sinf calculates sine. (float32)
 [inline]
-fn sinf(a f32) f32 {
+pub fn sinf(a f32) f32 {
 	return f32(JS.Math.sin(a))
 }
 
 // sinh calculates hyperbolic sine.
 [inline]
-fn sinh(a f64) f64 {
+pub fn sinh(a f64) f64 {
 	return JS.Math.sinh(a)
 }
 
 // sqrt calculates square-root of the provided value.
 [inline]
-fn sqrt(a f64) f64 {
+pub fn sqrt(a f64) f64 {
 	return JS.Math.sqrt(a)
 }
 
 // sqrtf calculates square-root of the provided value. (float32)
 [inline]
-fn sqrtf(a f32) f32 {
+pub fn sqrtf(a f32) f32 {
 	return f32(JS.Math.sqrt(a))
 }
 
 // tan calculates tangent.
 [inline]
-fn tan(a f64) f64 {
+pub fn tan(a f64) f64 {
 	return JS.Math.tan(a)
 }
 
 // tanf calculates tangent. (float32)
 [inline]
-fn tanf(a f32) f32 {
+pub fn tanf(a f32) f32 {
 	return f32(JS.Math.tan(a))
 }
 
 // tanh calculates hyperbolic tangent.
 [inline]
-fn tanh(a f64) f64 {
+pub fn tanh(a f64) f64 {
 	return JS.Math.tanh(a)
 }
 
 // trunc rounds a toward zero, returning the nearest integral value that is not
 // larger in magnitude than a.
 [inline]
-fn trunc(a f64) f64 {
+pub fn trunc(a f64) f64 {
 	return JS.Math.trunc(a)
 }
