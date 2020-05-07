@@ -331,7 +331,7 @@ upper := words.map(it.to_upper())
 println(upper) // ['HELLO', 'WORLD']
 ```
 
-`it` is a special variable that refers to the element of the array currently being processed in filter/map methods.
+`it` is a builtin variable which refers to element currently being processed in filter/map methods.
 
 ## Maps
 
@@ -1029,12 +1029,12 @@ fn main() {
 
 V combines `Option` and `Result` into one type, so you don't need to decide which one to use.
 
-The amount of work required to "upgrade" a function to return an instance of `Option` is minimal:
+The amount of work required to "upgrade" a function to an optional function is minimal;
 you have to add a `?` to the return type and return an error when something goes wrong.
 
-If you don't need to return an error message, you can simply `return none` (this is equivalent to `return error("")`).
+If you don't need to return an error message, you can simply `return none` (this is a more efficient equivalent of `return error("")`).
 
-This is the primary way of handling errors in V. They are still values, like in Go,
+This is the primary mechanism for error handling in V. They are still values, like in Go,
 but the advantage is that errors can't be unhandled, and handling them is a lot less verbose.
 
 `err` is defined inside an `or` block and is set to the string message passed
@@ -1054,9 +1054,10 @@ resp := http.get(url)?
 println(resp.body)
 ```
 
-`http.get` returns `?http.Response`. It was called with `?`, so the error is propagated to the calling function
-(which must return an optional) or if it is used in the `main()` function will cause a panic.
-Basically the code above is a shorter version of
+`http.get` returns `?http.Response`. Because it was called with `?`, the error will be propagated to the calling function
+(which must return an optional). If it is used in the `main()` function it will cause a panic.
+
+The code above is essentially a condensed version of
 
 ```v
 resp := http.get(url) or {
@@ -1065,9 +1066,8 @@ resp := http.get(url) or {
 println(resp.body)
 ```
 
-V does not have a way to forcibly unwrap an optional (like Rust's `unwrap()`
-or Swift's `!`). You have to use `or { panic(err) }` instead.
-
+V does not have a way to forcibly "unwrap" an optional (as other languages do, for instance Rust's `unwrap()`
+or Swift's `!`). To do this use `or { panic(err) }` instead.
 
 ## Generics
 
@@ -1125,9 +1125,9 @@ println(user.last_name)
 println(user.age)
 ```
 
-Because of the ubiquitous nature of JSON, support is built into V.
+Because of the ubiquitous nature of JSON, support for it is built directly into V.
 
-the `json.decode` function takes two arguments: the first argument of the `json.decode` function is the type into which the JSON value should be decoded and the second is a string containing the JSON data.
+The `json.decode` function takes two arguments: the first argument of the `json.decode` function is the type into which the JSON value should be decoded and the second is a string containing the JSON data.
 
 V generates code for JSON encoding and decoding. No runtime reflection is used. This results in much better
 performance.
@@ -1226,16 +1226,16 @@ fn read_log() {
 
 ## ORM
 
-(alpha)
+(this is still in an alpha state)
 
-V has a built-in ORM that supports Postgres, and will soon support MySQL and SQLite.
+V has a built-in ORM (object-relational mapping) which supports Postgres, and will soon support MySQL and SQLite.
 
-The benefits of V ORM:
+V's ORM provides a number of benefits:
 
-- One syntax for all SQL dialects. Migrating to a different database becomes much easier.
-- Queries are constructed with V syntax. There's no need to learn another syntax.
+- One syntax for all SQL dialects. Migrating between databases becomes much easier.
+- Queries are constructed using V's syntax. There's no need to learn another syntax.
 - Safety. All queries are automatically santised to prevent SQL injection.
-- Compile time checks. No more typos that can only be caught at runtime.
+- Compile time checks. This prevents typos which can only be caught during runtime.
 - Readability and simplicity. You don't need to manually parse the results of a query and then manually construct objects from the parsed results.
 
 ```v
