@@ -133,15 +133,3 @@ fn test_assigning_fns() {
 //
 // End assigning functions (IdentFn)
 //
-
-
-
-
-
-
-
-
-
-
-
-
