@@ -2038,32 +2038,20 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// `return opt_ok(expr)` for functions that expect an optional
 		if fn_return_is_optional && !node.types[0].flag_is(.optional) && return_sym.name !=
 			'Option' {
-			mut is_error := false
-			match node.exprs[0] {
-				ast.CallExpr {
-					if it.name == 'error' {
-						is_error = true // TODO check name 'error'
-					}
-				}
-				else {}
+			styp := g.base_type(g.fn_decl.return_type)
+			g.write('/*:)$return_sym.name*/opt_ok(&($styp[]) { ')
+			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
+				// Automatic Dereference for optional
+				g.write('*')
 			}
-			if !is_error {
-				styp := g.base_type(g.fn_decl.return_type)
-				g.write('/*:)$return_sym.name*/opt_ok(&($styp[]) { ')
-				if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
-					// Automatic Dereference for optional
-					g.write('*')
+			for i, expr in node.exprs {
+				g.expr(expr)
+				if i < node.exprs.len - 1 {
+					g.write(', ')
 				}
-				for i, expr in node.exprs {
-					g.expr(expr)
-					if i < node.exprs.len - 1 {
-						g.write(', ')
-					}
-				}
-				g.writeln(' }, sizeof($styp));')
-				return
 			}
-			// g.write('/*OPTIONAL*/')
+			g.writeln(' }, sizeof($styp));')
+			return
 		}
 		if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 			// Automatic Dereference
