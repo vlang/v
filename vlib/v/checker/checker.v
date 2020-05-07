@@ -1579,16 +1579,12 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			if it.typ == table.string_type && !(sym.kind in [.byte, .byteptr] || sym.kind ==
 				.array && sym.name == 'array_byte') {
 				type_name := c.table.type_to_str(it.expr_type)
-				c.error('cannot cast type `$type_name` to string', it.pos)
+				c.error('cannot cast type `$type_name` to string, use `x.str()` instead', it.pos)
 			}
 			if it.has_arg {
 				c.expr(it.arg)
 			}
 			it.typname = c.table.get_type_symbol(it.typ).name
-			if it.typ == table.string_type && !it.has_arg && it.expr_type.is_number() && !it.expr_type.is_ptr() {
-				// s := c.table.get_type_symbol(it.expr_type)
-				c.error('use `number.str()` instead of `string(number)`', it.pos)
-			}
 			return it.typ
 		}
 		ast.CallExpr {
