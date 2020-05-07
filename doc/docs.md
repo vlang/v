@@ -1125,7 +1125,7 @@ println(user.last_name)
 println(user.age)
 ```
 
-Because of the ubiquitious nature of JSON, support is built into V.
+Because of the ubiquitous nature of JSON, support is built into V.
 
 the `json.decode` function takes two arguments: the first argument of the `json.decode` function is the type into which the JSON value should be decoded and the second is a string containing the JSON data.
 
