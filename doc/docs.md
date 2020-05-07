@@ -11,7 +11,7 @@ and by the end of it you will have pretty much learned the entire language.
 
 The language promotes writing simple and clear code with minimal abstraction.
 
-Despite being simple, V gives the devloper a lot of power. Anything you can do in other languages,
+Despite being simple, V gives the developer a lot of power. Anything you can do in other languages,
 you can do in V.
 
 
@@ -717,13 +717,13 @@ fn run(value int, op fn(int) int) int {
 
 fn main()  {
     println(run(5, sqr)) // "25"
-    
+
     // Anonymous functions can be declared inside other functions:
     double_fn := fn(n int) int {
         return n + n
     }
     println(run(5, double_fn)) // "10"
-    
+
     // Functions can be passed around without assigning them to variables:
     res := run(5, fn(n int) int {
         return n + n
@@ -952,7 +952,7 @@ println(color) // "1"  TODO: print "green"?
 ## Sum types
 
 ```v
-type Expr = BinaryExpr | UnaryExpr | IfExpr 
+type Expr = BinaryExpr | UnaryExpr | IfExpr
 
 struct BinaryExpr{ ... }
 struct UnaryExpr{ ... }
