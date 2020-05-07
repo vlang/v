@@ -147,7 +147,7 @@ fn build_token_str() []string {
 	s[Kind.eof] = 'eof'
 	s[Kind.name] = 'name'
 	s[Kind.number] = 'number'
-	s[Kind.string] = 'STR'
+	s[Kind.string] = 'string'
 	s[Kind.chartoken] = 'char'
 	s[Kind.plus] = '+'
 	s[Kind.minus] = '-'
