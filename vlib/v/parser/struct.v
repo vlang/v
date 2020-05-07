@@ -16,7 +16,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 	is_union := p.tok.kind == .key_union
 	if p.tok.kind == .key_struct {
-		p.check(.key_struct)
+		p.next()
 	} else {
 		p.check(.key_union)
 	}
@@ -51,12 +51,12 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				comment = p.comment()
 			}
 			if p.tok.kind == .key_pub {
-				p.check(.key_pub)
+				p.next()
 				if p.tok.kind == .key_mut {
 					if pub_mut_pos != -1 {
 						p.error('redefinition of `pub mut` section')
 					}
-					p.check(.key_mut)
+					p.next()
 					pub_mut_pos = fields.len
 					is_field_pub = true
 					is_field_mut = true
@@ -75,7 +75,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				if mut_pos != -1 {
 					p.error('redefinition of `mut` section')
 				}
-				p.check(.key_mut)
+				p.next()
 				p.check(.colon)
 				mut_pos = fields.len
 				is_field_pub = false
@@ -85,7 +85,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				if global_pos != -1 {
 					p.error('redefinition of `global` section')
 				}
-				p.check(.key_global)
+				p.next()
 				p.check(.colon)
 				global_pos = fields.len
 				is_field_pub = true
@@ -234,7 +234,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		}
 		i++
 		if p.tok.kind == .comma {
-			p.check(.comma)
+			p.next()
 		}
 		p.check_comment()
 	}

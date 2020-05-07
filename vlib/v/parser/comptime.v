@@ -113,7 +113,7 @@ fn (mut p Parser) comp_if() ast.CompIf {
 	}
 	if p.tok.kind == .dollar && p.peek_tok.kind == .key_else {
 		p.next()
-		p.check(.key_else)
+		p.next()
 		node.has_else = true
 		node.else_stmts = p.parse_block()
 	}

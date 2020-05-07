@@ -83,7 +83,7 @@ fn (mut p Parser) parse_assign_lhs() []ast.Ident {
 		}
 		is_static := p.tok.kind == .key_static
 		if is_static {
-			p.check(.key_static)
+			p.next()
 		}
 		mut ident := p.parse_ident(false, false)
 		ident.is_mut = is_mut
@@ -93,7 +93,7 @@ fn (mut p Parser) parse_assign_lhs() []ast.Ident {
 		}
 		idents << ident
 		if p.tok.kind == .comma {
-			p.check(.comma)
+			p.next()
 		} else {
 			break
 		}
@@ -108,7 +108,7 @@ fn (mut p Parser) parse_assign_rhs() []ast.Expr {
 		expr := p.expr(0)
 		exprs << expr
 		if p.tok.kind == .comma {
-			p.check(.comma)
+			p.next()
 		} else {
 			break
 		}

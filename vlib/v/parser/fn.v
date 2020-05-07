@@ -75,7 +75,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 	for p.tok.kind != .rpar {
 		mut is_mut := false
 		if p.tok.kind == .key_mut {
-			p.check(.key_mut)
+			p.next()
 			is_mut = true
 		}
 		e := p.expr(0)
@@ -335,10 +335,10 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			arg_name := 'arg_$arg_no'
 			is_mut := p.tok.kind == .key_mut
 			if is_mut {
-				p.check(.key_mut)
+				p.next()
 			}
 			if p.tok.kind == .ellipsis {
-				p.check(.ellipsis)
+				p.next()
 				is_variadic = true
 			}
 			mut arg_type := p.parse_type()
@@ -367,7 +367,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			mut arg_names := [p.check_name()]
 			// `a, b, c int`
 			for p.tok.kind == .comma {
-				p.check(.comma)
+				p.next()
 				arg_names << p.check_name()
 			}
 			if p.tok.kind == .key_mut {
@@ -375,7 +375,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				is_mut = true
 			}
 			if p.tok.kind == .ellipsis {
-				p.check(.ellipsis)
+				p.next()
 				is_variadic = true
 			}
 			mut typ := p.parse_type()
