@@ -833,6 +833,19 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	if fn_name == 'println' || fn_name == 'print' {
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
+		/*
+		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
+		// It currently generates:
+		// `println(T_str_no_ptr(*(*(T**)array_get(a, 0))));`
+		// ... which works, but could be just:
+		// `println(T_str(*(T**)array_get(a, 0)));`
+		prexpr := call_expr.args[0].expr
+		prtyp := call_expr.args[0].typ
+		prtyp_sym := c.table.get_type_symbol(prtyp)
+		prtyp_is_ptr := prtyp.is_ptr()
+		prhas_str, prexpects_ptr, prnr_args := prtyp_sym.str_method_info()
+		eprintln('>>> println hack typ: ${prtyp} | sym.name: ${prtyp_sym.name} | is_ptr: $prtyp_is_ptr | has_str: $prhas_str | expects_ptr: $prexpects_ptr | nr_args: $prnr_args | expr: ${prexpr.str()} ')
+		*/
 		return f.return_type
 	}
 	// TODO: typ optimize.. this node can get processed more than once

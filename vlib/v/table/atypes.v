@@ -677,6 +677,20 @@ pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 	return none
 }
 
+pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
+	mut has_str_method := false
+	mut expects_ptr := false
+	mut nr_args := 0
+	if sym_str_method := t.find_method('str') {
+		has_str_method = true
+		nr_args = sym_str_method.args.len
+		if nr_args > 0 {
+			expects_ptr = sym_str_method.args[0].typ.is_ptr()
+		}
+	}
+	return has_str_method, expects_ptr, nr_args
+}
+
 pub fn (s Struct) find_field(name string) ?Field {
 	for field in s.fields {
 		if field.name == name {
