@@ -40,6 +40,7 @@ fn (mut v Builder) cc() {
 	ends_with_c := v.pref.out_name.ends_with('.c')
 	ends_with_js := v.pref.out_name.ends_with('.js')
 	if ends_with_c || ends_with_js {
+		v.pref.skip_running = true
 		// Translating V code to JS by launching vjs.
 		// Using a separate process for V.js is for performance mostly,
 		// to avoid constant is_js checks.
@@ -69,7 +70,7 @@ fn (mut v Builder) cc() {
 		os.mv_by_cp(v.out_name_c, v.pref.out_name) or {
 			panic(err)
 		}
-		exit(0)
+		return
 	}
 	// Cross compiling for Windows
 	if v.pref.os == .windows {

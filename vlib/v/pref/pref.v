@@ -83,6 +83,7 @@ pub mut:
 	run_args            []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list        []string // a list of generated function names, whose source should be shown, for debugging
 	print_v_files       bool     // when true, just print the list of all parsed .v files then stop.
+	skip_running        bool     // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
 }
 
 pub fn backend_from_string(s string) ?Backend {

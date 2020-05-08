@@ -40,10 +40,11 @@ pub fn compile(command string, pref &pref.Preferences) {
 	if pref.is_stats {
 		println('compilation took: ${sw.elapsed().milliseconds()} ms')
 	}
+	// running does not require the parsers anymore
+	b.myfree()
 	if pref.is_test || pref.is_run {
 		b.run_compiled_executable_and_exit()
 	}
-	b.myfree()
 }
 
 // Temporary, will be done by -autofree
@@ -54,6 +55,9 @@ fn (mut b Builder) myfree() {
 }
 
 fn (mut b Builder) run_compiled_executable_and_exit() {
+	if b.pref.skip_running {
+		return
+	}
 	if b.pref.is_verbose {
 		println('============ running $b.pref.out_name ============')
 	}
