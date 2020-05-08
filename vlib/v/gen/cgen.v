@@ -1053,13 +1053,14 @@ fn (mut g Gen) autofree_scope_vars(pos int) string {
 
 fn (g &Gen) autofree_variable(v ast.Var) string {
 	sym := g.table.get_type_symbol(v.typ)
+	// if v.name.contains('output2') {
 	// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
+	// }
 	if sym.kind == .array {
 		return g.autofree_var_call('array_free', v)
 	}
 	if sym.kind == .string {
 		// Don't free simple string literals.
-		t := typeof(v.expr)
 		match v.expr {
 			ast.StringLiteral {
 				return '// str literal\n'
@@ -1067,6 +1068,7 @@ fn (g &Gen) autofree_variable(v ast.Var) string {
 			else {
 				// NOTE/TODO: assign_stmt multi returns variables have no expr
 				// since the type comes from the called fns return type
+				t := typeof(v.expr)
 				return '// other ' + t + '\n'
 			}
 		}
@@ -3229,7 +3231,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 			table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
 			table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
 			table.Map { g.gen_str_for_map(it, styp, str_fn_name) }
-			else { verror("could not generate string method $str_fn_name for type \'${styp}\'") }
+			else { verror("could not generate string method $str_fn_name for type \'${styp}\' | sym.name: ${sym.name}") }
 		}
 	}
 	// if varg, generate str for varg
