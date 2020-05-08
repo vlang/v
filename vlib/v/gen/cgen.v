@@ -837,9 +837,17 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		g.write('static ')
 	}
 	mut return_type := table.void_type
-	if assign_stmt.right[0] is ast.CallExpr {
-		it := assign_stmt.right[0] as ast.CallExpr
-		return_type = it.return_type
+	match assign_stmt.right[0] {
+		ast.CallExpr {
+			return_type = it.return_type
+		}
+		ast.IfExpr {
+			return_type = it.typ
+		}
+		ast.MatchExpr {
+			return_type = it.return_type
+		}
+		else {}
 	}
 	mut is_multi := false
 	// json_test failed w/o this check
