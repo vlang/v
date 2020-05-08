@@ -109,7 +109,7 @@ pub:
 	comment          Comment
 	default_expr     Expr
 	has_default_expr bool
-	attr             string
+	attrs             []string
 mut:
 	typ              table.Type
 }
