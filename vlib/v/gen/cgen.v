@@ -2162,12 +2162,17 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		field_name := c_name(field.name)
 		inited_fields << field.name
 		g.write('\t.$field_name = ')
-		// if g.autofree && right_sym.kind in [.array, .string] {
-		// g.write('/*clone1*/')
-		// if g.gen_clone_assignment(field.expr, right_sym, true) {
-		// }
-		// }
-		g.expr_with_cast(field.expr, field.typ, field.expected_type)
+		field_type_sym := g.table.get_type_symbol(field.typ)
+		mut cloned := false
+		if g.autofree && field_type_sym.kind in [.array, .string] {
+			g.write('/*clone1*/')
+			if g.gen_clone_assignment(field.expr, field_type_sym, false) {
+				cloned = true
+			}
+		}
+		if !cloned {
+			g.expr_with_cast(field.expr, field.typ, field.expected_type)
+		}
 		g.writeln(',')
 	}
 	// The rest of the fields are zeroed.
