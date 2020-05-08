@@ -17,6 +17,12 @@ mut:
 	num  int
 }
 
+struct Lol {
+	b    []string [json:lol]
+	c    string   [json:cc]
+	d    int
+}
+
 struct User {
 	name string
 	age  int
