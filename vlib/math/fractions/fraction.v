@@ -100,10 +100,19 @@ pub fn (f1 Fraction) f64() f64 {
 	return f64(f1.n) / f64(f1.d)
 }
 
+// Returns the absolute value of an i64
+fn abs(num i64) i64 {
+	if num < 0 {
+		return -num
+	} else {
+		return num
+	}
+}
+
 // Two integers are safe to multiply when their bit lengths
 // sum up to less than 64 (conservative estimate).
 fn safe_to_multiply(a, b i64) bool {
-	return (bits.len_64(a) + bits.len_64(b)) < 64
+	return (bits.len_64(abs(a)) + bits.len_64(abs(b))) < 64
 }
 
 // Compares two Fractions
