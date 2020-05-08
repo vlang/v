@@ -5,6 +5,7 @@
 module fractions
 
 import math
+import math.bits
 
 // Fraction Struct
 struct Fraction {
@@ -99,8 +100,17 @@ pub fn (f1 Fraction) f64() f64 {
 	return f64(f1.n) / f64(f1.d)
 }
 
+// Two integers are safe to multiply when their bit lengths
+// sum up to less than 64 (conservative estimate).
+fn safe_to_multiply(a, b i64) bool {
+	return (bits.len_64(a) + bits.len_64(b)) < 64
+}
+
 // Compares two Fractions
 pub fn (f1 Fraction) equals(f2 Fraction) bool {
+	if safe_to_multiply(f1.n, f2.d) && safe_to_multiply(f2.n, f1.d) {
+		return (f1.n * f2.d) == (f2.n * f1.d)
+	}
 	r1 := f1.reduce()
 	r2 := f2.reduce()
 	return (r1.n == r2.n) && (r1.d == r2.d)
