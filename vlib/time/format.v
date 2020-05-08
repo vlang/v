@@ -150,6 +150,9 @@ mut 	res := match fmt_date {
 		.space{
 			' '
 		}
+		.no_delimiter{
+			''
+		}
 	})
 	return res
 }
