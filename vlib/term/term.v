@@ -61,6 +61,10 @@ pub fn header(text, divider string) string {
 }
 
 fn supports_escape_sequences(fd int) bool {
+	vcolors_override := os.getenv('VCOLORS')
+	if vcolors_override == 'always' {
+		return true
+	}    
 	$if windows {
 		return (is_atty(fd) & 0x0004) > 0 && os.getenv('TERM') != 'dumb' // ENABLE_VIRTUAL_TERMINAL_PROCESSING
 	} $else {
