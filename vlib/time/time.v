@@ -73,6 +73,7 @@ pub enum FormatDelimiter {
 	hyphen
 	slash
 	space
+	no_delimiter
 }
 
 // TODO: C.time_t. works in v2
