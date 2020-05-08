@@ -1,0 +1,6 @@
+vlib/v/checker/tests/import_not_same_line_err.v:2:2: error: `import` and `module` must be at same line
+    1 | import
+    2 |  time
+      |  ~~~~
+    3 | fn main() {
+    4 |     println(time.now())

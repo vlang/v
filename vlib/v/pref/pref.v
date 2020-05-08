@@ -33,6 +33,7 @@ pub mut:
 	is_shared           bool // an ordinary shared library, -shared, no matter if it is live or not
 	is_prof             bool // benchmark every function
 	profile_file        string // the profile results will be stored inside profile_file
+	profile_no_inline   bool // when true, [inline] functions would not be profiled
 	translated          bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	is_prod             bool // use "-O2"
 	obfuscate           bool // `v -obf program.v`, renames functions to "f_XXX"
@@ -82,6 +83,7 @@ pub mut:
 	run_args            []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list        []string // a list of generated function names, whose source should be shown, for debugging
 	print_v_files       bool     // when true, just print the list of all parsed .v files then stop.
+	skip_running        bool     // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
 }
 
 pub fn backend_from_string(s string) ?Backend {

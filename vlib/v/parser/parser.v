@@ -310,7 +310,12 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 		}
 		.lsbr {
-			return p.attribute()
+			attrs := p.attributes()
+
+			if attrs.len > 1 {
+				p.error('multiple attributes detected')
+			}
+			return attrs[0]
 		}
 		.key_interface {
 			return p.interface_decl()
@@ -481,8 +486,29 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 	}
 }
 
-fn (mut p Parser) attribute() ast.Attr {
+fn (mut p Parser) attributes() []ast.Attr {
+	mut attrs := []ast.Attr{}
+
 	p.check(.lsbr)
+	for p.tok.kind != .rsbr {
+		attr := p.parse_attr()
+		attrs << attr
+		if p.tok.kind != .semicolon {
+			expected := `;`
+			if p.tok.kind == .rsbr {
+				p.next()
+				break
+			}
+
+			p.error('unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`')
+		}
+		p.next()
+	}
+
+	return attrs
+}
+
+fn (mut p Parser) parse_attr() ast.Attr {
 	mut is_if_attr := false
 	if p.tok.kind == .key_if {
 		p.next()
@@ -499,7 +525,6 @@ fn (mut p Parser) attribute() ast.Attr {
 			p.next()
 		}
 	}
-	p.check(.rsbr)
 	p.attr = name
 	if is_if_attr {
 		p.attr_ctdefine = name
@@ -958,15 +983,26 @@ fn (mut p Parser) module_decl() ast.Module {
 }
 
 fn (mut p Parser) import_stmt() ast.Import {
+	import_pos := p.tok.position()
 	p.check(.key_import)
 	pos := p.tok.position()
 	if p.tok.kind == .lpar {
 		p.error_with_pos('`import()` has been deprecated, use `import x` instead', pos)
 	}
 	mut mod_name := p.check_name()
+	if import_pos.line_nr != pos.line_nr {
+		p.error_with_pos('`import` and `module` must be at same line', pos)
+	}
 	mut mod_alias := mod_name
 	for p.tok.kind == .dot {
 		p.next()
+		pos_t := p.tok.position()
+		if p.tok.kind != .name {
+			p.error_with_pos('module syntax error, please use `x.y.z`', pos)
+		}
+		if import_pos.line_nr != pos_t.line_nr {
+			p.error_with_pos('`import` and `submodule` must be at same line', pos)
+		}
 		submod_name := p.check_name()
 		mod_name += '.' + submod_name
 		mod_alias = submod_name
@@ -974,6 +1010,14 @@ fn (mut p Parser) import_stmt() ast.Import {
 	if p.tok.kind == .key_as {
 		p.next()
 		mod_alias = p.check_name()
+	}
+	pos_t := p.tok.position()
+	if import_pos.line_nr == pos_t.line_nr {
+		if p.tok.kind != .name {
+			p.error_with_pos('module syntax error, please use `x.y.z`', pos_t)
+		} else {
+			p.error_with_pos('cannot import multiple modules at a time', pos_t)
+		}
 	}
 	p.imports[mod_alias] = mod_name
 	p.table.imports << mod_name

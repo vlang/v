@@ -20,7 +20,11 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 	p.check(.rsbr)
 	elem_type := p.parse_type()
 	mut nr_dims := 1
-	for p.tok.kind == .lsbr {
+
+	// detect attr
+	not_attr := p.peek_tok.kind != .name && p.peek_tok2.kind !in [.semicolon, .rsbr]
+	
+	for p.tok.kind == .lsbr && not_attr {
 		p.next()
 		p.check(.rsbr)
 		nr_dims++
