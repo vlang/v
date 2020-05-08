@@ -1401,7 +1401,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			if it.is_method {
 				sym := c.table.get_type_symbol(it.receiver.typ)
 				if sym.kind == .interface_ {
-					c.error('interaces cannot be used as method receiver', it.receiver_pos)
+					c.error('interfaces cannot be used as method receiver', it.receiver_pos)
 				}
 				// if sym.has_method(it.name) {
 				// c.warn('duplicate method `$it.name`', it.pos)
