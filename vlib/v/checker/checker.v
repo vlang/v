@@ -2084,15 +2084,22 @@ pub fn (mut c Checker) enum_val(node mut ast.EnumVal) table.Type {
 	// println('checker: enum_val: $node.enum_name typeidx=$typ_idx')
 	if typ_idx == 0 {
 		c.error('not an enum (name=$node.enum_name) (type_idx=0)', node.pos)
+		return table.void_type
 	}
 	typ := table.new_type(typ_idx)
 	if typ == table.void_type {
 		c.error('not an enum', node.pos)
+		return table.void_type
 	}
 	typ_sym := c.table.get_type_symbol(typ)
 	// println('tname=$typ_sym.name $node.pos.line_nr $c.file.path')
 	if typ_sym.kind != .enum_ {
 		c.error('not an enum', node.pos)
+		return table.void_type
+	}
+	if !(typ_sym.info is table.Enum) {
+		c.error('not an enum', node.pos)
+		return table.void_type
 	}
 	// info := typ_sym.info as table.Enum
 	info := typ_sym.enum_info()
