@@ -22,7 +22,7 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 	mut nr_dims := 1
 
 	// detect attr
-	is_attr := p.peek_tok.kind == .name && p.peek_tok2.kind in [.colon, .rsbr]
+	is_attr := p.peek_tok.kind == .name && p.peek_tok2.kind in [.semicolon, .rsbr]
 	
 	for p.tok.kind == .lsbr && !is_attr {
 		p.next()
