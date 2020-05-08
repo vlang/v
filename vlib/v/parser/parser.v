@@ -481,8 +481,29 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 	}
 }
 
-fn (mut p Parser) attribute() ast.Attr {
+fn (mut p Parser) attributes() []ast.Attr {
+	mut attrs := []ast.Attr{}
+
 	p.check(.lsbr)
+	for p.tok.kind != .rsbr {
+		attr := p.parse_attr()
+		attrs << attr
+		if p.tok.kind != .semicolon {
+			expected := `;`
+			if p.tok.kind == .rsbr {
+				p.next()
+				break
+			}
+
+			p.error('unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`')
+		}
+		p.next()
+	}
+
+	return attrs
+}
+
+fn (mut p Parser) parse_attr() ast.Attr {
 	mut is_if_attr := false
 	if p.tok.kind == .key_if {
 		p.next()
@@ -499,7 +520,6 @@ fn (mut p Parser) attribute() ast.Attr {
 			p.next()
 		}
 	}
-	p.check(.rsbr)
 	p.attr = name
 	if is_if_attr {
 		p.attr_ctdefine = name

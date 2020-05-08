@@ -117,9 +117,12 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 				has_default_expr = true
 			}
-			mut attr := ast.Attr{}
+			mut attrs := []string{}
 			if p.tok.kind == .lsbr {
-				attr = p.attribute()
+				parsed_attrs := p.attributes()
+				for attr in parsed_attrs {
+					attrs << attr.name
+				}
 			}
 			if p.tok.kind == .comment {
 				comment = p.comment()
@@ -132,7 +135,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				comment: comment
 				default_expr: default_expr
 				has_default_expr: has_default_expr
-				attr: attr.name
+				attrs: attrs
 			}
 			fields << table.Field{
 				name: field_name
@@ -142,7 +145,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_pub: is_field_pub
 				is_mut: is_field_mut
 				is_global: is_field_global
-				attr: attr.name
+				attrs: attrs
 			}
 			// println('struct field $ti.name $field_name')
 		}
