@@ -1,0 +1,6 @@
+vlib/v/checker/tests/trailing_comma_struct_attr.v:3:31: error: unexpected `]`, expecting `name` 
+    1 | struct User {
+    2 |     name string
+    3 |     jobs []string [json:jobss;]
+      |                               ^
+    4 | }
