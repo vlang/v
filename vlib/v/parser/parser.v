@@ -310,12 +310,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 		}
 		.lsbr {
-			attrs := p.attributes()
-
-			if attrs.len > 1 {
-				p.error('multiple attributes detected')
-			}
-			return attrs[0]
+			return p.attribute()
 		}
 		.key_interface {
 			return p.interface_decl()
@@ -486,29 +481,8 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 	}
 }
 
-fn (mut p Parser) attributes() []ast.Attr {
-	mut attrs := []ast.Attr{}
-
+fn (mut p Parser) attribute() ast.Attr {
 	p.check(.lsbr)
-	for p.tok.kind != .rsbr {
-		attr := p.parse_attr()
-		attrs << attr
-		if p.tok.kind != .semicolon {
-			expected := `;`
-			if p.tok.kind == .rsbr {
-				p.next()
-				break
-			}
-
-			p.error('unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`')
-		}
-		p.next()
-	}
-
-	return attrs
-}
-
-fn (mut p Parser) parse_attr() ast.Attr {
 	mut is_if_attr := false
 	if p.tok.kind == .key_if {
 		p.next()
@@ -525,6 +499,7 @@ fn (mut p Parser) parse_attr() ast.Attr {
 			p.next()
 		}
 	}
+	p.check(.rsbr)
 	p.attr = name
 	if is_if_attr {
 		p.attr_ctdefine = name

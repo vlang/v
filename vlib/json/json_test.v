@@ -27,11 +27,10 @@ struct User {
 	last_name 	string 	[json:lastName]
 	is_registered	bool 	[json:IsRegistered]
     typ int  [json:'type']
-	pets string [raw; json:'pet_animals']
 }
 
 fn test_parse_user() {
-	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
+	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true}'
 	u2 := json.decode(User2, s) or {
 		exit(1)
 	}
@@ -48,12 +47,11 @@ fn test_parse_user() {
 	assert u.nums[1] == 2
 	assert u.nums[2] == 3
     assert u.typ == 1
-	assert u.pets == '{"name":"Bob","animal":"Dog"}'
 }
 
 fn test_encode_user(){
-	usr := User{ age: 10, nums: [1,2,3], last_name: 'Johnson', is_registered: true, typ: 0, pets: 'foo'}
-	expected := '{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"foo"}'
+	usr := User{ age: 10, nums: [1,2,3], last_name: 'Johnson', is_registered: true, typ: 0}
+	expected := '{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0}'
 	out := json.encode(usr)
 	println(out)
 	assert out == expected
