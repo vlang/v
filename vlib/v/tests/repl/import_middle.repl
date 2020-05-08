@@ -1,0 +1,6 @@
+mut a := [1,2,3]
+a << 4
+import time
+time.now().unix_time() > 160000
+===output===
+true
