@@ -12,6 +12,10 @@ fn (mut g Gen) profile_fn(fn_name string, is_main bool){
 		g.writeln('\tatexit(vprint_profile_stats);')
 		g.writeln('')
 	}
+	if g.pref.profile_no_inline && g.attr == 'inline' {
+		g.defer_profile_code = ''
+		return        
+	}
 	if fn_name.starts_with('time.vpc_now') {
 		g.defer_profile_code = ''
 	} else {

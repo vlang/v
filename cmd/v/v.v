@@ -150,6 +150,9 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				res.is_prof = true
 				i++
 			}
+			'-profile-no-inline' {
+				res.profile_no_inline = true
+			}
 			'-prod' {
 				res.is_prod = true
 			}

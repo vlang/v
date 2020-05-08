@@ -33,6 +33,7 @@ pub mut:
 	is_shared           bool // an ordinary shared library, -shared, no matter if it is live or not
 	is_prof             bool // benchmark every function
 	profile_file        string // the profile results will be stored inside profile_file
+	profile_no_inline   bool // when true, [inline] functions would not be profiled
 	translated          bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	is_prod             bool // use "-O2"
 	obfuscate           bool // `v -obf program.v`, renames functions to "f_XXX"

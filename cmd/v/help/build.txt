@@ -74,7 +74,10 @@ The build flags are shared by the build and run commands:
          c) an average for each function (i.e. (b) / (a) )
          d) the function name
       NB: if you want to output the profile info to stdout, use `-profile -`.
-
+      
+   -profile-no-inline       
+      Skip [inline] functions when profiling.
+      
    -stats
       Enable more detailed statistics reporting, while compiling test files.
       You can use that with `v test` too, for example:
