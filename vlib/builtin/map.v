@@ -61,24 +61,24 @@ much faster rehashing.
 
 const (
 // Number of bits from the hash stored for each entry
-	hashbits = 24
+	hashbits            = 24
 	// Number of bits from the hash stored for rehashing
 	max_cached_hashbits = 16
 	// Initial log-number of buckets in the hashtable
-	init_log_capicity = 5
+	init_log_capicity   = 5
 	// Initial number of buckets in the hashtable
-	init_capicity = 1<<init_log_capicity
+	init_capicity       = 1 << init_log_capicity
 	// Maximum load-factor (size / capacity)
-	max_load_factor = 0.8
+	max_load_factor     = 0.8
 	// Initial highest even index in metas
-	init_cap = init_capicity - 2
+	init_cap            = init_capicity - 2
 	// Used for incrementing `extra_metas` when max
 	// probe count is too high, to avoid overflow
-	extra_metas_inc = 4
+	extra_metas_inc     = 4
 	// Bitmask to select all the hashbits
-	hash_mask = u32(0x00FFFFFF)
+	hash_mask           = u32(0x00FFFFFF)
 	// Used for incrementing the probe-count
-	probe_inc = u32(0x01000000)
+	probe_inc           = u32(0x01000000)
 )
 
 // This function is intended to be fast when 
@@ -170,26 +170,26 @@ fn (d mut DenseArray) zeros_to_end() {
 
 pub struct map {
 	// Byte size of value
-	value_bytes int
+	value_bytes     int
 mut:
 	// highest even index in the hashtable
-	cap         u32
+	cap             u32
 	// Number of cached hashbits left for rehasing
-	cached_hashbits      byte
+	cached_hashbits byte
 	// Used for right-shifting out used hashbits
-	shift       byte
+	shift           byte
 	// Array storing key-values (ordered)
-	key_values  DenseArray
+	key_values      DenseArray
 	// Pointer to meta-data:
 	// Odd indices store kv_index.
 	// Even indices store probe_count and hashbits.
-	metas       &u32
+	metas           &u32
 	// Extra metas that allows for no ranging when incrementing
 	// index in the hashmap
-	extra_metas u32
+	extra_metas     u32
 pub mut:
 	// Number of key-values currently in the hashmap
-	size        int
+	size            int
 }
 
 fn new_map_1(value_bytes int) map {
@@ -217,7 +217,7 @@ fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
 fn (m &map) key_to_index(key string) (u32,u32) {
 	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
 	index := hash & m.cap
-	meta := ((hash>>m.shift) & hash_mask) | probe_inc
+	meta := ((hash >> m.shift) & hash_mask) | probe_inc
 	return u32(index),u32(meta)
 }
 
@@ -251,8 +251,8 @@ fn (m mut map) meta_greater(_index u32, _metas u32, kvi u32) {
 	}
 	m.metas[index] = meta
 	m.metas[index + 1] = kv_index
-	probe_count := (meta>>hashbits) - 1
-	if (probe_count<<1) == m.extra_metas {
+	probe_count := (meta >> hashbits) - 1
+	if (probe_count << 1) == m.extra_metas {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.cap + 2 + m.extra_metas)
 		m.metas = &u32(C.realloc(m.metas, sizeof(u32) * mem_size))
@@ -265,7 +265,7 @@ fn (m mut map) meta_greater(_index u32, _metas u32, kvi u32) {
 }
 
 fn (m mut map) set(key string, value voidptr) {
-	load_factor := f32(m.size<<1) / f32(m.cap)
+	load_factor := f32(m.size << 1) / f32(m.cap)
 	if load_factor > max_load_factor {
 		m.expand()
 	}
@@ -289,7 +289,7 @@ fn (m mut map) set(key string, value voidptr) {
 // Doubles the size of the hashmap
 fn (m mut map) expand() {
 	old_cap := m.cap
-	m.cap = ((m.cap + 2)<<1) - 2
+	m.cap = ((m.cap + 2) << 1) - 2
 	// Check if any hashbits are left
 	if m.cached_hashbits == 0 {
 		m.shift += max_cached_hashbits
@@ -325,9 +325,9 @@ fn (m mut map) cached_rehash(old_cap u32) {
 			continue
 		}
 		old_meta := old_metas[i]
-		old_probe_count := ((old_meta>>hashbits) - 1)<<1
-		old_index := (i - old_probe_count) & (m.cap>>1)
-		mut index := (old_index | (old_meta<<m.shift)) & m.cap
+		old_probe_count := ((old_meta >> hashbits) - 1) << 1
+		old_index := (i - old_probe_count) & (m.cap >> 1)
+		mut index := (old_index | (old_meta << m.shift)) & m.cap
 		mut meta := (old_meta & hash_mask) | probe_inc
 		index,meta = m.meta_less(index, meta)
 		kv_index := old_metas[i + 1]
@@ -340,28 +340,32 @@ fn (m mut map) cached_rehash(old_cap u32) {
 
 fn (m map) get3(key string, zero voidptr) voidptr {
 	mut index,mut meta := m.key_to_index(key)
-	index,meta = m.meta_less(index, meta)
-	for meta == m.metas[index] {
-		kv_index := m.metas[index + 1]
-		if fast_string_eq(key, m.key_values.keys[kv_index]) {
-			return voidptr(m.key_values.values + kv_index * m.value_bytes)
+	for {
+		if meta == m.metas[index] {
+			kv_index := m.metas[index + 1]
+			if fast_string_eq(key, m.key_values.keys[kv_index]) {
+				return voidptr(m.key_values.values + kv_index * m.value_bytes)
+			}
 		}
 		index += 2
 		meta += probe_inc
+		if meta > m.metas[index] { break }
 	}
 	return zero
 }
 
 fn (m map) exists(key string) bool {
 	mut index,mut meta := m.key_to_index(key)
-	index,meta = m.meta_less(index, meta)
-	for meta == m.metas[index] {
-		kv_index := m.metas[index + 1]
-		if fast_string_eq(key, m.key_values.keys[kv_index]) {
-			return true
+	for {
+		if meta == m.metas[index] {
+			kv_index := m.metas[index + 1]
+			if fast_string_eq(key, m.key_values.keys[kv_index]) {
+				return  true
+			}
 		}
 		index += 2
 		meta += probe_inc
+		if meta > m.metas[index] { break }
 	}
 	return false
 }
@@ -373,7 +377,7 @@ pub fn (m mut map) delete(key string) {
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if fast_string_eq(key, m.key_values.keys[kv_index]) {
-			for (m.metas[index + 2]>>hashbits) > 1 {
+			for (m.metas[index + 2] >> hashbits) > 1 {
 				m.metas[index] = m.metas[index + 2] - probe_inc
 				m.metas[index + 1] = m.metas[index + 3]
 				index += 2
