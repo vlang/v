@@ -310,7 +310,12 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 		}
 		.lsbr {
-			return p.attribute()
+			attrs := p.attributes()
+
+			if attrs.len > 1 {
+				p.error('multiple attributes detected')
+			}
+			return attrs[0]
 		}
 		.key_interface {
 			return p.interface_decl()
