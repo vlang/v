@@ -232,6 +232,12 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		if sym.kind == .placeholder && !decl.is_c && !sym.name.starts_with('C.') {
 			c.error('unknown type `$sym.name`', field.pos)
 		}
+		if sym.kind == .struct_ {
+			info:=sym.info as table.Struct
+			if info.is_ref_only && !field.typ.is_ptr() {
+				c.error('`$sym.name` type can only be used as a reference: `&$sym.name`', field.pos)
+			}
+		}
 		if field.has_default_expr {
 			c.expected_type = field.typ
 			field_expr_type := c.expr(field.default_expr)

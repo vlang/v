@@ -531,9 +531,10 @@ pub fn (kinds []Kind) str() string {
 
 pub struct Struct {
 pub mut:
-	fields     []Field
-	is_typedef bool // C. [typedef]
-	is_union   bool
+	fields      []Field
+	is_typedef  bool // C. [typedef]
+	is_union    bool
+	is_ref_only bool
 }
 
 pub struct Interface {
@@ -641,7 +642,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 	return res
 }
 
-pub fn(t &Table) fn_to_str(func &Fn) string {
+pub fn (t &Table) fn_to_str(func &Fn) string {
 	mut sb := strings.new_builder(20)
 	sb.write('${func.name}(')
 	for i in 1 .. func.args.len {
@@ -655,7 +656,7 @@ pub fn(t &Table) fn_to_str(func &Fn) string {
 		}
 	}
 	sb.write(')')
-	if func.return_type != table.void_type {
+	if func.return_type != void_type {
 		sb.write(' ${t.type_to_str(func.return_type)}')
 	}
 	return sb.str()

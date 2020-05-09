@@ -153,6 +153,7 @@ pub:
 	is_c        bool
 	is_js       bool
 	is_union    bool
+	attr string
 }
 
 pub struct InterfaceDecl {

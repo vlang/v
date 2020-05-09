@@ -166,6 +166,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			fields: fields
 			is_typedef: is_typedef
 			is_union: is_union
+			is_ref_only: p.attr == 'ref_only'
 		}
 		mod: p.mod
 		is_public: is_pub
@@ -193,6 +194,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		is_c: is_c
 		is_js: is_js
 		is_union: is_union
+		attr: p.attr
 	}
 }
 
