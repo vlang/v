@@ -103,6 +103,9 @@ fn (r mut Reader) read_record() ?[]string {
 		l := r.read_line() or {
 			return error(err)
 		}
+		if l.len <= 0 {
+			continue
+		}
 		line = l
 		// skip commented lines
 		if line[0] == r.comment {
