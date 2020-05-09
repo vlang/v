@@ -1,0 +1,7 @@
+enum Color {
+    Green
+    yellow
+}
+fn main(){
+	println('hello')
+}

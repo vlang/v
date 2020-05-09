@@ -1146,7 +1146,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	end_pos := p.tok.position()
 	enum_name := p.check_name()
 	if enum_name.len > 0 && !enum_name[0].is_capital() {
-		verror('enum name `$enum_name` must begin with a capital letter')
+		p.error_with_pos('enum name `$enum_name` must begin with a capital letter', end_pos)
 	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
@@ -1156,6 +1156,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.position()
 		val := p.check_name()
+		if !val.is_lower() {
+			p.error_with_pos('field name `$val` must be all lowercase', pos)
+		}
 		vals << val
 		mut expr := ast.Expr{}
 		mut has_expr := false
