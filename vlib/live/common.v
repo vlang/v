@@ -13,7 +13,7 @@ pub:
 	live_linkfn       FNLinkLiveSymbols // generated C callback; receives a dlopen handle
 	so_extension      string // .so or .dll
 	so_name_template  string // a sprintf template for the shared libraries location
-mut:
+pub mut:
 	live_lib          voidptr // the result of dl.open
 	reloads           int // how many times a reloading was tried
 	reloads_ok        int // how many times the reloads succeeded
