@@ -4,10 +4,10 @@
 module strings
 
 pub struct Builder {
-mut:
+	// TODO
+pub mut:
 	buf          []byte
 	str_calls    int
-pub mut:
 	len          int
 	initial_size int = 1
 }

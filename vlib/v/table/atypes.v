@@ -20,7 +20,7 @@ pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map
 pub struct TypeSymbol {
 pub:
 	parent_idx int
-mut:
+pub mut:
 	info       TypeInfo
 	kind       Kind
 	name       string
@@ -244,7 +244,7 @@ pub const (
 pub struct MultiReturn {
 pub:
 	name  string
-mut:
+pub mut:
 	types []Type
 }
 
@@ -537,7 +537,7 @@ pub mut:
 }
 
 pub struct Interface {
-mut:
+pub mut:
 	types []Type
 }
 
@@ -559,7 +559,7 @@ pub type FExpr = byteptr | voidptr
 pub struct Field {
 pub:
 	name             string
-mut:
+pub mut:
 	typ              Type
 	default_expr     FExpr
 	has_default_expr bool
@@ -573,7 +573,7 @@ mut:
 pub struct Array {
 pub:
 	nr_dims   int
-mut:
+pub mut:
 	elem_type Type
 }
 
@@ -581,7 +581,7 @@ pub struct ArrayFixed {
 pub:
 	nr_dims   int
 	size      int
-mut:
+pub mut:
 	elem_type Type
 }
 

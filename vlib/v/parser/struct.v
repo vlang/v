@@ -136,6 +136,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				default_expr: default_expr
 				has_default_expr: has_default_expr
 				attrs: attrs
+				is_public: is_field_pub
 			}
 			fields << table.Field{
 				name: field_name

@@ -15,6 +15,10 @@ import v.gen.js
 import v.gen.x64
 import v.depgraph
 
+const (
+	max_nr_errors = 100
+)
+
 pub struct Builder {
 pub:
 	table               &table.Table
@@ -206,18 +210,33 @@ pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 }
 
 fn (b &Builder) print_warnings_and_errors() {
+	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
+		println('$b.checker.nr_warnings warnings')
+	}
 	if b.checker.nr_warnings > 0 {
-		for err in b.checker.warnings {
+		for i, err in b.checker.warnings {
 			kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_warnings:' } else { 'warning:' }
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
+			// eprintln('')
+			if i > max_nr_errors {
+				return
+			}
 		}
 	}
+	//
+	if b.pref.is_verbose && b.checker.nr_errors > 1 {
+		println('$b.checker.nr_errors errors')
+	}
 	if b.checker.nr_errors > 0 {
-		for err in b.checker.errors {
+		for i, err in b.checker.errors {
 			kind := if b.pref.is_verbose { '$err.reporter error #$b.checker.nr_errors:' } else { 'error:' }
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
+			// eprintln('')
+			if i > max_nr_errors {
+				return
+			}
 		}
 		exit(1)
 	}

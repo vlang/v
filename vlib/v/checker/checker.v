@@ -18,7 +18,7 @@ const (
 
 pub struct Checker {
 	table          &table.Table
-mut:
+pub mut:
 	file           ast.File
 	nr_errors      int
 	nr_warnings    int
@@ -517,10 +517,10 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 			match typ_sym.kind {
 				.struct_ {
 					struct_info := typ_sym.info as table.Struct
-					field_info := struct_info.get_field(it.field)
+					field_info := struct_info.get_field(it.field_name)
 					if !field_info.is_mut {
 						type_str := c.table.type_to_str(it.expr_type)
-						c.error('field `$it.field` of struct `${type_str}` is immutable', it.pos)
+						c.error('field `$it.field_name` of struct `${type_str}` is immutable', it.pos)
 					}
 					c.fail_if_immutable(it.expr)
 				}
@@ -1002,7 +1002,7 @@ pub fn (mut c Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 	selector_expr.expr_type = typ
 	// println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
 	typ_sym := c.table.get_type_symbol(typ)
-	field_name := selector_expr.field
+	field_name := selector_expr.field_name
 	// variadic
 	if typ.flag_is(.variadic) {
 		if field_name == 'len' {
@@ -1010,6 +1010,9 @@ pub fn (mut c Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 		}
 	}
 	if field := c.table.struct_find_field(typ_sym, field_name) {
+	if typ_sym.mod != c.mod && !field.is_pub{
+		c.warn('field `${typ_sym.name}.$field_name` is not public', selector_expr.pos)
+	}
 		return field.typ
 	}
 	if typ_sym.kind != .struct_ {
