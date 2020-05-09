@@ -970,8 +970,21 @@ fn (mut p Parser) module_decl() ast.Module {
 	mut name := 'main'
 	is_skipped := p.tok.kind != .key_module
 	if !is_skipped {
+		module_pos := p.tok.position()
 		p.next()
+		mut pos := p.tok.position()
 		name = p.check_name()
+		if module_pos.line_nr != pos.line_nr {
+			p.error_with_pos('`module` and `$name` must be at same line', pos)
+		}
+		pos = p.tok.position()
+		if module_pos.line_nr == pos.line_nr {
+			if p.tok.kind != .name {
+				p.error_with_pos('`module x` syntax error', pos)
+			} else {
+				p.error_with_pos('`module x` can only declare one module', pos)
+			}
+		}
 	}
 	full_mod := p.table.qualify_module(name, p.file_name)
 	p.mod = full_mod

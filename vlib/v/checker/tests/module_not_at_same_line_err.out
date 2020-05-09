@@ -1,0 +1,6 @@
+vlib/v/checker/tests/module_not_at_same_line_err.v:2:1: error: `module` and `main` must be at same line
+    1 | module
+    2 | main
+      | ~~~~
+    3 | fn main() {
+    4 |     println('hello, world')
