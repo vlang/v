@@ -27,11 +27,12 @@ pub:
 	module_path         string
 mut:
 	pref                &pref.Preferences
-	module_search_paths []string
 	parsed_files        []ast.File
 	global_scope        &ast.Scope
 	out_name_c          string
 	out_name_js         string
+pub mut:
+	module_search_paths []string
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {

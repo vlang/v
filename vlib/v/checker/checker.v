@@ -1011,7 +1011,7 @@ pub fn (mut c Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 	}
 	if field := c.table.struct_find_field(typ_sym, field_name) {
 	if typ_sym.mod != c.mod && !field.is_pub{
-		c.warn('field `${typ_sym.name}.$field_name` is not public', selector_expr.pos)
+		c.error('field `${typ_sym.name}.$field_name` is not public', selector_expr.pos)
 	}
 		return field.typ
 	}
