@@ -2139,6 +2139,13 @@ pub fn (mut c Checker) map_init(node mut ast.MapInit) table.Type {
 	key0_type := c.expr(node.keys[0])
 	val0_type := c.expr(node.vals[0])
 	for i, key in node.keys {
+		key_i := key as ast.StringLiteral
+		for j in 0..i {
+			key_j := node.keys[j] as ast.StringLiteral
+			if key_i.val == key_j.val {
+				c.error('key value duplicate', key.position())
+			}
+		}
 		if i == 0 {
 			continue
 		}
