@@ -10,8 +10,10 @@ fn main() {
 
 	println('Updating V...')
 
+	real_remote := get_real_remote()
+
 	// git pull
-	git_result := os.exec('git pull --rebase origin master') or {
+	git_result := os.exec('git pull --rebase $real_remote master') or {
 		panic(err)
 	}
 
@@ -60,4 +62,21 @@ fn backup(file string) {
 		os.rm(backup_file)
 	}
 	os.mv(file, backup_file)
+}
+
+fn get_real_remote() string {
+	mut real_remote := 'origin'
+	remotes := exec('git remote').split('\n')
+	for remote in remotes {
+		remote_url := exec('git remote get-url --push $remote')
+		if remote_url == 'https://github.com/vlang/v' {
+			real_remote = remote
+		}
+	}
+	return real_remote
+}
+
+fn exec(command string) string {
+	result := os.exec(command) or { return '' }
+	return result.output
 }
