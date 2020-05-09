@@ -37,7 +37,7 @@ mut:
 	global_scope      &ast.Scope
 	imports           map[string]string
 	ast_imports       []ast.Import
-	is_amp            bool
+	is_amp            bool // for generating the right code for `&Foo{}`
 	returns           bool
 	inside_match      bool // to separate `match A { }` from `Struct{}`
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
@@ -311,7 +311,6 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		}
 		.lsbr {
 			attrs := p.attributes()
-
 			if attrs.len > 1 {
 				p.error('multiple attributes detected')
 			}
@@ -488,7 +487,6 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 
 fn (mut p Parser) attributes() []ast.Attr {
 	mut attrs := []ast.Attr{}
-
 	p.check(.lsbr)
 	for p.tok.kind != .rsbr {
 		attr := p.parse_attr()
@@ -499,12 +497,10 @@ fn (mut p Parser) attributes() []ast.Attr {
 				p.next()
 				break
 			}
-
 			p.error('unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`')
 		}
 		p.next()
 	}
-
 	return attrs
 }
 
