@@ -2204,21 +2204,25 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	// }
 	if warn {
 		c.nr_warnings++
-		c.warnings << errors.Warning{
+		wrn := errors.Warning{
 			reporter: errors.Reporter.checker
 			pos: pos
 			file_path: c.file.path
 			message: message
 		}
+		c.file.warnings << wrn
+		c.warnings << wrn
 	} else {
 		c.nr_errors++
 		if pos.line_nr !in c.error_lines {
-			c.errors << errors.Error{
+			err := errors.Error{
 				reporter: errors.Reporter.checker
 				pos: pos
 				file_path: c.file.path
 				message: message
 			}
+			c.file.errors << err
+			c.errors << err
 			c.error_lines << pos.line_nr
 		}
 	}

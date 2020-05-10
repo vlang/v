@@ -12,6 +12,11 @@ pub enum BuildMode {
 	build_module
 }
 
+pub enum OutputMode {
+	stdout
+	silent
+}
+
 pub enum Backend {
 	c            // The (default) C backend
 	js           // The JavaScript backend
@@ -23,6 +28,7 @@ pub mut:
 	os                  OS   // the OS to compile for
 	backend             Backend
 	build_mode          BuildMode
+	output_mode         OutputMode = .stdout
 	//verbosity           VerboseLevel
 	is_verbose bool
 	// nofmt            bool   // disable vfmt
