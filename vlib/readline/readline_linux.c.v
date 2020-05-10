@@ -114,6 +114,7 @@ pub fn (r mut Readline) read_line_utf8(prompt string) ?ustring {
 
   print(r.prompt)
   for {
+    C.fflush(C.stdout)
     c := r.read_char()
     a := r.analyse(c)
     if r.execute(a, c) {
