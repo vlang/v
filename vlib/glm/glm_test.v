@@ -82,3 +82,13 @@ fn test_translate() {
 	// (0.000000, 0.000000, -0.500000, 1.000000))
 }
 
+fn test_mult() {
+	//TODO improve test
+	mut a := glm.identity()
+	mut b := glm.identity()
+	mut c := glm.identity()
+	a = glm.mult(a, b)
+	for i in 0..15 {
+		assert a.data[i] == c.data[i]
+	}
+}
