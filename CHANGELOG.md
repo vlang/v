@@ -26,7 +26,7 @@ number of calls, average time per call, total time per function.
 - Closures.
 - Lots and lots of new tests added, including output tests that test error messages.
 - Multiple errors are now printed, the compiler no longer stops after the first error.
-- Thew new JS backend using the AST parser (almost complete).
+- The new JS backend using the AST parser (almost complete).
 - Variadic functions.
 - `net.websocket` module (early stage).
 - `vlib` is now memory leak free, lots of `autofree` improvements.
