@@ -3660,6 +3660,14 @@ _Interface I_${cctype}_to_Interface_${interface_name}(${cctype}* x) {
 		._object = (void*) (x),
 		._interface_idx = ${interface_index_name}
 	};
+}
+
+_Interface* I_${cctype}_to_Interface_${interface_name}_ptr(${cctype}* x) {
+	/* TODO Remove memdup */
+	return (_Interface*) memdup(&(_Interface) {
+		._object = (void*) (x),
+		._interface_idx = ${interface_index_name}
+	}, sizeof(_Interface));
 }')
 			methods_struct.writeln('\t{')
 			st_sym := g.table.get_type_symbol(st)
@@ -3766,7 +3774,11 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 fn (g &Gen) interface_call(typ, interface_type table.Type) {
 	interface_styp := g.cc_type(interface_type)
 	styp := g.cc_type(typ)
-	g.write('/* $interface_styp */ I_${styp}_to_Interface_${interface_styp}(')
+	mut cast_fn_name := 'I_${styp}_to_Interface_${interface_styp}'
+	if interface_type.is_ptr() {
+		cast_fn_name += '_ptr'
+	}
+	g.write('${cast_fn_name}(')
 	if !typ.is_ptr() {
 		g.write('&')
 	}

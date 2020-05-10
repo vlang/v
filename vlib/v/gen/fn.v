@@ -298,9 +298,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		g.write('${c_name(receiver_type_name)}_name_table[')
 		g.expr(node.left)
-		g.write('._interface_idx].${node.name}(')
+		dot := if node.left_type.is_ptr() { '->' } else { '.' }
+		g.write('${dot}_interface_idx].${node.name}(')
 		g.expr(node.left)
-		g.write('._object')
+		g.write('${dot}_object')
 		if node.args.len > 0 {
 			g.write(', ')
 			g.call_args(node.args, node.expected_arg_types)
@@ -554,11 +555,14 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 				// styp := g.typ(arg.typ) // g.table.get_type_symbol(arg.typ)
 				if exp_sym.kind == .interface_ {
 					g.interface_call(arg.typ, expected_types[i])
-					// g.write('/*Z*/I_${styp}_to_${exp_styp}(')
 					is_interface = true
 				}
 			}
-			g.ref_or_deref_arg(arg, expected_types[i])
+			if is_interface {
+				g.expr(arg.expr)
+			} else {
+				g.ref_or_deref_arg(arg, expected_types[i])
+			}
 		} else {
 			g.expr(arg.expr)
 		}
