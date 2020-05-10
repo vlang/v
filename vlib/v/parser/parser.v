@@ -94,18 +94,15 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		stmt = com
 		stmts << stmt
 	}
+	// module
 	mut mstmt := ast.Stmt{}
 	module_decl := p.module_decl()
 	mstmt = module_decl
 	stmts << mstmt
 	// imports
-	/*
-	mut imports := []ast.Import{}
 	for p.tok.kind == .key_import {
-		imports << p.import_stmt()
+		stmts << p.import_stmt()
 	}
-	*/
-	// TODO: import only mode
 	for {
 		if p.tok.kind == .eof {
 			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
@@ -327,6 +324,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			return p.interface_decl()
 		}
 		.key_import {
+			p.error_with_pos('`import x` can only be declared at the beginning of the file', p.tok.position())
 			return p.import_stmt()
 		}
 		.key_global {
