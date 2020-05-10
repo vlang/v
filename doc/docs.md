@@ -16,14 +16,58 @@ you can do in V.
 
 ## Table of Contents
 
-<table>
-	<tr>
-		<td><a href='#hello-world'>1. Hello world</a></td>
-		<td><a href='#comments'>2. Comments</a></td>
-		<td><a href='#functions'>3. Functions</a></td>
-		<td><a href='#'>TODO</a></td>
-	</tr>
-</table>
+<ol>
+	<li><a href='#hello-world'>Hello world</a></li>
+	<li><a href='#comments'>Comments</a></li>
+	<li><a href='#functions'>Functions</a></li>
+	<li><a href='#constants--variables'>Constants & variables</a></li>
+	<li><a href='#primitive-types'>Primitive types</a></li>
+	<li><a href='#strings'>Strings</a></li>
+	<li><a href='#imports'>Imports</a></li>
+	<li><a href='#arrays'>Arrays</a></li>
+	<li><a href='#maps'>Maps</a></li>
+	<li><a href='#if'>If</a></li>
+	<li><a href='#in-operator'>In Operator</a></li>
+	<li><a href='#for-loop'>For loop</a></li>
+	<li><a href='#match'>Match</a></li>
+	<li><a href='#structs'>Structs</a></li>
+	<li><a href='#access-modifiers'>Access modifiers</a></li>
+	<li><a href='#methods'>Methods</a></li>
+	<li><a href='#pure-functions-by-default'>Pure functions by default</a></li>
+	<li><a href='#anonymous--high-order-functions'>Anonymous & high order functions</a></li>
+	<li><a href='#references'>References</a></li>
+	<li><a href='#constants'>Constants</a></li>
+	<li><a href='#println'>println</a></li>
+	<li><a href='#modules'>Modules</a></li>
+	<li><a href='#interfaces'>Interfaces</a></li>
+	<li><a href='#enums'>Enums</a></li>
+	<li><a href='#sum-types'>Sum types</a></li>
+	<li><a href='#optionresult-types-and-error-handling'>Option/Result types and error handling</a></li>
+	<li><a href='#generics'>Generics</a></li>
+	<li><a href='#concurrency'>Concurrency</a></li>
+	<li><a href='#decoding-json'>Decoding JSON</a></li>
+	<li><a href='#testing'>Testing</a></li>
+	<li><a href='#memory-management'>Memory managment</a></li>
+	<li><a href='#defer'>Defer</a></li>
+	<li><a href='#orm'>ORM</a></li>
+	<li><a href='#vfmt'>vfmt</a></li>
+	<li><a href='#writing-documentation'>Writing documentation</a></li>
+	<li><a href='#advanced-topics'>Advanced topics</a>
+        <ol>
+            <li><a href='calling-c-functions-from-v'>Calling C functions from V</a></li>
+            <li><a href='conditional-compilation'>Conditional compilation</a></li>
+            <li><a href='reflection-via-codegen'>Reflection via codegen</a></li>
+            <li><a href='limited-operator-overloading'>Limited operator overloading</a></li>
+            <li><a href='inline-assembly'>Inline assembly</a></li>
+            <li><a href='translating-cc-to-v'>Translating C/C++ to V</a></li>
+            <li><a href='hot-code-reloading'>Hot code reloading</a></li>
+            <li><a href='cross-compilation'>Cross compilation</a></li>
+            <li><a href='cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></li>
+            <li><a href='appendix-i-keywords'>Appendix I: Keywords</a></li>
+            <li><a href='appendix-ii-keywords'>Appendix II: Operators</a></li>
+        </ol>
+    </li>
+</ol>
 
 
 
@@ -1586,10 +1630,10 @@ Let's create a simple program `test.cpp` first:
 #include <iostream>
 
 int main() {
-        std::vector<std::string> s;
+        sli::vector<sli::string> s;
         s.push_back("V is ");
         s.push_back("awesome");
-        std::cout << s.size() << std::endl;
+        sli::cout << s.size() << sli::endl;
         return 0;
 }
 ```
