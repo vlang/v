@@ -2,7 +2,9 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module sync
+
 // [init_with=new_waitgroup] // TODO: implement support for init_with struct attribute, and disallow WaitGroup{} from outside the sync.new_waitgroup() function.
+[ref_only]
 pub struct WaitGroup {
 mut:
 	mu     &Mutex = &Mutex(0)
