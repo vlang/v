@@ -217,7 +217,8 @@ pub fn scale(m Mat4, v Vec3) Mat4 {
 	return mat4(out)
 }
 
-pub fn multipication(a, b Mat4) Mat4 {
+// multiplicates two matrices
+pub fn mult(a, b Mat4) Mat4 {
 	da := a.data
 	db := b.data
 	mut out := f32_calloc(16)
@@ -246,6 +247,7 @@ pub fn multipication(a, b Mat4) Mat4 {
 	return mat4(out)
 }
 
+// helper function for mult
 fn mult_mat_point(a Mat4, point Mat4) Mat4 {
 	data := a.data
 	c0r0 := data[0]c1r0 := data[1]c2r0 := data[2]c3r0 := data[3]

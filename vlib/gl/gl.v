@@ -186,10 +186,13 @@ pub fn set_ebo(ebo u32, indices []int, draw_typ int) {
 // fn gen_vertex_arrays(a int, vao uint) {
 // # glGenVertexArrays(a, &VAO);
 // }
+
+// gets the uniform location for key
 pub fn get_uniform_location(program int, key string) int {
 	return C.glGetUniformLocation(program, key.str)
 }
 
+//gets the attribute location for key
 pub fn get_attrib_location(program int, key string) int {
 	return C.glGetAttribLocation(program, key.str)
 }
@@ -252,6 +255,7 @@ pub fn generate_mipmap(typ int) {
 	C.glGenerateMipmap(typ)
 }
 
+// set mat4 at uniform location
 pub fn set_mat4fv(loc, count int, transpose bool, val glm.Mat4) {
 	C.glUniformMatrix4fv(loc, count, transpose, val.data)
 }
