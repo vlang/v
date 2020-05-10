@@ -211,6 +211,14 @@ pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 }
 
 fn (b &Builder) print_warnings_and_errors() {
+	if b.pref.output_mode == .silent {
+		if b.checker.nr_errors > 0 {
+			exit(1)
+		}
+
+		return
+	}
+
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
 		println('$b.checker.nr_warnings warnings')
 	}

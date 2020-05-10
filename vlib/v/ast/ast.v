@@ -5,6 +5,7 @@ module ast
 
 import v.token
 import v.table
+import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
@@ -306,6 +307,8 @@ pub:
 	global_scope &Scope
 pub mut:
 	imports      []Import
+	errors 	     []errors.Error
+	warnings     []errors.Warning
 }
 
 pub struct IdentFn {

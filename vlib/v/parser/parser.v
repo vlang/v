@@ -9,6 +9,7 @@ import v.token
 import v.table
 import v.pref
 import v.util
+import v.errors
 import term
 import os
 
@@ -43,6 +44,8 @@ mut:
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
 	is_stmt_ident     bool // true while the beginning of a statement is an ident/selector
 	expecting_type    bool // `is Type`, expecting type
+	errors            []errors.Error
+	warnings          []errors.Warning
 }
 
 // for tests
@@ -79,6 +82,8 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 			start_pos: 0
 			parent: 0
 		}
+		errors: []errors.Error{},
+		warnings: []errors.Warning{},
 		global_scope: global_scope
 	}
 	// comments_mode: comments_mode
@@ -121,7 +126,9 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		imports: p.ast_imports
 		stmts: stmts
 		scope: p.scope
-		global_scope: p.global_scope
+		global_scope: p.global_scope,
+		errors: p.errors,
+		warnings: p.warnings
 	}
 }
 
@@ -549,28 +556,46 @@ fn (mut p Parser) range_expr(low ast.Expr) ast.Expr {
 	return node
 }
 */
-pub fn (p &Parser) error(s string) {
+pub fn (mut p Parser) error(s string) {
 	p.error_with_pos(s, p.tok.position())
 }
 
-pub fn (p &Parser) warn(s string) {
+pub fn (mut p Parser) warn(s string) {
 	p.warn_with_pos(s, p.tok.position())
 }
 
-pub fn (p &Parser) error_with_pos(s string, pos token.Position) {
+pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 	mut kind := 'error:'
-	if p.pref.is_verbose {
-		print_backtrace()
-		kind = 'parser error:'
+	if p.pref.output_mode == .stdout {
+		if p.pref.is_verbose {
+			print_backtrace()
+			kind = 'parser error:'
+		}
+		ferror := util.formatted_error(kind, s, p.file_name, pos)
+		eprintln(ferror)
+		exit(1)
+	} else {
+		p.errors << errors.Error{
+			file_path: p.file_name,
+			pos: pos,
+			reporter: .parser,
+			message: s
+		}
 	}
-	ferror := util.formatted_error(kind, s, p.file_name, pos)
-	eprintln(ferror)
-	exit(1)
 }
 
-pub fn (p &Parser) warn_with_pos(s string, pos token.Position) {
-	ferror := util.formatted_error('warning:', s, p.file_name, pos)
-	eprintln(ferror)
+pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
+	if p.pref.output_mode == .stdout {
+		ferror := util.formatted_error('warning:', s, p.file_name, pos)
+		eprintln(ferror)
+	} else {
+		p.warnings << errors.Warning{
+			file_path: p.file_name,
+			pos: pos,
+			reporter: .parser,
+			message: s
+		}
+	}
 }
 
 pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
