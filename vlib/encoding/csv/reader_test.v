@@ -174,3 +174,28 @@ fn test_empty_line() {
 		}
 	}
 }
+
+fn test_field_multiple_line() {
+	data := '"name","multiple
+
+ line","value"\n"one","first","1"'
+	mut csv_reader := csv.new_reader(data)
+
+	mut row_count := 0
+	for {
+    	row := csv_reader.read() or {
+        	break
+    	}
+    	row_count++
+		if row_count == 1 {
+			assert row[0] == 'name'
+			assert row[1] == 'multiple\n\n line'
+			assert row[2] == 'value'
+		}
+		if row_count == 2 {
+			assert row[0] == 'one'
+			assert row[1] == 'first'
+			assert row[2] == '1'
+		}
+	}
+}
