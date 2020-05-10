@@ -1472,6 +1472,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			} else {
 				mut scope := c.file.scope.innermost(it.pos.pos)
 				sym := c.table.get_type_symbol(typ)
+				if sym.kind == .map && !(it.key_var.len > 0 && it.val_var.len > 0) {
+					c.error('for in: cannot use one variable in map', it.pos)
+				}
 				if it.key_var.len > 0 {
 					key_type := match sym.kind {
 						.map { sym.map_info().key_type }
