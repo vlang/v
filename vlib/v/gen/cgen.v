@@ -923,23 +923,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 					continue
 				}
-				ast.Ident {
-					if it.info is ast.IdentFn {
-						thing := it.info as ast.IdentFn
-						sym := g.table.get_type_symbol(thing.typ)
-						info := sym.info as table.FnType
-						func := info.func
-						ret_styp := g.typ(func.return_type)
-						g.write('$ret_styp (*$ident.name) (')
-						def_pos := g.definitions.len
-						g.fn_args(func.args, func.is_variadic)
-						g.definitions.go_back(g.definitions.len - def_pos)
-						g.write(') = ')
-						g.expr(*it)
-						g.writeln(';')
-						continue
-					}
-				}
 				else {}
 			}
 			gen_or := is_call && return_type.flag_is(.optional)
@@ -965,10 +948,21 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				is_decl := assign_stmt.op == .decl_assign
 				// g.write('/*assign_stmt*/')
-				if is_decl {
+				if is_decl && right_sym.kind != .function {
 					g.write('$styp ')
 				}
-				g.ident(ident)
+				if right_sym.kind == .function {
+					func := right_sym.info as table.FnType
+					ret_styp := g.typ(func.func.return_type)
+					g.write('$ret_styp (*$ident.name) (')
+					def_pos := g.definitions.len
+					g.fn_args(func.func.args, func.func.is_variadic)
+					g.definitions.go_back(g.definitions.len - def_pos)
+					g.write(')')
+				}
+				else {
+					g.ident(ident)
+				}
 				if g.autofree && right_sym.kind in [.array, .string] {
 					if g.gen_clone_assignment(val, right_sym, true) {
 						g.writeln(';')
