@@ -105,44 +105,36 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline]
-		mut cline := sline.replace('\t', tab_spaces)
-		if iline == pos.line_nr {
-			cline = color(kind, cline)
+		start_column := imin(column, sline.len)
+		end_column := imin(column + pos.len, sline.len)
+		cline := if iline == pos.line_nr {
+			sline[..start_column] + color(kind, sline[start_column..end_column]) + sline[end_column..]
+		} else {
+			sline
 		}
-		clines << '${iline+1:5d} | ' + cline
+		clines << '${iline+1:5d} | ' + cline.replace('\t', tab_spaces)
 		//
 		if iline == pos.line_nr {
 			// The pointerline should have the same spaces/tabs as the offending
 			// line, so that it prints the ^ character exactly on the *same spot*
 			// where it is needed. That is the reason we can not just
 			// use strings.repeat(` `, col) to form it.
-			mut pointerline := []string{}
-			for i, bchar in sline {
-				if i < column {
-					mut x := bchar
-					if x == `\t` {
-						pointerline << tab_spaces
-					} else {
-						x = if x.is_space() {
-							bchar
-						} else {
-							` `
-						}
-						pointerline << x.str()
-					}
-					continue
-				}
-				if pos.len > 1 {
-					max_len := sline.len - pointerline.len // rest of the line
-					len := imin(max_len, pos.len)
-					underline := '~'.repeat(len)
-					pointerline << bold(color(kind, underline))
+			mut pointerline := ''
+			for bchar in sline[..start_column] {
+				x := if bchar.is_space() {
+					bchar
 				} else {
-					pointerline << bold(color(kind, '^'))
+					` `
 				}
-				break
+				pointerline += x.str()
 			}
-			clines << '      | ' + pointerline.join('')
+			underline := if pos.len > 1 {
+				'~'.repeat(end_column - start_column)
+			} else {
+				'^'
+			}
+			pointerline += bold(color(kind, underline))
+			clines << '      | ' + pointerline.replace('\t', tab_spaces)
 		}
 	}
 	return clines
