@@ -392,11 +392,6 @@ fn vpclose(f voidptr) int {
 	}
 }
 
-struct Foo2 {
-	x int
-
-}
-
 pub struct Result {
 pub:
 	exit_code int
