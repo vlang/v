@@ -1023,7 +1023,7 @@ pub fn (s &Scanner) error(msg string) {
 		line_nr: s.line_nr
 		pos: s.pos
 	}
-	eprintln(util.formatted_error('error', msg, s.file_path, pos))
+	eprintln(util.formatted_error('error:', msg, s.file_path, pos))
 	exit(1)
 }
 
