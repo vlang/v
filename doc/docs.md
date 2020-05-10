@@ -14,6 +14,17 @@ The language promotes writing simple and clear code with minimal abstraction.
 Despite being simple, V gives the developer a lot of power. Anything you can do in other languages,
 you can do in V.
 
+## Table of Contents
+
+<table>
+	<tr>
+		<td><a href='#hello-world'>1. Hello world</a></td>
+		<td><a href='#comments'>2. Comments</a></td>
+		<td><a href='#functions'>3. Functions</a></td>
+		<td><a href='#'>TODO</a></td>
+	</tr>
+</table>
+
 
 
 ## Hello World
