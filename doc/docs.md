@@ -16,58 +16,56 @@ you can do in V.
 
 ## Table of Contents
 
-<ol>
-	<li><a href='#hello-world'>Hello world</a></li>
-	<li><a href='#comments'>Comments</a></li>
-	<li><a href='#functions'>Functions</a></li>
-	<li><a href='#constants--variables'>Constants & variables</a></li>
-	<li><a href='#primitive-types'>Primitive types</a></li>
-	<li><a href='#strings'>Strings</a></li>
-	<li><a href='#imports'>Imports</a></li>
-	<li><a href='#arrays'>Arrays</a></li>
-	<li><a href='#maps'>Maps</a></li>
-	<li><a href='#if'>If</a></li>
-	<li><a href='#in-operator'>In Operator</a></li>
-	<li><a href='#for-loop'>For loop</a></li>
-	<li><a href='#match'>Match</a></li>
-	<li><a href='#structs'>Structs</a></li>
-	<li><a href='#access-modifiers'>Access modifiers</a></li>
-	<li><a href='#methods'>Methods</a></li>
-	<li><a href='#pure-functions-by-default'>Pure functions by default</a></li>
-	<li><a href='#anonymous--high-order-functions'>Anonymous & high order functions</a></li>
-	<li><a href='#references'>References</a></li>
-	<li><a href='#constants'>Constants</a></li>
-	<li><a href='#println'>println</a></li>
-	<li><a href='#modules'>Modules</a></li>
-	<li><a href='#interfaces'>Interfaces</a></li>
-	<li><a href='#enums'>Enums</a></li>
-	<li><a href='#sum-types'>Sum types</a></li>
-	<li><a href='#optionresult-types-and-error-handling'>Option/Result types and error handling</a></li>
-	<li><a href='#generics'>Generics</a></li>
-	<li><a href='#concurrency'>Concurrency</a></li>
-	<li><a href='#decoding-json'>Decoding JSON</a></li>
-	<li><a href='#testing'>Testing</a></li>
-	<li><a href='#memory-management'>Memory managment</a></li>
-	<li><a href='#defer'>Defer</a></li>
-	<li><a href='#orm'>ORM</a></li>
-	<li><a href='#vfmt'>vfmt</a></li>
-	<li><a href='#writing-documentation'>Writing documentation</a></li>
-	<li><a href='#advanced-topics'>Advanced topics</a>
-        <ul>
-            <li><a href='calling-c-functions-from-v'>Calling C functions from V</a></li>
-            <li><a href='conditional-compilation'>Conditional compilation</a></li>
-            <li><a href='reflection-via-codegen'>Reflection via codegen</a></li>
-            <li><a href='limited-operator-overloading'>Limited operator overloading</a></li>
-            <li><a href='inline-assembly'>Inline assembly</a></li>
-            <li><a href='translating-cc-to-v'>Translating C/C++ to V</a></li>
-            <li><a href='hot-code-reloading'>Hot code reloading</a></li>
-            <li><a href='cross-compilation'>Cross compilation</a></li>
-            <li><a href='cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></li>
-            <li><a href='appendix-i-keywords'>Appendix I: Keywords</a></li>
-            <li><a href='appendix-ii-keywords'>Appendix II: Operators</a></li>
-        </ul>
-    </li>
-</ol>
+<table>
+	<tr>
+		<td><a href='#hello-world'>Hello world</a></td>
+		<td><a href='#comments'>Comments</a></td>
+		<td><a href='#functions'>Functions</a></td>
+		<td><a href='#constants--variables'>Constants & variables</a></td>
+		<td><a href='#primitive-types'>Primitive types</a></td>
+		<td><a href='#strings'>Strings</a></td>
+		<td><a href='#imports'>Imports</a></td>
+		<td><a href='#arrays'>Arrays</a></td>
+		<td><a href='#maps'>Maps</a></td>
+		<td><a href='#if'>If</a></td>
+		<td><a href='#in-operator'>In Operator</a></td>
+		<td><a href='#for-loop'>For loop</a></td>
+		<td><a href='#match'>Match</a></td>
+		<td><a href='#structs'>Structs</a></td>
+		<td><a href='#access-modifiers'>Access modifiers</a></td>
+		<td><a href='#methods'>Methods</a></td>
+		<td><a href='#pure-functions-by-default'>Pure functions by default</a></td>
+		<td><a href='#anonymous--high-order-functions'>Anonymous & high order functions</a></td>
+		<td><a href='#references'>References</a></td>
+		<td><a href='#constants'>Constants</a></td>
+		<td><a href='#println'>println</a></td>
+		<td><a href='#modules'>Modules</a></td>
+		<td><a href='#interfaces'>Interfaces</a></td>
+		<td><a href='#enums'>Enums</a></td>
+		<td><a href='#sum-types'>Sum types</a></td>
+		<td><a href='#optionresult-types-and-error-handtdng'>Option/Result types and error handtdng</a></td>
+		<td><a href='#generics'>Generics</a></td>
+		<td><a href='#concurrency'>Concurrency</a></td>
+		<td><a href='#decoding-json'>Decoding JSON</a></td>
+		<td><a href='#testing'>Testing</a></td>
+		<td><a href='#memory-management'>Memory managment</a></td>
+		<td><a href='#defer'>Defer</a></td>
+		<td><a href='#orm'>ORM</a></td>
+		<td><a href='#vfmt'>vfmt</a></td>
+		<td><a href='#writing-documentation'>Writing documentation</a></td>
+		<td><a href='caltdng-c-functions-from-v'>Caltdng C functions from V</a></td>
+		<td><a href='conditional-compilation'>Conditional compilation</a></td>
+		<td><a href='reflection-via-codegen'>Reflection via codegen</a></td>
+		<td><a href='tdmited-operator-overloading'>tdmited operator overloading</a></td>
+		<td><a href='intdne-assembly'>Intdne assembly</a></td>
+		<td><a href='translating-cc-to-v'>Translating C/C++ to V</a></td>
+		<td><a href='hot-code-reloading'>Hot code reloading</a></td>
+		<td><a href='cross-compilation'>Cross compilation</a></td>
+		<td><a href='cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
+		<td><a href='appendix-i-keywords'>Appendix I: Keywords</a></td>
+		<td><a href='appendix-ii-keywords'>Appendix II: Operators</a></td>
+	</tr>
+</table>
 
 
 
@@ -1630,10 +1628,10 @@ Let's create a simple program `test.cpp` first:
 #include <iostream>
 
 int main() {
-        sli::vector<sli::string> s;
+        std::vector<std::string> s;
         s.push_back("V is ");
         s.push_back("awesome");
-        sli::cout << s.size() << sli::endl;
+        std::cout << s.size() << std::endl;
         return 0;
 }
 ```
