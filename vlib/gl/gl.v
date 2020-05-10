@@ -253,5 +253,5 @@ pub fn generate_mipmap(typ int) {
 }
 
 pub fn set_mat4fv(loc, count int, transpose bool, val glm.Mat4) {
-	C.glUniformMatrix4fv(s.uni_location(str), 1, false, val.data)
+	C.glUniformMatrix4fv(loc, count, transpose, val.data)
 }
