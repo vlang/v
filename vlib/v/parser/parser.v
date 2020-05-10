@@ -317,7 +317,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			return p.interface_decl()
 		}
 		.key_import {
-			p.error_with_pos('`import x` can only be declared at the beginning', p.tok.position())
+			p.error_with_pos('`import x` can only be declared at the beginning of the file', p.tok.position())
 			return p.import_stmt()
 		}
 		.key_global {
