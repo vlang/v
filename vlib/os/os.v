@@ -22,7 +22,6 @@ struct C.dirent {
 
 fn C.readdir(voidptr) C.dirent
 
-
 pub const (
 	args = []string{}
 	MAX_PATH = 4096
@@ -137,30 +136,30 @@ pub fn file_size(path string) int {
 	return s.st_size
 }
 
-pub fn mv(old, newv string) {
+pub fn mv(old, new string) {
 	$if windows {
-		C._wrename(old.to_wide(), newv.to_wide())
+		C._wrename(old.to_wide(), new.to_wide())
 	} $else {
-		C.rename(charptr(old.str), charptr(newv.str))
+		C.rename(charptr(old.str), charptr(new.str))
 	}
 }
 
 fn C.CopyFile(&u32, &u32, int) int
 // TODO implement actual cp for linux
-pub fn cp(old, newv string) ?bool {
+pub fn cp(old, new string) ?bool {
 	$if windows {
 		_old := old.replace('/', '\\')
-		_new := newv.replace('/', '\\')
+		_new := new.replace('/', '\\')
 		C.CopyFile(_old.to_wide(), _new.to_wide(), false)
 		result := C.GetLastError()
 		if result == 0 {
 			return true
 		}
 		else {
-			return error_with_code('failed to copy $old to $newv', int(result))
+			return error_with_code('failed to copy $old to $new', int(result))
 		}
 	} $else {
-		os.system('cp "$old" "$newv"')
+		os.system('cp "$old" "$new"')
 		return true // TODO make it return true or error when cp for linux is implemented
 	}
 }
@@ -391,6 +390,11 @@ fn vpclose(f voidptr) int {
 		ret,_ := posix_wait4_to_exit_status(C.pclose(f))
 		return ret
 	}
+}
+
+struct Foo2 {
+	x int
+
 }
 
 pub struct Result {
