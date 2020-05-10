@@ -523,7 +523,11 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 			match typ_sym.kind {
 				.struct_ {
 					struct_info := typ_sym.info as table.Struct
-					field_info := struct_info.get_field(it.field_name)
+					field_info := struct_info.find_field(it.field_name) or {
+						type_str := c.table.type_to_str(it.expr_type)
+						c.error('unknown field `${type_str}.$it.field_name`', it.pos)
+						return
+					}
 					if !field_info.is_mut {
 						type_str := c.table.type_to_str(it.expr_type)
 						c.error('field `$it.field_name` of struct `${type_str}` is immutable', it.pos)
