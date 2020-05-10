@@ -34,13 +34,27 @@ pub mut:
 	support_color bool
 }
 
-pub fn (e &EManager) set_support_color(b bool) {
-	e.support_color = b
-}
-
 pub fn new_error_manager() &EManager {
 	return &EManager{
 		support_color: term.can_show_color_on_stderr()
+	}
+}
+
+fn bold(msg string) string {
+	if !emanager.support_color {
+		return msg
+	}
+	return term.bold(msg)
+}
+
+fn color(kind, msg string) string {
+	if !emanager.support_color {
+		return msg
+	}
+	if kind.contains('error') {
+		return term.red(msg)
+	} else {
+		return term.magenta(msg)
 	}
 }
 
@@ -72,16 +86,9 @@ pub fn formatted_error(kind, emsg, filepath string, pos token.Position) string {
 	column := imax(0, pos.pos - p - 1)
 	position := '${path}:${pos.line_nr+1}:${util.imax(1,column+1)}:'
 	scontext := source_context(kind, source, column, pos).join('\n')
-	final_position := if emanager.support_color { term.bold(position) } else { position }
-	mut final_kind := kind
-	if emanager.support_color {
-		final_kind = if kind.contains('error') {
-			term.bold(term.red(kind))
-		} else {
-			term.bold(term.magenta(kind))
-		}
-	}
-	final_msg := emsg // if emanager.support_color { term.bold(emsg) } else { emsg }
+	final_position := bold(position)
+	final_kind := bold(color(kind, kind))
+	final_msg := emsg
 	final_context := if scontext.len > 0 { '\n$scontext' } else { '' }
 	//
 	return '$final_position $final_kind $final_msg $final_context'.trim_space()
@@ -99,12 +106,8 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline]
 		mut cline := sline.replace('\t', tab_spaces)
-		if iline == pos.line_nr && emanager.support_color {
-			cline = if kind.contains('error') {
-				term.red(cline)
-			} else {
-				term.magenta(cline)
-			}
+		if iline == pos.line_nr {
+			cline = color(kind, cline)
 		}
 		clines << '${iline+1:5d} | ' + cline
 		//
@@ -131,19 +134,11 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 				}
 				if pos.len > 1 {
 					max_len := sline.len - pointerline.len // rest of the line
-					len := if pos.len > max_len { max_len } else { pos.len }
+					len := imin(max_len, pos.len)
 					underline := '~'.repeat(len)
-					pointerline << if emanager.support_color {
-						term.bold(term.blue(underline))
-					} else {
-						underline
-					}
+					pointerline << bold(color(kind, underline))
 				} else {
-					pointerline << if emanager.support_color {
-						term.bold(term.blue('^'))
-					} else {
-						'^'
-					}
+					pointerline << bold(color(kind, '^'))
 				}
 				break
 			}
@@ -154,11 +149,8 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 }
 
 pub fn verror(kind, s string) {
-	if emanager.support_color {
-		eprintln(term.bold(term.red(kind)) + ': $s')
-	} else {
-		eprintln('${kind}: $s')
-	}
+	final_kind := bold(color(kind, kind))
+	eprintln('${final_kind}: $s')
 	exit(1)
 }
 
