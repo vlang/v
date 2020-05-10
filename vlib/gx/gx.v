@@ -49,6 +49,7 @@ pub const (
 
 pub const (
 	align_left  = 1
+	align_right = 4
 	ALIGN_RIGHT = 4
 )
 

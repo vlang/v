@@ -41,13 +41,13 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 		// Probably something like `a.js.v`.
 		return false
 	}
-	if file.ends_with('_windows.c.v') && prefs.os != .windows {
+	if (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) && prefs.os != .windows {
 		return false
 	}
-	if file.ends_with('_linux.c.v') && prefs.os != .linux {
+	if (file.ends_with('_linux.c.v') || file.ends_with('_linux.v')) && prefs.os != .linux {
 		return false
 	}
-	if file.ends_with('_darwin.c.v') && prefs.os != .mac {
+	if (file.ends_with('_darwin.c.v') || file.ends_with('_darwin.v')) && prefs.os != .mac {
 		return false
 	}
 	if file.ends_with('_nix.c.v') && prefs.os == .windows {

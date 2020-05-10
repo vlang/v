@@ -20,7 +20,7 @@ pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map
 pub struct TypeSymbol {
 pub:
 	parent_idx int
-mut:
+pub mut:
 	info       TypeInfo
 	kind       Kind
 	name       string
@@ -244,7 +244,7 @@ pub const (
 pub struct MultiReturn {
 pub:
 	name  string
-mut:
+pub mut:
 	types []Type
 }
 
@@ -531,13 +531,14 @@ pub fn (kinds []Kind) str() string {
 
 pub struct Struct {
 pub mut:
-	fields     []Field
-	is_typedef bool // C. [typedef]
-	is_union   bool
+	fields      []Field
+	is_typedef  bool // C. [typedef]
+	is_union    bool
+	is_ref_only bool
 }
 
 pub struct Interface {
-mut:
+pub mut:
 	types []Type
 }
 
@@ -559,7 +560,7 @@ pub type FExpr = byteptr | voidptr
 pub struct Field {
 pub:
 	name             string
-mut:
+pub mut:
 	typ              Type
 	default_expr     FExpr
 	has_default_expr bool
@@ -573,7 +574,7 @@ mut:
 pub struct Array {
 pub:
 	nr_dims   int
-mut:
+pub mut:
 	elem_type Type
 }
 
@@ -581,7 +582,7 @@ pub struct ArrayFixed {
 pub:
 	nr_dims   int
 	size      int
-mut:
+pub mut:
 	elem_type Type
 }
 
@@ -641,7 +642,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 	return res
 }
 
-pub fn(t &Table) fn_to_str(func &Fn) string {
+pub fn (t &Table) fn_to_str(func &Fn) string {
 	mut sb := strings.new_builder(20)
 	sb.write('${func.name}(')
 	for i in 1 .. func.args.len {
@@ -655,7 +656,7 @@ pub fn(t &Table) fn_to_str(func &Fn) string {
 		}
 	}
 	sb.write(')')
-	if func.return_type != table.void_type {
+	if func.return_type != void_type {
 		sb.write(' ${t.type_to_str(func.return_type)}')
 	}
 	return sb.str()

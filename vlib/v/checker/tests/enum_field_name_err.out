@@ -1,0 +1,6 @@
+vlib/v/checker/tests/enum_field_name_err.v:2:5: error: field name `Green` must be all lowercase
+    1 | enum Color {
+    2 |     Green
+      |     ~~~~~
+    3 |     yellow
+    4 | }

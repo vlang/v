@@ -37,7 +37,7 @@ mut:
 	global_scope      &ast.Scope
 	imports           map[string]string
 	ast_imports       []ast.Import
-	is_amp            bool
+	is_amp            bool // for generating the right code for `&Foo{}`
 	returns           bool
 	inside_match      bool // to separate `match A { }` from `Struct{}`
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
@@ -311,7 +311,6 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		}
 		.lsbr {
 			attrs := p.attributes()
-
 			if attrs.len > 1 {
 				p.error('multiple attributes detected')
 			}
@@ -488,7 +487,6 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 
 fn (mut p Parser) attributes() []ast.Attr {
 	mut attrs := []ast.Attr{}
-
 	p.check(.lsbr)
 	for p.tok.kind != .rsbr {
 		attr := p.parse_attr()
@@ -499,12 +497,10 @@ fn (mut p Parser) attributes() []ast.Attr {
 				p.next()
 				break
 			}
-
 			p.error('unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`')
 		}
 		p.next()
 	}
-
 	return attrs
 }
 
@@ -864,7 +860,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	sel_expr := ast.SelectorExpr{
 		expr: left
-		field: field_name
+		field_name: field_name
 		pos: name_pos
 	}
 	mut node := ast.Expr{}
@@ -970,8 +966,21 @@ fn (mut p Parser) module_decl() ast.Module {
 	mut name := 'main'
 	is_skipped := p.tok.kind != .key_module
 	if !is_skipped {
+		module_pos := p.tok.position()
 		p.next()
+		mut pos := p.tok.position()
 		name = p.check_name()
+		if module_pos.line_nr != pos.line_nr {
+			p.error_with_pos('`module` and `$name` must be at same line', pos)
+		}
+		pos = p.tok.position()
+		if module_pos.line_nr == pos.line_nr {
+			if p.tok.kind != .name {
+				p.error_with_pos('`module x` syntax error', pos)
+			} else {
+				p.error_with_pos('`module x` can only declare one module', pos)
+			}
+		}
 	}
 	full_mod := p.table.qualify_module(name, p.file_name)
 	p.mod = full_mod
@@ -1146,7 +1155,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	end_pos := p.tok.position()
 	enum_name := p.check_name()
 	if enum_name.len > 0 && !enum_name[0].is_capital() {
-		verror('enum name `$enum_name` must begin with a capital letter')
+		p.error_with_pos('enum name `$enum_name` must begin with a capital letter', end_pos)
 	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
@@ -1156,6 +1165,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.position()
 		val := p.check_name()
+		if !val.is_lower() {
+			p.error_with_pos('field name `$val` must be all lowercase', pos)
+		}
 		vals << val
 		mut expr := ast.Expr{}
 		mut has_expr := false

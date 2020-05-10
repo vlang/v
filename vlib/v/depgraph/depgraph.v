@@ -6,7 +6,7 @@
 module depgraph
 
 struct DepGraphNode {
-mut:
+pub mut:
 	name string
 	deps []string
 }

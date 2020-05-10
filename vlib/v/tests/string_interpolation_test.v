@@ -56,7 +56,7 @@ fn test_implicit_str() {
 	assert text == '4242'
 }
 
-fn test_string_interpolation_percent_escaping(){
+fn test_string_interpolation_percent_escaping() {
 	test := 'hello'
 	hello := 'world'
 	x := '%.*s$hello$test |${hello:-30s}|'
@@ -111,7 +111,11 @@ fn test_utf8_string_interpolation() {
 	st := 'Sträßle'
 	m := '10€'
 	assert '$a $st $m' == 'à-côté Sträßle 10€'
-	assert '>${a:10}< >${st:-8}< >${m:5}<-' == '>    à-côté< >Sträßle < >  10€<-'
+	zz := '>${a:10}< >${st:-8}< >${m:5}<-'
+	zz_expected := '>    à-côté< >Sträßle < >  10€<-'
+	eprintln('         zz: $zz')
+	eprintln('zz_expected: $zz_expected')
+	assert zz == zz_expected
 	// e := '\u20AC' // Eurosign doesn' work with MSVC and tcc
 	e := '€'
 	assert '100.00 $e' == '100.00 €'
@@ -134,4 +138,16 @@ fn (s S) str() string {
 fn test_string_interpolation_str_evaluation() {
 	mut x := S{17, 13.455893}
 	assert '$x' == '[17, 13.456]'
+}
+
+
+fn test_string_interpolation_with_negative_format_width_should_compile_and_run_without_segfaulting() {
+	// discovered during debugging VLS
+	i := 3
+	input := '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+	eprintln('---------------------------------------------------------------------------------------------')
+	eprintln('+60 ${i:10} | input.len: ${input.len:10} | ${input.bytes().hex():60} | $input')
+	eprintln('-60 ${i:10} | input.len: ${input.len:10} | ${input.bytes().hex():-60} | $input')
+	eprintln('---------------------------------------------------------------------------------------------')
+	assert true
 }

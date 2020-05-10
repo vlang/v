@@ -653,7 +653,7 @@ fn (mut f Fmt) expr(node ast.Expr) {
 		ast.SelectorExpr {
 			f.expr(it.expr)
 			f.write('.')
-			f.write(it.field)
+			f.write(it.field_name)
 		}
 		ast.SizeOf {
 			f.write('sizeof(')

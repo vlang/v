@@ -44,6 +44,14 @@ pub:
 	status_code int
 }
 
+pub fn new_request(method, url, data string) ?Request{
+	return Request{
+		method: method
+		url: url
+		data: data
+	}
+}
+
 pub fn get(url string) ?Response {
 	return fetch_with_method('GET', url, FetchConfig{})
 }

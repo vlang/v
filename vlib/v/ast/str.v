@@ -125,7 +125,7 @@ pub fn (x Expr) str() string {
 			return it.op.str() + it.right.str()
 		}
 		SelectorExpr {
-			return '${it.expr.str()}.${it.field}'
+			return '${it.expr.str()}.${it.field_name}'
 		}
 		StringInterLiteral {
 			mut res := []string{}

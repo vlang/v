@@ -1,0 +1,7 @@
+vlib/v/checker/tests/map_init_key_duplicate_err.v:5:3: error: duplicate key "foo" in map literal
+    3 |         'foo': 'bar'
+    4 |         'abc': 'abc'
+    5 |         'foo': 'bar'
+      |         ~~~~~
+    6 |     }
+    7 |     println(a)

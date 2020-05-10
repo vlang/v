@@ -16,7 +16,7 @@ const (
 )
 
 pub struct Scanner {
-mut:
+pub mut:
 	file_path                   string
 	text                        string
 	pos                         int

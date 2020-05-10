@@ -838,15 +838,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 	mut return_type := table.void_type
 	match assign_stmt.right[0] {
-		ast.CallExpr {
-			return_type = it.return_type
-		}
-		ast.IfExpr {
-			return_type = it.typ
-		}
-		ast.MatchExpr {
-			return_type = it.return_type
-		}
+		ast.CallExpr { return_type = it.return_type }
+		ast.IfExpr { return_type = it.typ }
+		ast.MatchExpr { return_type = it.return_type }
 		else {}
 	}
 	mut is_multi := false
@@ -1293,9 +1287,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('.')
 			}
 			if it.expr_type == 0 {
-				verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `${it.expr}` | field: `$it.field` | file: $g.file.path | line: $it.pos.line_nr')
+				verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `${it.expr}` | field: `$it.field_name` | file: $g.file.path | line: $it.pos.line_nr')
 			}
-			g.write(c_name(it.field))
+			g.write(c_name(it.field_name))
 		}
 		ast.Type {
 			// match sum Type
@@ -2147,6 +2141,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	sym := g.table.get_type_symbol(struct_init.typ)
 	styp := g.typ(struct_init.typ)
 	is_amp := g.is_amp
+	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 		g.write('($styp*)memdup(&($styp){')

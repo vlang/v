@@ -147,3 +147,30 @@ fn test_last_field_empty() {
 		}
 	}
 }
+
+fn test_empty_line() {
+	data := '"name","description","value"\n\n\n"one","first","1"\n\n"two","second",\n'
+	mut csv_reader := csv.new_reader(data)
+
+	mut row_count := 0
+	for {
+    	row := csv_reader.read() or {
+        	break
+    	}
+    	row_count++
+		if row_count == 1 {
+			assert row[0] == 'name'
+			assert row[1] == 'description'
+			assert row[2] == 'value'
+		}
+		if row_count == 2 {
+			assert row[0] == 'one'
+			assert row[1] == 'first'
+			assert row[2] == '1'
+		}
+		if row_count == 3 {
+			assert row[0] == 'two'
+			assert row[1] == 'second'
+		}
+	}
+}
