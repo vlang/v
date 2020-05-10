@@ -15,58 +15,72 @@ Despite being simple, V gives the developer a lot of power. Anything you can do 
 you can do in V.
 
 ## Table of Contents
-
+<ol>
 <table>
 	<tr>
-		<td><a href='#hello-world'>Hello world</a></td>
-		<td><a href='#comments'>Comments</a></td>
-		<td><a href='#functions'>Functions</a></td>
-		<td><a href='#constants--variables'>Constants & variables</a></td>
-		<td><a href='#primitive-types'>Primitive types</a></td>
-		<td><a href='#strings'>Strings</a></td>
-		<td><a href='#imports'>Imports</a></td>
+		<td><a href='#hello-world'>1. Hello world</a></td>
+		<td><a href='#comments'>2. Comments</a></td>
+		<td><a href='#functions'>3. Functions</a></td>
+		<td><a href='#constants--variables'>4. Variables</a></td>
+		<td><a href='#primitive-types'>5. Primitive types</a></td>
+		<td><a href='#strings'>6. Strings</a></td>
+		</tr>
+	<tr>
+		<td><a href='#imports'>7. Imports</a></td>
 		<td><a href='#arrays'>Arrays</a></td>
 		<td><a href='#maps'>Maps</a></td>
 		<td><a href='#if'>If</a></td>
 		<td><a href='#in-operator'>In Operator</a></td>
 		<td><a href='#for-loop'>For loop</a></td>
+		</tr>
+	<tr>
 		<td><a href='#match'>Match</a></td>
 		<td><a href='#structs'>Structs</a></td>
 		<td><a href='#access-modifiers'>Access modifiers</a></td>
 		<td><a href='#methods'>Methods</a></td>
 		<td><a href='#pure-functions-by-default'>Pure functions by default</a></td>
 		<td><a href='#anonymous--high-order-functions'>Anonymous & high order functions</a></td>
+		</tr>
+	<tr>
 		<td><a href='#references'>References</a></td>
 		<td><a href='#constants'>Constants</a></td>
 		<td><a href='#println'>println</a></td>
 		<td><a href='#modules'>Modules</a></td>
 		<td><a href='#interfaces'>Interfaces</a></td>
 		<td><a href='#enums'>Enums</a></td>
+		</tr>
+	<tr>
 		<td><a href='#sum-types'>Sum types</a></td>
-		<td><a href='#optionresult-types-and-error-handtdng'>Option/Result types and error handtdng</a></td>
+		<td><a href='#optionresult-types-and-error-handtdng'>Option/Result & error handling</a></td>
 		<td><a href='#generics'>Generics</a></td>
 		<td><a href='#concurrency'>Concurrency</a></td>
 		<td><a href='#decoding-json'>Decoding JSON</a></td>
 		<td><a href='#testing'>Testing</a></td>
+		</tr>
+	<tr>
 		<td><a href='#memory-management'>Memory managment</a></td>
 		<td><a href='#defer'>Defer</a></td>
 		<td><a href='#orm'>ORM</a></td>
 		<td><a href='#vfmt'>vfmt</a></td>
 		<td><a href='#writing-documentation'>Writing documentation</a></td>
-		<td><a href='caltdng-c-functions-from-v'>Caltdng C functions from V</a></td>
+		<td><a href='caltdng-c-functions-from-v'>Calling C functions from V</a></td>
+		</tr>
+	<tr>
 		<td><a href='conditional-compilation'>Conditional compilation</a></td>
 		<td><a href='reflection-via-codegen'>Reflection via codegen</a></td>
-		<td><a href='tdmited-operator-overloading'>tdmited operator overloading</a></td>
-		<td><a href='intdne-assembly'>Intdne assembly</a></td>
+		<td><a href='tdmited-operator-overloading'>Limited operator overloading</a></td>
+		<td><a href='intdne-assembly'>Inline assembly</a></td>
 		<td><a href='translating-cc-to-v'>Translating C/C++ to V</a></td>
 		<td><a href='hot-code-reloading'>Hot code reloading</a></td>
+		</tr>
+	<tr>
 		<td><a href='cross-compilation'>Cross compilation</a></td>
 		<td><a href='cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
 		<td><a href='appendix-i-keywords'>Appendix I: Keywords</a></td>
 		<td><a href='appendix-ii-keywords'>Appendix II: Operators</a></td>
 	</tr>
 </table>
-
+</ol>
 
 
 ## Hello World
