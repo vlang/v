@@ -53,7 +53,7 @@ you can do in V.
 	<li><a href='#vfmt'>vfmt</a></li>
 	<li><a href='#writing-documentation'>Writing documentation</a></li>
 	<li><a href='#advanced-topics'>Advanced topics</a>
-        <ol>
+        <ul>
             <li><a href='calling-c-functions-from-v'>Calling C functions from V</a></li>
             <li><a href='conditional-compilation'>Conditional compilation</a></li>
             <li><a href='reflection-via-codegen'>Reflection via codegen</a></li>
@@ -65,7 +65,7 @@ you can do in V.
             <li><a href='cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></li>
             <li><a href='appendix-i-keywords'>Appendix I: Keywords</a></li>
             <li><a href='appendix-ii-keywords'>Appendix II: Operators</a></li>
-        </ol>
+        </ul>
     </li>
 </ol>
 
