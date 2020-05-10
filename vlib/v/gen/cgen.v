@@ -2717,6 +2717,9 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		'msvc' {
 			return '_MSC_VER'
 		}
+		'cplusplus' {
+			return '__cplusplus'
+		}
 		// other:
 		'debug' {
 			return '_VDEBUG'

@@ -65,8 +65,14 @@ const (
 	c_headers = '
 
 // c_headers
+typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
+#ifdef __cplusplus
+#include <utility>
+#define _MOV std::move
+#include <execinfo.h>
+#endif
 
 //#include "fns.h"
 #include <signal.h>
@@ -353,10 +359,12 @@ typedef map map_int;
 typedef map map_string;
 typedef byte array_fixed_byte_300 [300];
 typedef byte array_fixed_byte_400 [400];
+#ifndef __cplusplus
 #ifndef bool
 	typedef int bool;
 	#define true 1
 	#define false 0
+#endif
 #endif
 
 '
