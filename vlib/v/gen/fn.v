@@ -424,7 +424,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	if is_json_encode {
 		// `json__encode` => `json__encode_User`
-		name += '_' + json_type_str
+		name += '_' + json_type_str.replace('.', '__')
 	}
 	// Generate tmp vars for values that have to be freed.
 	/*
