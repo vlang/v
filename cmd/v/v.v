@@ -124,6 +124,9 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			'-v' {
 				res.is_verbose = true
 			}
+			'-silent' {
+				res.output_mode = .silent
+			}
 			'-cg' {
 				res.is_debug = true
 			}
