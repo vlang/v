@@ -74,15 +74,12 @@ fn general_addition_result(f1, f2 Fraction, addition bool) Fraction {
 	// and it does not have enough precision
 	mut t := i64(0)
 	term1 := f1.n * (f2.d / d1)
-	println('term1 : $term1')
 	term2 := f2.n * (f1.d / d1)
-	println('term2 : $term2')
 	if addition {
 		t = term1 + term2
 	} else {
 		t = term1 - term2
 	}
-	println('t : $t')
 	d2 := math.gcd(t, d1)
 	return Fraction{
 		n: t / d2
