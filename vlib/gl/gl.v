@@ -4,9 +4,12 @@
 
 module gl
 
+import glm
+
 #flag  -I @VROOT/thirdparty/glad
 #include "glad.h"
 #flag @VROOT/thirdparty/glad/glad.o
+
 
 // joe-c: fix & remove
 pub enum TmpGlImportHack{ non_empty }
@@ -51,6 +54,8 @@ fn C.glPixelStorei()
 fn C.glBlendFunc()
 fn C.glPolygonMode()
 fn C.glDeleteBuffers()
+fn C.glGetUniformLocation() int
+fn C.glGetAttribLocation() int
 
 
 pub fn init_glad() {
@@ -181,6 +186,14 @@ pub fn set_ebo(ebo u32, indices []int, draw_typ int) {
 // fn gen_vertex_arrays(a int, vao uint) {
 // # glGenVertexArrays(a, &VAO);
 // }
+pub fn get_uniform_location(program int, key string) int {
+	return C.glGetUniformLocation(program, key.str)
+}
+
+pub fn get_attrib_location(program int, key string) int {
+	return C.glGetAttribLocation(program, key.str)
+}
+
 pub fn draw_arrays(typ, start, len int) {
 	C.glDrawArrays(typ, start, len)
 }
@@ -239,3 +252,6 @@ pub fn generate_mipmap(typ int) {
 	C.glGenerateMipmap(typ)
 }
 
+pub fn set_mat4fv(loc, count int, transpose bool, val glm.Mat4) {
+	C.glUniformMatrix4fv(s.uni_location(str), 1, false, val.data)
+}
