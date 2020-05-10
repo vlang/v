@@ -1371,7 +1371,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		rstyp := g.typ(return_type)
-		g.write('$rstyp $tmp_opt =')
+		g.write('/*q*/ $rstyp $tmp_opt = ')
 	}
 	g.is_assign_rhs = true
 	if ast.expr_is_blank_ident(node.left) {
@@ -1406,12 +1406,16 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 			}
 		} else {
 			g.assign_op = node.op
-			g.expr(node.left)
-			// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
-			if !g.is_array_set && !str_add {
-				g.write(' $node.op.str() ')
-			} else if str_add {
-				g.write(', ')
+			if !gen_or {
+				// Don't need to generate `var = ` in `or {}` expressions, since we are doing
+				// `Option_X tmp = ...; var = *(X*)tmp.data;`
+				g.expr(node.left)
+				// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
+				if !g.is_array_set && !str_add {
+					g.write(' $node.op.str() ')
+				} else if str_add {
+					g.write(', ')
+				}
 			}
 			g.is_assign_lhs = false
 			// right_sym := g.table.get_type_symbol(node.right_type)
@@ -1436,7 +1440,22 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 		g.right_is_opt = false
 	}
 	if gen_or {
+		// g.write('/*777 $tmp_opt*/')
 		g.or_block(tmp_opt, or_stmts, return_type)
+		unwrapped_type_str := g.typ(return_type.set_flag(.unset))
+		ident := node.left as ast.Ident
+		if ident.info is ast.IdentVar {
+			ident_var := ident.info as ast.IdentVar
+			if ident_var.is_optional {
+				// var is already an optional, just copy the value
+				// `var = tmp;`
+				g.write('\n$ident.name = $tmp_opt')
+			} else {
+				// var = *(X*)tmp.data;`
+				g.write('\n$ident.name = *($unwrapped_type_str*)${tmp_opt}.data')
+			}
+		}
+		// g.expr(node.left)
 	}
 	g.is_assign_rhs = false
 }
