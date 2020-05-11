@@ -487,7 +487,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
 			} else if p.tok.kind == .name && !p.inside_if_expr && !p.inside_match && !p.inside_or_expr &&
 				p.peek_tok.kind in [.rcbr, .eof] {
-				// p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
+				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 			}
 			epos := p.tok.position()
 			expr := p.expr(0)
