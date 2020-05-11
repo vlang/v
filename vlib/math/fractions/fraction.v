@@ -7,9 +7,13 @@ import math
 import math.bits
 
 // Fraction Struct
+// ---------------
 // A Fraction has a numerator (n) and a denominator (d). If the user uses
 // the helper functions in this module, then the following are guaranteed:
-// 1.
+// 1. If the user provides n and d with gcd(n, d) > 1, the fraction will
+// not be reduced automatically.
+// 2. d cannot be set to zero. The factory function will panic.
+// 3. If provided d is negative, it will be made positive. n will change as well.
 struct Fraction {
 	n          i64
 	d          i64
@@ -22,19 +26,17 @@ pub:
 // the negative denominator to positive and adjusts the numerator.
 // NOTE: Fractions created are not reduced by default.
 pub fn fraction(n, d i64) Fraction {
-	if d != 0 {
-		// The denominator is always guaranteed to be positive (and non-zero).
-		if d < 0 {
-			return fraction(-n, -d)
-		} else {
-			return Fraction{
-				n: n
-				d: d
-				is_reduced: math.gcd(n, d) == 1
-			}
-		}
-	} else {
+	if d == 0 {
 		panic('Denominator cannot be zero')
+	}
+	// The denominator is always guaranteed to be positive (and non-zero).
+	if d < 0 {
+		return fraction(-n, -d)
+	}
+	return Fraction{
+		n: n
+		d: d
+		is_reduced: math.gcd(n, d) == 1
 	}
 }
 
@@ -51,18 +53,14 @@ pub fn (f Fraction) str() string {
 // These are implemented from Knuth, TAOCP Vol 2. Section 4.5
 //
 // Returns a correctly reduced result for both addition and subtraction
+// NOTE: requires reduced inputs
 fn general_addition_result(f1, f2 Fraction, addition bool) Fraction {
 	d1 := math.gcd(f1.d, f2.d)
 	// d1 happends to be 1 around 600/(pi)^2 or 61 percent of the time (Theorem 4.5.2D)
 	if d1 == 1 {
-		mut n := i64(0)
 		num1n2d := f1.n * f2.d
 		num1d2n := f1.d * f2.n
-		if addition {
-			n = num1n2d + num1d2n
-		} else {
-			n = num1n2d - num1d2n
-		}
+		n := if addition { num1n2d + num1d2n } else { num1n2d - num1d2n }
 		return Fraction{
 			n: n
 			d: f1.d * f2.d
@@ -70,20 +68,15 @@ fn general_addition_result(f1, f2 Fraction, addition bool) Fraction {
 		}
 	}
 	// Here d1 > 1.
-	// Without the i64(...), t is declared as an int
-	// and it does not have enough precision
-	mut t := i64(0)
-	term1 := f1.n * (f2.d / d1)
-	term2 := f2.n * (f1.d / d1)
-	if addition {
-		t = term1 + term2
-	} else {
-		t = term1 - term2
-	}
+	f1den := f1.d / d1
+	f2den := f2.d / d1
+	term1 := f1.n * f2den
+	term2 := f2.n * f1den
+	t := if addition { term1 + term2 } else { term1 - term2 }
 	d2 := math.gcd(t, d1)
 	return Fraction{
 		n: t / d2
-		d: (f1.d / d1) * (f2.d / d2)
+		d: f1den * (f2.d / d2)
 		is_reduced: true
 	}
 }
@@ -99,32 +92,32 @@ pub fn (f1 Fraction) -(f2 Fraction) Fraction {
 }
 
 // Returns a correctly reduced result for both multiplication and division
+// NOTE: requires reduced inputs
 fn general_multiplication_result(f1, f2 Fraction, multiplication bool) Fraction {
-	// Theorem: If f1 and f2 are reduced i.e. gcd(f1.n, f1.d) ==  1 and gcd(f2.n, f2.d) == 1,
+	// * Theorem: If f1 and f2 are reduced i.e. gcd(f1.n, f1.d) ==  1 and gcd(f2.n, f2.d) == 1,
 	// then gcd(f1.n * f2.n, f1.d * f2.d) == gcd(f1.n, f2.d) * gcd(f1.d, f2.n)
-	// Knuth poses this an exercise for 4.5.1. - Exercise 2
-	mut d1 := i64(0)
-	mut d2 := i64(0)
-	mut n := i64(0)
-	mut d := i64(0)
+	// * Knuth poses this an exercise for 4.5.1. - Exercise 2
+	// * Also, note that:
 	// The terms are flipped for multiplication and division, so the gcds must be calculated carefully
-	// We do multiple divisions in order to prevent any possible overflows. Also, note that:
+	// We do multiple divisions in order to prevent any possible overflows.
+	// * One more thing:
 	// if d = gcd(a, b) for example, then d divides both a and b
 	if multiplication {
-		d1 = math.gcd(f1.n, f2.d)
-		d2 = math.gcd(f1.d, f2.n)
-		n = (f1.n / d1) * (f2.n / d2)
-		d = (f2.d / d1) * (f1.d / d2)
+		d1 := math.gcd(f1.n, f2.d)
+		d2 := math.gcd(f1.d, f2.n)
+		return Fraction{
+			n: (f1.n / d1) * (f2.n / d2)
+			d: (f2.d / d1) * (f1.d / d2)
+			is_reduced: true
+		}
 	} else {
-		d1 = math.gcd(f1.n, f2.n)
-		d2 = math.gcd(f1.d, f2.d)
-		n = (f1.n / d1) * (f2.d / d2)
-		d = (f2.n / d1) * (f1.d / d2)
-	}
-	return Fraction{
-		n: n
-		d: d
-		is_reduced: true
+		d1 := math.gcd(f1.n, f2.n)
+		d2 := math.gcd(f1.d, f2.d)
+		return Fraction{
+			n: (f1.n / d1) * (f2.d / d2)
+			d: (f2.n / d1) * (f1.d / d2)
+			is_reduced: true
+		}
 	}
 }
 
