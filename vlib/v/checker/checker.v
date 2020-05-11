@@ -503,6 +503,10 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 						it.pos)
 				}
 			}
+			if it.name in c.const_names {
+				c.error('`$it.name` is a const, declare it with `mut var` to make it mutable',
+						it.pos)
+			}
 		}
 		ast.IndexExpr {
 			c.fail_if_immutable(it.left)
