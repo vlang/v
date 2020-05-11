@@ -1,0 +1,7 @@
+vlib/v/checker/tests/type_coercion_err.v:11:7: error: cannot assign `i64` to variable `n2` of type `int` 
+    9 |     mut n2 := 0
+   10 |     n1 = u1 * v2 - u2 * v1
+   11 |     n2 = u1 * v2 - u2 * v1
+      |          ~~~~~~~~~~~~~~~~~
+   12 |     println('${n1:x}')
+   13 |     println('${n2:x}')
