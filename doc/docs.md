@@ -77,7 +77,7 @@ you can do in V.
 		<td><a href='#cross-compilation'>Cross compilation</a></td>
 		<td><a href='#cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
 		<td><a href='#appendix-i-keywords'>Appendix I: Keywords</a></td>
-		<td><a href='#appendix-ii-keywords'>Appendix II: Operators</a></td>
+		<td><a href='#appendix-ii-operators'>Appendix II: Operators</a></td>
 	</tr>
 </table>
 </ol>
