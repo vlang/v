@@ -15,7 +15,7 @@ Despite being simple, V gives the developer a lot of power. Anything you can do 
 you can do in V.
 
 ## Table of Contents
-<ol>
+
 <table>
 	<tr>
 		<td><a href='#hello-world'>1. Hello world</a></td>
@@ -80,7 +80,7 @@ you can do in V.
 		<td><a href='appendix-ii-keywords'>Appendix II: Operators</a></td>
 	</tr>
 </table>
-</ol>
+
 
 
 ## Hello World
@@ -161,9 +161,9 @@ println(b) // 3
 ```
 
 Functions can return multiple values.
-Like constants and types, functions are private (not exported) by default.
-To allow other modules to use them, prepend `pub`. The same applies
-to constants and types.
+
+<p>&nbsp;</p>
+
 
 ```v
 pub fn public_function() {
@@ -172,6 +172,10 @@ pub fn public_function() {
 fn private_function() {
 }
 ```
+
+Like constants and types, functions are private (not exported) by default.
+To allow other modules to use them, prepend `pub`. The same applies
+to constants and types.
 
 ## Constants & variables
 
