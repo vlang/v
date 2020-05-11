@@ -503,7 +503,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 						it.pos)
 				}
 			} else if it.name in c.const_names {
-				c.error('`$it.name` is a const, declare it with `mut var` to make it mutable',
+				c.error('`$it.name` is a constant, declare it with `mut var` to make it mutable',
 						it.pos)
 			}
 		}

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/const_field_inc_err.v:6:2: error: `a` is a const, declare it with `mut var` to make it mutable 
+vlib/v/checker/tests/const_field_inc_err.v:6:2: error: `a` is a constant, declare it with `mut var` to make it mutable 
     4 | 
     5 | fn main() {
     6 |     a++
