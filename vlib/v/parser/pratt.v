@@ -212,6 +212,9 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	if op == .amp {
 		p.is_amp = true
 	}
+	// if op == .mul && !p.inside_unsafe {
+	// p.warn('unsafe')
+	// }
 	p.next()
 	right := p.expr(token.Precedence.prefix)
 	p.is_amp = false

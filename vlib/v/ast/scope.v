@@ -60,8 +60,7 @@ pub fn (s &Scope) is_known(name string) bool {
 
 pub fn (s &Scope) find_var(name string) ?&Var {
 	if obj := s.find(name) {
-		v := ScopeObject(obj)
-		match v {
+		match obj {
 			Var {
 				return it
 			}
@@ -73,8 +72,7 @@ pub fn (s &Scope) find_var(name string) ?&Var {
 
 pub fn (s &Scope) find_const(name string) ?&ConstField {
 	if obj := s.find(name) {
-		cf := ScopeObject(obj)
-		match cf {
+		match obj {
 			ConstField {
 				return it
 			}

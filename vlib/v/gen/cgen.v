@@ -75,7 +75,7 @@ mut:
 	is_array_set         bool
 	is_amp               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 	optionals            []string // to avoid duplicates TODO perf, use map
-	inside_ternary       bool // ?: comma separated statements on a single line
+	inside_ternary       int // ?: comma separated statements on a single line
 	stmt_start_pos       int
 	right_is_opt         bool
 	autofree             bool
@@ -465,16 +465,16 @@ pub fn (mut g Gen) reset_tmp_count() {
 
 fn (mut g Gen) stmts(stmts []ast.Stmt) {
 	g.indent++
-	if g.inside_ternary {
+	if g.inside_ternary > 0 {
 		g.write(' ( ')
 	}
 	for i, stmt in stmts {
 		g.stmt(stmt)
-		if g.inside_ternary && i < stmts.len - 1 {
+		if g.inside_ternary > 0 && i < stmts.len - 1 {
 			g.write(', ')
 		}
 	}
-	if g.inside_ternary {
+	if g.inside_ternary > 0 {
 		g.write(' ) ')
 	}
 	g.indent--
@@ -548,7 +548,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			match expr {
 				ast.IfExpr {}
 				else {
-					if !g.inside_ternary {
+					if g.inside_ternary == 0 {
 						g.writeln(';')
 					}
 				}
@@ -802,11 +802,11 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 
 fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('// assert')
-	g.inside_ternary = true
+	g.inside_ternary++
 	g.write('if (')
 	g.expr(a.expr)
 	g.write(')')
-	g.inside_ternary = false
+	g.inside_ternary--
 	s_assertion := a.expr.str().replace('"', "\'")
 	mut mod_path := g.file.path
 	$if windows {
@@ -1639,10 +1639,9 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
-	was_inside_ternary := g.inside_ternary
-	is_expr := (node.is_expr && node.return_type != table.void_type) || was_inside_ternary
+	is_expr := (node.is_expr && node.return_type != table.void_type) || g.inside_ternary > 0
 	if is_expr {
-		g.inside_ternary = true
+		g.inside_ternary++
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
 	}
 	type_sym := g.table.get_type_symbol(node.cond_type)
@@ -1729,11 +1728,13 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			}
 		}
 		g.stmts(branch.stmts)
-		if !g.inside_ternary && node.branches.len > 1 {
+		if g.inside_ternary == 0 && node.branches.len > 1 {
 			g.write('}')
 		}
 	}
-	g.inside_ternary = was_inside_ternary
+	if is_expr {
+		g.inside_ternary--
+	}
 }
 
 fn (mut g Gen) ident(node ast.Ident) {
@@ -1780,7 +1781,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// TODO clean this up once `is` is supported
 	// TODO: make sure only one stmt in each branch
 	if node.is_expr && node.branches.len >= 2 && node.has_else && type_sym.kind != .void {
-		g.inside_ternary = true
+		g.inside_ternary++
 		g.write('(')
 		for i, branch in node.branches {
 			if i > 0 {
@@ -1793,7 +1794,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.stmts(branch.stmts)
 		}
 		g.write(')')
-		g.inside_ternary = false
+		g.inside_ternary--
 	} else {
 		guard_ok := g.new_tmp_var()
 		mut is_guard := false

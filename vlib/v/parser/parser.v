@@ -44,6 +44,7 @@ mut:
 	returns           bool
 	inside_match      bool // to separate `match A { }` from `Struct{}`
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
+	inside_unsafe     bool
 	is_stmt_ident     bool // true while the beginning of a statement is an ident/selector
 	expecting_type    bool // `is Type`, expecting type
 	errors            []errors.Error
@@ -84,8 +85,8 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 			start_pos: 0
 			parent: 0
 		}
-		errors: []errors.Error{},
-		warnings: []errors.Warning{},
+		errors: []errors.Error{}
+		warnings: []errors.Warning{}
 		global_scope: global_scope
 	}
 	// comments_mode: comments_mode
@@ -128,8 +129,8 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		imports: p.ast_imports
 		stmts: stmts
 		scope: p.scope
-		global_scope: p.global_scope,
-		errors: p.errors,
+		global_scope: p.global_scope
+		errors: p.errors
 		warnings: p.warnings
 	}
 }
@@ -326,7 +327,8 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			return p.interface_decl()
 		}
 		.key_import {
-			p.error_with_pos('`import x` can only be declared at the beginning of the file', p.tok.position())
+			p.error_with_pos('`import x` can only be declared at the beginning of the file',
+				p.tok.position())
 			return p.import_stmt()
 		}
 		.key_global {
@@ -433,7 +435,9 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 		}
 		.key_unsafe {
 			p.next()
+			p.inside_unsafe = true
 			stmts := p.parse_block()
+			p.inside_unsafe = false
 			return ast.UnsafeStmt{
 				stmts: stmts
 			}
@@ -580,9 +584,9 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 		exit(1)
 	} else {
 		p.errors << errors.Error{
-			file_path: p.file_name,
-			pos: pos,
-			reporter: .parser,
+			file_path: p.file_name
+			pos: pos
+			reporter: .parser
 			message: s
 		}
 	}
@@ -594,9 +598,9 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 		eprintln(ferror)
 	} else {
 		p.warnings << errors.Warning{
-			file_path: p.file_name,
-			pos: pos,
-			reporter: .parser,
+			file_path: p.file_name
+			pos: pos
+			reporter: .parser
 			message: s
 		}
 	}

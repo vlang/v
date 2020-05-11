@@ -9,7 +9,7 @@ mut:
 
 fn main() {
 	s := '[{ "name":"Frodo", "age":25}, {"name":"Bobby", "age":10}]'
-	users := json.decode([]User, s) or {
+	mut users := json.decode([]User, s) or {
 		eprintln('Failed to parse json')
 		return
 	}
@@ -20,10 +20,10 @@ fn main() {
 	for i, user in users {
 		println('$i) $user.name')
 		if !user.can_register() {
-			println('Cannot register $user.name, he is too young')
-        } else {
-            users[i].register()
-            println('$user.name is registered')
+			println('Cannot register $user.name, they are too young')
+		} else {
+			users[i].register()
+			println('$user.name is registered')
 		}
 	}
 	// Let's encode users again just for fun

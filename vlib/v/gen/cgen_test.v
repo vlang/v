@@ -72,3 +72,8 @@ fn compare_texts(a, b, path string) bool {
 	}
 	return true
 }
+
+fn test_nested_if() {
+	a := if true { if true { 'a' } else { 'b' } } else { 'c' }
+	assert a == 'a'
+}

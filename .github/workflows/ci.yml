@@ -29,8 +29,8 @@ jobs:
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
     - name: Build v
       run: |
-        echo $VFLAGS 
-        make -j4 
+        echo $VFLAGS
+        make -j4
         ./v -cg -o v cmd/v
     - name: Test v->c
       run: |
@@ -115,6 +115,7 @@ jobs:
         mkdir -p ~/.vmodules
         ln -s $(pwd) ~/.vmodules/ui
         ../v examples/rectangles.v
+        ../v examples/users.v
 
   ubuntu:
     runs-on: ubuntu-18.04
@@ -250,14 +251,14 @@ jobs:
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x
-    - name: Install dependencies
-      run: |
-        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
-        .\.github\workflows\windows-install-sdl.bat
     - name: Build
       run: |
         gcc --version
         .\make.bat -gcc
+    - name: Install dependencies
+      run: |
+        .\v.exe setup-freetype
+        .\.github\workflows\windows-install-sdl.bat
     - name: Fixed tests
       run: |
         .\v.exe test-fixed
@@ -281,15 +282,15 @@ jobs:
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x
-    - name: Install dependencies
-      run: |
-        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
-        .\.github\workflows\windows-install-sdl.bat
     - name: Build
       run: |
         echo %VFLAGS%
         echo $VFLAGS
         .\make.bat -msvc
+    - name: Install dependencies
+      run: |
+        .\v.exe setup-freetype
+        .\.github\workflows\windows-install-sdl.bat
     - name: quick debug
       run: ./v -stats vlib/strconv/format_test.v
     - name: Fixed tests
