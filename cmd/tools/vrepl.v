@@ -23,7 +23,6 @@ mut:
 
 fn (r mut Repl) checks() bool {
 	mut in_string := false
-	mut is_cut := false
 	was_indent := r.indent > 0
 
 	for i := 0; i < r.line.len; i++ {
@@ -32,13 +31,11 @@ fn (r mut Repl) checks() bool {
 		}
 		if r.line[i] == `{` && !in_string {
 			r.line = r.line[..i + 1] + '\n' + r.line[i + 1..]
-			is_cut = true
 			i++
 			r.indent++
 		}
 		if r.line[i] == `}` && !in_string {
 			r.line = r.line[..i] + '\n' + r.line[i..]
-			is_cut = true
 			i++
 			r.indent--
 			if r.indent == 0 {
@@ -49,7 +46,7 @@ fn (r mut Repl) checks() bool {
 			r.in_func = true
 		}
 	}
-	return r.in_func || (was_indent && r.indent <= 0) || r.indent > 0 || is_cut
+	return r.in_func || (was_indent && r.indent <= 0) || r.indent > 0
 }
 
 fn (r &Repl) function_call(line string) bool {
@@ -160,8 +157,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			mut temp_flag := false
 			func_call := r.function_call(r.line)
 			filter_line := r.line.replace(r.line.find_between('\'', '\''), '').replace(r.line.find_between('"', '"'), '')
-			if !(filter_line.contains(':') || filter_line.contains('=') ||
-					filter_line.contains(',') || filter_line.contains('++') ||
+			if !(filter_line.contains('=') || filter_line.contains('++') ||
 					filter_line.contains('--') || filter_line.contains('<<') ||
 					filter_line.contains('//') || filter_line.contains('/*') ||
 					filter_line.starts_with('import') || r.line == '') && !func_call {
