@@ -1211,6 +1211,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_
 		name: name
+		mod: p.mod
 		info: table.Enum{
 			vals: vals
 		}
@@ -1264,6 +1265,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.table.register_type_symbol(table.TypeSymbol{
 			kind: .sum_type
 			name: p.prepend_mod(name)
+			mod: p.mod
 			info: table.SumType{
 				variants: sum_variants
 			}
@@ -1283,6 +1285,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		kind: .alias
 		name: p.prepend_mod(name)
 		parent_idx: pid
+		mod: p.mod
 		info: table.Alias{
 			foo: ''
 		}

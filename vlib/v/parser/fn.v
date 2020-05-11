@@ -307,7 +307,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 	name := 'anon_${p.tok.pos}_$func.signature()'
 	func.name = name
-	idx := p.table.find_or_register_fn_type(func, true, false)
+	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := table.new_type(idx)
 	// name := p.table.get_type_name(typ)
 	return ast.AnonFn{

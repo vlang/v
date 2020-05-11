@@ -374,12 +374,13 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	return t.register_type_symbol(mr_type)
 }
 
-pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon, has_decl bool) int {
+pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon, has_decl bool) int {
 	name := if f.name.len == 0 { 'anon_fn_$f.signature()' } else { f.name }
 	anon := f.name.len == 0 || is_anon
 	return t.register_type_symbol(TypeSymbol{
 		kind: .function
 		name: name
+		mod: mod
 		info: FnType{
 			is_anon: anon
 			has_decl: has_decl
@@ -516,13 +517,15 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// sum type
 	if got_type_sym.kind == .sum_type {
 		sum_info := got_type_sym.info as SumType
-		if expected in sum_info.variants {
+		// TODO: handle `match SumType { &PtrVariant {} }` currently just checking base
+		if expected.set_nr_muls(0) in sum_info.variants {
 			return true
 		}
 	}
 	if exp_type_sym.kind == .sum_type {
 		sum_info := exp_type_sym.info as SumType
-		if got in sum_info.variants {
+		// TODO: handle `match SumType { &PtrVariant {} }` currently just checking base
+		if got.set_nr_muls(0) in sum_info.variants {
 			return true
 		}
 	}

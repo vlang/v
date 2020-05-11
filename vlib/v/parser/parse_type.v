@@ -84,7 +84,7 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 		is_variadic: is_variadic
 		return_type: return_type
 	}
-	idx := p.table.find_or_register_fn_type(func, false, false)
+	idx := p.table.find_or_register_fn_type(p.mod, func, false, false)
 	return table.new_type(idx)
 }
 

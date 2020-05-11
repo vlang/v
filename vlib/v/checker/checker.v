@@ -665,7 +665,7 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
 			// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
-			c.error('method `${left_type_sym.name}.$method_name` is private', call_expr.pos)
+			//c.error('method `${left_type_sym.name}.$method_name` is private', call_expr.pos)
 		}
 		if method.return_type == table.void_type && method.ctdefine.len > 0 && method.ctdefine !in
 			c.pref.compile_defines {
@@ -1821,7 +1821,7 @@ pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
 		}
 		// Non-anon-function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
-			fn_type := table.new_type(c.table.find_or_register_fn_type(func, false, true))
+			fn_type := table.new_type(c.table.find_or_register_fn_type(ident.mod, func, false, true))
 			ident.name = name
 			ident.kind = .function
 			ident.info = ast.IdentFn{
