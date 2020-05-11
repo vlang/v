@@ -1,10 +1,10 @@
 fn test_goto() {
-	mut x := 0
+	mut i := 0
 	a: b := 1
 	_ = b
-	x++
-	if x < 3 {
+	i++
+	if i < 3 {
 		goto a
 	}
-	assert x == 3
+	assert i == 3
 }
