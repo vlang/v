@@ -98,24 +98,32 @@ fn (r mut Reader) read_record() ?[]string {
 	if !valid_delim(r.delimiter) {
 		return err_invalid_delim
 	}
+	mut need_read := true
+	mut keep_raw := false
 	mut line := ''
-	for {
-		l := r.read_line() or {
-			return error(err)
-		}
-		line = l
-		// skip commented lines
-		if line[0] == r.comment {
-			continue
-		}
-		break
-	}
 	mut fields := []string{}
 	mut i := -1
+
 	for {
-		// not quoted
-		if line[0] != `"` {
-			// QTODO i = ...
+		if need_read {
+			l := r.read_line() or {
+				return error(err)
+			}
+			if l.len <= 0 {
+				if keep_raw { line += '\n'}
+				continue
+			} else if l[0] == r.comment {
+				if keep_raw { line += '\n' + l }
+				continue
+			} else {
+				if keep_raw { line += '\n'}
+				line += l
+			}
+			need_read = false
+			keep_raw = false
+		}
+
+		if line[0] != `"` {		// not quoted
 			j := line.index(r.delimiter.str()) or {
 				// last
 				fields << line[..line.len]
@@ -125,13 +133,13 @@ fn (r mut Reader) read_record() ?[]string {
 			fields << line[..i]
 			line = line[i+1..]
 			continue
-		}
-		// quoted
-		else {
-			line = line[1..]
-			j := line.index('"') or {
-				break
+		} else {		// quoted
+			j := line[1..].index('"') or {
+				need_read = true
+				keep_raw = true
+				continue
 			}
+			line = line[1..]
 			if j+1 == line.len {
 				// last record
 				fields << line[..j]

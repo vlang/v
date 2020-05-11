@@ -71,7 +71,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		mut key_var_name := ''
 		mut val_var_name := p.check_name()
 		if p.tok.kind == .comma {
-			p.check(.comma)
+			p.next()
 			key_var_pos := val_var_pos
 			val_var_pos = p.tok.position()
 			key_var_name = val_var_name
@@ -103,7 +103,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		mut is_range := false
 		if p.tok.kind == .dotdot {
 			is_range = true
-			p.check(.dotdot)
+			p.next()
 			high_expr = p.expr(0)
 			p.scope.register(val_var_name, ast.Var{
 				name: val_var_name

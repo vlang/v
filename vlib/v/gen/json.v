@@ -70,13 +70,19 @@ cJSON* ${enc_fn_name}($styp val) {
 		}
 		info := sym.info as table.Struct
 		for field in info.fields {
-			if field.attr == 'skip' {
+			if 'skip' in field.attrs {
 				continue
 			}
-			name := if field.attr.starts_with('json:') { field.attr[5..] } else { field.name }
+			mut name := field.name
+			for attr in field.attrs {
+				if attr.starts_with('json:') {
+					name = attr[5..]
+					break
+				}
+			}
 			field_type := g.typ(field.typ)
 			enc_name := js_enc_name(field_type)
-			if field.attr == 'raw' {
+			if 'raw' in field.attrs {
 				dec.writeln(' res . $field.name = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
 			} else {
 				// Now generate decoders for all field types in this struct
@@ -103,12 +109,12 @@ cJSON* ${enc_fn_name}($styp val) {
 
 fn js_enc_name(typ string) string {
 	name := 'json__encode_$typ'
-	return name
+	return name.replace('.', '__')
 }
 
 fn js_dec_name(typ string) string {
 	name := 'json__decode_$typ'
-	return name
+	return name.replace('.', '__')
 }
 
 fn is_js_prim(typ string) bool {

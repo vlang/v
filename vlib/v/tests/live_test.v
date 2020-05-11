@@ -16,10 +16,16 @@ fn pmessage() {
 
 fn main() {
 	println('START')
+	pmessage()
+	time.sleep_ms(10)
+	pmessage()
 	for i := 0; i<3*100; i++ {
 		pmessage()
 		time.sleep_ms(10)
 	}
+	pmessage()
+	time.sleep_ms(10)
+	pmessage()
 	println('END')
 }
 "

@@ -56,7 +56,7 @@ fn test_implicit_str() {
 	assert text == '4242'
 }
 
-fn test_string_interpolation_percent_escaping(){
+fn test_string_interpolation_percent_escaping() {
 	test := 'hello'
 	hello := 'world'
 	x := '%.*s$hello$test |${hello:-30s}|'
@@ -98,8 +98,12 @@ fn test_inttypes_string_interpolation() {
 	assert '${s:X}:${us:x}:${u16(uc):04x}' == 'A460:d431:00d9'
 	assert '${i:x}:${ui:X}:${int(s):x}' == '9f430000:CBF6EFC7:ffffa460'
 	assert '${l:x}:${ul:X}' == '9537727cad98876c:EF2B7D4001165BD2'
-	// TODO this does not work on Windows
-	// assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c'
+	// default pointer format is platform dependent, so try a few
+	eprintln("platform pointer format: '${vp:p}:$bp'")
+	assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c' ||
+		'${vp:p}:$bp' == 'CBF6EFC7:39E53208C' ||
+		'${vp:p}:$bp' == 'cbf6efc7:39e53208c' ||
+		'${vp:p}:$bp' == '00000000CBF6EFC7:000000039E53208C'
 }
 
 fn test_utf8_string_interpolation() {
@@ -107,10 +111,14 @@ fn test_utf8_string_interpolation() {
 	st := 'Sträßle'
 	m := '10€'
 	assert '$a $st $m' == 'à-côté Sträßle 10€'
-	assert '>${a:10}< >${st:-8}< >${m:5}<-' == '>    à-côté< >Sträßle < >  10€<-'
-	e := '\u20AC' // Eurosign
-	// TODO: this fails with MSVC and tcc
-	// assert '100.00 $e' == '100.00 €'
+	zz := '>${a:10}< >${st:-8}< >${m:5}<-'
+	zz_expected := '>    à-côté< >Sträßle < >  10€<-'
+	eprintln('         zz: $zz')
+	eprintln('zz_expected: $zz_expected')
+	assert zz == zz_expected
+	// e := '\u20AC' // Eurosign doesn' work with MSVC and tcc
+	e := '€'
+	assert '100.00 $e' == '100.00 €'
 	m2 := 'Москва́' // cyrillic а́: combination of U+0430 and U+0301, UTF-8: d0 b0 cc 81
 	d := 'Antonín Dvořák' // latin á: U+00E1, UTF-8: c3 a1
 	assert ':${m2:7}:${d:-15}:' == ': Москва́:Antonín Dvořák :'
@@ -130,4 +138,16 @@ fn (s S) str() string {
 fn test_string_interpolation_str_evaluation() {
 	mut x := S{17, 13.455893}
 	assert '$x' == '[17, 13.456]'
+}
+
+
+fn test_string_interpolation_with_negative_format_width_should_compile_and_run_without_segfaulting() {
+	// discovered during debugging VLS
+	i := 3
+	input := '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+	eprintln('---------------------------------------------------------------------------------------------')
+	eprintln('+60 ${i:10} | input.len: ${input.len:10} | ${input.bytes().hex():60} | $input')
+	eprintln('-60 ${i:10} | input.len: ${input.len:10} | ${input.bytes().hex():-60} | $input')
+	eprintln('---------------------------------------------------------------------------------------------')
+	assert true
 }

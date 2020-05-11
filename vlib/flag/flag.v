@@ -23,10 +23,10 @@ module flag
 //
 //  	fp.skip_executable()
 //
-//  	an_int := fp.int('an_int', 0o666, 'some int to define 0o666 is default')
-//  	a_bool := fp.bool('a_bool', false, 'some \'real\' flag')
-//  	a_float := fp.float('a_float', 1.0, 'also floats')
-//  	a_string := fp.string('a_string', 'no text', 'finally, some text')
+//  	an_int := fp.int('an_int', 0, 0o666, 'some int to define 0o666 is default')
+//  	a_bool := fp.bool('a_bool', 0, false, 'some \'real\' flag')
+//  	a_float := fp.float('a_float', 0, 1.0, 'also floats')
+//  	a_string := fp.string('a_string', `a`, 'no text', 'finally, some text with "a" an abbreviation')
 //
 //  	additional_args := fp.finalize() or {
 //  		eprintln(err)

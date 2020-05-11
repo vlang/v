@@ -20,7 +20,7 @@ pub mut:
 	url        string
 	user_agent string
 	verbose    bool
-mut:
+//mut:
 	user_ptr   voidptr
 	ws_func    voidptr
 }
@@ -42,6 +42,14 @@ pub:
 	headers     map[string]string
 	cookies     map[string]string
 	status_code int
+}
+
+pub fn new_request(method, url, data string) ?Request{
+	return Request{
+		method: method
+		url: url
+		data: data
+	}
 }
 
 pub fn get(url string) ?Response {

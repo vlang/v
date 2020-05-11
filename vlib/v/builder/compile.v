@@ -40,13 +40,24 @@ pub fn compile(command string, pref &pref.Preferences) {
 	if pref.is_stats {
 		println('compilation took: ${sw.elapsed().milliseconds()} ms')
 	}
+	// running does not require the parsers anymore
+	b.myfree()
 	if pref.is_test || pref.is_run {
 		b.run_compiled_executable_and_exit()
 	}
-	// v.finalize_compilation()
+}
+
+// Temporary, will be done by -autofree
+fn (mut b Builder) myfree() {
+	// for file in b.parsed_files {
+	// }
+	b.parsed_files.free()
 }
 
 fn (mut b Builder) run_compiled_executable_and_exit() {
+	if b.pref.skip_running {
+		return
+	}
 	if b.pref.is_verbose {
 		println('============ running $b.pref.out_name ============')
 	}
@@ -152,7 +163,7 @@ pub fn (v Builder) get_user_files() []string {
 	preludes_path := os.join_path(vroot, 'cmd', 'tools', 'preludes')
 	if v.pref.is_livemain || v.pref.is_liveshared {
 		user_files << os.join_path(preludes_path, 'live.v')
-    }
+	}
 	if v.pref.is_livemain {
 		user_files << os.join_path(preludes_path, 'live_main.v')
 	}

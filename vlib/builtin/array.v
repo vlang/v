@@ -17,7 +17,7 @@ pub mut:
 
 // Internal function, used by V (`nums := []int`)
 fn __new_array(mylen int, cap int, elm_size int) array {
-	cap_ := if cap == 0 { 1 } else { cap }
+	cap_ := if cap < mylen { mylen } else { cap }
 	arr := array{
 		len: mylen
 		cap: cap_
@@ -29,11 +29,11 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
-	cap_ := if cap == 0 { 1 } else { cap }
+	cap_ := if cap < len { len } else { cap }
 
 	arr := array{
 		len: len
-		cap: cap
+		cap: cap_
 		element_size: elm_size
 		data: vcalloc(cap_ * elm_size)
 	}
@@ -212,6 +212,12 @@ fn (a array) slice2(start, _end int, end_max bool) array {
 	return a.slice(start, end)
 }
 
+// array.clone_static returns an independent copy of a given array
+// It should be used only in -autofree generated code.
+fn (a array) clone_static() array {
+	return a.clone()
+}
+
 // array.clone returns an independent copy of a given array
 pub fn (a &array) clone() array {
 	mut size := a.cap * a.element_size
@@ -304,7 +310,7 @@ pub fn (a array) reverse() array {
 
 // pub fn (a []int) free() {
 [unsafe_fn]
-pub fn (a array) free() {
+pub fn (a &array) free() {
 	// if a.is_slice {
 	// return
 	// }

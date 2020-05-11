@@ -130,7 +130,7 @@ fn protected_load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
 
 // NB: r.reloader() is executed in a new, independent thread
 fn reloader(r mut live.LiveReloadInfo) {
-	elog(r,'reloader, r: $r')
+//	elog(r,'reloader, r: $r')
 	mut last_ts := os.file_last_mod_unix( r.original )
 	for {
 		if r.cb_recheck != 0 {

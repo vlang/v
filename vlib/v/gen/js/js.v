@@ -990,7 +990,7 @@ fn (g mut JsGen) gen_ident(node ast.Ident) {
 
 fn (g mut JsGen) gen_selector_expr(it ast.SelectorExpr) {
 	g.expr(it.expr)
-	g.write('.$it.field')
+	g.write('.$it.field_name')
 }
 
 fn (g mut JsGen) gen_if_expr(node ast.IfExpr) {

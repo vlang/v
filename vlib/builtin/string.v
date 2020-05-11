@@ -46,6 +46,7 @@ pub struct string {
 pub:
 	str byteptr // points to a C style 0 terminated string of bytes.
 	len int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
+	is_lit bool
 }
 	// mut:
 	// hash_cache int
@@ -102,6 +103,21 @@ pub fn tos3(s charptr) string {
 		str: byteptr(s)
 		len: C.strlen(s)
 	}
+}
+
+pub fn tos_lit(s charptr) string {
+	return string{
+		str: byteptr(s)
+		len: C.strlen(s)
+		is_lit:true
+	}
+}
+
+
+// string.clone_static returns an independent copy of a given array
+// It should be used only in -autofree generated code.
+fn (a string) clone_static() string {
+	return a.clone()
 }
 
 pub fn (a string) clone() string {
@@ -1141,7 +1157,7 @@ pub fn (u ustring) at(idx int) string {
 	return u.substr(idx, idx + 1)
 }
 
-fn (u ustring) free() {
+fn (u &ustring) free() {
 	u.runes.free()
 }
 
@@ -1165,18 +1181,10 @@ pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
 
-pub fn (s string) free() {
+pub fn (s &string) free() {
+	if s.is_lit {return}
 	free(s.str)
 }
-
-/*
-fn (arr []string) free() {
-	for s in arr {
-		s.free()
-	}
-	C.free(arr.data)
-}
-*/
 
 // all_before('23:34:45.234', '.') == '23:34:45'
 pub fn (s string) all_before(dot string) string {

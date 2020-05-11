@@ -11,7 +11,7 @@ struct Story {
 }
 
 fn worker_fetch(p &sync.PoolProcessor, cursor int, worker_id int) voidptr {
-	id := p.get_item<int>(cursor)
+	id := p.get_int_item(cursor)
 	resp := http.get('https://hacker-news.firebaseio.com/v0/item/${id}.json') or {
 		println('failed to fetch data from /v0/item/${id}.json')
 		return sync.no_result
@@ -45,5 +45,5 @@ fn main() {
 	// cases is what you want anyway... You can override the automatic choice
 	// by setting the VJOBS environment variable too.
 	// fetcher_pool.set_max_jobs( 4 )
-	fetcher_pool.work_on_items(ids)
+	fetcher_pool.work_on_items_i(ids)
 }

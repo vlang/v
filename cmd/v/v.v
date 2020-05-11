@@ -28,6 +28,10 @@ const (
 )
 
 fn main() {
+	main_v()
+}
+
+fn main_v() {
 	args := os.args[1..]
 	// args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
@@ -120,6 +124,9 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			'-v' {
 				res.is_verbose = true
 			}
+			'-silent' {
+				res.output_mode = .silent
+			}
 			'-cg' {
 				res.is_debug = true
 			}
@@ -149,6 +156,9 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 				res.profile_file = cmdline.option(current_args, '-profile', '-')
 				res.is_prof = true
 				i++
+			}
+			'-profile-no-inline' {
+				res.profile_no_inline = true
 			}
 			'-prod' {
 				res.is_prod = true

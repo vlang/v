@@ -1,0 +1,4 @@
+vlib/v/checker/tests/multiple_fn_attributes.v:2:1: error: multiple attributes detected 
+    1 | [inline;deprecated]
+    2 | fn foo(name string) string {}
+      | ~~

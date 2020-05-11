@@ -7,12 +7,13 @@ import v.table
 import v.token
 
 pub struct Scope {
-mut:
+//mut:
+pub mut:
+	objects   map[string]ScopeObject
 	parent    &Scope
 	children  []&Scope
 	start_pos int
 	end_pos   int
-	objects   map[string]ScopeObject
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {

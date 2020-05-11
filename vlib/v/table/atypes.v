@@ -20,7 +20,7 @@ pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map
 pub struct TypeSymbol {
 pub:
 	parent_idx int
-mut:
+pub mut:
 	info       TypeInfo
 	kind       Kind
 	name       string
@@ -244,7 +244,7 @@ pub const (
 pub struct MultiReturn {
 pub:
 	name  string
-mut:
+pub mut:
 	types []Type
 }
 
@@ -531,13 +531,14 @@ pub fn (kinds []Kind) str() string {
 
 pub struct Struct {
 pub mut:
-	fields     []Field
-	is_typedef bool // C. [typedef]
-	is_union   bool
+	fields      []Field
+	is_typedef  bool // C. [typedef]
+	is_union    bool
+	is_ref_only bool
 }
 
 pub struct Interface {
-mut:
+pub mut:
 	types []Type
 }
 
@@ -559,12 +560,12 @@ pub type FExpr = byteptr | voidptr
 pub struct Field {
 pub:
 	name             string
-mut:
+pub mut:
 	typ              Type
 	default_expr     FExpr
 	has_default_expr bool
 	default_val      string
-	attr             string
+	attrs            []string
 	is_pub           bool
 	is_mut           bool
 	is_global        bool
@@ -573,7 +574,7 @@ mut:
 pub struct Array {
 pub:
 	nr_dims   int
-mut:
+pub mut:
 	elem_type Type
 }
 
@@ -581,7 +582,7 @@ pub struct ArrayFixed {
 pub:
 	nr_dims   int
 	size      int
-mut:
+pub mut:
 	elem_type Type
 }
 
@@ -641,6 +642,26 @@ pub fn (table &Table) type_to_str(t Type) string {
 	return res
 }
 
+pub fn (t &Table) fn_to_str(func &Fn) string {
+	mut sb := strings.new_builder(20)
+	sb.write('${func.name}(')
+	for i in 1 .. func.args.len {
+		arg := func.args[i]
+		sb.write('$arg.name')
+		if i == func.args.len - 1 || func.args[i + 1].typ != arg.typ {
+			sb.write(' ${t.type_to_str(arg.typ)}')
+		}
+		if i != func.args.len - 1 {
+			sb.write(', ')
+		}
+	}
+	sb.write(')')
+	if func.return_type != void_type {
+		sb.write(' ${t.type_to_str(func.return_type)}')
+	}
+	return sb.str()
+}
+
 pub fn (t &TypeSymbol) has_method(name string) bool {
 	t.find_method(name) or {
 		return false
@@ -655,6 +676,20 @@ pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 		}
 	}
 	return none
+}
+
+pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
+	mut has_str_method := false
+	mut expects_ptr := false
+	mut nr_args := 0
+	if sym_str_method := t.find_method('str') {
+		has_str_method = true
+		nr_args = sym_str_method.args.len
+		if nr_args > 0 {
+			expects_ptr = sym_str_method.args[0].typ.is_ptr()
+		}
+	}
+	return has_str_method, expects_ptr, nr_args
 }
 
 pub fn (s Struct) find_field(name string) ?Field {

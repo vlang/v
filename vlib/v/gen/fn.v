@@ -159,11 +159,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	g.stmts(it.stmts)
 	// ////////////
-	if g.autofree {
-		// println('\n\ncalling free for fn $it.name')
-		g.free_scope_vars(it.body_pos.pos)
-	}
-	// /////////
 	if is_main {
 		if g.autofree {
 			g.writeln('\t_vcleanup();')
@@ -173,6 +168,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 	}
 	g.write_defer_stmts_when_needed()
+	// /////////
+	if g.autofree {
+		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
+		g.writeln(g.autofree_scope_vars(it.body_pos.pos))
+	}
 	if is_main {
 		g.writeln('\treturn 0;')
 	}
@@ -181,6 +181,19 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
 		println(g.out.after(fn_start_pos))
 	}
+}
+
+fn (mut g Gen) write_autofree_stmts_when_needed(r ast.Return) {
+	// TODO: write_autofree_stmts_when_needed should account for the current local scope vars.
+	// TODO: write_autofree_stmts_when_needed should not free the returned variables.
+	// It may require rewriting g.return_statement to assign the expressions
+	// to temporary variables, then protecting *them* from autofreeing ...
+	/*
+	g.writeln('/* autofreeings before return:              -------')
+	//g.write( g.autofree_scope_vars(r.pos.pos) )
+	g.write( g.autofree_scope_vars(g.fn_decl.body_pos.pos) )
+	g.writeln('--------------------------------------------------- */')
+	*/
 }
 
 fn (mut g Gen) write_defer_stmts_when_needed() {
@@ -285,9 +298,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		g.write('${c_name(receiver_type_name)}_name_table[')
 		g.expr(node.left)
-		g.write('._interface_idx].${node.name}(')
+		dot := if node.left_type.is_ptr() { '->' } else { '.' }
+		g.write('${dot}_interface_idx].${node.name}(')
 		g.expr(node.left)
-		g.write('._object')
+		g.write('${dot}_object')
 		if node.args.len > 0 {
 			g.write(', ')
 			g.call_args(node.args, node.expected_arg_types)
@@ -411,7 +425,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	if is_json_encode {
 		// `json__encode` => `json__encode_User`
-		name += '_' + json_type_str
+		name += '_' + json_type_str.replace('.', '__')
 	}
 	// Generate tmp vars for values that have to be freed.
 	/*
@@ -440,7 +454,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// tmps << tmp
 			g.write('string $tmp = ${str_fn_name}(')
 			g.expr(node.args[0].expr)
-			g.writeln('); ${print_method}($tmp); string_free($tmp); //MEM2 $styp')
+			g.writeln('); ${print_method}($tmp); string_free(&$tmp); //MEM2 $styp')
 		} else {
 			expr := node.args[0].expr
 			is_var := match expr {
@@ -541,11 +555,14 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 				// styp := g.typ(arg.typ) // g.table.get_type_symbol(arg.typ)
 				if exp_sym.kind == .interface_ {
 					g.interface_call(arg.typ, expected_types[i])
-					// g.write('/*Z*/I_${styp}_to_${exp_styp}(')
 					is_interface = true
 				}
 			}
-			g.ref_or_deref_arg(arg, expected_types[i])
+			if is_interface {
+				g.expr(arg.expr)
+			} else {
+				g.ref_or_deref_arg(arg, expected_types[i])
+			}
 		} else {
 			g.expr(arg.expr)
 		}

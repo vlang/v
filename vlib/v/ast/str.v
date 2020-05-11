@@ -40,16 +40,23 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 	f.write('fn ${receiver}${name}(')
 	for i, arg in node.args {
 		// skip receiver
+		// if (node.is_method || node.is_interface) && i == 0 {
 		if node.is_method && i == 0 {
+			continue
+		}
+		if arg.is_hidden {
 			continue
 		}
 		is_last_arg := i == node.args.len - 1
 		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ || (node.is_variadic &&
 			i == node.args.len - 2)
+		if arg.is_mut {
+			f.write('mut ')
+		}
 		f.write(arg.name)
 		mut s := t.type_to_str(arg.typ)
 		if arg.is_mut {
-			f.write(' mut')
+			// f.write(' mut')
 			if s.starts_with('&') {
 				s = s[1..]
 			}
@@ -118,7 +125,7 @@ pub fn (x Expr) str() string {
 			return it.op.str() + it.right.str()
 		}
 		SelectorExpr {
-			return '${it.expr.str()}.${it.field}'
+			return '${it.expr.str()}.${it.field_name}'
 		}
 		StringInterLiteral {
 			mut res := []string{}

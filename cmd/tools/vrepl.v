@@ -23,7 +23,6 @@ mut:
 
 fn (r mut Repl) checks() bool {
 	mut in_string := false
-	mut is_cut := false
 	was_indent := r.indent > 0
 
 	for i := 0; i < r.line.len; i++ {
@@ -32,13 +31,11 @@ fn (r mut Repl) checks() bool {
 		}
 		if r.line[i] == `{` && !in_string {
 			r.line = r.line[..i + 1] + '\n' + r.line[i + 1..]
-			is_cut = true
 			i++
 			r.indent++
 		}
 		if r.line[i] == `}` && !in_string {
 			r.line = r.line[..i] + '\n' + r.line[i..]
-			is_cut = true
 			i++
 			r.indent--
 			if r.indent == 0 {
@@ -49,7 +46,7 @@ fn (r mut Repl) checks() bool {
 			r.in_func = true
 		}
 	}
-	return r.in_func || (was_indent && r.indent <= 0) || r.indent > 0 || is_cut
+	return r.in_func || (was_indent && r.indent <= 0) || r.indent > 0
 }
 
 fn (r &Repl) function_call(line string) bool {
@@ -61,7 +58,7 @@ fn (r &Repl) function_call(line string) bool {
 	return false
 }
 
-pub fn repl_help() {
+fn repl_help() {
 	println(util.full_v_version())
 	println('
   help                   Displays this information.
@@ -70,7 +67,7 @@ pub fn repl_help() {
 ')
 }
 
-pub fn run_repl(workdir string, vrepl_prefix string) []string {
+fn run_repl(workdir string, vrepl_prefix string) {
 	println(util.full_v_version())
 	println('Use Ctrl-C or `exit` to exit')
 
@@ -101,8 +98,7 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 	for {
 		if r.indent == 0 {
 			prompt = '>>> '
-		}
-		else {
+		} else {
 			prompt = '... '
 		}
 		mut line := readline.read_line(prompt) or {
@@ -149,11 +145,11 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 		// but don't add this print call to the `lines` array,
 		// so that it doesn't get called during the next print.
 		if r.line.starts_with('print') {
-			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.line
+			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.line + '\n'
 			os.write_file(file, source_code)
 			s := os.exec('"$vexe" -repl run $file') or {
 				rerror(err)
-				return []
+				return
 			}
 			print_output(s)
 		} else {
@@ -161,23 +157,23 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 			mut temp_flag := false
 			func_call := r.function_call(r.line)
 			filter_line := r.line.replace(r.line.find_between('\'', '\''), '').replace(r.line.find_between('"', '"'), '')
-			if !(filter_line.contains(':') ||
-					filter_line.contains('=') ||
-					filter_line.contains(',') ||
-					filter_line.contains('++') ||
-					filter_line.contains('--') ||
-					filter_line.contains('<<') ||
-					filter_line.starts_with('import') ||
-					r.line == '') && !func_call {
+			if !(filter_line.contains('=') || filter_line.contains('++') ||
+					filter_line.contains('--') || filter_line.contains('<<') ||
+					filter_line.contains('//') || filter_line.contains('/*') ||
+					filter_line.starts_with('import') || r.line == '') && !func_call {
 				temp_line = 'println($r.line)'
 				temp_flag = true
 			}
-			temp_source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.temp_lines.join('\n') + '\n' + temp_line
+			mut temp_source_code := ''
+			if temp_line.starts_with('import') {
+				temp_source_code = r.functions.join('\n') + temp_line + '\n'
+			} else {
+				temp_source_code = r.functions.join('\n') + r.lines.join('\n') + '\n' + r.temp_lines.join('\n') + '\n' + temp_line + '\n'
+			}
 			os.write_file(temp_file, temp_source_code)
 			s := os.exec('"$vexe" -repl run $temp_file') or {
-				println("SDFSDF")
 				rerror(err)
-				return []
+				return
 			}
 			if !func_call && s.exit_code == 0 && !temp_flag {
 				for r.temp_lines.len > 0 {
@@ -186,7 +182,14 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 					}
 					r.temp_lines.delete(0)
 				}
-				r.lines << r.line
+				if r.line.starts_with('import') {
+					mut lines := []string{cap: r.lines.len+1}
+					lines << r.line
+					lines << r.lines
+					r.lines = lines
+				} else {
+					r.lines << r.line
+				}
 			} else {
 				for r.temp_lines.len > 0 {
 					r.temp_lines.delete(0)
@@ -195,7 +198,6 @@ pub fn run_repl(workdir string, vrepl_prefix string) []string {
 			print_output(s)
 		}
 	}
-	return r.lines
 }
 
 fn print_output(s os.Result) {
@@ -225,20 +227,19 @@ fn main() {
 	// so that the repl can be launched in parallel by several different
 	// threads by the REPL test runner.
 	args := cmdline.options_after(os.args, ['repl'])
-	replfolder := os.real_path( cmdline.option(args, '-replfolder', '.') )
+	replfolder := os.real_path(cmdline.option(args, '-replfolder', '.'))
 	replprefix := cmdline.option(args, '-replprefix', 'noprefix.')
-	os.chdir( replfolder )
+	os.chdir(replfolder)
 	if !os.exists(os.getenv('VEXE')) {
 		println('Usage:')
 		println('  VEXE=vexepath vrepl\n')
 		println('  ... where vexepath is the full path to the v executable file')
 		return
 	}
-	run_repl( replfolder, replprefix )
+	run_repl(replfolder, replprefix)
 }
 
-pub fn rerror(s string) {
+fn rerror(s string) {
 	println('V repl error: $s')
 	os.flush()
-	exit(1)
 }

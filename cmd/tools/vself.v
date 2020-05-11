@@ -7,6 +7,7 @@ fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
+	os.setenv('VCOLORS', 'always', true)
 
 	self_idx := os.args.index('self')
 	args := os.args[1..self_idx]

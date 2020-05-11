@@ -4,10 +4,10 @@
 module strings
 
 pub struct Builder {
-mut:
+	// TODO
+pub mut:
 	buf          []byte
 	str_calls    int
-pub mut:
 	len          int
 	initial_size int = 1
 }
@@ -104,9 +104,7 @@ pub fn (b mut Builder) free() {
 	unsafe{
 		free(b.buf.data)
 	}
-	// QTODO checker bug
-	s := b.initial_size
-	b.buf = []byte{cap: s}
+	//b.buf = []byte{cap: b.initial_size}
 	b.len = 0
 	b.str_calls = 0
 }

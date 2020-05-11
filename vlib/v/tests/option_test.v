@@ -9,7 +9,7 @@ fn test_err_with_code() {
 		return
 	}
 	assert false
-	println(v)	// suppress not used error
+	println(v) // suppress not used error
 }
 
 fn opt_err() ?string {
@@ -22,7 +22,7 @@ fn test_err() {
 		return
 	}
 	assert false
-	println(v)	// suppress not used error
+	println(v) // suppress not used error
 }
 
 fn err_call(ok bool) ?int {
@@ -84,6 +84,25 @@ fn test_q() {
 	// assert foo_ok()? == true
 }
 
+fn test_reassignment() {
+	mut x2 := foo_ok() or {
+		assert false
+		return
+	}
+	assert x2 == 777
+	x2 = 100
+	assert x2 == 100
+	x2 += 1
+	assert x2 == 101
+	///
+	mut x3 := 0
+	x3 = foo_ok() or {
+		assert false
+		return
+	}
+	assert x3 == 777
+}
+
 struct Person {
 mut:
 	name  string
@@ -111,7 +130,7 @@ fn test_field_or() {
 		'default'
 	}
 	assert mytitle == 'default'
-*/
+	*/
 }
 
 struct Thing {
@@ -126,7 +145,7 @@ fn test_opt_field() {
 	t.opt = 5
 	val := t.opt or { return }
 	assert val == 5
-*/
+	*/
 }
 
 fn opt_ptr(a &int) ?&int {
@@ -137,6 +156,13 @@ fn opt_ptr(a &int) ?&int {
 }
 
 fn test_opt_ptr() {
+	if true {
+
+	}
+	//
+	else{
+
+	}
 	a := 3
 	mut r := opt_ptr(&a) or {
 		&int(0)

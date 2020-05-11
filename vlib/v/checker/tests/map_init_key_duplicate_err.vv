@@ -1,0 +1,8 @@
+fn main() {
+	a := {
+		'foo': 'bar'
+		'abc': 'abc'
+		'foo': 'bar'
+	}
+	println(a)
+}

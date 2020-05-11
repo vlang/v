@@ -14,12 +14,14 @@ enum FileType {
 }
 
 struct FilePermission {
+pub:
 	read bool
 	write bool
 	execute bool
 }
 
 struct FileMode {
+pub:
 	typ FileType
 	owner FilePermission
 	group FilePermission

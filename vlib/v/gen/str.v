@@ -9,6 +9,10 @@ fn (mut g Gen) write_str_fn_definitions() {
 void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, int guess, ...) {
 	va_list args;
 	va_start(args, guess);
+	// NB: (*memsize - *nbytes) === how much free space is left at the end of the current buffer refbufp
+	// *memsize === total length of the buffer refbufp
+	// *nbytes === already occupied bytes of buffer refbufp
+	// guess === how many bytes were taken during the current vsnprintf run
 	for(;;) {
 		if (guess < *memsize - *nbytes) {
 			guess = vsnprintf(*refbufp + *nbytes, *memsize - *nbytes, fmt, args);
@@ -62,7 +66,7 @@ string _STR(const char *fmt, int nfmts, ...) {
 						fwidth -= (s.len - utf8_str_visible_length(s));
 					else
 						fwidth += (s.len - utf8_str_visible_length(s));
-					_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+fwidth-4, fwidth, s.len, s.str);
+					_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+s.len-4, fwidth, s.len, s.str);
 				} else { // %.*s
 					_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+s.len-4, s.len, s.str);
 				}
@@ -70,8 +74,7 @@ string _STR(const char *fmt, int nfmts, ...) {
 				//v_panic(tos3('Invaid format specifier'));
 			}
 		} else {
-			if (k)
-				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
+			_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
 		}
 		fmt += k+1;
 	}
