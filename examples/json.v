@@ -20,7 +20,10 @@ fn main() {
 	for i, user in users {
 		println('$i) $user.name')
 		if !user.can_register() {
-			println('Cannot register $user.name, they are too young')
+			println('Cannot register $user.name, he is too young')
+        } else {
+            users[i].register()
+            println('$user.name is registered')
 		}
 	}
 	// Let's encode users again just for fun
