@@ -18,6 +18,8 @@ pub fn next(max int) int {
 // writes a result value to the seed argument.
 pub fn rand_r(seed &int) int {
 	ns := *seed * 1103515245 + 12345
-	(*seed) = ns
+	unsafe {
+		(*seed) = ns
+	}
 	return ns & 0x7fffffff
 }

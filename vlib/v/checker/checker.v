@@ -38,6 +38,7 @@ pub mut:
 	scope_returns  bool
 	mod            string // current module name
 	is_builtin_mod bool // are we in `builtin`?
+	inside_unsafe  bool
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -571,6 +572,14 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 	}
 	// Make sure the variable is mutable
 	c.fail_if_immutable(assign_expr.left)
+	// Do now allow `*x = y` outside `unsafe`
+	if assign_expr.left is ast.PrefixExpr {
+		p := assign_expr.left as ast.PrefixExpr
+		if p.op == .mul && !c.inside_unsafe {
+			c.error('modifying variables via deferencing can only be done in `unsafe` blocks',
+				assign_expr.pos)
+		}
+	}
 	// Single side check
 	match assign_expr.op {
 		.assign {} // No need to do single side check for =. But here put it first for speed.
@@ -1550,7 +1559,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.type_decl(it)
 		}
 		ast.UnsafeStmt {
+			c.inside_unsafe = true
 			c.stmts(it.stmts)
+			c.inside_unsafe = false
 		}
 		else {
 			// println('checker.stmt(): unhandled node')
