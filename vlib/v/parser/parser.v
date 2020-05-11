@@ -31,6 +31,7 @@ mut:
 	inside_match_expr bool
 	inside_for        bool
 	inside_fn         bool
+	inside_return     bool
 	pref              &pref.Preferences
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
@@ -486,7 +487,8 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				}
 			} else if p.tok.kind == .name && p.peek_tok.kind == .name {
 				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-			} else if p.tok.kind == .name && !p.inside_if_expr && !p.inside_or_expr && !p.inside_match_expr &&
+			} else if p.tok.kind == .name && !p.inside_if_expr && !p.inside_or_expr &&
+			 (!p.inside_match_expr || !p.inside_return) &&
 			 p.peek_tok.kind in [.rcbr, .eof] {
 				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 			}
@@ -1112,6 +1114,8 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 }
 
 fn (mut p Parser) return_stmt() ast.Return {
+	p.inside_return = true
+	defer { p.inside_return = false }
 	first_pos := p.tok.position()
 	p.next()
 	// return expressions
