@@ -845,7 +845,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 	mut is_multi := false
 	// json_test failed w/o this check
-	if return_type != 0 {
+	if return_type != table.void_type && return_type != 0 {
 		sym := g.table.get_type_symbol(return_type)
 		// the left vs. right is ugly and should be removed
 		is_multi = sym.kind == .multi_return || assign_stmt.left.len > assign_stmt.right.len ||
