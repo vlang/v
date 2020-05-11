@@ -233,7 +233,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			c.error('unknown type `$sym.name`', field.pos)
 		}
 		if sym.kind == .struct_ {
-			info:=sym.info as table.Struct
+			info := sym.info as table.Struct
 			if info.is_ref_only && !field.typ.is_ptr() {
 				c.error('`$sym.name` type can only be used as a reference: `&$sym.name`', field.pos)
 			}
@@ -255,7 +255,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 	// && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod && Sp.tok.lit in table.builtin_type_names))
 }
 
-pub fn (mut c Checker) struct_init(struct_init mut ast.StructInit) table.Type {
+pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	// typ := c.table.find_type(struct_init.typ.typ.name) or {
 	// c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
 	// panic('')
@@ -344,7 +344,7 @@ pub fn (mut c Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 	return struct_init.typ
 }
 
-pub fn (mut c Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
+pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	// println('checker: infix expr(op $infix_expr.op.str())')
 	c.expected_type = table.void_type
 	left_type := c.expr(infix_expr.left)
@@ -532,7 +532,8 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 					}
 					if !field_info.is_mut {
 						type_str := c.table.type_to_str(it.expr_type)
-						c.error('field `$it.field_name` of struct `${type_str}` is immutable', it.pos)
+						c.error('field `$it.field_name` of struct `${type_str}` is immutable',
+							it.pos)
 					}
 					c.fail_if_immutable(it.expr)
 				}
@@ -555,7 +556,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 	}
 }
 
-fn (mut c Checker) assign_expr(assign_expr mut ast.AssignExpr) {
+fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 	c.expected_type = table.void_type
 	left_type := c.expr(assign_expr.left)
 	c.expected_type = left_type
@@ -617,7 +618,7 @@ fn (mut c Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	c.check_expr_opt_call(assign_expr.val, right_type, true)
 }
 
-pub fn (mut c Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
+pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 	c.stmts(call_expr.or_block.stmts)
 	if call_expr.is_method {
 		return c.call_method(call_expr)
@@ -625,7 +626,7 @@ pub fn (mut c Checker) call_expr(call_expr mut ast.CallExpr) table.Type {
 	return c.call_fn(call_expr)
 }
 
-pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
+pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	left_type := c.expr(call_expr.left)
 	call_expr.left_type = left_type
 	left_type_sym := c.table.get_type_symbol(left_type)
@@ -748,7 +749,7 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 	return table.void_type
 }
 
-pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
+pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if call_expr.name == 'panic' {
 		c.returns = true
 	}
@@ -938,7 +939,7 @@ pub fn (mut c Checker) check_expr_opt_call(x ast.Expr, xtype table.Type, is_retu
 	}
 }
 
-pub fn (mut c Checker) check_or_block(call_expr mut ast.CallExpr, ret_type table.Type, is_ret_used bool) {
+pub fn (mut c Checker) check_or_block(mut call_expr ast.CallExpr, ret_type table.Type, is_ret_used bool) {
 	if !call_expr.or_block.is_used {
 		c.error('${call_expr.name}() returns an option, but you missed to add an `or {}` block to it',
 			call_expr.pos)
@@ -1005,7 +1006,7 @@ pub fn (mut c Checker) is_last_or_block_stmt_valid(stmt ast.Stmt) bool {
 	}
 }
 
-pub fn (mut c Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.Type {
+pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.Type {
 	typ := c.expr(selector_expr.expr)
 	if typ == table.void_type_idx {
 		c.error('unknown selector expression', selector_expr.pos)
@@ -1022,9 +1023,9 @@ pub fn (mut c Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 		}
 	}
 	if field := c.table.struct_find_field(typ_sym, field_name) {
-	if typ_sym.mod != c.mod && !field.is_pub{
-		c.error('field `${typ_sym.name}.$field_name` is not public', selector_expr.pos)
-	}
+		if typ_sym.mod != c.mod && !field.is_pub {
+			c.error('field `${typ_sym.name}.$field_name` is not public', selector_expr.pos)
+		}
 		return field.typ
 	}
 	if typ_sym.kind != .struct_ {
@@ -1036,7 +1037,7 @@ pub fn (mut c Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 }
 
 // TODO: non deferred
-pub fn (mut c Checker) return_stmt(return_stmt mut ast.Return) {
+pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	c.expected_type = c.fn_return_type
 	if return_stmt.exprs.len > 0 && c.fn_return_type == table.void_type {
 		c.error('too many arguments to return, current function does not return anything',
@@ -1112,7 +1113,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	}
 }
 
-pub fn (mut c Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
+pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
 	right_first := assign_stmt.right[0]
 	mut right_len := assign_stmt.right.len
@@ -1120,7 +1121,11 @@ pub fn (mut c Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 		right_type0 := c.expr(assign_stmt.right[0])
 		assign_stmt.right_types = [right_type0]
 		right_type_sym0 := c.table.get_type_symbol(right_type0)
-		right_len = if right_type0 == table.void_type { 0 } else { right_len }
+		right_len = if right_type0 == table.void_type {
+			0
+		} else {
+			right_len
+		}
 		if right_type_sym0.kind == .multi_return {
 			assign_stmt.right_types = right_type_sym0.mr_info().types
 			right_len = assign_stmt.right_types.len
@@ -1187,7 +1192,7 @@ pub fn (mut c Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	// c.assigned_var_name = ''
 }
 
-pub fn (mut c Checker) array_init(array_init mut ast.ArrayInit) table.Type {
+pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	// println('checker: array init $array_init.pos.line_nr $c.file.path')
 	mut elem_type := table.void_type
 	// []string - was set in parser
@@ -1738,7 +1743,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 	return table.void_type
 }
 
-pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
+pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	if ident.name == c.var_decl_name { // c.checked_ident {
 		c.error('unresolved: `$ident.name`', ident.pos)
 		return table.void_type
@@ -1859,7 +1864,7 @@ pub fn (mut c Checker) concat_expr(concat_expr mut ast.ConcatExpr) table.Type {
 	return typ
 }
 
-pub fn (mut c Checker) match_expr(node mut ast.MatchExpr) table.Type {
+pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	node.is_expr = c.expected_type != table.void_type
 	node.expected_type = c.expected_type
 	cond_type := c.expr(node.cond)
@@ -1914,7 +1919,7 @@ pub fn (mut c Checker) match_expr(node mut ast.MatchExpr) table.Type {
 	return ret_type
 }
 
-fn (mut c Checker) match_exprs(node mut ast.MatchExpr, type_sym table.TypeSymbol) {
+fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol) {
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
@@ -1984,7 +1989,7 @@ fn (mut c Checker) match_exprs(node mut ast.MatchExpr, type_sym table.TypeSymbol
 	c.error(err_details, node.pos)
 }
 
-pub fn (mut c Checker) if_expr(node mut ast.IfExpr) table.Type {
+pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	if c.expected_type != table.void_type {
 		// | c.assigned_var_name != '' {
 		// sym := c.table.get_type_symbol(c.expected_type)
@@ -2038,9 +2043,11 @@ pub fn (mut c Checker) if_expr(node mut ast.IfExpr) table.Type {
 		}
 	}
 	// won't yet work due to eg: if true { println('foo') }
-	/*if node.is_expr && !node.has_else {
+	/*
+	if node.is_expr && !node.has_else {
 		c.error('`if` expression needs `else` clause. remove return values or add `else`', node.pos)
-	}*/
+	}
+	*/
 	return table.bool_type
 }
 
@@ -2057,7 +2064,7 @@ pub fn (mut c Checker) postfix_expr(node ast.PostfixExpr) table.Type {
 	return typ
 }
 
-pub fn (mut c Checker) index_expr(node mut ast.IndexExpr) table.Type {
+pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	typ := c.expr(node.left)
 	node.left_type = typ
 	mut is_range := false // TODO is_range := node.index is ast.RangeExpr
@@ -2106,7 +2113,7 @@ pub fn (mut c Checker) index_expr(node mut ast.IndexExpr) table.Type {
 // `.green` or `Color.green`
 // If a short form is used, `expected_type` needs to be an enum
 // with this value.
-pub fn (mut c Checker) enum_val(node mut ast.EnumVal) table.Type {
+pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 	typ_idx := if node.enum_name == '' {
 		c.expected_type.idx()
 	} else { //
@@ -2143,7 +2150,7 @@ pub fn (mut c Checker) enum_val(node mut ast.EnumVal) table.Type {
 	return typ
 }
 
-pub fn (mut c Checker) map_init(node mut ast.MapInit) table.Type {
+pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `x ;= map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.get_type_symbol(node.typ).map_info()
@@ -2156,7 +2163,7 @@ pub fn (mut c Checker) map_init(node mut ast.MapInit) table.Type {
 	val0_type := c.expr(node.vals[0])
 	for i, key in node.keys {
 		key_i := key as ast.StringLiteral
-		for j in 0..i {
+		for j in 0 .. i {
 			key_j := node.keys[j] as ast.StringLiteral
 			if key_i.val == key_j.val {
 				c.error('duplicate key "$key_i.val" in map literal', key.position())

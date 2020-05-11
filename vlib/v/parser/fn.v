@@ -127,10 +127,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if !rec_mut {
 			rec_mut = p.tok.kind == .key_mut
 		}
-        
 		receiver_pos = rec_start_pos.extend(p.tok.position())
 		is_amp := p.tok.kind == .amp
-
 		// if rec_mut {
 		// p.check(.key_mut)
 		// }
@@ -336,6 +334,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	// `int, int, string` (no names, just types)
 	types_only := p.tok.kind in [.amp, .and] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
 		p.peek_tok.kind == .rpar
+	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')
 		mut arg_no := 1
@@ -350,6 +349,13 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				is_variadic = true
 			}
 			mut arg_type := p.parse_type()
+			if is_mut {
+				// if arg_type.is_ptr() {
+				// p.error('cannot mut')
+				// }
+				// arg_type = arg_type.to_ptr()
+				arg_type = arg_type.set_nr_muls(1)
+			}
 			if is_variadic {
 				arg_type = arg_type.set_flag(.variadic)
 			}
@@ -387,6 +393,13 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				is_variadic = true
 			}
 			mut typ := p.parse_type()
+			if is_mut {
+				if typ.is_ptr() {
+					// name := p.table.get_type_name(typ)
+					// p.warn('`$name` is already a reference, it cannot be marked as `mut`')
+				}
+				typ = typ.set_nr_muls(1)
+			}
 			if is_variadic {
 				typ = typ.set_flag(.variadic)
 			}
