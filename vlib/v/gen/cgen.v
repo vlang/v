@@ -979,10 +979,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 				} else {
 					g.write(' = ')
-					if !is_decl {
-						g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
-					} else {
+					if is_decl {
 						g.expr(val)
+					} else {
+						g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
 					}
 				}
 				if gen_or {

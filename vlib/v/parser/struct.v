@@ -275,6 +275,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	t := table.TypeSymbol{
 		kind: .interface_
 		name: interface_name
+		mod: p.mod
 		info: table.Interface{
 			types: []
 		}
