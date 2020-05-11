@@ -750,6 +750,8 @@ pub:
 pub struct ConcatExpr {
 pub:
 	vals []Expr
+pub mut:
+    return_type table.Type
 }
 
 pub struct None {

@@ -1091,6 +1091,18 @@ fn (g &Gen) autofree_var_call(free_fn_name string, v ast.Var) string {
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
 	match node {
+		ast.AnonFn {
+			// TODO: dont fiddle with buffers
+			pos := g.out.len
+			def_pos := g.definitions.len
+			g.stmt(it.decl)
+			fn_body := g.out.after(pos)
+			g.out.go_back(fn_body.len)
+			g.definitions.go_back(g.definitions.len - def_pos)
+			g.definitions.write(fn_body)
+			fsym := g.table.get_type_symbol(it.typ)
+			g.write('&${fsym.name}')
+		}
 		ast.ArrayInit {
 			g.array_init(it)
 		}
@@ -1153,6 +1165,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.CharLiteral {
 			g.write("'$it.val'")
+		}
+		ast.ConcatExpr {
+			g.concat_expr(it)	
 		}
 		ast.EnumVal {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
@@ -1294,18 +1309,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.TypeOf {
 			g.typeof_expr(it)
-		}
-		ast.AnonFn {
-			// TODO: dont fiddle with buffers
-			pos := g.out.len
-			def_pos := g.definitions.len
-			g.stmt(it.decl)
-			fn_body := g.out.after(pos)
-			g.out.go_back(fn_body.len)
-			g.definitions.go_back(g.definitions.len - def_pos)
-			g.definitions.write(fn_body)
-			fsym := g.table.get_type_symbol(it.typ)
-			g.write('&${fsym.name}')
 		}
 		else {
 			// #printf("node=%d\n", node.typ);
@@ -1763,6 +1766,19 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	g.write(name)
+}
+
+fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
+	styp := g.typ(node.return_type)
+	g.write('($styp){')
+	for i, expr in node.vals {
+		g.write('.arg$i=')
+		g.expr(expr)
+		if i < node.vals.len - 1 {
+			g.write(',')
+		}
+	}
+	g.write('}')
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {

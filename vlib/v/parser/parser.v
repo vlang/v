@@ -469,27 +469,34 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			}
 		}
 		else {
-			// `x := ...`
-			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
+			// certainly `x := ...`
+			if p.tok.kind == .name && p.peek_tok.kind == .decl_assign {
 				return p.assign_stmt()
-			} else if p.tok.kind == .name && p.peek_tok.kind == .colon {
-				// `label:`
+			}
+			// certainly `label:`
+			if p.tok.kind == .name && p.peek_tok.kind == .colon {
 				name := p.check_name()
 				p.next()
 				return ast.GotoLabel{
 					name: name
 				}
-			} else if p.tok.kind == .name && p.peek_tok.kind == .name {
+			}
+			if p.tok.kind == .name && p.peek_tok.kind == .name {
 				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-			} else if p.tok.kind == .name && !p.inside_if_expr && !p.inside_or_expr && p.peek_tok.kind in [.rcbr, .eof] {
+			}
+			if p.tok.kind == .name && !p.inside_if_expr && !p.inside_or_expr && p.peek_tok.kind in [.rcbr, .eof] {
 				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 			}
-			epos := p.tok.position()
-			expr := p.expr(0)
-			return ast.ExprStmt{
-				expr: expr
-				pos: epos
+			// certainly `x` (single-expression)
+			if p.peek_tok.kind != .comma && p.peek_tok2.kind != .comma {
+				epos := p.tok.position()
+				return ast.ExprStmt{
+					expr: p.expr(0)
+					pos: epos
+				}
 			}
+			// from now on can be multi-assignment or concat-expression
+			return p.parse_multi_assign_or_concat_expr()
 		}
 	}
 }
@@ -598,6 +605,20 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 			pos: pos,
 			reporter: .parser,
 			message: s
+		}
+	}
+}
+
+fn (mut p Parser) parse_multi_assign_or_concat_expr() ast.Stmt {
+	idents, exprs := p.parse_assign_lhs_or_conc_expr(false)
+	if idents.len > 0 {
+		return p.assign_stmt_with_lhs(idents)
+	} else {
+		return ast.ExprStmt{
+			expr: ast.ConcatExpr {
+				vals: exprs
+			}
+			pos: p.tok.position()
 		}
 	}
 }

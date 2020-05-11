@@ -47,12 +47,35 @@ fn test_assign_multireturn_expression() {
 	assert i == 1
 	assert j == 'good'
 
-	// TODO: returning non-function calls does not work yet due to parsing issues
-	/*
-	e, f := if true {
-		1, 'awesome'
+	k, l, m := if true {
+		1, 'awesome', [13]
 	} else {
-		0, 'bad'
+		0, 'bad', [0]
 	}
-	*/
+	assert k == 1
+	assert l == 'awesome'
+	assert m == [13]
+
+	n, o, p := if false {
+		1, 'awesome', [13]
+	} else {
+		0, 'bad', [0]
+	}
+	assert n == 0
+	assert o == 'bad'
+	assert p == [0]
+
+	static var1 := 17
+	mut var2 := 'awe'
+	var3 := [13]
+	q, r, s := if true {
+		// if-expr can not contain var-decl
+		var2 += 'some'
+		var1, var2, var3
+	} else {
+		0, 'bad', [0]
+	}
+	assert q == 17
+	assert r == 'awesome'
+	assert s == [13]
 }
