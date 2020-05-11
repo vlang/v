@@ -413,14 +413,14 @@ pub fn (mut g Gen) gen_print(s string) {
 	//
 	// qq := s + '\n'
 	//
-	g.strings << s // + '\n'
+	g.strings << s
 	// g.string_addr[s] = str_pos
 	g.mov(.eax, 1)
 	g.mov(.edi, 1)
 	str_pos := g.buf.len + 2
 	g.str_pos << str_pos
 	g.mov64(.rsi, 0) // segment_start +  0x9f) // str pos // PLACEHOLDER
-	g.mov(.edx, s.len + 1) // len
+	g.mov(.edx, s.len) // len
 	g.syscall()
 }
 
