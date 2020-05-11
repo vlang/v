@@ -503,8 +503,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 						it.pos)
 				}
 			} else if it.name in c.const_names {
-				c.error('cannot assign to constant `$it.name`',
-						it.pos)
+				c.error('cannot assign to constant `$it.name`', it.pos)
 			}
 		}
 		ast.IndexExpr {
