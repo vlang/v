@@ -157,8 +157,8 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			mut temp_flag := false
 			func_call := r.function_call(r.line)
 			filter_line := r.line.replace(r.line.find_between('\'', '\''), '').replace(r.line.find_between('"', '"'), '')
-			if !(filter_line.contains(':=') || filter_line.contains('=') ||
-					filter_line.contains('++') || filter_line.contains('--') || filter_line.contains('<<') ||
+			if !(filter_line.contains('=') || filter_line.contains('++') ||
+					filter_line.contains('--') || filter_line.contains('<<') ||
 					filter_line.contains('//') || filter_line.contains('/*') ||
 					filter_line.starts_with('import') || r.line == '') && !func_call {
 				temp_line = 'println($r.line)'
