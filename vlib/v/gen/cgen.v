@@ -3394,7 +3394,10 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 			sym := g.table.get_type_symbol(field.typ)
 			has_custom_str := sym.has_method('str')
 			second_str_param := if has_custom_str { '' } else { ', indent_count + 1' }
-			field_styp := g.typ(field.typ)
+			mut field_styp := g.typ(field.typ)
+			if field_styp.ends_with('*') {
+				field_styp = field_styp.replace('*', '')
+			}
 			field_styp_fn_name := if has_custom_str { '${field_styp}_str' } else { fnames2strfunc[field_styp] }
 			if sym.kind == .enum_ {
 				g.auto_str_funcs.write('indents, ')
