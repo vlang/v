@@ -773,7 +773,7 @@ pub fn expr_is_call(expr Expr) bool {
 	}
 }
 
-fn (expr Expr) position() token.Position {
+pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
 	match mut expr {
 		ArrayInit {
@@ -867,7 +867,7 @@ fn (expr Expr) position() token.Position {
 	}
 }
 
-fn (stmt Stmt) position() token.Position {
+pub fn (stmt Stmt) position() token.Position {
 	match mut stmt {
 		AssertStmt {
 			return it.pos

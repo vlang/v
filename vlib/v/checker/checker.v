@@ -665,7 +665,7 @@ pub fn (mut c Checker) call_method(call_expr mut ast.CallExpr) table.Type {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
 			// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
-			//c.error('method `${left_type_sym.name}.$method_name` is private', call_expr.pos)
+			c.error('method `${left_type_sym.name}.$method_name` is private', call_expr.pos)
 		}
 		if method.return_type == table.void_type && method.ctdefine.len > 0 && method.ctdefine !in
 			c.pref.compile_defines {
