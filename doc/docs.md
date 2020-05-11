@@ -18,15 +18,15 @@ you can do in V.
 <ol>
 <table>
 	<tr>
-		<td><a href='#hello-world'>Hello world</a></td>
-		<td><a href='#comments'>Comments</a></td>
-		<td><a href='#functions'>Functions</a></td>
-		<td><a href='#constants--variables'>Variables</a></td>
-		<td><a href='#primitive-types'>Primitive types</a></td>
-		<td><a href='#strings'>Strings</a></td>
+		<td><a href='#hello-world'>1. Hello world</a></td>
+		<td><a href='#comments'>2. Comments</a></td>
+		<td><a href='#functions'>3. Functions</a></td>
+		<td><a href='#constants--variables'>4. Variables</a></td>
+		<td><a href='#primitive-types'>5. Primitive types</a></td>
+		<td><a href='#strings'>6. Strings</a></td>
 	</tr>
 	<tr>
-		<td><a href='#imports'>Imports</a></td>
+		<td><a href='#imports'>7. Imports</a></td>
 		<td><a href='#arrays'>Arrays</a></td>
 		<td><a href='#maps'>Maps</a></td>
 		<td><a href='#if'>If</a></td>
