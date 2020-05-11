@@ -44,6 +44,7 @@ mut:
 	returns           bool
 	inside_match      bool // to separate `match A { }` from `Struct{}`
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
+	inside_match_body bool // to fix eval not used TODO
 	inside_unsafe     bool
 	is_stmt_ident     bool // true while the beginning of a statement is an ident/selector
 	expecting_type    bool // `is Type`, expecting type
@@ -485,7 +486,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				}
 			} else if p.tok.kind == .name && p.peek_tok.kind == .name {
 				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-			} else if p.tok.kind == .name && !p.inside_if_expr && !p.inside_match && !p.inside_or_expr &&
+			} else if p.tok.kind == .name && !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr &&
 				p.peek_tok.kind in [.rcbr, .eof] {
 				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 			}
