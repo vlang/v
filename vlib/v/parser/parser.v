@@ -27,6 +27,7 @@ mut:
 	is_js             bool
 	inside_if         bool
 	inside_if_expr    bool
+	inside_or_expr    bool
 	inside_for        bool
 	inside_fn         bool
 	pref              &pref.Preferences
@@ -480,7 +481,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				}
 			} else if p.tok.kind == .name && p.peek_tok.kind == .name {
 				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-			} else if p.tok.kind == .name && !p.inside_if_expr && p.peek_tok.kind in [.lcbr, .rcbr, .eof] {
+			} else if p.tok.kind == .name && !p.inside_if_expr && !p.inside_or_expr && p.peek_tok.kind in [.lcbr, .rcbr, .eof] {
 				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 			}
 			epos := p.tok.position()

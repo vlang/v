@@ -37,6 +37,7 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 	mut or_stmts := []ast.Stmt{}
 	mut is_or_block_used := false
 	if p.tok.kind == .key_orelse {
+		p.inside_or_expr = true
 		p.next()
 		p.open_scope()
 		p.scope.register('err', ast.Var{
@@ -54,6 +55,7 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 		is_or_block_used = true
 		or_stmts = p.parse_block_no_scope()
 		p.close_scope()
+		p.inside_or_expr = false
 	}
 	node := ast.CallExpr{
 		name: fn_name
