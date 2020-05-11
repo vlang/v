@@ -8,10 +8,11 @@ import v.table
 import v.token
 
 fn (mut p Parser) if_expr() ast.IfExpr {
-	p.inside_if_expr = true
+	was_inside_if_expr := p.inside_if_expr
 	defer {
-		p.inside_if_expr = false
+		p.inside_if_expr = was_inside_if_expr
 	}
+	p.inside_if_expr = true
 	pos := p.tok.position()
 	mut branches := []ast.IfBranch{}
 	mut has_else := false

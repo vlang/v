@@ -1,0 +1,5 @@
+vlib/v/checker/tests/if_expr_no_else.v:2:10: error: `if` expression needs `else` clause
+    1 | fn main() {
+    2 |     _ := if true { 1 }
+      |          ~~
+    3 | }
