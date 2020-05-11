@@ -626,7 +626,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.go_stmt(it)
 		}
 		ast.GotoLabel {
-			g.writeln('$it.name:')
+			g.writeln('$it.name: {}')
 		}
 		ast.GotoStmt {
 			g.writeln('goto $it.name;')
