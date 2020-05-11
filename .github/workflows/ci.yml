@@ -291,8 +291,6 @@ jobs:
       run: |
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sdl.bat
-    - name: quick debug
-      run: ./v -stats vlib/strconv/format_test.v
     - name: Fixed tests
       run: |
         ./v -cg cmd\tools\vtest-fixed.v
