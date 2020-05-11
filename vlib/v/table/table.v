@@ -531,9 +531,9 @@ pub fn (t &Table) check(got, expected Type) bool {
 		got_info := got_type_sym.info as FnType
 		exp_info := exp_type_sym.info as FnType
 		got_fn := got_info.func
-		exp_fn := got_ingo.func
-		// we are using check() to compare return type & args as they might
-		// be functions themselvss. TODO: optimize, only use check() when needed
+		exp_fn := exp_info.func
+		// we are using check() to compare return type & args as they might include
+		// functions themselvss. TODO: optimize, only use check() when needed
 		if got_fn.args.len == exp_fn.args.len && t.check(got_fn.return_type, exp_fn.return_type) {
 			for i, got_arg in got_fn.args {
 				exp_arg := exp_fn.args[i]
