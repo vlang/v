@@ -1,0 +1,7 @@
+vlib/v/checker/tests/interface_instancing_err.v:7:2: error: type `Speaker` is private
+    5 |
+    6 | s := Speaker{}
+    7 | eprintln('Speaker instance is: ${s}')
+      |  ~~~~~~~~~
+    8 |
+    9 | a := []Speaker{}

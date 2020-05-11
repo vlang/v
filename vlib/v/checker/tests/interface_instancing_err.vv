@@ -1,0 +1,12 @@
+interface Speaker {
+    name() string
+    speak()
+}
+
+fn main() {
+    s := Speaker{}
+    eprintln('Speaker instance is: ${s}')
+
+    a := []Speaker{}
+    eprintln('Total speakers are: ${a.len}')
+}
