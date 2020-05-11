@@ -30,7 +30,7 @@ fn (c mut Cat) set_breed(new string) {
 	c.breed = new
 }
 
-// utility function to convert to string, as a sample
+// utility function to override default convert to string, as a sample
 fn (c Cat) str() string {
 	return 'Custom string conversion for Cat: $c.breed'
 }
@@ -53,7 +53,8 @@ fn (d mut Dog) set_breed(new string) {
 	println('Nah')
 }
 
-// do not add to Dog the utility function 'str', as a sample
+// do not add to Dog the utility function 'str', so the default one will be used, as a sample
+
 fn test_todo() {
 	if true {
 	} else {
