@@ -50,7 +50,7 @@ fn wyhash64(key byteptr, len, seed_ u64) u64 {
 	}
 	mut p := &key[0]
 	mut seed := seed_
-	mut i := len & 63
+	mut i := byte(len & 63)
 	if i < 4 {
 		seed = wymum(wyr3(p, i) ^ seed ^ wyp0, seed ^ wyp1)
 	}
@@ -69,14 +69,14 @@ fn wyhash64(key byteptr, len, seed_ u64) u64 {
 	else {
 		seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + 16) ^ seed ^ wyp2, wyr8(p + 24) ^ seed ^ wyp3) ^ wymum(wyr8(p + i - 32) ^ seed ^ wyp1, wyr8(p + i - 24) ^ seed ^ wyp2) ^ wymum(wyr8(p + i - 16) ^ seed ^ wyp3, wyr8(p + i - 8) ^ seed ^ wyp0)
 	}
-	if i == len {
+	if u64(i) == len {
 		return wymum(seed, len ^ wyp4)
 	}
 	mut see1 := seed
 	mut see2 := seed
 	mut see3 := seed
 	p = p + i
-	for i = len - i; i >= 64; i -= 64 {
+	for j := len - u64(i); j >= 64; j -= 64 {
 		seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1)
 		see1 = wymum(wyr8(p + 16) ^ see1 ^ wyp2, wyr8(p + 24) ^ see1 ^ wyp3)
 		see2 = wymum(wyr8(p + 32) ^ see2 ^ wyp1, wyr8(p + 40) ^ see2 ^ wyp2)

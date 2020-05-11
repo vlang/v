@@ -449,6 +449,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 		// and the other is not, is this correct behaviour?
 		return true
 	}
+
 	if got_idx == none_type_idx && expected.flag_is(.optional) {
 		return true
 	}
@@ -462,8 +463,18 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if exp_idx == any_type_idx || got_idx == any_type_idx {
 		return true
 	}
+	// # NOTE: use symbols from this point on for perf
+	got_type_sym := t.get_type_symbol(got)
+	exp_type_sym := t.get_type_symbol(expected)
+	//
 	if (exp_idx in pointer_type_idxs || exp_idx in number_type_idxs) && (got_idx in pointer_type_idxs ||
 		got_idx in number_type_idxs) {
+		if got_type_sym.is_number() && exp_type_sym.is_number() {
+			return got_type_sym.kind == exp_type_sym.kind || (
+				got_type_sym.kind in [.int, .f32, .f64] ||
+				exp_type_sym.kind.greater(got_type_sym.kind)
+			)
+		}
 		return true
 	}
 	// see hack in checker IndexExpr line #691
@@ -475,9 +486,6 @@ pub fn (t &Table) check(got, expected Type) bool {
 		got_idx == charptr_type_idx) {
 		return true
 	}
-	// # NOTE: use symbols from this point on for perf
-	got_type_sym := t.get_type_symbol(got)
-	exp_type_sym := t.get_type_symbol(expected)
 	//
 	if exp_type_sym.kind == .function && got_type_sym.kind == .int {
 		// TODO temporary

@@ -543,6 +543,22 @@ pub fn (k Kind) str() string {
 	return k_str
 }
 
+pub fn (k Kind) greater(kk Kind) bool {
+	match k {
+		.byteptr { return true }
+		.i8      { return kk in [.i8, .byte, .char] }
+		.i16     { return kk in [.i8, .i16, .byte, .char] }
+		.int     { return kk in [.i8, .i16, .int, .byte, .u16, .u32, .char] }
+		.i64     { return true }
+		.byte    { return kk in [.i8, .byte, .char] }
+		.u16     { return kk in [.i8, .i16, .byte, .u16, .char] }
+		.u32     { return kk in [.i8, .i16, .int, .byte, .u16, .u32, .char] }
+		.u64     { return true }
+		.char    { return kk in [.i8, .byte, .char] }
+		.size_t  { return true }
+		else     { return false }
+	}
+}
 pub fn (kinds []Kind) str() string {
 	mut kinds_str := ''
 	for i, k in kinds {

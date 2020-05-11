@@ -199,7 +199,7 @@ pub fn (nn u64) str() string {
 	buf[index--] = `\0`
 	for n > 0 {
 		n1 := n / 100
-		d = ((n - (n1 * 100)) << 1)
+		d = int((n - (n1 * 100)) << 1)
 		n = n1
 		buf[index--] = digit_pairs[d++]
 		buf[index--] = digit_pairs[d]
@@ -274,7 +274,7 @@ pub fn (nn u16) hex() string {
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
-		d := n & 0xF
+		d := byte(n & 0xF)
 		n = n >> 4
 		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}
@@ -301,7 +301,7 @@ pub fn (nn u32) hex() string {
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
-		d := n & 0xF
+		d := byte(n & 0xF)
 		n = n >> 4
 		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}
@@ -328,7 +328,7 @@ pub fn (nn u64) hex() string {
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
-		d := n & 0xF
+		d := byte(n & 0xF)
 		n = n >> 4
 		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}

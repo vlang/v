@@ -199,7 +199,7 @@ fn f64_to_decimal_exact_int(i_mant u64, exp u64) (Dec64, bool) {
 	if e > mantbits64 {
 		return d, false
 	}
-	shift := mantbits64 - e
+	shift := mantbits64 - u32(e)
 	mant  := i_mant | u64(0x0010_0000_0000_0000) // implicit 1
 	//mant  := i_mant | (1 << mantbits64) // implicit 1
 	d.m = mant >> shift
@@ -230,7 +230,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 	accept_bounds := even
 
 	// Step 2: Determine the interval of valid decimal representations.
-	mv       := u64(4 * m2)
+	mv       := u64(4 * int(m2))
 	mm_shift := bool_to_u64(mant != 0 || exp <= 1)
 
 	// Step 3: Convert to a decimal power base uing 128-bit arithmetic.

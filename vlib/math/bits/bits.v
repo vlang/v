@@ -205,9 +205,9 @@ pub fn reverse_16(x u16) u16 {
 // reverse_32 returns the value of x with its bits in reversed order.
 [inline]
 pub fn reverse_32(x u32) u32 {
-	mut y := ((x>>u32(1) & (m0 & max_u32)) | ((x & (m0 & max_u32))<<1))
-	y = ((y>>u32(2) & (m1 & max_u32)) | ((y & (m1 & max_u32))<<u32(2)))
-	y = ((y>>u32(4) & (m2 & max_u32)) | ((y & (m2 & max_u32))<<u32(4)))
+	mut y := ((x>>u32(1) & u32(m0 & max_u32)) | ((x & u32(m0 & max_u32))<<1))
+	y = ((y>>u32(2) & u32(m1 & max_u32)) | ((y & u32(m1 & max_u32))<<u32(2)))
+	y = ((y>>u32(4) & u32(m2 & max_u32)) | ((y & u32(m2 & max_u32))<<u32(4)))
 	return reverse_bytes_32(y)
 }
 
@@ -235,7 +235,7 @@ pub fn reverse_bytes_16(x u16) u16 {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn reverse_bytes_32(x u32) u32 {
-	y := ((x>>u32(8) & (m3 & max_u32)) | ((x & (m3 & max_u32))<<u32(8)))
+	y := ((x>>u32(8) & u32(m3 & max_u32)) | ((x & u32(m3 & max_u32))<<u32(8)))
 	return (y>>16) | (y<<16)
 }
 
