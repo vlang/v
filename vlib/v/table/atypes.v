@@ -559,6 +559,7 @@ pub fn (k Kind) greater(kk Kind) bool {
 		else     { panic('Kind.greater(): bad kind `$k`') }
 	}
 }
+
 pub fn (kinds []Kind) str() string {
 	mut kinds_str := ''
 	for i, k in kinds {
