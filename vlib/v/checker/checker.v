@@ -360,7 +360,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	// TODO: First branch includes ops where single side check is not needed, or needed but hasn't been implemented.
 	// TODO: Some of the checks are not single side. Should find a better way to organize them.
 	match infix_expr.op {
-		.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
+		//.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
 		.key_in, .not_in {
 			match right.kind {
 				.array {
