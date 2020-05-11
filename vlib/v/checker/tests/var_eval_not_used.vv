@@ -1,0 +1,7 @@
+const (
+	c = 1
+)
+
+fn main() {
+	c
+}
