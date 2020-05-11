@@ -171,47 +171,6 @@ jobs:
 #      with:
 #        github-token: ${{ secrets.GITHUB_TOKEN }}
 
-
-  ubuntu-prebuilt:
-    runs-on: ubuntu-18.04
-    steps:
-    - name: Install dependencies
-      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
-    - name: Download V
-      run: wget https://github.com/vlang/v/releases/latest/download/v_linux.zip && unzip v_linux.zip && ./v -version
-    - name: Test V
-      run: ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
-
-
-  macos-prebuilt:
-    runs-on: macOS-latest
-    steps:
-    - name: Install dependencies
-      run: |
-        brew install freetype glfw openssl sdl2 sdl2_ttf sdl2_mixer sdl2_image
-        export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
-    - name: Download V
-      run: wget https://github.com/vlang/v/releases/latest/download/v_macos.zip && unzip v_macos.zip && ./v -version
-    - name: Test V
-      run: ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
-
-  windows-prebuilt:
-    runs-on: windows-2019
-    steps:
-    - name: Download V
-      shell: cmd
-      run: |
-        echo Downloading V...
-        curl -L https://github.com/vlang/v/releases/latest/download/v_windows.zip -o v_windows.zip
-        echo Unzipping...
-        unzip v_windows.zip
-        v.exe -version
-        echo Done
-        dir
-    - name: Test V
-      shell: cmd
-      run: v.exe examples\hello_world.v && examples\hello_world.exe
-
   ubuntu-musl:
     runs-on: ubuntu-18.04
     env:
