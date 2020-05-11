@@ -485,8 +485,9 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				}
 			} else if p.tok.kind == .name && p.peek_tok.kind == .name {
 				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-			} else if p.tok.kind == .name && !p.inside_if_expr && !p.inside_or_expr && p.peek_tok.kind in [.rcbr, .eof] {
-				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
+			} else if p.tok.kind == .name && !p.inside_if_expr && !p.inside_match && !p.inside_or_expr &&
+				p.peek_tok.kind in [.rcbr, .eof] {
+				// p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 			}
 			epos := p.tok.position()
 			expr := p.expr(0)
@@ -1084,8 +1085,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	p.next() // (
 	mut fields := []ast.ConstField{}
 	for p.tok.kind != .rpar {
+		mut comment := ast.Comment{}
 		if p.tok.kind == .comment {
-			p.comment()
+			comment = p.comment()
 		}
 		pos := p.tok.position()
 		name := p.prepend_mod(p.check_name())
@@ -1097,6 +1099,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			name: name
 			expr: expr
 			pos: pos
+			comment: comment
 		}
 		fields << field
 		p.global_scope.register(field.name, field)

@@ -462,10 +462,14 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if exp_idx == any_type_idx || got_idx == any_type_idx {
 		return true
 	}
+	// TODO i64 as int etc
 	if (exp_idx in pointer_type_idxs || exp_idx in number_type_idxs) && (got_idx in pointer_type_idxs ||
 		got_idx in number_type_idxs) {
 		return true
 	}
+	//if exp_idx in pointer_type_idxs && got_idx in pointer_type_idxs {
+		//return true
+	//}
 	// see hack in checker IndexExpr line #691
 	if (got_idx == byte_type_idx && exp_idx == byteptr_type_idx) || (exp_idx == byte_type_idx &&
 		got_idx == byteptr_type_idx) {
