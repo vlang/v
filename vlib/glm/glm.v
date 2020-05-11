@@ -175,6 +175,22 @@ pub fn ortho(left, right, bottom, top f32) Mat4 {
 	return mat4(res)
 }
 
+// https://github.com/g-truc/glm/blob/0ceb2b755fb155d593854aefe3e45d416ce153a4/glm/ext/matrix_clip_space.inl
+pub fn ortho_zo(left, right, bottom, top, zNear, zFar f32) Mat4 {
+	//println('glm ortho($left, $right, $bottom, $top)')
+	// mat<4, 4, T, defaultp> Result(static_cast<T>(1));
+	n := 16
+	mut res := f32_calloc(n)
+	res[0] = 2.0 / (right - left)
+	res[5] = 2.0 / (top - bottom)
+	res[10] = 1.0
+	res[12] = - (right + left) / (right - left)
+	res[13] = - (top + bottom) / (top - bottom)
+	res[14] = - zNear / (zFar - zNear)
+	res[15] = 1.0
+	return mat4(res)
+}
+
 // fn scale(a *f32, v Vec3) *f32 {
 pub fn scale(m Mat4, v Vec3) Mat4 {
 	a := m.data
@@ -198,6 +214,61 @@ pub fn scale(m Mat4, v Vec3) Mat4 {
 	out[13] = a[13]
 	out[14] = a[14]
 	out[15] = a[15]
+	return mat4(out)
+}
+
+// multiplicates two matrices
+pub fn mult(a, b Mat4) Mat4 {
+	db := b.data
+	mut out := f32_calloc(16)
+	mut row0 := f32_calloc(4)
+	mut row1 := f32_calloc(4)
+	mut row2 := f32_calloc(4)
+	mut row3 := f32_calloc(4)
+
+	row0[0] = db[0]row0[1] = db[1]row0[2] = db[2]row0[3] = db[3]
+	row1[0] = db[4]row1[1] = db[5]row1[2] = db[6]row1[3] = db[7]
+	row2[0] = db[8]row2[1] = db[9]row2[2] = db[10]row2[3] = db[11]
+	row3[0] = db[12]row3[1] = db[13]row3[2] = db[14]row3[3] = db[15]
+
+	a_ := mult_mat_point(a, mat4(row0))
+	b_ := mult_mat_point(a, mat4(row1))
+	c_ := mult_mat_point(a, mat4(row2))
+	d_ := mult_mat_point(a, mat4(row3))
+
+	res0 := a_.data res1 := b_.data res2 := c_.data res3 := d_.data
+
+	out[0] = res0[0] out[1] = res0[1] out[2] = res0[2] out[3] = res0[3]
+	out[4] = res1[0] out[5] = res1[1] out[6] = res1[2] out[7] = res1[3]
+	out[8] = res2[0] out[9] = res2[1] out[10] = res2[2] out[11] = res2[3]
+	out[12] = res3[0] out[13] = res3[1] out[14] = res3[2] out[15] = res3[3]
+
+	return mat4(out)
+}
+
+// helper function for mult
+fn mult_mat_point(a Mat4, point Mat4) Mat4 {
+	data := a.data
+	c0r0 := data[0]c1r0 := data[1]c2r0 := data[2]c3r0 := data[3]
+	c0r1 := data[4]c1r1 := data[5]c2r1 := data[6]c3r1 := data[7]
+	c0r2 := data[8]c1r2 := data[9]c2r2 := data[10]c3r2 := data[11]
+	c0r3 := data[12]c1r3 := data[13]c2r3 := data[14]c3r3 := data[15]
+
+	pdata := point.data
+	x := pdata[0]
+	y := pdata[1]
+	z := pdata[2]
+	w := pdata[3]
+
+	mut out := f32_calloc(4)
+
+	rx := (x * c0r0) + (y * c0r1) + (z * c0r2) + (w * c0r3)
+	ry := (x * c1r0) + (y * c1r1) + (z * c1r2) + (w * c1r3)
+	rz := (x * c2r0) + (y * c2r1) + (z * c2r2) + (w * c2r3)
+	rw := (x * c3r0) + (y * c3r1) + (z * c3r2) + (w * c3r3)
+
+	out[0] = rx out[1] = ry	out[2] = rz out[3] = rw
+
 	return mat4(out)
 }
 

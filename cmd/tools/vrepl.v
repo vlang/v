@@ -148,7 +148,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		// but don't add this print call to the `lines` array,
 		// so that it doesn't get called during the next print.
 		if r.line.starts_with('print') {
-			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.line
+			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.line + '\n'
 			os.write_file(file, source_code)
 			s := os.exec('"$vexe" -repl run $file') or {
 				rerror(err)

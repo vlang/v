@@ -20,7 +20,7 @@ pub mut:
 	url        string
 	user_agent string
 	verbose    bool
-mut:
+//mut:
 	user_ptr   voidptr
 	ws_func    voidptr
 }

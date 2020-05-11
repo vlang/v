@@ -923,23 +923,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 					continue
 				}
-				ast.Ident {
-					if it.info is ast.IdentFn {
-						thing := it.info as ast.IdentFn
-						sym := g.table.get_type_symbol(thing.typ)
-						info := sym.info as table.FnType
-						func := info.func
-						ret_styp := g.typ(func.return_type)
-						g.write('$ret_styp (*$ident.name) (')
-						def_pos := g.definitions.len
-						g.fn_args(func.args, func.is_variadic)
-						g.definitions.go_back(g.definitions.len - def_pos)
-						g.write(') = ')
-						g.expr(*it)
-						g.writeln(';')
-						continue
-					}
-				}
 				else {}
 			}
 			gen_or := is_call && return_type.flag_is(.optional)
@@ -965,10 +948,21 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				is_decl := assign_stmt.op == .decl_assign
 				// g.write('/*assign_stmt*/')
-				if is_decl {
+				if is_decl && right_sym.kind != .function {
 					g.write('$styp ')
 				}
-				g.ident(ident)
+				if right_sym.kind == .function {
+					func := right_sym.info as table.FnType
+					ret_styp := g.typ(func.func.return_type)
+					g.write('$ret_styp (*$ident.name) (')
+					def_pos := g.definitions.len
+					g.fn_args(func.func.args, func.func.is_variadic)
+					g.definitions.go_back(g.definitions.len - def_pos)
+					g.write(')')
+				}
+				else {
+					g.ident(ident)
+				}
 				if g.autofree && right_sym.kind in [.array, .string] {
 					if g.gen_clone_assignment(val, right_sym, true) {
 						g.writeln(';')
@@ -1377,7 +1371,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		rstyp := g.typ(return_type)
-		g.write('$rstyp $tmp_opt =')
+		g.write('/*q*/ $rstyp $tmp_opt = ')
 	}
 	g.is_assign_rhs = true
 	if ast.expr_is_blank_ident(node.left) {
@@ -1412,12 +1406,16 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 			}
 		} else {
 			g.assign_op = node.op
-			g.expr(node.left)
-			// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
-			if !g.is_array_set && !str_add {
-				g.write(' $node.op.str() ')
-			} else if str_add {
-				g.write(', ')
+			if !gen_or {
+				// Don't need to generate `var = ` in `or {}` expressions, since we are doing
+				// `Option_X tmp = ...; var = *(X*)tmp.data;`
+				g.expr(node.left)
+				// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
+				if !g.is_array_set && !str_add {
+					g.write(' $node.op.str() ')
+				} else if str_add {
+					g.write(', ')
+				}
 			}
 			g.is_assign_lhs = false
 			// right_sym := g.table.get_type_symbol(node.right_type)
@@ -1442,7 +1440,22 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 		g.right_is_opt = false
 	}
 	if gen_or {
+		// g.write('/*777 $tmp_opt*/')
 		g.or_block(tmp_opt, or_stmts, return_type)
+		unwrapped_type_str := g.typ(return_type.set_flag(.unset))
+		ident := node.left as ast.Ident
+		if ident.info is ast.IdentVar {
+			ident_var := ident.info as ast.IdentVar
+			if ident_var.is_optional {
+				// var is already an optional, just copy the value
+				// `var = tmp;`
+				g.write('\n$ident.name = $tmp_opt')
+			} else {
+				// var = *(X*)tmp.data;`
+				g.write('\n$ident.name = *($unwrapped_type_str*)${tmp_opt}.data')
+			}
+		}
+		// g.expr(node.left)
 	}
 	g.is_assign_rhs = false
 }
@@ -2890,6 +2903,9 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		'msvc' {
 			return '_MSC_VER'
 		}
+		'cplusplus' {
+			return '__cplusplus'
+		}
 		// other:
 		'debug' {
 			return '_VDEBUG'
@@ -3644,6 +3660,14 @@ _Interface I_${cctype}_to_Interface_${interface_name}(${cctype}* x) {
 		._object = (void*) (x),
 		._interface_idx = ${interface_index_name}
 	};
+}
+
+_Interface* I_${cctype}_to_Interface_${interface_name}_ptr(${cctype}* x) {
+	/* TODO Remove memdup */
+	return (_Interface*) memdup(&(_Interface) {
+		._object = (void*) (x),
+		._interface_idx = ${interface_index_name}
+	}, sizeof(_Interface));
 }')
 			methods_struct.writeln('\t{')
 			st_sym := g.table.get_type_symbol(st)
@@ -3750,7 +3774,11 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 fn (g &Gen) interface_call(typ, interface_type table.Type) {
 	interface_styp := g.cc_type(interface_type)
 	styp := g.cc_type(typ)
-	g.write('/* $interface_styp */ I_${styp}_to_Interface_${interface_styp}(')
+	mut cast_fn_name := 'I_${styp}_to_Interface_${interface_styp}'
+	if interface_type.is_ptr() {
+		cast_fn_name += '_ptr'
+	}
+	g.write('${cast_fn_name}(')
 	if !typ.is_ptr() {
 		g.write('&')
 	}

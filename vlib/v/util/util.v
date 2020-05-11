@@ -62,15 +62,19 @@ pub fn githash(should_get_from_filesystem bool) string {
 			head_content := os.read_file(git_head_file) or {
 				break
 			}
-			gcbranch_rel_path := head_content.replace('ref: ', '').trim_space()
-			gcbranch_file := os.join_path(vroot, '.git', gcbranch_rel_path)
-			// .git/refs/heads/master
-			if !os.exists(gcbranch_file) {
-				break
-			}
-			// get the full commit hash contained in the ref heads file
-			current_branch_hash := os.read_file(gcbranch_file) or {
-				break
+			mut current_branch_hash := head_content
+			if head_content.starts_with('ref: ') {
+				gcbranch_rel_path := head_content.replace('ref: ', '').trim_space()
+				gcbranch_file := os.join_path(vroot, '.git', gcbranch_rel_path)
+				// .git/refs/heads/master
+				if !os.exists(gcbranch_file) {
+					break
+				}
+				// get the full commit hash contained in the ref heads file
+				branch_hash := os.read_file(gcbranch_file) or {
+					break
+				}
+				current_branch_hash = branch_hash
 			}
 			desired_hash_length := 7
 			if current_branch_hash.len > desired_hash_length {
@@ -112,9 +116,7 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 	mut should_compile := false
 	if !os.exists(tool_exe) {
 		should_compile = true
-	}
-	//
-	else {
+	} else {
 		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(vexe) {
 			// v was recompiled, maybe after v up ...
 			// rebuild the tool too just in case

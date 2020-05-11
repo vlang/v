@@ -34,13 +34,27 @@ pub mut:
 	support_color bool
 }
 
-pub fn (e &EManager) set_support_color(b bool) {
-	e.support_color = b
-}
-
 pub fn new_error_manager() &EManager {
 	return &EManager{
 		support_color: term.can_show_color_on_stderr()
+	}
+}
+
+fn bold(msg string) string {
+	if !emanager.support_color {
+		return msg
+	}
+	return term.bold(msg)
+}
+
+fn color(kind, msg string) string {
+	if !emanager.support_color {
+		return msg
+	}
+	if kind.contains('error') {
+		return term.red(msg)
+	} else {
+		return term.magenta(msg)
 	}
 }
 
@@ -72,16 +86,9 @@ pub fn formatted_error(kind, emsg, filepath string, pos token.Position) string {
 	column := imax(0, pos.pos - p - 1)
 	position := '${path}:${pos.line_nr+1}:${util.imax(1,column+1)}:'
 	scontext := source_context(kind, source, column, pos).join('\n')
-	final_position := if emanager.support_color { term.bold(position) } else { position }
-	mut final_kind := kind
-	if emanager.support_color {
-		final_kind = if kind.contains('error') {
-			term.bold(term.red(kind))
-		} else {
-			term.bold(term.magenta(kind))
-		}
-	}
-	final_msg := emsg // if emanager.support_color { term.bold(emsg) } else { emsg }
+	final_position := bold(position)
+	final_kind := bold(color(kind, kind))
+	final_msg := emsg
 	final_context := if scontext.len > 0 { '\n$scontext' } else { '' }
 	//
 	return '$final_position $final_kind $final_msg $final_context'.trim_space()
@@ -98,67 +105,44 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline]
-		mut cline := sline.replace('\t', tab_spaces)
-		if iline == pos.line_nr && emanager.support_color {
-			cline = if kind.contains('error') {
-				term.red(cline)
-			} else {
-				term.magenta(cline)
-			}
+		start_column := imin(column, sline.len)
+		end_column := imin(column + pos.len, sline.len)
+		cline := if iline == pos.line_nr {
+			sline[..start_column] + color(kind, sline[start_column..end_column]) + sline[end_column..]
+		} else {
+			sline
 		}
-		clines << '${iline+1:5d} | ' + cline
+		clines << '${iline+1:5d} | ' + cline.replace('\t', tab_spaces)
 		//
 		if iline == pos.line_nr {
 			// The pointerline should have the same spaces/tabs as the offending
 			// line, so that it prints the ^ character exactly on the *same spot*
 			// where it is needed. That is the reason we can not just
 			// use strings.repeat(` `, col) to form it.
-			mut pointerline := []string{}
-			for i, bchar in sline {
-				if i < column {
-					mut x := bchar
-					if x == `\t` {
-						pointerline << tab_spaces
-					} else {
-						x = if x.is_space() {
-							bchar
-						} else {
-							` `
-						}
-						pointerline << x.str()
-					}
-					continue
-				}
-				if pos.len > 1 {
-					max_len := sline.len - pointerline.len // rest of the line
-					len := if pos.len > max_len { max_len } else { pos.len }
-					underline := '~'.repeat(len)
-					pointerline << if emanager.support_color {
-						term.bold(term.blue(underline))
-					} else {
-						underline
-					}
+			mut pointerline := ''
+			for bchar in sline[..start_column] {
+				x := if bchar.is_space() {
+					bchar
 				} else {
-					pointerline << if emanager.support_color {
-						term.bold(term.blue('^'))
-					} else {
-						'^'
-					}
+					` `
 				}
-				break
+				pointerline += x.str()
 			}
-			clines << '      | ' + pointerline.join('')
+			underline := if pos.len > 1 {
+				'~'.repeat(end_column - start_column)
+			} else {
+				'^'
+			}
+			pointerline += bold(color(kind, underline))
+			clines << '      | ' + pointerline.replace('\t', tab_spaces)
 		}
 	}
 	return clines
 }
 
 pub fn verror(kind, s string) {
-	if emanager.support_color {
-		eprintln(term.bold(term.red(kind)) + ': $s')
-	} else {
-		eprintln('${kind}: $s')
-	}
+	final_kind := bold(color(kind, kind))
+	eprintln('${final_kind}: $s')
 	exit(1)
 }
 

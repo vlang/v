@@ -330,7 +330,7 @@ pub fn (mut c Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 			}
 			// Check uninitialized refs
 			for field in info.fields {
-				if field.name in inited_fields {
+				if field.has_default_expr || field.name in inited_fields {
 					continue
 				}
 				if field.typ.is_ptr() {
@@ -1764,11 +1764,6 @@ pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
 		info := ident.info as ast.IdentFn
 		return info.typ
 	} else if ident.kind == .unresolved {
-		// prepend mod to look for fn call or const
-		mut name := ident.name
-		if !name.contains('.') && ident.mod !in ['builtin', 'main'] {
-			name = '${ident.mod}.$ident.name'
-		}
 		// first use
 		start_scope := c.file.scope.innermost(ident.pos.pos)
 		if obj := start_scope.find(ident.name) {
@@ -1778,34 +1773,26 @@ pub fn (mut c Checker) ident(ident mut ast.Ident) table.Type {
 					if typ == 0 {
 						typ = c.expr(it.expr)
 					}
-					sym := c.table.get_type_symbol(typ)
-					if sym.info is table.FnType {
-						// anon/local fn assigned to new variable uses this
-						info := sym.info as table.FnType
-						fn_type := table.new_type(c.table.find_or_register_fn_type(info.func,
-							true, true))
-						ident.kind = .function
-						ident.info = ast.IdentFn{
-							typ: fn_type
-						}
-						return fn_type
-					} else {
-						is_optional := typ.flag_is(.optional)
-						ident.kind = .variable
-						ident.info = ast.IdentVar{
-							typ: typ
-							is_optional: is_optional
-						}
-						it.typ = typ
-						// unwrap optional (`println(x)`)
-						if is_optional {
-							return typ.set_flag(.unset)
-						}
-						return typ
+					is_optional := typ.flag_is(.optional)
+					ident.kind = .variable
+					ident.info = ast.IdentVar{
+						typ: typ
+						is_optional: is_optional
 					}
+					it.typ = typ
+					// unwrap optional (`println(x)`)
+					if is_optional {
+						return typ.set_flag(.unset)
+					}
+					return typ
 				}
 				else {}
 			}
+		}
+		// prepend mod to look for fn call or const
+		mut name := ident.name
+		if !name.contains('.') && ident.mod !in ['builtin', 'main'] {
+			name = '${ident.mod}.$ident.name'
 		}
 		if obj := c.file.global_scope.find(name) {
 			match obj {

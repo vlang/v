@@ -134,7 +134,7 @@ pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 }
 
 pub struct VGitOptions {
-mut:
+pub mut:
 	workdir       string // the working folder (typically /tmp), where the tool will write
 	v_repo_url    string // the url of the V repository. It can be a local folder path, if you want to eliminate network operations...
 	vc_repo_url   string // the url of the vc repository. It can be a local folder path, if you want to eliminate network operations...
