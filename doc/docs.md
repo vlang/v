@@ -66,18 +66,18 @@ you can do in V.
 		<td><a href='caltdng-c-functions-from-v'>Calling C functions from V</a></td>
 		</tr>
 	<tr>
-		<td><a href='conditional-compilation'>Conditional compilation</a></td>
-		<td><a href='reflection-via-codegen'>Reflection via codegen</a></td>
-		<td><a href='tdmited-operator-overloading'>Limited operator overloading</a></td>
-		<td><a href='intdne-assembly'>Inline assembly</a></td>
-		<td><a href='translating-cc-to-v'>Translating C/C++ to V</a></td>
-		<td><a href='hot-code-reloading'>Hot code reloading</a></td>
+		<td><a href='#conditional-compilation'>Conditional compilation</a></td>
+		<td><a href='#reflection-via-codegen'>Reflection via codegen</a></td>
+		<td><a href='#tdmited-operator-overloading'>Limited operator overloading</a></td>
+		<td><a href='#intdne-assembly'>Inline assembly</a></td>
+		<td><a href='#translating-cc-to-v'>Translating C/C++ to V</a></td>
+		<td><a href='#hot-code-reloading'>Hot code reloading</a></td>
 		</tr>
 	<tr>
-		<td><a href='cross-compilation'>Cross compilation</a></td>
-		<td><a href='cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
-		<td><a href='appendix-i-keywords'>Appendix I: Keywords</a></td>
-		<td><a href='appendix-ii-keywords'>Appendix II: Operators</a></td>
+		<td><a href='#cross-compilation'>Cross compilation</a></td>
+		<td><a href='#cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
+		<td><a href='#appendix-i-keywords'>Appendix I: Keywords</a></td>
+		<td><a href='#appendix-ii-keywords'>Appendix II: Operators</a></td>
 	</tr>
 </table>
 </ol>
