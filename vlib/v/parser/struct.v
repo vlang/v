@@ -303,6 +303,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			args: args
 			file: p.file_name
 			return_type: table.void_type
+			is_pub: true
 		}
 		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 			method.return_type = p.parse_type()
@@ -313,6 +314,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			name: name
 			args: args
 			return_type: method.return_type
+			is_pub: true
 		})
 	}
 	p.check(.rcbr)
