@@ -330,7 +330,7 @@ pub fn (mut c Checker) struct_init(struct_init mut ast.StructInit) table.Type {
 			}
 			// Check uninitialized refs
 			for field in info.fields {
-				if field.name in inited_fields {
+				if field.has_default_expr || field.name in inited_fields {
 					continue
 				}
 				if field.typ.is_ptr() {
