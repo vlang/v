@@ -556,7 +556,7 @@ pub fn (k Kind) greater(kk Kind) bool {
 		.u64     { return true }
 		.char    { return kk in [.i8, .byte, .char] }
 		.size_t  { return true }
-		else     { return false }
+		else     { panic('Kind.greater(): bad kind `$k`') }
 	}
 }
 pub fn (kinds []Kind) str() string {
