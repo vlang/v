@@ -85,6 +85,8 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 }
 
 fn (mut p Parser) match_expr() ast.MatchExpr {
+	p.inside_match_expr = true
+	defer { p.inside_match_expr = false }
 	match_first_pos := p.tok.position()
 	p.inside_match = true
 	p.check(.key_match)
