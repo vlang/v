@@ -65,13 +65,12 @@ fn test_assign_multireturn_expression() {
 	assert o == 'bad'
 	assert p == [0]
 
-	static var1 := 17
+	var1 := 17
 	mut var2 := 'awe'
-	var3 := [13]
 	q, r, s := if true {
 		// if-expr can not contain var-decl
 		var2 += 'some'
-		var1, var2, var3
+		var1, var2, [13]
 	} else {
 		0, 'bad', [0]
 	}
