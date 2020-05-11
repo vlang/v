@@ -1,0 +1,51 @@
+name: Test prebuilt binaries
+on:
+  release:
+    types: [edited, published]
+jobs:
+  ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
+    - name: Download V
+      run: |
+        tag=${GITHUB_REF##*/}
+        wget https://github.com/vlang/v/releases/download/$tag/v_linux.zip
+        unzip v_linux.zip
+        ./v -version
+    - name: Test V
+      run: |
+        ./v run examples/hello_world.v
+
+  macos:
+    runs-on: macOS-latest
+    steps:
+    - name: Install dependencies
+      run: |
+        brew install freetype glfw openssl sdl2 sdl2_ttf sdl2_mixer sdl2_image
+        export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
+    - name: Download V
+      run: |
+        tag=${GITHUB_REF##*/}
+        wget https://github.com/vlang/v/releases/download/$tag/v_macos.zip
+        unzip v_macos.zip
+        ./v -version
+    - name: Test V
+      run: |
+        ./v run examples/hello_world.v
+
+  windows:
+    runs-on: windows-latest
+    steps:
+    - name: Download V
+      run: |
+        Set-Variable -Name "tag" -Value $env:GITHUB_REF.split("/", 3)[-1]
+        & curl -L https://github.com/vlang/v/releases/download/$tag/v_windows.zip -o v_windows.zip
+        & unzip .\v_windows.zip
+        & .\v.exe -version
+    - name: Test V
+      run: |
+        & .\v.exe run .\examples\hello_world.v
