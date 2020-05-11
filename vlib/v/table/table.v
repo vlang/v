@@ -470,10 +470,11 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if (exp_idx in pointer_type_idxs || exp_idx in number_type_idxs) && (got_idx in pointer_type_idxs ||
 		got_idx in number_type_idxs) {
 		if got_type_sym.is_number() && exp_type_sym.is_number() {
-			return got_type_sym.kind == exp_type_sym.kind || (
-				got_type_sym.kind in [.int, .f32, .f64] ||
+			return
+				got_type_sym.is_float()                ||
+				got_type_sym.kind == exp_type_sym.kind ||
+				got_type_sym.kind == .int              ||
 				exp_type_sym.kind.greater(got_type_sym.kind)
-			)
 		}
 		return true
 	}
