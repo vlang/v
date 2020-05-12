@@ -796,6 +796,20 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 			}
 		}
 	}
+	// Generic dereferencing logic
+	expected_sym := g.table.get_type_symbol(expected_type)
+	got_is_ptr := got_type.is_ptr()
+	expected_is_ptr := expected_type.is_ptr()
+	neither_void := table.voidptr_type !in [got_type, expected_type]
+	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_, .placeholder] {
+		got_deref_type := got_type.deref()
+		deref_sym := g.table.get_type_symbol(got_deref_type)
+		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
+		got_is_opt := got_type.flag_is(.optional)
+		if deref_will_match || got_is_opt  {
+			g.write('*')
+		}
+	}
 	// no cast
 	g.expr(expr)
 }
@@ -2069,10 +2083,6 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			}
 			g.writeln(' }, sizeof($styp));')
 			return
-		}
-		if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
-			// Automatic Dereference
-			g.write('*')
 		}
 		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 	}
