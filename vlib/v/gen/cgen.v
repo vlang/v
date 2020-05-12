@@ -797,7 +797,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, have_type, need_type table.Type) {
 		}
 	}
 	// Generic dereferencing logic
-	have_sym := g.table.get_type_symbol(have_type)
 	need_sym := g.table.get_type_symbol(need_type)
 	have_is_ptr := have_type.is_ptr()
 	need_is_ptr := need_type.is_ptr()
