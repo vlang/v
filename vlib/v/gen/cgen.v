@@ -801,7 +801,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, have_type, need_type table.Type) {
 	have_is_ptr := have_type.is_ptr()
 	need_is_ptr := need_type.is_ptr()
 	neither_void := table.voidptr_type !in [have_type, need_type]
-	if have_is_ptr && !need_is_ptr && neither_void && need_sym.kind != .interface_ {
+	if have_is_ptr && !need_is_ptr && neither_void && need_sym.kind !in [.interface_, .placeholder] {
 		have_deref_type := have_type.deref()
 		deref_sym := g.table.get_type_symbol(have_deref_type)
 		is_opt := have_type.flag_is(.optional)
