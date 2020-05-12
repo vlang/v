@@ -212,17 +212,6 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 }
 
 pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
-	splitted_full_name := decl.name.split('.')
-	is_builtin := splitted_full_name[0] == 'builtin'
-	name := splitted_full_name.last()
-	if !name[0].is_capital() && !decl.is_c && !is_builtin && name !in table.builtin_type_names {
-		pos := token.Position{
-			line_nr: decl.pos.line_nr
-			pos: decl.pos.pos + 7
-			len: name.len
-		}
-		c.error('struct name must begin with capital letter', pos)
-	}
 	for i, field in decl.fields {
 		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
@@ -245,15 +234,12 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			if !c.table.check(field_expr_type, field.typ) {
 				field_expr_type_sym := c.table.get_type_symbol(field_expr_type)
 				field_type_sym := c.table.get_type_symbol(field.typ)
-				field_name := field.name
-				fet_name := field_expr_type_sym.name
-				ft_name := field_type_sym.name
-				c.error('default expression for field `${field_name}` ' + 'has type `${fet_name}`, but should be `${ft_name}`',
+				c.error('default expression for field `${field.name}` ' +
+					'has type `${field_expr_type_sym.name}`, but should be `${field_type_sym.name}`',
 					field.default_expr.position())
 			}
 		}
 	}
-	// && (p.tok.lit[0].is_capital() || is_c || (p.builtin_mod && Sp.tok.lit in table.builtin_type_names))
 }
 
 pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {

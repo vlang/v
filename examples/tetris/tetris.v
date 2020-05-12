@@ -189,7 +189,7 @@ fn (g mut Game) init_game() {
 	g.generate_tetro()
 	g.field = [] // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge
-	for i in 0..FieldHeight + 2 {
+	for _ in 0..FieldHeight + 2 {
 		mut row := [0].repeat(FieldWidth + 2)
 		row[0] = - 1
 		row[FieldWidth + 1] = - 1

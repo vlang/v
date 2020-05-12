@@ -33,6 +33,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 	end_pos := p.tok.position()
 	mut name := p.check_name()
+	if !is_c && !is_js && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
+		p.error_with_pos('struct name `$name` must begin with capital letter', end_pos)
+	}
 	// println('struct decl $name')
 	mut ast_fields := []ast.StructField{}
 	mut fields := []table.Field{}
