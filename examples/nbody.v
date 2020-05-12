@@ -124,7 +124,7 @@ sys := &System {arr_momentum(), arr_position()}
 offsetmomentum(mut sys)
 
 println('${energy(sys):.9f}')  //-0.169075164
-for i in 0..50000000 {
+for _ in 0..50000000 {
     advance(mut sys, 0.01)
 }
 println('${energy(sys):.9f}') //-0.169059907
