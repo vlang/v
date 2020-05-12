@@ -1,5 +1,5 @@
 # ignore all build binaries
-* 
+*
 !*/
 !*.*
 *.exe
@@ -48,6 +48,7 @@ fns.txt
 .settings/
 *.sublime-workspace
 .vscode/
+*.code-workspace
 *~
 *.swp
 *.swo
