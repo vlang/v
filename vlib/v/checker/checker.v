@@ -38,6 +38,7 @@ pub mut:
 	scope_returns  bool
 	mod            string // current module name
 	is_builtin_mod bool // are we in `builtin`?
+	inside_unsafe  bool
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -359,7 +360,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	// TODO: First branch includes ops where single side check is not needed, or needed but hasn't been implemented.
 	// TODO: Some of the checks are not single side. Should find a better way to organize them.
 	match infix_expr.op {
-		.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
+		//.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
 		.key_in, .not_in {
 			match right.kind {
 				.array {
@@ -571,6 +572,14 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 	}
 	// Make sure the variable is mutable
 	c.fail_if_immutable(assign_expr.left)
+	// Do now allow `*x = y` outside `unsafe`
+	if assign_expr.left is ast.PrefixExpr {
+		p := assign_expr.left as ast.PrefixExpr
+		if p.op == .mul && !c.inside_unsafe {
+			c.error('modifying variables via deferencing can only be done in `unsafe` blocks',
+				assign_expr.pos)
+		}
+	}
 	// Single side check
 	match assign_expr.op {
 		.assign {} // No need to do single side check for =. But here put it first for speed.
@@ -1550,7 +1559,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.type_decl(it)
 		}
 		ast.UnsafeStmt {
+			c.inside_unsafe = true
 			c.stmts(it.stmts)
+			c.inside_unsafe = false
 		}
 		else {
 			// println('checker.stmt(): unhandled node')
@@ -1831,7 +1842,8 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		}
 		// Non-anon-function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
-			fn_type := table.new_type(c.table.find_or_register_fn_type(ident.mod, func, false, true))
+			fn_type := table.new_type(c.table.find_or_register_fn_type(ident.mod, func, false,
+				true))
 			ident.name = name
 			ident.kind = .function
 			ident.info = ast.IdentFn{

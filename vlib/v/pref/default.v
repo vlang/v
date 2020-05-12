@@ -70,7 +70,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 			}
 		}
 	}
-	p.enable_globals = true
+	p.enable_globals = false
 }
 
 fn default_c_compiler() string {

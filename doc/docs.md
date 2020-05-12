@@ -15,16 +15,16 @@ Despite being simple, V gives the developer a lot of power. Anything you can do 
 you can do in V.
 
 ## Table of Contents
-<ol>
+
 <table>
 	<tr>
-		<td><a href='#hello-world'>1. Hello world</a></td>
-		<td><a href='#comments'>2. Comments</a></td>
-		<td><a href='#functions'>3. Functions</a></td>
-		<td><a href='#constants--variables'>4. Variables</a></td>
-		<td><a href='#primitive-types'>5. Primitive types</a></td>
-		<td><a href='#strings'>6. Strings</a></td>
-		</tr>
+		<td width=16%><a href='#hello-world'>1. Hello world</a></td>
+		<td width=16%><a href='#comments'>2. Comments</a></td>
+		<td width=16%><a href='#functions'>3. Functions</a></td>
+		<td width=16%><a href='#variables'>4. Variables</a></td>
+		<td width=16%><a href='#primitive-types'>5. Primitive types</a></td>
+		<td width=16%><a href='#strings'>6. Strings</a></td>
+	</tr>
 	<tr>
 		<td><a href='#imports'>7. Imports</a></td>
 		<td><a href='#arrays'>Arrays</a></td>
@@ -39,7 +39,7 @@ you can do in V.
 		<td><a href='#access-modifiers'>Access modifiers</a></td>
 		<td><a href='#methods'>Methods</a></td>
 		<td><a href='#pure-functions-by-default'>Pure functions by default</a></td>
-		<td><a href='#anonymous--high-order-functions'>Anonymous & high order functions</a></td>
+		<td><a href='#anonymous--high-order-functions'>Anonymous & high order fns</a></td>
 		</tr>
 	<tr>
 		<td><a href='#references'>References</a></td>
@@ -51,7 +51,7 @@ you can do in V.
 		</tr>
 	<tr>
 		<td><a href='#sum-types'>Sum types</a></td>
-		<td><a href='#optionresult-types-and-error-handtdng'>Option/Result & error handling</a></td>
+		<td><a href='#optionresult-types-and-error-handling'>Option/Result & error handling</a></td>
 		<td><a href='#generics'>Generics</a></td>
 		<td><a href='#concurrency'>Concurrency</a></td>
 		<td><a href='#decoding-json'>Decoding JSON</a></td>
@@ -63,24 +63,24 @@ you can do in V.
 		<td><a href='#orm'>ORM</a></td>
 		<td><a href='#vfmt'>vfmt</a></td>
 		<td><a href='#writing-documentation'>Writing documentation</a></td>
-		<td><a href='caltdng-c-functions-from-v'>Calling C functions from V</a></td>
+		<td><a href='#calling-c-functions-from-v'>Calling C functions from V</a></td>
 		</tr>
 	<tr>
-		<td><a href='conditional-compilation'>Conditional compilation</a></td>
-		<td><a href='reflection-via-codegen'>Reflection via codegen</a></td>
-		<td><a href='tdmited-operator-overloading'>Limited operator overloading</a></td>
-		<td><a href='intdne-assembly'>Inline assembly</a></td>
-		<td><a href='translating-cc-to-v'>Translating C/C++ to V</a></td>
-		<td><a href='hot-code-reloading'>Hot code reloading</a></td>
+		<td><a href='#conditional-compilation'>Conditional compilation</a></td>
+		<td><a href='#reflection-via-codegen'>Reflection via codegen</a></td>
+		<td><a href='#limited-operator-overloading'>Limited operator overloading</a></td>
+		<td><a href='#inline-assembly'>Inline assembly</a></td>
+		<td><a href='#translating-cc-to-v'>Translating C/C++ to V</a></td>
+		<td><a href='#hot-code-reloading'>Hot code reloading</a></td>
 		</tr>
 	<tr>
-		<td><a href='cross-compilation'>Cross compilation</a></td>
-		<td><a href='cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
-		<td><a href='appendix-i-keywords'>Appendix I: Keywords</a></td>
-		<td><a href='appendix-ii-keywords'>Appendix II: Operators</a></td>
+		<td><a href='#cross-compilation'>Cross compilation</a></td>
+		<td><a href='#cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
+		<td><a href='#appendix-i-keywords'>Appendix I: Keywords</a></td>
+		<td><a href='#appendix-ii-operators'>Appendix II: Operators</a></td>
 	</tr>
 </table>
-</ol>
+
 
 
 ## Hello World
@@ -161,9 +161,9 @@ println(b) // 3
 ```
 
 Functions can return multiple values.
-Like constants and types, functions are private (not exported) by default.
-To allow other modules to use them, prepend `pub`. The same applies
-to constants and types.
+
+<p>&nbsp;</p>
+
 
 ```v
 pub fn public_function() {
@@ -173,7 +173,11 @@ fn private_function() {
 }
 ```
 
-## Constants & variables
+Like constants and types, functions are private (not exported) by default.
+To allow other modules to use them, prepend `pub`. The same applies
+to constants and types.
+
+## Variables
 
 ```v
 name := 'Bob'
@@ -196,6 +200,8 @@ type `T`.
 Unlike most other languages, V only allows defining variables in functions.
 Global (module level) variables are not allowed. There's no global state in V.
 
+<p>&nbsp;</p>
+
 ```v
 mut age := 20
 println(age)
@@ -211,6 +217,8 @@ Try compiling the program above after removing `mut` from the first line.
 Note the (important) difference between `:=` and `=`
 `:=` is used for declaring and initializing, `=` is used for assigning.
 
+<p>&nbsp;</p>
+
 ```v
 fn main() {
     age = 21
@@ -220,6 +228,8 @@ fn main() {
 This code will not compile, because the variable `age` is not declared.
 All variables need to be declared in V.
 
+<p>&nbsp;</p>
+
 ```v
 fn main() {
     age := 21
@@ -228,6 +238,8 @@ fn main() {
 
 In development mode the compiler will warn you that you haven't used the variable (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`) it will not compile at all (like in Go).
+
+<p>&nbsp;</p>
 
 ```v
 fn main() {

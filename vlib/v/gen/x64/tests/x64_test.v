@@ -50,10 +50,6 @@ fn test_x64() {
 		}
 		expected = expected.trim_space().trim('\n').replace('\r\n', '\n')
 		mut found := res.output.trim_space().trim('\n').replace('\r\n', '\n')
-		// remove ACK char TODO fix this in x64
-		buf := [byte(0x06)]
-		ack := string(buf)
-		found = found.replace(ack, '')
 		found = found.trim_space()
 		if expected != found {
 			println(term.red('FAIL'))

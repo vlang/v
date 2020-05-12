@@ -9,7 +9,9 @@ import v.token
 
 fn (mut p Parser) if_expr() ast.IfExpr {
 	p.inside_if_expr = true
-	defer { p.inside_if_expr = false }
+	defer {
+		p.inside_if_expr = false
+	}
 	pos := p.tok.position()
 	mut branches := []ast.IfBranch{}
 	mut has_else := false
@@ -144,8 +146,8 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				// (this replaces the old `it`)
 				// TODO doesn't work right now (fixed, uncomment when merging)
 				// p.scope.register(var_name, ast.Var{
-				// 	name: var_name
-				// 	typ: typ.to_ptr()
+				// name: var_name
+				// typ: typ.to_ptr()
 				// })
 				// println(var_name)
 			}
@@ -164,7 +166,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		}
 		branch_last_pos := p.tok.position()
 		// p.warn('match block')
+		p.inside_match_body = true
 		stmts := p.parse_block()
+		p.inside_match_body = false
 		pos := token.Position{
 			line_nr: branch_first_pos.line_nr
 			pos: branch_first_pos.pos

@@ -90,7 +90,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 	for i, s in g.strings {
 		g.write64_at(segment_start + g.buf.len, int(g.str_pos[i]))
 		g.write_string(s)
-		g.write8(6)
+		g.write8(0)
 	}
 	// Now we know the file size, set it
 	file_size := g.buf.len

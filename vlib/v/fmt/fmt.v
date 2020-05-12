@@ -206,27 +206,7 @@ fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.ConstDecl {
-			if it.is_pub {
-				f.write('pub ')
-			}
-			f.writeln('const (')
-			mut max := 0
-			for field in it.fields {
-				if field.name.len > max {
-					max = field.name.len
-				}
-			}
-			f.indent++
-			for field in it.fields {
-				name := field.name.after('.')
-				f.write('$name ')
-				f.write(strings.repeat(` `, max - field.name.len))
-				f.write('= ')
-				f.expr(field.expr)
-				f.writeln('')
-			}
-			f.indent--
-			f.writeln(')\n')
+			f.const_decl(it)
 		}
 		ast.DeferStmt {
 			f.writeln('defer {')
@@ -1073,4 +1053,32 @@ fn (mut f Fmt) struct_init(it ast.StructInit) {
 		f.indent--
 		f.write('}')
 	}
+}
+
+fn (mut f Fmt) const_decl(it ast.ConstDecl) {
+	if it.is_pub {
+		f.write('pub ')
+	}
+	f.writeln('const (')
+	mut max := 0
+	for field in it.fields {
+		if field.name.len > max {
+			max = field.name.len
+		}
+	}
+	f.indent++
+	for field in it.fields {
+		if field.comment.text != '' {
+			f.comment(field.comment)
+			// f.writeln('// ' + field.comment.text)
+		}
+		name := field.name.after('.')
+		f.write('$name ')
+		f.write(strings.repeat(` `, max - field.name.len))
+		f.write('= ')
+		f.expr(field.expr)
+		f.writeln('')
+	}
+	f.indent--
+	f.writeln(')\n')
 }

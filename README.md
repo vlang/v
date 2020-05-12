@@ -148,8 +148,7 @@ Fedora:
 sudo dnf install glfw glfw-devel freetype-devel
 
 Windows:
-git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries [path to v repo]/thirdparty/freetype/
-
+v setup-freetype
 ```
 
 glfw dependency will be removed soon.
