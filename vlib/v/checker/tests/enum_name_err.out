@@ -1,4 +1,4 @@
-vlib/v/checker/tests/enum_name_err.v:1:6: error: enum name `color` must begin with a capital letter
+vlib/v/checker/tests/enum_name_err.v:1:6: error: enum name `color` must begin with capital letter
     1 | enum color {
       |      ~~~~~
     2 |     green
