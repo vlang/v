@@ -234,8 +234,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			if !c.table.check(field_expr_type, field.typ) {
 				field_expr_type_sym := c.table.get_type_symbol(field_expr_type)
 				field_type_sym := c.table.get_type_symbol(field.typ)
-				c.error('default expression for field `${field.name}` ' +
-					'has type `${field_expr_type_sym.name}`, but should be `${field_type_sym.name}`',
+				c.error('default expression for field `${field.name}` ' + 'has type `${field_expr_type_sym.name}`, but should be `${field_type_sym.name}`',
 					field.default_expr.position())
 			}
 		}
@@ -256,7 +255,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		struct_init.typ = c.expected_type
 	}
 	type_sym := c.table.get_type_symbol(struct_init.typ)
-	if !type_sym.is_public && type_sym.mod != c.mod {
+	if !type_sym.is_public && type_sym.kind != .placeholder && type_sym.mod != c.mod {
 		c.warn('type `$type_sym.name` is private', struct_init.pos)
 	}
 	// println('check struct $typ_sym.name')
