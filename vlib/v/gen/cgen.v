@@ -778,35 +778,35 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 }
 
 // use instead of expr() when you need to cast to sum type (can add other casts also)
-fn (mut g Gen) expr_with_cast(expr ast.Expr, have_type, need_type table.Type) {
+fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type) {
 	// cast to sum type
-	if need_type != table.void_type {
-		exp_sym := g.table.get_type_symbol(need_type)
+	if expected_type != table.void_type {
+		exp_sym := g.table.get_type_symbol(expected_type)
 		if exp_sym.kind == .sum_type {
 			sum_info := exp_sym.info as table.SumType
-			if have_type in sum_info.variants {
-				have_sym := g.table.get_type_symbol(have_type)
-				have_styp := g.typ(have_type)
-				exp_styp := g.typ(need_type)
-				have_idx := have_type.idx()
-				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&(${have_styp}[]) {')
+			if got_type in sum_info.variants {
+				got_sym := g.table.get_type_symbol(got_type)
+				got_styp := g.typ(got_type)
+				exp_styp := g.typ(expected_type)
+				got_idx := got_type.idx()
+				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&(${got_styp}[]) {')
 				g.expr(expr)
-				g.write('}, sizeof($have_styp)), .typ = $have_idx /* $have_sym.name */}')
+				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
 				return
 			}
 		}
 	}
 	// Generic dereferencing logic
-	need_sym := g.table.get_type_symbol(need_type)
-	have_is_ptr := have_type.is_ptr()
-	need_is_ptr := need_type.is_ptr()
-	neither_void := table.voidptr_type !in [have_type, need_type]
-	if have_is_ptr && !need_is_ptr && neither_void && need_sym.kind !in [.interface_, .placeholder] {
-		have_deref_type := have_type.deref()
-		deref_sym := g.table.get_type_symbol(have_deref_type)
-		is_opt := have_type.flag_is(.optional)
-		deref_will_match := need_type in [have_type, have_deref_type, deref_sym.parent_idx]
-		if deref_will_match || is_opt  {
+	expected_sym := g.table.get_type_symbol(expected_type)
+	got_is_ptr := got_type.is_ptr()
+	expected_is_ptr := expected_type.is_ptr()
+	neither_void := table.voidptr_type !in [got_type, expected_type]
+	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_, .placeholder] {
+		got_deref_type := got_type.deref()
+		deref_sym := g.table.get_type_symbol(got_deref_type)
+		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
+		got_is_opt := got_type.flag_is(.optional)
+		if deref_will_match || got_is_opt  {
 			g.write('*')
 		}
 	}
