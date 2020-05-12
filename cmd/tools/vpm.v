@@ -13,7 +13,7 @@ const (
 	supported_vcs_systems = ['git', 'hg']
 	supported_vcs_folders = ['.git', '.hg']
 	supported_vcs_update_cmds = {
-		'git': 'git pull --depth=1 --rebase'
+		'git': 'git pull'
 		'hg': 'hg pull --update'
 	}
 	supported_vcs_install_cmds = {
