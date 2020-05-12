@@ -418,6 +418,29 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 		.key_for {
 			return p.for_stmt()
 		}
+		.name {
+			if p.peek_tok.kind in [.decl_assign, .comma] {
+				// `x := ...`
+				return p.assign_stmt()
+			} else if p.peek_tok.kind == .colon {
+				// `label:`
+				name := p.check_name()
+				p.next()
+				return ast.GotoLabel{
+					name: name
+				}
+			} else if p.peek_tok.kind == .name {
+				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
+			} else if !p.inside_if_expr && !p.inside_match_body &&
+					!p.inside_or_expr && p.peek_tok.kind in [.rcbr, .eof] {
+				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
+			}
+			epos := p.tok.position()
+			return ast.ExprStmt{
+				expr: p.expr(0)
+				pos: epos
+			}
+		}
 		.comment {
 			return p.comment()
 		}
@@ -474,26 +497,9 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			}
 		}
 		else {
-			// `x := ...`
-			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
-				return p.assign_stmt()
-			} else if p.tok.kind == .name && p.peek_tok.kind == .colon {
-				// `label:`
-				name := p.check_name()
-				p.next()
-				return ast.GotoLabel{
-					name: name
-				}
-			} else if p.tok.kind == .name && p.peek_tok.kind == .name {
-				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-			} else if p.tok.kind == .name && !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr &&
-				p.peek_tok.kind in [.rcbr, .eof] {
-				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
-			}
 			epos := p.tok.position()
-			expr := p.expr(0)
 			return ast.ExprStmt{
-				expr: expr
+				expr: p.expr(0)
 				pos: epos
 			}
 		}
