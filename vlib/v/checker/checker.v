@@ -346,7 +346,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	// TODO: First branch includes ops where single side check is not needed, or needed but hasn't been implemented.
 	// TODO: Some of the checks are not single side. Should find a better way to organize them.
 	match infix_expr.op {
-		//.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
+		// .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
 		.key_in, .not_in {
 			match right.kind {
 				.array {
@@ -838,7 +838,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		return f.return_type
 	}
 	// println can print anything
-	if fn_name == 'println' || fn_name == 'print' {
+	if (fn_name == 'println' || fn_name == 'print') && call_expr.args.len > 0 {
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
 		/*
