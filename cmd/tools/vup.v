@@ -43,10 +43,18 @@ fn main() {
 
 		backup('cmd/tools/vup.exe')
 	} $else {
-		make_result := os.exec('make') or {
+		self_result := os.exec('./v self') or {
 			panic(err)
 		}
-		println(make_result.output)
+		println(self_result.output)
+		if self_result.exit_code != 0 {
+			// v self failed, have to use make
+			println('v self failed, running make...')
+			make_result := os.exec('make') or {
+				panic(err)
+			}
+			println(make_result.output)
+		}
 	}
 
 	_ := os.exec('v cmd/tools/vup.v') or {
