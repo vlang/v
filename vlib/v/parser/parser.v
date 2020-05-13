@@ -364,9 +364,16 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		}
 		else {
 			if p.pref.is_script && !p.pref.is_test {
-				p.scanner.add_fn_main_and_rescan(p.tok.pos - 1)
-				p.read_first_token()
-				return p.top_stmt()
+				mut stmts := []ast.Stmt{}
+				for p.tok.kind != .eof {
+					stmts << p.stmt()
+				}
+				return ast.FnDecl{
+					name: 'main'
+					stmts: stmts
+					file: p.file_name
+					return_type: table.void_type
+				}
 			} else {
 				p.error('bad top level statement ' + p.tok.str())
 				return ast.Stmt{}
