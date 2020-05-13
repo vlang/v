@@ -474,10 +474,12 @@ pub fn (mut g Gen) reset_tmp_count() {
 	g.tmp_count = 0
 }
 
-fn (mut g Gen) decrease_inside_ternary() {
-	for name in g.ternary_level_names[g.inside_ternary.str()] {
+fn (mut g Gen) decrement_inside_ternary() {
+	key := g.inside_ternary.str()
+	for name in g.ternary_level_names[key] {
 		g.ternary_names.delete(name)
 	}
+	g.ternary_level_names.delete(key)
 	g.inside_ternary--
 }
 
@@ -835,7 +837,7 @@ fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 	g.write('if (')
 	g.expr(a.expr)
 	g.write(')')
-	g.decrease_inside_ternary()
+	g.decrement_inside_ternary()
 	s_assertion := a.expr.str().replace('"', "\'")
 	mut mod_path := g.file.path
 	$if windows {
@@ -1791,7 +1793,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		}
 	}
 	if is_expr {
-		g.decrease_inside_ternary()
+		g.decrement_inside_ternary()
 	}
 }
 
@@ -1842,7 +1844,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.write(': 0')
 		}
 		g.write(')')
-		g.decrease_inside_ternary()
+		g.decrement_inside_ternary()
 		return
 	}
 	mut is_guard := false
