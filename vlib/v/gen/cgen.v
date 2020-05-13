@@ -976,13 +976,19 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				else {}
 			}
-			mut cur_line := ''
-			if g.inside_ternary != 0 {
-				cur_line = g.go_before_ternary()
+			is_inside_ternary := g.inside_ternary != 0
+			cur_line := if is_inside_ternary {
 				g.register_ternary_name(ident.name)
+				g.empty_line = false
+				g.go_before_ternary()
+			} else {
+				''
 			}
 			is_decl := assign_stmt.op == .decl_assign
 			if right_sym.kind == .function {
+				if is_inside_ternary {
+					g.out.write(tabs[g.indent - g.inside_ternary])
+				}
 				func := right_sym.info as table.FnType
 				ret_styp := g.typ(func.func.return_type)
 				g.write('$ret_styp (*${g.get_ternary_name(ident.name)}) (')
@@ -992,13 +998,16 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.write(')')
 			} else {
 				if is_decl {
+					if is_inside_ternary {
+						g.out.write(tabs[g.indent - g.inside_ternary])
+					}
 					g.write('$styp ')
 				}
 				g.ident(ident)
 			}
-			if g.inside_ternary != 0 {
-				g.writeln(';')
-				g.write(cur_line)
+			if is_inside_ternary {
+				g.write(';\n$cur_line')
+				g.out.write(tabs[g.indent])
 				g.ident(ident)
 			}
 			if g.autofree && right_sym.kind in [.array, .string] {
