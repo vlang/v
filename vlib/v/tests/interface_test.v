@@ -30,9 +30,9 @@ fn (c mut Cat) set_breed(new string) {
 	c.breed = new
 }
 
-// utility function to convert to string, as a sample
+// utility function to override default conversion to string, as a sample
 fn (c Cat) str() string {
-	return 'Cat: $c.breed'
+	return 'Custom string conversion for Cat: $c.breed'
 }
 
 fn (d Dog) speak(s string) {
@@ -53,7 +53,8 @@ fn (d mut Dog) set_breed(new string) {
 	println('Nah')
 }
 
-// do not add to Dog the utility function 'str', as a sample
+// do not add to Dog the utility function 'str', so the default one will be used, as a sample
+
 fn test_todo() {
 	if true {
 	} else {
@@ -69,6 +70,8 @@ fn perform_speak(a Animal) {
 	// assert name == 'Dog'
 	// }
 	println(a.name())
+	println('Got animal of type: ${typeof(a)}') // TODO: get implementation type (if possible)
+	// assert a is Dog || a is Cat // TODO: enable when available
 }
 
 fn perform_speak_on_ptr(a &Animal) {
@@ -80,6 +83,8 @@ fn perform_speak_on_ptr(a &Animal) {
 	// assert name == 'Dog'
 	// }
 	println(a.name())
+	println('Got animal of type: ${typeof(a)}') // TODO: get implementation type (if possible)
+	// assert a is Dog || a is Cat // TODO: enable when available
 }
 
 fn test_perform_speak() {
@@ -130,20 +135,33 @@ fn test_perform_name_detailed() {
 	dog := Dog{
 		breed: 'Labrador Retriever'
 	}
-	println('Test on Dog: $dog ...')
+	println('Test on Dog: $dog ...') // using default conversion to string
 	perform_name_detailed(dog)
 	cat := Cat{}
-	println('Test on Cat: $cat ...')
+	println('Test on empty Cat: $cat ...')
 	perform_speak(cat)
-	println('Test on another Cat: ...')
+	println('Test on a Persian Cat: ...')
 	perform_speak(Cat{
 		breed: 'Persian'
 	})
+	cat_persian2 := Cat{
+		breed: 'Persian'
+	}
+	println('Test on another Persian Cat: "$cat_persian2" ...')
+	perform_speak(cat_persian2)
+	cat_persian2_str := cat_persian2.str()
+	println("Persian Cat 2: '$cat_persian2_str' ...")
+	assert cat_persian2_str == "Custom string conversion for Cat: Persian"
 	println('Test (dummy/empty) on array of animals ...')
 	handle_animals([dog, cat])
+	handle_animals_mutable([dog, cat])
+	assert true
 }
 
 fn handle_animals(a []Animal) {
+}
+
+fn handle_animals_mutable(a []Animal) {
 }
 
 interface Register {
