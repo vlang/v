@@ -771,6 +771,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 		c.expected_type = table.string_type
 		call_expr.args[1].typ = c.expr(call_expr.args[1].expr)
+		if call_expr.args[1].typ != table.string_type {
+			c.error('json.decode: second argument needs to be a string', call_expr.pos)
+		}
 		typ := expr as ast.Type
 		return typ.typ.set_flag(.optional)
 	}

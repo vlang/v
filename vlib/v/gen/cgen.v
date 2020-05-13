@@ -291,13 +291,15 @@ pub fn (mut g Gen) write_typeof_functions() {
 // V type to C type
 fn (mut g Gen) typ(t table.Type) string {
 	mut styp := g.base_type(t)
+	base := styp
 	if t.flag_is(.optional) {
-		// Register an optional
-		styp = 'Option_' + styp
 		if t.is_ptr() {
 			styp = styp.replace('*', '_ptr')
 		}
+		styp = 'Option_' + styp
+		// Register an optional if it's not registered yet
 		if styp !in g.optionals {
+			g.register_optional(t, base)
 			// println(styp)
 			x := styp // .replace('*', '_ptr')			// handle option ptrs
 			g.typedefs2.writeln('typedef Option $x;')
@@ -319,6 +321,18 @@ fn (g &Gen) base_type(t table.Type) string {
 		styp += strings.repeat(`*`, nr_muls)
 	}
 	return styp
+}
+
+fn (mut g Gen) register_optional(t table.Type, styp string) {
+	// g.typedefs2.writeln('typedef Option $x;')
+	no_ptr := styp.replace('*','_ptr')
+	g.hotcode_definitions.writeln('typedef struct {
+		$styp  data;
+		string error;
+		int    ecode;
+		bool   ok;
+		bool   is_none;
+	} Option2_$no_ptr;')
 }
 
 // cc_type returns the Cleaned Concrete Type name, *without ptr*,
@@ -801,12 +815,14 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 	got_is_ptr := got_type.is_ptr()
 	expected_is_ptr := expected_type.is_ptr()
 	neither_void := table.voidptr_type !in [got_type, expected_type]
-	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_, .placeholder] {
+	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_,
+		.placeholder
+	] {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
 		got_is_opt := got_type.flag_is(.optional)
-		if deref_will_match || got_is_opt  {
+		if deref_will_match || got_is_opt {
 			g.write('*')
 		}
 	}
@@ -973,8 +989,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.fn_args(func.func.args, func.func.is_variadic)
 					g.definitions.go_back(g.definitions.len - def_pos)
 					g.write(')')
-				}
-				else {
+				} else {
 					g.ident(ident)
 				}
 				if g.autofree && right_sym.kind in [.array, .string] {
@@ -1653,7 +1668,8 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
-	is_expr := (node.is_expr && node.return_type != table.void_type) || g.inside_ternary > 0
+	is_expr := (node.is_expr && node.return_type != table.void_type) || g.inside_ternary >
+		0
 	if is_expr {
 		g.inside_ternary++
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')

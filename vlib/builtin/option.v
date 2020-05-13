@@ -26,7 +26,7 @@ pub fn (o Option) str() string {
 	  return 'Option{ data: ' + o.data[0..32].hex() + ' }'
    }
    if o.is_none {
-	  return 'Option{ none }'	  
+	  return 'Option{ none }'
    }
    return 'Option{ error: "${o.error}" }'
 }
