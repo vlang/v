@@ -14,11 +14,12 @@ fn test_all() {
 	files := os.ls(dir) or {
 		panic(err)
 	}
-	tests := files.filter(it.ends_with('.vv'))
+	mut tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
 		println('no compiler tests found')
 		assert false
 	}
+	tests.sort()
 	for test in tests {
 		path := os.join_path(dir, test).replace('\\', '/')
 		program := path.replace('.vv', '.v')
