@@ -408,7 +408,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.gen_json_for_type(node.args[0].typ)
 			json_type_str = g.table.get_type_symbol(node.args[0].typ).name
 		} else {
-			g.insert_before('// json.decode')
+			g.insert_before_stmt('// json.decode')
 			ast_type := node.args[0].expr as ast.Type
 			// `json.decode(User, s)` => json.decode_User(s)
 			sym := g.table.get_type_symbol(ast_type.typ)
