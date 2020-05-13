@@ -512,7 +512,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		g.call_args(node.args, node.expected_arg_types)
 		g.write(')')
 	} else {
-		g.write('${name}(')
+		g.write('${g.get_ternary_name(name)}(')
 		if is_json_decode {
 			g.write('json__json_parse(')
 			// Skip the first argument in json.decode which is a type

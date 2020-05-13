@@ -974,30 +974,30 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				else {}
 			}
+			mut cur_line := ''
+			if g.inside_ternary != 0 {
+				cur_line = g.go_before_ternary()
+				g.register_ternary_name(ident.name)
+			}
 			is_decl := assign_stmt.op == .decl_assign
 			if right_sym.kind == .function {
 				func := right_sym.info as table.FnType
 				ret_styp := g.typ(func.func.return_type)
-				g.write('$ret_styp (*$ident.name) (')
+				g.write('$ret_styp (*${g.get_ternary_name(ident.name)}) (')
 				def_pos := g.definitions.len
 				g.fn_args(func.func.args, func.func.is_variadic)
 				g.definitions.go_back(g.definitions.len - def_pos)
 				g.write(')')
 			} else {
-				mut cur_line := ''
-				if g.inside_ternary != 0 {
-					cur_line = g.go_before_ternary()
-					g.register_ternary_name(ident.name)
-				}
 				if is_decl {
 					g.write('$styp ')
 				}
 				g.ident(ident)
-				if g.inside_ternary != 0 {
-					g.writeln(';')
-					g.write(cur_line)
-					g.ident(ident)
-				}
+			}
+			if g.inside_ternary != 0 {
+				g.writeln(';')
+				g.write(cur_line)
+				g.ident(ident)
 			}
 			if g.autofree && right_sym.kind in [.array, .string] {
 				if g.gen_clone_assignment(val, right_sym, true) {
@@ -1043,6 +1043,9 @@ fn (mut g Gen) register_ternary_name(name string) {
 }
 
 fn (mut g Gen) get_ternary_name(name string) string {
+	if g.inside_ternary == 0 {
+		return name
+	}
 	if name !in g.ternary_names {
 		return name
 	}
@@ -1818,10 +1821,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			return
 		}
 	}
-	if g.inside_ternary != 0 {
-		name = g.get_ternary_name(name)
-	}
-	g.write(name)
+	g.write(g.get_ternary_name(name))
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {

@@ -30,6 +30,19 @@ fn test_if_expression_with_stmts() {
 	assert b == 24
 }
 
+fn noop() {}
+
+fn test_if_expression_with_function_assign() {
+	a := if true {
+		my_fn := noop
+		my_fn()
+		0
+	} else {
+		1
+	}
+	assert a == 0
+}
+
 fn get_bool_str(b bool) string {
 	return b.str()
 }
