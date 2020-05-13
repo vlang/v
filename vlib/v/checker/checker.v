@@ -255,6 +255,9 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		struct_init.typ = c.expected_type
 	}
 	type_sym := c.table.get_type_symbol(struct_init.typ)
+	if type_sym.kind == .interface_ {
+		c.error('cannot instantiate interface `$type_sym.name`', struct_init.pos)
+	}
 	if !type_sym.is_public && type_sym.kind != .placeholder && type_sym.mod != c.mod {
 		c.error('type `$type_sym.name` is private', struct_init.pos)
 	}
