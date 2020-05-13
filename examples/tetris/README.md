@@ -2,6 +2,8 @@
 
 Tetris has a temporary dependency on GLFW. 
 
+FreeType is needed to display the score and some text. A smaller stb library is going to be used instead.
+
 ## macOS
 `brew install glfw freetype` 
  
