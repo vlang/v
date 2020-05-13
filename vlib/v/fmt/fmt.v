@@ -979,7 +979,7 @@ fn (mut f Fmt) array_init(it ast.ArrayInit) {
 				f.expr(it.cap_expr)
 			}
 			if it.has_default {
-				f.write('default: ')
+				f.write('init: ')
 				f.expr(it.default_expr)
 			}
 			f.write('}')
@@ -1003,7 +1003,7 @@ fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			}
 		}
 		if it.has_default {
-			f.write('default: ')
+			f.write('init: ')
 			f.expr(it.default_expr)
 		}
 		f.write('}')

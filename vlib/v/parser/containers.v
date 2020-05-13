@@ -91,12 +91,12 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					has_cap = true
 					cap_expr = p.expr(0)
 				}
-				'default' {
+				'init' {
 					has_default = true
 					default_expr = p.expr(0)
 				}
 				else {
-					p.error('wrong field `$key`, expecting `len`, `cap`, or `default`')
+					p.error('wrong field `$key`, expecting `len`, `cap`, or `init`')
 				}
 			}
 			if p.tok.kind != .rcbr {
