@@ -1,0 +1,6 @@
+vlib/v/checker/tests/no_interface_instantiation_b.v:6:12: error: cannot instantiate interface `Speaker`
+    4 |
+    5 | fn main() {
+    6 |     my_fn({})
+      |            ^
+    7 | }
