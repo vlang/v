@@ -280,7 +280,8 @@ fn (mut v Builder) cc() {
 	// Cross compiling windows
 	//
 	// Output executable name
-	a << '-o "$v.pref.out_name"'
+	out_file := '-o "$v.pref.out_name"'
+	a << '$out_file'
 	if os.is_dir(v.pref.out_name) {
 		verror("'$v.pref.out_name' is a directory")
 	}
@@ -289,7 +290,8 @@ fn (mut v Builder) cc() {
 		a << '-x objective-c'
 	}
 	// The C file we are compiling
-	a << '"$v.out_name_c"'
+	src_file := '"$v.out_name_c"'
+	a << '$src_file'
 	if v.pref.os == .mac {
 		a << '-x none'
 	}
@@ -303,8 +305,10 @@ fn (mut v Builder) cc() {
 	cflags := v.get_os_cflags()
 	// add .o files
 	a << cflags.c_options_only_object_files()
+	mut cpp_addl_flags := cflags.c_options_only_object_files()
 	// add all flags (-I -l -L etc) not .o files
 	a << cflags.c_options_without_object_files()
+	cpp_addl_flags += cflags.c_options_without_object_files() + libs
 	a << libs
 	if v.pref.use_cache {
 		//vexe := pref.vexe_path()
@@ -344,12 +348,18 @@ fn (mut v Builder) cc() {
 	if !v.pref.is_bare && v.pref.os == .js && os.user_os() == 'linux' {
 		linker_flags << '-lm'
 	}
-	args := a.join(' ') + linker_flags.join(' ')
+	lnkr_flgs := linker_flags.join(' ')
+	args := a.join(' ') + lnkr_flgs
 	start:
 	todo()
 	// TODO remove
-	cmd := '${v.pref.ccompiler} $args'
+	mut cmd := '${v.pref.ccompiler} $args'
 	// Run
+	// For now remove all flags for c related warnings converted to errors
+	if guessed_compiler.contains('++') {
+		cmd = guessed_compiler + ' -fpermissive -w ' + lnkr_flgs + ' ' + cpp_addl_flags + ' ' + out_file + ' ' + src_file
+	}
+	//println(cmd)
 	if v.pref.is_verbose || v.pref.show_cc {
 		println('\n==========')
 		println(cmd)

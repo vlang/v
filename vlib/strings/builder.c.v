@@ -16,6 +16,8 @@ pub fn new_builder(initial_size int) Builder {
 	return Builder{
 		//buf: make(0, initial_size)
 		buf: []byte{cap: initial_size}
+		str_calls: 0
+		len: 0
 		initial_size: initial_size
 	}
 }
