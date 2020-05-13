@@ -51,3 +51,37 @@ fn test_assignment_and_push() {
 		else {}
 	}
 }
+
+// Test moving structs between master/sub arrays
+
+type Master = Sub1 | Sub2
+struct Sub1 {
+mut:
+	val int
+	name string
+}
+struct Sub2 {
+	name string
+	val int
+}
+
+fn test_converting_down() {
+	mut out := []Master{}
+	out << Sub1 { val: 1, name: 'one' }
+	out << Sub2 { val: 2, name: 'two'}
+	out << Sub2 { val: 3, name: 'three'}
+
+	mut res := []Sub2{cap: out.len}
+	for d in out {
+		match d {
+			Sub2 { res << it }
+			else {}
+		}
+	}
+
+	assert res[0].val == 2
+	assert res[0].name == 'two'
+	assert res[1].val == 3
+	assert res[1].name == 'three'
+}
+

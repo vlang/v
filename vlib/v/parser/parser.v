@@ -364,9 +364,16 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		}
 		else {
 			if p.pref.is_script && !p.pref.is_test {
-				p.scanner.add_fn_main_and_rescan(p.tok.pos - 1)
-				p.read_first_token()
-				return p.top_stmt()
+				mut stmts := []ast.Stmt{}
+				for p.tok.kind != .eof {
+					stmts << p.stmt()
+				}
+				return ast.FnDecl{
+					name: 'main'
+					stmts: stmts
+					file: p.file_name
+					return_type: table.void_type
+				}
 			} else {
 				p.error('bad top level statement ' + p.tok.str())
 				return ast.Stmt{}
@@ -417,6 +424,29 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 		}
 		.key_for {
 			return p.for_stmt()
+		}
+		.name {
+			if p.peek_tok.kind in [.decl_assign, .comma] {
+				// `x := ...`
+				return p.assign_stmt()
+			} else if p.peek_tok.kind == .colon {
+				// `label:`
+				name := p.check_name()
+				p.next()
+				return ast.GotoLabel{
+					name: name
+				}
+			} else if p.peek_tok.kind == .name {
+				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
+			} else if !p.inside_if_expr && !p.inside_match_body &&
+					!p.inside_or_expr && p.peek_tok.kind in [.rcbr, .eof] {
+				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
+			}
+			epos := p.tok.position()
+			return ast.ExprStmt{
+				expr: p.expr(0)
+				pos: epos
+			}
 		}
 		.comment {
 			return p.comment()
@@ -474,32 +504,6 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			}
 		}
 		else {
-			// certainly `x := ...`
-			if p.tok.kind == .name && p.peek_tok.kind == .decl_assign {
-				return p.assign_stmt()
-			}
-			// certainly `label:`
-			if p.tok.kind == .name && p.peek_tok.kind == .colon {
-				name := p.check_name()
-				p.next()
-				return ast.GotoLabel{
-					name: name
-				}
-			}
-			if p.tok.kind == .name && p.peek_tok.kind == .name {
-				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-			}
-			if p.tok.kind == .name && !p.inside_if_expr && !p.inside_or_expr && p.peek_tok.kind in [.rcbr, .eof] {
-				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
-			}
-			// certainly `x` (single-expression)
-			if p.peek_tok.kind != .comma && p.peek_tok2.kind != .comma {
-				epos := p.tok.position()
-				return ast.ExprStmt{
-					expr: p.expr(0)
-					pos: epos
-				}
-			}
 			// from now on can be multi-assignment or concat-expression
 			return p.parse_multi_assign_or_concat_expr()
 		}

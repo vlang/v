@@ -292,7 +292,7 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 	mut x := f32(_x)
 	mut y := f32(_y)
 	wx, wy := ctx.text_size(utext.s)
-	yoffset := if ctx.scale > 1 { 5 /* highdpi */ } else { -1 /* lowdpi */ }
+	yoffset := if ctx.scale > 1 { 5 } else { -1 } // 5 hidpi, -1 lowdpi
 	// println('scale=$ctx.scale size=$cfg.size')
 	if cfg.align == gx.ALIGN_RIGHT {
 		//width := utext.len * 7
@@ -374,7 +374,7 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 		// Stop drawing if the limit is reached
 		if cfg.max_width > 0  {
 			if x >= cfg.max_width {
-				break
+				//break
 			}
 		}
 	}
