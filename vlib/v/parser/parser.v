@@ -505,7 +505,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 		}
 		else {
 			if p.tok.kind == .key_const {
-				p.error_with_pos('const can only be defined at the module level (outside of functions)', p.tok.position())
+				p.error_with_pos('const can only be defined at the top level (outside of functions)', p.tok.position())
 			}
 			epos := p.tok.position()
 			return ast.ExprStmt{
