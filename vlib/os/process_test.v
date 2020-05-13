@@ -17,6 +17,7 @@ fn test_run() {
 	p.run()
 	assert p.status == .running
 	assert p.pid > 0
+	assert p.pid != os.getpid()
 	mut i := 0
 	for {
 		if !p.is_alive() {
@@ -41,6 +42,7 @@ fn test_wait() {
 	}
 	mut p := os.new_process('/bin/date')
 	p.wait()
+	assert p.pid != os.getpid()
 	assert p.code == 0
 	assert p.status == .exited
 }
