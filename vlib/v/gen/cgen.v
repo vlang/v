@@ -1810,18 +1810,16 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.write(')')
 		g.inside_ternary--
 	} else {
-		guard_ok := g.new_tmp_var()
 		mut is_guard := false
 		for i, branch in node.branches {
 			if i == 0 {
 				match branch.cond {
 					ast.IfGuardExpr {
 						is_guard = true
-						g.writeln('bool $guard_ok;')
 						g.write('{ /* if guard */ ${g.typ(it.expr_type)} $it.var_name = ')
 						g.expr(it.expr)
 						g.writeln(';')
-						g.writeln('if (($guard_ok = ${it.var_name}.ok)) {')
+						g.writeln('if (${it.var_name}.ok) {')
 					}
 					else {
 						g.write('if (')
@@ -1834,11 +1832,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.expr(branch.cond)
 				g.writeln(') {')
 			} else if i == node.branches.len - 1 && node.has_else {
-				if is_guard {
-					g.writeln('} if (!$guard_ok) { /* else */')
-				} else {
-					g.writeln('} else {')
-				}
+				g.writeln('} else {')
 			}
 			// Assign ret value
 			// if i == node.stmts.len - 1 && type_sym.kind != .void {}

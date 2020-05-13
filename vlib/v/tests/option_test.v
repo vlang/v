@@ -60,6 +60,19 @@ fn test_if_opt() {
 	assert 1 == 1
 }
 
+fn test_if_else_opt() {
+	if val := err_call(true) {
+		assert val == 42
+	} else {
+		assert false
+	}
+	if _ := err_call(false) {
+		assert false
+	} else {
+		assert true
+	}
+}
+
 fn for_opt_default() ?string {
 	return error('awww')
 }
