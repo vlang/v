@@ -8,7 +8,7 @@ if exist "vc" (
 	rd /s /q vc
 )
 
-echo Downloading v.c from github.com/vlang/vc...
+echo Downloading v.c...
 git clone --depth 1 --quiet https://github.com/vlang/vc
 
 REM option to force msvc or gcc
