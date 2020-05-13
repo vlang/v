@@ -171,42 +171,42 @@ pub fn (f1 Fraction) divide(f2 Fraction) Fraction {
 }
 
 // Fraction negate method
-pub fn (f1 Fraction) negate() Fraction {
+pub fn (f Fraction) negate() Fraction {
 	return Fraction{
-		n: -f1.n
-		d: f1.d
-		is_reduced: f1.is_reduced
+		n: -f.n
+		d: f.d
+		is_reduced: f.is_reduced
 	}
 }
 
 // Fraction reciprocal method
-pub fn (f1 Fraction) reciprocal() Fraction {
-	if f1.n == 0 {
+pub fn (f Fraction) reciprocal() Fraction {
+	if f.n == 0 {
 		panic('Denominator cannot be zero')
 	}
 	return Fraction{
-		n: f1.d
-		d: f1.n
-		is_reduced: f1.is_reduced
+		n: f.d
+		d: f.n
+		is_reduced: f.is_reduced
 	}
 }
 
 // Fraction method which reduces the fraction
-pub fn (f1 Fraction) reduce() Fraction {
-	if f1.is_reduced {
-		return f1
+pub fn (f Fraction) reduce() Fraction {
+	if f.is_reduced {
+		return f
 	}
-	cf := math.gcd(f1.n, f1.d)
+	cf := math.gcd(f.n, f.d)
 	return Fraction{
-		n: f1.n / cf
-		d: f1.d / cf
+		n: f.n / cf
+		d: f.d / cf
 		is_reduced: true
 	}
 }
 
 // f64 converts the Fraction to 64-bit floating point
-pub fn (f1 Fraction) f64() f64 {
-	return f64(f1.n) / f64(f1.d)
+pub fn (f Fraction) f64() f64 {
+	return f64(f.n) / f64(f.d)
 }
 
 //
