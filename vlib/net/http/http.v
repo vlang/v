@@ -44,9 +44,11 @@ pub:
 	status_code int
 }
 
-pub fn new_request(method, url, data string) ?Request{
+pub fn new_request(method, url_, data string) ?Request{
+	url := if method == 'GET' { url_ + '?' + data } else { url_ }
+	//println('new req() method=$method url="$url" dta="$data"')
 	return Request{
-		method: method
+		method: method.to_upper()
 		url: url
 		data: data
 	}

@@ -10,6 +10,19 @@ import v.pref
 import v.util
 import term
 
+const (
+c_error_info = '
+==================
+C error. This should never happen.
+
+If you were not working with C interop, please raise an issue on GitHub:
+
+https://github.com/vlang/v/issues/new/choose
+
+You can also use #help on Discord: https://discord.gg/vlang
+')
+
+
 fn todo() {
 }
 
@@ -375,18 +388,7 @@ fn (mut v Builder) cc() {
 			eword := 'error:'
 			khighlight := if term.can_show_color_on_stdout() { term.red(eword) } else { eword }
 			println(res.output.replace(eword, khighlight))
-			verror("
-==================
-C error. This should never happen.
-
-V compiler version: ${util.full_v_version()}
-Host OS: ${pref.get_host_os().str()}
-Target OS: $v.pref.os.str()
-
-If you were not working with C interop and are not sure about what's happening,
-please put the whole output in a pastebin and contact us through the following ways with a link to the pastebin:
-- Raise an issue on GitHub: https://github.com/vlang/v/issues/new/choose
-- Ask a question in #help on Discord: https://discord.gg/vlang")
+			verror(c_error_info)
 		} else {
 			if res.output.len < 30 {
 				println(res.output)
@@ -400,14 +402,7 @@ please put the whole output in a pastebin and contact us through the following w
 				println('==================')
 				println('(Use `v -cg` to print the entire error message)\n')
 			}
-			verror("C error.
-
-Please make sure that:
-- You have all V dependencies installed.
-- You did not declare a C function that was not included. (Try commenting your code that involves C interop)
-- You are running the latest version of V. (Try running `v up` and rerunning your command)
-
-If you're confident that all of the above is true, please try running V with the `-cg` option which enables more debugging capabilities.\n")
+			verror(c_error_info)
 		}
 	}
 	diff := time.ticks() - ticks
