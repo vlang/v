@@ -4,7 +4,6 @@
 module ast
 
 import v.table
-import v.token
 
 pub struct Scope {
 //mut:

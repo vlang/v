@@ -10,7 +10,6 @@ import v.table
 import v.pref
 import v.util
 import v.errors
-import term
 import os
 
 pub struct Parser {
@@ -38,8 +37,9 @@ mut:
 	expr_mod          string // for constructing full type names in parse_type()
 	scope             &ast.Scope
 	global_scope      &ast.Scope
-	imports           map[string]string
-	ast_imports       []ast.Import
+	imports           map[string]string // alias => mod_name
+	ast_imports       []ast.Import // mod_names
+	used_imports      []string // alias
 	is_amp            bool // for generating the right code for `&Foo{}`
 	returns           bool
 	inside_match      bool // to separate `match A { }` from `Struct{}`
@@ -115,6 +115,8 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 					file: p.file_name
 					return_type: table.void_type
 				}
+			} else {
+				p.check_unused_imports()
 			}
 			break
 		}
@@ -285,6 +287,9 @@ fn (mut p Parser) check(expected token.Kind) {
 
 fn (mut p Parser) check_name() string {
 	name := p.tok.lit
+	if p.peek_tok.kind == .dot && name in p.imports {
+		p.register_used_import(name)
+	}
 	p.check(.name)
 	return name
 }
@@ -697,6 +702,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else if is_js {
 			mod = 'JS'
 		} else {
+			if p.tok.lit in p.imports {
+				p.register_used_import(p.tok.lit)
+			}
 			// prepend the full import
 			mod = p.imports[p.tok.lit]
 		}

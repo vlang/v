@@ -17,3 +17,27 @@ fn (p &Parser) prepend_mod(name string) string {
 	}
 	return '${p.mod}.$name'
 }
+
+fn (p &Parser) is_used_import(alias string) bool {
+	return alias in p.used_imports
+}
+
+fn (mut p Parser) register_used_import(alias string) {
+	if alias !in p.used_imports {
+		p.used_imports << alias
+	}
+}
+
+fn (p mut Parser) check_unused_imports() {
+	mut output := ''
+	for alias, mod in p.imports {
+		if !p.is_used_import(alias) {
+			mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
+			output += '\n * $mod_alias'
+		}
+	}
+	if output == '' {
+		return
+	}
+	p.warn('the following imports were never used: $output')
+}

@@ -23,7 +23,7 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 
 	// detect attr
 	not_attr := p.peek_tok.kind != .name && p.peek_tok2.kind !in [.semicolon, .rsbr]
-	
+
 	for p.tok.kind == .lsbr && not_attr {
 		p.next()
 		p.check(.rsbr)
@@ -145,6 +145,9 @@ pub fn (mut p Parser) parse_any_type(is_c, is_js, is_ptr bool) table.Type {
 		if !p.known_import(name) {
 			println(p.table.imports)
 			p.error('unknown module `$p.tok.lit`')
+		}
+		if p.tok.lit in p.imports {
+			p.register_used_import(p.tok.lit)
 		}
 		p.next()
 		p.check(.dot)

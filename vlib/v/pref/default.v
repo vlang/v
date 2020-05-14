@@ -4,7 +4,6 @@
 module pref
 
 import os
-import term
 
 pub const (
 	default_module_path = mpath()

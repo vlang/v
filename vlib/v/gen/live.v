@@ -1,7 +1,5 @@
 module gen
 
-import os
-import time
 import v.pref
 import v.util
 

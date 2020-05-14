@@ -4,13 +4,11 @@
 module checker
 
 import v.ast
-import v.depgraph
 import v.table
 import v.token
 import v.pref
 import v.util
 import v.errors
-import os
 
 const (
 	max_nr_errors = 300
