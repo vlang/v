@@ -67,12 +67,13 @@ pub fn (mut b Builder) parse_imports() {
 				// break
 				// println('module_search_paths:')
 				// println(b.module_search_paths)
-				panic('cannot import module "$mod" (not found)')
+				verror('cannot import module "$mod" (not found)')
+				break
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
-				panic('cannot import module "$mod" (no .v files in "$import_path")')
+				verror('cannot import module "$mod" (no .v files in "$import_path")')
 			}
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref, b.global_scope)

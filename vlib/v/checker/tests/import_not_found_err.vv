@@ -1,0 +1,4 @@
+import notexist
+fn main() {
+	println('hello, world')
+}
