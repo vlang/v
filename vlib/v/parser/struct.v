@@ -95,8 +95,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_field_mut = true
 				is_field_global = true
 			}
+			field_start_pos := p.tok.position()
 			field_name := p.check_name()
-			field_pos := p.tok.position()
+			field_pos := field_start_pos.extend(p.tok.position())
 			// p.warn('field $field_name')
 			typ := p.parse_type()
 			/*
@@ -288,6 +289,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	// Parse methods
 	mut methods := []ast.FnDecl{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+		method_start_pos := p.tok.position()
 		line_nr := p.tok.line_nr
 		name := p.check_name()
 		if util.contains_capital(name) {
@@ -307,6 +309,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			file: p.file_name
 			return_type: table.void_type
 			is_pub: true
+			pos: method_start_pos.extend(p.prev_tok.position())
 		}
 		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 			method.return_type = p.parse_type()

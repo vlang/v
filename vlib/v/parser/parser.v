@@ -1105,8 +1105,9 @@ fn (mut p Parser) parse_number_literal() ast.Expr {
 fn (mut p Parser) module_decl() ast.Module {
 	mut name := 'main'
 	is_skipped := p.tok.kind != .key_module
+	mut module_pos := token.Position{}
 	if !is_skipped {
-		module_pos := p.tok.position()
+		module_pos = p.tok.position()
 		p.next()
 		mut pos := p.tok.position()
 		name = p.check_name()
@@ -1121,6 +1122,7 @@ fn (mut p Parser) module_decl() ast.Module {
 				p.error_with_pos('`module x` can only declare one module', pos)
 			}
 		}
+		module_pos = module_pos.extend(pos)
 	}
 	full_mod := p.table.qualify_module(name, p.file_name)
 	p.mod = full_mod
@@ -1128,6 +1130,7 @@ fn (mut p Parser) module_decl() ast.Module {
 	return ast.Module{
 		name: full_mod
 		is_skipped: is_skipped
+		pos: module_pos
 	}
 }
 
@@ -1252,7 +1255,9 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
+	start_pos := p.tok.position()
 	p.next()
+	pos := start_pos.extend(p.tok.position())
 	name := p.check_name()
 	// println(name)
 	typ := p.parse_type()
@@ -1280,6 +1285,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	glob := ast.GlobalDecl{
 		name: name
 		typ: typ
+		pos: pos
 		has_expr: has_expr
 		expr: expr
 	}
