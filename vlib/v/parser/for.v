@@ -5,7 +5,6 @@ module parser
 
 import v.ast
 import v.table
-import v.token
 
 fn (mut p Parser) for_stmt() ast.Stmt {
 	p.check(.key_for)

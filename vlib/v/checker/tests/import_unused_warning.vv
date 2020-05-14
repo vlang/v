@@ -1,0 +1,4 @@
+import time
+fn main() {
+	println('hello, world')
+}

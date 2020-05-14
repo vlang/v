@@ -1,7 +1,6 @@
 module builder
 
 import time
-import os
 import v.parser
 import v.pref
 import v.gen

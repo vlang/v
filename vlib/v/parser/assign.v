@@ -4,8 +4,6 @@
 module parser
 
 import v.ast
-import v.table
-import v.token
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
 	is_static := p.tok.kind == .key_static

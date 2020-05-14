@@ -1,7 +1,6 @@
 module main
 
 import os
-import term
 // //////////////////////////////////////////////////////////////////
 // / This file will get compiled as part of the main program,
 // / for a _test.v file.

@@ -1,7 +1,6 @@
 module builder
 
 import os
-import time
 import v.ast
 import v.table
 import v.pref
@@ -9,10 +8,6 @@ import v.util
 import v.vmod
 import v.checker
 import v.parser
-import v.errors
-import v.gen
-import v.gen.js
-import v.gen.x64
 import v.depgraph
 
 const (

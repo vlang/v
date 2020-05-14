@@ -3,8 +3,6 @@ module js
 import strings
 import v.ast
 import v.table
-import v.depgraph
-import v.token
 import v.pref
 import term
 import v.util

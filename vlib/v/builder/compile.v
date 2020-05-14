@@ -6,8 +6,6 @@ module builder
 import time
 import os
 import v.pref
-import v.util
-import strings
 
 fn get_vtmp_folder() string {
 	vtmp := os.join_path(os.temp_dir(), 'v')
