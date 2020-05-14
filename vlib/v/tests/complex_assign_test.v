@@ -85,7 +85,7 @@ fn test_assign_multireturn_expression() {
 	} else {
 		0, 'bad', [0]
 	}
-	println('probing value before assert >${q}<')
+	println('probing value before assert >${r}<>$var2<')
 	assert q == 17
 	assert r == 'awesome'
 	assert s == [13]
