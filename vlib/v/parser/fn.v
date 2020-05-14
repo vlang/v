@@ -20,10 +20,11 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 	} else {
 		name
 	}
+	mut is_or_block_used := false
 	if fn_name == 'json.decode' {
-		// Makes name_expr() parse the type (`User` in `json.decode(User, txt)`)`
-		p.expecting_type = true
+		p.expecting_type = true // Makes name_expr() parse the type (`User` in `json.decode(User, txt)`)`
 		p.expr_mod = ''
+		is_or_block_used = true
 	}
 	p.check(.lpar)
 	args := p.call_args()
@@ -35,7 +36,6 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 		len: last_pos.pos - first_pos.pos + last_pos.len
 	}
 	mut or_stmts := []ast.Stmt{}
-	mut is_or_block_used := false
 	if p.tok.kind == .key_orelse {
 		p.inside_or_expr = true
 		p.next()
