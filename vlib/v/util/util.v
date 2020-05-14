@@ -102,7 +102,7 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	set_vroot_folder(vroot)
-	tool_args := os.args[1..].join(' ')
+	tool_args := args_quote_paths_with_spaces(os.args[1..])
 	tool_exe := path_of_executable(os.real_path('$vroot/cmd/tools/$tool_name'))
 	tool_source := os.real_path('$vroot/cmd/tools/${tool_name}.v')
 	tool_command := '"$tool_exe" $tool_args'
@@ -160,6 +160,21 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 		println('launch_tool running tool command: $tool_command ...')
 	}
 	exit(os.system(tool_command))
+}
+
+pub fn quote_path_with_spaces(s string) string {
+	if s.contains(' ') {
+		return '"${s}"'
+	}
+	return s
+}
+
+pub fn args_quote_paths_with_spaces(args []string) string {
+	mut res := []string{}
+	for a in args {
+		res << quote_path_with_spaces( a )
+	}
+	return res.join(' ')
 }
 
 pub fn path_of_executable(path string) string {

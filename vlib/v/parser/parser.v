@@ -504,6 +504,9 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			}
 		}
 		else {
+			if p.tok.kind == .key_const {
+				p.error_with_pos('const can only be defined at the top level (outside of functions)', p.tok.position())
+			}
 			// from now on can be multi-assignment or concat-expression
 			return p.parse_multi_assign_or_concat_expr()
 		}

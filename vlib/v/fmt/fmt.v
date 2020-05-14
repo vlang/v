@@ -970,18 +970,41 @@ fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			}
 			f.write('map[${mk}]${mv}')
 			f.write('{')
+			if it.has_len {
+				f.write('len: ')
+				f.expr(it.len_expr)
+			}
 			if it.has_cap {
 				f.write('cap: ')
 				f.expr(it.cap_expr)
+			}
+			if it.has_default {
+				f.write('init: ')
+				f.expr(it.default_expr)
 			}
 			f.write('}')
 			return
 		}
 		f.write(f.type_to_str(it.typ))
 		f.write('{')
+		// TODO copypasta
+		if it.has_len {
+			f.write('len: ')
+			f.expr(it.len_expr)
+			if it.has_cap || it.has_default {
+				f.write(', ')
+			}
+		}
 		if it.has_cap {
 			f.write('cap: ')
 			f.expr(it.cap_expr)
+			if it.has_default {
+				f.write(', ')
+			}
+		}
+		if it.has_default {
+			f.write('init: ')
+			f.expr(it.default_expr)
 		}
 		f.write('}')
 		return

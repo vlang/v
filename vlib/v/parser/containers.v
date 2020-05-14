@@ -72,8 +72,10 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	}
 	mut has_len := false
 	mut has_cap := false
+	mut has_default := false
 	mut len_expr := ast.Expr{}
 	mut cap_expr := ast.Expr{}
+	mut default_expr := ast.Expr{}
 	if p.tok.kind == .lcbr && exprs.len == 0 {
 		// `[]int{ len: 10, cap: 100}` syntax
 		p.next()
@@ -89,11 +91,12 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					has_cap = true
 					cap_expr = p.expr(0)
 				}
-				'default' {
-					p.expr(0)
+				'init' {
+					has_default = true
+					default_expr = p.expr(0)
 				}
 				else {
-					p.error('wrong field `$key`, expecting `len`, `cap`, or `default`')
+					p.error('wrong field `$key`, expecting `len`, `cap`, or `init`')
 				}
 			}
 			if p.tok.kind != .rcbr {
@@ -118,7 +121,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		has_len: has_len
 		len_expr: len_expr
 		has_cap: has_cap
+		has_default: has_default
 		cap_expr: cap_expr
+		default_expr: default_expr
 	}
 }
 

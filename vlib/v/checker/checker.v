@@ -255,6 +255,9 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		struct_init.typ = c.expected_type
 	}
 	type_sym := c.table.get_type_symbol(struct_init.typ)
+	if type_sym.kind == .interface_ {
+		c.error('cannot instantiate interface `$type_sym.name`', struct_init.pos)
+	}
 	if !type_sym.is_public && type_sym.kind != .placeholder && type_sym.mod != c.mod {
 		c.error('type `$type_sym.name` is private', struct_init.pos)
 	}
@@ -768,6 +771,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 		c.expected_type = table.string_type
 		call_expr.args[1].typ = c.expr(call_expr.args[1].expr)
+		if call_expr.args[1].typ != table.string_type {
+			c.error('json.decode: second argument needs to be a string', call_expr.pos)
+		}
 		typ := expr as ast.Type
 		return typ.typ.set_flag(.optional)
 	}
