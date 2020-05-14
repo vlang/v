@@ -47,6 +47,17 @@ fn test_assign_multireturn_expression() {
 	assert i == 1
 	assert j == 'good'
 
+	val1 := 1
+	val2 := 0
+	t, u, v := if true {
+		val1, 'awesome', [13]
+	} else {
+		val2, 'bad', [0]
+	}
+
+	assert t == val1
+	assert u == 'awesome'
+	assert v == [13]
 	k, l, m := if true {
 		1, 'awesome', [13]
 	} else {

@@ -8,19 +8,17 @@ import v.table
 import v.token
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
-    return p.assign_stmt_with_lhs([])
+	return p._assign_stmt([])
 }
 
-fn (mut p Parser) assign_stmt_with_lhs(lhs []ast.Ident) ast.Stmt {
-	is_static := p.tok.kind == .key_static
-	if is_static {
-		p.next()
-	}
+fn (mut p Parser) _assign_stmt(known_lhs []ast.Ident) ast.Stmt {
+	mut idents := known_lhs
 	mut op := p.tok.kind
-	mut idents := lhs
-	if lhs.len == 0 {
-		idents_, _ := p.parse_assign_lhs_or_conc_expr(true)
-		idents = idents_
+	for op !in [.decl_assign, .assign] {
+		idents << p.parse_assign_ident()
+		if p.tok.kind == .comma {
+			p.next()
+		}
 		op = p.tok.kind
 	}
 	p.next()
@@ -57,7 +55,7 @@ fn (mut p Parser) assign_stmt_with_lhs(lhs []ast.Ident) ast.Stmt {
 		right: exprs
 		op: op
 		pos: pos
-		is_static: is_static
+		is_static: false // individual idents may be static
 	}
 }
 
@@ -83,59 +81,9 @@ pub fn (mut p Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	return node
 }
 
-fn (mut p Parser) parse_assign_lhs_or_conc_expr(known_assign bool) ([]ast.Ident, []ast.Expr) {
-	mut idents := []ast.Ident{}
-	mut exprs := []ast.Expr{}
-	mut can_be_assign := true
-	mut can_be_conc_expr := !known_assign
-	for {
-		is_mut := p.tok.kind == .key_mut
-		if is_mut {
-			can_be_conc_expr = false
-			p.next()
-		}
-		is_static := p.tok.kind == .key_static
-		if is_static {
-			can_be_conc_expr = false
-			p.next()
-		}
-		if p.tok.kind == .name && can_be_assign {
-			mut ident := p.parse_ident(false, false)
-			ident.is_mut = is_mut
-			ident.info = ast.IdentVar{
-				is_mut: is_mut
-				is_static: is_static
-			}
-			idents << ident
-			if can_be_conc_expr {
-				exprs << ident
-			}
-		} else {
-			exprs << p.expr(0)
-			can_be_assign = false
-		}
-
-		if p.tok.kind == .comma {
-			p.next()
-		} else {
-			break
-		}
-	}
-	if p.tok.kind in [.assign, .decl_assign] {
-		can_be_conc_expr = false
-	} else {
-		can_be_assign = false
-	}
-	if !can_be_assign {
-		idents = []ast.Ident{}
-	}
-	if !can_be_conc_expr {
-		exprs = []ast.Expr{}
-	}
-	if !can_be_assign && !can_be_conc_expr {
-		p.error_with_pos('cannot differentiate assignment from concat-expression', p.peek_tok.position())
-	}
-	return idents, exprs
+fn (mut p Parser) parse_assign_ident() ast.Ident {
+	/// returns a single parsed ident
+	return p.parse_ident(false, false)
 }
 
 // right hand side of `=` or `:=` in `a,b,c := 1,2,3`

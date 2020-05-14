@@ -1861,10 +1861,16 @@ pub fn (mut c Checker) concat_expr(concat_expr mut ast.ConcatExpr) table.Type {
 	for expr in concat_expr.vals {
 		mr_types << c.expr(expr)
 	}
-	typ := c.table.find_or_register_multi_return(mr_types)
-	table.new_type(typ)
-	concat_expr.return_type = typ
-	return typ
+	if concat_expr.vals.len == 1 {
+		typ := mr_types[0]
+		concat_expr.return_type = typ
+		return typ
+	} else {
+		typ := c.table.find_or_register_multi_return(mr_types)
+		table.new_type(typ)
+		concat_expr.return_type = typ
+		return typ
+	}
 }
 
 pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {

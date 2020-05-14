@@ -1387,7 +1387,7 @@ fn (mut g Gen) enum_expr(node ast.Expr) {
 }
 
 fn (mut g Gen) assign_expr(node ast.AssignExpr) {
-	// g.write('/*assign_expr*/')
+	g.write('/*assign_expr*/')
 	mut is_call := false
 	mut or_stmts := []ast.Stmt{}
 	mut return_type := table.void_type
@@ -1476,7 +1476,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 		g.or_block(tmp_opt, or_stmts, return_type)
 		unwrapped_type_str := g.typ(return_type.set_flag(.unset))
 		ident := node.left as ast.Ident
-		if ident.info is ast.IdentVar {
+		if ident.kind != .blank_ident && ident.info is ast.IdentVar {
 			ident_var := ident.info as ast.IdentVar
 			if ident_var.is_optional {
 				// var is already an optional, just copy the value
@@ -1801,15 +1801,22 @@ fn (mut g Gen) ident(node ast.Ident) {
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 	styp := g.typ(node.return_type)
-	g.write('($styp){')
-	for i, expr in node.vals {
-		g.write('.arg$i=')
-		g.expr(expr)
-		if i < node.vals.len - 1 {
-			g.write(',')
+	sym := g.table.get_type_symbol(node.return_type)
+	is_multi := sym.kind == .multi_return
+
+	if !is_multi {
+		g.expr(node.vals[0])
+	} else {
+		g.write('($styp){')
+		for i, expr in node.vals {
+			g.write('.arg$i=')
+			g.expr(expr)
+			if i < node.vals.len - 1 {
+				g.write(',')
+			}
 		}
+		g.write('}')
 	}
-	g.write('}')
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {

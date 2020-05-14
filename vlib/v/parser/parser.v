@@ -426,9 +426,11 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			return p.for_stmt()
 		}
 		.name {
-			if p.peek_tok.kind in [.decl_assign, .comma] {
+			if p.peek_tok.kind == .decl_assign {
 				// `x := ...`
 				return p.assign_stmt()
+			} else if p.peek_tok.kind == .comma {
+				return p.parse_comma_separated()
 			} else if p.peek_tok.kind == .colon {
 				// `label:`
 				name := p.check_name()
@@ -503,12 +505,27 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				name: name
 			}
 		}
-		else {
-			if p.tok.kind == .key_const {
-				p.error_with_pos('const can only be defined at the top level (outside of functions)', p.tok.position())
+		.string, .number, .chartoken {
+			// here if a literal value was encountered
+			if p.peek_tok.kind == .comma {
+				return p.parse_comma_separated()
 			}
-			// from now on can be multi-assignment or concat-expression
-			return p.parse_multi_assign_or_concat_expr()
+			epos := p.tok.position()
+			return ast.ExprStmt{
+				expr: p.expr(0)
+				pos: epos
+			}
+		}
+		.key_const {
+			p.error_with_pos('const can only be defined at the top level (outside of functions)', p.tok.position())
+		}
+		else {
+			epos := p.tok.position()
+			return ast.ExprStmt{
+				expr: p.expr(0)
+				pos: epos
+			}
+
 		}
 	}
 }
@@ -621,14 +638,36 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	}
 }
 
-fn (mut p Parser) parse_multi_assign_or_concat_expr() ast.Stmt {
-	idents, exprs := p.parse_assign_lhs_or_conc_expr(false)
-	if idents.len > 0 {
-		return p.assign_stmt_with_lhs(idents)
+fn (mut p Parser) parse_comma_separated() ast.Stmt {
+	// in here might be 1) multi-expr 2) multi-assign
+	// 1, a, c ... }       // multi-expression
+	// a, mut b ... :=/=   // multi-assign
+	// collect things upto hard boundaries
+	// fank
+	mut collected := []ast.Expr{}
+	mut op := p.tok.kind
+	for op !in [.rcbr, .decl_assign, .assign] {
+		if op == .name {
+			collected << p.name_expr()
+		} else {
+			collected << p.expr(0)
+		}
+		if p.tok.kind == .comma {
+			p.next()
+		}
+		op = p.tok.kind
+	}
+	is_assignment := p.tok.kind in [.decl_assign, .assign]
+	if is_assignment {
+		mut idents := []ast.Ident{}
+		for c in collected {
+			idents << c as ast.Ident
+		}
+		return p._assign_stmt(idents)
 	} else {
 		return ast.ExprStmt{
 			expr: ast.ConcatExpr {
-				vals: exprs
+				vals: collected
 			}
 			pos: p.tok.position()
 		}
@@ -637,25 +676,47 @@ fn (mut p Parser) parse_multi_assign_or_concat_expr() ast.Stmt {
 
 pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
 	// p.warn('name ')
-	pos := p.tok.position()
-	mut name := p.check_name()
-	if name == '_' {
-		return ast.Ident{
-			name: '_'
-			kind: .blank_ident
+	is_mut := p.tok.kind == .key_mut
+	if is_mut {
+		p.next()
+	}
+	is_static := p.tok.kind == .key_static
+	if is_static {
+		p.next()
+	}
+	if p.tok.kind == .name {
+		pos := p.tok.position()
+		mut name := p.check_name()
+		if name == '_' {
+			return ast.Ident{
+				name: '_'
+				kind: .blank_ident
+				pos: pos
+				info: ast.IdentVar {
+					is_mut: false
+					is_static: false
+				}
+			}
+		}
+		if p.expr_mod.len > 0 {
+			name = '${p.expr_mod}.$name'
+		}
+		mut ident := ast.Ident{
+			kind: .unresolved
+			name: name
+			is_c: is_c
+			is_js: is_js
+			mod: p.mod
 			pos: pos
 		}
-	}
-	if p.expr_mod.len > 0 {
-		name = '${p.expr_mod}.$name'
-	}
-	return ast.Ident{
-		kind: .unresolved
-		name: name
-		is_c: is_c
-		is_js: is_js
-		mod: p.mod
-		pos: pos
+		ident.is_mut = is_mut
+		ident.info = ast.IdentVar{
+			is_mut: is_mut
+			is_static: is_static
+		}
+		return ident
+	} else {
+		p.error('unexpected token `$p.tok.lit`')
 	}
 }
 
