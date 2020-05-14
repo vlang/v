@@ -468,7 +468,7 @@ pub fn (mut g Gen) writeln(s string) {
 
 pub fn (mut g Gen) new_tmp_var() string {
 	g.tmp_count++
-	return 'tmp$g.tmp_count'
+	return '_t$g.tmp_count'
 }
 
 pub fn (mut g Gen) reset_tmp_count() {
