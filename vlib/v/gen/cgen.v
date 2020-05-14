@@ -715,7 +715,7 @@ fn (mut g Gen) write_defer_stmts() {
 fn (mut g Gen) for_in(it ast.ForInStmt) {
 	if it.is_range {
 		// `for x in 1..10 {`
-		i := if it.val_var != '_' { c_name(it.val_var) } else { g.new_tmp_var() }
+		i := if it.val_var == '_' { g.new_tmp_var() } else { c_name(it.val_var) }
 		g.write('for (int $i = ')
 		g.expr(it.cond)
 		g.write('; $i < ')
