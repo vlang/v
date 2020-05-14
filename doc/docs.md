@@ -377,7 +377,7 @@ names = [] // The array is now empty
 users := []User{}
 
 // We can also preallocate a certain amount of elements.
-ids := []int{ len: 50, default: 0 } // This creates an array with 50 zeros
+ids := []int{ len: 50, init: 0 } // This creates an array with 50 zeros
 ```
 
 The type of an array is determined by the first element: `[1, 2, 3]` is an array of ints (`[]int`).
