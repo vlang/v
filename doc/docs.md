@@ -1003,6 +1003,11 @@ interface Speaker {
 }
 
 fn perform(s Speaker) string {
+    if s is Dog { // use `is` to check the underlying type of an interface
+        println('perform(dog)')
+    } else if s is Cat {
+        println('perform(cat)')
+    }
     return s.speak()
 }
 
@@ -1042,7 +1047,7 @@ struct CallExpr {
 	...
 }
 
-fn (p mut Parser) expr(precedence int) ast.Expr {
+fn (p mut Parser) expr(precedence int) Expr {
 	match p.tok {
 		.key_if { return IfExpr{} }
 		...
@@ -1052,7 +1057,7 @@ fn (p mut Parser) expr(precedence int) ast.Expr {
 
 fn gen(expr Expr) {
 	match expr {
-		.key_if { gen_if(it) }
+		IfExpr { gen_if(it) }
 		...
 	}
 }
