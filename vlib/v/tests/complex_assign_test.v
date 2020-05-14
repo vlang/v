@@ -76,17 +76,16 @@ fn test_assign_multireturn_expression() {
 	assert o == 'bad'
 	assert p == [0]
 
-	var1 := 17
-	mut var2 := 'awe'
+	mut var1 := 17
+	var2 := 'awesome'
 	q, r, s := if true {
 		// if-expr can not contain var-decl
-		var2 += 'some'
+		var1 += 1
 		var1, var2, [13]
 	} else {
 		0, 'bad', [0]
 	}
-	println('probing value before assert >${r}<>$var2<')
-	assert q == 17
+	assert q == 18
 	assert r == 'awesome'
 	assert s == [13]
 }
