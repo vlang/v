@@ -61,9 +61,8 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 		// `foo()?`
 		p.next()
 		is_or_block_used = true
-		//mut s := ast.Stmt{}
-		//s = ast.ReturnStmt{}
-
+		// mut s := ast.Stmt{}
+		// s = ast.ReturnStmt{}
 		or_stmts << ast.Return{}
 	}
 	node := ast.CallExpr{

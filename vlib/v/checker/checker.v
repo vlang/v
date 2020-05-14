@@ -935,6 +935,9 @@ pub fn (mut c Checker) check_expr_opt_call(x ast.Expr, xtype table.Type, is_retu
 		ast.CallExpr {
 			if it.return_type.flag_is(.optional) {
 				c.check_or_block(it, xtype, is_return_used)
+			} else if it.or_block.is_used {
+				c.error('unexpected `or` block, the function does not return an optional',
+					it.pos)
 			}
 		}
 		else {}

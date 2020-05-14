@@ -7,7 +7,6 @@ import os
 import time
 import v.cflag
 import v.pref
-import v.util
 import term
 
 const (
