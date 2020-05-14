@@ -143,6 +143,9 @@ fn parse_args(args []string) (&pref.Preferences, string) {
 			'-shared' {
 				res.is_shared = true
 			}
+			'--enable-globals' {
+				res.enable_globals = true
+			}
 			'-autofree' {
 				res.autofree = true
 			}

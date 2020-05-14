@@ -1,0 +1,12 @@
+
+__global rfcnt int
+
+fn abc(){
+	rfcnt = 2
+}
+
+fn main(){
+	rfcnt = 1
+	abc()
+	println('rfcnt: $rfcnt')
+}
