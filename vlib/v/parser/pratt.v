@@ -76,14 +76,15 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.key_sizeof {
 			p.next() // sizeof
 			p.check(.lpar)
+			sizeof_type := p.parse_type()
 			if p.tok.lit == 'C' {
 				p.next()
 				p.check(.dot)
 				node = ast.SizeOf{
 					type_name: p.check_name()
+					typ: sizeof_type
 				}
 			} else {
-				sizeof_type := p.parse_type()
 				node = ast.SizeOf{
 					typ: sizeof_type
 				}

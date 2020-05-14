@@ -1264,6 +1264,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 			mut styp := it.type_name
 			if it.type_name == '' {
 				styp = g.typ(it.typ)
+            } else {
+			    sym := g.table.get_type_symbol(it.typ)
+			    if sym.kind == .struct_ {
+			        info := sym.info as table.Struct
+			        if !info.is_typedef {
+			           styp = 'struct ' + styp
+			        }
+			    }
 			}
 			/*
 			if styp.starts_with('C__') {
