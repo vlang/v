@@ -18,6 +18,14 @@ fn test_for_char_in_range() {
 	assert sum == 6
 }
 
+fn test_for_blank_in_range() {
+	mut sum := 0
+	for _ in 1 .. 3 {
+		sum++
+	}
+	assert sum == 2
+}
+
 fn test_for_char_complex() {
 	mut sum := 0
 	for char := 0; char < nums.len; char++ {
