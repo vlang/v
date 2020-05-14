@@ -1,5 +1,0 @@
-vlib/v/checker/tests/variable_name.v:2:2: error: unused variable: `_abc`
-    1 | fn main() {
-    2 |     _abc := 1
-      |     ~~~~
-    3 | }
