@@ -333,6 +333,10 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 
 pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	// println('checker: infix expr(op $infix_expr.op.str())')
+	former_expected_type := c.expected_type
+	defer {
+		c.expected_type = former_expected_type
+	}
 	c.expected_type = table.void_type
 	left_type := c.expr(infix_expr.left)
 	infix_expr.left_type = left_type
@@ -1977,64 +1981,56 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 }
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
+	mut expr_required := false
 	if c.expected_type != table.void_type {
 		// | c.assigned_var_name != '' {
 		// sym := c.table.get_type_symbol(c.expected_type)
 		// println('$c.file.path  $node.pos.line_nr IF is expr: checker exp type = ' + sym.name)
-		node.is_expr = true
+		expr_required = true
 	}
+	former_expected_type := c.expected_type
 	node.typ = table.void_type
-	mut first_typ := 0
-	is_ternary := node.is_expr && node.branches.len >= 2 && node.has_else
 	for i, branch in node.branches {
 		if branch.cond is ast.ParExpr {
 			c.error('unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.',
 				branch.pos)
 		}
-		typ := c.expr(branch.cond)
-		if i < node.branches.len - 1 || !node.has_else {
-			typ_sym := c.table.get_type_symbol(typ)
-			// if typ_sym.kind != .bool {
-			if typ.idx() != table.bool_type_idx {
-				c.error('non-bool (`$typ_sym.name`) used as if condition', node.pos)
-			}
-		}
-		if is_ternary && i < node.branches.len - 1 && branch.stmts.len > 0 {
-			last_stmt := branch.stmts[branch.stmts.len - 1]
-			if last_stmt is ast.ExprStmt {
-				last_expr := last_stmt as ast.ExprStmt
-				first_typ = c.expr(last_expr.expr)
+		if !node.has_else || i < node.branches.len - 1 {
+			// check condition type is boolean
+			cond_typ := c.expr(branch.cond)
+			if cond_typ.idx() != table.bool_type_idx {
+				typ_sym := c.table.get_type_symbol(cond_typ)
+				c.error('non-bool type `$typ_sym.name` used as if condition', branch.pos)
 			}
 		}
 		c.stmts(branch.stmts)
-	}
-	if node.has_else && node.is_expr {
-		last_branch := node.branches[node.branches.len - 1]
-		if last_branch.stmts.len > 0 && node.branches[0].stmts.len > 0 {
-			match last_branch.stmts[last_branch.stmts.len - 1] {
-				ast.ExprStmt {
-					// type_sym := p.table.get_type_symbol(it.typ)
-					// p.warn('if expr ret $type_sym.name')
-					t := c.expr(it.expr)
-					if is_ternary && t != first_typ {
-						c.error('mismatched types `${c.table.type_to_str(first_typ)}` and `${c.table.type_to_str(t)}`',
+		if expr_required {
+			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
+				last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
+				c.expected_type = former_expected_type
+				expr_type := c.expr(last_expr.expr)
+				if expr_type != node.typ {
+					// first branch of if expression
+					if node.typ == table.void_type {
+						node.is_expr = true
+						node.typ = expr_type
+					} else {
+						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(expr_type)}`',
 							node.pos)
 					}
-					node.typ = t
-					return t
 				}
-				else {}
+			} else {
+				c.error('`if` expression requires an expression as the last statement of every branch',
+					branch.pos)
 			}
-		} else {
-			c.error('`if` expression needs returns in both branches', node.pos)
 		}
 	}
-	// won't yet work due to eg: if true { println('foo') }
-	/*
-	if node.is_expr && !node.has_else {
-		c.error('`if` expression needs `else` clause. remove return values or add `else`', node.pos)
+	if expr_required {
+		if !node.has_else {
+			c.error('`if` expression needs `else` clause', node.pos)
+		}
+		return node.typ
 	}
-	*/
 	return table.bool_type
 }
 

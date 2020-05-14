@@ -408,7 +408,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.gen_json_for_type(node.args[0].typ)
 			json_type_str = g.table.get_type_symbol(node.args[0].typ).name
 		} else {
-			g.insert_before('// json.decode')
+			g.insert_before_stmt('// json.decode')
 			ast_type := node.args[0].expr as ast.Type
 			// `json.decode(User, s)` => json.decode_User(s)
 			sym := g.table.get_type_symbol(ast_type.typ)
@@ -512,7 +512,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		g.call_args(node.args, node.expected_arg_types)
 		g.write(')')
 	} else {
-		g.write('${name}(')
+		g.write('${g.get_ternary_name(name)}(')
 		if is_json_decode {
 			g.write('json__json_parse(')
 			// Skip the first argument in json.decode which is a type
