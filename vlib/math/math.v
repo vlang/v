@@ -68,6 +68,13 @@ pub fn digits(_n, base int) []int {
 	return res
 }
 
+pub fn fabs(x f64) f64 {
+	if x < 0.0 {
+		return -x
+	}
+	return x
+}
+
 // gcd calculates greatest common (positive) divisor (or zero if a and b are both zero).
 pub fn gcd(a_, b_ i64) i64 {
 	mut a := a_
