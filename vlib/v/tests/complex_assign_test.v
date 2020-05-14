@@ -1,3 +1,7 @@
+struct Object {
+	name string
+	value int
+}
 
 fn multireturner(n int, s string) (int, string) {
 	return n + 1, s
@@ -68,13 +72,11 @@ fn test_assign_multireturn_expression() {
 	mut var1 := 17
 	var2 := 'awesome'
 	q, r, s := if true {
-		// if-expr can not contain var-decl
-		var1 = 11
-		var1, var2, [13]
+		1 + var1, var2, [13]
 	} else {
 		0, 'bad', [0]
 	}
-	assert q == 11
+	assert q == 18
 	assert r == 'awesome'
 	assert s == [13]
 
@@ -85,4 +87,19 @@ fn test_assign_multireturn_expression() {
 	} else {
 		val2, 'bad', [0]
 	}
+	assert t == val1
+	assert u == 'awesome'
+	assert v == [13]
+
+	val3 := Object { name: 'foo', value: 19 }
+	x, y, z := if true {
+		1 + 1, 'awe' + 'some', { val3 | name: 'bar' }
+	} else {
+		0, '0', Object {}
+	}
+	assert x == 2
+	assert y == 'awesome'
+	assert z.name == 'bar'
+	assert z.value == 19
+
 }

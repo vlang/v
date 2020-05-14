@@ -430,6 +430,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				// `x := ...`
 				return p.assign_stmt()
 			} else if p.peek_tok.kind == .comma {
+				// `a, b ...`
 				return p.parse_comma_separated()
 			} else if p.peek_tok.kind == .colon {
 				// `label:`
@@ -505,27 +506,11 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				name: name
 			}
 		}
-		.string, .number, .chartoken {
-			// here if a literal value was encountered
-			if p.peek_tok.kind == .comma {
-				return p.parse_comma_separated()
-			}
-			epos := p.tok.position()
-			return ast.ExprStmt{
-				expr: p.expr(0)
-				pos: epos
-			}
-		}
 		.key_const {
 			p.error_with_pos('const can only be defined at the top level (outside of functions)', p.tok.position())
 		}
 		else {
-			epos := p.tok.position()
-			return ast.ExprStmt{
-				expr: p.expr(0)
-				pos: epos
-			}
-
+			return p.parse_comma_separated()
 		}
 	}
 }
@@ -643,7 +628,6 @@ fn (mut p Parser) parse_comma_separated() ast.Stmt {
 	// 1, a, c ... }       // multi-expression
 	// a, mut b ... :=/=   // multi-assign
 	// collect things upto hard boundaries
-	// fank
 	mut collected := []ast.Expr{}
 	mut op := p.tok.kind
 	for op !in [.rcbr, .decl_assign, .assign] {
@@ -654,6 +638,8 @@ fn (mut p Parser) parse_comma_separated() ast.Stmt {
 		}
 		if p.tok.kind == .comma {
 			p.next()
+		} else {
+			break
 		}
 		op = p.tok.kind
 	}
@@ -665,6 +651,13 @@ fn (mut p Parser) parse_comma_separated() ast.Stmt {
 		}
 		return p._assign_stmt(idents)
 	} else {
+		if collected.len == 1 {
+			epos := p.tok.position()
+			return ast.ExprStmt{
+				expr: collected[0]
+				pos: epos
+			}
+		}
 		return ast.ExprStmt{
 			expr: ast.ConcatExpr {
 				vals: collected
