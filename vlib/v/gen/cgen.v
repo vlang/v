@@ -1387,7 +1387,7 @@ fn (mut g Gen) enum_expr(node ast.Expr) {
 }
 
 fn (mut g Gen) assign_expr(node ast.AssignExpr) {
-	g.write('/*assign_expr*/')
+	// g.write('/*assign_expr*/')
 	mut is_call := false
 	mut or_stmts := []ast.Stmt{}
 	mut return_type := table.void_type
