@@ -1,1 +1,2 @@
-`vlib/v/checker/tests/import_unused_warning.v` warning: the following imports were never used: time
+`vlib/v/checker/tests/import_unused_warning.v` warning: the following imports were never used:
+ * time

@@ -33,7 +33,7 @@ fn (p mut Parser) check_unused_imports() {
 	for alias, mod in p.imports {
 		if !p.is_used_import(alias) {
 			mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
-			output += '$mod_alias '
+			output += '\n * $mod_alias'
 		}
 	}
 	if output == '' {
