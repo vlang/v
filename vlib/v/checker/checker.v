@@ -175,15 +175,41 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 	return has_main_fn
 }
 
+fn (mut c Checker) check_valid_snake_case(name, identifier string, pos token.Position) {
+	if name[0] == `_` {
+		c.error('$identifier `$name` cannot start with `_`', pos)
+	}
+	if util.contains_capital(name) {
+		c.error('$identifier `$name` cannot contain uppercase letters, use snake_case instead', pos)
+	}
+}
+
+fn stripped_name(name string) string {
+	idx := name.last_index('.') or { -1 }
+	return name[(idx + 1)..]
+}
+
+fn (mut c Checker) check_valid_pascal_case(name, identifier string, pos token.Position) {
+	stripped_name := stripped_name(name)
+	if !stripped_name[0].is_capital() {
+		c.error('$identifier `$name` must begin with capital letter', pos)
+	}
+}
+
 pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 	match node {
 		ast.AliasTypeDecl {
+			// TODO Replace `c.file.mod.name != 'time'` by `it.is_c` once available
+			if c.file.mod.name != 'time' {
+				c.check_valid_pascal_case(it.name, 'type alias', it.pos)
+			}
 			typ_sym := c.table.get_type_symbol(it.parent_type)
 			if typ_sym.kind == .placeholder {
 				c.error("type `$typ_sym.name` doesn't exist", it.pos)
 			}
 		}
 		ast.FnTypeDecl {
+			c.check_valid_pascal_case(it.name, 'fn type', it.pos)
 			typ_sym := c.table.get_type_symbol(it.typ)
 			fn_typ_info := typ_sym.info as table.FnType
 			fn_info := fn_typ_info.func
@@ -199,6 +225,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 			}
 		}
 		ast.SumTypeDecl {
+			c.check_valid_pascal_case(it.name, 'sum type', it.pos)
 			for typ in it.sub_types {
 				typ_sym := c.table.get_type_symbol(typ)
 				if typ_sym.kind == .placeholder {
@@ -209,8 +236,21 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 	}
 }
 
+pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
+	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
+	for method in decl.methods {
+		c.check_valid_snake_case(method.name, 'method name', method.pos)
+	}
+}
+
 pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
+	if !decl.is_c && !c.is_builtin_mod {
+		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
+	}
 	for i, field in decl.fields {
+		if !decl.is_c {
+			c.check_valid_snake_case(field.name, 'field name', field.pos)
+		}
 		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
 				c.error('field name `$field.name` duplicate', field.pos)
@@ -1090,7 +1130,11 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 }
 
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
+	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
 	for i, field in decl.fields {
+		if util.contains_capital(field.name) {
+			c.error('field name `$field.name` cannot contain uppercase letters, use snake_case instead', field.pos)
+		}
 		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
 				c.error('field name `$field.name` duplicate', field.pos)
@@ -1161,13 +1205,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		val_type := assign_stmt.right_types[i]
 		// check variable name for beginning with capital letter 'Abc'
 		is_decl := assign_stmt.op == .decl_assign
-		if is_decl && util.contains_capital(ident.name) {
-			c.error('variable names cannot contain uppercase letters, use snake_case instead',
-				ident.pos)
-		} else if is_decl && ident.kind != .blank_ident {
-			if ident.name.starts_with('__') {
-				c.error('variable names cannot start with `__`', ident.pos)
-			}
+		if is_decl && ident.name != '_' {
+			c.check_valid_snake_case(ident.name, 'variable name', ident.pos)
 		}
 		if assign_stmt.op == .decl_assign {
 			c.var_decl_name = ident.name
@@ -1381,6 +1420,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			mut field_names := []string{}
 			mut field_order := []int{}
 			for i, field in it.fields {
+				// TODO Check const name once the syntax is decided
 				if field.name in c.const_names {
 					c.error('field name `$field.name` duplicate', field.pos)
 				}
@@ -1429,6 +1469,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.check_expr_opt_call(it.expr, etype, false)
 		}
 		ast.FnDecl {
+			if !it.is_c && !c.is_builtin_mod {
+				c.check_valid_snake_case(it.name, 'function name', it.pos)
+			}
 			if it.is_method {
 				sym := c.table.get_type_symbol(it.receiver.typ)
 				if sym.kind == .interface_ {
@@ -1519,7 +1562,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.stmts(it.stmts)
 			c.in_for_count--
 		}
-		// ast.GlobalDecl {}
+		ast.GlobalDecl {
+			c.check_valid_snake_case(it.name, 'global name', it.pos)
+		}
 		ast.GoStmt {
 			if !(it.call_expr is ast.CallExpr) {
 				c.error('expression in `go` must be a function call', it.call_expr.position())
@@ -1529,19 +1574,12 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		// ast.HashStmt {}
 		ast.Import {}
 		ast.InterfaceDecl {
-			name := it.name.after('.')
-			if !name[0].is_capital() {
-				pos := token.Position{
-					line_nr: it.pos.line_nr
-					pos: it.pos.pos + 'interface'.len
-					len: name.len
-				}
-				c.error('interface name must begin with capital letter', pos)
-			}
+			c.interface_decl(it)
 		}
 		ast.Module {
 			c.mod = it.name
 			c.is_builtin_mod = it.name == 'builtin'
+			c.check_valid_snake_case(it.name, 'module name', it.pos)
 		}
 		ast.Return {
 			c.returns = true
