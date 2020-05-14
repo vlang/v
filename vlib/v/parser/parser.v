@@ -649,7 +649,7 @@ fn (mut p Parser) parse_comma_separated() ast.Stmt {
 		for c in collected {
 			idents << c as ast.Ident
 		}
-		return p._assign_stmt(idents)
+		return p.partial_assign_stmt(idents)
 	} else {
 		if collected.len == 1 {
 			epos := p.tok.position()

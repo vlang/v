@@ -8,12 +8,13 @@ import v.table
 import v.token
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
-	return p._assign_stmt([])
+	return p.partial_assign_stmt([])
 }
 
-fn (mut p Parser) _assign_stmt(known_lhs []ast.Ident) ast.Stmt {
+fn (mut p Parser) partial_assign_stmt(known_lhs []ast.Ident) ast.Stmt {
 	mut idents := known_lhs
 	mut op := p.tok.kind
+	// read (more) idents until assignment sign
 	for op !in [.decl_assign, .assign] {
 		idents << p.parse_assign_ident()
 		if p.tok.kind == .comma {
