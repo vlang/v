@@ -1,0 +1,3 @@
+const (
+	_my_const = 0
+)
