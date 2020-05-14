@@ -325,7 +325,7 @@ fn (g &Gen) base_type(t table.Type) string {
 
 fn (mut g Gen) register_optional(t table.Type, styp string) {
 	// g.typedefs2.writeln('typedef Option $x;')
-	no_ptr := styp.replace('*','_ptr')
+	no_ptr := styp.replace('*', '_ptr')
 	g.hotcode_definitions.writeln('typedef struct {
 		$styp  data;
 		string error;
@@ -3260,7 +3260,12 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 	} else {
 		g.write('.')
 	}
-	g.write('typ == ')
+	sym := g.table.get_type_symbol(node.left_type)
+	if sym.kind == .interface_ {
+		g.write('_interface_idx == ')
+	} else if sym.kind == .sum_type {
+		g.write('typ == ')
+	}
 	g.expr(node.right)
 }
 
