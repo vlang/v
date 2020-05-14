@@ -33,11 +33,11 @@ fn (p mut Parser) check_unused_imports() {
 	for alias, mod in p.imports {
 		if !p.is_used_import(alias) {
 			mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
-			output += '\n * $mod_alias'
+			output += '$mod_alias '
 		}
 	}
 	if output == '' {
 		return
 	}
-	p.warn('the following imports were never used: $output')
+	eprintln('`$p.file_name` warning: the following imports were never used: $output')
 }

@@ -1,3 +1,1 @@
-vlib/v/checker/tests/import_unused_warning.v:6:1: warning: the following imports were never used:
- * time
-    4 | }
+`vlib/v/checker/tests/import_unused_warning.v` warning: the following imports were never used: time
