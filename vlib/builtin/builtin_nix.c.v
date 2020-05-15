@@ -64,8 +64,8 @@ fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	$if macos {
 		buffer := [100]byteptr
-		nr_ptrs := backtrace(buffer, 100)
-		backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
+		nr_ptrs := C.backtrace(buffer, 100)
+		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
 	}
 	return true
 }
@@ -73,65 +73,65 @@ fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
 	$if freebsd {
 		buffer := [100]byteptr
-		nr_ptrs := backtrace(buffer, 100)
-		backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
+		nr_ptrs := C.backtrace(buffer, 100)
+		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
 	}
 	return true
 }
 
 fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
-	$if tinyc {
-		println('TODO: print_backtrace_skipping_top_frames_linux $skipframes with tcc fails tests with "stack smashing detected" .')
+	$if android {
+		eprintln('On Android no backtrace is available.')
 		return false
 	}
-	$if !android {
-		// backtrace is not available on Android.
-		$if glibc {
-			buffer := [100]byteptr
-			nr_ptrs := backtrace(buffer, 100)
-			nr_actual_frames := nr_ptrs - skipframes
-			mut sframes := []string{}
-			//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
-			csymbols := backtrace_symbols(&buffer[skipframes], nr_actual_frames)
-			for i in 0 .. nr_actual_frames {
-				sframes << tos2( byteptr( voidptr(csymbols[i]) ) )
-			}
-			for sframe in sframes {
-				executable := sframe.all_before('(')
-				addr := sframe.all_after('[').all_before(']')
-				beforeaddr := sframe.all_before('[')
-				cmd := 'addr2line -e $executable $addr'
-				// taken from os, to avoid depending on the os module inside builtin.v
-				f := C.popen(cmd.str, 'r')
-				if isnil(f) {
-					eprintln(sframe)
-					continue
-				}
-				buf := [1000]byte
-				mut output := ''
-				for C.fgets(charptr(buf), 1000, f) != 0 {
-					output += tos(buf, vstrlen(buf))
-				}
-				output = output.trim_space() + ':'
-				if C.pclose(f) != 0 {
-					eprintln(sframe)
-					continue
-				}
-				if output in ['??:0:', '??:?:'] {
-					output = ''
-				}
-				// See http://wiki.dwarfstd.org/index.php?title=Path_Discriminators
-				// NB: it is shortened here to just d. , just so that it fits, and so
-				// that the common error file:lineno: line format is enforced.
-				output = output.replace(' (discriminator', ': (d.')
-				eprintln('${output:-46s} | ${addr:14s} | $beforeaddr')
-			}
-			// backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
-			return true
-		} $else {
-			eprintln('backtrace_symbols_fd is missing, so printing backtraces is not available.\n')
-			eprintln('Some libc implementations like musl simply do not provide it.')
-		}
+	$if !glibc {
+		eprintln('backtrace_symbols is missing => printing backtraces is not available.')
+		eprintln('Some libc implementations like musl simply do not provide it.')
+		return false
 	}
-	return false
+	$if tinyc {
+		eprintln('TODO: print_backtrace_skipping_top_frames_linux $skipframes')
+		eprintln('with tcc fails tests with "stack smashing detected" .')
+		return false
+	}
+	buffer := [100]byteptr
+	nr_ptrs := C.backtrace(buffer, 100)
+	nr_actual_frames := nr_ptrs - skipframes
+	mut sframes := []string{}
+	//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
+	csymbols := C.backtrace_symbols(&buffer[skipframes], nr_actual_frames)
+	for i in 0 .. nr_actual_frames {
+		sframes << tos2( byteptr(csymbols[i]) )
+	}
+	for sframe in sframes {
+		executable := sframe.all_before('(')
+		addr := sframe.all_after('[').all_before(']')
+		beforeaddr := sframe.all_before('[')
+		cmd := 'addr2line -e $executable $addr'
+		// taken from os, to avoid depending on the os module inside builtin.v
+		f := C.popen(cmd.str, 'r')
+		if isnil(f) {
+			eprintln(sframe)
+			continue
+		}
+		buf := [1000]byte
+		mut output := ''
+		for C.fgets(charptr(buf), 1000, f) != 0 {
+			output += tos(buf, vstrlen(buf))
+		}
+		output = output.trim_space() + ':'
+		if C.pclose(f) != 0 {
+			eprintln(sframe)
+			continue
+		}
+		if output in ['??:0:', '??:?:'] {
+			output = ''
+		}
+		// See http://wiki.dwarfstd.org/index.php?title=Path_Discriminators
+		// NB: it is shortened here to just d. , just so that it fits, and so
+		// that the common error file:lineno: line format is enforced.
+		output = output.replace(' (discriminator', ': (d.')
+		eprintln('${output:-46s} | ${addr:14s} | $beforeaddr')
+	}
+	return true
 }
