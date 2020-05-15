@@ -283,8 +283,7 @@ jobs:
     - name: Build V
       run: make -j4
     - name: Running tests with g++
-      run: |
-        ./v -cc g++ test-fixed
+      run: ./v -cc g++ test-fixed
 #    - name: V self compilation with g++
 #      run: ./v -cc g++ -o v2 cmd/v && ./v2 -cc g++ -o v3 cmd/v
 
