@@ -613,7 +613,7 @@ fn (g mut JsGen) gen_const_decl(it ast.ConstDecl) {
 		g.constants.write('\t')
 		g.constants.writeln(g.doc.gen_typ(typ, field.name))
 		g.constants.write('\t')
-		g.constants.write('$field.name: $val')
+		g.constants.write('${js_name(field.name)}: $val')
 		if i < it.fields.len - 1 {
 			g.constants.writeln(',')
 		}

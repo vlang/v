@@ -1,6 +1,7 @@
 
 const (
     i_am_a_const = 21214
+    super = 'amazing keyword'
 )
 
 struct Companies {
