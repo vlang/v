@@ -308,9 +308,9 @@ fn (d Doc) lookup_module(mod string) ?string {
 }
 
 fn main() {
-	args := os.args[1..]
-
-	if os.args.len == 1 || args[0] == 'help' {
+	args := os.args[2..]
+	
+	if args.len == 0 || args[0] == 'help' {
 		os.system('v help doc')
 		exit(0)
 	}
@@ -337,7 +337,6 @@ fn main() {
 	if is_path {
 		doc.generate_from_file(opath)
 	} else {
-		println('looking up')
 		mod_path := doc.lookup_module(src_path) or {
 			eprintln(err)
 			exit(1)
