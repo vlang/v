@@ -12,7 +12,7 @@ module stbi
 #flag @VROOT/thirdparty/stb_image/stbi.o
 
 pub struct Image {
-mut:
+pub mut:
 	width       int
 	height      int
 	nr_channels int
