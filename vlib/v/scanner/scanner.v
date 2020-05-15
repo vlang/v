@@ -96,6 +96,53 @@ fn (s mut Scanner) ident_name() string {
 	return name
 }
 
+// ident_fn_name look ahead and return name of function if possible, otherwise empty string
+fn (s mut Scanner) ident_fn_name() string {
+	start := s.pos
+	s.pos++
+	// Search for function scope start
+	for s.pos < s.text.len && s.text[s.pos] != `{` {
+		s.pos++
+	}
+	if s.pos >= s.text.len {
+		s.pos = start
+		return ""
+	}
+	// Search backwards for "first" occurrence of function open paranthesis
+	for s.pos > start && s.text[s.pos] != `(` {
+		s.pos--
+	}
+	if s.pos < start {
+		s.pos = start
+		return ""
+	}
+	// Search backwards for end position of function name
+	for s.pos > start && !util.is_func_char(s.text[s.pos]) {
+		s.pos--
+	}
+	end_pos := s.pos + 1
+	if s.pos < start {
+		s.pos = start
+		return ""
+	}
+	// Search for the start position
+	for s.pos > start && util.is_func_char(s.text[s.pos]) {
+		s.pos--
+	}
+	start_pos := s.pos + 1
+	if s.pos < start || s.pos >= s.text.len  {
+		s.pos = start
+		return ""
+	}
+	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos || end_pos <= start || start_pos <= start {
+		s.pos = start
+		return ""
+	}
+	fn_name := s.text[start_pos..end_pos]
+	s.pos = start
+	return fn_name
+}
+
 fn filter_num_sep(txt byteptr, start int, end int) string {
 	unsafe{
 		mut b := malloc(end - start + 1) // add a byte for the endstring 0
@@ -392,7 +439,11 @@ pub fn (s mut Scanner) scan() token.Token {
 		// Check if not .eof to prevent panic
 		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
 		if token.is_key(name) {
-			return s.new_token(token.key_to_token(name), name, name.len)
+			kind := token.key_to_token(name)
+			if kind == .key_fn {
+				s.fn_name = s.ident_fn_name()
+			}
+			return s.new_token(kind, name, name.len)
 		}
 		// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 		// at the next ', skip it
