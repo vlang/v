@@ -231,8 +231,8 @@ pub fn (g mut JsGen) new_tmp_var() string {
 }
 
 [inline]
-fn js_name(name_ string) string {
-	name := name_.replace('.', '__')
+fn js_name(name string) string {
+	// name := name_.replace('.', '__')
 	if name in js_reserved {
 		return 'v_$name'
 	}
@@ -358,12 +358,13 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.CallExpr {
+			name := if it.name.starts_with('JS.') { it.name[3..] } else { it.name }
 			g.expr(it.left)
 			if it.is_method {
 				// example: foo.bar.baz()
 				g.write('.')
 			}
-			g.write('${js_name(it.name)}(')
+			g.write('${js_name(name)}(')
 			for i, arg in it.args {
 				g.expr(arg.expr)
 				if i != it.args.len - 1 {

@@ -10,16 +10,16 @@ import v.util
 
 pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 	first_pos := p.tok.position()
-	name := p.check_name()
 	fn_name := if is_c {
-		'C.$name'
+		'C.${p.check_name()}'
 	} else if is_js {
-		'JS.$name'
+		'JS.${p.check_js_name()}'
 	} else if mod.len > 0 {
-		'${mod}.$name'
+		'${mod}.${p.check_name()}'
 	} else {
-		name
+		p.check_name()
 	}
+
 	mut is_or_block_used := false
 	if fn_name == 'json.decode' {
 		p.expecting_type = true // Makes name_expr() parse the type (`User` in `json.decode(User, txt)`)`
@@ -156,7 +156,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut name := ''
 	if p.tok.kind == .name {
 		// TODO high order fn
-		name = p.check_name()
+		name = if is_js { p.check_js_name() } else { p.check_name() }
 		if !is_js && !is_c && !p.pref.translated && util.contains_capital(name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
