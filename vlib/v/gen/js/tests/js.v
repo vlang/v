@@ -30,7 +30,7 @@ fn main() {
 
     debugger := 'JS keyword'
     // TODO: Implement interpolation
-    await := 'another ' + debugger
+    await := super + debugger
     mut finally := 'implemented'
 
     dun := i_am_a_const * 20
