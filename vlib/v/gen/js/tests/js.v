@@ -10,9 +10,14 @@ struct Companies {
 }
 
 enum POSITION {
-    GO_BACK
-    DONT_GO_BACK
+    go_back
+    dont_go_back
 }
+
+fn class(extends string, instanceof int) {
+    delete := instanceof
+}
+
 
 fn main() {
     v := "done"
@@ -20,7 +25,12 @@ fn main() {
         _ := "block"
     }
 
-    pos := POSITION.GO_BACK
+    pos := POSITION.go_back
+
+    debugger := 'JS keyword'
+    // TODO: Implement interpolation
+    await := 'another ' + debugger
+    mut finally := 'implemented'
 
     dun := i_am_a_const * 20
 
