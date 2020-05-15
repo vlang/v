@@ -207,3 +207,15 @@ fn test_multi_return_opt() {
 	}
 }
 */
+
+fn foo() ?void {
+	return error('something')
+}
+
+fn test_optional_void() {
+	foo() or {
+		println(err)
+		assert err == 'something'
+		return
+	}
+}

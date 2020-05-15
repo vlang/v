@@ -323,8 +323,9 @@ fn (g &Gen) base_type(t table.Type) string {
 fn (mut g Gen) register_optional(t table.Type, styp string) {
 	// g.typedefs2.writeln('typedef Option $x;')
 	no_ptr := styp.replace('*', '_ptr')
+	typ := if styp == 'void' { 'void*' } else { styp }
 	g.hotcode_definitions.writeln('typedef struct {
-		$styp  data;
+		$typ  data;
 		string error;
 		int    ecode;
 		bool   ok;
