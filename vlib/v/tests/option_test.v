@@ -219,3 +219,16 @@ fn test_optional_void() {
 		return
 	}
 }
+
+
+fn bar() ? {
+	return error('bar error')
+}
+
+fn test_optional_void_only_question() {
+	bar() or {
+		println(err)
+		assert err == 'bar error'
+		return
+	}
+}

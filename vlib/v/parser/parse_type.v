@@ -123,7 +123,10 @@ pub fn (mut p Parser) parse_type() table.Type {
 		p.next()
 		p.check(.dot)
 	}
-	mut typ := p.parse_any_type(is_c, is_js, nr_muls > 0)
+	mut typ := table.void_type
+	if p.tok.kind != .lcbr {
+		typ = p.parse_any_type(is_c, is_js, nr_muls > 0)
+	}
 	if is_optional {
 		typ = typ.set_flag(.optional)
 	}
