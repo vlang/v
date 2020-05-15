@@ -285,6 +285,22 @@ fn (mut p Parser) check(expected token.Kind) {
 	p.next()
 }
 
+// JS functions can have multiple dots in their name:
+// JS.foo.bar.and.a.lot.more.dots()
+fn (mut p Parser) check_js_name() string {
+	mut name := ''
+	for p.peek_tok.kind == .dot {
+		name += '${p.tok.lit}.'
+		p.next() // .name
+		p.next() // .dot
+	}
+ 	// last .name
+ 	name += p.tok.lit
+	p.next()
+
+	return name
+}
+
 fn (mut p Parser) check_name() string {
 	name := p.tok.lit
 	if p.peek_tok.kind == .dot && name in p.imports {
@@ -754,8 +770,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			// fn call
 			// println('calling $p.tok.lit')
-			x := p.call_expr(is_c, is_js, mod) // TODO `node,typ :=` should work
-			node = x
+			node = p.call_expr(is_c, is_js, mod)
 		}
 	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for {
@@ -782,6 +797,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else if p.peek_tok.kind == .colon && p.prev_tok.kind != .str_dollar {
 		// `foo(key:val, key2:val2)`
 		return p.struct_init(true) // short_syntax:true
+	// JS. function call with more than 1 dot
+	} else if is_js && p.peek_tok.kind == .dot && p.peek_tok2.kind == .name {
+		node = p.call_expr(is_c, is_js, mod)
 	} else {
 		node = p.parse_ident(is_c, is_js)
 	}
