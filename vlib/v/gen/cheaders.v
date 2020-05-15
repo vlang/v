@@ -69,7 +69,20 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #ifdef __cplusplus
 #include <utility>
 #define _MOV std::move
-#include <execinfo.h>
+#endif
+
+#if defined(__ANDROID__)
+int backtrace (void **__array, int __size) { return 0; }
+char **backtrace_symbols (void *const *__array, int __size){ return 0; }
+void backtrace_symbols_fd (void *const *__array, int __size, int __fd){}
+#else
+#ifndef _WIN32
+#if defined __has_include
+#if __has_include (<execinfo.h>)
+#	include <execinfo.h>
+#endif
+#endif
+#endif
 #endif
 
 //#include "fns.h"
