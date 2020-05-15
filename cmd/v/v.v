@@ -6,8 +6,6 @@ module main
 import help
 import os
 import os.cmdline
-import v.table
-import v.doc
 import v.pref
 import v.util
 import v.builder
@@ -18,7 +16,7 @@ const (
 	'test-fmt', 'test-compiler', 'test-fixed', 'bin2v'
 	'repl'
 	'build-tools'
-	'build-examples', 'build-vbinaries', 'setup-freetype'
+	'build-examples', 'build-vbinaries', 'setup-freetype','doc'
 	]
 	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 	list_of_flags_with_param            = [
@@ -89,15 +87,6 @@ fn main_v() {
 		}
 		'symlink' {
 			create_symlink()
-			return
-		}
-		'doc' {
-			if args.len == 1 {
-				println('v doc [module]')
-				exit(1)
-			}
-			table := table.new_table()
-			println(doc.doc(args[1], table, prefs))
 			return
 		}
 		else {}
