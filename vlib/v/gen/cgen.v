@@ -193,9 +193,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	b.writeln('\n// V out')
 	b.writeln(g.out.str())
 	b.writeln('\n// THE END.')
-	mut code := b.str()
-	code = code.replace('void array_sort_with_compare(array* a, voidptr compare)', 'void array_sort_with_compare(array* a, qsort_callback_func compare)')
-	return code
+	return b.str()
 }
 
 pub fn (g Gen) hashes() string {
