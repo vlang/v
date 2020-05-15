@@ -15,6 +15,7 @@
 *.lib
 *.bak
 a.out
+.noprefix.vrepl_temp
 
 # ignore v build files
 /v.c
@@ -22,6 +23,7 @@ a.out
 /v.c.out
 .vrepl_temp.v
 fns.txt
+.noprefix.vrepl_temp.v
 
 # ignore temp directories
 /temp
