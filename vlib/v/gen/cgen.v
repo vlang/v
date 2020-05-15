@@ -654,7 +654,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.includes.writeln('#$it.val')
 			}
 			if typ == 'define' {
-				g.definitions.writeln('#$it.val')
+				g.includes.writeln('#$it.val')
 			}
 		}
 		ast.Import {}
@@ -967,6 +967,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			right_sym := g.table.get_type_symbol(assign_stmt.right_types[i])
 			mut is_fixed_array_init := false
 			mut has_val := false
+			/*
+			if val is ast.ArrayInit {
+					is_fixed_array_init = val.is_fixed
+					has_val = val.has_val
+				}
+			*/
 			match val {
 				ast.ArrayInit {
 					is_fixed_array_init = it.is_fixed
@@ -2444,6 +2450,9 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				mut fixed := styp[12..]
 				len := styp.after('_')
 				fixed = fixed[..fixed.len - len.len - 1]
+				if fixed.starts_with('C__') {
+					fixed = fixed[3..]
+				}
 				g.definitions.writeln('typedef $fixed $styp [$len];')
 				// }
 			}
