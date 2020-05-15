@@ -22,12 +22,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	if g.attr == 'inline' {
 		g.write('inline ')
 	}
-	if it.name in ['backtrace', 'backtrace_symbols', 'backtrace_symbols_fd'] {
-		// these are actually defined as C functions in execinfo.h
-		// TODO: remove this check, *after* they are defined as C. in cfns.c.v
-		// in bootstrap phase 2
-		return
-	}
 	//
 	is_livefn := g.attr == 'live'
 	is_livemain := g.pref.is_livemain && is_livefn

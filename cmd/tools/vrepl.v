@@ -160,6 +160,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			if !(filter_line.contains('=') || filter_line.contains('++') ||
 					filter_line.contains('--') || filter_line.contains('<<') ||
 					filter_line.contains('//') || filter_line.contains('/*') ||
+				 	filter_line.contains('struct') ||
 					filter_line.starts_with('import') || r.line == '') && !func_call {
 				temp_line = 'println($r.line)'
 				temp_flag = true
