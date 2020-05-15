@@ -271,3 +271,20 @@ jobs:
       run: make
     - name: Check docs line length
       run: ./v run cmd/tools/check-md.v doc/docs.md CHANGELOG.md
+
+
+
+  ubuntu-g++:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
+    - name: Build V
+      run: make -j4
+    - name: Running tests with g++
+      run: |
+        ./v -cc g++ test-fixed
+#    - name: V self compilation with g++
+#      run: ./v -cc g++ -o v2 cmd/v && ./v2 -cc g++ -o v3 cmd/v
+
