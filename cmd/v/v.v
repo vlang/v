@@ -92,12 +92,15 @@ fn main_v() {
 			return
 		}
 		'doc' {
+			mut mod := ''
 			if args.len == 1 {
 				println('v doc [module]')
-				exit(1)
+			}
+			else if args.len > 1 {
+				mod = args[1]
 			}
 			table := table.new_table()
-			println(doc.doc(args[1], table, prefs))
+			println(doc.doc(mod, table, prefs))
 			return
 		}
 		else {}
