@@ -1687,7 +1687,14 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.error('cannot cast type `$type_name` to string, use `x.str()` instead', it.pos)
 			}
 			if it.expr_type == table.string_type {
-				c.error('cannot cast a string', it.pos)
+				mut error_msg := 'cannot cast a string'
+				if it.expr is ast.StringLiteral {
+					str_lit := it.expr as ast.StringLiteral
+					if str_lit.val.len == 1 {
+						error_msg += ", for denoting characters use `$str_lit.val` instead of '$str_lit.val'"
+					}
+				}
+				c.error(error_msg, it.pos)
 			}
 			if it.has_arg {
 				c.expr(it.arg)
