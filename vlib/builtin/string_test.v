@@ -766,3 +766,12 @@ fn test_string_literal_with_backslash(){
 		  Three'
 	assert b == 'OneTwoThree'
 }
+
+/*
+type MyString string
+
+fn test_string_alias() {
+	s := MyString('hi')
+	ss := s + '!'
+}
+*/

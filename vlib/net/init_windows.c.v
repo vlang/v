@@ -7,7 +7,7 @@ module net
 struct C.WSAData {
 mut:
 	wVersion u16
-	wHighVersion u16	
+	wHighVersion u16
 	szDescription [257]byte
 	szSystemStatus [129]byte
 	iMaxSockets u16

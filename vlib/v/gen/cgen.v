@@ -468,7 +468,7 @@ pub fn (mut g Gen) writeln(s string) {
 
 pub fn (mut g Gen) new_tmp_var() string {
 	g.tmp_count++
-	return 'tmp$g.tmp_count'
+	return '_t$g.tmp_count'
 }
 
 pub fn (mut g Gen) reset_tmp_count() {
@@ -1860,7 +1860,6 @@ fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 	styp := g.typ(node.return_type)
 	sym := g.table.get_type_symbol(node.return_type)
 	is_multi := sym.kind == .multi_return
-
 	if !is_multi {
 		g.expr(node.vals[0])
 	} else {

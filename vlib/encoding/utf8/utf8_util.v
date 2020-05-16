@@ -164,27 +164,27 @@ fn utf8util_char_len(b byte) int {
 //
 // up_low make the dirt job
 fn up_low(s string, upper_flag bool) string {
-	mut _index := 0
+	mut index := 0
 	mut str_res := malloc(s.len + 1)
 
 	for {
-		ch_len := utf8util_char_len(s.str[_index])
+		ch_len := utf8util_char_len(s.str[index])
 
 		if ch_len == 1 {
 			if upper_flag==true {
-				str_res[_index] = C.toupper(s.str[_index])
+				str_res[index] = C.toupper(s.str[index])
 			}else{
-				str_res[_index] = C.tolower(s.str[_index])
+				str_res[index] = C.tolower(s.str[index])
 			}
 		}
 		else if ch_len > 1 && ch_len < 5{
 			mut lword := 0
 
 			for i:=0; i < ch_len ; i++ {
-				lword = (lword << 8 ) | int( s.str[_index + i] )
+				lword = (lword << 8 ) | int( s.str[index + i] )
 			}
 
-			//C.printf(" #%d (%x) ", _index, lword)
+			//C.printf(" #%d (%x) ", index, lword)
 
 			mut res := 0
 
@@ -215,7 +215,7 @@ fn up_low(s string, upper_flag bool) string {
 			// char not in table, no need of conversion
 			if ch_index == 0 {
 				for i in 0..ch_len {
-					str_res[_index + i] = s.str[_index + i]
+					str_res[index + i] = s.str[index + i]
 				}
 				//C.printf("\n")
 			}else{
@@ -227,13 +227,13 @@ fn up_low(s string, upper_flag bool) string {
 					ch1 := byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
 					//C.printf("[%02x%02x] \n",ch0,ch1)
 
-					str_res[ _index + 0 ] = ch0
-					str_res[ _index + 1 ] = ch1
+					str_res[ index + 0 ] = ch0
+					str_res[ index + 1 ] = ch1
 
 					//****************************************************************
 					//  BUG: doesn't compile, workaround use shitf to right of 0 bit
 					//****************************************************************
-					//str_res[_index + 1 ] = byte( tab_char & 0xbf )			/*1011 1111*/
+					//str_res[index + 1 ] = byte( tab_char & 0xbf )			/*1011 1111*/
 
 				}
 				else if ch_len == 3 {
@@ -242,16 +242,16 @@ fn up_low(s string, upper_flag bool) string {
 					ch2 := byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
 					//C.printf("[%02x%02x%02x] \n",ch0,ch1,ch2)
 
-					str_res[_index + 0 ] = ch0
-					str_res[_index + 1 ] = ch1
-					str_res[_index + 2 ] = ch2
+					str_res[index + 0 ] = ch0
+					str_res[index + 1 ] = ch1
+					str_res[index + 2 ] = ch2
 				}
 				// TODO: write if needed
 				else if ch_len == 4 {
 					// place holder!!
 					// at the present time simply copy the utf8 char
 					for i in 0..ch_len {
-						str_res[_index + i] = s.str[_index + i]
+						str_res[index + i] = s.str[index + i]
 					}
 				}
 			}
@@ -260,20 +260,20 @@ fn up_low(s string, upper_flag bool) string {
 		// other cases, just copy the string
 		else{
 			for i in 0..ch_len {
-				str_res[_index + i] = s.str[_index + i]
+				str_res[index + i] = s.str[index + i]
 			}
 		}
 
-		_index += ch_len
+		index += ch_len
 
 		// we are done, exit the loop
-		if _index >= s.len {
+		if index >= s.len {
 			break
 		}
 	}
 
 	// for c compatibility set the ending 0
-	str_res[_index]=0
+	str_res[index]=0
 
 	//C.printf("str_res: %s\n--------------\n",str_res)
 
@@ -1680,6 +1680,6 @@ unicode_punct=[
 0x1DA8A, // SIGNWRITING COLON	𝪊
 0x1DA8B, // SIGNWRITING PARENTHESIS	𝪋
 0x1E95E, // ADLAM INITIAL EXCLAMATION MARK	𞥞
-0x1E95F, // ADLAM INITIAL QUESTION MARK	
+0x1E95F, // ADLAM INITIAL QUESTION MARK
 ]
 )

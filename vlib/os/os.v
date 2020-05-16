@@ -148,9 +148,9 @@ fn C.CopyFile(&u32, &u32, int) int
 // TODO implement actual cp for linux
 pub fn cp(old, new string) ?bool {
 	$if windows {
-		_old := old.replace('/', '\\')
-		_new := new.replace('/', '\\')
-		C.CopyFile(_old.to_wide(), _new.to_wide(), false)
+		w_old := old.replace('/', '\\')
+		w_new := new.replace('/', '\\')
+		C.CopyFile(w_old.to_wide(), w_new.to_wide(), false)
 		result := C.GetLastError()
 		if result == 0 {
 			return true
@@ -954,8 +954,8 @@ pub fn dir_exists(path string) bool {
 // is_dir returns a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
-		_path := path.replace('/', '\\')
-		attr := C.GetFileAttributesW(_path.to_wide())
+		w_path := path.replace('/', '\\')
+		attr := C.GetFileAttributesW(w_path.to_wide())
 		if attr == u32(C.INVALID_FILE_ATTRIBUTES) {
 			return false
 		}

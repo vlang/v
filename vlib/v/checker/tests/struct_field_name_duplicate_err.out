@@ -1,7 +1,6 @@
-vlib/v/checker/tests/struct_field_name_duplicate_err.v:3:4: error: field name `a` duplicate
+vlib/v/checker/tests/struct_field_name_duplicate_err.v:3:2: error: field name `a` duplicate
     1 | struct A {
     2 |     a int
     3 |     a string
-      |       ~~~~~~
+      |     ~~~~~~~~
     4 | }
-    5 | fn main(){}
