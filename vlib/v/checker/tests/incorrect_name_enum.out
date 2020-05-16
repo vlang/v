@@ -1,0 +1,5 @@
+vlib/v/checker/tests/incorrect_name_enum.v:1:1: error: enum name `color` must begin with capital letter
+    1 | enum color {
+      | ~~~~~~~~~~
+    2 |     green
+    3 |     yellow

@@ -151,15 +151,13 @@ fn process_in_thread(pool mut PoolProcessor, task_id int) {
 //	return *(&T(pool.items[idx]))
 //}
 
-// TODO: the below is a hack, remove it when v2 &string() casting works again
-type mystring string
 // get_string_item - called by the worker callback.
 // It does not use generics so it does not mess up vfmt.
 // TODO: remove the need for this when vfmt becomes smarter.
 pub fn (pool &PoolProcessor) get_string_item(idx int) string {
    // return *(&string(pool.items[idx]))
    // TODO: the below is a hack, remove it when v2 casting works again
-   return &mystring( pool.items[idx] )
+   return &string( pool.items[idx] )
 }
 
 // get_int_item - called by the worker callback.

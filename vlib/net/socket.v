@@ -6,7 +6,7 @@ pub struct Socket {
 pub:
 	sockfd int
 	family int
-	_type  int
+	typ    int
 	proto  int
 }
 
@@ -39,53 +39,39 @@ struct C.sockaddr_storage {
 
 fn C.socket() int
 
-
 fn C.setsockopt() int
-
 
 fn C.htonl() int
 
-
 fn C.htons() int
-
 
 fn C.bind() int
 
-
 fn C.listen() int
-
 
 fn C.accept() int
 
-
 fn C.getaddrinfo() int
-
 
 fn C.connect() int
 
-
 fn C.send() int
-
 
 fn C.recv() int
 
-
 fn C.read() int
-
 
 fn C.shutdown() int
 
-
 fn C.close() int
-
 
 fn C.ntohs() int
 
-
 fn C.getsockname() int
+
 // create socket
-pub fn new_socket(family int, _type int, proto int) ?Socket {
-	sockfd := C.socket(family, _type, proto)
+pub fn new_socket(family, typ, proto int) ?Socket {
+	sockfd := C.socket(family, typ, proto)
 	one := 1
 	// This is needed so that there are no problems with reusing the
 	// same port after the application exits.
@@ -96,7 +82,7 @@ pub fn new_socket(family int, _type int, proto int) ?Socket {
 	s := Socket{
 		sockfd: sockfd
 		family: family
-		_type: _type
+		typ: typ
 		proto: proto
 	}
 	return s
@@ -107,7 +93,7 @@ pub fn socket_udp() ?Socket {
 }
 
 // set socket options
-pub fn (s Socket) setsockopt(level int, optname int, optvalue &int) ?int {
+pub fn (s Socket) setsockopt(level, optname int, optvalue &int) ?int {
 	res := C.setsockopt(s.sockfd, level, optname, optvalue, sizeof(&int))
 	if res < 0 {
 		return error('net.setsocketopt: failed with $res')
@@ -117,8 +103,7 @@ pub fn (s Socket) setsockopt(level int, optname int, optvalue &int) ?int {
 
 // bind socket to port
 pub fn (s Socket) bind(port int) ?int {
-	mut addr := C.sockaddr_in{
-	}
+	mut addr := C.sockaddr_in{}
 	addr.sin_family = s.family
 	addr.sin_port = C.htons(port)
 	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
@@ -178,8 +163,7 @@ pub fn (s Socket) accept() ?Socket {
 	$if debug {
 		println('accept()')
 	}
-	addr := C.sockaddr_storage{
-	}
+	addr := C.sockaddr_storage{}
 	size := 128 // sizeof(sockaddr_storage)
 	sockfd := C.accept(s.sockfd, &addr, &size)
 	if sockfd < 0 {
@@ -188,7 +172,7 @@ pub fn (s Socket) accept() ?Socket {
 	c := Socket{
 		sockfd: sockfd
 		family: s.family
-		_type: s._type
+		typ: s.typ
 		proto: s.proto
 	}
 	return c
@@ -196,10 +180,9 @@ pub fn (s Socket) accept() ?Socket {
 
 // connect to given addrress and port
 pub fn (s Socket) connect(address string, port int) ?int {
-	mut hints := C.addrinfo{
-	}
+	mut hints := C.addrinfo{}
 	hints.ai_family = s.family
-	hints.ai_socktype = s._type
+	hints.ai_socktype = s.typ
 	hints.ai_flags = C.AI_PASSIVE
 	hints.ai_protocol = s.proto
 	hints.ai_addrlen = 0
@@ -210,12 +193,12 @@ pub fn (s Socket) connect(address string, port int) ?int {
 	sport := '$port'
 	info_res := C.getaddrinfo(address.str, sport.str, &hints, &info)
 	if info_res != 0 {
-		error_message := os.get_error_msg(net.error_code())
+		error_message := os.get_error_msg(error_code())
 		return error('net.connect: getaddrinfo failed "$error_message"')
 	}
 	res := C.connect(s.sockfd, info.ai_addr, info.ai_addrlen)
 	if res < 0 {
-		error_message := os.get_error_msg(net.error_code())
+		error_message := os.get_error_msg(error_code())
 		return error('net.connect: connect failed "$error_message"')
 	}
 	return res
@@ -256,11 +239,13 @@ pub fn (s Socket) send_string(sdata string) ?int {
 }
 
 // receive string data from socket. NB: you are responsible for freeing the returned byteptr
-pub fn (s Socket) recv(bufsize int) (byteptr,int) {
+pub fn (s Socket) recv(bufsize int) (byteptr, int) {
 	mut buf := byteptr(0)
-	unsafe { buf = malloc(bufsize) }
+	unsafe {
+		buf = malloc(bufsize)
+	}
 	res := C.recv(s.sockfd, buf, bufsize, 0)
-	return buf,res
+	return buf, res
 }
 
 // TODO: remove cread/2 and crecv/2 when the Go net interface is done
@@ -300,10 +285,11 @@ pub fn (s Socket) close() ?int {
 }
 
 pub const (
-	CRLF = '\r\n'
+	CRLF     = '\r\n'
 	MAX_READ = 400
 	MSG_PEEK = 0x02
 )
+
 // write - write a string with CRLF after it over the socket s
 pub fn (s Socket) write(str string) ?int {
 	line := '$str$CRLF'
@@ -329,7 +315,7 @@ pub fn (s Socket) read_line() string {
 		}
 		buf[n] = `\0`
 		mut eol_idx := -1
-		for i in 0..n {
+		for i in 0 .. n {
 			if int(buf[i]) == `\n` {
 				eol_idx = i
 				// Ensure that tos_clone(buf) later,
@@ -377,8 +363,7 @@ pub fn (s Socket) read_all() string {
 }
 
 pub fn (s Socket) get_port() int {
-	mut addr := C.sockaddr_in{
-	}
+	mut addr := C.sockaddr_in{}
 	size := 16 // sizeof(sockaddr_in)
 	C.getsockname(s.sockfd, &addr, &size)
 	return C.ntohs(addr.sin_port)

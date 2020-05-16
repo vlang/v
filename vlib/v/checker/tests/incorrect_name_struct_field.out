@@ -1,0 +1,5 @@
+vlib/v/checker/tests/incorrect_name_struct_field.v:2:5: error: field name `_a` cannot start with `_`
+    1 | struct Abc {
+    2 |     _a int
+      |     ~~~~~~
+    3 | }

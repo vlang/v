@@ -100,6 +100,7 @@ pub:
 	name       string
 	path       string
 	expr       Expr
+	pos        token.Position
 	is_skipped bool // module main can be skipped in single file programs
 }
 
@@ -295,6 +296,7 @@ pub:
 	name     string
 	expr     Expr
 	has_expr bool
+	pos      token.Position
 pub mut:
 	typ      table.Type
 }

@@ -122,7 +122,7 @@ pub:
 }
 
 // type clickpub fn pub fn (window * GLFWwindow, button, action, mods int)
-type clickpubfn fn (window voidptr, button, action, mods int)
+type ClickPubFn fn (window voidptr, button, action, mods int)
 
 /*
  * TODO broken
