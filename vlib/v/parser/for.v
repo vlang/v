@@ -66,14 +66,14 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 	} else if p.peek_tok.kind in [.key_in, .comma] {
 		// `for i in vals`, `for i in start .. end`
+		key_var_pos := p.tok.position()
 		mut val_var_pos := p.tok.position()
 		mut key_var_name := ''
 		mut val_var_name := p.check_name()
 		if p.tok.kind == .comma {
 			p.next()
-			key_var_pos := val_var_pos
-			val_var_pos = p.tok.position()
 			key_var_name = val_var_name
+			val_var_pos = p.tok.position()
 			val_var_name = p.check_name()
 			if p.scope.known_var(key_var_name) {
 				p.error('redefinition of key iteration variable `$key_var_name`')

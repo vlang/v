@@ -14,21 +14,21 @@ mut:
 }
 
 fn main() {
-	mut color_action := sg_color_attachment_action{
+	mut color_action := C.sg_color_attachment_action{
 		action: C.SG_ACTION_CLEAR
 	}
 	color_action.val[0] = 0.3
 	color_action.val[1] = 0.3
 	color_action.val[2] = 0.32
 	color_action.val[3] = 1.0
-	mut pass_action := sg_pass_action{}
+	mut pass_action := C.sg_pass_action{}
 	pass_action.colors[0] = color_action
 	state := &AppState{
 		pass_action: pass_action
 		fons: &C.FONScontext(0)
 	}
 	title := 'V Metal/GL Text Rendering'
-	desc := sapp_desc{
+	desc := C.sapp_desc{
 		user_data: state
 		init_userdata_cb: init
 		frame_userdata_cb: frame
@@ -41,7 +41,7 @@ fn main() {
 fn init(user_data voidptr) {
 	mut state := &AppState(user_data)
 	// dont actually alocate this on the heap in real life
-	gfx.setup(&sg_desc{
+	gfx.setup(&C.sg_desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
 		mtl_drawable_cb: sapp.metal_get_drawable

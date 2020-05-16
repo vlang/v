@@ -6,13 +6,21 @@ module parser
 import v.ast
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
-	is_static := p.tok.kind == .key_static
-	if is_static {
-		p.next()
+	return p.partial_assign_stmt([])
+}
+
+fn (mut p Parser) partial_assign_stmt(known_lhs []ast.Ident) ast.Stmt {
+	mut idents := known_lhs
+	mut op := p.tok.kind
+	// read (more) idents until assignment sign
+	for op !in [.decl_assign, .assign] {
+		idents << p.parse_assign_ident()
+		if p.tok.kind == .comma {
+			p.next()
+		}
+		op = p.tok.kind
 	}
-	idents := p.parse_assign_lhs()
-	op := p.tok.kind
-	p.next() // :=, =
+	p.next()
 	pos := p.tok.position()
 	exprs := p.parse_assign_rhs()
 	is_decl := op == .decl_assign
@@ -46,7 +54,7 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 		right: exprs
 		op: op
 		pos: pos
-		is_static: is_static
+		is_static: false // individual idents may be static
 	}
 }
 
@@ -72,31 +80,9 @@ pub fn (mut p Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	return node
 }
 
-fn (mut p Parser) parse_assign_lhs() []ast.Ident {
-	mut idents := []ast.Ident{}
-	for {
-		is_mut := p.tok.kind == .key_mut
-		if is_mut {
-			p.next()
-		}
-		is_static := p.tok.kind == .key_static
-		if is_static {
-			p.next()
-		}
-		mut ident := p.parse_ident(false, false)
-		ident.is_mut = is_mut
-		ident.info = ast.IdentVar{
-			is_mut: is_mut
-			is_static: is_static
-		}
-		idents << ident
-		if p.tok.kind == .comma {
-			p.next()
-		} else {
-			break
-		}
-	}
-	return idents
+fn (mut p Parser) parse_assign_ident() ast.Ident {
+	/// returns a single parsed ident
+	return p.parse_ident(false, false)
 }
 
 // right hand side of `=` or `:=` in `a,b,c := 1,2,3`

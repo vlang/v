@@ -8,9 +8,6 @@ import live
 
 // The live reloader code is implemented here.
 
-fn C.pthread_mutex_unlock(mtx voidptr)
-fn C.pthread_mutex_lock(mtx voidptr)
-
 // NB: new_live_reload_info will be called by generated C code inside main()
 pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_mutex voidptr, live_linkfn live.FNLinkLiveSymbols) &live.LiveReloadInfo {
 	file_base := os.file_name(original).replace('.v', '')

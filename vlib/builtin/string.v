@@ -926,6 +926,20 @@ pub fn (s string) trim_right(cutset string) string {
 	return if pos < 0 { '' } else { s.left(pos + 1) }
 }
 
+pub fn (s string) trim_prefix(str string) string {
+	if s.starts_with(str) {
+		return s.replace(str, "")
+	}
+	return s
+}
+
+pub fn (s string) trim_suffix(str string) string {
+	if s.ends_with(str) {
+		return s.replace(str, "")
+	}
+	return s
+}
+
 // fn print_cur_thread() {
 // //C.printf("tid = %08x \n", pthread_self());
 // }

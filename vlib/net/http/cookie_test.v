@@ -1,5 +1,4 @@
 import net.http
-import time
 
 struct SetCookieTestCase {
 	cookie &http.Cookie
