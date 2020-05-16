@@ -66,9 +66,12 @@ const (
 typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
+
 #ifdef __cplusplus
-#include <utility>
-#define _MOV std::move
+#   include <utility>
+#   define _MOV std::move
+#else
+#   define _MOV
 #endif
 
 #ifndef _WIN32
