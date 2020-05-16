@@ -705,6 +705,8 @@ fn main() {
 }
 ```
 
+This means that defining public readonly fields is very easy in V, no need in getters/setters or properties.
+
 ## Methods
 
 ```v
