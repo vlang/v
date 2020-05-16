@@ -33,8 +33,12 @@ pub fn full_hash() string {
 }
 
 // full_v_version() returns the full version of the V compiler
-pub fn full_v_version() string {
-	return 'V ${v_version} ${full_hash()}'
+pub fn full_v_version(is_verbose bool) string {
+	if is_verbose {
+		return 'V ${v_version} ${full_hash()}'
+	}
+	hash := githash(false)
+	return 'V ${v_version} $hash'
 }
 
 // githash(x) returns the current git commit hash.
@@ -172,7 +176,7 @@ pub fn quote_path_with_spaces(s string) string {
 pub fn args_quote_paths_with_spaces(args []string) string {
 	mut res := []string{}
 	for a in args {
-		res << quote_path_with_spaces( a )
+		res << quote_path_with_spaces(a)
 	}
 	return res.join(' ')
 }
