@@ -2264,7 +2264,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	// if c.pref.is_verbose {
 	// print_backtrace()
 	// }
-	if warn {
+	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
 		wrn := errors.Warning{
 			reporter: errors.Reporter.checker
@@ -2274,7 +2274,9 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 		}
 		c.file.warnings << wrn
 		c.warnings << wrn
-	} else {
+		return
+	}
+	if !warn {
 		c.nr_errors++
 		if pos.line_nr !in c.error_lines {
 			err := errors.Error{
