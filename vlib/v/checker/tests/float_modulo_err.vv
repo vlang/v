@@ -1,0 +1,4 @@
+fn main() {
+    println(3.0 % 2.0)
+    println(f32(3.0) % f32(2.0))
+}
