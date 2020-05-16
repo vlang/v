@@ -565,7 +565,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
-			if g.inside_ternary == 0 {
+			if g.inside_ternary == 0 && !(it.expr is ast.IfExpr) {
 				g.writeln(';')
 			}
 		}
