@@ -448,12 +448,16 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
 			} else if !left.is_int() && right.is_int() {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
+			} else if left.kind == .f32 && right.kind == .f32 || left.kind == .f64 && right.kind == .f64 {
+				c.error('float modulo not allowed, use math.fmod() instead', infix_expr.left.position())
 			} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
 				!left.has_method(infix_expr.op.str()) {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
+				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())	
 			} else if right.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
 				!right.has_method(infix_expr.op.str()) {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
+			} else if infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() == '0' {
+				c.error('modulo by zero', infix_expr.right.position())
 			}
 		}
 		else {}
