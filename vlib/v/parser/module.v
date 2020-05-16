@@ -39,5 +39,10 @@ fn (p mut Parser) check_unused_imports() {
 	if output == '' {
 		return
 	}
+	if p.pref.is_repl {
+		// The REPL should be much more liberal, and should not warn about
+		// unused imports, because they probably will be in the next few lines...
+		return
+	}
 	eprintln('`$p.file_name` warning: the following imports were never used: $output')
 }
