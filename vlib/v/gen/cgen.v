@@ -977,6 +977,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				ast.ArrayInit {
 					is_fixed_array_init = it.is_fixed
 					has_val = it.has_val
+					if it.has_default {
+						elem_type_str := g.typ(it.elem_type)
+						g.write('$elem_type_str ${elem_type_str}_val_t = ')
+						g.expr(it.default_expr)
+						g.writeln(';')
+					}
 				}
 				else {}
 			}
@@ -1239,7 +1245,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.ConcatExpr {
-			g.concat_expr(it)	
+			g.concat_expr(it)
 		}
 		ast.EnumVal {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
@@ -3842,7 +3848,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 	// elem_sym := g.table.get_type_symbol(it.elem_type)
 	elem_type_str := g.typ(it.elem_type)
 	if it.exprs.len == 0 {
-		g.write('__new_array(')
+		g.write('__new_array_with_default(')
 		if it.has_len {
 			g.expr(it.len_expr)
 			g.write(', ')
@@ -3855,7 +3861,12 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		} else {
 			g.write('0, ')
 		}
-		g.write('sizeof($elem_type_str))')
+		g.write('sizeof($elem_type_str), ')
+		if it.has_default {
+			g.write('&${elem_type_str}_val_t)')
+		} else {
+			g.write('0)')
+		}
 		return
 	}
 	len := it.exprs.len
