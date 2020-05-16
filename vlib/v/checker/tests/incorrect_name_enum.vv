@@ -2,6 +2,3 @@ enum color {
     green
     yellow
 }
-fn main(){
-	println('hello')
-}

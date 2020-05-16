@@ -12,13 +12,15 @@ import v.util
 
 struct Repl {
 mut:
-	indent         int
-	in_func        bool
-	line           string
-	lines          []string
-	temp_lines     []string
-	functions_name []string
-	functions      []string
+	indent         int      // indentation level
+	in_func        bool     // are we inside a new custom user function
+	line           string   // the current line entered by the user
+	//
+	imports        []string // all the import statements
+	functions      []string // all the user function declarations
+	functions_name []string // all the user function names
+	lines          []string // all the other lines/statements
+	temp_lines     []string // all the temporary expressions/printlns
 }
 
 fn (r mut Repl) checks() bool {
@@ -58,10 +60,23 @@ fn (r &Repl) function_call(line string) bool {
 	return false
 }
 
+fn (r &Repl) current_source_code(should_add_temp_lines bool) string {
+	mut all_lines := []string{}
+	all_lines << r.imports
+	all_lines << r.functions
+	all_lines << r.lines
+	if should_add_temp_lines {
+		all_lines << r.temp_lines
+	}
+	return all_lines.join('\n')
+}
+
 fn repl_help() {
 	println(util.full_v_version())
 	println('
   help                   Displays this information.
+  list                   Show the program so far.
+  reset                  Clears the accumulated program, so you can start a fresh.
   Ctrl-C, Ctrl-D, exit   Exits the REPL.
   clear                  Clears the screen.
 ')
@@ -101,13 +116,13 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		} else {
 			prompt = '... '
 		}
-		mut line := readline.read_line(prompt) or {
+		oline := readline.read_line(prompt) or {
 			break
 		}
-		if line.trim_space() == '' && line.ends_with('\n') {
+		line := oline.trim_space()
+		if line == '' && oline.ends_with('\n') {
 			continue
 		}
-		line = line.trim_space()
 		if line.len <= -1 || line == '' || line == 'exit' {
 			break
 		}
@@ -141,11 +156,26 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			}
 			r.line = ''
 		}
+		if r.line == 'debug_repl' {
+			eprintln('repl: $r')
+			continue
+		}
+		if r.line == 'reset' {
+		    r = Repl{}
+			continue
+		}
+		if r.line == 'list' {
+			source_code := r.current_source_code(true)
+			println('//////////////////////////////////////////////////////////////////////////////////////')
+			println(source_code)
+			println('//////////////////////////////////////////////////////////////////////////////////////')
+			continue
+		}
 		// Save the source only if the user is printing something,
 		// but don't add this print call to the `lines` array,
 		// so that it doesn't get called during the next print.
 		if r.line.starts_with('print') {
-			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.line + '\n'
+			source_code := r.current_source_code(false) + '\n${r.line}\n'
 			os.write_file(file, source_code)
 			s := os.exec('"$vexe" -repl run $file') or {
 				rerror(err)
@@ -157,19 +187,31 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			mut temp_flag := false
 			func_call := r.function_call(r.line)
 			filter_line := r.line.replace(r.line.find_between('\'', '\''), '').replace(r.line.find_between('"', '"'), '')
-			if !(filter_line.contains('=') || filter_line.contains('++') ||
-					filter_line.contains('--') || filter_line.contains('<<') ||
-					filter_line.contains('//') || filter_line.contains('/*') ||
-				 	filter_line.contains('struct') ||
-					filter_line.starts_with('import') || r.line == '') && !func_call {
+			possible_statement_patterns := [
+				'=', '++', '--', '<<',
+				'//', '/*',
+				'fn ', 'pub ', 'mut ', 'enum ', 'const ', 'struct ', 'interface ', 'import '
+			]
+			mut is_statement := false
+			for pattern in possible_statement_patterns {
+				if filter_line.contains(pattern) {
+					is_statement = true
+					break
+				}
+			}
+			// NB: starting a line with 2 spaces escapes the println heuristic
+			if oline.starts_with('  ') {
+				is_statement = true
+			}
+			if !is_statement && !func_call && r.line != '' {
 				temp_line = 'println($r.line)'
 				temp_flag = true
 			}
 			mut temp_source_code := ''
-			if temp_line.starts_with('import') {
-				temp_source_code = r.functions.join('\n') + temp_line + '\n'
+			if temp_line.starts_with('import ') {
+				temp_source_code = '${temp_line}\n' + r.current_source_code(false)
 			} else {
-				temp_source_code = r.functions.join('\n') + r.lines.join('\n') + '\n' + r.temp_lines.join('\n') + '\n' + temp_line + '\n'
+				temp_source_code = r.current_source_code(true) + '\n${temp_line}\n'
 			}
 			os.write_file(temp_file, temp_source_code)
 			s := os.exec('"$vexe" -repl run $temp_file') or {
@@ -183,11 +225,10 @@ fn run_repl(workdir string, vrepl_prefix string) {
 					}
 					r.temp_lines.delete(0)
 				}
-				if r.line.starts_with('import') {
-					mut lines := []string{cap: r.lines.len+1}
-					lines << r.line
-					lines << r.lines
-					r.lines = lines
+				if r.line.starts_with('import ') {
+					mut imports := r.imports
+					r.imports = [r.line]
+					r.imports << imports
 				} else {
 					r.lines << r.line
 				}

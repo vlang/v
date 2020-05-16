@@ -618,6 +618,8 @@ p := Point{
 println(p.x) // Struct fields are accessed using a dot
 ```
 
+<p>&nbsp;</p>
+
 Structs are allocated on the stack. To allocate a struct on the heap
 and get a reference to it, use the `&` prefix:
 
@@ -630,6 +632,8 @@ println(p.x)
 
 The type of `p` is `&Point`. It's a reference to `Point`.
 References are similar to Go pointers and C++ references.
+
+<p>&nbsp;</p>
 
 V doesn't allow subclassing, but it supports embedded structs:
 
@@ -646,6 +650,17 @@ button.set_pos(x, y)
 // Without embedding we'd have to do
 button.widget.set_pos(x,y)
 ```
+
+<p>&nbsp;</p>
+
+```v
+struct Foo {
+    n   int // n is 0 by default
+    pos int = -1 // custom default value
+}
+```
+
+All struct fields are zeroed by default during the creation of the struct. But it's also possible to define custom default values.
 
 ## Access modifiers
 
@@ -689,6 +704,8 @@ fn main() {
     str.len++      // Compilation error
 }
 ```
+
+This means that defining public readonly fields is very easy in V, no need in getters/setters or properties.
 
 ## Methods
 

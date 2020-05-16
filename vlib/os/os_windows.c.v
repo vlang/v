@@ -16,64 +16,64 @@ pub type HANDLE voidptr
 // win: FILETIME
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
 struct Filetime {
-  dwLowDateTime u32
-  dwHighDateTime u32
+  dw_low_date_time u32
+  dw_high_date_time u32
 }
 
 // win: WIN32_FIND_DATA
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-_win32_find_dataw
 struct Win32finddata {
 mut:
-    dwFileAttributes u32
-    ftCreationTime Filetime
-  	ftLastAccessTime Filetime
-  	ftLastWriteTime Filetime
-	nFileSizeHigh u32
-	nFileSizeLow u32
-	dwReserved0 u32
-	dwReserved1 u32
-	cFileName [260]u16 // MAX_PATH = 260
-	cAlternateFileName [14]u16 // 14
-  	dwFileType u32
-  	dwCreatorType u32
-  	wFinderFlags u16
+    dw_file_attributes u32
+    ft_creation_time Filetime
+  	ft_last_access_time Filetime
+  	ft_last_write_time Filetime
+	n_file_size_high u32
+	n_file_size_low u32
+	dw_reserved0 u32
+	dw_reserved1 u32
+	c_file_name [260]u16 // MAX_PATH = 260
+	c_alternate_file_name [14]u16 // 14
+  	dw_file_type u32
+  	dw_creator_type u32
+  	w_finder_flags u16
 }
 
 struct ProcessInformation {
 mut:
-	hProcess voidptr
-	hThread voidptr
-	dwProcessId u32
-	dwThreadId u32
+	h_process voidptr
+	h_thread voidptr
+	dw_process_id u32
+	dw_thread_id u32
 }
 
 struct StartupInfo {
 mut:
 	cb u32
-	lpReserved &u16
-	lpDesktop &u16
-	lpTitle &u16
-	dwX u32
-	dwY u32
-	dwXSize u32
-	dwYSize u32
-	dwXCountChars u32
-	dwYCountChars u32
-	dwFillAttribute u32
-	dwFlags u32
-	wShowWindow u16
-	cbReserved2 u16
-	lpReserved2 byteptr
-	hStdInput voidptr
-	hStdOutput voidptr
-	hStdError voidptr
+	lp_reserved &u16
+	lp_desktop &u16
+	lp_title &u16
+	dw_x u32
+	dw_y u32
+	dw_x_size u32
+	dw_y_size u32
+	dw_x_count_chars u32
+	dw_y_count_chars u32
+	dw_fill_attributes u32
+	dw_flags u32
+	w_show_window u16
+	cb_reserved2 u16
+	lp_reserved2 byteptr
+	h_std_input voidptr
+	h_std_output voidptr
+	h_std_error voidptr
 }
 
 struct SecurityAttributes {
 mut:
-	nLength u32
-	lpSecurityDescriptor voidptr
-	bInheritHandle bool
+	n_length u32
+	lp_security_descriptor voidptr
+	b_inherit_handle bool
 }
 
 fn init_os_args_wide(argc int, argv &byteptr) []string {
@@ -102,12 +102,12 @@ pub fn ls(path string) ?[]string {
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 	// we should use FindFirstFileW and FindNextFileW
 	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
-	first_filename := string_from_wide(&u16(find_file_data.cFileName))
+	first_filename := string_from_wide(&u16(find_file_data.c_file_name))
 	if first_filename != '.' && first_filename != '..' {
 		dir_files << first_filename
 	}
 	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0 {
-		filename := string_from_wide(&u16(find_file_data.cFileName))
+		filename := string_from_wide(&u16(find_file_data.c_file_name))
 		if filename != '.' && filename != '..' {
 			dir_files << filename.clone()
 		}
@@ -186,12 +186,12 @@ pub fn mkdir(path string) ?bool {
 // get_file_handle retrieves the operating-system file handle that is associated with the specified file descriptor.
 pub fn get_file_handle(path string) HANDLE {
     mode := 'rb'
-    _fd := C._wfopen(path.to_wide(), mode.to_wide())
-    if _fd == 0 {
+    fd := C._wfopen(path.to_wide(), mode.to_wide())
+    if fd == 0 {
 	    return HANDLE(INVALID_HANDLE_VALUE)
     }
-    _handle := HANDLE(C._get_osfhandle(C._fileno(_fd))) // CreateFile? - hah, no -_-
-    return _handle
+    handle := HANDLE(C._get_osfhandle(C._fileno(fd))) // CreateFile? - hah, no -_-
+    return handle
 }
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamea
@@ -205,8 +205,7 @@ pub fn get_module_filename(handle HANDLE) ?string {
 			status := int(C.GetModuleFileNameW(handle, voidptr(&buf), sz))
 			match status {
 				success {
-					_filename := string_from_wide2(buf, sz)
-					return _filename
+					return string_from_wide2(buf, sz)
 				}
 				else {
 					// Must handled with GetLastError and converted by FormatMessage
@@ -261,11 +260,11 @@ pub fn get_error_msg(code int) string {
     if code < 0 { // skip negative
         return ''
     }
-    _ptr_text := ptr_win_get_error_msg(u32(code))
-    if _ptr_text == 0 { // compare with null
+    ptr_text := ptr_win_get_error_msg(u32(code))
+    if ptr_text == 0 { // compare with null
         return ''
     }
-    return string_from_wide(_ptr_text)
+    return string_from_wide(ptr_text)
 }
 
 // exec starts the specified command, waits for it to complete, and returns its output.
@@ -277,8 +276,8 @@ pub fn exec(cmd string) ?Result {
 	mut child_stdout_read := &u32(0)
 	mut child_stdout_write := &u32(0)
 	mut sa := SecurityAttributes {}
-	sa.nLength = sizeof(C.SECURITY_ATTRIBUTES)
-	sa.bInheritHandle = true
+	sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
+	sa.b_inherit_handle = true
 
 	create_pipe_ok := C.CreatePipe(voidptr(&child_stdout_read),
 		voidptr(&child_stdout_write), voidptr(&sa), 0)
@@ -294,14 +293,14 @@ pub fn exec(cmd string) ?Result {
 
 	proc_info := ProcessInformation{}
 	start_info := StartupInfo{
-		lpReserved: 0
-		lpDesktop: 0
-		lpTitle: 0
+		lp_reserved: 0
+		lp_desktop: 0
+		lp_title: 0
 		cb: sizeof(C.PROCESS_INFORMATION)
-		hStdInput: child_stdin
-		hStdOutput: child_stdout_write
-		hStdError: child_stdout_write
-		dwFlags: u32(C.STARTF_USESTDHANDLES)
+		h_std_input: child_stdin
+		h_std_output: child_stdout_write
+		h_std_error: child_stdout_write
+		dw_flags: u32(C.STARTF_USESTDHANDLES)
 	}
 	command_line := [32768]u16
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&command_line), 32768)
@@ -325,10 +324,10 @@ pub fn exec(cmd string) ?Result {
 	soutput := read_data.str().trim_space()
 	read_data.free()
 	exit_code := u32(0)
-	C.WaitForSingleObject(proc_info.hProcess, C.INFINITE)
-	C.GetExitCodeProcess(proc_info.hProcess, voidptr(&exit_code))
-	C.CloseHandle(proc_info.hProcess)
-	C.CloseHandle(proc_info.hThread)
+	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)
+	C.GetExitCodeProcess(proc_info.h_process, voidptr(&exit_code))
+	C.CloseHandle(proc_info.h_process)
+	C.CloseHandle(proc_info.h_thread)
 	return Result {
 		output: soutput
 		exit_code: int(exit_code)
