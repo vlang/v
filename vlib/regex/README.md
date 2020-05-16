@@ -49,6 +49,8 @@ A cc can contain meta-chars like: `[a-z\d]` that matches all the lowercase latin
 
 It is possible to mix all the properties of the char class together.
 
+**Note:** In order to match the `-` (minus) char, it must be located at the first position in the cc, for example  `[-_\d\a]` will match `-` minus, `_`underscore, `\d` numeric chars, `\a` lower case chars.
+
 ### Meta-chars
 
 A meta-char is specified by a backslash before a char like `\w` in this case the meta-char is `w`.
