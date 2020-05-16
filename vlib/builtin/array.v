@@ -27,6 +27,22 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 	return arr
 }
 
+fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array {
+	cap_ := if cap < mylen { mylen } else { cap }
+	arr := array{
+		len: mylen
+		cap: cap_
+		element_size: elm_size
+		data: vcalloc(cap_ * elm_size)
+	}
+	if val != 0 {
+		for i in 0..arr.len {
+			C.memcpy(charptr(arr.data) + i*elm_size, val, elm_size)
+		}
+	}
+	return arr
+}
+
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 	cap_ := if cap < len { len } else { cap }
