@@ -30,10 +30,10 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array {
 	cap_ := if cap < mylen { mylen } else { cap }
 	arr := array{
-		len: mylen
-		cap: cap_
 		element_size: elm_size
 		data: vcalloc(cap_ * elm_size)
+		len: mylen
+		cap: cap_
 	}
 	if val != 0 {
 		for i in 0..arr.len {
