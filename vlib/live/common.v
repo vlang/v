@@ -26,6 +26,7 @@ pub mut:
 	cb_after          FNLiveReloadCB = 0 // executed after a reload try happened, even if failed
 	cb_locked_before  FNLiveReloadCB = 0 // executed before lib reload, in the mutex section
 	cb_locked_after   FNLiveReloadCB = 0 // executed after lib reload, in the mutex section
+	user_ptr          voidptr = 0 // you can set it to anything, then retrieve it in the cb_ fns
 }
 
 // LiveReloadInfo.live_linkfn should be called by the reloader

@@ -26,9 +26,19 @@ pub fn doc(mod string, table &table.Table, prefs &pref.Preferences) string {
 	vlib_path := os.dir(pref.vexe_path()) + '/vlib'
 	mod_path := mod.replace('.', os.path_separator)
 	path := os.join_path(vlib_path, mod_path)
-	if !os.exists(path) {
-		println('module "$mod" not found')
-		println(path)
+	if mod == '' || !os.exists(path) {
+		if mod != '' {
+			println('module "$mod" not found')
+		}
+		println('\navailable modules:')
+		mut files := os.ls(vlib_path) or {
+			return ''
+		}
+		files.sort()
+		for file in files {
+			println(file)
+		}
+		// println(path)
 		return ''
 	}
 	// vfiles := os.walk_ext(path, '.v')

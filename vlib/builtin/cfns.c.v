@@ -401,3 +401,10 @@ fn C.WaitForSingleObject(voidptr, int) int
 
 
 fn C.ReleaseMutex(voidptr) bool
+
+// pthread.h
+
+fn C.pthread_mutex_init(voidptr, voidptr) int
+fn C.pthread_mutex_lock(voidptr) int
+fn C.pthread_mutex_unlock(voidptr) int
+

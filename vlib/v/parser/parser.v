@@ -285,6 +285,22 @@ fn (mut p Parser) check(expected token.Kind) {
 	p.next()
 }
 
+// JS functions can have multiple dots in their name:
+// JS.foo.bar.and.a.lot.more.dots()
+fn (mut p Parser) check_js_name() string {
+	mut name := ''
+	for p.peek_tok.kind == .dot {
+		name += '${p.tok.lit}.'
+		p.next() // .name
+		p.next() // .dot
+	}
+ 	// last .name
+ 	name += p.tok.lit
+	p.next()
+
+	return name
+}
+
 fn (mut p Parser) check_name() string {
 	name := p.tok.lit
 	if p.peek_tok.kind == .dot && name in p.imports {
@@ -431,9 +447,12 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			return p.for_stmt()
 		}
 		.name {
-			if p.peek_tok.kind in [.decl_assign, .comma] {
+			if p.peek_tok.kind == .decl_assign {
 				// `x := ...`
 				return p.assign_stmt()
+			} else if p.peek_tok.kind == .comma {
+				// `a, b ...`
+				return p.parse_comma_separated()
 			} else if p.peek_tok.kind == .colon {
 				// `label:`
 				name := p.check_name()
@@ -508,15 +527,11 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				name: name
 			}
 		}
+		.key_const {
+			p.error_with_pos('const can only be defined at the top level (outside of functions)', p.tok.position())
+		}
 		else {
-			if p.tok.kind == .key_const {
-				p.error_with_pos('const can only be defined at the top level (outside of functions)', p.tok.position())
-			}
-			epos := p.tok.position()
-			return ast.ExprStmt{
-				expr: p.expr(0)
-				pos: epos
-			}
+			return p.parse_comma_separated()
 		}
 	}
 }
@@ -629,27 +644,93 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	}
 }
 
-pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
-	// p.warn('name ')
-	pos := p.tok.position()
-	mut name := p.check_name()
-	if name == '_' {
-		return ast.Ident{
-			name: '_'
-			kind: .blank_ident
-			pos: pos
+fn (mut p Parser) parse_comma_separated() ast.Stmt {
+	// in here might be 1) multi-expr 2) multi-assign
+	// 1, a, c ... }       // multi-expression
+	// a, mut b ... :=/=   // multi-assign
+	// collect things upto hard boundaries
+	mut collected := []ast.Expr{}
+	mut op := p.tok.kind
+	for op !in [.rcbr, .decl_assign, .assign] {
+		if op == .name {
+			collected << p.name_expr()
+		} else {
+			collected << p.expr(0)
+		}
+		if p.tok.kind == .comma {
+			p.next()
+		} else {
+			break
+		}
+		op = p.tok.kind
+	}
+	is_assignment := p.tok.kind in [.decl_assign, .assign]
+	if is_assignment {
+		mut idents := []ast.Ident{}
+		for c in collected {
+			idents << c as ast.Ident
+		}
+		return p.partial_assign_stmt(idents)
+	} else {
+		if collected.len == 1 {
+			epos := p.tok.position()
+			return ast.ExprStmt{
+				expr: collected[0]
+				pos: epos
+			}
+		}
+		return ast.ExprStmt{
+			expr: ast.ConcatExpr {
+				vals: collected
+			}
+			pos: p.tok.position()
 		}
 	}
-	if p.expr_mod.len > 0 {
-		name = '${p.expr_mod}.$name'
+}
+
+pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
+	// p.warn('name ')
+	is_mut := p.tok.kind == .key_mut
+	if is_mut {
+		p.next()
 	}
-	return ast.Ident{
-		kind: .unresolved
-		name: name
-		is_c: is_c
-		is_js: is_js
-		mod: p.mod
-		pos: pos
+	is_static := p.tok.kind == .key_static
+	if is_static {
+		p.next()
+	}
+	if p.tok.kind == .name {
+		pos := p.tok.position()
+		mut name := p.check_name()
+		if name == '_' {
+			return ast.Ident{
+				name: '_'
+				kind: .blank_ident
+				pos: pos
+				info: ast.IdentVar {
+					is_mut: false
+					is_static: false
+				}
+			}
+		}
+		if p.expr_mod.len > 0 {
+			name = '${p.expr_mod}.$name'
+		}
+		mut ident := ast.Ident{
+			kind: .unresolved
+			name: name
+			is_c: is_c
+			is_js: is_js
+			mod: p.mod
+			pos: pos
+		}
+		ident.is_mut = is_mut
+		ident.info = ast.IdentVar{
+			is_mut: is_mut
+			is_static: is_static
+		}
+		return ident
+	} else {
+		p.error('unexpected token `$p.tok.lit`')
 	}
 }
 
@@ -754,8 +835,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			// fn call
 			// println('calling $p.tok.lit')
-			x := p.call_expr(is_c, is_js, mod) // TODO `node,typ :=` should work
-			node = x
+			node = p.call_expr(is_c, is_js, mod)
 		}
 	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for {
@@ -782,6 +862,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else if p.peek_tok.kind == .colon && p.prev_tok.kind != .str_dollar {
 		// `foo(key:val, key2:val2)`
 		return p.struct_init(true) // short_syntax:true
+	// JS. function call with more than 1 dot
+	} else if is_js && p.peek_tok.kind == .dot && p.peek_tok2.kind == .name {
+		node = p.call_expr(is_c, is_js, mod)
 	} else {
 		node = p.parse_ident(is_c, is_js)
 	}

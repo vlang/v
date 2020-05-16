@@ -173,7 +173,7 @@ fn test_regex(){
 		// debug print
 		//println("#$c [$to.src] q[$to.q] ($to.s, $to.e)")
 
-		mut re, re_err, err_pos := regex.regex(to.q)
+		mut re, re_err, _ := regex.regex(to.q)
 		re.group_csave = [-1].repeat(3*20+1)
 
 		if re_err == regex.COMPILE_OK {
@@ -219,7 +219,7 @@ fn test_regex(){
 	}
 
 	// check find_all
-	for c,to in match_test_suite_fa{
+	for _,to in match_test_suite_fa{
 		// debug print
 		//println("#$c [$to.src] q[$to.q] $to.r")
 
@@ -249,7 +249,7 @@ fn test_regex(){
 	}
 
 	// check replace
-	for c,to in match_test_suite_re{
+	for _,to in match_test_suite_re{
 		// debug print
 		//println("#$c [$to.src] q[$to.q] $to.r")
 

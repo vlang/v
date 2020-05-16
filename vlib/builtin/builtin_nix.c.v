@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module builtin
 
-
 //pub fn vsyscall(id int
 //
 
