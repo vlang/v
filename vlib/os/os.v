@@ -946,6 +946,14 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 	return error('failed to find executable')
 }
 
+// exists_in_system_path returns true if prog exists in the system's path
+fn exists_in_system_path(prog string) bool {
+	os.find_abs_path_of_executable(prog) or {
+		return false
+	}
+	return true
+}
+
 [deprecated]
 pub fn dir_exists(path string) bool {
 	panic('Use `os.is_dir` instead of `os.dir_exists`')
