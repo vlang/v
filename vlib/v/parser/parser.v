@@ -631,6 +631,9 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 }
 
 pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
+	if p.pref.skip_warnings {
+		return
+	}
 	if p.pref.output_mode == .stdout {
 		ferror := util.formatted_error('warning:', s, p.file_name, pos)
 		eprintln(ferror)
