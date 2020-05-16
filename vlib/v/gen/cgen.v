@@ -3897,12 +3897,8 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		return
 	}
 	len := it.exprs.len
-	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str),\n')
-	g.write('\n#ifdef __cplusplus\n')
-	g.write('new $elem_type_str[$len]{\n')
-	g.write('#else\n')
-	g.write('($elem_type_str[$len]){\n')
-	g.write('#endif\n')
+	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
+	g.writeln('')
 	for i, expr in it.exprs {
 		if it.is_interface {
 			// sym := g.table.get_type_symbol(it.interface_types[i])
@@ -3915,7 +3911,8 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		}
 		g.write(', ')
 	}
-	g.write('\n})')
+	g.writeln('')
+	g.write('}))')
 }
 
 // `ui.foo(button)` =>
