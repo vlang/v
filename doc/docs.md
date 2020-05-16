@@ -631,7 +631,8 @@ println(p.x)
 The type of `p` is `&Point`. It's a reference to `Point`.
 References are similar to Go pointers and C++ references.
 
-V doesn't allow subclassing, but it supports embedded structs:
+<p>&nbsp;</p>
+
 
 ```v
 // TODO: this will be implemented later
@@ -646,6 +647,17 @@ button.set_pos(x, y)
 // Without embedding we'd have to do
 button.widget.set_pos(x,y)
 ```
+
+V doesn't allow subclassing, but it supports embedded structs.
+
+<p>&nbsp;</p>
+```v
+struct Foo {
+    pos int = -1
+    x   int // x is 0 by default
+}
+```
+All struct fields are zeroed by default during the creation of the struct. But it's also possible to define custom default values.
 
 ## Access modifiers
 
