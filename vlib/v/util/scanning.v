@@ -8,6 +8,11 @@ fn is_name_char(c byte) bool {
 }
 
 [inline]
+fn is_func_char(c byte) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` || c.is_digit()
+}
+
+[inline]
 fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
