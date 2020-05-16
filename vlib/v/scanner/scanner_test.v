@@ -40,4 +40,6 @@ fn test_scan() {
 	assert 1.23e+10 == 1.23e10
 	assert 1.23e+10 == 1.23e0010
 	assert (-1.23e+10) == (1.23e0010 * -1.0)
+	// test @FN
+	assert @FN == 'test_scan'
 }
