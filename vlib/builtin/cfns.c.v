@@ -213,7 +213,7 @@ fn C.GetModuleFileNameW(hModule voidptr, lpFilename &u16, nSize u32) u32
 fn C.CreatePipe(hReadPipe &voidptr, hWritePipe &voidptr, lpPipeAttributes voidptr, nSize u32) bool
 
 
-fn C.SetHandleInformation(hObject voidptr, dwMask u32, dwFlags u32) bool
+fn C.SetHandleInformation(hObject voidptr, dwMask u32, dw_flags u32) bool
 
 
 fn C.ExpandEnvironmentStringsW(lpSrc &u16, lpDst &u16, nSize u32) u32
@@ -228,7 +228,7 @@ fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumbe
 fn C.GetFileAttributesW(lpFileName byteptr) u32
 
 
-fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lpReserved &u32, lpType &u32, lpData byteptr, lpcbData &u32) int
+fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData byteptr, lpcbData &u32) int
 
 
 fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) int

@@ -3,24 +3,24 @@ module clipboard
 import time
 
 struct WndClassEx {
-	cbSize u32
+	cb_size u32
     style u32
-    lpfnWndProc voidptr
-    cbClsExtra int
-    cbWndExtra int
-  	hInstance C.HINSTANCE
-    hIcon C.HICON
-    hCursor C.HCURSOR
-    hbrBackground C.HBRUSH
-    lpszMenuName &u16 // LPCWSTR
-    lpszClassName &u16
-    hIconSm &u16
+    lpfn_wnd_proc voidptr
+    cb_cls_extra int
+    cb_wnd_extra int
+  	h_instance C.HINSTANCE
+    h_icon C.HICON
+    h_cursor C.HCURSOR
+    hbr_background C.HBRUSH
+    lpsz_menu_name &u16 // LPCWSTR
+    lpsz_class_name &u16
+    h_icon_sm &u16
 }
 
 fn C.RegisterClassEx(class WndClassEx) int
 fn C.GetClipboardOwner() &C.HWND
-fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x int, y int, nWidth int, nHeight int, hWndParent i64, hMenu voidptr, hInstance voidptr, lpParam voidptr) &C.HWND
-//fn C.MultiByteToWideChar(CodePage u32, dwFlags u16, lpMultiByteStr byteptr, cbMultiByte int, lpWideCharStr u16, cchWideChar int) int
+fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x int, y int, nWidth int, nHeight int, hWndParent i64, hMenu voidptr, h_instance voidptr, lpParam voidptr) &C.HWND
+//fn C.MultiByteToWideChar(CodePage u32, dw_flags u16, lpMultiByteStr byteptr, cbMultiByte int, lpWideCharStr u16, cchWideChar int) int
 fn C.EmptyClipboard()
 fn C.CloseClipboard()
 fn C.GlobalAlloc(uFlag u32, size i64) C.HGLOBAL
@@ -71,16 +71,16 @@ fn new_clipboard() &Clipboard {
     }
 	class_name := "clipboard"
     wndclass := WndClassEx {
-        cbSize: sizeof(WndClassEx)
-        lpfnWndProc: voidptr(&C.DefWindowProc)
-        lpszClassName: class_name.to_wide()
-		lpszMenuName: 0
-		hIconSm: 0
+        cb_size: sizeof(WndClassEx)
+        lpfn_wnd_proc: voidptr(&C.DefWindowProc)
+        lpsz_class_name: class_name.to_wide()
+		lpsz_menu_name: 0
+		h_icon_sm: 0
     }
     if C.RegisterClassEx(&wndclass) == 0 && C.GetLastError() != u32(C.ERROR_CLASS_ALREADY_EXISTS) {
         println("Failed registering class.")
     }
-    hwnd := C.CreateWindowEx(0, wndclass.lpszClassName, wndclass.lpszClassName, 0, 0, 0, 0, 0, C.HWND_MESSAGE, C.NULL, C.NULL, C.NULL)
+    hwnd := C.CreateWindowEx(0, wndclass.lpsz_class_name, wndclass.lpsz_class_name, 0, 0, 0, 0, 0, C.HWND_MESSAGE, C.NULL, C.NULL, C.NULL)
     if hwnd == C.NULL {
         println("Error creating window!")
     }

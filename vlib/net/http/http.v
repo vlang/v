@@ -373,5 +373,3 @@ pub fn unescape(s string) string {
 pub fn escape(s string) string {
 	panic('http.escape() was replaced with http.escape_url()')
 }
-
-type wsfn fn(s string, ptr voidptr)

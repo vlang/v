@@ -312,24 +312,24 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 	// Iterate through all characters
 	// utext := text.ustring()
 	for i in 0..utext.len {
-		_rune := utext.at(i)
-		// println('$i => $_rune')
+		rune_ := utext.at(i)
+		// println('$i => $rune_')
 		mut ch := Character{}
 		mut found := false
-		if _rune.len == 1 {
-			idx := _rune[0]
+		if rune_.len == 1 {
+			idx := rune_[0]
 			if idx < 0 || idx >= ctx.chars.len {
-				println('BADE RUNE $_rune')
+				println('BADE RUNE $rune_')
 				continue
 			}
 			found = true
-			ch = ctx.chars[_rune[0]]
+			ch = ctx.chars[rune_[0]]
 		}
-		else if _rune.len > 1 {
+		else if rune_.len > 1 {
 			// TODO O(1) use map
 			for j in 0..ctx.utf_runes.len {
 				rune_j := ctx.utf_runes[j]
-				if rune_j==_rune {
+				if rune_j==rune_ {
 					ch = ctx.utf_chars[j]
 					found = true
 					break
@@ -337,13 +337,13 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 			}
 		}
 		// A new Unicode character. Load it and cache it.
-		if !found && _rune.len > 0 && _rune[0] > 32 {
-			//c := _rune[0]
-			//println('cant draw rune "$_rune" code=$c, loading')
+		if !found && rune_.len > 0 && rune_[0] > 32 {
+			//c := rune_[0]
+			//println('cant draw rune "$rune_" code=$c, loading')
 			//continue
-			ch = ft_load_char(ctx.face, _rune.utf32_code())
+			ch = ft_load_char(ctx.face, rune_.utf32_code())
 			//println('done loading')
-			ctx.utf_runes << _rune
+			ctx.utf_runes << rune_
 			ctx.utf_chars << ch
 			//exit(1)
 			// continue
@@ -406,35 +406,35 @@ pub fn (ctx mut FreeType) text_size(s string) (int, int) {
 	utext := s.ustring()
 	mut x := u32(0)
 	mut maxy := u32(0)
-	mut _rune := ''
+	mut rune_ := ''
 	mut ch := Character{}
 	for i in 0..utext.len {
-		_rune = utext.at(i)
+		rune_ = utext.at(i)
 		ch = Character{}
 		mut found := false
-		if _rune.len == 1 {
-			idx := _rune[0]
+		if rune_.len == 1 {
+			idx := rune_[0]
 			if idx < 0 || idx >= ctx.chars.len {
-				println('BADE RUNE $_rune')
+				println('BADE RUNE $rune_')
 				continue
 			}
 			found = true
-			ch = ctx.chars[_rune[0]]
+			ch = ctx.chars[rune_[0]]
 		}
-		else if _rune.len > 1 {
+		else if rune_.len > 1 {
 			// TODO O(1) use map
 			for j in 0..ctx.utf_runes.len {
 				rune_j := ctx.utf_runes[j]
-				if rune_j==_rune {
+				if rune_j==rune_ {
 					ch = ctx.utf_chars[j]
 					found = true
 					break
 				}
 			}
 		}
-		if !found && _rune.len > 0 && _rune[0] > 32 {
-			ch = ft_load_char(ctx.face, _rune.utf32_code())
-			ctx.utf_runes << _rune
+		if !found && rune_.len > 0 && rune_[0] > 32 {
+			ch = ft_load_char(ctx.face, rune_.utf32_code())
+			ctx.utf_runes << rune_
 			ctx.utf_chars << ch
 		}
 		x += ch.horizontal_advance_px

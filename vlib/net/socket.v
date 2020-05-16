@@ -6,7 +6,7 @@ pub struct Socket {
 pub:
 	sockfd int
 	family int
-	_type  int
+	typ    int
 	proto  int
 }
 
@@ -84,8 +84,8 @@ fn C.ntohs() int
 
 fn C.getsockname() int
 // create socket
-pub fn new_socket(family int, _type int, proto int) ?Socket {
-	sockfd := C.socket(family, _type, proto)
+pub fn new_socket(family int, typ int, proto int) ?Socket {
+	sockfd := C.socket(family, typ, proto)
 	one := 1
 	// This is needed so that there are no problems with reusing the
 	// same port after the application exits.
@@ -96,7 +96,7 @@ pub fn new_socket(family int, _type int, proto int) ?Socket {
 	s := Socket{
 		sockfd: sockfd
 		family: family
-		_type: _type
+		typ: typ
 		proto: proto
 	}
 	return s
@@ -188,7 +188,7 @@ pub fn (s Socket) accept() ?Socket {
 	c := Socket{
 		sockfd: sockfd
 		family: s.family
-		_type: s._type
+		typ: s.typ
 		proto: s.proto
 	}
 	return c
@@ -199,7 +199,7 @@ pub fn (s Socket) connect(address string, port int) ?int {
 	mut hints := C.addrinfo{
 	}
 	hints.ai_family = s.family
-	hints.ai_socktype = s._type
+	hints.ai_socktype = s.typ
 	hints.ai_flags = C.AI_PASSIVE
 	hints.ai_protocol = s.proto
 	hints.ai_addrlen = 0

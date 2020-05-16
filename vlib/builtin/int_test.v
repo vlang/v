@@ -132,16 +132,11 @@ fn test_cmp() {
 }
 */
 
-type myint int
-type mystring string
+type MyInt int
 
 fn test_int_alias() {
-	/*
-	i := myint(2)
-	s := mystring('hi')
-	ss := s + '!'
+	i := MyInt(2)
 	assert i + 10 == 12
-	*/
 }
 
 fn test_hex() {

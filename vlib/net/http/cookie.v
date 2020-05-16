@@ -57,11 +57,11 @@ pub fn read_set_cookies(h map[string][]string) []&Cookie {
 			continue
 		}
 		name := keyval[0]
-		_value := keyval[1]
+		raw_value := keyval[1]
 		if !is_cookie_name_valid(name) {
 			continue
 		}
-		value := parse_cookie_value(_value, true) or {
+		value := parse_cookie_value(raw_value, true) or {
 			continue
 		}
 		mut c  := &Cookie{
@@ -75,14 +75,14 @@ pub fn read_set_cookies(h map[string][]string) []&Cookie {
 				continue
 			}
 			mut attr := parts[i]
-			mut _val := ''
+			mut raw_val := ''
 			if attr.contains('=') {
 				pieces := attr.split('=')
 				attr = pieces[0]
-				_val = pieces[1]
+				raw_val = pieces[1]
 			}
 			lower_attr := attr.to_lower()
-			val := parse_cookie_value(_val, false) or {
+			val := parse_cookie_value(raw_val, false) or {
 				c.unparsed << parts[i]
 				continue
 			}
@@ -158,9 +158,9 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 		mut part := ''
 		for line.len > 0 {
 			if line.index_any(';') > 0 {
-				_parts := line.split(';')
-				part = _parts[0]
-				line = _parts[1]
+				line_parts := line.split(';')
+				part = line_parts[0]
+				line = line_parts[1]
 			} else {
 				part = line
 				line = ''
@@ -172,9 +172,9 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 			mut name := part
 			mut val := ''
 			if part.contains('=') {
-				_parts := part.split('=')
-				name = _parts[0]
-				val = _parts[1]
+				val_parts := part.split('=')
+				name = val_parts[0]
+				val = val_parts[1]
 			}
 			if !is_cookie_name_valid(name) {
 				continue
@@ -182,12 +182,9 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 			if filter != '' && filter != name {
 				continue
 			}
-			 // Circumvent the issue with assigning an `or` expression to an existing value
-			 // TODO: Fix when fixed in compiler
-			_val := parse_cookie_value(val, true) or {
+			val = parse_cookie_value(val, true) or {
 				continue
 			}
-			val = _val
 			cookies << &Cookie{name: name, value: val}
 		}
 	}

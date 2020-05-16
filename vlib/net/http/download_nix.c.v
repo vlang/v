@@ -3,15 +3,17 @@
 // that can be found in the LICENSE file.
 module http
 
-type downloadfn fn(written int)type download_finished_fn fn()
+type DownloadFn fn(written int)
+
 /*
 struct DownloadStruct {
 mut:
 	stream  voidptr
 	written int
-	cb      downloadfn
+	cb      DownloadFn
 }
 */
+
 fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr) {
 	/*
 	mut data := &DownloadStruct(userp)
@@ -23,7 +25,7 @@ fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr) {
 */
 }
 
-pub fn download_file_with_progress(url, out string, cb downloadfn, cb_finished fn()) {
+pub fn download_file_with_progress(url, out string, cb DownloadFn, cb_finished fn()) {
 	/*
 	curl := C.curl_easy_init()
 	if isnil(curl) {
