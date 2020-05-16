@@ -979,7 +979,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					has_val = it.has_val
 					if it.has_default {
 						elem_type_str := g.typ(it.elem_type)
-						g.write('$elem_type_str val_$it.pos.pos = ')
+						g.write('$elem_type_str _val_$it.pos.pos = ')
 						g.expr(it.default_expr)
 						g.writeln(';')
 					}
@@ -3862,7 +3862,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		}
 		g.write('sizeof($elem_type_str), ')
 		if it.has_default {
-			g.write('&val_$it.pos.pos)')
+			g.write('&_val_$it.pos.pos)')
 		} else {
 			g.write('0)')
 		}
