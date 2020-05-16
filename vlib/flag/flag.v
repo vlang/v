@@ -75,6 +75,7 @@ pub fn (af []Flag) str() string {
 pub struct FlagParser {
 	pub mut:
 	args  []string                  // the arguments to be parsed
+	max_free_args int
 	flags []Flag                    // registered flags
 
 	application_name        string
@@ -82,7 +83,6 @@ pub struct FlagParser {
 	application_description string
 
 	min_free_args int
-	max_free_args int
 	args_description        string
 }
 

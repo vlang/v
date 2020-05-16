@@ -31,10 +31,10 @@ pub mut:
 
 struct mapnode {
 mut:
-	keys     [11]string  // TODO: Should use `max_size`
-	values   [11]voidptr // TODO: Should use `max_size`
 	children &voidptr
 	size     int
+	keys     [11]string  // TODO: Should use `max_size`
+	values   [11]voidptr // TODO: Should use `max_size`
 }
 
 fn new_sorted_map(n, value_bytes int) SortedMap { // TODO: Remove `n`

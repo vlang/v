@@ -591,7 +591,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// just remember `it`; main code will be generated in finish()
 				g.fn_main = it
 			} else {
+				if it.name == 'backtrace' || it.name == 'backtrace_symbols' || it.name == 'backtrace_symbols_fd' {
+					g.write('\n#ifndef __cplusplus\n')
+				}
 				g.gen_fn_decl(it)
+				if it.name == 'backtrace' || it.name == 'backtrace_symbols' || it.name == 'backtrace_symbols_fd' {
+					g.write('\n#endif\n')
+				}
 			}
 			g.fn_decl = keep_fn_decl
 			if skip {
@@ -1210,9 +1216,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				// `string(x)` needs `tos()`, but not `&string(x)
 				// `tos(str, len)`, `tos2(str)`
 				if it.has_arg {
-					g.write('tos(')
+					g.write('tos((byteptr)')
 				} else {
-					g.write('tos2(')
+					g.write('tos2((byteptr)')
 				}
 				g.expr(it.expr)
 				expr_sym := g.table.get_type_symbol(it.expr_type)
@@ -1286,17 +1292,17 @@ fn (mut g Gen) expr(node ast.Expr) {
 			value_typ_str := g.typ(it.value_type)
 			size := it.vals.len
 			if size > 0 {
-				g.write('new_map_init($size, sizeof($value_typ_str), (${key_typ_str}[$size]){')
+				g.write('new_map_init($size, sizeof($value_typ_str), _MOV((${key_typ_str}[$size]){')
 				for expr in it.keys {
 					g.expr(expr)
 					g.write(', ')
 				}
-				g.write('}, (${value_typ_str}[$size]){')
+				g.write('}), _MOV((${value_typ_str}[$size]){')
 				for expr in it.vals {
 					g.expr(expr)
 					g.write(', ')
 				}
-				g.write('})')
+				g.write('}))')
 			} else {
 				g.write('new_map_1(sizeof($value_typ_str))')
 			}
@@ -1665,7 +1671,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			elem_type_str := g.typ(info.elem_type)
 			g.write('array_push(&')
 			g.expr(node.left)
-			g.write(', &($elem_type_str[]){ ')
+			g.write(', _MOV(($elem_type_str[]){ ')
 			elem_sym := g.table.get_type_symbol(info.elem_type)
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.interface_call(node.right_type, info.elem_type)
@@ -1674,7 +1680,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.write(')')
 			}
-			g.write(' })')
+			g.write(' }))')
 		}
 	} else if (node.left_type == node.right_type) && node.left_type.is_float() && node.op in
 		[.eq, .ne] {
@@ -2009,7 +2015,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 				*/
 				if need_wrapper {
-					g.write(', &($elem_type_str[]) { ')
+					g.write('\n#ifdef __cplusplus\n')
+					g.write(', new $elem_type_str[1] { \n')
+					g.write('#else\n')
+					g.write(', &($elem_type_str[]) { \n')
+					g.write('#endif\n')
 				} else {
 					g.write(', &')
 				}
@@ -2061,7 +2071,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
-				g.write(', &($elem_type_str[]) { ')
+				g.write('\n#ifdef __cplusplus\n')
+				g.write(', new $elem_type_str[1] { \n')
+				g.write('#else\n')
+				g.write(', &($elem_type_str[]) { \n')
+				g.write('#endif\n')
 			} else {
 				/*
 				g.write('(*($elem_type_str*)map_get2(')
@@ -2075,7 +2089,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
-				g.write(', &($elem_type_str[]){ $zero }))')
+				g.write('\n#ifdef __cplusplus\n')
+				g.write(', new $elem_type_str[1]{ $zero }))\n')
+				g.write('#else\n')
+				g.write(', &($elem_type_str[]){ $zero }))\n')
+				g.write('#endif\n')
 			}
 		} else if sym.kind == .string && !node.left_type.is_ptr() {
 			g.write('string_at(')
@@ -2237,9 +2255,18 @@ fn (mut g Gen) const_decl_init_later(name, val string, typ table.Type) {
 	g.inits.writeln('\t_const_$name = $val;')
 }
 
+fn (mut g Gen) go_back_out(n int) {
+	g.out.go_back(n)
+}
+
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
-	sym := g.table.get_type_symbol(struct_init.typ)
+  skip_init := ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'strconv__Float64u', 'struct stat', 'struct addrinfo']
 	styp := g.typ(struct_init.typ)
+	if styp in skip_init {
+		g.go_back_out(3)
+		return
+	}
+	sym := g.table.get_type_symbol(struct_init.typ)
 	is_amp := g.is_amp
 	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
 	if is_amp {
@@ -3869,8 +3896,8 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		return
 	}
 	len := it.exprs.len
-	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), ')
-	g.write('($elem_type_str[$len]){\n\t\t')
+	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
+	g.writeln('')
 	for i, expr in it.exprs {
 		if it.is_interface {
 			// sym := g.table.get_type_symbol(it.interface_types[i])
@@ -3883,7 +3910,8 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		}
 		g.write(', ')
 	}
-	g.write('\n})')
+	g.writeln('')
+	g.write('}))')
 }
 
 // `ui.foo(button)` =>
