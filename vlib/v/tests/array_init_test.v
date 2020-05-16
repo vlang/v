@@ -16,9 +16,15 @@ fn test_array_init() {
 }
 
 fn test_array_init_with_default() {
-	a := []int{len: 4, init: 2}
-	assert '$a' == '[2, 2, 2, 2]'
+	a1 := []int{len: 4, init: 2}
+	assert '$a1' == '[2, 2, 2, 2]'
 
-	b := []string{len: 3, init: 'abc'}
-	assert '$b' == "['abc', 'abc', 'abc']"
+	a2 := []int{len: 3, init: 12345}
+	assert '$a2' == '[12345, 12345, 12345]'
+
+	b1 := []string{len: 3, init: 'abc'}
+	assert '$b1' == "['abc', 'abc', 'abc']"
+
+	b2 := []string{len: 2, init: '111'}
+	assert '$b2' == "['111', '111']"
 }
