@@ -218,7 +218,7 @@ fn (b &Builder) print_warnings_and_errors() {
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
 		println('$b.checker.nr_warnings warnings')
 	}
-	if b.checker.nr_warnings > 0 {
+	if b.checker.nr_warnings > 0  && !b.pref.skip_warnings {
 		for i, err in b.checker.warnings {
 			kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_warnings:' } else { 'warning:' }
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)

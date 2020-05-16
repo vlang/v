@@ -947,7 +947,7 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 }
 
 // exists_in_system_path returns true if prog exists in the system's path
-fn exists_in_system_path(prog string) bool {
+pub fn exists_in_system_path(prog string) bool {
 	os.find_abs_path_of_executable(prog) or {
 		return false
 	}

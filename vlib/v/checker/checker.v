@@ -1686,6 +1686,16 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				type_name := c.table.type_to_str(it.expr_type)
 				c.error('cannot cast type `$type_name` to string, use `x.str()` instead', it.pos)
 			}
+			if it.expr_type == table.string_type {
+				mut error_msg := 'cannot cast a string'
+				if it.expr is ast.StringLiteral {
+					str_lit := it.expr as ast.StringLiteral
+					if str_lit.val.len == 1 {
+						error_msg += ", for denoting characters use `$str_lit.val` instead of '$str_lit.val'"
+					}
+				}
+				c.error(error_msg, it.pos)
+			}
 			if it.has_arg {
 				c.expr(it.arg)
 			}
@@ -2264,7 +2274,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	// if c.pref.is_verbose {
 	// print_backtrace()
 	// }
-	if warn {
+	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
 		wrn := errors.Warning{
 			reporter: errors.Reporter.checker
@@ -2274,7 +2284,9 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 		}
 		c.file.warnings << wrn
 		c.warnings << wrn
-	} else {
+		return
+	}
+	if !warn {
 		c.nr_errors++
 		if pos.line_nr !in c.error_lines {
 			err := errors.Error{

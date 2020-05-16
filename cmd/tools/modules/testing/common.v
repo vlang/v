@@ -216,6 +216,10 @@ pub fn vlib_should_be_present(parent_dir string) {
 }
 
 pub fn v_build_failing(zargs string, folder string) bool {
+	return v_build_failing_skipped(zargs, folder, [])
+}
+
+pub fn v_build_failing_skipped(zargs string, folder string, skipped []string) bool {
 	main_label := 'Building $folder ...'
 	finish_label := 'building $folder'
 	vexe := pref.vexe_path()
@@ -239,6 +243,7 @@ pub fn v_build_failing(zargs string, folder string) bool {
 		}
 	}
 	session.files << mains
+	session.skip_files << skipped
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
 	return session.failed
