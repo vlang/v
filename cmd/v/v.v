@@ -148,28 +148,4 @@ fn create_symlink() {
 	}
 }
 
-fn parse_define(prefs mut pref.Preferences, define string) {
-    define_parts := define.split('=')
-    if define_parts.len == 1 {
-        prefs.compile_defines << define
-        prefs.compile_defines_all << define
-        return
-    }
-    if define_parts.len == 2 {
-        prefs.compile_defines_all << define_parts[0]
-        match define_parts[1] {
-            '0' {}
-            '1' {
-                prefs.compile_defines << define_parts[0]
-            }
-            else {
-                println('V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
-                    'Expected `0` or `1`.')
-                exit(1)
-            }
-        }
-        return
-    }
-    println('V error: Unknown define argument: ${define}. Expected at most one `=`.')
-    exit(1)
-}
+
