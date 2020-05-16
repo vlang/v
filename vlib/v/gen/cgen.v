@@ -1239,7 +1239,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.ConcatExpr {
-			g.concat_expr(it)	
+			g.concat_expr(it)
 		}
 		ast.EnumVal {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
@@ -1854,7 +1854,6 @@ fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 	styp := g.typ(node.return_type)
 	sym := g.table.get_type_symbol(node.return_type)
 	is_multi := sym.kind == .multi_return
-
 	if !is_multi {
 		g.expr(node.vals[0])
 	} else {

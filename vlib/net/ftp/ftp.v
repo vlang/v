@@ -1,5 +1,5 @@
 /*
-	basic ftp module
+basic ftp module
 	RFC-959
 	https://tools.ietf.org/html/rfc959
 
@@ -15,29 +15,28 @@
 	dtp.close()
 	ftp.close()
 */
-
 module ftp
 
 import net
 
 const (
-	Connected = 220
-	SpecifyPassword = 331
-	LoggedIn = 230
-	LoginFirst = 503
-	Anonymous = 530
-	OpenDataConnection = 150
+	Connected           = 220
+	SpecifyPassword     = 331
+	LoggedIn            = 230
+	LoginFirst          = 503
+	Anonymous           = 530
+	OpenDataConnection  = 150
 	CloseDataConnection = 226
-	CommandOk = 200
-	denied = 550
-	PassiveMode = 227
-	complete = 226
+	CommandOk           = 200
+	denied              = 550
+	PassiveMode         = 227
+	complete            = 226
 )
 
 struct DTP {
 mut:
 	sock net.Socket
-	ip string
+	ip   string
 	port int
 }
 
@@ -45,24 +44,27 @@ fn (dtp DTP) read() []byte {
 	mut data := []byte{}
 	for {
 		buf, len := dtp.sock.recv(1024)
-		if len == 0 { break }
-
-		for i in 0..len {
+		if len == 0 {
+			break
+		}
+		for i in 0 .. len {
 			data << buf[i]
 		}
-		unsafe { free(buf) }
+		unsafe {
+			free(buf)
+		}
 	}
-
 	return data
 }
 
 fn (dtp DTP) close() {
-	dtp.sock.close() or {}
+	dtp.sock.close() or {
+	}
 }
 
 struct FTP {
 mut:
-	sock net.Socket
+	sock        net.Socket
 	buffer_size int
 }
 
@@ -87,11 +89,9 @@ fn (ftp FTP) read() (int, string) {
 	$if debug {
 		println('FTP.v <<< $data')
 	}
-
 	if data.len < 5 {
 		return 0, ''
 	}
-
 	code := data[..3].int()
 	if data[3] == `-` {
 		for {
@@ -101,21 +101,18 @@ fn (ftp FTP) read() (int, string) {
 			}
 		}
 	}
-
 	return code, data
 }
 
-pub fn (ftp mut FTP) connect(ip string) bool {
+pub fn (mut ftp FTP) connect(ip string) bool {
 	sock := net.dial(ip, 21) or {
 		return false
 	}
 	ftp.sock = sock
-
 	code, _ := ftp.read()
 	if code == Connected {
 		return true
 	}
-
 	return false
 }
 
@@ -126,39 +123,34 @@ pub fn (ftp FTP) login(user, passwd string) bool {
 		}
 		return false
 	}
-
 	mut code, data := ftp.read()
 	if code == LoggedIn {
 		return true
 	}
-
 	if code != SpecifyPassword {
 		return false
 	}
-
 	ftp.write('PASS $passwd') or {
 		$if debug {
 			println('ERROR sending password')
 		}
 		return false
 	}
-
 	code, data = ftp.read()
-
 	// TODO Replace `data` with `_`
 	_ := data
-
 	if code == LoggedIn {
 		return true
 	}
-
 	return false
 }
 
 pub fn (ftp FTP) close() {
 	send_quit := 'QUIT\r\n'
-	ftp.sock.send_string(send_quit) or {}
-	ftp.sock.close() or {}
+	ftp.sock.send_string(send_quit) or {
+	}
+	ftp.sock.close() or {
+	}
 }
 
 pub fn (ftp FTP) pwd() string {
@@ -174,7 +166,9 @@ pub fn (ftp FTP) pwd() string {
 }
 
 pub fn (ftp FTP) cd(dir string) {
-	ftp.write('CWD $dir') or { return }
+	ftp.write('CWD $dir') or {
+		return
+	}
 	mut code, mut data := ftp.read()
 	match int(code) {
 		denied {
@@ -187,7 +181,6 @@ pub fn (ftp FTP) cd(dir string) {
 		}
 		else {}
 	}
-
 	$if debug {
 		println('CD $data')
 	}
@@ -197,14 +190,11 @@ fn new_dtp(msg string) ?DTP {
 	if !is_dtp_message_valid(msg) {
 		return error('Bad message')
 	}
-
 	ip, port := get_host_ip_from_dtp_message(msg)
-
 	sock := net.dial(ip, port) or {
 		return error('Cannot connect to the data channel')
 	}
-
-	dtp := DTP {
+	dtp := DTP{
 		sock: sock
 		ip: ip
 		port: port
@@ -213,18 +203,17 @@ fn new_dtp(msg string) ?DTP {
 }
 
 fn (ftp FTP) pasv() ?DTP {
-	ftp.write('PASV') or {}
+	ftp.write('PASV') or {
+	}
 	code, data := ftp.read()
 	$if debug {
 		println('pass: $data')
 	}
-
 	if code != PassiveMode {
 		return error('pasive mode not allowed')
 	}
-
 	dtp := new_dtp(data) or {
-	   return error(err)
+		return error(err)
 	}
 	return dtp
 }
@@ -233,8 +222,8 @@ pub fn (ftp FTP) dir() ?[]string {
 	dtp := ftp.pasv() or {
 		return error('cannot establish data connection')
 	}
-
-	ftp.write('LIST') or {}
+	ftp.write('LIST') or {
+	}
 	code, _ := ftp.read()
 	if code == denied {
 		return error('LIST denied')
@@ -242,23 +231,20 @@ pub fn (ftp FTP) dir() ?[]string {
 	if code != OpenDataConnection {
 		return error('data channel empty')
 	}
-
 	list_dir := dtp.read()
 	result, _ := ftp.read()
 	if result != CloseDataConnection {
 		println('LIST not ok')
 	}
 	dtp.close()
-
 	mut dir := []string{}
 	sdir := string(byteptr(list_dir.data))
 	for lfile in sdir.split('\n') {
-		if lfile.len >1 {
+		if lfile.len > 1 {
 			spl := lfile.split(' ')
-			dir << spl[spl.len-1]
+			dir << spl[spl.len - 1]
 		}
 	}
-
 	return dir
 }
 
@@ -266,21 +252,17 @@ pub fn (ftp FTP) get(file string) ?[]byte {
 	dtp := ftp.pasv() or {
 		return error('Cannot stablish data connection')
 	}
-
-	ftp.write('RETR $file') or {}
+	ftp.write('RETR $file') or {
+	}
 	code, _ := ftp.read()
-
 	if code == denied {
 		return error('Permission denied')
 	}
-
 	if code != OpenDataConnection {
 		return error('Data connection not ready')
 	}
-
 	blob := dtp.read()
 	dtp.close()
-
 	return blob
 }
 
@@ -293,7 +275,6 @@ fn is_dtp_message_valid(msg string) bool {
 fn get_host_ip_from_dtp_message(msg string) (string, int) {
 	mut par_start_idx := -1
 	mut par_end_idx := -1
-
 	for i, c in msg {
 		if c == `(` {
 			par_start_idx = i + 1
@@ -302,9 +283,7 @@ fn get_host_ip_from_dtp_message(msg string) (string, int) {
 		}
 	}
 	data := msg[par_start_idx..par_end_idx].split(',')
-
 	ip := data[0..4].join('.')
 	port := data[4].int() * 256 + data[5].int()
-
 	return ip, port
 }

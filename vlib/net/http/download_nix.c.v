@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module http
 
-type DownloadFn fn(written int)
+type DownloadFn = fn (written int)
 
 /*
 struct DownloadStruct {
@@ -13,7 +13,6 @@ mut:
 	cb      DownloadFn
 }
 */
-
 fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr) {
 	/*
 	mut data := &DownloadStruct(userp)
@@ -51,4 +50,3 @@ pub fn download_file_with_progress(url, out string, cb DownloadFn, cb_finished f
 
 fn empty() {
 }
-

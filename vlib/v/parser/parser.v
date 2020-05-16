@@ -294,10 +294,9 @@ fn (mut p Parser) check_js_name() string {
 		p.next() // .name
 		p.next() // .dot
 	}
- 	// last .name
- 	name += p.tok.lit
+	// last .name
+	name += p.tok.lit
 	p.next()
-
 	return name
 }
 
@@ -462,8 +461,8 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				}
 			} else if p.peek_tok.kind == .name {
 				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-			} else if !p.inside_if_expr && !p.inside_match_body &&
-					!p.inside_or_expr && p.peek_tok.kind in [.rcbr, .eof] {
+			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr && p.peek_tok.kind in
+				[.rcbr, .eof] {
 				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 			}
 			epos := p.tok.position()
@@ -528,7 +527,8 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			}
 		}
 		.key_const {
-			p.error_with_pos('const can only be defined at the top level (outside of functions)', p.tok.position())
+			p.error_with_pos('const can only be defined at the top level (outside of functions)',
+				p.tok.position())
 		}
 		else {
 			return p.parse_comma_separated()
@@ -680,7 +680,7 @@ fn (mut p Parser) parse_comma_separated() ast.Stmt {
 			}
 		}
 		return ast.ExprStmt{
-			expr: ast.ConcatExpr {
+			expr: ast.ConcatExpr{
 				vals: collected
 			}
 			pos: p.tok.position()
@@ -706,7 +706,7 @@ pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
 				name: '_'
 				kind: .blank_ident
 				pos: pos
-				info: ast.IdentVar {
+				info: ast.IdentVar{
 					is_mut: false
 					is_static: false
 				}
@@ -862,7 +862,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else if p.peek_tok.kind == .colon && p.prev_tok.kind != .str_dollar {
 		// `foo(key:val, key2:val2)`
 		return p.struct_init(true) // short_syntax:true
-	// JS. function call with more than 1 dot
+		// JS. function call with more than 1 dot
 	} else if is_js && p.peek_tok.kind == .dot && p.peek_tok2.kind == .name {
 		node = p.call_expr(is_c, is_js, mod)
 	} else {

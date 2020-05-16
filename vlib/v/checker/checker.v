@@ -180,12 +180,15 @@ fn (mut c Checker) check_valid_snake_case(name, identifier string, pos token.Pos
 		c.error('$identifier `$name` cannot start with `_`', pos)
 	}
 	if util.contains_capital(name) {
-		c.error('$identifier `$name` cannot contain uppercase letters, use snake_case instead', pos)
+		c.error('$identifier `$name` cannot contain uppercase letters, use snake_case instead',
+			pos)
 	}
 }
 
 fn stripped_name(name string) string {
-	idx := name.last_index('.') or { -1 }
+	idx := name.last_index('.') or {
+		-1
+	}
 	return name[(idx + 1)..]
 }
 
@@ -1133,7 +1136,8 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
 	for i, field in decl.fields {
 		if util.contains_capital(field.name) {
-			c.error('field name `$field.name` cannot contain uppercase letters, use snake_case instead', field.pos)
+			c.error('field name `$field.name` cannot contain uppercase letters, use snake_case instead',
+				field.pos)
 		}
 		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
@@ -1899,7 +1903,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	return table.void_type
 }
 
-pub fn (mut c Checker) concat_expr(concat_expr mut ast.ConcatExpr) table.Type {
+pub fn (mut c Checker) concat_expr(mut concat_expr ast.ConcatExpr) table.Type {
 	mut mr_types := []table.Type{}
 	for expr in concat_expr.vals {
 		mr_types << c.expr(expr)

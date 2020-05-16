@@ -7,7 +7,7 @@ import net.urllib
 import net.http.chunked
 
 const (
-	max_redirects = 4
+	max_redirects        = 4
 	content_type_default = 'text/plain'
 )
 
@@ -20,7 +20,6 @@ pub mut:
 	url        string
 	user_agent string
 	verbose    bool
-//mut:
 	user_ptr   voidptr
 	ws_func    voidptr
 }
@@ -32,8 +31,8 @@ pub mut:
 	params     map[string]string
 	headers    map[string]string
 	cookies    map[string]string
-	user_agent string//='v' QTODO
-	verbose    bool=false
+	user_agent string // ='v' QTODO
+	verbose    bool = false
 }
 
 pub struct Response {
@@ -44,9 +43,9 @@ pub:
 	status_code int
 }
 
-pub fn new_request(method, url_, data string) ?Request{
+pub fn new_request(method, url_, data string) ?Request {
 	url := if method == 'GET' { url_ + '?' + data } else { url_ }
-	//println('new req() method=$method url="$url" dta="$data"')
+	// println('new req() method=$method url="$url" dta="$data"')
 	return Request{
 		method: method.to_upper()
 		url: url
@@ -147,7 +146,7 @@ pub fn url_encode_form_data(data map[string]string) string {
 	return pieces.join('&')
 }
 
-fn fetch_with_method(method string, url string, _config FetchConfig) ?Response {
+fn fetch_with_method(method, url string, _config FetchConfig) ?Response {
 	mut config := _config
 	config.method = method
 	return fetch(url, config)
@@ -173,21 +172,21 @@ fn build_url_from_fetch(_url string, config FetchConfig) ?string {
 	return url.str()
 }
 
-fn (req mut Request) free() {
+fn (mut req Request) free() {
 	req.headers.free()
 }
 
-fn (resp mut Response) free() {
+fn (mut resp Response) free() {
 	resp.headers.free()
 }
 
 // add_header adds the key and value of an HTTP request header
-pub fn (req mut Request) add_header(key, val string) {
+pub fn (mut req Request) add_header(key, val string) {
 	req.headers[key] = val
 }
 
 pub fn parse_headers(lines []string) map[string]string {
-	mut headers := map[string]string
+	mut headers := map[string]string{}
 	for i, line in lines {
 		if i == 0 {
 			continue
@@ -258,8 +257,7 @@ fn (req &Request) method_and_url_to_response(method string, url urllib.URL) ?Res
 			return error(err)
 		}
 		return res
-	}
-	else if scheme == 'http' {
+	} else if scheme == 'http' {
 		// println('http_do( $nport, $method, $host_name, $path )')
 		res := req.http_do(nport, method, host_name, path) or {
 			return error(err)
@@ -271,9 +269,9 @@ fn (req &Request) method_and_url_to_response(method string, url urllib.URL) ?Res
 
 fn parse_response(resp string) Response {
 	// TODO: Header data type
-	mut headers := map[string]string
+	mut headers := map[string]string{}
 	// TODO: Cookie data type
-	mut cookies := map[string]string
+	mut cookies := map[string]string{}
 	first_header := resp.all_before('\n')
 	mut status_code := 0
 	if first_header.contains('HTTP/') {
@@ -341,7 +339,8 @@ fn (req &Request) build_request_headers(method, host_name, path string) string {
 		uheaders << '${key}: ${val}\r\n'
 	}
 	uheaders << req.build_request_cookies_header()
-	return '$method $path HTTP/1.1\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data
+	return '$method $path HTTP/1.1\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' +
+		req.data
 }
 
 fn (req &Request) build_request_cookies_header() string {
