@@ -281,13 +281,13 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
-      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind g++-8
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind g++-9
     - name: Build V
       run: make -j4
     - name: g++ version
-      run: g++-8 --version
+      run: g++-9 --version
     - name: Running tests with g++
-      run: ./v -cc g++-8 test-fixed
+      run: ./v -cc g++-9 test-fixed
 #    - name: V self compilation with g++
 #      run: ./v -cc g++-8 -o v2 cmd/v && ./v2 -cc g++ -o v3 cmd/v
 

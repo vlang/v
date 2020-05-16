@@ -2015,11 +2015,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 				*/
 				if need_wrapper {
-					g.write('\n#ifdef __cplusplus\n')
-					g.write(', new $elem_type_str[1] { \n')
-					g.write('#else\n')
 					g.write(', &($elem_type_str[]) { \n')
-					g.write('#endif\n')
 				} else {
 					g.write(', &')
 				}
@@ -2071,11 +2067,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
-				g.write('\n#ifdef __cplusplus\n')
-				g.write(', new $elem_type_str[1] { \n')
-				g.write('#else\n')
 				g.write(', &($elem_type_str[]) { \n')
-				g.write('#endif\n')
 			} else {
 				/*
 				g.write('(*($elem_type_str*)map_get2(')
@@ -2089,11 +2081,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
-				g.write('\n#ifdef __cplusplus\n')
-				g.write(', new $elem_type_str[1]{ $zero }))\n')
-				g.write('#else\n')
 				g.write(', &($elem_type_str[]){ $zero }))\n')
-				g.write('#endif\n')
 			}
 		} else if sym.kind == .string && !node.left_type.is_ptr() {
 			g.write('string_at(')
@@ -2336,13 +2324,16 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				continue
 			}
 			field_name := c_name(field.name)
-			g.write('\t.$field_name = ')
 			if field.has_default_expr {
+				g.write('\t.$field_name = ')
 				g.expr(ast.fe2ex(field.default_expr))
+				g.writeln(',')
 			} else {
-				g.write(g.type_default(field.typ))
+				d := g.type_default(field.typ)
+				if d != '0' && d != '{0}' {
+					g.writeln('\t.$field_name = $d,')
+				}
 			}
-			g.writeln(',')
 		}
 	}
 	// if struct_init.fields.len == 0 && info.fields.len == 0 {
