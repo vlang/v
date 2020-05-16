@@ -1686,6 +1686,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				type_name := c.table.type_to_str(it.expr_type)
 				c.error('cannot cast type `$type_name` to string, use `x.str()` instead', it.pos)
 			}
+			if it.expr_type == table.string_type {
+				c.error('cannot cast a string', it.pos)
+			}
 			if it.has_arg {
 				c.expr(it.arg)
 			}
