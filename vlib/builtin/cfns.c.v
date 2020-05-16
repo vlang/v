@@ -26,13 +26,10 @@ fn C.isdigit(s byteptr) bool
 fn C.popen(c byteptr, t byteptr) voidptr
 
 // <execinfo.h>
-// backtrace functions are not #included, that's why they have to be defined without C.
-fn backtrace(a voidptr, b int) int
+fn C.backtrace(a &voidptr, size int) int
+fn C.backtrace_symbols(a &voidptr, size int)  &charptr
+fn C.backtrace_symbols_fd(a &voidptr, size int, fd int)
 
-fn backtrace_symbols(voidptr, int)  &byteptr
-
-
-fn backtrace_symbols_fd(voidptr, int, int)
 // <libproc.h>
 fn proc_pidpath(int, voidptr, int) int
 
@@ -404,3 +401,10 @@ fn C.WaitForSingleObject(voidptr, int) int
 
 
 fn C.ReleaseMutex(voidptr) bool
+
+// pthread.h
+
+fn C.pthread_mutex_init(voidptr, voidptr) int
+fn C.pthread_mutex_lock(voidptr) int
+fn C.pthread_mutex_unlock(voidptr) int
+

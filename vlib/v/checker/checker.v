@@ -1588,6 +1588,13 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 
 pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 	match mut node {
+		ast.AnonFn {
+			keep_ret_type := c.fn_return_type
+			c.fn_return_type = it.decl.return_type
+			c.stmts(it.decl.stmts)
+			c.fn_return_type = keep_ret_type
+			return it.typ
+		}
 		ast.ArrayInit {
 			return c.array_init(mut it)
 		}
@@ -1644,6 +1651,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CharLiteral {
 			return table.byte_type
+		}
+		ast.ConcatExpr {
+			return c.concat_expr(mut it)
 		}
 		ast.EnumVal {
 			return c.enum_val(mut it)
@@ -1729,13 +1739,6 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.TypeOf {
 			it.expr_type = c.expr(it.expr)
 			return table.string_type
-		}
-		ast.AnonFn {
-			keep_ret_type := c.fn_return_type
-			c.fn_return_type = it.decl.return_type
-			c.stmts(it.decl.stmts)
-			c.fn_return_type = keep_ret_type
-			return it.typ
 		}
 		else {
 			tnode := typeof(node)
@@ -1856,6 +1859,23 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return table.void_type
 	}
 	return table.void_type
+}
+
+pub fn (mut c Checker) concat_expr(concat_expr mut ast.ConcatExpr) table.Type {
+	mut mr_types := []table.Type{}
+	for expr in concat_expr.vals {
+		mr_types << c.expr(expr)
+	}
+	if concat_expr.vals.len == 1 {
+		typ := mr_types[0]
+		concat_expr.return_type = typ
+		return typ
+	} else {
+		typ := c.table.find_or_register_multi_return(mr_types)
+		table.new_type(typ)
+		concat_expr.return_type = typ
+		return typ
+	}
 }
 
 pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {

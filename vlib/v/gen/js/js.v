@@ -8,8 +8,12 @@ import term
 import v.util
 
 const (
-	//TODO
-	js_reserved = ['delete', 'const', 'let', 'var', 'function', 'continue', 'break', 'switch', 'for', 'in', 'of', 'instanceof', 'typeof', 'do']
+	// https://ecma-international.org/ecma-262/#sec-reserved-words
+	js_reserved = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+		'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function',
+		'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package', 'private',
+		'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof',
+		'var', 'void', 'while', 'with', 'yield']
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t']
 )
 
@@ -95,7 +99,6 @@ pub fn (g mut JsGen) enter_namespace(n string) {
 		g.indents[g.namespace] = 0
 		g.out.writeln('const $n = (function () {')
 	}
-	//
 	else {
 		g.out = g.namespaces[g.namespace]
 	}
@@ -107,10 +110,7 @@ pub fn (g mut JsGen) escape_namespace() {
 }
 
 pub fn (g mut JsGen) push_pub_var(s string) {
-	// Workaround until `m[key]<<val` works.
-	mut arr := g.namespaces_pub[g.namespace]
-	arr << s
-	g.namespaces_pub[g.namespace] = arr
+	g.namespaces_pub[g.namespace] << s
 }
 
 pub fn (g mut JsGen) find_class_methods(stmts []ast.Stmt) {
@@ -207,11 +207,11 @@ pub fn (g mut JsGen) gen_indent() {
 }
 
 pub fn (g mut JsGen) inc_indent() {
-	g.indents[g.namespace] = g.indents[g.namespace] + 1
+	g.indents[g.namespace]++
 }
 
 pub fn (g mut JsGen) dec_indent() {
-	g.indents[g.namespace] = g.indents[g.namespace] - 1
+	g.indents[g.namespace]--
 }
 
 pub fn (g mut JsGen) write(s string) {
@@ -227,7 +227,16 @@ pub fn (g mut JsGen) writeln(s string) {
 
 pub fn (g mut JsGen) new_tmp_var() string {
 	g.tmp_count++
-	return 'tmp$g.tmp_count'
+	return '_tmp$g.tmp_count'
+}
+
+[inline]
+fn js_name(name string) string {
+	// name := name_.replace('.', '__')
+	if name in js_reserved {
+		return 'v_$name'
+	}
+	return name
 }
 
 fn (g mut JsGen) stmts(stmts []ast.Stmt) {
@@ -299,7 +308,7 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.writeln('')
 		}
 		ast.GotoLabel {
-			g.writeln('$it.name:')
+			g.writeln('${js_name(it.name)}:')
 		}
 		ast.GotoStmt {
 			// skip: JS has no goto
@@ -349,12 +358,13 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.CallExpr {
+			name := if it.name.starts_with('JS.') { it.name[3..] } else { it.name }
 			g.expr(it.left)
 			if it.is_method {
 				// example: foo.bar.baz()
 				g.write('.')
 			}
-			g.write('${it.name}(')
+			g.write('${js_name(name)}(')
 			for i, arg in it.args {
 				g.expr(arg.expr)
 				if i != it.args.len - 1 {
@@ -421,7 +431,7 @@ fn (g mut JsGen) expr(node ast.Expr) {
 			g.gen_selector_expr(it)
 		}
 		else {
-			println(term.red('jsgen.expr(): bad node'))
+			println(term.red('jsgen.expr(): bad node "${typeof(node)}"'))
 		}
 	}
 }
@@ -522,7 +532,7 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			styp := g.typ(ident_var_info.typ)
 			jsdoc.write(styp)
 
-			stmt.write('$ident.name')
+			stmt.write(js_name(ident.name))
 
 			if i < it.left.len - 1 {
 				jsdoc.write(', ')
@@ -564,7 +574,7 @@ fn (g mut JsGen) gen_assign_stmt(it ast.AssignStmt) {
 				g.write('const ')
 			}
 
-			g.write('$ident.name = ')
+			g.write('${js_name(ident.name)} = ')
 			g.expr(val)
 
 			if g.inside_loop {
@@ -604,7 +614,7 @@ fn (g mut JsGen) gen_const_decl(it ast.ConstDecl) {
 		g.constants.write('\t')
 		g.constants.writeln(g.doc.gen_typ(typ, field.name))
 		g.constants.write('\t')
-		g.constants.write('$field.name: $val')
+		g.constants.write('${js_name(field.name)}: $val')
 		if i < it.fields.len - 1 {
 			g.constants.writeln(',')
 		}
@@ -621,7 +631,7 @@ fn (g mut JsGen) gen_defer_stmts() {
 }
 
 fn (g mut JsGen) gen_enum_decl(it ast.EnumDecl) {
-	g.writeln('const $it.name = Object.freeze({')
+	g.writeln('const ${js_name(it.name)} = Object.freeze({')
 	g.inc_indent()
 	for i, field in it.fields {
 		g.write('$field.name: ')
@@ -682,7 +692,7 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 		}
 		g.write('function(')
 	} else {
-		mut name := it.name
+		mut name := js_name(it.name)
 		c := name[0]
 		if c in [`+`, `-`, `*`, `/`] {
 			name = util.replace_op(name)
@@ -818,11 +828,12 @@ fn (g mut JsGen) gen_for_stmt(it ast.ForStmt) {
 fn (g mut JsGen) fn_args(args []table.Arg, is_variadic bool) {
 	// no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
+		name := js_name(arg.name)
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
-			g.write('...$arg.name')
+			g.write('...$name')
 		} else {
-			g.write(arg.name)
+			g.write(name)
 		}
 		// if its not the last argument
 		if i < args.len - 1 {
@@ -911,7 +922,6 @@ fn (g mut JsGen) gen_return_stmt(it ast.Return) {
 	g.writeln(';')
 }
 
-
 fn (g mut JsGen) enum_expr(node ast.Expr) {
 	match node {
 		ast.EnumVal {
@@ -924,7 +934,7 @@ fn (g mut JsGen) enum_expr(node ast.Expr) {
 }
 
 fn (g mut JsGen) gen_struct_decl(node ast.StructDecl) {
-  	g.writeln('class $node.name {')
+  	g.writeln('class ${js_name(node.name)} {')
 	g.inc_indent()
 	g.writeln(g.doc.gen_ctor(node.fields))
 	g.writeln('constructor(values) {')
@@ -980,7 +990,7 @@ fn (g mut JsGen) gen_ident(node ast.Ident) {
 	}
 
 	// TODO js_name
-	name := node.name
+	name := js_name(node.name)
 	// TODO `is`
 	// TODO handle optionals
 	g.write(name)

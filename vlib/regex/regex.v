@@ -314,7 +314,7 @@ pub mut:
 	group_max_nested int = 3   // max nested group
 	group_max int        = 8   // max allowed number of different groups
 
-	group_csave []int    = []int  // groups continuous save array
+	group_csave []int    = []int{}  // groups continuous save array
 	group_csave_index int= -1     // groups continuous save index
 
 	group_map map[string]int      // groups names map

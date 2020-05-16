@@ -323,8 +323,9 @@ fn (g &Gen) base_type(t table.Type) string {
 fn (mut g Gen) register_optional(t table.Type, styp string) {
 	// g.typedefs2.writeln('typedef Option $x;')
 	no_ptr := styp.replace('*', '_ptr')
+	typ := if styp == 'void' { 'void*' } else { styp }
 	g.hotcode_definitions.writeln('typedef struct {
-		$styp  data;
+		$typ  data;
 		string error;
 		int    ecode;
 		bool   ok;
@@ -653,7 +654,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.includes.writeln('#$it.val')
 			}
 			if typ == 'define' {
-				g.definitions.writeln('#$it.val')
+				g.includes.writeln('#$it.val')
 			}
 		}
 		ast.Import {}
@@ -966,6 +967,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			right_sym := g.table.get_type_symbol(assign_stmt.right_types[i])
 			mut is_fixed_array_init := false
 			mut has_val := false
+			/*
+			if val is ast.ArrayInit {
+					is_fixed_array_init = val.is_fixed
+					has_val = val.has_val
+				}
+			*/
 			match val {
 				ast.ArrayInit {
 					is_fixed_array_init = it.is_fixed
@@ -1156,6 +1163,18 @@ fn (g &Gen) autofree_var_call(free_fn_name string, v ast.Var) string {
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
 	match node {
+		ast.AnonFn {
+			// TODO: dont fiddle with buffers
+			pos := g.out.len
+			def_pos := g.definitions.len
+			g.stmt(it.decl)
+			fn_body := g.out.after(pos)
+			g.out.go_back(fn_body.len)
+			g.definitions.go_back(g.definitions.len - def_pos)
+			g.definitions.write(fn_body)
+			fsym := g.table.get_type_symbol(it.typ)
+			g.write('&${fsym.name}')
+		}
 		ast.ArrayInit {
 			g.array_init(it)
 		}
@@ -1218,6 +1237,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.CharLiteral {
 			g.write("'$it.val'")
+		}
+		ast.ConcatExpr {
+			g.concat_expr(it)	
 		}
 		ast.EnumVal {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
@@ -1368,18 +1390,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.TypeOf {
 			g.typeof_expr(it)
 		}
-		ast.AnonFn {
-			// TODO: dont fiddle with buffers
-			pos := g.out.len
-			def_pos := g.definitions.len
-			g.stmt(it.decl)
-			fn_body := g.out.after(pos)
-			g.out.go_back(fn_body.len)
-			g.definitions.go_back(g.definitions.len - def_pos)
-			g.definitions.write(fn_body)
-			fsym := g.table.get_type_symbol(it.typ)
-			g.write('&${fsym.name}')
-		}
 		else {
 			// #printf("node=%d\n", node.typ);
 			println(term.red('cgen.expr(): bad node ' + typeof(node)))
@@ -1517,7 +1527,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 		g.or_block(tmp_opt, or_stmts, return_type)
 		unwrapped_type_str := g.typ(return_type.set_flag(.unset))
 		ident := node.left as ast.Ident
-		if ident.info is ast.IdentVar {
+		if ident.kind != .blank_ident && ident.info is ast.IdentVar {
 			ident_var := ident.info as ast.IdentVar
 			if ident_var.is_optional {
 				// var is already an optional, just copy the value
@@ -1838,6 +1848,26 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	g.write(g.get_ternary_name(name))
+}
+
+fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
+	styp := g.typ(node.return_type)
+	sym := g.table.get_type_symbol(node.return_type)
+	is_multi := sym.kind == .multi_return
+
+	if !is_multi {
+		g.expr(node.vals[0])
+	} else {
+		g.write('($styp){')
+		for i, expr in node.vals {
+			g.write('.arg$i=')
+			g.expr(expr)
+			if i < node.vals.len - 1 {
+				g.write(',')
+			}
+		}
+		g.write('}')
+	}
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
@@ -2443,6 +2473,9 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				mut fixed := styp[12..]
 				len := styp.after('_')
 				fixed = fixed[..fixed.len - len.len - 1]
+				if fixed.starts_with('C__') {
+					fixed = fixed[3..]
+				}
 				g.definitions.writeln('typedef $fixed $styp [$len];')
 				// }
 			}

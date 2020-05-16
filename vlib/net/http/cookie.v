@@ -4,7 +4,6 @@
 module http
 
 import time
-import arrays
 import strings
 
 pub struct Cookie {
