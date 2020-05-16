@@ -101,13 +101,13 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		} else {
 			prompt = '... '
 		}
-		mut line := readline.read_line(prompt) or {
+		oline := readline.read_line(prompt) or {
 			break
 		}
-		if line.trim_space() == '' && line.ends_with('\n') {
+		if oline.trim_space() == '' && oline.ends_with('\n') {
 			continue
 		}
-		line = line.trim_space()
+		line := oline.trim_space()
 		if line.len <= -1 || line == '' || line == 'exit' {
 			break
 		}
@@ -157,11 +157,23 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			mut temp_flag := false
 			func_call := r.function_call(r.line)
 			filter_line := r.line.replace(r.line.find_between('\'', '\''), '').replace(r.line.find_between('"', '"'), '')
-			if !(filter_line.contains('=') || filter_line.contains('++') ||
-					filter_line.contains('--') || filter_line.contains('<<') ||
-					filter_line.contains('//') || filter_line.contains('/*') ||
-				 	filter_line.contains('struct') ||
-					filter_line.starts_with('import') || r.line == '') && !func_call {
+			possible_statement_patterns := [
+				'=', '++', '--', '<<',
+				'//', '/*',
+				'fn ', 'pub ', 'mut ', 'enum ', 'const ', 'struct ', 'interface ', 'import '
+			]
+			mut is_statement := false
+			for pattern in possible_statement_patterns {
+				if filter_line.contains(pattern) {
+					is_statement = true
+					break
+				}
+			}
+			// NB: starting a line with 2 spaces escapes the println heuristic
+			if oline.starts_with('  ') {
+				is_statement = true
+			}
+			if !is_statement && !func_call && r.line != '' {
 				temp_line = 'println($r.line)'
 				temp_flag = true
 			}
