@@ -2276,7 +2276,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.writeln('($styp){')
 	}
 	// mut fields := []string{}
-	mut inited_fields := []string{} // TODO this is done in checker, move to ast node
+	mut inited_fields := map[string]int // TODO this is done in checker, move to ast node
 	/*
 	if struct_init.fields.len == 0 && struct_init.exprs.len > 0 {
 		// Get fields for {a,b} short syntax. Fields array wasn't set in the parser.
@@ -2288,22 +2288,24 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	*/
 	// User set fields
-	for _, field in struct_init.fields {
-		field_name := c_name(field.name)
-		inited_fields << field.name
-		g.write('\t.$field_name = ')
-		field_type_sym := g.table.get_type_symbol(field.typ)
-		mut cloned := false
-		if g.autofree && field_type_sym.kind in [.array, .string] {
-			g.write('/*clone1*/')
-			if g.gen_clone_assignment(field.expr, field_type_sym, false) {
-				cloned = true
+	for i, field in struct_init.fields {
+		inited_fields[field.name] = i
+		if sym.kind != .struct_ {
+			field_name := c_name(field.name)
+			g.write('\t.$field_name = ')
+			field_type_sym := g.table.get_type_symbol(field.typ)
+			mut cloned := false
+			if g.autofree && field_type_sym.kind in [.array, .string] {
+				g.write('/*clone1*/')
+				if g.gen_clone_assignment(field.expr, field_type_sym, false) {
+					cloned = true
+				}
 			}
+			if !cloned {
+				g.expr_with_cast(field.expr, field.typ, field.expected_type)
+			}
+			g.writeln(',')
 		}
-		if !cloned {
-			g.expr_with_cast(field.expr, field.typ, field.expected_type)
-		}
-		g.writeln(',')
 	}
 	// The rest of the fields are zeroed.
 	mut nr_info_fields := 0
@@ -2312,6 +2314,21 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		nr_info_fields = info.fields.len
 		for field in info.fields {
 			if field.name in inited_fields {
+				sfield := struct_init.fields[inited_fields[field.name]]
+				field_name := c_name(sfield.name)
+				g.write('\t.$field_name = ')
+				field_type_sym := g.table.get_type_symbol(sfield.typ)
+				mut cloned := false
+				if g.autofree && field_type_sym.kind in [.array, .string] {
+					g.write('/*clone1*/')
+					if g.gen_clone_assignment(sfield.expr, field_type_sym, false) {
+						cloned = true
+					}
+				}
+				if !cloned {
+					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
+				}
+				g.writeln(',')
 				continue
 			}
 			if field.typ.flag_is(.optional) {
