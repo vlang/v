@@ -40,6 +40,8 @@ jobs:
 #        ./v -silent test-compiler
     - name: Fixed tests
       run: ./v test-fixed
+    - name: Test building v tools
+      run: ./v build-tools
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 
