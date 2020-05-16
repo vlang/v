@@ -99,47 +99,42 @@ fn (s mut Scanner) ident_name() string {
 // ident_fn_name look ahead and return name of function if possible, otherwise empty string
 fn (s mut Scanner) ident_fn_name() string {
 	start := s.pos
-	s.pos++
+	mut seek := s.pos
+	seek++
 	// Search for function scope start
-	for s.pos < s.text.len && s.text[s.pos] != `{` {
-		s.pos++
+	for seek < s.text.len && s.text[seek] != `{` {
+		seek++
 	}
-	if s.pos >= s.text.len {
-		s.pos = start
+	if seek >= s.text.len {
 		return ""
 	}
 	// Search backwards for "first" occurrence of function open paranthesis
-	for s.pos > start && s.text[s.pos] != `(` {
-		s.pos--
+	for seek > start && s.text[seek] != `(` {
+		seek--
 	}
-	if s.pos < start {
-		s.pos = start
+	if seek < start {
 		return ""
 	}
 	// Search backwards for end position of function name
-	for s.pos > start && !util.is_func_char(s.text[s.pos]) {
-		s.pos--
+	for seek > start && !util.is_func_char(s.text[seek]) {
+		seek--
 	}
-	end_pos := s.pos + 1
-	if s.pos < start {
-		s.pos = start
+	end_pos := seek + 1
+	if seek < start {
 		return ""
 	}
 	// Search for the start position
-	for s.pos > start && util.is_func_char(s.text[s.pos]) {
-		s.pos--
+	for seek > start && util.is_func_char(s.text[seek]) {
+		seek--
 	}
-	start_pos := s.pos + 1
-	if s.pos < start || s.pos >= s.text.len  {
-		s.pos = start
+	start_pos := seek + 1
+	if seek < start || seek >= s.text.len  {
 		return ""
 	}
 	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos || end_pos <= start || start_pos <= start {
-		s.pos = start
 		return ""
 	}
 	fn_name := s.text[start_pos..end_pos]
-	s.pos = start
 	return fn_name
 }
 
