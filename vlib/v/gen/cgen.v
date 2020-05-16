@@ -1292,27 +1292,17 @@ fn (mut g Gen) expr(node ast.Expr) {
 			value_typ_str := g.typ(it.value_type)
 			size := it.vals.len
 			if size > 0 {
-				g.write('new_map_init($size, sizeof($value_typ_str),\n')
-				g.write('\n#ifdef __cplusplus\n')
-			g.write('new ${key_typ_str}[$size]{\n')
-				g.write('#else\n')
-				g.write('(${key_typ_str}[$size]){\n')
-				g.write('#endif\n')
+				g.write('new_map_init($size, sizeof($value_typ_str), _MOV((${key_typ_str}[$size]){')
 				for expr in it.keys {
 					g.expr(expr)
 					g.write(', ')
 				}
-				g.write('}, \n')
-				g.write('#ifdef __cplusplus\n')
-                g.write('new ${value_typ_str}[$size]{\n')
-				g.write('#else\n')
-				g.write('(${value_typ_str}[$size]){\n')
-				g.write('#endif\n')
+				g.write('}), _MOV((${value_typ_str}[$size]){')
 				for expr in it.vals {
 					g.expr(expr)
 					g.write(', ')
 				}
-				g.write('})')
+				g.write('}))')
 			} else {
 				g.write('new_map_1(sizeof($value_typ_str))')
 			}
