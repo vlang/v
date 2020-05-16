@@ -62,6 +62,8 @@ fn repl_help() {
 	println(util.full_v_version())
 	println('
   help                   Displays this information.
+  list                   Show the program so far.
+  reset                  Clears the accumulated program, so you can start a fresh.
   Ctrl-C, Ctrl-D, exit   Exits the REPL.
   clear                  Clears the screen.
 ')
@@ -104,10 +106,10 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		oline := readline.read_line(prompt) or {
 			break
 		}
-		if oline.trim_space() == '' && oline.ends_with('\n') {
+		line := oline.trim_space()
+		if line == '' && oline.ends_with('\n') {
 			continue
 		}
-		line := oline.trim_space()
 		if line.len <= -1 || line == '' || line == 'exit' {
 			break
 		}
@@ -140,6 +142,21 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				continue
 			}
 			r.line = ''
+		}
+		if r.line == 'reset' {
+		    r = Repl{}
+			continue
+		}
+		if r.line == 'list' {
+			mut all_lines := []string{}
+			all_lines << r.functions
+			all_lines << r.lines
+			all_lines << r.temp_lines
+			source_code := all_lines.join('\n')
+			println('//////////////////////////////////////////////////////////////////////////////////////')
+			println(source_code)
+			println('//////////////////////////////////////////////////////////////////////////////////////')
+			continue
 		}
 		// Save the source only if the user is printing something,
 		// but don't add this print call to the `lines` array,
