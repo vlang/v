@@ -1671,11 +1671,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			elem_type_str := g.typ(info.elem_type)
 			g.write('array_push(&')
 			g.expr(node.left)
-			g.write('\n#ifdef __cplusplus\n')
-			g.write(', new $elem_type_str[1]{ \n')
-			g.write('#else\n')
-			g.write(', &($elem_type_str[]){ \n')
-			g.write('#endif\n')
+			g.write(', _MOV(($elem_type_str[]){ ')
 			elem_sym := g.table.get_type_symbol(info.elem_type)
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.interface_call(node.right_type, info.elem_type)
@@ -1684,7 +1680,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.write(')')
 			}
-			g.write(' })')
+			g.write(' }))')
 		}
 	} else if (node.left_type == node.right_type) && node.left_type.is_float() && node.op in
 		[.eq, .ne] {
@@ -3936,4 +3932,3 @@ fn (g &Gen) interface_call(typ, interface_type table.Type) {
 		g.write('&')
 	}
 }
-
