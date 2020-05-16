@@ -37,7 +37,7 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	}
 	if val != 0 {
 		for i in 0..arr.len {
-			C.memcpy(arr.data + i*elm_size, val, elm_size)
+			C.memcpy(charptr(arr.data) + i*elm_size, val, elm_size)
 		}
 	}
 	return arr
