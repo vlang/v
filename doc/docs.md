@@ -36,7 +36,7 @@ you can do in V.
 	<tr>
 		<td><a href='#match'>Match</a></td>
 		<td><a href='#structs'>Structs</a></td>
-		<td><a href='#short-struct-initialiation-syntax'>Short struct init syntax</a></td>
+		<td><a href='#short-struct-initialization-syntax'>Short struct init syntax</a></td>
 		<td><a href='#access-modifiers'>Access modifiers</a></td>
 		<td><a href='#methods'>Methods</a></td>
 		<td><a href='#pure-functions-by-default'>Pure functions by default</a></td>
@@ -683,6 +683,7 @@ struct ButtonConfig {
     width       int = 70
     height      int = 20
 }
+
 fn new_button(c ButtonConfig) &Button {
     return &Button{
         width: c.width
@@ -693,6 +694,20 @@ fn new_button(c ButtonConfig) &Button {
 
 button := new_button(text:'Click me', width:100) // the height is unset, so it's 20, the default value
 ```
+
+As you can see, we can use
+
+```
+new_button(text:'Click me', width:100)
+```
+
+instead of
+
+```
+new_button(ButtonConfig{text:'Click me', width:100})
+```
+
+This only works with functions that have a single struct argument.
 
 ## Access modifiers
 
