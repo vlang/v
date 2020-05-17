@@ -90,9 +90,9 @@ fn (mut s Scanner) create_string(q byte) string {
 			str += s.text[s.pos..s.pos+1]
 			s.pos += 2
 		} else {
-        str += s.text[s.pos].str()
-        s.pos++
-    }
+			str += s.text[s.pos].str()
+			s.pos++
+		}
     }
     return str
 }
@@ -197,10 +197,14 @@ fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
 }
 
 fn (mut p Parser) parse() ?Manifest {
+    err_label := 'vmod:'
+	if p.scanner.text.len == 0 {
+		return error('$err_label no content.')
+	}
+
     p.scanner.scan_all()
     tokens := p.scanner.tokens
     mut mn := Manifest{}
-    err_label := 'vmod:'
 
     if tokens[0].typ != .module_keyword {
         panic('not a valid v.mod')
