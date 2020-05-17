@@ -1,8 +1,5 @@
 type Int = int
 
-type Str2 = string
-type Str3 = Str2
-
 fn main() {
 	a_i := [1, 2, 3]
 	a_s := ['1', '2', '3']
@@ -28,10 +25,10 @@ fn main() {
 	if Int(2) in m {
 		println('yeah')
 	}
-	if Str2('3') in a_i {
+	if '3' in a_i {
 		println('sure')
 	}
-	if Str3('2') in a_i {
+	if '2' in a_i {
 		println('all right')
 	}
 }
