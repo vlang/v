@@ -684,6 +684,7 @@ fn (mut g JsGen) gen_defer_stmts() {
 	for defer_stmt in g.defer_stmts {
 		g.stmts(defer_stmt.stmts)
 	}
+	g.defer_stmts = []
 	g.writeln('})();')
 }
 
