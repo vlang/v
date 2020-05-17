@@ -172,14 +172,14 @@ fn (cb &Clipboard) check_availability() bool {
 	return cb.display != C.NULL
 }
 
-fn (cb mut Clipboard) free() {
+fn (mut cb Clipboard) free() {
 	C.XDestroyWindow(cb.display, cb.window)
 	cb.window = C.Window(C.None)
 	//FIX ME: program hangs when closing display
 	//XCloseDisplay(cb.display)
 }
 
-fn (cb mut Clipboard) clear(){
+fn (mut cb Clipboard) clear(){
 	cb.mutex.lock()
 	C.XSetSelectionOwner(cb.display, cb.selection, C.Window(C.None), C.CurrentTime)
 	C.XFlush(cb.display)
@@ -197,7 +197,7 @@ fn (cb &Clipboard) take_ownership(){
 	C.XFlush(cb.display)
 }
 
-fn (cb mut Clipboard) set_text(text string) bool {
+fn (mut cb Clipboard) set_text(text string) bool {
 	if cb.window == C.Window(C.None) {return false}
 	cb.mutex.lock()
 	cb.text = text
@@ -210,7 +210,7 @@ fn (cb mut Clipboard) set_text(text string) bool {
 	return cb.is_owner
 }
 
-fn (cb mut Clipboard) get_text() string {
+fn (mut cb Clipboard) get_text() string {
 	if cb.window == C.Window(C.None) {return ""}
 	if cb.is_owner {
 		return cb.text
@@ -232,7 +232,7 @@ fn (cb mut Clipboard) get_text() string {
 
 // this function is crucial to handling all the different data types
 // if we ever support other mimetypes they should be handled here
-fn (cb mut Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
+fn (mut cb Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
 	if xse.target == cb.get_atom(.targets) {
 		targets := cb.get_supported_targets()
 		C.XChangeProperty(xse.display, xse.requestor, xse.property, cb.get_atom(.xa_atom), 32, C.PropModeReplace, targets.data, targets.len)
@@ -246,7 +246,7 @@ fn (cb mut Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
 	return true
 }
 
-fn (cb mut Clipboard) start_listener(){
+fn (mut cb Clipboard) start_listener(){
 	event := C.XEvent{}
 	mut sent_request := false
 	mut to_be_requested := C.Atom(0)
@@ -325,7 +325,7 @@ fn (cb mut Clipboard) start_listener(){
 // Helpers
 
 // Initialize all the atoms we need
-fn (cb mut Clipboard) intern_atoms(){
+fn (mut cb Clipboard) intern_atoms(){
 	cb.atoms << C.Atom(4) //XA_ATOM
 	cb.atoms << C.Atom(31) //XA_STRING
 	for i, name in atom_names{

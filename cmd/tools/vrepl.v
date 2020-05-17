@@ -23,7 +23,7 @@ mut:
 	temp_lines     []string // all the temporary expressions/printlns
 }
 
-fn (r mut Repl) checks() bool {
+fn (mut r Repl) checks() bool {
 	mut in_string := false
 	was_indent := r.indent > 0
 

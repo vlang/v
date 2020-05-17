@@ -21,7 +21,7 @@ pub fn new_writer() &Writer {
 }
 
 // write writes a single record
-pub fn (w mut Writer) write(record []string) ?bool {
+pub fn (mut w Writer) write(record []string) ?bool {
 	if !valid_delim(w.delimiter) {
 		return err_invalid_delim
 	}
@@ -86,6 +86,6 @@ fn (w &Writer) field_needs_quotes(field string) bool {
 	return false
 }
 
-pub fn (w mut Writer) str() string {
+pub fn (mut w Writer) str() string {
 	return w.sb.str()
 }

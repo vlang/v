@@ -115,7 +115,7 @@ fn (ws &Client) parse_uri() &Uri {
 	}
 }
 
-pub fn (ws mut Client) connect() int {
+pub fn (mut ws Client) connect() int {
 	match ws.state {
 		.connected {
 			l.f("connect: websocket already connected")
@@ -191,7 +191,7 @@ pub fn (ws mut Client) connect() int {
 	return 0
 }
 
-pub fn (ws mut Client) close(code int, message string){
+pub fn (mut ws Client) close(code int, message string){
 	if ws.state != .closed && ws.socket.sockfd > 1 {
 
 		ws.lock.lock()
@@ -248,7 +248,7 @@ pub fn (ws mut Client) close(code int, message string){
 	}
 }
 
-pub fn (ws mut Client) write(payload byteptr, payload_len int, code OPCode) int {
+pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int {
 	if ws.state != .open {
 		ws.send_error_event("WebSocket closed. Cannot write.")
 		goto free_data
@@ -319,7 +319,7 @@ pub fn (ws mut Client) write(payload byteptr, payload_len int, code OPCode) int 
 	return bytes_written
 }
 
-pub fn (ws mut Client) listen() {
+pub fn (mut ws Client) listen() {
 	l.i("Starting listener...")
 	for ws.state == .open {
 		ws.read()
@@ -327,7 +327,7 @@ pub fn (ws mut Client) listen() {
 	l.i("Listener stopped as websocket was closed.")
 }
 
-pub fn (ws mut Client) read() int {
+pub fn (mut ws Client) read() int {
 	mut bytes_read := u64(0)
 
 	initial_buffer := u64(256)
@@ -601,7 +601,7 @@ pub fn (ws mut Client) read() int {
 	return -1
 }
 
-fn (ws mut Client) send_control_frame(code OPCode, frame_typ string, payload []byte) int {
+fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []byte) int {
 	if ws.socket.sockfd <= 0 {
 		l.e("No socket opened.")
 		goto free_data

@@ -10,7 +10,7 @@ pub struct map {
 	obj voidptr
 }
 
-//fn (m mut map) insert(n mut mapnode, key string, val voidptr) {
+//fn (mut m map) insert(n mut mapnode, key string, val voidptr) {
 //}
 
 //////fn (n & mapnode) find(key string, out voidptr, element_size int) bool{
@@ -26,7 +26,7 @@ pub struct map {
 	//return 0
 //}
 
-pub fn (m mut map) keys() []string {
+pub fn (mut m map) keys() []string {
 	return ['']
 }
 
@@ -34,7 +34,7 @@ fn (m map) get(key string, out voidptr) bool {
 	return false
 }
 
-pub fn (m mut map) delete(key string) {
+pub fn (mut m map) delete(key string) {
 }
 
 fn (m map) exists(key string) bool {

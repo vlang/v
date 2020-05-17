@@ -15,11 +15,10 @@ pub fn new_mutex() &Mutex {
 	return m
 }
 
-pub fn (m mut Mutex) lock() {
+pub fn (mut m Mutex) lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 
-pub fn (m mut Mutex) unlock() {
+pub fn (mut m Mutex) unlock() {
 	C.pthread_mutex_unlock(&m.mutex)
 }
-

@@ -21,7 +21,7 @@ fn C.SSL_CTX_free()
 fn C.SSL_write() int
 fn C.SSL_read() int
 
-fn (ws mut Client) connect_ssl(){
+fn (mut ws Client) connect_ssl(){
 	l.i("Using secure SSL connection")
 	C.SSL_load_error_strings()
 	C.SSL_library_init()

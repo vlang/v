@@ -37,7 +37,7 @@ mut:
 	len u64
 }
 
-fn (d mut Digest) reset() {
+fn (mut d Digest) reset() {
 	d.s = [u32(0)].repeat(4)
 	d.x = [byte(0)].repeat(block_size)
     d.s[0] = u32(init0)
@@ -55,7 +55,7 @@ pub fn new() &Digest {
 	return d
 }
 
-pub fn (d mut Digest) write(p_ []byte) int {
+pub fn (mut d Digest) write(p_ []byte) int {
 	mut p := p_
 	nn := p.len
 	d.len += u64(nn)
@@ -98,7 +98,7 @@ pub fn (d &Digest) sum(b_in []byte) []byte {
 	return b_out
 }
 
-pub fn (d mut Digest) checksum() []byte {
+pub fn (mut d Digest) checksum() []byte {
 	// Append 0x80 to the end of the message and then append zeros
 	// until the length is a multiple of 56 bytes. Finally append
 	// 8 bytes representing the message length in bits.

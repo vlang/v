@@ -74,7 +74,7 @@ mut:
     y f64
 }
 
-fn (p mut Point) translate<T>(x, y T) {
+fn (mut p Point) translate<T>(x, y T) {
     p.x += x
     p.y += y
 }

@@ -9,7 +9,7 @@ import hash.wyhash
 fn C.memcmp(byteptr, byteptr, int) int
 
 /*
-This is a highly optimized hashmap implementation. It has several traits that 
+This is a highly optimized hashmap implementation. It has several traits that
 in combination makes it very fast and memory efficient. Here is a short expl-
 anation of each trait. After reading this you should have a basic understand-
 ing of how it functions:
@@ -22,7 +22,7 @@ resolved by probing. As opposed to linear probing, Robin Hood hashing has a
 simple but clever twist: As new keys are inserted, old keys are shifted arou-
 nd in a way such that all keys stay reasonably close to the slot they origin-
 ally hash to. A new key may displace a key already inserted if its probe cou-
-nt is larger than that of the key at the current position. 
+nt is larger than that of the key at the current position.
 
 3. Memory layout: key-value pairs are stored in a `DenseArray`. This is a dy-
 namic array with a very low volume of unused memory, at the cost of more rea-
@@ -49,7 +49,7 @@ using a well-dispersed hash-function.
 
 5. The hashmap keeps track of the highest probe_count. The trick is to alloc-
 ate `extra_metas` > max(probe_count), so you never have to do any bounds-che-
-cking since the extra meta memory ensures that a meta will never go beyond 
+cking since the extra meta memory ensures that a meta will never go beyond
 the last index.
 
 6. Cached rehashing. When the `load_factor` of the map exceeds the `max_load_
@@ -81,7 +81,7 @@ const (
 	probe_inc           = u32(0x01000000)
 )
 
-// This function is intended to be fast when 
+// This function is intended to be fast when
 // the strings are very likely to be equal
 // TODO: add branch prediction hints
 [inline]
@@ -119,7 +119,7 @@ fn new_dense_array(value_bytes int) DenseArray {
 // Push element to array and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 [inline]
-fn (d mut DenseArray) push(key string, value voidptr) u32 {
+fn (mut d DenseArray) push(key string, value voidptr) u32 {
 	if d.cap == d.size {
 		d.cap += d.cap >> 3
 		d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
@@ -144,7 +144,7 @@ fn (d DenseArray) get(i int) voidptr {
 
 // Move all zeros to the end of the array
 // and resize array
-fn (d mut DenseArray) zeros_to_end() {
+fn (mut d DenseArray) zeros_to_end() {
 	mut tmp_value := malloc(d.value_bytes)
 	mut count := u32(0)
 	for i in 0 .. d.size {
@@ -233,7 +233,7 @@ fn (m &map) meta_less(_index u32, _metas u32) (u32,u32) {
 }
 
 [inline]
-fn (m mut map) meta_greater(_index u32, _metas u32, kvi u32) {
+fn (mut m map) meta_greater(_index u32, _metas u32, kvi u32) {
 	mut meta := _metas
 	mut index := _index
 	mut kv_index := kvi
@@ -264,7 +264,7 @@ fn (m mut map) meta_greater(_index u32, _metas u32, kvi u32) {
 	}
 }
 
-fn (m mut map) set(key string, value voidptr) {
+fn (mut m map) set(key string, value voidptr) {
 	load_factor := f32(m.size << 1) / f32(m.cap)
 	if load_factor > max_load_factor {
 		m.expand()
@@ -287,7 +287,7 @@ fn (m mut map) set(key string, value voidptr) {
 }
 
 // Doubles the size of the hashmap
-fn (m mut map) expand() {
+fn (mut m map) expand() {
 	old_cap := m.cap
 	m.cap = ((m.cap + 2) << 1) - 2
 	// Check if any hashbits are left
@@ -302,7 +302,7 @@ fn (m mut map) expand() {
 	}
 }
 
-fn (m mut map) rehash() {
+fn (mut m map) rehash() {
 	meta_bytes := sizeof(u32) * (m.cap + 2 + m.extra_metas)
 	m.metas = &u32(C.realloc(m.metas, meta_bytes))
 	C.memset(m.metas, 0, meta_bytes)
@@ -316,7 +316,7 @@ fn (m mut map) rehash() {
 	}
 }
 
-fn (m mut map) cached_rehash(old_cap u32) {
+fn (mut m map) cached_rehash(old_cap u32) {
 	old_metas := m.metas
 	m.metas = &u32(vcalloc(sizeof(u32) * (m.cap + 2 + m.extra_metas)))
 	old_extra_metas := m.extra_metas
@@ -370,7 +370,7 @@ fn (m map) exists(key string) bool {
 	return false
 }
 
-pub fn (m mut map) delete(key string) {
+pub fn (mut m map) delete(key string) {
 	mut index,mut meta := m.key_to_index(key)
 	index,meta = m.meta_less(index, meta)
 	// Perform backwards shifting

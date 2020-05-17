@@ -92,7 +92,7 @@ pub mut:
 	vvlocation string // v.v or compiler/ or cmd/v, depending on v version
 }
 
-pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
+pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	vgit_context.vexepath = os.real_path(os.join_path(vgit_context.path_v, vgit_context.vexename))
 	mut command_for_building_v_from_c_source := ''

@@ -152,7 +152,7 @@ fn new_gen_vc(flag_options FlagOptions) &GenVC {
 }
 
 // WebhookServer init
-pub fn (ws mut WebhookServer) init() {
+pub fn (mut ws WebhookServer) init() {
 
 	mut fp := flag.new_flag_parser(os.args.clone())
 	flag_options := parse_flags(mut fp)
@@ -162,7 +162,7 @@ pub fn (ws mut WebhookServer) init() {
 }
 
 // gen webhook
-pub fn (ws mut WebhookServer) genhook() {
+pub fn (mut ws WebhookServer) genhook() {
 	ws.gen_vc.generate()
 	// error in generate
 	if ws.gen_vc.gen_error {
@@ -191,7 +191,7 @@ fn parse_flags(fp mut flag.FlagParser) FlagOptions {
 }
 
 // init
-fn (gen_vc mut GenVC) init() {
+fn (mut gen_vc GenVC) init() {
 	// purge repos if flag is passed
 	if gen_vc.options.purge {
 		gen_vc.purge_repos()
@@ -199,7 +199,7 @@ fn (gen_vc mut GenVC) init() {
 }
 
 // regenerate
-fn (gen_vc mut GenVC) generate() {
+fn (mut gen_vc GenVC) generate() {
 	// set errors to false
 	gen_vc.gen_error = false
 
@@ -316,17 +316,17 @@ fn (gen_vc mut GenVC) generate() {
 }
 
 // only execute when dry_run option is false, otherwise just log
-fn (gen_vc mut GenVC) cmd_exec_safe(cmd string) string {
+fn (mut gen_vc GenVC) cmd_exec_safe(cmd string) string {
 	return gen_vc.command_execute(cmd, gen_vc.options.dry_run)
 }
 
 // always execute command
-fn (gen_vc mut GenVC) cmd_exec(cmd string) string {
+fn (mut gen_vc GenVC) cmd_exec(cmd string) string {
 	return gen_vc.command_execute(cmd, false)
 }
 
 // execute command
-fn (gen_vc mut GenVC) command_execute(cmd string, dry bool) string {
+fn (mut gen_vc GenVC) command_execute(cmd string, dry bool) string {
 	// if dry is true then dont execute, just log
 	if dry {
 		return gen_vc.command_execute_dry(cmd)
@@ -352,13 +352,13 @@ fn (gen_vc mut GenVC) command_execute(cmd string, dry bool) string {
 }
 
 // just log cmd, dont execute
-fn (gen_vc mut GenVC) command_execute_dry(cmd string) string {
+fn (mut gen_vc GenVC) command_execute_dry(cmd string) string {
 	gen_vc.logger.info('cmd (dry): "$cmd"')
 	return ''
 }
 
 // delete repo directories
-fn (gen_vc mut GenVC) purge_repos() {
+fn (mut gen_vc GenVC) purge_repos() {
 	// delete old repos (better to be fully explicit here, since these are destructive operations)
 	mut repo_dir := '$gen_vc.options.work_dir/$git_repo_dir_v'
 	if os.is_dir(repo_dir) {
@@ -373,7 +373,7 @@ fn (gen_vc mut GenVC) purge_repos() {
 }
 
 // check if file size is too short
-fn (gen_vc mut GenVC) assert_file_exists_and_is_not_too_short(f string, emsg string){
+fn (mut gen_vc GenVC) assert_file_exists_and_is_not_too_short(f string, emsg string){
 	if !os.exists(f) {
 		gen_vc.logger.error('$err_msg_build: $emsg .')
 		gen_vc.gen_error = true

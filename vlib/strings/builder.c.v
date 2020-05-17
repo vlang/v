@@ -20,17 +20,17 @@ pub fn new_builder(initial_size int) Builder {
 	}
 }
 
-pub fn (b mut Builder) write_bytes(bytes byteptr, howmany int) {
+pub fn (mut b Builder) write_bytes(bytes byteptr, howmany int) {
 	b.buf.push_many(bytes, howmany)
 	b.len += howmany
 }
 
-pub fn (b mut Builder) write_b(data byte) {
+pub fn (mut b Builder) write_b(data byte) {
 	b.buf << data
 	b.len++
 }
 
-pub fn (b mut Builder) write(s string) {
+pub fn (mut b Builder) write(s string) {
 	if s == '' {
 		return
 	}
@@ -42,17 +42,17 @@ pub fn (b mut Builder) write(s string) {
 	b.len += s.len
 }
 
-pub fn (b mut Builder) go_back(n int) {
+pub fn (mut b Builder) go_back(n int) {
 	b.buf.trim(b.buf.len-n)
 	b.len -= n
 }
 
-pub fn (b mut Builder) go_back_to(pos int) {
+pub fn (mut b Builder) go_back_to(pos int) {
 	b.buf.trim(pos)
 	b.len = pos
 }
 
-pub fn (b mut Builder) writeln(s string) {
+pub fn (mut b Builder) writeln(s string) {
 	// for c in s {
 	// b.buf << c
 	// }
@@ -86,7 +86,7 @@ pub fn (b &Builder) after(n int) string {
 
 // NB: in order to avoid memleaks and additional memory copies, after a call to b.str(),
 // the builder b will be empty. The returned string *owns* the accumulated data so far.
-pub fn (b mut Builder) str() string {
+pub fn (mut b Builder) str() string {
 	b.str_calls++
 	if b.str_calls > 1 {
 		panic('builder.str() should be called just once.\n' +
@@ -100,7 +100,7 @@ pub fn (b mut Builder) str() string {
 	return s
 }
 
-pub fn (b mut Builder) free() {
+pub fn (mut b Builder) free() {
 	unsafe{
 		free(b.buf.data)
 	}

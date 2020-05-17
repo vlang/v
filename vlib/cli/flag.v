@@ -64,7 +64,7 @@ pub fn (flags []Flag) get_string_or(name string, or_value string) string {
 }
 
 // parse flag value from arguments and return arguments with all consumed element removed
-fn (flag mut Flag) parse(args []string) ?[]string {
+fn (mut flag Flag) parse(args []string) ?[]string {
 	if flag.matches(args) {
 		if flag.flag == .bool {
 			new_args := flag.parse_bool(args) or { return error(err) }
@@ -85,7 +85,7 @@ fn (flag &Flag) matches(args []string) bool {
 		(flag.abbrev != '' && args[0].starts_with('-${flag.abbrev}'))
 }
 
-fn (flag mut Flag) parse_raw(args []string) ?[]string {
+fn (mut flag Flag) parse_raw(args []string) ?[]string {
 	if args[0].len > flag.name.len && args[0].contains('=') {
 		flag.value = args[0].split('=')[1]
 		return args[1..]
@@ -96,7 +96,7 @@ fn (flag mut Flag) parse_raw(args []string) ?[]string {
 	return error('missing argument for ${flag.name}')
 }
 
-fn (flag mut Flag) parse_bool(args []string) ?[]string {
+fn (mut flag Flag) parse_bool(args []string) ?[]string {
 	if args[0].len > flag.name.len && args[0].contains('=') {
 		flag.value = args[0].split('=')[1]
 		return args[1..]

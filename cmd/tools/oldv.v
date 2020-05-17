@@ -40,7 +40,7 @@ mut:
 	cleanup       bool // should the tool run a cleanup first
 }
 
-fn (c mut Context) compile_oldv_if_needed() {
+fn (mut c Context) compile_oldv_if_needed() {
 	mut vgit_context := vgit.VGitContext{
 		workdir:     c.vgo.workdir
 		v_repo_url:  c.vgo.v_repo_url

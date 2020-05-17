@@ -86,7 +86,7 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 
 // set_max_jobs gives you the ability to override the number
 // of jobs *after* the PoolProcessor had been created already.
-pub fn (pool mut PoolProcessor) set_max_jobs(njobs int) {
+pub fn (mut pool PoolProcessor) set_max_jobs(njobs int) {
 	pool.njobs = njobs
 }
 
@@ -99,11 +99,11 @@ pub fn (pool mut PoolProcessor) set_max_jobs(njobs int) {
 // work_on_items returns *after* all threads finish.
 // You can optionally call get_results after that.
 // TODO: uncomment, when generics work again
-//pub fn (pool mut PoolProcessor) work_on_items<T>(items []T) {
+//pub fn (mut pool PoolProcessor) work_on_items<T>(items []T) {
 //	pool.work_on_pointers( items.pointers() )
 //}
 
-pub fn (pool mut PoolProcessor) work_on_pointers(items []voidptr) {
+pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 	mut njobs := runtime.nr_jobs()
 	if pool.njobs > 0 {
 		njobs = pool.njobs
@@ -186,7 +186,7 @@ pub fn (pool &PoolProcessor) get_int_item(idx int) int {
 // set_shared_context - can be called during the setup so that you can
 // provide a context that is shared between all worker threads, like
 // common options/settings.
-pub fn (pool mut PoolProcessor) set_shared_context(context voidptr) {
+pub fn (mut pool PoolProcessor) set_shared_context(context voidptr) {
 	pool.shared_context = context
 }
 
@@ -201,7 +201,7 @@ pub fn (pool &PoolProcessor) get_shared_context() voidptr {
 // local storage area where it can write/read information that is private
 // to the given thread, without worrying that it will get overwritten by
 // another thread
-pub fn (pool mut PoolProcessor) set_thread_context(idx int, context voidptr) {
+pub fn (mut pool PoolProcessor) set_thread_context(idx int, context voidptr) {
 	pool.thread_contexts[idx] = context
 }
 
@@ -223,11 +223,11 @@ pub:
 
 //
 
-pub fn (pool mut PoolProcessor) work_on_items_s(items []string) {
+pub fn (mut pool PoolProcessor) work_on_items_s(items []string) {
 	pool.work_on_pointers( items.pointers() )
 }
 
-pub fn (pool mut PoolProcessor) work_on_items_i(items []int) {
+pub fn (mut pool PoolProcessor) work_on_items_i(items []int) {
 	pool.work_on_pointers( items.pointers() )
 }
 
