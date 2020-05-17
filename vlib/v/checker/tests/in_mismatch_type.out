@@ -5,7 +5,7 @@ vlib/v/checker/tests/in_mismatch_type.v:10:7: error: the data type on the left o
       |          ~~
    11 |         println('ok')
    12 |     }
-vlib/v/checker/tests/in_mismatch_type.v:13:7: error: the data type on the left of `in` does not match the key type
+vlib/v/checker/tests/in_mismatch_type.v:13:7: error: the data type on the left of `in` does not match the map key type
    11 |         println('ok')
    12 |     }
    13 |     if 2 in m {
@@ -40,14 +40,11 @@ vlib/v/checker/tests/in_mismatch_type.v:25:12: error: the data type on the left 
       |               ~~
    26 |         println('yeah')
    27 |     }
-vlib/v/checker/tests/in_mismatch_type.v:28:9: error: the data type on the left of `in` does not match the array item type 
+vlib/v/checker/tests/in_mismatch_type.v:28:9: error: the data type on the left of `in` does not match the array item type
    26 |         println('yeah')
    27 |     }
    28 |     if '3' in a_i {
       |            ~~
-   29 |         println('sure')
-   30 |     }
-vlib/v/checker/tests/in_mismatch_type.v:31:9: error: the data type on the left of `in` does not match the array item type 
    29 |         println('sure')
    30 |     }
    31 |     if '2' in a_i {
