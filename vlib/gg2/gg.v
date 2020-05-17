@@ -124,7 +124,7 @@ pub fn (ctx &GG) draw_text_def(x, y int, text string) {
 	ctx.draw_text(x, y, text, cfg)
 }
 
-pub fn (gg mut GG) init_font() {
+pub fn (mut gg GG) init_font() {
 	// TODO
 	gg.fons =g_fons
 	gg.font_normal=g_font_normal

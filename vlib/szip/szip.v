@@ -53,7 +53,7 @@ pub fn open(name string, level int, mode string) ?zip_ptr {
     if mode != M_WRITE && mode != M_RONLY && mode != M_APPEND {
         return error('szip: invalid provided open mode')
     }
-    /* struct zip_t* */_p_zip := zip_ptr(C.zip_open(name.str, 
+    /* struct zip_t* */_p_zip := zip_ptr(C.zip_open(name.str,
                                  _nlevel, mode.str))
     if _p_zip == zip_ptr(0) {
         return error('szip: cannot open/create/append new zip archive')
@@ -66,7 +66,7 @@ pub fn open(name string, level int, mode string) ?zip_ptr {
  *
  * @param zip zip archive handler.
  */
-pub fn (z mut zip_ptr) close() {
+pub fn (mut z zip_ptr) close() {
     C.zip_close(z)
 }
 
@@ -82,7 +82,7 @@ pub fn (z mut zip_ptr) close() {
  *
  * @return the return code - 0 on success, negative number (< 0) on error.
  */
-pub fn (zentry mut zip_ptr) open_entry(name string) /*?*/bool {
+pub fn (mut zentry zip_ptr) open_entry(name string) /*?*/bool {
     res := C.zip_entry_open(zentry, name.str)
     return res != -1
 }
@@ -94,7 +94,7 @@ pub fn (zentry mut zip_ptr) open_entry(name string) /*?*/bool {
  *
  * @return the return code - 0 on success, negative number (< 0) on error.
  */
-pub fn (zentry mut zip_ptr) close_entry() {
+pub fn (mut zentry zip_ptr) close_entry() {
     C.zip_entry_close(zentry)
 }
 
@@ -112,7 +112,7 @@ pub fn (zentry mut zip_ptr) close_entry() {
  *
  * @return the pointer to the current zip entry name, or NULL on error.
  */
-pub fn (zentry mut zip_ptr) name() string {
+pub fn (mut zentry zip_ptr) name() string {
     _name := C.zip_entry_name(zentry)
     if _name == 0 {
         return ''
@@ -127,7 +127,7 @@ pub fn (zentry mut zip_ptr) name() string {
  *
  * @return the index on success, negative number (< 0) on error.
  */
-pub fn (zentry mut zip_ptr) index() ?int {
+pub fn (mut zentry zip_ptr) index() ?int {
     _index := int(C.zip_entry_index(zentry))
     if _index == -1 {
         return error('szip: cannot get current index of zip entry')
@@ -143,7 +143,7 @@ pub fn (zentry mut zip_ptr) index() ?int {
  * @return the return code - 1 (true), 0 (false), negative number (< 0) on
  *         error.
  */
-pub fn (zentry mut zip_ptr) isdir() ?bool {
+pub fn (mut zentry zip_ptr) isdir() ?bool {
     _isdir := C.zip_entry_isdir(zentry)
     if _isdir == -1 {
         return error('szip: cannot check entry type')
@@ -159,7 +159,7 @@ pub fn (zentry mut zip_ptr) isdir() ?bool {
  *
  * @return the uncompressed size in bytes.
  */
-pub fn (zentry mut zip_ptr) size() i64 {
+pub fn (mut zentry zip_ptr) size() i64 {
     _size := i64(C.zip_entry_size(zentry))
     return _size
 }
@@ -171,7 +171,7 @@ pub fn (zentry mut zip_ptr) size() i64 {
  *
  * @return the CRC-32 checksum.
  */
-pub fn (zentry mut zip_ptr) crc32() u32 {
+pub fn (mut zentry zip_ptr) crc32() u32 {
     _checksum := u32(C.zip_entry_crc32(zentry))
     return _checksum // 0
 }
@@ -185,10 +185,10 @@ pub fn (zentry mut zip_ptr) crc32() u32 {
  *
  * @return the return code - 0 on success, negative number (< 0) on error.
  */
-pub fn (zentry mut zip_ptr) write_entry(data []byte) bool {
-    if (data[0] & 0xff) == -1 { 
-        return false 
-    } 
+pub fn (mut zentry zip_ptr) write_entry(data []byte) bool {
+    if (data[0] & 0xff) == -1 {
+        return false
+    }
     buf := data // alias of data
     res := C.zip_entry_write(zentry, buf.data, buf.len)
     return res == 0
@@ -202,7 +202,7 @@ pub fn (zentry mut zip_ptr) write_entry(data []byte) bool {
  *
  * @return the return code - 0 on success, negative number (< 0) on error.
  */
-pub fn (zentry mut zip_ptr) create_entry(name string) bool {
+pub fn (mut zentry zip_ptr) create_entry(name string) bool {
     res := C.zip_entry_fwrite(zentry, name.str)
     return res == 0
 }
@@ -222,7 +222,7 @@ pub fn (zentry mut zip_ptr) create_entry(name string) bool {
  * @return the return code - the number of bytes actually read on success.
  *         Otherwise a -1 on error.
  */
-pub fn (zentry mut zip_ptr) read_entry() ?voidptr {
+pub fn (mut zentry zip_ptr) read_entry() ?voidptr {
     mut _buf := voidptr(0)
     mut _bsize := i64(0)
     res := C.zip_entry_read(zentry, &_buf, &_bsize)
@@ -240,7 +240,7 @@ pub fn (zentry mut zip_ptr) read_entry() ?voidptr {
  *
  * @return the return code - 0 on success, negative number (< 0) on error.
  */
-pub fn (zentry mut zip_ptr) extract_entry(path string) /*?*/bool {
+pub fn (mut zentry zip_ptr) extract_entry(path string) /*?*/bool {
     if C.access(path.str, 0) == -1 {
         return false
         //return error('Cannot open file for extracting, file not exists')
@@ -259,7 +259,7 @@ pub fn (zentry mut zip_ptr) extract_entry(path string) /*?*/bool {
  *
  * @return the return code - 0 on success, negative number (< 0) on error.
  */
-/*fn (zentry mut zip_ptr) extract(path string) bool {
+/*fn (mut zentry zip_ptr) extract(path string) bool {
     if C.access(path.str, 0) == -1 {
         return false
         //return error('Cannot open directory for extracting, directory not exists')
@@ -276,10 +276,10 @@ pub fn (zentry mut zip_ptr) extract_entry(path string) /*?*/bool {
  * @return the return code - the number of entries on success, negative number
  *         (< 0) on error.
  */
-pub fn (zentry mut zip_ptr) total() ?int {
+pub fn (mut zentry zip_ptr) total() ?int {
     _tentry := int(C.zip_total_entries(zentry))
     if _tentry == -1 {
         return error('szip: cannot count total entries')
     }
     return _tentry
-} 
+}

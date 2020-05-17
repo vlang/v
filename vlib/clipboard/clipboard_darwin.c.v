@@ -25,12 +25,12 @@ fn (cb &Clipboard) check_availability() bool {
 	return cb.pb != C.NULL
 }
 
-fn (cb mut Clipboard) clear(){
+fn (mut cb Clipboard) clear(){
 	cb.foo = 0
 	#[cb->pb clearContents];
 }
 
-fn (cb mut Clipboard) free(){
+fn (mut cb Clipboard) free(){
 	cb.foo = 0
 	//nothing to free
 }
@@ -43,7 +43,7 @@ fn (cb &Clipboard) has_ownership() bool {
 
 fn C.OSAtomicCompareAndSwapLong()
 
-fn (cb mut Clipboard) set_text(text string) bool {
+fn (mut cb Clipboard) set_text(text string) bool {
 	cb.foo = 0
 	#NSString *ns_clip;
 	ret := false
@@ -59,7 +59,7 @@ fn (cb mut Clipboard) set_text(text string) bool {
 	return ret
 }
 
-fn (cb mut Clipboard) get_text() string {
+fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0
 	#NSString *ns_clip;
 	utf8_clip := byteptr(0)

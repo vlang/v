@@ -262,7 +262,7 @@ mut:
 }
 
 [inline]
-fn (tok mut Token) reset() {
+fn (mut tok Token) reset() {
 	tok.rep = 0
 }
 
@@ -330,7 +330,7 @@ pub mut:
 
 // Reset RE object
 //[inline]
-fn (re mut RE) reset(){
+fn (mut re RE) reset(){
 	re.cc_index         = 0
 
 	mut i := 0
@@ -352,7 +352,7 @@ fn (re mut RE) reset(){
 
 // reset for search mode fail
 // gcc bug, dont use [inline] or go 5 time slower
-fn (re mut RE) reset_src(){
+fn (mut re RE) reset_src(){
 	mut i := 0
 	for i < re.prog.len {
 		re.prog[i].group_rep          = 0 // clear repetition of the group
@@ -544,7 +544,7 @@ fn (re RE) check_char_class(pc int, ch u32) bool {
 }
 
 // parse_char_class return (index, str_len, cc_type) of a char class [abcm-p], char class start after the [ char
-fn (re mut RE) parse_char_class(in_txt string, in_i int) (int, int, u32) {
+fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, u32) {
 	mut status := CharClass_parse_state.start
 	mut i := in_i
 
@@ -897,7 +897,7 @@ fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, string, int) {
 // main compiler
 //
 // compile return (return code, index) where index is the index of the error in the query string if return code is an error code
-pub fn (re mut RE) compile(in_txt string) (int,int) {
+pub fn (mut re RE) compile(in_txt string) (int,int) {
 	mut i        := 0      // input string index
 	mut pc       := 0      // program counter
 	mut tmp_code := u32(0)
@@ -1467,7 +1467,7 @@ pub mut:
 	match_first int = -1
 }
 
-pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
+pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	// result status
 	mut result := NO_MATCH_FOUND     // function return
 	mut first_match := -1             //index of the first match
@@ -1595,7 +1595,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					tmp_pc := group_data[group_index]
 					re.prog[tmp_pc].group_rep++
 					//println("Closing group $group_index {${re.prog[tmp_pc].rep_min},${re.prog[tmp_pc].rep_max}}:${re.prog[tmp_pc].group_rep}")
-					
+
 					if re.prog[tmp_pc].group_rep >= re.prog[tmp_pc].rep_min && re.prog[tmp_pc].group_id >= 0{
 						start_i   := group_stack[group_index]
 	 					group_stack[group_index]=-1
@@ -2201,7 +2201,7 @@ pub fn new_regex_by_size(mult int) RE {
 // Matchers
 //
 
-pub fn (re mut RE) match_string(in_txt string) (int,int) {
+pub fn (mut re RE) match_string(in_txt string) (int,int) {
 	start, end := re.match_base(in_txt.str,in_txt.len)
 	if start >= 0 && end > start {
 		if (re.flag & F_MS) != 0 && start > 0 {
@@ -2223,7 +2223,7 @@ pub fn (re mut RE) match_string(in_txt string) (int,int) {
 //
 
 // find try to find the first match in the input string
-pub fn (re mut RE) find(in_txt string) (int,int) {
+pub fn (mut re RE) find(in_txt string) (int,int) {
 	old_flag := re.flag
 	re.flag |= F_SRC  // enable search mode
 	start, end := re.match_base(in_txt.str, in_txt.len)
@@ -2235,7 +2235,7 @@ pub fn (re mut RE) find(in_txt string) (int,int) {
 }
 
 // find all the non overlapping occurrences of the match pattern
-pub fn (re mut RE) find_all(in_txt string) []int {
+pub fn (mut re RE) find_all(in_txt string) []int {
 	mut i := 0
 	mut res := []int{}
 	mut ls := -1
@@ -2257,7 +2257,7 @@ pub fn (re mut RE) find_all(in_txt string) []int {
 }
 
 // replace return a string where the matches are replaced with the replace string
-pub fn (re mut RE) replace(in_txt string, repl string) string {
+pub fn (mut re RE) replace(in_txt string, repl string) string {
 	pos := re.find_all(in_txt)
 	if pos.len > 0 {
 		mut res := ""

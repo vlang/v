@@ -128,12 +128,12 @@ pub fn create(path string) ?File {
 }
 
 /*
-pub fn (f mut File) fseek(pos, mode int) {
+pub fn (mut f File) fseek(pos, mode int) {
 }
 */
 
 
-pub fn (f mut File) write(s string) {
+pub fn (mut f File) write(s string) {
 	if !f.opened {
 		return
 	}
@@ -149,7 +149,7 @@ pub fn (f mut File) write(s string) {
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 }
 
-pub fn (f mut File) writeln(s string) {
+pub fn (mut f File) writeln(s string) {
 	if !f.opened {
 		return
 	}
@@ -237,7 +237,7 @@ pub fn get_error_msg(code int) string {
 // convert any value to []byte (LittleEndian) and write it
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
-pub fn (f mut File) write_bytes(data voidptr, size int) {
+pub fn (mut f File) write_bytes(data voidptr, size int) {
 /*
 	$if linux {
 		$if !android {
@@ -249,7 +249,7 @@ pub fn (f mut File) write_bytes(data voidptr, size int) {
 	C.fwrite(data, 1, size, f.cfile)
 }
 
-pub fn (f mut File) close() {
+pub fn (mut f File) close() {
 	if !f.opened {
 		return
 	}

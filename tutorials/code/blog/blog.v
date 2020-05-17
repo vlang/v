@@ -15,7 +15,7 @@ fn main() {
 	vweb.run<App>(8080)
 }
 
-fn (app mut App) index_text() {
+fn (mut app App) index_text() {
 	app.vweb.text('Hello, world from vweb!')
 }
 
@@ -31,7 +31,7 @@ fn (app &App) index() {
 	$vweb.html()
 }
 
-pub fn (app mut App) init() {
+pub fn (mut app App) init() {
 	db := pg.connect(pg.Config{
 		host:   '127.0.0.1'
 		dbname: 'blog'
@@ -40,14 +40,14 @@ pub fn (app mut App) init() {
 	app.db = db
 }
 
-pub fn (app mut App) new() {
+pub fn (mut app App) new() {
 	$vweb.html()
 }
 
-pub fn (app mut App) reset() {
+pub fn (mut app App) reset() {
 }
 
-pub fn (app mut App) new_article() {
+pub fn (mut app App) new_article() {
 	title := app.vweb.form['title']
 	text := app.vweb.form['text']
 	if title == '' || text == ''  {
@@ -64,11 +64,11 @@ pub fn (app mut App) new_article() {
 	app.vweb.redirect('/article/')
 }
 
-pub fn (app mut App) articles() {
+pub fn (mut app App) articles() {
 	articles := app.find_all_articles()
 	app.vweb.json(json.encode(articles))
 }
 
-fn (app mut App) time() {
+fn (mut app App) time() {
 	app.vweb.text(time.now().format())
 }

@@ -23,8 +23,8 @@ pub fn tos(s byteptr) string {
 	return string{
 		str: s
 		len: len
-	}	
-}	
+	}
+}
 
 // string.clone_static returns an independent copy of a given array
 // It should be used only in -autofree generated code.
@@ -209,14 +209,14 @@ pub fn (s string) trim_right(cutset string) string {
 // fn print_cur_thread() {
 // //C.printf("tid = %08x \n", pthread_self());
 // }
-pub fn (s mut []string) sort() {
-	
+pub fn (mut s []string) sort() {
+
 }
 
-pub fn (s mut []string) sort_ignore_case() {
+pub fn (mut s []string) sort_ignore_case() {
 }
 
-pub fn (s mut []string) sort_by_len() {
+pub fn (mut s []string) sort_by_len() {
 }
 
 fn (s string) at(idx int) byte {

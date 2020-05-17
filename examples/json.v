@@ -35,7 +35,6 @@ fn (u User) can_register() bool {
 	return u.age >= 16
 }
 
-fn (u mut User) register() {
+fn (mut u User) register() {
 	u.is_registered = true
 }
-

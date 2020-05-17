@@ -23,7 +23,7 @@ pub fn utf8_validate(data byteptr, len int) bool {
 	return !state.failed && state.subindex <= 0
 }
 
-fn (s mut Utf8State) seq(r0 bool, r1 bool, is_tail bool) bool {
+fn (mut s Utf8State) seq(r0 bool, r1 bool, is_tail bool) bool {
 	if s.subindex == 0 || (s.index > 1 && s.subindex == 1) || (s.index >= 6 && s.subindex == 2) {
 		if (s.subindex == 0 && r0) || (s.subindex == 1 && r1) || (s.subindex == 2 && is_tail) {
 			s.subindex++
@@ -46,7 +46,7 @@ fn (s mut Utf8State) seq(r0 bool, r1 bool, is_tail bool) bool {
 	return false
 }
 
-fn (s mut Utf8State) next_state (c byte) {
+fn (mut s Utf8State) next_state (c byte) {
 	//sequence 1
 	if s.index == 0 {
 		if (c >= 0x00 + 1 && c <= 0x7F) || c == 0x00 {
@@ -58,7 +58,7 @@ fn (s mut Utf8State) next_state (c byte) {
 	is_tail := c >= 0x80 && c <= 0xBF
 	//sequence 2
 	if s.index == 1 && s.seq(c >= 0xC2 && c <= 0xDF, false, is_tail) {return}
-	
+
 	//sequence 3
 	if s.index == 2 && s.seq(c == 0xE0, c >= 0xA0 && c <= 0xBF, is_tail) {return}
 	if s.index == 3 && s.seq(c >= 0xE1 && c <= 0xEC, c >= 0x80 && c <= 0xBF, is_tail) {return}

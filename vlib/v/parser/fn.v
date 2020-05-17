@@ -134,6 +134,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		rec_name = p.check_name()
 		if !rec_mut {
 			rec_mut = p.tok.kind == .key_mut
+			if rec_mut {
+				p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', p.tok.position())
+			}
 		}
 		receiver_pos = rec_start_pos.extend(p.tok.position())
 		is_amp := p.tok.kind == .amp

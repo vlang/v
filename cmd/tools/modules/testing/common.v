@@ -27,7 +27,7 @@ pub mut:
 	message_handler &TestMessageHandler
 }
 
-pub fn (mh mut TestMessageHandler) append_message(msg string) {
+pub fn (mut mh TestMessageHandler) append_message(msg string) {
 	mh.mtx.lock()
 	mh.messages << msg
 	mh.mtx.unlock()
@@ -54,11 +54,11 @@ pub fn new_test_session(_vargs string) TestSession {
 	}
 }
 
-pub fn (ts mut TestSession) init() {
+pub fn (mut ts TestSession) init() {
 	ts.benchmark = benchmark.new_benchmark_no_cstep()
 }
 
-pub fn (ts mut TestSession) test() {
+pub fn (mut ts TestSession) test() {
 	ts.init()
 	mut remaining_files := []string{}
 	for dot_relative_file in ts.files {
@@ -111,7 +111,7 @@ pub fn (ts mut TestSession) test() {
 	eprintln(term.h_divider('-'))
 }
 
-pub fn (m mut TestMessageHandler) display_message() {
+pub fn (mut m TestMessageHandler) display_message() {
 	m.mtx.lock()
 	defer {
 		m.messages.clear()

@@ -88,7 +88,7 @@ pub fn (s &Scope) known_var(name string) bool {
 	return false
 }
 
-pub fn (s mut Scope) update_var_type(name string, typ table.Type) {
+pub fn (mut s Scope) update_var_type(name string, typ table.Type) {
 	match mut s.objects[name] {
 		Var {
 			if it.typ == typ {
@@ -100,7 +100,7 @@ pub fn (s mut Scope) update_var_type(name string, typ table.Type) {
 	}
 }
 
-pub fn (s mut Scope) register(name string, obj ScopeObject) {
+pub fn (mut s Scope) register(name string, obj ScopeObject) {
 	if name == '_' {
 		return
 	}

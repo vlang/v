@@ -651,7 +651,7 @@ fn parse_host(host string) ?string {
 // - set_path('/foo%2fbar') will set path='/foo/bar' and raw_path='/foo%2fbar'
 // set_path will return an error only if the provided path contains an invalid
 // escaping.
-pub fn (u mut URL) set_path(p string) ?bool {
+pub fn (mut u URL) set_path(p string) ?bool {
 	path := unescape(p, .encode_path) or {
 		return error(err)
 	}
