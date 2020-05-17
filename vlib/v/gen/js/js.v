@@ -93,6 +93,13 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	mut out := g.hashes() + g.definitions.str() + g.constants.str()
 	for node in deps_resolved.nodes {
 		out += '\n/* namespace: $node.name */\n'
+		out += 'const $node.name = (function ('
+		imports := g.namespace_imports[node.name]
+		for i, key in imports.keys() {
+			if i > 0 { out += ', ' }
+			out += imports[key]
+		}
+		out += ') {'
 		// private scope
 		out += g.namespaces[node.name].str()
 		// public scope
@@ -102,7 +109,12 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			out += '\n\t\t$pub_var,'
 		}
 		out += '\n\t};'
-		out += '\n})();'
+		out += '\n})('
+		for i, key in imports.keys() {
+			if i > 0 { out += ', ' }
+			out += key
+		}
+		out += ');'
 	}
 	return out
 }
@@ -113,7 +125,6 @@ pub fn (mut g JsGen) enter_namespace(n string) {
 		// create a new namespace
 		g.out = strings.new_builder(100)
 		g.indents[g.namespace] = 0
-		g.out.writeln('const $n = (function () {')
 	}
 	else {
 		g.out = g.namespaces[g.namespace]
@@ -527,9 +538,6 @@ fn (mut g JsGen) gen_import_stmt(it ast.Import) {
 	mut imports := g.namespace_imports[g.namespace]
 	imports[it.mod] = it.alias
 	g.namespace_imports[g.namespace] = imports
- 	if it.mod != it.alias {
- 		g.writeln('const $it.alias = $it.mod;')
- 	}
  }
 
 fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
