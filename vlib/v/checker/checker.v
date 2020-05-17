@@ -399,36 +399,23 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				.array {
 					right_sym := c.table.get_type_symbol(right.array_info().elem_type)
 					if left.kind != right_sym.kind {
-						if infix_expr.op == .key_in {
-							c.error('the data type on the left of `in` does not match the array item type',
-							infix_expr.pos)
-						}
-						c.error('the data type on the left of `!in` does not match the array item type',
-							infix_expr.pos)
+						c.error('the data type on the left of `$infix_expr.op.str()` does not match the array item type',
+						infix_expr.pos)
 					}
 				}
 				.map {
 					key_sym := c.table.get_type_symbol(right.map_info().key_type)
 					if left.kind != key_sym.kind {
-						if infix_expr.op == .key_in {
-							c.error('the data type on the left of `in` does not match the map key type', infix_expr.pos)
-						}
-						c.error('the data type on the left of `!in` does not match the map key type', infix_expr.pos)
+						c.error('the data type on the left of `$infix_expr.op.str()` does not match the map key type', infix_expr.pos)
 					}
 				}
 				.string {
 					if left.kind != .string {
-						if infix_expr.op == .key_in {
-							c.error('the data type on the left of `in` must be a string', infix_expr.pos)
-						}
-						c.error('the data type on the left of `!in` must be a string', infix_expr.pos)
+						c.error('the data type on the left of `$infix_expr.op.str()` must be a string', infix_expr.pos)
 					}
 				}
 				else {
-					if infix_expr.op == .key_in {
-							c.error('`in` can only be used with an array/map/string', infix_expr.pos)
-						}
-					c.error('`!in` can only be used with an array/map/string', infix_expr.pos)
+					c.error('`$infix_expr.op.str()` can only be used with an array/map/string', infix_expr.pos)
 				}
 			}
 			return table.bool_type
