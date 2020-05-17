@@ -26,7 +26,7 @@ pub mut:
 	license      string
 	repo_url     string
 	author       string
-	unknown      map[string]array_string
+	unknown      map[string][]string
 }
 
 struct Scanner {
@@ -35,7 +35,7 @@ mut:
 	text        string
 	inside_text bool
 	started     bool
-	tokens      []Token = [unhandled expr type v.ast.ArrayInit]
+	tokens      []Token = []Token{}
 }
 
 struct Parser {
@@ -70,10 +70,7 @@ pub fn decode(contents string) ?Manifest {
 }
 
 fn (mut s Scanner) tokenize(t_type TokenKind, val string) {
-	s.tokens << Token{
-		: t_type
-		: val
-	}
+	s.tokens << Token{t_type, val}
 }
 
 fn (mut s Scanner) skip_whitespace() {
@@ -157,7 +154,7 @@ fn (mut s Scanner) scan_all() {
 	s.tokenize(.eof, 'eof')
 }
 
-fn get_array_content(tokens []Token, st_idx int) ([]string, int) {
+fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
 	mut vals := []string{}
 	mut idx := st_idx
 	if tokens[idx].typ != .labr {

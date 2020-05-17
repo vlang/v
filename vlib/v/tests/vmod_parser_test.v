@@ -4,7 +4,6 @@ fn test_from_file() {
 	data := vmod.from_file('./v.mod') or {
 		panic(err)
 	}
-
 	assert data.name == 'V'
 	assert data.description == 'The V programming language.'
 	assert data.version == '0.1.27'
@@ -12,7 +11,7 @@ fn test_from_file() {
 }
 
 fn test_decode() {
-	content := '
+	content := "
 	  Module {
 		name: \'foobar\',
 		description: \'Just a sample module\'
@@ -23,13 +22,11 @@ fn test_decode() {
 		dependencies: [\'hello\'],
 		test: \'foo\'
 	  }
-	'
-
+	"
 	data := vmod.decode(content) or {
 		println(err)
 		exit(1)
 	}
-
 	assert data.name == 'foobar'
 	assert data.version == '0.2.0'
 	assert data.description == 'Just a sample module'
@@ -38,7 +35,6 @@ fn test_decode() {
 	assert data.license == 'GPL-2.0'
 	assert data.dependencies[0] == 'hello'
 	assert data.unknown['test'][0] == 'foo'
-
 	_ := vmod.decode('') or {
 		assert err == 'vmod: no content.'
 		exit(0)
