@@ -247,11 +247,11 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 }
 
 pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
-	if !decl.is_c && !c.is_builtin_mod {
+	if !decl.is_c && !decl.is_js && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
 	for i, field in decl.fields {
-		if !decl.is_c {
+		if !decl.is_c && !decl.is_js {
 			c.check_valid_snake_case(field.name, 'field name', field.pos)
 		}
 		for j in 0 .. i {
@@ -1477,7 +1477,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.check_expr_opt_call(it.expr, etype, false)
 		}
 		ast.FnDecl {
-			if !it.is_c && !c.is_builtin_mod {
+			if !it.is_c && !it.is_js && !c.is_builtin_mod {
 				c.check_valid_snake_case(it.name, 'function name', it.pos)
 			}
 			if it.is_method {
