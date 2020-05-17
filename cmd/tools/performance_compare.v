@@ -120,7 +120,11 @@ fn (c &Context) prepare_v(cdir string, commit string) {
     vcommit := scripting.run('git rev-parse --short  --verify HEAD')
 	println('V version is: ${vversion} , local source commit: ${vcommit}')
 	if vgit_context.vvlocation == 'cmd/v' {
-		println('Source lines of the compiler: ' + scripting.run('wc cmd/v/*.v vlib/compiler/*.v | tail -n -1'))
+		if os.exists('vlib/v/ast/ast.v') {
+			println('Source lines of the compiler: ' + scripting.run('find cmd/v/ vlib/v/ -name "*.v" | grep -v /tests/ | xargs wc | tail -n -1'))
+		} else {
+			println('Source lines of the compiler: ' + scripting.run('wc cmd/v/*.v vlib/compiler/*.v | tail -n -1'))
+		}
 	} else if vgit_context.vvlocation == 'v.v' {
 		println('Source lines of the compiler: ' + scripting.run('wc v.v vlib/compiler/*.v | tail -n -1'))
 	}else{
@@ -145,8 +149,8 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 	}
 	timestamp_a,_ := vgit.line_to_timestamp_and_commit(scripting.run('cd $c.a/ ; git rev-list -n1 --timestamp HEAD'))
 	timestamp_b,_ := vgit.line_to_timestamp_and_commit(scripting.run('cd $c.b/ ; git rev-list -n1 --timestamp HEAD'))
-	debug_option_a := if timestamp_a > 1570877641 { '-g     ' } else { '-debug ' }
-	debug_option_b := if timestamp_b > 1570877641 { '-g     ' } else { '-debug ' }
+	debug_option_a := if timestamp_a > 1570877641 { '-cg    ' } else { '-debug ' }
+	debug_option_b := if timestamp_b > 1570877641 { '-cg    ' } else { '-debug ' }
 	mut hyperfine_commands_arguments := []string{}
 	for cmd in commands {
 		println(cmd)
@@ -171,7 +175,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 }
 
 fn main() {
-	scripting.used_tools_must_exist(['cp', 'rm', 'strip', 'make', 'git', 'upx', 'cc', 'wc', 'tail', 'hyperfine'])
+	scripting.used_tools_must_exist(['cp', 'rm', 'strip', 'make', 'git', 'upx', 'cc', 'wc', 'tail', 'find', 'xargs', 'hyperfine'])
 	mut context := new_context()
 	mut fp := flag.new_flag_parser(os.args)
 	fp.application(os.file_name(os.executable()))
