@@ -2346,7 +2346,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	// if struct_init.fields.len == 0 && info.fields.len == 0 {
 	if !initialized {
-		g.write('0')
+		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
 	}
 	g.write('}')
 	if is_amp {
