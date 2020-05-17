@@ -41,7 +41,7 @@ fn greet_func(cmd cli.Command) {
 	language := cmd.flags.get_string('language') or { panic('failed to get \'language\' flag: $err') }
 	times := cmd.flags.get_int('times') or { panic('failed to get \'times\' flag: $err') }
 
-	for i in 0..times {
+	for _ in 0..times {
 		match language {
 			'english' { println('Hello World') }
 			'german' { println('Hallo Welt') }
