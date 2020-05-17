@@ -2368,21 +2368,22 @@ fn (mut g Gen) assoc(node ast.Assoc) {
 	}
 	styp := g.typ(node.typ)
 	g.writeln('($styp){')
+	mut inited_fields := map[string]int
 	for i, field in node.fields {
-		field_name := c_name(field)
-		g.write('\t.$field_name = ')
-		g.expr(node.exprs[i])
-		g.writeln(', ')
+		inited_fields[field] = i
 	}
-	// Copy the rest of the fields.
+	// Merge inited_fields in the rest of the fields.
 	sym := g.table.get_type_symbol(node.typ)
 	info := sym.info as table.Struct
 	for field in info.fields {
-		if field.name in node.fields {
-			continue
-		}
 		field_name := c_name(field.name)
-		g.writeln('\t.$field_name = ${node.var_name}.$field_name,')
+		if field.name in inited_fields {
+			g.write('\t.$field_name = ')
+			g.expr(node.exprs[inited_fields[field.name]])
+			g.writeln(', ')
+		} else {
+			g.writeln('\t.$field_name = ${node.var_name}.$field_name,')
+		}
 	}
 	g.write('}')
 	if g.is_amp {
@@ -3786,7 +3787,9 @@ fn (g &Gen) interface_table() string {
 		mut methods_struct_def := strings.new_builder(100)
 		methods_struct_def.writeln('$methods_struct_name {')
 		mut imethods := map[string]string{} // a map from speak -> _Speaker_speak_fn
-		for method in ityp.methods {
+		mut methodidx := map[string]int
+		for k, method in ityp.methods {
+			methodidx[method.name] = k
 			typ_name := '_${interface_name}_${method.name}_fn'
 			ret_styp := g.typ(method.return_type)
 			methods_typ_def.write('typedef $ret_styp (*$typ_name)(void* _')
@@ -3832,7 +3835,14 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr(${cctype}* x) {
 }')
 			methods_struct.writeln('\t{')
 			st_sym := g.table.get_type_symbol(st)
-			for method in st_sym.methods {
+			mut method := table.Fn{}
+			for _, m in ityp.methods {
+				for mm in st_sym.methods {
+					if mm.name == m.name {
+						method = mm
+						break
+					}
+				}
 				if method.name !in imethods {
 					// a method that is not part of the interface should be just skipped
 					continue
