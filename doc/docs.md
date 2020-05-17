@@ -36,44 +36,45 @@ you can do in V.
 	<tr>
 		<td><a href='#match'>Match</a></td>
 		<td><a href='#structs'>Structs</a></td>
+		<td><a href='#short-struct-initialiation-syntax'>Short struct init syntax</a></td>
 		<td><a href='#access-modifiers'>Access modifiers</a></td>
 		<td><a href='#methods'>Methods</a></td>
 		<td><a href='#pure-functions-by-default'>Pure functions by default</a></td>
-		<td><a href='#anonymous--high-order-functions'>Anonymous & high order fns</a></td>
 		</tr>
 	<tr>
+		<td><a href='#anonymous--high-order-functions'>Anonymous & high order fns</a></td>
 		<td><a href='#references'>References</a></td>
 		<td><a href='#constants'>Constants</a></td>
 		<td><a href='#println'>println</a></td>
 		<td><a href='#modules'>Modules</a></td>
 		<td><a href='#interfaces'>Interfaces</a></td>
-		<td><a href='#enums'>Enums</a></td>
 		</tr>
 	<tr>
+		<td><a href='#enums'>Enums</a></td>
 		<td><a href='#sum-types'>Sum types</a></td>
 		<td><a href='#optionresult-types-and-error-handling'>Option/Result & error handling</a></td>
 		<td><a href='#generics'>Generics</a></td>
 		<td><a href='#concurrency'>Concurrency</a></td>
 		<td><a href='#decoding-json'>Decoding JSON</a></td>
-		<td><a href='#testing'>Testing</a></td>
 		</tr>
 	<tr>
+		<td><a href='#testing'>Testing</a></td>
 		<td><a href='#memory-management'>Memory managment</a></td>
 		<td><a href='#defer'>Defer</a></td>
 		<td><a href='#orm'>ORM</a></td>
 		<td><a href='#vfmt'>vfmt</a></td>
 		<td><a href='#writing-documentation'>Writing documentation</a></td>
-		<td><a href='#calling-c-functions-from-v'>Calling C functions from V</a></td>
 		</tr>
 	<tr>
+		<td><a href='#calling-c-functions-from-v'>Calling C functions from V</a></td>
 		<td><a href='#conditional-compilation'>Conditional compilation</a></td>
 		<td><a href='#reflection-via-codegen'>Reflection via codegen</a></td>
 		<td><a href='#limited-operator-overloading'>Limited operator overloading</a></td>
 		<td><a href='#inline-assembly'>Inline assembly</a></td>
 		<td><a href='#translating-cc-to-v'>Translating C/C++ to V</a></td>
-		<td><a href='#hot-code-reloading'>Hot code reloading</a></td>
 		</tr>
 	<tr>
+		<td><a href='#hot-code-reloading'>Hot code reloading</a></td>
 		<td><a href='#cross-compilation'>Cross compilation</a></td>
 		<td><a href='#cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
 		<td><a href='#appendix-i-keywords'>Appendix I: Keywords</a></td>
@@ -177,6 +178,8 @@ Like constants and types, functions are private (not exported) by default.
 To allow other modules to use them, prepend `pub`. The same applies
 to constants and types.
 
+
+
 ## Variables
 
 ```v
@@ -266,8 +269,10 @@ rune // represents a Unicode code point
 
 f32 f64
 
-byteptr
+byteptr // these two are mostly used for C interop
 voidptr
+
+any // similar to C's void* and Go's interface{}
 ```
 
 Please note that unlike C and Go, `int` is always a 32 bit integer.
@@ -665,6 +670,29 @@ struct Foo {
 All struct fields are zeroed by default during the creation of the struct. Array and map fields are allocated. 
 
 It's also possible to define custom default values.
+
+
+## Short struct initialization syntax
+
+There are no default function argument values or named arguments, for that the short struct initialization syntax can be used instead:
+
+```v
+struct ButtonConfig {
+    text        string
+    is_disabled bool
+    width       int = 70
+    height      int = 20
+}
+fn new_button(c ButtonConfig) &Button {
+    return &Button{
+        width: c.width
+	height: c.height
+	text: c.text
+    }
+}
+
+button := new_button(text:'Click me', width:100) // the height is unset, so it's 20, the default value
+```
 
 ## Access modifiers
 
