@@ -21,7 +21,7 @@ pub fn (mut b Builder) build_x64(v_files []string, out_file string) {
 	t2 := time.ticks()
 	check_time := t2 - t1
 	b.info('CHECK: ${check_time}ms')
-	x64.gen(b.parsed_files, out_file)
+	x64.gen(b.parsed_files, out_file, b.pref)
 	t3 := time.ticks()
 	gen_time := t3 - t2
 	b.info('x64 GEN: ${gen_time}ms')
