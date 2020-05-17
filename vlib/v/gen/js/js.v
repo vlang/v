@@ -6,6 +6,7 @@ import v.table
 import v.pref
 import term
 import v.util
+import v.depgraph
 
 const (
 	// https://ecma-international.org/ecma-262/#sec-reserved-words
@@ -56,6 +57,8 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	g.doc = new_jsdoc(g)
 	g.init()
 
+	mut graph := depgraph.new_dep_graph()
+
 	// Get class methods
 	for file in files {
 		g.file = file
@@ -72,17 +75,27 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		g.stmts(file.stmts)
 		// store the current namespace
 		g.escape_namespace()
+		// store imports
+		mut imports := []string{}
+		for imp in g.file.imports {
+			imports << imp.mod
+		}
+		graph.add(g.file.mod.name, imports)
 	}
+
+	// resolve imports
+	deps_resolved := graph.resolve()
+
 	g.finish()
 	mut out := g.hashes() + g.definitions.str() + g.constants.str()
-	for key in g.namespaces.keys() {
-		out += '/* namespace: $key */\n'
+	for node in deps_resolved.nodes {
+		out += '\n/* namespace: $node.name */\n'
 		// private scope
-		out += g.namespaces[key].str()
+		out += g.namespaces[node.name].str()
 		// public scope
 		out += '\n\t/* module exports */'
 		out += '\n\treturn {'
-		for pub_var in g.namespaces_pub[key] {
+		for pub_var in g.namespaces_pub[node.name] {
 			out += '\n\t\t$pub_var,'
 		}
 		out += '\n\t};'
@@ -316,7 +329,9 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.HashStmt {
 			// skip: nothing with # in JS
 		}
-		ast.Import {}
+		ast.Import {
+			g.gen_import_stmt(it)
+		}
 		ast.InterfaceDecl {
 			// TODO skip: interfaces not implemented yet
 		}
@@ -482,6 +497,12 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 	}
 	g.write('`)')
 }
+
+fn (mut g JsGen) gen_import_stmt(it ast.Import) {
+ 	if it.mod != it.alias {
+ 		g.writeln('const $it.alias = $it.mod;')
+ 	}
+ }
 
 fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	type_sym := g.table.get_type_symbol(it.typ)

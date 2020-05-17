@@ -1,3 +1,5 @@
+import hello as greeting
+
 fn JS.alert(arg string)
 fn JS.console.log(arg string)
 
@@ -38,6 +40,8 @@ fn main() {
     mut finally := 'implemented'
 
     JS.console.log(await, finally)
+
+    JS.console.log(greeting.excited())
 
     dun := i_am_a_const * 20
 
