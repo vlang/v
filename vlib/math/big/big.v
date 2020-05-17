@@ -6,9 +6,12 @@ module big
 #flag @VROOT/thirdparty/bignum/bn.o
 #include "bn.h"
 
-pub struct Number {
+[typedef]
+struct C.bn {
 	array [32]u32
 }
+
+type Number = C.bn
 
 fn C.bignum_init( n &Number )
 fn C.bignum_from_int( n &Number, i u64 )
@@ -76,7 +79,7 @@ pub fn (n Number) hexstr() string {
 	mut buf := [8192]byte
 	C.bignum_to_string( &n, buf, 8192)
 	// NB: bignum_to_string , returns the HEXADECIMAL representation of the bignum n
-	s := tos_clone( buf )
+	s := tos_clone( voidptr(buf) )
 	if s.len == 0 { return '0' }
 	return s
 }

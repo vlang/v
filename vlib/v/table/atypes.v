@@ -575,6 +575,7 @@ pub:
 pub struct Alias {
 pub:
 	foo string
+	is_c bool
 }
 
 // NB: FExpr here is a actually an ast.Expr .

@@ -363,7 +363,12 @@ typedef struct {
 			.alias {
 				parent := &g.table.types[typ.parent_idx]
 				styp := typ.name.replace('.', '__')
-				parent_styp := parent.name.replace('.', '__')
+				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
+				parent_styp := if is_c_parent {
+					'struct ' + parent.name[2..].replace('.', '__')
+				} else {
+					parent.name.replace('.', '__')
+				}
 				g.definitions.writeln('typedef $parent_styp $styp;')
 			}
 			.array {
@@ -1703,7 +1708,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if node.op in [.plus, .minus, .mul, .div, .mod] && (left_sym.name[0].is_capital() ||
-		left_sym.name.contains('.')) && left_sym.kind != .alias {
+		left_sym.name.contains('.')) && left_sym.kind != .alias ||
+		left_sym.kind == .alias && (left_sym.info as table.Alias).is_c {
 		// !left_sym.is_number() {
 		g.write(g.typ(node.left_type))
 		g.write('_')

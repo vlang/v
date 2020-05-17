@@ -1402,6 +1402,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	// type MyType int
 	parent_type := first_type
+	parent_name := p.table.get_type_symbol(parent_type).name
 	pid := parent_type.idx()
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .alias
@@ -1410,6 +1411,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		mod: p.mod
 		info: table.Alias{
 			foo: ''
+			is_c: parent_name.len > 2 && parent_name[0] == `C` && parent_name[1] == `.`
 		}
 		is_public: is_pub
 	})
