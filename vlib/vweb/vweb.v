@@ -190,7 +190,7 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 	mut len := 0
 	mut body_len := 0
 	//for line in lines[1..] {
-	for j in 0..100 {
+	for _ in 0..100 {
 		//println(j)
 		line := conn.read_line()
 		sline := strip(line)
