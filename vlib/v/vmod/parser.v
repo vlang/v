@@ -34,8 +34,7 @@ mut:
 	pos         int
 	text        string
 	inside_text bool
-	started     bool
-	tokens      []Token = []Token{}
+	tokens      []Token
 }
 
 struct Parser {
