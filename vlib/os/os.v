@@ -325,7 +325,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	}
 }
 
-pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
+pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) {
 	//$if linux {
 	//}
 	//$else {
@@ -335,7 +335,7 @@ pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
 	//}
 }
 
-pub fn (f mut File) flush() {
+pub fn (mut f File) flush() {
 	if !f.opened {
 		return
 	}

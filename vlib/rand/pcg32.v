@@ -33,7 +33,7 @@ pub fn new_pcg32(initstate u64, initseq u64) Pcg32 {
 
 
 [inline]
-pub fn (rng mut Pcg32) next() u32 {
+pub fn (mut rng Pcg32) next() u32 {
 	oldstate := rng.state
 	rng.state = oldstate * (6364136223846793005) + rng.inc
 	xorshifted := u32(((oldstate>>u64(18)) ^ oldstate)>>u64(27))
@@ -49,7 +49,7 @@ pub fn (rng mut Pcg32) next() u32 {
 
 
 [inline]
-pub fn (rng mut Pcg32) bounded_next(bound u32) u32 {
+pub fn (mut rng Pcg32) bounded_next(bound u32) u32 {
 	// To avoid bias, we need to make the range of the RNG a multiple of
 	// bound, which we do by dropping output less than a threshold.
 	threshold := (-bound % bound)
@@ -66,4 +66,3 @@ pub fn (rng mut Pcg32) bounded_next(bound u32) u32 {
 	}
 	return u32(0)
 }
-

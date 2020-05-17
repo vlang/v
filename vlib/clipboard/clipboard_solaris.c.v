@@ -17,23 +17,23 @@ pub fn new_primary() &Clipboard {
    return &Clipboard{}
 }
 
-fn (cb mut Clipboard) set_text(text string) bool {
+fn (mut cb Clipboard) set_text(text string) bool {
    cb.text = text
    cb.is_owner = true
    cb.got_text = true
    return true
 }
 
-fn (cb mut Clipboard) get_text() string {
+fn (mut cb Clipboard) get_text() string {
    return cb.text
 }
 
-fn (cb mut Clipboard) clear(){
+fn (mut cb Clipboard) clear(){
    cb.text = ''
    cb.is_owner = false
 }
 
-fn (cb mut Clipboard) free(){   
+fn (mut cb Clipboard) free(){
 }
 
 fn (cb &Clipboard) has_ownership() bool {
@@ -41,7 +41,7 @@ fn (cb &Clipboard) has_ownership() bool {
 }
 
 fn (cb &Clipboard) check_availability() bool {
-   // This is a dummy clipboard implementation, 
+   // This is a dummy clipboard implementation,
    // which can be always used, although it does not do much...
    return true
 }

@@ -61,11 +61,11 @@ pub mut:
     _end_canary u32
 }
 
-pub fn (b mut C.sg_bindings) set_vert_image(index int, img C.sg_image) {
+pub fn (mut b C.sg_bindings) set_vert_image(index int, img C.sg_image) {
     b.vs_images[index] = img
 }
 
-pub fn (b mut C.sg_bindings) set_frag_image(index int, img C.sg_image) {
+pub fn (mut b C.sg_bindings) set_frag_image(index int, img C.sg_image) {
     b.fs_images[index] = img
 }
 
@@ -96,45 +96,45 @@ pub mut:
     _end_canary u32
 }
 
-pub fn (desc mut C.sg_shader_desc) set_vert_src(src string) &C.sg_shader_desc {
+pub fn (mut desc C.sg_shader_desc) set_vert_src(src string) &C.sg_shader_desc {
     desc.vs.source = src.str
     return desc
 }
 
-pub fn (desc mut C.sg_shader_desc) set_frag_src(src string) &C.sg_shader_desc {
+pub fn (mut desc C.sg_shader_desc) set_frag_src(src string) &C.sg_shader_desc {
     desc.fs.source = src.str
     return desc
 }
 
-pub fn (desc mut C.sg_shader_desc) set_vert_image(index int, name string) &C.sg_shader_desc {
+pub fn (mut desc C.sg_shader_desc) set_vert_image(index int, name string) &C.sg_shader_desc {
     desc.vs.images[index].name = name.str
     desc.vs.images[index].@type = ._2d
     return desc
 }
 
-pub fn (desc mut C.sg_shader_desc) set_frag_image(index int, name string) &C.sg_shader_desc {
+pub fn (mut desc C.sg_shader_desc) set_frag_image(index int, name string) &C.sg_shader_desc {
     desc.fs.images[index].name = name.str
     desc.fs.images[index].@type = ._2d
     return desc
 }
 
-pub fn (desc mut C.sg_shader_desc) set_vert_uniform_block_size(block_index, size int) &C.sg_shader_desc {
+pub fn (mut desc C.sg_shader_desc) set_vert_uniform_block_size(block_index, size int) &C.sg_shader_desc {
     desc.vs.uniform_blocks[block_index].size = size
     return desc
 }
 
-pub fn (desc mut C.sg_shader_desc) set_frag_uniform_block_size(block_index, size int) &C.sg_shader_desc {
+pub fn (mut desc C.sg_shader_desc) set_frag_uniform_block_size(block_index, size int) &C.sg_shader_desc {
     desc.fs.uniform_blocks[block_index].size = size
     return desc
 }
 
-pub fn (desc mut C.sg_shader_desc) set_vert_uniform(block_index int, uniform_index int, name string, @type UniformType, array_count int) &C.sg_shader_desc {
+pub fn (mut desc C.sg_shader_desc) set_vert_uniform(block_index int, uniform_index int, name string, @type UniformType, array_count int) &C.sg_shader_desc {
     desc.vs.uniform_blocks[block_index].uniforms[uniform_index].name = name.str
 	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
     return desc
 }
 
-pub fn (desc mut C.sg_shader_desc) set_frag_uniform(block_index int, uniform_index int, name string, @type UniformType, array_count int) &C.sg_shader_desc {
+pub fn (mut desc C.sg_shader_desc) set_frag_uniform(block_index int, uniform_index int, name string, @type UniformType, array_count int) &C.sg_shader_desc {
     desc.fs.uniform_blocks[block_index].uniforms[uniform_index].name = name.str
 	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
     return desc
@@ -162,7 +162,7 @@ pub mut:
     images [12]C.sg_shader_image_desc
 }
 
-pub fn (desc mut C.sg_shader_stage_desc) set_image(index int, name string) C.sg_shader_stage_desc {
+pub fn (mut desc C.sg_shader_stage_desc) set_image(index int, name string) C.sg_shader_stage_desc {
     desc.images[index].name = name.str
     desc.images[index].@type = ._2d
     return desc
@@ -416,7 +416,7 @@ pub mut:
 }
 
 /*
-pub fn (action mut C.sg_color_attachment_action) set_color_values(r, g, b, a f32) {
+pub fn (mut action C.sg_color_attachment_action) set_color_values(r, g, b, a f32) {
     action.val[0] = r
     action.val[1] = g
     action.val[2] = b

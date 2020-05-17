@@ -79,7 +79,7 @@ pub fn (x &AesCbc) encrypt_blocks(dst mut []byte, src_ []byte) {
 	copy(x.iv, iv)
 }
 
-pub fn (x mut AesCbc) decrypt_blocks(dst mut []byte, src []byte) {
+pub fn (mut x AesCbc) decrypt_blocks(dst mut []byte, src []byte) {
 	if src.len%x.block_size != 0 {
 		panic('crypto.cipher: input not full blocks')
 	}

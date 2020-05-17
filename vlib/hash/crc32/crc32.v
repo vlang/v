@@ -23,7 +23,7 @@ mut:
 	table []u32
 }
 
-fn(c mut Crc32) generate_table(poly int) {
+fn(mut c Crc32) generate_table(poly int) {
 	for i in 0..256 {
 		mut crc := u32(i)
 		for _ in 0..8 {

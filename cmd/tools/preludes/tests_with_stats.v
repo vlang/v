@@ -36,7 +36,7 @@ fn start_testing(total_number_of_tests int, vfilename string) BenchedTests {
 }
 
 // Called before each test_ function, defined in file_test.v
-fn (b mut BenchedTests) testing_step_start(stepfunc string) {
+fn (mut b BenchedTests) testing_step_start(stepfunc string) {
 	b.step_func_name = stepfunc.replace('main__', '').replace('__', '.')
 	b.oks = C.g_test_oks
 	b.fails = C.g_test_fails
@@ -44,7 +44,7 @@ fn (b mut BenchedTests) testing_step_start(stepfunc string) {
 }
 
 // Called after each test_ function, defined in file_test.v
-fn (b mut BenchedTests) testing_step_end() {
+fn (mut b BenchedTests) testing_step_end() {
 	ok_diff := C.g_test_oks - b.oks
 	fail_diff := C.g_test_fails - b.fails
 	// ////////////////////////////////////////////////////////////////
@@ -76,7 +76,7 @@ fn (b &BenchedTests) fn_name() string {
 }
 
 // Called at the end of the test program produced by `v -stats file_test.v`
-fn (b mut BenchedTests) end_testing() {
+fn (mut b BenchedTests) end_testing() {
 	b.bench.stop()
 	println(INNER_INDENT + b.bench.total_message('running V tests in "' + os.file_name(b.test_suit_file) + '"'))
 }

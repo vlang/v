@@ -58,7 +58,7 @@ pub fn (mcache &ModFileCacher) dump() {
 	}
 }
 
-pub fn (mcache mut ModFileCacher) get(mfolder string) ModFileAndFolder {
+pub fn (mut mcache ModFileCacher) get(mfolder string) ModFileAndFolder {
 	if mfolder in mcache.cache {
 		return mcache.cache[ mfolder ]
 	}
@@ -69,11 +69,11 @@ pub fn (mcache mut ModFileCacher) get(mfolder string) ModFileAndFolder {
 	return res
 }
 
-fn (cacher mut ModFileCacher) add(path string, result ModFileAndFolder) {
+fn (mut cacher ModFileCacher) add(path string, result ModFileAndFolder) {
 	cacher.cache[ path ] = result
 }
 
-fn (mcache mut ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFolder) {
+fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFolder) {
 	mut cfolder := mfolder
 	mut folders_so_far := [cfolder]
 	mut levels := 0
@@ -111,13 +111,13 @@ fn (mcache mut ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 	return [mfolder], ModFileAndFolder{ vmod_file: '', vmod_folder: mfolder }
 }
 
-fn (mcache mut ModFileCacher) mark_folders_with_vmod( folders_so_far []string, vmod ModFileAndFolder ) {
+fn (mut mcache ModFileCacher) mark_folders_with_vmod( folders_so_far []string, vmod ModFileAndFolder ) {
 	for f in folders_so_far {
 		mcache.add( f, vmod )
 	}
 }
 
-fn (mcache mut ModFileCacher) mark_folders_as_vmod_free( folders_so_far []string ) {
+fn (mut mcache ModFileCacher) mark_folders_as_vmod_free( folders_so_far []string ) {
 	// No need to check these folders anymore,
 	// because their parents do not contain v.mod files
 	for f in folders_so_far {
@@ -135,7 +135,7 @@ fn (mcache &ModFileCacher) check_for_stop(cfolder string, files []string) bool {
 	return false
 }
 
-fn (mcache mut ModFileCacher) get_files(cfolder string) []string {
+fn (mut mcache ModFileCacher) get_files(cfolder string) []string {
 	if cfolder in mcache.folder_files {
 		return mcache.folder_files[ cfolder ]
 	}

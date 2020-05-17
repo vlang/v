@@ -13,7 +13,7 @@ mut:
 	text string
 }
 
-fn (s mut ChunkScanner) read_chunk_size() int {
+fn (mut s ChunkScanner) read_chunk_size() int {
 	mut n := 0
 	for {
 		if s.pos >= s.text.len {
@@ -43,11 +43,11 @@ fn unhex(c byte) byte {
 	return 0
 }
 
-fn (s mut ChunkScanner) skip_crlf() {
+fn (mut s ChunkScanner) skip_crlf() {
 	s.pos += 2
 }
 
-fn (s mut ChunkScanner) read_chunk(chunksize int) string {
+fn (mut s ChunkScanner) read_chunk(chunksize int) string {
 	startpos := s.pos
 	s.pos += chunksize
 	return s.text[startpos..s.pos]
@@ -71,4 +71,3 @@ pub fn decode(text string) string {
 	cscanner.skip_crlf()
 	return sb.str()
 }
-

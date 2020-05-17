@@ -155,14 +155,14 @@ pub fn create(path string) ?File {
 	return file
 }
 
-pub fn (f mut File) write(s string) {
+pub fn (mut f File) write(s string) {
 	if !f.opened {
 		return
 	}
 	C.fputs(s.str, f.cfile)
 }
 
-pub fn (f mut File) writeln(s string) {
+pub fn (mut f File) writeln(s string) {
 	if !f.opened {
 		return
 	}
@@ -344,11 +344,11 @@ pub fn symlink(origin, target string) ?bool {
 	return error(get_error_msg(int(C.GetLastError())))
 }
 
-pub fn (f mut File) write_bytes(data voidptr, size int) {
+pub fn (mut f File) write_bytes(data voidptr, size int) {
 	C.fwrite(data, 1, size, f.cfile)
 }
 
-pub fn (f mut File) close() {
+pub fn (mut f File) close() {
 	if !f.opened {
 		return
 	}

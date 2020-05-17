@@ -71,7 +71,7 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 
 // Private function. Doubles array capacity if needed
 [inline]
-fn (a mut array) ensure_cap(required int) {
+fn (mut a array) ensure_cap(required int) {
 	if required <= a.cap {
 		return
 	}
@@ -110,7 +110,7 @@ pub fn (a array) repeat(count int) array {
 }
 
 // array.sort sorts array in-place using given `compare` function as comparator
-pub fn (a mut array) sort_with_compare(compare voidptr) {
+pub fn (mut a array) sort_with_compare(compare voidptr) {
 	C.qsort(a.data, a.len, a.element_size, compare)
 }
 
@@ -120,7 +120,7 @@ pub fn (a mut array) sort_with_compare(compare voidptr) {
 // i := 3
 // a.insert(0, &i)
 // ----------------------------
-pub fn (a mut array) insert(i int, val voidptr) {
+pub fn (mut a array) insert(i int, val voidptr) {
 	$if !no_bounds_checking? {
 		if i < 0 || i > a.len {
 			panic('array.insert: index out of range (i == $i, a.len == $a.len)')
@@ -136,12 +136,12 @@ pub fn (a mut array) insert(i int, val voidptr) {
 // TODO array.prepend is broken
 // It depends on array.insert
 // -----------------------------
-pub fn (a mut array) prepend(val voidptr) {
+pub fn (mut a array) prepend(val voidptr) {
 	a.insert(0, val)
 }
 
 // array.delete deletes array element at the given index
-pub fn (a mut array) delete(i int) {
+pub fn (mut a array) delete(i int) {
 	$if !no_bounds_checking? {
 		if i < 0 || i >= a.len {
 			panic('array.delete: index out of range (i == $i, a.len == $a.len)')
@@ -153,13 +153,13 @@ pub fn (a mut array) delete(i int) {
 }
 
 // clears the array without deallocating the allocated data
-pub fn (a mut array) clear() {
+pub fn (mut a array) clear() {
 	a.len = 0
 }
 
 // trims the array length to "index" without modifying the allocated data. If "index" is greater
 // than len nothing will be changed
-pub fn (a mut array) trim(index int) {
+pub fn (mut a array) trim(index int) {
 	if index < a.len {
 		a.len = index
 	}
@@ -274,7 +274,7 @@ fn (a &array) slice_clone(start, _end int) array {
 }
 
 // Private function. Used to implement assigment to the array element.
-fn (a mut array) set(i int, val voidptr) {
+fn (mut a array) set(i int, val voidptr) {
 	$if !no_bounds_checking? {
 		if i < 0 || i >= a.len {
 			panic('array.set: index out of range (i == $i, a.len == $a.len)')
@@ -283,7 +283,7 @@ fn (a mut array) set(i int, val voidptr) {
 	C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size)
 }
 
-fn (a mut array) push(val voidptr) {
+fn (mut a array) push(val voidptr) {
 	a.ensure_cap(a.len + 1)
 	C.memcpy(byteptr(a.data) + a.element_size * a.len, val, a.element_size)
 	a.len++
@@ -291,7 +291,7 @@ fn (a mut array) push(val voidptr) {
 
 // `val` is array.data
 // TODO make private, right now it's used by strings.Builder
-pub fn (a3 mut array) push_many(val voidptr, size int) {
+pub fn (mut a3 array) push_many(val voidptr, size int) {
 	if a3.data == val {
 		// handle `arr << arr`
 		copy := a3.clone()
@@ -392,7 +392,7 @@ fn compare_ints(a, b &int) int {
 }
 
 // []int.sort sorts array of int in place in ascending order.
-pub fn (a mut []int) sort() {
+pub fn (mut a []int) sort() {
 	a.sort_with_compare(compare_ints)
 }
 

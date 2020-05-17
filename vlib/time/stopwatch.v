@@ -16,7 +16,7 @@ pub fn new_stopwatch() StopWatch {
 }
 
 // start Starts the timer. If the timer was paused, restarts counting.
-pub fn (t mut StopWatch) start() {
+pub fn (mut t StopWatch) start() {
 	if t.pause_time == 0 {
 		t.start = time.sys_mono_now()
 	} else {
@@ -26,18 +26,18 @@ pub fn (t mut StopWatch) start() {
 	t.pause_time = 0
 }
 
-pub fn (t mut StopWatch) restart() {
+pub fn (mut t StopWatch) restart() {
 	t.end = 0
 	t.pause_time = 0
 	t.start = time.sys_mono_now()
 }
 
-pub fn (t mut StopWatch) stop() {
+pub fn (mut t StopWatch) stop() {
 	t.end = time.sys_mono_now()
 	t.pause_time = 0
 }
 
-pub fn (t mut StopWatch) pause() {
+pub fn (mut t StopWatch) pause() {
 	t.pause_time = time.sys_mono_now()
 	t.end = t.pause_time // so elapsed keeps track of actual running time
 }
@@ -50,4 +50,3 @@ pub fn (t StopWatch) elapsed() Duration {
 		return Duration(t.end - t.start)
 	}
 }
-

@@ -28,7 +28,7 @@ fn (mut p Parser) register_used_import(alias string) {
 	}
 }
 
-fn (p mut Parser) check_unused_imports() {
+fn (mut p Parser) check_unused_imports() {
 	mut output := ''
 	for alias, mod in p.imports {
 		if !p.is_used_import(alias) {

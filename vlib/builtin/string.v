@@ -222,7 +222,7 @@ fn compare_rep_index(a, b &RepIndex) int {
 }
 
 
-fn (a mut []RepIndex) sort() {
+fn (mut a []RepIndex) sort() {
 	a.sort_with_compare(compare_rep_index)
 }
 
@@ -969,15 +969,15 @@ fn compare_lower_strings(a, b &string) int {
 	return compare_strings(aa, bb)
 }
 
-pub fn (s mut []string) sort() {
+pub fn (mut s []string) sort() {
 	s.sort_with_compare(compare_strings)
 }
 
-pub fn (s mut []string) sort_ignore_case() {
+pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
 }
 
-pub fn (s mut []string) sort_by_len() {
+pub fn (mut s []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
 

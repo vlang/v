@@ -233,19 +233,19 @@ pub fn (w &Window) swap_buffers() {
 	C.glfwSwapBuffers(w.data)
 }
 
-pub fn (w mut Window) onmousemove(cb voidptr) {
+pub fn (mut w Window) onmousemove(cb voidptr) {
 	C.glfwSetCursorPosCallback(w.data, cb)
 }
 
-pub fn (w mut Window) set_mouse_button_callback(cb voidptr) {
+pub fn (mut w Window) set_mouse_button_callback(cb voidptr) {
 	C.glfwSetMouseButtonCallback(w.data, cb)
 }
 
-pub fn (w mut Window) on_resize(cb voidptr) {
+pub fn (mut w Window) on_resize(cb voidptr) {
 	C.glfwSetWindowSizeCallback(w.data, cb)
 }
 
-pub fn (w mut Window) on_click(cb voidptr) {
+pub fn (mut w Window) on_click(cb voidptr) {
 	C.glfwSetMouseButtonCallback(w.data, cb)
 }
 
@@ -261,11 +261,11 @@ pub fn post_empty_event() {
 	C.glfwPostEmptyEvent()
 }
 
-pub fn (w mut Window) onkeydown(cb voidptr) {
+pub fn (mut w Window) onkeydown(cb voidptr) {
 	C.glfwSetKeyCallback(w.data, cb)
 }
 
-pub fn (w mut Window) onchar(cb voidptr) {
+pub fn (mut w Window) onchar(cb voidptr) {
 	C.glfwSetCharModsCallback(w.data, cb)
 }
 

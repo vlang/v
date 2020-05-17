@@ -5,11 +5,15 @@ module x64
 
 import v.ast
 import v.util
+import v.token
+import v.errors
+import v.pref
 import term
 import strings
 
 pub struct Gen {
 	out_name             string
+	pref                 &pref.Preferences // Preferences shared from V struct
 mut:
 	buf                  []byte
 	sect_header_name_pos int
@@ -23,6 +27,8 @@ mut:
 	var_offset           map[string]int // local var stack offset
 	stack_var_pos        int
 	debug_pos            int
+	errors               []errors.Error
+	warnings             []errors.Warning
 }
 
 // string_addr map[string]i64
@@ -72,10 +78,11 @@ enum Size {
 	_64
 }
 
-pub fn gen(files []ast.File, out_name string) {
+pub fn gen(files []ast.File, out_name string, pref &pref.Preferences) {
 	mut g := Gen{
 		sect_header_name_pos: 0
 		out_name: out_name
+		pref: pref
 	}
 	g.generate_elf_header()
 	for file in files {
@@ -306,6 +313,8 @@ fn (mut g Gen) mov_from_reg(var_offset int, reg Register) {
 	match reg {
 		.edi, .rdi { g.write8(0x7d) }
 		.rsi { g.write8(0x75) }
+		.rdx { g.write8(0x55) }
+		.rcx { g.write8(0x4d) }
 		else { verror('mov_from_reg $reg') }
 	}
 	g.write8(0xff - var_offset + 1)
@@ -537,6 +546,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.ret()
 		}
 		ast.StructDecl {}
+		ast.UnsafeStmt {
+			g.stmts(it.stmts)
+		}
 		else {
 			println('x64.stmt(): bad node: ' + typeof(node))
 		}
@@ -572,7 +584,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.StructInit {}
 		ast.BoolLiteral {}
 		else {
-			// println(term.red('x64.expr(): bad node'))
+			println(term.red('x64.expr(): unhandled node: ' + typeof(node)))
 		}
 	}
 }
@@ -624,7 +636,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				g.allocate_var(ident.name, 4, 0)
 			}
 			else {
-				verror('assign_stmt unhandled expr')
+				g.error_with_pos('assign_stmt unhandled expr: ' + typeof(node.right[0]), node.right[0].position())
 			}
 		}
 	}
@@ -740,4 +752,23 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
 
 fn verror(s string) {
 	util.verror('x64 gen error', s)
+}
+
+pub fn (mut g Gen) error_with_pos(s string, pos token.Position) {
+	// TODO: store a file index in the Position too,
+	// so that the file path can be retrieved from the pos, instead
+	// of guessed from the pref.path ...
+	mut kind := 'error:'
+	if g.pref.output_mode == .stdout {
+		ferror := util.formatted_error(kind, s, g.pref.path, pos)
+		eprintln(ferror)
+		exit(1)
+	} else {
+		g.errors << errors.Error{
+			file_path: g.pref.path
+			pos: pos
+			reporter: .gen
+			message: s
+		}
+	}
 }

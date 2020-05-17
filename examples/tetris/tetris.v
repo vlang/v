@@ -183,7 +183,7 @@ fn main() {
 	}
 }
 
-fn (g mut Game) init_game() {
+fn (mut g Game) init_game() {
 	g.parse_tetros()
 	rand.seed(time.now().unix)
 	g.generate_tetro()
@@ -205,7 +205,7 @@ fn (g mut Game) init_game() {
 	g.state = .running
 }
 
-fn (g mut Game) parse_tetros() {
+fn (mut g Game) parse_tetros() {
 	for b_tetros0 in b_tetros {
 		for b_tetro in b_tetros0 {
 			for t in parse_binary_tetro(b_tetro) {
@@ -215,7 +215,7 @@ fn (g mut Game) parse_tetros() {
 	}
 }
 
-fn (g mut Game) run() {
+fn (mut g Game) run() {
 	for {
 		if g.state == .running {
 			g.move_tetro()
@@ -226,7 +226,7 @@ fn (g mut Game) run() {
 	}
 }
 
-fn (g mut Game) move_tetro() {
+fn (mut g Game) move_tetro() {
 	// Check each block in current tetro
 	for block in g.tetro {
 		y := block.y + g.pos_y + 1
@@ -250,7 +250,7 @@ fn (g mut Game) move_tetro() {
 	g.pos_y++
 }
 
-fn (g mut Game) move_right(dx int) bool {
+fn (mut g Game) move_right(dx int) bool {
 	// Reached left/right edge or another tetro?
 	for i in 0..tetro_size {
 		tetro := g.tetro[i]
@@ -266,13 +266,13 @@ fn (g mut Game) move_right(dx int) bool {
 	return true
 }
 
-fn (g mut Game) delete_completed_lines() {
+fn (mut g Game) delete_completed_lines() {
 	for y := FieldHeight; y >= 1; y-- {
 		g.delete_completed_line(y)
 	}
 }
 
-fn (g mut Game) delete_completed_line(y int) {
+fn (mut g Game) delete_completed_line(y int) {
 	for x := 1; x <= FieldWidth; x++ {
 		f := g.field[y]
 		if f[x] == 0 {
@@ -291,7 +291,7 @@ fn (g mut Game) delete_completed_line(y int) {
 }
 
 // Place a new tetro on top
-fn (g mut Game) generate_tetro() {
+fn (mut g Game) generate_tetro() {
 	g.pos_y = 0
 	g.pos_x = FieldWidth / 2 - tetro_size / 2
 	g.tetro_idx = rand.next(b_tetros.len)
@@ -300,7 +300,7 @@ fn (g mut Game) generate_tetro() {
 }
 
 // Get the right tetro from cache
-fn (g mut Game) get_tetro() {
+fn (mut g Game) get_tetro() {
 	idx := g.tetro_idx * tetro_size * tetro_size + g.rotation_idx * tetro_size
 	g.tetro = g.tetros_cache[idx..idx+tetro_size]
 }
@@ -342,7 +342,7 @@ fn (g &Game) draw_field() {
 	}
 }
 
-fn (g mut Game) draw_ui() {
+fn (mut g Game) draw_ui() {
 	if g.font_loaded {
 		g.ft.draw_text(1, 3, g.score.str(), text_cfg)
 		if g.state == .gameover {
@@ -360,7 +360,7 @@ fn (g mut Game) draw_ui() {
 	//g.gg.draw_rect(0, BlockSize, WinWidth, LimitThickness, UIColor)
 }
 
-fn (g mut Game) draw_scene() {
+fn (mut g Game) draw_scene() {
 	g.draw_tetro()
 	g.draw_field()
 	g.draw_ui()
