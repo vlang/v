@@ -123,7 +123,9 @@ pub fn (mut g JsGen) escape_namespace() {
 }
 
 pub fn (mut g JsGen) push_pub_var(s string) {
-	g.namespaces_pub[g.namespace] << s
+	mut arr := g.namespaces_pub[g.namespace]
+	arr << s
+	g.namespaces_pub[g.namespace] = arr
 }
 
 pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
@@ -722,7 +724,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	} else if it.is_anon {
 		g.write('function (')
 	} else {
-		mut name := js_name(it.name)
+		mut name := js_name(it.name.split('.').last())
 		c := name[0]
 		if c in [`+`, `-`, `*`, `/`] {
 			name = util.replace_op(name)

@@ -67,8 +67,7 @@ fn main() {
         JS.console.log("number: $number")
     }
 
-    greeting := greeting.excited()
-    anon_consumer(greeting, fn (message string) {
+    anon_consumer(greeting.excited(), fn (message string) {
         JS.console.log(message)
     })
 }
