@@ -31,4 +31,14 @@ fn main() {
 	if '2' in a_i {
 		println('all right')
 	}
+	if 1 !in a_s {
+		println('ok')
+	}
+	if '1' !in a_i {
+		println('good')
+	}
+
+	if 5 !in m {
+		println('yay')
+	}
 }
