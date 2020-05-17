@@ -2276,6 +2276,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	*/
 	// User set fields
+	mut initialized := false
 	for i, field in struct_init.fields {
 		inited_fields[field.name] = i
 		if sym.kind != .struct_ {
@@ -2293,12 +2294,16 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				g.expr_with_cast(field.expr, field.typ, field.expected_type)
 			}
 			g.writeln(',')
+			initialized = true
 		}
 	}
 	// The rest of the fields are zeroed.
 	mut nr_info_fields := 0
 	if sym.kind == .struct_ {
 		info := sym.info as table.Struct
+		if info.is_union && struct_init.fields.len > 1 {
+			verror('union must not have more than 1 initializer')
+		}
 		nr_info_fields = info.fields.len
 		for field in info.fields {
 			if field.name in inited_fields {
@@ -2317,6 +2322,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 				}
 				g.writeln(',')
+				initialized = true
+				continue
+			}
+			if info.is_union {
+				// unions thould have exactly one explicit initializer
 				continue
 			}
 			if field.typ.flag_is(.optional) {
@@ -2324,22 +2334,20 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				continue
 			}
 			field_name := c_name(field.name)
+			g.write('\t.$field_name = ')
 			if field.has_default_expr {
-				g.write('\t.$field_name = ')
 				g.expr(ast.fe2ex(field.default_expr))
-				g.writeln(',')
 			} else {
-				d := g.type_default(field.typ)
-				if d != '0' && d != '{0}' {
-					g.writeln('\t.$field_name = $d,')
-				}
+				g.write(g.type_default(field.typ))
 			}
+			g.writeln(',')
+			initialized = true
 		}
 	}
 	// if struct_init.fields.len == 0 && info.fields.len == 0 {
-	if struct_init.fields.len == 0 && nr_info_fields == 0 {
-		g.write('0')
-	}
+	//if !initialized {
+	//	g.write('0')
+	//}
 	g.write('}')
 	if is_amp {
 		g.write(', sizeof($styp))')

@@ -47,10 +47,10 @@ fn todo_del(){}
 [typedef]
 struct C.XSelectionRequestEvent{
 	mut:
-	selection C.Atom
 	display &C.Display	/* Display the event was read from */
 	owner C.Window
 	requestor C.Window
+	selection C.Atom
 	target C.Atom
 	property C.Atom
 	time int
