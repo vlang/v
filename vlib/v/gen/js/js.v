@@ -445,6 +445,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.SelectorExpr {
 			g.gen_selector_expr(it)
 		}
+		ast.AnonFn {
+ 			g.gen_anon_fn_decl(it)
+ 		}
 		else {
 			println(term.red('jsgen.expr(): bad node "${typeof(node)}"'))
 		}
@@ -700,6 +703,10 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	g.gen_method_decl(it)
 }
 
+fn (mut g JsGen) gen_anon_fn_decl(it ast.AnonFn) {
+ 	g.gen_method_decl(it.decl)
+ }
+
 fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	g.fn_decl = &it
 	has_go := fn_has_go(it)
@@ -712,6 +719,8 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 			g.write('async ')
 		}
 		g.write('function(')
+	} else if it.is_anon {
+		g.write('function (')
 	} else {
 		mut name := js_name(it.name)
 		c := name[0]
@@ -755,7 +764,9 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	if is_main {
 		g.write(')();')
 	}
-	g.writeln('')
+	if !it.is_anon {
+		g.writeln('')
+	}
 
 	g.fn_decl = 0
 }

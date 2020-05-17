@@ -41,8 +41,6 @@ fn main() {
 
     JS.console.log(await, finally)
 
-    JS.console.log(greeting.excited())
-
     dun := i_am_a_const * 20
 
     for i := 0; i < 10; i++ {}
@@ -64,6 +62,19 @@ fn main() {
     }
 
     go async(0, "hello")
+
+    fn_in_var := fn (number int) {
+        JS.console.log("number: $number")
+    }
+
+    greeting := greeting.excited()
+    anon_consumer(greeting, fn (message string) {
+        JS.console.log(message)
+    })
+}
+
+fn anon_consumer (greeting string, anon fn(message string)) {
+    anon(greeting)
 }
 
 fn async(num int, def string) {}
