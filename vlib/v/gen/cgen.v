@@ -2345,9 +2345,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		}
 	}
 	// if struct_init.fields.len == 0 && info.fields.len == 0 {
-	//if !initialized {
-	//	g.write('0')
-	//}
+	if !initialized {
+		g.write('0')
+	}
 	g.write('}')
 	if is_amp {
 		g.write(', sizeof($styp))')

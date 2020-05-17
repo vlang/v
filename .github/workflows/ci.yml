@@ -289,5 +289,5 @@ jobs:
     - name: Running tests with g++
       run: ./v -cc g++-9 test-fixed
 #    - name: V self compilation with g++
-#      run: ./v -cc g++-8 -o v2 cmd/v && ./v2 -cc g++ -o v3 cmd/v
+#      run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++ -o v3 cmd/v
 

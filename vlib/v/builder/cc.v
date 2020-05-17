@@ -310,6 +310,11 @@ fn (mut v Builder) cc() {
 	a << cflags.c_options_without_object_files()
 	cpp_addl_flags += cflags.c_options_without_object_files() + libs
 	a << libs
+	// For now remove all flags for c related warnings converted to errors
+	if guessed_compiler.contains('++') {
+		a << '-fpermissive'
+		a << '-w'
+	}
 	if v.pref.use_cache {
 		// vexe := pref.vexe_path()
 		cached_modules := ['builtin', 'os', 'math', 'strconv', 'strings']
@@ -348,28 +353,11 @@ fn (mut v Builder) cc() {
 		linker_flags << '-lm'
 	}
 	lnkr_flgs := linker_flags.join(' ')
-	args := a.join(' ') + lnkr_flgs
+	args := a.join(' ') + ' ' + lnkr_flgs
 	start:
 	todo()
 	// TODO remove
 	mut cmd := '${v.pref.ccompiler} $args'
-	// For now remove all flags for c related warnings converted to errors
-	if guessed_compiler.contains('++') {
-		mut plus_plus_opts := []string{}
-		plus_plus_opts << '-fpermissive'
-		plus_plus_opts << '-w'
-		if debug_mode {
-			plus_plus_opts << debug_options
-		}
-		if v.pref.is_prod {
-			plus_plus_opts << optimization_options
-		}
-		plus_plus_opts << lnkr_flgs
-		plus_plus_opts << cpp_addl_flags
-		plus_plus_opts << out_file
-		plus_plus_opts << src_file
-		cmd = guessed_compiler + ' ' + plus_plus_opts.join(' ')
-	}
 	// println(cmd)
 	if v.pref.is_verbose || v.pref.show_cc {
 		println('\n==========')
