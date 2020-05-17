@@ -83,12 +83,16 @@ fn is_name_alpha(chr byte) bool {
     return chr.is_letter() || chr == `_`
 }
 
-fn (mut s Scanner) create_string() string {
+fn (mut s Scanner) create_string(q byte) string {
     mut str := ''
-
-    for s.text[s.pos] != `\'` {
+    for s.text[s.pos] != q {
+        if s.text[s.pos] == `\\` && s.text[s.pos+1] == q {
+			str += s.text[s.pos..s.pos+1]
+			s.pos += 2
+		} else {
         str += s.text[s.pos].str()
         s.pos++
+    }
     }
     return str
 }
@@ -135,9 +139,9 @@ fn (mut s Scanner) scan_all() {
             }
         }
 
-        if c == `\'` && !s.peek_char(`\\`) {
+        if c in [`\'`, `\"`] && !s.peek_char(`\\`) {
             s.pos++
-            str := s.create_string()
+            str := s.create_string(c)
             s.tokenize(.str, str)
             s.pos++
             continue
