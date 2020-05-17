@@ -400,9 +400,11 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					right_sym := c.table.get_type_symbol(right.array_info().elem_type)
 					if left.kind != right_sym.kind {
 						if infix_expr.op == .key_in {
-							c.error('the data type on the left of `in` must be a string', infix_expr.pos)
+							c.error('the data type on the left of `in` does not match the array item type',
+							infix_expr.pos)
 						}
-						c.error('the data type on the left of `!in` must be a string', infix_expr.pos)
+						c.error('the data type on the left of `!in` does not match the array item type',
+							infix_expr.pos)
 					}
 				}
 				.map {
@@ -411,7 +413,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 						if infix_expr.op == .key_in {
 							c.error('the data type on the left of `in` does not match the key type', infix_expr.pos)
 						}
-						c.error('the data type on the left of `!in` does not match the map key type', infix_expr.pos)
+						c.error('the data type on the left of `!in` does not match the key type', infix_expr.pos)
 					}
 				}
 				.string {
