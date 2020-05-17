@@ -13,6 +13,7 @@ enum TokenKind {
     eof 
     str 
     ident
+	unknown
 }
 
 pub struct Manifest {
@@ -154,11 +155,13 @@ fn (mut s Scanner) scan_all() {
             `]` { s.tokenize(.rabr, c.str()) }
             `:` { s.tokenize(.colon, c.str()) }
             `,` { s.tokenize(.comma, c.str()) }
-            else { s.tokenize(.eof, 'eof') }
+            else { s.tokenize(.unknown, c.str()) }
         }
 
         s.pos++
     }
+
+	s.tokenize(.eof, 'eof')
 }
 
 fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
