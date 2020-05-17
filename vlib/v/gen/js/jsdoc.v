@@ -18,8 +18,8 @@ fn new_jsdoc(gen &JsGen) &JsDoc {
 }
 
 fn (mut d JsDoc) gen_indent() {
-	if d.gen.indents[d.gen.namespace] > 0 && d.empty_line {
-		d.out.write(tabs[d.gen.indents[d.gen.namespace]])
+	if d.gen.indents[d.gen.namespace_] > 0 && d.empty_line {
+		d.out.write(tabs[d.gen.indents[d.gen.namespace_]])
 	}
 	d.empty_line = false
 }
