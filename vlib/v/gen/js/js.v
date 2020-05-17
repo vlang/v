@@ -23,24 +23,25 @@ struct JsGen {
 	definitions     strings.Builder
 	pref            &pref.Preferences
 mut:
-	out             strings.Builder
-	namespaces		map[string]strings.Builder
-	namespaces_pub	map[string][]string
-	namespace       string
-	doc				&JsDoc
-	constants		strings.Builder // all global V constants
-	file			ast.File
-	tmp_count		int
-	inside_ternary  bool
-	inside_loop		bool
-	is_test         bool
-	indents			map[string]int // indentations mapped to namespaces
-	stmt_start_pos	int
-	defer_stmts     []ast.DeferStmt
-	fn_decl			&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	str_types		[]string // types that need automatic str() generation
-	method_fn_decls map[string][]ast.Stmt
-	empty_line		bool
+	out             	strings.Builder
+	namespaces			map[string]strings.Builder
+	namespaces_pub		map[string][]string
+	namespace_imports	map[string]map[string]string
+	namespace       	string
+	doc					&JsDoc
+	constants			strings.Builder // all global V constants
+	file				ast.File
+	tmp_count			int
+	inside_ternary  	bool
+	inside_loop			bool
+	is_test         	bool
+	indents				map[string]int // indentations mapped to namespaces
+	stmt_start_pos		int
+	defer_stmts     	[]ast.DeferStmt
+	fn_decl				&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	str_types			[]string // types that need automatic str() generation
+	method_fn_decls 	map[string][]ast.Stmt
+	empty_line			bool
 }
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -72,15 +73,17 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		g.file = file
 		g.enter_namespace(g.file.mod.name)
 		g.is_test = g.file.path.ends_with('_test.v')
-		g.stmts(file.stmts)
-		// store the current namespace
-		g.escape_namespace()
+
 		// store imports
 		mut imports := []string{}
 		for imp in g.file.imports {
 			imports << imp.mod
 		}
 		graph.add(g.file.mod.name, imports)
+
+		g.stmts(file.stmts)
+		// store the current namespace
+		g.escape_namespace()
 	}
 
 	// resolve imports
@@ -375,7 +378,24 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.CallExpr {
-			name := if it.name.starts_with('JS.') { it.name[3..] } else { it.name }
+			mut name := ""
+			if it.name.starts_with('JS.') {
+				name = it.name[3..]
+			} else {
+				name = it.name
+				// TODO: Ugly fix until `it.is_method` and `it.left` gets fixed.
+				//       `it.left` should be the name of the module in this case.
+				// TODO: This should be in `if it.is_method` instead but is_method seems to be broken.
+				dot_idx := name.index('.') or {-1} // is there a way to do `if optional()`?
+				if dot_idx > -1 {
+					split := name.split('.')
+					imports := g.namespace_imports[g.namespace]
+					alias := imports[split.first()]
+					if alias != "" {
+						name = alias + "." + split[1..].join(".")
+					}
+				}
+			}
 			g.expr(it.left)
 			if it.is_method {
 				// example: foo.bar.baz()
@@ -504,6 +524,9 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 }
 
 fn (mut g JsGen) gen_import_stmt(it ast.Import) {
+	mut imports := g.namespace_imports[g.namespace]
+	imports[it.mod] = it.alias
+	g.namespace_imports[g.namespace] = imports
  	if it.mod != it.alias {
  		g.writeln('const $it.alias = $it.mod;')
  	}
@@ -1023,7 +1046,6 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 		g.write('CONSTANTS.')
 	}
 
-	// TODO js_name
 	name := js_name(node.name)
 	// TODO `is`
 	// TODO handle optionals
