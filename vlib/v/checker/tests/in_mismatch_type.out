@@ -1,4 +1,4 @@
-vlib/v/checker/tests/in_mismatch_type.v:10:7: error: the data type on the left of `in` does not match the array item type 
+vlib/v/checker/tests/in_mismatch_type.v:10:7: error: the data type on the left of `in` does not match the array item type
     8 |     }
     9 |     s := 'abcd'
    10 |     if 1 in a_s {
@@ -33,7 +33,7 @@ vlib/v/checker/tests/in_mismatch_type.v:22:7: error: `in` can only be used with 
       |          ~~
    23 |         println('right')
    24 |     }
-vlib/v/checker/tests/in_mismatch_type.v:25:12: error: the data type on the left of `in` does not match the key type
+vlib/v/checker/tests/in_mismatch_type.v:25:12: error: the data type on the left of `in` does not match the map key type
    23 |         println('right')
    24 |     }
    25 |     if Int(2) in m {
@@ -68,7 +68,7 @@ vlib/v/checker/tests/in_mismatch_type.v:37:9: error: the data type on the left o
       |            ~~~
    38 |         println('good')
    39 |     }
-vlib/v/checker/tests/in_mismatch_type.v:41:7: error: the data type on the left of `!in` does not match the key type 
+vlib/v/checker/tests/in_mismatch_type.v:41:7: error: the data type on the left of `!in` does not match the map key type 
    39 |     }
    40 | 
    41 |     if 5 !in m {

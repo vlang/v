@@ -411,9 +411,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					key_sym := c.table.get_type_symbol(right.map_info().key_type)
 					if left.kind != key_sym.kind {
 						if infix_expr.op == .key_in {
-							c.error('the data type on the left of `in` does not match the key type', infix_expr.pos)
+							c.error('the data type on the left of `in` does not match the map key type', infix_expr.pos)
 						}
-						c.error('the data type on the left of `!in` does not match the key type', infix_expr.pos)
+						c.error('the data type on the left of `!in` does not match the map key type', infix_expr.pos)
 					}
 				}
 				.string {
