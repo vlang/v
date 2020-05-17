@@ -20,7 +20,8 @@ fn test_decode() {
 		repo_url: \'https://gitlab.com\',
 		author: \'Fooz Bar\',
 		license: \'GPL-2.0\',
-		dependencies: [\'hello\']
+		dependencies: [\'hello\'],
+		test: \'foo\'
 	  }
 	'
 
@@ -36,6 +37,7 @@ fn test_decode() {
 	assert data.author == 'Fooz Bar'
 	assert data.license == 'GPL-2.0'
 	assert data.dependencies[0] == 'hello'
+	assert data.unknown['test'][0] == 'foo'
 
 	_ := vmod.decode('') or {
 		assert err == 'vmod: no content.'

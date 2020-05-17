@@ -25,6 +25,7 @@ pub mut:
     license string
     repo_url string
     author string
+    unknown map[string][]string
 }
 
 struct Scanner {
@@ -248,8 +249,17 @@ fn (mut p Parser) parse() ?Manifest {
                         continue
                     }
                     else {
-                        // Ignore the field?
-                        // return error('$err_label invalid field "$field_name"')
+                        if tokens[i+1].typ == .labr {
+                            vals, idx := get_array_content(tokens, i + 1) or {
+                                return error(err)
+                            }
+                            
+                            mn.unknown[field_name] = vals
+                            i = idx
+                            continue
+                        }
+
+                        mn.unknown[field_name] = [field_value]
                     }
                 }
 
