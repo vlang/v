@@ -1,4 +1,4 @@
-vlib/v/checker/tests/in_mismatch_type.v:10:7: error: the data type on the left of `in` does not match the array item type
+vlib/v/checker/tests/in_mismatch_type.v:10:7: error: the data type on the left of `in` does not match the array item type 
     8 |     }
     9 |     s := 'abcd'
    10 |     if 1 in a_s {
@@ -19,7 +19,7 @@ vlib/v/checker/tests/in_mismatch_type.v:16:7: error: the data type on the left o
       |          ~~
    17 |         println('dope')
    18 |     }
-vlib/v/checker/tests/in_mismatch_type.v:19:9: error: the data type on the left of `in` must be a string
+vlib/v/checker/tests/in_mismatch_type.v:19:9: error: the data type on the left of `in` must be a string 
    17 |         println('dope')
    18 |     }
    19 |     if `a` in s {
@@ -54,3 +54,24 @@ vlib/v/checker/tests/in_mismatch_type.v:31:9: error: the data type on the left o
       |            ~~
    32 |         println('all right')
    33 |     }
+vlib/v/checker/tests/in_mismatch_type.v:34:7: error: the data type on the left of `!in` does not match the array item type
+   32 |         println('all right')
+   33 |     }
+   34 |     if 1 !in a_s {
+      |          ~~~
+   35 |         println('ok')
+   36 |     }
+vlib/v/checker/tests/in_mismatch_type.v:37:9: error: the data type on the left of `!in` does not match the array item type 
+   35 |         println('ok')
+   36 |     }
+   37 |     if '1' !in a_i {
+      |            ~~~
+   38 |         println('good')
+   39 |     }
+vlib/v/checker/tests/in_mismatch_type.v:41:7: error: the data type on the left of `!in` does not match the map key type
+   39 |     }
+   40 |
+   41 |     if 5 !in m {
+      |          ~~~
+   42 |         println('yay')
+   43 |     }
