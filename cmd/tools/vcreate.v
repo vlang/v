@@ -22,7 +22,6 @@ fn cerror(e string){
 
 fn vmod_content(name, desc string) string {
 	return  [
-		'#V Project#\n',
 		'Module {',
 		'	name: \'${name}\',',
 		'	description: \'${desc}\',',

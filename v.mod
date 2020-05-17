@@ -1,5 +1,3 @@
-#V Project#
-
 Module {
 	name: 'V',
 	description: 'The V programming language.',
