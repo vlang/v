@@ -138,6 +138,10 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			repl_help()
 			continue
 		}
+		if r.line.contains(':=') && r.line.contains('fn(') {
+			r.in_func = true
+			r.functions_name << r.line.all_before(':= fn(').trim_space()
+		}
 		if r.line.starts_with('fn') {
 			r.in_func = true
 			r.functions_name << r.line.all_after('fn').all_before('(').trim_space()
@@ -190,7 +194,8 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			possible_statement_patterns := [
 				'=', '++', '--', '<<',
 				'//', '/*',
-				'fn ', 'pub ', 'mut ', 'enum ', 'const ', 'struct ', 'interface ', 'import '
+				'fn ', 'pub ', 'mut ', 'enum ', 'const ', 'struct ', 'interface ', 'import ',
+				'#include ', ':='
 			]
 			mut is_statement := false
 			for pattern in possible_statement_patterns {
@@ -208,7 +213,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				temp_flag = true
 			}
 			mut temp_source_code := ''
-			if temp_line.starts_with('import ') {
+			if temp_line.starts_with('import ') || temp_line.starts_with('#include ') {
 				temp_source_code = '${temp_line}\n' + r.current_source_code(false)
 			} else {
 				temp_source_code = r.current_source_code(true) + '\n${temp_line}\n'
@@ -225,7 +230,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 					}
 					r.temp_lines.delete(0)
 				}
-				if r.line.starts_with('import ') {
+				if r.line.starts_with('import ') || r.line.starts_with('#include ') {
 					mut imports := r.imports
 					r.imports = [r.line]
 					r.imports << imports
