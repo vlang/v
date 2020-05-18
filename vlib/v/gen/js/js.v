@@ -6,6 +6,7 @@ import v.table
 import v.pref
 import term
 import v.util
+import v.depgraph
 
 const (
 	// https://ecma-international.org/ecma-262/#sec-reserved-words
@@ -22,24 +23,25 @@ struct JsGen {
 	definitions     strings.Builder
 	pref            &pref.Preferences
 mut:
-	out             strings.Builder
-	namespaces		map[string]strings.Builder
-	namespaces_pub	map[string][]string
-	namespace       string
-	doc				&JsDoc
-	constants		strings.Builder // all global V constants
-	file			ast.File
-	tmp_count		int
-	inside_ternary  bool
-	inside_loop		bool
-	is_test         bool
-	indents			map[string]int // indentations mapped to namespaces
-	stmt_start_pos	int
-	defer_stmts     []ast.DeferStmt
-	fn_decl			&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	str_types		[]string // types that need automatic str() generation
-	method_fn_decls map[string][]ast.Stmt
-	empty_line		bool
+	out             	strings.Builder
+	namespaces			map[string]strings.Builder
+	namespaces_pub		map[string][]string
+	namespace_imports	map[string]map[string]string
+	namespace       	string
+	doc					&JsDoc
+	constants			strings.Builder // all global V constants
+	file				ast.File
+	tmp_count			int
+	inside_ternary  	bool
+	inside_loop			bool
+	is_test         	bool
+	indents				map[string]int // indentations mapped to namespaces
+	stmt_start_pos		int
+	defer_stmts     	[]ast.DeferStmt
+	fn_decl				&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	str_types			[]string // types that need automatic str() generation
+	method_fn_decls 	map[string][]ast.Stmt
+	empty_line			bool
 }
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -56,6 +58,8 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	g.doc = new_jsdoc(g)
 	g.init()
 
+	mut graph := depgraph.new_dep_graph()
+
 	// Get class methods
 	for file in files {
 		g.file = file
@@ -69,24 +73,48 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		g.file = file
 		g.enter_namespace(g.file.mod.name)
 		g.is_test = g.file.path.ends_with('_test.v')
+
+		// store imports
+		mut imports := []string{}
+		for imp in g.file.imports {
+			imports << imp.mod
+		}
+		graph.add(g.file.mod.name, imports)
+
 		g.stmts(file.stmts)
 		// store the current namespace
 		g.escape_namespace()
 	}
+
+	// resolve imports
+	deps_resolved := graph.resolve()
+
 	g.finish()
 	mut out := g.hashes() + g.definitions.str() + g.constants.str()
-	for key in g.namespaces.keys() {
-		out += '/* namespace: $key */\n'
+	for node in deps_resolved.nodes {
+		out += '\n/* namespace: $node.name */\n'
+		out += 'const $node.name = (function ('
+		imports := g.namespace_imports[node.name]
+		for i, key in imports.keys() {
+			if i > 0 { out += ', ' }
+			out += imports[key]
+		}
+		out += ') {'
 		// private scope
-		out += g.namespaces[key].str()
+		out += g.namespaces[node.name].str()
 		// public scope
 		out += '\n\t/* module exports */'
 		out += '\n\treturn {'
-		for pub_var in g.namespaces_pub[key] {
+		for pub_var in g.namespaces_pub[node.name] {
 			out += '\n\t\t$pub_var,'
 		}
 		out += '\n\t};'
-		out += '\n})();'
+		out += '\n})('
+		for i, key in imports.keys() {
+			if i > 0 { out += ', ' }
+			out += key
+		}
+		out += ');'
 	}
 	return out
 }
@@ -97,7 +125,6 @@ pub fn (mut g JsGen) enter_namespace(n string) {
 		// create a new namespace
 		g.out = strings.new_builder(100)
 		g.indents[g.namespace] = 0
-		g.out.writeln('const $n = (function () {')
 	}
 	else {
 		g.out = g.namespaces[g.namespace]
@@ -110,7 +137,9 @@ pub fn (mut g JsGen) escape_namespace() {
 }
 
 pub fn (mut g JsGen) push_pub_var(s string) {
-	g.namespaces_pub[g.namespace] << s
+	mut arr := g.namespaces_pub[g.namespace]
+	arr << s
+	g.namespaces_pub[g.namespace] = arr
 }
 
 pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
@@ -316,7 +345,9 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.HashStmt {
 			// skip: nothing with # in JS
 		}
-		ast.Import {}
+		ast.Import {
+			g.gen_import_stmt(it)
+		}
 		ast.InterfaceDecl {
 			// TODO skip: interfaces not implemented yet
 		}
@@ -358,7 +389,24 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.CallExpr {
-			name := if it.name.starts_with('JS.') { it.name[3..] } else { it.name }
+			mut name := ""
+			if it.name.starts_with('JS.') {
+				name = it.name[3..]
+			} else {
+				name = it.name
+				// TODO: Ugly fix until `it.is_method` and `it.left` gets fixed.
+				//       `it.left` should be the name of the module in this case.
+				// TODO: This should be in `if it.is_method` instead but is_method seems to be broken.
+				dot_idx := name.index('.') or {-1} // is there a way to do `if optional()`?
+				if dot_idx > -1 {
+					split := name.split('.')
+					imports := g.namespace_imports[g.namespace]
+					alias := imports[split.first()]
+					if alias != "" {
+						name = alias + "." + split[1..].join(".")
+					}
+				}
+			}
 			g.expr(it.left)
 			if it.is_method {
 				// example: foo.bar.baz()
@@ -430,6 +478,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.SelectorExpr {
 			g.gen_selector_expr(it)
 		}
+		ast.AnonFn {
+ 			g.gen_anon_fn_decl(it)
+ 		}
 		else {
 			println(term.red('jsgen.expr(): bad node "${typeof(node)}"'))
 		}
@@ -482,6 +533,12 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 	}
 	g.write('`)')
 }
+
+fn (mut g JsGen) gen_import_stmt(it ast.Import) {
+	mut imports := g.namespace_imports[g.namespace]
+	imports[it.mod] = it.alias
+	g.namespace_imports[g.namespace] = imports
+ }
 
 fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
@@ -627,6 +684,7 @@ fn (mut g JsGen) gen_defer_stmts() {
 	for defer_stmt in g.defer_stmts {
 		g.stmts(defer_stmt.stmts)
 	}
+	g.defer_stmts = []
 	g.writeln('})();')
 }
 
@@ -679,6 +737,10 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	g.gen_method_decl(it)
 }
 
+fn (mut g JsGen) gen_anon_fn_decl(it ast.AnonFn) {
+ 	g.gen_method_decl(it.decl)
+ }
+
 fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	g.fn_decl = &it
 	has_go := fn_has_go(it)
@@ -691,8 +753,10 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 			g.write('async ')
 		}
 		g.write('function(')
+	} else if it.is_anon {
+		g.write('function (')
 	} else {
-		mut name := js_name(it.name)
+		mut name := js_name(it.name.split('.').last())
 		c := name[0]
 		if c in [`+`, `-`, `*`, `/`] {
 			name = util.replace_op(name)
@@ -734,7 +798,9 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	if is_main {
 		g.write(')();')
 	}
-	g.writeln('')
+	if !it.is_anon {
+		g.writeln('')
+	}
 
 	g.fn_decl = 0
 }
@@ -989,7 +1055,6 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 		g.write('CONSTANTS.')
 	}
 
-	// TODO js_name
 	name := js_name(node.name)
 	// TODO `is`
 	// TODO handle optionals
