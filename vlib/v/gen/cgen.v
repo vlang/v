@@ -37,7 +37,9 @@ const (
 		'void',
 		'volatile',
 		'while',
-		'new'
+		'new',
+		'namespace',
+		'typename'
 	]
 )
 
@@ -316,7 +318,7 @@ fn (g &Gen) base_type(t table.Type) string {
 	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
-	}
+	}    
 	return styp
 }
 
@@ -363,7 +365,12 @@ typedef struct {
 			.alias {
 				parent := &g.table.types[typ.parent_idx]
 				styp := typ.name.replace('.', '__')
-				parent_styp := parent.name.replace('.', '__')
+				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
+				parent_styp := if is_c_parent {
+					'struct ' + parent.name[2..].replace('.', '__')
+				} else {
+					parent.name.replace('.', '__')
+				}
 				g.definitions.writeln('typedef $parent_styp $styp;')
 			}
 			.array {
@@ -591,7 +598,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// just remember `it`; main code will be generated in finish()
 				g.fn_main = it
 			} else {
+				if it.name == 'backtrace' || it.name == 'backtrace_symbols' || it.name == 'backtrace_symbols_fd' {
+					g.write('\n#ifndef __cplusplus\n')
+				}
 				g.gen_fn_decl(it)
+				if it.name == 'backtrace' || it.name == 'backtrace_symbols' || it.name == 'backtrace_symbols_fd' {
+					g.write('\n#endif\n')
+				}
 			}
 			g.fn_decl = keep_fn_decl
 			if skip {
@@ -1210,9 +1223,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				// `string(x)` needs `tos()`, but not `&string(x)
 				// `tos(str, len)`, `tos2(str)`
 				if it.has_arg {
-					g.write('tos(')
+					g.write('tos((byteptr)')
 				} else {
-					g.write('tos2(')
+					g.write('tos2((byteptr)')
 				}
 				g.expr(it.expr)
 				expr_sym := g.table.get_type_symbol(it.expr_type)
@@ -1286,17 +1299,17 @@ fn (mut g Gen) expr(node ast.Expr) {
 			value_typ_str := g.typ(it.value_type)
 			size := it.vals.len
 			if size > 0 {
-				g.write('new_map_init($size, sizeof($value_typ_str), (${key_typ_str}[$size]){')
+				g.write('new_map_init($size, sizeof($value_typ_str), _MOV((${key_typ_str}[$size]){')
 				for expr in it.keys {
 					g.expr(expr)
 					g.write(', ')
 				}
-				g.write('}, (${value_typ_str}[$size]){')
+				g.write('}), _MOV((${value_typ_str}[$size]){')
 				for expr in it.vals {
 					g.expr(expr)
 					g.write(', ')
 				}
-				g.write('})')
+				g.write('}))')
 			} else {
 				g.write('new_map_1(sizeof($value_typ_str))')
 			}
@@ -1665,7 +1678,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			elem_type_str := g.typ(info.elem_type)
 			g.write('array_push(&')
 			g.expr(node.left)
-			g.write(', &($elem_type_str[]){ ')
+			g.write(', _MOV(($elem_type_str[]){ ')
 			elem_sym := g.table.get_type_symbol(info.elem_type)
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.interface_call(node.right_type, info.elem_type)
@@ -1674,7 +1687,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.write(')')
 			}
-			g.write(' })')
+			g.write(' }))')
 		}
 	} else if (node.left_type == node.right_type) && node.left_type.is_float() && node.op in
 		[.eq, .ne] {
@@ -1697,7 +1710,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if node.op in [.plus, .minus, .mul, .div, .mod] && (left_sym.name[0].is_capital() ||
-		left_sym.name.contains('.')) && left_sym.kind != .alias {
+		left_sym.name.contains('.')) && left_sym.kind != .alias ||
+		left_sym.kind == .alias && (left_sym.info as table.Alias).is_c {
 		// !left_sym.is_number() {
 		g.write(g.typ(node.left_type))
 		g.write('_')
@@ -2009,7 +2023,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 				*/
 				if need_wrapper {
-					g.write(', &($elem_type_str[]) { ')
+					g.write(', &($elem_type_str[]) { \n')
 				} else {
 					g.write(', &')
 				}
@@ -2061,7 +2075,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
-				g.write(', &($elem_type_str[]) { ')
+				g.write(', &($elem_type_str[]) { \n')
 			} else {
 				/*
 				g.write('(*($elem_type_str*)map_get2(')
@@ -2075,7 +2089,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
-				g.write(', &($elem_type_str[]){ $zero }))')
+				g.write(', &($elem_type_str[]){ $zero }))\n')
 			}
 		} else if sym.kind == .string && !node.left_type.is_ptr() {
 			g.write('string_at(')
@@ -2237,9 +2251,18 @@ fn (mut g Gen) const_decl_init_later(name, val string, typ table.Type) {
 	g.inits.writeln('\t_const_$name = $val;')
 }
 
+fn (mut g Gen) go_back_out(n int) {
+	g.out.go_back(n)
+}
+
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
-	sym := g.table.get_type_symbol(struct_init.typ)
+  skip_init := ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'strconv__Float64u', 'struct stat', 'struct addrinfo']
 	styp := g.typ(struct_init.typ)
+	if styp in skip_init {
+		g.go_back_out(3)
+		return
+	}
+	sym := g.table.get_type_symbol(struct_init.typ)
 	is_amp := g.is_amp
 	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
 	if is_amp {
@@ -2249,7 +2272,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.writeln('($styp){')
 	}
 	// mut fields := []string{}
-	mut inited_fields := []string{} // TODO this is done in checker, move to ast node
+	mut inited_fields := map[string]int // TODO this is done in checker, move to ast node
 	/*
 	if struct_init.fields.len == 0 && struct_init.exprs.len > 0 {
 		// Get fields for {a,b} short syntax. Fields array wasn't set in the parser.
@@ -2261,33 +2284,63 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	*/
 	// User set fields
-	for _, field in struct_init.fields {
-		field_name := c_name(field.name)
-		inited_fields << field.name
-		g.write('\t.$field_name = ')
-		field_type_sym := g.table.get_type_symbol(field.typ)
-		mut cloned := false
-		if g.autofree && field_type_sym.kind in [.array, .string] {
-			g.write('/*clone1*/')
-			if g.gen_clone_assignment(field.expr, field_type_sym, false) {
-				cloned = true
+	mut initialized := false
+	for i, field in struct_init.fields {
+		inited_fields[field.name] = i
+		if sym.kind != .struct_ {
+			field_name := c_name(field.name)
+			g.write('\t.$field_name = ')
+			field_type_sym := g.table.get_type_symbol(field.typ)
+			mut cloned := false
+			if g.autofree && field_type_sym.kind in [.array, .string] {
+				g.write('/*clone1*/')
+				if g.gen_clone_assignment(field.expr, field_type_sym, false) {
+					cloned = true
+				}
 			}
-		}
-		if !cloned {
-			if field.expected_type.is_ptr() && !field.typ.is_ptr() && !field.typ.is_number() {
-				g.write('/* autoref */&')
+			if !cloned {
+				if field.expected_type.is_ptr() && !field.typ.is_ptr() && !field.typ.is_number() {
+					g.write('/* autoref */&')
+				}
+				g.expr_with_cast(field.expr, field.typ, field.expected_type)
 			}
-			g.expr_with_cast(field.expr, field.typ, field.expected_type)
+			g.writeln(',')
+			initialized = true
 		}
-		g.writeln(',')
 	}
 	// The rest of the fields are zeroed.
 	mut nr_info_fields := 0
 	if sym.kind == .struct_ {
 		info := sym.info as table.Struct
+		if info.is_union && struct_init.fields.len > 1 {
+			verror('union must not have more than 1 initializer')
+		}
 		nr_info_fields = info.fields.len
 		for field in info.fields {
 			if field.name in inited_fields {
+				sfield := struct_init.fields[inited_fields[field.name]]
+				field_name := c_name(sfield.name)
+				g.write('\t.$field_name = ')
+				field_type_sym := g.table.get_type_symbol(sfield.typ)
+				mut cloned := false
+				if g.autofree && field_type_sym.kind in [.array, .string] {
+					g.write('/*clone1*/')
+					if g.gen_clone_assignment(sfield.expr, field_type_sym, false) {
+						cloned = true
+					}
+				}
+				if !cloned {
+					if sfield.expected_type.is_ptr() && !sfield.typ.is_ptr() && !sfield.typ.is_number() {
+						g.write('/* autoref */&')
+					}
+					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
+				}
+				g.writeln(',')
+				initialized = true
+				continue
+			}
+			if info.is_union {
+				// unions thould have exactly one explicit initializer
 				continue
 			}
 			if field.typ.flag_is(.optional) {
@@ -2302,11 +2355,12 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				g.write(g.type_default(field.typ))
 			}
 			g.writeln(',')
+			initialized = true
 		}
 	}
 	// if struct_init.fields.len == 0 && info.fields.len == 0 {
-	if struct_init.fields.len == 0 && nr_info_fields == 0 {
-		g.write('0')
+	if !initialized {
+		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
 	}
 	g.write('}')
 	if is_amp {
@@ -2322,21 +2376,22 @@ fn (mut g Gen) assoc(node ast.Assoc) {
 	}
 	styp := g.typ(node.typ)
 	g.writeln('($styp){')
+	mut inited_fields := map[string]int
 	for i, field in node.fields {
-		field_name := c_name(field)
-		g.write('\t.$field_name = ')
-		g.expr(node.exprs[i])
-		g.writeln(', ')
+		inited_fields[field] = i
 	}
-	// Copy the rest of the fields.
+	// Merge inited_fields in the rest of the fields.
 	sym := g.table.get_type_symbol(node.typ)
 	info := sym.info as table.Struct
 	for field in info.fields {
-		if field.name in node.fields {
-			continue
-		}
 		field_name := c_name(field.name)
-		g.writeln('\t.$field_name = ${node.var_name}.$field_name,')
+		if field.name in inited_fields {
+			g.write('\t.$field_name = ')
+			g.expr(node.exprs[inited_fields[field.name]])
+			g.writeln(', ')
+		} else {
+			g.writeln('\t.$field_name = ${node.var_name}.$field_name,')
+		}
 	}
 	g.write('}')
 	if g.is_amp {
@@ -3422,19 +3477,19 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 
 fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
 	mut convertor := ''
-	mut typename := ''
+	mut typename_ := ''
 	if sym.parent_idx in table.integer_type_idxs {
 		convertor = 'int'
-		typename = 'int'
+		typename_ = 'int'
 	} else if sym.parent_idx == table.f32_type_idx {
 		convertor = 'float'
-		typename = 'f32'
+		typename_ = 'f32'
 	} else if sym.parent_idx == table.f64_type_idx {
 		convertor = 'double'
-		typename = 'f64'
+		typename_ = 'f64'
 	} else if sym.parent_idx == table.bool_type_idx {
 		convertor = 'bool'
-		typename = 'bool'
+		typename_ = 'bool'
 	} else {
 		verror("could not generate string method for type \'${styp}\'")
 	}
@@ -3443,7 +3498,7 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
 	if convertor == 'bool' {
 		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(tos_lit("${styp}("), (${convertor})it ? tos_lit("true") : tos_lit("false"));')
 	} else {
-		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(tos_lit("${styp}("), tos3(${typename}_str((${convertor})it).str));')
+		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(tos_lit("${styp}("), tos3(${typename_}_str((${convertor})it).str));')
 	}
 	g.auto_str_funcs.writeln('\tstring tmp2 = string_add(tmp1, tos_lit(")"));')
 	g.auto_str_funcs.writeln('\tstring_free(&tmp1);')
@@ -3740,7 +3795,9 @@ fn (g &Gen) interface_table() string {
 		mut methods_struct_def := strings.new_builder(100)
 		methods_struct_def.writeln('$methods_struct_name {')
 		mut imethods := map[string]string{} // a map from speak -> _Speaker_speak_fn
-		for method in ityp.methods {
+		mut methodidx := map[string]int
+		for k, method in ityp.methods {
+			methodidx[method.name] = k
 			typ_name := '_${interface_name}_${method.name}_fn'
 			ret_styp := g.typ(method.return_type)
 			methods_typ_def.write('typedef $ret_styp (*$typ_name)(void* _')
@@ -3786,7 +3843,14 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr(${cctype}* x) {
 }')
 			methods_struct.writeln('\t{')
 			st_sym := g.table.get_type_symbol(st)
-			for method in st_sym.methods {
+			mut method := table.Fn{}
+			for _, m in ityp.methods {
+				for mm in st_sym.methods {
+					if mm.name == m.name {
+						method = mm
+						break
+					}
+				}
 				if method.name !in imethods {
 					// a method that is not part of the interface should be just skipped
 					continue
@@ -3872,8 +3936,8 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		return
 	}
 	len := it.exprs.len
-	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), ')
-	g.write('($elem_type_str[$len]){\n\t\t')
+	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
+	g.writeln('')
 	for i, expr in it.exprs {
 		if it.is_interface {
 			// sym := g.table.get_type_symbol(it.interface_types[i])
@@ -3886,7 +3950,8 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		}
 		g.write(', ')
 	}
-	g.write('\n})')
+	g.writeln('')
+	g.write('}))')
 }
 
 // `ui.foo(button)` =>

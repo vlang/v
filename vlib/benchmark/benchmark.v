@@ -55,15 +55,15 @@ const (
 pub struct Benchmark {
 pub mut:
 	bench_timer      time.StopWatch
+	verbose          bool
+	no_cstep         bool
 	step_timer       time.StopWatch
 	ntotal           int
 	nok              int
 	nfail            int
 	nskip            int
-	verbose          bool
 	nexpected_steps  int
 	cstep            int
-	no_cstep         bool
 	bok              string
 	bfail            string
 }

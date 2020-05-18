@@ -96,7 +96,7 @@ fn test_mut_struct() {
 	assert user.age == 19
 }
 
-fn mod_ptr(mut buf byteptr) {
+fn mod_ptr(mut buf &byte) {
 	buf[0] = 77
 }
 
