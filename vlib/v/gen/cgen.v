@@ -316,9 +316,15 @@ fn (mut g Gen) typ(t table.Type) string {
 fn (g &Gen) base_type(t table.Type) string {
 	mut styp := g.cc_type(t)
 	nr_muls := t.nr_muls()
-	if nr_muls > 0 /* && !(t.idx() in [ table.byteptr_type_idx ]) */ {
-		styp += strings.repeat(`*`, nr_muls)
-	}
+	$if windows { // TODO: This is not really understood
+		if nr_muls > 0 {
+			styp += strings.repeat(`*`, nr_muls)
+		}
+	} $else {
+		if nr_muls > 0 !(t.idx() in [ table.byteptr_type_idx ]) {
+			styp += strings.repeat(`*`, nr_muls)
+		}
+	}		
 	return styp
 }
 
