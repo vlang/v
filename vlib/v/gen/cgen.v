@@ -37,7 +37,9 @@ const (
 		'void',
 		'volatile',
 		'while',
-		'new'
+		'new',
+		'namespace',
+		'typename'
 	]
 )
 
@@ -314,7 +316,7 @@ fn (mut g Gen) typ(t table.Type) string {
 fn (g &Gen) base_type(t table.Type) string {
 	mut styp := g.cc_type(t)
 	nr_muls := t.nr_muls()
-	if nr_muls > 0 && !(t.idx() in [ table.byteptr_type_idx ]) {
+	if nr_muls > 0 /* && !(t.idx() in [ table.byteptr_type_idx ]) */ {
 		styp += strings.repeat(`*`, nr_muls)
 	}
 	return styp
@@ -2297,6 +2299,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				}
 			}
 			if !cloned {
+				if field.expected_type.is_ptr() && !field.typ.is_ptr() && !field.typ.is_number() {
+					g.write('/* autoref */&')
+				}
 				g.expr_with_cast(field.expr, field.typ, field.expected_type)
 			}
 			g.writeln(',')
@@ -2325,6 +2330,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					}
 				}
 				if !cloned {
+					if sfield.expected_type.is_ptr() && !sfield.typ.is_ptr() && !sfield.typ.is_number() {
+						g.write('/* autoref */&')
+					}
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 				}
 				g.writeln(',')
@@ -3469,19 +3477,19 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 
 fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
 	mut convertor := ''
-	mut typename := ''
+	mut typename_ := ''
 	if sym.parent_idx in table.integer_type_idxs {
 		convertor = 'int'
-		typename = 'int'
+		typename_ = 'int'
 	} else if sym.parent_idx == table.f32_type_idx {
 		convertor = 'float'
-		typename = 'f32'
+		typename_ = 'f32'
 	} else if sym.parent_idx == table.f64_type_idx {
 		convertor = 'double'
-		typename = 'f64'
+		typename_ = 'f64'
 	} else if sym.parent_idx == table.bool_type_idx {
 		convertor = 'bool'
-		typename = 'bool'
+		typename_ = 'bool'
 	} else {
 		verror("could not generate string method for type \'${styp}\'")
 	}
@@ -3490,7 +3498,7 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
 	if convertor == 'bool' {
 		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(tos_lit("${styp}("), (${convertor})it ? tos_lit("true") : tos_lit("false"));')
 	} else {
-		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(tos_lit("${styp}("), tos3(${typename}_str((${convertor})it).str));')
+		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(tos_lit("${styp}("), tos3(${typename_}_str((${convertor})it).str));')
 	}
 	g.auto_str_funcs.writeln('\tstring tmp2 = string_add(tmp1, tos_lit(")"));')
 	g.auto_str_funcs.writeln('\tstring_free(&tmp1);')

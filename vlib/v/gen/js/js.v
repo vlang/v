@@ -27,7 +27,7 @@ mut:
 	namespaces			map[string]strings.Builder
 	namespaces_pub		map[string][]string
 	namespace_imports	map[string]map[string]string
-	namespace       	string
+	namespace_       	string
 	doc					&JsDoc
 	constants			strings.Builder // all global V constants
 	file				ast.File
@@ -120,26 +120,26 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 }
 
 pub fn (mut g JsGen) enter_namespace(n string) {
-	g.namespace = n
-	if g.namespaces[g.namespace].len == 0 {
+	g.namespace_ = n
+	if g.namespaces[g.namespace_].len == 0 {
 		// create a new namespace
 		g.out = strings.new_builder(100)
-		g.indents[g.namespace] = 0
+		g.indents[g.namespace_] = 0
 	}
 	else {
-		g.out = g.namespaces[g.namespace]
+		g.out = g.namespaces[g.namespace_]
 	}
 }
 
 pub fn (mut g JsGen) escape_namespace() {
-	g.namespaces[g.namespace] = g.out
-	g.namespace = ""
+	g.namespaces[g.namespace_] = g.out
+	g.namespace_ = ""
 }
 
 pub fn (mut g JsGen) push_pub_var(s string) {
-	mut arr := g.namespaces_pub[g.namespace]
+	mut arr := g.namespaces_pub[g.namespace_]
 	arr << s
-	g.namespaces_pub[g.namespace] = arr
+	g.namespaces_pub[g.namespace_] = arr
 }
 
 pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
@@ -229,18 +229,18 @@ fn (mut g JsGen) to_js_typ(typ string) string {
 pub fn (g &JsGen) save() {}
 
 pub fn (mut g JsGen) gen_indent() {
-	if g.indents[g.namespace] > 0 && g.empty_line {
-		g.out.write(tabs[g.indents[g.namespace]])
+	if g.indents[g.namespace_] > 0 && g.empty_line {
+		g.out.write(tabs[g.indents[g.namespace_]])
 	}
 	g.empty_line = false
 }
 
 pub fn (mut g JsGen) inc_indent() {
-	g.indents[g.namespace]++
+	g.indents[g.namespace_]++
 }
 
 pub fn (mut g JsGen) dec_indent() {
-	g.indents[g.namespace]--
+	g.indents[g.namespace_]--
 }
 
 pub fn (mut g JsGen) write(s string) {
@@ -400,7 +400,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 				dot_idx := name.index('.') or {-1} // is there a way to do `if optional()`?
 				if dot_idx > -1 {
 					split := name.split('.')
-					imports := g.namespace_imports[g.namespace]
+					imports := g.namespace_imports[g.namespace_]
 					alias := imports[split.first()]
 					if alias != "" {
 						name = alias + "." + split[1..].join(".")
@@ -535,9 +535,9 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 }
 
 fn (mut g JsGen) gen_import_stmt(it ast.Import) {
-	mut imports := g.namespace_imports[g.namespace]
+	mut imports := g.namespace_imports[g.namespace_]
 	imports[it.mod] = it.alias
-	g.namespace_imports[g.namespace] = imports
+	g.namespace_imports[g.namespace_] = imports
  }
 
 fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
@@ -660,7 +660,7 @@ fn (mut g JsGen) gen_branch_stmt(it ast.BranchStmt) {
 }
 
 fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
-	// old_indent := g.indents[g.namespace]
+	// old_indent := g.indents[g.namespace_]
 	for i, field in it.fields {
 		// TODO hack. Cut the generated value and paste it into definitions.
 		pos := g.out.len

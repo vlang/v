@@ -355,6 +355,10 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
+				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_number(){
+					c.error('ref', field.pos)
+				}
+
 				struct_init.fields[i].typ = expr_type
 				struct_init.fields[i].expected_type = info_field.typ
 			}

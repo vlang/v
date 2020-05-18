@@ -10,7 +10,7 @@ import v.pref
 import term
 
 const (
-	c_error_info = '
+c_error_info = '
 ==================
 C error. This should never happen.
 
@@ -19,8 +19,8 @@ If you were not working with C interop, please raise an issue on GitHub:
 https://github.com/vlang/v/issues/new/choose
 
 You can also use #help on Discord: https://discord.gg/vlang
-'
-)
+')
+
 
 fn todo() {
 }
@@ -98,15 +98,15 @@ fn (mut v Builder) cc() {
 		}
 	}
 	// arguments for the C compiler
-	// TODO : activate -Werror once no warnings remain
-	// '-Werror',
-	// TODO : try and remove the below workaround options when the corresponding
-	// warnings are totally fixed/removed
-	// '-Wno-unused-but-set-variable',
-	mut a := [v.pref.cflags, '-std=gnu11', '-Wall', '-Wextra',
+	mut a := [ v.pref.cflags, '-std=gnu11', '-Wall', '-Wextra',
+		// TODO : activate -Werror once no warnings remain
+		// '-Werror',
+		// TODO : try and remove the below workaround options when the corresponding
+		// warnings are totally fixed/removed
 		'-Wno-unused-variable',
+		// '-Wno-unused-but-set-variable',
 		'-Wno-unused-parameter', '-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces',
-		'-Wno-unused-label'
+			'-Wno-unused-label'
 	]
 	mut linker_flags := []string{}
 	// TCC on Linux by default, unless -cc was provided
@@ -280,8 +280,7 @@ fn (mut v Builder) cc() {
 	// Cross compiling windows
 	//
 	// Output executable name
-	out_file := '-o "$v.pref.out_name"'
-	a << out_file
+	a << '-o "$v.pref.out_name"'
 	if os.is_dir(v.pref.out_name) {
 		verror("'$v.pref.out_name' is a directory")
 	}
@@ -290,8 +289,7 @@ fn (mut v Builder) cc() {
 		a << '-x objective-c'
 	}
 	// The C file we are compiling
-	src_file := '"$v.out_name_c"'
-	a << src_file
+	a << '"$v.out_name_c"'
 	if v.pref.os == .mac {
 		a << '-x none'
 	}
@@ -305,20 +303,19 @@ fn (mut v Builder) cc() {
 	cflags := v.get_os_cflags()
 	// add .o files
 	a << cflags.c_options_only_object_files()
-	mut cpp_addl_flags := cflags.c_options_only_object_files()
 	// add all flags (-I -l -L etc) not .o files
 	a << cflags.c_options_without_object_files()
-	cpp_addl_flags += cflags.c_options_without_object_files() + libs
 	a << libs
-	// For now remove all flags for c related warnings converted to errors
+	// For C++ we must be very tolerant
 	if guessed_compiler.contains('++') {
 		a << '-fpermissive'
 		a << '-w'
 	}
 	if v.pref.use_cache {
-		// vexe := pref.vexe_path()
-		cached_modules := ['builtin', 'os', 'math', 'strconv', 'strings']
-		for cfile in cached_modules {
+		//vexe := pref.vexe_path()
+
+		cached_modules:= [ 'builtin', 'os', 'math', 'strconv', 'strings']
+		for cfile in cached_modules{
 			ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile + '.o')
 			if !os.exists(ofile) {
 				println('${cfile}.o is missing. Building...')
@@ -336,7 +333,7 @@ fn (mut v Builder) cc() {
 	}
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
-	if !v.pref.is_bare && v.pref.build_mode != .build_module && v.pref.os in [.linux, .freebsd,
+	if !v.pref.is_bare && v.pref.build_mode != .build_module && v.pref.os in [ .linux, .freebsd,
 		.openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
 		linker_flags << '-lm'
 		linker_flags << '-lpthread'
@@ -352,19 +349,17 @@ fn (mut v Builder) cc() {
 	if !v.pref.is_bare && v.pref.os == .js && os.user_os() == 'linux' {
 		linker_flags << '-lm'
 	}
-	lnkr_flgs := linker_flags.join(' ')
-	args := a.join(' ') + ' ' + lnkr_flgs
+	args := a.join(' ') + ' ' + linker_flags.join(' ')
 	start:
 	todo()
 	// TODO remove
-	mut cmd := '${v.pref.ccompiler} $args'
-	// println(cmd)
+	cmd := '${v.pref.ccompiler} $args'
+	// Run
 	if v.pref.is_verbose || v.pref.show_cc {
 		println('\n==========')
 		println(cmd)
 	}
 	ticks := time.ticks()
-	// Run
 	res := os.exec(cmd) or {
 		// C compilation failed.
 		// If we are on Windows, try msvc
@@ -379,7 +374,6 @@ fn (mut v Builder) cc() {
 		verror(err)
 		return
 	}
-	diff := time.ticks() - ticks
 	if res.exit_code != 0 {
 		// the command could not be found by the system
 		if res.exit_code == 127 {
@@ -415,6 +409,7 @@ fn (mut v Builder) cc() {
 			verror(c_error_info)
 		}
 	}
+	diff := time.ticks() - ticks
 	// Print the C command
 	if v.pref.is_verbose {
 		println('${v.pref.ccompiler} took $diff ms')
@@ -485,7 +480,7 @@ fn (mut c Builder) cc_linux_cross() {
 		if !v.out_name.ends_with('.o') {
 			v.out_name = v.out_name + '.o'
 		}
-	*/
+		*/
 }
 
 fn (mut c Builder) cc_windows_cross() {
@@ -496,10 +491,14 @@ fn (mut c Builder) cc_windows_cross() {
 	mut args := '-o $c.pref.out_name -w -L. '
 	cflags := c.get_os_cflags()
 	// -I flags
-	args += if c.pref.ccompiler == 'msvc' {
-		cflags.c_options_before_target_msvc()
-	} else {
-		cflags.c_options_before_target()
+	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_before_target_msvc() } else { cflags.c_options_before_target() }
+	mut optimization_options := ''
+	mut debug_options := ''
+	if c.pref.is_prod {
+		optimization_options = if c.pref.ccompiler == 'msvc' { '' } else { ' -O3 -fno-strict-aliasing -flto ' }
+	}
+	if c.pref.is_debug {
+		debug_options =  if c.pref.ccompiler == 'msvc' { '' } else { ' -g3 -no-pie ' }
 	}
 	mut libs := ''
 	if false && c.pref.build_mode == .default_mode {
@@ -513,11 +512,9 @@ fn (mut c Builder) cc_windows_cross() {
 		}
 	}
 	args += ' $c.out_name_c '
-	args += if c.pref.ccompiler == 'msvc' {
-		cflags.c_options_after_target_msvc()
-	} else {
-		cflags.c_options_after_target()
-	}
+
+	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_after_target_msvc() } else { cflags.c_options_after_target() }
+
 	/*
 	winroot := '${pref.default_module_path}/winroot'
 	if !os.is_dir(winroot) {
@@ -533,14 +530,14 @@ fn (mut c Builder) cc_windows_cross() {
 	obj_name = obj_name.replace('.o.o', '.o')
 	include := '-I $winroot/include '
 	*/
-	if os.user_os() !in ['mac', 'darwin', 'linux'] {
+	if os.user_os() !in ['mac', 'darwin','linux'] {
 		println(os.user_os())
 		panic('your platform is not supported yet')
 	}
 	mut cmd := 'x86_64-w64-mingw32-gcc'
-	cmd += ' -std=gnu11 $args -municode'
-	// cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
-	if c.pref.is_verbose {
+	cmd += ' $optimization_options $debug_options -std=gnu11 $args -municode'
+	//cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
+	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)
 	}
 	if os.system(cmd) != 0 {

@@ -1224,6 +1224,21 @@ pub fn (s string) all_after(dot string) string {
 
 pub fn (s string) after(dot string) string { return s.all_after(dot) }
 
+pub fn (s string) after_char(dot byte) string {
+	mut pos := 0
+	for i, c in s {
+		if c == dot {
+			pos = i
+			break
+		}
+	}
+	if pos == 0 {
+		return s
+	}
+	return s.right(pos+1)
+
+}
+
 // fn (s []string) substr(a, b int) string {
 // return join_strings(s.slice_fast(a, b))
 // }
