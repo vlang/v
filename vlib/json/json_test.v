@@ -26,7 +26,7 @@ struct User {
 	nums      	[]int
 	last_name 	string 	[json:lastName]
 	is_registered	bool 	[json:IsRegistered]
-	typ int  [json:'type']
+    typ int  [json:'type']
 	pets string [raw; json:'pet_animals']
 }
 
@@ -47,7 +47,7 @@ fn test_parse_user() {
 	assert u.nums[0] == 1
 	assert u.nums[1] == 2
 	assert u.nums[2] == 3
-	assert u.typ == 1
+    assert u.typ == 1
 	assert u.pets == '{"name":"Bob","animal":"Dog"}'
 }
 
@@ -71,27 +71,5 @@ fn test_raw_json_field() {
     }
     assert color.point == '{"Y":123}'
     assert color.space == 'YCbCr'
-}
-
-struct City {
-	name string
-}
-
-struct Country {
-	cities []City
-	name string
-}
-
-fn test_struct_in_struct() {
-	country := json.decode(Country, '{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}') or {
-		assert false
-		exit(1)
-	}
-	assert country.name == 'UK'
-	assert country.cities.len == 2
-	assert country.cities[0].name == 'London'
-	assert country.cities[1].name == 'Manchester'
-	println(country.cities)
-
 }
 

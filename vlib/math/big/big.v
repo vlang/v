@@ -79,7 +79,7 @@ pub fn (n Number) hexstr() string {
 	mut buf := [8192]byte
 	C.bignum_to_string( &n, buf, 8192)
 	// NB: bignum_to_string , returns the HEXADECIMAL representation of the bignum n
-	s := tos_clone( buf )
+	s := tos_clone( voidptr(buf) )
 	if s.len == 0 { return '0' }
 	return s
 }
