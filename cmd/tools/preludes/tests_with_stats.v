@@ -16,13 +16,13 @@ const (
 
 struct BenchedTests {
 mut:
+	bench          benchmark.Benchmark
 	oks            int
 	fails          int
 	test_suit_file string
 	step_func_name string
-	bench          benchmark.Benchmark
 }
-
+                                       
 // ///////////////////////////////////////////////////////////////////
 // Called at the start of the test program produced by `v -stats file_test.v`
 fn start_testing(total_number_of_tests int, vfilename string) BenchedTests {

@@ -76,23 +76,18 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-// TODO: C.time_t. works in v2
-type time_t voidptr
-
 pub struct C.timeval {
 	tv_sec  u64
 	tv_usec u64
 }
 
-fn C.localtime(int) &C.tm
-
-fn C.time(int) time_t
+fn C.localtime(t &C.time_t) &C.tm
+fn C.time(t &C.time_t) C.time_t
 
 // now returns current local time.
 pub fn now() Time {
 	t := C.time(0)
-	mut now := &C.tm(0)
-	now = C.localtime(&t)
+	now := C.localtime(&t)
 	return convert_ctime(now)
 }
 
