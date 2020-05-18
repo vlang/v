@@ -216,6 +216,8 @@ jobs:
       run: |
         gcc --version
         .\make.bat -gcc
+    - name: Test new v.c
+      run: .\v.exe -o v.c cmd/v && gcc -municode -w v.c
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
@@ -273,3 +275,27 @@ jobs:
       run: make
     - name: Check docs line length
       run: ./v run cmd/tools/check-md.v doc/docs.md CHANGELOG.md
+
+
+
+  compilable-v-c-and-v-win-c:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: |
+        sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
+        sudo apt-get update
+        sudo apt install --quiet -y mingw-w64
+    - name: Build V
+      run: make -j4
+    - name: v.c can be compiled
+      run: |
+        ./v -os cross -o /tmp/v.c cmd/v
+        cc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm
+        ls -lart v_from_vc
+    - name: v_win.c can be compiled
+      run: |
+        ./v -os windows -o /tmp/v_win.c cmd/v
+        x86_64-w64-mingw32-gcc  /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
+        ls -lart v_from_vc.exe

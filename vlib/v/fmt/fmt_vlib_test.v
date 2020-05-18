@@ -13,8 +13,11 @@ const (
 	error_failed_tests = 2
 )
 
-fn test_fmt() {
-	fmt_message := 'checking that v fmt keeps already formatted files *unchanged*'
+fn test_vlib_fmt() {
+	$if !freebsd {
+		return
+	}
+	fmt_message := "checking that all V source files are vfmt'ed"
 	eprintln(term.header(fmt_message, '-'))
 	vexe := os.getenv('VEXE')
 	if vexe.len == 0 || !os.exists(vexe) {
@@ -27,11 +30,7 @@ fn test_fmt() {
 		''
 	}
 	mut fmt_bench := benchmark.new_benchmark()
-	keep_input_files := os.walk_ext('$vroot/vlib/v/fmt/tests', '_keep.vv')
-	expected_input_files := os.walk_ext('$vroot/vlib/v/fmt/tests', '_expected.vv')
-	mut input_files := []string{}
-	input_files << keep_input_files
-	input_files << expected_input_files
+	input_files := os.walk_ext('$vroot/vlib/v/', '.v')
 	fmt_bench.set_total_expected_steps(input_files.len)
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
