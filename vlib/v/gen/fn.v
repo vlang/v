@@ -618,7 +618,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 			}
 		}
 		if !g.is_json_fn {
-			g.write('&/*qq*/')
+			g.write('(voidptr)&/*qq*/')
 		}
 	}
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)

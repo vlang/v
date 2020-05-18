@@ -12,7 +12,7 @@ fn C.free(ptr voidptr)
 fn C.exit(code int)
 
 
-fn C.qsort(voidptr, int, int, voidptr)
+fn C.qsort(voidptr, int, int, qsort_callback_func)
 
 
 fn C.sprintf(a ...voidptr) int

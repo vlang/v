@@ -40,7 +40,7 @@ pub fn sum64_string(key string, seed u64) u64 {
 
 [inline]
 pub fn sum64(key []byte, seed u64) u64 {
-	return wyhash64(key.data, u64(key.len), seed)
+	return wyhash64(byteptr(key.data), u64(key.len), seed)
 }
 
 [inline]
