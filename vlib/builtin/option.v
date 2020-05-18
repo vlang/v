@@ -4,21 +4,21 @@
 module builtin
 /*
 struct Option2<T> {
-	ok bool
-	is_none bool
+	data T
 	error string
 	ecode int
-	data T
+	ok bool
+	is_none bool
 }
 */
 
 
 struct Option {
-	ok      bool
-	is_none bool
+	data    [400]byte
 	error   string
 	ecode   int
-	data    [400]byte
+	ok      bool
+	is_none bool
 }
 
 pub fn (o Option) str() string {
@@ -46,23 +46,18 @@ fn opt_ok(data voidptr, size int) Option {
 // used internally when returning `none`
 fn opt_none() Option {
 	return Option{
-		ok: false
 		is_none: true
 	}
 }
 
 pub fn error(s string) Option {
 	return Option{
-		ok: false
-		is_none: false
 		error: s
 	}
 }
 
 pub fn error_with_code(s string, code int) Option {
 	return Option{
-		ok: false
-		is_none: false
 		error: s
 		ecode: code
 	}

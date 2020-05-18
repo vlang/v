@@ -12,7 +12,7 @@ pub mut:
 }
 
 pub fn new_stopwatch() StopWatch {
-	return StopWatch{pause_time: 0, start: time.sys_mono_now(), end: 0}
+	return StopWatch{start: time.sys_mono_now()}
 }
 
 // start Starts the timer. If the timer was paused, restarts counting.

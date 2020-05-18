@@ -10,8 +10,7 @@ import math
 #include <X11/Xlib.h>
 
 // X11
-[typedef]
-struct C.Display
+struct C.Display{}
 
 [typedef]
 struct C.Atom
@@ -34,7 +33,7 @@ fn C.XCreateSimpleWindow(d &Display, root C.Window, x int, y int, width u32, hei
 fn C.XOpenDisplay(name byteptr) &C.Display
 fn C.XConvertSelection(d &Display, selection C.Atom, target C.Atom, property C.Atom, requestor Window, time int) int
 fn C.XSync(d &Display, discard int) int
-fn C.XGetWindowProperty(d &Display, w Window, property C.Atom, offset i64, length i64, delete int, req_type C.Atom, actual_type_return &C.Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &byteptr) int
+fn C.XGetWindowProperty(d &Display, w Window, property C.Atom, offset i64, length i64, delete int, req_type C.Atom, actual_type_return &C.Atom, actual_format_return &int, nitems &i64, bytes_after_return &i64, prop_return &byteptr) int
 fn C.XDeleteProperty(d &Display, w Window, property C.Atom) int
 fn C.DefaultScreen() int
 fn C.RootWindow() voidptr
@@ -47,10 +46,10 @@ fn todo_del(){}
 [typedef]
 struct C.XSelectionRequestEvent{
 	mut:
+	selection C.Atom
 	display &C.Display	/* Display the event was read from */
 	owner C.Window
 	requestor C.Window
-	selection C.Atom
 	target C.Atom
 	property C.Atom
 	time int
@@ -60,9 +59,9 @@ struct C.XSelectionRequestEvent{
 struct C.XSelectionEvent{
 	mut:
 	@type int
+	selection C.Atom
 	display &C.Display	/* Display the event was read from */
 	requestor C.Window
-	selection C.Atom
 	target C.Atom
 	property C.Atom
 	time int
@@ -82,13 +81,13 @@ struct C.XDestroyWindowEvent {
 }
 
 [typedef]
-union C.XEvent{
+struct C.XEvent{
 	mut:
 	@type int
-	xdestroywindow C.XDestroyWindowEvent
-	xselectionclear C.XSelectionClearEvent
 	xselectionrequest C.XSelectionRequestEvent
 	xselection C.XSelectionEvent
+	xselectionclear C.XSelectionClearEvent
+	xdestroywindow C.XDestroyWindowEvent
 }
 
 const (
@@ -288,7 +287,7 @@ fn (mut cb Clipboard) start_listener(){
 					if !cb.transmit_selection(&xse) {
 						xse.property = new_atom(C.None)
 					}
-					C.XSendEvent(cb.display, xse.requestor, 0, C.PropertyChangeMask, voidptr(&xse))
+					C.XSendEvent(cb.display, xse.requestor, 0, C.PropertyChangeMask, &xse)
 					C.XFlush(cb.display)
 				}
 			}
@@ -341,8 +340,8 @@ fn (mut cb Clipboard) intern_atoms(){
 fn read_property(d &C.Display, w C.Window, p C.Atom) Property {
 	actual_type := C.Atom(0)
 	actual_format := 0
-	nitems := u64(0)
-	bytes_after := u64(0)
+	nitems := 0
+	bytes_after := 0
 	ret := byteptr(0)
 	mut read_bytes := 1024
 	for {

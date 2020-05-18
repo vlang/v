@@ -306,11 +306,6 @@ fn (mut v Builder) cc() {
 	// add all flags (-I -l -L etc) not .o files
 	a << cflags.c_options_without_object_files()
 	a << libs
-	// For C++ we must be very tolerant
-	if guessed_compiler.contains('++') {
-		a << '-fpermissive'
-		a << '-w'
-	}
 	if v.pref.use_cache {
 		//vexe := pref.vexe_path()
 
@@ -349,7 +344,7 @@ fn (mut v Builder) cc() {
 	if !v.pref.is_bare && v.pref.os == .js && os.user_os() == 'linux' {
 		linker_flags << '-lm'
 	}
-	args := a.join(' ') + ' ' + linker_flags.join(' ')
+	args := a.join(' ') + linker_flags.join(' ')
 	start:
 	todo()
 	// TODO remove

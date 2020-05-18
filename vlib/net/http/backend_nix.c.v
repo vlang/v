@@ -18,8 +18,8 @@ import strings
 #flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
 #include <openssl/ssl.h>
-
-struct C.ssl_st
+struct C.SSL {
+}
 
 fn C.SSL_library_init()
 
@@ -108,7 +108,7 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	res = C.BIO_set_conn_hostname(web, addr.str)
 	if res != 1 {
 	}
-	ssl := &C.ssl_st(0)
+	ssl := &C.SSL(0)
 	C.BIO_get_ssl(web, &ssl)
 	if isnil(ssl) {
 	}

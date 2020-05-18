@@ -84,7 +84,6 @@ pub fn open(path string) ?File {
   */
 	file := File{
 		cfile: C.fopen(charptr(path.str), 'rb')
-		fd: 0
 		opened: true
 	}
 	if isnil(file.cfile) {
@@ -120,7 +119,6 @@ pub fn create(path string) ?File {
   */
 	file := File{
 		cfile: C.fopen(charptr(path.str), 'wb')
-		fd: 0
 		opened: true
 	}
 	if isnil(file.cfile) {
@@ -209,8 +207,7 @@ pub fn exec(cmd string) ?Result {
 	buf := [4096]byte
 	mut res := strings.new_builder(1024)
 	for C.fgets(charptr(buf), 4096, f) != 0 {
-		bufbp := byteptr(buf)
-		res.write_bytes( bufbp, vstrlen(bufbp) )
+		res.write_bytes( buf, vstrlen(buf) )
 	}
 	soutput := res.str().trim_space()
 	//res.free()
@@ -219,8 +216,8 @@ pub fn exec(cmd string) ?Result {
 	// return error(res)
 	// }
 	return Result{
-		exit_code: exit_code
 		output: soutput
+		exit_code: exit_code
 	}
 }
 

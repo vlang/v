@@ -383,8 +383,8 @@ pub fn (c rune) str() string {
 
 pub fn (c byte) str() string {
 	mut str := string{
-		str: malloc(2)
 		len: 1
+		str: malloc(2)
 	}
 	str.str[0] = c
 	str.str[1] = `\0`

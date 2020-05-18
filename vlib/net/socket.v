@@ -15,9 +15,6 @@ mut:
 	s_addr int
 }
 
-struct C.sockaddr {
-}
-
 struct C.sockaddr_in {
 mut:
 	sin_family int
@@ -111,9 +108,7 @@ pub fn (s Socket) bind(port int) ?int {
 	addr.sin_port = C.htons(port)
 	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
 	size := 16 // sizeof(C.sockaddr_in)
-	tmp := voidptr(&addr)
-	skaddr := &C.sockaddr(tmp)
-	res := C.bind(s.sockfd, skaddr, size)
+	res := C.bind(s.sockfd, &addr, size)
 	if res < 0 {
 		return error('net.bind: failed with $res')
 	}
@@ -170,9 +165,7 @@ pub fn (s Socket) accept() ?Socket {
 	}
 	addr := C.sockaddr_storage{}
 	size := 128 // sizeof(sockaddr_storage)
-	tmp := voidptr(&addr)
-	skaddr := &C.sockaddr(tmp)
-	sockfd := C.accept(s.sockfd, skaddr, &size)
+	sockfd := C.accept(s.sockfd, &addr, &size)
 	if sockfd < 0 {
 		return error('net.accept: failed with $sockfd')
 	}
@@ -262,8 +255,8 @@ pub fn (s Socket) cread(buffer byteptr, buffersize int) int {
 
 // Receive a message from the socket, and place it in a preallocated buffer buf,
 // with maximum message size bufsize. Returns the length of the received message.
-pub fn (s Socket) crecv(buffer voidptr, buffersize int) int {
-	return C.recv(s.sockfd, byteptr(buffer), buffersize, 0)
+pub fn (s Socket) crecv(buffer byteptr, buffersize int) int {
+	return C.recv(s.sockfd, buffer, buffersize, 0)
 }
 
 // shutdown and close socket
@@ -332,8 +325,7 @@ pub fn (s Socket) read_line() string {
 				break
 			}
 		}
-		bufbp := byteptr(buf)
-		line = tos_clone(bufbp)
+		line = tos_clone(buf)
 		if eol_idx > 0 {
 			// At this point, we are sure that recv returned valid data,
 			// that contains *at least* one line.
@@ -365,8 +357,7 @@ pub fn (s Socket) read_all() string {
 		if n == 0 {
 			return res
 		}
-		bufbp := byteptr(buf)
-		res += tos_clone(bufbp)
+		res += tos_clone(buf)
 	}
 	return res
 }
@@ -374,8 +365,6 @@ pub fn (s Socket) read_all() string {
 pub fn (s Socket) get_port() int {
 	mut addr := C.sockaddr_in{}
 	size := 16 // sizeof(sockaddr_in)
-	tmp := voidptr(&addr)
-	skaddr := &C.sockaddr(tmp)
-	C.getsockname(s.sockfd, skaddr, &size)
+	C.getsockname(s.sockfd, &addr, &size)
 	return C.ntohs(addr.sin_port)
 }
