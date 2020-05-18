@@ -38,7 +38,6 @@ const (
 		'volatile',
 		'while',
 		'new',
-		'namespace',
 		'typename'
 	]
 )
