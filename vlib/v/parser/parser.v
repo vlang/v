@@ -93,10 +93,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	// comments_mode: comments_mode
 	p.read_first_token()
 	for p.tok.kind == .comment {
-		mut stmt := ast.Stmt{} // TODO sum type << bug
-		com := p.comment()
-		stmt = com
-		stmts << stmt
+		stmts << p.comment()
 	}
 	// module
 	mut mstmt := ast.Stmt{}
