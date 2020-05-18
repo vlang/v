@@ -321,10 +321,10 @@ fn (g &Gen) base_type(t table.Type) string {
 			styp += strings.repeat(`*`, nr_muls)
 		}
 	} $else {
-		if nr_muls > 0 !(t.idx() in [ table.byteptr_type_idx ]) {
+		if nr_muls > 0 && !(t.idx() in [ table.byteptr_type_idx ]) {
 			styp += strings.repeat(`*`, nr_muls)
 		}
-	}		
+	}
 	return styp
 }
 
