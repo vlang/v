@@ -355,10 +355,9 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
-				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_number(){
+				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_number() {
 					c.error('ref', field.pos)
 				}
-
 				struct_init.fields[i].typ = expr_type
 				struct_init.fields[i].expected_type = info_field.typ
 			}
@@ -404,22 +403,25 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					right_sym := c.table.get_type_symbol(right.array_info().elem_type)
 					if left.kind != right_sym.kind {
 						c.error('the data type on the left of `$infix_expr.op.str()` does not match the array item type',
-						infix_expr.pos)
+							infix_expr.pos)
 					}
 				}
 				.map {
 					key_sym := c.table.get_type_symbol(right.map_info().key_type)
 					if left.kind != key_sym.kind {
-						c.error('the data type on the left of `$infix_expr.op.str()` does not match the map key type', infix_expr.pos)
+						c.error('the data type on the left of `$infix_expr.op.str()` does not match the map key type',
+							infix_expr.pos)
 					}
 				}
 				.string {
 					if left.kind != .string {
-						c.error('the data type on the left of `$infix_expr.op.str()` must be a string', infix_expr.pos)
+						c.error('the data type on the left of `$infix_expr.op.str()` must be a string',
+							infix_expr.pos)
 					}
 				}
 				else {
-					c.error('`$infix_expr.op.str()` can only be used with an array/map/string', infix_expr.pos)
+					c.error('`$infix_expr.op.str()` can only be used with an array/map/string',
+						infix_expr.pos)
 				}
 			}
 			return table.bool_type
@@ -494,7 +496,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
 			} else if !left.is_int() && right.is_int() {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-			} else if left.kind == .f32 && right.kind == .f32 || left.kind == .f64 && right.kind == .f64 {
+			} else if left.kind == .f32 && right.kind == .f32 || left.kind == .f64 && right.kind ==
+				.f64 {
 				c.error('float modulo not allowed, use math.fmod() instead', infix_expr.left.position())
 			} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
 				!left.has_method(infix_expr.op.str()) {
