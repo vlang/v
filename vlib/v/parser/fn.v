@@ -255,6 +255,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_generic: is_generic
 			is_pub: is_pub
 			ctdefine: ctdefine
+			mod: p.mod
 		})
 	}
 	// Body

@@ -41,7 +41,7 @@ fn init_win_time_start() u64 {
 	return s
 }
 
-fn sys_mono_now() u64 {
+pub fn sys_mono_now() u64 {
 	tm := u64(0)
 	C.QueryPerformanceCounter(&tm) // XP or later never fail
 	return (tm - start_time) * 1_000_000_000 / freq_time

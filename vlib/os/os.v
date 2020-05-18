@@ -836,7 +836,7 @@ pub fn on_segfault(f voidptr) {
 fn C.getpid() int
 
 
-fn C.proc_pidpath(int, byteptr, int) int
+//fn C.proc_pidpath(int, byteptr, int) int
 
 
 fn C.readlink() int

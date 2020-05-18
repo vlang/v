@@ -31,7 +31,7 @@ fn C.backtrace_symbols(a &voidptr, size int)  &charptr
 fn C.backtrace_symbols_fd(a &voidptr, size int, fd int)
 
 // <libproc.h>
-fn proc_pidpath(int, voidptr, int) int
+pub fn proc_pidpath(int, voidptr, int) int
 
 
 fn C.realpath(byteptr, byteptr) &char
