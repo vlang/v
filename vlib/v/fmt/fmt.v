@@ -413,7 +413,14 @@ fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				sum_type_names << f.type_to_str(t)
 			}
 			sum_type_names.sort()
-			f.write(sum_type_names.join(' | '))
+			for i, name in sum_type_names {
+				f.write(name)
+				if i < sum_type_names.len - 1 {
+					f.write(' | ')
+				}
+				f.wrap_long_line()
+			}
+			// f.write(sum_type_names.join(' | '))
 		}
 	}
 	f.writeln('\n')
