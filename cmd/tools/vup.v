@@ -61,12 +61,16 @@ fn main() {
 	_ := os.exec('v cmd/tools/vup.v') or {
 		panic(err)
 	}
-	show_current_v_version()    
+	show_current_v_version()
 }
 
 fn show_current_v_version(){
 	println('Current V version:')
-	os.system('v version')
+	$if windows {
+		os.system('v.exe version')
+	}	$else {
+		os.system('v version')
+	}
 }
 
 fn backup(file string) {
