@@ -113,5 +113,5 @@ exit /b 1
 
 :success
 echo V build OK!
-v -version
+v.exe version
 popd
