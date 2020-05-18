@@ -1199,7 +1199,7 @@ You can also propagate errors:
 
 ```v
 resp := http.get(url)?
-println(resp.body)
+println(resp.text)
 ```
 
 `http.get` returns `?http.Response`. Because it was called with `?`, the error will be propagated to the calling function
@@ -1211,7 +1211,7 @@ The code above is essentially a condensed version of
 resp := http.get(url) or {
     return error(err)
 }
-println(resp.body)
+println(resp.text)
 ```
 
 V does not have a way to forcibly "unwrap" an optional (as other languages do, for instance Rust's `unwrap()`
