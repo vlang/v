@@ -1042,6 +1042,10 @@ fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		f.indent--
 	}
 	f.write(']')
+	// `[100]byte`
+	if it.is_fixed {
+		f.write(f.type_to_str(it.elem_type))
+	}
 }
 
 fn (mut f Fmt) struct_init(it ast.StructInit) {
