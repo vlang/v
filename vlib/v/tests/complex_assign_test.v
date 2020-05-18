@@ -27,7 +27,7 @@ fn test_assign_multi_expr_func() {
 	assert h == 'good'
 }
 
-fn test_assing_multi_expr() {
+fn test_assign_multi_expr() {
 	// helpers
 	val1 := 1
 	val2 := 2
