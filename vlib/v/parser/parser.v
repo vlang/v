@@ -70,25 +70,19 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt()
 }
 
-pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
-	// println('parse_file("$path")')
-	// text := os.read_file(path) or {
-	// panic(err)
-	// }
+pub fn parse_text(path_name string, text string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
 	mut stmts := []ast.Stmt{}
 	mut p := Parser{
-		scanner: scanner.new_scanner_file(path, comments_mode)
-		table: b_table
-		file_name: path
-		file_name_dir: os.dir(path)
-		pref: pref
+		scanner: scanner.new_scanner(text, comments_mode),
+		table: b_table,
+		pref: pref,
 		scope: &ast.Scope{
 			start_pos: 0
 			parent: 0
-		}
-		errors: []errors.Error{}
+		},
+		global_scope: global_scope,
+		errors: []errors.Error{},
 		warnings: []errors.Warning{}
-		global_scope: global_scope
 	}
 	// comments_mode: comments_mode
 	p.read_first_token()
@@ -124,7 +118,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	// println(stmts[0])
 	p.scope.end_pos = p.tok.pos
 	return ast.File{
-		path: path
+		path: path_name
 		mod: module_decl
 		imports: p.ast_imports
 		stmts: stmts
