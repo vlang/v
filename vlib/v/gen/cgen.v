@@ -2274,6 +2274,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			}
 		}
 		if !cloned {
+			if field.expected_type.is_ptr() && !field.typ.is_ptr() && !field.typ.is_number() {
+				g.write('/* autoref */&')
+			}
 			g.expr_with_cast(field.expr, field.typ, field.expected_type)
 		}
 		g.writeln(',')
