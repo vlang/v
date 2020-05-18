@@ -216,6 +216,8 @@ jobs:
       run: |
         gcc --version
         .\make.bat -gcc
+    - name: Test new v.c
+      run: .\v.exe -o v.c cmd/v && gcc -w v.c
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
@@ -284,7 +286,7 @@ jobs:
       run: |
         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
         sudo apt-get update
-        sudo apt install --quiet -y mingw-w64 
+        sudo apt install --quiet -y mingw-w64
     - name: Build V
       run: make -j4
     - name: v.c can be compiled
