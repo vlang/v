@@ -76,7 +76,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 		mut impl_fn_name := if is_live_wrap { 'impl_live_${name}' } else { name }
 		g.last_fn_c_name = impl_fn_name
-		type_name := g.typ(it.return_type)
+		type_name := g.type_name(it.return_type)
 		//
 		if is_live_wrap {
 			if is_livemain {
@@ -215,14 +215,14 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 	for i, arg in args {
 		caname := c_name(arg.name)
 		arg_type_sym := g.table.get_type_symbol(arg.typ)
-		mut arg_type_name := g.typ(arg.typ) // arg_type_sym.name.replace('.', '__')
+		mut arg_type_name := g.type_name(arg.typ) // arg_type_sym.name.replace('.', '__')
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
 			varg_type_str := int(arg.typ).str()
 			if varg_type_str !in g.variadic_args {
 				g.variadic_args[varg_type_str] = 0
 			}
-			arg_type_name = 'varg_' + g.typ(arg.typ).replace('*', '_ptr')
+			arg_type_name = 'varg_' + g.type_name(arg.typ).replace('*', '_ptr')
 		}
 		if arg_type_sym.kind == .function {
 			info := arg_type_sym.info as table.FnType
@@ -233,8 +233,8 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 				fargs << caname
 				fargtypes << arg_type_name
 			} else {
-				g.write('${g.typ(func.return_type)} (*$caname)(')
-				g.definitions.write('${g.typ(func.return_type)} (*$caname)(')
+				g.write('${g.type_name(func.return_type)} (*$caname)(')
+				g.definitions.write('${g.type_name(func.return_type)} (*$caname)(')
 				g.fn_args(func.args, func.is_variadic)
 				g.write(')')
 				g.definitions.write(')')
@@ -274,7 +274,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	gen_or := !g.is_assign_rhs && node.or_block.stmts.len > 0
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
-		styp := g.typ(node.return_type)
+		styp := g.type_name(node.return_type)
 		g.write('$styp $tmp_opt = ')
 	}
 	if node.is_method {
@@ -293,7 +293,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		verror('method receiver type is 0, this means there are some uchecked exprs')
 	}
 	// mut receiver_type_name := g.cc_type(node.receiver_type)
-	//mut receiver_type_name := g.typ(node.receiver_type)
+	//mut receiver_type_name := g.type_name(node.receiver_type)
 	typ_sym := g.table.get_type_symbol(node.receiver_type)
 	mut receiver_type_name := typ_sym.name.replace('.', '__')
 	if typ_sym.kind == .interface_ {
@@ -321,7 +321,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		return
 	}
 	if node.name == 'str' {
-		mut styp := g.typ(node.receiver_type)
+		mut styp := g.type_name(node.receiver_type)
 		if node.receiver_type.is_ptr() {
 			styp = styp.replace('*', '')
 		}
@@ -341,14 +341,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// `array_byte_clone` => `array_clone`
 		receiver_type_name = 'array'
 		if node.name in ['last', 'first'] {
-			return_type_str := g.typ(node.return_type)
+			return_type_str := g.type_name(node.return_type)
 			g.write('*($return_type_str*)')
 		}
 	}
 	name := '${receiver_type_name}_$node.name'.replace('.', '__')
 	// if node.receiver_type != 0 {
-	// g.write('/*${g.typ(node.receiver_type)}*/')
-	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
+	// g.write('/*${g.type_name(node.receiver_type)}*/')
+	// g.write('/*expr_type=${g.type_name(node.left_type)} rec type=${g.type_name(node.receiver_type)}*/')
 	// }
 	g.write('${name}(')
 	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
@@ -444,7 +444,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	*/
 	if is_print && node.args[0].typ != table.string_type {
 		typ := node.args[0].typ
-		mut styp := g.typ(typ)
+		mut styp := g.type_name(typ)
 		sym := g.table.get_type_symbol(typ)
 		if typ.is_ptr() {
 			styp = styp.replace('*', '')
@@ -553,8 +553,8 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 				// Cast a type to interface
 				// `foo(dog)` => `foo(I_Dog_to_Animal(dog))`
 				exp_sym := g.table.get_type_symbol(expected_types[i])
-				// exp_styp := g.typ(expected_types[arg_no]) // g.table.get_type_symbol(expected_types[arg_no])
-				// styp := g.typ(arg.typ) // g.table.get_type_symbol(arg.typ)
+				// exp_styp := g.type_name(expected_types[arg_no]) // g.table.get_type_symbol(expected_types[arg_no])
+				// styp := g.type_name(arg.typ) // g.table.get_type_symbol(arg.typ)
 				if exp_sym.kind == .interface_ {
 					g.interface_call(arg.typ, expected_types[i])
 					is_interface = true
@@ -578,7 +578,7 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 	arg_nr := expected_types.len - 1
 	if gen_vargs {
 		varg_type := expected_types[expected_types.len - 1]
-		struct_name := 'varg_' + g.typ(varg_type).replace('*', '_ptr')
+		struct_name := 'varg_' + g.type_name(varg_type).replace('*', '_ptr')
 		variadic_count := args.len - arg_nr
 		varg_type_str := int(varg_type).str()
 		if variadic_count > g.variadic_args[varg_type_str] {

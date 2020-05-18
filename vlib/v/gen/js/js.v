@@ -185,7 +185,7 @@ pub fn (g JsGen) hashes() string {
 
 
 // V type to JS type
-pub fn (mut g JsGen) typ(t table.Type) string {
+pub fn (mut g JsGen) type_name(t table.Type) string {
 	sym := g.table.get_type_symbol(t)
 	mut styp := sym.name.replace('.', '__')
 	if styp.starts_with('JS__') {
@@ -422,7 +422,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write(')')
 		}
 		ast.EnumVal {
-			styp := g.typ(it.typ)
+			styp := g.type_name(it.typ)
 			g.write('${styp}.${it.val}')
 		}
 		ast.FloatLiteral {
@@ -586,7 +586,7 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 		stmt.write('const [')
 		for i, ident in it.left {
 			ident_var_info := ident.var_info()
-			styp := g.typ(ident_var_info.typ)
+			styp := g.type_name(ident_var_info.typ)
 			jsdoc.write(styp)
 
 			stmt.write(js_name(ident.name))
@@ -608,7 +608,7 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 		for i, ident in it.left {
 			val := it.right[i]
 			ident_var_info := ident.var_info()
-			mut styp := g.typ(ident_var_info.typ)
+			mut styp := g.type_name(ident_var_info.typ)
 
 			match val {
 				ast.EnumVal {
@@ -667,7 +667,7 @@ fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
 		g.expr(field.expr)
 		val := g.out.after(pos)
 		g.out.go_back(val.len)
-		typ := g.typ(field.typ)
+		typ := g.type_name(field.typ)
 		g.constants.write('\t')
 		g.constants.writeln(g.doc.gen_typ(typ, field.name))
 		g.constants.write('\t')
@@ -762,7 +762,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 			name = util.replace_op(name)
 		}
 
-		// type_name := g.typ(it.return_type)
+		// type_name := g.type_name(it.return_type)
 
 		// generate jsdoc for the function
 		g.writeln(g.doc.gen_fn(it))
@@ -842,7 +842,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 	} else if it.kind == .array || it.cond_type.flag_is(.variadic) {
 		// `for num in nums {`
 		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
-		// styp := g.typ(it.val_type)
+		// styp := g.type_name(it.val_type)
 		g.inside_loop = true
 		g.write('for (let $i = 0; $i < ')
 		g.expr(it.cond)
@@ -855,8 +855,8 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.writeln('}')
 	} else if it.kind == .map {
 		// `for key, val in map[string]int {`
-		// key_styp := g.typ(it.key_type)
-		// val_styp := g.typ(it.val_type)
+		// key_styp := g.type_name(it.key_type)
+		// val_styp := g.type_name(it.val_type)
 		key := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
 		g.write('for (let [$key, $it.val_var] of ')
 		g.expr(it.cond)

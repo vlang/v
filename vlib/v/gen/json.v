@@ -21,7 +21,7 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	mut dec := strings.new_builder(100)
 	mut enc := strings.new_builder(100)
 	sym := g.table.get_type_symbol(typ)
-	styp := g.typ(typ)
+	styp := g.type_name(typ)
 	if sym.name in ['int', 'string', 'bool'] {
 		return
 	}
@@ -80,7 +80,7 @@ cJSON* ${enc_fn_name}($styp val) {
 					break
 				}
 			}
-			field_type := g.typ(field.typ)
+			field_type := g.type_name(field.typ)
 			enc_name := js_enc_name(field_type)
 			if 'raw' in field.attrs {
 				dec.writeln(' res . $field.name = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
@@ -123,7 +123,7 @@ fn is_js_prim(typ string) bool {
 }
 
 fn (mut g Gen) decode_array(value_type table.Type) string {
-	styp := g.typ(value_type)
+	styp := g.type_name(value_type)
 	fn_name := js_dec_name(styp)
 	// If we have `[]Profile`, have to register a Profile en(de)coder first
 	g.gen_json_for_type(value_type)
@@ -145,7 +145,7 @@ $s
 }
 
 fn (mut g Gen) encode_array(value_type table.Type) string {
-	styp := g.typ(value_type)
+	styp := g.type_name(value_type)
 	fn_name := js_enc_name(styp)
 	return '
 o = cJSON_CreateArray();

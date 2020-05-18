@@ -56,7 +56,7 @@ fn (mut d JsDoc) gen_ctor(fields []ast.StructField) string {
 	d.writeln('/**')
 	d.write('* @param {{')
 	for i, field in fields {
-		d.write('$field.name: ${d.gen.typ(field.typ)}')
+		d.write('$field.name: ${d.gen.type_name(field.typ)}')
 		if i < fields.len - 1 {
 			d.write(', ')
 		}
@@ -69,13 +69,13 @@ fn (mut d JsDoc) gen_ctor(fields []ast.StructField) string {
 
 fn (mut d JsDoc) gen_fn(it ast.FnDecl) string {
 	d.reset()
-	type_name := d.gen.typ(it.return_type)
+	type_name := d.gen.type_name(it.return_type)
 	d.writeln('/**')
 	for i, arg in it.args {
 		if it.is_method && i == 0 {
 			continue
 		}
-		arg_type_name := d.gen.typ(arg.typ)
+		arg_type_name := d.gen.type_name(arg.typ)
 		is_varg := i == it.args.len - 1 && it.is_variadic
 		name := js_name(arg.name)
 		if is_varg {
