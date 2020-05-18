@@ -53,8 +53,8 @@ fn test_assign_multi_expr() {
 	assert f == [13]
 
 	// test with first value `literal expr` and statement
+	awesome := 'awesome'
 	g, h, i := if true {
-		awesome := 'awesome'
 		1 + val1, awesome, [13]
 	} else {
 		0, 'bad', [0]
