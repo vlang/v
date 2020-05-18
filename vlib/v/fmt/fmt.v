@@ -448,7 +448,8 @@ fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.write(strings.repeat(` `, max - field.name.len))
 		f.write(f.type_to_str(field.typ))
 		if field.has_default_expr {
-			f.write(' = ${field.default_expr.str()}')
+			f.write(' = ')
+			f.expr(field.default_expr)
 		}
 		// f.write('// $field.pos.line_nr')
 		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
@@ -1053,7 +1054,7 @@ fn (mut f Fmt) struct_init(it ast.StructInit) {
 	if it.fields.len == 0 {
 		// `Foo{}` on one line if there are no fields
 		f.write('$name{}')
-	} else if it.fields.len == 0 {
+	} else if it.is_short {
 		// `Foo{1,2,3}` (short syntax )
 		// if name != '' {
 		f.write('$name{')
