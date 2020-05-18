@@ -448,7 +448,8 @@ fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.write(strings.repeat(` `, max - field.name.len))
 		f.write(f.type_to_str(field.typ))
 		if field.has_default_expr {
-			f.write(' = ${field.default_expr.str()}')
+			f.write(' = ')
+			f.expr(field.default_expr)
 		}
 		// f.write('// $field.pos.line_nr')
 		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
