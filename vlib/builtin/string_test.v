@@ -463,6 +463,9 @@ fn test_all_after() {
 	assert s.all_after('fn ') == 'hello'
 	assert s.all_after('test') == s
 	assert s.all_after('') == s
+	assert s.after('e') == 'llo'
+	x := s.after('e')
+	assert x == 'llo'
 }
 
 fn test_reverse() {
