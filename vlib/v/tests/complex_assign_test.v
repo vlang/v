@@ -97,7 +97,7 @@ fn test_assign_multi_expr() {
 
 	// test assign to existing variables
 	q, r, s = if false {
-		1 + 1, 'awe' + 'some', { val3 | name: 'incorrect' }
+		0, '0', Object {}
 	} else {
 		5, '55', { val3 | value: 555 }
 	}
