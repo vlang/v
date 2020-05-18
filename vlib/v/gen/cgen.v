@@ -314,7 +314,7 @@ fn (mut g Gen) typ(t table.Type) string {
 fn (g &Gen) base_type(t table.Type) string {
 	mut styp := g.cc_type(t)
 	nr_muls := t.nr_muls()
-	if nr_muls > 0 {
+	if nr_muls > 0 && !(t.idx() in [ table.byteptr_type_idx ]) {
 		styp += strings.repeat(`*`, nr_muls)
 	}
 	return styp
