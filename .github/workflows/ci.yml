@@ -286,20 +286,22 @@ jobs:
       run: |
         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
         sudo apt-get update
-        sudo apt install --quiet -y mingw-w64
+        sudo apt install --quiet -y mingw-w64 wine-stable winetricks
     - name: Build V
       run: make -j4
-    - name: v.c can be compiled
+    - name: v.c can be compiled and run
       run: |
         ./v -os cross -o /tmp/v.c cmd/v
-        cc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm
+        gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm
         ls -lart v_from_vc
-    - name: v_win.c can be compiled
+        ./v_from_vc version
+    - name: v_win.c can be compiled and run
       run: |
         ./v -os windows -o /tmp/v_win.c cmd/v
         x86_64-w64-mingw32-gcc  /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
         ls -lart v_from_vc.exe
-
+        winetricks nocrashdialog
+        wine v_from_vc.exe version
 
 
   ubuntu-c-plus-plus:
