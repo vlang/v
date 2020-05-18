@@ -129,6 +129,14 @@ pub fn parse_text(path_name string, text string, b_table &table.Table, comments_
 	}
 }
 
+pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+	// println('parse_file("$path")')
+	text := os.read_file(path) or {
+		panic(err)
+	}
+	return parse_text(path, text, b_table, comments_mode, pref, global_scope)
+}
+
 /*
 struct Queue {
 mut:
