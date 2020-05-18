@@ -219,7 +219,7 @@ jobs:
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
-        .\.github\workflows\windows-install-sdl.bat
+#       .\.github\workflows\windows-install-sdl.bat
     - name: Fixed tests
       run: |
         .\v.exe test-fixed
@@ -251,7 +251,7 @@ jobs:
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
-        .\.github\workflows\windows-install-sdl.bat
+#       .\.github\workflows\windows-install-sdl.bat
     - name: Fixed tests
       run: |
         ./v -cg cmd\tools\vtest-fixed.v
