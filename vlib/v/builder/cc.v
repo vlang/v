@@ -487,6 +487,14 @@ fn (mut c Builder) cc_windows_cross() {
 	cflags := c.get_os_cflags()
 	// -I flags
 	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_before_target_msvc() } else { cflags.c_options_before_target() }
+	mut optimization_options := ''
+	mut debug_options := ''
+	if c.pref.is_prod {
+		optimization_options = if c.pref.ccompiler == 'msvc' { '' } else { ' -O3 -fno-strict-aliasing -flto ' }
+	}
+	if c.pref.is_debug {
+		debug_options =  if c.pref.ccompiler == 'msvc' { '' } else { ' -g3 -no-pie ' }
+	}
 	mut libs := ''
 	if false && c.pref.build_mode == .default_mode {
 		libs = '"${pref.default_module_path}/vlib/builtin.o"'
@@ -522,9 +530,9 @@ fn (mut c Builder) cc_windows_cross() {
 		panic('your platform is not supported yet')
 	}
 	mut cmd := 'x86_64-w64-mingw32-gcc'
-	cmd += ' -std=gnu11 $args -municode'
+	cmd += ' $optimization_options $debug_options -std=gnu11 $args -municode'
 	//cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
-	if c.pref.is_verbose {
+	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)
 	}
 	if os.system(cmd) != 0 {
