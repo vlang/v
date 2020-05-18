@@ -138,7 +138,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	}
 	// Infix
 	for precedence < p.tok.precedence() {
-		if p.tok.kind.is_assign() {
+		if p.tok.kind.is_assign() && !p.is_stmt_ident {
 			node = p.assign_expr(node)
 		} else if p.tok.kind == .dot {
 			node = p.dot_expr(node)

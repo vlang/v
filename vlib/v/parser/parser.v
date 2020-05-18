@@ -448,7 +448,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				return p.assign_stmt()
 			} else if p.peek_tok.kind == .comma {
 				// `a, b ...`
-				return p.parse_comma_separated()
+				return p.parse_multi_expr()
 			} else if p.peek_tok.kind == .colon {
 				// `label:`
 				name := p.check_name()
@@ -462,11 +462,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				[.rcbr, .eof] {
 				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 			}
-			epos := p.tok.position()
-			return ast.ExprStmt{
-				expr: p.expr(0)
-				pos: epos
-			}
+			return p.parse_multi_expr()
 		}
 		.comment {
 			return p.comment()
@@ -527,8 +523,9 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			p.error_with_pos('const can only be defined at the top level (outside of functions)',
 				p.tok.position())
 		}
+		// literals, 'if', etc. in here
 		else {
-			return p.parse_comma_separated()
+			return p.parse_multi_expr()
 		}
 	}
 }
@@ -644,39 +641,47 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	}
 }
 
-fn (mut p Parser) parse_comma_separated() ast.Stmt {
+fn (mut p Parser) parse_multi_expr() ast.Stmt {
 	// in here might be 1) multi-expr 2) multi-assign
 	// 1, a, c ... }       // multi-expression
 	// a, mut b ... :=/=   // multi-assign
 	// collect things upto hard boundaries
 	mut collected := []ast.Expr{}
-	mut op := p.tok.kind
-	for op !in [.rcbr, .decl_assign, .assign] {
-		if op == .name {
-			collected << p.name_expr()
-		} else {
-			collected << p.expr(0)
-		}
+	for {
+		collected << p.expr(0)
 		if p.tok.kind == .comma {
 			p.next()
 		} else {
 			break
 		}
-		op = p.tok.kind
 	}
-	is_assignment := p.tok.kind in [.decl_assign, .assign]
-	if is_assignment {
+	// TODO: Try to merge assign_expr and assign_stmt
+	if p.tok.kind == .decl_assign || (p.tok.kind == .assign && collected.len > 1) {
 		mut idents := []ast.Ident{}
 		for c in collected {
 			idents << c as ast.Ident
 		}
 		return p.partial_assign_stmt(idents)
+	} else if p.tok.kind.is_assign() {
+		epos := p.tok.position()
+		if collected.len == 1 {
+			return ast.ExprStmt {
+				expr: p.assign_expr(collected[0])
+				pos: epos
+			}
+		} else {
+			return ast.ExprStmt {
+				expr: p.assign_expr(ast.ConcatExpr{
+					vals: collected
+				})
+				pos: epos
+			}
+		}
 	} else {
 		if collected.len == 1 {
-			epos := p.tok.position()
 			return ast.ExprStmt{
 				expr: collected[0]
-				pos: epos
+				pos: p.tok.position()
 			}
 		}
 		return ast.ExprStmt{
