@@ -1054,7 +1054,7 @@ fn (mut f Fmt) struct_init(it ast.StructInit) {
 	if it.fields.len == 0 {
 		// `Foo{}` on one line if there are no fields
 		f.write('$name{}')
-	} else if it.fields.len == 0 {
+	} else if it.is_short {
 		// `Foo{1,2,3}` (short syntax )
 		// if name != '' {
 		f.write('$name{')
