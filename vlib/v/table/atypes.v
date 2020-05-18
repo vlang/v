@@ -640,10 +640,9 @@ pub fn (table &Table) type_to_str(t Type) string {
 		res += ')'
 		return res
 	}
-	mut res := sym.name
-	if sym.kind == .array {
+	if sym.kind == .array || 'array_' in res {
 		res = res.replace('array_', '[]')
-	} else if sym.kind == .map {
+	} else if sym.kind == .map || 'map_string_' in res {
 		res = res.replace('map_string_', 'map[string]')
 	}
 	// mod.submod.submod2.Type => submod2.Type
