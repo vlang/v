@@ -1,11 +1,13 @@
 module doc
 
 import v.ast
+import v.fmt
 import v.parser
 import v.pref
 import v.table
 import v.token
 import v.util
+import strings
 import os
 import time
 
@@ -65,57 +67,24 @@ fn convert_pos(file_path string, pos token.Position) DocPos {
 }
 
 pub fn (d Doc) get_signature(stmt ast.Stmt) string {
+	mut f := fmt.Fmt{
+		out: strings.new_builder(1000)
+		out_imports: strings.new_builder(200)
+		table: d.table
+		indent: 0
+		is_debug: false
+	}
+
 	match stmt {
 		ast.Module {
 			return 'module $it.name'
-		}
-		ast.StructDecl {
-			name := it.name[d.head_node.name.len+1..]
-			mut sig := 'struct $name {'
-
-			if it.is_pub {
-				sig = 'pub ' + sig
-			}
-
-			for field in it.fields {
-				field_typ := d.table.get_type_name(field.typ)
-				mut fi_sig := '$field.name $field_typ'
-
-				// TODO: Add default expressions
-				// if field.has_default_expr {
-				// 	fi_sig := 
-				// }
-
-				sig = sig + '\n    $fi_sig'
-			}
-
-			sig = sig + if it.fields.len == 0 { '}' } else { '\n}' }
-			return sig
-		}
-		ast.EnumDecl {
-			name := it.name[d.head_node.name.len+1..]
-			mut sig := 'enum $name {'
-			if it.is_pub {
-				sig = 'pub ' + sig
-			}
-
-			for field in it.fields {
-				mut fi_sig := '$field.name'
-
-				if field.has_expr {
-					fi_sig = fi_sig + ' = ' + field.expr.str()
-				}
-				
-				sig = sig + '\n    $fi_sig'
-			}
-			sig = sig + if it.fields.len == 0 { '}' } else { '\n}' }
-			return sig
 		}
 		ast.FnDecl {
 			return it.str(d.table)
 		}
 		else {
-			return stmt.str()
+			f.stmt(stmt)
+			return f.out.str().trim_space()
 		}
 	}
 }
