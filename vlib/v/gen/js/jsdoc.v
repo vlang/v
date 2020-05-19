@@ -73,6 +73,9 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) string {
 	d.reset()
 	type_name := d.gen.typ(it.return_type)
 	d.writeln('/**')
+	if it.is_deprecated {
+		d.writeln('* @deprecated')
+	}
 	for i, arg in it.args {
 		if it.is_method && i == 0 {
 			continue
