@@ -64,8 +64,10 @@ const (
 
 // c_headers
 typedef int (*qsort_callback_func)(const void*, const void*);
+//#ifndef __APPLE__
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
+//#endif
 
 #ifdef __cplusplus
 #   include <utility>
@@ -77,12 +79,12 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #ifndef _WIN32
 #if defined __has_include
 #if __has_include (<execinfo.h>)
-#	include <execinfo.h>
+#include <execinfo.h>
 #else
 // Most probably musl OR __ANDROID__ ...
 int backtrace (void **__array, int __size) { return 0; }
 char **backtrace_symbols (void *const *__array, int __size){ return 0; }
-void backtrace_symbols_fd (void *const *__array, int __size, int __fd){}	
+void backtrace_symbols_fd (void *const *__array, int __size, int __fd){}
 #endif
 #endif
 #endif
