@@ -95,9 +95,9 @@ pub fn (mut b Builder) parse_imports() {
 pub fn (mut b Builder) resolve_deps() {
 	graph := b.import_graph()
 	deps_resolved := graph.resolve()
-	is_main_to_builtin := deps_resolved.nodes.len == 1 && deps_resolved.nodes[0].name == 'main' && deps_resolved.nodes[0].deps.len == 1 && deps_resolved.nodes[0].deps[0] == 'builtin'
-	if !deps_resolved.acyclic && !is_main_to_builtin {
-		eprintln('warning: import cycle detected between the following modules: \n' + deps_resolved.display_cycles())
+	cycles := deps_resolved.display_cycles()
+	if cycles.len > 1 {
+		eprintln('warning: import cycle detected between the following modules: \n' + cycles)
 		// TODO: error, when v itself does not have v.table -> v.ast -> v.table cycles anymore
 		return
 	}
