@@ -73,6 +73,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 pub fn parse_text(path_name string, text string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
 	mut stmts := []ast.Stmt{}
 	mut p := Parser{
+		file_name: path_name,
 		scanner: scanner.new_scanner(text, comments_mode),
 		table: b_table,
 		pref: pref,
