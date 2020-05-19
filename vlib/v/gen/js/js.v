@@ -191,6 +191,11 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 	if styp.starts_with('JS__') {
 		styp = styp[4..]
 	}
+	// 'multi_return_int_int' => '[number, number]'
+	if styp.starts_with('multi_return_') {
+		tokens := styp.replace('multi_return_', '').split('_')
+		return '[' + tokens.map(g.to_js_typ(it)).join(', ') + ']'
+	}
 	return g.to_js_typ(styp)
 }
 
