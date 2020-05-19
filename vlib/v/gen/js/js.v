@@ -154,7 +154,7 @@ pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
 			ast.FnDecl {
 				if it.is_method {
 					// Found struct method, store it to be generated along with the class.
-					class_name :=  g.table.get_type_symbol(it.receiver.typ).name
+					class_name := g.table.get_type_name(it.receiver.typ)
 					// Workaround until `map[key] << val` works.
 					mut arr := g.method_fn_decls[class_name]
 					arr << stmt
@@ -643,15 +643,12 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			ident_var_info := ident.var_info()
 			mut styp := g.typ(ident_var_info.typ)
 
-			match val {
-				ast.EnumVal {
-					// we want the type of the enum value not the enum
-					styp = 'number'
-				}
-				ast.StructInit {
-					// no need to print jsdoc for structs
-					styp = ''
-				} else {}
+			if val is ast.EnumVal {
+				// we want the type of the enum value not the enum
+				styp = 'number'
+			} else if val is ast.StructInit {
+				// no need to print jsdoc for structs
+				styp = ''
 			}
 
 			if !g.inside_loop && styp.len > 0 {
@@ -755,16 +752,8 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 fn (mut g JsGen) gen_expr_stmt(it ast.ExprStmt) {
 	g.expr(it.expr)
 	expr := it.expr
-	match expr {
-		ast.IfExpr {
-			// no ; after an if expression
-		}
-		else {
-			if !g.inside_ternary {
-				g.writeln(';')
-			}
-		}
-	}
+	if expr is ast.IfExpr { } // no ; after an if expression
+	else if !g.inside_ternary { g.writeln(';') }
 }
 
 fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
@@ -1006,14 +995,12 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 	g.write('return ')
 
-	if g.fn_decl.name == 'main' {
-		// we can't return anything in main
-		g.writeln('void;')
-		return
-	}
-
-	// multiple returns
-	if it.exprs.len > 1 {
+	if it.exprs.len == 0 {
+		// Returns nothing
+	} else if it.exprs.len == 1 {
+		g.expr(it.exprs[0])
+	} else {
+		// Multi return
 		g.write('[')
 		for i, expr in it.exprs {
 			g.expr(expr)
@@ -1022,9 +1009,6 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 			}
 		}
 		g.write(']')
-	}
-	else {
-		g.expr(it.exprs[0])
 	}
 	g.writeln(';')
 }
@@ -1055,18 +1039,10 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 
 	fns := g.method_fn_decls[node.name]
 	for cfn in fns {
-		// TODO: Fix this hack for type conversion
-		// Directly converting to FnDecl gives
-		// error: conversion to non-scalar type requested
-		match cfn {
-			ast.FnDecl {
-				g.gen_method_decl(it)
-			}
-			else {}
-		}
-
+		// TODO: Move cast to the entire array whenever it's possible
+		it := cfn as ast.FnDecl
+		g.gen_method_decl(it)
 	}
-
 	g.dec_indent()
 	g.writeln('}')
 
@@ -1170,11 +1146,7 @@ fn verror(s string) {
 fn fn_has_go(it ast.FnDecl) bool {
 	mut has_go := false
 	for stmt in it.stmts {
-		match stmt {
-			ast.GoStmt {
-				has_go = true
-			} else {}
-		}
+		if stmt is ast.GoStmt { has_go = true }
 	}
 	return has_go
 }
