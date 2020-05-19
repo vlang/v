@@ -54,6 +54,9 @@ fn C.fseek() int
 fn C.fopen() voidptr
 
 
+fn C.fileno(voidptr) int
+
+
 fn C.fwrite() int
 
 
