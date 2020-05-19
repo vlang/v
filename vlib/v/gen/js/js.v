@@ -244,6 +244,14 @@ fn (mut g JsGen) to_js_typ(typ string) string {
 			}
 		}
 	}
+
+	for i, v in styp.split('.') {
+		if i == 0 {
+			styp = v
+			continue
+		}
+		styp += '["$v"]'
+	}
 	return styp
 }
 
