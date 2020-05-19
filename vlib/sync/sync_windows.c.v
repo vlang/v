@@ -41,7 +41,7 @@ pub fn new_mutex() &Mutex {
 	return sm
 }
 
-pub fn (m mut Mutex) lock() {
+pub fn (mut m Mutex) lock() {
 	// if mutex handle not initalized
 	if isnil(m.mx) {
 		m.mx = C.CreateMutex(0, false, 0)
@@ -68,7 +68,7 @@ pub fn (m mut Mutex) lock() {
 	}
 }
 
-pub fn (m mut Mutex) unlock() {
+pub fn (mut m Mutex) unlock() {
 	if m.state == .waiting {
 		if C.ReleaseMutex(m.mx) {
 			m.state = .broken
@@ -78,7 +78,7 @@ pub fn (m mut Mutex) unlock() {
 	m.state = .released
 }
 
-pub fn (m mut Mutex) destroy() {
+pub fn (mut m Mutex) destroy() {
 	if m.state == .waiting {
 		m.unlock() // unlock mutex before destroying
 	}

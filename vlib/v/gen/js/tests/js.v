@@ -1,3 +1,5 @@
+import hello as greeting
+
 fn JS.alert(arg string)
 fn JS.console.log(arg string)
 
@@ -60,6 +62,18 @@ fn main() {
     }
 
     go async(0, "hello")
+
+    fn_in_var := fn (number int) {
+        JS.console.log("number: $number")
+    }
+
+    anon_consumer(greeting.excited(), fn (message string) {
+        JS.console.log(message)
+    })
+}
+
+fn anon_consumer (greeting string, anon fn(message string)) {
+    anon(greeting)
 }
 
 fn async(num int, def string) {}

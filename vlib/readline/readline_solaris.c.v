@@ -15,7 +15,7 @@ import os
 
 // Only use standard os.get_line
 // Need implementation for readline capabilities
-pub fn (r mut Readline) read_line_utf8(prompt string) ?ustring {
+pub fn (mut r Readline) read_line_utf8(prompt string) ?ustring {
   r.current = ''.ustring()
   r.cursor = 0
   r.prompt = prompt
@@ -43,7 +43,7 @@ pub fn (r mut Readline) read_line_utf8(prompt string) ?ustring {
 }
 
 // Returns the string from the utf8 ustring
-pub fn (r mut Readline) read_line(prompt string) ?string {
+pub fn (mut r Readline) read_line(prompt string) ?string {
   s := r.read_line_utf8(prompt) or {
     return error(err)
   }

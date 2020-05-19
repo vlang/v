@@ -47,17 +47,17 @@ pub fn (a array) repeat(nr_repeats int) array {
 	return a
 }
 
-pub fn (a mut array) sort_with_compare(compare voidptr) {
+pub fn (mut a array) sort_with_compare(compare voidptr) {
 }
 
-pub fn (a mut array) insert(i int, val voidptr) {
+pub fn (mut a array) insert(i int, val voidptr) {
 }
 
-pub fn (a mut array) prepend(val voidptr) {
+pub fn (mut a array) prepend(val voidptr) {
 	a.insert(0, val)
 }
 
-pub fn (a mut array) delete_elm(idx int) {
+pub fn (mut a array) delete_elm(idx int) {
 }
 
 /*
@@ -132,7 +132,7 @@ pub fn (b []byte) hex() string {
 	return 'sdf'
 }
 
-pub fn (arr mut array) push_many(val voidptr, size int) {
+pub fn (mut arr array) push_many(val voidptr, size int) {
 }
 
 pub fn free(voidptr) {

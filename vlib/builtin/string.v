@@ -122,8 +122,8 @@ fn (a string) clone_static() string {
 
 pub fn (a string) clone() string {
 	mut b := string{
-		len: a.len
 		str: malloc(a.len + 1)
+		len: a.len
 	}
 	for i in 0..a.len {
 		b.str[i] = a.str[i]
@@ -222,7 +222,7 @@ fn compare_rep_index(a, b &RepIndex) int {
 }
 
 
-fn (a mut []RepIndex) sort() {
+fn (mut a []RepIndex) sort() {
 	a.sort_with_compare(compare_rep_index)
 }
 
@@ -399,8 +399,8 @@ fn (s string) ge(a string) bool {
 fn (s string) add(a string) string {
 	new_len := a.len + s.len
 	mut res := string{
-		len: new_len
 		str: malloc(new_len + 1)
+		len: new_len
 	}
 	for j in 0..s.len {
 		res.str[j] = s.str[j]
@@ -537,8 +537,8 @@ pub fn (s string) substr(start, end int) string {
 	}
 	len := end - start
 	mut res := string{
-		len: len
 		str: malloc(len + 1)
+		len: len
 	}
 	for i in 0..len {
 		res.str[i] = s.str[start + i]
@@ -969,15 +969,15 @@ fn compare_lower_strings(a, b &string) int {
 	return compare_strings(aa, bb)
 }
 
-pub fn (s mut []string) sort() {
+pub fn (mut s []string) sort() {
 	s.sort_with_compare(compare_strings)
 }
 
-pub fn (s mut []string) sort_ignore_case() {
+pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
 }
 
-pub fn (s mut []string) sort_by_len() {
+pub fn (mut s []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
 
@@ -1224,6 +1224,21 @@ pub fn (s string) all_after(dot string) string {
 
 pub fn (s string) after(dot string) string { return s.all_after(dot) }
 
+pub fn (s string) after_char(dot byte) string {
+	mut pos := 0
+	for i, c in s {
+		if c == dot {
+			pos = i
+			break
+		}
+	}
+	if pos == 0 {
+		return s
+	}
+	return s.right(pos+1)
+
+}
+
 // fn (s []string) substr(a, b int) string {
 // return join_strings(s.slice_fast(a, b))
 // }
@@ -1269,8 +1284,8 @@ pub fn (s string) reverse() string {
 		return s
 	}
 	mut res := string{
-		len: s.len
 		str: malloc(s.len)
+		len: s.len
 	}
 	for i := s.len - 1; i >= 0; i-- {
 		res.str[s.len - i - 1] = s[i]

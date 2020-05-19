@@ -190,7 +190,7 @@ fn shift_right_128(v Uint128, shift int) u64 {
 fn mul_shift_64(m u64, mul Uint128, shift int) u64 {
 	hihi, hilo := bits.mul_64(m, mul.hi)
 	lohi, _    := bits.mul_64(m, mul.lo)
-	mut sum := Uint128{hi: hihi, lo: lohi + hilo}
+	mut sum := Uint128{lo: lohi + hilo,hi: hihi}
 	if sum.lo < lohi {
 		sum.hi++ // overflow
 	}

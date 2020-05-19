@@ -23,7 +23,7 @@ pub fn new_connection(host, username, password, dbname string) ?Connection {
 	return Connection{ host, 0, username, password, dbname, 0, instance }
 }
 
-pub fn (conn mut Connection) connect() ?bool {
+pub fn (mut conn Connection) connect() ?bool {
 	mut instance := C.mysql_init(0)
 	if !isnil(conn.conn) {
 		instance = conn.conn

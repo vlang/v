@@ -18,8 +18,8 @@ import strings
 #flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
 #include <openssl/ssl.h>
-struct C.SSL {
-}
+
+struct C.ssl_st
 
 fn C.SSL_library_init()
 
@@ -69,7 +69,7 @@ fn C.SSL_set_tlsext_host_name() int
 fn C.BIO_puts()
 
 
-fn C.BIO_read()
+fn C.BIO_read() int
 
 
 fn C.BIO_free_all()
@@ -82,6 +82,10 @@ fn init() int {
 	C.SSL_library_init()
 	return 1
 }
+
+const (
+buf_size = 500  // 1536
+)
 
 fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	// ssl_method := C.SSLv23_method()
@@ -104,13 +108,14 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	res = C.BIO_set_conn_hostname(web, addr.str)
 	if res != 1 {
 	}
-	ssl := &C.SSL(0)
+	ssl := &C.ssl_st(0)
 	C.BIO_get_ssl(web, &ssl)
 	if isnil(ssl) {
 	}
 	preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4'
 	res = C.SSL_set_cipher_list(ssl, preferred_ciphers.str)
 	if res != 1 {
+		println('http: openssl: cipher failed')
 	}
 	res = C.SSL_set_tlsext_host_name(ssl, host_name.str)
 	res = C.BIO_do_connect(web)
@@ -121,17 +126,43 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	C.SSL_get_peer_certificate(ssl)
 	res = C.SSL_get_verify_result(ssl)
 	// /////
-	s := req.build_request_headers(method, host_name, path)
-	C.BIO_puts(web, s.str)
+	req_headers := req.build_request_headers(method, host_name, path)
+	C.BIO_puts(web, req_headers.str)
+	mut headers := strings.new_builder(100)
+	mut h := ''
+	mut headers_done := false
 	mut sb := strings.new_builder(100)
+	mut buff := [buf_size]byte
+	mut is_chunk_encoding := false
 	for {
-		buff := [1536]byte
-		len := int(C.BIO_read(web, buff, 1536))
-		if len > 0 {
-			sb.write(tos(buff, len))
-		}
-		else {
+		len := C.BIO_read(web, buff, buf_size)
+		if len <= 0 {
 			break
+		}
+		mut chunk := (tos(buff, len))
+		if !headers_done && chunk.contains('\r\n\r\n') {
+			headers_done = true
+			headers.write(chunk.all_before('\r\n'))
+			h = headers.str()
+			//println(h)
+			sb.write(chunk.after('\r\n'))
+			// TODO for some reason this can be missing from headers
+			is_chunk_encoding = true //h.contains('chunked')
+			//println(sb.str())
+			continue
+		}
+		// TODO clean this up
+		if is_chunk_encoding && len > 6 && ((buff[3] == 13 && buff[4] == 10) || (buff[2] ==13 && buff[3]==10)
+		|| (buff[4] == 13 && buff[5] == 10) ) {
+			chunk = chunk.after_char(10)
+		}
+		if chunk.len > 3 && chunk[chunk.len-2] == 13 && chunk[chunk.len-1] == 10 {
+			chunk = chunk[..chunk.len-2]
+		}
+		if headers_done {
+			sb.write(chunk)
+		} else {
+			headers.write(chunk)
 		}
 	}
 	if !isnil(web) {
@@ -140,6 +171,8 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	if !isnil(ctx) {
 		C.SSL_CTX_free(ctx)
 	}
-	return parse_response(sb.str())
+	body:= sb.str()
+	println(body)
+	return parse_response(h +'\r\n\r\n'+ body)
 }
 

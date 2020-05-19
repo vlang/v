@@ -575,6 +575,7 @@ pub:
 pub struct Alias {
 pub:
 	foo string
+	is_c bool
 }
 
 // NB: FExpr here is a actually an ast.Expr .
@@ -624,8 +625,12 @@ pub:
 
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
+	mut res := sym.name
 	if sym.kind == .multi_return {
-		mut res := '('
+		res = '('
+		if t.flag_is(.optional) {
+			res = '?' + res
+		}
 		mr_info := sym.info as MultiReturn
 		for i, typ in mr_info.types {
 			res += table.type_to_str(typ)
@@ -636,10 +641,9 @@ pub fn (table &Table) type_to_str(t Type) string {
 		res += ')'
 		return res
 	}
-	mut res := sym.name
-	if sym.kind == .array {
+	if sym.kind == .array || 'array_' in res {
 		res = res.replace('array_', '[]')
-	} else if sym.kind == .map {
+	} else if sym.kind == .map || 'map_string_' in res {
 		res = res.replace('map_string_', 'map[string]')
 	}
 	// mod.submod.submod2.Type => submod2.Type

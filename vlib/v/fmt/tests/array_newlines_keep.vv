@@ -11,4 +11,5 @@ fn main() {
 	]
 	x := []int{len: 10, cap: 100, init: 1}
 	_ := expected_flags
+	buf := [100]byte
 }

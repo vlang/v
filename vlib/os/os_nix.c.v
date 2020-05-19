@@ -84,6 +84,7 @@ pub fn open(path string) ?File {
   */
 	file := File{
 		cfile: C.fopen(charptr(path.str), 'rb')
+		fd: 0
 		opened: true
 	}
 	if isnil(file.cfile) {
@@ -119,6 +120,7 @@ pub fn create(path string) ?File {
   */
 	file := File{
 		cfile: C.fopen(charptr(path.str), 'wb')
+		fd: 0
 		opened: true
 	}
 	if isnil(file.cfile) {
@@ -128,12 +130,12 @@ pub fn create(path string) ?File {
 }
 
 /*
-pub fn (f mut File) fseek(pos, mode int) {
+pub fn (mut f File) fseek(pos, mode int) {
 }
 */
 
 
-pub fn (f mut File) write(s string) {
+pub fn (mut f File) write(s string) {
 	if !f.opened {
 		return
 	}
@@ -149,7 +151,7 @@ pub fn (f mut File) write(s string) {
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 }
 
-pub fn (f mut File) writeln(s string) {
+pub fn (mut f File) writeln(s string) {
 	if !f.opened {
 		return
 	}
@@ -207,7 +209,8 @@ pub fn exec(cmd string) ?Result {
 	buf := [4096]byte
 	mut res := strings.new_builder(1024)
 	for C.fgets(charptr(buf), 4096, f) != 0 {
-		res.write_bytes( buf, vstrlen(buf) )
+		bufbp := byteptr(buf)
+		res.write_bytes( bufbp, vstrlen(bufbp) )
 	}
 	soutput := res.str().trim_space()
 	//res.free()
@@ -216,8 +219,8 @@ pub fn exec(cmd string) ?Result {
 	// return error(res)
 	// }
 	return Result{
-		output: soutput
 		exit_code: exit_code
+		output: soutput
 	}
 }
 
@@ -237,7 +240,7 @@ pub fn get_error_msg(code int) string {
 // convert any value to []byte (LittleEndian) and write it
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
-pub fn (f mut File) write_bytes(data voidptr, size int) {
+pub fn (mut f File) write_bytes(data voidptr, size int) {
 /*
 	$if linux {
 		$if !android {
@@ -249,7 +252,7 @@ pub fn (f mut File) write_bytes(data voidptr, size int) {
 	C.fwrite(data, 1, size, f.cfile)
 }
 
-pub fn (f mut File) close() {
+pub fn (mut f File) close() {
 	if !f.opened {
 		return
 	}

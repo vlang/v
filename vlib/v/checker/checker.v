@@ -175,15 +175,44 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 	return has_main_fn
 }
 
+fn (mut c Checker) check_valid_snake_case(name, identifier string, pos token.Position) {
+	if name[0] == `_` {
+		c.error('$identifier `$name` cannot start with `_`', pos)
+	}
+	if util.contains_capital(name) {
+		c.error('$identifier `$name` cannot contain uppercase letters, use snake_case instead',
+			pos)
+	}
+}
+
+fn stripped_name(name string) string {
+	idx := name.last_index('.') or {
+		-1
+	}
+	return name[(idx + 1)..]
+}
+
+fn (mut c Checker) check_valid_pascal_case(name, identifier string, pos token.Position) {
+	stripped_name := stripped_name(name)
+	if !stripped_name[0].is_capital() {
+		c.error('$identifier `$name` must begin with capital letter', pos)
+	}
+}
+
 pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 	match node {
 		ast.AliasTypeDecl {
+			// TODO Replace `c.file.mod.name != 'time'` by `it.is_c` once available
+			if c.file.mod.name != 'time' {
+				c.check_valid_pascal_case(it.name, 'type alias', it.pos)
+			}
 			typ_sym := c.table.get_type_symbol(it.parent_type)
 			if typ_sym.kind == .placeholder {
 				c.error("type `$typ_sym.name` doesn't exist", it.pos)
 			}
 		}
 		ast.FnTypeDecl {
+			c.check_valid_pascal_case(it.name, 'fn type', it.pos)
 			typ_sym := c.table.get_type_symbol(it.typ)
 			fn_typ_info := typ_sym.info as table.FnType
 			fn_info := fn_typ_info.func
@@ -199,6 +228,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 			}
 		}
 		ast.SumTypeDecl {
+			c.check_valid_pascal_case(it.name, 'sum type', it.pos)
 			for typ in it.sub_types {
 				typ_sym := c.table.get_type_symbol(typ)
 				if typ_sym.kind == .placeholder {
@@ -209,8 +239,21 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 	}
 }
 
+pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
+	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
+	for method in decl.methods {
+		c.check_valid_snake_case(method.name, 'method name', method.pos)
+	}
+}
+
 pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
+	if !decl.is_c && !decl.is_js && !c.is_builtin_mod {
+		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
+	}
 	for i, field in decl.fields {
+		if !decl.is_c && !decl.is_js {
+			c.check_valid_snake_case(field.name, 'field name', field.pos)
+		}
 		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
 				c.error('field name `$field.name` duplicate', field.pos)
@@ -312,6 +355,9 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
+				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_number() {
+					c.error('ref', field.pos)
+				}
 				struct_init.fields[i].typ = expr_type
 				struct_init.fields[i].expected_type = info_field.typ
 			}
@@ -356,24 +402,26 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				.array {
 					right_sym := c.table.get_type_symbol(right.array_info().elem_type)
 					if left.kind != right_sym.kind {
-						c.error('the data type on the left of `in` does not match the array item type',
+						c.error('the data type on the left of `$infix_expr.op.str()` does not match the array item type',
 							infix_expr.pos)
 					}
 				}
 				.map {
 					key_sym := c.table.get_type_symbol(right.map_info().key_type)
 					if left.kind != key_sym.kind {
-						c.error('the data type on the left of `in` does not match the map key type',
+						c.error('the data type on the left of `$infix_expr.op.str()` does not match the map key type',
 							infix_expr.pos)
 					}
 				}
 				.string {
 					if left.kind != .string {
-						c.error('the data type on the left of `in` must be a string', infix_expr.pos)
+						c.error('the data type on the left of `$infix_expr.op.str()` must be a string',
+							infix_expr.pos)
 					}
 				}
 				else {
-					c.error('`in` can only be used with an array/map/string', infix_expr.pos)
+					c.error('`$infix_expr.op.str()` can only be used with an array/map/string',
+						infix_expr.pos)
 				}
 			}
 			return table.bool_type
@@ -448,12 +496,17 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
 			} else if !left.is_int() && right.is_int() {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
+			} else if left.kind == .f32 && right.kind == .f32 || left.kind == .f64 && right.kind ==
+				.f64 {
+				c.error('float modulo not allowed, use math.fmod() instead', infix_expr.left.position())
 			} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
 				!left.has_method(infix_expr.op.str()) {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
 			} else if right.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
 				!right.has_method(infix_expr.op.str()) {
 				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
+			} else if infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() == '0' {
+				c.error('modulo by zero', infix_expr.right.position())
 			}
 		}
 		else {}
@@ -825,6 +878,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				call_expr.pos)
 		}
 	}
+	if !f.is_pub && !f.is_c && !c.is_builtin_mod && !c.pref.is_test && f.mod != c.mod && f.name !=
+		'' && f.mod != '' {
+		c.warn('function `$f.name` is private. curmod=$c.mod fmod=$f.mod', call_expr.pos)
+	}
 	call_expr.return_type = f.return_type
 	if f.return_type == table.void_type && f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
@@ -1090,7 +1147,12 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 }
 
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
+	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
 	for i, field in decl.fields {
+		if util.contains_capital(field.name) {
+			c.error('field name `$field.name` cannot contain uppercase letters, use snake_case instead',
+				field.pos)
+		}
 		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
 				c.error('field name `$field.name` duplicate', field.pos)
@@ -1161,13 +1223,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		val_type := assign_stmt.right_types[i]
 		// check variable name for beginning with capital letter 'Abc'
 		is_decl := assign_stmt.op == .decl_assign
-		if is_decl && util.contains_capital(ident.name) {
-			c.error('variable names cannot contain uppercase letters, use snake_case instead',
-				ident.pos)
-		} else if is_decl && ident.kind != .blank_ident {
-			if ident.name.starts_with('__') {
-				c.error('variable names cannot start with `__`', ident.pos)
-			}
+		if is_decl && ident.name != '_' {
+			c.check_valid_snake_case(ident.name, 'variable name', ident.pos)
 		}
 		if assign_stmt.op == .decl_assign {
 			c.var_decl_name = ident.name
@@ -1381,6 +1438,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			mut field_names := []string{}
 			mut field_order := []int{}
 			for i, field in it.fields {
+				// TODO Check const name once the syntax is decided
 				if field.name in c.const_names {
 					c.error('field name `$field.name` duplicate', field.pos)
 				}
@@ -1429,32 +1487,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.check_expr_opt_call(it.expr, etype, false)
 		}
 		ast.FnDecl {
-			if it.is_method {
-				sym := c.table.get_type_symbol(it.receiver.typ)
-				if sym.kind == .interface_ {
-					c.error('interfaces cannot be used as method receiver', it.receiver_pos)
-				}
-				// if sym.has_method(it.name) {
-				// c.warn('duplicate method `$it.name`', it.pos)
-				// }
-			}
-			if !it.is_c {
-				// Make sure all types are valid
-				for arg in it.args {
-					sym := c.table.get_type_symbol(arg.typ)
-					if sym.kind == .placeholder {
-						c.error('unknown type `$sym.name`', it.pos)
-					}
-				}
-			}
-			c.expected_type = table.void_type
-			c.fn_return_type = it.return_type
-			c.stmts(it.stmts)
-			if !it.is_c && !it.is_js && !it.no_body && it.return_type != table.void_type &&
-				!c.returns && it.name !in ['panic', 'exit'] {
-				c.error('missing return at end of function `$it.name`', it.pos)
-			}
-			c.returns = false
+			c.fn_decl(it)
 		}
 		ast.ForCStmt {
 			c.in_for_count++
@@ -1519,7 +1552,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.stmts(it.stmts)
 			c.in_for_count--
 		}
-		// ast.GlobalDecl {}
+		ast.GlobalDecl {
+			c.check_valid_snake_case(it.name, 'global name', it.pos)
+		}
 		ast.GoStmt {
 			if !(it.call_expr is ast.CallExpr) {
 				c.error('expression in `go` must be a function call', it.call_expr.position())
@@ -1529,19 +1564,12 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		// ast.HashStmt {}
 		ast.Import {}
 		ast.InterfaceDecl {
-			name := it.name.after('.')
-			if !name[0].is_capital() {
-				pos := token.Position{
-					line_nr: it.pos.line_nr
-					pos: it.pos.pos + 'interface'.len
-					len: name.len
-				}
-				c.error('interface name must begin with capital letter', pos)
-			}
+			c.interface_decl(it)
 		}
 		ast.Module {
 			c.mod = it.name
 			c.is_builtin_mod = it.name == 'builtin'
+			c.check_valid_snake_case(it.name, 'module name', it.pos)
 		}
 		ast.Return {
 			c.returns = true
@@ -1639,6 +1667,16 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				.array && sym.name == 'array_byte') {
 				type_name := c.table.type_to_str(it.expr_type)
 				c.error('cannot cast type `$type_name` to string, use `x.str()` instead', it.pos)
+			}
+			if it.expr_type == table.string_type {
+				mut error_msg := 'cannot cast a string'
+				if it.expr is ast.StringLiteral {
+					str_lit := it.expr as ast.StringLiteral
+					if str_lit.val.len == 1 {
+						error_msg += ", for denoting characters use `$str_lit.val` instead of '$str_lit.val'"
+					}
+				}
+				c.error(error_msg, it.pos)
 			}
 			if it.has_arg {
 				c.expr(it.arg)
@@ -1861,7 +1899,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	return table.void_type
 }
 
-pub fn (mut c Checker) concat_expr(concat_expr mut ast.ConcatExpr) table.Type {
+pub fn (mut c Checker) concat_expr(mut concat_expr ast.ConcatExpr) table.Type {
 	mut mr_types := []table.Type{}
 	for expr in concat_expr.vals {
 		mr_types << c.expr(expr)
@@ -2218,7 +2256,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	// if c.pref.is_verbose {
 	// print_backtrace()
 	// }
-	if warn {
+	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
 		wrn := errors.Warning{
 			reporter: errors.Reporter.checker
@@ -2228,7 +2266,9 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 		}
 		c.file.warnings << wrn
 		c.warnings << wrn
-	} else {
+		return
+	}
+	if !warn {
 		c.nr_errors++
 		if pos.line_nr !in c.error_lines {
 			err := errors.Error{
@@ -2247,4 +2287,36 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 // for debugging only
 fn (c &Checker) fileis(s string) bool {
 	return c.file.path.contains(s)
+}
+
+fn (mut c Checker) fn_decl(it ast.FnDecl) {
+	if !it.is_c && !it.is_js && !c.is_builtin_mod {
+		c.check_valid_snake_case(it.name, 'function name', it.pos)
+	}
+	if it.is_method {
+		sym := c.table.get_type_symbol(it.receiver.typ)
+		if sym.kind == .interface_ {
+			c.error('interfaces cannot be used as method receiver', it.receiver_pos)
+		}
+		// if sym.has_method(it.name) {
+		// c.warn('duplicate method `$it.name`', it.pos)
+		// }
+	}
+	if !it.is_c {
+		// Make sure all types are valid
+		for arg in it.args {
+			sym := c.table.get_type_symbol(arg.typ)
+			if sym.kind == .placeholder {
+				c.error('unknown type `$sym.name`', it.pos)
+			}
+		}
+	}
+	c.expected_type = table.void_type
+	c.fn_return_type = it.return_type
+	c.stmts(it.stmts)
+	if !it.is_c && !it.is_js && !it.no_body && it.return_type != table.void_type && !c.returns &&
+		it.name !in ['panic', 'exit'] {
+		c.error('missing return at end of function `$it.name`', it.pos)
+	}
+	c.returns = false
 }

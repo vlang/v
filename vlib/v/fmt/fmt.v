@@ -413,7 +413,14 @@ fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				sum_type_names << f.type_to_str(t)
 			}
 			sum_type_names.sort()
-			f.write(sum_type_names.join(' | '))
+			for i, name in sum_type_names {
+				f.write(name)
+				if i < sum_type_names.len - 1 {
+					f.write(' | ')
+				}
+				f.wrap_long_line()
+			}
+			// f.write(sum_type_names.join(' | '))
 		}
 	}
 	f.writeln('\n')
@@ -448,7 +455,8 @@ fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.write(strings.repeat(` `, max - field.name.len))
 		f.write(f.type_to_str(field.typ))
 		if field.has_default_expr {
-			f.write(' = ${field.default_expr.str()}')
+			f.write(' = ')
+			f.expr(field.default_expr)
 		}
 		// f.write('// $field.pos.line_nr')
 		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
@@ -1041,6 +1049,10 @@ fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		f.indent--
 	}
 	f.write(']')
+	// `[100]byte`
+	if it.is_fixed {
+		f.write(f.type_to_str(it.elem_type))
+	}
 }
 
 fn (mut f Fmt) struct_init(it ast.StructInit) {
@@ -1053,7 +1065,7 @@ fn (mut f Fmt) struct_init(it ast.StructInit) {
 	if it.fields.len == 0 {
 		// `Foo{}` on one line if there are no fields
 		f.write('$name{}')
-	} else if it.fields.len == 0 {
+	} else if it.is_short {
 		// `Foo{1,2,3}` (short syntax )
 		// if name != '' {
 		f.write('$name{')

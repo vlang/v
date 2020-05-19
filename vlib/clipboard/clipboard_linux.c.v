@@ -10,7 +10,8 @@ import math
 #include <X11/Xlib.h>
 
 // X11
-struct C.Display{}
+[typedef]
+struct C.Display
 
 [typedef]
 struct C.Atom
@@ -33,7 +34,7 @@ fn C.XCreateSimpleWindow(d &Display, root C.Window, x int, y int, width u32, hei
 fn C.XOpenDisplay(name byteptr) &C.Display
 fn C.XConvertSelection(d &Display, selection C.Atom, target C.Atom, property C.Atom, requestor Window, time int) int
 fn C.XSync(d &Display, discard int) int
-fn C.XGetWindowProperty(d &Display, w Window, property C.Atom, offset i64, length i64, delete int, req_type C.Atom, actual_type_return &C.Atom, actual_format_return &int, nitems &i64, bytes_after_return &i64, prop_return &byteptr) int
+fn C.XGetWindowProperty(d &Display, w Window, property C.Atom, offset i64, length i64, delete int, req_type C.Atom, actual_type_return &C.Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &byteptr) int
 fn C.XDeleteProperty(d &Display, w Window, property C.Atom) int
 fn C.DefaultScreen() int
 fn C.RootWindow() voidptr
@@ -46,10 +47,10 @@ fn todo_del(){}
 [typedef]
 struct C.XSelectionRequestEvent{
 	mut:
-	selection C.Atom
 	display &C.Display	/* Display the event was read from */
 	owner C.Window
 	requestor C.Window
+	selection C.Atom
 	target C.Atom
 	property C.Atom
 	time int
@@ -59,9 +60,9 @@ struct C.XSelectionRequestEvent{
 struct C.XSelectionEvent{
 	mut:
 	@type int
-	selection C.Atom
 	display &C.Display	/* Display the event was read from */
 	requestor C.Window
+	selection C.Atom
 	target C.Atom
 	property C.Atom
 	time int
@@ -81,13 +82,13 @@ struct C.XDestroyWindowEvent {
 }
 
 [typedef]
-struct C.XEvent{
+union C.XEvent{
 	mut:
 	@type int
+	xdestroywindow C.XDestroyWindowEvent
+	xselectionclear C.XSelectionClearEvent
 	xselectionrequest C.XSelectionRequestEvent
 	xselection C.XSelectionEvent
-	xselectionclear C.XSelectionClearEvent
-	xdestroywindow C.XDestroyWindowEvent
 }
 
 const (
@@ -172,14 +173,14 @@ fn (cb &Clipboard) check_availability() bool {
 	return cb.display != C.NULL
 }
 
-fn (cb mut Clipboard) free() {
+fn (mut cb Clipboard) free() {
 	C.XDestroyWindow(cb.display, cb.window)
 	cb.window = C.Window(C.None)
 	//FIX ME: program hangs when closing display
 	//XCloseDisplay(cb.display)
 }
 
-fn (cb mut Clipboard) clear(){
+fn (mut cb Clipboard) clear(){
 	cb.mutex.lock()
 	C.XSetSelectionOwner(cb.display, cb.selection, C.Window(C.None), C.CurrentTime)
 	C.XFlush(cb.display)
@@ -197,7 +198,7 @@ fn (cb &Clipboard) take_ownership(){
 	C.XFlush(cb.display)
 }
 
-fn (cb mut Clipboard) set_text(text string) bool {
+fn (mut cb Clipboard) set_text(text string) bool {
 	if cb.window == C.Window(C.None) {return false}
 	cb.mutex.lock()
 	cb.text = text
@@ -210,7 +211,7 @@ fn (cb mut Clipboard) set_text(text string) bool {
 	return cb.is_owner
 }
 
-fn (cb mut Clipboard) get_text() string {
+fn (mut cb Clipboard) get_text() string {
 	if cb.window == C.Window(C.None) {return ""}
 	if cb.is_owner {
 		return cb.text
@@ -232,7 +233,7 @@ fn (cb mut Clipboard) get_text() string {
 
 // this function is crucial to handling all the different data types
 // if we ever support other mimetypes they should be handled here
-fn (cb mut Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
+fn (mut cb Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
 	if xse.target == cb.get_atom(.targets) {
 		targets := cb.get_supported_targets()
 		C.XChangeProperty(xse.display, xse.requestor, xse.property, cb.get_atom(.xa_atom), 32, C.PropModeReplace, targets.data, targets.len)
@@ -246,7 +247,7 @@ fn (cb mut Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
 	return true
 }
 
-fn (cb mut Clipboard) start_listener(){
+fn (mut cb Clipboard) start_listener(){
 	event := C.XEvent{}
 	mut sent_request := false
 	mut to_be_requested := C.Atom(0)
@@ -287,7 +288,7 @@ fn (cb mut Clipboard) start_listener(){
 					if !cb.transmit_selection(&xse) {
 						xse.property = new_atom(C.None)
 					}
-					C.XSendEvent(cb.display, xse.requestor, 0, C.PropertyChangeMask, &xse)
+					C.XSendEvent(cb.display, xse.requestor, 0, C.PropertyChangeMask, voidptr(&xse))
 					C.XFlush(cb.display)
 				}
 			}
@@ -325,7 +326,7 @@ fn (cb mut Clipboard) start_listener(){
 // Helpers
 
 // Initialize all the atoms we need
-fn (cb mut Clipboard) intern_atoms(){
+fn (mut cb Clipboard) intern_atoms(){
 	cb.atoms << C.Atom(4) //XA_ATOM
 	cb.atoms << C.Atom(31) //XA_STRING
 	for i, name in atom_names{
@@ -340,8 +341,8 @@ fn (cb mut Clipboard) intern_atoms(){
 fn read_property(d &C.Display, w C.Window, p C.Atom) Property {
 	actual_type := C.Atom(0)
 	actual_format := 0
-	nitems := 0
-	bytes_after := 0
+	nitems := u64(0)
+	bytes_after := u64(0)
 	ret := byteptr(0)
 	mut read_bytes := 1024
 	for {

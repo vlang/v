@@ -88,7 +88,7 @@ pub fn (instance BitField) get_bit(bitnr int) int {
 }
 
 // set_bit sets bit number 'bit_nr' to 1 (count from 0).
-pub fn (instance mut BitField) set_bit(bitnr int) {
+pub fn (mut instance BitField) set_bit(bitnr int) {
 	if bitnr >= instance.size {
 		return
 	}
@@ -96,7 +96,7 @@ pub fn (instance mut BitField) set_bit(bitnr int) {
 }
 
 // clear_bit clears (sets to zero) bit number 'bit_nr' (count from 0).
-pub fn (instance mut BitField) clear_bit(bitnr int) {
+pub fn (mut instance BitField) clear_bit(bitnr int) {
 	if bitnr >= instance.size {
 		return
 	}
@@ -104,7 +104,7 @@ pub fn (instance mut BitField) clear_bit(bitnr int) {
 }
 
 // set_all sets all bits in the array to 1.
-pub fn (instance mut BitField) set_all() {
+pub fn (mut instance BitField) set_all() {
 	for i in 0..bitnslots(instance.size) {
 		instance.field[i] = u32(-1)
 	}
@@ -112,7 +112,7 @@ pub fn (instance mut BitField) set_all() {
 }
 
 // clear_all clears (sets to zero) all bits in the array.
-pub fn (instance mut BitField) clear_all() {
+pub fn (mut instance BitField) clear_all() {
 	for i in 0..bitnslots(instance.size) {
 		instance.field[i] = u32(0)
 	}
@@ -120,7 +120,7 @@ pub fn (instance mut BitField) clear_all() {
 
 // toggle_bit changes the value (from 0 to 1 or from 1 to 0) of bit
 // number 'bit_nr'.
-pub fn (instance mut BitField) toggle_bit(bitnr int) {
+pub fn (mut instance BitField) toggle_bit(bitnr int) {
 	if bitnr >= instance.size {
 		return
 	}
@@ -390,7 +390,7 @@ pub fn (instance BitField) reverse() BitField {
 }
 
 // resize changes the size of the bit array to 'new_size'.
-pub fn (instance mut BitField) resize(new_size int) {
+pub fn (mut instance BitField) resize(new_size int) {
 	new_bitnslots := bitnslots(new_size)
 	old_size := instance.size
 	old_bitnslots := bitnslots(old_size)
@@ -433,7 +433,7 @@ pub fn (instance BitField) rotate(offset int) BitField {
 
 // Internal functions
 
-fn (instance mut BitField) clear_tail() {
+fn (mut instance BitField) clear_tail() {
 	tail := instance.size % SLOT_SIZE
 	if tail != 0 {
 		// create a mask for the tail

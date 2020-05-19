@@ -61,7 +61,7 @@ pub fn (v &Values) get_all(key string) []string {
 
 // set sets the key to value. It replaces any existing
 // values.
-pub fn (v mut Values) set(key, value string) {
+pub fn (mut v Values) set(key, value string) {
 	mut a := v.data[key]
 	a.data = [value]
 	v.data[key] = a
@@ -70,7 +70,7 @@ pub fn (v mut Values) set(key, value string) {
 
 // add adds the value to key. It appends to any existing
 // values associated with key.
-pub fn (v mut Values) add(key, value string) {
+pub fn (mut v Values) add(key, value string) {
 	mut a := v.data[key]
 	if a.data.len == 0 {
 		a.data = []
@@ -81,8 +81,7 @@ pub fn (v mut Values) add(key, value string) {
 }
 
 // del deletes the values associated with key.
-pub fn (v mut Values) del(key string) {
+pub fn (mut v Values) del(key string) {
 	v.data.delete(key)
 	v.size = v.data.size
 }
-

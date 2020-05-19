@@ -85,7 +85,7 @@ fn (s &Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token 
 	}
 }
 
-fn (s mut Scanner) ident_name() string {
+fn (mut s Scanner) ident_name() string {
 	start := s.pos
 	s.pos++
 	for s.pos < s.text.len && (util.is_name_char(s.text[s.pos]) || s.text[s.pos].is_digit()) {
@@ -94,6 +94,48 @@ fn (s mut Scanner) ident_name() string {
 	name := s.text[start..s.pos]
 	s.pos--
 	return name
+}
+
+// ident_fn_name look ahead and return name of function if possible, otherwise empty string
+fn (mut s Scanner) ident_fn_name() string {
+	start := s.pos
+	mut pos := s.pos
+	pos++
+	// Search for function scope start
+	for pos < s.text.len && s.text[pos] != `{` {
+		pos++
+	}
+	if pos >= s.text.len {
+		return ""
+	}
+	// Search backwards for "first" occurrence of function open paranthesis
+	for pos > start && s.text[pos] != `(` {
+		pos--
+	}
+	if pos < start {
+		return ""
+	}
+	// Search backwards for end position of function name
+	for pos > start && !util.is_func_char(s.text[pos]) {
+		pos--
+	}
+	end_pos := pos + 1
+	if pos < start {
+		return ""
+	}
+	// Search for the start position
+	for pos > start && util.is_func_char(s.text[pos]) {
+		pos--
+	}
+	start_pos := pos + 1
+	if pos < start || pos >= s.text.len  {
+		return ""
+	}
+	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos || end_pos <= start || start_pos <= start {
+		return ""
+	}
+	fn_name := s.text[start_pos..end_pos]
+	return fn_name
 }
 
 fn filter_num_sep(txt byteptr, start int, end int) string {
@@ -113,7 +155,7 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 	}
 }
 
-fn (s mut Scanner) ident_bin_number() string {
+fn (mut s Scanner) ident_bin_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
@@ -142,7 +184,7 @@ fn (s mut Scanner) ident_bin_number() string {
 	return number
 }
 
-fn (s mut Scanner) ident_hex_number() string {
+fn (mut s Scanner) ident_hex_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
@@ -171,7 +213,7 @@ fn (s mut Scanner) ident_hex_number() string {
 	return number
 }
 
-fn (s mut Scanner) ident_oct_number() string {
+fn (mut s Scanner) ident_oct_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
@@ -200,7 +242,7 @@ fn (s mut Scanner) ident_oct_number() string {
 	return number
 }
 
-fn (s mut Scanner) ident_dec_number() string {
+fn (mut s Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
@@ -313,7 +355,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	return number
 }
 
-fn (s mut Scanner) ident_number() string {
+fn (mut s Scanner) ident_number() string {
 	if s.expect('0b', s.pos) {
 		return s.ident_bin_number()
 	}
@@ -328,7 +370,7 @@ fn (s mut Scanner) ident_number() string {
 	}
 }
 
-fn (s mut Scanner) skip_whitespace() {
+fn (mut s Scanner) skip_whitespace() {
 	// if s.is_vh { println('vh') return }
 	for s.pos < s.text.len && s.text[s.pos].is_space() {
 		if util.is_nl(s.text[s.pos]) && s.is_vh {
@@ -342,13 +384,13 @@ fn (s mut Scanner) skip_whitespace() {
 	}
 }
 
-fn (s mut Scanner) end_of_file() token.Token {
+fn (mut s Scanner) end_of_file() token.Token {
 	s.pos = s.text.len
 	s.inc_line_number()
 	return s.new_token(.eof, '', 1)
 }
 
-pub fn (s mut Scanner) scan() token.Token {
+pub fn (mut s Scanner) scan() token.Token {
 	// if s.comments_mode == .parse_comments {
 	// println('\nscan()')
 	// }
@@ -392,7 +434,11 @@ pub fn (s mut Scanner) scan() token.Token {
 		// Check if not .eof to prevent panic
 		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
 		if token.is_key(name) {
-			return s.new_token(token.key_to_token(name), name, name.len)
+			kind := token.key_to_token(name)
+			if kind == .key_fn {
+				s.fn_name = s.ident_fn_name()
+			}
+			return s.new_token(kind, name, name.len)
 		}
 		// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 		// at the next ', skip it
@@ -822,7 +868,7 @@ fn (s &Scanner) count_symbol_before(p int, sym byte) int {
 	return count
 }
 
-fn (s mut Scanner) ident_string() string {
+fn (mut s Scanner) ident_string() string {
 	q := s.text[s.pos]
 	is_quote := q == single_quote || q == double_quote
 	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r`
@@ -910,7 +956,7 @@ fn trim_slash_line_break(s string) string {
 	return ret_str
 }
 
-fn (s mut Scanner) ident_char() string {
+fn (mut s Scanner) ident_char() string {
 	start := s.pos
 	slash := `\\`
 	mut len := 0
@@ -959,7 +1005,7 @@ fn (s &Scanner) expect(want string, start_pos int) bool {
 	return true
 }
 
-fn (s mut Scanner) debug_tokens() {
+fn (mut s Scanner) debug_tokens() {
 	s.pos = 0
 	s.is_started = false
 	s.is_debug = true
@@ -983,18 +1029,18 @@ fn (s mut Scanner) debug_tokens() {
 	}
 }
 
-fn (s mut Scanner) ignore_line() {
+fn (mut s Scanner) ignore_line() {
 	s.eat_to_end_of_line()
 	s.inc_line_number()
 }
 
-fn (s mut Scanner) eat_to_end_of_line() {
+fn (mut s Scanner) eat_to_end_of_line() {
 	for s.pos < s.text.len && s.text[s.pos] != `\n` {
 		s.pos++
 	}
 }
 
-fn (s mut Scanner) inc_line_number() {
+fn (mut s Scanner) inc_line_number() {
 	s.last_nl_pos = s.pos
 	s.line_nr++
 	s.line_ends << s.pos

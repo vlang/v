@@ -19,7 +19,7 @@ fn new_room() &ChatRoom {
 	}
 }
 
-fn (r mut ChatRoom) add(name string, s Speaker) {
+fn (mut r ChatRoom) add(name string, s Speaker) {
 	r.talkers[name] = s
 }
 

@@ -30,6 +30,7 @@ fn main() {
 	// println(v_hash)
 	// println(current_hash)
 	if v_hash == current_hash {
+		show_current_v_version()
 		return
 	}
 
@@ -59,6 +60,16 @@ fn main() {
 
 	_ := os.exec('v cmd/tools/vup.v') or {
 		panic(err)
+	}
+	show_current_v_version()
+}
+
+fn show_current_v_version(){
+	println('Current V version:')
+	$if windows {
+		os.system('v.exe version')
+	}	$else {
+		os.system('v version')
 	}
 }
 

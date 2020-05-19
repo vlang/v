@@ -48,7 +48,7 @@ mut:
 	done bool
 }
 
-fn (ctx mut Context) send_response_to_client(mimetype string, res string) bool {
+fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	if ctx.done { return false }
 	ctx.done = true
 	mut sb := strings.new_builder(1024)
@@ -63,31 +63,31 @@ fn (ctx mut Context) send_response_to_client(mimetype string, res string) bool {
 	return true
 }
 
-pub fn (ctx mut Context) html(s string) {
+pub fn (mut ctx Context) html(s string) {
 	ctx.send_response_to_client('text/html', s)
 }
 
-pub fn (ctx mut Context) text(s string) {
+pub fn (mut ctx Context) text(s string) {
 	ctx.send_response_to_client('text/plain', s)
 }
 
-pub fn (ctx mut Context) json(s string) {
+pub fn (mut ctx Context) json(s string) {
 	ctx.send_response_to_client('application/json', s)
 }
 
-pub fn (ctx mut Context) redirect(url string) {
+pub fn (mut ctx Context) redirect(url string) {
 	if ctx.done { return }
 	ctx.done = true
 	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${HEADERS_CLOSE}') or { return }
 }
 
-pub fn (ctx mut Context) not_found(s string) {
+pub fn (mut ctx Context) not_found(s string) {
 	if ctx.done { return }
 	ctx.done = true
 	ctx.conn.send_string(HTTP_404) or { return }
 }
 
-pub fn (ctx mut Context) set_cookie(key, val string) {
+pub fn (mut ctx Context) set_cookie(key, val string) {
 	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
 	//println('Set-Cookie $key=$val')
 	ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
@@ -112,7 +112,7 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	return error('Cookie not found')
 }
 
-pub fn (ctx mut Context) add_header(key, val string) {
+pub fn (mut ctx Context) add_header(key, val string) {
 	//println('add_header($key, $val)')
 	ctx.headers = ctx.headers + '\r\n$key: $val'
 	//println(ctx.headers)
@@ -190,7 +190,7 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 	mut len := 0
 	mut body_len := 0
 	//for line in lines[1..] {
-	for j in 0..100 {
+	for _ in 0..100 {
 		//println(j)
 		line := conn.read_line()
 		sline := strip(line)
@@ -290,7 +290,7 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 	app.reset()
 }
 
-fn (ctx mut Context) parse_form(s string) {
+fn (mut ctx Context) parse_form(s string) {
 	if ctx.req.method !in methods_with_form {
 		return
 	}
@@ -319,7 +319,7 @@ fn (ctx mut Context) parse_form(s string) {
 	// ...
 }
 
-fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
+fn (mut ctx Context) scan_static_directory(directory_path, mount_path string) {
 	files := os.ls(directory_path) or { panic(err) }
 
 	if files.len > 0 {
@@ -340,7 +340,7 @@ fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 	}
 }
 
-pub fn (ctx mut Context) handle_static(directory_path string) bool {
+pub fn (mut ctx Context) handle_static(directory_path string) bool {
 	if ctx.done || ! os.exists(directory_path) {
 		return false
 	}
@@ -358,7 +358,7 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 	return true
 }
 
-pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) {
+pub fn (mut ctx Context) serve_static(url, file_path, mime_type string) {
 	ctx.static_files[url] = file_path
 	ctx.static_mime_types[url] = mime_type
 }

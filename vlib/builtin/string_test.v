@@ -463,6 +463,9 @@ fn test_all_after() {
 	assert s.all_after('fn ') == 'hello'
 	assert s.all_after('test') == s
 	assert s.all_after('') == s
+	assert s.after('e') == 'llo'
+	x := s.after('e')
+	assert x == 'llo'
 }
 
 fn test_reverse() {
@@ -766,3 +769,12 @@ fn test_string_literal_with_backslash(){
 		  Three'
 	assert b == 'OneTwoThree'
 }
+
+/*
+type MyString string
+
+fn test_string_alias() {
+	s := MyString('hi')
+	ss := s + '!'
+}
+*/

@@ -4,12 +4,12 @@
 module time
 
 struct C.tm {
-	tm_year int
-	tm_mon  int
-	tm_mday int
-	tm_hour int
-	tm_min  int
 	tm_sec  int
+	tm_min  int
+	tm_hour int
+	tm_mday int
+	tm_mon  int
+	tm_year int
 }
 
 fn C.timegm(&tm) time_t
@@ -29,7 +29,7 @@ struct C.timespec {
 // the first arg is defined in include/bits/types.h as `__S32_TYPE`, which is `int`
 fn C.clock_gettime(int, &C.timespec)
 
-fn sys_mono_now() u64 {
+pub fn sys_mono_now() u64 {
 	$if macos {
 		return sys_mono_now_darwin()
 	} $else {

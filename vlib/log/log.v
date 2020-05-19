@@ -40,25 +40,25 @@ pub mut:
 	output_file_name string
 }
 
-pub fn (l mut Log) set_level(level Level) {
+pub fn (mut l Log) set_level(level Level) {
 	l.level = level
 }
 
-pub fn (l mut Log) set_output_level(level Level) {
+pub fn (mut l Log) set_output_level(level Level) {
 	l.level = level
 }
 
-pub fn (l mut Log) set_full_logpath(full_log_path string) {
+pub fn (mut l Log) set_full_logpath(full_log_path string) {
 	rlog_file := os.real_path( full_log_path )
 	l.set_output_label( os.file_name( rlog_file ) )
 	l.set_output_path( os.base_dir( rlog_file ) )
 }
 
-pub fn (l mut Log) set_output_label(label string){
+pub fn (mut l Log) set_output_label(label string){
 	l.output_label = label
 }
 
-pub fn (l mut Log) set_output_path(output_file_path string) {
+pub fn (mut l Log) set_output_path(output_file_path string) {
 	if l.ofile.is_opened() { l.ofile.close() }
 	l.output_to_file = true
 	l.output_file_name = os.join_path( os.real_path( output_file_path ) , l.output_label )
@@ -68,11 +68,11 @@ pub fn (l mut Log) set_output_path(output_file_path string) {
 	l.ofile = ofile
 }
 
-pub fn (l mut Log) close() {
+pub fn (mut l Log) close() {
   l.ofile.close()
 }
 
-fn (l mut Log) log_file(s string, level Level) {
+fn (mut l Log) log_file(s string, level Level) {
 	timestamp := time.now().format_ss()
 	e := tag(level)
 	l.ofile.writeln('$timestamp [$e] $s')
@@ -84,7 +84,7 @@ fn (l &Log) log_cli(s string, level Level) {
 	println('[$f ${t.format_ss()}] $s')
 }
 
-fn (l mut Log) send_output(s &string, level Level) {
+fn (mut l Log) send_output(s &string, level Level) {
 	if l.output_to_file {
 		l.log_file(s, level)
 	} else {
@@ -92,29 +92,29 @@ fn (l mut Log) send_output(s &string, level Level) {
 	}
 }
 
-pub fn (l mut Log) fatal(s string){
+pub fn (mut l Log) fatal(s string){
 	if l.level < .fatal { return }
 	l.send_output(s, .fatal)
 	l.ofile.close()
 	panic('$l.output_label: $s')
 }
 
-pub fn (l mut Log) error(s string) {
+pub fn (mut l Log) error(s string) {
 	if l.level < .error { return }
 	l.send_output(s, .error)
 }
 
-pub fn (l mut Log) warn(s string) {
+pub fn (mut l Log) warn(s string) {
 	if l.level < .warn { return }
 	l.send_output(s, .warn)
 }
 
-pub fn (l mut Log) info(s string) {
+pub fn (mut l Log) info(s string) {
 	if l.level < .info { return }
 	l.send_output(s, .info)
 }
 
-pub fn (l mut Log) debug(s string) {
+pub fn (mut l Log) debug(s string) {
 	if l.level < .debug { return }
 	l.send_output(s, .debug)
 }

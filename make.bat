@@ -36,7 +36,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 REM remove the -prod parameter to shorten compilation time,
 REM and it will be restored when v is a stable version.
-v self
+v.exe self
 if %ERRORLEVEL% NEQ 0 (
 	echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
 	rd /s /q vc
@@ -78,7 +78,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 REM remove the -prod parameter to shorten compilation time,
 REM and it will be restored when v is a stable version.
-v self
+v.exe self
 if %ERRORLEVEL% NEQ 0 (
 	echo V failed to build itself with error %ERRORLEVEL%
 	rd /s /q vc
@@ -113,5 +113,5 @@ exit /b 1
 
 :success
 echo V build OK!
-v -version
+v.exe version
 popd

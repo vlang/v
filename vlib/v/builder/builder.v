@@ -95,7 +95,8 @@ pub fn (mut b Builder) parse_imports() {
 pub fn (mut b Builder) resolve_deps() {
 	graph := b.import_graph()
 	deps_resolved := graph.resolve()
-	if !deps_resolved.acyclic {
+	is_main_to_builtin := deps_resolved.nodes.len == 1 && deps_resolved.nodes[0].name == 'main' && deps_resolved.nodes[0].deps.len == 1 && deps_resolved.nodes[0].deps[0] == 'builtin'
+	if !deps_resolved.acyclic && !is_main_to_builtin {
 		eprintln('warning: import cycle detected between the following modules: \n' + deps_resolved.display_cycles())
 		// TODO: error, when v itself does not have v.table -> v.ast -> v.table cycles anymore
 		return
@@ -218,7 +219,7 @@ fn (b &Builder) print_warnings_and_errors() {
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
 		println('$b.checker.nr_warnings warnings')
 	}
-	if b.checker.nr_warnings > 0 {
+	if b.checker.nr_warnings > 0  && !b.pref.skip_warnings {
 		for i, err in b.checker.warnings {
 			kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_warnings:' } else { 'warning:' }
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)

@@ -69,7 +69,7 @@ mut:
 	function crypto.Hash
 }
 
-fn (d mut Digest) reset() {
+fn (mut d Digest) reset() {
 	d.h = [u64(0)].repeat(8)
 	d.x = [byte(0)].repeat(chunk)
 	match d.function {
@@ -146,7 +146,7 @@ fn new384() &Digest {
 	return new_digest(.sha384)
 }
 
-fn (d mut Digest) write(p_ []byte) int {
+fn (mut d Digest) write(p_ []byte) int {
 	mut p := p_
 	nn := p.len
 	d.len += u64(nn)
@@ -209,7 +209,7 @@ fn (d &Digest) sum(b_in []byte) []byte {
 	return b_out
 }
 
-fn (d mut Digest) checksum() []byte {
+fn (mut d Digest) checksum() []byte {
 	// Padding. Add a 1 bit and 0 bits until 112 bytes mod 128.
 	mut len := d.len
 	mut tmp := [byte(0)].repeat(128)

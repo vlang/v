@@ -1,15 +1,11 @@
-// 1 line comment
-
-/* 1 line comment */
-
+// 1 line comment // 1 line comment
 /*
 multi line comment (1)
 multi line comment (2)
 multi line comment (3)
 */
-
 /*
-	multi line comment (1)
+multi line comment (1)
 	/*
 		nested comment
 	*/
@@ -20,44 +16,43 @@ multi line comment (3)
 	/* /* nested comment */ */
 	multi line comment (2)
 */
+type MyFn1 = fn (int) string
 
-type myfn fn (int) string
+type MyFn2 = fn (a int, b int) int
 
-type myfn2 fn (a int, b int) int
-
-type myfn3 fn (int, int)
+type MyFn3 = fn (int, int)
 
 fn myfn4(string)
 
 fn foobar()
 
-fn slopediv(num u32, den u32) int
+fn slopediv(num, den u32) int
 
-type f1 fn ()
+type F1 = fn ()
 
-type f2 fn (voidptr)
+type F2 = fn (voidptr)
 
-type f3 fn (voidptr, voidptr)
+type F3 = fn (voidptr, voidptr)
 
-type f4 fn (voidptr) int
+type F4 = fn (voidptr) int
 
-type f5 fn (int, int) int
+type F5 = fn (int, int) int
 
-type f6 fn (int, int)
+type F6 = fn (int, int)
 
 fn C.atoi(byteptr) int
 
 fn foo() {
 }
 
-type actionf_v fn ()
+type ActionfV = fn ()
 
-type actionf_p1 fn (voidptr)
+type ActionfP1 = fn (voidptr)
 
-type actionf_p2 fn (voidptr, voidptr)
+type ActionfP2 = fn (voidptr, voidptr)
 
 // TODO
-fn modify_array(a mut []int) {
+fn modify_array(mut a []int) {
 	a[0] = 10
 	for i in 0 .. a.len {
 		a[i] = a[i] * 2
@@ -86,7 +81,7 @@ fn test_mut_array() {
 	println(nums.clone())
 }
 
-fn mod_struct(user mut User) {
+fn mod_struct(mut user User) {
 	user.age++
 }
 
@@ -101,7 +96,7 @@ fn test_mut_struct() {
 	assert user.age == 19
 }
 
-fn mod_ptr(buf mut byteptr) {
+fn mod_ptr(mut buf &byte) {
 	buf[0] = 77
 }
 
@@ -110,7 +105,6 @@ fn test_mut_ptr() {
 	mod_ptr(mut buf)
 	assert buf[0] == 77
 }
-
 
 fn assert_in_bool_fn(v int) bool {
 	assert v < 3
@@ -121,7 +115,8 @@ fn test_assert_in_bool_fn() {
 	assert_in_bool_fn(2)
 }
 
-type MyFn fn (int) int
+type MyFn = fn (int) int
+
 fn test(n int) int {
 	return n + 1000
 }
@@ -129,18 +124,21 @@ fn test(n int) int {
 struct MySt {
 	f MyFn
 }
+
 fn test_fn_type_call() {
-    mut arr := []MyFn{}
-    arr << MyFn(test)
+	mut arr := []MyFn{}
+	arr << MyFn(test)
 	// TODO: `arr[0](10)`
 	// assert arr[0](10) == 1010
 	x1 := arr[0]
 	x2 := x1(10)
 	assert x2 == 1010
-
-    st := MySt{f:test}
-    assert st.f(10) == 1010
-
-	st1 := &MySt{f:test}
-    assert st1.f(10) == 1010
+	st := MySt{
+		f: test
+	}
+	assert st.f(10) == 1010
+	st1 := &MySt{
+		f: test
+	}
+	assert st1.f(10) == 1010
 }

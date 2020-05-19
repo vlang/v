@@ -5,9 +5,9 @@ module token
 
 pub struct Position {
 pub:
+	len     int // length of the literal in the source
 	line_nr int // the line number in the source where the token occured
 	pos     int // the position of the token in scanner text
-	len     int // length of the literal in the source
 }
 
 pub fn (pos Position) str() string {
@@ -24,8 +24,8 @@ pub fn (pos Position) extend(end Position) Position {
 [inline]
 pub fn (tok &Token) position() Position {
 	return Position{
+		len: tok.len
 		line_nr: tok.line_nr - 1
 		pos: tok.pos
-		len: tok.len
 	}
 }

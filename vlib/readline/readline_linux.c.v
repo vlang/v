@@ -42,7 +42,7 @@ fn C.raise()
 // Enable the raw mode of the terminal
 // In raw mode all keypresses are directly sent to the program and no interpretation is done
 // Catches the SIGUSER (CTRL+C) Signal
-pub fn (r mut Readline) enable_raw_mode() {
+pub fn (mut r Readline) enable_raw_mode() {
   if C.tcgetattr(0, &r.orig_termios) == -1 {
     r.is_tty = false
     r.is_raw = false
@@ -61,7 +61,7 @@ pub fn (r mut Readline) enable_raw_mode() {
 
 // Enable the raw mode of the terminal
 // Does not catch the SIGUSER (CTRL+C) Signal
-pub fn (r mut Readline) enable_raw_mode_nosig() {
+pub fn (mut r Readline) enable_raw_mode_nosig() {
   if C.tcgetattr(0, &r.orig_termios) == -1 {
     r.is_tty = false
     r.is_raw = false
@@ -79,7 +79,7 @@ pub fn (r mut Readline) enable_raw_mode_nosig() {
 }
 
 // Disable the raw mode of the terminal
-pub fn (r mut Readline) disable_raw_mode() {
+pub fn (mut r Readline) disable_raw_mode() {
   if r.is_raw {
     C.tcsetattr(0, C.TCSADRAIN, &r.orig_termios)
     r.is_raw = false
@@ -95,7 +95,7 @@ pub fn (r Readline) read_char() int {
 // Will loop and ingest characters until EOF or Enter
 // Returns the completed line as utf8 ustring
 // Will return an error if line is empty
-pub fn (r mut Readline) read_line_utf8(prompt string) ?ustring {
+pub fn (mut r Readline) read_line_utf8(prompt string) ?ustring {
   r.current = ''.ustring()
   r.cursor = 0
   r.prompt = prompt
@@ -132,7 +132,7 @@ pub fn (r mut Readline) read_line_utf8(prompt string) ?ustring {
 }
 
 // Returns the string from the utf8 ustring
-pub fn (r mut Readline) read_line(prompt string) ?string {
+pub fn (mut r Readline) read_line(prompt string) ?string {
   s := r.read_line_utf8(prompt) or {
     return error(err)
   }
@@ -272,7 +272,7 @@ fn (r Readline) analyse_extended_control_no_eat(last_c byte) Action {
   return .nothing
 }
 
-fn (r mut Readline) execute(a Action, c int) bool {
+fn (mut r Readline) execute(a Action, c int) bool {
   match a {
     .eof                    { return r.eof() }
     .insert_character       { r.insert_character(c) }
@@ -336,7 +336,7 @@ fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count 
 }
 
 // Will redraw the line
-fn (r mut Readline) refresh_line() {
+fn (mut r Readline) refresh_line() {
   mut end_of_input := [0, 0]
   end_of_input = calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.current.len, end_of_input)
   end_of_input[1] += r.current.count('\n'.ustring())
@@ -355,7 +355,7 @@ fn (r mut Readline) refresh_line() {
 }
 
 // End the line without a newline
-fn (r mut Readline) eof() bool {
+fn (mut r Readline) eof() bool {
   r.previous_lines.insert(1, r.current)
   r.cursor = r.current.len
   if r.is_tty {
@@ -364,7 +364,7 @@ fn (r mut Readline) eof() bool {
   return true
 }
 
-fn (r mut Readline) insert_character(c int) {
+fn (mut r Readline) insert_character(c int) {
   if !r.overwrite || r.cursor == r.current.len {
     r.current = r.current.left(r.cursor).ustring().add( utf32_to_str(u32(c)).ustring() ).add( r.current.right(r.cursor).ustring() )
   } else {
@@ -378,7 +378,7 @@ fn (r mut Readline) insert_character(c int) {
 }
 
 // Removes the character behind cursor.
-fn (r mut Readline) delete_character() {
+fn (mut r Readline) delete_character() {
   if r.cursor <= 0 {
     return
   }
@@ -388,7 +388,7 @@ fn (r mut Readline) delete_character() {
 }
 
 // Removes the character in front of cursor.
-fn (r mut Readline) suppr_character() {
+fn (mut r Readline) suppr_character() {
   if r.cursor > r.current.len {
     return
   }
@@ -397,7 +397,7 @@ fn (r mut Readline) suppr_character() {
 }
 
 // Add a line break then stops the main loop
-fn (r mut Readline) commit_line() bool {
+fn (mut r Readline) commit_line() bool {
   r.previous_lines.insert(1, r.current)
   a := '\n'.ustring()
   r.current = r.current.add( a )
@@ -409,26 +409,26 @@ fn (r mut Readline) commit_line() bool {
   return true
 }
 
-fn (r mut Readline) move_cursor_left() {
+fn (mut r Readline) move_cursor_left() {
   if r.cursor > 0 {
     r.cursor--
     r.refresh_line()
   }
 }
 
-fn (r mut Readline) move_cursor_right() {
+fn (mut r Readline) move_cursor_right() {
   if r.cursor < r.current.len {
     r.cursor++
     r.refresh_line()
   }
 }
 
-fn (r mut Readline) move_cursor_begining() {
+fn (mut r Readline) move_cursor_begining() {
   r.cursor = 0
   r.refresh_line()
 }
 
-fn (r mut Readline) move_cursor_end() {
+fn (mut r Readline) move_cursor_end() {
   r.cursor = r.current.len
   r.refresh_line()
 }
@@ -439,7 +439,7 @@ fn (r Readline) is_break_character(c string) bool {
   return break_characters.contains(c)
 }
 
-fn (r mut Readline) move_cursor_word_left() {
+fn (mut r Readline) move_cursor_word_left() {
   if r.cursor > 0 {
     for ; r.cursor > 0 && r.is_break_character(r.current.at(r.cursor - 1)); r.cursor-- {}
     for ; r.cursor > 0 && !r.is_break_character(r.current.at(r.cursor - 1)); r.cursor-- {}
@@ -447,7 +447,7 @@ fn (r mut Readline) move_cursor_word_left() {
   }
 }
 
-fn (r mut Readline) move_cursor_word_right() {
+fn (mut r Readline) move_cursor_word_right() {
   if r.cursor < r.current.len {
     for ; r.cursor < r.current.len && r.is_break_character(r.current.at(r.cursor)); r.cursor++ {}
     for ; r.cursor < r.current.len && !r.is_break_character(r.current.at(r.cursor)); r.cursor++ {}
@@ -455,17 +455,17 @@ fn (r mut Readline) move_cursor_word_right() {
   }
 }
 
-fn (r mut Readline) switch_overwrite() {
+fn (mut r Readline) switch_overwrite() {
   r.overwrite = !r.overwrite
 }
 
-fn (r mut Readline) clear_screen() {
+fn (mut r Readline) clear_screen() {
   term.set_cursor_position(1, 1)
   term.erase_clear()
   r.refresh_line()
 }
 
-fn (r mut Readline) history_previous() {
+fn (mut r Readline) history_previous() {
   if r.search_index + 2 >= r.previous_lines.len {
     return
   }
@@ -478,7 +478,7 @@ fn (r mut Readline) history_previous() {
   r.refresh_line()
 }
 
-fn (r mut Readline) history_next() {
+fn (mut r Readline) history_next() {
   if r.search_index <= 0 {
     return
   }
@@ -488,7 +488,7 @@ fn (r mut Readline) history_next() {
   r.refresh_line()
 }
 
-fn (r mut Readline) suspend() {
+fn (mut r Readline) suspend() {
   C.raise(C.SIGSTOP)
   r.refresh_line()
 }

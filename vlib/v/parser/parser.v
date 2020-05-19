@@ -93,10 +93,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	// comments_mode: comments_mode
 	p.read_first_token()
 	for p.tok.kind == .comment {
-		mut stmt := ast.Stmt{} // TODO sum type << bug
-		com := p.comment()
-		stmt = com
-		stmts << stmt
+		stmts << p.comment()
 	}
 	// module
 	mut mstmt := ast.Stmt{}
@@ -294,10 +291,9 @@ fn (mut p Parser) check_js_name() string {
 		p.next() // .name
 		p.next() // .dot
 	}
- 	// last .name
- 	name += p.tok.lit
+	// last .name
+	name += p.tok.lit
 	p.next()
-
 	return name
 }
 
@@ -452,7 +448,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				return p.assign_stmt()
 			} else if p.peek_tok.kind == .comma {
 				// `a, b ...`
-				return p.parse_comma_separated()
+				return p.parse_multi_expr()
 			} else if p.peek_tok.kind == .colon {
 				// `label:`
 				name := p.check_name()
@@ -462,15 +458,11 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				}
 			} else if p.peek_tok.kind == .name {
 				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-			} else if !p.inside_if_expr && !p.inside_match_body &&
-					!p.inside_or_expr && p.peek_tok.kind in [.rcbr, .eof] {
+			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr && p.peek_tok.kind in
+				[.rcbr, .eof] {
 				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 			}
-			epos := p.tok.position()
-			return ast.ExprStmt{
-				expr: p.expr(0)
-				pos: epos
-			}
+			return p.parse_multi_expr()
 		}
 		.comment {
 			return p.comment()
@@ -528,10 +520,12 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			}
 		}
 		.key_const {
-			p.error_with_pos('const can only be defined at the top level (outside of functions)', p.tok.position())
+			p.error_with_pos('const can only be defined at the top level (outside of functions)',
+				p.tok.position())
 		}
+		// literals, 'if', etc. in here
 		else {
-			return p.parse_comma_separated()
+			return p.parse_multi_expr()
 		}
 	}
 }
@@ -631,6 +625,9 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 }
 
 pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
+	if p.pref.skip_warnings {
+		return
+	}
 	if p.pref.output_mode == .stdout {
 		ferror := util.formatted_error('warning:', s, p.file_name, pos)
 		eprintln(ferror)
@@ -644,43 +641,51 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	}
 }
 
-fn (mut p Parser) parse_comma_separated() ast.Stmt {
+fn (mut p Parser) parse_multi_expr() ast.Stmt {
 	// in here might be 1) multi-expr 2) multi-assign
 	// 1, a, c ... }       // multi-expression
 	// a, mut b ... :=/=   // multi-assign
 	// collect things upto hard boundaries
 	mut collected := []ast.Expr{}
-	mut op := p.tok.kind
-	for op !in [.rcbr, .decl_assign, .assign] {
-		if op == .name {
-			collected << p.name_expr()
-		} else {
-			collected << p.expr(0)
-		}
+	for {
+		collected << p.expr(0)
 		if p.tok.kind == .comma {
 			p.next()
 		} else {
 			break
 		}
-		op = p.tok.kind
 	}
-	is_assignment := p.tok.kind in [.decl_assign, .assign]
-	if is_assignment {
+	// TODO: Try to merge assign_expr and assign_stmt
+	if p.tok.kind == .decl_assign || (p.tok.kind == .assign && collected.len > 1) {
 		mut idents := []ast.Ident{}
 		for c in collected {
 			idents << c as ast.Ident
 		}
 		return p.partial_assign_stmt(idents)
-	} else {
+	} else if p.tok.kind.is_assign() {
+		epos := p.tok.position()
 		if collected.len == 1 {
-			epos := p.tok.position()
-			return ast.ExprStmt{
-				expr: collected[0]
+			return ast.ExprStmt {
+				expr: p.assign_expr(collected[0])
+				pos: epos
+			}
+		} else {
+			return ast.ExprStmt {
+				expr: p.assign_expr(ast.ConcatExpr{
+					vals: collected
+				})
 				pos: epos
 			}
 		}
+	} else {
+		if collected.len == 1 {
+			return ast.ExprStmt{
+				expr: collected[0]
+				pos: p.tok.position()
+			}
+		}
 		return ast.ExprStmt{
-			expr: ast.ConcatExpr {
+			expr: ast.ConcatExpr{
 				vals: collected
 			}
 			pos: p.tok.position()
@@ -706,7 +711,7 @@ pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
 				name: '_'
 				kind: .blank_ident
 				pos: pos
-				info: ast.IdentVar {
+				info: ast.IdentVar{
 					is_mut: false
 					is_static: false
 				}
@@ -862,7 +867,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else if p.peek_tok.kind == .colon && p.prev_tok.kind != .str_dollar {
 		// `foo(key:val, key2:val2)`
 		return p.struct_init(true) // short_syntax:true
-	// JS. function call with more than 1 dot
+		// JS. function call with more than 1 dot
 	} else if is_js && p.peek_tok.kind == .dot && p.peek_tok2.kind == .name {
 		node = p.call_expr(is_c, is_js, mod)
 	} else {
@@ -1105,8 +1110,9 @@ fn (mut p Parser) parse_number_literal() ast.Expr {
 fn (mut p Parser) module_decl() ast.Module {
 	mut name := 'main'
 	is_skipped := p.tok.kind != .key_module
+	mut module_pos := token.Position{}
 	if !is_skipped {
-		module_pos := p.tok.position()
+		module_pos = p.tok.position()
 		p.next()
 		mut pos := p.tok.position()
 		name = p.check_name()
@@ -1121,6 +1127,7 @@ fn (mut p Parser) module_decl() ast.Module {
 				p.error_with_pos('`module x` can only declare one module', pos)
 			}
 		}
+		module_pos = module_pos.extend(pos)
 	}
 	full_mod := p.table.qualify_module(name, p.file_name)
 	p.mod = full_mod
@@ -1128,6 +1135,7 @@ fn (mut p Parser) module_decl() ast.Module {
 	return ast.Module{
 		name: full_mod
 		is_skipped: is_skipped
+		pos: module_pos
 	}
 }
 
@@ -1252,7 +1260,9 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
+	start_pos := p.tok.position()
 	p.next()
+	pos := start_pos.extend(p.tok.position())
 	name := p.check_name()
 	// println(name)
 	typ := p.parse_type()
@@ -1280,6 +1290,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	glob := ast.GlobalDecl{
 		name: name
 		typ: typ
+		pos: pos
 		has_expr: has_expr
 		expr: expr
 	}
@@ -1296,9 +1307,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.check(.key_enum)
 	end_pos := p.tok.position()
 	enum_name := p.check_name()
-	if enum_name.len > 0 && !enum_name[0].is_capital() {
-		p.error_with_pos('enum name `$enum_name` must begin with capital letter', end_pos)
-	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
 	mut vals := []string{}
@@ -1307,9 +1315,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.position()
 		val := p.check_name()
-		if !val.is_lower() {
-			p.error_with_pos('field name `$val` must be all lowercase', pos)
-		}
 		vals << val
 		mut expr := ast.Expr{}
 		mut has_expr := false
@@ -1399,6 +1404,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	// type MyType int
 	parent_type := first_type
+	parent_name := p.table.get_type_symbol(parent_type).name
 	pid := parent_type.idx()
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .alias
@@ -1407,6 +1413,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		mod: p.mod
 		info: table.Alias{
 			foo: ''
+			is_c: parent_name.len > 2 && parent_name[0] == `C` && parent_name[1] == `.`
 		}
 		is_public: is_pub
 	})

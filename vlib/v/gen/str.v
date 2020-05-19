@@ -23,7 +23,7 @@ void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, 
 		}
 		// increase buffer (somewhat exponentially)
 		*memsize += (*memsize + *memsize) / 3 + guess;
-		*refbufp = realloc(*refbufp, *memsize);
+		*refbufp = (char*)realloc((void*)*refbufp, *memsize);
 	}
 }
 
@@ -31,7 +31,7 @@ string _STR(const char *fmt, int nfmts, ...) {
 	va_list argptr;
 	int memsize = 128;
 	int nbytes = 0;
-	char* buf = malloc(memsize);
+	char* buf = (char*)malloc(memsize);
 	va_start(argptr, nfmts);
 	for (int i=0; i<nfmts; i++) {
 		int k = strlen(fmt);
@@ -80,12 +80,12 @@ string _STR(const char *fmt, int nfmts, ...) {
 	}
 	va_end(argptr);
 	buf[nbytes] = 0;
-	buf = realloc(buf, nbytes+1);
+	buf = (char*)realloc((void*)buf, nbytes+1);
 #ifdef DEBUG_ALLOC
 	//puts('_STR:');
 	puts(buf);
 #endif
-	return tos2(buf);
+	return tos2((byteptr)buf);
 }
 
 string _STR_TMP(const char *fmt, ...) {

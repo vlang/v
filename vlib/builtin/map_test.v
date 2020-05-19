@@ -10,7 +10,7 @@ mut:
 	users map[string]User
 }
 
-fn (a mut A) set(key string, val int) {
+fn (mut a A) set(key string, val int) {
 	a.m[key] = val
 }
 

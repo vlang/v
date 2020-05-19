@@ -31,7 +31,6 @@ fn test_float_equal_operator() {
 	assert a.gebit(1)
 	assert -1 == 1 * -1
 	assert -1.0 == 1.0 * -1.0
-
 	a = f64(1)
 	a += 0.000001
 	a -= 0.000001
@@ -47,7 +46,6 @@ fn test_float_equal_operator() {
 	assert a.gtbit(f32(1))
 	assert a >= 1
 	assert a.gebit(1)
-
 	f := 1.2
 	ab := int(f)
 	assert ab == 1
@@ -62,7 +60,6 @@ fn test_str_methods() {
 	assert int(-1).str() == '-1'
 	assert i64(1).str() == '1'
 	assert i64(-1).str() == '-1'
-
 	// assert byte(1).str() == '1'
 	// assert byte(-1).str() == '255'
 	assert u16(1).str() == '1'
@@ -131,17 +128,11 @@ fn test_cmp() {
 	assert 1 ⩾ 0
 }
 */
-
-type myint int
-type mystring string
+type MyInt int
 
 fn test_int_alias() {
-	/*
-	i := myint(2)
-	s := mystring('hi')
-	ss := s + '!'
+	i := MyInt(2)
 	assert i + 10 == 12
-	*/
 }
 
 fn test_hex() {
@@ -194,49 +185,43 @@ fn test_int_decl() {
 
 fn test_int_to_hex() {
 	// array hex
-	st := [byte(`V`),`L`,`A`,`N`,`G`]
-	assert st.hex() == "564c414e47"
+	st := [byte(`V`), `L`, `A`, `N`, `G`]
+	assert st.hex() == '564c414e47'
 	assert st.hex().len == 10
-
 	st1 := [byte(0x41)].repeat(100)
-	assert st1.hex() == "41".repeat(100)
-
-	//--- int to hex tests
+	assert st1.hex() == '41'.repeat(100)
+	// --- int to hex tests
 	c0 := 12
-
 	// 8Bit
-	assert byte(0).hex()   == "0"
-	assert byte(c0).hex()  == "c"
-	assert i8(c0).hex()    == "c"
-	assert byte(127).hex() == "7f"
-	assert i8(127).hex()   == "7f"
-	assert byte(255).hex() == "ff"
-	assert byte(-1).hex()  == "ff"
-
+	assert byte(0).hex() == '0'
+	assert byte(c0).hex() == 'c'
+	assert i8(c0).hex() == 'c'
+	assert byte(127).hex() == '7f'
+	assert i8(127).hex() == '7f'
+	assert byte(255).hex() == 'ff'
+	assert byte(-1).hex() == 'ff'
 	// 16bit
-	assert u16(0).hex()      == "0"
-	assert i16(c0).hex()     == "c"
-	assert u16(c0).hex()     == "c"
-	assert i16(32767).hex()  == "7fff"
-	assert u16(32767).hex()  == "7fff"
-	assert i16(-1).hex()     == "ffff"
-	assert u16(65535).hex()  == "ffff"
-
+	assert u16(0).hex() == '0'
+	assert i16(c0).hex() == 'c'
+	assert u16(c0).hex() == 'c'
+	assert i16(32767).hex() == '7fff'
+	assert u16(32767).hex() == '7fff'
+	assert i16(-1).hex() == 'ffff'
+	assert u16(65535).hex() == 'ffff'
 	// 32bit
-	assert u32(0).hex()           == "0"
-	assert c0.hex()               == "c"
-	assert u32(c0).hex()          == "c"
-	assert 2147483647.hex()       == "7fffffff"
-	assert u32(2147483647).hex()  == "7fffffff"
-	assert (-1).hex()             == "ffffffff"
-	assert u32(4294967295).hex()  == "ffffffff"
-
+	assert u32(0).hex() == '0'
+	assert c0.hex() == 'c'
+	assert u32(c0).hex() == 'c'
+	assert 2147483647.hex() == '7fffffff'
+	assert u32(2147483647).hex() == '7fffffff'
+	assert (-1).hex() == 'ffffffff'
+	assert u32(4294967295).hex() == 'ffffffff'
 	// 64 bit
-	assert u64(0).hex()                      == "0"
-	assert i64(c0).hex()                     == "c"
-	assert u64(c0).hex()                     == "c"
-	assert i64(9223372036854775807).hex()    == "7fffffffffffffff"
-	assert u64(9223372036854775807).hex()    == "7fffffffffffffff"
-	assert i64(-1).hex()                     == "ffffffffffffffff"
-	assert u64(18446744073709551615).hex()   == "ffffffffffffffff"
+	assert u64(0).hex() == '0'
+	assert i64(c0).hex() == 'c'
+	assert u64(c0).hex() == 'c'
+	assert i64(9223372036854775807).hex() == '7fffffffffffffff'
+	assert u64(9223372036854775807).hex() == '7fffffffffffffff'
+	assert i64(-1).hex() == 'ffffffffffffffff'
+	assert u64(18446744073709551615).hex() == 'ffffffffffffffff'
 }

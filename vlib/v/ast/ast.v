@@ -9,9 +9,16 @@ import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral | CallExpr | CastExpr | CharLiteral | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf
+pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral | CallExpr |
+	CastExpr | CharLiteral | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr |
+	IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr |
+	PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral | StringLiteral | StructInit |
+	Type | TypeOf
 
-pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl | TypeDecl | UnsafeStmt
+pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
+	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
+	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl | TypeDecl |
+	UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -87,11 +94,11 @@ pub:
 // `foo.bar`
 pub struct SelectorExpr {
 pub:
-	pos       token.Position
-	expr      Expr
-	field_name     string
+	pos        token.Position
+	expr       Expr
+	field_name string
 pub mut:
-	expr_type table.Type
+	expr_type  table.Type
 }
 
 // module declaration
@@ -100,6 +107,7 @@ pub:
 	name       string
 	path       string
 	expr       Expr
+	pos        token.Position
 	is_skipped bool // module main can be skipped in single file programs
 }
 
@@ -111,7 +119,7 @@ pub:
 	default_expr     Expr
 	has_default_expr bool
 	attrs            []string
-	is_public bool
+	is_public        bool
 pub mut:
 	typ              table.Type
 }
@@ -126,12 +134,12 @@ pub mut:
 
 pub struct ConstField {
 pub:
-	name   string
-	expr   Expr
-	is_pub bool
-	pos    token.Position
+	name    string
+	expr    Expr
+	is_pub  bool
+	pos     token.Position
 pub mut:
-	typ    table.Type
+	typ     table.Type
 	comment Comment
 }
 
@@ -155,7 +163,7 @@ pub:
 	is_c        bool
 	is_js       bool
 	is_union    bool
-	attr string
+	attr        string
 }
 
 pub struct InterfaceDecl {
@@ -163,7 +171,7 @@ pub:
 	name        string
 	field_names []string
 	methods     []FnDecl
-	pos token.Position
+	pos         token.Position
 }
 
 pub struct StructInitField {
@@ -295,6 +303,7 @@ pub:
 	name     string
 	expr     Expr
 	has_expr bool
+	pos      token.Position
 pub mut:
 	typ      table.Type
 }
@@ -308,7 +317,7 @@ pub:
 	global_scope &Scope
 pub mut:
 	imports      []Import
-	errors 	     []errors.Error
+	errors       []errors.Error
 	warnings     []errors.Warning
 }
 
@@ -508,7 +517,6 @@ pub:
 	pos      token.Position
 }
 */
-
 // #include etc
 pub struct HashStmt {
 pub:
@@ -560,7 +568,7 @@ pub mut:
 }
 
 pub struct EnumField {
-	pub:
+pub:
 	name     string
 	pos      token.Position
 	expr     Expr
@@ -754,7 +762,7 @@ pub:
 
 pub struct ConcatExpr {
 pub:
-	vals []Expr
+	vals        []Expr
 pub mut:
 	return_type table.Type
 }
@@ -876,47 +884,30 @@ pub fn (expr Expr) position() token.Position {
 
 pub fn (stmt Stmt) position() token.Position {
 	match mut stmt {
-		AssertStmt {
-			return it.pos
-		}
-		AssignStmt {
-			return it.pos
-		}
+		AssertStmt { return it.pos }
+		AssignStmt { return it.pos }
+		/*
 		// Attr {
 		// }
 		// Block {
 		// }
 		// BranchStmt {
 		// }
-		Comment {
-			return it.pos
-		}
-		CompIf {
-			return it.pos
-		}
-		ConstDecl {
-			return it.pos
-		}
+		*/
+		Comment { return it.pos }
+		CompIf { return it.pos }
+		ConstDecl { return it.pos }
+		/*
 		// DeferStmt {
 		// }
-		EnumDecl {
-			return it.pos
-		}
-		ExprStmt {
-			return it.pos
-		}
-		FnDecl {
-			return it.pos
-		}
-		ForCStmt {
-			return it.pos
-		}
-		ForInStmt {
-			return it.pos
-		}
-		ForStmt {
-			return it.pos
-		}
+		*/
+		EnumDecl { return it.pos }
+		ExprStmt { return it.pos }
+		FnDecl { return it.pos }
+		ForCStmt { return it.pos }
+		ForInStmt { return it.pos }
+		ForStmt { return it.pos }
+		/*
 		// GlobalDecl {
 		// }
 		// GoStmt {
@@ -927,26 +918,23 @@ pub fn (stmt Stmt) position() token.Position {
 		// }
 		// HashStmt {
 		// }
-		Import {
-			return it.pos
-		}
+		*/
+		Import { return it.pos }
+		/*
 		// InterfaceDecl {
 		// }
 		// Module {
 		// }
-		Return {
-			return it.pos
-		}
-		StructDecl {
-			return it.pos
-		}
+		*/
+		Return { return it.pos }
+		StructDecl { return it.pos }
+		/*
 		// TypeDecl {
 		// }
 		// UnsafeStmt {
 		// }
-		else {
-			return token.Position{}
-		}
+		*/
+		else { return token.Position{} }
 	}
 }
 
@@ -960,6 +948,7 @@ pub fn fe2ex(x table.FExpr) Expr {
 	C.memcpy(&res, &x, sizeof(Expr))
 	return res
 }
+
 pub fn ex2fe(x Expr) table.FExpr {
 	res := table.FExpr{}
 	C.memcpy(&res, &x, sizeof(table.FExpr))

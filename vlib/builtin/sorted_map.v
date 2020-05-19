@@ -31,10 +31,10 @@ pub mut:
 
 struct mapnode {
 mut:
-	keys     [11]string  // TODO: Should use `max_size`
-	values   [11]voidptr // TODO: Should use `max_size`
 	children &voidptr
 	size     int
+	keys     [11]string  // TODO: Should use `max_size`
+	values   [11]voidptr // TODO: Should use `max_size`
 }
 
 fn new_sorted_map(n, value_bytes int) SortedMap { // TODO: Remove `n`
@@ -65,7 +65,7 @@ fn new_node() &mapnode {
 
 // This implementation does proactive insertion, meaning
 // that splits are done top-down and not bottom-up.
-fn (m mut SortedMap) set(key string, value voidptr) {
+fn (mut m SortedMap) set(key string, value voidptr) {
 	mut node := m.root
 	mut child_index := 0
 	mut parent := &mapnode(0)
@@ -112,7 +112,7 @@ fn (m mut SortedMap) set(key string, value voidptr) {
 	}
 }
 
-fn (n mut mapnode) split_child(child_index int, y mut mapnode) {
+fn (mut n mapnode) split_child(child_index int, y mut mapnode) {
 	mut z := new_node()
 	z.size = mid_index
 	y.size = mid_index
@@ -186,7 +186,7 @@ fn (n &mapnode) find_key(k string) int {
 	return idx
 }
 
-fn (n mut mapnode) remove_key(k string) bool {
+fn (mut n mapnode) remove_key(k string) bool {
 	idx := n.find_key(k)
 	if idx < n.size && n.keys[idx] == k {
 		if isnil(n.children) {
@@ -212,7 +212,7 @@ fn (n mut mapnode) remove_key(k string) bool {
 	}
 }
 
-fn (n mut mapnode) remove_from_leaf(idx int) {
+fn (mut n mapnode) remove_from_leaf(idx int) {
 	for i := idx + 1; i < n.size; i++ {
 		n.keys[i - 1] = n.keys[i]
 		n.values[i - 1] = n.values[i]
@@ -220,7 +220,7 @@ fn (n mut mapnode) remove_from_leaf(idx int) {
 	n.size--
 }
 
-fn (n mut mapnode) remove_from_non_leaf(idx int) {
+fn (mut n mapnode) remove_from_non_leaf(idx int) {
 	k := n.keys[idx]
 	if &mapnode(n.children[idx]).size >= degree {
 		mut current := &mapnode(n.children[idx])
@@ -246,7 +246,7 @@ fn (n mut mapnode) remove_from_non_leaf(idx int) {
 	}
 }
 
-fn (n mut mapnode) fill(idx int) {
+fn (mut n mapnode) fill(idx int) {
 	if idx != 0 && &mapnode(n.children[idx - 1]).size >= degree {
 		n.borrow_from_prev(idx)
 	} else if idx != n.size && &mapnode(n.children[idx + 1]).size >= degree {
@@ -258,7 +258,7 @@ fn (n mut mapnode) fill(idx int) {
 	}
 }
 
-fn (n mut mapnode) borrow_from_prev(idx int) {
+fn (mut n mapnode) borrow_from_prev(idx int) {
 	mut child := &mapnode(n.children[idx])
 	mut sibling := &mapnode(n.children[idx - 1])
 	for i := child.size - 1; i >= 0; i-- {
@@ -281,7 +281,7 @@ fn (n mut mapnode) borrow_from_prev(idx int) {
 	sibling.size--
 }
 
-fn (n mut mapnode) borrow_from_next(idx int) {
+fn (mut n mapnode) borrow_from_next(idx int) {
 	mut child := &mapnode(n.children[idx])
 	mut sibling := &mapnode(n.children[idx + 1])
 	child.keys[child.size] = n.keys[idx]
@@ -304,7 +304,7 @@ fn (n mut mapnode) borrow_from_next(idx int) {
 	sibling.size--
 }
 
-fn (n mut mapnode) merge(idx int) {
+fn (mut n mapnode) merge(idx int) {
 	mut child := &mapnode(n.children[idx])
 	sibling := &mapnode(n.children[idx + 1])
 	child.keys[mid_index] = n.keys[idx]
@@ -330,7 +330,7 @@ fn (n mut mapnode) merge(idx int) {
 	// free(sibling)
 }
 
-pub fn (m mut SortedMap) delete(key string) {
+pub fn (mut m SortedMap) delete(key string) {
 	if m.root.size == 0 {
 		return
 	}
@@ -387,11 +387,11 @@ pub fn (m &SortedMap) keys() []string {
 	return keys
 }
 
-fn (n mut mapnode) free() {
+fn (mut n mapnode) free() {
 	println('TODO')
 }
 
-pub fn (m mut SortedMap) free() {
+pub fn (mut m SortedMap) free() {
 	if isnil(m.root) {
 		return
 	}

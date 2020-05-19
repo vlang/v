@@ -148,9 +148,9 @@ fn C.CopyFile(&u32, &u32, int) int
 // TODO implement actual cp for linux
 pub fn cp(old, new string) ?bool {
 	$if windows {
-		_old := old.replace('/', '\\')
-		_new := new.replace('/', '\\')
-		C.CopyFile(_old.to_wide(), _new.to_wide(), false)
+		w_old := old.replace('/', '\\')
+		w_new := new.replace('/', '\\')
+		C.CopyFile(w_old.to_wide(), w_new.to_wide(), false)
 		result := C.GetLastError()
 		if result == 0 {
 			return true
@@ -325,7 +325,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	}
 }
 
-pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
+pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) {
 	//$if linux {
 	//}
 	//$else {
@@ -335,7 +335,7 @@ pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
 	//}
 }
 
-pub fn (f mut File) flush() {
+pub fn (mut f File) flush() {
 	if !f.opened {
 		return
 	}
@@ -836,7 +836,7 @@ pub fn on_segfault(f voidptr) {
 fn C.getpid() int
 
 
-fn C.proc_pidpath(int, byteptr, int) int
+//fn C.proc_pidpath(int, byteptr, int) int
 
 
 fn C.readlink() int
@@ -946,6 +946,14 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 	return error('failed to find executable')
 }
 
+// exists_in_system_path returns true if prog exists in the system's path
+pub fn exists_in_system_path(prog string) bool {
+	os.find_abs_path_of_executable(prog) or {
+		return false
+	}
+	return true
+}
+
 [deprecated]
 pub fn dir_exists(path string) bool {
 	panic('Use `os.is_dir` instead of `os.dir_exists`')
@@ -954,8 +962,8 @@ pub fn dir_exists(path string) bool {
 // is_dir returns a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
-		_path := path.replace('/', '\\')
-		attr := C.GetFileAttributesW(_path.to_wide())
+		w_path := path.replace('/', '\\')
+		attr := C.GetFileAttributesW(w_path.to_wide())
 		if attr == u32(C.INVALID_FILE_ATTRIBUTES) {
 			return false
 		}
