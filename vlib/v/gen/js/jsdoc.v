@@ -25,11 +25,13 @@ fn (mut d JsDoc) gen_indent() {
 }
 
 fn (mut d JsDoc) write(s string) {
+	if !d.gen.enable_doc { return }
 	d.gen_indent()
 	d.out.write(s)
 }
 
 fn (mut d JsDoc) writeln(s string) {
+	if !d.gen.enable_doc { return }
 	d.gen_indent()
 	d.out.writeln(s)
 	d.empty_line = true

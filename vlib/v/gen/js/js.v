@@ -29,6 +29,7 @@ mut:
 	namespace_imports	map[string]map[string]string
 	namespace       	string
 	doc					&JsDoc
+	enable_doc          bool
 	constants			strings.Builder // all global V constants
 	file				ast.File
 	tmp_count			int
@@ -54,8 +55,13 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		fn_decl: 0
 		empty_line: true
 		doc: 0
+		enable_doc: true
 	}
 	g.doc = new_jsdoc(g)
+	// TODO: Add '-[no-]jsdoc' flag
+	if pref.is_prod {
+		g.enable_doc = false
+	}
 	g.init()
 
 	mut graph := depgraph.new_dep_graph()
@@ -682,9 +688,11 @@ fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
 		g.expr(field.expr)
 		val := g.out.after(pos)
 		g.out.go_back(val.len)
-		typ := g.typ(field.typ)
-		g.constants.write('\t')
-		g.constants.writeln(g.doc.gen_typ(typ, field.name))
+		if g.enable_doc {
+			typ := g.typ(field.typ)
+			g.constants.write('\t')
+			g.constants.writeln(g.doc.gen_typ(typ, field.name))
+		}
 		g.constants.write('\t')
 		g.constants.write('${js_name(field.name)}: $val')
 		if i < it.fields.len - 1 {
