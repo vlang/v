@@ -112,7 +112,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		out += '\n\t/* module exports */'
 		out += '\n\treturn {'
 		for pub_var in g.namespaces_pub[node.name] {
-			out += '\n\t\t$pub_var,'
+			out += '\n\t\t${g.js_name(pub_var, true)},'
 		}
 		out += '\n\t};'
 		out += '\n})('
@@ -193,9 +193,9 @@ pub fn (g JsGen) hashes() string {
 // V type to JS type
 pub fn (mut g JsGen) typ(t table.Type) string {
 	sym := g.table.get_type_symbol(t)
-	mut styp := sym.name.replace('.', '__')
-	if styp.starts_with('JS__') {
-		styp = styp[4..]
+	mut styp := sym.name
+	if styp.starts_with('JS.') {
+		styp = styp[3..]
 	}
 	// 'multi_return_int_int' => '[number, number]'
 	if styp.starts_with('multi_return_') {
@@ -288,9 +288,22 @@ pub fn (mut g JsGen) new_tmp_var() string {
 	return '_tmp$g.tmp_count'
 }
 
-[inline]
-fn js_name(name string) string {
-	// name := name_.replace('.', '__')
+fn (mut g JsGen) get_alias(name string) string {
+	// TODO: This is a hack; find a better way to do this
+	split := name.split('.')
+	if split.len > 1 {
+		imports := g.namespace_imports[g.namespace]
+		alias := imports[split[0]]
+		
+		if alias != '' {
+			return alias + '.' + split[1..].join('.')
+		}
+	}
+	return name // No dot == no alias
+}
+
+fn (mut g JsGen) js_name(name_ string, trim bool) string {
+	mut name := if trim { name_.split('.').last() } else { g.get_alias(name_) }
 	if name in js_reserved {
 		return 'v_$name'
 	}
@@ -366,7 +379,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.writeln('')
 		}
 		ast.GotoLabel {
-			g.writeln('${js_name(it.name)}:')
+			g.writeln('${g.js_name(it.name, false)}:')
 		}
 		ast.GotoStmt {
 			// skip: JS has no goto
@@ -422,26 +435,14 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			if it.name.starts_with('JS.') {
 				name = it.name[3..]
 			} else {
-				name = it.name
-				// TODO: Ugly fix until `it.is_method` and `it.left` gets fixed.
-				//       `it.left` should be the name of the module in this case.
-				// TODO: This should be in `if it.is_method` instead but is_method seems to be broken.
-				dot_idx := name.index('.') or {-1} // is there a way to do `if optional()`?
-				if dot_idx > -1 {
-					split := name.split('.')
-					imports := g.namespace_imports[g.namespace]
-					alias := imports[split.first()]
-					if alias != "" {
-						name = alias + "." + split[1..].join(".")
+				name = g.js_name(it.name, false)
 					}
-				}
-			}
 			g.expr(it.left)
 			if it.is_method {
 				// example: foo.bar.baz()
 				g.write('.')
 			}
-			g.write('${js_name(name)}(')
+			g.write('${g.js_name(name, false)}(')
 			for i, arg in it.args {
 				g.expr(arg.expr)
 				if i != it.args.len - 1 {
@@ -618,7 +619,7 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			styp := g.typ(ident_var_info.typ)
 			jsdoc.write(styp)
 
-			stmt.write(js_name(ident.name))
+			stmt.write(g.js_name(ident.name, false))
 
 			if i < it.left.len - 1 {
 				jsdoc.write(', ')
@@ -660,7 +661,7 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 				g.write('const ')
 			}
 
-			g.write('${js_name(ident.name)} = ')
+			g.write('${g.js_name(ident.name, false)} = ')
 			g.expr(val)
 
 			if g.inside_loop {
@@ -702,7 +703,7 @@ fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
 			g.constants.writeln(g.doc.gen_typ(typ, field.name))
 		}
 		g.constants.write('\t')
-		g.constants.write('${js_name(field.name)}: $val')
+		g.constants.write('${g.js_name(field.name, true)}: $val')
 		if i < it.fields.len - 1 {
 			g.constants.writeln(',')
 		}
@@ -720,7 +721,7 @@ fn (mut g JsGen) gen_defer_stmts() {
 }
 
 fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
-	g.writeln('const ${js_name(it.name)} = Object.freeze({')
+	g.writeln('const ${g.js_name(it.name, true)} = Object.freeze({')
 	g.inc_indent()
 	for i, field in it.fields {
 		g.write('$field.name: ')
@@ -787,7 +788,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	} else if it.is_anon {
 		g.write('function (')
 	} else {
-		mut name := js_name(it.name.split('.').last())
+		mut name := g.js_name(it.name, true)
 		c := name[0]
 		if c in [`+`, `-`, `*`, `/`] {
 			name = util.replace_op(name)
@@ -925,7 +926,7 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 fn (mut g JsGen) fn_args(args []table.Arg, is_variadic bool) {
 	// no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
-		name := js_name(arg.name)
+		name := g.js_name(arg.name, false)
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
 			g.write('...$name')
@@ -1031,7 +1032,7 @@ fn (mut g JsGen) enum_expr(node ast.Expr) {
 }
 
 fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
-  	g.writeln('class ${js_name(node.name)} {')
+	g.writeln('class ${g.js_name(node.name, true)} {')
 	g.inc_indent()
 	g.writeln(g.doc.gen_ctor(node.fields))
 	g.writeln('constructor(values) {')
@@ -1067,7 +1068,8 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 
 fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
-	g.writeln('new ${type_sym.name}({')
+	name := type_sym.name
+	g.writeln('new ${g.js_name(name, false)}({')
 	g.inc_indent()
 	for i, field in it.fields {
 		g.write('$field.name: ')
@@ -1086,7 +1088,7 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 		g.write('CONSTANTS.')
 	}
 
-	name := js_name(node.name)
+	name := g.js_name(node.name, false)
 	// TODO `is`
 	// TODO handle optionals
 	g.write(name)
