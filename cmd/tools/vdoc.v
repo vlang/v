@@ -43,7 +43,7 @@ fn gen_html(d doc.Doc) string {
 	return ''
 }
 
-fn gen_plaintext(d doc.Doc) string {
+fn gen_plaintext(d doc.Doc, show_loc bool) string {
 	mut pw := strings.new_builder(200)
 
 	head_lines := '='.repeat(d.head_node.content.len)
@@ -54,7 +54,9 @@ fn gen_plaintext(d doc.Doc) string {
 		if cn.comment.len > 0 {
 			pw.writeln('\n' + cn.comment)
 		}
-		pw.writeln('Location: ${cn.file_path}:${cn.pos.line}:${cn.pos.col}\n\n')
+		if show_loc {
+			pw.writeln('Location: ${cn.file_path}:${cn.pos.line}:${cn.pos.col}\n\n')
+		}
 	}
 
 	pw.writeln('Generated on $d.time_generated')
@@ -85,7 +87,7 @@ fn gen_markdown(d doc.Doc, with_toc bool) string {
 	return hw.str() + '\n' + cw.str()
 }
 
-fn generate_docs_from_file(ipath string, opath string, pub_only bool) {
+fn generate_docs_from_file(ipath string, opath string, pub_only bool, show_loc bool) {
 	mut output_type := OutputType.plaintext
 	// identify output type
 	if opath.len == 0 {
@@ -111,7 +113,7 @@ fn generate_docs_from_file(ipath string, opath string, pub_only bool) {
 		.html { gen_html(d) }
 		.markdown { gen_markdown(d, true) }
 		.json { gen_json(d) }
-		else { gen_plaintext(d) }
+		else { gen_plaintext(d, show_loc) }
 	}
 
 	if output_type == .stdout || (opath.starts_with(':') && opath.ends_with(':')) {
@@ -139,24 +141,34 @@ fn lookup_module(mod string) ?string {
 	return error('vdoc: Module "${mod}" not found.')
 }
 
-fn main() {
-	args := os.args[2..]
+fn parse_args(args []string) ([]string, []string) {
+	mut opts := []string{}
+	mut unkn := []string{}
 	
-	if args.len == 0 || args[0] == 'help' {
+	for arg in args {
+		if arg.starts_with('-') {
+			opts << arg
+		} else {
+			unkn << arg
+		}
+	}
+
+	return opts, unkn
+}
+
+fn main() {
+	osargs := os.args[2..]
+	opts, args := parse_args(osargs)
+	
+	if osargs.len == 0 || args[0] == 'help' {
 		os.system('v help doc')
 		exit(0)
 	}
 
 	mut src_path := args[0]
 	mut opath := if args.len >= 2 { args[1] } else { '' }
-	mut pub_only := true
-
-	if args[0] == '-all' {
-		pub_only = false
-		src_path = args[1]
-		opath = args[2]
-	}
-
+	pub_only := '-all' !in opts
+	show_loc := '-loc' in opts
 	is_path := src_path.ends_with('.v') || src_path.split('/').len > 1 || src_path == '.'
 
 	if !is_path {
@@ -168,5 +180,5 @@ fn main() {
 		src_path = mod_path
 	}
 
-	generate_docs_from_file(src_path, opath, pub_only)
+	generate_docs_from_file(src_path, opath, pub_only, show_loc)
 }

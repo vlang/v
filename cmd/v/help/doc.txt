@@ -9,5 +9,5 @@ and prints or saves them to its desired format. It can generate HTML, JSON,
 or Markdown format.
 
 Options:
-  -pub_only  Documents only the publicly listed functions/methods/structs/enums. 
-             Defaults to "true".
+  -all  Includes private and public functions/methods/structs/consts/enums.
+  -loc  Show the locations of the generated signatures. (For plaintext only)
