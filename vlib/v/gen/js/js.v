@@ -196,6 +196,16 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		tokens := styp.replace('multi_return_', '').split('_')
 		return '[' + tokens.map(g.to_js_typ(it)).join(', ') + ']'
 	}
+	// 'anon_fn_7_7_1' => () '(a number, b number) => void' 
+	if styp.starts_with('anon_') {
+		info := sym.info as table.FnType
+		mut res := '('
+		for i, arg in info.func.args {
+			res += '$arg.name: ${g.typ(arg.typ)}'
+			if i < info.func.args.len - 1 { res += ', ' }
+		}
+		return res + ') => ' + g.typ(info.func.return_type)
+	}
 	return g.to_js_typ(styp)
 }
 
