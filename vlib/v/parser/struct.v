@@ -20,20 +20,25 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	} else {
 		p.check(.key_union)
 	}
-	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
-	is_js := p.tok.lit == 'JS' && p.peek_tok.kind == .dot
-	if is_c {
+	language := if p.tok.lit == 'C' && p.peek_tok.kind == .dot {
+		table.Language.c
+	} else if p.tok.lit == 'JS' && p.peek_tok.kind == .dot {
+		table.Language.js
+	} else {
+		table.Language.v
+	}
+	if language != .v {
 		p.next() // C || JS
 		p.next() // .
 	}
 	is_typedef := p.attr == 'typedef'
 	no_body := p.peek_tok.kind != .lcbr
-	if !is_c && !is_js && no_body {
+	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
 	end_pos := p.tok.position()
 	mut name := p.check_name()
-	if !is_c && !is_js && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
+	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
 		p.error_with_pos('struct name `$name` must begin with capital letter', end_pos)
 	}
 	// println('struct decl $name')
@@ -156,9 +161,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		}
 		p.check(.rcbr)
 	}
-	if is_c {
+	if language == .c {
 		name = 'C.$name'
-	} else if is_js {
+	} else if language == .js {
 		name = 'JS.$name'
 	} else {
 		name = p.prepend_mod(name)
@@ -195,8 +200,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		mut_pos: mut_pos
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
-		is_c: is_c
-		is_js: is_js
+		language: language
 		is_union: is_union
 		attr: p.attr
 	}
