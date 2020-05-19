@@ -130,47 +130,6 @@ pub fn is_dir(path string) bool {
 }
 */
 
-pub fn open(path string) ?File {
-	mode := 'rb'
-	file := File {
-		cfile: C._wfopen(path.to_wide(), mode.to_wide())
-		opened: true
-	}
-	if isnil(file.cfile) {
-		return error('failed to open file "$path"')
-	}
-	return file
-}
-
-// create creates a file at a specified location and returns a writable `File` object.
-pub fn create(path string) ?File {
-	mode := 'wb'
-	file := File {
-		cfile: C._wfopen(path.to_wide(), mode.to_wide())
-		opened: true
-	}
-	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
-	}
-	return file
-}
-
-pub fn (mut f File) write(s string) {
-	if !f.opened {
-		return
-	}
-	C.fputs(s.str, f.cfile)
-}
-
-pub fn (mut f File) writeln(s string) {
-	if !f.opened {
-		return
-	}
-	// TODO perf
-	C.fputs(s.str, f.cfile)
-	C.fputs('\n', f.cfile)
-}
-
 
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) ?bool {
@@ -185,12 +144,11 @@ pub fn mkdir(path string) ?bool {
 // Ref - https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/get-osfhandle?view=vs-2019
 // get_file_handle retrieves the operating-system file handle that is associated with the specified file descriptor.
 pub fn get_file_handle(path string) HANDLE {
-    mode := 'rb'
-    fd := C._wfopen(path.to_wide(), mode.to_wide())
-    if fd == 0 {
+    cfile := vfopen(path, 'rb')
+    if cfile == 0 {
 	    return HANDLE(INVALID_HANDLE_VALUE)
     }
-    handle := HANDLE(C._get_osfhandle(C._fileno(fd))) // CreateFile? - hah, no -_-
+    handle := HANDLE(C._get_osfhandle(fileno(cfile))) // CreateFile? - hah, no -_-
     return handle
 }
 

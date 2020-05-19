@@ -66,111 +66,11 @@ pub fn is_dir(path string) bool {
 }
 */
 
-// open opens a file at the specified and returns back a read-only `File` object
-pub fn open(path string) ?File {
-  /*
-	$if linux {
-		$if !android {
-			fd := C.syscall(sys_open, path.str, 511)
-			if fd == -1 {
-				return error('failed to open file "$path"')
-			}
-			return File{
-				fd: fd
-				opened: true
-			}
-		}
-	}
-  */
-	file := File{
-		cfile: C.fopen(charptr(path.str), 'rb')
-		fd: 0
-		opened: true
-	}
-	if isnil(file.cfile) {
-		return error('failed to open file "$path"')
-	}
-	return file
-}
-
-// create creates or opens a file at a specified location and returns a write-only `File` object
-pub fn create(path string) ?File {
-  /*
-	// NB: android/termux/bionic is also a kind of linux,
-	// but linux syscalls there sometimes fail,
-	// while the libc version should work.
-	$if linux {
-		$if !android {
-			//$if macos {
-			//	fd = C.syscall(398, path.str, 0x601, 0x1b6)
-			//}
-			//$if linux {
-			fd = C.syscall(sys_creat, path.str, 511)
-			//}
-			if fd == -1 {
-				return error('failed to create file "$path"')
-			}
-			file = File{
-				fd: fd
-				opened: true
-			}
-			return file
-		}
-	}
-  */
-	file := File{
-		cfile: C.fopen(charptr(path.str), 'wb')
-		fd: 0
-		opened: true
-	}
-	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
-	}
-	return file
-}
-
 /*
 pub fn (mut f File) fseek(pos, mode int) {
 }
 */
 
-
-pub fn (mut f File) write(s string) {
-	if !f.opened {
-		return
-	}
-  /*
-	$if linux {
-		$if !android {
-			C.syscall(sys_write, f.fd, s.str, s.len)
-			return
-		}
-	}
-  */
-	C.fputs(s.str, f.cfile)
-	// C.fwrite(s.str, 1, s.len, f.cfile)
-}
-
-pub fn (mut f File) writeln(s string) {
-	if !f.opened {
-		return
-	}
-  /*
-	$if linux {
-		$if !android {
-			snl := s + '\n'
-			C.syscall(sys_write, f.fd, snl.str, snl.len)
-			return
-		}
-	}
-  */
-	// C.fwrite(s.str, 1, s.len, f.cfile)
-	// ss := s.clone()
-	// TODO perf
-	C.fputs(s.str, f.cfile)
-	// ss.free()
-	C.fputs('\n', f.cfile)
-}
 
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) ?bool {

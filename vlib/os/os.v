@@ -223,11 +223,23 @@ pub fn mv_by_cp(source string, target string) ?bool {
 	return true
 }
 
-fn vfopen(path, mode string) &C.FILE {
+// vfopen returns an opened C file, given its path and open mode.
+// NB: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
+// If you write pure V code, os.create or os.open are more convenient.
+pub fn vfopen(path, mode string) &C.FILE {
 	$if windows {
 		return C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
 		return C.fopen(charptr(path.str), charptr(mode.str))
+	}
+}
+
+// fileno returns the file descriptor of an opened C file
+pub fn fileno(cfile voidptr) int {
+	$if windows {
+		return C._fileno(cfile)
+	} $else {
+		return C.fileno(cfile)
 	}
 }
 
@@ -1245,4 +1257,103 @@ pub fn resource_abs_path(path string) string {
 		base_path = vresource
 	}
 	return os.real_path(os.join_path(base_path, path))
+}
+
+
+// open tries to open a file for reading and returns back a read-only `File` object
+pub fn open(path string) ?File {
+  /*
+	$if linux {
+		$if !android {
+			fd := C.syscall(sys_open, path.str, 511)
+			if fd == -1 {
+				return error('failed to open file "$path"')
+			}
+			return File{
+				fd: fd
+				opened: true
+			}
+		}
+	}
+  */
+	cfile := vfopen(path, 'rb')
+	if cfile == 0 {
+		return error('failed to open file "$path"')
+	}
+	fd := fileno(cfile)
+	return File {
+		cfile: cfile
+		fd: fd
+		opened: true
+	}
+}
+
+// create creates or opens a file at a specified location and returns a write-only `File` object
+pub fn create(path string) ?File {
+  /*
+	// NB: android/termux/bionic is also a kind of linux,
+	// but linux syscalls there sometimes fail,
+	// while the libc version should work.
+	$if linux {
+		$if !android {
+			//$if macos {
+			//	fd = C.syscall(398, path.str, 0x601, 0x1b6)
+			//}
+			//$if linux {
+			fd = C.syscall(sys_creat, path.str, 511)
+			//}
+			if fd == -1 {
+				return error('failed to create file "$path"')
+			}
+			file = File{
+				fd: fd
+				opened: true
+			}
+			return file
+		}
+	}
+  */
+	cfile := vfopen(path, 'wb')
+	if cfile == 0 {
+		return error('failed to create file "$path"')
+	}
+	fd := fileno(cfile)
+	return File {
+		cfile: cfile
+		fd: fd
+		opened: true
+	}
+}
+
+pub fn (mut f File) write(s string) {
+	if !f.opened {
+		return
+	}
+  /*
+	$if linux {
+		$if !android {
+			C.syscall(sys_write, f.fd, s.str, s.len)
+			return
+		}
+	}
+  */
+	C.fputs(s.str, f.cfile)
+}
+
+pub fn (mut f File) writeln(s string) {
+	if !f.opened {
+		return
+	}
+  /*
+	$if linux {
+		$if !android {
+			snl := s + '\n'
+			C.syscall(sys_write, f.fd, snl.str, snl.len)
+			return
+		}
+	}
+  */
+	// TODO perf
+	C.fputs(s.str, f.cfile)
+	C.fputs('\n', f.cfile)
 }
