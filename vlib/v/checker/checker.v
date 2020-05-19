@@ -878,6 +878,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				call_expr.pos)
 		}
 	}
+	if !f.is_pub && !f.is_c && !c.is_builtin_mod && !c.pref.is_test && f.mod != c.mod && f.name !=
+		'' && f.mod != '' {
+		c.warn('function `$f.name` is private. curmod=$c.mod fmod=$f.mod', call_expr.pos)
+	}
 	call_expr.return_type = f.return_type
 	if f.return_type == table.void_type && f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
@@ -1483,35 +1487,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.check_expr_opt_call(it.expr, etype, false)
 		}
 		ast.FnDecl {
-			if !it.is_c && !it.is_js && !c.is_builtin_mod {
-				c.check_valid_snake_case(it.name, 'function name', it.pos)
-			}
-			if it.is_method {
-				sym := c.table.get_type_symbol(it.receiver.typ)
-				if sym.kind == .interface_ {
-					c.error('interfaces cannot be used as method receiver', it.receiver_pos)
-				}
-				// if sym.has_method(it.name) {
-				// c.warn('duplicate method `$it.name`', it.pos)
-				// }
-			}
-			if !it.is_c {
-				// Make sure all types are valid
-				for arg in it.args {
-					sym := c.table.get_type_symbol(arg.typ)
-					if sym.kind == .placeholder {
-						c.error('unknown type `$sym.name`', it.pos)
-					}
-				}
-			}
-			c.expected_type = table.void_type
-			c.fn_return_type = it.return_type
-			c.stmts(it.stmts)
-			if !it.is_c && !it.is_js && !it.no_body && it.return_type != table.void_type &&
-				!c.returns && it.name !in ['panic', 'exit'] {
-				c.error('missing return at end of function `$it.name`', it.pos)
-			}
-			c.returns = false
+			c.fn_decl(it)
 		}
 		ast.ForCStmt {
 			c.in_for_count++
@@ -2311,4 +2287,36 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 // for debugging only
 fn (c &Checker) fileis(s string) bool {
 	return c.file.path.contains(s)
+}
+
+fn (mut c Checker) fn_decl(it ast.FnDecl) {
+	if !it.is_c && !it.is_js && !c.is_builtin_mod {
+		c.check_valid_snake_case(it.name, 'function name', it.pos)
+	}
+	if it.is_method {
+		sym := c.table.get_type_symbol(it.receiver.typ)
+		if sym.kind == .interface_ {
+			c.error('interfaces cannot be used as method receiver', it.receiver_pos)
+		}
+		// if sym.has_method(it.name) {
+		// c.warn('duplicate method `$it.name`', it.pos)
+		// }
+	}
+	if !it.is_c {
+		// Make sure all types are valid
+		for arg in it.args {
+			sym := c.table.get_type_symbol(arg.typ)
+			if sym.kind == .placeholder {
+				c.error('unknown type `$sym.name`', it.pos)
+			}
+		}
+	}
+	c.expected_type = table.void_type
+	c.fn_return_type = it.return_type
+	c.stmts(it.stmts)
+	if !it.is_c && !it.is_js && !it.no_body && it.return_type != table.void_type && !c.returns &&
+		it.name !in ['panic', 'exit'] {
+		c.error('missing return at end of function `$it.name`', it.pos)
+	}
+	c.returns = false
 }

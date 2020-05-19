@@ -3,21 +3,21 @@ module util
 import os
 
 [inline]
-fn is_name_char(c byte) bool {
+pub fn is_name_char(c byte) bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
 }
 
 [inline]
-fn is_func_char(c byte) bool {
+pub fn is_func_char(c byte) bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` || c.is_digit()
 }
 
 [inline]
-fn is_nl(c byte) bool {
+pub fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
 
-fn contains_capital(s string) bool {
+pub fn contains_capital(s string) bool {
 	for c in s {
 		if c >= `A` && c <= `Z` {
 			return true
@@ -28,7 +28,7 @@ fn contains_capital(s string) bool {
 
 // HTTPRequest  bad
 // HttpRequest  good
-fn good_type_name(s string) bool {
+pub fn good_type_name(s string) bool {
 	if s.len < 4 {
 		return true
 	}

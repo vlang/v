@@ -286,16 +286,35 @@ jobs:
       run: |
         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
         sudo apt-get update
-        sudo apt install --quiet -y mingw-w64
+        sudo apt install --quiet -y mingw-w64 wine-stable winetricks
     - name: Build V
       run: make -j4
-    - name: v.c can be compiled
+    - name: v.c can be compiled and run
       run: |
         ./v -os cross -o /tmp/v.c cmd/v
-        cc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm
+        gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm
         ls -lart v_from_vc
-    - name: v_win.c can be compiled
+        ./v_from_vc version
+    - name: v_win.c can be compiled and run
       run: |
         ./v -os windows -o /tmp/v_win.c cmd/v
         x86_64-w64-mingw32-gcc  /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
         ls -lart v_from_vc.exe
+        winetricks nocrashdialog
+        wine v_from_vc.exe version
+
+
+  ubuntu-c-plus-plus:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind g++-9
+    - name: Build V
+      run: make -j4
+    - name: g++ version
+      run: g++-9 --version
+    - name: Running tests with g++
+      run: ./v -cc g++-9 test-fixed
+    - name: V self compilation with g++
+      run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v

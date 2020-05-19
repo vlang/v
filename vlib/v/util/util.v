@@ -222,7 +222,7 @@ fn imax(a, b int) int {
 	}
 }
 
-fn replace_op(s string) string {
+pub fn replace_op(s string) string {
 	last_char := s[s.len - 1]
 	suffix := match last_char {
 		`+` { '_plus' }

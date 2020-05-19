@@ -6,9 +6,12 @@ module big
 #flag @VROOT/thirdparty/bignum/bn.o
 #include "bn.h"
 
-pub struct Number {
+[typedef]
+struct C.bn {
 	array [32]u32
 }
+
+type Number = C.bn
 
 fn C.bignum_init( n &Number )
 fn C.bignum_from_int( n &Number, i u64 )

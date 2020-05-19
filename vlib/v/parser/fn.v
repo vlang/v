@@ -19,7 +19,6 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 	} else {
 		p.check_name()
 	}
-
 	mut is_or_block_used := false
 	if fn_name == 'json.decode' {
 		p.expecting_type = true // Makes name_expr() parse the type (`User` in `json.decode(User, txt)`)`
@@ -146,6 +145,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type_with_mut(rec_mut)
+		sym := p.table.get_type_symbol(rec_type)
+		if sym.mod != p.mod && sym.mod != '' {
+			p.error('cannot define methods on types from other modules (current module is `$p.mod`, `$sym.name` is from `$sym.mod`)')
+		}
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
 		}
@@ -159,7 +162,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut name := ''
 	if p.tok.kind == .name {
 		// TODO high order fn
-		name = if is_js { p.check_js_name() } else { p.check_name() }
+		name = if is_js {
+			p.check_js_name()
+		} else {
+			p.check_name()
+		}
 		if !is_js && !is_c && !p.pref.translated && util.contains_capital(name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
@@ -248,6 +255,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_generic: is_generic
 			is_pub: is_pub
 			ctdefine: ctdefine
+			mod: p.mod
 		})
 	}
 	// Body
