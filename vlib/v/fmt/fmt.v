@@ -759,7 +759,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	// f.find_comment(it.pos.line_nr)
 	s := node.str(f.table)
 	f.write(s.replace(f.cur_mod + '.', '')) // `Expr` instead of `ast.Expr` in mod ast
-	if !node.is_c && !node.is_js {
+	if node.language == .v {
 		f.writeln(' {')
 		f.stmts(node.stmts)
 		f.write('}')

@@ -117,15 +117,22 @@ pub fn (mut p Parser) parse_type() table.Type {
 		}
 		p.next()
 	}
-	is_c := p.tok.lit == 'C'
-	is_js := p.tok.lit == 'JS'
-	if is_c || is_js {
+
+	language := if p.tok.lit == 'C' {
+		table.Language.c
+	} else if p.tok.lit == 'JS' {
+		table.Language.js
+	} else {
+		table.Language.v
+	}
+
+	if language != .v {
 		p.next()
 		p.check(.dot)
 	}
 	mut typ := table.void_type
 	if p.tok.kind != .lcbr {
-		typ = p.parse_any_type(is_c, is_js, nr_muls > 0)
+		typ = p.parse_any_type(language, nr_muls > 0)
 	}
 	if is_optional {
 		typ = typ.set_flag(.optional)
@@ -136,11 +143,11 @@ pub fn (mut p Parser) parse_type() table.Type {
 	return typ
 }
 
-pub fn (mut p Parser) parse_any_type(is_c, is_js, is_ptr bool) table.Type {
+pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool) table.Type {
 	mut name := p.tok.lit
-	if is_c {
+	if language == .c {
 		name = 'C.$name'
-	} else if is_js {
+	} else if language == .js {
 		name = 'JS.$name'
 	} else if p.peek_tok.kind == .dot {
 		// `module.Type`

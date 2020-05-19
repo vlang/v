@@ -21,8 +21,7 @@ pub:
 	args        []Arg
 	return_type Type
 	is_variadic bool
-	is_c        bool
-	is_js       bool
+	language    Language
 	is_generic  bool
 	is_pub      bool
 	mod         string

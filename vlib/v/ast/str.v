@@ -31,10 +31,10 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		*/
 	}
 	mut name := if node.is_anon { '' } else { node.name.after('.') }
-	if node.is_c {
+	if node.language == .c {
 		name = 'C.$name'
 	}
-	if node.is_js {
+	else if node.language == .js {
 		name = 'JS.$name'
 	}
 	f.write('fn ${receiver}${name}(')

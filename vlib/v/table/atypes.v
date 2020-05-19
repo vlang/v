@@ -17,6 +17,12 @@ pub type Type int
 
 pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map | MultiReturn | Struct | SumType
 
+pub enum Language {
+	v
+	c
+	js
+}
+
 pub struct TypeSymbol {
 pub:
 	parent_idx int
@@ -574,8 +580,8 @@ pub:
 
 pub struct Alias {
 pub:
-	parent_typ  Type
-	is_c        bool
+	parent_typ Type
+	language   Language
 }
 
 // NB: FExpr here is a actually an ast.Expr .

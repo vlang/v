@@ -8,11 +8,11 @@ import v.table
 import v.token
 import v.util
 
-pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
+pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.position()
-	fn_name := if is_c {
+	fn_name := if language == .c {
 		'C.${p.check_name()}'
-	} else if is_js {
+	} else if language == .js {
 		'JS.${p.check_js_name()}'
 	} else if mod.len > 0 {
 		'${mod}.${p.check_name()}'
@@ -69,8 +69,7 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 		args: args
 		mod: p.mod
 		pos: pos
-		is_c: is_c
-		is_js: is_js
+		language: language
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			is_used: is_or_block_used
@@ -109,9 +108,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.check(.key_fn)
 	p.open_scope()
 	// C. || JS.
-	is_c := p.tok.kind == .name && p.tok.lit == 'C'
-	is_js := p.tok.kind == .name && p.tok.lit == 'JS'
-	if is_c || is_js {
+	language := if p.tok.kind == .name && p.tok.lit == 'C' {
+		table.Language.c
+	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
+		table.Language.js
+	} else {
+		table.Language.v
+	}
+	if language != .v {
 		p.next()
 		p.check(.dot)
 	}
@@ -162,12 +166,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut name := ''
 	if p.tok.kind == .name {
 		// TODO high order fn
-		name = if is_js {
+		name = if language == .js {
 			p.check_js_name()
 		} else {
 			p.check_name()
 		}
-		if !is_js && !is_c && !p.pref.translated && util.contains_capital(name) {
+		if language == .v && !p.pref.translated && util.contains_capital(name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
 		if is_method && p.table.get_type_symbol(rec_type).has_method(name) {
@@ -235,9 +239,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			ctdefine: ctdefine
 		})
 	} else {
-		if is_c {
+		if language == .c {
 			name = 'C.$name'
-		} else if is_js {
+		} else if language == .js {
 			name = 'JS.$name'
 		} else {
 			name = p.prepend_mod(name)
@@ -250,8 +254,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			args: args
 			return_type: return_type
 			is_variadic: is_variadic
-			is_c: is_c
-			is_js: is_js
+			language: language
 			is_generic: is_generic
 			is_pub: is_pub
 			ctdefine: ctdefine
@@ -283,8 +286,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		receiver_pos: receiver_pos
 		is_method: is_method
 		rec_mut: rec_mut
-		is_c: is_c
-		is_js: is_js
+		language: language
 		no_body: no_body
 		pos: start_pos.extend(end_pos)
 		body_pos: body_start_pos
