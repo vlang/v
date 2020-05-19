@@ -1412,7 +1412,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		parent_idx: pid
 		mod: p.mod
 		info: table.Alias{
-			foo: ''
+			parent_typ: parent_type
 			is_c: parent_name.len > 2 && parent_name[0] == `C` && parent_name[1] == `.`
 		}
 		is_public: is_pub

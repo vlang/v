@@ -308,8 +308,19 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			c.error('unknown struct: $type_sym.name', struct_init.pos)
 		}
 		// string & array are also structs but .kind of string/array
-		.struct_, .string, .array {
-			info := type_sym.info as table.Struct
+		.struct_, .string, .array, .alias {
+			mut info := table.Struct{}
+			if type_sym.kind == .alias {
+				info_t := type_sym.info as table.Alias
+				sym := c.table.get_type_symbol(info_t.parent_typ)
+				if sym.kind != .struct_ {
+					c.error('alias type name: $sym.name is not struct type', struct_init.pos)
+				}
+				info = sym.info as table.Struct
+			} else {
+				info = type_sym.info as table.Struct
+			}
+
 			if struct_init.is_short && struct_init.fields.len > info.fields.len {
 				c.error('too many fields', struct_init.pos)
 			}
