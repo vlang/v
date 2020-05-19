@@ -74,6 +74,7 @@ pub fn parse_text(path_name string, text string, b_table &table.Table, comments_
 	mut stmts := []ast.Stmt{}
 	mut p := Parser{
 		file_name: path_name,
+		file_name_dir: os.dir(path_name)
 		scanner: scanner.new_scanner(text, comments_mode),
 		table: b_table,
 		pref: pref,
