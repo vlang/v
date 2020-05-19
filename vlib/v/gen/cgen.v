@@ -318,7 +318,7 @@ fn (g &Gen) base_type(t table.Type) string {
 	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
-	}    
+	}
 	return styp
 }
 

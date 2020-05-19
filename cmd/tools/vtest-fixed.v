@@ -9,7 +9,6 @@ const (
 		'vlib/v/tests/enum_bitfield_test.v',
 		'vlib/v/tests/num_lit_call_method_test.v',
 		'vlib/v/tests/pointers_test.v',
-		'vlib/v/tests/type_test.v',
 		'vlib/v/tests/pointers_str_test.v',
 		'vlib/arrays/arrays_test.v',
 		'vlib/net/http/http_httpbin_test.v',

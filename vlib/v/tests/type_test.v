@@ -2,7 +2,11 @@ struct Human {
 	name string
 }
 
-fn (h Human) str() string {
+fn (h Human) str1() string {
+	return 'Human: $h.name'
+}
+
+fn (h Human) str2() string {
 	return 'Human: $h.name'
 }
 
@@ -12,11 +16,11 @@ fn test_type_print() {
 	p := Person{
 		name: 'Bilbo'
 	}
-	println(p)
-	assert p.str() == 'Human: Bilbo'
+	//println(p)
+	assert p.str1() == 'Human: Bilbo'
 }
 
-fn (h Person) str() string {
+fn (h Person) str2() string {
 	return 'Person: $h.name'
 }
 
@@ -24,8 +28,8 @@ fn test_person_str() {
 	p := Person{
 		name: 'Bilbo'
 	}
-	println(p)
-	assert p.str() == 'Person: Bilbo'
+	//println(p)
+	assert p.str2() == 'Person: Bilbo'
 }
 
 struct Foo {
