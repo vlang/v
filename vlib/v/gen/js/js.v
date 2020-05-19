@@ -419,6 +419,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.ArrayInit {
 			g.gen_array_init_expr(it)
 		}
+		ast.AssignExpr {
+			g.gen_assign_expr(it)
+		}
 		ast.BoolLiteral {
 			if it.val == true {
 				g.write('true')
@@ -671,6 +674,12 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			}
 		}
 	}
+}
+
+fn (mut g JsGen) gen_assign_expr(it ast.AssignExpr) {
+	g.expr(it.left)
+	g.write(' $it.op ')
+	g.expr(it.val)
 }
 
 fn (mut g JsGen) gen_attr(it ast.Attr) {
