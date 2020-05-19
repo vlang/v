@@ -28,3 +28,14 @@ fn test_array_init_with_default() {
 	b2 := []string{len: 2, init: '111'}
 	assert '$b2' == "['111', '111']"
 }
+
+fn test_array_init_with_len_no_default() {
+	a1 := []int{len: 4}
+	assert '$a1' == '[0, 0, 0, 0]'
+
+	a2 := []string{len: 4}
+	assert '$a2' == "['', '', '', '']"
+
+	a3 := []bool{len: 3}
+	assert '$a3' == '[false, false, false]'
+}

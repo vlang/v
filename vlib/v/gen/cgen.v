@@ -990,11 +990,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				ast.ArrayInit {
 					is_fixed_array_init = it.is_fixed
 					has_val = it.has_val
+					elem_type_str := g.typ(it.elem_type)
 					if it.has_default {
-						elem_type_str := g.typ(it.elem_type)
 						g.write('$elem_type_str _val_$it.pos.pos = ')
 						g.expr(it.default_expr)
 						g.writeln(';')
+					} else if it.has_len && it.elem_type == table.string_type {
+						g.writeln('$elem_type_str _val_$it.pos.pos = tos_lit("");')
 					}
 				}
 				else {}
@@ -3928,7 +3930,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 			g.write('0, ')
 		}
 		g.write('sizeof($elem_type_str), ')
-		if it.has_default {
+		if it.has_default || (it.has_len && it.elem_type == table.string_type)  {
 			g.write('&_val_$it.pos.pos)')
 		} else {
 			g.write('0)')
