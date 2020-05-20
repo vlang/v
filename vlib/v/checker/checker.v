@@ -711,7 +711,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		call_expr.return_type = left_type
 		call_expr.receiver_type = left_type
 		if method_name == 'map' {
-			call_expr.return_type = c.table.find_or_register_array(arg_type, 1)
+			arg_sym := c.table.get_type_symbol(arg_type)
+			match arg_sym.info {
+				table.FnType { call_expr.return_type = c.table.find_or_register_array(it.func.return_type, 1) }
+				else { call_expr.return_type = c.table.find_or_register_array(arg_type, 1) }
+			}
 		} else if method_name == 'clone' {
 			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
