@@ -26,6 +26,7 @@ fn C.glDisableVertexAttribArray()
 fn C.glGenVertexArrays()
 fn C.glDrawElements()
 fn C.glUseProgram()
+fn C.glValidateProgram()
 fn C.glDrawArrays()
 fn C.glBufferData()
 fn C.glGenerateMipmap()
@@ -42,10 +43,12 @@ fn C.glDeleteShader()
 fn C.glGetProgramiv()
 fn C.glLinkProgram()
 fn C.glAttachShader()
+fn C.glDetachShader()
 fn C.glGetShaderiv()
 fn C.glCompileShader()
 fn C.glShaderSource()
 fn C.glCreateProgram() int
+fn C.glDeleteProgram()
 fn C.glClear()
 fn C.glCreateShader() int
 fn C.glClearColor()
@@ -58,6 +61,7 @@ fn C.glDeleteBuffers()
 fn C.glDeleteVertexArrays()
 fn C.glGetUniformLocation() int
 fn C.glGetAttribLocation() int
+fn C.glBindAttribLocation()
 
 
 pub fn init_glad() {
@@ -88,6 +92,10 @@ pub fn create_program() int {
 	return C.glCreateProgram()
 }
 
+pub fn delete_program(program int) {
+	C.glDeleteProgram(program)
+}
+
 pub fn shader_source(shader, a int, source string, b int) {
 	C.glShaderSource(shader, a, &source.str, b)
 }
@@ -107,6 +115,10 @@ pub fn attach_shader(program, shader int) {
 	C.glAttachShader(program, shader)
 }
 
+pub fn detach_shader(program, shader int) {
+	C.glDetachShader(program, shader)
+}
+
 pub fn link_program(program int) {
 	C.glLinkProgram(program)
 }
@@ -115,6 +127,10 @@ pub fn get_program_link_status(program int) int {
 	success := 0
 	C.glGetProgramiv(program, C.GL_LINK_STATUS, &success)
 	return success
+}
+
+pub fn validate_program(program int) {
+	C.glValidateProgram(program)
 }
 
 pub fn delete_shader(shader int) {
@@ -205,6 +221,10 @@ pub fn get_uniform_location(program int, key string) int {
 //gets the attribute location for key
 pub fn get_attrib_location(program int, key string) int {
 	return C.glGetAttribLocation(program, key.str)
+}
+
+pub fn bind_attrib_location(program int, index int, name string) {
+	C.glBindAttribLocation(program, index, name.str)
 }
 
 pub fn draw_arrays(typ, start, len int) {
