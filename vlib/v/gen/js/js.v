@@ -201,7 +201,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		tokens := styp.replace('multi_return_', '').split('_')
 		return '[' + tokens.map(g.to_js_typ(it)).join(', ') + ']'
 	}
-	// 'anon_fn_7_7_1' => () '(a number, b number) => void' 
+	// 'anon_fn_7_7_1' => '(a number, b number) => void' 
 	if styp.starts_with('anon_') {
 		info := sym.info as table.FnType
 		mut res := '('
@@ -247,7 +247,7 @@ fn (mut g JsGen) to_js_typ(typ string) string {
 			}
 		}
 	}
-
+	// ns.export => ns["export"]
 	for i, v in styp.split('.') {
 		if i == 0 {
 			styp = v
@@ -291,15 +291,16 @@ pub fn (mut g JsGen) new_tmp_var() string {
 	return '_tmp$g.tmp_count'
 }
 
-// mod1.mod2.fn ==> mod1.mod2
+// 'mod1.mod2.fn' => 'mod1.mod2'
+// 'fn' => ''
 [inline]
 fn get_ns(s string) string {
 	parts := s.split('.')
 	mut res := ''
 	for i, p in parts {
-		if i == parts.len - 1 { break }
+		if i == parts.len - 1 { break } // Last part (fn/struct/var name): skip
 		res += p
-		if i < parts.len - 2 { res += '.' }
+		if i < parts.len - 2 { res += '.' } // Avoid trailing dot
 	}
 	return res
 }
