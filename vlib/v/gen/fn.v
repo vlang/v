@@ -8,7 +8,7 @@ import v.table
 import v.util
 
 fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
-	if it.is_c {
+	if it.language == .c {
 		// || it.no_body {
 		return
 	}
@@ -56,7 +56,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		if it.is_method {
 			name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
 		}
-		if it.is_c {
+		if it.language == .c {
 			name = name.replace('.', '__')
 		} else {
 			name = c_name(name)
@@ -418,7 +418,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.gen_json_for_type(ast_type.typ)
 		}
 	}
-	if node.is_c {
+	if node.language == .c {
 		// Skip "C."
 		g.is_c_call = true
 		name = name[2..].replace('.', '__')

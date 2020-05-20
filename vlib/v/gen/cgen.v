@@ -318,7 +318,7 @@ fn (g &Gen) base_type(t table.Type) string {
 	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
-	}    
+	}
 	return styp
 }
 
@@ -392,7 +392,7 @@ typedef struct {
 				is_fn_sig := func.name == ''
 				not_anon := !info.is_anon
 				if !info.has_decl && !is_multi && (not_anon || is_fn_sig) {
-					fn_name := if func.is_c {
+					fn_name := if func.language == .c {
 						func.name.replace('.', '__')
 					} else if info.is_anon {
 						typ.name
@@ -683,14 +683,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.return_statement(it)
 		}
 		ast.StructDecl {
-			name := if it.is_c { it.name.replace('.', '__') } else { c_name(it.name) }
+			name := if it.language == .c { it.name.replace('.', '__') } else { c_name(it.name) }
 			// g.writeln('typedef struct {')
 			// for field in it.fields {
 			// field_type_sym := g.table.get_type_symbol(field.typ)
 			// g.writeln('\t$field_type_sym.name $field.name;')
 			// }
 			// g.writeln('} $name;')
-			if it.is_c {
+			if it.language == .c {
 				return
 			}
 			if it.is_union {
@@ -990,11 +990,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				ast.ArrayInit {
 					is_fixed_array_init = it.is_fixed
 					has_val = it.has_val
+					elem_type_str := g.typ(it.elem_type)
 					if it.has_default {
-						elem_type_str := g.typ(it.elem_type)
 						g.write('$elem_type_str _val_$it.pos.pos = ')
 						g.expr(it.default_expr)
 						g.writeln(';')
+					} else if it.has_len && it.elem_type == table.string_type {
+						g.writeln('$elem_type_str _val_$it.pos.pos = tos_lit("");')
 					}
 				}
 				else {}
@@ -1364,7 +1366,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				return
 			}
 			escaped_val := it.val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
-			if g.is_c_call || it.is_c {
+			if g.is_c_call || it.language == .c {
 				// In C calls we have to generate C strings
 				// `C.printf("hi")` => `printf("hi");`
 				g.write('"$escaped_val"')
@@ -1711,7 +1713,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(')')
 	} else if node.op in [.plus, .minus, .mul, .div, .mod] && (left_sym.name[0].is_capital() ||
 		left_sym.name.contains('.')) && left_sym.kind != .alias ||
-		left_sym.kind == .alias && (left_sym.info as table.Alias).is_c {
+		left_sym.kind == .alias && (left_sym.info as table.Alias).language == .c {
 		// !left_sym.is_number() {
 		g.write(g.typ(node.left_type))
 		g.write('_')
@@ -3928,7 +3930,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 			g.write('0, ')
 		}
 		g.write('sizeof($elem_type_str), ')
-		if it.has_default {
+		if it.has_default || (it.has_len && it.elem_type == table.string_type)  {
 			g.write('&_val_$it.pos.pos)')
 		} else {
 			g.write('0)')

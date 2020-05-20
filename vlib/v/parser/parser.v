@@ -22,8 +22,7 @@ mut:
 	peek_tok          token.Token
 	peek_tok2         token.Token
 	table             &table.Table
-	is_c              bool
-	is_js             bool
+	language          table.Language
 	inside_if         bool
 	inside_if_expr    bool
 	inside_or_expr    bool
@@ -693,7 +692,7 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 	}
 }
 
-pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
+pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	// p.warn('name ')
 	is_mut := p.tok.kind == .key_mut
 	if is_mut {
@@ -723,8 +722,7 @@ pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
 		mut ident := ast.Ident{
 			kind: .unresolved
 			name: name
-			is_c: is_c
-			is_js: is_js
+			language: language
 			mod: p.mod
 			pos: pos
 		}
@@ -751,8 +749,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			pos: type_pos
 		}
 	}
-	is_c := p.tok.lit == 'C'
-	is_js := p.tok.lit == 'JS'
+	language := if p.tok.lit == 'C' {
+		table.Language.c
+	} else if p.tok.lit == 'JS' {
+		table.Language.js
+	} else {
+		table.Language.v
+	}
 	mut mod := ''
 	// p.warn('resetting')
 	p.expr_mod = ''
@@ -781,11 +784,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			else {}
 		}
 	}
-	if p.peek_tok.kind == .dot && !known_var && (is_c || is_js || p.known_import(p.tok.lit) ||
+	if p.peek_tok.kind == .dot && !known_var && (language != .v || p.known_import(p.tok.lit) ||
 		p.mod.all_after('.') == p.tok.lit) {
-		if is_c {
+		if language == .c {
 			mod = 'C'
-		} else if is_js {
+		} else if language == .js {
 			mod = 'JS'
 		} else {
 			if p.tok.lit in p.imports {
@@ -840,7 +843,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			// fn call
 			// println('calling $p.tok.lit')
-			node = p.call_expr(is_c, is_js, mod)
+			node = p.call_expr(language, mod)
 		}
 	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for {
@@ -868,10 +871,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// `foo(key:val, key2:val2)`
 		return p.struct_init(true) // short_syntax:true
 		// JS. function call with more than 1 dot
-	} else if is_js && p.peek_tok.kind == .dot && p.peek_tok2.kind == .name {
-		node = p.call_expr(is_c, is_js, mod)
+	} else if language == .js && p.peek_tok.kind == .dot && p.peek_tok2.kind == .name {
+		node = p.call_expr(language, mod)
 	} else {
-		node = p.parse_ident(is_c, is_js)
+		node = p.parse_ident(language)
 	}
 	p.expr_mod = ''
 	return node
@@ -1041,7 +1044,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		node = ast.StringLiteral{
 			val: val
 			is_raw: is_raw
-			is_c: is_cstr
+			language: if is_cstr { table.Language.c } else { table.Language.v }
 			pos: pos
 		}
 		return node
@@ -1406,14 +1409,21 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	parent_type := first_type
 	parent_name := p.table.get_type_symbol(parent_type).name
 	pid := parent_type.idx()
+	language := if parent_name.len > 2 && parent_name.starts_with('C.') {
+		table.Language.c
+	} else if parent_name.len > 2 && parent_name.starts_with('JS.') {
+		table.Language.js
+	} else {
+		table.Language.v
+	}
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .alias
 		name: p.prepend_mod(name)
 		parent_idx: pid
 		mod: p.mod
 		info: table.Alias{
-			foo: ''
-			is_c: parent_name.len > 2 && parent_name[0] == `C` && parent_name[1] == `.`
+			parent_typ: parent_type
+			language: language
 		}
 		is_public: is_pub
 	})

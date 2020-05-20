@@ -202,7 +202,7 @@ fn (mut c Checker) check_valid_pascal_case(name, identifier string, pos token.Po
 pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 	match node {
 		ast.AliasTypeDecl {
-			// TODO Replace `c.file.mod.name != 'time'` by `it.is_c` once available
+			// TODO Replace `c.file.mod.name != 'time'` by `it.language != .v` once available
 			if c.file.mod.name != 'time' {
 				c.check_valid_pascal_case(it.name, 'type alias', it.pos)
 			}
@@ -247,11 +247,11 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 }
 
 pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
-	if !decl.is_c && !decl.is_js && !c.is_builtin_mod {
+	if decl.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
 	for i, field in decl.fields {
-		if !decl.is_c && !decl.is_js {
+		if decl.language == .v {
 			c.check_valid_snake_case(field.name, 'field name', field.pos)
 		}
 		for j in 0 .. i {
@@ -260,7 +260,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			}
 		}
 		sym := c.table.get_type_symbol(field.typ)
-		if sym.kind == .placeholder && !decl.is_c && !sym.name.starts_with('C.') {
+		if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
 			c.error('unknown type `$sym.name`', field.pos)
 		}
 		if sym.kind == .struct_ {
@@ -308,8 +308,19 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			c.error('unknown struct: $type_sym.name', struct_init.pos)
 		}
 		// string & array are also structs but .kind of string/array
-		.struct_, .string, .array {
-			info := type_sym.info as table.Struct
+		.struct_, .string, .array, .alias {
+			mut info := table.Struct{}
+			if type_sym.kind == .alias {
+				info_t := type_sym.info as table.Alias
+				sym := c.table.get_type_symbol(info_t.parent_typ)
+				if sym.kind != .struct_ {
+					c.error('alias type name: $sym.name is not struct type', struct_init.pos)
+				}
+				info = sym.info as table.Struct
+			} else {
+				info = type_sym.info as table.Struct
+			}
+
 			if struct_init.is_short && struct_init.fields.len > info.fields.len {
 				c.error('too many fields', struct_init.pos)
 			}
@@ -878,7 +889,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				call_expr.pos)
 		}
 	}
-	if !f.is_pub && !f.is_c && !c.is_builtin_mod && !c.pref.is_test && f.mod != c.mod && f.name !=
+	if !f.is_pub && f.language == .v && !c.is_builtin_mod && !c.pref.is_test && f.mod != c.mod && f.name !=
 		'' && f.mod != '' {
 		c.warn('function `$f.name` is private. curmod=$c.mod fmod=$f.mod', call_expr.pos)
 	}
@@ -886,7 +897,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if f.return_type == table.void_type && f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
 	}
-	if f.is_c || call_expr.is_c || f.is_js || call_expr.is_js {
+	if f.language != .v || call_expr.language != .v {
 		for arg in call_expr.args {
 			c.expr(arg.expr)
 		}
@@ -1165,7 +1176,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 				else {
 					if field.expr is ast.Ident {
 						expr := field.expr as ast.Ident
-						if expr.is_c {
+						if expr.language == .c {
 							continue
 						}
 					}
@@ -1757,7 +1768,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return table.int_type
 		}
 		ast.StringLiteral {
-			if it.is_c {
+			if it.language == .c {
 				return table.byteptr_type
 			}
 			return table.string_type
@@ -1886,7 +1897,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 			return fn_type
 		}
 	}
-	if ident.is_c {
+	if ident.language == .c {
 		return table.int_type
 	}
 	if ident.name != '_' {
@@ -2290,7 +2301,7 @@ fn (c &Checker) fileis(s string) bool {
 }
 
 fn (mut c Checker) fn_decl(it ast.FnDecl) {
-	if !it.is_c && !it.is_js && !c.is_builtin_mod {
+	if it.language == .v && !c.is_builtin_mod {
 		c.check_valid_snake_case(it.name, 'function name', it.pos)
 	}
 	if it.is_method {
@@ -2302,7 +2313,7 @@ fn (mut c Checker) fn_decl(it ast.FnDecl) {
 		// c.warn('duplicate method `$it.name`', it.pos)
 		// }
 	}
-	if !it.is_c {
+	if it.language == .v {
 		// Make sure all types are valid
 		for arg in it.args {
 			sym := c.table.get_type_symbol(arg.typ)
@@ -2314,7 +2325,7 @@ fn (mut c Checker) fn_decl(it ast.FnDecl) {
 	c.expected_type = table.void_type
 	c.fn_return_type = it.return_type
 	c.stmts(it.stmts)
-	if !it.is_c && !it.is_js && !it.no_body && it.return_type != table.void_type && !c.returns &&
+	if it.language == .v && !it.no_body && it.return_type != table.void_type && !c.returns &&
 		it.name !in ['panic', 'exit'] {
 		c.error('missing return at end of function `$it.name`', it.pos)
 	}
