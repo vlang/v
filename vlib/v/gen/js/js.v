@@ -176,7 +176,7 @@ pub fn (mut g JsGen) finish() {
 	if g.constants.len > 0 {
 		constants := g.constants.str()
 		g.constants = strings.new_builder(100)
-		g.constants.writeln('const CONSTANTS = Object.freeze({')
+		g.constants.writeln('const _CONSTS = Object.freeze({')
 		g.constants.write(constants)
 		g.constants.writeln('});')
 		g.constants.writeln('')
@@ -1070,7 +1070,8 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 
 fn (mut g JsGen) gen_ident(node ast.Ident) {
 	if node.kind == .constant {
-		g.write('CONSTANTS.')
+		// TODO: Handle const namespacing: only consts in the main module are handled rn
+		g.write('_CONSTS.')
 	}
 
 	name := g.js_name(node.name, false)
