@@ -26,7 +26,7 @@ pub fn compile_template(path string) string {
 	}
 	lines := html.split_into_lines()
 	mut s := strings.new_builder(1000)
-	// base := path.all_after('/').replace('.html', '')
+	// base := path.all_after_last('/').replace('.html', '')
 	s.writeln("
 mut sb := strings.new_builder(${lines.len * 30})
 header := \' \' // TODO remove

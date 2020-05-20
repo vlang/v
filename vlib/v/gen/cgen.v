@@ -2855,7 +2855,16 @@ fn (mut g Gen) gen_map(node ast.CallExpr) {
 	g.expr(node.left)
 	g.writeln('.data)[$i];')
 	g.write('\t$ret_elem_type ti = ')
-	g.expr(node.args[0].expr) // the first arg is the filter condition
+	match node.args[0].expr {
+		ast.Ident {
+			if it.kind == .function {
+				g.writeln('${it.name}(it)')
+			} else {
+				g.expr(node.args[0].expr) 
+			}
+		}
+		else { g.expr(node.args[0].expr) }
+	}
 	g.writeln(';')
 	g.writeln('\tarray_push(&$tmp, &ti);')
 	g.writeln('}')
@@ -2884,7 +2893,16 @@ fn (mut g Gen) gen_filter(node ast.CallExpr) {
 	g.expr(node.left)
 	g.writeln('.data)[i];')
 	g.write('if (')
-	g.expr(node.args[0].expr) // the first arg is the filter condition
+	match node.args[0].expr {
+		ast.Ident {
+			if it.kind == .function {
+				g.writeln('${node.args[0]}(it)')
+			} else {
+				g.expr(node.args[0].expr) 
+			}
+		}
+		else { g.expr(node.args[0].expr) }
+	}
 	g.writeln(') array_push(&$tmp, &it); \n }')
 	g.write(s)
 	g.write(' ')

@@ -63,7 +63,7 @@ fn C.write() int
 struct C.picoev_loop {}
 
 struct Picoev {
-	loop *C.picoev_loop
+	loop &C.picoev_loop
 	cb   fn(req picohttpparser.Request, res mut picohttpparser.Response)
 mut:
 	date byteptr
@@ -73,14 +73,17 @@ mut:
 	oidx [1024]int
 }
 
-fn picoev_del(*C.picoev_loop, int) int
-fn picoev_set_timeout(*C.picoev_loop, int, int)
-fn picoev_add(*C.picoev_loop, int, int, int, *C.picoev_handler, voidptr) int
-fn picoev_init(int) int
-fn picoev_create_loop(int) *C.picoev_loop
-fn picoev_loop_once(*C.picoev_loop, int) int
-fn picoev_destroy_loop(*C.picoev_loop) int
-fn picoev_deinit() int
+fn C.picoev_del(&C.picoev_loop, int) int
+fn C.picoev_set_timeout(&C.picoev_loop, int, int)
+fn C.picoev_add(&C.picoev_loop, int, int, int, &C.picoev_handler, voidptr) int
+fn C.picoev_init(int) int
+fn C.picoev_create_loop(int) &C.picoev_loop
+fn C.picoev_loop_once(&C.picoev_loop, int) int
+fn C.picoev_destroy_loop(&C.picoev_loop) int
+fn C.picoev_deinit() int
+fn C.phr_parse_request() int
+fn C.phr_parse_request_path_pipeline() int
+fn C.phr_parse_request_path() int
 
 [inline]
 fn setup_sock(fd int) {
@@ -94,7 +97,7 @@ fn setup_sock(fd int) {
 }
 
 [inline]
-fn close_conn(loop *C.picoev_loop, fd int) {
+fn close_conn(loop &C.picoev_loop, fd int) {
 	C.picoev_del(loop, fd)
 	C.close(fd)
 }
@@ -109,8 +112,8 @@ fn mysubstr(s byteptr, from, len int) string {
 	return tos(s + from, len)
 }
 
-fn rw_callback(loop *C.picoev_loop, fd, events int, cb_arg voidptr) {
-	mut p := *Picoev(cb_arg)
+fn rw_callback(loop &C.picoev_loop, fd, events int, cb_arg voidptr) {
+	mut p := &Picoev(cb_arg)
 	if (events & C.PICOEV_TIMEOUT) != 0 {
 		close_conn(loop, fd)
 		p.idx[fd] = 0
@@ -126,8 +129,8 @@ fn rw_callback(loop *C.picoev_loop, fd, events int, cb_arg voidptr) {
 			p.idx[fd] = 0
 			return
 		} else if r == -1 {
-			if errno == C.EAGAIN || errno == C.EWOULDBLOCK {
-				//
+			if false { //errno == C.EAGAIN || errno == C.EWOULDBLOCK {
+				// TODO
 			} else {
 				close_conn(loop, fd)
 				p.idx[fd] = 0
@@ -168,7 +171,7 @@ fn rw_callback(loop *C.picoev_loop, fd, events int, cb_arg voidptr) {
 	}
 }
 
-fn accept_callback(loop *C.picoev_loop, fd, events int, cb_arg voidptr) {
+fn accept_callback(loop &C.picoev_loop, fd, events int, cb_arg voidptr) {
 	newfd := C.accept(fd, 0, 0)
 	if newfd != -1 {
 		setup_sock(newfd)

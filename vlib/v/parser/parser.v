@@ -785,7 +785,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	if p.peek_tok.kind == .dot && !known_var && (language != .v || p.known_import(p.tok.lit) ||
-		p.mod.all_after('.') == p.tok.lit) {
+		p.mod.all_after_last('.') == p.tok.lit) {
 		if language == .c {
 			mod = 'C'
 		} else if language == .js {
