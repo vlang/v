@@ -47,7 +47,7 @@ fn (mut d JsDoc) gen_typ(typ, name string) string {
 	d.write('/**')
 	d.write(' @type {$typ}')
 	if name.len > 0 {
-		d.write(' - ${d.gen.js_name(name, false)}')
+		d.write(' - ${d.gen.js_name(name)}')
 	}
 	d.write(' */')
 	return d.out.str()
@@ -85,7 +85,7 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) string {
 		}
 		arg_type_name := d.gen.typ(arg.typ)
 		is_varg := i == it.args.len - 1 && it.is_variadic
-		name := d.gen.js_name(arg.name, false)
+		name := d.gen.js_name(arg.name)
 		if is_varg {
 			d.writeln(' * @param {...$arg_type_name} $name')
 		} else {
