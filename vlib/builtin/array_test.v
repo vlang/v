@@ -500,6 +500,10 @@ fn test_reduce() {
 }
 */
 
+fn filter_test_helper_1(a int) bool {
+	return a > 3
+}
+
 fn test_filter() {
 	a := [1, 2, 3, 4, 5, 6]
 	b := a.filter(it % 2 == 0)
@@ -519,6 +523,8 @@ fn test_filter() {
 	mut mut_arr := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 	mut_arr = mut_arr.filter(it < 4)
 	assert mut_arr.len == 3
+	assert a.filter(filter_test_helper_1) == [4,5,6]
+	assert [1,5,10].filter(filter_test_helper_1) == [5,10]
 
 	// TODO
 	//assert arr.filter(arr % 2).len == 5
@@ -576,6 +582,9 @@ fn test_map() {
 	// nested (different it types)
 	assert strs.map( it[ nums.map(it - it)[0] ] ) == [`v`, `i`, `a`]
 	assert nums[0..3].map('$it' + strs.map(it)[it-1]) == ['1v','2is','3awesome']
+
+	assert nums.map(map_test_helper_1) == [1,4,9,16,25,36]
+	assert [1,5,10].map(map_test_helper_1) == [1,25,100]
 
 	assert nums == [1, 2, 3, 4, 5, 6]
 	assert strs == ['v', 'is', 'awesome']
