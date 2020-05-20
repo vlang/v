@@ -212,6 +212,10 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		}
 		return res + ') => ' + g.typ(info.func.return_type)
 	}
+	// Struct instance => ns["class"]["prototype"]
+	if sym.kind == .struct_ {
+		return g.to_js_typ(styp) + '["prototype"]'
+	}
 	return g.to_js_typ(styp)
 }
 
