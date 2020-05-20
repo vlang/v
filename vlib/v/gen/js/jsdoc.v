@@ -56,7 +56,7 @@ fn (mut d JsDoc) gen_typ(typ, name string) string {
 fn (mut d JsDoc) gen_ctor(fields []ast.StructField) string {
 	d.reset()
 	d.writeln('/**')
-	d.write('* @param {{')
+	d.write(' * @param {{')
 	for i, field in fields {
 		// Marked as optional: structs have default default values,
 		// so all struct members don't have to be initialized.
@@ -67,7 +67,7 @@ fn (mut d JsDoc) gen_ctor(fields []ast.StructField) string {
 		}
 	}
 	d.writeln('}} values - values for this class fields')
-	d.writeln('* @constructor')
+	d.writeln(' * @constructor')
 	d.write('*/')
 	return d.out.str()
 }
@@ -77,7 +77,7 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) string {
 	type_name := d.gen.typ(it.return_type)
 	d.writeln('/**')
 	if it.is_deprecated {
-		d.writeln('* @deprecated')
+		d.writeln(' * @deprecated')
 	}
 	for i, arg in it.args {
 		if it.is_method && i == 0 {
@@ -87,12 +87,12 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) string {
 		is_varg := i == it.args.len - 1 && it.is_variadic
 		name := d.gen.js_name(arg.name, false)
 		if is_varg {
-			d.writeln('* @param {...$arg_type_name} $name')
+			d.writeln(' * @param {...$arg_type_name} $name')
 		} else {
-			d.writeln('* @param {$arg_type_name} $name')
+			d.writeln(' * @param {$arg_type_name} $name')
 		}
 	}
-	d.writeln('* @return {$type_name}')
+	d.writeln(' * @returns {$type_name}')
 	d.write('*/')
 	return d.out.str()
 }
