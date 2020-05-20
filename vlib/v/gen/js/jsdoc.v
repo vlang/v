@@ -58,7 +58,10 @@ fn (mut d JsDoc) gen_ctor(fields []ast.StructField) string {
 	d.writeln('/**')
 	d.write('* @param {{')
 	for i, field in fields {
-		d.write('$field.name: ${d.gen.typ(field.typ)}')
+		// Marked as optional: structs have default default values,
+		// so all struct members don't have to be initialized.
+		// TODO: Actually generate default struct init values :P
+		d.write('$field.name?: ${d.gen.typ(field.typ)}')
 		if i < fields.len - 1 {
 			d.write(', ')
 		}
