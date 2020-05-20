@@ -21,9 +21,15 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	}
 	mut is_or_block_used := false
 	if fn_name == 'json.decode' {
-		p.expecting_type = true // Makes name_expr() parse the type (`User` in `json.decode(User, txt)`)`
+		p.expecting_type = true // Makes name_expr() parse the type `User` in `json.decode(User, txt)`
 		p.expr_mod = ''
 		is_or_block_used = true
+	}
+	if p.tok.kind == .lt {
+		// `foo<int>(10)`
+		p.next() // `<`
+		p.parse_type()
+		p.check(.gt) // `>`
 	}
 	p.check(.lpar)
 	args := p.call_args()
