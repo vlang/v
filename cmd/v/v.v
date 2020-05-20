@@ -5,7 +5,6 @@ module main
 
 import help
 import os
-import os.cmdline
 import v.pref
 import v.util
 import v.builder
