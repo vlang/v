@@ -34,6 +34,12 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	rdir := os.real_path(pref.path)
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 	table := table.new_table()
+	if pref.use_color == .always {
+		util.emanager.set_support_color(true)
+	}
+	if pref.use_color == .never {
+		util.emanager.set_support_color(false)
+	}
 	return Builder{
 		pref: pref
 		table: table

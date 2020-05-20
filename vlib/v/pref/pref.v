@@ -20,6 +20,12 @@ pub enum OutputMode {
 	silent
 }
 
+pub enum ColorOutput {
+	auto
+	always
+	never
+}    
+
 pub enum Backend {
 	c            // The (default) C backend
 	js           // The JavaScript backend
@@ -101,6 +107,7 @@ pub mut:
 	print_v_files       bool     // when true, just print the list of all parsed .v files then stop.
 	skip_running        bool     // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
 	skip_warnings       bool     // like C's "-w"
+	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
@@ -165,6 +172,12 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-translated' {
 				res.translated = true
+			}
+			'-color' {
+				res.use_color=.always
+			}
+			'-nocolor' {
+				res.use_color=.never
 			}
 			'-showcc' {
 				res.show_cc = true
