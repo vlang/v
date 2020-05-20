@@ -58,9 +58,11 @@ fn (cfg DocConfig) serve_html() {
 			panic(err)
 		}
 
-		con.send_string('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n$html') or {
+		con.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n$html') or {
+			con.close() or { return }
 			return
 		}
+		con.close() or { return }
 	}
 }
 
