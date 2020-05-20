@@ -19,30 +19,30 @@ const (
 )
 
 struct JsGen {
-	table           &table.Table
-	definitions     strings.Builder
-	pref            &pref.Preferences
+	table             &table.Table
+	definitions       strings.Builder
+	pref              &pref.Preferences
 mut:
-	out             	strings.Builder
-	namespaces			map[string]strings.Builder
-	namespaces_pub		map[string][]string
-	namespace_imports	map[string]map[string]string
-	namespace       	string
-	doc					&JsDoc
-	enable_doc          bool
-	constants			strings.Builder // all global V constants
-	file				ast.File
-	tmp_count			int
-	inside_ternary  	bool
-	inside_loop			bool
-	is_test         	bool
-	indents				map[string]int // indentations mapped to namespaces
-	stmt_start_pos		int
-	defer_stmts     	[]ast.DeferStmt
-	fn_decl				&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	str_types			[]string // types that need automatic str() generation
-	method_fn_decls 	map[string][]ast.Stmt
-	empty_line			bool
+	out               strings.Builder
+	namespaces        map[string]strings.Builder
+	namespaces_pub    map[string][]string
+	namespace_imports map[string]map[string]string
+	namespace         string
+	doc               &JsDoc
+	enable_doc        bool
+	constants         strings.Builder // all global V constants
+	file              ast.File
+	tmp_count         int
+	inside_ternary    bool
+	inside_loop       bool
+	is_test           bool
+	indents           map[string]int // indentations mapped to namespaces
+	stmt_start_pos    int
+	defer_stmts       []ast.DeferStmt
+	fn_decl           &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	str_types         []string // types that need automatic str() generation
+	method_fn_decls   map[string][]ast.Stmt
+	empty_line        bool
 }
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -131,15 +131,14 @@ pub fn (mut g JsGen) enter_namespace(n string) {
 		// create a new namespace
 		g.out = strings.new_builder(100)
 		g.indents[g.namespace] = 0
-	}
-	else {
+	} else {
 		g.out = g.namespaces[g.namespace]
 	}
 }
 
 pub fn (mut g JsGen) escape_namespace() {
 	g.namespaces[g.namespace] = g.out
-	g.namespace = ""
+	g.namespace = ''
 }
 
 pub fn (mut g JsGen) push_pub_var(s string) {
@@ -444,8 +443,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.BoolLiteral {
 			if it.val == true {
 				g.write('true')
-			}
-			else {
+			} else {
 				g.write('false')
 			}
 		}
@@ -453,12 +451,12 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.CallExpr {
-			mut name := ""
+			mut name := ''
 			if it.name.starts_with('JS.') {
 				name = it.name[3..]
 			} else {
 				name = g.js_name(it.name)
-					}
+			}
 			g.expr(it.left)
 			if it.is_method {
 				// example: foo.bar.baz()
@@ -531,8 +529,8 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_selector_expr(it)
 		}
 		ast.AnonFn {
- 			g.gen_anon_fn_decl(it)
- 		}
+			g.gen_anon_fn_decl(it)
+		}
 		else {
 			println(term.red('jsgen.expr(): bad node "${typeof(node)}"'))
 		}
@@ -566,7 +564,7 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 			// `expr ? "true" : "false"`
 			g.expr(expr)
 			g.write(' ? "true" : "false"')
-		}  else {
+		} else {
 			sym := g.table.get_type_symbol(it.expr_types[i])
 
 			match sym.kind {
@@ -590,7 +588,7 @@ fn (mut g JsGen) gen_import_stmt(it ast.Import) {
 	mut imports := g.namespace_imports[g.namespace]
 	imports[it.mod] = it.alias
 	g.namespace_imports[g.namespace] = imports
- }
+}
 
 fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
@@ -654,8 +652,7 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 		g.write(stmt.str())
 		g.expr(it.right[0])
 		g.writeln(';')
-	}
-	else {
+	} else {
 		// `a := 1` | `a,b := 1,2`
 		for i, ident in it.left {
 			val := it.right[i]
@@ -684,7 +681,7 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			g.expr(val)
 
 			if g.inside_loop {
-				g.write("; ")
+				g.write('; ')
 			} else {
 				g.writeln(';')
 			}
@@ -787,8 +784,8 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 }
 
 fn (mut g JsGen) gen_anon_fn_decl(it ast.AnonFn) {
- 	g.gen_method_decl(it.decl)
- }
+	g.gen_method_decl(it.decl)
+}
 
 fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	g.fn_decl = &it
@@ -980,7 +977,7 @@ fn (mut g JsGen) gen_go_stmt(node ast.GoStmt) {
 			g.dec_indent()
 			g.writeln('});')
 		}
-		else { }
+		else {}
 	}
 }
 
@@ -1034,12 +1031,8 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 
 fn (mut g JsGen) enum_expr(node ast.Expr) {
 	match node {
-		ast.EnumVal {
-			g.write(it.val)
-		}
-		else {
-			g.expr(node)
-		}
+		ast.EnumVal { g.write(it.val) }
+		else { g.expr(node) }
 	}
 }
 
@@ -1051,7 +1044,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.inc_indent()
 	for field in node.fields {
 		// TODO: Generate default struct init values
-    	g.writeln('this.$field.name = values.$field.name')
+		g.writeln('this.$field.name = values.$field.name')
 	}
 	g.dec_indent()
 	g.writeln('}')
@@ -1125,7 +1118,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 		g.inside_ternary = false
 		g.write(')')
 	} else {
-		//mut is_guard = false
+		// mut is_guard = false
 		for i, branch in node.branches {
 			if i == 0 {
 				match branch.cond {
@@ -1147,7 +1140,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 					//g.writeln('} if (!$guard_ok) { /* else */')
 				} else { */
 				g.writeln('} else {')
-				//}
+				// }
 			}
 			g.stmts(branch.stmts)
 		}
