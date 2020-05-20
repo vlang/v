@@ -824,7 +824,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		}
 		g.write('${name}(')
 
-		if it.is_pub {
+		if it.is_pub && !it.is_method {
 			g.push_pub_var(name)
 		}
 	}
