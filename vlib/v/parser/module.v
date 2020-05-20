@@ -23,26 +23,23 @@ fn (p &Parser) is_used_import(alias string) bool {
 }
 
 fn (mut p Parser) register_used_import(alias string) {
-	if alias !in p.used_imports {
+	if !p.is_used_import(alias) {
 		p.used_imports << alias
 	}
 }
 
 fn (mut p Parser) check_unused_imports() {
-	mut output := ''
-	for alias, mod in p.imports {
-		if !p.is_used_import(alias) {
-			mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
-			output += '\n * $mod_alias'
-		}
-	}
-	if output == '' {
-		return
-	}
 	if p.pref.is_repl {
 		// The REPL should be much more liberal, and should not warn about
 		// unused imports, because they probably will be in the next few lines...
 		return
 	}
-	eprintln('`$p.file_name` warning: the following imports were never used: $output')
+	for import_m in p.ast_imports {
+		alias := import_m.alias
+		mod := import_m.mod
+		if !p.is_used_import(alias) {
+			mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
+			p.warn_with_pos("module '$mod_alias' is imported but never used", import_m.pos)
+		}
+	}
 }
