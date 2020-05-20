@@ -5,7 +5,7 @@ pub struct Response {
 pub:
 	date byteptr
 	buf_start byteptr
-mut:
+pub mut:
 	buf byteptr
 }
 

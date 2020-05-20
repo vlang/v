@@ -147,7 +147,7 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 			//println(h)
 			sb.write(chunk.after('\r\n'))
 			// TODO for some reason this can be missing from headers
-			is_chunk_encoding = true //h.contains('chunked')
+			is_chunk_encoding = false //h.contains('chunked')
 			//println(sb.str())
 			continue
 		}
@@ -172,7 +172,7 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 		C.SSL_CTX_free(ctx)
 	}
 	body:= sb.str()
-	println(body)
+	//println(body)
 	return parse_response(h +'\r\n\r\n'+ body)
 }
 
