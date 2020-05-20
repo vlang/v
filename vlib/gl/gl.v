@@ -22,6 +22,7 @@ fn C.glScissor()
 fn C.glVertexAttribPointer()
 fn C.glGenBuffers()
 fn C.glEnableVertexAttribArray()
+fn C.glDisableVertexAttribArray()
 fn C.glGenVertexArrays()
 fn C.glDrawElements()
 fn C.glUseProgram()
@@ -54,6 +55,7 @@ fn C.glPixelStorei()
 fn C.glBlendFunc()
 fn C.glPolygonMode()
 fn C.glDeleteBuffers()
+fn C.glDeleteVertexArrays()
 fn C.glGetUniformLocation() int
 fn C.glGetAttribLocation() int
 
@@ -182,6 +184,14 @@ pub fn set_ebo(ebo u32, indices []int, draw_typ int) {
 	gl.buffer_data_int(C.GL_ELEMENT_ARRAY_BUFFER, indices, draw_typ)
 }
 
+pub fn delete_buffer(vbo u32) {
+	C.glDeleteBuffers(1, vbo)
+}
+
+pub fn delete_vao(vao u32) {
+	C.glDeleteVertexArrays(1, vao)
+}
+
 // /////////////////////
 // fn gen_vertex_arrays(a int, vao uint) {
 // # glGenVertexArrays(a, &VAO);
@@ -217,6 +227,10 @@ pub fn gen_vertex_array() u32 {
 
 pub fn enable_vertex_attrib_array(n int) {
 	C.glEnableVertexAttribArray(n)
+}
+
+pub fn disable_vertex_attrib_array(n int) {
+	C.glDisableVertexAttribArray(n)
 }
 
 pub fn gen_buffer() u32 {
