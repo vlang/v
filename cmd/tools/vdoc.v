@@ -12,6 +12,16 @@ enum OutputType {
 	stdout
 }
 
+struct DocConfig {
+	opath string
+	pub_only bool = true
+	show_loc bool = false // for plaintext
+mut:
+	src_path string
+	doc doc.Doc
+	manifest vmod.Manifest
+}
+
 fn slug(title string) string {
 	return title.replace(' ', '-')
 }
@@ -20,7 +30,8 @@ fn escape(str string) string {
 	return str.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
 }
 
-fn gen_json(d doc.Doc) string {
+fn (cfg DocConfig) gen_json() string {
+	d := cfg.doc
 	mut jw := strings.new_builder(200)
 	jw.writeln('{\n\t"module_name": "$d.head_node.name",\n\t"description": "${escape(d.head_node.comment)}",\n\t"contents": [')
 	for i, cn in d.content_nodes {
@@ -43,7 +54,8 @@ fn gen_html(d doc.Doc) string {
 	return ''
 }
 
-fn gen_plaintext(d doc.Doc, show_loc bool) string {
+fn (cfg DocConfig) gen_plaintext() string {
+	d := cfg.doc
 	mut pw := strings.new_builder(200)
 
 	head_lines := '='.repeat(d.head_node.content.len)
@@ -54,7 +66,7 @@ fn gen_plaintext(d doc.Doc, show_loc bool) string {
 		if cn.comment.len > 0 {
 			pw.writeln('\n' + cn.comment)
 		}
-		if show_loc {
+		if cfg.show_loc {
 			pw.writeln('Location: ${cn.file_path}:${cn.pos.line}:${cn.pos.col}\n\n')
 		}
 	}
@@ -63,7 +75,8 @@ fn gen_plaintext(d doc.Doc, show_loc bool) string {
 	return pw.str()
 }
 
-fn gen_markdown(d doc.Doc, with_toc bool) string {
+fn (cfg DocConfig) gen_markdown(with_toc bool) string {
+	d := cfg.doc
 	mut hw := strings.new_builder(200)
 	mut cw := strings.new_builder(200)
 
@@ -87,18 +100,18 @@ fn gen_markdown(d doc.Doc, with_toc bool) string {
 	return hw.str() + '\n' + cw.str()
 }
 
-fn generate_docs_from_file(ipath string, opath string, pub_only bool, show_loc bool) {
+fn (mut config DocConfig) generate_docs_from_file() {
 	mut output_type := OutputType.plaintext
 	// identify output type
-	if opath.len == 0 {
+	if config.opath.len == 0 {
 		output_type = .stdout
 	} else {
-		ext := os.file_ext(opath)[1..]
-		if ext in ['md', 'markdown'] || opath in [':md:', ':markdown:'] {
+		ext := os.file_ext(config.opath)[1..]
+		if ext in ['md', 'markdown'] || config.opath in [':md:', ':markdown:'] {
 			output_type = .markdown
-		} else if ext in ['html', 'htm'] || opath == ':html:' {
+		} else if ext in ['html', 'htm'] || config.opath == ':html:' {
 			output_type = .html
-		} else if ext == 'json' || opath == ':json:' {
+		} else if ext == 'json' || config.opath == ':json:' {
 			output_type = .json
 		} else {
 			output_type = .plaintext
@@ -109,17 +122,18 @@ fn generate_docs_from_file(ipath string, opath string, pub_only bool, show_loc b
 		panic(err)
 	}
 
+	config.doc = d
 	output := match output_type {
-		.html { gen_html(d) }
-		.markdown { gen_markdown(d, true) }
-		.json { gen_json(d) }
-		else { gen_plaintext(d, show_loc) }
+		.html { config.gen_html() }
+		.markdown { config.gen_markdown(true) }
+		.json { config.gen_json() }
+		else { config.gen_plaintext() }
 	}
 
-	if output_type == .stdout || (opath.starts_with(':') && opath.ends_with(':')) {
+	if output_type == .stdout || (config.opath.starts_with(':') && config.opath.ends_with(':')) {
 		println(output)
 	} else {
-		os.write_file(opath, output)
+		os.write_file(config.opath, output)
 	}
 }
 
@@ -145,7 +159,9 @@ fn parse_args(args []string) ([]string, []string) {
 	mut opts := []string{}
 	mut unkn := []string{}
 	
-	for arg in args {
+	for i := 0; i < args.len; i++ {
+		arg := args[i]
+
 		if arg.starts_with('-') {
 			opts << arg
 		} else {
@@ -165,20 +181,24 @@ fn main() {
 		exit(0)
 	}
 
-	mut src_path := args[0]
-	mut opath := if args.len >= 2 { args[1] } else { '' }
-	pub_only := '-all' !in opts
-	show_loc := '-loc' in opts
-	is_path := src_path.ends_with('.v') || src_path.split('/').len > 1 || src_path == '.'
+	mut config := DocConfig{
+		src_path: args[0],
+		opath: if args.len >= 2 { args[1] } else { '' },
+		pub_only: '-all' !in opts,
+		show_loc: '-loc' in opts,
+		manifest: vmod.Manifest{ repo_url: '' }
+	}
+	
+	is_path := config.src_path.ends_with('.v') || config.src_path.split('/').len > 1 || config.src_path == '.'
 
 	if !is_path {
-		mod_path := lookup_module(src_path) or {
+		mod_path := lookup_module(config.src_path) or {
 			eprintln(err)
 			exit(1)
 		}
 
-		src_path = mod_path
+		config.src_path = mod_path
 	}
 
-	generate_docs_from_file(src_path, opath, pub_only, show_loc)
+	config.generate_docs_from_file()
 }
