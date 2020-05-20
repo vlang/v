@@ -18,9 +18,9 @@ pub mut:
 	prefs &pref.Preferences
 	table &table.Table
 	pub_only bool = true
-	head_node DocNode
+	head DocNode
 	with_comments bool = true
-	content_nodes []DocNode
+	contents []DocNode
 	time_generated time.Time
 }
 
@@ -114,8 +114,8 @@ pub fn new(input_path string) Doc {
 		input_path: os.real_path(input_path),
 		prefs: &pref.Preferences{},
 		table: table.new_table(),
-		head_node: DocNode{},
-		content_nodes: []DocNode{},
+		head: DocNode{},
+		contents: []DocNode{},
 		time_generated: time.now()
 	}
 }
@@ -156,7 +156,7 @@ pub fn (mut d Doc) generate() ?bool {
 	for i, file_ast in file_asts {
 		if i == 0 {
 			module_name = file_ast.mod.name
-			d.head_node = DocNode{
+			d.head = DocNode{
 				name: module_name,
 				content: 'module $module_name',
 				comment: ''
@@ -169,7 +169,7 @@ pub fn (mut d Doc) generate() ?bool {
 		for si, stmt in stmts {
 			if stmt is ast.Comment { continue }
 			if !(stmt is ast.Module) {
-				name := d.get_name(stmt)
+				name := d.get_name(stmt).replace('${module_name}.', '')
 				signature := d.get_signature(stmt)
 				pos := d.get_pos(stmt)
 
@@ -177,7 +177,7 @@ pub fn (mut d Doc) generate() ?bool {
 					continue
 				}
 
-				d.content_nodes << DocNode{
+				d.contents << DocNode{
 					name: name,
 					content: signature,
 					comment: '',
@@ -188,16 +188,16 @@ pub fn (mut d Doc) generate() ?bool {
 
 			if si-1 >= 0 && stmts[si-1] is ast.Comment {
 				if stmt is ast.Module {
-					d.head_node.comment = write_comment_bw(stmts, si-1)
+					d.head.comment = write_comment_bw(stmts, si-1)
 				} else {
-					last_comment := d.content_nodes[d.content_nodes.len-1].comment
-					d.content_nodes[d.content_nodes.len-1].comment = last_comment + '\n' + write_comment_bw(stmts, si-1)
+					last_comment := d.contents[d.contents.len-1].comment
+					d.contents[d.contents.len-1].comment = last_comment + '\n' + write_comment_bw(stmts, si-1)
 				}
 			}	
 		}
 	}
 
-	if d.content_nodes.len == 0 {
+	if d.contents.len == 0 {
 		return error('vdoc: No content was found.')
 	}
 
