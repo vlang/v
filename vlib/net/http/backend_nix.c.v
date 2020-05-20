@@ -4,6 +4,7 @@
 module http
 
 import strings
+
 // On linux, prefer a localy build openssl, because it is
 // much more likely for it to be newer, than the system
 // openssl from libssl-dev. If there is no local openssl,
@@ -90,28 +91,16 @@ buf_size = 500  // 1536
 fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	// ssl_method := C.SSLv23_method()
 	ssl_method := C.TLSv1_2_method()
-	if isnil(method) {
-	}
 	ctx := C.SSL_CTX_new(ssl_method)
-	if isnil(ctx) {
-	}
 	C.SSL_CTX_set_verify_depth(ctx, 4)
 	flags := C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION
 	C.SSL_CTX_set_options(ctx, flags)
 	mut res := C.SSL_CTX_load_verify_locations(ctx, 'random-org-chain.pem', 0)
-	if res != 1 {
-	}
 	web := C.BIO_new_ssl_connect(ctx)
-	if isnil(ctx) {
-	}
 	addr := host_name + ':' + port.str()
 	res = C.BIO_set_conn_hostname(web, addr.str)
-	if res != 1 {
-	}
 	ssl := &C.ssl_st(0)
 	C.BIO_get_ssl(web, &ssl)
-	if isnil(ssl) {
-	}
 	preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4'
 	res = C.SSL_set_cipher_list(ssl, preferred_ciphers.str)
 	if res != 1 {
@@ -142,10 +131,10 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 		mut chunk := (tos(buff, len))
 		if !headers_done && chunk.contains('\r\n\r\n') {
 			headers_done = true
-			headers.write(chunk.all_before('\r\n'))
+			headers.write(chunk.all_before('\r\n\r\n'))
 			h = headers.str()
 			//println(h)
-			sb.write(chunk.after('\r\n'))
+			sb.write(chunk.after('\r\n\r\n'))
 			// TODO for some reason this can be missing from headers
 			is_chunk_encoding = false //h.contains('chunked')
 			//println(sb.str())

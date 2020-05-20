@@ -18,7 +18,7 @@ pub mut:
 	cookies    map[string]string
 	data       string
 	url        string
-	user_agent string
+	user_agent string = 'v.http'
 	verbose    bool
 	user_ptr   voidptr
 	ws_func    voidptr
@@ -31,7 +31,7 @@ pub mut:
 	params     map[string]string
 	headers    map[string]string
 	cookies    map[string]string
-	user_agent string // ='v' QTODO
+	user_agent string = 'v.http'
 	verbose    bool = false
 }
 
