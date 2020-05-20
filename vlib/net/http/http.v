@@ -11,6 +11,7 @@ import net
 const (
 	max_redirects        = 4
 	content_type_default = 'text/plain'
+	bufsize = 1536
 )
 
 pub struct Request {
@@ -379,10 +380,6 @@ pub fn unescape(s string) string {
 pub fn escape(s string) string {
 	panic('http.escape() was replaced with http.escape_url()')
 }
-
-const (
-	bufsize = 512
-)
 
 fn (req &Request) http_do(port int, method, host_name, path string) ?Response {
 	rbuffer := [bufsize]byte
