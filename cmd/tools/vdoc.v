@@ -236,7 +236,7 @@ fn (mut config DocConfig) generate_docs_from_file() {
 			output_type = .plaintext
 		}
 	}
-	
+
 	mut manifest_path := config.src_path 
 	if !os.is_dir(manifest_path) {
 		manifest_path = os.base_dir(manifest_path)	
@@ -250,6 +250,7 @@ fn (mut config DocConfig) generate_docs_from_file() {
 		}
 	}
 	
+	d := doc.generate(config.src_path, config.pub_only, 'vlib' !in config.src_path) or {
 		panic(err)
 	}
 

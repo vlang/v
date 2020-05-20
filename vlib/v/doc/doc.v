@@ -3,6 +3,7 @@ module doc
 import v.ast
 import v.fmt
 import v.parser
+import v.scanner
 import v.pref
 import v.table
 import v.token
@@ -18,6 +19,7 @@ pub mut:
 	table &table.Table
 	pub_only bool = true
 	head_node DocNode
+	with_comments bool = true
 	content_nodes []DocNode
 	time_generated time.Time
 }
@@ -130,12 +132,18 @@ pub fn (mut d Doc) generate() ?bool {
 
 	// parse files
 	mut file_asts := []ast.File{}
+	// TODO: remove later for vlib
+	comments_mode := if d.with_comments { 
+		scanner.CommentsMode.parse_comments 
+	} else { 
+		scanner.CommentsMode.skip_comments 
+	}
 
 	for file in v_files {
 		file_ast := parser.parse_file(
 			file,
 			d.table,
-			.skip_comments,
+			comments_mode,
 			d.prefs,
 			&ast.Scope{parent: 0}
 		)
@@ -197,9 +205,10 @@ pub fn (mut d Doc) generate() ?bool {
 	return true
 }
 
-pub fn generate(input_path string, pub_only bool) ?Doc {
+pub fn generate(input_path string, pub_only bool, with_comments bool) ?Doc {
 	mut doc := doc.new(input_path)
 	doc.pub_only = pub_only
+	doc.with_comments = with_comments
 
 	_ = doc.generate() or {
 		return error(err)
