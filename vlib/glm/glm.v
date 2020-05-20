@@ -272,6 +272,55 @@ fn mult_mat_point(a Mat4, point Mat4) Mat4 {
 	return mat4(out)
 }
 
+pub fn rotate(angle f32, axis Vec3, src Mat4) Mat4 {
+	c := math.cos(angle)
+	s := math.sin(angle)
+	oneminusc := 1.0 - c
+
+	xy := axis.x * axis.y
+	yz := axis.y * axis.z
+	xz := axis.x * axis.z
+	xs := axis.x * s
+	ys := axis.y * s
+	zs := axis.z * s
+
+	f00 := axis.x * axis.x * oneminusc + c
+	f01 := xy * oneminusc + zs
+	f02 := xz * oneminusc - ys
+
+	f10 := xy * oneminusc-zs
+	f11 := axis.y * axis.y * oneminusc + c
+	f12 := yz * oneminusc + xs
+
+	f20 := xz * oneminusc + ys
+	f21 := yz * oneminusc - xs
+	f22 := axis.z  *axis.z * oneminusc + c
+
+	data := src.data
+
+	t00 := data[0] * f00 + data[4] * f01 + data[8] * f02
+	t01 := data[1] * f00 + data[5] * f01 + data[9] * f02
+	t02 := data[2] * f00 + data[6] * f01 + data[10] * f02
+	t03 := data[3] * f00 + data[7] * f01 + data[11] * f02
+
+	t10 := data[0] * f10 + data[4] * f11 + data[8] * f12
+	t11 := data[1] * f10 + data[5] * f11 + data[9] * f12
+	t12 := data[2] * f10 + data[6] * f11 + data[10] * f12
+	t13 := data[3] * f10 + data[7] * f11 + data[11] * f12
+
+	mut dest := src.data
+
+	dest[8] = data[0] * f20 + data[4] * f21 + data[8] * f22
+	dest[9] = data[1] * f20 + data[5] * f21 + data[9] * f22
+	dest[10] = data[2] * f20 + data[6] * f21 + data[10] * f22
+	dest[11] = data[3] * f20 + data[7] * f21 + data[11] * f22
+
+	dest[0] = t00	dest[1] = t01	dest[2] = t02	dest[3] = t03 
+	dest[4] = t10	dest[5] = t11	dest[6] = t12	dest[7] = t13
+
+	return mat4(dest)
+}
+
 // fn rotate_z(a *f32, rad f32) *f32 {
 pub fn rotate_z(m Mat4, rad f32) Mat4 {
 	a := m.data
