@@ -212,14 +212,12 @@ fn (b &Builder) print_warnings_and_errors() {
 		if b.checker.nr_errors > 0 {
 			exit(1)
 		}
-
 		return
 	}
-
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
 		println('$b.checker.nr_warnings warnings')
 	}
-	if b.checker.nr_warnings > 0  && !b.pref.skip_warnings {
+	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
 		for i, err in b.checker.warnings {
 			kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_warnings:' } else { 'warning:' }
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
@@ -245,6 +243,24 @@ fn (b &Builder) print_warnings_and_errors() {
 			}
 		}
 		exit(1)
+	}
+	if b.table.redefined_fns.len > 0 {
+		for fn_name in b.table.redefined_fns {
+			eprintln('redefinition of function `$fn_name`')
+			// eprintln('previous declaration at')
+			// Find where this function was already declared
+			for file in b.parsed_files {
+				for stmt in file.stmts {
+					if stmt is ast.FnDecl {
+						f := stmt as ast.FnDecl
+						if f.name == fn_name {
+							println(file.path + ':' + f.pos.line_nr.str())
+						}
+					}
+				}
+			}
+			exit(1)
+		}
 	}
 }
 

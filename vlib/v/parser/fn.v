@@ -456,7 +456,8 @@ fn (mut p Parser) fn_redefinition_error(name string) {
 
 	}
 	*/
-	p.error('redefinition of function `$name`')
+	p.table.redefined_fns << name
+	// p.error('redefinition of function `$name`')
 }
 
 fn have_fn_main(stmts []ast.Stmt) bool {

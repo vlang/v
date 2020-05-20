@@ -14,6 +14,7 @@ pub mut:
 	imports   []string // List of all imports
 	modules   []string // List of all modules registered by the application
 	cflags    []cflag.CFlag
+	redefined_fns     []string
 }
 
 pub struct Fn {

@@ -664,12 +664,12 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 	} else if p.tok.kind.is_assign() {
 		epos := p.tok.position()
 		if collected.len == 1 {
-			return ast.ExprStmt {
+			return ast.ExprStmt{
 				expr: p.assign_expr(collected[0])
 				pos: epos
 			}
 		} else {
-			return ast.ExprStmt {
+			return ast.ExprStmt{
 				expr: p.assign_expr(ast.ConcatExpr{
 					vals: collected
 				})
@@ -1044,7 +1044,11 @@ fn (mut p Parser) string_expr() ast.Expr {
 		node = ast.StringLiteral{
 			val: val
 			is_raw: is_raw
-			language: if is_cstr { table.Language.c } else { table.Language.v }
+			language: if is_cstr {
+				table.Language.c
+			} else {
+				table.Language.v
+			}
 			pos: pos
 		}
 		return node
