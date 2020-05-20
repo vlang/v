@@ -27,7 +27,7 @@ fn C.stbi_image_free()
 fn C.stbi_set_flip_vertically_on_load()
 
 pub fn load(path string) Image {
-	ext := path.all_after('.')
+	ext := path.all_after_last('.')
 	mut res := Image {
 		ok: true
 		ext: ext

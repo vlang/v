@@ -1009,7 +1009,7 @@ fn (mut s Scanner) debug_tokens() {
 	s.pos = 0
 	s.is_started = false
 	s.is_debug = true
-	fname := s.file_path.all_after(os.path_separator)
+	fname := s.file_path.all_after_last(os.path_separator)
 	println('\n===DEBUG TOKENS $fname===')
 	for {
 		tok := s.scan()

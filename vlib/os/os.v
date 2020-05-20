@@ -675,7 +675,7 @@ pub fn base_dir(path string) string {
 }
 
 pub fn file_name(path string) string {
-	return path.all_after(path_separator)
+	return path.all_after_last(path_separator)
 }
 
 // input returns a one-line string from stdin, after printing a prompt

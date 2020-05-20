@@ -20,64 +20,45 @@ import strings
 #flag darwin -L/usr/local/opt/openssl/lib
 #include <openssl/ssl.h>
 
-struct C.ssl_st
+struct C.ssl_st {}
 
 fn C.SSL_library_init()
 
-
 fn C.TLSv1_2_method() voidptr
-
 
 fn C.SSL_CTX_set_options()
 
-
 fn C.SSL_CTX_new() voidptr
-
 
 fn C.SSL_CTX_set_verify_depth()
 
-
 fn C.SSL_CTX_load_verify_locations() int
-
 
 fn C.BIO_new_ssl_connect() voidptr
 
-
 fn C.BIO_set_conn_hostname() int
-
 
 fn C.BIO_get_ssl()
 
-
 fn C.SSL_set_cipher_list() int
-
 
 fn C.BIO_do_connect() int
 
-
 fn C.BIO_do_handshake() int
-
 
 fn C.SSL_get_peer_certificate() int
 
-
 fn C.SSL_get_verify_result() int
-
 
 fn C.SSL_set_tlsext_host_name() int
 
-
 fn C.BIO_puts()
-
 
 fn C.BIO_read() int
 
-
 fn C.BIO_free_all()
 
-
 fn C.SSL_CTX_free()
-
 
 fn init() int {
 	C.SSL_library_init()
@@ -85,7 +66,8 @@ fn init() int {
 }
 
 const (
-buf_size = 500  // 1536
+	buf_size             = 500 // 1536
+	debug_line_separator = '--------------------------------'
 )
 
 fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
@@ -117,41 +99,36 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	// /////
 	req_headers := req.build_request_headers(method, host_name, path)
 	C.BIO_puts(web, req_headers.str)
-	mut headers := strings.new_builder(100)
-	mut h := ''
+	mut headers := ''
 	mut headers_done := false
-	mut sb := strings.new_builder(100)
+	mut body_builder := strings.new_builder(100)
 	mut buff := [buf_size]byte
-	mut is_chunk_encoding := false
+	mut readcounter := 0
 	for {
+		readcounter++
 		len := C.BIO_read(web, buff, buf_size)
 		if len <= 0 {
 			break
 		}
 		mut chunk := (tos(buff, len))
-		if !headers_done && chunk.contains('\r\n\r\n') {
-			headers_done = true
-			headers.write(chunk.all_before('\r\n\r\n'))
-			h = headers.str()
-			//println(h)
-			sb.write(chunk.after('\r\n\r\n'))
-			// TODO for some reason this can be missing from headers
-			is_chunk_encoding = false //h.contains('chunked')
-			//println(sb.str())
-			continue
+		$if debug_http ? {
+			eprintln('ssl_do, read ${readcounter:4d} | headers_done: $headers_done')
+			eprintln(debug_line_separator)
+			eprintln(chunk)
+			eprintln(debug_line_separator)
 		}
-		// TODO clean this up
-		if is_chunk_encoding && len > 6 && ((buff[3] == 13 && buff[4] == 10) || (buff[2] ==13 && buff[3]==10)
-		|| (buff[4] == 13 && buff[5] == 10) ) {
-			chunk = chunk.after_char(10)
-		}
-		if chunk.len > 3 && chunk[chunk.len-2] == 13 && chunk[chunk.len-1] == 10 {
-			chunk = chunk[..chunk.len-2]
+		if !headers_done {
+			headers += chunk
+			if headers.contains('\r\n\r\n') {
+				headers_done = true
+				body_start := headers.all_after('\r\n\r\n')
+				body_builder.write(body_start)
+				headers = headers.all_before('\r\n\r\n')
+				continue
+			}
 		}
 		if headers_done {
-			sb.write(chunk)
-		} else {
-			headers.write(chunk)
+			body_builder.write(chunk)
 		}
 	}
 	if !isnil(web) {
@@ -160,8 +137,16 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	if !isnil(ctx) {
 		C.SSL_CTX_free(ctx)
 	}
-	body:= sb.str()
-	//println(body)
-	return parse_response(h +'\r\n\r\n'+ body)
+	body := body_builder.str()
+	$if debug_http ? {
+		eprintln('> http headers:')
+		eprintln(debug_line_separator)
+		eprintln(headers)
+		eprintln(debug_line_separator)
+		eprintln('> http body:')
+		eprintln(debug_line_separator)
+		eprintln(body)
+		eprintln(debug_line_separator)
+	}
+	return parse_response(headers + '\r\n\r\n' + body)
 }
-
