@@ -11,3 +11,4 @@ or Markdown format.
 Options:
   -all  Includes private and public functions/methods/structs/consts/enums.
   -loc  Show the locations of the generated signatures. (For plaintext only)
+  -serve Serve generated docs on HTTP

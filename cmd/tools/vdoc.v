@@ -4,6 +4,7 @@ import os
 import v.doc
 import v.vmod
 import net.urllib
+import net
 import strings
 
 enum OutputType {
@@ -18,6 +19,7 @@ struct DocConfig {
 	opath string
 	pub_only bool = true
 	show_loc bool = false // for plaintext
+	serve_http bool = false // for html
 mut:
 	src_path string
 	doc doc.Doc
@@ -26,6 +28,40 @@ mut:
 
 fn slug(title string) string {
 	return title.replace(' ', '-')
+}
+
+fn open_url(url string) {
+	$if windows {
+		os.system('start $url')
+	}
+
+	$if macos {
+		os.system('open $url')
+	}
+
+	$if linux {
+		os.system('xdg-open $url')
+	}
+}
+
+fn (cfg DocConfig) serve_html() {
+	server := net.listen(8046) or {
+		panic(err)
+	}
+	println('Serving docs on: http://localhost:8046')
+	open_url('http://localhost:8046')
+	html := cfg.gen_html()
+
+	for {
+		con := server.accept() or {
+			server.close() or { }
+			panic(err)
+		}
+
+		con.send_string('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n$html') or {
+			return
+		}
+	}
 }
 
 fn get_src_link(repo_url string, file_name string, line_nr int) string {
@@ -228,7 +264,7 @@ fn (mut config DocConfig) generate_docs_from_file() {
 		ext := os.file_ext(config.opath)[1..]
 		if ext in ['md', 'markdown'] || config.opath in [':md:', ':markdown:'] {
 			output_type = .markdown
-		} else if ext in ['html', 'htm'] || config.opath == ':html:' {
+		} else if ext in ['html', 'htm'] || config.opath == ':html:' || config.serve_http {
 			output_type = .html
 		} else if ext == 'json' || config.opath == ':json:' {
 			output_type = .json
@@ -262,7 +298,9 @@ fn (mut config DocConfig) generate_docs_from_file() {
 		else { config.gen_plaintext() }
 	}
 
-	if output_type == .stdout || (config.opath.starts_with(':') && config.opath.ends_with(':')) {
+	if config.serve_http {
+		config.serve_html()
+	} else if output_type == .stdout || (config.opath.starts_with(':') && config.opath.ends_with(':')) {
 		println(output)
 	} else {
 		os.write_file(config.opath, output)
@@ -318,6 +356,7 @@ fn main() {
 		opath: if args.len >= 2 { args[1] } else { '' },
 		pub_only: '-all' !in opts,
 		show_loc: '-loc' in opts,
+		serve_http: '-serve' in opts,
 		manifest: vmod.Manifest{ repo_url: '' }
 	}
 	
