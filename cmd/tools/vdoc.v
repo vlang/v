@@ -118,7 +118,19 @@ fn (mut config DocConfig) generate_docs_from_file() {
 		}
 	}
 	
-	d := doc.generate(ipath, pub_only) or {
+	mut manifest_path := config.src_path 
+	if !os.is_dir(manifest_path) {
+		manifest_path = os.base_dir(manifest_path)	
+	}
+
+	manifest_path = os.join_path(manifest_path, 'v.mod')
+
+	if os.exists(manifest_path) {
+		if manifest := vmod.from_file(manifest_path) {
+			config.manifest = manifest
+		}
+	}
+	
 		panic(err)
 	}
 
