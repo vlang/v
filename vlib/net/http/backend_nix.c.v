@@ -66,7 +66,7 @@ fn init() int {
 }
 
 const (
-	buf_size             = 500 // 1536
+	buf_size             = 1536
 	debug_line_separator = '--------------------------------'
 )
 
@@ -99,9 +99,7 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	// /////
 	req_headers := req.build_request_headers(method, host_name, path)
 	C.BIO_puts(web, req_headers.str)
-	mut headers := ''
-	mut headers_done := false
-	mut body_builder := strings.new_builder(100)
+	mut content := strings.new_builder(100)
 	mut buff := [buf_size]byte
 	mut readcounter := 0
 	for {
@@ -110,43 +108,19 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 		if len <= 0 {
 			break
 		}
-		mut chunk := (tos(buff, len))
 		$if debug_http ? {
-			eprintln('ssl_do, read ${readcounter:4d} | headers_done: $headers_done')
+			eprintln('ssl_do, read ${readcounter:4d} | len: $len')
 			eprintln(debug_line_separator)
-			eprintln(chunk)
+			eprintln(tos(buff, len))
 			eprintln(debug_line_separator)
 		}
-		if !headers_done {
-			headers += chunk
-			if headers.contains('\r\n\r\n') {
-				headers_done = true
-				body_start := headers.all_after('\r\n\r\n')
-				body_builder.write(body_start)
-				headers = headers.all_before('\r\n\r\n')
-				continue
-			}
-		}
-		if headers_done {
-			body_builder.write(chunk)
-		}
+		content.write_bytes(buff, len)
 	}
-	if !isnil(web) {
+	if web != 0 {
 		C.BIO_free_all(web)
 	}
-	if !isnil(ctx) {
+	if ctx != 0 {
 		C.SSL_CTX_free(ctx)
 	}
-	body := body_builder.str()
-	$if debug_http ? {
-		eprintln('> http headers:')
-		eprintln(debug_line_separator)
-		eprintln(headers)
-		eprintln(debug_line_separator)
-		eprintln('> http body:')
-		eprintln(debug_line_separator)
-		eprintln(body)
-		eprintln(debug_line_separator)
-	}
-	return parse_response(headers + '\r\n\r\n' + body)
+	return parse_response(content.str())
 }

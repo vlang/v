@@ -314,7 +314,7 @@ fn parse_response(resp string) Response {
 		}
 		headers[key] = val.trim_space()
 	}
-	if headers['Transfer-Encoding'] == 'chunked' {
+	if headers['Transfer-Encoding'] == 'chunked' || headers['Content-Length'] == '' {
 		text = chunked.decode(text)
 	}
 	return Response{
