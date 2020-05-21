@@ -903,17 +903,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.is_assign_rhs = true
 			g.expr(assign_stmt.right[0])
 			g.is_assign_rhs = false
-			if is_optional {
-				val := assign_stmt.right[0]
-				match val {
-					ast.CallExpr {
-						or_stmts = it.or_block.stmts
-						return_type = it.return_type
+			if is_optional && assign_stmt.right[0] is ast.CallExpr {
+				val := assign_stmt.right[0] as ast.CallExpr
+				or_stmts = val.or_block.stmts
+				return_type = val.return_type
 						g.or_block(mr_var_name, or_stmts, return_type)
 					}
-					else {}
-				}
-			}
 			g.writeln(';')
 			for i, ident in assign_stmt.left {
 				if ident.kind == .blank_ident {

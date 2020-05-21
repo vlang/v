@@ -45,6 +45,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	// `foo() or {}``
 	mut or_stmts := []ast.Stmt{}
 	if p.tok.kind == .key_orelse {
+		was_inside_or_expr := p.inside_or_expr
 		p.inside_or_expr = true
 		p.next()
 		p.open_scope()
@@ -63,7 +64,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		is_or_block_used = true
 		or_stmts = p.parse_block_no_scope()
 		p.close_scope()
-		p.inside_or_expr = false
+		p.inside_or_expr = was_inside_or_expr
 	}
 	if p.tok.kind == .question {
 		// `foo()?`
