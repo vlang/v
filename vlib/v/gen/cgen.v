@@ -907,8 +907,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				val := assign_stmt.right[0] as ast.CallExpr
 				or_stmts = val.or_block.stmts
 				return_type = val.return_type
-						g.or_block(mr_var_name, or_stmts, return_type)
-					}
+				g.or_block(mr_var_name, or_stmts, return_type)
+			}
 			g.writeln(';')
 			for i, ident in assign_stmt.left {
 				if ident.kind == .blank_ident {
@@ -2944,7 +2944,8 @@ fn (mut g Gen) or_block(var_name string, stmts []ast.Stmt, return_type table.Typ
 	g.writeln('if (!${cvar_name}.ok) {')
 	g.writeln('\tstring err = ${cvar_name}.v_error;')
 	g.writeln('\tint errcode = ${cvar_name}.ecode;')
-	if stmts.len > 0 && stmts[stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len - 1] as ast.ExprStmt).typ != table.void_type {
+	if stmts.len > 0 && stmts[stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len - 1] as ast.ExprStmt).typ !=
+		table.void_type {
 		g.indent++
 		for i, stmt in stmts {
 			if i == stmts.len - 1 {

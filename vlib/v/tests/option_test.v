@@ -142,7 +142,7 @@ fn test_reassignment() {
 	assert x2 == 100
 	x2 += 1
 	assert x2 == 101
-	///
+	//
 	mut x3 := 0
 	x3 = foo_ok() or {
 		assert false
@@ -205,11 +205,9 @@ fn opt_ptr(a &int) ?&int {
 
 fn test_opt_ptr() {
 	if true {
-
 	}
 	//
-	else{
-
+	else {
 	}
 	a := 3
 	mut r := opt_ptr(&a) or {
@@ -242,7 +240,6 @@ fn test_multi_return_opt() {
 	}
 }
 */
-
 fn foo() ?void {
 	return error('something')
 }
@@ -254,7 +251,6 @@ fn test_optional_void() {
 		return
 	}
 }
-
 
 fn bar() ? {
 	return error('bar error')
@@ -277,4 +273,3 @@ fn test_optional_val_with_empty_or() {
 	ret_none() or {}
 	assert true
 }
-

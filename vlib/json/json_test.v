@@ -2,7 +2,7 @@ import json
 
 struct Employee {
 	name string
-	age int
+	age  int
 }
 
 fn test_simple() {
@@ -18,17 +18,17 @@ fn test_simple() {
 }
 
 struct User2 {
-	age       	int
-	nums      	[]int
+	age  int
+	nums []int
 }
 
 struct User {
-	age       	int
-	nums      	[]int
-	last_name 	string 	[json:lastName]
-	is_registered	bool 	[json:IsRegistered]
-	typ int  [json:'type']
-	pets string [raw; json:'pet_animals']
+	age           int
+	nums          []int
+	last_name     string [json:lastName]
+	is_registered bool   [json:IsRegistered]
+	typ           int    [json:'type']
+	pets          string [raw; json:'pet_animals']
 }
 
 fn test_parse_user() {
@@ -52,8 +52,15 @@ fn test_parse_user() {
 	assert u.pets == '{"name":"Bob","animal":"Dog"}'
 }
 
-fn test_encode_user(){
-	usr := User{ age: 10, nums: [1,2,3], last_name: 'Johnson', is_registered: true, typ: 0, pets: 'foo'}
+fn test_encode_user() {
+	usr := User{
+		age: 10
+		nums: [1, 2, 3]
+		last_name: 'Johnson'
+		is_registered: true
+		typ: 0
+		pets: 'foo'
+	}
 	expected := '{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"foo"}'
 	out := json.encode(usr)
 	println(out)
@@ -61,17 +68,17 @@ fn test_encode_user(){
 }
 
 struct Color {
-    space string
-    point string [raw]
+	space string
+	point string [raw]
 }
 
 fn test_raw_json_field() {
-    color := json.decode(Color, '{"space": "YCbCr", "point": {"Y": 123}}') or {
-        println('text')
-        return
-    }
-    assert color.point == '{"Y":123}'
-    assert color.space == 'YCbCr'
+	color := json.decode(Color, '{"space": "YCbCr", "point": {"Y": 123}}') or {
+		println('text')
+		return
+	}
+	assert color.point == '{"Y":123}'
+	assert color.space == 'YCbCr'
 }
 
 struct City {
@@ -80,7 +87,7 @@ struct City {
 
 struct Country {
 	cities []City
-	name string
+	name   string
 }
 
 fn test_struct_in_struct() {
@@ -93,6 +100,4 @@ fn test_struct_in_struct() {
 	assert country.cities[0].name == 'London'
 	assert country.cities[1].name == 'Manchester'
 	println(country.cities)
-
 }
-

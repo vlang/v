@@ -1,4 +1,3 @@
-
 struct Abc {
 	x int
 }
@@ -36,7 +35,6 @@ fn return_a_string() string {
 }
 
 //
-
 fn test_optional_int() {
 	a := i_0(0) or {
 		4999
@@ -60,7 +58,6 @@ fn test_optional_bool() {
 	assert b == true
 }
 */
-
 fn test_optional_struct() {
 	sa := struct_0(0) or {
 		Abc{7999}
