@@ -67,6 +67,24 @@ fn test_rotate() {
 	$if debug {
 		println(m)
 	}
+
+	//Rotate X
+	m = glm.rotate(1, glm.vec3(1, 0, 0), m)
+	$if debug {
+		println('Rotation X: $m')
+	}
+
+	//Rotate Y
+	m = glm.rotate(1, glm.vec3(0, 1, 0), m)
+	$if debug {
+		println('Rotation Y: $m')
+	}
+
+	//Rotate Z
+	m = glm.rotate(1, glm.vec3(0, 0, 1), m)
+	$if debug {
+		println('Rotation Z: $m')
+	}
 }
 
 fn test_translate() {
