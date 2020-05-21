@@ -249,7 +249,7 @@ pub fn (nn byte) hex() string {
 	for n > 0 {
 		d := n & 0xF
 		n = n >> 4
-		buf[index--] = if d < 10 { d + `0` } else { d + byte(87) }
+		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}
 	//buf[index--] = `x`
 	//buf[index]   = `0`
@@ -274,9 +274,9 @@ pub fn (nn u16) hex() string {
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
-		d := n & byte(0xF)
+		d := n & 0xF
 		n = n >> 4
-		buf[index--] = if d < 10 { d + `0` } else { d + byte(87) }
+		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}
 	//buf[index--] = `x`
 	//buf[index]   = `0`
