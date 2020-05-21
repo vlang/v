@@ -99,7 +99,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	g.finish()
 	mut out := g.hashes() + g.definitions.str() + g.constants.str()
 	for node in deps_resolved.nodes {
-		out += '/* namespace: $node.name */\n'
+		out += g.doc.gen_namespace(node.name)
 		out += 'const $node.name = (function ('
 		imports := g.namespace_imports[node.name]
 		for i, key in imports.keys() {

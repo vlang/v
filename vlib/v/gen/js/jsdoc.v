@@ -96,3 +96,9 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) string {
 	d.write('*/')
 	return d.out.str()
 }
+
+fn (mut d JsDoc) gen_namespace(ns string) string {
+	d.reset()
+	d.writeln('/** @namespace ${ns} */')
+	return d.out.str()
+}
