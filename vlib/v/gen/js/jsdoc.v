@@ -53,7 +53,7 @@ fn (mut d JsDoc) gen_typ(typ, name string) string {
 	return d.out.str()
 }
 
-fn (mut d JsDoc) gen_ctor(fields []ast.StructField) string {
+fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) string {
 	d.reset()
 	d.writeln('/**')
 	d.write(' * @param {{')
@@ -93,6 +93,7 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) string {
 		}
 	}
 	d.writeln(' * @returns {$type_name}')
+	d.writeln(' * @function')
 	d.write('*/')
 	return d.out.str()
 }

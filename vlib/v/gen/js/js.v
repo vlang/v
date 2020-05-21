@@ -17,6 +17,9 @@ const (
 		'var', 'void', 'while', 'with', 'yield']
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t']
 	builtin_globals = ['println', 'print']
+	type_values = {
+
+	}
 )
 
 struct JsGen {
@@ -245,6 +248,42 @@ fn (mut g JsGen) to_js_typ(typ string) string {
 				styp = 'Map<${tokens[1]}, ${tokens[2]}>'
 			} else {
 				styp = typ
+			}
+		}
+	}
+	// ns.export => ns["export"]
+	for i, v in styp.split('.') {
+		if i == 0 {
+			styp = v
+			continue
+		}
+		styp += '["$v"]'
+	}
+	return styp
+}
+
+fn (mut g JsGen) to_js_typ_val(typ string) string {
+	mut styp := ''
+	match typ {
+		'number' {
+			styp = '0'
+		}
+		'boolean' {
+			styp = 'false'
+		}
+		'Object' {
+			styp = '{}'
+		}
+		'string' {
+			styp = '""'
+		}
+		else {
+			if typ.starts_with('Map') {
+				styp = 'new Map()'
+			} else if typ.ends_with('[]') {
+				styp = '[]'
+			} else {
+				styp = '{}'
 			}
 		}
 	}
@@ -828,7 +867,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	if is_main {
 		g.write(')();')
 	}
-	if !it.is_anon {
+	if !it.is_anon && !it.is_method {
 		g.writeln('')
 	}
 
@@ -1021,27 +1060,41 @@ fn (mut g JsGen) enum_expr(node ast.Expr) {
 }
 
 fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
-	g.writeln('class ${g.js_name(node.name)} {')
-	g.inc_indent()
-	g.writeln(g.doc.gen_ctor(node.fields))
-	g.writeln('constructor(values) {')
+	g.writeln(g.doc.gen_fac_fn(node.fields))
+	g.write('function ${g.js_name(node.name)}({ ')
+	for i, field in node.fields {
+		g.write('$field.name = ')
+		if field.has_default_expr {
+			g.expr(field.default_expr)
+		} else {
+			g.write('${g.to_js_typ_val(g.typ(field.typ))}')
+		}
+		if i < node.fields.len - 1 { g.write(',') }
+		g.write(' ')
+	}
+	g.writeln('}) {')
 	g.inc_indent()
 	for field in node.fields {
-		// TODO: Generate default struct init values
 		g.writeln('this.$field.name = values.$field.name')
 	}
 	g.dec_indent()
 	g.writeln('}')
 
 	fns := g.method_fn_decls[node.name]
-	for cfn in fns {
-		// TODO: Move cast to the entire array whenever it's possible
-		it := cfn as ast.FnDecl
-		g.writeln('')
-		g.gen_method_decl(it)
+
+	if fns.len > 0 {
+		g.writeln('${g.js_name(node.name)}.prototype = {')
+		g.inc_indent()
+		for i, cfn in fns {
+			// TODO: Move cast to the entire array whenever it's possible
+			it := cfn as ast.FnDecl
+			g.gen_method_decl(it)
+			if i < fns.len - 1 { g.write(',') }
+			g.writeln('')
+		}
+		g.dec_indent()
+		g.writeln('}\n')
 	}
-	g.dec_indent()
-	g.writeln('}\n')
 	if node.is_pub {
 		g.push_pub_var(node.name)
 	}
