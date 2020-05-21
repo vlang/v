@@ -443,7 +443,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// `json__encode` => `json__encode_User`
 		name += '_' + json_type_str.replace('.', '__')
 	}
-	if node.generic_type != table.void_type {
+	if node.generic_type != table.void_type && node.generic_type != 0 {
 		// `foo<int>()` => `foo_int()`
 		name += '_' + g.typ(node.generic_type)
 	}
