@@ -89,11 +89,25 @@ fn test_translate() {
 	$if debug {
 		println(m)
 	}
-	// TODO 
-	// mat4x4((1.000000, 0.000000, 0.000000, 0.000000),
-	// (0.000000, 1.000000, 0.000000, 0.000000),
-	// (0.000000, 0.000000, 1.000000, 0.000000),
-	// (0.000000, 0.000000, -0.500000, 1.000000))
+    assert m.data[0]  == 1.0 
+    assert m.data[1]  == 0.0
+    assert m.data[2]  == 0.0
+    assert m.data[3]  == 0.0
+    //
+    assert m.data[4]  == 0.0
+    assert m.data[5]  == 1.0
+    assert m.data[6]  == 0.0
+    assert m.data[7]  == 0.0
+    
+    assert m.data[8]  == 0.0
+    assert m.data[9]  == 0.0
+    assert m.data[10] == 1.0
+    assert m.data[11] == 0.0
+    //
+    assert m.data[12] == 0.0
+    assert m.data[13] == 0.0
+    assert m.data[14] == -0.5
+    assert m.data[15] == 1.0
 }
 
 fn test_mult() {
