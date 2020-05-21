@@ -232,10 +232,6 @@ pub fn (mut d Doc) generate() ?bool {
 		}
 	}
 
-	if d.contents.len == 0 {
-		return error('vdoc: No content was found.')
-	}
-
 	d.time_generated = time.now()
 	return true
 }
