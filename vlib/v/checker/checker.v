@@ -15,28 +15,29 @@ const (
 )
 
 pub struct Checker {
-	table          &table.Table
+	table            &table.Table
 pub mut:
-	file           ast.File
-	nr_errors      int
-	nr_warnings    int
-	errors         []errors.Error
-	warnings       []errors.Warning
-	error_lines    []int // to avoid printing multiple errors for the same line
-	expected_type  table.Type
-	fn_return_type table.Type // current function's return type
-	const_decl     string
-	const_deps     []string
-	const_names    []string
-	pref           &pref.Preferences // Preferences shared from V struct
-	in_for_count   int // if checker is currently in an for loop
+	file             ast.File
+	nr_errors        int
+	nr_warnings      int
+	errors           []errors.Error
+	warnings         []errors.Warning
+	error_lines      []int // to avoid printing multiple errors for the same line
+	expected_type    table.Type
+	fn_return_type   table.Type // current function's return type
+	const_decl       string
+	const_deps       []string
+	const_names      []string
+	pref             &pref.Preferences // Preferences shared from V struct
+	in_for_count     int // if checker is currently in an for loop
 	// checked_ident  string // to avoid infinit checker loops
-	var_decl_name  string
-	returns        bool
-	scope_returns  bool
-	mod            string // current module name
-	is_builtin_mod bool // are we in `builtin`?
-	inside_unsafe  bool
+	var_decl_name    string
+	returns          bool
+	scope_returns    bool
+	mod              string // current module name
+	is_builtin_mod   bool // are we in `builtin`?
+	inside_unsafe    bool
+	cur_generic_type table.Type
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -1158,11 +1159,13 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		// c.error('wrong number of return arguments:\n\texpected: $expected_table.str()\n\tgot: $got_types.str()', return_stmt.pos)
 		c.error('wrong number of return arguments', return_stmt.pos)
 	}
-	for i, exp_typ in expected_types {
+	for i, exp_type in expected_types {
 		got_typ := got_types[i]
-		if !c.table.check(got_typ, exp_typ) {
+		ok := if exp_type == table.t_type { c.table.check(got_typ, c.cur_generic_type) } else { c.table.check(got_typ,
+				exp_type) }
+		if !ok { // !c.table.check(got_typ, exp_typ) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
-			exp_typ_sym := c.table.get_type_symbol(exp_typ)
+			exp_typ_sym := c.table.get_type_symbol(exp_type)
 			pos := return_stmt.exprs[i].position()
 			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument',
 				pos)
@@ -1815,6 +1818,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 
 pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	if ident.name == c.var_decl_name { // c.checked_ident {
+		// Do not allow `x := x`
 		c.error('unresolved: `$ident.name`', ident.pos)
 		return table.void_type
 	}
@@ -1836,6 +1840,10 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	// second use
 	if ident.kind == .variable {
 		info := ident.info as ast.IdentVar
+		if info.typ == table.t_type {
+			// Got a var with type T, return current generic type
+			return c.cur_generic_type
+		}
 		return info.typ
 	} else if ident.kind == .constant {
 		info := ident.info as ast.IdentVar
@@ -1858,6 +1866,10 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					ident.info = ast.IdentVar{
 						typ: typ
 						is_optional: is_optional
+					}
+					if typ == table.t_type {
+						// Got a var with type T, return current generic type
+						typ = c.cur_generic_type
 					}
 					it.typ = typ
 					// unwrap optional (`println(x)`)
@@ -2315,6 +2327,16 @@ fn (c &Checker) fileis(s string) bool {
 }
 
 fn (mut c Checker) fn_decl(it ast.FnDecl) {
+	if it.is_generic && c.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
+		// loop thru each generic type and generate a function
+		for gen_type in c.table.fn_gen_types[it.name] {
+			c.cur_generic_type = gen_type
+			// println('\ncalling check for $it.name for type ' + gen_type.str())
+			c.fn_decl(it)
+		}
+		c.cur_generic_type = 0
+		return
+	}
 	if it.language == .v && !c.is_builtin_mod {
 		c.check_valid_snake_case(it.name, 'function name', it.pos)
 	}

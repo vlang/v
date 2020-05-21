@@ -18,7 +18,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		for gen_type in g.table.fn_gen_types[it.name] {
 			g.cur_generic_type = gen_type
 			g.gen_fn_decl(it)
-			println(gen_type)
 		}
 		g.cur_generic_type = 0
 		return
