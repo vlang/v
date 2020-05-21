@@ -37,6 +37,7 @@ pub mut:
 	comment string
 	pos DocPos
 	file_path string = ''
+	parent_type string
 }
 
 pub fn write_comment_bw(stmts []ast.Stmt, start_idx int) string {
@@ -120,6 +121,19 @@ pub fn new(input_path string) Doc {
 	}
 }
 
+pub fn (nodes []DocNode) find_children_of(parent_type string) []DocNode {
+	if parent_type.len == 0 { return []DocNode{} }
+	
+	mut children := []DocNode{}
+
+	for node in nodes {
+		if node.parent_type != parent_type { continue }
+		children << node
+	}
+
+	return children
+}
+
 pub fn (mut d Doc) generate() ?bool {
 	// get all files
 	base_path := if os.is_dir(d.input_path) { d.input_path } else { os.real_path(os.base_dir(d.input_path)) }
@@ -168,8 +182,9 @@ pub fn (mut d Doc) generate() ?bool {
 		stmts := file_ast.stmts
 		for si, stmt in stmts {
 			if stmt is ast.Comment { continue }
+
 			if !(stmt is ast.Module) {
-				name := d.get_name(stmt).replace('${module_name}.', '')
+				mut name := d.get_name(stmt)
 				signature := d.get_signature(stmt)
 				pos := d.get_pos(stmt)
 
@@ -177,13 +192,33 @@ pub fn (mut d Doc) generate() ?bool {
 					continue
 				}
 
-				d.contents << DocNode{
+				if name.starts_with(module_name + '.') {
+					name = name[module_name.len+1..]
+				}
+
+				mut node := DocNode{
 					name: name,
 					content: signature,
 					comment: '',
 					pos: convert_pos(v_files[i], pos),
 					file_path: v_files[i]
 				}
+
+				if stmt is ast.FnDecl {
+					fnd := stmt as ast.FnDecl
+
+					if fnd.receiver.typ != 0 {
+						mut parent_type := d.table.get_type_name(fnd.receiver.typ)
+
+						if parent_type.starts_with(module_name + '.') {
+							parent_type = parent_type[module_name.len+1..]
+						}
+
+						node.parent_type = parent_type
+					}
+				}
+
+				d.contents << node
 			}
 
 			if si-1 >= 0 && stmts[si-1] is ast.Comment {
