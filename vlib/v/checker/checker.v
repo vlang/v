@@ -403,6 +403,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	left := c.table.get_type_symbol(left_type)
 	left_pos := infix_expr.left.position()
 	right_pos := infix_expr.right.position()
+	mut return_type := left_type
 	// Single side check
 	// Place these branches according to ops' usage frequency to accelerate.
 	// TODO: First branch includes ops where single side check is not needed, or needed but hasn't been implemented.
@@ -441,40 +442,41 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe { // binary operators that expect matching types
 			if left.kind in [.array, .array_fixed, .map, .struct_] {
 				if left.has_method(infix_expr.op.str()) {
-					return left_type
+					return_type = left_type
 				} else {
 					c.error('mismatched types `$left.name` and `$right.name`', left_pos)
 				}
 			} else if right.kind in [.array, .array_fixed, .map, .struct_] {
 				if right.has_method(infix_expr.op.str()) {
-					return right_type
+					return_type = right_type
 				} else {
 					c.error('mismatched types `$left.name` and `$right.name`', right_pos)
 				}
-			}
-			promoted_type := c.table.promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
-			if promoted_type == table.Type(0) {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.pos)
-			} else if promoted_type.is_float() {
-				if infix_expr.op in [.mod, .xor, .amp, .pipe] {
-					side := if left_type == promoted_type { 'left' } else { 'right' }
-					pos := if left_type == promoted_type { left_pos } else { right_pos }
-					name :=  if left_type == promoted_type { left.name } else { right.name }
-					if infix_expr.op == .mod {
-						c.error('float modulo not allowed, use math.fmod() instead', pos)
-					} else {
-						c.error('$side type of `${infix_expr.op.str()}` cannot be non-integer type $name', pos)
+			} else {
+				promoted_type := c.table.promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
+				if promoted_type == table.Type(0) {
+					c.error('mismatched types `$left.name` and `$right.name`', infix_expr.pos)
+				} else if promoted_type.is_float() {
+					if infix_expr.op in [.mod, .xor, .amp, .pipe] {
+						side := if left_type == promoted_type { 'left' } else { 'right' }
+						pos := if left_type == promoted_type { left_pos } else { right_pos }
+						name :=  if left_type == promoted_type { left.name } else { right.name }
+						if infix_expr.op == .mod {
+							c.error('float modulo not allowed, use math.fmod() instead', pos)
+						} else {
+							c.error('$side type of `${infix_expr.op.str()}` cannot be non-integer type $name', pos)
+						}
 					}
 				}
-			}
-			if infix_expr.op in [.div, .mod] {
-				if infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() == '0' ||
-					infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0 {
-					oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
-					c.error('$oper by zero', right_pos)
+				if infix_expr.op in [.div, .mod] {
+					if infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() == '0' ||
+						infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0 {
+						oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
+						c.error('$oper by zero', right_pos)
+					}
+				} else {
+					return_type = promoted_type
 				}
-			} else {
-				return promoted_type
 			}
 		}
 		.left_shift {
@@ -545,7 +547,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	return if infix_expr.op.is_relational() {
 		table.bool_type
 	} else {
-		left_type
+		return_type
 	}
 }
 
