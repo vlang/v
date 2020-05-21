@@ -1082,17 +1082,19 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.writeln('${g.js_name(node.name)}.prototype = {')
 	g.inc_indent()
 
-	for field in node.fields {
+	fns := g.method_fn_decls[node.name]
+
+	for i, field in node.fields {
 		g.writeln(g.doc.gen_typ(g.typ(field.typ), field.name))
-		g.writeln('$field.name: ${g.to_js_typ_val(g.typ(field.typ))},')
+		g.write('$field.name: ${g.to_js_typ_val(g.typ(field.typ))}')
+		if i < node.fields.len - 1 || fns.len > 0 { g.writeln(',') } else { g.writeln('') }
 	}
 
-	fns := g.method_fn_decls[node.name]
-	for cfn in fns {
+	for i, cfn in fns {
 		// TODO: Move cast to the entire array whenever it's possible
 		it := cfn as ast.FnDecl
 		g.gen_method_decl(it)
-		g.writeln(',')
+		if i < fns.len - 1 { g.writeln(',') } else { g.writeln('') }
 	}
 	g.dec_indent()
 	g.writeln('};\n')
