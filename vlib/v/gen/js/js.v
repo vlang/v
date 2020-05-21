@@ -16,6 +16,7 @@ const (
 		'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof',
 		'var', 'void', 'while', 'with', 'yield']
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t']
+	builtin_globals = ['println', 'print']
 )
 
 struct JsGen {
@@ -452,25 +453,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.CallExpr {
-			mut name := ''
-			if it.name.starts_with('JS.') {
-				name = it.name[3..]
-			} else {
-				name = g.js_name(it.name)
-			}
-			g.expr(it.left)
-			if it.is_method {
-				// example: foo.bar.baz()
-				g.write('.')
-			}
-			g.write('${g.js_name(name)}(')
-			for i, arg in it.args {
-				g.expr(arg.expr)
-				if i != it.args.len - 1 {
-					g.write(', ')
-				}
-			}
-			g.write(')')
+			g.gen_call_expr(it)
 		}
 		ast.EnumVal {
 			styp := g.typ(it.typ)
@@ -1091,6 +1074,32 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	// TODO `is`
 	// TODO handle optionals
 	g.write(name)
+}
+
+fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
+	mut name := ''
+	if it.name.starts_with('JS.') {
+		name = it.name[3..]
+	} else {
+		name = g.js_name(it.name)
+	}
+	g.expr(it.left)
+	if it.is_method {
+		// example: foo.bar.baz()
+		g.write('.')
+	} else {
+		if name in builtin_globals {
+			g.write('builtin.')
+		}
+	}
+	g.write('${g.js_name(name)}(')
+	for i, arg in it.args {
+		g.expr(arg.expr)
+		if i != it.args.len - 1 {
+			g.write(', ')
+		}
+	}
+	g.write(')')
 }
 
 fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {

@@ -38,13 +38,22 @@ pub fn (mut b Builder) build_js(v_files []string, out_file string) {
 }
 
 pub fn (mut b Builder) compile_js() {
-	// TODO files << b.get_builtin_files()
-	files := b.get_user_files()
+	mut files := b.get_user_files()
+	files << b.get_builtin_files()
 	b.set_module_lookup_paths()
 	if b.pref.is_verbose {
 		println('all .v files:')
 		println(files)
 	}
 	b.build_js(files, b.pref.out_name + '.js')
-	// TODO run the file
+}
+
+fn (mut b Builder) run_js() {
+	cmd := 'node ' + b.pref.out_name + '.js'
+	res := os.exec(cmd) or {
+		println('JS compilation failed.')
+		verror(err)
+		return
+	}
+	println(res.output)
 }
