@@ -67,6 +67,20 @@ fn test_rotate() {
 	$if debug {
 		println(m)
 	}
+
+	mut m1 := glm.identity()
+	mut m2 := glm.identity()
+
+	m1 = glm.rotate(1, glm.vec3(1, 0, 0), m1)
+	m2 = glm.rotate(1, glm.vec3(0, 1, 0), m2)
+
+	mut same := true
+	for i in 0..15 {
+		if m1.data[i] != m2.data[i] {
+			same = false
+		}
+	}
+	assert !same
 }
 
 fn test_translate() {
@@ -75,11 +89,25 @@ fn test_translate() {
 	$if debug {
 		println(m)
 	}
-	// TODO 
-	// mat4x4((1.000000, 0.000000, 0.000000, 0.000000),
-	// (0.000000, 1.000000, 0.000000, 0.000000),
-	// (0.000000, 0.000000, 1.000000, 0.000000),
-	// (0.000000, 0.000000, -0.500000, 1.000000))
+    assert m.data[0]  == 1.0 
+    assert m.data[1]  == 0.0
+    assert m.data[2]  == 0.0
+    assert m.data[3]  == 0.0
+    //
+    assert m.data[4]  == 0.0
+    assert m.data[5]  == 1.0
+    assert m.data[6]  == 0.0
+    assert m.data[7]  == 0.0
+    
+    assert m.data[8]  == 0.0
+    assert m.data[9]  == 0.0
+    assert m.data[10] == 1.0
+    assert m.data[11] == 0.0
+    //
+    assert m.data[12] == 0.0
+    assert m.data[13] == 0.0
+    assert m.data[14] == -0.5
+    assert m.data[15] == 1.0
 }
 
 fn test_mult() {

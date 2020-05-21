@@ -364,13 +364,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
 	// }
-	g.write('${name}(')
+	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' {
+		g.write('ptr_str(')
+	} else {
+		g.write('${name}(')
+	}
 	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
 		g.write('&')
-	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() {
+	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' {
 		g.write('/*rec*/*')
 	}
 	g.expr(node.left)
