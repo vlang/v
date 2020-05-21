@@ -668,13 +668,12 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 				expr: p.assign_expr(collected[0])
 				pos: epos
 			}
-		} else {
-			return ast.ExprStmt{
-				expr: p.assign_expr(ast.ConcatExpr{
-					vals: collected
-				})
-				pos: epos
-			}
+		}
+		return ast.ExprStmt{
+			expr: p.assign_expr(ast.ConcatExpr{
+				vals: collected
+			})
+			pos: epos
 		}
 	} else {
 		if collected.len == 1 {
