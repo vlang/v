@@ -285,7 +285,14 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
-	gen_or := !g.is_assign_rhs && node.or_block.stmts.len > 0
+	gen_or := node.or_block.stmts.len > 0
+	cur_line := if gen_or && g.is_assign_rhs {
+		line := g.go_before_stmt(0)
+		g.out.write(tabs[g.indent])
+		line
+	} else {
+		''
+	}
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		styp := g.typ(node.return_type)
@@ -298,6 +305,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block.stmts, node.return_type)
+		g.write('\n${cur_line}${tmp_opt}')
 	}
 }
 

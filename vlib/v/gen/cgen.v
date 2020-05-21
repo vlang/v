@@ -964,7 +964,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			else {}
 		}
-		gen_or := is_call && return_type.flag_is(.optional)
 		g.is_assign_rhs = true
 		if blank_assign {
 			if is_call {
@@ -1055,10 +1054,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
 				}
 			}
-			if gen_or {
-				g.or_block(ident.name, or_stmts, return_type)
 			}
-		}
 		g.is_assign_rhs = false
 		if g.inside_ternary == 0 {
 			g.writeln(';')
@@ -2940,6 +2936,7 @@ fn (mut g Gen) insert_before_stmt(s string) {
 // If the user is not using the optional return value. We need to pass a temp var
 // to access its fields (`.ok`, `.error` etc)
 // `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
+// Returns the type of the last stmt
 fn (mut g Gen) or_block(var_name string, stmts []ast.Stmt, return_type table.Type) {
 	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
@@ -2947,48 +2944,34 @@ fn (mut g Gen) or_block(var_name string, stmts []ast.Stmt, return_type table.Typ
 	g.writeln('if (!${cvar_name}.ok) {')
 	g.writeln('\tstring err = ${cvar_name}.v_error;')
 	g.writeln('\tint errcode = ${cvar_name}.ecode;')
-	last_type, type_of_last_expression := g.type_of_last_statement(stmts)
-	if last_type == 'v.ast.ExprStmt' && type_of_last_expression != 'void' {
+	if stmts.len > 0 && stmts[stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len - 1] as ast.ExprStmt).typ != table.void_type {
 		g.indent++
 		for i, stmt in stmts {
 			if i == stmts.len - 1 {
-				g.indent--
-				g.write('\t*(${mr_styp}*) ${cvar_name}.data = ')
+				expr_stmt := stmt as ast.ExprStmt
+				g.stmt_path_pos << g.out.len
+				g.write('*(${mr_styp}*) ${cvar_name}.data = ')
+				is_opt_call := expr_stmt.expr is ast.CallExpr && expr_stmt.typ.flag_is(.optional)
+				if is_opt_call {
+					g.write('*(${mr_styp}*) ')
+				}
+				g.expr(expr_stmt.expr)
+				if is_opt_call {
+					g.write('.data')
+				}
+				if g.inside_ternary == 0 && !(expr_stmt.expr is ast.IfExpr) {
+					g.writeln(';')
+				}
+				g.stmt_path_pos.delete(g.stmt_path_pos.len - 1)
+			} else {
+				g.stmt(stmt)
 			}
-			g.stmt(stmt)
 		}
+		g.indent--
 	} else {
 		g.stmts(stmts)
 	}
 	g.write('}')
-}
-
-fn (mut g Gen) type_of_last_statement(stmts []ast.Stmt) (string, string) {
-	mut last_type := ''
-	mut last_expr_result_type := ''
-	if stmts.len > 0 {
-		last_stmt := stmts[stmts.len - 1]
-		last_type = typeof(last_stmt)
-		if last_type == 'v.ast.ExprStmt' {
-			match last_stmt {
-				ast.ExprStmt {
-					it_expr_type := typeof(it.expr)
-					if it_expr_type == 'v.ast.CallExpr' {
-						g.writeln('\t // typeof it_expr_type: $it_expr_type')
-						last_expr_result_type = g.type_of_call_expr(it.expr)
-					} else {
-						last_expr_result_type = it_expr_type
-					}
-				}
-				else {
-					last_expr_result_type = last_type
-				}
-			}
-		}
-	}
-	g.writeln('\t// last_type: $last_type')
-	g.writeln('\t// last_expr_result_type: $last_expr_result_type')
-	return last_type, last_expr_result_type
 }
 
 fn (mut g Gen) type_of_call_expr(node ast.Expr) string {
