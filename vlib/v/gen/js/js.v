@@ -245,7 +245,7 @@ fn (mut g JsGen) to_js_typ(typ string) string {
 				styp = g.to_js_typ(typ.replace('array_', '')) + '[]'
 			} else if typ.starts_with('map_') {
 				tokens := typ.split('_')
-				styp = 'Map<${tokens[1]}, ${tokens[2]}>'
+				styp = 'Map<${g.to_js_typ(tokens[1])}, ${g.to_js_typ(tokens[2])}>'
 			} else {
 				styp = typ
 			}
@@ -1069,32 +1069,33 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		} else {
 			g.write('${g.to_js_typ_val(g.typ(field.typ))}')
 		}
-		if i < node.fields.len - 1 { g.write(',') }
-		g.write(' ')
+		if i < node.fields.len - 1 { g.write(', ') }
 	}
-	g.writeln('}) {')
+	g.writeln(' }) {')
 	g.inc_indent()
 	for field in node.fields {
-		g.writeln('this.$field.name = values.$field.name')
+		g.writeln('this.$field.name = $field.name')
 	}
 	g.dec_indent()
-	g.writeln('}')
+	g.writeln('};')
+
+	g.writeln('${g.js_name(node.name)}.prototype = {')
+	g.inc_indent()
+
+	for field in node.fields {
+		g.writeln(g.doc.gen_typ(g.typ(field.typ), field.name))
+		g.writeln('$field.name: ${g.to_js_typ_val(g.typ(field.typ))},')
+	}
 
 	fns := g.method_fn_decls[node.name]
-
-	if fns.len > 0 {
-		g.writeln('${g.js_name(node.name)}.prototype = {')
-		g.inc_indent()
-		for i, cfn in fns {
-			// TODO: Move cast to the entire array whenever it's possible
-			it := cfn as ast.FnDecl
-			g.gen_method_decl(it)
-			if i < fns.len - 1 { g.write(',') }
-			g.writeln('')
-		}
-		g.dec_indent()
-		g.writeln('}\n')
+	for cfn in fns {
+		// TODO: Move cast to the entire array whenever it's possible
+		it := cfn as ast.FnDecl
+		g.gen_method_decl(it)
+		g.writeln(',')
 	}
+	g.dec_indent()
+	g.writeln('};\n')
 	if node.is_pub {
 		g.push_pub_var(node.name)
 	}
