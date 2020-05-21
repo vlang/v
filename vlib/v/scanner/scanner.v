@@ -174,9 +174,11 @@ fn (mut s Scanner) ident_bin_number() string {
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
+		s.pos-- // adjust error position
 		s.error('number part of this binary is not provided')
 	}
 	else if has_wrong_digit {
+		s.pos-- // adjust error position
 		s.error('this binary number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
@@ -203,9 +205,11 @@ fn (mut s Scanner) ident_hex_number() string {
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
+		s.pos-- // adjust error position
 		s.error('number part of this hexadecimal is not provided')
 	}
 	else if has_wrong_digit {
+		s.pos-- // adjust error position
 		s.error('this hexadecimal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
@@ -232,9 +236,11 @@ fn (mut s Scanner) ident_oct_number() string {
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
+		s.pos-- // adjust error position
 		s.error('number part of this octal is not provided')
 	}
 	else if has_wrong_digit {
+		s.pos-- // adjust error position
 		s.error('this octal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
@@ -335,10 +341,12 @@ fn (mut s Scanner) ident_dec_number() string {
 	}
 	if has_wrong_digit {
 	// error check: wrong digit
+		s.pos-- // adjust error position
 		s.error('this number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	else if s.text[s.pos - 1] in [`e`, `E`] {
 	// error check: 5e
+		s.pos-- // adjust error position
 		s.error('exponent has no digits')
 	}
 	else if s.pos < s.text.len && s.text[s.pos] == `.` && !is_range && !is_float_without_fraction && !call_method {
