@@ -68,23 +68,19 @@ fn test_rotate() {
 		println(m)
 	}
 
-	//Rotate X
-	m = glm.rotate(1, glm.vec3(1, 0, 0), m)
-	$if debug {
-		println('Rotation X: $m')
-	}
+	mut m1 := glm.identity()
+	mut m2 := glm.identity()
 
-	//Rotate Y
-	m = glm.rotate(1, glm.vec3(0, 1, 0), m)
-	$if debug {
-		println('Rotation Y: $m')
-	}
+	m1 = glm.rotate(1, glm.vec3(1, 0, 0), m1)
+	m2 = glm.rotate(1, glm.vec3(0, 1, 0), m2)
 
-	//Rotate Z
-	m = glm.rotate(1, glm.vec3(0, 0, 1), m)
-	$if debug {
-		println('Rotation Z: $m')
+	mut same := true
+	for i in 0..15 {
+		if m1.data[i] != m2.data[i] {
+			same = false
+		}
 	}
+	assert !same
 }
 
 fn test_translate() {
