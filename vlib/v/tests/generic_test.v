@@ -7,7 +7,9 @@ fn simple<T>(p T) T {
 
 fn test_generic_fn() {
 	assert simple<int>(1) == 1
+	assert simple<int>(1 + 0) == 1
 	assert simple<string>('g') == 'g'
+	assert simple<string>('g') + 'h' == 'gh'
 }
 
 /*

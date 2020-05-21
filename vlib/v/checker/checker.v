@@ -888,13 +888,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.error('unknown function: $fn_name', call_expr.pos)
 		return table.void_type
 	}
-	if call_expr.generic_type != table.void_type && f.return_type != 0 { // table.t_type {
-		// Handle `foo<T>() T` => `foo<int>() int` => return int
-		sym := c.table.get_type_symbol(f.return_type)
-		if sym.name == 'T' {
-			return call_expr.generic_type
-		}
-	}
 	if !found_in_args && call_expr.mod in ['builtin', 'main'] {
 		scope := c.file.scope.innermost(call_expr.pos.pos)
 		if _ := scope.find_var(fn_name) {
@@ -986,6 +979,13 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 			c.error('cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`',
 				call_expr.pos)
+		}
+	}
+	if call_expr.generic_type != table.void_type && f.return_type != 0 { // table.t_type {
+		// Handle `foo<T>() T` => `foo<int>() int` => return int
+		sym := c.table.get_type_symbol(f.return_type)
+		if sym.name == 'T' {
+			return call_expr.generic_type
 		}
 	}
 	return f.return_type
