@@ -30,7 +30,7 @@ pub const (
 )
 
 pub struct EManager {
-pub mut:
+mut:
 	support_color bool
 }
 
@@ -38,6 +38,10 @@ pub fn new_error_manager() &EManager {
 	return &EManager{
 		support_color: term.can_show_color_on_stderr()
 	}
+}
+
+pub fn (e &EManager) set_support_color(b bool) {
+	e.support_color = b
 }
 
 fn bold(msg string) string {

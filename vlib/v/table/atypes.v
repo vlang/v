@@ -15,7 +15,8 @@ import strings
 
 pub type Type int
 
-pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map | MultiReturn | Struct | SumType
+pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map | MultiReturn |
+	Struct | SumType
 
 pub enum Language {
 	v
@@ -190,6 +191,7 @@ pub const (
 	array_type_idx   = 20
 	map_type_idx     = 21
 	any_type_idx     = 22
+	t_type_idx       = 23
 )
 
 pub const (
@@ -236,6 +238,7 @@ pub const (
 	array_type   = new_type(array_type_idx)
 	map_type     = new_type(map_type_idx)
 	any_type     = new_type(any_type_idx)
+	t_type       = new_type(t_type_idx)
 )
 
 pub const (
@@ -490,6 +493,11 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		mod: 'builtin'
 		parent_idx: map_string_int_idx
 	})
+	t.register_type_symbol(TypeSymbol{
+		kind: .any
+		name: 'T'
+		mod: 'builtin'
+	})
 }
 
 [inline]
@@ -629,6 +637,7 @@ pub:
 	variants []Type
 }
 
+// TODO simplify this method
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
 	mut res := sym.name
@@ -649,7 +658,8 @@ pub fn (table &Table) type_to_str(t Type) string {
 	}
 	if sym.kind == .array || 'array_' in res {
 		res = res.replace('array_', '[]')
-	} else if sym.kind == .map || 'map_string_' in res {
+	}
+	if sym.kind == .map || 'map_string_' in res {
 		res = res.replace('map_string_', 'map[string]')
 	}
 	// mod.submod.submod2.Type => submod2.Type

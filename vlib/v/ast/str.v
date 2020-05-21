@@ -37,7 +37,11 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 	else if node.language == .js {
 		name = 'JS.$name'
 	}
-	f.write('fn ${receiver}${name}(')
+	f.write('fn ${receiver}${name}')
+	if node.is_generic {
+		f.write('<T>')
+	}
+	f.write('(')
 	for i, arg in node.args {
 		// skip receiver
 		// if (node.is_method || node.is_interface) && i == 0 {

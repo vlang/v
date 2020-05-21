@@ -1,4 +1,4 @@
-import hello as greeting
+import hello as hl
 
 fn JS.alert(arg string)
 fn JS.console.log(arg string)
@@ -7,6 +7,10 @@ const (
     i_am_a_const = 21214
     super = 'amazing keyword'
 )
+
+struct Foo {
+    a hl.A
+}
 
 struct Companies {
 	google int
@@ -27,6 +31,19 @@ fn class(extends string, instanceof int) {
 fn main() {
     JS.console.log('Hello from V.js!')
 
+    mut a := 1
+    a *= 2
+    a += 3
+    JS.console.log(a, ' ==  5') // TODO: Handle string interpolation
+
+    b := hl.A{}
+    b.update('an update')
+    JS.console.log(b)
+
+    c := Foo{ hl.A{} }
+    c.a.update('another update')
+    JS.console.log(c)
+
     v := "done"
     {
         _ := "block"
@@ -34,9 +51,9 @@ fn main() {
 
     pos := POSITION.go_back
 
-    debugger := 'JS keyword'
+    debugger := 'JS keywords'
     // TODO: Implement interpolation
-    await := super + debugger
+    await := super + ': ' + debugger
     mut finally := 'implemented'
 
     JS.console.log(await, finally)
@@ -50,7 +67,7 @@ fn main() {
     for x in 1..10 {}
 
     arr := [1,2,3,4,5]
-    for a in arr {}
+    for i in arr {}
 
     ma := {
         'str':  "done"
@@ -67,7 +84,8 @@ fn main() {
         JS.console.log("number: $number")
     }
 
-    anon_consumer(greeting.excited(), fn (message string) {
+    hl.debugger()
+    anon_consumer(hl.excited(), fn (message string) {
         JS.console.log(message)
     })
 }
@@ -79,6 +97,7 @@ fn anon_consumer (greeting string, anon fn(message string)) {
 fn async(num int, def string) {}
 
 [inline]
+[deprecated]
 fn hello(game_on int, dummy ...string) (int, int) {
     defer {
         do := "not"

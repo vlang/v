@@ -95,6 +95,7 @@ mut:
 	is_builtin_mod       bool
 	hotcode_fn_names     []string
 	fn_main              &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
+	cur_generic_type     table.Type // `int`, `string`, etc in `foo<T>()`
 }
 
 const (
@@ -290,6 +291,10 @@ pub fn (mut g Gen) write_typeof_functions() {
 // V type to C type
 fn (mut g Gen) typ(t table.Type) string {
 	mut styp := g.base_type(t)
+	if styp.len == 1 && g.cur_generic_type != 0 {
+		// T => int etc
+		return g.typ(g.cur_generic_type)
+	}
 	base := styp
 	if t.flag_is(.optional) {
 		if t.is_ptr() {
@@ -365,12 +370,10 @@ typedef struct {
 			.alias {
 				parent := &g.table.types[typ.parent_idx]
 				styp := typ.name.replace('.', '__')
-				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
-				parent_styp := if is_c_parent {
-					'struct ' + parent.name[2..].replace('.', '__')
-				} else {
-					parent.name.replace('.', '__')
-				}
+				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] ==
+					`.`
+				parent_styp := if is_c_parent { 'struct ' + parent.name[2..].replace('.', '__') } else { parent.name.replace('.',
+						'__') }
 				g.definitions.writeln('typedef $parent_styp $styp;')
 			}
 			.array {
@@ -1712,8 +1715,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if node.op in [.plus, .minus, .mul, .div, .mod] && (left_sym.name[0].is_capital() ||
-		left_sym.name.contains('.')) && left_sym.kind != .alias ||
-		left_sym.kind == .alias && (left_sym.info as table.Alias).language == .c {
+		left_sym.name.contains('.')) && left_sym.kind != .alias || left_sym.kind == .alias && (left_sym.info as table.Alias).language ==
+		.c {
 		// !left_sym.is_number() {
 		g.write(g.typ(node.left_type))
 		g.write('_')
@@ -2258,7 +2261,9 @@ fn (mut g Gen) go_back_out(n int) {
 }
 
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
-  skip_init := ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'strconv__Float64u', 'struct stat', 'struct addrinfo']
+	skip_init := ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'strconv__Float64u', 'struct stat',
+		'struct addrinfo'
+	]
 	styp := g.typ(struct_init.typ)
 	if styp in skip_init {
 		g.go_back_out(3)
@@ -2274,7 +2279,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.writeln('($styp){')
 	}
 	// mut fields := []string{}
-	mut inited_fields := map[string]int // TODO this is done in checker, move to ast node
+	mut inited_fields := map[string]int{} // TODO this is done in checker, move to ast node
 	/*
 	if struct_init.fields.len == 0 && struct_init.exprs.len > 0 {
 		// Get fields for {a,b} short syntax. Fields array wasn't set in the parser.
@@ -2378,7 +2383,7 @@ fn (mut g Gen) assoc(node ast.Assoc) {
 	}
 	styp := g.typ(node.typ)
 	g.writeln('($styp){')
-	mut inited_fields := map[string]int
+	mut inited_fields := map[string]int{}
 	for i, field in node.fields {
 		inited_fields[field] = i
 	}
@@ -2860,10 +2865,12 @@ fn (mut g Gen) gen_map(node ast.CallExpr) {
 			if it.kind == .function {
 				g.writeln('${it.name}(it)')
 			} else {
-				g.expr(node.args[0].expr) 
+				g.expr(node.args[0].expr)
 			}
 		}
-		else { g.expr(node.args[0].expr) }
+		else {
+			g.expr(node.args[0].expr)
+		}
 	}
 	g.writeln(';')
 	g.writeln('\tarray_push(&$tmp, &ti);')
@@ -2898,10 +2905,12 @@ fn (mut g Gen) gen_filter(node ast.CallExpr) {
 			if it.kind == .function {
 				g.writeln('${node.args[0]}(it)')
 			} else {
-				g.expr(node.args[0].expr) 
+				g.expr(node.args[0].expr)
 			}
 		}
-		else { g.expr(node.args[0].expr) }
+		else {
+			g.expr(node.args[0].expr)
+		}
 	}
 	g.writeln(') array_push(&$tmp, &it); \n }')
 	g.write(s)
@@ -3815,7 +3824,7 @@ fn (g &Gen) interface_table() string {
 		mut methods_struct_def := strings.new_builder(100)
 		methods_struct_def.writeln('$methods_struct_name {')
 		mut imethods := map[string]string{} // a map from speak -> _Speaker_speak_fn
-		mut methodidx := map[string]int
+		mut methodidx := map[string]int{}
 		for k, method in ityp.methods {
 			methodidx[method.name] = k
 			typ_name := '_${interface_name}_${method.name}_fn'
@@ -3948,7 +3957,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 			g.write('0, ')
 		}
 		g.write('sizeof($elem_type_str), ')
-		if it.has_default || (it.has_len && it.elem_type == table.string_type)  {
+		if it.has_default || (it.has_len && it.elem_type == table.string_type) {
 			g.write('&_val_$it.pos.pos)')
 		} else {
 			g.write('0)')

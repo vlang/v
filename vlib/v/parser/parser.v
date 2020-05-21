@@ -664,12 +664,12 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 	} else if p.tok.kind.is_assign() {
 		epos := p.tok.position()
 		if collected.len == 1 {
-			return ast.ExprStmt {
+			return ast.ExprStmt{
 				expr: p.assign_expr(collected[0])
 				pos: epos
 			}
 		} else {
-			return ast.ExprStmt {
+			return ast.ExprStmt{
 				expr: p.assign_expr(ast.ConcatExpr{
 					vals: collected
 				})
@@ -803,7 +803,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
-	if p.peek_tok.kind == .lpar {
+	if p.peek_tok.kind == .lpar || (p.peek_tok.kind == .lt && p.peek_tok2.kind == .name &&
+		p.peek_tok.pos == p.peek_tok2.pos - 1) { // foo() or foo<int>() TODO remove whitespace sensitivity
 		mut name := p.tok.lit
 		if mod.len > 0 {
 			name = '${mod}.$name'
@@ -1044,7 +1045,11 @@ fn (mut p Parser) string_expr() ast.Expr {
 		node = ast.StringLiteral{
 			val: val
 			is_raw: is_raw
-			language: if is_cstr { table.Language.c } else { table.Language.v }
+			language: if is_cstr {
+				table.Language.c
+			} else {
+				table.Language.v
+			}
 			pos: pos
 		}
 		return node

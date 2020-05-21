@@ -320,7 +320,6 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			} else {
 				info = type_sym.info as table.Struct
 			}
-
 			if struct_init.is_short && struct_init.fields.len > info.fields.len {
 				c.error('too many fields', struct_init.pos)
 			}
@@ -889,6 +888,13 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.error('unknown function: $fn_name', call_expr.pos)
 		return table.void_type
 	}
+	if call_expr.generic_type != table.void_type && f.return_type != 0 { // table.t_type {
+		// Handle `foo<T>() T` => `foo<int>() int` => return int
+		sym := c.table.get_type_symbol(f.return_type)
+		if sym.name == 'T' {
+			return call_expr.generic_type
+		}
+	}
 	if !found_in_args && call_expr.mod in ['builtin', 'main'] {
 		scope := c.file.scope.innermost(call_expr.pos.pos)
 		if _ := scope.find_var(fn_name) {
@@ -896,8 +902,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				call_expr.pos)
 		}
 	}
-	if !f.is_pub && f.language == .v && !c.is_builtin_mod && !c.pref.is_test && f.mod != c.mod && f.name !=
-		'' && f.mod != '' {
+	if !f.is_pub && f.language == .v && !c.is_builtin_mod && !c.pref.is_test && f.mod != c.mod &&
+		f.name != '' && f.mod != '' {
 		c.warn('function `$f.name` is private. curmod=$c.mod fmod=$f.mod', call_expr.pos)
 	}
 	call_expr.return_type = f.return_type
@@ -1536,7 +1542,8 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				mut scope := c.file.scope.innermost(it.pos.pos)
 				sym := c.table.get_type_symbol(typ)
 				if sym.kind == .map && !(it.key_var.len > 0 && it.val_var.len > 0) {
-					c.error('for in: cannot use one variable in map', it.pos)
+					c.error('declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
+						'use `_` if you do not need the variable', it.pos)
 				}
 				if it.key_var.len > 0 {
 					key_type := match sym.kind {

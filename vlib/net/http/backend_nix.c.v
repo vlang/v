@@ -65,11 +65,6 @@ fn init() int {
 	return 1
 }
 
-const (
-	buf_size             = 1536
-	debug_line_separator = '--------------------------------'
-)
-
 fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	// ssl_method := C.SSLv23_method()
 	ssl_method := C.TLSv1_2_method()
@@ -100,19 +95,19 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	req_headers := req.build_request_headers(method, host_name, path)
 	C.BIO_puts(web, req_headers.str)
 	mut content := strings.new_builder(100)
-	mut buff := [buf_size]byte
+	mut buff := [bufsize]byte
 	mut readcounter := 0
 	for {
 		readcounter++
-		len := C.BIO_read(web, buff, buf_size)
+		len := C.BIO_read(web, buff, bufsize)
 		if len <= 0 {
 			break
 		}
 		$if debug_http ? {
 			eprintln('ssl_do, read ${readcounter:4d} | len: $len')
-			eprintln(debug_line_separator)
+			eprintln('-'.repeat(20))
 			eprintln(tos(buff, len))
-			eprintln(debug_line_separator)
+			eprintln('-'.repeat(20))
 		}
 		content.write_bytes(buff, len)
 	}

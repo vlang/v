@@ -476,8 +476,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 
 fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
-	// type_ptr => &type
 	if res.ends_with('_ptr') {
+		// type_ptr => &type
 		res = res[0..res.len - 4]
 		start_pos := 2 * res.count('[]')
 		res = res[0..start_pos] + '&' + res[start_pos..res.len]

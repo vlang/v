@@ -1,11 +1,16 @@
-fn test_todo() {}
-
-/*
-// QTODO
-fn simple<T>(p T) T {
-    return p
+fn test_todo() {
 }
 
+fn simple<T>(p T) T {
+	return p
+}
+
+fn test_generic_fn() {
+	assert simple<int>(1) == 1
+	assert simple<string>('g') == 'g'
+}
+
+/*
 fn sum<T>(l []T) T {
     mut r := T(0)
     for e in l {
