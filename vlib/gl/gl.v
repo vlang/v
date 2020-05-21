@@ -63,6 +63,9 @@ fn C.glGetUniformLocation() int
 fn C.glGetAttribLocation() int
 fn C.glBindAttribLocation()
 
+//Uniform functions
+fn C.glUniform1f()
+
 
 pub fn init_glad() {
 	ok := C.gladLoadGL()
@@ -292,4 +295,20 @@ pub fn generate_mipmap(typ int) {
 // set mat4 at uniform location
 pub fn set_mat4fv(loc, count int, transpose bool, val glm.Mat4) {
 	C.glUniformMatrix4fv(loc, count, transpose, val.data)
+}
+
+pub fn set_f32(loc int, val f32) {
+	C.glUniform1f(loc, val)
+}
+
+pub fn set_vec(loc int, x, y, z f32) {
+	C.glUniform3f(loc, x, y, z)
+}
+
+pub fn set_bool(loc int, val bool) {
+	if val {
+		set_f32(loc, 1)
+	} else {
+		set_f32(loc, 0)
+	}
 }

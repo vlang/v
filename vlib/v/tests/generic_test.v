@@ -5,9 +5,20 @@ fn simple<T>(p T) T {
 	return p
 }
 
+fn plus<T>(a, b T) T {
+	// ww := ww
+	// q := xx + 1
+	return a + b
+}
+
 fn test_generic_fn() {
 	assert simple<int>(1) == 1
+	assert simple<int>(1 + 0) == 1
 	assert simple<string>('g') == 'g'
+	assert simple<string>('g') + 'h' == 'gh'
+	a := plus<int>(2, 3)
+	// plus<string>('a', 'b')
+	println(a)
 }
 
 /*
@@ -33,10 +44,6 @@ fn foldl<T>(l []T, nil T, f fn(T,T)T) T {
         r = f(r, e)
     }
     return r
-}
-
-fn plus<T>(a T, b T) T {
-    return a+b
 }
 
 fn square(x int) int {

@@ -18,7 +18,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		for gen_type in g.table.fn_gen_types[it.name] {
 			g.cur_generic_type = gen_type
 			g.gen_fn_decl(it)
-			println(gen_type)
 		}
 		g.cur_generic_type = 0
 		return
@@ -285,7 +284,14 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
-	gen_or := !g.is_assign_rhs && node.or_block.stmts.len > 0
+	gen_or := node.or_block.stmts.len > 0
+	cur_line := if gen_or && g.is_assign_rhs {
+		line := g.go_before_stmt(0)
+		g.out.write(tabs[g.indent])
+		line
+	} else {
+		''
+	}
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		styp := g.typ(node.return_type)
@@ -298,6 +304,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block.stmts, node.return_type)
+		g.write('\n${cur_line}${tmp_opt}')
 	}
 }
 
@@ -364,13 +371,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
 	// }
-	g.write('${name}(')
+	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' {
+		g.write('ptr_str(')
+	} else {
+		g.write('${name}(')
+	}
 	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
 		g.write('&')
-	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() {
+	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' {
 		g.write('/*rec*/*')
 	}
 	g.expr(node.left)

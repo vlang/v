@@ -33,15 +33,15 @@ this token is a simple single character like `a`.
 
 ### Char class (cc)
 
-The cc match all the chars specified inside, it is delimited by square brackets `[ ]`
+The cc matches all the chars specified inside, it is delimited by square brackets `[ ]`
 
 the sequence of chars in the class is evaluated with an OR operation.
 
-For example, the following cc `[abc]` match any char that is `a` or `b` or `c` but doesn't match `C` or `z`.
+For example, the following cc `[abc]` matches any char that is `a` or `b` or `c` but doesn't match `C` or `z`.
 
 Inside a cc is possible to specify a "range" of chars, for example `[ad-f]` is equivalent to write `[adef]`. 
 
-A cc can have different ranges at the same time like `[a-zA-z0-9]` that match all the lowercase,uppercase and numeric chars.
+A cc can have different ranges at the same time like `[a-zA-z0-9]` that matches all the lowercase,uppercase and numeric chars.
 
 It is possible negate the cc using the caret char at the start of the cc like: `[^abc]` that matches every char that is not `a` or `b` or `c`.
 
@@ -57,14 +57,14 @@ A meta-char is specified by a backslash before a char like `\w` in this case the
 
 A meta-char can match different type of chars.
 
-* `\w` match an alphanumeric char `[a-zA-Z0-9_]`
-* `\W` match a non alphanumeric char
-* `\d` match a digit `[0-9]`
-* `\D` match a non digit
-* `\s`match a space char, one of `[' ','\t','\n','\r','\v','\f']`
-* `\S` match a non space char
-* `\a` match only a lowercase char `[a-z]` 
-* `\A` match only an uppercase char `[A-Z]`
+* `\w` matches an alphanumeric char `[a-zA-Z0-9_]`
+* `\W` matches a non alphanumeric char
+* `\d` matches a digit `[0-9]`
+* `\D` matches a non digit
+* `\s`matches a space char, one of `[' ','\t','\n','\r','\v','\f']`
+* `\S` matches a non space char
+* `\a` matches only a lowercase char `[a-z]` 
+* `\A` matches only an uppercase char `[A-Z]`
 
 ### Quantifier
 
@@ -72,22 +72,22 @@ Each token can have a quantifier that specify how many times the char can or mus
 
 #### **Short quantifier**
 
-- `?` match 0 or 1 time, `a?b` match both `ab` or `b`
-- `+` match at minimum 1 time, `a+` match both `aaa` or `a`
-- `*` match 0 or more time, `a*b` match both `aaab` or `ab` or `b`
+- `?` matches 0 or 1 time, `a?b` matches both `ab` or `b`
+- `+` matches at minimum 1 time, `a+` matches both `aaa` or `a`
+- `*` matches 0 or more time, `a*b` matches both `aaab` or `ab` or `b`
 
 #### **Long quantifier**
 
-- `{x}` match exactly x time, `a{2}` match `aa` but doesn't match `aaa` or `a`
-- `{min,}` match at minimum min time, `a{2,}` match `aaa` or `aa` but doesn't match `a`
-- `{,max}` match at least 0 time and maximum max time, `a{,2}` match `a` and `aa` but doesn't match `aaa`
-- `{min,max}` match from min times to max times, `a{2,3}` match `aa` and `aaa` but doesn't match `a` or `aaaa`
+- `{x}` matches exactly x time, `a{2}` matches `aa` but doesn't match `aaa` or `a`
+- `{min,}` matches at minimum min time, `a{2,}` matches `aaa` or `aa` but doesn't match `a`
+- `{,max}` matches at least 0 time and maximum max time, `a{,2}` matches `a` and `aa` but doesn't match `aaa`
+- `{min,max}` matches from min times to max times, `a{2,3}` matches `aa` and `aaa` but doesn't match `a` or `aaaa`
 
 a long quantifier may have a `greedy off` flag that is the `?` char after the brackets, `{2,4}?` means to match the minimum number possible tokens in this case 2.
 
 ### dot char
 
-the dot is a particular meta char that match  "any char", is more simple explain it with an example:
+the dot is a particular meta char that matches  "any char", is more simple explain it with an example:
 
 suppose to have `abccc ddeef` as source string to parse with regex, the following table show the query strings and the result of parsing source string.
 
@@ -98,11 +98,11 @@ suppose to have `abccc ddeef` as source string to parse with regex, the followin
 | `ab.*e` | `abccc dde` |
 | `ab.{3} .*e` | `abccc dde` |
 
-the dot char match any char until the next token match is satisfied.
+the dot char matches any char until the next token match is satisfied.
 
 ### OR token
 
-the token `|` is a logic OR operation between two consecutive tokens, `a|b` match a char that is `a` or `b`.
+the token `|` is a logic OR operation between two consecutive tokens, `a|b` matches a char that is `a` or `b`.
 
 The OR token can work in a "chained way": `a|(b)|cd ` test first `a` if the char is not `a` then test the group `(b)` and if the group doesn't match test the token `c`.
 
@@ -118,7 +118,7 @@ The groups are delimited by round brackets `( )`, groups can be nested and can h
 
 `c(pa)+z` match `cpapaz` or `cpaz` or `cpapapaz` .
 
-`(c(pa)+z ?)+` match `cpaz cpapaz cpapapaz` or `cpapaz` 
+`(c(pa)+z ?)+` matches `cpaz cpapaz cpapapaz` or `cpapaz` 
 
 let analyze this last case, first we have the group `#0` that are the most outer round brackets `(...)+`, this group has a quantifier that say to match its content at least one time `+`. 
 
@@ -367,9 +367,9 @@ re.flag = regex.F_BIN
 
 - `F_BIN`: parse a string as bytes, utf-8 management disabled.
 
-- `F_EFM`: exit on the first char match in the query, used by the find function.
-- `F_MS`: match only if the index of the start match is 0, same as `^` at the start of the query string.
-- `F_ME`: match only if the end index of the match is the last char of the input string, same as `$` end of query string.
+- `F_EFM`: exit on the first char matches in the query, used by the find function.
+- `F_MS`: matches only if the index of the start match is 0, same as `^` at the start of the query string.
+- `F_ME`: matches only if the end index of the match is the last char of the input string, same as `$` end of query string.
 - `F_NL`: stop the matching if found a new line char `\n` or `\r`
 
 ## Functions

@@ -97,6 +97,41 @@ fn test_q() {
 	// assert foo_ok()? == true
 }
 
+fn or_return_val() int {
+	a := ret_none() or {
+		return 1
+	}
+	return a
+}
+
+fn or_return_error() ?int {
+	a := ret_none() or {
+		return error('Nope')
+	}
+	return a
+}
+
+fn or_return_none() ?int {
+	a := ret_none() or {
+		return none
+	}
+	return a
+}
+
+fn test_or_return() {
+	assert or_return_val() == 1
+	if _ := or_return_error() {
+		assert false
+	} else {
+		assert true
+	}
+	if _ := or_return_none() {
+		assert false
+	} else {
+		assert true
+	}
+}
+
 fn test_reassignment() {
 	mut x2 := foo_ok() or {
 		assert false
@@ -107,7 +142,7 @@ fn test_reassignment() {
 	assert x2 == 100
 	x2 += 1
 	assert x2 == 101
-	///
+	//
 	mut x3 := 0
 	x3 = foo_ok() or {
 		assert false
@@ -170,11 +205,9 @@ fn opt_ptr(a &int) ?&int {
 
 fn test_opt_ptr() {
 	if true {
-
 	}
 	//
-	else{
-
+	else {
 	}
 	a := 3
 	mut r := opt_ptr(&a) or {
@@ -207,7 +240,6 @@ fn test_multi_return_opt() {
 	}
 }
 */
-
 fn foo() ?void {
 	return error('something')
 }
@@ -220,7 +252,6 @@ fn test_optional_void() {
 	}
 }
 
-
 fn bar() ? {
 	return error('bar error')
 }
@@ -231,4 +262,14 @@ fn test_optional_void_only_question() {
 		assert err == 'bar error'
 		return
 	}
+}
+
+fn test_optional_void_with_empty_or() {
+	foo() or {}
+	assert true
+}
+
+fn test_optional_val_with_empty_or() {
+	ret_none() or {}
+	assert true
 }

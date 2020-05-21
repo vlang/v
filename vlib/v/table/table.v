@@ -572,6 +572,9 @@ pub fn (table &Table) qualify_module(mod, file_path string) string {
 
 pub fn (table &Table) register_fn_gen_type(fn_name string, typ Type) {
 	mut a := table.fn_gen_types[fn_name]
+	if typ in a {
+		return
+	}
 	a << typ
 	table.fn_gen_types[fn_name] = a
 }

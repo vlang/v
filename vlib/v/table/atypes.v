@@ -438,12 +438,12 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		name: 'char'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .bool
 		name: 'bool'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .none_
 		name: 'none'
 		mod: 'builtin'
@@ -474,6 +474,11 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
+		kind: .any
+		name: 'T'
+		mod: 'builtin'
+	})
+	t.register_type_symbol(TypeSymbol{
 		kind: .size_t
 		name: 'size_t'
 		mod: 'builtin'
@@ -492,11 +497,6 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		name: 'map_int'
 		mod: 'builtin'
 		parent_idx: map_string_int_idx
-	})
-	t.register_type_symbol(TypeSymbol{
-		kind: .any
-		name: 'T'
-		mod: 'builtin'
 	})
 }
 

@@ -8,7 +8,6 @@ const (
 	skip_test_files     = [
 		'vlib/v/tests/enum_bitfield_test.v',
 		'vlib/v/tests/pointers_test.v',
-		'vlib/v/tests/pointers_str_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 	]
 	skip_on_musl        = [

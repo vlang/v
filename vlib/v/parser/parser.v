@@ -668,13 +668,12 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 				expr: p.assign_expr(collected[0])
 				pos: epos
 			}
-		} else {
-			return ast.ExprStmt{
-				expr: p.assign_expr(ast.ConcatExpr{
-					vals: collected
-				})
-				pos: epos
-			}
+		}
+		return ast.ExprStmt{
+			expr: p.assign_expr(ast.ConcatExpr{
+				vals: collected
+			})
+			pos: epos
 		}
 	} else {
 		if collected.len == 1 {
@@ -1000,12 +999,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				is_used: is_or_block_used
 			}
 		}
-		mut node := ast.Expr{}
-		node = mcall_expr
 		if is_filter {
 			p.close_scope()
 		}
-		return node
+		return mcall_expr
 	}
 	sel_expr := ast.SelectorExpr{
 		expr: left
