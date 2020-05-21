@@ -1054,7 +1054,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
 				}
 			}
-			}
+		}
 		g.is_assign_rhs = false
 		if g.inside_ternary == 0 {
 			g.writeln(';')

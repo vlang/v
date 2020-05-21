@@ -11,6 +11,7 @@ fn test_simple() {
 	assert s == '{"name":"Peter","age":28}'
 	y := json.decode(Employee, s) or {
 		assert false
+		Employee{}
 	}
 	assert y.name == 'Peter'
 	assert y.age == 28

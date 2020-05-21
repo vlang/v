@@ -847,7 +847,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.error('json.decode: second argument needs to be a string', call_expr.pos)
 		}
 		typ := expr as ast.Type
-		return typ.typ.set_flag(.optional)
+		ret_type := typ.typ.set_flag(.optional)
+		call_expr.return_type = ret_type
+		return ret_type
 	}
 	// look for function in format `mod.fn` or `fn` (main/builtin)
 	mut f := table.Fn{}
