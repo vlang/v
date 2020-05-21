@@ -848,7 +848,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.error('json.decode: second argument needs to be a string', call_expr.pos)
 		}
 		typ := expr as ast.Type
-		return typ.typ.set_flag(.optional)
+		ret_type := typ.typ.set_flag(.optional)
+		call_expr.return_type = ret_type
+		return ret_type
 	}
 	// look for function in format `mod.fn` or `fn` (main/builtin)
 	mut f := table.Fn{}
@@ -1012,17 +1014,15 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 	}
 }
 
-pub fn (mut c Checker) check_expr_opt_call(x ast.Expr, xtype table.Type, is_return_used bool) {
-	match x {
-		ast.CallExpr {
-			if it.return_type.flag_is(.optional) {
-				c.check_or_block(it, xtype, is_return_used)
-			} else if it.or_block.is_used && it.name != 'json.decode' { // TODO remove decode hack
-				c.error('unexpected `or` block, the function `$it.name` does not return an optional',
-					it.pos)
-			}
+pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, xtype table.Type, is_return_used bool) {
+	if expr is ast.CallExpr {
+		call_expr := expr as ast.CallExpr
+		if call_expr.return_type.flag_is(.optional) {
+			c.check_or_block(call_expr, xtype, is_return_used)
+		} else if call_expr.or_block.is_used {
+			c.error('unexpected `or` block, the function `$call_expr.name` does not return an optional',
+				call_expr.pos)
 		}
-		else {}
 	}
 }
 
@@ -1052,12 +1052,13 @@ pub fn (mut c Checker) check_or_block(mut call_expr ast.CallExpr, ret_type table
 		}
 		match last_stmt {
 			ast.ExprStmt {
-				type_fits := c.table.check(c.expr(it.expr), ret_type)
+				it.typ = c.expr(it.expr)
+				type_fits := c.table.check(it.typ, ret_type)
 				is_panic_or_exit := is_expr_panic_or_exit(it.expr)
 				if type_fits || is_panic_or_exit {
 					return
 				}
-				type_name := c.table.get_type_symbol(c.expr(it.expr)).name
+				type_name := c.table.get_type_symbol(it.typ).name
 				expected_type_name := c.table.get_type_symbol(ret_type).name
 				c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
 					it.pos)
@@ -1509,9 +1510,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.enum_decl(it)
 		}
 		ast.ExprStmt {
-			etype := c.expr(it.expr)
+			it.typ = c.expr(it.expr)
 			c.expected_type = table.void_type
-			c.check_expr_opt_call(it.expr, etype, false)
+			c.check_expr_opt_call(it.expr, it.typ, false)
 		}
 		ast.FnDecl {
 			c.fn_decl(it)
@@ -1986,6 +1987,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			match branch.stmts[branch.stmts.len - 1] {
 				ast.ExprStmt {
 					ret_type = c.expr(it.expr)
+					it.typ = ret_type
 				}
 				else {
 					// TODO: ask alex about this
@@ -2106,14 +2108,14 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
 				last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
 				c.expected_type = former_expected_type
-				expr_type := c.expr(last_expr.expr)
-				if expr_type != node.typ {
-					// first branch of if expression
+				last_expr.typ = c.expr(last_expr.expr)
+				if last_expr.typ != node.typ {
 					if node.typ == table.void_type {
+						// first branch of if expression
 						node.is_expr = true
-						node.typ = expr_type
+						node.typ = last_expr.typ
 					} else {
-						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(expr_type)}`',
+						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
 							node.pos)
 					}
 				}
