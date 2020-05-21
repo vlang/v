@@ -1106,18 +1106,22 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
 	name := type_sym.name
-	g.writeln('new ${g.js_name(name)}({')
-	g.inc_indent()
-	for i, field in it.fields {
-		g.write('$field.name: ')
-		g.expr(field.expr)
-		if i < it.fields.len - 1 {
-			g.write(', ')
+	if it.fields.len == 0 {
+		g.write('new ${g.js_name(name)}({})')
+	} else {
+		g.writeln('new ${g.js_name(name)}({')
+		g.inc_indent()
+		for i, field in it.fields {
+			g.write('$field.name: ')
+			g.expr(field.expr)
+			if i < it.fields.len - 1 {
+				g.write(', ')
+			}
+			g.writeln('')
 		}
-		g.writeln('')
+		g.dec_indent()
+		g.write('})')
 	}
-	g.dec_indent()
-	g.write('})')
 }
 
 fn (mut g JsGen) gen_ident(node ast.Ident) {
