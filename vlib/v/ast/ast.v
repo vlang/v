@@ -226,6 +226,7 @@ pub:
 	pos           token.Position
 	body_pos      token.Position
 	file          string
+	is_generic    bool
 pub mut:
 	return_type   table.Type
 }
@@ -251,6 +252,7 @@ pub mut:
 	receiver_type      table.Type // User
 	return_type        table.Type
 	should_be_skipped  bool
+	generic_type       table.Type // TODO array, to support multiple types
 }
 
 pub struct CallArg {

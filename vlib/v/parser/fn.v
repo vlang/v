@@ -25,11 +25,13 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.expr_mod = ''
 		is_or_block_used = true
 	}
+	mut generic_type := table.void_type
 	if p.tok.kind == .lt {
 		// `foo<int>(10)`
 		p.next() // `<`
-		p.parse_type()
+		generic_type = p.parse_type()
 		p.check(.gt) // `>`
+		p.table.register_fn_gen_type(fn_name, generic_type)
 	}
 	p.check(.lpar)
 	args := p.call_args()
@@ -40,6 +42,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		pos: first_pos.pos
 		len: last_pos.pos - first_pos.pos + last_pos.len
 	}
+	// `foo() or {}``
 	mut or_stmts := []ast.Stmt{}
 	if p.tok.kind == .key_orelse {
 		p.inside_or_expr = true
@@ -80,6 +83,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			stmts: or_stmts
 			is_used: is_or_block_used
 		}
+		generic_type: generic_type
 	}
 	return node
 }
@@ -284,6 +288,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		args: args
 		is_deprecated: is_deprecated
 		is_pub: is_pub
+		is_generic: is_generic
 		is_variadic: is_variadic
 		receiver: ast.Field{
 			name: rec_name

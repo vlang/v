@@ -191,6 +191,7 @@ pub const (
 	array_type_idx   = 20
 	map_type_idx     = 21
 	any_type_idx     = 22
+	t_type_idx       = 23
 )
 
 pub const (
@@ -237,6 +238,7 @@ pub const (
 	array_type   = new_type(array_type_idx)
 	map_type     = new_type(map_type_idx)
 	any_type     = new_type(any_type_idx)
+	t_type       = new_type(t_type_idx)
 )
 
 pub const (

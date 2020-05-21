@@ -15,7 +15,7 @@ pub mut:
 	modules       []string // List of all modules registered by the application
 	cflags        []cflag.CFlag
 	redefined_fns []string
-	fn_gen_types  map[string][]string
+	fn_gen_types  map[string][]Type
 }
 
 pub struct Fn {
@@ -568,4 +568,10 @@ pub fn (table &Table) qualify_module(mod, file_path string) string {
 		}
 	}
 	return mod
+}
+
+pub fn (table &Table) register_fn_gen_type(fn_name string, typ Type) {
+	mut a := table.fn_gen_types[fn_name]
+	a << typ
+	table.fn_gen_types[fn_name] = a
 }

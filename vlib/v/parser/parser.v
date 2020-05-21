@@ -804,7 +804,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
 	if p.peek_tok.kind == .lpar || (p.peek_tok.kind == .lt && p.peek_tok2.kind == .name &&
-		p.peek_tok.pos == p.peek_tok2.pos - 1) { // foo() or foo<int>()
+		p.peek_tok.pos == p.peek_tok2.pos - 1) { // foo() or foo<int>() TODO remove whitespace sensitivity
 		mut name := p.tok.lit
 		if mod.len > 0 {
 			name = '${mod}.$name'

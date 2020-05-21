@@ -13,6 +13,16 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		return
 	}
 	is_main := it.name == 'main'
+	if it.is_generic && g.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
+		// loop thru each generic type and generate a function
+		for gen_type in g.table.fn_gen_types[it.name] {
+			g.cur_generic_type = gen_type
+			g.gen_fn_decl(it)
+			println(gen_type)
+		}
+		g.cur_generic_type = 0
+		return
+	}
 	//
 	if is_main && g.pref.is_liveshared {
 		return
@@ -60,6 +70,10 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			name = name.replace('.', '__')
 		} else {
 			name = c_name(name)
+		}
+		if g.cur_generic_type != 0 {
+			// foo<T>() => foo_int(), foo_string() etc
+			name += '_' + g.typ(g.cur_generic_type)
 		}
 		// if g.pref.show_cc && it.is_builtin {
 		// println(name)
@@ -293,7 +307,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		verror('method receiver type is 0, this means there are some uchecked exprs')
 	}
 	// mut receiver_type_name := g.cc_type(node.receiver_type)
-	//mut receiver_type_name := g.typ(node.receiver_type)
+	// mut receiver_type_name := g.typ(node.receiver_type)
 	typ_sym := g.table.get_type_symbol(node.receiver_type)
 	mut receiver_type_name := typ_sym.name.replace('.', '__')
 	if typ_sym.kind == .interface_ {
@@ -428,6 +442,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	if is_json_encode {
 		// `json__encode` => `json__encode_User`
 		name += '_' + json_type_str.replace('.', '__')
+	}
+	if node.generic_type != table.void_type {
+		// `foo<int>()` => `foo_int()`
+		name += '_' + g.typ(node.generic_type)
 	}
 	// Generate tmp vars for values that have to be freed.
 	/*
