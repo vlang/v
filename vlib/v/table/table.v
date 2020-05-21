@@ -195,6 +195,18 @@ pub fn (t &Table) get_type_name(typ Type) string {
 	return typ_sym.name
 }
 
+[inline]
+pub fn (t &Table) unalias_num_type(typ Type) Type {
+	sym := t.get_type_symbol(typ)
+	if sym.kind == .alias {
+		pt := (sym.info as Alias).parent_typ
+		if pt <= f64_type && pt >= void_type {
+			return pt
+		}
+	}
+	return typ
+}
+
 // this will override or register builtin type
 // allows prexisitng types added in register_builtins
 // to be overriden with their real type info
@@ -436,6 +448,47 @@ pub fn (t &Table) value_type(typ Type) Type {
 		return string_type
 	}
 	return void_type
+}
+
+pub fn (t &Table) promote(left_type, right_type Type) Type {
+	if left_type.is_ptr() || left_type.is_pointer() {
+		if right_type.is_int() {
+			return left_type
+		} else {
+			return Type(0)
+		}
+	} else if right_type.is_ptr() || right_type.is_pointer() {
+		if left_type.is_int() {
+			return right_type
+		} else {
+			return Type(0)
+		}
+	} else if left_type == right_type {
+		return left_type // strings, self defined operators
+	} else if right_type.is_number() && left_type.is_number() {
+		// sort the operands to save time
+		mut type_hi := left_type
+		mut type_lo := right_type
+		if type_hi.idx() < type_lo.idx() {
+			tmp := type_hi
+			type_hi = type_lo
+			type_lo = tmp
+		}
+		idx_hi := type_hi.idx()
+		idx_lo := type_lo.idx()
+		// the following comparisons rely on the order of the indices in atypes.v
+		if type_hi.is_float() {
+			return type_hi
+		} else if idx_lo >= byte_type_idx { // both operands are unsigned
+			return type_hi
+		} else if idx_hi - idx_lo < (byte_type_idx - i8_type_idx) {
+			return type_lo // conversion unsigned -> signed if signed type is larger
+		} else {
+			return type_hi // conversion signed -> unsigned otherwise - dangerous, but matches C!
+		}
+	} else {
+		return left_type // default to left if not automatic promotion possible
+	}
 }
 
 pub fn (t &Table) check(got, expected Type) bool {

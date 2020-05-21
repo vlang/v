@@ -277,6 +277,21 @@ any // similar to C's void* and Go's interface{}
 
 Please note that unlike C and Go, `int` is always a 32 bit integer.
 
+As in C, when basic arithmetic is done with two different primitive
+types, one of them has to be converted to the other. The following
+promotions are done automatically when needed, without having to be
+specified explicitly:
+
+```
+   i8 ⭢ i16 ⭢ int ⭢ i64
+                ⭣  ⤩  ⭣
+               f32 ⭢ f64
+                ⭡  ⤱  ⭡
+ byte ⭢ u16 ⭢ u32 ⭢ u64 ⬎
+   ⭡  ⭨ ⭡  ⭨ ⭡  ⭨  ⭡  ptr
+   i8 ⭢ i16 ⭢ int ⭢ i64 ⬏
+```
+
 ## Strings
 
 ```v

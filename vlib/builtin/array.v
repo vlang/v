@@ -358,9 +358,9 @@ pub fn (b []byte) hex() string {
 	mut dst_i := 0
 	for i in b {
 		n0 := i >> 4
-		hex[dst_i++] = if n0 < 10 { n0 + `0` } else { n0 + 87 }
+		hex[dst_i++] = if n0 < 10 { n0 + `0` } else { n0 + byte(87) }
 		n1 := i & 0xF
-		hex[dst_i++] = if n1 < 10 { n1 + `0` } else { n1 + 87 }
+		hex[dst_i++] = if n1 < 10 { n1 + `0` } else { n1 + byte(87) }
 	}
 	hex[dst_i] = `\0`
 	return tos(hex,dst_i)

@@ -401,6 +401,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	infix_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
+	left_pos := infix_expr.left.position()
+	right_pos := infix_expr.right.position()
 	// Single side check
 	// Place these branches according to ops' usage frequency to accelerate.
 	// TODO: First branch includes ops where single side check is not needed, or needed but hasn't been implemented.
@@ -436,15 +438,43 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			}
 			return table.bool_type
 		}
-		.plus, .minus, .mul, .div {
-			if infix_expr.op == .div && (infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() ==
-				'0' || infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0) {
-				c.error('division by zero', infix_expr.right.position())
+		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe { // binary operators that expect matching types
+			if left.kind in [.array, .array_fixed, .map, .struct_] {
+				if left.has_method(infix_expr.op.str()) {
+					return left_type
+				} else {
+					c.error('mismatched types `$left.name` and `$right.name`', left_pos)
+				}
+			} else if right.kind in [.array, .array_fixed, .map, .struct_] {
+				if right.has_method(infix_expr.op.str()) {
+					return right_type
+				} else {
+					c.error('mismatched types `$left.name` and `$right.name`', right_pos)
+				}
 			}
-			if left.kind in [.array, .array_fixed, .map, .struct_] && !left.has_method(infix_expr.op.str()) {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-			} else if right.kind in [.array, .array_fixed, .map, .struct_] && !right.has_method(infix_expr.op.str()) {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
+			promoted_type := c.table.promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
+			if promoted_type == table.Type(0) {
+				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.pos)
+			} else if promoted_type.is_float() {
+				if infix_expr.op in [.mod, .xor, .amp, .pipe] {
+					side := if left_type == promoted_type { 'left' } else { 'right' }
+					pos := if left_type == promoted_type { left_pos } else { right_pos }
+					name :=  if left_type == promoted_type { left.name } else { right.name }
+					if infix_expr.op == .mod {
+						c.error('float modulo not allowed, use math.fmod() instead', pos)
+					} else {
+						c.error('$side type of `${infix_expr.op.str()}` cannot be non-integer type $name', pos)
+					}
+				}
+			}
+			if infix_expr.op in [.div, .mod] {
+				if infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() == '0' ||
+					infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0 {
+					oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
+					c.error('$oper by zero', right_pos)
+				}
+			} else {
+				return promoted_type
 			}
 		}
 		.left_shift {
@@ -456,11 +486,10 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				if left_value_sym.kind == .interface_ {
 					if right.kind != .array {
 						// []Animal << Cat
-						c.type_implements(right_type, left_value_type, infix_expr.right.position())
+						c.type_implements(right_type, left_value_type, right_pos)
 					} else {
 						// []Animal << Cat
-						c.type_implements(c.table.value_type(right_type), left_value_type,
-							infix_expr.right.position())
+						c.type_implements(c.table.value_type(right_type), left_value_type, right_pos)
 					}
 					return table.void_type
 				}
@@ -474,13 +503,13 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					return table.void_type
 				}
 				s := left.name.replace('array_', '[]')
-				c.error('cannot append `$right.name` to `$s`', infix_expr.right.position())
+				c.error('cannot append `$right.name` to `$s`', right_pos)
 				return table.void_type
 			} else if !left.is_int() {
-				c.error('cannot shift type $right.name into non-integer type $left.name', infix_expr.left.position())
+				c.error('cannot shift type $right.name into non-integer type $left.name', left_pos)
 				return table.void_type
 			} else if !right.is_int() {
-				c.error('cannot shift non-integer type $right.name into type $left.name', infix_expr.right.position())
+				c.error('cannot shift non-integer type $right.name into type $left.name', right_pos)
 				return table.void_type
 			}
 		}
@@ -491,33 +520,6 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				c.error('is: type `${typ_sym.name}` does not exist', type_expr.pos)
 			}
 			return table.bool_type
-		}
-		.amp, .pipe, .xor {
-			if !left.is_int() {
-				c.error('left type of `${infix_expr.op.str()}` cannot be non-integer type $left.name',
-					infix_expr.left.position())
-			} else if !right.is_int() {
-				c.error('right type of `${infix_expr.op.str()}` cannot be non-integer type $right.name',
-					infix_expr.right.position())
-			}
-		}
-		.mod {
-			if left.is_int() && !right.is_int() {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
-			} else if !left.is_int() && right.is_int() {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-			} else if left.kind == .f32 && right.kind == .f32 || left.kind == .f64 && right.kind ==
-				.f64 {
-				c.error('float modulo not allowed, use math.fmod() instead', infix_expr.left.position())
-			} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
-				!left.has_method(infix_expr.op.str()) {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-			} else if right.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
-				!right.has_method(infix_expr.op.str()) {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
-			} else if infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() == '0' {
-				c.error('modulo by zero', infix_expr.right.position())
-			}
 		}
 		else {}
 	}
