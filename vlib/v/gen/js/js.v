@@ -118,7 +118,8 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		for pub_var in g.namespaces_pub[node.name] {
 			out += '\n\t\t$pub_var,'
 		}
-		out += '\n\t};'
+		if g.namespaces_pub[node.name].len > 0 { out += '\n\t' }
+		out += '};'
 		out += '\n})('
 		for i, key in imports.keys() {
 			if i > 0 { out += ', ' }
