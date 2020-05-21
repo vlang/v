@@ -60,6 +60,10 @@ pub fn (mut b Builder) parse_imports() {
 		ast_file := b.parsed_files[i]
 		for _, imp in ast_file.imports {
 			mod := imp.mod
+			if mod == 'builtin' {
+				verror('cannot import module "$mod"')
+				break
+			}
 			if mod in done_imports {
 				continue
 			}
