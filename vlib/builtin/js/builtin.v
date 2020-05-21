@@ -4,32 +4,13 @@
 
 module builtin
 
-pub fn exit(code int) {
-	println('js.exit()')
-}
-
-// isnil returns true if an object is nil (only for C objects).
-pub fn isnil(v voidptr) bool {
-	return v == 0
-}
-
-pub fn panic(s string) {
-	eprintln('V panic: ' + s)
-	exit(1)
-}
+fn JS.console.log(arg ...string)
+fn JS.process.stdout.write(arg string)
 
 pub fn println(s string) {
-	#console.log(s.str)
-}
-
-pub fn eprintln(s string) {
-	#console.error(s)
+	JS.console.log(s)
 }
 
 pub fn print(s string) {
-	#console.log(s)
+	JS.process.stdout.write(s)
 }
-
-
-
-
