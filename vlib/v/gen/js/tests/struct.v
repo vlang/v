@@ -11,11 +11,16 @@ fn (mut i Int) add(value int) {
   i.value += value
 }
 
-fn (i Int) get(value int) int {
+fn (i Int) get() int {
   return i.value
 }
 
 fn main() {
-  i := Int { value: 10 }
-  i.add(5)
+  a := Int { value: 10 }
+  a.add(5)
+  println(a) // 15
+
+  b := Int{}
+  b.add(10)
+  println(b.get()) // 10
 }

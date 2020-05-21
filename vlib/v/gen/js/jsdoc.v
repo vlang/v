@@ -62,9 +62,7 @@ fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) string {
 		// so all struct members don't have to be initialized.
 		// TODO: Actually generate default struct init values :P
 		d.write('$field.name?: ${d.gen.typ(field.typ)}')
-		if i < fields.len - 1 {
-			d.write(', ')
-		}
+		if i < fields.len - 1 { d.write(', ') }
 	}
 	d.writeln('}} values - values for this class fields')
 	d.writeln(' * @constructor')
