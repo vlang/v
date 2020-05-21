@@ -960,11 +960,13 @@ println(blue)
 
 Global variables are not allowed, so this can be really useful.
 
+<!--
 When naming constants, snake_case must be used.
 Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
 well in V, because consts are a lot more powerful than in other languages.
 They can represent complex structures, and this is used quite often since there
 are no globals:
+-->
 
 ```v
 println('Top cities: $TOP_CITIES.filter(.usa)')
