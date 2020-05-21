@@ -53,7 +53,7 @@ fn (mut d JsDoc) gen_typ(typ, name string) string {
 	return d.out.str()
 }
 
-fn (mut d JsDoc) gen_ctor(fields []ast.StructField) string {
+fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) string {
 	d.reset()
 	d.writeln('/**')
 	d.write(' * @param {{')
@@ -62,9 +62,7 @@ fn (mut d JsDoc) gen_ctor(fields []ast.StructField) string {
 		// so all struct members don't have to be initialized.
 		// TODO: Actually generate default struct init values :P
 		d.write('$field.name?: ${d.gen.typ(field.typ)}')
-		if i < fields.len - 1 {
-			d.write(', ')
-		}
+		if i < fields.len - 1 { d.write(', ') }
 	}
 	d.writeln('}} values - values for this class fields')
 	d.writeln(' * @constructor')
@@ -93,6 +91,7 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) string {
 		}
 	}
 	d.writeln(' * @returns {$type_name}')
+	d.writeln(' * @function')
 	d.write('*/')
 	return d.out.str()
 }
