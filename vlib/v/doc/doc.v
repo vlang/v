@@ -221,7 +221,7 @@ pub fn (mut d Doc) generate() ?bool {
 				d.contents << node
 			}
 
-			if si-1 >= 0 && stmts[si-1] is ast.Comment {
+			if d.with_comments && (si-1 >= 0 && stmts[si-1] is ast.Comment) {
 				if stmt is ast.Module {
 					d.head.comment = write_comment_bw(stmts, si-1)
 				} else {
