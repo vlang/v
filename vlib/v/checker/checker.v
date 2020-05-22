@@ -24,7 +24,7 @@ pub mut:
 	warnings         []errors.Warning
 	error_lines      []int // to avoid printing multiple errors for the same line
 	expected_type    table.Type
-	fn_return_type   table.Type // current function's return type
+	cur_fn           &ast.FnDecl // current function
 	const_decl       string
 	const_deps       []string
 	const_names      []string
@@ -44,6 +44,7 @@ pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 	return Checker{
 		table: table
 		pref: pref
+		cur_fn: 0
 	}
 }
 
@@ -1014,22 +1015,30 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 	}
 }
 
-pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, xtype table.Type, is_return_used bool) {
+pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type, is_return_used bool) {
 	if expr is ast.CallExpr {
 		call_expr := expr as ast.CallExpr
 		if call_expr.return_type.flag_is(.optional) {
-			c.check_or_block(call_expr, xtype, is_return_used)
-		} else if call_expr.or_block.is_used {
+			c.check_or_block(call_expr, ret_type, is_return_used)
+		} else if call_expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `$call_expr.name` does not return an optional',
 				call_expr.pos)
+		} else if call_expr.or_block.kind == .propagate {
+			c.error('unexpected `?`, the function `$call_expr.name`, does not return an optional', call_expr.pos)
 		}
 	}
 }
 
 pub fn (mut c Checker) check_or_block(mut call_expr ast.CallExpr, ret_type table.Type, is_ret_used bool) {
-	if !call_expr.or_block.is_used {
+	if call_expr.or_block.kind == .absent {
 		c.error('${call_expr.name}() returns an option, but you missed to add an `or {}` block to it',
 			call_expr.pos)
+		return
+	}
+	if call_expr.or_block.kind == .propagate {
+		if !c.cur_fn.return_type.flag_is(.optional) {
+			c.error('to propagate the optional call, `${c.cur_fn.name}` must itself return an optional', call_expr.pos)
+		}
 		return
 	}
 	stmts_len := call_expr.or_block.stmts.len
@@ -1044,7 +1053,7 @@ pub fn (mut c Checker) check_or_block(mut call_expr ast.CallExpr, ret_type table
 	}
 	last_stmt := call_expr.or_block.stmts[stmts_len - 1]
 	if is_ret_used {
-		if !c.is_last_or_block_stmt_valid(last_stmt) {
+		if !(last_stmt is ast.Return || last_stmt is ast.BranchStmt || last_stmt is ast.ExprStmt) {
 			expected_type_name := c.table.get_type_symbol(ret_type).name
 			c.error('last statement in the `or {}` block should return `$expected_type_name`',
 				call_expr.pos)
@@ -1084,16 +1093,6 @@ fn is_expr_panic_or_exit(expr ast.Expr) bool {
 	}
 }
 
-// TODO: merge to check_or_block when v can handle it
-pub fn (mut c Checker) is_last_or_block_stmt_valid(stmt ast.Stmt) bool {
-	return match stmt {
-		ast.Return { true }
-		ast.BranchStmt { true }
-		ast.ExprStmt { true }
-		else { false }
-	}
-}
-
 pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.Type {
 	typ := c.expr(selector_expr.expr)
 	if typ == table.void_type_idx {
@@ -1126,19 +1125,19 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 
 // TODO: non deferred
 pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
-	c.expected_type = c.fn_return_type
-	if return_stmt.exprs.len > 0 && c.fn_return_type == table.void_type {
+	c.expected_type = c.cur_fn.return_type
+	if return_stmt.exprs.len > 0 && c.expected_type == table.void_type {
 		c.error('too many arguments to return, current function does not return anything',
 			return_stmt.pos)
 		return
-	} else if return_stmt.exprs.len == 0 && c.fn_return_type != table.void_type {
+	} else if return_stmt.exprs.len == 0 && c.expected_type != table.void_type {
 		c.error('too few arguments to return', return_stmt.pos)
 		return
 	}
 	if return_stmt.exprs.len == 0 {
 		return
 	}
-	expected_type := c.fn_return_type
+	expected_type := c.expected_type
 	expected_type_sym := c.table.get_type_symbol(expected_type)
 	exp_is_optional := expected_type.flag_is(.optional)
 	mut expected_types := [expected_type]
@@ -1646,10 +1645,10 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 	match mut node {
 		ast.AnonFn {
-			keep_ret_type := c.fn_return_type
-			c.fn_return_type = it.decl.return_type
+			keep_fn := c.cur_fn
+			c.cur_fn = &it.decl
 			c.stmts(it.decl.stmts)
-			c.fn_return_type = keep_ret_type
+			c.cur_fn = keep_fn
 			return it.typ
 		}
 		ast.ArrayInit {
@@ -2361,7 +2360,7 @@ fn (mut c Checker) fn_decl(it ast.FnDecl) {
 		}
 	}
 	c.expected_type = table.void_type
-	c.fn_return_type = it.return_type
+	c.cur_fn = &it
 	c.stmts(it.stmts)
 	if it.language == .v && !it.no_body && it.return_type != table.void_type && !c.returns &&
 		it.name !in ['panic', 'exit'] {
