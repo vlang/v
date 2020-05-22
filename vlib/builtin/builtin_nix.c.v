@@ -24,19 +24,6 @@ fn builtin_init() {
 	// Do nothing
 }
 
-pub fn println(s string) {
-	//  TODO: a syscall sys_write on linux works, except for the v repl.
-	//  Probably it is a stdio buffering issue. Needs more testing...
-	//	$if linux {
-	//		$if !android {
-	//			snl := s + '\n'
-	//			C.syscall(/* sys_write */ 1, /* stdout_value */ 1, snl.str, s.len+1)
-	//			return
-	//		}
-	//	}
-	C.printf('%.*s\n', s.len, s.str)
-}
-
 fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 	skipframes := xskipframes + 2
 	$if macos {
