@@ -1,0 +1,8 @@
+fn ret_none() ?int {
+	return none
+}
+
+fn opt_call() int {
+	a := ret_none()?
+	return a
+}

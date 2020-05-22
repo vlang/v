@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unexpected_or_propagate.v:6:7: error: unexpected `?`, the function `ret_zero`, does not return an optional
+    4 |
+    5 | fn opt_fn() ?int {
+    6 |     a := ret_zero()?
+      |          ~~~~~~~~~~
+    7 |     return a
+    8 | }
