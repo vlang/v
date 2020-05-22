@@ -528,6 +528,12 @@ pub fn (t &Table) assign_check(got, expected Type) bool {
 			return true
 		}
 	}
+	// allow direct int-literal assignment for pointers for now
+	if expected.is_ptr() || expected.is_pointer() {
+		if got == any_int_type {
+			return true
+		}
+	}
 	if got_idx == voidptr_type_idx || got_idx == byteptr_type_idx {
 		if expected.is_ptr() || expected.is_pointer() {
 			return true

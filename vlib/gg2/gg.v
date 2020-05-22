@@ -117,7 +117,7 @@ pub fn (gg &GG) draw_text(x, y int, text string, cfg gx.TextCfg) {
 
 pub fn (ctx &GG) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
-		color: gx.Black
+		color: gx.black
 		size: default_font_size
 		align: gx.align_left
 	}

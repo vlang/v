@@ -1,9 +1,9 @@
 module dl
 
 pub const (
-	RTLD_NOW = 0
-	RTLD_LAZY = 0
-	DL_EXT   = '.dll'
+	rtld_now = 0
+	rtld_lazy = 0
+	dl_ext   = '.dll'
 )
 
 fn C.LoadLibrary(libfilename C.LPCWSTR) voidptr

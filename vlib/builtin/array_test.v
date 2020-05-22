@@ -1,8 +1,3 @@
-const (
-	q = [1, 2, 3]
-	A = 8
-)
-
 fn test_pointer() {
 	mut arr := []&int{}
 	a := 1
@@ -295,11 +290,11 @@ fn test_reverse() {
 }
 
 const (
-	N = 5
+	c_n = 5
 )
 
 struct Foooj {
-	a [5]int // N
+	a [5]int // c_n
 }
 
 fn test_fixed() {
@@ -312,8 +307,8 @@ fn test_fixed() {
 	assert nums[3] == 0
 	nums[1] = 7
 	assert nums[1] == 7
-	nums2 := [5]int // N
-	assert nums2[N - 1] == 0
+	nums2 := [5]int // c_n
+	assert nums2[c_n - 1] == 0
 }
 
 fn modify(numbers mut []int) {

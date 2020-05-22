@@ -9,7 +9,7 @@ module term
 // Support for Windows
 // https://en.wikipedia.org/wiki/ANSI.SYS
 // #include <windows.h>
-// C.SetConsoleMode(ENABLE_VIRTUAL_TERMINAL_INPUT)
+// C.SetConsoleMode(C.ENABLE_VIRTUAL_TERMINAL_INPUT)
 // Setting cursor to the given position
 // x is the x coordinate
 // y is the y coordinate

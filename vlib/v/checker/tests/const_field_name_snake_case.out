@@ -1,0 +1,6 @@
+vlib/v/checker/tests/const_field_name_snake_case.v:2:2: warning: const names cannot contain uppercase letters, use snake_case instead
+    1 | const (
+    2 |     Red = 1
+      |     ~~~
+    3 | )
+    4 | fn main() { println(Red) }

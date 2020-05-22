@@ -4,7 +4,7 @@
 import os
 
 const (
-	NUMERIC_CHAR = [`0`,`1`,`2`,`3`,`4`,`5`,`6`,`7`,`8`,`9`,`.`,`e`,`E`]
+	numeric_char = [`0`,`1`,`2`,`3`,`4`,`5`,`6`,`7`,`8`,`9`,`.`,`e`,`E`]
 )
 
 // Convert expression to Reverse Polish Notation.
@@ -17,7 +17,7 @@ fn expr_to_rev_pol(expr string) ?[]string {
 	mut pos := 0
 	for pos<expr.len {
 		mut end_pos := pos
-		for end_pos<expr.len && expr[end_pos] in NUMERIC_CHAR {
+		for end_pos<expr.len && expr[end_pos] in numeric_char {
 			end_pos++
 		}
 		if end_pos>pos {
@@ -102,7 +102,7 @@ fn eval_rev_pol(rev_pol []string) ?f64 {
 
 fn is_num_string(str string) bool {
 	for c in str {
-		if c !in NUMERIC_CHAR {
+		if c !in numeric_char {
 			return false
 		}
 	}

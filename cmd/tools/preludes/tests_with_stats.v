@@ -10,7 +10,7 @@ import os
 import benchmark
 
 const (
-	INNER_INDENT = '     '
+	inner_indent = '     '
 )
 
 struct BenchedTests {
@@ -21,7 +21,7 @@ mut:
 	test_suit_file string
 	step_func_name string
 }
-                                       
+
 // ///////////////////////////////////////////////////////////////////
 // Called at the start of the test program produced by `v -stats file_test.v`
 fn start_testing(total_number_of_tests int, vfilename string) BenchedTests {
@@ -49,7 +49,7 @@ fn (mut b BenchedTests) testing_step_end() {
 	// ////////////////////////////////////////////////////////////////
 	if ok_diff == 0 && fail_diff == 0 {
 		b.bench.neither_fail_nor_ok()
-		println(INNER_INDENT + b.bench.step_message_ok('   NO asserts | ') + b.fn_name())
+		println(inner_indent + b.bench.step_message_ok('   NO asserts | ') + b.fn_name())
 		return
 	}
 	// ////////////////////////////////////////////////////////////////
@@ -61,11 +61,11 @@ fn (mut b BenchedTests) testing_step_end() {
 	}
 	// ////////////////////////////////////////////////////////////////
 	if ok_diff > 0 && fail_diff == 0 {
-		println(INNER_INDENT + b.bench.step_message_ok(nasserts(ok_diff)) + b.fn_name())
+		println(inner_indent + b.bench.step_message_ok(nasserts(ok_diff)) + b.fn_name())
 		return
 	}
 	if fail_diff > 0 {
-		println(INNER_INDENT + b.bench.step_message_fail(nasserts(fail_diff)) + b.fn_name())
+		println(inner_indent + b.bench.step_message_fail(nasserts(fail_diff)) + b.fn_name())
 		return
 	}
 }
@@ -77,7 +77,7 @@ fn (b &BenchedTests) fn_name() string {
 // Called at the end of the test program produced by `v -stats file_test.v`
 fn (mut b BenchedTests) end_testing() {
 	b.bench.stop()
-	println(INNER_INDENT + b.bench.total_message('running V tests in "' + os.file_name(b.test_suit_file) + '"'))
+	println(inner_indent + b.bench.total_message('running V tests in "' + os.file_name(b.test_suit_file) + '"'))
 }
 
 // ///////////////////////////////////////////////////////////////////

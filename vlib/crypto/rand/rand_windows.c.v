@@ -9,15 +9,15 @@ module rand
 #include <bcrypt.h>
 
 const (
-	STATUS_SUCCESS                  = 0x00000000
-	BCRYPT_USE_SYSTEM_PREFERRED_RNG = 0x00000002
+	status_success                  = 0x00000000
+	bcrypt_use_system_preferred_rng = 0x00000002
 )
 
-pub fn read(bytes_needed int) ?[]byte {	
+pub fn read(bytes_needed int) ?[]byte {
 	mut buffer := malloc(bytes_needed)
-	// use BCRYPT_USE_SYSTEM_PREFERRED_RNG because we passed null as algo
-	status := C.BCryptGenRandom(0, buffer, bytes_needed, BCRYPT_USE_SYSTEM_PREFERRED_RNG)
-	if status != STATUS_SUCCESS {
+	// use bcrypt_use_system_preferred_rng because we passed null as algo
+	status := C.BCryptGenRandom(0, buffer, bytes_needed, bcrypt_use_system_preferred_rng)
+	if status != status_success {
 		return read_error
 	}
 	return c_array_to_bytes_tmp(bytes_needed, buffer)
