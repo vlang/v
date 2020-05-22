@@ -1024,7 +1024,8 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type, i
 			c.error('unexpected `or` block, the function `$call_expr.name` does not return an optional',
 				call_expr.pos)
 		} else if call_expr.or_block.kind == .propagate {
-			c.error('unexpected `?`, the function `$call_expr.name`, does not return an optional', call_expr.pos)
+			c.error('unexpected `?`, the function `$call_expr.name`, does not return an optional',
+				call_expr.pos)
 		}
 	}
 }
@@ -1037,7 +1038,8 @@ pub fn (mut c Checker) check_or_block(mut call_expr ast.CallExpr, ret_type table
 	}
 	if call_expr.or_block.kind == .propagate {
 		if !c.cur_fn.return_type.flag_is(.optional) {
-			c.error('to propagate the optional call, `${c.cur_fn.name}` must itself return an optional', call_expr.pos)
+			c.error('to propagate the optional call, `${c.cur_fn.name}` must itself return an optional',
+				call_expr.pos)
 		}
 		return
 	}
