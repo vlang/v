@@ -42,7 +42,7 @@ const (
 	over_cfg = gx.TextCfg{
 		align:gx.align_left
 		size:text_size
-		color:gx.White
+		color:gx.white
 	}
 )
 
@@ -96,7 +96,7 @@ const (
 		gx.rgb(0, 170, 170),    // unused ?
 	]
 
-	background_color = gx.White
+	background_color = gx.white
 	ui_color = gx.red
 )
 

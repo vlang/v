@@ -33,7 +33,7 @@ fn main() {
 		if ctx.gg.window.should_close() {
 			break
 		}
-		gg.clear(gx.White)
+		gg.clear(gx.white)
 		ctx.draw()
 		ctx.gg.render()
 	}
