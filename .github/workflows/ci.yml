@@ -292,7 +292,7 @@ jobs:
     - name: v.c can be compiled and run
       run: |
         ./v -os cross -o /tmp/v.c cmd/v
-        gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm
+        gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
         ls -lart v_from_vc
         ./v_from_vc version
     - name: v_win.c can be compiled and run
