@@ -302,10 +302,6 @@ pub fn symlink(origin, target string) ?bool {
 	return error(get_error_msg(int(C.GetLastError())))
 }
 
-pub fn (mut f File) write_bytes(data voidptr, size int) {
-	C.fwrite(data, 1, size, f.cfile)
-}
-
 pub fn (mut f File) close() {
 	if !f.opened {
 		return
