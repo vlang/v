@@ -1,7 +1,8 @@
 fn test_pointer_arithmetic() {
 	arr := [1, 2, 3, 4]
 	unsafe {
-		mut parr := *int(arr.data)
+		mut parr := &int(arr.data)
+		assert 1 == *parr
 		parr++
 		assert 2 == *parr
 		parr++
@@ -10,6 +11,7 @@ fn test_pointer_arithmetic() {
 	}
 }
 
+/*
 fn test_multi_level_pointer_dereferencing() {
 	n := 100
 	pn := &n
@@ -22,3 +24,4 @@ fn test_multi_level_pointer_dereferencing() {
 	}
 	assert n == 300	// updated by the unsafe pointer manipulation
 }
+*/
