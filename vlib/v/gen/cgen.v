@@ -969,7 +969,21 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if is_call {
 				g.expr(val)
 			} else {
-				g.write('{$styp _ = ')
+				g.write('{')
+				match val {
+					ast.ArrayInit {
+						elem_type_str := g.typ(it.elem_type)
+						if it.has_default {
+							g.write('$elem_type_str _val_$it.pos.pos = ')
+							g.expr(it.default_expr)
+							g.writeln(';')
+						} else if it.has_len && it.elem_type == table.string_type {
+							g.writeln('$elem_type_str _val_$it.pos.pos = tos_lit("");')
+						}
+					}
+					else {}
+				}
+				g.write('$styp _ = ')
 				g.expr(val)
 				g.writeln(';}')
 			}

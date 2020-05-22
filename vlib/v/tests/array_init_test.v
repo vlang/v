@@ -127,3 +127,8 @@ fn test_array_string_full_options() {
 	assert c.cap >= c.len
 	assert c.str() == "['a', 'b', 'c', 'c', 'c', 'c', 'c', 'c', 'c', 'c', '11', '12', '13', '14', '15', '16']"
 }
+
+fn test_array_init_assign_blank() {
+	_ := []byte{len:1,init:1}
+	assert true
+}
