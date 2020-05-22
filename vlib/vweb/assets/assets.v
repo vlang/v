@@ -8,7 +8,7 @@ import time
 import crypto.md5
 
 const (
-	UnknownAssetTypeError = 'vweb.assets: unknown asset type'
+	unknown_asset_type_error = 'vweb.assets: unknown asset type'
 )
 
 struct AssetManager {
@@ -164,7 +164,7 @@ fn (mut am AssetManager) add(asset_type, file string) bool {
 	} else if asset_type == 'js' {
 		am.js << asset
 	} else {
-		panic('$UnknownAssetTypeError ($asset_type).')
+		panic('$unknown_asset_type_error ($asset_type).')
 	}
 	return true
 }
@@ -181,7 +181,7 @@ fn (am AssetManager) exists(asset_type, file string) bool {
 
 fn (am AssetManager) get_assets(asset_type string) []Asset {
 	if asset_type != 'css' && asset_type != 'js' {
-		panic('$UnknownAssetTypeError ($asset_type).')
+		panic('$unknown_asset_type_error ($asset_type).')
 	}
 	assets := if asset_type == 'css' {
 		am.css

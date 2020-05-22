@@ -223,7 +223,7 @@ fn (mut g Gen) inc_var(var_name string) {
 fn (mut g Gen) jne() int {
 	g.write16(0x850f)
 	pos := g.pos()
-	g.write32(PLACEHOLDER)
+	g.write32(placeholder)
 	g.println('jne')
 	return pos
 }
@@ -231,7 +231,7 @@ fn (mut g Gen) jne() int {
 fn (mut g Gen) jge() int {
 	g.write16(0x8d0f)
 	pos := g.pos()
-	g.write32(PLACEHOLDER)
+	g.write32(placeholder)
 	g.println('jne')
 	return pos
 }
@@ -428,7 +428,7 @@ pub fn (mut g Gen) gen_print(s string) {
 	g.mov(.edi, 1)
 	str_pos := g.buf.len + 2
 	g.str_pos << str_pos
-	g.mov64(.rsi, 0) // segment_start +  0x9f) // str pos // PLACEHOLDER
+	g.mov64(.rsi, 0) // segment_start +  0x9f) // str pos // placeholder
 	g.mov(.edx, s.len) // len
 	g.syscall()
 }

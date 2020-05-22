@@ -12,7 +12,7 @@ import live
 pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_mutex voidptr, live_linkfn live.FNLinkLiveSymbols) &live.LiveReloadInfo {
 	file_base := os.file_name(original).replace('.v', '')
 	so_dir := os.cache_dir()
-	so_extension := dl.DL_EXT
+	so_extension := dl.dl_ext
 	/* $if msvc { so_extension = '.dll' } $else { so_extension = '.so' } */
 	return &live.LiveReloadInfo{
 		original: original
@@ -113,14 +113,14 @@ fn protected_load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
 		dl.close( r.live_lib )
 		r.live_lib = 0
 	}
-	r.live_lib = dl.open(new_lib_path, dl.RTLD_LAZY)
+	r.live_lib = dl.open(new_lib_path, dl.rtld_lazy)
 	if r.live_lib == 0 {
 		eprintln('opening $new_lib_path failed')
 		exit(1)
 	}
 	r.live_linkfn( r.live_lib )
 	elog(r,'> load_lib OK, new live_lib: $r.live_lib')
-	// removing the .so file from the filesystem after dlopen-ing 
+	// removing the .so file from the filesystem after dlopen-ing
     // it is safe, since it will still be mapped in memory
 	os.rm( new_lib_path )
 }

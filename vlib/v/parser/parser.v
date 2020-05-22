@@ -1232,13 +1232,17 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			comment = p.comment()
 		}
 		pos := p.tok.position()
-		name := p.prepend_mod(p.check_name())
+		name := p.check_name()
+		if util.contains_capital(name) {
+			p.warn_with_pos('const names cannot contain uppercase letters, use snake_case instead', pos)
+		}
+		full_name := p.prepend_mod(name)
 		// name := p.check_name()
 		// println('!!const: $name')
 		p.check(.assign)
 		expr := p.expr(0)
 		field := ast.ConstField{
-			name: name
+			name: full_name
 			expr: expr
 			pos: pos
 			comment: comment

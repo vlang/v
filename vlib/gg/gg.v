@@ -480,7 +480,7 @@ pub fn (ctx &GG) draw_empty_rounded_rect(x, y, w, h, r f32, color gx.Color) {
 
 /*
 pub fn (c &GG) draw_gray_line(x, y, x2, y2 f32) {
-	c.draw_line(x, y, x2, y2, gx.Gray)
+	c.draw_line(x, y, x2, y2, gx.gray)
 }
 
 pub fn (c &GG) draw_vertical(x, y, height int) {

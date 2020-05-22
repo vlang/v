@@ -166,7 +166,7 @@ fn (sp Sphere) intersect (r Ray) f64 {
 * The sphere fileds are: Sphere{radius, position, emission, color, material}
 ******************************************************************************/
 const (
-Cen = Vec{50, 40.8, -860} // used by scene 1
+cen = Vec{50, 40.8, -860} // used by scene 1
 spheres = [
 [// scene 0 cornnel box
 	Sphere{rad: 1e+5, p: Vec{ 1e+5 +1,40.8,81.6} , e: Vec{}        , c: Vec{.75,.25,.25}        , refl: .diff},//Left
@@ -183,7 +183,7 @@ spheres = [
 [// scene 1 sunset
 	Sphere{rad: 1600,  p: Vec{1.0,0.0,2.0}.mult_s(3000), e: Vec{1.0,.9,.8}.mult_s(1.2e+1*1.56*2)    , c: Vec{}                     ,  refl: .diff}, // sun
 	Sphere{rad: 1560,  p: Vec{1,0,2}.mult_s(3500)      , e: Vec{1.0,.5,.05}.mult_s(4.8e+1*1.56*2)   , c: Vec{}                     ,  refl: .diff}, // horizon sun2
-	Sphere{rad: 10000, p: Cen+Vec{0,0,-200}, e: Vec{0.00063842, 0.02001478, 0.28923243}.mult_s(6e-2*8), c: Vec{.7,.7,1}.mult_s(.25),  refl: .diff}, // sky
+	Sphere{rad: 10000, p: cen+Vec{0,0,-200}, e: Vec{0.00063842, 0.02001478, 0.28923243}.mult_s(6e-2*8), c: Vec{.7,.7,1}.mult_s(.25),  refl: .diff}, // sky
 
 	Sphere{rad: 100000, p: Vec{50, -100000, 0}     , e: Vec{}                    , c: Vec{.3,.3,.3}   , refl: .diff}, // grnd
 	Sphere{rad: 110000, p: Vec{50, -110048.5, 0}   , e: Vec{.9,.5,.05}.mult_s(4) , c: Vec{}, refl: .diff},// horizon brightener

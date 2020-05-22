@@ -6,9 +6,9 @@
 import math
 
 const (
-    SolarMass   = 39.47841760435743197 //4.0 * math.Pi * math.Pi
-    DaysPerYear = 365.24
-    N           = 5
+    solar_mass    = 39.47841760435743197 //4.0 * math.Pi * math.Pi
+    days_per_year = 365.24
+    c_n           = 5
 )
 
 struct Position {
@@ -33,12 +33,12 @@ pub mut:
 }
 
 fn advance(sys mut System, dt f64) {
-    for i in 0..N - 1 {
+    for i in 0..c_n - 1 {
         mut _vx := sys.v[i].x
         mut _vy := sys.v[i].y
         mut _vz := sys.v[i].z
 
-        for j := i + 1; j < N; j++ {
+        for j := i + 1; j < c_n; j++ {
             dx := sys.s[i].x - sys.s[j].x
             dy := sys.s[i].y - sys.s[j].y
             dz := sys.s[i].z - sys.s[j].z
@@ -61,7 +61,7 @@ fn advance(sys mut System, dt f64) {
         sys.v[i].z = _vz
     }
 
-    for i in 0..N {
+    for i in 0..c_n {
         sys.s[i].x += dt * sys.v[i].x
         sys.s[i].y += dt * sys.v[i].y
         sys.s[i].z += dt * sys.v[i].z
@@ -73,21 +73,21 @@ fn offsetmomentum(sys mut System) {
     mut py := f64(0)
     mut pz := f64(0)
 
-    for i in 0..N {
+    for i in 0..c_n {
         px += sys.v[i].x * sys.v[i].m
         py += sys.v[i].y * sys.v[i].m
         pz += sys.v[i].z * sys.v[i].m
     }
-    sys.v[0].x = -px / SolarMass
-    sys.v[0].y = -py / SolarMass
-    sys.v[0].z = -pz / SolarMass
+    sys.v[0].x = -px / solar_mass
+    sys.v[0].y = -py / solar_mass
+    sys.v[0].z = -pz / solar_mass
 }
 
 fn energy(sys System) f64 {
     mut e := f64(0)
-    for i in 0..N {
+    for i in 0..c_n {
         e += 0.5 * sys.v[i].m * (sys.v[i].x * sys.v[i].x + sys.v[i].y * sys.v[i].y + sys.v[i].z * sys.v[i].z)
-        for j := i + 1; j < N; j++ {
+        for j := i + 1; j < c_n; j++ {
             dx := sys.s[i].x - sys.s[j].x
             dy := sys.s[i].y - sys.s[j].y
             dz := sys.s[i].z - sys.s[j].z
@@ -100,11 +100,11 @@ fn energy(sys System) f64 {
 
 fn arr_momentum() []Momentum {
     return [
-    Momentum {0.0, 0.0, 0.0, SolarMass},
-    Momentum {1.66007664274403694e-03 * DaysPerYear, 7.69901118419740425e-03 * DaysPerYear, -6.90460016972063023e-05 * DaysPerYear, 9.54791938424326609e-04 * SolarMass},
-    Momentum {-2.76742510726862411e-03 * DaysPerYear, 4.99852801234917238e-03 * DaysPerYear, 2.30417297573763929e-05 * DaysPerYear, 2.85885980666130812e-04 * SolarMass},
-    Momentum {2.96460137564761618e-03 * DaysPerYear, 2.37847173959480950e-03 * DaysPerYear, -2.96589568540237556e-05 * DaysPerYear, 4.36624404335156298e-05 * SolarMass},
-    Momentum {2.68067772490389322e-03 * DaysPerYear, 1.62824170038242295e-03 * DaysPerYear, -9.51592254519715870e-05 * DaysPerYear, 5.15138902046611451e-05 * SolarMass},
+    Momentum {0.0, 0.0, 0.0, solar_mass},
+    Momentum {1.66007664274403694e-03 * days_per_year, 7.69901118419740425e-03 * days_per_year, -6.90460016972063023e-05 * days_per_year, 9.54791938424326609e-04 * solar_mass},
+    Momentum {-2.76742510726862411e-03 * days_per_year, 4.99852801234917238e-03 * days_per_year, 2.30417297573763929e-05 * days_per_year, 2.85885980666130812e-04 * solar_mass},
+    Momentum {2.96460137564761618e-03 * days_per_year, 2.37847173959480950e-03 * days_per_year, -2.96589568540237556e-05 * days_per_year, 4.36624404335156298e-05 * solar_mass},
+    Momentum {2.68067772490389322e-03 * days_per_year, 1.62824170038242295e-03 * days_per_year, -9.51592254519715870e-05 * days_per_year, 5.15138902046611451e-05 * solar_mass},
     ]
 }
 

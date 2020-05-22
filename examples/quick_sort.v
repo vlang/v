@@ -2,16 +2,16 @@ import time
 import rand
 
 const (
-	LEN = 1000 // how many random numbers to generate
-	MAX = 10000 // max of the generated numbers
+	gen_len = 1000 // how many random numbers to generate
+	gen_max = 10000 // max of the generated numbers
 )
 
 fn main() {
 	rand.seed(time.now().unix)
-	rand.next(MAX) // skip the first
+	rand.next(gen_max) // skip the first
 	mut arr := []int{}
-	for _ in 0..LEN {
-		arr << rand.next(MAX)
+	for _ in 0..gen_len {
+		arr << rand.next(gen_max)
 	}
 	println('length of random array is $arr.len')
 	println('before quick sort whether array is sorted: ${is_sorted(arr)}')

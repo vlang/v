@@ -7,6 +7,7 @@ import v.cflag
 #flag windows -l shell32
 #flag windows -l dbghelp
 #flag windows -l advapi32
+
 struct MsvcResult {
 	full_cl_exe_path    string
 	exe_path            string
@@ -25,10 +26,10 @@ type RegKey voidptr
 
 // Taken from the windows SDK
 const (
-	HKEY_LOCAL_MACHINE     = RegKey(0x80000002)
-	KEY_QUERY_VALUE        = (0x0001)
-	KEY_WOW64_32KEY        = (0x0200)
-	KEY_ENUMERATE_SUB_KEYS = (0x0008)
+	hkey_local_machine     = RegKey(0x80000002)
+	key_query_value        = (0x0001)
+	key_wow64_32key        = (0x0200)
+	key_enumerate_sub_keys = (0x0008)
 )
 
 // Given a root key look for one of the subkeys in 'versions' and get the path
@@ -79,8 +80,8 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
-		rc := C.RegOpenKeyEx(HKEY_LOCAL_MACHINE, path.to_wide(), 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY |
-			KEY_ENUMERATE_SUB_KEYS, &root_key)
+		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0, key_query_value | key_wow64_32key |
+			key_enumerate_sub_keys, &root_key)
 		defer {
 			C.RegCloseKey(root_key)
 		}

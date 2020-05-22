@@ -1,10 +1,10 @@
 // hanoi tower
 const (
-	Num = 7
+	num = 7
 )
 
 fn main() {
-	hanoi(Num, 'A','B','C')
+	hanoi(num, 'A','B','C')
 }
 
 fn move(n int, a, b string) int {

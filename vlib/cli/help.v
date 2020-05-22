@@ -4,9 +4,9 @@ import term
 import strings
 
 const (
-	BASE_INDENT = 2
-	ABBREV_INDENT = 5
-	DESCRIPTION_INDENT = 20
+	c_base_indent = 2
+	c_abbrev_indent = 5
+	c_description_indent = 20
 )
 
 fn help_flag() Flag {
@@ -45,10 +45,10 @@ fn help_func(help_cmd Command) {
 		for flag in cmd.flags {
 			mut flag_name := ''
 			if flag.abbrev != '' {
-				abbrev_indent := ' '.repeat(max(ABBREV_INDENT-(flag.abbrev.len+1), 1))
+				abbrev_indent := ' '.repeat(max(c_abbrev_indent-(flag.abbrev.len+1), 1))
 				flag_name = '-${flag.abbrev}${abbrev_indent}--${flag.name}'
 			} else {
-				abbrev_indent := ' '.repeat(max(ABBREV_INDENT-(flag.abbrev.len), 1))
+				abbrev_indent := ' '.repeat(max(c_abbrev_indent-(flag.abbrev.len), 1))
 				flag_name = '${abbrev_indent}--${flag.name}'
 			}
 			mut required := ''
@@ -56,8 +56,8 @@ fn help_func(help_cmd Command) {
 				required = ' (required)'
 			}
 
-			base_indent := ' '.repeat(BASE_INDENT)
-			description_indent := ' '.repeat(max(DESCRIPTION_INDENT-flag_name.len, 1))
+			base_indent := ' '.repeat(c_base_indent)
+			description_indent := ' '.repeat(max(c_description_indent-flag_name.len, 1))
 			help += '${base_indent}${flag_name}${description_indent}' +
 				pretty_description(flag.description + required) + '\n'
 		}
@@ -66,8 +66,8 @@ fn help_func(help_cmd Command) {
 	if cmd.commands.len > 0 {
 		help += 'Commands:\n'
 		for command in cmd.commands {
-			base_indent := ' '.repeat(BASE_INDENT)
-			description_indent := ' '.repeat(max(DESCRIPTION_INDENT-command.name.len, 1))
+			base_indent := ' '.repeat(c_base_indent)
+			description_indent := ' '.repeat(max(c_description_indent-command.name.len, 1))
 
 			help += '${base_indent}${command.name}${description_indent}' +
 				pretty_description(command.description) + '\n'
@@ -83,11 +83,11 @@ fn help_func(help_cmd Command) {
 fn pretty_description(s string) string {
 	width, _ := term.get_terminal_size()
 	// Don't prettify if the terminal is that small, it won't be pretty anyway.
-	if s.len + DESCRIPTION_INDENT < width || DESCRIPTION_INDENT > width {
+	if s.len + c_description_indent < width || c_description_indent > width {
 		return s
 	}
-	indent := ' '.repeat(DESCRIPTION_INDENT + 1)
-	chars_per_line := width - DESCRIPTION_INDENT
+	indent := ' '.repeat(c_description_indent + 1)
+	chars_per_line := width - c_description_indent
 	// Give us enough room, better a little bigger than smaller
 	mut acc := strings.new_builder(((s.len / chars_per_line) + 1) * (width + 1))
 

@@ -30,7 +30,7 @@ const (
 		'_linux.v', '_nix.v'], ['macos', '_mac.v', '_darwin.v'], ['freebsd', '_bsd.v', '_freebsd.v'],
 		['netbsd', '_bsd.v', '_netbsd.v'], ['openbsd', '_bsd.v', '_openbsd.v'], ['solaris', '_solaris.v'],
 		['haiku', '_haiku.v'], ['qnx', '_qnx.v']]
-	FORMATTED_FILE_TOKEN         = '\@\@\@' + 'FORMATTED_FILE: '
+	formatted_file_token         = '\@\@\@' + 'FORMATTED_FILE: '
 )
 
 fn main() {
@@ -116,8 +116,8 @@ fn main() {
 			continue
 		}
 		if worker_result.output.len > 0 {
-			if worker_result.output.contains(FORMATTED_FILE_TOKEN) {
-				wresult := worker_result.output.split(FORMATTED_FILE_TOKEN)
+			if worker_result.output.contains(formatted_file_token) {
+				wresult := worker_result.output.split(formatted_file_token)
 				formatted_warn_errs := wresult[0]
 				formatted_file_path := wresult[1]
 				foptions.post_process_file(fpath, formatted_file_path)
@@ -157,7 +157,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	if foptions.is_verbose {
 		eprintln('fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
 	}
-	eprintln('${FORMATTED_FILE_TOKEN}${vfmt_output_path}')
+	eprintln('${formatted_file_token}${vfmt_output_path}')
 }
 
 fn print_compiler_options(compiler_params &pref.Preferences) {

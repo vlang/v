@@ -1,0 +1,4 @@
+const (
+	Red = 1
+)
+fn main() { println(Red) }

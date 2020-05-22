@@ -3,17 +3,16 @@ module os
 
 // ref: http://www.ccfit.nsu.ru/~deviv/courses/unix/unix/ng7c229.html
 const (
-	S_IFMT = 0xF000 // type of file
-	S_IFDIR = 0x4000 // directory
-	S_IFLNK = 0xa000 // link
-	S_IXUSR = 0o100  // is executable by the owner
-	S_IXGRP = 0o010  // is executable by group
-	S_IXOTH = 0o001  // is executable by others
+	s_ifmt  = 0xF000 // type of file
+	s_ifdir = 0x4000 // directory
+	s_iflnk = 0xa000 // link
+	s_ixusr = 0o100  // is executable by the owner
+	s_ixgrp = 0o010  // is executable by group
+	s_ixoth = 0o001  // is executable by others
 )
 
 const (
-	STD_INPUT_HANDLE = -10
-	STD_OUTPUT_HANDLE = -11
-	STD_ERROR_HANDLE = -12
+	std_input_handle = -10
+	std_output_handle = -11
+	std_error_handle = -12
 )
-
