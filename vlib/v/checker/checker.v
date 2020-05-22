@@ -1037,7 +1037,7 @@ pub fn (mut c Checker) check_or_block(mut call_expr ast.CallExpr, ret_type table
 		return
 	}
 	if call_expr.or_block.kind == .propagate {
-		if !c.cur_fn.return_type.flag_is(.optional) {
+		if !c.cur_fn.return_type.flag_is(.optional) && c.cur_fn.name != 'main' {
 			c.error('to propagate the optional call, `${c.cur_fn.name}` must itself return an optional',
 				call_expr.pos)
 		}

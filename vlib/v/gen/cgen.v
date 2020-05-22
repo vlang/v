@@ -95,6 +95,7 @@ mut:
 	is_builtin_mod       bool
 	hotcode_fn_names     []string
 	fn_main              &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
+	cur_fn               &ast.FnDecl
 	cur_generic_type     table.Type // `int`, `string`, etc in `foo<T>()`
 }
 
@@ -124,6 +125,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		pref: pref
 		fn_decl: 0
 		fn_main: 0
+		cur_fn: 0
 		autofree: true
 		indent: -1
 		module_built: pref.path.after('vlib/')
@@ -2971,7 +2973,11 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			g.stmts(stmts)
 		}
 	} else if or_block.kind == .propagate {
-		g.writeln('\treturn $cvar_name;')
+		if g.file.mod.name == 'main' && g.cur_fn.name == 'main' {
+			g.writeln('v_panic(${cvar_name}.v_error);')
+		} else {
+			g.writeln('\treturn $cvar_name;')
+		}
 	}
 	g.write('}')
 }

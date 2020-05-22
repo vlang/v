@@ -12,6 +12,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// || it.no_body {
 		return
 	}
+	former_cur_fn := g.cur_fn
+	g.cur_fn = &it
+	defer {
+		g.cur_fn = former_cur_fn
+	}
 	is_main := it.name == 'main'
 	if it.is_generic && g.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
