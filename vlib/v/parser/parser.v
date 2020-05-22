@@ -1212,7 +1212,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		}
 		pos := p.tok.position()
 		name := p.check_name()
-		if util.check_valid_snake_case(name) {
+		if util.contains_capital(name) {
 			p.warn_with_pos('const names cannot contain uppercase letters, use snake_case instead', pos)
 		}
 		full_name := p.prepend_mod(name)
