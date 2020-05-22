@@ -24,7 +24,7 @@ pub enum ColorOutput {
 	auto
 	always
 	never
-}    
+}
 
 pub enum Backend {
 	c            // The (default) C backend
@@ -108,6 +108,7 @@ pub mut:
 	skip_running        bool     // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
 	skip_warnings       bool     // like C's "-w"
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
+	is_parallel bool
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
@@ -187,6 +188,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-keepc' {
 				res.keep_c = true
+			}
+			'-parallel' {
+				res.is_parallel = true
 			}
 			'-x64' {
 				res.backend = .x64

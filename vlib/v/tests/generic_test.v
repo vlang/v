@@ -6,6 +6,8 @@ fn simple<T>(p T) T {
 }
 
 fn plus<T>(a, b T) T {
+	// x := a
+	// y := b
 	// ww := ww
 	// q := xx + 1
 	return a + b
@@ -17,6 +19,8 @@ fn test_generic_fn() {
 	assert simple<string>('g') == 'g'
 	assert simple<string>('g') + 'h' == 'gh'
 	a := plus<int>(2, 3)
+	assert a == 5
+	assert plus<int>(10, 1) == 11
 	// plus<string>('a', 'b')
 	println(a)
 }

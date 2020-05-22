@@ -11,6 +11,9 @@ import v.pref
 import v.util
 import v.errors
 import os
+import runtime
+import sync
+import time
 
 pub struct Parser {
 	scanner           &scanner.Scanner
@@ -134,48 +137,59 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	}
 }
 
-/*
 struct Queue {
 mut:
 	idx              int
-	mu               sync.Mutex
+	mu               &sync.Mutex
+	mu2              &sync.Mutex
 	paths            []string
 	table            &table.Table
 	parsed_ast_files []ast.File
+	pref             &pref.Preferences
+	global_scope     &ast.Scope
 }
 
-fn (q mut Queue) run() {
-	q.mu.lock()
-	idx := q.idx
-	if idx >= q.paths.len {
+fn (mut q Queue) run() {
+	for {
+		q.mu.lock()
+		idx := q.idx
+		if idx >= q.paths.len {
+			q.mu.unlock()
+			return
+		}
+		q.idx++
 		q.mu.unlock()
-		return
+		println('run(idx=$idx)')
+		path := q.paths[idx]
+		file := parse_file(path, q.table, .skip_comments, q.pref, q.global_scope)
+		q.mu2.lock()
+		q.parsed_ast_files << file
+		q.mu2.unlock()
+		println('run done(idx=$idx)')
 	}
-	q.idx++
-	q.mu.unlock()
-	path := q.paths[idx]
-	file := parse_file(path, q.table, .skip_comments)
-	q.mu.lock()
-	q.parsed_ast_files << file
-	q.mu.unlock()
 }
-*/
+
 pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, global_scope &ast.Scope) []ast.File {
-	/*
-	println('\n\n\nparse_files()')
-	println(paths)
-	nr_cpus := runtime.nr_cpus()
-	println('nr_cpus= $nr_cpus')
-	mut q := &Queue{
-		paths: paths
-		table: table
+	// println('nr_cpus= $nr_cpus')
+	if pref.is_parallel && paths[0].contains('/array.v') {
+		println('\n\n\nparse_files() nr_files=$paths.len')
+		println(paths)
+		nr_cpus := runtime.nr_cpus()
+		mut q := &Queue{
+			paths: paths
+			table: table
+			pref: pref
+			global_scope: global_scope
+			mu: sync.new_mutex()
+			mu2: sync.new_mutex()
+		}
+		for _ in 0 .. nr_cpus - 1 {
+			go q.run()
+		}
+		time.sleep_ms(1000)
+		println('all done')
+		return q.parsed_ast_files
 	}
-	for i in 0 .. nr_cpus {
-		go q.run()
-	}
-	time.sleep_ms(100)
-	return q.parsed_ast_files
-	*/
 	// ///////////////
 	mut files := []ast.File{}
 	for path in paths {
