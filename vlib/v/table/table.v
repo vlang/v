@@ -516,7 +516,7 @@ pub fn (t &Table) promote(left_type, right_type Type) Type {
 	}
 }
 
-// TODO: promote(), assign_check() and check() overlap - should be rearanged
+// TODO: promote(), assign_check() and check() overlap - should be rearranged
 pub fn (t &Table) assign_check(got, expected Type) bool {
 	exp_idx := expected.idx()
 	got_idx := got.idx()
@@ -546,6 +546,22 @@ pub fn (t &Table) assign_check(got, expected Type) bool {
 		return false
 	}
 	return true
+}
+
+pub fn (t &Table) symmetric_check(left, right Type) bool {
+	// allow direct int-literal assignment for pointers for now
+	if right.is_ptr() || right.is_pointer() {
+		if left == any_int_type {
+			return true
+		}
+	}
+	// allow direct int-literal assignment for pointers for now
+	if left.is_ptr() || left.is_pointer() {
+		if right == any_int_type {
+			return true
+		}
+	}
+	return t.check(left, right)
 }
 
 pub fn (t &Table) check(got, expected Type) bool {

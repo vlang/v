@@ -537,7 +537,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			infix_expr.pos)
 	}
 	// Dual sides check (compatibility check)
-	if !c.table.check(right_type, left_type) {
+	if !c.table.symmetric_check(right_type, left_type) {
 		// for type-unresolved consts
 		if left_type == table.void_type || right_type == table.void_type {
 			return table.void_type
