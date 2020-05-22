@@ -7,7 +7,7 @@ pushd %~dp0
 if exist "vc" (
 	echo Updating vc...
 	cd vc
-	git pull
+	git pull --quiet
 	cd ..
 ) else (
 	echo Cloning vc...
