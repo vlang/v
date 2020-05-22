@@ -2974,7 +2974,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		}
 	} else if or_block.kind == .propagate {
 		if g.file.mod.name == 'main' && g.cur_fn.name == 'main' {
-			g.writeln('v_panic(${cvar_name}.v_error);')
+			g.writeln('\tv_panic(${cvar_name}.v_error);')
 		} else {
 			g.writeln('\treturn $cvar_name;')
 		}
