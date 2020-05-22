@@ -59,7 +59,7 @@ const(
 const(
 	mantbits32  = u32(23)
 	expbits32   = u32(8)
-	bias32      = u32(127) // f32 exponent bias
+	bias32      = 127 // f32 exponent bias
 	maxexp32    = 255
 )
 
@@ -189,10 +189,10 @@ pub fn f32_to_decimal(mant u32, exp u32) Dec32 {
 	if exp == 0 {
 		// We subtract 2 so that the bounds computation has
 		// 2 additional bits.
-		e2 = 1 - bias32 - mantbits32 - 2
+		e2 = 1 - bias32 - int(mantbits32) - 2
 		m2 = mant
 	} else {
-		e2 = int(exp) - bias32 - mantbits32 - 2
+		e2 = int(exp) - bias32 - int(mantbits32) - 2
 		m2 = (u32(1) << mantbits32) | mant
 	}
 	even          := (m2 & 1) == 0

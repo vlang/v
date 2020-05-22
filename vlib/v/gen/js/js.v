@@ -53,9 +53,9 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		constants: strings.new_builder(100)
 		table: table
 		pref: pref
-		fn_decl: 0
+		fn_decl: voidptr(0)
 		empty_line: true
-		doc: 0
+		doc: voidptr(0)
 		enable_doc: true
 	}
 	g.doc = new_jsdoc(g)
@@ -832,7 +832,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		g.writeln('')
 	}
 
-	g.fn_decl = 0
+	g.fn_decl = voidptr(0)
 }
 
 fn (mut g JsGen) gen_for_c_stmt(it ast.ForCStmt) {

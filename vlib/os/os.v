@@ -1043,12 +1043,12 @@ pub fn real_path(fpath string) string {
 	mut fullpath := vcalloc(MAX_PATH)
 	mut ret := charptr(0)
 	$if windows {
-		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
+		ret = charptr(C._fullpath(fullpath, fpath.str, MAX_PATH))
 		if ret == 0 {
 			return fpath
 		}
 	} $else {
-		ret = C.realpath(fpath.str, fullpath)
+		ret = charptr(C.realpath(fpath.str, fullpath))
 		if ret == 0 {
 			return fpath
 		}
@@ -1277,7 +1277,7 @@ pub fn open(path string) ?File {
 	}
   */
 	cfile := vfopen(path, 'rb')
-	if cfile == 0 {
+	if cfile == voidptr(0) {
 		return error('failed to open file "$path"')
 	}
 	fd := fileno(cfile)
@@ -1314,7 +1314,7 @@ pub fn create(path string) ?File {
 	}
   */
 	cfile := vfopen(path, 'wb')
-	if cfile == 0 {
+	if cfile == voidptr(0) {
 		return error('failed to create file "$path"')
 	}
 	fd := fileno(cfile)

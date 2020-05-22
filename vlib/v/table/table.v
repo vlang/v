@@ -450,22 +450,39 @@ pub fn (t &Table) value_type(typ Type) Type {
 	return void_type
 }
 
+[inline]
+pub fn (t &Table) mktyp(typ Type) Type {
+	match typ {
+		any_flt_type {
+			return f64_type
+		}
+		any_int_type {
+			return int_type
+		}
+		else {
+			return typ
+		}
+	}
+}
+
 pub fn (t &Table) promote(left_type, right_type Type) Type {
 	if left_type.is_ptr() || left_type.is_pointer() {
 		if right_type.is_int() {
 			return left_type
 		} else {
-			return Type(0)
+			return void_type
 		}
 	} else if right_type.is_ptr() || right_type.is_pointer() {
 		if left_type.is_int() {
 			return right_type
 		} else {
-			return Type(0)
+			return void_type
 		}
-	} else if left_type == right_type {
+	}
+	if left_type == right_type {
 		return left_type // strings, self defined operators
-	} else if right_type.is_number() && left_type.is_number() {
+	}
+	if right_type.is_number() && left_type.is_number() {
 		// sort the operands to save time
 		mut type_hi := left_type
 		mut type_lo := right_type
@@ -477,23 +494,57 @@ pub fn (t &Table) promote(left_type, right_type Type) Type {
 		idx_hi := type_hi.idx()
 		idx_lo := type_lo.idx()
 		// the following comparisons rely on the order of the indices in atypes.v
-		if type_hi.is_float() {
+		if idx_hi == any_int_type_idx {
+			return type_lo
+		} else if idx_hi == any_flt_type_idx {
+			if idx_lo in float_type_idxs {
+				return type_lo
+			} else {
+				return void_type
+			}
+		} else if type_hi.is_float() {
 			return type_hi
 		} else if idx_lo >= byte_type_idx { // both operands are unsigned
 			return type_hi
 		} else if idx_hi - idx_lo < (byte_type_idx - i8_type_idx) {
 			return type_lo // conversion unsigned -> signed if signed type is larger
 		} else {
-			return type_hi // conversion signed -> unsigned otherwise - dangerous, but matches C!
+			return void_type // conversion signed -> unsigned not allowed
 		}
 	} else {
 		return left_type // default to left if not automatic promotion possible
 	}
 }
 
-pub fn (t &Table) check(got, expected Type) bool {
-	got_idx := got.idx()
+// TODO: promote(), assign_check() and check() overlap - should be rearanged
+pub fn (t &Table) assign_check(got, expected Type) bool {
 	exp_idx := expected.idx()
+	got_idx := got.idx()
+	if exp_idx == got_idx {
+		return true
+	}
+	if exp_idx == voidptr_type_idx || exp_idx == byteptr_type_idx {
+		if got.is_ptr() || got.is_pointer() {
+			return true
+		}
+	}
+	if got_idx == voidptr_type_idx || got_idx == byteptr_type_idx {
+		if expected.is_ptr() || expected.is_pointer() {
+			return true
+		}
+	}
+	if !t.check(got, expected) { // TODO: this should go away...
+		return false
+	}
+	if t.promote(expected, got) != expected {
+		return false
+	}
+	return true
+}
+
+pub fn (t &Table) check(got, expected Type) bool {
+	got_idx := t.unalias_num_type(got).idx()
+	exp_idx := t.unalias_num_type(expected).idx()
 	// got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
 	// println('check: $got_type_sym.name, $exp_type_sym.name')

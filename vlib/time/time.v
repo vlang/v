@@ -106,7 +106,7 @@ pub fn new_time(t Time) Time {
 		hour: t.hour
 		minute: t.minute
 		second: t.second
-		unix: t.unix_time()
+		unix: u64(t.unix_time())
 	}
 	// TODO Use the syntax below when it works with reserved keywords like `unix`
 	// return {
@@ -134,12 +134,12 @@ pub fn (t Time) unix_time() int {
 // add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
 	// TODO Add(d time.Duration)
-	return unix(t.unix + seconds)
+	return unix(t.unix + u64(seconds))
 }
 
 // add_days returns a new time struct with an added number of days.
 pub fn (t Time) add_days(days int) Time {
-	return unix(t.unix + days * 3600 * 24)
+	return unix(t.unix + u64(i64(days) * 3600 * 24))
 }
 
 // since returns a number of seconds elapsed since a given time.
@@ -272,7 +272,7 @@ fn convert_ctime(t C.tm) Time {
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
-		unix: make_unix_time(t)
+		unix: u64(make_unix_time(t))
 	}
 }
 

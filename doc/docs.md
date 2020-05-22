@@ -277,20 +277,26 @@ any // similar to C's void* and Go's interface{}
 
 Please note that unlike C and Go, `int` is always a 32 bit integer.
 
-As in C, when basic arithmetic is done with two different primitive
-types, one of them has to be converted to the other. The following
-promotions are done automatically when needed, without having to be
-specified explicitly:
+There is an exceptions to the rule that all operators
+in V must have values of the same type on both sides. A small primitive type
+on one side can be automatically promoted if it fits
+completely into the data range of the type on the other side, i.e. when
+the promotion does not result in any data loss.
+These are the allowed possibilities:
 
 ```
-   i8 ⭢ i16 ⭢ int ⭢ i64
-                ⭣  ⤩  ⭣
-               f32 ⭢ f64
-                ⭡  ⤱  ⭡
- byte ⭢ u16 ⭢ u32 ⭢ u64 ⬎
-   ⭡  ⭨ ⭡  ⭨ ⭡  ⭨  ⭡  ptr
-   i8 ⭢ i16 ⭢ int ⭢ i64 ⬏
+   i8 → i16 → int → i64
+            ↘     ↘
+              f32 → f64
+            ↗     ↗
+ byte → u16 → u32 → u64 ⬎
+      ↘     ↘     ↘      ptr
+   i8 → i16 → int → i64 ⬏
 ```
+An `int` value for example can be automatically promoted to `f64`
+or `i64` but not to `f32` or `u32`. (`f32` would mean precission
+loss for large values and `u32` would mean loss of the sign for
+negative values).
 
 ## Strings
 

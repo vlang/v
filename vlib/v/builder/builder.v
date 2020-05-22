@@ -45,7 +45,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		table: table
 		checker: checker.new_checker(table, pref)
 		global_scope: &ast.Scope{
-			parent: 0
+			parent: voidptr(0)
 		}
 		compiled_dir: compiled_dir
 	}

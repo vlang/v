@@ -361,7 +361,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
 				field_type_sym := c.table.get_type_symbol(info_field.typ)
-				if !c.table.check(expr_type, info_field.typ) {
+				if !c.table.assign_check(expr_type, info_field.typ) {
 					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
@@ -415,7 +415,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				.array {
 					right_sym := c.table.get_type_symbol(right.array_info().elem_type)
 					if left.kind != right_sym.kind {
-						c.error('the data type on the left of `$infix_expr.op.str()` does not match the array item type',
+						c.error('the data type on the left of `$infix_expr.op.str()` ($left.name) does not match the array item type ($right_sym.kind)',
 							infix_expr.pos)
 					}
 				}
@@ -454,7 +454,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				}
 			} else {
 				promoted_type := c.table.promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
-				if promoted_type == table.Type(0) {
+				if promoted_type.idx() == table.void_type_idx {
 					c.error('mismatched types `$left.name` and `$right.name`', infix_expr.pos)
 				} else if promoted_type.is_float() {
 					if infix_expr.op in [.mod, .xor, .amp, .pipe] {
@@ -675,7 +675,7 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 		else {}
 	}
 	// Dual sides check (compatibility check)
-	if !c.table.check(right_type, left_type) {
+	if !c.table.assign_check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
 		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name`',
@@ -1248,13 +1248,14 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if assign_stmt.right_types.len < right_len {
 			assign_stmt.right_types << c.expr(assign_stmt.right[i])
 		}
-		val_type := assign_stmt.right_types[i]
+		mut val_type := assign_stmt.right_types[i]
 		// check variable name for beginning with capital letter 'Abc'
 		is_decl := assign_stmt.op == .decl_assign
 		if is_decl && ident.name != '_' {
 			c.check_valid_snake_case(ident.name, 'variable name', ident.pos)
 		}
 		if assign_stmt.op == .decl_assign {
+			val_type = c.table.mktyp(val_type)
 			c.var_decl_name = ident.name
 		}
 		mut ident_var_info := ident.var_info()
@@ -1289,12 +1290,12 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	if array_init.typ != table.void_type {
 		if array_init.exprs.len == 0 {
 			if array_init.has_cap {
-				if c.expr(array_init.cap_expr) != table.int_type {
+				if c.expr(array_init.cap_expr) !in [table.int_type, table.any_int_type] {
 					c.error('array cap needs to be an int', array_init.pos)
 				}
 			}
 			if array_init.has_len {
-				if c.expr(array_init.len_expr) != table.int_type {
+				if c.expr(array_init.len_expr) !in [table.int_type, table.any_int_type] {
 					c.error('array len needs to be an int', array_init.pos)
 				}
 			}
@@ -1304,12 +1305,12 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	// a = []
 	if array_init.exprs.len == 0 {
 		if array_init.has_cap {
-			if c.expr(array_init.cap_expr) != table.int_type {
+			if c.expr(array_init.cap_expr) !in [table.int_type, table.any_int_type] {
 				c.error('array cap needs to be an int', array_init.pos)
 			}
 		}
 		if array_init.has_len {
-			if c.expr(array_init.len_expr) != table.int_type {
+			if c.expr(array_init.len_expr) !in [table.int_type, table.any_int_type] {
 				c.error('array len needs to be an int', array_init.pos)
 			}
 		}
@@ -1360,8 +1361,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			}
 			// The first element's type
 			if i == 0 {
-				elem_type = typ
-				c.expected_type = typ
+				elem_type = c.table.mktyp(typ)
+				c.expected_type = elem_type
 				continue
 			}
 			if !c.table.check(elem_type, typ) {
@@ -1480,7 +1481,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				c.const_decl = field.name
 				c.const_deps << field.name
 				typ := c.expr(field.expr)
-				it.fields[i].typ = typ
+				it.fields[i].typ = c.table.mktyp(typ)
 				for cd in c.const_deps {
 					for j, f in it.fields {
 						if j != i && cd in field_names && cd == f.name && j !in done_fields {
@@ -1726,7 +1727,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.enum_val(mut it)
 		}
 		ast.FloatLiteral {
-			return table.f64_type
+			return table.any_flt_type
 		}
 		ast.Ident {
 			// c.checked_ident = it.name
@@ -1748,7 +1749,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.infix_expr(mut it)
 		}
 		ast.IntegerLiteral {
-			return table.int_type
+			return table.any_int_type
 		}
 		ast.MapInit {
 			return c.map_init(mut it)
@@ -1783,7 +1784,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.selector_expr(mut it)
 		}
 		ast.SizeOf {
-			return table.int_type
+			return table.u32_type
 		}
 		ast.StringLiteral {
 			if it.language == .c {
@@ -2104,16 +2105,45 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					if node.typ == table.void_type {
 						node.is_expr = true
 						node.typ = expr_type
-					} else {
-						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(expr_type)}`',
-							node.pos)
+						continue
+					} else if node.typ in [table.any_flt_type, table.any_int_type] {
+						if node.typ == table.any_int_type {
+							if expr_type.is_int() || expr_type.is_float() {
+								node.typ = expr_type
+								continue
+							} 
+						} else { // node.typ == any_float
+							if expr_type.is_float() {
+								node.typ = expr_type
+								continue
+							}
+						}
 					}
+					if expr_type in [table.any_flt_type, table.any_int_type] {
+						if expr_type == table.any_int_type {
+							if node.typ.is_int() || node.typ.is_float() {
+								continue
+							} 
+						} else { // expr_type == any_float
+							if node.typ.is_float() {
+								continue
+							}
+						}
+					}
+					c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(expr_type)}`',
+							node.pos)
 				}
 			} else {
 				c.error('`if` expression requires an expression as the last statement of every branch',
 					branch.pos)
 			}
 		}
+	}
+	// if only untyped literals were given default to int/f64
+	if node.typ == table.any_int_type {
+		node.typ = table.int_type
+	} else if  node.typ == table.any_flt_type {
+		node.typ = table.f64_type
 	}
 	if expr_required {
 		if !node.has_else {

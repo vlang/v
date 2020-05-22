@@ -402,7 +402,7 @@ pub fn (mut g Gen) gen_loop_end(to, label int) {
 }
 
 pub fn (mut g Gen) save_main_fn_addr() {
-	g.main_fn_addr = g.buf.len
+	g.main_fn_addr = i64(g.buf.len)
 }
 
 pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, newline bool) {

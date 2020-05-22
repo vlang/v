@@ -192,24 +192,29 @@ pub const (
 	map_type_idx     = 21
 	any_type_idx     = 22
 	t_type_idx       = 23
+	any_flt_type_idx = 24
+	any_int_type_idx = 25
 )
 
 pub const (
 	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
 		u16_type_idx,
 		u32_type_idx,
-		u64_type_idx
+		u64_type_idx,
+		any_int_type_idx
 	]
-	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx]
-	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx]
-	float_type_idxs            = [f32_type_idx, f64_type_idx]
+	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, any_int_type_idx]
+	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, any_int_type_idx]
+	float_type_idxs            = [f32_type_idx, f64_type_idx, any_flt_type_idx]
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx,
 		i64_type_idx, byte_type_idx,
 		u16_type_idx,
 		u32_type_idx,
 		u64_type_idx,
 		f32_type_idx,
-		f64_type_idx
+		f64_type_idx,
+		any_int_type_idx,
+		any_flt_type_idx
 	]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 	string_type_idxs           = [string_type_idx, ustring_type_idx]
@@ -239,13 +244,16 @@ pub const (
 	map_type     = new_type(map_type_idx)
 	any_type     = new_type(any_type_idx)
 	t_type       = new_type(t_type_idx)
+	any_flt_type = new_type(any_flt_type_idx)
+	any_int_type = new_type(any_int_type_idx)
 )
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64',
 		'u16',
 		'u32',
-		'u64', 'f32', 'f64', 'string', 'ustring', 'char', 'byte', 'bool', 'none', 'array', 'array_fixed',
+		'u64', 'any_int', 'f32', 'f64', 'any_float', 'string', 'ustring', 'char', 'byte',
+		'bool', 'none', 'array', 'array_fixed',
 		'map', 'any', 'struct',
 		'mapnode', 'size_t']
 )
@@ -297,6 +305,8 @@ pub enum Kind {
 	enum_
 	function
 	interface_
+	any_float
+	any_int
 }
 
 pub fn (t &TypeSymbol) str() string {
@@ -478,6 +488,16 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		name: 'size_t'
 		mod: 'builtin'
 	})
+	t.register_type_symbol(TypeSymbol{
+		kind: .any_float
+		name: 'any_float'
+		mod: 'builtin'
+	})
+	t.register_type_symbol(TypeSymbol{
+		kind: .any_int
+		name: 'any_int'
+		mod: 'builtin'
+	})
 	// TODO: remove. for v1 map compatibility
 	map_string_string_idx := t.find_or_register_map(string_type, string_type)
 	map_string_int_idx := t.find_or_register_map(string_type, int_type)
@@ -507,12 +527,12 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 
 [inline]
 pub fn (t &TypeSymbol) is_int() bool {
-	return t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64]
+	return t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .any_int]
 }
 
 [inline]
 pub fn (t &TypeSymbol) is_float() bool {
-	return t.kind in [.f32, .f64]
+	return t.kind in [.f32, .f64, .any_float]
 }
 
 [inline]
@@ -537,8 +557,10 @@ pub fn (k Kind) str() string {
 		.u16 { 'u16' }
 		.u32 { 'u32' }
 		.u64 { 'u64' }
+		.any_int { 'any_int' }
 		.f32 { 'f32' }
 		.f64 { 'f64' }
+		.any_float { 'any_float' }
 		.string { 'string' }
 		.char { 'char' }
 		.bool { 'bool' }

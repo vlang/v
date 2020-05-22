@@ -123,11 +123,11 @@ fn (mut d DenseArray) push(key string, value voidptr) u32 {
 	if d.cap == d.size {
 		d.cap += d.cap >> 3
 		d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
-		d.values = C.realloc(d.values, d.value_bytes * d.cap)
+		d.values = C.realloc(d.values, u32(d.value_bytes) * d.cap)
 	}
 	push_index := d.size
 	d.keys[push_index] = key
-	C.memcpy(d.values + push_index * d.value_bytes, value, d.value_bytes)
+	C.memcpy(d.values + push_index * u32(d.value_bytes), value, d.value_bytes)
 	d.size++
 	return push_index
 }
@@ -139,7 +139,7 @@ fn (d DenseArray) get(i int) voidptr {
 			panic('DenseArray.get: index out of range (i == $i, d.len == $d.size)')
 		}
 	}
-	return byteptr(d.keys) + i * sizeof(string)
+	return byteptr(d.keys) + i * int(sizeof(string))
 }
 
 // Move all zeros to the end of the array
@@ -154,8 +154,8 @@ fn (mut d DenseArray) zeros_to_end() {
 			d.keys[count] = d.keys[i]
 			d.keys[i] = tmp_key
 			// swap values (TODO: optimize)
-			C.memcpy(tmp_value, d.values + count * d.value_bytes, d.value_bytes)
-			C.memcpy(d.values + count * d.value_bytes, d.values + i * d.value_bytes, d.value_bytes)
+			C.memcpy(tmp_value, d.values + count * u32(d.value_bytes), d.value_bytes)
+			C.memcpy(d.values + count * u32(d.value_bytes), d.values + i * d.value_bytes, d.value_bytes)
 			C.memcpy(d.values + i * d.value_bytes, tmp_value, d.value_bytes)
 			count++
 		}
@@ -165,7 +165,7 @@ fn (mut d DenseArray) zeros_to_end() {
 	d.size = count
 	d.cap = if count < 8 { u32(8) } else { count }
 	d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
-	d.values = C.realloc(d.values, d.value_bytes * d.cap)
+	d.values = C.realloc(d.values, u32(d.value_bytes) * d.cap)
 }
 
 pub struct map {
@@ -275,7 +275,7 @@ fn (mut m map) set(key string, value voidptr) {
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if fast_string_eq(key, m.key_values.keys[kv_index]) {
-			C.memcpy(m.key_values.values + kv_index * m.value_bytes , value, m.value_bytes)
+			C.memcpy(m.key_values.values + kv_index * u32(m.value_bytes), value, m.value_bytes)
 			return
 		}
 		index += 2
@@ -344,7 +344,7 @@ fn (m map) get3(key string, zero voidptr) voidptr {
 		if meta == m.metas[index] {
 			kv_index := m.metas[index + 1]
 			if fast_string_eq(key, m.key_values.keys[kv_index]) {
-				return voidptr(m.key_values.values + kv_index * m.value_bytes)
+				return voidptr(m.key_values.values + kv_index * u32(m.value_bytes))
 			}
 		}
 		index += 2

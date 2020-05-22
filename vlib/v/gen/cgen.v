@@ -122,8 +122,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		hotcode_definitions: strings.new_builder(100)
 		table: table
 		pref: pref
-		fn_decl: 0
-		fn_main: 0
+		fn_decl: &ast.FnDecl{}
+		fn_main: &ast.FnDecl{}
 		autofree: true
 		indent: -1
 		module_built: pref.path.after('vlib/')
@@ -258,7 +258,7 @@ pub fn (mut g Gen) finish() {
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloader_code()
 	}
-	if g.fn_main != 0 {
+	if g.fn_main != voidptr(0) {
 		g.out.writeln('')
 		g.fn_decl = g.fn_main
 		g.gen_fn_decl(g.fn_main)

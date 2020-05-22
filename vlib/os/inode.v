@@ -35,19 +35,19 @@ pub fn inode(path string) FileMode {
 	C.stat(path.str, &attr)
 
 	mut typ := FileType.regular
-	if attr.st_mode & C.S_IFMT == C.S_IFDIR {
+	if attr.st_mode & u32(C.S_IFMT) == C.S_IFDIR {
 		typ = .directory
 	}
 	$if !windows {
-		if attr.st_mode & C.S_IFMT == C.S_IFCHR {
+		if attr.st_mode & u32(C.S_IFMT) == C.S_IFCHR {
 			typ = .character_device
-		} else if attr.st_mode & C.S_IFMT == C.S_IFBLK {
+		} else if attr.st_mode & u32(C.S_IFMT) == C.S_IFBLK {
 			typ = .block_device
-		} else if attr.st_mode & C.S_IFMT == C.S_IFIFO {
+		} else if attr.st_mode & u32(C.S_IFMT) == C.S_IFIFO {
 			typ = .fifo
-		} else if attr.st_mode & C.S_IFMT == C.S_IFLNK {
+		} else if attr.st_mode & u32(C.S_IFMT) == C.S_IFLNK {
 			typ = .symbolic_link
-		} else if attr.st_mode & C.S_IFMT == C.S_IFSOCK {
+		} else if attr.st_mode & u32(C.S_IFMT) == C.S_IFSOCK {
 			typ = .socket
 		}
 	}
@@ -56,38 +56,38 @@ pub fn inode(path string) FileMode {
 		return FileMode{
 			typ: typ
 			owner: FilePermission{
-				read: bool(attr.st_mode & C.S_IREAD)
-				write: bool(attr.st_mode & C.S_IWRITE)
-				execute: bool(attr.st_mode & C.S_IEXEC)
+				read: bool(attr.st_mode & u32(C.S_IREAD))
+				write: bool(attr.st_mode & u32(C.S_IWRITE))
+				execute: bool(attr.st_mode & u32(C.S_IEXEC))
 			}
 			group: FilePermission{
-				read: bool(attr.st_mode & C.S_IREAD)
-				write: bool(attr.st_mode & C.S_IWRITE)
-				execute: bool(attr.st_mode & C.S_IEXEC)
+				read: bool(attr.st_mode & u32(C.S_IREAD))
+				write: bool(attr.st_mode & u32(C.S_IWRITE))
+				execute: bool(attr.st_mode & u32(C.S_IEXEC))
 			}
 			others: FilePermission{
-				read: bool(attr.st_mode & C.S_IREAD)
-				write: bool(attr.st_mode & C.S_IWRITE)
-				execute: bool(attr.st_mode & C.S_IEXEC)
+				read: bool(attr.st_mode & u32(C.S_IREAD))
+				write: bool(attr.st_mode & u32(C.S_IWRITE))
+				execute: bool(attr.st_mode & u32(C.S_IEXEC))
 			}
 		}
 	} $else {
 		return FileMode{
 			typ: typ
 			owner: FilePermission{
-				read: bool(attr.st_mode & C.S_IRUSR)
-				write: bool(attr.st_mode & C.S_IWUSR)
-				execute: bool(attr.st_mode & C.S_IXUSR)
+				read: bool(attr.st_mode & u32(C.S_IRUSR))
+				write: bool(attr.st_mode & u32(C.S_IWUSR))
+				execute: bool(attr.st_mode & u32(C.S_IXUSR))
 			}
 			group: FilePermission{
-				read: bool(attr.st_mode & C.S_IRGRP)
-				write: bool(attr.st_mode & C.S_IWGRP)
-				execute: bool(attr.st_mode & C.S_IXGRP)
+				read: bool(attr.st_mode & u32(C.S_IRGRP))
+				write: bool(attr.st_mode & u32(C.S_IWGRP))
+				execute: bool(attr.st_mode & u32(C.S_IXGRP))
 			}
 			others: FilePermission{
-				read: bool(attr.st_mode & C.S_IROTH)
-				write: bool(attr.st_mode & C.S_IWOTH)
-				execute: bool(attr.st_mode & C.S_IXOTH)
+				read: bool(attr.st_mode & u32(C.S_IROTH))
+				write: bool(attr.st_mode & u32(C.S_IWOTH))
+				execute: bool(attr.st_mode & u32(C.S_IXOTH))
 			}
 		}
 	}
