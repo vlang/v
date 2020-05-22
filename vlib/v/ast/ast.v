@@ -170,6 +170,7 @@ pub:
 pub struct InterfaceDecl {
 pub:
 	name        string
+	comments	[]Comment
 	field_names []string
 	methods     []FnDecl
 	pos         token.Position
@@ -573,6 +574,7 @@ pub:
 	pos      token.Position
 	expr     Expr
 	has_expr bool
+	comment  Comment
 }
 
 pub struct EnumDecl {
@@ -581,6 +583,8 @@ pub:
 	is_pub bool
 	fields []EnumField
 	pos    token.Position
+mut:
+	comments []Comment
 }
 
 pub struct AliasTypeDecl {
