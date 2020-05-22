@@ -12,17 +12,13 @@ pub:
 }
 
 pub const (
-	Blue   = Color { r: 0, g: 0, b: 255 }
 	blue   = Color { r: 0, g: 0, b: 255 }
-	Red    = Color { r: 255, g: 0, b: 0 }
 	red    = Color { r: 255, g: 0, b: 0 }
-	Green  = Color { r: 0, g: 255, b: 0 }
 	green  = Color { r: 0, g: 255, b: 0 }
-	Yellow = Color { r: 255, g: 255, b: 0 }
+	yellow = Color { r: 255, g: 255, b: 0 }
 
-	Orange = Color { r: 255, g: 165, b: 0 }
 	orange = Color { r: 255, g: 165, b: 0 }
-	Purple = Color { r: 128, g: 0, b: 128 }
+	purple = Color { r: 128, g: 0, b: 128 }
 
 	Black  = Color { r: 0, g: 0, b: 0 }
 	black  = Color { r: 0, g: 0, b: 0 }
@@ -50,7 +46,6 @@ pub const (
 pub const (
 	align_left  = 1
 	align_right = 4
-	ALIGN_RIGHT = 4
 )
 
 pub struct TextCfg {

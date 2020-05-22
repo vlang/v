@@ -89,14 +89,14 @@ pub struct FlagParser {
 pub const (
 	// used for formating usage message
 	space = '                            '
-	UNDERLINE = '-----------------------------------------------'
-	MAX_ARGS_NUMBER = 4048
+	underline = '-----------------------------------------------'
+	max_args_number = 4048
 )
 
 // create a new flag set for parsing command line arguments
 // TODO use INT_MAX some how
 pub fn new_flag_parser(args []string) &FlagParser {
-	return &FlagParser{args: args.clone(), max_free_args: MAX_ARGS_NUMBER}
+	return &FlagParser{args: args.clone(), max_free_args: max_args_number}
 }
 
 // change the application name to be used in 'usage' output
@@ -358,8 +358,8 @@ pub fn (mut fs FlagParser) string(name string, abbr byte, sdefault string, usage
 }
 
 pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) {
-	if n > MAX_ARGS_NUMBER {
-		panic('flag.limit_free_args_to_at_least expect n to be smaller than $MAX_ARGS_NUMBER')
+	if n > max_args_number {
+		panic('flag.limit_free_args_to_at_least expect n to be smaller than $max_args_number')
 	}
 	if n <= 0 {
 		panic('flag.limit_free_args_to_at_least expect n to be a positive number')
@@ -368,8 +368,8 @@ pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) {
 }
 
 pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) {
-	if n > MAX_ARGS_NUMBER {
-		panic('flag.limit_free_args_to_exactly expect n to be smaller than $MAX_ARGS_NUMBER')
+	if n > max_args_number {
+		panic('flag.limit_free_args_to_exactly expect n to be smaller than $max_args_number')
 	}
 	if n < 0 {
 		panic('flag.limit_free_args_to_exactly expect n to be a non negative number')
@@ -396,7 +396,7 @@ pub fn (mut fs FlagParser) arguments_description(description string){
 pub fn (fs FlagParser) usage() string {
 
 	positive_min_arg := ( fs.min_free_args > 0 )
-	positive_max_arg := ( fs.max_free_args > 0 && fs.max_free_args != MAX_ARGS_NUMBER )
+	positive_max_arg := ( fs.max_free_args > 0 && fs.max_free_args != max_args_number )
 	no_arguments := ( fs.min_free_args == 0 && fs.max_free_args == 0 )
 
 	mut adesc := if fs.args_description.len > 0 { fs.args_description } else { '[ARGS]' }
@@ -405,7 +405,7 @@ pub fn (fs FlagParser) usage() string {
 	mut use := ''
 	if fs.application_version != '' {
 		use += '$fs.application_name $fs.application_version\n'
-		use += '$UNDERLINE\n'
+		use += '$underline\n'
 	}
 	use += 'Usage: ${fs.application_name} [options] $adesc\n'
 	use += '\n'

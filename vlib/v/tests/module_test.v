@@ -11,7 +11,7 @@ struct TestAliasInStruct {
 
 fn test_import() {
 	info := l.Level.info
-	assert os.O_RDONLY == os.O_RDONLY && t.month_days[0] == t.month_days[0] && sha256.size ==
+	assert os.o_rdonly == os.o_rdonly && t.month_days[0] == t.month_days[0] && sha256.size ==
 		sha256.size && math.pi == math.pi && info == .info && sha512.size == sha512.size
 }
 

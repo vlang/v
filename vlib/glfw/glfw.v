@@ -34,8 +34,8 @@ import gl
 // #flag darwin -framework CoreVideo
 // #flag darwin -framework IOKit
 pub const (
-	RESIZABLE = 1
-	DECORATED = 2
+	resizable = 1
+	decorated = 2
 )
 
 pub const (

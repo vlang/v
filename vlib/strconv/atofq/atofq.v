@@ -20,10 +20,10 @@ module atofq
 
 // same used in atof, here only for references
 const(
-	DOUBLE_PLUS_ZERO        = u64(0x0000000000000000)
-	DOUBLE_MINUS_ZERO       = u64(0x8000000000000000)
-	DOUBLE_PLUS_INFINITY    = u64(0x7FF0000000000000)
-	DOUBLE_MINUS_INFINITY   = u64(0xFFF0000000000000)
+	double_plus_zero        = u64(0x0000000000000000)
+	double_minus_zero       = u64(0x8000000000000000)
+	double_plus_infinity    = u64(0x7FF0000000000000)
+	double_minus_infinity   = u64(0xFFF0000000000000)
 )
 
 union Float64u {
@@ -54,10 +54,10 @@ pub fn atof_quick(s string) f64 {
 	// infinite
 	if s[i] == `i` && i + 2 < s.len && s[i + 1] == `n` && s[i + 2] == `f` {
 		if sign > 0.0 {
-			f.u = DOUBLE_PLUS_INFINITY
+			f.u = double_plus_infinity
 		}
 		else {
-			f.u = DOUBLE_MINUS_INFINITY
+			f.u = double_minus_infinity
 		}
 		return f.f
 	}
@@ -67,10 +67,10 @@ pub fn atof_quick(s string) f64 {
 		// we have a zero, manage it
 		if i >= s.len {
 			if sign > 0.0 {
-				f.u = DOUBLE_PLUS_ZERO
+				f.u = double_plus_zero
 			}
 			else {
-				f.u = DOUBLE_MINUS_ZERO
+				f.u = double_minus_zero
 			}
 			return f.f
 		}
@@ -118,10 +118,10 @@ pub fn atof_quick(s string) f64 {
 		if exp_sign == 1 {
 			if exp > pos_exp.len {
 				if sign > 0 {
-					f.u = DOUBLE_PLUS_INFINITY
+					f.u = double_plus_infinity
 				}
 				else {
-					f.u = DOUBLE_MINUS_INFINITY
+					f.u = double_minus_infinity
 				}
 				return f.f
 			}
@@ -132,10 +132,10 @@ pub fn atof_quick(s string) f64 {
 		else {
 			if exp > neg_exp.len {
 				if sign > 0 {
-					f.u = DOUBLE_PLUS_ZERO
+					f.u = double_plus_zero
 				}
 				else {
-					f.u = DOUBLE_MINUS_ZERO
+					f.u = double_minus_zero
 				}
 				return f.f
 			}

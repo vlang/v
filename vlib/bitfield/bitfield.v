@@ -22,7 +22,7 @@ mut:
 
 // helper functions
 const (
-	SLOT_SIZE = 32
+	slot_size = 32
 )
 
 // public functions
@@ -67,7 +67,7 @@ pub fn (input BitField) str() string {
 pub fn new(size int) BitField {
 	output := BitField{
 		size: size
-		//field: *u32(calloc(bitnslots(size) * SLOT_SIZE / 8))
+		//field: *u32(calloc(bitnslots(size) * slot_size / 8))
 		field: [u32(0)].repeat(bitnslots(size))
 	}
 	return output
@@ -84,7 +84,7 @@ pub fn (instance BitField) get_bit(bitnr int) int {
 	if bitnr >= instance.size {
 		return 0
 	}
-	return (instance.field[bitslot(bitnr)] >> (bitnr % SLOT_SIZE)) & u32(1)
+	return (instance.field[bitslot(bitnr)] >> (bitnr % slot_size)) & u32(1)
 }
 
 // set_bit sets bit number 'bit_nr' to 1 (count from 0).
@@ -191,8 +191,8 @@ pub fn join(input1 BitField, input2 BitField) BitField {
 	}
 
 	// find offset bit and offset slot
-	offset_bit := input1.size % SLOT_SIZE
-	offset_slot := input1.size / SLOT_SIZE
+	offset_bit := input1.size % slot_size
+	offset_slot := input1.size / slot_size
 
 	for i in 0..bitnslots(input2.size) {
 		output.field[i + offset_slot] |=
@@ -212,15 +212,15 @@ pub fn join(input1 BitField, input2 BitField) BitField {
 	 * input.
 	 * If offset_bit is zero, no additional copies needed.
 	 */
-	if (output_size - 1) % SLOT_SIZE < (input2.size - 1) % SLOT_SIZE {
+	if (output_size - 1) % slot_size < (input2.size - 1) % slot_size {
 		for i in 0..bitnslots(input2.size) {
 			output.field[i + offset_slot + 1] |=
-			    u32(input2.field[i] >> u32(SLOT_SIZE - offset_bit))
+			    u32(input2.field[i] >> u32(slot_size - offset_bit))
 		}
-	} else if (output_size - 1) % SLOT_SIZE > (input2.size - 1) % SLOT_SIZE {
+	} else if (output_size - 1) % slot_size > (input2.size - 1) % slot_size {
 		for i in 0..bitnslots(input2.size) - 1 {
 			output.field[i + offset_slot + 1] |=
-			    u32(input2.field[i] >> u32(SLOT_SIZE - offset_bit))
+			    u32(input2.field[i] >> u32(slot_size - offset_bit))
 		}
 	}
 	return output
@@ -255,10 +255,10 @@ pub fn (instance BitField) cmp(input BitField) bool {
 pub fn (instance BitField) pop_count() int {
 	size := instance.size
 	bitnslots := bitnslots(size)
-	tail := size % SLOT_SIZE
+	tail := size % slot_size
 	mut count := 0
 	for i in 0..bitnslots - 1 {
-		for j in 0..SLOT_SIZE {
+		for j in 0..slot_size {
 			if u32(instance.field[i] >> u32(j)) & u32(1) == u32(1) {
 				count++
 			}
@@ -314,10 +314,10 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 	}
 
 	mut output := new(end - start)
-	start_offset := start % SLOT_SIZE
-	end_offset := (end - 1) % SLOT_SIZE
-	start_slot := start / SLOT_SIZE
-	end_slot := (end - 1) / SLOT_SIZE
+	start_offset := start % slot_size
+	end_offset := (end - 1) % slot_size
+	start_slot := start / slot_size
+	end_slot := (end - 1) / slot_size
 	output_slots := bitnslots(end - start)
 
 	if output_slots > 1 {
@@ -327,7 +327,7 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 				    u32(input.field[start_slot + i] >> u32(start_offset))
 				output.field[i] = output.field[i] |
 				    u32(input.field[start_slot + i + 1] <<
-				    u32(SLOT_SIZE - start_offset))
+				    u32(slot_size - start_offset))
 			}
 		}
 		else {
@@ -339,30 +339,30 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 	}
 
 	if start_offset > end_offset {
-		output.field[(end - start - 1) / SLOT_SIZE] =
+		output.field[(end - start - 1) / slot_size] =
 		    u32(input.field[end_slot - 1] >> u32(start_offset))
 		mut mask := u32((1 << (end_offset + 1)) - 1)
 		mask = input.field[end_slot] & mask
-		mask = u32(mask << u32(SLOT_SIZE - start_offset))
-		output.field[(end - start - 1) / SLOT_SIZE] |= mask
+		mask = u32(mask << u32(slot_size - start_offset))
+		output.field[(end - start - 1) / slot_size] |= mask
 	}
 	else if start_offset == 0 {
 		mut mask := u32(0)
-		if end_offset == SLOT_SIZE - 1 {
+		if end_offset == slot_size - 1 {
 			mask = u32(-1)
 		}
 		else {
 			mask = u32(u32(1) << u32(end_offset + 1))
 			mask = mask - u32(1)
 		}
-		output.field[(end - start - 1) / SLOT_SIZE] =
+		output.field[(end - start - 1) / slot_size] =
 		    (input.field[end_slot] & mask)
 	}
 	else {
 		mut mask := u32(((1 << (end_offset - start_offset + 1)) - 1)  << start_offset)
 		mask = input.field[end_slot] & mask
 		mask = u32(mask >> u32(start_offset))
-		output.field[(end - start - 1) / SLOT_SIZE] |= mask
+		output.field[(end - start - 1) / slot_size] |= mask
 	}
 	return output
 }
@@ -374,13 +374,13 @@ pub fn (instance BitField) reverse() BitField {
 	bitnslots := bitnslots(size)
 	mut output := new(size)
 	for i:= 0; i < (bitnslots - 1); i++ {
-		for j in 0..SLOT_SIZE {
+		for j in 0..slot_size {
 			if u32(instance.field[i] >> u32(j)) & u32(1) == u32(1) {
-				output.set_bit(size - i * SLOT_SIZE - j - 1)
+				output.set_bit(size - i * slot_size - j - 1)
 			}
 		}
 	}
-	bits_in_last_input_slot := (size - 1) % SLOT_SIZE + 1
+	bits_in_last_input_slot := (size - 1) % slot_size + 1
 	for j in 0..bits_in_last_input_slot {
 		if u32(instance.field[bitnslots - 1] >> u32(j)) & u32(1) == u32(1) {
 			output.set_bit(bits_in_last_input_slot - j - 1)
@@ -400,7 +400,7 @@ pub fn (mut instance BitField) resize(new_size int) {
 	}
 	instance.field = field.clone()
 	instance.size = new_size
-	if new_size < old_size && new_size % SLOT_SIZE != 0 {
+	if new_size < old_size && new_size % slot_size != 0 {
 		instance.clear_tail()
 	}
 }
@@ -434,7 +434,7 @@ pub fn (instance BitField) rotate(offset int) BitField {
 // Internal functions
 
 fn (mut instance BitField) clear_tail() {
-	tail := instance.size % SLOT_SIZE
+	tail := instance.size % slot_size
 	if tail != 0 {
 		// create a mask for the tail
 		mask := u32((1 << tail) - 1)
@@ -444,11 +444,11 @@ fn (mut instance BitField) clear_tail() {
 }
 
 fn bitmask(bitnr int) u32 {
-	return u32(u32(1) << u32(bitnr % SLOT_SIZE))
+	return u32(u32(1) << u32(bitnr % slot_size))
 }
 
 fn bitslot(size int) int {
-	return size / SLOT_SIZE
+	return size / slot_size
 }
 
 fn min(input1 int, input2 int) int {
@@ -461,5 +461,5 @@ fn min(input1 int, input2 int) int {
 }
 
 fn bitnslots(length int) int {
-	return (length - 1) / SLOT_SIZE + 1
+	return (length - 1) / slot_size + 1
 }

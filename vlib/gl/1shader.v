@@ -18,7 +18,7 @@ pub fn (s Shader) str() string {
 }
 
 pub const (
-	TEXT_VERT   = '#version 330 core
+	text_vert   = '#version 330 core
 layout (location = 0) in vec4 vertex; // <vec2 pos, vec2 tex>
 out vec2 TexCoords;
 
@@ -29,7 +29,7 @@ void main()
     gl_Position = projection * vec4(vertex.xy, 0.0, 1.0);
     TexCoords = vertex.zw;
 }  '
-	TEXT_FRAG   = '#version 330 core
+	text_frag   = '#version 330 core
 in vec2 TexCoords;
 out vec4 color;
 
@@ -41,7 +41,7 @@ void main()
     vec4 sampled = vec4(1.0, 1.0, 1.0, texture(text, TexCoords).r);
     color = vec4(textColor, 1.0) * sampled;
 }  '
-	SIMPLE_VERT = ' #version 330 core
+	simple_vert = ' #version 330 core
 
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aColor;
@@ -62,7 +62,7 @@ void main() {
     TexCoord = aTexCoord;
 }
 '
-	SIMPLE_FRAG = '#version 330 core
+	simple_frag = '#version 330 core
 
 out vec4 FragColor;
 uniform vec3 color;
@@ -119,14 +119,14 @@ pub fn new_shader(name string) Shader {
 	mut vertex_src := ''
 	mut fragment_src := ''
 	if name == 'text' {
-		vertex_src = TEXT_VERT
-		fragment_src = TEXT_FRAG
+		vertex_src = text_vert
+		fragment_src = text_frag
 	}
 	else if name == 'simple' {
 		// println('new shader simple!!!')
-		// println(SIMPLE_VERT)
-		vertex_src = SIMPLE_VERT
-		fragment_src = SIMPLE_FRAG
+		// println(simple_vert)
+		vertex_src = simple_vert
+		fragment_src = simple_frag
 	}
 	// ////////////////////////////////////////
 	vertex_shader := gl.create_shader(C.GL_VERTEX_SHADER)
@@ -200,4 +200,3 @@ pub fn (s Shader) set_int(str string, n int) {
 pub fn (s Shader) set_color(str string, c gx.Color) {
 	C.glUniform3f(s.uni_location(str), f32(c.r) / 255.0, f32(c.g) / 255.0, f32(c.b) / 255.0)
 }
-
