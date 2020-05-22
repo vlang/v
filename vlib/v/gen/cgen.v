@@ -895,7 +895,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			1 {
 			// multi return
 			// TODO Handle in if_expr
-			mut or_stmts := []ast.Stmt{}
 			is_optional := return_type.flag_is(.optional)
 			mr_var_name := 'mr_$assign_stmt.pos.pos'
 			mr_styp := g.typ(return_type)
@@ -905,9 +904,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.is_assign_rhs = false
 			if is_optional && assign_stmt.right[0] is ast.CallExpr {
 				val := assign_stmt.right[0] as ast.CallExpr
-				or_stmts = val.or_block.stmts
 				return_type = val.return_type
-				g.or_block(mr_var_name, or_stmts, return_type)
+				g.or_block(mr_var_name, val.or_block, return_type)
 			}
 			g.writeln(';')
 			for i, ident in assign_stmt.left {
@@ -936,12 +934,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		ident_var_info := ident.var_info()
 		styp := g.typ(ident_var_info.typ)
 		mut is_call := false
-		mut or_stmts := []ast.Stmt{}
 		blank_assign := ident.kind == .blank_ident
 		match val {
 			ast.CallExpr {
 				is_call = true
-				or_stmts = it.or_block.stmts
 				return_type = it.return_type
 			}
 			// TODO: no buffer fiddling
@@ -1455,12 +1451,12 @@ fn (mut g Gen) enum_expr(node ast.Expr) {
 fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 	// g.write('/*assign_expr*/')
 	mut is_call := false
-	mut or_stmts := []ast.Stmt{}
+	mut or_block := ast.OrExpr{}
 	mut return_type := table.void_type
 	match node.val {
 		ast.CallExpr {
 			is_call = true
-			or_stmts = it.or_block.stmts
+			or_block = it.or_block
 			return_type = it.return_type
 		}
 		else {}
@@ -1539,7 +1535,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 	}
 	if gen_or {
 		// g.write('/*777 $tmp_opt*/')
-		g.or_block(tmp_opt, or_stmts, return_type)
+		g.or_block(tmp_opt, or_block, return_type)
 		unwrapped_type_str := g.typ(return_type.set_flag(.unset))
 		ident := node.left as ast.Ident
 		if ident.kind != .blank_ident && ident.info is ast.IdentVar {
@@ -2937,40 +2933,45 @@ fn (mut g Gen) insert_before_stmt(s string) {
 // to access its fields (`.ok`, `.error` etc)
 // `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
 // Returns the type of the last stmt
-fn (mut g Gen) or_block(var_name string, stmts []ast.Stmt, return_type table.Type) {
+fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.Type) {
 	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
 	g.writeln(';') // or')
 	g.writeln('if (!${cvar_name}.ok) {')
-	g.writeln('\tstring err = ${cvar_name}.v_error;')
-	g.writeln('\tint errcode = ${cvar_name}.ecode;')
-	if stmts.len > 0 && stmts[stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len - 1] as ast.ExprStmt).typ !=
-		table.void_type {
-		g.indent++
-		for i, stmt in stmts {
-			if i == stmts.len - 1 {
-				expr_stmt := stmt as ast.ExprStmt
-				g.stmt_path_pos << g.out.len
-				g.write('*(${mr_styp}*) ${cvar_name}.data = ')
-				is_opt_call := expr_stmt.expr is ast.CallExpr && expr_stmt.typ.flag_is(.optional)
-				if is_opt_call {
-					g.write('*(${mr_styp}*) ')
+	if or_block.kind == .block {
+		g.writeln('\tstring err = ${cvar_name}.v_error;')
+		g.writeln('\tint errcode = ${cvar_name}.ecode;')
+		stmts := or_block.stmts
+		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len - 1] as ast.ExprStmt).typ !=
+			table.void_type {
+			g.indent++
+			for i, stmt in stmts {
+				if i == stmts.len - 1 {
+					expr_stmt := stmt as ast.ExprStmt
+					g.stmt_path_pos << g.out.len
+					g.write('*(${mr_styp}*) ${cvar_name}.data = ')
+					is_opt_call := expr_stmt.expr is ast.CallExpr && expr_stmt.typ.flag_is(.optional)
+					if is_opt_call {
+						g.write('*(${mr_styp}*) ')
+					}
+					g.expr(expr_stmt.expr)
+					if is_opt_call {
+						g.write('.data')
+					}
+					if g.inside_ternary == 0 && !(expr_stmt.expr is ast.IfExpr) {
+						g.writeln(';')
+					}
+					g.stmt_path_pos.delete(g.stmt_path_pos.len - 1)
+				} else {
+					g.stmt(stmt)
 				}
-				g.expr(expr_stmt.expr)
-				if is_opt_call {
-					g.write('.data')
-				}
-				if g.inside_ternary == 0 && !(expr_stmt.expr is ast.IfExpr) {
-					g.writeln(';')
-				}
-				g.stmt_path_pos.delete(g.stmt_path_pos.len - 1)
-			} else {
-				g.stmt(stmt)
 			}
+			g.indent--
+		} else {
+			g.stmts(stmts)
 		}
-		g.indent--
-	} else {
-		g.stmts(stmts)
+	} else if or_block.kind == .propagate {
+		g.writeln('\treturn $cvar_name;')
 	}
 	g.write('}')
 }
