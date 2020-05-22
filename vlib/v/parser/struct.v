@@ -268,6 +268,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 }
 
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {
+	mut comments := []ast.Comment{}
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -291,6 +292,10 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	// Parse methods
 	mut methods := []ast.FnDecl{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+		if p.tok.kind == .comment {
+			comments << p.comment()
+			continue
+		}
 		method_start_pos := p.tok.position()
 		line_nr := p.tok.line_nr
 		name := p.check_name()

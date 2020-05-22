@@ -1342,13 +1342,19 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
 	mut vals := []string{}
+	mut comments := []ast.Comment{}
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
+		if p.tok.kind == .comment {
+			comments << p.comment()
+			continue
+		}
 		pos := p.tok.position()
 		val := p.check_name()
 		vals << val
 		mut expr := ast.Expr{}
+		mut comment := ast.Comment{}
 		mut has_expr := false
 		// p.warn('enum val $val')
 		if p.tok.kind == .assign {
@@ -1356,11 +1362,15 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			expr = p.expr(0)
 			has_expr = true
 		}
+		if p.tok.kind == .comment {
+			comment = p.comment()
+		}
 		fields << ast.EnumField{
 			name: val
 			pos: pos
 			expr: expr
 			has_expr: has_expr
+			comment: comment
 		}
 	}
 	p.check(.rcbr)
@@ -1377,6 +1387,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		is_pub: is_pub
 		fields: fields
 		pos: start_pos.extend(end_pos)
+		comments: comments
 	}
 }
 
