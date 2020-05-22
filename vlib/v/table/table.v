@@ -15,7 +15,7 @@ pub mut:
 	modules       []string // List of all modules registered by the application
 	cflags        []cflag.CFlag
 	redefined_fns []string
-	fn_gen_types  map[string][]Type
+	fn_gen_types  map[string][]Type // for generic functions
 }
 
 pub struct Fn {

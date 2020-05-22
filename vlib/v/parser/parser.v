@@ -171,24 +171,26 @@ fn (mut q Queue) run() {
 
 pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, global_scope &ast.Scope) []ast.File {
 	// println('nr_cpus= $nr_cpus')
-	if pref.is_parallel && paths[0].contains('/array.v') {
-		println('\n\n\nparse_files() nr_files=$paths.len')
-		println(paths)
-		nr_cpus := runtime.nr_cpus()
-		mut q := &Queue{
-			paths: paths
-			table: table
-			pref: pref
-			global_scope: global_scope
-			mu: sync.new_mutex()
-			mu2: sync.new_mutex()
+	$if macos {
+		if pref.is_parallel && paths[0].contains('/array.v') {
+			println('\n\n\nparse_files() nr_files=$paths.len')
+			println(paths)
+			nr_cpus := runtime.nr_cpus()
+			mut q := &Queue{
+				paths: paths
+				table: table
+				pref: pref
+				global_scope: global_scope
+				mu: sync.new_mutex()
+				mu2: sync.new_mutex()
+			}
+			for _ in 0 .. nr_cpus - 1 {
+				go q.run()
+			}
+			time.sleep_ms(1000)
+			println('all done')
+			return q.parsed_ast_files
 		}
-		for _ in 0 .. nr_cpus - 1 {
-			go q.run()
-		}
-		time.sleep_ms(1000)
-		println('all done')
-		return q.parsed_ast_files
 	}
 	// ///////////////
 	mut files := []ast.File{}
