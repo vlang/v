@@ -145,7 +145,7 @@ pub fn mkdir(path string) ?bool {
 // get_file_handle retrieves the operating-system file handle that is associated with the specified file descriptor.
 pub fn get_file_handle(path string) HANDLE {
     cfile := vfopen(path, 'rb')
-    if cfile == 0 {
+    if cfile == voidptr(0) {
 	    return HANDLE(INVALID_HANDLE_VALUE)
     }
     handle := HANDLE(C._get_osfhandle(fileno(cfile))) // CreateFile? - hah, no -_-

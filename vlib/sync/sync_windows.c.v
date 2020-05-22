@@ -32,7 +32,7 @@ pub fn new_mutex() &Mutex {
 	sm := &Mutex{}
 	unsafe {
 		mut m := sm
-		m.mx = C.CreateMutex(0, false, 0)
+		m.mx = MHANDLE(C.CreateMutex(0, false, 0))
 		if isnil(m.mx) {
 			m.state = .broken // handle broken and mutex state are broken
 			return sm
@@ -44,7 +44,7 @@ pub fn new_mutex() &Mutex {
 pub fn (mut m Mutex) lock() {
 	// if mutex handle not initalized
 	if isnil(m.mx) {
-		m.mx = C.CreateMutex(0, false, 0)
+		m.mx = MHANDLE(C.CreateMutex(0, false, 0))
 		if isnil(m.mx) {
 			m.state = .broken // handle broken and mutex state are broken
 			return
