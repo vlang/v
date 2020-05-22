@@ -156,6 +156,7 @@ pub struct StructDecl {
 pub:
 	pos         token.Position
 	name        string
+	comments	[]Comment
 	fields      []StructField
 	is_pub      bool
 	mut_pos     int // mut:

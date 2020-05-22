@@ -44,6 +44,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	// println('struct decl $name')
 	mut ast_fields := []ast.StructField{}
 	mut fields := []table.Field{}
+	mut comments := []ast.Comment{}
 	mut mut_pos := -1
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
@@ -54,9 +55,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	if !no_body {
 		p.check(.lcbr)
 		for p.tok.kind != .rcbr {
-			mut comment := ast.Comment{}
 			if p.tok.kind == .comment {
-				comment = p.comment()
+				comments << p.comment()
+				continue
 			}
 			if p.tok.kind == .key_pub {
 				p.next()
@@ -79,6 +80,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					is_field_global = false
 				}
 				p.check(.colon)
+				continue
 			} else if p.tok.kind == .key_mut {
 				if mut_pos != -1 {
 					p.error('redefinition of `mut` section')
@@ -89,6 +91,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_field_pub = false
 				is_field_mut = true
 				is_field_global = false
+				continue
 			} else if p.tok.kind == .key_global {
 				if global_pos != -1 {
 					p.error('redefinition of `global` section')
@@ -99,18 +102,12 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_field_pub = true
 				is_field_mut = true
 				is_field_global = true
+				continue
 			}
 			field_start_pos := p.tok.position()
 			field_name := p.check_name()
 			field_pos := field_start_pos.extend(p.tok.position())
-			// p.warn('field $field_name')
 			typ := p.parse_type()
-			/*
-			if name == '_net_module_s' {
-			s := p.table.get_type_symbol(typ)
-			println('XXXX' + s.str())
-		}
-			*/
 			mut default_expr := ast.Expr{}
 			mut has_default_expr := false
 			if p.tok.kind == .assign {
@@ -133,6 +130,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					attrs << attr.name
 				}
 			}
+			mut comment := ast.Comment{}
 			if p.tok.kind == .comment {
 				comment = p.comment()
 			}
