@@ -24,6 +24,7 @@ mut:
 	prev_tok          token.Token
 	peek_tok          token.Token
 	peek_tok2         token.Token
+	peek_tok3         token.Token
 	table             &table.Table
 	language          table.Language
 	inside_if         bool
@@ -213,7 +214,8 @@ pub fn (p &Parser) init_parse_fns() {
 }
 
 pub fn (mut p Parser) read_first_token() {
-	// need to call next() three times to get peek token 1 & 2 and current token
+	// need to call next() 4 times to get peek token 1,2,3 and current token
+	p.next()
 	p.next()
 	p.next()
 	p.next()
@@ -283,7 +285,8 @@ fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
 	p.peek_tok = p.peek_tok2
-	p.peek_tok2 = p.scanner.scan()
+	p.peek_tok2 = p.peek_tok3
+	p.peek_tok3 = p.scanner.scan()
 	/*
 	if p.tok.kind==.comment {
 		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
@@ -823,8 +826,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
-	if p.peek_tok.kind == .lpar || (p.peek_tok.kind == .lt && p.peek_tok2.kind == .name &&
-		p.peek_tok.pos == p.peek_tok2.pos - 1) { // foo() or foo<int>() TODO remove whitespace sensitivity
+	if p.peek_tok.kind == .lpar || (p.peek_tok.kind == .lt && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt ){
+		// foo() or foo<int>()
 		mut name := p.tok.lit
 		if mod.len > 0 {
 			name = '${mod}.$name'

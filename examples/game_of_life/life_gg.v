@@ -30,7 +30,7 @@ const (
 
 [live]
 fn print_automaton(a &automaton.Automaton){
-	gg.clear(gx.White)
+	gg.clear(gx.white)
 	square_size := 18
 	for y := 1; y<a.field.maxy; y++ {
 		for x := 1; x<a.field.maxx; x++ {

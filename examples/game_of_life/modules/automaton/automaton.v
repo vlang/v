@@ -56,7 +56,7 @@ fn new_automaton(f [][]int) Automaton {
 	return Automaton{ field: field new_field: new_field }
 }
 
-pub fn (aa mut Automaton) update() {
+pub fn (mut aa Automaton) update() {
 	aa.new_field.clear()
 	for y := 1; y<aa.field.maxy; y++ {
 		for x := 1; x<aa.field.maxx; x++ {
