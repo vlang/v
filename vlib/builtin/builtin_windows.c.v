@@ -139,7 +139,3 @@ fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 	eprintln('print_backtrace_skipping_top_frames_mingw is not implemented')
 	return false
 }
-
-pub fn println(s string) {
-	print('$s\n')
-}

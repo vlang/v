@@ -849,7 +849,13 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	} else {
 		name := short_module(node.name)
 		f.mark_module_as_used(name)
-		f.write('${name}(')
+		f.write('${name}')
+		if node.generic_type != 0 && node.generic_type != table.void_type {
+			f.write('<')
+			f.write(f.type_to_str(node.generic_type))
+			f.write('>')
+		}
+		f.write('(')
 		f.call_args(node.args)
 		f.write(')')
 		f.or_expr(node.or_block)

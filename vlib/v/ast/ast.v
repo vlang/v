@@ -43,8 +43,9 @@ pub:
 pub struct ExprStmt {
 pub:
 	expr Expr
-	typ  table.Type
 	pos  token.Position
+pub mut:
+	typ  table.Type
 }
 
 pub struct IntegerLiteral {

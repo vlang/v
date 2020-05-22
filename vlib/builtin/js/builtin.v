@@ -7,10 +7,10 @@ module builtin
 fn JS.console.log(arg ...string)
 fn JS.process.stdout.write(arg string)
 
-pub fn println(s string) {
+pub fn println(s any) {
 	JS.console.log(s)
 }
 
-pub fn print(s string) {
+pub fn print(s any) {
 	JS.process.stdout.write(s)
 }

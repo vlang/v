@@ -77,6 +77,58 @@ pub fn (f File) is_opened() bool {
 	return f.opened
 }
 
+/***************************** Write ops ****************************/
+
+pub fn (mut f File) write(s string) {
+	if !f.opened {
+		return
+	}
+	/*
+	$if linux {
+		$if !android {
+			C.syscall(sys_write, f.fd, s.str, s.len)
+			return
+		}
+	}
+	*/
+	C.fputs(s.str, f.cfile)
+}
+
+pub fn (mut f File) writeln(s string) {
+	if !f.opened {
+		return
+	}
+	/*
+	$if linux {
+		$if !android {
+			snl := s + '\n'
+			C.syscall(sys_write, f.fd, snl.str, snl.len)
+			return
+		}
+	}
+	*/
+	// TODO perf
+	C.fputs(s.str, f.cfile)
+	C.fputs('\n', f.cfile)
+}
+
+pub fn (mut f File) write_bytes(data voidptr, size int) {
+	C.fwrite(data, 1, size, f.cfile)
+}
+
+pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) {
+	//$if linux {
+	//}
+	//$else {
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	C.fwrite(data, 1, size, f.cfile)
+	C.fseek(f.cfile, 0, C.SEEK_END)
+	//}
+}
+
+/***************************** Read ops  ****************************/
+
+
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f &File) read_bytes(size int) []byte {
 	return f.read_bytes_at(size, 0)
@@ -106,6 +158,7 @@ pub fn read_bytes(path string) ?[]byte {
 	return res[0..nr_read_elements * fsize]
 }
 
+
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mode := 'rb'
@@ -125,6 +178,15 @@ pub fn read_file(path string) ?string {
 	return string(str,fsize)
 }
 
+/***************************** Utility  ops ************************/
+pub fn (mut f File) flush() {
+	if !f.opened {
+		return
+	}
+	C.fflush(f.cfile)
+}
+
+/***************************** OS ops ************************/
 // file_size returns the size of the file located in `path`.
 pub fn file_size(path string) int {
 	mut s := C.stat{}
@@ -337,22 +399,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	}
 }
 
-pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) {
-	//$if linux {
-	//}
-	//$else {
-	C.fseek(f.cfile, pos, C.SEEK_SET)
-	C.fwrite(data, 1, size, f.cfile)
-	C.fseek(f.cfile, 0, C.SEEK_END)
-	//}
-}
 
-pub fn (mut f File) flush() {
-	if !f.opened {
-		return
-	}
-	C.fflush(f.cfile)
-}
 
 // system starts the specified command, waits for it to complete, and returns its code.
 fn vpopen(path string) voidptr {
@@ -1323,37 +1370,4 @@ pub fn create(path string) ?File {
 		fd: fd
 		opened: true
 	}
-}
-
-pub fn (mut f File) write(s string) {
-	if !f.opened {
-		return
-	}
-  /*
-	$if linux {
-		$if !android {
-			C.syscall(sys_write, f.fd, s.str, s.len)
-			return
-		}
-	}
-  */
-	C.fputs(s.str, f.cfile)
-}
-
-pub fn (mut f File) writeln(s string) {
-	if !f.opened {
-		return
-	}
-  /*
-	$if linux {
-		$if !android {
-			snl := s + '\n'
-			C.syscall(sys_write, f.fd, snl.str, snl.len)
-			return
-		}
-	}
-  */
-	// TODO perf
-	C.fputs(s.str, f.cfile)
-	C.fputs('\n', f.cfile)
 }

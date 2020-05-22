@@ -79,7 +79,7 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 		ntask: 0
 		ntask_mtx: new_mutex()
 		waitgroup: new_waitgroup()
-		thread_cb: context.callback
+		thread_cb: voidptr(context.callback)
 	}
 	return pool
 }

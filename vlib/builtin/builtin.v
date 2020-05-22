@@ -91,11 +91,35 @@ pub fn print(s string) {
 			wide_str := s.to_wide()
 			wide_len := C.wcslen(wide_str)
 			C.WriteConsole(output_handle, wide_str, wide_len, &bytes_written, 0)
+			unsafe {
+				free(wide_str)
+			}
 		} else {
 			C.WriteFile(output_handle, s.str, s.len, &bytes_written, 0)
 		}
 	} $else {
 		C.printf('%.*s', s.len, s.str)
+	}
+}
+
+const (
+	new_line_character = '\n'
+)
+pub fn println(s string) {
+	$if windows {
+		print(s)
+		print(new_line_character)
+	} $else {
+		//  TODO: a syscall sys_write on linux works, except for the v repl.
+		//  Probably it is a stdio buffering issue. Needs more testing...
+		//	$if linux {
+		//		$if !android {
+		//			snl := s + '\n'
+		//			C.syscall(/* sys_write */ 1, /* stdout_value */ 1, snl.str, s.len+1)
+		//			return
+		//		}
+		//	}
+		C.printf('%.*s\n', s.len, s.str)
 	}
 }
 

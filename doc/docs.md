@@ -981,11 +981,13 @@ println(blue)
 
 Global variables are not allowed, so this can be really useful.
 
+<!--
 When naming constants, snake_case must be used.
 Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
 well in V, because consts are a lot more powerful than in other languages.
 They can represent complex structures, and this is used quite often since there
 are no globals:
+-->
 
 ```v
 println('Top cities: $TOP_CITIES.filter(.usa)')
@@ -1580,7 +1582,7 @@ and tries to compile it to a .o file, then will use that.
 
 This allows you to have C code, that is contained in a V module, so that its distribution is easier.
 You can see a complete example for using C code in a V wrapper module here:
-[minimal V project, that has a module, which contains C code](https://github.com/vlang/v/tree/master/vlib/compiler/tests/project_with_c_code)
+[minimal V project, that has a module, which contains C code](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code)
 
 You can use `-cflags` to pass custom flags to the backend C compiler. You can also use `-cc` to change the default C backend compiler.
 For example: `-cc gcc-9 -cflags -fsanitize=thread`.

@@ -33,13 +33,13 @@ match_test_suite = [
 	TestItem{"this is a good sample.",r"( ?\w+){,4}",0,14},
 	TestItem{"this is a good sample.",r"( ?\w+){,5}",0,21},
 	TestItem{"this is a good sample.",r"( ?\w+){2,3}",0,9},
-	TestItem{"this is a good sample.",r"(\s?\w+){2,3}",0,9},	
+	TestItem{"this is a good sample.",r"(\s?\w+){2,3}",0,9},
 	TestItem{"this these those.",r"(th[ei]se?\s|\.)+",0,11},
 	TestItem{"this these those ",r"(th[eio]se? ?)+",0,17},
 	TestItem{"this these those ",r"(th[eio]se? )+",0,17},
 	TestItem{"this,these,those. over",r"(th[eio]se?[,. ])+",0,17},
 	TestItem{"soday,this,these,those. over",r"(th[eio]se?[,. ])+",6,23},
-	
+
 	TestItem{"cpapaz",r"(c(pa)+z)",0,6},
 	TestItem{"this is a cpapaz over",r"(c(pa)+z)",10,16},
 	TestItem{"this is a cpapapez over",r"(c(p[ae])+z)",10,18},
@@ -55,7 +55,7 @@ match_test_suite = [
 	TestItem{"1234this cpapaz adce aabe",r"(c(pa)+z)(\s[\a]+){2}$",9,25},
 	TestItem{"this cpapaz adce aabe third",r"(c(pa)+z)(\s[\a]+){2}",5,21},
 	TestItem{"123cpapaz ole. pippo",r"(c(pa)+z)(\s+\a+[\.,]?)+",3,20},
-	
+
 	TestItem{"this is a good sample.",r".*i(\w)+",0,4},
 	TestItem{"soday,this,these,those. over",r".*,(th[eio]se?[,. ])+",0,23},
 	TestItem{"soday,this,these,thesa.thesi over",r".*,(th[ei]se?[,. ])+(thes[ai][,. ])+",0,29},
@@ -64,7 +64,7 @@ match_test_suite = [
 	TestItem{"cpapaz ole. pippo, 852",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,18},
 	TestItem{"123cpapaz ole. pippo",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,20},
 	TestItem{"...cpapaz ole. pippo",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,20},
-	
+
 	TestItem{"cpapaz ole. pippo,",r".*c.+ole.*pi",0,14},
 	TestItem{"cpapaz ole. pipipo,",r".*c.+ole.*p([ip])+o",0,18},
 	TestItem{"cpapaz ole. pipipo",r"^.*c.+ol?e.*p([ip])+o$",0,18},
@@ -84,7 +84,7 @@ match_test_suite = [
 	TestItem{"1234this cpapaz adce aabe ter",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
 	TestItem{"cpapaz ole. pipipo,",r"^.*c.+ol?e.*p([ip])+o$",-1,0},
 	TestItem{"/home/us_er/pippo/info-01.jpeg", r"(/?[-\w_]+)*\.txt$",-1,0}
-	
+
 	// check unicode
 	TestItem{"this is a Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r".*a [Ⅰ-Ⅵ ]+",0,34},
 	TestItem{"123Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r"[Ⅰ-Ⅴ\s]+",3,23},
@@ -178,16 +178,16 @@ fn test_regex(){
 		mut re, re_err, _ := regex.regex(to.q)
 		re.group_csave = [-1].repeat(3*20+1)
 
-		if re_err == regex.COMPILE_OK {
+		if re_err == regex.compile_ok {
 			start, end := re.match_string(to.src)
 
 			mut tmp_str := ""
 			if start >= 0 && end  > start{
 				tmp_str = to.src[start..end]
 			}
-			
+
 			if start != to.s || end != to.e {
-				println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")	
+				println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
 				println("ERROR!")
 				//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 				assert false
@@ -226,7 +226,7 @@ fn test_regex(){
 		//println("#$c [$to.src] q[$to.q] $to.r")
 
 		mut re, re_err, err_pos := regex.regex(to.q)
-		if re_err == regex.COMPILE_OK {
+		if re_err == regex.compile_ok {
 			res := re.find_all(to.src)
 			if res.len != to.r.len {
 				println("ERROR: find_all, array of different size.")
@@ -256,7 +256,7 @@ fn test_regex(){
 		//println("#$c [$to.src] q[$to.q] $to.r")
 
 		mut re, re_err, err_pos := regex.regex(to.q)
-		if re_err == regex.COMPILE_OK {
+		if re_err == regex.compile_ok {
 			res := re.replace(to.src,to.rep)
 			if res != to.r {
 				println("ERROR: replace.")
@@ -272,7 +272,7 @@ fn test_regex(){
 			assert false
 		}
 	}
-	
+
 	// check match and find
 	for c,to in match_test_suite {
 		// debug print
@@ -281,7 +281,7 @@ fn test_regex(){
 		// test the find
 		if to.s > 0 {
 			mut re, re_err, err_pos := regex.regex(to.q)
-			if re_err == regex.COMPILE_OK {
+			if re_err == regex.compile_ok {
 				//q_str := re.get_query()
 				//println("Query: $q_str")
 				start,end := re.find(to.src)
@@ -306,13 +306,13 @@ fn test_regex(){
 			}
 			continue
 		}
-		
+
 		// test the match
 		mut re := regex.new_regex()
 		//re.debug = true
-		
+
 		re_err,err_pos := re.compile(to.q)
-		if re_err == regex.COMPILE_OK {
+		if re_err == regex.compile_ok {
 			//println("#$c [$to.src] q[$to.q]")
 			start, end := re.match_string(to.src)
 
@@ -320,9 +320,9 @@ fn test_regex(){
 			if start >= 0 && end  > start{
 				tmp_str = to.src[start..end]
 			}
-			
+
 			if start != to.s || end != to.e {
-				println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")	
+				println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
 				println("ERROR!")
 				//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 				assert false
@@ -349,4 +349,3 @@ fn test_regex(){
 		}
 	}
 }
-
