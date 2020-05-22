@@ -148,6 +148,7 @@ pub:
 	is_pub bool
 	pos    token.Position
 pub mut:
+	comments []Comment
 	fields []ConstField
 }
 

@@ -1226,16 +1226,21 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	}
 	p.next() // (
 	mut fields := []ast.ConstField{}
+	mut comments := []ast.Comment{}
 	for p.tok.kind != .rpar {
+		if p.tok.kind == .comment {
+			comments << p.comment()
+			continue
+		}
+
+		pos := p.tok.position()
+		name := p.prepend_mod(p.check_name())
 		mut comment := ast.Comment{}
+ 
+		p.check(.assign)
 		if p.tok.kind == .comment {
 			comment = p.comment()
 		}
-		pos := p.tok.position()
-		name := p.prepend_mod(p.check_name())
-		// name := p.check_name()
-		// println('!!const: $name')
-		p.check(.assign)
 		expr := p.expr(0)
 		field := ast.ConstField{
 			name: name
@@ -1250,6 +1255,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	return ast.ConstDecl{
 		pos: start_pos.extend(end_pos)
 		fields: fields
+		comments: comments
 		is_pub: is_pub
 	}
 }
