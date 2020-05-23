@@ -80,12 +80,12 @@ pub fn get_filepath(filepath string) string {
 }
 
 pub fn formatted_error_fs(kind, emsg, filepath string, pos token.Position) string {
-	path := get_filepath(filepath)
+	// path := get_filepath(filepath)
 	source := read_file(filepath) or {
 		''
 	}
 
-	return util.formatted_error(kind, emsg, path, source, pos)
+	return util.formatted_error(kind, emsg, filepath, source, pos)
 }
 
 // formatted_error - `kind` may be 'error' or 'warn'
