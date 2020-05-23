@@ -1,0 +1,9 @@
+import os
+import time as t
+
+fn main() {
+	println('start')
+	t.sleep_ms(500)
+	println('end')
+	os.system('date')
+}

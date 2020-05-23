@@ -195,7 +195,7 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 	}
 	if false {
 		// TODO: remove this; it just prevents warnings about unused time and runtime
-		time.sleep_ms(1) 
+		time.sleep_ms(1)
 		println(runtime.nr_cpus())
 	}
 	// ///////////////
@@ -986,7 +986,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		}
 		p.check(.rpar)
 		mut or_stmts := []ast.Stmt{}
-		mut is_or_block_used := false
+		mut or_kind := ast.OrKind.absent
 		if p.tok.kind == .key_orelse {
 			p.next()
 			p.open_scope()
@@ -1002,9 +1002,14 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				pos: p.tok.position()
 				is_used: true
 			})
-			is_or_block_used = true
+			or_kind = .block
 			or_stmts = p.parse_block_no_scope()
 			p.close_scope()
+		}
+		if p.tok.kind == .question {
+			// `foo()?`
+			p.next()
+			or_kind = .propagate
 		}
 		end_pos := p.tok.position()
 		pos := token.Position{
@@ -1020,7 +1025,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			is_method: true
 			or_block: ast.OrExpr{
 				stmts: or_stmts
-				is_used: is_or_block_used
+				kind: or_kind
 			}
 		}
 		if is_filter {

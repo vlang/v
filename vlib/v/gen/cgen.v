@@ -95,6 +95,7 @@ mut:
 	is_builtin_mod       bool
 	hotcode_fn_names     []string
 	fn_main              &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
+	cur_fn               &ast.FnDecl
 	cur_generic_type     table.Type // `int`, `string`, etc in `foo<T>()`
 }
 
@@ -122,8 +123,9 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		hotcode_definitions: strings.new_builder(100)
 		table: table
 		pref: pref
-		fn_decl: 0 // should be nullptr... ?
+		fn_decl: 0
 		fn_main: 0
+		cur_fn: 0
 		autofree: true
 		indent: -1
 		module_built: pref.path.after('vlib/')
@@ -895,7 +897,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			1 {
 			// multi return
 			// TODO Handle in if_expr
-			mut or_stmts := []ast.Stmt{}
 			is_optional := return_type.flag_is(.optional)
 			mr_var_name := 'mr_$assign_stmt.pos.pos'
 			mr_styp := g.typ(return_type)
@@ -903,16 +904,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.is_assign_rhs = true
 			g.expr(assign_stmt.right[0])
 			g.is_assign_rhs = false
-			if is_optional {
-				val := assign_stmt.right[0]
-				match val {
-					ast.CallExpr {
-						or_stmts = it.or_block.stmts
-						return_type = it.return_type
-						g.or_block(mr_var_name, or_stmts, return_type)
-					}
-					else {}
-				}
+			if is_optional && assign_stmt.right[0] is ast.CallExpr {
+				val := assign_stmt.right[0] as ast.CallExpr
+				return_type = val.return_type
+				g.or_block(mr_var_name, val.or_block, return_type)
 			}
 			g.writeln(';')
 			for i, ident in assign_stmt.left {
@@ -941,12 +936,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		ident_var_info := ident.var_info()
 		styp := g.typ(ident_var_info.typ)
 		mut is_call := false
-		mut or_stmts := []ast.Stmt{}
 		blank_assign := ident.kind == .blank_ident
 		match val {
 			ast.CallExpr {
 				is_call = true
-				or_stmts = it.or_block.stmts
 				return_type = it.return_type
 			}
 			// TODO: no buffer fiddling
@@ -969,12 +962,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			else {}
 		}
-		gen_or := is_call && return_type.flag_is(.optional)
 		g.is_assign_rhs = true
 		if blank_assign {
 			if is_call {
 				g.expr(val)
 			} else {
+				if val is ast.ArrayInit {
+					g.gen_default_init_value( val as ast.ArrayInit )
+				}            
 				g.write('{$styp _ = ')
 				g.expr(val)
 				g.writeln(';}')
@@ -983,26 +978,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			right_sym := g.table.get_type_symbol(assign_stmt.right_types[i])
 			mut is_fixed_array_init := false
 			mut has_val := false
-			/*
 			if val is ast.ArrayInit {
-					is_fixed_array_init = val.is_fixed
-					has_val = val.has_val
-				}
-			*/
-			match val {
-				ast.ArrayInit {
-					is_fixed_array_init = it.is_fixed
-					has_val = it.has_val
-					elem_type_str := g.typ(it.elem_type)
-					if it.has_default {
-						g.write('$elem_type_str _val_$it.pos.pos = ')
-						g.expr(it.default_expr)
-						g.writeln(';')
-					} else if it.has_len && it.elem_type == table.string_type {
-						g.writeln('$elem_type_str _val_$it.pos.pos = tos_lit("");')
-					}
-				}
-				else {}
+				is_fixed_array_init, has_val = g.gen_default_init_value( val as ast.ArrayInit )
 			}
 			is_inside_ternary := g.inside_ternary != 0
 			cur_line := if is_inside_ternary {
@@ -1060,15 +1037,26 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
 				}
 			}
-			if gen_or {
-				g.or_block(ident.name, or_stmts, return_type)
-			}
 		}
 		g.is_assign_rhs = false
 		if g.inside_ternary == 0 {
 			g.writeln(';')
 		}
 	}
+}
+
+fn (mut g Gen) gen_default_init_value(val ast.ArrayInit) (bool, bool) {
+	is_fixed_array_init := val.is_fixed
+	has_val := val.has_val
+	elem_type_str := g.typ(val.elem_type)
+	if val.has_default {
+		g.write('$elem_type_str _val_$val.pos.pos = ')
+		g.expr(val.default_expr)
+		g.writeln(';')
+	} else if val.has_len && val.elem_type == table.string_type {
+		g.writeln('$elem_type_str _val_$val.pos.pos = tos_lit("");')
+	}
+	return is_fixed_array_init, has_val
 }
 
 fn (mut g Gen) register_ternary_name(name string) {
@@ -1464,12 +1452,12 @@ fn (mut g Gen) enum_expr(node ast.Expr) {
 fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 	// g.write('/*assign_expr*/')
 	mut is_call := false
-	mut or_stmts := []ast.Stmt{}
+	mut or_block := ast.OrExpr{}
 	mut return_type := table.void_type
 	match node.val {
 		ast.CallExpr {
 			is_call = true
-			or_stmts = it.or_block.stmts
+			or_block = it.or_block
 			return_type = it.return_type
 		}
 		else {}
@@ -1548,7 +1536,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 	}
 	if gen_or {
 		// g.write('/*777 $tmp_opt*/')
-		g.or_block(tmp_opt, or_stmts, return_type)
+		g.or_block(tmp_opt, or_block, return_type)
 		unwrapped_type_str := g.typ(return_type.set_flag(.unset))
 		ident := node.left as ast.Ident
 		if ident.kind != .blank_ident && ident.info is ast.IdentVar {
@@ -2948,55 +2936,52 @@ fn (mut g Gen) insert_before_stmt(s string) {
 // If the user is not using the optional return value. We need to pass a temp var
 // to access its fields (`.ok`, `.error` etc)
 // `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
-fn (mut g Gen) or_block(var_name string, stmts []ast.Stmt, return_type table.Type) {
+// Returns the type of the last stmt
+fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.Type) {
 	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
 	g.writeln(';') // or')
 	g.writeln('if (!${cvar_name}.ok) {')
-	g.writeln('\tstring err = ${cvar_name}.v_error;')
-	g.writeln('\tint errcode = ${cvar_name}.ecode;')
-	last_type, type_of_last_expression := g.type_of_last_statement(stmts)
-	if last_type == 'v.ast.ExprStmt' && type_of_last_expression != 'void' {
-		g.indent++
-		for i, stmt in stmts {
-			if i == stmts.len - 1 {
-				g.indent--
-				g.write('\t*(${mr_styp}*) ${cvar_name}.data = ')
+	if or_block.kind == .block {
+		g.writeln('\tstring err = ${cvar_name}.v_error;')
+		g.writeln('\tint errcode = ${cvar_name}.ecode;')
+		stmts := or_block.stmts
+		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len -
+			1] as ast.ExprStmt).typ != table.void_type {
+			g.indent++
+			for i, stmt in stmts {
+				if i == stmts.len - 1 {
+					expr_stmt := stmt as ast.ExprStmt
+					g.stmt_path_pos << g.out.len
+					g.write('*(${mr_styp}*) ${cvar_name}.data = ')
+					is_opt_call := expr_stmt.expr is ast.CallExpr && expr_stmt.typ.flag_is(.optional)
+					if is_opt_call {
+						g.write('*(${mr_styp}*) ')
+					}
+					g.expr(expr_stmt.expr)
+					if is_opt_call {
+						g.write('.data')
+					}
+					if g.inside_ternary == 0 && !(expr_stmt.expr is ast.IfExpr) {
+						g.writeln(';')
+					}
+					g.stmt_path_pos.delete(g.stmt_path_pos.len - 1)
+				} else {
+					g.stmt(stmt)
+				}
 			}
-			g.stmt(stmt)
+			g.indent--
+		} else {
+			g.stmts(stmts)
 		}
-	} else {
-		g.stmts(stmts)
+	} else if or_block.kind == .propagate {
+		if g.file.mod.name == 'main' && g.cur_fn.name == 'main' {
+			g.writeln('\tv_panic(${cvar_name}.v_error);')
+		} else {
+			g.writeln('\treturn $cvar_name;')
+		}
 	}
 	g.write('}')
-}
-
-fn (mut g Gen) type_of_last_statement(stmts []ast.Stmt) (string, string) {
-	mut last_type := ''
-	mut last_expr_result_type := ''
-	if stmts.len > 0 {
-		last_stmt := stmts[stmts.len - 1]
-		last_type = typeof(last_stmt)
-		if last_type == 'v.ast.ExprStmt' {
-			match last_stmt {
-				ast.ExprStmt {
-					it_expr_type := typeof(it.expr)
-					if it_expr_type == 'v.ast.CallExpr' {
-						g.writeln('\t // typeof it_expr_type: $it_expr_type')
-						last_expr_result_type = g.type_of_call_expr(it.expr)
-					} else {
-						last_expr_result_type = it_expr_type
-					}
-				}
-				else {
-					last_expr_result_type = last_type
-				}
-			}
-		}
-	}
-	g.writeln('\t// last_type: $last_type')
-	g.writeln('\t// last_expr_result_type: $last_expr_result_type')
-	return last_type, last_expr_result_type
 }
 
 fn (mut g Gen) type_of_call_expr(node ast.Expr) string {

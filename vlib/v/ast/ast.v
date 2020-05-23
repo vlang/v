@@ -720,11 +720,17 @@ pub mut:
 	expr_type table.Type
 }
 
+pub enum OrKind {
+	absent
+	block
+	propagate
+}
+
 // `or { ... }`
 pub struct OrExpr {
 pub:
-	stmts   []Stmt
-	is_used bool // if the or{} block is written down or left out
+	stmts []Stmt
+	kind  OrKind
 }
 
 pub struct Assoc {
