@@ -2,13 +2,16 @@ import rand
 import time
 import os
 
-const (HelpText = ' Usage:\t./VCasino\n
- Description:\n  VCasino is a little game only made to learn V.\n')
-const (GDesc = '  The object of Roulette is to pick the number where the spinning ball will land on the wheel.
+const (
+	help_text = ' Usage:\t./VCasino\n
+ Description:\n  VCasino is a little game only made to learn V.\n'
+	g_desc = '  The object of Roulette is to pick the number where the spinning ball will land on the wheel.
    If your number is the good one, you\'ll get your bet x3.
    If your number is the same color as the ball one, you\'ll get your bet /2.
-   Otherwise, you will lose your bet.\n')
-const (Odd = 'Red' Even = 'Black')
+   Otherwise, you will lose your bet.\n'
+	odd = 'red'
+	even = 'black'
+)
 
 struct Options {
     long_opt string
@@ -16,7 +19,7 @@ struct Options {
 }
 
 fn display_help() {
-    println(HelpText + GDesc)
+    println(help_text + g_desc)
 }
 
 fn option_parser() bool {
@@ -42,7 +45,7 @@ fn str_is_nbr(s string) bool {
 fn get_bet_nbr() int {
     mut bet_nbr := -1
     for bet_nbr < 0 || bet_nbr > 49 {
-        println('Reminder: Odd numbers are red and even are black.')
+        println('Reminder: odd numbers are red and even are black.')
         println('Type the number you want to bet on (between 0 and 49):')
 		line := os.get_line().trim_space()
         if line.len < 1 {
@@ -93,9 +96,9 @@ fn run_wheel(bet_nbr int, _bet int) int {
     winning_nbr := rand.next(50)
     print('Roulette Wheel spinning... and stops on the number $winning_nbr which is a ')
     if winning_nbr % 2 == 1 {
-        println(Odd)
+        println(odd)
     } else {
-        println(Even)
+        println(even)
     }
     if winning_nbr == bet_nbr {
         bet *= 3
@@ -129,7 +132,7 @@ fn game_loop() {
     mut can_play := true
     mut money := 1000
 
-    println(GDesc)
+    println(g_desc)
     println('You start the game with $money V.\n')
     for can_play {
         bet_nbr := get_bet_nbr()

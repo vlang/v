@@ -18,7 +18,7 @@ pub fn read(bytes_needed int) ?[]byte {
 	// getrandom syscall wont block if requesting <= 256 bytes
 	if bytes_needed > read_batch_size {
 		no_batches := int(math.floor(f64(bytes_needed/read_batch_size)))
-		for i:=0; i<no_batches; i++ {
+		for i:=0; i < no_batches; i++ {
 			if getrandom(read_batch_size, buffer+bytes_read) == -1 {
 				return read_error
 			}

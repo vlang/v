@@ -15,7 +15,14 @@ import strings
 
 pub type Type int
 
-pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map | MultiReturn | Struct | SumType
+pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map | MultiReturn |
+	Struct | SumType
+
+pub enum Language {
+	v
+	c
+	js
+}
 
 pub struct TypeSymbol {
 pub:
@@ -184,6 +191,7 @@ pub const (
 	array_type_idx   = 20
 	map_type_idx     = 21
 	any_type_idx     = 22
+	t_type_idx       = 23
 )
 
 pub const (
@@ -230,6 +238,7 @@ pub const (
 	array_type   = new_type(array_type_idx)
 	map_type     = new_type(map_type_idx)
 	any_type     = new_type(any_type_idx)
+	t_type       = new_type(t_type_idx)
 )
 
 pub const (
@@ -429,12 +438,12 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		name: 'char'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .bool
 		name: 'bool'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .none_
 		name: 'none'
 		mod: 'builtin'
@@ -462,6 +471,11 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(TypeSymbol{
 		kind: .any
 		name: 'any'
+		mod: 'builtin'
+	})
+	t.register_type_symbol(TypeSymbol{
+		kind: .any
+		name: 'T'
 		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
@@ -574,8 +588,8 @@ pub:
 
 pub struct Alias {
 pub:
-	foo string
-	is_c bool
+	parent_typ Type
+	language   Language
 }
 
 // NB: FExpr here is a actually an ast.Expr .
@@ -623,6 +637,7 @@ pub:
 	variants []Type
 }
 
+// TODO simplify this method
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
 	mut res := sym.name
@@ -643,7 +658,8 @@ pub fn (table &Table) type_to_str(t Type) string {
 	}
 	if sym.kind == .array || 'array_' in res {
 		res = res.replace('array_', '[]')
-	} else if sym.kind == .map || 'map_string_' in res {
+	}
+	if sym.kind == .map || 'map_string_' in res {
 		res = res.replace('map_string_', 'map[string]')
 	}
 	// mod.submod.submod2.Type => submod2.Type

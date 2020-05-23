@@ -34,6 +34,12 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	rdir := os.real_path(pref.path)
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 	table := table.new_table()
+	if pref.use_color == .always {
+		util.emanager.set_support_color(true)
+	}
+	if pref.use_color == .never {
+		util.emanager.set_support_color(false)
+	}
 	return Builder{
 		pref: pref
 		table: table
@@ -54,6 +60,10 @@ pub fn (mut b Builder) parse_imports() {
 		ast_file := b.parsed_files[i]
 		for _, imp in ast_file.imports {
 			mod := imp.mod
+			if mod == 'builtin' {
+				verror('cannot import module "$mod"')
+				break
+			}
 			if mod in done_imports {
 				continue
 			}
@@ -95,9 +105,9 @@ pub fn (mut b Builder) parse_imports() {
 pub fn (mut b Builder) resolve_deps() {
 	graph := b.import_graph()
 	deps_resolved := graph.resolve()
-	is_main_to_builtin := deps_resolved.nodes.len == 1 && deps_resolved.nodes[0].name == 'main' && deps_resolved.nodes[0].deps.len == 1 && deps_resolved.nodes[0].deps[0] == 'builtin'
-	if !deps_resolved.acyclic && !is_main_to_builtin {
-		eprintln('warning: import cycle detected between the following modules: \n' + deps_resolved.display_cycles())
+	cycles := deps_resolved.display_cycles()
+	if cycles.len > 1 {
+		eprintln('warning: import cycle detected between the following modules: \n' + cycles)
 		// TODO: error, when v itself does not have v.table -> v.ast -> v.table cycles anymore
 		return
 	}
@@ -212,14 +222,12 @@ fn (b &Builder) print_warnings_and_errors() {
 		if b.checker.nr_errors > 0 {
 			exit(1)
 		}
-
 		return
 	}
-
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
 		println('$b.checker.nr_warnings warnings')
 	}
-	if b.checker.nr_warnings > 0  && !b.pref.skip_warnings {
+	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
 		for i, err in b.checker.warnings {
 			kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_warnings:' } else { 'warning:' }
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
@@ -245,6 +253,24 @@ fn (b &Builder) print_warnings_and_errors() {
 			}
 		}
 		exit(1)
+	}
+	if b.table.redefined_fns.len > 0 {
+		for fn_name in b.table.redefined_fns {
+			eprintln('redefinition of function `$fn_name`')
+			// eprintln('previous declaration at')
+			// Find where this function was already declared
+			for file in b.parsed_files {
+				for stmt in file.stmts {
+					if stmt is ast.FnDecl {
+						f := stmt as ast.FnDecl
+						if f.name == fn_name {
+							println(file.path + ':' + f.pos.line_nr.str())
+						}
+					}
+				}
+			}
+			exit(1)
+		}
 	}
 }
 

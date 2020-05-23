@@ -1,0 +1,5 @@
+vlib/v/checker/tests/float_lit_exp_without_digit_err.v:2:14: error: exponent has no digits
+    1 | fn main() {
+    2 |     println(2E)
+      |              ^
+    3 | }

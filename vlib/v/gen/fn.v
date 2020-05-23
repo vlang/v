@@ -8,11 +8,20 @@ import v.table
 import v.util
 
 fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
-	if it.is_c {
+	if it.language == .c {
 		// || it.no_body {
 		return
 	}
 	is_main := it.name == 'main'
+	if it.is_generic && g.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
+		// loop thru each generic type and generate a function
+		for gen_type in g.table.fn_gen_types[it.name] {
+			g.cur_generic_type = gen_type
+			g.gen_fn_decl(it)
+		}
+		g.cur_generic_type = 0
+		return
+	}
 	//
 	if is_main && g.pref.is_liveshared {
 		return
@@ -56,10 +65,14 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		if it.is_method {
 			name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
 		}
-		if it.is_c {
+		if it.language == .c {
 			name = name.replace('.', '__')
 		} else {
 			name = c_name(name)
+		}
+		if g.cur_generic_type != 0 {
+			// foo<T>() => foo_int(), foo_string() etc
+			name += '_' + g.typ(g.cur_generic_type)
 		}
 		// if g.pref.show_cc && it.is_builtin {
 		// println(name)
@@ -271,7 +284,14 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
-	gen_or := !g.is_assign_rhs && node.or_block.stmts.len > 0
+	gen_or := node.or_block.stmts.len > 0
+	cur_line := if gen_or && g.is_assign_rhs {
+		line := g.go_before_stmt(0)
+		g.out.write(tabs[g.indent])
+		line
+	} else {
+		''
+	}
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		styp := g.typ(node.return_type)
@@ -284,6 +304,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block.stmts, node.return_type)
+		g.write('\n${cur_line}${tmp_opt}')
 	}
 }
 
@@ -293,7 +314,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		verror('method receiver type is 0, this means there are some uchecked exprs')
 	}
 	// mut receiver_type_name := g.cc_type(node.receiver_type)
-	//mut receiver_type_name := g.typ(node.receiver_type)
+	// mut receiver_type_name := g.typ(node.receiver_type)
 	typ_sym := g.table.get_type_symbol(node.receiver_type)
 	mut receiver_type_name := typ_sym.name.replace('.', '__')
 	if typ_sym.kind == .interface_ {
@@ -350,13 +371,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
 	// }
-	g.write('${name}(')
+	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' {
+		g.write('ptr_str(')
+	} else {
+		g.write('${name}(')
+	}
 	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
 		g.write('&')
-	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() {
+	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' {
 		g.write('/*rec*/*')
 	}
 	g.expr(node.left)
@@ -418,7 +443,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.gen_json_for_type(ast_type.typ)
 		}
 	}
-	if node.is_c {
+	if node.language == .c {
 		// Skip "C."
 		g.is_c_call = true
 		name = name[2..].replace('.', '__')
@@ -428,6 +453,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	if is_json_encode {
 		// `json__encode` => `json__encode_User`
 		name += '_' + json_type_str.replace('.', '__')
+	}
+	if node.generic_type != table.void_type && node.generic_type != 0 {
+		// `foo<int>()` => `foo_int()`
+		name += '_' + g.typ(node.generic_type)
 	}
 	// Generate tmp vars for values that have to be freed.
 	/*

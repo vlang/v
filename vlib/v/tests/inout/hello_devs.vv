@@ -2,7 +2,7 @@ import os
 
 fn main() {
 	areas := ['game', 'web', 'tools', 'science', 'systems', 'embedded']
-	for i :=0;i<areas.len; i++{
+	for i :=0; i < areas.len; i++{
 		area:=areas[i]
 		println('Hello, $area developers!')
 	}

@@ -26,4 +26,3 @@ fn phr_parse_request_path() int
 fn phr_parse_request_path_pipeline() int
 fn C.get_date() byteptr
 fn C.u64toa() int
-fn C.memcmp() int

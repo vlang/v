@@ -1216,13 +1216,22 @@ pub fn (s string) all_before_last(dot string) string {
 }
 
 pub fn (s string) all_after(dot string) string {
+	pos := s.index(dot) or {
+		return s
+	}
+	return s.right(pos + dot.len)
+}
+
+pub fn (s string) all_after_last(dot string) string {
 	pos := s.last_index(dot) or {
 		return s
 	}
 	return s.right(pos + dot.len)
 }
 
-pub fn (s string) after(dot string) string { return s.all_after(dot) }
+pub fn (s string) after(dot string) string { 
+	return s.all_after_last(dot)
+}
 
 pub fn (s string) after_char(dot byte) string {
 	mut pos := 0

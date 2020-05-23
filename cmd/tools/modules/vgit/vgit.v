@@ -102,7 +102,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 		command_for_selfbuilding = './cv.exe -o $vgit_context.vexename {SOURCE}'
 	}
 	else {
-		command_for_building_v_from_c_source = '$vgit_context.cc -std=gnu11 -w -o cv "$vgit_context.path_vc/v.c"  -lm'
+		command_for_building_v_from_c_source = '$vgit_context.cc -std=gnu11 -w -o cv "$vgit_context.path_vc/v.c"  -lm -lpthread'
 		command_for_selfbuilding = './cv -o $vgit_context.vexename {SOURCE}'
 	}
 	scripting.chdir(vgit_context.workdir)

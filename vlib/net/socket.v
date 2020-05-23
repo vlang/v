@@ -227,7 +227,7 @@ pub fn (s Socket) send(buf byteptr, len int) ?int {
 	mut dptr := buf
 	mut dlen := len
 	for {
-		sbytes := C.send(s.sockfd, dptr, dlen, MSG_NOSIGNAL)
+		sbytes := C.send(s.sockfd, dptr, dlen, msg_nosignal)
 		if sbytes < 0 {
 			return error('net.send: failed with $sbytes')
 		}
@@ -300,7 +300,7 @@ pub const (
 // write - write a string with CRLF after it over the socket s
 pub fn (s Socket) write(str string) ?int {
 	line := '$str$CRLF'
-	res := C.send(s.sockfd, line.str, line.len, MSG_NOSIGNAL)
+	res := C.send(s.sockfd, line.str, line.len, msg_nosignal)
 	if res < 0 {
 		return error('net.write: failed with $res')
 	}

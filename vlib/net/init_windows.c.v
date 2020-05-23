@@ -17,12 +17,12 @@ mut:
 
 
 const (
-	WSA_V22 = 0x202 // C.MAKEWORD(2, 2)
+	wsa_v22 = 0x202 // C.MAKEWORD(2, 2)
 )
 
 fn init() {
 	mut wsadata := C.WSAData{}
-	res := C.WSAStartup(WSA_V22, &wsadata)
+	res := C.WSAStartup(wsa_v22, &wsadata)
 	if res != 0 {
 		panic('socket: WSAStartup failed')
 	}
@@ -33,5 +33,5 @@ fn error_code() int {
 }
 
 pub const (
-	MSG_NOSIGNAL = 0
+	msg_nosignal = 0
 )

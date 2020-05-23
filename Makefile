@@ -48,7 +48,7 @@ ifdef WIN32
 	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o v.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
 	./v.exe self
 else
-	$(CC) $(CFLAGS) -g -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm
+	$(CC) $(CFLAGS) -g -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm -lpthread
 ifdef ANDROID
 	chmod 755 v
 endif

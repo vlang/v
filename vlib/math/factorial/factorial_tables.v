@@ -5,9 +5,9 @@
 module factorial
 
 const (
-        log_sqrt_2pi = 9.18938533204672741780329736e-1
+    log_sqrt_2pi = 9.18938533204672741780329736e-1
 
-        B = [
+    b_numbers = [
         /* Bernoulli numbers B(2),B(4),B(6),...,B(20).  Only B(2),...,B(10) currently
         * used.
         */

@@ -292,7 +292,7 @@ jobs:
     - name: v.c can be compiled and run
       run: |
         ./v -os cross -o /tmp/v.c cmd/v
-        gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm
+        gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
         ls -lart v_from_vc
         ./v_from_vc version
     - name: v_win.c can be compiled and run
@@ -318,3 +318,16 @@ jobs:
       run: ./v -cc g++-9 test-fixed
     - name: V self compilation with g++
       run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
+
+  install-modules:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: sudo apt-get install --quiet -y libssl-dev
+    - name: Build V
+      run: make -j4
+    - name: Installing V modules
+      run: |
+        ./v install ui
+        ./v install nedpals.args

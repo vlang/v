@@ -11,6 +11,9 @@ import v.pref
 import v.util
 import v.errors
 import os
+import runtime
+import sync
+import time
 
 pub struct Parser {
 	scanner           &scanner.Scanner
@@ -21,9 +24,9 @@ mut:
 	prev_tok          token.Token
 	peek_tok          token.Token
 	peek_tok2         token.Token
+	peek_tok3         token.Token
 	table             &table.Table
-	is_c              bool
-	is_js             bool
+	language          table.Language
 	inside_if         bool
 	inside_if_expr    bool
 	inside_or_expr    bool
@@ -131,6 +134,38 @@ pub fn parse_text(path_name string, text string, b_table &table.Table, comments_
 	}
 }
 
+struct Queue {
+mut:
+	idx              int
+	mu               &sync.Mutex
+	mu2              &sync.Mutex
+	paths            []string
+	table            &table.Table
+	parsed_ast_files []ast.File
+	pref             &pref.Preferences
+	global_scope     &ast.Scope
+}
+
+fn (mut q Queue) run() {
+	for {
+		q.mu.lock()
+		idx := q.idx
+		if idx >= q.paths.len {
+			q.mu.unlock()
+			return
+		}
+		q.idx++
+		q.mu.unlock()
+		println('run(idx=$idx)')
+		path := q.paths[idx]
+		file := parse_file(path, q.table, .skip_comments, q.pref, q.global_scope)
+		q.mu2.lock()
+		q.parsed_ast_files << file
+		q.mu2.unlock()
+		println('run done(idx=$idx)')
+	}
+}
+
 pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
 	// println('parse_file("$path")')
 	text := os.read_file(path) or {
@@ -139,48 +174,34 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	return parse_text(path, text, b_table, comments_mode, pref, global_scope)
 }
 
-/*
-struct Queue {
-mut:
-	idx              int
-	mu               sync.Mutex
-	paths            []string
-	table            &table.Table
-	parsed_ast_files []ast.File
-}
-
-fn (q mut Queue) run() {
-	q.mu.lock()
-	idx := q.idx
-	if idx >= q.paths.len {
-		q.mu.unlock()
-		return
-	}
-	q.idx++
-	q.mu.unlock()
-	path := q.paths[idx]
-	file := parse_file(path, q.table, .skip_comments)
-	q.mu.lock()
-	q.parsed_ast_files << file
-	q.mu.unlock()
-}
-*/
 pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, global_scope &ast.Scope) []ast.File {
-	/*
-	println('\n\n\nparse_files()')
-	println(paths)
-	nr_cpus := runtime.nr_cpus()
-	println('nr_cpus= $nr_cpus')
-	mut q := &Queue{
-		paths: paths
-		table: table
+	// println('nr_cpus= $nr_cpus')
+	$if macos {
+		if pref.is_parallel && paths[0].contains('/array.v') {
+			println('\n\n\nparse_files() nr_files=$paths.len')
+			println(paths)
+			nr_cpus := runtime.nr_cpus()
+			mut q := &Queue{
+				paths: paths
+				table: table
+				pref: pref
+				global_scope: global_scope
+				mu: sync.new_mutex()
+				mu2: sync.new_mutex()
+			}
+			for _ in 0 .. nr_cpus - 1 {
+				go q.run()
+			}
+			time.sleep_ms(1000)
+			println('all done')
+			return q.parsed_ast_files
+		}
 	}
-	for i in 0 .. nr_cpus {
-		go q.run()
+	if false {
+		// TODO: remove this; it just prevents warnings about unused time and runtime
+		time.sleep_ms(1) 
+		println(runtime.nr_cpus())
 	}
-	time.sleep_ms(100)
-	return q.parsed_ast_files
-	*/
 	// ///////////////
 	mut files := []ast.File{}
 	for path in paths {
@@ -197,7 +218,8 @@ pub fn (p &Parser) init_parse_fns() {
 }
 
 pub fn (mut p Parser) read_first_token() {
-	// need to call next() three times to get peek token 1 & 2 and current token
+	// need to call next() 4 times to get peek token 1,2,3 and current token
+	p.next()
 	p.next()
 	p.next()
 	p.next()
@@ -267,7 +289,8 @@ fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
 	p.peek_tok = p.peek_tok2
-	p.peek_tok2 = p.scanner.scan()
+	p.peek_tok2 = p.peek_tok3
+	p.peek_tok3 = p.scanner.scan()
 	/*
 	if p.tok.kind==.comment {
 		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
@@ -669,17 +692,16 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 	} else if p.tok.kind.is_assign() {
 		epos := p.tok.position()
 		if collected.len == 1 {
-			return ast.ExprStmt {
+			return ast.ExprStmt{
 				expr: p.assign_expr(collected[0])
 				pos: epos
 			}
-		} else {
-			return ast.ExprStmt {
-				expr: p.assign_expr(ast.ConcatExpr{
-					vals: collected
-				})
-				pos: epos
-			}
+		}
+		return ast.ExprStmt{
+			expr: p.assign_expr(ast.ConcatExpr{
+				vals: collected
+			})
+			pos: epos
 		}
 	} else {
 		if collected.len == 1 {
@@ -697,7 +719,7 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 	}
 }
 
-pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
+pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	// p.warn('name ')
 	is_mut := p.tok.kind == .key_mut
 	if is_mut {
@@ -727,8 +749,7 @@ pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
 		mut ident := ast.Ident{
 			kind: .unresolved
 			name: name
-			is_c: is_c
-			is_js: is_js
+			language: language
 			mod: p.mod
 			pos: pos
 		}
@@ -755,8 +776,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			pos: type_pos
 		}
 	}
-	is_c := p.tok.lit == 'C'
-	is_js := p.tok.lit == 'JS'
+	language := if p.tok.lit == 'C' {
+		table.Language.c
+	} else if p.tok.lit == 'JS' {
+		table.Language.js
+	} else {
+		table.Language.v
+	}
 	mut mod := ''
 	// p.warn('resetting')
 	p.expr_mod = ''
@@ -785,11 +811,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			else {}
 		}
 	}
-	if p.peek_tok.kind == .dot && !known_var && (is_c || is_js || p.known_import(p.tok.lit) ||
-		p.mod.all_after('.') == p.tok.lit) {
-		if is_c {
+	if p.peek_tok.kind == .dot && !known_var && (language != .v || p.known_import(p.tok.lit) ||
+		p.mod.all_after_last('.') == p.tok.lit) {
+		if language == .c {
 			mod = 'C'
-		} else if is_js {
+		} else if language == .js {
 			mod = 'JS'
 		} else {
 			if p.tok.lit in p.imports {
@@ -804,7 +830,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
-	if p.peek_tok.kind == .lpar {
+	if p.peek_tok.kind == .lpar || (p.peek_tok.kind == .lt && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt ){
+		// foo() or foo<int>()
 		mut name := p.tok.lit
 		if mod.len > 0 {
 			name = '${mod}.$name'
@@ -844,7 +871,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			// fn call
 			// println('calling $p.tok.lit')
-			node = p.call_expr(is_c, is_js, mod)
+			node = p.call_expr(language, mod)
 		}
 	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for {
@@ -872,10 +899,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// `foo(key:val, key2:val2)`
 		return p.struct_init(true) // short_syntax:true
 		// JS. function call with more than 1 dot
-	} else if is_js && p.peek_tok.kind == .dot && p.peek_tok2.kind == .name {
-		node = p.call_expr(is_c, is_js, mod)
+	} else if language == .js && p.peek_tok.kind == .dot && p.peek_tok2.kind == .name {
+		node = p.call_expr(language, mod)
 	} else {
-		node = p.parse_ident(is_c, is_js)
+		node = p.parse_ident(language)
 	}
 	p.expr_mod = ''
 	return node
@@ -1000,12 +1027,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				is_used: is_or_block_used
 			}
 		}
-		mut node := ast.Expr{}
-		node = mcall_expr
 		if is_filter {
 			p.close_scope()
 		}
-		return node
+		return mcall_expr
 	}
 	sel_expr := ast.SelectorExpr{
 		expr: left
@@ -1045,7 +1070,11 @@ fn (mut p Parser) string_expr() ast.Expr {
 		node = ast.StringLiteral{
 			val: val
 			is_raw: is_raw
-			is_c: is_cstr
+			language: if is_cstr {
+				table.Language.c
+			} else {
+				table.Language.v
+			}
 			pos: pos
 		}
 		return node
@@ -1210,13 +1239,17 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			comment = p.comment()
 		}
 		pos := p.tok.position()
-		name := p.prepend_mod(p.check_name())
+		name := p.check_name()
+		if util.contains_capital(name) {
+			p.warn_with_pos('const names cannot contain uppercase letters, use snake_case instead', pos)
+		}
+		full_name := p.prepend_mod(name)
 		// name := p.check_name()
 		// println('!!const: $name')
 		p.check(.assign)
 		expr := p.expr(0)
 		field := ast.ConstField{
-			name: name
+			name: full_name
 			expr: expr
 			pos: pos
 			comment: comment
@@ -1410,14 +1443,21 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	parent_type := first_type
 	parent_name := p.table.get_type_symbol(parent_type).name
 	pid := parent_type.idx()
+	language := if parent_name.len > 2 && parent_name.starts_with('C.') {
+		table.Language.c
+	} else if parent_name.len > 2 && parent_name.starts_with('JS.') {
+		table.Language.js
+	} else {
+		table.Language.v
+	}
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .alias
 		name: p.prepend_mod(name)
 		parent_idx: pid
 		mod: p.mod
 		info: table.Alias{
-			foo: ''
-			is_c: parent_name.len > 2 && parent_name[0] == `C` && parent_name[1] == `.`
+			parent_typ: parent_type
+			language: language
 		}
 		is_public: is_pub
 	})

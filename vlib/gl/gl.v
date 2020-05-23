@@ -22,9 +22,11 @@ fn C.glScissor()
 fn C.glVertexAttribPointer()
 fn C.glGenBuffers()
 fn C.glEnableVertexAttribArray()
+fn C.glDisableVertexAttribArray()
 fn C.glGenVertexArrays()
 fn C.glDrawElements()
 fn C.glUseProgram()
+fn C.glValidateProgram()
 fn C.glDrawArrays()
 fn C.glBufferData()
 fn C.glGenerateMipmap()
@@ -41,10 +43,12 @@ fn C.glDeleteShader()
 fn C.glGetProgramiv()
 fn C.glLinkProgram()
 fn C.glAttachShader()
+fn C.glDetachShader()
 fn C.glGetShaderiv()
 fn C.glCompileShader()
 fn C.glShaderSource()
 fn C.glCreateProgram() int
+fn C.glDeleteProgram()
 fn C.glClear()
 fn C.glCreateShader() int
 fn C.glClearColor()
@@ -54,8 +58,13 @@ fn C.glPixelStorei()
 fn C.glBlendFunc()
 fn C.glPolygonMode()
 fn C.glDeleteBuffers()
+fn C.glDeleteVertexArrays()
 fn C.glGetUniformLocation() int
 fn C.glGetAttribLocation() int
+fn C.glBindAttribLocation()
+
+//Uniform functions
+fn C.glUniform1f()
 
 
 pub fn init_glad() {
@@ -86,6 +95,10 @@ pub fn create_program() int {
 	return C.glCreateProgram()
 }
 
+pub fn delete_program(program int) {
+	C.glDeleteProgram(program)
+}
+
 pub fn shader_source(shader, a int, source string, b int) {
 	C.glShaderSource(shader, a, &source.str, b)
 }
@@ -105,6 +118,10 @@ pub fn attach_shader(program, shader int) {
 	C.glAttachShader(program, shader)
 }
 
+pub fn detach_shader(program, shader int) {
+	C.glDetachShader(program, shader)
+}
+
 pub fn link_program(program int) {
 	C.glLinkProgram(program)
 }
@@ -113,6 +130,10 @@ pub fn get_program_link_status(program int) int {
 	success := 0
 	C.glGetProgramiv(program, C.GL_LINK_STATUS, &success)
 	return success
+}
+
+pub fn validate_program(program int) {
+	C.glValidateProgram(program)
 }
 
 pub fn delete_shader(shader int) {
@@ -182,6 +203,14 @@ pub fn set_ebo(ebo u32, indices []int, draw_typ int) {
 	gl.buffer_data_int(C.GL_ELEMENT_ARRAY_BUFFER, indices, draw_typ)
 }
 
+pub fn delete_buffer(vbo u32) {
+	C.glDeleteBuffers(1, vbo)
+}
+
+pub fn delete_vao(vao u32) {
+	C.glDeleteVertexArrays(1, vao)
+}
+
 // /////////////////////
 // fn gen_vertex_arrays(a int, vao uint) {
 // # glGenVertexArrays(a, &VAO);
@@ -195,6 +224,10 @@ pub fn get_uniform_location(program int, key string) int {
 //gets the attribute location for key
 pub fn get_attrib_location(program int, key string) int {
 	return C.glGetAttribLocation(program, key.str)
+}
+
+pub fn bind_attrib_location(program int, index int, name string) {
+	C.glBindAttribLocation(program, index, name.str)
 }
 
 pub fn draw_arrays(typ, start, len int) {
@@ -217,6 +250,10 @@ pub fn gen_vertex_array() u32 {
 
 pub fn enable_vertex_attrib_array(n int) {
 	C.glEnableVertexAttribArray(n)
+}
+
+pub fn disable_vertex_attrib_array(n int) {
+	C.glDisableVertexAttribArray(n)
 }
 
 pub fn gen_buffer() u32 {
@@ -258,4 +295,20 @@ pub fn generate_mipmap(typ int) {
 // set mat4 at uniform location
 pub fn set_mat4fv(loc, count int, transpose bool, val glm.Mat4) {
 	C.glUniformMatrix4fv(loc, count, transpose, val.data)
+}
+
+pub fn set_f32(loc int, val f32) {
+	C.glUniform1f(loc, val)
+}
+
+pub fn set_vec(loc int, x, y, z f32) {
+	C.glUniform3f(loc, x, y, z)
+}
+
+pub fn set_bool(loc int, val bool) {
+	if val {
+		set_f32(loc, 1)
+	} else {
+		set_f32(loc, 0)
+	}
 }

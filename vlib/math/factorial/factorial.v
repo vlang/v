@@ -57,7 +57,7 @@ fn log_factorial_asymptotic_expansion(n int) f64 {
         mut i := 0
 
         for i = 0; i < m; i++ {
-                term << B[i] / xj
+                term << b_numbers[i] / xj
                 xj *= xx
         }
 

@@ -10,23 +10,19 @@ jobs:
     env:
       VFLAGS: -cc tcc
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Install dependencies
-      run: |
-        sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
-        sudo apt-get update
-        sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
-        sudo apt-get install --quiet -y sqlite3 libsqlite3-dev
-        sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev 
     - name: Build v
       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
-    - name: Test v->c
+    - name: Symlink V
+      run:  sudo ./v symlink
+    - name: Symlink tcc where v can find it
       run: |
         sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
         tcc -version
-        ./v -o v2 cmd/v # Make sure vtcc can build itself
     - name: Run network tests
-      run: ./v -d network test vlib/
+      run: ./v -d network test-fixed
 
 
   network-tests-macos:
@@ -35,31 +31,17 @@ jobs:
       matrix:
         os: [macOS-latest]
     steps:
-    - uses: actions/checkout@v1
-    - name: Install dependencies
-      run: |
-        ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
-        brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
-        brew install postgresql
-        brew install glfw sdl2 sdl2_ttf sdl2_mixer sdl2_image
-        export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
+    - uses: actions/checkout@v2
+    - name: Setup openssl library path
+      run: export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
-      run:  make -j4 && ./v -cg -o v cmd/v
-    - name: Build V using V
-      run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
-    - name: Test symlink
+      run:  make -j4
+    - name: Symlink V
       run:  sudo ./v symlink
     - name: Ensure thirdparty/cJSON/cJSON.o is compiled, before running tests.
       run:  ./v examples/json.v
-    - name: Set up pg database
-      run: |
-        brew services start postgresql
-        sleep 3
-        psql -d postgres -c 'select rolname from pg_roles'
-        psql -d postgres -c 'create database customerdb;'
-        psql -d customerdb -f examples/database/pg/mydb.sql
     - name: Run network tests
-      run: ./v -d network test vlib/
+      run: ./v -d network test-fixed
 
 
   network-windows-msvc:
@@ -67,11 +49,11 @@ jobs:
     env:
         VFLAGS: -cc msvc
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Build
       run: |
         echo %VFLAGS%
         echo $VFLAGS
         .\make.bat -msvc
     - name: Run network tests
-      run: ./v -d network test vlib/
+      run: .\v.exe -d network test-fixed

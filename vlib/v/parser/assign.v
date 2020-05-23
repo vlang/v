@@ -82,7 +82,7 @@ pub fn (mut p Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 
 fn (mut p Parser) parse_assign_ident() ast.Ident {
 	/// returns a single parsed ident
-	return p.parse_ident(false, false)
+	return p.parse_ident(.v)
 }
 
 // right hand side of `=` or `:=` in `a,b,c := 1,2,3`

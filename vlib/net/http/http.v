@@ -5,10 +5,13 @@ module http
 
 import net.urllib
 import net.http.chunked
+import strings
+import net
 
 const (
 	max_redirects        = 4
 	content_type_default = 'text/plain'
+	bufsize = 1536
 )
 
 pub struct Request {
@@ -18,7 +21,7 @@ pub mut:
 	cookies    map[string]string
 	data       string
 	url        string
-	user_agent string
+	user_agent string = 'v.http'
 	verbose    bool
 	user_ptr   voidptr
 	ws_func    voidptr
@@ -31,7 +34,7 @@ pub mut:
 	params     map[string]string
 	headers    map[string]string
 	cookies    map[string]string
-	user_agent string // ='v' QTODO
+	user_agent string = 'v.http'
 	verbose    bool = false
 }
 
@@ -314,7 +317,7 @@ fn parse_response(resp string) Response {
 		}
 		headers[key] = val.trim_space()
 	}
-	if headers['Transfer-Encoding'] == 'chunked' {
+	if headers['Transfer-Encoding'] == 'chunked' || headers['Content-Length'] == '' {
 		text = chunked.decode(text)
 	}
 	return Response{
@@ -376,4 +379,28 @@ pub fn unescape(s string) string {
 
 pub fn escape(s string) string {
 	panic('http.escape() was replaced with http.escape_url()')
+}
+
+fn (req &Request) http_do(port int, method, host_name, path string) ?Response {
+	rbuffer := [bufsize]byte
+	mut sb := strings.new_builder(100)
+	s := req.build_request_headers(method, host_name, path)
+	client := net.dial(host_name, port) or {
+		return error(err)
+	}
+	client.send(s.str, s.len) or {
+	}
+	for {
+		readbytes := client.crecv(rbuffer, bufsize)
+		if readbytes < 0 {
+			return error('http.request.http_do: error reading response. readbytes=$readbytes')
+		}
+		if readbytes == 0 {
+			break
+		}
+		sb.write(tos(rbuffer, readbytes))
+	}
+	client.close() or {
+	}
+	return parse_response(sb.str())
 }

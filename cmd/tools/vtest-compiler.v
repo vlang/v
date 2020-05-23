@@ -16,7 +16,7 @@ fn v_test_compiler(vargs string) {
 	parent_dir := os.dir(vexe)
 	testing.vlib_should_be_present(parent_dir)
 	// Changing the current directory is needed for some of the compiler tests,
-	// compiler/tests/local_test.v and compiler/tests/repl/repl_test.v
+	// vlib/v/tests/local_test.v and vlib/v/tests/repl/repl_test.v
 	os.chdir(parent_dir)
 	/*
 	if !os.exists(parent_dir + '/v.v') {

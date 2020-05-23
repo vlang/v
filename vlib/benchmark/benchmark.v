@@ -46,10 +46,10 @@ SPENT   462 ms in code_2
 
 
 const (
-	BOK = term.ok_message('OK  ')
-	BFAIL = term.fail_message('FAIL')
-	BSKIP  = term.warn_message('SKIP')
-	BSPENT = term.ok_message('SPENT')
+	b_ok = term.ok_message('OK  ')
+	b_fail = term.fail_message('FAIL')
+	b_skip  = term.warn_message('SKIP')
+	b_spent = term.ok_message('SPENT')
 )
 
 pub struct Benchmark {
@@ -148,7 +148,7 @@ pub fn start() Benchmark {
 pub fn (mut b Benchmark) measure(label string) i64 {
 	b.ok()
 	res := b.step_timer.elapsed().microseconds()
-	println(b.step_message_with_label(BSPENT, 'in $label'))
+	println(b.step_message_with_label(b_spent, 'in $label'))
 	b.step()
 	return res
 }
@@ -184,15 +184,15 @@ pub fn (b &Benchmark) step_message(msg string) string {
 }
 
 pub fn (b &Benchmark) step_message_ok(msg string) string {
-	return b.step_message_with_label(BOK, msg)
+	return b.step_message_with_label(b_ok, msg)
 }
 
 pub fn (b &Benchmark) step_message_fail(msg string) string {
-	return b.step_message_with_label(BFAIL, msg)
+	return b.step_message_with_label(b_fail, msg)
 }
 
 pub fn (b &Benchmark) step_message_skip(msg string) string {
-	return b.step_message_with_label(BSKIP, msg)
+	return b.step_message_with_label(b_skip, msg)
 }
 
 pub fn (b &Benchmark) total_message(msg string) string {

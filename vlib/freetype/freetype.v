@@ -286,7 +286,7 @@ fn (mut ctx FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 	wx, wy := ctx.text_size(utext.s)
 	yoffset := if ctx.scale > 1 { 5 } else { -1 } // 5 hidpi, -1 lowdpi
 	// println('scale=$ctx.scale size=$cfg.size')
-	if cfg.align == gx.ALIGN_RIGHT {
+	if cfg.align == gx.align_right {
 		// width := utext.len * 7
 		width := wx
 		x -= width + 10
@@ -374,7 +374,7 @@ fn (mut ctx FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 
 pub fn (mut ctx FreeType) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg{
-		color: gx.Black
+		color: gx.black
 		size: default_font_size
 		align: gx.align_left
 	}

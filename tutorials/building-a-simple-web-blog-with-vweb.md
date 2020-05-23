@@ -53,9 +53,7 @@ First, let's create a simple hello world website:
 // blog.v
 module main
 
-import (
-	vweb
-)
+import vweb
 
 pub struct App {
 mut:

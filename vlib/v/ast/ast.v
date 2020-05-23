@@ -43,8 +43,9 @@ pub:
 pub struct ExprStmt {
 pub:
 	expr Expr
-	typ  table.Type
 	pos  token.Position
+pub mut:
+	typ  table.Type
 }
 
 pub struct IntegerLiteral {
@@ -61,11 +62,10 @@ pub:
 
 pub struct StringLiteral {
 pub:
-	val    string
-	is_raw bool
-	is_c   bool
-	is_js  bool
-	pos    token.Position
+	val      string
+	is_raw   bool
+	language table.Language
+	pos      token.Position
 }
 
 // 'name: $name'
@@ -160,8 +160,7 @@ pub:
 	mut_pos     int // mut:
 	pub_pos     int // pub:
 	pub_mut_pos int // pub mut:
-	is_c        bool
-	is_js       bool
+	language    table.Language
 	is_union    bool
 	attr        string
 }
@@ -221,14 +220,14 @@ pub:
 	receiver_pos  token.Position
 	is_method     bool
 	rec_mut       bool // is receiver mutable
-	is_c          bool
-	is_js         bool
+	language      table.Language
 	no_body       bool // just a definition `fn C.malloc()`
 	is_builtin    bool // this function is defined in builtin/strconv
 	ctdefine      string // has [if myflag] tag
 	pos           token.Position
 	body_pos      token.Position
 	file          string
+	is_generic    bool
 pub mut:
 	return_type   table.Type
 }
@@ -248,13 +247,13 @@ pub mut:
 	is_method          bool
 	args               []CallArg
 	expected_arg_types []table.Type
-	is_c               bool
-	is_js              bool
+	language           table.Language
 	or_block           OrExpr
 	left_type          table.Type // type of `user`
 	receiver_type      table.Type // User
 	return_type        table.Type
 	should_be_skipped  bool
+	generic_type       table.Type // TODO array, to support multiple types
 }
 
 pub struct CallArg {
@@ -349,8 +348,7 @@ pub enum IdentKind {
 pub struct Ident {
 pub:
 	value    string
-	is_c     bool
-	is_js    bool
+	language table.Language
 	tok_kind token.Kind
 	mod      string
 	pos      token.Position

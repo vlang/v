@@ -125,9 +125,9 @@ fn (mut mcache ModFileCacher) mark_folders_as_vmod_free( folders_so_far []string
 	}
 }
 
-const ( MOD_FILE_STOP_PATHS = ['.git', '.hg', '.svn', '.v.mod.stop' ] )
+const ( mod_file_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop' ] )
 fn (mcache &ModFileCacher) check_for_stop(cfolder string, files []string) bool {
-	for i in MOD_FILE_STOP_PATHS {
+	for i in mod_file_stop_paths {
 		if i in files {
 			return true
 		}

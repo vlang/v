@@ -25,7 +25,7 @@ fn test_socket() {
 	received := tos(bytes, blen)
 	$if debug {	println('message received: $received')	}
 	$if debug {	println('client: $client.sockfd')	}
-	
+
 	assert message == received
 	cleanup(server, client, socket)
 }
@@ -39,7 +39,7 @@ fn test_socket_write() {
 	assert line1.trim_space() == message1
 	cleanup(server, client, socket)
 }
-  
+
 fn test_socket_write_fail_without_panic() {
 	server, client, socket := setup()
 	message2 := 'a message 2'
@@ -48,7 +48,7 @@ fn test_socket_write_fail_without_panic() {
 	// this test is important for a stable long standing server
 	client.close() or {}
 	$if solaris { return } // TODO: fix segfaulting on Solaris
-	for i:=0; i<3; i++{
+	for i:=0; i<3; i++ {
 		socket.write(message2) or {
 			println('write to a socket without a recipient should produce an option fail: $err | $message2')
 			assert true

@@ -10,8 +10,7 @@ fn error_code() int {
 }
 
 pub const (
-	MSG_NOSIGNAL = 0x4000
+	msg_nosignal = 0x4000
 )
 
 #flag solaris -lsocket
-

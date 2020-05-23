@@ -8,12 +8,14 @@ import v.cflag
 
 pub struct Table {
 pub mut:
-	types     []TypeSymbol
-	type_idxs map[string]int
-	fns       map[string]Fn
-	imports   []string // List of all imports
-	modules   []string // List of all modules registered by the application
-	cflags    []cflag.CFlag
+	types         []TypeSymbol
+	type_idxs     map[string]int
+	fns           map[string]Fn
+	imports       []string // List of all imports
+	modules       []string // List of all modules registered by the application
+	cflags        []cflag.CFlag
+	redefined_fns []string
+	fn_gen_types  map[string][]Type // for generic functions
 }
 
 pub struct Fn {
@@ -21,8 +23,7 @@ pub:
 	args        []Arg
 	return_type Type
 	is_variadic bool
-	is_c        bool
-	is_js       bool
+	language    Language
 	is_generic  bool
 	is_pub      bool
 	mod         string
@@ -467,9 +468,9 @@ pub fn (t &Table) check(got, expected Type) bool {
 		got_idx in number_type_idxs) {
 		return true
 	}
-	//if exp_idx in pointer_type_idxs && got_idx in pointer_type_idxs {
-		//return true
-	//}
+	// if exp_idx in pointer_type_idxs && got_idx in pointer_type_idxs {
+	// return true
+	// }
 	// see hack in checker IndexExpr line #691
 	if (got_idx == byte_type_idx && exp_idx == byteptr_type_idx) || (exp_idx == byte_type_idx &&
 		got_idx == byteptr_type_idx) {
@@ -567,4 +568,13 @@ pub fn (table &Table) qualify_module(mod, file_path string) string {
 		}
 	}
 	return mod
+}
+
+pub fn (table &Table) register_fn_gen_type(fn_name string, typ Type) {
+	mut a := table.fn_gen_types[fn_name]
+	if typ in a {
+		return
+	}
+	a << typ
+	table.fn_gen_types[fn_name] = a
 }

@@ -12,45 +12,35 @@ pub:
 }
 
 pub const (
-	Blue   = Color { r: 0, g: 0, b: 255 }
 	blue   = Color { r: 0, g: 0, b: 255 }
-	Red    = Color { r: 255, g: 0, b: 0 }
 	red    = Color { r: 255, g: 0, b: 0 }
-	Green  = Color { r: 0, g: 255, b: 0 }
 	green  = Color { r: 0, g: 255, b: 0 }
-	Yellow = Color { r: 255, g: 255, b: 0 }
+	yellow = Color { r: 255, g: 255, b: 0 }
 
-	Orange = Color { r: 255, g: 165, b: 0 }
 	orange = Color { r: 255, g: 165, b: 0 }
-	Purple = Color { r: 128, g: 0, b: 128 }
+	purple = Color { r: 128, g: 0, b: 128 }
 
-	Black  = Color { r: 0, g: 0, b: 0 }
 	black  = Color { r: 0, g: 0, b: 0 }
-	Gray   = Color { r: 128, g: 128, b: 128 }
 	gray   = Color { r: 128, g: 128, b: 128 }
-	Indigo = Color { r: 75, g: 0, b: 130 }
-	Pink   = Color { r: 255, g: 192, b: 203 }
-	Violet = Color { r: 238, g: 130, b: 238 }
-	White  = Color { r: 255, g: 255, b: 255 }
+	indigo = Color { r: 75, g: 0, b: 130 }
+	pink   = Color { r: 255, g: 192, b: 203 }
+	violet = Color { r: 238, g: 130, b: 238 }
 	white  = Color { r: 255, g: 255, b: 255 }
 
 	// Shades
-	DarkBlue   = Color { r: 0, g: 0, b: 139 }
-	DarkGray   = Color { r: 169, g: 169, b: 169 }
+	dark_blue   = Color { r: 0, g: 0, b: 139 }
 	dark_gray   = Color { r: 169, g: 169, b: 169 }
-	DarkGreen  = Color { r: 0, g: 100, b: 0 }
-	DarkRed    = Color { r: 139, g: 0, b: 0 }
-	LightBlue  = Color { r: 173, g: 216, b: 230 }
-	light_blue = Color { r: 173, g: 216, b: 230 }
-	LightGray  = Color { r: 211, g: 211, b: 211 }
-	LightGreen = Color { r: 144, g: 238, b: 144 }
-	LightRed   = Color { r: 255, g: 204, b: 203 }
+	dark_green  = Color { r: 0, g: 100, b: 0 }
+	dark_red    = Color { r: 139, g: 0, b: 0 }
+	light_blue  = Color { r: 173, g: 216, b: 230 }
+	light_gray  = Color { r: 211, g: 211, b: 211 }
+	light_green = Color { r: 144, g: 238, b: 144 }
+	light_red   = Color { r: 255, g: 204, b: 203 }
 )
 
 pub const (
 	align_left  = 1
 	align_right = 4
-	ALIGN_RIGHT = 4
 )
 
 pub struct TextCfg {

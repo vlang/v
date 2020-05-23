@@ -24,7 +24,7 @@ fn C.readdir(voidptr) C.dirent
 
 pub const (
 	args = []string{}
-	MAX_PATH = 4096
+	max_path_len = 4096
 )
 
 pub struct File {
@@ -77,6 +77,58 @@ pub fn (f File) is_opened() bool {
 	return f.opened
 }
 
+/***************************** Write ops ****************************/
+
+pub fn (mut f File) write(s string) {
+	if !f.opened {
+		return
+	}
+	/*
+	$if linux {
+		$if !android {
+			C.syscall(sys_write, f.fd, s.str, s.len)
+			return
+		}
+	}
+	*/
+	C.fputs(s.str, f.cfile)
+}
+
+pub fn (mut f File) writeln(s string) {
+	if !f.opened {
+		return
+	}
+	/*
+	$if linux {
+		$if !android {
+			snl := s + '\n'
+			C.syscall(sys_write, f.fd, snl.str, snl.len)
+			return
+		}
+	}
+	*/
+	// TODO perf
+	C.fputs(s.str, f.cfile)
+	C.fputs('\n', f.cfile)
+}
+
+pub fn (mut f File) write_bytes(data voidptr, size int) {
+	C.fwrite(data, 1, size, f.cfile)
+}
+
+pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) {
+	//$if linux {
+	//}
+	//$else {
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	C.fwrite(data, 1, size, f.cfile)
+	C.fseek(f.cfile, 0, C.SEEK_END)
+	//}
+}
+
+/***************************** Read ops  ****************************/
+
+
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f &File) read_bytes(size int) []byte {
 	return f.read_bytes_at(size, 0)
@@ -106,6 +158,7 @@ pub fn read_bytes(path string) ?[]byte {
 	return res[0..nr_read_elements * fsize]
 }
 
+
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mode := 'rb'
@@ -125,6 +178,15 @@ pub fn read_file(path string) ?string {
 	return string(str,fsize)
 }
 
+/***************************** Utility  ops ************************/
+pub fn (mut f File) flush() {
+	if !f.opened {
+		return
+	}
+	C.fflush(f.cfile)
+}
+
+/***************************** OS ops ************************/
 // file_size returns the size of the file located in `path`.
 pub fn file_size(path string) int {
 	mut s := C.stat{}
@@ -223,11 +285,23 @@ pub fn mv_by_cp(source string, target string) ?bool {
 	return true
 }
 
-fn vfopen(path, mode string) &C.FILE {
+// vfopen returns an opened C file, given its path and open mode.
+// NB: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
+// If you write pure V code, os.create or os.open are more convenient.
+pub fn vfopen(path, mode string) &C.FILE {
 	$if windows {
 		return C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
 		return C.fopen(charptr(path.str), charptr(mode.str))
+	}
+}
+
+// fileno returns the file descriptor of an opened C file
+pub fn fileno(cfile voidptr) int {
+	$if windows {
+		return C._fileno(cfile)
+	} $else {
+		return C.fileno(cfile)
 	}
 }
 
@@ -278,13 +352,13 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	mut flags := 0
 	for m in mode {
 		match m {
-			`r` { flags |= O_RDONLY }
-			`w` { flags |= O_CREATE | O_TRUNC }
-			`a` { flags |= O_CREATE | O_APPEND }
-			`s` { flags |= O_SYNC }
-			`n` { flags |= O_NONBLOCK }
-			`c` { flags |= O_NOCTTY }
-			`+` { flags |= O_RDWR }
+			`r` { flags |= o_rdonly }
+			`w` { flags |= o_create | o_trunc }
+			`a` { flags |= o_create | o_append }
+			`s` { flags |= o_sync }
+			`n` { flags |= o_nonblock }
+			`c` { flags |= o_noctty }
+			`+` { flags |= o_rdwr }
 			else {}
 		}
 	}
@@ -325,22 +399,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	}
 }
 
-pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) {
-	//$if linux {
-	//}
-	//$else {
-	C.fseek(f.cfile, pos, C.SEEK_SET)
-	C.fwrite(data, 1, size, f.cfile)
-	C.fseek(f.cfile, 0, C.SEEK_END)
-	//}
-}
 
-pub fn (mut f File) flush() {
-	if !f.opened {
-		return
-	}
-	C.fflush(f.cfile)
-}
 
 // system starts the specified command, waits for it to complete, and returns its code.
 fn vpopen(path string) voidptr {
@@ -511,19 +570,19 @@ pub fn sigint_to_signal_name(si int) string {
 }
 
 const (
-	F_OK = 0
-	X_OK = 1
-	W_OK = 2
-	R_OK = 4
+	f_ok = 0
+	x_ok = 1
+	w_ok = 2
+	r_ok = 4
 )
 
 // exists returns true if `path` exists.
 pub fn exists(path string) bool {
 	$if windows {
 		p := path.replace('/', '\\')
-		return C._waccess(p.to_wide(), F_OK) != -1
+		return C._waccess(p.to_wide(), f_ok) != -1
 	} $else {
-		return C.access(path.str, F_OK) != -1
+		return C.access(path.str, f_ok) != -1
 	}
 }
 
@@ -544,9 +603,9 @@ pub fn is_executable(path string) bool {
     if C.stat(path.str, &statbuf) != 0 {
       return false
     }
-    return (int(statbuf.st_mode) & ( S_IXUSR | S_IXGRP | S_IXOTH )) != 0
+    return (int(statbuf.st_mode) & ( s_ixusr | s_ixgrp | s_ixoth )) != 0
   }
-  return C.access(path.str, X_OK) != -1
+  return C.access(path.str, x_ok) != -1
 }
 
 // `is_writable_folder` - `folder` exists and is writable to the process
@@ -570,9 +629,9 @@ pub fn is_writable_folder(folder string) ?bool {
 pub fn is_writable(path string) bool {
   $if windows {
     p := path.replace('/', '\\')
-    return C._waccess(p.to_wide(), W_OK) != -1
+    return C._waccess(p.to_wide(), w_ok) != -1
   } $else {
-    return C.access(path.str, W_OK) != -1
+    return C.access(path.str, w_ok) != -1
   }
 }
 
@@ -580,9 +639,9 @@ pub fn is_writable(path string) bool {
 pub fn is_readable(path string) bool {
   $if windows {
     p := path.replace('/', '\\')
-    return C._waccess(p.to_wide(), R_OK) != -1
+    return C._waccess(p.to_wide(), r_ok) != -1
   } $else {
-    return C.access(path.str, R_OK) != -1
+    return C.access(path.str, r_ok) != -1
   }
 }
 
@@ -663,7 +722,7 @@ pub fn base_dir(path string) string {
 }
 
 pub fn file_name(path string) string {
-	return path.all_after(path_separator)
+	return path.all_after_last(path_separator)
 }
 
 // input returns a one-line string from stdin, after printing a prompt
@@ -689,7 +748,7 @@ pub fn get_raw_line() string {
 		unsafe {
 			max_line_chars := 256
 			buf := malloc(max_line_chars * 2)
-			h_input := C.GetStdHandle(STD_INPUT_HANDLE)
+			h_input := C.GetStdHandle(std_input_handle)
 			mut bytes_read := 0
 			if is_atty(0) > 0 {
 				C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
@@ -844,8 +903,8 @@ fn C.readlink() int
 // process.
 pub fn executable() string {
 	$if linux {
-		mut result := vcalloc(MAX_PATH)
-		count := C.readlink('/proc/self/exe', result, MAX_PATH)
+		mut result := vcalloc(max_path_len)
+		count := C.readlink('/proc/self/exe', result, max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
@@ -854,14 +913,14 @@ pub fn executable() string {
 	}
 	$if windows {
 		max := 512
-		mut result := &u16(vcalloc(max * 2)) // MAX_PATH * sizeof(wchar_t)
+		mut result := &u16(vcalloc(max * 2)) // max_path_len * sizeof(wchar_t)
 		len := C.GetModuleFileName(0, result, max)
 		return string_from_wide2(result, len)
 	}
 	$if macos {
-		mut result := vcalloc(MAX_PATH)
+		mut result := vcalloc(max_path_len)
 		pid := C.getpid()
-		ret := proc_pidpath(pid, result, MAX_PATH)
+		ret := proc_pidpath(pid, result, max_path_len)
 		if ret <= 0 {
 			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
 			return executable_fallback()
@@ -869,9 +928,9 @@ pub fn executable() string {
 		return string(result)
 	}
 	$if freebsd {
-		mut result := vcalloc(MAX_PATH)
+		mut result := vcalloc(max_path_len)
 		mib := [1/* CTL_KERN */, 14/* KERN_PROC */, 12/* KERN_PROC_PATHNAME */, -1]
-		size := MAX_PATH
+		size := max_path_len
 		C.sysctl(mib.data, 4, result, &size, 0, 0)
 		return string(result)
 	}
@@ -880,8 +939,8 @@ pub fn executable() string {
 	$if solaris {}
 	$if haiku {}
 	$if netbsd {
-		mut result := vcalloc(MAX_PATH)
-		count := C.readlink('/proc/curproc/exe', result, MAX_PATH)
+		mut result := vcalloc(max_path_len)
+		count := C.readlink('/proc/curproc/exe', result, max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
@@ -889,8 +948,8 @@ pub fn executable() string {
 		return string(result,count)
 	}
 	$if dragonfly {
-		mut result := vcalloc(MAX_PATH)
-		count := C.readlink('/proc/curproc/file', result, MAX_PATH)
+		mut result := vcalloc(max_path_len)
+		count := C.readlink('/proc/curproc/file', result, max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
@@ -977,8 +1036,8 @@ pub fn is_dir(path string) bool {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
-		val:= int(statbuf.st_mode) & S_IFMT
-		return val == S_IFDIR
+		val:= int(statbuf.st_mode) & os.s_ifmt
+		return val == s_ifdir
 	}
 }
 
@@ -991,7 +1050,7 @@ pub fn is_link(path string) bool {
 		if C.lstat(path.str, &statbuf) != 0 {
 			return false
 		}
-		return int(statbuf.st_mode) & S_IFMT == S_IFLNK
+		return int(statbuf.st_mode) & s_ifmt == s_iflnk
 	}
 }
 
@@ -1007,7 +1066,7 @@ pub fn chdir(path string) {
 // getwd returns the absolute path name of the current directory.
 pub fn getwd() string {
 	$if windows {
-		max := 512 // MAX_PATH * sizeof(wchar_t)
+		max := 512 // max_path_len * sizeof(wchar_t)
 		buf := &u16(vcalloc(max * 2))
 		if C._wgetcwd(buf, max) == 0 {
 			return ''
@@ -1028,10 +1087,10 @@ pub fn getwd() string {
 // and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
 pub fn real_path(fpath string) string {
-	mut fullpath := vcalloc(MAX_PATH)
+	mut fullpath := vcalloc(max_path_len)
 	mut ret := charptr(0)
 	$if windows {
-		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
+		ret = C._fullpath(fullpath, fpath.str, max_path_len)
 		if ret == 0 {
 			return fpath
 		}
@@ -1245,4 +1304,70 @@ pub fn resource_abs_path(path string) string {
 		base_path = vresource
 	}
 	return os.real_path(os.join_path(base_path, path))
+}
+
+
+// open tries to open a file for reading and returns back a read-only `File` object
+pub fn open(path string) ?File {
+  /*
+	$if linux {
+		$if !android {
+			fd := C.syscall(sys_open, path.str, 511)
+			if fd == -1 {
+				return error('failed to open file "$path"')
+			}
+			return File{
+				fd: fd
+				opened: true
+			}
+		}
+	}
+  */
+	cfile := vfopen(path, 'rb')
+	if cfile == 0 {
+		return error('failed to open file "$path"')
+	}
+	fd := fileno(cfile)
+	return File {
+		cfile: cfile
+		fd: fd
+		opened: true
+	}
+}
+
+// create creates or opens a file at a specified location and returns a write-only `File` object
+pub fn create(path string) ?File {
+  /*
+	// NB: android/termux/bionic is also a kind of linux,
+	// but linux syscalls there sometimes fail,
+	// while the libc version should work.
+	$if linux {
+		$if !android {
+			//$if macos {
+			//	fd = C.syscall(398, path.str, 0x601, 0x1b6)
+			//}
+			//$if linux {
+			fd = C.syscall(sys_creat, path.str, 511)
+			//}
+			if fd == -1 {
+				return error('failed to create file "$path"')
+			}
+			file = File{
+				fd: fd
+				opened: true
+			}
+			return file
+		}
+	}
+  */
+	cfile := vfopen(path, 'wb')
+	if cfile == 0 {
+		return error('failed to create file "$path"')
+	}
+	fd := fileno(cfile)
+	return File {
+		cfile: cfile
+		fd: fd
+		opened: true
+	}
 }

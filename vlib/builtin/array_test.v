@@ -1,8 +1,3 @@
-const (
-	q = [1, 2, 3]
-	A = 8
-)
-
 fn test_pointer() {
 	mut arr := []&int{}
 	a := 1
@@ -295,11 +290,11 @@ fn test_reverse() {
 }
 
 const (
-	N = 5
+	c_n = 5
 )
 
 struct Foooj {
-	a [5]int // N
+	a [5]int // c_n
 }
 
 fn test_fixed() {
@@ -312,8 +307,8 @@ fn test_fixed() {
 	assert nums[3] == 0
 	nums[1] = 7
 	assert nums[1] == 7
-	nums2 := [5]int // N
-	assert nums2[N - 1] == 0
+	nums2 := [5]int // c_n
+	assert nums2[c_n - 1] == 0
 }
 
 fn modify(numbers mut []int) {
@@ -500,6 +495,10 @@ fn test_reduce() {
 }
 */
 
+fn filter_test_helper_1(a int) bool {
+	return a > 3
+}
+
 fn test_filter() {
 	a := [1, 2, 3, 4, 5, 6]
 	b := a.filter(it % 2 == 0)
@@ -519,6 +518,8 @@ fn test_filter() {
 	mut mut_arr := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 	mut_arr = mut_arr.filter(it < 4)
 	assert mut_arr.len == 3
+	assert a.filter(filter_test_helper_1) == [4,5,6]
+	assert [1,5,10].filter(filter_test_helper_1) == [5,10]
 
 	// TODO
 	//assert arr.filter(arr % 2).len == 5
@@ -576,6 +577,9 @@ fn test_map() {
 	// nested (different it types)
 	assert strs.map( it[ nums.map(it - it)[0] ] ) == [`v`, `i`, `a`]
 	assert nums[0..3].map('$it' + strs.map(it)[it-1]) == ['1v','2is','3awesome']
+
+	assert nums.map(map_test_helper_1) == [1,4,9,16,25,36]
+	assert [1,5,10].map(map_test_helper_1) == [1,25,100]
 
 	assert nums == [1, 2, 3, 4, 5, 6]
 	assert strs == ['v', 'is', 'awesome']

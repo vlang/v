@@ -157,6 +157,7 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 
 fn (mut s Scanner) ident_bin_number() string {
 	mut has_wrong_digit := false
+	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0b'
@@ -168,15 +169,18 @@ fn (mut s Scanner) ident_bin_number() string {
 			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
+				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
 			}
 		}
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
+		s.pos-- // adjust error position
 		s.error('number part of this binary is not provided')
 	}
 	else if has_wrong_digit {
+		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this binary number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
@@ -186,6 +190,7 @@ fn (mut s Scanner) ident_bin_number() string {
 
 fn (mut s Scanner) ident_hex_number() string {
 	mut has_wrong_digit := false
+	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0x'
@@ -197,15 +202,18 @@ fn (mut s Scanner) ident_hex_number() string {
 			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
+				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
 			}
 		}
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
+		s.pos-- // adjust error position
 		s.error('number part of this hexadecimal is not provided')
 	}
 	else if has_wrong_digit {
+		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this hexadecimal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
@@ -215,6 +223,7 @@ fn (mut s Scanner) ident_hex_number() string {
 
 fn (mut s Scanner) ident_oct_number() string {
 	mut has_wrong_digit := false
+	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0o'
@@ -226,15 +235,18 @@ fn (mut s Scanner) ident_oct_number() string {
 			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
+				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
 			}
 		}
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
+		s.pos-- // adjust error position
 		s.error('number part of this octal is not provided')
 	}
 	else if has_wrong_digit {
+		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this octal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
@@ -244,6 +256,7 @@ fn (mut s Scanner) ident_oct_number() string {
 
 fn (mut s Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
+	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	// scan integer part
@@ -255,6 +268,7 @@ fn (mut s Scanner) ident_dec_number() string {
 			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
+				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
 			}
 		}
@@ -281,6 +295,7 @@ fn (mut s Scanner) ident_dec_number() string {
 						}
 						else if !has_wrong_digit {
 							has_wrong_digit = true
+							first_wrong_digit_pos = s.pos
 							first_wrong_digit = c
 						}
 					}
@@ -327,6 +342,7 @@ fn (mut s Scanner) ident_dec_number() string {
 				}
 				else if !has_wrong_digit {
 					has_wrong_digit = true
+					first_wrong_digit_pos = s.pos
 					first_wrong_digit = c
 				}
 			}
@@ -335,10 +351,12 @@ fn (mut s Scanner) ident_dec_number() string {
 	}
 	if has_wrong_digit {
 	// error check: wrong digit
+		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	else if s.text[s.pos - 1] in [`e`, `E`] {
 	// error check: 5e
+		s.pos-- // adjust error position
 		s.error('exponent has no digits')
 	}
 	else if s.pos < s.text.len && s.text[s.pos] == `.` && !is_range && !is_float_without_fraction && !call_method {
@@ -1009,7 +1027,7 @@ fn (mut s Scanner) debug_tokens() {
 	s.pos = 0
 	s.is_started = false
 	s.is_debug = true
-	fname := s.file_path.all_after(os.path_separator)
+	fname := s.file_path.all_after_last(os.path_separator)
 	println('\n===DEBUG TOKENS $fname===')
 	for {
 		tok := s.scan()
