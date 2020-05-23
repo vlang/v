@@ -1261,6 +1261,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		mut ident_var_info := ident.var_info()
 		// c.assigned_var_name = ident.name
 		if assign_stmt.op == .assign {
+			c.fail_if_immutable(ident)
 			var_type := c.expr(ident)
 			assign_stmt.left_types << var_type
 			if !c.table.check(val_type, var_type) {

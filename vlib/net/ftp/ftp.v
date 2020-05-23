@@ -20,17 +20,17 @@ module ftp
 import net
 
 const (
-	Connected           = 220
-	SpecifyPassword     = 331
-	LoggedIn            = 230
-	LoginFirst          = 503
-	Anonymous           = 530
-	OpenDataConnection  = 150
-	CloseDataConnection = 226
-	CommandOk           = 200
-	denied              = 550
-	PassiveMode         = 227
-	complete            = 226
+	connected             = 220
+	specify_password      = 331
+	logged_in             = 230
+	login_first           = 503
+	anonymous             = 530
+	open_data_connection  = 150
+	close_data_connection = 226
+	command_ok            = 200
+	denied                = 550
+	passive_mode          = 227
+	complete              = 226
 )
 
 struct DTP {
@@ -110,7 +110,7 @@ pub fn (mut ftp FTP) connect(ip string) bool {
 	}
 	ftp.sock = sock
 	code, _ := ftp.read()
-	if code == Connected {
+	if code == connected {
 		return true
 	}
 	return false
@@ -123,11 +123,11 @@ pub fn (ftp FTP) login(user, passwd string) bool {
 		}
 		return false
 	}
-	mut code, data := ftp.read()
-	if code == LoggedIn {
+	mut code, mut data := ftp.read()
+	if code == logged_in {
 		return true
 	}
-	if code != SpecifyPassword {
+	if code != specify_password {
 		return false
 	}
 	ftp.write('PASS $passwd') or {
@@ -139,7 +139,7 @@ pub fn (ftp FTP) login(user, passwd string) bool {
 	code, data = ftp.read()
 	// TODO Replace `data` with `_`
 	_ := data
-	if code == LoggedIn {
+	if code == logged_in {
 		return true
 	}
 	return false
@@ -209,7 +209,7 @@ fn (ftp FTP) pasv() ?DTP {
 	$if debug {
 		println('pass: $data')
 	}
-	if code != PassiveMode {
+	if code != passive_mode {
 		return error('pasive mode not allowed')
 	}
 	dtp := new_dtp(data) or {
@@ -228,12 +228,12 @@ pub fn (ftp FTP) dir() ?[]string {
 	if code == denied {
 		return error('LIST denied')
 	}
-	if code != OpenDataConnection {
+	if code != open_data_connection {
 		return error('data channel empty')
 	}
 	list_dir := dtp.read()
 	result, _ := ftp.read()
-	if result != CloseDataConnection {
+	if result != close_data_connection {
 		println('LIST not ok')
 	}
 	dtp.close()
@@ -258,7 +258,7 @@ pub fn (ftp FTP) get(file string) ?[]byte {
 	if code == denied {
 		return error('Permission denied')
 	}
-	if code != OpenDataConnection {
+	if code != open_data_connection {
 		return error('Data connection not ready')
 	}
 	blob := dtp.read()
