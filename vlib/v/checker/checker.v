@@ -415,22 +415,24 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.key_in, .not_in {
 			match right.kind {
 				.array {
-					right_sym := c.table.get_type_symbol(right.array_info().elem_type)
-					if left.kind != right_sym.kind {
-						c.error('the data type on the left of `$infix_expr.op.str()` does not match the array item type',
+					elem_type := right.array_info().elem_type
+					if c.table.promote(elem_type, left_type) != elem_type {
+						right_sym := c.table.get_type_symbol(elem_type)
+						c.error('the data type on the left of `$infix_expr.op.str()` (`$left.name`) does not match the array item type (`$right_sym.name`)',
 							infix_expr.pos)
 					}
 				}
 				.map {
-					key_sym := c.table.get_type_symbol(right.map_info().key_type)
-					if left.kind != key_sym.kind {
-						c.error('the data type on the left of `$infix_expr.op.str()` does not match the map key type',
+					key_type := right.map_info().key_type
+					if c.table.promote(key_type, left_type) != key_type {
+						key_sym := c.table.get_type_symbol(key_type)
+						c.error('the data type on the left of `$infix_expr.op.str()` (`$left.name`) does not match the map key type `$key_sym.name`',
 							infix_expr.pos)
 					}
 				}
 				.string {
 					if left.kind != .string {
-						c.error('the data type on the left of `$infix_expr.op.str()` must be a string',
+						c.error('the data type on the left of `$infix_expr.op.str()` must be a string (is `$left.name`)',
 							infix_expr.pos)
 					}
 				}

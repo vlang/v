@@ -269,6 +269,8 @@ rune // represents a Unicode code point
 
 f32 f64
 
+any_int, any_float // internal intermediate types of number literals
+
 byteptr // these two are mostly used for C interop
 voidptr
 
