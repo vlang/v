@@ -106,7 +106,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 				g.write('$type_name ${impl_fn_name}(')
 			}
 		} else {
-			if !it.is_pub {
+			if !(it.is_pub || g.pref.is_debug) {
 				g.write('static ')
 				g.definitions.write('static ')
 			}
