@@ -760,7 +760,7 @@ pub fn (mut g Gen) error_with_pos(s string, pos token.Position) {
 	// of guessed from the pref.path ...
 	mut kind := 'error:'
 	if g.pref.output_mode == .stdout {
-		ferror := util.formatted_error(kind, s, g.pref.path, pos)
+		ferror := util.formatted_error_fs(kind, s, g.pref.path, pos)
 		eprintln(ferror)
 		exit(1)
 	} else {

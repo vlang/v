@@ -77,7 +77,7 @@ pub fn parse_text(path_name string, text string, b_table &table.Table, comments_
 	mut stmts := []ast.Stmt{}
 	mut p := Parser{
 		file_name: path_name,
-		file_name_dir: os.dir(path_name)
+		file_name_dir: os.dir(path_name),
 		scanner: scanner.new_scanner(text, comments_mode),
 		table: b_table,
 		pref: pref,
@@ -638,7 +638,7 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 			print_backtrace()
 			kind = 'parser error:'
 		}
-		ferror := util.formatted_error(kind, s, p.file_name, pos)
+		ferror := util.formatted_error(kind, s, p.file_name, p.scanner.text, pos)
 		eprintln(ferror)
 		exit(1)
 	} else {
@@ -656,7 +656,7 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 		return
 	}
 	if p.pref.output_mode == .stdout {
-		ferror := util.formatted_error('warning:', s, p.file_name, pos)
+		ferror := util.formatted_error('warning:', s, p.file_name, p.scanner.text, pos)
 		eprintln(ferror)
 	} else {
 		p.warnings << errors.Warning{

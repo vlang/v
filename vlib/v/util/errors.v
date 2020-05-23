@@ -62,8 +62,16 @@ fn color(kind, msg string) string {
 	}
 }
 
+pub fn formatted_error_fs(kind, emsg, filepath string, pos token.Position) string {
+	source := read_file(filepath) or {
+		''
+	}
+
+	return util.formatted_error(kind, emsg, filepath, source, pos)
+}
+
 // formatted_error - `kind` may be 'error' or 'warn'
-pub fn formatted_error(kind, emsg, filepath string, pos token.Position) string {
+pub fn formatted_error(kind, emsg, filepath string, source string, pos token.Position) string {
 	mut path := filepath
 	verror_paths_override := os.getenv('VERROR_PATHS')
 	if verror_paths_override == 'absolute' {
@@ -74,10 +82,6 @@ pub fn formatted_error(kind, emsg, filepath string, pos token.Position) string {
 		if path.starts_with(workdir) {
 			path = path.replace(workdir, '')
 		}
-	}
-	//
-	source := read_file(filepath) or {
-		''
 	}
 	mut p := imax(0, imin(source.len - 1, pos.pos))
 	if source.len > 0 {
