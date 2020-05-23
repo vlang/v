@@ -518,6 +518,8 @@ pub fn (t &Table) promote(left_type, right_type Type) Type {
 			}
 		} else if idx_lo >= byte_type_idx { // both operands are unsigned
 			return type_hi
+		} else if idx_lo >= i8_type_idx && idx_hi <= i64_type_idx { // both signed
+			return type_hi
 		} else if idx_hi - idx_lo < (byte_type_idx - i8_type_idx) {
 			return type_lo // conversion unsigned -> signed if signed type is larger
 		} else {
@@ -528,7 +530,7 @@ pub fn (t &Table) promote(left_type, right_type Type) Type {
 	}
 }
 
-// TODO: promote(), assign_check() and check() overlap - should be rearranged
+// TODO: promote(), assign_check(), symmetric_check() and check() overlap - should be rearranged
 pub fn (t &Table) assign_check(got, expected Type) bool {
 	exp_idx := expected.idx()
 	got_idx := got.idx()
@@ -541,6 +543,7 @@ pub fn (t &Table) assign_check(got, expected Type) bool {
 		}
 	}
 	// allow direct int-literal assignment for pointers for now
+	// maybe in the future optionals should be used for that
 	if expected.is_ptr() || expected.is_pointer() {
 		if got == any_int_type {
 			return true
@@ -555,6 +558,7 @@ pub fn (t &Table) assign_check(got, expected Type) bool {
 		return false
 	}
 	if t.promote(expected, got) != expected {
+		println('could not promote ${t.get_type_symbol(got).name} to ${t.get_type_symbol(expected).name}')
 		return false
 	}
 	return true
@@ -562,6 +566,7 @@ pub fn (t &Table) assign_check(got, expected Type) bool {
 
 pub fn (t &Table) symmetric_check(left, right Type) bool {
 	// allow direct int-literal assignment for pointers for now
+	// maybe in the future optionals should be used for that
 	if right.is_ptr() || right.is_pointer() {
 		if left == any_int_type {
 			return true
