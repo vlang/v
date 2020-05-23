@@ -30,6 +30,7 @@ pub mut:
 	import_pos     int // position of the imports in the resulting string for later autoimports insertion
 	used_imports   []string // to remove unused imports
 	is_debug       bool
+	mod2alias      map[string]string // for `import time as t`, will contain: 'time'=>'t'
 }
 
 pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
@@ -41,6 +42,9 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 		file: file
 		is_debug: is_debug
 	}
+	for imp in file.imports {
+		f.mod2alias[imp.mod.all_after_last('.')] = imp.alias
+	}        
 	f.cur_mod = 'main'
 	for stmt in file.stmts {
 		if stmt is ast.Import {
@@ -542,7 +546,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 		}
 		ast.EnumVal {
-			name := short_module(it.enum_name)
+			name := f.short_module(it.enum_name)
 			f.write(name + '.' + it.val)
 		}
 		ast.FloatLiteral {
@@ -555,7 +559,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			if it.kind == .blank_ident {
 				f.write('_')
 			} else {
-				name := short_module(it.name)
+				name := f.short_module(it.name)
 				// f.write('<$it.name => $name>')
 				f.write(name)
 				if name.contains('.') {
@@ -777,7 +781,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 }
 
 // foo.bar.fn() => bar.fn()
-pub fn short_module(name string) string {
+pub fn (mut f Fmt) short_module(name string) string {
 	if !name.contains('.') {
 		return name
 	}
@@ -785,7 +789,10 @@ pub fn short_module(name string) string {
 	if vals.len < 2 {
 		return name
 	}
-	return vals[vals.len - 2] + '.' + vals[vals.len - 1]
+	mname := vals[vals.len - 2]
+	symname := vals[vals.len - 1]
+	aname := f.mod2alias[mname]
+	return '${aname}.${symname}'
 }
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
@@ -847,7 +854,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write(')')
 		f.or_expr(node.or_block)
 	} else {
-		name := short_module(node.name)
+		name := f.short_module(node.name)
 		f.mark_module_as_used(name)
 		f.write('${name}')
 		if node.generic_type != 0 && node.generic_type != table.void_type {
@@ -1065,7 +1072,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	type_sym := f.table.get_type_symbol(it.typ)
 	// f.write('<old name: $type_sym.name>')
-	mut name := short_module(type_sym.name).replace(f.cur_mod + '.', '') // TODO f.type_to_str?
+	mut name := f.short_module(type_sym.name).replace(f.cur_mod + '.', '') // TODO f.type_to_str?
 	if name == 'void' {
 		name = ''
 	}

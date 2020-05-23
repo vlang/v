@@ -10,23 +10,23 @@ type zip_ptr &zip
 
 // Ref - miniz.h
 const (
-    NO_COMPRESSION      = 0
-    BEST_SPEED          = 1
-    BEST_COMPRESSION    = 9
-    UBER_COMPRESSION    = 10
-    DEFAULT_LEVEL       = 6
-    DEFAULT_COMPRESSION = -1
+    no_compression      = 0
+    best_speed          = 1
+    best_compression    = 9
+    uber_compression    = 10
+    default_level       = 6
+    default_compression = -1
 )
 
 // Ref - zip.h
 const (
-    DEFAULT_COMPRESSION_LEVEL = (DEFAULT_LEVEL)
+    default_compression_level = (default_level)
 )
 
 const (
-    M_WRITE  = 'w'
-    M_RONLY  = 'r'
-    M_APPEND = 'a'
+    m_write  = 'w'
+    m_ronly  = 'r'
+    m_append = 'a'
 )
 
 /**
@@ -43,14 +43,14 @@ const (
  */
 pub fn open(name string, level int, mode string) ?zip_ptr {
     mut _nlevel := level
-    if (_nlevel & 0xF) > UBER_COMPRESSION {
-        _nlevel = DEFAULT_COMPRESSION_LEVEL
+    if (_nlevel & 0xF) > uber_compression {
+        _nlevel = default_compression_level
     }
     n := name.len
     if n == 0 {
         return error('szip: name of file empty')
     }
-    if mode != M_WRITE && mode != M_RONLY && mode != M_APPEND {
+    if mode != m_write && mode != m_ronly && mode != m_append {
         return error('szip: invalid provided open mode')
     }
     /* struct zip_t* */_p_zip := zip_ptr(C.zip_open(name.str,

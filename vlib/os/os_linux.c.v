@@ -5,11 +5,11 @@
 module os
 
 const (
-	PROT_READ = 1
-	PROT_WRITE = 2
+	prot_read = 1
+	prot_write = 2
 
-	MAP_PRIVATE = 0x02
-	MAP_ANONYMOUS = 0x20
+	map_private = 0x02
+	map_anonymous = 0x20
 )
 
 pub const (
@@ -45,13 +45,11 @@ fn mmap(start voidptr, len, prot, flags, fd, off int) byteptr {
 
 pub fn malloc(n int) byteptr {
 	println('malloc($n)')
-	return mmap(0, n, 3, 		4098, //PROT_READ|PROT_WRITE,
-	 -1,0)			//MAP_PRIVATE|MAP_ANONYMOUS,
+	return mmap(0, n, 3, 		4098, //prot_read|prot_write,
+	 -1,0)			//map_private|map_anonymous,
 }
 
 pub fn free(b byteptr) {
 
 }
 */
-
-

@@ -50,18 +50,18 @@ fn C.SymGetLineFromAddr64(h_process voidptr, address u64, p_displacement voidptr
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/dbghelp/nf-dbghelp-symsetoptions
 const (
-	SYMOPT_UNDNAME = 0x00000002
-	SYMOPT_DEFERRED_LOADS = 0x00000004
-	SYMOPT_NO_CPP = 0x00000008
-	SYMOPT_LOAD_LINES = 0x00000010
-	SYMOPT_INCLUDE_32BIT_MODULES = 0x00002000
-	SYMOPT_ALLOW_ZERO_ADDRESS = 0x01000000
-	SYMOPT_DEBUG = 0x80000000
+	symopt_undname = 0x00000002
+	symopt_deferred_loads = 0x00000004
+	symopt_no_cpp = 0x00000008
+	symopt_load_lines = 0x00000010
+	symopt_include_32bit_modules = 0x00002000
+	symopt_allow_zero_address = 0x01000000
+	symopt_debug = 0x80000000
 )
 
 fn builtin_init() {
 	if is_atty(1) > 0 {
-		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
+		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // enable_virtual_terminal_processing
 		C.setbuf(C.stdout, 0)
 	}
 }
@@ -92,7 +92,7 @@ $if msvc {
 	handle := C.GetCurrentProcess()
 	defer { C.SymCleanup(handle) }
 
-	C.SymSetOptions(SYMOPT_DEBUG | SYMOPT_LOAD_LINES | SYMOPT_UNDNAME)
+	C.SymSetOptions(symopt_debug | symopt_load_lines | symopt_undname)
 
 	syminitok := C.SymInitialize( handle, 0, 1)
 	if syminitok != 1 {
@@ -138,8 +138,4 @@ $if msvc {
 fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 	eprintln('print_backtrace_skipping_top_frames_mingw is not implemented')
 	return false
-}
-
-pub fn println(s string) {
-	print('$s\n')
 }
