@@ -80,6 +80,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			kind: or_kind
+			pos: pos
 		}
 		generic_type: generic_type
 	}

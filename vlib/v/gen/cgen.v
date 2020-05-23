@@ -2973,7 +2973,12 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		}
 	} else if or_block.kind == .propagate {
 		if g.file.mod.name == 'main' && g.cur_fn.name == 'main' {
-			g.writeln('\tv_panic(${cvar_name}.v_error);')
+			if g.pref.is_debug {
+				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
+				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), ${cvar_name}.v_error );')
+			}else{
+				g.writeln('\tv_panic(${cvar_name}.v_error);')
+			}
 		} else {
 			g.writeln('\treturn $cvar_name;')
 		}
@@ -3981,4 +3986,19 @@ fn (g &Gen) interface_call(typ, interface_type table.Type) {
 	if !typ.is_ptr() {
 		g.write('&')
 	}
+}
+
+fn (mut g Gen) panic_debug_info(pos token.Position) (int, string, string, string) {
+	paline := pos.line_nr + 1
+	pafile := g.fn_decl.file.replace('\\', '/')
+	pafn := g.fn_decl.name.after('.')
+	mut pamod := g.fn_decl.name.all_before_last('.')
+	if pamod == pafn {
+		pamod = if g.fn_decl.is_builtin {
+			'builtin'
+		} else {
+			'main'
+		}
+	}
+	return paline, pafile, pamod, pafn
 }
