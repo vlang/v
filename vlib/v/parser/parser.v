@@ -1026,6 +1026,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_block: ast.OrExpr{
 				stmts: or_stmts
 				kind: or_kind
+				pos: pos
 			}
 		}
 		if is_filter {

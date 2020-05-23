@@ -798,6 +798,9 @@ pub fn (mut f Fmt) short_module(name string) string {
 	mname := vals[vals.len - 2]
 	symname := vals[vals.len - 1]
 	aname := f.mod2alias[mname]
+	if aname == '' {
+		return symname
+	}
 	return '${aname}.${symname}'
 }
 

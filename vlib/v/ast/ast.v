@@ -731,6 +731,7 @@ pub struct OrExpr {
 pub:
 	stmts []Stmt
 	kind  OrKind
+	pos      token.Position
 }
 
 pub struct Assoc {
