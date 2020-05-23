@@ -144,6 +144,13 @@ pub fn (nn u32) str() string {
 	//return tos(buf + index, (max-index))
 }
 
+/* TODO: this has to wait until definition in cheaders.v are merged
+[inline]
+pub fn (n any_int) str() string {
+	return i64(n).str()
+}
+*/
+
 pub fn (nn i64) str() string {
 	mut n := nn
 	mut d := i64(0)

@@ -503,7 +503,19 @@ pub fn (t &Table) promote(left_type, right_type Type) Type {
 				return void_type
 			}
 		} else if type_hi.is_float() {
-			return type_hi
+			if idx_hi == f32_type_idx {
+				if idx_lo in [int_type_idx, i64_type_idx, u32_type_idx, u64_type_idx] {
+					return void_type
+				} else {
+					return idx_hi
+				}
+			} else { // f64, any_flt
+				if idx_lo in [i64_type_idx, u64_type_idx] {
+					return void_type
+				} else {
+					return type_hi
+				}
+			}
 		} else if idx_lo >= byte_type_idx { // both operands are unsigned
 			return type_hi
 		} else if idx_hi - idx_lo < (byte_type_idx - i8_type_idx) {
