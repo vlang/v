@@ -1,0 +1,11 @@
+struct User {
+	age  int
+	name string
+}
+
+fn main() {
+	u := User{
+		age: 54
+	}
+	println(u)
+}
