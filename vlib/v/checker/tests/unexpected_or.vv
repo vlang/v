@@ -1,0 +1,7 @@
+fn ret_zero() int {
+	return 0
+}
+
+fn main() {
+	_ := ret_zero() or { 1 }
+}

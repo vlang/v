@@ -725,10 +725,16 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 }
 
 pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
-	if or_block.is_used {
-		f.writeln(' or {')
-		f.stmts(or_block.stmts)
-		f.write('}')
+	match or_block.kind {
+		.absent {}
+		.block {
+			f.writeln(' or {')
+			f.stmts(or_block.stmts)
+			f.write('}')
+		}
+		.propagate {
+			f.write('?')
+		}
 	}
 }
 

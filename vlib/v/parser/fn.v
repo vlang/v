@@ -19,11 +19,11 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	} else {
 		p.check_name()
 	}
-	mut is_or_block_used := false
+	mut or_kind := ast.OrKind.absent
 	if fn_name == 'json.decode' {
 		p.expecting_type = true // Makes name_expr() parse the type `User` in `json.decode(User, txt)`
 		p.expr_mod = ''
-		is_or_block_used = true
+		or_kind = .block
 	}
 	mut generic_type := table.void_type
 	if p.tok.kind == .lt {
@@ -42,9 +42,9 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		pos: first_pos.pos
 		len: last_pos.pos - first_pos.pos + last_pos.len
 	}
-	// `foo() or {}``
 	mut or_stmts := []ast.Stmt{}
 	if p.tok.kind == .key_orelse {
+		// `foo() or {}``
 		was_inside_or_expr := p.inside_or_expr
 		p.inside_or_expr = true
 		p.next()
@@ -61,7 +61,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			pos: p.tok.position()
 			is_used: true
 		})
-		is_or_block_used = true
+		or_kind = .block
 		or_stmts = p.parse_block_no_scope()
 		p.close_scope()
 		p.inside_or_expr = was_inside_or_expr
@@ -69,10 +69,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	if p.tok.kind == .question {
 		// `foo()?`
 		p.next()
-		is_or_block_used = true
-		// mut s := ast.Stmt{}
-		// s = ast.ReturnStmt{}
-		or_stmts << ast.Return{}
+		or_kind = .propagate
 	}
 	node := ast.CallExpr{
 		name: fn_name
@@ -82,7 +79,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		language: language
 		or_block: ast.OrExpr{
 			stmts: or_stmts
-			is_used: is_or_block_used
+			kind: or_kind
 		}
 		generic_type: generic_type
 	}
