@@ -128,7 +128,7 @@ pub struct Clipboard {
 struct Property{
 	actual_type C.Atom
 	actual_format int
-	nitems int
+	nitems u64
 	data byteptr
 }
 

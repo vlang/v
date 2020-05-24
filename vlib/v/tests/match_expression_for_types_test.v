@@ -26,7 +26,7 @@ fn test_match_expression_on_sumtype_else(){
 	// tests whether else branches support multiple statements,
 	// when the other branches are simple default expressions
 	mut c := 0
-	s := s2s(123)
+	s := s2s(int(123))
 	res := match s {
 		string {
 			'a string'
@@ -44,7 +44,7 @@ fn test_match_expression_on_sumtype_full(){
 	// tests whether all branches can have multiple statements,
 	// followed by a default expression
 	mut c := 0
-	s := s2s(123)
+	s := s2s(int(123))
 	res := match s {
 		int {
 			c = 1

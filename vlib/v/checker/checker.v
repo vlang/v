@@ -31,7 +31,6 @@ pub mut:
 	pref             &pref.Preferences // Preferences shared from V struct
 	in_for_count     int // if checker is currently in an for loop
 	// checked_ident  string // to avoid infinit checker loops
-	var_decl_name    string
 	returns          bool
 	scope_returns    bool
 	mod              string // current module name
@@ -478,9 +477,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 						oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
 						c.error('$oper by zero', right_pos)
 					}
-				} else {
-					return_type = promoted_type
 				}
+				return_type = promoted_type
 			}
 		}
 		.left_shift {
@@ -1266,7 +1264,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		if assign_stmt.op == .decl_assign {
 			val_type = c.table.mktyp(val_type)
-			c.var_decl_name = ident.name
 		}
 		mut ident_var_info := ident.var_info()
 		// c.assigned_var_name = ident.name
@@ -1289,7 +1286,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i], true)
 		}
 	}
-	c.var_decl_name = ''
 	c.expected_type = table.void_type
 	// c.assigned_var_name = ''
 }
@@ -1830,11 +1826,6 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 }
 
 pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
-	if ident.name == c.var_decl_name { // c.checked_ident {
-		// Do not allow `x := x`
-		c.error('unresolved: `$ident.name`', ident.pos)
-		return table.void_type
-	}
 	// TODO: move this
 	if c.const_deps.len > 0 {
 		mut name := ident.name
@@ -1872,6 +1863,13 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 				ast.Var {
 					mut typ := it.typ
 					if typ == 0 {
+						if it.expr is ast.Ident {
+							inner_ident := it.expr as ast.Ident
+							if inner_ident.kind == .unresolved {
+								c.error('unresolved variable: `$ident.name`', ident.pos)
+								return table.void_type
+							}
+						}
 						typ = c.expr(it.expr)
 					}
 					is_optional := typ.flag_is(.optional)

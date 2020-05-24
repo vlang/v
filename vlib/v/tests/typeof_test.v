@@ -1,10 +1,17 @@
 fn test_typeof_on_simple_expressions() {
-	a := 123
-	assert typeof(42) == 'int'
-	assert typeof(3.14) == 'f64'
-	assert typeof(2+2*10) == 'int'
-	assert typeof(1.0 * 12.2) == 'f64'
+	a := int(123)
+	assert typeof(int(42)) == 'int'
+	assert typeof(f64(3.14)) == 'f64'
+	assert typeof(int(2)+2*10) == 'int'
+	assert typeof(f64(1.0) * 12.2) == 'f64'
+	// assert typeof(1.0 * f32(12.2)) == 'f32'
 	assert typeof(a) == 'int'
+	// a2 := 123
+	// assert typeof(a2) == 'any_int'
+	// assert typeof(42) == 'any_int'
+	// assert typeof(3.14) == 'any_float'
+	// assert typeof(2+2*10) == 'any_int'
+	// assert typeof(1.0 * 12.2) == 'any_float'
 }
 
 fn test_typeof_on_atypes() {
@@ -38,7 +45,7 @@ pub fn (ms MySumType) str() string {
 }
 
 fn test_typeof_on_sumtypes() {
-	a := MySumType(32)
+	a := MySumType(int(32))
 	b := MySumType(f32(123.0))
 	c := MySumType(FooBar{x:43})
 	assert typeof(a) == 'int'

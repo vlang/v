@@ -107,8 +107,8 @@ pub fn (mut d Digest) checksum() []byte {
 	// tmp := [1 + 63 + 8]byte{0x80}
     mut tmp := [byte(0)].repeat(1 + 63 + 8)
 	tmp[0] = 0x80
-	pad := ((55 - int(d.len)) % u64(64)) // calculate number of padding bytes
-	binary.little_endian_put_u64(mut tmp[1+pad..], d.len<<u64(3)) // append length in bits
+	pad := ((55 - d.len) % 64) // calculate number of padding bytes
+	binary.little_endian_put_u64(mut tmp[1+pad..], d.len<<3) // append length in bits
     d.write(tmp[..1+pad+8])
 
 	// The previous write ensures that a whole number of

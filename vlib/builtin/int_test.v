@@ -31,7 +31,7 @@ fn test_float_equal_operator() {
 	assert a.gebit(1)
 	assert -1 == 1 * -1
 	assert -1.0 == 1.0 * -1.0
-	a = f64(1)
+	a = 1
 	a += 0.000001
 	a -= 0.000001
 	assert a == f32(1.0)
@@ -214,7 +214,7 @@ fn test_int_to_hex() {
 	assert u32(c0).hex() == 'c'
 	assert 2147483647.hex() == '7fffffff'
 	assert u32(2147483647).hex() == '7fffffff'
-	assert (-1).hex() == 'ffffffff'
+	assert (-1).hex() == 'ffffffffffffffff'
 	assert u32(4294967295).hex() == 'ffffffff'
 	// 64 bit
 	assert u64(0).hex() == '0'

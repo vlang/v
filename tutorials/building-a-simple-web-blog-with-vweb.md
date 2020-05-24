@@ -64,7 +64,7 @@ fn main() {
 	vweb.run<App>(8080)
 }
 
-fn (app mut App) index() {
+fn (mut app App) index() {
 	app.vweb.text('Hello, world from vweb!')
 }
 
@@ -96,7 +96,7 @@ Vweb often uses convention over configuration and adding a new action requires
 no routing rules either:
 
 ```v
-fn (app mut App) time() {
+fn (mut app App) time() {
 	app.vweb.text(time.now().format())
 }
 ```
@@ -133,7 +133,7 @@ Let's return an HTML view instead. Create `index.html` in the same directory:
 and update our `index()` action so that it returns the HTML view we just created:
 
 ```v
-fn (app mut App) index() {
+fn (mut app App) index() {
 	message := 'Hello, world from Vweb!'
 	$vweb.html()
 }
@@ -219,7 +219,7 @@ mut:
 Modify the `init()` method we created earlier to connect to a database:
 
 ```v
-pub fn (app mut App) init() {
+pub fn (mut app App) init() {
 	db := pg.connect(pg.Config{
 		host:   '127.0.0.1'
 		dbname: 'blog'
@@ -336,7 +336,7 @@ Create `new.html`:
 ```
 
 ```v
-pub fn (app mut App) new_article() {
+pub fn (mut app App) new_article() {
 	title := app.vweb.form['title']
 	text := app.vweb.form['text']
 	if title == '' || text == ''  {
@@ -371,7 +371,7 @@ to render everything on the client or need an API, creating JSON endpoints
 in V is very simple:
 
 ```v
-pub fn (app mut App) articles() {
+pub fn (mut app App) articles() {
 	articles := app.find_all_articles()
 	app.vweb.json(json.encode(articles))
 }
@@ -384,7 +384,3 @@ pub fn (app mut App) articles() {
 To be continued...
 
 For an example of a more sophisticated web app written in V, check out Vorum: https://github.com/vlang/vorum
-
-
-
-

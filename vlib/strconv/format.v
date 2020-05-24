@@ -628,9 +628,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					// h for 16 bit int
 					// hh fot 8 bit int
 					`h` {
-						//i++
 						if ch2 == `h` {
-							//i++
 							x := *(&i8(pt[p_index]))
 							positive = if x >= 0 { true } else { false }
 							d1 = if positive { u64(x) } else { u64(-x) }
@@ -643,17 +641,21 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					// l  i64
 					// ll i64 for now
 					`l` {
-						//i++
+						// placeholder for future 128bit integer code
+						/*
 						if ch2 == `l` {
-							//i++
-							x := *(&i64(pt[p_index]))
+							x := *(&i128(pt[p_index]))
 							positive = if x >= 0 { true } else { false }
-							d1 = if positive { u64(x) } else { u64(-x) }
+							d1 = if positive { u128(x) } else { u128(-x) }
 						} else {
 							x := *(&i64(pt[p_index]))
 							positive = if x >= 0 { true } else { false }
 							d1 = if positive { u64(x) } else { u64(-x) }
 						}
+						*/
+						x := *(&i64(pt[p_index]))
+						positive = if x >= 0 { true } else { false }
+						d1 = if positive { u64(x) } else { u64(-x) }
 					}
 					// defualt int
 					else {
@@ -682,9 +684,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					// h for 16 bit unsigned int
 					// hh fot 8 bit unsigned int
 					`h` {
-						//i++
 						if ch2 == `h` {
-							//i++
 							d1 = u64(*(&byte(pt[p_index])))
 						} else {
 							d1 = u64(*(&u16(pt[p_index])))
@@ -693,13 +693,15 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					// l  u64
 					// ll u64 for now
 					`l` {
-						//i++
+						// placeholder for future 128bit integer code
+						/*
 						if ch2 == `l` {
-							//i++
-							d1 = u64(*(&u64(pt[p_index])))
+							d1 = u128(*(&u128(pt[p_index])))
 						} else {
 							d1 = u64(*(&u64(pt[p_index])))
 						}
+						*/
+						d1 = u64(*(&u64(pt[p_index])))
 					}
 					// defualt int
 					else {
@@ -722,9 +724,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					// h for 16 bit int
 					// hh fot 8 bit int
 					`h` {
-						//i++
 						if ch2 == `h` {
-							//i++
 							x := *(&i8(pt[p_index]))
 							s = x.hex()
 						} else {
@@ -735,15 +735,18 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					// l  i64
 					// ll i64 for now
 					`l` {
-						//i++
+						// placeholder for future 128bit integer code
+						/*
 						if ch2 == `l` {
-							// i++
-							x := *(&i64(pt[p_index]))
+							x := *(&i128(pt[p_index]))
 							s = x.hex()
 						} else {
 							x := *(&i64(pt[p_index]))
 							s = x.hex()
 						}
+						*/
+						x := *(&i64(pt[p_index]))
+						s = x.hex()
 					} 
 					else {
 						x := *(&int(pt[p_index]))

@@ -56,7 +56,7 @@ fn test_gamma() {
 
 fn test_mod() {
 	assert 4 % 2 == 0
-	x := 2
+	x := u64(2)
 	assert u64(5) % x == 1
 	mut a := 10
 	a %= 2
