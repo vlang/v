@@ -89,12 +89,12 @@ fn test_bits(){
 
 	// 8 bit
 	i = 0
-	for x in 0..9 {
+	for _ in 0..9 {
 		mut rv := byte(0)
 		mut bc := 0
 		mut n := i
 		for bc < 8 {
-			rv = (rv << 1) | (n & 0x01)
+			rv = (rv << 1) | (byte(n) & 0x01)
 			bc++
 			n = n >> 1
 		}
@@ -105,12 +105,12 @@ fn test_bits(){
 
 	// 16 bit
 	i = 0
-	for x in 0..17 {
+	for _ in 0..17 {
 		mut rv := u16(0)
 		mut bc := 0
 		mut n := i
 		for bc < 16 {
-			rv = (rv << 1) | (n & 0x01)
+			rv = (rv << 1) | (u16(n) & 0x01)
 			bc++
 			n = n >> 1
 		}
@@ -121,12 +121,12 @@ fn test_bits(){
 
 	// 32 bit
 	i = 0
-	for x in 0..33 {
+	for _ in 0..33 {
 		mut rv := u32(0)
 		mut bc := 0
 		mut n := i
 		for bc < 32 {
-			rv = (rv << 1) | (n & 0x01)
+			rv = (rv << 1) | (u32(n) & 0x01)
 			bc++
 			n = n >> 1
 		}
@@ -137,7 +137,7 @@ fn test_bits(){
 
 	// 64 bit
 	i1 = 0
-	for x in 0..64 {
+	for _ in 0..64 {
 		mut rv := u64(0)
 		mut bc := 0
 		mut n := i1

@@ -56,7 +56,7 @@ fn eval_cf(whole i64, den []i64) Fraction {
 		}
 		else {
 			last := count - 1
-			mut n := 1
+			mut n := i64(1)
 			mut d := den[last]
 			// The calculations are done from back to front
 			for index := count - 2; index >= 0; index-- {
@@ -90,7 +90,7 @@ pub fn approximate_with_eps(val, eps f64) Fraction {
 	// The integer part is separated first. Then we process the fractional
 	// part to generate numerators and denominators in tandem.
 	whole := i64(val)
-	mut frac := val - whole
+	mut frac := val - f64(whole)
 	// Quick exit for integers
 	if frac == 0.0 {
 		return fraction(whole, 1)
@@ -113,7 +113,7 @@ pub fn approximate_with_eps(val, eps f64) Fraction {
 		if math.fabs(val - partial.f64()) < eps {
 			return partial
 		}
-		frac -= den
+		frac -= f64(den)
 	}
 	panic("Couldn\'t converge. Please create an issue on https://github.com/vlang/v")
 }

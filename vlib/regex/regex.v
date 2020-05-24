@@ -1149,7 +1149,7 @@ pub fn (mut re RE) compile(in_txt string) (int,int) {
 		// ist_simple_char
 		re.prog[pc].ist     = ist_simple_char
 		re.prog[pc].ch      = char_tmp
-		re.prog[pc].ch_len  = char_len
+		re.prog[pc].ch_len  = byte(char_len)
 		re.prog[pc].rep_min = 1
 		re.prog[pc].rep_max = 1
 		//println("char: ${char_tmp:c}")

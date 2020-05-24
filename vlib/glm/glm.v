@@ -77,8 +77,8 @@ pub fn (m Mat4) str() string {
 
 fn vec2(x, y int) Vec2 {
 	res := Vec2 {
-		x: x,
-		y: y,
+		x: f32(x),
+		y: f32(y),
 	}
 	return res
 }
@@ -131,7 +131,7 @@ fn rotate(m Mat4, angle f32, vec Vec3) Mat4 {
 */
 
 fn f32_calloc(n int) &f32 {
-	return &f32(vcalloc(n * sizeof(f32)))
+	return vcalloc(n * int(sizeof(f32)))
 }
 // fn translate(vec Vec3) *f32 {
 pub fn translate(m Mat4, v Vec3) Mat4 {
@@ -273,9 +273,9 @@ fn mult_mat_point(a Mat4, point Mat4) Mat4 {
 }
 
 pub fn rotate(angle f32, axis Vec3, src Mat4) Mat4 {
-	c := math.cos(angle)
-	s := math.sin(angle)
-	oneminusc := 1.0 - c
+	c := f32(math.cos(angle))
+	s := f32(math.sin(angle))
+	oneminusc := f32(1.0) - c
 
 	xy := axis.x * axis.y
 	yz := axis.y * axis.z
@@ -325,8 +325,8 @@ pub fn rotate(angle f32, axis Vec3, src Mat4) Mat4 {
 pub fn rotate_z(m Mat4, rad f32) Mat4 {
 	a := m.data
 	mut out := f32_calloc(16)
-	s := math.sin(rad)
-	c := math.cos(rad)
+	s := f32(math.sin(rad))
+	c := f32(math.cos(rad))
 	a00 := a[0]
 	a01 := a[1]
 	a02 := a[2]
@@ -361,7 +361,7 @@ pub fn identity() Mat4 {
 	// 0 0 1 0
 	// 0 0 0 1
 	n := 16
-	mut res := f32_calloc(sizeof(f32) * n)
+	mut res := f32_calloc(int(sizeof(f32)) * n)
 	res[0] = 1
 	res[5] = 1
 	res[10] = 1
@@ -396,7 +396,7 @@ fn ortho_js(left, right, bottom, top f32) &f32 {
 //	myfar := 1
 	lr := 1.0 / (left - right)
 	bt := 1.0 / (bottom - top)
-	nf := 1.0 / 1.0// (mynear -myfar)
+	nf := f32(1.0) / 1.0// (mynear -myfar)
 	mut out := &f32(0)
 	unsafe { out = &f32( malloc (sizeof(f32) * 16)) }
 	out[0] = -2.0 * lr

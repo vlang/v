@@ -14,14 +14,14 @@ fn test_long_encoding(){
 	mut s := 0
 
 	ebuffer := malloc( s_encoded.len )
-	for i in 0..repeats {
+	for _ in 0..repeats {
 		resultsize := base64.encode_in_buffer(s_original, ebuffer)
 		s += resultsize
 		assert resultsize == s_encoded.len
 	}
 
 	dbuffer := malloc( s_decoded.len )
-	for i in 0..repeats {
+	for _ in 0..repeats {
 		resultsize := base64.decode_in_buffer(s_encoded, dbuffer)
 		s += resultsize
 		assert resultsize == s_decoded.len

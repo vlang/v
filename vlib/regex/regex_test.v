@@ -152,19 +152,19 @@ cgroups_test_suite = [
 		"http://www.ciao.mondo/hello/pippo12_/pera.html",
 		r"(?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+.)+",0,46,
 		[8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46],
-		{'format':0,'token':1}
+		{'format':int(0),'token':1}
 	},
 	TestItemCGroup{
 		"http://www.ciao.mondo/hello/pippo12_/pera.html",
 		r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+",0,46,
 		[8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46],
-		{'format':0,'token':1}
+		{'format':int(0),'token':1}
 	},
 	TestItemCGroup{
 		"http://www.ciao.mondo/hello/pippo12_/pera.html",
 		r"(?P<format>https?)|(?P<format>ftps?)://([\w_]+.)+",0,46,
 		[8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46],
-		{'format':0}
+		{'format':int(0)}
 	},
 ]
 )
