@@ -48,7 +48,7 @@ pub fn doc(mod string, table &table.Table, prefs &pref.Preferences) string {
 	filtered_files := prefs.should_compile_filtered_files(path, files)
 	for file in filtered_files {
 		fscope := &ast.Scope{
-			parent: voidptr(0)
+			parent: 0
 		}
 		file_ast := parser.parse_file(file, table, .skip_comments, prefs, fscope)
 		d.stmts << file_ast.stmts

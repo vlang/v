@@ -42,7 +42,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		table: table
 		checker: checker.new_checker(table, pref)
 		global_scope: &ast.Scope{
-			parent: voidptr(0)
+			parent: 0
 		}
 		compiled_dir: compiled_dir
 		max_nr_errors: if pref.error_limit > 0 {

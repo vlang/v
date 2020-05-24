@@ -65,7 +65,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		scope: scope
 		global_scope: &ast.Scope{
 			start_pos: 0
-			parent: voidptr(0)
+			parent: 0
 		}
 	}
 	p.init_parse_fns()
@@ -87,7 +87,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
-			parent: voidptr(0)
+			parent: 0
 		}
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}

@@ -56,9 +56,9 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		constants: strings.new_builder(100)
 		table: table
 		pref: pref
-		fn_decl: voidptr(0)
+		fn_decl: 0
 		empty_line: true
-		doc: voidptr(0)
+		doc: 0
 		enable_doc: true
 	}
 	g.doc = new_jsdoc(g)
