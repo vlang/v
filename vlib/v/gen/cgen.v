@@ -2636,7 +2636,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if fspec == `_` { // set default representation for type if still missing
 			if node.expr_types[i].is_float() {
 				fspec = `g`
-			} else if node.expr_types[i].is_signed() {
+			} else if node.expr_types[i].is_signed() || node.expr_types[i].is_any_int() {
 				fspec = `d`
 			} else if node.expr_types[i].is_unsigned() {
 				fspec = `u`
@@ -2658,7 +2658,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			fields.len == 2 && !(node.expr_types[i].is_float()) ||
 			node.expr_types[i].is_signed() && fspec !in [`d`, `c`, `x`, `X`, `o`] ||
 			node.expr_types[i].is_unsigned() && fspec !in [`u`, `x`, `X`, `o`, `c`] ||
-			node.expr_types[i].is_any_int() && fspec !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`, `c`] ||
+			node.expr_types[i].is_any_int() && fspec !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`] ||
 			node.expr_types[i].is_float() && fspec !in [`E`, `F`, `G`, `e`, `f`, `g`] ||
 			node.expr_types[i].is_pointer() && fspec !in [`p`, `x`, `X`] {
 			verror('illegal format specifier ${fspec:c} for type ${g.table.get_type_name(node.expr_types[i])}')

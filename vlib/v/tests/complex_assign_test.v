@@ -57,7 +57,7 @@ fn test_assign_multi_expr() {
 	g, h, i := if true {
 		1 + val1, awesome, [13]
 	} else {
-		0, 'bad', [0]
+		int(0), 'bad', [0]
 	}
 	assert g == 2
 	assert h == 'awesome'

@@ -23,6 +23,7 @@ fn test_interpolation_map_to_string() {
 	assert '$c' == "{'1': true, '2': false}"
 
 	d := {'f1': 1.1, 'f2': 2.2, 'f3': 3.3, 'f4': 4.4}
+	println('d: $d')
 	assert '$d' == "{'f1': 1.1, 'f2': 2.2, 'f3': 3.3, 'f4': 4.4}"
 
 	mut e := map[string]Test

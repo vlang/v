@@ -31,7 +31,7 @@ fn test_float_equal_operator() {
 	assert a.gebit(1)
 	assert -1 == 1 * -1
 	assert -1.0 == 1.0 * -1.0
-	a = f64(1)
+	a = 1
 	a += 0.000001
 	a -= 0.000001
 	assert a == f32(1.0)

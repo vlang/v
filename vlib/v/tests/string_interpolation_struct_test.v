@@ -42,7 +42,7 @@ struct Info {
 fn test_struct_map_field_string_interpolation() {
 	info := Info{
 		name: 'test'
-		dict: {'a': 1, 'b': 2}
+		dict: {'a': int(1), 'b': 2}
 	}
 	s := '$info'
 	assert s.starts_with('Info {')

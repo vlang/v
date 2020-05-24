@@ -79,7 +79,7 @@ fn test_array_of_strings_interpolation() {
 
 fn test_array_of_map_interpolation() {
 	mut a := []map[string]int{}
-	a << {'a': 1, 'b': 2}
-	a << {'c': 3, 'd': 4}
+	a << {'a': int(1), 'b': 2}
+	a << {'c': int(3), 'd': 4}
 	assert '$a' == "[{'a': 1, 'b': 2}, {'c': 3, 'd': 4}]"
 }
