@@ -397,7 +397,6 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_branch_stmt(it)
 		}
 		ast.Comment {
-			println(it)
 			// Skip: don't generate comments
 		}
 		ast.CompIf {
@@ -434,7 +433,6 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.writeln('')
 		}
 		ast.GlobalDecl {
-			println(it)
 			// TODO
 		}
 		ast.GoStmt {
@@ -491,15 +489,13 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_array_init_expr(it)
 		}
 		ast.AsCast {
-			println(it)
 			// skip: JS has no types, so no need to cast
-			// TODO: Check if jsdoc is needed for TS support
+			// TODO: Is jsdoc needed here for TS support?
 		}
 		ast.AssignExpr {
 			g.gen_assign_expr(it)
 		}
-		ast.Assoc { // { user | name: 'new name' }
-			println(it)
+		ast.Assoc {
 			// TODO
 		}
 		ast.BoolLiteral {
@@ -513,7 +509,6 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_call_expr(it)
 		}
 		ast.CastExpr {
-			println(it)
 			// skip: JS has no types, so no need to cast
 			// TODO: Check if jsdoc is needed for TS support
 		}
@@ -521,7 +516,6 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.ConcatExpr {
-			println(it)
 			// TODO
 		}
 		ast.EnumVal {
@@ -553,19 +547,15 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_map_init_expr(it)
 		}
 		ast.MatchExpr {
-			println(it)
 			// TODO
 		}
 		ast.None {
-			println(it)
 			// TODO
 		}
 		ast.OrExpr {
-			println(it)
 			// TODO
 		}
 		ast.ParExpr {
-			println(it)
 			// TODO
 		}
 		ast.PostfixExpr {
@@ -573,7 +563,6 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write(it.op.str())
 		}
 		ast.PrefixExpr {
-			println(it)
 			// TODO
 		}
 		ast.RangeExpr {
@@ -583,7 +572,6 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_selector_expr(it)
 		}
 		ast.SizeOf {
-			println(it)
 			// TODO
 		}
 		ast.StringInterLiteral {
@@ -597,13 +585,11 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_struct_init(it)
 		}
 		ast.Type {
-			println(it)
 			// skip: JS has no types
 			// TODO maybe?
 		}
 		ast.TypeOf {
 			g.gen_typeof_expr(it)
-			println(it)
 			// TODO: Should this print the V type or the JS type?
 		}
 		/*
