@@ -1,7 +1,6 @@
 import hello as hl
 
 fn JS.alert(arg string)
-fn JS.console.log(arg string)
 
 const (
     i_am_a_const = 21214
@@ -29,20 +28,20 @@ fn class(extends string, instanceof int) {
 
 
 fn main() {
-    JS.console.log('Hello from V.js!')
+    println('Hello from V.js!')
 
     mut a := 1
     a *= 2
     a += 3
-    JS.console.log(a, ' ==  5') // TODO: Handle string interpolation
+    println(a) // TODO: Handle string interpolation
 
     b := hl.A{}
     b.update('an update')
-    JS.console.log(b)
+    println(b)
 
     c := Foo{ hl.A{} }
     c.a.update('another update')
-    JS.console.log(c)
+    println(c)
 
     v := "done"
     {
@@ -81,12 +80,12 @@ fn main() {
     go async(0, "hello")
 
     fn_in_var := fn (number int) {
-        JS.console.log("number: $number")
+        println("number: $number")
     }
 
     hl.debugger()
     anon_consumer(hl.excited(), fn (message string) {
-        JS.console.log(message)
+        println(message)
     })
 }
 
