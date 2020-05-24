@@ -10,10 +10,13 @@ fn test_all() {
 	classic_tests := get_tests_in_dir(classic_dir)
 	global_dir := '$classic_dir/globals'
 	global_tests := get_tests_in_dir(global_dir)
+	run_dir := '$classic_dir/run'
+	run_tests := get_tests_in_dir(run_dir)	
 	// -prod so that warns are errors
 	total_errors += check_path(vexe, classic_dir, '-prod', '.out', classic_tests)
 	total_errors += check_path(vexe, global_dir, '--enable-globals', '.out', global_tests)
 	total_errors += check_path(vexe, classic_dir, '--enable-globals run', '.run.out', ['globals_error.vv'])
+	total_errors += check_path(vexe, run_dir,   'run', '.run.out', run_tests)
 	assert total_errors == 0
 }
 
@@ -31,7 +34,7 @@ fn check_path(vexe, dir, voptions, result_extension string, tests []string) int 
 	for test in tests {
 		path := os.join_path(dir, test).replace('\\', '/')
 		program := path.replace('.vv', '.v')
-		print(program + ' ')
+		print(path + ' ')
 		os.cp(path, program) or {
 			panic(err)
 		}
