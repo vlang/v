@@ -489,8 +489,8 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
-		kind: .size_t
-		name: 'size_t'
+		kind: .any
+		name: 'T'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
@@ -501,6 +501,11 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol({
 		kind: .any_int
 		name: 'any_int'
+		mod: 'builtin'
+	})
+	t.register_type_symbol({
+		kind: .size_t
+		name: 'size_t'
 		mod: 'builtin'
 	})
 	// TODO: remove. for v1 map compatibility
