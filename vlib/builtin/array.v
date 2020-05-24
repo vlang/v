@@ -148,7 +148,9 @@ pub fn (mut a array) delete(i int) {
 		}
 	}
 	size := a.element_size
-	C.memmove(byteptr(a.data) + i * size, byteptr(a.data) + (i + 1) * size, (a.len - i) * size)
+	// NB: if a is [12,34], a.len = 2, a.delete(0) 
+	// should move (2-0-1) elements = 1 element (the 34) forward
+	C.memmove(byteptr(a.data) + i * size, byteptr(a.data) + (i + 1) * size, (a.len - i - 1) * size)
 	a.len--
 }
 
