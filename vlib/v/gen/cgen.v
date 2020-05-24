@@ -1635,7 +1635,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				}
 				else {}
 			}
-			styp := g.typ(left_type)
+			styp := g.typ(g.table.mktyp(left_type))
 			g.write('_IN($styp, ')
 			g.expr(node.left)
 			g.write(', ')

@@ -468,6 +468,10 @@ fn test_in() {
 	assert !(0 in a)
 	assert 0 !in a
 	assert 4 !in a
+	b := [1, 4, 0]
+	c := [3, 6, 2, 0]
+	assert 0 in b
+	assert 0 in c
 }
 
 fn sum(prev int, curr int) int {
@@ -557,7 +561,7 @@ fn test_map() {
 	assert strs.map(it.to_upper()) == ['V', 'IS', 'AWESOME']
 	assert strs.map(it == 'awesome') == [false, false, true]
 	assert strs.map(it.len in nums) == [true, true, false]
-	assert strs.map(7) == [7, 7, 7]
+	assert strs.map(int(7)) == [7, 7, 7]
 
 	// external func
 	assert nums.map(map_test_helper_1(it)) == [1, 4, 9, 16, 25, 36]
@@ -568,9 +572,9 @@ fn test_map() {
 	assert []int{len:0}.map(it * 2) == []
 
 	// nested maps (where it is of same type)
-	assert nums.map( strs.map(7) == [7, 7, 7] ) == [true, true, true, true, true, true]
+	assert nums.map( strs.map(int(7)) == [7, 7, 7] ) == [true, true, true, true, true, true]
 	assert nums.map( '$it' + strs.map('a')[0] ) == ['1a', '2a', '3a', '4a', '5a', '6a']
-	assert nums.map( it + strs.map(7)[0] ) == [8, 9, 10, 11, 12, 13]
+	assert nums.map( it + strs.map(int(7))[0] ) == [8, 9, 10, 11, 12, 13]
 	assert nums.map( it + strs.map(it.len)[0] ) == [2, 3, 4, 5, 6, 7]
 	assert strs.map( it.len + strs.map(it.len)[0] ) == [2, 3, 8]
 

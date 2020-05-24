@@ -267,7 +267,7 @@ pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, _stride 
 	mut ptr := _ptr
 	if typ == C.GL_FLOAT {
 		stride *= sizeof(f32)
-		ptr *= sizeof(f32)
+		ptr *= int(sizeof(f32))
 	}
 	C.glVertexAttribPointer(index, size, typ, normalized, stride, ptr)
 }
