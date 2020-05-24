@@ -98,7 +98,8 @@ pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
 			'${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
 		}
 		else {
-			'unknown enumeration $fmt_time'}
+			'unknown enumeration $fmt_time'
+		}
 	}
 }
 
@@ -110,7 +111,7 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 	}
 	month := '${t.smonth()}'
 	year := t.year.str()[2..]
-mut 	res := match fmt_date {
+	mut res := match fmt_date {
 		.ddmmyy{
 			'${t.day:02d}|${t.month:02d}|$year'
 		}
@@ -136,7 +137,9 @@ mut 	res := match fmt_date {
 			'${t.year}|${t.month:02d}|${t.day:02d}'
 		}
 		else {
-			'unknown enumeration $fmt_date'}}
+			'unknown enumeration $fmt_date'
+		}
+	}
 	res = res.replace('|', match fmt_dlmtr {
 		.dot{
 			'.'

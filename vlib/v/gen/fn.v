@@ -305,8 +305,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		return
 	}
 	gen_or := node.or_block.kind != .absent
-	cur_line := if gen_or && g.is_assign_rhs {
-		line := g.go_before_stmt(0)
+	cur_line := if gen_or && g.cur_var_assign != '' {
+		line := g.go_before_stmt()
 		g.out.write(tabs[g.indent])
 		line
 	} else {
@@ -324,8 +324,10 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
-		styp := '*(${g.base_type(node.return_type)}*)'
-		g.write('\n${cur_line}${styp} ${tmp_opt}.data')
+		if node.return_type.idx() != table.void_type_idx {
+			styp := '*(${g.base_type(node.return_type)}*)'
+			g.write('\n${cur_line}${styp} ${tmp_opt}.data')
+		}
 	}
 }
 
@@ -580,7 +582,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		g.call_args(node.args, node.expected_arg_types)
 		g.write(')')
 	} else {
-		g.write('${g.get_ternary_name(name)}(')
+		g.write('${name}(')
 		if is_json_decode {
 			g.write('json__json_parse(')
 			// Skip the first argument in json.decode which is a type
