@@ -183,12 +183,12 @@ pub fn buffer_data(typ, size int, arr voidptr, draw_typ int) {
 }
 
 pub fn buffer_data_int(typ int, vertices []int, draw_typ int) {
-	size := sizeof(int) * vertices.len
+	size := sizeof(int) * u32(vertices.len)
 	C.glBufferData(typ, size, vertices.data, draw_typ)
 }
 
 pub fn buffer_data_f32(typ int, vertices []f32, draw_typ int) {
-	size := sizeof(f32) * vertices.len
+	size := sizeof(f32) * u32(vertices.len)
 	C.glBufferData(typ, size, vertices.data, draw_typ)
 }
 
@@ -263,7 +263,7 @@ pub fn gen_buffer() u32 {
 }
 
 pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, _stride int, _ptr int) {
-	mut stride := _stride
+	mut stride := u32(_stride)
 	mut ptr := _ptr
 	if typ == C.GL_FLOAT {
 		stride *= sizeof(f32)
