@@ -1855,6 +1855,13 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 				ast.Var {
 					mut typ := it.typ
 					if typ == 0 {
+						if it.expr is ast.Ident {
+							inner_ident := it.expr as ast.Ident
+							if inner_ident.kind == .unresolved {
+								c.error('unresolved variable: `$ident.name`', ident.pos)
+								return table.void_type
+							}
+						}
 						typ = c.expr(it.expr)
 					}
 					is_optional := typ.flag_is(.optional)
