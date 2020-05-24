@@ -292,14 +292,14 @@ pub fn (s Socket) close() ?int {
 }
 
 pub const (
-	CRLF     = '\r\n'
-	MAX_READ = 400
-	MSG_PEEK = 0x02
+	crlf     = '\r\n'
+	max_read = 400
+	msg_peek = 0x02
 )
 
 // write - write a string with CRLF after it over the socket s
 pub fn (s Socket) write(str string) ?int {
-	line := '$str$CRLF'
+	line := '$str$crlf'
 	res := C.send(s.sockfd, line.str, line.len, msg_nosignal)
 	if res < 0 {
 		return error('net.write: failed with $res')
@@ -309,11 +309,11 @@ pub fn (s Socket) write(str string) ?int {
 
 // read_line - retrieves a line from the socket s (i.e. a string ended with \n)
 pub fn (s Socket) read_line() string {
-	mut buf := [MAX_READ]byte // where C.recv will store the network data
+	mut buf := [max_read]byte // where C.recv will store the network data
 	mut res := '' // The final result, including the ending \n.
 	for {
 		mut line := '' // The current line. Can be a partial without \n in it.
-		n := C.recv(s.sockfd, buf, MAX_READ - 1, MSG_PEEK)
+		n := C.recv(s.sockfd, buf, max_read - 1, msg_peek)
 		if n == -1 {
 			return res
 		}
@@ -347,7 +347,7 @@ pub fn (s Socket) read_line() string {
 		// recv returned a buffer without \n in it .
 		C.recv(s.sockfd, buf, n, 0)
 		res += line
-		res += CRLF
+		res += crlf
 		break
 	}
 	return res
@@ -355,10 +355,10 @@ pub fn (s Socket) read_line() string {
 
 // TODO
 pub fn (s Socket) read_all() string {
-	mut buf := [MAX_READ]byte // where C.recv will store the network data
+	mut buf := [max_read]byte // where C.recv will store the network data
 	mut res := '' // The final result, including the ending \n.
 	for {
-		n := C.recv(s.sockfd, buf, MAX_READ - 1, 0)
+		n := C.recv(s.sockfd, buf, max_read - 1, 0)
 		if n == -1 {
 			return res
 		}
