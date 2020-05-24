@@ -1879,12 +1879,10 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						is_optional: is_optional
 					}
 					if typ == table.t_type {
-						if c.cur_generic_type != 0 {
-							sym := c.table.get_type_symbol(c.cur_generic_type)
-							println('IDENT T unresolved $ident.name typ=$sym.name')
-							// Got a var with type T, return current generic type
-							typ = c.cur_generic_type
-						}
+						sym := c.table.get_type_symbol(c.cur_generic_type)
+						println('IDENT T unresolved $ident.name typ=$sym.name')
+						// Got a var with type T, return current generic type
+						// typ = c.cur_generic_type
 					}
 					// } else {
 					it.typ = typ
