@@ -5,6 +5,7 @@ import os.cmdline
 import net.http
 import json
 import vhelp
+import v.vmod
 
 const (
 	default_vpm_server_urls = ['https://vpm.best', 'https://vpm.vlang.io']
@@ -49,7 +50,7 @@ fn main() {
 		exit(5)
 	}
 	vpm_command := params[0]
-	module_names := params[1..]
+	mut module_names := params[1..]
 	ensure_vmodules_dir_exist()
 	// println('module names: ') println(module_names)
 	match vpm_command {
@@ -60,6 +61,15 @@ fn main() {
 			vpm_search(module_names)
 		}
 		'install' {
+			if module_names.len == 0 && os.exists('./v.mod') {
+				println('Detected v.mod file inside the project directory.')
+				manifest := vmod.from_file('./v.mod') or {
+					panic(err)
+				}
+
+				module_names = manifest.dependencies
+			}
+
 			vpm_install(module_names)
 		}
 		'update' {
