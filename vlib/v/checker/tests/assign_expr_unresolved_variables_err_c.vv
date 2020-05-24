@@ -1,0 +1,4 @@
+fn main() {
+	a, b := a + 1, b * 3
+	println('$a, $b')
+}
