@@ -203,7 +203,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.print_v_files = true
 			}
 			'-error-limit' {
-	res.error_limit =cmdline.option(current_args, '-error-limit', '0').int()
+				res.error_limit =cmdline.option(current_args, '-error-limit', '0').int()
 			}
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')

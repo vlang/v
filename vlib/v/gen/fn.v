@@ -236,9 +236,9 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 		caname := c_name(arg.name)
 		arg_type_sym := g.table.get_type_symbol(arg.typ)
 		mut arg_type_name := g.typ(arg.typ) // arg_type_sym.name.replace('.', '__')
-		if arg.name == 'xxx' {
-			println('! ' + arg_type_name)
-		}
+		// if arg.name == 'xxx' {
+		// println('! ' + arg_type_name)
+		// }
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
 			varg_type_str := int(arg.typ).str()
@@ -269,7 +269,7 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 			fargtypes << arg_type_name
 		} else {
 			mut nr_muls := arg.typ.nr_muls()
-			s := arg_type_name + '/*F*/ ' + caname
+			s := arg_type_name + ' ' + caname
 			if arg.is_mut {
 				// mut arg needs one *
 				nr_muls = 1
