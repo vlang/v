@@ -13,12 +13,10 @@ pub fn (d f64) str() string {
 	return ftoa.ftoa_64(d)
 }
 
-/* TODO: this has to wait until definition in cheaders.v are merged
 [inline]
 pub fn (d any_float) str() string {
 	return ftoa.ftoa_64(f64(d))
 }
-*/
 
 // return a string of the input f64 in scientific notation with digit_num deciamals displayed, max 17 digits
 [inline]
