@@ -33,7 +33,7 @@ fn str_replace() {
 fn main() {
 	println('start')
 	foo()
-	str_replace()
+	//str_replace()
 	println('end')
 }
 
