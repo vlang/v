@@ -62,7 +62,7 @@ fn main() {
 		}
 		'install' {
 			if module_names.len == 0 && os.exists('./v.mod') {
-				println('Detected v.mod file inside the project directory.')
+				println('Detected v.mod file inside the project directory. Using it...')
 				manifest := vmod.from_file('./v.mod') or {
 					panic(err)
 				}
