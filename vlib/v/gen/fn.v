@@ -21,6 +21,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	if it.is_generic && g.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for gen_type in g.table.fn_gen_types[it.name] {
+			sym := g.table.get_type_symbol(gen_type)
+			println('gen fn `$it.name` for type `$sym.name`')
 			g.cur_generic_type = gen_type
 			g.gen_fn_decl(it)
 		}
@@ -234,6 +236,9 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 		caname := c_name(arg.name)
 		arg_type_sym := g.table.get_type_symbol(arg.typ)
 		mut arg_type_name := g.typ(arg.typ) // arg_type_sym.name.replace('.', '__')
+		if arg.name == 'xxx' {
+			println('! ' + arg_type_name)
+		}
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
 			varg_type_str := int(arg.typ).str()
@@ -264,7 +269,7 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 			fargtypes << arg_type_name
 		} else {
 			mut nr_muls := arg.typ.nr_muls()
-			s := arg_type_name + ' ' + caname
+			s := arg_type_name + '/*F*/ ' + caname
 			if arg.is_mut {
 				// mut arg needs one *
 				nr_muls = 1

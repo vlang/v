@@ -109,6 +109,7 @@ pub mut:
 	skip_warnings       bool     // like C's "-w"
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	is_parallel bool
+	error_limit int
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
@@ -200,6 +201,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-print_v_files' {
 				res.print_v_files = true
+			}
+			'-error-limit' {
+	res.error_limit =cmdline.option(current_args, '-error-limit', '0').int()
 			}
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')

@@ -10,10 +10,6 @@ import v.checker
 import v.parser
 import v.depgraph
 
-const (
-	max_nr_errors = 100
-)
-
 pub struct Builder {
 pub:
 	table               &table.Table
@@ -26,6 +22,7 @@ mut:
 	global_scope        &ast.Scope
 	out_name_c          string
 	out_name_js         string
+	max_nr_errors       int = 100
 pub mut:
 	module_search_paths []string
 }
@@ -233,7 +230,7 @@ fn (b &Builder) print_warnings_and_errors() {
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			// eprintln('')
-			if i > max_nr_errors {
+			if i > b.max_nr_errors {
 				return
 			}
 		}
@@ -248,7 +245,7 @@ fn (b &Builder) print_warnings_and_errors() {
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			// eprintln('')
-			if i > max_nr_errors {
+			if i > b.max_nr_errors {
 				return
 			}
 		}
