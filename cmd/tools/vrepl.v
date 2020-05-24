@@ -178,6 +178,9 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		// Save the source only if the user is printing something,
 		// but don't add this print call to the `lines` array,
 		// so that it doesn't get called during the next print.
+		if r.line.starts_with('='){
+			r.line = 'println(' + r.line[1..] + ')'
+		}
 		if r.line.starts_with('print') {
 			source_code := r.current_source_code(false) + '\n${r.line}\n'
 			os.write_file(file, source_code)
