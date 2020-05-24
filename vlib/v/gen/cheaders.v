@@ -372,6 +372,8 @@ typedef uint8_t byte;
 typedef uint32_t rune;
 typedef float f32;
 typedef double f64;
+typedef int64_t any_int;
+typedef double any_float;
 typedef unsigned char* byteptr;
 typedef void* voidptr;
 typedef char* charptr;
