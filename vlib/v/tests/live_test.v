@@ -120,11 +120,17 @@ fn testsuite_begin() {
 	atomic_write_source( live_program_source )
 }
 
+[if debuglivetest]
+fn vprintln(s string) {
+	eprintln(s)
+}
+
 fn testsuite_end() {
-	eprintln('source: $source_file')
-	eprintln('output: $output_file')
-	println('---------------------------------------------------------------------------')
+	vprintln('source: $source_file')
+	vprintln('output: $output_file')
+	vprintln('---------------------------------------------------------------------------')
 	output_lines := os.read_lines(output_file) or {
+		eprintln('could not read $output_file, error: $err')
 		return
 	}
 	mut histogram := map[string]int
@@ -132,9 +138,9 @@ fn testsuite_end() {
 		histogram[line] = histogram[line] + 1
 	}
 	for k, v in histogram {
-		println('> found ${v:5d} times: ${k}')
+		eprintln('> found ${v:5d} times: ${k}')
 	}
-	println('---------------------------------------------------------------------------')
+	vprintln('---------------------------------------------------------------------------')
 	assert histogram['START'] > 0
 	assert histogram['ORIGINAL'] > 0
 	assert histogram['CHANGED'] + histogram['ANOTHER'] > 0
@@ -143,21 +149,22 @@ fn testsuite_end() {
 
 fn change_source(new string) {
 	time.sleep_ms(100)
-	eprintln('> change ORIGINAL to: $new')
+	vprintln('> change ORIGINAL to: $new')
 	atomic_write_source( live_program_source.replace('ORIGINAL', new) )
 	wait_for_file(new)
 }    
 
-fn wait_for_file(new string){    
+fn wait_for_file(new string){
 	time.sleep_ms(100)
 	expected_file := os.join_path(os.temp_dir(), new + '.txt')
+	eprintln('waiting for $expected_file ...')
 	for i:=0 ; i <= 400 ; i++ {
 		if i % 25 == 0 {
-			eprintln('   checking ${i:-10d} for $expected_file ...')
+			vprintln('   checking ${i:-10d} for $expected_file ...')
 		}
 		if os.exists( expected_file ) {
 			assert true
-			eprintln('> done.')
+			vprintln('> done.')
 			time.sleep_ms(100)
 			break
 		}
@@ -174,7 +181,6 @@ fn test_live_program_can_be_compiled() {
 	eprintln('Running with: $cmd')
 	res := os.system(cmd)
 	assert res == 0
-	time.sleep_ms(1000)
 	eprintln('... running in the background')
 	wait_for_file('ORIGINAL')
 }
