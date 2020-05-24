@@ -374,7 +374,7 @@ pub fn (t TypeSymbol) str() string {
 pub fn (mut t Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .placeholder
 		name: 'reserved_0'
 	})
@@ -383,72 +383,72 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		name: 'void'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .voidptr
 		name: 'voidptr'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .byteptr
 		name: 'byteptr'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .charptr
 		name: 'charptr'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .i8
 		name: 'i8'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .i16
 		name: 'i16'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .int
 		name: 'int'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .i64
 		name: 'i64'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .byte
 		name: 'byte'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .u16
 		name: 'u16'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .u32
 		name: 'u32'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .u64
 		name: 'u64'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .f32
 		name: 'f32'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .f64
 		name: 'f64'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .char
 		name: 'char'
 		mod: 'builtin'
@@ -463,42 +463,42 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		name: 'none'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .string
 		name: 'string'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .ustring
 		name: 'ustring'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .array
 		name: 'array'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .map
 		name: 'map'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .any
 		name: 'any'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .size_t
 		name: 'size_t'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .any_float
 		name: 'any_float'
 		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .any_int
 		name: 'any_int'
 		mod: 'builtin'
@@ -506,13 +506,13 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	// TODO: remove. for v1 map compatibility
 	map_string_string_idx := t.find_or_register_map(string_type, string_type)
 	map_string_int_idx := t.find_or_register_map(string_type, int_type)
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .alias
 		name: 'map_string'
 		mod: 'builtin'
 		parent_idx: map_string_string_idx
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .alias
 		name: 'map_int'
 		mod: 'builtin'

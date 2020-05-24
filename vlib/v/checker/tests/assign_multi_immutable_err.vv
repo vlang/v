@@ -1,0 +1,7 @@
+fn main() {
+	a := 10
+	b := 20
+	a, b = 1, 2
+
+	println('$a, $b')
+}

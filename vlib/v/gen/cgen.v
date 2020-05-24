@@ -293,7 +293,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 // V type to C type
 fn (mut g Gen) typ(t table.Type) string {
 	mut styp := g.base_type(t)
-	if styp.len == 1 && g.cur_generic_type != 0 {
+	if styp.len == 1 && t == table.t_type && g.cur_generic_type != 0 {
 		// T => int etc
 		return g.typ(g.cur_generic_type)
 	}
@@ -968,8 +968,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.expr(val)
 			} else {
 				if val is ast.ArrayInit {
-					g.gen_default_init_value( val as ast.ArrayInit )
-				}            
+					g.gen_default_init_value(val as ast.ArrayInit)
+				}
 				g.write('{$styp _ = ')
 				g.expr(val)
 				g.writeln(';}')
@@ -979,7 +979,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			mut is_fixed_array_init := false
 			mut has_val := false
 			if val is ast.ArrayInit {
-				is_fixed_array_init, has_val = g.gen_default_init_value( val as ast.ArrayInit )
+				is_fixed_array_init, has_val = g.gen_default_init_value(val as ast.ArrayInit)
 			}
 			is_inside_ternary := g.inside_ternary != 0
 			cur_line := if is_inside_ternary {
@@ -1487,7 +1487,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 		if node.left_type == table.string_type_idx && node.op == .plus_assign {
 			// str += str2 => `str = string_add(str, str2)`
 			g.expr(node.left)
-			g.write(' = string_add(')
+			g.write(' = /*f*/string_add(')
 			str_add = true
 		}
 		right_sym := g.table.get_type_symbol(node.right_type)
@@ -1563,13 +1563,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	// }
 	// string + string, string == string etc
 	// g.infix_op = node.op
-	left_sym := g.table.get_type_symbol(node.left_type)
+	left_type := if node.left_type == table.t_type { g.cur_generic_type } else { node.left_type }
+	left_sym := g.table.get_type_symbol(left_type)
 	if node.op == .key_is {
 		g.is_expr(node)
 		return
 	}
 	right_sym := g.table.get_type_symbol(node.right_type)
-	if node.left_type == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
+	if left_type == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
 			.plus { 'ustring_add(' }
 			.eq { 'ustring_eq(' }
@@ -1585,7 +1586,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(', ')
 		g.expr(node.right)
 		g.write(')')
-	} else if node.left_type == table.string_type_idx && node.op != .key_in && node.op != .not_in {
+	} else if left_type == table.string_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
 			.plus { 'string_add(' }
 			.eq { 'string_eq(' }
@@ -1602,8 +1603,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if node.op in [.eq, .ne] && left_sym.kind == .array && right_sym.kind == .array {
-		styp := g.table.value_type(node.left_type)
-		ptr_typ := g.typ(node.left_type).split('_')[1]
+		styp := g.table.value_type(left_type)
+		ptr_typ := g.typ(left_type).split('_')[1]
 		if ptr_typ !in g.array_fn_definitions {
 			sym := g.table.get_type_symbol(left_sym.array_info().elem_type)
 			g.generate_array_equality_fn(ptr_typ, styp, sym)
@@ -1634,7 +1635,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				}
 				else {}
 			}
-			styp := g.typ(node.left_type)
+			styp := g.typ(left_type)
 			g.write('_IN($styp, ')
 			g.expr(node.left)
 			g.write(', ')
@@ -1653,18 +1654,18 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.write(')')
 		}
-	} else if node.op == .left_shift && g.table.get_type_symbol(node.left_type).kind == .array {
+	} else if node.op == .left_shift && g.table.get_type_symbol(left_type).kind == .array {
 		// arr << val
 		tmp := g.new_tmp_var()
-		sym := g.table.get_type_symbol(node.left_type)
+		sym := g.table.get_type_symbol(left_type)
 		info := sym.info as table.Array
 		if right_sym.kind == .array && info.elem_type != node.right_type {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY(&')
 			g.expr(node.left)
 			g.write(', (')
-			g.expr_with_cast(node.right, node.right_type, node.left_type)
-			styp := g.typ(node.left_type)
+			g.expr_with_cast(node.right, node.right_type, left_type)
+			styp := g.typ(left_type)
 			g.write('), $tmp, $styp)')
 		} else {
 			// push a single element
@@ -1682,10 +1683,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 			g.write(' }))')
 		}
-	} else if (node.left_type == node.right_type) && node.left_type.is_float() && node.op in
-		[.eq, .ne] {
+	} else if (left_type == node.right_type) && left_type.is_float() && node.op in [.eq, .ne] {
 		// floats should be compared with epsilon
-		if node.left_type == table.f64_type_idx {
+		if left_type == table.f64_type_idx {
 			if node.op == .eq {
 				g.write('f64_eq(')
 			} else {
@@ -1706,7 +1706,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		left_sym.name.contains('.')) && left_sym.kind != .alias || left_sym.kind == .alias && (left_sym.info as table.Alias).language ==
 		.c {
 		// !left_sym.is_number() {
-		g.write(g.typ(node.left_type))
+		g.write(g.typ(left_type))
 		g.write('_')
 		g.write(util.replace_op(node.op.str()))
 		g.write('(')
@@ -2979,7 +2979,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), ${cvar_name}.v_error );')
-			}else{
+			} else {
 				g.writeln('\tv_panic(${cvar_name}.v_error);')
 			}
 		} else {

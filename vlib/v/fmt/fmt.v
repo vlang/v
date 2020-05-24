@@ -14,23 +14,24 @@ const (
 
 pub struct Fmt {
 pub:
-	out            strings.Builder
-	out_imports    strings.Builder
-	table          &table.Table
+	out               strings.Builder
+	out_imports       strings.Builder
+	table             &table.Table
 pub mut:
-	indent         int
-	empty_line     bool
-	line_len       int
-	single_line_if bool
-	cur_mod        string
-	file           ast.File
-	did_imports    bool
-	is_assign      bool
-	auto_imports   []string // automatically inserted imports that the user forgot to specify
-	import_pos     int // position of the imports in the resulting string for later autoimports insertion
-	used_imports   []string // to remove unused imports
-	is_debug       bool
-	mod2alias      map[string]string // for `import time as t`, will contain: 'time'=>'t'
+	indent            int
+	empty_line        bool
+	line_len          int
+	single_line_if    bool
+	cur_mod           string
+	file              ast.File
+	did_imports       bool
+	is_assign         bool
+	auto_imports      []string // automatically inserted imports that the user forgot to specify
+	import_pos        int // position of the imports in the resulting string for later autoimports insertion
+	used_imports      []string // to remove unused imports
+	is_debug          bool
+	mod2alias         map[string]string // for `import time as t`, will contain: 'time'=>'t'
+	use_short_fn_args bool
 }
 
 pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
@@ -44,7 +45,7 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 	}
 	for imp in file.imports {
 		f.mod2alias[imp.mod.all_after_last('.')] = imp.alias
-	}        
+	}
 	f.cur_mod = 'main'
 	for stmt in file.stmts {
 		if stmt is ast.Import {
@@ -838,6 +839,15 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
+	/*
+	if node.args.len == 1 && node.expected_arg_types.len == 1 && node.args[0].expr is ast.StructInit &&
+		node.args[0].typ == node.expected_arg_types[0] {
+		// struct_init := node.args[0].expr as ast.StructInit
+		// if struct_init.typ == node.args[0].typ {
+		f.use_short_fn_args = true
+		// }
+	}
+	*/
 	if node.is_method {
 		if node.left is ast.Ident {
 			it := node.left as ast.Ident
@@ -876,6 +886,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write(')')
 		f.or_expr(node.or_block)
 	}
+	f.use_short_fn_args = false
 }
 
 pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
@@ -1101,7 +1112,11 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		}
 		f.write('}')
 	} else {
-		f.writeln('$name{')
+		if f.use_short_fn_args {
+			f.writeln('')
+		} else {
+			f.writeln('$name{')
+		}
 		f.indent++
 		for field in it.fields {
 			f.write('$field.name: ')
@@ -1109,7 +1124,9 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 			f.writeln('')
 		}
 		f.indent--
-		f.write('}')
+		if !f.use_short_fn_args {
+			f.write('}')
+		}
 	}
 }
 
