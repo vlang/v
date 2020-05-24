@@ -1179,7 +1179,31 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 }
 
 fn (mut g JsGen) gen_index_expr(it ast.IndexExpr) {
-	// TODO
+	// TODO: Handle splice setting if it's implemented
+	if it.index is ast.RangeExpr {
+		range := it.index as ast.RangeExpr
+		g.expr(it.left)
+		g.write('.slice(')
+		if range.has_low {
+			g.expr(range.low)
+		} else {
+			g.write('0')
+		}
+		g.write(', ')
+		if range.has_high {
+			g.expr(range.high)
+		} else {
+			g.expr(it.left)
+			g.write('.length')
+		}
+		g.write(')')
+	} else {
+		// TODO Does this work in all cases?
+		g.expr(it.left)
+		g.write('[')
+		g.expr(it.index)
+		g.write(']')
+	}
 }
 
 fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
