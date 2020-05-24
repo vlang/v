@@ -1307,12 +1307,9 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 }
 
 fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
-	// TODO: Should this print the V type or the JS type?
-	// If V type: Uncomment below
-	/*
 	sym := g.table.get_type_symbol(it.expr_type)
 	if sym.kind == .sum_type {
-		// TODO
+		// TODO: JS sumtypes not implemented yet
 	} else if sym.kind == .array_fixed {
 		fixed_info := sym.info as table.ArrayFixed
 		typ_name := g.table.get_type_name(fixed_info.elem_type)
@@ -1335,5 +1332,4 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 	} else {
 		g.write('"${sym.name}"')
 	}
-	*/
 }
