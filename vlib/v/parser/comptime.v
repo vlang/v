@@ -53,9 +53,21 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
-fn (mut p Parser) comp_if() ast.CompIf {
+fn (mut p Parser) vweb() ast.ComptimeCall {
+	p.check(.name) // skip `vweb.html()` TODO
+	p.check(.dot)
+	p.check(.name)
+	p.check(.lpar)
+	p.check(.rpar)
+	return ast.ComptimeCall{}
+}
+
+fn (mut p Parser) comp_if() ast.Stmt {
 	pos := p.tok.position()
 	p.next()
+	if p.tok.kind == .name && p.tok.lit == 'vweb' {
+		return p.vweb()
+	}
 	p.check(.key_if)
 	is_not := p.tok.kind == .not
 	if is_not {

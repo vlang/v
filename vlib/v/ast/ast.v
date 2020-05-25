@@ -15,10 +15,10 @@ pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral |
 	PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral | StringLiteral | StructInit |
 	Type | TypeOf
 
-pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
-	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
-	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl | TypeDecl |
-	UnsafeStmt
+pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ComptimeCall |
+	ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
+	GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl |
+	TypeDecl | UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -731,7 +731,7 @@ pub struct OrExpr {
 pub:
 	stmts []Stmt
 	kind  OrKind
-	pos      token.Position
+	pos   token.Position
 }
 
 pub struct Assoc {
@@ -770,6 +770,10 @@ pub:
 	vals        []Expr
 pub mut:
 	return_type table.Type
+}
+
+pub struct ComptimeCall {
+	name string
 }
 
 pub struct None {
@@ -888,7 +892,7 @@ pub fn (expr Expr) position() token.Position {
 }
 
 pub fn (stmt Stmt) position() token.Position {
-	match mut stmt {
+	match stmt {
 		AssertStmt { return it.pos }
 		AssignStmt { return it.pos }
 		/*

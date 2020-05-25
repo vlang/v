@@ -1580,14 +1580,31 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	right_sym := g.table.get_type_symbol(node.right_type)
 	if left_type == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
-			.plus { 'ustring_add(' }
-			.eq { 'ustring_eq(' }
-			.ne { 'ustring_ne(' }
-			.lt { 'ustring_lt(' }
-			.le { 'ustring_le(' }
-			.gt { 'ustring_gt(' }
-			.ge { 'ustring_ge(' }
-			else { '/*node error*/' }
+			.plus {
+				'ustring_add('
+			}
+			.eq {
+				'ustring_eq('
+			}
+			.ne {
+				'ustring_ne('
+			}
+			.lt {
+				'ustring_lt('
+			}
+			.le {
+				'ustring_le('
+			}
+			.gt {
+				'ustring_gt('
+			}
+			.ge {
+				'ustring_ge('
+			}
+			else {
+				verror('op error for type `$left_sym.name`')
+				'/*node error*/'
+			}
 		}
 		g.write(fn_name)
 		g.expr(node.left)
@@ -1596,14 +1613,31 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(')')
 	} else if left_type == table.string_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
-			.plus { 'string_add(' }
-			.eq { 'string_eq(' }
-			.ne { 'string_ne(' }
-			.lt { 'string_lt(' }
-			.le { 'string_le(' }
-			.gt { 'string_gt(' }
-			.ge { 'string_ge(' }
-			else { '/*node error*/' }
+			.plus {
+				'string_add('
+			}
+			.eq {
+				'string_eq('
+			}
+			.ne {
+				'string_ne('
+			}
+			.lt {
+				'string_lt('
+			}
+			.le {
+				'string_le('
+			}
+			.gt {
+				'string_gt('
+			}
+			.ge {
+				'string_ge('
+			}
+			else {
+				verror('op error for type `$left_sym.name`')
+				'/*node error*/'
+			}
 		}
 		g.write(fn_name)
 		g.expr(node.left)

@@ -22,7 +22,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// loop thru each generic type and generate a function
 		for gen_type in g.table.fn_gen_types[it.name] {
 			sym := g.table.get_type_symbol(gen_type)
-			println('gen fn `$it.name` for type `$sym.name`')
+			if g.pref.is_verbose {
+				println('gen fn `$it.name` for type `$sym.name`')
+			}
 			g.cur_generic_type = gen_type
 			g.gen_fn_decl(it)
 		}
