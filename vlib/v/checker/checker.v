@@ -408,6 +408,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	infix_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
+	left_default := c.table.get_type_symbol(c.table.mktyp(left_type))
 	left_pos := infix_expr.left.position()
 	right_pos := infix_expr.right.position()
 	mut return_type := left_type
@@ -420,17 +421,15 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.key_in, .not_in {
 			match right.kind {
 				.array {
-					elem_type := right.array_info().elem_type
-					if c.promote(elem_type, left_type) != elem_type {
-						right_sym := c.table.get_type_symbol(elem_type)
+					right_sym := c.table.get_type_symbol(c.table.mktyp(right.array_info().elem_type))
+					if left_default.kind != right_sym.kind {
 						c.error('the data type on the left of `$infix_expr.op.str()` (`$left.name`) does not match the array item type (`$right_sym.name`)',
 							infix_expr.pos)
 					}
 				}
 				.map {
-					key_type := right.map_info().key_type
-					if c.promote(key_type, left_type) != key_type {
-						key_sym := c.table.get_type_symbol(key_type)
+					key_sym := c.table.get_type_symbol(c.table.mktyp(right.map_info().key_type))
+					if left_default.kind != key_sym.kind {
 						c.error('the data type on the left of `$infix_expr.op.str()` (`$left.name`) does not match the map key type `$key_sym.name`',
 							infix_expr.pos)
 					}
