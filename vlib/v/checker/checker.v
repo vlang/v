@@ -1019,7 +1019,7 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 	}
 }
 
-// return `true` is the expression is a call expr with handled optional
+// return the actual type of the expression, once the optional is handled
 pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) table.Type {
 	if expr is ast.CallExpr {
 		call_expr := expr as ast.CallExpr
