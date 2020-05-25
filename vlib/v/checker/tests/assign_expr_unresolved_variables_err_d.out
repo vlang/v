@@ -1,6 +1,0 @@
-vlib/v/checker/tests/assign_expr_unresolved_variables_err_d.v:2:9: error: undefined variables `s`
-    1 | fn main() {
-    2 |     s := '$s'
-      |            ^
-    3 |     println(s)
-    4 | }
