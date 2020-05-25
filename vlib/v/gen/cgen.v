@@ -2489,6 +2489,11 @@ fn (mut g Gen) write_init_function() {
 	}
 	fn_vinit_start_pos := g.out.len
 	g.writeln('void _vinit() {')
+	if g.pref.autofree {
+		// Pre-allocate the string buffer
+		// TODO make it configurable
+		g.writeln('g_str_buf = malloc(1024 * 1000);')
+	}
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
 	g.writeln(g.inits.str())

@@ -240,7 +240,8 @@ void* g_live_info = NULL;
 #endif
 
 //================================== GLOBALS =================================*/
-byte g_str_buf[1024];
+//byte g_str_buf[1024];
+byte* g_str_buf;
 int load_so(byteptr);
 void reload_so();
 void _vinit();
