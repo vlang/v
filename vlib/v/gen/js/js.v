@@ -402,6 +402,9 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.CompIf {
 			// skip: JS has no compile time if
 		}
+		ast.ComptimeCall {
+			// TODO
+		}
 		ast.ConstDecl {
 			g.gen_const_decl(it)
 		}
