@@ -395,10 +395,16 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		c.expected_type = former_expected_type
 	}
 	c.expected_type = table.void_type
-	left_type := c.expr(infix_expr.left)
+	mut left_type := c.expr(infix_expr.left)
+	if false && left_type == table.t_type {
+		left_type = c.cur_generic_type
+	}
 	infix_expr.left_type = left_type
 	c.expected_type = left_type
-	right_type := c.expr(infix_expr.right)
+	mut right_type := c.expr(infix_expr.right)
+	if false && right_type == table.t_type {
+		right_type = c.cur_generic_type
+	}
 	infix_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
@@ -618,11 +624,11 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 
 fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 	c.expected_type = table.void_type
-	left_type := c.expr(assign_expr.left)
+	left_type := c.unwrap_generic(c.expr(assign_expr.left))
 	c.expected_type = left_type
 	assign_expr.left_type = left_type
 	// println('setting exp type to $c.expected_type $t.name')
-	right_type := c.expr(assign_expr.val)
+	right_type := c.unwrap_generic(c.expr(assign_expr.val))
 	assign_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
@@ -1167,15 +1173,17 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 	for i, exp_type in expected_types {
 		got_typ := got_types[i]
-		/*
-		ok := if exp_type == table.t_type { c.check_types(got_typ, c.cur_generic_type) } else { c.check_types(got_typ,
+		is_generic := exp_type == table.t_type
+		ok := if is_generic { c.check_types(got_typ, c.cur_generic_type) || got_typ == exp_type } else { c.check_types(got_typ,
 				exp_type) }
-		*/
-		ok := c.check_types(got_typ, exp_type)
+		// ok := c.check_types(got_typ, exp_type)
 		if !ok { // !c.table.check(got_typ, exp_typ) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
-			exp_typ_sym := c.table.get_type_symbol(exp_type)
+			mut exp_typ_sym := c.table.get_type_symbol(exp_type)
 			pos := return_stmt.exprs[i].position()
+			if is_generic {
+				exp_typ_sym = c.table.get_type_symbol(c.cur_generic_type)
+			}
 			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument',
 				pos)
 		}
@@ -1651,6 +1659,14 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	c.expected_type = table.void_type
 }
 
+pub fn (mut c Checker) unwrap_generic(typ table.Type) table.Type {
+	if typ == table.t_type {
+		return c.cur_generic_type
+	}
+	return typ
+}
+
+// TODO node must be mut
 pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 	match mut node {
 		ast.AnonFn {
@@ -1878,12 +1894,12 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						typ: typ
 						is_optional: is_optional
 					}
-					if typ == table.t_type {
-						sym := c.table.get_type_symbol(c.cur_generic_type)
-						println('IDENT T unresolved $ident.name typ=$sym.name')
-						// Got a var with type T, return current generic type
-						// typ = c.cur_generic_type
-					}
+					// if typ == table.t_type {
+					// sym := c.table.get_type_symbol(c.cur_generic_type)
+					// println('IDENT T unresolved $ident.name typ=$sym.name')
+					// Got a var with type T, return current generic type
+					// typ = c.cur_generic_type
+					// }
 					// } else {
 					it.typ = typ
 					// unwrap optional (`println(x)`)

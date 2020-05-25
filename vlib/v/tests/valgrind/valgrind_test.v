@@ -2,11 +2,12 @@ import os
 import term
 import benchmark
 
+[if verbose]
+fn vprintln(s string) {
+	eprintln(s)
+}
+
 fn test_all() {
-	$if tinyc {
-		eprintln('Temporarily disabled for tcc, till the generated C code works with tcc.')
-		exit(0)
-	}
 	if os.user_os() != 'linux' && os.getenv('FORCE_VALGRIND_TEST').len == 0 {
 		eprintln('Valgrind tests can only be run reliably on Linux for now.')
 		eprintln('You can still do it by setting FORCE_VALGRIND_TEST=1 .')
@@ -37,7 +38,9 @@ fn test_all() {
 		full_test_path := os.real_path(test)
 		println('x.v: $wrkdir/x.v')
 		os.system('cp ${dir}/${test} $wrkdir/x.v') // cant run .vv file
-		res := os.exec('$vexe -cflags "-w" -verbose=3 -autofree -csource keep -cg $wrkdir/x.v') or {
+		compile_cmd := '$vexe -cflags "-w" -verbose=3 -autofree -keepc -cg $wrkdir/x.v'
+		vprintln('compile cmd: $compile_cmd')
+		res := os.exec(compile_cmd) or {
 			bench.fail()
 			eprintln(bench.step_message_fail('valgrind $test failed'))
 			continue
@@ -48,7 +51,9 @@ fn test_all() {
 			eprintln(res.output)
 			continue
 		}
-		valgrind_res := os.exec('valgrind --error-exitcode=1 --leak-check=full $wrkdir/x') or {
+		valgrind_cmd := 'valgrind --error-exitcode=1 --leak-check=full $wrkdir/x'
+		vprintln('valgrind cmd: $valgrind_cmd')
+		valgrind_res := os.exec(valgrind_cmd) or {
 			bench.fail()
 			eprintln(bench.step_message_fail('valgrind could not be executed'))
 			continue

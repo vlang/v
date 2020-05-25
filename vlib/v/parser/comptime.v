@@ -6,6 +6,7 @@ module parser
 import v.ast
 import v.pref
 import v.vmod
+import v.table
 
 const (
 	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
@@ -53,9 +54,21 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
-fn (mut p Parser) comp_if() ast.CompIf {
+fn (mut p Parser) vweb() ast.ComptimeCall {
+	p.check(.name) // skip `vweb.html()` TODO
+	p.check(.dot)
+	p.check(.name)
+	p.check(.lpar)
+	p.check(.rpar)
+	return ast.ComptimeCall{}
+}
+
+fn (mut p Parser) comp_if() ast.Stmt {
 	pos := p.tok.position()
 	p.next()
+	if p.tok.kind == .name && p.tok.lit == 'vweb' {
+		return p.vweb()
+	}
 	p.check(.key_if)
 	is_not := p.tok.kind == .not
 	if is_not {
@@ -176,4 +189,42 @@ fn os_from_string(os string) pref.OS {
 	}
 	// println('bad os $os') // todo panic?
 	return .linux
+}
+
+// `user.$method()` (`method` is a string)
+fn (mut p Parser) comptime_method_call(typ table.Type) {
+	p.check(.dollar)
+	method_name := p.check_name()
+	_ = method_name
+	mut j := 0
+	sym := p.table.get_type_symbol(typ)
+	if sym.kind != .struct_ {
+		p.error('not a struct')
+	}
+	// info := sym.info as table.Struct
+	for method in sym.methods {
+		if method.return_type != table.void_type {
+			continue
+		}
+		/*
+		receiver := method.args[0]
+		if !p.expr_var.ptr {
+			p.error('`$p.expr_var.name` needs to be a reference')
+		}
+		amp := if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
+		if j > 0 {
+			p.gen(' else ')
+		}
+		p.genln('if (string_eq($method_name, _STR("$method.name")) ) ' + '${typ.name}_$method.name ($amp $p.expr_var.name);')
+		*/
+		j++
+	}
+	p.check(.lpar)
+	p.check(.rpar)
+	if p.tok.kind == .key_orelse {
+		p.check(.key_orelse)
+		// p.genln('else {')
+		p.check(.lcbr)
+		// p.statements()
+	}
 }

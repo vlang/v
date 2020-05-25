@@ -359,6 +359,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
+		ast.ComptimeCall {}
 	}
 }
 
@@ -873,6 +874,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write(')')
 		f.or_expr(node.or_block)
 	} else {
+		if node.language == .c {
+			f.write('C.')
+		}
 		name := f.short_module(node.name)
 		f.mark_module_as_used(name)
 		f.write('${name}')

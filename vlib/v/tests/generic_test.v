@@ -25,15 +25,20 @@ fn test_generic_fn() {
 	assert plus<string>('a', 'b') == 'ab'
 }
 
-/*
 fn sum<T>(l []T) T {
-    mut r := T(0)
-    for e in l {
-        r += e
-    }
-    return r
+	mut r := T(0)
+	for e in l {
+		r += e
+	}
+	return r
 }
 
+fn test_foo() {
+	b := [1, 2, 3]
+	assert sum<int>(b) == 6
+}
+
+/*
 fn map_f<T,U>(l []T, f fn(T)U) []U {
     mut r := []U{}
     for e in l {

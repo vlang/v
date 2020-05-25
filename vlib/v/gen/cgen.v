@@ -13,6 +13,7 @@ import v.util
 import v.depgraph
 import term
 
+// NB: keywords after 'new' are reserved in C++
 const (
 	c_reserved = ['delete', 'exit', 'unix', 'error', 'calloc', 'malloc', 'free', 'panic', 'auto',
 		'char',
@@ -39,6 +40,7 @@ const (
 		'while',
 		'new',
 		'namespace',
+		'class',
 		'typename'
 	]
 )
@@ -51,6 +53,7 @@ struct Gen {
 	typedefs2            strings.Builder
 	definitions          strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	inits                strings.Builder // contents of `void _vinit(){}`
+	cleanups             strings.Builder // contents of `void _vcleanup(){}`
 	gowrappers           strings.Builder // all go callsite wrappers
 	stringliterals       strings.Builder // all string literals (they depend on tos3() beeing defined
 	auto_str_funcs       strings.Builder // function bodies of all auto generated _str funcs
@@ -119,6 +122,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		auto_str_funcs: strings.new_builder(100)
 		comptime_defines: strings.new_builder(100)
 		inits: strings.new_builder(100)
+		cleanups: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		table: table
@@ -967,9 +971,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if is_call {
 				g.expr(val)
 			} else {
-				if val is ast.ArrayInit {
-					g.gen_default_init_value(val as ast.ArrayInit)
-				}
+				g.gen_default_init_value(val)
 				g.write('{$styp _ = ')
 				g.expr(val)
 				g.writeln(';}')
@@ -978,9 +980,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			right_sym := g.table.get_type_symbol(assign_stmt.right_types[i])
 			mut is_fixed_array_init := false
 			mut has_val := false
-			if val is ast.ArrayInit {
-				is_fixed_array_init, has_val = g.gen_default_init_value(val as ast.ArrayInit)
-			}
+			is_fixed_array_init, has_val = g.gen_default_init_value(val)
 			is_inside_ternary := g.inside_ternary != 0
 			cur_line := if is_inside_ternary {
 				g.register_ternary_name(ident.name)
@@ -1045,16 +1045,28 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 }
 
-fn (mut g Gen) gen_default_init_value(val ast.ArrayInit) (bool, bool) {
-	is_fixed_array_init := val.is_fixed
-	has_val := val.has_val
-	elem_type_str := g.typ(val.elem_type)
-	if val.has_default {
-		g.write('$elem_type_str _val_$val.pos.pos = ')
-		g.expr(val.default_expr)
-		g.writeln(';')
-	} else if val.has_len && val.elem_type == table.string_type {
-		g.writeln('$elem_type_str _val_$val.pos.pos = tos_lit("");')
+fn (mut g Gen) gen_default_init_value(val ast.Expr) (bool, bool) {
+	mut is_fixed_array_init := false
+	mut has_val := false
+	match val {
+		ast.ArrayInit {
+			is_fixed_array_init = it.is_fixed
+			has_val = it.has_val
+			elem_type_str := g.typ(it.elem_type)
+			if it.has_default {
+				g.write('$elem_type_str _val_$it.pos.pos = ')
+				g.expr(it.default_expr)
+				g.writeln(';')
+			} else if it.has_len && it.elem_type == table.string_type {
+				g.writeln('$elem_type_str _val_$it.pos.pos = tos_lit("");')
+			}
+		}
+		ast.StructInit {
+			for field in it.fields {
+				g.gen_default_init_value(field.expr)
+			}
+		}
+		else {}
 	}
 	return is_fixed_array_init, has_val
 }
@@ -1148,8 +1160,16 @@ fn (g &Gen) autofree_variable(v ast.Var) string {
 			else {
 				// NOTE/TODO: assign_stmt multi returns variables have no expr
 				// since the type comes from the called fns return type
-				t := typeof(v.expr)
+				/*
+				f := v.name[0]
+				if
+					//!(f >= `a` && f <= `d`) {
+					//f != `c` {
+					v.name!='cvar_name' {
+					t := typeof(v.expr)
 				return '// other ' + t + '\n'
+				}
+				*/
 			}
 		}
 		return g.autofree_var_call('string_free', v)
@@ -1572,14 +1592,31 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	right_sym := g.table.get_type_symbol(node.right_type)
 	if left_type == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
-			.plus { 'ustring_add(' }
-			.eq { 'ustring_eq(' }
-			.ne { 'ustring_ne(' }
-			.lt { 'ustring_lt(' }
-			.le { 'ustring_le(' }
-			.gt { 'ustring_gt(' }
-			.ge { 'ustring_ge(' }
-			else { '/*node error*/' }
+			.plus {
+				'ustring_add('
+			}
+			.eq {
+				'ustring_eq('
+			}
+			.ne {
+				'ustring_ne('
+			}
+			.lt {
+				'ustring_lt('
+			}
+			.le {
+				'ustring_le('
+			}
+			.gt {
+				'ustring_gt('
+			}
+			.ge {
+				'ustring_ge('
+			}
+			else {
+				verror('op error for type `$left_sym.name`')
+				'/*node error*/'
+			}
 		}
 		g.write(fn_name)
 		g.expr(node.left)
@@ -1588,14 +1625,31 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(')')
 	} else if left_type == table.string_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
-			.plus { 'string_add(' }
-			.eq { 'string_eq(' }
-			.ne { 'string_ne(' }
-			.lt { 'string_lt(' }
-			.le { 'string_le(' }
-			.gt { 'string_gt(' }
-			.ge { 'string_ge(' }
-			else { '/*node error*/' }
+			.plus {
+				'string_add('
+			}
+			.eq {
+				'string_eq('
+			}
+			.ne {
+				'string_ne('
+			}
+			.lt {
+				'string_lt('
+			}
+			.le {
+				'string_le('
+			}
+			.gt {
+				'string_gt('
+			}
+			.ge {
+				'string_ge('
+			}
+			else {
+				verror('op error for type `$left_sym.name`')
+				'/*node error*/'
+			}
 		}
 		g.write(fn_name)
 		g.expr(node.left)
@@ -2240,8 +2294,18 @@ fn (mut g Gen) const_decl_init_later(name, val string, typ table.Type) {
 	// Initialize more complex consts in `void _vinit(){}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	styp := g.typ(typ)
-	g.definitions.writeln('$styp _const_$name; // inited later')
-	g.inits.writeln('\t_const_$name = $val;')
+	//
+	cname := '_const_$name'
+	g.definitions.writeln('$styp $cname; // inited later')
+	g.inits.writeln('\t$cname = $val;')
+	if g.pref.autofree {
+		if styp.starts_with('array_') {
+			g.cleanups.writeln('\tarray_free(&$cname);')
+		}
+		if styp == 'string' {
+			g.cleanups.writeln('\tstring_free(&$cname);')
+		}
+	}
 }
 
 fn (mut g Gen) go_back_out(n int) {
@@ -2423,6 +2487,7 @@ fn (mut g Gen) write_init_function() {
 	if g.pref.is_liveshared {
 		return
 	}
+	fn_vinit_start_pos := g.out.len
 	g.writeln('void _vinit() {')
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
@@ -2436,15 +2501,18 @@ fn (mut g Gen) write_init_function() {
 		}
 	}
 	g.writeln('}')
+	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
+		println(g.out.after(fn_vinit_start_pos))
+	}
 	if g.autofree {
+		fn_vcleanup_start_pos := g.out.len
 		g.writeln('void _vcleanup() {')
 		// g.writeln('puts("cleaning up...");')
-		if g.is_importing_os() {
-			g.writeln('array_free(&_const_os__args);')
-			g.writeln('string_free(&_const_os__wd_at_startup);')
-		}
-		g.writeln('array_free(&_const_strconv__ftoa__powers_of_10);')
+		g.writeln(g.cleanups.str())
 		g.writeln('}')
+		if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
+			println(g.out.after(fn_vcleanup_start_pos))
+		}
 	}
 }
 
@@ -3773,7 +3841,7 @@ fn (mut g Gen) gen_str_for_varg(styp, str_fn_name string, has_str_method bool) {
 	g.auto_str_funcs.writeln('\tfor(int i=0; i<it.len; i++) {')
 	if has_str_method {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${str_fn_name}(it.args[i]));')
-	}else{
+	} else {
 		// autogenerated str methods take the indent level as a second argument:
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${str_fn_name}(it.args[i], 0));')
 	}

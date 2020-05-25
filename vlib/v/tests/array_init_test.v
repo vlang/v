@@ -127,3 +127,16 @@ fn test_array_string_full_options() {
 	assert c.cap >= c.len
 	assert c.str() == "['a', 'b', 'c', 'c', 'c', 'c', 'c', 'c', 'c', 'c', '11', '12', '13', '14', '15', '16']"
 }
+
+struct MyStruct {
+pub mut:
+	ar []f32
+}
+
+fn test_array_init_in_struct_field() {
+	m := MyStruct {
+		ar: []f32{len: 4, init:1.2}
+	}
+	println(m)
+	assert m.ar.str() == '[1.2, 1.2, 1.2, 1.2]'
+}

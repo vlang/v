@@ -12,8 +12,8 @@ fn foo() {
 	nums_copy := nums // array assignments call .clone()
 	println(nums_copy)
 
-	//name  := 'Peter' // string literals mustn't be freed
-	//str_inter := 'hello, $name' // concatenated strings must be freed
+	name  := 'Peter' // string literals mustn't be freed
+	str_inter := 'hello, $name' // concatenated strings must be freed
 
 
 
