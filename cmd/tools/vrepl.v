@@ -220,7 +220,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				temp_source_code = '${temp_line}\n' + r.current_source_code(false)
 			} else {
 				for i, l in r.lines {
-					if l.starts_with('for ') && l.contains('println') {
+					if (l.starts_with('for ') || l.starts_with('if ')) && l.contains('println') {
 						r.lines.delete(i)
 						break
 					}
