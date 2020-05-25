@@ -219,6 +219,13 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			if temp_line.starts_with('import ') || temp_line.starts_with('#include ') {
 				temp_source_code = '${temp_line}\n' + r.current_source_code(false)
 			} else {
+				for i, l in r.lines {
+					if l.starts_with('for ') && l.contains('println') {
+						r.lines.delete(i)
+						break
+					}
+				}
+
 				temp_source_code = r.current_source_code(true) + '\n${temp_line}\n'
 			}
 			os.write_file(temp_file, temp_source_code)
