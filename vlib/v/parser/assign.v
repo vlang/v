@@ -14,7 +14,7 @@ fn (mut p Parser) check_undefined_variables(idents []ast.Ident, expr ast.Expr) {
 		ast.Ident {
 			for ident in idents {
 				if ident.name == it.name {
-					p.error_with_pos('undefined: `$it.name`', it.pos)
+					p.error_with_pos('undefined variable: `$it.name`', it.pos)
 				}
 			}
 		}
