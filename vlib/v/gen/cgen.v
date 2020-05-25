@@ -2475,6 +2475,7 @@ fn (mut g Gen) write_init_function() {
 	if g.pref.is_liveshared {
 		return
 	}
+	fn_vinit_start_pos := g.out.len
 	g.writeln('void _vinit() {')
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
@@ -2488,7 +2489,11 @@ fn (mut g Gen) write_init_function() {
 		}
 	}
 	g.writeln('}')
+	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
+		println(g.out.after(fn_vinit_start_pos))
+	}
 	if g.autofree {
+		fn_vcleanup_start_pos := g.out.len
 		g.writeln('void _vcleanup() {')
 		// g.writeln('puts("cleaning up...");')
 		if g.is_importing_os() {
@@ -2497,6 +2502,9 @@ fn (mut g Gen) write_init_function() {
 		}
 		g.writeln('array_free(&_const_strconv__ftoa__powers_of_10);')
 		g.writeln('}')
+		if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
+			println(g.out.after(fn_vcleanup_start_pos))
+		}
 	}
 }
 
