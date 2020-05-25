@@ -53,6 +53,7 @@ struct Gen {
 	typedefs2            strings.Builder
 	definitions          strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	inits                strings.Builder // contents of `void _vinit(){}`
+	cleanups             strings.Builder // contents of `void _vcleanup(){}`
 	gowrappers           strings.Builder // all go callsite wrappers
 	stringliterals       strings.Builder // all string literals (they depend on tos3() beeing defined
 	auto_str_funcs       strings.Builder // function bodies of all auto generated _str funcs
@@ -121,6 +122,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		auto_str_funcs: strings.new_builder(100)
 		comptime_defines: strings.new_builder(100)
 		inits: strings.new_builder(100)
+		cleanups: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		table: table
@@ -2292,8 +2294,18 @@ fn (mut g Gen) const_decl_init_later(name, val string, typ table.Type) {
 	// Initialize more complex consts in `void _vinit(){}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	styp := g.typ(typ)
-	g.definitions.writeln('$styp _const_$name; // inited later')
-	g.inits.writeln('\t_const_$name = $val;')
+	//
+	cname := '_const_$name'
+	g.definitions.writeln('$styp $cname; // inited later')
+	g.inits.writeln('\t$cname = $val;')
+	if g.pref.autofree {
+		if styp.starts_with('array_') {
+			g.cleanups.writeln('\tarray_free(&$cname);')
+		}
+		if styp == 'string' {
+			g.cleanups.writeln('\tstring_free(&$cname);')
+		}
+	}
 }
 
 fn (mut g Gen) go_back_out(n int) {
@@ -2496,26 +2508,7 @@ fn (mut g Gen) write_init_function() {
 		fn_vcleanup_start_pos := g.out.len
 		g.writeln('void _vcleanup() {')
 		// g.writeln('puts("cleaning up...");')
-		if g.is_importing_os() {
-			g.writeln('array_free(&_const_os__args);')
-			g.writeln('string_free(&_const_os__wd_at_startup);')
-		}
-		//
-		g.writeln('array_free(&_const_math__bits__de_bruijn32tab);')
-		g.writeln('array_free(&_const_math__bits__de_bruijn64tab);')
-		g.writeln('array_free(&_const_math__bits__ntz_8_tab);')
-		g.writeln('array_free(&_const_math__bits__pop_8_tab);')
-		g.writeln('array_free(&_const_math__bits__rev_8_tab);')
-		g.writeln('array_free(&_const_math__bits__len_8_tab);')
-		g.writeln('array_free(&_const_strconv__ftoa__ten_pow_table_32);')
-		g.writeln('array_free(&_const_strconv__ftoa__ten_pow_table_64);')
-		g.writeln('array_free(&_const_strconv__ftoa__powers_of_10);')
-		g.writeln('array_free(&_const_strconv__ftoa__pow5_split_32);')
-		g.writeln('array_free(&_const_strconv__ftoa__pow5_inv_split_32);')
-		g.writeln('array_free(&_const_strconv__ftoa__pow5_split_64);')
-		g.writeln('array_free(&_const_strconv__ftoa__pow5_inv_split_64);')
-		g.writeln('array_free(&_const_strconv__dec_round);')
-		//
+		g.writeln(g.cleanups.str())
 		g.writeln('}')
 		if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
 			println(g.out.after(fn_vcleanup_start_pos))
