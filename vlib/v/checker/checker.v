@@ -2229,15 +2229,20 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 		c.error('not an enum (name=$node.enum_name) (type_idx=0)', node.pos)
 		return table.void_type
 	}
-	typ := table.new_type(typ_idx)
+	mut typ := table.new_type(typ_idx)
 	if typ == table.void_type {
 		c.error('not an enum', node.pos)
 		return table.void_type
 	}
-	typ_sym := c.table.get_type_symbol(typ)
+	mut typ_sym := c.table.get_type_symbol(typ)
 	// println('tname=$typ_sym.name $node.pos.line_nr $c.file.path')
+	if typ_sym.kind == .array && node.enum_name.len == 0 {
+		array_info := typ_sym.info as table.Array
+		typ = array_info.elem_type
+		typ_sym = c.table.get_type_symbol(typ)
+	}
 	if typ_sym.kind != .enum_ {
-		c.error('not an enum', node.pos)
+		c.error('expected type is not an enum', node.pos)
 		return table.void_type
 	}
 	if !(typ_sym.info is table.Enum) {
