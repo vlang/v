@@ -684,7 +684,7 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name`',
 			assign_expr.val.position())
 	}
-	c.check_expr_opt_call(assign_expr.val, right_type, true)
+	c.check_expr_opt_call(assign_expr.val, right_type)
 }
 
 pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
@@ -1020,11 +1020,16 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 	}
 }
 
-pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type, is_return_used bool) {
+pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) {
 	if expr is ast.CallExpr {
 		call_expr := expr as ast.CallExpr
 		if call_expr.return_type.flag_is(.optional) {
-			c.check_or_block(call_expr, ret_type, is_return_used)
+			if call_expr.or_block.kind == .absent {
+				c.error('${call_expr.name}() returns an option, but you missed to add an `or {}` block to it',
+					call_expr.pos)
+			} else {
+				c.check_or_expr(call_expr.or_block, ret_type)
+			}
 		} else if call_expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `$call_expr.name` does not return an optional',
 				call_expr.pos)
@@ -1035,35 +1040,30 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type, i
 	}
 }
 
-pub fn (mut c Checker) check_or_block(mut call_expr ast.CallExpr, ret_type table.Type, is_ret_used bool) {
-	if call_expr.or_block.kind == .absent {
-		c.error('${call_expr.name}() returns an option, but you missed to add an `or {}` block to it',
-			call_expr.pos)
-		return
-	}
-	if call_expr.or_block.kind == .propagate {
+pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type) {
+	if or_expr.kind == .propagate {
 		if !c.cur_fn.return_type.flag_is(.optional) && c.cur_fn.name != 'main' {
 			c.error('to propagate the optional call, `${c.cur_fn.name}` must itself return an optional',
-				call_expr.pos)
+				or_expr.pos)
 		}
 		return
 	}
-	stmts_len := call_expr.or_block.stmts.len
+	stmts_len := or_expr.stmts.len
 	if stmts_len == 0 {
-		if is_ret_used {
+		if ret_type != table.void_type {
 			// x := f() or {}
-			c.error('assignment requires a non empty `or {}` block', call_expr.pos)
+			c.error('assignment requires a non empty `or {}` block', or_expr.pos)
 			return
 		}
 		// allow `f() or {}`
 		return
 	}
-	last_stmt := call_expr.or_block.stmts[stmts_len - 1]
-	if is_ret_used {
+	last_stmt := or_expr.stmts[stmts_len - 1]
+	if ret_type != table.void_type {
 		if !(last_stmt is ast.Return || last_stmt is ast.BranchStmt || last_stmt is ast.ExprStmt) {
 			expected_type_name := c.table.get_type_symbol(ret_type).name
 			c.error('last statement in the `or {}` block should return `$expected_type_name`',
-				call_expr.pos)
+				or_expr.pos)
 			return
 		}
 		match last_stmt {
@@ -1283,7 +1283,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		assign_stmt.left[i] = ident
 		scope.update_var_type(ident.name, val_type)
 		if i < assign_stmt.right.len { // only once for multi return
-			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i], true)
+			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i])
 		}
 	}
 	c.expected_type = table.void_type
@@ -1520,7 +1520,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.ExprStmt {
 			it.typ = c.expr(it.expr)
 			c.expected_type = table.void_type
-			c.check_expr_opt_call(it.expr, it.typ, false)
+			c.check_expr_opt_call(it.expr, table.void_type)
 		}
 		ast.FnDecl {
 			c.fn_decl(it)
