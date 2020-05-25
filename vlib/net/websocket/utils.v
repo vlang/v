@@ -8,7 +8,6 @@ import encoding.base64
 
 fn htonl64(payload_len u64) byteptr {
 	mut ret := malloc(8)
-
 	ret[0] = byte(((payload_len & (u64(0xff) << 56)) >> 56) & 0xff)
 	ret[1] = byte(((payload_len & (u64(0xff) << 48)) >> 48) & 0xff)
 	ret[2] = byte(((payload_len & (u64(0xff) << 40)) >> 40) & 0xff)
@@ -23,7 +22,7 @@ fn htonl64(payload_len u64) byteptr {
 fn create_masking_key() []byte {
 	t := time.ticks()
 	tseq := t % 23237671
-	mut rnd := rand.new_pcg32(u64(t), u64(tseq) )
+	mut rnd := rand.new_pcg32(u64(t), u64(tseq))
 	mask_bit := byte(rnd.bounded_next(u32(math.max_i32)))
 	buf := [`0`].repeat(4)
 	C.memcpy(buf.data, &mask_bit, 4)
@@ -31,7 +30,7 @@ fn create_masking_key() []byte {
 }
 
 fn create_key_challenge_response(seckey string) string {
-	guid := "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+	guid := '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 	sha1buf := seckey + guid
 	hash := sha1.sum(sha1buf.bytes())
 	hashstr := string(byteptr(hash.data))
@@ -45,8 +44,8 @@ fn create_key_challenge_response(seckey string) string {
 
 fn get_nonce() string {
 	mut nonce := []byte{}
-	alphanum := "0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz"
-	for i in 0..18 {
+	alphanum := '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz'
+	for _ in 0 .. 18 {
 		nonce << alphanum[rand.next(61)]
 	}
 	return string(byteptr(nonce.data))
