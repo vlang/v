@@ -271,7 +271,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		res.path = command
 	} else if command == 'run' {
 		res.is_run = true
-		if command_pos > args.len {
+		if command_pos + 2 > args.len {
 			eprintln('v run: no v files listed')
 			exit(1)
 		}
