@@ -30,6 +30,7 @@ pub mut:
 	// prev_tok                 TokenKind
 	is_started                  bool
 	fn_name                     string // needed for @FN
+	mod_name                    string // needed for @MOD
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
 	is_print_rel_paths_on_error bool
@@ -136,6 +137,41 @@ fn (mut s Scanner) ident_fn_name() string {
 	}
 	fn_name := s.text[start_pos..end_pos]
 	return fn_name
+}
+
+// ident_mod_name look ahead and return name of module this file belongs to if possible, otherwise empty string
+fn (mut s Scanner) ident_mod_name() string {
+
+	start := s.pos
+	mut pos := s.pos
+	pos++
+
+	// Eat whitespaces
+	for pos < s.text.len && s.text[pos].is_space() {
+		pos++
+	}
+	if pos >= s.text.len {
+		return ''
+	}
+
+	start_pos := pos
+
+	// Search for next occurrence of a whitespace or newline
+	for pos < s.text.len && !s.text[pos].is_space() && !util.is_nl(s.text[pos]) {
+		pos++
+	}
+	if pos >= s.text.len {
+		return ''
+	}
+
+	end_pos := pos
+
+	if end_pos > s.text.len || end_pos <= start_pos || end_pos <= start || start_pos <= start {
+		return ''
+	}
+
+	mod_name := s.text[start_pos..end_pos]
+	return mod_name
 }
 
 fn filter_num_sep(txt byteptr, start int, end int) string {
@@ -455,6 +491,8 @@ pub fn (mut s Scanner) scan() token.Token {
 			kind := token.key_to_token(name)
 			if kind == .key_fn {
 				s.fn_name = s.ident_fn_name()
+			} else if kind == .key_module {
+				s.mod_name = s.ident_mod_name()
 			}
 			return s.new_token(kind, name, name.len)
 		}
@@ -637,16 +675,20 @@ pub fn (mut s Scanner) scan() token.Token {
 			s.pos++
 			name := s.ident_name()
 			// @FN => will be substituted with the name of the current V function
+			// @MOD => will be substituted with the name of the current V module
 			// @VEXE => will be substituted with the path to the V compiler
 			// @FILE => will be substituted with the path of the V source file
 			// @LINE => will be substituted with the V line number where it appears (as a string).
 			// @COLUMN => will be substituted with the column where it appears (as a string).
 			// @VHASH  => will be substituted with the shortened commit hash of the V compiler (as a string).
 			// This allows things like this:
-			// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @FN)
+			// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
 			// ... which is useful while debugging/tracing
 			if name == 'FN' {
 				return s.new_token(.string, s.fn_name, 3)
+			}
+			if name == 'MOD' {
+				return s.new_token(.string, s.mod_name, 4)
 			}
 			if name == 'VEXE' {
 				vexe := pref.vexe_path()

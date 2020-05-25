@@ -79,7 +79,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 REM remove the -prod parameter to shorten compilation time,
 REM and it will be restored when v is a stable version.
-v.exe self
+v.exe -cc msvc self
 if %ERRORLEVEL% NEQ 0 (
 	echo V failed to build itself with error %ERRORLEVEL%
 	del %ObjFile%

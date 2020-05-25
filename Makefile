@@ -79,17 +79,23 @@ fresh_vc:
 
 latest_tcc: $(TMPTCC)/.git/config
 ifndef ANDROID
+ifndef MAC
 	cd $(TMPTCC) && $(GITCLEANPULL)
+endif
 endif
 
 fresh_tcc:
 ifndef ANDROID
+ifndef MAC
 	rm -rf $(TMPTCC)
 	$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)
 endif
+endif
 
 $(TMPTCC)/.git/config:
+ifndef MAC
 	$(MAKE) fresh_tcc
+endif
 
 $(TMPVC)/.git/config:
 	$(MAKE) fresh_vc

@@ -24,17 +24,21 @@ arr2[0] = 1
 arr2[0 + 1] = 2
 println(arr2)
 
+// TODO: This does not work for now
+// arr2[0..1] = arr2[3..4]
+// println(arr2)
+
+// Array push operator
+arr2 << 6
+arr2 << [7, 8, 9]
+println(arr2)
+
 // String slices
 slice4 := idx1[..4]
 println(slice4) // 'Back'
 
 // String indexes
 idx2 := slice4[0]
-
-// TODO: This does not work for now
-// arr2[0..1] = arr2[3..4]
-// println(arr2)
-
 
 // Maps
 mut m := map[string]string
