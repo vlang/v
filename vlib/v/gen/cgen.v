@@ -37,8 +37,10 @@ const (
 		'void',
 		'volatile',
 		'while',
+		// C++ keywords
 		'new',
 		'namespace',
+		'class',
 		'typename'
 	]
 )
