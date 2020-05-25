@@ -1196,15 +1196,35 @@ fn (mut g JsGen) gen_index_expr(it ast.IndexExpr) {
 }
 
 fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
-	g.expr(it.left)
+	l_sym := g.table.get_type_symbol(it.left_type)
+	r_sym := g.table.get_type_symbol(it.right_type)
 
-	mut op := it.op.str()
-	// in js == is non-strict & === is strict, always do strict
-	if op == '==' { op = '===' }
-	else if op == '!=' { op = '!==' }
+	if l_sym.kind == .array && it.op == .left_shift { // arr << 1
+		g.expr(it.left)
+		g.write('.push(')
+		if r_sym.kind == .array { g.write('...') } // arr << [1, 2]
+		g.expr(it.right)
+		g.write(')')
+	} else if it.op == .key_is { // foo is Foo
+		g.write('/*')
+		g.expr(it.left)
+		g.write(' is $r_sym.name')
+		g.write('*/0')
+		// TODO
+	} else {
+		g.expr(it.left)
 
-	g.write(' $op ')
-	g.expr(it.right)
+		// in js == is non-strict & === is strict, always do strict
+		if it.op == .eq {
+			g.write(' === ')
+		} else if it.op == .ne {
+			g.write(' !== ')
+		} else {
+			g.write(' $it.op ')
+		}
+
+		g.expr(it.right)
+	}
 }
 
 
