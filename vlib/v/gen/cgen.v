@@ -967,9 +967,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if is_call {
 				g.expr(val)
 			} else {
-				if val is ast.ArrayInit {
-					g.gen_default_init_value(val as ast.ArrayInit)
-				}
+				g.gen_default_init_value(val)
 				g.write('{$styp _ = ')
 				g.expr(val)
 				g.writeln(';}')
@@ -978,9 +976,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			right_sym := g.table.get_type_symbol(assign_stmt.right_types[i])
 			mut is_fixed_array_init := false
 			mut has_val := false
-			if val is ast.ArrayInit {
-				is_fixed_array_init, has_val = g.gen_default_init_value(val as ast.ArrayInit)
-			}
+			is_fixed_array_init, has_val = g.gen_default_init_value(val)
 			is_inside_ternary := g.inside_ternary != 0
 			cur_line := if is_inside_ternary {
 				g.register_ternary_name(ident.name)
@@ -1045,16 +1041,28 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 }
 
-fn (mut g Gen) gen_default_init_value(val ast.ArrayInit) (bool, bool) {
-	is_fixed_array_init := val.is_fixed
-	has_val := val.has_val
-	elem_type_str := g.typ(val.elem_type)
-	if val.has_default {
-		g.write('$elem_type_str _val_$val.pos.pos = ')
-		g.expr(val.default_expr)
-		g.writeln(';')
-	} else if val.has_len && val.elem_type == table.string_type {
-		g.writeln('$elem_type_str _val_$val.pos.pos = tos_lit("");')
+fn (mut g Gen) gen_default_init_value(val ast.Expr) (bool, bool) {
+	mut is_fixed_array_init := false
+	mut has_val := false
+	match val {
+		ast.ArrayInit {
+			is_fixed_array_init = it.is_fixed
+			has_val = it.has_val
+			elem_type_str := g.typ(it.elem_type)
+			if it.has_default {
+				g.write('$elem_type_str _val_$it.pos.pos = ')
+				g.expr(it.default_expr)
+				g.writeln(';')
+			} else if it.has_len && it.elem_type == table.string_type {
+				g.writeln('$elem_type_str _val_$it.pos.pos = tos_lit("");')
+			}
+		}
+		ast.StructInit {
+			for field in it.fields {
+				g.gen_default_init_value(field.expr)
+			}
+		}
+		else {}
 	}
 	return is_fixed_array_init, has_val
 }
