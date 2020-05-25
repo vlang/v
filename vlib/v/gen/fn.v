@@ -324,7 +324,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
-		g.write('\n${cur_line}${tmp_opt}')
+		styp := '*(${g.base_type(node.return_type)}*)'
+		g.write('\n${cur_line}${styp} ${tmp_opt}.data')
 	}
 }
 

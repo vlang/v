@@ -415,12 +415,6 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 }
 
 pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
-	// println('checker: infix expr(op $infix_expr.op.str())')
-	former_expected_type := c.expected_type
-	defer {
-		c.expected_type = former_expected_type
-	}
-	c.expected_type = table.void_type
 	mut left_type := c.expr(infix_expr.left)
 	// if false && left_type == table.t_type {
 	// left_type = c.cur_generic_type
@@ -1365,7 +1359,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			right_type := c.expr(assign_stmt.right[i])
 			assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
 		} else if i < assign_stmt.right.len { // only once for multi return
-			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i])
+			assign_stmt.right_types[i] = c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i])
 		}
 		mut val_type := assign_stmt.right_types[i]
 		mut ident_var_info := ident.var_info()
@@ -1547,8 +1541,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	// c.expected_type = table.void_type
 	match mut node {
 		ast.AssertStmt {
+			c.expected_type = table.bool_type
 			assert_type := c.expr(it.expr)
-			if assert_type != table.bool_type_idx {
+			c.expected_type = table.void_type
+			if assert_type != table.bool_type {
 				atype_name := c.table.get_type_symbol(assert_type).name
 				c.error('assert can be used only with `bool` expressions, but found `${atype_name}` instead',
 					it.pos)
@@ -1621,11 +1617,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.enum_decl(it)
 		}
 		ast.ExprStmt {
-			it.typ = c.expr(it.expr)
+			it.typ = c.expr(it.expr).clear_flags()
 			c.expected_type = table.void_type
 			c.check_expr_opt_call(it.expr, table.void_type)
-			// TODO This should work, even if it's prolly useless .-.
-			// it.typ = c.check_expr_opt_call(it.expr, table.void_type)
 		}
 		ast.FnDecl {
 			c.fn_decl(it)
@@ -2163,13 +2157,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			}
 		}
 	}
-	// if ret_type != table.void_type {
-	// node.is_expr = c.expected_type != table.void_type
-	// node.expected_type = c.expected_type
-	// }
 	node.return_type = ret_type
 	node.cond_type = cond_type
-	// println('!m $expr_type')
 	return ret_type
 }
 
@@ -2272,7 +2261,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
 				last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
 				c.expected_type = former_expected_type
-				last_expr.typ = c.expr(last_expr.expr)
+				last_expr.typ = c.check_expr_opt_call(last_expr.expr, c.expr(last_expr.expr))
 				if last_expr.typ != node.typ {
 					if node.typ == table.void_type {
 						// first branch of if expression

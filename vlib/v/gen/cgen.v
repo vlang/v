@@ -1017,18 +1017,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			1 {
 			// multi return
 			// TODO Handle in if_expr
-			is_optional := return_type.has_flag(.optional)
 			mr_var_name := 'mr_$assign_stmt.pos.pos'
-			mr_styp := g.typ(return_type)
-			g.write('$mr_styp $mr_var_name = ')
+			g.write('${g.base_type(return_type)} $mr_var_name = ')
 			g.is_assign_rhs = true
 			g.expr(assign_stmt.right[0])
 			g.is_assign_rhs = false
-			if is_optional && assign_stmt.right[0] is ast.CallExpr {
-				val := assign_stmt.right[0] as ast.CallExpr
-				return_type = val.return_type
-				g.or_block(mr_var_name, val.or_block, return_type)
-			}
 			g.writeln(';')
 			for i, ident in assign_stmt.left {
 				if ident.kind == .blank_ident {
@@ -1040,12 +1033,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('$styp ')
 				}
 				g.expr(ident)
-				if is_optional {
-					mr_base_styp := g.base_type(return_type)
-					g.writeln(' = (*(${mr_base_styp}*)${mr_var_name}.data).arg$i;')
-				} else {
-					g.writeln(' = ${mr_var_name}.arg$i;')
-				}
+				g.writeln(' = ${mr_var_name}.arg$i;')
 			}
 			return
 		}
@@ -1656,12 +1644,6 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 		}
 		else {}
 	}
-	gen_or := is_call && return_type.has_flag(.optional)
-	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
-	if gen_or {
-		rstyp := g.typ(return_type)
-		g.write('/*q*/ $rstyp $tmp_opt = ')
-	}
 	g.is_assign_rhs = true
 	if ast.expr_is_blank_ident(node.left) {
 		if is_call {
@@ -1695,16 +1677,12 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 			}
 		} else {
 			g.assign_op = node.op
-			if !gen_or {
-				// Don't need to generate `var = ` in `or {}` expressions, since we are doing
-				// `Option_X tmp = ...; var = *(X*)tmp.data;`
-				g.expr(node.left)
-				// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
-				if !g.is_array_set && !str_add {
-					g.write(' $node.op.str() ')
-				} else if str_add {
-					g.write(', ')
-				}
+			g.expr(node.left)
+			// arr[i] = val => `array_set(arr, i, val)`, not `array_get(arr, i) = val`
+			if !g.is_array_set && !str_add {
+				g.write(' $node.op.str() ')
+			} else if str_add {
+				g.write(', ')
 			}
 			g.is_assign_lhs = false
 			// right_sym := g.table.get_type_symbol(node.right_type)
@@ -1727,24 +1705,6 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 			}
 		}
 		g.right_is_opt = false
-	}
-	if gen_or {
-		// g.write('/*777 $tmp_opt*/')
-		g.or_block(tmp_opt, or_block, return_type)
-		unwrapped_type_str := g.typ(return_type.clear_flag(.optional))
-		ident := node.left as ast.Ident
-		if ident.kind != .blank_ident && ident.info is ast.IdentVar {
-			ident_var := ident.info as ast.IdentVar
-			if ident_var.is_optional {
-				// var is already an optional, just copy the value
-				// `var = tmp;`
-				g.write('\n$ident.name = $tmp_opt')
-			} else {
-				// var = *(X*)tmp.data;`
-				g.write('\n$ident.name = *($unwrapped_type_str*)${tmp_opt}.data')
-			}
-		}
-		// g.expr(node.left)
 	}
 	g.is_assign_rhs = false
 }
@@ -3305,14 +3265,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 					expr_stmt := stmt as ast.ExprStmt
 					g.stmt_path_pos << g.out.len
 					g.write('*(${mr_styp}*) ${cvar_name}.data = ')
-					is_opt_call := expr_stmt.expr is ast.CallExpr && expr_stmt.typ.has_flag(.optional)
-					if is_opt_call {
-						g.write('*(${mr_styp}*) ')
-					}
 					g.expr(expr_stmt.expr)
-					if is_opt_call {
-						g.write('.data')
-					}
 					if g.inside_ternary == 0 && !(expr_stmt.expr is ast.IfExpr) {
 						g.writeln(';')
 					}
