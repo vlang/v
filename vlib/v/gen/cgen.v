@@ -1158,8 +1158,16 @@ fn (g &Gen) autofree_variable(v ast.Var) string {
 			else {
 				// NOTE/TODO: assign_stmt multi returns variables have no expr
 				// since the type comes from the called fns return type
-				t := typeof(v.expr)
+				/*
+				f := v.name[0]
+				if
+					//!(f >= `a` && f <= `d`) {
+					//f != `c` {
+					v.name!='cvar_name' {
+					t := typeof(v.expr)
 				return '// other ' + t + '\n'
+				}
+				*/
 			}
 		}
 		return g.autofree_var_call('string_free', v)
