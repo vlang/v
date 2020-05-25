@@ -14,7 +14,7 @@ fn (mut p Parser) check_unresolved_variables(idents []ast.Ident, expr ast.Expr) 
 		ast.Ident {
 			for ident in idents {
 				if ident.name == it.name {
-					p.error_with_pos('unresolved variables `$it.name`', it.pos)
+					p.error_with_pos('undefined variables `$it.name`', it.pos)
 				}
 			}
 		}
