@@ -91,7 +91,7 @@ string _STR(const char *fmt, int nfmts, ...) {
 string _STR_TMP(const char *fmt, ...) {
 	va_list argptr;
 	va_start(argptr, fmt);
-	//size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
+	size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
 	va_end(argptr);
 	va_start(argptr, fmt);
 	vsprintf((char *)g_str_buf, fmt, argptr);
@@ -100,7 +100,9 @@ string _STR_TMP(const char *fmt, ...) {
 	//puts('_STR_TMP:');
 	//puts(g_str_buf);
 #endif
-	return tos2(g_str_buf);
+	string res = tos(g_str_buf,  len);
+	res.is_lit = true;
+	return res;
 } // endof _STR_TMP
 
 ")

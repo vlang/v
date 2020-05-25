@@ -2669,7 +2669,11 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 }
 
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
-	g.write('_STR("')
+	if g.pref.autofree {
+		g.write('_STR_TMP("')
+	} else {
+		g.write('_STR("')
+	}
 	// Build the string with %
 	mut fieldwidths := []int{}
 	mut specs := []byte{}
@@ -2679,7 +2683,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if i >= node.exprs.len {
 			if escaped_val.len > 0 {
 				end_string = true
-				g.write('\\000')
+				if !g.pref.autofree {
+					g.write('\\000')
+				}
 				g.write(escaped_val)
 			}
 			continue
@@ -2722,13 +2728,12 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		fields := fmt.split('.')
 		// validate format
 		// only floats should have precision specifier
-		if fields.len > 2 ||
-			fields.len == 2 && !(node.expr_types[i].is_float()) ||
-			node.expr_types[i].is_signed() && fspec !in [`d`, `c`, `x`, `X`, `o`] ||
-			node.expr_types[i].is_unsigned() && fspec !in [`u`, `x`, `X`, `o`, `c`] ||
-			node.expr_types[i].is_any_int() && fspec !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`] ||
-			node.expr_types[i].is_float() && fspec !in [`E`, `F`, `G`, `e`, `f`, `g`] ||
-			node.expr_types[i].is_pointer() && fspec !in [`p`, `x`, `X`] {
+		if fields.len > 2 || fields.len == 2 && !(node.expr_types[i].is_float()) || node.expr_types[i].is_signed() &&
+			fspec !in [`d`, `c`, `x`, `X`, `o`] || node.expr_types[i].is_unsigned() && fspec !in [`u`, `x`,
+			`X`, `o`, `c`] || node.expr_types[i].is_any_int() && fspec !in [`d`, `c`, `x`, `X`,
+			`o`, `u`,
+			`x`, `X`, `o`] || node.expr_types[i].is_float() && fspec !in [`E`, `F`, `G`, `e`,
+			`f`, `g`] || node.expr_types[i].is_pointer() && fspec !in [`p`, `x`, `X`] {
 			verror('illegal format specifier ${fspec:c} for type ${g.table.get_type_name(node.expr_types[i])}')
 		}
 		// make sure that format paramters are valid numbers
@@ -2786,7 +2791,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			// TODO: better check this case
 			g.write('${fmt}"PRId32"')
 		}
-		if i < node.exprs.len - 1 {
+		if i < node.exprs.len - 1 && !g.pref.autofree {
 			g.write('\\000')
 		}
 	}

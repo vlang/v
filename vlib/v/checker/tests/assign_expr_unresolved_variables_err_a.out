@@ -1,6 +1,0 @@
-vlib/v/checker/tests/assign_expr_unresolved_variables_err_a.v:2:7: error: unresolved variables `a`
-    1 | fn main() {
-    2 |     a := a
-      |          ^
-    3 |     println(a)
-    4 | }
