@@ -1121,3 +1121,15 @@ pub fn (s &Scanner) error(msg string) {
 pub fn verror(s string) {
 	util.verror('scanner error', s)
 }
+
+pub fn (mut s Scanner) codegen(newtext string) {
+	// codegen makes sense only during normal compilation
+	// feeding code generated V code to vfmt or vdoc will
+	// cause them to output/document ephemeral stuff.
+	if s.comments_mode == .skip_comments {
+		s.text += newtext
+		$if debug_codegen ? {
+			eprintln('scanner.codegen:\n $newtext')
+		}
+	}
+}

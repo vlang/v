@@ -1401,7 +1401,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				// scope := c.file.scope.innermost(array_init.pos.pos)
 				// eprintln('scope: ${scope.str()}')
 				// scope.find(it.name) or {
-				// c.error('undefined: `$it.name`', array_init.pos)
+				// c.error('undefined ident: `$it.name`', array_init.pos)
 				// }
 				mut full_const_name := if it.mod == 'main' { it.name } else { it.mod + '.' +
 						it.name }
@@ -1951,7 +1951,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return table.int_type
 	}
 	if ident.name != '_' {
-		c.error('undefined: `$ident.name`', ident.pos)
+		c.error('undefined ident: `$ident.name`', ident.pos)
 	}
 	if c.table.known_type(ident.name) {
 		// e.g. `User`  in `json.decode(User, '...')`
