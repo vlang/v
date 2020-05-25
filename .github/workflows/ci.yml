@@ -162,7 +162,7 @@ jobs:
         echo "Running it..."
         ls
     - name: V self compilation with -autofree
-      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
+      run: echo "TODO" #./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 #    - name: SDL examples
 #      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
 
