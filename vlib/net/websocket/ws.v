@@ -234,15 +234,20 @@ pub fn (mut ws Client) close(code int, message string) {
 }
 
 pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int {
+	mut bytes_written := -1
 	if ws.state != .open {
 		ws.send_error_event('WebSocket closed. Cannot write.')
-		goto free_data
+		unsafe {
+			free(payload)
+		}
 		return -1
 	}
 	header_len := 6 + if payload_len > 125 { 2 } else { 0 } + if payload_len > 0xffff { 6 } else { 0 }
+	frame_len := header_len + payload_len
+	mut frame_buf := [`0`].repeat(frame_len)
+	fbdata := byteptr( frame_buf.data )
 	masking_key := create_masking_key()
 	mut header := [`0`].repeat(header_len)
-	mut bytes_written := -1
 	header[0] = (int(code) | 0x80)
 	if payload_len <= 125 {
 		header[1] = (payload_len | 0x80)
@@ -272,14 +277,12 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 		goto free_data
 		return -1
 	}
-	frame_len := header_len + payload_len
-	mut frame_buf := [`0`].repeat(frame_len)
-	C.memcpy(frame_buf.data, header.data, header_len)
-	C.memcpy(&frame_buf.data[header_len], payload, payload_len)
+	C.memcpy(fbdata, header.data, header_len)
+	C.memcpy(fbdata + header_len, payload, payload_len)
 	for i in 0 .. payload_len {
 		frame_buf[header_len + i] ^= masking_key[i % 4] & 0xff
 	}
-	bytes_written = ws.write_to_server(frame_buf.data, frame_len)
+	bytes_written = ws.write_to_server(fbdata, frame_len)
 	if bytes_written == -1 {
 		err := string(byteptr(C.strerror(C.errno)))
 		l.e('write: there was an error writing data: ${err}')
@@ -565,9 +568,13 @@ pub fn (mut ws Client) read() int {
 }
 
 fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []byte) int {
+	mut bytes_written := -1
 	if ws.socket.sockfd <= 0 {
 		l.e('No socket opened.')
-		goto free_data
+		unsafe { 
+			payload.free()
+		}
+		l.c('send_control_frame: error sending ${frame_typ} control frame.')
 		return -1
 	}
 	header_len := 6
@@ -597,7 +604,6 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 			control_frame[header_len + i] = (payload[i] ^ masking_key[i % 4]) & 0xff
 		}
 	}
-	mut bytes_written := -1
 	bytes_written = ws.write_to_server(control_frame.data, frame_len)
 	free_data:
 	unsafe {
