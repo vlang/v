@@ -623,7 +623,7 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 	c.expected_type = left_type
 	assign_expr.left_type = left_type
 	// println('setting exp type to $c.expected_type $t.name')
-	right_type := c.unwrap_generic(c.expr(assign_expr.val))
+	right_type := c.check_expr_opt_call(assign_expr.val, c.unwrap_generic(c.expr(assign_expr.val)))
 	assign_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
@@ -684,7 +684,6 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name`',
 			assign_expr.val.position())
 	}
-	c.check_expr_opt_call(assign_expr.val, right_type, true)
 }
 
 pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
@@ -1020,11 +1019,21 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 	}
 }
 
-pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type, is_return_used bool) {
+// return the actual type of the expression, once the optional is handled
+pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) table.Type {
 	if expr is ast.CallExpr {
 		call_expr := expr as ast.CallExpr
 		if call_expr.return_type.flag_is(.optional) {
-			c.check_or_block(call_expr, ret_type, is_return_used)
+			if call_expr.or_block.kind == .absent {
+				if ret_type != table.void_type {
+					c.error('${call_expr.name}() returns an option, but you missed to add an `or {}` block to it',
+						call_expr.pos)
+				}
+			} else {
+				c.check_or_expr(call_expr.or_block, ret_type)
+			}
+			// remove optional flag
+			return ret_type.set_flag(.unset)
 		} else if call_expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `$call_expr.name` does not return an optional',
 				call_expr.pos)
@@ -1033,37 +1042,33 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type, i
 				call_expr.pos)
 		}
 	}
+	return ret_type
 }
 
-pub fn (mut c Checker) check_or_block(mut call_expr ast.CallExpr, ret_type table.Type, is_ret_used bool) {
-	if call_expr.or_block.kind == .absent {
-		c.error('${call_expr.name}() returns an option, but you missed to add an `or {}` block to it',
-			call_expr.pos)
-		return
-	}
-	if call_expr.or_block.kind == .propagate {
+pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type) {
+	if or_expr.kind == .propagate {
 		if !c.cur_fn.return_type.flag_is(.optional) && c.cur_fn.name != 'main' {
 			c.error('to propagate the optional call, `${c.cur_fn.name}` must itself return an optional',
-				call_expr.pos)
+				or_expr.pos)
 		}
 		return
 	}
-	stmts_len := call_expr.or_block.stmts.len
+	stmts_len := or_expr.stmts.len
 	if stmts_len == 0 {
-		if is_ret_used {
+		if ret_type != table.void_type {
 			// x := f() or {}
-			c.error('assignment requires a non empty `or {}` block', call_expr.pos)
+			c.error('assignment requires a non empty `or {}` block', or_expr.pos)
 			return
 		}
 		// allow `f() or {}`
 		return
 	}
-	last_stmt := call_expr.or_block.stmts[stmts_len - 1]
-	if is_ret_used {
+	last_stmt := or_expr.stmts[stmts_len - 1]
+	if ret_type != table.void_type {
 		if !(last_stmt is ast.Return || last_stmt is ast.BranchStmt || last_stmt is ast.ExprStmt) {
 			expected_type_name := c.table.get_type_symbol(ret_type).name
 			c.error('last statement in the `or {}` block should return `$expected_type_name`',
-				call_expr.pos)
+				or_expr.pos)
 			return
 		}
 		match last_stmt {
@@ -1227,12 +1232,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right_type0 := c.expr(assign_stmt.right[0])
 		assign_stmt.right_types = [right_type0]
 		right_type_sym0 := c.table.get_type_symbol(right_type0)
-		right_len = if right_type0 == table.void_type {
-			0
-		} else {
-			right_len
-		}
-		if right_type_sym0.kind == .multi_return {
+		if right_type0 == table.void_type {
+			right_len = 0
+		} else if right_type_sym0.kind == .multi_return {
 			assign_stmt.right_types = right_type_sym0.mr_info().types
 			right_len = assign_stmt.right_types.len
 		}
@@ -1257,7 +1259,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	for i, _ in assign_stmt.left {
 		mut ident := assign_stmt.left[i]
 		if assign_stmt.right_types.len < right_len {
-			assign_stmt.right_types << c.expr(assign_stmt.right[i])
+			right_type := c.expr(assign_stmt.right[i])
+			assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
+		} else if i < assign_stmt.right.len { // only once for multi return
+			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i])
 		}
 		val_type := assign_stmt.right_types[i]
 		// check variable name for beginning with capital letter 'Abc'
@@ -1266,7 +1271,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.check_valid_snake_case(ident.name, 'variable name', ident.pos)
 		}
 		mut ident_var_info := ident.var_info()
-		// c.assigned_var_name = ident.name
 		if assign_stmt.op == .assign {
 			c.fail_if_immutable(ident)
 			var_type := c.expr(ident)
@@ -1282,12 +1286,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		ident.info = ident_var_info
 		assign_stmt.left[i] = ident
 		scope.update_var_type(ident.name, val_type)
-		if i < assign_stmt.right.len { // only once for multi return
-			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i], true)
-		}
 	}
 	c.expected_type = table.void_type
-	// c.assigned_var_name = ''
 }
 
 pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
@@ -1520,7 +1520,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.ExprStmt {
 			it.typ = c.expr(it.expr)
 			c.expected_type = table.void_type
-			c.check_expr_opt_call(it.expr, it.typ, false)
+			c.check_expr_opt_call(it.expr, table.void_type)
+			// TODO This should work, even if it's prolly useless .-.
+			// it.typ = c.check_expr_opt_call(it.expr, table.void_type)
 		}
 		ast.FnDecl {
 			c.fn_decl(it)
@@ -2104,7 +2106,6 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	mut expr_required := false
 	if c.expected_type != table.void_type {
-		// | c.assigned_var_name != '' {
 		// sym := c.table.get_type_symbol(c.expected_type)
 		// println('$c.file.path  $node.pos.line_nr IF is expr: checker exp type = ' + sym.name)
 		expr_required = true

@@ -822,7 +822,7 @@ pub fn (u URL) str() string {
 // interpreted as a key set to an empty value.
 pub fn parse_query(query string) ?Values {
 	mut m := new_values()
-	_ = parse_query_values(mut m, query) or {
+	parse_query_values(mut m, query) or {
 		return error(err)
 	}
 	return m
@@ -832,7 +832,7 @@ pub fn parse_query(query string) ?Values {
 // but any errors will be silent
 fn parse_query_silent(query string) Values {
 	mut m := new_values()
-	_ = parse_query_values(mut m, query)
+	parse_query_values(mut m, query)
 	return m
 }
 

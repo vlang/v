@@ -306,7 +306,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
-		styp := g.typ(node.return_type)
+		styp := g.typ(node.return_type.set_flag(.optional))
 		g.write('$styp $tmp_opt = ')
 	}
 	if node.is_method {
