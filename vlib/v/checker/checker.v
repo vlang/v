@@ -731,6 +731,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// call_expr.return_type = call_expr.receiver_type
 		}
 		return call_expr.return_type
+	} else if left_type_sym.kind == .map && method_name == 'clone' {
+		call_expr.return_type = left_type
+		call_expr.receiver_type = left_type.to_ptr()
+		return call_expr.return_type
 	} else if left_type_sym.kind == .array && method_name in ['first', 'last'] {
 		info := left_type_sym.info as table.Array
 		call_expr.return_type = info.elem_type
