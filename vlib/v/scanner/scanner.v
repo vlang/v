@@ -783,7 +783,7 @@ pub fn (mut s Scanner) scan() token.Token {
 						s.error('@VMOD_FILE can be used only in projects, that have v.mod file')
 					}
 					vmod_content := os.read_file(vmod_file_location.vmod_file) or {''}
-					s.vmod_file_content = vmod_content
+					s.vmod_file_content = vmod_content.replace('\r\n', '\n')
 				}
 				return s.new_token(.string, s.vmod_file_content, 10)
 			}
@@ -848,7 +848,7 @@ pub fn (mut s Scanner) scan() token.Token {
 		}
 		0xE2 {
 			if nextc == 0x89 && s.text[s.pos + 2] == 0xA0 {
-			// case `≠`:
+			// case `â‰ `:
 				s.pos += 2
 				return s.new_token(.ne, '', 3)
 			}
