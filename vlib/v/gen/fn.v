@@ -43,7 +43,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 		// since these are supported by GCC, clang and MSVC, we can consider them officially supported.
 		'no_inline' {
-			g.write('__NOINLINE')
+			g.write('__NOINLINE ')
 		}
 		'irq_handler' {
 			g.write('__IRQHANDLER ')
@@ -58,33 +58,33 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// is placed into a special subsection of the text section so all cold functions appear close
 		// together, improving code locality of non-cold parts of program.
 		'_cold' {
-			g.write('__attribute__((cold))')
+			g.write('__attribute__((cold)) ')
 		}
 		// The constructor attribute causes the function to be called automatically before execution 
 		// enters main ().
 		'_constructor' {
-			g.write('__attribute__((constructor))')
+			g.write('__attribute__((constructor)) ')
 		}
 		// The destructor attribute causes the function to be called automatically after main ()
 		// completes or exit () is called.
 		'_destructor' {
-			g.write('__attribute__((destructor))')
+			g.write('__attribute__((destructor)) ')
 		}
 		// Generally, inlining into a function is limited. For a function marked with this attribute, 
 		// every call inside this function is inlined, if possible.
 		'_flatten' {
-			g.write('__attribute__((flatten))')
+			g.write('__attribute__((flatten)) ')
 		}
 		// The hot attribute on a function is used to inform the compiler that the function is a hot
 		// spot of the compiled program.
 		'_hot' {
-			g.write('__attribute__((hot))')
+			g.write('__attribute__((hot)) ')
 		}
 		// This tells the compiler that a function is malloc-like, i.e., that the pointer P returned by 
 		// the function cannot alias any other pointer valid when the function returns, and moreover no 
 		// pointers to valid objects occur in any storage addressed by P.
 		'_malloc' {
-			g.write('__attribute__((malloc))')
+			g.write('__attribute__((malloc)) ')
 		}
 		
 		// Calls to functions whose return value is not affected by changes to the observable state 
@@ -99,8 +99,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			// nothing but keep V happy
 		}
 	}
-
-	// todo: Clang/GCC only
 
 	//
 	is_livefn := g.attr == 'live'
