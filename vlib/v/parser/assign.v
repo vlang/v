@@ -75,7 +75,7 @@ fn (mut p Parser) partial_assign_stmt(known_lhs []ast.Ident) ast.Stmt {
 	pos := p.tok.position()
 	exprs := p.parse_assign_rhs()
 	is_decl := op == .decl_assign
-	mut is_cross_var := false
+	mut has_cross_var := false
 	if is_decl {
 		// a, b := a + 1, b
 		for expr in exprs {
@@ -85,7 +85,7 @@ fn (mut p Parser) partial_assign_stmt(known_lhs []ast.Ident) ast.Stmt {
 		// a, b = b, a
 		for expr in exprs {
 			if p.check_cross_variables(idents, expr) {
-				is_cross_var = true
+				has_cross_var = true
 			}
 		}
 	}
@@ -120,7 +120,7 @@ fn (mut p Parser) partial_assign_stmt(known_lhs []ast.Ident) ast.Stmt {
 		op: op
 		pos: pos
 		is_static: false // individual idents may be static
-		is_cross_var: is_cross_var
+		has_cross_var: has_cross_var
 	}
 }
 

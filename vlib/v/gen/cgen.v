@@ -929,7 +929,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			return
 		}
 	}
-	if assign_stmt.is_cross_var {
+	if assign_stmt.has_cross_var {
 		for ident in assign_stmt.left {
 			type_str := g.typ(ident.var_info().typ)
 			g.writeln('$type_str _var_$ident.pos.pos = $ident.name;')
@@ -1035,7 +1035,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if is_decl {
 					g.expr(val)
 				} else {
-					if assign_stmt.is_cross_var {
+					if assign_stmt.has_cross_var {
 						g.gen_cross_tmp_variable(assign_stmt.left, val)
 					} else {
 						g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
