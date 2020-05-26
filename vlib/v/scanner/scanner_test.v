@@ -5,6 +5,26 @@ module scanner
 
 import v.token
 
+
+struct TestStruct {
+	test	string
+}
+
+fn (mut t TestStruct) test_struct() {
+	assert @STRUCT == 'TestStruct'
+}
+
+fn (mut t TestStruct) test_struct_w_return() string {
+	assert @STRUCT == 'TestStruct'
+	return t.test
+}
+
+fn (mut t TestStruct) test_struct_w_high_order(cb fn(int)string) string {
+	assert @STRUCT == 'TestStruct'
+	return 'test'+cb(2)
+}
+
+
 fn test_scan() {
 	text := 'println(2 + 3)'
 	mut scanner := new_scanner(text, .skip_comments)
@@ -41,9 +61,24 @@ fn test_scan() {
 	assert 1.23e+10 == 1.23e0010
 	assert (-1.23e+10) == (1.23e0010 * -1.0)
 
-	// test @MOD
+	// Test @FN
+	assert @FN == 'test_scan'
+
+	// Test @MOD
 	assert @MOD == 'scanner'
 
-	// test @FN
-	assert @FN == 'test_scan'
+	// Test @STRUCT
+	assert @STRUCT == ''
+
+	ts := TestStruct { test: "test" }
+	ts.test_struct()
+	r1 := ts.test_struct_w_return()
+	r2 := ts.test_struct_w_high_order(fn(i int)string{
+		assert @STRUCT == ''
+		return i.str()
+	})
+	assert r1 == 'test'
+	assert r2 == 'test2'
+
+
 }
