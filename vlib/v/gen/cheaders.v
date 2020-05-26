@@ -27,6 +27,9 @@ const (
 #define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
 #define TCCSKIP(x) x
 
+#define __NOINLINE __attribute__((noinline))
+#define __IRQHANDLER __attribute__((interrupt))
+
 #ifdef __TINYC__
 #undef EMPTY_STRUCT_DECLARATION
 #undef EMPTY_STRUCT_INITIALIZATION
@@ -34,6 +37,11 @@ const (
 #define EMPTY_STRUCT_INITIALIZATION 0
 #undef EMPTY_ARRAY_OF_ELEMS
 #define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
+#undef __NOINLINE
+#undef __IRQHANDLER
+// tcc does not support inlining at all
+#define __NOINLINE
+#define __IRQHANDLER
 #undef TCCSKIP
 #define TCCSKIP(x)
 #include <byteswap.h>
@@ -178,12 +186,15 @@ $c_common_macros
 
 #define EMPTY_STRUCT_DECLARATION int ____dummy_variable
 #define OPTION_CAST(x)
+#undef __NOINLINE
+#undef __IRQHANDLER
+#define __NOINLINE __declspec(noinline)
+#define __IRQHANDLER __declspec(naked)
 
 #include <dbghelp.h>
 #pragma comment(lib, "Dbghelp.lib")
 
 extern wchar_t **_wenviron;
-
 #endif
 
 #else

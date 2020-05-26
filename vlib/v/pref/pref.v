@@ -90,6 +90,8 @@ pub mut:
 	enable_globals      bool // allow __global for low level code
 	is_fmt              bool
 	is_bare             bool
+	no_preludes         bool // Prevents V from generating preludes in resulting .c files
+	custom_prelude		string // Contents of custom V prelude that will be prepended before code in resulting .c files
 	lookup_path         []string
 	output_cross_c      bool
 	prealloc            bool
@@ -143,7 +145,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-shared' {
 				res.is_shared = true
 			}
-			'--enable-globals' {
+			'--enable-globals', '-enable-globals' {
 				res.enable_globals = true
 			}
 			'-autofree' {
@@ -154,6 +156,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-freestanding' {
 				res.is_bare = true
+			}
+			'-no-preludes' {
+				res.no_preludes = true
 			}
 			'-prof', '-profile' {
 				res.profile_file = cmdline.option(current_args, '-profile', '-')
@@ -176,10 +181,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.translated = true
 			}
 			'-color' {
-				res.use_color=.always
+				res.use_color = .always
 			}
 			'-nocolor' {
-				res.use_color=.never
+				res.use_color = .never
 			}
 			'-showcc' {
 				res.show_cc = true
@@ -203,7 +208,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.print_v_files = true
 			}
 			'-error-limit' {
-				res.error_limit =cmdline.option(current_args, '-error-limit', '0').int()
+				res.error_limit = cmdline.option(current_args, '-error-limit', '0').int()
 			}
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')
@@ -213,7 +218,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 						res.output_cross_c = true
 						continue
 					}
-					println('unknown operating system target `$target_os`')
+					eprintln('unknown operating system target `$target_os`')
 					exit(1)
 				}
 				res.os = target_os_kind
@@ -251,6 +256,15 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-path' {
 				path := cmdline.option(current_args, '-path', '')
 				res.lookup_path = path.split(os.path_delimiter)
+				i++
+			}
+			'-custom-prelude' {
+				path := cmdline.option(current_args, '-custom-prelude', '')
+				prelude := os.read_file(path) or {
+					eprintln('cannot open custom prelude file: $err')
+					exit(1)
+				}
+				res.custom_prelude = prelude
 				i++
 			}
 			else {

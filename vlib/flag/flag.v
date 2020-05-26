@@ -329,7 +329,7 @@ pub fn (mut fs FlagParser) float(name string, abbr byte, fdefault f64, usage str
 // string_multi returns all instances of values associated with the flags provided
 // In the case that none were found, it returns an empty array.
 pub fn (mut fs FlagParser) string_multi(name string, abbr byte, usage string) []string {
-	fs.add_flag(name, abbr, usage, '<multiple floats>')
+	fs.add_flag(name, abbr, usage, '<multiple strings>')
 	return fs.parse_value(name, abbr)
 }
 

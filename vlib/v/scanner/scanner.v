@@ -31,6 +31,7 @@ pub mut:
 	is_started                  bool
 	fn_name                     string // needed for @FN
 	mod_name                    string // needed for @MOD
+	struct_name                 string // needed for @STRUCT
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
 	is_print_rel_paths_on_error bool
@@ -172,6 +173,67 @@ fn (mut s Scanner) ident_mod_name() string {
 
 	mod_name := s.text[start_pos..end_pos]
 	return mod_name
+}
+
+// ident_struct_name look ahead and return name of last encountered struct if possible, otherwise empty string
+fn (mut s Scanner) ident_struct_name() string {
+	start := s.pos
+	mut pos := s.pos
+
+	// Return last known stuct_name encountered to avoid using high order/anonymous function definitions
+	if s.current_column() - 2 != 0 {
+		return s.struct_name
+	}
+
+	pos++
+
+	// Eat whitespaces
+	for pos < s.text.len && s.text[pos].is_space() {
+		pos++
+	}
+	if pos >= s.text.len {
+		return ''
+	}
+
+	// Return if `(` is not the first character after "fn ..."
+	if s.text[pos] != `(` {
+		return ''
+	}
+
+	// Search for closing paranthesis
+	for pos < s.text.len && s.text[pos] != `)` {
+		pos++
+	}
+	if pos >= s.text.len {
+		return ''
+	}
+
+	pos--
+	// Search backwards for end position of struct name
+	// Eat whitespaces
+	for pos > start && s.text[pos].is_space() {
+		pos--
+	}
+	if pos < start {
+		return ''
+	}
+	end_pos := pos + 1
+
+	// Go back while we have a name character or digit
+	for pos > start && (util.is_name_char(s.text[pos]) || s.text[pos].is_digit()) {
+		pos--
+	}
+	if pos < start {
+		return ''
+	}
+
+	start_pos := pos + 1
+
+	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos || end_pos <= start || start_pos <= start {
+		return ''
+	}
+	struct_name := s.text[start_pos..end_pos]
+	return struct_name
 }
 
 fn filter_num_sep(txt byteptr, start int, end int) string {
@@ -491,6 +553,7 @@ pub fn (mut s Scanner) scan() token.Token {
 			kind := token.key_to_token(name)
 			if kind == .key_fn {
 				s.fn_name = s.ident_fn_name()
+				s.struct_name = s.ident_struct_name()
 			} else if kind == .key_module {
 				s.mod_name = s.ident_mod_name()
 			}
@@ -676,6 +739,7 @@ pub fn (mut s Scanner) scan() token.Token {
 			name := s.ident_name()
 			// @FN => will be substituted with the name of the current V function
 			// @MOD => will be substituted with the name of the current V module
+			// @STRUCT => will be substituted with the name of the current V struct
 			// @VEXE => will be substituted with the path to the V compiler
 			// @FILE => will be substituted with the path of the V source file
 			// @LINE => will be substituted with the V line number where it appears (as a string).
@@ -689,6 +753,9 @@ pub fn (mut s Scanner) scan() token.Token {
 			}
 			if name == 'MOD' {
 				return s.new_token(.string, s.mod_name, 4)
+			}
+			if name == 'STRUCT' {
+				return s.new_token(.string, s.struct_name, 7)
 			}
 			if name == 'VEXE' {
 				vexe := pref.vexe_path()
