@@ -196,6 +196,7 @@ fn (mut s Scanner) ident_bin_number() string {
 	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	mut met_space := false
+	mut first_space_pos := 0
 	start_pos := s.pos
 	s.pos += 2 // skip '0b'
 	for s.pos < s.text.len {
@@ -203,6 +204,7 @@ fn (mut s Scanner) ident_bin_number() string {
 		if c == ` ` {
 			if !met_space {
 				met_space = true
+				first_space_pos = s.pos
 			}
 		}
 		else if c.is_bin_digit() || c == num_sep {
@@ -214,10 +216,16 @@ fn (mut s Scanner) ident_bin_number() string {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
 			}
-			else if !has_wrong_digit {
-				has_wrong_digit = true
-				first_wrong_digit_pos = s.pos
-				first_wrong_digit = c
+			else {
+				if met_space {
+					s.pos = first_space_pos
+					break
+				}
+				else if !has_wrong_digit {
+					has_wrong_digit = true
+					first_wrong_digit_pos = s.pos
+					first_wrong_digit = c
+				}
 			}
 		}
 		s.pos++
@@ -230,6 +238,9 @@ fn (mut s Scanner) ident_bin_number() string {
 		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this binary number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
+	if met_space {
+		s.pos = first_space_pos
+	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
 	return number
@@ -240,6 +251,7 @@ fn (mut s Scanner) ident_hex_number() string {
 	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	mut met_space := false
+	mut first_space_pos := 0
 	start_pos := s.pos
 	s.pos += 2 // skip '0x'
 	for s.pos < s.text.len {
@@ -247,6 +259,7 @@ fn (mut s Scanner) ident_hex_number() string {
 		if c == ` ` {
 			if !met_space {
 				met_space = true
+				first_space_pos = s.pos
 			}
 		}
 		else if c.is_hex_digit() || c == num_sep {
@@ -258,10 +271,16 @@ fn (mut s Scanner) ident_hex_number() string {
 			if !c.is_letter() || s.is_inside_string {
 				break
 			}
-			else if !has_wrong_digit {
-				has_wrong_digit = true
-				first_wrong_digit_pos = s.pos
-				first_wrong_digit = c
+			else {
+				if met_space {
+					s.pos = first_space_pos
+					break
+				}
+				else if !has_wrong_digit {
+					has_wrong_digit = true
+					first_wrong_digit_pos = s.pos
+					first_wrong_digit = c
+				}
 			}
 		}
 		s.pos++
@@ -274,6 +293,9 @@ fn (mut s Scanner) ident_hex_number() string {
 		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this hexadecimal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
+	if met_space {
+		s.pos = first_space_pos
+	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
 	return number
@@ -284,6 +306,7 @@ fn (mut s Scanner) ident_oct_number() string {
 	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	mut met_space := false
+	mut first_space_pos := 0
 	start_pos := s.pos
 	s.pos += 2 // skip '0o'
 	for s.pos < s.text.len {
@@ -291,6 +314,7 @@ fn (mut s Scanner) ident_oct_number() string {
 		if c == ` ` {
 			if !met_space {
 				met_space = true
+				first_space_pos = s.pos
 			}
 		}
 		else if c.is_oct_digit() || c == num_sep {
@@ -302,12 +326,18 @@ fn (mut s Scanner) ident_oct_number() string {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
 			}
-			else if !has_wrong_digit {
-				has_wrong_digit = true
-				first_wrong_digit_pos = s.pos
-				first_wrong_digit = c
+			else {
+				if met_space {
+					s.pos = first_space_pos
+					break
+				}
+				else if !has_wrong_digit {
+					has_wrong_digit = true
+					first_wrong_digit_pos = s.pos
+					first_wrong_digit = c
+				}
 			}
-		}
+		} 
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
@@ -317,6 +347,9 @@ fn (mut s Scanner) ident_oct_number() string {
 	else if has_wrong_digit {
 		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this octal number has unsuitable digit `${first_wrong_digit.str()}`')
+	}
+	if met_space {
+		s.pos = first_space_pos
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
@@ -328,6 +361,7 @@ fn (mut s Scanner) ident_dec_number() string {
 	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	mut met_space := false
+	mut first_space_pos := 0
 	start_pos := s.pos
 	// scan integer part
 	for s.pos < s.text.len {
@@ -335,6 +369,7 @@ fn (mut s Scanner) ident_dec_number() string {
 		if c == ` ` {
 			if !met_space {
 				met_space = true
+				first_space_pos = s.pos
 			}
 		}
 		else if c.is_digit() || c == num_sep {
@@ -346,10 +381,16 @@ fn (mut s Scanner) ident_dec_number() string {
 			if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string {
 				break
 			}
-			else if !has_wrong_digit {
-				has_wrong_digit = true
-				first_wrong_digit_pos = s.pos
-				first_wrong_digit = c
+			else {
+				if met_space {
+					s.pos = first_space_pos
+					break
+				}
+				else if !has_wrong_digit {
+					has_wrong_digit = true
+					first_wrong_digit_pos = s.pos
+					first_wrong_digit = c
+				}
 			}
 		}
 		s.pos++
@@ -368,6 +409,7 @@ fn (mut s Scanner) ident_dec_number() string {
 					if c == ` ` {
 						if !met_space {
 							met_space = true
+							first_space_pos = s.pos
 						}
 					}
 					else if c.is_digit() {
@@ -383,10 +425,16 @@ fn (mut s Scanner) ident_dec_number() string {
 							}
 							break
 						}
-						else if !has_wrong_digit {
-							has_wrong_digit = true
-							first_wrong_digit_pos = s.pos
-							first_wrong_digit = c
+						else {
+							if met_space {
+								s.pos = first_space_pos
+								break
+							}
+							else if !has_wrong_digit {
+								has_wrong_digit = true
+								first_wrong_digit_pos = s.pos
+								first_wrong_digit = c
+							}
 						}
 					}
 					s.pos++
@@ -425,6 +473,7 @@ fn (mut s Scanner) ident_dec_number() string {
 			if c == ` ` {
 				if !met_space {
 					met_space = true
+					first_space_pos = s.pos
 				}
 			}
 			else if c.is_digit() {
@@ -440,10 +489,16 @@ fn (mut s Scanner) ident_dec_number() string {
 					}
 					break
 				}
-				else if !has_wrong_digit {
-					has_wrong_digit = true
-					first_wrong_digit_pos = s.pos
-					first_wrong_digit = c
+				else {
+					if met_space {
+						s.pos = first_space_pos
+						break
+					}
+					else if !has_wrong_digit {
+						has_wrong_digit = true
+						first_wrong_digit_pos = s.pos
+						first_wrong_digit = c
+					}
 				}
 			}
 			s.pos++
@@ -467,6 +522,9 @@ fn (mut s Scanner) ident_dec_number() string {
 		else {
 			s.error('too many decimal points in number')
 		}
+	}
+	if met_space {
+		s.pos = first_space_pos
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
