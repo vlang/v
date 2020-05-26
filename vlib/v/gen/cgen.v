@@ -376,10 +376,8 @@ typedef struct {
 			.alias {
 				parent := &g.table.types[typ.parent_idx]
 				styp := typ.name.replace('.', '__')
-				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] ==
-					`.`
-				parent_styp := if is_c_parent { 'struct ' + parent.name[2..].replace('.', '__') } else { parent.name.replace('.',
-						'__') }
+				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
+				parent_styp := if is_c_parent { 'struct ' + parent.name[2..].replace('.', '__') } else { parent.name.replace('.', '__') }
 				g.definitions.writeln('typedef $parent_styp $styp;')
 			}
 			.array {
@@ -836,9 +834,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 	got_is_ptr := got_type.is_ptr()
 	expected_is_ptr := expected_type.is_ptr()
 	neither_void := table.voidptr_type !in [got_type, expected_type]
-	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_,
-		.placeholder
-	] {
+	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_, .placeholder] {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
@@ -897,8 +893,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	if return_type != table.void_type && return_type != 0 {
 		sym := g.table.get_type_symbol(return_type)
 		// the left vs. right is ugly and should be removed
-		if sym.kind == .multi_return || assign_stmt.left.len > assign_stmt.right.len || assign_stmt.left.len >
-			1 {
+		if sym.kind == .multi_return || assign_stmt.left.len > assign_stmt.right.len || assign_stmt.left.len > 1 {
 			// multi return
 			// TODO Handle in if_expr
 			is_optional := return_type.flag_is(.optional)
@@ -932,6 +927,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 			}
 			return
+		}
+	}
+	if assign_stmt.is_cross_var {
+		for ident in assign_stmt.left {
+			type_str := g.typ(ident.var_info().typ)
+			g.writeln('$type_str _var_$ident.pos.pos = $ident.name;')
 		}
 	}
 	// `a := 1` | `a,b := 1,2`
@@ -1034,13 +1035,43 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if is_decl {
 					g.expr(val)
 				} else {
-					g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
+					if assign_stmt.is_cross_var {
+						g.gen_cross_tmp_variable(assign_stmt.left, val)
+					} else {
+						g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
+					}
 				}
 			}
 		}
 		g.is_assign_rhs = false
 		if g.inside_ternary == 0 {
 			g.writeln(';')
+		}
+	}
+}
+
+fn (mut g Gen) gen_cross_tmp_variable(idents []ast.Ident, val ast.Expr) {
+	match val {
+		ast.Ident {
+			mut has_var := false
+			for ident in idents {
+				if it.name == ident.name {
+					g.write('_var_${ident.pos.pos}')
+					has_var = true
+					break
+				}
+			}
+			if !has_var {
+				g.expr(val)
+			}
+		}
+		ast.InfixExpr {
+			g.gen_cross_tmp_variable(idents, it.left)
+			g.write(it.op.str())
+			g.gen_cross_tmp_variable(idents, it.right)
+		}
+		else {
+			g.expr(val)
 		}
 	}
 }
@@ -1789,8 +1820,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
-	is_expr := (node.is_expr && node.return_type != table.void_type) || g.inside_ternary >
-		0
+	is_expr := (node.is_expr && node.return_type != table.void_type) || g.inside_ternary > 0
 	if is_expr {
 		g.inside_ternary++
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
