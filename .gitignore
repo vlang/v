@@ -66,3 +66,4 @@ cachegrind.out.*
 .DS_Store
 ._*
 thumbs.db
+/.symlink/*
