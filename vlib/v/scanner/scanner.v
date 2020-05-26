@@ -195,11 +195,22 @@ fn (mut s Scanner) ident_bin_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
+	mut met_space := false
 	start_pos := s.pos
 	s.pos += 2 // skip '0b'
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if !c.is_bin_digit() && c != num_sep {
+		if c == ` ` {
+			if !met_space {
+				met_space = true
+			}
+		}
+		else if c.is_bin_digit() || c == num_sep {
+			if met_space {
+				s.error('unneeded spaces before digit `${c.str()}`')
+			}
+		}
+		else {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
 			}
@@ -228,11 +239,22 @@ fn (mut s Scanner) ident_hex_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
+	mut met_space := false
 	start_pos := s.pos
 	s.pos += 2 // skip '0x'
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if !c.is_hex_digit() && c != num_sep {
+		if c == ` ` {
+			if !met_space {
+				met_space = true
+			}
+		}
+		else if c.is_hex_digit() || c == num_sep {
+			if met_space {
+				s.error('unneeded spaces before digit `${c.str()}`')
+			}
+		}
+		else {
 			if !c.is_letter() || s.is_inside_string {
 				break
 			}
@@ -261,11 +283,22 @@ fn (mut s Scanner) ident_oct_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
+	mut met_space := false
 	start_pos := s.pos
 	s.pos += 2 // skip '0o'
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if !c.is_oct_digit() && c != num_sep {
+		if c == ` ` {
+			if !met_space {
+				met_space = true
+			}
+		}
+		else if c.is_oct_digit() || c == num_sep {
+			if met_space {
+				s.error('unneeded spaces before digit `${c.str()}`')
+			}
+		}
+		else {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
 			}
@@ -274,7 +307,7 @@ fn (mut s Scanner) ident_oct_number() string {
 				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
 			}
-		}
+		} 
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
@@ -294,11 +327,22 @@ fn (mut s Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
+	mut met_space := false
 	start_pos := s.pos
 	// scan integer part
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if !c.is_digit() && c != num_sep {
+		if c == ` ` {
+			if !met_space {
+				met_space = true
+			}
+		}
+		else if c.is_digit() || c == num_sep {
+			if met_space {
+				s.error('unneeded spaces before digit `${c.str()}`')
+			}
+		}
+		else {
 			if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string {
 				break
 			}
@@ -321,7 +365,17 @@ fn (mut s Scanner) ident_dec_number() string {
 			if s.text[s.pos].is_digit() {
 				for s.pos < s.text.len {
 					c := s.text[s.pos]
-					if !c.is_digit() {
+					if c == ` ` {
+						if !met_space {
+							met_space = true
+						}
+					}
+					else if c.is_digit() {
+						if met_space {
+							s.error('unneeded spaces before digit `${c.str()}`')
+						}
+					}
+					else {
 						if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string {
 							// 5.5.str()
 							if c == `.` && s.pos + 1 < s.text.len && s.text[s.pos + 1].is_letter() {
@@ -368,7 +422,17 @@ fn (mut s Scanner) ident_dec_number() string {
 		}
 		for s.pos < s.text.len {
 			c := s.text[s.pos]
-			if !c.is_digit() {
+			if c == ` ` {
+				if !met_space {
+					met_space = true
+				}
+			}
+			else if c.is_digit() {
+				if met_space {
+					s.error('unneeded spaces before digit `${c.str()}`')
+				}
+			}
+			else {
 				if !c.is_letter() || s.is_inside_string {
 					// 5e5.str()
 					if c == `.` && s.pos + 1 < s.text.len && s.text[s.pos + 1].is_letter() {
