@@ -248,6 +248,11 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.backend = b
 				i++
 			}
+			'-path' {
+				path := cmdline.option(current_args, '-path', '')
+				res.lookup_path = path.split(os.path_delimiter)
+				i++
+			}
 			else {
 				mut should_continue := false
 				for flag_with_param in list_of_flags_with_param {

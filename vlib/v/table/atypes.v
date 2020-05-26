@@ -611,6 +611,7 @@ pub mut:
 pub struct Enum {
 pub:
 	vals []string
+	is_flag bool
 }
 
 pub struct Alias {

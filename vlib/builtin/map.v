@@ -417,6 +417,38 @@ pub fn (m &map) keys() []string {
 }
 
 [unsafe_fn]
+pub fn (d DenseArray) clone() DenseArray {
+	res := DenseArray {
+		value_bytes: d.value_bytes
+		cap:         d.cap
+		size:        d.size
+		deletes:     d.deletes
+		keys:        &string(malloc(d.cap * sizeof(string)))
+		values:      byteptr(malloc(d.cap * d.value_bytes))
+	}
+	C.memcpy(res.keys, d.keys, d.cap * sizeof(string))
+	C.memcpy(res.values, d.values, d.cap * d.value_bytes)
+	return res
+}
+
+[unsafe_fn]
+pub fn (m map) clone() map {
+	metas_size := sizeof(u32) * (m.cap + 2 + m.extra_metas)
+	res := map{
+		value_bytes:     m.value_bytes
+		cap:             m.cap
+		cached_hashbits: m.cached_hashbits
+		shift:           m.shift
+		key_values:      m.key_values.clone()
+		metas:           &u32(malloc(metas_size))
+		extra_metas:     m.extra_metas
+		size:            m.size
+	}
+	C.memcpy(res.metas, m.metas, metas_size)
+	return res
+}
+
+[unsafe_fn]
 pub fn (m &map) free() {
 	free(m.metas)
 	for i := u32(0); i < m.key_values.size; i++ {

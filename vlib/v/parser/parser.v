@@ -94,6 +94,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		global_scope: global_scope
 	}
 	// comments_mode: comments_mode
+	p.init_parse_fns()
 	p.read_first_token()
 	for p.tok.kind == .comment {
 		stmts << p.comment()
@@ -126,6 +127,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
 	p.scope.end_pos = p.tok.pos
+	//
 	return ast.File{
 		path: path
 		mod: module_decl
@@ -210,7 +212,6 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 pub fn (p &Parser) init_parse_fns() {
 	// p.prefix_parse_fns = make(100, 100, sizeof(PrefixParseFn))
 	// p.prefix_parse_fns[token.Kind.name] = parse_name
-	println('')
 }
 
 pub fn (mut p Parser) read_first_token() {
@@ -1371,17 +1372,35 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		}
 	}
 	p.check(.rcbr)
+	attr := p.attr
+	is_flag := attr == 'flag'
+	if is_flag {
+		if fields.len > 32 {
+			p.error('when an enum is used as bit field, it must have a max of 32 fields')
+		}
+		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
+		p.scanner.codegen('
+//
+$pubfn (    e &$name) has(flag $name) bool { return      (int(*e) &  (1 << int(flag))) != 0 }
+$pubfn (mut e  $name) set(flag $name)      { unsafe{ *e = int(*e) |  (1 << int(flag)) } }
+$pubfn (mut e  $name) clear(flag $name)    { unsafe{ *e = int(*e) & ~(1 << int(flag)) } }
+$pubfn (mut e  $name) toggle(flag $name)   { unsafe{ *e = int(*e) ^  (1 << int(flag)) } }
+//
+        ')
+	}
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_
 		name: name
 		mod: p.mod
 		info: table.Enum{
 			vals: vals
+			is_flag: is_flag
 		}
 	})
 	return ast.EnumDecl{
 		name: name
 		is_pub: is_pub
+		is_flag: is_flag
 		fields: fields
 		pos: start_pos.extend(end_pos)
 	}

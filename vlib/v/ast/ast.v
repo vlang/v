@@ -577,6 +577,7 @@ pub struct EnumDecl {
 pub:
 	name   string
 	is_pub bool
+	is_flag bool // true when the enum has [flag] tag
 	fields []EnumField
 	pos    token.Position
 }
