@@ -82,3 +82,12 @@ fn test_scan() {
 
 
 }
+
+fn test_vmod_file() {
+	content := @VMOD_FILE
+	assert content.len > 0
+	assert content.contains('Module {')
+	assert content.contains('name:')
+	assert content.contains('version:')
+	assert content.contains('description:')
+}
