@@ -307,7 +307,7 @@ fn (mut s Scanner) ident_oct_number() string {
 				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
 			}
-		} 
+		}
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
