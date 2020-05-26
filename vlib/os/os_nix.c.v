@@ -8,6 +8,7 @@ import strings
 
 pub const (
 	path_separator = '/'
+	path_delimiter = ':'
 )
 
 const (

@@ -7,6 +7,7 @@ import strings
 
 pub const (
 	path_separator = '\\'
+	path_delimiter = ';'
 )
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
