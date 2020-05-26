@@ -1,4 +1,4 @@
-vlib/v/checker/tests/oct_lit_has_space_err.v:2:18: error: unneeded space before digit `5`
+vlib/v/checker/tests/oct_lit_has_space_err.v:2:18: error: unneeded spaces before digit `5`
     1 | fn main() {
     2 |     a := 0o1234  567
       |                  ^
