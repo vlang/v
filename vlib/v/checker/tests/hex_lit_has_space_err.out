@@ -1,5 +1,5 @@
 vlib/v/checker/tests/hex_lit_has_space_err.v:2:19: error: unneeded spaces before digit `f`
     1 | fn main() {
-    2 |     a := 0o1234   fff
+    2 |     a := 0x1234   fff
       |                   ^
     3 | }
