@@ -3216,8 +3216,8 @@ fn c_name(name_ string) string {
 fn (g Gen) type_default(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .array {
-		elem_sym := g.table.get_type_symbol(sym.array_info().elem_type)
-		mut elem_type_str := elem_sym.name.replace('.', '__')
+		elem_sym := g.typ(sym.array_info().elem_type)
+		mut elem_type_str := elem_sym.replace('.', '__')
 		if elem_type_str.starts_with('C__') {
 			elem_type_str = elem_type_str[3..]
 		}
