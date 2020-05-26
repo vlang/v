@@ -424,10 +424,10 @@ pub fn (d DenseArray) clone() DenseArray {
 		size:        d.size
 		deletes:     d.deletes
 		keys:        &string(malloc(d.cap * sizeof(string)))
-		values:      byteptr(malloc(d.cap * d.value_bytes))
+		values:      byteptr(malloc(d.cap * u32(d.value_bytes)))
 	}
 	C.memcpy(res.keys, d.keys, d.cap * sizeof(string))
-	C.memcpy(res.values, d.values, d.cap * d.value_bytes)
+	C.memcpy(res.values, d.values, d.cap * u32(d.value_bytes))
 	return res
 }
 
