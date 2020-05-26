@@ -1,4 +1,4 @@
-vlib/v/checker/tests/bin_lit_has_space_err.v:2:17: error: unneeded space before digit `1`
+vlib/v/checker/tests/bin_lit_has_space_err.v:2:17: error: unneeded spaces before digit `1`
     1 | fn main() {
     2 |     a := 0b1010 101
       |                 ^
