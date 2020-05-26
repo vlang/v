@@ -52,7 +52,7 @@ fn setup_symlink_on_windows(){
 	vsymlinkbat := os.join_path(vsymlinkdir, 'v.bat')
 	os.rmdir_all(vsymlinkdir)
 	os.mkdir_all(vsymlinkdir)
-	os.write_file(vsymlinkbat, '$vexe %*')
+	os.write_file(vsymlinkbat, '@echo off\n${vexe} %*')
 	if !os.exists( vsymlinkbat ) {
 		eprintln('Could not create $vsymlinkbat')
 		exit(1)
