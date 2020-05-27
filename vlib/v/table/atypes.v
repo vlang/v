@@ -492,6 +492,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		kind: .any
 		name: 'T'
 		mod: 'builtin'
+		is_public: true
 	})
 	t.register_type_symbol({
 		kind: .any_float
@@ -610,7 +611,7 @@ pub mut:
 
 pub struct Enum {
 pub:
-	vals []string
+	vals    []string
 	is_flag bool
 }
 

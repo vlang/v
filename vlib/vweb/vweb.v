@@ -36,14 +36,15 @@ pub const (
 )
 
 pub struct Context {
+mut:
 	static_files map[string]string
 	static_mime_types map[string]string
 pub:
 	req http.Request
 	conn net.Socket
-	form map[string]string
 	// TODO Response
 pub mut:
+	form map[string]string
 	headers string // response headers
 	done bool
 }

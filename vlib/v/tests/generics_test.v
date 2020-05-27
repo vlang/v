@@ -38,6 +38,21 @@ fn test_foo() {
 	assert sum<int>(b) == 6
 }
 
+fn create<T>() {
+	a := T{}
+}
+
+struct User {
+}
+
+struct City {
+}
+
+fn test_create() {
+	create<User>()
+	create<City>()
+}
+
 /*
 fn map_f<T,U>(l []T, f fn(T)U) []U {
     mut r := []U{}
