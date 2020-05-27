@@ -852,6 +852,7 @@ pub fn (mut s Scanner) scan() token.Token {
 		}
 		0xE2 {
 			if nextc == 0x89 && s.text[s.pos + 2] == 0xA0 {
+			// case `≠`:
 				s.pos += 2
 				return s.new_token(.ne, '', 3)
 			}
