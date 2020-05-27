@@ -24,10 +24,10 @@ fn test_public_servers() {
 	urls := [
 		'http://github.com/robots.txt',
 		'http://google.com/robots.txt',
-		'http://yahoo.com/robots.txt',
 		'https://github.com/robots.txt',
 		'https://google.com/robots.txt',
-		'https://yahoo.com/robots.txt',
+//		'http://yahoo.com/robots.txt',
+//		'https://yahoo.com/robots.txt',
 	]
 	for url in urls {
 		println('Testing http.get on public url: $url ')
