@@ -197,7 +197,7 @@ fn module_path(mod string) string {
 
 pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
-	vmod_file_location := vmod.mod_file_cacher.get(fpath)
+	vmod_file_location := vmod.mod_file_cacher.get_by_file(fpath)
 	mod_path := module_path(mod)
 	mut module_lookup_paths := []string{}
 	if vmod_file_location.vmod_file.len != 0 && vmod_file_location.vmod_folder !in b.module_search_paths {

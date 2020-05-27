@@ -22,7 +22,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 		mut flag := val[5..]
 		// expand `@VROOT` to its absolute path
 		if flag.contains('@VROOT') {
-			vmod_file_location := vmod.mod_file_cacher.get(p.file_name_dir)
+			vmod_file_location := vmod.mod_file_cacher.get_by_folder(p.file_name_dir)
 			if vmod_file_location.vmod_file.len == 0 {
 				// There was no actual v.mod file found.
 				p.error('To use @VROOT, you need' + ' to have a "v.mod" file in ${p.file_name_dir},' +

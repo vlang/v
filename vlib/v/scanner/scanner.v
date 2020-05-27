@@ -796,7 +796,7 @@ pub fn (mut s Scanner) scan() token.Token {
 			}
 			if name == 'VMOD_FILE' {
 				if s.vmod_file_content.len == 0 {
-					vmod_file_location := vmod.mod_file_cacher.get( os.dir( os.real_path(s.file_path) ) )
+					vmod_file_location := vmod.mod_file_cacher.get_by_file( s.file_path )
 					if vmod_file_location.vmod_file.len == 0 {
 						s.error('@VMOD_FILE can be used only in projects, that have v.mod file')
 					}

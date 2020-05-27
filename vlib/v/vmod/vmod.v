@@ -58,7 +58,13 @@ pub fn (mcache &ModFileCacher) dump() {
 	}
 }
 
-pub fn (mut mcache ModFileCacher) get(mfolder string) ModFileAndFolder {
+
+pub fn (mut mcache ModFileCacher) get_by_file(vfile string) ModFileAndFolder {
+	return mcache.get_by_folder( os.dir( vfile ) )
+}
+
+pub fn (mut mcache ModFileCacher) get_by_folder(vfolder string) ModFileAndFolder {
+	mfolder := os.real_path( vfolder )
 	if mfolder in mcache.cache {
 		return mcache.cache[ mfolder ]
 	}
