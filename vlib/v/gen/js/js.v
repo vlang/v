@@ -402,9 +402,6 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.CompIf {
 			// skip: JS has no compile time if
 		}
-		ast.ComptimeCall {
-			// TODO
-		}
 		ast.ConstDecl {
 			g.gen_const_decl(it)
 		}
@@ -594,6 +591,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.TypeOf {
 			g.gen_typeof_expr(it)
 			// TODO: Should this print the V type or the JS type?
+		}
+		ast.ComptimeCall {
+			// TODO
 		}
 		/*
 		else {
