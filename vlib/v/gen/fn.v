@@ -438,7 +438,23 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('*($return_type_str*)')
 		}
 	}
-	name := '${receiver_type_name}_$node.name'.replace('.', '__')
+
+	mut name := '${receiver_type_name}_$node.name'.replace('.', '__')
+	// Check if expression is: arr[a..b].clone(), arr[a..].clone()
+	// if so, then instead of calling array_clone(&array_slice(...))
+	// call array_clone_static(array_slice(...))
+	mut is_range_slice := false
+	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
+		if node.left is ast.IndexExpr {
+			idx := (node.left as ast.IndexExpr).index
+			if idx is ast.RangeExpr {
+				// expr is arr[range].clone()
+				// use array_clone_static instead of array_clone
+				name = '${receiver_type_name}_${node.name}_static'.replace('.', '__')
+				is_range_slice = true
+			}
+		}
+	}
 	// if node.receiver_type != 0 {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
@@ -452,7 +468,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
-		g.write('&')
+		if !is_range_slice {
+			g.write('&')
+		}
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' {
 		g.write('/*rec*/*')
 	}
