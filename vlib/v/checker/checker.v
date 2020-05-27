@@ -1174,10 +1174,18 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	if exp_is_optional && got_types[0].idx() in [table.none_type_idx, c.table.type_idxs['Option']] {
 		return
 	}
+
 	if expected_types.len > 0 && expected_types.len != got_types.len {
-		// c.error('wrong number of return arguments:\n\texpected: $expected_table.str()\n\tgot: $got_types.str()', return_stmt.pos)
-		c.error('wrong number of return arguments', return_stmt.pos)
+		// Check whether the got types actually contains the expected types
+		if got_types.len == 1 && c.table.get_type_symbol(got_types[0]).kind != .multi_return {
+			// Turn this multi return into 2 normal args
+			got_types = c.table.get_type_symbol(got_types[0]).mr_info().types
+		} else {
+			c.error('wrong number of return arguments', return_stmt.pos)
+			return
+		}
 	}
+
 	for i, exp_type in expected_types {
 		got_typ := got_types[i]
 		is_generic := exp_type == table.t_type
