@@ -701,7 +701,7 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	left_type := c.expr(call_expr.left)
 	call_expr.left_type = left_type
-	left_type_sym := c.table.get_type_symbol(left_type)
+	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
@@ -1173,7 +1173,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		if sym.kind == .multi_return {
 			for t in sym.mr_info().types {
 				got_types << t
-			} 
+			}
 		} else {
 			got_types << typ
 		}

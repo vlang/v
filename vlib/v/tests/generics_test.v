@@ -56,6 +56,12 @@ mut:
 	foo string
 }
 
+fn (u User) init() {
+}
+
+fn (c City) init() {
+}
+
 fn test_create() {
 	create<User>()
 	create<City>()
@@ -204,5 +210,4 @@ fn test_generic_fn_with_variadics(){
 	p(abc)
 	p('Good','morning','world')
 }
-
 */
