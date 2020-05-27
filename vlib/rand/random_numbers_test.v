@@ -63,7 +63,8 @@ fn test_rand_f32() {
 	for _ in 0..rnd_count+1 {
 		res := rand.rand_f32(1.0)
 
-		assert res != prev_res
+		assert res >= 0.0
+		assert res <= 1.0
 
 		prev_res = res
 	}
@@ -72,36 +73,33 @@ fn test_rand_f32() {
 
 fn test_rand_f32_in_range() {
 
-	mut prev_res := f32(-1.0)
 	for _ in 0..rnd_count+1 {
 		res := rand.rand_f32_in_range(1.0,2.0)
 
-		assert res != prev_res
+		assert res >= 1.0
+		assert res <= 2.0
 
-		prev_res = res
+		// NOTE assert res != prev_res
+		// ^- this kind of test can and WILL fail. Random numbers can be the same in subsequent runs
 	}
 }
 
 fn test_rand_f64() {
 
-	mut prev_res := f64(-1.0)
 	for _ in 0..rnd_count+1 {
 		res := rand.rand_f64(1.0)
 
-		assert res != prev_res
-
-		prev_res = res
+		assert res >= 0.0
+		assert res <= 1.0
 	}
 }
 
 fn test_rand_f64_in_range() {
 
-	mut prev_res := f64(-1.0)
-	for _ in 0..rnd_count+1 {
+	for _ in 0..rnd_count {
 		res := rand.rand_f64_in_range(1.0,2.0)
 
-		assert res != prev_res
-
-		prev_res = res
+		assert res >= 1.0
+		assert res <= 2.0
 	}
 }
