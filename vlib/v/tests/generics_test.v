@@ -169,4 +169,32 @@ fn test_generic_struct() {
 	assert a.model.name == 'joe'
 	assert b.model.name == 'joe'
 }
+
+//
+
+struct Abc{ x int y int z int }
+
+fn p<T>(args ...T) {
+	size:=sizeof(T)
+	print('p called with size: ${size:3d} | ')
+	for _,x in args {
+		print(x)
+		print(' ')
+	}
+	println('')
+	assert true
+}
+
+fn test_generic_fn_with_variadics(){
+	s:='abc'
+	i:=1
+	abc:=Abc{1,2,3}
+	// these calls should all compile, and print the arguments,
+	// even though the arguments are all a different type and arity:
+	p(s)
+	p(i)
+	p(abc)
+	p('Good','morning','world')
+}
+
 */
