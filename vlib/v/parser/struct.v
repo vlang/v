@@ -41,6 +41,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
 		p.error_with_pos('struct name `$name` must begin with capital letter', end_pos)
 	}
+	if name.len == 1 {
+		p.error_with_pos('struct names must have more than one character', end_pos)
+	}
 	// println('struct decl $name')
 	mut ast_fields := []ast.StructField{}
 	mut fields := []table.Field{}
