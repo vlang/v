@@ -1,9 +1,9 @@
-struct A {
+struct Aaa {
 	i int
 }
 
 fn main() {
-	mut a := A{}
+	mut a := Aaa{}
 	a.i++
 	a.i--
 }

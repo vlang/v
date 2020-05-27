@@ -4,13 +4,13 @@ struct User {
 	name string
 }
 
-struct A {
+struct Aaa {
 mut:
 	m map[string]int
 	users map[string]User
 }
 
-fn (mut a A) set(key string, val int) {
+fn (mut a Aaa) set(key string, val int) {
 	a.m[key] = val
 }
 
@@ -47,7 +47,7 @@ fn test_map() {
 	users['1'] = User{'Peter'}
 	peter := users['1']
 	assert  peter.name == 'Peter'
-	mut a := A{
+	mut a := Aaa{
 		m: map[string]int
 		users: map[string]User
 	}

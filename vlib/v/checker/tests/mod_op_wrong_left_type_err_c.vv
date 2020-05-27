@@ -1,5 +1,5 @@
-struct A{}
+struct Aaa{}
 fn main() {
-	a := A{}
+	a := Aaa{}
 	a % 1
 }

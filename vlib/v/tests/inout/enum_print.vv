@@ -7,13 +7,13 @@ enum Color {
 	yellow = 3
 }
 
-struct A{
+struct Aaa{
 	color Color
 }
 
 fn main() {
 	col := Color.green
-	a := A{color: col}
+	a := Aaa{color: col}
 	orange := Color.orange
 	println(orange)
 	println(Color.yellow)

@@ -1,11 +1,11 @@
-struct A {
+struct Aaa {
 pub mut:
 	v []int
 }
 
-struct B {
+struct Bbb {
 pub mut:
-	a []A
+	a []Aaa
 }
 
 fn foo(b int, a mut []int) {
@@ -32,8 +32,8 @@ fn test_mut() {
 
 fn test_mut_2() {
 	zero := 0
-	mut b := B{}
-	b.a << A{}
+	mut b := Bbb{}
+	b.a << Aaa{}
 	b.a[0].v = [9, 8, 7]
 	b.a[0].v << 6
 	b.a[zero].v << 5

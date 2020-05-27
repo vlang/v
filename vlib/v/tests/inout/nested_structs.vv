@@ -1,22 +1,22 @@
 module main
 
-struct B {
+struct Bbb {
 	pass bool
 	name string
 }
 
-fn (b &B) print() {
+fn (b &Bbb) print() {
 	println(b)
 }
 
-struct A {
+struct Aaa {
 	test bool
-	b B
+	b Bbb
 }
 
 fn main() {
-	a := A{}
+	a := Aaa{}
 	println(a)
-	b := B{}
+	b := Bbb{}
 	b.print()
 }

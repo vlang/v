@@ -1,6 +1,6 @@
-vlib/v/checker/tests/div_op_wrong_left_type_err_a.v:3:5: error: mismatched types `A` and `any_int` 
-    1 | struct A{}
+vlib/v/checker/tests/div_op_wrong_left_type_err_a.v:3:5: error: mismatched types `Aaa` and `any_int`
+    1 | struct Aaa{}
     2 | fn main() {
-    3 |     A{} / 10
-      |     ~~~
+    3 |     Aaa{} / 10
+      |     ~~~~~
     4 | }
