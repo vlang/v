@@ -56,3 +56,52 @@ fn assert_randoms_equal(r1, r2 []int) {
 		assert r1[i] == r2[i]
 	}
 }
+
+fn test_rand_f32() {
+
+	mut prev_res := f32(-1.0)
+	for _ in 0..rnd_count+1 {
+		res := rand.rand_f32(1.0)
+
+		assert res != prev_res
+
+		prev_res = res
+	}
+}
+
+
+fn test_rand_f32_in_range() {
+
+	mut prev_res := f32(-1.0)
+	for _ in 0..rnd_count+1 {
+		res := rand.rand_f32_in_range(1.0,2.0)
+
+		assert res != prev_res
+
+		prev_res = res
+	}
+}
+
+fn test_rand_f64() {
+
+	mut prev_res := f64(-1.0)
+	for _ in 0..rnd_count+1 {
+		res := rand.rand_f64(1.0)
+
+		assert res != prev_res
+
+		prev_res = res
+	}
+}
+
+fn test_rand_f64_in_range() {
+
+	mut prev_res := f64(-1.0)
+	for _ in 0..rnd_count+1 {
+		res := rand.rand_f64_in_range(1.0,2.0)
+
+		assert res != prev_res
+
+		prev_res = res
+	}
+}
