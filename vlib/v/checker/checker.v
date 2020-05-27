@@ -135,7 +135,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 						c.error('function `main` cannot return values', it.pos)
 					}
 				} else {
-					if it.is_pub {
+					if it.is_pub && !it.is_method {
 						c.warn('function `$it.name` $no_pub_in_main_warning', it.pos)
 					}
 				}

@@ -94,7 +94,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 }
 
 //
-fn set_vroot_folder(vroot_path string) {
+pub fn set_vroot_folder(vroot_path string) {
 	// Preparation for the compiler module:
 	// VEXE env variable is needed so that compiler.vexe_path()
 	// can return it later to whoever needs it:
@@ -205,7 +205,7 @@ pub fn read_file(file_path string) ?string {
 }
 
 [inline]
-fn imin(a, b int) int {
+pub fn imin(a, b int) int {
 	return if a < b {
 		a
 	} else {
@@ -214,7 +214,7 @@ fn imin(a, b int) int {
 }
 
 [inline]
-fn imax(a, b int) int {
+pub fn imax(a, b int) int {
 	return if a > b {
 		a
 	} else {

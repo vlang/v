@@ -55,6 +55,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 }
 
 fn (mut p Parser) vweb() ast.ComptimeCall {
+	p.check(.dollar)
 	p.check(.name) // skip `vweb.html()` TODO
 	p.check(.dot)
 	p.check(.name)
@@ -66,9 +67,9 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 fn (mut p Parser) comp_if() ast.Stmt {
 	pos := p.tok.position()
 	p.next()
-	if p.tok.kind == .name && p.tok.lit == 'vweb' {
-		return p.vweb()
-	}
+	// if p.tok.kind == .name && p.tok.lit == 'vweb' {
+	// return p.vweb()
+	// }
 	p.check(.key_if)
 	is_not := p.tok.kind == .not
 	if is_not {
@@ -191,11 +192,14 @@ fn os_from_string(os string) pref.OS {
 	return .linux
 }
 
-// `user.$method()` (`method` is a string)
-fn (mut p Parser) comptime_method_call(typ table.Type) {
+// `app.$action()` (`action` is a string)
+// `typ` is `App` in this example
+// fn (mut p Parser) comptime_method_call(typ table.Type) ast.ComptimeCall {
+fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 	p.check(.dollar)
 	method_name := p.check_name()
 	_ = method_name
+	/*
 	mut j := 0
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind != .struct_ {
@@ -219,6 +223,7 @@ fn (mut p Parser) comptime_method_call(typ table.Type) {
 		*/
 		j++
 	}
+	*/
 	p.check(.lpar)
 	p.check(.rpar)
 	if p.tok.kind == .key_orelse {
@@ -226,5 +231,9 @@ fn (mut p Parser) comptime_method_call(typ table.Type) {
 		// p.genln('else {')
 		p.check(.lcbr)
 		// p.statements()
+	}
+	return ast.ComptimeCall{
+		left: left
+		name: method_name
 	}
 }

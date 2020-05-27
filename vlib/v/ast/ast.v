@@ -10,15 +10,15 @@ import v.errors
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral | CallExpr |
-	CastExpr | CharLiteral | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr |
-	IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr |
-	PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral | StringLiteral | StructInit |
-	Type | TypeOf
+	CastExpr | CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
+	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr |
+	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral |
+	StringLiteral | StructInit | Type | TypeOf
 
-pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ComptimeCall |
-	ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
-	GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl |
-	TypeDecl | UnsafeStmt
+pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
+	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
+	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl | TypeDecl |
+	UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -530,14 +530,15 @@ pub:
 
 pub struct AssignStmt {
 pub:
-	right       []Expr
-	op          token.Kind
-	pos         token.Position
+	right         []Expr
+	op            token.Kind
+	pos           token.Position
 pub mut:
-	left        []Ident
-	left_types  []table.Type
-	right_types []table.Type
-	is_static   bool // for translated code only
+	left          []Ident
+	left_types    []table.Type
+	right_types   []table.Type
+	is_static     bool // for translated code only
+	has_cross_var bool
 }
 
 pub struct AsCast {
@@ -575,11 +576,11 @@ pub:
 
 pub struct EnumDecl {
 pub:
-	name   string
-	is_pub bool
+	name    string
+	is_pub  bool
 	is_flag bool // true when the enum has [flag] tag
-	fields []EnumField
-	pos    token.Position
+	fields  []EnumField
+	pos     token.Position
 }
 
 pub struct AliasTypeDecl {
@@ -775,6 +776,7 @@ pub mut:
 
 pub struct ComptimeCall {
 	name string
+	left Expr
 }
 
 pub struct None {

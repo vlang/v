@@ -495,7 +495,13 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			return p.return_stmt()
 		}
 		.dollar {
-			return p.comp_if()
+			if p.peek_tok.kind == .key_if {
+				return p.comp_if()
+			} else if p.peek_tok.kind == .name {
+				return ast.ExprStmt{
+					expr: p.vweb()
+				}
+			}
 		}
 		.key_continue, .key_break {
 			tok := p.tok
@@ -827,7 +833,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
-	if p.peek_tok.kind == .lpar || (p.peek_tok.kind == .lt && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt ){
+	if p.peek_tok.kind == .lpar || (p.peek_tok.kind == .lt && p.peek_tok2.kind == .name &&
+		p.peek_tok3.kind == .gt) {
 		// foo() or foo<int>()
 		mut name := p.tok.lit
 		if mod.len > 0 {
@@ -966,6 +973,9 @@ fn (mut p Parser) scope_register_it() {
 
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
+	if p.tok.kind == .dollar {
+		return p.comptime_method_call(left)
+	}
 	mut name_pos := p.tok.position()
 	field_name := p.check_name()
 	is_filter := field_name in ['filter', 'map']
@@ -1244,7 +1254,8 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		pos := p.tok.position()
 		name := p.check_name()
 		if util.contains_capital(name) {
-			p.warn_with_pos('const names cannot contain uppercase letters, use snake_case instead', pos)
+			p.warn_with_pos('const names cannot contain uppercase letters, use snake_case instead',
+				pos)
 		}
 		full_name := p.prepend_mod(name)
 		// name := p.check_name()

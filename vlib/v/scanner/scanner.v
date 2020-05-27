@@ -7,6 +7,7 @@ import os
 import v.token
 import v.pref
 import v.util
+import v.vmod
 
 const (
 	single_quote = `\'`
@@ -32,6 +33,7 @@ pub mut:
 	fn_name                     string // needed for @FN
 	mod_name                    string // needed for @MOD
 	struct_name                 string // needed for @STRUCT
+	vmod_file_content           string // needed for @VMOD_FILE, contents of the file, *NOT its path*
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
 	is_print_rel_paths_on_error bool
@@ -745,6 +747,7 @@ pub fn (mut s Scanner) scan() token.Token {
 			// @LINE => will be substituted with the V line number where it appears (as a string).
 			// @COLUMN => will be substituted with the column where it appears (as a string).
 			// @VHASH  => will be substituted with the shortened commit hash of the V compiler (as a string).
+			// @VMOD_FILE => will be substituted with the contents of the nearest v.mod file (as a string).
 			// This allows things like this:
 			// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
 			// ... which is useful while debugging/tracing
@@ -772,6 +775,21 @@ pub fn (mut s Scanner) scan() token.Token {
 			}
 			if name == 'VHASH' {
 				return s.new_token(.string, util.vhash(), 6)
+			}
+			if name == 'VMOD_FILE' {
+				if s.vmod_file_content.len == 0 {
+					vmod_file_location := vmod.mod_file_cacher.get( os.dir( os.real_path(s.file_path) ) )
+					if vmod_file_location.vmod_file.len == 0 {
+						s.error('@VMOD_FILE can be used only in projects, that have v.mod file')
+					}
+					vmod_content := os.read_file(vmod_file_location.vmod_file) or {''}
+					$if windows {
+						s.vmod_file_content = vmod_content.replace('\r\n', '\n')
+					} $else {
+						s.vmod_file_content = vmod_content
+					}
+				}
+				return s.new_token(.string, s.vmod_file_content, 10)
 			}
 			if !token.is_key(name) {
 				s.error('@ must be used before keywords (e.g. `@type string`)')

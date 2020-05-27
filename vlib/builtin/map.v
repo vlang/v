@@ -40,7 +40,7 @@ metas = [meta, kv_index, 0, 0, meta, kv_index, 0, 0, meta, kv_index, ...]
 key_values = [kv, kv, kv, ...]
 
 4. The size of metas is a power of two. This enables the use of bitwise AND
-to  convert the 64-bit hash to a bucket/index that doesn't overflow metas. If
+to convert the 64-bit hash to a bucket/index that doesn't overflow metas. If
 the size is power of two you can use "hash & (SIZE - 1)" instead of "hash %
 SIZE". Modulo is extremely expensive so using '&' is a big performance impro-
 vement. The general concern with this approach is that you only make use of
@@ -60,7 +60,7 @@ much faster rehashing.
 */
 
 const (
-// Number of bits from the hash stored for each entry
+	// Number of bits from the hash stored for each entry
 	hashbits            = 24
 	// Number of bits from the hash stored for rehashing
 	max_cached_hashbits = 16
@@ -132,7 +132,6 @@ fn (mut d DenseArray) push(key string, value voidptr) u32 {
 	return push_index
 }
 
-// Private function. Used to implement array[] operator
 fn (d DenseArray) get(i int) voidptr {
 	$if !no_bounds_checking? {
 		if i < 0 || i >= d.size {
@@ -252,6 +251,11 @@ fn (mut m map) meta_greater(_index u32, _metas u32, kvi u32) {
 	m.metas[index] = meta
 	m.metas[index + 1] = kv_index
 	probe_count := (meta >> hashbits) - 1
+	m.ensure_extra_metas(probe_count)
+}
+
+[inline]
+fn (mut m map) ensure_extra_metas(probe_count u32) {
 	if (probe_count << 1) == m.extra_metas {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.cap + 2 + m.extra_metas)
@@ -264,7 +268,8 @@ fn (mut m map) meta_greater(_index u32, _metas u32, kvi u32) {
 	}
 }
 
-fn (mut m map) set(key string, value voidptr) {
+fn (mut m map) set(k string, value voidptr) {
+	key := k.clone()
 	load_factor := f32(m.size << 1) / f32(m.cap)
 	if load_factor > max_load_factor {
 		m.expand()
@@ -385,6 +390,8 @@ pub fn (mut m map) delete(key string) {
 			m.size--
 			m.metas[index] = 0
 			m.key_values.deletes++
+			// Mark key as deleted
+			m.key_values.keys[kv_index].free()
 			C.memset(&m.key_values.keys[kv_index], 0, sizeof(string))
 			if m.key_values.size <= 32 {
 				return
@@ -410,7 +417,7 @@ pub fn (m &map) keys() []string {
 		if m.key_values.keys[i].str == 0 {
 			continue
 		}
-		keys[j] = m.key_values.keys[i]
+		keys[j] = m.key_values.keys[i].clone()
 		j++
 	}
 	return keys
