@@ -590,18 +590,22 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.MapInit {
 			if it.keys.len == 0 {
-				if it.value_type == 0 {
+				mut ktyp := it.key_type
+				mut vtyp := it.value_type 
+
+				if vtyp == 0 {
 					typ_sym := f.table.get_type_symbol(it.typ)
 					minfo := typ_sym.info as table.Map
-					mk := f.table.get_type_symbol(minfo.key_type).name
-					mv := f.table.get_type_symbol(minfo.value_type).name
-					f.write('map[${mk}]${mv}{}')
-					return
+
+					ktyp = minfo.key_type
+					vtyp = minfo.value_type
 				}
+				
 				f.write('map[')
-				f.write(f.type_to_str(it.key_type))
+				f.write(f.type_to_str(ktyp))
 				f.write(']')
-				f.write(f.type_to_str(it.value_type))
+				f.write(f.type_to_str(vtyp))
+				f.write('{}')
 				return
 			}
 			f.writeln('{')
