@@ -105,39 +105,57 @@ fn (mut s Scanner) ident_fn_name() string {
 	start := s.pos
 	mut pos := s.pos
 	pos++
-	// Search for function scope start
-	for pos < s.text.len && s.text[pos] != `{` {
+
+	if s.current_column() - 2 != 0 {
+		return s.fn_name
+	}
+
+	has_struct_name := s.struct_name != ''
+
+	if has_struct_name {
+		for pos < s.text.len && s.text[pos] != `(` {
+			pos++
+		}
+		if pos >= s.text.len {
+			return ''
+		}
+		pos++
+	}
+
+	for pos < s.text.len && s.text[pos] != `(` {
 		pos++
 	}
 	if pos >= s.text.len {
-		return ""
+		return ''
 	}
-	// Search backwards for "first" occurrence of function open paranthesis
-	for pos > start && s.text[pos] != `(` {
+	pos--
+
+	// Eat whitespaces
+	for pos > start && s.text[pos].is_space() {
 		pos--
 	}
 	if pos < start {
-		return ""
+		return ''
 	}
-	// Search backwards for end position of function name
-	for pos > start && !util.is_func_char(s.text[pos]) {
-		pos--
-	}
+
 	end_pos := pos + 1
-	if pos < start {
-		return ""
-	}
+
+	pos--
 	// Search for the start position
 	for pos > start && util.is_func_char(s.text[pos]) {
 		pos--
 	}
-	start_pos := pos + 1
-	if pos < start || pos >= s.text.len  {
-		return ""
+	pos++
+
+	start_pos := pos
+
+	if pos <= start || pos >= s.text.len  {
+		return ''
 	}
-	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos || end_pos <= start || start_pos <= start {
-		return ""
+	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos || end_pos <= start || start_pos < start {
+		return ''
 	}
+
 	fn_name := s.text[start_pos..end_pos]
 	return fn_name
 }
@@ -202,7 +220,7 @@ fn (mut s Scanner) ident_struct_name() string {
 		return ''
 	}
 
-	// Search for closing paranthesis
+	// Search for closing parenthesis
 	for pos < s.text.len && s.text[pos] != `)` {
 		pos++
 	}
@@ -554,8 +572,8 @@ pub fn (mut s Scanner) scan() token.Token {
 		if token.is_key(name) {
 			kind := token.key_to_token(name)
 			if kind == .key_fn {
-				s.fn_name = s.ident_fn_name()
 				s.struct_name = s.ident_struct_name()
+				s.fn_name = s.ident_fn_name()
 			} else if kind == .key_module {
 				s.mod_name = s.ident_mod_name()
 			}

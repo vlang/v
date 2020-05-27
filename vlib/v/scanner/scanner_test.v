@@ -24,6 +24,25 @@ fn (mut t TestStruct) test_struct_w_high_order(cb fn(int)string) string {
 	return 'test'+cb(2)
 }
 
+struct TestFn { }
+
+fn (mut t TestFn) tst_1() {
+	assert @FN == 'tst_1'
+}
+
+fn (mut t TestFn) tst_2(cb fn(int)) {
+	assert @FN == 'tst_2'
+	cb(1)
+}
+
+fn fn_name_mod_level() {
+	assert @FN == 'fn_name_mod_level'
+}
+
+fn fn_name_mod_level_high_order(cb fn(int)) {
+	assert @FN == 'fn_name_mod_level_high_order'
+	cb(1)
+}
 
 fn test_scan() {
 	text := 'println(2 + 3)'
@@ -64,6 +83,19 @@ fn test_scan() {
 	// Test @FN
 	assert @FN == 'test_scan'
 
+	fn_name_mod_level()
+	fn_name_mod_level_high_order(fn(i int){
+		t := i + 1
+		assert t == 2
+	})
+
+	tfn := TestFn{}
+	tfn.tst_1()
+	tfn.tst_2(fn(i int){
+		t := i + 1
+		assert t == 2
+	})
+
 	// Test @MOD
 	assert @MOD == 'scanner'
 
@@ -79,7 +111,6 @@ fn test_scan() {
 	})
 	assert r1 == 'test'
 	assert r2 == 'test2'
-
 
 }
 
