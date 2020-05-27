@@ -2,16 +2,13 @@ module main
 
 import net.websocket
 import eventbus
-import time
 import readline
-import term
-import benchmark
 
 const (
 	eb = eventbus.new()
 )
 
-#flag -I $PWD
+#flag -I @VROOT/vlib/net/websocket/examples
 #include "utf8.h"
 fn C.utf8_validate_str() bool
 
@@ -75,29 +72,25 @@ fn read_line(text string) string {
 	return output
 }
 
-fn on_open(params eventbus.Params) {
+fn on_open(sender voidptr, ws &websocket.Client, x voidptr) {
 	println('websocket opened.')
 }
 
-fn on_message(params eventbus.Params) {
+fn on_message(sender voidptr, mut ws websocket.Client, msg websocket.Message) {
 	println('Message recieved. Sending it back.')
-	typ := params.get_string('type')
-	len := params.get_int('len')
-	mut ws := params.get_caller(websocket.Client{})
-	if typ == 'string' {
-		message := params.get_string('payload')
+	typ := msg.opcode
+	if typ == .text_frame {
 		if ws.uri.ends_with('getCaseCount') {
-			num := message.int()
+			num := int(msg.payload)
 			ws.close(1005, 'done')
 			start_tests(mut ws, num)
 			return
 		}
-		// println("Message: " + message)
-		ws.write(message.str, len, .text_frame)
+		// println("Message: $msg")
+		ws.write(msg.payload, msg.payload_len, .text_frame)
 	} else {
 		println('Binary message.')
-		message := params.get_raw('payload')
-		ws.write(message, len, .binary_frame)
+		ws.write(msg.payload, msg.payload_len, .binary_frame)
 	}
 }
 
@@ -118,10 +111,10 @@ fn start_tests(ws mut websocket.Client, num int) {
 	exit(0)
 }
 
-fn on_close(params eventbus.Params) {
+fn on_close(sender voidptr, ws &websocket.Client, x voidptr) {
 	println('websocket closed.')
 }
 
-fn on_error(params eventbus.Params) {
+fn on_error(sender voidptr, ws &websocket.Client, x voidptr) {
 	println('we have an error.')
 }
