@@ -1167,7 +1167,16 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	mut got_types := []table.Type{}
 	for expr in return_stmt.exprs {
 		typ := c.expr(expr)
-		got_types << typ
+
+		// Unpack multi return types
+		sym :=  c.table.get_type_symbol(typ)
+		if sym.kind == .multi_return {
+			for t in sym.mr_info().types {
+				got_types << t
+			} 
+		} else {
+			got_types << typ
+		}
 	}
 	return_stmt.types = got_types
 	// allow `none` & `error (Option)` return types for function that returns optional
@@ -1176,14 +1185,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 
 	if expected_types.len > 0 && expected_types.len != got_types.len {
-		// Check whether the got types actually contains the expected types
-		if got_types.len == 1 && c.table.get_type_symbol(got_types[0]).kind != .multi_return {
-			// Turn this multi return into 2 normal args
-			got_types = c.table.get_type_symbol(got_types[0]).mr_info().types
-		} else {
-			c.error('wrong number of return arguments', return_stmt.pos)
-			return
-		}
+		c.error('wrong number of return arguments', return_stmt.pos)
+		return
 	}
 
 	for i, exp_type in expected_types {
