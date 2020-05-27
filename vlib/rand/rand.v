@@ -4,6 +4,8 @@
 
 module rand
 
+import math
+
 fn C.rand() int
 
 pub fn seed(s int) {
@@ -31,7 +33,7 @@ pub fn rand_f32(max f32) f32 {
 
 // rand_f32 return a random f32 in range min and max
 pub fn rand_f32_in_range(min f32, max f32) f32 {
-    scaled_r := f32(rand.next( 2147483647 )) / 2147483647.0
+    scaled_r := f32(rand.next( math.max_i32 )) / f32( math.max_i32 )
     return min + scaled_r * (max - min )
 }
 
@@ -42,6 +44,6 @@ pub fn rand_f64(max f32) f32 {
 
 // rand_f64 return a random f64 in range min and max
 pub fn rand_f64_in_range(min f64, max f64) f64 {
-    scaled_r := f64(rand.next( 2147483647 )) / 2147483647.0
+    scaled_r := f64(rand.next( math.max_i32 )) / f32( math.max_i32 )
     return min + scaled_r * (max - min )
 }
