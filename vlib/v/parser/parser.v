@@ -386,13 +386,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			return p.struct_decl()
 		}
 		.dollar {
-			if p.peek_tok.kind == .key_if {
-				return p.comp_if()
-			} else if p.peek_tok.kind == .name {
-				return ast.ExprStmt{
-					expr: p.vweb()
-				}
-			}
+			return p.comp_if()
 		}
 		.hash {
 			return p.hash()
@@ -501,7 +495,13 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			return p.return_stmt()
 		}
 		.dollar {
-			return p.comp_if()
+			if p.peek_tok.kind == .key_if {
+				return p.comp_if()
+			} else if p.peek_tok.kind == .name {
+				return ast.ExprStmt{
+					expr: p.vweb()
+				}
+			}
 		}
 		.key_continue, .key_break {
 			tok := p.tok

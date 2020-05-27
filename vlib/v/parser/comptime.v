@@ -55,6 +55,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 }
 
 fn (mut p Parser) vweb() ast.ComptimeCall {
+	p.check(.dollar)
 	p.check(.name) // skip `vweb.html()` TODO
 	p.check(.dot)
 	p.check(.name)

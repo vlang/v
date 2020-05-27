@@ -283,9 +283,12 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 	$if debug {
 		println('action=$action')
 	}
+	app.$action()
+	/*
 	app.$action() or {
 		conn.send_string(http_404) or {}
 	}
+	*/
 	conn.close() or {}
 	app.reset()
 }

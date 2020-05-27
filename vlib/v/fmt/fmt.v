@@ -359,7 +359,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
-		ast.ComptimeCall {}
 	}
 }
 
@@ -539,6 +538,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.CharLiteral {
 			f.write('`$it.val`')
 		}
+		ast.ComptimeCall {}
 		ast.ConcatExpr {
 			for i, val in it.vals {
 				if i != 0 {
