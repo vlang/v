@@ -40,12 +40,20 @@ fn test_foo() {
 
 fn create<T>() {
 	a := T{}
+	mut b := T{}
+	b.foo = 'foo'
+	println(b.foo)
+	assert b.foo == 'foo'
 }
 
 struct User {
+mut:
+	foo string
 }
 
 struct City {
+mut:
+	foo string
 }
 
 fn test_create() {

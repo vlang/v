@@ -29,6 +29,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	if p.tok.kind == .lt {
 		// `foo<int>(10)`
 		p.next() // `<`
+		p.expr_mod = ''
 		generic_type = p.parse_type()
 		p.check(.gt) // `>`
 		p.table.register_fn_gen_type(fn_name, generic_type)

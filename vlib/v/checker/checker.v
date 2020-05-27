@@ -586,7 +586,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 				c.error('0 type in SelectorExpr', it.pos)
 				return
 			}
-			typ_sym := c.table.get_type_symbol(it.expr_type)
+			typ_sym := c.table.get_type_symbol(c.unwrap_generic(it.expr_type))
 			match typ_sym.kind {
 				.struct_ {
 					struct_info := typ_sym.info as table.Struct
@@ -1120,7 +1120,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	}
 	selector_expr.expr_type = typ
 	// println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
-	typ_sym := c.table.get_type_symbol(typ)
+	sym := c.table.get_type_symbol(c.unwrap_generic(typ))
 	field_name := selector_expr.field_name
 	// variadic
 	if typ.flag_is(.variadic) {
@@ -1128,16 +1128,16 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 			return table.int_type
 		}
 	}
-	if field := c.table.struct_find_field(typ_sym, field_name) {
-		if typ_sym.mod != c.mod && !field.is_pub {
-			c.error('field `${typ_sym.name}.$field_name` is not public', selector_expr.pos)
+	if field := c.table.struct_find_field(sym, field_name) {
+		if sym.mod != c.mod && !field.is_pub {
+			c.error('field `${sym.name}.$field_name` is not public', selector_expr.pos)
 		}
 		return field.typ
 	}
-	if typ_sym.kind != .struct_ {
-		c.error('`$typ_sym.name` is not a struct', selector_expr.pos)
+	if sym.kind != .struct_ {
+		c.error('`$sym.name` is not a struct', selector_expr.pos)
 	} else {
-		c.error('unknown field `${typ_sym.name}.$field_name`', selector_expr.pos)
+		c.error('type `$sym.name` has no field or method `$field_name`', selector_expr.pos)
 	}
 	return table.void_type
 }
@@ -2163,7 +2163,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 							if last_expr.typ.is_int() || last_expr.typ.is_float() {
 								node.typ = last_expr.typ
 								continue
-							} 
+							}
 						} else { // node.typ == any_float
 							if last_expr.typ.is_float() {
 								node.typ = last_expr.typ
@@ -2175,7 +2175,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 						if last_expr.typ == table.any_int_type {
 							if node.typ.is_int() || node.typ.is_float() {
 								continue
-							} 
+							}
 						} else { // expr_type == any_float
 							if node.typ.is_float() {
 								continue
@@ -2410,7 +2410,8 @@ fn (mut c Checker) fn_decl(it ast.FnDecl) {
 		// loop thru each generic type and generate a function
 		for gen_type in c.table.fn_gen_types[it.name] {
 			c.cur_generic_type = gen_type
-			// println('\ncalling check for $it.name for type ' + gen_type.str())
+			//sym:=c.table.get_type_symbol(gen_type)
+			//println('\ncalling check for $it.name for type $sym.name')
 			c.fn_decl(it)
 		}
 		c.cur_generic_type = 0

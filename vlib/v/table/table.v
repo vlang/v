@@ -453,15 +453,9 @@ pub fn (t &Table) value_type(typ Type) Type {
 [inline]
 pub fn (t &Table) mktyp(typ Type) Type {
 	match typ {
-		any_flt_type {
-			return table.f64_type
-		}
-		any_int_type {
-			return table.int_type
-		}
-		else {
-			return typ
-		}
+		any_flt_type { return f64_type }
+		any_int_type { return int_type }
+		else { return typ }
 	}
 }
 
@@ -486,5 +480,7 @@ pub fn (table &Table) register_fn_gen_type(fn_name string, typ Type) {
 		return
 	}
 	a << typ
+	// sym := table.get_type_symbol(typ)
+	// println('registering fn gen type $sym.name')
 	table.fn_gen_types[fn_name] = a
 }
