@@ -13,6 +13,17 @@ pub fn (d f64) str() string {
 	return ftoa.ftoa_64(d)
 }
 
+[inline]
+pub fn (d any_float) str() string {
+	x := f64(d)
+	abs_x := f64_abs(x)
+	if abs_x >= 0.01 && abs_x < 1.0e16 {
+		return ftoa.f64_to_str_l(x)
+	} else {
+		return ftoa.ftoa_64(x)
+	}
+}
+
 // return a string of the input f64 in scientific notation with digit_num deciamals displayed, max 17 digits
 [inline]
 pub fn (x f64) strsci(digit_num int) string {
@@ -84,7 +95,7 @@ pub fn (a f64) eq(b f64) bool {
 
 [inline]
 pub fn (a f32) eq(b f32) bool {
-	return f32_abs(a - b) <= C.FLT_EPSILON
+	return f32_abs(a - b) <= f32(C.FLT_EPSILON)
 }
 
 pub fn (a f64) eqbit(b f64) bool {

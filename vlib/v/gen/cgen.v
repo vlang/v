@@ -272,7 +272,7 @@ pub fn (mut g Gen) finish() {
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloader_code()
 	}
-	if g.fn_main != 0 {
+	if g.fn_main != voidptr(0) {
 		g.out.writeln('')
 		g.fn_decl = g.fn_main
 		g.gen_fn_decl(g.fn_main)
@@ -1728,7 +1728,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				}
 				else {}
 			}
-			styp := g.typ(left_type)
+			styp := g.typ(g.table.mktyp(left_type))
 			g.write('_IN($styp, ')
 			g.expr(node.left)
 			g.write(', ')

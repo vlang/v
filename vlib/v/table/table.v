@@ -195,6 +195,18 @@ pub fn (t &Table) get_type_name(typ Type) string {
 	return typ_sym.name
 }
 
+[inline]
+pub fn (t &Table) unalias_num_type(typ Type) Type {
+	sym := t.get_type_symbol(typ)
+	if sym.kind == .alias {
+		pt := (sym.info as Alias).parent_typ
+		if pt <= f64_type && pt >= void_type {
+			return pt
+		}
+	}
+	return typ
+}
+
 // this will override or register builtin type
 // allows prexisitng types added in register_builtins
 // to be overriden with their real type info
@@ -436,6 +448,21 @@ pub fn (t &Table) value_type(typ Type) Type {
 		return string_type
 	}
 	return void_type
+}
+
+[inline]
+pub fn (t &Table) mktyp(typ Type) Type {
+	match typ {
+		any_flt_type {
+			return table.f64_type
+		}
+		any_int_type {
+			return table.int_type
+		}
+		else {
+			return typ
+		}
+	}
 }
 
 // Once we have a module format we can read from module file instead

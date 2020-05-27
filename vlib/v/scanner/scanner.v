@@ -58,7 +58,7 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode) &Scanner {
 	}
 	raw_text := util.read_file( file_path ) or {
 		verror(err)
-		return 0
+		return voidptr(0)
 	}
 	mut s := new_scanner(raw_text, comments_mode) // .skip_comments)
 	// s.init_fmt()

@@ -7,8 +7,8 @@ import v.table
 
 pub fn (c &Checker) check_types(got, expected table.Type) bool {
 	t := c.table
-	got_idx := got.idx()
-	exp_idx := expected.idx()
+	got_idx := t.unalias_num_type(got).idx()
+	exp_idx := t.unalias_num_type(expected).idx()
 	// got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
@@ -124,4 +124,120 @@ pub fn (c &Checker) check_types(got, expected table.Type) bool {
 		}
 	}
 	return false
+}
+
+pub fn (c &Checker) promote(left_type, right_type table.Type) table.Type {
+	if left_type.is_ptr() || left_type.is_pointer() {
+		if right_type.is_int() {
+			return left_type
+		} else {
+			return table.void_type
+		}
+	} else if right_type.is_ptr() || right_type.is_pointer() {
+		if left_type.is_int() {
+			return right_type
+		} else {
+			return table.void_type
+		}
+	}
+	if left_type == right_type {
+		return left_type // strings, self defined operators
+	}
+	if right_type.is_number() && left_type.is_number() {
+		// sort the operands to save time
+		mut type_hi := left_type
+		mut type_lo := right_type
+		if type_hi.idx() < type_lo.idx() {
+			tmp := type_hi
+			type_hi = type_lo
+			type_lo = tmp
+		}
+		idx_hi := type_hi.idx()
+		idx_lo := type_lo.idx()
+		// the following comparisons rely on the order of the indices in atypes.v
+		if idx_hi == table.any_int_type_idx {
+			return type_lo
+		} else if idx_hi == table.any_flt_type_idx {
+			if idx_lo in table.float_type_idxs {
+				return type_lo
+			} else {
+				return table.void_type
+			}
+		} else if type_hi.is_float() {
+			if idx_hi == table.f32_type_idx {
+				if idx_lo in [table.int_type_idx, table.i64_type_idx, table.u32_type_idx, table.u64_type_idx] {
+					return table.void_type
+				} else {
+					return idx_hi
+				}
+			} else { // f64, any_flt
+				if idx_lo in [table.i64_type_idx, table.u64_type_idx] {
+					return table.void_type
+				} else {
+					return type_hi
+				}
+			}
+		} else if idx_lo >= table.byte_type_idx { // both operands are unsigned
+			return type_hi
+		} else if idx_lo >= table.i8_type_idx && idx_hi <= table.i64_type_idx { // both signed
+			return type_hi
+		} else if idx_hi - idx_lo < (table.byte_type_idx - table.i8_type_idx) {
+			return type_lo // conversion unsigned -> signed if signed type is larger
+		} else {
+			return table.void_type // conversion signed -> unsigned not allowed
+		}
+	} else {
+		return left_type // default to left if not automatic promotion possible
+	}
+}
+
+// TODO: promote(), assign_check(), symmetric_check() and check() overlap - should be rearranged
+pub fn (c &Checker) assign_check(got, expected table.Type) bool {
+	exp_idx := expected.idx()
+	got_idx := got.idx()
+	if exp_idx == got_idx {
+		return true
+	}
+	if exp_idx == table.voidptr_type_idx || exp_idx == table.byteptr_type_idx {
+		if got.is_ptr() || got.is_pointer() {
+			return true
+		}
+	}
+	// allow direct int-literal assignment for pointers for now
+	// maybe in the future optionals should be used for that
+	if expected.is_ptr() || expected.is_pointer() {
+		if got == table.any_int_type {
+			return true
+		}
+	}
+	if got_idx == table.voidptr_type_idx || got_idx == table.byteptr_type_idx {
+		if expected.is_ptr() || expected.is_pointer() {
+			return true
+		}
+	}
+	if !c.check_types(got, expected) { // TODO: this should go away...
+		return false
+	}
+	if c.promote(expected, got) != expected {
+		println('could not promote ${c.table.get_type_symbol(got).name} to ${c.table.get_type_symbol(expected).name}')
+		return false
+	}
+	return true
+}
+
+pub fn (c &Checker) symmetric_check(left, right table.Type) bool {
+	// allow direct int-literal assignment for pointers for now
+	// maybe in the future optionals should be used for that
+	if right.is_ptr() || right.is_pointer() {
+		if left == table.any_int_type {
+			return true
+		}
+	}
+	// allow direct int-literal assignment for pointers for now
+	if left.is_ptr() || left.is_pointer() {
+		if right == table.any_int_type {
+			return true
+		}
+	}
+	return c.check_types(left, right)
 }

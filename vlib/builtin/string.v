@@ -750,7 +750,7 @@ pub fn (s string) ends_with(p string) bool {
 pub fn (s string) to_lower() string {
 	mut b := malloc(s.len + 1)
 	for i in 0..s.len {
-		b[i] = C.tolower(s.str[i])
+		b[i] = byte(C.tolower(s.str[i]))
 	}
 	return tos(b, s.len)
 }
@@ -767,7 +767,7 @@ pub fn (s string) is_lower() bool {
 pub fn (s string) to_upper() string {
 	mut b := malloc(s.len + 1)
 	for i in 0..s.len {
-		b[i] = C.toupper(s.str[i])
+		b[i] = byte(C.toupper(s.str[i]))
 	}
 	return tos(b, s.len)
 }

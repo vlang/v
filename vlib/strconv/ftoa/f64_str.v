@@ -73,7 +73,7 @@ const(
 const(
 	mantbits64  = u32(52)
 	expbits64   = u32(11)
-	bias64      = u32(1023) // f64 exponent bias
+	bias64      = 1023 // f64 exponent bias
 	maxexp64    = 2047
 )
 
@@ -220,10 +220,10 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 	if exp == 0 {
 		// We subtract 2 so that the bounds computation has
 		// 2 additional bits.
-		e2 = 1 - bias64 - mantbits64 - 2
+		e2 = 1 - bias64 - int(mantbits64) - 2
 		m2 = mant
 	} else {
-		e2 = int(exp) - bias64 - mantbits64 - 2
+		e2 = int(exp) - bias64 - int(mantbits64) - 2
 		m2 = (u64(1)<<mantbits64) | mant
 	}
 	even          := (m2 & 1) == 0

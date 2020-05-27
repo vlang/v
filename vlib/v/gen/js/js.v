@@ -847,7 +847,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		g.writeln('')
 	}
 
-	g.fn_decl = 0
+	g.fn_decl = voidptr(0)
 }
 
 fn (mut g JsGen) fn_args(args []table.Arg, is_variadic bool) {
