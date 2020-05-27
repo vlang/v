@@ -911,9 +911,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				call_expr.pos)
 		}
 	}
-	if !f.is_pub && f.language == .v && !c.is_builtin_mod && !c.pref.is_test && f.mod != c.mod &&
-		f.name != '' && f.mod != '' {
-		c.warn('function `$f.name` is private. curmod=$c.mod fmod=$f.mod', call_expr.pos)
+	if !f.is_pub && f.language == .v && f.name.len > 0 && f.mod.len > 0 && f.mod != c.mod {
+		c.error('function `$f.name` is private. curmod=$c.mod fmod=$f.mod', call_expr.pos)
 	}
 	call_expr.return_type = f.return_type
 	if f.return_type == table.void_type && f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {

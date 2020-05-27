@@ -940,10 +940,7 @@ pub fn (s string) trim_suffix(str string) string {
 	return s
 }
 
-// fn print_cur_thread() {
-// //C.printf("tid = %08x \n", pthread_self());
-// }
-fn compare_strings(a, b &string) int {
+pub fn compare_strings(a, b &string) int {
 	if a.lt(b) {
 		return -1
 	}
