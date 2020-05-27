@@ -1,15 +1,15 @@
-struct A {
+struct Aaa {
 mut:
 	i []int
 }
 
-struct B {
-	a A
+struct Bbb {
+	a Aaa
 }
 
 fn main() {
-	mut b := B{
-		a: A{}
+	mut b := Bbb{
+		a: Aaa{}
 	}
 	b.a.i << 3
 }

@@ -1,4 +1,4 @@
-struct A {
+struct Aaa {
 	a int
 	a string
 }

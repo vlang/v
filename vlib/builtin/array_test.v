@@ -89,7 +89,7 @@ struct Chunk {
 	val string
 }
 
-struct K {
+struct Kkk {
 	q []Chunk
 }
 

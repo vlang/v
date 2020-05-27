@@ -1,17 +1,17 @@
-struct A { mut: v int }  struct B { a A }  struct C { mut: b B } struct D { mut: c C } 
-mut c := C{} c.b = B{}
-c.b.a = A{} // Error (field a immutable)
+struct Aaa { mut: v int }  struct Bbb { a Aaa }  struct Ccc { mut: b Bbb } struct Ddd { mut: c Ccc }
+mut c := Ccc{} c.b = Bbb{}
+c.b.a = Aaa{} // Error (field a immutable)
 c.b.a.v = 1 // Error (field a immutable)
 ===output===
-cannot modify immutable field `a` (type `B`)
+cannot modify immutable field `a` (type `Bbb`)
 declare the field with `mut:`
-struct B {
+struct Bbb {
 mut:
-	a A
+	a Aaa
 }
-cannot modify immutable field `a` (type `B`)
+cannot modify immutable field `a` (type `Bbb`)
 declare the field with `mut:`
-struct B {
+struct Bbb {
 mut:
-	a A
+	a Aaa
 }

@@ -1,6 +1,6 @@
-vlib/v/checker/tests/add_op_wrong_right_type_err_a.v:3:10: error: mismatched types `any_int` and `A` 
-    1 | struct A{}
+vlib/v/checker/tests/add_op_wrong_right_type_err_a.v:3:10: error: mismatched types `any_int` and `Aaa`
+    1 | struct Aaa{}
     2 | fn main() {
-    3 |     10 + A{}
-      |          ~~~
+    3 |     10 + Aaa{}
+      |          ~~~~~
     4 | }
