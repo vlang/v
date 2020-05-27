@@ -382,7 +382,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			f.write('type $fn_name = fn (')
 			for i, arg in fn_info.args {
 				f.write(arg.name)
-				mut s := f.table.type_to_str(arg.typ)
+				mut s := f.table.type_to_str(arg.typ).replace(f.cur_mod + '.', '')
 				if arg.is_mut {
 					f.write('mut ')
 					if s.starts_with('&') {
@@ -405,7 +405,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			}
 			f.write(')')
 			if fn_info.return_type.idx() != table.void_type_idx {
-				ret_str := f.table.type_to_str(fn_info.return_type)
+				ret_str := f.table.type_to_str(fn_info.return_type).replace(f.cur_mod + '.', '')
 				f.write(' ' + ret_str)
 			}
 		}
@@ -591,7 +591,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.MapInit {
 			if it.keys.len == 0 {
 				mut ktyp := it.key_type
-				mut vtyp := it.value_type 
+				mut vtyp := it.value_type
 
 				if vtyp == 0 {
 					typ_sym := f.table.get_type_symbol(it.typ)
@@ -600,7 +600,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					ktyp = minfo.key_type
 					vtyp = minfo.value_type
 				}
-				
+
 				f.write('map[')
 				f.write(f.type_to_str(ktyp))
 				f.write(']')
