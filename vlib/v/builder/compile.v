@@ -11,7 +11,7 @@ fn get_vtmp_folder() string {
 	vtmp := os.join_path(os.temp_dir(), 'v')
 	if !os.is_dir(vtmp) {
 		os.mkdir(vtmp) or {
-			panic(err)
+			verror(err)
 		}
 	}
 	return vtmp
@@ -190,7 +190,8 @@ pub fn (v Builder) get_user_files() []string {
 	mut is_internal_module_test := false
 	if is_test {
 		tcontent := os.read_file(dir) or {
-			panic('$dir does not exist')
+			verror('$dir does not exist')
+			exit(0)
 		}
 		slines := tcontent.trim_space().split_into_lines()
 		for sline in slines {
