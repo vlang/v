@@ -2243,52 +2243,46 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// Use this to keep the tmp assignments in order
 		mut multi_unpack := ''
 
-		if node.exprs.len == 1 {
-			// Easy case of 1:1 mapping
-			// i.e. return test2() where test() returns all the parameters
-			// that this function needs returning
-			g.expr(node.exprs[0])
-		} else {
-			g.write('($styp){')
-			
-			mut arg_idx := 0
-			for i, expr in node.exprs {
-				// Check if we are dealing with a multi return and handle it seperately
-				if g.expr_is_multi_return_call(expr) {
-					c := expr as ast.CallExpr
-					expr_sym := g.table.get_type_symbol(c.return_type)
 
-					// Create a tmp for this call
-					tmp := g.new_tmp_var()
-					s := g.go_before_stmt(0)
-					expr_styp := g.typ(c.return_type)
-					g.write('$expr_styp $tmp=')
-					g.expr(expr)
-					g.writeln(';')
-					multi_unpack += g.go_before_stmt(0)
-					g.write(s)
+		g.write('($styp){')
+		
+		mut arg_idx := 0
+		for i, expr in node.exprs {
+			// Check if we are dealing with a multi return and handle it seperately
+			if g.expr_is_multi_return_call(expr) {
+				c := expr as ast.CallExpr
+				expr_sym := g.table.get_type_symbol(c.return_type)
 
-					expr_types := expr_sym.mr_info().types
-					for j, _ in expr_types {
-						g.write('.arg$arg_idx=${tmp}.arg$j')
-						if j < expr_types.len || i < node.exprs.len - 1 {
-							g.write(',')
-						}
-						arg_idx++
-					}
-
-					continue
-				}
-
-				g.write('.arg$arg_idx=')
+				// Create a tmp for this call
+				tmp := g.new_tmp_var()
+				s := g.go_before_stmt(0)
+				expr_styp := g.typ(c.return_type)
+				g.write('$expr_styp $tmp=')
 				g.expr(expr)
-				arg_idx++
-				if i < node.exprs.len - 1 {
-					g.write(',')
+				g.writeln(';')
+				multi_unpack += g.go_before_stmt(0)
+				g.write(s)
+
+				expr_types := expr_sym.mr_info().types
+				for j, _ in expr_types {
+					g.write('.arg$arg_idx=${tmp}.arg$j')
+					if j < expr_types.len || i < node.exprs.len - 1 {
+						g.write(',')
+					}
+					arg_idx++
 				}
+
+				continue
 			}
-			g.write('}')
+
+			g.write('.arg$arg_idx=')
+			g.expr(expr)
+			arg_idx++
+			if i < node.exprs.len - 1 {
+				g.write(',')
+			}
 		}
+		g.write('}')
 
 		if fn_return_is_optional {
 			g.write(' }, sizeof($styp))')
