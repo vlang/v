@@ -449,6 +449,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			idx := (node.left as ast.IndexExpr).index
 			if idx is ast.RangeExpr {
 				// expr is arr[range].clone()
+				// use array_clone_static instead of array_clone
 				name = '${receiver_type_name}_${node.name}_static'.replace('.', '__')
 				is_range_slice = true
 			}
