@@ -43,7 +43,7 @@ pub:
 	conn net.Socket
 	form map[string]string
 	// TODO Response
-mut:
+pub mut:
 	headers string // response headers
 	done bool
 }
