@@ -50,7 +50,7 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files: skip_files
 		vargs: vargs
 		show_ok_tests: !_vargs.contains('-silent')
-		message_handler: &TestMessageHandler{}
+		message_handler: &TestMessageHandler(0)
 	}
 }
 

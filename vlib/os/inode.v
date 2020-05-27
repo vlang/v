@@ -35,19 +35,19 @@ pub fn inode(path string) FileMode {
 	C.stat(path.str, &attr)
 
 	mut typ := FileType.regular
-	if attr.st_mode & u32(C.S_IFMT) == C.S_IFDIR {
+	if attr.st_mode & u32(C.S_IFMT) == u32(C.S_IFDIR) {
 		typ = .directory
 	}
 	$if !windows {
-		if attr.st_mode & u32(C.S_IFMT) == C.S_IFCHR {
+		if attr.st_mode & u32(C.S_IFMT) == u32(C.S_IFCHR) {
 			typ = .character_device
-		} else if attr.st_mode & u32(C.S_IFMT) == C.S_IFBLK {
+		} else if attr.st_mode & u32(C.S_IFMT) == u32(C.S_IFBLK) {
 			typ = .block_device
-		} else if attr.st_mode & u32(C.S_IFMT) == C.S_IFIFO {
+		} else if attr.st_mode & u32(C.S_IFMT) == u32(C.S_IFIFO) {
 			typ = .fifo
-		} else if attr.st_mode & u32(C.S_IFMT) == C.S_IFLNK {
+		} else if attr.st_mode & u32(C.S_IFMT) == u32(C.S_IFLNK) {
 			typ = .symbolic_link
-		} else if attr.st_mode & u32(C.S_IFMT) == C.S_IFSOCK {
+		} else if attr.st_mode & u32(C.S_IFMT) == u32(C.S_IFSOCK) {
 			typ = .socket
 		}
 	}

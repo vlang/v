@@ -134,7 +134,7 @@ fn (mut d DenseArray) push(key string, value voidptr) u32 {
 
 fn (d DenseArray) get(i int) voidptr {
 	$if !no_bounds_checking? {
-		if i < 0 || i >= d.size {
+		if i < 0 || i >= int(d.size) {
 			panic('DenseArray.get: index out of range (i == $i, d.len == $d.size)')
 		}
 	}
