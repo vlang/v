@@ -35,25 +35,18 @@ fn (mut p Parser) check_cross_variables(idents []ast.Ident, expr ast.Expr) bool 
 	match expr {
 		ast.Ident {
 			for ident in idents {
-				if ident.name == it.name {
-					return true
-				}
+				if ident.name == it.name { return true }
 			}
 		}
 		ast.InfixExpr {
-			if p.check_cross_variables(idents, it.left) {
-				return true
-			}
-			if p.check_cross_variables(idents, it.right) {
-				return true
-			}
+			if p.check_cross_variables(idents, it.left) { return true }
+			if p.check_cross_variables(idents, it.right) { return true }
 		}
-		ast.StringInterLiteral {
-			for expr_ in it.exprs {
-				if p.check_cross_variables(idents, expr_) {
-					return true
-				}
-			}
+		ast.PrefixExpr {
+			if p.check_cross_variables(idents, it.right) { return true }
+		}
+		ast.PostfixExpr {
+			if p.check_cross_variables(idents, it.expr) { return true }
 		}
 		else {}
 	}

@@ -1078,6 +1078,14 @@ fn (mut g Gen) gen_cross_tmp_variable(idents []ast.Ident, val ast.Expr) {
 			g.write(it.op.str())
 			g.gen_cross_tmp_variable(idents, it.right)
 		}
+		ast.PrefixExpr {
+			g.write(it.op.str())
+			g.gen_cross_tmp_variable(idents, it.right)
+		}
+		ast.PostfixExpr {
+			g.gen_cross_tmp_variable(idents, it.expr)
+			g.write(it.op.str())
+		}
 		else {
 			g.expr(val)
 		}
@@ -2200,7 +2208,7 @@ fn (g Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 		else {
 			return false
 		}
-	} 
+	}
 
 }
 
@@ -2245,7 +2253,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 
 
 		g.write('($styp){')
-		
+
 		mut arg_idx := 0
 		for i, expr in node.exprs {
 			// Check if we are dealing with a multi return and handle it seperately
