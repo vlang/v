@@ -267,7 +267,8 @@ fn (b &Builder) print_warnings_and_errors() {
 					if stmt is ast.FnDecl {
 						f := stmt as ast.FnDecl
 						if f.name == fn_name {
-							println(file.path + ':' + f.pos.line_nr.str())
+							fline := f.pos.line_nr
+							println('${file.path}:${fline}:')
 						}
 					}
 				}
