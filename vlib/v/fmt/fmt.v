@@ -660,6 +660,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(')')
 		}
 		ast.StringLiteral {
+			if it.is_raw {
+				f.write('r')
+			}
 			if it.val.contains("'") && !it.val.contains('"') {
 				f.write('"$it.val"')
 			} else {
