@@ -105,9 +105,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			field_start_pos := p.tok.position()
 			field_name := p.check_name()
-			field_pos := field_start_pos.extend(p.tok.position())
 			// p.warn('field $field_name')
 			typ := p.parse_type()
+			field_pos := field_start_pos.extend(p.tok.position())
 			/*
 			if name == '_net_module_s' {
 			s := p.table.get_type_symbol(typ)

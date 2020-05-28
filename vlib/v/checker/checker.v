@@ -264,6 +264,13 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
 			c.error('unknown type `$sym.name`', field.pos)
 		}
+		if sym.kind == .array {
+			array_info := sym.array_info()
+			elem_sym := c.table.get_type_symbol(array_info.elem_type)
+			if elem_sym.kind == .placeholder {
+				c.error('unknown type `$elem_sym.name`', field.pos)
+			}
+		}
 		if sym.kind == .struct_ {
 			info := sym.info as table.Struct
 			if info.is_ref_only && !field.typ.is_ptr() {
