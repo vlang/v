@@ -26,6 +26,7 @@ pub const (
 	light_red   = Color { r: 255, g: 204, b: 203 }
 )
 
+// Color represents a 32 bit color value in sRGB format
 pub struct Color {
 pub mut:
 	r byte
