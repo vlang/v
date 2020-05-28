@@ -3766,15 +3766,15 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 			field_styp_fn_name := if has_custom_str { '${field_styp}_str' } else { fnames2strfunc[field_styp] }
 			if sym.kind == .enum_ {
 				g.auto_str_funcs.write('indents, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name} ) ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${c_name(field.name)} ) ')
 			} else if sym.kind == .struct_ {
 				g.auto_str_funcs.write('indents, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}${second_str_param} ) ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${c_name(field.name)}${second_str_param} ) ')
 			} else if sym.kind in [.array, .array_fixed, .map] {
 				g.auto_str_funcs.write('indents, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${field.name}) ')
+				g.auto_str_funcs.write('${field_styp_fn_name}( it->${c_name(field.name)}) ')
 			} else {
-				g.auto_str_funcs.write('indents, it->${field.name}')
+				g.auto_str_funcs.write('indents, it->${c_name(field.name)}')
 				if field.typ == table.bool_type {
 					g.auto_str_funcs.write(' ? _SLIT("true") : _SLIT("false")')
 				}
