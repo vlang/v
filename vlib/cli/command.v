@@ -1,21 +1,20 @@
 module cli
 
-fn nil() voidptr { return 0 }
+type CallbackFn fn(cmd Command)
 
 pub struct Command {
 pub mut:
 	name string
 	description string
 	version string
-	pre_execute fn(cmd Command)
-	execute fn(cmd Command)
-	post_execute fn(cmd Command)
+	pre_execute CallbackFn
+	execute CallbackFn
+	post_execute CallbackFn
 
 	disable_help bool
 	disable_version bool
-	disable_flags bool
 
-	parent &Command = nil()
+	parent &Command
 	commands []Command
 	flags []Flag
 	args []string
@@ -44,9 +43,7 @@ pub fn (mut cmd Command) add_flag(flag Flag) {
 }
 
 pub fn (mut cmd Command) parse(args []string) {
-	if !cmd.disable_flags {
-		cmd.add_default_flags()
-	}
+	cmd.add_default_flags()
 	cmd.add_default_commands()
 
 	cmd.args = args[1..]
@@ -54,9 +51,7 @@ pub fn (mut cmd Command) parse(args []string) {
 		cmd.commands[i].parent = cmd
 	}
 
-	if !cmd.disable_flags {
-		cmd.parse_flags()
-	}
+	cmd.parse_flags()
 	cmd.parse_commands()
 }
 
