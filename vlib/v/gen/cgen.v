@@ -3219,6 +3219,21 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		'macos' {
 			return '__APPLE__'
 		}
+		'mach' {
+			return '__MACH__'
+		}
+		'darwin' {
+			return '__DARWIN__'
+		}
+		'hpux' {
+			return '__HPUX__'
+		}
+		'gnu' {
+			return '__GNU__'
+		}
+		'qnx' {
+			return '__QNX__'
+		}
 		'linux' {
 			return '__linux__'
 		}
@@ -3230,6 +3245,9 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		}
 		'netbsd' {
 			return '__NetBSD__'
+		}
+		'bsd' {
+			return '__BSD__'
 		}
 		'dragonfly' {
 			return '__DragonFly__'
