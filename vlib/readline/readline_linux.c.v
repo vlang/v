@@ -48,13 +48,13 @@ pub fn (mut r Readline) enable_raw_mode() {
     r.is_raw = false
     return
   }
-  mut raw := r.orig_termios
+  mut raw := &r.orig_termios
   raw.c_iflag &= ~( C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON )
   raw.c_cflag |=  ( C.CS8 )
   raw.c_lflag &= ~( C.ECHO | C.ICANON | C.IEXTEN | C.ISIG )
   raw.c_cc[C.VMIN] = 1
   raw.c_cc[C.VTIME] = 0
-  C.tcsetattr(0, C.TCSADRAIN, &raw)
+  C.tcsetattr(0, C.TCSADRAIN, raw)
   r.is_raw = true
   r.is_tty = true
 }
