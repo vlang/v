@@ -40,10 +40,11 @@ fn test_foo() {
 
 fn create<T>() {
 	a := T{}
-	mut b := T{}
-	b.foo = 'foo'
-	println(b.foo)
-	assert b.foo == 'foo'
+	mut xx := T{}
+	xx.foo = 'foo'
+	println(xx.foo)
+	assert xx.foo == 'foo'
+	xx.init()
 }
 
 struct User {
@@ -65,6 +66,7 @@ fn (c City) init() {
 fn test_create() {
 	create<User>()
 	create<City>()
+	// create<User>()
 }
 
 /*

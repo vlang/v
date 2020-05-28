@@ -8,7 +8,9 @@ import v.table
 import strings
 
 const (
-	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
+	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t\t'
+	]
 	max_len = 90
 )
 
@@ -405,7 +407,8 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			}
 			f.write(')')
 			if fn_info.return_type.idx() != table.void_type_idx {
-				ret_str := f.table.type_to_str(fn_info.return_type).replace(f.cur_mod + '.', '')
+				ret_str := f.table.type_to_str(fn_info.return_type).replace(f.cur_mod + '.',
+					'')
 				f.write(' ' + ret_str)
 			}
 		}
@@ -592,15 +595,12 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			if it.keys.len == 0 {
 				mut ktyp := it.key_type
 				mut vtyp := it.value_type
-
 				if vtyp == 0 {
 					typ_sym := f.table.get_type_symbol(it.typ)
 					minfo := typ_sym.info as table.Map
-
 					ktyp = minfo.key_type
 					vtyp = minfo.value_type
 				}
-
 				f.write('map[')
 				f.write(f.type_to_str(ktyp))
 				f.write(']')
