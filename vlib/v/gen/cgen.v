@@ -3650,6 +3650,9 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	}
 	already_generated_key := '${styp}:${str_fn_name}'
 	if !sym_has_str_method && already_generated_key !in g.str_types {
+	$if debugautostr? {
+		eprintln('> gen_str_for_type_with_styp: |typ: ${typ:5}, ${sym.name:20}|has_str: ${sym_has_str_method:5}|expects_ptr: ${str_method_expects_ptr:5}|nr_args: ${str_nr_args:1}|fn_name: ${str_fn_name:20}')
+	}
 		g.str_types << already_generated_key
 		match sym.info {
 			table.Alias { g.gen_str_default(sym, styp, str_fn_name) }
