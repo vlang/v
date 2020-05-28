@@ -490,6 +490,15 @@ fn (f &Fmt) type_to_str(t table.Type) string {
 		start_pos := 2 * res.count('[]')
 		res = res[0..start_pos] + '&' + res[start_pos..res.len]
 	}
+	if res.starts_with('[]fixed_') {
+		prefix := '[]fixed_'
+		res = res[prefix.len..]
+		last_underscore_idx := res.last_index('_') or {
+			return '[]' + res
+		}
+		limit := res[last_underscore_idx + 1..]
+		res = '[' + limit + ']' + res[..last_underscore_idx]
+	}
 	return res.replace(f.cur_mod + '.', '')
 }
 
