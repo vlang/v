@@ -494,7 +494,7 @@ fn (f &Fmt) type_to_str(t table.Type) string {
 		prefix := '[]fixed_'
 		res = res[prefix.len..]
 		last_underscore_idx := res.last_index('_') or {
-			return '[]' + res
+			return '[]' + res.replace(f.cur_mod + '.', '')
 		}
 		limit := res[last_underscore_idx + 1..]
 		res = '[' + limit + ']' + res[..last_underscore_idx]
