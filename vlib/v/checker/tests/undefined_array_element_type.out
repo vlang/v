@@ -1,0 +1,6 @@
+vlib/v/checker/tests/undefined_array_element_type.v:2:9: error: undefined type `abc`
+    1 | fn main() {
+    2 |     a := []abc{}
+      |            ~~~
+    3 |     println(a)
+    4 | }

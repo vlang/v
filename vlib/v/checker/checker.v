@@ -1334,6 +1334,10 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				}
 			}
 		}
+		sym := c.table.get_type_symbol(array_init.elem_type)
+		if sym.kind == .placeholder {
+			c.error('undefined type `$sym.name`', array_init.elem_type_pos)
+		}
 		return array_init.typ
 	}
 	// a = []
