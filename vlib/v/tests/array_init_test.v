@@ -15,6 +15,21 @@ fn test_array_init() {
 	'$d, $d.len, $d.cap' == "['aaa', 'bbb'], 2, 3"
 }
 
+fn test_nested_array_init() {
+	mut a := [][]int{}
+	mut b := [][][]string{cap: 10}
+	mut c := [][][]string{len: 3, init: [][]string{len: 2}}
+	// mut c := [][][]string{len: 2, init: [][]string{len: 2, init: []string{len: 2, init: 'hello'}}}
+	a << [1, 2]
+	a << [3, 4]
+	b << [['foo', 'bar'], ['baz']]
+	b << [['qux']]
+
+	assert '$a' == '[[1, 2], [3, 4]]'
+	assert '$b' == "[[['foo', 'bar'], ['baz']], [['qux']]]"
+	assert '$c' == '[[[], []], [[], []], [[], []]]'
+}
+
 fn test_array_init_with_default() {
 	a1 := []int{len: 4, init: 2}
 	assert '$a1' == '[2, 2, 2, 2]'
