@@ -8,7 +8,7 @@ const (
 )
 
 struct Foo {
-    a hl.A
+    a hl.Aaa
 }
 
 struct Companies {
@@ -35,11 +35,11 @@ fn main() {
     a += 3
     println(a) // TODO: Handle string interpolation
 
-    b := hl.A{}
+    b := hl.Aaa{}
     b.update('an update')
     println(b)
 
-    c := Foo{ hl.A{} }
+    c := Foo{ hl.Aaa{} }
     c.a.update('another update')
     println(c)
 
@@ -87,6 +87,8 @@ fn main() {
     anon_consumer(hl.excited(), fn (message string) {
         println(message)
     })
+
+    hl.raw_js_log()
 }
 
 fn anon_consumer (greeting string, anon fn(message string)) {
