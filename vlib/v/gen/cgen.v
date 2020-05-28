@@ -2651,6 +2651,9 @@ fn (mut g Gen) write_init_function() {
 		return
 	}
 	fn_vinit_start_pos := g.out.len
+	g.pref.is_shared {
+		g.writeln('__attribute__ ((constructor))')
+	}
 	g.writeln('void _vinit() {')
 	if g.pref.autofree {
 		// Pre-allocate the string buffer
