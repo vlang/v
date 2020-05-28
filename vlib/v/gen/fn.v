@@ -37,6 +37,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	//
 	fn_start_pos := g.out.len
+
+	mut msvc_attrs := ''
 	match g.attr {
 		'inline' {
 			g.write('inline ')
@@ -95,6 +97,14 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		'_pure' {
 			g.write('__attribute__((const)) ')
 		}
+
+		// MSVC attributes
+		// prefixed by _msvc_ to indicate they're for advanced users only and not really supported by V.
+
+		'_msvc_stdcall' {
+			msvc_attrs += '__stdcall '
+		}
+
 		else {
 			// nothing but keep V happy
 		}
@@ -174,8 +184,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 				g.write('static ')
 				g.definitions.write('static ')
 			}
-			g.definitions.write('$type_name ${name}(')
-			g.write('$type_name ${name}(')
+			g.definitions.write('$type_name $msvc_attrs ${name}(')
+			g.write('$type_name $msvc_attrs ${name}(')
 		}
 		fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
 		if it.no_body || (g.pref.use_cache && it.is_builtin) {
