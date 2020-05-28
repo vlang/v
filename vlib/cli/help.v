@@ -23,7 +23,6 @@ fn help_cmd() Command {
 		name: 'help',
 		description: 'Prints help information',
 		execute: help_func,
-		parent: 0
 	}
 }
 
