@@ -1,0 +1,6 @@
+vlib/v/checker/tests/unknown_array_element_type_b.v:2:2: error: unknown type `abc`
+    1 | struct Aaa {
+    2 |     a []abc
+      |     ~~~~~~~
+    3 | }
+    4 |
