@@ -34,12 +34,13 @@ pub mut:
 	a byte = 255
 }
 
+// hex takes in a 32 bit integer and splits it into 4 byte values
 pub fn hex(color int) Color {
 	return Color {
-		r: (color >> 24) & 0xFF
-		g: (color >> 16) & 0xFF
-		b: (color >> 8) & 0xFF
-		a: color & 0xFF
+		r: byte((color >> 24) & 0xFF),
+		g: byte((color >> 16) & 0xFF),
+		b: byte((color >> 8) & 0xFF),
+		a: byte(color & 0xFF)
 	}
 }
 
