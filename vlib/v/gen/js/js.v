@@ -446,7 +446,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			// skip: JS has no goto
 		}
 		ast.HashStmt {
-			// skip: nothing with # in JS
+			g.gen_hash_stmt(it)
 		}
 		ast.Import {
 			g.gen_import_stmt(it)
@@ -1008,6 +1008,10 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 		g.write(']')
 	}
 	g.writeln(';')
+}
+
+fn (mut g JsGen) gen_hash_stmt(it ast.HashStmt) {
+	g.writeln(it.val)
 }
 
 fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
