@@ -39,8 +39,8 @@ pub fn hex(color int) Color {
 	return Color {
 		r: byte((color >> 24) & 0xFF),
 		g: byte((color >> 16) & 0xFF),
-		b: byte((color >> 8) & 0xFF),
-		a: byte(color & 0xFF)
+		b: byte((color >>  8) & 0xFF),
+		a: byte((color      ) & 0xFF)
 	}
 }
 
