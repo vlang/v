@@ -98,8 +98,11 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 
 	mut out := g.hashes() + g.definitions.str()
 	for node in deps_resolved.nodes {
-		out += g.doc.gen_namespace(node.name)
-		out += 'const $node.name = (function ('
+		name := g.js_name(node.name)
+		if g.enable_doc {
+			out += '/** @namespace $name */\n'
+		}
+		out += 'const $name = (function ('
 		imports := g.namespace_imports[node.name]
 		for i, key in imports.keys() {
 			if i > 0 { out += ', ' }
@@ -109,7 +112,10 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		// private scope
 		out += g.namespaces[node.name].str().trim_space()
 		// public scope
-		out += '\n\n\t/* module exports */'
+		out += '\n'
+		if g.enable_doc {
+			out += '\n\t/* module exports */'
+		}
 		out += '\n\treturn {'
 		for pub_var in g.namespaces_pub[node.name] {
 			out += '\n\t\t$pub_var,'
@@ -635,7 +641,7 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 		}
 		jsdoc.write(']')
 		stmt.write('] = ')
-		g.writeln(g.doc.gen_typ(jsdoc.str(), ''))
+		g.doc.gen_typ(jsdoc.str())
 		g.write(stmt.str())
 		g.expr(it.right[0])
 		g.writeln(';')
@@ -655,7 +661,7 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			}
 
 			if !g.inside_loop && styp.len > 0 {
-				g.writeln(g.doc.gen_typ(styp, ident.name))
+				g.doc.gen_typ(styp)
 			}
 
 			if g.inside_loop || ident.is_mut {
@@ -693,10 +699,8 @@ fn (mut g JsGen) gen_branch_stmt(it ast.BranchStmt) {
 }
 
 fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
-	for i, field in it.fields {
-		if g.enable_doc {
-			g.writeln(g.doc.gen_const(g.typ(field.typ)))
-		}
+	for field in it.fields {
+		g.doc.gen_const(g.typ(field.typ))
 
 		if field.is_pub { g.push_pub_var(field.name) }
 
@@ -789,7 +793,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		// type_name := g.typ(it.return_type)
 
 		// generate jsdoc for the function
-		g.writeln(g.doc.gen_fn(it))
+		g.doc.gen_fn(it)
 
 		if has_go {
 			g.write('async ')
@@ -994,7 +998,7 @@ fn (mut g JsGen) gen_hash_stmt(it ast.HashStmt) {
 }
 
 fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
-	g.writeln(g.doc.gen_fac_fn(node.fields))
+	g.doc.gen_fac_fn(node.fields)
 	g.write('function ${g.js_name(node.name)}({ ')
 	for i, field in node.fields {
 		g.write('$field.name = ')
@@ -1019,8 +1023,9 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	fns := g.method_fn_decls[node.name]
 
 	for i, field in node.fields {
-		g.writeln(g.doc.gen_typ(g.typ(field.typ), field.name))
-		g.write('$field.name: ${g.to_js_typ_val(g.typ(field.typ))}')
+		typ := g.typ(field.typ)
+		g.doc.gen_typ(typ)
+		g.write('$field.name: ${g.to_js_typ_val(typ)}')
 		if i < node.fields.len - 1 || fns.len > 0 { g.writeln(',') } else { g.writeln('') }
 	}
 
