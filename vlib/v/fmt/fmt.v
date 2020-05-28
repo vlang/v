@@ -490,6 +490,15 @@ fn (f &Fmt) type_to_str(t table.Type) string {
 		start_pos := 2 * res.count('[]')
 		res = res[0..start_pos] + '&' + res[start_pos..res.len]
 	}
+	if res.starts_with('[]fixed_') {
+		prefix := '[]fixed_'
+		res = res[prefix.len..]
+		last_underscore_idx := res.last_index('_') or {
+			return '[]' + res.replace(f.cur_mod + '.', '')
+		}
+		limit := res[last_underscore_idx + 1..]
+		res = '[' + limit + ']' + res[..last_underscore_idx]
+	}
 	return res.replace(f.cur_mod + '.', '')
 }
 
@@ -561,6 +570,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.if_expr(it)
 		}
 		ast.Ident {
+			f.write_language_prefix(it.language)
 			if it.kind == .blank_ident {
 				f.write('_')
 			} else {
@@ -601,6 +611,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					ktyp = minfo.key_type
 					vtyp = minfo.value_type
 				}
+				
 				f.write('map[')
 				f.write(f.type_to_str(ktyp))
 				f.write(']')
@@ -881,9 +892,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write(')')
 		f.or_expr(node.or_block)
 	} else {
-		if node.language == .c {
-			f.write('C.')
-		}
+		f.write_language_prefix(node.language)
 		name := f.short_module(node.name)
 		f.mark_module_as_used(name)
 		f.write('${name}')
@@ -998,6 +1007,18 @@ pub fn (mut f Fmt) mark_module_as_used(name string) {
 	}
 	f.used_imports << mod
 	// println('marking module $mod as used')
+}
+
+fn (mut f Fmt) write_language_prefix(lang table.Language) {
+	match lang {
+		.c {
+			f.write('C.')
+		}
+		.js {
+			f.write('JS.')
+		}
+		else {}
+	}
 }
 
 fn expr_is_single_line(expr ast.Expr) bool {
