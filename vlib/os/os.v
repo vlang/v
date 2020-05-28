@@ -787,6 +787,30 @@ pub fn get_raw_line() string {
 	}
 }
 
+pub fn get_raw_stdin() []byte {
+	$if windows {
+		unsafe {
+			block_bytes := 512
+			mut buf := malloc(block_bytes)
+			h_input := C.GetStdHandle(std_input_handle)
+			mut bytes_read := 0
+			mut offset := 0
+			for {
+				pos := buf + offset
+				res := C.ReadFile(h_input, pos, block_bytes, &bytes_read, 0)
+				if !res {
+					break
+				}
+				offset += bytes_read
+				buf = v_realloc(buf, offset + block_bytes + (block_bytes-bytes_read))
+			}
+			return array{element_size: 1 data: voidptr(buf) len: offset cap: offset }
+		}
+	} $else {
+		panic('get_raw_stdin not implemented on this platform...')
+	}
+}
+
 pub fn get_lines() []string {
 	mut line := ''
 	mut inputstr := []string{}
