@@ -24,7 +24,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		line_nr := p.tok.line_nr
 		p.next()
 		// []string
-		if p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
+		if p.tok.kind in [.name, .amp, .lsbr] && p.tok.line_nr == line_nr {
 			elem_type_pos = p.tok.position()
 			elem_type = p.parse_type()
 			sym := p.table.get_type_symbol(elem_type)
