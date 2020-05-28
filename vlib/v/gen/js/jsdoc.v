@@ -53,6 +53,12 @@ fn (mut d JsDoc) gen_typ(typ, name string) string {
 	return d.out.str()
 }
 
+fn (mut d JsDoc) gen_const(typ string) string {
+	d.reset()
+	d.write('/** @constant {$typ} */')
+	return d.out.str()
+}
+
 fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) string {
 	d.reset()
 	d.writeln('/**')

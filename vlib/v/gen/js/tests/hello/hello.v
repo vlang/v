@@ -1,11 +1,8 @@
 module hello
 
-// TODO: Fix const namespacing, uncomment once it works
-/*
 pub const (
 	hello = 'Hello'
 )
-*/
 
 pub struct Aaa {
 pub mut:
@@ -22,7 +19,7 @@ pub enum Ccc {}
 
 pub fn debugger() string {
 	v := Bbb{}
-	return 'Hello'
+	return hello
 }
 
 pub fn excited() string {

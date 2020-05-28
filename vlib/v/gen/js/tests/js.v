@@ -58,6 +58,7 @@ fn main() {
     JS.console.log(await, finally)
 
     dun := i_am_a_const * 20
+    dunn := hl.hello // External constant
 
     for i := 0; i < 10; i++ {}
 
