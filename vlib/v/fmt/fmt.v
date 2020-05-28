@@ -570,8 +570,14 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.if_expr(it)
 		}
 		ast.Ident {
-			if it.language == .c {
-				f.write('C.')
+			match it.language {
+				.c {
+					f.write('C.')
+				}
+				.js {
+					f.write('JS.')
+				}
+				else {}
 			}
 			if it.kind == .blank_ident {
 				f.write('_')
@@ -894,8 +900,14 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write(')')
 		f.or_expr(node.or_block)
 	} else {
-		if node.language == .c {
-			f.write('C.')
+		match node.language {
+			.c {
+				f.write('C.')
+			}
+			.js {
+				f.write('JS.')
+			}
+			else {}
 		}
 		name := f.short_module(node.name)
 		f.mark_module_as_used(name)
