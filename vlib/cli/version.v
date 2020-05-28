@@ -14,6 +14,7 @@ fn version_cmd() Command {
 		name: 'version'
 		description: 'Prints version information',
 		execute: version_func,
+		parent: 0
 	}
 }
 

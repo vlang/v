@@ -8,6 +8,7 @@ fn main() {
 		name: 'cli',
 		description: 'An example of the cli library',
 		version: '1.0.0',
+		parent: 0
 	}
 
 	mut greet_cmd := cli.Command{
@@ -16,6 +17,7 @@ fn main() {
 		pre_execute: greet_pre_func,
 		execute: greet_func,
 		post_execute: greet_post_func,
+		parent: 0
 	}
 	greet_cmd.add_flag(cli.Flag{
 		flag: .string,
@@ -44,10 +46,7 @@ fn greet_func(cmd cli.Command) {
 			'english' { println('Hello World') }
 			'german' { println('Hallo Welt') }
 			'dutch' { println('Hallo Wereld') }
-			else { 
-				println('unsupported language')
-				break 
-			}
+			else { println('unsupported language') }
 		}
 	}
 }

@@ -657,7 +657,6 @@ pub:
 pub struct ArrayInit {
 pub:
 	pos             token.Position
-	elem_type_pos	token.Position
 	exprs           []Expr
 	is_fixed        bool
 	has_val         bool

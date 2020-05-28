@@ -17,14 +17,6 @@ const (
 fn (mut p Parser) hash() ast.HashStmt {
 	val := p.tok.lit
 	p.next()
-	if p.pref.backend == .js {
-		if !p.file_name.ends_with('.js.v') {
-			p.error('Hash statements are only allowed in backend specific files such "x.js.v"')
-		}
-		if p.mod == 'main' {
-			p.error('Hash statements are not allowed in the main module. Please place them in a separate module.')
-		}
-	}
 	if val.starts_with('flag') {
 		// #flag linux -lm
 		mut flag := val[5..]
