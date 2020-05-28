@@ -570,15 +570,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.if_expr(it)
 		}
 		ast.Ident {
-			match it.language {
-				.c {
-					f.write('C.')
-				}
-				.js {
-					f.write('JS.')
-				}
-				else {}
-			}
+			f.write_language_prefix(it.language)
 			if it.kind == .blank_ident {
 				f.write('_')
 			} else {
@@ -900,15 +892,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write(')')
 		f.or_expr(node.or_block)
 	} else {
-		match node.language {
-			.c {
-				f.write('C.')
-			}
-			.js {
-				f.write('JS.')
-			}
-			else {}
-		}
+		f.write_language_prefix(node.language)
 		name := f.short_module(node.name)
 		f.mark_module_as_used(name)
 		f.write('${name}')
@@ -1023,6 +1007,18 @@ pub fn (mut f Fmt) mark_module_as_used(name string) {
 	}
 	f.used_imports << mod
 	// println('marking module $mod as used')
+}
+
+fn (mut f Fmt) write_language_prefix(lang table.Language) {
+	match lang {
+		.c {
+			f.write('C.')
+		}
+		.js {
+			f.write('JS.')
+		}
+		else {}
+	}
 }
 
 fn expr_is_single_line(expr ast.Expr) bool {
