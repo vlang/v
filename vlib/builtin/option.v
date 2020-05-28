@@ -18,7 +18,7 @@ struct Option {
 	is_none bool
 	error   string
 	ecode   int
-	data    [400]byte
+	data    [5000]byte
 }
 
 pub fn (o Option) str() string {
@@ -33,8 +33,8 @@ pub fn (o Option) str() string {
 
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
 fn opt_ok(data voidptr, size int) Option {
-	if size >= 400 {
-		panic('option size too big: $size (max is 400), this is a temporary limit')
+	if size >= 5000 {
+		panic('option size too big: $size (max is 5000), this is a temporary limit')
 	}
 	res := Option{
 		ok: true
