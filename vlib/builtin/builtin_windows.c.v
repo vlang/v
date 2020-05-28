@@ -173,7 +173,7 @@ fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
 	C.AddVectoredExceptionHandler(1, handler)
 }
 
-[_msvc_stdcall]
+[windows_stdcall]
 fn unhandled_exception_handler(e &ExceptionPointers) u32 {
 	match e.exception_record.code {
 		// These are 'used' by the backtrace printer 

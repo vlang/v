@@ -98,10 +98,10 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			g.write('__attribute__((const)) ')
 		}
 
-		// MSVC attributes
-		// prefixed by _msvc_ to indicate they're for advanced users only and not really supported by V.
+		// windows attributes (msvc/mingw)
+		// prefixed by windows to indicate they're for advanced users only and not really supported by V.
 
-		'_msvc_stdcall' {
+		'windows_stdcall' {
 			msvc_attrs += '__stdcall '
 		}
 
