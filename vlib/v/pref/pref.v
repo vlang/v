@@ -301,9 +301,6 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		res.build_mode = .build_module
 		res.path = args[command_pos + 1]
 	}
-	if res.is_verbose {
-		println('setting pref.path to "$res.path"')
-	}
 	res.fill_with_defaults()
 	return res, command
 }
