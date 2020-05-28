@@ -2441,7 +2441,18 @@ fn (mut c Checker) fn_decl(it ast.FnDecl) {
 		// }
 		// Do not allow to modify types from other modules
 		if sym.mod != c.mod && !c.is_builtin_mod && sym.mod != '' { // TODO remove != ''
-			c.warn('cannot define methods on types from other modules (' + 'current module is `$c.mod`, `$sym.name` is from `$sym.mod`)',
+			// remove the method to hide other related errors (`method is private` etc)
+			mut idx := 0
+			for i, m in sym.methods {
+				if m.name == it.name {
+					println('got it')
+					idx = i
+					break
+				}
+			}
+			sym.methods.delete(idx)
+			//
+			c.error('cannot define new methods on non-local `$sym.name` (' + 'current module is `$c.mod`, `$sym.name` is from `$sym.mod`)',
 				it.pos)
 		}
 	}

@@ -159,12 +159,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type_with_mut(rec_mut)
-		/*
-		sym := p.table.get_type_symbol(rec_type)
-		if sym.mod != p.mod { // && sym.mod != '' {
-			p.warn('cannot define methods on types from other modules (current module is `$p.mod`, `$sym.name` is from `$sym.mod`)')
-		}
-		*/
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
 		}
