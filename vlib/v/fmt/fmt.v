@@ -561,6 +561,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.if_expr(it)
 		}
 		ast.Ident {
+			if it.language == .c {
+				f.write('C.')
+			}
 			if it.kind == .blank_ident {
 				f.write('_')
 			} else {
@@ -601,6 +604,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					ktyp = minfo.key_type
 					vtyp = minfo.value_type
 				}
+				
 				f.write('map[')
 				f.write(f.type_to_str(ktyp))
 				f.write(']')
