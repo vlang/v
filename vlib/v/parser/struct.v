@@ -189,6 +189,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		// with the real struct type info parsed from builtin
 		ret = p.table.register_builtin_type_symbol(t)
 	} else {
+		// println('reg type symbol $name mod=$p.mod')
 		ret = p.table.register_type_symbol(t)
 	}
 	if ret == -1 {

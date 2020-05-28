@@ -254,7 +254,8 @@ pub fn (mut v Builder) cc_msvc() {
 	// Not all of these are needed (but the compiler should discard them if they are not used)
 	// these are the defaults used by msbuild and visual studio
 	mut real_libs := ['kernel32.lib', 'user32.lib', 'advapi32.lib']
-	sflags := v.get_os_cflags().msvc_string_flags()
+	//sflags := v.get_os_cflags().msvc_string_flags()
+	sflags := msvc_string_flags(v.get_os_cflags())
 	real_libs << sflags.real_libs
 	inc_paths := sflags.inc_paths
 	lib_paths := sflags.lib_paths
@@ -359,7 +360,8 @@ mut:
 	other_flags []string
 }
 
-fn (cflags []cflag.CFlag) msvc_string_flags() MsvcStringFlags {
+//pub fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
+pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 	mut real_libs := []string{}
 	mut inc_paths := []string{}
 	mut lib_paths := []string{}
@@ -405,3 +407,4 @@ fn (cflags []cflag.CFlag) msvc_string_flags() MsvcStringFlags {
 		other_flags: other_flags
 	}
 }
+
