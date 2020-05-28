@@ -130,8 +130,7 @@ fn testsuite_end() {
 	vprintln('output: $output_file')
 	vprintln('---------------------------------------------------------------------------')
 	output_lines := os.read_lines(output_file) or {
-		eprintln('could not read $output_file, error: $err')
-		return
+		panic('could not read $output_file, error: $err')
 	}
 	mut histogram := map[string]int
 	for line in output_lines {
