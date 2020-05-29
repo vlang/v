@@ -538,6 +538,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			if typ_sym.kind == .placeholder {
 				c.error('is: type `${typ_sym.name}` does not exist', type_expr.pos)
 			}
+			if left.kind != .interface_ && left.kind != .sum_type {
+				c.error('`is` can only be used with interfaces and sum types', type_expr.pos)
+			}
 			return table.bool_type
 		}
 		else {}
