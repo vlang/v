@@ -114,6 +114,13 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			println('XXXX' + s.str())
 		}
 			*/
+			mut attrs := []string{}
+			if p.tok.kind == .lsbr {
+				parsed_attrs := p.attributes()
+				for attr in parsed_attrs {
+					attrs << attr.name
+				}
+			}
 			mut default_expr := ast.Expr{}
 			mut has_default_expr := false
 			if p.tok.kind == .assign {
@@ -128,13 +135,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					else {}
 				}
 				has_default_expr = true
-			}
-			mut attrs := []string{}
-			if p.tok.kind == .lsbr {
-				parsed_attrs := p.attributes()
-				for attr in parsed_attrs {
-					attrs << attr.name
-				}
 			}
 			if p.tok.kind == .comment {
 				comment = p.comment()
