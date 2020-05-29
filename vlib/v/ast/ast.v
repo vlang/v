@@ -10,10 +10,10 @@ import v.errors
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral | CallExpr |
-	CastExpr | CharLiteral | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr |
-	IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr |
-	PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral | StringLiteral | StructInit |
-	Type | TypeOf
+	CastExpr | CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
+	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr |
+	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral |
+	StringLiteral | StructInit | Type | TypeOf
 
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -530,14 +530,15 @@ pub:
 
 pub struct AssignStmt {
 pub:
-	right       []Expr
-	op          token.Kind
-	pos         token.Position
+	right         []Expr
+	op            token.Kind
+	pos           token.Position
 pub mut:
-	left        []Ident
-	left_types  []table.Type
-	right_types []table.Type
-	is_static   bool // for translated code only
+	left          []Ident
+	left_types    []table.Type
+	right_types   []table.Type
+	is_static     bool // for translated code only
+	has_cross_var bool
 }
 
 pub struct AsCast {
@@ -575,10 +576,11 @@ pub:
 
 pub struct EnumDecl {
 pub:
-	name   string
-	is_pub bool
-	fields []EnumField
-	pos    token.Position
+	name    string
+	is_pub  bool
+	is_flag bool // true when the enum has [flag] tag
+	fields  []EnumField
+	pos     token.Position
 }
 
 pub struct AliasTypeDecl {
@@ -655,6 +657,7 @@ pub:
 pub struct ArrayInit {
 pub:
 	pos             token.Position
+	elem_type_pos	token.Position
 	exprs           []Expr
 	is_fixed        bool
 	has_val         bool
@@ -720,11 +723,18 @@ pub mut:
 	expr_type table.Type
 }
 
+pub enum OrKind {
+	absent
+	block
+	propagate
+}
+
 // `or { ... }`
 pub struct OrExpr {
 pub:
-	stmts   []Stmt
-	is_used bool // if the or{} block is written down or left out
+	stmts []Stmt
+	kind  OrKind
+	pos   token.Position
 }
 
 pub struct Assoc {
@@ -763,6 +773,11 @@ pub:
 	vals        []Expr
 pub mut:
 	return_type table.Type
+}
+
+pub struct ComptimeCall {
+	name string
+	left Expr
 }
 
 pub struct None {
@@ -881,7 +896,7 @@ pub fn (expr Expr) position() token.Position {
 }
 
 pub fn (stmt Stmt) position() token.Position {
-	match mut stmt {
+	match stmt {
 		AssertStmt { return it.pos }
 		AssignStmt { return it.pos }
 		/*

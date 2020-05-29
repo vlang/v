@@ -20,7 +20,7 @@ pub fn unix(abs int) Time {
 		hour: hr
 		minute: min
 		second: sec
-		unix: abs
+		unix: u64(abs)
 	}
 }
 

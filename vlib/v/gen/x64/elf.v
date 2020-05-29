@@ -29,8 +29,8 @@ const (
 
 const (
 	segment_start = 0x400000
-	PLACEHOLDER   = 0
-	SEVENS        = 0x77777777
+	placeholder   = 0
+	sevens        = 0x77777777
 )
 
 pub fn (mut g Gen) generate_elf_header() {
@@ -65,16 +65,16 @@ pub fn (mut g Gen) generate_elf_header() {
 	g.write64(0) // p_offset
 	g.write64(segment_start) // p_vaddr addr:050
 	g.write64(segment_start) //
-	g.file_size_pos = g.buf.len
+	g.file_size_pos = i64(g.buf.len)
 	g.write64(0) // p_filesz PLACEHOLDER, set to file_size later // addr: 060
 	g.write64(0) // p_memsz
 	g.write64(0x1000) // p_align
 	// user code starts here at
 	// address: 00070 and a half
 	println('code_start_pos = $g.buf.len.hex()')
-	g.code_start_pos = g.buf.len
+	g.code_start_pos = i64(g.buf.len)
 	g.debug_pos = g.buf.len
-	g.call(PLACEHOLDER) // call main function, it's not guaranteed to be the first, we don't know its address yet
+	g.call(placeholder) // call main function, it's not guaranteed to be the first, we don't know its address yet
 	g.println('call fn main')
 }
 

@@ -19,7 +19,7 @@ pub fn getenv(key string) string {
 		return string_from_wide(s)
 	} $else {
 		s := C.getenv(key.str)
-		if s == 0 {
+		if s == voidptr(0) {
 			return ''
 		}
 		// NB: C.getenv *requires* that the result be copied.

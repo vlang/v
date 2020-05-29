@@ -9,6 +9,50 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 	return p.partial_assign_stmt([])
 }
 
+fn (mut p Parser) check_undefined_variables(idents []ast.Ident, expr ast.Expr) {
+	match expr {
+		ast.Ident {
+			for ident in idents {
+				if ident.name == it.name {
+					p.error_with_pos('undefined variable: `$it.name`', it.pos)
+				}
+			}
+		}
+		ast.InfixExpr {
+			p.check_undefined_variables(idents, it.left)
+			p.check_undefined_variables(idents, it.right)
+		}
+		ast.StringInterLiteral {
+			for expr_ in it.exprs {
+				p.check_undefined_variables(idents, expr_)
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut p Parser) check_cross_variables(idents []ast.Ident, expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			for ident in idents {
+				if ident.name == it.name { return true }
+			}
+		}
+		ast.InfixExpr {
+			if p.check_cross_variables(idents, it.left) { return true }
+			if p.check_cross_variables(idents, it.right) { return true }
+		}
+		ast.PrefixExpr {
+			if p.check_cross_variables(idents, it.right) { return true }
+		}
+		ast.PostfixExpr {
+			if p.check_cross_variables(idents, it.expr) { return true }
+		}
+		else {}
+	}
+	return false
+}
+
 fn (mut p Parser) partial_assign_stmt(known_lhs []ast.Ident) ast.Stmt {
 	mut idents := known_lhs
 	mut op := p.tok.kind
@@ -24,6 +68,20 @@ fn (mut p Parser) partial_assign_stmt(known_lhs []ast.Ident) ast.Stmt {
 	pos := p.tok.position()
 	exprs := p.parse_assign_rhs()
 	is_decl := op == .decl_assign
+	mut has_cross_var := false
+	if is_decl {
+		// a, b := a + 1, b
+		for expr in exprs {
+			p.check_undefined_variables(idents, expr)
+		}
+	} else if idents.len > 1 {
+		// a, b = b, a
+		for expr in exprs {
+			if p.check_cross_variables(idents, expr) {
+				has_cross_var = true
+			}
+		}
+	}
 	for i, ident in idents {
 		known_var := p.scope.known_var(ident.name)
 		if !is_decl && !known_var {
@@ -55,6 +113,7 @@ fn (mut p Parser) partial_assign_stmt(known_lhs []ast.Ident) ast.Stmt {
 		op: op
 		pos: pos
 		is_static: false // individual idents may be static
+		has_cross_var: has_cross_var
 	}
 }
 

@@ -12,8 +12,8 @@ import live
 pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_mutex voidptr, live_linkfn live.FNLinkLiveSymbols) &live.LiveReloadInfo {
 	file_base := os.file_name(original).replace('.v', '')
 	so_dir := os.cache_dir()
-	so_extension := dl.DL_EXT
-	/* $if msvc { so_extension = '.dll' } $else { so_extension = '.so' } */
+	so_extension := dl.dl_ext
+	// $if msvc { so_extension = '.dll' } $else { so_extension = '.so' }
 	return &live.LiveReloadInfo{
 		original: original
 		vexe: vexe
@@ -36,31 +36,31 @@ pub fn start_reloader(r mut live.LiveReloadInfo) {
 	// If that fails, the program would crash anyway, just provide
 	// an error message to the user and exit:
     r.reloads++
-	_ := compile_and_reload_shared_lib(r) or {
+	_ := compile_and_reload_shared_lib(mut r) or {
 		eprintln( err )
 		exit(1)
 	}
-	go reloader(r)
+	go reloader(mut r)
 }
 
 [if debuglive]
-fn elog(r mut live.LiveReloadInfo, s string){
+fn elog(r &live.LiveReloadInfo, s string){
 	eprintln(s)
 }
 
 fn compile_and_reload_shared_lib(r mut live.LiveReloadInfo) ?bool {
 	sw := time.new_stopwatch()
-	new_lib_path := compile_lib(r) or {
+	new_lib_path := compile_lib(mut r) or {
 		return error('errors while compiling $r.original')
 	}
 	elog(r,'> compile_and_reload_shared_lib compiled: ${new_lib_path}')
-	load_lib(r, new_lib_path )
-	r.reload_time_ms = sw.elapsed().milliseconds()
+	load_lib(mut r, new_lib_path )
+	r.reload_time_ms = int(sw.elapsed().milliseconds())
 	return true
 }
 
 fn compile_lib(r mut live.LiveReloadInfo) ?string {
-	new_lib_path, new_lib_path_with_extension := current_shared_library_path(r)
+	new_lib_path, new_lib_path_with_extension := current_shared_library_path(mut r)
 	cmd := '$r.vexe $r.vopts -o $new_lib_path $r.original'
 	elog(r,'>       compilation cmd: $cmd')
 	cwatch := time.new_stopwatch()
@@ -92,14 +92,14 @@ fn load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
 	C.pthread_mutex_lock(r.live_fn_mutex)
 	elog(r,'live mutex locked')
 	//
-	if r.cb_locked_before != 0 {
+	if r.cb_locked_before != voidptr(0) {
 		r.cb_locked_before( r )
 	}
 	//
-	protected_load_lib(r, new_lib_path)
+	protected_load_lib(mut r, new_lib_path)
 	//
 	r.reloads_ok++
-	if r.cb_locked_after != 0 {
+	if r.cb_locked_after != voidptr(0) {
 		r.cb_locked_after( r )
 	}
 	//
@@ -113,14 +113,14 @@ fn protected_load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
 		dl.close( r.live_lib )
 		r.live_lib = 0
 	}
-	r.live_lib = dl.open(new_lib_path, dl.RTLD_LAZY)
+	r.live_lib = dl.open(new_lib_path, dl.rtld_lazy)
 	if r.live_lib == 0 {
 		eprintln('opening $new_lib_path failed')
 		exit(1)
 	}
 	r.live_linkfn( r.live_lib )
 	elog(r,'> load_lib OK, new live_lib: $r.live_lib')
-	// removing the .so file from the filesystem after dlopen-ing 
+	// removing the .so file from the filesystem after dlopen-ing
     // it is safe, since it will still be mapped in memory
 	os.rm( new_lib_path )
 }
@@ -130,7 +130,7 @@ fn reloader(r mut live.LiveReloadInfo) {
 //	elog(r,'reloader, r: $r')
 	mut last_ts := os.file_last_mod_unix( r.original )
 	for {
-		if r.cb_recheck != 0 {
+		if r.cb_recheck != voidptr(0) {
 			r.cb_recheck( r )
 		}
 		now_ts := os.file_last_mod_unix( r.original )
@@ -138,19 +138,19 @@ fn reloader(r mut live.LiveReloadInfo) {
 			r.reloads++
 			last_ts = now_ts
 			r.last_mod_ts = last_ts
-			if r.cb_before != 0 {
+			if r.cb_before != voidptr(0) {
 				r.cb_before( r )
 			}
-			compile_and_reload_shared_lib(r) or {
-				if r.cb_compile_failed != 0 {
+			compile_and_reload_shared_lib(mut r) or {
+				if r.cb_compile_failed != voidptr(0) {
 					r.cb_compile_failed( r )
 				}
-				if r.cb_after != 0 {
+				if r.cb_after != voidptr(0) {
 					r.cb_after( r )
 				}
 				continue
 			}
-			if r.cb_after != 0 {
+			if r.cb_after != voidptr(0) {
 				r.cb_after( r )
 			}
 		}

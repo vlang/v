@@ -172,9 +172,9 @@ fn up_low(s string, upper_flag bool) string {
 
 		if ch_len == 1 {
 			if upper_flag==true {
-				str_res[index] = C.toupper(s.str[index])
+				str_res[index] = byte(C.toupper(s.str[index]))
 			}else{
-				str_res[index] = C.tolower(s.str[index])
+				str_res[index] = byte(C.tolower(s.str[index]))
 			}
 		}
 		else if ch_len > 1 && ch_len < 5{

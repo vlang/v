@@ -1,4 +1,4 @@
-struct A{}
+struct Aaa{}
 fn main() {
-    A{} / 10
+    Aaa{} / 10
 }

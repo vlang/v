@@ -79,7 +79,7 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 		ntask: 0
 		ntask_mtx: new_mutex()
 		waitgroup: new_waitgroup()
-		thread_cb: context.callback
+		thread_cb: voidptr(context.callback)
 	}
 	return pool
 }
@@ -116,7 +116,7 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 	pool.thread_contexts << [voidptr(0)].repeat(pool.items.len)
 	pool.waitgroup.add(njobs)
 	for i := 0; i < njobs; i++ {
-		go process_in_thread(pool,i)
+		go process_in_thread(mut pool,i)
 	}
 	pool.waitgroup.wait()
 }

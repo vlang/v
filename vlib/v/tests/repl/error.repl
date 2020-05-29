@@ -1,6 +1,6 @@
 println(a)
 ===output===
-.vrepl.v:2:9: error: undefined: `a` 
+.vrepl.v:2:9: error: undefined ident: `a` 
     1 | 
     2 | println(a)
       |         ^

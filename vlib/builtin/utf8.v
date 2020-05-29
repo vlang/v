@@ -13,33 +13,33 @@ pub fn utf32_to_str(code u32) string {
 	icode := int(code) // Prevents doing casts everywhere
 	mut buffer := malloc(5)
 	if icode <= 127/* 0x7F */ {
-		buffer[0] = icode
+		buffer[0] = byte(icode)
 		return tos(buffer, 1)
 	}
 	if icode <= 2047/* 0x7FF */ {
-		buffer[0] = 192/*0xC0*/ | (icode>>6)/* 110xxxxx */
+		buffer[0] = 192/*0xC0*/ | byte(icode>>6)/* 110xxxxx */
 
-		buffer[1] = 128/*0x80*/ | (icode & 63/*0x3F*/)/* 10xxxxxx */
+		buffer[1] = 128/*0x80*/ | byte(icode & 63/*0x3F*/)/* 10xxxxxx */
 
 		return tos(buffer, 2)
 	}
 	if icode <= 65535/* 0xFFFF */ {
-		buffer[0] = 224/*0xE0*/ | (icode>>12)/* 1110xxxx */
+		buffer[0] = 224/*0xE0*/ | byte(icode>>12)/* 1110xxxx */
 
-		buffer[1] = 128/*0x80*/ | ((icode>>6) & 63/*0x3F*/)/* 10xxxxxx */
+		buffer[1] = 128/*0x80*/ | (byte(icode>>6) & 63/*0x3F*/)/* 10xxxxxx */
 
-		buffer[2] = 128/*0x80*/ | (icode & 63/*0x3F*/)/* 10xxxxxx */
+		buffer[2] = 128/*0x80*/ | byte(icode & 63/*0x3F*/)/* 10xxxxxx */
 
 		return tos(buffer, 3)
 	}
 	if icode <= 1114111/* 0x10FFFF */ {
-		buffer[0] = 240/*0xF0*/ | (icode>>18)/* 11110xxx */
+		buffer[0] = 240/*0xF0*/ | byte(icode>>18)/* 11110xxx */
 
-		buffer[1] = 128/*0x80*/ | ((icode>>12) & 63/*0x3F*/)/* 10xxxxxx */
+		buffer[1] = 128/*0x80*/ | (byte(icode>>12) & 63/*0x3F*/)/* 10xxxxxx */
 
-		buffer[2] = 128/*0x80*/ | ((icode>>6) & 63/*0x3F*/)/* 10xxxxxx */
+		buffer[2] = 128/*0x80*/ | (byte(icode>>6) & 63/*0x3F*/)/* 10xxxxxx */
 
-		buffer[3] = 128/*0x80*/ | (icode & 63/*0x3F*/)/* 10xxxxxx */
+		buffer[3] = 128/*0x80*/ | byte(icode & 63/*0x3F*/)/* 10xxxxxx */
 
 		return tos(buffer, 4)
 	}
@@ -51,33 +51,33 @@ pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
 	icode := int(code) // Prevents doing casts everywhere
 	mut buffer := byteptr(buf)
 	if icode <= 127/* 0x7F */ {
-		buffer[0] = icode
+		buffer[0] = byte(icode)
 		return tos(buffer, 1)
 	}
 	if icode <= 2047/* 0x7FF */ {
-		buffer[0] = 192/*0xC0*/ | (icode>>6)/* 110xxxxx */
+		buffer[0] = 192/*0xC0*/ | byte(icode>>6)/* 110xxxxx */
 
-		buffer[1] = 128/*0x80*/ | (icode & 63/*0x3F*/)/* 10xxxxxx */
+		buffer[1] = 128/*0x80*/ | byte(icode & 63/*0x3F*/)/* 10xxxxxx */
 
 		return tos(buffer, 2)
 	}
 	if icode <= 65535/* 0xFFFF */ {
-		buffer[0] = 224/*0xE0*/ | (icode>>12)/* 1110xxxx */
+		buffer[0] = 224/*0xE0*/ | byte(icode>>12)/* 1110xxxx */
 
-		buffer[1] = 128/*0x80*/ | ((icode>>6) & 63/*0x3F*/)/* 10xxxxxx */
+		buffer[1] = 128/*0x80*/ | (byte(icode>>6) & 63/*0x3F*/)/* 10xxxxxx */
 
-		buffer[2] = 128/*0x80*/ | (icode & 63/*0x3F*/)/* 10xxxxxx */
+		buffer[2] = 128/*0x80*/ | byte(icode & 63/*0x3F*/)/* 10xxxxxx */
 
 		return tos(buffer, 3)
 	}
 	if icode <= 1114111/* 0x10FFFF */ {
-		buffer[0] = 240/*0xF0*/ | (icode>>18)/* 11110xxx */
+		buffer[0] = 240/*0xF0*/ | byte(icode>>18)/* 11110xxx */
 
-		buffer[1] = 128/*0x80*/ | ((icode>>12) & 63/*0x3F*/)/* 10xxxxxx */
+		buffer[1] = 128/*0x80*/ | (byte(icode>>12) & 63/*0x3F*/)/* 10xxxxxx */
 
-		buffer[2] = 128/*0x80*/ | ((icode>>6) & 63/*0x3F*/)/* 10xxxxxx */
+		buffer[2] = 128/*0x80*/ | (byte(icode>>6) & 63/*0x3F*/)/* 10xxxxxx */
 
-		buffer[3] = 128/*0x80*/ | (icode & 63/*0x3F*/)/* 10xxxxxx */
+		buffer[3] = 128/*0x80*/ | byte(icode & 63/*0x3F*/)/* 10xxxxxx */
 
 		return tos(buffer, 4)
 	}
@@ -109,15 +109,15 @@ pub fn (_rune string) utf32_code() int {
 }
 
 const (
-	CP_UTF8 = 65001
+	cp_utf8 = 65001
 )
 
 pub fn (_str string) to_wide() &u16 {
 	$if windows {
-		num_chars := (C.MultiByteToWideChar(CP_UTF8, 0, _str.str, _str.len, 0, 0))
+		num_chars := (C.MultiByteToWideChar(cp_utf8, 0, _str.str, _str.len, 0, 0))
 		mut wstr := &u16(malloc((num_chars + 1) * 2)) // sizeof(wchar_t)
 		if wstr != 0 {
-			C.MultiByteToWideChar(CP_UTF8, 0, _str.str, _str.len, wstr, num_chars)
+			C.MultiByteToWideChar(cp_utf8, 0, _str.str, _str.len, wstr, num_chars)
 			C.memset(&byte(wstr) + num_chars * 2, 0, 2)
 		}
 		return wstr
@@ -137,10 +137,10 @@ pub fn string_from_wide(_wstr &u16) string {
 
 pub fn string_from_wide2(_wstr &u16, len int) string {
 	$if windows {
-		num_chars := C.WideCharToMultiByte(CP_UTF8, 0, _wstr, len, 0, 0, 0, 0)
+		num_chars := C.WideCharToMultiByte(cp_utf8, 0, _wstr, len, 0, 0, 0, 0)
 		mut str_to := malloc(num_chars + 1)
 		if str_to != 0 {
-			C.WideCharToMultiByte(CP_UTF8, 0, _wstr, len, str_to, num_chars, 0, 0)
+			C.WideCharToMultiByte(cp_utf8, 0, _wstr, len, str_to, num_chars, 0, 0)
 			C.memset(str_to + num_chars, 0, 1)
 		}
 		return tos2(str_to)
@@ -255,4 +255,3 @@ pub fn utf8_getchar() int {
 		return uc
 	}
 }
-

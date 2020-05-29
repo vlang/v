@@ -7,6 +7,7 @@ import strings
 
 pub const (
 	path_separator = '\\'
+	path_delimiter = ';'
 )
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
@@ -32,7 +33,7 @@ mut:
 	n_file_size_low u32
 	dw_reserved0 u32
 	dw_reserved1 u32
-	c_file_name [260]u16 // MAX_PATH = 260
+	c_file_name [260]u16 // max_path_len = 260
 	c_alternate_file_name [14]u16 // 14
   	dw_file_type u32
   	dw_creator_type u32
@@ -89,7 +90,7 @@ pub fn ls(path string) ?[]string {
 	mut dir_files := []string{}
 	// We can also check if the handle is valid. but using is_dir instead
 	// h_find_dir := C.FindFirstFile(path.str, &find_file_data)
-	// if (INVALID_HANDLE_VALUE == h_find_dir) {
+	// if (invalid_handle_value == h_find_dir) {
 	//     return dir_files
 	// }
 	// C.FindClose(h_find_dir)
@@ -145,8 +146,8 @@ pub fn mkdir(path string) ?bool {
 // get_file_handle retrieves the operating-system file handle that is associated with the specified file descriptor.
 pub fn get_file_handle(path string) HANDLE {
     cfile := vfopen(path, 'rb')
-    if cfile == 0 {
-	    return HANDLE(INVALID_HANDLE_VALUE)
+    if cfile == voidptr(0) {
+	    return HANDLE(invalid_handle_value)
     }
     handle := HANDLE(C._get_osfhandle(fileno(cfile))) // CreateFile? - hah, no -_-
     return handle
@@ -177,24 +178,24 @@ pub fn get_module_filename(handle HANDLE) ?string {
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-formatmessagea#parameters
 const (
-    FORMAT_MESSAGE_ALLOCATE_BUFFER = 0x00000100
-    FORMAT_MESSAGE_ARGUMENT_ARRAY  = 0x00002000
-    FORMAT_MESSAGE_FROM_HMODULE    = 0x00000800
-    FORMAT_MESSAGE_FROM_STRING     = 0x00000400
-    FORMAT_MESSAGE_FROM_SYSTEM     = 0x00001000
-    FORMAT_MESSAGE_IGNORE_INSERTS  = 0x00000200
+    format_message_allocate_buffer = 0x00000100
+    format_message_argument_array  = 0x00002000
+    format_message_from_hmodule    = 0x00000800
+    format_message_from_string     = 0x00000400
+    format_message_from_system     = 0x00001000
+    format_message_ignore_inserts  = 0x00000200
 )
 
 // Ref - winnt.h
 const (
-    SUBLANG_NEUTRAL = 0x00
-    SUBLANG_DEFAULT = 0x01
-    LANG_NEUTRAL    = (SUBLANG_NEUTRAL)
+    sublang_neutral = 0x00
+    sublang_default = 0x01
+    lang_neutral    = (sublang_neutral)
 )
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes--12000-15999-
 const (
-    MAX_ERROR_CODE  = 15841 // ERROR_API_UNAVAILABLE
+    max_error_code  = 15841 // ERROR_API_UNAVAILABLE
 )
 
 // ptr_win_get_error_msg return string (voidptr)
@@ -202,14 +203,14 @@ const (
 fn ptr_win_get_error_msg(code u32) voidptr {
     mut buf := voidptr(0)
     // Check for code overflow
-    if code > u32(MAX_ERROR_CODE) {
+    if code > u32(max_error_code) {
         return buf
     }
     C.FormatMessage(
-		FORMAT_MESSAGE_ALLOCATE_BUFFER
-		| FORMAT_MESSAGE_FROM_SYSTEM
-		| FORMAT_MESSAGE_IGNORE_INSERTS,
-        0, code, C.MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), voidptr(&buf), 0, 0)
+		format_message_allocate_buffer
+		| format_message_from_system
+		| format_message_ignore_inserts,
+        0, code, C.MAKELANGID(lang_neutral, sublang_default), voidptr(&buf), 0, 0)
     return buf
 }
 
@@ -302,10 +303,6 @@ pub fn symlink(origin, target string) ?bool {
 	return error(get_error_msg(int(C.GetLastError())))
 }
 
-pub fn (mut f File) write_bytes(data voidptr, size int) {
-	C.fwrite(data, 1, size, f.cfile)
-}
-
 pub fn (mut f File) close() {
 	if !f.opened {
 		return
@@ -313,4 +310,39 @@ pub fn (mut f File) close() {
 	f.opened = false
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
+}
+
+pub struct ExceptionRecord {
+pub:
+	// status_ constants
+	code u32
+	flags u32
+	
+	record &ExceptionRecord
+	address voidptr
+	param_count u32
+	// params []voidptr
+}
+
+pub struct ContextRecord {
+	// TODO
+}
+
+pub struct ExceptionPointers {
+pub:
+	exception_record &ExceptionRecord
+	context_record &ContextRecord
+}
+
+pub type VectoredExceptionHandler fn(&ExceptionPointers)u32
+
+// This is defined in builtin because we use vectored exception handling
+// for our unhandled exception handler on windows
+
+// As a result this definition is commented out to prevent
+// duplicate definitions from displeasing the compiler
+// fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
+
+pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandler) {
+	C.AddVectoredExceptionHandler(u32(first), handler)
 }

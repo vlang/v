@@ -46,8 +46,9 @@ fn new_automaton(f [][]int) Automaton {
 			maxx = f[y].len
 		}
 	}
-	field     := &A2D{ maxx: maxx maxy: maxy data: &int( vcalloc( sizeof(int) * maxy * maxx ) ) }
-	new_field := &A2D{ maxx: maxx maxy: maxy data: &int( vcalloc( sizeof(int) * maxy * maxx ) ) }
+	size := u32(maxx * maxy)
+	field     := &A2D{ maxx: maxx maxy: maxy data: &int( vcalloc( sizeof(int) * size ) ) }
+	new_field := &A2D{ maxx: maxx maxy: maxy data: &int( vcalloc( sizeof(int) * size) ) }
 	for y in 0..field.maxy {
 		for x in 0..field.maxx {
 			field.set( x, y, f[y][x] )
@@ -56,7 +57,7 @@ fn new_automaton(f [][]int) Automaton {
 	return Automaton{ field: field new_field: new_field }
 }
 
-pub fn (aa mut Automaton) update() {
+pub fn (mut aa Automaton) update() {
 	aa.new_field.clear()
 	for y := 1; y<aa.field.maxy; y++ {
 		for x := 1; x<aa.field.maxx; x++ {

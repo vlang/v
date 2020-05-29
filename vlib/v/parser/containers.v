@@ -14,6 +14,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	// p.warn('array_init() exp=$p.expected_type')
 	mut array_type := table.void_type
 	mut elem_type := table.void_type
+	mut elem_type_pos := first_pos
 	mut exprs := []ast.Expr{}
 	mut is_fixed := false
 	mut has_val := false
@@ -23,11 +24,13 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		line_nr := p.tok.line_nr
 		p.next()
 		// []string
-		if p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
+		if p.tok.kind in [.name, .amp, .lsbr] && p.tok.line_nr == line_nr {
+			elem_type_pos = p.tok.position()
 			elem_type = p.parse_type()
+			sym := p.table.get_type_symbol(elem_type)
 			// this is set here becasue its a known type, others could be the
 			// result of expr so we do those in checker
-			idx := p.table.find_or_register_array(elem_type, 1)
+			idx := p.table.find_or_register_array(elem_type, 1, sym.mod)
 			array_type = table.new_type(idx)
 			has_type = true
 		}
@@ -118,6 +121,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		typ: array_type
 		exprs: exprs
 		pos: pos
+		elem_type_pos: elem_type_pos
 		has_len: has_len
 		len_expr: len_expr
 		has_cap: has_cap

@@ -12,10 +12,22 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// || it.no_body {
 		return
 	}
+	//if g.fileis('vweb.v') {
+		//println('\ngen_fn_decl() $it.name $it.is_generic $g.cur_generic_type')
+	//}
+	former_cur_fn := g.cur_fn
+	g.cur_fn = &it
+	defer {
+		g.cur_fn = former_cur_fn
+	}
 	is_main := it.name == 'main'
 	if it.is_generic && g.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for gen_type in g.table.fn_gen_types[it.name] {
+			sym := g.table.get_type_symbol(gen_type)
+			if g.pref.is_verbose {
+				println('gen fn `$it.name` for type `$sym.name`')
+			}
 			g.cur_generic_type = gen_type
 			g.gen_fn_decl(it)
 		}
@@ -28,9 +40,79 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	//
 	fn_start_pos := g.out.len
-	if g.attr == 'inline' {
-		g.write('inline ')
+
+	mut msvc_attrs := ''
+	match g.attr {
+		'inline' {
+			g.write('inline ')
+		}
+		// since these are supported by GCC, clang and MSVC, we can consider them officially supported.
+		'no_inline' {
+			g.write('__NOINLINE ')
+		}
+		'irq_handler' {
+			g.write('__IRQHANDLER ')
+		}
+
+		// GCC/clang attributes
+		// prefixed by _ to indicate they're for advanced users only and not really supported by V.
+		// source for descriptions: https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html#Common-Function-Attributes
+
+		// The cold attribute on functions is used to inform the compiler that the function is unlikely
+		// to be executed. The function is optimized for size rather than speed and on many targets it
+		// is placed into a special subsection of the text section so all cold functions appear close
+		// together, improving code locality of non-cold parts of program.
+		'_cold' {
+			g.write('__attribute__((cold)) ')
+		}
+		// The constructor attribute causes the function to be called automatically before execution
+		// enters main ().
+		'_constructor' {
+			g.write('__attribute__((constructor)) ')
+		}
+		// The destructor attribute causes the function to be called automatically after main ()
+		// completes or exit () is called.
+		'_destructor' {
+			g.write('__attribute__((destructor)) ')
+		}
+		// Generally, inlining into a function is limited. For a function marked with this attribute,
+		// every call inside this function is inlined, if possible.
+		'_flatten' {
+			g.write('__attribute__((flatten)) ')
+		}
+		// The hot attribute on a function is used to inform the compiler that the function is a hot
+		// spot of the compiled program.
+		'_hot' {
+			g.write('__attribute__((hot)) ')
+		}
+		// This tells the compiler that a function is malloc-like, i.e., that the pointer P returned by
+		// the function cannot alias any other pointer valid when the function returns, and moreover no
+		// pointers to valid objects occur in any storage addressed by P.
+		'_malloc' {
+			g.write('__attribute__((malloc)) ')
+		}
+
+		// Calls to functions whose return value is not affected by changes to the observable state
+		// of the program and that have no observable effects on such state other than to return a
+		// value may lend themselves to optimizations such as common subexpression elimination.
+		// Declaring such functions with the const attribute allows GCC to avoid emitting some calls in
+		// repeated invocations of the function with the same argument values.
+		'_pure' {
+			g.write('__attribute__((const)) ')
+		}
+
+		// windows attributes (msvc/mingw)
+		// prefixed by windows to indicate they're for advanced users only and not really supported by V.
+
+		'windows_stdcall' {
+			msvc_attrs += '__stdcall '
+		}
+
+		else {
+			// nothing but keep V happy
+		}
 	}
+
 	//
 	is_livefn := g.attr == 'live'
 	is_livemain := g.pref.is_livemain && is_livefn
@@ -101,12 +183,12 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 				g.write('$type_name ${impl_fn_name}(')
 			}
 		} else {
-			if !it.is_pub {
+			if !(it.is_pub || g.pref.is_debug) {
 				g.write('static ')
 				g.definitions.write('static ')
 			}
-			g.definitions.write('$type_name ${name}(')
-			g.write('$type_name ${name}(')
+			g.definitions.write('$type_name $msvc_attrs ${name}(')
+			g.write('$type_name $msvc_attrs ${name}(')
 		}
 		fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
 		if it.no_body || (g.pref.use_cache && it.is_builtin) {
@@ -229,6 +311,9 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 		caname := c_name(arg.name)
 		arg_type_sym := g.table.get_type_symbol(arg.typ)
 		mut arg_type_name := g.typ(arg.typ) // arg_type_sym.name.replace('.', '__')
+		// if arg.name == 'xxx' {
+		// println('! ' + arg_type_name)
+		// }
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
 			varg_type_str := int(arg.typ).str()
@@ -284,7 +369,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
-	gen_or := node.or_block.stmts.len > 0
+	gen_or := node.or_block.kind != .absent
 	cur_line := if gen_or && g.is_assign_rhs {
 		line := g.go_before_stmt(0)
 		g.out.write(tabs[g.indent])
@@ -294,7 +379,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
-		styp := g.typ(node.return_type)
+		styp := g.typ(node.return_type.set_flag(.optional))
 		g.write('$styp $tmp_opt = ')
 	}
 	if node.is_method {
@@ -303,9 +388,16 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.fn_call(node)
 	}
 	if gen_or {
-		g.or_block(tmp_opt, node.or_block.stmts, node.return_type)
+		g.or_block(tmp_opt, node.or_block, node.return_type)
 		g.write('\n${cur_line}${tmp_opt}')
 	}
+}
+
+pub fn (mut g Gen) unwrap_generic(typ table.Type) table.Type {
+	if typ == table.t_type {
+		return g.cur_generic_type
+	}
+	return typ
 }
 
 fn (mut g Gen) method_call(node ast.CallExpr) {
@@ -315,7 +407,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	// mut receiver_type_name := g.cc_type(node.receiver_type)
 	// mut receiver_type_name := g.typ(node.receiver_type)
-	typ_sym := g.table.get_type_symbol(node.receiver_type)
+	typ_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver_type))
 	mut receiver_type_name := typ_sym.name.replace('.', '__')
 	if typ_sym.kind == .interface_ {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
@@ -366,7 +458,23 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('*($return_type_str*)')
 		}
 	}
-	name := '${receiver_type_name}_$node.name'.replace('.', '__')
+
+	mut name := '${receiver_type_name}_$node.name'.replace('.', '__')
+	// Check if expression is: arr[a..b].clone(), arr[a..].clone()
+	// if so, then instead of calling array_clone(&array_slice(...))
+	// call array_clone_static(array_slice(...))
+	mut is_range_slice := false
+	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
+		if node.left is ast.IndexExpr {
+			idx := (node.left as ast.IndexExpr).index
+			if idx is ast.RangeExpr {
+				// expr is arr[range].clone()
+				// use array_clone_static instead of array_clone
+				name = '${receiver_type_name}_${node.name}_static'.replace('.', '__')
+				is_range_slice = true
+			}
+		}
+	}
 	// if node.receiver_type != 0 {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
@@ -380,7 +488,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
-		g.write('&')
+		if !is_range_slice {
+			g.write('&')
+		}
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' {
 		g.write('/*rec*/*')
 	}
@@ -528,17 +638,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.write('))')
 		}
 	} else if g.pref.is_debug && node.name == 'panic' {
-		paline := node.pos.line_nr + 1
-		pafile := g.fn_decl.file.replace('\\', '/')
-		pafn := g.fn_decl.name.after('.')
-		mut pamod := g.fn_decl.name.all_before_last('.')
-		if pamod == pafn {
-			pamod = if g.fn_decl.is_builtin {
-				'builtin'
-			} else {
-				'main'
-			}
-		}
+		paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
 		g.write('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"),  ')
 		g.call_args(node.args, node.expected_arg_types)
 		g.write(')')
@@ -662,4 +762,8 @@ fn (mut g Gen) is_gui_app() bool {
 		}
 	}
 	return false
+}
+
+fn (g &Gen) fileis(s string) bool {
+	return g.file.path.contains(s)
 }

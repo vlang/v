@@ -65,6 +65,6 @@ pub fn dice_coefficient(s1, s2 string) f32 {
 			intersection_size++
 		}
 	}
-	return (2.0 * intersection_size) / (f32(a.len) + f32(b.len) - 2)
+	return (2.0 * f32(intersection_size)) / (f32(a.len) + f32(b.len) - 2)
 }
 

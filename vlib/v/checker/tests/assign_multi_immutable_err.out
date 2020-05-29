@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_multi_immutable_err.v:4:2: error: `a` is immutable, declare it with `mut` to make it mutable
+    2 |     a := 10
+    3 |     b := 20
+    4 |     a, b = 1, 2
+      |     ^
+    5 |
+    6 |     println('$a, $b')

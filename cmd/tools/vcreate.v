@@ -44,6 +44,7 @@ fn gen_gitignore(name string) string {
 		'main',
 		'$name',
 		'*.so',
+		'*.dylib',
 		'*.dll'
 	].join('\n')
 }

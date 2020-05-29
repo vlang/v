@@ -50,20 +50,21 @@ fn C.SymGetLineFromAddr64(h_process voidptr, address u64, p_displacement voidptr
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/dbghelp/nf-dbghelp-symsetoptions
 const (
-	SYMOPT_UNDNAME = 0x00000002
-	SYMOPT_DEFERRED_LOADS = 0x00000004
-	SYMOPT_NO_CPP = 0x00000008
-	SYMOPT_LOAD_LINES = 0x00000010
-	SYMOPT_INCLUDE_32BIT_MODULES = 0x00002000
-	SYMOPT_ALLOW_ZERO_ADDRESS = 0x01000000
-	SYMOPT_DEBUG = 0x80000000
+	symopt_undname = 0x00000002
+	symopt_deferred_loads = 0x00000004
+	symopt_no_cpp = 0x00000008
+	symopt_load_lines = 0x00000010
+	symopt_include_32bit_modules = 0x00002000
+	symopt_allow_zero_address = 0x01000000
+	symopt_debug = 0x80000000
 )
 
 fn builtin_init() {
 	if is_atty(1) > 0 {
-		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
+		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // enable_virtual_terminal_processing
 		C.setbuf(C.stdout, 0)
 	}
+	add_unhandled_exception_handler()
 }
 
 fn print_backtrace_skipping_top_frames(skipframes int) bool {
@@ -92,7 +93,7 @@ $if msvc {
 	handle := C.GetCurrentProcess()
 	defer { C.SymCleanup(handle) }
 
-	C.SymSetOptions(SYMOPT_DEBUG | SYMOPT_LOAD_LINES | SYMOPT_UNDNAME)
+	C.SymSetOptions(symopt_debug | symopt_load_lines | symopt_undname)
 
 	syminitok := C.SymInitialize( handle, 0, 1)
 	if syminitok != 1 {
@@ -140,6 +141,55 @@ fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 	return false
 }
 
-pub fn println(s string) {
-	print('$s\n')
+
+//TODO copypaste from os
+// we want to be able to use this here without having to `import os`
+struct ExceptionRecord {
+pub:
+	// status_ constants
+	code u32
+	flags u32
+	
+	record &ExceptionRecord
+	address voidptr
+	param_count u32
+	// params []voidptr
+}
+
+ struct ContextRecord {
+	// TODO
+}
+
+struct ExceptionPointers {
+pub:
+	exception_record &ExceptionRecord
+	context_record &ContextRecord
+}
+
+type VectoredExceptionHandler fn(&ExceptionPointers)u32
+
+fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
+fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
+	C.AddVectoredExceptionHandler(1, handler)
+}
+
+[windows_stdcall]
+fn unhandled_exception_handler(e &ExceptionPointers) u32 {
+	match e.exception_record.code {
+		// These are 'used' by the backtrace printer 
+		// so we dont want to catch them...
+		0x4001000A, 0x40010006 {
+			return 0
+		}
+		else {
+			println('Unhandled Exception 0x${e.exception_record.code:X}')
+			print_backtrace_skipping_top_frames(5)
+		}
+	}
+
+	return 0
+}
+
+pub fn add_unhandled_exception_handler() {
+	add_vectored_exception_handler(unhandled_exception_handler)
 }

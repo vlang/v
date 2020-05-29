@@ -41,6 +41,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
 		p.error_with_pos('struct name `$name` must begin with capital letter', end_pos)
 	}
+	if name.len == 1 {
+		p.error_with_pos('struct names must have more than one character', end_pos)
+	}
 	// println('struct decl $name')
 	mut ast_fields := []ast.StructField{}
 	mut fields := []table.Field{}
@@ -102,15 +105,22 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			field_start_pos := p.tok.position()
 			field_name := p.check_name()
-			field_pos := field_start_pos.extend(p.tok.position())
 			// p.warn('field $field_name')
 			typ := p.parse_type()
+			field_pos := field_start_pos.extend(p.tok.position())
 			/*
 			if name == '_net_module_s' {
 			s := p.table.get_type_symbol(typ)
 			println('XXXX' + s.str())
 		}
 			*/
+			mut attrs := []string{}
+			if p.tok.kind == .lsbr {
+				parsed_attrs := p.attributes()
+				for attr in parsed_attrs {
+					attrs << attr.name
+				}
+			}
 			mut default_expr := ast.Expr{}
 			mut has_default_expr := false
 			if p.tok.kind == .assign {
@@ -125,13 +135,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					else {}
 				}
 				has_default_expr = true
-			}
-			mut attrs := []string{}
-			if p.tok.kind == .lsbr {
-				parsed_attrs := p.attributes()
-				for attr in parsed_attrs {
-					attrs << attr.name
-				}
 			}
 			if p.tok.kind == .comment {
 				comment = p.comment()
@@ -186,6 +189,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		// with the real struct type info parsed from builtin
 		ret = p.table.register_builtin_type_symbol(t)
 	} else {
+		// println('reg type symbol $name mod=$p.mod')
 		ret = p.table.register_type_symbol(t)
 	}
 	if ret == -1 {

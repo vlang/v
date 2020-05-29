@@ -178,6 +178,9 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		// Save the source only if the user is printing something,
 		// but don't add this print call to the `lines` array,
 		// so that it doesn't get called during the next print.
+		if r.line.starts_with('='){
+			r.line = 'println(' + r.line[1..] + ')'
+		}
 		if r.line.starts_with('print') {
 			source_code := r.current_source_code(false) + '\n${r.line}\n'
 			os.write_file(file, source_code)
@@ -195,7 +198,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				'=', '++', '--', '<<',
 				'//', '/*',
 				'fn ', 'pub ', 'mut ', 'enum ', 'const ', 'struct ', 'interface ', 'import ',
-				'#include ', ':='
+				'#include ', ':=', 'for '
 			]
 			mut is_statement := false
 			for pattern in possible_statement_patterns {
@@ -216,6 +219,13 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			if temp_line.starts_with('import ') || temp_line.starts_with('#include ') {
 				temp_source_code = '${temp_line}\n' + r.current_source_code(false)
 			} else {
+				for i, l in r.lines {
+					if (l.starts_with('for ') || l.starts_with('if ')) && l.contains('println') {
+						r.lines.delete(i)
+						break
+					}
+				}
+
 				temp_source_code = r.current_source_code(true) + '\n${temp_line}\n'
 			}
 			os.write_file(temp_file, temp_source_code)

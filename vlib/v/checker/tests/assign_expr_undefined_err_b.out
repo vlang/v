@@ -1,0 +1,6 @@
+vlib/v/checker/tests/assign_expr_undefined_err_b.v:2:10: error: undefined variable: `a`
+    1 | fn main() {
+    2 |     a, b := a, b
+      |             ^
+    3 |     println('$a, $b')
+    4 | }

@@ -13,11 +13,11 @@ import strings
 pub const (
 	methods_with_form = ['POST', 'PUT', 'PATCH']
 	method_all = ['GET','POST','PUT','PATCH','DELETE']
-	HEADER_SERVER = 'Server: VWeb\r\n'
-	HEADER_CONNECTION_CLOSE = 'Connection: close\r\n'
-	HEADERS_CLOSE = '${HEADER_SERVER}${HEADER_CONNECTION_CLOSE}\r\n'
-	HTTP_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n${HEADERS_CLOSE}404 Not Found'
-	HTTP_500 = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n${HEADERS_CLOSE}500 Internal Server Error'
+	header_server = 'Server: VWeb\r\n'
+	header_connection_close = 'Connection: close\r\n'
+	headers_close = '${header_server}${header_connection_close}\r\n'
+	http_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n${headers_close}404 Not Found'
+	http_500 = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n${headers_close}500 Internal Server Error'
 	mime_types = {
 		'.css': 'text/css; charset=utf-8',
 		'.gif': 'image/gif',
@@ -31,19 +31,20 @@ pub const (
 		'.svg': 'image/svg+xml',
 		'.xml': 'text/xml; charset=utf-8'
 	}
-	MAX_HTTP_POST_SIZE = 1024 * 1024
-	Default_Port = 8080
+	max_http_post_size = 1024 * 1024
+	default_port = 8080
 )
 
 pub struct Context {
+mut:
 	static_files map[string]string
 	static_mime_types map[string]string
 pub:
 	req http.Request
 	conn net.Socket
-	form map[string]string
 	// TODO Response
-mut:
+pub mut:
+	form map[string]string
 	headers string // response headers
 	done bool
 }
@@ -56,7 +57,7 @@ fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	sb.write('\r\nContent-Length: ')              sb.write(res.len.str())
 	sb.write(ctx.headers)
 	sb.write('\r\n')
-	sb.write(HEADERS_CLOSE)
+	sb.write(headers_close)
 	sb.write(res)
 	ctx.conn.send_string(sb.str()) or { return false }
 	sb.free()
@@ -78,13 +79,13 @@ pub fn (mut ctx Context) json(s string) {
 pub fn (mut ctx Context) redirect(url string) {
 	if ctx.done { return }
 	ctx.done = true
-	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${HEADERS_CLOSE}') or { return }
+	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${headers_close}') or { return }
 }
 
 pub fn (mut ctx Context) not_found(s string) {
 	if ctx.done { return }
 	ctx.done = true
-	ctx.conn.send_string(HTTP_404) or { return }
+	ctx.conn.send_string(http_404) or { return }
 }
 
 pub fn (mut ctx Context) set_cookie(key, val string) {
@@ -141,15 +142,15 @@ pub fn run<T>(port int) {
 	//app.reset()
 	for {
 		conn := l.accept() or { panic('accept() failed') }
-		handle_conn(conn, mut app)
+		handle_conn<T>(conn, mut app)
 		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
 		//message := readall(conn)
 		//println(message)
 /*
-		if message.len > MAX_HTTP_POST_SIZE {
-			println('message.len = $message.len > MAX_HTTP_POST_SIZE')
-			conn.send_string(HTTP_500) or {}
+		if message.len > max_http_post_size {
+			println('message.len = $message.len > max_http_post_size')
+			conn.send_string(http_500) or {}
 			conn.close() or {}
 			continue
 		}
@@ -160,7 +161,7 @@ pub fn run<T>(port int) {
 
 /*
 		if lines.len < 2 {
-			conn.send_string(HTTP_500) or {}
+			conn.send_string(http_500) or {}
 			conn.close() or {}
 			continue
 		}
@@ -179,7 +180,7 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 	vals := first_line.split(' ')
 	if vals.len < 2 {
 		println('no vals for http')
-		conn.send_string(HTTP_500) or {}
+		conn.send_string(http_500) or {}
 		conn.close() or {}
 		return
 		//continue
@@ -272,7 +273,7 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 
 	if static_file != '' && mime_type != '' {
 		data := os.read_file(static_file) or {
-			conn.send_string(HTTP_404) or {}
+			conn.send_string(http_404) or {}
 			return
 		}
 		app.vweb.send_response_to_client(mime_type, data)
@@ -283,9 +284,12 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 	$if debug {
 		println('action=$action')
 	}
+	app.$action()
+	/*
 	app.$action() or {
-		conn.send_string(HTTP_404) or {}
+		conn.send_string(http_404) or {}
 	}
+	*/
 	conn.close() or {}
 	app.reset()
 }
@@ -374,7 +378,7 @@ fn readall(conn net.Socket) string {
 		n := C.recv(conn.sockfd, buf, 1024, 0)
 		m := conn.crecv(buf, 1024)
 		message += string( byteptr(buf), m )
-		if message.len > MAX_HTTP_POST_SIZE { break }
+		if message.len > max_http_post_size { break }
 		if n == m { break }
 	}
 	return message

@@ -6,18 +6,19 @@ import v.pref
 
 const (
 	skip_test_files     = [
-		'vlib/v/tests/enum_bitfield_test.v',
-		'vlib/v/tests/pointers_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 	]
 	skip_on_musl        = [
 		'vlib/net/http/http_test.v',
 		'vlib/net/http/cookie_test.v',
+		'vlib/net/websocket/ws_test.v'
         'vlib/sqlite/sqlite_test.v',
 		'vlib/clipboard/clipboard_test.v',
 	]
 	skip_on_linux       = []string{}
-	skip_on_non_linux   = []string{}
+	skip_on_non_linux   = [
+		'vlib/net/websocket/ws_test.v'
+	]
 	skip_on_windows     = []string{}
 	skip_on_non_windows = []string{}
 	skip_on_macos       = []string{}

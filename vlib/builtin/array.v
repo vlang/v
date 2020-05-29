@@ -148,7 +148,9 @@ pub fn (mut a array) delete(i int) {
 		}
 	}
 	size := a.element_size
-	C.memmove(byteptr(a.data) + i * size, byteptr(a.data) + (i + 1) * size, (a.len - i) * size)
+	// NB: if a is [12,34], a.len = 2, a.delete(0) 
+	// should move (2-0-1) elements = 1 element (the 34) forward
+	C.memmove(byteptr(a.data) + i * size, byteptr(a.data) + (i + 1) * size, (a.len - i - 1) * size)
 	a.len--
 }
 
@@ -358,9 +360,9 @@ pub fn (b []byte) hex() string {
 	mut dst_i := 0
 	for i in b {
 		n0 := i >> 4
-		hex[dst_i++] = if n0 < 10 { n0 + `0` } else { n0 + 87 }
+		hex[dst_i++] = if n0 < 10 { n0 + `0` } else { n0 + byte(87) }
 		n1 := i & 0xF
-		hex[dst_i++] = if n1 < 10 { n1 + `0` } else { n1 + 87 }
+		hex[dst_i++] = if n1 < 10 { n1 + `0` } else { n1 + byte(87) }
 	}
 	hex[dst_i] = `\0`
 	return tos(hex,dst_i)

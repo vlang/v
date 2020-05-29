@@ -83,20 +83,20 @@ cJSON* ${enc_fn_name}($styp val) {
 			field_type := g.typ(field.typ)
 			enc_name := js_enc_name(field_type)
 			if 'raw' in field.attrs {
-				dec.writeln(' res . $field.name = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
+				dec.writeln(' res . ${c_name(field.name)} = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
 			} else {
 				// Now generate decoders for all field types in this struct
 				// need to do it here so that these functions are generated first
 				g.gen_json_for_type(field.typ)
 				dec_name := js_dec_name(field_type)
 				if is_js_prim(field_type) {
-					dec.writeln(' res . $field.name = $dec_name (js_get(root, "$name"));')
+					dec.writeln(' res . ${c_name(field.name)} = $dec_name (js_get(root, "$name"));')
 				} else {
 					// dec.writeln(' $dec_name (js_get(root, "$name"), & (res . $field.name));')
-					dec.writeln('  res . $field.name = *($field_type*) $dec_name (js_get(root,"$name")).data;')
+					dec.writeln('  res . ${c_name(field.name)} = *($field_type*) $dec_name (js_get(root,"$name")).data;')
 				}
 			}
-			enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.$field.name));')
+			enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));')
 		}
 	}
 	// cJSON_delete

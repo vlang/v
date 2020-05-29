@@ -152,8 +152,8 @@ fn ft_load_char(face &C.FT_FaceRec, code i64) Character {
 		horizontal_bearing_px:  gg.vec2((*face).glyph.metrics.horiBearingX >> 6, (*face).glyph.metrics.horiBearingY >> 6)
 		vertical_bearing_px:    gg.vec2((*face).glyph.metrics.vertBearingX >> 6, (*face).glyph.metrics.vertBearingY >> 6) // not used for now
 
-		horizontal_advance_px:  (*face).glyph.metrics.horiAdvance >> 6
-		vertical_advance_px:    (*face).glyph.metrics.vertAdvance >> 6
+		horizontal_advance_px:  u32((*face).glyph.metrics.horiAdvance) >> 6
+		vertical_advance_px:    u32((*face).glyph.metrics.vertAdvance) >> 6
 	}
 }
 
@@ -203,7 +203,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	}
 	if !os.exists(font_path) {
 		eprintln('freetype: font "$font_path" does not exist')
-		return 0
+		return voidptr(0)
 	}
 	face := &C.FT_FaceRec{
 		glyph: 0
@@ -286,14 +286,14 @@ fn (mut ctx FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 	wx, wy := ctx.text_size(utext.s)
 	yoffset := if ctx.scale > 1 { 5 } else { -1 } // 5 hidpi, -1 lowdpi
 	// println('scale=$ctx.scale size=$cfg.size')
-	if cfg.align == gx.ALIGN_RIGHT {
+	if cfg.align == gx.align_right {
 		// width := utext.len * 7
 		width := wx
-		x -= width + 10
+		x -= f32(width + 10)
 	}
-	x *= ctx.scale
-	y *= ctx.scale
-	y += yoffset
+	x *= f32(ctx.scale)
+	y *= f32(ctx.scale)
+	y += f32(yoffset)
 	y = f32(ctx.height) - y // invert y direction
 	color := cfg.color
 	// Activate corresponding render state
@@ -374,7 +374,7 @@ fn (mut ctx FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 
 pub fn (mut ctx FreeType) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg{
-		color: gx.Black
+		color: gx.black
 		size: default_font_size
 		align: gx.align_left
 	}

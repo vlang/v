@@ -12,16 +12,28 @@ fn foo() {
 	nums_copy := nums // array assignments call .clone()
 	println(nums_copy)
 
-	//name  := 'Peter' // string literals mustn't be freed
-	//str_inter := 'hello, $name' // concatenated strings must be freed
+	name  := 'Peter' // string literals mustn't be freed
+	str_inter := 'hello, $name' // concatenated strings must be freed
+
+
 
 
 	//nums.free() // this should result in a double free and a CI error
 }
 
+fn str_replace() {
+	s := 'hello world'
+	r := s.replace('hello', 'hi')
+	cloned := s.replace('hello', 'hi').clone()
+	cloned2 := r.clone()
+	println(s)
+	println(r)
+}
+
 fn main() {
 	println('start')
 	foo()
+	//str_replace()
 	println('end')
 }
 

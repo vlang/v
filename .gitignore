@@ -18,6 +18,7 @@ a.out
 .noprefix.vrepl_temp
 
 # ignore v build files
+/vc
 /v.c
 /v.*.c
 /v.c.out
@@ -65,3 +66,4 @@ cachegrind.out.*
 .DS_Store
 ._*
 thumbs.db
+/.symlink/*

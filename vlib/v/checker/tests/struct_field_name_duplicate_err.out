@@ -1,5 +1,5 @@
 vlib/v/checker/tests/struct_field_name_duplicate_err.v:3:2: error: field name `a` duplicate
-    1 | struct A {
+    1 | struct Aaa {
     2 |     a int
     3 |     a string
       |     ~~~~~~~~

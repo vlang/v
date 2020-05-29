@@ -10,10 +10,6 @@ import v.checker
 import v.parser
 import v.depgraph
 
-const (
-	max_nr_errors = 100
-)
-
 pub struct Builder {
 pub:
 	table               &table.Table
@@ -26,6 +22,7 @@ mut:
 	global_scope        &ast.Scope
 	out_name_c          string
 	out_name_js         string
+	max_nr_errors       int = 100
 pub mut:
 	module_search_paths []string
 }
@@ -48,7 +45,13 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 			parent: 0
 		}
 		compiled_dir: compiled_dir
+		max_nr_errors: if pref.error_limit > 0 {
+			pref.error_limit
+		} else {
+			100
+		}
 	}
+	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
 }
 
 // parse all deps from already parsed files
@@ -194,7 +197,7 @@ fn module_path(mod string) string {
 
 pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
-	vmod_file_location := vmod.mod_file_cacher.get(fpath)
+	vmod_file_location := vmod.mod_file_cacher.get_by_file(fpath)
 	mod_path := module_path(mod)
 	mut module_lookup_paths := []string{}
 	if vmod_file_location.vmod_file.len != 0 && vmod_file_location.vmod_folder !in b.module_search_paths {
@@ -233,7 +236,7 @@ fn (b &Builder) print_warnings_and_errors() {
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			// eprintln('')
-			if i > max_nr_errors {
+			if i > b.max_nr_errors {
 				return
 			}
 		}
@@ -248,7 +251,7 @@ fn (b &Builder) print_warnings_and_errors() {
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			// eprintln('')
-			if i > max_nr_errors {
+			if i > b.max_nr_errors {
 				return
 			}
 		}
@@ -264,7 +267,8 @@ fn (b &Builder) print_warnings_and_errors() {
 					if stmt is ast.FnDecl {
 						f := stmt as ast.FnDecl
 						if f.name == fn_name {
-							println(file.path + ':' + f.pos.line_nr.str())
+							fline := f.pos.line_nr
+							println('${file.path}:${fline}:')
 						}
 					}
 				}

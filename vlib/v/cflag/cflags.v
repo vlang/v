@@ -32,15 +32,15 @@ pub fn (cf &CFlag) format() string {
 }
 
 // TODO: implement msvc specific c_options_before_target and c_options_after_target ...
-fn (cflags []CFlag) c_options_before_target_msvc() string {
+pub fn (cflags []CFlag) c_options_before_target_msvc() string {
 	return ''
 }
 
-fn (cflags []CFlag) c_options_after_target_msvc() string {
+pub fn (cflags []CFlag) c_options_after_target_msvc() string {
 	return ''
 }
 
-fn (cflags []CFlag) c_options_before_target() string {
+pub fn (cflags []CFlag) c_options_before_target() string {
 	// -I flags, optimization flags and so on
 	mut args := []string{}
 	for flag in cflags {
@@ -51,7 +51,7 @@ fn (cflags []CFlag) c_options_before_target() string {
 	return args.join(' ')
 }
 
-fn (cflags []CFlag) c_options_after_target() string {
+pub fn (cflags []CFlag) c_options_after_target() string {
 	// -l flags (libs)
 	mut args := []string{}
 	for flag in cflags {
@@ -62,7 +62,7 @@ fn (cflags []CFlag) c_options_after_target() string {
 	return args.join(' ')
 }
 
-fn (cflags []CFlag) c_options_without_object_files() string {
+pub fn (cflags []CFlag) c_options_without_object_files() string {
 	mut args := []string{}
 	for flag in cflags {
 		if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {
@@ -73,7 +73,7 @@ fn (cflags []CFlag) c_options_without_object_files() string {
 	return args.join(' ')
 }
 
-fn (cflags []CFlag) c_options_only_object_files() string {
+pub fn (cflags []CFlag) c_options_only_object_files() string {
 	mut args := []string{}
 	for flag in cflags {
 		if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {

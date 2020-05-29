@@ -5,12 +5,12 @@ fn simple<T>(p T) T {
 	return p
 }
 
-fn plus<T>(a, b T) T {
+fn plus<T>(xxx, b T) T {
 	// x := a
 	// y := b
 	// ww := ww
 	// q := xx + 1
-	return a + b
+	return xxx + b
 }
 
 fn test_generic_fn() {
@@ -19,21 +19,57 @@ fn test_generic_fn() {
 	assert simple<string>('g') == 'g'
 	assert simple<string>('g') + 'h' == 'gh'
 	a := plus<int>(2, 3)
+	println(a)
 	assert a == 5
 	assert plus<int>(10, 1) == 11
-	// plus<string>('a', 'b')
-	println(a)
+	assert plus<string>('a', 'b') == 'ab'
+}
+
+fn sum<T>(l []T) T {
+	mut r := T(0)
+	for e in l {
+		r += e
+	}
+	return r
+}
+
+fn test_foo() {
+	b := [1, 2, 3]
+	assert sum<int>(b) == 6
+}
+
+fn create<T>() {
+	a := T{}
+	mut xx := T{}
+	xx.foo = 'foo'
+	println(xx.foo)
+	assert xx.foo == 'foo'
+	xx.init()
+}
+
+struct User {
+mut:
+	foo string
+}
+
+struct City {
+mut:
+	foo string
+}
+
+fn (u User) init() {
+}
+
+fn (c City) init() {
+}
+
+fn test_create() {
+	create<User>()
+	create<City>()
+	// create<User>()
 }
 
 /*
-fn sum<T>(l []T) T {
-    mut r := T(0)
-    for e in l {
-        r += e
-    }
-    return r
-}
-
 fn map_f<T,U>(l []T, f fn(T)U) []U {
     mut r := []U{}
     for e in l {
@@ -148,5 +184,32 @@ fn test_generic_struct() {
 	b.model.name = 'joe'
 	assert a.model.name == 'joe'
 	assert b.model.name == 'joe'
+}
+
+//
+
+struct Abc{ x int y int z int }
+
+fn p<T>(args ...T) {
+	size:=sizeof(T)
+	print('p called with size: ${size:3d} | ')
+	for _,x in args {
+		print(x)
+		print(' ')
+	}
+	println('')
+	assert true
+}
+
+fn test_generic_fn_with_variadics(){
+	s:='abc'
+	i:=1
+	abc:=Abc{1,2,3}
+	// these calls should all compile, and print the arguments,
+	// even though the arguments are all a different type and arity:
+	p(s)
+	p(i)
+	p(abc)
+	p('Good', 'morning', 'world')
 }
 */

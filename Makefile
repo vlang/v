@@ -48,7 +48,7 @@ ifdef WIN32
 	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o v.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
 	./v.exe self
 else
-	$(CC) $(CFLAGS) -g -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm
+	$(CC) $(CFLAGS) -g -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm -lpthread
 ifdef ANDROID
 	chmod 755 v
 endif
@@ -79,17 +79,23 @@ fresh_vc:
 
 latest_tcc: $(TMPTCC)/.git/config
 ifndef ANDROID
+ifndef MAC
 	cd $(TMPTCC) && $(GITCLEANPULL)
+endif
 endif
 
 fresh_tcc:
 ifndef ANDROID
+ifndef MAC
 	rm -rf $(TMPTCC)
 	$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)
 endif
+endif
 
 $(TMPTCC)/.git/config:
+ifndef MAC
 	$(MAKE) fresh_tcc
+endif
 
 $(TMPVC)/.git/config:
 	$(MAKE) fresh_vc

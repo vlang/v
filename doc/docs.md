@@ -269,6 +269,8 @@ rune // represents a Unicode code point
 
 f32 f64
 
+any_int, any_float // internal intermediate types of number literals
+
 byteptr // these two are mostly used for C interop
 voidptr
 
@@ -276,6 +278,27 @@ any // similar to C's void* and Go's interface{}
 ```
 
 Please note that unlike C and Go, `int` is always a 32 bit integer.
+
+There is an exceptions to the rule that all operators
+in V must have values of the same type on both sides. A small primitive type
+on one side can be automatically promoted if it fits
+completely into the data range of the type on the other side, i.e. when
+the promotion does not result in any data loss.
+These are the allowed possibilities:
+
+```
+   i8 → i16 → int → i64
+            ↘     ↘
+              f32 → f64
+            ↗     ↗
+ byte → u16 → u32 → u64 ⬎
+      ↘     ↘     ↘      ptr
+   i8 → i16 → int → i64 ⬏
+```
+An `int` value for example can be automatically promoted to `f64`
+or `i64` but not to `f32` or `u32`. (`f32` would mean precission
+loss for large values and `u32` would mean loss of the sign for
+negative values).
 
 ## Strings
 
@@ -1561,7 +1584,7 @@ and tries to compile it to a .o file, then will use that.
 
 This allows you to have C code, that is contained in a V module, so that its distribution is easier.
 You can see a complete example for using C code in a V wrapper module here:
-[minimal V project, that has a module, which contains C code](https://github.com/vlang/v/tree/master/vlib/compiler/tests/project_with_c_code)
+[minimal V project, that has a module, which contains C code](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code)
 
 You can use `-cflags` to pass custom flags to the backend C compiler. You can also use `-cc` to change the default C backend compiler.
 For example: `-cc gcc-9 -cflags -fsanitize=thread`.
@@ -1621,6 +1644,32 @@ $if debug {
 
 If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign. Right now it can only be used to detect
 an OS or a `-debug` compilation option.
+
+## Compile time pseudo variables
+
+V also gives your code access to a set of pseudo string variables, that are substituted at compile time:
+
+- `@FN` => replaced with the name of the current V function
+- `@MOD` => replaced with the name of the current V module
+- `@STRUCT` => replaced with the name of the current V struct
+- `@FILE` => replaced with the path of the V source file
+- `@LINE` => replaced with the V line number where it appears (as a string).
+- `@COLUMN` => replaced with the column where it appears (as a string).
+- `@VEXE` => replaced with the path to the V compiler
+- `@VHASH`  => replaced with the shortened commit hash of the V compiler (as a string).
+- `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
+
+That allows you to do the following example, useful while debugging/logging/tracing your code:
+```v
+eprintln( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
+```
+
+Another example, is if you want to embed the version/name from v.mod *inside* your executable:
+```v
+import v.vmod
+vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
+eprintln('$vm.name $vm.version\n $vm.description')
+```
 
 ## Reflection via codegen
 

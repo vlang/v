@@ -94,7 +94,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 }
 
 //
-fn set_vroot_folder(vroot_path string) {
+pub fn set_vroot_folder(vroot_path string) {
 	// Preparation for the compiler module:
 	// VEXE env variable is needed so that compiler.vexe_path()
 	// can return it later to whoever needs it:
@@ -102,11 +102,11 @@ fn set_vroot_folder(vroot_path string) {
 	os.setenv('VEXE', os.real_path(os.join_path(vroot_path, vname)), true)
 }
 
-pub fn launch_tool(is_verbose bool, tool_name string) {
+pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	set_vroot_folder(vroot)
-	tool_args := args_quote_paths_with_spaces(os.args[1..])
+	tool_args := args_quote_paths_with_spaces(args)
 	tool_exe := path_of_executable(os.real_path('$vroot/cmd/tools/$tool_name'))
 	tool_source := os.real_path('$vroot/cmd/tools/${tool_name}.v')
 	tool_command := '"$tool_exe" $tool_args'
@@ -205,7 +205,7 @@ pub fn read_file(file_path string) ?string {
 }
 
 [inline]
-fn imin(a, b int) int {
+pub fn imin(a, b int) int {
 	return if a < b {
 		a
 	} else {
@@ -214,7 +214,7 @@ fn imin(a, b int) int {
 }
 
 [inline]
-fn imax(a, b int) int {
+pub fn imax(a, b int) int {
 	return if a > b {
 		a
 	} else {

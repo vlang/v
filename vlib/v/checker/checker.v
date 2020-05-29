@@ -24,14 +24,13 @@ pub mut:
 	warnings         []errors.Warning
 	error_lines      []int // to avoid printing multiple errors for the same line
 	expected_type    table.Type
-	fn_return_type   table.Type // current function's return type
+	cur_fn           &ast.FnDecl // current function
 	const_decl       string
 	const_deps       []string
 	const_names      []string
 	pref             &pref.Preferences // Preferences shared from V struct
 	in_for_count     int // if checker is currently in an for loop
 	// checked_ident  string // to avoid infinit checker loops
-	var_decl_name    string
 	returns          bool
 	scope_returns    bool
 	mod              string // current module name
@@ -44,6 +43,7 @@ pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 	return Checker{
 		table: table
 		pref: pref
+		cur_fn: 0
 	}
 }
 
@@ -135,7 +135,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 						c.error('function `main` cannot return values', it.pos)
 					}
 				} else {
-					if it.is_pub {
+					if it.is_pub && !it.is_method {
 						c.warn('function `$it.name` $no_pub_in_main_warning', it.pos)
 					}
 				}
@@ -264,6 +264,13 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
 			c.error('unknown type `$sym.name`', field.pos)
 		}
+		if sym.kind == .array {
+			array_info := sym.array_info()
+			elem_sym := c.table.get_type_symbol(array_info.elem_type)
+			if elem_sym.kind == .placeholder {
+				c.error('unknown type `$elem_sym.name`', field.pos)
+			}
+		}
 		if sym.kind == .struct_ {
 			info := sym.info as table.Struct
 			if info.is_ref_only && !field.typ.is_ptr() {
@@ -273,7 +280,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		if field.has_default_expr {
 			c.expected_type = field.typ
 			field_expr_type := c.expr(field.default_expr)
-			if !c.table.check(field_expr_type, field.typ) {
+			if !c.check_types(field_expr_type, field.typ) {
 				field_expr_type_sym := c.table.get_type_symbol(field_expr_type)
 				field_type_sym := c.table.get_type_symbol(field.typ)
 				c.error('default expression for field `${field.name}` ' + 'has type `${field_expr_type_sym.name}`, but should be `${field_type_sym.name}`',
@@ -362,11 +369,12 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
 				field_type_sym := c.table.get_type_symbol(info_field.typ)
-				if !c.table.check(expr_type, info_field.typ) {
+				if !c.assign_check(expr_type, info_field.typ) {
 					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
-				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_number() {
+				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer() &&
+					!expr_type.is_number() {
 					c.error('ref', field.pos)
 				}
 				struct_init.fields[i].typ = expr_type
@@ -395,13 +403,23 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		c.expected_type = former_expected_type
 	}
 	c.expected_type = table.void_type
-	left_type := c.expr(infix_expr.left)
+	mut left_type := c.expr(infix_expr.left)
+	if false && left_type == table.t_type {
+		left_type = c.cur_generic_type
+	}
 	infix_expr.left_type = left_type
 	c.expected_type = left_type
-	right_type := c.expr(infix_expr.right)
+	mut right_type := c.expr(infix_expr.right)
+	if false && right_type == table.t_type {
+		right_type = c.cur_generic_type
+	}
 	infix_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
+	left_default := c.table.get_type_symbol(c.table.mktyp(left_type))
+	left_pos := infix_expr.left.position()
+	right_pos := infix_expr.right.position()
+	mut return_type := left_type
 	// Single side check
 	// Place these branches according to ops' usage frequency to accelerate.
 	// TODO: First branch includes ops where single side check is not needed, or needed but hasn't been implemented.
@@ -411,22 +429,22 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.key_in, .not_in {
 			match right.kind {
 				.array {
-					right_sym := c.table.get_type_symbol(right.array_info().elem_type)
-					if left.kind != right_sym.kind {
-						c.error('the data type on the left of `$infix_expr.op.str()` does not match the array item type',
+					right_sym := c.table.get_type_symbol(c.table.mktyp(right.array_info().elem_type))
+					if left_default.kind != right_sym.kind {
+						c.error('the data type on the left of `$infix_expr.op.str()` (`$left.name`) does not match the array item type (`$right_sym.name`)',
 							infix_expr.pos)
 					}
 				}
 				.map {
-					key_sym := c.table.get_type_symbol(right.map_info().key_type)
-					if left.kind != key_sym.kind {
-						c.error('the data type on the left of `$infix_expr.op.str()` does not match the map key type',
+					key_sym := c.table.get_type_symbol(c.table.mktyp(right.map_info().key_type))
+					if left_default.kind != key_sym.kind {
+						c.error('the data type on the left of `$infix_expr.op.str()` (`$left.name`) does not match the map key type `$key_sym.name`',
 							infix_expr.pos)
 					}
 				}
 				.string {
 					if left.kind != .string {
-						c.error('the data type on the left of `$infix_expr.op.str()` must be a string',
+						c.error('the data type on the left of `$infix_expr.op.str()` must be a string (is `$left.name`)',
 							infix_expr.pos)
 					}
 				}
@@ -437,15 +455,44 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			}
 			return table.bool_type
 		}
-		.plus, .minus, .mul, .div {
-			if infix_expr.op == .div && (infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() ==
-				'0' || infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0) {
-				c.error('division by zero', infix_expr.right.position())
-			}
-			if left.kind in [.array, .array_fixed, .map, .struct_] && !left.has_method(infix_expr.op.str()) {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-			} else if right.kind in [.array, .array_fixed, .map, .struct_] && !right.has_method(infix_expr.op.str()) {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
+		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe { // binary operators that expect matching types
+			if left.kind in [.array, .array_fixed, .map, .struct_] {
+				if left.has_method(infix_expr.op.str()) {
+					return_type = left_type
+				} else {
+					c.error('mismatched types `$left.name` and `$right.name`', left_pos)
+				}
+			} else if right.kind in [.array, .array_fixed, .map, .struct_] {
+				if right.has_method(infix_expr.op.str()) {
+					return_type = right_type
+				} else {
+					c.error('mismatched types `$left.name` and `$right.name`', right_pos)
+				}
+			} else {
+				promoted_type := c.promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
+				if promoted_type.idx() == table.void_type_idx {
+					c.error('mismatched types `$left.name` and `$right.name`', infix_expr.pos)
+				} else if promoted_type.is_float() {
+					if infix_expr.op in [.mod, .xor, .amp, .pipe] {
+						side := if left_type == promoted_type { 'left' } else { 'right' }
+						pos := if left_type == promoted_type { left_pos } else { right_pos }
+						name := if left_type == promoted_type { left.name } else { right.name }
+						if infix_expr.op == .mod {
+							c.error('float modulo not allowed, use math.fmod() instead', pos)
+						} else {
+							c.error('$side type of `${infix_expr.op.str()}` cannot be non-integer type $name',
+								pos)
+						}
+					}
+				}
+				if infix_expr.op in [.div, .mod] {
+					if infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() ==
+						'0' || infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0 {
+						oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
+						c.error('$oper by zero', right_pos)
+					}
+				}
+				return_type = promoted_type
 			}
 		}
 		.left_shift {
@@ -457,31 +504,31 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				if left_value_sym.kind == .interface_ {
 					if right.kind != .array {
 						// []Animal << Cat
-						c.type_implements(right_type, left_value_type, infix_expr.right.position())
+						c.type_implements(right_type, left_value_type, right_pos)
 					} else {
 						// []Animal << Cat
 						c.type_implements(c.table.value_type(right_type), left_value_type,
-							infix_expr.right.position())
+							right_pos)
 					}
 					return table.void_type
 				}
 				// the expressions have different types (array_x and x)
-				if c.table.check(right_type, left_value_type) { // , right_type) {
+				if c.check_types(right_type, left_value_type) { // , right_type) {
 					// []T << T
 					return table.void_type
 				}
-				if right.kind == .array && c.table.check(left_value_type, c.table.value_type(right_type)) {
+				if right.kind == .array && c.check_types(left_value_type, c.table.value_type(right_type)) {
 					// []T << []T
 					return table.void_type
 				}
 				s := left.name.replace('array_', '[]')
-				c.error('cannot append `$right.name` to `$s`', infix_expr.right.position())
+				c.error('cannot append `$right.name` to `$s`', right_pos)
 				return table.void_type
 			} else if !left.is_int() {
-				c.error('cannot shift type $right.name into non-integer type $left.name', infix_expr.left.position())
+				c.error('cannot shift type $right.name into non-integer type $left.name', left_pos)
 				return table.void_type
 			} else if !right.is_int() {
-				c.error('cannot shift non-integer type $right.name into type $left.name', infix_expr.right.position())
+				c.error('cannot shift non-integer type $right.name into type $left.name', right_pos)
 				return table.void_type
 			}
 		}
@@ -491,34 +538,10 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			if typ_sym.kind == .placeholder {
 				c.error('is: type `${typ_sym.name}` does not exist', type_expr.pos)
 			}
+			if left.kind != .interface_ && left.kind != .sum_type {
+				c.error('`is` can only be used with interfaces and sum types', type_expr.pos)
+			}
 			return table.bool_type
-		}
-		.amp, .pipe, .xor {
-			if !left.is_int() {
-				c.error('left type of `${infix_expr.op.str()}` cannot be non-integer type $left.name',
-					infix_expr.left.position())
-			} else if !right.is_int() {
-				c.error('right type of `${infix_expr.op.str()}` cannot be non-integer type $right.name',
-					infix_expr.right.position())
-			}
-		}
-		.mod {
-			if left.is_int() && !right.is_int() {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
-			} else if !left.is_int() && right.is_int() {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-			} else if left.kind == .f32 && right.kind == .f32 || left.kind == .f64 && right.kind ==
-				.f64 {
-				c.error('float modulo not allowed, use math.fmod() instead', infix_expr.left.position())
-			} else if left.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
-				!left.has_method(infix_expr.op.str()) {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.left.position())
-			} else if right.kind in [.f32, .f64, .string, .array, .array_fixed, .map, .struct_] &&
-				!right.has_method(infix_expr.op.str()) {
-				c.error('mismatched types `$left.name` and `$right.name`', infix_expr.right.position())
-			} else if infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() == '0' {
-				c.error('modulo by zero', infix_expr.right.position())
-			}
 		}
 		else {}
 	}
@@ -533,7 +556,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			infix_expr.pos)
 	}
 	// Dual sides check (compatibility check)
-	if !c.table.check(right_type, left_type) {
+	if !c.symmetric_check(right_type, left_type) {
 		// for type-unresolved consts
 		if left_type == table.void_type || right_type == table.void_type {
 			return table.void_type
@@ -544,7 +567,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	return if infix_expr.op.is_relational() {
 		table.bool_type
 	} else {
-		left_type
+		return_type
 	}
 }
 
@@ -576,7 +599,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 				c.error('0 type in SelectorExpr', it.pos)
 				return
 			}
-			typ_sym := c.table.get_type_symbol(it.expr_type)
+			typ_sym := c.table.get_type_symbol(c.unwrap_generic(it.expr_type))
 			match typ_sym.kind {
 				.struct_ {
 					struct_info := typ_sym.info as table.Struct
@@ -613,11 +636,11 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 
 fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 	c.expected_type = table.void_type
-	left_type := c.expr(assign_expr.left)
+	left_type := c.unwrap_generic(c.expr(assign_expr.left))
 	c.expected_type = left_type
 	assign_expr.left_type = left_type
 	// println('setting exp type to $c.expected_type $t.name')
-	right_type := c.expr(assign_expr.val)
+	right_type := c.check_expr_opt_call(assign_expr.val, c.unwrap_generic(c.expr(assign_expr.val)))
 	assign_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
@@ -672,13 +695,12 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 		else {}
 	}
 	// Dual sides check (compatibility check)
-	if !c.table.check(right_type, left_type) {
+	if !c.assign_check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
 		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name`',
 			assign_expr.val.position())
 	}
-	c.check_expr_opt_call(assign_expr.val, right_type, true)
 }
 
 pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
@@ -691,8 +713,9 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 
 pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	left_type := c.expr(call_expr.left)
+	is_generic := left_type == table.t_type
 	call_expr.left_type = left_type
-	left_type_sym := c.table.get_type_symbol(left_type)
+	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
@@ -718,13 +741,17 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				table.FnType { ret_type = it.func.return_type }
 				else { ret_type = arg_type }
 			}
-			call_expr.return_type = c.table.find_or_register_array(ret_type, 1)
+			call_expr.return_type = c.table.find_or_register_array(ret_type, 1, c.mod)
 		} else if method_name == 'clone' {
 			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
 			call_expr.receiver_type = left_type.to_ptr()
 			// call_expr.return_type = call_expr.receiver_type
 		}
+		return call_expr.return_type
+	} else if left_type_sym.kind == .map && method_name == 'clone' {
+		call_expr.return_type = left_type
+		call_expr.receiver_type = left_type.to_ptr()
 		return call_expr.return_type
 	} else if left_type_sym.kind == .array && method_name in ['first', 'last'] {
 		info := left_type_sym.info as table.Array
@@ -774,7 +801,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
 				continue
 			}
-			if !c.table.check(got_arg_typ, exp_arg_typ) {
+			if !c.check_types(got_arg_typ, exp_arg_typ) {
 				got_arg_sym := c.table.get_type_symbol(got_arg_typ)
 				// str method, allow type with str method if fn arg is string
 				if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
@@ -790,7 +817,12 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				call_expr.expected_arg_types << method.args[i].typ
 			}
 		}
-		call_expr.receiver_type = method.args[0].typ
+		if is_generic {
+			// We need the receiver to be T in cgen.
+			call_expr.receiver_type = table.t_type
+		} else {
+			call_expr.receiver_type = method.args[0].typ
+		}
 		call_expr.return_type = method.return_type
 		return method.return_type
 	}
@@ -830,6 +862,16 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if fn_name == 'typeof' {
 		// TODO: impl typeof properly (probably not going to be a fn call)
 		return table.string_type
+	}
+	if call_expr.generic_type == table.t_type {
+		if c.mod != '' && c.mod != 'main' {
+			// Need to prepend the module when adding a generic type to a function
+			// `fn_gen_types['mymod.myfn'] == ['string', 'int']`
+			c.table.register_fn_gen_type(c.mod + '.' + fn_name, c.cur_generic_type)
+		} else {
+			c.table.register_fn_gen_type(fn_name, c.cur_generic_type)
+		}
+		// call_expr.generic_type = c.unwrap_generic(call_expr.generic_type)
 	}
 	// if c.fileis('json_test.v') {
 	// println(fn_name)
@@ -898,9 +940,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				call_expr.pos)
 		}
 	}
-	if !f.is_pub && f.language == .v && !c.is_builtin_mod && !c.pref.is_test && f.mod != c.mod &&
-		f.name != '' && f.mod != '' {
-		c.warn('function `$f.name` is private. curmod=$c.mod fmod=$f.mod', call_expr.pos)
+	if !f.is_pub && f.language == .v && f.name.len > 0 && f.mod.len > 0 && f.mod != c.mod {
+		c.error('function `$f.name` is private. curmod=$c.mod fmod=$f.mod', call_expr.pos)
 	}
 	call_expr.return_type = f.return_type
 	if f.return_type == table.void_type && f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {
@@ -956,6 +997,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		if f.is_variadic && typ.flag_is(.variadic) && call_expr.args.len - 1 > i {
 			c.error('when forwarding a varg variable, it must be the final argument', call_expr.pos)
 		}
+		if arg.is_mut && !call_arg.is_mut {
+			c.error('`$arg.name` is a mutable argument, you need to provide `mut`: `${call_expr.name}(mut ...)`',
+				call_arg.expr.position())
+		}
 		// Handle expected interface
 		if arg_typ_sym.kind == .interface_ {
 			c.type_implements(typ, arg.typ, call_arg.expr.position())
@@ -967,7 +1012,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			return true
 		}
 		*/
-		if !c.table.check(typ, arg.typ) {
+		if !c.check_types(typ, arg.typ) {
 			// str method, allow type with str method if fn arg is string
 			if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 				continue
@@ -1014,46 +1059,62 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 	}
 }
 
-pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, xtype table.Type, is_return_used bool) {
+// return the actual type of the expression, once the optional is handled
+pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) table.Type {
 	if expr is ast.CallExpr {
 		call_expr := expr as ast.CallExpr
 		if call_expr.return_type.flag_is(.optional) {
-			c.check_or_block(call_expr, xtype, is_return_used)
-		} else if call_expr.or_block.is_used {
+			if call_expr.or_block.kind == .absent {
+				if ret_type != table.void_type {
+					c.error('${call_expr.name}() returns an option, but you missed to add an `or {}` block to it',
+						call_expr.pos)
+				}
+			} else {
+				c.check_or_expr(call_expr.or_block, ret_type)
+			}
+			// remove optional flag
+			return ret_type.set_flag(.unset)
+		} else if call_expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `$call_expr.name` does not return an optional',
+				call_expr.pos)
+		} else if call_expr.or_block.kind == .propagate {
+			c.error('unexpected `?`, the function `$call_expr.name`, does not return an optional',
 				call_expr.pos)
 		}
 	}
+	return ret_type
 }
 
-pub fn (mut c Checker) check_or_block(mut call_expr ast.CallExpr, ret_type table.Type, is_ret_used bool) {
-	if !call_expr.or_block.is_used {
-		c.error('${call_expr.name}() returns an option, but you missed to add an `or {}` block to it',
-			call_expr.pos)
+pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type) {
+	if or_expr.kind == .propagate {
+		if !c.cur_fn.return_type.flag_is(.optional) && c.cur_fn.name != 'main' {
+			c.error('to propagate the optional call, `${c.cur_fn.name}` must itself return an optional',
+				or_expr.pos)
+		}
 		return
 	}
-	stmts_len := call_expr.or_block.stmts.len
+	stmts_len := or_expr.stmts.len
 	if stmts_len == 0 {
-		if is_ret_used {
+		if ret_type != table.void_type {
 			// x := f() or {}
-			c.error('assignment requires a non empty `or {}` block', call_expr.pos)
+			c.error('assignment requires a non empty `or {}` block', or_expr.pos)
 			return
 		}
 		// allow `f() or {}`
 		return
 	}
-	last_stmt := call_expr.or_block.stmts[stmts_len - 1]
-	if is_ret_used {
-		if !c.is_last_or_block_stmt_valid(last_stmt) {
+	last_stmt := or_expr.stmts[stmts_len - 1]
+	if ret_type != table.void_type {
+		if !(last_stmt is ast.Return || last_stmt is ast.BranchStmt || last_stmt is ast.ExprStmt) {
 			expected_type_name := c.table.get_type_symbol(ret_type).name
 			c.error('last statement in the `or {}` block should return `$expected_type_name`',
-				call_expr.pos)
+				or_expr.pos)
 			return
 		}
 		match last_stmt {
 			ast.ExprStmt {
 				it.typ = c.expr(it.expr)
-				type_fits := c.table.check(it.typ, ret_type)
+				type_fits := c.check_types(it.typ, ret_type)
 				is_panic_or_exit := is_expr_panic_or_exit(it.expr)
 				if type_fits || is_panic_or_exit {
 					return
@@ -1084,16 +1145,6 @@ fn is_expr_panic_or_exit(expr ast.Expr) bool {
 	}
 }
 
-// TODO: merge to check_or_block when v can handle it
-pub fn (mut c Checker) is_last_or_block_stmt_valid(stmt ast.Stmt) bool {
-	return match stmt {
-		ast.Return { true }
-		ast.BranchStmt { true }
-		ast.ExprStmt { true }
-		else { false }
-	}
-}
-
 pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.Type {
 	typ := c.expr(selector_expr.expr)
 	if typ == table.void_type_idx {
@@ -1102,7 +1153,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	}
 	selector_expr.expr_type = typ
 	// println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
-	typ_sym := c.table.get_type_symbol(typ)
+	sym := c.table.get_type_symbol(c.unwrap_generic(typ))
 	field_name := selector_expr.field_name
 	// variadic
 	if typ.flag_is(.variadic) {
@@ -1110,35 +1161,35 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 			return table.int_type
 		}
 	}
-	if field := c.table.struct_find_field(typ_sym, field_name) {
-		if typ_sym.mod != c.mod && !field.is_pub {
-			c.error('field `${typ_sym.name}.$field_name` is not public', selector_expr.pos)
+	if field := c.table.struct_find_field(sym, field_name) {
+		if sym.mod != c.mod && !field.is_pub {
+			c.error('field `${sym.name}.$field_name` is not public', selector_expr.pos)
 		}
 		return field.typ
 	}
-	if typ_sym.kind != .struct_ {
-		c.error('`$typ_sym.name` is not a struct', selector_expr.pos)
+	if sym.kind != .struct_ {
+		c.error('`$sym.name` is not a struct', selector_expr.pos)
 	} else {
-		c.error('unknown field `${typ_sym.name}.$field_name`', selector_expr.pos)
+		c.error('type `$sym.name` has no field or method `$field_name`', selector_expr.pos)
 	}
 	return table.void_type
 }
 
 // TODO: non deferred
 pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
-	c.expected_type = c.fn_return_type
-	if return_stmt.exprs.len > 0 && c.fn_return_type == table.void_type {
+	c.expected_type = c.cur_fn.return_type
+	if return_stmt.exprs.len > 0 && c.expected_type == table.void_type {
 		c.error('too many arguments to return, current function does not return anything',
 			return_stmt.pos)
 		return
-	} else if return_stmt.exprs.len == 0 && c.fn_return_type != table.void_type {
+	} else if return_stmt.exprs.len == 0 && c.expected_type != table.void_type {
 		c.error('too few arguments to return', return_stmt.pos)
 		return
 	}
 	if return_stmt.exprs.len == 0 {
 		return
 	}
-	expected_type := c.fn_return_type
+	expected_type := c.expected_type
 	expected_type_sym := c.table.get_type_symbol(expected_type)
 	exp_is_optional := expected_type.flag_is(.optional)
 	mut expected_types := [expected_type]
@@ -1149,7 +1200,15 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	mut got_types := []table.Type{}
 	for expr in return_stmt.exprs {
 		typ := c.expr(expr)
-		got_types << typ
+		// Unpack multi return types
+		sym := c.table.get_type_symbol(typ)
+		if sym.kind == .multi_return {
+			for t in sym.mr_info().types {
+				got_types << t
+			}
+		} else {
+			got_types << typ
+		}
 	}
 	return_stmt.types = got_types
 	// allow `none` & `error (Option)` return types for function that returns optional
@@ -1157,17 +1216,22 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
-		// c.error('wrong number of return arguments:\n\texpected: $expected_table.str()\n\tgot: $got_types.str()', return_stmt.pos)
 		c.error('wrong number of return arguments', return_stmt.pos)
+		return
 	}
 	for i, exp_type in expected_types {
 		got_typ := got_types[i]
-		ok := if exp_type == table.t_type { c.table.check(got_typ, c.cur_generic_type) } else { c.table.check(got_typ,
+		is_generic := exp_type == table.t_type
+		ok := if is_generic { c.check_types(got_typ, c.cur_generic_type) || got_typ == exp_type } else { c.check_types(got_typ,
 				exp_type) }
+		// ok := c.check_types(got_typ, exp_type)
 		if !ok { // !c.table.check(got_typ, exp_typ) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
-			exp_typ_sym := c.table.get_type_symbol(exp_type)
+			mut exp_typ_sym := c.table.get_type_symbol(exp_type)
 			pos := return_stmt.exprs[i].position()
+			if is_generic {
+				exp_typ_sym = c.table.get_type_symbol(c.cur_generic_type)
+			}
 			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument',
 				pos)
 		}
@@ -1216,12 +1280,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right_type0 := c.expr(assign_stmt.right[0])
 		assign_stmt.right_types = [right_type0]
 		right_type_sym0 := c.table.get_type_symbol(right_type0)
-		right_len = if right_type0 == table.void_type {
-			0
-		} else {
-			right_len
-		}
-		if right_type_sym0.kind == .multi_return {
+		if right_type0 == table.void_type {
+			right_len = 0
+		} else if right_type_sym0.kind == .multi_return {
 			assign_stmt.right_types = right_type_sym0.mr_info().types
 			right_len = assign_stmt.right_types.len
 		}
@@ -1246,23 +1307,26 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	for i, _ in assign_stmt.left {
 		mut ident := assign_stmt.left[i]
 		if assign_stmt.right_types.len < right_len {
-			assign_stmt.right_types << c.expr(assign_stmt.right[i])
+			right_type := c.expr(assign_stmt.right[i])
+			assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
+		} else if i < assign_stmt.right.len { // only once for multi return
+			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i])
 		}
-		val_type := assign_stmt.right_types[i]
+		mut val_type := assign_stmt.right_types[i]
 		// check variable name for beginning with capital letter 'Abc'
 		is_decl := assign_stmt.op == .decl_assign
 		if is_decl && ident.name != '_' {
 			c.check_valid_snake_case(ident.name, 'variable name', ident.pos)
 		}
 		if assign_stmt.op == .decl_assign {
-			c.var_decl_name = ident.name
+			val_type = c.table.mktyp(val_type)
 		}
 		mut ident_var_info := ident.var_info()
-		// c.assigned_var_name = ident.name
 		if assign_stmt.op == .assign {
+			c.fail_if_immutable(ident)
 			var_type := c.expr(ident)
 			assign_stmt.left_types << var_type
-			if !c.table.check(val_type, var_type) {
+			if !c.check_types(val_type, var_type) {
 				val_type_sym := c.table.get_type_symbol(val_type)
 				var_type_sym := c.table.get_type_symbol(var_type)
 				c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`',
@@ -1273,13 +1337,15 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		ident.info = ident_var_info
 		assign_stmt.left[i] = ident
 		scope.update_var_type(ident.name, val_type)
-		if i < assign_stmt.right.len { // only once for multi return
-			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i], true)
-		}
 	}
-	c.var_decl_name = ''
 	c.expected_type = table.void_type
-	// c.assigned_var_name = ''
+}
+
+fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Position) {
+	sym := c.table.get_type_symbol(c.expr(expr))
+	if sym.kind !in [.int, .any_int] {
+		c.error('array $para needs to be an int', pos)
+	}
 }
 
 pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
@@ -1289,30 +1355,20 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	if array_init.typ != table.void_type {
 		if array_init.exprs.len == 0 {
 			if array_init.has_cap {
-				if c.expr(array_init.cap_expr) != table.int_type {
-					c.error('array cap needs to be an int', array_init.pos)
-				}
+				c.check_array_init_para_type('cap', array_init.cap_expr, array_init.pos)
 			}
 			if array_init.has_len {
-				if c.expr(array_init.len_expr) != table.int_type {
-					c.error('array len needs to be an int', array_init.pos)
-				}
+				c.check_array_init_para_type('len', array_init.len_expr, array_init.pos)
 			}
+		}
+		sym := c.table.get_type_symbol(array_init.elem_type)
+		if sym.kind == .placeholder {
+			c.error('unknown type `$sym.name`', array_init.elem_type_pos)
 		}
 		return array_init.typ
 	}
 	// a = []
 	if array_init.exprs.len == 0 {
-		if array_init.has_cap {
-			if c.expr(array_init.cap_expr) != table.int_type {
-				c.error('array cap needs to be an int', array_init.pos)
-			}
-		}
-		if array_init.has_len {
-			if c.expr(array_init.len_expr) != table.int_type {
-				c.error('array len needs to be an int', array_init.pos)
-			}
-		}
 		type_sym := c.table.get_type_symbol(c.expected_type)
 		if type_sym.kind != .array {
 			c.error('array_init: no type specified (maybe: `[]Type{}` instead of `[]`)', array_init.pos)
@@ -1360,11 +1416,11 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			}
 			// The first element's type
 			if i == 0 {
-				elem_type = typ
-				c.expected_type = typ
+				elem_type = c.table.mktyp(typ)
+				c.expected_type = elem_type
 				continue
 			}
-			if !c.table.check(elem_type, typ) {
+			if !c.check_types(elem_type, typ) {
 				elem_type_sym := c.table.get_type_symbol(elem_type)
 				c.error('expected array element with type `$elem_type_sym.name`', array_init.pos)
 			}
@@ -1376,7 +1432,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len, 1)
 			array_init.typ = table.new_type(idx)
 		} else {
-			idx := c.table.find_or_register_array(elem_type, 1)
+			sym := c.table.get_type_symbol(elem_type)
+			idx := c.table.find_or_register_array(elem_type, 1, sym.mod)
 			array_init.typ = table.new_type(idx)
 		}
 		array_init.elem_type = elem_type
@@ -1393,7 +1450,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				// scope := c.file.scope.innermost(array_init.pos.pos)
 				// eprintln('scope: ${scope.str()}')
 				// scope.find(it.name) or {
-				// c.error('undefined: `$it.name`', array_init.pos)
+				// c.error('undefined ident: `$it.name`', array_init.pos)
 				// }
 				mut full_const_name := if it.mod == 'main' { it.name } else { it.mod + '.' +
 						it.name }
@@ -1480,7 +1537,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				c.const_decl = field.name
 				c.const_deps << field.name
 				typ := c.expr(field.expr)
-				it.fields[i].typ = typ
+				it.fields[i].typ = c.table.mktyp(typ)
 				for cd in c.const_deps {
 					for j, f in it.fields {
 						if j != i && cd in field_names && cd == f.name && j !in done_fields {
@@ -1512,7 +1569,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.ExprStmt {
 			it.typ = c.expr(it.expr)
 			c.expected_type = table.void_type
-			c.check_expr_opt_call(it.expr, it.typ, false)
+			c.check_expr_opt_call(it.expr, table.void_type)
+			// TODO This should work, even if it's prolly useless .-.
+			// it.typ = c.check_expr_opt_call(it.expr, table.void_type)
 		}
 		ast.FnDecl {
 			c.fn_decl(it)
@@ -1643,13 +1702,21 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	c.expected_type = table.void_type
 }
 
+pub fn (mut c Checker) unwrap_generic(typ table.Type) table.Type {
+	if typ == table.t_type {
+		return c.cur_generic_type
+	}
+	return typ
+}
+
+// TODO node must be mut
 pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 	match mut node {
 		ast.AnonFn {
-			keep_ret_type := c.fn_return_type
-			c.fn_return_type = it.decl.return_type
+			keep_fn := c.cur_fn
+			c.cur_fn = &it.decl
 			c.stmts(it.decl.stmts)
-			c.fn_return_type = keep_ret_type
+			c.cur_fn = keep_fn
 			return it.typ
 		}
 		ast.ArrayInit {
@@ -1726,7 +1793,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.enum_val(mut it)
 		}
 		ast.FloatLiteral {
-			return table.f64_type
+			return table.any_flt_type
 		}
 		ast.Ident {
 			// c.checked_ident = it.name
@@ -1748,7 +1815,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.infix_expr(mut it)
 		}
 		ast.IntegerLiteral {
-			return table.int_type
+			return table.any_int_type
 		}
 		ast.MapInit {
 			return c.map_init(mut it)
@@ -1783,7 +1850,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.selector_expr(mut it)
 		}
 		ast.SizeOf {
-			return table.int_type
+			return table.u32_type
 		}
 		ast.StringLiteral {
 			if it.language == .c {
@@ -1818,11 +1885,6 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 }
 
 pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
-	if ident.name == c.var_decl_name { // c.checked_ident {
-		// Do not allow `x := x`
-		c.error('unresolved: `$ident.name`', ident.pos)
-		return table.void_type
-	}
 	// TODO: move this
 	if c.const_deps.len > 0 {
 		mut name := ident.name
@@ -1841,10 +1903,10 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	// second use
 	if ident.kind == .variable {
 		info := ident.info as ast.IdentVar
-		if info.typ == table.t_type {
-			// Got a var with type T, return current generic type
-			return c.cur_generic_type
-		}
+		// if info.typ == table.t_type {
+		// Got a var with type T, return current generic type
+		// return c.cur_generic_type
+		// }
 		return info.typ
 	} else if ident.kind == .constant {
 		info := ident.info as ast.IdentVar
@@ -1860,6 +1922,13 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 				ast.Var {
 					mut typ := it.typ
 					if typ == 0 {
+						if it.expr is ast.Ident {
+							inner_ident := it.expr as ast.Ident
+							if inner_ident.kind == .unresolved {
+								c.error('unresolved variable: `$ident.name`', ident.pos)
+								return table.void_type
+							}
+						}
 						typ = c.expr(it.expr)
 					}
 					is_optional := typ.flag_is(.optional)
@@ -1868,10 +1937,13 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						typ: typ
 						is_optional: is_optional
 					}
-					if typ == table.t_type {
-						// Got a var with type T, return current generic type
-						typ = c.cur_generic_type
-					}
+					// if typ == table.t_type {
+					// sym := c.table.get_type_symbol(c.cur_generic_type)
+					// println('IDENT T unresolved $ident.name typ=$sym.name')
+					// Got a var with type T, return current generic type
+					// typ = c.cur_generic_type
+					// }
+					// } else {
 					it.typ = typ
 					// unwrap optional (`println(x)`)
 					if is_optional {
@@ -1928,7 +2000,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return table.int_type
 	}
 	if ident.name != '_' {
-		c.error('undefined: `$ident.name`', ident.pos)
+		c.error('undefined ident: `$ident.name`', ident.pos)
 	}
 	if c.table.known_type(ident.name) {
 		// e.g. `User`  in `json.decode(User, '...')`
@@ -1973,7 +2045,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			c.expected_type = cond_type
 			typ := c.expr(expr)
 			typ_sym := c.table.get_type_symbol(typ)
-			if !node.is_sum_type && !c.table.check(typ, cond_type) {
+			if !node.is_sum_type && !c.check_types(typ, cond_type) {
 				exp_sym := c.table.get_type_symbol(cond_type)
 				c.error('cannot use `$typ_sym.name` as `$exp_sym.name` in `match`', node.pos)
 			}
@@ -2083,7 +2155,6 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	mut expr_required := false
 	if c.expected_type != table.void_type {
-		// | c.assigned_var_name != '' {
 		// sym := c.table.get_type_symbol(c.expected_type)
 		// println('$c.file.path  $node.pos.line_nr IF is expr: checker exp type = ' + sym.name)
 		expr_required = true
@@ -2114,16 +2185,45 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 						// first branch of if expression
 						node.is_expr = true
 						node.typ = last_expr.typ
-					} else {
-						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
-							node.pos)
+						continue
+					} else if node.typ in [table.any_flt_type, table.any_int_type] {
+						if node.typ == table.any_int_type {
+							if last_expr.typ.is_int() || last_expr.typ.is_float() {
+								node.typ = last_expr.typ
+								continue
+							}
+						} else { // node.typ == any_float
+							if last_expr.typ.is_float() {
+								node.typ = last_expr.typ
+								continue
+							}
+						}
 					}
+					if last_expr.typ in [table.any_flt_type, table.any_int_type] {
+						if last_expr.typ == table.any_int_type {
+							if node.typ.is_int() || node.typ.is_float() {
+								continue
+							}
+						} else { // expr_type == any_float
+							if node.typ.is_float() {
+								continue
+							}
+						}
+					}
+					c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
+						node.pos)
 				}
 			} else {
 				c.error('`if` expression requires an expression as the last statement of every branch',
 					branch.pos)
 			}
 		}
+	}
+	// if only untyped literals were given default to int/f64
+	if node.typ == table.any_int_type {
+		node.typ = table.int_type
+	} else if node.typ == table.any_flt_type {
+		node.typ = table.f64_type
 	}
 	if expr_required {
 		if !node.has_else {
@@ -2186,7 +2286,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 		// fixed_array[1..2] => array
 		if typ_sym.kind == .array_fixed {
 			elem_type := c.table.value_type(typ)
-			idx := c.table.find_or_register_array(elem_type, 1)
+			idx := c.table.find_or_register_array(elem_type, 1, c.mod)
 			return table.new_type(idx)
 		}
 	}
@@ -2207,15 +2307,20 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 		c.error('not an enum (name=$node.enum_name) (type_idx=0)', node.pos)
 		return table.void_type
 	}
-	typ := table.new_type(typ_idx)
+	mut typ := table.new_type(typ_idx)
 	if typ == table.void_type {
 		c.error('not an enum', node.pos)
 		return table.void_type
 	}
-	typ_sym := c.table.get_type_symbol(typ)
+	mut typ_sym := c.table.get_type_symbol(typ)
 	// println('tname=$typ_sym.name $node.pos.line_nr $c.file.path')
+	if typ_sym.kind == .array && node.enum_name.len == 0 {
+		array_info := typ_sym.info as table.Array
+		typ = array_info.elem_type
+		typ_sym = c.table.get_type_symbol(typ)
+	}
 	if typ_sym.kind != .enum_ {
-		c.error('not an enum', node.pos)
+		c.error('expected type is not an enum', node.pos)
 		return table.void_type
 	}
 	if !(typ_sym.info is table.Enum) {
@@ -2258,13 +2363,13 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		val := node.vals[i]
 		key_type := c.expr(key)
 		val_type := c.expr(val)
-		if !c.table.check(key_type, key0_type) {
+		if !c.check_types(key_type, key0_type) {
 			key0_type_sym := c.table.get_type_symbol(key0_type)
 			key_type_sym := c.table.get_type_symbol(key_type)
 			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym.name` for map key',
 				node.pos)
 		}
-		if !c.table.check(val_type, val0_type) {
+		if !c.check_types(val_type, val0_type) {
 			val0_type_sym := c.table.get_type_symbol(val0_type)
 			val_type_sym := c.table.get_type_symbol(val_type)
 			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym.name` for map value',
@@ -2333,7 +2438,8 @@ fn (mut c Checker) fn_decl(it ast.FnDecl) {
 		// loop thru each generic type and generate a function
 		for gen_type in c.table.fn_gen_types[it.name] {
 			c.cur_generic_type = gen_type
-			// println('\ncalling check for $it.name for type ' + gen_type.str())
+			// sym:=c.table.get_type_symbol(gen_type)
+			// println('\ncalling check for $it.name for type $sym.name')
 			c.fn_decl(it)
 		}
 		c.cur_generic_type = 0
@@ -2350,6 +2456,22 @@ fn (mut c Checker) fn_decl(it ast.FnDecl) {
 		// if sym.has_method(it.name) {
 		// c.warn('duplicate method `$it.name`', it.pos)
 		// }
+		// Do not allow to modify types from other modules
+		if sym.mod != c.mod && !c.is_builtin_mod && sym.mod != '' { // TODO remove != ''
+			// remove the method to hide other related errors (`method is private` etc)
+			mut idx := 0
+			for i, m in sym.methods {
+				if m.name == it.name {
+					println('got it')
+					idx = i
+					break
+				}
+			}
+			sym.methods.delete(idx)
+			//
+			c.error('cannot define new methods on non-local `$sym.name` (' + 'current module is `$c.mod`, `$sym.name` is from `$sym.mod`)',
+				it.pos)
+		}
 	}
 	if it.language == .v {
 		// Make sure all types are valid
@@ -2361,7 +2483,7 @@ fn (mut c Checker) fn_decl(it ast.FnDecl) {
 		}
 	}
 	c.expected_type = table.void_type
-	c.fn_return_type = it.return_type
+	c.cur_fn = &it
 	c.stmts(it.stmts)
 	if it.language == .v && !it.no_body && it.return_type != table.void_type && !c.returns &&
 		it.name !in ['panic', 'exit'] {

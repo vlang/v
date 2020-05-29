@@ -3,102 +3,137 @@ module os
 // Ref - winnt.h
 const (
 	success = 0 // ERROR_SUCCESS
-	ERROR_INSUFFICIENT_BUFFER = 130
+	error_insufficient_buffer = 130
 )
 
 const (
-	FILE_SHARE_READ   = 1
-	FILE_SHARE_WRITE  = 2
-	FILE_SHARE_DELETE = 4
+	file_share_read   = 1
+	file_share_write  = 2
+	file_share_delete = 4
 )
 
 const (
-	FILE_NOTIFY_CHANGE_FILE_NAME   = 1
-	FILE_NOTIFY_CHANGE_DIR_NAME    = 2
-	FILE_NOTIFY_CHANGE_ATTRIBUTES  = 4
-	FILE_NOTIFY_CHANGE_SIZE        = 8
-	FILE_NOTIFY_CHANGE_LAST_WRITE  = 16
-	FILE_NOTIFY_CHANGE_LAST_ACCESS = 32
-	FILE_NOTIFY_CHANGE_CREATION    = 64
-	FILE_NOTIFY_CHANGE_SECURITY    = 128
+	file_notify_change_file_name   = 1
+	file_notify_change_dir_name    = 2
+	file_notify_change_attributes  = 4
+	file_notify_change_size        = 8
+	file_notify_change_last_write  = 16
+	file_notify_change_last_access = 32
+	file_notify_change_creation    = 64
+	file_notify_change_security    = 128
 )
 
 const (
-	FILE_ACTION_ADDED              = 1
-	FILE_ACTION_REMOVED            = 2
-	FILE_ACTION_MODIFIED           = 3
-	FILE_ACTION_RENAMED_OLD_NAME   = 4
-	FILE_ACTION_RENAMED_NEW_NAME   = 5
+	file_action_added              = 1
+	file_action_removed            = 2
+	file_action_modified           = 3
+	file_action_renamed_old_name   = 4
+	file_action_renamed_new_name   = 5
 )
 
 const (
-	FILE_ATTR_READONLY                 = 0x1
-	FILE_ATTR_HIDDEN                   = 0x2
-	FILE_ATTR_SYSTEM                   = 0x4
-	FILE_ATTR_DIRECTORY                = 0x10
-	FILE_ATTR_ARCHIVE                  = 0x20
-	FILE_ATTR_DEVICE                   = 0x40
-	FILE_ATTR_NORMAL                   = 0x80
-	FILE_ATTR_TEMPORARY                = 0x100
-	FILE_ATTR_SPARSE_FILE              = 0x200
-	FILE_ATTR_REPARSE_POINT            = 0x400
-	FILE_ATTR_COMPRESSED               = 0x800
-	FILE_ATTR_OFFLINE                  = 0x1000
-	FILE_ATTR_NOT_CONTENT_INDEXED      = 0x2000
-	FILE_ATTR_ENCRYPTED                = 0x4000
-	FILE_ATTR_INTEGRITY_STREAM         = 0x8000
-	FILE_ATTR_VIRTUAL                  = 0x10000
-	FILE_ATTR_NO_SCRUB_DATA            = 0x20000
-	// FILE_ATTR_RECALL_ON_OPEN        = u32(0x...)
-	// FILE_ATTR_RECALL_ON_DATA_ACCESS = u32(0x...)
+	file_attr_readonly                 = 0x1
+	file_attr_hidden                   = 0x2
+	file_attr_system                   = 0x4
+	file_attr_directory                = 0x10
+	file_attr_archive                  = 0x20
+	file_attr_device                   = 0x40
+	file_attr_normal                   = 0x80
+	file_attr_temporary                = 0x100
+	file_attr_sparse_file              = 0x200
+	file_attr_reparse_point            = 0x400
+	file_attr_compressed               = 0x800
+	file_attr_offline                  = 0x1000
+	file_attr_not_content_indexed      = 0x2000
+	file_attr_encrypted                = 0x4000
+	file_attr_integrity_stream         = 0x8000
+	file_attr_virtual                  = 0x10000
+	file_attr_no_scrub_data            = 0x20000
+	// file_attr_recall_on_open        = u32(0x...)
+	// file_attr_recall_on_data_access = u32(0x...)
 )
 
 const (
-	FILE_TYPE_DISK = 0x1
-	FILE_TYPE_CHAR = 0x2
-	FILE_TYPE_PIPE = 0x3
+	file_type_disk = 0x1
+	file_type_char = 0x2
+	file_type_pipe = 0x3
 
-	FILE_TYPE_UNKNOWN = 0x0
+	file_type_unknown = 0x0
 )
 
 const (
-	FILE_INVALID_FILE_ID = (-1)
+	file_invalid_file_id = (-1)
 )
 
 const(
-	INVALID_HANDLE_VALUE = voidptr(-1)
+	invalid_handle_value = voidptr(-1)
 )
 
 // https://docs.microsoft.com/en-us/windows/console/setconsolemode
 const (
     // Input Buffer
-    ENABLE_ECHO_INPUT                  = 0x0004
-    ENABLE_EXTENDED_FLAGS              = 0x0080
-    ENABLE_INSERT_MODE                 = 0x0020
-    ENABLE_LINE_INPUT                  = 0x0002
-    ENABLE_MOUSE_INPUT                 = 0x0010
-    ENABLE_PROCESSED_INPUT             = 0x0001
-    ENABLE_QUICK_EDIT_MODE             = 0x0040
-    ENABLE_WINDOW_INPUT                = 0x0008
-    ENABLE_VIRTUAL_TERMINAL_INPUT      = 0x0200
+    enable_echo_input                  = 0x0004
+    enable_extended_flags              = 0x0080
+    enable_insert_mode                 = 0x0020
+    enable_line_input                  = 0x0002
+    enable_mouse_input                 = 0x0010
+    enable_processed_input             = 0x0001
+    enable_quick_edit_mode             = 0x0040
+    enable_window_input                = 0x0008
+    enable_virtual_terminal_input      = 0x0200
     // Output Screen Buffer
-    ENABLE_PROCESSED_OUTPUT            = 0x0001
-    ENABLE_WRAP_AT_EOL_OUTPUT          = 0x0002
-    ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
-    DISABLE_NEWLINE_AUTO_RETURN        = 0x0008
-    ENABLE_LVB_GRID_WORLDWIDE          = 0x0010
+    enable_processed_output            = 0x0001
+    enable_wrap_at_eol_output          = 0x0002
+    enable_virtual_terminal_processing = 0x0004
+    disable_newline_auto_return        = 0x0008
+    enable_lvb_grid_worldwide          = 0x0010
 )
 
 // File modes
 const (
-	O_RDONLY	= 0			// open the file read-only.
-	O_WRONLY	= 1			// open the file write-only.
-	O_RDWR		= 2			// open the file read-write.
-	O_APPEND	= 0x0008	// append data to the file when writing.
-	O_CREATE	= 0x0100	// create a new file if none exists.
-	O_TRUNC		= 0x0200	// truncate regular writable file when opened.
-	O_EXCL		= 0x0400	// used with O_CREATE, file must not exist.
-	O_SYNC		= 0			// open for synchronous I/O (ignored on Windows)
-	O_NOCTTY	= 0			// make file non-controlling tty (ignored on Windows)
-	O_NONBLOCK	= 0			// don't block on opening file (ignored on Windows)
+	o_rdonly	= 0			// open the file read-only.
+	o_wronly	= 1			// open the file write-only.
+	o_rdwr		= 2			// open the file read-write.
+	o_append	= 0x0008	// append data to the file when writing.
+	o_create	= 0x0100	// create a new file if none exists.
+	o_trunc		= 0x0200	// truncate regular writable file when opened.
+	o_excl		= 0x0400	// used with o_create, file must not exist.
+	o_sync		= 0			// open for synchronous I/O (ignored on Windows)
+	o_noctty	= 0			// make file non-controlling tty (ignored on Windows)
+	o_nonblock	= 0			// don't block on opening file (ignored on Windows)
+)
+
+const (
+	status_access_violation =          0xC0000005
+	status_in_page_error =             0xC0000006
+	status_invalid_handle =            0xC0000008
+	status_invalid_parameter =         0xC000000D
+	status_no_memory =                 0xC0000017
+	status_illegal_instruction =       0xC000001D
+	status_noncontinuable_exception =  0xC0000025
+	status_invalid_disposition =       0xC0000026
+	status_array_bounds_exceeded =     0xC000008C
+	status_float_denormal_operand =    0xC000008D
+	status_float_divide_by_zero =      0xC000008E
+	status_float_inexact_result =      0xC000008F
+	status_float_invalid_operation =   0xC0000090
+	status_float_overflow =            0xC0000091
+	status_float_stack_check =         0xC0000092
+	status_float_underflow =           0xC0000093
+	status_integer_divide_by_zero =    0xC0000094
+	status_integer_overflow =          0xC0000095
+	status_privileged_instruction =    0xC0000096
+	status_stack_overflow =            0xC00000FD
+	status_dll_not_found =             0xC0000135
+	status_ordinal_not_found =         0xC0000138
+	status_entrypoint_not_found =      0xC0000139
+	status_control_c_exit =            0xC000013A
+	status_dll_init_failed =           0xC0000142
+	status_float_multiple_faults =     0xC00002B4
+	status_float_multiple_traps =      0xC00002B5
+	status_reg_nat_consumption =       0xC00002C9
+	status_heap_corruption =           0xC0000374
+	status_stack_buffer_overrun =      0xC0000409
+	status_invalid_cruntime_parameter = 0xC0000417
+	status_assertion_failure =         0xC0000420
 )

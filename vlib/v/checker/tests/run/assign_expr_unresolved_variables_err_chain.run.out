@@ -1,0 +1,27 @@
+vlib/v/checker/tests/run/assign_expr_unresolved_variables_err_chain.v:3:2: warning: unused variable: `b`
+    1 | fn main() {
+    2 |     a := b
+    3 |     b := c
+      |     ^
+    4 |     c := a
+    5 | }
+vlib/v/checker/tests/run/assign_expr_unresolved_variables_err_chain.v:4:2: warning: unused variable: `c`
+    2 |     a := b
+    3 |     b := c
+    4 |     c := a
+      |     ^
+    5 | }
+vlib/v/checker/tests/run/assign_expr_unresolved_variables_err_chain.v:2:7: error: unresolved variable: `b`
+    1 | fn main() {
+    2 |     a := b
+      |          ^
+    3 |     b := c
+    4 |     c := a
+vlib/v/checker/tests/run/assign_expr_unresolved_variables_err_chain.v:3:7: error: unresolved variable: `c`
+    1 | fn main() {
+    2 |     a := b
+    3 |     b := c
+      |          ^
+    4 |     c := a
+    5 | }
+

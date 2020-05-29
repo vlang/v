@@ -19,19 +19,24 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	} else {
 		p.check_name()
 	}
-	mut is_or_block_used := false
+	mut or_kind := ast.OrKind.absent
 	if fn_name == 'json.decode' {
 		p.expecting_type = true // Makes name_expr() parse the type `User` in `json.decode(User, txt)`
 		p.expr_mod = ''
-		is_or_block_used = true
+		or_kind = .block
 	}
 	mut generic_type := table.void_type
 	if p.tok.kind == .lt {
 		// `foo<int>(10)`
 		p.next() // `<`
-		generic_type = p.parse_type()
+		p.expr_mod = ''
+		mut generic_type = p.parse_type()
 		p.check(.gt) // `>`
-		p.table.register_fn_gen_type(fn_name, generic_type)
+		// In case of `foo<T>()`
+		// T is unwrapped and registered in the checker.
+		if generic_type != table.t_type {
+			p.table.register_fn_gen_type(fn_name, generic_type)
+		}
 	}
 	p.check(.lpar)
 	args := p.call_args()
@@ -42,9 +47,9 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		pos: first_pos.pos
 		len: last_pos.pos - first_pos.pos + last_pos.len
 	}
-	// `foo() or {}``
 	mut or_stmts := []ast.Stmt{}
 	if p.tok.kind == .key_orelse {
+		// `foo() or {}``
 		was_inside_or_expr := p.inside_or_expr
 		p.inside_or_expr = true
 		p.next()
@@ -61,7 +66,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			pos: p.tok.position()
 			is_used: true
 		})
-		is_or_block_used = true
+		or_kind = .block
 		or_stmts = p.parse_block_no_scope()
 		p.close_scope()
 		p.inside_or_expr = was_inside_or_expr
@@ -69,10 +74,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	if p.tok.kind == .question {
 		// `foo()?`
 		p.next()
-		is_or_block_used = true
-		// mut s := ast.Stmt{}
-		// s = ast.ReturnStmt{}
-		or_stmts << ast.Return{}
+		or_kind = .propagate
 	}
 	node := ast.CallExpr{
 		name: fn_name
@@ -82,7 +84,8 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		language: language
 		or_block: ast.OrExpr{
 			stmts: or_stmts
-			is_used: is_or_block_used
+			kind: or_kind
+			pos: pos
 		}
 		generic_type: generic_type
 	}
@@ -160,10 +163,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type_with_mut(rec_mut)
-		sym := p.table.get_type_symbol(rec_type)
-		if sym.mod != p.mod && sym.mod != '' {
-			p.error('cannot define methods on types from other modules (current module is `$p.mod`, `$sym.name` is from `$sym.mod`)')
-		}
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
 		}

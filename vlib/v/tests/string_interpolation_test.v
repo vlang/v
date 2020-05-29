@@ -126,17 +126,17 @@ fn test_utf8_string_interpolation() {
 	assert '>${g:-13}<' == '>Πελοπόννησος <'
 }
 
-struct S {
+struct Sss {
 	v1 int
 	v2 f64
 }
 
-fn (s S) str() string {
+fn (s Sss) str() string {
 	return '[${s.v1}, ${s.v2:.3f}]'
 }
 
 fn test_string_interpolation_str_evaluation() {
-	mut x := S{17, 13.455893}
+	mut x := Sss{17, 13.455893}
 	assert '$x' == '[17, 13.456]'
 }
 

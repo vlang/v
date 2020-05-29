@@ -156,7 +156,7 @@ pub fn (s string) replace_once(rep, with string) string {
 
 pub fn (s string) replace(rep, with string) string {
 	if s.len == 0 || rep.len == 0 {
-		return s
+		return s.clone()
 	}
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
@@ -172,7 +172,7 @@ pub fn (s string) replace(rep, with string) string {
 	}
 	// Dont change the string if there's nothing to replace
 	if idxs.len == 0 {
-		return s
+		return s.clone()
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
 	new_len := s.len + idxs.len * (with.len - rep.len)
@@ -750,7 +750,7 @@ pub fn (s string) ends_with(p string) bool {
 pub fn (s string) to_lower() string {
 	mut b := malloc(s.len + 1)
 	for i in 0..s.len {
-		b[i] = C.tolower(s.str[i])
+		b[i] = byte(C.tolower(s.str[i]))
 	}
 	return tos(b, s.len)
 }
@@ -767,7 +767,7 @@ pub fn (s string) is_lower() bool {
 pub fn (s string) to_upper() string {
 	mut b := malloc(s.len + 1)
 	for i in 0..s.len {
-		b[i] = C.toupper(s.str[i])
+		b[i] = byte(C.toupper(s.str[i]))
 	}
 	return tos(b, s.len)
 }
@@ -940,10 +940,7 @@ pub fn (s string) trim_suffix(str string) string {
 	return s
 }
 
-// fn print_cur_thread() {
-// //C.printf("tid = %08x \n", pthread_self());
-// }
-fn compare_strings(a, b &string) int {
+pub fn compare_strings(a, b &string) int {
 	if a.lt(b) {
 		return -1
 	}
@@ -1229,7 +1226,7 @@ pub fn (s string) all_after_last(dot string) string {
 	return s.right(pos + dot.len)
 }
 
-pub fn (s string) after(dot string) string { 
+pub fn (s string) after(dot string) string {
 	return s.all_after_last(dot)
 }
 

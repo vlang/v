@@ -8,6 +8,7 @@ import strings
 
 pub const (
 	path_separator = '/'
+	path_delimiter = ':'
 )
 
 const (
@@ -135,21 +136,6 @@ pub fn symlink(origin, target string) ?bool {
 // get_error_msg return error code representation in string.
 pub fn get_error_msg(code int) string {
 	return posix_get_error_msg(code)
-}
-
-// convert any value to []byte (LittleEndian) and write it
-// for example if we have write(7, 4), "07 00 00 00" gets written
-// write(0x1234, 2) => "34 12"
-pub fn (mut f File) write_bytes(data voidptr, size int) {
-/*
-	$if linux {
-		$if !android {
-			C.syscall(sys_write, f.fd, data, 1)
-			return
-		}
-	}
-*/
-	C.fwrite(data, 1, size, f.cfile)
 }
 
 pub fn (mut f File) close() {

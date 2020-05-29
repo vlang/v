@@ -66,10 +66,10 @@ fn test_atof() {
 	mut ptr := &u64(&f1)
 	ptr = &u64(&f1)
 
-	// DOUBLE_PLUS_ZERO
+	// double_plus_zero
 	f1=0.0
 	assert *ptr == u64(0x0000000000000000)
-	// DOUBLE_MINUS_ZERO
+	// double_minus_zero
 	f1=-0.0
 	assert *ptr == u64(0x8000000000000000)
 	println("DONE!")

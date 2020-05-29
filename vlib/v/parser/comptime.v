@@ -3,31 +3,53 @@
 // that can be found in the LICENSE file.
 module parser
 
+import os
 import v.ast
 import v.pref
 import v.vmod
+import v.table
 
 const (
 	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
 		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 )
 
+fn (mut p Parser)resolve_vroot(flag string) string {
+	vmod_file_location := vmod.mod_file_cacher.get_by_folder(p.file_name_dir)
+	if vmod_file_location.vmod_file.len == 0 {
+		// There was no actual v.mod file found.
+		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in ${p.file_name_dir},' +
+		' or in one of its parent folders.')
+	}
+	vmod_path := vmod_file_location.vmod_folder
+	return flag.replace('@VROOT', os.real_path(vmod_path))
+}
+
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
-	val := p.tok.lit
+	mut val := p.tok.lit
 	p.next()
+	if p.pref.backend == .js {
+		if !p.file_name.ends_with('.js.v') {
+			p.error('Hash statements are only allowed in backend specific files such "x.js.v"')
+		}
+		if p.mod == 'main' {
+			p.error('Hash statements are not allowed in the main module. Please place them in a separate module.')
+		}
+	}
+	if val.starts_with('include') {
+		mut flag := val[8..]
+		if flag.contains('@VROOT') {
+			vroot := p.resolve_vroot(flag)
+			val = 'include $vroot'
+		}
+	}
 	if val.starts_with('flag') {
 		// #flag linux -lm
 		mut flag := val[5..]
 		// expand `@VROOT` to its absolute path
 		if flag.contains('@VROOT') {
-			vmod_file_location := vmod.mod_file_cacher.get(p.file_name_dir)
-			if vmod_file_location.vmod_file.len == 0 {
-				// There was no actual v.mod file found.
-				p.error('To use @VROOT, you need' + ' to have a "v.mod" file in ${p.file_name_dir},' +
-					' or in one of its parent folders.')
-			}
-			flag = flag.replace('@VROOT', vmod_file_location.vmod_folder)
+			flag = p.resolve_vroot(flag)
 		}
 		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
 			if flag.contains(deprecated) {
@@ -53,9 +75,22 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
-fn (mut p Parser) comp_if() ast.CompIf {
+fn (mut p Parser) vweb() ast.ComptimeCall {
+	p.check(.dollar)
+	p.check(.name) // skip `vweb.html()` TODO
+	p.check(.dot)
+	p.check(.name)
+	p.check(.lpar)
+	p.check(.rpar)
+	return ast.ComptimeCall{}
+}
+
+fn (mut p Parser) comp_if() ast.Stmt {
 	pos := p.tok.position()
 	p.next()
+	// if p.tok.kind == .name && p.tok.lit == 'vweb' {
+	// return p.vweb()
+	// }
 	p.check(.key_if)
 	is_not := p.tok.kind == .not
 	if is_not {
@@ -176,4 +211,50 @@ fn os_from_string(os string) pref.OS {
 	}
 	// println('bad os $os') // todo panic?
 	return .linux
+}
+
+// `app.$action()` (`action` is a string)
+// `typ` is `App` in this example
+// fn (mut p Parser) comptime_method_call(typ table.Type) ast.ComptimeCall {
+fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
+	p.check(.dollar)
+	method_name := p.check_name()
+	_ = method_name
+	/*
+	mut j := 0
+	sym := p.table.get_type_symbol(typ)
+	if sym.kind != .struct_ {
+		p.error('not a struct')
+	}
+	// info := sym.info as table.Struct
+	for method in sym.methods {
+		if method.return_type != table.void_type {
+			continue
+		}
+		/*
+		receiver := method.args[0]
+		if !p.expr_var.ptr {
+			p.error('`$p.expr_var.name` needs to be a reference')
+		}
+		amp := if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
+		if j > 0 {
+			p.gen(' else ')
+		}
+		p.genln('if (string_eq($method_name, _STR("$method.name")) ) ' + '${typ.name}_$method.name ($amp $p.expr_var.name);')
+		*/
+		j++
+	}
+	*/
+	p.check(.lpar)
+	p.check(.rpar)
+	if p.tok.kind == .key_orelse {
+		p.check(.key_orelse)
+		// p.genln('else {')
+		p.check(.lcbr)
+		// p.statements()
+	}
+	return ast.ComptimeCall{
+		left: left
+		name: method_name
+	}
 }

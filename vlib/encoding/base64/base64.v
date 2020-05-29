@@ -101,9 +101,9 @@ pub fn decode_in_buffer(data &string, buffer byteptr) int {
 		}
 
 		decoded_bytes := (char_a << 18) | (char_b << 12) | (char_c << 6) | (char_d << 0)
-		b[j]   = decoded_bytes >> 16
-		b[j+1] = (decoded_bytes >> 8) & 0xff
-		b[j+2] = (decoded_bytes >> 0) & 0xff
+		b[j]   = byte(decoded_bytes >> 16)
+		b[j+1] = byte((decoded_bytes >> 8) & 0xff)
+		b[j+2] = byte((decoded_bytes >> 0) & 0xff)
 		j += 3
 	}
 	return output_length

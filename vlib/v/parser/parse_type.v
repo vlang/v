@@ -13,6 +13,7 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 		p.next()
 		p.check(.rsbr)
 		elem_type := p.parse_type()
+		//sym := p.table.get_type_symbol(elem_type)
 		idx := p.table.find_or_register_array_fixed(elem_type, size, 1)
 		return table.new_type(idx)
 	}
@@ -29,7 +30,8 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 		p.check(.rsbr)
 		nr_dims++
 	}
-	idx := p.table.find_or_register_array(elem_type, nr_dims)
+	sym := p.table.get_type_symbol(elem_type)
+	idx := p.table.find_or_register_array(elem_type, nr_dims, sym.mod)
 	return table.new_type(idx)
 }
 
@@ -165,7 +167,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool) table
 		name = '${p.imports[name]}.$p.tok.lit'
 	} else if p.expr_mod != '' {
 		name = p.expr_mod + '.' + name
-	} else if p.mod !in ['builtin', 'main'] && name !in table.builtin_type_names {
+	} else if p.mod !in ['builtin', 'main'] && name !in table.builtin_type_names  && name.len > 1 {
 		// `Foo` in module `mod` means `mod.Foo`
 		name = p.mod + '.' + name
 	}

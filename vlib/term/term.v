@@ -64,9 +64,9 @@ fn supports_escape_sequences(fd int) bool {
 	vcolors_override := os.getenv('VCOLORS')
 	if vcolors_override == 'always' {
 		return true
-	}    
+	}
 	$if windows {
-		return (is_atty(fd) & 0x0004) > 0 && os.getenv('TERM') != 'dumb' // ENABLE_VIRTUAL_TERMINAL_PROCESSING
+		return (is_atty(fd) & 0x0004) > 0 && os.getenv('TERM') != 'dumb' // enable_virtual_terminal_processing
 	} $else {
 		return is_atty(fd) > 0 && os.getenv('TERM') != 'dumb'
 	}

@@ -7,6 +7,7 @@ import v.cflag
 #flag windows -l shell32
 #flag windows -l dbghelp
 #flag windows -l advapi32
+
 struct MsvcResult {
 	full_cl_exe_path    string
 	exe_path            string
@@ -25,10 +26,10 @@ type RegKey voidptr
 
 // Taken from the windows SDK
 const (
-	HKEY_LOCAL_MACHINE     = RegKey(0x80000002)
-	KEY_QUERY_VALUE        = (0x0001)
-	KEY_WOW64_32KEY        = (0x0200)
-	KEY_ENUMERATE_SUB_KEYS = (0x0008)
+	hkey_local_machine     = RegKey(0x80000002)
+	key_query_value        = (0x0001)
+	key_wow64_32key        = (0x0200)
+	key_enumerate_sub_keys = (0x0008)
 )
 
 // Given a root key look for one of the subkeys in 'versions' and get the path
@@ -79,8 +80,8 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
-		rc := C.RegOpenKeyEx(HKEY_LOCAL_MACHINE, path.to_wide(), 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY |
-			KEY_ENUMERATE_SUB_KEYS, &root_key)
+		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0, key_query_value | key_wow64_32key |
+			key_enumerate_sub_keys, &root_key)
 		defer {
 			C.RegCloseKey(root_key)
 		}
@@ -253,7 +254,8 @@ pub fn (mut v Builder) cc_msvc() {
 	// Not all of these are needed (but the compiler should discard them if they are not used)
 	// these are the defaults used by msbuild and visual studio
 	mut real_libs := ['kernel32.lib', 'user32.lib', 'advapi32.lib']
-	sflags := v.get_os_cflags().msvc_string_flags()
+	//sflags := v.get_os_cflags().msvc_string_flags()
+	sflags := msvc_string_flags(v.get_os_cflags())
 	real_libs << sflags.real_libs
 	inc_paths := sflags.inc_paths
 	lib_paths := sflags.lib_paths
@@ -358,7 +360,8 @@ mut:
 	other_flags []string
 }
 
-fn (cflags []cflag.CFlag) msvc_string_flags() MsvcStringFlags {
+//pub fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
+pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 	mut real_libs := []string{}
 	mut inc_paths := []string{}
 	mut lib_paths := []string{}
@@ -404,3 +407,4 @@ fn (cflags []cflag.CFlag) msvc_string_flags() MsvcStringFlags {
 		other_flags: other_flags
 	}
 }
+

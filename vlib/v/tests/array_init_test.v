@@ -15,6 +15,21 @@ fn test_array_init() {
 	'$d, $d.len, $d.cap' == "['aaa', 'bbb'], 2, 3"
 }
 
+fn test_nested_array_init() {
+	mut a := [][]int{}
+	mut b := [][][]string{cap: 10}
+	mut c := [][][]string{len: 3, init: [][]string{len: 2}}
+	// mut c := [][][]string{len: 2, init: [][]string{len: 2, init: []string{len: 2, init: 'hello'}}}
+	a << [1, 2]
+	a << [3, 4]
+	b << [['foo', 'bar'], ['baz']]
+	b << [['qux']]
+
+	assert '$a' == '[[1, 2], [3, 4]]'
+	assert '$b' == "[[['foo', 'bar'], ['baz']], [['qux']]]"
+	assert '$c' == '[[[], []], [[], []], [[], []]]'
+}
+
 fn test_array_init_with_default() {
 	a1 := []int{len: 4, init: 2}
 	assert '$a1' == '[2, 2, 2, 2]'
@@ -126,4 +141,31 @@ fn test_array_string_full_options() {
 	assert c.len == 16
 	assert c.cap >= c.len
 	assert c.str() == "['a', 'b', 'c', 'c', 'c', 'c', 'c', 'c', 'c', 'c', '11', '12', '13', '14', '15', '16']"
+}
+
+struct MyStruct {
+pub mut:
+	ar []f32
+}
+
+fn test_array_init_in_struct_field() {
+	m := MyStruct {
+		ar: []f32{len: 4, init:1.2}
+	}
+	println(m)
+	assert m.ar.str() == '[1.2, 1.2, 1.2, 1.2]'
+}
+
+struct Aaa {
+pub mut:
+	a []int
+}
+
+fn test_array_init_cast_type_in_struct_field() {
+	size := u32(5)
+	st := &Aaa{
+		a: []int{len: int(size)}
+	}
+	println(st)
+	assert st.a.str() == '[0, 0, 0, 0, 0]'
 }

@@ -7,21 +7,21 @@ pub const (
 )
 */
 
-pub struct A {
+pub struct Aaa {
 pub mut:
 	foo string
 }
 
-pub fn (mut a A) update(s string) {
+pub fn (mut a Aaa) update(s string) {
 	a.foo = s
 }
 
-struct B {}
+struct Bbb {}
 
-pub enum C {}
+pub enum Ccc {}
 
 pub fn debugger() string {
-	v := B{}
+	v := Bbb{}
 	return 'Hello'
 }
 

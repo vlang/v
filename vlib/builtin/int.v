@@ -144,6 +144,11 @@ pub fn (nn u32) str() string {
 	//return tos(buf + index, (max-index))
 }
 
+[inline]
+pub fn (n any_int) str() string {
+	return i64(n).str()
+}
+
 pub fn (nn i64) str() string {
 	mut n := nn
 	mut d := i64(0)
@@ -188,7 +193,7 @@ pub fn (nn i64) str() string {
 
 pub fn (nn u64) str() string {
 	mut n := nn
-	mut d := 0
+	mut d := u64(0)
 	if n == 0 {
 		return '0'
 	}
@@ -274,7 +279,7 @@ pub fn (nn u16) hex() string {
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
-		d := n & 0xF
+		d := byte(n & 0xF)
 		n = n >> 4
 		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}
@@ -301,7 +306,7 @@ pub fn (nn u32) hex() string {
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
-		d := n & 0xF
+		d := byte(n & 0xF)
 		n = n >> 4
 		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}
@@ -328,7 +333,7 @@ pub fn (nn u64) hex() string {
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
-		d := n & 0xF
+		d := byte(n & 0xF)
 		n = n >> 4
 		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}
@@ -342,6 +347,10 @@ pub fn (nn u64) hex() string {
 }
 
 pub fn (nn i64) hex() string {
+	return u64(nn).hex()
+}
+
+pub fn (nn any_int) hex() string {
 	return u64(nn).hex()
 }
 

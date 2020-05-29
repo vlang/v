@@ -41,10 +41,11 @@ fn test_shift_operators() {
 	assert e == b
 	e >>= int(i)
 	assert e == a
-	e <<= i64(i)
-	assert e == b
-	e >>= i64(i)
-	assert e == a
+	mut e2 := i64(1)
+	e2 <<= i64(i)
+	assert e2 == b
+	e2 >>= i64(i)
+	assert e2 == a
 	e <<= byte(i)
 	assert e == b
 	e >>= byte(i)
@@ -53,12 +54,13 @@ fn test_shift_operators() {
 	assert e == b
 	e >>= u16(i)
 	assert e == a
-	e <<= u32(i)
-	assert e == b
-	e >>= u32(i)
+	mut e3 := u64(1)
+	e3 <<= u32(i)
+	assert e3 == b
+	e3 >>= u32(i)
 	assert e == a
-	e <<= u64(i)
-	assert e == b
-	e >>= u64(i)
-	assert e == a
+	e3 <<= u64(i)
+	assert e3 == b
+	e3 >>= u64(i)
+	assert e3 == a
 }

@@ -22,27 +22,27 @@ const (
 )
 
 const (
-	BlockSize = 20 // pixels
-	FieldHeight = 20 // # of blocks
-	FieldWidth = 10
+	block_size = 20 // pixels
+	field_height = 20 // # of blocks
+	field_width = 10
 	tetro_size = 4
-	WinWidth = BlockSize * FieldWidth
-	WinHeight = BlockSize * FieldHeight
-	TimerPeriod = 250 // ms
-	TextSize = 12
-	LimitThickness = 3
+	win_width = block_size * field_width
+	win_height = block_size * field_height
+	timer_period = 250 // ms
+	text_size = 12
+	limit_thickness = 3
 )
 
 const (
 	text_cfg = gx.TextCfg{
 		align:gx.align_left
-		size:TextSize
+		size:text_size
 		color:gx.rgb(0, 0, 0)
 	}
 	over_cfg = gx.TextCfg{
 		align:gx.align_left
-		size:TextSize
-		color:gx.White
+		size:text_size
+		color:gx.white
 	}
 )
 
@@ -84,7 +84,7 @@ const (
 		[1111, 9, 1111, 9],
 	]
 	// Each tetro has its unique color
-	Colors = [
+	colors = [
 		gx.rgb(0, 0, 0),        // unused ?
 		gx.rgb(255, 242, 0),    // yellow quad
 		gx.rgb(174, 0, 255),    // purple triple
@@ -96,8 +96,8 @@ const (
 		gx.rgb(0, 170, 170),    // unused ?
 	]
 
-	BackgroundColor = gx.White
-	UIColor = gx.Red
+	background_color = gx.white
+	ui_color = gx.red
 )
 
 // TODO: type Tetro [tetro_size]struct{ x, y int }
@@ -145,8 +145,8 @@ fn main() {
 	glfw.init_glfw()
 
 	gconfig := gg.Cfg {
-			width: WinWidth
-			height: WinHeight
+			width: win_width
+			height: win_height
 			use_ortho: true // This is needed for 2D drawing
 			create_window: true
 			window_title: 'V Tetris'
@@ -154,8 +154,8 @@ fn main() {
 	}
 
 	fconfig := gg.Cfg{
-			width: WinWidth
-			height: WinHeight
+			width: win_width
+			height: win_height
 			use_ortho: true
 			font_path: '../assets/fonts/RobotoMono-Regular.ttf'
 			font_size: 18
@@ -170,10 +170,10 @@ fn main() {
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
-	gg.clear(BackgroundColor)
+	gg.clear(background_color)
 	game.font_loaded = game.ft != 0
 	for {
-		gg.clear(BackgroundColor)
+		gg.clear(background_color)
 		game.draw_scene()
 		game.gg.render()
 		if game.gg.window.should_close() {
@@ -189,15 +189,15 @@ fn (mut g Game) init_game() {
 	g.generate_tetro()
 	g.field = [] // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge
-	for _ in 0..FieldHeight + 2 {
-		mut row := [0].repeat(FieldWidth + 2)
+	for _ in 0..field_height + 2 {
+		mut row := [0].repeat(field_width + 2)
 		row[0] = - 1
-		row[FieldWidth + 1] = - 1
+		row[field_width + 1] = - 1
 		g.field << row
 	}
 	mut first_row := g.field[0]
-	mut last_row := g.field[FieldHeight + 1]
-	for j in 0..FieldWidth + 2 {
+	mut last_row := g.field[field_height + 1]
+	for j in 0..field_width + 2 {
 		first_row[j] = - 1
 		last_row[j] = - 1
 	}
@@ -222,7 +222,7 @@ fn (mut g Game) run() {
 			g.delete_completed_lines()
 		}
 		glfw.post_empty_event() // force window redraw
-		time.sleep_ms(TimerPeriod)
+		time.sleep_ms(timer_period)
 	}
 }
 
@@ -267,13 +267,13 @@ fn (mut g Game) move_right(dx int) bool {
 }
 
 fn (mut g Game) delete_completed_lines() {
-	for y := FieldHeight; y >= 1; y-- {
+	for y := field_height; y >= 1; y-- {
 		g.delete_completed_line(y)
 	}
 }
 
 fn (mut g Game) delete_completed_line(y int) {
-	for x := 1; x <= FieldWidth; x++ {
+	for x := 1; x <= field_width; x++ {
 		f := g.field[y]
 		if f[x] == 0 {
 			return
@@ -282,7 +282,7 @@ fn (mut g Game) delete_completed_line(y int) {
 	g.score += 10
 	// Move everything down by 1 position
 	for yy := y - 1; yy >= 1; yy-- {
-		for x := 1; x <= FieldWidth; x++ {
+		for x := 1; x <= field_width; x++ {
 			mut a := g.field[yy + 1]
 			b := g.field[yy]
 			a[x] = b[x]
@@ -293,7 +293,7 @@ fn (mut g Game) delete_completed_line(y int) {
 // Place a new tetro on top
 fn (mut g Game) generate_tetro() {
 	g.pos_y = 0
-	g.pos_x = FieldWidth / 2 - tetro_size / 2
+	g.pos_x = field_width / 2 - tetro_size / 2
 	g.tetro_idx = rand.next(b_tetros.len)
 	g.rotation_idx = 0
 	g.get_tetro()
@@ -326,14 +326,14 @@ fn (g &Game) draw_tetro() {
 }
 
 fn (g &Game) draw_block(i, j, color_idx int) {
-	color := if g.state == .gameover { gx.Gray } else { Colors[color_idx] }
-	g.gg.draw_rect((j - 1) * BlockSize, (i - 1) * BlockSize,
-		BlockSize - 1, BlockSize - 1, color)
+	color := if g.state == .gameover { gx.gray } else { colors[color_idx] }
+	g.gg.draw_rect((j - 1) * block_size, (i - 1) * block_size,
+		block_size - 1, block_size - 1, color)
 }
 
 fn (g &Game) draw_field() {
-	for i := 1; i < FieldHeight + 1; i++ {
-		for j := 1; j < FieldWidth + 1; j++ {
+	for i := 1; i < field_height + 1; i++ {
+		for j := 1; j < field_width + 1; j++ {
 			f := g.field[i]
 			if f[j] > 0 {
 				g.draw_block(i, j, f[j])
@@ -346,18 +346,18 @@ fn (mut g Game) draw_ui() {
 	if g.font_loaded {
 		g.ft.draw_text(1, 3, g.score.str(), text_cfg)
 		if g.state == .gameover {
-			g.gg.draw_rect(0, WinHeight / 2 - TextSize, WinWidth,
-		 								5 * TextSize, UIColor)
-			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Over', over_cfg)
-			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'Space to restart', over_cfg)
+			g.gg.draw_rect(0, win_height / 2 - text_size, win_width,
+		 								5 * text_size, ui_color)
+			g.ft.draw_text(1, win_height / 2 + 0 * text_size, 'Game Over', over_cfg)
+			g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'Space to restart', over_cfg)
 		} else if g.state == .paused {
-			g.gg.draw_rect(0, WinHeight / 2 - TextSize, WinWidth,
-				5 * TextSize, UIColor)
-			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Paused', text_cfg)
-			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'SPACE to resume', text_cfg)
+			g.gg.draw_rect(0, win_height / 2 - text_size, win_width,
+				5 * text_size, ui_color)
+			g.ft.draw_text(1, win_height / 2 + 0 * text_size, 'Game Paused', text_cfg)
+			g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'SPACE to resume', text_cfg)
 		}
 	}
-	//g.gg.draw_rect(0, BlockSize, WinWidth, LimitThickness, UIColor)
+	//g.gg.draw_rect(0, block_size, win_width, limit_thickness, ui_color)
 }
 
 fn (mut g Game) draw_scene() {

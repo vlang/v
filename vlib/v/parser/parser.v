@@ -24,6 +24,7 @@ mut:
 	prev_tok          token.Token
 	peek_tok          token.Token
 	peek_tok2         token.Token
+	peek_tok3         token.Token
 	table             &table.Table
 	language          table.Language
 	inside_if         bool
@@ -93,6 +94,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		global_scope: global_scope
 	}
 	// comments_mode: comments_mode
+	p.init_parse_fns()
 	p.read_first_token()
 	for p.tok.kind == .comment {
 		stmts << p.comment()
@@ -125,6 +127,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
 	p.scope.end_pos = p.tok.pos
+	//
 	return ast.File{
 		path: path
 		mod: module_decl
@@ -192,6 +195,11 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 			return q.parsed_ast_files
 		}
 	}
+	if false {
+		// TODO: remove this; it just prevents warnings about unused time and runtime
+		time.sleep_ms(1)
+		println(runtime.nr_cpus())
+	}
 	// ///////////////
 	mut files := []ast.File{}
 	for path in paths {
@@ -204,11 +212,11 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 pub fn (p &Parser) init_parse_fns() {
 	// p.prefix_parse_fns = make(100, 100, sizeof(PrefixParseFn))
 	// p.prefix_parse_fns[token.Kind.name] = parse_name
-	println('')
 }
 
 pub fn (mut p Parser) read_first_token() {
-	// need to call next() three times to get peek token 1 & 2 and current token
+	// need to call next() 4 times to get peek token 1,2,3 and current token
+	p.next()
 	p.next()
 	p.next()
 	p.next()
@@ -278,7 +286,8 @@ fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
 	p.peek_tok = p.peek_tok2
-	p.peek_tok2 = p.scanner.scan()
+	p.peek_tok2 = p.peek_tok3
+	p.peek_tok3 = p.scanner.scan()
 	/*
 	if p.tok.kind==.comment {
 		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
@@ -486,7 +495,13 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			return p.return_stmt()
 		}
 		.dollar {
-			return p.comp_if()
+			if p.peek_tok.kind == .key_if {
+				return p.comp_if()
+			} else if p.peek_tok.kind == .name {
+				return ast.ExprStmt{
+					expr: p.vweb()
+				}
+			}
 		}
 		.key_continue, .key_break {
 			tok := p.tok
@@ -819,7 +834,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
 	if p.peek_tok.kind == .lpar || (p.peek_tok.kind == .lt && p.peek_tok2.kind == .name &&
-		p.peek_tok.pos == p.peek_tok2.pos - 1) { // foo() or foo<int>() TODO remove whitespace sensitivity
+		p.peek_tok3.kind == .gt) {
+		// foo() or foo<int>()
 		mut name := p.tok.lit
 		if mod.len > 0 {
 			name = '${mod}.$name'
@@ -957,6 +973,9 @@ fn (mut p Parser) scope_register_it() {
 
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
+	if p.tok.kind == .dollar {
+		return p.comptime_method_call(left)
+	}
 	mut name_pos := p.tok.position()
 	field_name := p.check_name()
 	is_filter := field_name in ['filter', 'map']
@@ -978,7 +997,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		}
 		p.check(.rpar)
 		mut or_stmts := []ast.Stmt{}
-		mut is_or_block_used := false
+		mut or_kind := ast.OrKind.absent
 		if p.tok.kind == .key_orelse {
 			p.next()
 			p.open_scope()
@@ -994,9 +1013,14 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				pos: p.tok.position()
 				is_used: true
 			})
-			is_or_block_used = true
+			or_kind = .block
 			or_stmts = p.parse_block_no_scope()
 			p.close_scope()
+		}
+		if p.tok.kind == .question {
+			// `foo()?`
+			p.next()
+			or_kind = .propagate
 		}
 		end_pos := p.tok.position()
 		pos := token.Position{
@@ -1012,7 +1036,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			is_method: true
 			or_block: ast.OrExpr{
 				stmts: or_stmts
-				is_used: is_or_block_used
+				kind: or_kind
+				pos: pos
 			}
 		}
 		if is_filter {
@@ -1227,13 +1252,18 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			comment = p.comment()
 		}
 		pos := p.tok.position()
-		name := p.prepend_mod(p.check_name())
+		name := p.check_name()
+		if util.contains_capital(name) {
+			p.warn_with_pos('const names cannot contain uppercase letters, use snake_case instead',
+				pos)
+		}
+		full_name := p.prepend_mod(name)
 		// name := p.check_name()
 		// println('!!const: $name')
 		p.check(.assign)
 		expr := p.expr(0)
 		field := ast.ConstField{
-			name: name
+			name: full_name
 			expr: expr
 			pos: pos
 			comment: comment
@@ -1353,17 +1383,35 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		}
 	}
 	p.check(.rcbr)
+	attr := p.attr
+	is_flag := attr == 'flag'
+	if is_flag {
+		if fields.len > 32 {
+			p.error('when an enum is used as bit field, it must have a max of 32 fields')
+		}
+		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
+		p.scanner.codegen('
+//
+$pubfn (    e &$name) has(flag $name) bool { return      (int(*e) &  (1 << int(flag))) != 0 }
+$pubfn (mut e  $name) set(flag $name)      { unsafe{ *e = int(*e) |  (1 << int(flag)) } }
+$pubfn (mut e  $name) clear(flag $name)    { unsafe{ *e = int(*e) & ~(1 << int(flag)) } }
+$pubfn (mut e  $name) toggle(flag $name)   { unsafe{ *e = int(*e) ^  (1 << int(flag)) } }
+//
+        ')
+	}
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_
 		name: name
 		mod: p.mod
 		info: table.Enum{
 			vals: vals
+			is_flag: is_flag
 		}
 	})
 	return ast.EnumDecl{
 		name: name
 		is_pub: is_pub
+		is_flag: is_flag
 		fields: fields
 		pos: start_pos.extend(end_pos)
 	}

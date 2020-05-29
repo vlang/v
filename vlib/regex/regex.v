@@ -1149,7 +1149,7 @@ pub fn (mut re RE) compile(in_txt string) (int,int) {
 		// ist_simple_char
 		re.prog[pc].ist     = ist_simple_char
 		re.prog[pc].ch      = char_tmp
-		re.prog[pc].ch_len  = char_len
+		re.prog[pc].ch_len  = byte(char_len)
 		re.prog[pc].rep_min = 1
 		re.prog[pc].rep_max = 1
 		//println("char: ${char_tmp:c}")
@@ -2000,7 +2000,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				continue
 			}
 			else if rep==0 && rep < re.prog[tmp_pc].rep_min {
-				//println("ist_quant_ng ZERO UNDER THE MINIMUM g.i: $group_index")
+				//println("ist_quant_ng c_zero UNDER THE MINIMUM g.i: $group_index")
 
 				if group_index > 0{
 					group_index--
@@ -2071,7 +2071,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 			// zero quantifier * or ?
 			if rep == 0 && re.prog[pc].rep_min == 0 {
-				//println("ist_quant_n ZERO RANGE MIN")
+				//println("ist_quant_n c_zero RANGE MIN")
 				m_state = .ist_next // go to next ist
 				continue
 			}
