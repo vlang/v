@@ -5,7 +5,8 @@ import v.pref
 import v.util
 
 fn main() {
-	vroot := os.dir(pref.vexe_path())
+	vexe := pref.vexe_path()
+	vroot := os.dir(vexe)
 	os.chdir(vroot)
 
 	println('Updating V...')
@@ -30,7 +31,7 @@ fn main() {
 	// println(v_hash)
 	// println(current_hash)
 	if v_hash == current_hash {
-		show_current_v_version()
+		show_current_v_version(vexe)
 		return
 	}
 
@@ -61,16 +62,12 @@ fn main() {
 	_ := os.exec('v cmd/tools/vup.v') or {
 		panic(err)
 	}
-	show_current_v_version()
+	show_current_v_version(vexe)
 }
 
-fn show_current_v_version(){
+fn show_current_v_version(vexe string){
 	println('Current V version:')
-	$if windows {
-		os.system('v.exe version')
-	}	$else {
-		os.system('v version')
-	}
+	os.system('$vexe version')
 }
 
 fn backup(file string) {
