@@ -15,6 +15,10 @@ pub const (
 	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash.wyhash', 'strings']
 )
 
+pub const (
+	external_module_dependencies_for_tool = {'vdoc': ['markdown']}
+)
+
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
 pub fn vhash() string {
 	mut buf := [50]byte
@@ -143,8 +147,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		println('launch_tool should_compile: $should_compile')
 	}
 	if should_compile {
-		if tool_name == 'vdoc' {
-			util.check_module_is_installed('markdown', is_verbose) or {
+		emodules := external_module_dependencies_for_tool[tool_name]
+		for emodule in emodules {
+			util.check_module_is_installed(emodule, is_verbose) or {
 				panic(err)
 			}
 		}
@@ -281,10 +286,14 @@ pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
 			return error('can not start $update_cmd, error: $err')
 		}
 		if update_res.exit_code != 0 {
-			eprintln('Warning: module ${modulename} exists, but could not be updated.')
-			eprintln('Reason: $update_res.output')
-			// just proceed for now; failing to update may have been due
-			// to bad network conditions and the existing module may still work
+			eprintln('Warning: `${modulename}` exists, but is not updated.
+V will continue, since updates can fail due to temporary network problems,
+and the existing module `${modulename}` may still work.')
+			if is_verbose {
+				eprintln('Details:')
+				eprintln(update_res.output)
+			}
+			eprintln('-'.repeat(50))
 		}
 		return true
 	}
