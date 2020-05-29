@@ -463,9 +463,24 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.write('\t$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
 		f.write(f.type_to_str(field.typ))
+		if field.attrs.len > 0 {
+			f.write(' [' + field.attrs.join(';') + ']')
+		}
 		if field.has_default_expr {
 			f.write(' = ')
-			f.expr(field.default_expr)
+			mut is_pe_amp_ce := false
+			mut ce := ast.CastExpr{}
+			if field.default_expr is ast.PrefixExpr {
+				pe := field.default_expr as ast.PrefixExpr
+				if pe.right is ast.CastExpr && pe.op == .amp {
+					ce = pe.right as ast.CastExpr
+					is_pe_amp_ce = true
+					f.expr(ce)
+				}
+			}
+			if !is_pe_amp_ce {
+				f.expr(field.default_expr)
+			}
 		}
 		// f.write('// $field.pos.line_nr')
 		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
