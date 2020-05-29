@@ -1331,12 +1331,14 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	if array_init.typ != table.void_type {
 		if array_init.exprs.len == 0 {
 			if array_init.has_cap {
-				if c.expr(array_init.cap_expr) !in [table.int_type, table.any_int_type] {
+				sym := c.table.get_type_symbol(c.expr(array_init.cap_expr))
+				if sym.kind !in [.int, .any_int] {
 					c.error('array cap needs to be an int', array_init.pos)
 				}
 			}
 			if array_init.has_len {
-				if c.expr(array_init.len_expr) !in [table.int_type, table.any_int_type] {
+				sym := c.table.get_type_symbol(c.expr(array_init.len_expr))
+				if sym.kind !in [.int, .any_int] {
 					c.error('array len needs to be an int', array_init.pos)
 				}
 			}
@@ -1347,15 +1349,17 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		}
 		return array_init.typ
 	}
-	// a = []
+	// a = []type{}
 	if array_init.exprs.len == 0 {
 		if array_init.has_cap {
-			if c.expr(array_init.cap_expr) !in [table.int_type, table.any_int_type] {
+			sym := c.table.get_type_symbol(c.expr(array_init.cap_expr))
+			if sym.kind !in [.int, .any_int] {
 				c.error('array cap needs to be an int', array_init.pos)
 			}
 		}
 		if array_init.has_len {
-			if c.expr(array_init.len_expr) !in [table.int_type, table.any_int_type] {
+			sym := c.table.get_type_symbol(c.expr(array_init.len_expr))
+			if sym.kind !in [.int, .any_int] {
 				c.error('array len needs to be an int', array_init.pos)
 			}
 		}
