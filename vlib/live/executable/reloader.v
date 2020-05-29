@@ -44,7 +44,7 @@ pub fn start_reloader(r mut live.LiveReloadInfo) {
 }
 
 [if debuglive]
-fn elog(r mut live.LiveReloadInfo, s string){
+fn elog(r &live.LiveReloadInfo, s string){
 	eprintln(s)
 }
 
@@ -53,7 +53,7 @@ fn compile_and_reload_shared_lib(r mut live.LiveReloadInfo) ?bool {
 	new_lib_path := compile_lib(mut r) or {
 		return error('errors while compiling $r.original')
 	}
-	elog(mut r,'> compile_and_reload_shared_lib compiled: ${new_lib_path}')
+	elog(r,'> compile_and_reload_shared_lib compiled: ${new_lib_path}')
 	load_lib(mut r, new_lib_path )
 	r.reload_time_ms = int(sw.elapsed().milliseconds())
 	return true
@@ -62,13 +62,13 @@ fn compile_and_reload_shared_lib(r mut live.LiveReloadInfo) ?bool {
 fn compile_lib(r mut live.LiveReloadInfo) ?string {
 	new_lib_path, new_lib_path_with_extension := current_shared_library_path(mut r)
 	cmd := '$r.vexe $r.vopts -o $new_lib_path $r.original'
-	elog(mut r,'>       compilation cmd: $cmd')
+	elog(r,'>       compilation cmd: $cmd')
 	cwatch := time.new_stopwatch()
 	recompilation_result := os.exec( cmd ) or {
 		eprintln('recompilation failed')
 		return none
 	}
-	elog(mut r,'compilation took: ${cwatch.elapsed().milliseconds()}ms')
+	elog(r,'compilation took: ${cwatch.elapsed().milliseconds()}ms')
 	if recompilation_result.exit_code != 0 {
 		eprintln('recompilation error:')
 		eprintln( recompilation_result.output )
@@ -88,9 +88,9 @@ fn current_shared_library_path(r mut live.LiveReloadInfo) (string, string) {
 }
 
 fn load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
-	elog(mut r,'live mutex locking...')
+	elog(r,'live mutex locking...')
 	C.pthread_mutex_lock(r.live_fn_mutex)
-	elog(mut r,'live mutex locked')
+	elog(r,'live mutex locked')
 	//
 	if r.cb_locked_before != voidptr(0) {
 		r.cb_locked_before( r )
@@ -103,9 +103,9 @@ fn load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
 		r.cb_locked_after( r )
 	}
 	//
-	elog(mut r,'live mutex unlocking...')
+	elog(r,'live mutex unlocking...')
 	C.pthread_mutex_unlock(r.live_fn_mutex)
-	elog(mut r,'live mutex unlocked')
+	elog(r,'live mutex unlocked')
 }
 
 fn protected_load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
@@ -119,7 +119,7 @@ fn protected_load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
 		exit(1)
 	}
 	r.live_linkfn( r.live_lib )
-	elog(mut r,'> load_lib OK, new live_lib: $r.live_lib')
+	elog(r,'> load_lib OK, new live_lib: $r.live_lib')
 	// removing the .so file from the filesystem after dlopen-ing
     // it is safe, since it will still be mapped in memory
 	os.rm( new_lib_path )
