@@ -26,6 +26,7 @@ module markdown
 
 #flag -I @VROOT/thirdparty/md4c
 #flag @VROOT/thirdparty/md4c/md4c.o
+#flag -fpermissive -w
 #include "md4c.h"
 
 type BlockFn = fn (t MD_BLOCKTYPE, d voidptr, u voidptr) int

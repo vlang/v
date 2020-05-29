@@ -188,9 +188,13 @@ fn render_entity(r &MdHtml, text charptr, size u32, fn_append AppendFn) {
 	fn_append(r, text, size)
 }
 
+// this is needed just to make g++ happy:
+fn int_to_md_text_type(x int) MD_TEXTTYPE {
+	return x
+}
 fn render_attribute(r &MdHtml, attr &C.MD_ATTRIBUTE, fn_append AppendFn) {
 	for i := 0; attr.substr_offsets[i] < attr.size; i++ {
-		typ := attr.substr_types[i]
+		typ := int_to_md_text_type( attr.substr_types[i] )
 		off := attr.substr_offsets[i]
 		size := attr.substr_offsets[i+1] - off
 		text := attr.text + off
