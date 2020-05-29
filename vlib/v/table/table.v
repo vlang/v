@@ -482,6 +482,6 @@ pub fn (table &Table) register_fn_gen_type(fn_name string, typ Type) {
 	}
 	a << typ
 	// sym := table.get_type_symbol(typ)
-	// println('registering fn gen type $sym.name')
+	// println('registering fn ($fn_name) gen type $sym.name')
 	table.fn_gen_types[fn_name] = a
 }

@@ -384,8 +384,10 @@ typedef struct {
 			.alias {
 				parent := &g.table.types[typ.parent_idx]
 				styp := typ.name.replace('.', '__')
-				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
-				parent_styp := if is_c_parent { 'struct ' + parent.name[2..].replace('.', '__') } else { parent.name.replace('.', '__') }
+				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] ==
+					`.`
+				parent_styp := if is_c_parent { 'struct ' + parent.name[2..].replace('.', '__') } else { parent.name.replace('.',
+						'__') }
 				g.definitions.writeln('typedef $parent_styp $styp;')
 			}
 			.array {
@@ -842,7 +844,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 	got_is_ptr := got_type.is_ptr()
 	expected_is_ptr := expected_type.is_ptr()
 	neither_void := table.voidptr_type !in [got_type, expected_type]
-	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_, .placeholder] {
+	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_,
+		.placeholder
+	] {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
@@ -901,7 +905,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	if return_type != table.void_type && return_type != 0 {
 		sym := g.table.get_type_symbol(return_type)
 		// the left vs. right is ugly and should be removed
-		if sym.kind == .multi_return || assign_stmt.left.len > assign_stmt.right.len || assign_stmt.left.len > 1 {
+		if sym.kind == .multi_return || assign_stmt.left.len > assign_stmt.right.len || assign_stmt.left.len >
+			1 {
 			// multi return
 			// TODO Handle in if_expr
 			is_optional := return_type.flag_is(.optional)
@@ -1316,6 +1321,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.CharLiteral {
 			g.write("'$it.val'")
+		}
+		ast.ComptimeCall {
+			g.write('/*c*/')
 		}
 		ast.ConcatExpr {
 			g.concat_expr(it)
@@ -1836,7 +1844,8 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
-	is_expr := (node.is_expr && node.return_type != table.void_type) || g.inside_ternary > 0
+	is_expr := (node.is_expr && node.return_type != table.void_type) || g.inside_ternary >
+		0
 	if is_expr {
 		g.inside_ternary++
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
@@ -2202,14 +2211,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 [inline]
 fn (g Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 	match expr {
-		ast.CallExpr {
-			return g.table.get_type_symbol(it.return_type).kind == .multi_return
-		}
-		else {
-			return false
-		}
+		ast.CallExpr { return g.table.get_type_symbol(it.return_type).kind == .multi_return }
+		else { return false }
 	}
-
 }
 
 fn (mut g Gen) return_statement(node ast.Return) {
@@ -2247,20 +2251,15 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		} else {
 			styp = g.typ(g.fn_decl.return_type)
 		}
-
 		// Use this to keep the tmp assignments in order
 		mut multi_unpack := ''
-
-
 		g.write('($styp){')
-
 		mut arg_idx := 0
 		for i, expr in node.exprs {
 			// Check if we are dealing with a multi return and handle it seperately
 			if g.expr_is_multi_return_call(expr) {
 				c := expr as ast.CallExpr
 				expr_sym := g.table.get_type_symbol(c.return_type)
-
 				// Create a tmp for this call
 				tmp := g.new_tmp_var()
 				s := g.go_before_stmt(0)
@@ -2270,7 +2269,6 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				g.writeln(';')
 				multi_unpack += g.go_before_stmt(0)
 				g.write(s)
-
 				expr_types := expr_sym.mr_info().types
 				for j, _ in expr_types {
 					g.write('.arg$arg_idx=${tmp}.arg$j')
@@ -2279,10 +2277,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 					}
 					arg_idx++
 				}
-
 				continue
 			}
-
 			g.write('.arg$arg_idx=')
 			g.expr(expr)
 			arg_idx++
@@ -2291,11 +2287,9 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			}
 		}
 		g.write('}')
-
 		if fn_return_is_optional {
 			g.write(' }, sizeof($styp))')
 		}
-
 		// Make sure to add our unpacks
 		g.insert_before_stmt(multi_unpack)
 	} else if node.exprs.len >= 1 {

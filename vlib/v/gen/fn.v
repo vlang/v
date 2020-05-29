@@ -12,6 +12,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// || it.no_body {
 		return
 	}
+	//if g.fileis('vweb.v') {
+		//println('\ngen_fn_decl() $it.name $it.is_generic $g.cur_generic_type')
+	//}
 	former_cur_fn := g.cur_fn
 	g.cur_fn = &it
 	defer {
@@ -759,4 +762,8 @@ fn (mut g Gen) is_gui_app() bool {
 		}
 	}
 	return false
+}
+
+fn (g &Gen) fileis(s string) bool {
+	return g.file.path.contains(s)
 }

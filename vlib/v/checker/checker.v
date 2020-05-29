@@ -860,6 +860,16 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// TODO: impl typeof properly (probably not going to be a fn call)
 		return table.string_type
 	}
+	if call_expr.generic_type == table.t_type {
+		if c.mod != '' && c.mod != 'main' {
+			// Need to prepend the module when adding a generic type to a function
+			// `fn_gen_types['mymod.myfn'] == ['string', 'int']`
+			c.table.register_fn_gen_type(c.mod + '.' + fn_name, c.cur_generic_type)
+		} else {
+			c.table.register_fn_gen_type(fn_name, c.cur_generic_type)
+		}
+		// call_expr.generic_type = c.unwrap_generic(call_expr.generic_type)
+	}
 	// if c.fileis('json_test.v') {
 	// println(fn_name)
 	// }
@@ -983,6 +993,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)
 		if f.is_variadic && typ.flag_is(.variadic) && call_expr.args.len - 1 > i {
 			c.error('when forwarding a varg variable, it must be the final argument', call_expr.pos)
+		}
+		if arg.is_mut && !call_arg.is_mut {
+			c.error('`$arg.name` is a mutable argument, you need to provide `mut`: `${call_expr.name}(mut ...)`',
+				call_arg.expr.position())
 		}
 		// Handle expected interface
 		if arg_typ_sym.kind == .interface_ {

@@ -17,7 +17,7 @@ fn main() {
 	vweb.run<App>(port)
 }
 
-pub fn (mut app App) init() {
+pub fn (app App) init() {
 	app.vweb.handle_static('.')
 }
 

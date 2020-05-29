@@ -142,7 +142,7 @@ pub fn run<T>(port int) {
 	//app.reset()
 	for {
 		conn := l.accept() or { panic('accept() failed') }
-		handle_conn(conn, mut app)
+		handle_conn<T>(conn, mut app)
 		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
 		//message := readall(conn)
