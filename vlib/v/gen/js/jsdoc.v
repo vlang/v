@@ -32,6 +32,7 @@ fn (mut d JsDoc) gen_const(typ string) {
 
 fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) {
 	d.writeln('/**')
+	d.writeln(' * @constructor')
 	d.write(' * @param {{')
 	for i, field in fields {
 		// Marked as optional: structs have default default values,
@@ -40,13 +41,13 @@ fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) {
 		if i < fields.len - 1 { d.write(', ') }
 	}
 	d.writeln('}}')
-	d.writeln(' * @constructor')
 	d.writeln('*/')
 }
 
 fn (mut d JsDoc) gen_fn(it ast.FnDecl) {
 	type_name := d.gen.typ(it.return_type)
 	d.writeln('/**')
+	d.writeln(' * @function')
 	if it.is_deprecated {
 		d.writeln(' * @deprecated')
 	}
@@ -64,6 +65,5 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) {
 		}
 	}
 	d.writeln(' * @returns {$type_name}')
-	d.writeln(' * @function')
 	d.writeln('*/')
 }
