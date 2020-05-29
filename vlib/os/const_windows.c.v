@@ -102,3 +102,38 @@ const (
 	o_noctty	= 0			// make file non-controlling tty (ignored on Windows)
 	o_nonblock	= 0			// don't block on opening file (ignored on Windows)
 )
+
+const (
+	status_access_violation =          0xC0000005
+	status_in_page_error =             0xC0000006
+	status_invalid_handle =            0xC0000008
+	status_invalid_parameter =         0xC000000D
+	status_no_memory =                 0xC0000017
+	status_illegal_instruction =       0xC000001D
+	status_noncontinuable_exception =  0xC0000025
+	status_invalid_disposition =       0xC0000026
+	status_array_bounds_exceeded =     0xC000008C
+	status_float_denormal_operand =    0xC000008D
+	status_float_divide_by_zero =      0xC000008E
+	status_float_inexact_result =      0xC000008F
+	status_float_invalid_operation =   0xC0000090
+	status_float_overflow =            0xC0000091
+	status_float_stack_check =         0xC0000092
+	status_float_underflow =           0xC0000093
+	status_integer_divide_by_zero =    0xC0000094
+	status_integer_overflow =          0xC0000095
+	status_privileged_instruction =    0xC0000096
+	status_stack_overflow =            0xC00000FD
+	status_dll_not_found =             0xC0000135
+	status_ordinal_not_found =         0xC0000138
+	status_entrypoint_not_found =      0xC0000139
+	status_control_c_exit =            0xC000013A
+	status_dll_init_failed =           0xC0000142
+	status_float_multiple_faults =     0xC00002B4
+	status_float_multiple_traps =      0xC00002B5
+	status_reg_nat_consumption =       0xC00002C9
+	status_heap_corruption =           0xC0000374
+	status_stack_buffer_overrun =      0xC0000409
+	status_invalid_cruntime_parameter = 0xC0000417
+	status_assertion_failure =         0xC0000420
+)

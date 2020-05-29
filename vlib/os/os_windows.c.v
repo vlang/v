@@ -311,3 +311,38 @@ pub fn (mut f File) close() {
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
 }
+
+pub struct ExceptionRecord {
+pub:
+	// status_ constants
+	code u32
+	flags u32
+	
+	record &ExceptionRecord
+	address voidptr
+	param_count u32
+	// params []voidptr
+}
+
+pub struct ContextRecord {
+	// TODO
+}
+
+pub struct ExceptionPointers {
+pub:
+	exception_record &ExceptionRecord
+	context_record &ContextRecord
+}
+
+pub type VectoredExceptionHandler fn(&ExceptionPointers)u32
+
+// This is defined in builtin because we use vectored exception handling
+// for our unhandled exception handler on windows
+
+// As a result this definition is commented out to prevent
+// duplicate definitions from displeasing the compiler
+// fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
+
+pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandler) {
+	C.AddVectoredExceptionHandler(u32(first), handler)
+}

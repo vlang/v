@@ -158,7 +158,16 @@ TODO
 	print_backtrace()
 #endif
 */
+}
 
+[unsafe_fn]
+pub fn v_realloc(b byteptr, n int) byteptr {
+	ptr := C.realloc(b, n)
+	if ptr == 0 {
+		panic('realloc($n) failed')
+	}
+
+	return ptr
 }
 
 pub fn v_calloc(n int) byteptr {
