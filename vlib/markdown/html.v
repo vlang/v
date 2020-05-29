@@ -188,8 +188,9 @@ fn render_entity(r &MdHtml, text charptr, size u32, fn_append AppendFn) {
 	fn_append(r, text, size)
 }
 
-// this is needed just to make g++ happy:
+[inline]
 fn int_to_md_text_type(x int) MD_TEXTTYPE {
+	// NB: this function is needed just to make g++ happy
 	return x
 }
 fn render_attribute(r &MdHtml, attr &C.MD_ATTRIBUTE, fn_append AppendFn) {
