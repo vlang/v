@@ -155,3 +155,17 @@ fn test_array_init_in_struct_field() {
 	println(m)
 	assert m.ar.str() == '[1.2, 1.2, 1.2, 1.2]'
 }
+
+struct Aaa {
+pub mut:
+	a []int
+}
+
+fn test_array_init_cast_type_in_struct_field() {
+	size := u32(5)
+	st := &Aaa{
+		a: []int{len: int(size)}
+	}
+	println(st)
+	assert st.a.str() == '[0, 0, 0, 0, 0]'
+}
