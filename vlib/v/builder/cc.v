@@ -601,8 +601,7 @@ fn (v &Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CFlag
 	}
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
-	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
-	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget '
+	cmd := '$v.pref.ccompiler $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget '
 	res := os.exec(cmd) or {
 		println('failed thirdparty object build cmd: $cmd')
 		verror(err)
