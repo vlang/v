@@ -326,28 +326,19 @@ pub fn (mut g JsGen) new_tmp_var() string {
 // 'fn' => ''
 [inline]
 fn get_ns(s string) string {
-	parts := s.split('.')
-	mut res := ''
-	for i, p in parts {
-		if i == parts.len - 1 { break } // Last part (fn/struct/var name): skip
-		res += p
-		if i < parts.len - 2 { res += '.' } // Avoid trailing dot
-	}
-	return res
+	idx := s.last_index('.') or { return '' }
+	return s.substr(0, idx)
 }
 
 fn (mut g JsGen) get_alias(name string) string {
-	// TODO: This is a hack; find a better way to do this
-	split := name.split('.')
-	if split.len > 1 {
-		imports := g.namespace_imports[g.namespace]
-		alias := imports[split[0]]
+	ns := get_ns(name)
+	if ns == '' { return name }
 
-		if alias != '' {
-			return alias + '.' + split[1..].join('.')
-		}
-	}
-	return name // No dot == no alias
+	imports := g.namespace_imports[g.namespace]
+	alias := imports[ns]
+	if alias == '' { return name }
+
+	return alias + '.' + name.split('.').last()
 }
 
 fn (mut g JsGen) js_name(name_ string) string {
