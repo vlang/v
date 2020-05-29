@@ -31,11 +31,9 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.next() // `<`
 		p.expr_mod = ''
 		mut generic_type = p.parse_type()
-		if generic_type == table.t_type {
-			// Handle `foo<T>()`
-			// generic_type = p.cur_gen_type
-		}
 		p.check(.gt) // `>`
+		// In case of `foo<T>()`
+		// T is unwrapped and registered in the checker.
 		if generic_type != table.t_type {
 			p.table.register_fn_gen_type(fn_name, generic_type)
 		}
