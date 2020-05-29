@@ -1324,6 +1324,13 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	c.expected_type = table.void_type
 }
 
+fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Position) {
+	sym := c.table.get_type_symbol(c.expr(expr))
+	if sym.kind !in [.int, .any_int] {
+		c.error('array $para needs to be an int', pos)
+	}
+}
+
 pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	// println('checker: array init $array_init.pos.line_nr $c.file.path')
 	mut elem_type := table.void_type
@@ -1331,16 +1338,10 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	if array_init.typ != table.void_type {
 		if array_init.exprs.len == 0 {
 			if array_init.has_cap {
-				sym := c.table.get_type_symbol(c.expr(array_init.cap_expr))
-				if sym.kind !in [.int, .any_int] {
-					c.error('array cap needs to be an int', array_init.pos)
-				}
+				c.check_array_init_para_type('cap', array_init.cap_expr, array_init.pos)
 			}
 			if array_init.has_len {
-				sym := c.table.get_type_symbol(c.expr(array_init.len_expr))
-				if sym.kind !in [.int, .any_int] {
-					c.error('array len needs to be an int', array_init.pos)
-				}
+				c.check_array_init_para_type('len', array_init.len_expr, array_init.pos)
 			}
 		}
 		sym := c.table.get_type_symbol(array_init.elem_type)
@@ -1349,20 +1350,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		}
 		return array_init.typ
 	}
-	// a = []type{}
+	// a = []
 	if array_init.exprs.len == 0 {
-		if array_init.has_cap {
-			sym := c.table.get_type_symbol(c.expr(array_init.cap_expr))
-			if sym.kind !in [.int, .any_int] {
-				c.error('array cap needs to be an int', array_init.pos)
-			}
-		}
-		if array_init.has_len {
-			sym := c.table.get_type_symbol(c.expr(array_init.len_expr))
-			if sym.kind !in [.int, .any_int] {
-				c.error('array len needs to be an int', array_init.pos)
-			}
-		}
 		type_sym := c.table.get_type_symbol(c.expected_type)
 		if type_sym.kind != .array {
 			c.error('array_init: no type specified (maybe: `[]Type{}` instead of `[]`)', array_init.pos)
