@@ -225,3 +225,16 @@ fn test_interface_ptr_array() {
 	assert true
 	assert animals.len == 3
 }
+
+fn test_is() {
+	dog := Dog{}
+	assert foo2(dog) == 1
+}
+
+fn foo2(a Animal) int {
+	if a is Dog {
+		return 1
+	} else {
+		return 0
+	}
+}

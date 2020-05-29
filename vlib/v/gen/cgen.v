@@ -3614,6 +3614,11 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 	sym := g.table.get_type_symbol(node.left_type)
 	if sym.kind == .interface_ {
 		g.write('_interface_idx == ')
+		// `_Animal_Dog_index`
+		sub_type := node.right as ast.Type
+		sub_sym := g.table.get_type_symbol(sub_type.typ)
+		g.write('_${sym.name}_${sub_sym.name}_index')
+		return
 	} else if sym.kind == .sum_type {
 		g.write('typ == ')
 	}
@@ -3662,9 +3667,9 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	}
 	already_generated_key := '${styp}:${str_fn_name}'
 	if !sym_has_str_method && already_generated_key !in g.str_types {
-	$if debugautostr? {
-		eprintln('> gen_str_for_type_with_styp: |typ: ${typ:5}, ${sym.name:20}|has_str: ${sym_has_str_method:5}|expects_ptr: ${str_method_expects_ptr:5}|nr_args: ${str_nr_args:1}|fn_name: ${str_fn_name:20}')
-	}
+		$if debugautostr ? {
+			eprintln('> gen_str_for_type_with_styp: |typ: ${typ:5}, ${sym.name:20}|has_str: ${sym_has_str_method:5}|expects_ptr: ${str_method_expects_ptr:5}|nr_args: ${str_nr_args:1}|fn_name: ${str_fn_name:20}')
+		}
 		g.str_types << already_generated_key
 		match sym.info {
 			table.Alias { g.gen_str_default(sym, styp, str_fn_name) }
