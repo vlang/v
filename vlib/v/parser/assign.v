@@ -22,10 +22,19 @@ fn (mut p Parser) check_undefined_variables(idents []ast.Ident, expr ast.Expr) {
 			p.check_undefined_variables(idents, it.left)
 			p.check_undefined_variables(idents, it.right)
 		}
+		ast.PrefixExpr {
+			p.check_undefined_variables(idents, it.right)
+		}
+		ast.PostfixExpr {
+			p.check_undefined_variables(idents, it.expr)
+		}
 		ast.StringInterLiteral {
 			for expr_ in it.exprs {
 				p.check_undefined_variables(idents, expr_)
 			}
+		}
+		ast.ParExpr {
+			p.check_undefined_variables(idents, it.expr)
 		}
 		else {}
 	}
