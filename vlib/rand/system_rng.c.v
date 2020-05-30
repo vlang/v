@@ -49,7 +49,7 @@ fn C.rand() int
 // SysRNG is the PRNG provided by default in the libc implementiation that V uses.
 pub struct SysRNG {
 mut:
-	seed u32 = u32(0x1008)
+	seed u32 = time_seed_32()
 }
 
 // r.seed() sets the seed of the accepting SysRNG to the given data.

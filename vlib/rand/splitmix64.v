@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module rand
 
 const (
@@ -7,7 +10,7 @@ const (
 // Ported from http://xoshiro.di.unimi.it/splitmix64.c
 pub struct SplitMix64RNG {
 mut:
-	state     u64
+	state     u64 = time_seed_64()
 	has_extra bool = false
 	extra     u32
 }
