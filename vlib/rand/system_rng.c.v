@@ -95,6 +95,10 @@ pub fn (r SysRNG) u64() u64 {
 // r.u32n(max) returns a pseudorandom u32 value that is guaranteed to be less than max
 [inline]
 pub fn (r SysRNG) u32n(max u32) u32 {
+	if max == 0 {
+		eprintln('max must be positive integer')
+		exit(1)
+	}
 	// Owing to the pigeon-hole principle, we can't simply do
 	// val := rng.u32() % max.
 	// It'll wreck the properties of the distribution unless
@@ -124,6 +128,10 @@ pub fn (r SysRNG) u32n(max u32) u32 {
 // r.u64n(max) returns a pseudorandom u64 value that is guaranteed to be less than max
 [inline]
 pub fn (r SysRNG) u64n(max u64) u64 {
+	if max == 0 {
+		eprintln('max must be positive integer')
+		exit(1)
+	}
 	// Similar procedure for u64s
 	bit_len := bits.len_64(max)
 	if bit_len == 64 {
