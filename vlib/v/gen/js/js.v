@@ -1140,6 +1140,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 }
 
 fn (mut g JsGen) gen_index_expr(it ast.IndexExpr) {
+	left_typ := g.table.get_type_symbol(it.left_type)
 	// TODO: Handle splice setting if it's implemented
 	if it.index is ast.RangeExpr {
 		range := it.index as ast.RangeExpr
@@ -1158,8 +1159,18 @@ fn (mut g JsGen) gen_index_expr(it ast.IndexExpr) {
 			g.write('.length')
 		}
 		g.write(')')
+	} else if left_typ.kind == .map {
+		g.expr(it.left)
+		if it.is_setter {
+			g.inside_map_set = true
+			g.write('.set(')
+		} else {
+			g.write('.get(')
+		}
+		g.expr(it.index)
+		if !it.is_setter { g.write(')') }
 	} else {
-		// TODO Does this work in all cases?
+		// TODO Does this cover all cases?
 		g.expr(it.left)
 		g.write('[')
 		g.expr(it.index)
