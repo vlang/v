@@ -51,6 +51,7 @@ struct Gen {
 	includes             strings.Builder // all C #includes required by V modules
 	typedefs             strings.Builder
 	typedefs2            strings.Builder
+	type_definitions     strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	definitions          strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	inits                strings.Builder // contents of `void _vinit(){}`
 	cleanups             strings.Builder // contents of `void _vcleanup(){}`
@@ -60,6 +61,7 @@ struct Gen {
 	comptime_defines     strings.Builder // custom defines, given by -d/-define flags on the CLI
 	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
 	hotcode_definitions  strings.Builder // -live declarations & functions
+	options              strings.Builder // `Option_xxxx` types
 	table                &table.Table
 	pref                 &pref.Preferences
 	module_built         string
@@ -116,6 +118,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		includes: strings.new_builder(100)
 		typedefs: strings.new_builder(100)
 		typedefs2: strings.new_builder(100)
+		type_definitions: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
 		stringliterals: strings.new_builder(100)
@@ -125,6 +128,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		cleanups: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
+		options: strings.new_builder(100)
 		table: table
 		pref: pref
 		fn_decl: 0
@@ -185,6 +189,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	b.writeln(g.cheaders.str())
 	b.writeln('\n// V includes:')
 	b.writeln(g.includes.str())
+	b.writeln('\n// V type definitions:')
+	b.writeln(g.type_definitions.str())
+	b.writeln('\n// V Option_xxx definitions:')
+	b.writeln(g.options.str())
 	b.writeln('\n// V definitions:')
 	b.writeln(g.definitions.str())
 	b.writeln('\n// V profile counters:')
@@ -320,13 +328,15 @@ fn (mut g Gen) typ(t table.Type) string {
 			g.register_optional(t, base)
 			// println(styp)
 			x := styp // .replace('*', '_ptr')			// handle option ptrs
-			g.definitions.writeln('typedef struct $x {')
-			g.definitions.writeln(' bool ok;')
-			g.definitions.writeln(' bool is_none;')
-			g.definitions.writeln(' string v_error;')
-			g.definitions.writeln(' int ecode;')
-			g.definitions.writeln(' byte data[sizeof($base)];')
-			g.definitions.writeln('} $x;')
+			s := g.go_before_stmt(0)
+			g.options.writeln('typedef struct $x {')
+			g.options.writeln(' bool ok;')
+			g.options.writeln(' bool is_none;')
+			g.options.writeln(' string v_error;')
+			g.options.writeln(' int ecode;')
+			g.options.writeln(' byte data[sizeof($base)];')
+			g.options.writeln('} $x;')
+			g.write(s)
 			g.optionals << styp
 		}
 	}
@@ -394,18 +404,18 @@ typedef struct {
 					`.`
 				parent_styp := if is_c_parent { 'struct ' + parent.name[2..].replace('.', '__') } else { parent.name.replace('.',
 						'__') }
-				g.definitions.writeln('typedef $parent_styp $styp;')
+				g.type_definitions.writeln('typedef $parent_styp $styp;')
 			}
 			.array {
 				styp := typ.name.replace('.', '__')
-				g.definitions.writeln('typedef array $styp;')
+				g.type_definitions.writeln('typedef array $styp;')
 			}
 			.interface_ {
-				g.definitions.writeln('typedef _Interface ${c_name(typ.name)};')
+				g.type_definitions.writeln('typedef _Interface ${c_name(typ.name)};')
 			}
 			.map {
 				styp := typ.name.replace('.', '__')
-				g.definitions.writeln('typedef map $styp;')
+				g.type_definitions.writeln('typedef map $styp;')
 			}
 			.function {
 				info := typ.info as table.FnType
@@ -422,14 +432,14 @@ typedef struct {
 					} else {
 						c_name(func.name)
 					}
-					g.definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
+					g.type_definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 					for i, arg in func.args {
-						g.definitions.write(g.typ(arg.typ))
+						g.type_definitions.write(g.typ(arg.typ))
 						if i < func.args.len - 1 {
-							g.definitions.write(',')
+							g.type_definitions.write(',')
 						}
 					}
-					g.definitions.writeln(');')
+					g.type_definitions.writeln(');')
 				}
 			}
 			else {
@@ -440,7 +450,7 @@ typedef struct {
 }
 
 pub fn (mut g Gen) write_multi_return_types() {
-	g.definitions.writeln('// multi return structs')
+	g.type_definitions.writeln('// multi return structs')
 	for typ in g.table.types {
 		// sym := g.table.get_type_symbol(typ)
 		if typ.kind != .multi_return {
@@ -448,30 +458,30 @@ pub fn (mut g Gen) write_multi_return_types() {
 		}
 		name := typ.name.replace('.', '__')
 		info := typ.info as table.MultiReturn
-		g.definitions.writeln('typedef struct {')
+		g.type_definitions.writeln('typedef struct {')
 		// TODO copy pasta StructDecl
 		// for field in struct_info.fields {
 		for i, mr_typ in info.types {
 			type_name := g.typ(mr_typ)
-			g.definitions.writeln('\t$type_name arg${i};')
+			g.type_definitions.writeln('\t$type_name arg${i};')
 		}
-		g.definitions.writeln('} $name;\n')
+		g.type_definitions.writeln('} $name;\n')
 		// g.typedefs.writeln('typedef struct $name $name;')
 	}
 }
 
 pub fn (mut g Gen) write_variadic_types() {
 	if g.variadic_args.size > 0 {
-		g.definitions.writeln('// variadic structs')
+		g.type_definitions.writeln('// variadic structs')
 	}
 	for type_str, arg_len in g.variadic_args {
 		typ := table.Type(type_str.int())
 		type_name := g.typ(typ)
 		struct_name := 'varg_' + type_name.replace('*', '_ptr')
-		g.definitions.writeln('struct $struct_name {')
-		g.definitions.writeln('\tint len;')
-		g.definitions.writeln('\t$type_name args[$arg_len];')
-		g.definitions.writeln('};\n')
+		g.type_definitions.writeln('struct $struct_name {')
+		g.type_definitions.writeln('\tint len;')
+		g.type_definitions.writeln('\t$type_name args[$arg_len];')
+		g.type_definitions.writeln('};\n')
 		g.typedefs.writeln('typedef struct $struct_name $struct_name;')
 	}
 }
@@ -2235,12 +2245,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	// handle none/error for optional
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
-		mut optional_error := false
-		match node.exprs[0] {
-			ast.CallExpr { optional_error = it.name == 'error' || it.name == 'error_with_code' }
-			else { false }
-		}
-		if optional_none || optional_error {
+		typ_is_option := g.typ(node.types[0]) == 'Option'
+		if optional_none || typ_is_option {
 			tmp := g.new_tmp_var()
 			g.write('Option $tmp = ')
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
@@ -2671,8 +2677,8 @@ fn (mut g Gen) write_sorted_types() {
 	// sort structs
 	types_sorted := g.sort_structs(types)
 	// Generate C code
-	g.definitions.writeln('// builtin types:')
-	g.definitions.writeln('//------------------ #endbuiltin')
+	g.type_definitions.writeln('// builtin types:')
+	g.type_definitions.writeln('//------------------ #endbuiltin')
 	g.write_types(types_sorted)
 }
 
@@ -2686,39 +2692,39 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 		match typ.info {
 			table.Struct {
 				info := typ.info as table.Struct
-				// g.definitions.writeln('typedef struct {')
+				// g.type_definitions.writeln('typedef struct {')
 				if info.is_union {
-					g.definitions.writeln('union $name {')
+					g.type_definitions.writeln('union $name {')
 				} else {
-					g.definitions.writeln('struct $name {')
+					g.type_definitions.writeln('struct $name {')
 				}
 				if info.fields.len > 0 {
 					for field in info.fields {
 						type_name := g.typ(field.typ)
 						field_name := c_name(field.name)
-						g.definitions.writeln('\t$type_name $field_name;')
+						g.type_definitions.writeln('\t$type_name $field_name;')
 					}
 				} else {
-					g.definitions.writeln('EMPTY_STRUCT_DECLARATION;')
+					g.type_definitions.writeln('EMPTY_STRUCT_DECLARATION;')
 				}
-				// g.definitions.writeln('} $name;\n')
+				// g.type_definitions.writeln('} $name;\n')
 				//
-				g.definitions.writeln('};\n')
+				g.type_definitions.writeln('};\n')
 			}
 			table.Alias {
 				// table.Alias, table.SumType { TODO
 			}
 			table.SumType {
-				g.definitions.writeln('')
-				g.definitions.writeln('// Sum type $name = ')
+				g.type_definitions.writeln('')
+				g.type_definitions.writeln('// Sum type $name = ')
 				for sv in it.variants {
-					g.definitions.writeln('//          | ${sv:4d} = ${g.typ(sv):-20s}')
+					g.type_definitions.writeln('//          | ${sv:4d} = ${g.typ(sv):-20s}')
 				}
-				g.definitions.writeln('typedef struct {')
-				g.definitions.writeln('    void* obj;')
-				g.definitions.writeln('    int typ;')
-				g.definitions.writeln('} $name;')
-				g.definitions.writeln('')
+				g.type_definitions.writeln('typedef struct {')
+				g.type_definitions.writeln('    void* obj;')
+				g.type_definitions.writeln('    int typ;')
+				g.type_definitions.writeln('} $name;')
+				g.type_definitions.writeln('')
 			}
 			table.ArrayFixed {
 				// .array_fixed {
@@ -2730,7 +2736,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				if fixed.starts_with('C__') {
 					fixed = fixed[3..]
 				}
-				g.definitions.writeln('typedef $fixed $styp [$len];')
+				g.type_definitions.writeln('typedef $fixed $styp [$len];')
 				// }
 			}
 			else {}
@@ -3578,17 +3584,17 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 			if name in g.threaded_fns {
 				return
 			}
-			g.definitions.writeln('\ntypedef struct $wrapper_struct_name {')
+			g.type_definitions.writeln('\ntypedef struct $wrapper_struct_name {')
 			if it.is_method {
 				styp := g.typ(it.receiver_type)
-				g.definitions.writeln('\t$styp arg0;')
+				g.type_definitions.writeln('\t$styp arg0;')
 			}
 			for i, arg in it.args {
 				styp := g.typ(arg.typ)
-				g.definitions.writeln('\t$styp arg${i+1};')
+				g.type_definitions.writeln('\t$styp arg${i+1};')
 			}
-			g.definitions.writeln('} $wrapper_struct_name;')
-			g.definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg);')
+			g.type_definitions.writeln('} $wrapper_struct_name;')
+			g.type_definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg);')
 			g.gowrappers.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg) {')
 			g.gowrappers.write('\t${name}(')
 			if it.is_method {
@@ -3685,7 +3691,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 		already_generated_key_no_ptr := '${styp}:${str_fn_name_no_ptr}'
 		if already_generated_key_no_ptr !in g.str_types {
 			g.str_types << already_generated_key_no_ptr
-			g.definitions.writeln('string ${str_fn_name_no_ptr}(${styp} it); // auto no_ptr version')
+			g.type_definitions.writeln('string ${str_fn_name_no_ptr}(${styp} it); // auto no_ptr version')
 			g.auto_str_funcs.writeln('string ${str_fn_name_no_ptr}(${styp} it){ return ${str_fn_name}(&it); }')
 		}
 		/*
@@ -3742,7 +3748,7 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
 	} else {
 		verror("could not generate string method for type \'${styp}\'")
 	}
-	g.definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) {')
 	if convertor == 'bool' {
 		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(tos_lit("${styp}("), (${convertor})it ? tos_lit("true") : tos_lit("false"));')
@@ -3757,7 +3763,7 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
 
 fn (mut g Gen) gen_str_for_enum(info table.Enum, styp, str_fn_name string) {
 	s := styp.replace('.', '__')
-	g.definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { /* gen_str_for_enum */')
 	g.auto_str_funcs.writeln('\tswitch(it) {')
 	for val in info.vals {
@@ -3782,7 +3788,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 			fnames2strfunc[field_styp] = field_fn_name
 		}
 	}
-	g.definitions.writeln('string ${str_fn_name}($styp x, int indent_count); // auto')
+	g.type_definitions.writeln('string ${str_fn_name}($styp x, int indent_count); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp x, int indent_count) {')
 	mut clean_struct_v_type_name := styp.replace('__', '.')
 	if styp.ends_with('*') {
@@ -3859,7 +3865,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 		// eprintln('> sym.name: does not have method `str`')
 		g.gen_str_for_type_with_styp(info.elem_type, field_styp)
 	}
-	g.definitions.writeln('string ${str_fn_name}($styp a); // auto')
+	g.type_definitions.writeln('string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(a.len * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
@@ -3920,7 +3926,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	if !sym.has_method('str') {
 		g.gen_str_for_type_with_styp(info.elem_type, field_styp)
 	}
-	g.definitions.writeln('string ${str_fn_name}($styp a); // auto')
+	g.type_definitions.writeln('string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder($info.size * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
@@ -3962,7 +3968,7 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 		g.gen_str_for_type_with_styp(info.value_type, val_styp)
 	}
 	zero := g.type_default(info.value_type)
-	g.definitions.writeln('string ${str_fn_name}($styp m); // auto')
+	g.type_definitions.writeln('string ${str_fn_name}($styp m); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp m) { /* gen_str_for_map */')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(m.key_values.size*10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("{"));')
