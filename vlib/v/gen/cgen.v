@@ -2300,7 +2300,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		if fn_return_is_optional && !node.types[0].flag_is(.optional) && return_sym.name !=
 			'Option' {
 			styp := g.base_type(g.fn_decl.return_type)
-			g.write('/*:)$return_sym.name*/opt_ok(&($styp[]) { ')
+			g.write('/*$return_sym.name*/opt_ok(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				// Automatic Dereference for optional
 				g.write('*')
@@ -2314,7 +2314,13 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.writeln(' }, sizeof($styp));')
 			return
 		}
+		if sym.kind == .interface_ {
+			g.interface_call(node.types[0], g.fn_decl.return_type)
+		}
 		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+		if sym.kind == .interface_ {
+			g.write(')')
+		}
 	}
 	g.writeln(';')
 }

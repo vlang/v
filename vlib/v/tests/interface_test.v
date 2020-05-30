@@ -238,3 +238,8 @@ fn foo2(a Animal) int {
 		return 0
 	}
 }
+
+fn new_animal() Animal {
+	dog := Dog{}
+	return dog
+}
