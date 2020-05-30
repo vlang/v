@@ -1,4 +1,9 @@
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module rand
+
+import math.bits
 
 /*
 C++ functions for MT19937, with initialization improved 2002/2/10.
@@ -61,8 +66,8 @@ mut:
 // seed() - Set the seed, needs only one int32
 pub fn (mut rng MT19937Rng) seed(seed_data []u32) {
 	if seed_data.len != 2 {
-		// eprintln("mt19937 needs only one 32bit seed")
-		// exit(1)
+		eprintln("mt19937 needs only one 32bit seed")
+		exit(1)
 	}
 	lo := u64(seed_data[0])
 	hi := u64(seed_data[1])
@@ -88,13 +93,13 @@ pub fn (mut rng MT19937Rng) u32() u32 {
 	return u32(ans & 0xffffffff)
 }
 
-// rng.u64() - return two u32's as little endian u64
+// rng.u64() - return a pseudorandom 64bit int in [0, 2**64)
 pub fn (mut rng MT19937Rng) u64() u64 {
 	mag01 := [u64(0), u64(matrix_a)]
 	mut x := u64(0)
 	mut i := int(0)
 	if !rng.seed_set {
-		rng.seed([u32(5489), u32(0)])
+		rng.seed(time_seed_array(2))
 	}
 	if rng.mti >= nn {
 		for i = 0; i < nn - mm; i++ {
@@ -141,19 +146,54 @@ pub fn (mut rng MT19937Rng) f32() f32 {
 
 // rng.u32n() - return a 32bit u32 in [0, max)
 pub fn (mut rng MT19937Rng) u32n(max u32) u32 {
-	if max <= 0 {
+	if max == 0 {
 		eprintln('max must be positive integer')
 		exit(1)
 	}
-	return rng.u32() % max
+	// Check SysRNG in system_rng.c.v for explanation
+	bit_len := bits.len_32(max)
+	if bit_len == 32 {
+		for {
+			value := rng.u32()
+			if value < max {
+				return value
+			}
+		}
+	} else {
+		mask := (u32(1) << (bit_len + 1)) - 1
+		for {
+			value := rng.u32() & mask
+			if value < max {
+				return value
+			}
+		}
+	}
+	return u32(0)
 }
 
 pub fn (mut rng MT19937Rng) u64n(max u64) u64 {
-	if max <= 0 {
+	if max == 0 {
 		eprintln('max must be positive integer')
 		exit(1)
 	}
-	return rng.u64() % max
+	bit_len := bits.len_64(max)
+	if bit_len == 64 {
+		for {
+			value := rng.u64()
+			if value < max {
+				return value
+			}
+		}
+	} else {
+		mask := (u64(1) << (bit_len + 1)) - 1
+		for {
+			value := rng.u64() & mask
+			if value < max {
+				return value
+			}
+		}
+	}
+	return u64(0)
 }
 
 // rng.u32n(min, max) returns a pseudorandom u32 value that is guaranteed to be in [min, max)
