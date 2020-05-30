@@ -15,7 +15,6 @@ mut:
 // rng.seed(seed_data) sets the seed of the accepting SplitMix64RNG to the given data
 // in little-endian format (i.e. lower 32 bits are in [0] and higher 32 bits in [1]).
 pub fn (mut rng SplitMix64RNG) seed(seed_data []u32) {
-	println(seed_data)
 	if seed_data.len != 2 {
 		eprintln('SplitMix64RNG needs 2 32-bit unsigned integers as the seed.')
 		exit(1)
@@ -53,6 +52,10 @@ pub fn (mut rng SplitMix64RNG) u64() u64 {
 [inline]
 pub fn (mut rng SplitMix64RNG) u32n(bound u32) u32 {
 	// This function is kept similar to the u64 version
+	if bound == 0 {
+		eprintln('max must be non-zero')
+		exit(1)
+	}
 	threshold := -bound % bound
 	for {
 		r := rng.u32()
@@ -66,6 +69,10 @@ pub fn (mut rng SplitMix64RNG) u32n(bound u32) u32 {
 // rng.u64n(bound) returns a pseudorandom u64 less than the bound
 [inline]
 pub fn (mut rng SplitMix64RNG) u64n(bound u64) u64 {
+	if bound == 0 {
+		eprintln('max must be non-zero')
+		exit(1)
+	}
 	threshold := -bound % bound
 	for {
 		r := rng.u64()
