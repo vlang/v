@@ -168,7 +168,7 @@ pub fn (c &Checker) promote(left_type, right_type table.Type) table.Type {
 				if idx_lo in [table.int_type_idx, table.i64_type_idx, table.u32_type_idx, table.u64_type_idx] {
 					return table.void_type
 				} else {
-					return idx_hi
+					return type_hi
 				}
 			} else { // f64, any_flt
 				if idx_lo in [table.i64_type_idx, table.u64_type_idx] {
