@@ -17,7 +17,8 @@ const (
 fn mt19937_basic_test() {
 	rng := rand.MT19937Rng{}
 	rng.seed([u32(0xdeadbeef)])
-	target := [956529277, 3842322136, 3319553134, 1843186657, 2704993644, 595827513, 938518626, 1676224337, 3221315650, 1819026461]
+	target := [956529277, 3842322136, 3319553134, 1843186657, 2704993644, 595827513, 938518626,
+		1676224337, 3221315650, 1819026461]
 	for i := 0; i < 10; i++ {
 		assert target[i] == rng.u32()
 	}
@@ -86,7 +87,7 @@ fn check_uniformity_u64(rng rand.MT19937Rng, range u64) {
 	sigma := math.sqrt(variance)
 	expected_sigma := range_f64 * inv_sqrt_12
 	error := (sigma - expected_sigma) / expected_sigma
-	println("Error: ${error}")
+	println('Error: ${error}')
 	assert math.abs(error) < stats_epsilon
 }
 
