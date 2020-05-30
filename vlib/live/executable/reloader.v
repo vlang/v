@@ -13,7 +13,7 @@ pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_
 	file_base := os.file_name(original).replace('.v', '')
 	so_dir := os.cache_dir()
 	so_extension := dl.dl_ext
-	/* $if msvc { so_extension = '.dll' } $else { so_extension = '.so' } */
+	// $if msvc { so_extension = '.dll' } $else { so_extension = '.so' }
 	return &live.LiveReloadInfo{
 		original: original
 		vexe: vexe
@@ -36,31 +36,31 @@ pub fn start_reloader(r mut live.LiveReloadInfo) {
 	// If that fails, the program would crash anyway, just provide
 	// an error message to the user and exit:
     r.reloads++
-	_ := compile_and_reload_shared_lib(r) or {
+	_ := compile_and_reload_shared_lib(mut r) or {
 		eprintln( err )
 		exit(1)
 	}
-	go reloader(r)
+	go reloader(mut r)
 }
 
 [if debuglive]
-fn elog(r mut live.LiveReloadInfo, s string){
+fn elog(r &live.LiveReloadInfo, s string){
 	eprintln(s)
 }
 
 fn compile_and_reload_shared_lib(r mut live.LiveReloadInfo) ?bool {
 	sw := time.new_stopwatch()
-	new_lib_path := compile_lib(r) or {
+	new_lib_path := compile_lib(mut r) or {
 		return error('errors while compiling $r.original')
 	}
 	elog(r,'> compile_and_reload_shared_lib compiled: ${new_lib_path}')
-	load_lib(r, new_lib_path )
+	load_lib(mut r, new_lib_path )
 	r.reload_time_ms = int(sw.elapsed().milliseconds())
 	return true
 }
 
 fn compile_lib(r mut live.LiveReloadInfo) ?string {
-	new_lib_path, new_lib_path_with_extension := current_shared_library_path(r)
+	new_lib_path, new_lib_path_with_extension := current_shared_library_path(mut r)
 	cmd := '$r.vexe $r.vopts -o $new_lib_path $r.original'
 	elog(r,'>       compilation cmd: $cmd')
 	cwatch := time.new_stopwatch()
@@ -96,7 +96,7 @@ fn load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
 		r.cb_locked_before( r )
 	}
 	//
-	protected_load_lib(r, new_lib_path)
+	protected_load_lib(mut r, new_lib_path)
 	//
 	r.reloads_ok++
 	if r.cb_locked_after != voidptr(0) {
@@ -141,7 +141,7 @@ fn reloader(r mut live.LiveReloadInfo) {
 			if r.cb_before != voidptr(0) {
 				r.cb_before( r )
 			}
-			compile_and_reload_shared_lib(r) or {
+			compile_and_reload_shared_lib(mut r) or {
 				if r.cb_compile_failed != voidptr(0) {
 					r.cb_compile_failed( r )
 				}

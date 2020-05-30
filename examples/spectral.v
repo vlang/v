@@ -12,6 +12,7 @@ module main
 
 import math
 import os
+import strconv
 
 fn evala(i, j int) int {
 	return ((i + j) * (i + j + 1) / 2 + i + 1)
@@ -38,23 +39,24 @@ fn times_trans(v mut []f64, u []f64) {
 }
 
 fn a_times_transp(v mut []f64, u []f64) {
-	mut x := [f64(0)].repeat(u.len)
+	mut x := []f64{len:u.len, init:0}
 	times(mut x, u)
 	times_trans(mut v, x)
+
 }
 
 fn main() {
 	args := os.args
-	mut n := int(0)
+	mut n := 0
 	if args.len == 2 {
-		n = args[1].int()
+		n = strconv.atoi(args[1])
 	}
 	else {
 		n = 0
 	}
-	mut u := [f64(1.0)].repeat(n)
-	mut v := [f64(1.0)].repeat(n)
-	for i in 0..10 {
+	mut u := []f64{len:n, init:1}
+	mut v := []f64{len:n, init:1}
+	for _ in 0..10 {
 		a_times_transp(mut v, u)
 		a_times_transp(mut u, v)
 	}

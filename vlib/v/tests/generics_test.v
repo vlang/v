@@ -210,6 +210,6 @@ fn test_generic_fn_with_variadics(){
 	p(s)
 	p(i)
 	p(abc)
-	p('Good','morning','world')
+	p('Good', 'morning', 'world')
 }
 */

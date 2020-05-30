@@ -1,0 +1,8 @@
+struct Foo {
+	i int = 1
+}
+
+struct Bar {
+	f Foo = &Foo(0)
+	z int [skip] = -1
+}

@@ -30,9 +30,13 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		// `foo<int>(10)`
 		p.next() // `<`
 		p.expr_mod = ''
-		generic_type = p.parse_type()
+		mut generic_type = p.parse_type()
 		p.check(.gt) // `>`
-		p.table.register_fn_gen_type(fn_name, generic_type)
+		// In case of `foo<T>()`
+		// T is unwrapped and registered in the checker.
+		if generic_type != table.t_type {
+			p.table.register_fn_gen_type(fn_name, generic_type)
+		}
 	}
 	p.check(.lpar)
 	args := p.call_args()
@@ -159,10 +163,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type_with_mut(rec_mut)
-		sym := p.table.get_type_symbol(rec_type)
-		if sym.mod != p.mod && sym.mod != '' {
-			p.error('cannot define methods on types from other modules (current module is `$p.mod`, `$sym.name` is from `$sym.mod`)')
-		}
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
 		}

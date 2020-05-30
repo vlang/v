@@ -8,15 +8,16 @@ full of magic that only few people understand.
 The V compiler is modular, and can be used by other applications. It is located
 in `cmd/v/` and `vlib/v/`.
 
-The most important and useful command to remember when working on the V compiler is
-`v self`.
+The most important and useful command to remember when working on the V compiler
+is `v self`.
 It rebuilds the V compiler.
 
-Be careful, if you introduce a breaking change and rebuild V, you will no longer be able to use V to build
-itself. So it's a good idea to make a backup copy of a working compiler executable.
+Be careful, if you introduce a breaking change and rebuild V, you will no longer
+be able to use V to build itself. So it's a good idea to make a backup copy of a
+working compiler executable.
 
-But don't worry, you can always simply run `make`, it will download the C version of the compiler
-and rebuild it from scratch.
+But don't worry, you can always simply run `make`, it will download the C
+version of the compiler and rebuild it from scratch.
 
 
 The main files are:
@@ -36,8 +37,8 @@ them to tokens.
 couple of helper functions.
 
 4. `v/parser` The parser. It converts a list of tokens into an AST.
-In V, objects can be used before declaration, so unknown types are marked as unresolved.
-They are resolved later in the type checker.
+In V, objects can be used before declaration, so unknown types are marked as
+unresolved. They are resolved later in the type checker.
 
 5. `v/table` V creates one table object that is shared by all parsers. It
 contains all types, consts, and functions, as well as several helpers to search
@@ -73,13 +74,14 @@ accordingly in the steps below.)
 1. Fork https://github.com/vlang/v using GitHub's interface to your own account.
 Let's say that the forked repository is at
 `https://github.com/YOUR_GITHUB_USERNAME/v` .
-2. Clone the main v repository https://github.com/vlang/v to a local folder on your computer, say named nv/
-(`git clone https://github.com/vlang/v nv`)
+2. Clone the main v repository https://github.com/vlang/v to a local folder on
+your computer, say named nv/ (`git clone https://github.com/vlang/v nv`)
 3. `cd nv`
 4. `git remote add pullrequest https://github.com/YOUR_GITHUB_USERNAME/v`
-NB: the remote named `pullrequest` should point to YOUR own forked repo, not the main v repository!
-After this, your local cloned repository is prepared for making pullrequests,
-and you can just do normal git operations such as: `git pull` `git status` and so on.
+NB: the remote named `pullrequest` should point to YOUR own forked repo, not the
+main v repository! After this, your local cloned repository is prepared for
+making pullrequests, and you can just do normal git operations such as:
+`git pull` `git status` and so on.
 
 5. When finished with a feature/bugfix/change, you can:
 `git checkout -b fix_alabala`
@@ -90,11 +92,14 @@ Here the UI shows a dialog with a button to make a new pull request based on
 the new pushed branch.
 (Example dialog: https://url4e.com/gyazo/images/364edc04.png)
 8. After making your pullrequest (aka, PR), you can continue to work on the
-branch `fix_alabala` ... just do again `git push pullrequest` when you have more commits.
+branch `fix_alabala` ... just do again `git push pullrequest` when you have more
+commits.
 9. If there are merge conflicts, or a branch lags too much behind V's master,
 you can do the following:
-   1. `git pull --rebase origin master` # solve conflicts and do `git rebase --continue`
-   2. `git push pullrequest -f` # this will overwrite your current remote branch with the updated version of your changes.
+   1. `git pull --rebase origin master` # solve conflicts and do
+   `git rebase --continue`
+   2. `git push pullrequest -f` # this will overwrite your current remote branch
+   with the updated version of your changes.
 
 The point of doing the above steps, is to never directly push to the main V
 repository, *only to your own fork*. Since your local `master` branch tracks the
@@ -120,7 +125,8 @@ NB: You still need to have a GitHub account.
 2. `cd my_v`
 3. `hub fork --remote-name pullrequest`
 
-4. `git checkout -b my_cool_feature` # Step 4 is better done *once per each new feature/bugfix* that you make.
+4. `git checkout -b my_cool_feature` # Step 4 is better done *once per each new
+feature/bugfix* that you make.
 
 ### Improve V by making commits:
 

@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module parser
 
+import os
 import v.ast
 import v.pref
 import v.vmod
@@ -13,22 +14,42 @@ const (
 		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 )
 
+fn (mut p Parser)resolve_vroot(flag string) string {
+	vmod_file_location := vmod.mod_file_cacher.get_by_folder(p.file_name_dir)
+	if vmod_file_location.vmod_file.len == 0 {
+		// There was no actual v.mod file found.
+		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in ${p.file_name_dir},' +
+		' or in one of its parent folders.')
+	}
+	vmod_path := vmod_file_location.vmod_folder
+	return flag.replace('@VROOT', os.real_path(vmod_path))
+}
+
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
-	val := p.tok.lit
+	mut val := p.tok.lit
 	p.next()
+	if p.pref.backend == .js {
+		if !p.file_name.ends_with('.js.v') {
+			p.error('Hash statements are only allowed in backend specific files such "x.js.v"')
+		}
+		if p.mod == 'main' {
+			p.error('Hash statements are not allowed in the main module. Please place them in a separate module.')
+		}
+	}
+	if val.starts_with('include') {
+		mut flag := val[8..]
+		if flag.contains('@VROOT') {
+			vroot := p.resolve_vroot(flag)
+			val = 'include $vroot'
+		}
+	}
 	if val.starts_with('flag') {
 		// #flag linux -lm
 		mut flag := val[5..]
 		// expand `@VROOT` to its absolute path
 		if flag.contains('@VROOT') {
-			vmod_file_location := vmod.mod_file_cacher.get_by_folder(p.file_name_dir)
-			if vmod_file_location.vmod_file.len == 0 {
-				// There was no actual v.mod file found.
-				p.error('To use @VROOT, you need' + ' to have a "v.mod" file in ${p.file_name_dir},' +
-					' or in one of its parent folders.')
-			}
-			flag = flag.replace('@VROOT', vmod_file_location.vmod_folder)
+			flag = p.resolve_vroot(flag)
 		}
 		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
 			if flag.contains(deprecated) {

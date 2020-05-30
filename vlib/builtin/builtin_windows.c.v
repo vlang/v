@@ -64,6 +64,7 @@ fn builtin_init() {
 		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // enable_virtual_terminal_processing
 		C.setbuf(C.stdout, 0)
 	}
+	add_unhandled_exception_handler()
 }
 
 fn print_backtrace_skipping_top_frames(skipframes int) bool {
@@ -138,4 +139,57 @@ $if msvc {
 fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 	eprintln('print_backtrace_skipping_top_frames_mingw is not implemented')
 	return false
+}
+
+
+//TODO copypaste from os
+// we want to be able to use this here without having to `import os`
+struct ExceptionRecord {
+pub:
+	// status_ constants
+	code u32
+	flags u32
+	
+	record &ExceptionRecord
+	address voidptr
+	param_count u32
+	// params []voidptr
+}
+
+ struct ContextRecord {
+	// TODO
+}
+
+struct ExceptionPointers {
+pub:
+	exception_record &ExceptionRecord
+	context_record &ContextRecord
+}
+
+type VectoredExceptionHandler fn(&ExceptionPointers)u32
+
+fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
+fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
+	C.AddVectoredExceptionHandler(1, handler)
+}
+
+[windows_stdcall]
+fn unhandled_exception_handler(e &ExceptionPointers) u32 {
+	match e.exception_record.code {
+		// These are 'used' by the backtrace printer 
+		// so we dont want to catch them...
+		0x4001000A, 0x40010006 {
+			return 0
+		}
+		else {
+			println('Unhandled Exception 0x${e.exception_record.code:X}')
+			print_backtrace_skipping_top_frames(5)
+		}
+	}
+
+	return 0
+}
+
+pub fn add_unhandled_exception_handler() {
+	add_vectored_exception_handler(unhandled_exception_handler)
 }

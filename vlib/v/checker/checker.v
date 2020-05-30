@@ -264,6 +264,13 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
 			c.error('unknown type `$sym.name`', field.pos)
 		}
+		if sym.kind == .array {
+			array_info := sym.array_info()
+			elem_sym := c.table.get_type_symbol(array_info.elem_type)
+			if elem_sym.kind == .placeholder {
+				c.error('unknown type `$elem_sym.name`', field.pos)
+			}
+		}
 		if sym.kind == .struct_ {
 			info := sym.info as table.Struct
 			if info.is_ref_only && !field.typ.is_ptr() {
@@ -531,6 +538,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			if typ_sym.kind == .placeholder {
 				c.error('is: type `${typ_sym.name}` does not exist', type_expr.pos)
 			}
+			if left.kind != .interface_ && left.kind != .sum_type {
+				c.error('`is` can only be used with interfaces and sum types', type_expr.pos)
+			}
 			return table.bool_type
 		}
 		else {}
@@ -731,7 +741,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				table.FnType { ret_type = it.func.return_type }
 				else { ret_type = arg_type }
 			}
-			call_expr.return_type = c.table.find_or_register_array(ret_type, 1)
+			call_expr.return_type = c.table.find_or_register_array(ret_type, 1, c.mod)
 		} else if method_name == 'clone' {
 			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
@@ -852,6 +862,16 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if fn_name == 'typeof' {
 		// TODO: impl typeof properly (probably not going to be a fn call)
 		return table.string_type
+	}
+	if call_expr.generic_type == table.t_type {
+		if c.mod != '' && c.mod != 'main' {
+			// Need to prepend the module when adding a generic type to a function
+			// `fn_gen_types['mymod.myfn'] == ['string', 'int']`
+			c.table.register_fn_gen_type(c.mod + '.' + fn_name, c.cur_generic_type)
+		} else {
+			c.table.register_fn_gen_type(fn_name, c.cur_generic_type)
+		}
+		// call_expr.generic_type = c.unwrap_generic(call_expr.generic_type)
 	}
 	// if c.fileis('json_test.v') {
 	// println(fn_name)
@@ -976,6 +996,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)
 		if f.is_variadic && typ.flag_is(.variadic) && call_expr.args.len - 1 > i {
 			c.error('when forwarding a varg variable, it must be the final argument', call_expr.pos)
+		}
+		if arg.is_mut && !call_arg.is_mut {
+			c.error('`$arg.name` is a mutable argument, you need to provide `mut`: `${call_expr.name}(mut ...)`',
+				call_arg.expr.position())
 		}
 		// Handle expected interface
 		if arg_typ_sym.kind == .interface_ {
@@ -1317,6 +1341,13 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	c.expected_type = table.void_type
 }
 
+fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Position) {
+	sym := c.table.get_type_symbol(c.expr(expr))
+	if sym.kind !in [.int, .any_int] {
+		c.error('array $para needs to be an int', pos)
+	}
+}
+
 pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	// println('checker: array init $array_init.pos.line_nr $c.file.path')
 	mut elem_type := table.void_type
@@ -1324,30 +1355,20 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	if array_init.typ != table.void_type {
 		if array_init.exprs.len == 0 {
 			if array_init.has_cap {
-				if c.expr(array_init.cap_expr) !in [table.int_type, table.any_int_type] {
-					c.error('array cap needs to be an int', array_init.pos)
-				}
+				c.check_array_init_para_type('cap', array_init.cap_expr, array_init.pos)
 			}
 			if array_init.has_len {
-				if c.expr(array_init.len_expr) !in [table.int_type, table.any_int_type] {
-					c.error('array len needs to be an int', array_init.pos)
-				}
+				c.check_array_init_para_type('len', array_init.len_expr, array_init.pos)
 			}
+		}
+		sym := c.table.get_type_symbol(array_init.elem_type)
+		if sym.kind == .placeholder {
+			c.error('unknown type `$sym.name`', array_init.elem_type_pos)
 		}
 		return array_init.typ
 	}
 	// a = []
 	if array_init.exprs.len == 0 {
-		if array_init.has_cap {
-			if c.expr(array_init.cap_expr) !in [table.int_type, table.any_int_type] {
-				c.error('array cap needs to be an int', array_init.pos)
-			}
-		}
-		if array_init.has_len {
-			if c.expr(array_init.len_expr) !in [table.int_type, table.any_int_type] {
-				c.error('array len needs to be an int', array_init.pos)
-			}
-		}
 		type_sym := c.table.get_type_symbol(c.expected_type)
 		if type_sym.kind != .array {
 			c.error('array_init: no type specified (maybe: `[]Type{}` instead of `[]`)', array_init.pos)
@@ -1411,7 +1432,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len, 1)
 			array_init.typ = table.new_type(idx)
 		} else {
-			idx := c.table.find_or_register_array(elem_type, 1)
+			sym := c.table.get_type_symbol(elem_type)
+			idx := c.table.find_or_register_array(elem_type, 1, sym.mod)
 			array_init.typ = table.new_type(idx)
 		}
 		array_init.elem_type = elem_type
@@ -2264,7 +2286,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 		// fixed_array[1..2] => array
 		if typ_sym.kind == .array_fixed {
 			elem_type := c.table.value_type(typ)
-			idx := c.table.find_or_register_array(elem_type, 1)
+			idx := c.table.find_or_register_array(elem_type, 1, c.mod)
 			return table.new_type(idx)
 		}
 	}
@@ -2434,6 +2456,22 @@ fn (mut c Checker) fn_decl(it ast.FnDecl) {
 		// if sym.has_method(it.name) {
 		// c.warn('duplicate method `$it.name`', it.pos)
 		// }
+		// Do not allow to modify types from other modules
+		if sym.mod != c.mod && !c.is_builtin_mod && sym.mod != '' { // TODO remove != ''
+			// remove the method to hide other related errors (`method is private` etc)
+			mut idx := 0
+			for i, m in sym.methods {
+				if m.name == it.name {
+					println('got it')
+					idx = i
+					break
+				}
+			}
+			sym.methods.delete(idx)
+			//
+			c.error('cannot define new methods on non-local `$sym.name` (' + 'current module is `$c.mod`, `$sym.name` is from `$sym.mod`)',
+				it.pos)
+		}
 	}
 	if it.language == .v {
 		// Make sure all types are valid

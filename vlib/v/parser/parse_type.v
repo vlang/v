@@ -13,6 +13,7 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 		p.next()
 		p.check(.rsbr)
 		elem_type := p.parse_type()
+		//sym := p.table.get_type_symbol(elem_type)
 		idx := p.table.find_or_register_array_fixed(elem_type, size, 1)
 		return table.new_type(idx)
 	}
@@ -29,7 +30,8 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 		p.check(.rsbr)
 		nr_dims++
 	}
-	idx := p.table.find_or_register_array(elem_type, nr_dims)
+	sym := p.table.get_type_symbol(elem_type)
+	idx := p.table.find_or_register_array(elem_type, nr_dims, sym.mod)
 	return table.new_type(idx)
 }
 

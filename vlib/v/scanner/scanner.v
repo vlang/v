@@ -44,6 +44,7 @@ pub mut:
 	is_fmt                      bool // Used only for skipping ${} in strings, since we need literal
 	// string values when generating formatted code.
 	comments_mode               CommentsMode
+	eofs                        int
 }
 
 pub enum CommentsMode {
@@ -521,8 +522,18 @@ fn (mut s Scanner) skip_whitespace() {
 }
 
 fn (mut s Scanner) end_of_file() token.Token {
+	s.eofs++
+	if s.eofs > 50 {
+		s.line_nr--
+		s.error('the end of file `$s.file_path` has been reached 50 times already, the v parser is probably stuck.\n' +
+		'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' +
+		'https://github.com/vlang/v/issues/new?labels=Bug&template=bug_report.md'
+		)
+	}
+	if s.pos != s.text.len && s.eofs == 1 {
+		s.inc_line_number()
+	}
 	s.pos = s.text.len
-	s.inc_line_number()
 	return s.new_token(.eof, '', 1)
 }
 

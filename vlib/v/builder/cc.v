@@ -147,7 +147,11 @@ fn (mut v Builder) cc() {
 	if v.pref.is_shared {
 		linker_flags << '-shared'
 		a << '-fPIC' // -Wl,-z,defs'
-		v.pref.out_name += '.so'
+		$if macos {
+			v.pref.out_name += '.dylib'
+		} $else {
+			v.pref.out_name += '.so'
+		}
 	}
 	if v.pref.is_bare {
 		a << '-fno-stack-protector'

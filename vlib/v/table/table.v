@@ -325,7 +325,7 @@ pub fn (mut t Table) find_or_register_map(key_type, value_type Type) int {
 	return t.register_type_symbol(map_typ)
 }
 
-pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int) int {
+pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int, mod string) int {
 	name := t.array_name(elem_type, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
@@ -341,6 +341,7 @@ pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int) int {
 			elem_type: elem_type
 			nr_dims: nr_dims
 		}
+		mod: mod
 	}
 	return t.register_type_symbol(array_type)
 }
@@ -481,6 +482,6 @@ pub fn (table &Table) register_fn_gen_type(fn_name string, typ Type) {
 	}
 	a << typ
 	// sym := table.get_type_symbol(typ)
-	// println('registering fn gen type $sym.name')
+	// println('registering fn ($fn_name) gen type $sym.name')
 	table.fn_gen_types[fn_name] = a
 }
