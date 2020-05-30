@@ -1,7 +1,5 @@
 module rand
 
-import time
-
 /* 
    C++ functions for MT19937, with initialization improved 2002/2/10.
    Coded by Takuji Nishimura and Makoto Matsumoto.
@@ -44,74 +42,82 @@ import time
    email: matumoto@math.keio.ac.jp
 */
 
+const (
+	nn = 312
+	mm = 156
+	matrix_a = 0xB5026F5AA96619E9
+	um = 0xFFFFFFFF80000000
+	lm = 0x7FFFFFFF
+)
+
 pub struct MT19937Rng {
 mut:
-	state [624]u32
-	left int
-	initf int
-	next int
+	state [312]u64
+	mti int
+	seed_set bool
+	next_rnd u32
+	pos int
 }
 
 // seed() - Set the seed, needs only one int32
 pub fn (mut rng MT19937Rng) seed(seed_data []u32) {
-	if seed_data.len != 1{
-		eprintln("mt19937 needs only one 32bit seed")
-		exit(1)
+	if seed_data.len != 2 {
+		//eprintln("mt19937 needs only one 32bit seed")
+		//exit(1)
 	}
-	rng.state[0] = seed_data[0]
-	for j := 1; j < 624; j++ {
-		rng.state[j] = u32(1812433253 * (rng.state[j-1] ^ (rng.state[j-1] >> 30)) + u32(j))
+	lo := u64(seed_data[0])
+	hi := u64(seed_data[1])
+	rng.state[0] = u64((hi << 32) | lo)
+	for j := 1; j < nn; j++ {
+		rng.state[j] = u64(6364136223846793005) * (rng.state[j-1] ^ (rng.state[j-1] >> 62)) + u64(j)
 	}
-	rng.left = 1
-	rng.initf = 1
-}
-
-[inline]
-fn mix_bits(a, b u32) u32 {
-	return (a & 0x80000000) | (b & 0x7fffffff)
-}
-
-[inline]
-fn twist(a, b u32) u32 {
-	return (mix_bits(a, b)>>1) ^ (0x9908b0df * (b & 1))
-}
-
-fn (mut rng MT19937Rng) next_state() {
-	mut pos := 0
-	if rng.initf == 0 {
-		rng.seed([u32(C.time(0))])
-	}
-	rng.left = 624
-	rng.next = 0
-	for j := 624-397; j > 0; j-- {
-		rng.state[pos] = rng.state[pos+397]^twist(rng.state[pos], rng.state[pos+1])
-		pos++
-	}
-	for j := 397-1; j > 0; j-- {
-		rng.state[pos] = rng.state[397-624+pos]^twist(rng.state[pos], rng.state[pos+1])
-		pos++
-	}
-	rng.state[pos] = rng.state[397-624+pos]^twist(rng.state[pos], rng.state[0])
+	rng.mti = nn
+	rng.seed_set = true
+	rng.next_rnd = 0
+	rng.pos = 0
 }
 
 // rng.u32() - return a pseudorandom 32bit int in [0, 2**32)
 pub fn (mut rng MT19937Rng) u32() u32 {
-	rng.left--
-	if rng.left == 0 {
-		rng.next_state()
+	if rng.pos == 1 {
+		rng.pos = 0
+		return rng.next_rnd
 	}
-	mut y := rng.state[rng.next]
-	rng.next++
-	y ^= (y >> 11)
-    y ^= (y << 7) & 0x9d2c5680
-    y ^= (y << 15) & 0xefc60000
-    y ^= (y >> 18)
-	return y
+	ans := rng.u64()
+	rng.next_rnd = u32(ans>>32)
+	return u32(ans & 0xffffffff)
 }
 
+// rng.u64() - return two u32's as little endian u64
 pub fn (mut rng MT19937Rng) u64() u64 {
-	// fallback to u32
-	return u64(rng.u32())
+	mag01 := [u64(0), u64(matrix_a)]
+	mut x := u64(0)
+	mut i := int(0)
+	if !rng.seed_set {
+		rng.seed([u32(5489), u32(0)])
+	}
+	if rng.mti >= nn {
+		for i = 0; i < nn-mm; i++ {
+			x = (rng.state[i]&um) | (rng.state[i+1]&lm)
+			rng.state[i] = rng.state[i+mm] ^ (x>>1) ^ mag01[int(x&1)]
+		}
+		for i < nn-1 {
+			x = (rng.state[i]&um) | (rng.state[i+1]&lm)
+			rng.state[i] = rng.state[i+(mm-nn)] ^ (x>>1) ^ mag01[int(x&1)]
+			i++
+		}
+		x = (rng.state[nn-1]&um) | (rng.state[0]&lm)
+        rng.state[nn-1] = rng.state[mm-1] ^ (x>>1) ^ mag01[int(x&1)]
+		rng.mti = 0
+	}
+
+	x = rng.state[rng.mti]
+	rng.mti++
+	x ^= (x >> 29) & 0x5555555555555555
+    x ^= (x << 17) & 0x71D67FFFEDA60000
+    x ^= (x << 37) & 0xFFF7EEE000000000
+    x ^= (x >> 43)
+	return x
 }
 
 // rng.int31() - return a 31bit positive pseudorandom integer
@@ -119,31 +125,36 @@ pub fn (mut rng MT19937Rng) int31() int {
 	return int(rng.u32() >> 1)
 }
 
+// rng.int63() - return a 63bit positive pseudorandom integer
+pub fn (mut rng MT19937Rng) int63() i64 {
+	return i64(rng.u64() >> 1)
+}
+
 // rng.f64() - return 64bit real in [0, 1)
 pub fn (mut rng MT19937Rng) f64() f64 {
-	return f64(rng.u32())*(1.0/4294967296.0)
+	return f64(rng.u64() >> 11) * (1.0/9007199254740992.0)
 }
 
 // rng.f32() - return a 32bit real in [0, 1)
 pub fn (mut rng MT19937Rng) f32() f32 {
-	return f32(rng.u32())*f32(1.0/4294967296.0)
+	return f32(rng.f64())
 }
 
 // rng.u32n() - return a 32bit u32 in [0, max)
 pub fn (mut rng MT19937Rng) u32n(max u32) u32 {
-	if max < 0 {
-		eprintln("max must be non-negative")
+	if max <= 0 {
+		eprintln("max must be positive integer")
 		exit(1)
 	}
-	return rng.u32()*max
+	return rng.u32()%max
 }
 
 pub fn (mut rng MT19937Rng) u64n(max u64) u64 {
-	if max < 0 {
-		eprintln("max must be non-negative")
+	if max <= 0 {
+		eprintln("max must be positive integer")
 		exit(1)
 	}
-	return rng.u64()*max
+	return rng.u64()%max
 }
 
 // rng.u32n(min, max) returns a pseudorandom u32 value that is guaranteed to be in [min, max)
