@@ -886,6 +886,7 @@ fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 	}
 	g.writeln('{}else{')
 	g.writeln('	eprintln( tos_lit("${mod_path}:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+	g.writeln(' v_panic(tos_lit("Assertion failed..."));')
 	g.writeln('	exit(1);')
 	g.writeln('}')
 }
