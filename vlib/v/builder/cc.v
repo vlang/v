@@ -550,7 +550,7 @@ fn (mut c Builder) cc_windows_cross() {
 			println('brew install mingw-w64')
 		}
 		$if linux {
-			println('sudo apt install -y mingw-w64')
+			println('Try `sudo apt install -y mingw-w64` on Debian based distros, or `sudo pacman -S mingw-w64-gcc` on Arch, etc...')
 		}
 		exit(1)
 	}
