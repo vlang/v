@@ -46,7 +46,6 @@ fn C.rand() int
 
 // C.srand seeds the internal PRNG with the given int seed.
 // fn C.srand(seed int)
-
 // SysRNG is the PRNG provided by default in the libc implementiation that V uses.
 pub struct SysRNG {
 mut:
@@ -61,6 +60,15 @@ pub fn (mut r SysRNG) seed(seed_data []u32) {
 	}
 	r.seed = seed_data[0]
 	C.srand(int(r.seed))
+}
+
+// r.default_rand() exposes the default behavior of the system's RNG
+// (equivalent to calling C.rand()). Recommended for testing/comparison
+// b/w V and other languages using libc and not for regular use.
+// This is also a one-off feature of SysRNG, similar to the global seed
+// situation. Other generators will not have this.
+pub fn (r SysRNG) default_rand() int {
+	return C.rand()
 }
 
 // r.u32() returns a pseudorandom u32 value less than 2^32
