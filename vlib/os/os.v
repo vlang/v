@@ -1404,14 +1404,3 @@ pub fn create(path string) ?File {
 		opened: true
 	}
 }
-
-// this is defined in builtin_windows.c.v in builtin
-// fn C.IsDebuggerPresent() bool
-
-pub fn debugger_present() bool {
-	$if windows {
-		return C.IsDebuggerPresent()
-	} $else {
-		return false
-	}
-}
