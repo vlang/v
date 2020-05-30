@@ -7,7 +7,7 @@ module ast
 import v.table
 import strings
 
-pub fn (node &FnDecl) str(t &table.Table) string {
+pub fn (node &FnDeclStmt) str(t &table.Table) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write('pub ')
@@ -88,7 +88,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 // string representaiton of expr
 pub fn (x Expr) str() string {
 	match x {
-		BoolLiteral {
+		BoolLiteralExpr {
 			return it.val.str()
 		}
 		CastExpr {
@@ -101,22 +101,22 @@ pub fn (x Expr) str() string {
 			}
 			return '${it.mod}.${it.name}($sargs)'
 		}
-		CharLiteral {
+		CharLiteralExpr {
 			return '`$it.val`'
 		}
-		EnumVal {
+		EnumValExpr {
 			return '.${it.val}'
 		}
-		FloatLiteral {
+		FloatLiteralExpr {
 			return it.val
 		}
-		Ident {
+		IdentExpr {
 			return it.name
 		}
 		IndexExpr {
 			return '${it.left.str()}[${it.index.str()}]'
 		}
-		IntegerLiteral {
+		IntegerLiteralExpr {
 			return it.val
 		}
 		InfixExpr {
@@ -131,7 +131,7 @@ pub fn (x Expr) str() string {
 		SelectorExpr {
 			return '${it.expr.str()}.${it.field_name}'
 		}
-		StringInterLiteral {
+		StringInterLiteralExpr {
 			mut res := []string{}
 			res << "'"
 			for i, val in it.vals {
@@ -152,10 +152,10 @@ pub fn (x Expr) str() string {
 			res << "'"
 			return res.join('')
 		}
-		StringLiteral {
+		StringLiteralExpr {
 			return '"$it.val"'
 		}
-		TypeOf {
+		TypeOfExpr {
 			return 'typeof(${it.expr.str()})'
 		}
 		else {
@@ -205,7 +205,7 @@ pub fn (node Stmt) str() string {
 		ExprStmt {
 			return it.expr.str()
 		}
-		FnDecl {
+		FnDeclStmt {
 			return 'fn ${it.name}() { $it.stmts.len stmts }'
 		}
 		else {

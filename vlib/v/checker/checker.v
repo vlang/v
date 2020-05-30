@@ -24,7 +24,7 @@ pub mut:
 	warnings         []errors.Warning
 	error_lines      []int // to avoid printing multiple errors for the same line
 	expected_type    table.Type
-	cur_fn           &ast.FnDecl // current function
+	cur_fn           &ast.FnDeclStmt // current function
 	const_decl       string
 	const_deps       []string
 	const_names      []string
@@ -107,7 +107,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 	mut has_main_fn := false
 	for stmt in file.stmts {
 		match stmt {
-			ast.ConstDecl {
+			ast.ConstDeclStmt {
 				if it.is_pub {
 					c.warn('const $no_pub_in_main_warning', it.pos)
 				}
@@ -117,12 +117,12 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 					c.warn('const field `$it.name` $no_pub_in_main_warning', it.pos)
 				}
 			}
-			ast.EnumDecl {
+			ast.EnumDeclStmt {
 				if it.is_pub {
 					c.warn('enum `$it.name` $no_pub_in_main_warning', it.pos)
 				}
 			}
-			ast.FnDecl {
+			ast.FnDeclStmt {
 				if it.name == 'main' {
 					has_main_fn = true
 					if it.is_pub {
@@ -146,13 +146,13 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 					}
 				}
 			}
-			ast.StructDecl {
+			ast.StructDeclStmt {
 				if it.is_pub {
 					c.warn('struct `$it.name` $no_pub_in_main_warning', it.pos)
 				}
 			}
-			ast.TypeDecl {
-				type_decl := stmt as ast.TypeDecl
+			ast.TypeDeclStmt {
+				type_decl := stmt as ast.TypeDeclStmt
 				if type_decl is ast.AliasTypeDecl {
 					alias_decl := type_decl as ast.AliasTypeDecl
 					if alias_decl.is_pub {
@@ -200,7 +200,7 @@ fn (mut c Checker) check_valid_pascal_case(name, identifier string, pos token.Po
 	}
 }
 
-pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
+pub fn (mut c Checker) type_decl(node ast.TypeDeclStmt) {
 	match node {
 		ast.AliasTypeDecl {
 			// TODO Replace `c.file.mod.name != 'time'` by `it.language != .v` once available
@@ -240,14 +240,14 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 	}
 }
 
-pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
+pub fn (mut c Checker) interface_decl(decl ast.InterfaceDeclStmt) {
 	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
 	for method in decl.methods {
 		c.check_valid_snake_case(method.name, 'method name', method.pos)
 	}
 }
 
-pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
+pub fn (mut c Checker) struct_decl(decl ast.StructDeclStmt) {
 	if decl.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
@@ -290,7 +290,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 	}
 }
 
-pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
+pub fn (mut c Checker) struct_init(mut struct_init ast.StructInitExpr) table.Type {
 	// typ := c.table.find_type(struct_init.typ.typ.name) or {
 	// c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
 	// panic('')
@@ -486,8 +486,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					}
 				}
 				if infix_expr.op in [.div, .mod] {
-					if infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() ==
-						'0' || infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0 {
+					if infix_expr.right is ast.IntegerLiteralExpr && infix_expr.right.str() ==
+						'0' || infix_expr.right is ast.FloatLiteralExpr && infix_expr.right.str().f64() == 0.0 {
 						oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
 						c.error('$oper by zero', right_pos)
 					}
@@ -533,7 +533,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			}
 		}
 		.key_is {
-			type_expr := infix_expr.right as ast.Type
+			type_expr := infix_expr.right as ast.TypeExpr
 			typ_sym := c.table.get_type_symbol(type_expr.typ)
 			if typ_sym.kind == .placeholder {
 				c.error('is: type `${typ_sym.name}` does not exist', type_expr.pos)
@@ -573,7 +573,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 
 fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 	match expr {
-		ast.Ident {
+		ast.IdentExpr {
 			scope := c.file.scope.innermost(it.pos.pos)
 			if v := scope.find_var(it.name) {
 				if !v.is_mut && !v.typ.is_ptr() {
@@ -879,7 +879,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if fn_name == 'json.encode' {
 	} else if fn_name == 'json.decode' {
 		expr := call_expr.args[0].expr
-		if !(expr is ast.Type) {
+		if !(expr is ast.TypeExpr) {
 			typ := typeof(expr)
 			c.error('json.decode: first argument needs to be a type, got `$typ`', call_expr.pos)
 			return table.void_type
@@ -889,7 +889,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		if call_expr.args[1].typ != table.string_type {
 			c.error('json.decode: second argument needs to be a string', call_expr.pos)
 		}
-		typ := expr as ast.Type
+		typ := expr as ast.TypeExpr
 		ret_type := typ.typ.set_flag(.optional)
 		call_expr.return_type = ret_type
 		return ret_type
@@ -1105,7 +1105,7 @@ pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type
 	}
 	last_stmt := or_expr.stmts[stmts_len - 1]
 	if ret_type != table.void_type {
-		if !(last_stmt is ast.Return || last_stmt is ast.BranchStmt || last_stmt is ast.ExprStmt) {
+		if !(last_stmt is ast.ReturnStmt || last_stmt is ast.BranchStmt || last_stmt is ast.ExprStmt) {
 			expected_type_name := c.table.get_type_symbol(ret_type).name
 			c.error('last statement in the `or {}` block should return `$expected_type_name`',
 				or_expr.pos)
@@ -1176,7 +1176,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 }
 
 // TODO: non deferred
-pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
+pub fn (mut c Checker) return_stmt(mut return_stmt ast.ReturnStmt) {
 	c.expected_type = c.cur_fn.return_type
 	if return_stmt.exprs.len > 0 && c.expected_type == table.void_type {
 		c.error('too many arguments to return, current function does not return anything',
@@ -1238,7 +1238,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 }
 
-pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
+pub fn (mut c Checker) enum_decl(decl ast.EnumDeclStmt) {
 	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
 	for i, field in decl.fields {
 		if util.contains_capital(field.name) {
@@ -1252,11 +1252,11 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 		}
 		if field.has_expr {
 			match field.expr {
-				ast.IntegerLiteral {}
+				ast.IntegerLiteralExpr {}
 				ast.PrefixExpr {}
 				else {
-					if field.expr is ast.Ident {
-						expr := field.expr as ast.Ident
+					if field.expr is ast.IdentExpr {
+						expr := field.expr as ast.IdentExpr
 						if expr.language == .c {
 							continue
 						}
@@ -1348,7 +1348,7 @@ fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos to
 	}
 }
 
-pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
+pub fn (mut c Checker) array_init(mut array_init ast.ArrayInitExpr) table.Type {
 	// println('checker: array init $array_init.pos.line_nr $c.file.path')
 	mut elem_type := table.void_type
 	// []string - was set in parser
@@ -1441,10 +1441,10 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		// [50]byte
 		mut fixed_size := 1
 		match array_init.exprs[0] {
-			ast.IntegerLiteral {
+			ast.IntegerLiteralExpr {
 				fixed_size = it.val.int()
 			}
-			ast.Ident {
+			ast.IdentExpr {
 				// if obj := c.file.global_scope.find_const(it.name) {
 				// if  obj := scope.find(it.name) {
 				// scope := c.file.scope.innermost(array_init.pos.pos)
@@ -1481,9 +1481,9 @@ fn const_int_value(cfield ast.ConstField) ?int {
 	return none
 }
 
-fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
+fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteralExpr {
 	match cfield.expr {
-		ast.IntegerLiteral { return it }
+		ast.IntegerLiteralExpr { return it }
 		else {}
 	}
 	return none
@@ -1500,11 +1500,11 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					it.pos)
 			}
 		}
-		// ast.Attr {}
+		// ast.AttrStmt {}
 		ast.AssignStmt {
 			c.assign_stmt(mut it)
 		}
-		ast.Block {
+		ast.BlockStmt {
 			c.stmts(it.stmts)
 		}
 		ast.BranchStmt {
@@ -1512,14 +1512,14 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				c.error('$it.tok.lit statement not within a loop', it.tok.position())
 			}
 		}
-		ast.CompIf {
+		ast.CompIfStmt {
 			// c.expr(it.cond)
 			c.stmts(it.stmts)
 			if it.has_else {
 				c.stmts(it.else_stmts)
 			}
 		}
-		ast.ConstDecl {
+		ast.ConstDeclStmt {
 			mut field_names := []string{}
 			mut field_order := []int{}
 			for i, field in it.fields {
@@ -1563,7 +1563,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.DeferStmt {
 			c.stmts(it.stmts)
 		}
-		ast.EnumDecl {
+		ast.EnumDeclStmt {
 			c.enum_decl(it)
 		}
 		ast.ExprStmt {
@@ -1573,7 +1573,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			// TODO This should work, even if it's prolly useless .-.
 			// it.typ = c.check_expr_opt_call(it.expr, table.void_type)
 		}
-		ast.FnDecl {
+		ast.FnDeclStmt {
 			c.fn_decl(it)
 		}
 		ast.ForCStmt {
@@ -1640,7 +1640,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.stmts(it.stmts)
 			c.in_for_count--
 		}
-		ast.GlobalDecl {
+		ast.GlobalDeclStmt {
 			c.check_valid_snake_case(it.name, 'global name', it.pos)
 		}
 		ast.GoStmt {
@@ -1650,24 +1650,24 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.expr(it.call_expr)
 		}
 		// ast.HashStmt {}
-		ast.Import {}
-		ast.InterfaceDecl {
+		ast.ImportStmt {}
+		ast.InterfaceDeclStmt {
 			c.interface_decl(it)
 		}
-		ast.Module {
+		ast.ModuleStmt {
 			c.mod = it.name
 			c.is_builtin_mod = it.name == 'builtin'
 			c.check_valid_snake_case(it.name, 'module name', it.pos)
 		}
-		ast.Return {
+		ast.ReturnStmt {
 			c.returns = true
 			c.return_stmt(mut it)
 			c.scope_returns = true
 		}
-		ast.StructDecl {
+		ast.StructDeclStmt {
 			c.struct_decl(it)
 		}
-		ast.TypeDecl {
+		ast.TypeDeclStmt {
 			c.type_decl(it)
 		}
 		ast.UnsafeStmt {
@@ -1712,17 +1712,17 @@ pub fn (mut c Checker) unwrap_generic(typ table.Type) table.Type {
 // TODO node must be mut
 pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 	match mut node {
-		ast.AnonFn {
+		ast.AnonFnExpr {
 			keep_fn := c.cur_fn
 			c.cur_fn = &it.decl
 			c.stmts(it.decl.stmts)
 			c.cur_fn = keep_fn
 			return it.typ
 		}
-		ast.ArrayInit {
+		ast.ArrayInitExpr {
 			return c.array_init(mut it)
 		}
-		ast.AsCast {
+		ast.AsCastExpr {
 			it.expr_type = c.expr(it.expr)
 			expr_type_sym := c.table.get_type_symbol(it.expr_type)
 			type_sym := c.table.get_type_symbol(it.typ)
@@ -1742,7 +1742,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.AssignExpr {
 			c.assign_expr(mut it)
 		}
-		ast.Assoc {
+		ast.AssocExpr {
 			scope := c.file.scope.innermost(it.pos.pos)
 			v := scope.find_var(it.var_name) or {
 				panic(err)
@@ -1753,7 +1753,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			it.typ = v.typ
 			return v.typ
 		}
-		ast.BoolLiteral {
+		ast.BoolLiteralExpr {
 			return table.bool_type
 		}
 		ast.CastExpr {
@@ -1766,8 +1766,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			}
 			if it.expr_type == table.string_type {
 				mut error_msg := 'cannot cast a string'
-				if it.expr is ast.StringLiteral {
-					str_lit := it.expr as ast.StringLiteral
+				if it.expr is ast.StringLiteralExpr {
+					str_lit := it.expr as ast.StringLiteralExpr
 					if str_lit.val.len == 1 {
 						error_msg += ", for denoting characters use `$str_lit.val` instead of '$str_lit.val'"
 					}
@@ -1783,19 +1783,19 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.CallExpr {
 			return c.call_expr(mut it)
 		}
-		ast.CharLiteral {
+		ast.CharLiteralExpr {
 			return table.byte_type
 		}
 		ast.ConcatExpr {
 			return c.concat_expr(mut it)
 		}
-		ast.EnumVal {
+		ast.EnumValExpr {
 			return c.enum_val(mut it)
 		}
-		ast.FloatLiteral {
+		ast.FloatLiteralExpr {
 			return table.any_flt_type
 		}
-		ast.Ident {
+		ast.IdentExpr {
 			// c.checked_ident = it.name
 			res := c.ident(mut it)
 			// c.checked_ident = ''
@@ -1814,10 +1814,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.InfixExpr {
 			return c.infix_expr(mut it)
 		}
-		ast.IntegerLiteral {
+		ast.IntegerLiteralExpr {
 			return table.any_int_type
 		}
-		ast.MapInit {
+		ast.MapInitExpr {
 			return c.map_init(mut it)
 		}
 		ast.MatchExpr {
@@ -1840,7 +1840,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			}
 			return right_type
 		}
-		ast.None {
+		ast.NoneExpr {
 			return table.none_type
 		}
 		ast.ParExpr {
@@ -1849,28 +1849,28 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.SelectorExpr {
 			return c.selector_expr(mut it)
 		}
-		ast.SizeOf {
+		ast.SizeOfExpr {
 			return table.u32_type
 		}
-		ast.StringLiteral {
+		ast.StringLiteralExpr {
 			if it.language == .c {
 				return table.byteptr_type
 			}
 			return table.string_type
 		}
-		ast.StringInterLiteral {
+		ast.StringInterLiteralExpr {
 			for expr in it.exprs {
 				it.expr_types << c.expr(expr)
 			}
 			return table.string_type
 		}
-		ast.StructInit {
+		ast.StructInitExpr {
 			return c.struct_init(mut it)
 		}
-		ast.Type {
+		ast.TypeExpr {
 			return it.typ
 		}
-		ast.TypeOf {
+		ast.TypeOfExpr {
 			it.expr_type = c.expr(it.expr)
 			return table.string_type
 		}
@@ -1884,7 +1884,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 	return table.void_type
 }
 
-pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
+pub fn (mut c Checker) ident(mut ident ast.IdentExpr) table.Type {
 	// TODO: move this
 	if c.const_deps.len > 0 {
 		mut name := ident.name
@@ -1922,8 +1922,8 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 				ast.Var {
 					mut typ := it.typ
 					if typ == 0 {
-						if it.expr is ast.Ident {
-							inner_ident := it.expr as ast.Ident
+						if it.expr is ast.IdentExpr {
+							inner_ident := it.expr as ast.IdentExpr
 							if inner_ident.kind == .unresolved {
 								c.error('unresolved variable: `$ident.name`', ident.pos)
 								return table.void_type
@@ -1961,7 +1961,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		}
 		if obj := c.file.global_scope.find(name) {
 			match obj {
-				ast.GlobalDecl {
+				ast.GlobalDeclStmt {
 					ident.kind = .global
 					ident.info = ast.IdentVar{
 						typ: it.typ
@@ -2090,8 +2090,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 		for expr in branch.exprs {
 			mut key := ''
 			match expr {
-				ast.Type { key = c.table.type_to_str(it.typ) }
-				ast.EnumVal { key = it.val }
+				ast.TypeExpr { key = c.table.type_to_str(it.typ) }
+				ast.EnumValExpr { key = it.val }
 				else { key = expr.str() }
 			}
 			val := if key in branch_exprs { branch_exprs[key] } else { 0 }
@@ -2296,7 +2296,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 // `.green` or `Color.green`
 // If a short form is used, `expected_type` needs to be an enum
 // with this value.
-pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
+pub fn (mut c Checker) enum_val(mut node ast.EnumValExpr) table.Type {
 	typ_idx := if node.enum_name == '' {
 		c.expected_type.idx()
 	} else { //
@@ -2338,7 +2338,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 	return typ
 }
 
-pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
+pub fn (mut c Checker) map_init(mut node ast.MapInitExpr) table.Type {
 	// `x ;= map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.get_type_symbol(node.typ).map_info()
@@ -2350,9 +2350,9 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	key0_type := c.expr(node.keys[0])
 	val0_type := c.expr(node.vals[0])
 	for i, key in node.keys {
-		key_i := key as ast.StringLiteral
+		key_i := key as ast.StringLiteralExpr
 		for j in 0 .. i {
-			key_j := node.keys[j] as ast.StringLiteral
+			key_j := node.keys[j] as ast.StringLiteralExpr
 			if key_i.val == key_j.val {
 				c.error('duplicate key "$key_i.val" in map literal', key.position())
 			}
@@ -2433,7 +2433,7 @@ fn (c &Checker) fileis(s string) bool {
 	return c.file.path.contains(s)
 }
 
-fn (mut c Checker) fn_decl(it ast.FnDecl) {
+fn (mut c Checker) fn_decl(it ast.FnDeclStmt) {
 	if it.is_generic && c.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for gen_type in c.table.fn_gen_types[it.name] {

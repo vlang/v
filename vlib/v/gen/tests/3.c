@@ -1,7 +1,7 @@
 struct IfExpr {
 };
 
-struct IntegerLiteral {
+struct IntegerLiteralExpr {
 };
 
 // Sum type
@@ -23,11 +23,11 @@ void User_foo(User* u);
 void println(string s);
 void handle_expr(Expr e);
 // >> typeof() support for sum types
-char * v_typeof_sumtype_28(int sidx) { /* Expr */ 
+char * v_typeof_sumtype_28(int sidx) { /* Expr */
 	switch(sidx) {
 		case 28: return "Expr";
 		case 26: return "IfExpr";
-		case 27: return "IntegerLiteral";
+		case 27: return "IntegerLiteralExpr";
 		default: return "unknown Expr";
 	}
 }
@@ -63,8 +63,8 @@ void handle_expr(Expr e) {
 		IfExpr* it = (IfExpr*)e.obj; // ST it
 		println(tos3("if"));
 	}
-	else if (e.typ == 27 /* IntegerLiteral */) {
-		IntegerLiteral* it = (IntegerLiteral*)e.obj; // ST it
+	else if (e.typ == 27 /* IntegerLiteralExpr */) {
+		IntegerLiteralExpr* it = (IntegerLiteralExpr*)e.obj; // ST it
 		println(tos3("integer"));
 	}
 	else {

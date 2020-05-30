@@ -7,7 +7,7 @@ import v.ast
 import v.table
 import v.util
 
-fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
+fn (mut g Gen) gen_fn_decl(it ast.FnDeclStmt) {
 	if it.language == .c {
 		// || it.no_body {
 		return
@@ -278,7 +278,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 }
 
-fn (mut g Gen) write_autofree_stmts_when_needed(r ast.Return) {
+fn (mut g Gen) write_autofree_stmts_when_needed(r ast.ReturnStmt) {
 	// TODO: write_autofree_stmts_when_needed should account for the current local scope vars.
 	// TODO: write_autofree_stmts_when_needed should not free the returned variables.
 	// It may require rewriting g.return_statement to assign the expressions
@@ -546,7 +546,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			json_type_str = g.table.get_type_symbol(node.args[0].typ).name
 		} else {
 			g.insert_before_stmt('// json.decode')
-			ast_type := node.args[0].expr as ast.Type
+			ast_type := node.args[0].expr as ast.TypeExpr
 			// `json.decode(User, s)` => json.decode_User(s)
 			sym := g.table.get_type_symbol(ast_type.typ)
 			name += '_' + sym.name
@@ -600,7 +600,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			expr := node.args[0].expr
 			is_var := match expr {
 				ast.SelectorExpr { true }
-				ast.Ident { true }
+				ast.IdentExpr { true }
 				else { false }
 			}
 			if typ.is_ptr() && sym.kind != .struct_ {

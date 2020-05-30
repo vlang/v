@@ -9,9 +9,9 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 	return p.partial_assign_stmt([])
 }
 
-fn (mut p Parser) check_undefined_variables(idents []ast.Ident, expr ast.Expr) {
+fn (mut p Parser) check_undefined_variables(idents []ast.IdentExpr, expr ast.Expr) {
 	match expr {
-		ast.Ident {
+		ast.IdentExpr {
 			for ident in idents {
 				if ident.name == it.name {
 					p.error_with_pos('undefined variable: `$it.name`', it.pos)
@@ -31,7 +31,7 @@ fn (mut p Parser) check_undefined_variables(idents []ast.Ident, expr ast.Expr) {
 		ast.PrefixExpr {
 			p.check_undefined_variables(idents, it.right)
 		}
-		ast.StringInterLiteral {
+		ast.StringInterLiteralExpr {
 			for expr_ in it.exprs {
 				p.check_undefined_variables(idents, expr_)
 			}
@@ -40,9 +40,9 @@ fn (mut p Parser) check_undefined_variables(idents []ast.Ident, expr ast.Expr) {
 	}
 }
 
-fn (mut p Parser) check_cross_variables(idents []ast.Ident, expr ast.Expr) bool {
+fn (mut p Parser) check_cross_variables(idents []ast.IdentExpr, expr ast.Expr) bool {
 	match expr {
-		ast.Ident {
+		ast.IdentExpr {
 			for ident in idents {
 				if ident.name == it.name { return true }
 			}
@@ -62,7 +62,7 @@ fn (mut p Parser) check_cross_variables(idents []ast.Ident, expr ast.Expr) bool 
 	return false
 }
 
-fn (mut p Parser) partial_assign_stmt(known_lhs []ast.Ident) ast.Stmt {
+fn (mut p Parser) partial_assign_stmt(known_lhs []ast.IdentExpr) ast.Stmt {
 	mut idents := known_lhs
 	mut op := p.tok.kind
 	// read (more) idents until assignment sign
@@ -148,7 +148,7 @@ pub fn (mut p Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	return node
 }
 
-fn (mut p Parser) parse_assign_ident() ast.Ident {
+fn (mut p Parser) parse_assign_ident() ast.IdentExpr {
 	/// returns a single parsed ident
 	return p.parse_ident(.v)
 }

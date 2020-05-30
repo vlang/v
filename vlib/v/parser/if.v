@@ -19,7 +19,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
 		start_pos := p.tok.position()
-		mut comment := ast.Comment{}
+		mut comment := ast.CommentStmt{}
 		if p.tok.kind == .key_if {
 			p.next()
 		} else {
@@ -74,7 +74,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			cond: cond
 			stmts: stmts
 			pos: start_pos.extend(end_pos)
-			comment: ast.Comment{}
+			comment: ast.CommentStmt{}
 		}
 		if p.tok.kind != .key_else {
 			break
@@ -116,7 +116,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			p.peek_tok.kind == .dot) {
 			// Sum type match
 			typ := p.parse_type()
-			exprs << ast.Type{
+			exprs << ast.TypeExpr{
 				typ: typ
 			}
 			p.scope.register('it', ast.Var{
@@ -135,7 +135,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			// Make sure a variable used for the sum type match
 			mut var_name := ''
 			match cond {
-				ast.Ident {
+				ast.IdentExpr {
 					var_name = it.name
 				}
 				else {

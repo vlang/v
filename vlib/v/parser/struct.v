@@ -8,7 +8,7 @@ import v.table
 import v.token
 import v.util
 
-fn (mut p Parser) struct_decl() ast.StructDecl {
+fn (mut p Parser) struct_decl() ast.StructDeclStmt {
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -57,7 +57,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	if !no_body {
 		p.check(.lcbr)
 		for p.tok.kind != .rcbr {
-			mut comment := ast.Comment{}
+			mut comment := ast.CommentStmt{}
 			if p.tok.kind == .comment {
 				comment = p.comment()
 			}
@@ -130,7 +130,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				// p.expr(0)
 				default_expr = p.expr(0)
 				match default_expr {
-					ast.EnumVal { it.typ = typ }
+					ast.EnumValExpr { it.typ = typ }
 					// TODO: implement all types??
 					else {}
 				}
@@ -196,7 +196,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.error('cannot register type `$name`, another type with this name exists')
 	}
 	p.expr_mod = ''
-	return ast.StructDecl{
+	return ast.StructDeclStmt{
 		name: name
 		is_pub: is_pub
 		fields: ast_fields
@@ -210,7 +210,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 }
 
-fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
+fn (mut p Parser) struct_init(short_syntax bool) ast.StructInitExpr {
 	first_pos := p.tok.position()
 	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
@@ -260,7 +260,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	if !short_syntax {
 		p.check(.rcbr)
 	}
-	node := ast.StructInit{
+	node := ast.StructInitExpr{
 		typ: typ
 		fields: fields
 		pos: token.Position{
@@ -273,7 +273,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	return node
 }
 
-fn (mut p Parser) interface_decl() ast.InterfaceDecl {
+fn (mut p Parser) interface_decl() ast.InterfaceDeclStmt {
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -295,7 +295,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	typ := table.new_type(p.table.register_type_symbol(t))
 	ts := p.table.get_type_symbol(typ) // TODO t vs ts
 	// Parse methods
-	mut methods := []ast.FnDecl{}
+	mut methods := []ast.FnDeclStmt{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		method_start_pos := p.tok.position()
 		line_nr := p.tok.line_nr
@@ -311,7 +311,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			is_hidden: true
 		}]
 		args << args2
-		mut method := ast.FnDecl{
+		mut method := ast.FnDeclStmt{
 			name: name
 			args: args
 			file: p.file_name
@@ -332,7 +332,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		})
 	}
 	p.check(.rcbr)
-	return ast.InterfaceDecl{
+	return ast.InterfaceDeclStmt{
 		name: interface_name
 		methods: methods
 		pos: start_pos

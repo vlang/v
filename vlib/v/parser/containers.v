@@ -7,7 +7,7 @@ import v.ast
 import v.table
 import v.token
 
-fn (mut p Parser) array_init() ast.ArrayInit {
+fn (mut p Parser) array_init() ast.ArrayInitExpr {
 	first_pos := p.tok.position()
 	mut last_pos := p.tok.position()
 	p.check(.lsbr)
@@ -113,7 +113,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		pos: first_pos.pos
 		len: last_pos.pos - first_pos.pos + last_pos.len
 	}
-	return ast.ArrayInit{
+	return ast.ArrayInitExpr{
 		is_fixed: is_fixed
 		has_val: has_val
 		mod: p.mod
@@ -131,7 +131,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	}
 }
 
-fn (mut p Parser) map_init() ast.MapInit {
+fn (mut p Parser) map_init() ast.MapInitExpr {
 	pos := p.tok.position()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
@@ -146,7 +146,7 @@ fn (mut p Parser) map_init() ast.MapInit {
 			p.next()
 		}
 	}
-	return ast.MapInit{
+	return ast.MapInitExpr{
 		keys: keys
 		vals: vals
 		pos: pos

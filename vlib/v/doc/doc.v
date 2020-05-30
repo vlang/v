@@ -15,7 +15,7 @@ mut:
 	stmts []ast.Stmt // all module statements from all files
 }
 
-type FilterFn = fn (node ast.FnDecl) bool
+type FilterFn = fn (node ast.FnDeclStmt) bool
 
 pub fn doc(mod string, table &table.Table, prefs &pref.Preferences) string {
 	mut d := Doc{
@@ -71,7 +71,7 @@ pub fn doc(mod string, table &table.Table, prefs &pref.Preferences) string {
 	return d.out.str().trim_space()
 }
 
-fn (d &Doc) get_fn_node(f ast.FnDecl) string {
+fn (d &Doc) get_fn_node(f ast.FnDeclStmt) string {
 	return f.str(d.table).replace_each([d.mod + '.', '', 'pub ', ''])
 }
 
@@ -96,7 +96,7 @@ fn (d Doc) get_fn_signatures(filter_fn FilterFn) []string {
 	mut fn_signatures := []string{}
 	for stmt in d.stmts {
 		match stmt {
-			ast.FnDecl {
+			ast.FnDeclStmt {
 				if filter_fn(it) {
 					fn_signatures << d.get_fn_node(it)
 				}
@@ -108,11 +108,11 @@ fn (d Doc) get_fn_signatures(filter_fn FilterFn) []string {
 	return fn_signatures
 }
 
-fn is_pub_method(node ast.FnDecl) bool {
+fn is_pub_method(node ast.FnDeclStmt) bool {
 	return node.is_pub && node.is_method && !node.is_deprecated
 }
 
-fn is_pub_function(node ast.FnDecl) bool {
+fn is_pub_function(node ast.FnDeclStmt) bool {
 	return node.is_pub && !node.is_method && !node.is_deprecated
 }
 

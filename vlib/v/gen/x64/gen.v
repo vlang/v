@@ -407,7 +407,7 @@ pub fn (mut g Gen) save_main_fn_addr() {
 
 pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, newline bool) {
 	match expr {
-		ast.StringLiteral {
+		ast.StringLiteralExpr {
 			if newline {
 				g.gen_print(it.val + '\n')
 			} else {
@@ -502,7 +502,7 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 	// g.mov(.eax, 0)
 	for i in 0 .. node.args.len {
 		expr := node.args[i].expr
-		int_lit := expr as ast.IntegerLiteral
+		int_lit := expr as ast.IntegerLiteralExpr
 		g.mov(fn_arg_registers[i], int_lit.val.int())
 	}
 	if node.args.len > 6 {
@@ -518,11 +518,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.AssignStmt {
 			g.assign_stmt(it)
 		}
-		ast.ConstDecl {}
+		ast.ConstDeclStmt {}
 		ast.ExprStmt {
 			g.expr(it.expr)
 		}
-		ast.FnDecl {
+		ast.FnDeclStmt {
 			g.fn_decl(it)
 		}
 		ast.ForStmt {
@@ -540,12 +540,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.write8(b)
 			}
 		}
-		ast.Module {}
-		ast.Return {
+		ast.ModuleStmt {}
+		ast.ReturnStmt {
 			g.gen_exit()
 			g.ret()
 		}
-		ast.StructDecl {}
+		ast.StructDeclStmt {}
 		ast.UnsafeStmt {
 			g.stmts(it.stmts)
 		}
@@ -560,7 +560,7 @@ fn C.strtol() int
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
-		ast.ArrayInit {}
+		ast.ArrayInitExpr {}
 		ast.AssignExpr {}
 		ast.CallExpr {
 			if it.name in ['println', 'print', 'eprintln', 'eprint'] {
@@ -570,19 +570,19 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			g.call_fn(it)
 		}
-		ast.FloatLiteral {}
-		ast.Ident {}
+		ast.FloatLiteralExpr {}
+		ast.IdentExpr {}
 		ast.IfExpr {
 			g.if_expr(it)
 		}
 		ast.InfixExpr {}
-		ast.IntegerLiteral {}
+		ast.IntegerLiteralExpr {}
 		ast.PostfixExpr {
 			g.postfix_expr(it)
 		}
-		ast.StringLiteral {}
-		ast.StructInit {}
-		ast.BoolLiteral {}
+		ast.StringLiteralExpr {}
+		ast.StructInitExpr {}
+		ast.BoolLiteralExpr {}
 		else {
 			println(term.red('x64.expr(): unhandled node: ' + typeof(node)))
 		}
@@ -628,7 +628,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
 	for ident in node.left {
 		match node.right[0] {
-			ast.IntegerLiteral {
+			ast.IntegerLiteralExpr {
 				g.allocate_var(ident.name, 4, it.val.int())
 			}
 			ast.InfixExpr {
@@ -655,8 +655,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	infix_expr := branch.cond as ast.InfixExpr
 	mut jne_addr := 0 // location of `jne *00 00 00 00*`
 	match infix_expr.left {
-		ast.Ident {
-			lit := infix_expr.right as ast.IntegerLiteral
+		ast.IdentExpr {
+			lit := infix_expr.right as ast.IntegerLiteralExpr
 			g.cmp_var(it.name, lit.val.int())
 			jne_addr = g.jne()
 		}
@@ -678,8 +678,8 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	mut jump_addr := 0 // location of `jne *00 00 00 00*`
 	start := g.pos()
 	match infix_expr.left {
-		ast.Ident {
-			lit := infix_expr.right as ast.IntegerLiteral
+		ast.IdentExpr {
+			lit := infix_expr.right as ast.IntegerLiteralExpr
 			g.cmp_var(it.name, lit.val.int())
 			jump_addr = g.jge()
 		}
@@ -696,7 +696,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.println('jpm after for')
 }
 
-fn (mut g Gen) fn_decl(node ast.FnDecl) {
+fn (mut g Gen) fn_decl(node ast.FnDeclStmt) {
 	println(term.green('\n$node.name:'))
 	g.stack_var_pos = 0
 	is_main := node.name == 'main'
@@ -740,10 +740,10 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 }
 
 fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
-	if !(node.expr is ast.Ident) {
+	if !(node.expr is ast.IdentExpr) {
 		return
 	}
-	ident := node.expr as ast.Ident
+	ident := node.expr as ast.IdentExpr
 	var_name := ident.name
 	if node.op == .inc {
 		g.inc_var(var_name)

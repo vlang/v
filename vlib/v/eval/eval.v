@@ -58,7 +58,7 @@ fn (mut e Eval) stmt(node ast.Stmt) string {
 			print_object(o)
 			return o.str()
 		}
-		// ast.StructDecl {
+		// ast.StructDeclStmt {
 		//	println('s decl')
 		// }
 		// ast.VarDecl {
@@ -73,10 +73,10 @@ fn (mut e Eval) stmt(node ast.Stmt) string {
 
 fn (mut e Eval) expr(node ast.Expr) Object {
 	match node {
-		ast.IntegerLiteral {
+		ast.IntegerLiteralExpr {
 			return it.val
 		}
-		ast.Ident {
+		ast.IdentExpr {
 			print_object(it.value)
 			// Find the variable
 			v := e.vars[it.name]

@@ -30,7 +30,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			node = p.enum_val()
 		}
 		.chartoken {
-			node = ast.CharLiteral{
+			node = ast.CharLiteralExpr{
 				val: p.tok.lit
 				pos: p.tok.position()
 			}
@@ -41,7 +41,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			node = p.prefix_expr()
 		}
 		.key_true, .key_false {
-			node = ast.BoolLiteral{
+			node = ast.BoolLiteralExpr{
 				val: p.tok.kind == .key_true
 				pos: p.tok.position()
 			}
@@ -74,7 +74,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.key_none {
 			p.next()
-			node = ast.None{}
+			node = ast.NoneExpr{}
 		}
 		.key_sizeof {
 			p.next() // sizeof
@@ -83,12 +83,12 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			if p.tok.lit == 'C' {
 				p.next()
 				p.check(.dot)
-				node = ast.SizeOf{
+				node = ast.SizeOfExpr{
 					type_name: p.check_name()
 					typ: sizeof_type
 				}
 			} else {
-				node = ast.SizeOf{
+				node = ast.SizeOfExpr{
 					typ: sizeof_type
 				}
 			}
@@ -99,7 +99,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.check(.lpar)
 			expr := p.expr(0)
 			p.check(.rpar)
-			node = ast.TypeOf{
+			node = ast.TypeOfExpr{
 				expr: expr
 			}
 		}
@@ -149,7 +149,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			pos := p.tok.position()
 			p.next()
 			typ = p.parse_type()
-			node = ast.AsCast{
+			node = ast.AsCastExpr{
 				expr: node
 				typ: typ
 				pos: pos

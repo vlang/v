@@ -75,14 +75,14 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
-fn (mut p Parser) vweb() ast.ComptimeCall {
+fn (mut p Parser) vweb() ast.ComptimeCallExpr {
 	p.check(.dollar)
 	p.check(.name) // skip `vweb.html()` TODO
 	p.check(.dot)
 	p.check(.name)
 	p.check(.lpar)
 	p.check(.rpar)
-	return ast.ComptimeCall{}
+	return ast.ComptimeCallExpr{}
 }
 
 fn (mut p Parser) comp_if() ast.Stmt {
@@ -139,7 +139,7 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	if !skip_os {
 		stmts = p.parse_block()
 	}
-	mut node := ast.CompIf{
+	mut node := ast.CompIfStmt{
 		is_not: is_not
 		is_opt: is_opt
 		pos: pos
@@ -215,8 +215,8 @@ fn os_from_string(os string) pref.OS {
 
 // `app.$action()` (`action` is a string)
 // `typ` is `App` in this example
-// fn (mut p Parser) comptime_method_call(typ table.Type) ast.ComptimeCall {
-fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
+// fn (mut p Parser) comptime_method_call(typ table.Type) ast.ComptimeCallExpr {
+fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCallExpr {
 	p.check(.dollar)
 	method_name := p.check_name()
 	_ = method_name
@@ -253,7 +253,7 @@ fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 		p.check(.lcbr)
 		// p.statements()
 	}
-	return ast.ComptimeCall{
+	return ast.ComptimeCallExpr{
 		left: left
 		name: method_name
 	}

@@ -41,7 +41,7 @@ mut:
 	scope             &ast.Scope
 	global_scope      &ast.Scope
 	imports           map[string]string // alias => mod_name
-	ast_imports       []ast.Import // mod_names
+	ast_imports       []ast.ImportStmt // mod_names
 	used_imports      []string // alias
 	is_amp            bool // for generating the right code for `&Foo{}`
 	returns           bool
@@ -111,7 +111,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	for {
 		if p.tok.kind == .eof {
 			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
-				stmts << ast.FnDecl{
+				stmts << ast.FnDeclStmt{
 					name: 'main'
 					file: p.file_name
 					return_type: table.void_type
@@ -290,7 +290,7 @@ fn (mut p Parser) next() {
 	p.peek_tok3 = p.scanner.scan()
 	/*
 	if p.tok.kind==.comment {
-		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
+		p.comments << ast.CommentStmt{text:p.tok.lit, line_nr:p.tok.line_nr}
 		p.next()
 	}
 	*/
@@ -409,7 +409,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				for p.tok.kind != .eof {
 					stmts << p.stmt()
 				}
-				return ast.FnDecl{
+				return ast.FnDeclStmt{
 					name: 'main'
 					stmts: stmts
 					file: p.file_name
@@ -424,19 +424,19 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 }
 
 // TODO [if vfmt]
-pub fn (mut p Parser) check_comment() ast.Comment {
+pub fn (mut p Parser) check_comment() ast.CommentStmt {
 	if p.tok.kind == .comment {
 		return p.comment()
 	}
-	return ast.Comment{}
+	return ast.CommentStmt{}
 }
 
-pub fn (mut p Parser) comment() ast.Comment {
+pub fn (mut p Parser) comment() ast.CommentStmt {
 	pos := p.tok.position()
 	text := p.tok.lit
 	p.next()
 	// p.next_with_comment()
-	return ast.Comment{
+	return ast.CommentStmt{
 		text: text
 		pos: pos
 	}
@@ -447,7 +447,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 	match p.tok.kind {
 		.lcbr {
 			stmts := p.parse_block()
-			return ast.Block{
+			return ast.BlockStmt{
 				stmts: stmts
 			}
 		}
@@ -477,7 +477,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				// `label:`
 				name := p.check_name()
 				p.next()
-				return ast.GotoLabel{
+				return ast.GotoLabelStmt{
 					name: name
 				}
 			} else if p.peek_tok.kind == .name {
@@ -560,8 +560,8 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 	}
 }
 
-fn (mut p Parser) attributes() []ast.Attr {
-	mut attrs := []ast.Attr{}
+fn (mut p Parser) attributes() []ast.AttrStmt {
+	mut attrs := []ast.AttrStmt{}
 	p.check(.lsbr)
 	for p.tok.kind != .rsbr {
 		attr := p.parse_attr()
@@ -579,7 +579,7 @@ fn (mut p Parser) attributes() []ast.Attr {
 	return attrs
 }
 
-fn (mut p Parser) parse_attr() ast.Attr {
+fn (mut p Parser) parse_attr() ast.AttrStmt {
 	mut is_if_attr := false
 	if p.tok.kind == .key_if {
 		p.next()
@@ -600,7 +600,7 @@ fn (mut p Parser) parse_attr() ast.Attr {
 	if is_if_attr {
 		p.attr_ctdefine = name
 	}
-	return ast.Attr{
+	return ast.AttrStmt{
 		name: name
 	}
 }
@@ -687,9 +687,9 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 	}
 	// TODO: Try to merge assign_expr and assign_stmt
 	if p.tok.kind == .decl_assign || (p.tok.kind == .assign && collected.len > 1) {
-		mut idents := []ast.Ident{}
+		mut idents := []ast.IdentExpr{}
 		for c in collected {
-			idents << c as ast.Ident
+			idents << c as ast.IdentExpr
 		}
 		return p.partial_assign_stmt(idents)
 	} else if p.tok.kind.is_assign() {
@@ -722,7 +722,7 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 	}
 }
 
-pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
+pub fn (mut p Parser) parse_ident(language table.Language) ast.IdentExpr {
 	// p.warn('name ')
 	is_mut := p.tok.kind == .key_mut
 	if is_mut {
@@ -736,7 +736,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 		pos := p.tok.position()
 		mut name := p.check_name()
 		if name == '_' {
-			return ast.Ident{
+			return ast.IdentExpr{
 				name: '_'
 				kind: .blank_ident
 				pos: pos
@@ -749,7 +749,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 		if p.expr_mod.len > 0 {
 			name = '${p.expr_mod}.$name'
 		}
-		mut ident := ast.Ident{
+		mut ident := ast.IdentExpr{
 			kind: .unresolved
 			name: name
 			language: language
@@ -774,7 +774,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// get type position before moving to next
 		type_pos := p.tok.position()
 		typ := p.parse_type()
-		return ast.Type{
+		return ast.TypeExpr{
 			typ: typ
 			pos: type_pos
 		}
@@ -796,7 +796,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			p.next()
 			p.next()
 		}
-		return ast.MapInit{
+		return ast.MapInitExpr{
 			typ: map_type
 		}
 	}
@@ -893,7 +893,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		val := p.check_name()
 		// println('enum val $enum_name . $val')
 		p.expr_mod = ''
-		return ast.EnumVal{
+		return ast.EnumValExpr{
 			enum_name: enum_name
 			val: val
 			pos: p.tok.position()
@@ -1060,10 +1060,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 
 // `.green`
 // `pref.BuildMode.default_mode`
-fn (mut p Parser) enum_val() ast.EnumVal {
+fn (mut p Parser) enum_val() ast.EnumValExpr {
 	p.check(.dot)
 	val := p.check_name()
-	return ast.EnumVal{
+	return ast.EnumValExpr{
 		val: val
 		pos: p.tok.position()
 	}
@@ -1080,7 +1080,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	pos := p.tok.position()
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
-		node = ast.StringLiteral{
+		node = ast.StringLiteralExpr{
 			val: val
 			is_raw: is_raw
 			language: if is_cstr {
@@ -1125,7 +1125,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		}
 		efmts << efmt.join('')
 	}
-	node = ast.StringInterLiteral{
+	node = ast.StringInterLiteralExpr{
 		vals: vals
 		exprs: exprs
 		expr_fmts: efmts
@@ -1139,12 +1139,12 @@ fn (mut p Parser) parse_number_literal() ast.Expr {
 	pos := p.tok.position()
 	mut node := ast.Expr{}
 	if lit.index_any('.eE') >= 0 && lit[..2] !in ['0x', '0X', '0o', '0O', '0b', '0B'] {
-		node = ast.FloatLiteral{
+		node = ast.FloatLiteralExpr{
 			val: lit
 			pos: pos
 		}
 	} else {
-		node = ast.IntegerLiteral{
+		node = ast.IntegerLiteralExpr{
 			val: lit
 			pos: pos
 		}
@@ -1153,7 +1153,7 @@ fn (mut p Parser) parse_number_literal() ast.Expr {
 	return node
 }
 
-fn (mut p Parser) module_decl() ast.Module {
+fn (mut p Parser) module_decl() ast.ModuleStmt {
 	mut name := 'main'
 	is_skipped := p.tok.kind != .key_module
 	mut module_pos := token.Position{}
@@ -1178,14 +1178,14 @@ fn (mut p Parser) module_decl() ast.Module {
 	full_mod := p.table.qualify_module(name, p.file_name)
 	p.mod = full_mod
 	p.builtin_mod = p.mod == 'builtin'
-	return ast.Module{
+	return ast.ModuleStmt{
 		name: full_mod
 		is_skipped: is_skipped
 		pos: module_pos
 	}
 }
 
-fn (mut p Parser) import_stmt() ast.Import {
+fn (mut p Parser) import_stmt() ast.ImportStmt {
 	import_pos := p.tok.position()
 	p.check(.key_import)
 	pos := p.tok.position()
@@ -1224,7 +1224,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	}
 	p.imports[mod_alias] = mod_name
 	p.table.imports << mod_name
-	node := ast.Import{
+	node := ast.ImportStmt{
 		mod: mod_name
 		alias: mod_alias
 		pos: pos
@@ -1233,7 +1233,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	return node
 }
 
-fn (mut p Parser) const_decl() ast.ConstDecl {
+fn (mut p Parser) const_decl() ast.ConstDeclStmt {
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -1247,7 +1247,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	p.next() // (
 	mut fields := []ast.ConstField{}
 	for p.tok.kind != .rpar {
-		mut comment := ast.Comment{}
+		mut comment := ast.CommentStmt{}
 		if p.tok.kind == .comment {
 			comment = p.comment()
 		}
@@ -1272,20 +1272,20 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		p.global_scope.register(field.name, field)
 	}
 	p.check(.rpar)
-	return ast.ConstDecl{
+	return ast.ConstDeclStmt{
 		pos: start_pos.extend(end_pos)
 		fields: fields
 		is_pub: is_pub
 	}
 }
 
-fn (mut p Parser) return_stmt() ast.Return {
+fn (mut p Parser) return_stmt() ast.ReturnStmt {
 	first_pos := p.tok.position()
 	p.next()
 	// return expressions
 	mut exprs := []ast.Expr{}
 	if p.tok.kind == .rcbr {
-		return ast.Return{
+		return ast.ReturnStmt{
 			pos: first_pos
 		}
 	}
@@ -1299,14 +1299,14 @@ fn (mut p Parser) return_stmt() ast.Return {
 		}
 	}
 	end_pos := exprs.last().position()
-	return ast.Return{
+	return ast.ReturnStmt{
 		exprs: exprs
 		pos: first_pos.extend(end_pos)
 	}
 }
 
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
-fn (mut p Parser) global_decl() ast.GlobalDecl {
+fn (mut p Parser) global_decl() ast.GlobalDeclStmt {
 	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v &&
 		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
 		p.error('use `v --enable-globals ...` to enable globals')
@@ -1338,7 +1338,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		p.cgen.consts << g
 	}
 	*/
-	glob := ast.GlobalDecl{
+	glob := ast.GlobalDeclStmt{
 		name: name
 		typ: typ
 		pos: pos
@@ -1349,7 +1349,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	return glob
 }
 
-fn (mut p Parser) enum_decl() ast.EnumDecl {
+fn (mut p Parser) enum_decl() ast.EnumDeclStmt {
 	is_pub := p.tok.kind == .key_pub
 	start_pos := p.tok.position()
 	if is_pub {
@@ -1408,7 +1408,7 @@ $pubfn (mut e  $name) toggle(flag $name)   { unsafe{ *e = int(*e) ^  (1 << int(f
 			is_flag: is_flag
 		}
 	})
-	return ast.EnumDecl{
+	return ast.EnumDeclStmt{
 		name: name
 		is_pub: is_pub
 		is_flag: is_flag
@@ -1417,7 +1417,7 @@ $pubfn (mut e  $name) toggle(flag $name)   { unsafe{ *e = int(*e) ^  (1 << int(f
 	}
 }
 
-fn (mut p Parser) type_decl() ast.TypeDecl {
+fn (mut p Parser) type_decl() ast.TypeDeclStmt {
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -1501,12 +1501,12 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 }
 
-fn (mut p Parser) assoc() ast.Assoc {
+fn (mut p Parser) assoc() ast.AssocExpr {
 	var_name := p.check_name()
 	pos := p.tok.position()
 	mut v := p.scope.find_var(var_name) or {
 		p.error('unknown variable `$var_name`')
-		return ast.Assoc{}
+		return ast.AssocExpr{}
 	}
 	v.is_used = true
 	// println('assoc var $name typ=$var.typ')
@@ -1525,7 +1525,7 @@ fn (mut p Parser) assoc() ast.Assoc {
 			break
 		}
 	}
-	return ast.Assoc{
+	return ast.AssocExpr{
 		var_name: var_name
 		fields: fields
 		exprs: vals
@@ -1534,7 +1534,7 @@ fn (mut p Parser) assoc() ast.Assoc {
 }
 
 fn (p &Parser) new_true_expr() ast.Expr {
-	return ast.BoolLiteral{
+	return ast.BoolLiteralExpr{
 		val: true
 		pos: p.tok.position()
 	}

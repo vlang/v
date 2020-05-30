@@ -1,7 +1,7 @@
-type Expr = IfExpr | IntegerLiteral
+type Expr = IfExpr | IntegerLiteralExpr
 
 struct IfExpr{}
-struct IntegerLiteral{}
+struct IntegerLiteralExpr{}
 
 struct User {
 	age int
@@ -46,7 +46,7 @@ fn handle_expr(e Expr) {
 
 
 		}
-		IntegerLiteral {
+		IntegerLiteralExpr {
 			println('integer')
 
 		}

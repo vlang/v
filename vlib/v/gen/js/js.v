@@ -42,7 +42,7 @@ mut:
 	indents           map[string]int // indentations mapped to namespaces
 	stmt_start_pos    int
 	defer_stmts       []ast.DeferStmt
-	fn_decl           &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	fn_decl           &ast.FnDeclStmt // pointer to the FnDeclStmt we are currently inside otherwise 0
 	str_types         []string // types that need automatic str() generation
 	method_fn_decls   map[string][]ast.Stmt
 	empty_line        bool
@@ -154,7 +154,7 @@ pub fn (mut g JsGen) push_pub_var(s string) {
 pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
 	for stmt in stmts {
 		match stmt {
-			ast.FnDecl {
+			ast.FnDeclStmt {
 				if it.is_method {
 					// Found struct method, store it to be generated along with the class.
 					class_name := g.table.get_type_name(it.receiver.typ)
@@ -386,36 +386,36 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.AssignStmt {
 			g.gen_assign_stmt(it)
 		}
-		ast.Attr {
+		ast.AttrStmt {
 			g.gen_attr(it)
 		}
-		ast.Block {
+		ast.BlockStmt {
 			g.gen_block(it)
 			g.writeln('')
 		}
 		ast.BranchStmt {
 			g.gen_branch_stmt(it)
 		}
-		ast.Comment {
+		ast.CommentStmt {
 			// Skip: don't generate comments
 		}
-		ast.CompIf {
+		ast.CompIfStmt {
 			// skip: JS has no compile time if
 		}
-		ast.ConstDecl {
+		ast.ConstDeclStmt {
 			g.gen_const_decl(it)
 		}
 		ast.DeferStmt {
 			g.defer_stmts << *it
 		}
-		ast.EnumDecl {
+		ast.EnumDeclStmt {
 			g.gen_enum_decl(it)
 			g.writeln('')
 		}
 		ast.ExprStmt {
 			g.gen_expr_stmt(it)
 		}
-		ast.FnDecl {
+		ast.FnDeclStmt {
 			g.fn_decl = it
 			g.gen_fn_decl(it)
 			g.writeln('')
@@ -432,14 +432,14 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_for_stmt(it)
 			g.writeln('')
 		}
-		ast.GlobalDecl {
+		ast.GlobalDeclStmt {
 			// TODO
 		}
 		ast.GoStmt {
 			g.gen_go_stmt(it)
 			g.writeln('')
 		}
-		ast.GotoLabel {
+		ast.GotoLabelStmt {
 			g.writeln('${g.js_name(it.name)}:')
 		}
 		ast.GotoStmt {
@@ -448,25 +448,25 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.HashStmt {
 			g.gen_hash_stmt(it)
 		}
-		ast.Import {
+		ast.ImportStmt {
 			g.gen_import_stmt(it)
 		}
-		ast.InterfaceDecl {
+		ast.InterfaceDeclStmt {
 			// TODO skip: interfaces not implemented yet
 		}
-		ast.Module {
+		ast.ModuleStmt {
 			// skip: namespacing implemented externally
 		}
-		ast.Return {
+		ast.ReturnStmt {
 			if g.defer_stmts.len > 0 {
 				g.gen_defer_stmts()
 			}
 			g.gen_return_stmt(it)
 		}
-		ast.StructDecl {
+		ast.StructDeclStmt {
 			g.gen_struct_decl(it)
 		}
-		ast.TypeDecl {
+		ast.TypeDeclStmt {
 			// skip JS has no typedecl
 		}
 		ast.UnsafeStmt {
@@ -482,23 +482,23 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 
 fn (mut g JsGen) expr(node ast.Expr) {
 	match node {
-		ast.AnonFn {
+		ast.AnonFnExpr {
 			g.gen_fn_decl(it.decl)
 		}
-		ast.ArrayInit {
+		ast.ArrayInitExpr {
 			g.gen_array_init_expr(it)
 		}
-		ast.AsCast {
+		ast.AsCastExpr {
 			// skip: JS has no types, so no need to cast
 			// TODO: Is jsdoc needed here for TS support?
 		}
 		ast.AssignExpr {
 			g.gen_assign_expr(it)
 		}
-		ast.Assoc {
+		ast.AssocExpr {
 			// TODO
 		}
-		ast.BoolLiteral {
+		ast.BoolLiteralExpr {
 			if it.val == true {
 				g.write('true')
 			} else {
@@ -512,20 +512,20 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// skip: JS has no types, so no need to cast
 			// TODO: Check if jsdoc is needed for TS support
 		}
-		ast.CharLiteral {
+		ast.CharLiteralExpr {
 			g.write("'$it.val'")
 		}
 		ast.ConcatExpr {
 			// TODO
 		}
-		ast.EnumVal {
+		ast.EnumValExpr {
 			styp := g.typ(it.typ)
 			g.write('${styp}.${it.val}')
 		}
-		ast.FloatLiteral {
+		ast.FloatLiteralExpr {
 			g.write(it.val)
 		}
-		ast.Ident {
+		ast.IdentExpr {
 			g.gen_ident(it)
 		}
 		ast.IfExpr {
@@ -540,16 +540,16 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.InfixExpr {
 			g.gen_infix_expr(it)
 		}
-		ast.IntegerLiteral {
+		ast.IntegerLiteralExpr {
 			g.write(it.val)
 		}
-		ast.MapInit {
+		ast.MapInitExpr {
 			g.gen_map_init_expr(it)
 		}
 		ast.MatchExpr {
 			// TODO
 		}
-		ast.None {
+		ast.NoneExpr {
 			// TODO
 		}
 		ast.OrExpr {
@@ -571,28 +571,28 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.SelectorExpr {
 			g.gen_selector_expr(it)
 		}
-		ast.SizeOf {
+		ast.SizeOfExpr {
 			// TODO
 		}
-		ast.StringInterLiteral {
+		ast.StringInterLiteralExpr {
 			g.gen_string_inter_literal(it)
 		}
-		ast.StringLiteral {
+		ast.StringLiteralExpr {
 			g.write('"$it.val"')
 		}
-		ast.StructInit {
+		ast.StructInitExpr {
 			// `user := User{name: 'Bob'}`
 			g.gen_struct_init(it)
 		}
-		ast.Type {
+		ast.TypeExpr {
 			// skip: JS has no types
 			// TODO maybe?
 		}
-		ast.TypeOf {
+		ast.TypeOfExpr {
 			g.gen_typeof_expr(it)
 			// TODO: Should this print the V type or the JS type?
 		}
-		ast.ComptimeCall {
+		ast.ComptimeCallExpr {
 			// TODO
 		}
 		/*
@@ -660,10 +660,10 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			ident_var_info := ident.var_info()
 			mut styp := g.typ(ident_var_info.typ)
 
-			if val is ast.EnumVal {
+			if val is ast.EnumValExpr {
 				// we want the type of the enum value not the enum
 				styp = 'number'
-			} else if val is ast.StructInit {
+			} else if val is ast.StructInitExpr {
 				// no need to print jsdoc for structs
 				styp = ''
 			}
@@ -690,11 +690,11 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 	}
 }
 
-fn (mut g JsGen) gen_attr(it ast.Attr) {
+fn (mut g JsGen) gen_attr(it ast.AttrStmt) {
 	g.writeln('/* [$it.name] */')
 }
 
-fn (mut g JsGen) gen_block(it ast.Block) {
+fn (mut g JsGen) gen_block(it ast.BlockStmt) {
 	g.writeln('{')
 	g.stmts(it.stmts)
 	g.writeln('}')
@@ -706,7 +706,7 @@ fn (mut g JsGen) gen_branch_stmt(it ast.BranchStmt) {
 	g.writeln(';')
 }
 
-fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
+fn (mut g JsGen) gen_const_decl(it ast.ConstDeclStmt) {
 	// old_indent := g.indents[g.namespace]
 	for i, field in it.fields {
 		// TODO hack. Cut the generated value and paste it into definitions.
@@ -737,7 +737,7 @@ fn (mut g JsGen) gen_defer_stmts() {
 	g.writeln('})();')
 }
 
-fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
+fn (mut g JsGen) gen_enum_decl(it ast.EnumDeclStmt) {
 	g.writeln('const ${g.js_name(it.name)} = Object.freeze({')
 	g.inc_indent()
 	for i, field in it.fields {
@@ -767,7 +767,7 @@ fn (mut g JsGen) gen_expr_stmt(it ast.ExprStmt) {
 	else if !g.inside_ternary { g.writeln(';') }
 }
 
-fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
+fn (mut g JsGen) gen_fn_decl(it ast.FnDeclStmt) {
 	if it.is_method {
 		// Struct methods are handled by class generation code.
 		return
@@ -778,7 +778,7 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	g.gen_method_decl(it)
 }
 
-fn fn_has_go(it ast.FnDecl) bool {
+fn fn_has_go(it ast.FnDeclStmt) bool {
 	mut has_go := false
 	for stmt in it.stmts {
 		if stmt is ast.GoStmt { has_go = true }
@@ -786,7 +786,7 @@ fn fn_has_go(it ast.FnDecl) bool {
 	return has_go
 }
 
-fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
+fn (mut g JsGen) gen_method_decl(it ast.FnDeclStmt) {
 	g.fn_decl = &it
 	has_go := fn_has_go(it)
 	is_main := it.name == 'main'
@@ -980,13 +980,13 @@ fn (mut g JsGen) gen_go_stmt(node ast.GoStmt) {
 	}
 }
 
-fn (mut g JsGen) gen_import_stmt(it ast.Import) {
+fn (mut g JsGen) gen_import_stmt(it ast.ImportStmt) {
 	mut imports := g.namespace_imports[g.namespace]
 	imports[it.mod] = it.alias
 	g.namespace_imports[g.namespace] = imports
 }
 
-fn (mut g JsGen) gen_return_stmt(it ast.Return) {
+fn (mut g JsGen) gen_return_stmt(it ast.ReturnStmt) {
 	if it.exprs.len == 0 {
 		// Returns nothing
 		g.write('return;')
@@ -1014,7 +1014,7 @@ fn (mut g JsGen) gen_hash_stmt(it ast.HashStmt) {
 	g.writeln(it.val)
 }
 
-fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
+fn (mut g JsGen) gen_struct_decl(node ast.StructDeclStmt) {
 	g.writeln(g.doc.gen_fac_fn(node.fields))
 	g.write('function ${g.js_name(node.name)}({ ')
 	for i, field in node.fields {
@@ -1047,7 +1047,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 
 	for i, cfn in fns {
 		// TODO: Move cast to the entire array whenever it's possible
-		it := cfn as ast.FnDecl
+		it := cfn as ast.FnDeclStmt
 		g.gen_method_decl(it)
 		if i < fns.len - 1 { g.writeln(',') } else { g.writeln('') }
 	}
@@ -1058,7 +1058,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	}
 }
 
-fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
+fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInitExpr) {
 	type_sym := g.table.get_type_symbol(it.typ)
 	if type_sym.kind != .array_fixed {
 		g.write('[')
@@ -1104,7 +1104,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	g.write(')')
 }
 
-fn (mut g JsGen) gen_ident(node ast.Ident) {
+fn (mut g JsGen) gen_ident(node ast.IdentExpr) {
 	if node.kind == .constant {
 		// TODO: Handle const namespacing: only consts in the main module are handled rn
 		g.write('_CONSTS.')
@@ -1232,7 +1232,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 }
 
 
-fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
+fn (mut g JsGen) gen_map_init_expr(it ast.MapInitExpr) {
 	// key_typ_sym := g.table.get_type_symbol(it.key_type)
 	// value_typ_sym := g.table.get_type_symbol(it.value_type)
 	// key_typ_str := key_typ_sym.name.replace('.', '__')
@@ -1264,7 +1264,7 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 	g.write('.$it.field_name')
 }
 
-fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
+fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteralExpr) {
 	// TODO Implement `tos3`
 	g.write('tos3(`')
 	for i, val in it.vals {
@@ -1312,7 +1312,7 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 	g.write('`)')
 }
 
-fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
+fn (mut g JsGen) gen_struct_init(it ast.StructInitExpr) {
 	type_sym := g.table.get_type_symbol(it.typ)
 	name := type_sym.name
 	if it.fields.len == 0 {
@@ -1333,7 +1333,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	}
 }
 
-fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
+fn (mut g JsGen) gen_typeof_expr(it ast.TypeOfExpr) {
 	sym := g.table.get_type_symbol(it.expr_type)
 	if sym.kind == .sum_type {
 		// TODO: JS sumtypes not implemented yet

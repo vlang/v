@@ -50,7 +50,7 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 	}
 	f.cur_mod = 'main'
 	for stmt in file.stmts {
-		if stmt is ast.Import {
+		if stmt is ast.ImportStmt {
 			// Just remember the position of the imports for now
 			f.import_pos = f.out.len
 			// f.imports(f.file.imports)
@@ -100,7 +100,7 @@ pub fn (mut f Fmt) writeln(s string) {
 	f.line_len = 0
 }
 
-pub fn (mut f Fmt) mod(mod ast.Module) {
+pub fn (mut f Fmt) mod(mod ast.ModuleStmt) {
 	f.cur_mod = mod.name
 	if mod.is_skipped {
 		return
@@ -108,7 +108,7 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 	f.writeln('module $mod.name\n')
 }
 
-pub fn (mut f Fmt) imports(imports []ast.Import) {
+pub fn (mut f Fmt) imports(imports []ast.ImportStmt) {
 	if f.did_imports || imports.len == 0 {
 		return
 	}
@@ -136,7 +136,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 	// }
 }
 
-pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
+pub fn (f Fmt) imp_stmt_str(imp ast.ImportStmt) string {
 	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
 	imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
 	return '${imp.mod}${imp_alias_suffix}'
@@ -184,10 +184,10 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.expr(it.expr)
 			f.writeln('')
 		}
-		ast.Attr {
+		ast.AttrStmt {
 			f.writeln('[$it.name]')
 		}
-		ast.Block {
+		ast.BlockStmt {
 			f.writeln('{')
 			f.stmts(it.stmts)
 			f.writeln('}')
@@ -199,10 +199,10 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				else {}
 			}
 		}
-		ast.Comment {
+		ast.CommentStmt {
 			f.comment(it)
 		}
-		ast.CompIf {
+		ast.CompIfStmt {
 			inversion := if it.is_not { '!' } else { '' }
 			is_opt := if it.is_opt { ' ?' } else { '' }
 			f.writeln('\$if ${inversion}${it.val}${is_opt} {')
@@ -213,7 +213,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 			f.writeln('}')
 		}
-		ast.ConstDecl {
+		ast.ConstDeclStmt {
 			f.const_decl(it)
 		}
 		ast.DeferStmt {
@@ -221,7 +221,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
-		ast.EnumDecl {
+		ast.EnumDeclStmt {
 			if it.is_pub {
 				f.write('pub ')
 			}
@@ -243,7 +243,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				f.writeln('')
 			}
 		}
-		ast.FnDecl {
+		ast.FnDeclStmt {
 			f.fn_decl(it)
 		}
 		ast.ForCStmt {
@@ -293,7 +293,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
-		ast.GlobalDecl {
+		ast.GlobalDeclStmt {
 			f.write('__global $it.name ')
 			f.write(f.type_to_str(it.typ))
 			if it.has_expr {
@@ -307,7 +307,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.expr(it.call_expr)
 			f.writeln('')
 		}
-		ast.GotoLabel {
+		ast.GotoLabelStmt {
 			f.writeln('$it.name:')
 		}
 		ast.GotoStmt {
@@ -316,11 +316,11 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.HashStmt {
 			f.writeln('#$it.val')
 		}
-		ast.Import {
+		ast.ImportStmt {
 			// Imports are handled after the file is formatted, to automatically add necessary modules
 			// f.imports(f.file.imports)
 		}
-		ast.InterfaceDecl {
+		ast.InterfaceDeclStmt {
 			f.writeln('interface $it.name {')
 			for method in it.methods {
 				f.write('\t')
@@ -328,10 +328,10 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 			f.writeln('}\n')
 		}
-		ast.Module {
+		ast.ModuleStmt {
 			f.mod(it)
 		}
-		ast.Return {
+		ast.ReturnStmt {
 			f.write('return')
 			if it.exprs.len > 1 {
 				// multiple returns
@@ -349,10 +349,10 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 			f.writeln('')
 		}
-		ast.StructDecl {
+		ast.StructDeclStmt {
 			f.struct_decl(it)
 		}
-		ast.TypeDecl {
+		ast.TypeDeclStmt {
 			// already handled in f.imports
 			f.type_decl(it)
 		}
@@ -364,7 +364,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	}
 }
 
-pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
+pub fn (mut f Fmt) type_decl(node ast.TypeDeclStmt) {
 	match node {
 		ast.AliasTypeDecl {
 			if it.is_pub {
@@ -435,7 +435,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	f.writeln('\n')
 }
 
-pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
+pub fn (mut f Fmt) struct_decl(node ast.StructDeclStmt) {
 	if node.is_pub {
 		f.write('pub ')
 	}
@@ -522,13 +522,13 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | ${node.str()}')
 	}
 	match node {
-		ast.AnonFn {
+		ast.AnonFnExpr {
 			f.fn_decl(it.decl)
 		}
-		ast.ArrayInit {
+		ast.ArrayInitExpr {
 			f.array_init(it)
 		}
-		ast.AsCast {
+		ast.AsCastExpr {
 			type_str := f.type_to_str(it.typ)
 			f.expr(it.expr)
 			f.write(' as $type_str')
@@ -538,11 +538,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(' $it.op.str() ')
 			f.expr(it.val)
 		}
-		ast.Assoc {
+		ast.AssocExpr {
 			f.writeln('{')
 			// f.indent++
 			f.writeln('\t$it.var_name |')
-			// TODO StructInit copy pasta
+			// TODO StructInitExpr copy pasta
 			for i, field in it.fields {
 				f.write('\t$field: ')
 				f.expr(it.exprs[i])
@@ -551,7 +551,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			// f.indent--
 			f.write('}')
 		}
-		ast.BoolLiteral {
+		ast.BoolLiteralExpr {
 			f.write(it.val.str())
 		}
 		ast.CastExpr {
@@ -562,10 +562,10 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.CallExpr {
 			f.call_expr(it)
 		}
-		ast.CharLiteral {
+		ast.CharLiteralExpr {
 			f.write('`$it.val`')
 		}
-		ast.ComptimeCall {}
+		ast.ComptimeCallExpr {}
 		ast.ConcatExpr {
 			for i, val in it.vals {
 				if i != 0 {
@@ -574,17 +574,17 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				f.expr(val)
 			}
 		}
-		ast.EnumVal {
+		ast.EnumValExpr {
 			name := f.short_module(it.enum_name)
 			f.write(name + '.' + it.val)
 		}
-		ast.FloatLiteral {
+		ast.FloatLiteralExpr {
 			f.write(it.val)
 		}
 		ast.IfExpr {
 			f.if_expr(it)
 		}
-		ast.Ident {
+		ast.IdentExpr {
 			f.write_language_prefix(it.language)
 			if it.kind == .blank_ident {
 				f.write('_')
@@ -613,10 +613,10 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.expr(it.index)
 			f.write(']')
 		}
-		ast.IntegerLiteral {
+		ast.IntegerLiteralExpr {
 			f.write(it.val)
 		}
-		ast.MapInit {
+		ast.MapInitExpr {
 			if it.keys.len == 0 {
 				mut ktyp := it.key_type
 				mut vtyp := it.value_type
@@ -626,7 +626,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					ktyp = minfo.key_type
 					vtyp = minfo.value_type
 				}
-				
+
 				f.write('map[')
 				f.write(f.type_to_str(ktyp))
 				f.write(']')
@@ -649,7 +649,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.MatchExpr {
 			f.match_expr(it)
 		}
-		ast.None {
+		ast.NoneExpr {
 			f.write('none')
 		}
 		ast.OrExpr {
@@ -680,7 +680,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('.')
 			f.write(it.field_name)
 		}
-		ast.SizeOf {
+		ast.SizeOfExpr {
 			f.write('sizeof(')
 			if it.type_name != '' {
 				f.write(it.type_name)
@@ -689,7 +689,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 			f.write(')')
 		}
-		ast.StringLiteral {
+		ast.StringLiteralExpr {
 			if it.is_raw {
 				f.write('r')
 			}
@@ -699,7 +699,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				f.write("'$it.val'")
 			}
 		}
-		ast.StringInterLiteral {
+		ast.StringInterLiteralExpr {
 			f.write("'")
 			for i, val in it.vals {
 				f.write(val)
@@ -718,13 +718,13 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 			f.write("'")
 		}
-		ast.StructInit {
+		ast.StructInitExpr {
 			f.struct_init(it)
 		}
-		ast.Type {
+		ast.TypeExpr {
 			f.write(f.type_to_str(it.typ))
 		}
-		ast.TypeOf {
+		ast.TypeOfExpr {
 			f.write('typeof(')
 			f.expr(it.expr)
 			f.write(')')
@@ -773,7 +773,7 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 	}
 }
 
-pub fn (mut f Fmt) comment(node ast.Comment) {
+pub fn (mut f Fmt) comment(node ast.CommentStmt) {
 	if !node.text.contains('\n') {
 		is_separate_line := node.text.starts_with('|')
 		mut s := if is_separate_line { node.text[1..] } else { node.text }
@@ -799,7 +799,7 @@ pub fn (mut f Fmt) comment(node ast.Comment) {
 	f.writeln('*/')
 }
 
-pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
+pub fn (mut f Fmt) fn_decl(node ast.FnDeclStmt) {
 	// println('$it.name find_comment($it.pos.line_nr)')
 	// f.find_comment(it.pos.line_nr)
 	s := node.str(f.table)
@@ -874,24 +874,24 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	/*
-	if node.args.len == 1 && node.expected_arg_types.len == 1 && node.args[0].expr is ast.StructInit &&
+	if node.args.len == 1 && node.expected_arg_types.len == 1 && node.args[0].expr is ast.StructInitExpr &&
 		node.args[0].typ == node.expected_arg_types[0] {
-		// struct_init := node.args[0].expr as ast.StructInit
+		// struct_init := node.args[0].expr as ast.StructInitExpr
 		// if struct_init.typ == node.args[0].typ {
 		f.use_short_fn_args = true
 		// }
 	}
 	*/
 	if node.is_method {
-		if node.left is ast.Ident {
-			it := node.left as ast.Ident
+		if node.left is ast.IdentExpr {
+			it := node.left as ast.IdentExpr
 			// `time.now()` without `time imported` is processed as a method call with `time` being
-			// a `node.left` expression. Import `time` automatically.
+			// a `node.left` expression. ImportStmt `time` automatically.
 			// TODO fetch all available modules
 			if it.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
 				if it.name !in f.auto_imports {
 					f.auto_imports << it.name
-					f.file.imports << ast.Import{
+					f.file.imports << ast.ImportStmt{
 						mod: it.name
 						alias: it.name
 					}
@@ -949,7 +949,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				single_line = false
 				break
 			}
-		} else if stmt is ast.Comment {
+		} else if stmt is ast.CommentStmt {
 			single_line = false
 			break
 		}
@@ -1044,7 +1044,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 	return true
 }
 
-pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
+pub fn (mut f Fmt) array_init(it ast.ArrayInitExpr) {
 	if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
 		// `x := []string`
 		typ_sym := f.table.get_type_symbol(it.typ)
@@ -1136,7 +1136,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	}
 }
 
-pub fn (mut f Fmt) struct_init(it ast.StructInit) {
+pub fn (mut f Fmt) struct_init(it ast.StructInitExpr) {
 	type_sym := f.table.get_type_symbol(it.typ)
 	// f.write('<old name: $type_sym.name>')
 	mut name := f.short_module(type_sym.name).replace(f.cur_mod + '.', '') // TODO f.type_to_str?
@@ -1177,7 +1177,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	}
 }
 
-pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
+pub fn (mut f Fmt) const_decl(it ast.ConstDeclStmt) {
 	if it.is_pub {
 		f.write('pub ')
 	}

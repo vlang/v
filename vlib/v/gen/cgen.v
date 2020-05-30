@@ -65,7 +65,7 @@ struct Gen {
 	module_built         string
 mut:
 	file                 ast.File
-	fn_decl              &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	fn_decl              &ast.FnDeclStmt // pointer to the FnDeclStmt we are currently inside otherwise 0
 	last_fn_c_name       string
 	tmp_count            int
 	variadic_args        map[string]int
@@ -73,7 +73,7 @@ mut:
 	is_assign_lhs        bool // inside left part of assign expr (for array_set(), etc)
 	is_assign_rhs        bool // inside right part of assign after `=` (val expr)
 	is_array_set         bool
-	is_amp               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	is_amp               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInitExpr `Foo{}`; also for `&byte(0)` etc
 	optionals            []string // to avoid duplicates TODO perf, use map
 	inside_ternary       int // ?: comma separated statements on a single line
 	ternary_names        map[string]string
@@ -97,8 +97,8 @@ mut:
 	attr                 string
 	is_builtin_mod       bool
 	hotcode_fn_names     []string
-	fn_main              &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
-	cur_fn               &ast.FnDecl
+	fn_main              &ast.FnDeclStmt // the FnDeclStmt of the main function. Needed in order to generate the main function code *last*
+	cur_fn               &ast.FnDeclStmt
 	cur_generic_type     table.Type // `int`, `string`, etc in `foo<T>()`
 }
 
@@ -443,7 +443,7 @@ pub fn (mut g Gen) write_multi_return_types() {
 		name := typ.name.replace('.', '__')
 		info := typ.info as table.MultiReturn
 		g.definitions.writeln('typedef struct {')
-		// TODO copy pasta StructDecl
+		// TODO copy pasta StructDeclStmt
 		// for field in struct_info.fields {
 		for i, mr_typ in info.types {
 			type_name := g.typ(mr_typ)
@@ -537,11 +537,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.AssignStmt {
 			g.gen_assign_stmt(it)
 		}
-		ast.Attr {
+		ast.AttrStmt {
 			g.attr = it.name
-			g.writeln('// Attr: [$it.name]')
+			g.writeln('// AttrStmt: [$it.name]')
 		}
-		ast.Block {
+		ast.BlockStmt {
 			g.writeln('{')
 			g.stmts(it.stmts)
 			g.writeln('}')
@@ -551,12 +551,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.write(it.tok.kind.str())
 			g.writeln(';')
 		}
-		ast.ConstDecl {
+		ast.ConstDeclStmt {
 			// if g.pref.build_mode != .build_module {
 			g.const_decl(it)
 			// }
 		}
-		ast.CompIf {
+		ast.CompIfStmt {
 			g.comp_if(it)
 		}
 		ast.DeferStmt {
@@ -564,7 +564,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			defer_stmt.ifdef = g.defer_ifdef
 			g.defer_stmts << defer_stmt
 		}
-		ast.EnumDecl {
+		ast.EnumDeclStmt {
 			enum_name := it.name.replace('.', '__')
 			g.typedefs.writeln('typedef enum {')
 			mut cur_enum_expr := ''
@@ -593,7 +593,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.writeln(';')
 			}
 		}
-		ast.FnDecl {
+		ast.FnDeclStmt {
 			mut skip := false
 			pos := g.out.buf.len
 			if g.pref.build_mode == .build_module {
@@ -663,14 +663,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.stmts(it.stmts)
 			g.writeln('}')
 		}
-		ast.GlobalDecl {
+		ast.GlobalDeclStmt {
 			styp := g.typ(it.typ)
 			g.definitions.writeln('$styp $it.name; // global')
 		}
 		ast.GoStmt {
 			g.go_stmt(it)
 		}
-		ast.GotoLabel {
+		ast.GotoLabelStmt {
 			g.writeln('$it.name: {}')
 		}
 		ast.GotoStmt {
@@ -687,19 +687,19 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.includes.writeln('#$it.val')
 			}
 		}
-		ast.Import {}
-		ast.InterfaceDecl {
+		ast.ImportStmt {}
+		ast.InterfaceDeclStmt {
 			// definitions are sorted and added in write_types
 		}
-		ast.Module {
+		ast.ModuleStmt {
 			g.is_builtin_mod = it.name == 'builtin'
 		}
-		ast.Return {
+		ast.ReturnStmt {
 			g.write_defer_stmts_when_needed()
 			g.write_autofree_stmts_when_needed(it)
 			g.return_statement(it)
 		}
-		ast.StructDecl {
+		ast.StructDeclStmt {
 			name := if it.language == .c { it.name.replace('.', '__') } else { c_name(it.name) }
 			// g.writeln('typedef struct {')
 			// for field in it.fields {
@@ -716,8 +716,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.typedefs.writeln('typedef struct $name $name;')
 			}
 		}
-		ast.TypeDecl {
-			g.writeln('// TypeDecl')
+		ast.TypeDeclStmt {
+			g.writeln('// TypeDeclStmt')
 		}
 		ast.UnsafeStmt {
 			g.stmts(it.stmts)
@@ -961,7 +961,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				return_type = it.return_type
 			}
 			// TODO: no buffer fiddling
-			ast.AnonFn {
+			ast.AnonFnExpr {
 				if blank_assign {
 					g.write('{')
 				}
@@ -1063,9 +1063,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 }
 
-fn (mut g Gen) gen_cross_tmp_variable(idents []ast.Ident, val ast.Expr) {
+fn (mut g Gen) gen_cross_tmp_variable(idents []ast.IdentExpr, val ast.Expr) {
 	match val {
-		ast.Ident {
+		ast.IdentExpr {
 			mut has_var := false
 			for ident in idents {
 				if it.name == ident.name {
@@ -1101,7 +1101,7 @@ fn (mut g Gen) gen_default_init_value(val ast.Expr) (bool, bool) {
 	mut is_fixed_array_init := false
 	mut has_val := false
 	match val {
-		ast.ArrayInit {
+		ast.ArrayInitExpr {
 			is_fixed_array_init = it.is_fixed
 			has_val = it.has_val
 			elem_type_str := g.typ(it.elem_type)
@@ -1113,7 +1113,7 @@ fn (mut g Gen) gen_default_init_value(val ast.Expr) (bool, bool) {
 				g.writeln('$elem_type_str _val_$it.pos.pos = tos_lit("");')
 			}
 		}
-		ast.StructInit {
+		ast.StructInitExpr {
 			for field in it.fields {
 				g.gen_default_init_value(field.expr)
 			}
@@ -1146,7 +1146,7 @@ fn (mut g Gen) get_ternary_name(name string) string {
 fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, add_eq bool) bool {
 	mut is_ident := false
 	match val {
-		ast.Ident { is_ident = true }
+		ast.IdentExpr { is_ident = true }
 		ast.SelectorExpr { is_ident = true }
 		else { return false }
 	}
@@ -1206,7 +1206,7 @@ fn (g &Gen) autofree_variable(v ast.Var) string {
 	if sym.kind == .string {
 		// Don't free simple string literals.
 		match v.expr {
-			ast.StringLiteral {
+			ast.StringLiteralExpr {
 				return '// str literal\n'
 			}
 			else {
@@ -1247,7 +1247,7 @@ fn (g &Gen) autofree_var_call(free_fn_name string, v ast.Var) string {
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
 	match node {
-		ast.AnonFn {
+		ast.AnonFnExpr {
 			// TODO: dont fiddle with buffers
 			pos := g.out.len
 			def_pos := g.definitions.len
@@ -1259,19 +1259,19 @@ fn (mut g Gen) expr(node ast.Expr) {
 			fsym := g.table.get_type_symbol(it.typ)
 			g.write('&${fsym.name}')
 		}
-		ast.ArrayInit {
+		ast.ArrayInitExpr {
 			g.array_init(it)
 		}
-		ast.AsCast {
+		ast.AsCastExpr {
 			g.as_cast(it)
 		}
 		ast.AssignExpr {
 			g.assign_expr(it)
 		}
-		ast.Assoc {
+		ast.AssocExpr {
 			g.assoc(it)
 		}
-		ast.BoolLiteral {
+		ast.BoolLiteralExpr {
 			g.write(it.val.str())
 		}
 		ast.CallExpr {
@@ -1319,24 +1319,24 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('))')
 			}
 		}
-		ast.CharLiteral {
+		ast.CharLiteralExpr {
 			g.write("'$it.val'")
 		}
-		ast.ComptimeCall {
+		ast.ComptimeCallExpr {
 			g.write('/*c*/')
 		}
 		ast.ConcatExpr {
 			g.concat_expr(it)
 		}
-		ast.EnumVal {
+		ast.EnumValExpr {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
 			styp := g.typ(it.typ)
 			g.write('${styp}_$it.val')
 		}
-		ast.FloatLiteral {
+		ast.FloatLiteralExpr {
 			g.write(it.val)
 		}
-		ast.Ident {
+		ast.IdentExpr {
 			g.ident(it)
 		}
 		ast.IfExpr {
@@ -1351,7 +1351,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.InfixExpr {
 			g.infix_expr(it)
 		}
-		ast.IntegerLiteral {
+		ast.IntegerLiteralExpr {
 			if it.val.starts_with('0o') {
 				g.write('0')
 				g.write(it.val[2..])
@@ -1362,7 +1362,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.MatchExpr {
 			g.match_expr(it)
 		}
-		ast.MapInit {
+		ast.MapInitExpr {
 			key_typ_str := g.typ(it.key_type)
 			value_typ_str := g.typ(it.value_type)
 			size := it.vals.len
@@ -1382,7 +1382,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('new_map_1(sizeof($value_typ_str))')
 			}
 		}
-		ast.None {
+		ast.NoneExpr {
 			g.write('opt_none()')
 		}
 		ast.ParExpr {
@@ -1405,7 +1405,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// g.write(')')
 			g.is_amp = false
 		}
-		ast.SizeOf {
+		ast.SizeOfExpr {
 			mut styp := it.type_name
 			if it.type_name == '' {
 				styp = g.typ(it.typ)
@@ -1425,7 +1425,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			*/
 			g.write('sizeof($styp)')
 		}
-		ast.StringLiteral {
+		ast.StringLiteralExpr {
 			if it.is_raw {
 				escaped_val := it.val.replace_each(['"', '\\"', '\\', '\\\\'])
 				g.write('tos_lit("$escaped_val")')
@@ -1447,10 +1447,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 				// g.write('tos_lit("$escaped_val")')
 			}
 		}
-		ast.StringInterLiteral {
+		ast.StringInterLiteralExpr {
 			g.string_inter_literal(it)
 		}
-		ast.StructInit {
+		ast.StructInitExpr {
 			// `user := User{name: 'Bob'}`
 			g.struct_init(it)
 		}
@@ -1467,14 +1467,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			g.write(c_name(it.field_name))
 		}
-		ast.Type {
+		ast.TypeExpr {
 			// match sum Type
 			// g.write('/* Type */')
 			type_idx := it.typ.idx()
 			sym := g.table.get_type_symbol(it.typ)
 			g.write('$type_idx /* $sym.name */')
 		}
-		ast.TypeOf {
+		ast.TypeOfExpr {
 			g.typeof_expr(it)
 		}
 		else {
@@ -1484,7 +1484,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 	}
 }
 
-fn (mut g Gen) typeof_expr(node ast.TypeOf) {
+fn (mut g Gen) typeof_expr(node ast.TypeOfExpr) {
 	sym := g.table.get_type_symbol(node.expr_type)
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
@@ -1519,7 +1519,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 
 fn (mut g Gen) enum_expr(node ast.Expr) {
 	match node {
-		ast.EnumVal { g.write(it.val) }
+		ast.EnumValExpr { g.write(it.val) }
 		else { g.expr(node) }
 	}
 }
@@ -1567,7 +1567,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 		}
 		right_sym := g.table.get_type_symbol(node.right_type)
 		if right_sym.kind == .array_fixed && node.op == .assign {
-			right := node.val as ast.ArrayInit
+			right := node.val as ast.ArrayInitExpr
 			for j, expr in right.exprs {
 				g.expr(node.left)
 				g.write('[$j] = ')
@@ -1613,7 +1613,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 		// g.write('/*777 $tmp_opt*/')
 		g.or_block(tmp_opt, or_block, return_type)
 		unwrapped_type_str := g.typ(return_type.set_flag(.unset))
-		ident := node.left as ast.Ident
+		ident := node.left as ast.IdentExpr
 		if ident.kind != .blank_ident && ident.info is ast.IdentVar {
 			ident_var := ident.info as ast.IdentVar
 			if ident_var.is_optional {
@@ -1733,7 +1733,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 		if right_sym.kind == .array {
 			match node.right {
-				ast.ArrayInit {
+				ast.ArrayInitExpr {
 					// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
 					// avoids an allocation
 					// g.write('/*in opt*/')
@@ -1917,11 +1917,11 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		}
 		// g.writeln('/* M sum_type=$node.is_sum_type is_expr=$node.is_expr exp_type=${g.typ(node.expected_type)}*/')
 		if node.is_sum_type && branch.exprs.len > 0 && !node.is_expr {
-			// The first node in expr is an ast.Type
+			// The first node in expr is an ast.TypeExpr
 			// Use it to generate `it` variable.
 			first_expr := branch.exprs[0]
 			match first_expr {
-				ast.Type {
+				ast.TypeExpr {
 					it_type := g.typ(it.typ)
 					// g.writeln('$it_type* it = ($it_type*)${tmp}.obj; // ST it')
 					g.write('\t$it_type* it = ($it_type*)')
@@ -1943,7 +1943,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 }
 
-fn (mut g Gen) ident(node ast.Ident) {
+fn (mut g Gen) ident(node ast.IdentExpr) {
 	if node.name == 'lld' {
 		return
 	}
@@ -2116,7 +2116,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				mut need_wrapper := true
 				/*
 				match node.right {
-					ast.EnumVal, ast.Ident {
+					ast.EnumValExpr, ast.IdentExpr {
 						// `&x` is enough for variables and enums
 						// `&(Foo[]){ ... }` is only needed for function calls and literals
 						need_wrapper = false
@@ -2216,7 +2216,7 @@ fn (g Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 	}
 }
 
-fn (mut g Gen) return_statement(node ast.Return) {
+fn (mut g Gen) return_statement(node ast.ReturnStmt) {
 	g.write('return ')
 	if g.fn_decl.name == 'main' {
 		g.writeln('0;')
@@ -2228,7 +2228,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	fn_return_is_optional := g.fn_decl.return_type.flag_is(.optional)
 	// handle none/error for optional
 	if fn_return_is_optional {
-		optional_none := node.exprs[0] is ast.None
+		optional_none := node.exprs[0] is ast.NoneExpr
 		mut optional_error := false
 		match node.exprs[0] {
 			ast.CallExpr { optional_error = it.name == 'error' }
@@ -2318,7 +2318,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	g.writeln(';')
 }
 
-fn (mut g Gen) const_decl(node ast.ConstDecl) {
+fn (mut g Gen) const_decl(node ast.ConstDeclStmt) {
 	for field in node.fields {
 		name := c_name(field.name)
 		// TODO hack. Cut the generated value and paste it into definitions.
@@ -2343,16 +2343,16 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		} else {
 		*/
 		match field.expr {
-			ast.CharLiteral {
+			ast.CharLiteralExpr {
 				g.const_decl_simple_define(name, val)
 			}
-			ast.FloatLiteral {
+			ast.FloatLiteralExpr {
 				g.const_decl_simple_define(name, val)
 			}
-			ast.IntegerLiteral {
+			ast.IntegerLiteralExpr {
 				g.const_decl_simple_define(name, val)
 			}
-			ast.ArrayInit {
+			ast.ArrayInitExpr {
 				if it.is_fixed {
 					styp := g.typ(it.typ)
 					g.definitions.writeln('$styp _const_$name = $val; // fixed array const')
@@ -2360,7 +2360,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					g.const_decl_init_later(name, val, field.typ)
 				}
 			}
-			ast.StringLiteral {
+			ast.StringLiteralExpr {
 				g.definitions.writeln('string _const_$name; // a string literal, inited later')
 				if g.pref.build_mode != .build_module {
 					g.stringliterals.writeln('\t_const_$name = $val;')
@@ -2404,7 +2404,7 @@ fn (mut g Gen) go_back_out(n int) {
 	g.out.go_back(n)
 }
 
-fn (mut g Gen) struct_init(struct_init ast.StructInit) {
+fn (mut g Gen) struct_init(struct_init ast.StructInitExpr) {
 	skip_init := ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'strconv__Float64u', 'struct stat',
 		'struct addrinfo'
 	]
@@ -2520,7 +2520,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 }
 
 // { user | name: 'new name' }
-fn (mut g Gen) assoc(node ast.Assoc) {
+fn (mut g Gen) assoc(node ast.AssocExpr) {
 	g.writeln('// assoc')
 	if node.typ == 0 {
 		return
@@ -2765,7 +2765,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 	return types_sorted
 }
 
-fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
+fn (mut g Gen) string_inter_literal(node ast.StringInterLiteralExpr) {
 	if g.pref.autofree {
 		g.write('_STR_TMP("')
 	} else {
@@ -2930,7 +2930,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else if sym.kind == .enum_ {
 				is_var := match node.exprs[i] {
 					ast.SelectorExpr { true }
-					ast.Ident { true }
+					ast.IdentExpr { true }
 					else { false }
 				}
 				if is_var {
@@ -3022,7 +3022,7 @@ fn (mut g Gen) gen_map(node ast.CallExpr) {
 	g.writeln('.data)[$i];')
 	g.write('\t$ret_elem_type ti = ')
 	match node.args[0].expr {
-		ast.Ident {
+		ast.IdentExpr {
 			if it.kind == .function {
 				g.writeln('${it.name}(it)')
 			} else {
@@ -3062,7 +3062,7 @@ fn (mut g Gen) gen_filter(node ast.CallExpr) {
 	g.writeln('.data)[i];')
 	g.write('if (')
 	match node.args[0].expr {
-		ast.Ident {
+		ast.IdentExpr {
 			if it.kind == .function {
 				g.writeln('${node.args[0]}(it)')
 			} else {
@@ -3168,7 +3168,7 @@ fn (mut g Gen) type_of_call_expr(node ast.Expr) string {
 }
 
 // `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
-fn (mut g Gen) in_optimization(left ast.Expr, right ast.ArrayInit) {
+fn (mut g Gen) in_optimization(left ast.Expr, right ast.ArrayInitExpr) {
 	is_str := right.elem_type == table.string_type
 	for i, array_expr in right.exprs {
 		if is_str {
@@ -3480,7 +3480,7 @@ fn (g Gen) is_importing_os() bool {
 	return 'os' in g.table.imports
 }
 
-fn (mut g Gen) comp_if(it ast.CompIf) {
+fn (mut g Gen) comp_if(it ast.CompIfStmt) {
 	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
 	if it.is_not {
 		g.writeln('\n// \$if !${it.val} {\n#ifndef ' + ifdef)
@@ -3581,7 +3581,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	}
 }
 
-fn (mut g Gen) as_cast(node ast.AsCast) {
+fn (mut g Gen) as_cast(node ast.AsCastExpr) {
 	// Make sure the sum type can be cast to this type (the types
 	// are the same), otherwise panic.
 	// g.insert_before('
@@ -3615,7 +3615,7 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 	if sym.kind == .interface_ {
 		g.write('_interface_idx == ')
 		// `_Animal_Dog_index`
-		sub_type := node.right as ast.Type
+		sub_type := node.right as ast.TypeExpr
 		sub_sym := g.table.get_type_symbol(sub_type.typ)
 		g.write('_${sym.name}_${sub_sym.name}_index')
 		return
@@ -4121,7 +4121,7 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr(${cctype}* x) {
 	return sb.str()
 }
 
-fn (mut g Gen) array_init(it ast.ArrayInit) {
+fn (mut g Gen) array_init(it ast.ArrayInitExpr) {
 	type_sym := g.table.get_type_symbol(it.typ)
 	if type_sym.kind == .array_fixed {
 		g.write('{')

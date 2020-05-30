@@ -264,8 +264,8 @@ fn (b &Builder) print_warnings_and_errors() {
 			// Find where this function was already declared
 			for file in b.parsed_files {
 				for stmt in file.stmts {
-					if stmt is ast.FnDecl {
-						f := stmt as ast.FnDecl
+					if stmt is ast.FnDeclStmt {
+						f := stmt as ast.FnDeclStmt
 						if f.name == fn_name {
 							fline := f.pos.line_nr
 							println('${file.path}:${fline}:')

@@ -1,20 +1,20 @@
-type Expr = IfExpr | IntegerLiteral
+type Expr = IfExpr | IntegerLiteralExpr
 
 struct IfExpr {
 	pos int
 }
 
-struct IntegerLiteral {
+struct IntegerLiteralExpr {
 	val string
 }
 
 fn handle(e Expr) string {
-	assert e is IntegerLiteral
-	if e is IntegerLiteral {
+	assert e is IntegerLiteralExpr
+	if e is IntegerLiteralExpr {
 		println('int')
 	}
 	match e {
-		IntegerLiteral {
+		IntegerLiteralExpr {
 			assert it.val == '12'
 			// assert e.val == '12' // TODO
 			return 'int'
@@ -27,22 +27,22 @@ fn handle(e Expr) string {
 }
 
 fn test_expr() {
-	expr := IntegerLiteral{
+	expr := IntegerLiteralExpr{
 		val: '12'
 	}
 	assert handle(expr) == 'int'
-	// assert expr is IntegerLiteral // TODO
+	// assert expr is IntegerLiteralExpr // TODO
 }
 
 fn test_assignment_and_push() {
 	mut expr1 := Expr{}
 	mut arr1 := []Expr{}
-	expr := IntegerLiteral{
+	expr := IntegerLiteralExpr{
         val: '111'
     }
 	arr1 << expr
 	match arr1[0] {
-		IntegerLiteral {
+		IntegerLiteralExpr {
 			arr1 << it
 			// should ref/dereference on assignent be made automatic?
 			// currently it is done for return stmt and fn args
@@ -84,4 +84,3 @@ fn test_converting_down() {
 	assert res[1].val == 3
 	assert res[1].name == 'three'
 }
-

@@ -112,7 +112,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 	return args
 }
 
-fn (mut p Parser) fn_decl() ast.FnDecl {
+fn (mut p Parser) fn_decl() ast.FnDeclStmt {
 	start_pos := p.tok.position()
 	is_deprecated := p.attr == 'deprecated'
 	is_pub := p.tok.kind == .key_pub
@@ -281,7 +281,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.close_scope()
 	p.attr = ''
 	p.attr_ctdefine = ''
-	return ast.FnDecl{
+	return ast.FnDeclStmt{
 		name: name
 		stmts: stmts
 		return_type: return_type
@@ -307,7 +307,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 }
 
-fn (mut p Parser) anon_fn() ast.AnonFn {
+fn (mut p Parser) anon_fn() ast.AnonFnExpr {
 	pos := p.tok.position()
 	p.check(.key_fn)
 	p.open_scope()
@@ -342,8 +342,8 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := table.new_type(idx)
 	// name := p.table.get_type_name(typ)
-	return ast.AnonFn{
-		decl: ast.FnDecl{
+	return ast.AnonFnExpr{
+		decl: ast.FnDeclStmt{
 			name: name
 			stmts: stmts
 			return_type: return_type
@@ -475,7 +475,7 @@ fn have_fn_main(stmts []ast.Stmt) bool {
 	mut has_main_fn := false
 	for stmt in stmts {
 		match stmt {
-			ast.FnDecl {
+			ast.FnDeclStmt {
 				if it.name == 'main' {
 					has_main_fn = true
 				}

@@ -70,7 +70,7 @@ fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) string {
 	return d.out.str()
 }
 
-fn (mut d JsDoc) gen_fn(it ast.FnDecl) string {
+fn (mut d JsDoc) gen_fn(it ast.FnDeclStmt) string {
 	d.reset()
 	type_name := d.gen.typ(it.return_type)
 	d.writeln('/**')
