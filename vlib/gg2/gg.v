@@ -49,12 +49,14 @@ pub mut:
 }
 
 // TODO remove globals
+/*
 __global g_fons &C.FONScontext
 __global g_font_normal int
 __global g_font_path string
+*/
 
-fn init_sokol_window() {
-	desc := sg_desc{
+fn init_sokol_window(user_data voidptr) {
+	desc := C.sg_desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
 		mtl_drawable_cb: sapp.metal_get_drawable
@@ -64,8 +66,9 @@ fn init_sokol_window() {
 		d3d11_depth_stencil_view_cb: sapp.d3d11_get_depth_stencil_view
 	}
 	gfx.setup(&desc)
-	sgl_desc := sgl_desc_t{}
+	sgl_desc := C.sgl_desc_t{}
 	sgl.setup(&sgl_desc)
+	/*
 	g_fons = sfons.create(512, 512, 1)
 	if g_font_path.len == 0 || !os.exists(g_font_path) {
 		println('failed to load font "$g_font_path"')
@@ -76,11 +79,12 @@ fn init_sokol_window() {
 		return
 	}
 	g_font_normal = C.fonsAddFontMem(g_fons, 'sans', bytes.data, bytes.len, false)
+	*/
 }
 
 pub fn new_context(cfg Config) &GG {
 	//C.printf('new_context() %p\n', cfg.user_data)
-	window := sapp_desc{
+	window := C.sapp_desc{
 		user_data: cfg.user_data
 		init_userdata_cb: init_sokol_window
 		frame_userdata_cb: cfg.frame_fn
@@ -90,14 +94,14 @@ pub fn new_context(cfg Config) &GG {
 		height: cfg.height
 		high_dpi: true
 	}
-	g_font_path = cfg.font_path
+	//g_font_path = cfg.font_path
 	if cfg.use_ortho {}
 	else {}
 	return &GG{
 		width: cfg.width
 		height: cfg.height
 		window: window
-		clear_pass: gfx.create_clear_pass(f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0, f32(cfg.bg_color.b) / 255.0, 1.0)
+		clear_pass: gfx.create_clear_pass(0,0,0,0) //f64(cfg.bg_color.r) / 255.0, f64(cfg.bg_color.g) / 255.0, f64(cfg.bg_color.b) / 255.0, 1.0)
 		scale: 1 // scale
 		fons:0
 	}
@@ -126,8 +130,8 @@ pub fn (ctx &GG) draw_text_def(x, y int, text string) {
 
 pub fn (mut gg GG) init_font() {
 	// TODO
-	gg.fons =g_fons
-	gg.font_normal=g_font_normal
+	////gg.fons =g_fons
+	//gg.font_normal=g_font_normal
 }
 
 pub fn (gg &GG) run() {
