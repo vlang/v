@@ -4,6 +4,7 @@ import markdown
 import net
 import net.urllib
 import os
+import os.cmdline
 import strings
 import v.doc
 import v.util
@@ -439,23 +440,6 @@ fn lookup_module(mod string) ?string {
 	return error('vdoc: Module "${mod}" not found.')
 }
 
-fn parse_args(args []string) ([]string, []string) {
-	mut opts := []string{}
-	mut unkn := []string{}
-	
-	for i := 0; i < args.len; i++ {
-		arg := args[i]
-
-		if arg.starts_with('-') {
-			opts << arg
-		} else {
-			unkn << arg
-		}
-	}
-
-	return opts, unkn
-}
-
 fn get_modules_list(path string) []string {
 	files := os.walk_ext(path, 'v')
 	mut dirs := []string{}
@@ -473,10 +457,11 @@ fn get_modules_list(path string) []string {
 }
 
 fn main() {
-	osargs := os.args[2..]
-	opts, args := parse_args(osargs)
-	
-	if osargs.len == 0 || args[0] == 'help' {
+	args_after_doc := cmdline.options_after(os.args[1..], ['doc'])
+	opts := cmdline.only_options(os.args[1..])
+	args := cmdline.only_non_options(args_after_doc)
+
+	if args.len == 0 || args[0] == 'help' {
 		os.system('v help doc')
 		exit(0)
 	}
@@ -493,15 +478,12 @@ fn main() {
 	}
 	
 	is_path := config.src_path.ends_with('.v') || config.src_path.split('/').len > 1 || config.src_path == '.'
-
 	if !is_path {
 		mod_path := lookup_module(config.src_path) or {
 			eprintln(err)
 			exit(1)
 		}
-
 		config.src_path = mod_path
 	}
-
 	config.generate_docs_from_file()
 }
