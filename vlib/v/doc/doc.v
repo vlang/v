@@ -15,8 +15,8 @@ import time
 pub struct Doc {
 pub mut:
 	input_path string = ''
-	prefs &pref.Preferences
-	table &table.Table
+	prefs &pref.Preferences = &pref.Preferences{}
+	table &table.Table = &table.Table{}
 	pub_only bool = true
 	head DocNode
 	with_comments bool = true
@@ -33,11 +33,11 @@ pub:
 pub struct DocNode {
 pub mut:
 	name string
-	content string
+	content string = ''
 	comment string
-	pos DocPos
+	pos DocPos = DocPos{-1,-1}
 	file_path string = ''
-	parent_type string
+	parent_type string = ''
 }
 
 pub fn write_comment_bw(stmts []ast.Stmt, start_idx int) string {
@@ -193,7 +193,7 @@ pub fn (mut d Doc) generate() ?bool {
 				}
 
 				if name.starts_with(module_name + '.') {
-					name = name[module_name.len+1..]
+					name = name.all_after(module_name + '.')
 				}
 
 				mut node := DocNode{
@@ -211,7 +211,7 @@ pub fn (mut d Doc) generate() ?bool {
 						mut parent_type := d.table.get_type_name(fnd.receiver.typ)
 
 						if parent_type.starts_with(module_name + '.') {
-							parent_type = parent_type[module_name.len+1..]
+							parent_type = parent_type.all_after(module_name + '.')
 						}
 
 						node.parent_type = parent_type
