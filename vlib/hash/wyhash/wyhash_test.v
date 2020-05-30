@@ -27,16 +27,3 @@ fn test_wyhash() {
 		assert got == test.expected
 	}
 }
-
-fn test_rand_u64() {
-	seed := u64(111)
-	mut rand_nos := []u64{}
-	for _ in 0..40 {
-		rand_no := wyhash.rand_u64(&seed)
-		for r in rand_nos {
-			assert rand_no != r
-		}
-		rand_nos << rand_no
-	}
-	assert true
-}

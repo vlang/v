@@ -63,10 +63,10 @@ mut:
 	pos      int
 }
 
-// seed() - Set the seed, needs only one int32
+// seed() - Set the seed, needs only two int32s
 pub fn (mut rng MT19937Rng) seed(seed_data []u32) {
 	if seed_data.len != 2 {
-		eprintln("mt19937 needs only one 32bit seed")
+		eprintln("mt19937 needs only two 32bit integers as seed: [lower, higher]")
 		exit(1)
 	}
 	lo := u64(seed_data[0])

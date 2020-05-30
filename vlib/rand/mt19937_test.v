@@ -87,7 +87,6 @@ fn check_uniformity_u64(rng rand.MT19937Rng, range u64) {
 	sigma := math.sqrt(variance)
 	expected_sigma := range_f64 * inv_sqrt_12
 	error := (sigma - expected_sigma) / expected_sigma
-	println('Error: ${error}')
 	assert math.abs(error) < stats_epsilon
 }
 
