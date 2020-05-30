@@ -51,8 +51,8 @@ fn open_url(url string) {
 
 fn (cfg DocConfig) serve_html() {
 	mut docs := map[string]string
-	def_name := if cfg.docs[0].head.name == 'README' { 
-		'index.html' 
+	def_name := if cfg.docs[0].head.name == 'README' {
+		'index.html'
 	} else { cfg.docs[0].head.name + '.html' }
 
 	if cfg.is_multi {
@@ -92,7 +92,7 @@ fn (cfg DocConfig) serve_html() {
 		}
 
 		html := docs[filename]
-		
+
 		con.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n$html') or {
 			con.close() or { return }
 			return
@@ -155,9 +155,9 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	mut hw := strings.new_builder(200)
 	mut toc := strings.new_builder(200)
 	mut doc_node_html := fn (dd doc.DocNode, link string, head bool) string {
-		heading := if head { 
+		heading := if head {
 			'<h1>${dd.name} <a href="#${slug(dd.name)}">#</a></h1>'
-		} else if dd.name == 'README' { '' } else { 
+		} else if dd.name == 'README' { '' } else {
 			'<h2>${dd.name} <a href="#${slug(dd.name)}">#</a></h2>'
 		}
 
@@ -253,7 +253,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		hw.write(doc_node_html(cn, get_src_link(cfg.manifest.repo_url, os.file_name(cn.file_path), cn.pos.line), false))
 
 		children := dcs.contents.find_children_of(cn.name)
-		
+
 		if children.len != 0 {
 			for child in children {
 				hw.write(doc_node_html(child, get_src_link(cfg.manifest.repo_url, os.file_name(child.file_path), child.pos.line), false))
@@ -311,9 +311,9 @@ fn (cfg DocConfig) gen_markdown(with_toc bool) string {
 	if with_toc {
 		hw.writeln('## Contents')
 	}
-	
+
 	for cn in dcs.contents {
-		name := cn.name[dcs.head.name.len+1..]
+		name := cn.name.all_after(dcs.head.name+'.')
 
 		if with_toc {
 			hw.writeln('- [#$name](${slug(name)})')
@@ -339,21 +339,21 @@ fn (mut config DocConfig) generate_docs_from_file() {
 	if config.opath.len == 0 {
 		output_type = .stdout
 	} else {
-		ext := os.file_ext(config.opath)[1..]
-		if ext in ['md', 'markdown'] || config.opath in [':md:', ':markdown:'] {
+		ext := os.file_ext(config.opath)
+		if ext in ['.md', '.markdown'] || config.opath in [':md:', ':markdown:'] {
 			output_type = .markdown
-		} else if ext in ['html', 'htm'] || config.opath == ':html:' || config.serve_http {
+		} else if ext in ['.html', '.htm'] || config.opath == ':html:' || config.serve_http {
 			output_type = .html
-		} else if ext == 'json' || config.opath == ':json:' {
+		} else if ext == '.json' || config.opath == ':json:' {
 			output_type = .json
 		} else {
 			output_type = .plaintext
 		}
 	}
 
-	mut manifest_path := config.src_path 
+	mut manifest_path := config.src_path
 	if !os.is_dir(manifest_path) {
-		manifest_path = os.base_dir(manifest_path)	
+		manifest_path = os.base_dir(manifest_path)
 	}
 
 	manifest_path = os.join_path(manifest_path, 'v.mod')
@@ -368,10 +368,10 @@ fn (mut config DocConfig) generate_docs_from_file() {
 		config.manifest.version = util.v_version
 	}
 
-	readme_path := if 'vlib' in config.src_path { 
-		os.join_path(os.base_dir(@VEXE), 'README.md') 
-	} else { 
-		os.join_path(config.src_path, 'README.md') 
+	readme_path := if 'vlib' in config.src_path {
+		os.join_path(os.base_dir(@VEXE), 'README.md')
+	} else {
+		os.join_path(config.src_path, 'README.md')
 	}
 
 	// check README.md
@@ -385,7 +385,7 @@ fn (mut config DocConfig) generate_docs_from_file() {
 			}
 		}
 	}
-	
+
 	if config.is_multi {
 		dirs := get_modules_list(config.src_path)
 
@@ -476,7 +476,7 @@ fn main() {
 		include_readme: '-include-readme' in opts,
 		manifest: vmod.Manifest{ repo_url: '' }
 	}
-	
+
 	is_path := config.src_path.ends_with('.v') || config.src_path.split('/').len > 1 || config.src_path == '.'
 	if !is_path {
 		mod_path := lookup_module(config.src_path) or {
