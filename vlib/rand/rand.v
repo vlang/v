@@ -3,8 +3,12 @@
 // that can be found in the LICENSE file.
 module rand
 
-fn C.rand() int
-
+// TODO: Remove these functions once done:
+// 1. C.rand()
+// 2. seed()
+// 3. next()
+// 4. rand_r()
+// fn C.rand() int
 pub fn seed(s int) {
 	C.srand(s)
 }
@@ -21,6 +25,18 @@ pub fn rand_r(seed &int) int {
 		(*seed) = ns
 	}
 	return ns & 0x7fffffff
+}
+
+pub struct PRNGConfigStruct {
+	seed []u32 = [u32(0x1008)]
+}
+
+pub type RNG = SplitMix64RNG | SysRNG
+
+pub fn default(config PRNGConfigStruct) RNG {
+	rng := SysRNG{}
+	rng.seed(config.seed)
+	return rng
 }
 
 // rand_f32 return a random f32 between 0 and max
