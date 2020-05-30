@@ -30,6 +30,12 @@ fn (mut d JsDoc) gen_const(typ string) {
 	d.writeln('/** @constant {$typ} */')
 }
 
+fn (mut d JsDoc) gen_enum() {
+	// Enum values can only be ints for now
+	typ := 'number'
+	d.writeln('/** @enum {$typ} */')
+}
+
 fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) {
 	d.writeln('/**')
 	d.writeln(' * @constructor')

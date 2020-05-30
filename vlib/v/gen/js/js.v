@@ -502,7 +502,8 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// TODO
 		}
 		ast.EnumVal {
-			styp := g.typ(it.typ)
+			sym := g.table.get_type_symbol(it.typ)
+			styp := g.js_name(sym.name)
 			g.write('${styp}.${it.val}')
 		}
 		ast.FloatLiteral {
@@ -643,14 +644,6 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			ident_var_info := ident.var_info()
 			mut styp := g.typ(ident_var_info.typ)
 
-			if val is ast.EnumVal {
-				// we want the type of the enum value not the enum
-				styp = 'number'
-			} else if val is ast.StructInit {
-				// no need to print jsdoc for structs
-				styp = ''
-			}
-
 			if !g.inside_loop && styp.len > 0 {
 				g.doc.gen_typ(styp)
 			}
@@ -712,23 +705,20 @@ fn (mut g JsGen) gen_defer_stmts() {
 }
 
 fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
-	g.writeln('const ${g.js_name(it.name)} = Object.freeze({')
+	g.doc.gen_enum()
+	g.writeln('const ${g.js_name(it.name)} = {')
 	g.inc_indent()
-	for i, field in it.fields {
+	mut i := 0
+	for field in it.fields {
 		g.write('$field.name: ')
-		if field.has_expr {
-			pos := g.out.len
-			g.expr(field.expr)
-			expr_str := g.out.after(pos)
-			g.out.go_back(expr_str.len)
-			g.write('$expr_str')
-		} else {
-			g.write('$i')
+		if field.has_expr && field.expr is ast.IntegerLiteral {
+			e := field.expr as ast.IntegerLiteral
+			i = e.val.int()
 		}
-		g.writeln(',')
+		g.writeln('${i++},')
 	}
 	g.dec_indent()
-	g.writeln('});')
+	g.writeln('};')
 	if it.is_pub {
 		g.push_pub_var(it.name)
 	}
@@ -1049,9 +1039,9 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 
 fn (mut g JsGen) gen_assign_expr(it ast.AssignExpr) {
 	g.expr(it.left)
-	g.write(' $it.op ')
-	g.expr(it.val)
-}
+		g.write(' $it.op ')
+		g.expr(it.val)
+	}
 
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	mut name := ''
