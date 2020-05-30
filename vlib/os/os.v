@@ -798,12 +798,17 @@ pub fn get_raw_stdin() []byte {
 			for {
 				pos := buf + offset
 				res := C.ReadFile(h_input, pos, block_bytes, &bytes_read, 0)
+				offset += bytes_read
+
 				if !res {
 					break
 				}
-				offset += bytes_read
+
 				buf = v_realloc(buf, offset + block_bytes + (block_bytes-bytes_read))
 			}
+
+			C.CloseHandle(h_input)
+
 			return array{element_size: 1 data: voidptr(buf) len: offset cap: offset }
 		}
 	} $else {
@@ -1397,5 +1402,16 @@ pub fn create(path string) ?File {
 		cfile: cfile
 		fd: fd
 		opened: true
+	}
+}
+
+// this is defined in builtin_windows.c.v in builtin
+// fn C.IsDebuggerPresent() bool
+
+pub fn debugger_present() bool {
+	$if windows {
+		return C.IsDebuggerPresent()
+	} $else {
+		return false
 	}
 }
