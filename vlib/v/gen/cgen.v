@@ -320,7 +320,13 @@ fn (mut g Gen) typ(t table.Type) string {
 			g.register_optional(t, base)
 			// println(styp)
 			x := styp // .replace('*', '_ptr')			// handle option ptrs
-			g.typedefs2.writeln('typedef Option $x;')
+			g.definitions.writeln('typedef struct $x {')
+			g.definitions.writeln(' bool ok;')
+			g.definitions.writeln(' bool is_none;')
+			g.definitions.writeln(' string v_error;')
+			g.definitions.writeln(' int ecode;')
+			g.definitions.writeln(' byte data[sizeof($base)];')
+			g.definitions.writeln('} $x;')
 			g.optionals << styp
 		}
 	}
@@ -2218,9 +2224,8 @@ fn (g Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) return_statement(node ast.Return) {
-	g.write('return ')
 	if g.fn_decl.name == 'main' {
-		g.writeln('0;')
+		g.writeln('return 0;')
 		return
 	}
 	// got to do a correct check for multireturn
@@ -2232,12 +2237,17 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		optional_none := node.exprs[0] is ast.None
 		mut optional_error := false
 		match node.exprs[0] {
-			ast.CallExpr { optional_error = it.name == 'error' }
+			ast.CallExpr { optional_error = it.name == 'error' || it.name == 'error_with_code' }
 			else { false }
 		}
 		if optional_none || optional_error {
+			tmp := g.new_tmp_var()
+			g.write('Option $tmp = ')
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			g.write(';')
+
+			styp := g.typ(g.fn_decl.return_type)
+			g.writeln('return *($styp*)&$tmp;')
 			return
 		}
 	}
@@ -2246,10 +2256,20 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		// mr_info := typ_sym.info as table.MultiReturn
 		mut styp := ''
+
+		mut opt_tmp := ''
+		mut opt_type := ''
+
 		if fn_return_is_optional {
+			opt_type = g.typ(g.fn_decl.return_type)
+			// Create a tmp for this option
+			opt_tmp = g.new_tmp_var()
+			g.write('$opt_type $opt_tmp;')
 			styp = g.base_type(g.fn_decl.return_type)
-			g.write('opt_ok(&($styp/*X*/[]) { ')
+
+			g.write('opt_ok2(&($styp/*X*/[]) { ')
 		} else {
+			g.write('return ')
 			styp = g.typ(g.fn_decl.return_type)
 		}
 		// Use this to keep the tmp assignments in order
@@ -2270,6 +2290,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				g.writeln(';')
 				multi_unpack += g.go_before_stmt(0)
 				g.write(s)
+
 				expr_types := expr_sym.mr_info().types
 				for j, _ in expr_types {
 					g.write('.arg$arg_idx=${tmp}.arg$j')
@@ -2289,7 +2310,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		}
 		g.write('}')
 		if fn_return_is_optional {
-			g.write(' }, sizeof($styp))')
+			g.writeln(' }, (Option*)(&$opt_tmp), sizeof($styp));')
+			g.write('return $opt_tmp')
 		}
 		// Make sure to add our unpacks
 		g.insert_before_stmt(multi_unpack)
@@ -2300,7 +2322,11 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		if fn_return_is_optional && !node.types[0].flag_is(.optional) && return_sym.name !=
 			'Option' {
 			styp := g.base_type(g.fn_decl.return_type)
-			g.write('/*:)$return_sym.name*/opt_ok(&($styp[]) { ')
+			opt_type := g.typ(g.fn_decl.return_type)
+			// Create a tmp for this option
+			opt_tmp := g.new_tmp_var()
+			g.write('$opt_type $opt_tmp;')
+			g.write('/*:)$return_sym.name*/opt_ok2(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				// Automatic Dereference for optional
 				g.write('*')
@@ -2311,10 +2337,14 @@ fn (mut g Gen) return_statement(node ast.Return) {
 					g.write(', ')
 				}
 			}
-			g.writeln(' }, sizeof($styp));')
+			g.writeln(' }, (Option*)(&$opt_tmp), sizeof($styp));')
+			g.writeln('return $opt_tmp;')
 			return
 		}
+		g.write('return ')
 		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+	} else {
+		g.write('return')
 	}
 	g.writeln(';')
 }

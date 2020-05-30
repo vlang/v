@@ -12,12 +12,15 @@ struct Option2<T> {
 }
 */
 
-
 struct Option {
 	ok      bool
 	is_none bool
 	error   string
 	ecode   int
+
+	// All option types get their own typedef
+	// and the data is put there
+	// this is just a placeholder!
 	data    [400]byte
 }
 
@@ -29,6 +32,17 @@ pub fn (o Option) str() string {
 	  return 'Option{ none }'
    }
    return 'Option{ error: "${o.error}" }'
+}
+
+// `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
+fn opt_ok2(data voidptr, mut option &Option, size int) {
+	unsafe {
+		*option = Option {
+			ok: true
+		}
+	}
+
+	C.memcpy(option.data, data, size)
 }
 
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
