@@ -1,5 +1,7 @@
 module rand
 
+import time	// for C.time()
+
 struct MTState {
 mut:
 	state [624]u32
@@ -8,8 +10,6 @@ mut:
 	next int
 }
 
-fn C.time(t &C.time_t) C.time_t
-
 // seed() - Set the seed, needs only one int32
 fn (mut rng MTState) seed(seed_data []u32) {
 	if seed_data.len != 1{
@@ -17,7 +17,7 @@ fn (mut rng MTState) seed(seed_data []u32) {
 	}
 	rng.state[0] = seed_data[0]
 	for j := 1; j < 624; j++ {
-		rng.state[j] = u32(1812433253 * (rng.state[j-1] ^ (rng.state[j-1] >> 30)) + j)
+		rng.state[j] = u32(1812433253 * (rng.state[j-1] ^ (rng.state[j-1] >> 30)) + u32(j))
 	}
 	rng.left = 1
 	rng.initf = 1
@@ -34,9 +34,11 @@ fn twist(a, b u32) u32 {
 }
 
 fn (mut rng MTState) next_state() {
-	pos := 0
+	mut pos := 0
 	if rng.initf == 0 {
-		rng.seed(u32(C.time(0)))
+		mut seed_arr := []u32{}
+		seed_arr << u32(C.time(0))
+		rng.seed(seed_arr)
 	}
 	rng.left = 624
 	rng.next = 0
@@ -57,7 +59,7 @@ fn (mut rng MTState) u32() u32 {
 	if rng.left == 0 {
 		rng.next_state()
 	}
-	y := rng.state[rng.next]
+	mut y := rng.state[rng.next]
 	rng.next++
 	y ^= (y >> 11)
     y ^= (y << 7) & 0x9d2c5680
