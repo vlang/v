@@ -37,6 +37,7 @@ mut:
 	tmp_count         int
 	inside_ternary    bool
 	inside_loop       bool
+	inside_map_set    bool // map.set(key, value)
 	is_test           bool
 	indents           map[string]int // indentations mapped to namespaces
 	stmt_start_pos    int
@@ -1039,9 +1040,16 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 
 fn (mut g JsGen) gen_assign_expr(it ast.AssignExpr) {
 	g.expr(it.left)
+	if g.inside_map_set && it.op == .assign {
+		g.inside_map_set = false
+		g.write(', ')
+		g.expr(it.val)
+		g.write(')')
+	} else {
 		g.write(' $it.op ')
 		g.expr(it.val)
 	}
+}
 
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	mut name := ''
@@ -1169,6 +1177,13 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		if r_sym.kind == .array { g.write('...') } // arr << [1, 2]
 		g.expr(it.right)
 		g.write(')')
+	} else if r_sym.kind in [.array, .map] && it.op in [.key_in, .not_in] {
+		if it.op == .not_in { g.write('!(') }
+		g.expr(it.right)
+		g.write(if r_sym.kind == .map { '.has(' } else { '.includes(' })
+		g.expr(it.left)
+		g.write(')')
+		if it.op == .not_in { g.write(')') }
 	} else if it.op == .key_is { // foo is Foo
 		g.write('/*')
 		g.expr(it.left)
