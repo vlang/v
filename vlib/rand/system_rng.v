@@ -67,11 +67,13 @@ pub fn (mut r SysRNG) seed(seed_data []u32) {
 // b/w V and other languages using libc and not for regular use.
 // This is also a one-off feature of SysRNG, similar to the global seed
 // situation. Other generators will not have this.
+[inline]
 pub fn (r SysRNG) default_rand() int {
 	return C.rand()
 }
 
 // r.u32() returns a pseudorandom u32 value less than 2^32
+[inline]
 pub fn (r SysRNG) u32() u32 {
 	mut result := u32(C.rand())
 	for i in 1 .. u32_iter_count {
@@ -81,6 +83,7 @@ pub fn (r SysRNG) u32() u32 {
 }
 
 // r.u64() returns a pseudorandom u64 value less than 2^64
+[inline]
 pub fn (r SysRNG) u64() u64 {
 	mut result := u64(C.rand())
 	for i in 1 .. u64_iter_count {
@@ -90,6 +93,7 @@ pub fn (r SysRNG) u64() u64 {
 }
 
 // r.u32n(max) returns a pseudorandom u32 value that is guaranteed to be less than max
+[inline]
 pub fn (r SysRNG) u32n(max u32) u32 {
 	// Owing to the pigeon-hole principle, we can't simply do
 	// val := rng.u32() % max.
@@ -118,6 +122,7 @@ pub fn (r SysRNG) u32n(max u32) u32 {
 }
 
 // r.u64n(max) returns a pseudorandom u64 value that is guaranteed to be less than max
+[inline]
 pub fn (r SysRNG) u64n(max u64) u64 {
 	// Similar procedure for u64s
 	bit_len := bits.len_64(max)
@@ -141,6 +146,7 @@ pub fn (r SysRNG) u64n(max u64) u64 {
 }
 
 // r.u32n(min, max) returns a pseudorandom u32 value that is guaranteed to be in [min, max)
+[inline]
 pub fn (r SysRNG) u32_in_range(min, max u32) u32 {
 	if max <= min {
 		eprintln('max must be greater than min')
@@ -150,6 +156,7 @@ pub fn (r SysRNG) u32_in_range(min, max u32) u32 {
 }
 
 // r.u64n(min, max) returns a pseudorandom u64 value that is guaranteed to be in [min, max)
+[inline]
 pub fn (r SysRNG) u64_in_range(min, max u64) u64 {
 	if max <= min {
 		eprintln('max must be greater than min')
@@ -159,26 +166,31 @@ pub fn (r SysRNG) u64_in_range(min, max u64) u64 {
 }
 
 // r.int() returns a pseudorandom 32-bit int (which may be negative)
+[inline]
 pub fn (r SysRNG) int() int {
 	return int(r.u32())
 }
 
 // r.i64() returns a pseudorandom 64-bit i64 (which may be negative)
+[inline]
 pub fn (r SysRNG) i64() i64 {
 	return i64(r.u64())
 }
 
 // r.int31() returns a pseudorandom 31-bit int which is non-negative
+[inline]
 pub fn (r SysRNG) int31() int {
 	return int(r.u32() & u31_mask) // Set the 32nd bit to 0.
 }
 
 // r.int63() returns a pseudorandom 63-bit int which is non-negative
+[inline]
 pub fn (r SysRNG) int63() i64 {
 	return i64(r.u64() & u63_mask) // Set the 64th bit to 0.
 }
 
 // r.intn(max) returns a pseudorandom int that lies in [0, max)
+[inline]
 pub fn (r SysRNG) intn(max int) int {
 	if max <= 0 {
 		eprintln('max has to be positive.')
@@ -188,6 +200,7 @@ pub fn (r SysRNG) intn(max int) int {
 }
 
 // r.i64n(max) returns a pseudorandom i64 that lies in [0, max)
+[inline]
 pub fn (r SysRNG) i64n(max i64) i64 {
 	if max <= 0 {
 		eprintln('max has to be positive.')
@@ -197,6 +210,7 @@ pub fn (r SysRNG) i64n(max i64) i64 {
 }
 
 // r.int_in_range(min, max) returns a pseudorandom int that lies in [min, max)
+[inline]
 pub fn (r SysRNG) int_in_range(min, max int) int {
 	if max <= min {
 		eprintln('max must be greater than min')
@@ -207,6 +221,7 @@ pub fn (r SysRNG) int_in_range(min, max int) int {
 }
 
 // r.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
+[inline]
 pub fn (r SysRNG) i64_in_range(min, max i64) i64 {
 	if max <= min {
 		eprintln('max must be greater than min')
@@ -216,16 +231,19 @@ pub fn (r SysRNG) i64_in_range(min, max i64) i64 {
 }
 
 // r.f32() returns a pseudorandom f32 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
+[inline]
 pub fn (r SysRNG) f32() f32 {
 	return f32(r.u32()) / max_u32_as_f32
 }
 
 // r.f64() returns a pseudorandom f64 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
+[inline]
 pub fn (r SysRNG) f64() f64 {
 	return f64(r.u64()) / max_u64_as_f64
 }
 
 // r.f32n() returns a pseudorandom f32 value in [0, max)
+[inline]
 pub fn (r SysRNG) f32n(max f32) f32 {
 	if max <= 0 {
 		eprintln('max has to be positive.')
@@ -235,6 +253,7 @@ pub fn (r SysRNG) f32n(max f32) f32 {
 }
 
 // r.f64n() returns a pseudorandom f64 value in [0, max)
+[inline]
 pub fn (r SysRNG) f64n(max f64) f64 {
 	if max <= 0 {
 		eprintln('max has to be positive.')
@@ -244,6 +263,7 @@ pub fn (r SysRNG) f64n(max f64) f64 {
 }
 
 // r.f32_in_range(min, max) returns a pseudorandom f32 that lies in [min, max)
+[inline]
 pub fn (r SysRNG) f32_in_range(min, max f32) f32 {
 	if max <= min {
 		eprintln('max must be greater than min')
@@ -253,6 +273,7 @@ pub fn (r SysRNG) f32_in_range(min, max f32) f32 {
 }
 
 // r.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
+[inline]
 pub fn (r SysRNG) f64_in_range(min, max f64) f64 {
 	if max <= min {
 		eprintln('max must be greater than min')
