@@ -1232,6 +1232,10 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			if is_generic {
 				exp_typ_sym = c.table.get_type_symbol(c.cur_generic_type)
 			}
+			if exp_typ_sym.kind == .interface_ {
+				c.type_implements(got_typ, exp_type, return_stmt.pos)
+				continue
+			}
 			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument',
 				pos)
 		}

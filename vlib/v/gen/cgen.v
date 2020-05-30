@@ -2348,7 +2348,14 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			return
 		}
 		g.write('return ')
+		cast_interface := sym.kind == .interface_ && node.types[0] != g.fn_decl.return_type
+		if cast_interface {
+			g.interface_call(node.types[0], g.fn_decl.return_type)
+		}
 		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+		if cast_interface {
+			g.write(')')
+		}
 	} else {
 		g.write('return')
 	}
