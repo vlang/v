@@ -439,6 +439,7 @@ pub mut:
 	cond_type     table.Type // type of `x` in `match x {`
 	expected_type table.Type // for debugging only
 	is_sum_type   bool
+	is_interface  bool
 }
 
 pub struct MatchBranch {
@@ -657,7 +658,7 @@ pub:
 pub struct ArrayInit {
 pub:
 	pos             token.Position
-	elem_type_pos	token.Position
+	elem_type_pos   token.Position
 	exprs           []Expr
 	is_fixed        bool
 	has_val         bool

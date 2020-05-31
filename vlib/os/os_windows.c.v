@@ -346,3 +346,10 @@ pub type VectoredExceptionHandler fn(&ExceptionPointers)u32
 pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandler) {
 	C.AddVectoredExceptionHandler(u32(first), handler)
 }
+
+// this is defined in builtin_windows.c.v in builtin
+// fn C.IsDebuggerPresent() bool
+
+pub fn debugger_present() bool {
+	return C.IsDebuggerPresent()
+}

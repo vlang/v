@@ -87,7 +87,7 @@ sudo ./v symlink
 ```
 
 On Windows, start a new shell with administrative privileges, for 
-example by <Windows Key>, then type cmd.exe, right click on its menu
+example by <kbd>Windows Key</kbd>, then type `cmd.exe`, right click on its menu
 entry, and choose `Run as administrator`. In the new administrative 
 shell, cd to the path, where you have compiled v.exe, then type:
 ```bat

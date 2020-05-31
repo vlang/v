@@ -275,10 +275,11 @@ fn (mut v Builder) cc() {
 	if v.pref.sanitize {
 		a << '-fsanitize=leak'
 	}
-	// Cross compiling linux
+	// Cross compiling for linux
 	if v.pref.os == .linux {
 		$if !linux {
 			v.cc_linux_cross()
+			return
 		}
 	}
 	// Cross compiling windows
@@ -476,15 +477,37 @@ fn (mut v Builder) cc() {
 }
 
 fn (mut c Builder) cc_linux_cross() {
-	/*
-	sysroot := '/tmp/lld/linuxroot/'
-		// Build file.o
-		a << '-c --sysroot=$sysroot -target x86_64-linux-gnu'
-		// Right now `out_name` can be `file`, not `file.o`
-		if !v.out_name.ends_with('.o') {
-			v.out_name = v.out_name + '.o'
+	parent_dir := os.home_dir() + '.vmodules'
+	sysroot := os.home_dir() + '.vmodules/linuxroot/'
+	if !os.is_dir(sysroot) {
+		println('Downloading files for Linux cross compilation (~18 MB)...')
+		zip_file := sysroot[..sysroot.len-1] + '.zip'
+		os.system('curl -L -o $zip_file https://github.com/vlang/v/releases/download/0.1.27/linuxroot.zip ')
+		os.system('unzip -q $zip_file -d $parent_dir')
+		if !os.is_dir(sysroot) {
+			println('Failed to download.')
+			exit(1)
 		}
-		*/
+	}
+	mut cc_args := '-fPIC -w -c -target x86_64-linux-gnu -c -o x.o $c.out_name_c -I $sysroot/include'
+	if os.system('cc $cc_args') != 0 {
+		println('Cross compilation for Linux failed. Make sure you have clang installed.')
+	}
+	mut args := [
+		'-L SYSROOT/usr/lib/x86_64-linux-gnu/'
+		'--sysroot=SYSROOT -v -o hi -m elf_x86_64'
+		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'
+		'SYSROOT/crt1.o SYSROOT/crti.o x.o'
+		'SYSROOT/lib/x86_64-linux-gnu/libc.so.6'
+		'-lc'
+		'SYSROOT/crtn.o'
+	]
+	mut s := args.join(' ')
+	s = s.replace('SYSROOT', sysroot)
+	if	os.system('$sysroot/ld.lld ' + s) != 0 {
+		println('Cross compilation for Linux failed. Make sure you have clang installed.')
+	}
+	println(c.pref.out_name + ' has been successfully compiled')
 }
 
 fn (mut c Builder) cc_windows_cross() {
