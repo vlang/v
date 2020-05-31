@@ -97,6 +97,8 @@ pub fn (d Doc) get_pos(stmt ast.Stmt) token.Position {
 		ast.FnDecl { return it.pos }
 		ast.StructDecl { return it.pos }
 		ast.EnumDecl { return it.pos }
+		ast.InterfaceDecl { return it.pos }
+		ast.ConstDecl { return it.pos }
 		else { return token.Position{} }
 	}
 }
@@ -106,6 +108,8 @@ pub fn (d Doc) get_name(stmt ast.Stmt) string {
 		ast.FnDecl { return it.name }
 		ast.StructDecl { return it.name }
 		ast.EnumDecl { return it.name }
+		ast.InterfaceDecl { return it.name }
+		ast.ConstDecl { return 'Constants' }
 		else { return '' }
 	}
 }
@@ -123,9 +127,7 @@ pub fn new(input_path string) Doc {
 
 pub fn (nodes []DocNode) find_children_of(parent_type string) []DocNode {
 	if parent_type.len == 0 { return []DocNode{} }
-	
 	mut children := []DocNode{}
-
 	for node in nodes {
 		if node.parent_type != parent_type { continue }
 		children << node
@@ -184,6 +186,7 @@ pub fn (mut d Doc) generate() ?bool {
 			if stmt is ast.Comment { continue }
 
 			if !(stmt is ast.Module) {
+				// todo: accumulate consts
 				mut name := d.get_name(stmt)
 				signature := d.get_signature(stmt)
 				pos := d.get_pos(stmt)
