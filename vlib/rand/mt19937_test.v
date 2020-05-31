@@ -1,5 +1,4 @@
 import rand
-import time
 import math
 
 const (
