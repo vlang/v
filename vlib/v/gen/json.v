@@ -106,7 +106,7 @@ cJSON* ${enc_fn_name}($styp val) {
 	// cJSON_delete
 	// p.cgen.fns << '$dec return opt_ok(res); \n}'
 	dec.writeln('Option_$styp ret;')
-	dec.writeln('opt_ok2(&res, (Option *)&ret, sizeof(res));')
+	dec.writeln('opt_ok2(&res, (OptionBase*)&ret, sizeof(res));')
 	dec.writeln('return ret;\n}')
 	enc.writeln('\treturn o;\n}')
 	g.definitions.writeln(dec.str())

@@ -2738,7 +2738,6 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 						if field.typ.flag_is(.optional) {
 							// Dont use g.typ() here becuase it will register
 							// optional and we dont want that
-							// TODO keep these all in the same place
 							last_text := g.type_definitions.after(start_pos).clone()
 							g.type_definitions.go_back_to(start_pos)
 							styp, base := g.optional_type_name(field.typ)
