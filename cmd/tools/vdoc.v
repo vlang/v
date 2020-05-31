@@ -372,6 +372,7 @@ fn (mut config DocConfig) generate_docs_from_file() {
 			dcs := doc.generate(dirpath, config.pub_only, 'vlib' !in config.src_path) or {
 				panic(err)
 			}
+			if dcs.contents.len == 0 { continue }
 			config.docs << dcs
 		}
 	} else {
