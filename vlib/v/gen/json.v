@@ -22,7 +22,7 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	mut enc := strings.new_builder(100)
 	sym := g.table.get_type_symbol(typ)
 	styp := g.typ(typ)
-	if sym.name in ['int', 'string', 'bool'] {
+	if sym.name in ['int', 'string', 'bool', 'f32'] {
 		return
 	}
 	if sym.kind == .array {
