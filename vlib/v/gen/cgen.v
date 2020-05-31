@@ -2656,7 +2656,7 @@ fn (mut g Gen) write_init_function() {
 	}
 	g.writeln('void _vinit() {')
 	g.pref.is_shared {
-		g.writeln('static bool once = false; if (once) {return} once = true;')
+		g.writeln('static bool once = false; if (once) {return;} once = true;')
 	}
 	if g.pref.autofree {
 		// Pre-allocate the string buffer
