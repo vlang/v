@@ -5,6 +5,11 @@ module rand
 
 import time
 
+// Commonly used constants across RNGs
+const (
+	lower_mask = u64(0x00000000ffffffff)
+)
+
 // Constants taken from Numerical Recipes
 [inline]
 fn nr_next(prev u32) u32 {

@@ -3,10 +3,6 @@
 // that can be found in the LICENSE file.
 module rand
 
-const (
-	lower_mask = u64(0x00000000ffffffff)
-)
-
 // Ported from http://xoshiro.di.unimi.it/splitmix64.c
 pub struct SplitMix64RNG {
 mut:
