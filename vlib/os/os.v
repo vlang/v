@@ -70,6 +70,15 @@ fn C.sigaction(int, voidptr, int)
 fn C.open(charptr, int, int) int
 
 
+fn C.close(int) int
+
+
+fn C.read(int, voidptr, u32) u32
+
+
+fn C.write(int, voidptr, u32) u32
+
+
 fn C.fdopen(int, string) voidptr
 
 
@@ -207,7 +216,6 @@ pub fn mv(old, new string) {
 }
 
 fn C.CopyFile(&u32, &u32, int) int
-// TODO implement actual cp for linux
 pub fn cp(old, new string) ?bool {
 	$if windows {
 		w_old := old.replace('/', '\\')
@@ -221,8 +229,32 @@ pub fn cp(old, new string) ?bool {
 			return error_with_code('failed to copy $old to $new', int(result))
 		}
 	} $else {
-		os.system('cp -- "$old" "$new"')
-		return true // TODO make it return true or error when cp for linux is implemented
+		fp_from := C.open(old.str, C.O_RDONLY)
+		if fp_from < 0 { // Check if file opened
+			return error_with_code('failed to open $old', int(fp_from))
+		}
+		fp_to := C.open(new.str, C.O_WRONLY | C.O_CREAT | C.O_TRUNC)
+		if fp_to < 0 { // Check if file opened (permissions problems ...)
+			C.close(fp_from)
+			return error_with_code('failed to write to $new', int(fp_to))
+		}
+		mut buf := [1024]byte
+		mut count := u32(0)
+		for {
+			// FIXME: use sizeof, bug: 'os__buf' undeclared
+			//count = C.read(fp_from, buf, sizeof(buf))
+			count = C.read(fp_from, buf, 1024)
+			if count == 0 {
+				break
+			}
+			C.write(fp_to, buf, count)
+		}
+		from_attr := C.stat{}
+		C.stat(old.str, &from_attr)
+		if C.chmod(new.str, from_attr.st_mode) < 0 {
+			return error_with_code('failed to set permissions for $new', int(-1))
+		}
+		return true
 	}
 }
 
