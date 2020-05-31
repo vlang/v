@@ -83,7 +83,6 @@ fn (cfg DocConfig) serve_html() {
 		s := con.read_line()
 		first_line := s.all_before('\n')
 		mut filename := def_name
-		println(s)
 
 		if first_line.len != 0 {
 			data := first_line.split(' ')
@@ -106,24 +105,16 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 	mut url := urllib.parse(repo_url) or {
 		return ''
 	}
-
 	if url.path.len <= 1 || file_name.len == 0 {
 		return ''
 	}
-
-	match url.host {
-		'github.com' {
-			url.path = url.path.trim_right('/') + '/blob/master/$file_name'
-		}
-		'gitlab.com' {
-			url.path = url.path.trim_right('/') + '/-/blob/master/$file_name'
-		}
-		'git.sir.ht' {
-			url.path = url.path.trim_right('/') + '/tree/master/$file_name'
-		}
-		else { return '' }
+	url.path = url.path.trim_right('/') + match url.host {
+		'github.com' { '/blob/master/$file_name' }
+		'gitlab.com' { '/-/blob/master/$file_name' }
+		'git.sir.ht' { '/tree/master/$file_name' }
+		else { '' }
 	}
-
+	if url.path == '/' { return '' }
 	url.fragment = 'L$line_nr'
 	return url.str()
 }
@@ -201,7 +192,6 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	repo_link := if cfg.manifest.repo_url.len != 0 {
 		'<a href="${cfg.manifest.repo_url}" class="section">
 			Repository
-
 			<svg fill="currentColor" width="13%" viewBox="0 0 20 20"><path d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
 		</a>'
 	} else { '' }
@@ -219,7 +209,6 @@ fn (cfg DocConfig) gen_html(idx int) string {
 			${repo_link}
 			<p class="section">
 				Contents
-
 				<svg fill="currentColor" width="13%" viewBox="0 0 20 20"><path d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
 			</p><ul>')
 
