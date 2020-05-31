@@ -12,7 +12,7 @@ import v.util
 import v.errors
 import os
 import runtime
-import sync
+//import sync
 import time
 
 pub struct Parser {
@@ -140,6 +140,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	}
 }
 
+/*
 struct Queue {
 mut:
 	idx              int
@@ -171,10 +172,12 @@ fn (mut q Queue) run() {
 		println('run done(idx=$idx)')
 	}
 }
+*/
 
 pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, global_scope &ast.Scope) []ast.File {
 	// println('nr_cpus= $nr_cpus')
 	$if macos {
+		/*
 		if pref.is_parallel && paths[0].contains('/array.v') {
 			println('\n\n\nparse_files() nr_files=$paths.len')
 			println(paths)
@@ -194,6 +197,7 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 			println('all done')
 			return q.parsed_ast_files
 		}
+		*/
 	}
 	if false {
 		// TODO: remove this; it just prevents warnings about unused time and runtime

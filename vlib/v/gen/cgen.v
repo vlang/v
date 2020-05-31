@@ -1888,9 +1888,14 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			for i, expr in branch.exprs {
 				if node.is_sum_type {
 					g.expr(node.cond)
-					g.write('.typ == ')
-					// g.write('${tmp}.typ == ')
-					// sum_type_str
+					sym := g.table.get_type_symbol(node.cond_type)
+					// branch_sym := g.table.get_type_symbol(branch.typ)
+					if sym.kind == .sum_type {
+						g.write('.typ == ')
+					} else if sym.kind == .interface_ {
+						// g.write('._interface_idx == _${sym.name}_${branch_sym} ')
+						g.write('._interface_idx == ')
+					}
 				} else if type_sym.kind == .string {
 					g.write('string_eq(')
 					//
