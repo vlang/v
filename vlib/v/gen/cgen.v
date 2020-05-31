@@ -2651,7 +2651,14 @@ fn (mut g Gen) write_init_function() {
 		return
 	}
 	fn_vinit_start_pos := g.out.len
-	g.writeln('void _vinit() {')
+	needs_constructor := g.pref.is_shared && g.pref.os != .windows
+	if needs_constructor {
+		g.writeln('__attribute__ ((constructor))')
+		g.writeln('void _vinit() {')
+		g.writeln('static bool once = false; if (once) {return;} once = true;')
+	} else {
+		g.writeln('void _vinit() {')
+	}
 	if g.pref.autofree {
 		// Pre-allocate the string buffer
 		// TODO make it configurable
