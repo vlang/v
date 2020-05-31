@@ -524,13 +524,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				s := left.name.replace('array_', '[]')
 				c.error('cannot append `$right.name` to `$s`', right_pos)
 				return table.void_type
-			} else if !left.is_int() {
-				c.error('cannot shift type $right.name into non-integer type $left.name', left_pos)
-				return table.void_type
-			} else if !right.is_int() {
-				c.error('cannot shift non-integer type $right.name into type $left.name', right_pos)
-				return table.void_type
+			} else {
+				return c.check_shift(left_type, right_type, left_pos, right_pos)
 			}
+		}
+		.right_shift {
+			return c.check_shift(left_type, right_type, left_pos, right_pos)
 		}
 		.key_is {
 			type_expr := infix_expr.right as ast.Type
