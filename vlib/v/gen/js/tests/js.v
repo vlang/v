@@ -49,6 +49,7 @@ fn main() {
     }
 
     pos := POSITION.go_back
+    enum2 := hl.Ccc.a
 
     debugger := 'JS keywords'
     // TODO: Implement interpolation

@@ -15,7 +15,11 @@ pub fn (mut a Aaa) update(s string) {
 
 struct Bbb {}
 
-pub enum Ccc {}
+pub enum Ccc {
+	a
+	b = 5
+	c
+}
 
 pub fn debugger() string {
 	v := Bbb{}
