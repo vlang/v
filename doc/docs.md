@@ -93,14 +93,14 @@ fn main() {
 ```
 Save that snippet into a file `hello.v` . Now do: `v run hello.v` .
 
-(That is assuming you have symlinked your V with `v symlink`, as described here
-[Symlinking](https://github.com/vlang/v/blob/master/README.md#symlinking).
-If you have not yet, you have to type the path to v/v.exe manually.)
+> That is assuming you have symlinked your V with `v symlink`, as described 
+[here](https://github.com/vlang/v/blob/master/README.md#symlinking).
+If you have not yet, you have to type the path to V manually.
 
 Congratulations - you just wrote your first V program, and executed it!
 
-(You can compile a program without execution, with: `v hello.v`.
-See `v help` for all supported commands)
+> You can compile a program without execution with `v hello.v`.
+See `v help` for all supported commands.
 
 In the above example, you can see that functions are declared with `fn`.
 The return type goes after the function name. In this case `main` doesn't 
