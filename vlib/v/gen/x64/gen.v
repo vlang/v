@@ -225,7 +225,7 @@ fn (mut g Gen) jne() int {
 	pos := g.pos()
 	g.write32(placeholder)
 	g.println('jne')
-	return pos
+	return int(pos)
 }
 
 fn (mut g Gen) jge() int {
@@ -233,7 +233,7 @@ fn (mut g Gen) jge() int {
 	pos := g.pos()
 	g.write32(placeholder)
 	g.println('jne')
-	return pos
+	return int(pos)
 }
 
 fn (mut g Gen) jmp(addr int) {
@@ -669,7 +669,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// The value is the relative address, difference between current position and the location
 	// after `jne 00 00 00 00`
 	// println('after if g.pos=$g.pos() jneaddr=$jne_addr')
-	g.write32_at(jne_addr, g.pos() - jne_addr - 4) // 4 is for "00 00 00 00"
+	g.write32_at(jne_addr, int(g.pos() - jne_addr - 4)) // 4 is for "00 00 00 00"
 }
 
 fn (mut g Gen) for_stmt(node ast.ForStmt) {
@@ -690,9 +690,9 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.stmts(node.stmts)
 	// Go back to `cmp ...`
 	// Diff between `jmp 00 00 00 00 X` and `cmp`
-	g.jmp(0xffffffff - (g.pos() + 5 - start) + 1)
+	g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
 	// Update the jump addr to current pos
-	g.write32_at(jump_addr, g.pos() - jump_addr - 4) // 4 is for "00 00 00 00"
+	g.write32_at(jump_addr, int(g.pos() - jump_addr - 4)) // 4 is for "00 00 00 00"
 	g.println('jpm after for')
 }
 

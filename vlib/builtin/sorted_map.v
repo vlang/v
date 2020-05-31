@@ -121,13 +121,13 @@ fn (mut n mapnode) split_child(child_index int, y mut mapnode) {
 		z.values[j] = y.values[j + degree]
 	}
 	if !isnil(y.children) {
-		z.children = &voidptr(malloc(children_bytes))
+		z.children = &voidptr(malloc(int(children_bytes)))
 		for jj := degree - 1; jj >= 0; jj-- {
 			z.children[jj] = y.children[jj + degree]
 		}
 	}
 	if isnil(n.children) {
-		n.children = &voidptr(malloc(children_bytes))
+		n.children = &voidptr(malloc(int(children_bytes)))
 	}
 	n.children[n.size + 1] = n.children[n.size]
 	for j := n.size; j > child_index; j-- {

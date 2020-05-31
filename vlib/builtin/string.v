@@ -992,7 +992,7 @@ pub fn (s string) ustring() ustring {
 		// runes will have at least s.len elements, save reallocations
 		// TODO use VLA for small strings?
 
-		runes: __new_array(0, s.len, sizeof(int))
+		runes: __new_array(0, s.len, int(sizeof(int)))
 	}
 	for i := 0; i < s.len; i++ {
 		char_len := utf8_char_len(s.str[i])
@@ -1010,7 +1010,7 @@ __global g_ustring_runes []int
 
 pub fn (s string) ustring_tmp() ustring {
 	if g_ustring_runes.len == 0 {
-		g_ustring_runes = __new_array(0, 128, sizeof(int))
+		g_ustring_runes = __new_array(0, 128, int(sizeof(int)))
 	}
 	mut res := ustring{
 		s: s
@@ -1058,7 +1058,7 @@ fn (u ustring) ge(a ustring) bool {
 pub fn (u ustring) add(a ustring) ustring {
 	mut res := ustring{
 		s: u.s + a.s
-		runes: __new_array(0, u.s.len + a.s.len, sizeof(int))
+		runes: __new_array(0, u.s.len + a.s.len, int(sizeof(int)))
 	}
 	mut j := 0
 	for i := 0; i < u.s.len; i++ {

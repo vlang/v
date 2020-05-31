@@ -111,7 +111,7 @@ fn new_dense_array(value_bytes int) DenseArray {
 		cap: 8
 		size: 0
 		deletes: 0
-		keys: &string(malloc(8 * sizeof(string)))
+		keys: &string(malloc(int(8 * sizeof(string))))
 		values: malloc(8 * value_bytes)
 	}
 }
@@ -198,7 +198,7 @@ fn new_map_1(value_bytes int) map {
 		cached_hashbits: max_cached_hashbits
 		shift: init_log_capicity
 		key_values: new_dense_array(value_bytes)
-		metas: &u32(vcalloc(sizeof(u32) * (init_capicity + extra_metas_inc)))
+		metas: &u32(vcalloc(int(sizeof(u32) * (init_capicity + extra_metas_inc))))
 		extra_metas: extra_metas_inc
 		size: 0
 	}
@@ -323,7 +323,7 @@ fn (mut m map) rehash() {
 
 fn (mut m map) cached_rehash(old_cap u32) {
 	old_metas := m.metas
-	m.metas = &u32(vcalloc(sizeof(u32) * (m.cap + 2 + m.extra_metas)))
+	m.metas = &u32(vcalloc(int(sizeof(u32) * (m.cap + 2 + m.extra_metas))))
 	old_extra_metas := m.extra_metas
 	for i := u32(0); i <= old_cap + old_extra_metas; i += 2 {
 		if old_metas[i] == 0 {
@@ -430,8 +430,8 @@ pub fn (d DenseArray) clone() DenseArray {
 		cap:         d.cap
 		size:        d.size
 		deletes:     d.deletes
-		keys:        &string(malloc(d.cap * sizeof(string)))
-		values:      byteptr(malloc(d.cap * u32(d.value_bytes)))
+		keys:        &string(malloc(int(d.cap * sizeof(string))))
+		values:      byteptr(malloc(int(d.cap * u32(d.value_bytes))))
 	}
 	C.memcpy(res.keys, d.keys, d.cap * sizeof(string))
 	C.memcpy(res.values, d.values, d.cap * u32(d.value_bytes))
@@ -447,7 +447,7 @@ pub fn (m map) clone() map {
 		cached_hashbits: m.cached_hashbits
 		shift:           m.shift
 		key_values:      m.key_values.clone()
-		metas:           &u32(malloc(metas_size))
+		metas:           &u32(malloc(int(metas_size)))
 		extra_metas:     m.extra_metas
 		size:            m.size
 	}

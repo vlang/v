@@ -240,7 +240,7 @@ fn cmp_f64s(a, b f64) int {
 // Two integers are safe to multiply when their bit lengths
 // sum up to less than 64 (conservative estimate).
 fn safe_to_multiply(a, b i64) bool {
-	return (bits.len_64(abs(a)) + bits.len_64(abs(b))) < 64
+	return (bits.len_64(u64(abs(a))) + bits.len_64(u64(abs(b)))) < 64
 }
 
 fn cmp(f1, f2 Fraction) int {

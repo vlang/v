@@ -1,20 +1,9 @@
-fn f(x f32) f32 {
+fn f(x int) int {
 	return x+x
 }
 
-fn g(y int) {
-	println('$y')
-}
-
-fn h() int {
-	return 3.14
-}
-
 fn main() {
-	a := -3
+	a := 12.3
 	q := f(a)
-	b := 12.3
-	g(b)
-	d := h()
-	println('$q $d')
+	println('$q')
 }

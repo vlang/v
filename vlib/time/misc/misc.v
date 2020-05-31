@@ -8,5 +8,5 @@ const (
 )
 // random returns a random time struct in *the past*.
 pub fn random() time.Time {
-	return time.unix(rand.next(start_time_unix))
+	return time.unix(rand.next(int(start_time_unix)))
 }

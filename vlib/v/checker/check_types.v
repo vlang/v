@@ -157,50 +157,52 @@ pub fn (c &Checker) promote(left_type, right_type table.Type) table.Type {
 		return left_type // strings, self defined operators
 	}
 	if right_type.is_number() && left_type.is_number() {
-		// sort the operands to save time
-		mut type_hi := left_type
-		mut type_lo := right_type
-		if type_hi.idx() < type_lo.idx() {
-			tmp := type_hi
-			type_hi = type_lo
-			type_lo = tmp
-		}
-		idx_hi := type_hi.idx()
-		idx_lo := type_lo.idx()
-		// the following comparisons rely on the order of the indices in atypes.v
-		if idx_hi == table.any_int_type_idx {
-			return type_lo
-		} else if idx_hi == table.any_flt_type_idx {
-			if idx_lo in table.float_type_idxs {
-				return type_lo
-			} else {
-				return table.void_type
-			}
-		} else if type_hi.is_float() {
-			if idx_hi == table.f32_type_idx {
-				if idx_lo in [table.int_type_idx, table.i64_type_idx, table.u32_type_idx, table.u64_type_idx] {
-					return table.void_type
-				} else {
-					return type_hi
-				}
-			} else { // f64, any_flt
-				if idx_lo in [table.i64_type_idx, table.u64_type_idx] {
-					return table.void_type
-				} else {
-					return type_hi
-				}
-			}
-		} else if idx_lo >= table.byte_type_idx { // both operands are unsigned
-			return type_hi
-		} else if idx_lo >= table.i8_type_idx && idx_hi <= table.i64_type_idx { // both signed
-			return type_hi
-		} else if idx_hi - idx_lo < (table.byte_type_idx - table.i8_type_idx) {
-			return type_lo // conversion unsigned -> signed if signed type is larger
-		} else {
-			return table.void_type // conversion signed -> unsigned not allowed
-		}
+		return c.promote_num(left_type, right_type)
 	} else {
 		return left_type // default to left if not automatic promotion possible
+	}
+}
+
+fn (c &Checker) promote_num(left_type, right_type table.Type) table.Type {
+	// sort the operands to save time
+	mut type_hi := left_type
+	mut type_lo := right_type
+	if type_hi.idx() < type_lo.idx() {
+		type_hi, type_lo = type_lo, type_hi
+	}
+	idx_hi := type_hi.idx()
+	idx_lo := type_lo.idx()
+	// the following comparisons rely on the order of the indices in atypes.v
+	if idx_hi == table.any_int_type_idx {
+		return type_lo
+	} else if idx_hi == table.any_flt_type_idx {
+		if idx_lo in table.float_type_idxs {
+			return type_lo
+		} else {
+			return table.void_type
+		}
+	} else if type_hi.is_float() {
+		if idx_hi == table.f32_type_idx {
+			if idx_lo in [table.int_type_idx, table.i64_type_idx, table.u32_type_idx, table.u64_type_idx] {
+				return table.void_type
+			} else {
+				return type_hi
+			}
+		} else { // f64, any_flt
+			if idx_lo in [table.i64_type_idx, table.u64_type_idx] {
+				return table.void_type
+			} else {
+				return type_hi
+			}
+		}
+	} else if idx_lo >= table.byte_type_idx { // both operands are unsigned
+		return type_hi
+	} else if idx_lo >= table.i8_type_idx && idx_hi <= table.i64_type_idx { // both signed
+		return type_hi
+	} else if idx_hi - idx_lo < (table.byte_type_idx - table.i8_type_idx) {
+		return type_lo // conversion unsigned -> signed if signed type is larger
+	} else {
+		return table.void_type // conversion signed -> unsigned not allowed
 	}
 }
 
@@ -231,9 +233,11 @@ pub fn (c &Checker) assign_check(got, expected table.Type) bool {
 	if !c.check_types(got, expected) { // TODO: this should go away...
 		return false
 	}
-	if c.promote(expected, got) != expected {
-		println('could not promote ${c.table.get_type_symbol(got).name} to ${c.table.get_type_symbol(expected).name}')
-		return false
+	if got.is_number() && expected.is_number() {
+		if c.promote_num(expected, got) != expected {
+			// println('could not promote ${c.table.get_type_symbol(got).name} to ${c.table.get_type_symbol(expected).name}')
+			return false
+		}
 	}
 	return true
 }

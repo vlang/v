@@ -280,7 +280,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		if field.has_default_expr {
 			c.expected_type = field.typ
 			field_expr_type := c.expr(field.default_expr)
-			if !c.check_types(field_expr_type, field.typ) {
+			if !c.assign_check(field_expr_type, field.typ) {
 				field_expr_type_sym := c.table.get_type_symbol(field_expr_type)
 				field_type_sym := c.table.get_type_symbol(field.typ)
 				c.error('default expression for field `${field.name}` ' + 'has type `${field_expr_type_sym.name}`, but should be `${field_type_sym.name}`',
@@ -513,11 +513,11 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					return table.void_type
 				}
 				// the expressions have different types (array_x and x)
-				if c.check_types(right_type, left_value_type) { // , right_type) {
+				if c.assign_check(right_type, left_value_type) { // , right_type) {
 					// []T << T
 					return table.void_type
 				}
-				if right.kind == .array && c.check_types(left_value_type, c.table.value_type(right_type)) {
+				if right.kind == .array && c.assign_check(left_value_type, c.table.value_type(right_type)) {
 					// []T << []T
 					return table.void_type
 				}
@@ -800,13 +800,13 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
 				continue
 			}
-			if !c.check_types(got_arg_typ, exp_arg_typ) {
+			if !c.assign_check(got_arg_typ, exp_arg_typ) {
 				got_arg_sym := c.table.get_type_symbol(got_arg_typ)
 				// str method, allow type with str method if fn arg is string
 				if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
 					continue
 				}
-				c.error('cannot use type `$got_arg_sym.str()` as type `$exp_arg_sym.str()` in argument ${i+1} to `${left_type_sym.name}.$method_name`',
+				c.error('cannot use type `$got_arg_sym.str()` (type $got_arg_sym.kind.str()) as type `$exp_arg_sym.str()` in argument ${i+1} to `${left_type_sym.name}.$method_name`',
 					call_expr.pos)
 			}
 		}
@@ -1011,7 +1011,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			return true
 		}
 		*/
-		if !c.check_types(typ, arg.typ) {
+		if !c.assign_check(typ, arg.typ) {
 			// str method, allow type with str method if fn arg is string
 			if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 				continue
@@ -1115,7 +1115,7 @@ pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type
 		match last_stmt {
 			ast.ExprStmt {
 				it.typ = c.expr(it.expr)
-				type_fits := c.check_types(it.typ, ret_type)
+				type_fits := c.assign_check(it.typ, ret_type)
 				is_panic_or_exit := is_expr_panic_or_exit(it.expr)
 				if type_fits || is_panic_or_exit {
 					return
@@ -1223,7 +1223,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	for i, exp_type in expected_types {
 		got_typ := got_types[i]
 		is_generic := exp_type == table.t_type
-		ok := if is_generic { c.check_types(got_typ, c.cur_generic_type) || got_typ == exp_type } else { c.check_types(got_typ,
+		ok := if is_generic { c.assign_check(got_typ, c.cur_generic_type) || got_typ == exp_type } else { c.assign_check(got_typ,
 				exp_type) }
 		// ok := c.check_types(got_typ, exp_type)
 		if !ok { // !c.table.check(got_typ, exp_typ) {
@@ -1331,7 +1331,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.fail_if_immutable(ident)
 			var_type := c.expr(ident)
 			assign_stmt.left_types << var_type
-			if !c.check_types(val_type, var_type) {
+			if !c.assign_check(val_type, var_type) {
 				val_type_sym := c.table.get_type_symbol(val_type)
 				var_type_sym := c.table.get_type_symbol(var_type)
 				c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`',
@@ -1425,7 +1425,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				c.expected_type = elem_type
 				continue
 			}
-			if !c.check_types(elem_type, typ) {
+			if !c.assign_check(typ, elem_type) {
 				elem_type_sym := c.table.get_type_symbol(elem_type)
 				c.error('expected array element with type `$elem_type_sym.name`', array_init.pos)
 			}
@@ -2373,13 +2373,13 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		val := node.vals[i]
 		key_type := c.expr(key)
 		val_type := c.expr(val)
-		if !c.check_types(key_type, key0_type) {
+		if !c.assign_check(key_type, key0_type) {
 			key0_type_sym := c.table.get_type_symbol(key0_type)
 			key_type_sym := c.table.get_type_symbol(key_type)
 			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym.name` for map key',
 				node.pos)
 		}
-		if !c.check_types(val_type, val0_type) {
+		if !c.assign_check(val_type, val0_type) {
 			val0_type_sym := c.table.get_type_symbol(val0_type)
 			val_type_sym := c.table.get_type_symbol(val_type)
 			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym.name` for map value',

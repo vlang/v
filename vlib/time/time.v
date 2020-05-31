@@ -118,7 +118,7 @@ pub fn new_time(t Time) Time {
 // unix_time returns Unix time.
 pub fn (t Time) unix_time() int {
 	if t.unix != 0 {
-		return t.unix
+		return int(t.unix)
 	}
 	tt := C.tm{
 		tm_sec: t.second
@@ -134,12 +134,12 @@ pub fn (t Time) unix_time() int {
 // add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
 	// TODO Add(d time.Duration)
-	return unix(t.unix + u64(seconds))
+	return unix(int(t.unix + u64(seconds)))
 }
 
 // add_days returns a new time struct with an added number of days.
 pub fn (t Time) add_days(days int) Time {
-	return unix(t.unix + u64(i64(days) * 3600 * 24))
+	return unix(int(t.unix + u64(i64(days) * 3600 * 24)))
 }
 
 // since returns a number of seconds elapsed since a given time.

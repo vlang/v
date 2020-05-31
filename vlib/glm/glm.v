@@ -398,7 +398,7 @@ fn ortho_js(left, right, bottom, top f32) &f32 {
 	bt := 1.0 / (bottom - top)
 	nf := f32(1.0) / 1.0// (mynear -myfar)
 	mut out := &f32(0)
-	unsafe { out = &f32( malloc (sizeof(f32) * 16)) }
+	unsafe { out = &f32( malloc (int(sizeof(f32) * 16))) }
 	out[0] = -2.0 * lr
 	out[1] = 0
 	out[2] = 0
