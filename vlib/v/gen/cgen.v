@@ -2721,7 +2721,8 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 		match typ.info {
 			table.Struct {
 				info := typ.info as table.Struct
-				// g.type_definitions.writeln('typedef struct {')
+				// TODO avoid buffer manip
+				start_pos := g.type_definitions.len
 				if info.is_union {
 					g.type_definitions.writeln('union $name {')
 				} else {
@@ -2732,21 +2733,22 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 						// Some of these structs may want to contain
 						// optionals that may not be defined at this point
 						// if this is the case then we are going to 
-						// hackily insert it here.
-						// TODO revert to x := if y {}, this is a ternery bug
-						mut type_name := ''
+						// buffer manip out in front of the struct
+						// write the optional in and then continue
 						if field.typ.flag_is(.optional) {
 							// Dont use g.typ() here becuase it will register
 							// optional and we dont want that
 							// TODO keep these all in the same place
+							last_text := g.type_definitions.after(start_pos).clone()
+							g.type_definitions.go_back_to(start_pos)
 							styp, base := g.optional_type_name(field.typ)
 							g.optionals << styp
-							// Make sure its typedef'd
 							g.typedefs2.writeln('typedef struct $styp $styp;')
-							type_name = '/*inline optional $styp */${g.optional_type_text(styp, base)}'
-						} else {
-							type_name = g.typ(field.typ)
+							g.type_definitions.writeln('${g.optional_type_text(styp, base)};')
+							g.type_definitions.write(last_text)
 						}
+
+						type_name := g.typ(field.typ)
 
 						field_name := c_name(field.name)
 
