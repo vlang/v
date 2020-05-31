@@ -169,12 +169,12 @@ pub fn (mut rng WyRandRNG) intn(max int) int {
 
 // rng.i64n(max) returns a pseudorandom int that lies in [0, max)
 [inline]
-pub fn (mut rng WyRandRNG) i64n(max i64) int {
+pub fn (mut rng WyRandRNG) i64n(max i64) i64 {
 	if max <= 0 {
 		eprintln('max has to be positive.')
 		exit(1)
 	}
-	return int(rng.u64n(max))
+	return i64(rng.u64n(max))
 }
 
 // rng.int_in_range(min, max) returns a pseudorandom int that lies in [min, max)

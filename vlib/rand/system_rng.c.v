@@ -214,7 +214,7 @@ pub fn (r SysRNG) i64n(max i64) i64 {
 		eprintln('max has to be positive.')
 		exit(1)
 	}
-	return int(r.u64n(max))
+	return i64(r.u64n(max))
 }
 
 // r.int_in_range(min, max) returns a pseudorandom int that lies in [min, max)
