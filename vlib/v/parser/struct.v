@@ -223,6 +223,8 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	mut i := 0
 	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
 	// p.warn(is_short_syntax.str())
+	saved_is_amp := p.is_amp
+	p.is_amp = false
 	for p.tok.kind != .rcbr && p.tok.kind != .rpar {
 		p.check_comment()
 		mut field_name := ''
@@ -260,6 +262,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	if !short_syntax {
 		p.check(.rcbr)
 	}
+	p.is_amp = saved_is_amp
 	node := ast.StructInit{
 		typ: typ
 		fields: fields

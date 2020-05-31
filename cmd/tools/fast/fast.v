@@ -80,7 +80,7 @@ fn measure(cmd string) int {
 		exec(cmd)
 	}
 	println('Building...')
-	sw := time.new_stopwatch()
+	sw := time.new_stopwatch({})
 	exec(cmd)
 	return int(sw.elapsed().milliseconds())
 }

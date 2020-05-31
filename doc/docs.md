@@ -91,10 +91,20 @@ fn main() {
     println('hello world')
 }
 ```
+Save that snippet into a file `hello.v` . Now do: `v run hello.v` .
 
-Functions are declared with `fn`. The return type goes after the function
-name. In this case `main` doesn't return anything, so the return type can be
-omitted.
+(That is assuming you have symlinked your V with `v symlink`, as described here
+[Symlinking](https://github.com/vlang/v/blob/master/README.md#symlinking).
+If you have not yet, you have to type the path to v/v.exe manually.)
+
+Congratulations - you just wrote your first V program, and executed it!
+
+(You can compile a program without execution, with: `v hello.v`.
+See `v help` for all supported commands)
+
+In the above example, you can see that functions are declared with `fn`.
+The return type goes after the function name. In this case `main` doesn't 
+return anything, so the return type can be omitted.
 
 As in many other languages (such as C, Go and Rust), `main` is an entry point.
 
@@ -1494,7 +1504,7 @@ You can also use stopwatches to measure just portions of your code explicitly:
 ```v
 import time
 fn main(){
-    sw := time.new_stopwatch()
+    sw := time.new_stopwatch({})
     println('Hello world')
     println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')
 }

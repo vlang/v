@@ -15,6 +15,10 @@ pub const (
 	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash.wyhash', 'strings']
 )
 
+pub const (
+	external_module_dependencies_for_tool = {'vdoc': ['markdown']}
+)
+
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
 pub fn vhash() string {
 	mut buf := [50]byte
@@ -143,6 +147,12 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		println('launch_tool should_compile: $should_compile')
 	}
 	if should_compile {
+		emodules := external_module_dependencies_for_tool[tool_name]
+		for emodule in emodules {
+			util.check_module_is_installed(emodule, is_verbose) or {
+				panic(err)
+			}
+		}
 		mut compilation_command := '"$vexe" '
 		compilation_command += '"$tool_source"'
 		if is_verbose {
@@ -255,4 +265,65 @@ pub fn join_env_vflags_and_os_args() []string {
 
 fn non_empty(arg []string) []string {
 	return arg.filter(it != '')
+}
+
+pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
+	mpath := os.join_path(os.home_dir(), '.vmodules', modulename)
+	mod_v_file := os.join_path(mpath, 'v.mod')
+	murl := 'https://github.com/vlang/$modulename'
+	if is_verbose {
+		eprintln('check_module_is_installed: mpath: $mpath')
+		eprintln('check_module_is_installed: mod_v_file: $mod_v_file')
+		eprintln('check_module_is_installed: murl: $murl')
+	}
+	if os.exists(mod_v_file) {
+		vexe := pref.vexe_path()
+		update_cmd := '"$vexe" update "${modulename}"'
+		if is_verbose {
+			eprintln('check_module_is_installed: updating with $update_cmd ...')
+		}
+		update_res := os.exec(update_cmd) or {
+			return error('can not start $update_cmd, error: $err')
+		}
+		if update_res.exit_code != 0 {
+			eprintln('Warning: `${modulename}` exists, but is not updated.
+V will continue, since updates can fail due to temporary network problems,
+and the existing module `${modulename}` may still work.')
+			if is_verbose {
+				eprintln('Details:')
+				eprintln(update_res.output)
+			}
+			eprintln('-'.repeat(50))
+		}
+		return true
+	}
+	if is_verbose {
+		eprintln('check_module_is_installed: cloning from $murl ...')
+	}
+	cloning_res := os.exec('git clone $murl ~/.vmodules/$modulename') or {
+		return error('git is not installed, error: $err')
+	}
+	if cloning_res.exit_code != 0 {
+		return error('cloning failed, details: $cloning_res.output')
+	}
+	if !os.exists(mod_v_file) {
+		return error('even after cloning, $mod_v_file is still missing')
+	}
+	if is_verbose {
+		eprintln('check_module_is_installed: done')
+	}
+	return true
+}
+
+pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
+	for tool_name, tool_modules in external_module_dependencies_for_tool {
+		if is_verbose {
+			eprintln('Installing modules for tool: $tool_name ...')
+		}
+		for emodule in tool_modules {
+			util.check_module_is_installed(emodule, is_verbose) or {
+				panic(err)
+			}
+		}
+	}
 }

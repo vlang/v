@@ -49,7 +49,7 @@ fn elog(r &live.LiveReloadInfo, s string){
 }
 
 fn compile_and_reload_shared_lib(r mut live.LiveReloadInfo) ?bool {
-	sw := time.new_stopwatch()
+	sw := time.new_stopwatch({})
 	new_lib_path := compile_lib(mut r) or {
 		return error('errors while compiling $r.original')
 	}
@@ -63,7 +63,7 @@ fn compile_lib(r mut live.LiveReloadInfo) ?string {
 	new_lib_path, new_lib_path_with_extension := current_shared_library_path(mut r)
 	cmd := '$r.vexe $r.vopts -o $new_lib_path $r.original'
 	elog(r,'>       compilation cmd: $cmd')
-	cwatch := time.new_stopwatch()
+	cwatch := time.new_stopwatch({})
 	recompilation_result := os.exec( cmd ) or {
 		eprintln('recompilation failed')
 		return none
