@@ -36,8 +36,7 @@ fn gen_randoms(seed_data []u32, bound int) []u64 {
 }
 
 fn test_mt19937_reproducibility() {
-	t := u64(time.ticks())
-	seed_data := [u32(t & 0x00000000FFFFFFFF), u32(t & 0xFFFFFFFF00000000)]
+	seed_data := rand.time_seed_array(2)
 	randoms1 := gen_randoms(seed_data, 1000)
 	randoms2 := gen_randoms(seed_data, 1000)
 	assert randoms1.len == randoms2.len
