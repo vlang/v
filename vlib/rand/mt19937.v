@@ -47,11 +47,12 @@ C++ functions for MT19937, with initialization improved 2002/2/10.
    email: matumoto@math.keio.ac.jp
 */
 const (
-	nn       = 312
-	mm       = 156
-	matrix_a = 0xB5026F5AA96619E9
-	um       = 0xFFFFFFFF80000000
-	lm       = 0x7FFFFFFF
+	nn            = 312
+	mm            = 156
+	matrix_a      = 0xB5026F5AA96619E9
+	um            = 0xFFFFFFFF80000000
+	lm            = 0x7FFFFFFF
+	inv_f64_limit = 1.0 / 9007199254740992.0
 )
 
 // A generator that uses the Mersenne Twister algorithm with period 2^19937
@@ -73,7 +74,7 @@ fn calculate_state(seed_data []u32, mut state []u64) []u64 {
 	return state
 }
 
-// seed() - Set the seed, needs only two int32s
+// seed() - Set the seed, needs only two u32s in little endian format as [lower, higher]
 pub fn (mut rng MT19937RNG) seed(seed_data []u32) {
 	if seed_data.len != 2 {
 		eprintln('mt19937 needs only two 32bit integers as seed: [lower, higher]')
@@ -86,6 +87,7 @@ pub fn (mut rng MT19937RNG) seed(seed_data []u32) {
 }
 
 // rng.u32() - return a pseudorandom 32bit int in [0, 2**32)
+[inline]
 pub fn (mut rng MT19937RNG) u32() u32 {
 	if rng.has_next {
 		rng.has_next = false
@@ -98,6 +100,7 @@ pub fn (mut rng MT19937RNG) u32() u32 {
 }
 
 // rng.u64() - return a pseudorandom 64bit int in [0, 2**64)
+[inline]
 pub fn (mut rng MT19937RNG) u64() u64 {
 	mag01 := [u64(0), u64(matrix_a)]
 	mut x := u64(0)
@@ -125,30 +128,23 @@ pub fn (mut rng MT19937RNG) u64() u64 {
 	return x
 }
 
-// rng.int31() - return a 31bit has_nextitive pseudorandom integer
+// rng.int31() - return a 31bit positive pseudorandom integer
+[inline]
 pub fn (mut rng MT19937RNG) int31() int {
 	return int(rng.u32() >> 1)
 }
 
-// rng.int63() - return a 63bit has_nextitive pseudorandom integer
+// rng.int63() - return a 63bit positive pseudorandom integer
+[inline]
 pub fn (mut rng MT19937RNG) int63() i64 {
 	return i64(rng.u64() >> 1)
 }
 
-// rng.f64() - return 64bit real in [0, 1)
-pub fn (mut rng MT19937RNG) f64() f64 {
-	return f64(rng.u64() >> 11) * (1.0 / 9007199254740992.0)
-}
-
-// rng.f32() - return a 32bit real in [0, 1)
-pub fn (mut rng MT19937RNG) f32() f32 {
-	return f32(rng.f64())
-}
-
 // rng.u32n() - return a 32bit u32 in [0, max)
+[inline]
 pub fn (mut rng MT19937RNG) u32n(max u32) u32 {
 	if max == 0 {
-		eprintln('max must be has_nextitive integer')
+		eprintln('max must be positive integer')
 		exit(1)
 	}
 	// Check SysRNG in system_rng.c.v for explanation
@@ -172,9 +168,11 @@ pub fn (mut rng MT19937RNG) u32n(max u32) u32 {
 	return u32(0)
 }
 
+// rng.u64n() - return a 64bit u64 in [0, max)
+[inline]
 pub fn (mut rng MT19937RNG) u64n(max u64) u64 {
 	if max == 0 {
-		eprintln('max must be has_nextitive integer')
+		eprintln('max must be positive integer')
 		exit(1)
 	}
 	bit_len := bits.len_64(max)
@@ -215,4 +213,56 @@ pub fn (mut rng MT19937RNG) u64_in_range(min, max u64) u64 {
 		exit(1)
 	}
 	return min + rng.u64n(max - min)
+}
+
+// rng.f32() - return a 32bit real in [0, 1)
+[inline]
+pub fn (mut rng MT19937RNG) f32() f32 {
+	return f32(rng.f64())
+}
+
+// rng.f64() - return 64bit real in [0, 1)
+[inline]
+pub fn (mut rng MT19937RNG) f64() f64 {
+	return f64(rng.u64() >> 11) * inv_f64_limit
+}
+
+// rng.f32n() - return 64bit real in [0, max)
+[inline]
+pub fn (mut rng MT19937RNG) f32n(max f32) f32 {
+	if max <= 0 {
+		eprintln('max has to be positive.')
+		exit(1)
+	}
+	return rng.f32() * max
+}
+
+// rng.f64n() - return 64bit real in [0, max)
+[inline]
+pub fn (mut rng MT19937RNG) f64n(max f64) f64 {
+	if max <= 0 {
+		eprintln('max has to be positive.')
+		exit(1)
+	}
+	return rng.f64() * max
+}
+
+// rng.f32_in_range(min, max) returns a pseudorandom f32 that lies in [min, max)
+[inline]
+pub fn (mut rng MT19937RNG) f32_in_range(min, max f32) f32 {
+	if max <= min {
+		eprintln('max must be greater than min')
+		exit(1)
+	}
+	return min + rng.f32n(max - min)
+}
+
+// rng.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
+[inline]
+pub fn (mut rng MT19937RNG) f64_in_range(min, max f64) f64 {
+	if max <= min {
+		eprintln('max must be greater than min')
+		exit(1)
+	}
+	return min + rng.f64n(max - min)
 }

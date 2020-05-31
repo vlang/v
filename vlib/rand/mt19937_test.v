@@ -239,7 +239,7 @@ fn test_mt19937_f32n() {
 		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.f32()
+			value := rng.f32n(max)
 			assert value >= 0.0
 			assert value < max
 		}
@@ -252,7 +252,7 @@ fn test_mt19937_f64n() {
 		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.f64()
+			value := rng.f64n(max)
 			assert value >= 0.0
 			assert value < max
 		}
@@ -266,7 +266,7 @@ fn test_mt19937_f32_in_range() {
 		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.f32()
+			value := rng.f32_in_range(min, max)
 			assert value >= min
 			assert value < max
 		}
@@ -280,7 +280,7 @@ fn test_mt19937_f64_in_range() {
 		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.f64()
+			value := rng.f64_in_range(min, max)
 			assert value >= min
 			assert value < max
 		}
