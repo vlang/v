@@ -63,10 +63,10 @@ endif
 	@echo "V has been successfully built"
 	@./v -version
 
-clean: clean_tmp
-	git clean -xf
+#clean: clean_tmp
+#git clean -xf
 
-clean_tmp:
+clean:
 	rm -rf $(TMPTCC)
 	rm -rf $(TMPVC)
 

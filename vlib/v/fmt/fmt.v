@@ -468,19 +468,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		if field.has_default_expr {
 			f.write(' = ')
-			mut is_pe_amp_ce := false
-			mut ce := ast.CastExpr{}
-			if field.default_expr is ast.PrefixExpr {
-				pe := field.default_expr as ast.PrefixExpr
-				if pe.right is ast.CastExpr && pe.op == .amp {
-					ce = pe.right as ast.CastExpr
-					is_pe_amp_ce = true
-					f.expr(ce)
-				}
-			}
-			if !is_pe_amp_ce {
-				f.expr(field.default_expr)
-			}
+			f.struct_field_expr( field.default_expr )
 		}
 		// f.write('// $field.pos.line_nr')
 		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
@@ -495,6 +483,23 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 	}
 	f.writeln('}\n')
+}
+
+
+pub fn (mut f Fmt) struct_field_expr(fexpr ast.Expr) {
+	mut is_pe_amp_ce := false
+	mut ce := ast.CastExpr{}
+	if fexpr is ast.PrefixExpr {
+		pe := fexpr as ast.PrefixExpr
+		if pe.right is ast.CastExpr && pe.op == .amp {
+			ce = pe.right as ast.CastExpr
+			is_pe_amp_ce = true
+			f.expr(ce)
+		}
+	}
+	if !is_pe_amp_ce {
+		f.expr(fexpr)
+	}
 }
 
 fn (f &Fmt) type_to_str(t table.Type) string {
@@ -626,7 +631,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					ktyp = minfo.key_type
 					vtyp = minfo.value_type
 				}
-				
+
 				f.write('map[')
 				f.write(f.type_to_str(ktyp))
 				f.write(']')
@@ -1152,7 +1157,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		f.write('$name{')
 		// }
 		for i, field in it.fields {
-			f.expr(field.expr)
+			f.struct_field_expr(field.expr)
 			if i < it.fields.len - 1 {
 				f.write(', ')
 			}
@@ -1167,7 +1172,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		f.indent++
 		for field in it.fields {
 			f.write('$field.name: ')
-			f.expr(field.expr)
+			f.struct_field_expr(field.expr)
 			f.writeln('')
 		}
 		f.indent--

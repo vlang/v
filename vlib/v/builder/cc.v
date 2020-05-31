@@ -550,7 +550,7 @@ fn (mut c Builder) cc_windows_cross() {
 			println('brew install mingw-w64')
 		}
 		$if linux {
-			println('sudo apt install -y mingw-w64')
+			println('Try `sudo apt install -y mingw-w64` on Debian based distros, or `sudo pacman -S mingw-w64-gcc` on Arch, etc...')
 		}
 		exit(1)
 	}
@@ -601,7 +601,8 @@ fn (v &Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CFlag
 	}
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
-	cmd := '$v.pref.ccompiler $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget '
+	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
+	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget '
 	res := os.exec(cmd) or {
 		println('failed thirdparty object build cmd: $cmd')
 		verror(err)
