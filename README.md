@@ -91,7 +91,7 @@ example by <Windows Key>, then type cmd.exe, right click on its menu
 entry, and choose `Run as administrator`. In the new administrative 
 shell, cd to the path, where you have compiled v.exe, then type:
 ```bat
-.\v.exe symlink`
+.\v.exe symlink
 ```
 That will make v available everywhere, by adding it to your PATH. 
 Please restart your shell/editor after that, so that it can pick 
