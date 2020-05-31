@@ -123,4 +123,8 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 }
 
 fn break_if_debugger_attached() {
+	unsafe {
+		ptr := &voidptr(0)
+		*ptr = 0
+	}
 }
