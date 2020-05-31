@@ -188,70 +188,113 @@ pub fn (g JsGen) hashes() string {
 // V type to JS type
 pub fn (mut g JsGen) typ(t table.Type) string {
 	sym := g.table.get_type_symbol(t)
-	mut styp := sym.name
-	if styp.starts_with('JS.') {
-		styp = styp[3..]
-	}
-	// 'multi_return_int_int' => '[number, number]'
-	if styp.starts_with('multi_return_') {
-		tokens := styp.replace('multi_return_', '').split('_')
-		return '[' + tokens.map(g.to_js_typ(it)).join(', ') + ']'
-	}
-	// 'anon_fn_7_7_1' => '(a number, b number) => void'
-	if styp.starts_with('anon_') {
-		info := sym.info as table.FnType
-		mut res := '('
-		for i, arg in info.func.args {
-			res += '$arg.name: ${g.typ(arg.typ)}'
-			if i < info.func.args.len - 1 { res += ', ' }
-		}
-		return res + ') => ' + g.typ(info.func.return_type)
-	}
-	// Struct instance => ns["class"]["prototype"]
-	if sym.kind == .struct_ && get_ns(styp).len > 0 {
-		return g.to_js_typ(g.get_alias(styp)) + '["prototype"]'
-	}
-	return g.to_js_typ(styp)
-}
-
-fn (mut g JsGen) to_js_typ(typ string) string {
 	mut styp := ''
-	match typ {
-		'int' {
+
+	match sym.kind {
+		.placeholder {
+			// This should never happen: means checker bug
+			styp = 'any'
+	}
+		.void {
+			styp = 'void'
+	}
+		.voidptr {
+			styp = 'any'
+		}
+		.byteptr, .charptr {
+			styp = 'string'
+	}
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .any_int, .any_float, .size_t {
+			// TODO: Should u64 and i64 use BigInt rather than number?
 			styp = 'number'
 		}
-		'bool' {
+		.bool {
 			styp = 'boolean'
 		}
-		'voidptr' {
-			styp = 'Object'
+		.none_ {
+			styp = 'undefined'
 		}
-		'byteptr' {
+		.string, .ustring, .char {
 			styp = 'string'
 		}
-		'charptr' {
-			styp = 'string'
+		// 'array_array_int' => 'number[][]'
+		.array {
+			info := sym.info as table.Array
+			styp = g.typ(info.elem_type) + '[]'
 		}
-		else {
-			if typ.starts_with('array_') {
-				styp = g.to_js_typ(typ.replace('array_', '')) + '[]'
-			} else if typ.starts_with('map_') {
-				tokens := typ.split('_')
-				styp = 'Map<${g.to_js_typ(tokens[1])}, ${g.to_js_typ(tokens[2])}>'
-			} else {
-				styp = typ
+		.array_fixed {
+			info := sym.info as table.ArrayFixed
+			styp = g.array_fixed_typ(info.elem_type) or { g.typ(info.elem_type) + '[]' }
+		}
+		// 'map[string]int' => 'Map<string, number>'
+		.map {
+			info := sym.info as table.Map
+			key := g.typ(info.key_type)
+			val := g.typ(info.value_type)
+			styp = 'Map<$key, $val>'
+		}
+		.any {
+			styp = 'any'
+		}
+		// ns.Foo => alias["Foo"]["prototype"]
+		.struct_ {
+			styp = g.struct_typ(sym.name)
+		}
+		// 'multi_return_int_int' => '[number, number]'
+		.multi_return {
+			info := sym.info as table.MultiReturn
+			types := info.types.map(g.typ(it))
+			joined := types.join(', ')
+			styp = '[$joined]'
+		}
+		.sum_type {
+			// TODO: Implement sumtypes
+			styp = 'sym_type'
+		}
+		.alias {
+			// TODO: Implement aliases
+			styp = 'alias'
+		}
+		.enum_ {
+			// NB: We could declare them as TypeScript enums but TS doesn't like
+			// our namespacing so these break if declared in a different module.
+			// Until this is fixed, We need to use the type of an enum's members
+			// rather than the enum itself, and this can only be 'number' for now
+			styp = 'number'
 			}
+		// 'anon_fn_7_7_1' => '(a number, b number) => void'
+		.function {
+			info := sym.info as table.FnType
+			mut res := '('
+			for i, arg in info.func.args {
+				res += '$arg.name: ${g.typ(arg.typ)}'
+				if i < info.func.args.len - 1 { res += ', ' }
 		}
+			styp = res + ') => ' + g.typ(info.func.return_type)
 	}
-	// ns.export => ns["export"]
-	for i, v in styp.split('.') {
-		if i == 0 {
-			styp = v
-			continue
+		.interface_ {
+			// TODO: Implement interfaces
+			styp = 'interface'
 		}
-		styp += '["$v"]'
+		/* else {
+			println('jsgen.typ: Unhandled type $t')
+			styp = sym.name
+		} */
 	}
+	if styp.starts_with('JS.') { return styp[3..] }
 	return styp
+}
+
+fn (mut g JsGen) struct_typ(s string) string {
+	ns := get_ns(s)
+	mut name := if ns == g.namespace { s.split('.').last() } else { g.get_alias(s) }
+	mut styp := ''
+	for i, v in name.split('.') {
+		if i == 0 { styp = v }
+		else { styp += '["$v"]' }
+	}
+	if ns in ['', g.namespace] { return styp }
+	return styp + '["prototype"]'
 }
 
 fn (mut g JsGen) to_js_typ_val(typ string) string {
@@ -290,7 +333,22 @@ fn (mut g JsGen) to_js_typ_val(typ string) string {
 	return styp
 }
 
-pub fn (g &JsGen) save() {}
+fn (mut g JsGen) array_fixed_typ(t table.Type) ?string {
+	sym := g.table.get_type_symbol(t)
+	match sym.kind {
+		.i8   { return 'Int8Array' }
+		.i16  { return 'Int16Array' }
+		.int  { return 'Int32Array' }
+		.i64  { return 'BigInt64Array' }
+		.byte { return 'Uint8Array' }
+		.u16  { return 'Uint16Array' }
+		.u32  { return 'Uint32Array' }
+		.u64  { return 'BigUint64Array' }
+		.f32  { return 'Float32Array' }
+		.f64  { return 'Float64Array' }
+		else  { return none }
+	}
+}
 
 pub fn (mut g JsGen) gen_indent() {
 	if g.indents[g.namespace] > 0 && g.empty_line {
