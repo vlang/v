@@ -54,53 +54,54 @@ const (
 	lm       = 0x7FFFFFFF
 )
 
-pub struct MT19937Rng {
+// A generator that uses the Mersenne Twister algorithm with period 2^19937
+pub struct MT19937RNG {
 mut:
-	state    [312]u64
-	mti      int
-	seed_set bool
-	next_rnd u32
-	pos      int
+	state    []u64 = calculate_state(time_seed_array(2), mut []u64{len: nn})
+	mti      int = nn
+	next_rnd u32 = 0
+	has_next bool = false
+}
+
+fn calculate_state(seed_data []u32, mut state []u64) []u64 {
+	lo := u64(seed_data[0])
+	hi := u64(seed_data[1])
+	state[0] = u64((hi << 32) | lo)
+	for j := 1; j < nn; j++ {
+		state[j] = u64(6364136223846793005) * (state[j - 1] ^ (state[j - 1] >> 62)) + u64(j)
+	}
+	return state
 }
 
 // seed() - Set the seed, needs only two int32s
-pub fn (mut rng MT19937Rng) seed(seed_data []u32) {
+pub fn (mut rng MT19937RNG) seed(seed_data []u32) {
 	if seed_data.len != 2 {
-		eprintln("mt19937 needs only two 32bit integers as seed: [lower, higher]")
+		eprintln('mt19937 needs only two 32bit integers as seed: [lower, higher]')
 		exit(1)
 	}
-	lo := u64(seed_data[0])
-	hi := u64(seed_data[1])
-	rng.state[0] = u64((hi << 32) | lo)
-	for j := 1; j < nn; j++ {
-		rng.state[j] = u64(6364136223846793005) * (rng.state[j - 1] ^ (rng.state[j - 1] >>
-			62)) + u64(j)
-	}
+	rng.state = calculate_state(seed_data, mut rng.state)
 	rng.mti = nn
-	rng.seed_set = true
 	rng.next_rnd = 0
-	rng.pos = 0
+	rng.has_next = false
 }
 
 // rng.u32() - return a pseudorandom 32bit int in [0, 2**32)
-pub fn (mut rng MT19937Rng) u32() u32 {
-	if rng.pos == 1 {
-		rng.pos = 0
+pub fn (mut rng MT19937RNG) u32() u32 {
+	if rng.has_next {
+		rng.has_next = false
 		return rng.next_rnd
 	}
 	ans := rng.u64()
 	rng.next_rnd = u32(ans >> 32)
+	rng.has_next = true
 	return u32(ans & 0xffffffff)
 }
 
 // rng.u64() - return a pseudorandom 64bit int in [0, 2**64)
-pub fn (mut rng MT19937Rng) u64() u64 {
+pub fn (mut rng MT19937RNG) u64() u64 {
 	mag01 := [u64(0), u64(matrix_a)]
 	mut x := u64(0)
 	mut i := int(0)
-	if !rng.seed_set {
-		rng.seed(time_seed_array(2))
-	}
 	if rng.mti >= nn {
 		for i = 0; i < nn - mm; i++ {
 			x = (rng.state[i] & um) | (rng.state[i + 1] & lm)
@@ -124,30 +125,30 @@ pub fn (mut rng MT19937Rng) u64() u64 {
 	return x
 }
 
-// rng.int31() - return a 31bit positive pseudorandom integer
-pub fn (mut rng MT19937Rng) int31() int {
+// rng.int31() - return a 31bit has_nextitive pseudorandom integer
+pub fn (mut rng MT19937RNG) int31() int {
 	return int(rng.u32() >> 1)
 }
 
-// rng.int63() - return a 63bit positive pseudorandom integer
-pub fn (mut rng MT19937Rng) int63() i64 {
+// rng.int63() - return a 63bit has_nextitive pseudorandom integer
+pub fn (mut rng MT19937RNG) int63() i64 {
 	return i64(rng.u64() >> 1)
 }
 
 // rng.f64() - return 64bit real in [0, 1)
-pub fn (mut rng MT19937Rng) f64() f64 {
+pub fn (mut rng MT19937RNG) f64() f64 {
 	return f64(rng.u64() >> 11) * (1.0 / 9007199254740992.0)
 }
 
 // rng.f32() - return a 32bit real in [0, 1)
-pub fn (mut rng MT19937Rng) f32() f32 {
+pub fn (mut rng MT19937RNG) f32() f32 {
 	return f32(rng.f64())
 }
 
 // rng.u32n() - return a 32bit u32 in [0, max)
-pub fn (mut rng MT19937Rng) u32n(max u32) u32 {
+pub fn (mut rng MT19937RNG) u32n(max u32) u32 {
 	if max == 0 {
-		eprintln('max must be positive integer')
+		eprintln('max must be has_nextitive integer')
 		exit(1)
 	}
 	// Check SysRNG in system_rng.c.v for explanation
@@ -171,9 +172,9 @@ pub fn (mut rng MT19937Rng) u32n(max u32) u32 {
 	return u32(0)
 }
 
-pub fn (mut rng MT19937Rng) u64n(max u64) u64 {
+pub fn (mut rng MT19937RNG) u64n(max u64) u64 {
 	if max == 0 {
-		eprintln('max must be positive integer')
+		eprintln('max must be has_nextitive integer')
 		exit(1)
 	}
 	bit_len := bits.len_64(max)
@@ -198,7 +199,7 @@ pub fn (mut rng MT19937Rng) u64n(max u64) u64 {
 
 // rng.u32n(min, max) returns a pseudorandom u32 value that is guaranteed to be in [min, max)
 [inline]
-pub fn (mut rng MT19937Rng) u32_in_range(min, max u32) u32 {
+pub fn (mut rng MT19937RNG) u32_in_range(min, max u32) u32 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -208,7 +209,7 @@ pub fn (mut rng MT19937Rng) u32_in_range(min, max u32) u32 {
 
 // rng.u64n(min, max) returns a pseudorandom u64 value that is guaranteed to be in [min, max)
 [inline]
-pub fn (mut rng MT19937Rng) u64_in_range(min, max u64) u64 {
+pub fn (mut rng MT19937RNG) u64_in_range(min, max u64) u64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
