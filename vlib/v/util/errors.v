@@ -151,7 +151,7 @@ pub fn verror(kind, s string) {
 }
 
 pub fn find_working_diff_command() ?string {
-	for diffcmd in ['colordiff', 'diff', 'colordiff.exe', 'diff.exe'] {
+	for diffcmd in ['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe'] {
 		p := os.exec('$diffcmd --version') or {
 			continue
 		}
