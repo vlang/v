@@ -6,7 +6,7 @@ module checker
 import v.table
 import v.token
 
-pub fn (c &Checker) check_types(got, expected table.Type) bool {
+pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 	t := c.table
 	got_idx := t.unalias_num_type(got).idx()
 	exp_idx := t.unalias_num_type(expected).idx()
@@ -114,10 +114,10 @@ pub fn (c &Checker) check_types(got, expected table.Type) bool {
 		exp_fn := exp_info.func
 		// we are using check() to compare return type & args as they might include
 		// functions themselves. TODO: optimize, only use check() when needed
-		if got_fn.args.len == exp_fn.args.len && c.check_types(got_fn.return_type, exp_fn.return_type) {
+		if got_fn.args.len == exp_fn.args.len && c.check_basic(got_fn.return_type, exp_fn.return_type) {
 			for i, got_arg in got_fn.args {
 				exp_arg := exp_fn.args[i]
-				if !c.check_types(got_arg.typ, exp_arg.typ) {
+				if !c.check_basic(got_arg.typ, exp_arg.typ) {
 					return false
 				}
 			}
@@ -206,8 +206,8 @@ fn (c &Checker) promote_num(left_type, right_type table.Type) table.Type {
 	}
 }
 
-// TODO: promote(), assign_check(), symmetric_check() and check() overlap - should be rearranged
-pub fn (c &Checker) assign_check(got, expected table.Type) bool {
+// TODO: promote(), check_types(), symmetric_check() and check() overlap - should be rearranged
+pub fn (c &Checker) check_types(got, expected table.Type) bool {
 	exp_idx := expected.idx()
 	got_idx := got.idx()
 	if exp_idx == got_idx {
@@ -230,7 +230,7 @@ pub fn (c &Checker) assign_check(got, expected table.Type) bool {
 			return true
 		}
 	}
-	if !c.check_types(got, expected) { // TODO: this should go away...
+	if !c.check_basic(got, expected) { // TODO: this should go away...
 		return false
 	}
 	if got.is_number() && expected.is_number() {
@@ -256,5 +256,5 @@ pub fn (c &Checker) symmetric_check(left, right table.Type) bool {
 			return true
 		}
 	}
-	return c.check_types(left, right)
+	return c.check_basic(left, right)
 }
