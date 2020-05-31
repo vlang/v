@@ -1215,6 +1215,16 @@ fn (mut g JsGen) gen_index_expr(it ast.IndexExpr) {
 		}
 		g.expr(it.index)
 		if !it.is_setter { g.write(')') }
+	} else if left_typ.kind == .string {
+		if it.is_setter {
+			// TODO: What's the best way to do this?
+			// 'string'[3] = `o`
+		} else {
+			g.expr(it.left)
+			g.write('.charCodeAt(')
+			g.expr(it.index)
+			g.write(')')
+		}
 	} else {
 		// TODO Does this cover all cases?
 		g.expr(it.left)
