@@ -12,12 +12,46 @@ struct Option2<T> {
 }
 */
 
+struct OptionBase {
+	ok      bool
+	is_none bool
+	error   string
+	ecode   int
 
+	// Data is trailing after ecode
+	// and is not included in here but in the 
+	// derived Option_xxx types
+}
+
+pub fn (o OptionBase) str() string {
+   if o.ok && !o.is_none {
+	  return 'Option{ valid }'
+   }
+   if o.is_none {
+	  return 'Option{ none }'
+   }
+   return 'Option{ error: "${o.error}" }'
+}
+
+// `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
+fn opt_ok2(data voidptr, mut option &OptionBase, size int) {
+	unsafe {
+		*option = OptionBase {
+			ok: true
+		}
+	}
+
+	// use ecode to get the end of OptionBase and then memcpy into it
+	C.memcpy(byteptr(&option.ecode) + sizeof(int), data, size)
+}
+
+// Old option type used for bootstrapping
 struct Option {
 	ok      bool
 	is_none bool
 	error   string
 	ecode   int
+
 	data    [400]byte
 }
 

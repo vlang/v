@@ -798,12 +798,17 @@ pub fn get_raw_stdin() []byte {
 			for {
 				pos := buf + offset
 				res := C.ReadFile(h_input, pos, block_bytes, &bytes_read, 0)
+				offset += bytes_read
+
 				if !res {
 					break
 				}
-				offset += bytes_read
+
 				buf = v_realloc(buf, offset + block_bytes + (block_bytes-bytes_read))
 			}
+
+			C.CloseHandle(h_input)
+
 			return array{element_size: 1 data: voidptr(buf) len: offset cap: offset }
 		}
 	} $else {

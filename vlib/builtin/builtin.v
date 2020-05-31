@@ -44,12 +44,14 @@ fn panic_debug(line_no int, file, mod, fn_name, s string) {
 	eprintln('     line: ' + line_no.str())
 	eprintln('=========================================')
 	print_backtrace_skipping_top_frames(1)
+	break_if_debugger_attached()
 	C.exit(1)
 }
 
 pub fn panic(s string) {
 	eprintln('V panic: $s')
 	print_backtrace()
+	break_if_debugger_attached()
 	C.exit(1)
 }
 

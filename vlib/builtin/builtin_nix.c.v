@@ -121,3 +121,6 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	}
 	return true
 }
+
+fn break_if_debugger_attached() {
+}
