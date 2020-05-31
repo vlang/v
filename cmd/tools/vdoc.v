@@ -19,13 +19,13 @@ enum OutputType {
 }
 
 struct DocConfig {
-	opath string
 	pub_only bool = true
 	show_loc bool = false // for plaintext
 	serve_http bool = false // for html
 	is_multi bool = false
 	include_readme bool = false
 mut:
+	opath string
 	src_path string
 	docs []doc.Doc
 	manifest vmod.Manifest
@@ -49,25 +49,9 @@ fn open_url(url string) {
 	}
 }
 
-fn (cfg DocConfig) serve_html() {
-	mut docs := map[string]string
-	def_name := if cfg.docs[0].head.name == 'README' {
-		'index.html'
-	} else { cfg.docs[0].head.name + '.html' }
-
-	if cfg.is_multi {
-		for i, doc in cfg.docs {
-			name := if doc.head.name == 'README' {
-				'index.html'
-			} else {
-				'${doc.head.name}.html'
-			}
-			docs[name] = cfg.gen_html(i)
-		}
-	} else {
-		docs[def_name] = cfg.gen_html(0)
-	}
-
+fn (mut cfg DocConfig) serve_html() {
+	docs := cfg.multi_render(.html)
+	def_name := docs.keys()[0]
 	server := net.listen(8046) or {
 		panic(err)
 	}
@@ -123,8 +107,8 @@ fn escape(str string) string {
 	return str.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
 }
 
-fn (cfg DocConfig) gen_json() string {
-	dcs := cfg.docs[0]
+fn (cfg DocConfig) gen_json(idx int) string {
+	dcs := cfg.docs[idx]
 	mut jw := strings.new_builder(200)
 	jw.writeln('{\n\t"module_name": "$dcs.head.name",\n\t"description": "${escape(dcs.head.comment)}",\n\t"contents": [')
 	for i, cn in dcs.contents {
@@ -258,8 +242,8 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	return hw.str()
 }
 
-fn (cfg DocConfig) gen_plaintext() string {
-	dcs := cfg.docs[0]
+fn (cfg DocConfig) gen_plaintext(idx int) string {
+	dcs := cfg.docs[idx]
 	mut pw := strings.new_builder(200)
 
 	head_lines := '='.repeat(dcs.head.content.len)
@@ -279,8 +263,8 @@ fn (cfg DocConfig) gen_plaintext() string {
 	return pw.str()
 }
 
-fn (cfg DocConfig) gen_markdown(with_toc bool) string {
-	dcs := cfg.docs[0]
+fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
+	dcs := cfg.docs[idx]
 	mut hw := strings.new_builder(200)
 	mut cw := strings.new_builder(200)
 
@@ -304,22 +288,48 @@ fn (cfg DocConfig) gen_markdown(with_toc bool) string {
 	return hw.str() + '\n' + cw.str()
 }
 
-fn (mut config DocConfig) generate_docs_from_file() {
-	mut output_type := OutputType.plaintext
-
-	if config.is_multi && !config.serve_http {
-		eprintln('vdoc: Multi-module mode is disabled for output files.')
-		exit(1)
+fn (cfg DocConfig) multi_render(output_type OutputType) map[string]string {
+	mut docs := map[string]string
+	for i, doc in cfg.docs {
+		mut name := if doc.head.name == 'README' {
+			'index'
+		} else if cfg.docs.len == 1 && !os.is_dir(cfg.opath) {
+			os.dir(os.file_name(cfg.opath))
+		} else {
+			doc.head.name
+		}
+		name = name + match output_type {
+			.html { '.html' }
+			.markdown { '.md' }
+			.json { '.json' }
+			else { '.txt' }
+		}
+		docs[name] = match output_type {
+			.html { cfg.gen_html(i) }
+			.markdown { cfg.gen_markdown(i, true) }
+			.json { cfg.gen_json(i) }
+			else { cfg.gen_plaintext(i) }
+		}
 	}
+	return docs
+}
 
+fn (mut config DocConfig) generate_docs_from_file() {
+	if config.opath.len != 0 {
+		config.opath = os.join_path(os.real_path(os.base_dir(config.opath)), os.file_name(config.opath))
+	}
+	println(config.opath)
+	mut output_type := OutputType.plaintext
 	// identify output type
-	if config.opath.len == 0 {
+	if config.serve_http {
+		output_type = .html
+	} else if config.opath.len == 0 {
 		output_type = .stdout
 	} else {
 		ext := os.file_ext(config.opath)
 		if ext in ['.md', '.markdown'] || config.opath in [':md:', ':markdown:'] {
 			output_type = .markdown
-		} else if ext in ['.html', '.htm'] || config.opath == ':html:' || config.serve_http {
+		} else if ext in ['.html', '.htm'] || config.opath == ':html:' {
 			output_type = .html
 		} else if ext == '.json' || config.opath == ':json:' {
 			output_type = .json
@@ -327,30 +337,24 @@ fn (mut config DocConfig) generate_docs_from_file() {
 			output_type = .plaintext
 		}
 	}
-
-	mut manifest_path := config.src_path
-	if !os.is_dir(manifest_path) {
-		manifest_path = os.base_dir(manifest_path)
+	if config.include_readme && output_type != .html {
+		eprintln('vdoc: Including README.md for doc generation is supported on HTML output only.')
+		exit(1)
 	}
-
-	manifest_path = os.join_path(manifest_path, 'v.mod')
-
+	mut manifest_path := os.join_path(if os.is_dir(config.src_path) { config.src_path } else { os.base_dir(config.src_path) }, 'v.mod')
 	if os.exists(manifest_path) && 'vlib' !in config.src_path {
 		if manifest := vmod.from_file(manifest_path) {
 			config.manifest = manifest
 		}
 	}
-
 	if 'vlib' in config.src_path {
 		config.manifest.version = util.v_version
 	}
-
 	readme_path := if 'vlib' in config.src_path {
 		os.join_path(os.base_dir(@VEXE), 'README.md')
 	} else {
 		os.join_path(config.src_path, 'README.md')
 	}
-
 	// check README.md
 	if os.exists(readme_path) && config.include_readme {
 		println('Found README.md...')
@@ -362,39 +366,44 @@ fn (mut config DocConfig) generate_docs_from_file() {
 			}
 		}
 	}
-
 	if config.is_multi {
 		dirs := get_modules_list(config.src_path)
-
 		for dirpath in dirs {
 			dcs := doc.generate(dirpath, config.pub_only, 'vlib' !in config.src_path) or {
 				panic(err)
 			}
-
 			config.docs << dcs
 		}
 	} else {
 		dcs := doc.generate(config.src_path, config.pub_only, 'vlib' !in config.src_path) or {
 			panic(err)
 		}
-
 		config.docs << dcs
 	}
-
 	if config.serve_http {
 		config.serve_html()
+		return
+	}
+	outputs := config.multi_render(output_type)
+	if output_type == .stdout || (config.opath.starts_with(':') && config.opath.ends_with(':')) {
+		first := outputs.keys()[0]
+		println(outputs[first])
 	} else {
-		output := match output_type {
-			.html { config.gen_html(0) }
-			.markdown { config.gen_markdown(true) }
-			.json { config.gen_json() }
-			else { config.gen_plaintext() }
+		if !os.is_dir(config.opath) {
+			config.opath = os.base_dir(config.opath)
 		}
-
-		if output_type == .stdout || (config.opath.starts_with(':') && config.opath.ends_with(':')) {
-			println(output)
-		} else {
-			os.write_file(config.opath, output)
+		if config.is_multi {
+			config.opath = os.join_path(config.opath, '_docs')
+			if !os.exists(config.opath) {
+				os.mkdir(config.opath) or {
+					panic(err)
+				}
+			}
+		}
+		for file_name, content in outputs {
+			opath := os.join_path(config.opath, file_name)
+			println('Generating ${opath}...')
+			os.write_file(opath, content)
 		}
 	}
 }
@@ -402,18 +411,15 @@ fn (mut config DocConfig) generate_docs_from_file() {
 fn lookup_module(mod string) ?string {
 	mod_path := mod.replace('.', '/')
 	vexe_path := os.base_dir(@VEXE)
-
 	compile_dir := os.real_path(os.base_dir('.'))
 	modules_dir := os.join_path(compile_dir, 'modules', mod_path)
 	vlib_path := os.join_path(vexe_path, 'vlib', mod_path)
 	vmodules_path := os.join_path(os.home_dir(), '.vmodules', mod_path)
 	paths := [modules_dir, vlib_path, vmodules_path]
-
 	for path in paths {
 		if os.is_dir_empty(path) { continue }
 		return path
 	}
-
 	return error('vdoc: Module "${mod}" not found.')
 }
 
@@ -437,12 +443,10 @@ fn main() {
 	args_after_doc := cmdline.options_after(os.args[1..], ['doc'])
 	opts := cmdline.only_options(os.args[1..])
 	args := cmdline.only_non_options(args_after_doc)
-
 	if args.len == 0 || args[0] == 'help' {
 		os.system('v help doc')
 		exit(0)
 	}
-
 	mut config := DocConfig{
 		src_path: args[0],
 		opath: if args.len >= 2 { args[1] } else { '' },
@@ -453,7 +457,6 @@ fn main() {
 		include_readme: '-include-readme' in opts,
 		manifest: vmod.Manifest{ repo_url: '' }
 	}
-
 	is_path := config.src_path.ends_with('.v') || config.src_path.split('/').len > 1 || config.src_path == '.'
 	if !is_path {
 		mod_path := lookup_module(config.src_path) or {
