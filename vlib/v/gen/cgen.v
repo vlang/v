@@ -2338,7 +2338,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		}
 		g.write('}')
 		if fn_return_is_optional {
-			g.writeln(' }, (Option*)(&$opt_tmp), sizeof($styp));')
+			g.writeln(' }, (OptionBase*)(&$opt_tmp), sizeof($styp));')
 			g.write('return $opt_tmp')
 		}
 		// Make sure to add our unpacks
@@ -3059,8 +3059,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					}
 				}
 			} else if g.typ(node.expr_types[i]).starts_with('Option') {
-				str_fn_name := 'Option_str'
-				g.write('${str_fn_name}(*(Option*)&')
+				str_fn_name := 'OptionBase_str'
+				g.write('${str_fn_name}(*(OptionBase*)&')
 				g.expr(expr)
 				g.write(')')
 			} else {
