@@ -674,26 +674,14 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 	if it.left.len > it.right.len {
 		// multi return
-		jsdoc := strings.new_builder(50)
-		jsdoc.write('[')
-		stmt := strings.new_builder(50)
-		stmt.write('const [')
+		g.write('const [')
 		for i, ident in it.left {
-			ident_var_info := ident.var_info()
-			styp := g.typ(ident_var_info.typ)
-			jsdoc.write(styp)
-
-			stmt.write(g.js_name(ident.name))
-
+			g.write(g.js_name(ident.name))
 			if i < it.left.len - 1 {
-				jsdoc.write(', ')
-				stmt.write(', ')
+				g.write(', ')
 			}
 		}
-		jsdoc.write(']')
-		stmt.write('] = ')
-		g.doc.gen_typ(jsdoc.str())
-		g.write(stmt.str())
+		g.write('] = ')
 		g.expr(it.right[0])
 		g.writeln(';')
 	} else {
@@ -749,7 +737,7 @@ fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
 
 		g.write('const ${g.js_name(field.name)} = ')
 		g.expr(field.expr)
-		g.writeln('')
+		g.writeln(';')
 	}
 	g.writeln('')
 }
