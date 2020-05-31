@@ -74,10 +74,10 @@ The build flags are shared by the build and run commands:
          c) an average for each function (i.e. (b) / (a) )
          d) the function name
       NB: if you want to output the profile info to stdout, use `-profile -`.
-      
-   -profile-no-inline       
+
+   -profile-no-inline
       Skip [inline] functions when profiling.
-      
+
    -stats
       Enable more detailed statistics reporting, while compiling test files.
       You can use that with `v test` too, for example:
@@ -89,8 +89,8 @@ The build flags are shared by the build and run commands:
    -translated
       Enable features that are discouraged in regular V code but required for translated V code.
 
-   -v, -vv, -vvv
-      Enable varying verbosity in the V compiler while compiling
+   -v
+      Enable verbosity in the V compiler while compiling
 
    -print_v_files
       Just print the list of all parsed .v files, then stop processing further.
@@ -103,11 +103,11 @@ The build flags are shared by the build and run commands:
       NB: an useful, although not entirely accurate regexp based Universal Ctags options file
       for V is located in `.ctags.d/v.ctags` . If you use https://ctags.io/ , it will be used
       up automatically, or you can specify it explicitly with --options=.ctags.d/v.ctags .
-      
+
    -color, -nocolor
       Force the use of ANSI colors for the error/warning messages, or disable them completely.
       By default V tries to show its errors/warnings in ANSI color. The heuristic that it uses
-      to detect whether or not to use ANSI colors may not work in all cases. 
+      to detect whether or not to use ANSI colors may not work in all cases.
       These options allow you to override the default detection.
 
 For C-specific build flags, use `v help build-c`.
