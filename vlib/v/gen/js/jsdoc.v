@@ -46,7 +46,7 @@ fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) {
 		d.write('$field.name?: ${d.gen.typ(field.typ)}')
 		if i < fields.len - 1 { d.write(', ') }
 	}
-	d.writeln('}}')
+	d.writeln('}} init')
 	d.writeln('*/')
 }
 
