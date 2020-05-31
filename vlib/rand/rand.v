@@ -27,14 +27,16 @@ pub fn rand_r(seed &int) int {
 	return ns & 0x7fffffff
 }
 
+const (
+	default_rng = new_default({})
+)
+
 pub struct PRNGConfigStruct {
-	seed []u32 = [u32(0x1008)]
+	seed []u32 = time_seed_array(1)
 }
 
-pub type RNG = SplitMix64RNG | SysRNG
-
-pub fn default(config PRNGConfigStruct) RNG {
-	rng := SysRNG{}
+pub fn new_default(config PRNGConfigStruct) &SysRNG {
+	rng := &SysRNG{}
 	rng.seed(config.seed)
 	return rng
 }
