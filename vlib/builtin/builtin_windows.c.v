@@ -190,6 +190,15 @@ fn unhandled_exception_handler(e &ExceptionPointers) u32 {
 	return 0
 }
 
-pub fn add_unhandled_exception_handler() {
+fn add_unhandled_exception_handler() {
 	add_vectored_exception_handler(unhandled_exception_handler)
+}
+
+fn C.IsDebuggerPresent() bool
+fn C.__debugbreak()
+
+fn break_if_debugger_attached() {
+	if C.IsDebuggerPresent() {
+		C.__debugbreak()
+	}
 }

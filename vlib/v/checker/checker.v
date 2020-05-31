@@ -524,13 +524,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				s := left.name.replace('array_', '[]')
 				c.error('cannot append `$right.name` to `$s`', right_pos)
 				return table.void_type
-			} else if !left.is_int() {
-				c.error('cannot shift type $right.name into non-integer type $left.name', left_pos)
-				return table.void_type
-			} else if !right.is_int() {
-				c.error('cannot shift non-integer type $right.name into type $left.name', right_pos)
-				return table.void_type
+			} else {
+				return c.check_shift(left_type, right_type, left_pos, right_pos)
 			}
+		}
+		.right_shift {
+			return c.check_shift(left_type, right_type, left_pos, right_pos)
 		}
 		.key_is {
 			type_expr := infix_expr.right as ast.Type
@@ -1039,7 +1038,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	return f.return_type
 }
 
-fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position) {
+fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position) bool {
 	typ_sym := c.table.get_type_symbol(typ)
 	inter_sym := c.table.get_type_symbol(inter_typ)
 	styp := c.table.type_to_str(typ)
@@ -1048,6 +1047,7 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 			if !imethod.is_same_method_as(method) {
 				c.error('`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.name`, expected `${c.table.fn_to_str(imethod)}`',
 					pos)
+				return false
 			}
 			continue
 		}
@@ -1057,6 +1057,7 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 	if typ !in inter_info.types && typ_sym.kind != .interface_ {
 		inter_info.types << typ
 	}
+	return true
 }
 
 // return the actual type of the expression, once the optional is handled
@@ -2037,11 +2038,11 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	if cond_type == 0 {
 		c.error('match 0 cond type', node.pos)
 	}
-	type_sym := c.table.get_type_symbol(cond_type)
-	if type_sym.kind != .sum_type {
+	cond_type_sym := c.table.get_type_symbol(cond_type)
+	if cond_type_sym.kind !in [.sum_type, .interface_] {
 		node.is_sum_type = false
 	}
-	c.match_exprs(mut node, type_sym)
+	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
 	mut ret_type := table.void_type
 	for branch in node.branches {
@@ -2049,12 +2050,17 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			c.expected_type = cond_type
 			typ := c.expr(expr)
 			typ_sym := c.table.get_type_symbol(typ)
-			if !node.is_sum_type && !c.check_types(typ, cond_type) {
-				exp_sym := c.table.get_type_symbol(cond_type)
-				c.error('cannot use `$typ_sym.name` as `$exp_sym.name` in `match`', node.pos)
-			}
-			// TODO:
-			if typ_sym.kind == .sum_type {
+			if node.is_sum_type || node.is_interface {
+				ok := if cond_type_sym.kind == .sum_type {
+					// TODO verify sum type
+					true // c.check_types(typ, cond_type)
+				} else {
+					c.type_implements(typ, cond_type, node.pos)
+				}
+				if !ok {
+					c.error('cannot use `$typ_sym.name` as `$cond_type_sym.name` in `match`',
+						node.pos)
+				}
 			}
 		}
 		c.stmts(branch.stmts)

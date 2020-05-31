@@ -49,9 +49,13 @@ cd v
 make
 ```
 
-That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo]` can be anywhere.
+That's it! Now you have a V executable at `[path to V repo]/v`. 
+`[path to V repo]` can be anywhere.
 
 (On Windows `make` means running `make.bat`, so make sure you use `cmd.exe`.)
+
+After the above, you can try doing: `./v run examples/hello_world.v` on Unix, 
+or `.\v.exe run examples\hello_world.v` on Windows.
 
 V is being constantly updated. To update V, simply run:
 
@@ -71,11 +75,32 @@ Otherwise, follow these instructions:
 
 ### Symlinking
 
-You can create a `/usr/local/bin/v` symlink so that V is globally available:
+NB: it is *highly recommended*, that you put V on your PATH. That saves
+you the effort to type in the full path to your v executable everytime.
+V provides a convenience `v symlink` command to do that more easily.
+
+On Unix systems, it creates a `/usr/local/bin/v` symlink to your
+executable. To do that, run:
 
 ```bash
 sudo ./v symlink
 ```
+
+On Windows, start a new shell with administrative privileges, for 
+example by <kbd>Windows Key</kbd>, then type `cmd.exe`, right click on its menu
+entry, and choose `Run as administrator`. In the new administrative 
+shell, cd to the path, where you have compiled v.exe, then type:
+```bat
+.\v.exe symlink
+```
+That will make v available everywhere, by adding it to your PATH. 
+Please restart your shell/editor after that, so that it can pick 
+the new PATH variable.
+
+NB: there is no need to run `v symlink` more than once - v will 
+continue to be available, even after `v up`, restarts and so on. 
+You only need to run it again, if you decide to move the V repo 
+folder somewhere else.
 
 ### Docker
 

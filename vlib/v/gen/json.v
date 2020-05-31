@@ -22,7 +22,7 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	mut enc := strings.new_builder(100)
 	sym := g.table.get_type_symbol(typ)
 	styp := g.typ(typ)
-	if sym.name in ['int', 'string', 'bool'] {
+	if sym.name in ['int', 'string', 'bool', 'f32'] {
 		return
 	}
 	if sym.kind == .array {
@@ -37,16 +37,20 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	// cJSON_Parse(str) call is added by the compiler
 	// Code gen decoder
 	dec_fn_name := js_dec_name(sym.name)
+
+	// Make sure that this optional type actually exists
+	g.register_optional(typ)
 	dec.writeln('
-//Option ${dec_fn_name}(cJSON* root, $styp* res) {
-Option ${dec_fn_name}(cJSON* root) {
+//Option_$styp ${dec_fn_name}(cJSON* root, $styp* res) {
+Option_$styp ${dec_fn_name}(cJSON* root) {
   $styp res;
   if (!root) {
     const char *error_ptr = cJSON_GetErrorPtr();
     if (error_ptr != NULL)	{
 //      fprintf(stderr, "Error in decode() for $styp error_ptr=: %%s\\n", error_ptr);
 //      printf("\\nbad js=%%s\\n", js.str);
-      return v_error(tos2(error_ptr));
+		Option err = v_error(tos2(error_ptr));
+      return *(Option_$styp *)&err;
     }
   }
 ')
@@ -101,7 +105,9 @@ cJSON* ${enc_fn_name}($styp val) {
 	}
 	// cJSON_delete
 	// p.cgen.fns << '$dec return opt_ok(res); \n}'
-	dec.writeln('return opt_ok(&res, sizeof(res)); \n}')
+	dec.writeln('Option_$styp ret;')
+	dec.writeln('opt_ok2(&res, (OptionBase*)&ret, sizeof(res));')
+	dec.writeln('return ret;\n}')
 	enc.writeln('\treturn o;\n}')
 	g.definitions.writeln(dec.str())
 	g.gowrappers.writeln(enc.str())

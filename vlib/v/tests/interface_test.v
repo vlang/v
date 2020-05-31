@@ -247,3 +247,13 @@ fn new_animal() Animal {
 fn new_animal2() Animal {
 	return new_animal()
 }
+
+/*
+fn animal_match(a Animal) {
+	match a {
+		Dog { println('(dog)') }
+		Cat { println('(cat)') }
+		else {}
+	}
+}
+*/

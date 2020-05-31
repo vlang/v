@@ -4,6 +4,7 @@
 module checker
 
 import v.table
+import v.token
 
 pub fn (c &Checker) check_types(got, expected table.Type) bool {
 	t := c.table
@@ -124,6 +125,18 @@ pub fn (c &Checker) check_types(got, expected table.Type) bool {
 		}
 	}
 	return false
+}
+
+[inline]
+fn (c &Checker) check_shift(left_type, right_type table.Type, left_pos, right_pos token.Position) table.Type {
+	if !left_type.is_int() {
+		c.error('cannot shift type ${c.table.get_type_symbol(right_type).name} into non-integer type ${c.table.get_type_symbol(left_type).name}', left_pos)
+		return table.void_type
+	} else if !right_type.is_int() {
+		c.error('cannot shift non-integer type ${c.table.get_type_symbol(right_type).name} into type ${c.table.get_type_symbol(left_type).name}', right_pos)
+		return table.void_type
+	}
+	return left_type
 }
 
 pub fn (c &Checker) promote(left_type, right_type table.Type) table.Type {
