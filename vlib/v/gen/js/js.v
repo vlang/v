@@ -194,16 +194,16 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		.placeholder {
 			// This should never happen: means checker bug
 			styp = 'any'
-	}
+		}
 		.void {
 			styp = 'void'
-	}
+		}
 		.voidptr {
 			styp = 'any'
 		}
 		.byteptr, .charptr {
 			styp = 'string'
-	}
+		}
 		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .any_int, .any_float, .size_t {
 			// TODO: Should u64 and i64 use BigInt rather than number?
 			styp = 'number'
@@ -261,7 +261,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 			// Until this is fixed, We need to use the type of an enum's members
 			// rather than the enum itself, and this can only be 'number' for now
 			styp = 'number'
-			}
+		}
 		// 'anon_fn_7_7_1' => '(a number, b number) => void'
 		.function {
 			info := sym.info as table.FnType
@@ -269,9 +269,9 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 			for i, arg in info.func.args {
 				res += '$arg.name: ${g.typ(arg.typ)}'
 				if i < info.func.args.len - 1 { res += ', ' }
-		}
+			}
 			styp = res + ') => ' + g.typ(info.func.return_type)
-	}
+		}
 		.interface_ {
 			// TODO: Implement interfaces
 			styp = 'interface'
@@ -297,38 +297,33 @@ fn (mut g JsGen) struct_typ(s string) string {
 	return styp + '["prototype"]'
 }
 
-fn (mut g JsGen) to_js_typ_val(typ string) string {
+fn (mut g JsGen) to_js_typ_val(t table.Type) string {
+	sym := g.table.get_type_symbol(t)
 	mut styp := ''
-	match typ {
-		'number' {
+
+	match sym.kind {
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .any_int, .any_float, .size_t {
 			styp = '0'
 		}
-		'boolean' {
+		.bool {
 			styp = 'false'
 		}
-		'Object' {
-			styp = '{}'
-		}
-		'string' {
+		.string {
 			styp = '""'
 		}
+		.map {
+			styp = 'new Map()'
+		}
+		.array {
+			styp = '[]'
+		}
+		.struct_ {
+			styp = 'new ${g.js_name(sym.name)}({})'
+		}
 		else {
-			if typ.starts_with('Map') {
-				styp = 'new Map()'
-			} else if typ.ends_with('[]') {
-				styp = '[]'
-			} else {
-				styp = '{}'
-			}
+			// TODO
+			styp = 'undefined'
 		}
-	}
-	// ns.export => ns["export"]
-	for i, v in styp.split('.') {
-		if i == 0 {
-			styp = v
-			continue
-		}
-		styp += '["$v"]'
 	}
 	return styp
 }
@@ -1033,7 +1028,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		if field.has_default_expr {
 			g.expr(field.default_expr)
 		} else {
-			g.write('${g.to_js_typ_val(g.typ(field.typ))}')
+			g.write('${g.to_js_typ_val(field.typ)}')
 		}
 		if i < node.fields.len - 1 { g.write(', ') }
 	}
@@ -1053,7 +1048,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	for i, field in node.fields {
 		typ := g.typ(field.typ)
 		g.doc.gen_typ(typ)
-		g.write('$field.name: ${g.to_js_typ_val(typ)}')
+		g.write('$field.name: ${g.to_js_typ_val(field.typ)}')
 		if i < node.fields.len - 1 || fns.len > 0 { g.writeln(',') } else { g.writeln('') }
 	}
 
