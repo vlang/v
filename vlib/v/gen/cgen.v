@@ -317,28 +317,9 @@ fn (mut g Gen) typ(t table.Type) string {
 		// T => int etc
 		return g.typ(g.cur_generic_type)
 	}
-	base := styp
 	if t.flag_is(.optional) {
-		if t.is_ptr() {
-			styp = styp.replace('*', '_ptr')
-		}
-		styp = 'Option_' + styp
 		// Register an optional if it's not registered yet
-		if styp !in g.optionals {
-			g.register_optional(t, base)
-			// println(styp)
-			x := styp // .replace('*', '_ptr')			// handle option ptrs
-			s := g.go_before_stmt(0)
-			g.options.writeln('typedef struct $x {')
-			g.options.writeln(' bool ok;')
-			g.options.writeln(' bool is_none;')
-			g.options.writeln(' string v_error;')
-			g.options.writeln(' int ecode;')
-			g.options.writeln(' byte data[sizeof($base)];')
-			g.options.writeln('} $x;')
-			g.write(s)
-			g.optionals << styp
-		}
+		return g.register_optional(t)
 	}
 	/*
 	if styp.starts_with('C__') {
@@ -357,17 +338,58 @@ fn (g &Gen) base_type(t table.Type) string {
 	return styp
 }
 
-fn (mut g Gen) register_optional(t table.Type, styp string) {
+// TODO this really shouldnt be seperate from typ
+// but I(emily) would rather have this generation 
+// all unified in one place so that it doesnt break
+// if one location changes
+fn (g &Gen) optional_type_name(t table.Type) (string, string) {
+	base := g.base_type(t)
+	mut styp := 'Option_$base'
+	if t.is_ptr() {
+		styp = styp.replace('*', '_ptr')
+	}
+	return styp, base
+}
+
+fn (g &Gen) optional_type_text(styp, base string) string {
+	x := styp // .replace('*', '_ptr')			// handle option ptrs
+	// replace void with something else
+	size := if base == 'void' {
+		'int'
+	} else {
+		base
+	}
+	ret := 'struct $x {
+ bool ok;
+ bool is_none;
+ string v_error;
+ int ecode;
+ byte data[sizeof($size)];
+} '
+	return ret
+}
+
+fn (mut g Gen) register_optional(t table.Type) string {
 	// g.typedefs2.writeln('typedef Option $x;')
-	no_ptr := styp.replace('*', '_ptr')
-	typ := if styp == 'void' { 'void*' } else { styp }
-	g.hotcode_definitions.writeln('typedef struct {
-		$typ  data;
-		string error;
-		int    ecode;
-		bool   ok;
-		bool   is_none;
-	} Option2_$no_ptr;')
+	styp, base := g.optional_type_name(t)
+	if styp !in g.optionals {
+		no_ptr := base.replace('*', '_ptr')
+		typ := if base == 'void' { 'void*' } else { base }
+		g.hotcode_definitions.writeln('typedef struct {
+			$typ  data;
+			string error;
+			int    ecode;
+			bool   ok;
+			bool   is_none;
+		} Option2_$no_ptr;')
+
+		// println(styp)
+		g.typedefs2.writeln('typedef struct $styp $styp;')
+		g.options.write(g.optional_type_text(styp, base))
+		g.options.writeln(';\n')
+		g.optionals << styp
+	}
+	return styp
 }
 
 // cc_type returns the Cleaned Concrete Type name, *without ptr*,
@@ -2242,13 +2264,13 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
 	fn_return_is_multi := sym.kind == .multi_return
 	fn_return_is_optional := g.fn_decl.return_type.flag_is(.optional)
-	// handle none/error for optional
+	// handle promoting none/error/function returning 'Option'
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
-		typ_is_option := g.typ(node.types[0]) == 'Option'
-		if optional_none || typ_is_option {
+		mut is_regular_option := g.typ(node.types[0]) == 'Option'
+		if optional_none || is_regular_option {
 			tmp := g.new_tmp_var()
-			g.write('Option $tmp = ')
+			g.write('/*opt promotion*/ Option $tmp = ')
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			g.write(';')
 
@@ -2343,7 +2365,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 					g.write(', ')
 				}
 			}
-			g.writeln(' }, (Option*)(&$opt_tmp), sizeof($styp));')
+			g.writeln(' }, (OptionBase*)(&$opt_tmp), sizeof($styp));')
 			g.writeln('return $opt_tmp;')
 			return
 		}
@@ -2707,8 +2729,27 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				}
 				if info.fields.len > 0 {
 					for field in info.fields {
-						type_name := g.typ(field.typ)
+						// Some of these structs may want to contain
+						// optionals that may not be defined at this point
+						// if this is the case then we are going to 
+						// hackily insert it here.
+						// TODO revert to x := if y {}, this is a ternery bug
+						mut type_name := ''
+						if field.typ.flag_is(.optional) {
+							// Dont use g.typ() here becuase it will register
+							// optional and we dont want that
+							// TODO keep these all in the same place
+							styp, base := g.optional_type_name(field.typ)
+							g.optionals << styp
+							// Make sure its typedef'd
+							g.typedefs2.writeln('typedef struct $styp $styp;')
+							type_name = '/*inline optional $styp */${g.optional_type_text(styp, base)}'
+						} else {
+							type_name = g.typ(field.typ)
+						}
+
 						field_name := c_name(field.name)
+
 						g.type_definitions.writeln('\t$type_name $field_name;')
 					}
 				} else {
@@ -3197,7 +3238,9 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 				g.writeln('\tv_panic(${cvar_name}.v_error);')
 			}
 		} else {
-			g.writeln('\treturn $cvar_name;')
+			// Now that option types are distinct we need a cast here
+			styp := g.typ(g.fn_decl.return_type)
+			g.writeln('\treturn *($styp *)&$cvar_name;')
 		}
 	}
 	g.write('}')

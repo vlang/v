@@ -213,6 +213,13 @@ mut:
 	opt ?int
 }
 
+struct Thing2 {
+mut:
+	opt ?Thing
+}
+
+
+
 fn test_opt_field() {
 	/*
 	QTODO

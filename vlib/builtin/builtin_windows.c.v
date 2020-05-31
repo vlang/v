@@ -195,7 +195,6 @@ fn add_unhandled_exception_handler() {
 }
 
 fn C.IsDebuggerPresent() bool
-
 fn C.__debugbreak()
 
 fn break_if_debugger_attached() {
