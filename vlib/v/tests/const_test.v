@@ -9,5 +9,5 @@ pub const (
 fn test_const() {
 	assert a == 1
 	assert d == 11
-	assert c == 2
+	assert c == 1
 }
