@@ -102,22 +102,22 @@ jobs:
 ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Test symlink
       run:  ./v symlink && v -o v2 cmd/v
+    - name: Fixed tests
+      run: ./v test-fixed
 #    - name: Test vsh
 #      run:  ./v examples/v_script.vsh
 ##    - name: Test vid
 ##      run: |
 ##        git clone --depth 1 https://github.com/vlang/vid.git
 ##        cd vid && ../v -o vid .
-    - name: Fixed tests
-      run: ./v test-fixed
-    - name: Build V UI examples
-      run: |
-        git clone --depth 1 https://github.com/vlang/ui
-        cd ui
-        mkdir -p ~/.vmodules
-        ln -s $(pwd) ~/.vmodules/ui
-        ../v examples/rectangles.v
-        ../v examples/users.v
+##    - name: Build V UI examples
+##      run: |
+##        git clone --depth 1 https://github.com/vlang/ui
+##        cd ui
+##        mkdir -p ~/.vmodules
+##        ln -s $(pwd) ~/.vmodules/ui
+##        ../v examples/rectangles.v
+##        ../v examples/users.v
 
   ubuntu:
     runs-on: ubuntu-18.04
