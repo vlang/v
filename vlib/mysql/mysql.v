@@ -19,7 +19,7 @@ pub mut:
 
 // connect Connects to a MySQL server
 pub fn (mut conn Connection) connect() ?bool {
-	C.mysql_init(conn.conn)
+	instance := C.mysql_init(conn.conn)
 	conn.conn = C.mysql_real_connect(
 		conn.conn,
 		conn.host.str,
@@ -31,7 +31,7 @@ pub fn (mut conn Connection) connect() ?bool {
 		conn.flag
 	)
 	if isnil(conn.conn) {
-		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
+		return error_with_code(get_error_msg(instance), get_errno(instance))
 	}
 	return true
 }
