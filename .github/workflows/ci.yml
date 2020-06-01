@@ -24,6 +24,17 @@ jobs:
       VFLAGS: -cc tcc
     steps:
       - uses: actions/checkout@v2
+
+      - name: Shutdown Ubuntu MySQL (SUDO)
+        run: sudo service mysql stop
+
+      - uses: mirromutth/mysql-action@v1.1
+        with:
+          mysql version: "7.5"
+          mysql database: "test"
+          mysql user: "test"
+          mysql password: "test1234"
+
       - name: Install dependencies
         run: |
           sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
@@ -46,16 +57,6 @@ jobs:
         run: ./v build-tools
       #    - name: Test v binaries
       #      run: ./v -silent build-vbinaries
-
-      - name: Shutdown Ubuntu MySQL (SUDO)
-        run: sudo service mysql stop
-
-      - uses: mirromutth/mysql-action@v1.1
-        with:
-          mysql version: "7.5"
-          mysql database: "test"
-          mysql user: "test"
-          mysql password: "test1234"
 
   alpine-docker-musl-gcc:
     name: alpine-musl
