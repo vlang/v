@@ -6,7 +6,7 @@ module rand
 // Until there's a portable, JS has a seeded way to produce random numbers
 // and not just Math.random(), use any of the existing implementations
 // as the System's RNG
-type SysRNG SplitMix64RNG
+type SysRNG WyRandRNG
 
 // In the JS version, we simply return the same int as is normally generated.
 [inline]

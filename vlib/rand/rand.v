@@ -32,11 +32,11 @@ const (
 )
 
 pub struct PRNGConfigStruct {
-	seed []u32 = time_seed_array(1)
+	seed []u32 = time_seed_array(2)
 }
 
-pub fn new_default(config PRNGConfigStruct) &SysRNG {
-	rng := &SysRNG{}
+pub fn new_default(config PRNGConfigStruct) &WyRandRNG {
+	rng := &WyRandRNG{}
 	rng.seed(config.seed)
 	return rng
 }
