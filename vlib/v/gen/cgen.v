@@ -897,6 +897,14 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 	g.expr(expr)
 }
 
+// cestring returns a V string, properly escaped for embeddeding in a C string literal.
+fn cestring(s string) string {
+	return s.replace('\\', '\\\\').replace('"', "\'")
+}
+// ctoslit returns a 'tos_lit("$s")' call, where s is properly escaped.
+fn ctoslit(s string) string {
+	return 'tos_lit("' + cestring(s) + '")'
+}
 fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('// assert')
 	g.inside_ternary++
@@ -904,18 +912,15 @@ fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 	g.expr(a.expr)
 	g.write(')')
 	g.decrement_inside_ternary()
-	s_assertion := a.expr.str().replace('"', "\'")
-	mut mod_path := g.file.path
-	$if windows {
-		mod_path = g.file.path.replace('\\', '\\\\')
-	}
 	if g.is_test {
 		g.writeln('{')
 		g.writeln('	g_test_oks++;')
-		g.writeln('	cb_assertion_ok( tos_lit("${mod_path}"), ${a.pos.line_nr+1}, tos_lit("assert ${s_assertion}"), tos_lit("${g.fn_decl.name}()") );')
+		metaname_ok := g.gen_assert_metainfo(a)
+		g.writeln('	cb_assertion_ok(&${metaname_ok});')
 		g.writeln('}else{')
 		g.writeln('	g_test_fails++;')
-		g.writeln('	cb_assertion_failed( tos_lit("${mod_path}"), ${a.pos.line_nr+1}, tos_lit("assert ${s_assertion}"), tos_lit("${g.fn_decl.name}()") );')
+		metaname_fail := g.gen_assert_metainfo(a)
+		g.writeln('	cb_assertion_failed(&${metaname_fail});')
 		g.writeln('	exit(1);')
 		g.writeln('	// TODO')
 		g.writeln('	// Maybe print all vars in a test function if it fails?')
@@ -923,10 +928,57 @@ fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 		return
 	}
 	g.writeln('{}else{')
-	g.writeln('	eprintln( tos_lit("${mod_path}:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+	metaname_panic := g.gen_assert_metainfo(a)
+	g.writeln(' __print_assert_failure(&${metaname_panic});')
 	g.writeln(' v_panic(tos_lit("Assertion failed..."));')
-	g.writeln('	exit(1);')
+	g.writeln(' exit(1);')
 	g.writeln('}')
+}
+
+fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
+	mod_path := cestring(g.file.path)
+	fn_name := g.fn_decl.name
+	line_nr := a.pos.line_nr
+	src := cestring(a.expr.str())
+	metaname := 'v_assert_meta_info_${g.new_tmp_var()}'
+	g.writeln(' VAssertMetaInfo $metaname;')
+	g.writeln(' memset(&$metaname, 0, sizeof(VAssertMetaInfo));')
+	g.writeln(' ${metaname}.fpath   = ${ctoslit(mod_path)};')
+	g.writeln(' ${metaname}.line_nr = ${line_nr};')
+	g.writeln(' ${metaname}.fn_name = ${ctoslit(fn_name)};')
+	g.writeln(' ${metaname}.src     = ${ctoslit(src)};')
+	match a.expr {
+		ast.InfixExpr {
+			g.writeln(' ${metaname}.op = ${ctoslit(it.op.str())};')
+			g.writeln(' ${metaname}.llabel = ${ctoslit(it.left.str())};')
+			g.writeln(' ${metaname}.rlabel = ${ctoslit(it.right.str())};')
+			g.write(' ${metaname}.lvalue = ')
+			g.gen_assert_single_expr(it.left, it.left_type)
+			g.writeln(';')
+			//
+			g.write(' ${metaname}.rvalue = ')
+			g.gen_assert_single_expr(it.right, it.right_type)
+			g.writeln(';')
+		}
+		ast.CallExpr {
+			g.writeln(' ${metaname}.op = tos_lit("call");')
+		}
+		else{}
+	}
+	return metaname
+}
+
+fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
+	unknown_value := '*unknown value*'
+	match e {
+		ast.CallExpr { g.write( ctoslit(unknown_value) ) }
+		ast.CastExpr { g.write( ctoslit(unknown_value) ) }
+		ast.IndexExpr { g.write( ctoslit(unknown_value) ) }
+		ast.PrefixExpr { g.write( ctoslit(unknown_value) ) }
+        ast.MatchExpr {  g.write( ctoslit(unknown_value) ) }
+		else{	g.gen_expr_to_string(e,  t) }
+	}
+	g.write(' /* typeof: ' +typeof(e) + ' type: ' + t.str() + ' */ ')
 }
 
 fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
@@ -2651,7 +2703,14 @@ fn (mut g Gen) write_init_function() {
 		return
 	}
 	fn_vinit_start_pos := g.out.len
-	g.writeln('void _vinit() {')
+	needs_constructor := g.pref.is_shared && g.pref.os != .windows
+	if needs_constructor {
+		g.writeln('__attribute__ ((constructor))')
+		g.writeln('void _vinit() {')
+		g.writeln('static bool once = false; if (once) {return;} once = true;')
+	} else {
+		g.writeln('void _vinit() {')
+	}
 	if g.pref.autofree {
 		// Pre-allocate the string buffer
 		// TODO make it configurable
@@ -3011,67 +3070,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				g.expr(expr)
 			}
 		} else if specs[i] == `s` {
-			sym := g.table.get_type_symbol(node.expr_types[i])
-			sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-			if node.expr_types[i].flag_is(.variadic) {
-				str_fn_name := g.gen_str_for_type(node.expr_types[i])
-				g.write('${str_fn_name}(')
-				g.expr(expr)
-				g.write(')')
-			} else if sym.kind == .enum_ {
-				is_var := match node.exprs[i] {
-					ast.SelectorExpr { true }
-					ast.Ident { true }
-					else { false }
-				}
-				if is_var {
-					str_fn_name := g.gen_str_for_type(node.expr_types[i])
-					g.write('${str_fn_name}(')
-					g.enum_expr(expr)
-					g.write(')')
-				} else {
-					g.write('tos_lit("')
-					g.enum_expr(expr)
-					g.write('")')
-				}
-			} else if sym_has_str_method || sym.kind in [.array, .array_fixed, .map, .struct_] {
-				is_p := node.expr_types[i].is_ptr()
-				val_type := if is_p { node.expr_types[i].deref() } else { node.expr_types[i] }
-				str_fn_name := g.gen_str_for_type(val_type)
-				if is_p && str_method_expects_ptr {
-					g.write('string_add(_SLIT("&"), ${str_fn_name}(  (')
-				}
-				if is_p && !str_method_expects_ptr {
-					g.write('string_add(_SLIT("&"), ${str_fn_name}( *(')
-				}
-				if !is_p && !str_method_expects_ptr {
-					g.write('${str_fn_name}(  ')
-				}
-				if !is_p && str_method_expects_ptr {
-					g.write('${str_fn_name}( &')
-				}
-				g.expr(expr)
-				if sym.kind == .struct_ && !sym_has_str_method {
-					if is_p {
-						g.write('),0))')
-					} else {
-						g.write(',0)')
-					}
-				} else {
-					if is_p {
-						g.write(')))')
-					} else {
-						g.write(')')
-					}
-				}
-			} else if g.typ(node.expr_types[i]).starts_with('Option') {
-				str_fn_name := 'OptionBase_str'
-				g.write('${str_fn_name}(*(OptionBase*)&')
-				g.expr(expr)
-				g.write(')')
-			} else {
-				verror('cannot convert to string')
-			}
+			g.gen_expr_to_string(expr, node.expr_types[i])
 		} else {
 			g.expr(expr)
 		}
@@ -3083,6 +3082,71 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 	}
 	g.write(')')
+}
+
+fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
+	sym := g.table.get_type_symbol(etype)
+	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+	if etype.flag_is(.variadic) {
+		str_fn_name := g.gen_str_for_type(etype)
+		g.write('${str_fn_name}(')
+		g.expr(expr)
+		g.write(')')
+	} else if sym.kind == .enum_ {
+		is_var := match expr {
+			ast.SelectorExpr { true }
+			ast.Ident { true }
+			else { false }
+		}
+		if is_var {
+			str_fn_name := g.gen_str_for_type(etype)
+			g.write('${str_fn_name}(')
+			g.enum_expr(expr)
+			g.write(')')
+		} else {
+			g.write('tos_lit("')
+			g.enum_expr(expr)
+			g.write('")')
+		}
+	} else if sym_has_str_method || sym.kind in [.array, .array_fixed, .map, .struct_] {
+		is_p := etype.is_ptr()
+		val_type := if is_p { etype.deref() } else { etype }
+		str_fn_name := g.gen_str_for_type(val_type)
+		if is_p && str_method_expects_ptr {
+			g.write('string_add(_SLIT("&"), ${str_fn_name}(  (')
+		}
+		if is_p && !str_method_expects_ptr {
+			g.write('string_add(_SLIT("&"), ${str_fn_name}( *(')
+		}
+		if !is_p && !str_method_expects_ptr {
+			g.write('${str_fn_name}(  ')
+		}
+		if !is_p && str_method_expects_ptr {
+			g.write('${str_fn_name}( &')
+		}
+		g.expr(expr)
+		if sym.kind == .struct_ && !sym_has_str_method {
+			if is_p {
+				g.write('),0))')
+			} else {
+				g.write(',0)')
+			}
+		} else {
+			if is_p {
+				g.write(')))')
+			} else {
+				g.write(')')
+			}
+		}
+	} else if g.typ(etype).starts_with('Option') {
+		str_fn_name := 'OptionBase_str'
+		g.write('${str_fn_name}(*(OptionBase*)&')
+		g.expr(expr)
+		g.write(')')
+	} else {
+		return error('cannot convert to string')
+	}
+	return true
 }
 
 // `nums.map(it % 2 == 0)`

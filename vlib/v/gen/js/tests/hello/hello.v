@@ -1,11 +1,8 @@
 module hello
 
-// TODO: Fix const namespacing, uncomment once it works
-/*
 pub const (
 	hello = 'Hello'
 )
-*/
 
 pub struct Aaa {
 pub mut:
@@ -18,11 +15,15 @@ pub fn (mut a Aaa) update(s string) {
 
 struct Bbb {}
 
-pub enum Ccc {}
+pub enum Ccc {
+	a
+	b = 5
+	c
+}
 
 pub fn debugger() string {
 	v := Bbb{}
-	return 'Hello'
+	return hello
 }
 
 pub fn excited() string {
