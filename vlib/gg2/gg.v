@@ -33,6 +33,8 @@ pub:
 	scale         int
 	frame_fn      fn(voidptr)
 	bg_color      gx.Color
+	on_key_down fn(voidptr)
+	event_cb fn(voidptr, voidptr)
 }
 
 pub struct GG {
@@ -82,17 +84,22 @@ fn init_sokol_window(user_data voidptr) {
 	*/
 }
 
+fn eventcb(e &C.sapp_event, b voidptr){
+	println("EVENT")
+}
+
 pub fn new_context(cfg Config) &GG {
 	//C.printf('new_context() %p\n', cfg.user_data)
 	window := C.sapp_desc{
 		user_data: cfg.user_data
 		init_userdata_cb: init_sokol_window
 		frame_userdata_cb: cfg.frame_fn
+		event_userdata_cb: cfg.event_cb //eventcb
 		window_title: cfg.window_title.str
 		html5_canvas_name: cfg.window_title.str
 		width: cfg.width
 		height: cfg.height
-		high_dpi: true
+		//high_dpi: true
 	}
 	//g_font_path = cfg.font_path
 	if cfg.use_ortho {}
@@ -101,7 +108,7 @@ pub fn new_context(cfg Config) &GG {
 		width: cfg.width
 		height: cfg.height
 		window: window
-		clear_pass: gfx.create_clear_pass(0,0,0,0) //f64(cfg.bg_color.r) / 255.0, f64(cfg.bg_color.g) / 255.0, f64(cfg.bg_color.b) / 255.0, 1.0)
+		clear_pass: gfx.create_clear_pass( f64(cfg.bg_color.r) / 255.0, f64(cfg.bg_color.g) / 255.0, f64(cfg.bg_color.b) / 255.0, 1.0)
 		scale: 1 // scale
 		fons:0
 	}

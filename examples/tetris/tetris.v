@@ -7,19 +7,12 @@ module main
 import rand
 import time
 import gx
-import gg
+import gg2 as gg
 import glfw
+import sokol
+import sokol.sapp
 import math
 import freetype
-
-const (
-	k_up = glfw.key_up
-	k_left = glfw.key_left
-	k_right = glfw.key_right
-	k_down = glfw.key_down
-	k_escape = glfw.key_escape
-	k_space = glfw.key_space
-)
 
 const (
 	block_size = 20 // pixels
@@ -141,10 +134,30 @@ struct Game {
 	font_loaded bool
 }
 
-fn main() {
-	glfw.init_glfw()
+fn frame(game &Game) {
+	game.gg.begin()
+	game.draw_scene()
+	game.gg.end()
+}
 
-	gconfig := gg.Cfg {
+fn main() {
+	mut game := &Game{}
+	game.gg = gg.new_context(
+		bg_color: gx.white
+		width: win_width
+		height: win_height
+		use_ortho: true // This is needed for 2D drawing
+		create_window: true
+		window_title: 'V tetris'
+		frame_fn: frame
+		user_data: game
+		//on_key_down: key_down
+		event_cb: on_event
+	)
+		//font_path: os.resource_abs_path('assets/fonts/RobotoMono-Regular.ttf')
+
+/*
+	gconfig := gg.Config{
 			width: win_width
 			height: win_height
 			use_ortho: true // This is needed for 2D drawing
@@ -153,7 +166,7 @@ fn main() {
 			//window_user_ptr: game
 	}
 
-	fconfig := gg.Cfg{
+	fconfig := gg.Config{
 			width: win_width
 			height: win_height
 			use_ortho: true
@@ -166,14 +179,15 @@ fn main() {
 		gg: gg.new_context(gconfig)
 		ft: freetype.new_context(fconfig)
 	}
-	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works
+	*/
+	//game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works
 	game.init_game()
-	game.gg.window.onkeydown(key_down)
+	//game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
-	gg.clear(background_color)
+	game.gg.run() // Run the render loop in the main thread
+	/*
 	game.font_loaded = game.ft != 0
 	for {
-		gg.clear(background_color)
 		game.draw_scene()
 		game.gg.render()
 		if game.gg.window.should_close() {
@@ -181,6 +195,7 @@ fn main() {
 			return
 		}
 	}
+	*/
 }
 
 fn (mut g Game) init_game() {
@@ -393,19 +408,19 @@ fn parse_binary_tetro(t_ int) []Block {
 	return res
 }
 
-// TODO: this exposes the unsafe C interface, clean up
-fn key_down(wnd voidptr, key, code, action, mods int) {
-	if action != 2 && action != 1 {
-		return
+fn on_event(e &sapp.Event, game mut Game) {
+	if e.typ == .key_down {
+		game.key_down(e.key_code)
 	}
-	// Fetch the game object stored in the user pointer
-	mut game := &Game(glfw.get_window_user_pointer(wnd))
+}
+
+fn (game mut Game) key_down(key sapp.KeyCode) {
 	// global keys
 	match key {
-		k_escape {
-			glfw.set_should_close(wnd, true)
+		.escape {
+			exit(0)
 		}
-		k_space {
+		.space {
 			if game.state == .running {
 				game.state = .paused
 			} else if game.state == .paused {
@@ -423,7 +438,7 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	}
 	// keys while game is running
 	match key {
-		k_up {
+		.up {
 			// Rotate the tetro
 			old_rotation_idx := game.rotation_idx
 			game.rotation_idx++
@@ -439,13 +454,13 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 				//game.pos_x = 1
 			}
 		}
-		k_left {
+		.left {
 			game.move_right(-1)
 		}
-		k_right {
+		.right {
 			game.move_right(1)
 		}
-		k_down {
+		.down {
 			game.move_tetro() // drop faster when the player presses <down>
 		}
 		else { }
