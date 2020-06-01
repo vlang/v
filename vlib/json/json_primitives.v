@@ -176,7 +176,9 @@ fn encode_bool(val bool) &C.cJSON {
 }
 
 fn encode_string(val string) &C.cJSON {
-	return C.cJSON_CreateString(val.str)
+	// Make sure the string is 0 terminated
+	s2 := '$val\x0'
+	return C.cJSON_CreateString(s2.str)
 }
 // ///////////////////////
 // user := decode_User(json_parse(js_string_var))
