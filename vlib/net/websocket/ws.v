@@ -418,7 +418,7 @@ pub fn (mut ws Client) read() int {
 	} else if frame.opcode in [.text_frame, .binary_frame] {
 		data_node:
 		l.d('read: recieved text_frame or binary_frame')
-		mut payload := malloc(sizeof(byte) * u32(payload_len) + 1)
+		mut payload := malloc(int(sizeof(byte) * u32(payload_len) + 1))
 		if payload == 0 {
 			l.f('out of memory')
 		}
@@ -438,7 +438,7 @@ pub fn (mut ws Client) read() int {
 						size += f.len
 					}
 				}
-				mut pl := malloc(sizeof(byte) * u32(size))
+				mut pl := malloc(int(sizeof(byte) * u32(size)))
 				if pl == 0 {
 					l.f('out of memory')
 				}

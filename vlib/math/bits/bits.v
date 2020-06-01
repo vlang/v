@@ -208,7 +208,7 @@ pub fn reverse_32(x u32) u32 {
 	mut y := ((x>>u32(1) & (m0 & max_u32)) | ((x & (m0 & max_u32))<<1))
 	y = ((y>>u32(2) & (m1 & max_u32)) | ((y & (m1 & max_u32))<<u32(2)))
 	y = ((y>>u32(4) & (m2 & max_u32)) | ((y & (m2 & max_u32))<<u32(4)))
-	return reverse_bytes_32(y)
+	return reverse_bytes_32(u32(y))
 }
 
 // reverse_64 returns the value of x with its bits in reversed order.
@@ -236,7 +236,7 @@ pub fn reverse_bytes_16(x u16) u16 {
 [inline]
 pub fn reverse_bytes_32(x u32) u32 {
 	y := ((x>>u32(8) & (m3 & max_u32)) | ((x & (m3 & max_u32))<<u32(8)))
-	return (y>>16) | (y<<16)
+	return u32((y>>16) | (y<<16))
 }
 
 // reverse_bytes_64 returns the value of x with its bytes in reversed order.

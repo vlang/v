@@ -84,7 +84,7 @@ pub fn (instance BitField) get_bit(bitnr int) int {
 	if bitnr >= instance.size {
 		return 0
 	}
-	return (instance.field[bitslot(bitnr)] >> (bitnr % slot_size)) & u32(1)
+	return int((instance.field[bitslot(bitnr)] >> (bitnr % slot_size)) & u32(1))
 }
 
 // set_bit sets bit number 'bit_nr' to 1 (count from 0).

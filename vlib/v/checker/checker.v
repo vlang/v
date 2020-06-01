@@ -369,7 +369,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
 				field_type_sym := c.table.get_type_symbol(info_field.typ)
-				if !c.assign_check(expr_type, info_field.typ) {
+				if !c.check_types(expr_type, info_field.typ) {
 					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
@@ -698,7 +698,7 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 		else {}
 	}
 	// Dual sides check (compatibility check)
-	if !c.assign_check(right_type, left_type) {
+	if !c.check_types(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
 		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name`',
@@ -1434,7 +1434,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				c.expected_type = elem_type
 				continue
 			}
-			if !c.check_types(elem_type, typ) {
+			if !c.check_types(typ, elem_type) {
 				elem_type_sym := c.table.get_type_symbol(elem_type)
 				c.error('expected array element with type `$elem_type_sym.name`', array_init.pos)
 			}

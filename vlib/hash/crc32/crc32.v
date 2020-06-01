@@ -58,6 +58,6 @@ pub fn new(poly int) &Crc32 {
 
 // calculate crc32 using ieee
 pub fn sum(b []byte) u32 {
-	c := new(ieee)
+	c := new(int(ieee))
 	return c.sum32(b)
 }
