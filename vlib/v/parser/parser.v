@@ -16,10 +16,10 @@ import runtime
 import time
 
 pub struct Parser {
-	scanner           &scanner.Scanner
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
 mut:
+	scanner           &scanner.Scanner
 	tok               token.Token
 	prev_tok          token.Token
 	peek_tok          token.Token

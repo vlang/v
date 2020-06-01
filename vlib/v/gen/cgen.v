@@ -46,6 +46,10 @@ const (
 )
 
 struct Gen {
+	table                &table.Table
+	pref                 &pref.Preferences
+	module_built         string
+mut:
 	out                  strings.Builder
 	cheaders             strings.Builder
 	includes             strings.Builder // all C #includes required by V modules
@@ -62,10 +66,7 @@ struct Gen {
 	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
 	hotcode_definitions  strings.Builder // -live declarations & functions
 	options              strings.Builder // `Option_xxxx` types
-	table                &table.Table
-	pref                 &pref.Preferences
-	module_built         string
-mut:
+	json_forward_decls   strings.Builder // `Option_xxxx` types
 	file                 ast.File
 	fn_decl              &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name       string
@@ -129,6 +130,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		options: strings.new_builder(100)
+		json_forward_decls: strings.new_builder(100)
 		table: table
 		pref: pref
 		fn_decl: 0
@@ -178,7 +180,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	//
 	g.finish()
 	//
-	b := strings.new_builder(250000)
+	mut b := strings.new_builder(250000)
 	b.writeln(g.hashes())
 	b.writeln(g.comptime_defines.str())
 	b.writeln('\n// V typedefs:')
@@ -193,6 +195,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	b.writeln(g.type_definitions.str())
 	b.writeln('\n// V Option_xxx definitions:')
 	b.writeln(g.options.str())
+	b.writeln('\n// V json forward decls:')
+	b.writeln(g.json_forward_decls.str())
 	b.writeln('\n// V definitions:')
 	b.writeln(g.definitions.str())
 	b.writeln('\n// V profile counters:')
@@ -311,7 +315,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 }
 
 // V type to C type
-fn (mut g Gen) typ(t table.Type) string {
+fn (g &Gen) typ(t table.Type) string {
 	mut styp := g.base_type(t)
 	if styp.len == 1 && t == table.t_type && g.cur_generic_type != 0 {
 		// T => int etc
@@ -339,7 +343,7 @@ fn (g &Gen) base_type(t table.Type) string {
 }
 
 // TODO this really shouldnt be seperate from typ
-// but I(emily) would rather have this generation 
+// but I(emily) would rather have this generation
 // all unified in one place so that it doesnt break
 // if one location changes
 fn (g &Gen) optional_type_name(t table.Type) (string, string) {
@@ -2796,7 +2800,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 					for field in info.fields {
 						// Some of these structs may want to contain
 						// optionals that may not be defined at this point
-						// if this is the case then we are going to 
+						// if this is the case then we are going to
 						// buffer manip out in front of the struct
 						// write the optional in and then continue
 						if field.typ.flag_is(.optional) {

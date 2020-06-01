@@ -13,10 +13,10 @@ import v.depgraph
 pub struct Builder {
 pub:
 	table               &table.Table
-	checker             checker.Checker
 	compiled_dir        string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path         string
 mut:
+	checker             checker.Checker
 	pref                &pref.Preferences
 	parsed_files        []ast.File
 	global_scope        &ast.Scope
@@ -197,7 +197,8 @@ fn module_path(mod string) string {
 
 pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
-	vmod_file_location := vmod.mod_file_cacher.get_by_file(fpath)
+	mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_file(fpath)
 	mod_path := module_path(mod)
 	mut module_lookup_paths := []string{}
 	if vmod_file_location.vmod_file.len != 0 && vmod_file_location.vmod_folder !in b.module_search_paths {

@@ -23,9 +23,9 @@ const (
 
 struct JsGen {
 	table             &table.Table
-	definitions       strings.Builder
 	pref              &pref.Preferences
 mut:
+	definitions       strings.Builder
 	out               strings.Builder
 	namespaces        map[string]strings.Builder
 	namespaces_pub    map[string][]string

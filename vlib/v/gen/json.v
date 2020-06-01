@@ -22,7 +22,7 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	mut enc := strings.new_builder(100)
 	sym := g.table.get_type_symbol(typ)
 	styp := g.typ(typ)
-	if sym.name in ['int', 'string', 'bool', 'f32'] {
+	if is_js_prim(sym.name) || sym.kind == .enum_{
 		return
 	}
 	if sym.kind == .array {
@@ -40,9 +40,10 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 
 	// Make sure that this optional type actually exists
 	g.register_optional(typ)
+	dec_fn_dec := 'Option_$styp ${dec_fn_name}(cJSON* root)'
 	dec.writeln('
 //Option_$styp ${dec_fn_name}(cJSON* root, $styp* res) {
-Option_$styp ${dec_fn_name}(cJSON* root) {
+$dec_fn_dec {
   $styp res;
   if (!root) {
     const char *error_ptr = cJSON_GetErrorPtr();
@@ -54,11 +55,15 @@ Option_$styp ${dec_fn_name}(cJSON* root) {
     }
   }
 ')
+	g.json_forward_decls.writeln('$dec_fn_dec;')
+
 	// Code gen encoder
 	// encode_TYPE funcs receive an object to encode
 	enc_fn_name := js_enc_name(sym.name)
+	enc_fn_dec := 'cJSON* ${enc_fn_name}($styp val)'
+	g.json_forward_decls.writeln('$enc_fn_dec;\n')
 	enc.writeln('
-cJSON* ${enc_fn_name}($styp val) {
+$enc_fn_dec {
 \tcJSON *o = cJSON_CreateObject();')
 	if sym.kind == .array {
 		// Handle arrays
@@ -85,7 +90,6 @@ cJSON* ${enc_fn_name}($styp val) {
 				}
 			}
 			field_type := g.typ(field.typ)
-			enc_name := js_enc_name(field_type)
 			if 'raw' in field.attrs {
 				dec.writeln(' res . ${c_name(field.name)} = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
 			} else {
@@ -95,12 +99,21 @@ cJSON* ${enc_fn_name}($styp val) {
 				dec_name := js_dec_name(field_type)
 				if is_js_prim(field_type) {
 					dec.writeln(' res . ${c_name(field.name)} = $dec_name (js_get(root, "$name"));')
+				} else if g.table.get_type_symbol(field.typ).kind == .enum_ {
+					dec.writeln(' res . ${c_name(field.name)} = json__decode_u64(js_get(root, "$name"));')
 				} else {
 					// dec.writeln(' $dec_name (js_get(root, "$name"), & (res . $field.name));')
 					dec.writeln('  res . ${c_name(field.name)} = *($field_type*) $dec_name (js_get(root,"$name")).data;')
 				}
 			}
-			enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));')
+
+			mut enc_name := js_enc_name(field_type)
+			if g.table.get_type_symbol(field.typ).kind == .enum_ {
+				enc.writeln('\tcJSON_AddItemToObject(o, "$name", json__encode_u64(val.${c_name(field.name)}));')
+				
+			} else {
+				enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));')
+			}
 		}
 	}
 	// cJSON_delete
@@ -125,7 +138,8 @@ fn js_dec_name(typ string) string {
 
 fn is_js_prim(typ string) bool {
 	return typ == 'int' || typ == 'string' || typ == 'bool' || typ == 'f32' || typ == 'f64' ||
-		typ == 'i8' || typ == 'i16' || typ == 'i64' || typ == 'u16' || typ == 'u32' || typ == 'u64'
+		typ == 'i8' || typ == 'i16' || typ == 'i64' || typ == 'u16' || typ == 'u32' || typ == 'u64' ||
+		typ == 'byte'
 }
 
 fn (mut g Gen) decode_array(value_type table.Type) string {

@@ -8,10 +8,10 @@ import v.ast
 import os
 
 struct Doc {
-	out   strings.Builder
 	table &table.Table
 	mod   string
 mut:
+	out   strings.Builder
 	stmts []ast.Stmt // all module statements from all files
 }
 
