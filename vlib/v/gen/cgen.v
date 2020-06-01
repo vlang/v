@@ -66,6 +66,7 @@ mut:
 	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
 	hotcode_definitions  strings.Builder // -live declarations & functions
 	options              strings.Builder // `Option_xxxx` types
+	json_forward_decls   strings.Builder // `Option_xxxx` types
 	file                 ast.File
 	fn_decl              &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name       string
@@ -129,6 +130,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		options: strings.new_builder(100)
+		json_forward_decls: strings.new_builder(100)
 		table: table
 		pref: pref
 		fn_decl: 0
@@ -193,6 +195,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	b.writeln(g.type_definitions.str())
 	b.writeln('\n// V Option_xxx definitions:')
 	b.writeln(g.options.str())
+	b.writeln('\n// V json forward decls:')
+	b.writeln(g.json_forward_decls.str())
 	b.writeln('\n// V definitions:')
 	b.writeln(g.definitions.str())
 	b.writeln('\n// V profile counters:')
