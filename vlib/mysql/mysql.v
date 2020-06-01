@@ -5,34 +5,21 @@ module mysql
 #include <mysql.h>
 
 pub struct Connection {
-	host     string
-	port     u32
+mut:
+	conn     &C.MYSQL = C.mysql_init(0)
+pub mut:
+	host     string		= '127.0.0.1'
+	port     u32		= 3306
 	username string
 	password string
 	dbname   string
 	flag     int
-mut:
-	conn     &C.MYSQL
-}
-
-pub fn new_connection(host, username, password, dbname string) ?Connection {
-	instance := C.mysql_init(0)
-	if isnil(instance) {
-		return error_with_code(get_error_msg(instance), get_errno(instance))
-	}
-	return Connection{ host, 0, username, password, dbname, 0, instance }
 }
 
 pub fn (mut conn Connection) connect() ?bool {
-	mut instance := C.mysql_init(0)
-	if !isnil(conn.conn) {
-		instance = conn.conn
-	}
-	if isnil(instance) {
-		return error_with_code(get_error_msg(instance), get_errno(instance))
-	}
+	init := conn.conn
 	conn.conn = C.mysql_real_connect(
-		instance,
+		init,
 		conn.host.str,
 		conn.username.str,
 		conn.password.str,
@@ -42,7 +29,7 @@ pub fn (mut conn Connection) connect() ?bool {
 		conn.flag
 	)
 	if isnil(conn.conn) {
-		return error_with_code(get_error_msg(instance), get_errno(instance))
+		return error_with_code(get_error_msg(init), get_errno(init))
 	}
 	return true
 }
