@@ -42,11 +42,11 @@ fn create_key_challenge_response(seckey string) string {
 	return b64
 }
 
-fn get_nonce() string {
-	mut nonce := []byte{}
+fn get_nonce(nonce_size int) string {
+	mut nonce := []byte{len: nonce_size, cap: nonce_size}
 	alphanum := '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz'
-	for _ in 0 .. 18 {
-		nonce << alphanum[rand.next(61)]
+	for i in 0 .. nonce_size {
+		nonce[i] = alphanum[rand.next(61)]
 	}
-	return string(byteptr(nonce.data))
+	return tos(nonce.data, nonce.len).clone()
 }

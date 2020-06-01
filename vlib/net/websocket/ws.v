@@ -19,6 +19,7 @@ pub struct Client {
 	// cwebsocket_subprotocol *subprotocol;
 	// cwebsocket_subprotocol *subprotocols[];
 mut:
+	nonce_size int = 18 // you can try 16 too
 	lock       &sync.Mutex = sync.new_mutex()
 	write_lock &sync.Mutex = sync.new_mutex()
 	state      State
@@ -137,7 +138,7 @@ pub fn (mut ws Client) connect() int {
 	ws.state = .connecting
 	ws.lock.unlock()
 	uri := ws.parse_uri()
-	nonce := get_nonce()
+	nonce := get_nonce(ws.nonce_size)
 	seckey := base64.encode(nonce)
 	ai_family := C.AF_INET
 	ai_socktype := C.SOCK_STREAM
