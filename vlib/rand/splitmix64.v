@@ -68,6 +68,8 @@ pub fn (mut rng SplitMix64RNG) u32n(bound u32) u32 {
 // rng.u64n(bound) returns a pseudorandom u64 less than the bound
 [inline]
 pub fn (mut rng SplitMix64RNG) u64n(bound u64) u64 {
+	// See pcg32.v for explanation of comment. This algorithm
+	// existed before the refactoring.
 	if bound == 0 {
 		eprintln('max must be non-zero')
 		exit(1)
