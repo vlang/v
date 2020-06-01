@@ -128,6 +128,18 @@ pub fn (mut rng MT19937RNG) u64() u64 {
 	return x
 }
 
+// rng.int() - return a 32-bit signed (possibly negative) int
+[inline]
+pub fn (mut rng MT19937RNG) int() int {
+	return int(rng.u32())
+}
+
+// rng.i64() - return a 64-bit signed (possibly negative) i64
+[inline]
+pub fn (mut rng MT19937RNG) i64() i64 {
+	return i64(rng.u64())
+}
+
 // rng.int31() - return a 31bit positive pseudorandom integer
 [inline]
 pub fn (mut rng MT19937RNG) int31() int {
@@ -140,7 +152,7 @@ pub fn (mut rng MT19937RNG) int63() i64 {
 	return i64(rng.u64() >> 1)
 }
 
-// rng.u32n() - return a 32bit u32 in [0, max)
+// rng.u32n(max) - return a 32bit u32 in [0, max)
 [inline]
 pub fn (mut rng MT19937RNG) u32n(max u32) u32 {
 	if max == 0 {
@@ -168,7 +180,7 @@ pub fn (mut rng MT19937RNG) u32n(max u32) u32 {
 	return u32(0)
 }
 
-// rng.u64n() - return a 64bit u64 in [0, max)
+// rng.u64n(max) - return a 64bit u64 in [0, max)
 [inline]
 pub fn (mut rng MT19937RNG) u64n(max u64) u64 {
 	if max == 0 {
@@ -215,6 +227,46 @@ pub fn (mut rng MT19937RNG) u64_in_range(min, max u64) u64 {
 	return min + rng.u64n(max - min)
 }
 
+// rng.intn(max) - return a 32bit positive int in [0, max)
+[inline]
+pub fn (mut rng MT19937RNG) intn(max int) int {
+	if max <= 0 {
+		eprintln('max has to be positive.')
+		exit(1)
+	}
+	return int(rng.u32n(max))
+}
+
+// rng.i64n(max) - return a 64bit positive i64 in [0, max)
+[inline]
+pub fn (mut rng MT19937RNG) i64n(max i64) i64 {
+	if max <= 0 {
+		eprintln('max has to be positive.')
+		exit(1)
+	}
+	return i64(rng.u64n(max))
+}
+
+// rng.int_in_range(min, max) - return a 32bit positive int in [0, max)
+[inline]
+pub fn (mut rng MT19937RNG) int_in_range(min, max int) int {
+	if max <= min {
+		eprintln('max must be greater than min.')
+		exit(1)
+	}
+	return min + rng.intn(max - min)
+}
+
+// rng.i64_in_range(min, max) - return a 64bit positive i64 in [0, max)
+[inline]
+pub fn (mut rng MT19937RNG) i64_in_range(min, max i64) i64 {
+	if max <= min {
+		eprintln('max must be greater than min.')
+		exit(1)
+	}
+	return min + rng.i64n(max - min)
+}
+
 // rng.f32() - return a 32bit real in [0, 1)
 [inline]
 pub fn (mut rng MT19937RNG) f32() f32 {
@@ -227,7 +279,7 @@ pub fn (mut rng MT19937RNG) f64() f64 {
 	return f64(rng.u64() >> 11) * inv_f64_limit
 }
 
-// rng.f32n() - return 64bit real in [0, max)
+// rng.f32n(max) - return 64bit real in [0, max)
 [inline]
 pub fn (mut rng MT19937RNG) f32n(max f32) f32 {
 	if max <= 0 {
@@ -237,7 +289,7 @@ pub fn (mut rng MT19937RNG) f32n(max f32) f32 {
 	return rng.f32() * max
 }
 
-// rng.f64n() - return 64bit real in [0, max)
+// rng.f64n(max) - return 64bit real in [0, max)
 [inline]
 pub fn (mut rng MT19937RNG) f64n(max f64) f64 {
 	if max <= 0 {
