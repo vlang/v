@@ -70,15 +70,6 @@ fn C.sigaction(int, voidptr, int)
 fn C.open(charptr, int, int) int
 
 
-fn C.close(int) int
-
-
-fn C.read(int, voidptr, u32) int
-
-
-fn C.write(int, voidptr, u32) int
-
-
 fn C.fdopen(int, string) voidptr
 
 
