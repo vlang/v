@@ -8,7 +8,6 @@ import rand
 import time
 import gx
 import gg2 as gg
-import glfw
 import sokol
 import sokol.sapp
 import math
@@ -236,7 +235,7 @@ fn (mut g Game) run() {
 			g.move_tetro()
 			g.delete_completed_lines()
 		}
-		glfw.post_empty_event() // force window redraw
+		//glfw.post_empty_event() // force window redraw
 		time.sleep_ms(timer_period)
 	}
 }
@@ -414,7 +413,7 @@ fn on_event(e &sapp.Event, game mut Game) {
 	}
 }
 
-fn (game mut Game) key_down(key sapp.KeyCode) {
+fn (mut game Game) key_down(key sapp.KeyCode) {
 	// global keys
 	match key {
 		.escape {
