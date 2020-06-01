@@ -163,14 +163,14 @@ pub fn (gg &GG) render() {
 	glfw.wait_events()
 }
 
-pub fn (ctx &GG) draw_triangle(x1, y1, x2, y2, x3, y3 f32, c gx.Color) {
+pub fn (ctx &GG) draw_triangle(x1, y1, x2, y2, x3, y3 f64, c gx.Color) {
 	// println('draw_triangle $x1,$y1 $x2,$y2 $x3,$y3')
 	ctx.shader.use()
 	ctx.shader.set_color('color', c)
 	vertices := [
-	x1, y1, 0,
-	x2, y2, 0,
-	x3, y3, 0,
+	f32(x1), f32(y1), 0,
+	f32(x2), f32(y2), 0,
+	f32(x3), f32(y3), 0,
 	] !
 	// bind the Vertex Array Object first, then bind and set vertex buffer(s),
 	// and then configure vertex attributes(s).
@@ -188,14 +188,14 @@ pub fn (ctx &GG) draw_triangle(x1, y1, x2, y2, x3, y3 f32, c gx.Color) {
 	gl.draw_arrays(C.GL_TRIANGLES, 0, 3)
 }
 
-pub fn (ctx &GG) draw_triangle_tex(x1, y1, x2, y2, x3, y3 f32, c gx.Color) {
+pub fn (ctx &GG) draw_triangle_tex(x1, y1, x2, y2, x3, y3 f64, c gx.Color) {
 	ctx.shader.use()
 	ctx.shader.set_color('color', c)
 	ctx.shader.set_int('has_texture', 1)
 	vertices := [
-	x1, y1, 0, 0, 0, 0, 1, 1,
-	x2, y2, 0, 0, 0, 0, 1, 0,
-	x3, y3, 0, 0, 0, 0, 0, 0,
+	f32(x1), f32(y1), 0, 0, 0, 0, 1, 1,
+	f32(x2), f32(y2), 0, 0, 0, 0, 1, 0,
+	f32(x3), f32(y3), 0, 0, 0, 0, 0, 0,
 	] !
 	gl.bind_vao(ctx.vao)
 	gl.set_vbo(ctx.vbo, vertices, C.GL_STATIC_DRAW)
@@ -213,7 +213,7 @@ pub fn (ctx &GG) draw_triangle_tex(x1, y1, x2, y2, x3, y3 f32, c gx.Color) {
 	gl.draw_elements(C.GL_TRIANGLES, 6, C.GL_UNSIGNED_INT, 0)
 }
 
-pub fn (ctx &GG) draw_rect(x, y, w, h f32, c gx.Color) {
+pub fn (ctx &GG) draw_rect(x, y, w, h f64, c gx.Color) {
 	// println('gg.draw_rect($x,$y,$w,$h)')
 	// wrong order
 	// // ctx.draw_triangle(x, y, x + w, y, x + w, y + h, c)
@@ -257,7 +257,7 @@ fn (mut ctx GG) init_rect_vao() {
 	gl.set_ebo(ebo, indices, C.GL_STATIC_DRAW)
 }
 */
-pub fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
+pub fn (ctx &GG) draw_rect2(x, y, w, h f64, c gx.Color) {
 	C.glDeleteBuffers(1, &ctx.vao)
 	C.glDeleteBuffers(1, &ctx.vbo)
 	ctx.shader.use()
@@ -269,10 +269,10 @@ pub fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
 	// y += h
 	}
 	vertices := [
-	x + w, y, 0,
-	x + w, y + h, 0,
-	x, y + h, 0,
-	x, y, 0,
+	f32(x + w), f32(y), 0,
+	f32(x + w), f32(y + h), 0,
+	f32(x), f32(y + h), 0,
+	f32(x), f32(y), 0,
 	] !
 	indices := [
 	0, 1, 3,// first triangle
@@ -413,14 +413,14 @@ pub fn create_image_from_memory(buf byteptr) u32 {
 	return texture
 }
 
-pub fn (ctx &GG) draw_line(x, y, x2, y2 f32, color gx.Color) {
+pub fn (ctx &GG) draw_line(x, y, x2, y2 f64, color gx.Color) {
 	ctx.use_color_shader(color)
-	vertices := [x, y, x2, y2] !
+	vertices := [f32(x), f32(y), f32(x2), f32(y2)] !
 	ctx.bind_vertices(vertices)
 	gl.draw_arrays(C.GL_LINES, 0, 2)
 }
 
-pub fn (ctx &GG) draw_arc(x, y, r, start_angle, end_angle f32, segments int, color gx.Color) {
+pub fn (ctx &GG) draw_arc(x, y, r, start_angle, end_angle f64, segments int, color gx.Color) {
 	ctx.use_color_shader(color)
 	vertices := arc_vertices(x, y, r, start_angle, end_angle, segments)
 	ctx.bind_vertices(vertices)
@@ -428,29 +428,29 @@ pub fn (ctx &GG) draw_arc(x, y, r, start_angle, end_angle f32, segments int, col
 	unsafe { vertices.free() }
 }
 
-pub fn (ctx &GG) draw_filled_arc(x, y, r, start_angle, end_angle f32, segments int, color gx.Color) {
+pub fn (ctx &GG) draw_filled_arc(x, y, r, start_angle, end_angle f64, segments int, color gx.Color) {
 	ctx.use_color_shader(color)
 
 
 	mut vertices := []f32{}
-	vertices << [x, y] !
+	vertices << [f32(x), f32(y)] !
 	vertices << arc_vertices(x, y, r, start_angle, end_angle, segments)
 	ctx.bind_vertices(vertices)
 	gl.draw_arrays(C.GL_TRIANGLE_FAN, 0, segments + 2)
 	unsafe { vertices.free() }
 }
 
-pub fn (ctx &GG) draw_circle(x, y, r f32, color gx.Color) {
+pub fn (ctx &GG) draw_circle(x, y, r f64, color gx.Color) {
 	ctx.draw_filled_arc(x, y, r, 0, 360, 24 + int(r / 2), color)
 }
 
-pub fn (ctx &GG) draw_rounded_rect(x, y, w, h, r f32, color gx.Color) {
+pub fn (ctx &GG) draw_rounded_rect(x, y, w, h, r f64, color gx.Color) {
 	ctx.use_color_shader(color)
 	mut vertices := []f32{}
 	segments := 6 + int(r / 8)
 
 	// Create a rounded rectangle using a triangle fan mesh.
-	vertices << [x + (w/2.0), y + (h/2.0)] !
+	vertices << [f32(x + w / 2), f32(y + h / 2)] !
 	vertices << arc_vertices(x + w - r, y + h - r, r, 0, 90, segments)
 	vertices << arc_vertices(x + r, y + h - r, r, 90, 180, segments)
 	vertices << arc_vertices(x + r, y + r, r, 180, 270, segments)
@@ -463,7 +463,7 @@ pub fn (ctx &GG) draw_rounded_rect(x, y, w, h, r f32, color gx.Color) {
 	unsafe { vertices.free() }
 }
 
-pub fn (ctx &GG) draw_empty_rounded_rect(x, y, w, h, r f32, color gx.Color) {
+pub fn (ctx &GG) draw_empty_rounded_rect(x, y, w, h, r f64, color gx.Color) {
 	ctx.use_color_shader(color)
 	mut vertices := []f32{}
 	segments := 6 + int(r / 8)
@@ -479,7 +479,7 @@ pub fn (ctx &GG) draw_empty_rounded_rect(x, y, w, h, r f32, color gx.Color) {
 }
 
 /*
-pub fn (c &GG) draw_gray_line(x, y, x2, y2 f32) {
+pub fn (c &GG) draw_gray_line(x, y, x2, y2 f64) {
 	c.draw_line(x, y, x2, y2, gx.gray)
 }
 
@@ -491,8 +491,8 @@ pub fn (c &GG) draw_vertical(x, y, height int) {
 
 //ctx.gg.draw_line(center + prev_x, center+prev_y, center + x*10.0, center+y)
 
-// fn (ctx &GG) draw_image(x, y, w, h f32, img stbi.Image) {
-pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
+// fn (ctx &GG) draw_image(x, y, w, h f64, img stbi.Image) {
+pub fn (ctx &GG) draw_image(x, y, w, h f64, tex_id u32) {
 
 	// NB: HACK to ensure same state ... TODO: remove next line
 	ctx.draw_empty_rect(0,0,0,0, gx.white)
@@ -510,10 +510,10 @@ pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
 	// |  |
 	// 3--2
 	vertices := [
-	x + w, y, 0, 1, 0, 0, 1, 1,
-	x + w, y + h, 0, 0, 1, 0, 1, 0,
-	x, y + h, 0, 0, 0, 1, 0, 0,
-	x, y, 0, 1, 1, 0, 0, 1,
+	f32(x + w), f32(y), 0, 1, 0, 0, 1, 1,
+	f32(x + w), f32(y + h), 0, 0, 1, 0, 1, 0,
+	f32(x), f32(y + h), 0, 0, 0, 1, 0, 0,
+	f32(x), f32(y), 0, 1, 1, 0, 0, 1,
 	] !
 	indices := [
 	0, 1, 3,// first triangle
@@ -541,13 +541,13 @@ pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
 	C.    glBindTexture(C.GL_TEXTURE_2D, last_texture)
 }
 
-pub fn (c &GG) draw_empty_rect(x, y, w, h f32, color gx.Color) {
+pub fn (c &GG) draw_empty_rect(x, y, w, h f64, color gx.Color) {
 	c.draw_line(x, y, x + w, y, color)
 	c.draw_line(x, y, x, y + h, color)
 	c.draw_line(x, y + h, x + w, y + h, color)
 	c.draw_line(x + w, y, x + w, y + h, color)
 }
 
-pub fn scissor(x, y, w, h f32) {
+pub fn scissor(x, y, w, h f64) {
 	C.glScissor(x, y, w, h)
 }

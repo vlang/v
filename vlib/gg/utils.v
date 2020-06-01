@@ -4,19 +4,19 @@ import gl
 import gx
 import math
 
-fn arc_vertices(x, y, r, start_angle, end_angle f32, segments int) []f32 {
+fn arc_vertices(x, y, r, start_angle, end_angle f64, segments int) []f32 {
 	mut vertices := []f32{}
-	start_rads := start_angle * 0.0174533 // deg -> rad approx
-	end_rads := end_angle * 0.0174533
-	increment := (end_rads - start_rads) / f32(segments)
-	vertices << [x + f32(math.cos(start_rads)) * r, y + f32(math.sin(start_rads)) * r] !
+	start_rads := start_angle * 0.017453292519943295769 // deg -> rad approx
+	end_rads := end_angle * 0.017453292519943295769
+	increment := (end_rads - start_rads) / segments
+	vertices << [f32(x + math.cos(start_rads) * r), f32(y + math.sin(start_rads) * r)] !
 	mut i := 1
 	for i < segments {
-		theta := f32(i) * increment + start_rads
-		vertices << [x + f32(math.cos(theta)) * r, y + f32(math.sin(theta)) * r] !
+		theta := i * increment + start_rads
+		vertices << [f32(x + math.cos(theta) * r), f32(y + math.sin(theta) * r)] !
 		i++
 	}
-	vertices << [x + f32(math.cos(end_rads)) * r, y + f32(math.sin(end_rads)) * r] !
+	vertices << [f32(x + math.cos(end_rads) * r), f32(y + math.sin(end_rads) * r)] !
 	return vertices
 }
 
