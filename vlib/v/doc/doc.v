@@ -138,8 +138,8 @@ pub fn (nodes []DocNode) find_children_of(parent_type string) []DocNode {
 
 fn get_parent_mod(dir string) ?string {
 	base_dir := os.base_dir(dir)
-	if os.file_name(base_dir) == 'encoding' && 'vlib' in base_dir {
-		return 'encoding'
+	if os.file_name(base_dir) in ['encoding', 'v'] && 'vlib' in base_dir {
+		return os.file_name(base_dir)
 	}
 	prefs := &pref.Preferences{}
 	files := os.ls(base_dir) or { []string{} }
