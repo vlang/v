@@ -62,11 +62,7 @@ fn C.send() int
 
 fn C.recv() int
 
-fn C.read() int
-
 fn C.shutdown() int
-
-fn C.close() int
 
 fn C.ntohs() int
 

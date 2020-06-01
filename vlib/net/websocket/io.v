@@ -1,7 +1,5 @@
 module websocket
 
-fn C.write() int
-
 fn (mut ws Client) write_to_server(buf voidptr, len int) int {
 	mut bytes_written := 0
 	ws.write_lock.lock()
