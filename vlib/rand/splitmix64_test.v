@@ -197,7 +197,7 @@ fn test_splitmix64_int63() {
 	}
 }
 
-fn test_sys_rng_intn() {
+fn test_splimix64_intn() {
 	max := 2525642
 	for seed in seeds {
 		rng := rand.SplitMix64RNG{}
@@ -210,7 +210,7 @@ fn test_sys_rng_intn() {
 	}
 }
 
-fn test_sys_rng_i64n() {
+fn test_splimix64_i64n() {
 	max := i64(3246727724653636)
 	for seed in seeds {
 		rng := rand.SplitMix64RNG{}
@@ -223,7 +223,7 @@ fn test_sys_rng_i64n() {
 	}
 }
 
-fn test_sys_rng_int_in_range() {
+fn test_splimix64_int_in_range() {
 	min := -4252
 	max := 230549862
 	for seed in seeds {
@@ -237,7 +237,7 @@ fn test_sys_rng_int_in_range() {
 	}
 }
 
-fn test_sys_rng_i64_in_range() {
+fn test_splimix64_i64_in_range() {
 	min := i64(-24095)
 	max := i64(324058)
 	for seed in seeds {
