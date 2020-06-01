@@ -14,7 +14,7 @@ mut:
 
 // TODO: Remove in Phase 2 of reorganizing Random
 pub fn new_pcg32(init_state, init_seq u64) PCG32RNG {
-	rng := PCG32RNG{}
+	mut rng := PCG32RNG{}
 	rng.seed([u32(init_state), u32(init_state >> 32), u32(init_seq), u32(init_seq >> 32)])
 	return rng
 }
@@ -104,7 +104,7 @@ pub fn (mut rng PCG32RNG) u32_in_range(min, max u64) u64 {
 		eprintln('max must be greater than min')
 		exit(1)
 	}
-	return min + rng.u32n(max - min)
+	return min + rng.u32n(u32(max - min))
 }
 
 // rn.u64_in_range(min, max) - return a pseudorandom 64 bit unsigned u64 in [min, max)
@@ -148,7 +148,7 @@ pub fn (mut rng PCG32RNG) intn(max int) int {
 		eprintln('max has to be positive.')
 		exit(1)
 	}
-	return int(rng.u32n(max))
+	return int(rng.u32n(u32(max)))
 }
 
 // rng.i64n(max) - return a 64bit positive i64 in [0, max)
@@ -158,7 +158,7 @@ pub fn (mut rng PCG32RNG) i64n(max i64) i64 {
 		eprintln('max has to be positive.')
 		exit(1)
 	}
-	return i64(rng.u64n(max))
+	return i64(rng.u64n(u64(max)))
 }
 
 // rng.int_in_range(min, max) - return a 32bit positive int in [0, max)
