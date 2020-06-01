@@ -3,6 +3,7 @@ module js
 import v.ast
 
 struct JsDoc {
+mut:
 	gen        &JsGen
 }
 

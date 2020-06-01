@@ -621,7 +621,7 @@ pub fn is_writable_folder(folder string) ?bool {
 		return error('`folder` is not a folder')
 	}
 	tmp_perm_check := os.join_path(folder, 'tmp_perm_check')
-	f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
+	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
 		return error('cannot write to folder `$folder`: $err')
 	}
 	f.close()
