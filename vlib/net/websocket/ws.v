@@ -19,7 +19,6 @@ pub struct Client {
 	// cwebsocket_subprotocol *subprotocol;
 	// cwebsocket_subprotocol *subprotocols[];
 mut:
-	nonce_size int = 18 // you can try 16 too
 	lock       &sync.Mutex = sync.new_mutex()
 	write_lock &sync.Mutex = sync.new_mutex()
 	state      State
@@ -31,6 +30,7 @@ mut:
 pub mut:
 	uri        string
 	subscriber &eventbus.Subscriber
+	nonce_size int = 18 // you can try 16 too
 }
 
 struct Fragment {

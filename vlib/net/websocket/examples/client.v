@@ -31,6 +31,7 @@ fn main() {
 	}
 */
 	mut ws := websocket.new('ws://localhost:9001/getCaseCount')
+	// ws.nonce_size = 16 // try this, if it does not work with your server
 	// defer { }
 	ws.subscriber.subscribe('on_open', on_open)
 	ws.subscriber.subscribe('on_message', on_message)
