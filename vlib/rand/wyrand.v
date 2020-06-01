@@ -3,28 +3,37 @@
 // that can be found in the LICENSE file.
 module rand
 
-// Ported from http://xoshiro.di.unimi.it/splitmix64.c
-pub struct SplitMix64RNG {
+import math.bits
+import hash.wyhash
+
+// Redefinition of some constants that we will need for pseudorandom number generation
+const (
+	wyp0 = u64(0xa0761d6478bd642f)
+	wyp1 = u64(0xe7037ed1a0b428db)
+)
+
+// RNG based on the WyHash hashing algorithm
+pub struct WyRandRNG {
 mut:
 	state     u64 = time_seed_64()
 	has_extra bool = false
 	extra     u32
 }
 
-// rng.seed(seed_data) sets the seed of the accepting SplitMix64RNG to the given data
-// in little-endian format (i.e. lower 32 bits are in [0] and higher 32 bits in [1]).
-pub fn (mut rng SplitMix64RNG) seed(seed_data []u32) {
+// seed() - Set the seed, needs only two u32s in little endian format as [lower, higher]
+pub fn (mut rng WyRandRNG) seed(seed_data []u32) {
 	if seed_data.len != 2 {
-		eprintln('SplitMix64RNG needs 2 32-bit unsigned integers as the seed.')
+		eprintln('WyRandRNG needs 2 32-bit unsigned integers as the seed.')
 		exit(1)
 	}
 	rng.state = seed_data[0] | (u64(seed_data[1]) << 32)
 	rng.has_extra = false
 }
 
+
 // rng.u32() updates the PRNG state and returns the next pseudorandom u32
 [inline]
-pub fn (mut rng SplitMix64RNG) u32() u32 {
+pub fn (mut rng WyRandRNG) u32() u32 {
 	if rng.has_extra {
 		rng.has_extra = false
 		return rng.extra
@@ -39,46 +48,66 @@ pub fn (mut rng SplitMix64RNG) u32() u32 {
 
 // rng.u64() updates the PRNG state and returns the next pseudorandom u64
 [inline]
-pub fn (mut rng SplitMix64RNG) u64() u64 {
-	rng.state += (0x9e3779b97f4a7c15)
-	mut z := rng.state
-	z = (z ^ ((z >> u64(30)))) * (0xbf58476d1ce4e5b9)
-	z = (z ^ ((z >> u64(27)))) * (0x94d049bb133111eb)
-	return z ^ (z >> (31))
+pub fn (mut rng WyRandRNG) u64() u64 {
+	unsafe {
+		mut seed1 := rng.state
+		seed1 += wyp0
+		rng.state = seed1
+		return wyhash.wymum(seed1 ^ wyp1, seed1)
+	}
+	return 0
 }
 
-// rng.u32n(bound) returns a pseudorandom u32 less than the bound
+// rng.u32n(max) returns a pseudorandom u32 less than the max
 [inline]
-pub fn (mut rng SplitMix64RNG) u32n(bound u32) u32 {
-	// This function is kept similar to the u64 version
-	if bound == 0 {
-		eprintln('max must be non-zero')
+pub fn (mut rng WyRandRNG) u32n(max u32) u32 {
+	if max == 0 {
+		eprintln('max must be positive integer')
 		exit(1)
 	}
-	threshold := -bound % bound
-	for {
-		r := rng.u32()
-		if r >= threshold {
-			return r % bound
+	// Check SysRNG in system_rng.c.v for explanation
+	bit_len := bits.len_32(max)
+	if bit_len == 32 {
+		for {
+			value := rng.u32()
+			if value < max {
+				return value
+			}
+		}
+	} else {
+		mask := (u32(1) << (bit_len + 1)) - 1
+		for {
+			value := rng.u32() & mask
+			if value < max {
+				return value
+			}
 		}
 	}
 	return u32(0)
 }
 
-// rng.u64n(bound) returns a pseudorandom u64 less than the bound
+// rng.u64n(max) returns a pseudorandom u64 less than the max
 [inline]
-pub fn (mut rng SplitMix64RNG) u64n(bound u64) u64 {
-	// See pcg32.v for explanation of comment. This algorithm
-	// existed before the refactoring.
-	if bound == 0 {
-		eprintln('max must be non-zero')
+pub fn (mut rng WyRandRNG) u64n(max u64) u64 {
+	if max == 0 {
+		eprintln('max must be positive integer')
 		exit(1)
 	}
-	threshold := -bound % bound
-	for {
-		r := rng.u64()
-		if r >= threshold {
-			return r % bound
+	bit_len := bits.len_64(max)
+	if bit_len == 64 {
+		for {
+			value := rng.u64()
+			if value < max {
+				return value
+			}
+		}
+	} else {
+		mask := (u64(1) << (bit_len + 1)) - 1
+		for {
+			value := rng.u64() & mask
+			if value < max {
+				return value
+			}
 		}
 	}
 	return u64(0)
@@ -86,7 +115,7 @@ pub fn (mut rng SplitMix64RNG) u64n(bound u64) u64 {
 
 // rng.u32n(min, max) returns a pseudorandom u32 value that is guaranteed to be in [min, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) u32_in_range(min, max u32) u32 {
+pub fn (mut rng WyRandRNG) u32_in_range(min, max u32) u32 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -96,7 +125,7 @@ pub fn (mut rng SplitMix64RNG) u32_in_range(min, max u32) u32 {
 
 // rng.u64n(min, max) returns a pseudorandom u64 value that is guaranteed to be in [min, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) u64_in_range(min, max u64) u64 {
+pub fn (mut rng WyRandRNG) u64_in_range(min, max u64) u64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -106,31 +135,31 @@ pub fn (mut rng SplitMix64RNG) u64_in_range(min, max u64) u64 {
 
 // rng.int() returns a pseudorandom 32-bit int (which may be negative)
 [inline]
-pub fn (mut rng SplitMix64RNG) int() int {
+pub fn (mut rng WyRandRNG) int() int {
 	return int(rng.u32())
 }
 
 // rng.i64() returns a pseudorandom 64-bit i64 (which may be negative)
 [inline]
-pub fn (mut rng SplitMix64RNG) i64() i64 {
+pub fn (mut rng WyRandRNG) i64() i64 {
 	return i64(rng.u64())
 }
 
 // rng.int31() returns a pseudorandom 31-bit int which is non-negative
 [inline]
-pub fn (mut rng SplitMix64RNG) int31() int {
+pub fn (mut rng WyRandRNG) int31() int {
 	return int(rng.u32() & u31_mask) // Set the 32nd bit to 0.
 }
 
 // rng.int63() returns a pseudorandom 63-bit int which is non-negative
 [inline]
-pub fn (mut rng SplitMix64RNG) int63() i64 {
+pub fn (mut rng WyRandRNG) int63() i64 {
 	return i64(rng.u64() & u63_mask) // Set the 64th bit to 0.
 }
 
 // rng.intn(max) returns a pseudorandom int that lies in [0, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) intn(max int) int {
+pub fn (mut rng WyRandRNG) intn(max int) int {
 	if max <= 0 {
 		eprintln('max has to be positive.')
 		exit(1)
@@ -140,7 +169,7 @@ pub fn (mut rng SplitMix64RNG) intn(max int) int {
 
 // rng.i64n(max) returns a pseudorandom int that lies in [0, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) i64n(max i64) i64 {
+pub fn (mut rng WyRandRNG) i64n(max i64) i64 {
 	if max <= 0 {
 		eprintln('max has to be positive.')
 		exit(1)
@@ -150,7 +179,7 @@ pub fn (mut rng SplitMix64RNG) i64n(max i64) i64 {
 
 // rng.int_in_range(min, max) returns a pseudorandom int that lies in [min, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) int_in_range(min, max int) int {
+pub fn (mut rng WyRandRNG) int_in_range(min, max int) int {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -161,7 +190,7 @@ pub fn (mut rng SplitMix64RNG) int_in_range(min, max int) int {
 
 // rng.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) i64_in_range(min, max i64) i64 {
+pub fn (mut rng WyRandRNG) i64_in_range(min, max i64) i64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -171,19 +200,19 @@ pub fn (mut rng SplitMix64RNG) i64_in_range(min, max i64) i64 {
 
 // rng.f32() returns a pseudorandom f32 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
 [inline]
-pub fn (mut rng SplitMix64RNG) f32() f32 {
+pub fn (mut rng WyRandRNG) f32() f32 {
 	return f32(rng.u32()) / max_u32_as_f32
 }
 
 // rng.f64() returns a pseudorandom f64 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
 [inline]
-pub fn (mut rng SplitMix64RNG) f64() f64 {
+pub fn (mut rng WyRandRNG) f64() f64 {
 	return f64(rng.u64()) / max_u64_as_f64
 }
 
 // rng.f32n() returns a pseudorandom f32 value in [0, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) f32n(max f32) f32 {
+pub fn (mut rng WyRandRNG) f32n(max f32) f32 {
 	if max <= 0 {
 		eprintln('max has to be positive.')
 		exit(1)
@@ -193,7 +222,7 @@ pub fn (mut rng SplitMix64RNG) f32n(max f32) f32 {
 
 // rng.f64n() returns a pseudorandom f64 value in [0, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) f64n(max f64) f64 {
+pub fn (mut rng WyRandRNG) f64n(max f64) f64 {
 	if max <= 0 {
 		eprintln('max has to be positive.')
 		exit(1)
@@ -203,7 +232,7 @@ pub fn (mut rng SplitMix64RNG) f64n(max f64) f64 {
 
 // rng.f32_in_range(min, max) returns a pseudorandom f32 that lies in [min, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) f32_in_range(min, max f32) f32 {
+pub fn (mut rng WyRandRNG) f32_in_range(min, max f32) f32 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -213,7 +242,7 @@ pub fn (mut rng SplitMix64RNG) f32_in_range(min, max f32) f32 {
 
 // rng.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) f64_in_range(min, max f64) f64 {
+pub fn (mut rng WyRandRNG) f64_in_range(min, max f64) f64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)

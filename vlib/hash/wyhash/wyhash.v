@@ -92,7 +92,7 @@ fn wyrotr(v u64, k u32) u64 {
 }
 
 [inline]
-fn wymum(a, b u64) u64 {
+pub fn wymum(a, b u64) u64 {
 	/*
 	mut r := u128(a)
 	r = r*b
