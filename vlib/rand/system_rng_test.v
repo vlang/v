@@ -208,7 +208,7 @@ fn test_sys_rng_i64n() {
 
 fn test_sys_rng_int_in_range() {
 	min := -4252
-	max := 230549862
+	max := 23054962
 	for seed in seeds {
 		seed_data := [seed]
 		rng := rand.SysRNG{}
