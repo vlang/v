@@ -108,7 +108,7 @@ fn test_musl_uniformity_f64() {
 	for seed in seeds {
 		mut rng := rand.MuslRNG{}
 		rng.seed(seed)
-		check_uniformity_f64(rng)
+		check_uniformity_f64(mut rng)
 	}
 }
 

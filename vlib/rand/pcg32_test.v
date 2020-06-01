@@ -143,7 +143,7 @@ fn test_pcg32_u32_in_range() {
 		mut rng := rand.PCG32RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(u64(min), max)
+			value := rng.u32_in_range(u64(min), u64(max))
 			assert value >= min
 			assert value < max
 		}

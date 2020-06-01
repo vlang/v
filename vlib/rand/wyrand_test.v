@@ -145,7 +145,7 @@ fn test_wyrand_u32_in_range() {
 		mut rng := rand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(u32(min), max)
+			value := rng.u32_in_range(u32(min), u32(max))
 			assert value >= min
 			assert value < max
 		}
