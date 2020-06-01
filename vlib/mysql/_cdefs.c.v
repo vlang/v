@@ -33,7 +33,9 @@ fn C.mysql_change_user(mysql &C.MYSQL, user byteptr, password byteptr, db bytept
 fn C.mysql_affected_rows(mysql &C.MYSQL) u64
 fn C.mysql_options(mysql &C.MYSQL, option int, arg voidptr) int
 fn C.mysql_get_option(mysql &C.MYSQL, option int, arg voidptr) int
+fn C.mysql_list_tables(mysql &C.MYSQL, wild byteptr) &C.MYSQL_RES
 fn C.mysql_num_fields(res &C.MYSQL_RES) int
+fn C.mysql_num_rows(res &C.MYSQL_RES) u64
 fn C.mysql_autocommit(mysql MYSQL, mode bool)
 fn C.mysql_refresh(mysql MYSQL, options u32) int
 fn C.mysql_reset_connection(mysql MYSQL) int

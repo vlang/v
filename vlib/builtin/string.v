@@ -846,16 +846,6 @@ fn (ar []string) contains(val string) bool {
 	return false
 }
 
-// TODO generic
-fn (ar []int) contains(val int) bool {
-	for s in ar {
-		if s == val {
-			return true
-		}
-	}
-	return false
-}
-
 /*
 pub fn (a []string) to_c() voidptr {
 	mut res := malloc(sizeof(byteptr) * a.len)
