@@ -197,6 +197,60 @@ fn test_splitmix64_int63() {
 	}
 }
 
+fn test_sys_rng_intn() {
+	max := 2525642
+	for seed in seeds {
+		rng := rand.SplitMix64RNG{}
+		rng.seed(seed)
+		for _ in 0 .. range_limit {
+			value := rng.intn(max)
+			assert value >= 0
+			assert value < max
+		}
+	}
+}
+
+fn test_sys_rng_i64n() {
+	max := i64(3246727724653636)
+	for seed in seeds {
+		rng := rand.SplitMix64RNG{}
+		rng.seed(seed)
+		for _ in 0 .. range_limit {
+			value := rng.i64n(max)
+			assert value >= 0
+			assert value < max
+		}
+	}
+}
+
+fn test_sys_rng_int_in_range() {
+	min := -4252
+	max := 230549862
+	for seed in seeds {
+		rng := rand.SplitMix64RNG{}
+		rng.seed(seed)
+		for _ in 0 .. range_limit {
+			value := rng.int_in_range(min, max)
+			assert value >= min
+			assert value < max
+		}
+	}
+}
+
+fn test_sys_rng_i64_in_range() {
+	min := i64(-24095)
+	max := i64(324058)
+	for seed in seeds {
+		rng := rand.SplitMix64RNG{}
+		rng.seed(seed)
+		for _ in 0 .. range_limit {
+			value := rng.i64_in_range(min, max)
+			assert value >= min
+			assert value < max
+		}
+	}
+}
+
 fn test_splitmix64_f32() {
 	for seed in seeds {
 		mut rng := rand.SplitMix64RNG{}
