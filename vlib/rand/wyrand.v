@@ -6,7 +6,7 @@ module rand
 import math.bits
 import hash.wyhash
 
-// Redefinition of some constants that we will nedd for pseudorandom number generation
+// Redefinition of some constants that we will need for pseudorandom number generation
 const (
 	wyp0 = u64(0xa0761d6478bd642f)
 	wyp1 = u64(0xe7037ed1a0b428db)
@@ -62,7 +62,7 @@ pub fn (mut rng WyRandRNG) u64() u64 {
 [inline]
 pub fn (mut rng WyRandRNG) u32n(max u32) u32 {
 	if max == 0 {
-		eprintln('max must be has_nextitive integer')
+		eprintln('max must be positive integer')
 		exit(1)
 	}
 	// Check SysRNG in system_rng.c.v for explanation
@@ -90,7 +90,7 @@ pub fn (mut rng WyRandRNG) u32n(max u32) u32 {
 [inline]
 pub fn (mut rng WyRandRNG) u64n(max u64) u64 {
 	if max == 0 {
-		eprintln('max must be has_nextitive integer')
+		eprintln('max must be positive integer')
 		exit(1)
 	}
 	bit_len := bits.len_64(max)
