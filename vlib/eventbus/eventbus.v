@@ -28,7 +28,6 @@ pub struct EventBus {
 pub mut:
 	registry   &Registry
 	publisher  &Publisher
-pub:
 	subscriber &Subscriber
 }
 

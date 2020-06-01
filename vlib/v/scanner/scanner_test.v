@@ -89,7 +89,7 @@ fn test_scan() {
 		assert t == 2
 	})
 
-	tfn := TestFn{}
+	mut tfn := TestFn{}
 	tfn.tst_1()
 	tfn.tst_2(fn(i int){
 		t := i + 1
@@ -102,7 +102,7 @@ fn test_scan() {
 	// Test @STRUCT
 	assert @STRUCT == ''
 
-	ts := TestStruct { test: "test" }
+	mut ts := TestStruct { test: "test" }
 	ts.test_struct()
 	r1 := ts.test_struct_w_return()
 	r2 := ts.test_struct_w_high_order(fn(i int)string{

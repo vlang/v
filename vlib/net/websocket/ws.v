@@ -15,12 +15,12 @@ pub struct Client {
 	retry      int
 	eb         &eventbus.EventBus
 	is_ssl     bool
-	lock       &sync.Mutex = sync.new_mutex()
-	write_lock &sync.Mutex = sync.new_mutex()
 	// subprotocol_len int
 	// cwebsocket_subprotocol *subprotocol;
 	// cwebsocket_subprotocol *subprotocols[];
 mut:
+	lock       &sync.Mutex = sync.new_mutex()
+	write_lock &sync.Mutex = sync.new_mutex()
 	state      State
 	socket     net.Socket
 	flags      []Flag

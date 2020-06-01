@@ -16,10 +16,10 @@ const (
 
 pub struct Fmt {
 pub:
-	out               strings.Builder
-	out_imports       strings.Builder
 	table             &table.Table
 pub mut:
+	out_imports       strings.Builder
+	out               strings.Builder
 	indent            int
 	empty_line        bool
 	line_len          int

@@ -4,7 +4,7 @@ import time
 // time than you have specified. To avoid false positives from CI test
 // failures, some of the asserts will be run only if you pass `-d stopwatch`
 fn test_stopwatch_works_as_intended() {
-	sw := time.new_stopwatch({})
+	mut sw := time.new_stopwatch({})
 	// sample code that you want to measure:
 	println('Hello world')
 	time.sleep_ms(1)
@@ -15,7 +15,7 @@ fn test_stopwatch_works_as_intended() {
 
 fn test_stopwatch_time_between_pause_and_start_should_be_skipped_in_elapsed() {
 	println('Testing pause function')
-	sw := time.new_stopwatch({})
+	mut sw := time.new_stopwatch({})
 	time.sleep_ms(10) // A
 	eprintln('Elapsed after 10ms nap: ${sw.elapsed().milliseconds()}ms')
 	assert sw.elapsed().milliseconds() >= 10
