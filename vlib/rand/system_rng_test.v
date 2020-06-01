@@ -91,7 +91,7 @@ fn test_sys_rng_uniformity_u64() {
 		mut rng := rand.SysRNG{}
 		rng.seed(seed_data)
 		for range in ranges {
-			check_uniformity_u64(rng, range)
+			check_uniformity_u64(mut rng, u64(range))
 		}
 	}
 }
@@ -127,7 +127,7 @@ fn test_sys_rng_u32n() {
 		mut rng := rand.SysRNG{}
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.u32n(max)
+			value := rng.u32n(u32(max))
 			assert value >= 0
 			assert value < max
 		}
@@ -156,7 +156,7 @@ fn test_sys_rng_u32_in_range() {
 		mut rng := rand.SysRNG{}
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(min, max)
+			value := rng.u32_in_range(u32(min), max)
 			assert value >= min
 			assert value < max
 		}

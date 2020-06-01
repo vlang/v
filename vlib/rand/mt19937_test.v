@@ -94,7 +94,7 @@ fn test_mt19937_uniformity_u64() {
 		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for range in ranges {
-			check_uniformity_u64(mut rng, range)
+			check_uniformity_u64(mut rng, u64(range))
 		}
 	}
 }
@@ -155,7 +155,7 @@ fn test_mt19937_u32_in_range() {
 		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(u32(min), max)
+			value := rng.u32_in_range(u32(min), u32(max))
 			assert value >= min
 			assert value < max
 		}

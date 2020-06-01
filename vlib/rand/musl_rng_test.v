@@ -84,12 +84,12 @@ fn test_musl_uniformity_u64() {
 		mut rng := rand.MuslRNG{}
 		rng.seed(seed)
 		for range in ranges {
-			check_uniformity_u64(mut rng, range)
+			check_uniformity_u64(mut rng, u64(range))
 		}
 	}
 }
 
-fn check_uniformity_f64(rng rand.MuslRNG) {
+fn check_uniformity_f64(mut rng rand.MuslRNG) {
 	expected_mean := 0.5
 	mut variance := 0.0
 	for _ in 0 .. sample_size {
@@ -118,7 +118,7 @@ fn test_musl_u32n() {
 		mut rng := rand.MuslRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32n(max)
+			value := rng.u32n(u32(max))
 			assert value >= 0
 			assert value < max
 		}
@@ -145,7 +145,7 @@ fn test_musl_u32_in_range() {
 		mut rng := rand.MuslRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(min, max)
+			value := rng.u32_in_range(u64(min), u64(max))
 			assert value >= min
 			assert value < max
 		}

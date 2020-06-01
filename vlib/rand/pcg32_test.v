@@ -82,7 +82,7 @@ fn test_pcg32_uniformity_u64() {
 		mut rng := rand.PCG32RNG{}
 		rng.seed(seed)
 		for range in ranges {
-			check_uniformity_u64(mut rng, range)
+			check_uniformity_u64(mut rng, u64(range))
 		}
 	}
 }
@@ -116,7 +116,7 @@ fn test_pcg32_u32n() {
 		mut rng := rand.PCG32RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32n(max)
+			value := rng.u32n(u32(max))
 			assert value >= 0
 			assert value < max
 		}
@@ -143,7 +143,7 @@ fn test_pcg32_u32_in_range() {
 		mut rng := rand.PCG32RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(min, max)
+			value := rng.u32_in_range(u64(min), max)
 			assert value >= min
 			assert value < max
 		}

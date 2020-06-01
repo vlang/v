@@ -84,7 +84,7 @@ fn test_splitmix64_uniformity_u64() {
 		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for range in ranges {
-			check_uniformity_u64(mut rng, range)
+			check_uniformity_u64(mut rng, u64(range))
 		}
 	}
 }
@@ -118,7 +118,7 @@ fn test_splitmix64_u32n() {
 		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32n(max)
+			value := rng.u32n(u32(max))
 			assert value >= 0
 			assert value < max
 		}
@@ -145,7 +145,7 @@ fn test_splitmix64_u32_in_range() {
 		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(min, max)
+			value := rng.u32_in_range(u32(min), max)
 			assert value >= min
 			assert value < max
 		}
