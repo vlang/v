@@ -73,10 +73,10 @@ fn C.open(charptr, int, int) int
 fn C.close(int) int
 
 
-fn C.read(int, voidptr, u32) u32
+fn C.read(int, voidptr, u32) int
 
 
-fn C.write(int, voidptr, u32) u32
+fn C.write(int, voidptr, u32) int
 
 
 fn C.fdopen(int, string) voidptr
@@ -231,15 +231,15 @@ pub fn cp(old, new string) ?bool {
 	} $else {
 		fp_from := C.open(old.str, C.O_RDONLY)
 		if fp_from < 0 { // Check if file opened
-			return error_with_code('failed to open $old', int(fp_from))
+			return error_with_code('cp: failed to open $old', int(fp_from))
 		}
 		fp_to := C.open(new.str, C.O_WRONLY | C.O_CREAT | C.O_TRUNC)
 		if fp_to < 0 { // Check if file opened (permissions problems ...)
 			C.close(fp_from)
-			return error_with_code('failed to write to $new', int(fp_to))
+			return error_with_code('cp: failed to write to $new', int(fp_to))
 		}
 		mut buf := [1024]byte
-		mut count := u32(0)
+		mut count := 0
 		for {
 			// FIXME: use sizeof, bug: 'os__buf' undeclared
 			//count = C.read(fp_from, buf, sizeof(buf))
@@ -247,7 +247,9 @@ pub fn cp(old, new string) ?bool {
 			if count == 0 {
 				break
 			}
-			C.write(fp_to, buf, count)
+			if C.write(fp_to, buf, count) < 0 {
+				return error_with_code('cp: failed to write to $new', int(-1))
+			}
 		}
 		from_attr := C.stat{}
 		C.stat(old.str, &from_attr)
