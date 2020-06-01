@@ -141,7 +141,7 @@ pub fn (conn Connection) close() {
 
 // info Returns information about the most recently executed query
 pub fn (conn Connection) info() string {
-	return string(C.mysql_info(conn.conn))
+	return resolve_nil_str(C.mysql_info(conn.conn))
 }
 
 // get_host_info Returns a string describing the connection
