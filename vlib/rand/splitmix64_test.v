@@ -63,7 +63,7 @@ fn test_splitmix64_variability() {
 	}
 }
 
-fn check_uniformity_u64(rng rand.SplitMix64RNG, range u64) {
+fn check_uniformity_u64(mut rng rand.SplitMix64RNG, range u64) {
 	range_f64 := f64(range)
 	expected_mean := range_f64 / 2.0
 	mut variance := 0.0
@@ -84,12 +84,12 @@ fn test_splitmix64_uniformity_u64() {
 		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for range in ranges {
-			check_uniformity_u64(rng, range)
+			check_uniformity_u64(mut rng, range)
 		}
 	}
 }
 
-fn check_uniformity_f64(rng rand.SplitMix64RNG) {
+fn check_uniformity_f64(mut rng rand.SplitMix64RNG) {
 	expected_mean := 0.5
 	mut variance := 0.0
 	for _ in 0 .. sample_size {
@@ -108,7 +108,7 @@ fn test_splitmix64_uniformity_f64() {
 	for seed in seeds {
 		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
-		check_uniformity_f64(rng)
+		check_uniformity_f64(mut rng)
 	}
 }
 
@@ -200,7 +200,7 @@ fn test_splitmix64_int63() {
 fn test_splimix64_intn() {
 	max := 2525642
 	for seed in seeds {
-		rng := rand.SplitMix64RNG{}
+		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.intn(max)
@@ -213,7 +213,7 @@ fn test_splimix64_intn() {
 fn test_splimix64_i64n() {
 	max := i64(3246727724653636)
 	for seed in seeds {
-		rng := rand.SplitMix64RNG{}
+		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.i64n(max)
@@ -227,7 +227,7 @@ fn test_splimix64_int_in_range() {
 	min := -4252
 	max := 230549862
 	for seed in seeds {
-		rng := rand.SplitMix64RNG{}
+		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.int_in_range(min, max)
@@ -241,7 +241,7 @@ fn test_splimix64_i64_in_range() {
 	min := i64(-24095)
 	max := i64(324058)
 	for seed in seeds {
-		rng := rand.SplitMix64RNG{}
+		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.i64_in_range(min, max)
