@@ -80,6 +80,22 @@ pub fn (conn Connection) autocommit(mode bool) {
 	C.mysql_autocommit(conn.conn, mode)
 }
 
+// tables Returns list of tables that match the `wildcard` parameter.
+// If empty string is passed, will return all tables
+pub fn (conn Connection) tables(wildcard string) ?[]string {
+	cres := C.mysql_list_tables(conn.conn, wildcard.str)
+	if isnil(cres) {
+		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
+	}
+	res :=  Result{cres}
+	mut tables := []string{}
+	for row in res.rows() {
+		tables << row.vals[0]
+	}
+	res.free()
+	return tables
+}
+
 // escape_string Creates a legal SQL string for use in an SQL statement
 pub fn (conn Connection) escape_string(s string) string {
     len := C.strlen(s.str)
