@@ -85,6 +85,10 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 	return f.str()
 }
 
+pub fn (x &InfixExpr) str() string {
+	return '${x.left.str()} $x.op.str() ${x.right.str()}'
+}
+
 // string representaiton of expr
 pub fn (x Expr) str() string {
 	match x {
