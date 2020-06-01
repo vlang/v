@@ -27,6 +27,12 @@ pub fn rand_r(seed &int) int {
 	return ns & 0x7fffffff
 }
 
+pub fn new_default(config PRNGConfigStruct) &WyRandRNG {
+	rng := &WyRandRNG{}
+	rng.seed(config.seed)
+	return rng
+}
+
 // rand_f32 return a random f32 between 0 and max
 [deprecated]
 pub fn rand_f32(max f32) f32 {
