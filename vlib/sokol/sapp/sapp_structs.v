@@ -36,6 +36,27 @@ pub:
     gl_force_gles2 bool                /* if true, setup GLES2/WebGL even if GLES3/WebGL2 is available */
 }
 
+pub struct Event {
+pub:
+    frame_count u64
+    typ EventType
+    key_code KeyCode
+    char_code u32
+    key_repeat bool
+    modifiers u32
+    mouse_button MouseButton
+    mouse_x f32
+    mouse_y f32
+    scroll_x f32
+    scroll_y f32
+    num_touches int
+    touches [8]C.sapp_touchpoint
+    window_width int
+    window_height int
+    framebuffer_width int
+    framebuffer_height int
+}
+
 pub struct C.sapp_event {
 pub:
     frame_count u64

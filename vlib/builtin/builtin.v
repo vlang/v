@@ -220,3 +220,25 @@ fn __as_cast(obj voidptr, obj_type, expected_type int) voidptr {
 	}
 	return obj
 }
+
+// VAssertMetaInfo is used during assertions. An instance of it
+// is filled in by compile time generated code, when an assertion fails.
+struct VAssertMetaInfo {
+pub:
+	fpath   string // the source file path of the assertion
+	line_nr int    // the line number of the assertion
+	fn_name string // the function name in which the assertion is
+	src     string // the actual source line of the assertion
+	op      string // the operation of the assertion, i.e. '==', '<', 'call', etc ...
+	llabel  string // the left side of the infix expressions as source
+	rlabel  string // the right side of the infix expressions as source
+	lvalue  string // the stringified *actual value* of the left side of a failed assertion
+	rvalue  string // the stringified *actual value* of the right side of a failed assertion
+}
+fn __print_assert_failure(i &VAssertMetaInfo) {
+	eprintln('${i.fpath}:${i.line_nr+1}: FAIL: fn ${i.fn_name}: assert ${i.src}')
+	if i.op != 'call' {
+		eprintln('   left value: ${i.llabel} = ${i.lvalue}')
+		eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
+	}
+}

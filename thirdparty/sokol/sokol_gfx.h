@@ -3266,7 +3266,7 @@ _SOKOL_PRIVATE bool _sg_is_compressed_pixel_format(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_ETC2_RGB8A1:
         case SG_PIXELFORMAT_ETC2_RGBA8:
         case SG_PIXELFORMAT_ETC2_RG11:
-        case SG_PIXELFORMAT_ETC2_RG11SN:        
+        case SG_PIXELFORMAT_ETC2_RG11SN:
             return true;
         default:
             return false;
@@ -3373,7 +3373,7 @@ _SOKOL_PRIVATE int _sg_row_pitch(sg_pixel_format fmt, int width) {
         case SG_PIXELFORMAT_BC7_RGBA:
         case SG_PIXELFORMAT_ETC2_RGBA8:
         case SG_PIXELFORMAT_ETC2_RG11:
-        case SG_PIXELFORMAT_ETC2_RG11SN:        
+        case SG_PIXELFORMAT_ETC2_RG11SN:
             pitch = ((width + 3) / 4) * 16;
             pitch = pitch < 16 ? 16 : pitch;
             break;
@@ -3417,7 +3417,7 @@ _SOKOL_PRIVATE int _sg_surface_pitch(sg_pixel_format fmt, int width, int height)
         case SG_PIXELFORMAT_ETC2_RGB8A1:
         case SG_PIXELFORMAT_ETC2_RGBA8:
         case SG_PIXELFORMAT_ETC2_RG11:
-        case SG_PIXELFORMAT_ETC2_RG11SN:        
+        case SG_PIXELFORMAT_ETC2_RG11SN:
         case SG_PIXELFORMAT_BC2_RGBA:
         case SG_PIXELFORMAT_BC3_RGBA:
         case SG_PIXELFORMAT_BC5_RG:
@@ -8841,7 +8841,7 @@ _SOKOL_PRIVATE id<MTLLibrary> _sg_mtl_library_from_bytecode(const uint8_t* ptr, 
 }
 
 _SOKOL_PRIVATE sg_resource_state _sg_create_shader(_sg_shader_t* shd, const sg_shader_desc* desc) {
-	puts("CREATE SHAER");
+	puts("sokol: create Metal shader");
     SOKOL_ASSERT(shd && desc);
 
     /* uniform block sizes and image types */
