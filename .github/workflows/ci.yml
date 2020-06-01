@@ -30,7 +30,6 @@ jobs:
 
       - uses: mirromutth/mysql-action@v1.1
         with:
-          mysql version: "7.5"
           mysql database: "test"
           mysql user: "test"
           mysql password: "test1234"
