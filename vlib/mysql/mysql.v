@@ -19,7 +19,7 @@ pub mut:
 
 // connect Connects to a MySQL server
 pub fn (mut conn Connection) connect() ?bool {
-	init := conn.conn
+	init := C.mysql_init(conn.conn)
 	conn.conn = C.mysql_real_connect(
 		init,
 		conn.host.str,
@@ -149,7 +149,7 @@ pub fn (conn Connection) ping() ?bool {
 }
 
 // close Closes a previously opened database connection
-pub fn (conn Connection) close() {
+pub fn (conn &Connection) close() {
 	C.mysql_close(conn.conn)
 }
 
