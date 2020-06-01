@@ -15,7 +15,8 @@ const (
 )
 
 fn (mut p Parser)resolve_vroot(flag string) string {
-	vmod_file_location := vmod.mod_file_cacher.get_by_folder(p.file_name_dir)
+	mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_folder(p.file_name_dir)
 	if vmod_file_location.vmod_file.len == 0 {
 		// There was no actual v.mod file found.
 		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in ${p.file_name_dir},' +

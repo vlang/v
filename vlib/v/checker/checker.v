@@ -583,10 +583,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 					c.error('`$it.name` is immutable, declare it with `mut` to make it mutable',
 						it.pos)
 				}
-			} else if it.name in c.const_names {
-				if it.name .contains('mod_file_cacher') {
-					return
-				}
+			} else if it.name in c.const_names {          
 				c.error('cannot modify constant `$it.name`', it.pos)
 			}
 		}
