@@ -187,10 +187,34 @@ fn (cfg DocConfig) gen_html(idx int) string {
 				<svg fill="currentColor" width="13%" viewBox="0 0 20 20"><path d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
 			</p><ul>')
 	if cfg.is_multi && cfg.docs.len > 1 {
-		for doc in cfg.docs {
+		mut submod_prefix := ''
+		for i, doc in cfg.docs {
+			if i-1 >= 0 && doc.head.name.starts_with(submod_prefix + '.') { 
+				continue
+			}
+			names := doc.head.name.split('.')
+			submod_prefix = if names.len > 1 { names[0] } else { doc.head.name }
 			class_css := if doc.head.name == dcs.head.name { 'class="font-bold" ' } else { '' }
-			href_name := if doc.head.name == 'README' { 'index' } else { doc.head.name }
-			hw.write('<li><a ${class_css}href="./${href_name}.html">${doc.head.name}</a>')
+			href_name := if doc.head.name == 'README' { 
+				'./index.html' 
+			} else if submod_prefix !in cfg.docs.map(it.head.name) {
+				'#'
+			} else { 
+				'./' + doc.head.name + '.html' 
+			}
+			submodules := cfg.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
+			hw.write('<li><a ${class_css}href="$href_name">${submod_prefix}</a>')
+			for j, cdoc in submodules {
+				if j == 0 {
+					hw.write('<ul>')
+				}
+				submod_name := cdoc.head.name.all_after(submod_prefix + '.')
+				hw.write('<li><a ${class_css}href="./${cdoc.head.name}.html">${submod_name}</a></li>')
+				if j == submodules.len-1 {
+					hw.write('</ul>')
+				}
+			}
+			hw.write('</li>')
 		}
 	} else {
 		hw.writeln(toc.str())
@@ -409,7 +433,7 @@ fn get_modules_list(path string) []string {
 	files := os.walk_ext(path, 'v')
 	mut dirs := []string{}
 	for file in files {
-		if 'test' in file || 'bare' in file || 'uiold' in file || 'vweb' in file { continue }
+		if 'test' in file || 'js' in file || 'x64' in file || 'bare' in file || 'uiold' in file || 'vweb' in file { continue }
 		dirname := os.base_dir(file)
 		if dirname in dirs { continue }
 		dirs << dirname

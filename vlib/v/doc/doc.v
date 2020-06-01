@@ -1,16 +1,16 @@
 module doc
 
+import os
+import strings
+import time
 import v.ast
 import v.fmt
 import v.parser
-import v.scanner
 import v.pref
+import v.scanner
 import v.table
 import v.token
 import v.util
-import strings
-import os
-import time
 
 pub struct Doc {
 pub mut:
@@ -136,6 +136,38 @@ pub fn (nodes []DocNode) find_children_of(parent_type string) []DocNode {
 	return children
 }
 
+fn get_parent_mod(dir string) ?string {
+	base_dir := os.base_dir(dir)
+	if os.file_name(base_dir) == 'encoding' && 'vlib' in base_dir {
+		return 'encoding'
+	}
+	prefs := &pref.Preferences{}
+	files := os.ls(base_dir) or { []string{} }
+	v_files := prefs.should_compile_filtered_files(base_dir, files)
+	if v_files.len == 0 {
+		parent_mod := get_parent_mod(base_dir) or { '' }
+		if parent_mod.len > 0 {
+			return parent_mod + '.' + os.file_name(base_dir)
+		}
+		return error('No V files found.')
+	}
+	file_ast := parser.parse_file(
+		v_files[0],
+		table.new_table(),
+		.skip_comments,
+		prefs,
+		&ast.Scope{parent: 0}
+	)
+	if file_ast.mod.name == 'main' {
+		return ''
+	}
+	parent_mod := get_parent_mod(base_dir) or { '' }
+	if parent_mod.len > 0 {
+		return parent_mod + '.' + file_ast.mod.name
+	}
+	return file_ast.mod.name
+}
+
 pub fn (mut d Doc) generate() ?bool {
 	// get all files
 	base_path := if os.is_dir(d.input_path) { d.input_path } else { os.real_path(os.base_dir(d.input_path)) }
@@ -145,7 +177,6 @@ pub fn (mut d Doc) generate() ?bool {
 	if v_files.len == 0 {
 		return error('vdoc: No valid V files were found.')
 	}
-
 	// parse files
 	mut file_asts := []ast.File{}
 	// TODO: remove later for vlib
@@ -154,7 +185,6 @@ pub fn (mut d Doc) generate() ?bool {
 	} else { 
 		scanner.CommentsMode.skip_comments 
 	}
-
 	for file in v_files {
 		file_ast := parser.parse_file(
 			file,
@@ -168,10 +198,15 @@ pub fn (mut d Doc) generate() ?bool {
 	}
 
 	mut module_name := ''
+	mut parent_mod_name := ''
 
 	for i, file_ast in file_asts {
 		if i == 0 {
+			parent_mod_name = get_parent_mod(base_path) or { '' }
 			module_name = file_ast.mod.name
+			if module_name != 'main' && parent_mod_name.len > 0 {
+				module_name = parent_mod_name + '.' + module_name
+			}
 			d.head = DocNode{
 				name: module_name,
 				content: 'module $module_name',
