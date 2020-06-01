@@ -27,6 +27,10 @@ pub fn rand_r(seed &int) int {
 	return ns & 0x7fffffff
 }
 
+pub struct PRNGConfigStruct {
+	seed []u32 = time_seed_array(2)
+}
+
 pub fn new_default(config PRNGConfigStruct) &WyRandRNG {
 	rng := &WyRandRNG{}
 	rng.seed(config.seed)
