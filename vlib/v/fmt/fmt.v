@@ -439,8 +439,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	if node.is_pub {
 		f.write('pub ')
 	}
+	f.write('struct ')
+	f.write_language_prefix(node.language)
 	name := node.name.after('.')
-	f.writeln('struct $name {')
+	f.writeln('$name {')
 	mut max := 0
 	for field in node.fields {
 		if field.name.len > max {
