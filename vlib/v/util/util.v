@@ -300,7 +300,7 @@ and the existing module `${modulename}` may still work.')
 	if is_verbose {
 		eprintln('check_module_is_installed: cloning from $murl ...')
 	}
-	cloning_res := os.exec('git clone $murl ~/.vmodules/$modulename') or {
+	cloning_res := os.exec('git clone $murl $mpath') or {
 		return error('git is not installed, error: $err')
 	}
 	if cloning_res.exit_code != 0 {
