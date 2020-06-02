@@ -7,7 +7,7 @@ const (
 )
 
 fn main() {
-	rand.seed(time.now().unix)
+	rand.seed(int(time.now().unix))
 	rand.next(gen_max) // skip the first
 	mut arr := []int{}
 	for _ in 0..gen_len {

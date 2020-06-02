@@ -34,9 +34,9 @@ pub mut:
 
 fn advance(sys mut System, dt f64) {
     for i in 0..c_n - 1 {
-        mut _vx := sys.v[i].x
-        mut _vy := sys.v[i].y
-        mut _vz := sys.v[i].z
+        mut vx := sys.v[i].x
+        mut vy := sys.v[i].y
+        mut vz := sys.v[i].z
 
         for j := i + 1; j < c_n; j++ {
             dx := sys.s[i].x - sys.s[j].x
@@ -48,17 +48,17 @@ fn advance(sys mut System, dt f64) {
             mag := (dt / (dsquared * distance))
             mi := sys.v[i].m
 
-            _vx -= dx * sys.v[j].m * mag
-            _vy -= dy * sys.v[j].m * mag
-            _vz -= dz * sys.v[j].m * mag
+            vx -= dx * sys.v[j].m * mag
+            vy -= dy * sys.v[j].m * mag
+            vz -= dz * sys.v[j].m * mag
 
             sys.v[j].x += dx * mi * mag
             sys.v[j].y += dy * mi * mag
             sys.v[j].z += dz * mi * mag
         }
-        sys.v[i].x = _vx
-        sys.v[i].y = _vy
-        sys.v[i].z = _vz
+        sys.v[i].x = vx
+        sys.v[i].y = vy
+        sys.v[i].z = vz
     }
 
     for i in 0..c_n {
@@ -108,7 +108,7 @@ fn arr_momentum() []Momentum {
     ]
 }
 
-pub fn arr_position() []Position {
+fn arr_position() []Position {
     return [
     Position {0.0, 0.0, 0.0},
     Position {4.84143144246472090e+00, -1.16032004402742839e+00, -1.03622044471123109e-01},

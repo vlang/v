@@ -101,7 +101,7 @@ fn main() {
 	}
 }
 
-fn (ctx Context) draw() {
+fn (mut ctx Context) draw() {
 	mut y := 10
 	for line in lines {
 		ctx.ft.draw_text_def(10,y, line)

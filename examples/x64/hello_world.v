@@ -1,4 +1,4 @@
-fn println(s string) { }
+//fn println(s string) { }
 
 //fn test_fn() {
 	//println('test fn')
