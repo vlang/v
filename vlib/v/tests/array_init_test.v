@@ -169,3 +169,14 @@ fn test_array_init_cast_type_in_struct_field() {
 	println(st)
 	assert st.a.str() == '[0, 0, 0, 0, 0]'
 }
+
+fn test_multi_dimensional_array_init() {
+	a := [][]int{len:2, init:[]int{len:4, init:2}}
+	assert '$a' == '[[2, 2, 2, 2], [2, 2, 2, 2]]'
+
+	b := [][]string{len:3, init:[]string{len:2, init:'abc'}}
+	assert '$b' == "[['abc', 'abc'], ['abc', 'abc'], ['abc', 'abc']]"
+
+	c := [][]f64{len:2, init:[]f64{len:2, init:2.2}}
+	assert '$c' == '[[2.2, 2.2], [2.2, 2.2]]'
+}
