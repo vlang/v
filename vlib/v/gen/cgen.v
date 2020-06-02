@@ -517,8 +517,13 @@ pub fn (g Gen) save() {
 
 pub fn (mut g Gen) write(s string) {
 	if g.indent > 0 && g.empty_line {
-		g.out.write(tabs[g.indent])
-		// g.line_len += g.indent * 4
+		if g.indent < tabs.len {
+			g.out.write(tabs[g.indent])
+		} else {
+			for _ in 0 .. g.indent {
+				g.out.write('\t')
+			}
+		}
 	}
 	g.out.write(s)
 	g.empty_line = false
@@ -526,7 +531,13 @@ pub fn (mut g Gen) write(s string) {
 
 pub fn (mut g Gen) writeln(s string) {
 	if g.indent > 0 && g.empty_line {
-		g.out.write(tabs[g.indent])
+		if g.indent < tabs.len {
+			g.out.write(tabs[g.indent])
+		} else {
+			for _ in 0 .. g.indent {
+				g.out.write('\t')
+			}
+		}
 	}
 	g.out.writeln(s)
 	g.empty_line = true
