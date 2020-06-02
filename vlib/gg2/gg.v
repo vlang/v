@@ -10,11 +10,6 @@ import sokol
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
-import sokol.sfons
-
-const (
-	default_font_size = 24
-)
 
 pub struct Config {
 pub:
@@ -25,7 +20,6 @@ pub:
 	resizable     bool
 	user_data     voidptr
 	font_size     int
-	font_path     string
 	create_window bool
 	// window_user_ptr voidptr
 	window_title  string
@@ -45,17 +39,7 @@ pub mut:
 	clear_pass C.sg_pass_action
 	window     C.sapp_desc
 	render_fn  fn()
-	//////////// font fields
-	fons &C.FONScontext
-	font_normal int
 }
-
-// TODO remove globals
-/*
-__global g_fons &C.FONScontext
-__global g_font_normal int
-__global g_font_path string
-*/
 
 fn init_sokol_window(user_data voidptr) {
 	desc := C.sg_desc{
@@ -70,18 +54,6 @@ fn init_sokol_window(user_data voidptr) {
 	gfx.setup(&desc)
 	sgl_desc := C.sgl_desc_t{}
 	sgl.setup(&sgl_desc)
-	/*
-	g_fons = sfons.create(512, 512, 1)
-	if g_font_path.len == 0 || !os.exists(g_font_path) {
-		println('failed to load font "$g_font_path"')
-		return
-	}
-	bytes := os.read_bytes(g_font_path) or {
-		println('failed to load font "$g_font_path"')
-		return
-	}
-	g_font_normal = C.fonsAddFontMem(g_fons, 'sans', bytes.data, bytes.len, false)
-	*/
 }
 
 fn eventcb(e &C.sapp_event, b voidptr){
@@ -101,7 +73,6 @@ pub fn new_context(cfg Config) &GG {
 		height: cfg.height
 		//high_dpi: true
 	}
-	//g_font_path = cfg.font_path
 	if cfg.use_ortho {}
 	else {}
 	return &GG{
@@ -111,35 +82,7 @@ pub fn new_context(cfg Config) &GG {
 		clear_pass: gfx.create_clear_pass( f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0,
 f32(cfg.bg_color.b) / 255.0, 1.0)
 		scale: 1 // scale
-		fons:0
 	}
-}
-
-pub fn (gg &GG) draw_text(x, y int, text string, cfg gx.TextCfg) {
-	gg.fons.set_font(gg.font_normal)
-	gg.fons.set_size(f32(cfg.size))
-	ascender := f32(0.0)
-	descender := f32(0.0)
-	lh := f32(0.0)
-	gg.fons.vert_metrics(&ascender, &descender, &lh)
-	color:= C.sfons_rgba(cfg.color.r, cfg.color.g, cfg.color.b, 255)
-	C.fonsSetColor(gg.fons, color)
-	C.fonsDrawText(gg.fons, x, y, text.str, 0)
-}
-
-pub fn (ctx &GG) draw_text_def(x, y int, text string) {
-	cfg := gx.TextCfg {
-		color: gx.black
-		size: default_font_size
-		align: gx.align_left
-	}
-	ctx.draw_text(x, y, text, cfg)
-}
-
-pub fn (mut gg GG) init_font() {
-	// TODO
-	////gg.fons =g_fons
-	//gg.font_normal=g_font_normal
 }
 
 pub fn (gg &GG) run() {

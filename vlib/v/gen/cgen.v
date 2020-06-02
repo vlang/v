@@ -358,11 +358,7 @@ fn (g &Gen) optional_type_name(t table.Type) (string, string) {
 fn (g &Gen) optional_type_text(styp, base string) string {
 	x := styp // .replace('*', '_ptr')			// handle option ptrs
 	// replace void with something else
-	size := if base == 'void' {
-		'int'
-	} else {
-		base
-	}
+	size := if base == 'void' { 'int' } else { base }
 	ret := 'struct $x {
  bool ok;
  bool is_none;
@@ -386,7 +382,6 @@ fn (mut g Gen) register_optional(t table.Type) string {
 			bool   ok;
 			bool   is_none;
 		} Option2_$no_ptr;')
-
 		// println(styp)
 		g.typedefs2.writeln('typedef struct $styp $styp;')
 		g.options.write(g.optional_type_text(styp, base))
@@ -916,10 +911,12 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 fn cestring(s string) string {
 	return s.replace('\\', '\\\\').replace('"', "\'")
 }
+
 // ctoslit returns a 'tos_lit("$s")' call, where s is properly escaped.
 fn ctoslit(s string) string {
 	return 'tos_lit("' + cestring(s) + '")'
 }
+
 fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('// assert')
 	g.inside_ternary++
@@ -978,7 +975,7 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 		ast.CallExpr {
 			g.writeln(' ${metaname}.op = tos_lit("call");')
 		}
-		else{}
+		else {}
 	}
 	return metaname
 }
@@ -986,14 +983,14 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 	unknown_value := '*unknown value*'
 	match e {
-		ast.CallExpr { g.write( ctoslit(unknown_value) ) }
-		ast.CastExpr { g.write( ctoslit(unknown_value) ) }
-		ast.IndexExpr { g.write( ctoslit(unknown_value) ) }
-		ast.PrefixExpr { g.write( ctoslit(unknown_value) ) }
-        ast.MatchExpr {  g.write( ctoslit(unknown_value) ) }
-		else{	g.gen_expr_to_string(e,  t) }
+		ast.CallExpr { g.write(ctoslit(unknown_value)) }
+		ast.CastExpr { g.write(ctoslit(unknown_value)) }
+		ast.IndexExpr { g.write(ctoslit(unknown_value)) }
+		ast.PrefixExpr { g.write(ctoslit(unknown_value)) }
+		ast.MatchExpr { g.write(ctoslit(unknown_value)) }
+		else { g.gen_expr_to_string(e, t) }
 	}
-	g.write(' /* typeof: ' +typeof(e) + ' type: ' + t.str() + ' */ ')
+	g.write(' /* typeof: ' + typeof(e) + ' type: ' + t.str() + ' */ ')
 }
 
 fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
@@ -2063,7 +2060,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		g.write(node.name[2..].replace('.', '__'))
 		return
 	}
-	if node.kind == .constant && !node.name.starts_with('g_') {
+	if node.kind == .constant { // && !node.name.starts_with('g_') {
 		// TODO globals hack
 		g.write('_const_')
 	}
@@ -2346,7 +2343,6 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.write('/*opt promotion*/ Option $tmp = ')
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			g.write(';')
-
 			styp := g.typ(g.fn_decl.return_type)
 			g.writeln('return *($styp*)&$tmp;')
 			return
@@ -2357,17 +2353,14 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		// mr_info := typ_sym.info as table.MultiReturn
 		mut styp := ''
-
 		mut opt_tmp := ''
 		mut opt_type := ''
-
 		if fn_return_is_optional {
 			opt_type = g.typ(g.fn_decl.return_type)
 			// Create a tmp for this option
 			opt_tmp = g.new_tmp_var()
 			g.write('$opt_type $opt_tmp;')
 			styp = g.base_type(g.fn_decl.return_type)
-
 			g.write('opt_ok2(&($styp/*X*/[]) { ')
 		} else {
 			g.write('return ')
@@ -2391,7 +2384,6 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				g.writeln(';')
 				multi_unpack += g.go_before_stmt(0)
 				g.write(s)
-
 				expr_types := expr_sym.mr_info().types
 				for j, _ in expr_types {
 					g.write('.arg$arg_idx=${tmp}.arg$j')
@@ -2826,11 +2818,8 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 							g.type_definitions.writeln('${g.optional_type_text(styp, base)};')
 							g.type_definitions.write(last_text)
 						}
-
 						type_name := g.typ(field.typ)
-
 						field_name := c_name(field.name)
-
 						g.type_definitions.writeln('\t$type_name $field_name;')
 					}
 				} else {
