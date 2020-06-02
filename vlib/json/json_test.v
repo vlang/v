@@ -1,16 +1,23 @@
 import json
 
+enum JobTitle {
+	manager
+	executive
+	worker
+}
+
 struct Employee {
 	name string
 	age  int
 	salary f32
+	title JobTitle
 }
 
 fn test_simple() {
-	x := Employee{'Peter', 28, 95000.5}
+	x := Employee{'Peter', 28, 95000.5, .worker}
 	s := json.encode(x)
 	eprintln('Employee x: $s')
-	assert s == '{"name":"Peter","age":28,"salary":95000.5}'
+	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
 	y := json.decode(Employee, s) or {
 		assert false
 		Employee{}
@@ -19,6 +26,7 @@ fn test_simple() {
 	assert y.name == 'Peter'
 	assert y.age == 28
 	assert y.salary == 95000.5
+	assert y.title == .worker
 }
 
 struct User2 {
