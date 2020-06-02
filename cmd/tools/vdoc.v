@@ -455,9 +455,9 @@ fn main() {
 		opath: if args.len >= 2 { args[1] } else { '' },
 		pub_only: '-all' !in opts,
 		show_loc: '-loc' in opts,
-		serve_http: '-serve' in opts,
-		is_multi: '-multi' in opts,
-		include_readme: '-readme' in opts,
+		serve_http: '-s' in opts,
+		is_multi: '-m' in opts,
+		include_readme: '-r' in opts,
 		manifest: vmod.Manifest{ repo_url: '' }
 	}
 	is_path := config.src_path.ends_with('.v') || config.src_path.split('/').len > 1 || config.src_path == '.'
