@@ -8,7 +8,7 @@ VC  := ./vc
 TMPTCC := /var/tmp/tcc
 VCREPO := https://github.com/vlang/vc
 TCCREPO := https://github.com/vlang/tccbin
-GITCLEANPULL := git pull --quiet
+GITCLEANPULL := git clean -xf && git pull --quiet
 GITFASTCLONE := git clone --depth 1 --quiet
 
 #### Platform detections and overrides:
@@ -69,6 +69,13 @@ endif
 endif
 	@echo "V has been successfully built"
 	@./v -version
+
+#clean: clean_tmp
+#git clean -xf
+
+clean:
+	rm -rf $(TMPTCC)
+	rm -rf $(VC)
 
 latest_vc: $(VC)/.git/config
 ifndef local
