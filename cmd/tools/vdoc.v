@@ -342,8 +342,8 @@ fn (mut config DocConfig) generate_docs_from_file() {
 			output_type = .plaintext
 		}
 	}
-	if config.include_readme && output_type != .html {
-		eprintln('vdoc: Including README.md for doc generation is supported on HTML output only.')
+	if config.include_readme && output_type !in [.html, .stdout] {
+		eprintln('vdoc: Including README.md for doc generation is supported on HTML output, or when running directly in the terminal.')
 		exit(1)
 	}
 	mut manifest_path := os.join_path(if os.is_dir(config.src_path) { config.src_path } else { os.base_dir(config.src_path) }, 'v.mod')
@@ -362,14 +362,18 @@ fn (mut config DocConfig) generate_docs_from_file() {
 	}
 	// check README.md
 	if os.exists(readme_path) && config.include_readme {
-		println('Found README.md...')
 		readme_contents := os.read_file(readme_path) or { '' }
-		config.docs << doc.Doc{
-			head: doc.DocNode{
-				name: 'README',
-				comment: readme_contents
+        if output_type == .stdout {
+			println(readme_contents)
+        }
+        if output_type == .html {
+			config.docs << doc.Doc{
+				head: doc.DocNode{
+					name: 'README',
+					comment: readme_contents
+				}
 			}
-		}
+        }
 	}
 	if config.is_multi {
 		dirs := get_modules_list(config.src_path)
