@@ -234,7 +234,7 @@ pub fn (mut rng MT19937RNG) intn(max int) int {
 		eprintln('max has to be positive.')
 		exit(1)
 	}
-	return int(rng.u32n(max))
+	return int(rng.u32n(u32(max)))
 }
 
 // rng.i64n(max) - return a 64bit positive i64 in [0, max)
@@ -244,7 +244,7 @@ pub fn (mut rng MT19937RNG) i64n(max i64) i64 {
 		eprintln('max has to be positive.')
 		exit(1)
 	}
-	return i64(rng.u64n(max))
+	return i64(rng.u64n(u64(max)))
 }
 
 // rng.int_in_range(min, max) - return a 32bit positive int in [0, max)
