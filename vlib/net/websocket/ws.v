@@ -15,12 +15,12 @@ pub struct Client {
 	retry      int
 	eb         &eventbus.EventBus
 	is_ssl     bool
-	lock       &sync.Mutex = sync.new_mutex()
-	write_lock &sync.Mutex = sync.new_mutex()
 	// subprotocol_len int
 	// cwebsocket_subprotocol *subprotocol;
 	// cwebsocket_subprotocol *subprotocols[];
 mut:
+	lock       &sync.Mutex = sync.new_mutex()
+	write_lock &sync.Mutex = sync.new_mutex()
 	state      State
 	socket     net.Socket
 	flags      []Flag
@@ -30,6 +30,7 @@ mut:
 pub mut:
 	uri        string
 	subscriber &eventbus.Subscriber
+	nonce_size int = 18 // you can try 16 too
 }
 
 struct Fragment {
@@ -137,7 +138,7 @@ pub fn (mut ws Client) connect() int {
 	ws.state = .connecting
 	ws.lock.unlock()
 	uri := ws.parse_uri()
-	nonce := get_nonce()
+	nonce := get_nonce(ws.nonce_size)
 	seckey := base64.encode(nonce)
 	ai_family := C.AF_INET
 	ai_socktype := C.SOCK_STREAM
@@ -417,7 +418,7 @@ pub fn (mut ws Client) read() int {
 	} else if frame.opcode in [.text_frame, .binary_frame] {
 		data_node:
 		l.d('read: recieved text_frame or binary_frame')
-		mut payload := malloc(sizeof(byte) * u32(payload_len) + 1)
+		mut payload := malloc(int(sizeof(byte) * u32(payload_len) + 1))
 		if payload == 0 {
 			l.f('out of memory')
 		}
@@ -437,7 +438,7 @@ pub fn (mut ws Client) read() int {
 						size += f.len
 					}
 				}
-				mut pl := malloc(sizeof(byte) * u32(size))
+				mut pl := malloc(int(sizeof(byte) * u32(size)))
 				if pl == 0 {
 					l.f('out of memory')
 				}

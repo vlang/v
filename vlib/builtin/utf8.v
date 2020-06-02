@@ -227,7 +227,7 @@ fn utf8_str_visible_length(s string) int {
 // Reads an utf8 character from standard input
 pub fn utf8_getchar() int {
 	c := C.getchar()
-	len := utf8_len(~c)
+	len := utf8_len(byte(~c))
 	if c < 0 {
 		return 0
 	}

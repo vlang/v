@@ -183,7 +183,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	C.glBlendFunc(C.GL_SRC_ALPHA, C.GL_ONE_MINUS_SRC_ALPHA)
 	shader := gl.new_shader('text')
 	shader.use()
-	projection := glm.ortho(0, width, 0, height) // 0 at BOT
+	projection := glm.ortho(0, f32(width), 0, f32(height)) // 0 at BOT
 	shader.set_mat4('projection', projection)
 	// FREETYPE
 	ft := C.FT_Library{}

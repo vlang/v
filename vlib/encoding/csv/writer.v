@@ -7,6 +7,7 @@ module csv
 import strings
 
 struct Writer {
+mut:
 	sb strings.Builder
 pub mut:
 	use_crlf bool

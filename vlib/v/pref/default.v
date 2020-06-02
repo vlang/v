@@ -14,7 +14,7 @@ fn mpath() string {
 }
 
 pub fn new_preferences() Preferences {
-	p := Preferences{}
+	mut p := Preferences{}
 	p.fill_with_defaults()
 	return p
 }

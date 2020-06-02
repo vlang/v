@@ -308,6 +308,11 @@ fn get_installed_modules() []string {
 		if dir in excluded_dirs || !os.is_dir(adir) {
 			continue
 		}
+		if os.exists( os.join_path(adir, 'v.mod') ) && os.exists( os.join_path(adir, '.git', 'config') ){
+			// an official vlang module with a short module name, like `vsl`, `ui` or `markdown`
+			modules << dir
+			continue
+		}
 		author := dir
 		mods := os.ls(adir) or {
 			continue

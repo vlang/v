@@ -207,7 +207,6 @@ pub fn mv(old, new string) {
 }
 
 fn C.CopyFile(&u32, &u32, int) int
-// TODO implement actual cp for linux
 pub fn cp(old, new string) ?bool {
 	$if windows {
 		w_old := old.replace('/', '\\')
@@ -221,8 +220,34 @@ pub fn cp(old, new string) ?bool {
 			return error_with_code('failed to copy $old to $new', int(result))
 		}
 	} $else {
-		os.system('cp "$old" "$new"')
-		return true // TODO make it return true or error when cp for linux is implemented
+		fp_from := C.open(old.str, C.O_RDONLY)
+		if fp_from < 0 { // Check if file opened
+			return error_with_code('cp: failed to open $old', int(fp_from))
+		}
+		fp_to := C.open(new.str, C.O_WRONLY | C.O_CREAT | C.O_TRUNC)
+		if fp_to < 0 { // Check if file opened (permissions problems ...)
+			C.close(fp_from)
+			return error_with_code('cp: failed to write to $new', int(fp_to))
+		}
+		mut buf := [1024]byte
+		mut count := 0
+		for {
+			// FIXME: use sizeof, bug: 'os__buf' undeclared
+			//count = C.read(fp_from, buf, sizeof(buf))
+			count = C.read(fp_from, buf, 1024)
+			if count == 0 {
+				break
+			}
+			if C.write(fp_to, buf, count) < 0 {
+				return error_with_code('cp: failed to write to $new', int(-1))
+			}
+		}
+		from_attr := C.stat{}
+		C.stat(old.str, &from_attr)
+		if C.chmod(new.str, from_attr.st_mode) < 0 {
+			return error_with_code('failed to set permissions for $new', int(-1))
+		}
+		return true
 	}
 }
 
@@ -621,7 +646,7 @@ pub fn is_writable_folder(folder string) ?bool {
 		return error('`folder` is not a folder')
 	}
 	tmp_perm_check := os.join_path(folder, 'tmp_perm_check')
-	f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
+	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
 		return error('cannot write to folder `$folder`: $err')
 	}
 	f.close()

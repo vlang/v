@@ -46,7 +46,7 @@ import os
 import live
 
 fn append_to_file(fname, s string) {
-	f := os.open_append(fname) or {
+	mut f := os.open_append(fname) or {
 		println('>>>> could not open file \$fname for appending, err: \$err ')
 		return 
 	}

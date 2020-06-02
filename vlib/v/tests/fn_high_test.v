@@ -23,7 +23,7 @@ fn high_fn_multi_return(a int, b fn (c []int, d []string) ([]int, []string)) {
 fn high_fn_return_single_anon() (fn(int)f32) {
 	_ := 1
 	correct := fn(n int)f32 {
-		return n * n
+		return f32(n * n)
 	}
 	return correct
 }
@@ -36,7 +36,7 @@ fn high_fn_return_multi_anons() (fn(int)f32, fn(int)string) {
 		return '$n'
 	}
 	correct_first := fn(n int)f32 {
-		return n * n
+		return f32(n * n)
 	}
 	// parsing trap
 	_ := fn(n int)[]int {
@@ -110,7 +110,7 @@ fn simple_fn1() int {
 }
 
 fn simple_fn2(n f32) (int, string) {
-	return 1 + n, "fish"
+	return int(1 + n), "fish"
 }
 
 fn test_assigning_fns() {

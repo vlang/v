@@ -364,16 +364,6 @@ pub fn (nn byteptr) str() string {
 
 // ----- utilities functions -----
 
-pub fn (a []byte) contains(val byte) bool {
-	for aa in a {
-		if aa == val {
-			return true
-		}
-	}
-	return false
-}
-
-
 /*
 pub fn (c rune) str() string {
 	fst_byte := int(c)>>8 * 3 & 0xff
@@ -413,3 +403,33 @@ pub fn (b []byte) clone() []byte {
 	return res
 }
 
+
+// TODO generic
+pub fn (a []byte) contains(val byte) bool {
+	for aa in a {
+		if aa == val {
+			return true
+		}
+	}
+	return false
+}
+
+// TODO generic
+fn (ar []int) contains(val int) bool {
+	for s in ar {
+		if s == val {
+			return true
+		}
+	}
+	return false
+}
+
+// TODO generic
+pub fn (a []u64) contains(val u64) bool {
+	for aa in a {
+		if aa == val {
+			return true
+		}
+	}
+	return false
+}

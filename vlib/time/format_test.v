@@ -15,7 +15,7 @@ const (
 fn test_now_format() {
 	t := time.now()
 	u := t.unix
-	assert t.format() == time.unix(u).format()
+	assert t.format() == time.unix(int(u)).format()
 }
 
 fn test_format() {

@@ -411,3 +411,6 @@ fn C.pthread_mutex_init(voidptr, voidptr) int
 fn C.pthread_mutex_lock(voidptr) int
 fn C.pthread_mutex_unlock(voidptr) int
 
+fn C.read(fd int, buf voidptr, count size_t) int
+fn C.write(fd int, buf voidptr, count size_t) int
+fn C.close(fd int) int

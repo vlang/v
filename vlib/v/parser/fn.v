@@ -221,7 +221,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				continue
 			}
 			sym := p.table.get_type_symbol(arg.typ)
-			if sym.kind !in [.array, .struct_, .map, .placeholder] && !arg.typ.is_ptr() {
+			if sym.kind !in [.array, .struct_, .map, .placeholder] && arg.typ != table.t_type &&
+				!arg.typ.is_ptr() {
 				p.error('mutable arguments are only allowed for arrays, maps, and structs\n' +
 					'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`')
 			}
@@ -359,6 +360,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 }
 
+// fn decl
 fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
 	mut args := []table.Arg{}
@@ -381,7 +383,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				is_variadic = true
 			}
 			mut arg_type := p.parse_type()
-			if is_mut {
+			if is_mut && arg_type != table.t_type {
 				// if arg_type.is_ptr() {
 				// p.error('cannot mut')
 				// }
@@ -425,7 +427,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				is_variadic = true
 			}
 			mut typ := p.parse_type()
-			if is_mut {
+			if is_mut && typ != table.t_type {
 				if typ.is_ptr() {
 					// name := p.table.get_type_name(typ)
 					// p.warn('`$name` is already a reference, it cannot be marked as `mut`')

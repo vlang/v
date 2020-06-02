@@ -2,8 +2,9 @@ module pref
 
 import os
 
-pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files []string) []string {
+pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []string) []string {
 	mut res := []string{}
+	mut files := files_.clone()
 	files.sort()
 	for file in files {
 		if !file.ends_with('.v') && !file.ends_with('.vh') {

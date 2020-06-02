@@ -38,8 +38,7 @@ fn main() {
 	sapp.run(&desc)
 }
 
-fn init(user_data voidptr) {
-	mut state := &AppState(user_data)
+fn init(state mut AppState) {
 	// dont actually alocate this on the heap in real life
 	gfx.setup(&C.sg_desc{
 		mtl_device: sapp.metal_get_device()

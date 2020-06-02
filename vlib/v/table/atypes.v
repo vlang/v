@@ -40,6 +40,7 @@ pub enum TypeFlag {
 	unset
 	optional
 	variadic
+	generic
 }
 
 pub fn (types []Type) contains(typ Type) bool {

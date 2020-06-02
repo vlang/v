@@ -34,11 +34,14 @@ arr2 << [7, 8, 9]
 println(arr2)
 
 // String slices
-slice4 := idx1[..4]
+mut slice4 := idx1[..4]
 println(slice4) // 'Back'
 
 // String indexes
 idx2 := slice4[0]
+println(idx2)
+// TODO:
+// slice4[3] = `c`
 
 // Maps
 mut m := map[string]string
@@ -46,3 +49,9 @@ key := 'key'
 m[key] = 'value'
 val := m['key']
 println(val)
+
+// 'in' / '!in'
+println('JS' in arr1)
+println(3 !in arr2)
+println('key' in m)
+println('badkey' !in m)

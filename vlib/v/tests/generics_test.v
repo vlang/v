@@ -40,6 +40,7 @@ fn test_foo() {
 
 fn create<T>() {
 	a := T{}
+	println(a.foo)
 	mut xx := T{}
 	xx.foo = 'foo'
 	println(xx.foo)
@@ -63,10 +64,15 @@ fn (u User) init() {
 fn (c City) init() {
 }
 
+fn gen_arg<T>(mut x T) {
+	println(x.foo) // = 'foo'
+}
+
 fn test_create() {
 	create<User>()
 	create<City>()
-	// create<User>()
+	u := User{}
+	//gen_arg<User>(mut u)
 }
 
 /*

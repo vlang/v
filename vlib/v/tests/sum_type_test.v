@@ -9,7 +9,8 @@ struct IntegerLiteral {
 }
 
 fn handle(e Expr) string {
-	assert e is IntegerLiteral
+	is_literal := e is IntegerLiteral
+	assert is_literal
 	if e is IntegerLiteral {
 		println('int')
 	}

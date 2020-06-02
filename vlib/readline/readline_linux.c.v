@@ -203,8 +203,8 @@ match c {
 			`B` { return .history_next }
 			`A` { return .history_previous }
 			`1` { return r.analyse_extended_control() }
-			`2` { return r.analyse_extended_control_no_eat(sequence) }
-			`3` { return r.analyse_extended_control_no_eat(sequence) }
+			`2` { return r.analyse_extended_control_no_eat(byte(sequence)) }
+			`3` { return r.analyse_extended_control_no_eat(byte(sequence)) }
 			else {}
 		}
 	}

@@ -15,8 +15,8 @@ const (
 )
 
 pub struct Checker {
-	table            &table.Table
 pub mut:
+	table            &table.Table
 	file             ast.File
 	nr_errors        int
 	nr_warnings      int
@@ -369,7 +369,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
 				field_type_sym := c.table.get_type_symbol(info_field.typ)
-				if !c.assign_check(expr_type, info_field.typ) {
+				if !c.check_types(expr_type, info_field.typ) {
 					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
@@ -572,6 +572,10 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 
 fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 	match expr {
+		ast.CastExpr {
+			// TODO
+			return
+		}
 		ast.Ident {
 			scope := c.file.scope.innermost(it.pos.pos)
 			if v := scope.find_var(it.name) {
@@ -579,8 +583,8 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 					c.error('`$it.name` is immutable, declare it with `mut` to make it mutable',
 						it.pos)
 				}
-			} else if it.name in c.const_names {
-				c.error('cannot assign to constant `$it.name`', it.pos)
+			} else if it.name in c.const_names {          
+				c.error('cannot modify constant `$it.name`', it.pos)
 			}
 		}
 		ast.IndexExpr {
@@ -694,7 +698,7 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 		else {}
 	}
 	// Dual sides check (compatibility check)
-	if !c.assign_check(right_type, left_type) {
+	if !c.check_types(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
 		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name`',
@@ -765,6 +769,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// its receiver type is defined in, show an error.
 			// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
 			c.error('method `${left_type_sym.name}.$method_name` is private', call_expr.pos)
+		}
+		if method.args[0].is_mut {
+			c.fail_if_immutable(call_expr.left)
 		}
 		if method.return_type == table.void_type && method.ctdefine.len > 0 && method.ctdefine !in
 			c.pref.compile_defines {
@@ -999,6 +1006,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		if arg.is_mut && !call_arg.is_mut {
 			c.error('`$arg.name` is a mutable argument, you need to provide `mut`: `${call_expr.name}(mut ...)`',
 				call_arg.expr.position())
+		} else if !arg.is_mut && call_arg.is_mut {
+			c.error('`$arg.name` argument is not mutable, `mut` is not needed`', call_arg.expr.position())
 		}
 		// Handle expected interface
 		if arg_typ_sym.kind == .interface_ {
@@ -1425,7 +1434,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				c.expected_type = elem_type
 				continue
 			}
-			if !c.check_types(elem_type, typ) {
+			if !c.check_types(typ, elem_type) {
 				elem_type_sym := c.table.get_type_symbol(elem_type)
 				c.error('expected array element with type `$elem_type_sym.name`', array_init.pos)
 			}
