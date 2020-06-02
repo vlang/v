@@ -287,14 +287,15 @@ pub struct Stmt {
 */
 pub struct Var {
 pub:
-	name    string
-	expr    Expr
-	is_mut  bool
-	is_arg  bool // fn args should not be autofreed
+	name       string
+	expr       Expr
+	is_mut     bool
+	is_arg     bool // fn args should not be autofreed
 pub mut:
-	typ     table.Type
-	pos     token.Position
-	is_used bool
+	typ        table.Type
+	pos        token.Position
+	is_used    bool
+	is_changed bool // to detect mutable vars that are never changed
 }
 
 pub struct GlobalDecl {

@@ -362,7 +362,7 @@ fn (mut g Game) draw_ui() {
 		if g.state == .gameover {
 			g.gg.draw_rect(0, win_height / 2 - text_size, win_width,
 		 								5 * text_size, ui_color)
-			g.ft.draw_text(1, win_height / 2 + 0 * text_size, 'Game Over', over_cfg)
+			g.gg.draw_text(1, win_height / 2 + 0 * text_size, 'Game Over', over_cfg)
 			g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'Space to restart', over_cfg)
 		} else if g.state == .paused {
 			g.gg.draw_rect(0, win_height / 2 - text_size, win_width,

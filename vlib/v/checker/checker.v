@@ -59,8 +59,23 @@ pub fn (mut c Checker) check(ast_file ast.File) {
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
+	// Check scopes
+	// TODO
+	/*
+	for i, obj in c.file.global_scope.objects {
+		match obj {
+			ast.Var {
+				if it.is_mut && !it.is_changed {
+					c.warn('`$it.name` is declared as mutable, but it was never changed', it.pos)
+				}
+			}
+			else {}
+		}
+	}
+	*/
 }
 
+// not used right now
 pub fn (mut c Checker) check2(ast_file ast.File) []errors.Error {
 	c.file = ast_file
 	for stmt in ast_file.stmts {
@@ -583,7 +598,8 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 					c.error('`$it.name` is immutable, declare it with `mut` to make it mutable',
 						it.pos)
 				}
-			} else if it.name in c.const_names {          
+				v.is_changed = true
+			} else if it.name in c.const_names {
 				c.error('cannot modify constant `$it.name`', it.pos)
 			}
 		}

@@ -12,9 +12,9 @@ import v.util
 import v.errors
 import os
 import runtime
-//import sync
 import time
 
+// import sync
 pub struct Parser {
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
@@ -173,7 +173,6 @@ fn (mut q Queue) run() {
 	}
 }
 */
-
 pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, global_scope &ast.Scope) []ast.File {
 	// println('nr_cpus= $nr_cpus')
 	$if macos {
@@ -234,6 +233,7 @@ pub fn (mut p Parser) open_scope() {
 }
 
 pub fn (mut p Parser) close_scope() {
+	// TODO move this to checker since is_changed is set there?
 	if !p.pref.is_repl && !p.scanner.is_fmt {
 		for _, obj in p.scope.objects {
 			match obj {
@@ -245,6 +245,12 @@ pub fn (mut p Parser) close_scope() {
 							p.warn_with_pos('unused variable: `$it.name`', it.pos)
 						}
 					}
+					/*
+					if it.is_mut && !it.is_changed {
+						p.warn_with_pos('`$it.name` is declared as mutable, but it was never changed',
+							it.pos)
+					}
+					*/
 				}
 				else {}
 			}
@@ -1486,7 +1492,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	} else {
 		table.Language.v
 	}
-	p.table.register_type_symbol(table.TypeSymbol{
+	p.table.register_type_symbol({
 		kind: .alias
 		name: p.prepend_mod(name)
 		parent_idx: pid
