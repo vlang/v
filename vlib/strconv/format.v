@@ -202,7 +202,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 * Single format functions
 *
 ******************************************************************************/
-struct BF_param {
+pub struct BF_param {
 	pad_ch       byte       = ` `     // padding char
 	len0         int        = -1      // default len for whole the number or string
 	len1         int        = 6       // number of decimal digits, if needed
