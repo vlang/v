@@ -67,3 +67,16 @@ fn test_struct_init_ref_return() {
 	assert fabs(fabs(x.get()) - 3.890949634755863) < 1.e-6
 }
 
+fn test_f32_int() {
+	x := f32(15.25)
+	y := -3
+	assert x + y == 12.25
+	assert y + x == 12.25
+	a := u32(34)
+	assert a + x == 49.25
+	b := i64(-17)
+	c := 16.75
+	assert c + b == -0.25
+	d := u64(300)
+	assert d + c == 316.75
+}
