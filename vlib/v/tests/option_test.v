@@ -274,7 +274,7 @@ fn test_multi_return_opt() {
 	}
 }
 */
-fn foo() ?void {
+fn foo() ? {
 	return error('something')
 }
 

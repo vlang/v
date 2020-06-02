@@ -137,7 +137,7 @@ pub fn (mut p Parser) parse_type() table.Type {
 		pos := p.tok.position()
 		typ = p.parse_any_type(language, nr_muls > 0)
 		if typ == table.void_type {
-			p.warn_with_pos('use `?` instead of `?void`', pos)
+			p.error_with_pos('use `?` instead of `?void`', pos)
 		}
 	}
 	if is_optional {
