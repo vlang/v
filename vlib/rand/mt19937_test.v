@@ -14,7 +14,7 @@ const (
 )
 
 fn mt19937_basic_test() {
-	rng := rand.MT19937RNG{}
+	mut rng := rand.MT19937RNG{}
 	rng.seed([u32(0xdeadbeef)])
 	target := [956529277, 3842322136, 3319553134, 1843186657, 2704993644, 595827513, 938518626,
 		1676224337, 3221315650, 1819026461]
@@ -73,7 +73,7 @@ fn test_mt19937_variability() {
 	}
 }
 
-fn check_uniformity_u64(rng rand.MT19937RNG, range u64) {
+fn check_uniformity_u64(mut rng rand.MT19937RNG, range u64) {
 	range_f64 := f64(range)
 	expected_mean := range_f64 / 2.0
 	mut variance := 0.0
@@ -94,12 +94,12 @@ fn test_mt19937_uniformity_u64() {
 		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for range in ranges {
-			check_uniformity_u64(rng, range)
+			check_uniformity_u64(mut rng, u64(range))
 		}
 	}
 }
 
-fn check_uniformity_f64(rng rand.MT19937RNG) {
+fn check_uniformity_f64(mut rng rand.MT19937RNG) {
 	expected_mean := 0.5
 	mut variance := 0.0
 	for _ in 0 .. sample_size {
@@ -118,7 +118,7 @@ fn test_mt19937_uniformity_f64() {
 	for seed in seeds {
 		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
-		check_uniformity_f64(rng)
+		check_uniformity_f64(mut rng)
 	}
 }
 
@@ -128,7 +128,7 @@ fn test_mt19937_u32n() {
 		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32n(max)
+			value := rng.u32n(u32(max))
 			assert value >= 0
 			assert value < max
 		}
@@ -155,7 +155,7 @@ fn test_mt19937_u32_in_range() {
 		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(min, max)
+			value := rng.u32_in_range(u32(min), u32(max))
 			assert value >= min
 			assert value < max
 		}
@@ -210,7 +210,7 @@ fn test_mt19937_int63() {
 fn test_mt19937_intn() {
 	max := 2525642
 	for seed in seeds {
-		rng := rand.MT19937RNG{}
+		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.intn(max)
@@ -223,7 +223,7 @@ fn test_mt19937_intn() {
 fn test_mt19937_i64n() {
 	max := i64(3246727724653636)
 	for seed in seeds {
-		rng := rand.MT19937RNG{}
+		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.i64n(max)
@@ -237,7 +237,7 @@ fn test_mt19937_int_in_range() {
 	min := -4252
 	max := 1034
 	for seed in seeds {
-		rng := rand.MT19937RNG{}
+		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.int_in_range(min, max)
@@ -251,7 +251,7 @@ fn test_mt19937_i64_in_range() {
 	min := i64(-24095)
 	max := i64(324058)
 	for seed in seeds {
-		rng := rand.MT19937RNG{}
+		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.i64_in_range(min, max)
