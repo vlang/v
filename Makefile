@@ -4,11 +4,11 @@ LDFLAGS ?=
 TMPDIR ?= /tmp
 
 VCFILE := v.c
-TMPVC  := $(TMPDIR)/vc
-TMPTCC := /var/tmp/tcc
+VC  := ./vc
+TCC := ./tcc
 VCREPO := https://github.com/vlang/vc
 TCCREPO := https://github.com/vlang/tccbin
-GITCLEANPULL := git clean -xf && git pull --quiet
+GITCLEANPULL := git pull --quiet
 GITFASTCLONE := git clone --depth 1 --quiet
 
 #### Platform detections and overrides:
@@ -45,59 +45,65 @@ endif
 
 all: latest_vc latest_tcc
 ifdef WIN32
-	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o v.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
-	./v.exe self
+	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o v.exe $(VC)/$(VCFILE) $(LDFLAGS)
+ifdef prod
+	./v.exe -prod self
 else
-	$(CC) $(CFLAGS) -g -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm -lpthread
+	./v.exe self
+endif
+else
+	$(CC) $(CFLAGS) -g -std=gnu11 -w -o v $(VC)/$(VCFILE) $(LDFLAGS) -lm -lpthread
 ifdef ANDROID
 	chmod 755 v
 endif
+
+ifdef prod
+	./v -prod self
+else
 	./v self
+endif
+
 ifndef ANDROID
 	$(MAKE) modules
 endif
 endif
-ifdef V_ALWAYS_CLEAN_TMP
-	$(MAKE) clean_tmp
-endif
 	@echo "V has been successfully built"
 	@./v -version
 
-#clean: clean_tmp
-#git clean -xf
-
-clean:
-	rm -rf $(TMPTCC)
-	rm -rf $(TMPVC)
-
-latest_vc: $(TMPVC)/.git/config
-	cd $(TMPVC) && $(GITCLEANPULL)
+latest_vc: $(VC)/.git/config
+ifndef local
+	cd $(VC) && $(GITCLEANPULL)
+else
+	@echo "Using local vc"
+endif
 
 fresh_vc:
-	rm -rf $(TMPVC)
-	$(GITFASTCLONE) $(VCREPO) $(TMPVC)
+	$(GITFASTCLONE) $(VCREPO) $(VC)
 
-latest_tcc: $(TMPTCC)/.git/config
+latest_tcc: $(TCC)/.git/config
 ifndef ANDROID
 ifndef MAC
-	cd $(TMPTCC) && $(GITCLEANPULL)
+ifndef local
+	cd $(TCC) && $(GITCLEANPULL)
+else
+	@echo "Using local tcc"
+endif
 endif
 endif
 
 fresh_tcc:
 ifndef ANDROID
 ifndef MAC
-	rm -rf $(TMPTCC)
-	$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)
+	$(GITFASTCLONE) $(TCCREPO) $(TCC)
 endif
 endif
 
-$(TMPTCC)/.git/config:
+$(TCC)/.git/config:
 ifndef MAC
 	$(MAKE) fresh_tcc
 endif
 
-$(TMPVC)/.git/config:
+$(VC)/.git/config:
 	$(MAKE) fresh_vc
 
 selfcompile:

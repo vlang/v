@@ -19,6 +19,7 @@ a.out
 
 # ignore v build files
 /vc
+/tcc
 /v.c
 /v.*.c
 /v.c.out
