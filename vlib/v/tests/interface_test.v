@@ -257,3 +257,16 @@ fn animal_match(a Animal) {
 	}
 }
 */
+
+struct Bar { }
+
+fn (b Bar)register() { }
+
+fn get_register() Register {
+	return Bar{}
+}
+
+fn test_interface_string() {
+	a := get_register()
+	assert('$a' == 'Register')
+}

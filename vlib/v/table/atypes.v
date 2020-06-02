@@ -150,6 +150,12 @@ pub fn (typ Type) is_float() bool {
 }
 
 [inline]
+pub fn (typ Type) is_interface(table Table) bool {
+	sym := table.get_type_symbol(typ)
+	return sym.info is Interface // typ.idx() in interface_type_idxs
+}
+
+[inline]
 pub fn (typ Type) is_int() bool {
 	return typ.idx() in integer_type_idxs
 }

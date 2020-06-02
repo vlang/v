@@ -2969,6 +2969,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				fspec = `d`
 			} else if node.expr_types[i].is_unsigned() {
 				fspec = `u`
+			} else if node.expr_types[i].is_interface(g.table) {
+				fspec = `s`
 			} else if node.expr_types[i].is_pointer() {
 				fspec = `p`
 			} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind in
@@ -3104,6 +3106,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		g.write('${str_fn_name}(')
 		g.expr(expr)
 		g.write(')')
+	} else if sym.kind == .interface_ {
+		g.write('"${sym.name}"')
 	} else if sym.kind == .enum_ {
 		is_var := match expr {
 			ast.SelectorExpr { true }
@@ -3846,6 +3850,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 			table.Array { g.gen_str_for_array(it, styp, str_fn_name) }
 			table.ArrayFixed { g.gen_str_for_array_fixed(it, styp, str_fn_name) }
 			table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
+			table.Interface { g.gen_str_for_interface(it, styp, str_fn_name) }
 			table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
 			table.Map { g.gen_str_for_map(it, styp, str_fn_name) }
 			else { verror("could not generate string method $str_fn_name for type \'${styp}\'") }
@@ -3891,6 +3896,15 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\tstring tmp2 = string_add(tmp1, tos_lit(")"));')
 	g.auto_str_funcs.writeln('\tstring_free(&tmp1);')
 	g.auto_str_funcs.writeln('\treturn tmp2;')
+	g.auto_str_funcs.writeln('}')
+}
+
+fn (mut g Gen) gen_str_for_interface(info table.Interface, styp, str_fn_name string) {
+	mut s := styp.replace('__', '.')
+	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { /* gen_str_for_interface */')
+	// TODO: iterate over info.types
+	g.auto_str_funcs.writeln('\treturn tos_lit("$s");')
 	g.auto_str_funcs.writeln('}')
 }
 
