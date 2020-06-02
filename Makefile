@@ -2,9 +2,9 @@ CC ?= cc
 CFLAGS ?=
 LDFLAGS ?=
 TMPDIR ?= /tmp
+VC     ?= ./vc
 
 VCFILE := v.c
-VC  := ./vc
 TMPTCC := /var/tmp/tcc
 VCREPO := https://github.com/vlang/vc
 TCCREPO := https://github.com/vlang/tccbin
@@ -90,7 +90,11 @@ fresh_vc:
 latest_tcc: $(TMPTCC)/.git/config
 ifndef ANDROID
 ifndef MAC
+ifndef local
 	cd $(TMPTCC) && $(GITCLEANPULL)
+else
+	@echo "Using local tcc"
+endif    
 endif
 endif
 
