@@ -104,6 +104,8 @@ jobs:
       run:  ./v symlink && v -o v2 cmd/v
     - name: Fixed tests
       run: ./v test-fixed
+    - name: Build examples
+      run: ./v build-examples
 #    - name: Test vsh
 #      run:  ./v examples/v_script.vsh
 ##    - name: Test vid

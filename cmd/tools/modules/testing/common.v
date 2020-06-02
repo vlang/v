@@ -233,7 +233,7 @@ pub fn v_build_failing_skipped(zargs string, folder string, skipped []string) bo
 	mut mains := []string{}
 	for f in files {
 		if !f.contains('modules') && !f.contains('preludes') {
-			if f.contains('/vweb/') || f.contains('/pg/') || f.contains('rune.v') {
+			if f.contains('/vweb/') || f.contains('/pg/') || f.contains('rune.v') || f.contains('/pico') {
 				continue
 
 			}

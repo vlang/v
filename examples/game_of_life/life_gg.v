@@ -36,7 +36,8 @@ fn print_automaton(a &automaton.Automaton){
 		for x := 1; x<a.field.maxx; x++ {
 			cell := a.field.get(x,y)
 			if cell == 1 {
-				graphics.draw_rect( square_size*x, square_size*y, square_size, square_size, filled_color )
+				graphics.draw_rect(f32(square_size*x), f32(square_size*y), f32(square_size),
+					f32(square_size), filled_color)
 			}
 		}
 	}

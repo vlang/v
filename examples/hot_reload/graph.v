@@ -41,7 +41,7 @@ fn main() {
 
 [live]
 fn (ctx &Context) draw() {
-	center := f64(size / 2)
+	center := f32(size / 2)
 	ctx.gg.draw_line(0, center, size, center, gx.gray) // x axis
 	ctx.gg.draw_line(center, 0, center, size, gx.gray) // y axis
 	atime := f64( time.ticks() / 10 )
@@ -58,8 +58,8 @@ fn (ctx &Context) draw() {
 		//y = (x + 3) * (x + 3) / stime + stime*2.5
 		//y = math.sqrt(30.0 - x * x) * stime
 		//y -= (stime-0.5) + stime
-		ctx.gg.draw_rect(center + x * scale, center - y * scale, 1, 1, gx.blue)
-		ctx.gg.draw_rect(center + x * scale, center + y * scale, 1, 1, gx.red)
+		ctx.gg.draw_rect(f32(center + x * scale), f32(center - y * scale), 1, 1, gx.blue)
+		ctx.gg.draw_rect(f32(center + x * scale), f32(center + y * scale), 1, 1, gx.red)
 	}
 }
 
