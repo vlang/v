@@ -1463,7 +1463,7 @@ v fmt file.v
 It's recommended to set up your editor, so that vfmt runs on every save.
 A vfmt run is usually pretty cheap (takes <30ms).
 
-Always run `v fmt file.v` before pushing your code.
+Always run `v fmt -w file.v` before pushing your code.
 
 ## Writing Documentation
 
