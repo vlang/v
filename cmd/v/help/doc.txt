@@ -1,0 +1,16 @@
+Usage: 
+  v doc [flags] module_name output_file[.json|.md|.html]
+  v doc [flags] path_to_source.v output_file[.json|.md|.html]
+  v doc [flags] ./directory output_file[.json|.md|.html]
+  v doc [flags] . output_file[.json|.md|.html]
+
+Generates the documentation of a given directory, module, or V source file 
+and prints or saves them to its desired format. It can generate HTML, JSON, 
+or Markdown format.
+
+Options:
+  -all    Includes private and public functions/methods/structs/consts/enums.
+  -loc    Show the locations of the generated signatures. (For plaintext only)
+  -m      Generate docs for modules listed in that folder.
+  -s      Serve HTML-generated docs via HTTP.
+  -r      Include README.md to docs if present.

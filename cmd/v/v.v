@@ -5,8 +5,6 @@ module main
 
 import help
 import os
-import v.table
-import v.doc
 import v.pref
 import v.util
 import v.builder
@@ -19,7 +17,7 @@ const (
 		'repl',
 		'build-tools', 'build-examples',
 		'build-vbinaries',
-		'setup-freetype'
+		'setup-freetype', 'doc'
 	]
 	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 )
@@ -80,23 +78,15 @@ fn main_v() {
 			util.launch_tool(prefs.is_verbose, 'vpm', os.args[1..])
 			return
 		}
+		'vlib-docs' {
+			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', '-m', '-s', '-r', os.join_path(os.base_dir(@VEXE), 'vlib')])
+		}
 		'get' {
 			println('V Error: Use `v install` to install modules from vpm.vlang.io')
 			exit(1)
 		}
 		'version' {
 			println(util.full_v_version(prefs.is_verbose))
-			return
-		}
-		'doc' {
-			mut mod := ''
-			if args.len == 1 {
-				println('v doc [module]')
-			} else if args.len > 1 {
-				mod = args[1]
-			}
-			table := table.new_table()
-			println(doc.doc(mod, table, prefs))
 			return
 		}
 		else {}

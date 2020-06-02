@@ -18,6 +18,7 @@ V supports the following commands:
    test              Run all test files in the provided directory.
    fmt               Format the V code provided.
    doc               Generate the documentation for a V module.
+   vlib-docs         Generate and open the documentation of all the vlib modules.
    repl              Run the REPL.
 * Installation/self updating:
    symlink           Create a symbolic link for V.
@@ -37,4 +38,4 @@ Use "v help <command>" for more information about a command, example: `v help bu
 Use "v help other" to see less frequently used commands.
 
 Note: Help is required to write more help topics.
-Only build, fmt, run, test, search, install, remove, update, bin2v are properly documented currently.
+Only build, doc, fmt, run, test, search, install, remove, update, bin2v are properly documented currently.
