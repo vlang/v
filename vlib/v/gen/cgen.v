@@ -1212,6 +1212,7 @@ fn (mut g Gen) gen_default_init_value(val ast.Expr) (bool, bool) {
 			has_val = it.has_val
 			elem_type_str := g.typ(it.elem_type)
 			if it.has_default {
+				g.gen_default_init_value(it.default_expr)
 				g.write('$elem_type_str _val_$it.pos.pos = ')
 				g.expr(it.default_expr)
 				g.writeln(';')
