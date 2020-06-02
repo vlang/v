@@ -30,17 +30,17 @@ import rand
 import time
 
 const (
-	inf = f64(1e+10)
-	eps = f64(1e-4)
-	f_0 = f64(0.0)
+	inf = 1e+10
+	eps = 1e-4
+	f_0 = 0.0
 )
 
 /***************************** 3D Vector utility struct **********************/
 struct Vec {
 mut:
-   x f64 = f64(0.0)
-   y f64 = f64(0.0)
-   z f64 = f64(0.0)
+   x f64 = 0.0
+   y f64 = 0.0
+   z f64 = 0.0
 }
 
 [inline]
@@ -79,7 +79,7 @@ fn (v Vec) cross (b Vec) Vec{
 
 [inline]
 fn (v Vec) norm () Vec {
-	tmp_norm := f64(1.0) / math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+	tmp_norm := 1.0 / math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
 	return Vec{ v.x * tmp_norm , v.y * tmp_norm, v.z * tmp_norm }
 }
 
@@ -91,10 +91,11 @@ struct Image {
 }
 
 fn new_image(w int, h int) Image {
+	vecsize := int(sizeof(Vec))
 	return Image{
 		width: w,
 		height: h,
-		data: &Vec(vcalloc(sizeof(Vec)*w*h))
+		data: &Vec(vcalloc(vecsize*w*h))
 	}
 }
 
@@ -129,11 +130,11 @@ enum Refl_t {
 
 /********************************* Sphere ************************************/
 struct Sphere {
-	rad f64 = f64(0.0)   // radius
-	p Vec                // position
-	e Vec                // emission
-	c Vec                // color
-	refl Refl_t          // reflection type => [diffuse, specular, refractive]
+	rad f64 = 0.0  // radius
+	p Vec          // position
+	e Vec          // emission
+	c Vec          // color
+	refl Refl_t    // reflection type => [diffuse, specular, refractive]
 }
 
 fn (sp Sphere) intersect (r Ray) f64 {
@@ -142,7 +143,7 @@ fn (sp Sphere) intersect (r Ray) f64 {
 	mut det   := b * b - op.dot(op) + sp.rad * sp.rad
 
 	if det < 0 {
-		return f64(0)
+		return 0
 	}
 
 	det = math.sqrt(det)
@@ -156,7 +157,7 @@ fn (sp Sphere) intersect (r Ray) f64 {
 	if t > eps {
 		return t
 	}
-	return f64(0)
+	return 0
 }
 
 /*********************************** Scenes **********************************
@@ -215,12 +216,12 @@ fn clamp(x f64) f64 {
 
 [inline]
 fn to_int(x f64) int {
-	p := math.pow(clamp(x), f64(1.0/2.2))
-	return int(p*f64(255.0)+f64(0.5))
+	p := math.pow(clamp(x), 1.0/2.2)
+	return int(p*255.0+0.5)
 }
 
 fn intersect(r Ray, spheres &Sphere, nspheres int) (bool, f64, int){
-	mut d  := f64(0)
+	mut d  := 0.0
 	mut t  := inf
 	mut id := 0
 	for i:=nspheres-1; i >= 0; i-- {
@@ -253,7 +254,7 @@ mut:
 
 fn new_tabs() Cache {
 	mut c := Cache{}
-	inv_len := f64(1.0) / f64(cache_len)
+	inv_len := 1.0 / f64(cache_len)
 	for i in 0..cache_len {
 		x := f64(i) * math.pi * 2.0 * inv_len
 		c.sin_tab[i] = math.sin(x)
@@ -272,11 +273,11 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 	sin_tab := &f64( tabs.sin_tab )
 	cos_tab := &f64( tabs.cos_tab )
 	mut depth   := depthi      // actual depth in the reflection tree
-	mut t       := f64(0)      // distance to intersection
+	mut t       := 0.0         // distance to intersection
 	mut id      := 0           // id of intersected object
 	mut res     := false       // result of intersect
 
-	v_1 := f64(1.0)
+	v_1 := 1.0
 	//v_2 := f64(2.0)
 
 	scene := spheres[scene_id]
@@ -393,9 +394,9 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 	image := new_image(w, h)
 
 	// inverse costants
-	w1     := f64(1.0 / w)
-	h1     := f64(1.0 / h)
-	samps1 := f64(1.0 / samps)
+	w1     := f64(1.0 / f64(w))
+	h1     := f64(1.0 / f64(h))
+	samps1 := f64(1.0 / f64(samps))
 
 	cam   := Ray{Vec{50, 52, 295.6},  Vec{0, -0.042612, -1}.norm()} // cam position, direction
 	cx    := Vec{ f64(w) * 0.5135 / f64(h), 0, 0}
