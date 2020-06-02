@@ -199,7 +199,7 @@ fn main() {
 
 fn (mut g Game) init_game() {
 	g.parse_tetros()
-	rand.seed(time.now().unix)
+	rand.seed(int(time.now().unix))
 	g.generate_tetro()
 	g.field = [] // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge
@@ -341,8 +341,8 @@ fn (g &Game) draw_tetro() {
 
 fn (g &Game) draw_block(i, j, color_idx int) {
 	color := if g.state == .gameover { gx.gray } else { colors[color_idx] }
-	g.gg.draw_rect((j - 1) * block_size, (i - 1) * block_size,
-		block_size - 1, block_size - 1, color)
+	g.gg.draw_rect(f32((j - 1) * block_size), f32((i - 1) * block_size),
+		f32(block_size - 1), f32(block_size - 1), color)
 }
 
 fn (g &Game) draw_field() {

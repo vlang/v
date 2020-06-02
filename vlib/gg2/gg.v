@@ -108,7 +108,8 @@ pub fn new_context(cfg Config) &GG {
 		width: cfg.width
 		height: cfg.height
 		window: window
-		clear_pass: gfx.create_clear_pass( f64(cfg.bg_color.r) / 255.0, f64(cfg.bg_color.g) / 255.0, f64(cfg.bg_color.b) / 255.0, 1.0)
+		clear_pass: gfx.create_clear_pass( f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0,
+f32(cfg.bg_color.b) / 255.0, 1.0)
 		scale: 1 // scale
 		fons:0
 	}
@@ -116,7 +117,7 @@ pub fn new_context(cfg Config) &GG {
 
 pub fn (gg &GG) draw_text(x, y int, text string, cfg gx.TextCfg) {
 	gg.fons.set_font(gg.font_normal)
-	gg.fons.set_size(cfg.size)
+	gg.fons.set_size(f32(cfg.size))
 	ascender := f32(0.0)
 	descender := f32(0.0)
 	lh := f32(0.0)
