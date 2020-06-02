@@ -128,3 +128,31 @@ fn test_complex_nested_if_expressions() {
 	}
 	assert a == false
 }
+
+fn test_lots_of_if_expressions() {
+	mut a := 0
+	if true {
+		if true {
+			if true {
+				if true {
+					if true {
+						if true {
+							if true {
+								if true {
+									if true {
+										if true {
+											if true {
+												a = 1
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	assert a == 1
+}
