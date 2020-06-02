@@ -183,17 +183,13 @@ fn (c &Checker) promote_num(left_type, right_type table.Type) table.Type {
 		}
 	} else if type_hi.is_float() {
 		if idx_hi == table.f32_type_idx {
-			if idx_lo in [table.int_type_idx, table.i64_type_idx, table.u32_type_idx, table.u64_type_idx] {
-				return table.void_type
-			} else {
-				return type_hi
-			}
-		} else { // f64, any_flt
 			if idx_lo in [table.i64_type_idx, table.u64_type_idx] {
 				return table.void_type
 			} else {
 				return type_hi
 			}
+		} else { // f64, any_flt
+			return type_hi
 		}
 	} else if idx_lo >= table.byte_type_idx { // both operands are unsigned
 		return type_hi

@@ -292,15 +292,14 @@ Please note that unlike C and Go, `int` is always a 32 bit integer.
 There is an exceptions to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type
 on one side can be automatically promoted if it fits
-completely into the data range of the type on the other side, i.e. when
-the promotion does not result in any data loss.
+completely into the data range of the type on the other side.
 These are the allowed possibilities:
 
 ```
    i8 → i16 → int → i64
-            ↘     ↘
-              f32 → f64
-            ↗     ↗
+                  ↘     ↘
+                    f32 → f64
+                  ↗     ↗
  byte → u16 → u32 → u64 ⬎
       ↘     ↘     ↘      ptr
    i8 → i16 → int → i64 ⬏
