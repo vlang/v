@@ -199,11 +199,13 @@ pub fn (mut d Doc) generate() ?bool {
 
 	mut module_name := ''
 	mut parent_mod_name := ''
+	mut orig_mod_name := ''
 
 	for i, file_ast in file_asts {
 		if i == 0 {
 			parent_mod_name = get_parent_mod(base_path) or { '' }
 			module_name = file_ast.mod.name
+			orig_mod_name = module_name
 			if module_name != 'main' && parent_mod_name.len > 0 {
 				module_name = parent_mod_name + '.' + module_name
 			}
@@ -230,8 +232,8 @@ pub fn (mut d Doc) generate() ?bool {
 					continue
 				}
 
-				if name.starts_with(module_name + '.') {
-					name = name.all_after(module_name + '.')
+				if name.starts_with(orig_mod_name + '.') {
+					name = name.all_after(orig_mod_name + '.')
 				}
 
 				mut node := DocNode{
