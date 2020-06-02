@@ -5,7 +5,7 @@ TMPDIR ?= /tmp
 
 VCFILE := v.c
 VC  := ./vc
-TCC := ./tcc
+TMPTCC := /var/tmp/tcc
 VCREPO := https://github.com/vlang/vc
 TCCREPO := https://github.com/vlang/tccbin
 GITCLEANPULL := git pull --quiet
@@ -80,25 +80,22 @@ endif
 fresh_vc:
 	$(GITFASTCLONE) $(VCREPO) $(VC)
 
-latest_tcc: $(TCC)/.git/config
+latest_tcc: $(TMPTCC)/.git/config
 ifndef ANDROID
 ifndef MAC
-ifndef local
-	cd $(TCC) && $(GITCLEANPULL)
-else
-	@echo "Using local tcc"
-endif
+	cd $(TMPTCC) && $(GITCLEANPULL)
 endif
 endif
 
 fresh_tcc:
 ifndef ANDROID
 ifndef MAC
-	$(GITFASTCLONE) $(TCCREPO) $(TCC)
+	rm -rf $(TMPTCC)
+	$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)
 endif
 endif
 
-$(TCC)/.git/config:
+$(TMPTCC)/.git/config:
 ifndef MAC
 	$(MAKE) fresh_tcc
 endif
