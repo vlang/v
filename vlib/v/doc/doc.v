@@ -180,10 +180,10 @@ pub fn (mut d Doc) generate() ?bool {
 	// parse files
 	mut file_asts := []ast.File{}
 	// TODO: remove later for vlib
-	comments_mode := if d.with_comments { 
-		scanner.CommentsMode.parse_comments 
-	} else { 
-		scanner.CommentsMode.skip_comments 
+	comments_mode := if d.with_comments {
+		scanner.CommentsMode.parse_comments
+	} else {
+		scanner.CommentsMode.skip_comments
 	}
 	for file in v_files {
 		file_ast := parser.parse_file(
@@ -222,13 +222,14 @@ pub fn (mut d Doc) generate() ?bool {
 		for si, stmt in stmts {
 			if stmt is ast.Comment { continue }
 
-			if !(stmt is ast.Module) {
+			//if !(stmt is ast.Module) {
+			if stmt !is ast.Module {
 				// todo: accumulate consts
 				mut name := d.get_name(stmt)
 				signature := d.get_signature(stmt)
 				pos := d.get_pos(stmt)
 
-				if !signature.starts_with('pub') && d.pub_only { 
+				if !signature.starts_with('pub') && d.pub_only {
 					continue
 				}
 
@@ -268,7 +269,7 @@ pub fn (mut d Doc) generate() ?bool {
 					last_comment := d.contents[d.contents.len-1].comment
 					d.contents[d.contents.len-1].comment = last_comment + '\n' + write_comment_bw(stmts, si-1)
 				}
-			}	
+			}
 		}
 	}
 

@@ -946,6 +946,11 @@ pub fn (mut s Scanner) scan() token.Token {
 				s.pos += 2
 				return s.new_token(.not_in, '', 3)
 			}
+			else if nextc == `i` && s.text[s.pos+2] == `s` && s.text[s.pos+3].is_space() {
+				s.pos += 2
+				return s.new_token(.not_is, '', 3)
+			}
+			//
 			else {
 				return s.new_token(.not, '', 1)
 			}

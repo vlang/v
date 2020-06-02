@@ -546,7 +546,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.right_shift {
 			return c.check_shift(left_type, right_type, left_pos, right_pos)
 		}
-		.key_is {
+		.key_is, .not_is {
 			type_expr := infix_expr.right as ast.Type
 			typ_sym := c.table.get_type_symbol(type_expr.typ)
 			if typ_sym.kind == .placeholder {

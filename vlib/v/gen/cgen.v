@@ -1744,7 +1744,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	// g.infix_op = node.op
 	left_type := if node.left_type == table.t_type { g.cur_generic_type } else { node.left_type }
 	left_sym := g.table.get_type_symbol(left_type)
-	if node.op == .key_is {
+	if node.op in [.key_is, .not_is] {
 		g.is_expr(node)
 		return
 	}
@@ -3767,6 +3767,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 }
 
 fn (mut g Gen) is_expr(node ast.InfixExpr) {
+	eq := if node.op == .key_is { '==' } else { '!=' }
 	g.expr(node.left)
 	if node.left_type.is_ptr() {
 		g.write('->')
@@ -3775,14 +3776,14 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 	}
 	sym := g.table.get_type_symbol(node.left_type)
 	if sym.kind == .interface_ {
-		g.write('_interface_idx == ')
+		g.write('_interface_idx $eq ')
 		// `_Animal_Dog_index`
 		sub_type := node.right as ast.Type
 		sub_sym := g.table.get_type_symbol(sub_type.typ)
 		g.write('_${sym.name}_${sub_sym.name}_index')
 		return
 	} else if sym.kind == .sum_type {
-		g.write('typ == ')
+		g.write('typ $eq ')
 	}
 	g.expr(node.right)
 }

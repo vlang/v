@@ -198,7 +198,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	pos := p.tok.position()
 	p.next()
 	mut right := ast.Expr{}
-	if op == .key_is {
+	if op in [.key_is, .not_is] {
 		p.expecting_type = true
 	}
 	right = p.expr(precedence)

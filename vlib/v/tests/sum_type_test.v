@@ -11,6 +11,7 @@ struct IntegerLiteral {
 fn handle(e Expr) string {
 	is_literal := e is IntegerLiteral
 	assert is_literal
+	assert !(e !is IntegerLiteral)
 	if e is IntegerLiteral {
 		println('int')
 	}
@@ -39,8 +40,8 @@ fn test_assignment_and_push() {
 	mut expr1 := Expr{}
 	mut arr1 := []Expr{}
 	expr := IntegerLiteral{
-        val: '111'
-    }
+		val: '111'
+	}
 	arr1 << expr
 	match arr1[0] {
 		IntegerLiteral {
@@ -54,24 +55,33 @@ fn test_assignment_and_push() {
 }
 
 // Test moving structs between master/sub arrays
-
 type Master = Sub1 | Sub2
+
 struct Sub1 {
 mut:
-	val int
+	val  int
 	name string
 }
+
 struct Sub2 {
 	name string
-	val int
+	val  int
 }
 
 fn test_converting_down() {
 	mut out := []Master{}
-	out << Sub1 { val: 1, name: 'one' }
-	out << Sub2 { val: 2, name: 'two'}
-	out << Sub2 { val: 3, name: 'three'}
-
+	out << Sub1{
+		val: 1
+		name: 'one'
+	}
+	out << Sub2{
+		val: 2
+		name: 'two'
+	}
+	out << Sub2{
+		val: 3
+		name: 'three'
+	}
 	mut res := []Sub2{cap: out.len}
 	for d in out {
 		match d {
@@ -79,10 +89,8 @@ fn test_converting_down() {
 			else {}
 		}
 	}
-
 	assert res[0].val == 2
 	assert res[0].name == 'two'
 	assert res[1].val == 3
 	assert res[1].name == 'three'
 }
-
