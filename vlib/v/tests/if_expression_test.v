@@ -30,7 +30,8 @@ fn test_if_expression_with_stmts() {
 	assert b == 24
 }
 
-fn noop() {}
+fn noop() {
+}
 
 fn test_if_expression_with_function_assign() {
 	a := if true {
@@ -102,7 +103,7 @@ fn test_simple_nested_if_expressions() {
 
 fn test_complex_nested_if_expressions() {
 	mut a := false
-	a = 1 == 2 || true && if true {
+	a = (1 == 2 || true) && (if true {
 		g := 6
 		h := if false { 3 } else { 5 }
 		mut d := false
@@ -125,7 +126,7 @@ fn test_complex_nested_if_expressions() {
 		} else {
 			false
 		}
-	}
+	})
 	assert a == false
 }
 

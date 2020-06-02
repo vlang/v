@@ -419,9 +419,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	}
 	c.expected_type = table.void_type
 	mut left_type := c.expr(infix_expr.left)
-	if false && left_type == table.t_type {
-		left_type = c.cur_generic_type
-	}
+	// if false && left_type == table.t_type {
+	// left_type = c.cur_generic_type
+	// }
 	infix_expr.left_type = left_type
 	c.expected_type = left_type
 	mut right_type := c.expr(infix_expr.right)
@@ -501,8 +501,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					}
 				}
 				if infix_expr.op in [.div, .mod] {
-					if infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() ==
-						'0' || infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0 {
+					if (infix_expr.right is ast.IntegerLiteral && infix_expr.right.str() ==
+						'0') || (infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0) {
 						oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
 						c.error('$oper by zero', right_pos)
 					}
@@ -557,7 +557,18 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			}
 			return table.bool_type
 		}
-		else {}
+		else {
+			// use `()` to make the boolean expression clear error
+			// for example: `(a && b) || c` instead of `a && b || c`
+			if infix_expr.op in [.logical_or, .and] {
+				if infix_expr.left is ast.InfixExpr {
+					e := infix_expr.left as ast.InfixExpr
+					if e.op in [.logical_or, .and] && e.op != infix_expr.op {
+						c.error('use `()` to make the boolean expression clear', infix_expr.pos)
+					}
+				}
+			}
+		}
 	}
 	// TODO: Absorb this block into the above single side check block to accelerate.
 	if left_type == table.bool_type && infix_expr.op !in [.eq, .ne, .logical_or, .and] {
@@ -1789,8 +1800,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.CastExpr {
 			it.expr_type = c.expr(it.expr)
 			sym := c.table.get_type_symbol(it.expr_type)
-			if it.typ == table.string_type && !(sym.kind in [.byte, .byteptr] || sym.kind ==
-				.array && sym.name == 'array_byte') {
+			if it.typ == table.string_type && !(sym.kind in [.byte, .byteptr] || (sym.kind ==
+				.array && sym.name == 'array_byte')) {
 				type_name := c.table.type_to_str(it.expr_type)
 				c.error('cannot cast type `$type_name` to string, use `x.str()` instead', it.pos)
 			}

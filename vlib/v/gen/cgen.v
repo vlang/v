@@ -1915,28 +1915,31 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(',')
 		g.expr(node.right)
 		g.write(')')
-	} else if node.op in [.plus, .minus, .mul, .div, .mod] && (left_sym.name[0].is_capital() ||
-		left_sym.name.contains('.')) && left_sym.kind != .alias || left_sym.kind == .alias && (left_sym.info as table.Alias).language ==
-		.c {
-		// !left_sym.is_number() {
-		g.write(g.typ(left_type))
-		g.write('_')
-		g.write(util.replace_op(node.op.str()))
-		g.write('(')
-		g.expr(node.left)
-		g.write(', ')
-		g.expr(node.right)
-		g.write(')')
 	} else {
-		need_par := node.op in [.amp, .pipe, .xor] // `x & y == 0` => `(x & y) == 0` in C
-		if need_par {
+		a := left_sym.name[0].is_capital() || left_sym.name.contains('.')
+		b := left_sym.kind != .alias
+		c := left_sym.kind == .alias && (left_sym.info as table.Alias).language == .c
+		if node.op in [.plus, .minus, .mul, .div, .mod] && ((a && b) || c) {
+			// Overloaded operators
+			g.write(g.typ(left_type))
+			g.write('_')
+			g.write(util.replace_op(node.op.str()))
 			g.write('(')
-		}
-		g.expr(node.left)
-		g.write(' $node.op.str() ')
-		g.expr(node.right)
-		if need_par {
+			g.expr(node.left)
+			g.write(', ')
+			g.expr(node.right)
 			g.write(')')
+		} else {
+			need_par := node.op in [.amp, .pipe, .xor] // `x & y == 0` => `(x & y) == 0` in C
+			if need_par {
+				g.write('(')
+			}
+			g.expr(node.left)
+			g.write(' $node.op.str() ')
+			g.expr(node.right)
+			if need_par {
+				g.write(')')
+			}
 		}
 	}
 }
@@ -1966,7 +1969,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	// mut sum_type_str = ''
 	for j, branch in node.branches {
 		is_last := j == node.branches.len - 1
-		if branch.is_else || node.is_expr && is_last {
+		if branch.is_else || (node.is_expr && is_last) {
 			if node.branches.len > 1 {
 				if is_expr {
 					// TODO too many branches. maybe separate ?: matches
@@ -2980,6 +2983,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		fields := fmt.split('.')
 		// validate format
 		// only floats should have precision specifier
+		/*
 		if fields.len > 2 || fields.len == 2 && !(node.expr_types[i].is_float()) || node.expr_types[i].is_signed() &&
 			fspec !in [`d`, `c`, `x`, `X`, `o`] || node.expr_types[i].is_unsigned() && fspec !in [`u`, `x`,
 			`X`, `o`, `c`] || node.expr_types[i].is_any_int() && fspec !in [`d`, `c`, `x`, `X`,
@@ -2988,7 +2992,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			`f`, `g`] || node.expr_types[i].is_pointer() && fspec !in [`p`, `x`, `X`] {
 			verror('illegal format specifier ${fspec:c} for type ${g.table.get_type_name(node.expr_types[i])}')
 		}
+		*/
 		// make sure that format paramters are valid numbers
+		/*
 		for j, f in fields {
 			for k, c in f {
 				if (c < `0` || c > `9`) && !(j == 0 && k == 0 && (node.expr_types[i].is_number() &&
@@ -2997,6 +3003,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				}
 			}
 		}
+		*/
 		specs << fspec
 		fieldwidths << if fields.len == 0 {
 			0
@@ -3466,7 +3473,7 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 			return 'TARGET_ORDER_IS_BIG'
 		}
 		else {
-			if is_comptime_optional || g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all {
+			if is_comptime_optional || (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
 				return 'CUSTOM_DEFINE_${name}'
 			}
 			verror('bad os ifdef name "$name"')
@@ -4009,7 +4016,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 		// There is a custom .str() method, so use it.
 		// NB: we need to take account of whether the user has defined
 		// `fn (x T) str() {` or `fn (x &T) str() {`, and convert accordingly
-		if str_method_expects_ptr && is_elem_ptr || !str_method_expects_ptr && !is_elem_ptr {
+		if (str_method_expects_ptr && is_elem_ptr) || (!str_method_expects_ptr && !is_elem_ptr) {
 			g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}(it);')
 		} else if str_method_expects_ptr && !is_elem_ptr {
 			g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}(&it);')
@@ -4064,7 +4071,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	} else if sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
 	} else {
-		if str_method_expects_ptr && is_elem_ptr || !str_method_expects_ptr && !is_elem_ptr {
+		if (str_method_expects_ptr && is_elem_ptr) || (!str_method_expects_ptr && !is_elem_ptr) {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(a[i]));')
 		} else if str_method_expects_ptr && !is_elem_ptr {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(&a[i]));')

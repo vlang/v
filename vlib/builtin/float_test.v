@@ -1,4 +1,6 @@
 fn test_float_decl() {
+	//z := 1f
+	//assert z > 0
   x1 := 1e10
   x2 := -2e16
   x3 := 1e-15

@@ -373,13 +373,9 @@ pub fn (tok Token) precedence() int {
 		.eq, .ne, .lt, .le, .gt, .ge {
 			return int(Precedence.eq)
 		}
-		// `&&`
-		// .and {
-		// return 3
-		// }
-		// `||`
 		// .logical_or,
-		.assign, .plus_assign, .minus_assign, .div_assign, .mod_assign, .or_assign, .and_assign,
+		.assign, .plus_assign, .minus_assign, .div_assign, .mod_assign,
+.or_assign, .and_assign,
 		//
 		.left_shift_assign, .right_shift_assign, .mult_assign, .xor_assign {
 			return int(Precedence.assign)
@@ -390,9 +386,6 @@ pub fn (tok Token) precedence() int {
 		.logical_or, .and {
 			return int(Precedence.cond)
 		}
-		// /.plus_assign {
-		// /return 2
-		// /}
 		else {
 			return int(Precedence.lowest)
 		}
