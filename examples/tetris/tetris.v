@@ -11,7 +11,8 @@ import gg2 as gg
 import sokol
 import sokol.sapp
 import math
-import freetype
+import gg2.ft
+import os
 
 const (
 	block_size = 20 // pixels
@@ -129,72 +130,47 @@ struct Game {
 	// gg context for drawing
 	gg          &gg.GG
 	// ft context for font drawing
-	ft          &freetype.FreeType
+	//ft          &freetype.FreeType
+	//ft          &ft.FT
 	font_loaded bool
 }
 
 fn frame(game &Game) {
+	//C.sfons_flush(game.ft.fons)
 	game.gg.begin()
 	game.draw_scene()
 	game.gg.end()
 }
 
 fn main() {
-	mut game := &Game{}
+	// TODO
+	/*
+	f := ft.new(
+		//font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
+		font_path: ('../assets/fonts/RobotoMono-Regular.ttf')
+	) or {
+		println('failed to loat the font')
+		return
+	}
+	*/
+	mut game := &Game{
+		//ft: f
+	}
 	game.gg = gg.new_context(
 		bg_color: gx.white
 		width: win_width
 		height: win_height
 		use_ortho: true // This is needed for 2D drawing
 		create_window: true
-		window_title: 'V tetris'
+		window_title: 'V Tetris'
 		frame_fn: frame
 		user_data: game
 		//on_key_down: key_down
 		event_cb: on_event
 	)
-		//font_path: os.resource_abs_path('assets/fonts/RobotoMono-Regular.ttf')
-
-/*
-	gconfig := gg.Config{
-			width: win_width
-			height: win_height
-			use_ortho: true // This is needed for 2D drawing
-			create_window: true
-			window_title: 'V Tetris'
-			//window_user_ptr: game
-	}
-
-	fconfig := gg.Config{
-			width: win_width
-			height: win_height
-			use_ortho: true
-			font_path: '../assets/fonts/RobotoMono-Regular.ttf'
-			font_size: 18
-			scale: 2
-			window_user_ptr: 0
-	}
-	mut game := &Game{
-		gg: gg.new_context(gconfig)
-		ft: freetype.new_context(fconfig)
-	}
-	*/
-	//game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works
 	game.init_game()
-	//game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
 	game.gg.run() // Run the render loop in the main thread
-	/*
-	game.font_loaded = game.ft != 0
-	for {
-		game.draw_scene()
-		game.gg.render()
-		if game.gg.window.should_close() {
-			game.gg.window.destroy()
-			return
-		}
-	}
-	*/
 }
 
 fn (mut g Game) init_game() {
@@ -358,17 +334,17 @@ fn (g &Game) draw_field() {
 
 fn (mut g Game) draw_ui() {
 	if g.font_loaded {
-		g.ft.draw_text(1, 3, g.score.str(), text_cfg)
+		//g.ft.draw_text(1, 3, g.score.str(), text_cfg)
 		if g.state == .gameover {
 			g.gg.draw_rect(0, win_height / 2 - text_size, win_width,
 		 								5 * text_size, ui_color)
-			g.gg.draw_text(1, win_height / 2 + 0 * text_size, 'Game Over', over_cfg)
-			g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'Space to restart', over_cfg)
+			//g.ft.draw_text(1, win_height / 2 + 0 * text_size, 'Game Over', over_cfg)
+			//g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'Space to restart', over_cfg)
 		} else if g.state == .paused {
 			g.gg.draw_rect(0, win_height / 2 - text_size, win_width,
 				5 * text_size, ui_color)
-			g.ft.draw_text(1, win_height / 2 + 0 * text_size, 'Game Paused', text_cfg)
-			g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'SPACE to resume', text_cfg)
+			//g.ft.draw_text(1, win_height / 2 + 0 * text_size, 'Game Paused', text_cfg)
+			//g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'SPACE to resume', text_cfg)
 		}
 	}
 	//g.gg.draw_rect(0, block_size, win_width, limit_thickness, ui_color)
