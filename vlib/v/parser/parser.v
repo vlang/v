@@ -890,7 +890,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for {
 		return p.struct_init(false) // short_syntax: false
-	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
+	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language == .v) {
 		// `Color.green`
 		mut enum_name := p.check_name()
 		if mod != '' {
