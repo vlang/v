@@ -60,6 +60,15 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if file.ends_with('_freebsd.c.v') && prefs.os != .freebsd {
 		return false
 	}
+	if file.ends_with('_openbsd.c.v') && prefs.os != .openbsd {
+		return false
+	}
+	if file.ends_with('_netbsd.c.v') && prefs.os != .netbsd {
+		return false
+	}
+	if file.ends_with('_dragonfly.c.v') && prefs.os != .dragonfly {
+		return false
+	}
 	if file.ends_with('_solaris.c.v') && prefs.os != .solaris {
 		return false
 	}
