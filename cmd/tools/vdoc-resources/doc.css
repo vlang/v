@@ -25,6 +25,18 @@ html {
     overflow-y: auto;
     height: 100vh;
     z-index: 10;
+    scrollbar-width: thin;
+    scrollbar-color: #a0aec0 transparent;
+}
+.doc-nav::-webkit-scrollbar {
+    width: 8px;
+}
+.doc-nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+.doc-nav::-webkit-scrollbar-thumb {
+    background-color: #a0aec0;
+    border: 3px solid transparent;
 }
 .doc-nav .content.show {
     display: flex;
@@ -65,8 +77,8 @@ html {
     flex-direction: column;
 }
 .doc-nav > .content li ul {
-    border-left: 2px solid white;
-    padding-left: 0.8rem;
+    border-left: 1.7px solid rgba(255, 255, 255, 0.4);
+    padding-left: 0.7rem;
     margin: 0.2rem 0;
 }
 .doc-nav > .content a {
@@ -158,6 +170,7 @@ html {
     width: 100%;
     box-sizing: border-box;
     -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 .doc-toc::-webkit-scrollbar {
     display: none;
@@ -187,7 +200,6 @@ html {
 
 /* Medium screen and up */
 @media (min-width: 768px) {
-
     .doc-container {
         flex-direction: row;
     }
@@ -197,7 +209,7 @@ html {
     }
 
     .doc-toc {
-        padding: 1rem;
+        padding: 1rem 1rem 0 1rem;
         position: sticky;
         position: -webkit-sticky;
         align-self: flex-start;
@@ -207,6 +219,9 @@ html {
         min-width: 200px;
         width: auto;
         max-width: 300px;
+    }
+    .doc-toc > ul {
+        padding-bottom: 1rem;
     }
 }
 
