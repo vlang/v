@@ -23,19 +23,25 @@ html {
     color: white;
     flex-direction: column;
     overflow-y: auto;
-    height: auto;
+    height: 100vh;
+    z-index: 10;
 }
 .doc-nav .content.show {
     display: flex;
-} 
+}
 .doc-nav .content.hidden {
     display: none;
 }
-.doc-nav #toggleMenu {
+.doc-nav #toggle-menu {
     background: none;
     border: none;
     cursor: pointer;
     color: #fff;
+}
+.doc-nav > .heading-container {
+    position: sticky;
+    position: -webkit-sticky;
+    top: 0;
 }
 .doc-nav > .heading-container > .heading {
     display: flex;
@@ -47,6 +53,7 @@ html {
 .doc-nav > .heading-container > .heading > .module {
     font-size: 1.4rem;
     font-weight: 500;
+    margin: 0;
 }
 .doc-nav > .heading-container > .heading > .version {
     margin-left: 1.2rem;
@@ -178,20 +185,19 @@ html {
     font-weight: 400;
 }
 
-/* Medium screen and up */
-@media (min-width: 768px) {
-    .doc-nav {
-        width: 300px;
+@media (max-width: 1023px) {
+    .doc-nav.hidden {
+        height: auto;
+    }
+}
+
+@media (min-width: 1024px) {
+    .doc-nav #toggle-menu {
+        display: none;
     }
 
-    .doc-nav #toggleMenu {
-        display: none;
-    }    
-
-    .doc-nav > .heading-container {
-        position: sticky;
-        position: -webkit-sticky;
-        top: 0;
+    .doc-nav {
+        width: 300px;
     }
 
     .doc-nav > .heading-container > .heading > .version {
@@ -199,10 +205,26 @@ html {
         margin-right: 0;
     }
 
+    .doc-nav .content.show,
+    .doc-nav .content.hidden {
+        display: flex;
+    }
+
     .doc-container {
-        flex-direction: row;
         margin-top: 0;
         margin-left: 300px;
+    }
+
+    .doc-toc {
+        top: 0;
+    }
+}
+
+/* Medium screen and up */
+@media (min-width: 768px) {
+
+    .doc-container {
+        flex-direction: row;
     }
 
     .doc-content {
@@ -214,16 +236,11 @@ html {
         position: sticky;
         position: -webkit-sticky;
         align-self: flex-start;
-        top: 0;
+        top: 56px;
         height: auto;
         height: 100vh;
         min-width: 200px;
         width: auto;
         max-width: 300px;
-    }
-
-    .doc-nav .content.show,
-    .doc-nav .content.hidden {
-        display: flex;
     }
 }

@@ -179,12 +179,12 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	} else { '' }
 	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.src_path)) } else { dcs.head.name }
 	// write nav
-	hw.write('<header class="doc-nav">
+	hw.write('<header class="doc-nav hidden">
 		<div class="heading-container">
 			<div class="heading">
-				<h2>${header_name}</h2>
+				<div class="module">${header_name}</div>
 				<span class="version">${version}</span>
-				<button id="toggleMenu">
+				<button id="toggle-menu">
 					<svg fill="currentColor" width="2rem" viewBox="0 0 20 20"><path d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
 				</button>
 			</div>
@@ -246,12 +246,15 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}
 	hw.write('</div>
 		<script>
-			var toggle = document.getElementById("toggleMenu");
-			toggle.addEventListener("click", function (ev) {
+			var toggle = document.getElementById("toggle-menu");
+			toggle.addEventListener("click", function(ev) {
+				document.querySelectorAll(".doc-nav").forEach(function(el) {
+					el.classList.toggle("hidden");
+				});
 				document.querySelectorAll(".doc-nav .content").forEach(function(el) {
 					el.classList.toggle("hidden");
 					el.classList.toggle("show");
-				})
+				});
 			});
 		</script>
 	</body>
