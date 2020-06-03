@@ -1,4 +1,4 @@
-panic: compilation failed: vlib/v/tests/inout/mut_int.v:1:12: error: mutable arguments are only allowed for arrays, maps, and structs
+vlib/v/checker/tests/mut_int.v:1:12: error: mutable arguments are only allowed for arrays, maps, and structs
 return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`
     1 | fn foo(mut x int)  {
       |            ^
