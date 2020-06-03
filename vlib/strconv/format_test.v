@@ -1,4 +1,3 @@
-import os
 import strconv
 
 fn test_format(){
