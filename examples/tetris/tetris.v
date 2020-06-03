@@ -9,7 +9,6 @@ import time
 import gx
 import gg2 as gg
 import sokol.sapp
-import sokol.sfons
 
 const (
 	block_size = 20 // pixels
@@ -130,6 +129,7 @@ struct Game {
 	//ft          &freetype.FreeType
 	//ft          &ft.FT
 	font_loaded bool
+	// frame/time counters:
 	frame int
 	frame_old int
 	frame_sw time.StopWatch = time.new_stopwatch({})
@@ -139,11 +139,11 @@ struct Game {
 [if showfps]
 fn (game &Game) showfps() {
 	game.frame++
-	if 0 == game.frame % 60 {
-		elapsed_time_ms := game.second_sw.elapsed().milliseconds()
-		last_frame_ms := game.frame_sw.elapsed().milliseconds()
-		fps := (game.frame-game.frame_old)*(1000/elapsed_time_ms)
-		eprintln('fps: ${fps:3} | last frame took: ${last_frame_ms:2}ms | frame: ${game.frame:6} ')
+	last_frame_ms := f64(game.frame_sw.elapsed().microseconds())/1000.0
+	ticks := f64(game.second_sw.elapsed().microseconds())/1000.0
+	if ticks > 999.0 {
+		fps := f64(game.frame - game.frame_old)*ticks/1000.0
+		eprintln('fps: ${fps:5.1f} | last frame took: ${last_frame_ms:6.3f}ms | frame: ${game.frame:6} ')
 		game.second_sw.restart()
 		game.frame_old = game.frame
 	}
@@ -154,8 +154,8 @@ fn frame(game &Game) {
 	//C.sfons_flush(game.ft.fons)
 	game.gg.begin()
 	game.draw_scene()
-	game.gg.end()
 	game.showfps()
+	game.gg.end()
 }
 
 fn main() {
