@@ -123,20 +123,22 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	mut toc := strings.new_builder(200)
 	mut doc_node_html := fn (dd doc.DocNode, link string, head bool) string {
 		mut dnw := strings.new_builder(200)
+		link_svg := '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
 		head_tag := if head { 'h1' } else { 'h2' }
 		md_content := markdown.to_html(dd.comment)
 		dnw.writeln('<section id="${slug(dd.name)}" class="doc-node">')
 		if dd.name != 'README' {
-			dnw.write('<$head_tag>${dd.name} <a href="#${slug(dd.name)}">#</a></$head_tag>')
+			dnw.write('<div class="title"><$head_tag>${dd.name} <a href="#${slug(dd.name)}">#</a></$head_tag>')
+			if link.len != 0 {
+				dnw.write('<a class="link" href="$link">$link_svg</a></div>')
+			}
+			dnw.write('</div>')
 		}
 		if head {
 			dnw.write(md_content)
 		} else {
-			dnw.writeln('<code class="code-snippet">${dd.content}</code>')
+			dnw.writeln('<pre><code>${dd.content}</code></pre>')
 			dnw.writeln(md_content)
-			if link.len != 0 {
-				dnw.writeln('<p>[<a href="#$link">Source</a>]</p>')
-			}
 		}
 		dnw.writeln('</section>')
 		return dnw.str()
@@ -160,10 +162,15 @@ fn (cfg DocConfig) gen_html(idx int) string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${dcs.head.name} | vdoc</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">')
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css">')
 	// write css
-	hw.write(r'<style>/*! normalize.css v8.0.1 | MIT License | github.com/necolas/normalize.css */html{line-height:1.15;-webkit-text-size-adjust:100%}body{margin:0}main{display:block}h1{font-size:2em;margin:.67em 0}hr{box-sizing:content-box;height:0;overflow:visible}pre{font-family:monospace,monospace;font-size:1em}a{background-color:transparent}abbr[title]{border-bottom:none;text-decoration:underline;text-decoration:underline dotted}b,strong{font-weight:bolder}code,kbd,samp{font-family:monospace,monospace;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}img{border-style:none}button,input,optgroup,select,textarea{font-family:inherit;font-size:100%;line-height:1.15;margin:0}button,input{overflow:visible}button,select{text-transform:none}[type=button],[type=reset],[type=submit],button{-webkit-appearance:button}[type=button]::-moz-focus-inner,[type=reset]::-moz-focus-inner,[type=submit]::-moz-focus-inner,button::-moz-focus-inner{border-style:none;padding:0}[type=button]:-moz-focusring,[type=reset]:-moz-focusring,[type=submit]:-moz-focusring,button:-moz-focusring{outline:1px dotted ButtonText}fieldset{padding:.35em .75em .625em}legend{box-sizing:border-box;color:inherit;display:table;max-width:100%;padding:0;white-space:normal}progress{vertical-align:baseline}textarea{overflow:auto}[type=checkbox],[type=radio]{box-sizing:border-box;padding:0}[type=number]::-webkit-inner-spin-button,[type=number]::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}[type=search]::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}details{display:block}summary{display:list-item}[hidden],template{display:none}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}button{background-color:transparent;background-image:none;padding:0}button:focus{outline:1px dotted;outline:5px auto -webkit-focus-ring-color}fieldset,ol,ul{margin:0;padding:0}ol,ul{list-style:none}html{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;line-height:1.5}*,:after,:before{box-sizing:border-box;border:0 solid #e2e8f0}hr{border-top-width:1px}img{border-style:solid}textarea{resize:vertical}input::placeholder,textarea::placeholder{color:#a0aec0}[role=button],button{cursor:pointer}table{border-collapse:collapse}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}button,input,optgroup,select,textarea{padding:0;line-height:inherit;color:inherit}code,kbd,pre,samp{font-family:SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,Courier New,monospace}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}.container{width:100%}.flex{display:flex}.hidden{display:none}.font-bold{font-weight:700}.resize{resize:both}.text-gray-600{--text-opacity:1;color:#718096;color:rgba(113,128,150,var(--text-opacity))}.doc-container{display:flex;flex-direction:column-reverse;min-height:100vh;margin-top:10%}.doc-nav{position:fixed;left:0;top:0;right:0;display:flex;flex-direction:column;--bg-opacity:1;background-color:#2b6cb0;background-color:rgba(43,108,176,var(--bg-opacity));--text-opacity:1;color:#fff;color:rgba(255,255,255,var(--text-opacity));padding:1rem}.doc-nav .heading{display:flex;justify-content:space-between;align-items:center}.doc-nav .heading h2{font-size:1.875rem;font-weight:500}.doc-nav .heading .version{font-size:1.5rem;font-weight:500;margin-right:auto;--text-opacity:1;color:#bee3f8;color:rgba(190,227,248,var(--text-opacity))}.doc-nav nav{flex-direction:column;--text-opacity:1;color:#fff;color:rgba(255,255,255,var(--text-opacity));padding-left:2rem;padding-right:2rem;padding-bottom:3rem;margin-top:.5rem;margin-left:-2rem;margin-right:-2rem;height:100%;overflow-y:auto;max-height:100vh}.doc-nav nav .section{text-decoration:none;display:flex;flex-direction:row;align-items:center;justify-content:space-between;font-size:1.25rem;font-weight:500;margin-bottom:1rem}.doc-nav nav .section svg{width:2rem}.doc-nav nav a{font-size:1.125rem;word-break:break-all}.doc-nav nav a:hover{text-decoration:underline;--text-opacity:1;color:#bee3f8;color:rgba(190,227,248,var(--text-opacity))}.doc-nav nav ul{display:flex;flex-direction:column}.doc-nav nav ul li:not(:last-child){margin-bottom:.5rem}.doc-nav nav ul li ul{padding-left:.75rem;border-left-width:2px;margin-top:1rem;--border-opacity:1;border-color:#2c5282;border-color:rgba(44,82,130,var(--border-opacity))}.doc-content{--bg-opacity:1;background-color:#fff;background-color:rgba(255,255,255,var(--bg-opacity));width:100%;padding:2rem}.doc-content .doc-node{padding-bottom:2rem}.doc-content p,.doc-content ul li{font-size:1.125rem;margin-bottom:1rem}.doc-content ul li p{margin-bottom:0}.doc-content p,.doc-content p img{display:inline-block}.doc-content code{--bg-opacity:1;background-color:#e2e8f0;background-color:rgba(226,232,240,var(--bg-opacity));padding:.25rem;border-radius:.25rem}.doc-content a{--text-opacity:1;color:#2b6cb0;color:rgba(43,108,176,var(--text-opacity));text-decoration:underline}.doc-content code.code-snippet,.doc-content pre code{margin-bottom:2rem;margin-top:.5rem;white-space:pre;overflow-x:auto;display:inline-block;padding:1rem;width:100%;border-radius:.5rem;-webkit-overflow-scrolling:touch}.doc-content ul{list-style-type:disc;list-style-position:inside}.doc-content h1{font-size:2.25rem}.doc-content h2{font-size:1.875rem}.doc-content h3{font-size:1.5rem}.doc-content h4{font-size:1.25rem}.doc-content h5{font-size:1.125rem}.doc-content h6{font-size:1rem}.doc-content h1,.doc-content h2,.doc-content h3,.doc-content h4,.doc-content h5,.doc-content h6{font-weight:700;border-bottom-width:2px;padding-bottom:.5rem;margin-bottom:1rem}.doc-content h1 a,.doc-content h2 a,.doc-content h3 a,.doc-content h4 a,.doc-content h5 a,.doc-content h6 a{display:none;text-decoration:none;--text-opacity:1;color:#a0aec0;color:rgba(160,174,192,var(--text-opacity))}.doc-content h1:hover a,.doc-content h2:hover a,.doc-content h3:hover a,.doc-content h4:hover a,.doc-content h5:hover a,.doc-content h6:hover a{display:inline-block}.doc-toc{padding:2rem;font-size:1.25rem;width:100%;max-height:100vh;height:100%}.doc-toc .section{--text-opacity:1;color:#718096;color:rgba(113,128,150,var(--text-opacity));text-decoration:none;display:flex;flex-direction:row-reverse;align-items:center;justify-content:flex-end;font-size:1.25rem;font-weight:500;margin-bottom:1rem}.doc-toc .section svg{margin-right:.5rem;width:1.3rem}.doc-toc a{--text-opacity:1;color:#2b6cb0;color:rgba(43,108,176,var(--text-opacity));text-decoration:none}.doc-toc a:hover{text-decoration:underline}.doc-toc ul{display:flex;flex-direction:column;overflow-y:auto;height:100%;padding-bottom:2rem}.doc-toc ul li:not(:last-child){margin-bottom:.5rem}.doc-toc ul li ul{padding-left:.75rem;margin-top:1rem;border-left-width:2px;padding-bottom:0;--border-opacity:1;border-color:#cbd5e0;border-color:rgba(203,213,224,var(--border-opacity));overflow-y:visible}@media (min-width:640px){.container{max-width:640px}}@media (min-width:768px){.container{max-width:768px}}@media (min-width:1024px){.container{max-width:1024px}.doc-container{flex-direction:row;margin-top:0}.doc-nav{bottom:0;flex-direction:column;width:16.666667%;height:100vh;padding-left:2rem;padding-right:2rem}.doc-nav .heading{align-items:flex-end}.doc-nav .heading h2{font-size:2.25rem;margin-bottom:-.25rem}.doc-nav .heading .version{margin-right:0}.doc-nav nav{margin-top:2rem;margin-bottom:-3rem}.doc-content{width:50%;margin-left:16.666667%}.doc-content h1{font-size:3rem}.doc-content h2{font-size:2.25rem}.doc-content h3{font-size:1.875rem}.doc-content h4{font-size:1.5rem}.doc-content h5{font-size:1.25rem}.doc-content h6,.doc-toc{font-size:1.125rem}.doc-toc{position:fixed;width:16.666667%;margin-top:0;left:66.66667%}.lg\:flex{display:flex}.lg\:hidden{display:none}}@media (min-width:1280px){.container{max-width:1280px}}</style></head><body>')
-	version := if cfg.manifest.version.len != 0 { '<span class="version">${cfg.manifest.version}</span>' } else { '' }
+	exe_path := os.executable()
+	exe_dir := os.dir(exe_path)
+	doc_css_path := os.join_path(exe_dir, 'vdoc-resources', 'doc.css')
+	doc_css := os.read_file(doc_css_path) or { panic('could not read $doc_css_path') }
+	hw.write('<style>$doc_css</style>')
+	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
 	repo_link := if cfg.manifest.repo_url.len != 0 {
 		'<a href="${cfg.manifest.repo_url}" class="section">
 			Repository
@@ -173,34 +180,33 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.src_path)) } else { dcs.head.name }
 	// write nav
 	hw.write('<header class="doc-nav">
-		<div class="heading">
-			<h2>${header_name}</h2>
-			${version}
-			<button id="toggleMenu" class="lg:hidden">
-				<svg fill="currentColor" width="2rem" viewBox="0 0 20 20"><path d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
-			</button>
+		<div class="heading-container">
+			<div class="heading">
+				<h2>${header_name}</h2>
+				<span class="version">${version}</span>
+				<button id="toggleMenu">
+					<svg fill="currentColor" width="2rem" viewBox="0 0 20 20"><path d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
+				</button>
+			</div>
 		</div>
-		<nav class="toggleable hidden lg:flex">
+		<nav class="content hidden">
 			${repo_link}
-			<p class="section">
-				Contents
-				<svg fill="currentColor" width="13%" viewBox="0 0 20 20"><path d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
-			</p><ul>')
+			<ul>')
 	if cfg.is_multi && cfg.docs.len > 1 {
 		mut submod_prefix := ''
 		for i, doc in cfg.docs {
-			if i-1 >= 0 && doc.head.name.starts_with(submod_prefix + '.') { 
+			if i-1 >= 0 && doc.head.name.starts_with(submod_prefix + '.') {
 				continue
 			}
 			names := doc.head.name.split('.')
 			submod_prefix = if names.len > 1 { names[0] } else { doc.head.name }
 			class_css := if doc.head.name == dcs.head.name { 'class="font-bold" ' } else { '' }
-			href_name := if doc.head.name == 'README' { 
-				'./index.html' 
+			href_name := if doc.head.name == 'README' {
+				'./index.html'
 			} else if submod_prefix !in cfg.docs.map(it.head.name) {
 				'#'
-			} else { 
-				'./' + doc.head.name + '.html' 
+			} else {
+				'./' + doc.head.name + '.html'
 			}
 			submodules := cfg.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
 			hw.write('<li><a ${class_css}href="$href_name">${submod_prefix}</a>')
@@ -236,15 +242,15 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}
 	hw.write('\n</div>\n')
 	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
-		hw.write('<div class="doc-toc">\n<p class="section">Contents</p>\n<ul>\n${toc.str()}</ul>\n</div>')
+		hw.write('<div class="doc-toc">\n\n<ul>\n${toc.str()}</ul>\n</div>')
 	}
 	hw.write('</div>
 		<script>
 			var toggle = document.getElementById("toggleMenu");
 			toggle.addEventListener("click", function (ev) {
-				document.querySelectorAll(".toggleable").forEach(function(el) {
+				document.querySelectorAll(".doc-nav .content").forEach(function(el) {
 					el.classList.toggle("hidden");
-					el.classList.toggle("flex");
+					el.classList.toggle("show");
 				})
 			});
 		</script>

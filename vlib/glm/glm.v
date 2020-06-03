@@ -315,7 +315,7 @@ pub fn rotate(angle f32, axis Vec3, src Mat4) Mat4 {
 	dest[10] = data[2] * f20 + data[6] * f21 + data[10] * f22
 	dest[11] = data[3] * f20 + data[7] * f21 + data[11] * f22
 
-	dest[0] = t00	dest[1] = t01	dest[2] = t02	dest[3] = t03 
+	dest[0] = t00	dest[1] = t01	dest[2] = t02	dest[3] = t03
 	dest[4] = t10	dest[5] = t11	dest[6] = t12	dest[7] = t13
 
 	return mat4(dest)
@@ -370,7 +370,7 @@ pub fn identity() Mat4 {
 }
 
 // returns *f32 without allocation
-pub fn identity2(res mut &f32) {
+pub fn identity2(res &f32) {
 	res[0] = 1
 	res[5] = 1
 	res[10] = 1

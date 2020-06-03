@@ -1,0 +1,229 @@
+html {
+    font-family: 'Inter', sans-serif;
+}
+
+/** Reset for menus */
+.doc-nav ul, .doc-toc ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.doc-nav li, .doc-toc li {
+    line-height: 1.5;
+}
+
+.doc-nav {
+    position: fixed;
+    width: 100%;
+    left: 0;
+    right: 0;
+    top: 0;
+    display: flex;
+    background-color: #1c3d5a;
+    color: white;
+    flex-direction: column;
+    overflow-y: auto;
+    height: auto;
+}
+.doc-nav .content.show {
+    display: flex;
+} 
+.doc-nav .content.hidden {
+    display: none;
+}
+.doc-nav #toggleMenu {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #fff;
+}
+.doc-nav > .heading-container > .heading {
+    display: flex;
+    background-color: #1c3d5a;
+    align-items: center;
+    padding: 0 1.4rem;
+    height: 56px;
+}
+.doc-nav > .heading-container > .heading > .module {
+    font-size: 1.4rem;
+    font-weight: 500;
+}
+.doc-nav > .heading-container > .heading > .version {
+    margin-left: 1.2rem;
+    margin-right: auto;
+}
+.doc-nav > .content {
+    padding: 0 1.4rem 1.4rem 1.4rem;
+    display: flex;
+    flex-direction: column;
+}
+.doc-nav > .content li ul {
+    border-left: 2px solid #2779BD;
+    padding-left: 0.8rem;
+    margin: 0.2rem 0;
+}
+.doc-nav > .content a {
+    color: white;
+    text-decoration: none;
+}
+.doc-nav > .content a:hover {
+    text-decoration: underline;
+}
+
+.doc-container {
+    display: flex;
+    flex-direction: column-reverse;
+    margin-top: 56px;
+}
+
+.doc-content {
+    padding: 1rem 2rem;
+    overflow: hidden;
+}
+.doc-content > .doc-node:not(:last-child) {
+    padding: 1rem 0 3rem 0;
+}
+.doc-content > .timestamp {
+    font-size: 0.8rem;
+    color: #B8C2CC;
+}
+.doc-content > .doc-node > .title {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #f1f5f8;
+}
+.doc-content > .doc-node > .title > .link {
+    margin-left: auto;
+    fill: #DAE1E7;
+}
+.doc-content > .doc-node > .title > .link:hover {
+    fill: #B8C2CC;
+}
+.doc-content > .doc-node h1 {
+    font-size: 2.5rem;
+    font-weight: 400;
+}
+.doc-content pre code {
+    font-family: 'Source Code Pro', monospace;
+    font-size: 0.9rem;
+    background-color: #F1F5F8;
+    padding: 1rem;
+    display: block;
+    border-radius: 0.25rem;
+    white-space: pre;
+    overflow-x: auto;
+}
+.doc-content > .doc-node > .title h1,
+.doc-content > .doc-node > .title h2,
+.doc-content > .doc-node > .title h3,
+.doc-content > .doc-node > .title h4,
+.doc-content > .doc-node > .title h5,
+.doc-content > .doc-node > .title h6 {
+    font-weight: 400;
+    padding-bottom: 0.4rem;
+    margin: 0;
+}
+.doc-content > .doc-node > .title h1 a,
+.doc-content > .doc-node > .title h2 a,
+.doc-content > .doc-node > .title h3 a,
+.doc-content > .doc-node > .title h4 a,
+.doc-content > .doc-node > .title h5 a,
+.doc-content > .doc-node > .title h6 a {
+    text-decoration: none;
+    color: #DAE1E7;
+}
+.doc-content > .doc-node > .title h1 a:hover,
+.doc-content > .doc-node > .title h2 a:hover,
+.doc-content > .doc-node > .title h3 a:hover,
+.doc-content > .doc-node > .title h4 a:hover,
+.doc-content > .doc-node > .title h5 a:hover,
+.doc-content > .doc-node > .title h6 a:hover {
+    color: #B8C2CC;
+}
+
+.doc-toc {
+    right: 0;
+    top: 0;
+    height: 100%;
+    overflow-y: auto;
+    padding: 2rem;
+    width: 100%;
+    box-sizing: border-box;
+    -ms-overflow-style: none;
+}
+.doc-toc::-webkit-scrollbar {
+    display: none;
+}
+.doc-toc a {
+    color: #2779bd;
+    font-size: 0.9rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    text-decoration: none;
+}
+.doc-toc a:hover {
+    text-decoration: underline;
+}
+.doc-toc li ul {
+    border-left: 2px solid #dae1e7;
+    padding-left: 0.8rem;
+    margin: 0.2rem 0 0.2rem;
+    font-size: 0.7rem;
+    list-style: none;
+}
+.doc-toc li ul a {
+    font-weight: 400;
+}
+
+/* Medium screen and up */
+@media (min-width: 768px) {
+    .doc-nav {
+        width: 300px;
+    }
+
+    .doc-nav #toggleMenu {
+        display: none;
+    }    
+
+    .doc-nav > .heading-container {
+        position: sticky;
+        position: -webkit-sticky;
+        top: 0;
+    }
+
+    .doc-nav > .heading-container > .heading > .version {
+        margin-left: auto;
+        margin-right: 0;
+    }
+
+    .doc-container {
+        flex-direction: row;
+        margin-top: 0;
+        margin-left: 300px;
+    }
+
+    .doc-content {
+        flex: 1;
+    }
+
+    .doc-toc {
+        padding: 1rem;
+        position: sticky;
+        position: -webkit-sticky;
+        align-self: flex-start;
+        top: 0;
+        height: auto;
+        height: 100vh;
+        min-width: 200px;
+        width: auto;
+        max-width: 300px;
+    }
+
+    .doc-nav .content.show,
+    .doc-nav .content.hidden {
+        display: flex;
+    }
+}
