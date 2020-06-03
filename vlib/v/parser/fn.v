@@ -458,7 +458,7 @@ fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position)
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.array, .struct_, .map, .placeholder] && !typ.is_ptr() {
 		p.error_with_pos('mutable arguments are only allowed for arrays, maps, and structs\n' +
-			'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`', pos)
+			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`', pos)
 	}
 }
 
