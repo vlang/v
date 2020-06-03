@@ -11,44 +11,53 @@ fn test_const() {
 	assert u == 1 // make sure this works without the cast
 }
 
-fn test_float_equal_operator() {
+fn test_f32_equal_operator() {
 	b := f32(1.0)
 	mut a := f32(1.0)
-	a += 0.000001
-	a -= 0.000001
+	a += 0.0000019073486328125
+	assert a != b
+	a -= 0.0000019073486328125
 	assert a == b
-	assert !a.eqbit(1.0)
-	assert !(a != f32(1.0))
-	assert a.nebit(f32(1.0))
-	a += 0.000001
-	assert !(a < 1.0)
-	assert !a.ltbit(1.0)
-	assert !(a <= 1)
-	assert !a.lebit(1)
-	assert a > 1
-	assert a.gtbit(1)
-	assert a >= 1
-	assert a.gebit(1)
 	assert -1 == 1 * -1
 	assert -1.0 == 1.0 * -1.0
 	a = 1
-	a += 0.000001
-	a -= 0.000001
+	a += 0.0000019073486328125
+	a -= 0.0000019073486328125
 	assert a == f32(1.0)
-	assert !a.eqbit(f32(1.0))
-	assert !(a != f32(1.0))
 	a += 0.000001
 	assert !(a < f32(1))
-	assert !a.ltbit(f32(1))
 	assert !(a <= f32(1))
-	assert !a.lebit(f32(1))
 	assert a > f32(1)
-	assert a.gtbit(f32(1))
 	assert a >= 1
-	assert a.gebit(1)
+	assert a != 1
 	f := 1.2
 	ab := int(f)
 	assert ab == 1
+	e := f32(-1.602176634e-19)
+	m := f32(9.1093837015e-31)
+	assert e < m
+	assert e <= m
+	assert e != m
+	assert !(e == m)
+	assert m >= e
+	assert m > e
+}
+
+fn test_f64_equal_operator() {
+	b := 1.0
+	mut a := 1.0
+	a += 0.0000019073486328125
+	assert a != b
+	a -= 0.0000019073486328125
+	assert a == b
+	e := -1.602176634e-19
+	m := 9.1093837015e-31
+	assert e < m
+	assert e <= m
+	assert e != m
+	assert !(e == m)
+	assert m >= e
+	assert m > e
 }
 
 fn test_str_methods() {

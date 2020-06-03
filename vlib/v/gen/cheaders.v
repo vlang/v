@@ -210,30 +210,6 @@ void* g_live_info = NULL;
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
 #define _IN(typ, val, arr) array_##typ##_contains(arr, val)
 #define _IN_MAP(val, m) map_exists(m, val)
-#define DEFAULT_EQUAL(a, b) (a == b)
-#define DEFAULT_NOT_EQUAL(a, b) (a != b)
-#define DEFAULT_LT(a, b) (a < b)
-#define DEFAULT_LE(a, b) (a <= b)
-#define DEFAULT_GT(a, b) (a > b)
-#define DEFAULT_GE(a, b) (a >= b)
-
-// NB: macro_fXX_eq and macro_fXX_ne are NOT used
-// in the generated C code. They are here just for
-// completeness/testing.
-
-#define macro_f64_eq(a, b) (a == b)
-#define macro_f64_ne(a, b) (a != b)
-#define macro_f64_lt(a, b) (a <  b)
-#define macro_f64_le(a, b) (a <= b)
-#define macro_f64_gt(a, b) (a >  b)
-#define macro_f64_ge(a, b) (a >= b)
-
-#define macro_f32_eq(a, b) (a == b)
-#define macro_f32_ne(a, b) (a != b)
-#define macro_f32_lt(a, b) (a <  b)
-#define macro_f32_le(a, b) (a <= b)
-#define macro_f32_gt(a, b) (a >  b)
-#define macro_f32_ge(a, b) (a >= b)
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #undef PRId64
