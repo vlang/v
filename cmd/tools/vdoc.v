@@ -167,7 +167,8 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	// write css
 	exe_path := os.executable()
 	exe_dir := os.dir(exe_path)
-	doc_css_path := os.join_path(exe_dir, 'vdoc-resources', 'doc.css')
+	res_path := os.join_path(exe_dir, 'vdoc-resources')
+	doc_css_path := os.join_path(res_path, 'doc.css')
 	doc_css := os.read_file(doc_css_path) or { panic('could not read $doc_css_path') }
 	hw.write('<style>$doc_css</style>')
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
@@ -244,19 +245,10 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
 		hw.write('<div class="doc-toc">\n\n<ul>\n${toc.str()}</ul>\n</div>')
 	}
+	doc_js_path := os.join_path(res_path, 'doc.js')
+	doc_js := os.read_file(doc_js_path) or { panic('could not read $doc_js_path') }
 	hw.write('</div>
-		<script>
-			var toggle = document.getElementById("toggle-menu");
-			toggle.addEventListener("click", function(ev) {
-				document.querySelectorAll(".doc-nav").forEach(function(el) {
-					el.classList.toggle("hidden");
-				});
-				document.querySelectorAll(".doc-nav .content").forEach(function(el) {
-					el.classList.toggle("hidden");
-					el.classList.toggle("show");
-				});
-			});
-		</script>
+		<script>$doc_js</script>
 	</body>
 	</html>')
 	return hw.str()
