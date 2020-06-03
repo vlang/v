@@ -65,7 +65,7 @@ html {
     flex-direction: column;
 }
 .doc-nav > .content li ul {
-    border-left: 2px solid #2779BD;
+    border-left: 2px solid white;
     padding-left: 0.8rem;
     margin: 0.2rem 0;
 }
