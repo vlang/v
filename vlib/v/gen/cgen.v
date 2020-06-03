@@ -267,6 +267,9 @@ pub fn (mut g Gen) init() {
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
 		g.comptime_defines.writeln('#define _VDEBUG (1)')
 	}
+	if g.pref.is_test || 'test' in g.pref.compile_defines {
+		g.comptime_defines.writeln('#define _VTEST (1)')
+	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloading_declarations()
 	}
@@ -3450,6 +3453,9 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		// other:
 		'debug' {
 			return '_VDEBUG'
+		}
+		'test' {
+			return '_VTEST'
 		}
 		'glibc' {
 			return '__GLIBC__'
