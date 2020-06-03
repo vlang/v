@@ -34,9 +34,7 @@ pub fn new(c Config) ?&FT{
 		println('failed to load font "$c.font_path"')
 		return none
 	}
-	s := &C.sgl_desc_t{}
-	C.sgl_setup(s)
-	fons :=sfons.create(512, 512, 1)
+	fons := sfons.create(512, 512, 1)
 	return &FT{
 		fons : fons
 		font_normal: C.fonsAddFontMem(fons, 'sans', bytes.data, bytes.len, false)
@@ -44,27 +42,26 @@ pub fn new(c Config) ?&FT{
 
 }
 
-pub fn (gg &FT) draw_text(x, y int, text string, cfg gx.TextCfg) {
-	/*
-	gg.fons.set_font(gg.font_normal)
-	gg.fons.set_size(f32(cfg.size))
+pub fn (ft &FT) draw_text(x, y int, text string, cfg gx.TextCfg) {
+	ft.fons.set_font(ft.font_normal)
+	ft.fons.set_size(2*f32(cfg.size)) // TODO: is this 2* needed?
+	C.fonsSetAlign(ft.fons, C.FONS_ALIGN_LEFT | C.FONS_ALIGN_TOP)
+	color := C.sfons_rgba(cfg.color.r, cfg.color.g, cfg.color.b, 255)
+	C.fonsSetColor(ft.fons, color)
 	ascender := f32(0.0)
 	descender := f32(0.0)
 	lh := f32(0.0)
-	gg.fons.vert_metrics(&ascender, &descender, &lh)
-	color:= C.sfons_rgba(cfg.color.r, cfg.color.g, cfg.color.b, 255)
-	C.fonsSetColor(gg.fons, color)
-	C.fonsDrawText(gg.fons, x, y, text.str, 0)
-	*/
+	ft.fons.vert_metrics(&ascender, &descender, &lh)
+	C.fonsDrawText(ft.fons, x, y, text.str, 0) // TODO: check offsets/alignment
 }
 
-pub fn (ctx &FT) draw_text_def(x, y int, text string) {
+pub fn (ft &FT) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
 		color: gx.black
 		size: default_font_size
 		align: gx.align_left
 	}
-	ctx.draw_text(x, y, text, cfg)
+	ft.draw_text(x, y, text, cfg)
 }
 
 pub fn (mut gg FT) init_font() {
@@ -73,4 +70,6 @@ pub fn (mut gg FT) init_font() {
 	//gg.font_normal=g_font_normal
 }
 
-
+pub fn (ft &FT) flush(){
+	sfons.flush(ft.fons)
+}

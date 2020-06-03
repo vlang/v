@@ -10,6 +10,9 @@ import sokol.sapp
 import sokol.sgl
 import sokol.gfx
 
+type FNvoidptr1 fn(voidptr)
+type FNvoidptr2 fn(voidptr,voidptr)
+
 pub struct Config {
 pub:
 	width         int
@@ -24,10 +27,12 @@ pub:
 	window_title  string
 	always_on_top bool
 	scale         int
-	frame_fn      fn(voidptr)
 	bg_color      gx.Color
-	on_key_down fn(voidptr)
-	event_cb fn(voidptr, voidptr)
+	init_fn       FNvoidptr1 = voidptr(0)
+	frame_fn      FNvoidptr1 = voidptr(0)
+	on_key_down   FNvoidptr1 = voidptr(0)
+	event_cb      FNvoidptr2 = voidptr(0)
+	wait_events   bool = false // set this to true for UIs, to save power
 }
 
 pub struct GG {
@@ -37,10 +42,11 @@ pub mut:
 	height     int
 	clear_pass C.sg_pass_action
 	window     C.sapp_desc
-	render_fn  fn()
+	config     Config
 }
 
-fn init_sokol_window(user_data voidptr) {
+fn gg_init_sokol_window(user_data voidptr) {
+	mut g := &GG(user_data)
 	desc := C.sg_desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
@@ -53,19 +59,47 @@ fn init_sokol_window(user_data voidptr) {
 	gfx.setup(&desc)
 	sgl_desc := C.sgl_desc_t{}
 	sgl.setup(&sgl_desc)
+	if g.config.init_fn != voidptr(0) {
+		g.config.init_fn( g.config.user_data )
+	}
 }
+
+fn gg_frame_fn(user_data voidptr) {
+	mut g := &GG(user_data)
+	if g.config.frame_fn != voidptr(0) {
+		g.config.frame_fn( g.config.user_data )
+	}
+}
+
+fn gg_event_cb(e &C.sapp_event, b voidptr){
+	mut g := &GG(b)
+	if g.config.event_cb != voidptr(0) {
+		g.config.event_cb(e, g.config.user_data)
+	}
+}
+
+//
 
 fn eventcb(e &C.sapp_event, b voidptr){
 	println("EVENT")
 }
 
 pub fn new_context(cfg Config) &GG {
+	mut g := &GG{
+		width: cfg.width
+		height: cfg.height
+		clear_pass: gfx.create_clear_pass( f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0,
+f32(cfg.bg_color.b) / 255.0, 1.0)
+		scale: 1 // scale
+		config: cfg
+	}
+
 	//C.printf('new_context() %p\n', cfg.user_data)
 	window := C.sapp_desc{
-		user_data: cfg.user_data
-		init_userdata_cb: init_sokol_window
-		frame_userdata_cb: cfg.frame_fn
-		event_userdata_cb: cfg.event_cb //eventcb
+		user_data: g
+		init_userdata_cb: gg_init_sokol_window
+		frame_userdata_cb: gg_frame_fn
+		event_userdata_cb: gg_event_cb //eventcb
 		window_title: cfg.window_title.str
 		html5_canvas_name: cfg.window_title.str
 		width: cfg.width
@@ -74,14 +108,8 @@ pub fn new_context(cfg Config) &GG {
 	}
 	if cfg.use_ortho {}
 	else {}
-	return &GG{
-		width: cfg.width
-		height: cfg.height
-		window: window
-		clear_pass: gfx.create_clear_pass( f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0,
-f32(cfg.bg_color.b) / 255.0, 1.0)
-		scale: 1 // scale
-	}
+	g.window = window
+	return g
 }
 
 pub fn (gg &GG) run() {
@@ -148,7 +176,9 @@ pub fn (gg &GG) end() {
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
-	wait_events()
+	if gg.config.wait_events {
+		wait_events()
+	}
 }
 
 pub fn (ctx &GG) draw_line(x, y, x2, y2 f32, color gx.Color) {}
