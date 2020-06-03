@@ -252,7 +252,13 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	if g.pref.is_prof {
 		g.profile_fn(it.name, is_main)
 	}
+	if is_main {
+		g.indent++
+	}
 	g.stmts(it.stmts)
+	if is_main {
+		g.indent--
+	}
 	// ////////////
 	if is_main {
 		if g.autofree {

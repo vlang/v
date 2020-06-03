@@ -2240,7 +2240,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 				*/
 				if need_wrapper {
-					g.write(', &($elem_type_str[]) { \n')
+					g.write(', &($elem_type_str[]) { ')
 				} else {
 					g.write(', &')
 				}
@@ -2292,7 +2292,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
-				g.write(', &($elem_type_str[]) { \n')
+				g.write(', &($elem_type_str[]) { ')
 			} else {
 				/*
 				g.write('(*($elem_type_str*)map_get2(')
