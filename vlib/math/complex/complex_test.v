@@ -134,7 +134,7 @@ fn test_complex_angle(){
 	mut c := cmplx.complex(1, 0)
 	assert c.angle() * 180 / math.pi == 0
 	c = cmplx.complex(1, 1)
-	c.angle() * 180 / math.pi == 45
+	assert c.angle() * 180 / math.pi == 45
 	c = cmplx.complex(0, 1)
 	assert c.angle() * 180 / math.pi == 90
 	c = cmplx.complex(-1, 1)
