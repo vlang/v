@@ -1,0 +1,8 @@
+fn mod_ptr(mut a int) {
+	a = 77
+}
+
+fn main() {
+  println('hello')
+}
+
