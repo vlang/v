@@ -37,7 +37,7 @@
 - Built-in ORM
 - C and JavaScript backends
 
-A stable 0.2 release is planned for May 2020. Right now V is in an alpha stage.
+A stable 0.2 release is planned for June 2020. Right now V is in an alpha stage.
 
 ## Installing V from source
 

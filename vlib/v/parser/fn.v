@@ -202,7 +202,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Args
 	args2, is_variadic := p.fn_args()
 	args << args2
-	for i, arg in args {
+	for arg in args {
 		if p.scope.known_var(arg.name) {
 			p.error_with_pos('redefinition of parameter `$arg.name`', arg.pos)
 		}
@@ -214,19 +214,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_used: true
 			is_arg: true
 		})
-		// Do not allow `mut` with simple types
-		// TODO move to checker?
-		if arg.is_mut {
-			if i == 0 && is_method {
-				continue
-			}
-			sym := p.table.get_type_symbol(arg.typ)
-			// if sym.kind !in [.array, .struct_, .map, .placeholder] && arg.typ != table.t_type &&				!arg.typ.is_ptr() {
-			if sym.kind !in [.array, .struct_, .map, .placeholder] && arg.typ != table.t_type {
-				p.error_with_pos('mutable arguments are only allowed for arrays, maps, and structs\n' +
-					'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`', arg.pos)
-			}
-		}
 	}
 	mut end_pos := p.prev_tok.position()
 	// Return type
@@ -385,6 +372,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			pos := p.tok.position()
 			mut arg_type := p.parse_type()
 			if is_mut && arg_type != table.t_type {
+				p.check_fn_mutable_arguments(arg_type, pos)
 				// if arg_type.is_ptr() {
 				// p.error('cannot mut')
 				// }
@@ -431,12 +419,10 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				p.next()
 				is_variadic = true
 			}
+			pos := p.tok.position()
 			mut typ := p.parse_type()
 			if is_mut && typ != table.t_type {
-				if typ.is_ptr() {
-					// name := p.table.get_type_name(typ)
-					// p.warn('`$name` is already a reference, it cannot be marked as `mut`')
-				}
+				p.check_fn_mutable_arguments(typ, pos)
 				typ = typ.set_nr_muls(1)
 			}
 			if is_variadic {
@@ -466,6 +452,14 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 
 fn (p &Parser) fileis(s string) bool {
 	return p.file_name.contains(s)
+}
+
+fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position) {
+	sym := p.table.get_type_symbol(typ)
+	if sym.kind !in [.array, .struct_, .map, .placeholder] && !typ.is_ptr() {
+		p.error_with_pos('mutable arguments are only allowed for arrays, maps, and structs\n' +
+			'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`', pos)
+	}
 }
 
 fn (mut p Parser) fn_redefinition_error(name string) {
