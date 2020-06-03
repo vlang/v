@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module gg2
 
-import glm
 import gx
 import os
 import sokol

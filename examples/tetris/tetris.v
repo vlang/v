@@ -8,11 +8,8 @@ import rand
 import time
 import gx
 import gg2 as gg
-import sokol
 import sokol.sapp
-import math
-import gg2.ft
-import os
+import sokol.sfons
 
 const (
 	block_size = 20 // pixels
@@ -133,13 +130,32 @@ struct Game {
 	//ft          &freetype.FreeType
 	//ft          &ft.FT
 	font_loaded bool
+	frame int
+	frame_old int
+	frame_sw time.StopWatch = time.new_stopwatch({})
+	second_sw time.StopWatch = time.new_stopwatch({})
+}
+
+[if showfps]
+fn (game &Game) showfps() {
+	game.frame++
+	if 0 == game.frame % 60 {
+		elapsed_time_ms := game.second_sw.elapsed().milliseconds()
+		last_frame_ms := game.frame_sw.elapsed().milliseconds()
+		fps := (game.frame-game.frame_old)*(1000/elapsed_time_ms)
+		eprintln('fps: ${fps:3} | last frame took: ${last_frame_ms:2}ms | frame: ${game.frame:6} ')
+		game.second_sw.restart()
+		game.frame_old = game.frame
+	}
 }
 
 fn frame(game &Game) {
+	game.frame_sw.restart()
 	//C.sfons_flush(game.ft.fons)
 	game.gg.begin()
 	game.draw_scene()
 	game.gg.end()
+	game.showfps()
 }
 
 fn main() {
@@ -154,6 +170,7 @@ fn main() {
 	}
 	*/
 	mut game := &Game{
+		gg: 0
 		//ft: f
 	}
 	game.gg = gg.new_context(
@@ -216,7 +233,7 @@ fn (mut g Game) run() {
 	}
 }
 
-fn (mut g Game) move_tetro() {
+fn (mut g Game) move_tetro() bool {
 	// Check each block in current tetro
 	for block in g.tetro {
 		y := block.y + g.pos_y + 1
@@ -229,15 +246,16 @@ fn (mut g Game) move_tetro() {
 			// The new tetro has no space to drop => end of the game
 			if g.pos_y < 2 {
 				g.state = .gameover
-				return
+				return false
 			}
 			// Drop it and generate a new one
 			g.drop_tetro()
 			g.generate_tetro()
-			return
+			return false
 		}
 	}
 	g.pos_y++
+	return true
 }
 
 fn (mut g Game) move_right(dx int) bool {
@@ -361,9 +379,10 @@ fn parse_binary_tetro(t_ int) []Block {
 	res := [Block{}].repeat(4)
 	mut cnt := 0
 	horizontal := t == 9// special case for the horizontal line
+	ten_powers := [1000,100,10,1]
 	for i := 0; i <= 3; i++ {
 		// Get ith digit of t
-		p := int(math.pow(10, 3 - i))
+		p := ten_powers[i]
 		mut digit := t / p
 		t %= p
 		// Convert the digit to binary
@@ -437,6 +456,9 @@ fn (mut game Game) key_down(key sapp.KeyCode) {
 		}
 		.down {
 			game.move_tetro() // drop faster when the player presses <down>
+		}
+		.d {
+			for game.move_tetro() {}
 		}
 		else { }
 	}
