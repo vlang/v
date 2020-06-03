@@ -179,4 +179,13 @@ fn test_multi_dimensional_array_init() {
 
 	c := [][]f64{len:2, init:[]f64{len:2, init:2.2}}
 	assert '$c' == '[[2.2, 2.2], [2.2, 2.2]]'
+
+	d := [][]int{len:3, init:[]int{len:2}}
+	assert '$d' == '[[0, 0], [0, 0], [0, 0]]'
+
+	e := [][]string{len:2, init:[]string{len:3}}
+	assert '$e' == "[['', '', ''], ['', '', '']]"
+
+	f := [][]int{len:3}
+	assert '$f' == '[[], [], []]'
 }
