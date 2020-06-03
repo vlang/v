@@ -118,8 +118,9 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			out += '\n\t/* module exports */'
 		}
 		out += '\n\treturn {'
-		for pub_var in g.namespaces_pub[node.name] {
-			out += '\n\t\t$pub_var,'
+		for i, pub_var in g.namespaces_pub[node.name] {
+			out += '\n\t\t$pub_var'
+			if i < g.namespaces_pub[node.name].len - 1 { out += ',' }
 		}
 		if g.namespaces_pub[node.name].len > 0 { out += '\n\t' }
 		out += '};'
