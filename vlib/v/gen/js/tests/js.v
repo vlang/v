@@ -1,6 +1,7 @@
 import hello as hl
 
 fn JS.alert(arg string)
+fn JS.Math.atan2(f64, f64) f64
 
 const (
     i_am_a_const = 21214
@@ -8,6 +9,7 @@ const (
 )
 
 struct Foo {
+mut:
     a hl.Aaa
 }
 
@@ -29,17 +31,18 @@ fn class(extends string, instanceof int) {
 
 fn main() {
     println('Hello from V.js!')
+    println(JS.Math.atan2(1, 0))
 
     mut a := 1
     a *= 2
     a += 3
     println(a) // TODO: Handle string interpolation
 
-    b := hl.Aaa{}
+    mut b := hl.Aaa{}
     b.update('an update')
     println(b)
 
-    c := Foo{ hl.Aaa{} }
+    mut c := Foo{ hl.Aaa{} }
     c.a.update('another update')
     println(c)
 
