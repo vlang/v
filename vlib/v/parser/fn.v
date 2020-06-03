@@ -221,8 +221,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				continue
 			}
 			sym := p.table.get_type_symbol(arg.typ)
-			if sym.kind !in [.array, .struct_, .map, .placeholder] && arg.typ != table.t_type &&
-				!arg.typ.is_ptr() {
+			// if sym.kind !in [.array, .struct_, .map, .placeholder] && arg.typ != table.t_type &&				!arg.typ.is_ptr() {
+			if sym.kind !in [.array, .struct_, .map, .placeholder] && arg.typ != table.t_type {
 				p.error_with_pos('mutable arguments are only allowed for arrays, maps, and structs\n' +
 					'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`', arg.pos)
 			}
@@ -396,7 +396,8 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			}
 			if p.tok.kind == .comma {
 				if is_variadic {
-					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no', pos)
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no',
+						pos)
 				}
 				p.next()
 			}
@@ -450,7 +451,8 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma {
-					p.error_with_pos('cannot use ...(variadic) with non-final parameter $arg_name', arg_pos[i])
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter $arg_name',
+						arg_pos[i])
 				}
 			}
 			if p.tok.kind != .rpar {
