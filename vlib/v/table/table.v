@@ -5,6 +5,7 @@ module table
 
 import os
 import v.cflag
+import v.token
 
 pub struct Table {
 pub mut:
@@ -34,6 +35,7 @@ pub mut:
 
 pub struct Arg {
 pub:
+	pos       token.Position
 	name      string
 	is_mut    bool
 	typ       Type
