@@ -707,7 +707,11 @@ pub fn (table &Table) type_to_str(t Type) string {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
 	if t.flag_is(.optional) {
-		res = '?' + res
+		if sym.kind == .void {
+			res = '?'
+		} else {
+			res = '?' + res
+		}
 	}
 	/*
 	if res.starts_with(cur_mod +'.') {
