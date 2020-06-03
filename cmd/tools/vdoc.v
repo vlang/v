@@ -130,7 +130,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		if dd.name != 'README' {
 			dnw.write('<div class="title"><$head_tag>${dd.name} <a href="#${slug(dd.name)}">#</a></$head_tag>')
 			if link.len != 0 {
-				dnw.write('<a class="link" href="$link">$link_svg</a></div>')
+				dnw.write('<a class="link" target="_blank" href="$link">$link_svg</a>')
 			}
 			dnw.write('</div>')
 		}
@@ -172,12 +172,6 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	doc_css := os.read_file(doc_css_path) or { panic('could not read $doc_css_path') }
 	hw.write('<style>$doc_css</style>')
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
-	repo_link := if cfg.manifest.repo_url.len != 0 {
-		'<a href="${cfg.manifest.repo_url}" class="section">
-			Repository
-			<svg fill="currentColor" width="13%" viewBox="0 0 20 20"><path d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
-		</a>'
-	} else { '' }
 	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.src_path)) } else { dcs.head.name }
 	// write nav
 	hw.write('<header class="doc-nav hidden">
@@ -191,7 +185,6 @@ fn (cfg DocConfig) gen_html(idx int) string {
 			</div>
 		</div>
 		<nav class="content hidden">
-			${repo_link}
 			<ul>')
 	if cfg.is_multi && cfg.docs.len > 1 {
 		mut submod_prefix := ''
@@ -231,7 +224,9 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	hw.write(doc_node_html(dcs.head, '', true))
 	for cn in dcs.contents {
 		if cn.parent_type !in ['void', ''] { continue }
-		hw.write(doc_node_html(cn, get_src_link(cfg.manifest.repo_url, os.file_name(cn.file_path), cn.pos.line), false))
+		base_dir := os.base_dir(os.real_path(cfg.src_path))
+		file_path_name := cn.file_path.replace(base_dir, '')
+		hw.write(doc_node_html(cn, get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line), false))
 
 		children := dcs.contents.find_children_of(cn.name)
 
@@ -355,6 +350,7 @@ fn (mut config DocConfig) generate_docs_from_file() {
 	}
 	if 'vlib' in config.src_path {
 		config.manifest.version = util.v_version
+		config.manifest.repo_url = 'https://github.com/vlang/v'
 	}
 	readme_path := if 'vlib' in config.src_path {
 		os.join_path(os.base_dir(@VEXE), 'README.md')
