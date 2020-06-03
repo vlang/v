@@ -204,7 +204,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	args << args2
 	for i, arg in args {
 		if p.scope.known_var(arg.name) {
-			p.error('redefinition of parameter `$arg.name`')
+			p.error_with_pos('redefinition of parameter `$arg.name`', arg.pos)
 		}
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
@@ -223,8 +223,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			sym := p.table.get_type_symbol(arg.typ)
 			if sym.kind !in [.array, .struct_, .map, .placeholder] && arg.typ != table.t_type &&
 				!arg.typ.is_ptr() {
-				p.error('mutable arguments are only allowed for arrays, maps, and structs\n' +
-					'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`')
+				p.error_with_pos('mutable arguments are only allowed for arrays, maps, and structs\n' +
+					'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`', arg.pos)
 			}
 		}
 	}
@@ -382,6 +382,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				p.next()
 				is_variadic = true
 			}
+			pos := p.tok.position()
 			mut arg_type := p.parse_type()
 			if is_mut && arg_type != table.t_type {
 				// if arg_type.is_ptr() {
@@ -395,11 +396,12 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			}
 			if p.tok.kind == .comma {
 				if is_variadic {
-					p.error('cannot use ...(variadic) with non-final parameter no $arg_no')
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no', pos)
 				}
 				p.next()
 			}
 			args << table.Arg{
+				pos: pos
 				name: arg_name
 				is_mut: is_mut
 				typ: arg_type
@@ -412,10 +414,12 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			if is_mut {
 				p.next()
 			}
+			mut arg_pos := [p.tok.position()]
 			mut arg_names := [p.check_name()]
 			// `a, b, c int`
 			for p.tok.kind == .comma {
 				p.next()
+				arg_pos << p.tok.position()
 				arg_names << p.check_name()
 			}
 			if p.tok.kind == .key_mut {
@@ -437,15 +441,16 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			if is_variadic {
 				typ = typ.set_flag(.variadic)
 			}
-			for arg_name in arg_names {
+			for i, arg_name in arg_names {
 				args << table.Arg{
+					pos: arg_pos[i]
 					name: arg_name
 					is_mut: is_mut
 					typ: typ
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma {
-					p.error('cannot use ...(variadic) with non-final parameter $arg_name')
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter $arg_name', arg_pos[i])
 				}
 			}
 			if p.tok.kind != .rpar {
