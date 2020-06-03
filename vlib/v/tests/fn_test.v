@@ -96,6 +96,7 @@ fn test_mut_struct() {
 	assert user.age == 19
 }
 
+/*
 fn mod_ptr(mut buf &byte) {
 	buf[0] = 77
 }
@@ -105,6 +106,7 @@ fn test_mut_ptr() {
 	mod_ptr(mut buf)
 	assert buf[0] == 77
 }
+*/
 
 fn assert_in_bool_fn(v int) bool {
 	assert v < 3
