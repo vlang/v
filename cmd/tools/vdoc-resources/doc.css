@@ -6,7 +6,7 @@
     --ref-symbol-hover-color: #b8c2cc;
     --title-bottom-line-color: #f1f5f8;
     --code-background-color: #edf2f7;
-    --code-signature-border-color: #4b6c88;
+    --code-signature-border-color: #a0aec0;
     --menu-background-color: #4b6c88;
     --menu-font-color: #fff;
     --menu-indent-line-color: #ffffff66;
@@ -24,18 +24,18 @@ body {
 }
 
 .dark body {
-    --background-color: #000000;
+    --background-color: #1a202c;
     --timestamp-color: #b8c2cc;
     --font-color: #fff;
     --ref-symbol-color: #2d3748;
     --ref-symbol-hover-color: #4a5568;
-    --title-bottom-line-color: #1a202c;
+    --title-bottom-line-color: #2d3748;
     --code-background-color: #2d3748;
-    --code-signature-border-color: #576279;
-    --menu-background-color: #1a202c;
+    --code-signature-border-color: #4a5568;
+    --menu-background-color: #2d3748;
     --menu-font-color: #fff;
     --menu-indent-line-color: #4a5568;
-    --menu-scrollbar-color: #2d3748;
+    --menu-scrollbar-color: #4a5568;
     --menu-toggle-icon-color: #fff;
     --toc-font-color: #90cdf4;
     --toc-indent-line-color: #1a202c;
@@ -187,7 +187,7 @@ body {
     font-weight: 400;
 }
 .doc-content > .doc-node .signature {
-    border: 1px solid var(--code-signature-border-color);
+    border-left: 3px solid var(--code-signature-border-color);
 }
 .doc-content > .doc-node > ul > li .task-list-item-checkbox {
     margin-right: 0.5rem;
