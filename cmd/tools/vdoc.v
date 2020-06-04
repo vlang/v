@@ -9,6 +9,10 @@ import strings
 import v.doc
 import v.vmod
 
+const (
+	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
+)
+
 enum OutputType {
 	unset
 	html
@@ -303,7 +307,7 @@ fn (cfg DocConfig) render() map[string]string {
 		} else {
 			doc.head.name
 		}
-		if os.file_ext(name).len == 0 {
+		if !cfg.is_multi && os.file_ext(name).len == 0 && os.file_ext(name).all_after('.') !in allowed_formats {
 			name = name + match cfg.output_type {
 				.html { '.html' }
 				.markdown { '.md' }
@@ -480,9 +484,8 @@ fn main() {
 			}
 			'-f' {
 				format := cmdline.option(current_args, '-f', '')
-				allowed := ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
-				allowed_str := allowed.join(', ')
-				if format !in allowed {
+				allowed_str := allowed_formats.join(', ')
+				if format !in allowed_formats {
 					eprintln('vdoc: "$format" is not a valid format. Only $allowed_str are allowed.')
 					exit(1)
 				}
