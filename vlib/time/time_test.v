@@ -149,3 +149,19 @@ fn test_add_days() {
 fn test_str() {
 	assert '1980-07-11 21:23:42' == time_to_test.str()
 }
+
+fn test_now() {
+	now := time.now()
+
+	// The year the test was built
+	assert now.year >= 2020
+	assert now.month > 0
+	assert now.month <= 12
+	assert now.minute >= 0
+	assert now.minute < 59
+	assert now.second >=0
+	assert now.second < 60
+	assert now.nanosecond >= 0
+	assert now.nanosecond < 1000000000
+
+}
