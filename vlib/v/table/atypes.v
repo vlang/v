@@ -36,8 +36,8 @@ pub mut:
 	is_public  bool
 }
 
+// max of 8
 pub enum TypeFlag {
-	unset
 	optional
 	variadic
 	generic
@@ -99,29 +99,34 @@ pub fn (t Type) deref() Type {
 	return (((int(t) >> 24) & 0xff) << 24) | ((nr_muls - 1) << 16) | (u16(t) & 0xffff)
 }
 
-// return the flag that is set on `t`
-[inline]
-pub fn (t Type) flag() TypeFlag {
-	return (int(t) >> 24) & 0xff
-}
-
-// set the flag on `t` to `flag` and return it
+// set `flag` on `t` and return `t`
 [inline]
 pub fn (t Type) set_flag(flag TypeFlag) Type {
-	return (int(flag) << 24) | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
+	return ((((int(t) >> 24) & 0xff) | 1 << int(flag)) << 24) | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
 }
 
-// return true if the flag set on `t` is `flag`
+// clear `flag` on `t` and return `t`
 [inline]
-pub fn (t Type) flag_is(flag TypeFlag) bool {
-	return (int(t) >> 24) & 0xff == flag
+pub fn (t Type) clear_flag(flag TypeFlag) Type {
+	return ((((int(t) >> 24) & 0xff) & ~(1 << int(flag))) << 24) | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
+}
+
+// clear all flags
+pub fn (t Type) clear_flags() Type {
+	return 0 | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
+}
+
+// return true if `flag` is set in `t`
+[inline]
+pub fn (t Type) has_flag(flag TypeFlag) bool {
+	return (((int(t) >> 24) & 0xff) >> int(flag)) & 1 == 1
 }
 
 // return new type with TypeSymbol idx set to `idx`
 [inline]
 pub fn new_type(idx int) Type {
-	if idx < 1 || idx > 65536 {
-		panic('new_type_id: idx must be between 1 & 65536')
+	if idx < 1 || idx > 65535 {
+		panic('new_type_id: idx must be between 1 & 65535')
 	}
 	return idx
 }
@@ -129,8 +134,8 @@ pub fn new_type(idx int) Type {
 // return new type with TypeSymbol idx set to `idx` & nr_muls set to `nr_muls`
 [inline]
 pub fn new_type_ptr(idx, nr_muls int) Type {
-	if idx < 1 || idx > 65536 {
-		panic('new_type_ptr: idx must be between 1 & 65536')
+	if idx < 1 || idx > 65535 {
+		panic('new_type_ptr: idx must be between 1 & 65535')
 	}
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('new_type_ptr: nr_muls must be between 0 & 255')
@@ -673,7 +678,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 	mut res := sym.name
 	if sym.kind == .multi_return {
 		res = '('
-		if t.flag_is(.optional) {
+		if t.has_flag(.optional) {
 			res = '?' + res
 		}
 		mr_info := sym.info as MultiReturn
@@ -706,8 +711,12 @@ pub fn (table &Table) type_to_str(t Type) string {
 	if nr_muls > 0 {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
-	if t.flag_is(.optional) {
-		res = '?' + res
+	if t.has_flag(.optional) {
+		if sym.kind == .void {
+			res = '?'
+		} else {
+			res = '?' + res
+		}
 	}
 	/*
 	if res.starts_with(cur_mod +'.') {

@@ -1,0 +1,9 @@
+fn tt() ? {
+	return error('error')
+}
+
+fn main() {
+	tt() or {
+		panic('$err')
+	}
+}

@@ -327,7 +327,7 @@ pub fn backend_from_string(s string) ?Backend {
 	}
 }
 
-fn parse_define(prefs mut Preferences, define string) {
+fn parse_define(mut prefs Preferences, define string) {
     define_parts := define.split('=')
     if define_parts.len == 1 {
         prefs.compile_defines << define

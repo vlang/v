@@ -1,7 +1,6 @@
 module main
 
 import gg
-import glfw
 import gx
 import automaton
 
@@ -11,7 +10,7 @@ const (
 	filled_color = gx.blue
 )
 
-fn new_graphics() &gg.GG {
+fn new_graphics() &gg.Context {
 	glfw.init_glfw()
 	return gg.new_context(gg.Cfg{
 		width: screen_width

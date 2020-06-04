@@ -1,6 +1,6 @@
 module main
 
-import gg2 as gg
+import gg
 import gx
 import os
 
@@ -11,7 +11,7 @@ const (
 
 struct App {
 mut:
-	gg &gg.GG
+	gg &gg.Context
 }
 
 fn main() {

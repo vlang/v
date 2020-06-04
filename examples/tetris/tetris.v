@@ -4,15 +4,13 @@
 
 module main
 
+import os
 import rand
 import time
 import gx
-import gg2 as gg
-import sokol
+import gg
+import gg.ft
 import sokol.sapp
-import math
-import gg2.ft
-import os
 
 const (
 	block_size = 20 // pixels
@@ -128,33 +126,51 @@ struct Game {
 	// Index of the rotation (0-3)
 	rotation_idx int
 	// gg context for drawing
-	gg          &gg.GG
+	gg          &gg.Context = voidptr(0)
 	// ft context for font drawing
-	//ft          &freetype.FreeType
-	//ft          &ft.FT
+	ft          &ft.FT = voidptr(0)
 	font_loaded bool
+	// frame/time counters:
+	frame int
+	frame_old int
+	frame_sw time.StopWatch = time.new_stopwatch({})
+	second_sw time.StopWatch = time.new_stopwatch({})
+}
+
+const ( fpath = os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf') )
+fn init_gui(mut game Game){
+	x := ft.new({ font_path: fpath, scale: 2 }) or {panic(err)}
+	game.ft = x
+	game.font_loaded = true
+}
+
+[if showfps]
+fn (game &Game) showfps() {
+	game.frame++
+	last_frame_ms := f64(game.frame_sw.elapsed().microseconds())/1000.0
+	ticks := f64(game.second_sw.elapsed().microseconds())/1000.0
+	if ticks > 999.0 {
+		fps := f64(game.frame - game.frame_old)*ticks/1000.0
+		eprintln('fps: ${fps:5.1f} | last frame took: ${last_frame_ms:6.3f}ms | frame: ${game.frame:6} ')
+		game.second_sw.restart()
+		game.frame_old = game.frame
+	}
 }
 
 fn frame(game &Game) {
-	//C.sfons_flush(game.ft.fons)
+	game.frame_sw.restart()
+	game.ft.flush()
 	game.gg.begin()
 	game.draw_scene()
+	game.showfps()
 	game.gg.end()
 }
 
+
 fn main() {
-	// TODO
-	/*
-	f := ft.new(
-		//font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
-		font_path: ('../assets/fonts/RobotoMono-Regular.ttf')
-	) or {
-		println('failed to loat the font')
-		return
-	}
-	*/
 	mut game := &Game{
-		//ft: f
+		gg: 0
+		ft: 0
 	}
 	game.gg = gg.new_context(
 		bg_color: gx.white
@@ -163,10 +179,13 @@ fn main() {
 		use_ortho: true // This is needed for 2D drawing
 		create_window: true
 		window_title: 'V Tetris'
-		frame_fn: frame
+		//
 		user_data: game
-		//on_key_down: key_down
-		event_cb: on_event
+		init_fn: init_gui
+		frame_fn: frame
+		event_fn: on_event
+		scale: 2
+		//wait_events: true
 	)
 	game.init_game()
 	go game.run() // Run the game loop in a new thread
@@ -177,7 +196,7 @@ fn (mut g Game) init_game() {
 	g.parse_tetros()
 	rand.seed(int(time.now().unix))
 	g.generate_tetro()
-	g.field = [] // TODO: g.field = [][]int
+	g.field = []
 	// Generate the field, fill it with 0's, add -1's on each edge
 	for _ in 0..field_height + 2 {
 		mut row := [0].repeat(field_width + 2)
@@ -216,28 +235,26 @@ fn (mut g Game) run() {
 	}
 }
 
-fn (mut g Game) move_tetro() {
+fn (mut g Game) move_tetro() bool {
 	// Check each block in current tetro
 	for block in g.tetro {
 		y := block.y + g.pos_y + 1
 		x := block.x + g.pos_x
 		// Reached the bottom of the screen or another block?
-		// TODO: if g.field[y][x] != 0
-		//if g.field[y][x] != 0 {
-		row := g.field[y]
-		if row[x] != 0 {
+		if g.field[y][x] != 0 {
 			// The new tetro has no space to drop => end of the game
 			if g.pos_y < 2 {
 				g.state = .gameover
-				return
+				return false
 			}
 			// Drop it and generate a new one
 			g.drop_tetro()
 			g.generate_tetro()
-			return
+			return false
 		}
 	}
 	g.pos_y++
+	return true
 }
 
 fn (mut g Game) move_right(dx int) bool {
@@ -302,9 +319,7 @@ fn (g &Game) drop_tetro() {
 		x := tetro.x + g.pos_x
 		y := tetro.y + g.pos_y
 		// Remember the color of each block
-		// TODO: g.field[y][x] = g.tetro_idx + 1
-		mut row := g.field[y]
-		row[x] = g.tetro_idx + 1
+		g.field[y][x] = g.tetro_idx + 1
 	}
 }
 
@@ -334,17 +349,17 @@ fn (g &Game) draw_field() {
 
 fn (mut g Game) draw_ui() {
 	if g.font_loaded {
-		//g.ft.draw_text(1, 3, g.score.str(), text_cfg)
+		g.ft.draw_text(1, 3, g.score.str(), text_cfg)
 		if g.state == .gameover {
 			g.gg.draw_rect(0, win_height / 2 - text_size, win_width,
 		 								5 * text_size, ui_color)
-			//g.ft.draw_text(1, win_height / 2 + 0 * text_size, 'Game Over', over_cfg)
-			//g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'Space to restart', over_cfg)
+			g.ft.draw_text(1, win_height / 2 + 0 * text_size, 'Game Over', over_cfg)
+			g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'Space to restart', over_cfg)
 		} else if g.state == .paused {
 			g.gg.draw_rect(0, win_height / 2 - text_size, win_width,
 				5 * text_size, ui_color)
-			//g.ft.draw_text(1, win_height / 2 + 0 * text_size, 'Game Paused', text_cfg)
-			//g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'SPACE to resume', text_cfg)
+			g.ft.draw_text(1, win_height / 2 + 0 * text_size, 'Game Paused', text_cfg)
+			g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'SPACE to resume', text_cfg)
 		}
 	}
 	//g.gg.draw_rect(0, block_size, win_width, limit_thickness, ui_color)
@@ -358,12 +373,13 @@ fn (mut g Game) draw_scene() {
 
 fn parse_binary_tetro(t_ int) []Block {
 	mut t := t_
-	res := [Block{}].repeat(4)
+	mut res := [Block{}].repeat(4)
 	mut cnt := 0
 	horizontal := t == 9// special case for the horizontal line
+	ten_powers := [1000,100,10,1]
 	for i := 0; i <= 3; i++ {
 		// Get ith digit of t
-		p := int(math.pow(10, 3 - i))
+		p := ten_powers[i]
 		mut digit := t / p
 		t %= p
 		// Convert the digit to binary
@@ -371,11 +387,8 @@ fn parse_binary_tetro(t_ int) []Block {
 			bin := digit % 2
 			digit /= 2
 			if bin == 1 || (horizontal && i == tetro_size - 1) {
-				// TODO: res[cnt].x = j
-				// res[cnt].y = i
-				mut point := &res[cnt]
-				point.x = j
-				point.y = i
+				res[cnt].x = j
+				res[cnt].y = i
 				cnt++
 			}
 		}
@@ -383,7 +396,8 @@ fn parse_binary_tetro(t_ int) []Block {
 	return res
 }
 
-fn on_event(e &sapp.Event, game mut Game) {
+fn on_event(e &sapp.Event, mut game Game) {
+	//println('code=$e.char_code')
 	if e.typ == .key_down {
 		game.key_down(e.key_code)
 	}
@@ -437,6 +451,9 @@ fn (mut game Game) key_down(key sapp.KeyCode) {
 		}
 		.down {
 			game.move_tetro() // drop faster when the player presses <down>
+		}
+		.d {
+			for game.move_tetro() {}
 		}
 		else { }
 	}

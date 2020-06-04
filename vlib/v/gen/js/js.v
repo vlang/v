@@ -118,8 +118,9 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			out += '\n\t/* module exports */'
 		}
 		out += '\n\treturn {'
-		for pub_var in g.namespaces_pub[node.name] {
-			out += '\n\t\t$pub_var,'
+		for i, pub_var in g.namespaces_pub[node.name] {
+			out += '\n\t\t$pub_var'
+			if i < g.namespaces_pub[node.name].len - 1 { out += ',' }
 		}
 		if g.namespaces_pub[node.name].len > 0 { out += '\n\t' }
 		out += '};'
@@ -907,7 +908,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.inside_loop = false
 		g.stmts(it.stmts)
 		g.writeln('}')
-	} else if it.kind == .array || it.cond_type.flag_is(.variadic) {
+	} else if it.kind == .array || it.cond_type.has_flag(.variadic) {
 		// `for num in nums {`
 		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
 		// styp := g.typ(it.val_type)

@@ -112,7 +112,7 @@ fn (mut m SortedMap) set(key string, value voidptr) {
 	}
 }
 
-fn (mut n mapnode) split_child(child_index int, y mut mapnode) {
+fn (mut n mapnode) split_child(child_index int, mut y mapnode) {
 	mut z := new_node()
 	z.size = mid_index
 	y.size = mid_index
@@ -353,7 +353,7 @@ pub fn (mut m SortedMap) delete(key string) {
 
 // Insert all keys of the subtree into array `keys`
 // starting at `at`. Keys are inserted in order.
-fn (n &mapnode) subkeys(keys mut []string, at int) int {
+fn (n &mapnode) subkeys(mut keys []string, at int) int {
 	mut position := at
 	if !isnil(n.children) {
 		// Traverse children and insert

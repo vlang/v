@@ -8477,7 +8477,7 @@ _SOKOL_PRIVATE void _sg_mtl_init_caps(void) {
 
 /*-- main Metal backend state and functions ----------------------------------*/
 _SOKOL_PRIVATE void _sg_setup_backend(const sg_desc* desc) {
-	puts("METAL");
+	puts("Sokol backend: Metal");
     /* assume already zero-initialized */
     SOKOL_ASSERT(desc);
     SOKOL_ASSERT(desc->mtl_device);
