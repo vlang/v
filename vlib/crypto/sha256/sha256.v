@@ -199,7 +199,7 @@ pub fn sum224(data []byte) []byte {
 	return sum224
 }
 
-fn block(dig mut Digest, p []byte) {
+fn block(mut dig Digest, p []byte) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
 	block_generic(mut dig, p)

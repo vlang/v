@@ -402,7 +402,7 @@ fn parse_binary_tetro(t_ int) []Block {
 	return res
 }
 
-fn on_event(e &sapp.Event, game mut Game) {
+fn on_event(e &sapp.Event, mut game Game) {
 	if e.typ == .key_down {
 		game.key_down(e.key_code)
 	}

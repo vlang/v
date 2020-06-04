@@ -311,7 +311,7 @@ fn test_fixed() {
 	assert nums2[c_n - 1] == 0
 }
 
-fn modify(numbers mut []int) {
+fn modify(mut numbers []int) {
 	numbers[0] = 777
 }
 
@@ -328,13 +328,13 @@ fn test_mut_slice() {
 	*/
 }
 
-fn double_up(a mut []int) {
+fn double_up(mut a []int) {
 	for i := 0; i < a.len; i++ {
 		a[i] = a[i]*2
 	}
 }
 
-fn double_up_v2(a mut []int) {
+fn double_up_v2(mut a []int) {
 	for i, _ in a {
 		a[i] = a[i]*2 // or val*2, doesn't matter
 	}

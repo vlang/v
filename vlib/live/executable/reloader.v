@@ -31,7 +31,7 @@ pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_
 // NB: start_reloader will be called by generated code inside main(), to start
 // the hot code reloader thread. start_reloader is executed in the context of
 // the original main thread.
-pub fn start_reloader(r mut live.LiveReloadInfo) {
+pub fn start_reloader(mut r live.LiveReloadInfo) {
 	// The shared library should be loaded once in the main thread
 	// If that fails, the program would crash anyway, just provide
 	// an error message to the user and exit:
@@ -48,7 +48,7 @@ fn elog(r &live.LiveReloadInfo, s string){
 	eprintln(s)
 }
 
-fn compile_and_reload_shared_lib(r mut live.LiveReloadInfo) ?bool {
+fn compile_and_reload_shared_lib(mut r live.LiveReloadInfo) ?bool {
 	sw := time.new_stopwatch({})
 	new_lib_path := compile_lib(mut r) or {
 		return error('errors while compiling $r.original')
@@ -59,7 +59,7 @@ fn compile_and_reload_shared_lib(r mut live.LiveReloadInfo) ?bool {
 	return true
 }
 
-fn compile_lib(r mut live.LiveReloadInfo) ?string {
+fn compile_lib(mut r live.LiveReloadInfo) ?string {
 	new_lib_path, new_lib_path_with_extension := current_shared_library_path(mut r)
 	cmd := '$r.vexe $r.vopts -o $new_lib_path $r.original'
 	elog(r,'>       compilation cmd: $cmd')
@@ -81,13 +81,13 @@ fn compile_lib(r mut live.LiveReloadInfo) ?string {
 	return new_lib_path_with_extension
 }
 
-fn current_shared_library_path(r mut live.LiveReloadInfo) (string, string) {
+fn current_shared_library_path(mut r live.LiveReloadInfo) (string, string) {
 	lib_path := strconv.v_sprintf(r.so_name_template.replace('\\', '\\\\'), r.reloads)
 	lib_path_with_extension := lib_path + r.so_extension
 	return lib_path, lib_path_with_extension
 }
 
-fn load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
+fn load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	elog(r,'live mutex locking...')
 	C.pthread_mutex_lock(r.live_fn_mutex)
 	elog(r,'live mutex locked')
@@ -108,7 +108,7 @@ fn load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
 	elog(r,'live mutex unlocked')
 }
 
-fn protected_load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
+fn protected_load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	if r.live_lib != 0 {
 		dl.close( r.live_lib )
 		r.live_lib = 0
@@ -126,7 +126,7 @@ fn protected_load_lib(r mut live.LiveReloadInfo, new_lib_path string) {
 }
 
 // NB: r.reloader() is executed in a new, independent thread
-fn reloader(r mut live.LiveReloadInfo) {
+fn reloader(mut r live.LiveReloadInfo) {
 //	elog(r,'reloader, r: $r')
 	mut last_ts := os.file_last_mod_unix( r.original )
 	for {

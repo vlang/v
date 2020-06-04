@@ -64,7 +64,7 @@ struct C.picoev_loop {}
 
 struct Picoev {
 	loop &C.picoev_loop
-	cb   fn(req picohttpparser.Request, res mut picohttpparser.Response)
+	cb   fn(req picohttpparser.Request, mut res picohttpparser.Response)
 mut:
 	date byteptr
 	buf  byteptr
@@ -229,7 +229,7 @@ pub fn (p Picoev) serve() {
 	}
 }
 
-fn update_date(p mut Picoev) {
+fn update_date(mut p Picoev) {
 	for {
 		p.date = C.get_date()
 		C.usleep(1000000)
