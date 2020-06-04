@@ -1,0 +1,5 @@
+fn f(x mut []int) { x[0] = 1 }
+fn main() {
+	mut x := [0]
+	f(mut x)
+}

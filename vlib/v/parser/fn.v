@@ -415,6 +415,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			}
 			if p.tok.kind == .key_mut {
 				// TODO remove old syntax
+				p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.position())
 				is_mut = true
 			}
 			if p.tok.kind == .ellipsis {
