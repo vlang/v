@@ -8,8 +8,8 @@ import os
 import rand
 import time
 import gx
-import gg2 as gg
-import gg2.ft
+import gg
+import gg.ft
 import sokol.sapp
 
 const (
@@ -139,7 +139,7 @@ struct Game {
 
 const ( fpath = os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf') )
 fn init_gui(mut game Game){
-	x := ft.new({ font_path: fpath }) or {panic(err)}
+	x := ft.new({ font_path: fpath, scale: 2 }) or {panic(err)}
 	game.ft = x
 	game.font_loaded = true
 }
@@ -183,7 +183,8 @@ fn main() {
 		user_data: game
 		init_fn: init_gui
 		frame_fn: frame
-		event_cb: on_event
+		event_fn: on_event
+		scale: 2
 	)
 	game.init_game()
 	go game.run() // Run the game loop in a new thread
@@ -194,7 +195,7 @@ fn (mut g Game) init_game() {
 	g.parse_tetros()
 	rand.seed(int(time.now().unix))
 	g.generate_tetro()
-	g.field = [] // TODO: g.field = [][]int
+	g.field = []
 	// Generate the field, fill it with 0's, add -1's on each edge
 	for _ in 0..field_height + 2 {
 		mut row := [0].repeat(field_width + 2)
@@ -239,10 +240,7 @@ fn (mut g Game) move_tetro() bool {
 		y := block.y + g.pos_y + 1
 		x := block.x + g.pos_x
 		// Reached the bottom of the screen or another block?
-		// TODO: if g.field[y][x] != 0
-		//if g.field[y][x] != 0 {
-		row := g.field[y]
-		if row[x] != 0 {
+		if g.field[y][x] != 0 {
 			// The new tetro has no space to drop => end of the game
 			if g.pos_y < 2 {
 				g.state = .gameover
@@ -320,9 +318,7 @@ fn (g &Game) drop_tetro() {
 		x := tetro.x + g.pos_x
 		y := tetro.y + g.pos_y
 		// Remember the color of each block
-		// TODO: g.field[y][x] = g.tetro_idx + 1
-		mut row := g.field[y]
-		row[x] = g.tetro_idx + 1
+		g.field[y][x] = g.tetro_idx + 1
 	}
 }
 
@@ -376,7 +372,7 @@ fn (mut g Game) draw_scene() {
 
 fn parse_binary_tetro(t_ int) []Block {
 	mut t := t_
-	res := [Block{}].repeat(4)
+	mut res := [Block{}].repeat(4)
 	mut cnt := 0
 	horizontal := t == 9// special case for the horizontal line
 	ten_powers := [1000,100,10,1]
@@ -390,11 +386,8 @@ fn parse_binary_tetro(t_ int) []Block {
 			bin := digit % 2
 			digit /= 2
 			if bin == 1 || (horizontal && i == tetro_size - 1) {
-				// TODO: res[cnt].x = j
-				// res[cnt].y = i
-				mut point := &res[cnt]
-				point.x = j
-				point.y = i
+				res[cnt].x = j
+				res[cnt].y = i
 				cnt++
 			}
 		}
@@ -402,7 +395,7 @@ fn parse_binary_tetro(t_ int) []Block {
 	return res
 }
 
-fn on_event(e &sapp.Event, game mut Game) {
+fn on_event(e &sapp.Event, mut game Game) {
 	if e.typ == .key_down {
 		game.key_down(e.key_code)
 	}

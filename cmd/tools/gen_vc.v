@@ -177,7 +177,7 @@ pub fn (ws &WebhookServer) reset() {
 
 
 // parse flags to FlagOptions struct
-fn parse_flags(fp mut flag.FlagParser) FlagOptions {
+fn parse_flags(mut fp flag.FlagParser) FlagOptions {
 	return FlagOptions{
 		serve    : fp.bool('serve', 0, false, 'run in webhook server mode')
 		work_dir : fp.string('work-dir', 0, work_dir, 'gen_vc working directory')

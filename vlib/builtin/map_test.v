@@ -160,7 +160,7 @@ fn test_string_arr() {
 	assert m['a'][1] == 'two'
 }
 
-fn mut_map(m mut map[string]int) {
+fn mut_map(mut m map[string]int) {
 	m['a'] = 10
 }
 

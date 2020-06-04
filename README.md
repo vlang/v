@@ -52,10 +52,9 @@ make
 That's it! Now you have a V executable at `[path to V repo]/v`. 
 `[path to V repo]` can be anywhere.
 
-(On Windows `make` means running `make.bat`, so make sure you use `cmd.exe`.)
+(On Windows `make` means running `make.bat`, so make sure you use `cmd.exe`)
 
-After the above, you can try doing: `./v run examples/hello_world.v` on Unix, 
-or `.\v.exe run examples\hello_world.v` on Windows.
+Now you can try `./v run examples/hello_world.v` (`v.exe` on Windows).
 
 V is being constantly updated. To update V, simply run:
 

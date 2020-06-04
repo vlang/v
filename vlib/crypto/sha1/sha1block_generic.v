@@ -17,7 +17,7 @@ const (
 	_k3 = 0xCA62C1D6
 )
 
-fn block_generic(dig mut Digest, p_ []byte) {
+fn block_generic(mut dig Digest, p_ []byte) {
 	mut p := p_
 	mut w := [u32(0)].repeat(16)
 	mut h0 := dig.h[0]
@@ -113,7 +113,7 @@ fn block_generic(dig mut Digest, p_ []byte) {
 		} else {
 			p = p[chunk..]
 		}
-		
+
 	}
 
 	dig.h[0] = h0

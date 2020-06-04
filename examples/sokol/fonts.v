@@ -38,7 +38,7 @@ fn main() {
 	sapp.run(&desc)
 }
 
-fn init(state mut AppState) {
+fn init(mut state AppState) {
 	// dont actually alocate this on the heap in real life
 	gfx.setup(&C.sg_desc{
 		mtl_device: sapp.metal_get_device()

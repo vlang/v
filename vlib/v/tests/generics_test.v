@@ -72,7 +72,7 @@ fn test_create() {
 	create<User>()
 	create<City>()
 	u := User{}
-	//gen_arg<User>(mut u)
+	gen_arg<User>(mut u)
 }
 
 /*

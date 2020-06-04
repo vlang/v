@@ -142,7 +142,7 @@ pub mut:
 	verbose       bool // should the tool be much more verbose
 }
 
-pub fn add_common_tool_options(context mut VGitOptions, fp mut flag.FlagParser) []string {
+pub fn add_common_tool_options(mut context VGitOptions, mut fp flag.FlagParser) []string {
 	tdir := os.temp_dir()
 	context.workdir = os.real_path(fp.string('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
 	context.v_repo_url = fp.string('vrepo', 0, vgit.remote_v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')

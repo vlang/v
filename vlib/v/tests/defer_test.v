@@ -19,7 +19,7 @@ fn test_defer() {
 	assert foo2() == 'foo'
 }
 
-fn set_num(i int, n mut Num) {
+fn set_num(i int, mut n Num) {
 	defer {
 		println('exiting')
 		n.val++
@@ -33,7 +33,7 @@ fn set_num(i int, n mut Num) {
 	}
 }
 
-fn set_num_opt(n mut Num) ?int {
+fn set_num_opt(mut n Num) ?int {
 	defer {
 		n.val = 1
 	}
