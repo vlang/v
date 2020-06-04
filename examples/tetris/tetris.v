@@ -185,6 +185,7 @@ fn main() {
 		frame_fn: frame
 		event_fn: on_event
 		scale: 2
+		//wait_events: true
 	)
 	game.init_game()
 	go game.run() // Run the game loop in a new thread
@@ -396,6 +397,7 @@ fn parse_binary_tetro(t_ int) []Block {
 }
 
 fn on_event(e &sapp.Event, mut game Game) {
+	//println('code=$e.char_code')
 	if e.typ == .key_down {
 		game.key_down(e.key_code)
 	}

@@ -88,9 +88,7 @@ pub fn (mut ts TestSession) test() {
 	}
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	// QTODO
-	//mut pool_of_test_runners := sync.new_pool_processor({
-	mut pool_of_test_runners := sync.new_pool_processor(sync.PoolProcessorConfig{
+	mut pool_of_test_runners := sync.new_pool_processor({
 		callback: worker_trunner
 	})
 	// for handling messages across threads

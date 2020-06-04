@@ -9,6 +9,7 @@ import sokol
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
+import gg.ft
 
 type FNvoidptr1 fn(voidptr)
 type FNvoidptr2 fn(voidptr,voidptr)
@@ -26,6 +27,7 @@ pub:
 	create_window bool
 	// window_user_ptr voidptr
 	window_title  string
+	borderless_window bool
 	always_on_top bool
 	scale         f32  = 1.0
 	bg_color      gx.Color
@@ -34,7 +36,8 @@ pub:
 	event_fn      FNvoidptr2 = voidptr(0)
 	cleanup_fn    FNvoidptr1 = voidptr(0)
 	fail_fn       FNFail = voidptr(0)
-	wait_events   bool = false // set this to true for UIs, to save power
+	wait_events   bool // set this to true for UIs, to save power
+	font_path string
 }
 
 pub struct GG {
@@ -46,6 +49,8 @@ pub mut:
 	window     C.sapp_desc
 	config     Config
 }
+
+pub struct Size { pub: width int height int }
 
 fn gg_init_sokol_window(user_data voidptr) {
 	mut g := &GG(user_data)
@@ -186,6 +191,7 @@ pub fn (gg &GG) end() {
 	gfx.end_pass()
 	gfx.commit()
 	if gg.config.wait_events {
+		//println('gg: waiting')
 		wait_events()
 	}
 }
