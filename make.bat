@@ -4,13 +4,8 @@ echo Building V
 
 pushd %~dp0
 
-if "%~1"=="-prod" set prod_mode=1
-if "%~2"=="-prod" set prod_mode=1
-if "%~3"=="-prod" set prod_mode=1
-
 if "%~1"=="-local" goto :compile
 if "%~2"=="-local" goto :compile
-if "%~3"=="-local" goto :compile
 
 if exist "vc" (
 	echo Updating vc...
@@ -26,10 +21,8 @@ if exist "vc" (
 REM option to force msvc or gcc
 if "%~1"=="-gcc" goto :gcc_strap
 if "%~2"=="-gcc" goto :gcc_strap
-if "%~3"=="-gcc" goto :gcc_strap
 if "%~1"=="-msvc" goto :msvc_strap
 if "%~2"=="-msvc" goto :msvc_strap
-if "%~3"=="-msvc" goto :msvc_strap
 
 :gcc_strap
 echo Attempting to build v.c with GCC...
@@ -49,11 +42,7 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :error
 )
 
-if "%prod_mode%"=="1" (
-	v.exe -prod self
-) else (
-	v.exe self
-)
+v.exe self
 if %ERRORLEVEL% NEQ 0 (
 	echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
 	goto :error
@@ -91,11 +80,7 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :compile_error
 )
 
-if "%prod_mode%"=="1" (
-	v.exe -prod -cc msvc self
-) else (
-	v.exe -cc msvc self
-)
+v.exe -cc msvc self
 if %ERRORLEVEL% NEQ 0 (
 	echo V failed to build itself with error %ERRORLEVEL%
 	del %ObjFile%
