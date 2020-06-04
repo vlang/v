@@ -60,6 +60,68 @@ fn test_f64_equal_operator() {
 	assert m > e
 }
 
+fn test_f64_eq_epsilon() {
+	a := 1.662248544459347e308
+	b := 1.662248544459348e308
+	x := 1.662248544459352e308
+	assert a != b
+	assert a.eq_epsilon(b)
+	assert b.eq_epsilon(a)
+	assert (-a).eq_epsilon(-b)
+	assert (-b).eq_epsilon(-a)
+	assert !a.eq_epsilon(x)
+	assert !x.eq_epsilon(a)
+	assert !a.eq_epsilon(-b)
+	assert !(-a).eq_epsilon(b)
+	c := 1.5367748374385438503
+	d := -1.5367748374385447257
+	z := 1.5367748378943546
+	assert c != -d
+	assert c.eq_epsilon(-d)
+	assert d.eq_epsilon(-c)
+	assert !c.eq_epsilon(z)
+	assert !z.eq_epsilon(c)
+	e := 2.531434251587394233e-308
+	f := 2.531434251587395675e-308
+	y := 2.531434251587398934e-308
+	assert e != f
+	assert e.eq_epsilon(f)
+	assert (-f).eq_epsilon(-e)
+	assert !e.eq_epsilon(y)
+	assert !(-y).eq_epsilon(-e)
+}
+
+fn test_f32_eq_epsilon() {
+	a := f32(3.244331e38)
+	b := f32(3.244332e38)
+	x := f32(3.244338e38)
+	assert a != b
+	assert a.eq_epsilon(b)
+	assert b.eq_epsilon(a)
+	assert (-a).eq_epsilon(-b)
+	assert (-b).eq_epsilon(-a)
+	assert !a.eq_epsilon(x)
+	assert !(-x).eq_epsilon(-a)
+	assert !a.eq_epsilon(-b)
+	assert !(-a).eq_epsilon(b)
+	c := f32(0.9546742)
+	d := f32(-0.9546745)
+	z := f32(0.9546754)
+	assert c != -d
+	assert c.eq_epsilon(-d)
+	assert d.eq_epsilon(-c)
+	assert !c.eq_epsilon(z)
+	assert !z.eq_epsilon(c)
+	e := f32(-1.5004390e-38)
+	f := f32(-1.5004395e-38)
+	y := f32(-1.5004409e-38)
+	assert e != f
+	assert e.eq_epsilon(f)
+	assert (-f).eq_epsilon(-e)
+	assert !e.eq_epsilon(y)
+	assert !(-y).eq_epsilon(-e)
+}
+
 fn test_str_methods() {
 	assert i8(1).str() == '1'
 	assert i8(-1).str() == '-1'

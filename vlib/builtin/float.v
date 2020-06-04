@@ -85,3 +85,62 @@ fn f64_abs(a f64) f64 {
 		a
 	}
 }
+
+
+[inline]
+fn f32_max(a, b f32) f32 {
+	return if a > b {
+		a
+	} else {
+		b
+	}
+}
+
+[inline]
+fn f32_min(a, b f32) f32 {
+	return if a < b {
+		a
+	} else {
+		b
+	}
+}
+
+[inline]
+fn f64_max(a, b f64) f64 {
+	return if a > b {
+		a
+	} else {
+		b
+	}
+}
+
+[inline]
+fn f64_min(a, b f64) f64 {
+	return if a < b {
+		a
+	} else {
+		b
+	}
+}
+
+[inline]
+fn (a f32) eq_epsilon(b f32) bool {
+	hi := f32_max(f32_abs(a), f32_abs(b))
+	delta := f32_abs(a - b)
+	if hi > f32(1.0) {
+		return delta <= hi * (4 * f32(C.FLT_EPSILON))
+	} else {
+		return (1 / (4 * f32(C.FLT_EPSILON))) * delta <= hi
+	}
+}
+
+[inline]
+fn (a f64) eq_epsilon(b f64) bool {
+	hi := f64_max(f64_abs(a), f64_abs(b))
+	delta := f64_abs(a - b)
+	if hi > 1.0 {
+		return delta <= hi * (4 * f64(C.DBL_EPSILON))
+	} else {
+		return (1 / (4 * f64(C.DBL_EPSILON))) * delta <= hi
+	}
+}
