@@ -103,8 +103,6 @@ pub fn new(uri string) &Client {
 	return ws
 }
 
-// fn C.sscanf() int
-
 fn (ws &Client) parse_uri() &Uri {
 	u := urllib.parse(ws.uri) or {
 		panic(err)

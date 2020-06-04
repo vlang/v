@@ -90,7 +90,7 @@ fn C.time(t &C.time_t) C.time_t
 pub fn now() Time {
 
 	$if macos {
-		t := C.timespec(0)
+		t := C.time(0)
 		now := C.localtime(&t)
 		return convert_ctime(now)
 	} $else {
@@ -104,7 +104,7 @@ pub fn now() Time {
 pub fn utc_now() Time {
 
 	$if macos {
-		t := C.timespec(0)
+		t := C.time(0)
 		now := C.localtime(&t)
 		return convert_ctime(now)
 	} $else {
