@@ -12,6 +12,7 @@
     --menu-indent-line-color: #ffffff66;
     --menu-scrollbar-color: #a0aec0;
     --menu-toggle-icon-color: #fff;
+    --menu-toggle-icon-hover-color: #00000044;
     --toc-font-color: #2779bd;
     --toc-indent-line-color: #dae1e7;
     --dark-light-toggle-color: #000000;
@@ -91,10 +92,13 @@ body {
     display: none;
 }
 .doc-nav #toggle-menu {
-    background: none;
-    border: none;
     cursor: pointer;
-    color: var(--menu-toggle-icon-color);
+    padding: 0.3rem;
+    fill: var(--menu-toggle-icon-color);
+}
+.doc-nav #toggle-menu:active {
+    background-color: var(--menu-toggle-icon-hover-color);
+    border-radius: 5rem;
 }
 .doc-nav > .heading-container {
     position: sticky;
@@ -288,6 +292,14 @@ body {
 @media (max-width: 1023px) {
     .doc-nav.hidden {
         height: auto;
+    }
+    .doc-nav > .heading-container > .heading {
+        align-items: center;
+    }
+    .doc-nav > .heading-container > .heading > .toggle-version-container {
+        flex-grow: 1;
+        padding: 0 1rem;
+        justify-content: space-between;
     }
 }
 

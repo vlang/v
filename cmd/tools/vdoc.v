@@ -177,6 +177,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	doc_css_min := get_resource('doc.css', true)
 	light_icon := get_resource('light.svg', true)
 	dark_icon := get_resource('dark.svg', true)
+	menu_icon := get_resource('menu.svg', true)
 
 	// write css
 	hw.write('<style>$doc_css_min</style>')
@@ -194,9 +195,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 					<span>${version}</span>
 					<div id="dark-mode-toggle" role="checkbox">$light_icon $dark_icon</div>
 				</div>
-				<button id="toggle-menu">
-					<svg fill="currentColor" width="2rem" viewBox="0 0 20 20"><path d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
-				</button>
+				$menu_icon
 			</div>
 		</div>
 		<nav class="content hidden">
