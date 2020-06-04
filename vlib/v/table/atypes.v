@@ -106,8 +106,9 @@ pub fn (t Type) set_flag(flag TypeFlag) Type {
 }
 
 // clear `flag` on `t` and return `t`
+[inline]
 pub fn (t Type) clear_flag(flag TypeFlag) Type {
-	return (((((int(t) >> 24) & 0xff) & ~(1 << int(flag))) << 24) ) | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
+	return ((((int(t) >> 24) & 0xff) & ~(1 << int(flag))) << 24) | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
 }
 
 // clear all flags
