@@ -1258,6 +1258,11 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 	for i, exp_type in expected_types {
 		got_typ := got_types[i]
+		if got_typ.flag_is(.optional) &&
+			(!exp_type.flag_is(.optional) || c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
+			pos := return_stmt.exprs[i].position()
+			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument', pos)
+		}
 		is_generic := exp_type == table.t_type
 		ok := if is_generic { c.check_types(got_typ, c.cur_generic_type) || got_typ == exp_type } else { c.check_types(got_typ,
 				exp_type) }
