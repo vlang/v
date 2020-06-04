@@ -127,7 +127,7 @@ pub fn (mut m TestMessageHandler) display_message() {
 	}
 }
 
-fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
+fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
 	defer { ts.message_handler.display_message() }
 	tmpd := os.temp_dir()

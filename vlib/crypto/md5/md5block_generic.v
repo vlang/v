@@ -11,7 +11,7 @@ module md5
 import math.bits
 import encoding.binary
 
-fn block_generic(dig mut Digest, p []byte) {
+fn block_generic(mut dig Digest, p []byte) {
 	// load state
 	mut a := dig.s[0]
 	mut b := dig.s[1]

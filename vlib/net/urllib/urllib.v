@@ -836,7 +836,7 @@ fn parse_query_silent(query string) Values {
 	return m
 }
 
-fn parse_query_values(m mut Values, query string) ?bool {
+fn parse_query_values(mut m Values, query string) ?bool {
 	mut had_error := false
 	mut q := query
 	for q != '' {

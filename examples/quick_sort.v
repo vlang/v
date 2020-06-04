@@ -19,7 +19,7 @@ fn main() {
 	println('after quick sort whether array is sorted: ${is_sorted(arr)}')
 }
 
-fn quick_sort(arr mut []int, l int, r int) {
+fn quick_sort(mut arr []int, l int, r int) {
 	if l>=r { return }
 	mut sep := l  // what is sep: [...all_value<arr[sep]...sep...all_value>=arr[sep]...]
 	for i in l+1..r+1 {
@@ -34,7 +34,7 @@ fn quick_sort(arr mut []int, l int, r int) {
 }
 
 [inline]
-fn swap(arr mut []int, i int, j int) {
+fn swap(mut arr []int, i int, j int) {
 	temp := arr[i]
 	arr[i] = arr[j]
 	arr[j] = temp
