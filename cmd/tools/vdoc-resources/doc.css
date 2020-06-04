@@ -10,6 +10,7 @@
     --menu-background-color: #4b6c88;
     --menu-font-color: #fff;
     --menu-indent-line-color: #ffffff66;
+    --menu-indent-line-active-color: #00000066;
     --menu-scrollbar-color: #a0aec0;
     --menu-toggle-icon-color: #fff;
     --menu-toggle-icon-hover-color: #00000044;
@@ -42,6 +43,7 @@ body {
     --menu-background-color: #2d3748;
     --menu-font-color: #fff;
     --menu-indent-line-color: #4a5568;
+    --menu-indent-line-active-color: #90cdf4;
     --menu-scrollbar-color: #4a5568;
     --menu-toggle-icon-color: #fff;
     --toc-font-color: #90cdf4;
@@ -54,9 +56,6 @@ body {
     list-style: none;
     padding: 0;
     margin: 0;
-}
-.doc-nav li, .doc-toc li {
-    line-height: 1.5;
 }
 
 .doc-nav {
@@ -84,6 +83,10 @@ body {
 *::-webkit-scrollbar-thumb {
     background-color: var(--menu-scrollbar-color);
     border: 3px solid transparent;
+}
+.doc-nav li {
+    line-height: 1.8;
+    font-weight: 300;
 }
 .doc-nav .content.show {
     display: flex;
@@ -134,10 +137,18 @@ body {
     display: flex;
     flex-direction: column;
 }
-.doc-nav > .content li ul {
+.doc-nav > .content > ul > li.active {
+    font-weight: 600;
+}
+.doc-nav > .content > ul > li > ul {
+    margin: 0.4rem 0;
+}
+.doc-nav > .content > ul > li > ul > li {
     border-left: 1.7px solid var(--menu-indent-line-color);
     padding-left: 0.7rem;
-    margin: 0.2rem 0;
+}
+.doc-nav > .content > ul > li > ul > li.active {
+    border-color: var(--menu-indent-line-active-color);
 }
 .doc-nav > .content a {
     color: var(--menu-font-color);
@@ -204,7 +215,7 @@ body {
 .doc-content > .doc-node > .title h5,
 .doc-content > .doc-node > .title h6 {
     font-weight: 400;
-    padding-bottom: 0.4rem;
+    padding-bottom: 0.8rem;
     margin: 0;
 }
 .doc-content > .doc-node > .title h1 a,
@@ -238,6 +249,9 @@ body {
 }
 .doc-toc::-webkit-scrollbar {
     display: none;
+}
+.doc-toc li {
+    line-height: 1.5;
 }
 .doc-toc a {
     color: var(--toc-font-color);

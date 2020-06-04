@@ -170,7 +170,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${dcs.head.name} | vdoc</title>
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet">
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet">
 	<link rel="stylesheet" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css">')
 
 	// get resources
@@ -208,7 +208,10 @@ fn (cfg DocConfig) gen_html(idx int) string {
 			}
 			names := doc.head.name.split('.')
 			submod_prefix = if names.len > 1 { names[0] } else { doc.head.name }
-			class_css := if doc.head.name == dcs.head.name { 'class="font-bold" ' } else { '' }
+			active_class := if doc.head.name == dcs.head.name { ' class="active"' } else { '' }
+			if doc.head.name == dcs.head.name {
+				println(doc.head.name)
+			}
 			href_name := if doc.head.name == 'README' {
 				'./index.html'
 			} else if submod_prefix !in cfg.docs.map(it.head.name) {
@@ -217,14 +220,15 @@ fn (cfg DocConfig) gen_html(idx int) string {
 				'./' + doc.head.name + '.html'
 			}
 			submodules := cfg.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
-			hw.write('<li><a ${class_css}href="$href_name">${submod_prefix}</a>')
+			hw.write('<li$active_class><a href="$href_name">${submod_prefix}</a>')
 			for j, cdoc in submodules {
 				if j == 0 {
 					hw.write('<ul>')
 				}
 				submod_name := cdoc.head.name.all_after(submod_prefix + '.')
-				hw.write('<li><a ${class_css}href="./${cdoc.head.name}.html">${submod_name}</a></li>')
-				if j == submodules.len-1 {
+				sub_active_class := if cdoc.head.name == dcs.head.name { ' class="active"' } else { '' }
+				hw.write('<li$sub_active_class><a href="./${cdoc.head.name}.html">${submod_name}</a></li>')
+				if j == submodules.len - 1 {
 					hw.write('</ul>')
 				}
 			}
