@@ -1,7 +1,6 @@
 module main
 
 import gg
-import glfw
 import gx
 import automaton
 
