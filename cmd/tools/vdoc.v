@@ -451,7 +451,7 @@ fn main() {
 	opts := cmdline.only_options(os.args[1..])
 	args := cmdline.only_non_options(args_after_doc)
 	if args.len == 0 || args[0] == 'help' {
-		os.system('v help doc')
+		os.system('${@VEXE} help doc')
 		exit(0)
 	}
 	mut config := DocConfig{
