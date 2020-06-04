@@ -1,10 +1,9 @@
 module main
 
 import gg
-import freetype
+import gg.ft
 import gx
-import glfw
-import time
+import os
 
 const (
 	win_width = 600
@@ -60,52 +59,46 @@ lines = text.split('\n')
 )
 
 
-struct Context {
+struct App {
 mut:
 	gg &gg.GG
-	ft &freetype.FreeType
+	ft &ft.FT
 }
 
-fn main() {
-	glfw.init_glfw()
-	mut ctx := &Context{
-		gg: gg.new_context(gg.Cfg {
-			width: win_width
-			height: win_height
-			use_ortho: true // This is needed for 2D drawing
-			create_window: true
-			window_title: 'Empty window'
-			//window_user_ptr: ctx
-		})
-	}
-	ctx.gg.window.set_user_ptr(ctx) // TODO remove this when `window_user_ptr:` works
-	gg.clear(bg_color)
-	// Try to load font
-	ctx.ft = freetype.new_context(gg.Cfg{
-		width: win_width
-		height: win_height
-		use_ortho: true
+fn init_gui(mut game App){
+	x := ft.new({
 		font_size: 13
 		scale: 2
-	})
-	for {
-		t := time.ticks()
-		gg.clear(bg_color)
-		ctx.draw()
-		ctx.gg.render()
-	println(time.ticks()-t)
-		if ctx.gg.window.should_close() {
-			ctx.gg.window.destroy()
-			return
-		}
+		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
+	}) or { panic(err) }
+	game.ft = x
 	}
+
+fn main() {
+	mut app := &App{}
+	app.gg = gg.new_context({
+		width: win_width
+		height: win_height
+		use_ortho: true // This is needed for 2D drawing
+		create_window: true
+		window_title: 'Empty window'
+		user_data: app
+		bg_color: bg_color
+		init_fn: init_gui
+		frame_fn: frame
+		//window_user_ptr: ctx
+	})
+	app.gg.run()
 }
 
-fn (mut ctx Context) draw() {
+fn frame(mut app App) {
+	app.ft.flush()
+	app.gg.begin()
 	mut y := 10
 	for line in lines {
-		ctx.ft.draw_text_def(10,y, line)
-		y += 15
+		app.ft.draw_text_def(10,y, line)
+		y += 30
 	}
+	app.gg.end()
 }
 

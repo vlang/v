@@ -8,8 +8,8 @@ import os
 import rand
 import time
 import gx
-import gg2 as gg
-import gg2.ft
+import gg
+import gg.ft
 import sokol.sapp
 
 const (
@@ -139,7 +139,7 @@ struct Game {
 
 const ( fpath = os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf') )
 fn init_gui(mut game Game){
-	x := ft.new({ font_path: fpath }) or {panic(err)}
+	x := ft.new({ font_path: fpath, scale: 2 }) or {panic(err)}
 	game.ft = x
 	game.font_loaded = true
 }
@@ -184,6 +184,7 @@ fn main() {
 		init_fn: init_gui
 		frame_fn: frame
 		event_fn: on_event
+		scale: 2
 	)
 	game.init_game()
 	go game.run() // Run the game loop in a new thread
