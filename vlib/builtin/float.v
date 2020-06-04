@@ -124,7 +124,7 @@ fn f64_min(a, b f64) f64 {
 }
 
 [inline]
-fn (a f32) eq_epsilon(b f32) bool {
+pub fn (a f32) eq_epsilon(b f32) bool {
 	hi := f32_max(f32_abs(a), f32_abs(b))
 	delta := f32_abs(a - b)
 	if hi > f32(1.0) {
@@ -135,7 +135,7 @@ fn (a f32) eq_epsilon(b f32) bool {
 }
 
 [inline]
-fn (a f64) eq_epsilon(b f64) bool {
+pub fn (a f64) eq_epsilon(b f64) bool {
 	hi := f64_max(f64_abs(a), f64_abs(b))
 	delta := f64_abs(a - b)
 	if hi > 1.0 {

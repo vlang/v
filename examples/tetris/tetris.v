@@ -126,7 +126,7 @@ struct Game {
 	// Index of the rotation (0-3)
 	rotation_idx int
 	// gg context for drawing
-	gg          &gg.GG = voidptr(0)
+	gg          &gg.Context = voidptr(0)
 	// ft context for font drawing
 	ft          &ft.FT = voidptr(0)
 	font_loaded bool

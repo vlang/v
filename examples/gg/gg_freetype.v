@@ -61,7 +61,7 @@ lines = text.split('\n')
 
 struct App {
 mut:
-	gg &gg.GG
+	gg &gg.Context
 	ft &ft.FT
 }
 
