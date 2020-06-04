@@ -96,7 +96,6 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 		'git.sir.ht' { '/tree/master/$file_name' }
 		else { '' }
 	}
-	println(url.path)
 	if repo_url.starts_with('https://github.com/vlang/v') && !url.path.contains('master/vlib')  {
 		url.path = url.path.replace('/blob/master/$file_name', '/blob/master/vlib/$file_name')
 	}
