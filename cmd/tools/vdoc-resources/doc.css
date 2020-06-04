@@ -120,11 +120,12 @@ body {
     position: sticky;
     position: -webkit-sticky;
     top: 0;
+    background-color: #4b6c88;
+    background-color: var(--menu-background-color);
+    z-index: 10;
 }
 .doc-nav > .heading-container > .heading {
     display: flex;
-    background-color: #4b6c88;
-    background-color: var(--menu-background-color);
     padding: 0 2rem;
     height: 56px;
 }
@@ -180,8 +181,29 @@ body {
 .doc-nav > .content > ul > li.active {
     font-weight: 600;
 }
+.doc-nav > .content > ul > li.open ul {
+    display: initial;
+}
+.doc-nav > .content > ul > li.open > .menu-row > .dropdown-arrow {
+    transform: initial;
+}
+.doc-nav > .content > ul > li > .menu-row {
+    display: flex;
+    align-items: center;
+}
+.doc-nav > .content > ul > li > .menu-row > .dropdown-arrow {
+    transform: rotate(-90deg);
+    height: 18px;
+    width: 18px;
+    margin-left: calc(-18px - 0.3rem);
+    margin-right: 0.3rem;
+    cursor: pointer;
+    fill: #fff;
+    pointer-events: all;
+}
 .doc-nav > .content > ul > li > ul {
     margin: 0.4rem 0;
+    display: none;
 }
 .doc-nav > .content > ul > li > ul > li {
     border-color: #ffffff66;
@@ -198,6 +220,7 @@ body {
     color: #fff;
     color: var(--menu-font-color);
     text-decoration: none;
+    user-select: none;
 }
 .doc-nav > .content a:hover {
     text-decoration: underline;

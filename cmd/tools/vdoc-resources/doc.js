@@ -53,4 +53,14 @@
             menuItem.style.display = !searchValue || hasResult ? '' : 'none';
         }
     });
+
+    // Collapse
+    var dropdownArrows = document.querySelectorAll('.dropdown-arrow');
+    for (var i = 0; i < dropdownArrows.length; i++) {
+        var dropdownArrow = dropdownArrows[i];
+        dropdownArrow.addEventListener('click', function(e) {
+            var parent = e.target.parentElement.parentElement.parentElement;
+            parent.classList.toggle('open');
+        });
+    }
 })();

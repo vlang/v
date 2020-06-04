@@ -182,6 +182,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	light_icon := get_resource('light.svg', true)
 	dark_icon := get_resource('dark.svg', true)
 	menu_icon := get_resource('menu.svg', true)
+	arrow_icon := get_resource('arrow.svg', true)
 
 	// write css
 	hw.write('<style>$doc_css_min</style>')
@@ -213,7 +214,6 @@ fn (cfg DocConfig) gen_html(idx int) string {
 			}
 			names := doc.head.name.split('.')
 			submod_prefix = if names.len > 1 { names[0] } else { doc.head.name }
-			active_class := if doc.head.name == dcs.head.name { ' class="active"' } else { '' }
 			href_name := if doc.head.name == 'README' {
 				'./index.html'
 			} else if submod_prefix !in cfg.docs.map(it.head.name) {
@@ -222,14 +222,23 @@ fn (cfg DocConfig) gen_html(idx int) string {
 				'./' + doc.head.name + '.html'
 			}
 			submodules := cfg.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
-			hw.write('<li$active_class><a href="$href_name">${submod_prefix}</a>')
+			dropdown := if submodules.len > 0 { arrow_icon } else { '' }
+			mut is_submodule_open := false
+			for _, cdoc in submodules {
+				if cdoc.head.name == dcs.head.name {
+					is_submodule_open = true
+				}
+			}
+			open_class := if doc.head.name == dcs.head.name || is_submodule_open { ' open' } else { '' }
+			active_class := if doc.head.name == dcs.head.name { ' active' } else { '' }
+			hw.write('<li class="$open_class$active_class"><div class="menu-row">$dropdown<a href="$href_name">${submod_prefix}</a></div>')
 			for j, cdoc in submodules {
 				if j == 0 {
 					hw.write('<ul>')
 				}
 				submod_name := cdoc.head.name.all_after(submod_prefix + '.')
-				sub_active_class := if cdoc.head.name == dcs.head.name { ' class="active"' } else { '' }
-				hw.write('<li$sub_active_class><a href="./${cdoc.head.name}.html">${submod_name}</a></li>')
+				sub_selected_classes := if cdoc.head.name == dcs.head.name { ' class="active"' } else { '' }
+				hw.write('<li$sub_selected_classes><a href="./${cdoc.head.name}.html">${submod_name}</a></li>')
 				if j == submodules.len - 1 {
 					hw.write('</ul>')
 				}
