@@ -16,9 +16,12 @@
     var darkModeToggle = document.getElementById('dark-mode-toggle');
     darkModeToggle.addEventListener('click', function() {
         html.classList.toggle('dark');
-        localStorage['dark-mode'] = html.classList.contains('dark');
+        var isDarkModeEnabled = html.classList.contains('dark');
+        localStorage.setItem('dark-mode', isDarkModeEnabled);
     });
-    localStorage['dark-mode'] == 'true' && html.classList.add('dark');
+    if (localStorage.getItem('dark-mode') === 'true') {
+        html.classList.add('dark');
+    }
 
     // Check if css var() is supported and enable dark mode toggle
     if (window.CSS && CSS.supports('color', 'var(--fake-var)')) {

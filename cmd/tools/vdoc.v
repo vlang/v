@@ -168,6 +168,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	<html lang="en">
 	<head>
     <meta charset="UTF-8">
+	<meta http-equiv="x-ua-compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${dcs.head.name} | vdoc</title>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet">

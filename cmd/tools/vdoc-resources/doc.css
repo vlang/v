@@ -110,6 +110,7 @@ body {
     border-radius: 5rem;
 }
 .doc-nav > .heading-container {
+    position: relative; /* IE11 */
     position: sticky;
     position: -webkit-sticky;
     top: 0;
@@ -152,8 +153,10 @@ body {
     margin: 0.4rem 0;
 }
 .doc-nav > .content > ul > li > ul > li {
-    border-left: #ffffff66;
-    border-left: 1.7px solid var(--menu-indent-line-color);
+    border-color: #ffffff66;
+    border-color: var(--menu-indent-line-color);
+    border-left-width: 1.7px;
+    border-left-style: solid;
     padding-left: 0.7rem;
 }
 .doc-nav > .content > ul > li > ul > li.active {
@@ -207,8 +210,10 @@ body {
     font-weight: 400;
 }
 .doc-content > .doc-node .signature {
-    border-left: 3px solid #a0aec0;
-    border-left: 3px solid var(--code-signature-border-color);
+    border-color: #a0aec0;
+    border-color: var(--toc-indent-line-color);
+    border-left-width: 3px;
+    border-left-style: solid;
 }
 .doc-content > .doc-node > ul > li .task-list-item-checkbox {
     margin-right: 0.5rem;
@@ -284,8 +289,10 @@ body {
     text-decoration: underline;
 }
 .doc-toc li ul {
-    border-left: 2px solid #dae1e7;
-    border-left: 2px solid var(--toc-indent-line-color);
+    border-color :#dae1e7;
+    border-color: var(--toc-indent-line-color);
+    border-left-width: 2px;
+    border-left-style: solid;
     padding-left: 0.8rem;
     margin: 0.2rem 0 0.2rem;
     font-size: 0.7rem;
@@ -307,6 +314,7 @@ body {
 
     .doc-toc {
         padding: 1rem 1rem 0 1rem;
+        position: relative; /* IE11 */
         position: sticky;
         position: -webkit-sticky;
         align-self: flex-start;
