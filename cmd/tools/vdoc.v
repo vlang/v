@@ -137,7 +137,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		if head {
 			dnw.write(md_content)
 		} else {
-			dnw.writeln('<pre><code>${dd.content}</code></pre>')
+			dnw.writeln('<pre><code class="signature">${dd.content}</code></pre>')
 			dnw.writeln(md_content)
 		}
 		dnw.writeln('</section>')

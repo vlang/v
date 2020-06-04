@@ -6,6 +6,7 @@
     --ref-symbol-hover-color: #b8c2cc;
     --title-bottom-line-color: #f1f5f8;
     --code-background-color: #edf2f7;
+    --code-signature-border-color: #4b6c88;
     --menu-background-color: #4b6c88;
     --menu-font-color: white;
     --menu-indent-line-color: rgba(255, 255, 255, 0.4);
@@ -31,6 +32,7 @@ html {
     --ref-symbol-hover-color: #4a5568;
     --title-bottom-line-color: #1a202c;
     --code-background-color: #2d3748;
+    --code-signature-border-color: #576279;
     --menu-background-color: #1a202c;
     --menu-font-color: white;
     --menu-indent-line-color: #4a5568;
@@ -175,6 +177,9 @@ html {
 .doc-content > .doc-node h1 {
     font-size: 2.5rem;
     font-weight: 400;
+}
+.doc-content > .doc-node .signature {
+    border: 1px solid var(--code-signature-border-color);
 }
 .doc-content pre > code {
     font-family: 'Source Code Pro', monospace;
