@@ -27,4 +27,26 @@
     if (window.CSS && CSS.supports('color', 'var(--fake-var)')) {
         darkModeToggle.style.visibility = 'unset';
     }
+
+    // Search
+    var searchInput = document.getElementById('search');
+    searchInput.addEventListener('input', function(e) {
+        var searchValue = e.target.value.toLowerCase();
+        var menuItems = document.querySelectorAll('.content > ul > li');
+        for (var i = 0; i < menuItems.length; i++) {
+            var menuItem = menuItems[i];
+            var links = menuItem.querySelectorAll('a');
+            var hasResult = false;
+            for (var li = 1; li < links.length; li++) {
+                var link = links[li];
+                if (link.text.toLowerCase().indexOf(searchValue) !== -1) {
+                    hasResult = true;
+                    link.style.display = '';
+                } else {
+                    link.style.display = 'none';
+                }
+            }
+            menuItem.style.display = hasResult ? '' : 'none';
+        }
+    });
 })();

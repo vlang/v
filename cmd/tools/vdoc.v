@@ -191,6 +191,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		<header class="doc-nav hidden">
 		<div class="heading-container">
 			<div class="heading">
+				<input type="text" id="search" placeholder="Search...">
 				<div class="module">${header_name}</div>
 				<div class="toggle-version-container">
 					<span>${version}</span>
