@@ -88,9 +88,7 @@ pub fn (mut ts TestSession) test() {
 	}
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	// QTODO
-	//mut pool_of_test_runners := sync.new_pool_processor({
-	mut pool_of_test_runners := sync.new_pool_processor(sync.PoolProcessorConfig{
+	mut pool_of_test_runners := sync.new_pool_processor({
 		callback: worker_trunner
 	})
 	// for handling messages across threads
@@ -233,7 +231,7 @@ pub fn v_build_failing_skipped(zargs string, folder string, skipped []string) bo
 	mut mains := []string{}
 	for f in files {
 		if !f.contains('modules') && !f.contains('preludes') {
-			if f.contains('/vweb/') || f.contains('/pg/') || f.contains('rune.v') || f.contains('/pico') {
+			if f.contains('life_gg') || f.contains('/graph.v') || f.contains('/vweb/') || f.contains('/pg/') || f.contains('rune.v') || f.contains('/pico') {
 				continue
 
 			}

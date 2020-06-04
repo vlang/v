@@ -9,6 +9,7 @@ import sokol
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
+//import gg.ft
 
 type FNvoidptr1 fn(voidptr)
 type FNvoidptr2 fn(voidptr,voidptr)
@@ -26,6 +27,7 @@ pub:
 	create_window bool
 	// window_user_ptr voidptr
 	window_title  string
+	borderless_window bool
 	always_on_top bool
 	scale         f32  = 1.0
 	bg_color      gx.Color
@@ -34,10 +36,11 @@ pub:
 	event_fn      FNvoidptr2 = voidptr(0)
 	cleanup_fn    FNvoidptr1 = voidptr(0)
 	fail_fn       FNFail = voidptr(0)
-	wait_events   bool = false // set this to true for UIs, to save power
+	wait_events   bool // set this to true for UIs, to save power
+	font_path string
 }
 
-pub struct GG {
+pub struct Context {
 	scale      f32 = 1.0// retina = 2 , normal = 1
 pub mut:
 	width      int
@@ -47,8 +50,10 @@ pub mut:
 	config     Config
 }
 
+pub struct Size { pub: width int height int }
+
 fn gg_init_sokol_window(user_data voidptr) {
-	mut g := &GG(user_data)
+	mut g := &Context(user_data)
 	desc := C.sg_desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
@@ -67,28 +72,28 @@ fn gg_init_sokol_window(user_data voidptr) {
 }
 
 fn gg_frame_fn(user_data voidptr) {
-	mut g := &GG(user_data)
+	mut g := &Context(user_data)
 	if g.config.frame_fn != voidptr(0) {
 		g.config.frame_fn( g.config.user_data )
 	}
 }
 
 fn gg_event_fn(e &C.sapp_event, user_data voidptr){
-	mut g := &GG(user_data)
+	mut g := &Context(user_data)
 	if g.config.event_fn != voidptr(0) {
 		g.config.event_fn(e, g.config.user_data)
 	}
 }
 
 fn gg_cleanup_fn(user_data voidptr){
-	mut g := &GG(user_data)
+	mut g := &Context(user_data)
 	if g.config.cleanup_fn != voidptr(0) {
 		g.config.cleanup_fn(g.config.user_data)
 	}
 }
 
 fn gg_fail_fn(msg charptr, user_data voidptr){
-	mut g := &GG(user_data)
+	mut g := &Context(user_data)
 	vmsg := tos3(msg)
 	if g.config.fail_fn != voidptr(0) {
 		g.config.fail_fn(vmsg, g.config.user_data)
@@ -99,8 +104,8 @@ fn gg_fail_fn(msg charptr, user_data voidptr){
 
 //
 
-pub fn new_context(cfg Config) &GG {
-	mut g := &GG{
+pub fn new_context(cfg Config) &Context{
+	mut g := &Context{
 		width: cfg.width
 		height: cfg.height
 		clear_pass: gfx.create_clear_pass( f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0,
@@ -131,11 +136,11 @@ f32(cfg.bg_color.b) / 255.0, 1.0)
 	return g
 }
 
-pub fn (gg &GG) run() {
+pub fn (gg &Context) run() {
 	sapp.run(&gg.window)
 }
 
-pub fn (ctx &GG) draw_rect(x, y, w, h f32, c gx.Color) {
+pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
 	sgl.c4b(c.r, c.g, c.b, 128)
 	sgl.begin_quads()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
@@ -145,7 +150,7 @@ pub fn (ctx &GG) draw_rect(x, y, w, h f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (gg &GG) draw_empty_rect(x, y, w, h f32, c gx.Color) {
+pub fn (gg &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 	sgl.c4b(c.r, c.g, c.b, 128)
 	sgl.begin_line_strip()
 	sgl.v2f(x, y)
@@ -174,23 +179,24 @@ pub fn create_image_from_memory(buf byteptr) u32 {
 	return 0 // texture
 }
 
-pub fn (gg &GG) begin() {
+pub fn (gg &Context) begin() {
 	sgl.defaults()
 	sgl.matrix_mode_projection()
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
 }
 
-pub fn (gg &GG) end() {
+pub fn (gg &Context) end() {
 	gfx.begin_default_pass(gg.clear_pass, sapp.width(), sapp.height())
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
 	if gg.config.wait_events {
+		//println('gg: waiting')
 		wait_events()
 	}
 }
 
-pub fn (ctx &GG) draw_line(x, y, x2, y2 f32, color gx.Color) {}
+pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, color gx.Color) {}
 
 fn C.WaitMessage()
 

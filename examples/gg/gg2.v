@@ -11,7 +11,7 @@ const (
 
 struct App {
 mut:
-	gg &gg.GG
+	gg &gg.Context
 }
 
 fn main() {
