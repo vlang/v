@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module time
 
+#include <pthread_time.h>.
+
 struct C.tm {
 	tm_year int
 	tm_mon  int
@@ -18,6 +20,15 @@ const (
 	start_time = init_win_time_start()
 	freq_time  = init_win_time_freq()
 )
+
+// in most systems, these are __quad_t, which is an i64
+struct C.timespec {
+	tv_sec  i64
+	tv_nsec i64
+}
+
+// the first arg is defined in include/bits/types.h as `__S32_TYPE`, which is `int`
+fn C.clock_gettime(int, &C.timespec)
 
 fn C._mkgmtime(&C.tm) time_t
 
