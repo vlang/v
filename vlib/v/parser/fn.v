@@ -371,8 +371,10 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			}
 			pos := p.tok.position()
 			mut arg_type := p.parse_type()
-			if is_mut && arg_type != table.t_type {
-				p.check_fn_mutable_arguments(arg_type, pos)
+			if is_mut {
+				if arg_type != table.t_type {
+					p.check_fn_mutable_arguments(arg_type, pos)
+				}
 				// if arg_type.is_ptr() {
 				// p.error('cannot mut')
 				// }
@@ -421,8 +423,10 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			}
 			pos := p.tok.position()
 			mut typ := p.parse_type()
-			if is_mut && typ != table.t_type {
-				p.check_fn_mutable_arguments(typ, pos)
+			if is_mut {
+				if typ != table.t_type {
+					p.check_fn_mutable_arguments(typ, pos)
+				}
 				typ = typ.set_nr_muls(1)
 			}
 			if is_variadic {

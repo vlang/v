@@ -1749,7 +1749,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 }
 
 pub fn (mut c Checker) unwrap_generic(typ table.Type) table.Type {
-	if typ == table.t_type {
+	if typ.idx() == table.t_type_idx {
 		return c.cur_generic_type
 	}
 	return typ
