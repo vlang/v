@@ -170,7 +170,8 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	res_path := os.join_path(exe_dir, 'vdoc-resources')
 	doc_css_path := os.join_path(res_path, 'doc.css')
 	doc_css := os.read_file(doc_css_path) or { panic('could not read $doc_css_path') }
-	hw.write('<style>$doc_css</style>')
+	doc_css_min := doc_css.replace('\n', ' ')
+	hw.write('<style>$doc_css_min</style>')
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
 	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.src_path)) } else { dcs.head.name }
 	sun_moon_svg := '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69zM12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6c3.31 0 6 2.69 6 6s-2.69 6-6 6z"/></svg>'
@@ -244,8 +245,9 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}
 	doc_js_path := os.join_path(res_path, 'doc.js')
 	doc_js := os.read_file(doc_js_path) or { panic('could not read $doc_js_path') }
+	doc_js_min := doc_js.replace('\n', ' ')
 	hw.write('</div></div>
-		<script>$doc_js</script>
+		<script>$doc_js_min</script>
 	</body>
 	</html>')
 	return hw.str()
