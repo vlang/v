@@ -7,10 +7,10 @@ import os
 import os.cmdline
 import strings
 import v.doc
-import v.util
 import v.vmod
 
 enum OutputType {
+	unset
 	html
 	markdown
 	json
@@ -19,14 +19,16 @@ enum OutputType {
 }
 
 struct DocConfig {
+mut:
 	pub_only bool = true
 	show_loc bool = false // for plaintext
 	serve_http bool = false // for html
 	is_multi bool = false
+	is_verbose bool = false
 	include_readme bool = false
-mut:
-	opath string
-	src_path string
+	output_path string
+	input_path string
+	output_type OutputType = .unset
 	docs []doc.Doc
 	manifest vmod.Manifest
 }
@@ -48,7 +50,7 @@ fn open_url(url string) {
 }
 
 fn (mut cfg DocConfig) serve_html() {
-	docs := cfg.multi_render(.html)
+	docs := cfg.render()
 	def_name := docs.keys()[0]
 	server := net.listen(8046) or {
 		panic(err)
@@ -104,7 +106,7 @@ fn (cfg DocConfig) gen_json(idx int) string {
 	mut jw := strings.new_builder(200)
 	jw.writeln('{\n\t"module_name": "$dcs.head.name",\n\t"description": "${escape(dcs.head.comment)}",\n\t"contents": [')
 	for i, cn in dcs.contents {
-		name := cn.name[dcs.head.name.len+1..]
+		name := cn.name.all_after(dcs.head.name)
 		jw.writeln('\t\t{')
 		jw.writeln('\t\t\t"name": "$name",')
 		jw.writeln('\t\t\t"signature": "${escape(cn.content)}",')
@@ -170,7 +172,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 			<svg fill="currentColor" width="13%" viewBox="0 0 20 20"><path d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
 		</a>'
 	} else { '' }
-	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.src_path)) } else { dcs.head.name }
+	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.input_path)) } else { dcs.head.name }
 	// write nav
 	hw.write('<header class="doc-nav">
 		<div class="heading">
@@ -256,8 +258,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 fn (cfg DocConfig) gen_plaintext(idx int) string {
 	dcs := cfg.docs[idx]
 	mut pw := strings.new_builder(200)
-	head_lines := '='.repeat(dcs.head.content.len)
-	pw.writeln('${dcs.head.content}\n$head_lines\n')
+	pw.writeln('${dcs.head.content}\n')
 	for cn in dcs.contents {
 		pw.writeln(cn.content)
 		if cn.comment.len > 0 {
@@ -267,7 +268,6 @@ fn (cfg DocConfig) gen_plaintext(idx int) string {
 			pw.writeln('Location: ${cn.file_path}:${cn.pos.line}:${cn.pos.col}\n\n')
 		}
 	}
-	pw.writeln('Generated on $dcs.time_generated')
 	return pw.str()
 }
 
@@ -293,23 +293,25 @@ fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 	return hw.str() + '\n' + cw.str()
 }
 
-fn (cfg DocConfig) multi_render(output_type OutputType) map[string]string {
+fn (cfg DocConfig) render() map[string]string {
 	mut docs := map[string]string
 	for i, doc in cfg.docs {
 		mut name := if doc.head.name == 'README' {
 			'index'
-		} else if cfg.docs.len == 1 && !os.is_dir(cfg.opath) {
-			os.dir(os.file_name(cfg.opath))
+		} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
+			os.file_name(cfg.output_path)
 		} else {
 			doc.head.name
 		}
-		name = name + match output_type {
-			.html { '.html' }
-			.markdown { '.md' }
-			.json { '.json' }
-			else { '.txt' }
+		if os.file_ext(name).len == 0 {
+			name = name + match cfg.output_type {
+				.html { '.html' }
+				.markdown { '.md' }
+				.json { '.json' }
+				else { '.txt' }
+			}
 		}
-		docs[name] = match output_type {
+		docs[name] = match cfg.output_type {
 			.html { cfg.gen_html(i) }
 			.markdown { cfg.gen_markdown(i, true) }
 			.json { cfg.gen_json(i) }
@@ -319,55 +321,47 @@ fn (cfg DocConfig) multi_render(output_type OutputType) map[string]string {
 	return docs
 }
 
-fn (mut config DocConfig) generate_docs_from_file() {
-	if config.opath.len != 0 {
-		config.opath = os.join_path(os.real_path(os.base_dir(config.opath)), os.file_name(config.opath))
-	}
-	println(config.opath)
-	mut output_type := OutputType.plaintext
-	// identify output type
-	if config.serve_http {
-		output_type = .html
-	} else if config.opath.len == 0 {
-		output_type = .stdout
-	} else {
-		ext := os.file_ext(config.opath)
-		if ext in ['.md', '.markdown'] || config.opath in [':md:', ':markdown:'] {
-			output_type = .markdown
-		} else if ext in ['.html', '.htm'] || config.opath == ':html:' {
-			output_type = .html
-		} else if ext == '.json' || config.opath == ':json:' {
-			output_type = .json
+fn (mut cfg DocConfig) generate_docs_from_file() {
+	if cfg.output_path.len == 0 {
+		if cfg.output_type == .unset {
+			cfg.output_type = .stdout
 		} else {
-			output_type = .plaintext
+			cfg.vprintln('No output path has detected. Using input path instead.')
+			cfg.output_path = cfg.input_path
 		}
+	} else if cfg.output_type == .unset {
+		cfg.vprintln('Output path detected. Identifying output type..')
+		ext := os.file_ext(cfg.output_path)
+		cfg.set_output_type_from_str(ext.all_after('.'))
 	}
-	if config.include_readme && output_type !in [.html, .stdout] {
+	if cfg.include_readme && cfg.output_type !in [.html, .stdout] {
 		eprintln('vdoc: Including README.md for doc generation is supported on HTML output, or when running directly in the terminal.')
 		exit(1)
 	}
-	mut manifest_path := os.join_path(if os.is_dir(config.src_path) { config.src_path } else { os.base_dir(config.src_path) }, 'v.mod')
-	if os.exists(manifest_path) && 'vlib' !in config.src_path {
+	is_vlib := 'vlib' in cfg.input_path
+	dir_path := if is_vlib {
+		os.base_dir(@VEXE)
+	} else if os.is_dir(cfg.input_path) { 
+		cfg.input_path
+	} else { 
+		os.base_dir(cfg.input_path) 
+	}
+	manifest_path := os.join_path(dir_path, 'v.mod')
+	readme_path := os.join_path(dir_path, 'README.md')
+	if os.exists(manifest_path) {
+		cfg.vprintln('Reading v.mod info from $manifest_path')
 		if manifest := vmod.from_file(manifest_path) {
-			config.manifest = manifest
+			cfg.manifest = manifest
 		}
 	}
-	if 'vlib' in config.src_path {
-		config.manifest.version = util.v_version
-	}
-	readme_path := if 'vlib' in config.src_path {
-		os.join_path(os.base_dir(@VEXE), 'README.md')
-	} else {
-		os.join_path(config.src_path, 'README.md')
-	}
-	// check README.md
-	if os.exists(readme_path) && config.include_readme {
+	if os.exists(readme_path) && cfg.include_readme {
+		cfg.vprintln('Reading README file from $readme_path')
 		readme_contents := os.read_file(readme_path) or { '' }
-        if output_type == .stdout {
+        if cfg.output_type == .stdout {
 			println(readme_contents)
         }
-        if output_type == .html {
-			config.docs << doc.Doc{
+        if cfg.output_type == .html {
+			cfg.docs << doc.Doc{
 				head: doc.DocNode{
 					name: 'README',
 					comment: readme_contents
@@ -375,51 +369,73 @@ fn (mut config DocConfig) generate_docs_from_file() {
 			}
         }
 	}
-	if config.is_multi {
-		dirs := get_modules_list(config.src_path)
-		for dirpath in dirs {
-			dcs := doc.generate(dirpath, config.pub_only, 'vlib' !in config.src_path) or {
-				panic(err)
-			}
-			if dcs.contents.len == 0 { continue }
-			config.docs << dcs
-		}
-	} else {
-		dcs := doc.generate(config.src_path, config.pub_only, 'vlib' !in config.src_path) or {
+	dirs := if cfg.is_multi { get_modules_list(cfg.input_path) } else { [cfg.input_path] } 
+	for dirpath in dirs {
+		cfg.vprintln('Generating docs for ${dirpath}...')
+		dcs := doc.generate(dirpath, cfg.pub_only, !is_vlib) or {
 			panic(err)
 		}
-		config.docs << dcs
+		if dcs.contents.len == 0 { continue }
+		cfg.docs << dcs
 	}
-	if config.serve_http {
-		config.serve_html()
+	if cfg.serve_http {
+		cfg.serve_html()
 		return
 	}
-	outputs := config.multi_render(output_type)
-	if output_type == .stdout || (config.opath.starts_with(':') && config.opath.ends_with(':')) {
+	cfg.vprintln('Rendering docs...')
+	outputs := cfg.render()
+	if cfg.output_path.len == 0 {
 		first := outputs.keys()[0]
 		println(outputs[first])
 	} else {
-		if !os.is_dir(config.opath) {
-			config.opath = os.base_dir(config.opath)
+		if !os.is_dir(cfg.output_path) {
+			cfg.output_path = os.real_path('.')
 		}
-		if config.is_multi {
-			config.opath = os.join_path(config.opath, '_docs')
-			if !os.exists(config.opath) {
-				os.mkdir(config.opath) or {
+		if cfg.is_multi {
+			cfg.output_path = os.join_path(cfg.output_path, '_docs')
+			if !os.exists(cfg.output_path) {
+				os.mkdir(cfg.output_path) or {
 					panic(err)
 				}
 			}
 		}
 		for file_name, content in outputs {
-			opath := os.join_path(config.opath, file_name)
-			println('Generating ${opath}...')
-			os.write_file(opath, content)
+			output_path := os.join_path(cfg.output_path, file_name)
+			println('Generating ${output_path}...')
+			os.write_file(output_path, content)
 		}
 	}
 }
 
+fn (mut cfg DocConfig) set_output_type_from_str(format string) {
+	match format {
+		'htm', 'html' { 
+			cfg.output_type = .html 
+		}
+		'md', 'markdown' { 
+			cfg.output_type = .markdown 
+		}
+		'json' { 
+			cfg.output_type = .json 
+		}
+		'stdout' {
+			cfg.output_type = .stdout
+		}
+		else { 
+			cfg.output_type = .plaintext 
+		}
+	}
+	cfg.vprintln('Setting output type to "$cfg.output_type"')
+}
+
+fn (cfg DocConfig) vprintln(str string) {
+	if cfg.is_verbose {
+		println('vdoc: $str')
+	}
+}
+
 fn lookup_module(mod string) ?string {
-	mod_path := mod.replace('.', '/')
+	mod_path := mod.replace('.', os.path_separator)
 	vexe_path := os.base_dir(@VEXE)
 	compile_dir := os.real_path(os.base_dir('.'))
 	modules_dir := os.join_path(compile_dir, 'modules', mod_path)
@@ -447,30 +463,71 @@ fn get_modules_list(path string) []string {
 }
 
 fn main() {
-	args_after_doc := cmdline.options_after(os.args[1..], ['doc'])
-	opts := cmdline.only_options(os.args[1..])
-	args := cmdline.only_non_options(args_after_doc)
+	args := os.args[2..]
 	if args.len == 0 || args[0] == 'help' {
 		os.system('v help doc')
 		exit(0)
 	}
-	mut config := DocConfig{
-		src_path: args[0],
-		opath: if args.len >= 2 { args[1] } else { '' },
-		pub_only: '-all' !in opts,
-		show_loc: '-loc' in opts,
-		serve_http: '-s' in opts,
-		is_multi: '-m' in opts,
-		include_readme: '-r' in opts,
+	mut cfg := DocConfig{
 		manifest: vmod.Manifest{ repo_url: '' }
 	}
-	is_path := config.src_path.ends_with('.v') || config.src_path.split('/').len > 1 || config.src_path == '.'
+	for i := 0; i < args.len; i++ {
+		arg := args[i]
+		current_args := args[i..]
+		match arg {
+			'-all' {
+				cfg.pub_only = false
+			}
+			'-f' {
+				format := cmdline.option(current_args, '-f', '')
+				allowed := ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
+				allowed_str := allowed.join(', ')
+				if format !in allowed {
+					eprintln('vdoc: "$format" is not a valid format. Only $allowed_str are allowed.')
+					exit(1)
+				}
+				cfg.set_output_type_from_str(format)
+				i++
+			}
+			'-loc' {
+				cfg.show_loc = true
+			}
+			'-m' {
+				cfg.is_multi = true
+			}
+			'-o' {
+				opath := cmdline.option(current_args, '-o', '')
+				cfg.output_path = os.real_path(opath)
+				i++
+			}
+			'-s' {
+				cfg.serve_http = true
+				cfg.output_type = .html
+			}
+			'-r' {
+				cfg.include_readme = true
+			}
+			'-v' {
+				cfg.is_verbose = true
+			}
+			else {
+				cfg.input_path = arg
+				break
+			}
+		}
+	}
+	if cfg.input_path.len == 0 {
+		eprintln('vdoc: No input path found.')
+		exit(1)
+	}
+	is_path := cfg.input_path.ends_with('.v') || cfg.input_path.split(os.path_separator).len > 1 || cfg.input_path == '.'
 	if !is_path {
-		mod_path := lookup_module(config.src_path) or {
+		cfg.vprintln('Input "$cfg.input_path" is not a valid path. Looking for modules named "$cfg.input_path"...')
+		mod_path := lookup_module(cfg.input_path) or {
 			eprintln(err)
 			exit(1)
 		}
-		config.src_path = mod_path
+		cfg.input_path = mod_path
 	}
-	config.generate_docs_from_file()
+	cfg.generate_docs_from_file()
 }
