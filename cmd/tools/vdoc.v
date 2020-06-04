@@ -25,15 +25,15 @@ enum OutputType {
 }
 
 struct DocConfig {
-	pub_only bool = true
-	show_loc bool = false // for plaintext
-	serve_http bool = false // for html
-	is_multi bool = false
+	pub_only       bool = true
+	show_loc       bool = false // for plaintext
+	serve_http     bool = false // for html
+	is_multi       bool = false
 	include_readme bool = false
 mut:
-	opath string
+	opath    string
 	src_path string
-	docs []doc.Doc
+	docs     []doc.Doc
 	manifest vmod.Manifest
 }
 
@@ -95,6 +95,10 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 		'gitlab.com' { '/-/blob/master/$file_name' }
 		'git.sir.ht' { '/tree/master/$file_name' }
 		else { '' }
+	}
+	println(url.path)
+	if repo_url.starts_with('https://github.com/vlang/v') && !url.path.contains('master/vlib')  {
+		url.path = url.path.replace('/blob/master/$file_name', '/blob/master/vlib/$file_name')
 	}
 	if url.path == '/' { return '' }
 	url.fragment = 'L$line_nr'
