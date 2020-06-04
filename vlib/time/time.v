@@ -95,8 +95,12 @@ pub fn now() Time {
 		return convert_ctime(now)
 	}
 	$if windows {
+		// t := C.time(0)
+		// now := C.localtime(&t)
+		// return convert_ctime(now)
 		return win_now()
-	} $else {
+	}
+	$if linux {
 		ts := C.timespec{}
 		C.clock_gettime(C.CLOCK_REALTIME, &ts)
 		return convert_clock_time(ts)
@@ -112,8 +116,12 @@ pub fn utc_now() Time {
 		return convert_ctime(now)
 	}
 	$if windows {
+		// t := C.time(0)
+		// now := C.localtime(&t)
+		// return convert_ctime(now)
 		return win_now()
-	} $else {
+	}
+	$if linux {
 		ts := C.timespec{}
 		C.clock_gettime(C.CLOCK_REALTIME, &ts)
 		return convert_clock_time(ts)
