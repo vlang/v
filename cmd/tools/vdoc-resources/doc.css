@@ -16,6 +16,12 @@
     --toc-indent-line-color: #dae1e7;
     --dark-light-toggle-color: #000000;
 }
+:root.dark .dark-icon {
+    display: none;
+}
+:root:not(.dark) .light-icon {
+    display: none;
+}
 
 body {
     font-family: 'Inter', sans-serif;
@@ -40,29 +46,6 @@ body {
     --toc-font-color: #90cdf4;
     --toc-indent-line-color: #1a202c;
     --dark-light-toggle-color: #fff;
-}
-
-:root.dark .dark-icon {
-    display: none;
-}
-
-:root:not(.dark) .light-icon {
-    display: none;
-}
-
-#dark-mode-toggle-wrapper {
-    display: flex;
-    position: sticky;
-    bottom: 0;
-    flex-direction: row-reverse;
-    background-color: inherit;
-    padding: 6px 1.4rem;
-}
-
-#dark-mode-toggle {
-    cursor: pointer;
-    fill: #fff;
-    padding: 2px;
 }
 
 /** Reset for menus */
@@ -121,7 +104,6 @@ body {
 .doc-nav > .heading-container > .heading {
     display: flex;
     background-color: var(--menu-background-color);
-    align-items: center;
     padding: 0 1.4rem;
     height: 56px;
 }
@@ -130,9 +112,18 @@ body {
     font-weight: 500;
     margin: 0;
 }
-.doc-nav > .heading-container > .heading > .version {
-    margin-left: 1.2rem;
-    margin-right: auto;
+.doc-nav > .heading-container > .heading > .toggle-version-container {
+    display: flex;
+    align-items: center;
+}
+.doc-nav > .heading-container > .heading > .toggle-version-container > #dark-mode-toggle {
+    cursor: pointer;
+    fill: #fff;
+    display: flex;
+}
+.doc-nav > .heading-container > .heading > .toggle-version-container > #dark-mode-toggle > svg {
+    width: 1.2rem;
+    height: 1.2rem;
 }
 .doc-nav > .content {
     padding: 0 1.4rem 1.4rem 1.4rem;
@@ -301,19 +292,26 @@ body {
 }
 
 @media (min-width: 1024px) {
-    .doc-nav #toggle-menu {
-        display: none;
-    }
-
     .doc-nav {
         width: 300px;
     }
-
-    .doc-nav > .heading-container > .heading > .version {
-        margin-left: auto;
-        margin-right: 0;
+    .doc-nav #toggle-menu {
+        display: none;
     }
-
+    .doc-nav > .heading-container > .heading {
+        height: 80px;
+        flex-direction: column-reverse;
+        justify-content: center;
+    }
+    .doc-nav > .heading-container > .heading > .toggle-version-container {
+        align-items: center;
+        margin-bottom: 0.2rem;
+        display: flex;
+        flex-direction: row-reverse;
+    }
+    .doc-nav > .heading-container > .heading > .toggle-version-container > #dark-mode-toggle {
+        margin-right: auto;
+    }
     .doc-nav .content.show,
     .doc-nav .content.hidden {
         display: flex;

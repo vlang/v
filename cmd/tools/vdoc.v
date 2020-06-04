@@ -177,7 +177,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	doc_css_min := get_resource('doc.css', true)
 	light_icon := get_resource('light.svg', true)
 	dark_icon := get_resource('dark.svg', true)
-	
+
 	// write css
 	hw.write('<style>$doc_css_min</style>')
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
@@ -190,7 +190,10 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		<div class="heading-container">
 			<div class="heading">
 				<div class="module">${header_name}</div>
-				<span class="version">${version}</span>
+				<div class="toggle-version-container">
+					<span>${version}</span>
+					<div id="dark-mode-toggle" role="checkbox">$light_icon $dark_icon</div>
+				</div>
 				<button id="toggle-menu">
 					<svg fill="currentColor" width="2rem" viewBox="0 0 20 20"><path d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
 				</button>
@@ -231,7 +234,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	} else {
 		hw.writeln(toc.str())
 	}
-	hw.write('</ul>\n</nav>\n<div id="dark-mode-toggle-wrapper"><div id="dark-mode-toggle" role="checkbox">$light_icon $dark_icon</div></div></header>')
+	hw.write('</ul>\n</nav>\n</header>')
 	hw.write('<div class="doc-container">\n<div class="doc-content">\n')
 	hw.write(doc_node_html(dcs.head, '', true))
 	for cn in dcs.contents {
@@ -253,8 +256,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		hw.write('<div class="doc-toc">\n\n<ul>\n${toc.str()}</ul>\n</div>')
 	}
 	doc_js_min := get_resource('doc.js', true)
-	hw.write('</div></div>
-		<script>$doc_js_min</script>
+	hw.write('</div></div><script>$doc_js_min</script>
 	</body>
 	</html>')
 	return hw.str()
