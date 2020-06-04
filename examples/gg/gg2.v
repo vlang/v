@@ -1,6 +1,6 @@
 module main
 
-import gg2 as gg
+import gg
 import gx
 import os
 

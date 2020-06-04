@@ -19,7 +19,7 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 		// and the other is not, is this correct behaviour?
 		return true
 	}
-	if got_idx == table.none_type_idx && expected.flag_is(.optional) {
+	if got_idx == table.none_type_idx && expected.has_flag(.optional) {
 		return true
 	}
 	// allow pointers to be initialized with 0. TODO: use none instead
