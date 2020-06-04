@@ -244,10 +244,6 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-o' {
 				res.out_name = cmdline.option(current_args, '-o', '')
-				if res.out_name.ends_with('.v') {
-					eprintln('Cannot save output binary in a .v file.')
-					exit(1)
-				}
 				i++
 			}
 			'-b' {
@@ -289,6 +285,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				}
 			}
 		}
+	}
+	if command != 'doc' && res.out_name.ends_with('.v') {
+		eprintln('Cannot save output binary in a .v file.')
+		exit(1)
 	}
 	if command.ends_with('.v') || os.exists(command) {
 		res.path = command
