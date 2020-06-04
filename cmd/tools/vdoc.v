@@ -11,9 +11,10 @@ import v.util
 import v.vmod
 
 const (
-	exe_path = os.executable()
-	exe_dir  = os.dir(exe_path)
-	res_path = os.join_path(exe_dir, 'vdoc-resources')
+	exe_path  = os.executable()
+	exe_dir   = os.dir(exe_path)
+	res_path  = os.join_path(exe_dir, 'vdoc-resources')
+	vexe_path = os.base_dir(@VEXE)
 )
 
 enum OutputType {
@@ -381,7 +382,7 @@ fn (mut config DocConfig) generate_docs_from_file() {
 		config.manifest.repo_url = 'https://github.com/vlang/v'
 	}
 	readme_path := if 'vlib' in config.src_path {
-		os.join_path(os.base_dir(@VEXE), 'README.md')
+		os.join_path(vexe_path, 'README.md')
 	} else {
 		os.join_path(config.src_path, 'README.md')
 	}
@@ -445,7 +446,6 @@ fn (mut config DocConfig) generate_docs_from_file() {
 
 fn lookup_module(mod string) ?string {
 	mod_path := mod.replace('.', '/')
-	vexe_path := os.base_dir(@VEXE)
 	compile_dir := os.real_path(os.base_dir('.'))
 	modules_dir := os.join_path(compile_dir, 'modules', mod_path)
 	vlib_path := os.join_path(vexe_path, 'vlib', mod_path)
@@ -462,7 +462,9 @@ fn get_modules_list(path string) []string {
 	files := os.walk_ext(path, 'v')
 	mut dirs := []string{}
 	for file in files {
-		if 'test' in file || 'js' in file || 'x64' in file || 'bare' in file || 'uiold' in file || 'vweb' in file { continue }
+		if 'test' in file || 'js' in file || 'x64' in file || 'bare' in file || 'uiold' in file || 'vweb' in file {
+			continue
+		}
 		dirname := os.base_dir(file)
 		if dirname in dirs { continue }
 		dirs << dirname
@@ -473,7 +475,10 @@ fn get_modules_list(path string) []string {
 
 fn get_resource(name string, minify bool) string {
 	path := os.join_path(res_path, name)
-	res := os.read_file(path) or { panic('could not read $path') }
+	res := os.read_file(path) or {
+		eprintln('vdoc: Could not read $path\.')
+		exit(0)
+	}
 	if minify {
 		res.replace('\n', ' ')
 	}
