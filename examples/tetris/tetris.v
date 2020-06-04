@@ -139,7 +139,7 @@ struct Game {
 
 const ( fpath = os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf') )
 fn init_gui(mut game Game){
-	x := ft.new({ font_path: fpath, scale: 2 }) or {panic(err)}
+	x := ft.new({ font_path: fpath, scale: sapp.dpi_scale() }) or {panic(err)}
 	game.ft = x
 	game.font_loaded = true
 }
@@ -184,7 +184,6 @@ fn main() {
 		init_fn: init_gui
 		frame_fn: frame
 		event_fn: on_event
-		scale: 2
 		//wait_events: true
 	)
 	game.init_game()
