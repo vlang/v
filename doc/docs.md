@@ -144,7 +144,7 @@ fn add(x int, y int) int {
     return x + y
 }
 
-fn sub(x, y int) int {
+fn sub(x int, y int) int {
     return x - y
 }
 ```
