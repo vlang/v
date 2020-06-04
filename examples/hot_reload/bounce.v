@@ -8,7 +8,7 @@ import time
 
 struct Game {
 mut:
-	gg       &gg.GG
+	gg       &gg.Context
 	x        int
 	y        int
 	dy       int

@@ -174,27 +174,6 @@ fn C.WIFSIGNALED() bool
 fn C.WTERMSIG() int
 
 
-fn C.DEFAULT_LE() bool
-
-
-fn C.DEFAULT_EQ() bool
-
-
-fn C.DEFAULT_GT() bool
-
-
-fn C.DEFAULT_EQUAL() bool
-
-
-fn C.DEFAULT_NOT_EQUAL() bool
-
-
-fn C.DEFAULT_LT() bool
-
-
-fn C.DEFAULT_GE() bool
-
-
 fn C.isatty() int
 
 
