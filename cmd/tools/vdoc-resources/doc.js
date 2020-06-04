@@ -12,9 +12,9 @@
 
     var darkModeSwitch = document.getElementById('dark-mode-switch');
     darkModeSwitch.addEventListener('change', function(event) {
-        localStorage.setItem('darkmode', +event.target.checked);
+        localStorage.setItem('darkmode', event.target.checked.toString());
     });
-    var darkMode = localStorage.getItem('darkmode') || false;
+    var darkMode = JSON.parse(localStorage.getItem('darkmode')) || false;
     darkModeSwitch.checked = darkMode;
 })();
 
