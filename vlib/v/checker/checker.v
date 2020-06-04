@@ -826,7 +826,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.expected_type = exp_arg_typ
 			got_arg_typ := c.expr(arg.expr)
 			call_expr.args[i].typ = got_arg_typ
-			if method.is_variadic && got_arg_typ.flag_is(.variadic) && call_expr.args.len -
+			if method.is_variadic && got_arg_typ.has_flag(.variadic) && call_expr.args.len -
 				1 > i {
 				c.error('when forwarding a varg variable, it must be the final argument', call_expr.pos)
 			}
@@ -1027,7 +1027,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		call_expr.args[i].typ = typ
 		typ_sym := c.table.get_type_symbol(typ)
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)
-		if f.is_variadic && typ.flag_is(.variadic) && call_expr.args.len - 1 > i {
+		if f.is_variadic && typ.has_flag(.variadic) && call_expr.args.len - 1 > i {
 			c.error('when forwarding a varg variable, it must be the final argument', call_expr.pos)
 		}
 		if arg.is_mut && !call_arg.is_mut {
@@ -1100,7 +1100,7 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) table.Type {
 	if expr is ast.CallExpr {
 		call_expr := expr as ast.CallExpr
-		if call_expr.return_type.flag_is(.optional) {
+		if call_expr.return_type.has_flag(.optional) {
 			if call_expr.or_block.kind == .absent {
 				if ret_type != table.void_type {
 					c.error('${call_expr.name}() returns an option, but you missed to add an `or {}` block to it',
@@ -1110,7 +1110,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 				c.check_or_expr(call_expr.or_block, ret_type)
 			}
 			// remove optional flag
-			return ret_type.set_flag(.unset)
+			return ret_type.clear_flag(.optional)
 		} else if call_expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `$call_expr.name` does not return an optional',
 				call_expr.pos)
@@ -1124,7 +1124,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 
 pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type) {
 	if or_expr.kind == .propagate {
-		if !c.cur_fn.return_type.flag_is(.optional) && c.cur_fn.name != 'main' {
+		if !c.cur_fn.return_type.has_flag(.optional) && c.cur_fn.name != 'main' {
 			c.error('to propagate the optional call, `${c.cur_fn.name}` must itself return an optional',
 				or_expr.pos)
 		}
@@ -1193,7 +1193,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	sym := c.table.get_type_symbol(c.unwrap_generic(typ))
 	field_name := selector_expr.field_name
 	// variadic
-	if typ.flag_is(.variadic) {
+	if typ.has_flag(.variadic) {
 		if field_name == 'len' {
 			return table.int_type
 		}
@@ -1228,7 +1228,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 	expected_type := c.expected_type
 	expected_type_sym := c.table.get_type_symbol(expected_type)
-	exp_is_optional := expected_type.flag_is(.optional)
+	exp_is_optional := expected_type.has_flag(.optional)
 	mut expected_types := [expected_type]
 	if expected_type_sym.kind == .multi_return {
 		mr_info := expected_type_sym.info as table.MultiReturn
@@ -1258,8 +1258,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 	for i, exp_type in expected_types {
 		got_typ := got_types[i]
-		if got_typ.flag_is(.optional) &&
-			(!exp_type.flag_is(.optional) || c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
+		if got_typ.has_flag(.optional) &&
+			(!exp_type.has_flag(.optional) || c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
 			pos := return_stmt.exprs[i].position()
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument', pos)
 		}
@@ -1977,7 +1977,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						}
 						typ = c.expr(it.expr)
 					}
-					is_optional := typ.flag_is(.optional)
+					is_optional := typ.has_flag(.optional)
 					ident.kind = .variable
 					ident.info = ast.IdentVar{
 						typ: typ
@@ -1993,7 +1993,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					it.typ = typ
 					// unwrap optional (`println(x)`)
 					if is_optional {
-						return typ.set_flag(.unset)
+						return typ.clear_flag(.optional)
 					}
 					return typ
 				}

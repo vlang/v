@@ -430,7 +430,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	g.expr(node.left)
 	is_variadic := node.expected_arg_types.len > 0 && node.expected_arg_types[node.expected_arg_types.len -
-		1].flag_is(.variadic)
+		1].has_flag(.variadic)
 	if node.args.len > 0 || is_variadic {
 		g.write(', ')
 	}
@@ -523,7 +523,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			styp = styp.replace('*', '')
 		}
 		mut str_fn_name := g.gen_str_for_type_with_styp(typ, styp)
-		if g.autofree && !typ.flag_is(.optional) {
+		if g.autofree && !typ.has_flag(.optional) {
 			// Create a temporary variable so that the value can be freed
 			tmp := g.new_tmp_var()
 			// tmps << tmp
@@ -565,7 +565,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					g.write('*')
 				}
 				g.expr(expr)
-				if !typ.flag_is(.variadic) && sym.kind == .struct_ && styp != 'ptr' && !sym.has_method('str') {
+				if !typ.has_flag(.variadic) && sym.kind == .struct_ && styp != 'ptr' && !sym.has_method('str') {
 					g.write(', 0') // trailing 0 is initial struct indent count
 				}
 			}
@@ -599,8 +599,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 }
 
 fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
-	is_variadic := expected_types.len > 0 && expected_types[expected_types.len - 1].flag_is(.variadic)
-	is_forwarding_varg := args.len > 0 && args[args.len - 1].typ.flag_is(.variadic)
+	is_variadic := expected_types.len > 0 && expected_types[expected_types.len - 1].has_flag(.variadic)
+	is_forwarding_varg := args.len > 0 && args[args.len - 1].typ.has_flag(.variadic)
 	gen_vargs := is_variadic && !is_forwarding_varg
 	for i, arg in args {
 		if gen_vargs && i == expected_types.len - 1 {
