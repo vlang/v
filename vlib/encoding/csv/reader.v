@@ -148,7 +148,7 @@ fn (mut r Reader) read_record() ?[]string {
 			next := line[j+1]
 			if next == r.delimiter {
 				fields << line[..j]
-				line = line[j..]
+				line = line[j+2..]
 				continue
 			}
 			line = line[1..]
