@@ -181,6 +181,9 @@ html {
 .doc-content > .doc-node .signature {
     border: 1px solid var(--code-signature-border-color);
 }
+.doc-content > .doc-node > ul > li .task-list-item-checkbox {
+    margin-right: 0.5rem;
+}
 .doc-content pre > code {
     font-family: 'Source Code Pro', monospace;
     font-size: 0.9rem;
