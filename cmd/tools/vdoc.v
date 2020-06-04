@@ -239,14 +239,15 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	for cn in dcs.contents {
 		if cn.parent_type !in ['void', ''] { continue }
 		base_dir := os.base_dir(os.real_path(cfg.src_path))
-		file_path_name := cn.file_path.replace(base_dir, '')
+		file_path_name := cn.file_path.replace('$base_dir/', '')
 		hw.write(doc_node_html(cn, get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line), false))
 
 		children := dcs.contents.find_children_of(cn.name)
 
 		if children.len != 0 {
 			for child in children {
-				hw.write(doc_node_html(child, get_src_link(cfg.manifest.repo_url, os.file_name(child.file_path), child.pos.line), false))
+				child_file_path_name := child.file_path.replace('$base_dir/', '')
+				hw.write(doc_node_html(child, get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line), false))
 			}
 		}
 	}
