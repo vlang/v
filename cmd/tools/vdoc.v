@@ -10,6 +10,12 @@ import v.doc
 import v.util
 import v.vmod
 
+const (
+	exe_path = os.executable()
+	exe_dir  = os.dir(exe_path)
+	res_path = os.join_path(exe_dir, 'vdoc-resources')
+)
+
 enum OutputType {
 	html
 	markdown
@@ -157,27 +163,30 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		}
 		toc.writeln('</li>')
 	}	// write head
-	hw.write('<!DOCTYPE html><html lang="en">
-<head>
+	hw.write('
+	<!DOCTYPE html>
+	<html lang="en">
+	<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${dcs.head.name} | vdoc</title>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet">
 	<link rel="stylesheet" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css">')
+
+	// get resources
+	doc_css_min := get_resource('doc.css', true)
+	light_icon := get_resource('light.svg', true)
+	dark_icon := get_resource('dark.svg', true)
+	
 	// write css
-	exe_path := os.executable()
-	exe_dir := os.dir(exe_path)
-	res_path := os.join_path(exe_dir, 'vdoc-resources')
-	doc_css_path := os.join_path(res_path, 'doc.css')
-	doc_css := os.read_file(doc_css_path) or { panic('could not read $doc_css_path') }
-	doc_css_min := doc_css.replace('\n', ' ')
 	hw.write('<style>$doc_css_min</style>')
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
 	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.src_path)) } else { dcs.head.name }
-	sun_moon_svg := '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69zM12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6c3.31 0 6 2.69 6 6s-2.69 6-6 6z"/></svg>'
-	hw.write('<body><input type="checkbox" name="dark-mode-switch" id="dark-mode-switch" />')
 	// write nav1
-	hw.write('<div id="page"><label id="label-dark-mode-switch" for="dark-mode-switch">$sun_moon_svg</label><header class="doc-nav hidden">
+	hw.write('
+	<body>
+	<div id="page">
+		<header class="doc-nav hidden">
 		<div class="heading-container">
 			<div class="heading">
 				<div class="module">${header_name}</div>
@@ -222,7 +231,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	} else {
 		hw.writeln(toc.str())
 	}
-	hw.write('</ul>\n</nav>\n</header>')
+	hw.write('</ul>\n</nav>\n<div id="dark-mode-toggle-wrapper"><div id="dark-mode-toggle" role="checkbox">$light_icon $dark_icon</div></div></header>')
 	hw.write('<div class="doc-container">\n<div class="doc-content">\n')
 	hw.write(doc_node_html(dcs.head, '', true))
 	for cn in dcs.contents {
@@ -243,9 +252,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
 		hw.write('<div class="doc-toc">\n\n<ul>\n${toc.str()}</ul>\n</div>')
 	}
-	doc_js_path := os.join_path(res_path, 'doc.js')
-	doc_js := os.read_file(doc_js_path) or { panic('could not read $doc_js_path') }
-	doc_js_min := doc_js.replace('\n', ' ')
+	doc_js_min := get_resource('doc.js', true)
 	hw.write('</div></div>
 		<script>$doc_js_min</script>
 	</body>
@@ -445,6 +452,15 @@ fn get_modules_list(path string) []string {
 	}
 	dirs.sort()
 	return dirs
+}
+
+fn get_resource(name string, minify bool) string {
+	path := os.join_path(res_path, name)
+	res := os.read_file(path) or { panic('could not read $path') }
+	if minify {
+		res.replace('\n', ' ')
+	}
+	return res
 }
 
 fn main() {

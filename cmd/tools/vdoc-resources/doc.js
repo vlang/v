@@ -9,12 +9,12 @@
             el.classList.toggle("show");
         });
     });
-
-    var darkModeSwitch = document.getElementById('dark-mode-switch');
-    darkModeSwitch.addEventListener('change', function(event) {
-        localStorage.setItem('darkmode', event.target.checked.toString());
+    
+    var html = document.getElementsByTagName('html')[0];
+    var darkModeToggle = document.getElementById('dark-mode-toggle')
+    darkModeToggle.addEventListener('click', function() {
+        html.classList.toggle('dark')
+        localStorage['dark-mode'] = html.classList.contains('dark')
     });
-    var darkMode = JSON.parse(localStorage.getItem('darkmode')) || false;
-    darkModeSwitch.checked = darkMode;
+    localStorage['dark-mode'] == 'true' && html.classList.add('dark')
 })();
-

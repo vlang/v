@@ -1,60 +1,68 @@
 :root {
-    --background-color: white;
+    --background-color: #fff;
     --timestamp-color: #b8c2cc;
-    --font-color: black;
+    --font-color: #000000;
     --ref-symbol-color: #dae1e7;
     --ref-symbol-hover-color: #b8c2cc;
     --title-bottom-line-color: #f1f5f8;
     --code-background-color: #edf2f7;
     --code-signature-border-color: #4b6c88;
     --menu-background-color: #4b6c88;
-    --menu-font-color: white;
-    --menu-indent-line-color: rgba(255, 255, 255, 0.4);
+    --menu-font-color: #fff;
+    --menu-indent-line-color: #ffffff66;
     --menu-scrollbar-color: #a0aec0;
-    --menu-toggle-icon-color: white;
+    --menu-toggle-icon-color: #fff;
     --toc-font-color: #2779bd;
     --toc-indent-line-color: #dae1e7;
-    --dark-light-toggle-color: black;
+    --dark-light-toggle-color: #000000;
 }
 
-html {
+body {
     font-family: 'Inter', sans-serif;
+    background-color: var(--background-color);
+    color: var(--font-color);
 }
 
-#dark-mode-switch {
-    display: none;
-}
-#dark-mode-switch:checked ~ #page {
-    --background-color: black;
+.dark body {
+    --background-color: #000000;
     --timestamp-color: #b8c2cc;
-    --font-color: white;
+    --font-color: #fff;
     --ref-symbol-color: #2d3748;
     --ref-symbol-hover-color: #4a5568;
     --title-bottom-line-color: #1a202c;
     --code-background-color: #2d3748;
     --code-signature-border-color: #576279;
     --menu-background-color: #1a202c;
-    --menu-font-color: white;
+    --menu-font-color: #fff;
     --menu-indent-line-color: #4a5568;
     --menu-scrollbar-color: #2d3748;
-    --menu-toggle-icon-color: white;
+    --menu-toggle-icon-color: #fff;
     --toc-font-color: #90cdf4;
     --toc-indent-line-color: #1a202c;
-    --dark-light-toggle-color: white;
-}
-#label-dark-mode-switch {
-    position: fixed;
-    right: 0;
-    top: 0;
-    z-index: 100;
-    margin: 1rem;
-    cursor: pointer;
-    fill: var(--dark-light-toggle-color);
+    --dark-light-toggle-color: #fff;
 }
 
-#page {
-    background-color: var(--background-color);
-    color: var(--font-color);
+:root.dark .dark-icon {
+    display: none;
+}
+
+:root:not(.dark) .light-icon {
+    display: none;
+}
+
+#dark-mode-toggle-wrapper {
+    display: flex;
+    position: sticky;
+    bottom: 0;
+    flex-direction: row-reverse;
+    background-color: inherit;
+    padding: 6px 1.4rem;
+}
+
+#dark-mode-toggle {
+    cursor: pointer;
+    fill: #fff;
+    padding: 2px;
 }
 
 /** Reset for menus */
@@ -83,13 +91,13 @@ html {
     scrollbar-width: thin;
     scrollbar-color: var(--menu-scrollbar-color) transparent;
 }
-.doc-nav::-webkit-scrollbar {
+*::-webkit-scrollbar {
     width: 8px;
 }
-.doc-nav::-webkit-scrollbar-track {
+*::-webkit-scrollbar-track {
     background: transparent;
 }
-.doc-nav::-webkit-scrollbar-thumb {
+*::-webkit-scrollbar-thumb {
     background-color: var(--menu-scrollbar-color);
     border: 3px solid transparent;
 }
