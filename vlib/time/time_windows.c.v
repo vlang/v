@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module time
 
-#include <pthread_time.h>.
-
 struct C.tm {
 	tm_year int
 	tm_mon  int
@@ -27,8 +25,6 @@ struct C.timespec {
 	tv_nsec i64
 }
 
-// the first arg is defined in include/bits/types.h as `__S32_TYPE`, which is `int`
-fn C.clock_gettime(int, &C.timespec)
 
 fn C._mkgmtime(&C.tm) time_t
 
@@ -65,4 +61,17 @@ fn vpc_now() u64 {
 	tm := u64(0)
 	C.QueryPerformanceCounter(&tm)
 	return tm
+}
+// the first arg is defined in include/bits/types.h as `__S32_TYPE`, which is `int`
+//fn C.clock_gettime(int, &C.timespec)
+
+fn win_now() Time {
+	mono := sys_mono_now()
+
+	ts := C.timespec {}
+	ts.tv_sec := mono / freq_time
+	ts.tv_nsec  := ((mono %  freq_time) * 1_000_000_000) / freq_time
+
+	t := convert_clock_time(t)
+	return t
 }
