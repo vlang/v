@@ -15,6 +15,8 @@
     --menu-scrollbar-color: #a0aec0;
     --menu-toggle-icon-color: #fff;
     --menu-toggle-icon-hover-color: #00000044;
+    --menu-search-background-color: #00000044;
+    --menu-search-font-color: #fff;
     --toc-font-color: #2779bd;
     --toc-indent-line-color: #dae1e7;
 }
@@ -49,6 +51,8 @@ body {
     --menu-indent-line-active-color: #90cdf4;
     --menu-scrollbar-color: #4a5568;
     --menu-toggle-icon-color: #fff;
+    --menu-search-background-color: #4a5568;
+    --menu-search-font-color: #fff;
     --toc-font-color: #90cdf4;
     --toc-indent-line-color: #1a202c;
 }
@@ -149,8 +153,10 @@ body {
     border-radius: 0.2rem;
     padding: 0.5rem 1rem;
     outline: none;
-    background-color: #4a5568;
-    color: white;
+    background-color: #00000044;
+    background-color: var(--menu-search-background-color);
+    color: #fff;
+    color: var(--menu-search-font-color);
     margin-left: -0.6rem;
     margin-right: -0.6rem;
 }

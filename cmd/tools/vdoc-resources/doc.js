@@ -37,16 +37,20 @@
             var menuItem = menuItems[i];
             var links = menuItem.querySelectorAll('a');
             var hasResult = false;
-            for (var li = 1; li < links.length; li++) {
+            for (var li = 0; li < links.length; li++) {
                 var link = links[li];
-                if (link.text.toLowerCase().indexOf(searchValue) !== -1) {
+                if (!searchValue || link.text.toLowerCase().indexOf(searchValue) !== -1) {
                     hasResult = true;
-                    link.style.display = '';
-                } else {
-                    link.style.display = 'none';
+                }
+                if (li > 0) {
+                    if (!searchValue || link.text.toLowerCase().indexOf(searchValue) !== -1) {
+                        link.style.display = '';
+                    } else {
+                        link.style.display = 'none';
+                    }
                 }
             }
-            menuItem.style.display = hasResult ? '' : 'none';
+            menuItem.style.display = !searchValue || hasResult ? '' : 'none';
         }
     });
 })();
