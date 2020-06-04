@@ -68,12 +68,10 @@ fn vpc_now() u64 {
 fn win_now() Time {
 	mono := sys_mono_now()
 
-	tv_sec := mono / freq_time
-	tv_nsec  := ((mono %  freq_time) * 1_000_000_000) / freq_time
+	tv_sec 	:= mono / freq_time
+	tv_nsec := ((mono %  freq_time) * 1_000_000_000) / freq_time
 
-	mut ctime := unix(int(tv_sec))
-	ctime.nanosecond = int(tv_nsec)
-
-	t := convert_clock_time(t)
+	mut t := unix(int(tv_sec))
+	t.nanosecond = int(tv_nsec)
 	return t
 }
