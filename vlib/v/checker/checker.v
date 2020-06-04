@@ -1870,6 +1870,12 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				type_name := c.table.type_to_str(it.expr_type)
 				c.error('cannot cast type `$type_name` to string, use `x.str()` instead', it.pos)
 			}
+			ts := c.table.get_type_symbol(it.typ)
+			if ts.kind == .enum_ && it.expr_type == table.string_type {
+				tn := c.table.type_to_str(it.typ)
+				c.error('todo: string to `$tn` enum', it.pos)
+				return it.typ
+			}
 			if it.expr_type == table.string_type {
 				mut error_msg := 'cannot cast a string'
 				if it.expr is ast.StringLiteral {
