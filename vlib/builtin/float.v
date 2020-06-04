@@ -86,107 +86,61 @@ fn f64_abs(a f64) f64 {
 	}
 }
 
-// compare floats using C epsilon
-// ==
-[inline]
-pub fn (a f64) eq(b f64) bool {
-	return f64_abs(a - b) <= C.DBL_EPSILON
-}
 
 [inline]
-pub fn (a f32) eq(b f32) bool {
-	return f32_abs(a - b) <= f32(C.FLT_EPSILON)
+fn f32_max(a, b f32) f32 {
+	return if a > b {
+		a
+	} else {
+		b
+	}
 }
 
-pub fn (a f64) eqbit(b f64) bool {
-	return C.DEFAULT_EQUAL(a, b)
+[inline]
+fn f32_min(a, b f32) f32 {
+	return if a < b {
+		a
+	} else {
+		b
+	}
 }
 
-pub fn (a f32) eqbit(b f32) bool {
-	return C.DEFAULT_EQUAL(a, b)
+[inline]
+fn f64_max(a, b f64) f64 {
+	return if a > b {
+		a
+	} else {
+		b
+	}
 }
 
-// !=
-fn (a f64) ne(b f64) bool {
-	return !a.eq(b)
+[inline]
+fn f64_min(a, b f64) f64 {
+	return if a < b {
+		a
+	} else {
+		b
+	}
 }
 
-fn (a f32) ne(b f32) bool {
-	return !a.eq(b)
+[inline]
+fn (a f32) eq_epsilon(b f32) bool {
+	hi := f32_max(f32_abs(a), f32_abs(b))
+	delta := f32_abs(a - b)
+	if hi > f32(1.0) {
+		return delta <= hi * (4 * f32(C.FLT_EPSILON))
+	} else {
+		return (1 / (4 * f32(C.FLT_EPSILON))) * delta <= hi
+	}
 }
 
-pub fn (a f64) nebit(b f64) bool {
-	return C.DEFAULT_NOT_EQUAL(a, b)
-}
-
-pub fn (a f32) nebit(b f32) bool {
-	return C.DEFAULT_NOT_EQUAL(a, b)
-}
-
-// a < b
-fn (a f64) lt(b f64) bool {
-	return a.ne(b) && a.ltbit(b)
-}
-
-fn (a f32) lt(b f32) bool {
-	return a.ne(b) && a.ltbit(b)
-}
-
-fn (a f64) ltbit(b f64) bool {
-	return C.DEFAULT_LT(a, b)
-}
-
-fn (a f32) ltbit(b f32) bool {
-	return C.DEFAULT_LT(a, b)
-}
-
-// a <= b
-fn (a f64) le(b f64) bool {
-	return !a.gt(b)
-}
-
-fn (a f32) le(b f32) bool {
-	return !a.gt(b)
-}
-
-fn (a f64) lebit(b f64) bool {
-	return C.DEFAULT_LE(a, b)
-}
-
-fn (a f32) lebit(b f32) bool {
-	return C.DEFAULT_LE(a, b)
-}
-
-// a > b
-fn (a f64) gt(b f64) bool {
-	return a.ne(b) && a.gtbit(b)
-}
-
-fn (a f32) gt(b f32) bool {
-	return a.ne(b) && a.gtbit(b)
-}
-
-fn (a f64) gtbit(b f64) bool {
-	return C.DEFAULT_GT(a, b)
-}
-
-fn (a f32) gtbit(b f32) bool {
-	return C.DEFAULT_GT(a, b)
-}
-
-// a >= b
-fn (a f64) ge(b f64) bool {
-	return !a.lt(b)
-}
-
-fn (a f32) ge(b f32) bool {
-	return !a.lt(b)
-}
-
-fn (a f64) gebit(b f64) bool {
-	return C.DEFAULT_GE(a, b)
-}
-
-fn (a f32) gebit(b f32) bool {
-	return C.DEFAULT_GE(a, b)
+[inline]
+fn (a f64) eq_epsilon(b f64) bool {
+	hi := f64_max(f64_abs(a), f64_abs(b))
+	delta := f64_abs(a - b)
+	if hi > 1.0 {
+		return delta <= hi * (4 * f64(C.DBL_EPSILON))
+	} else {
+		return (1 / (4 * f64(C.DBL_EPSILON))) * delta <= hi
+	}
 }

@@ -1899,25 +1899,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 			g.write(' }))')
 		}
-	} else if (left_type == node.right_type) && left_type.is_float() && node.op in [.eq, .ne] {
-		// floats should be compared with epsilon
-		if left_type == table.f64_type_idx {
-			if node.op == .eq {
-				g.write('f64_eq(')
-			} else {
-				g.write('f64_ne(')
-			}
-		} else {
-			if node.op == .eq {
-				g.write('f32_eq(')
-			} else {
-				g.write('f32_ne(')
-			}
-		}
-		g.expr(node.left)
-		g.write(',')
-		g.expr(node.right)
-		g.write(')')
 	} else {
 		a := left_sym.name[0].is_capital() || left_sym.name.contains('.')
 		b := left_sym.kind != .alias
