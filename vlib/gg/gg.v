@@ -38,6 +38,7 @@ pub:
 	fail_fn       FNFail = voidptr(0)
 	wait_events   bool // set this to true for UIs, to save power
 	font_path string
+	fullscreen bool
 }
 
 pub struct Context {
@@ -127,6 +128,7 @@ f32(cfg.bg_color.b) / 255.0, 1.0)
 		width: cfg.width
 		height: cfg.height
 		high_dpi: cfg.scale > 1
+		fullscreen: cfg.fullscreen
 	}
 	//b := sapp.high_dpi()
 	//println('scale=$g.scale high_dpi=$b')
@@ -150,14 +152,23 @@ pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (gg &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
+pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 	sgl.c4b(c.r, c.g, c.b, 128)
 	sgl.begin_line_strip()
-	sgl.v2f(x, y)
-	sgl.v2f(x + w, y)
-	sgl.v2f(x + w, y + h)
-	sgl.v2f(x, y + h)
-	sgl.v2f(x, y)
+	if ctx.scale == 1 {
+		sgl.v2f(x, y)
+		sgl.v2f(x + w, y)
+		sgl.v2f(x + w, y + h)
+		sgl.v2f(x, y + h)
+		sgl.v2f(x, y)
+	}
+	else {
+		sgl.v2f(x * ctx.scale, y * ctx.scale)
+		sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
+		sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
+		sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
+		sgl.v2f(x*ctx.scale, y*ctx.scale)
+	}
 	sgl.end()
 }
 
