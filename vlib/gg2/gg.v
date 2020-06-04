@@ -12,6 +12,7 @@ import sokol.gfx
 
 type FNvoidptr1 fn(voidptr)
 type FNvoidptr2 fn(voidptr,voidptr)
+type FNFail fn(string,voidptr)
 
 pub struct Config {
 pub:
@@ -30,8 +31,9 @@ pub:
 	bg_color      gx.Color
 	init_fn       FNvoidptr1 = voidptr(0)
 	frame_fn      FNvoidptr1 = voidptr(0)
-	on_key_down   FNvoidptr1 = voidptr(0)
-	event_cb      FNvoidptr2 = voidptr(0)
+	event_fn      FNvoidptr2 = voidptr(0)
+	cleanup_fn    FNvoidptr1 = voidptr(0)
+	fail_fn       FNFail = voidptr(0)
 	wait_events   bool = false // set this to true for UIs, to save power
 }
 
@@ -71,18 +73,31 @@ fn gg_frame_fn(user_data voidptr) {
 	}
 }
 
-fn gg_event_cb(e &C.sapp_event, b voidptr){
-	mut g := &GG(b)
-	if g.config.event_cb != voidptr(0) {
-		g.config.event_cb(e, g.config.user_data)
+fn gg_event_fn(e &C.sapp_event, user_data voidptr){
+	mut g := &GG(user_data)
+	if g.config.event_fn != voidptr(0) {
+		g.config.event_fn(e, g.config.user_data)
+	}
+}
+
+fn gg_cleanup_fn(user_data voidptr){
+	mut g := &GG(user_data)
+	if g.config.cleanup_fn != voidptr(0) {
+		g.config.cleanup_fn(g.config.user_data)
+	}
+}
+
+fn gg_fail_fn(msg charptr, user_data voidptr){
+	mut g := &GG(user_data)
+	vmsg := tos3(msg)
+	if g.config.fail_fn != voidptr(0) {
+		g.config.fail_fn(vmsg, g.config.user_data)
+	}else{
+		eprintln('gg error: $vmsg')
 	}
 }
 
 //
-
-fn eventcb(e &C.sapp_event, b voidptr){
-	println("EVENT")
-}
 
 pub fn new_context(cfg Config) &GG {
 	mut g := &GG{
@@ -99,7 +114,9 @@ f32(cfg.bg_color.b) / 255.0, 1.0)
 		user_data: g
 		init_userdata_cb: gg_init_sokol_window
 		frame_userdata_cb: gg_frame_fn
-		event_userdata_cb: gg_event_cb //eventcb
+		event_userdata_cb: gg_event_fn
+		fail_userdata_cb: gg_fail_fn
+		cleanup_userdata_cb: gg_cleanup_fn
 		window_title: cfg.window_title.str
 		html5_canvas_name: cfg.window_title.str
 		width: cfg.width

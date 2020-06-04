@@ -183,7 +183,7 @@ fn main() {
 		user_data: game
 		init_fn: init_gui
 		frame_fn: frame
-		event_cb: on_event
+		event_fn: on_event
 	)
 	game.init_game()
 	go game.run() // Run the game loop in a new thread
