@@ -1,6 +1,7 @@
 :root {
     --background-color: #fff;
     --timestamp-color: #b8c2cc;
+    --link-color: #2779bd;
     --font-color: #000000;
     --ref-symbol-color: #dae1e7;
     --ref-symbol-hover-color: #b8c2cc;
@@ -35,6 +36,7 @@ body {
     --background-color: #1a202c;
     --timestamp-color: #b8c2cc;
     --font-color: #fff;
+    --link-color: #90cdf4;
     --ref-symbol-color: #2d3748;
     --ref-symbol-hover-color: #4a5568;
     --title-bottom-line-color: #2d3748;
@@ -167,6 +169,9 @@ body {
 .doc-content {
     padding: 1rem 2rem;
     overflow: hidden;
+}
+.doc-content a {
+    color: var(--link-color);
 }
 .doc-content > .doc-node:not(:last-child) {
     padding: 1rem 0 3rem 0;
