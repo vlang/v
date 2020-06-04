@@ -11,11 +11,17 @@ const (
 	str_end = "\' ) "
 )
 
-pub fn compile_template(path string) string {
-	// lines := os.read_lines(path)
+// compile_file compiles the content of a file by the given path as a template
+pub fn compile_file(path string) string {
 	mut html := os.read_file(path)or{
 		panic('html failed')
 	}
+	return compile_template(html)
+}
+
+pub fn compile_template(content string) string {
+	// lines := os.read_lines(path)
+	mut html := content
 	mut header := ''
 	if os.exists('header.html') && html.contains('@header') {
 		h := os.read_file('header.html')or{
