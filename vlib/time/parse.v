@@ -3,6 +3,10 @@
 // that can be found in the LICENSE file.
 module time
 
+#include <time.h>
+
+fn C.sscanf(byteptr, byteptr,...byteptr) int
+
 // parse returns time from a date string in "YYYY-MM-DD HH:MM:SS" format.
 pub fn parse(s string) ?Time {
 	pos := s.index(' ') or {
@@ -46,4 +50,53 @@ pub fn parse_rfc2822(s string) ?Time {
 		fields[1].str, fields[4].str)
 
 	return parse(tos(tmstr, count))
+}
+
+// Parses rfc8601 time format YYYY-mm-ddThh:MM:ss.dddddd+dd:dd as local time
+// the fraction part is difference in milli seconds and the last part is offset
+// from UTC time and can be both +/- hh:mm
+// Remarks: Not all rfc8601 is supported only the 'YYYY-mm-ddThh:MM:ss.dddddd+dd:dd'
+pub fn parse_rfc8601(s string) ?Time {
+
+	mut year 		:= 0
+	mut month 		:= 0
+	mut day 	  	:= 0
+	mut hour 	  	:= 0
+	mut minute 	  	:= 0
+	mut second 	  	:= 0
+	mut mil_second 	:= 0
+	mut time_char 	:= `a`
+	mut plus_min 	:= `a`
+	mut offset_hour := 0
+	mut offset_min  := 0
+
+	count := C.sscanf(s.str, "%4d-%2d-%2d%c%2d:%2d:%2d.%6d%c%2d:%2d", &year, &month, &day,
+													  &time_char, &hour, &minute,
+													  &second, &mil_second, &plus_min,
+													  &offset_hour, &offset_min)
+
+	println('count = $count')
+	println(second)
+	println(mil_second)
+	println(plus_min)
+	println(offset_hour)
+	println(offset_min)
+	if count != 11 {
+		return error('Invalid 8601 format')
+	}
+	if time_char != `T` && time_char != ` ` {
+		return error('Invalid 8601 format, expected space or `T` as time separator')
+	}
+	nano_seconds := mil_second*1000
+	println(nano_seconds)
+	res := new_time(Time{
+		year: year
+		month: month
+		day: day
+		hour: hour
+		minute: minute
+		second: second
+		nano_second: nano_seconds
+	})
+	return res
 }

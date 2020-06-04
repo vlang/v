@@ -39,13 +39,15 @@ const (
 
 pub struct Time {
 pub:
-	year   int
-	month  int
-	day    int
-	hour   int
-	minute int
-	second int
-	unix   u64
+	year   		int
+	month  		int
+	day    		int
+	hour   		int
+	minute 		int
+	second 		int
+	unix   		u64
+pub mut:
+	nanosecond  int
 }
 
 pub enum FormatTime {
@@ -86,9 +88,30 @@ fn C.time(t &C.time_t) C.time_t
 
 // now returns current local time.
 pub fn now() Time {
-	t := C.time(0)
-	now := C.localtime(&t)
-	return convert_ctime(now)
+
+	$if macos {
+		t := C.timespec(0)
+		now := C.localtime(&t)
+		return convert_ctime(now)
+	} $else {
+		ts := C.timespec{}
+		C.clock_gettime(C.CLOCK_REALTIME, &ts)
+		return convert_clock_time(ts)
+	}
+}
+
+// now returns current local time.
+pub fn utc_now() Time {
+
+	$if macos {
+		t := C.timespec(0)
+		now := C.localtime(&t)
+		return convert_ctime(now)
+	} $else {
+		ts := C.timespec{}
+		C.clock_gettime(C.CLOCK_REALTIME, &ts)
+		return convert_clock_time(ts)
+	}
 }
 
 // smonth returns month name.
@@ -107,6 +130,7 @@ pub fn new_time(t Time) Time {
 		minute: t.minute
 		second: t.second
 		unix: u64(t.unix_time())
+		nanosecond: t.nanosecond
 	}
 	// TODO Use the syntax below when it works with reserved keywords like `unix`
 	// return {
@@ -274,6 +298,12 @@ fn convert_ctime(t C.tm) Time {
 		second: t.tm_sec
 		unix: u64(make_unix_time(t))
 	}
+}
+
+fn convert_clock_time(t C.timespec) Time {
+	mut ctime := unix(int(t.tv_sec))
+	ctime.nanosecond = int(t.tv_nsec)
+	return ctime
 }
 
 // A lot of these are taken from the Go library
