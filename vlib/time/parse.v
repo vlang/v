@@ -75,12 +75,6 @@ pub fn parse_rfc8601(s string) ?Time {
 													  &second, &mil_second, &plus_min,
 													  &offset_hour, &offset_min)
 
-	println('count = $count')
-	println(second)
-	println(mil_second)
-	println(plus_min)
-	println(offset_hour)
-	println(offset_min)
 	if count != 11 {
 		return error('Invalid 8601 format')
 	}
@@ -96,7 +90,7 @@ pub fn parse_rfc8601(s string) ?Time {
 		hour: hour
 		minute: minute
 		second: second
-		nano_second: nano_seconds
+		nanosecond: nano_seconds
 	})
 	return res
 }
