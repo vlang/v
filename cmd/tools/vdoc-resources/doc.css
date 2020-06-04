@@ -1,7 +1,7 @@
 :root {
     --background-color: #fff;
     --timestamp-color: #b8c2cc;
-    --font-color: #000000;
+    --font-color: #000;
     --ref-symbol-color: #dae1e7;
     --ref-symbol-hover-color: #b8c2cc;
     --title-bottom-line-color: #f1f5f8;
@@ -16,7 +16,6 @@
     --menu-toggle-icon-hover-color: #00000044;
     --toc-font-color: #2779bd;
     --toc-indent-line-color: #dae1e7;
-    --dark-light-toggle-color: #000000;
 }
 :root.dark .dark-icon {
     display: none;
@@ -27,7 +26,9 @@
 
 body {
     font-family: 'Inter', sans-serif;
+    background-color: #fff;
     background-color: var(--background-color);
+    color: #000;
     color: var(--font-color);
 }
 
@@ -48,7 +49,6 @@ body {
     --menu-toggle-icon-color: #fff;
     --toc-font-color: #90cdf4;
     --toc-indent-line-color: #1a202c;
-    --dark-light-toggle-color: #fff;
 }
 
 /** Reset for menus */
@@ -65,13 +65,16 @@ body {
     right: 0;
     top: 0;
     display: flex;
+    background-color: #4b6c88;
     background-color: var(--menu-background-color);
+    color: #fff;
     color: var(--menu-font-color);
     flex-direction: column;
     overflow-y: auto;
     height: 100vh;
     z-index: 10;
     scrollbar-width: thin;
+    scrollbar-color: #a0aec0 transparent;
     scrollbar-color: var(--menu-scrollbar-color) transparent;
 }
 *::-webkit-scrollbar {
@@ -81,6 +84,7 @@ body {
     background: transparent;
 }
 *::-webkit-scrollbar-thumb {
+    background-color: #a0aec0;
     background-color: var(--menu-scrollbar-color);
     border: 3px solid transparent;
 }
@@ -97,9 +101,11 @@ body {
 .doc-nav #toggle-menu {
     cursor: pointer;
     padding: 0.3rem;
+    fill: #fff;
     fill: var(--menu-toggle-icon-color);
 }
 .doc-nav #toggle-menu:active {
+    background-color: #00000044;
     background-color: var(--menu-toggle-icon-hover-color);
     border-radius: 5rem;
 }
@@ -110,6 +116,7 @@ body {
 }
 .doc-nav > .heading-container > .heading {
     display: flex;
+    background-color: #4b6c88;
     background-color: var(--menu-background-color);
     padding: 0 1.4rem;
     height: 56px;
@@ -127,6 +134,7 @@ body {
     cursor: pointer;
     fill: #fff;
     display: flex;
+    visibility: hidden;
 }
 .doc-nav > .heading-container > .heading > .toggle-version-container > #dark-mode-toggle > svg {
     width: 1.2rem;
@@ -144,13 +152,16 @@ body {
     margin: 0.4rem 0;
 }
 .doc-nav > .content > ul > li > ul > li {
+    border-left: #ffffff66;
     border-left: 1.7px solid var(--menu-indent-line-color);
     padding-left: 0.7rem;
 }
 .doc-nav > .content > ul > li > ul > li.active {
+    border-color: #00000066;
     border-color: var(--menu-indent-line-active-color);
 }
 .doc-nav > .content a {
+    color: #fff;
     color: var(--menu-font-color);
     text-decoration: none;
 }
@@ -173,16 +184,19 @@ body {
 }
 .doc-content > .timestamp {
     font-size: 0.8rem;
+    color: #b8c2cc;
     color: var(--timestamp-color);
 }
 .doc-content > .doc-node > .title {
     display: flex;
     align-items: center;
     margin-bottom: 1rem;
+    border-bottom: 1px solid #f1f5f8;
     border-bottom: 1px solid var(--title-bottom-line-color);
 }
 .doc-content > .doc-node > .title > .link {
     margin-left: auto;
+    fill: #dae1e7;
     fill: var(--ref-symbol-color);
 }
 .doc-content > .doc-node > .title > .link:hover {
@@ -193,6 +207,7 @@ body {
     font-weight: 400;
 }
 .doc-content > .doc-node .signature {
+    border-left: 3px solid #a0aec0;
     border-left: 3px solid var(--code-signature-border-color);
 }
 .doc-content > .doc-node > ul > li .task-list-item-checkbox {
@@ -201,6 +216,7 @@ body {
 .doc-content pre > code {
     font-family: 'Source Code Pro', monospace;
     font-size: 0.9rem;
+    background-color: #edf2f7;
     background-color: var(--code-background-color);
     padding: 1rem;
     display: block;
@@ -225,6 +241,7 @@ body {
 .doc-content > .doc-node > .title h5 a,
 .doc-content > .doc-node > .title h6 a {
     text-decoration: none;
+    color: #dae1e7;
     color: var(--ref-symbol-color);
 }
 .doc-content > .doc-node > .title h1 a:hover,
@@ -254,6 +271,7 @@ body {
     line-height: 1.5;
 }
 .doc-toc a {
+    color: #2779bd;
     color: var(--toc-font-color);
     font-size: 0.9rem;
     font-weight: 600;
@@ -266,6 +284,7 @@ body {
     text-decoration: underline;
 }
 .doc-toc li ul {
+    border-left: 2px solid #dae1e7;
     border-left: 2px solid var(--toc-indent-line-color);
     padding-left: 0.8rem;
     margin: 0.2rem 0 0.2rem;

@@ -209,9 +209,6 @@ fn (cfg DocConfig) gen_html(idx int) string {
 			names := doc.head.name.split('.')
 			submod_prefix = if names.len > 1 { names[0] } else { doc.head.name }
 			active_class := if doc.head.name == dcs.head.name { ' class="active"' } else { '' }
-			if doc.head.name == dcs.head.name {
-				println(doc.head.name)
-			}
 			href_name := if doc.head.name == 'README' {
 				'./index.html'
 			} else if submod_prefix !in cfg.docs.map(it.head.name) {
