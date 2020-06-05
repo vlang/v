@@ -33,6 +33,7 @@ mut:
 	is_multi bool = false
 	is_verbose bool = false
 	include_readme bool = false
+	inline_assets bool = false
 	output_path string
 	input_path string
 	output_type OutputType = .unset
@@ -177,18 +178,23 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	<meta http-equiv="x-ua-compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${dcs.head.name} | vdoc</title>
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css">')
-
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet" />
+	<link rel="stylesheet" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css" />')
+	
 	// get resources
-	doc_css_min := get_resource('doc.css', true)
-	light_icon := get_resource('light.svg', true)
-	dark_icon := get_resource('dark.svg', true)
-	menu_icon := get_resource('menu.svg', true)
-	arrow_icon := get_resource('arrow.svg', true)
+	doc_css_min := cfg.get_resource('doc.css', true)
+	light_icon := cfg.get_resource('light.svg', true)
+	dark_icon := cfg.get_resource('dark.svg', true)
+	menu_icon := cfg.get_resource('menu.svg', true)
+	arrow_icon := cfg.get_resource('arrow.svg', true)
 
 	// write css
-	hw.write('<style>$doc_css_min</style>')
+	if cfg.inline_assets {
+		hw.write('<style>$doc_css_min</style>')
+	} else {
+		hw.write('\n	<link rel="stylesheet" href="$doc_css_min" />')
+	}
+
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
 	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.input_path)) } else { dcs.head.name }
 	// write nav1
@@ -273,9 +279,14 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
 		hw.write('<div class="doc-toc">\n\n<ul>\n${toc.str()}</ul>\n</div>')
 	}
-	doc_js_min := get_resource('doc.js', true)
-	hw.write('</div></div><script>$doc_js_min</script>
-	</body>
+	doc_js_min := cfg.get_resource('doc.js', false)
+	hw.write('</div></div>')
+	if cfg.inline_assets {
+		hw.write('<script>$doc_js_min</script>')
+	} else {
+		hw.write('<script src="$doc_js_min"></script>')
+	}
+	hw.write('</body>
 	</html>')
 	return hw.str()
 }
@@ -407,8 +418,8 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		return
 	}
 	cfg.vprintln('Rendering docs...')
-	outputs := cfg.render()
 	if cfg.output_path.len == 0 {
+		outputs := cfg.render()
 		first := outputs.keys()[0]
 		println(outputs[first])
 	} else {
@@ -421,8 +432,12 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 				os.mkdir(cfg.output_path) or {
 					panic(err)
 				}
+			} else {
+				os.rm(os.join_path(cfg.output_path, 'doc.css'))
+				os.rm(os.join_path(cfg.output_path, 'doc.js'))
 			}
 		}
+		outputs := cfg.render()
 		for file_name, content in outputs {
 			output_path := os.join_path(cfg.output_path, file_name)
 			println('Generating ${output_path}...')
@@ -486,13 +501,23 @@ fn get_modules_list(path string) []string {
 	return dirs
 }
 
-fn get_resource(name string, minify bool) string {
+fn (cfg DocConfig) get_resource(name string, minify bool) string {
 	path := os.join_path(res_path, name)
-	res := os.read_file(path) or { panic('could not read $path') }
+	mut res := os.read_file(path) or { panic('could not read $path') }
 	if minify {
-		res.replace('\n', ' ')
+		res = res.replace('\n', ' ')
 	}
-	return res
+	// TODO: Make SVG inline for now
+	if cfg.inline_assets || path.ends_with('.svg') {
+		return res
+	} else {
+		output_path := os.join_path(cfg.output_path, name)
+		if !os.exists(output_path) {
+			println('Generating ${output_path}...')
+			os.write_file(output_path, res)
+		}
+		return name
+	}
 }
 
 fn main() {
@@ -521,6 +546,9 @@ fn main() {
 				cfg.set_output_type_from_str(format)
 				i++
 			}
+			'-inline-assets' {
+				cfg.inline_assets = true
+			}
 			'-l' {
 				cfg.show_loc = true
 			}
@@ -533,6 +561,7 @@ fn main() {
 				i++
 			}
 			'-s' {
+				cfg.inline_assets = true
 				cfg.serve_http = true
 				cfg.output_type = .html
 			}
