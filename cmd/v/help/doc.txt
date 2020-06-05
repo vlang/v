@@ -13,7 +13,7 @@ or Markdown format.
 Options:
   -all    Includes private and public functions/methods/structs/consts/enums.
   -f      Specifies the output format to be used.
-  -loc    Show the locations of the generated signatures. (For plaintext only)
+  -l      Show the locations of the generated signatures. (For plaintext only)
   -m      Generate docs for modules listed in that folder.
   -o      Specifies the output file/folder path where to store the generated docs.
   -s      Serve HTML-generated docs via HTTP.
