@@ -64,7 +64,7 @@ pub fn parse_rfc8601(s string) ?Time {
 	mut hour 	  	:= 0
 	mut minute 	  	:= 0
 	mut second 	  	:= 0
-	mut mil_second 	:= 0
+	mut mic_second 	:= 0
 	mut time_char 	:= `a`
 	mut plus_min 	:= `a`
 	mut offset_hour := 0
@@ -72,7 +72,7 @@ pub fn parse_rfc8601(s string) ?Time {
 
 	count := C.sscanf(s.str, "%4d-%2d-%2d%c%2d:%2d:%2d.%6d%c%2d:%2d", &year, &month, &day,
 													  &time_char, &hour, &minute,
-													  &second, &mil_second, &plus_min,
+													  &second, &mic_second, &plus_min,
 													  &offset_hour, &offset_min)
 
 	if count != 11 {
@@ -81,16 +81,14 @@ pub fn parse_rfc8601(s string) ?Time {
 	if time_char != `T` && time_char != ` ` {
 		return error('Invalid 8601 format, expected space or `T` as time separator')
 	}
-	nano_seconds := mil_second*1000
-	println(nano_seconds)
-	res := new_time(Time{
+	t := new_time(Time{
 		year: year
 		month: month
 		day: day
 		hour: hour
 		minute: minute
 		second: second
-		nanosecond: nano_seconds
+		microsecond: mic_second
 	})
-	return res
+	return t
 }

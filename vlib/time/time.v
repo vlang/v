@@ -47,7 +47,7 @@ pub:
 	second 		int
 	unix   		u64
 pub mut:
-	nanosecond  int
+	microsecond int
 }
 
 pub enum FormatTime {
@@ -95,30 +95,6 @@ pub fn now() Time {
 		return convert_ctime(now)
 	}
 	$if windows {
-		// t := C.time(0)
-		// now := C.localtime(&t)
-		// return convert_ctime(now)
-		return win_now()
-	}
-	$if linux {
-		ts := C.timespec{}
-		C.clock_gettime(C.CLOCK_REALTIME, &ts)
-		return convert_clock_time(ts)
-	}
-}
-
-// now returns current local time.
-pub fn utc_now() Time {
-
-	$if macos {
-		t := C.time(0)
-		now := C.localtime(&t)
-		return convert_ctime(now)
-	}
-	$if windows {
-		// t := C.time(0)
-		// now := C.localtime(&t)
-		// return convert_ctime(now)
 		return win_now()
 	}
 	$if linux {
@@ -144,7 +120,7 @@ pub fn new_time(t Time) Time {
 		minute: t.minute
 		second: t.second
 		unix: u64(t.unix_time())
-		nanosecond: t.nanosecond
+		microsecond: t.microsecond
 	}
 	// TODO Use the syntax below when it works with reserved keywords like `unix`
 	// return {
@@ -316,7 +292,7 @@ fn convert_ctime(t C.tm) Time {
 
 fn convert_clock_time(t C.timespec) Time {
 	mut ctime := unix(int(t.tv_sec))
-	ctime.nanosecond = int(t.tv_nsec)
+	ctime.microsecond = int(t.tv_nsec/1000)
 	return ctime
 }
 
