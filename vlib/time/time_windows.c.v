@@ -15,8 +15,9 @@ struct C.tm {
 
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
-	start_time = init_win_time_start()
-	freq_time  = init_win_time_freq()
+	start_time 		 = init_win_time_start()
+	freq_time  		 = init_win_time_freq()
+	start_local_time = local_as_unix_time()
 )
 
 // in most systems, these are __quad_t, which is an i64
@@ -62,16 +63,32 @@ fn vpc_now() u64 {
 	C.QueryPerformanceCounter(&tm)
 	return tm
 }
-// the first arg is defined in include/bits/types.h as `__S32_TYPE`, which is `int`
-//fn C.clock_gettime(int, &C.timespec)
 
+// Gets the current local time as unix time
+fn local_as_unix_time() int {
+	t := C.time(0)
+	tm := C.localtime(&t)
+
+	return make_unix_time(tm)
+}
+
+// Calculates current time using performance counters to get higher resolution on windows
+// Since clock_gettime is not available in standard c performance counters are used
+// to calculate the relative time from the program started in micro seconds and added
+// the local time from program start
 fn win_now() Time {
-	mono := sys_mono_now()
 
-	tv_sec 	:= mono / freq_time
-	tv_nsec := ((mono %  freq_time) * 1_000_000_000) / freq_time
+	tm := vpc_now()
 
-	mut t := unix(int(tv_sec))
-	t.nanosecond = int(tv_nsec)
+	// get the relative time in micro seconds
+	relative_time_us := (tm - start_time) / (freq_time / 1000000 )
+
+	// total seconds as unix time
+	total_seconds := start_local_time + int(relative_time_us / 1000000)
+	remainder_us := relative_time_us % 1000000
+
+	mut t := unix(total_seconds)
+	t.nanosecond = int(remainder_us)
+
 	return t
 }
