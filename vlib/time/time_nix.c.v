@@ -55,10 +55,6 @@ pub fn win_now() Time {
 	return Time{}
 }
 
-// dummy
-pub fn darwin_now() Time {
-	return Time{}
-}
 
 // A dummy
 pub struct C.timeval {
