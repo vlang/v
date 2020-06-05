@@ -70,6 +70,12 @@ pub fn (t Type) is_ptr() bool {
 	return (int(t) >> 16) & 0xff > 0
 }
 
+// set idx on `t` and return it
+[inline]
+pub fn (t Type) set_idx(idx int) Type {
+	return (((int(t) >> 24) & 0xff) << 24) | (((int(t) >> 16) & 0xff) << 16) | (u16(idx) & 0xffff)
+}
+
 // set nr_muls on `t` and return it
 [inline]
 pub fn (t Type) set_nr_muls(nr_muls int) Type {
@@ -112,11 +118,12 @@ pub fn (t Type) clear_flag(flag TypeFlag) Type {
 }
 
 // clear all flags
+[inline]
 pub fn (t Type) clear_flags() Type {
 	return 0 | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
 }
 
-// return true if `flag` is set in `t`
+// return true if `flag` is set on `t`
 [inline]
 pub fn (t Type) has_flag(flag TypeFlag) bool {
 	return (((int(t) >> 24) & 0xff) >> int(flag)) & 1 == 1

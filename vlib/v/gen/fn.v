@@ -113,8 +113,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 				g.write('static ')
 				g.definitions.write('static ')
 			}
-			g.definitions.write('$type_name $msvc_attrs ${name}(')
-			g.write('$type_name $msvc_attrs ${name}(')
+			fn_header := if msvc_attrs.len > 0 { '$type_name $msvc_attrs ${name}(' } else { '$type_name ${name}(' }
+			g.definitions.write(fn_header)
+			g.write(fn_header)
 		}
 		fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
 		if it.no_body || (g.pref.use_cache && it.is_builtin) {
@@ -242,7 +243,7 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 	no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
 		caname := c_name(arg.name)
-		typ := g.unwrap_generic(arg.typ).set_nr_muls(arg.typ.nr_muls())
+		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.get_type_symbol(typ)
 		mut arg_type_name := g.typ(typ) // arg_type_sym.name.replace('.', '__')
 		// if arg.name == 'xxx' {
@@ -329,7 +330,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 
 pub fn (mut g Gen) unwrap_generic(typ table.Type) table.Type {
 	if typ.idx() == table.t_type_idx {
-		return g.cur_generic_type
+		// return g.cur_generic_type
+		// its more efficient to set the id rather than to copy flags/nr_muls
+		return typ.set_idx(g.cur_generic_type)
 	}
 	return typ
 }
@@ -777,4 +780,3 @@ fn (mut g Gen) write_fn_attr() string{
 	return msvc_attrs
 
 	}
-

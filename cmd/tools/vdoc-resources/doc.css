@@ -6,7 +6,6 @@
     --ref-symbol-color: #dae1e7;
     --ref-symbol-hover-color: #b8c2cc;
     --title-bottom-line-color: #f1f5f8;
-    --code-background-color: #edf2f7;
     --code-signature-border-color: #a0aec0;
     --menu-background-color: #4b6c88;
     --menu-font-color: #fff;
@@ -43,7 +42,6 @@ body {
     --ref-symbol-color: #2d3748;
     --ref-symbol-hover-color: #4a5568;
     --title-bottom-line-color: #2d3748;
-    --code-background-color: #2d3748;
     --code-signature-border-color: #4a5568;
     --menu-background-color: #2d3748;
     --menu-font-color: #fff;
@@ -274,17 +272,6 @@ body {
 }
 .doc-content > .doc-node > ul > li .task-list-item-checkbox {
     margin-right: 0.5rem;
-}
-.doc-content pre > code {
-    font-family: 'Source Code Pro', monospace;
-    font-size: 0.9rem;
-    background-color: #edf2f7;
-    background-color: var(--code-background-color);
-    padding: 1rem;
-    display: block;
-    border-radius: 0.25rem;
-    white-space: pre;
-    overflow-x: auto;
 }
 .doc-content > .doc-node > .title h1,
 .doc-content > .doc-node > .title h2,
