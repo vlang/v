@@ -1,7 +1,21 @@
-# ignore all build binaries
-*
+# unignore project directories and actual files
 !*/
 !*.*
+
+# unignore special files without extension
+!.github/PULL_REQUEST_TEMPLATE
+!.editorconfig
+!.gitattributes
+!.gitignore
+!BSDmakefile
+!Dockerfile
+!Dockerfile.alpine
+!Dockerfile.cross
+!LICENSE
+!Makefile
+
+# ignore all build binaries
+*
 *.exe
 *.o
 *.so
@@ -29,18 +43,6 @@ fns.txt
 # ignore temp directories
 /temp
 /tmp
-
-# unignore special files without extension
-!.github/PULL_REQUEST_TEMPLATE
-!.editorconfig
-!.gitattributes
-!.gitignore
-!BSDmakefile
-!Dockerfile
-!Dockerfile.alpine
-!Dockerfile.cross
-!LICENSE
-!Makefile
 
 # ignore editor files
 .idea
