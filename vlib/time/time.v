@@ -80,8 +80,8 @@ pub enum FormatDelimiter {
 
 // Todo: check if this needs to be pub
 pub struct C.timeval {
-	tv_sec  i64
-	tv_usec i64
+	tv_sec  u64
+	tv_usec u64
 }
 
 fn C.localtime(t &C.time_t) &C.tm
@@ -233,7 +233,7 @@ pub fn ticks() i64 {
 	} $else {
 		ts := C.timeval{}
 		C.gettimeofday(&ts, 0)
-		return i64(ts.tv_sec * i64(1000) + (ts.tv_usec / i64(1000)))
+		return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1000)))
 	}
 	// t := i64(C.mach_absolute_time())
 	// # Nanoseconds elapsedNano = AbsoluteToNanoseconds( *(AbsoluteTime *) &t );
