@@ -241,7 +241,14 @@ pub fn (gg &Context) end() {
 	}
 }
 
-pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, color gx.Color) {}
+pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
+	sgl.c4b(c.r, c.g, c.b, 128)
+	sgl.begin_line_strip()
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
+	sgl.end()
+
+}
 
 fn C.WaitMessage()
 
