@@ -492,7 +492,7 @@ fn main() {
 				cfg.set_output_type_from_str(format)
 				i++
 			}
-			'-loc' {
+			'-l' {
 				cfg.show_loc = true
 			}
 			'-m' {
