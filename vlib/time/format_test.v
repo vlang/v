@@ -82,18 +82,3 @@ fn test_get_fmt_str() {
 	// combinations.
 	assert '11.07.1980 21:23:42' == time_to_test.get_fmt_str(.dot, .hhmmss24, .ddmmyyyy)
 }
-
-fn test_rfc8601_parse_utc() {
-	ok_format := '2020-06-02T15:38:06.015959+00:00'
-
-	t := time.parse_rfc8601(ok_format) or {panic(err)}
-
-	println(t)
-	assert t.year == 2020
-	assert t.month == 6
-	assert t.day == 2
-	assert t.hour == 15
-	assert t.minute == 38
-	assert t.second == 6
-	assert t.microsecond == 15959
-}
