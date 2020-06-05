@@ -95,7 +95,8 @@ pub fn now() Time {
 		return convert_ctime(now)
 	}
 	$if windows {
-		return win_now()
+		w_now := win_now()
+		return w_now
 	}
 	$if linux {
 		ts := C.timespec{}
