@@ -113,8 +113,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 				g.write('static ')
 				g.definitions.write('static ')
 			}
-			g.definitions.write('$type_name $msvc_attrs ${name}(')
-			g.write('$type_name $msvc_attrs ${name}(')
+			fn_header := if msvc_attrs.len > 0 { '$type_name $msvc_attrs ${name}(' } else { '$type_name ${name}(' }
+			g.definitions.write(fn_header)
+			g.write(fn_header)
 		}
 		fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
 		if it.no_body || (g.pref.use_cache && it.is_builtin) {
@@ -777,4 +778,3 @@ fn (mut g Gen) write_fn_attr() string{
 	return msvc_attrs
 
 	}
-
