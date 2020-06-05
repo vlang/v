@@ -59,7 +59,6 @@ fn open_url(url string) {
 fn (mut cfg DocConfig) serve_html() {
 	docs := cfg.render()
 	def_name := docs.keys()[0]
-	println(docs.keys())
 	server := net.listen(8046) or {
 		panic(err)
 	}
@@ -342,6 +341,7 @@ fn (cfg DocConfig) render() map[string]string {
 			else { cfg.gen_plaintext(i) }
 		}
 	}
+	cfg.vprintln('Rendered: ' + docs.keys().str())
 	return docs
 }
 
