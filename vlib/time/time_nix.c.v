@@ -50,13 +50,13 @@ fn vpc_now() u64 {
 	return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
 }
 
-// dummy
+// dummy to compile with all compilers
 pub fn win_now() Time {
 	return Time{}
 }
 
 
-// A dummy
+// dummy to compile with all compilers
 pub struct C.timeval {
 	tv_sec  u64
 	tv_usec u64

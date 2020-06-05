@@ -150,7 +150,7 @@ fn test_str() {
 	assert '1980-07-11 21:23:42' == time_to_test.str()
 }
 
-// Kinda bad test but will find messy bugs
+// not optimal test but will find obvious bugs
 fn test_now() {
 	now := time.now()
 

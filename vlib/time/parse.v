@@ -52,10 +52,11 @@ pub fn parse_rfc2822(s string) ?Time {
 	return parse(tos(tmstr, count))
 }
 
-// Parses rfc8601 time format YYYY-mm-ddThh:MM:ss.dddddd+dd:dd as local time
+// parse_rfc8601 parses rfc8601 time format YYYY-mm-ddThh:MM:ss.dddddd+dd:dd as local time (WIP)
 // the fraction part is difference in milli seconds and the last part is offset
 // from UTC time and can be both +/- hh:mm
 // Remarks: Not all rfc8601 is supported only the 'YYYY-mm-ddThh:MM:ss.dddddd+dd:dd'
+// Todo: support timezones if V is ok to support them
 pub fn parse_rfc8601(s string) ?Time {
 
 	mut year 		:= 0

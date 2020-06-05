@@ -45,9 +45,8 @@ pub:
 	hour   		int
 	minute 		int
 	second 		int
-	unix   		u64
-pub mut:
 	microsecond int
+	unix   		u64
 }
 
 pub enum FormatTime {
@@ -95,9 +94,6 @@ pub fn now() Time {
 	$if macos {
 		mac_now := darwin_now()
 		return mac_now
-		// t := C.time(0)
-		// now := C.localtime(&t)
-		// return convert_ctime(now)
 	}
 	$if windows {
 		w_now := win_now()
@@ -109,11 +105,6 @@ pub fn now() Time {
 		return convert_timespec_time(ts)
 	}
 }
-// // Returns a better precision time for Darwin based operating system
-// // Uses the gettimeofday to get a micro second presicion
-// fn darwin_now() Time {
-
-// }
 
 // smonth returns month name.
 pub fn (t Time) smonth() string {
@@ -302,8 +293,7 @@ fn convert_ctime(t C.tm) Time {
 }
 
 fn convert_timespec_time(t C.timespec) Time {
-	mut ctime := unix(int(t.tv_sec))
-	ctime.microsecond = int(t.tv_nsec/1000)
+	mut ctime := unix2(int(t.tv_sec), int(t.tv_nsec/1000))
 	return ctime
 }
 

@@ -53,14 +53,16 @@ fn vpc_now_darwin() u64 {
 	return (tm - start_time) * time_base.numer / time_base.denom
 }
 
+// darwin_now returns a better precision current time for Darwin based operating system
+// uses the gettimeofday to get a micro second precision
 pub fn darwin_now() Time {
 	tv := C.timeval{}
 	C.gettimeofday(&tv, 0)
 	return convert_timeval_time(tv)
 }
 
+// convert_timeval_time converts a C timeval struct to V Time struct
 fn convert_timeval_time(t C.timeval) Time {
-	mut ctime := unix(int(t.tv_sec))
-	ctime.microsecond = int(t.tv_usec)
+	mut ctime := unix2(int(t.tv_sec), int(t.tv_usec))
 	return ctime
 }

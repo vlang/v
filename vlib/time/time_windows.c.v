@@ -66,7 +66,7 @@ fn vpc_now() u64 {
 	return tm
 }
 
-// Gets the current local time as unix time
+// local_as_unix_time returns the current local time as unix time
 fn local_as_unix_time() int {
 	t := C.time(0)
 	tm := C.localtime(&t)
@@ -74,7 +74,7 @@ fn local_as_unix_time() int {
 	return make_unix_time(tm)
 }
 
-// Calculates current time using performance counters to get higher resolution on windows
+// win_now calculates current time using performance counters to get higher resolution on windows
 // Since clock_gettime is not available in standard c performance counters are used
 // to calculate the relative time from the program started in micro seconds and added
 // the local time from program start
@@ -89,18 +89,17 @@ fn win_now() Time {
 	total_seconds := start_local_time + int(relative_time_us / 1000000)
 	remainder_us := relative_time_us % 1000000
 
-	mut t := unix(total_seconds)
-	t.microsecond = int(remainder_us)
+	mut t := unix2(total_seconds, int(remainder_us))
 
 	return t
 }
 
-// dummy
+// dummy to compile with all compilers
 pub fn darwin_now() Time {
 	return Time{}
 }
 
-// A dummy
+// dummy to compile with all compilers
 pub struct C.timeval {
 	tv_sec  u64
 	tv_usec u64
