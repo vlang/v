@@ -23,10 +23,10 @@ struct InternalTimeBase {
 	denom u32 = 1
 }
 
-// struct C.timeval {
-// 	tv_sec  u64
-// 	tv_usec u64
-// }
+pub struct C.timeval {
+	tv_sec  u64
+	tv_usec u64
+}
 
 fn init_time_base() InternalTimeBase {
 	tb := C.mach_timebase_info_data_t{}
