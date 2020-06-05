@@ -78,11 +78,11 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-// // Todo: check if this needs to be pub
-// pub struct C.timeval {
-// 	tv_sec  u64
-// 	tv_usec u64
-// }
+// Todo: check if this needs to be pub
+pub struct C.timeval {
+	tv_sec  u64
+	tv_usec u64
+}
 
 fn C.localtime(t &C.time_t) &C.tm
 fn C.time(t &C.time_t) C.time_t
