@@ -4,7 +4,7 @@
 module time
 
 // #include <time.h>
-#include <wimlib.h>
+#include <Winsock.h>
 
 struct C.tm {
 	tm_year int
