@@ -47,3 +47,8 @@ fn vpc_now() u64 {
 	C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
 	return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
 }
+
+// dummy
+pub fn win_now() Time {
+	return Time{}
+}

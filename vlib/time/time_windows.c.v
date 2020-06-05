@@ -76,7 +76,7 @@ fn local_as_unix_time() int {
 // Since clock_gettime is not available in standard c performance counters are used
 // to calculate the relative time from the program started in micro seconds and added
 // the local time from program start
-pub fn win_now() Time {
+fn win_now() Time {
 
 	tm := vpc_now()
 
