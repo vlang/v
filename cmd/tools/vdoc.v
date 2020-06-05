@@ -172,13 +172,13 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}	// write head
 
 	// get resources
-	doc_css_min := get_resource('doc.css', true)
-	light_icon := get_resource('light.svg', true)
-	dark_icon := get_resource('dark.svg', true)
-	menu_icon := get_resource('menu.svg', true)
-	arrow_icon := get_resource('arrow.svg', true)
-	v_prism_js := get_resource('v-prism.js', true)
-	v_prism_css := get_resource('v-prism.css', true)
+	doc_css_min := cfg.get_resource('doc.css', true)
+	light_icon := cfg.get_resource('light.svg', true)
+	dark_icon := cfg.get_resource('dark.svg', true)
+	menu_icon := cfg.get_resource('menu.svg', true)
+	arrow_icon := cfg.get_resource('arrow.svg', true)
+	v_prism_js := cfg.get_resource('v-prism.js', true)
+	v_prism_css := cfg.get_resource('v-prism.css', true)
 
 	hw.write('
 	<!DOCTYPE html>
@@ -190,13 +190,6 @@ fn (cfg DocConfig) gen_html(idx int) string {
     <title>${dcs.head.name} | vdoc</title>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet" />
 	<link rel="stylesheet" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css" />')
-	
-	// get resources
-	doc_css_min := cfg.get_resource('doc.css', true)
-	light_icon := cfg.get_resource('light.svg', true)
-	dark_icon := cfg.get_resource('dark.svg', true)
-	menu_icon := cfg.get_resource('menu.svg', true)
-	arrow_icon := cfg.get_resource('arrow.svg', true)
 
 	// write css
 	if cfg.inline_assets {
