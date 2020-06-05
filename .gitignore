@@ -67,3 +67,5 @@ cachegrind.out.*
 ._*
 thumbs.db
 /.symlink/*
+
+_docs
