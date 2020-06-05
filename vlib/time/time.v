@@ -78,25 +78,28 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-// Todo: check if this needs to be pub
-pub struct C.timeval {
-	tv_sec  u64
-	tv_usec u64
-}
+// // Todo: check if this needs to be pub
+// pub struct C.timeval {
+// 	tv_sec  u64
+// 	tv_usec u64
+// }
 
 fn C.localtime(t &C.time_t) &C.tm
 fn C.time(t &C.time_t) C.time_t
+
+fn C.gettimeofday(t &C.timeval, tz &C.timezone) int
+
 
 // now returns current local time.
 pub fn now() Time {
 
 	$if macos {
-		// tv := C.timeval{}
-		// C.gettimeofday(&tv, 0)
-		// return convert_timeval_time(tv)
-		t := C.time(0)
-		now := C.localtime(&t)
-		return convert_ctime(now)
+		tv := C.timeval{}
+		C.gettimeofday(&tv, 0)
+		return convert_timeval_time(tv)
+		// t := C.time(0)
+		// now := C.localtime(&t)
+		// return convert_ctime(now)
 	}
 	$if windows {
 		w_now := win_now()
