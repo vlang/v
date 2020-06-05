@@ -133,7 +133,7 @@ pub fn sum(data []byte) []byte {
 	return d.checksum()
 }
 
-fn block(dig mut Digest, p []byte) {
+fn block(mut dig Digest, p []byte) {
     // For now just use block_generic until we have specific
 	// architecture optimized versions
     block_generic(mut dig, p)

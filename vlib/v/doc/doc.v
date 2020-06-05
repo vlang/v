@@ -144,7 +144,12 @@ pub fn (nodes []DocNode) find_children_of(parent_type string) []DocNode {
 }
 
 fn get_parent_mod(dir string) ?string {
-	if dir.len == 0  { return error('root folder reached') }
+	$if windows {
+	// windows root path is C: or D:
+		if dir.len <= 2 { return error('root folder reached') }
+	} $else {
+		if dir.len == 0 { return error('root folder reached') }
+	}
 	base_dir := os.base_dir(dir)
 	if os.file_name(base_dir) in ['encoding', 'v'] && 'vlib' in base_dir {
 		return os.file_name(base_dir)

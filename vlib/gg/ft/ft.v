@@ -5,7 +5,7 @@ import gx
 import os
 
 const (
-	default_font_size = 24
+	default_font_size = 20
 )
 // TODO remove globals
 /*
@@ -18,14 +18,21 @@ __global g_font_path string
 pub struct FT   {
 	pub:
 	fons &C.FONScontext
+
 	font_normal int
+	scale f32 = 1.0
 }
 
 pub struct Config {
 	font_path string
+	scale f32 = 1.0
+	font_size int
 }
 
 pub fn new(c Config) ?&FT{
+	if c.font_path == '' {
+		// Load default font
+	}
 	if c.font_path == '' || !os.exists(c.font_path) {
 		println('failed to load font "$c.font_path"')
 		return none
@@ -38,21 +45,27 @@ pub fn new(c Config) ?&FT{
 	return &FT{
 		fons : fons
 		font_normal: C.fonsAddFontMem(fons, 'sans', bytes.data, bytes.len, false)
+		scale: c.scale
 	}
 
 }
 
 pub fn (ft &FT) draw_text(x, y int, text string, cfg gx.TextCfg) {
 	ft.fons.set_font(ft.font_normal)
-	ft.fons.set_size(2*f32(cfg.size)) // TODO: is this 2* needed?
-	C.fonsSetAlign(ft.fons, C.FONS_ALIGN_LEFT | C.FONS_ALIGN_TOP)
+	ft.fons.set_size(2.0 * ft.scale * f32(cfg.size))
+	if cfg.align == gx.align_right {
+		C.fonsSetAlign(ft.fons, C.FONS_ALIGN_RIGHT | C.FONS_ALIGN_TOP)
+	}
+	else {
+		C.fonsSetAlign(ft.fons, C.FONS_ALIGN_LEFT | C.FONS_ALIGN_TOP)
+	}
 	color := C.sfons_rgba(cfg.color.r, cfg.color.g, cfg.color.b, 255)
 	C.fonsSetColor(ft.fons, color)
 	ascender := f32(0.0)
 	descender := f32(0.0)
 	lh := f32(0.0)
 	ft.fons.vert_metrics(&ascender, &descender, &lh)
-	C.fonsDrawText(ft.fons, x, y, text.str, 0) // TODO: check offsets/alignment
+	C.fonsDrawText(ft.fons, x*ft.scale, y*ft.scale, text.str, 0) // TODO: check offsets/alignment
 }
 
 pub fn (ft &FT) draw_text_def(x, y int, text string) {

@@ -95,7 +95,7 @@ fn on_message(sender voidptr, mut ws websocket.Client, msg websocket.Message) {
 	}
 }
 
-fn start_tests(ws mut websocket.Client, num int) {
+fn start_tests(mut ws websocket.Client, num int) {
 	for i := 1; i < num; i++ {
 		println('Running test: ' + i.str())
 		ws.uri = 'ws://localhost:9001/runCase?case=${i.str()}&agent=vws/1.0a'

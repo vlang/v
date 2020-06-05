@@ -360,7 +360,7 @@ fn parser(s string) (int,PrepNumber) {
 **********************************************************************/
 
 // converter return a u64 with the bit image of the f64 number
-fn converter(pn mut PrepNumber) u64 {
+fn converter(mut pn PrepNumber) u64 {
 	mut binexp := 92
 	mut s2 := u32(0) // 96-bit precision integer
 	mut s1 := u32(0)

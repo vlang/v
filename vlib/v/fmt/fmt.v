@@ -64,7 +64,7 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 }
 
 /*
-fn (f mut Fmt) find_comment(line_nr int) {
+fn (mut f Fmt) find_comment(line_nr int) {
 	for comment in f.file.comments {
 		if comment.line_nr == line_nr {
 			f.writeln('// FFF $comment.line_nr $comment.text')
