@@ -11,9 +11,11 @@ import sokol.sgl
 import sokol.gfx
 //import gg.ft
 
-type FNvoidptr1 fn(voidptr)
-type FNvoidptr2 fn(voidptr,voidptr)
-type FNFail fn(string,voidptr)
+pub type FNCb fn(x voidptr)
+pub type FNEvent fn(e voidptr, x voidptr)
+pub type FNFail fn(msg string, x voidptr)
+pub type FNKeyDown fn(c sapp.KeyCode, m sapp.Modifier, x voidptr)
+pub type FNChar fn(c u32, x voidptr)
 
 pub struct Config {
 pub:
@@ -30,11 +32,13 @@ pub:
 	borderless_window bool
 	always_on_top bool
 	bg_color      gx.Color
-	init_fn       FNvoidptr1 = voidptr(0)
-	frame_fn      FNvoidptr1 = voidptr(0)
-	event_fn      FNvoidptr2 = voidptr(0)
-	cleanup_fn    FNvoidptr1 = voidptr(0)
+	init_fn       FNCb = voidptr(0)
+	frame_fn      FNCb = voidptr(0)
+	cleanup_fn    FNCb = voidptr(0)
 	fail_fn       FNFail = voidptr(0)
+	event_fn      FNEvent = voidptr(0)
+	keydown_fn    FNKeyDown = voidptr(0) // special case of event_fn
+	char_fn       FNChar = voidptr(0) // special case of event_fn
 	wait_events   bool // set this to true for UIs, to save power
 	font_path string
 	fullscreen bool
@@ -89,10 +93,33 @@ fn gg_frame_fn(user_data voidptr) {
 	}
 }
 
-fn gg_event_fn(e &C.sapp_event, user_data voidptr){
+// TODO: remove this hacky workaround...
+// NB: todo_remove_this is needed to workaround a v bug,
+// where it thinks that &sapp.Event(x) is a function call,
+// instead of a cast, if v has not yet seen &sapp.Event used
+// as a parameter type.
+fn todo_remove_this(e &sapp.Event){}
+
+fn gg_event_fn(ce &C.sapp_event, user_data voidptr){
+	e := &sapp.Event(ce)
 	mut g := &Context(user_data)
 	if g.config.event_fn != voidptr(0) {
 		g.config.event_fn(e, g.config.user_data)
+	}
+	match e.typ {
+		.key_down {
+			if g.config.keydown_fn != voidptr(0) {
+				kdfn := g.config.keydown_fn
+				kdfn(e.key_code, e.modifiers, g.config.user_data)
+			}
+		}
+		.char {
+			if g.config.char_fn != voidptr(0) {
+				cfn := g.config.char_fn
+				cfn(e.char_code, g.config.user_data)
+			}
+		}
+		else{}
 	}
 }
 
