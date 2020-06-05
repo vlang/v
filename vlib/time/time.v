@@ -91,14 +91,12 @@ fn C.time(t &C.time_t) C.time_t
 pub fn now() Time {
 
 	$if macos {
-		// mac_now := darwin_now()
-		// return mac_now
-		tv := C.timeval{}
-		C.gettimeofday(&tv, 0)
-		return convert_timeval_time(tv)
-		// t := C.time(0)
-		// now := C.localtime(&t)
-		// return convert_ctime(now)
+		// tv := C.timeval{}
+		// C.gettimeofday(&tv, 0)
+		// return convert_timeval_time(tv)
+		t := C.time(0)
+		now := C.localtime(&t)
+		return convert_ctime(now)
 	}
 	$if windows {
 		w_now := win_now()
