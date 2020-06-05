@@ -287,13 +287,13 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	doc_js_min := cfg.get_resource('doc.js', false)
 	hw.write('</div></div>')
   hw.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/components/prism-core.min.js"></script>
-       <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/components/prism-clike.min.js">')
+       <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/components/prism-clike.min.js"></script>')
 	if cfg.inline_assets {
 		hw.write('<script>$doc_js_min</script>')
     hw.write('<script>$v_prism_js</script>')
 	} else {
 		hw.write('<script src="$doc_js_min"></script>')
-    hw.write('</script><script src="$v_prism_js"></script>')
+    hw.write('<script src="$v_prism_js"></script>')
 	}
 	hw.write('</body>
 	</html>')
