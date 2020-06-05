@@ -38,6 +38,7 @@ pub:
 	wait_events   bool // set this to true for UIs, to save power
 	font_path string
 	fullscreen bool
+	scale f32 = 1.0 // vid needs this
 }
 
 pub struct Context {
