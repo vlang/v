@@ -4,7 +4,7 @@
 module time
 
 // #include <time.h>
-#include <Winsock.h>
+#include <winsock.h>
 
 struct C.tm {
 	tm_year int
