@@ -1663,9 +1663,8 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					scope.update_var_type(it.key_var, key_type)
 				}
 				value_type := c.table.value_type(typ)
-				if value_type == table.void_type {
-					typ_sym := c.table.get_type_symbol(typ)
-					c.error('for in: cannot index `$typ_sym.name`', it.cond.position())
+				if value_type == table.void_type || typ.has_flag(.optional) {
+					c.error('for in: cannot index `${c.table.type_to_str(typ)}`', it.cond.position())
 				}
 				it.cond_type = typ
 				it.kind = sym.kind

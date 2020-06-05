@@ -1,0 +1,6 @@
+import os
+fn main() {
+  for file in os.ls('.') {
+    println(file)
+  }
+}
