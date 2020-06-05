@@ -1337,7 +1337,7 @@ _SOKOL_PRIVATE void _sapp_macos_init_keytable(void) {
 }
 
 _SOKOL_PRIVATE void _sapp_run(const sapp_desc* desc) {
-	puts("RUN");
+	//puts("Sokol run()");
     _sapp_init_state(desc);
     _sapp_macos_init_keytable();
     [NSApplication sharedApplication];

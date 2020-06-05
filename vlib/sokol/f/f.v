@@ -24,6 +24,5 @@ pub const (
 
 #include "ft2build.h"
 
-#define FONS_USE_FREETYPE
 #define SOKOL_FONTSTASH_IMPL
 #include "util/sokol_fontstash.h"

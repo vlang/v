@@ -32,7 +32,7 @@ pub mut:
       s []Position
 }
 
-fn advance(sys mut System, dt f64) {
+fn advance(mut sys System, dt f64) {
     for i in 0..c_n - 1 {
         mut vx := sys.v[i].x
         mut vy := sys.v[i].y
@@ -68,7 +68,7 @@ fn advance(sys mut System, dt f64) {
     }
 }
 
-fn offsetmomentum(sys mut System) {
+fn offsetmomentum(mut sys System) {
     mut px := f64(0)
     mut py := f64(0)
     mut pz := f64(0)

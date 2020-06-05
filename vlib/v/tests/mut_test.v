@@ -8,7 +8,7 @@ pub mut:
 	a []Aaa
 }
 
-fn foo(b int, a mut []int) {
+fn foo(b int, mut a []int) {
 	a[0] = 7
 	// a << 4
 }

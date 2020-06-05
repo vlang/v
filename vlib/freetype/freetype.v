@@ -5,7 +5,7 @@ module freetype
 
 import os
 import gx
-import gg
+import oldgg as gg
 import glm
 import gl
 

@@ -324,7 +324,7 @@ fn (g &Gen) typ(t table.Type) string {
 		// T => int etc
 		return g.typ(g.cur_generic_type)
 	}
-	if t.flag_is(.optional) {
+	if t.has_flag(.optional) {
 		// Register an optional if it's not registered yet
 		return g.register_optional(t)
 	}
@@ -562,17 +562,17 @@ fn (mut g Gen) decrement_inside_ternary() {
 fn (mut g Gen) stmts(stmts []ast.Stmt) {
 	g.indent++
 	if g.inside_ternary > 0 {
-		g.writeln('(')
+		g.write('(')
 	}
 	for i, stmt in stmts {
 		g.stmt(stmt)
 		if g.inside_ternary > 0 && i < stmts.len - 1 {
-			g.writeln(',')
+			g.write(',')
 		}
 	}
 	g.indent--
 	if g.inside_ternary > 0 {
-		g.writeln('')
+		g.write('')
 		g.write(')')
 	}
 }
@@ -844,7 +844,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		}
 		g.stmts(it.stmts)
 		g.writeln('}')
-	} else if it.cond_type.flag_is(.variadic) {
+	} else if it.cond_type.has_flag(.variadic) {
 		g.writeln('// FOR IN cond_type/variadic')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		styp := g.typ(it.cond_type)
@@ -901,7 +901,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
-		got_is_opt := got_type.flag_is(.optional)
+		got_is_opt := got_type.has_flag(.optional)
 		if deref_will_match || got_is_opt {
 			g.write('*')
 		}
@@ -932,7 +932,7 @@ fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 		g.writeln('	g_test_oks++;')
 		metaname_ok := g.gen_assert_metainfo(a)
 		g.writeln('	cb_assertion_ok(&${metaname_ok});')
-		g.writeln('}else{')
+		g.writeln('} else {')
 		g.writeln('	g_test_fails++;')
 		metaname_fail := g.gen_assert_metainfo(a)
 		g.writeln('	cb_assertion_failed(&${metaname_fail});')
@@ -942,7 +942,7 @@ fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 		g.writeln('}')
 		return
 	}
-	g.writeln('{}else{')
+	g.writeln('{} else {')
 	metaname_panic := g.gen_assert_metainfo(a)
 	g.writeln(' __print_assert_failure(&${metaname_panic});')
 	g.writeln(' v_panic(tos_lit("Assertion failed..."));')
@@ -1015,7 +1015,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			1 {
 			// multi return
 			// TODO Handle in if_expr
-			is_optional := return_type.flag_is(.optional)
+			is_optional := return_type.has_flag(.optional)
 			mr_var_name := 'mr_$assign_stmt.pos.pos'
 			mr_styp := g.typ(return_type)
 			g.write('$mr_styp $mr_var_name = ')
@@ -1289,7 +1289,7 @@ fn (mut g Gen) autofree_scope_vars(pos int) string {
 				// continue
 				// }
 				v := *it
-				is_optional := v.typ.flag_is(.optional)
+				is_optional := v.typ.has_flag(.optional)
 				if is_optional {
 					// TODO: free optionals
 					continue
@@ -1644,7 +1644,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 		}
 		else {}
 	}
-	gen_or := is_call && return_type.flag_is(.optional)
+	gen_or := is_call && return_type.has_flag(.optional)
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		rstyp := g.typ(return_type)
@@ -1662,7 +1662,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 		}
 	} else {
 		g.is_assign_lhs = true
-		if node.right_type.flag_is(.optional) {
+		if node.right_type.has_flag(.optional) {
 			g.right_is_opt = true
 		}
 		mut str_add := false
@@ -1719,7 +1719,7 @@ fn (mut g Gen) assign_expr(node ast.AssignExpr) {
 	if gen_or {
 		// g.write('/*777 $tmp_opt*/')
 		g.or_block(tmp_opt, or_block, return_type)
-		unwrapped_type_str := g.typ(return_type.set_flag(.unset))
+		unwrapped_type_str := g.typ(return_type.clear_flag(.optional))
 		ident := node.left as ast.Ident
 		if ident.kind != .blank_ident && ident.info is ast.IdentVar {
 			ident_var := ident.info as ast.IdentVar
@@ -1899,25 +1899,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 			g.write(' }))')
 		}
-	} else if (left_type == node.right_type) && left_type.is_float() && node.op in [.eq, .ne] {
-		// floats should be compared with epsilon
-		if left_type == table.f64_type_idx {
-			if node.op == .eq {
-				g.write('f64_eq(')
-			} else {
-				g.write('f64_ne(')
-			}
-		} else {
-			if node.op == .eq {
-				g.write('f32_eq(')
-			} else {
-				g.write('f32_ne(')
-			}
-		}
-		g.expr(node.left)
-		g.write(',')
-		g.expr(node.right)
-		g.write(')')
 	} else {
 		a := left_sym.name[0].is_capital() || left_sym.name.contains('.')
 		b := left_sym.kind != .alias
@@ -2207,7 +2188,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	if !is_range {
 		sym := g.table.get_type_symbol(node.left_type)
 		left_is_ptr := node.left_type.is_ptr()
-		if node.left_type.flag_is(.variadic) {
+		if node.left_type.has_flag(.variadic) {
 			g.expr(node.left)
 			g.write('.args')
 			g.write('[')
@@ -2240,7 +2221,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 				*/
 				if need_wrapper {
-					g.write(', &($elem_type_str[]) { \n')
+					g.write(', &($elem_type_str[]) { ')
 				} else {
 					g.write(', &')
 				}
@@ -2292,7 +2273,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
-				g.write(', &($elem_type_str[]) { \n')
+				g.write(', &($elem_type_str[]) { ')
 			} else {
 				/*
 				g.write('(*($elem_type_str*)map_get2(')
@@ -2339,7 +2320,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	// got to do a correct check for multireturn
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
 	fn_return_is_multi := sym.kind == .multi_return
-	fn_return_is_optional := g.fn_decl.return_type.flag_is(.optional)
+	fn_return_is_optional := g.fn_decl.return_type.has_flag(.optional)
 	// handle promoting none/error/function returning 'Option'
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
@@ -2418,7 +2399,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// normal return
 		return_sym := g.table.get_type_symbol(node.types[0])
 		// `return opt_ok(expr)` for functions that expect an optional
-		if fn_return_is_optional && !node.types[0].flag_is(.optional) && return_sym.name !=
+		if fn_return_is_optional && !node.types[0].has_flag(.optional) && return_sym.name !=
 			'Option' {
 			styp := g.base_type(g.fn_decl.return_type)
 			opt_type := g.typ(g.fn_decl.return_type)
@@ -2631,7 +2612,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				// unions thould have exactly one explicit initializer
 				continue
 			}
-			if field.typ.flag_is(.optional) {
+			if field.typ.has_flag(.optional) {
 				// TODO handle/require optionals in inits
 				continue
 			}
@@ -2813,7 +2794,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 						// if this is the case then we are going to
 						// buffer manip out in front of the struct
 						// write the optional in and then continue
-						if field.typ.flag_is(.optional) {
+						if field.typ.has_flag(.optional) {
 							// Dont use g.typ() here becuase it will register
 							// optional and we dont want that
 							last_text := g.type_definitions.after(start_pos).clone()
@@ -3102,7 +3083,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 	sym := g.table.get_type_symbol(etype)
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-	if etype.flag_is(.variadic) {
+	if etype.has_flag(.variadic) {
 		str_fn_name := g.gen_str_for_type(etype)
 		g.write('${str_fn_name}(')
 		g.expr(expr)
@@ -3294,7 +3275,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 					expr_stmt := stmt as ast.ExprStmt
 					g.stmt_path_pos << g.out.len
 					g.write('*(${mr_styp}*) ${cvar_name}.data = ')
-					is_opt_call := expr_stmt.expr is ast.CallExpr && expr_stmt.typ.flag_is(.optional)
+					is_opt_call := expr_stmt.expr is ast.CallExpr && expr_stmt.typ.has_flag(.optional)
 					if is_opt_call {
 						g.write('*(${mr_styp}*) ')
 					}
@@ -3858,7 +3839,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 		}
 	}
 	// if varg, generate str for varg
-	if typ.flag_is(.variadic) {
+	if typ.has_flag(.variadic) {
 		varg_already_generated_key := 'varg_$already_generated_key'
 		if varg_already_generated_key !in g.str_types {
 			g.gen_str_for_varg(styp, str_fn_name, sym_has_str_method)

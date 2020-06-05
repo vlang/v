@@ -53,7 +53,7 @@ fn test_all_v_repl_files() {
 	println(session.bmark.total_message('total time spent running REPL files'))
 }
 
-fn worker_repl(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
+fn worker_repl(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	cdir := os.cache_dir()
 	mut session := &Session(p.get_shared_context())
 	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
