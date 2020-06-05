@@ -146,7 +146,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		if head {
 			dnw.write(md_content)
 		} else {
-			dnw.writeln('<pre><code class="signature">${dd.content}</code></pre>')
+			dnw.writeln('<pre class="signature"><code class="language-v">${dd.content}</code></pre>')
 			dnw.writeln(md_content)
 		}
 		dnw.writeln('</section>')
@@ -166,6 +166,16 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		}
 		toc.writeln('</li>')
 	}	// write head
+
+	// get resources
+	doc_css_min := get_resource('doc.css', true)
+	light_icon := get_resource('light.svg', true)
+	dark_icon := get_resource('dark.svg', true)
+	menu_icon := get_resource('menu.svg', true)
+	arrow_icon := get_resource('arrow.svg', true)
+	v_prism_js := get_resource('v-prism.js', true)
+	v_prism_css := get_resource('v-prism.css', true)
+
 	hw.write('
 	<!DOCTYPE html>
 	<html lang="en">
@@ -175,17 +185,10 @@ fn (cfg DocConfig) gen_html(idx int) string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${dcs.head.name} | vdoc</title>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css">')
+	<link rel="stylesheet" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css">
+	<style>$v_prism_css</style>
+	<style>$doc_css_min</style>')
 
-	// get resources
-	doc_css_min := get_resource('doc.css', true)
-	light_icon := get_resource('light.svg', true)
-	dark_icon := get_resource('dark.svg', true)
-	menu_icon := get_resource('menu.svg', true)
-	arrow_icon := get_resource('arrow.svg', true)
-
-	// write css
-	hw.write('<style>$doc_css_min</style>')
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
 	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.src_path)) } else { dcs.head.name }
 	// write nav1
@@ -271,7 +274,11 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		hw.write('<div class="doc-toc">\n\n<ul>\n${toc.str()}</ul>\n</div>')
 	}
 	doc_js_min := get_resource('doc.js', true)
-	hw.write('</div></div><script>$doc_js_min</script>
+	hw.write('</div></div>
+	<script>$doc_js_min</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/components/prism-clike.min.js"></script>
+	<script>$v_prism_js</script>
 	</body>
 	</html>')
 	return hw.str()

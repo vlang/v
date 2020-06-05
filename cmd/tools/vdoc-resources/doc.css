@@ -275,17 +275,6 @@ body {
 .doc-content > .doc-node > ul > li .task-list-item-checkbox {
     margin-right: 0.5rem;
 }
-.doc-content pre > code {
-    font-family: 'Source Code Pro', monospace;
-    font-size: 0.9rem;
-    background-color: #edf2f7;
-    background-color: var(--code-background-color);
-    padding: 1rem;
-    display: block;
-    border-radius: 0.25rem;
-    white-space: pre;
-    overflow-x: auto;
-}
 .doc-content > .doc-node > .title h1,
 .doc-content > .doc-node > .title h2,
 .doc-content > .doc-node > .title h3,
