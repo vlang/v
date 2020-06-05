@@ -169,9 +169,9 @@ pub fn run<T>(port int) {
 	}
 }
 
-//fn handle_conn<T>(conn net.Socket, app mut T) {
-fn handle_conn<T>(conn net.Socket, app_ T) T {
-	mut app := app_
+fn handle_conn<T>(conn net.Socket, app mut T) {
+//fn handle_conn<T>(conn net.Socket, app_ T) T {
+	//mut app := app_
 	//first_line := strip(lines[0])
 	first_line := conn.read_line()
 	println('firstline="$first_line"')
