@@ -3,8 +3,7 @@
 // that can be found in the LICENSE file.
 module time
 
-// #include <time.h>
-#include <winsock.h>
+#include <time.h>
 
 struct C.tm {
 	tm_year int
