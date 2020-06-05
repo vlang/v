@@ -393,7 +393,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		cfg.vprintln('Reading README file from $readme_path')
 		readme_contents := os.read_file(readme_path) or { '' }
         if cfg.output_type == .stdout {
-			println(readme_contents)
+			println(markdown.to_plain(readme_contents))
         }
         if cfg.output_type == .html {
 			cfg.docs << doc.Doc{
