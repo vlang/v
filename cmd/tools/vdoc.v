@@ -524,7 +524,10 @@ fn main() {
 		exit(1)
 	}
 	is_path := cfg.input_path.ends_with('.v') || cfg.input_path.split(os.path_separator).len > 1 || cfg.input_path == '.'
-	if !is_path {
+	if cfg.input_path = 'vlib' {
+		cfg.is_multi = true
+		cfg.input_path = os.join_path(os.base_dir(@VEXE), 'vlib')
+	} else if !is_path {
 		cfg.vprintln('Input "$cfg.input_path" is not a valid path. Looking for modules named "$cfg.input_path"...')
 		mod_path := lookup_module(cfg.input_path) or {
 			eprintln(err)
