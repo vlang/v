@@ -66,7 +66,7 @@ fn C.glBindAttribLocation()
 fn C.glUniform1f()
 
 
-// init_glag initializes glad, which is needed to use other functions.
+// init_glad initializes glad, which is needed to use other functions.
 pub fn init_glad() {
 	ok := C.gladLoadGL()
 	if ok == 0 {
