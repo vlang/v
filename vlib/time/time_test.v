@@ -159,7 +159,7 @@ fn test_now() {
 	assert now.month 		> 0
 	assert now.month 		<= 12
 	assert now.minute 		>= 0
-	assert now.minute 		< 59
+	assert now.minute 		< 60
 	assert now.second 		>=0
 	assert now.second 		< 60
 	assert now.microsecond 	>= 0
