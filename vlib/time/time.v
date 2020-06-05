@@ -93,9 +93,8 @@ fn C.gettimeofday(t &C.timeval, tz &C.timezone) int
 pub fn now() Time {
 
 	$if macos {
-		tv := C.timeval{}
-		C.gettimeofday(&tv, 0)
-		return convert_timeval_time(tv)
+		mac_now = darwin_now()
+		return mac_now
 		// t := C.time(0)
 		// now := C.localtime(&t)
 		// return convert_ctime(now)
@@ -305,12 +304,6 @@ fn convert_ctime(t C.tm) Time {
 fn convert_timespec_time(t C.timespec) Time {
 	mut ctime := unix(int(t.tv_sec))
 	ctime.microsecond = int(t.tv_nsec/1000)
-	return ctime
-}
-
-fn convert_timeval_time(t C.timeval) Time {
-	mut ctime := unix(int(t.tv_sec))
-	ctime.microsecond = int(t.tv_usec)
 	return ctime
 }
 
