@@ -95,5 +95,5 @@ fn test_rfc8601_parse_utc() {
 	assert t.hour == 15
 	assert t.minute == 38
 	assert t.second == 6
-	assert t.nanosecond == 15959000
+	assert t.microsecond == 15959
 }
