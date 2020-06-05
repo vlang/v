@@ -85,9 +85,6 @@ pub struct C.timeval {
 fn C.localtime(t &C.time_t) &C.tm
 fn C.time(t &C.time_t) C.time_t
 
-fn C.gettimeofday(t &C.timeval, tz &C.timezone) int
-
-
 // now returns current local time.
 pub fn now() Time {
 

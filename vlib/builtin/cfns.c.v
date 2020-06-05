@@ -120,7 +120,7 @@ fn C.signal() int
 fn C.mktime() int
 
 
-// fn C.gettimeofday() int
+fn C.gettimeofday() int
 
 
 fn C.sleep() int
