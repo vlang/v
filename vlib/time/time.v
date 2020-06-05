@@ -90,9 +90,11 @@ fn C.time(t &C.time_t) C.time_t
 pub fn now() Time {
 
 	$if macos {
-		t := C.time(0)
-		now := C.localtime(&t)
-		return convert_ctime(now)
+		mac_now := darwin_now()
+		return mac_now
+		// t := C.time(0)
+		// now := C.localtime(&t)
+		// return convert_ctime(now)
 	}
 	$if windows {
 		w_now := win_now()
@@ -101,7 +103,7 @@ pub fn now() Time {
 	$if linux {
 		ts := C.timespec{}
 		C.clock_gettime(C.CLOCK_REALTIME, &ts)
-		return convert_clock_time(ts)
+		return convert_timespec_time(ts)
 	}
 }
 
@@ -291,9 +293,15 @@ fn convert_ctime(t C.tm) Time {
 	}
 }
 
-fn convert_clock_time(t C.timespec) Time {
+fn convert_timespec_time(t C.timespec) Time {
 	mut ctime := unix(int(t.tv_sec))
 	ctime.microsecond = int(t.tv_nsec/1000)
+	return ctime
+}
+
+fn convert_timeval_time(t C.timeval) Time {
+	mut ctime := unix(int(t.tv_sec))
+	ctime.microsecond = int(t.tv_usec)
 	return ctime
 }
 
