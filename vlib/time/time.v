@@ -93,7 +93,7 @@ fn C.gettimeofday(t &C.timeval, tz &C.timezone) int
 pub fn now() Time {
 
 	$if macos {
-		mac_now = darwin_now()
+		mac_now := darwin_now()
 		return mac_now
 		// t := C.time(0)
 		// now := C.localtime(&t)
