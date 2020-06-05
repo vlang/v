@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module time
 
-#include <time.h>
+#include <sys/time.h>
 
 struct C.tm {
 	tm_year int
@@ -95,8 +95,8 @@ fn win_now() Time {
 	return t
 }
 
-// // A dummy
-// pub struct C.timeval {
-// 	tv_sec  u64
-// 	tv_usec u64
-// }
+// A dummy
+pub struct C.timeval {
+	tv_sec  u64
+	tv_usec u64
+}
