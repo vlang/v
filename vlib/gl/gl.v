@@ -144,7 +144,7 @@ pub fn detach_shader(program, shader int) {
 }
 
 // link_program links a program as target.
-// This let OpenGL know, which program it has to use.
+// This let OpenGL know, which program has to be use.
 pub fn link_program(program int) {
 	C.glLinkProgram(program)
 }
@@ -216,7 +216,7 @@ pub fn bind_2d_texture(texture u32) {
 }
 
 // bind_texture binds the activated texture to a texture type.
-// Defines what type of texture it is.
+// Defines the type for texture.
 pub fn bind_texture(texture, typ u32) {
 	C.glBindTexture(typ, texture)
 }
