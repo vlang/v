@@ -184,111 +184,159 @@ pub fn get_program_info_log(program int) string {
 	return tos_clone(info_log)
 }
 
-
+// Binds a vertex array buffer to OpenGL
+// Says OpenGL which vao is the target
 pub fn bind_vao(vao u32) {
 	C.glBindVertexArray(vao)
 }
 
+// Binds a vertex buffer object to OpenGL
+// Says OpenGL which vbo is the target
 pub fn bind_buffer(typ int, vbo u32) {
 	C.glBindBuffer(typ, vbo)
 }
 
+// Generates a textureID
+// Needed to use texturing
 pub fn gen_texture() u32 {
 	res := u32(0)
 	C.glGenTextures(1, &res)
 	return res
 }
 
+// Activates a texture
+// If you don't do this, don't ask why the texture isn't working
 pub fn active_texture(t int) {
 	C.glActiveTexture(t)
 }
 
+// Binds the texture as a 2D texture
+// Helper method
 pub fn bind_2d_texture(texture u32) {
 	C.glBindTexture(C.GL_TEXTURE_2D, texture)
 }
 
+// Binds the texture to a texture type
+// Defines what type of texture it is
+pub fn bind_texture(texture, typ u32) {
+	C.glBindTexture(typ, texture)
+}
+
+// Deletes a texture by ID
+// Cleanup method
 pub fn delete_texture(texture u32) {
 	C.glDeleteTextures(1, &texture)
 }
 
+// Put data into a buffer
+// With these methods, data can put into a buffer
+// Common usage for C.GL_ARRAY_BUFFER or C.GL_ELEMENT_ARRAY_BUFFER
 pub fn buffer_data(typ, size int, arr voidptr, draw_typ int) {
 	C.glBufferData(typ, size, arr, draw_typ)
 }
 
+// Put int into a buffer
 pub fn buffer_data_int(typ int, vertices []int, draw_typ int) {
 	size := sizeof(int) * u32(vertices.len)
 	C.glBufferData(typ, size, vertices.data, draw_typ)
 }
 
+// Put float into a buffer
 pub fn buffer_data_f32(typ int, vertices []f32, draw_typ int) {
 	size := sizeof(f32) * u32(vertices.len)
 	C.glBufferData(typ, size, vertices.data, draw_typ)
 }
 
+// Sets vertices into a vertex buffer object
+// Helper method
 pub fn set_vbo(vbo u32, vertices []f32, draw_typ int) {
 	gl.bind_buffer(C.GL_ARRAY_BUFFER, vbo)
 	gl.buffer_data_f32(C.GL_ARRAY_BUFFER, vertices, draw_typ)
 }
 
+// Sets indices into a element array buffer
+// Helper method
 pub fn set_ebo(ebo u32, indices []int, draw_typ int) {
 	gl.bind_buffer(C.GL_ELEMENT_ARRAY_BUFFER, ebo)
 	gl.buffer_data_int(C.GL_ELEMENT_ARRAY_BUFFER, indices, draw_typ)
 }
 
+// Deletes a vertex buffer object
+// Cleanup method
 pub fn delete_buffer(vbo u32) {
 	C.glDeleteBuffers(1, vbo)
 }
 
+// Deletes a vertex array object
+// Cleanup method
 pub fn delete_vao(vao u32) {
 	C.glDeleteVertexArrays(1, vao)
 }
 
-// gets the uniform location for key
+// Gets the uniform location for key in shader
+// Required to put uniform data in shader while runtime
 pub fn get_uniform_location(program int, key string) int {
 	return C.glGetUniformLocation(program, key.str)
 }
 
-//gets the attribute location for key
+//Gets the attribute location for key in shader
+// Required to put attrib data in shader while runtime
 pub fn get_attrib_location(program int, key string) int {
 	return C.glGetAttribLocation(program, key.str)
 }
 
+// Binds a index in program to a name
+// Used to send data into a shader
 pub fn bind_attrib_location(program int, index int, name string) {
 	C.glBindAttribLocation(program, index, name.str)
 }
 
-pub fn draw_arrays(typ, start, len int) {
-	C.glDrawArrays(typ, start, len)
+// Draws the vertex buffer object on screen
+// Commonly start is 0 and len 3 (without textures) or 5 (with textures)
+// Mode commonly C.GL_TRIANGLES
+pub fn draw_arrays(mode, start, len int) {
+	C.glDrawArrays(mode, start, len)
 }
 
+// Draws the element object buffer on screen
+// Commonly typ is C.GL_UNSIGNED_INT and  mode C.GL_TRIANGLES
 pub fn draw_elements(mode, count, typ, indices int) {
 	C.glDrawElements(mode, count, typ, indices)
 }
 
+// Binds program to OpenGL
+// Defines the program which is the target
 pub fn use_program(program int) {
 	C.glUseProgram(program)
 }
 
+// Generates a vertex array ID
+// Linked to an empty buffer
 pub fn gen_vertex_array() u32 {
 	vao := u32(0)
 	C.glGenVertexArrays(1, &vao)
 	return vao
 }
 
+// Enables a vertex attrib array by index
 pub fn enable_vertex_attrib_array(n int) {
 	C.glEnableVertexAttribArray(n)
 }
 
+// Disabled a vertex attrib array by index
 pub fn disable_vertex_attrib_array(n int) {
 	C.glDisableVertexAttribArray(n)
 }
 
+// Generates an bufferID in OpenGL
+// Linked to an empty buffer
 pub fn gen_buffer() u32 {
 	vbo := u32(0)
 	C.glGenBuffers(1, &vbo)
 	return vbo
 }
 
+// Defines the activated array by index
 pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, _stride int, _ptr int) {
 	mut stride := u32(_stride)
 	mut ptr := _ptr
@@ -299,39 +347,52 @@ pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, _stride 
 	C.glVertexAttribPointer(index, size, typ, normalized, stride, ptr)
 }
 
+// Attachs texture parameter value as int to a texture by ID
 pub fn tex_param(key, val int) {
 	C.glTexParameteri(C.GL_TEXTURE_2D, key, val)
 }
 
+// Enables drawing mode in OpenGL
+// (Old way)
 pub fn enable(val int) {
 	C.glEnable(val)
 }
 
+// Disables drawing mode in OpenGL
+// (Old way)
 pub fn disable(val int) {
 	C.glDisable(val)
 }
 
-pub fn scissor(a, b, c, d int) {
-	C.glScissor(a, b, c, d)
+// Defines a rectangle in the window
+pub fn scissor(x, y, width, height int) {
+	C.glScissor(x, y, height, height)
 }
 
 pub fn generate_mipmap(typ int) {
 	C.glGenerateMipmap(typ)
 }
 
-// set mat4 at uniform location
+// Sets a mat4 at uniform location
+// Used for almost every view stuff in OpenGL
 pub fn set_mat4fv(loc, count int, transpose bool, val glm.Mat4) {
 	C.glUniformMatrix4fv(loc, count, transpose, val.data)
 }
 
+// Sets a float at uniform location
+// Usable for global lighing
 pub fn set_f32(loc int, val f32) {
 	C.glUniform1f(loc, val)
 }
 
+// Sets a vec3 at uniform location
+// Usable to set locations or colors  
 pub fn set_vec(loc int, x, y, z f32) {
 	C.glUniform3f(loc, x, y, z)
 }
 
+// Sets a bool at uniform location
+// Send states to the shader
 pub fn set_bool(loc int, val bool) {
 	if val {
 		set_f32(loc, 1)
