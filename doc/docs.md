@@ -1416,7 +1416,7 @@ V's ORM provides a number of benefits:
 
 - One syntax for all SQL dialects. Migrating between databases becomes much easier.
 - Queries are constructed using V's syntax. There's no need to learn another syntax.
-- Safety. All queries are automatically santised to prevent SQL injection.
+- Safety. All queries are automatically sanitised to prevent SQL injection.
 - Compile time checks. This prevents typos which can only be caught during runtime.
 - Readability and simplicity. You don't need to manually parse the results of a query and then manually construct objects from the parsed results.
 
