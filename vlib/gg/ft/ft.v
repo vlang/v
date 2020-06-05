@@ -53,14 +53,19 @@ pub fn new(c Config) ?&FT{
 pub fn (ft &FT) draw_text(x, y int, text string, cfg gx.TextCfg) {
 	ft.fons.set_font(ft.font_normal)
 	ft.fons.set_size(2.0 * ft.scale * f32(cfg.size))
-	C.fonsSetAlign(ft.fons, C.FONS_ALIGN_LEFT | C.FONS_ALIGN_TOP)
+	if cfg.align == gx.align_right {
+		C.fonsSetAlign(ft.fons, C.FONS_ALIGN_RIGHT | C.FONS_ALIGN_TOP)
+	}
+	else {
+		C.fonsSetAlign(ft.fons, C.FONS_ALIGN_LEFT | C.FONS_ALIGN_TOP)
+	}
 	color := C.sfons_rgba(cfg.color.r, cfg.color.g, cfg.color.b, 255)
 	C.fonsSetColor(ft.fons, color)
 	ascender := f32(0.0)
 	descender := f32(0.0)
 	lh := f32(0.0)
 	ft.fons.vert_metrics(&ascender, &descender, &lh)
-	C.fonsDrawText(ft.fons, x, y, text.str, 0) // TODO: check offsets/alignment
+	C.fonsDrawText(ft.fons, x*ft.scale, y*ft.scale, text.str, 0) // TODO: check offsets/alignment
 }
 
 pub fn (ft &FT) draw_text_def(x, y int, text string) {

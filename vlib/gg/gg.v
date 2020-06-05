@@ -29,7 +29,6 @@ pub:
 	window_title  string
 	borderless_window bool
 	always_on_top bool
-	scale         f32  = 1.0
 	bg_color      gx.Color
 	init_fn       FNvoidptr1 = voidptr(0)
 	frame_fn      FNvoidptr1 = voidptr(0)
@@ -38,11 +37,13 @@ pub:
 	fail_fn       FNFail = voidptr(0)
 	wait_events   bool // set this to true for UIs, to save power
 	font_path string
+	fullscreen bool
+	scale f32 = 1.0 // vid needs this
 }
 
 pub struct Context {
-	scale      f32 = 1.0// retina = 2 , normal = 1
 pub mut:
+	scale      f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
 	width      int
 	height     int
 	clear_pass C.sg_pass_action
@@ -66,6 +67,16 @@ fn gg_init_sokol_window(user_data voidptr) {
 	gfx.setup(&desc)
 	sgl_desc := C.sgl_desc_t{}
 	sgl.setup(&sgl_desc)
+	g.scale = sapp.dpi_scale()
+	// NB: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
+	// may not be set which leads to sapp.dpi_scale reporting incorrectly 0.0
+	if g.scale < 0.1 {
+		g.scale = 1.0
+	}
+	is_high_dpi := sapp.high_dpi()
+	fb_w := sapp.width()
+	fb_h := sapp.height()
+	println('g.scale=$g.scale is_high_dpi=$is_high_dpi fb_w=$fb_w fb_h=$fb_h')
 	if g.config.init_fn != voidptr(0) {
 		g.config.init_fn( g.config.user_data )
 	}
@@ -110,7 +121,6 @@ pub fn new_context(cfg Config) &Context{
 		height: cfg.height
 		clear_pass: gfx.create_clear_pass( f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0,
 f32(cfg.bg_color.b) / 255.0, 1.0)
-		scale: cfg.scale //sapp.dpi_scale()// cfg.scale
 		config: cfg
 	}
 
@@ -126,10 +136,9 @@ f32(cfg.bg_color.b) / 255.0, 1.0)
 		html5_canvas_name: cfg.window_title.str
 		width: cfg.width
 		height: cfg.height
-		high_dpi: cfg.scale > 1
+		high_dpi: true
+		fullscreen: cfg.fullscreen
 	}
-	//b := sapp.high_dpi()
-	//println('scale=$g.scale high_dpi=$b')
 	if cfg.use_ortho {}
 	else {}
 	g.window = window
@@ -150,14 +159,23 @@ pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (gg &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
+pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 	sgl.c4b(c.r, c.g, c.b, 128)
 	sgl.begin_line_strip()
-	sgl.v2f(x, y)
-	sgl.v2f(x + w, y)
-	sgl.v2f(x + w, y + h)
-	sgl.v2f(x, y + h)
-	sgl.v2f(x, y)
+	if ctx.scale == 1 {
+		sgl.v2f(x, y)
+		sgl.v2f(x + w, y)
+		sgl.v2f(x + w, y + h)
+		sgl.v2f(x, y + h)
+		sgl.v2f(x, y)
+	}
+	else {
+		sgl.v2f(x * ctx.scale, y * ctx.scale)
+		sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
+		sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
+		sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
+		sgl.v2f(x*ctx.scale, y*ctx.scale)
+	}
 	sgl.end()
 }
 
