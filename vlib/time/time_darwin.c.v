@@ -23,10 +23,10 @@ struct InternalTimeBase {
 	denom u32 = 1
 }
 
-struct C.timeval {
-	tv_sec  u64
-	tv_usec u64
-}
+// struct C.timeval {
+// 	tv_sec  u64
+// 	tv_usec u64
+// }
 
 fn init_time_base() InternalTimeBase {
 	tb := C.mach_timebase_info_data_t{}
@@ -53,10 +53,3 @@ fn vpc_now_darwin() u64 {
 	return (tm - start_time) * time_base.numer / time_base.denom
 }
 
-// Returns a better precision time for Darwin based operating system
-// Uses the gettimeofday to get a micro second presicion
-fn darwin_now() Time {
-	tv := C.timeval{}
-	C.gettimeofday(&tv, 0)
-	return convert_timeval_time(tv)
-}

@@ -53,8 +53,8 @@ pub fn win_now() Time {
 	return Time{}
 }
 
-// A dummy
-struct C.timeval {
-	tv_sec  u64
-	tv_usec u64
-}
+// // A dummy
+// struct C.timeval {
+// 	tv_sec  u64
+// 	tv_usec u64
+// }

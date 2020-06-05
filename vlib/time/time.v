@@ -91,8 +91,11 @@ fn C.time(t &C.time_t) C.time_t
 pub fn now() Time {
 
 	$if macos {
-		mac_now := darwin_now()
-		return mac_now
+		// mac_now := darwin_now()
+		// return mac_now
+		tv := C.timeval{}
+		C.gettimeofday(&tv, 0)
+		return convert_timeval_time(tv)
 		// t := C.time(0)
 		// now := C.localtime(&t)
 		// return convert_ctime(now)
@@ -107,6 +110,11 @@ pub fn now() Time {
 		return convert_timespec_time(ts)
 	}
 }
+// // Returns a better precision time for Darwin based operating system
+// // Uses the gettimeofday to get a micro second presicion
+// fn darwin_now() Time {
+
+// }
 
 // smonth returns month name.
 pub fn (t Time) smonth() string {
