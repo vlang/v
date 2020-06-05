@@ -32,6 +32,7 @@ mut:
 	inside_or_expr    bool
 	inside_for        bool
 	inside_fn         bool
+	inside_str_interp bool
 	pref              &pref.Preferences
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
@@ -811,7 +812,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	// Raw string (`s := r'hello \n ')
-	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && p.prev_tok.kind != .str_dollar {
+	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
 		return p.string_expr()
 	}
 	mut known_var := false
@@ -1106,6 +1107,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	mut vals := []string{}
 	mut efmts := []string{}
 	// Handle $ interpolation
+	p.inside_str_interp = true
 	for p.tok.kind == .string {
 		vals << p.tok.lit
 		p.next()
@@ -1141,6 +1143,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		expr_fmts: efmts
 		pos: pos
 	}
+	p.inside_str_interp = false
 	return node
 }
 
