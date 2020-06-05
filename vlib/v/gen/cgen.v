@@ -562,17 +562,17 @@ fn (mut g Gen) decrement_inside_ternary() {
 fn (mut g Gen) stmts(stmts []ast.Stmt) {
 	g.indent++
 	if g.inside_ternary > 0 {
-		g.writeln('(')
+		g.write('(')
 	}
 	for i, stmt in stmts {
 		g.stmt(stmt)
 		if g.inside_ternary > 0 && i < stmts.len - 1 {
-			g.writeln(',')
+			g.write(',')
 		}
 	}
 	g.indent--
 	if g.inside_ternary > 0 {
-		g.writeln('')
+		g.write('')
 		g.write(')')
 	}
 }
@@ -932,7 +932,7 @@ fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 		g.writeln('	g_test_oks++;')
 		metaname_ok := g.gen_assert_metainfo(a)
 		g.writeln('	cb_assertion_ok(&${metaname_ok});')
-		g.writeln('}else{')
+		g.writeln('} else {')
 		g.writeln('	g_test_fails++;')
 		metaname_fail := g.gen_assert_metainfo(a)
 		g.writeln('	cb_assertion_failed(&${metaname_fail});')
@@ -942,7 +942,7 @@ fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 		g.writeln('}')
 		return
 	}
-	g.writeln('{}else{')
+	g.writeln('{} else {')
 	metaname_panic := g.gen_assert_metainfo(a)
 	g.writeln(' __print_assert_failure(&${metaname_panic});')
 	g.writeln(' v_panic(tos_lit("Assertion failed..."));')
