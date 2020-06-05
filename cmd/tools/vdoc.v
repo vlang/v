@@ -11,9 +11,10 @@ import v.vmod
 
 const (
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
-	exe_path = os.executable()
-	exe_dir  = os.dir(exe_path)
-	res_path = os.join_path(exe_dir, 'vdoc-resources')
+	exe_path        = os.executable()
+	exe_dir         = os.dir(exe_path)
+	res_path        = os.join_path(exe_dir, 'vdoc-resources')
+	vexe_path       = os.base_dir(@VEXE)
 )
 
 enum OutputType {
@@ -27,18 +28,18 @@ enum OutputType {
 
 struct DocConfig {
 mut:
-	pub_only bool = true
-	show_loc bool = false // for plaintext
-	serve_http bool = false // for html
-	is_multi bool = false
-	is_verbose bool = false
+	pub_only       bool = true
+	show_loc       bool = false // for plaintext
+	serve_http     bool = false // for html
+	is_multi       bool = false
+	is_verbose     bool = false
 	include_readme bool = false
-	inline_assets bool = false
-	output_path string
-	input_path string
-	output_type OutputType = .unset
-	docs []doc.Doc
-	manifest vmod.Manifest
+	inline_assets  bool = false
+	output_path    string
+	input_path     string
+	output_type    OutputType = .unset
+	docs           []doc.Doc
+	manifest       vmod.Manifest
 }
 
 fn slug(title string) string {
@@ -384,7 +385,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	}
 	is_vlib := 'vlib' in cfg.input_path
 	dir_path := if is_vlib {
-		os.base_dir(@VEXE)
+		vexe_path
 	} else if os.is_dir(cfg.input_path) { 
 		cfg.input_path
 	} else { 
@@ -486,7 +487,6 @@ fn (cfg DocConfig) vprintln(str string) {
 
 fn lookup_module(mod string) ?string {
 	mod_path := mod.replace('.', os.path_separator)
-	vexe_path := os.base_dir(@VEXE)
 	compile_dir := os.real_path(os.base_dir('.'))
 	modules_dir := os.join_path(compile_dir, 'modules', mod_path)
 	vlib_path := os.join_path(vexe_path, 'vlib', mod_path)
@@ -534,7 +534,7 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 fn main() {
 	args := os.args[2..]
 	if args.len == 0 || args[0] == 'help' {
-		os.system('v help doc')
+		os.system('${@VEXE} help doc')
 		exit(0)
 	}
 	mut cfg := DocConfig{
@@ -595,7 +595,7 @@ fn main() {
 	is_path := cfg.input_path.ends_with('.v') || cfg.input_path.split(os.path_separator).len > 1 || cfg.input_path == '.'
 	if cfg.input_path == 'vlib' {
 		cfg.is_multi = true
-		cfg.input_path = os.join_path(os.base_dir(@VEXE), 'vlib')
+		cfg.input_path = os.join_path(vexe_path, 'vlib')
 	} else if !is_path {
 		cfg.vprintln('Input "$cfg.input_path" is not a valid path. Looking for modules named "$cfg.input_path"...')
 		mod_path := lookup_module(cfg.input_path) or {
