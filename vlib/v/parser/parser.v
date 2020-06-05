@@ -812,8 +812,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	// Raw string (`s := r'hello \n ')
-	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string
-		&& !p.inside_str_interp && p.prev_tok.kind != .str_dollar {
+	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
 		return p.string_expr()
 	}
 	mut known_var := false
