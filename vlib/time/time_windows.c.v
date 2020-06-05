@@ -3,7 +3,8 @@
 // that can be found in the LICENSE file.
 module time
 
-#include <sys/time.h>
+// #include <time.h>
+#include <wimlib.h>
 
 struct C.tm {
 	tm_year int
