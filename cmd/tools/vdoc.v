@@ -173,11 +173,12 @@ fn (cfg DocConfig) gen_html(idx int) string {
 
 	// get resources
 	doc_css_min := cfg.get_resource('doc.css', true)
+	doc_js_min := cfg.get_resource('doc.js', false)
 	light_icon := cfg.get_resource('light.svg', true)
 	dark_icon := cfg.get_resource('dark.svg', true)
 	menu_icon := cfg.get_resource('menu.svg', true)
 	arrow_icon := cfg.get_resource('arrow.svg', true)
-	v_prism_js := cfg.get_resource('v-prism.js', true)
+	v_prism_js := cfg.get_resource('v-prism.js', false)
 	v_prism_css := cfg.get_resource('v-prism.css', true)
 
 	hw.write('
@@ -284,7 +285,6 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
 		hw.write('<div class="doc-toc">\n\n<ul>\n${toc.str()}</ul>\n</div>')
 	}
-	doc_js_min := cfg.get_resource('doc.js', false)
 	hw.write('</div></div>')
   hw.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/components/prism-core.min.js"></script>
        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/components/prism-clike.min.js"></script>')
@@ -443,6 +443,8 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 				}
 			} else {
 				os.rm(os.join_path(cfg.output_path, 'doc.css'))
+				os.rm(os.join_path(cfg.output_path, 'v-prism.css'))
+				os.rm(os.join_path(cfg.output_path, 'v-prism.js'))
 				os.rm(os.join_path(cfg.output_path, 'doc.js'))
 			}
 		}
