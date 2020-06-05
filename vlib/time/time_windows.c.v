@@ -17,9 +17,9 @@ struct C.tm {
 
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
-	start_time 		 = init_win_time_start()
-	freq_time  		 = init_win_time_freq()
-	start_local_time = local_as_unix_time()
+	start_time 		 	= init_win_time_start()
+	freq_time  		 	= init_win_time_freq()
+	start_local_time 	= local_as_unix_time()
 )
 
 // in most systems, these are __quad_t, which is an i64
@@ -75,7 +75,7 @@ fn local_as_unix_time() int {
 }
 
 // win_now calculates current time using performance counters to get higher resolution on windows
-// Since clock_gettime is not available in standard c performance counters are used
+// since clock_gettime is not available in standard c performance counters are used
 // to calculate the relative time from the program started in micro seconds and added
 // the local time from program start
 fn win_now() Time {

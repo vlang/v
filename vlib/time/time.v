@@ -39,14 +39,14 @@ const (
 
 pub struct Time {
 pub:
-	year   		int
-	month  		int
-	day    		int
-	hour   		int
-	minute 		int
-	second 		int
-	microsecond int
-	unix   		u64
+	year   			int
+	month  			int
+	day    			int
+	hour   			int
+	minute 			int
+	second 			int
+	microsecond 	int
+	unix   			u64
 }
 
 pub enum FormatTime {
