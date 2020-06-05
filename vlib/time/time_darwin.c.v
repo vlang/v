@@ -23,7 +23,7 @@ struct InternalTimeBase {
 	denom u32 = 1
 }
 
-pub struct C.timeval {
+struct C.timeval {
 	tv_sec  u64
 	tv_usec u64
 }

@@ -54,7 +54,7 @@ pub fn win_now() Time {
 }
 
 // A dummy
-pub struct C.timeval {
+struct C.timeval {
 	tv_sec  u64
 	tv_usec u64
 }
