@@ -150,7 +150,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		if head {
 			dnw.write(md_content)
 		} else {
-			dnw.writeln('<pre><code class="signature">${dd.content}</code></pre>')
+			dnw.writeln('<pre class="signature"><code class="language-v">${dd.content}</code></pre>')
 			dnw.writeln(md_content)
 		}
 		dnw.writeln('</section>')
@@ -170,6 +170,17 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		}
 		toc.writeln('</li>')
 	}	// write head
+
+	// get resources
+	doc_css_min := cfg.get_resource('doc.css', true)
+	doc_js_min := cfg.get_resource('doc.js', false)
+	light_icon := cfg.get_resource('light.svg', true)
+	dark_icon := cfg.get_resource('dark.svg', true)
+	menu_icon := cfg.get_resource('menu.svg', true)
+	arrow_icon := cfg.get_resource('arrow.svg', true)
+	v_prism_js := cfg.get_resource('v-prism.js', false)
+	v_prism_css := cfg.get_resource('v-prism.css', true)
+
 	hw.write('
 	<!DOCTYPE html>
 	<html lang="en">
@@ -180,18 +191,13 @@ fn (cfg DocConfig) gen_html(idx int) string {
     <title>${dcs.head.name} | vdoc</title>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet" />
 	<link rel="stylesheet" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css" />')
-	
-	// get resources
-	doc_css_min := cfg.get_resource('doc.css', true)
-	light_icon := cfg.get_resource('light.svg', true)
-	dark_icon := cfg.get_resource('dark.svg', true)
-	menu_icon := cfg.get_resource('menu.svg', true)
-	arrow_icon := cfg.get_resource('arrow.svg', true)
 
 	// write css
 	if cfg.inline_assets {
+    hw.write('<style>$v_prism_css</style>')
 		hw.write('<style>$doc_css_min</style>')
 	} else {
+    hw.write('\n	<link rel="stylesheet" href="$v_prism_css" />')
 		hw.write('\n	<link rel="stylesheet" href="$doc_css_min" />')
 	}
 
@@ -279,12 +285,15 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
 		hw.write('<div class="doc-toc">\n\n<ul>\n${toc.str()}</ul>\n</div>')
 	}
-	doc_js_min := cfg.get_resource('doc.js', false)
 	hw.write('</div></div>')
+  hw.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/components/prism-core.min.js"></script>
+       <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/components/prism-clike.min.js"></script>')
 	if cfg.inline_assets {
 		hw.write('<script>$doc_js_min</script>')
+    hw.write('<script>$v_prism_js</script>')
 	} else {
 		hw.write('<script src="$doc_js_min"></script>')
+    hw.write('<script src="$v_prism_js"></script>')
 	}
 	hw.write('</body>
 	</html>')
@@ -434,6 +443,8 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 				}
 			} else {
 				os.rm(os.join_path(cfg.output_path, 'doc.css'))
+				os.rm(os.join_path(cfg.output_path, 'v-prism.css'))
+				os.rm(os.join_path(cfg.output_path, 'v-prism.js'))
 				os.rm(os.join_path(cfg.output_path, 'doc.js'))
 			}
 		}
