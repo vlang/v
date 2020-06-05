@@ -79,7 +79,7 @@ pub enum FormatDelimiter {
 }
 
 // Todo: check if this needs to be pub
-struct C.timeval {
+pub struct C.timeval {
 	tv_sec  u64
 	tv_usec u64
 }
