@@ -399,7 +399,7 @@ fn (cfg DocConfig) gen_plaintext(idx int) string {
 	for cn in dcs.contents {
 		pw.writeln(cn.content)
 		if cn.comment.len > 0 {
-			pw.writeln('\n' + cn.comment)
+			pw.writeln('\n' + '\/\/ ' + cn.comment.trim_space())
 		}
 		if cfg.show_loc {
 			pw.writeln('Location: ${cn.file_path}:${cn.pos.line}:${cn.pos.col}\n\n')
@@ -509,7 +509,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	dirs := if cfg.is_multi { get_modules_list(cfg.input_path) } else { [cfg.input_path] } 
 	for dirpath in dirs {
 		cfg.vprintln('Generating docs for ${dirpath}...')
-		mut dcs := doc.generate(dirpath, cfg.pub_only, !is_vlib) or {
+		mut dcs := doc.generate(dirpath, cfg.pub_only, true) or {
 			panic(err)
 		}
 		if dcs.contents.len == 0 { continue }

@@ -11,6 +11,7 @@ pub:
 	// name_idx int // name table index for O(1) lookup
 	pos     int // the position of the token in scanner text
 	len     int // length of the literal
+	tidx    int // the index of the token
 }
 
 pub enum Kind {
