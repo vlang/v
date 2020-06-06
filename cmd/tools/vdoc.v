@@ -279,7 +279,8 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		<meta charset="UTF-8">
 		<meta http-equiv="x-ua-compatible" content="IE=edge" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<title>${dcs.head.name} | vdoc</title>')
+		<title>${dcs.head.name} | vdoc</title>
+		<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">')
 
 	// write css
 	if cfg.inline_assets {
