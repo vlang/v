@@ -220,7 +220,7 @@ fn html_highlight(code string, tb &table.Table) string {
 	return buf.str()
 }
 
-fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string {
+fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table, suffix string) string {
 	mut dnw := strings.new_builder(200)
 	link_svg := '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
 	head_tag := if head { 'h1' } else { 'h2' }
@@ -230,7 +230,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	if dd.parent_type !in ['void', ''] { 
 		sym_name = '${dd.parent_type}.' + sym_name
 	}
-	node_id := slug(sym_name)
+	node_id := '${slug(sym_name)}$suffix'
 	dnw.writeln('<section id="$node_id" class="doc-node">')
 	if dd.name != 'README' {
 		dnw.write('<div class="title"><$head_tag>$sym_name <a href="#$node_id">#</a></$head_tag>')
@@ -251,7 +251,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 
 fn (cfg DocConfig) gen_html(idx int) string {
 	dcs := cfg.docs[idx]
-	time_gen := dcs.time_generated.day.str() + ' ' + dcs.time_generated.smonth() + ' ' + dcs.time_generated.year.str() + ' ' + dcs.time_generated.hhmmss()
+	time_gen := '$dcs.time_generated.day $dcs.time_generated.smonth() $dcs.time_generated.year $dcs.time_generated.hhmmss()'
 	mut hw := strings.new_builder(200)
 	mut toc := strings.new_builder(200)
 	// generate toc first
@@ -361,19 +361,23 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}
 	hw.write('</ul>\n</nav>\n</header>')
 	hw.write('<div class="doc-container">\n<div class="doc-content">\n')
-	hw.write(doc_node_html(dcs.head, '', true, dcs.table))
+	hw.write(doc_node_html(dcs.head, '', true, dcs.table, ''))
+	mut constant_index := 0
 	for cn in dcs.contents {
 		if cn.parent_type !in ['void', ''] { continue }
 		base_dir := os.base_dir(os.real_path(cfg.input_path))
 		file_path_name := cn.file_path.replace('$base_dir/', '')
-		hw.write(doc_node_html(cn, get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line), false, dcs.table))
+		src_link := get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line)
+		suffix := if cn.name == 'Constants' { constant_index.str() } else { '' }
+		hw.write(doc_node_html(cn, src_link, false, dcs.table, suffix))
+		constant_index++
 
 		children := dcs.contents.find_children_of(cn.name)
-
 		if children.len != 0 {
 			for child in children {
 				child_file_path_name := child.file_path.replace('$base_dir/', '')
-				hw.write(doc_node_html(child, get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line), false, dcs.table))
+				child_src_link := get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line)
+				hw.write(doc_node_html(child, child_src_link, false, dcs.table, ''))
 			}
 		}
 	}
