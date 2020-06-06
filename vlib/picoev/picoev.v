@@ -19,11 +19,11 @@ import picohttpparser
 #include "src/picoev.h"
 
 const (
-	MAX_FDS = 1024
-	TIMEOUT_SECS = 8
-	MAX_TIMEOUT = 10
-	MAX_READ = 4096
-	MAX_WRITE = 8192
+	max_fds = 1024
+	timeout_secs = 8
+	max_timeout = 10
+	max_read = 4096
+	max_write = 8192
 )
 
 struct C.in_addr {
