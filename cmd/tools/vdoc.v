@@ -231,9 +231,10 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 		sym_name = '${dd.parent_type}.' + sym_name
 	}
 	node_id := slug(sym_name)
+	hash_link := if head_tag != 'h1' { ' <a href="#$node_id">#</a>' } else { '' }
 	dnw.writeln('<section id="$node_id" class="doc-node">')
 	if dd.name != 'README' {
-		dnw.write('<div class="title"><$head_tag>$sym_name <a href="#$node_id">#</a></$head_tag>')
+		dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
 		}
