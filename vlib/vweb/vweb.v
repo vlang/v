@@ -283,9 +283,9 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	}
 
 	// Call the right action
-	$if debug {
+	//$if debug {
 		println('action=$action')
-	}
+	//}
 	app.$action()
 	/*
 	app.$action() or {

@@ -27,7 +27,8 @@ pub fn (mut app App) json_endpoint() {
 
 pub fn (mut app App) index() {
 	app.cnt++
-	$vweb.html()
+	app.vweb.text('Hello world from vweb')
+	//$vweb.html()
 }
 
 pub fn (mut app App) reset() {

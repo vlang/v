@@ -1258,10 +1258,11 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 	for i, exp_type in expected_types {
 		got_typ := c.unwrap_generic(got_types[i])
-		if got_typ.has_flag(.optional) &&
-			(!exp_type.has_flag(.optional) || c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
+		if got_typ.has_flag(.optional) && (!exp_type.has_flag(.optional) || c.table.type_to_str(got_typ) !=
+			c.table.type_to_str(exp_type)) {
 			pos := return_stmt.exprs[i].position()
-			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument', pos)
+			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
+				pos)
 		}
 		if !c.check_types(got_typ, exp_type) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
@@ -1824,6 +1825,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CharLiteral {
 			return table.byte_type
+		}
+		ast.ComptimeCall {
+			it.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(it.left)))
+			return table.void_type
 		}
 		ast.ConcatExpr {
 			return c.concat_expr(mut it)
