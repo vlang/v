@@ -1,8 +1,8 @@
-module parser
-
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+module parser
+
 import v.table
 
 pub fn (mut p Parser) parse_array_type() table.Type {

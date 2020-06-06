@@ -71,7 +71,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			is_used: true
 		})
 		or_kind = .block
-		or_stmts = p.parse_block_no_scope()
+		or_stmts = p.parse_block_no_scope(false)
 		p.close_scope()
 		p.inside_or_expr = was_inside_or_expr
 	}
@@ -117,6 +117,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 }
 
 fn (mut p Parser) fn_decl() ast.FnDecl {
+	p.top_level_statement_start()
 	start_pos := p.tok.position()
 	is_deprecated := p.attr == 'deprecated'
 	is_pub := p.tok.kind == .key_pub
@@ -268,7 +269,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	no_body := p.tok.kind != .lcbr
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
-		stmts = p.parse_block_no_scope()
+		stmts = p.parse_block_no_scope(true)
 	}
 	p.close_scope()
 	p.attr = ''
@@ -321,7 +322,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
-		stmts = p.parse_block_no_scope()
+		stmts = p.parse_block_no_scope(false)
 	}
 	p.close_scope()
 	mut func := table.Fn{

@@ -1,4 +1,7 @@
 module sync
+
+import runtime
+
 // * Goal: this file provides a convenient way to run identical tasks over a list
 // * of items in parallel, without worrying about waitgroups, mutexes and so on.
 // *
@@ -36,7 +39,6 @@ module sync
 // *       2) idx - the index of the currently processed item
 // *       3) task_id - the index of the worker thread in which the callback
 // *             function is running.
-import runtime
 
 pub const (
 	no_result = voidptr(0)

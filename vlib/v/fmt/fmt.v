@@ -888,6 +888,24 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	}
 	*/
 	if node.is_method {
+		/*
+		// x.foo!() experiment
+		mut is_mut := false
+		if node.left is ast.Ident {
+			scope := f.file.scope.innermost(node.pos.pos)
+			x := node.left as ast.Ident
+			var := scope.find_var(x.name) or {
+				panic(err)
+			}
+			println(var.typ)
+			if var.typ != 0 {
+				sym := f.table.get_type_symbol(var.typ)
+				if method := f.table.type_find_method(sym, node.name) {
+					is_mut = method.args[0].is_mut
+				}
+			}
+		}
+		*/
 		if node.left is ast.Ident {
 			it := node.left as ast.Ident
 			// `time.now()` without `time imported` is processed as a method call with `time` being
@@ -910,9 +928,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write('.' + node.name + '(')
 		f.call_args(node.args)
 		f.write(')')
-		if node.is_mut {
-			// f.write('!')
-		}
+		// if is_mut {
+		// f.write('!')
+		// }
 		f.or_expr(node.or_block)
 	} else {
 		f.write_language_prefix(node.language)

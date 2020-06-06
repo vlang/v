@@ -799,7 +799,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		if method.args[0].is_mut {
 			c.fail_if_immutable(call_expr.left)
-			call_expr.is_mut = true
+			// call_expr.is_mut = true
 		}
 		if method.return_type == table.void_type && method.ctdefine.len > 0 && method.ctdefine !in
 			c.pref.compile_defines {

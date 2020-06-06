@@ -271,30 +271,31 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}	// write head
 
 	// get resources
-	doc_css_min := cfg.get_resource('doc.css', true)
-	doc_js_min := cfg.get_resource('doc.js', false)
+	doc_css := cfg.get_resource('doc.css', true)
+	normalize_css := cfg.get_resource('normalize.css', true)
+	doc_js := cfg.get_resource('doc.js', false)
 	light_icon := cfg.get_resource('light.svg', true)
 	dark_icon := cfg.get_resource('dark.svg', true)
 	menu_icon := cfg.get_resource('menu.svg', true)
 	arrow_icon := cfg.get_resource('arrow.svg', true)
-	v_prism_css := cfg.get_resource('v-prism.css', true)
 
 	hw.write('
 	<!DOCTYPE html>
 	<html lang="en">
 	<head>
-    <meta charset="UTF-8">
-	<meta http-equiv="x-ua-compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${dcs.head.name} | vdoc</title>')
+		<meta charset="UTF-8">
+		<meta http-equiv="x-ua-compatible" content="IE=edge" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>${dcs.head.name} | vdoc</title>
+		<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">')
 
 	// write css
 	if cfg.inline_assets {
-		hw.write('\n    <style>$v_prism_css</style>')
-		hw.write('\n    <style>$doc_css_min</style>')
+		hw.write('\n	<style>$doc_css</style>')
+		hw.write('\n	<style>$normalize_css</style>')
 	} else {
-		hw.write('\n	<link rel="stylesheet" href="$v_prism_css" />')
-		hw.write('\n	<link rel="stylesheet" href="$doc_css_min" />')
+		hw.write('\n	<link rel="stylesheet" href="$doc_css" />')
+		hw.write('\n	<link rel="stylesheet" href="$normalize_css" />')
 	}
 
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
@@ -340,9 +341,8 @@ fn (cfg DocConfig) gen_html(idx int) string {
 					is_submodule_open = true
 				}
 			}
-			open_class := if doc.head.name == dcs.head.name || is_submodule_open { ' open' } else { '' }
 			active_class := if doc.head.name == dcs.head.name { ' active' } else { '' }
-			hw.write('<li class="$open_class$active_class"><div class="menu-row">$dropdown<a href="$href_name">${submod_prefix}</a></div>')
+			hw.write('<li class="open$active_class"><div class="menu-row">$dropdown<a href="$href_name">${submod_prefix}</a></div>')
 			for j, cdoc in submodules {
 				if j == 0 {
 					hw.write('<ul>')
@@ -383,9 +383,9 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}
 	hw.write('</div></div>')
 	if cfg.inline_assets {
-		hw.write('<script>$doc_js_min</script>')
+		hw.write('<script>$doc_js</script>')
 	} else {
-		hw.write('<script src="$doc_js_min"></script>')
+		hw.write('<script src="$doc_js"></script>')
 	}
 	hw.write('</body>
 	</html>')
@@ -399,7 +399,7 @@ fn (cfg DocConfig) gen_plaintext(idx int) string {
 	for cn in dcs.contents {
 		pw.writeln(cn.content)
 		if cn.comment.len > 0 {
-			pw.writeln('\n' + cn.comment)
+			pw.writeln('\n' + '\/\/ ' + cn.comment.trim_space())
 		}
 		if cfg.show_loc {
 			pw.writeln('Location: ${cn.file_path}:${cn.pos.line}:${cn.pos.col}\n\n')
@@ -509,7 +509,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	dirs := if cfg.is_multi { get_modules_list(cfg.input_path) } else { [cfg.input_path] } 
 	for dirpath in dirs {
 		cfg.vprintln('Generating docs for ${dirpath}...')
-		mut dcs := doc.generate(dirpath, cfg.pub_only, !is_vlib) or {
+		mut dcs := doc.generate(dirpath, cfg.pub_only, true) or {
 			panic(err)
 		}
 		if dcs.contents.len == 0 { continue }
@@ -629,7 +629,7 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 
 fn main() {
 	args := os.args[2..]
-	if args.len == 0 || args[0] == 'help' {
+	if args.len == 0 || args[0] in ['help', '-h', '--help'] {
 		os.system('${@VEXE} help doc')
 		exit(0)
 	}

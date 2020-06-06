@@ -40,24 +40,32 @@ pub mut:
 	parent_type string = ''
 }
 
-pub fn write_comment_bw(stmts []ast.Stmt, start_idx int) string {
+pub fn get_comment_block_right_before(stmts []ast.Stmt) string {
+	if stmts.len == 0 {
+		return ''
+	}
 	mut comment := ''
-	for i := start_idx; i >= 0; i-- {
+	mut last_comment_line_nr := 0
+	for i := stmts.len-1; i >= 0; i-- {
 		stmt := stmts[i]
-		if stmt is ast.Comment {
-			cmt := stmt as ast.Comment
-			cmt_content := cmt.text.trim_left('|')
-			comment = cmt_content + if cmt_content.starts_with('```') {
-				'\n'
-			} else {
-				' '
-			} + comment
-		} else {
+		if stmt !is ast.Comment {
 			panic('Not a comment')
 		}
-		if i - 1 >= 0 && !(stmts[i - 1] is ast.Comment) {
-			break
+		cmt := stmt as ast.Comment
+		if last_comment_line_nr != 0 && cmt.pos.line_nr < last_comment_line_nr - 1 {
+			// skip comments that are not part of a continuous block,
+			// located right above the top level statement.
+			//			break
 		}
+		cmt_content := cmt.text.trim_left('|')
+		if cmt_content.len == cmt.text.len {
+			// ignore /* */ style comments for now
+			continue
+		}
+		//eprintln('cmt: $cmt')
+		cseparator := if cmt_content.starts_with('```') {'\n'} else {' '}
+		comment = cmt_content + cseparator + comment
+		last_comment_line_nr = cmt.pos.line_nr
 	}
 	return comment
 }
@@ -145,7 +153,7 @@ pub fn (nodes []DocNode) find_children_of(parent_type string) []DocNode {
 
 fn get_parent_mod(dir string) ?string {
 	$if windows {
-	// windows root path is C: or D:
+		// windows root path is C: or D:
 		if dir.len <= 2 { return error('root folder reached') }
 	} $else {
 		if dir.len == 0 { return error('root folder reached') }
@@ -168,9 +176,9 @@ fn get_parent_mod(dir string) ?string {
 		}
 		return error('No V files found.')
 	}
-	file_ast := parser.parse_file(v_files[0], table.new_table(), .skip_comments, prefs, &ast.Scope{
-		parent: 0
-	})
+	tbl := table.new_table()
+	scope := &ast.Scope{ parent: 0 }
+	file_ast := parser.parse_file(v_files[0], tbl, .skip_comments, prefs, scope)
 	if file_ast.mod.name == 'main' {
 		return ''
 	}
@@ -196,7 +204,7 @@ pub fn (mut d Doc) generate() ?bool {
 	// parse files
 	mut file_asts := []ast.File{}
 	// TODO: remove later for vlib
-	comments_mode := if d.with_comments { scanner.CommentsMode.parse_comments } else { scanner.CommentsMode.skip_comments }
+	comments_mode := if d.with_comments { scanner.CommentsMode.toplevel_comments } else { scanner.CommentsMode.skip_comments }
 	for file in v_files {
 		file_ast := parser.parse_file(file, d.table, comments_mode, d.prefs, &ast.Scope{
 			parent: 0
@@ -224,51 +232,69 @@ pub fn (mut d Doc) generate() ?bool {
 		} else if file_ast.mod.name != orig_mod_name {
 			continue
 		}
+		mut prev_comments := []ast.Stmt{}
 		stmts := file_ast.stmts
-		for si, stmt in stmts {
+		for _, stmt in stmts {
+			//eprintln('stmt typeof: ' + typeof(stmt))
 			if stmt is ast.Comment {
+				prev_comments << stmt
 				continue
 			}
-			if stmt !is ast.Module {
-				// todo: accumulate consts
-				mut name := d.get_name(stmt)
-				signature := d.get_signature(stmt)
-				pos := d.get_pos(stmt)
-				if !signature.starts_with('pub') && d.pub_only {
+			if stmt is ast.Module {
+				// the previous comments were probably a copyright/license one
+				module_comment := get_comment_block_right_before(prev_comments)
+				prev_comments = []
+				if module_comment == '' {
 					continue
 				}
-				if name.starts_with(orig_mod_name + '.') {
-					name = name.all_after(orig_mod_name + '.')
+				if module_comment == d.head.comment {
+					continue
 				}
-				mut node := DocNode{
-					name: name
-					content: signature
-					comment: ''
-					pos: convert_pos(v_files[i], pos)
-					file_path: v_files[i]
+				if d.head.comment != '' {
+					d.head.comment += '\n'
 				}
-				if stmt is ast.FnDecl {
-					fnd := stmt as ast.FnDecl
-					if fnd.receiver.typ != 0 {
-						mut parent_type := d.table.get_type_name(fnd.receiver.typ)
-						if parent_type.starts_with(module_name + '.') {
-							parent_type = parent_type.all_after(module_name + '.')
-						}
-						node.parent_type = parent_type
+				d.head.comment += module_comment
+				continue
+			}
+			// todo: accumulate consts
+			mut name := d.get_name(stmt)
+			signature := d.get_signature(stmt)
+			pos := d.get_pos(stmt)
+			if !signature.starts_with('pub') && d.pub_only {
+				prev_comments = []
+				continue
+			}
+			if name.starts_with(orig_mod_name + '.') {
+				name = name.all_after(orig_mod_name + '.')
+			}
+			mut node := DocNode{
+				name: name
+				content: signature
+				comment: ''
+				pos: convert_pos(v_files[i], pos)
+				file_path: v_files[i]
+			}
+			if stmt is ast.FnDecl {
+				fnd := stmt as ast.FnDecl
+				if fnd.receiver.typ != 0 {
+					mut parent_type := d.table.get_type_name(fnd.receiver.typ)
+					if parent_type.starts_with(module_name + '.') {
+						parent_type = parent_type.all_after(module_name + '.')
 					}
+					node.parent_type = parent_type
 				}
-				if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 { continue }
-				d.contents << node
+
 			}
-			if d.with_comments && (si - 1 >= 0 && stmts[si - 1] is ast.Comment) {
-				if stmt is ast.Module {
-					d.head.comment = write_comment_bw(stmts, si - 1)
-				} else {
-					last_comment := d.contents[d.contents.len - 1].comment
-					d.contents[d.contents.len - 1].comment = last_comment + '\n' + write_comment_bw(stmts,
-						si - 1)
-				}
+			if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 {
+				continue
 			}
+			d.contents << node
+			if d.with_comments && (prev_comments.len > 0) {
+				last_comment := d.contents[d.contents.len - 1].comment
+				cmt := last_comment + '\n' + get_comment_block_right_before(prev_comments)
+				d.contents[d.contents.len - 1].comment = cmt
+			}
+			prev_comments = []
 		}
 	}
 	d.time_generated = time.now()
