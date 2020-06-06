@@ -51,14 +51,14 @@ fn C.getaddrinfo() int
 fn C.connect() int
 fn C.send() int
 fn C.recv() int
-fn C.read() int
+//fn C.read() int
 fn C.shutdown() int
-fn C.close() int
+//fn C.close() int
 fn C.ntohs() int
 fn C.getsockname() int
 
 fn C.fcntl() int
-fn C.write() int
+//fn C.write() int
 
 struct C.picoev_loop {}
 
@@ -152,10 +152,10 @@ fn rw_callback(loop &C.picoev_loop, fd, events int, cb_arg voidptr) {
 				if pret <= 0 && s.len > 0 {
 					C.memmove(buf, s.str, s.len)
 					p.idx[fd] = s.len
-					p.oidx[fd] = int(res.buf - res.buf_start)
+					p.oidx[fd] = int(res.buf) - int(res.buf_start)
 					break
 				}
-				p.cb(req, mut res)
+				p.cb(req, mut &res)
 				if pret >= s.len {
 					p.idx[fd] = 0
 					p.oidx[fd] = 0
@@ -218,7 +218,7 @@ pub fn new(port int, cb voidptr) &Picoev {
 	}
 	C.picoev_add(loop, fd, C.PICOEV_READ, 0, accept_callback, pv)
 
-	go update_date(pv)
+	go update_date(mut pv)
 
 	return pv
 }
