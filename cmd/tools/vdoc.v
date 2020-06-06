@@ -5,9 +5,29 @@ import net
 import net.urllib
 import os
 import os.cmdline
+import time
 import strings
 import v.doc
+import v.scanner
+import v.table
+import v.token
 import v.vmod
+
+enum HighlightTokenTyp {
+	unone
+	boolean
+	builtin
+	char
+	comment
+	function
+	keyword
+	name
+	number
+	operator
+	punctuation
+	string
+	symbol
+}
 
 const (
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
@@ -131,32 +151,109 @@ fn (cfg DocConfig) gen_json(idx int) string {
 	return jw.str()
 }
 
+fn html_highlight(code string, tb &table.Table) string {
+	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64', 'u128', 'rune', 'f32', 'f64', 'any_int', 'any_float', 'byteptr', 'voidptr', 'any']
+	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
+		lit := if typ in [.unone, .operator, .punctuation] { tok.kind.str() } else { tok.lit }
+		return if typ in [.unone, .name] { lit } else { '<span class="token $typ">$lit</span>' } 
+	}
+	s := scanner.new_scanner(code, .parse_comments)
+	mut tok := s.scan()
+	mut next_tok := s.scan()
+	mut buf := strings.new_builder(200)
+	mut i := 0
+	for i < code.len {
+		if i == tok.pos {
+			mut tok_typ := HighlightTokenTyp.unone
+			match tok.kind {
+				.name {
+					if tok.lit in builtin {
+						tok_typ = .builtin
+					} else if next_tok.kind == .lcbr {
+						tok_typ = .symbol
+					} else if next_tok.kind == .lpar {
+						tok_typ = .function
+					} else {
+						tok_typ = .name
+					}
+				}
+				.comment {
+					tok_typ = .comment
+				}
+				.chartoken {
+					tok_typ = .char
+				}
+				.string {
+					tok_typ = .string
+				}
+				.number {
+					tok_typ = .number
+				}
+				.key_true, .key_false {
+					tok_typ = .boolean
+				}
+				.lpar, .lcbr, .rpar, .rcbr, .lsbr, 
+				.rsbr, .semicolon, .colon, .comma, .dot {
+					tok_typ = .punctuation
+				}
+				else {
+					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
+						tok_typ = .keyword
+					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary() || tok.kind.is_relational() || tok.kind.is_infix() {
+						tok_typ = .operator
+					}
+				}
+			}
+			buf.write(highlight_code(tok, tok_typ))
+			if next_tok.kind != .eof {
+				i = tok.pos + tok.len
+				tok = next_tok
+				next_tok = s.scan()
+			} else {
+				break
+			}
+		} else {
+			buf.write_b(code[i])
+			i++
+		}
+	}
+	return buf.str()
+}
+
+fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string {
+	mut dnw := strings.new_builder(200)
+	link_svg := '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
+	head_tag := if head { 'h1' } else { 'h2' }
+	md_content := markdown.to_html(dd.comment)
+	hlighted_code := html_highlight(dd.content, tb)
+	mut sym_name := dd.name
+	if dd.parent_type !in ['void', ''] { 
+		sym_name = '${dd.parent_type}.' + sym_name
+	}
+	node_id := slug(sym_name)
+	dnw.writeln('<section id="$node_id" class="doc-node">')
+	if dd.name != 'README' {
+		dnw.write('<div class="title"><$head_tag>$sym_name <a href="#$node_id">#</a></$head_tag>')
+		if link.len != 0 {
+			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
+		}
+		dnw.write('</div>')
+	}
+	if head {
+		dnw.write(md_content)
+	} else {
+		dnw.writeln('<pre class="signature language-v"><code class="language-v">$hlighted_code</code></pre>')
+		dnw.writeln(md_content)
+	}
+	dnw.writeln('</section>')
+	return dnw.str()
+}
+
 fn (cfg DocConfig) gen_html(idx int) string {
 	dcs := cfg.docs[idx]
+	time_gen := dcs.time_generated.day.str() + ' ' + dcs.time_generated.smonth() + ' ' + dcs.time_generated.year.str() + ' ' + dcs.time_generated.hhmmss()
 	mut hw := strings.new_builder(200)
 	mut toc := strings.new_builder(200)
-	mut doc_node_html := fn (dd doc.DocNode, link string, head bool) string {
-		mut dnw := strings.new_builder(200)
-		link_svg := '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
-		head_tag := if head { 'h1' } else { 'h2' }
-		md_content := markdown.to_html(dd.comment)
-		dnw.writeln('<section id="${slug(dd.name)}" class="doc-node">')
-		if dd.name != 'README' {
-			dnw.write('<div class="title"><$head_tag>${dd.name} <a href="#${slug(dd.name)}">#</a></$head_tag>')
-			if link.len != 0 {
-				dnw.write('<a class="link" target="_blank" href="$link">$link_svg</a>')
-			}
-			dnw.write('</div>')
-		}
-		if head {
-			dnw.write(md_content)
-		} else {
-			dnw.writeln('<pre class="signature"><code class="language-v">${dd.content}</code></pre>')
-			dnw.writeln(md_content)
-		}
-		dnw.writeln('</section>')
-		return dnw.str()
-	}
 	// generate toc first
 	for cn in dcs.contents {
 		if cn.parent_type !in ['void', ''] { continue }
@@ -165,7 +262,8 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		if children.len != 0 {
 			toc.writeln('        <ul>')
 			for child in children {
-				toc.writeln('<li><a href="#${slug(child.name)}">${child.name}</a></li>')
+				cname := cn.name + '.' + child.name
+				toc.writeln('<li><a href="#${slug(cname)}">${child.name}</a></li>')
 			}
 			toc.writeln('</ul>')
 		}
@@ -179,7 +277,6 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	dark_icon := cfg.get_resource('dark.svg', true)
 	menu_icon := cfg.get_resource('menu.svg', true)
 	arrow_icon := cfg.get_resource('arrow.svg', true)
-	v_prism_js := cfg.get_resource('v-prism.js', false)
 	v_prism_css := cfg.get_resource('v-prism.css', true)
 
 	hw.write('
@@ -189,16 +286,14 @@ fn (cfg DocConfig) gen_html(idx int) string {
     <meta charset="UTF-8">
 	<meta http-equiv="x-ua-compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${dcs.head.name} | vdoc</title>
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet" />
-	<link rel="stylesheet" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css" />')
+    <title>${dcs.head.name} | vdoc</title>')
 
 	// write css
 	if cfg.inline_assets {
-    hw.write('<style>$v_prism_css</style>')
-		hw.write('<style>$doc_css_min</style>')
+		hw.write('\n    <style>$v_prism_css</style>')
+		hw.write('\n    <style>$doc_css_min</style>')
 	} else {
-    hw.write('\n	<link rel="stylesheet" href="$v_prism_css" />')
+		hw.write('\n	<link rel="stylesheet" href="$v_prism_css" />')
 		hw.write('\n	<link rel="stylesheet" href="$doc_css_min" />')
 	}
 
@@ -215,7 +310,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 				<div class="module">${header_name}</div>
 				<div class="toggle-version-container">
 					<span>${version}</span>
-					<div id="dark-mode-toggle" role="checkbox">$light_icon $dark_icon</div>
+					<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">$light_icon $dark_icon</div>
 				</div>
 				$menu_icon
 			</div>
@@ -266,35 +361,31 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}
 	hw.write('</ul>\n</nav>\n</header>')
 	hw.write('<div class="doc-container">\n<div class="doc-content">\n')
-	hw.write(doc_node_html(dcs.head, '', true))
+	hw.write(doc_node_html(dcs.head, '', true, dcs.table))
 	for cn in dcs.contents {
 		if cn.parent_type !in ['void', ''] { continue }
 		base_dir := os.base_dir(os.real_path(cfg.input_path))
 		file_path_name := cn.file_path.replace('$base_dir/', '')
-		hw.write(doc_node_html(cn, get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line), false))
+		hw.write(doc_node_html(cn, get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line), false, dcs.table))
 
 		children := dcs.contents.find_children_of(cn.name)
 
 		if children.len != 0 {
 			for child in children {
 				child_file_path_name := child.file_path.replace('$base_dir/', '')
-				hw.write(doc_node_html(child, get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line), false))
+				hw.write(doc_node_html(child, get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line), false, dcs.table))
 			}
 		}
 	}
-	hw.write('\n</div>\n')
+	hw.write('\n<div class="footer">Powered by vdoc. Generated on: $time_gen</div>\n</div>\n')
 	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
 		hw.write('<div class="doc-toc">\n\n<ul>\n${toc.str()}</ul>\n</div>')
 	}
 	hw.write('</div></div>')
-  hw.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/components/prism-core.min.js"></script>
-       <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/components/prism-clike.min.js"></script>')
 	if cfg.inline_assets {
 		hw.write('<script>$doc_js_min</script>')
-    hw.write('<script>$v_prism_js</script>')
 	} else {
 		hw.write('<script src="$doc_js_min"></script>')
-    hw.write('<script src="$v_prism_js"></script>')
 	}
 	hw.write('</body>
 	</html>')
@@ -411,16 +502,22 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 					name: 'README',
 					comment: readme_contents
 				}
+				time_generated: time.now()
 			}
         }
 	}
 	dirs := if cfg.is_multi { get_modules_list(cfg.input_path) } else { [cfg.input_path] } 
 	for dirpath in dirs {
 		cfg.vprintln('Generating docs for ${dirpath}...')
-		dcs := doc.generate(dirpath, cfg.pub_only, !is_vlib) or {
+		mut dcs := doc.generate(dirpath, cfg.pub_only, !is_vlib) or {
 			panic(err)
 		}
 		if dcs.contents.len == 0 { continue }
+		if cfg.pub_only {
+			for i, c in dcs.contents {
+				dcs.contents[i].content = c.content.all_after('pub ')	
+			}
+		}
 		cfg.docs << dcs
 	}
 	if cfg.serve_http {
@@ -443,10 +540,9 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 					panic(err)
 				}
 			} else {
-				os.rm(os.join_path(cfg.output_path, 'doc.css'))
-				os.rm(os.join_path(cfg.output_path, 'v-prism.css'))
-				os.rm(os.join_path(cfg.output_path, 'v-prism.js'))
-				os.rm(os.join_path(cfg.output_path, 'doc.js'))
+				for fname in ['doc.css', 'v-prism.css', 'doc.js'] {
+					os.rm(os.join_path(cfg.output_path, fname))
+				}
 			}
 		}
 		outputs := cfg.render()

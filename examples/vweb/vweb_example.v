@@ -17,7 +17,7 @@ fn main() {
 	vweb.run<App>(port)
 }
 
-pub fn (app App) init() {
+pub fn (mut app App) init() {
 	app.vweb.handle_static('.')
 }
 
@@ -27,7 +27,8 @@ pub fn (mut app App) json_endpoint() {
 
 pub fn (mut app App) index() {
 	app.cnt++
-	$vweb.html()
+	app.vweb.text('Hello world from vweb')
+	//$vweb.html()
 }
 
 pub fn (mut app App) reset() {

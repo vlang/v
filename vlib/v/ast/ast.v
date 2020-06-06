@@ -245,6 +245,7 @@ pub:
 pub mut:
 	name               string
 	is_method          bool
+	is_mut             bool // !
 	args               []CallArg
 	expected_arg_types []table.Type
 	language           table.Language
@@ -778,8 +779,11 @@ pub mut:
 }
 
 pub struct ComptimeCall {
-	name string
-	left Expr
+pub:
+	method_name string
+	left        Expr
+pub mut:
+	sym         table.TypeSymbol
 }
 
 pub struct None {

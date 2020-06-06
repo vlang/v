@@ -470,7 +470,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		if field.has_default_expr {
 			f.write(' = ')
-			f.struct_field_expr( field.default_expr )
+			f.struct_field_expr(field.default_expr)
 		}
 		// f.write('// $field.pos.line_nr')
 		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
@@ -486,7 +486,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	}
 	f.writeln('}\n')
 }
-
 
 pub fn (mut f Fmt) struct_field_expr(fexpr ast.Expr) {
 	mut is_pe_amp_ce := false
@@ -633,7 +632,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					ktyp = minfo.key_type
 					vtyp = minfo.value_type
 				}
-
 				f.write('map[')
 				f.write(f.type_to_str(ktyp))
 				f.write(']')
@@ -912,6 +910,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write('.' + node.name + '(')
 		f.call_args(node.args)
 		f.write(')')
+		if node.is_mut {
+			// f.write('!')
+		}
 		f.or_expr(node.or_block)
 	} else {
 		f.write_language_prefix(node.language)
@@ -1033,12 +1034,8 @@ pub fn (mut f Fmt) mark_module_as_used(name string) {
 
 fn (mut f Fmt) write_language_prefix(lang table.Language) {
 	match lang {
-		.c {
-			f.write('C.')
-		}
-		.js {
-			f.write('JS.')
-		}
+		.c { f.write('C.') }
+		.js { f.write('JS.') }
 		else {}
 	}
 }

@@ -14,13 +14,13 @@ const (
 		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 )
 
-fn (mut p Parser)resolve_vroot(flag string) string {
+fn (mut p Parser) resolve_vroot(flag string) string {
 	mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(p.file_name_dir)
 	if vmod_file_location.vmod_file.len == 0 {
 		// There was no actual v.mod file found.
 		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in ${p.file_name_dir},' +
-		' or in one of its parent folders.')
+			' or in one of its parent folders.')
 	}
 	vmod_path := vmod_file_location.vmod_folder
 	return flag.replace('@VROOT', os.real_path(vmod_path))
@@ -220,7 +220,6 @@ fn os_from_string(os string) pref.OS {
 fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 	p.check(.dollar)
 	method_name := p.check_name()
-	_ = method_name
 	/*
 	mut j := 0
 	sym := p.table.get_type_symbol(typ)
@@ -256,6 +255,6 @@ fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 	}
 	return ast.ComptimeCall{
 		left: left
-		name: method_name
+		method_name: method_name
 	}
 }

@@ -1430,7 +1430,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write("'$it.val'")
 		}
 		ast.ComptimeCall {
-			g.write('/*c*/')
+			g.comptime_call(it)
 		}
 		ast.ConcatExpr {
 			g.concat_expr(it)
@@ -4336,7 +4336,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 
 // `ui.foo(button)` =>
 // `ui__foo(I_ui__Button_to_ui__Widget(` ...
-fn (g &Gen) interface_call(typ, interface_type table.Type) {
+fn (mut g Gen) interface_call(typ, interface_type table.Type) {
 	interface_styp := g.cc_type(interface_type)
 	styp := g.cc_type(typ)
 	mut cast_fn_name := 'I_${styp}_to_Interface_${interface_styp}'
@@ -4346,6 +4346,29 @@ fn (g &Gen) interface_call(typ, interface_type table.Type) {
 	g.write('${cast_fn_name}(')
 	if !typ.is_ptr() {
 		g.write('&')
+	}
+}
+
+fn (g &Gen) comptime_call(node ast.ComptimeCall) {
+	g.writeln('// $' + 'method call. sym="$node.sym.name"')
+	mut j := 0
+	for method in node.sym.methods {
+		if method.return_type != table.void_type {
+			continue
+		}
+		// receiver := method.args[0]
+		// if !p.expr_var.ptr {
+		// p.error('`$p.expr_var.name` needs to be a reference')
+		// }
+		amp := '' // if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
+		if j > 0 {
+			g.write(' else ')
+		}
+		g.write('if (string_eq($node.method_name, tos_lit("$method.name"))) ')
+		g.write('${node.sym.name}_$method.name ($amp ')
+		g.expr(node.left)
+		g.writeln(');')
+		j++
 	}
 }
 
