@@ -40,6 +40,8 @@ mut:
 
 struct C.sockaddr_storage {}
 
+fn C.atoi() int
+fn C.strncasecmp() int
 fn C.socket() int
 fn C.setsockopt() int
 fn C.htonl() int
@@ -154,6 +156,20 @@ fn rw_callback(loop &C.picoev_loop, fd, events int, cb_arg voidptr) {
 					p.idx[fd] = s.len
 					p.oidx[fd] = int(res.buf) - int(res.buf_start)
 					break
+				}
+				if req.method.str[0]==`p` || req.method.str[0]==`P` || req.method.str[0]==`d` || req.method.str[0]==`D`  {
+				  mut j := 0
+					for {
+						if j == req.num_headers {
+							break
+						}
+						if req.headers[j].name_len == 14 && C.strncasecmp(req.headers[j].name, "content-length", 14) == 0 {
+							//cont_length := C.atoi(tos(req.headers[j].value, req.headers[j].value_len).str)
+							//println('$cont_length')
+							//TODO need to maintain state of incomplete request to collect body later
+						}
+						j = j+1
+					}
 				}
 				p.cb(req, mut &res)
 				if pret >= s.len {
