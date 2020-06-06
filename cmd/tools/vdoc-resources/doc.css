@@ -104,6 +104,7 @@ body {
 }
 *::-webkit-scrollbar {
 	width: 8px;
+	height: 8px;
 }
 *::-webkit-scrollbar-track {
 	background: transparent;
@@ -409,9 +410,11 @@ code[class*="language-"] {
   border-radius: 0.25rem;
   overflow-x: auto;
 }
+code[class*="language-"] {
+	padding: 1rem;
+}
 pre[class*="language-"] {
   overflow: auto;
-  padding: 1rem;
   margin: 0;
 }
 .namespace {
