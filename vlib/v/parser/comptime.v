@@ -122,7 +122,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	// if p.pref.is_debug {
 	println('>>> compiling vweb HTML template "$path"')
 	v_code := tmpl.compile_file(path)
-	if p.pref.verbose {
+	if p.pref.is_verbose {
 		println('\n\n')
 		println('>>> vweb template for ${path}:')
 		println(v_code)
