@@ -15,7 +15,7 @@ fn (t1 Time) ne(t2 Time) bool {
 
 // lt returns true if provided time is less than time
 fn (t1 Time) lt(t2 Time) bool {
-	if t2.unix < t1.unix || (t2.unix == t1.unix && t2.microsecond < t1.microsecond) {
+	if t1.unix < t2.unix || (t1.unix == t2.unix && t1.microsecond < t2.microsecond) {
 		return true
 	}
 	return false
@@ -28,7 +28,7 @@ fn (t1 Time) le(t2 Time) bool {
 
 // gt returns true if provided time is greater than time
 fn (t1 Time) gt(t2 Time) bool {
-	if t2.unix > t1.unix || (t2.unix == t1.unix && t2.microsecond > t1.microsecond) {
+	if t1.unix > t2.unix || (t1.unix == t2.unix && t1.microsecond > t2.microsecond) {
 		return true
 	}
 	return false

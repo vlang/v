@@ -90,7 +90,7 @@ fn test_time1_should_be_greater_than_time2() {
 		hour: 22
 		minute: 11
 		second: 3
-		microsecond: 100
+		microsecond: 102
 	})
 
 	// Difference is one microsecond
@@ -110,7 +110,7 @@ fn test_time1_should_be_greater_than_time2() {
 		day: 10
 		hour: 22
 		minute: 11
-		second: 3
+		second: 5
 		microsecond: 0
 	})
 
@@ -139,7 +139,7 @@ fn test_time2_should_be_less_than_time1() {
 		hour: 22
 		minute: 11
 		second: 3
-		microsecond: 100
+		microsecond: 102
 	})
 
 	// Difference is one microsecond
@@ -170,7 +170,7 @@ fn test_time2_should_be_less_than_time1() {
 		day: 10
 		hour: 22
 		minute: 11
-		second: 4
+		second: 2
 		microsecond: 0
 	})
 
@@ -187,7 +187,7 @@ fn test_time1_should_be_greater_or_equal_to_time2_when_gt() {
 		hour: 22
 		minute: 11
 		second: 3
-		microsecond: 100
+		microsecond: 102
 	})
 
 	// Difference is one microsecond
@@ -207,7 +207,7 @@ fn test_time1_should_be_greater_or_equal_to_time2_when_gt() {
 		day: 10
 		hour: 22
 		minute: 11
-		second: 3
+		second: 5
 		microsecond: 0
 	})
 
@@ -294,7 +294,7 @@ fn test_time1_should_be_less_or_equal_to_time2_when_lt() {
 		hour: 22
 		minute: 11
 		second: 3
-		microsecond: 99
+		microsecond: 101
 	})
 
 	t3 := new_time( Time {
@@ -314,7 +314,7 @@ fn test_time1_should_be_less_or_equal_to_time2_when_lt() {
 		day: 10
 		hour: 22
 		minute: 11
-		second: 2
+		second: 4
 		microsecond: 0
 	})
 
