@@ -5,6 +5,7 @@ import net
 import net.urllib
 import os
 import os.cmdline
+import time
 import strings
 import v.doc
 import v.scanner
@@ -168,8 +169,10 @@ fn html_highlight(code string, tb &table.Table) string {
 				.name {
 					if tok.lit in builtin {
 						tok_typ = .builtin
-					} else if next_tok.kind in [.lcbr, .lpar] {
+					} else if next_tok.kind == .lcbr {
 						tok_typ = .symbol
+					} else if next_tok.kind == .lpar {
+						tok_typ = .function
 					} else {
 						tok_typ = .name
 					}
@@ -223,9 +226,14 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	head_tag := if head { 'h1' } else { 'h2' }
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
-	dnw.writeln('<section id="${slug(dd.name)}" class="doc-node">')
+	mut sym_name := dd.name
+	if dd.parent_type !in ['void', ''] { 
+		sym_name = '${dd.parent_type}.' + sym_name
+	}
+	node_id := slug(sym_name)
+	dnw.writeln('<section id="$node_id" class="doc-node">')
 	if dd.name != 'README' {
-		dnw.write('<div class="title"><$head_tag>${dd.name} <a href="#${slug(dd.name)}">#</a></$head_tag>')
+		dnw.write('<div class="title"><$head_tag>$sym_name <a href="#$node_id">#</a></$head_tag>')
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
 		}
@@ -254,7 +262,8 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		if children.len != 0 {
 			toc.writeln('        <ul>')
 			for child in children {
-				toc.writeln('<li><a href="#${slug(child.name)}">${child.name}</a></li>')
+				cname := cn.name + '.' + child.name
+				toc.writeln('<li><a href="#${slug(cname)}">${child.name}</a></li>')
 			}
 			toc.writeln('</ul>')
 		}
@@ -493,16 +502,22 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 					name: 'README',
 					comment: readme_contents
 				}
+				time_generated: time.now()
 			}
         }
 	}
 	dirs := if cfg.is_multi { get_modules_list(cfg.input_path) } else { [cfg.input_path] } 
 	for dirpath in dirs {
 		cfg.vprintln('Generating docs for ${dirpath}...')
-		dcs := doc.generate(dirpath, cfg.pub_only, !is_vlib) or {
+		mut dcs := doc.generate(dirpath, cfg.pub_only, !is_vlib) or {
 			panic(err)
 		}
 		if dcs.contents.len == 0 { continue }
+		if cfg.pub_only {
+			for i, c in dcs.contents {
+				dcs.contents[i].content = c.content.all_after('pub ')	
+			}
+		}
 		cfg.docs << dcs
 	}
 	if cfg.serve_http {
