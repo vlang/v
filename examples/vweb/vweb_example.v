@@ -27,15 +27,15 @@ pub fn (mut app App) json_endpoint() {
 
 pub fn (mut app App) index() {
 	app.cnt++
-	app.vweb.text('Hello world from vweb')
-	//$vweb.html()
+	//app.vweb.text('Hello world from vweb')
+	$vweb.html()
 }
 
 pub fn (mut app App) reset() {
 }
 
 pub fn (mut app App) text() {
-	app.vweb.text('Hello world')
+	app.vweb.text('Hello world from vweb')
 }
 
 pub fn (mut app App) cookie() {

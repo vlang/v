@@ -8,6 +8,8 @@ import v.ast
 import v.pref
 import v.vmod
 import v.table
+import vweb.tmpl
+import v.token
 
 const (
 	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
@@ -76,14 +78,81 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
+struct ParserState {
+	scanner_pos int
+	tok         token.Token
+	prev_tok    token.Token
+	peek_tok    token.Token
+	peek_tok2   token.Token
+	peek_tok3   token.Token
+}
+
+pub fn (p &Parser) save_state() ParserState {
+	return ParserState{
+		scanner_pos: p.scanner.pos
+		tok: p.tok
+		prev_tok: p.prev_tok
+		peek_tok: p.peek_tok
+		peek_tok2: p.peek_tok2
+		peek_tok3: p.peek_tok3
+	}
+}
+
+pub fn (mut p Parser) restore_state(state ParserState) {
+	p.scanner.pos = state.scanner_pos
+	p.tok = state.tok
+	p.prev_tok = state.prev_tok
+	p.peek_tok = state.peek_tok
+	p.peek_tok2 = state.peek_tok2
+	p.peek_tok3 = state.peek_tok3
+}
+
 fn (mut p Parser) vweb() ast.ComptimeCall {
 	p.check(.dollar)
 	p.check(.name) // skip `vweb.html()` TODO
 	p.check(.dot)
+	pos := p.scanner.pos
 	p.check(.name)
 	p.check(.lpar)
 	p.check(.rpar)
-	return ast.ComptimeCall{}
+	state := p.save_state()
+	// Compile vweb html template to V code, parse that V code and embed the resulting V function
+	// that returns an html string.
+	mut path := p.cur_fn_name + '.html'
+	// if p.pref.is_debug {
+	println('>>> compiling vweb HTML template "$path"')
+	v_code := tmpl.compile_file(path)
+	if p.pref.verbose {
+		println('\n\n')
+		println('>>> vweb template for ${path}:')
+		println(v_code)
+		println('>>> end of vweb template END')
+		println('\n\n')
+		p.scanner.text = p.scanner.text[..pos] + v_code + p.scanner.text[pos..]
+		println(p.scanner.text)
+	}
+	// }
+	/*
+	if !os.exists(path) {
+		// Can't find the template file in current directory,
+		// try looking next to the vweb program, in case it's run with
+		// v path/to/vweb_app.v
+		path = os.dir(p.scanner.file_path) + '/' + path
+		if !os.exists(path) {
+			p.error('vweb HTML template "$path" not found')
+		}
+	}
+	*/
+	p.restore_state(state)
+	p.scanner.pos = pos + v_code.len + 1
+	/*
+	println('restored:')
+	println(p.scanner.text[p.scanner.pos..])
+	println('=============')
+	*/
+	return ast.ComptimeCall{
+		is_vweb: true
+	}
 }
 
 fn (mut p Parser) comp_if() ast.Stmt {

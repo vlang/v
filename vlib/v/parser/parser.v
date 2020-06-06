@@ -54,6 +54,7 @@ mut:
 	expecting_type    bool // `is Type`, expecting type
 	errors            []errors.Error
 	warnings          []errors.Warning
+	cur_fn_name       string
 }
 
 // for tests

@@ -781,6 +781,8 @@ pub struct ComptimeCall {
 pub:
 	method_name string
 	left        Expr
+	is_vweb     bool
+	vweb_stmts  []Stmt
 pub mut:
 	sym         table.TypeSymbol
 }

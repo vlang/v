@@ -4350,6 +4350,10 @@ fn (mut g Gen) interface_call(typ, interface_type table.Type) {
 }
 
 fn (g &Gen) comptime_call(node ast.ComptimeCall) {
+	if node.is_vweb {
+		g.writeln('vweb__Context_html(&app-> vweb, tmpl_res)')
+		return
+	}
 	g.writeln('// $' + 'method call. sym="$node.sym.name"')
 	mut j := 0
 	for method in node.sym.methods {

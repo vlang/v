@@ -265,6 +265,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		})
 	}
 	// Body
+	p.cur_fn_name = name
 	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
 	body_start_pos := p.peek_tok.position()
