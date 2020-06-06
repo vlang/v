@@ -778,8 +778,11 @@ pub mut:
 }
 
 pub struct ComptimeCall {
-	name string
-	left Expr
+pub:
+	method_name string
+	left        Expr
+pub mut:
+	sym         table.TypeSymbol
 }
 
 pub struct None {

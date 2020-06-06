@@ -243,7 +243,7 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 	no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
 		caname := c_name(arg.name)
-		typ := g.unwrap_generic(arg.typ).set_nr_muls(arg.typ.nr_muls())
+		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.get_type_symbol(typ)
 		mut arg_type_name := g.typ(typ) // arg_type_sym.name.replace('.', '__')
 		// if arg.name == 'xxx' {
@@ -328,9 +328,10 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 }
 
-pub fn (mut g Gen) unwrap_generic(typ table.Type) table.Type {
+pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
 	if typ.idx() == table.t_type_idx {
-		return g.cur_generic_type
+		// return g.cur_generic_type
+		return g.cur_generic_type.derive(typ)
 	}
 	return typ
 }

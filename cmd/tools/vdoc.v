@@ -7,16 +7,37 @@ import os
 import os.cmdline
 import strings
 import v.doc
-import v.util
+import v.scanner
+import v.table
+import v.token
 import v.vmod
 
+enum HighlightTokenTyp {
+	unone
+	boolean
+	builtin
+	char
+	comment
+	function
+	keyword
+	name
+	number
+	operator
+	punctuation
+	string
+	symbol
+}
+
 const (
-	exe_path = os.executable()
-	exe_dir  = os.dir(exe_path)
-	res_path = os.join_path(exe_dir, 'vdoc-resources')
+	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
+	exe_path        = os.executable()
+	exe_dir         = os.dir(exe_path)
+	res_path        = os.join_path(exe_dir, 'vdoc-resources')
+	vexe_path       = os.base_dir(@VEXE)
 )
 
 enum OutputType {
+	unset
 	html
 	markdown
 	json
@@ -25,16 +46,19 @@ enum OutputType {
 }
 
 struct DocConfig {
+mut:
 	pub_only       bool = true
 	show_loc       bool = false // for plaintext
 	serve_http     bool = false // for html
 	is_multi       bool = false
+	is_verbose     bool = false
 	include_readme bool = false
-mut:
-	opath    string
-	src_path string
-	docs     []doc.Doc
-	manifest vmod.Manifest
+	inline_assets  bool = false
+	output_path    string
+	input_path     string
+	output_type    OutputType = .unset
+	docs           []doc.Doc
+	manifest       vmod.Manifest
 }
 
 fn slug(title string) string {
@@ -54,7 +78,7 @@ fn open_url(url string) {
 }
 
 fn (mut cfg DocConfig) serve_html() {
-	docs := cfg.multi_render(.html)
+	docs := cfg.render()
 	def_name := docs.keys()[0]
 	server := net.listen(8046) or {
 		panic(err)
@@ -113,7 +137,7 @@ fn (cfg DocConfig) gen_json(idx int) string {
 	mut jw := strings.new_builder(200)
 	jw.writeln('{\n\t"module_name": "$dcs.head.name",\n\t"description": "${escape(dcs.head.comment)}",\n\t"contents": [')
 	for i, cn in dcs.contents {
-		name := cn.name[dcs.head.name.len+1..]
+		name := cn.name.all_after(dcs.head.name)
 		jw.writeln('\t\t{')
 		jw.writeln('\t\t\t"name": "$name",')
 		jw.writeln('\t\t\t"signature": "${escape(cn.content)}",')
@@ -126,32 +150,102 @@ fn (cfg DocConfig) gen_json(idx int) string {
 	return jw.str()
 }
 
+fn html_highlight(code string, tb &table.Table) string {
+	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64', 'u128', 'rune', 'f32', 'f64', 'any_int', 'any_float', 'byteptr', 'voidptr', 'any']
+	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
+		lit := if typ in [.unone, .operator, .punctuation] { tok.kind.str() } else { tok.lit }
+		return if typ in [.unone, .name] { lit } else { '<span class="token $typ">$lit</span>' } 
+	}
+	s := scanner.new_scanner(code, .parse_comments)
+	mut tok := s.scan()
+	mut next_tok := s.scan()
+	mut buf := strings.new_builder(200)
+	mut i := 0
+	for i < code.len {
+		if i == tok.pos {
+			mut tok_typ := HighlightTokenTyp.unone
+			match tok.kind {
+				.name {
+					if tok.lit in builtin {
+						tok_typ = .builtin
+					} else if next_tok.kind in [.lcbr, .lpar] {
+						tok_typ = .symbol
+					} else {
+						tok_typ = .name
+					}
+				}
+				.comment {
+					tok_typ = .comment
+				}
+				.chartoken {
+					tok_typ = .char
+				}
+				.string {
+					tok_typ = .string
+				}
+				.number {
+					tok_typ = .number
+				}
+				.key_true, .key_false {
+					tok_typ = .boolean
+				}
+				.lpar, .lcbr, .rpar, .rcbr, .lsbr, 
+				.rsbr, .semicolon, .colon, .comma, .dot {
+					tok_typ = .punctuation
+				}
+				else {
+					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
+						tok_typ = .keyword
+					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary() || tok.kind.is_relational() || tok.kind.is_infix() {
+						tok_typ = .operator
+					}
+				}
+			}
+			buf.write(highlight_code(tok, tok_typ))
+			if next_tok.kind != .eof {
+				i = tok.pos + tok.len
+				tok = next_tok
+				next_tok = s.scan()
+			} else {
+				break
+			}
+		} else {
+			buf.write_b(code[i])
+			i++
+		}
+	}
+	return buf.str()
+}
+
+fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string {
+	mut dnw := strings.new_builder(200)
+	link_svg := '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
+	head_tag := if head { 'h1' } else { 'h2' }
+	md_content := markdown.to_html(dd.comment)
+	hlighted_code := html_highlight(dd.content, tb)
+	dnw.writeln('<section id="${slug(dd.name)}" class="doc-node">')
+	if dd.name != 'README' {
+		dnw.write('<div class="title"><$head_tag>${dd.name} <a href="#${slug(dd.name)}">#</a></$head_tag>')
+		if link.len != 0 {
+			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
+		}
+		dnw.write('</div>')
+	}
+	if head {
+		dnw.write(md_content)
+	} else {
+		dnw.writeln('<pre class="signature language-v"><code class="language-v">$hlighted_code</code></pre>')
+		dnw.writeln(md_content)
+	}
+	dnw.writeln('</section>')
+	return dnw.str()
+}
+
 fn (cfg DocConfig) gen_html(idx int) string {
 	dcs := cfg.docs[idx]
+	time_gen := dcs.time_generated.day.str() + ' ' + dcs.time_generated.smonth() + ' ' + dcs.time_generated.year.str() + ' ' + dcs.time_generated.hhmmss()
 	mut hw := strings.new_builder(200)
 	mut toc := strings.new_builder(200)
-	mut doc_node_html := fn (dd doc.DocNode, link string, head bool) string {
-		mut dnw := strings.new_builder(200)
-		link_svg := '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
-		head_tag := if head { 'h1' } else { 'h2' }
-		md_content := markdown.to_html(dd.comment)
-		dnw.writeln('<section id="${slug(dd.name)}" class="doc-node">')
-		if dd.name != 'README' {
-			dnw.write('<div class="title"><$head_tag>${dd.name} <a href="#${slug(dd.name)}">#</a></$head_tag>')
-			if link.len != 0 {
-				dnw.write('<a class="link" target="_blank" href="$link">$link_svg</a>')
-			}
-			dnw.write('</div>')
-		}
-		if head {
-			dnw.write(md_content)
-		} else {
-			dnw.writeln('<pre><code class="signature">${dd.content}</code></pre>')
-			dnw.writeln(md_content)
-		}
-		dnw.writeln('</section>')
-		return dnw.str()
-	}
 	// generate toc first
 	for cn in dcs.contents {
 		if cn.parent_type !in ['void', ''] { continue }
@@ -166,6 +260,16 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		}
 		toc.writeln('</li>')
 	}	// write head
+
+	// get resources
+	doc_css_min := cfg.get_resource('doc.css', true)
+	doc_js_min := cfg.get_resource('doc.js', false)
+	light_icon := cfg.get_resource('light.svg', true)
+	dark_icon := cfg.get_resource('dark.svg', true)
+	menu_icon := cfg.get_resource('menu.svg', true)
+	arrow_icon := cfg.get_resource('arrow.svg', true)
+	v_prism_css := cfg.get_resource('v-prism.css', true)
+
 	hw.write('
 	<!DOCTYPE html>
 	<html lang="en">
@@ -173,21 +277,19 @@ fn (cfg DocConfig) gen_html(idx int) string {
     <meta charset="UTF-8">
 	<meta http-equiv="x-ua-compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${dcs.head.name} | vdoc</title>
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css">')
-
-	// get resources
-	doc_css_min := get_resource('doc.css', true)
-	light_icon := get_resource('light.svg', true)
-	dark_icon := get_resource('dark.svg', true)
-	menu_icon := get_resource('menu.svg', true)
-	arrow_icon := get_resource('arrow.svg', true)
+    <title>${dcs.head.name} | vdoc</title>')
 
 	// write css
-	hw.write('<style>$doc_css_min</style>')
+	if cfg.inline_assets {
+		hw.write('\n    <style>$v_prism_css</style>')
+		hw.write('\n    <style>$doc_css_min</style>')
+	} else {
+		hw.write('\n	<link rel="stylesheet" href="$v_prism_css" />')
+		hw.write('\n	<link rel="stylesheet" href="$doc_css_min" />')
+	}
+
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
-	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.src_path)) } else { dcs.head.name }
+	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.input_path)) } else { dcs.head.name }
 	// write nav1
 	hw.write('
 	<body>
@@ -199,7 +301,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 				<div class="module">${header_name}</div>
 				<div class="toggle-version-container">
 					<span>${version}</span>
-					<div id="dark-mode-toggle" role="checkbox">$light_icon $dark_icon</div>
+					<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">$light_icon $dark_icon</div>
 				</div>
 				$menu_icon
 			</div>
@@ -250,29 +352,33 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}
 	hw.write('</ul>\n</nav>\n</header>')
 	hw.write('<div class="doc-container">\n<div class="doc-content">\n')
-	hw.write(doc_node_html(dcs.head, '', true))
+	hw.write(doc_node_html(dcs.head, '', true, dcs.table))
 	for cn in dcs.contents {
 		if cn.parent_type !in ['void', ''] { continue }
-		base_dir := os.base_dir(os.real_path(cfg.src_path))
+		base_dir := os.base_dir(os.real_path(cfg.input_path))
 		file_path_name := cn.file_path.replace('$base_dir/', '')
-		hw.write(doc_node_html(cn, get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line), false))
+		hw.write(doc_node_html(cn, get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line), false, dcs.table))
 
 		children := dcs.contents.find_children_of(cn.name)
 
 		if children.len != 0 {
 			for child in children {
 				child_file_path_name := child.file_path.replace('$base_dir/', '')
-				hw.write(doc_node_html(child, get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line), false))
+				hw.write(doc_node_html(child, get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line), false, dcs.table))
 			}
 		}
 	}
-	hw.write('\n</div>\n')
+	hw.write('\n<div class="footer">Powered by vdoc. Generated on: $time_gen</div>\n</div>\n')
 	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
 		hw.write('<div class="doc-toc">\n\n<ul>\n${toc.str()}</ul>\n</div>')
 	}
-	doc_js_min := get_resource('doc.js', true)
-	hw.write('</div></div><script>$doc_js_min</script>
-	</body>
+	hw.write('</div></div>')
+	if cfg.inline_assets {
+		hw.write('<script>$doc_js_min</script>')
+	} else {
+		hw.write('<script src="$doc_js_min"></script>')
+	}
+	hw.write('</body>
 	</html>')
 	return hw.str()
 }
@@ -280,8 +386,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 fn (cfg DocConfig) gen_plaintext(idx int) string {
 	dcs := cfg.docs[idx]
 	mut pw := strings.new_builder(200)
-	head_lines := '='.repeat(dcs.head.content.len)
-	pw.writeln('${dcs.head.content}\n$head_lines\n')
+	pw.writeln('${dcs.head.content}\n')
 	for cn in dcs.contents {
 		pw.writeln(cn.content)
 		if cn.comment.len > 0 {
@@ -291,7 +396,6 @@ fn (cfg DocConfig) gen_plaintext(idx int) string {
 			pw.writeln('Location: ${cn.file_path}:${cn.pos.line}:${cn.pos.col}\n\n')
 		}
 	}
-	pw.writeln('Generated on $dcs.time_generated')
 	return pw.str()
 }
 
@@ -317,82 +421,74 @@ fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 	return hw.str() + '\n' + cw.str()
 }
 
-fn (cfg DocConfig) multi_render(output_type OutputType) map[string]string {
+fn (cfg DocConfig) render() map[string]string {
 	mut docs := map[string]string
 	for i, doc in cfg.docs {
 		mut name := if doc.head.name == 'README' {
 			'index'
-		} else if cfg.docs.len == 1 && !os.is_dir(cfg.opath) {
-			os.dir(os.file_name(cfg.opath))
+		} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
+			os.file_name(cfg.output_path)
 		} else {
 			doc.head.name
 		}
-		name = name + match output_type {
+		name = name + match cfg.output_type {
 			.html { '.html' }
 			.markdown { '.md' }
 			.json { '.json' }
 			else { '.txt' }
 		}
-		docs[name] = match output_type {
+		docs[name] = match cfg.output_type {
 			.html { cfg.gen_html(i) }
 			.markdown { cfg.gen_markdown(i, true) }
 			.json { cfg.gen_json(i) }
 			else { cfg.gen_plaintext(i) }
 		}
 	}
+	cfg.vprintln('Rendered: ' + docs.keys().str())
 	return docs
 }
 
-fn (mut config DocConfig) generate_docs_from_file() {
-	if config.opath.len != 0 {
-		config.opath = os.join_path(os.real_path(os.base_dir(config.opath)), os.file_name(config.opath))
-	}
-	println(config.opath)
-	mut output_type := OutputType.plaintext
-	// identify output type
-	if config.serve_http {
-		output_type = .html
-	} else if config.opath.len == 0 {
-		output_type = .stdout
-	} else {
-		ext := os.file_ext(config.opath)
-		if ext in ['.md', '.markdown'] || config.opath in [':md:', ':markdown:'] {
-			output_type = .markdown
-		} else if ext in ['.html', '.htm'] || config.opath == ':html:' {
-			output_type = .html
-		} else if ext == '.json' || config.opath == ':json:' {
-			output_type = .json
+fn (mut cfg DocConfig) generate_docs_from_file() {
+	if cfg.output_path.len == 0 {
+		if cfg.output_type == .unset {
+			cfg.output_type = .stdout
 		} else {
-			output_type = .plaintext
+			cfg.vprintln('No output path has detected. Using input path instead.')
+			cfg.output_path = cfg.input_path
 		}
+	} else if cfg.output_type == .unset {
+		cfg.vprintln('Output path detected. Identifying output type..')
+		ext := os.file_ext(cfg.output_path)
+		cfg.set_output_type_from_str(ext.all_after('.'))
 	}
-	if config.include_readme && output_type !in [.html, .stdout] {
+	if cfg.include_readme && cfg.output_type !in [.html, .stdout] {
 		eprintln('vdoc: Including README.md for doc generation is supported on HTML output, or when running directly in the terminal.')
 		exit(1)
 	}
-	mut manifest_path := os.join_path(if os.is_dir(config.src_path) { config.src_path } else { os.base_dir(config.src_path) }, 'v.mod')
-	if os.exists(manifest_path) && 'vlib' !in config.src_path {
+	is_vlib := 'vlib' in cfg.input_path
+	dir_path := if is_vlib {
+		vexe_path
+	} else if os.is_dir(cfg.input_path) { 
+		cfg.input_path
+	} else { 
+		os.base_dir(cfg.input_path) 
+	}
+	manifest_path := os.join_path(dir_path, 'v.mod')
+	readme_path := os.join_path(dir_path, 'README.md')
+	if os.exists(manifest_path) {
+		cfg.vprintln('Reading v.mod info from $manifest_path')
 		if manifest := vmod.from_file(manifest_path) {
-			config.manifest = manifest
+			cfg.manifest = manifest
 		}
 	}
-	if 'vlib' in config.src_path {
-		config.manifest.version = util.v_version
-		config.manifest.repo_url = 'https://github.com/vlang/v'
-	}
-	readme_path := if 'vlib' in config.src_path {
-		os.join_path(os.base_dir(@VEXE), 'README.md')
-	} else {
-		os.join_path(config.src_path, 'README.md')
-	}
-	// check README.md
-	if os.exists(readme_path) && config.include_readme {
+	if os.exists(readme_path) && cfg.include_readme {
+		cfg.vprintln('Reading README file from $readme_path')
 		readme_contents := os.read_file(readme_path) or { '' }
-        if output_type == .stdout {
-			println(readme_contents)
+        if cfg.output_type == .stdout {
+			println(markdown.to_plain(readme_contents))
         }
-        if output_type == .html {
-			config.docs << doc.Doc{
+        if cfg.output_type == .html {
+			cfg.docs << doc.Doc{
 				head: doc.DocNode{
 					name: 'README',
 					comment: readme_contents
@@ -400,52 +496,78 @@ fn (mut config DocConfig) generate_docs_from_file() {
 			}
         }
 	}
-	if config.is_multi {
-		dirs := get_modules_list(config.src_path)
-		for dirpath in dirs {
-			dcs := doc.generate(dirpath, config.pub_only, 'vlib' !in config.src_path) or {
-				panic(err)
-			}
-			if dcs.contents.len == 0 { continue }
-			config.docs << dcs
-		}
-	} else {
-		dcs := doc.generate(config.src_path, config.pub_only, 'vlib' !in config.src_path) or {
+	dirs := if cfg.is_multi { get_modules_list(cfg.input_path) } else { [cfg.input_path] } 
+	for dirpath in dirs {
+		cfg.vprintln('Generating docs for ${dirpath}...')
+		dcs := doc.generate(dirpath, cfg.pub_only, !is_vlib) or {
 			panic(err)
 		}
-		config.docs << dcs
+		if dcs.contents.len == 0 { continue }
+		cfg.docs << dcs
 	}
-	if config.serve_http {
-		config.serve_html()
+	if cfg.serve_http {
+		cfg.serve_html()
 		return
 	}
-	outputs := config.multi_render(output_type)
-	if output_type == .stdout || (config.opath.starts_with(':') && config.opath.ends_with(':')) {
+	cfg.vprintln('Rendering docs...')
+	if cfg.output_path.len == 0 {
+		outputs := cfg.render()
 		first := outputs.keys()[0]
 		println(outputs[first])
 	} else {
-		if !os.is_dir(config.opath) {
-			config.opath = os.base_dir(config.opath)
+		if !os.is_dir(cfg.output_path) {
+			cfg.output_path = os.real_path('.')
 		}
-		if config.is_multi {
-			config.opath = os.join_path(config.opath, '_docs')
-			if !os.exists(config.opath) {
-				os.mkdir(config.opath) or {
+		if cfg.is_multi {
+			cfg.output_path = os.join_path(cfg.output_path, '_docs')
+			if !os.exists(cfg.output_path) {
+				os.mkdir(cfg.output_path) or {
 					panic(err)
+				}
+			} else {
+				for fname in ['doc.css', 'v-prism.css', 'doc.js'] {
+					os.rm(os.join_path(cfg.output_path, fname))
 				}
 			}
 		}
+		outputs := cfg.render()
 		for file_name, content in outputs {
-			opath := os.join_path(config.opath, file_name)
-			println('Generating ${opath}...')
-			os.write_file(opath, content)
+			output_path := os.join_path(cfg.output_path, file_name)
+			println('Generating ${output_path}...')
+			os.write_file(output_path, content)
 		}
 	}
 }
 
+fn (mut cfg DocConfig) set_output_type_from_str(format string) {
+	match format {
+		'htm', 'html' { 
+			cfg.output_type = .html 
+		}
+		'md', 'markdown' { 
+			cfg.output_type = .markdown 
+		}
+		'json' { 
+			cfg.output_type = .json 
+		}
+		'stdout' {
+			cfg.output_type = .stdout
+		}
+		else { 
+			cfg.output_type = .plaintext 
+		}
+	}
+	cfg.vprintln('Setting output type to "$cfg.output_type"')
+}
+
+fn (cfg DocConfig) vprintln(str string) {
+	if cfg.is_verbose {
+		println('vdoc: $str')
+	}
+}
+
 fn lookup_module(mod string) ?string {
-	mod_path := mod.replace('.', '/')
-	vexe_path := os.base_dir(@VEXE)
+	mod_path := mod.replace('.', os.path_separator)
 	compile_dir := os.real_path(os.base_dir('.'))
 	modules_dir := os.join_path(compile_dir, 'modules', mod_path)
 	vlib_path := os.join_path(vexe_path, 'vlib', mod_path)
@@ -471,40 +593,97 @@ fn get_modules_list(path string) []string {
 	return dirs
 }
 
-fn get_resource(name string, minify bool) string {
+fn (cfg DocConfig) get_resource(name string, minify bool) string {
 	path := os.join_path(res_path, name)
-	res := os.read_file(path) or { panic('could not read $path') }
+	mut res := os.read_file(path) or { panic('could not read $path') }
 	if minify {
-		res.replace('\n', ' ')
+		res = res.replace('\n', ' ')
 	}
-	return res
+	// TODO: Make SVG inline for now
+	if cfg.inline_assets || path.ends_with('.svg') {
+		return res
+	} else {
+		output_path := os.join_path(cfg.output_path, name)
+		if !os.exists(output_path) {
+			println('Generating ${output_path}...')
+			os.write_file(output_path, res)
+		}
+		return name
+	}
 }
 
 fn main() {
-	args_after_doc := cmdline.options_after(os.args[1..], ['doc'])
-	opts := cmdline.only_options(os.args[1..])
-	args := cmdline.only_non_options(args_after_doc)
+	args := os.args[2..]
 	if args.len == 0 || args[0] == 'help' {
-		os.system('v help doc')
+		os.system('${@VEXE} help doc')
 		exit(0)
 	}
-	mut config := DocConfig{
-		src_path: args[0],
-		opath: if args.len >= 2 { args[1] } else { '' },
-		pub_only: '-all' !in opts,
-		show_loc: '-loc' in opts,
-		serve_http: '-s' in opts,
-		is_multi: '-m' in opts,
-		include_readme: '-r' in opts,
+	mut cfg := DocConfig{
 		manifest: vmod.Manifest{ repo_url: '' }
 	}
-	is_path := config.src_path.ends_with('.v') || config.src_path.split('/').len > 1 || config.src_path == '.'
-	if !is_path {
-		mod_path := lookup_module(config.src_path) or {
+	for i := 0; i < args.len; i++ {
+		arg := args[i]
+		current_args := args[i..]
+		match arg {
+			'-all' {
+				cfg.pub_only = false
+			}
+			'-f' {
+				format := cmdline.option(current_args, '-f', '')
+				allowed_str := allowed_formats.join(', ')
+				if format !in allowed_formats {
+					eprintln('vdoc: "$format" is not a valid format. Only $allowed_str are allowed.')
+					exit(1)
+				}
+				cfg.set_output_type_from_str(format)
+				i++
+			}
+			'-inline-assets' {
+				cfg.inline_assets = true
+			}
+			'-l' {
+				cfg.show_loc = true
+			}
+			'-m' {
+				cfg.is_multi = true
+			}
+			'-o' {
+				opath := cmdline.option(current_args, '-o', '')
+				cfg.output_path = os.real_path(opath)
+				i++
+			}
+			'-s' {
+				cfg.inline_assets = true
+				cfg.serve_http = true
+				cfg.output_type = .html
+			}
+			'-r' {
+				cfg.include_readme = true
+			}
+			'-v' {
+				cfg.is_verbose = true
+			}
+			else {
+				cfg.input_path = arg
+				break
+			}
+		}
+	}
+	if cfg.input_path.len == 0 {
+		eprintln('vdoc: No input path found.')
+		exit(1)
+	}
+	is_path := cfg.input_path.ends_with('.v') || cfg.input_path.split(os.path_separator).len > 1 || cfg.input_path == '.'
+	if cfg.input_path == 'vlib' {
+		cfg.is_multi = true
+		cfg.input_path = os.join_path(vexe_path, 'vlib')
+	} else if !is_path {
+		cfg.vprintln('Input "$cfg.input_path" is not a valid path. Looking for modules named "$cfg.input_path"...')
+		mod_path := lookup_module(cfg.input_path) or {
 			eprintln(err)
 			exit(1)
 		}
-		config.src_path = mod_path
+		cfg.input_path = mod_path
 	}
-	config.generate_docs_from_file()
+	cfg.generate_docs_from_file()
 }

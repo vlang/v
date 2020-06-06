@@ -580,8 +580,8 @@ pub fn (mut s Scanner) scan() token.Token {
 		// tmp hack to detect . in ${}
 		// Check if not .eof to prevent panic
 		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
-		if token.is_key(name) {
-			kind := token.key_to_token(name)
+		kind := token.keywords[name]
+		if kind != .unknown {
 			if kind == .key_fn {
 				s.struct_name = s.ident_struct_name()
 				s.fn_name = s.ident_fn_name()

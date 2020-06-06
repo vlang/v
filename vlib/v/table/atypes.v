@@ -112,14 +112,21 @@ pub fn (t Type) clear_flag(flag TypeFlag) Type {
 }
 
 // clear all flags
+[inline]
 pub fn (t Type) clear_flags() Type {
 	return 0 | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
 }
 
-// return true if `flag` is set in `t`
+// return true if `flag` is set on `t`
 [inline]
 pub fn (t Type) has_flag(flag TypeFlag) bool {
 	return (((int(t) >> 24) & 0xff) >> int(flag)) & 1 == 1
+}
+
+// copy flags & nr_muls from `t_from` to `t` and return `t`
+[inline]
+pub fn (t Type) derive(t_from Type) Type {
+	return (((int(t_from) >> 24) & 0xff) << 24) | (((int(t_from) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
 }
 
 // return new type with TypeSymbol idx set to `idx`

@@ -217,7 +217,7 @@ static int fons__tt_buildGlyphBitmap(FONSttFontImpl *font, int glyph, float size
 
 	ftError = FT_Set_Pixel_Sizes(font->font, 0, (FT_UInt)(size * (float)font->font->units_per_EM / (float)(font->font->ascender - font->font->descender)));
 	if (ftError) return 0;
-	ftError = FT_Load_Glyph(font->font, glyph, FT_LOAD_RENDER);
+	ftError = FT_Load_Glyph(font->font, glyph, FT_LOAD_RENDER | FT_LOAD_FORCE_AUTOHINT);
 	if (ftError) return 0;
 	ftError = FT_Get_Advance(font->font, glyph, FT_LOAD_NO_SCALE, &advFixed);
 	if (ftError) return 0;

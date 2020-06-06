@@ -852,7 +852,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		if is_generic {
 			// We need the receiver to be T in cgen.
-			call_expr.receiver_type = table.t_type
+			call_expr.receiver_type = table.t_type.derive(method.args[0].typ)
 		} else {
 			call_expr.receiver_type = method.args[0].typ
 		}
@@ -1226,7 +1226,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	if return_stmt.exprs.len == 0 {
 		return
 	}
-	expected_type := c.expected_type
+	expected_type := c.unwrap_generic(c.expected_type)
 	expected_type_sym := c.table.get_type_symbol(expected_type)
 	exp_is_optional := expected_type.has_flag(.optional)
 	mut expected_types := [expected_type]
@@ -1257,23 +1257,17 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		return
 	}
 	for i, exp_type in expected_types {
-		got_typ := got_types[i]
-		if got_typ.has_flag(.optional) &&
-			(!exp_type.has_flag(.optional) || c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
+		got_typ := c.unwrap_generic(got_types[i])
+		if got_typ.has_flag(.optional) && (!exp_type.has_flag(.optional) || c.table.type_to_str(got_typ) !=
+			c.table.type_to_str(exp_type)) {
 			pos := return_stmt.exprs[i].position()
-			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument', pos)
+			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
+				pos)
 		}
-		is_generic := exp_type == table.t_type
-		ok := if is_generic { c.check_types(got_typ, c.cur_generic_type) || got_typ == exp_type } else { c.check_types(got_typ,
-				exp_type) }
-		// ok := c.check_types(got_typ, exp_type)
-		if !ok { // !c.table.check(got_typ, exp_typ) {
+		if !c.check_types(got_typ, exp_type) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			mut exp_typ_sym := c.table.get_type_symbol(exp_type)
 			pos := return_stmt.exprs[i].position()
-			if is_generic {
-				exp_typ_sym = c.table.get_type_symbol(c.cur_generic_type)
-			}
 			if exp_typ_sym.kind == .interface_ {
 				c.type_implements(got_typ, exp_type, return_stmt.pos)
 				continue
@@ -1663,9 +1657,8 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					scope.update_var_type(it.key_var, key_type)
 				}
 				value_type := c.table.value_type(typ)
-				if value_type == table.void_type {
-					typ_sym := c.table.get_type_symbol(typ)
-					c.error('for in: cannot index `$typ_sym.name`', it.cond.position())
+				if value_type == table.void_type || typ.has_flag(.optional) {
+					c.error('for in: cannot index `${c.table.type_to_str(typ)}`', it.cond.position())
 				}
 				it.cond_type = typ
 				it.kind = sym.kind
@@ -1748,9 +1741,10 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	c.expected_type = table.void_type
 }
 
-pub fn (mut c Checker) unwrap_generic(typ table.Type) table.Type {
+pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 	if typ.idx() == table.t_type_idx {
-		return c.cur_generic_type
+		// return c.cur_generic_type
+		return c.cur_generic_type.derive(typ)
 	}
 	return typ
 }
@@ -1831,6 +1825,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CharLiteral {
 			return table.byte_type
+		}
+		ast.ComptimeCall {
+			it.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(it.left)))
+			return table.void_type
 		}
 		ast.ConcatExpr {
 			return c.concat_expr(mut it)

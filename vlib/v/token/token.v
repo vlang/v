@@ -14,6 +14,7 @@ pub:
 }
 
 pub enum Kind {
+	unknown
 	eof
 	name // user
 	number // 123
@@ -133,8 +134,8 @@ const (
 )
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
-fn build_keys() map[string]int {
-	mut res := map[string]int
+fn build_keys() map[string]Kind {
+	mut res := map[string]Kind
 	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
 		key := token_str[t]
 		res[key] = t
@@ -145,6 +146,7 @@ fn build_keys() map[string]int {
 // TODO remove once we have `enum Kind { name('name') if('if') ... }`
 fn build_token_str() []string {
 	mut s := [''].repeat(nr_tokens)
+	s[Kind.unknown] = 'unknown'
 	s[Kind.eof] = 'eof'
 	s[Kind.name] = 'name'
 	s[Kind.number] = 'number'

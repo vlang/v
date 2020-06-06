@@ -1209,7 +1209,16 @@ _SOKOL_PRIVATE void _sapp_frame(void) {
 @end
 #endif
 
-static NSWindow* _sapp_macos_window_obj;
+@interface MyWindow : NSWindow {
+}
+@end
+
+@implementation MyWindow
+- (BOOL)canBecomeKeyWindow {    return YES;}
+@end
+
+
+static MyWindow* _sapp_macos_window_obj;
 static _sapp_macos_window_delegate* _sapp_macos_win_dlg_obj;
 static _sapp_macos_app_delegate* _sapp_macos_app_dlg_obj;
 static _sapp_macos_view* _sapp_view_obj;
@@ -1401,13 +1410,17 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         }
         _sapp.dpi_scale = (float)_sapp.framebuffer_width / (float) _sapp.window_width;
     }
-    const NSUInteger style =
+    NSUInteger style =    NSWindowStyleMaskBorderless;
+    if (!_sapp.desc.fullscreen) {
+	style =
         NSWindowStyleMaskTitled |
         NSWindowStyleMaskClosable |
         NSWindowStyleMaskMiniaturizable |
         NSWindowStyleMaskResizable;
+	  }
+
     NSRect window_rect = NSMakeRect(0, 0, _sapp.window_width, _sapp.window_height);
-    _sapp_macos_window_obj = [[NSWindow alloc]
+    _sapp_macos_window_obj = [[MyWindow alloc]
         initWithContentRect:window_rect
         styleMask:style
         backing:NSBackingStoreBuffered
@@ -1480,7 +1493,7 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         [[NSRunLoop currentRunLoop] addTimer:_sapp_macos_timer_obj forMode:NSDefaultRunLoopMode];
     #endif
     _sapp.valid = true;
-    if (_sapp.desc.fullscreen) {
+    if (_sapp.desc.fullscreen && false) {
         /* on GL, this already toggles a rendered frame, so set the valid flag before */
         [_sapp_macos_window_obj toggleFullScreen:self];
     }
@@ -1617,6 +1630,7 @@ _SOKOL_PRIVATE void _sapp_macos_app_event(sapp_event_type type) {
 - (BOOL)acceptsFirstResponder {
     return YES;
 }
+
 - (void)updateTrackingAreas {
     if (trackingArea != nil) {
         [self removeTrackingArea:trackingArea];

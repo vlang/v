@@ -76,6 +76,15 @@ fn test_string_interpolation_string_prefix() {
 	assert jsjs == 'jsjs'
 }
 
+fn test_interpolation_string_prefix_expr() {
+	r := 1
+	c := 2
+	js := 1
+	assert '>${3+r}<' == '>4<'
+	assert '${r == js} $js' == 'true 1'
+	assert '>${js+c} ${js+r==c}<' == '>3 true<'
+}
+
 fn test_inttypes_string_interpolation() {
 	c := i8(-103)
 	uc := byte(217)

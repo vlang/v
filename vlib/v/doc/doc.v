@@ -221,7 +221,7 @@ pub fn (mut d Doc) generate() ?bool {
 				content: 'module $module_name'
 				comment: ''
 			}
-		} else if file_ast.mod.name != module_name {
+		} else if file_ast.mod.name != orig_mod_name {
 			continue
 		}
 		stmts := file_ast.stmts
@@ -257,6 +257,7 @@ pub fn (mut d Doc) generate() ?bool {
 						node.parent_type = parent_type
 					}
 				}
+				if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 { continue }
 				d.contents << node
 			}
 			if d.with_comments && (si - 1 >= 0 && stmts[si - 1] is ast.Comment) {
