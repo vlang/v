@@ -240,7 +240,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	if dd.name != 'README' {
 		dnw.write('<div class="title"><$head_tag>${dd.name} <a href="#${slug(dd.name)}">#</a></$head_tag>')
 		if link.len != 0 {
-			dnw.write('<a class="link" target="_blank" href="$link">$link_svg</a>')
+			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
 		}
 		dnw.write('</div>')
 	}
