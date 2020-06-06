@@ -3,9 +3,10 @@
 // that can be found in the LICENSE file.
 module ast
 
-// These methods are used only by vfmt, vdoc, and for debugging.
 import v.table
 import strings
+
+// These methods are used only by vfmt, vdoc, and for debugging.
 
 pub fn (node &FnDecl) str(t &table.Table) string {
 	mut f := strings.new_builder(30)

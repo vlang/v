@@ -14,12 +14,12 @@ import os
 import runtime
 import time
 
-// import sync
 pub struct Parser {
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
 mut:
 	scanner           &scanner.Scanner
+	comments_mode     scanner.CommentsMode = .skip_comments // see comment in parse_file
 	tok               token.Token
 	prev_tok          token.Token
 	peek_tok          token.Token
@@ -75,6 +75,11 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 }
 
 pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+	// NB: when comments_mode == .toplevel_comments,
+	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
+	// all the tricky inner comments. This is needed because we do not have a good general solution
+	// for handling them, and should be removed when we do (the general solution is also needed for vfmt)
+
 	// println('parse_file("$path")')
 	// text := os.read_file(path) or {
 	// panic(err)
@@ -82,6 +87,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	mut stmts := []ast.Stmt{}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode)
+		comments_mode: comments_mode
 		table: b_table
 		file_name: path
 		file_name_dir: os.dir(path)
@@ -213,7 +219,10 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 	return files
 }
 
-pub fn (p &Parser) init_parse_fns() {
+pub fn (mut p Parser) init_parse_fns() {
+	if p.comments_mode == .toplevel_comments {
+		p.scanner.scan_all_tokens_in_buffer()
+	}
 	// p.prefix_parse_fns = make(100, 100, sizeof(PrefixParseFn))
 	// p.prefix_parse_fns[token.Kind.name] = parse_name
 }
@@ -265,13 +274,13 @@ pub fn (mut p Parser) close_scope() {
 pub fn (mut p Parser) parse_block() []ast.Stmt {
 	p.open_scope()
 	// println('parse block')
-	stmts := p.parse_block_no_scope()
+	stmts := p.parse_block_no_scope(false)
 	p.close_scope()
 	// println('nr exprs in block = $exprs.len')
 	return stmts
 }
 
-pub fn (mut p Parser) parse_block_no_scope() []ast.Stmt {
+pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt{}
 	if p.tok.kind != .rcbr {
@@ -282,6 +291,9 @@ pub fn (mut p Parser) parse_block_no_scope() []ast.Stmt {
 				break
 			}
 		}
+	}
+	if is_top_level {
+		p.top_level_statement_end()
 	}
 	p.check(.rcbr)
 	return stmts
@@ -1031,7 +1043,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				is_used: true
 			})
 			or_kind = .block
-			or_stmts = p.parse_block_no_scope()
+			or_stmts = p.parse_block_no_scope(false)
 			p.close_scope()
 		}
 		// `foo()?`
@@ -1254,6 +1266,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 }
 
 fn (mut p Parser) const_decl() ast.ConstDecl {
+	p.top_level_statement_start()
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -1291,6 +1304,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		fields << field
 		p.global_scope.register(field.name, field)
 	}
+	p.top_level_statement_end()
 	p.check(.rpar)
 	return ast.ConstDecl{
 		pos: start_pos.extend(end_pos)
@@ -1370,6 +1384,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 }
 
 fn (mut p Parser) enum_decl() ast.EnumDecl {
+	p.top_level_statement_start()
 	is_pub := p.tok.kind == .key_pub
 	start_pos := p.tok.position()
 	if is_pub {
@@ -1402,6 +1417,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			has_expr: has_expr
 		}
 	}
+	p.top_level_statement_end()
 	p.check(.rcbr)
 	attr := p.attr
 	is_flag := attr == 'flag'
@@ -1562,4 +1578,47 @@ fn (p &Parser) new_true_expr() ast.Expr {
 
 fn verror(s string) {
 	util.verror('parser error', s)
+}
+
+fn (mut p Parser) top_level_statement_start() {
+	if p.comments_mode == .toplevel_comments {
+		p.scanner.set_is_inside_toplevel_statement(true)
+		p.rewind_scanner_to_current_token_in_new_mode()
+		$if debugscanner ? {
+			eprintln('>> p.top_level_statement_start | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit $p.peek_tok2.lit $p.peek_tok3.lit ...')
+		}
+	}
+}
+
+fn (mut p Parser) top_level_statement_end() {
+	if p.comments_mode == .toplevel_comments {
+		p.scanner.set_is_inside_toplevel_statement(false)
+		p.rewind_scanner_to_current_token_in_new_mode()
+		$if debugscanner ? {
+			eprintln('>> p.top_level_statement_end   | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit $p.peek_tok2.lit $p.peek_tok3.lit ...')
+		}
+	}
+}
+
+fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
+	// Go back and rescan some tokens, ensuring that the parser's
+	// lookahead buffer p.peek_tok .. p.peek_tok3, will now contain
+	// the correct tokens (possible comments), for the new mode
+	// This refilling of the lookahead buffer is needed for the
+	// .toplevel_comments parsing mode.
+	tidx := p.tok.tidx
+	p.scanner.set_current_tidx(tidx - 5)
+	no_token := token.Token{}
+	p.prev_tok = no_token
+	p.tok = no_token
+	p.peek_tok = no_token
+	p.peek_tok2 = no_token
+	p.peek_tok3 = no_token
+	for {
+		p.next()
+		//eprintln('rewinding to ${p.tok.tidx:5} | goal: ${tidx:5}')
+		if tidx == p.tok.tidx {
+			break
+		}
+	}
 }

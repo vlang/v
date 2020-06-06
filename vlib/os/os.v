@@ -3,25 +3,6 @@
 // that can be found in the LICENSE file.
 module os
 
-#include <sys/stat.h> // #include <signal.h>
-#include <errno.h>
-
-/*
-struct dirent {
-     d_ino int
-     d_off int
-	d_reclen u16
-	d_type byte
-	d_name [256]byte
-}
-*/
-
-struct C.dirent {
-	d_name byteptr
-}
-
-fn C.readdir(voidptr) C.dirent
-
 pub const (
 	args = []string{}
 	max_path_len = 4096
@@ -39,39 +20,6 @@ struct FileInfo {
 	name string
 	size int
 }
-
-struct C.stat {
-	st_size  int
-	st_mode  u32
-	st_mtime int
-}
-
-struct C.DIR {}
-
-// struct C.dirent {
-// d_name byteptr
-// }
-struct C.sigaction {
-mut:
-	sa_mask      int
-	sa_sigaction int
-	sa_flags     int
-}
-
-fn C.getline(voidptr, voidptr, voidptr) int
-
-
-fn C.ftell(fp voidptr) int
-
-
-fn C.sigaction(int, voidptr, int)
-
-
-fn C.open(charptr, int, int) int
-
-
-fn C.fdopen(int, string) voidptr
-
 
 pub fn (f File) is_opened() bool {
 	return f.opened
@@ -206,7 +154,6 @@ pub fn mv(old, new string) {
 	}
 }
 
-fn C.CopyFile(&u32, &u32, int) int
 pub fn cp(old, new string) ?bool {
 	$if windows {
 		w_old := old.replace('/', '\\')
@@ -478,11 +425,6 @@ fn vpclose(f voidptr) int {
 		ret,_ := posix_wait4_to_exit_status(C.pclose(f))
 		return ret
 	}
-}
-
-struct Foo2 {
-	x int
-
 }
 
 pub struct Result {
@@ -950,13 +892,6 @@ pub fn on_segfault(f voidptr) {
 	}
 }
 
-fn C.getpid() int
-
-
-//fn C.proc_pidpath(int, byteptr, int) int
-
-
-fn C.readlink() int
 // executable returns the path name of the executable that started the current
 // process.
 pub fn executable() string {
@@ -1229,12 +1164,6 @@ pub fn walk(path string, f fn(path string)) {
 pub fn signal(signum int, handler voidptr) {
 	C.signal(signum, handler)
 }
-
-fn C.fork() int
-
-
-fn C.wait() int
-
 
 pub fn fork() int {
 	mut pid := -1
