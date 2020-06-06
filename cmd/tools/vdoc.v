@@ -14,34 +14,18 @@ import v.vmod
 
 enum HighlightTokenTyp {
 	unone
-	atrule
-	attr_name
-	bold
 	boolean
 	builtin
 	char
 	comment
-	constant
-	cdata
-	deleted
-	doctype
-	entity
 	function
-	important
-	inserted
-	italic
 	keyword
 	name
 	number
 	operator
-	prolog
-	property
 	punctuation
-	selector
 	string
 	symbol
-	tag
-	url
 }
 
 const (
@@ -169,7 +153,7 @@ fn (cfg DocConfig) gen_json(idx int) string {
 fn html_highlight(code string, tb &table.Table) string {
 	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64', 'u128', 'rune', 'f32', 'f64', 'any_int', 'any_float', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
-		lit := if typ in [.unone, .operator] { tok.kind.str() } else { tok.lit }
+		lit := if typ in [.unone, .operator, .punctuation] { tok.kind.str() } else { tok.lit }
 		return if typ in [.unone, .name] { lit } else { '<span class="token $typ">$lit</span>' } 
 	}
 	s := scanner.new_scanner(code, .parse_comments)
@@ -202,9 +186,12 @@ fn html_highlight(code string, tb &table.Table) string {
 				.number {
 					tok_typ = .number
 				}
-				.key_true,
-				.key_false {
+				.key_true, .key_false {
 					tok_typ = .boolean
+				}
+				.lpar, .lcbr, .rpar, .rcbr, .lsbr, 
+				.rsbr, .semicolon, .colon, .comma, .dot {
+					tok_typ = .punctuation
 				}
 				else {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
@@ -256,6 +243,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 
 fn (cfg DocConfig) gen_html(idx int) string {
 	dcs := cfg.docs[idx]
+	time_gen := dcs.time_generated.day.str() + ' ' + dcs.time_generated.smonth() + ' ' + dcs.time_generated.year.str() + ' ' + dcs.time_generated.hhmmss()
 	mut hw := strings.new_builder(200)
 	mut toc := strings.new_builder(200)
 	// generate toc first
@@ -537,10 +525,9 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 					panic(err)
 				}
 			} else {
-				os.rm(os.join_path(cfg.output_path, 'doc.css'))
-				os.rm(os.join_path(cfg.output_path, 'v-prism.css'))
-				os.rm(os.join_path(cfg.output_path, 'v-prism.js'))
-				os.rm(os.join_path(cfg.output_path, 'doc.js'))
+				for fname in ['doc.css', 'v-prism.css', 'doc.js'] {
+					os.rm(os.join_path(cfg.output_path, fname))
+				}
 			}
 		}
 		outputs := cfg.render()
