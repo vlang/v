@@ -1,13 +1,19 @@
 (function() {
+    if (!!document.body.scrollIntoView) {
+        var docnav = document.querySelector('.doc-nav');
+        var active = docnav.querySelector('li.active');
+        active && active.scrollIntoView({ block: 'center', inline: 'nearest' });
+    }
+
     // Mobile view menu toggle button
-    var toggle = document.getElementById("toggle-menu");
-    toggle.addEventListener("click", function(ev) {
-        document.querySelectorAll(".doc-nav").forEach(function(el) {
-            el.classList.toggle("hidden");
+    var toggle = document.getElementById('toggle-menu');
+    toggle.addEventListener('click', function(ev) {
+        document.querySelectorAll('.doc-nav').forEach(function(el) {
+            el.classList.toggle('hidden');
         });
-        document.querySelectorAll(".doc-nav .content").forEach(function(el) {
-            el.classList.toggle("hidden");
-            el.classList.toggle("show");
+        document.querySelectorAll('.doc-nav .content').forEach(function(el) {
+            el.classList.toggle('hidden');
+            el.classList.toggle('show');
         });
     });
 
