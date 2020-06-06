@@ -614,7 +614,7 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 
 fn main() {
 	args := os.args[2..]
-	if args.len == 0 || args[0] == 'help' {
+	if args.len == 0 || args[0] in ['-h', '--help'] {
 		os.system('${@VEXE} help doc')
 		exit(0)
 	}
