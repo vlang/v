@@ -1,12 +1,12 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module glfw
+
+import gl
 
 // note: we might need special case for this
 // see TmpGlImportHack below (joe-c)
-import gl
 
 #flag -I @VROOT/thirdparty/glfw
 #flag -L @VROOT/thirdparty/glfw
