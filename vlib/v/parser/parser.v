@@ -1000,6 +1000,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		// p.close_scope()
 		// }
 	}
+	// ! in mutable methods
+	if p.tok.kind == .not && p.peek_tok.kind == .lpar {
+		p.next()
+	}
 	// Method call
 	// TODO move to fn.v call_expr()
 	if p.tok.kind == .lpar {
@@ -1030,14 +1034,12 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_stmts = p.parse_block_no_scope()
 			p.close_scope()
 		}
-		if p.tok.kind == .not {
-			p.next()
-		}
+		// `foo()?`
 		if p.tok.kind == .question {
-			// `foo()?`
 			p.next()
 			or_kind = .propagate
 		}
+		//
 		end_pos := p.tok.position()
 		pos := token.Position{
 			line_nr: name_pos.line_nr

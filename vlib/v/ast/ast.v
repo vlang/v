@@ -245,6 +245,7 @@ pub:
 pub mut:
 	name               string
 	is_method          bool
+	is_mut             bool // !
 	args               []CallArg
 	expected_arg_types []table.Type
 	language           table.Language
