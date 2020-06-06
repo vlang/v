@@ -227,7 +227,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	if dd.name != 'README' {
 		dnw.write('<div class="title"><$head_tag>${dd.name} <a href="#${slug(dd.name)}">#</a></$head_tag>')
 		if link.len != 0 {
-			dnw.write('<a class="link" target="_blank" href="$link">$link_svg</a>')
+			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
 		}
 		dnw.write('</div>')
 	}
@@ -301,7 +301,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 				<div class="module">${header_name}</div>
 				<div class="toggle-version-container">
 					<span>${version}</span>
-					<div id="dark-mode-toggle" role="checkbox">$light_icon $dark_icon</div>
+					<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">$light_icon $dark_icon</div>
 				</div>
 				$menu_icon
 			</div>
