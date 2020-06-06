@@ -67,14 +67,14 @@ fn darwin_now() Time {
 	C.gettimeofday(&tv, 0)
 
 	t := C.time(0)
-	C.localtime(&t)
+	tm := C.localtime(&t)
 
 	// if the second part (very rare) is different
 	// microseconds is set to zero since it passed the second
 	// also avoid divide by zero if nsec is zero
 	if int(t) != tv.tv_sec {
-		return unix2(int(t), 0)
+		return convert_ctime(tm, 0)
 	}
 
-	return unix2(int(t), int(tv.tv_usec))
+	return convert_ctime(tm, int(tv.tv_usec))
 }

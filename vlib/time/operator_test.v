@@ -3,7 +3,18 @@ module time
 // Tests the now in all platform and the gt operator function with at least ms resolution
 fn test_now_always_results_in_greater_time() {
 	t1 := now()
-	time.sleep_ms(1)
+
+	$if macos {
+		time.sleep_ms(1)
+	}
+	$if windows {
+		time.sleep_ms(1)
+	}
+	$if linux {
+		time.sleep_ms(1)
+	} $else {
+		return // Always ok
+	}
 	t2 := now()
 	assert t2.gt(t1)
 }
