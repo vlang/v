@@ -6,6 +6,7 @@ pub mut:
 	path string
 	headers[100] C.phr_header
 	num_headers u64
+	body string
 }
 
 
