@@ -328,7 +328,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 }
 
-pub fn (mut g Gen) unwrap_generic(typ table.Type) table.Type {
+pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
 	if typ.idx() == table.t_type_idx {
 		// return g.cur_generic_type
 		// its more efficient to set the id rather than to copy flags/nr_muls

@@ -68,18 +68,18 @@ fn mut_arg<T>(mut x T) {
 	println(x.foo) // = 'foo'
 }
 
-/*
+
 fn mut_arg2<T>(mut x T) T {
 	println(x.foo) // = 'foo'
 	return x
 }
-*/
+
 fn test_create() {
 	create<User>()
 	create<City>()
 	u := User{}
 	mut_arg<User>(mut u)
-	// mut_arg2<User>(mut u)
+	mut_arg2<User>(mut u)
 }
 
 /*
