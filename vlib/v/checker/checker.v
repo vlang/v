@@ -1743,8 +1743,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 	if typ.idx() == table.t_type_idx {
 		// return c.cur_generic_type
-		// its more efficient to set the id rather than to copy flags/nr_muls
-		return typ.set_idx(c.cur_generic_type)
+		return c.cur_generic_type.derive(typ)
 	}
 	return typ
 }
