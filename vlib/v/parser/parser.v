@@ -891,7 +891,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for {
 		return p.struct_init(false) // short_syntax: false
-	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language == .v) {
+	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language ==
+		.v) {
 		// `Color.green`
 		mut enum_name := p.check_name()
 		if mod != '' {
@@ -1000,6 +1001,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		// }
 	}
 	// Method call
+	// TODO move to fn.v call_expr()
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
@@ -1027,6 +1029,9 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_kind = .block
 			or_stmts = p.parse_block_no_scope()
 			p.close_scope()
+		}
+		if p.tok.kind == .not {
+			p.next()
 		}
 		if p.tok.kind == .question {
 			// `foo()?`

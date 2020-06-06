@@ -42,6 +42,10 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	args := p.call_args()
 	last_pos := p.tok.position()
 	p.check(.rpar)
+	// ! in mutable methods
+	if p.tok.kind == .not {
+		p.next()
+	}
 	pos := token.Position{
 		line_nr: first_pos.line_nr
 		pos: first_pos.pos
@@ -347,7 +351,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 }
 
-// fn decl
+// part of fn declaration
 fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
 	mut args := []table.Arg{}
@@ -463,7 +467,8 @@ fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position)
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.array, .struct_, .map, .placeholder] && !typ.is_ptr() {
 		p.error_with_pos('mutable arguments are only allowed for arrays, maps, and structs\n' +
-			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`', pos)
+			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
+			pos)
 	}
 }
 
