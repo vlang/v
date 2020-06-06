@@ -168,8 +168,10 @@ fn html_highlight(code string, tb &table.Table) string {
 				.name {
 					if tok.lit in builtin {
 						tok_typ = .builtin
-					} else if next_tok.kind in [.lcbr, .lpar] {
+					} else if next_tok.kind == .lcbr {
 						tok_typ = .symbol
+					} else if next_tok.kind == .lpar {
+						tok_typ = .function
 					} else {
 						tok_typ = .name
 					}
