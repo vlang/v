@@ -852,7 +852,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		if is_generic {
 			// We need the receiver to be T in cgen.
-			call_expr.receiver_type = table.t_type
+			call_expr.receiver_type = table.t_type.derive(method.args[0].typ)
 		} else {
 			call_expr.receiver_type = method.args[0].typ
 		}
