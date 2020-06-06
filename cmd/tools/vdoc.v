@@ -313,7 +313,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 				<div class="module">${header_name}</div>
 				<div class="toggle-version-container">
 					<span>${version}</span>
-					<div id="dark-mode-toggle" role="checkbox">$light_icon $dark_icon</div>
+					<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">$light_icon $dark_icon</div>
 				</div>
 				$menu_icon
 			</div>

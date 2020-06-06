@@ -24,6 +24,7 @@
         html.classList.toggle('dark');
         var isDarkModeEnabled = html.classList.contains('dark');
         localStorage.setItem('dark-mode', isDarkModeEnabled);
+        darkModeToggle.setAttribute('aria-checked', isDarkModeEnabled)
     });
     if (localStorage.getItem('dark-mode') === 'true') {
         html.classList.add('dark');
