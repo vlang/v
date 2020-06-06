@@ -928,9 +928,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write('.' + node.name + '(')
 		f.call_args(node.args)
 		f.write(')')
-		if is_mut {
-			// f.write('!')
-		}
+		// if is_mut {
+		// f.write('!')
+		// }
 		f.or_expr(node.or_block)
 	} else {
 		f.write_language_prefix(node.language)
