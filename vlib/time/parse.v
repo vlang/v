@@ -3,9 +3,7 @@
 // that can be found in the LICENSE file.
 module time
 
-#include <time.h>
-
-fn C.sscanf(byteptr, byteptr,...byteptr) int
+// #include <time.h>
 
 // parse returns time from a date string in "YYYY-MM-DD HH:MM:SS" format.
 pub fn parse(s string) ?Time {

@@ -1,11 +1,11 @@
 module time
 
-// Tests the now in all platform and the ne operator function
+// Tests the now in all platform and the gt operator function with at least ms resolution
 fn test_now_always_results_in_greater_time() {
 	t1 := now()
 	time.sleep_ms(1)
 	t2 := now()
-	assert t2.ne(t1)
+	assert t2.gt(t1)
 }
 
 fn test_time1_should_be_same_as_time2() {
@@ -368,4 +368,19 @@ fn test_time1_should_be_less_or_equal_to_time2_when_eq() {
 
 	assert t1.le(t2)
 	assert t3.le(t4)
+}
+
+fn test_time2_copied_from_time1_should_be_equal() {
+	t1 := new_time( Time {
+		year: 2000
+		month: 5
+		day: 10
+		hour: 22
+		minute: 11
+		second: 3
+		microsecond: 100
+	})
+	t2 := new_time(t1)
+
+	assert t2.eq(t1)
 }

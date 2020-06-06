@@ -97,10 +97,42 @@ pub fn now() Time {
 		return w_now
 	}
 	$if linux {
-		ts := C.timespec{}
-		C.clock_gettime(C.CLOCK_REALTIME, &ts)
-		return convert_timespec_time(ts)
+		default_now := default_now()
+		return default_now
+	} $else {
+		// defaults to most common feature, the microsecond precision is not available
+		// in this API call
+		t := C.time(0)
+		now := C.localtime(&t)
+		return convert_ctime(now, 0)
 	}
+}
+
+
+// default_now returns the local time with high precision for most os:es
+// this should be implemented with native system calls eventually
+// but for now a bit tweaky. It uses the realtime clock to get
+// the nano seconds part and normal local time to get correct local time
+// if the time has shifted on a second level between calls it uses
+// zero as microsecond. Not perfect but better that unix time only
+fn default_now() Time {
+
+	// get the high precision time as UTC realtime clock
+	// and use the nanoseconds part
+	mut ts := C.timespec{}
+	C.clock_gettime(C.CLOCK_REALTIME, &ts)
+
+	t := C.time(0)
+	tm := C.localtime(&t)
+
+	// if the second part (very rare) is different
+	// microseconds is set to zero since it passed the second
+	// also avoid divide by zero if nsec is zero
+	if int(t) != ts.tv_sec || ts.tv_nsec == 0 {
+		return convert_ctime(tm, 0)
+	}
+
+	return convert_ctime(tm, int(ts.tv_nsec/1000))
 }
 
 // smonth returns month name.
@@ -277,7 +309,7 @@ pub fn (t Time) str() string {
 	return t.format_ss()
 }
 
-fn convert_ctime(t C.tm) Time {
+fn convert_ctime(t C.tm, microsecond int) Time {
 	return Time{
 		year: t.tm_year + 1900
 		month: t.tm_mon + 1
@@ -285,14 +317,15 @@ fn convert_ctime(t C.tm) Time {
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
+		microsecond: microsecond
 		unix: u64(make_unix_time(t))
 	}
 }
 
-fn convert_timespec_time(t C.timespec) Time {
-	mut ctime := unix2(int(t.tv_sec), int(t.tv_nsec/1000))
-	return ctime
-}
+// fn convert_timespec_time(t C.timespec) Time {
+// 	mut ctime := unix2(int(t.tv_sec), int(t.tv_nsec/1000))
+// 	return ctime
+// }
 
 // A lot of these are taken from the Go library
 pub type Duration i64

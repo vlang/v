@@ -54,15 +54,27 @@ fn vpc_now_darwin() u64 {
 }
 
 // darwin_now returns a better precision current time for Darwin based operating system
-// uses the gettimeofday to get a micro second precision
-pub fn darwin_now() Time {
+// this should be implemented with native system calls eventually
+// but for now a bit tweaky. It uses the deprecated  gettimeofday clock to get
+// the microseconds seconds part and normal local time to get correct local time
+// if the time has shifted on a second level between calls it uses
+// zero as microsecond. Not perfect but better that unix time only us a second
+fn darwin_now() Time {
+
+	// get the high precision time as UTC clock
+	// and use the nanoseconds part
 	tv := C.timeval{}
 	C.gettimeofday(&tv, 0)
-	return convert_timeval_time(tv)
-}
 
-// convert_timeval_time converts a C timeval struct to V Time struct
-fn convert_timeval_time(t C.timeval) Time {
-	mut ctime := unix2(int(t.tv_sec), int(t.tv_usec))
-	return ctime
+	t := C.time(0)
+	C.localtime(&t)
+
+	// if the second part (very rare) is different
+	// microseconds is set to zero since it passed the second
+	// also avoid divide by zero if nsec is zero
+	if int(t) != tv.tv_sec {
+		return unix2(int(t), 0)
+	}
+
+	return unix2(int(t), int(tv.tv_usec))
 }

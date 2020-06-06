@@ -20,6 +20,7 @@ fn C.sprintf(a ...voidptr) int
 
 fn C.strlen(s byteptr) int
 
+fn C.sscanf(byteptr, byteptr,...byteptr) int
 
 fn C.isdigit(s byteptr) bool
 // stdio.h
