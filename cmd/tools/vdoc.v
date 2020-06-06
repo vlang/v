@@ -5,6 +5,7 @@ import net
 import net.urllib
 import os
 import os.cmdline
+import time
 import strings
 import v.doc
 import v.scanner
@@ -493,6 +494,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 					name: 'README',
 					comment: readme_contents
 				}
+				time_generated: time.now()
 			}
         }
 	}
