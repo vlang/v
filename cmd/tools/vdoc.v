@@ -368,7 +368,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 			}
 		}
 	}
-	hw.write('\n</div>\n')
+	hw.write('\n<div class="footer">Powered by vdoc. Generated on: $time_gen</div>\n</div>\n')
 	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
 		hw.write('<div class="doc-toc">\n\n<ul>\n${toc.str()}</ul>\n</div>')
 	}
