@@ -254,6 +254,10 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	return dnw.str()
 }
 
+fn (cfg DocConfig) gen_html(idx int) string {
+	dcs := cfg.docs[idx]
+	mut hw := strings.new_builder(200)
+	mut toc := strings.new_builder(200)
 	// generate toc first
 	for cn in dcs.contents {
 		if cn.parent_type !in ['void', ''] { continue }
@@ -285,9 +289,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
     <meta charset="UTF-8">
 	<meta http-equiv="x-ua-compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${dcs.head.name} | vdoc</title>
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet" />
-	<link rel="stylesheet" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css" />')
+    <title>${dcs.head.name} | vdoc</title>')
 
 	// write css
 	if cfg.inline_assets {
