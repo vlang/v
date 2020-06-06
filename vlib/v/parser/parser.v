@@ -32,6 +32,7 @@ mut:
 	inside_or_expr    bool
 	inside_for        bool
 	inside_fn         bool
+	inside_str_interp bool
 	pref              &pref.Preferences
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
@@ -811,7 +812,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	// Raw string (`s := r'hello \n ')
-	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && p.prev_tok.kind != .str_dollar {
+	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
 		return p.string_expr()
 	}
 	mut known_var := false
@@ -890,7 +891,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for {
 		return p.struct_init(false) // short_syntax: false
-	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language == .v) {
+	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language ==
+		.v) {
 		// `Color.green`
 		mut enum_name := p.check_name()
 		if mod != '' {
@@ -998,7 +1000,12 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		// p.close_scope()
 		// }
 	}
+	// ! in mutable methods
+	if p.tok.kind == .not && p.peek_tok.kind == .lpar {
+		p.next()
+	}
 	// Method call
+	// TODO move to fn.v call_expr()
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
@@ -1027,11 +1034,12 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_stmts = p.parse_block_no_scope()
 			p.close_scope()
 		}
+		// `foo()?`
 		if p.tok.kind == .question {
-			// `foo()?`
 			p.next()
 			or_kind = .propagate
 		}
+		//
 		end_pos := p.tok.position()
 		pos := token.Position{
 			line_nr: name_pos.line_nr
@@ -1106,6 +1114,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	mut vals := []string{}
 	mut efmts := []string{}
 	// Handle $ interpolation
+	p.inside_str_interp = true
 	for p.tok.kind == .string {
 		vals << p.tok.lit
 		p.next()
@@ -1141,6 +1150,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		expr_fmts: efmts
 		pos: pos
 	}
+	p.inside_str_interp = false
 	return node
 }
 

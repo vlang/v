@@ -143,7 +143,7 @@ pub fn run<T>(port int) {
 	for {
 		conn := l.accept() or { panic('accept() failed') }
 		//handle_conn<T>(conn, mut app)
-		app = handle_conn<T>(conn, app)
+		handle_conn<T>(conn, mut app)
 		// TODO move this to handle_conn<T>(conn, app)
 		//message := readall(conn)
 		//println(message)
@@ -169,9 +169,9 @@ pub fn run<T>(port int) {
 	}
 }
 
-//fn handle_conn<T>(conn net.Socket, app mut T) {
-fn handle_conn<T>(conn net.Socket, app_ T) T {
-	mut app := app_
+fn handle_conn<T>(conn net.Socket, mut app T) {
+//fn handle_conn<T>(conn net.Socket, app_ T) T {
+	//mut app := app_
 	//first_line := strip(lines[0])
 	first_line := conn.read_line()
 	println('firstline="$first_line"')
@@ -184,7 +184,7 @@ fn handle_conn<T>(conn net.Socket, app_ T) T {
 		println('no vals for http')
 		conn.send_string(http_500) or {}
 		conn.close() or {}
-		return app
+		return
 		//continue
 	}
 	mut headers := []string{}
@@ -265,7 +265,7 @@ fn handle_conn<T>(conn net.Socket, app_ T) T {
 			println('no vals for http')
 		}
 		conn.close() or {}
-		return app
+		return
 		//continue
 	}
 
@@ -276,16 +276,16 @@ fn handle_conn<T>(conn net.Socket, app_ T) T {
 	if static_file != '' && mime_type != '' {
 		data := os.read_file(static_file) or {
 			conn.send_string(http_404) or {}
-			return app
+			return
 		}
 		app.vweb.send_response_to_client(mime_type, data)
-		return app
+		return
 	}
 
 	// Call the right action
-	$if debug {
+	//$if debug {
 		println('action=$action')
-	}
+	//}
 	app.$action()
 	/*
 	app.$action() or {
@@ -294,7 +294,7 @@ fn handle_conn<T>(conn net.Socket, app_ T) T {
 	*/
 	conn.close() or {}
 	app.reset()
-	return app
+	return
 }
 
 fn (mut ctx Context) parse_form(s string) {

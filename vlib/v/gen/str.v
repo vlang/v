@@ -96,6 +96,7 @@ string _STR_TMP(const char *fmt, ...) {
 	va_start(argptr, fmt);
 	vsprintf((char *)g_str_buf, fmt, argptr);
 	va_end(argptr);
+
 #ifdef DEBUG_ALLOC
 	//puts('_STR_TMP:');
 	//puts(g_str_buf);
@@ -103,6 +104,7 @@ string _STR_TMP(const char *fmt, ...) {
 	string res = tos(g_str_buf,  len);
 	res.is_lit = true;
 	return res;
+
 } // endof _STR_TMP
 
 ")
