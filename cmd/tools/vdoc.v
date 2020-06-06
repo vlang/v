@@ -262,30 +262,30 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}	// write head
 
 	// get resources
-	doc_css_min := cfg.get_resource('doc.css', true)
-	doc_js_min := cfg.get_resource('doc.js', false)
+	doc_css := cfg.get_resource('doc.css', true)
+	normalize_css := cfg.get_resource('normalize.css', true)
+	doc_js := cfg.get_resource('doc.js', false)
 	light_icon := cfg.get_resource('light.svg', true)
 	dark_icon := cfg.get_resource('dark.svg', true)
 	menu_icon := cfg.get_resource('menu.svg', true)
 	arrow_icon := cfg.get_resource('arrow.svg', true)
-	v_prism_css := cfg.get_resource('v-prism.css', true)
 
 	hw.write('
 	<!DOCTYPE html>
 	<html lang="en">
 	<head>
-    <meta charset="UTF-8">
-	<meta http-equiv="x-ua-compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${dcs.head.name} | vdoc</title>')
+		<meta charset="UTF-8">
+		<meta http-equiv="x-ua-compatible" content="IE=edge" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>${dcs.head.name} | vdoc</title>')
 
 	// write css
 	if cfg.inline_assets {
-		hw.write('\n    <style>$v_prism_css</style>')
-		hw.write('\n    <style>$doc_css_min</style>')
+		hw.write('\n	<style>$doc_css</style>')
+		hw.write('\n	<style>$normalize_css</style>')
 	} else {
-		hw.write('\n	<link rel="stylesheet" href="$v_prism_css" />')
-		hw.write('\n	<link rel="stylesheet" href="$doc_css_min" />')
+		hw.write('\n	<link rel="stylesheet" href="$doc_css" />')
+		hw.write('\n	<link rel="stylesheet" href="$normalize_css" />')
 	}
 
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
@@ -331,9 +331,8 @@ fn (cfg DocConfig) gen_html(idx int) string {
 					is_submodule_open = true
 				}
 			}
-			open_class := if doc.head.name == dcs.head.name || is_submodule_open { ' open' } else { '' }
 			active_class := if doc.head.name == dcs.head.name { ' active' } else { '' }
-			hw.write('<li class="$open_class$active_class"><div class="menu-row">$dropdown<a href="$href_name">${submod_prefix}</a></div>')
+			hw.write('<li class="open$active_class"><div class="menu-row">$dropdown<a href="$href_name">${submod_prefix}</a></div>')
 			for j, cdoc in submodules {
 				if j == 0 {
 					hw.write('<ul>')
@@ -374,9 +373,9 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}
 	hw.write('</div></div>')
 	if cfg.inline_assets {
-		hw.write('<script>$doc_js_min</script>')
+		hw.write('<script>$doc_js</script>')
 	} else {
-		hw.write('<script src="$doc_js_min"></script>')
+		hw.write('<script src="$doc_js"></script>')
 	}
 	hw.write('</body>
 	</html>')
