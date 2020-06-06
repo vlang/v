@@ -148,7 +148,7 @@ fn rw_callback(loop &C.picoev_loop, fd, events int, cb_arg voidptr) {
 			}
 			mut req := picohttpparser.Request{}
 			for {
-				pret := req.parse_request_path_pipeline(s)
+				pret := req.parse_request(s, 100)
 				if pret <= 0 && s.len > 0 {
 					C.memmove(buf, s.str, s.len)
 					p.idx[fd] = s.len
