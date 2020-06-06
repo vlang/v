@@ -503,10 +503,15 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	dirs := if cfg.is_multi { get_modules_list(cfg.input_path) } else { [cfg.input_path] } 
 	for dirpath in dirs {
 		cfg.vprintln('Generating docs for ${dirpath}...')
-		dcs := doc.generate(dirpath, cfg.pub_only, !is_vlib) or {
+		mut dcs := doc.generate(dirpath, cfg.pub_only, !is_vlib) or {
 			panic(err)
 		}
 		if dcs.contents.len == 0 { continue }
+		if cfg.pub_only {
+			for i, c in dcs.contents {
+				dcs.contents[i].content = c.content.all_after('pub ')	
+			}
+		}
 		cfg.docs << dcs
 	}
 	if cfg.serve_http {
