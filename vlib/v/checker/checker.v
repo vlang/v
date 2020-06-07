@@ -2045,7 +2045,20 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return table.int_type
 	}
 	if ident.name != '_' {
-		c.error('undefined ident: `$ident.name`', ident.pos)
+		et := c.table.find_type(ident.name) or { table.TypeSymbol{} }
+		if et.kind == .enum_ {
+			enum_type := et.info as table.Enum
+			mut items := []string{}
+			for a in enum_type.vals {
+				items << '${ident.name}.$a, '
+			}
+			itemstr := items.join(', ')
+			eprintln('todo: substitute enum for in [${itemstr}]')
+			ident.kind = .constant
+			return table.array_type
+		} else {
+			c.error('undefined ident: `$ident.name`', ident.pos)
+		}
 	}
 	if c.table.known_type(ident.name) {
 		// e.g. `User`  in `json.decode(User, '...')`
