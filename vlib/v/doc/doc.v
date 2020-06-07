@@ -115,12 +115,21 @@ pub fn (d Doc) get_pos(stmt ast.Stmt) token.Position {
 	}
 }
 
+pub fn (d Doc) get_type_name(decl ast.TypeDecl) string {
+	match decl {
+		ast.SumTypeDecl { return it.name }
+		ast.FnTypeDecl { return it.name }
+		ast.AliasTypeDecl { return it.name }
+	}
+}
+
 pub fn (d Doc) get_name(stmt ast.Stmt) string {
 	match stmt {
 		ast.FnDecl { return it.name }
 		ast.StructDecl { return it.name }
 		ast.EnumDecl { return it.name }
 		ast.InterfaceDecl { return it.name }
+		ast.TypeDecl { return d.get_type_name(it).replace('&${d.head.name}.', '').replace(d.head.name + '.', '') }
 		ast.ConstDecl { return 'Constants' }
 		else { return '' }
 	}
