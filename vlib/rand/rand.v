@@ -31,10 +31,17 @@ pub struct PRNGConfigStruct {
 	seed []u32 = time_seed_array(2)
 }
 
+__global default_rng &WyRandRNG = new_default({})
+
 pub fn new_default(config PRNGConfigStruct) &WyRandRNG {
 	rng := &WyRandRNG{}
 	rng.seed(config.seed)
 	return rng
+}
+
+// u32() - returns a uniformly distributed u32 in [0, 2**32)
+pub fn u32() u32 {
+	return default_rng.u32()
 }
 
 // rand_f32 return a random f32 between 0 and max
