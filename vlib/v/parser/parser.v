@@ -75,6 +75,20 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt()
 }
 
+pub fn parse_text(text string, b_table &table.Table, scope &ast.Scope, global_scope &ast.Scope) ast.File {
+	s := scanner.new_scanner(text, .skip_comments)
+	mut p := Parser{
+		scanner: s
+		table: b_table
+		pref: &pref.Preferences{}
+		scope: scope
+		errors: []errors.Error{}
+		warnings: []errors.Warning{}
+		global_scope: global_scope
+	}
+	return p.parse()
+}
+
 pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
 	// NB: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
@@ -85,7 +99,6 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	// text := os.read_file(path) or {
 	// panic(err)
 	// }
-	mut stmts := []ast.Stmt{}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode)
 		comments_mode: comments_mode
@@ -101,17 +114,20 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		warnings: []errors.Warning{}
 		global_scope: global_scope
 	}
+	return p.parse()
+}
+
+fn (mut p Parser) parse() ast.File {
 	// comments_mode: comments_mode
 	p.init_parse_fns()
 	p.read_first_token()
+	mut stmts := []ast.Stmt{}
 	for p.tok.kind == .comment {
 		stmts << p.comment()
 	}
 	// module
-	mut mstmt := ast.Stmt{}
 	module_decl := p.module_decl()
-	mstmt = module_decl
-	stmts << mstmt
+	stmts << module_decl
 	// imports
 	for p.tok.kind == .key_import {
 		stmts << p.import_stmt()
@@ -137,7 +153,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	p.scope.end_pos = p.tok.pos
 	//
 	return ast.File{
-		path: path
+		path: p.file_name
 		mod: module_decl
 		imports: p.ast_imports
 		stmts: stmts
