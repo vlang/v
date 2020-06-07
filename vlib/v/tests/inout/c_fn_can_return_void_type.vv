@@ -1,0 +1,4 @@
+fn C.some_c_function(int) void
+fn main() {
+	println('ok')
+}
