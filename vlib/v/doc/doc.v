@@ -57,10 +57,29 @@ pub fn get_comment_block_right_before(stmts []ast.Stmt) string {
 			// located right above the top level statement.
 			//			break
 		}
-		cmt_content := cmt.text.trim_left('|')
-		if cmt_content.len == cmt.text.len {
+		mut cmt_content := cmt.text.trim_left('|')
+		if cmt_content.len == cmt.text.len || cmt.is_multi {
 			// ignore /* */ style comments for now
 			continue
+			// if cmt_content.len == 0 {
+			// 	continue
+			// }
+			// mut new_cmt_content := ''
+			// mut is_codeblock := false
+			// // println(cmt_content)
+			// lines := cmt_content.split_into_lines()
+			// for j, line in lines {
+			// 	trimmed := line.trim_space().trim_left(cmt_prefix)
+			// 	if trimmed.starts_with('- ') || (trimmed.len >= 2 && trimmed[0].is_digit() && trimmed[1] == `.`) || is_codeblock {
+			// 		new_cmt_content += line + '\n'
+			// 	} else if line.starts_with('```') {
+			// 		is_codeblock = !is_codeblock
+			// 		new_cmt_content += line + '\n'
+			// 	} else {
+			// 		new_cmt_content += trimmed + '\n'
+			// 	}
+			// }
+			// return new_cmt_content
 		}
 		//eprintln('cmt: $cmt')
 		cseparator := if cmt_content.starts_with('```') {'\n'} else {' '}
