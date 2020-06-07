@@ -259,7 +259,8 @@ pub fn (mut d Doc) generate() ?bool {
 			}
 			signature := d.get_signature(stmt)
 			pos := d.get_pos(stmt)
-			if !signature.starts_with('pub') && d.pub_only {
+			mut name := d.get_name(stmt)
+			if (!signature.starts_with('pub') && d.pub_only) || stmt is ast.GlobalDecl {
 				prev_comments = []
 				continue
 			}
