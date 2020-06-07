@@ -228,7 +228,7 @@ pub fn (req &Request) do() ?Response {
 			break
 		}
 		// follow any redirects
-		mut redirect_url := resp.headers['location']
+		mut redirect_url := resp.headers['Location'.to_lower()]
 
 		if redirect_url.len > 0 && redirect_url[0] == `/` {
 			url.set_path(redirect_url) or {
