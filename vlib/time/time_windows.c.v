@@ -4,6 +4,7 @@
 module time
 
 #include <time.h>
+#include <sysinfoapi.h>
 
 struct C.tm {
 	tm_year int
@@ -14,6 +15,22 @@ struct C.tm {
 	tm_sec  int
 }
 
+struct C._FILETIME
+
+struct SystemTime {
+  year 			u16
+  month 		u16
+  day_of_week 	u16
+  day  			u16
+  hour 			u16
+  minute 		u16
+  second 		u16
+  millisecond 	u16
+}
+
+fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime C._FILETIME)
+fn C.FileTimeToSystemTime()
+fn C.SystemTimeToTzSpecificLocalTime()
 
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
@@ -74,24 +91,45 @@ fn local_as_unix_time() int {
 	return make_unix_time(tm)
 }
 
-// win_now calculates current time using performance counters to get higher resolution on windows
-// since clock_gettime is not available in standard c performance counters are used
-// to calculate the relative time from the program started in micro seconds and added
-// the local time from program start
+// win_now calculates current time using winapi to get higher resolution on windows
+// GetSystemTimeAsFileTime is used. It can resolve time down to millisecond
+// other more precice methods can be implemented in the future
 fn win_now() Time {
 
-	tm := vpc_now()
+	ft_utc := C._FILETIME{}
+	C.GetSystemTimeAsFileTime(&ft_utc)
 
-	// get the relative time in micro seconds
-	relative_time_us := (tm - start_time) / (freq_time / 1000000 )
+	st_utc := SystemTime{}
+	C.FileTimeToSystemTime(&ft_utc, &st_utc)
 
-	// total seconds as unix time
-	total_seconds := start_local_time + int(relative_time_us / 1000000)
-	remainder_us := relative_time_us % 1000000
+	st_local := SystemTime{}
+	C.SystemTimeToTzSpecificLocalTime(voidptr(0), &st_utc, &st_local)
 
-	mut t := unix2(total_seconds, int(remainder_us))
+	t := Time {
+		year: st_local.year
+		month: st_local.month
+		day: st_local.day
+		hour: st_local.hour
+		minute: st_local.minute
+		second: st_local.second
+		microsecond: st_local.millisecond*1000
+		unix: u64(st_local.unix_time())
+	}
 
 	return t
+}
+
+// unix_time returns Unix time.
+pub fn (st SystemTime) unix_time() int {
+	tt := C.tm{
+		tm_sec: st.second
+		tm_min: st.minute
+		tm_hour: st.hour
+		tm_mday: st.day
+		tm_mon: st.month - 1
+		tm_year: st.year - 1900
+	}
+	return make_unix_time(tt)
 }
 
 // dummy to compile with all compilers
