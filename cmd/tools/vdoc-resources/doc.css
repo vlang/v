@@ -17,7 +17,7 @@
 	--menu-toggle-icon-hover-color: #00000044;
 	--menu-search-background-color: #00000044;
 	--menu-search-font-color: #fff;
-	--toc-font-color: #2779bd;
+	--toc-text-color: #2779bd;
 	--toc-indicator-color: #4299e1;
 	--code-default-text-color: #5c6e74;
 	--code-background-color: #edf2f7;
@@ -54,7 +54,7 @@
 	--menu-toggle-icon-color: #fff;
 	--menu-search-background-color: #4a5568;
 	--menu-search-font-color: #fff;
-	--toc-font-color: #90cdf4;
+	--toc-text-color: #90cdf4;
 	--toc-indicator-color: #4299e1;
 	--code-default-text-color: #cbd5e0;
 	--code-background-color: #2d3748;
