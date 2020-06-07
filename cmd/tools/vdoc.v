@@ -54,6 +54,8 @@ mut:
 	is_multi       bool = false
 	is_verbose     bool = false
 	include_readme bool = false
+	open_docs      bool = true
+	server_port    int  = 8046
 	inline_assets  bool = false
 	output_path    string
 	input_path     string
@@ -79,13 +81,16 @@ fn open_url(url string) {
 }
 
 fn (mut cfg DocConfig) serve_html() {
+	server_url := 'http://localhost:' + cfg.server_port.str()
 	docs := cfg.render()
 	def_name := docs.keys()[0]
-	server := net.listen(8046) or {
+	server := net.listen(cfg.server_port) or {
 		panic(err)
 	}
-	println('Serving docs on: http://localhost:8046')
-	open_url('http://localhost:8046')
+	println('Serving docs on: $server_url')
+	if cfg.open_docs {
+		open_url(server_url)
+	}
 	for {
 		con := server.accept() or {
 			server.close() or { }
@@ -417,7 +422,7 @@ fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 		hw.writeln('## Contents')
 	}
 	for cn in dcs.contents {
-		name := cn.name.all_after(dcs.head.name+'.')
+		name := cn.name.all_after(dcs.head.name + '.')
 
 		if with_toc {
 			hw.writeln('- [#$name](${slug(name)})')
@@ -662,10 +667,26 @@ fn main() {
 			'-m' {
 				cfg.is_multi = true
 			}
+			'-no-open' {
+				cfg.open_docs = false
+			}
 			'-o' {
 				opath := cmdline.option(current_args, '-o', '')
 				cfg.output_path = os.real_path(opath)
 				i++
+			}
+			'-p' {
+				s_port := cmdline.option(current_args, '-o', '')
+				s_port_int := s_port.int()
+				if s_port.len == 0 {
+					eprintln('vdoc: No port number specified on "-p".')
+					exit(1)
+				}
+				if s_port != s_port_int.str() {
+					eprintln('vdoc: Invalid port number.')
+					exit(1)
+				}
+				cfg.server_port = s_port_int
 			}
 			'-s' {
 				cfg.inline_assets = true
