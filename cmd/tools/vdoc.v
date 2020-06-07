@@ -54,7 +54,7 @@ mut:
 	is_multi       bool = false
 	is_verbose     bool = false
 	include_readme bool = false
-	open_docs      bool = true
+	open_docs      bool = false
 	server_port    int  = 8046
 	inline_assets  bool = false
 	output_path    string
@@ -688,13 +688,13 @@ fn main() {
 			'-m' {
 				cfg.is_multi = true
 			}
-			'-no-open' {
-				cfg.open_docs = false
-			}
 			'-o' {
 				opath := cmdline.option(current_args, '-o', '')
 				cfg.output_path = os.real_path(opath)
 				i++
+			}
+			'-open' {
+				cfg.open_docs = true
 			}
 			'-p' {
 				s_port := cmdline.option(current_args, '-o', '')
