@@ -113,6 +113,22 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		}
 	}
 	*/
+	// copy vars from current fn scope into vweb_tmpl scope
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl {
+			fn_decl := stmt as ast.FnDecl
+			if fn_decl.name == 'vweb_tmpl' {
+				body_scope := file.scope.innermost(fn_decl.body_pos.pos)
+				for _, obj in p.scope.objects {
+					if obj is ast.Var {
+						v := obj as ast.Var
+						body_scope.register(v.name, *v)
+					}
+				}
+				break
+			}
+		}
+	}
 	return ast.ComptimeCall{
 		is_vweb: true
 		vweb_tmpl: file

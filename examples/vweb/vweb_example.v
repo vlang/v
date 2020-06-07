@@ -28,6 +28,7 @@ pub fn (mut app App) json_endpoint() {
 pub fn (mut app App) index() {
 	app.cnt++
 	//app.vweb.text('Hello world from vweb')
+	hello := 'Hello world from vweb'
 	$vweb.html()
 }
 
