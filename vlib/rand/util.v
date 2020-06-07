@@ -7,7 +7,11 @@ import time
 
 // Commonly used constants across RNGs
 const (
-	lower_mask = u64(0x00000000ffffffff)
+	lower_mask     = u64(0x00000000FFFFFFFF)
+	max_u32        = 0xFFFFFFFF
+	max_u64        = 0xFFFFFFFFFFFFFFFF
+	max_u32_as_f32 = f32(max_u32) + 1
+	max_u64_as_f64 = f64(max_u64) + 1
 )
 
 // Constants taken from Numerical Recipes

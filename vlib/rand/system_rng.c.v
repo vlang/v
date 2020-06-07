@@ -27,14 +27,6 @@ fn calculate_iterations_for(bits int) int {
 	return base + extra
 }
 
-// Size constants to avoid importing the entire math module
-const (
-	max_u32        = 0xFFFFFFFF
-	max_u64        = 0xFFFFFFFFFFFFFFFF
-	max_u32_as_f32 = f32(max_u32)
-	max_u64_as_f64 = f64(max_u64)
-)
-
 // Masks for fast modular division
 const (
 	u31_mask = u32(0x7FFFFFFF)
