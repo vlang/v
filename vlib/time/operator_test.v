@@ -19,7 +19,10 @@ fn test_now_always_results_in_greater_time() {
 		return
 	}
 	$if linux {
-		time.sleep_ms(1)
+		assert_greater_time(1, t1)
+		return
+	}
+	$if solaris {
 		assert_greater_time(1, t1)
 		return
 	}

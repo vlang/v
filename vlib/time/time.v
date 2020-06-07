@@ -87,25 +87,23 @@ fn C.time(t &C.time_t) C.time_t
 
 // now returns current local time.
 pub fn now() Time {
-
 	$if macos {
-		mac_now := darwin_now()
-		return mac_now
+		return darwin_now()
 	}
 	$if windows {
-		w_now := win_now()
-		return w_now
+		return win_now()
+	}
+	$if solaris {
+		return solaris_now()
 	}
 	$if linux {
-		linux_now := linux_now()
-		return linux_now
-	} $else {
-		// defaults to most common feature, the microsecond precision is not available
-		// in this API call
-		t := C.time(0)
-		now := C.localtime(&t)
-		return convert_ctime(now, 0)
+		return linux_now()
 	}
+	// defaults to most common feature, the microsecond precision is not available
+	// in this API call
+	t := C.time(0)
+	now := C.localtime(&t)
+	return convert_ctime(now, 0)
 }
 
 // smonth returns month name.
