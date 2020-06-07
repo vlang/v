@@ -39,13 +39,14 @@ const (
 
 pub struct Time {
 pub:
-	year   int
-	month  int
-	day    int
-	hour   int
-	minute int
-	second int
-	unix   u64
+	year   			int
+	month  			int
+	day    			int
+	hour   			int
+	minute 			int
+	second 			int
+	microsecond 	int
+	unix   			u64
 }
 
 pub enum FormatTime {
@@ -86,9 +87,23 @@ fn C.time(t &C.time_t) C.time_t
 
 // now returns current local time.
 pub fn now() Time {
+	$if macos {
+		return darwin_now()
+	}
+	$if windows {
+		return win_now()
+	}
+	$if solaris {
+		return solaris_now()
+	}
+	$if linux {
+		return linux_now()
+	}
+	// defaults to most common feature, the microsecond precision is not available
+	// in this API call
 	t := C.time(0)
 	now := C.localtime(&t)
-	return convert_ctime(now)
+	return convert_ctime(now, 0)
 }
 
 // smonth returns month name.
@@ -107,6 +122,7 @@ pub fn new_time(t Time) Time {
 		minute: t.minute
 		second: t.second
 		unix: u64(t.unix_time())
+		microsecond: t.microsecond
 	}
 	// TODO Use the syntax below when it works with reserved keywords like `unix`
 	// return {
@@ -264,7 +280,7 @@ pub fn (t Time) str() string {
 	return t.format_ss()
 }
 
-fn convert_ctime(t C.tm) Time {
+fn convert_ctime(t C.tm, microsecond int) Time {
 	return Time{
 		year: t.tm_year + 1900
 		month: t.tm_mon + 1
@@ -272,6 +288,7 @@ fn convert_ctime(t C.tm) Time {
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
+		microsecond: microsecond
 		unix: u64(make_unix_time(t))
 	}
 }
