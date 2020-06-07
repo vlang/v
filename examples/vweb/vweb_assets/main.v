@@ -8,8 +8,8 @@ const (
 	port = 8081
 )
 
-pub struct App {
-mut:
+struct App {
+pub mut:
 	vweb vweb.Context
 }
 
