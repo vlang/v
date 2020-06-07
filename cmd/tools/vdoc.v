@@ -54,6 +54,8 @@ mut:
 	is_multi       bool = false
 	is_verbose     bool = false
 	include_readme bool = false
+	open_docs      bool = false
+	server_port    int  = 8046
 	inline_assets  bool = false
 	output_path    string
 	input_path     string
@@ -79,13 +81,16 @@ fn open_url(url string) {
 }
 
 fn (mut cfg DocConfig) serve_html() {
+	server_url := 'http://localhost:' + cfg.server_port.str()
 	docs := cfg.render()
 	def_name := docs.keys()[0]
-	server := net.listen(8046) or {
+	server := net.listen(cfg.server_port) or {
 		panic(err)
 	}
-	println('Serving docs on: http://localhost:8046')
-	open_url('http://localhost:8046')
+	println('Serving docs on: $server_url')
+	if cfg.open_docs {
+		open_url(server_url)
+	}
 	for {
 		con := server.accept() or {
 			server.close() or { }
@@ -226,14 +231,16 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	head_tag := if head { 'h1' } else { 'h2' }
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
+	is_const_class := if dd.name == 'Constants' { ' const' } else { '' }
 	mut sym_name := dd.name
-	if dd.parent_type !in ['void', ''] { 
+	if dd.parent_type !in ['void', '', 'Constants'] { 
 		sym_name = '${dd.parent_type}.' + sym_name
 	}
 	node_id := slug(sym_name)
-	dnw.writeln('<section id="$node_id" class="doc-node">')
+	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
+	dnw.writeln('<section id="$node_id" class="doc-node$is_const_class">')
 	if dd.name != 'README' {
-		dnw.write('<div class="title"><$head_tag>$sym_name <a href="#$node_id">#</a></$head_tag>')
+		dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
 		}
@@ -251,7 +258,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 
 fn (cfg DocConfig) gen_html(idx int) string {
 	dcs := cfg.docs[idx]
-	time_gen := dcs.time_generated.day.str() + ' ' + dcs.time_generated.smonth() + ' ' + dcs.time_generated.year.str() + ' ' + dcs.time_generated.hhmmss()
+	time_gen := '$dcs.time_generated.day $dcs.time_generated.smonth() $dcs.time_generated.year $dcs.time_generated.hhmmss()'
 	mut hw := strings.new_builder(200)
 	mut toc := strings.new_builder(200)
 	// generate toc first
@@ -259,7 +266,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		if cn.parent_type !in ['void', ''] { continue }
 		toc.write('<li><a href="#${slug(cn.name)}">${cn.name}</a>')
 		children := dcs.contents.find_children_of(cn.name)
-		if children.len != 0 {
+		if children.len != 0 && cn.name != 'Constants' {
 			toc.writeln('        <ul>')
 			for child in children {
 				cname := cn.name + '.' + child.name
@@ -417,7 +424,7 @@ fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 		hw.writeln('## Contents')
 	}
 	for cn in dcs.contents {
-		name := cn.name.all_after(dcs.head.name+'.')
+		name := cn.name.all_after(dcs.head.name + '.')
 
 		if with_toc {
 			hw.writeln('- [#$name](${slug(name)})')
@@ -457,6 +464,23 @@ fn (cfg DocConfig) render() map[string]string {
 	return docs
 }
 
+fn (cfg DocConfig) get_readme(path string) string {
+	mut fname := ''
+	for name in ['readme', 'README'] {
+		if os.exists(os.join_path(path, '${name}.md')) {
+			fname = name
+			break
+		} 
+	}
+	if fname == '' {
+		return ''
+	}
+	readme_path := os.join_path(path, '${fname}.md')
+	cfg.vprintln('Reading README file from $readme_path')
+	readme_contents := os.read_file(readme_path) or { '' }
+	return readme_contents
+}
+
 fn (mut cfg DocConfig) generate_docs_from_file() {
 	if cfg.output_path.len == 0 {
 		if cfg.output_type == .unset {
@@ -483,16 +507,14 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		os.base_dir(cfg.input_path) 
 	}
 	manifest_path := os.join_path(dir_path, 'v.mod')
-	readme_path := os.join_path(dir_path, 'README.md')
 	if os.exists(manifest_path) {
 		cfg.vprintln('Reading v.mod info from $manifest_path')
 		if manifest := vmod.from_file(manifest_path) {
 			cfg.manifest = manifest
 		}
 	}
-	if os.exists(readme_path) && cfg.include_readme {
-		cfg.vprintln('Reading README file from $readme_path')
-		readme_contents := os.read_file(readme_path) or { '' }
+	if cfg.include_readme {
+		readme_contents := cfg.get_readme(dir_path)
         if cfg.output_type == .stdout {
 			println(markdown.to_plain(readme_contents))
         }
@@ -513,6 +535,10 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 			panic(err)
 		}
 		if dcs.contents.len == 0 { continue }
+		if cfg.is_multi {
+			readme_contents := cfg.get_readme(dirpath)
+			dcs.head.comment = readme_contents
+		}
 		if cfg.pub_only {
 			for i, c in dcs.contents {
 				dcs.contents[i].content = c.content.all_after('pub ')	
@@ -540,7 +566,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 					panic(err)
 				}
 			} else {
-				for fname in ['doc.css', 'v-prism.css', 'doc.js'] {
+				for fname in ['doc.css', 'normalize.css' 'doc.js'] {
 					os.rm(os.join_path(cfg.output_path, fname))
 				}
 			}
@@ -666,6 +692,22 @@ fn main() {
 				opath := cmdline.option(current_args, '-o', '')
 				cfg.output_path = os.real_path(opath)
 				i++
+			}
+			'-open' {
+				cfg.open_docs = true
+			}
+			'-p' {
+				s_port := cmdline.option(current_args, '-o', '')
+				s_port_int := s_port.int()
+				if s_port.len == 0 {
+					eprintln('vdoc: No port number specified on "-p".')
+					exit(1)
+				}
+				if s_port != s_port_int.str() {
+					eprintln('vdoc: Invalid port number.')
+					exit(1)
+				}
+				cfg.server_port = s_port_int
 			}
 			'-s' {
 				cfg.inline_assets = true

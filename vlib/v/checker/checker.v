@@ -1829,6 +1829,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.ComptimeCall {
 			it.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(it.left)))
+			if it.is_vweb {
+				mut c2 := new_checker(c.table, c.pref)
+				c2.check(it.vweb_tmpl)
+			}
 			return table.void_type
 		}
 		ast.ConcatExpr {

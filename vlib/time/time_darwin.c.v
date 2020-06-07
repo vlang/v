@@ -23,6 +23,11 @@ struct InternalTimeBase {
 	denom u32 = 1
 }
 
+pub struct C.timeval {
+	tv_sec  u64
+	tv_usec u64
+}
+
 fn init_time_base() InternalTimeBase {
 	tb := C.mach_timebase_info_data_t{}
 	C.mach_timebase_info(&tb)
@@ -46,4 +51,30 @@ fn vpc_now_darwin() u64 {
 		C.mach_timebase_info(&time_base)
 	}
 	return (tm - start_time) * time_base.numer / time_base.denom
+}
+
+// darwin_now returns a better precision current time for Darwin based operating system
+// this should be implemented with native system calls eventually
+// but for now a bit tweaky. It uses the deprecated  gettimeofday clock to get
+// the microseconds seconds part and normal local time to get correct local time
+// if the time has shifted on a second level between calls it uses
+// zero as microsecond. Not perfect but better that unix time only us a second
+fn darwin_now() Time {
+
+	// get the high precision time as UTC clock
+	// and use the nanoseconds part
+	tv := C.timeval{}
+	C.gettimeofday(&tv, 0)
+
+	t := C.time(0)
+	tm := C.localtime(&t)
+
+	// if the second part (very rare) is different
+	// microseconds is set to zero since it passed the second
+	// also avoid divide by zero if nsec is zero
+	if int(t) != tv.tv_sec {
+		return convert_ctime(tm, 0)
+	}
+
+	return convert_ctime(tm, int(tv.tv_usec))
 }

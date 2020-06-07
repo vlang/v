@@ -34,14 +34,16 @@ pub fn compile_template(content string) string {
 	mut s := strings.new_builder(1000)
 	// base := path.all_after_last('/').replace('.html', '')
 	s.writeln("
+	import strings
 	// === vweb html template ===
+	fn vweb_tmpl() {
 	mut sb := strings.new_builder(${lines.len * 30})
 	header := \' \' // TODO remove
 	_ = header
 	//footer := \'footer\'
 ")
 	s.writeln(str_start)
-	mut in_css := true // false
+	mut in_css := false// false
 	for _line in lines {
 		line := _line.trim_space()
 		if line == '<style>' {
@@ -77,6 +79,7 @@ pub fn compile_template(content string) string {
 			s.writeln(str_start)
 		}
 		else if !in_css && line.contains('.') && line.ends_with('{') {
+			// `.header {` => `<div class='header'>`
 			class := line.find_between('.', '{')
 			s.writeln('<div class="$class">')
 		}
@@ -90,6 +93,7 @@ pub fn compile_template(content string) string {
 	}
 	s.writeln(str_end)
 	s.writeln('tmpl_res := sb.str() ')
+	s.writeln('}')
 	s.writeln('// === end of vweb html template ===')
 	return s.str()
 }

@@ -88,7 +88,7 @@ pub fn (mut r Response) raw(response string) {
 
 [inline]
 pub fn (mut r Response) end() int {
-	n := int(r.buf - r.buf_start)
+	n := int(r.buf) - int(r.buf_start)
 	if C.write(r.fd, r.buf_start, n) != n {
 		return -1
 	}

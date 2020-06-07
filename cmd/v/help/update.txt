@@ -5,5 +5,5 @@ Usage:
     ^^^^^^^^^^^^ will update ALL installed modules to their latest versions.
 Options:
   -help        - Show usage info.
-  -verbose     - Print more details about the performed operation.
+  -v           - Print more details about the performed operation.
   -server-url  - When doing network operations, use this vpm server. Can be given multiple times.
