@@ -566,7 +566,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 					panic(err)
 				}
 			} else {
-				for fname in ['doc.css', 'v-prism.css', 'doc.js'] {
+				for fname in ['doc.css', 'normalize.css' 'doc.js'] {
 					os.rm(os.join_path(cfg.output_path, fname))
 				}
 			}
