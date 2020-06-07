@@ -12,7 +12,7 @@ fn test_orm() {
 	db := pg.connect(
 		dbname:'vpm'
 		user:'alex'
-	)
+	) or { panic(err) }
 /*
 	//nr_modules := db.select count from modules
 	//nr_modules := db.select count from Modules where id == 1
