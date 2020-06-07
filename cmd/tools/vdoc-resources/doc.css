@@ -19,7 +19,7 @@
 	--menu-search-background-color: #00000044;
 	--menu-search-font-color: #fff;
 	--toc-font-color: #2779bd;
-	--toc-indent-line-color: #dae1e7;
+	--toc-indicator-color: #4299e1;
 	--code-default-text-color: #5c6e74;
 	--code-background-color: #edf2f7;
 	--code-keyword-text-color: #2b6cb0;
@@ -57,7 +57,7 @@
 	--menu-search-background-color: #4a5568;
 	--menu-search-font-color: #fff;
 	--toc-font-color: #90cdf4;
-	--toc-indent-line-color: #1a202c;
+	--toc-indicator-color: #4299e1;
 	--code-default-text-color: #cbd5e0;
 	--code-background-color: #2d3748;
 	--code-builtin-text-color: #68d391;
@@ -362,22 +362,26 @@ body {
 	text-overflow: ellipsis;
 	display: block;
 	text-decoration: none;
+	border-left-width: 2px;
+	border-left-style: solid;
+	border-color: transparent;
+	padding-left: 0.4rem;
 }
 .doc-toc a:hover {
 	text-decoration: underline;
 }
+.doc-toc a.active {
+	border-color: #4299e1;
+	border-color: var(--toc-indicator-color);
+}
 .doc-toc li ul {
-	border-color: #dae1e7;
-	border-color: var(--toc-indent-line-color);
-	border-left-width: 2px;
-	border-left-style: solid;
-	padding-left: 0.8rem;
 	margin: 0.2rem 0 0.2rem;
 	font-size: 0.7rem;
 	list-style: none;
 }
 .doc-toc li ul a {
 	font-weight: 400;
+	padding-left: 0.8rem;
 }
 
 /* Code highlight */
