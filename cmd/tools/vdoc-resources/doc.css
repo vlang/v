@@ -396,7 +396,8 @@ body {
 
 /* Code highlight */
 pre[class*="language-"],
-code[class*="language-"] {
+code[class*="language-"],
+pre code {
   color: #5c6e74;
   color: var(--code-default-text-color);
   font-size: 0.8rem;
@@ -421,7 +422,8 @@ code[class*="language-"] {
   border-radius: 0.25rem;
   overflow-x: auto;
 }
-code[class*="language-"] {
+code[class*="language-"],
+pre code {
 	padding: 1rem;
 }
 pre[class*="language-"] {
