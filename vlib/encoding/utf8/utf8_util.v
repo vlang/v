@@ -1,21 +1,21 @@
-/**********************************************************************
-*
-* utf-8 util
-*
-* Copyright (c) 2019 Dario Deledda. All rights reserved.
-* Use of this source code is governed by an MIT license
-* that can be found in the LICENSE file.
-*
-* This file contains utilities for utf8 strings
-*
-**********************************************************************/
+/*
+
+utf-8 util
+
+Copyright (c) 2019 Dario Deledda. All rights reserved.
+Use of this source code is governed by an MIT license
+that can be found in the LICENSE file.
+
+This file contains utilities for utf8 strings
+
+*/
 module utf8
 
-/**********************************************************************
-*
-* Utility functions
-*
-**********************************************************************/
+/*
+
+Utility functions
+
+*/
 
 // len return the leght as number of unicode chars from a string
 pub fn len(s string) int {
@@ -81,11 +81,11 @@ pub fn get_uchar(s string, index int) int {
 }
 
 
-/**********************************************************************
-*
-* Conversion functions
-*
-**********************************************************************/
+/*
+
+Conversion functions
+
+*/
 
 // to_upper return an uppercase string from a string
 pub fn to_upper(s string) string {
@@ -110,14 +110,14 @@ pub fn u_to_lower(s ustring) ustring {
 }
 
 
-/**********************************************************************
-*
-* Punctuation functions
-*
-* The "western" function search on a small table, that is quicker than
-* the global unicode table search. **Use only for western chars**.
-*
-**********************************************************************/
+/*
+
+Punctuation functions
+
+The "western" function search on a small table, that is quicker than
+the global unicode table search. **Use only for western chars**.
+
+*/
 
 //
 // Western
@@ -148,11 +148,11 @@ pub fn is_uchar_global_punct( uchar int ) bool {
 }
 
 
-/**********************************************************************
-*
-* Private functions
-*
-**********************************************************************/
+/*
+
+Private functions
+
+*/
 // utf8util_char_len calculate the length in bytes of a utf8 char
 fn utf8util_char_len(b byte) int {
 	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
@@ -357,20 +357,20 @@ fn find_punct_in_table( in_code int , in_table []int ) int {
 }
 
 
-/*****************************************************************************
-*
-*  universal character set 2 level 1 (UCS-2 level-1) between uppercase and lowercase
-*  [Lowercase code point,	Uppercase code point,	Lowercase character description,	Uppercase character description]
-*
-*  source: https://www.ibm.com/support/knowledgecenter/ssw_ibm_i_73/nls/rbagslowtoupmaptable.htm?view=embed
-*  term of use: https://www.ibm.com/legal?lnk=flg-tous-usen
-*  license: not stated, general fair use license applied
-*
-*  regex expresion => replace from html table to V :
-*  src: ([A-F\d]+)\s+([A-F\d]+)\s+(.*)
-*  dst: 0x$1, 0x$2, // $3
-*
-*****************************************************************************/
+/*
+
+universal character set 2 level 1 (UCS-2 level-1) between uppercase and lowercase
+[Lowercase code point,	Uppercase code point,	Lowercase character description,	Uppercase character description]
+
+source: https://www.ibm.com/support/knowledgecenter/ssw_ibm_i_73/nls/rbagslowtoupmaptable.htm?view=embed
+term of use: https://www.ibm.com/legal?lnk=flg-tous-usen
+license: not stated, general fair use license applied
+
+regex expresion => replace from html table to V :
+src: ([A-F\d]+)\s+([A-F\d]+)\s+(.*)
+dst: 0x$1, 0x$2, // $3
+
+*/
 
 const(
 
@@ -1047,13 +1047,13 @@ u16(0x0041), 0x0061, //LATIN CAPITAL LETTER A	LATIN SMALL LETTER A
 ]
 )
 
-/*****************************************************************************
-*
-*  Unicode punctuation chars
-*
-*  source: http://www.unicode.org/faq/punctuation_symbols.html
-*
-*****************************************************************************/
+/*
+
+Unicode punctuation chars
+
+source: http://www.unicode.org/faq/punctuation_symbols.html
+
+*/
 const(
 
 // Western punctuation mark

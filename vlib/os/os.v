@@ -25,7 +25,7 @@ pub fn (f File) is_opened() bool {
 	return f.opened
 }
 
-/***************************** Write ops ****************************/
+// Write ops
 
 pub fn (mut f File) write(s string) {
 	if !f.opened {

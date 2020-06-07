@@ -17,11 +17,11 @@ const (
 	enc_table = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 )
 
-/**
- * decode - expects a base64 encoded string. Returns its decoded version.
- * @param data - the encoded input string.
- * @return the decoded version of the input string data.
- * NB: if you need to decode many strings repeatedly, take a look at decode_in_buffer too.
+/*
+decode - expects a base64 encoded string. Returns its decoded version.
+@param data - the encoded input string.
+@return the decoded version of the input string data.
+NB: if you need to decode many strings repeatedly, take a look at decode_in_buffer too.
  */
 pub fn decode(data string) string {
 	size := data.len * 3 / 4
@@ -32,12 +32,12 @@ pub fn decode(data string) string {
 	return tos(buffer, decode_in_buffer(data, buffer) )
 }
 
-/**
- * decode - expects a string. Returns its base64 encoded version.
- * @param data - the input string.
- * @return the base64 encoded version of the input string.
- * NB: base64 encoding returns a string that is ~ 4/3 larger than the input.
- * NB: if you need to encode many strings repeatedly, take a look at encode_in_buffer too.
+/*
+decode - expects a string. Returns its base64 encoded version.
+@param data - the input string.
+@return the base64 encoded version of the input string.
+NB: base64 encoding returns a string that is ~ 4/3 larger than the input.
+NB: if you need to encode many strings repeatedly, take a look at encode_in_buffer too.
  */
 pub fn encode(data string) string {
 	size := 4 * ((data.len + 2) / 3)
@@ -48,13 +48,13 @@ pub fn encode(data string) string {
 	return tos(buffer, encode_in_buffer(data, buffer))
 }
 
-/**
- * decode_in_buffer - expects a string reference, and a buffer in which to store its decoded version.
- * @param data - a reference/pointer to the input string that will be decoded.
- * @param buffer - a reference/pointer to the buffer that will hold the result.
- * The buffer should be large enough (i.e. 3/4 of the data.len, or larger) to hold the decoded data.
- * @return the actual size of the decoded data in the buffer.
- * NB: this function does NOT allocate new memory, and is suitable for handling very large strings.
+/*
+decode_in_buffer - expects a string reference, and a buffer in which to store its decoded version.
+@param data - a reference/pointer to the input string that will be decoded.
+@param buffer - a reference/pointer to the buffer that will hold the result.
+The buffer should be large enough (i.e. 3/4 of the data.len, or larger) to hold the decoded data.
+@return the actual size of the decoded data in the buffer.
+NB: this function does NOT allocate new memory, and is suitable for handling very large strings.
  */
 pub fn decode_in_buffer(data &string, buffer byteptr) int {
 	mut padding := 0
@@ -109,13 +109,13 @@ pub fn decode_in_buffer(data &string, buffer byteptr) int {
 	return output_length
 }
 
-/**
- * encode_in_buffer - expects a string reference, and a buffer in which to store its base64 encoded version.
- * @param data - a reference/pointer to the input string.
- * @param buffer - a reference/pointer to the buffer that will hold the result.
- * The buffer should be large enough (i.e. 4/3 of the data.len, or larger) to hold the encoded data.
- * @return the actual size of the encoded data in the buffer.
- * NB: this function does NOT allocate new memory, and is suitable for handling very large strings.
+/*
+encode_in_buffer - expects a string reference, and a buffer in which to store its base64 encoded version.
+@param data - a reference/pointer to the input string.
+@param buffer - a reference/pointer to the buffer that will hold the result.
+The buffer should be large enough (i.e. 4/3 of the data.len, or larger) to hold the encoded data.
+@return the actual size of the encoded data in the buffer.
+NB: this function does NOT allocate new memory, and is suitable for handling very large strings.
  */
 pub fn encode_in_buffer(data &string, buffer byteptr) int {
 	input_length := data.len
