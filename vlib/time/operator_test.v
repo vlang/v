@@ -1,21 +1,13 @@
 module time
 
-// Tests the now in all platform and the gt operator function with at least ms resolution
 fn test_now_always_results_in_greater_time() {
+	// Tests the now in all platform and the gt operator function,
+	// with at least ms resolution.
+	// NB: on windows, sleep_ms(1) may wait for over 15ms,
+	// so just test that the time after the sleep is greater
+	// than the time before the sleep_ms.
 	t1 := now()
-
-	$if macos {
-		time.sleep_ms(1)
-	}
-	$if windows {
-		// Lower resolution of time for windows
-		time.sleep_ms(15)
-	}
-	$if linux {
-		time.sleep_ms(1)
-	} $else {
-		return // Always ok
-	}
+	time.sleep_ms(1) 
 	t2 := now()
 	assert t2.gt(t1)
 }
