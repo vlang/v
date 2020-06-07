@@ -2,7 +2,7 @@ type A = int | string | f64
 
 fn main() {
 	x := A('test')
-	_ := match x {
+	_ = match x {
 		int {
 			'int'
 		}
@@ -10,7 +10,7 @@ fn main() {
 			'string'
 		}
 	}
-	_ := match x {
+	_ = match x {
 		int {
 			'int'
 		}
@@ -24,7 +24,7 @@ fn main() {
 			'else'
 		}
 	}
-	_ := match x {
+	_ = match x {
 		int {
 			'int'
 		}

@@ -92,7 +92,7 @@ fn (mut p Parser) partial_assign_stmt(known_lhs []ast.Ident) ast.Stmt {
 		}
 	}
 	for i, ident in idents {
-		if !is_decl && !p.scope.known_var(ident.name) {
+		if !is_decl && ident.kind != .blank_ident && !p.scope.known_var(ident.name) {
 			p.error('unknown variable `$ident.name`')
 		}
 		if is_decl && ident.kind != .blank_ident {

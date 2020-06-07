@@ -668,6 +668,9 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 	c.expected_type = table.void_type
 	left_type := c.unwrap_generic(c.expr(assign_expr.left))
 	c.expected_type = left_type
+	if ast.expr_is_blank_ident(assign_expr.left) {
+		c.expected_type = table.Type(0)
+	}
 	assign_expr.left_type = left_type
 	// println('setting exp type to $c.expected_type $t.name')
 	right_type := c.check_expr_opt_call(assign_expr.val, c.unwrap_generic(c.expr(assign_expr.val)))
@@ -677,8 +680,9 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 	match assign_expr.left {
 		ast.Ident {
 			if it.kind == .blank_ident {
-				if assign_expr.op != .decl_assign {
-					c.error('cannot assign to blank `_` variable', it.pos)
+				if assign_expr.op != .assign {
+
+					c.error('cannot modify blank `_` variable', it.pos)
 				}
 				return
 			}
@@ -1325,7 +1329,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	right_first := assign_stmt.right[0]
 	mut right_len := assign_stmt.right.len
 	if right_first is ast.CallExpr || right_first is ast.IfExpr || right_first is ast.MatchExpr {
-		right_type0 := c.expr(assign_stmt.right[0])
+		right_type0 := c.expr(right_first)
 		assign_stmt.right_types = [right_type0]
 		right_type_sym0 := c.table.get_type_symbol(right_type0)
 		if right_type0 == table.void_type {
@@ -1339,12 +1343,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				call_expr := assign_stmt.right[0] as ast.CallExpr
 				c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${call_expr.name}()` returns $right_len value(s)',
 					assign_stmt.pos)
-				return
 			} else {
 				c.error('assignment mismatch: $assign_stmt.left.len variable(s) $right_len value(s)',
 					assign_stmt.pos)
-				return
 			}
+			return
 		}
 	} else if assign_stmt.left.len != right_len {
 		c.error('assignment mismatch: $assign_stmt.left.len variable(s) $assign_stmt.right.len value(s)',
@@ -1364,16 +1367,16 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		mut ident_var_info := ident.var_info()
 		is_decl := assign_stmt.op == .decl_assign
 		if is_decl {
-			val_type = c.table.mktyp(val_type)
-			if ident.name != '_' {
+			if ident.kind != .blank_ident {
 				// check variable name for beginning with capital letter 'Abc'
 				c.check_valid_snake_case(ident.name, 'variable name', ident.pos)
 			}
+			val_type = c.table.mktyp(val_type)
 		} else {
 			c.fail_if_immutable(ident)
 			var_type := c.expr(ident)
 			assign_stmt.left_types << var_type
-			if !c.check_types(val_type, var_type) {
+			if ident.kind != .blank_ident && !c.check_types(val_type, var_type) {
 				val_type_sym := c.table.get_type_symbol(val_type)
 				var_type_sym := c.table.get_type_symbol(var_type)
 				c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`',

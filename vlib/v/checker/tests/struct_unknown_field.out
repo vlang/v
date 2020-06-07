@@ -4,4 +4,4 @@ vlib/v/checker/tests/struct_unknown_field.v:8:3: error: unknown field `bar` in s
     8 |         bar: false
       |         ~~~~~~~~~~
     9 |     }
-   10 |     _ := t
+   10 |     _ = t

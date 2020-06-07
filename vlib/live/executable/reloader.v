@@ -36,7 +36,7 @@ pub fn start_reloader(mut r live.LiveReloadInfo) {
 	// If that fails, the program would crash anyway, just provide
 	// an error message to the user and exit:
     r.reloads++
-	_ := compile_and_reload_shared_lib(mut r) or {
+	compile_and_reload_shared_lib(mut r) or {
 		eprintln( err )
 		exit(1)
 	}

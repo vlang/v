@@ -3,5 +3,5 @@ fn ret_void() ?void {
 }
 
 fn main() {
-	_ := ret_void() or { panic('$err') }
+	_ = ret_void() or { panic('$err') }
 }

@@ -12,7 +12,7 @@ fn test_parse() {
 
 fn test_parse_invalid() {
 	s := 'Invalid time string'
-	_ := time.parse(s) or {
+	time.parse(s) or {
 		assert true
 		return
 	}
@@ -38,7 +38,7 @@ fn test_parse_rfc2822() {
 
 fn test_parse_rfc2822_invalid() {
 	s3 := 'Thu 12 Foo 2019 06:07:45 +0800'
-	_ := time.parse_rfc2822(s3) or {
+	time.parse_rfc2822(s3) or {
 		assert true
 		return
 	}

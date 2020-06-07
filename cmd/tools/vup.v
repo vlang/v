@@ -59,7 +59,7 @@ fn main() {
 		}
 	}
 
-	_ := os.exec('v cmd/tools/vup.v') or {
+	os.exec('v cmd/tools/vup.v') or {
 		panic(err)
 	}
 	show_current_v_version(vexe)

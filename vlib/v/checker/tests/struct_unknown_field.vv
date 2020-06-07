@@ -7,5 +7,5 @@ fn main() {
 		foo: true
 		bar: false
 	}
-	_ := t
+	_ = t
 }

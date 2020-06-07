@@ -66,7 +66,7 @@ fn test_array_int_full_options() {
 	assert a.str() == "[0, 0]"
 
 	b := []int{len: 10, cap: 100, init: 1} // this creates an array with 10 one and initial capacity 100 elements, value given
-	_ := b.clone() // discard result variable, sample
+	_ = b.clone() // discard result variable, sample
 	println('array b: length: ${b.len}, capacity: ${b.cap}, content: $b')
 	assert b.len == 10
 	assert b.cap == 100
@@ -74,7 +74,7 @@ fn test_array_int_full_options() {
 	assert b.str() == "[1, 1, 1, 1, 1, 1, 1, 1, 1, 1]"
 
 	mut c := []int{len: 2, cap: 10, init: 1} // this creates an array with 2 one and initial capacity 10 elements, value given
-	_ := c.clone() // discard result variable, sample
+	_ = c.clone() // discard result variable, sample
 	println('array c: length: ${c.len}, capacity: ${c.cap}, content: $c')
 	assert c.len == 2
 	assert c.cap == 10
@@ -109,7 +109,7 @@ fn test_array_string_full_options() {
 	assert a.str() == "['', '']"
 
 	b := []string{len: 10, cap: 100, init: 'b'} // this creates an array with 10 'b', initial capacity 100 elements, value given
-	_ := b.clone() // discard result variable, sample
+	_ = b.clone() // discard result variable, sample
 	println('array b: length: ${b.len}, capacity: ${b.cap}') // ok
 	println('array b: length: ${b.len}, capacity: ${b.cap}, content: $b')
 	assert b.len == 10
@@ -118,7 +118,7 @@ fn test_array_string_full_options() {
 	assert b.str() == "['b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b']"
 
 	mut c := []string{len: 2, cap: 10, init: 'c'} // this creates an array with 2 'c' and initial capacity 10 elements, value given
-	_ := c.clone() // discard result variable, sample
+	_ = c.clone() // discard result variable, sample
 	println('array c: length: ${c.len}, capacity: ${c.cap}, content: $c')
 	assert c.len == 2
 	assert c.cap == 10
