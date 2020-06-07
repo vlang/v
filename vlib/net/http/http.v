@@ -228,7 +228,15 @@ pub fn (req &Request) do() ?Response {
 			break
 		}
 		// follow any redirects
-		mut redirect_url := resp.headers['Location']
+		mut redirect_url := ''
+		if 'Location' in resp.headers {
+			redirect_url = resp.headers['Location']
+		} else if 'location' in resp.headers {
+			redirect_url = resp.headers['location']
+		} else {
+			return error('http.request.do: no redirect path given')
+		}
+
 		if redirect_url.len > 0 && redirect_url[0] == `/` {
 			url.set_path(redirect_url) or {
 				return error('http.request.do: invalid path in redirect: "$redirect_url"')
