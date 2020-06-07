@@ -1,23 +1,31 @@
 module time
 
+fn assert_greater_time(ms int, t1 Time) {
+	time.sleep_ms(ms)
+	t2 := now()
+	assert t2.gt(t1)
+}
+
 // Tests the now in all platform and the gt operator function with at least ms resolution
 fn test_now_always_results_in_greater_time() {
 	t1 := now()
-
 	$if macos {
-		time.sleep_ms(1)
+		assert_greater_time(1, t1)
+		return
 	}
 	$if windows {
 		// Lower resolution of time for windows
-		time.sleep_ms(15)
+		assert_greater_time(15, t1)
+		return
 	}
 	$if linux {
 		time.sleep_ms(1)
-	} $else {
-		return // Always ok
+		assert_greater_time(1, t1)
+		return
 	}
-	t2 := now()
-	assert t2.gt(t1)
+	// other platforms may have more accurate resolution,
+	// but we do not know that ... so wait at least 1s:
+	assert_greater_time(1001, t1)
 }
 
 fn test_time1_should_be_same_as_time2() {
