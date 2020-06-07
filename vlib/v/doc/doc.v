@@ -96,7 +96,7 @@ pub fn (d Doc) get_signature(stmt ast.Stmt) string {
 			return 'module $it.name'
 		}
 		ast.FnDecl {
-			return it.str(d.table).replace(d.head.name.split('.').last() + '.', '')
+			return it.str(d.table).replace(f.cur_mod + '.', '')
 		}
 		else {
 			f.stmt(stmt)
@@ -125,12 +125,13 @@ pub fn (d Doc) get_type_name(decl ast.TypeDecl) string {
 }
 
 pub fn (d Doc) get_name(stmt ast.Stmt) string {
+	cur_mod := d.head.name.split('.').last()
 	match stmt {
 		ast.FnDecl { return it.name }
 		ast.StructDecl { return it.name }
 		ast.EnumDecl { return it.name }
 		ast.InterfaceDecl { return it.name }
-		ast.TypeDecl { return d.get_type_name(it).replace('&${d.head.name}.', '').replace(d.head.name + '.', '') }
+		ast.TypeDecl { return d.get_type_name(it).replace('&' + cur_mod + '.', '').replace(cur_mod + '.', '') }
 		ast.ConstDecl { return 'Constants' }
 		else { return '' }
 	}
