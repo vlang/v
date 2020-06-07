@@ -464,6 +464,23 @@ fn (cfg DocConfig) render() map[string]string {
 	return docs
 }
 
+fn (cfg DocConfig) get_readme(path string) string {
+	mut fname := ''
+	for name in ['readme', 'README'] {
+		if os.exists(os.join_path(path, '${name}.md')) {
+			fname = name
+			break
+		} 
+	}
+	if fname == '' {
+		return ''
+	}
+	readme_path := os.join_path(path, '${fname}.md')
+	cfg.vprintln('Reading README file from $readme_path')
+	readme_contents := os.read_file(readme_path) or { '' }
+	return readme_contents
+}
+
 fn (mut cfg DocConfig) generate_docs_from_file() {
 	if cfg.output_path.len == 0 {
 		if cfg.output_type == .unset {
@@ -490,16 +507,14 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		os.base_dir(cfg.input_path) 
 	}
 	manifest_path := os.join_path(dir_path, 'v.mod')
-	readme_path := os.join_path(dir_path, 'README.md')
 	if os.exists(manifest_path) {
 		cfg.vprintln('Reading v.mod info from $manifest_path')
 		if manifest := vmod.from_file(manifest_path) {
 			cfg.manifest = manifest
 		}
 	}
-	if os.exists(readme_path) && cfg.include_readme {
-		cfg.vprintln('Reading README file from $readme_path')
-		readme_contents := os.read_file(readme_path) or { '' }
+	if cfg.include_readme {
+		readme_contents := cfg.get_readme(dir_path)
         if cfg.output_type == .stdout {
 			println(markdown.to_plain(readme_contents))
         }
@@ -520,6 +535,10 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 			panic(err)
 		}
 		if dcs.contents.len == 0 { continue }
+		if cfg.is_multi {
+			readme_contents := cfg.get_readme(dirpath)
+			dcs.head.comment = readme_contents
+		}
 		if cfg.pub_only {
 			for i, c in dcs.contents {
 				dcs.contents[i].content = c.content.all_after('pub ')	
