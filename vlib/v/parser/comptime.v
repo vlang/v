@@ -87,8 +87,19 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
 	mut path := p.cur_fn_name + '.html'
-	// if p.pref.is_debug {
+	// if p.pref.is_verbose {
 	println('>>> compiling vweb HTML template "$path"')
+	// }
+	if !os.exists(path) {
+		// Can't find the template file in current directory,
+		// try looking next to the vweb program, in case it's run with
+		// v path/to/vweb_app.v
+		path = os.dir(p.scanner.file_path) + '/' + path
+		if !os.exists(path) {
+			p.error('vweb HTML template "$path" not found')
+		}
+		// println('path is now "$path"')
+	}
 	v_code := tmpl.compile_file(path)
 	mut scope := &ast.Scope{
 		start_pos: 0
@@ -102,17 +113,6 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		println('>>> end of vweb template END')
 		println('\n\n')
 	}
-	/*
-	if !os.exists(path) {
-		// Can't find the template file in current directory,
-		// try looking next to the vweb program, in case it's run with
-		// v path/to/vweb_app.v
-		path = os.dir(p.scanner.file_path) + '/' + path
-		if !os.exists(path) {
-			p.error('vweb HTML template "$path" not found')
-		}
-	}
-	*/
 	// copy vars from current fn scope into vweb_tmpl scope
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
