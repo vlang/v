@@ -1,5 +1,14 @@
 module time
 
+// dummy to compile with all compilers
+pub fn linux_now() Time {
+	return Time{}
+}
+
+pub fn darwin_now() Time {
+	return Time{}
+}
+
 fn solaris_now() Time {
        // get the high precision time as UTC realtime clock
        // and use the nanoseconds part

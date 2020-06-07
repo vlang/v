@@ -143,6 +143,11 @@ pub fn linux_now() Time {
 }
 
 // dummy to compile with all compilers
+pub fn solaris_now() Time {
+	return Time{}
+}
+
+// dummy to compile with all compilers
 pub struct C.timeval {
 	tv_sec  u64
 	tv_usec u64

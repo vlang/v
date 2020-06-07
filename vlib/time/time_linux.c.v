@@ -9,6 +9,11 @@ pub fn darwin_now() Time {
 	return Time{}
 }
 
+// dummy to compile with all compilers
+pub fn solaris_now() Time {
+	return Time{}
+}
+
 // linux_now returns the local time with high precision for most os:es
 // this should be implemented with native system calls eventually
 // but for now a bit tweaky. It uses the realtime clock to get
