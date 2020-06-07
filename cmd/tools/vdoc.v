@@ -231,13 +231,14 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	head_tag := if head { 'h1' } else { 'h2' }
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
+	is_const_class := if dd.name == 'Constants' { ' const' } else { '' }
 	mut sym_name := dd.name
-	if dd.parent_type !in ['void', ''] { 
+	if dd.parent_type !in ['void', '', 'Constants'] { 
 		sym_name = '${dd.parent_type}.' + sym_name
 	}
 	node_id := slug(sym_name)
-	dnw.writeln('<section id="$node_id" class="doc-node">')
-	if dd.name != 'README' {
+	dnw.writeln('<section id="$node_id" class="doc-node$is_const_class">')
+	if dd.name != 'README' && dd.parent_type != 'Constants' {
 		dnw.write('<div class="title"><$head_tag>$sym_name <a href="#$node_id">#</a></$head_tag>')
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
@@ -264,7 +265,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		if cn.parent_type !in ['void', ''] { continue }
 		toc.write('<li><a href="#${slug(cn.name)}">${cn.name}</a>')
 		children := dcs.contents.find_children_of(cn.name)
-		if children.len != 0 {
+		if children.len != 0 && cn.name != 'Constants' {
 			toc.writeln('        <ul>')
 			for child in children {
 				cname := cn.name + '.' + child.name

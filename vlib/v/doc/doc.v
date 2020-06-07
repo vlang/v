@@ -214,6 +214,7 @@ pub fn (mut d Doc) generate() ?bool {
 	mut module_name := ''
 	mut parent_mod_name := ''
 	mut orig_mod_name := ''
+	mut const_idx := -1
 	for i, file_ast in file_asts {
 		if i == 0 {
 			parent_mod_name = get_parent_mod(base_path) or {
@@ -234,7 +235,7 @@ pub fn (mut d Doc) generate() ?bool {
 		}
 		mut prev_comments := []ast.Stmt{}
 		stmts := file_ast.stmts
-		for _, stmt in stmts {
+		for o, stmt in stmts {
 			//eprintln('stmt typeof: ' + typeof(stmt))
 			if stmt is ast.Comment {
 				prev_comments << stmt
@@ -256,8 +257,6 @@ pub fn (mut d Doc) generate() ?bool {
 				d.head.comment += module_comment
 				continue
 			}
-			// todo: accumulate consts
-			mut name := d.get_name(stmt)
 			signature := d.get_signature(stmt)
 			pos := d.get_pos(stmt)
 			if !signature.starts_with('pub') && d.pub_only {
@@ -283,7 +282,13 @@ pub fn (mut d Doc) generate() ?bool {
 					}
 					node.parent_type = parent_type
 				}
-
+			}
+			if stmt is ast.ConstDecl {
+				if const_idx == -1 {
+					const_idx = o
+				} else {
+					node.parent_type = 'Constants'
+				}
 			}
 			if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 {
 				continue

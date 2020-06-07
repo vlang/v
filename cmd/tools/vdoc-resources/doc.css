@@ -266,6 +266,12 @@ body {
 .doc-content > .doc-node:not(:last-child) {
 	padding: 1rem 0 3rem 0;
 }
+.doc-content > .doc-node.const:not(:first-child) {
+	padding-top: 0;
+}
+.doc-content > .doc-node.const:not(:last-child) {
+	padding-bottom: 1rem;
+}
 .doc-content > .timestamp {
 	font-size: 0.8rem;
 	color: #b8c2cc;
