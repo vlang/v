@@ -128,7 +128,6 @@ pub fn (db DB) exec_one(query string) ?Row {
 // free. This prevents warnings and doesn't seem to affect behavior.
 pub fn (db DB) exec_param_many(query string, params []string) []Row {
 	unsafe {
-		b := sizeof(byteptr)
 		mut param_vals := &byteptr(malloc(params.len * 8))
 		for i in 0..params.len {
 			param_vals[i] = params[i].str

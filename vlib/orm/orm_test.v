@@ -1,4 +1,6 @@
+import os
 import pg
+import term
 
 struct Modules {
 	id int
@@ -9,10 +11,13 @@ struct Modules {
 }
 
 fn test_orm() {
-	db := pg.connect(
-		dbname:'vpm'
-		user:'alex'
-	) or { panic(err) }
+	dbname := os.getenv('VDB_NAME')
+	dbuser := os.getenv('VDB_USER')
+	if dbname == '' || dbuser == '' {
+		eprintln(term.red('NB: this test requires VDB_NAME and VDB_USER env variables to be set'))
+		return
+	}
+	db := pg.connect(dbname: dbname, user: dbuser) or { panic(err) }
 /*
 	//nr_modules := db.select count from modules
 	//nr_modules := db.select count from Modules where id == 1
