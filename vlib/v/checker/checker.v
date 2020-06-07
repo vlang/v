@@ -674,19 +674,26 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 	assign_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
-	if ast.expr_is_blank_ident(assign_expr.left) {
-		return
+	match assign_expr.left {
+		ast.Ident {
+			if it.kind == .blank_ident {
+				if assign_expr.op != .decl_assign {
+					c.error('cannot assign to blank `_` variable', it.pos)
+				}
+				return
+			}
+		}
+		ast.PrefixExpr {
+			// Do now allow `*x = y` outside `unsafe`
+			if it.op == .mul && !c.inside_unsafe {
+				c.error('modifying variables via deferencing can only be done in `unsafe` blocks',
+					assign_expr.pos)
+			}
+		}
+		else {}
 	}
 	// Make sure the variable is mutable
 	c.fail_if_immutable(assign_expr.left)
-	// Do now allow `*x = y` outside `unsafe`
-	if assign_expr.left is ast.PrefixExpr {
-		p := assign_expr.left as ast.PrefixExpr
-		if p.op == .mul && !c.inside_unsafe {
-			c.error('modifying variables via deferencing can only be done in `unsafe` blocks',
-				assign_expr.pos)
-		}
-	}
 	// Single side check
 	match assign_expr.op {
 		.assign {} // No need to do single side check for =. But here put it first for speed.
@@ -1354,16 +1361,15 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i])
 		}
 		mut val_type := assign_stmt.right_types[i]
-		// check variable name for beginning with capital letter 'Abc'
-		is_decl := assign_stmt.op == .decl_assign
-		if is_decl && ident.name != '_' {
-			c.check_valid_snake_case(ident.name, 'variable name', ident.pos)
-		}
-		if assign_stmt.op == .decl_assign {
-			val_type = c.table.mktyp(val_type)
-		}
 		mut ident_var_info := ident.var_info()
-		if assign_stmt.op == .assign {
+		is_decl := assign_stmt.op == .decl_assign
+		if is_decl {
+			val_type = c.table.mktyp(val_type)
+			if ident.name != '_' {
+				// check variable name for beginning with capital letter 'Abc'
+				c.check_valid_snake_case(ident.name, 'variable name', ident.pos)
+			}
+		} else {
 			c.fail_if_immutable(ident)
 			var_type := c.expr(ident)
 			assign_stmt.left_types << var_type

@@ -593,7 +593,7 @@ fn test_array_str() {
 	numbers := [1, 2, 3]
 	assert numbers == [1,2,3]
 	numbers2 := [numbers, [4, 5, 6]] // dup str() bug
-	_=numbers2
+	_ := numbers2
 	assert true
 	assert numbers.str() == '[1, 2, 3]'
 	// QTODO

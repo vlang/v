@@ -729,7 +729,17 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 	if p.tok.kind == .decl_assign || (p.tok.kind == .assign && collected.len > 1) {
 		mut idents := []ast.Ident{}
 		for c in collected {
-			idents << c as ast.Ident
+			match c {
+				ast.Ident {
+					idents << it
+				}
+				ast.SelectorExpr {
+					p.error_with_pos('struct fields can only be declared during the initialization', it.pos)
+				}
+				else {
+					p.error_with_pos('unexpected `${typeof(c)}`', c.position())
+				}
+			}
 		}
 		return p.partial_assign_stmt(idents)
 	} else if p.tok.kind.is_assign() {
@@ -789,19 +799,18 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 		if p.expr_mod.len > 0 {
 			name = '${p.expr_mod}.$name'
 		}
-		mut ident := ast.Ident{
+		return ast.Ident{
 			kind: .unresolved
 			name: name
 			language: language
 			mod: p.mod
 			pos: pos
-		}
-		ident.is_mut = is_mut
-		ident.info = ast.IdentVar{
 			is_mut: is_mut
-			is_static: is_static
+			info: ast.IdentVar{
+				is_mut: is_mut
+				is_static: is_static
+			}
 		}
-		return ident
 	} else {
 		p.error('unexpected token `$p.tok.lit`')
 	}

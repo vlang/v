@@ -341,7 +341,7 @@ pub fn generate(input_path string, pub_only, with_comments bool) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
-	_ = doc.generate() or {
+	doc.generate() or {
 		return error(err)
 	}
 	return doc

@@ -1,9 +1,9 @@
 fn test_assign() {
-	_ = 123
+	_ := 123
 }
 
 fn fn_with_blank_param(_ int) {
-	_ = 456
+	_ := 456
 }
 
 fn test_fn_with_blank_param() {

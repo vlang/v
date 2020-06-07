@@ -27,7 +27,7 @@ pub fn (mut app App) json_endpoint() {
 
 pub fn (mut app App) index() {
 	app.cnt++
-	show:= true
+	show := true
 	//app.vweb.text('Hello world from vweb')
 	hello := 'Hello world from vweb'
 	numbers := [1,2,3]

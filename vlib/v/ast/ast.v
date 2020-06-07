@@ -801,14 +801,6 @@ pub fn expr_is_blank_ident(expr Expr) bool {
 	}
 }
 
-[inline]
-pub fn expr_is_call(expr Expr) bool {
-	return match expr {
-		CallExpr { true }
-		else { false }
-	}
-}
-
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
 	match mut expr {
