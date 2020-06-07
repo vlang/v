@@ -34,7 +34,9 @@ pub fn compile_template(content string) string {
 	mut s := strings.new_builder(1000)
 	// base := path.all_after_last('/').replace('.html', '')
 	s.writeln("
+	import strings
 	// === vweb html template ===
+	fn tmpl_fn() {
 	mut sb := strings.new_builder(${lines.len * 30})
 	header := \' \' // TODO remove
 	_ = header
@@ -90,6 +92,7 @@ pub fn compile_template(content string) string {
 	}
 	s.writeln(str_end)
 	s.writeln('tmpl_res := sb.str() ')
+	s.writeln('}')
 	s.writeln('// === end of vweb html template ===')
 	return s.str()
 }

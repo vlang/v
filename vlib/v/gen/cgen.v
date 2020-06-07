@@ -4351,6 +4351,14 @@ fn (mut g Gen) interface_call(typ, interface_type table.Type) {
 
 fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
+		for stmt in node.vweb_tmpl.stmts {
+			match stmt {
+				ast.FnDecl {
+					g.stmts(it.stmts)
+				}
+				else {}
+			}
+		}
 		g.writeln('vweb__Context_html(&app-> vweb, tmpl_res)')
 		return
 	}

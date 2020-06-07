@@ -115,21 +115,26 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	p.check(.name)
 	p.check(.lpar)
 	p.check(.rpar)
-	state := p.save_state()
+	// state := p.save_state()
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
 	mut path := p.cur_fn_name + '.html'
 	// if p.pref.is_debug {
 	println('>>> compiling vweb HTML template "$path"')
 	v_code := tmpl.compile_file(path)
+	mut scope := &ast.Scope{
+		start_pos: 0
+		parent: 0
+	}
+	file := parse_text(v_code, p.table, scope, p.global_scope)
 	if p.pref.is_verbose {
 		println('\n\n')
 		println('>>> vweb template for ${path}:')
 		println(v_code)
 		println('>>> end of vweb template END')
 		println('\n\n')
-		p.scanner.text = p.scanner.text[..pos] + v_code + p.scanner.text[pos..]
-		println(p.scanner.text)
+		// p.scanner.text = p.scanner.text[..pos] + '\n'+v_code+'\n' + p.scanner.text[pos..]
+		// println(p.scanner.text)
 	}
 	// }
 	/*
@@ -143,8 +148,8 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		}
 	}
 	*/
-	p.restore_state(state)
-	p.scanner.pos = pos + v_code.len + 1
+	// p.restore_state(state)
+	// p.scanner.pos = pos + v_code.len + 1
 	/*
 	println('restored:')
 	println(p.scanner.text[p.scanner.pos..])
@@ -152,6 +157,8 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	*/
 	return ast.ComptimeCall{
 		is_vweb: true
+		// vweb_stmts: file.stmts
+		vweb_tmpl: file
 	}
 }
 

@@ -783,6 +783,7 @@ pub:
 	left        Expr
 	is_vweb     bool
 	vweb_stmts  []Stmt
+	vweb_tmpl   File
 pub mut:
 	sym         table.TypeSymbol
 }
