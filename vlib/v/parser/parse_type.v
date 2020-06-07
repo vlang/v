@@ -136,7 +136,7 @@ pub fn (mut p Parser) parse_type() table.Type {
 	if p.tok.kind != .lcbr {
 		pos := p.tok.position()
 		typ = p.parse_any_type(language, nr_muls > 0)
-		if typ == table.void_type && is_optional {
+		if typ == table.void_type {
 			p.error_with_pos('use `?` instead of `?void`', pos)
 		}
 	}
