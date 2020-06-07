@@ -228,14 +228,7 @@ pub fn (req &Request) do() ?Response {
 			break
 		}
 		// follow any redirects
-		mut redirect_url := ''
-		if 'Location' in resp.headers {
-			redirect_url = resp.headers['Location']
-		} else if 'location' in resp.headers {
-			redirect_url = resp.headers['location']
-		} else {
-			return error('http.request.do: no redirect path given')
-		}
+		mut redirect_url := resp.headers['location']
 
 		if redirect_url.len > 0 && redirect_url[0] == `/` {
 			url.set_path(redirect_url) or {
@@ -317,7 +310,10 @@ fn parse_response(resp string) Response {
 		// if h.contains('Content-Type') {
 		// continue
 		// }
-		key := h[..pos]
+		mut key := h[..pos]
+		if key.to_lower() == 'location' {
+			key = key.to_lower()
+		}
 		val := h[pos + 2..]
 		if key == 'Set-Cookie' {
 			parts := val.trim_space().split('=')
