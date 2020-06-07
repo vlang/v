@@ -43,7 +43,7 @@ pub fn compile_template(content string) string {
 	//footer := \'footer\'
 ")
 	s.writeln(str_start)
-	mut in_css := true // false
+	mut in_css := false// false
 	for _line in lines {
 		line := _line.trim_space()
 		if line == '<style>' {
@@ -79,6 +79,7 @@ pub fn compile_template(content string) string {
 			s.writeln(str_start)
 		}
 		else if !in_css && line.contains('.') && line.ends_with('{') {
+			// `.header {` => `<div class='header'>`
 			class := line.find_between('.', '{')
 			s.writeln('<div class="$class">')
 		}
