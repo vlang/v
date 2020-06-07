@@ -92,8 +92,7 @@ fn (mut p Parser) partial_assign_stmt(known_lhs []ast.Ident) ast.Stmt {
 		}
 	}
 	for i, ident in idents {
-		known_var := p.scope.known_var(ident.name)
-		if !is_decl && !known_var {
+		if !is_decl && ident.kind != .blank_ident && !p.scope.known_var(ident.name) {
 			p.error('unknown variable `$ident.name`')
 		}
 		if is_decl && ident.kind != .blank_ident {
@@ -132,12 +131,9 @@ pub fn (mut p Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	pos := p.tok.position()
 	p.next()
 	val := p.expr(0)
-	match left {
-		ast.IndexExpr {
-			// it.mark_as_setter()
-			it.is_setter = true
-		}
-		else {}
+	if left is ast.IndexExpr {
+		mut index_expr := left as ast.IndexExpr
+		index_expr.is_setter = true
 	}
 	node := ast.AssignExpr{
 		left: left

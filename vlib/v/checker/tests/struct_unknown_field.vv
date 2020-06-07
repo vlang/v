@@ -4,8 +4,8 @@ struct Test {
 
 fn main() {
 	t := Test{
-        foo: true
-        bar: false
-    }
-	 _ = t
+		foo: true
+		bar: false
+	}
+	_ = t
 }

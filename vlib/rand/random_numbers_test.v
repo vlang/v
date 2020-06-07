@@ -26,7 +26,7 @@ fn test_rand_r_seed_update() {
 	seed := 10
 	for _ in 0 .. rnd_count {
 		prev_seed := seed
-		_ := rand.rand_r(&seed)
+		_ = rand.rand_r(&seed)
 		assert prev_seed != seed
 	}
 }

@@ -48,7 +48,7 @@ fn main() {
 
     v := "done"
     {
-        _ := "block"
+        _ = "block"
     }
 
     pos := POSITION.go_back

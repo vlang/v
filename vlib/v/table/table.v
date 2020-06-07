@@ -264,7 +264,7 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 }
 
 pub fn (t &Table) known_type(name string) bool {
-	_ = t.find_type(name) or {
+	t.find_type(name) or {
 		return false
 	}
 	return true

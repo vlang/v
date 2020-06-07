@@ -35,7 +35,7 @@ fn test_decode() {
 	assert data.license == 'GPL-2.0'
 	assert data.dependencies[0] == 'hello'
 	assert data.unknown['test'][0] == 'foo'
-	_ := vmod.decode('') or {
+	vmod.decode('') or {
 		assert err == 'vmod: no content.'
 		exit(0)
 	}

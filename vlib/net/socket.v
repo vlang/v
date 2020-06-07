@@ -150,10 +150,10 @@ pub fn listen(port int) ?Socket {
 	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0) or {
 		return error(err)
 	}
-	_ = s.bind(port) or {
+	s.bind(port) or {
 		return error(err)
 	}
-	_ = s.listen() or {
+	s.listen() or {
 		return error(err)
 	}
 	return s
@@ -212,7 +212,7 @@ pub fn dial(address string, port int) ?Socket {
 	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0) or {
 		return error(err)
 	}
-	_ = s.connect(address, port) or {
+	s.connect(address, port) or {
 		return error(err)
 	}
 	return s
