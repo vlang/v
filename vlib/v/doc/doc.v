@@ -57,10 +57,29 @@ pub fn get_comment_block_right_before(stmts []ast.Stmt) string {
 			// located right above the top level statement.
 			//			break
 		}
-		cmt_content := cmt.text.trim_left('|')
-		if cmt_content.len == cmt.text.len {
+		mut cmt_content := cmt.text.trim_left('|')
+		if cmt_content.len == cmt.text.len || cmt.is_multi {
 			// ignore /* */ style comments for now
 			continue
+			// if cmt_content.len == 0 {
+			// 	continue
+			// }
+			// mut new_cmt_content := ''
+			// mut is_codeblock := false
+			// // println(cmt_content)
+			// lines := cmt_content.split_into_lines()
+			// for j, line in lines {
+			// 	trimmed := line.trim_space().trim_left(cmt_prefix)
+			// 	if trimmed.starts_with('- ') || (trimmed.len >= 2 && trimmed[0].is_digit() && trimmed[1] == `.`) || is_codeblock {
+			// 		new_cmt_content += line + '\n'
+			// 	} else if line.starts_with('```') {
+			// 		is_codeblock = !is_codeblock
+			// 		new_cmt_content += line + '\n'
+			// 	} else {
+			// 		new_cmt_content += trimmed + '\n'
+			// 	}
+			// }
+			// return new_cmt_content
 		}
 		//eprintln('cmt: $cmt')
 		cseparator := if cmt_content.starts_with('```') {'\n'} else {' '}
@@ -87,6 +106,7 @@ pub fn (d Doc) get_signature(stmt ast.Stmt) string {
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 		table: d.table
+		cur_mod: d.head.name.split('.').last()
 		indent: 0
 		is_debug: false
 	}
@@ -95,7 +115,7 @@ pub fn (d Doc) get_signature(stmt ast.Stmt) string {
 			return 'module $it.name'
 		}
 		ast.FnDecl {
-			return it.str(d.table)
+			return it.str(d.table).replace(f.cur_mod + '.', '')
 		}
 		else {
 			f.stmt(stmt)
@@ -115,12 +135,22 @@ pub fn (d Doc) get_pos(stmt ast.Stmt) token.Position {
 	}
 }
 
+pub fn (d Doc) get_type_name(decl ast.TypeDecl) string {
+	match decl {
+		ast.SumTypeDecl { return it.name }
+		ast.FnTypeDecl { return it.name }
+		ast.AliasTypeDecl { return it.name }
+	}
+}
+
 pub fn (d Doc) get_name(stmt ast.Stmt) string {
+	cur_mod := d.head.name.split('.').last()
 	match stmt {
 		ast.FnDecl { return it.name }
 		ast.StructDecl { return it.name }
 		ast.EnumDecl { return it.name }
 		ast.InterfaceDecl { return it.name }
+		ast.TypeDecl { return d.get_type_name(it).replace('&' + cur_mod + '.', '').replace(cur_mod + '.', '') }
 		ast.ConstDecl { return 'Constants' }
 		else { return '' }
 	}
@@ -214,6 +244,7 @@ pub fn (mut d Doc) generate() ?bool {
 	mut module_name := ''
 	mut parent_mod_name := ''
 	mut orig_mod_name := ''
+	mut const_idx := -1
 	for i, file_ast in file_asts {
 		if i == 0 {
 			parent_mod_name = get_parent_mod(base_path) or {
@@ -234,7 +265,7 @@ pub fn (mut d Doc) generate() ?bool {
 		}
 		mut prev_comments := []ast.Stmt{}
 		stmts := file_ast.stmts
-		for _, stmt in stmts {
+		for o, stmt in stmts {
 			//eprintln('stmt typeof: ' + typeof(stmt))
 			if stmt is ast.Comment {
 				prev_comments << stmt
@@ -256,11 +287,10 @@ pub fn (mut d Doc) generate() ?bool {
 				d.head.comment += module_comment
 				continue
 			}
-			// todo: accumulate consts
-			mut name := d.get_name(stmt)
 			signature := d.get_signature(stmt)
 			pos := d.get_pos(stmt)
-			if !signature.starts_with('pub') && d.pub_only {
+			mut name := d.get_name(stmt)
+			if (!signature.starts_with('pub') && d.pub_only) || stmt is ast.GlobalDecl {
 				prev_comments = []
 				continue
 			}
@@ -283,7 +313,13 @@ pub fn (mut d Doc) generate() ?bool {
 					}
 					node.parent_type = parent_type
 				}
-
+			}
+			if stmt is ast.ConstDecl {
+				if const_idx == -1 {
+					const_idx = o
+				} else {
+					node.parent_type = 'Constants'
+				}
 			}
 			if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 {
 				continue
