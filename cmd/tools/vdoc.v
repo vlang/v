@@ -258,7 +258,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 
 fn (cfg DocConfig) gen_html(idx int) string {
 	dcs := cfg.docs[idx]
-	time_gen := dcs.time_generated.day.str() + ' ' + dcs.time_generated.smonth() + ' ' + dcs.time_generated.year.str() + ' ' + dcs.time_generated.hhmmss()
+	time_gen := '$dcs.time_generated.day $dcs.time_generated.smonth() $dcs.time_generated.year $dcs.time_generated.hhmmss()'
 	mut hw := strings.new_builder(200)
 	mut toc := strings.new_builder(200)
 	// generate toc first
