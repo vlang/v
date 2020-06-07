@@ -87,6 +87,7 @@ pub fn (d Doc) get_signature(stmt ast.Stmt) string {
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 		table: d.table
+		cur_mod: d.head.name.split('.').last()
 		indent: 0
 		is_debug: false
 	}
@@ -95,7 +96,7 @@ pub fn (d Doc) get_signature(stmt ast.Stmt) string {
 			return 'module $it.name'
 		}
 		ast.FnDecl {
-			return it.str(d.table)
+			return it.str(d.table).replace(d.head.name.split('.').last() + '.', '')
 		}
 		else {
 			f.stmt(stmt)
