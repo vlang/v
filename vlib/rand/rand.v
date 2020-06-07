@@ -59,7 +59,25 @@ pub fn u64() u64 {
 	return 0
 }
 
-// u32n() - returns a uniformly distributed pseudorandom 32-bit unsigned u32 in [min, max)
+// u32n(max) - returns a uniformly distributed pseudorandom 32-bit signed positive u32 in [0, max)
+pub fn u32n(max u32) u32 {
+	unsafe {
+		mut x := default_rng
+		return x.u32n(max)
+	}
+	return 0
+}
+
+// u64n(max) - returns a uniformly distributed pseudorandom 64-bit signed positive u64 in [0, max)
+pub fn u64n(max u64) u64 {
+	unsafe {
+		mut x := default_rng
+		return x.u64n(max)
+	}
+	return 0
+}
+
+// u32_in_range(min, max) - returns a uniformly distributed pseudorandom 32-bit unsigned u32 in [min, max)
 pub fn u32_in_range(min, max u32) u32 {
 	unsafe {
 		mut x := default_rng
@@ -96,7 +114,7 @@ pub fn intn(max int) int {
 }
 
 // int_in_range(min, max) - returns a uniformly distributed pseudorandom
-// 32-bit signed int in [min, max)
+// 32-bit signed int in [min, max). Both min and max can be negative, but we must have `min < max`.
 pub fn int_in_range(min, max int) int {
 	unsafe {
 		mut x := default_rng
