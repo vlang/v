@@ -5,6 +5,7 @@ import net
 import net.urllib
 import os
 import os.cmdline
+import time
 import strings
 import v.doc
 import v.scanner
@@ -53,6 +54,8 @@ mut:
 	is_multi       bool = false
 	is_verbose     bool = false
 	include_readme bool = false
+	open_docs      bool = false
+	server_port    int  = 8046
 	inline_assets  bool = false
 	output_path    string
 	input_path     string
@@ -78,13 +81,16 @@ fn open_url(url string) {
 }
 
 fn (mut cfg DocConfig) serve_html() {
+	server_url := 'http://localhost:' + cfg.server_port.str()
 	docs := cfg.render()
 	def_name := docs.keys()[0]
-	server := net.listen(8046) or {
+	server := net.listen(cfg.server_port) or {
 		panic(err)
 	}
-	println('Serving docs on: http://localhost:8046')
-	open_url('http://localhost:8046')
+	println('Serving docs on: $server_url')
+	if cfg.open_docs {
+		open_url(server_url)
+	}
 	for {
 		con := server.accept() or {
 			server.close() or { }
@@ -168,8 +174,10 @@ fn html_highlight(code string, tb &table.Table) string {
 				.name {
 					if tok.lit in builtin {
 						tok_typ = .builtin
-					} else if next_tok.kind in [.lcbr, .lpar] {
+					} else if next_tok.kind == .lcbr {
 						tok_typ = .symbol
+					} else if next_tok.kind == .lpar {
+						tok_typ = .function
 					} else {
 						tok_typ = .name
 					}
@@ -223,9 +231,16 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	head_tag := if head { 'h1' } else { 'h2' }
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
-	dnw.writeln('<section id="${slug(dd.name)}" class="doc-node">')
+	is_const_class := if dd.name == 'Constants' { ' const' } else { '' }
+	mut sym_name := dd.name
+	if dd.parent_type !in ['void', '', 'Constants'] { 
+		sym_name = '${dd.parent_type}.' + sym_name
+	}
+	node_id := slug(sym_name)
+	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
+	dnw.writeln('<section id="$node_id" class="doc-node$is_const_class">')
 	if dd.name != 'README' {
-		dnw.write('<div class="title"><$head_tag>${dd.name} <a href="#${slug(dd.name)}">#</a></$head_tag>')
+		dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
 		}
@@ -243,7 +258,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 
 fn (cfg DocConfig) gen_html(idx int) string {
 	dcs := cfg.docs[idx]
-	time_gen := dcs.time_generated.day.str() + ' ' + dcs.time_generated.smonth() + ' ' + dcs.time_generated.year.str() + ' ' + dcs.time_generated.hhmmss()
+	time_gen := '$dcs.time_generated.day $dcs.time_generated.smonth() $dcs.time_generated.year $dcs.time_generated.hhmmss()'
 	mut hw := strings.new_builder(200)
 	mut toc := strings.new_builder(200)
 	// generate toc first
@@ -251,10 +266,11 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		if cn.parent_type !in ['void', ''] { continue }
 		toc.write('<li><a href="#${slug(cn.name)}">${cn.name}</a>')
 		children := dcs.contents.find_children_of(cn.name)
-		if children.len != 0 {
+		if children.len != 0 && cn.name != 'Constants' {
 			toc.writeln('        <ul>')
 			for child in children {
-				toc.writeln('<li><a href="#${slug(child.name)}">${child.name}</a></li>')
+				cname := cn.name + '.' + child.name
+				toc.writeln('<li><a href="#${slug(cname)}">${child.name}</a></li>')
 			}
 			toc.writeln('</ul>')
 		}
@@ -262,30 +278,31 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}	// write head
 
 	// get resources
-	doc_css_min := cfg.get_resource('doc.css', true)
-	doc_js_min := cfg.get_resource('doc.js', false)
+	doc_css := cfg.get_resource('doc.css', true)
+	normalize_css := cfg.get_resource('normalize.css', true)
+	doc_js := cfg.get_resource('doc.js', false)
 	light_icon := cfg.get_resource('light.svg', true)
 	dark_icon := cfg.get_resource('dark.svg', true)
 	menu_icon := cfg.get_resource('menu.svg', true)
 	arrow_icon := cfg.get_resource('arrow.svg', true)
-	v_prism_css := cfg.get_resource('v-prism.css', true)
 
 	hw.write('
 	<!DOCTYPE html>
 	<html lang="en">
 	<head>
-    <meta charset="UTF-8">
-	<meta http-equiv="x-ua-compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${dcs.head.name} | vdoc</title>')
+		<meta charset="UTF-8">
+		<meta http-equiv="x-ua-compatible" content="IE=edge" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>${dcs.head.name} | vdoc</title>
+		<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">')
 
 	// write css
 	if cfg.inline_assets {
-		hw.write('\n    <style>$v_prism_css</style>')
-		hw.write('\n    <style>$doc_css_min</style>')
+		hw.write('\n	<style>$doc_css</style>')
+		hw.write('\n	<style>$normalize_css</style>')
 	} else {
-		hw.write('\n	<link rel="stylesheet" href="$v_prism_css" />')
-		hw.write('\n	<link rel="stylesheet" href="$doc_css_min" />')
+		hw.write('\n	<link rel="stylesheet" href="$doc_css" />')
+		hw.write('\n	<link rel="stylesheet" href="$normalize_css" />')
 	}
 
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
@@ -331,9 +348,8 @@ fn (cfg DocConfig) gen_html(idx int) string {
 					is_submodule_open = true
 				}
 			}
-			open_class := if doc.head.name == dcs.head.name || is_submodule_open { ' open' } else { '' }
 			active_class := if doc.head.name == dcs.head.name { ' active' } else { '' }
-			hw.write('<li class="$open_class$active_class"><div class="menu-row">$dropdown<a href="$href_name">${submod_prefix}</a></div>')
+			hw.write('<li class="open$active_class"><div class="menu-row">$dropdown<a href="$href_name">${submod_prefix}</a></div>')
 			for j, cdoc in submodules {
 				if j == 0 {
 					hw.write('<ul>')
@@ -374,9 +390,9 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}
 	hw.write('</div></div>')
 	if cfg.inline_assets {
-		hw.write('<script>$doc_js_min</script>')
+		hw.write('<script>$doc_js</script>')
 	} else {
-		hw.write('<script src="$doc_js_min"></script>')
+		hw.write('<script src="$doc_js"></script>')
 	}
 	hw.write('</body>
 	</html>')
@@ -390,7 +406,7 @@ fn (cfg DocConfig) gen_plaintext(idx int) string {
 	for cn in dcs.contents {
 		pw.writeln(cn.content)
 		if cn.comment.len > 0 {
-			pw.writeln('\n' + cn.comment)
+			pw.writeln('\n' + '\/\/ ' + cn.comment.trim_space())
 		}
 		if cfg.show_loc {
 			pw.writeln('Location: ${cn.file_path}:${cn.pos.line}:${cn.pos.col}\n\n')
@@ -408,7 +424,7 @@ fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 		hw.writeln('## Contents')
 	}
 	for cn in dcs.contents {
-		name := cn.name.all_after(dcs.head.name+'.')
+		name := cn.name.all_after(dcs.head.name + '.')
 
 		if with_toc {
 			hw.writeln('- [#$name](${slug(name)})')
@@ -448,6 +464,23 @@ fn (cfg DocConfig) render() map[string]string {
 	return docs
 }
 
+fn (cfg DocConfig) get_readme(path string) string {
+	mut fname := ''
+	for name in ['readme', 'README'] {
+		if os.exists(os.join_path(path, '${name}.md')) {
+			fname = name
+			break
+		} 
+	}
+	if fname == '' {
+		return ''
+	}
+	readme_path := os.join_path(path, '${fname}.md')
+	cfg.vprintln('Reading README file from $readme_path')
+	readme_contents := os.read_file(readme_path) or { '' }
+	return readme_contents
+}
+
 fn (mut cfg DocConfig) generate_docs_from_file() {
 	if cfg.output_path.len == 0 {
 		if cfg.output_type == .unset {
@@ -474,16 +507,14 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		os.base_dir(cfg.input_path) 
 	}
 	manifest_path := os.join_path(dir_path, 'v.mod')
-	readme_path := os.join_path(dir_path, 'README.md')
 	if os.exists(manifest_path) {
 		cfg.vprintln('Reading v.mod info from $manifest_path')
 		if manifest := vmod.from_file(manifest_path) {
 			cfg.manifest = manifest
 		}
 	}
-	if os.exists(readme_path) && cfg.include_readme {
-		cfg.vprintln('Reading README file from $readme_path')
-		readme_contents := os.read_file(readme_path) or { '' }
+	if cfg.include_readme {
+		readme_contents := cfg.get_readme(dir_path)
         if cfg.output_type == .stdout {
 			println(markdown.to_plain(readme_contents))
         }
@@ -493,16 +524,26 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 					name: 'README',
 					comment: readme_contents
 				}
+				time_generated: time.now()
 			}
         }
 	}
 	dirs := if cfg.is_multi { get_modules_list(cfg.input_path) } else { [cfg.input_path] } 
 	for dirpath in dirs {
 		cfg.vprintln('Generating docs for ${dirpath}...')
-		dcs := doc.generate(dirpath, cfg.pub_only, !is_vlib) or {
+		mut dcs := doc.generate(dirpath, cfg.pub_only, true) or {
 			panic(err)
 		}
 		if dcs.contents.len == 0 { continue }
+		if cfg.is_multi {
+			readme_contents := cfg.get_readme(dirpath)
+			dcs.head.comment = readme_contents
+		}
+		if cfg.pub_only {
+			for i, c in dcs.contents {
+				dcs.contents[i].content = c.content.all_after('pub ')	
+			}
+		}
 		cfg.docs << dcs
 	}
 	if cfg.serve_http {
@@ -525,7 +566,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 					panic(err)
 				}
 			} else {
-				for fname in ['doc.css', 'v-prism.css', 'doc.js'] {
+				for fname in ['doc.css', 'normalize.css' 'doc.js'] {
 					os.rm(os.join_path(cfg.output_path, fname))
 				}
 			}
@@ -614,7 +655,7 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 
 fn main() {
 	args := os.args[2..]
-	if args.len == 0 || args[0] == 'help' {
+	if args.len == 0 || args[0] in ['help', '-h', '--help'] {
 		os.system('${@VEXE} help doc')
 		exit(0)
 	}
@@ -651,6 +692,22 @@ fn main() {
 				opath := cmdline.option(current_args, '-o', '')
 				cfg.output_path = os.real_path(opath)
 				i++
+			}
+			'-open' {
+				cfg.open_docs = true
+			}
+			'-p' {
+				s_port := cmdline.option(current_args, '-o', '')
+				s_port_int := s_port.int()
+				if s_port.len == 0 {
+					eprintln('vdoc: No port number specified on "-p".')
+					exit(1)
+				}
+				if s_port != s_port_int.str() {
+					eprintln('vdoc: Invalid port number.')
+					exit(1)
+				}
+				cfg.server_port = s_port_int
 			}
 			'-s' {
 				cfg.inline_assets = true

@@ -103,8 +103,6 @@ pub fn new(uri string) &Client {
 	return ws
 }
 
-fn C.sscanf() int
-
 fn (ws &Client) parse_uri() &Uri {
 	u := urllib.parse(ws.uri) or {
 		panic(err)
@@ -572,7 +570,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 	mut bytes_written := -1
 	if ws.socket.sockfd <= 0 {
 		l.e('No socket opened.')
-		unsafe { 
+		unsafe {
 			payload.free()
 		}
 		l.c('send_control_frame: error sending ${frame_typ} control frame.')

@@ -44,12 +44,53 @@ pub mut:
 	is_fmt                      bool // Used only for skipping ${} in strings, since we need literal
 	// string values when generating formatted code.
 	comments_mode               CommentsMode
+	is_inside_toplvl_statement  bool = false // *only* used in comments_mode: .toplevel_comments, toggled by parser
+	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
+	tidx                        int
 	eofs                        int
 }
+/*
+How the .toplevel_comments mode works:
 
+In this mode, the scanner scans *everything* at once, before parsing starts,
+including all the comments, and stores the results in an buffer s.all_tokens.
+
+Then .scan() just returns s.all_tokens[ s.tidx++ ] *ignoring* the
+comment tokens. In other words, by default in this mode, the parser
+*will not see any comments* inside top level statements, so it has
+no reason to complain about them.
+
+When the parser determines, that it is outside of a top level statement,
+it tells the scanner to backtrack s.tidx to the current p.tok index,
+then it changes .is_inside_toplvl_statement to false , and refills its
+lookahead buffer (i.e. p.peek_tok, p.peek_tok2, p.peek_tok3) from the
+scanner.
+
+In effect, from the parser's point of view, the next tokens, that it will
+receive with p.next(), will be the same, as if comments are not ignored
+anymore, *between* top level statements.
+
+When the parser determines, that it is going again inside a top level
+statement, it does the same, this time setting .is_inside_toplvl_statement
+to true, again refilling the lookahead buffer => calling .next() in this
+mode, will again ignore all the comment tokens, till the top level statement
+is finished.
+*/
+
+// The different kinds of scanner modes:
+//
+// .skip_comments - simplest/fastest, just ignores all comments early.
+// This mode is used by the compiler itself.
+//
+// .parse_comments is used by vfmt. Ideally it should handle inline /* */
+// comments too, i.e. it returns every kind of comment as a new token.
+//
+// .toplevel_comments is used by vdoc, parses *only* top level ones
+// that are *outside* structs/enums/fns.
 pub enum CommentsMode {
 	skip_comments
 	parse_comments
+	toplevel_comments
 }
 
 // new scanner from file.
@@ -80,13 +121,32 @@ pub fn new_scanner(text string, comments_mode CommentsMode) &Scanner {
 	return s
 }
 
-fn (s &Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token {
+
+
+[inline]
+fn (s &Scanner) should_parse_comment() bool {
+	res := (s.comments_mode == .parse_comments) || (s.comments_mode == .toplevel_comments && !s.is_inside_toplvl_statement)
+	return res
+}
+// NB: this is called by v's parser
+pub fn (mut s Scanner) set_is_inside_toplevel_statement(newstate bool) {
+	s.is_inside_toplvl_statement = newstate
+}
+pub fn (mut s Scanner) set_current_tidx(cidx int) {
+	mut tidx := if cidx < 0 { 0 } else { cidx }
+	tidx = if tidx > s.all_tokens.len { s.all_tokens.len } else { tidx }
+	s.tidx = tidx
+}
+fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token {
+	cidx := s.tidx
+	s.tidx++
 	return token.Token{
 		kind: tok_kind
 		lit: lit
 		line_nr: s.line_nr + 1
 		pos: s.pos - len + 1
 		len: len
+		tidx: cidx
 	}
 }
 
@@ -537,7 +597,51 @@ fn (mut s Scanner) end_of_file() token.Token {
 	return s.new_token(.eof, '', 1)
 }
 
+pub fn (mut s Scanner) scan_all_tokens_in_buffer(){
+	// s.scan_all_tokens_in_buffer is used mainly by vdoc,
+	// in order to implement the .toplevel_comments mode.
+	cmode := s.comments_mode
+	s.comments_mode = .parse_comments
+	for {
+		mut t := s.text_scan()
+		s.all_tokens << t
+		if t.kind == .eof {
+			break
+		}
+	}
+	s.comments_mode = cmode
+	s.tidx = 0
+	$if debugscanner ? {
+		for t in s.all_tokens {
+			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit: ${t.lit}')
+		}
+	}
+}
+
 pub fn (mut s Scanner) scan() token.Token {
+	if s.comments_mode == .toplevel_comments {
+		return s.buffer_scan()
+	}
+	return s.text_scan()
+}
+
+pub fn (mut s Scanner) buffer_scan() token.Token {
+	for {
+		cidx := s.tidx
+		s.tidx++
+		if cidx >= s.all_tokens.len {
+			return s.end_of_file()
+		}
+		if s.all_tokens[cidx].kind == .comment {
+			if !s.should_parse_comment() {
+				continue
+			}
+		}
+		return s.all_tokens[cidx]
+	}
+}
+
+fn (mut s Scanner) text_scan() token.Token {
 	// if s.comments_mode == .parse_comments {
 	// println('\nscan()')
 	// }
@@ -972,7 +1076,7 @@ pub fn (mut s Scanner) scan() token.Token {
 				// fix line_nr, \n was read, and the comment is marked
 				// on the next line
 				s.line_nr--
-				if s.comments_mode == .parse_comments {
+				if s.should_parse_comment() {
 					// Find out if this comment is on its own line (for vfmt)
 					mut is_separate_line_comment := true
 					for j := start-2; j >= 0 && s.text[j] != `\n`; j-- {
@@ -1013,7 +1117,7 @@ pub fn (mut s Scanner) scan() token.Token {
 					}
 				}
 				s.pos++
-				if s.comments_mode == .parse_comments {
+				if s.should_parse_comment() {
 					comment := s.text[start..(s.pos - 1)].trim_space()
 					return s.new_token(.comment, comment, comment.len + 4)
 				}

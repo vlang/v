@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module time
 
+#include <time.h>
+
 struct C.tm {
 	tm_sec  int
 	tm_min  int
@@ -46,4 +48,16 @@ fn vpc_now() u64 {
 	ts := C.timespec{}
 	C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
 	return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
+}
+
+// dummy to compile with all compilers
+pub fn win_now() Time {
+	return Time{}
+}
+
+
+// dummy to compile with all compilers
+pub struct C.timeval {
+	tv_sec  u64
+	tv_usec u64
 }

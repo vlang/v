@@ -4,9 +4,10 @@
 
 module gl
 
-// import os
 import gx
 import glm
+
+// import os
 
 // import darwin
 

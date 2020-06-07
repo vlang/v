@@ -42,6 +42,10 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	args := p.call_args()
 	last_pos := p.tok.position()
 	p.check(.rpar)
+	// ! in mutable methods
+	if p.tok.kind == .not {
+		p.next()
+	}
 	pos := token.Position{
 		line_nr: first_pos.line_nr
 		pos: first_pos.pos
@@ -67,7 +71,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			is_used: true
 		})
 		or_kind = .block
-		or_stmts = p.parse_block_no_scope()
+		or_stmts = p.parse_block_no_scope(false)
 		p.close_scope()
 		p.inside_or_expr = was_inside_or_expr
 	}
@@ -113,6 +117,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 }
 
 fn (mut p Parser) fn_decl() ast.FnDecl {
+	p.top_level_statement_start()
 	start_pos := p.tok.position()
 	is_deprecated := p.attr == 'deprecated'
 	is_pub := p.tok.kind == .key_pub
@@ -260,11 +265,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		})
 	}
 	// Body
+	p.cur_fn_name = name
 	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
-		stmts = p.parse_block_no_scope()
+		stmts = p.parse_block_no_scope(true)
 	}
 	p.close_scope()
 	p.attr = ''
@@ -317,7 +323,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
-		stmts = p.parse_block_no_scope()
+		stmts = p.parse_block_no_scope(false)
 	}
 	p.close_scope()
 	mut func := table.Fn{
@@ -347,7 +353,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 }
 
-// fn decl
+// part of fn declaration
 fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
 	mut args := []table.Arg{}
@@ -463,7 +469,8 @@ fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position)
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.array, .struct_, .map, .placeholder] && !typ.is_ptr() {
 		p.error_with_pos('mutable arguments are only allowed for arrays, maps, and structs\n' +
-			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`', pos)
+			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
+			pos)
 	}
 }
 

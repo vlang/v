@@ -249,6 +249,14 @@ pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
 	sgl.end()
 
 }
+pub fn (ctx &Context) draw_image(x, y, width, height f32, image u32) {
+}
+
+pub fn (ctx &Context) draw_rounded_rect(x, y, width, height, radius f32, color gx.Color) {
+	}
+pub fn (ctx &Context) draw_empty_rounded_rect(x, y, width, height, radius f32, border_color gx.Color) {
+}
+
 
 fn C.WaitMessage()
 
