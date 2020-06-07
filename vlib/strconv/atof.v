@@ -1,23 +1,23 @@
-/**********************************************************************
-*
-* atof util
-*
-* Copyright (c) 2019 Dario Deledda. All rights reserved.
-* Use of this source code is governed by an MIT license
-* that can be found in the LICENSE file.
-*
-* This file contains utilities for convert a string in a f64 variable
-* IEEE 754 standard is used
-*
-* Know limitation:
-* - limited to 18 significant digits
-*
-* The code is inspired by:
-* Grzegorz Kraszewski krashan@teleinfo.pb.edu.pl
-* URL: http://krashan.ppa.pl/articles/stringtofloat/
-* Original license: MIT
-*
-**********************************************************************/
+/*
+
+atof util
+
+Copyright (c) 2019 Dario Deledda. All rights reserved.
+Use of this source code is governed by an MIT license
+that can be found in the LICENSE file.
+
+This file contains utilities for convert a string in a f64 variable
+IEEE 754 standard is used
+
+Know limitation:
+- limited to 18 significant digits
+
+The code is inspired by:
+Grzegorz Kraszewski krashan@teleinfo.pb.edu.pl
+URL: http://krashan.ppa.pl/articles/stringtofloat/
+Original license: MIT
+
+*/
 module strconv
 
 union Float64u {
@@ -26,12 +26,12 @@ mut:
 	u u64
 }
 
-/**********************************************************************
-*
-* 96 bit operation utilities
-* Note: when u128 will be available these function can be refactored
-*
-**********************************************************************/
+/*
+
+96 bit operation utilities
+Note: when u128 will be available these function can be refactored
+
+*/
 
 // right logical shift 96 bit
 fn lsr96(s2 u32, s1 u32, s0 u32) (u32,u32,u32) {
@@ -89,11 +89,11 @@ fn sub96(s2 u32, s1 u32, s0 u32, d2 u32, d1 u32, d0 u32) (u32,u32,u32) {
 	return r2,r1,r0
 }
 
-/**********************************************************************
-*
-* Constants
-*
-**********************************************************************/
+/*
+
+Constants
+
+*/
 
 
 const (
@@ -137,11 +137,11 @@ const (
 	c_nine = `9`
 	c_ten = u32(10)
 )
-/**********************************************************************
-*
-* Utility
-*
-**********************************************************************/
+/*
+
+Utility
+
+*/
 
 // NOTE: Modify these if working with non-ASCII encoding
 fn is_digit(x byte) bool {
@@ -156,11 +156,11 @@ fn is_exp(x byte) bool {
 	return (x == `E` || x == `e`) == true
 }
 
-/**********************************************************************
-*
-* Support struct
-*
-**********************************************************************/
+/*
+
+Support struct
+
+*/
 
 // The structure is filled by parser, then given to converter.
 pub struct PrepNumber {
@@ -169,12 +169,12 @@ pub mut:
 	exponent int // power of 10 exponent
 	mantissa u64 // integer mantissa
 }
-/**********************************************************************
-*
-* String parser
-* NOTE: #TOFIX need one char after the last char of the number
-*
-**********************************************************************/
+/*
+
+String parser
+NOTE: #TOFIX need one char after the last char of the number
+
+*/
 
 // parser return a support struct with all the parsing information for the converter
 fn parser(s string) (int,PrepNumber) {
@@ -353,11 +353,11 @@ fn parser(s string) (int,PrepNumber) {
 	return result,pn
 }
 
-/**********************************************************************
-*
-* Converter to the bit form of the f64 number
-*
-**********************************************************************/
+/*
+
+Converter to the bit form of the f64 number
+
+*/
 
 // converter return a u64 with the bit image of the f64 number
 fn converter(mut pn PrepNumber) u64 {
@@ -522,11 +522,11 @@ fn converter(mut pn PrepNumber) u64 {
 	return result
 }
 
-/**********************************************************************
-*
-* Public functions
-*
-**********************************************************************/
+/*
+
+Public functions
+
+*/
 
 // atof64 return a f64 from a string doing a parsing operation
 pub fn atof64(s string) f64 {

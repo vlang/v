@@ -1,20 +1,20 @@
-/**********************************************************************
-*
-* regex 0.9e
-*
-* Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
-* Use of this source code is governed by an MIT license
-* that can be found in the LICENSE file.
-*
-* This file contains regex module
-*
-* Know limitation:
-* - find is implemented in a trivial way
-* - not full compliant PCRE
-* - not compliant POSIX ERE
-*
-*
-**********************************************************************/
+/*
+
+regex 0.9e
+
+Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
+Use of this source code is governed by an MIT license
+that can be found in the LICENSE file.
+
+This file contains regex module
+
+Know limitation:
+- find is implemented in a trivial way
+- not full compliant PCRE
+- not compliant POSIX ERE
+
+
+*/
 module regex
 import strings
 
@@ -76,11 +76,11 @@ const(
 	//*************************************
 )
 
-/******************************************************************************
-*
-* General Utilities
-*
-******************************************************************************/
+/*
+
+General Utilities
+
+*/
 // utf8util_char_len calculate the length in bytes of a utf8 char
 [inline]
 fn utf8util_char_len(b byte) int {
@@ -266,11 +266,11 @@ fn (mut tok Token) reset() {
 	tok.rep = 0
 }
 
-/******************************************************************************
-*
-* Regex struct
-*
-******************************************************************************/
+/*
+
+Regex struct
+
+*/
 pub const (
 	f_nl  = 0x00000001  // end the match when find a new line symbol
 	f_ms  = 0x00000002  // match true only if the match is at the start of the string
@@ -373,11 +373,11 @@ pub fn (re RE) get_group(group_name string) (int, int) {
 	return -1, -1
 }
 
-/******************************************************************************
-*
-* Backslashes chars
-*
-******************************************************************************/
+/*
+
+Backslashes chars
+
+*/
 struct BslsStruct {
 	ch u32                   // meta char
 	validator FnValidator    // validator function pointer
@@ -449,11 +449,11 @@ fn (re RE) parse_bsls(in_txt string, in_i int) (int,int){
 	return err_syntax_error, i
 }
 
-/******************************************************************************
-*
-* Char class
-*
-******************************************************************************/
+/*
+
+Char class
+
+*/
 const(
 	cc_null = 0    // empty cc token
 	cc_char = 1    // simple char: a
@@ -660,11 +660,11 @@ fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, u32) {
 	return err_syntax_error,0,u32(0)
 }
 
-/******************************************************************************
-*
-* Re Compiler
-*
-******************************************************************************/
+/*
+
+Re Compiler
+
+*/
 //
 // Quantifier
 //
@@ -1423,11 +1423,11 @@ pub fn (re RE) get_query() string {
 	return res.str()
 }
 
-/******************************************************************************
-*
-* Matching
-*
-******************************************************************************/
+/*
+
+Matching
+
+*/
 enum Match_state{
 	start = 0
 	stop
@@ -2161,11 +2161,11 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	return no_match_found, 0
 }
 
-/******************************************************************************
-*
-* Public functions
-*
-******************************************************************************/
+/*
+
+Public functions
+
+*/
 
 //
 // Inits
