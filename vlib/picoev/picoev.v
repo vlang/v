@@ -40,6 +40,8 @@ mut:
 
 struct C.sockaddr_storage {}
 
+fn C.atoi() int
+fn C.strncasecmp() int
 fn C.socket() int
 fn C.setsockopt() int
 fn C.htonl() int
@@ -51,14 +53,14 @@ fn C.getaddrinfo() int
 fn C.connect() int
 fn C.send() int
 fn C.recv() int
-fn C.read() int
+//fn C.read() int
 fn C.shutdown() int
-fn C.close() int
+//fn C.close() int
 fn C.ntohs() int
 fn C.getsockname() int
 
 fn C.fcntl() int
-fn C.write() int
+//fn C.write() int
 
 struct C.picoev_loop {}
 
@@ -148,14 +150,28 @@ fn rw_callback(loop &C.picoev_loop, fd, events int, cb_arg voidptr) {
 			}
 			mut req := picohttpparser.Request{}
 			for {
-				pret := req.parse_request_path_pipeline(s)
+				pret := req.parse_request(s, 100)
 				if pret <= 0 && s.len > 0 {
 					C.memmove(buf, s.str, s.len)
 					p.idx[fd] = s.len
-					p.oidx[fd] = int(res.buf - res.buf_start)
+					p.oidx[fd] = int(res.buf) - int(res.buf_start)
 					break
 				}
-				p.cb(req, mut res)
+				if req.method.str[0]==`p` || req.method.str[0]==`P` || req.method.str[0]==`d` || req.method.str[0]==`D`  {
+				  mut j := 0
+					for {
+						if j == req.num_headers {
+							break
+						}
+						if req.headers[j].name_len == 14 && C.strncasecmp(req.headers[j].name, "content-length", 14) == 0 {
+							//cont_length := C.atoi(tos(req.headers[j].value, req.headers[j].value_len).str)
+							//println('$cont_length')
+							//TODO need to maintain state of incomplete request to collect body later
+						}
+						j = j+1
+					}
+				}
+				p.cb(req, mut &res)
 				if pret >= s.len {
 					p.idx[fd] = 0
 					p.oidx[fd] = 0
@@ -218,7 +234,7 @@ pub fn new(port int, cb voidptr) &Picoev {
 	}
 	C.picoev_add(loop, fd, C.PICOEV_READ, 0, accept_callback, pv)
 
-	go update_date(pv)
+	go update_date(mut pv)
 
 	return pv
 }

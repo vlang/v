@@ -1,24 +1,23 @@
 :root {
 	--background-color: #fff;
-	--timestamp-color: #b8c2cc;
 	--link-color: #2779bd;
-	--font-color: #000;
+	--text-color: #000;
 	--ref-symbol-color: #dae1e7;
 	--ref-symbol-hover-color: #b8c2cc;
 	--title-bottom-line-color: #f1f5f8;
 	--footer-top-line-color: #f1f5f8;
-	--footer-font-color: #616161;
+	--footer-text-color: #616161;
 	--code-signature-border-color: #a0aec0;
 	--menu-background-color: #4b6c88;
-	--menu-font-color: #fff;
+	--menu-text-color: #fff;
 	--menu-indent-line-color: #3b3b3b66;
 	--menu-indent-line-active-color: #00000066;
 	--menu-scrollbar-color: #a0aec0;
 	--menu-toggle-icon-color: #fff;
 	--menu-toggle-icon-hover-color: #00000044;
 	--menu-search-background-color: #00000044;
-	--menu-search-font-color: #fff;
-	--toc-font-color: #2779bd;
+	--menu-search-text-color: #fff;
+	--toc-text-color: #2779bd;
 	--toc-indent-line-color: #dae1e7;
 	--code-default-text-color: #5c6e74;
 	--code-background-color: #edf2f7;
@@ -39,24 +38,23 @@
 
 .dark body {
 	--background-color: #1a202c;
-	--timestamp-color: #b8c2cc;
-	--font-color: #fff;
+	--text-color: #fff;
 	--link-color: #90cdf4;
 	--ref-symbol-color: #2d3748;
 	--ref-symbol-hover-color: #4a5568;
 	--title-bottom-line-color: #2d3748;
 	--footer-top-line-color: #2d3748;
-	--footer-font-color: #bbd3e1;
+	--footer-text-color: #bbd3e1;
 	--code-signature-border-color: #4a5568;
 	--menu-background-color: #2d3748;
-	--menu-font-color: #fff;
+	--menu-text-color: #fff;
 	--menu-indent-line-color: #4a5568;
 	--menu-indent-line-active-color: #90cdf4;
 	--menu-scrollbar-color: #4a5568;
 	--menu-toggle-icon-color: #fff;
 	--menu-search-background-color: #4a5568;
-	--menu-search-font-color: #fff;
-	--toc-font-color: #90cdf4;
+	--menu-search-text-color: #fff;
+	--toc-text-color: #90cdf4;
 	--toc-indent-line-color: #1a202c;
 	--code-default-text-color: #cbd5e0;
 	--code-background-color: #2d3748;
@@ -73,7 +71,7 @@ body {
 	background-color: #fff;
 	background-color: var(--background-color);
 	color: #000;
-	color: var(--font-color);
+	color: var(--text-color);
 }
 
 /** Reset for menus */
@@ -95,7 +93,7 @@ body {
 	background-color: #4b6c88;
 	background-color: var(--menu-background-color);
 	color: #fff;
-	color: var(--menu-font-color);
+	color: var(--menu-text-color);
 	flex-direction: column;
 	overflow-y: auto;
 	height: 100vh;
@@ -106,6 +104,7 @@ body {
 }
 *::-webkit-scrollbar {
 	width: 8px;
+	height: 8px;
 }
 *::-webkit-scrollbar-track {
 	background: transparent;
@@ -179,7 +178,7 @@ body {
 	background-color: #00000044;
 	background-color: var(--menu-search-background-color);
 	color: #fff;
-	color: var(--menu-search-font-color);
+	color: var(--menu-search-text-color);
 	margin-left: -0.6rem;
 	margin-right: -0.6rem;
 }
@@ -240,7 +239,7 @@ body {
 }
 .doc-nav > .content a {
 	color: #fff;
-	color: var(--menu-font-color);
+	color: var(--menu-text-color);
 	text-decoration: none;
 	user-select: none;
 }
@@ -261,6 +260,7 @@ body {
 	overflow: hidden;
 }
 .doc-content a {
+	color: #2779bd;
 	color: var(--link-color);
 }
 .doc-content > .doc-node:not(:last-child) {
@@ -290,6 +290,7 @@ body {
 	fill: var(--ref-symbol-color);
 }
 .doc-content > .doc-node > .title > .link:hover {
+	fill: #b8c2cc;
 	fill: var(--ref-symbol-hover-color);
 }
 .doc-content > .doc-node h1 {
@@ -331,14 +332,21 @@ body {
 .doc-content > .doc-node > .title h4 a:hover,
 .doc-content > .doc-node > .title h5 a:hover,
 .doc-content > .doc-node > .title h6 a:hover {
+	color: #b8c2cc;
 	color: var(--ref-symbol-hover-color);
 }
-.doc-content .footer {
+.doc-content > .footer {
 	padding-top: 1rem;
 	margin-top: auto;
 	bottom: 1rem;
-	color: var(--footer-font-color);
-	border-top: 1px solid var(--footer-top-line-color);
+	color: 616161;
+	color: var(--footer-text-color);
+	border-color: #f1f5f8;
+	border-color: var(--footer-top-line-color);
+	border-top-style: solid;
+	border-top-width: 1px;
+	font-size: 0.8rem;
+	font-weight: 500;
 }
 
 /* Right menu */
@@ -361,7 +369,7 @@ body {
 }
 .doc-toc a {
 	color: #2779bd;
-	color: var(--toc-font-color);
+	color: var(--toc-text-color);
 	font-size: 0.9rem;
 	font-weight: 600;
 	overflow: hidden;
@@ -413,9 +421,11 @@ code[class*="language-"] {
   border-radius: 0.25rem;
   overflow-x: auto;
 }
+code[class*="language-"] {
+	padding: 1rem;
+}
 pre[class*="language-"] {
   overflow: auto;
-  padding: 1rem;
   margin: 0;
 }
 .namespace {
@@ -458,7 +468,6 @@ pre[class*="language-"] {
   color: #319795;
   color: var(--code-function-text-color);
 }
-
 
 /* Medium screen and up */
 @media (min-width: 768px) {
