@@ -4,10 +4,13 @@ import os
 import v.pref
 import v.util
 
+const (
+	vexe = pref.vexe_path()
+	vhome = os.dir(vexe)
+)
+
 fn main() {
-	vexe := pref.vexe_path()
-	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vhome)
 
 	println('Updating V...')
 
@@ -17,7 +20,7 @@ fn main() {
 		git_command('remote add origin https://github.com/vlang/v')
 		git_command('fetch')
 		git_command('reset --hard origin/master')
-		git_command('clean --quiet -xdf --exclude v.exe --exclude cmd/tools/vup.exe')
+		git_command('clean --quiet -xdf --exclude v --exclude v.exe --exclude cmd/tools/vup.exe')
 	} else {
 		// pull latest
 		git_command('pull origin master')
@@ -76,16 +79,13 @@ fn backup(file string) {
 }
 
 fn git_command(command string) {
-	vexe := pref.vexe_path()
-	vroot := os.dir(vexe)
-
 	git_result := os.exec('git $command') or {
 		panic(err)
 	}
 
 	if git_result.exit_code != 0 {
 		if git_result.output.contains('Permission denied') {
-			eprintln('have no access `$vroot`: Permission denied')
+			eprintln('have no access `$vhome`: Permission denied')
 		} else {
 			eprintln(git_result.output)
 		}
