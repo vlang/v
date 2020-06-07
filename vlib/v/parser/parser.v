@@ -86,51 +86,7 @@ pub fn parse_text(text string, b_table &table.Table, scope &ast.Scope, global_sc
 		warnings: []errors.Warning{}
 		global_scope: global_scope
 	}
-	mut stmts := []ast.Stmt{}
-	// comments_mode: comments_mode
-	p.init_parse_fns()
-	p.read_first_token()
-	for p.tok.kind == .comment {
-		stmts << p.comment()
-	}
-	// module
-	mut mstmt := ast.Stmt{}
-	module_decl := p.module_decl()
-	mstmt = module_decl
-	stmts << mstmt
-	// imports
-	for p.tok.kind == .key_import {
-		stmts << p.import_stmt()
-	}
-	for {
-		if p.tok.kind == .eof {
-			// if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
-			// 	stmts << ast.FnDecl{
-			// 		name: 'main'
-			// 		file: p.file_name
-			// 		return_type: table.void_type
-			// 	}
-			// } else {
-			// 	p.check_unused_imports()
-			// }
-			break
-		}
-		stmts << p.top_stmt()
-	}
-	// println('nr stmts = $stmts.len')
-	// println(stmts[0])
-	p.scope.end_pos = p.tok.pos
-	//
-	return ast.File{
-		// path: path
-		mod: module_decl
-		imports: p.ast_imports
-		stmts: stmts
-		scope: p.scope
-		global_scope: p.global_scope
-		errors: p.errors
-		warnings: p.warnings
-	}
+	return p.parse()
 }
 
 pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
@@ -143,7 +99,6 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	// text := os.read_file(path) or {
 	// panic(err)
 	// }
-	mut stmts := []ast.Stmt{}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode)
 		comments_mode: comments_mode
@@ -159,17 +114,20 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		warnings: []errors.Warning{}
 		global_scope: global_scope
 	}
+	return p.parse()
+}
+
+fn (mut p Parser) parse() ast.File {
 	// comments_mode: comments_mode
 	p.init_parse_fns()
 	p.read_first_token()
+	mut stmts := []ast.Stmt{}
 	for p.tok.kind == .comment {
 		stmts << p.comment()
 	}
 	// module
-	mut mstmt := ast.Stmt{}
 	module_decl := p.module_decl()
-	mstmt = module_decl
-	stmts << mstmt
+	stmts << module_decl
 	// imports
 	for p.tok.kind == .key_import {
 		stmts << p.import_stmt()
@@ -195,7 +153,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	p.scope.end_pos = p.tok.pos
 	//
 	return ast.File{
-		path: path
+		path: p.file_name
 		mod: module_decl
 		imports: p.ast_imports
 		stmts: stmts

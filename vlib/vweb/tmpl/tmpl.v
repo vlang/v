@@ -36,7 +36,7 @@ pub fn compile_template(content string) string {
 	s.writeln("
 	import strings
 	// === vweb html template ===
-	fn tmpl_fn() {
+	fn vweb_tmpl() {
 	mut sb := strings.new_builder(${lines.len * 30})
 	header := \' \' // TODO remove
 	_ = header

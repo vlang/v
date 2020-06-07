@@ -4354,7 +4354,11 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 		for stmt in node.vweb_tmpl.stmts {
 			match stmt {
 				ast.FnDecl {
-					g.stmts(it.stmts)
+					// insert stmts from vweb_tmpl fn
+					if it.name == 'vweb_tmpl' {
+						g.stmts(it.stmts)
+						break
+					}
 				}
 				else {}
 			}

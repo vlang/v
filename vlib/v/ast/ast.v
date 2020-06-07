@@ -782,7 +782,7 @@ pub:
 	method_name string
 	left        Expr
 	is_vweb     bool
-	vweb_stmts  []Stmt
+	// vweb_stmts  []Stmt
 	vweb_tmpl   File
 pub mut:
 	sym         table.TypeSymbol
