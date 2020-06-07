@@ -58,3 +58,17 @@ fn test_rfc8601_parse_utc() {
 	assert t.second == 6
 	assert t.microsecond == 15959
 }
+
+fn test_rfc8601_parse_cest() {
+	ok_format := '2020-06-02T15:38:06.015959+02:00'
+
+	t := time.parse_rfc8601(ok_format) or {panic(err)}
+
+	assert t.year == 2020
+	assert t.month == 6
+	assert t.day == 2
+	assert t.hour == 17
+	assert t.minute == 38
+	assert t.second == 6
+	assert t.microsecond == 15959
+}

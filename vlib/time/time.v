@@ -295,11 +295,6 @@ fn convert_ctime(t C.tm, microsecond int) Time {
 	}
 }
 
-// fn convert_timespec_time(t C.timespec) Time {
-// 	mut ctime := unix2(int(t.tv_sec), int(t.tv_nsec/1000))
-// 	return ctime
-// }
-
 // A lot of these are taken from the Go library
 pub type Duration i64
 

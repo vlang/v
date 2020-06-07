@@ -48,11 +48,10 @@ pub fn parse_rfc2822(s string) ?Time {
 	return parse(tos(tmstr, count))
 }
 
-// parse_rfc8601 parses rfc8601 time format YYYY-mm-ddThh:MM:ss.dddddd+dd:dd as local time (WIP)
+// parse_rfc8601 parses rfc8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time
 // the fraction part is difference in milli seconds and the last part is offset
-// from UTC time and can be both +/- hh:mm
-// Remarks: Not all rfc8601 is supported only the 'YYYY-mm-ddThh:MM:ss.dddddd+dd:dd'
-// Todo: support timezones if V is ok to support them
+// from UTC time and can be both +/- HH:mm
+// Remarks: Not all rfc8601 is supported only the 'yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd'
 pub fn parse_rfc8601(s string) ?Time {
 
 	mut year 		:= 0
@@ -78,6 +77,11 @@ pub fn parse_rfc8601(s string) ?Time {
 	if time_char != `T` && time_char != ` ` {
 		return error('Invalid 8601 format, expected space or `T` as time separator')
 	}
+
+	if plus_min != `+` && plus_min != `-` {
+		return error('Invalid 8601 format, expected `+` or `-` as time separator' )
+	}
+
 	t := new_time(Time{
 		year: year
 		month: month
@@ -87,5 +91,21 @@ pub fn parse_rfc8601(s string) ?Time {
 		second: second
 		microsecond: mic_second
 	})
+	mut unix_offset := int(0)
+
+	if offset_hour > 0 {
+		unix_offset += 3600*offset_hour
+	}
+	if offset_min > 0 {
+		unix_offset += 60*offset_min
+	}
+
+	if unix_offset != 0 {
+		if plus_min == `+` {
+			return unix2(int(t.unix) + unix_offset, t.microsecond)
+		} else {
+			return unix2(int(t.unix) - unix_offset, t.microsecond)
+		}
+	}
 	return t
 }

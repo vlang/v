@@ -8,7 +8,8 @@ fn test_now_always_results_in_greater_time() {
 		time.sleep_ms(1)
 	}
 	$if windows {
-		time.sleep_ms(1)
+		// Lower resolution of time for windows
+		time.sleep_ms(15)
 	}
 	$if linux {
 		time.sleep_ms(1)
