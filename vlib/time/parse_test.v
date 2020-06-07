@@ -12,7 +12,7 @@ fn test_parse() {
 
 fn test_parse_invalid() {
 	s := 'Invalid time string'
-	t := time.parse(s) or {
+	_ := time.parse(s) or {
 		assert true
 		return
 	}
@@ -38,9 +38,37 @@ fn test_parse_rfc2822() {
 
 fn test_parse_rfc2822_invalid() {
 	s3 := 'Thu 12 Foo 2019 06:07:45 +0800'
-	t3 := time.parse_rfc2822(s3) or {
+	_ := time.parse_rfc2822(s3) or {
 		assert true
 		return
 	}
 	assert false
+}
+
+fn test_rfc8601_parse_utc() {
+	ok_format := '2020-06-02T15:38:06.015959+00:00'
+
+	t := time.parse_rfc8601(ok_format) or {panic(err)}
+
+	assert t.year == 2020
+	assert t.month == 6
+	assert t.day == 2
+	assert t.hour == 15
+	assert t.minute == 38
+	assert t.second == 6
+	assert t.microsecond == 15959
+}
+
+fn test_rfc8601_parse_cest() {
+	ok_format := '2020-06-02T15:38:06.015959+02:00'
+
+	t := time.parse_rfc8601(ok_format) or {panic(err)}
+
+	assert t.year == 2020
+	assert t.month == 6
+	assert t.day == 2
+	assert t.hour == 17
+	assert t.minute == 38
+	assert t.second == 6
+	assert t.microsecond == 15959
 }

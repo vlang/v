@@ -10,7 +10,7 @@ import v.util
 import v.builder
 
 const (
-	simple_cmd                          = [
+	simple_cmd = [
 		'fmt', 'up',
 		'self', 'symlink', 'bin2v',
 		'test', 'test-fmt', 'test-compiler', 'test-fixed',

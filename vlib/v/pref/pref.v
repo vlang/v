@@ -33,7 +33,7 @@ pub enum Backend {
 }
 
 const (
-	list_of_flags_with_param            = [
+	list_of_flags_with_param = [
 		'o'
 		'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'arch', 'csource'
 		'cf', 'cflags', 'path']

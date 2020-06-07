@@ -8,6 +8,7 @@ import v.ast
 import v.pref
 import v.vmod
 import v.table
+import vweb.tmpl
 
 const (
 	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
@@ -83,7 +84,55 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	p.check(.name)
 	p.check(.lpar)
 	p.check(.rpar)
-	return ast.ComptimeCall{}
+	// Compile vweb html template to V code, parse that V code and embed the resulting V function
+	// that returns an html string.
+	mut path := p.cur_fn_name + '.html'
+	// if p.pref.is_verbose {
+	println('>>> compiling vweb HTML template "$path"')
+	// }
+	if !os.exists(path) {
+		// Can't find the template file in current directory,
+		// try looking next to the vweb program, in case it's run with
+		// v path/to/vweb_app.v
+		path = os.dir(p.scanner.file_path) + '/' + path
+		if !os.exists(path) {
+			p.error('vweb HTML template "$path" not found')
+		}
+		// println('path is now "$path"')
+	}
+	v_code := tmpl.compile_file(path)
+	mut scope := &ast.Scope{
+		start_pos: 0
+		parent: 0
+	}
+	file := parse_text(v_code, p.table, scope, p.global_scope)
+	if p.pref.is_verbose {
+		println('\n\n')
+		println('>>> vweb template for ${path}:')
+		println(v_code)
+		println('>>> end of vweb template END')
+		println('\n\n')
+	}
+	// copy vars from current fn scope into vweb_tmpl scope
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl {
+			fn_decl := stmt as ast.FnDecl
+			if fn_decl.name == 'vweb_tmpl' {
+				body_scope := file.scope.innermost(fn_decl.body_pos.pos)
+				for _, obj in p.scope.objects {
+					if obj is ast.Var {
+						v := obj as ast.Var
+						body_scope.register(v.name, *v)
+					}
+				}
+				break
+			}
+		}
+	}
+	return ast.ComptimeCall{
+		is_vweb: true
+		vweb_tmpl: file
+	}
 }
 
 fn (mut p Parser) comp_if() ast.Stmt {
