@@ -3296,6 +3296,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			g.stmts(stmts)
 		}
 	} else if or_block.kind == .propagate {
+		g.write_defer_stmts()
 		if g.file.mod.name == 'main' && g.cur_fn.name == 'main' {
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
