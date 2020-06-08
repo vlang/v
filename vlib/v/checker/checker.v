@@ -1651,6 +1651,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 				if it.key_var.len > 0 {
 					key_type := match sym.kind {
+						// XXX if uncommented // .enum_{ sym.enum_info().vals }
 						.map { sym.map_info().key_type }
 						else { table.int_type }
 					}
@@ -2050,19 +2051,19 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 			enum_type := et.info as table.Enum
 			mut items := []string{}
 			for a in enum_type.vals {
-				items << '${ident.name}.$a, '
+				items << '${ident.name}.$a'
 			}
 			itemstr := items.join(', ')
 			eprintln('todo: substitute enum for in [${itemstr}]')
 			ident.kind = .constant
+			idx := c.table.find_or_register_array_fixed(table.int_type, enum_type.vals.len, 1)
+			array_type := table.new_type(idx)
+			// array_init.typ = array_type
+			// TODO: fill array with enum elements
 			return table.array_type
 		} else {
 			c.error('undefined ident: `$ident.name`', ident.pos)
 		}
-	}
-	if c.table.known_type(ident.name) {
-		// e.g. `User`  in `json.decode(User, '...')`
-		return table.void_type
 	}
 	return table.void_type
 }

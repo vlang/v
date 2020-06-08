@@ -64,6 +64,8 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			inc: inc
 			pos: pos
 		}
+	} else if p.peek_tok.kind == .key_enum {
+		eprintln('ENUM FORIN')
 	} else if p.peek_tok.kind in [.key_in, .comma] {
 		// `for i in vals`, `for i in start .. end`
 		key_var_pos := p.tok.position()

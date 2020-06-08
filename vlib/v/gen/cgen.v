@@ -856,6 +856,9 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln('.args[$i];')
 		g.stmts(it.stmts)
 		g.writeln('}')
+	} else if it.kind == .enum_ {
+		// `for x in enum {`
+		eprintln('for-in-enum-todo')
 	} else if it.kind == .string {
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		g.write('for (int $i = 0; $i < ')
