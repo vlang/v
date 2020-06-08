@@ -159,7 +159,13 @@ fn (cfg DocConfig) gen_json(idx int) string {
 fn html_highlight(code string, tb &table.Table) string {
 	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64', 'u128', 'rune', 'f32', 'f64', 'any_int', 'any_float', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
-		lit := if typ in [.unone, .operator, .punctuation] { tok.kind.str() } else { tok.lit }
+		lit := if typ in [.unone, .operator, .punctuation] { 
+			tok.kind.str() 
+		} else if typ == .string { 
+			"'$tok.lit'"
+		} else if typ == .char {
+			'`$tok.lit`'
+		} else { tok.lit }
 		return if typ in [.unone, .name] { lit } else { '<span class="token $typ">$lit</span>' } 
 	}
 	s := scanner.new_scanner(code, .parse_comments)
