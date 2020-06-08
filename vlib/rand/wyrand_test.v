@@ -1,5 +1,6 @@
-import rand
 import math
+import rand
+import rand.util
 
 const (
 	range_limit = 40
@@ -25,7 +26,7 @@ fn gen_randoms(seed_data []u32, bound int) []u64 {
 }
 
 fn test_wyrand_reproducibility() {
-	seed_data := rand.time_seed_array(2)
+	seed_data := util.time_seed_array(2)
 	randoms1 := gen_randoms(seed_data, 1000)
 	randoms2 := gen_randoms(seed_data, 1000)
 	assert randoms1.len == randoms2.len

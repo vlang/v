@@ -1,5 +1,6 @@
 import rand
 import math
+import rand.util
 
 const (
 	range_limit = 40
@@ -25,7 +26,7 @@ fn gen_randoms(seed_data []u32, bound int) []u64 {
 }
 
 fn test_musl_reproducibility() {
-	seed_data := rand.time_seed_array(1)
+	seed_data := util.time_seed_array(1)
 	randoms1 := gen_randoms(seed_data, 1000)
 	randoms2 := gen_randoms(seed_data, 1000)
 	assert randoms1.len == randoms2.len
@@ -113,12 +114,12 @@ fn test_musl_uniformity_f64() {
 }
 
 fn test_musl_u32n() {
-	max := 16384
+	max := u32(16384)
 	for seed in seeds {
 		mut rng := rand.MuslRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32n(u32(max))
+			value := rng.u32n(max)
 			assert value >= 0
 			assert value < max
 		}
@@ -139,13 +140,13 @@ fn test_musl_u64n() {
 }
 
 fn test_musl_u32_in_range() {
-	max := 484468466
-	min := 316846
+	max := u32(484468466)
+	min := u32(316846)
 	for seed in seeds {
 		mut rng := rand.MuslRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(u64(min), u64(max))
+			value := rng.u32_in_range(min, max)
 			assert value >= min
 			assert value < max
 		}
@@ -281,7 +282,7 @@ fn test_musl_f32n() {
 		mut rng := rand.MuslRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.f32()
+			value := rng.f32n(max)
 			assert value >= 0.0
 			assert value < max
 		}
@@ -294,7 +295,7 @@ fn test_musl_f64n() {
 		mut rng := rand.MuslRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.f64()
+			value := rng.f64n(max)
 			assert value >= 0.0
 			assert value < max
 		}
@@ -308,7 +309,7 @@ fn test_musl_f32_in_range() {
 		mut rng := rand.MuslRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.f32()
+			value := rng.f32_in_range(min, max)
 			assert value >= min
 			assert value < max
 		}
@@ -322,7 +323,7 @@ fn test_musl_f64_in_range() {
 		mut rng := rand.MuslRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.f64()
+			value := rng.f64_in_range(min, max)
 			assert value >= min
 			assert value < max
 		}

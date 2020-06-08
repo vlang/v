@@ -1,4 +1,5 @@
 import rand
+import rand.util
 import math
 
 const (
@@ -35,7 +36,7 @@ fn gen_randoms(seed_data []u32, bound int) []u64 {
 }
 
 fn test_mt19937_reproducibility() {
-	seed_data := rand.time_seed_array(2)
+	seed_data := util.time_seed_array(2)
 	randoms1 := gen_randoms(seed_data, 1000)
 	randoms2 := gen_randoms(seed_data, 1000)
 	assert randoms1.len == randoms2.len
@@ -123,12 +124,12 @@ fn test_mt19937_uniformity_f64() {
 }
 
 fn test_mt19937_u32n() {
-	max := 16384
+	max := u32(16384)
 	for seed in seeds {
 		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32n(u32(max))
+			value := rng.u32n(max)
 			assert value >= 0
 			assert value < max
 		}
@@ -149,13 +150,13 @@ fn test_mt19937_u64n() {
 }
 
 fn test_mt19937_u32_in_range() {
-	max := 484468466
-	min := 316846
+	max := u32(484468466)
+	min := u32(316846)
 	for seed in seeds {
 		mut rng := rand.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(u32(min), u32(max))
+			value := rng.u32_in_range(min, max)
 			assert value >= min
 			assert value < max
 		}

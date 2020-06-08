@@ -1,5 +1,5 @@
-import rand
 import math
+import rand
 
 const (
 	range_limit = 40
