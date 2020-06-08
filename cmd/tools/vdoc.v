@@ -272,7 +272,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	if head {
 		dnw.write(md_content)
 	} else {
-		dnw.writeln('<pre class="signature language-v"><code class="language-v">$hlighted_code</code></pre>')
+		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
 		dnw.writeln(md_content)
 	}
 	dnw.writeln('</section>')
