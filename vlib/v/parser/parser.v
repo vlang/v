@@ -131,7 +131,8 @@ fn (mut p Parser) parse() ast.File {
 	// imports
 	for {
 		if p.tok.kind == .key_import {
-			stmts << p.import_stmt()
+			_, stmt := p.import_stmt()
+			stmts << stmt
 			continue
 		}
 		if p.tok.kind == .comment {
@@ -205,7 +206,92 @@ fn (mut q Queue) run() {
 	}
 }
 */
-pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, global_scope &ast.Scope) []ast.File {
+
+fn parse_file_by_mod(mod, path string, b_table &table.Table, pref &pref.Preferences, global_scope &ast.Scope) []ast.File {
+	mut pfiles := []ast.File{}
+	mut stmts := []ast.Stmt{}
+	mut p := Parser{
+		scanner: scanner.new_scanner_file(path, .skip_comments)
+		comments_mode: .skip_comments
+		table: b_table
+		file_name: path
+		file_name_dir: os.dir(path)
+		pref: pref
+		scope: &ast.Scope{
+			start_pos: 0
+			parent: 0
+		}
+		errors: []errors.Error{}
+		warnings: []errors.Warning{}
+		global_scope: global_scope
+	}
+	// comments_mode: comments_mode
+	p.init_parse_fns()
+	p.read_first_token()
+	for p.tok.kind == .comment {
+		stmts << p.comment()
+	}
+	// module
+	mut mstmt := ast.Stmt{}
+	module_decl := p.module_decl()
+	mstmt = module_decl
+	stmts << mstmt
+
+	if mod.len > 0 && mod != module_decl.name {
+		p.error_with_pos('imports module `$mod` but `$path` is defined as module `$module_decl.name`', module_decl.pos)
+	}
+	// imports
+	for p.tok.kind == .key_import {
+		has_import, stmt := p.import_stmt()
+		if !has_import {
+			import_path := pref.find_module_path(stmt.mod, path) or {
+				p.error_with_pos('cannot import module "$stmt.mod" (not found)', stmt.pos)
+				break
+			}
+			v_files := pref.v_files_from_dir(import_path)
+			if v_files.len == 0 {
+				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
+				p.error_with_pos('cannot import module "$stmt.mod" (no .v files in "$import_path")', stmt.pos)
+			}
+			// Add all imports referenced by these libs
+			for v_file in v_files {
+				pfiles << parse_file_by_mod(stmt.mod, v_file, b_table, pref, global_scope)
+			}
+		}
+		stmts << stmt
+	}
+	for {
+		if p.tok.kind == .eof {
+			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
+				stmts << ast.FnDecl{
+					name: 'main'
+					file: p.file_name
+					return_type: table.void_type
+				}
+			} else {
+				p.check_unused_imports()
+			}
+			break
+		}
+		// println('stmt at ' + p.tok.str())
+		stmts << p.top_stmt()
+	}
+	p.scope.end_pos = p.tok.pos
+	file := ast.File{
+		path: path
+		mod: module_decl
+		imports: p.ast_imports
+		stmts: stmts
+		scope: p.scope
+		global_scope: p.global_scope
+		errors: p.errors
+		warnings: p.warnings
+	}
+	pfiles << file
+	return pfiles
+}
+
+pub fn parse_files(paths []string, b_table &table.Table, pref &pref.Preferences, global_scope &ast.Scope) []ast.File {
 	// println('nr_cpus= $nr_cpus')
 	$if macos {
 		/*
@@ -239,7 +325,7 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 	mut files := []ast.File{}
 	for path in paths {
 		// println('parse_files $path')
-		files << parse_file(path, table, .skip_comments, pref, global_scope)
+		files << parse_file_by_mod('', path, b_table, pref, global_scope)
 	}
 	return files
 }
@@ -419,7 +505,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		.key_import {
 			p.error_with_pos('`import x` can only be declared at the beginning of the file',
 				p.tok.position())
-			return p.import_stmt()
+			return ast.Stmt{}
 		}
 		.key_global {
 			return p.global_decl()
@@ -1251,7 +1337,7 @@ fn (mut p Parser) module_decl() ast.Module {
 	}
 }
 
-fn (mut p Parser) import_stmt() ast.Import {
+fn (mut p Parser) import_stmt() (bool, ast.Import) {
 	import_pos := p.tok.position()
 	p.check(.key_import)
 	pos := p.tok.position()
@@ -1272,6 +1358,9 @@ fn (mut p Parser) import_stmt() ast.Import {
 		if import_pos.line_nr != pos_t.line_nr {
 			p.error_with_pos('`import` and `submodule` must be at same line', pos)
 		}
+		if mod_name == 'builtin' {
+			p.error_with_pos('cannot import module `builtin`', pos)
+		}
 		submod_name := p.check_name()
 		mod_name += '.' + submod_name
 		mod_alias = submod_name
@@ -1288,15 +1377,19 @@ fn (mut p Parser) import_stmt() ast.Import {
 			p.error_with_pos('cannot import multiple modules at a time', pos_t)
 		}
 	}
+	mut has_import_mod := true
 	p.imports[mod_alias] = mod_name
-	p.table.imports << mod_name
+	if mod_name !in p.table.imports {
+		has_import_mod = false
+		p.table.imports << mod_name
+	}
 	node := ast.Import{
 		mod: mod_name
 		alias: mod_alias
 		pos: pos
 	}
 	p.ast_imports << node
-	return node
+	return has_import_mod, node
 }
 
 fn (mut p Parser) const_decl() ast.ConstDecl {

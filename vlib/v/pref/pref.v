@@ -104,14 +104,15 @@ pub mut:
 	compile_defines_all []string // contains both: ['vfmt','another']
 
 	mod                 string
+	module_search_paths []string
 	run_args            []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list        []string // a list of generated function names, whose source should be shown, for debugging
 	print_v_files       bool     // when true, just print the list of all parsed .v files then stop.
 	skip_running        bool     // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
 	skip_warnings       bool     // like C's "-w"
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
-	is_parallel bool
-	error_limit int
+	is_parallel         bool
+	error_limit         int
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {

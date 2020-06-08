@@ -59,9 +59,9 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.is_verbose {
 		println('============ running $b.pref.out_name ============')
 	}
-	
+
 	mut cmd := '"${b.pref.out_name}"'
-	
+
 	if b.pref.backend == .js {
 		cmd = 'node "${b.pref.out_name}.js"'
 	}
@@ -108,20 +108,20 @@ fn (mut v Builder) set_module_lookup_paths() {
 	// By default, these are what (3) contains:
 	// 3.1) search in vlib/
 	// 3.2) search in ~/.vmodules/ (i.e. modules installed with vpm)
-	v.module_search_paths = []
+	v.pref.module_search_paths = []
 	if v.pref.is_test {
-		v.module_search_paths << os.base_dir(v.compiled_dir) // pdir of _test.v
+		v.pref.module_search_paths << os.base_dir(v.compiled_dir) // pdir of _test.v
 	}
-	v.module_search_paths << v.compiled_dir
+	v.pref.module_search_paths << v.compiled_dir
 	x := os.join_path(v.compiled_dir, 'modules')
 	if v.pref.is_verbose {
 		println('x: "$x"')
 	}
-	v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
-	v.module_search_paths << v.pref.lookup_path
+	v.pref.module_search_paths << os.join_path(v.compiled_dir, 'modules')
+	v.pref.module_search_paths << v.pref.lookup_path
 	if v.pref.is_verbose {
 		v.log('v.module_search_paths:')
-		println(v.module_search_paths)
+		println(v.pref.module_search_paths)
 	}
 }
 
@@ -142,12 +142,12 @@ pub fn (v Builder) get_builtin_files() []string {
 			continue
 		}
 		if v.pref.is_bare {
-			return v.v_files_from_dir(os.join_path(location, 'builtin', 'bare'))
+			return v.pref.v_files_from_dir(os.join_path(location, 'builtin', 'bare'))
 		}
 		if v.pref.backend == .js {
-			return v.v_files_from_dir(os.join_path(location, 'builtin', 'js'))
+			return v.pref.v_files_from_dir(os.join_path(location, 'builtin', 'js'))
 		}
-		return v.v_files_from_dir(os.join_path(location, 'builtin'))
+		return v.pref.v_files_from_dir(os.join_path(location, 'builtin'))
 	}
 	// Panic. We couldn't find the folder.
 	verror('`builtin/` not included on module lookup path.
@@ -230,7 +230,7 @@ pub fn (v Builder) get_user_files() []string {
 			v.log('> add all .v files from directory "${dir}" ...')
 		}
 		// Add .v files from the directory being compiled
-		user_files << v.v_files_from_dir(dir)
+		user_files << v.pref.v_files_from_dir(dir)
 	}
 	if user_files.len == 0 {
 		println('No input .v files')
