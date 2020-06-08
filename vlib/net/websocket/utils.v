@@ -1,7 +1,7 @@
 module websocket
 
 import time
-import rand
+import rand.pcg32
 import math
 import crypto.sha1
 import encoding.base64
@@ -22,7 +22,7 @@ fn htonl64(payload_len u64) byteptr {
 fn create_masking_key() []byte {
 	t := time.ticks()
 	tseq := t % 23237671
-	mut rnd := rand.new_pcg32(u64(t), u64(tseq))
+	mut rnd := pcg32.new_pcg32(u64(t), u64(tseq))
 	mask_bit := byte(rnd.bounded_next(u32(math.max_i32)))
 	buf := [`0`].repeat(4)
 	C.memcpy(buf.data, &mask_bit, 4)
@@ -43,10 +43,13 @@ fn create_key_challenge_response(seckey string) string {
 }
 
 fn get_nonce(nonce_size int) string {
+	t := time.ticks()
+	tseq := t % 23237671
+	mut rnd := pcg32.new_pcg32(u64(t), u64(tseq))
 	mut nonce := []byte{len: nonce_size, cap: nonce_size}
 	alphanum := '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz'
 	for i in 0 .. nonce_size {
-		nonce[i] = alphanum[rand.next(61)]
+		nonce[i] = alphanum[rnd.bounded_next(61)]
 	}
 	return tos(nonce.data, nonce.len).clone()
 }
