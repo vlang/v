@@ -478,6 +478,7 @@ pre {
 		flex-direction: row;
 	}
 	.doc-content {
+		font-size: 0.95rem;
 		flex: 1;
 	}
 	.doc-toc {
