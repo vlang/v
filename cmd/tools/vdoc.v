@@ -135,6 +135,22 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 	return url.str()
 }
 
+fn js_compress(str string) string {
+	mut js := strings.new_builder(200)
+	lines := str.split_into_lines()
+	rules := [') {', ' = ', ', ', '{ ', ' }', ' (', '; ', ' + ', ' < ']
+	clean := ['){', '=', ',', '{', '}', '(', ';', '+', '<']
+	for line in lines {
+		mut trimmed := line.trim_space()
+		if trimmed.starts_with('//') || (trimmed.starts_with('/*') && trimmed.ends_with('*/')) { continue }
+		for i, _ in rules {
+			trimmed = trimmed.replace(rules[i], clean[i])
+		}
+		js.write(trimmed)
+	}
+	return js.str()
+}
+
 fn escape(str string) string {
 	return str.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
 }
@@ -310,7 +326,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	// get resources
 	doc_css := cfg.get_resource(css_js_assets[0], true)
 	normalize_css := cfg.get_resource(css_js_assets[1], true)
-	doc_js := cfg.get_resource(css_js_assets[2], false)
+	doc_js := cfg.get_resource(css_js_assets[2], !cfg.serve_http)
 	light_icon := cfg.get_resource('light.svg', true)
 	dark_icon := cfg.get_resource('dark.svg', true)
 	menu_icon := cfg.get_resource('menu.svg', true)
@@ -660,7 +676,7 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 	path := os.join_path(res_path, name)
 	mut res := os.read_file(path) or { panic('could not read $path') }
 	if minify {
-		res = res.replace('\n', ' ')
+		res = if name.ends_with('.js') { js_compress(res) } else { res.replace('\n', ' ') }
 	}
 	// TODO: Make SVG inline for now
 	if cfg.inline_assets || path.ends_with('.svg') {
