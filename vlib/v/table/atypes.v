@@ -76,7 +76,7 @@ pub fn (t Type) set_nr_muls(nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('set_nr_muls: nr_muls must be between 0 & 255')
 	}
-	return (((int(t) >> 24) & 0xff) << 24) | (nr_muls << 16) | (u16(t) & 0xffff)
+	return int(t) & 0xff00ffff | (nr_muls << 16)
 }
 
 // increments nr_nuls on `t` and return it
@@ -86,7 +86,8 @@ pub fn (t Type) to_ptr() Type {
 	if nr_muls == 255 {
 		panic('to_ptr: nr_muls is already at max of 255')
 	}
-	return (((int(t) >> 24) & 0xff) << 24) | ((nr_muls + 1) << 16) | (u16(t) & 0xffff)
+
+	return int(t) & 0xff00ffff | ((nr_muls + 1) << 16)
 }
 
 // decrement nr_muls on `t` and return it
@@ -96,37 +97,37 @@ pub fn (t Type) deref() Type {
 	if nr_muls == 0 {
 		panic('deref: type `$t` is not a pointer')
 	}
-	return (((int(t) >> 24) & 0xff) << 24) | ((nr_muls - 1) << 16) | (u16(t) & 0xffff)
+	return int(t) & 0xff00ffff | ((nr_muls - 1) << 16)
 }
 
 // set `flag` on `t` and return `t`
 [inline]
 pub fn (t Type) set_flag(flag TypeFlag) Type {
-	return ((((int(t) >> 24) & 0xff) | 1 << int(flag)) << 24) | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
+  return int(t) | (1 << (int(flag) + 24))
 }
 
 // clear `flag` on `t` and return `t`
 [inline]
 pub fn (t Type) clear_flag(flag TypeFlag) Type {
-	return ((((int(t) >> 24) & 0xff) & ~(1 << int(flag))) << 24) | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
+  return int(t) & ~(1 << (int(flag) + 24))
 }
 
 // clear all flags
 [inline]
 pub fn (t Type) clear_flags() Type {
-	return 0 | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
+	return int(t) & 0xffffff
 }
 
 // return true if `flag` is set on `t`
 [inline]
 pub fn (t Type) has_flag(flag TypeFlag) bool {
-	return (((int(t) >> 24) & 0xff) >> int(flag)) & 1 == 1
+  return int(t) & (1 << (int(flag) + 24)) > 0
 }
 
 // copy flags & nr_muls from `t_from` to `t` and return `t`
 [inline]
 pub fn (t Type) derive(t_from Type) Type {
-	return (((int(t_from) >> 24) & 0xff) << 24) | (((int(t_from) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
+	return (0xffff0000 & t_from) | u16(t)
 }
 
 // return new type with TypeSymbol idx set to `idx`
