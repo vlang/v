@@ -1,22 +1,22 @@
-/**********************************************************************
-*
-* f32 to string
-*
-* Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
-* Use of this source code is governed by an MIT license
-* that can be found in the LICENSE file.
-*
-* This file contains the f32 to string functions
-*
-* These functions are based on the work of:
-* Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN
-* Conference on Programming Language Design and ImplementationJune 2018
-* Pages 270–282 https://doi.org/10.1145/3192366.3192369
-*
-* inspired by the Go version here:
-* https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
-*
-**********************************************************************/
+/*
+
+f32 to string
+
+Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
+Use of this source code is governed by an MIT license
+that can be found in the LICENSE file.
+
+This file contains the f32 to string functions
+
+These functions are based on the work of:
+Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN
+Conference on Programming Language Design and ImplementationJune 2018
+Pages 270–282 https://doi.org/10.1145/3192366.3192369
+
+inspired by the Go version here:
+https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
+
+*/
 module ftoa
 
 // dec32 is a floating decimal type representing m * 10^e.
@@ -51,11 +51,11 @@ const(
 	]
 )
 
-/******************************************************************************
-*
-* Conversion Functions
-*
-******************************************************************************/
+/*
+
+ Conversion Functions
+
+*/
 const(
 	mantbits32  = u32(23)
 	expbits32   = u32(8)

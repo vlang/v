@@ -24,7 +24,7 @@ fn main() {
 	for len in str_lens {
 		end_pos := start_pos + len
 		str := string(bytepile[start_pos..end_pos],len)
-		_ = wyhash.wyhash_c(&str.str, u64(str.len), 1)
+		wyhash.wyhash_c(&str.str, u64(str.len), 1)
 		start_pos = end_pos
 	}
 	t1 := time.ticks()
@@ -34,7 +34,7 @@ fn main() {
 	for len in str_lens {
 		end_pos := start_pos + len
 		str := string(bytepile[start_pos..end_pos],len)
-		_ = wyhash.sum64_string(str, 1)
+		wyhash.sum64_string(str, 1)
 		start_pos = end_pos
 	}
 	t2 := time.ticks()
@@ -44,7 +44,7 @@ fn main() {
 	for len in str_lens {
 		end_pos := start_pos + len
 		str := string(bytepile[start_pos..end_pos],len)
-		_ = fnv1a.sum64_string(str)
+		fnv1a.sum64_string(str)
 		start_pos = end_pos
 	}
 	t3 := time.ticks()

@@ -41,7 +41,8 @@ pub mut:
 pub struct Response {
 pub:
 	text        string
-	headers     map[string]string
+	headers     map[string]string // original response headers, 'Set-Cookie' or 'set-Cookie', etc.
+	lheaders    map[string]string // same as headers, but with normalized lowercased keys, like 'set-cookie'
 	cookies     map[string]string
 	status_code int
 }
@@ -228,7 +229,7 @@ pub fn (req &Request) do() ?Response {
 			break
 		}
 		// follow any redirects
-		mut redirect_url := resp.headers['Location']
+		mut redirect_url := resp.lheaders['location']
 		if redirect_url.len > 0 && redirect_url[0] == `/` {
 			url.set_path(redirect_url) or {
 				return error('http.request.do: invalid path in redirect: "$redirect_url"')
@@ -278,6 +279,7 @@ fn (req &Request) method_and_url_to_response(method string, url urllib.URL) ?Res
 fn parse_response(resp string) Response {
 	// TODO: Header data type
 	mut headers := map[string]string{}
+	mut lheaders := map[string]string{}
 	// TODO: Cookie data type
 	mut cookies := map[string]string{}
 	first_header := resp.all_before('\n')
@@ -309,20 +311,25 @@ fn parse_response(resp string) Response {
 		// if h.contains('Content-Type') {
 		// continue
 		// }
-		key := h[..pos]
+
+		mut key := h[..pos]
+		lkey := key.to_lower()
 		val := h[pos + 2..]
-		if key == 'Set-Cookie' {
+		if lkey == 'set-cookie' {
 			parts := val.trim_space().split('=')
 			cookies[parts[0]] = parts[1]
 		}
-		headers[key] = val.trim_space()
+		tval := val.trim_space()
+		headers[key] = tval
+		lheaders[lkey] = tval
 	}
-	if headers['Transfer-Encoding'] == 'chunked' || headers['Content-Length'] == '' {
+	if lheaders['transfer-encoding'] == 'chunked' || lheaders['content-length'] == '' {
 		text = chunked.decode(text)
 	}
 	return Response{
 		status_code: status_code
 		headers: headers
+		lheaders: lheaders
 		cookies: cookies
 		text: text
 	}

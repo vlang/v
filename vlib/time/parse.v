@@ -47,3 +47,65 @@ pub fn parse_rfc2822(s string) ?Time {
 
 	return parse(tos(tmstr, count))
 }
+
+// parse_rfc8601 parses rfc8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time
+// the fraction part is difference in milli seconds and the last part is offset
+// from UTC time and can be both +/- HH:mm
+// Remarks: Not all rfc8601 is supported only the 'yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd'
+pub fn parse_rfc8601(s string) ?Time {
+
+	mut year 		:= 0
+	mut month 		:= 0
+	mut day 	  	:= 0
+	mut hour 	  	:= 0
+	mut minute 	  	:= 0
+	mut second 	  	:= 0
+	mut mic_second 	:= 0
+	mut time_char 	:= `a`
+	mut plus_min 	:= `a`
+	mut offset_hour := 0
+	mut offset_min  := 0
+
+	count := C.sscanf(s.str, "%4d-%2d-%2d%c%2d:%2d:%2d.%6d%c%2d:%2d", &year, &month, &day,
+													  &time_char, &hour, &minute,
+													  &second, &mic_second, &plus_min,
+													  &offset_hour, &offset_min)
+
+	if count != 11 {
+		return error('Invalid 8601 format')
+	}
+	if time_char != `T` && time_char != ` ` {
+		return error('Invalid 8601 format, expected space or `T` as time separator')
+	}
+
+	if plus_min != `+` && plus_min != `-` {
+		return error('Invalid 8601 format, expected `+` or `-` as time separator' )
+	}
+
+	t := new_time(Time{
+		year: year
+		month: month
+		day: day
+		hour: hour
+		minute: minute
+		second: second
+		microsecond: mic_second
+	})
+	mut unix_offset := int(0)
+
+	if offset_hour > 0 {
+		unix_offset += 3600*offset_hour
+	}
+	if offset_min > 0 {
+		unix_offset += 60*offset_min
+	}
+
+	if unix_offset != 0 {
+		if plus_min == `+` {
+			return unix2(int(t.unix) + unix_offset, t.microsecond)
+		} else {
+			return unix2(int(t.unix) - unix_offset, t.microsecond)
+		}
+	}
+	return t
+}

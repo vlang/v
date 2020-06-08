@@ -110,13 +110,48 @@ fn test_translate() {
     assert m.data[15] == 1.0
 }
 
-fn test_mult() {
-	//TODO improve test
-	mut a := glm.identity()
-	mut b := glm.identity()
-	mut c := glm.identity()
+fn f32_calloc(n int) &f32 {
+	return voidptr(vcalloc(n * int(sizeof(f32))))
+}
+
+fn test_mult1() {
+	mut adata := f32_calloc(16)
+	adata[1*4+1] = 6
+	adata[2*4+3] = 2
+	adata[0*4+2] = 3
+	adata[2*4+1] = 1
+
+	mut bdata := f32_calloc(16)
+	bdata[1*4+1] = -2
+	bdata[2*4+3] = 1
+	bdata[0*4+2] = 6
+	bdata[2*4+1] = -3
+
+	mut expected := f32_calloc(16)
+	expected[0*4+0] = 0  	/* 0*0+0*0+0*6+0*0 */
+	expected[0*4+1] = 6  	/* 0*0+0*6+1*6+0*0 */
+	expected[0*4+2] = 0  	/* 3*0+0*0+0*6+0*0 */
+	expected[0*4+3] = 12 	/* 0*0+0*0+2*6+0*0 */
+
+	expected[1*4+0] = 0		/* 0*0+0*-2+0*0+0*0 */
+	expected[1*4+1] = -12	/* 0*0­+6*-2+1*0­+0*0 */
+	expected[1*4+2] = 0		/* 3*0­+0*-2­+0*0­+0*0 */
+	expected[1*4+3] = 0		/* 0*0­+0*-2­+2*0­+0*0 */
+
+	expected[2*4+0] = 0		/* 0*0­+0*-3­+0*0­+0*1 */
+	expected[2*4+1] = -18	/* 0*0­+6*-3­+1*0­+0*1 */
+	expected[2*4+2] = 0		/* 3*0­+0*-3+0*0­+0*1 */
+	expected[2*4+3] = 0		/* 0*0­+0*-3­+2*0­+0*1 */
+
+	expected[3*4+0] = 0		/* 0*0­+0*0­+0*0­+0*0 */
+	expected[3*4+1] = 0		/* 0*0­+6*0­+1*0­+0*0 */
+	expected[3*4+2] = 0		/* 3*0­+0*0­+0*0­+0*0 */
+	expected[3*4+3] = 0		/* 0*0­+0*0­+2*0­+0*0 */
+
+	mut a := glm.Mat4{adata}
+	b := glm.Mat4{bdata}
 	a = glm.mult(a, b)
 	for i in 0..15 {
-		assert a.data[i] == c.data[i]
+		assert a.data[i] == expected[i]
 	}
 }

@@ -1,11 +1,56 @@
 (function() {
-    if (!!document.body.scrollIntoView) {
+    if (document.body.scrollIntoView) {
         var docnav = document.querySelector('.doc-nav');
         var active = docnav.querySelector('li.active');
-        active && active.scrollIntoView({ block: 'center', inline: 'nearest' });
+        if (active) {
+            active.scrollIntoView({ block: 'center', inline: 'nearest' });
+        }
     }
+    setupScrollSpy();
+    setupMobileToggle();
+    setupDarkMode();
+    setupSearch();
+    setupCollapse();
+})();
 
-    // Mobile view menu toggle button
+function setupScrollSpy() {
+    var sectionPositions = [];
+    var sections = document.querySelectorAll('section');
+    sections.forEach(function(section) {
+        sectionPositions.push(section.offsetTop);
+    });
+    var scrollPos = 0;
+    window.addEventListener('scroll', function(e) {
+        // Reset classes
+        document.querySelectorAll('.doc-toc a[class="active"]').forEach(function(link) {
+            link.classList.remove('active');
+        });
+        // Set current menu link as active
+        var scrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+        for (var i = 0; i < sectionPositions.length; i++) {
+            var section = sections[i];
+            var position = sectionPositions[i];
+            if (position >= scrollPosition) {
+                var link = document.querySelector('.doc-toc a[href="#' + section.id + '"]');
+                if (link) {
+                    link.classList.add('active');
+                    var docToc = document.querySelector('.doc-toc');
+                    var tocHeight = docToc.clientHeight;
+                    var scrollTop = docToc.scrollTop;
+                    if ((document.body.getBoundingClientRect()).top < scrollPos && scrollTop < link.offsetTop - 10) {
+                        docToc.scrollTop = link.clientHeight + link.offsetTop - tocHeight + 10;
+                    } else if (scrollTop > link.offsetTop - 10) {
+                        docToc.scrollTop = link.offsetTop - 10;
+                    }
+                }
+                break;
+            }
+        }
+        scrollPos = (document.body.getBoundingClientRect()).top;
+    });
+}
+
+function setupMobileToggle() {
     var toggle = document.getElementById('toggle-menu');
     toggle.addEventListener('click', function(ev) {
         document.querySelectorAll('.doc-nav').forEach(function(el) {
@@ -16,8 +61,9 @@
             el.classList.toggle('show');
         });
     });
+}
 
-    // Dark mode
+function setupDarkMode() {
     var html = document.getElementsByTagName('html')[0];
     var darkModeToggle = document.getElementById('dark-mode-toggle');
     darkModeToggle.addEventListener('click', function() {
@@ -34,8 +80,9 @@
     if (window.CSS && CSS.supports('color', 'var(--fake-var)')) {
         darkModeToggle.style.visibility = 'unset';
     }
+}
 
-    // Search
+function setupSearch() {
     var searchInput = document.getElementById('search');
     searchInput.addEventListener('input', function(e) {
         var searchValue = e.target.value.toLowerCase();
@@ -60,8 +107,9 @@
             menuItem.style.display = !searchValue || hasResult ? '' : 'none';
         }
     });
+}
 
-    // Collapse
+function setupCollapse() {
     var dropdownArrows = document.querySelectorAll('.dropdown-arrow');
     for (var i = 0; i < dropdownArrows.length; i++) {
         var dropdownArrow = dropdownArrows[i];
@@ -70,4 +118,4 @@
             parent.classList.toggle('open');
         });
     }
-})();
+}

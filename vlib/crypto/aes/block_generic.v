@@ -84,7 +84,7 @@ fn encrypt_block_generic(xk []u32, dst, src []byte) {
 	s2 ^= xk[k+2]
 	s3 ^= xk[k+3]
 
-	_ = dst[15] // early bounds check
+	_ := dst[15] // early bounds check
 	binary.big_endian_put_u32(mut dst[..4], s0)
 	binary.big_endian_put_u32(mut dst.slice(4, 8), s1)
 	binary.big_endian_put_u32(mut dst.slice(8, 12), s2)

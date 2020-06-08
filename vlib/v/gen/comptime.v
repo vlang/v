@@ -3,47 +3,72 @@
 // that can be found in the LICENSE file.
 module gen
 
-import vweb.tmpl
-import os
+import v.ast
+import v.table
 
-// $vweb.html()
-fn (mut g Gen) vweb_html() {
-	// Compile vweb html template to V code, parse that V code and embed the resulting V functions
-	// that returns an html string
-	mut path := g.cur_fn.name + '.html'
-	println('html path=$path')
-	if g.pref.is_debug {
-		println('>>> compiling vweb HTML template "$path"')
+fn (g &Gen) comptime_call(node ast.ComptimeCall) {
+	if node.is_vweb {
+		for stmt in node.vweb_tmpl.stmts {
+			if stmt is ast.FnDecl {
+				fn_decl := stmt as ast.FnDecl
+				// insert stmts from vweb_tmpl fn
+				if fn_decl.name == 'vweb_tmpl' {
+					g.stmts(fn_decl.stmts)
+					break
+				}
+			}
+		}
+		g.writeln('vweb__Context_html(&app->vweb, _tmpl_res)')
+		return
 	}
-	if !os.exists(path) {
-		// Can't find the template file in current directory,
-		// try looking next to the vweb program, in case it's run with
-		// v path/to/vweb_app.v
-		// path = os.dir(g.scanner.file_path) + '/' + path
-		// if !os.exists(path) {
-		verror('vweb HTML template "$path" not found')
+	g.writeln('// $' + 'method call. sym="$node.sym.name"')
+	mut j := 0
+	for method in node.sym.methods {
+		if method.return_type != table.void_type {
+			continue
+		}
+		// receiver := method.args[0]
+		// if !p.expr_var.ptr {
+		// p.error('`$p.expr_var.name` needs to be a reference')
 		// }
+		amp := '' // if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
+		if j > 0 {
+			g.write(' else ')
+		}
+		g.write('if (string_eq($node.method_name, tos_lit("$method.name"))) ')
+		g.write('${node.sym.name}_$method.name ($amp ')
+		g.expr(node.left)
+		g.writeln(');')
+		j++
 	}
-	v_code := tmpl.compile_template(path)
-	if g.pref.is_verbose {
-		println('\n\n')
-		println('>>> vweb template for ${path}:')
-		println(v_code)
-		println('>>> vweb template END')
-		println('\n\n')
-	}
-	// is_strings_imorted := p.import_table.known_import('strings')
-	// if !is_strings_imorted {
-	// p.register_import('strings', 0) // used by v_code
-	// }
-	// p.import_table.register_used_import('strings')
-	g.writeln('/////////////////// tmpl start')
-	// g.statements_from_text(v_code, false, path)
-	g.writeln('/////////////////// tmpl end')
-	receiver := g.cur_fn.args[0]
-	dot := '.' // if receiver.is_mut || receiver.ptr || receiver.typ.ends_with('*') { '->' } else { '.' }
-	g.writeln('vweb__Context_html(&$receiver.name /*!*/$dot vweb, tmpl_res)')
 }
 
-fn fooo() {
+fn (mut g Gen) comp_if(it ast.CompIf) {
+	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
+	if it.is_not {
+		g.writeln('\n// \$if !${it.val} {\n#ifndef ' + ifdef)
+	} else {
+		g.writeln('\n// \$if  ${it.val} {\n#ifdef ' + ifdef)
+	}
+	// NOTE: g.defer_ifdef is needed for defers called witin an ifdef
+	// in v1 this code would be completely excluded
+	g.defer_ifdef = if it.is_not {
+		'\n#ifndef ' + ifdef
+	} else {
+		'\n#ifdef ' + ifdef
+	}
+	// println('comp if stmts $g.file.path:$it.pos.line_nr')
+	g.stmts(it.stmts)
+	g.defer_ifdef = ''
+	if it.has_else {
+		g.writeln('\n#else')
+		g.defer_ifdef = if it.is_not {
+			'\n#ifdef ' + ifdef
+		} else {
+			'\n#ifndef ' + ifdef
+		}
+		g.stmts(it.else_stmts)
+		g.defer_ifdef = ''
+	}
+	g.writeln('\n// } ${it.val}\n#endif\n')
 }

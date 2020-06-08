@@ -336,6 +336,9 @@ fn (mut v Builder) cc() {
 			}
 		}
 	}
+	if is_cc_tcc {
+		a << '-bt10'
+	}
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
 	if !v.pref.is_bare && v.pref.build_mode != .build_module && v.pref.os in [ .linux, .freebsd,

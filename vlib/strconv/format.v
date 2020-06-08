@@ -1,14 +1,14 @@
-/**********************************************************************
-*
-* printf/sprintf V implementation
-*
-* Copyright (c) 2020 Dario Deledda. All rights reserved.
-* Use of this source code is governed by an MIT license
-* that can be found in the LICENSE file.
-*
-* This file contains the printf/sprintf functions
-*
-**********************************************************************/
+/*
+
+printf/sprintf V implementation
+
+Copyright (c) 2020 Dario Deledda. All rights reserved.
+Use of this source code is governed by an MIT license
+that can be found in the LICENSE file.
+
+This file contains the printf/sprintf functions
+
+*/
 module strconv
 import strconv.ftoa
 import strings
@@ -34,11 +34,11 @@ enum Align_text {
 	center
 }
 
-/******************************************************************************
-*
-* Float conversion utility
-*
-******************************************************************************/
+/*
+
+Float conversion utility
+
+*/
 const(
 	// rounding value
 	dec_round = [
@@ -197,11 +197,11 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 	}
 }
 
-/******************************************************************************
-*
-* Single format functions
-*
-******************************************************************************/
+/*
+
+ Single format functions
+
+*/
 pub struct BF_param {
 	pad_ch       byte       = ` `     // padding char
 	len0         int        = -1      // default len for whole the number or string
@@ -418,11 +418,11 @@ pub fn remove_tail_zeros(s string) string {
 	return tmp
 }
 
-/******************************************************************************
-*
-* Main functions
-*
-******************************************************************************/
+/*
+
+Main functions
+
+*/
 pub fn v_printf(str string, pt ... voidptr) {
 	print(v_sprintf(str, pt))
 }

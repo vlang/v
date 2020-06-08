@@ -37,6 +37,8 @@ pub mut:
 	is_builtin_mod   bool // are we in `builtin`?
 	inside_unsafe    bool
 	cur_generic_type table.Type
+mut:
+	expr_level       int // to avoid infinit recursion segfaults due to compiler bugs
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -57,6 +59,7 @@ pub fn (mut c Checker) check(ast_file ast.File) {
 		}
 	}
 	for stmt in ast_file.stmts {
+		c.expr_level = 0
 		c.stmt(stmt)
 	}
 	// Check scopes
@@ -384,7 +387,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
 				field_type_sym := c.table.get_type_symbol(info_field.typ)
-				if !c.check_types(expr_type, info_field.typ) {
+				if !c.check_types(expr_type, info_field.typ) && expr_type != table.void_type {
 					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
@@ -668,25 +671,35 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 	c.expected_type = table.void_type
 	left_type := c.unwrap_generic(c.expr(assign_expr.left))
 	c.expected_type = left_type
+	if ast.expr_is_blank_ident(assign_expr.left) {
+		c.expected_type = table.Type(0)
+	}
 	assign_expr.left_type = left_type
 	// println('setting exp type to $c.expected_type $t.name')
 	right_type := c.check_expr_opt_call(assign_expr.val, c.unwrap_generic(c.expr(assign_expr.val)))
 	assign_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
-	if ast.expr_is_blank_ident(assign_expr.left) {
-		return
+	match assign_expr.left {
+		ast.Ident {
+			if it.kind == .blank_ident {
+				if assign_expr.op != .assign {
+					c.error('cannot modify blank `_` variable', it.pos)
+				}
+				return
+			}
+		}
+		ast.PrefixExpr {
+			// Do now allow `*x = y` outside `unsafe`
+			if it.op == .mul && !c.inside_unsafe {
+				c.error('modifying variables via deferencing can only be done in `unsafe` blocks',
+					assign_expr.pos)
+			}
+		}
+		else {}
 	}
 	// Make sure the variable is mutable
 	c.fail_if_immutable(assign_expr.left)
-	// Do now allow `*x = y` outside `unsafe`
-	if assign_expr.left is ast.PrefixExpr {
-		p := assign_expr.left as ast.PrefixExpr
-		if p.op == .mul && !c.inside_unsafe {
-			c.error('modifying variables via deferencing can only be done in `unsafe` blocks',
-				assign_expr.pos)
-		}
-	}
 	// Single side check
 	match assign_expr.op {
 		.assign {} // No need to do single side check for =. But here put it first for speed.
@@ -881,7 +894,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			return info.func.return_type
 		}
 	}
-	c.error('unknown method: `${left_type_sym.name}.$method_name`', call_expr.pos)
+	if left_type != table.void_type {
+		c.error('unknown method: `${left_type_sym.name}.$method_name`', call_expr.pos)
+	}
 	return table.void_type
 }
 
@@ -1318,7 +1333,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	right_first := assign_stmt.right[0]
 	mut right_len := assign_stmt.right.len
 	if right_first is ast.CallExpr || right_first is ast.IfExpr || right_first is ast.MatchExpr {
-		right_type0 := c.expr(assign_stmt.right[0])
+		right_type0 := c.expr(right_first)
 		assign_stmt.right_types = [right_type0]
 		right_type_sym0 := c.table.get_type_symbol(right_type0)
 		if right_type0 == table.void_type {
@@ -1332,12 +1347,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				call_expr := assign_stmt.right[0] as ast.CallExpr
 				c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${call_expr.name}()` returns $right_len value(s)',
 					assign_stmt.pos)
-				return
 			} else {
 				c.error('assignment mismatch: $assign_stmt.left.len variable(s) $right_len value(s)',
 					assign_stmt.pos)
-				return
 			}
+			return
 		}
 	} else if assign_stmt.left.len != right_len {
 		c.error('assignment mismatch: $assign_stmt.left.len variable(s) $assign_stmt.right.len value(s)',
@@ -1354,20 +1368,19 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i])
 		}
 		mut val_type := assign_stmt.right_types[i]
-		// check variable name for beginning with capital letter 'Abc'
-		is_decl := assign_stmt.op == .decl_assign
-		if is_decl && ident.name != '_' {
-			c.check_valid_snake_case(ident.name, 'variable name', ident.pos)
-		}
-		if assign_stmt.op == .decl_assign {
-			val_type = c.table.mktyp(val_type)
-		}
 		mut ident_var_info := ident.var_info()
-		if assign_stmt.op == .assign {
+		is_decl := assign_stmt.op == .decl_assign
+		if is_decl {
+			if ident.kind != .blank_ident {
+				// check variable name for beginning with capital letter 'Abc'
+				c.check_valid_snake_case(ident.name, 'variable name', ident.pos)
+			}
+			val_type = c.table.mktyp(val_type)
+		} else {
 			c.fail_if_immutable(ident)
 			var_type := c.expr(ident)
 			assign_stmt.left_types << var_type
-			if !c.check_types(val_type, var_type) {
+			if ident.kind != .blank_ident && !c.check_types(val_type, var_type) {
 				val_type_sym := c.table.get_type_symbol(val_type)
 				var_type_sym := c.table.get_type_symbol(var_type)
 				c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`',
@@ -1752,6 +1765,14 @@ pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 
 // TODO node must be mut
 pub fn (mut c Checker) expr(node ast.Expr) table.Type {
+	/*
+	c.expr_level++
+	defer { c.expr_level -- }
+	if c.expr_level > 20 {
+		c.warn('checker: too many expr levels', node.position())
+		//panic('checker: too many expr levels')
+	}
+	*/
 	match mut node {
 		ast.AnonFn {
 			keep_fn := c.cur_fn
@@ -1829,6 +1850,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.ComptimeCall {
 			it.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(it.left)))
+			if it.is_vweb {
+				mut c2 := new_checker(c.table, c.pref)
+				c2.check(it.vweb_tmpl)
+			}
 			return table.void_type
 		}
 		ast.ConcatExpr {
@@ -2219,7 +2244,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		if !node.has_else || i < node.branches.len - 1 {
 			// check condition type is boolean
 			cond_typ := c.expr(branch.cond)
-			if cond_typ.idx() != table.bool_type_idx {
+			if cond_typ.idx() !in [table.bool_type_idx, table.void_type_idx] {
+				// void types are skipped, because they mean the var was initialized incorrectly
+				// (via missing function etc)
 				typ_sym := c.table.get_type_symbol(cond_typ)
 				c.error('non-bool type `$typ_sym.name` used as if condition', branch.pos)
 			}

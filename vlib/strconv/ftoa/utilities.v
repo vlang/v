@@ -1,33 +1,33 @@
-/**********************************************************************
-*
-* f32/f64 to string utilities
-*
-* Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
-* Use of this source code is governed by an MIT license
-* that can be found in the LICENSE file.
-*
-* This file contains the f32/f64 to string utilities functions
-*
-* These functions are based on the work of:
-* Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN
-* Conference on Programming Language Design and ImplementationJune 2018
-* Pages 270–282 https://doi.org/10.1145/3192366.3192369
-*
-* inspired by the Go version here:
-* https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
-*
-**********************************************************************/
+/*
+
+f32/f64 to string utilities
+
+Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
+Use of this source code is governed by an MIT license
+that can be found in the LICENSE file.
+
+This file contains the f32/f64 to string utilities functions
+
+These functions are based on the work of:
+Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN
+Conference on Programming Language Design and ImplementationJune 2018
+Pages 270–282 https://doi.org/10.1145/3192366.3192369
+
+inspired by the Go version here:
+https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
+
+*/
 module ftoa
 
 import math.bits
 
 //import math
 
-/******************************************************************************
-*
-* General Utilities
-*
-******************************************************************************/
+/*
+
+General Utilities
+
+*/
 fn assert1(t bool, msg string) {
 	if !t {
 		panic(msg)
@@ -75,11 +75,11 @@ fn get_string_special(neg bool, expZero bool, mantZero bool) string {
 	return "0e+00"
 }
 
-/******************************************************************************
-*
-* 32 bit functions
-*
-******************************************************************************/
+/*
+
+ 32 bit functions
+
+*/
 fn decimal_len_32(u u32) int {
 	// Function precondition: u is not a 10-digit number.
 	// (9 digits are sufficient for round-tripping.)
@@ -166,11 +166,11 @@ fn pow5_bits(e int) int {
 	return int( ((u32(e)*1217359)>>19) + 1)
 }
 
-/******************************************************************************
-*
-* 64 bit functions
-*
-******************************************************************************/
+/*
+
+ 64 bit functions
+
+*/
 fn decimal_len_64(u u64) int {
 	// http://graphics.stanford.edu/~seander/bithacks.html#IntegerLog10
 	log2 := 64 - bits.leading_zeros_64(u) - 1
@@ -220,11 +220,11 @@ fn multiple_of_power_of_two_64(v u64, p u32) bool {
 	return u32(bits.trailing_zeros_64(v)) >= p
 }
 
-/******************************************************************************
-*
-* f64 to string with string format
-*
-******************************************************************************/
+/*
+
+f64 to string with string format
+
+*/
 
 // f32_to_str_l return a string with the f32 converted in a strign in decimal notation
 pub fn f32_to_str_l(f f64) string {

@@ -136,9 +136,7 @@ pub fn (ftp FTP) login(user, passwd string) bool {
 		}
 		return false
 	}
-	code, data = ftp.read()
-	// TODO Replace `data` with `_`
-	_ := data
+	code, _ = ftp.read()
 	if code == logged_in {
 		return true
 	}

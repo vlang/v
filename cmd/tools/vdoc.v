@@ -30,6 +30,7 @@ enum HighlightTokenTyp {
 }
 
 const (
+	css_js_assets   = ['doc.css', 'normalize.css' 'doc.js']
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
 	exe_path        = os.executable()
 	exe_dir         = os.dir(exe_path)
@@ -54,6 +55,8 @@ mut:
 	is_multi       bool = false
 	is_verbose     bool = false
 	include_readme bool = false
+	open_docs      bool = false
+	server_port    int  = 8046
 	inline_assets  bool = false
 	output_path    string
 	input_path     string
@@ -79,13 +82,16 @@ fn open_url(url string) {
 }
 
 fn (mut cfg DocConfig) serve_html() {
+	server_url := 'http://localhost:' + cfg.server_port.str()
 	docs := cfg.render()
 	def_name := docs.keys()[0]
-	server := net.listen(8046) or {
+	server := net.listen(cfg.server_port) or {
 		panic(err)
 	}
-	println('Serving docs on: http://localhost:8046')
-	open_url('http://localhost:8046')
+	println('Serving docs on: $server_url')
+	if cfg.open_docs {
+		open_url(server_url)
+	}
 	for {
 		con := server.accept() or {
 			server.close() or { }
@@ -129,6 +135,22 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 	return url.str()
 }
 
+fn js_compress(str string) string {
+	mut js := strings.new_builder(200)
+	lines := str.split_into_lines()
+	rules := [') {', ' = ', ', ', '{ ', ' }', ' (', '; ', ' + ', ' < ']
+	clean := ['){', '=', ',', '{', '}', '(', ';', '+', '<']
+	for line in lines {
+		mut trimmed := line.trim_space()
+		if trimmed.starts_with('//') || (trimmed.starts_with('/*') && trimmed.ends_with('*/')) { continue }
+		for i, _ in rules {
+			trimmed = trimmed.replace(rules[i], clean[i])
+		}
+		js.write(trimmed)
+	}
+	return js.str()
+}
+
 fn escape(str string) string {
 	return str.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
 }
@@ -154,7 +176,13 @@ fn (cfg DocConfig) gen_json(idx int) string {
 fn html_highlight(code string, tb &table.Table) string {
 	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64', 'u128', 'rune', 'f32', 'f64', 'any_int', 'any_float', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
-		lit := if typ in [.unone, .operator, .punctuation] { tok.kind.str() } else { tok.lit }
+		lit := if typ in [.unone, .operator, .punctuation] { 
+			tok.kind.str() 
+		} else if typ == .string { 
+			"'$tok.lit'"
+		} else if typ == .char {
+			'`$tok.lit`'
+		} else { tok.lit }
 		return if typ in [.unone, .name] { lit } else { '<span class="token $typ">$lit</span>' } 
 	}
 	s := scanner.new_scanner(code, .parse_comments)
@@ -167,7 +195,7 @@ fn html_highlight(code string, tb &table.Table) string {
 			mut tok_typ := HighlightTokenTyp.unone
 			match tok.kind {
 				.name {
-					if tok.lit in builtin {
+					if tok.lit in builtin || tb.known_type(tok.lit) {
 						tok_typ = .builtin
 					} else if next_tok.kind == .lcbr {
 						tok_typ = .symbol
@@ -226,14 +254,15 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	head_tag := if head { 'h1' } else { 'h2' }
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
+	is_const_class := if dd.name == 'Constants' { ' const' } else { '' }
 	mut sym_name := dd.name
-	if dd.parent_type !in ['void', ''] { 
+	if dd.parent_type !in ['void', '', 'Constants'] { 
 		sym_name = '${dd.parent_type}.' + sym_name
 	}
 	node_id := slug(sym_name)
-	hash_link := if head_tag != 'h1' { ' <a href="#$node_id">#</a>' } else { '' }
-	dnw.writeln('<section id="$node_id" class="doc-node">')
-	if dd.name != 'README' {
+	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
+	dnw.writeln('<section id="$node_id" class="doc-node$is_const_class">')
+	if dd.name != 'README' && dd.parent_type != 'Constants' {
 		dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
@@ -243,38 +272,61 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	if head {
 		dnw.write(md_content)
 	} else {
-		dnw.writeln('<pre class="signature language-v"><code class="language-v">$hlighted_code</code></pre>')
+		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
 		dnw.writeln(md_content)
 	}
 	dnw.writeln('</section>')
 	return dnw.str()
 }
 
+fn write_toc(cn doc.DocNode, nodes []doc.DocNode, toc &strings.Builder) {
+	toc.write('<li><a href="#${slug(cn.name)}">${cn.name}</a>')
+	children := nodes.find_children_of(cn.name)
+	if children.len != 0 && cn.name != 'Constants' {
+		toc.writeln('        <ul>')
+		for child in children {
+			cname := cn.name + '.' + child.name
+			toc.writeln('<li><a href="#${slug(cname)}">${child.name}</a></li>')
+		}
+		toc.writeln('</ul>')
+	}
+	toc.writeln('</li>')
+}
+
+fn (cfg DocConfig) write_content(cn &doc.DocNode, dcs &doc.Doc, hw &strings.Builder) {
+	base_dir := os.base_dir(os.real_path(cfg.input_path))
+	file_path_name := cn.file_path.replace('$base_dir/', '')
+	src_link := get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line)
+	children := dcs.contents.find_children_of(cn.name)
+	hw.write(doc_node_html(cn, src_link, false, dcs.table))
+	if children.len != 0 {
+		for child in children {
+			child_file_path_name := child.file_path.replace('$base_dir/', '')
+			child_src_link := get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line)
+			hw.write(doc_node_html(child, child_src_link, false, dcs.table))
+		}
+	}
+}
+
 fn (cfg DocConfig) gen_html(idx int) string {
 	dcs := cfg.docs[idx]
-	time_gen := dcs.time_generated.day.str() + ' ' + dcs.time_generated.smonth() + ' ' + dcs.time_generated.year.str() + ' ' + dcs.time_generated.hhmmss()
+	time_gen := '$dcs.time_generated.day $dcs.time_generated.smonth() $dcs.time_generated.year $dcs.time_generated.hhmmss()'
 	mut hw := strings.new_builder(200)
 	mut toc := strings.new_builder(200)
 	// generate toc first
+	const_node_idx := dcs.contents.index_by_name('Constants') or { -1 }
+	if const_node_idx != -1 {
+		write_toc(dcs.contents[const_node_idx], dcs.contents, &toc)
+	}
 	for cn in dcs.contents {
-		if cn.parent_type !in ['void', ''] { continue }
-		toc.write('<li><a href="#${slug(cn.name)}">${cn.name}</a>')
-		children := dcs.contents.find_children_of(cn.name)
-		if children.len != 0 {
-			toc.writeln('        <ul>')
-			for child in children {
-				cname := cn.name + '.' + child.name
-				toc.writeln('<li><a href="#${slug(cname)}">${child.name}</a></li>')
-			}
-			toc.writeln('</ul>')
-		}
-		toc.writeln('</li>')
+		if cn.name == 'Constants' || cn.parent_type !in ['void', ''] { continue }
+		write_toc(cn, dcs.contents, &toc)
 	}	// write head
 
 	// get resources
-	doc_css := cfg.get_resource('doc.css', true)
-	normalize_css := cfg.get_resource('normalize.css', true)
-	doc_js := cfg.get_resource('doc.js', false)
+	doc_css := cfg.get_resource(css_js_assets[0], true)
+	normalize_css := cfg.get_resource(css_js_assets[1], true)
+	doc_js := cfg.get_resource(css_js_assets[2], !cfg.serve_http)
 	light_icon := cfg.get_resource('light.svg', true)
 	dark_icon := cfg.get_resource('dark.svg', true)
 	menu_icon := cfg.get_resource('menu.svg', true)
@@ -363,20 +415,12 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	hw.write('</ul>\n</nav>\n</header>')
 	hw.write('<div class="doc-container">\n<div class="doc-content">\n')
 	hw.write(doc_node_html(dcs.head, '', true, dcs.table))
+	if const_node_idx != -1 {
+		cfg.write_content(&dcs.contents[const_node_idx], &dcs, &hw)
+	}
 	for cn in dcs.contents {
-		if cn.parent_type !in ['void', ''] { continue }
-		base_dir := os.base_dir(os.real_path(cfg.input_path))
-		file_path_name := cn.file_path.replace('$base_dir/', '')
-		hw.write(doc_node_html(cn, get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line), false, dcs.table))
-
-		children := dcs.contents.find_children_of(cn.name)
-
-		if children.len != 0 {
-			for child in children {
-				child_file_path_name := child.file_path.replace('$base_dir/', '')
-				hw.write(doc_node_html(child, get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line), false, dcs.table))
-			}
-		}
+		if cn.parent_type !in ['void', ''] || cn.name == 'Constants' { continue }
+		cfg.write_content(&cn, &dcs, &hw)
 	}
 	hw.write('\n<div class="footer">Powered by vdoc. Generated on: $time_gen</div>\n</div>\n')
 	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
@@ -397,6 +441,9 @@ fn (cfg DocConfig) gen_plaintext(idx int) string {
 	dcs := cfg.docs[idx]
 	mut pw := strings.new_builder(200)
 	pw.writeln('${dcs.head.content}\n')
+	if dcs.head.comment.len > 0 {
+		pw.writeln('// ' + dcs.head.comment.replace('\n', '\n// ') + '\n')
+	}
 	for cn in dcs.contents {
 		pw.writeln(cn.content)
 		if cn.comment.len > 0 {
@@ -418,7 +465,7 @@ fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 		hw.writeln('## Contents')
 	}
 	for cn in dcs.contents {
-		name := cn.name.all_after(dcs.head.name+'.')
+		name := cn.name.all_after(dcs.head.name + '.')
 
 		if with_toc {
 			hw.writeln('- [#$name](${slug(name)})')
@@ -458,6 +505,23 @@ fn (cfg DocConfig) render() map[string]string {
 	return docs
 }
 
+fn (cfg DocConfig) get_readme(path string) string {
+	mut fname := ''
+	for name in ['readme', 'README'] {
+		if os.exists(os.join_path(path, '${name}.md')) {
+			fname = name
+			break
+		} 
+	}
+	if fname == '' {
+		return ''
+	}
+	readme_path := os.join_path(path, '${fname}.md')
+	cfg.vprintln('Reading README file from $readme_path')
+	readme_contents := os.read_file(readme_path) or { '' }
+	return readme_contents
+}
+
 fn (mut cfg DocConfig) generate_docs_from_file() {
 	if cfg.output_path.len == 0 {
 		if cfg.output_type == .unset {
@@ -484,16 +548,14 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		os.base_dir(cfg.input_path) 
 	}
 	manifest_path := os.join_path(dir_path, 'v.mod')
-	readme_path := os.join_path(dir_path, 'README.md')
 	if os.exists(manifest_path) {
 		cfg.vprintln('Reading v.mod info from $manifest_path')
 		if manifest := vmod.from_file(manifest_path) {
 			cfg.manifest = manifest
 		}
 	}
-	if os.exists(readme_path) && cfg.include_readme {
-		cfg.vprintln('Reading README file from $readme_path')
-		readme_contents := os.read_file(readme_path) or { '' }
+	if cfg.include_readme {
+		readme_contents := cfg.get_readme(dir_path)
         if cfg.output_type == .stdout {
 			println(markdown.to_plain(readme_contents))
         }
@@ -514,6 +576,10 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 			panic(err)
 		}
 		if dcs.contents.len == 0 { continue }
+		if cfg.is_multi {
+			readme_contents := cfg.get_readme(dirpath)
+			dcs.head.comment = readme_contents
+		}
 		if cfg.pub_only {
 			for i, c in dcs.contents {
 				dcs.contents[i].content = c.content.all_after('pub ')	
@@ -528,8 +594,12 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	cfg.vprintln('Rendering docs...')
 	if cfg.output_path.len == 0 {
 		outputs := cfg.render()
-		first := outputs.keys()[0]
-		println(outputs[first])
+		if outputs.size == 0 {
+			println('No documentation for $dirs')
+		} else {
+			first := outputs.keys()[0]
+			println(outputs[first])
+		}
 	} else {
 		if !os.is_dir(cfg.output_path) {
 			cfg.output_path = os.real_path('.')
@@ -541,7 +611,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 					panic(err)
 				}
 			} else {
-				for fname in ['doc.css', 'v-prism.css', 'doc.js'] {
+				for fname in css_js_assets {
 					os.rm(os.join_path(cfg.output_path, fname))
 				}
 			}
@@ -613,7 +683,7 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 	path := os.join_path(res_path, name)
 	mut res := os.read_file(path) or { panic('could not read $path') }
 	if minify {
-		res = res.replace('\n', ' ')
+		res = if name.ends_with('.js') { js_compress(res) } else { res.replace('\n', ' ') }
 	}
 	// TODO: Make SVG inline for now
 	if cfg.inline_assets || path.ends_with('.svg') {
@@ -667,6 +737,22 @@ fn main() {
 				opath := cmdline.option(current_args, '-o', '')
 				cfg.output_path = os.real_path(opath)
 				i++
+			}
+			'-open' {
+				cfg.open_docs = true
+			}
+			'-p' {
+				s_port := cmdline.option(current_args, '-o', '')
+				s_port_int := s_port.int()
+				if s_port.len == 0 {
+					eprintln('vdoc: No port number specified on "-p".')
+					exit(1)
+				}
+				if s_port != s_port_int.str() {
+					eprintln('vdoc: Invalid port number.')
+					exit(1)
+				}
+				cfg.server_port = s_port_int
 			}
 			'-s' {
 				cfg.inline_assets = true

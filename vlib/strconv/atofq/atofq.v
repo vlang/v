@@ -1,20 +1,20 @@
-/**********************************************************************
-*
-* atof util
-*
-* Copyright (c) 2019 Dario Deledda. All rights reserved.
-* Use of this source code is governed by an MIT license
-* that can be found in the LICENSE file.
-*
-* This file contains utilities for convert a string in a f64 variable in a very quick way
-* IEEE 754 standard is used
-*
-* Know limitation:
-* - round to 0 approximation
-* - loos of precision with big exponents
-*
-*
-**********************************************************************/
+/*
+
+atof util
+
+Copyright (c) 2019 Dario Deledda. All rights reserved.
+Use of this source code is governed by an MIT license
+that can be found in the LICENSE file.
+
+This file contains utilities for convert a string in a f64 variable in a very quick way
+IEEE 754 standard is used
+
+Know limitation:
+- round to 0 approximation
+- loos of precision with big exponents
+
+
+*/
 
 module atofq
 
