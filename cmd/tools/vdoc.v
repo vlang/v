@@ -263,25 +263,48 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	return dnw.str()
 }
 
+fn write_toc(cn doc.DocNode, nodes []doc.DocNode, toc &strings.Builder) {
+	toc.write('<li><a href="#${slug(cn.name)}">${cn.name}</a>')
+	children := nodes.find_children_of(cn.name)
+	if children.len != 0 && cn.name != 'Constants' {
+		toc.writeln('        <ul>')
+		for child in children {
+			cname := cn.name + '.' + child.name
+			toc.writeln('<li><a href="#${slug(cname)}">${child.name}</a></li>')
+		}
+		toc.writeln('</ul>')
+	}
+	toc.writeln('</li>')
+}
+
+fn (cfg DocConfig) write_content(cn &doc.DocNode, dcs &doc.Doc, hw &strings.Builder) {
+	base_dir := os.base_dir(os.real_path(cfg.input_path))
+	file_path_name := cn.file_path.replace('$base_dir/', '')
+	src_link := get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line)
+	children := dcs.contents.find_children_of(cn.name)
+	hw.write(doc_node_html(cn, src_link, false, dcs.table))
+	if children.len != 0 {
+		for child in children {
+			child_file_path_name := child.file_path.replace('$base_dir/', '')
+			child_src_link := get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line)
+			hw.write(doc_node_html(child, child_src_link, false, dcs.table))
+		}
+	}
+}
+
 fn (cfg DocConfig) gen_html(idx int) string {
 	dcs := cfg.docs[idx]
 	time_gen := '$dcs.time_generated.day $dcs.time_generated.smonth() $dcs.time_generated.year $dcs.time_generated.hhmmss()'
 	mut hw := strings.new_builder(200)
 	mut toc := strings.new_builder(200)
 	// generate toc first
+	const_node_idx := dcs.contents.index_by_name('Constants') or { -1 }
+	if const_node_idx != -1 {
+		write_toc(dcs.contents[const_node_idx], dcs.contents, &toc)
+	}
 	for cn in dcs.contents {
-		if cn.parent_type !in ['void', ''] { continue }
-		toc.write('<li><a href="#${slug(cn.name)}">${cn.name}</a>')
-		children := dcs.contents.find_children_of(cn.name)
-		if children.len != 0 && cn.name != 'Constants' {
-			toc.writeln('        <ul>')
-			for child in children {
-				cname := cn.name + '.' + child.name
-				toc.writeln('<li><a href="#${slug(cname)}">${child.name}</a></li>')
-			}
-			toc.writeln('</ul>')
-		}
-		toc.writeln('</li>')
+		if cn.name == 'Constants' || cn.parent_type !in ['void', ''] { continue }
+		write_toc(cn, dcs.contents, &toc)
 	}	// write head
 
 	// get resources
@@ -376,20 +399,12 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	hw.write('</ul>\n</nav>\n</header>')
 	hw.write('<div class="doc-container">\n<div class="doc-content">\n')
 	hw.write(doc_node_html(dcs.head, '', true, dcs.table))
+	if const_node_idx != -1 {
+		cfg.write_content(&dcs.contents[const_node_idx], &dcs, &hw)
+	}
 	for cn in dcs.contents {
-		if cn.parent_type !in ['void', ''] { continue }
-		base_dir := os.base_dir(os.real_path(cfg.input_path))
-		file_path_name := cn.file_path.replace('$base_dir/', '')
-		hw.write(doc_node_html(cn, get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line), false, dcs.table))
-
-		children := dcs.contents.find_children_of(cn.name)
-
-		if children.len != 0 {
-			for child in children {
-				child_file_path_name := child.file_path.replace('$base_dir/', '')
-				hw.write(doc_node_html(child, get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line), false, dcs.table))
-			}
-		}
+		if cn.parent_type !in ['void', ''] || cn.name == 'Constants' { continue }
+		cfg.write_content(&cn, &dcs, &hw)
 	}
 	hw.write('\n<div class="footer">Powered by vdoc. Generated on: $time_gen</div>\n</div>\n')
 	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {

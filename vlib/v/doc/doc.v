@@ -167,6 +167,14 @@ pub fn new(input_path string) Doc {
 	}
 }
 
+pub fn (nodes []DocNode) index_by_name(node_name string) ?int {
+	for i, node in nodes {
+		if node.name != node_name { continue }
+		return i
+	}
+	return error('Node with the name "$node_name" was not found.')
+}
+
 pub fn (nodes []DocNode) find_children_of(parent_type string) []DocNode {
 	if parent_type.len == 0 {
 		return []DocNode{}
