@@ -3636,36 +3636,6 @@ fn (g Gen) is_importing_os() bool {
 	return 'os' in g.table.imports
 }
 
-fn (mut g Gen) comp_if(it ast.CompIf) {
-	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
-	if it.is_not {
-		g.writeln('\n// \$if !${it.val} {\n#ifndef ' + ifdef)
-	} else {
-		g.writeln('\n// \$if  ${it.val} {\n#ifdef ' + ifdef)
-	}
-	// NOTE: g.defer_ifdef is needed for defers called witin an ifdef
-	// in v1 this code would be completely excluded
-	g.defer_ifdef = if it.is_not {
-		'\n#ifndef ' + ifdef
-	} else {
-		'\n#ifdef ' + ifdef
-	}
-	// println('comp if stmts $g.file.path:$it.pos.line_nr')
-	g.stmts(it.stmts)
-	g.defer_ifdef = ''
-	if it.has_else {
-		g.writeln('\n#else')
-		g.defer_ifdef = if it.is_not {
-			'\n#ifdef ' + ifdef
-		} else {
-			'\n#ifndef ' + ifdef
-		}
-		g.stmts(it.else_stmts)
-		g.defer_ifdef = ''
-	}
-	g.writeln('\n// } ${it.val}\n#endif\n')
-}
-
 fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	tmp := g.new_tmp_var()
 	// x := node.call_expr as ast.CallEpxr // TODO
@@ -4346,43 +4316,6 @@ fn (mut g Gen) interface_call(typ, interface_type table.Type) {
 	g.write('${cast_fn_name}(')
 	if !typ.is_ptr() {
 		g.write('&')
-	}
-}
-
-fn (g &Gen) comptime_call(node ast.ComptimeCall) {
-	if node.is_vweb {
-		for stmt in node.vweb_tmpl.stmts {
-			if stmt is ast.FnDecl {
-				fn_decl := stmt as ast.FnDecl
-				// insert stmts from vweb_tmpl fn
-				if fn_decl.name == 'vweb_tmpl' {
-					g.stmts(fn_decl.stmts)
-					break
-				}
-			}
-		}
-		g.writeln('vweb__Context_html(&app-> vweb, tmpl_res)')
-		return
-	}
-	g.writeln('// $' + 'method call. sym="$node.sym.name"')
-	mut j := 0
-	for method in node.sym.methods {
-		if method.return_type != table.void_type {
-			continue
-		}
-		// receiver := method.args[0]
-		// if !p.expr_var.ptr {
-		// p.error('`$p.expr_var.name` needs to be a reference')
-		// }
-		amp := '' // if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
-		if j > 0 {
-			g.write(' else ')
-		}
-		g.write('if (string_eq($node.method_name, tos_lit("$method.name"))) ')
-		g.write('${node.sym.name}_$method.name ($amp ')
-		g.expr(node.left)
-		g.writeln(');')
-		j++
 	}
 }
 

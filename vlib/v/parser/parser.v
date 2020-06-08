@@ -75,7 +75,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt()
 }
 
-pub fn parse_text(text string, b_table &table.Table, scope &ast.Scope, global_scope &ast.Scope) ast.File {
+pub fn parse_text(text string, b_table &table.Table, scope, global_scope &ast.Scope) ast.File {
 	s := scanner.new_scanner(text, .skip_comments)
 	mut p := Parser{
 		scanner: s
@@ -94,7 +94,6 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
 	// all the tricky inner comments. This is needed because we do not have a good general solution
 	// for handling them, and should be removed when we do (the general solution is also needed for vfmt)
-
 	// println('parse_file("$path")')
 	// text := os.read_file(path) or {
 	// panic(err)
@@ -273,7 +272,7 @@ pub fn (mut p Parser) close_scope() {
 		for _, obj in p.scope.objects {
 			match obj {
 				ast.Var {
-					if !it.is_used && !it.name.starts_with('__') {
+					if !it.is_used && it.name[0] != `_` {
 						if p.pref.is_prod {
 							p.error_with_pos('unused variable: `$it.name`', it.pos)
 						} else {
@@ -738,15 +737,10 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 		mut idents := []ast.Ident{}
 		for c in collected {
 			match c {
-				ast.Ident {
-					idents << it
-				}
-				ast.SelectorExpr {
-					p.error_with_pos('struct fields can only be declared during the initialization', it.pos)
-				}
-				else {
-					p.error_with_pos('unexpected `${typeof(c)}`', c.position())
-				}
+				ast.Ident { idents << it }
+				ast.SelectorExpr { p.error_with_pos('struct fields can only be declared during the initialization',
+						it.pos) }
+				else { p.error_with_pos('unexpected `${typeof(c)}`', c.position()) }
 			}
 		}
 		return p.partial_assign_stmt(idents)
@@ -1650,7 +1644,7 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 	p.peek_tok3 = no_token
 	for {
 		p.next()
-		//eprintln('rewinding to ${p.tok.tidx:5} | goal: ${tidx:5}')
+		// eprintln('rewinding to ${p.tok.tidx:5} | goal: ${tidx:5}')
 		if tidx == p.tok.tidx {
 			break
 		}
