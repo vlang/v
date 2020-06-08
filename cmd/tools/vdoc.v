@@ -441,6 +441,9 @@ fn (cfg DocConfig) gen_plaintext(idx int) string {
 	dcs := cfg.docs[idx]
 	mut pw := strings.new_builder(200)
 	pw.writeln('${dcs.head.content}\n')
+	if dcs.head.comment.len > 0 {
+		pw.writeln('// ' + dcs.head.comment.replace('\n', '\n// ') + '\n')
+	}
 	for cn in dcs.contents {
 		pw.writeln(cn.content)
 		if cn.comment.len > 0 {
@@ -591,8 +594,12 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	cfg.vprintln('Rendering docs...')
 	if cfg.output_path.len == 0 {
 		outputs := cfg.render()
-		first := outputs.keys()[0]
-		println(outputs[first])
+		if outputs.size == 0 {
+			println('No documentation for $dirs')
+		} else {
+			first := outputs.keys()[0]
+			println(outputs[first])
+		}
 	} else {
 		if !os.is_dir(cfg.output_path) {
 			cfg.output_path = os.real_path('.')

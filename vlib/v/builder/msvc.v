@@ -118,7 +118,7 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 			shared_include_path: kit_include_highest + '\\shared'
 		}
 	}
-	return error('Host OS does not support funding a windows kit')
+	return error('Host OS does not support finding a windows kit')
 }
 
 struct VsInstallation {
@@ -129,7 +129,7 @@ struct VsInstallation {
 
 fn find_vs(vswhere_dir, host_arch string) ?VsInstallation {
 	$if !windows {
-		return error('Host OS does not support finding a Vs installation')
+		return error('Host OS does not support finding a Visual Studio installation')
 	}
 	// Emily:
 	// VSWhere is guaranteed to be installed at this location now

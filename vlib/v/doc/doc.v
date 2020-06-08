@@ -40,6 +40,17 @@ pub mut:
 	parent_type string = ''
 }
 
+pub fn merge_comments(stmts []ast.Stmt) string {
+	mut res := []string{}
+	for s in stmts {
+		if s is ast.Comment {
+			c  := s as ast.Comment
+			res << c.text.trim_left('|')
+		}
+	}
+	return res.join('\n')
+}
+
 pub fn get_comment_block_right_before(stmts []ast.Stmt) string {
 	if stmts.len == 0 {
 		return ''
@@ -271,9 +282,17 @@ pub fn (mut d Doc) generate() ?bool {
 		} else if file_ast.mod.name != orig_mod_name {
 			continue
 		}
-		mut prev_comments := []ast.Stmt{}
 		stmts := file_ast.stmts
-		for o, stmt in stmts {
+		//
+		mut last_import_stmt_idx := 0
+		for sidx, stmt in stmts {
+			if stmt is ast.Import {
+				last_import_stmt_idx = sidx
+			}
+		}
+		mut prev_comments := []ast.Stmt{}
+		mut imports_section := true
+		for sidx, stmt in stmts {
 			//eprintln('stmt typeof: ' + typeof(stmt))
 			if stmt is ast.Comment {
 				prev_comments << stmt
@@ -293,6 +312,20 @@ pub fn (mut d Doc) generate() ?bool {
 					d.head.comment += '\n'
 				}
 				d.head.comment += module_comment
+				continue
+			}
+			if last_import_stmt_idx > 0 && sidx == last_import_stmt_idx {
+				// the accumulated comments were interspersed before/between the imports;
+				// just add them all to the module comment:
+				import_comments := merge_comments(prev_comments)
+				if d.head.comment != '' {
+					d.head.comment += '\n'
+				}
+				d.head.comment += import_comments
+				prev_comments = []
+				imports_section = false
+			}
+			if stmt is ast.Import {
 				continue
 			}
 			signature := d.get_signature(stmt)
@@ -324,7 +357,7 @@ pub fn (mut d Doc) generate() ?bool {
 			}
 			if stmt is ast.ConstDecl {
 				if const_idx == -1 {
-					const_idx = o
+					const_idx = sidx
 				} else {
 					node.parent_type = 'Constants'
 				}

@@ -129,8 +129,16 @@ fn (mut p Parser) parse() ast.File {
 	module_decl := p.module_decl()
 	stmts << module_decl
 	// imports
-	for p.tok.kind == .key_import {
-		stmts << p.import_stmt()
+	for {
+		if p.tok.kind == .key_import {
+			stmts << p.import_stmt()
+			continue
+		}
+		if p.tok.kind == .comment {
+			stmts << p.comment()
+			continue
+		}
+		break
 	}
 	for {
 		if p.tok.kind == .eof {
