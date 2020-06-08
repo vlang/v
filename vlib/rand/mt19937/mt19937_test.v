@@ -1,11 +1,11 @@
-import rand
+import mt19937
 import math
 import rand.util
 
 const (
 	range_limit = 40
 	value_count = 1000
-	seeds       = [[u32(42)], [u32(256)]]
+	seeds       = [[u32(0xcafebabe), u32(0xdeadbeef)], [u32(0xc0de), u32(0xfeed)]]
 )
 
 const (
@@ -14,10 +14,20 @@ const (
 	inv_sqrt_12   = 1.0 / math.sqrt(12)
 )
 
+fn mt19937_basic_test() {
+	mut rng := mt19937.MT19937RNG{}
+	rng.seed([u32(0xdeadbeef)])
+	target := [956529277, 3842322136, 3319553134, 1843186657, 2704993644, 595827513, 938518626,
+		1676224337, 3221315650, 1819026461]
+	for i := 0; i < 10; i++ {
+		assert target[i] == rng.u32()
+	}
+}
+
 fn gen_randoms(seed_data []u32, bound int) []u64 {
 	bound_u64 := u64(bound)
 	mut randoms := [u64(0)].repeat(20)
-	mut rnd := rand.MuslRNG{}
+	mut rnd := mt19937.MT19937RNG{}
 	rnd.seed(seed_data)
 	for i in 0 .. 20 {
 		randoms[i] = rnd.u64n(bound_u64)
@@ -25,8 +35,8 @@ fn gen_randoms(seed_data []u32, bound int) []u64 {
 	return randoms
 }
 
-fn test_musl_reproducibility() {
-	seed_data := util.time_seed_array(1)
+fn test_mt19937_reproducibility() {
+	seed_data := util.time_seed_array(2)
 	randoms1 := gen_randoms(seed_data, 1000)
 	randoms2 := gen_randoms(seed_data, 1000)
 	assert randoms1.len == randoms2.len
@@ -47,12 +57,12 @@ fn found(value u64, arr []u64) bool {
 	return false
 }
 
-fn test_musl_variability() {
+fn test_mt19937_variability() {
 	// If this test fails and if it is certainly not the implementation
 	// at fault, try changing the seed values. Repeated values are
 	// improbable but not impossible.
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		mut values := []u64{cap: value_count}
 		for i in 0 .. value_count {
@@ -64,7 +74,7 @@ fn test_musl_variability() {
 	}
 }
 
-fn check_uniformity_u64(mut rng rand.MuslRNG, range u64) {
+fn check_uniformity_u64(mut rng mt19937.MT19937RNG, range u64) {
 	range_f64 := f64(range)
 	expected_mean := range_f64 / 2.0
 	mut variance := 0.0
@@ -79,10 +89,10 @@ fn check_uniformity_u64(mut rng rand.MuslRNG, range u64) {
 	assert math.abs(error) < stats_epsilon
 }
 
-fn test_musl_uniformity_u64() {
+fn test_mt19937_uniformity_u64() {
 	ranges := [14019545, 80240, 130]
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for range in ranges {
 			check_uniformity_u64(mut rng, u64(range))
@@ -90,7 +100,7 @@ fn test_musl_uniformity_u64() {
 	}
 }
 
-fn check_uniformity_f64(mut rng rand.MuslRNG) {
+fn check_uniformity_f64(mut rng mt19937.MT19937RNG) {
 	expected_mean := 0.5
 	mut variance := 0.0
 	for _ in 0 .. sample_size {
@@ -104,19 +114,19 @@ fn check_uniformity_f64(mut rng rand.MuslRNG) {
 	assert math.abs(error) < stats_epsilon
 }
 
-fn test_musl_uniformity_f64() {
+fn test_mt19937_uniformity_f64() {
 	// The f64 version
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		check_uniformity_f64(mut rng)
 	}
 }
 
-fn test_musl_u32n() {
+fn test_mt19937_u32n() {
 	max := u32(16384)
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.u32n(max)
@@ -126,10 +136,10 @@ fn test_musl_u32n() {
 	}
 }
 
-fn test_musl_u64n() {
+fn test_mt19937_u64n() {
 	max := u64(379091181005)
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.u64n(max)
@@ -139,11 +149,11 @@ fn test_musl_u64n() {
 	}
 }
 
-fn test_musl_u32_in_range() {
+fn test_mt19937_u32_in_range() {
 	max := u32(484468466)
 	min := u32(316846)
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.u32_in_range(min, max)
@@ -153,11 +163,11 @@ fn test_musl_u32_in_range() {
 	}
 }
 
-fn test_musl_u64_in_range() {
+fn test_mt19937_u64_in_range() {
 	max := u64(216468454685163)
 	min := u64(6848646868)
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.u64_in_range(min, max)
@@ -167,11 +177,11 @@ fn test_musl_u64_in_range() {
 	}
 }
 
-fn test_musl_int31() {
+fn test_mt19937_int31() {
 	max_u31 := 0x7FFFFFFF
 	sign_mask := 0x80000000
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.int31()
@@ -183,11 +193,11 @@ fn test_musl_int31() {
 	}
 }
 
-fn test_musl_int63() {
+fn test_mt19937_int63() {
 	max_u63 := i64(0x7FFFFFFFFFFFFFFF)
 	sign_mask := i64(0x8000000000000000)
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.int63()
@@ -198,10 +208,10 @@ fn test_musl_int63() {
 	}
 }
 
-fn test_musl_intn() {
+fn test_mt19937_intn() {
 	max := 2525642
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.intn(max)
@@ -211,10 +221,10 @@ fn test_musl_intn() {
 	}
 }
 
-fn test_musl_i64n() {
+fn test_mt19937_i64n() {
 	max := i64(3246727724653636)
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.i64n(max)
@@ -224,11 +234,11 @@ fn test_musl_i64n() {
 	}
 }
 
-fn test_musl_int_in_range() {
+fn test_mt19937_int_in_range() {
 	min := -4252
 	max := 1034
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.int_in_range(min, max)
@@ -238,11 +248,11 @@ fn test_musl_int_in_range() {
 	}
 }
 
-fn test_musl_i64_in_range() {
+fn test_mt19937_i64_in_range() {
 	min := i64(-24095)
 	max := i64(324058)
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.i64_in_range(min, max)
@@ -252,9 +262,9 @@ fn test_musl_i64_in_range() {
 	}
 }
 
-fn test_musl_f32() {
+fn test_mt19937_f32() {
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.f32()
@@ -264,9 +274,9 @@ fn test_musl_f32() {
 	}
 }
 
-fn test_musl_f64() {
+fn test_mt19937_f64() {
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.f64()
@@ -276,10 +286,10 @@ fn test_musl_f64() {
 	}
 }
 
-fn test_musl_f32n() {
+fn test_mt19937_f32n() {
 	max := f32(357.0)
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.f32n(max)
@@ -289,10 +299,10 @@ fn test_musl_f32n() {
 	}
 }
 
-fn test_musl_f64n() {
+fn test_mt19937_f64n() {
 	max := 1.52e6
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.f64n(max)
@@ -302,11 +312,11 @@ fn test_musl_f64n() {
 	}
 }
 
-fn test_musl_f32_in_range() {
+fn test_mt19937_f32_in_range() {
 	min := f32(-24.0)
 	max := f32(125.0)
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.f32_in_range(min, max)
@@ -316,11 +326,11 @@ fn test_musl_f32_in_range() {
 	}
 }
 
-fn test_musl_f64_in_range() {
+fn test_mt19937_f64_in_range() {
 	min := -548.7
 	max := 5015.2
 	for seed in seeds {
-		mut rng := rand.MuslRNG{}
+		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.f64_in_range(min, max)

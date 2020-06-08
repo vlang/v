@@ -4,13 +4,14 @@
 module rand
 
 import rand.util
+import rand.wyrand
 
 // TODO: Remove these functions once done:
 // 1. C.rand()
 // 2. seed()
 // 3. next()
 // 4. rand_r()
-// fn C.rand() int
+fn C.rand() int
 pub fn seed(s int) {
 	C.srand(s)
 }
@@ -37,8 +38,8 @@ const (
 	default_rng = new_default({})
 )
 
-pub fn new_default(config PRNGConfigStruct) &WyRandRNG {
-	rng := &WyRandRNG{}
+pub fn new_default(config PRNGConfigStruct) &wyrand.WyRandRNG {
+	rng := &wyrand.WyRandRNG{}
 	rng.seed(config.seed)
 	return rng
 }

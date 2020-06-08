@@ -1,6 +1,6 @@
 import math
-import rand
 import rand.util
+import wyrand
 
 const (
 	range_limit = 40
@@ -17,7 +17,7 @@ const (
 fn gen_randoms(seed_data []u32, bound int) []u64 {
 	bound_u64 := u64(bound)
 	mut randoms := [u64(0)].repeat(20)
-	mut rnd := rand.WyRandRNG{}
+	mut rnd := wyrand.WyRandRNG{}
 	rnd.seed(seed_data)
 	for i in 0 .. 20 {
 		randoms[i] = rnd.u64n(bound_u64)
@@ -52,7 +52,7 @@ fn test_wyrand_variability() {
 	// at fault, try changing the seed values. Repeated values are
 	// improbable but not impossible.
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		mut values := []u64{cap: value_count}
 		for i in 0 .. value_count {
@@ -64,7 +64,7 @@ fn test_wyrand_variability() {
 	}
 }
 
-fn check_uniformity_u64(mut rng rand.WyRandRNG, range u64) {
+fn check_uniformity_u64(mut rng wyrand.WyRandRNG, range u64) {
 	range_f64 := f64(range)
 	expected_mean := range_f64 / 2.0
 	mut variance := 0.0
@@ -82,7 +82,7 @@ fn check_uniformity_u64(mut rng rand.WyRandRNG, range u64) {
 fn test_wyrand_uniformity_u64() {
 	ranges := [14019545, 80240, 130]
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for range in ranges {
 			check_uniformity_u64(mut rng, u64(range))
@@ -90,7 +90,7 @@ fn test_wyrand_uniformity_u64() {
 	}
 }
 
-fn check_uniformity_f64(mut rng rand.WyRandRNG) {
+fn check_uniformity_f64(mut rng wyrand.WyRandRNG) {
 	expected_mean := 0.5
 	mut variance := 0.0
 	for _ in 0 .. sample_size {
@@ -107,7 +107,7 @@ fn check_uniformity_f64(mut rng rand.WyRandRNG) {
 fn test_wyrand_uniformity_f64() {
 	// The f64 version
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		check_uniformity_f64(mut rng)
 	}
@@ -116,7 +116,7 @@ fn test_wyrand_uniformity_f64() {
 fn test_wyrand_u32n() {
 	max := u32(16384)
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.u32n(max)
@@ -129,7 +129,7 @@ fn test_wyrand_u32n() {
 fn test_wyrand_u64n() {
 	max := u64(379091181005)
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.u64n(max)
@@ -143,7 +143,7 @@ fn test_wyrand_u32_in_range() {
 	max := u32(484468466)
 	min := u32(316846)
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.u32_in_range(min, max)
@@ -157,7 +157,7 @@ fn test_wyrand_u64_in_range() {
 	max := u64(216468454685163)
 	min := u64(6848646868)
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.u64_in_range(min, max)
@@ -171,7 +171,7 @@ fn test_wyrand_int31() {
 	max_u31 := 0x7FFFFFFF
 	sign_mask := 0x80000000
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.int31()
@@ -187,7 +187,7 @@ fn test_wyrand_int63() {
 	max_u63 := i64(0x7FFFFFFFFFFFFFFF)
 	sign_mask := i64(0x8000000000000000)
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.int63()
@@ -201,7 +201,7 @@ fn test_wyrand_int63() {
 fn test_wyrand_intn() {
 	max := 2525642
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.intn(max)
@@ -214,7 +214,7 @@ fn test_wyrand_intn() {
 fn test_wyrand_i64n() {
 	max := i64(3246727724653636)
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.i64n(max)
@@ -228,7 +228,7 @@ fn test_wyrand_int_in_range() {
 	min := -4252
 	max := 1034
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.int_in_range(min, max)
@@ -242,7 +242,7 @@ fn test_wyrand_i64_in_range() {
 	min := i64(-24095)
 	max := i64(324058)
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.i64_in_range(min, max)
@@ -254,7 +254,7 @@ fn test_wyrand_i64_in_range() {
 
 fn test_wyrand_f32() {
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.f32()
@@ -266,7 +266,7 @@ fn test_wyrand_f32() {
 
 fn test_wyrand_f64() {
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.f64()
@@ -279,7 +279,7 @@ fn test_wyrand_f64() {
 fn test_wyrand_f32n() {
 	max := f32(357.0)
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.f32n(max)
@@ -292,7 +292,7 @@ fn test_wyrand_f32n() {
 fn test_wyrand_f64n() {
 	max := 1.52e6
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.f64n(max)
@@ -306,7 +306,7 @@ fn test_wyrand_f32_in_range() {
 	min := f32(-24.0)
 	max := f32(125.0)
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.f32_in_range(min, max)
@@ -320,7 +320,7 @@ fn test_wyrand_f64_in_range() {
 	min := -548.7
 	max := 5015.2
 	for seed in seeds {
-		mut rng := rand.WyRandRNG{}
+		mut rng := wyrand.WyRandRNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
 			value := rng.f64_in_range(min, max)

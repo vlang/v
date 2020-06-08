@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module rand
+module sys
 
 import math.bits
 import rand.util
@@ -27,12 +27,6 @@ fn calculate_iterations_for(bits int) int {
 	extra := if bits % rand_bitsize == 0 { 0 } else { 1 }
 	return base + extra
 }
-
-// Masks for fast modular division
-const (
-	u31_mask = u32(0x7FFFFFFF)
-	u63_mask = u64(0x7FFFFFFFFFFFFFFF)
-)
 
 // C.rand returns a pseudorandom integer from 0 (inclusive) to C.RAND_MAX (exclusive)
 fn C.rand() int
@@ -181,13 +175,13 @@ pub fn (r SysRNG) i64() i64 {
 // r.int31() returns a pseudorandom 31-bit int which is non-negative
 [inline]
 pub fn (r SysRNG) int31() int {
-	return int(r.u32() & u31_mask) // Set the 32nd bit to 0.
+	return int(r.u32() & util.u31_mask) // Set the 32nd bit to 0.
 }
 
 // r.int63() returns a pseudorandom 63-bit int which is non-negative
 [inline]
 pub fn (r SysRNG) int63() i64 {
-	return i64(r.u64() & u63_mask) // Set the 64th bit to 0.
+	return i64(r.u64() & util.u63_mask) // Set the 64th bit to 0.
 }
 
 // r.intn(max) returns a pseudorandom int that lies in [0, max)
