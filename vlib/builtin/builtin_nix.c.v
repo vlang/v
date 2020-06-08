@@ -65,6 +65,7 @@ fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
 	return true
 }
 
+fn C.tcc_backtrace(fmt charptr, other ...charptr) int
 fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	$if android {
 		eprintln('On Android no backtrace is available.')
@@ -76,8 +77,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		return false
 	}
 	$if tinyc {
-		eprintln('TODO: print_backtrace_skipping_top_frames_linux $skipframes')
-		eprintln('with tcc fails tests with "stack smashing detected" .')
+		C.tcc_backtrace("Backtrace")
 		return false
 	}
 	buffer := [100]byteptr
