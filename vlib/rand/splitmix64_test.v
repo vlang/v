@@ -114,12 +114,12 @@ fn test_splitmix64_uniformity_f64() {
 }
 
 fn test_splitmix64_u32n() {
-	max := 16384
+	max := u32(16384)
 	for seed in seeds {
 		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32n(u32(max))
+			value := rng.u32n(max)
 			assert value >= 0
 			assert value < max
 		}
@@ -140,13 +140,13 @@ fn test_splitmix64_u64n() {
 }
 
 fn test_splitmix64_u32_in_range() {
-	max := 484468466
-	min := 316846
+	max := u32(484468466)
+	min := u32(316846)
 	for seed in seeds {
 		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(u32(min), u32(max))
+			value := rng.u32_in_range(min, max)
 			assert value >= min
 			assert value < max
 		}
@@ -198,7 +198,7 @@ fn test_splitmix64_int63() {
 	}
 }
 
-fn test_splimix64_intn() {
+fn test_splitmix64_intn() {
 	max := 2525642
 	for seed in seeds {
 		mut rng := rand.SplitMix64RNG{}
@@ -211,7 +211,7 @@ fn test_splimix64_intn() {
 	}
 }
 
-fn test_splimix64_i64n() {
+fn test_splitmix64_i64n() {
 	max := i64(3246727724653636)
 	for seed in seeds {
 		mut rng := rand.SplitMix64RNG{}
@@ -224,7 +224,7 @@ fn test_splimix64_i64n() {
 	}
 }
 
-fn test_splimix64_int_in_range() {
+fn test_splitmix64_int_in_range() {
 	min := -4252
 	max := 230549862
 	for seed in seeds {
@@ -238,7 +238,7 @@ fn test_splimix64_int_in_range() {
 	}
 }
 
-fn test_splimix64_i64_in_range() {
+fn test_splitmix64_i64_in_range() {
 	min := i64(-24095)
 	max := i64(324058)
 	for seed in seeds {
@@ -282,7 +282,7 @@ fn test_splitmix64_f32n() {
 		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.f32()
+			value := rng.f32n(max)
 			assert value >= 0.0
 			assert value < max
 		}
@@ -295,7 +295,7 @@ fn test_splitmix64_f64n() {
 		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.f64()
+			value := rng.f64n(max)
 			assert value >= 0.0
 			assert value < max
 		}
@@ -309,7 +309,7 @@ fn test_splitmix64_f32_in_range() {
 		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.f32()
+			value := rng.f32_in_range(min, max)
 			assert value >= min
 			assert value < max
 		}
@@ -323,7 +323,7 @@ fn test_splitmix64_f64_in_range() {
 		mut rng := rand.SplitMix64RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.f64()
+			value := rng.f64_in_range(min, max)
 			assert value >= min
 			assert value < max
 		}
