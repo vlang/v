@@ -30,6 +30,7 @@ enum HighlightTokenTyp {
 }
 
 const (
+	css_js_assets   = ['doc.css', 'normalize.css' 'doc.js']
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
 	exe_path        = os.executable()
 	exe_dir         = os.dir(exe_path)
@@ -284,9 +285,9 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	}	// write head
 
 	// get resources
-	doc_css := cfg.get_resource('doc.css', true)
-	normalize_css := cfg.get_resource('normalize.css', true)
-	doc_js := cfg.get_resource('doc.js', false)
+	doc_css := cfg.get_resource(css_js_assets[0], true)
+	normalize_css := cfg.get_resource(css_js_assets[1], true)
+	doc_js := cfg.get_resource(css_js_assets[2], false)
 	light_icon := cfg.get_resource('light.svg', true)
 	dark_icon := cfg.get_resource('dark.svg', true)
 	menu_icon := cfg.get_resource('menu.svg', true)
@@ -572,7 +573,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 					panic(err)
 				}
 			} else {
-				for fname in ['doc.css', 'normalize.css' 'doc.js'] {
+				for fname in css_js_assets {
 					os.rm(os.join_path(cfg.output_path, fname))
 				}
 			}
