@@ -1344,6 +1344,10 @@ pub fn (s string) repeat(count int) string {
 	return string(ret)
 }
 
+pub fn (s string) fields() []string {
+	return s.split(' ')
+}
+
 // Allows multi-line strings to be formatted in a way that removes white-space
 // before a delimeter. by default `|` is used.
 // Note: the delimiter has to be a byte at this time. That means surrounding

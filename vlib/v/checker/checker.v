@@ -37,6 +37,8 @@ pub mut:
 	is_builtin_mod   bool // are we in `builtin`?
 	inside_unsafe    bool
 	cur_generic_type table.Type
+mut:
+	expr_level       int // to avoid infinit recursion segfaults due to compiler bugs
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -57,6 +59,7 @@ pub fn (mut c Checker) check(ast_file ast.File) {
 		}
 	}
 	for stmt in ast_file.stmts {
+		c.expr_level = 0
 		c.stmt(stmt)
 	}
 	// Check scopes
@@ -384,7 +387,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
 				field_type_sym := c.table.get_type_symbol(info_field.typ)
-				if !c.check_types(expr_type, info_field.typ) {
+				if !c.check_types(expr_type, info_field.typ) && expr_type != table.void_type {
 					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
@@ -681,7 +684,6 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 		ast.Ident {
 			if it.kind == .blank_ident {
 				if assign_expr.op != .assign {
-
 					c.error('cannot modify blank `_` variable', it.pos)
 				}
 				return
@@ -892,7 +894,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			return info.func.return_type
 		}
 	}
-	c.error('unknown method: `${left_type_sym.name}.$method_name`', call_expr.pos)
+	if left_type != table.void_type {
+		c.error('unknown method: `${left_type_sym.name}.$method_name`', call_expr.pos)
+	}
 	return table.void_type
 }
 
@@ -1761,6 +1765,14 @@ pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 
 // TODO node must be mut
 pub fn (mut c Checker) expr(node ast.Expr) table.Type {
+	/*
+	c.expr_level++
+	defer { c.expr_level -- }
+	if c.expr_level > 20 {
+		c.warn('checker: too many expr levels', node.position())
+		//panic('checker: too many expr levels')
+	}
+	*/
 	match mut node {
 		ast.AnonFn {
 			keep_fn := c.cur_fn
@@ -2232,7 +2244,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		if !node.has_else || i < node.branches.len - 1 {
 			// check condition type is boolean
 			cond_typ := c.expr(branch.cond)
-			if cond_typ.idx() != table.bool_type_idx {
+			if cond_typ.idx() !in [table.bool_type_idx, table.void_type_idx] {
+				// void types are skipped, because they mean the var was initialized incorrectly
+				// (via missing function etc)
 				typ_sym := c.table.get_type_symbol(cond_typ)
 				c.error('non-bool type `$typ_sym.name` used as if condition', branch.pos)
 			}
