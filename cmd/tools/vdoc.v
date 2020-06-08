@@ -178,7 +178,7 @@ fn html_highlight(code string, tb &table.Table) string {
 			mut tok_typ := HighlightTokenTyp.unone
 			match tok.kind {
 				.name {
-					if tok.lit in builtin {
+					if tok.lit in builtin || tb.known_type(tok.lit) {
 						tok_typ = .builtin
 					} else if next_tok.kind == .lcbr {
 						tok_typ = .symbol
