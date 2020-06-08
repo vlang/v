@@ -6,7 +6,7 @@
             active.scrollIntoView({ block: 'center', inline: 'nearest' });
         }
     }
-    // setupScrollSpy();
+    setupScrollSpy();
     setupMobileToggle();
     setupDarkMode();
     setupSearch();
@@ -19,7 +19,8 @@ function setupScrollSpy() {
     sections.forEach(function(section) {
         sectionPositions.push(section.offsetTop);
     });
-    window.addEventListener('scroll', function() {
+    var scrollPos = 0;
+    window.addEventListener('scroll', function(e) {
         // Reset classes
         document.querySelectorAll('.doc-toc a[class="active"]').forEach(function(link) {
             link.classList.remove('active');
@@ -34,15 +35,18 @@ function setupScrollSpy() {
                 if (link) {
                     link.classList.add('active');
                     var docToc = document.querySelector('.doc-toc');
-                    if (link.scrollIntoViewIfNeeded) {
-                        link.scrollIntoViewIfNeeded();
-                    } else if (link.scrollIntoView) {
-                        link.scrollIntoView();
+                    var tocHeight = docToc.clientHeight;
+                    var scrollTop = docToc.scrollTop;
+                    if ((document.body.getBoundingClientRect()).top < scrollPos && scrollTop < link.offsetTop - 10) {
+                        docToc.scrollTop = link.clientHeight + link.offsetTop - tocHeight + 10;
+                    } else if (scrollTop > link.offsetTop - 10) {
+                        docToc.scrollTop = link.offsetTop - 10;
                     }
                 }
                 break;
             }
         }
+        scrollPos = (document.body.getBoundingClientRect()).top;
     });
 }
 
