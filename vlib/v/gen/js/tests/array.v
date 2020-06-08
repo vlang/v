@@ -32,13 +32,16 @@ println(arr2)
 arr2 << 6
 arr2 << [7, 8, 9]
 println(arr2)
+println('\n\n')
 
 // String slices
 mut slice4 := idx1[..4]
+print('Back\t=> ')
 println(slice4) // 'Back'
 
 // String indexes
 idx2 := slice4[0]
+print('66\t=> ')
 println(idx2)
 // TODO:
 // slice4[3] = `c`
@@ -48,10 +51,22 @@ mut m := map[string]string
 key := 'key'
 m[key] = 'value'
 val := m['key']
+print('value\t=> ')
 println(val)
 
 // 'in' / '!in'
+print('true\t=> ')
 println('JS' in arr1)
+print('false\t=> ')
 println(3 !in arr2)
+print('true\t=> ')
 println('key' in m)
+print('true\t=> ')
 println('badkey' !in m)
+
+// for in
+for _ in arr1 {}
+println('0 to 8\t=>')
+for i, _ in arr2 { println(i) }
+println('\n\n4 to 5\t=> ')
+for _, v in slice3 { println(v) }
