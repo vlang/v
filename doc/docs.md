@@ -66,18 +66,22 @@ you can do in V.
 		<td><a href='#writing-documentation'>Writing documentation</a></td>
 		</tr>
 	<tr>
+		<td><a href='#profiling'>Profiling</a></td>
 		<td><a href='#calling-c-functions-from-v'>Calling C functions from V</a></td>
 		<td><a href='#conditional-compilation'>Conditional compilation</a></td>
+		<td><a href='#compile-time-pseudo-variables'>Compile time pseudo variables</a></td>
 		<td><a href='#reflection-via-codegen'>Reflection via codegen</a></td>
 		<td><a href='#limited-operator-overloading'>Limited operator overloading</a></td>
+	</tr>
+	<tr>
 		<td><a href='#inline-assembly'>Inline assembly</a></td>
 		<td><a href='#translating-cc-to-v'>Translating C/C++ to V</a></td>
-		</tr>
-	<tr>
 		<td><a href='#hot-code-reloading'>Hot code reloading</a></td>
 		<td><a href='#cross-compilation'>Cross compilation</a></td>
 		<td><a href='#cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
 		<td><a href='#appendix-i-keywords'>Appendix I: Keywords</a></td>
+	</tr>
+	<tr>
 		<td><a href='#appendix-ii-operators'>Appendix II: Operators</a></td>
 	</tr>
 </table>
