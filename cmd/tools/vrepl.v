@@ -184,7 +184,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		if r.line.starts_with('print') {
 			source_code := r.current_source_code(false) + '\n${r.line}\n'
 			os.write_file(file, source_code)
-			s := os.exec('"$vexe" -repl run $file') or {
+			s := os.exec('"$vexe" -repl run "$file"') or {
 				rerror(err)
 				return
 			}
@@ -229,7 +229,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				temp_source_code = r.current_source_code(true) + '\n${temp_line}\n'
 			}
 			os.write_file(temp_file, temp_source_code)
-			s := os.exec('"$vexe" -repl run $temp_file') or {
+			s := os.exec('"$vexe" -repl run "$temp_file"') or {
 				rerror(err)
 				return
 			}
