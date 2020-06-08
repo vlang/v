@@ -22,7 +22,7 @@ jobs:
   ubuntu-tcc:
     runs-on: ubuntu-18.04
     env:
-      VFLAGS: -cc tcc
+      VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
