@@ -6,7 +6,7 @@
             active.scrollIntoView({ block: 'center', inline: 'nearest' });
         }
     }
-    setupScrollSpy();
+    // setupScrollSpy();
     setupMobileToggle();
     setupDarkMode();
     setupSearch();

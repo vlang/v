@@ -30,6 +30,7 @@ enum HighlightTokenTyp {
 }
 
 const (
+	css_js_assets   = ['doc.css', 'normalize.css' 'doc.js']
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
 	exe_path        = os.executable()
 	exe_dir         = os.dir(exe_path)
@@ -134,6 +135,22 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 	return url.str()
 }
 
+fn js_compress(str string) string {
+	mut js := strings.new_builder(200)
+	lines := str.split_into_lines()
+	rules := [') {', ' = ', ', ', '{ ', ' }', ' (', '; ', ' + ', ' < ']
+	clean := ['){', '=', ',', '{', '}', '(', ';', '+', '<']
+	for line in lines {
+		mut trimmed := line.trim_space()
+		if trimmed.starts_with('//') || (trimmed.starts_with('/*') && trimmed.ends_with('*/')) { continue }
+		for i, _ in rules {
+			trimmed = trimmed.replace(rules[i], clean[i])
+		}
+		js.write(trimmed)
+	}
+	return js.str()
+}
+
 fn escape(str string) string {
 	return str.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
 }
@@ -159,7 +176,13 @@ fn (cfg DocConfig) gen_json(idx int) string {
 fn html_highlight(code string, tb &table.Table) string {
 	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64', 'u128', 'rune', 'f32', 'f64', 'any_int', 'any_float', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
-		lit := if typ in [.unone, .operator, .punctuation] { tok.kind.str() } else { tok.lit }
+		lit := if typ in [.unone, .operator, .punctuation] { 
+			tok.kind.str() 
+		} else if typ == .string { 
+			"'$tok.lit'"
+		} else if typ == .char {
+			'`$tok.lit`'
+		} else { tok.lit }
 		return if typ in [.unone, .name] { lit } else { '<span class="token $typ">$lit</span>' } 
 	}
 	s := scanner.new_scanner(code, .parse_comments)
@@ -172,7 +195,7 @@ fn html_highlight(code string, tb &table.Table) string {
 			mut tok_typ := HighlightTokenTyp.unone
 			match tok.kind {
 				.name {
-					if tok.lit in builtin {
+					if tok.lit in builtin || tb.known_type(tok.lit) {
 						tok_typ = .builtin
 					} else if next_tok.kind == .lcbr {
 						tok_typ = .symbol
@@ -239,7 +262,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	node_id := slug(sym_name)
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
 	dnw.writeln('<section id="$node_id" class="doc-node$is_const_class">')
-	if dd.name != 'README' {
+	if dd.name != 'README' && dd.parent_type != 'Constants' {
 		dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
@@ -256,31 +279,54 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	return dnw.str()
 }
 
+fn write_toc(cn doc.DocNode, nodes []doc.DocNode, toc &strings.Builder) {
+	toc.write('<li><a href="#${slug(cn.name)}">${cn.name}</a>')
+	children := nodes.find_children_of(cn.name)
+	if children.len != 0 && cn.name != 'Constants' {
+		toc.writeln('        <ul>')
+		for child in children {
+			cname := cn.name + '.' + child.name
+			toc.writeln('<li><a href="#${slug(cname)}">${child.name}</a></li>')
+		}
+		toc.writeln('</ul>')
+	}
+	toc.writeln('</li>')
+}
+
+fn (cfg DocConfig) write_content(cn &doc.DocNode, dcs &doc.Doc, hw &strings.Builder) {
+	base_dir := os.base_dir(os.real_path(cfg.input_path))
+	file_path_name := cn.file_path.replace('$base_dir/', '')
+	src_link := get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line)
+	children := dcs.contents.find_children_of(cn.name)
+	hw.write(doc_node_html(cn, src_link, false, dcs.table))
+	if children.len != 0 {
+		for child in children {
+			child_file_path_name := child.file_path.replace('$base_dir/', '')
+			child_src_link := get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line)
+			hw.write(doc_node_html(child, child_src_link, false, dcs.table))
+		}
+	}
+}
+
 fn (cfg DocConfig) gen_html(idx int) string {
 	dcs := cfg.docs[idx]
 	time_gen := '$dcs.time_generated.day $dcs.time_generated.smonth() $dcs.time_generated.year $dcs.time_generated.hhmmss()'
 	mut hw := strings.new_builder(200)
 	mut toc := strings.new_builder(200)
 	// generate toc first
+	const_node_idx := dcs.contents.index_by_name('Constants') or { -1 }
+	if const_node_idx != -1 {
+		write_toc(dcs.contents[const_node_idx], dcs.contents, &toc)
+	}
 	for cn in dcs.contents {
-		if cn.parent_type !in ['void', ''] { continue }
-		toc.write('<li><a href="#${slug(cn.name)}">${cn.name}</a>')
-		children := dcs.contents.find_children_of(cn.name)
-		if children.len != 0 && cn.name != 'Constants' {
-			toc.writeln('        <ul>')
-			for child in children {
-				cname := cn.name + '.' + child.name
-				toc.writeln('<li><a href="#${slug(cname)}">${child.name}</a></li>')
-			}
-			toc.writeln('</ul>')
-		}
-		toc.writeln('</li>')
+		if cn.name == 'Constants' || cn.parent_type !in ['void', ''] { continue }
+		write_toc(cn, dcs.contents, &toc)
 	}	// write head
 
 	// get resources
-	doc_css := cfg.get_resource('doc.css', true)
-	normalize_css := cfg.get_resource('normalize.css', true)
-	doc_js := cfg.get_resource('doc.js', false)
+	doc_css := cfg.get_resource(css_js_assets[0], true)
+	normalize_css := cfg.get_resource(css_js_assets[1], true)
+	doc_js := cfg.get_resource(css_js_assets[2], !cfg.serve_http)
 	light_icon := cfg.get_resource('light.svg', true)
 	dark_icon := cfg.get_resource('dark.svg', true)
 	menu_icon := cfg.get_resource('menu.svg', true)
@@ -369,20 +415,12 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	hw.write('</ul>\n</nav>\n</header>')
 	hw.write('<div class="doc-container">\n<div class="doc-content">\n')
 	hw.write(doc_node_html(dcs.head, '', true, dcs.table))
+	if const_node_idx != -1 {
+		cfg.write_content(&dcs.contents[const_node_idx], &dcs, &hw)
+	}
 	for cn in dcs.contents {
-		if cn.parent_type !in ['void', ''] { continue }
-		base_dir := os.base_dir(os.real_path(cfg.input_path))
-		file_path_name := cn.file_path.replace('$base_dir/', '')
-		hw.write(doc_node_html(cn, get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line), false, dcs.table))
-
-		children := dcs.contents.find_children_of(cn.name)
-
-		if children.len != 0 {
-			for child in children {
-				child_file_path_name := child.file_path.replace('$base_dir/', '')
-				hw.write(doc_node_html(child, get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line), false, dcs.table))
-			}
-		}
+		if cn.parent_type !in ['void', ''] || cn.name == 'Constants' { continue }
+		cfg.write_content(&cn, &dcs, &hw)
 	}
 	hw.write('\n<div class="footer">Powered by vdoc. Generated on: $time_gen</div>\n</div>\n')
 	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
@@ -573,7 +611,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 					panic(err)
 				}
 			} else {
-				for fname in ['doc.css', 'normalize.css' 'doc.js'] {
+				for fname in css_js_assets {
 					os.rm(os.join_path(cfg.output_path, fname))
 				}
 			}
@@ -645,7 +683,7 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 	path := os.join_path(res_path, name)
 	mut res := os.read_file(path) or { panic('could not read $path') }
 	if minify {
-		res = res.replace('\n', ' ')
+		res = if name.ends_with('.js') { js_compress(res) } else { res.replace('\n', ' ') }
 	}
 	// TODO: Make SVG inline for now
 	if cfg.inline_assets || path.ends_with('.svg') {
