@@ -3,13 +3,15 @@
 // that can be found in the LICENSE file.
 module rand
 
+import rand.util
+
 // Ported from http://www.pcg-random.org/download.html,
 // https://github.com/imneme/pcg-c-basic/blob/master/pcg_basic.c, and
 // https://github.com/imneme/pcg-c-basic/blob/master/pcg_basic.h
 pub struct PCG32RNG {
 mut:
-	state u64 = u64(0x853c49e6748fea9b) ^ time_seed_64()
-	inc   u64 = u64(0xda3e39cb94b95bdb) ^ time_seed_64()
+	state u64 = u64(0x853c49e6748fea9b) ^ util.time_seed_64()
+	inc   u64 = u64(0xda3e39cb94b95bdb) ^ util.time_seed_64()
 }
 
 // TODO: Remove in Phase 2 of reorganizing Random
@@ -184,13 +186,13 @@ pub fn (mut rng PCG32RNG) i64_in_range(min, max i64) i64 {
 // rng.f32() returns a pseudorandom f32 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
 [inline]
 pub fn (mut rng PCG32RNG) f32() f32 {
-	return f32(rng.u32()) / max_u32_as_f32
+	return f32(rng.u32()) / util.max_u32_as_f32
 }
 
 // rng.f64() returns a pseudorandom f64 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
 [inline]
 pub fn (mut rng PCG32RNG) f64() f64 {
-	return f64(rng.u64()) / max_u64_as_f64
+	return f64(rng.u64()) / util.max_u64_as_f64
 }
 
 // rng.f32n() returns a pseudorandom f32 value in [0, max)

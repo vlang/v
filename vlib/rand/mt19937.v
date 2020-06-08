@@ -4,6 +4,7 @@
 module rand
 
 import math.bits
+import rand.util
 
 /*
 C++ functions for MT19937, with initialization improved 2002/2/10.
@@ -58,7 +59,7 @@ const (
 // A generator that uses the Mersenne Twister algorithm with period 2^19937
 pub struct MT19937RNG {
 mut:
-	state    []u64 = calculate_state(time_seed_array(2), mut []u64{len: nn})
+	state    []u64 = calculate_state(util.time_seed_array(2), mut []u64{len: nn})
 	mti      int = nn
 	next_rnd u32 = 0
 	has_next bool = false

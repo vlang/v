@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module rand
 
+import rand.util
+
 // TODO: Remove these functions once done:
 // 1. C.rand()
 // 2. seed()
@@ -28,7 +30,7 @@ pub fn rand_r(seed &int) int {
 }
 
 pub struct PRNGConfigStruct {
-	seed []u32 = time_seed_array(2)
+	seed []u32 = util.time_seed_array(2)
 }
 
 const (

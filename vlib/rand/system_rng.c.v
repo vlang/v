@@ -4,6 +4,7 @@
 module rand
 
 import math.bits
+import rand.util
 
 // Implementation note:
 // ====================
@@ -41,7 +42,7 @@ fn C.rand() int
 // SysRNG is the PRNG provided by default in the libc implementiation that V uses.
 pub struct SysRNG {
 mut:
-	seed u32 = time_seed_32()
+	seed u32 = util.time_seed_32()
 }
 
 // r.seed() sets the seed of the accepting SysRNG to the given data.
@@ -233,13 +234,13 @@ pub fn (r SysRNG) i64_in_range(min, max i64) i64 {
 // r.f32() returns a pseudorandom f32 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
 [inline]
 pub fn (r SysRNG) f32() f32 {
-	return f32(r.u32()) / max_u32_as_f32
+	return f32(r.u32()) / util.max_u32_as_f32
 }
 
 // r.f64() returns a pseudorandom f64 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
 [inline]
 pub fn (r SysRNG) f64() f64 {
-	return f64(r.u64()) / max_u64_as_f64
+	return f64(r.u64()) / util.max_u64_as_f64
 }
 
 // r.f32n() returns a pseudorandom f32 value in [0, max)
