@@ -8,12 +8,12 @@ import strings
 
 const (
 	str_start = "sb.write(\'"
-	str_end = "\' ) "
+	str_end   = "\' ) "
 )
 
 // compile_file compiles the content of a file by the given path as a template
 pub fn compile_file(path string) string {
-	mut html := os.read_file(path)or{
+	mut html := os.read_file(path) or {
 		panic('html failed')
 	}
 	return compile_template(html)
@@ -24,7 +24,7 @@ pub fn compile_template(content string) string {
 	mut html := content
 	mut header := ''
 	if os.exists('header.html') && html.contains('@header') {
-		h := os.read_file('header.html')or{
+		h := os.read_file('header.html') or {
 			panic('reading file header.html failed')
 		}
 		header = h.replace("\'", '"')
@@ -43,13 +43,13 @@ pub fn compile_template(content string) string {
 	//footer := \'footer\'
 ")
 	s.writeln(str_start)
-	mut in_css := false// false
+	mut in_css := false // false
+	mut in_span := false
 	for _line in lines {
 		line := _line.trim_space()
 		if line == '<style>' {
 			in_css = true
-		}
-		else if line == '</style>' {
+		} else if line == '</style>' {
 			// in_css = false
 		}
 		if line.contains('@if ') {
@@ -59,35 +59,43 @@ pub fn compile_template(content string) string {
 			}
 			s.writeln('if ' + line[pos + 4..] + '{')
 			s.writeln(str_start)
-		}
-		else if line.contains('@end') {
+		} else if line.contains('@end') {
 			s.writeln(str_end)
 			s.writeln('}')
 			s.writeln(str_start)
-		}
-		else if line.contains('@else') {
+		} else if line.contains('@else') {
 			s.writeln(str_end)
 			s.writeln(' } else { ')
 			s.writeln(str_start)
-		}
-		else if line.contains('@for') {
+		} else if line.contains('@for') {
 			s.writeln(str_end)
 			pos := line.index('@for') or {
 				continue
 			}
 			s.writeln('for ' + line[pos + 4..] + '{')
 			s.writeln(str_start)
-		}
-		else if !in_css && line.contains('.') && line.ends_with('{') {
+		} else if !in_css && line.contains('span.') && line.ends_with('{') {
+			// `span.header {` => `<span class='header'>`
+			class := line.find_between('span.', '{').trim_space()
+			s.writeln('<span class="$class">')
+			in_span = true
+		} else if !in_css && line.contains('.') && line.ends_with('{') {
 			// `.header {` => `<div class='header'>`
-			class := line.find_between('.', '{')
+			class := line.find_between('.', '{').trim_space()
 			s.writeln('<div class="$class">')
-		}
-		else if !in_css && line == '}' {
-			s.writeln('</div>')
-		}
-		// HTML, may include `@var`
-		else {
+		} else if !in_css && line.contains('#') && line.ends_with('{') {
+			// `#header {` => `<div id='header'>`
+			class := line.find_between('#', '{').trim_space()
+			s.writeln('<div id="$class">')
+		} else if !in_css && line == '}' {
+			if in_span {
+				s.writeln('</span>')
+				in_span = false
+			} else {
+				s.writeln('</div>')
+			}
+		} else {
+			// HTML, may include `@var`
 			s.writeln(line.replace('@', '\x24').replace("'", '"'))
 		}
 	}
