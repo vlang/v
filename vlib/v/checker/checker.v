@@ -1765,14 +1765,14 @@ pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 
 // TODO node must be mut
 pub fn (mut c Checker) expr(node ast.Expr) table.Type {
-	/*
+
 	c.expr_level++
 	defer { c.expr_level -- }
-	if c.expr_level > 20 {
-		c.warn('checker: too many expr levels', node.position())
-		//panic('checker: too many expr levels')
+	if c.expr_level > 200 {
+		c.error('checker: too many expr levels: $c.expr_level ', node.position())
+		return table.void_type
 	}
-	*/
+    
 	match mut node {
 		ast.AnonFn {
 			keep_fn := c.cur_fn
