@@ -277,8 +277,6 @@ pub const (
 )
 
 pub struct MultiReturn {
-pub:
-	name  string
 pub mut:
 	types []Type
 }
