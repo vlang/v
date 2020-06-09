@@ -408,6 +408,11 @@ pre, code, pre code {
   font-size: 0.9rem;
   text-shadow: none;
   font-family: monospace;
+  background-color: #edf2f7;
+  background-color: var(--code-background-color);
+  border-radius: 0.25rem;
+}	
+pre code {
   direction: ltr;
   text-align: left;
   white-space: pre;
@@ -421,14 +426,12 @@ pre, code, pre code {
   -moz-hyphens: none;
   -ms-hyphens: none;
   hyphens: none;
-  background-color: #edf2f7;
-  background-color: var(--code-background-color);
   display: block;
-  border-radius: 0.25rem;
   overflow-x: auto;
+  padding: 1rem;
 }
-code, pre code {
-	padding: 1rem;
+code {
+  padding: 0.2rem;
 }
 pre {
   overflow: auto;
