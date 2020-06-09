@@ -92,8 +92,9 @@ fn local_as_unix_time() int {
 }
 
 // win_now calculates current time using winapi to get higher resolution on windows
-// GetSystemTimeAsFileTime is used. It can resolve time down to millisecond
-// other more precice methods can be implemented in the future
+// GetSystemTimeAsFileTime is used and converted to local time. It can resolve time
+// down to millisecond. Other more precice methods can be implemented in the future
+[inline]
 fn win_now() Time {
 
 	ft_utc := C._FILETIME{}
@@ -114,6 +115,32 @@ fn win_now() Time {
 		second: st_local.second
 		microsecond: st_local.millisecond*1000
 		unix: u64(st_local.unix_time())
+	}
+
+	return t
+}
+
+// win_utc calculates current time using winapi to get higher resolution on windows
+// GetSystemTimeAsFileTime is used. It can resolve time down to millisecond
+// other more precice methods can be implemented in the future
+[inline]
+fn win_utc() Time {
+
+	ft_utc := C._FILETIME{}
+	C.GetSystemTimeAsFileTime(&ft_utc)
+
+	st_utc := SystemTime{}
+	C.FileTimeToSystemTime(&ft_utc, &st_utc)
+
+	t := Time {
+		year: st_utc.year
+		month: st_utc.month
+		day: st_utc.day
+		hour: st_utc.hour
+		minute: st_utc.minute
+		second: st_utc.second
+		microsecond: st_utc.millisecond*1000
+		unix: u64(st_utc.unix_time())
 	}
 
 	return t
@@ -146,6 +173,21 @@ pub fn linux_now() Time {
 pub fn solaris_now() Time {
 	return Time{}
 }
+
+pub fn darwin_utc() Time {
+	return Time{}
+}
+
+// dummy to compile with all compilers
+pub fn linux_utc() Time {
+	return Time{}
+}
+
+// dummy to compile with all compilers
+pub fn solaris_utc() Time {
+	return Time{}
+}
+
 
 // dummy to compile with all compilers
 pub struct C.timeval {

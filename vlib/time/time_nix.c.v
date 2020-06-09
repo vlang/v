@@ -12,6 +12,9 @@ struct C.tm {
 	tm_mday int
 	tm_mon  int
 	tm_year int
+	tm_wday int
+	tm_yday int
+	tm_isdst int
 }
 
 fn C.timegm(&tm) time_t
@@ -55,6 +58,10 @@ pub fn win_now() Time {
 	return Time{}
 }
 
+// dummy to compile with all compilers
+pub fn win_utc() Time {
+	return Time{}
+}
 
 // dummy to compile with all compilers
 pub struct C.timeval {

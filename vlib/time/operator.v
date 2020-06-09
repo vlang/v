@@ -1,6 +1,7 @@
 module time
 
 // eq returns true if provided time is equal to time
+[inline]
 pub fn (t1 Time) eq(t2 Time) bool {
 	if t1.unix == t2.unix && t1.microsecond == t2.microsecond {
 		return true

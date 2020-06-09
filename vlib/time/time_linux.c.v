@@ -1,5 +1,32 @@
 module time
 
+// linux_now returns the local time with high precision for most os:es
+// this should be implemented properly with support for leap seconds.
+// It uses the realtime clock to get and converts it to local time
+[inline]
+fn linux_now() Time {
+
+	// get the high precision time as UTC realtime clock
+	// and use the nanoseconds part
+	mut ts := C.timespec{}
+	C.clock_gettime(C.CLOCK_REALTIME, &ts)
+
+	loc_tm := C.tm{}
+	C.localtime_r(&ts.tv_sec, &loc_tm)
+
+	return convert_ctime(loc_tm, int(ts.tv_nsec/1000))
+}
+
+[inline]
+fn linux_utc() Time {
+	// get the high precision time as UTC realtime clock
+	// and use the nanoseconds part
+	mut ts := C.timespec{}
+	C.clock_gettime(C.CLOCK_REALTIME, &ts)
+
+	return unix2(int(ts.tv_sec), int(ts.tv_nsec/1000))
+}
+
 fn sys_mono_now_darwin() u64 {
 	return 0
 }
@@ -14,28 +41,12 @@ pub fn solaris_now() Time {
 	return Time{}
 }
 
-// linux_now returns the local time with high precision for most os:es
-// this should be implemented with native system calls eventually
-// but for now a bit tweaky. It uses the realtime clock to get
-// the nano seconds part and normal local time to get correct local time
-// if the time has shifted on a second level between calls it uses
-// zero as microsecond. Not perfect but better that unix time only
-fn linux_now() Time {
+// dummy to compile with all compilers
+pub fn darwin_utc() Time {
+	return Time{}
+}
 
-	// get the high precision time as UTC realtime clock
-	// and use the nanoseconds part
-	mut ts := C.timespec{}
-	C.clock_gettime(C.CLOCK_REALTIME, &ts)
-
-	t := C.time(0)
-	tm := C.localtime(&t)
-
-	// if the second part (very rare) is different
-	// microseconds is set to zero since it passed the second
-	// also avoid divide by zero if nsec is zero
-	if int(t) != ts.tv_sec || ts.tv_nsec == 0 {
-		return convert_ctime(tm, 0)
-	}
-
-	return convert_ctime(tm, int(ts.tv_nsec/1000))
+// dummy to compile with all compilers
+pub fn solaris_utc() Time {
+	return Time{}
 }

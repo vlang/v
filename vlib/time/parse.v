@@ -48,11 +48,11 @@ pub fn parse_rfc2822(s string) ?Time {
 	return parse(tos(tmstr, count))
 }
 
-// parse_rfc8601 parses rfc8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time
+// parse_iso8601 parses rfc8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time
 // the fraction part is difference in milli seconds and the last part is offset
 // from UTC time and can be both +/- HH:mm
-// Remarks: Not all rfc8601 is supported only the 'yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd'
-pub fn parse_rfc8601(s string) ?Time {
+// Remarks: Not all iso8601 is supported only the 'yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd'
+pub fn parse_iso8601(s string) ?Time {
 
 	mut year 		:= 0
 	mut month 		:= 0
@@ -82,6 +82,7 @@ pub fn parse_rfc8601(s string) ?Time {
 		return error('Invalid 8601 format, expected `+` or `-` as time separator' )
 	}
 
+
 	t := new_time(Time{
 		year: year
 		month: month
@@ -91,6 +92,8 @@ pub fn parse_rfc8601(s string) ?Time {
 		second: second
 		microsecond: mic_second
 	})
+
+	mut unix_time   := t.unix
 	mut unix_offset := int(0)
 
 	if offset_hour > 0 {
@@ -102,10 +105,15 @@ pub fn parse_rfc8601(s string) ?Time {
 
 	if unix_offset != 0 {
 		if plus_min == `+` {
-			return unix2(int(t.unix) + unix_offset, t.microsecond)
+			unix_time -= u64(unix_offset)
 		} else {
-			return unix2(int(t.unix) - unix_offset, t.microsecond)
+			unix_time += u64(unix_offset)
 		}
 	}
-	return t
+
+	// Convert the time to local time
+	loc_tm := C.tm{}
+	C.localtime_r(&unix_time, &loc_tm)
+
+	return convert_ctime(loc_tm, t.microsecond)
 }
