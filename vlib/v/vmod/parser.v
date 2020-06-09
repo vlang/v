@@ -26,7 +26,7 @@ pub mut:
 	license      string
 	repo_url     string
 	author       string
-	scripts    	 []string
+	scripts    	 map[string]string
 	unknown      map[string][]string
 }
 
@@ -246,12 +246,45 @@ fn (mut p Parser) parse() ?Manifest {
 						continue
 					}
 					'scripts' {
-						scripts, idx := get_array_content(tokens, i + 1) or {
-							return error(err)
+						mut m := map[string]string
+						mut idx := i + 1
+
+						if tokens[idx].typ != .labr {
+							return error('vmod: not a valid map')
 						}
-						mn.scripts = scripts
+
+						idx++
+						for {
+							mut ttok := tokens[idx]
+							match ttok.typ {
+								.str {
+									m_key := ttok.val
+									// TODO: error without colon
+									idx += 2
+									ttok = tokens[idx]
+									//TODO: error for wrong value
+									m_val := ttok.val
+
+									m[m_key] = m_val
+
+									idx += if tokens[idx + 1].typ == .comma {
+										2
+									} else {
+										1
+									}
+								}
+								.rabr {
+									idx++
+									break
+								}
+								else {
+									return error('vmod: invalid token "$tok.val"')
+								}
+							}
+						}
+
+						mn.scripts = m
 						i = idx
-						continue
 					}
 					else {
 						if tokens[i + 1].typ == .labr {

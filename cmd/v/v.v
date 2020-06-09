@@ -94,8 +94,8 @@ fn main_v() {
 			mod := vmod.from_file('./v.mod') or { panic(err) }
 
 			scripts := mod.scripts
-			call_index := args[1].int()
-			script := scripts[call_index]
+			call_name := args[1]
+			script := scripts[call_name]
 
 			// println(script)
 			res := os.exec(script) or { panic(err) }
