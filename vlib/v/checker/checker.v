@@ -1989,6 +1989,13 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		start_scope := c.file.scope.innermost(ident.pos.pos)
 		if obj := start_scope.find(ident.name) {
 			match obj {
+				ast.GlobalDecl {
+					ident.kind = .global
+					ident.info = ast.IdentVar{
+						typ: it.typ
+					}
+					return it.typ
+				}
 				ast.Var {
 					mut typ := it.typ
 					if typ == 0 {
@@ -2031,13 +2038,6 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		}
 		if obj := c.file.global_scope.find(name) {
 			match obj {
-				ast.GlobalDecl {
-					ident.kind = .global
-					ident.info = ast.IdentVar{
-						typ: it.typ
-					}
-					return it.typ
-				}
 				ast.ConstField {
 					mut typ := it.typ
 					if typ == 0 {

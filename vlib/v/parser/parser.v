@@ -107,7 +107,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
-			parent: 0
+			parent: global_scope
 		}
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
