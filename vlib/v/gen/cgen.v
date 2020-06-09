@@ -3175,7 +3175,15 @@ fn (mut g Gen) gen_map(node ast.CallExpr) {
 	match node.args[0].expr {
 		ast.Ident {
 			if it.kind == .function {
-				g.writeln('${it.name}(it)')
+				g.write('${it.name}(it)')
+			} else if it.kind == .variable {
+				var_info := it.var_info()
+				sym := g.table.get_type_symbol(var_info.typ)
+				if sym.kind == .function {
+					g.write('${it.name}(it)')
+				} else {
+					g.expr(node.args[0].expr)
+				}
 			} else {
 				g.expr(node.args[0].expr)
 			}
