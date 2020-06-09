@@ -10,7 +10,10 @@ pub struct PRNGConfigStruct {
 	seed []u32 = util.time_seed_array(2)
 }
 
-__global default_rng &wyrand.WyRandRNG = new_default({})
+__global default_rng &wyrand.WyRandRNG
+fn init() {
+	default_rng = new_default({})
+}
 
 pub fn new_default(config PRNGConfigStruct) &wyrand.WyRandRNG {
 	rng := &wyrand.WyRandRNG{}
