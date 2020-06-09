@@ -402,9 +402,7 @@ body {
 }
 
 /* Code highlight */
-.doc-content pre, 
-.doc-content code, 
-.doc-content pre code {
+pre, code, pre code {
   color: #5c6e74;
   color: var(--code-default-text-color);
   font-size: 0.9rem;
@@ -414,7 +412,7 @@ body {
   background-color: var(--code-background-color);
   border-radius: 0.25rem;
 }	
-.doc-content pre code {
+pre code {
   direction: ltr;
   text-align: left;
   white-space: pre;
@@ -432,10 +430,10 @@ body {
   overflow-x: auto;
   padding: 1rem;
 }
-.doc-content code {
+code {
   padding: 0.2rem;
 }
-.doc-content pre {
+pre {
   overflow: auto;
   margin: 0;
 }
