@@ -2,8 +2,26 @@ import rand
 
 const (
 	rnd_count = 40
-	seeds     = [42, 256]
+	seeds     = [[u32(42), 0], [u32(256), 0]]
 )
+
+fn get_n_random_ints(seed_data []u32, n int) []int {
+	mut values := []int{cap: n}
+	rand.seed(seed_data)
+	for _ in 0 .. n {
+		values << rand.intn(n)
+	}
+	return values
+}
+
+fn test_rand_reproducibility() {
+	for seed in seeds {
+		array1 := get_n_random_ints(seed, 1000)
+		array2 := get_n_random_ints(seed, 1000)
+		assert array1.len == array2.len
+		assert array1 == array2
+	}
+}
 
 fn test_rand_u32n() {
 	max := u32(16384)
