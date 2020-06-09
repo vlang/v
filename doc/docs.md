@@ -1940,10 +1940,16 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 ## Attributes
 
+V has several attributes that modify the behavior of functions and structs.
+
 ```v
 // Calling this function will result in a deprecation warning
 [deprecated]
-fn foo() {}
+fn old_function() {}
+
+// This function's calls will be inlined.
+[inline]
+fn inlined_function() {}
 
 // The following struct can only be used as a reference (`&Window`) and allocated on the heap.
 [ref_only]
