@@ -23,7 +23,7 @@ enum State {
 	html
 	css // <style>
 	js  // <script>
-	span // span.{
+	//span // span.{
 }
 
 pub fn compile_template(content, fn_name string) string {
@@ -51,6 +51,7 @@ pub fn compile_template(content, fn_name string) string {
 ")
 	s.writeln(str_start)
 	mut state := State.html
+	mut in_span := false
 	for _line in lines {
 		line := _line.trim_space()
 		if line == '<style>' {
@@ -90,7 +91,7 @@ pub fn compile_template(content, fn_name string) string {
 			// `span.header {` => `<span class='header'>`
 			class := line.find_between('span.', '{').trim_space()
 			s.writeln('<span class="$class">')
-			state = .span
+			in_span  = true
 		} else if state == .html && line.contains('.') && line.ends_with('{') {
 			// `.header {` => `<div class='header'>`
 			class := line.find_between('.', '{').trim_space()
@@ -100,9 +101,9 @@ pub fn compile_template(content, fn_name string) string {
 			class := line.find_between('#', '{').trim_space()
 			s.writeln('<div id="$class">')
 		} else if state == .html && line == '}' {
-			if state == .span {
+			if in_span {
 				s.writeln('</span>')
-				state = .html
+				in_span = false
 			} else {
 				s.writeln('</div>')
 			}
