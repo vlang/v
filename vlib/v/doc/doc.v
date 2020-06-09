@@ -298,20 +298,23 @@ pub fn (mut d Doc) generate() ?bool {
 				prev_comments << stmt
 				continue
 			}
+			// TODO: Fetch head comment once
 			if stmt is ast.Module {
 				// the previous comments were probably a copyright/license one
 				module_comment := get_comment_block_right_before(prev_comments)
 				prev_comments = []
-				if module_comment == '' {
-					continue
+				if 'vlib' !in base_path && !module_comment.starts_with('Copyright (c)') {
+					if module_comment == '' {
+						continue
+					}
+					if module_comment == d.head.comment {
+						continue
+					}
+					if d.head.comment != '' {
+						d.head.comment += '\n'
+					}
+					d.head.comment += module_comment
 				}
-				if module_comment == d.head.comment {
-					continue
-				}
-				if d.head.comment != '' {
-					d.head.comment += '\n'
-				}
-				d.head.comment += module_comment
 				continue
 			}
 			if last_import_stmt_idx > 0 && sidx == last_import_stmt_idx {
