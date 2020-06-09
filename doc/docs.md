@@ -79,9 +79,11 @@ you can do in V.
 		<td><a href='#hot-code-reloading'>Hot code reloading</a></td>
 		<td><a href='#cross-compilation'>Cross compilation</a></td>
 		<td><a href='#cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
-		<td><a href='#appendix-i-keywords'>Appendix I: Keywords</a></td>
+		<td><a href='#attributes'>Attributes</a></td>
+		
 	</tr>
 	<tr>
+		<td><a href='#appendix-i-keywords'>Appendix I: Keywords</a></td>
 		<td><a href='#appendix-ii-operators'>Appendix II: Operators</a></td>
 	</tr>
 </table>
@@ -1937,6 +1939,36 @@ Or just run it more like a traditional Bash script:
 On Unix-like platforms, the file can be run directly after making it executable using `chmod +x`:
 `./deploy.vsh`
 
+## Attributes
+
+```v
+// calling this function will result in a deprecation warning
+[deprecated]
+fn foo() {}
+
+// for C interop only, tells V that the following struct is defined with `typedef struct` in C
+[typedef] 
+struct C.Foo { }
+
+[ref_only] //
+struct Window {
+}
+
+// V will not generate this function and all its calls if the provided flag is false.
+// To use a flag, use `v -d flag`
+[if debug]
+fn foo() { }
+
+fn bar() {
+   foo() // will not be called if `-d debug` is not passed
+}
+
+// declare a function with WINAPI
+[windows_stdcall]
+fn C.WinFunction()
+```
+
+
 ## Appendix I: Keywords
 
 V has 23 keywords:
@@ -1964,7 +1996,6 @@ pub
 return
 struct
 type
-var
 ```
 
 ## Appendix II: Operators
