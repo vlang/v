@@ -235,9 +235,9 @@ pub fn (mut g Gen) init() {
 		} else {
 			g.cheaders.writeln(c_headers)
 		}
-		g.definitions.writeln('\nvoid _STR_PRINT_ARG(const char*, char**, int*, int*, int, ...);\n')
-		g.definitions.writeln('\nstring _STR(const char*, int, ...);\n')
-		g.definitions.writeln('\nstring _STR_TMP(const char*, ...);\n')
+		g.definitions.writeln('void _STR_PRINT_ARG(const char*, char**, int*, int*, int, ...);')
+		g.definitions.writeln('string _STR(const char*, int, ...);')
+		g.definitions.writeln('string _STR_TMP(const char*, ...);')
 	}
 	g.write_builtin_types()
 	g.write_typedef_types()
@@ -678,7 +678,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if skip {
 				g.out.go_back_to(pos)
 			}
-			g.writeln('')
+			if it.language != .c {
+				g.writeln('')
+			}
 			// g.attr has to be reset after each function
 			g.attr = ''
 		}
