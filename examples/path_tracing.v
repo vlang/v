@@ -236,7 +236,7 @@ fn intersect(r Ray, spheres &Sphere, nspheres int) (bool, f64, int){
 
 // some casual random function, try to avoid the 0
 fn rand_f64() f64 {
-	x := (C.rand()+1) & 0x3FFF_FFFF
+	x := (rand.intn(cache_len)+1) & 0x3FFF_FFFF
 	return f64(x)/f64(0x3FFF_FFFF)
 }
 
@@ -318,7 +318,7 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 		//r1  := f64(2.0 * math.pi) * rand_f64()
 
 		// tabbed speed-up
-		r1 := C.rand() & cache_mask
+		r1 := rand.intn(cache_len) & cache_mask
 
 		r2  := rand_f64()
 		r2s := math.sqrt(r2)
@@ -465,9 +465,7 @@ fn main() {
 		height = os.args[5].int()
 	}
 
-	// init the rand, using the same seed allows to obtain the same result in different runs
-	// change the seed from 2020 for different results
-	rand.seed(2020)
+	// If you need a seeded run, use a generator from any of the submodules in rand
 
 	t1:=time.ticks()
 

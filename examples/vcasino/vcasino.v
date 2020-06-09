@@ -81,7 +81,7 @@ fn get_bet(money int) int {
         }
         bet = line.int()
         if bet <= 0 {
-            println('error: $line is not heigher than 1.')
+            println('error: $line is not higher than 1.')
             continue
         } else if bet > money {
             println('error: $line is more money than you have.')
@@ -92,7 +92,6 @@ fn get_bet(money int) int {
 
 fn run_wheel(bet_nbr int, _bet int) int {
 	mut bet := _bet
-    rand.seed(int(time.now().unix))
     winning_nbr := rand.intn(50)
     print('Roulette Wheel spinning... and stops on the number $winning_nbr which is a ')
     if winning_nbr % 2 == 1 {
@@ -115,7 +114,7 @@ fn run_wheel(bet_nbr int, _bet int) int {
 
 fn is_broke(money int) bool {
     if money <= 0 {
-        println('You\'broke, the game is over..')
+        println('You\'re broke, the game is over..')
         return false
     } else {
         quit := Options{'yes', 'y'}
