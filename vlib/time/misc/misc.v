@@ -1,12 +1,12 @@
 module misc
 
-import rand
+import rand.wyrand
 import time
 
 const (
 	start_time_unix = time.now().unix
 )
 // random returns a random time struct in *the past*.
-pub fn random() time.Time {
-	return time.unix(rand.next(int(start_time_unix)))
+pub fn random(mut rng &wyrand.WyRandRNG) time.Time {
+	return time.unix(int(rng.u64n(start_time_unix)))
 }

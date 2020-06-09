@@ -19,16 +19,15 @@ fn test_bf_set_clear_toggle_get() {
 }
 
 fn test_bf_and_not_or_xor() {
-	rand.seed(int(time.now().unix))
 	len := 80
 	mut input1 := bitfield.new(len)
 	mut input2 := bitfield.new(len)
 	mut i := 0
 	for i < len {
-		if rand.next(2) == 1 {
+		if rand.intn(2) == 1 {
 			input1.set_bit(i)
 		}
-		if rand.next(2) == 1{
+		if rand.intn(2) == 1{
 			input2.set_bit(i)
 		}
 		i++
@@ -46,11 +45,10 @@ fn test_bf_and_not_or_xor() {
 }
 
 fn test_clone_cmp() {
-	rand.seed(int(time.now().unix))
 	len := 80
 	mut input := bitfield.new(len)
 	for i in 0..len {
-		if rand.next(2) == 1 {
+		if rand.intn(2) == 1 {
 			input.set_bit(i)
 		}
 	}
@@ -60,11 +58,10 @@ fn test_clone_cmp() {
 }
 
 fn test_slice_join() {
-	rand.seed(int(time.now().unix))
 	len := 80
 	mut input := bitfield.new(len)
 	for i in 0..len {
-		if rand.next(2) == 1 {
+		if rand.intn(2) == 1 {
 			input.set_bit(i)
 		}
 	}
@@ -83,12 +80,11 @@ fn test_slice_join() {
 }
 
 fn test_pop_count() {
-	rand.seed(int(time.now().unix))
 	len := 80
 	mut count0 := 0
 	mut input := bitfield.new(len)
 	for i in 0..len {
-		if rand.next(2) == 1 {
+		if rand.intn(2) == 1 {
 			input.set_bit(i)
 			count0++
 		}
@@ -98,13 +94,12 @@ fn test_pop_count() {
 }
 
 fn test_hamming() {
-	rand.seed(int(time.now().unix))
 	len := 80
 	mut count := 0
 	mut input1 := bitfield.new(len)
 	mut input2 := bitfield.new(len)
 	for i in 0..len {
-		match rand.next(4) {
+		match rand.intn(4) {
 			0, 1 {
 				input1.set_bit(i)
 				count++
@@ -138,11 +133,10 @@ fn test_bf_from_bytes() {
 }
 
 fn test_bf_from_str() {
-	rand.seed(int(time.now().unix))
 	len := 80
 	mut input := ''
 	for _ in 0..len {
-		if rand.next(2) == 1 {
+		if rand.intn(2) == 1 {
 			input = input + '1'
 		}
 		else {
@@ -160,11 +154,10 @@ fn test_bf_from_str() {
 }
 
 fn test_bf_bf2str() {
-	rand.seed(int(time.now().unix))
 	len := 80
 	mut input := bitfield.new(len)
 	for i in 0..len {
-		if rand.next(2) == 1 {
+		if rand.intn(2) == 1 {
 			input.set_bit(i)
 		}
 	}
@@ -188,7 +181,6 @@ fn test_bf_bf2str() {
 }
 
 fn test_bf_set_all() {
-	rand.seed(int(time.now().unix))
 	len := 80
 	mut input := bitfield.new(len)
 	input.set_all()
@@ -202,11 +194,10 @@ fn test_bf_set_all() {
 }
 
 fn test_bf_clear_all() {
-	rand.seed(int(time.now().unix))
 	len := 80
 	mut input := bitfield.new(len)
 	for i in 0..len {
-		if rand.next(2) == 1 {
+		if rand.intn(2) == 1 {
 			input.set_bit(i)
 		}
 	}
@@ -221,11 +212,10 @@ fn test_bf_clear_all() {
 }
 
 fn test_bf_reverse() {
-	rand.seed(int(time.now().unix))
 	len := 80
 	mut input := bitfield.new(len)
 	for i in 0..len {
-		if rand.next(2) == 1 {
+		if rand.intn(2) == 1 {
 			input.set_bit(i)
 		}
 	}
@@ -241,11 +231,10 @@ fn test_bf_reverse() {
 }
 
 fn test_bf_resize() {
-	rand.seed(int(time.now().unix))
 	len := 80
-	mut input := bitfield.new(rand.next(len) + 1)
+	mut input := bitfield.new(rand.intn(len) + 1)
 	for _ in 0..100 {
-		input.resize(rand.next(len) + 1)
+		input.resize(rand.intn(len) + 1)
 		input.set_bit(input.get_size() - 1)
 	}
 	assert input.get_bit(input.get_size() - 1) == 1
@@ -259,7 +248,6 @@ fn test_bf_pos() {
 	 * all haystacks here contain exactly one instanse of needle,
 	 * so search should return non-negative-values
 	**/
-	rand.seed(int(time.now().unix))
 	len := 80
 	mut result := 1
 	for i := 1; i < len; i++ {	// needle size
@@ -269,13 +257,13 @@ fn test_bf_pos() {
 
 			// fill the needle with random values
 			for k in 0..i {
-				if rand.next(2) == 1 {
+				if rand.intn(2) == 1 {
 					needle.set_bit(k)
 				}
 			}
 
 			// make sure the needle contains at least one set bit, selected randomly
-			r := rand.next(i)
+			r := rand.intn(i)
 			needle.set_bit(r)
 
 			// create the haystack, make sure it contains the needle
@@ -322,11 +310,10 @@ fn test_bf_rotate() {
 }
 
 fn test_bf_printing(){
-	rand.seed(int(time.now().unix))
 	len := 80
 	mut input := bitfield.new(len)
 	for i in 0..len {
-	   if rand.next(2) == 0 {
+	   if rand.intn(2) == 0 {
 		   input.set_bit(i)
 	   }
 	}

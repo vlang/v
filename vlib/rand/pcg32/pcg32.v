@@ -14,17 +14,6 @@ mut:
 	inc   u64 = u64(0xda3e39cb94b95bdb) ^ util.time_seed_64()
 }
 
-// TODO: Remove in Phase 2 of reorganizing Random
-pub fn new_pcg32(init_state, init_seq u64) PCG32RNG {
-	mut rng := PCG32RNG{}
-	rng.seed([u32(init_state), u32(init_state >> 32), u32(init_seq), u32(init_seq >> 32)])
-	return rng
-}
-
-pub fn (mut rng PCG32RNG) bounded_next(bound u32) u32 {
-	return rng.u32n(bound)
-}
-
 // rng.seed(seed_data) - seed the PCG32RNG with 4 u32 values.
 // The first 2 represent the 64-bit initial state as [lower 32 bits, higher 32 bits]
 // The last 2 represent the 64-bit stream/step of the PRNG.
