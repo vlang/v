@@ -75,12 +75,12 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt()
 }
 
-pub fn parse_text(text string, b_table &table.Table, scope, global_scope &ast.Scope) ast.File {
+pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope, global_scope &ast.Scope) ast.File {
 	s := scanner.new_scanner(text, .skip_comments)
 	mut p := Parser{
 		scanner: s
 		table: b_table
-		pref: &pref.Preferences{}
+		pref: pref
 		scope: scope
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}

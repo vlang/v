@@ -105,7 +105,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		start_pos: 0
 		parent: p.global_scope
 	}
-	file := parse_text(v_code, p.table, scope, p.global_scope)
+	file := parse_text(v_code, p.table, p.pref, scope, p.global_scope)
 	if p.pref.is_verbose {
 		println('\n\n')
 		println('>>> vweb template for ${path}:')
@@ -117,12 +117,17 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
 			fn_decl := stmt as ast.FnDecl
-			if fn_decl.name.starts_with('vweb_tmpl') {
-				body_scope := file.scope.innermost(fn_decl.body_pos.pos)
+			if fn_decl.name == 'vweb_tmpl_$p.cur_fn_name' {
+				tmpl_scope := file.scope.innermost(fn_decl.body_pos.pos)
 				for _, obj in p.scope.objects {
 					if obj is ast.Var {
-						v := obj as ast.Var
-						body_scope.register(v.name, *v)
+						mut v := obj as ast.Var
+						tmpl_scope.register(v.name, *v)
+						// TODO: this is yuck, track idents in parser
+						// or defer unused var logic to checker
+						if v_code.contains(v.name) {
+							v.is_used = true
+						}
 					}
 				}
 				break

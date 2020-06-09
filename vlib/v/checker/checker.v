@@ -1853,6 +1853,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			if it.is_vweb {
 				mut c2 := new_checker(c.table, c.pref)
 				c2.check(it.vweb_tmpl)
+				c.warnings << c2.warnings
+				c.errors << c2.errors
+				c.nr_warnings += c2.nr_warnings
+				c.nr_errors += c2.nr_errors
 			}
 			return table.void_type
 		}
