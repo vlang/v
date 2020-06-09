@@ -51,7 +51,8 @@ pub fn parse_rfc2822(s string) ?Time {
 // parse_iso8601 parses rfc8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time
 // the fraction part is difference in milli seconds and the last part is offset
 // from UTC time and can be both +/- HH:mm
-// Remarks: Not all iso8601 is supported only the 'yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd'
+// remarks: not all iso8601 is supported only the 'yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd'
+//			also checks and support for leapseconds should be added in future PR
 pub fn parse_iso8601(s string) ?Time {
 
 	mut year 		:= 0
