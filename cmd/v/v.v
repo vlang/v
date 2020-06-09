@@ -8,6 +8,7 @@ import os
 import v.pref
 import v.util
 import v.builder
+import v.vmod
 
 const (
 	simple_cmd = [
@@ -87,6 +88,18 @@ fn main_v() {
 		}
 		'version' {
 			println(util.full_v_version(prefs.is_verbose))
+			return
+		}
+		'run-mod' {
+			mod := vmod.from_file('./v.mod') or { panic(err) }
+
+			scripts := mod.scripts
+			call_index := args[1].int()
+			script := scripts[call_index]
+
+			// println(script)
+			res := os.exec(script) or { panic(err) }
+			println(res.output)
 			return
 		}
 		else {}
