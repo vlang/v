@@ -154,28 +154,24 @@ v run tetris/tetris.v
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
 
-In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype libraries.
+In order to build Tetris and anything else using the graphics module on non-Windows systems, you will need to install freetype libraries.
 
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
 ```
 macOS:
-brew install glfw freetype openssl
+brew install freetype openssl
 
 Debian/Ubuntu:
-sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
+sudo apt install libfreetype6-dev libssl-dev
 
 Arch/Manjaro:
-sudo pacman -S glfw-x11 freetype2
+sudo pacman -S freetype2
 
 Fedora:
-sudo dnf install glfw glfw-devel freetype-devel
-
-Windows:
-v setup-freetype
+sudo dnf install freetype-devel
 ```
 
-glfw dependency will be removed soon.
 
 ## V UI
 
