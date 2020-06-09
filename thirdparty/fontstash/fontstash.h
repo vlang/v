@@ -155,7 +155,11 @@ FONS_DEF void fonsDrawDebug(FONScontext* s, float x, float y);
 
 #define FONS_NOTUSED(v)  (void)sizeof(v)
 
+
+// Use FreeType on non-Windows systems
+#ifndef _WIN32
 #define FONS_USE_FREETYPE
+#endif
 
 #ifdef FONS_USE_FREETYPE
 
