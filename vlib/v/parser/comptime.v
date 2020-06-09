@@ -103,7 +103,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	v_code := tmpl.compile_file(path)
 	mut scope := &ast.Scope{
 		start_pos: 0
-		parent: 0
+		parent: p.global_scope
 	}
 	file := parse_text(v_code, p.table, scope, p.global_scope)
 	if p.pref.is_verbose {
