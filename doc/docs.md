@@ -80,7 +80,6 @@ you can do in V.
 		<td><a href='#cross-compilation'>Cross compilation</a></td>
 		<td><a href='#cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
 		<td><a href='#attributes'>Attributes</a></td>
-		
 	</tr>
 	<tr>
 		<td><a href='#appendix-i-keywords'>Appendix I: Keywords</a></td>
@@ -1942,15 +1941,12 @@ On Unix-like platforms, the file can be run directly after making it executable 
 ## Attributes
 
 ```v
-// calling this function will result in a deprecation warning
+// Calling this function will result in a deprecation warning
 [deprecated]
 fn foo() {}
 
-// for C interop only, tells V that the following struct is defined with `typedef struct` in C
-[typedef] 
-struct C.Foo { }
-
-[ref_only] //
+// The following struct can only be used as a reference (`&Window`) and allocated on the heap.
+[ref_only]
 struct Window {
 }
 
@@ -1963,7 +1959,11 @@ fn bar() {
    foo() // will not be called if `-d debug` is not passed
 }
 
-// declare a function with WINAPI
+// For C interop only, tells V that the following struct is defined with `typedef struct` in C
+[typedef] 
+struct C.Foo { }
+
+// Declare a function with WINAPI
 [windows_stdcall]
 fn C.WinFunction()
 ```
