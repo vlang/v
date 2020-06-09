@@ -1684,6 +1684,22 @@ vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
 eprintln('$vm.name $vm.version\n $vm.description')
 ```
 
+## Performance tuning
+
+The generated C code is usually fast enough. Although rarely, there
+are some situations though, where you want to give additional hints 
+to the C compiler, so that it can further optimize some blocks of code.
+NB: these are *rarely* needed, and should not be used, unless you
+profile your code, and see that there are significant benefits for them.
+
+[inline] - you can tag functions with [inline], and the C compiler will
+try to inline them, which in some cases, may be beneficial for peformance.
+
+`if _likely_(bool expression) {` this hints the C compiler, that the passed 
+boolean expression is very likely to be true, so it can generate assembly 
+code, with less chance of branch misprediction. In the JS backend,
+that does nothing.
+
 ## Reflection via codegen
 
 Having built-in JSON support is nice, but V also allows you to create efficient

@@ -13,7 +13,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral |
 	CastExpr | CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
 	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr |
 	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral |
-	StringLiteral | StructInit | Type | TypeOf
+	StringLiteral | StructInit | Type | TypeOf | Likely
 
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -755,6 +755,12 @@ pub:
 	type_name string
 }
 
+pub struct Likely {
+pub:
+	expr     Expr
+	pos      token.Position
+}
+
 pub struct TypeOf {
 pub:
 	expr      Expr
@@ -886,6 +892,9 @@ pub fn (expr Expr) position() token.Position {
 		}
 		// ast.Type { }
 		StructInit {
+			return it.pos
+		}
+		Likely {
 			return it.pos
 		}
 		// ast.TypeOf { }

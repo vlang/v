@@ -1772,7 +1772,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		c.error('checker: too many expr levels: $c.expr_level ', node.position())
 		return table.void_type
 	}
-    
+
 	match mut node {
 		ast.AnonFn {
 			keep_fn := c.cur_fn
@@ -1943,6 +1943,14 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.TypeOf {
 			it.expr_type = c.expr(it.expr)
 			return table.string_type
+		}
+		ast.Likely {
+			ltype := c.expr(it.expr)
+			if !c.check_types(ltype, table.bool_type) {
+				ltype_sym := c.table.get_type_symbol(ltype)
+				c.error('`_likely_()` expects a boolean expression, instead it got `${ltype_sym.name}`', it.pos)
+			}
+			return table.bool_type
 		}
 		else {
 			tnode := typeof(node)

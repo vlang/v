@@ -112,6 +112,7 @@ pub enum Kind {
 	key_return
 	key_select
 	key_sizeof
+	key_likely
 	key_offsetof
 	key_struct
 	key_switch
@@ -218,6 +219,7 @@ fn build_token_str() []string {
 	s[Kind.key_return] = 'return'
 	s[Kind.key_module] = 'module'
 	s[Kind.key_sizeof] = 'sizeof'
+	s[Kind.key_likely] = '_likely_'
 	s[Kind.key_go] = 'go'
 	s[Kind.key_goto] = 'goto'
 	s[Kind.key_const] = 'const'

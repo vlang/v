@@ -1586,6 +1586,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.TypeOf {
 			g.typeof_expr(it)
 		}
+		ast.Likely {
+			g.write('_likely_(')
+			g.expr(it.expr)
+			g.write(')')
+		}
 		else {
 			// #printf("node=%d\n", node.typ);
 			println(term.red('cgen.expr(): bad node ' + typeof(node)))

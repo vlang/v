@@ -627,6 +627,11 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// skip: JS has no types
 			// TODO maybe?
 		}
+		ast.Likely {
+			g.write('(')
+			g.expr(it.expr)
+			g.write(')')
+		}
 		ast.TypeOf {
 			g.gen_typeof_expr(it)
 			// TODO: Should this print the V type or the JS type?

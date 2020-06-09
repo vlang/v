@@ -163,6 +163,9 @@ pub fn (x Expr) str() string {
 		TypeOf {
 			return 'typeof(${it.expr.str()})'
 		}
+		Likely {
+			return '_likely_(${it.expr.str()})'
+		}
 		else {
 			return '[unhandled expr type ${typeof(x)}]'
 		}
