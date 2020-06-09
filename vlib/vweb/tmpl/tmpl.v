@@ -12,14 +12,14 @@ const (
 )
 
 // compile_file compiles the content of a file by the given path as a template
-pub fn compile_file(path string) string {
+pub fn compile_file(path, fn_name string) string {
 	mut html := os.read_file(path) or {
 		panic('html failed')
 	}
-	return compile_template(html)
+	return compile_template(html, fn_name)
 }
 
-pub fn compile_template(content string) string {
+pub fn compile_template(content, fn_name string) string {
 	// lines := os.read_lines(path)
 	mut html := content
 	mut header := ''
@@ -36,7 +36,7 @@ pub fn compile_template(content string) string {
 	s.writeln("
 	import strings
 	// === vweb html template ===
-	fn vweb_tmpl() {
+	fn vweb_tmpl_${fn_name}() {
 	mut sb := strings.new_builder(${lines.len * 30})
 	header := \' \' // TODO remove
 	_ = header

@@ -100,7 +100,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		}
 		// println('path is now "$path"')
 	}
-	v_code := tmpl.compile_file(path)
+	v_code := tmpl.compile_file(path, p.cur_fn_name)
 	mut scope := &ast.Scope{
 		start_pos: 0
 		parent: p.global_scope
@@ -117,7 +117,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
 			fn_decl := stmt as ast.FnDecl
-			if fn_decl.name == 'vweb_tmpl' {
+			if fn_decl.name.starts_with('vweb_tmpl') {
 				body_scope := file.scope.innermost(fn_decl.body_pos.pos)
 				for _, obj in p.scope.objects {
 					if obj is ast.Var {
