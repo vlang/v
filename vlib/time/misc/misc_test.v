@@ -1,14 +1,13 @@
 import time.misc as tmisc
-import rand.wyrand
+import rand
 
 fn test_random() {
 	// guarantee CI test stability, by seeding the random number generator with a known seed
-	mut rng := wyrand.WyRandRNG{}
-	rng.seed([]u32{len: 2})
-	t1 := tmisc.random(mut rng)
-	t2 := tmisc.random(mut rng)
-	t3 := tmisc.random(mut rng)
-	t4 := tmisc.random(mut rng)
+	rand.seed([u32(0), 0])
+	t1 := tmisc.random()
+	t2 := tmisc.random()
+	t3 := tmisc.random()
+	t4 := tmisc.random()
 	assert t1.unix != t2.unix
 	assert t1.unix != t3.unix
 	assert t1.unix != t4.unix
