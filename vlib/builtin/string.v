@@ -148,7 +148,8 @@ pub fn cstring_to_vstring(cstr byteptr) string {
 }
 
 pub fn (s string) replace_once(rep, with string) string {
-	index := s.index(rep) or {
+	index := s.index(rep)
+	if index < 0 {
 		return s
 	}
 	return s.substr(0, index) + with + s.substr(index + rep.len, s.len)
@@ -554,7 +555,7 @@ pub fn (s string) substr(start, end int) string {
 	return res
 }
 
-pub fn (s string) index_old(p string) int {
+pub fn (s string) index(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}
@@ -570,24 +571,6 @@ pub fn (s string) index_old(p string) int {
 		i++
 	}
 	return -1
-}
-
-pub fn (s string) index(p string) ?int {
-	if p.len > s.len || p.len == 0 {
-		return none
-	}
-	mut i := 0
-	for i < s.len {
-		mut j := 0
-		for j < p.len && s.str[i + j] == p.str[j] {
-			j++
-		}
-		if j == p.len {
-			return i
-		}
-		i++
-	}
-	return none
 }
 
 // KMP search
@@ -623,7 +606,8 @@ fn (s string) index_kmp(p string) int {
 
 pub fn (s string) index_any(chars string) int {
 	for c in chars {
-		index := s.index(c.str()) or {
+		index := s.index(c.str())
+		if index < 0 {
 			continue
 		}
 		return index
@@ -631,9 +615,9 @@ pub fn (s string) index_any(chars string) int {
 	return -1
 }
 
-pub fn (s string) last_index(p string) ?int {
+pub fn (s string) last_index(p string) int {
 	if p.len > s.len || p.len == 0 {
-		return none
+		return -1
 	}
 	mut i := s.len - p.len
 	for i >= 0 {
@@ -646,7 +630,7 @@ pub fn (s string) last_index(p string) ?int {
 		}
 		i--
 	}
-	return none
+	return -1
 }
 
 pub fn (s string) index_after(p string, start int) int {
@@ -716,10 +700,7 @@ pub fn (s string) count(substr string) int {
 }
 
 pub fn (s string) contains(p string) bool {
-	s.index(p) or {
-		return false
-	}
-	return true
+	return s.index(p) >= 0
 }
 
 pub fn (s string) starts_with(p string) bool {
@@ -825,12 +806,14 @@ pub fn (s string) is_title() bool {
 // 'hey [man] how you doin'
 // find_between('[', ']') == 'man'
 pub fn (s string) find_between(start, end string) string {
-	start_pos := s.index(start) or {
+	start_pos := s.index(start)
+	if start_pos < 0 {
 		return ''
 	}
 	// First get everything to the right of 'start'
 	val := s.right(start_pos + start.len)
-	end_pos := val.index(end) or {
+	end_pos := val.index(end)
+	if end_pos < 0 {
 		return val
 	}
 	return val.left(end_pos)
@@ -1189,28 +1172,32 @@ pub fn (s &string) free() {
 
 // all_before('23:34:45.234', '.') == '23:34:45'
 pub fn (s string) all_before(dot string) string {
-	pos := s.index(dot) or {
+	pos := s.index(dot)
+	if pos < 0 {
 		return s
 	}
 	return s.left(pos)
 }
 
 pub fn (s string) all_before_last(dot string) string {
-	pos := s.last_index(dot) or {
+	pos := s.last_index(dot)
+	if pos < 0 {
 		return s
 	}
 	return s.left(pos)
 }
 
 pub fn (s string) all_after(dot string) string {
-	pos := s.index(dot) or {
+	pos := s.index(dot)
+	if pos < 0 {
 		return s
 	}
 	return s.right(pos + dot.len)
 }
 
 pub fn (s string) all_after_last(dot string) string {
-	pos := s.last_index(dot) or {
+	pos := s.last_index(dot)
+	if pos < 0 {
 		return s
 	}
 	return s.right(pos + dot.len)

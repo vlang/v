@@ -25,9 +25,7 @@ fn test_c_files() {
 		b.module_search_paths = ['$vroot/vlib/v/gen/tests/']
 		mut res := b.gen_c([path]).after('#endbuiltin')
 		if res.contains('string _STR') {
-			pos := res.index('string _STR') or {
-				-1
-			}
+			pos := res.index('string _STR')
 			end := res.index_after('endof _STR_TMP', pos)
 			res = res[..pos] + res[end + 15..]
 		}

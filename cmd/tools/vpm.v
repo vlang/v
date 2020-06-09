@@ -396,7 +396,8 @@ fn parse_vmod(data string) Vmod {
 		'deps': ''
 	}
 	for key in keys {
-		mut key_index := data.index('$key:') or {
+		mut key_index := data.index('$key:')
+		if key_index < 0 {
 			continue
 		}
 		key_index += key.len + 1

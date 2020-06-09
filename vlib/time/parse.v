@@ -5,7 +5,8 @@ module time
 
 // parse returns time from a date string in "YYYY-MM-DD HH:MM:SS" format.
 pub fn parse(s string) ?Time {
-	pos := s.index(' ') or {
+	pos := s.index(' ')
+	if pos < 0 {
 		return error('Invalid time format: $s')
 	}
 	symd := s[..pos]
@@ -36,7 +37,8 @@ pub fn parse_rfc2822(s string) ?Time {
 	if fields.len < 5 {
 		return error('Invalid time format: $s')
 	}
-	pos := months_string.index(fields[2]) or {
+	pos := months_string.index(fields[2])
+	if pos < 0 {
 		return error('Invalid time format: $s')
 	}
 	mm := pos / 3 + 1

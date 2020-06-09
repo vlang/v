@@ -305,7 +305,8 @@ fn parse_response(resp string) Response {
 			break
 		}
 		i++
-		pos := h.index(':') or {
+		pos := h.index(':')
+		if pos < 0 {
 			continue
 		}
 		// if h.contains('Content-Type') {

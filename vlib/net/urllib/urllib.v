@@ -510,10 +510,12 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 		// RFC 3986, §3.3:
 		// In addition, a URI reference (Section 4.1) may be a relative-path reference,
 		// in which case the first path segment cannot contain a colon (':') character.
-		colon := rest.index(':') or {
+		colon := rest.index(':')
+		if colon < 0 {
 			return error('there should be a : in the URL')
 		}
-		slash := rest.index('/') or {
+		slash := rest.index('/')
+		if slash < 0 {
 			return error('there should be a / in the URL')
 		}
 		if colon >= 0 && (slash < 0 || colon < slash) {
@@ -546,9 +548,7 @@ struct ParseAuthorityRes {
 }
 
 fn parse_authority(authority string) ?ParseAuthorityRes {
-	i := authority.last_index('@') or {
-		-1
-	}
+	i := authority.last_index('@')
 	mut host := ''
 	mut zuser := user('')
 	if i < 0 {
@@ -604,7 +604,8 @@ fn parse_host(host string) ?string {
 	if host.starts_with('[') {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
-		mut i := host.last_index(']') or {
+		mut i := host.last_index(']')
+		if i < 0 {
 			return error(error_msg("parse_host: missing \']\' in host", ''))
 		}
 		mut colon_port := host[i + 1..]
@@ -617,7 +618,8 @@ fn parse_host(host string) ?string {
 		// can only %-encode non-ASCII bytes.
 		// We do impose some restrictions on the zone, to avoid stupidity
 		// like newlines.
-		if zone:=host[..i].index('%25'){
+		zone := host[..i].index('%25')
+		if zone >= 0 {
 			host1 := unescape(host[..zone], .encode_host) or {
 				return err
 			}
@@ -629,7 +631,8 @@ fn parse_host(host string) ?string {
 			}
 			return host1 + host2 + host3
 		}
-		if idx:=host.last_index(':'){
+		idx := host.last_index(':')
+		if idx >= 0 {
 			colon_port = host[idx..]
 			if !valid_optional_port(colon_port) {
 				return error(error_msg('parse_host: invalid port $colon_port after host ', ''))
@@ -853,7 +856,8 @@ fn parse_query_values(mut m Values, query string) ?bool {
 			continue
 		}
 		mut value := ''
-		if idx:=key.index('='){
+		idx := key.index('=')
+		if idx >= 0 {
 			i = idx
 			value = key[i + 1..]
 			key = key[..i]
@@ -911,9 +915,7 @@ fn resolve_path(base, ref string) string {
 		full = base
 	}
 	else if ref[0] != `/` {
-		i := base.last_index('/') or {
-			-1
-		}
+		i := base.last_index('/')
 		full = base[..i + 1] + ref
 	}
 	else {

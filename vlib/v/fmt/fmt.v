@@ -514,7 +514,8 @@ fn (f &Fmt) type_to_str(t table.Type) string {
 	if res.starts_with('[]fixed_') {
 		prefix := '[]fixed_'
 		res = res[prefix.len..]
-		last_underscore_idx := res.last_index('_') or {
+		last_underscore_idx := res.last_index('_')
+		if last_underscore_idx < 0 {
 			return '[]' + res.replace(f.cur_mod + '.', '')
 		}
 		limit := res[last_underscore_idx + 1..]
@@ -1039,8 +1040,9 @@ pub fn (mut f Fmt) mark_module_as_used(name string) {
 	if !name.contains('.') {
 		return
 	}
-	pos := name.last_index('.') or {
-		0
+	mut pos := name.last_index('.')
+	if pos < 0 {
+		pos = 0
 	}
 	mod := name[..pos]
 	if mod in f.used_imports {

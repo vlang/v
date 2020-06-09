@@ -205,9 +205,7 @@ fn (mut c Checker) check_valid_snake_case(name, identifier string, pos token.Pos
 }
 
 fn stripped_name(name string) string {
-	idx := name.last_index('.') or {
-		-1
-	}
+	idx := name.last_index('.')
 	return name[(idx + 1)..]
 }
 
@@ -1772,7 +1770,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		c.error('checker: too many expr levels: $c.expr_level ', node.position())
 		return table.void_type
 	}
-    
+
 	match mut node {
 		ast.AnonFn {
 			keep_fn := c.cur_fn

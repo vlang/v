@@ -31,7 +31,8 @@ pub fn (mut table Table) parse_cflag(cflg, mod string, ctimedefines []string) ?b
 		if !flag.starts_with(os_override) {
 			continue
 		}
-		pos := flag.index(' ') or {
+		pos := flag.index(' ')
+		if pos < 0 {
 			return none
 		}
 		fos = flag[..pos].trim_space()
@@ -50,9 +51,7 @@ pub fn (mut table Table) parse_cflag(cflg, mod string, ctimedefines []string) ?b
 				}
 			}
 		}
-		mut index := flag.index(' -') or {
-			-1
-		}
+		mut index := flag.index(' -')
 		for index > -1 {
 			mut has_next := false
 			for f in allowed_flags {

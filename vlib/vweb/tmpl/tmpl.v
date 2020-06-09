@@ -54,7 +54,8 @@ pub fn compile_template(content, fn_name string) string {
 		}
 		if line.contains('@if ') {
 			s.writeln(str_end)
-			pos := line.index('@if') or {
+			pos := line.index('@if')
+			if pos < 0 {
 				continue
 			}
 			s.writeln('if ' + line[pos + 4..] + '{')
@@ -69,7 +70,8 @@ pub fn compile_template(content, fn_name string) string {
 			s.writeln(str_start)
 		} else if line.contains('@for') {
 			s.writeln(str_end)
-			pos := line.index('@for') or {
+			pos := line.index('@for')
+			if pos < 0 {
 				continue
 			}
 			s.writeln('for ' + line[pos + 4..] + '{')

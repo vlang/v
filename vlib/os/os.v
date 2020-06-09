@@ -671,21 +671,24 @@ fn print_c_errno() {
 }
 
 pub fn file_ext(path string) string {
-	pos := path.last_index('.') or {
+	pos := path.last_index('.')
+	if pos < 0 {
 		return ''
 	}
 	return path[pos..]
 }
 
 pub fn dir(path string) string {
-	pos := path.last_index(path_separator) or {
+	pos := path.last_index(path_separator)
+	if pos < 0 {
 		return '.'
 	}
 	return path[..pos]
 }
 
 pub fn base_dir(path string) string {
-	posx := path.last_index(path_separator) or {
+	posx := path.last_index(path_separator)
+	if posx < 0 {
 		return path
 	}
 	// NB: *without* terminating /

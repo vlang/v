@@ -21,7 +21,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.name {
 			node = p.name_expr()
 			p.is_stmt_ident = is_stmt_ident
-		}
+		} 
 		.string {
 			node = p.string_expr()
 		}

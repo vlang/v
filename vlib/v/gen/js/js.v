@@ -381,7 +381,8 @@ pub fn (mut g JsGen) new_tmp_var() string {
 // 'fn' => ''
 [inline]
 fn get_ns(s string) string {
-	idx := s.last_index('.') or { return '' }
+	idx := s.last_index('.')
+	if idx < 0 { return '' }
 	return s.substr(0, idx)
 }
 
