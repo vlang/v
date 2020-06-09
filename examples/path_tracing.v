@@ -465,7 +465,8 @@ fn main() {
 		height = os.args[5].int()
 	}
 
-	// If you need a seeded run, use a generator from any of the submodules in rand
+	// change the seed for a different result
+	rand.seed([u32(2020), 0])
 
 	t1:=time.ticks()
 
