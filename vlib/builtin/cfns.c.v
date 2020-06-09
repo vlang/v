@@ -1,5 +1,10 @@
 module builtin
 
+// See cheaders.v: _likely_ is actually a macro, to hint the C compiler
+// that the passed boolean expression is very likely to be true, so it
+// can generate assembly code, with less chance of branch misprediction.
+fn C._likely_(bool) bool
+
 // <string.h>
 fn C.memcpy(byteptr, byteptr, int) voidptr
 
