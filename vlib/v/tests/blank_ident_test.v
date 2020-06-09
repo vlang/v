@@ -258,3 +258,17 @@ fn test_nested_for_in_string_both() {
 		}
 	}
 }
+
+fn multi_return() (int, int, string) {
+	return 1, 2, '3'
+}
+
+fn test_blank_multi_return() {
+	_, a, b := multi_return()
+	c, _, d := multi_return()
+	e, f, _ := multi_return()
+	_, _, g := multi_return()
+	_, h, _ := multi_return()
+	i, _, _ := multi_return()
+	_, _, _ := multi_return()
+}

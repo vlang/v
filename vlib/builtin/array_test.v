@@ -589,6 +589,13 @@ fn test_map() {
 	assert strs == ['v', 'is', 'awesome']
 }
 
+fn test_anon_fn_map() {
+	add_num := fn (i int) int {
+		return i + 1
+	}
+	assert [1,2,3].map(add_num) == [2,3,4]
+}
+
 fn test_array_str() {
 	numbers := [1, 2, 3]
 	assert numbers == [1,2,3]

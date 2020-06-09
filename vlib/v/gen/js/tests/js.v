@@ -26,6 +26,7 @@ enum POSITION {
 
 fn class(extends string, instanceof int) {
     delete := instanceof
+    _ = delete
 }
 
 
@@ -46,13 +47,13 @@ fn main() {
     c.a.update('another update')
     println(c)
 
-    v := "done"
+    _ := "done"
     {
         _ = "block"
     }
 
-    pos := POSITION.go_back
-    enum2 := hl.Ccc.a
+    _ = POSITION.go_back
+    _ = hl.Ccc.a
 
     debugger := 'JS keywords'
     // TODO: Implement interpolation

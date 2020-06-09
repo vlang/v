@@ -1345,7 +1345,8 @@ pub fn (s string) repeat(count int) string {
 }
 
 pub fn (s string) fields() []string {
-	return s.split(' ')
+	// TODO do this in a better way
+	return s.replace('\t', ' ').split(' ')
 }
 
 // Allows multi-line strings to be formatted in a way that removes white-space
