@@ -36,9 +36,22 @@ pub fn (mut conn Connection) connect() ?bool {
 	return true
 }
 
-// Performs a query on the database.
+// Executes an SQL query.
+// `query()` cannot be used for statements that contain binary data; you must use `real_query()` instead.
 pub fn (conn Connection) query(q string) ?Result {
 	if C.mysql_query(conn.conn, q.str) != 0 {
+		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
+	}
+	res := C.mysql_store_result(conn.conn)
+	return Result{res}
+}
+
+// Executes an SQL query. Same as `query ()`,
+// But `real_query ()` can be used for statements containing binary data.
+// (Binary data may contain the \0 character, which `query()` interprets as the end of the statement string).
+// In addition, `real_query()` is faster than `query()`.
+pub fn (conn Connection) real_query(q string) ?Result {
+	if C.mysql_real_query(conn.conn, q.str, q.len) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
 	res := C.mysql_store_result(conn.conn)
