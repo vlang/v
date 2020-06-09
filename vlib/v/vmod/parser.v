@@ -26,6 +26,7 @@ pub mut:
 	license      string
 	repo_url     string
 	author       string
+	scripts    	 []string
 	unknown      map[string][]string
 }
 
@@ -241,6 +242,14 @@ fn (mut p Parser) parse() ?Manifest {
 							return error(err)
 						}
 						mn.dependencies = deps
+						i = idx
+						continue
+					}
+					'scripts' {
+						scripts, idx := get_array_content(tokens, i + 1) or {
+							return error(err)
+						}
+						mn.scripts = scripts
 						i = idx
 						continue
 					}
