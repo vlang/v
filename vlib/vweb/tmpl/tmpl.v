@@ -19,6 +19,13 @@ pub fn compile_file(path, fn_name string) string {
 	return compile_template(html, fn_name)
 }
 
+enum State {
+	html
+	css // <style>
+	js  // <script>
+	span // span.{
+}
+
 pub fn compile_template(content, fn_name string) string {
 	// lines := os.read_lines(path)
 	mut html := content
@@ -43,14 +50,19 @@ pub fn compile_template(content, fn_name string) string {
 	//footer := \'footer\'
 ")
 	s.writeln(str_start)
-	mut in_css := false // false
-	mut in_span := false
+	mut state := State.html
 	for _line in lines {
 		line := _line.trim_space()
 		if line == '<style>' {
-			in_css = true
+			state = .css
 		} else if line == '</style>' {
-			// in_css = false
+			state = .html
+		}
+		else if line == '<script>' {
+			state = .js
+		}
+		else if line == '</script>' {
+			state = .html
 		}
 		if line.contains('@if ') {
 			s.writeln(str_end)
@@ -74,23 +86,23 @@ pub fn compile_template(content, fn_name string) string {
 			}
 			s.writeln('for ' + line[pos + 4..] + '{')
 			s.writeln(str_start)
-		} else if !in_css && line.contains('span.') && line.ends_with('{') {
+		} else if state == .html && line.contains('span.') && line.ends_with('{') {
 			// `span.header {` => `<span class='header'>`
 			class := line.find_between('span.', '{').trim_space()
 			s.writeln('<span class="$class">')
-			in_span = true
-		} else if !in_css && line.contains('.') && line.ends_with('{') {
+			state = .span
+		} else if state == .html && line.contains('.') && line.ends_with('{') {
 			// `.header {` => `<div class='header'>`
 			class := line.find_between('.', '{').trim_space()
 			s.writeln('<div class="$class">')
-		} else if !in_css && line.contains('#') && line.ends_with('{') {
+		} else if state == .html && line.contains('#') && line.ends_with('{') {
 			// `#header {` => `<div id='header'>`
 			class := line.find_between('#', '{').trim_space()
 			s.writeln('<div id="$class">')
-		} else if !in_css && line == '}' {
-			if in_span {
+		} else if state == .html && line == '}' {
+			if state == .span {
 				s.writeln('</span>')
-				in_span = false
+				state = .html
 			} else {
 				s.writeln('</div>')
 			}
