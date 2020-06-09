@@ -596,6 +596,14 @@ fn test_anon_fn_map() {
 	assert [1,2,3].map(add_num) == [2,3,4]
 }
 
+fn test_anon_fn_arg_map() {
+	a := [1,2,3].map(fn (i int) int {
+		return i + 1
+	})
+
+	assert a == [2,3,4]
+}
+
 fn test_array_str() {
 	numbers := [1, 2, 3]
 	assert numbers == [1,2,3]

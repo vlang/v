@@ -3190,6 +3190,16 @@ fn (mut g Gen) gen_map(node ast.CallExpr) {
 				g.expr(node.args[0].expr)
 			}
 		}
+		ast.AnonFn {
+			pos := g.out.len
+			def_pos := g.definitions.len
+			g.stmt(it.decl)
+			fn_body := g.out.after(pos)
+			g.out.go_back(fn_body.len)
+			g.definitions.go_back(g.definitions.len - def_pos)
+			g.definitions.write(fn_body)
+			g.write('${it.decl.name}(it)')
+		}
 		else {
 			g.expr(node.args[0].expr)
 		}
