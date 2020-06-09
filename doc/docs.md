@@ -1686,14 +1686,19 @@ eprintln('$vm.name $vm.version\n $vm.description')
 
 ## Performance tuning
 
-The generated C code is usually fast enough. Although rarely, there
-are some situations though, where you want to give additional hints 
-to the C compiler, so that it can further optimize some blocks of code.
-NB: these are *rarely* needed, and should not be used, unless you
-profile your code, and see that there are significant benefits for them.
+The generated C code is usually fast enough, when you compile your code 
+with `-prod`. There are some situations though, where you may want to give 
+additional hints to the C compiler, so that it can further optimize some 
+blocks of code.
 
-[inline] - you can tag functions with [inline], and the C compiler will
-try to inline them, which in some cases, may be beneficial for peformance.
+NB: These are *rarely* needed, and should not be used, unless you
+*profile your code*, and then see that there are significant benefits for them.
+To cite gcc's documentation: "programmers are notoriously bad at predicting
+how their programs actually perform".
+
+`[inline]` - you can tag functions with `[inline]`, so the C compiler will
+try to inline them, which in some cases, may be beneficial for peformance, 
+but may impact the size of your executable.
 
 `if _likely_(bool expression) {` this hints the C compiler, that the passed 
 boolean expression is very likely to be true, so it can generate assembly 
