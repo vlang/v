@@ -948,8 +948,30 @@ pub fn executable() string {
 	}
 	$if windows {
 		max := 512
-		mut result := &u16(vcalloc(max * 2)) // max_path_len * sizeof(wchar_t)
+		size := max * 2 // max_path_len * sizeof(wchar_t)
+		mut result := &u16(vcalloc(size))
 		len := C.GetModuleFileName(0, result, max)
+		// determine if the file is a windows symlink
+		attrs := C.GetFileAttributesW(result)
+		is_set := attrs & 0x400  // FILE_ATTRIBUTE_REPARSE_POINT
+		if is_set != 0 { // it's a windows symlink
+			// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
+			file := C.CreateFile(result, 0x80000000, 1, 0, 3, 0x80, 0)
+			if file != -1 {
+				final_path := &u16(vcalloc(size))
+				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
+				final_len := C.GetFinalPathNameByHandleW(file, final_path, size, 0)
+				if final_len < size {
+					ret := string_from_wide2(final_path, final_len)
+					// remove '\\?\' from beginning (see link above)
+					return ret[4..]
+				}
+				else {
+					eprintln('os.executable() saw that the executable file path was too long')
+				}
+			}
+			C.CloseHandle(file)
+		}
 		return string_from_wide2(result, len)
 	}
 	$if macos {
@@ -1003,6 +1025,11 @@ fn executable_fallback() string {
 		return ''
 	}
 	mut exepath := os.args[0]
+	$if windows {
+		if !exepath.contains('.exe') {
+			exepath += '.exe'
+		}
+	}
 	if !os.is_abs_path(exepath) {
 		if exepath.contains( os.path_separator ) {
 			exepath = os.join_path(os.wd_at_startup, exepath)

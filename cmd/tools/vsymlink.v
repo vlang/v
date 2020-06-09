@@ -1,11 +1,6 @@
 import os
 import v.pref
 
-const (
-	hkey_current_user = voidptr(0x80000001)
-	hwnd_broadcast = voidptr(0xffff)
-)
-
 $if windows {
 	$if tinyc {
 		#flag -lAdvapi32
@@ -14,15 +9,15 @@ $if windows {
 }
 
 fn main(){
+	vexe := pref.vexe_path()
 	$if windows {
-		setup_symlink_on_windows()
+		setup_symlink_windows(vexe)
 	} $else {
-		setup_symlink_on_unix()
+		setup_symlink(vexe)
 	}
 }
 
-fn setup_symlink_on_unix(){
-	vexe := pref.vexe_path()
+fn setup_symlink(vexe string){
 	mut link_path := '/usr/local/bin/v'
 	mut ret := os.exec('ln -sf $vexe $link_path') or {
 		panic(err)
@@ -35,7 +30,7 @@ fn setup_symlink_on_unix(){
 		ret = os.exec('ln -sf $vexe $link_path') or {
 			panic(err)
 		}
-		if ret.exit_code == 0 {
+		if ret.exit_code == 1 {
 			println('Symlink "$link_path" has been created')
 		} else {
 			println('Failed to create symlink "$link_path". Try again with sudo.')
@@ -45,39 +40,41 @@ fn setup_symlink_on_unix(){
 	}
 }
 
-fn setup_symlink_on_windows(){
+fn setup_symlink_windows(vexe string){
 	$if windows {
-		vexe := pref.vexe_path()
-		// NB: Putting $vdir directly into PATH will also result in
-		// make.bat being global, which is NOT what we want.
-		//
-		// Instead, we create a small launcher v.bat, in a new local
-		// folder .bin/ . That .bin/ folder can then be put in PATH
-		// without poluting it with anything else - just a `v`
-		// command will be available, similar to unix.
-		//
-		// Creating a real NTFS symlink to the real executable was also
-		// tried, but then os.real_path( os.executable() ) returns the
-		// path to the symlink, unfortunately, unlike on posix systems
-		// ¯\_(ツ)_/¯
-		vdir := os.real_path(os.dir(vexe))
-		vsymlinkdir := os.join_path(vdir, '.bin')
-		vsymlinkbat := os.join_path(vsymlinkdir, 'v.bat')
-		if os.exists(vsymlinkbat) {
-			print('Batch script $vsymlinkbat already exists, checking system %PATH%...')
+		// Create a symlink in a new local folder (.\.bin\.v.exe)
+		// Puts `v` in %PATH% without polluting it with anything else (like make.bat).
+		// This will make `v` available on cmd.exe, PowerShell, and MinGW(MSYS)/WSL/Cygwin
+
+		vdir         := os.real_path(os.dir(vexe))
+		vsymlinkdir  := os.join_path(vdir, '.bin')
+
+		mut vsymlink := os.join_path(vsymlinkdir, 'v.exe')
+
+		if !os.exists(vsymlinkdir) {
+			os.mkdir_all(vsymlinkdir) // will panic if fails
+		} else {
+			os.rm(vsymlink)
 		}
-		else {
-			os.rmdir_all(vsymlinkdir)
-			os.mkdir_all(vsymlinkdir)
-			os.write_file(vsymlinkbat, '@echo off\n${vexe} %*')
-			if !os.exists(vsymlinkbat) {
-				eprintln('Could not create $vsymlinkbat')
-				exit(1)
+
+		// try to create a native symlink at .\.bin\v.exe
+		os.symlink(vsymlink, vexe) or {
+			// typically only fails if you're on a network drive (VirtualBox)
+			// do batch file creation instead
+			eprint('NOTE: Could not create a native symlink: $err')
+			eprintln('Creating a batch file instead...')
+			vsymlink = os.join_path(vsymlinkdir, 'v.bat')
+			if os.exists(vsymlink) {
+				os.rm(vsymlink)
 			}
-			else {
-				print('Created $vsymlinkbat, checking system %PATH%...')
-			}
+			os.write_file(vsymlink, '@echo off\n${vexe} %*')
 		}
+
+		if !os.exists(vsymlink) {
+			warn_and_exit('Could not create $vsymlink')
+		}
+
+		print('Symlink $vsymlink to $vexe created.\n\nChecking system %PATH%...')
 
 		reg_sys_env_handle  := get_reg_sys_env_handle() or {
 			warn_and_exit(err)
@@ -104,7 +101,7 @@ fn setup_symlink_on_windows(){
 			println('configured.')
 		}
 		else {
-			print('not configured.\nSetting system %PATH%...')
+			print('not configured.\nAdding symlink directory to system %PATH%...')
 			set_reg_value(reg_sys_env_handle, 'Path', new_sys_env_path) or {
 				warn_and_exit(err)
 				return
@@ -115,12 +112,12 @@ fn setup_symlink_on_windows(){
 		print('Letting running process know to update their Environment...')
 		send_setting_change_msg('Environment') or {
 			eprintln('\n' + err)
-			warn_and_exit('You might need to run this again to have `v` in your %PATH%')
+			warn_and_exit('You might need to run this again to have the `v` command in your %PATH%')
 			return
 		}
 
 		println('finished.\n\nNote: restart your shell/IDE to load the new %PATH%.')
-		println('\nAfter restarting your shell/IDE, give `v version` a try in another dir!')
+		println('After restarting your shell/IDE, give `v version` a try in another dir!')
 	}
 }
 
@@ -131,14 +128,13 @@ fn warn_and_exit(err string) {
 
 // get the system environment registry handle
 fn get_reg_sys_env_handle() ?voidptr {
-	$if windows {
+	$if windows { // wrap for cross-compile compat
 		// open the registry key
 		reg_key_path   := 'Environment'
 		reg_env_key    := voidptr(0) // or HKEY (HANDLE)
-		if C.RegOpenKeyEx(hkey_current_user, reg_key_path.to_wide(), 0, 1 | 2, &reg_env_key) != 0 {
+		if C.RegOpenKeyEx(os.hkey_current_user, reg_key_path.to_wide(), 0, 1 | 2, &reg_env_key) != 0 {
 			return error('Could not open "$reg_key_path" in the registry')
 		}
-
 		return reg_env_key
 	}
 	return error('not on windows')
@@ -171,11 +167,11 @@ fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 	return error('not on windows')
 }
 
-// broadcasts a message to all listening windows (explorer.exe in particular)
+// Broadcasts a message to all listening windows (explorer.exe in particular)
 // letting them know that the system environment has changed and should be reloaded
 fn send_setting_change_msg(message_data string) ?bool {
 	$if windows {
-		if C.SendMessageTimeout(hwnd_broadcast, 0x001A, 0, message_data.to_wide(), 2, 5000, 0) == 0 {
+		if C.SendMessageTimeout(os.hwnd_broadcast, os.wm_settingchange, 0, message_data.to_wide(), os.smto_abortifhung, 5000, 0) == 0 {
 			return error('Could not broadcast WM_SETTINGCHANGE')
 		}
 		return true
