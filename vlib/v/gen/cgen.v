@@ -1587,7 +1587,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.typeof_expr(it)
 		}
 		ast.Likely {
-			g.write('_likely_(')
+			if it.is_likely {
+				g.write('_likely_')
+			} else {
+				g.write('_unlikely_')
+			}
+			g.write('(')
 			g.expr(it.expr)
 			g.write(')')
 		}

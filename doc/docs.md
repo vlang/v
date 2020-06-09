@@ -1700,6 +1700,9 @@ boolean expression is very likely to be true, so it can generate assembly
 code, with less chance of branch misprediction. In the JS backend,
 that does nothing.
 
+`if _unlikely_(bool expression) {` similar to `_likely_(x)`, but it hints that
+the boolean expression is highly improbable. In the JS backend, that does nothing.
+
 ## Reflection via codegen
 
 Having built-in JSON support is nice, but V also allows you to create efficient

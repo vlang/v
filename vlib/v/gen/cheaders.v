@@ -255,8 +255,10 @@ void _vcleanup();
 
 #if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__) || defined(__TINYC__)
 #define _likely_(x) __builtin_expect(x, 1)
+#define _unlikely_(x) __builtin_expect((x), 0)
 #else
 #define _likely_(x) (x)
+#define _unlikely_(x) (x)
 #endif
 
 #if defined(TARGET_ORDER_IS_LITTLE)

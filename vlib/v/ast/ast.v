@@ -759,6 +759,7 @@ pub struct Likely {
 pub:
 	expr     Expr
 	pos      token.Position
+	is_likely bool // false for _unlikely_
 }
 
 pub struct TypeOf {

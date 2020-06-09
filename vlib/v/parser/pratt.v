@@ -103,7 +103,8 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				expr: expr
 			}
 		}
-		.key_likely {
+		.key_likely, .key_unlikely {
+			is_likely := p.tok.kind == .key_likely
 			p.next()
 			p.check(.lpar)
 			lpos := p.tok.position()
@@ -112,6 +113,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			node = ast.Likely{
 				expr: expr
 				pos: lpos
+				is_likely: is_likely
 			}
 		}
 		.lcbr {

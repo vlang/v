@@ -735,7 +735,12 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(')')
 		}
 		ast.Likely {
-			f.write('_likely_(')
+			if it.is_likely {
+				f.write('_likely_')
+			} else {
+				f.write('_unlikely_')
+			}
+			f.write('(')
 			f.expr(it.expr)
 			f.write(')')
 		}

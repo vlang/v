@@ -1948,7 +1948,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			ltype := c.expr(it.expr)
 			if !c.check_types(ltype, table.bool_type) {
 				ltype_sym := c.table.get_type_symbol(ltype)
-				c.error('`_likely_()` expects a boolean expression, instead it got `${ltype_sym.name}`', it.pos)
+				lname := if it.is_likely { '_likely_' } else { '_unlikely_' }
+				c.error('`${lname}()` expects a boolean expression, instead it got `${ltype_sym.name}`', it.pos)
 			}
 			return table.bool_type
 		}
