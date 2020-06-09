@@ -84,7 +84,7 @@ pub fn parse_iso8601(s string) ?Time {
 	}
 
 
-	t := new_time(Time{
+	mut t := new_time(Time{
 		year: year
 		month: month
 		day: day
@@ -110,11 +110,10 @@ pub fn parse_iso8601(s string) ?Time {
 		} else {
 			unix_time += u64(unix_offset)
 		}
+		t = unix2(int(unix_time), t.microsecond)
 	}
 
 	// Convert the time to local time
-	loc_tm := C.tm{}
-	C.localtime_r(&unix_time, &loc_tm)
 
-	return convert_ctime(loc_tm, t.microsecond)
+	return to_local_time(t)
 }

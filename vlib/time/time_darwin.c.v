@@ -81,5 +81,5 @@ fn darwin_utc() Time {
 	tv := C.timeval{}
 	C.gettimeofday(&tv, 0)
 
-	return unix2(tv.tv_sec, tv.tv_usec)
+	return unix2(int(tv.tv_sec), tv.tv_usec)
 }

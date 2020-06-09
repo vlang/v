@@ -31,6 +31,7 @@ struct SystemTime {
 fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime C._FILETIME)
 fn C.FileTimeToSystemTime()
 fn C.SystemTimeToTzSpecificLocalTime()
+fn C.localtime_s(t &C.time_t, tm &C.tm )
 
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
@@ -89,6 +90,32 @@ fn local_as_unix_time() int {
 	tm := C.localtime(&t)
 
 	return make_unix_time(tm)
+}
+
+fn to_local_time(t Time) Time {
+	st_utc := SystemTime{
+		year: u16(t.year)
+		month: u16(t.month)
+		day: u16(t.day)
+		hour: u16(t.hour)
+		minute: u16(t.minute)
+		second: u16(t.second)
+	}
+	st_local := SystemTime{}
+	C.SystemTimeToTzSpecificLocalTime(voidptr(0), &st_utc, &st_local)
+
+	t_local := Time {
+			year: st_local.year
+			month: st_local.month
+			day: st_local.day
+			hour: st_local.hour
+			minute: st_local.minute
+			second: st_local.second
+			// These are the same
+			microsecond: t.microsecond
+			unix: t.unix
+	}
+	return t_local
 }
 
 // win_now calculates current time using winapi to get higher resolution on windows
