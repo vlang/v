@@ -1,9 +1,10 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module rand
+module wyrand
 
 import math.bits
+import rand.util
 import hash.wyhash
 
 // Redefinition of some constants that we will need for pseudorandom number generation
@@ -15,7 +16,7 @@ const (
 // RNG based on the WyHash hashing algorithm
 pub struct WyRandRNG {
 mut:
-	state     u64 = time_seed_64()
+	state     u64 = util.time_seed_64()
 	has_extra bool = false
 	extra     u32
 }
@@ -30,7 +31,6 @@ pub fn (mut rng WyRandRNG) seed(seed_data []u32) {
 	rng.has_extra = false
 }
 
-
 // rng.u32() updates the PRNG state and returns the next pseudorandom u32
 [inline]
 pub fn (mut rng WyRandRNG) u32() u32 {
@@ -39,7 +39,7 @@ pub fn (mut rng WyRandRNG) u32() u32 {
 		return rng.extra
 	}
 	full_value := rng.u64()
-	lower := u32(full_value & lower_mask)
+	lower := u32(full_value & util.lower_mask)
 	upper := u32(full_value >> 32)
 	rng.extra = upper
 	rng.has_extra = true
@@ -148,13 +148,13 @@ pub fn (mut rng WyRandRNG) i64() i64 {
 // rng.int31() returns a pseudorandom 31-bit int which is non-negative
 [inline]
 pub fn (mut rng WyRandRNG) int31() int {
-	return int(rng.u32() & u31_mask) // Set the 32nd bit to 0.
+	return int(rng.u32() & util.u31_mask) // Set the 32nd bit to 0.
 }
 
 // rng.int63() returns a pseudorandom 63-bit int which is non-negative
 [inline]
 pub fn (mut rng WyRandRNG) int63() i64 {
-	return i64(rng.u64() & u63_mask) // Set the 64th bit to 0.
+	return i64(rng.u64() & util.u63_mask) // Set the 64th bit to 0.
 }
 
 // rng.intn(max) returns a pseudorandom int that lies in [0, max)
@@ -201,13 +201,13 @@ pub fn (mut rng WyRandRNG) i64_in_range(min, max i64) i64 {
 // rng.f32() returns a pseudorandom f32 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
 [inline]
 pub fn (mut rng WyRandRNG) f32() f32 {
-	return f32(rng.u32()) / max_u32_as_f32
+	return f32(rng.u32()) / util.max_u32_as_f32
 }
 
 // rng.f64() returns a pseudorandom f64 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
 [inline]
 pub fn (mut rng WyRandRNG) f64() f64 {
-	return f64(rng.u64()) / max_u64_as_f64
+	return f64(rng.u64()) / util.max_u64_as_f64
 }
 
 // rng.f32n() returns a pseudorandom f32 value in [0, max)

@@ -193,7 +193,6 @@ fn main() {
 
 fn (mut g Game) init_game() {
 	g.parse_tetros()
-	rand.seed(int(time.now().unix))
 	g.generate_tetro()
 	g.field = []
 	// Generate the field, fill it with 0's, add -1's on each edge
@@ -300,7 +299,7 @@ fn (mut g Game) delete_completed_line(y int) {
 fn (mut g Game) generate_tetro() {
 	g.pos_y = 0
 	g.pos_x = field_width / 2 - tetro_size / 2
-	g.tetro_idx = rand.next(b_tetros.len)
+	g.tetro_idx = rand.intn(b_tetros.len)
 	g.rotation_idx = 0
 	g.get_tetro()
 }

@@ -7,11 +7,10 @@ const (
 )
 
 fn main() {
-	rand.seed(int(time.now().unix))
-	rand.next(gen_max) // skip the first
+	rand.intn(gen_max) // skip the first
 	mut arr := []int{}
 	for _ in 0..gen_len {
-		arr << rand.next(gen_max)
+		arr << rand.intn(gen_max)
 	}
 	println('length of random array is $arr.len')
 	println('before quick sort whether array is sorted: ${is_sorted(arr)}')

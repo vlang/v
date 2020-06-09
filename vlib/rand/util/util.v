@@ -1,13 +1,19 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module rand
+module util
 
 import time
 
 // Commonly used constants across RNGs
-const (
-	lower_mask = u64(0x00000000ffffffff)
+pub const (
+	lower_mask     = u64(0x00000000FFFFFFFF)
+	max_u32        = 0xFFFFFFFF
+	max_u64        = 0xFFFFFFFFFFFFFFFF
+	max_u32_as_f32 = f32(max_u32) + 1
+	max_u64_as_f64 = f64(max_u64) + 1
+	u31_mask       = u32(0x7FFFFFFF)
+	u63_mask       = u64(0x7FFFFFFFFFFFFFFF)
 )
 
 // Constants taken from Numerical Recipes
@@ -16,7 +22,7 @@ fn nr_next(prev u32) u32 {
 	return prev * 1664525 + 1013904223
 }
 
-// utility function that return the required number of u32s generated from system time
+// time_seed_array is a utility function that returns the required number of u32s generated from system time
 [inline]
 pub fn time_seed_array(count int) []u32 {
 	mut seed := u32(time.now().unix_time())
@@ -28,13 +34,15 @@ pub fn time_seed_array(count int) []u32 {
 	return seed_data
 }
 
+// time_seed_32 returns a 32-bit seed geenrated from system time
 [inline]
-fn time_seed_32() u32 {
+pub fn time_seed_32() u32 {
 	return time_seed_array(1)[0]
 }
 
+// time_seed_64 returns a 64-bit seed geenrated from system time
 [inline]
-fn time_seed_64() u64 {
+pub fn time_seed_64() u64 {
 	seed_data := time_seed_array(2)
 	lower := u64(seed_data[0])
 	upper := u64(seed_data[1])
