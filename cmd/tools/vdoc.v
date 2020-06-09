@@ -573,7 +573,12 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	for dirpath in dirs {
 		cfg.vprintln('Generating docs for ${dirpath}...')
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true) or {
-			panic(err)
+			mut err_msg := err
+			if errcode == 1 {
+				err_msg += ' Use the `-m` flag if you are generating docs of a directory with multiple modules inside.'
+			}
+			eprintln(err_msg)
+			exit(1)
 		}
 		if dcs.contents.len == 0 { continue }
 		if cfg.is_multi {
