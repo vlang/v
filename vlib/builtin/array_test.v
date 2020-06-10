@@ -596,6 +596,18 @@ fn test_anon_fn_map() {
 	assert [1,2,3].map(add_num) == [2,3,4]
 }
 
+fn test_mutli_anon_fn_map() {
+	a := [1,2,3].map(fn (i int) int {
+		return i + 1
+	})
+
+	b := [1,2,3].map(fn (i int) int {
+		return i + 2
+	})
+	assert a == [2,3,4]
+	assert b == [3,4,5]
+}
+
 fn test_anon_fn_arg_map() {
 	a := [1,2,3].map(fn (i int) int {
 		return i + 1
