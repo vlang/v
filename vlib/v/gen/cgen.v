@@ -66,7 +66,8 @@ mut:
 	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
 	hotcode_definitions  strings.Builder // -live declarations & functions
 	options              strings.Builder // `Option_xxxx` types
-	json_forward_decls   strings.Builder // `Option_xxxx` types
+	json_forward_decls   strings.Builder // json type forward decls
+	enum_typedefs        strings.Builder // enum types
 	file                 ast.File
 	fn_decl              &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name       string
@@ -131,6 +132,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		hotcode_definitions: strings.new_builder(100)
 		options: strings.new_builder(100)
 		json_forward_decls: strings.new_builder(100)
+		enum_typedefs: strings.new_builder(100)
 		table: table
 		pref: pref
 		fn_decl: 0
@@ -191,6 +193,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	b.writeln(g.cheaders.str())
 	b.writeln('\n// V includes:')
 	b.writeln(g.includes.str())
+	b.writeln('\n// Enum definitions:')
+	b.writeln(g.enum_typedefs.str())
 	b.writeln('\n// V type definitions:')
 	b.writeln(g.type_definitions.str())
 	b.writeln('\n// V Option_xxx definitions:')
@@ -617,26 +621,26 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.EnumDecl {
 			enum_name := it.name.replace('.', '__')
-			g.typedefs.writeln('typedef enum {')
+			g.enum_typedefs.writeln('typedef enum {')
 			mut cur_enum_expr := ''
 			mut cur_enum_offset := 0
 			for field in it.fields {
-				g.typedefs.write('\t${enum_name}_${field.name}')
+				g.enum_typedefs.write('\t${enum_name}_${field.name}')
 				if field.has_expr {
-					g.typedefs.write(' = ')
+					g.enum_typedefs.write(' = ')
 					pos := g.out.len
 					g.expr(field.expr)
 					expr_str := g.out.after(pos)
 					g.out.go_back(expr_str.len)
-					g.typedefs.write(expr_str)
+					g.enum_typedefs.write(expr_str)
 					cur_enum_expr = expr_str
 					cur_enum_offset = 0
 				}
 				cur_value := if cur_enum_offset > 0 { '${cur_enum_expr}+${cur_enum_offset}' } else { cur_enum_expr }
-				g.typedefs.writeln(', // ${cur_value}')
+				g.enum_typedefs.writeln(', // ${cur_value}')
 				cur_enum_offset++
 			}
-			g.typedefs.writeln('} ${enum_name};\n')
+			g.enum_typedefs.writeln('} ${enum_name};\n')
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
@@ -3309,8 +3313,13 @@ fn (mut g Gen) insert_before_stmt(s string) {
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.Type) {
 	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
+	is_none_ok := mr_styp == 'void'
 	g.writeln(';') // or')
-	g.writeln('if (!${cvar_name}.ok) {')
+	if is_none_ok {
+		g.writeln('if (!${cvar_name}.ok && !${cvar_name}.is_none) {')
+	} else {
+		g.writeln('if (!${cvar_name}.ok) {')
+	}
 	if or_block.kind == .block {
 		g.writeln('\tstring err = ${cvar_name}.v_error;')
 		g.writeln('\tint errcode = ${cvar_name}.ecode;')
@@ -3344,8 +3353,8 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			g.stmts(stmts)
 		}
 	} else if or_block.kind == .propagate {
-		g.write_defer_stmts()
 		if g.file.mod.name == 'main' && g.cur_fn.name == 'main' {
+			// No reason to write defers here if we are going to panic this process
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), ${cvar_name}.v_error );')
