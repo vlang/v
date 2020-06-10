@@ -3733,9 +3733,13 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 				styp := g.typ(it.receiver_type)
 				g.type_definitions.writeln('\t$styp arg0;')
 			}
-			for i, arg in it.args {
-				styp := g.typ(arg.typ)
-				g.type_definitions.writeln('\t$styp arg${i+1};')
+			if it.args.len == 0 {
+				g.type_definitions.writeln('EMPTY_STRUCT_DECLARATION;')
+			} else {
+				for i, arg in it.args {
+					styp := g.typ(arg.typ)
+					g.type_definitions.writeln('\t$styp arg${i+1};')
+				}
 			}
 			g.type_definitions.writeln('} $wrapper_struct_name;')
 			g.type_definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg);')
