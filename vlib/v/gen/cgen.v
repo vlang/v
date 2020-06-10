@@ -3346,7 +3346,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		}
 	} else if or_block.kind == .propagate {
 		if g.file.mod.name == 'main' && g.cur_fn.name == 'main' {
-			// No reason to write defers here if we are going to panic this process
+			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), ${cvar_name}.v_error );')
@@ -3354,6 +3354,11 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 				g.writeln('\tv_panic(${cvar_name}.v_error);')
 			}
 		} else {
+			// In ordinary functions, `opt()?` call is sugar for:
+			// `opt() or { return error(err) }`
+			// Since we *do* return, first we have to ensure that 
+			// the defered statements are generated.
+			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
 			styp := g.typ(g.fn_decl.return_type)
 			g.writeln('\treturn *($styp *)&$cvar_name;')
