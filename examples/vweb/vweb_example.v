@@ -17,8 +17,11 @@ fn main() {
 	vweb.run<App>(port)
 }
 
-pub fn (mut app App) init() {
+pub fn (mut app App) init_once() {
 	app.vweb.handle_static('.')
+}
+
+pub fn (mut app App) init() {
 }
 
 pub fn (mut app App) json_endpoint() {
@@ -32,9 +35,6 @@ pub fn (mut app App) index() {
 	hello := 'Hello world from vweb'
 	numbers := [1,2,3]
 	$vweb.html()
-}
-
-pub fn (mut app App) reset() {
 }
 
 pub fn (mut app App) text() {

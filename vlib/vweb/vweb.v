@@ -134,7 +134,7 @@ pub fn run<T>(port int) {
 }
 
 pub fn run_app<T>(mut app T, port int) {
-	println('Running a Vweb app on http://localhost:$port ...')
+	println('Running a Vweb app on http://localhost:$port')
 	l := net.listen(port) or { panic('failed to listen') }
 	app.vweb = Context{}
 	app.init_once()
@@ -173,8 +173,10 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	//mut app := app_
 	//first_line := strip(lines[0])
 	first_line := conn.read_line()
-	println('firstline="$first_line"')
-	$if debug { println(first_line) }
+	$if debug {
+		println('firstline="$first_line"')
+	}
+
 	// Parse the first line
 	// "GET / HTTP/1.1"
 	//first_line := s.all_before('\n')
@@ -282,9 +284,9 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	}
 
 	// Call the right action
-	//$if debug {
+	$if debug {
 		println('action=$action')
-	//}
+	}
 	app.init()
 	app.$action()
 	/*
