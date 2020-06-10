@@ -58,10 +58,7 @@ pub fn compile_template(content, fn_name string) string {
 				continue
 			}
 			mut file_name := line[pos + 9..]
-			if !file_name.ends_with('.html') && !file_name.ends_with('.htm') {
-				file_name = '${file_name}.html'
-			}
-			file_path := os.join_path('templates', file_name)
+			file_path := os.join_path('templates', '${file_name}.html')
 			mut file_content := os.read_file(file_path) or {
 				panic('reading file $file_name failed')
 			}
