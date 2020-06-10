@@ -4,7 +4,7 @@
 
 module http
 
-#flag -l Urlmon
+#flag -l urlmon
 
 #include <urlmon.h>
 
