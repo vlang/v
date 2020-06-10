@@ -244,11 +244,11 @@ pub fn (mut d Doc) generate() ?bool {
 	// get all files
 	base_path := if os.is_dir(d.input_path) { d.input_path } else { os.real_path(os.base_dir(d.input_path)) }
 	project_files := os.ls(base_path) or {
-		panic(err)
+		return error_with_code(err, 0)
 	}
 	v_files := d.prefs.should_compile_filtered_files(base_path, project_files)
 	if v_files.len == 0 {
-		return error('vdoc: No valid V files were found.')
+		return error_with_code('vdoc: No valid V files were found.', 1)
 	}
 	// parse files
 	mut file_asts := []ast.File{}
@@ -383,7 +383,7 @@ pub fn generate(input_path string, pub_only, with_comments bool) ?Doc {
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
 	doc.generate() or {
-		return error(err)
+		return error_with_code(err, errcode)
 	}
 	return doc
 }
