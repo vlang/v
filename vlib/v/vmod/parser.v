@@ -187,6 +187,47 @@ fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
 	return vals, idx
 }
 
+fn get_map_content(tokens []Token, st_idx int) ?(map[string]string, int) {
+	mut m := map[string]string
+	mut idx := st_idx
+
+	if tokens[idx].typ != .labr {
+		return error('vmod: not a valid map')
+	}
+
+	idx++
+	for {
+		mut tok := tokens[idx]
+		match tok.typ {
+			.str {
+				m_key := tok.val
+				// TODO: error without colon
+				idx += 2
+				tok = tokens[idx]
+				//TODO: error for wrong value
+				m_val := tok.val
+
+				m[m_key] = m_val
+
+				idx += if tokens[idx + 1].typ == .comma {
+					2
+				} else {
+					1
+				}
+			}
+			.rabr {
+				idx++
+				break
+			}
+			else {
+				return error('vmod: invalid token "$tok.val"')
+			}
+		}
+	}
+
+	return m, idx
+}
+
 fn (mut p Parser) parse() ?Manifest {
 	err_label := 'vmod:'
 	if p.scanner.text.len == 0 {
@@ -246,45 +287,13 @@ fn (mut p Parser) parse() ?Manifest {
 						continue
 					}
 					'scripts' {
-						mut m := map[string]string
-						mut idx := i + 1
-
-						if tokens[idx].typ != .labr {
-							return error('vmod: not a valid map')
-						}
-
-						idx++
-						for {
-							mut ttok := tokens[idx]
-							match ttok.typ {
-								.str {
-									m_key := ttok.val
-									// TODO: error without colon
-									idx += 2
-									ttok = tokens[idx]
-									//TODO: error for wrong value
-									m_val := ttok.val
-
-									m[m_key] = m_val
-
-									idx += if tokens[idx + 1].typ == .comma {
-										2
-									} else {
-										1
-									}
-								}
-								.rabr {
-									idx++
-									break
-								}
-								else {
-									return error('vmod: invalid token "$tok.val"')
-								}
-							}
+						m, idx := get_map_content(tokens, i + 1) or {
+							return error(err)
 						}
 
 						mn.scripts = m
 						i = idx
+						continue
 					}
 					else {
 						if tokens[i + 1].typ == .labr {
