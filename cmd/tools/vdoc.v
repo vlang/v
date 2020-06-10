@@ -441,13 +441,13 @@ fn (cfg DocConfig) gen_plaintext(idx int) string {
 	dcs := cfg.docs[idx]
 	mut pw := strings.new_builder(200)
 	pw.writeln('${dcs.head.content}\n')
-	if dcs.head.comment.len > 0 {
+	if dcs.head.comment.trim_space().len > 0 {
 		pw.writeln('// ' + dcs.head.comment.replace('\n', '\n// ') + '\n')
 	}
 	for cn in dcs.contents {
 		pw.writeln(cn.content)
 		if cn.comment.len > 0 {
-			pw.writeln('\n' + '\/\/ ' + cn.comment.trim_space())
+			pw.writeln('\/\/ ' + cn.comment.trim_space() + '\n')
 		}
 		if cfg.show_loc {
 			pw.writeln('Location: ${cn.file_path}:${cn.pos.line}:${cn.pos.col}\n\n')

@@ -119,7 +119,6 @@ pub fn (mut a array) sort_with_compare(compare voidptr) {
 // In the current state only that would work:
 // i := 3
 // a.insert(0, &i)
-// ----------------------------
 pub fn (mut a array) insert(i int, val voidptr) {
 	$if !no_bounds_checking? {
 		if i < 0 || i > a.len {
@@ -135,7 +134,6 @@ pub fn (mut a array) insert(i int, val voidptr) {
 
 // TODO array.prepend is broken
 // It depends on array.insert
-// -----------------------------
 pub fn (mut a array) prepend(val voidptr) {
 	a.insert(0, val)
 }
