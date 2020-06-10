@@ -201,10 +201,18 @@ fn get_map_content(tokens []Token, st_idx int) ?(map[string]string, int) {
 		match tok.typ {
 			.str {
 				m_key := tok.val
-				// TODO: error without colon
+
+				if tokens[idx + 1].typ != .colon {
+					return error('vmod: invalid separator "${tokens[idx+1].val}"')
+				}
+
 				idx += 2
 				tok = tokens[idx]
-				//TODO: error for wrong value
+
+				if tok.typ != .str {
+					return error('vmod: invalid token type "$tok.typ". Expecting string')
+				}
+
 				m_val := tok.val
 
 				m[m_key] = m_val
