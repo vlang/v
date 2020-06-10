@@ -700,8 +700,10 @@ pub fn (table &Table) type_to_str(t Type) string {
 	if sym.kind == .array || 'array_' in res {
 		res = res.replace('array_', '[]')
 	}
+	mut map_start := ''
 	if sym.kind == .map || 'map_string_' in res {
 		res = res.replace('map_string_', 'map[string]')
+		map_start = 'map[string]'
 	}
 	// mod.submod.submod2.Type => submod2.Type
 	if res.contains('.') {
@@ -711,6 +713,9 @@ pub fn (table &Table) type_to_str(t Type) string {
 		}
 		if sym.kind == .array && !res.starts_with('[]') {
 			res = '[]' + res
+		}
+		if sym.kind == .map && !res.starts_with('map') {
+			res = map_start + res
 		}
 	}
 	nr_muls := t.nr_muls()
