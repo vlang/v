@@ -31,6 +31,7 @@ struct SystemTime {
 fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime C._FILETIME)
 fn C.FileTimeToSystemTime()
 fn C.SystemTimeToTzSpecificLocalTime()
+fn C.localtime_s(t &C.time_t, tm &C.tm )
 
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
@@ -91,9 +92,36 @@ fn local_as_unix_time() int {
 	return make_unix_time(tm)
 }
 
+fn to_local_time(t Time) Time {
+	st_utc := SystemTime{
+		year: u16(t.year)
+		month: u16(t.month)
+		day: u16(t.day)
+		hour: u16(t.hour)
+		minute: u16(t.minute)
+		second: u16(t.second)
+	}
+	st_local := SystemTime{}
+	C.SystemTimeToTzSpecificLocalTime(voidptr(0), &st_utc, &st_local)
+
+	t_local := Time {
+			year: st_local.year
+			month: st_local.month
+			day: st_local.day
+			hour: st_local.hour
+			minute: st_local.minute
+			second: st_local.second
+			// These are the same
+			microsecond: t.microsecond
+			unix: t.unix
+	}
+	return t_local
+}
+
 // win_now calculates current time using winapi to get higher resolution on windows
-// GetSystemTimeAsFileTime is used. It can resolve time down to millisecond
-// other more precice methods can be implemented in the future
+// GetSystemTimeAsFileTime is used and converted to local time. It can resolve time
+// down to millisecond. Other more precice methods can be implemented in the future
+[inline]
 fn win_now() Time {
 
 	ft_utc := C._FILETIME{}
@@ -114,6 +142,32 @@ fn win_now() Time {
 		second: st_local.second
 		microsecond: st_local.millisecond*1000
 		unix: u64(st_local.unix_time())
+	}
+
+	return t
+}
+
+// win_utc calculates current time using winapi to get higher resolution on windows
+// GetSystemTimeAsFileTime is used. It can resolve time down to millisecond
+// other more precice methods can be implemented in the future
+[inline]
+fn win_utc() Time {
+
+	ft_utc := C._FILETIME{}
+	C.GetSystemTimeAsFileTime(&ft_utc)
+
+	st_utc := SystemTime{}
+	C.FileTimeToSystemTime(&ft_utc, &st_utc)
+
+	t := Time {
+		year: st_utc.year
+		month: st_utc.month
+		day: st_utc.day
+		hour: st_utc.hour
+		minute: st_utc.minute
+		second: st_utc.second
+		microsecond: st_utc.millisecond*1000
+		unix: u64(st_utc.unix_time())
 	}
 
 	return t
@@ -146,6 +200,21 @@ pub fn linux_now() Time {
 pub fn solaris_now() Time {
 	return Time{}
 }
+
+pub fn darwin_utc() Time {
+	return Time{}
+}
+
+// dummy to compile with all compilers
+pub fn linux_utc() Time {
+	return Time{}
+}
+
+// dummy to compile with all compilers
+pub fn solaris_utc() Time {
+	return Time{}
+}
+
 
 // dummy to compile with all compilers
 pub struct C.timeval {

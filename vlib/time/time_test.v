@@ -161,8 +161,23 @@ fn test_now() {
 	assert now.minute 			>= 0
 	assert now.minute 			< 60
 	assert now.second 			>=0
-	assert now.second 			< 60
+	assert now.second 			<= 60 // <= 60 cause of leap seconds
 	assert now.microsecond 		>= 0
 	assert now.microsecond 		< 1000000
 
+}
+
+fn test_utc() {
+	now := time.utc()
+
+	// The year the test was built
+	assert now.year 			>= 2020
+	assert now.month 			> 0
+	assert now.month 			<= 12
+	assert now.minute 			>= 0
+	assert now.minute 			< 60
+	assert now.second 			>=0
+	assert now.second 			<= 60 // <= 60 cause of leap seconds
+	assert now.microsecond 		>= 0
+	assert now.microsecond 		< 1000000
 }

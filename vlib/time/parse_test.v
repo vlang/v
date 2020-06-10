@@ -45,30 +45,27 @@ fn test_parse_rfc2822_invalid() {
 	assert false
 }
 
-fn test_rfc8601_parse_utc() {
-	ok_format := '2020-06-02T15:38:06.015959+00:00'
+fn test_iso8601_parse_utc_diff() {
+	format_utc 	:= '2020-06-05T15:38:06.015959+00:00'
+	format_cest := '2020-06-05T15:38:06.015959+02:00'
 
-	t := time.parse_rfc8601(ok_format) or {panic(err)}
+	t_utc 	:= time.parse_iso8601(format_utc) or {panic(err)}
+	t_cest 	:= time.parse_iso8601(format_cest) or {panic(err)}
 
-	assert t.year == 2020
-	assert t.month == 6
-	assert t.day == 2
-	assert t.hour == 15
-	assert t.minute == 38
-	assert t.second == 6
-	assert t.microsecond == 15959
-}
-
-fn test_rfc8601_parse_cest() {
-	ok_format := '2020-06-02T15:38:06.015959+02:00'
-
-	t := time.parse_rfc8601(ok_format) or {panic(err)}
-
-	assert t.year == 2020
-	assert t.month == 6
-	assert t.day == 2
-	assert t.hour == 17
-	assert t.minute == 38
-	assert t.second == 6
-	assert t.microsecond == 15959
+	assert t_utc.year  == 2020
+	assert t_cest.year == 2020
+	assert t_utc.month == 6
+	assert t_cest.month == 6
+	assert t_utc.day == 5
+	assert t_cest.day == 5
+	// if it was formatted in utc it should be
+	// two hours before if it was formatted in
+	// cest time
+	assert t_utc.hour == (t_cest.hour + 2)
+	assert t_utc.minute == 38
+	assert t_cest.minute == 38
+	assert t_utc.second == 6
+	assert t_cest.second == 6
+	assert t_utc.microsecond == 15959
+	assert t_cest.microsecond == 15959
 }

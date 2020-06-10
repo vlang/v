@@ -85,6 +85,7 @@ pub struct C.timeval {
 fn C.localtime(t &C.time_t) &C.tm
 fn C.time(t &C.time_t) C.time_t
 
+
 // now returns current local time.
 pub fn now() Time {
 	$if macos {
@@ -104,6 +105,27 @@ pub fn now() Time {
 	t := C.time(0)
 	now := C.localtime(&t)
 	return convert_ctime(now, 0)
+}
+
+// utc returns the current time in utc
+pub fn utc() Time {
+	$if macos {
+		return darwin_utc()
+	}
+	$if windows {
+		return win_utc()
+	}
+	$if solaris {
+		return solaris_utc()
+	}
+	$if linux {
+		return linux_utc()
+	}
+	// defaults to most common feature, the microsecond precision is not available
+	// in this API call
+	t := C.time(0)
+	_ = C.time(&t)
+	return unix2(int(t), 0)
 }
 
 // smonth returns month name.

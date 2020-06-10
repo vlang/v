@@ -12,12 +12,23 @@ struct C.tm {
 	tm_mday int
 	tm_mon  int
 	tm_year int
+	tm_wday int
+	tm_yday int
+	tm_isdst int
 }
 
 fn C.timegm(&tm) time_t
+fn C.localtime_r(t &C.time_t, tm &C.tm )
 
 fn make_unix_time(t C.tm) int {
 	return int(C.timegm(&t))
+}
+
+fn to_local_time(t Time) Time {
+	loc_tm := C.tm{}
+	C.localtime_r(&t.unix, &loc_tm)
+
+	return convert_ctime(loc_tm, t.microsecond)
 }
 
 type time_t voidptr
@@ -50,11 +61,17 @@ fn vpc_now() u64 {
 	return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
 }
 
+
+
 // dummy to compile with all compilers
 pub fn win_now() Time {
 	return Time{}
 }
 
+// dummy to compile with all compilers
+pub fn win_utc() Time {
+	return Time{}
+}
 
 // dummy to compile with all compilers
 pub struct C.timeval {
