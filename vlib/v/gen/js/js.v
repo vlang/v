@@ -1122,9 +1122,41 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		name = g.js_name(it.name)
 	}
 	g.expr(it.left)
-	if it.is_method {
-		// example: foo.bar.baz()
+	if it.is_method { // foo.bar.baz()
+		sym := g.table.get_type_symbol(it.receiver_type)
 		g.write('.')
+
+		if sym.kind == .array && it.name in ['map', 'filter'] {
+			// Prevent 'it' from getting shadowed inside the match
+			node := it
+			g.write(it.name)
+			g.write('(')
+			match node.args[0].expr {
+				ast.AnonFn {
+					g.gen_fn_decl(it.decl)
+						g.write(')')
+						return
+					}
+				ast.Ident {
+					if it.kind == .function {
+						g.write(g.js_name(it.name))
+						g.write(')')
+						return
+					} else if it.kind == .variable {
+						v_sym := g.table.get_type_symbol(it.var_info().typ)
+						if v_sym.kind == .function {
+							g.write(g.js_name(it.name))
+							g.write(')')
+							return
+						}
+					}
+				} else {}
+			}
+			g.write('it => ')
+			g.expr(node.args[0].expr)
+			g.write(')')
+			return
+		}
 	} else {
 		if name in builtin_globals {
 			g.write('builtin.')
