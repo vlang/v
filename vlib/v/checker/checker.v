@@ -1984,15 +1984,12 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return table.void_type
 	}
 	// second use
-	if ident.kind == .variable {
+	if ident.kind in [.constant, .global, .variable] {
 		info := ident.info as ast.IdentVar
 		// if info.typ == table.t_type {
 		// Got a var with type T, return current generic type
 		// return c.cur_generic_type
 		// }
-		return info.typ
-	} else if ident.kind == .constant {
-		info := ident.info as ast.IdentVar
 		return info.typ
 	} else if ident.kind == .function {
 		info := ident.info as ast.IdentFn
