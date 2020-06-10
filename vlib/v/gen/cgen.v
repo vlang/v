@@ -3189,6 +3189,10 @@ fn (mut g Gen) gen_map(node ast.CallExpr) {
 	g.writeln('.data)[$i];')
 	g.write('\t$ret_elem_type ti = ')
 	match node.args[0].expr {
+		ast.AnonFn {
+			g.gen_anon_fn_decl(it)
+			g.write('${it.decl.name}(it)')
+		}
 		ast.Ident {
 			if it.kind == .function {
 				g.write('${it.name}(it)')
@@ -3203,10 +3207,6 @@ fn (mut g Gen) gen_map(node ast.CallExpr) {
 			} else {
 				g.expr(node.args[0].expr)
 			}
-		}
-		ast.AnonFn {
-			g.gen_anon_fn_decl(it)
-			g.write('${it.decl.name}(it)')
 		}
 		else {
 			g.expr(node.args[0].expr)
@@ -3241,6 +3241,10 @@ fn (mut g Gen) gen_filter(node ast.CallExpr) {
 	g.writeln('.data)[i];')
 	g.write('if (')
 	match node.args[0].expr {
+		ast.AnonFn {
+			g.gen_anon_fn_decl(it)
+			g.write('${it.decl.name}(it)')
+		}
 		ast.Ident {
 			if it.kind == .function {
 				g.write('${it.name}(it)')
@@ -3255,10 +3259,6 @@ fn (mut g Gen) gen_filter(node ast.CallExpr) {
 			} else {
 				g.expr(node.args[0].expr)
 			}
-		}
-		ast.AnonFn {
-			g.gen_anon_fn_decl(it)
-			g.write('${it.decl.name}(it)')
 		}
 		else {
 			g.expr(node.args[0].expr)
