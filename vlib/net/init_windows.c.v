@@ -2,7 +2,7 @@ module net
 
 #flag -lws2_32
 #include <winsock2.h>
-#include <Ws2tcpip.h>
+#include <ws2tcpip.h>
 
 struct C.WSAData {
 mut:
