@@ -113,7 +113,7 @@ pub fn compile_template(content, fn_name string) string {
 		}
 	}
 	s.writeln(str_end)
-	s.writeln('tmpl_res_$fn_name := sb.str() ')
+	s.writeln('_tmpl_res_$fn_name := sb.str() ')
 	s.writeln('}')
 	s.writeln('// === end of vweb html template ===')
 	return s.str()

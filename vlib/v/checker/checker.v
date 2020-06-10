@@ -195,7 +195,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 }
 
 fn (mut c Checker) check_valid_snake_case(name, identifier string, pos token.Position) {
-	if name[0] == `_` {
+	if name[0] == `_` && !c.pref.is_vweb {
 		c.error('$identifier `$name` cannot start with `_`', pos)
 	}
 	if util.contains_capital(name) {
@@ -1765,14 +1765,14 @@ pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 
 // TODO node must be mut
 pub fn (mut c Checker) expr(node ast.Expr) table.Type {
-
 	c.expr_level++
-	defer { c.expr_level -- }
+	defer {
+		c.expr_level--
+	}
 	if c.expr_level > 200 {
 		c.error('checker: too many expr levels: $c.expr_level ', node.position())
 		return table.void_type
 	}
-
 	match mut node {
 		ast.AnonFn {
 			keep_fn := c.cur_fn
@@ -1851,7 +1851,12 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.ComptimeCall {
 			it.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(it.left)))
 			if it.is_vweb {
-				mut c2 := new_checker(c.table, c.pref)
+				x := *c.pref
+				xx := {
+					x |
+					is_vweb: true
+				} // TODO assoc parser bug
+				mut c2 := new_checker(c.table, xx)
 				c2.check(it.vweb_tmpl)
 				c.warnings << c2.warnings
 				c.errors << c2.errors
@@ -1953,7 +1958,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			if !c.check_types(ltype, table.bool_type) {
 				ltype_sym := c.table.get_type_symbol(ltype)
 				lname := if it.is_likely { '_likely_' } else { '_unlikely_' }
-				c.error('`${lname}()` expects a boolean expression, instead it got `${ltype_sym.name}`', it.pos)
+				c.error('`${lname}()` expects a boolean expression, instead it got `${ltype_sym.name}`',
+					it.pos)
 			}
 			return table.bool_type
 		}

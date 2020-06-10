@@ -112,6 +112,7 @@ pub mut:
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	is_parallel bool
 	error_limit int
+	is_vweb bool // skip _ var warning in templates
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
