@@ -30,9 +30,9 @@ pub fn compile_template(content, fn_name string) string {
 	// lines := os.read_lines(path)
 	mut html := content
 	mut header := ''
-	if os.exists('header.html') && html.contains('@header') {
-		h := os.read_file('header.html') or {
-			panic('reading file header.html failed')
+	if os.exists('templates/header.html') && html.contains('@header') {
+		h := os.read_file('templates/header.html') or {
+			panic('reading file templates/header.html failed')
 		}
 		header = h.replace("\'", '"')
 		html = header + html

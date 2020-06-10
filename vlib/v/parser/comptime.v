@@ -86,20 +86,21 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	p.check(.rpar)
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
-	mut path := p.cur_fn_name + '.html'
-	// if p.pref.is_verbose {
-	println('>>> compiling vweb HTML template "$path"')
-	// }
+	html_name := '${p.cur_fn_name}.html'
+	// Looking next to the vweb program
+	dir := os.dir(p.scanner.file_path)
+	mut path := os.join_path(dir, html_name)
 	if !os.exists(path) {
-		// Can't find the template file in current directory,
-		// try looking next to the vweb program, in case it's run with
-		// v path/to/vweb_app.v
-		path = os.dir(p.scanner.file_path) + '/' + path
+		// can be in `templates/`
+		path = os.join_path(dir, 'templates', html_name)
 		if !os.exists(path) {
-			p.error('vweb HTML template "$path" not found')
+			p.error('vweb HTML template "$html_name" not found')
 		}
 		// println('path is now "$path"')
 	}
+	// if p.pref.is_verbose {
+	println('>>> compiling vweb HTML template "$path"')
+	// }
 	v_code := tmpl.compile_file(path, p.cur_fn_name)
 	mut scope := &ast.Scope{
 		start_pos: 0
