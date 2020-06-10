@@ -47,7 +47,7 @@ fn main() {
     c.a.update('another update')
     println(c)
 
-    _ := "done"
+    _ = "done"
     {
         _ = "block"
     }
@@ -57,10 +57,10 @@ fn main() {
 
     debugger := 'JS keywords'
     // TODO: Implement interpolation
-    await := super + ': ' + debugger
+    await := '$super: $debugger'
     mut finally := 'implemented'
 
-    JS.console.log(await, finally)
+    println('$await $finally')
 
     dun := i_am_a_const * 20
     dunn := hl.hello // External constant
