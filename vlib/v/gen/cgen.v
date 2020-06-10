@@ -1357,18 +1357,22 @@ fn (g &Gen) autofree_var_call(free_fn_name string, v ast.Var) string {
 	}
 }
 
+fn (mut g Gen) gen_anon_fn_decl(it ast.AnonFn) {
+	pos := g.out.len
+	def_pos := g.definitions.len
+	g.stmt(it.decl)
+	fn_body := g.out.after(pos)
+	g.out.go_back(fn_body.len)
+	g.definitions.go_back(g.definitions.len - def_pos)
+	g.definitions.write(fn_body)
+}
+
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
 	match node {
 		ast.AnonFn {
 			// TODO: dont fiddle with buffers
-			pos := g.out.len
-			def_pos := g.definitions.len
-			g.stmt(it.decl)
-			fn_body := g.out.after(pos)
-			g.out.go_back(fn_body.len)
-			g.definitions.go_back(g.definitions.len - def_pos)
-			g.definitions.write(fn_body)
+			g.gen_anon_fn_decl(it)
 			fsym := g.table.get_type_symbol(it.typ)
 			g.write('&${fsym.name}')
 		}
@@ -3189,6 +3193,10 @@ fn (mut g Gen) gen_map(node ast.CallExpr) {
 	g.writeln('.data)[$i];')
 	g.write('\t$ret_elem_type ti = ')
 	match node.args[0].expr {
+		ast.AnonFn {
+			g.gen_anon_fn_decl(it)
+			g.write('${it.decl.name}(it)')
+		}
 		ast.Ident {
 			if it.kind == .function {
 				g.write('${it.name}(it)')
@@ -3203,16 +3211,6 @@ fn (mut g Gen) gen_map(node ast.CallExpr) {
 			} else {
 				g.expr(node.args[0].expr)
 			}
-		}
-		ast.AnonFn {
-			pos := g.out.len
-			def_pos := g.definitions.len
-			g.stmt(it.decl)
-			fn_body := g.out.after(pos)
-			g.out.go_back(fn_body.len)
-			g.definitions.go_back(g.definitions.len - def_pos)
-			g.definitions.write(fn_body)
-			g.write('${it.decl.name}(it)')
 		}
 		else {
 			g.expr(node.args[0].expr)
@@ -3247,6 +3245,10 @@ fn (mut g Gen) gen_filter(node ast.CallExpr) {
 	g.writeln('.data)[i];')
 	g.write('if (')
 	match node.args[0].expr {
+		ast.AnonFn {
+			g.gen_anon_fn_decl(it)
+			g.write('${it.decl.name}(it)')
+		}
 		ast.Ident {
 			if it.kind == .function {
 				g.write('${it.name}(it)')
@@ -3261,16 +3263,6 @@ fn (mut g Gen) gen_filter(node ast.CallExpr) {
 			} else {
 				g.expr(node.args[0].expr)
 			}
-		}
-		ast.AnonFn {
-			pos := g.out.len
-			def_pos := g.definitions.len
-			g.stmt(it.decl)
-			fn_body := g.out.after(pos)
-			g.out.go_back(fn_body.len)
-			g.definitions.go_back(g.definitions.len - def_pos)
-			g.definitions.write(fn_body)
-			g.write('${it.decl.name}(it)')
 		}
 		else {
 			g.expr(node.args[0].expr)
