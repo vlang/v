@@ -49,7 +49,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		eprintln('INFO: compile with `v -live $g.pref.path `, if you want to use the [live] function ${it.name} .')
 	}
 	//
-	g.reset_tmp_count()
 	if is_main {
 		if g.pref.os == .windows {
 			if g.is_gui_app() {
