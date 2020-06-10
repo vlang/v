@@ -17,7 +17,7 @@ fn main() {
 	vweb.run<App>(port)
 }
 
-pub fn (mut app App) init() {
+pub fn (mut app App) init_once() {
 	// Arbitary mime type.
 	app.vweb.serve_static('/favicon.ico', 'favicon.ico', 'img/x-icon')
 	// Automatically make available known static mime types found in given directory.
@@ -27,7 +27,7 @@ pub fn (mut app App) init() {
 	//app.vweb.handle_static('.')
 }
 
-pub fn (mut app App) reset() {}
+pub fn (mut app App) init() {}
 
 fn (mut app App) index() {
 	// We can dynamically specify which assets are to be used in template.
