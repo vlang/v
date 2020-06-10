@@ -97,7 +97,6 @@ fn main_v() {
 			call_name := args[1]
 			script := scripts[call_name]
 
-			// println(script)
 			res := os.exec(script) or { panic(err) }
 			println(res.output)
 			return

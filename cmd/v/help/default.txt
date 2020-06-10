@@ -25,13 +25,14 @@ V supports the following commands:
    up                Run the V self-updater.
    self [-prod]      Run the V self-compiler, use -prod to optimize compilation.
    version           Print the version text and exits.
-* Module/package management:   
+* Module/package management:
    install           Install a module from VPM.
    remove            Remove a module that was installed from VPM.
    search            Search for a module from VPM.
    update            Update an installed module from VPM.
 * Others:
    build             Build a V code in the provided path (the default, so you can skip the word `build`).
+   run-mod           Execute a v.mod script.
    translate         Translate C code to V (coming soon in 0.3).
 
 Use "v help <command>" for more information about a command, example: `v help build`, `v help build-c`
