@@ -210,7 +210,7 @@ fn get_map_content(tokens []Token, st_idx int) ?(map[string]string, int) {
 				tok = tokens[idx]
 
 				if tok.typ != .str {
-					return error('vmod: invalid token type "$tok.typ". Expecting string')
+					return error('vmod: invalid token "$tok.val"')
 				}
 
 				m_val := tok.val
