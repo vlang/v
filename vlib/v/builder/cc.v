@@ -21,6 +21,10 @@ https://github.com/vlang/v/issues/new/choose
 You can also use #help on Discord: https://discord.gg/vlang
 ')
 
+const (
+	mingw_cc = 'x86_64-w64-mingw32-gcc'
+)
+
 
 fn todo() {
 }
@@ -564,8 +568,7 @@ fn (mut c Builder) cc_windows_cross() {
 		println(os.user_os())
 		panic('your platform is not supported yet')
 	}
-	mut cmd := 'x86_64-w64-mingw32-gcc'
-	cmd += ' $optimization_options $debug_options -std=gnu11 $args -municode'
+	mut cmd := '$mingw_cc $optimization_options $debug_options -std=gnu11 $args -municode'
 	//cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
 	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)
@@ -609,8 +612,17 @@ fn (c &Builder) build_thirdparty_obj_files() {
 	}
 }
 
-fn (v &Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CFlag) {
+fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CFlag) {
 	obj_path := os.real_path(path)
+	if v.pref.os == .windows {
+		// Cross compiling for Windows
+		$if !windows {
+			if os.exists(obj_path) {
+				os.rm(obj_path)
+			}
+			v.pref.ccompiler = mingw_cc
+		}
+	}
 	if os.exists(obj_path) {
 		return
 	}
