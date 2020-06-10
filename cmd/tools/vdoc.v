@@ -373,7 +373,9 @@ fn (cfg DocConfig) gen_html(idx int) string {
 			<ul>')
 	if cfg.is_multi && cfg.docs.len > 1 {
 		mut submod_prefix := ''
-		for i, doc in cfg.docs {
+		mut docs := cfg.docs.filter(it.head.name == 'builtin')
+		docs << cfg.docs.filter(it.head.name != 'builtin')
+		for i, doc in docs {
 			if i-1 >= 0 && doc.head.name.starts_with(submod_prefix + '.') {
 				continue
 			}
@@ -480,7 +482,9 @@ fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 
 fn (cfg DocConfig) render() map[string]string {
 	mut docs := map[string]string
+
 	for i, doc in cfg.docs {
+		// since builtin is generated first, ignore it
 		mut name := if doc.head.name == 'README' {
 			'index'
 		} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
