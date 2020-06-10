@@ -66,8 +66,8 @@ mut:
 	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
 	hotcode_definitions  strings.Builder // -live declarations & functions
 	options              strings.Builder // `Option_xxxx` types
-	json_forward_decls   strings.Builder // `Option_xxxx` types
-	enum_typedefs        strings.Builder // `Option_xxxx` types
+	json_forward_decls   strings.Builder // json type forward decls
+	enum_typedefs        strings.Builder // enum types
 	file                 ast.File
 	fn_decl              &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name       string
