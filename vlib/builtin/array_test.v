@@ -529,6 +529,21 @@ fn test_filter() {
 	//assert arr.filter(arr % 2).len == 5
 }
 
+fn test_anon_fn_filter() {
+	filter_num := fn (i int) bool {
+		return i % 2 == 0
+	}
+	assert [1,2,3,4,5].filter(filter_num) == [2,4]
+}
+
+fn test_anon_fn_arg_filter() {
+	a := [1,2,3,4].filter(fn (i int) bool {
+		return i % 2 == 0
+	})
+
+	assert a == [2,4]
+}
+
 fn map_test_helper_1(i int) int {
 	return i * i
 }
