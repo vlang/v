@@ -1116,18 +1116,6 @@ fn (mut g JsGen) gen_assign_expr(it ast.AssignExpr) {
 
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	mut name := ''
-	/*
-	if sym.kind == .array {
-		if it.name == 'map' {
-			g.gen_array_map(it)
-			return
-		}
-		else if it.name == 'filter' {
-			g.gen_array_filter(it)
-			return
-		}
-	}
-	*/
 	if it.name.starts_with('JS.') {
 		name = it.name[3..]
 	} else {
