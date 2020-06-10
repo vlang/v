@@ -67,6 +67,7 @@ mut:
 	hotcode_definitions  strings.Builder // -live declarations & functions
 	options              strings.Builder // `Option_xxxx` types
 	json_forward_decls   strings.Builder // `Option_xxxx` types
+	enum_typedefs        strings.Builder // `Option_xxxx` types
 	file                 ast.File
 	fn_decl              &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name       string
@@ -131,6 +132,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		hotcode_definitions: strings.new_builder(100)
 		options: strings.new_builder(100)
 		json_forward_decls: strings.new_builder(100)
+		enum_typedefs: strings.new_builder(100)
 		table: table
 		pref: pref
 		fn_decl: 0
@@ -191,6 +193,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	b.writeln(g.cheaders.str())
 	b.writeln('\n// V includes:')
 	b.writeln(g.includes.str())
+	b.writeln('\n// Enum definitions:')
+	b.writeln(g.enum_typedefs.str())
 	b.writeln('\n// V type definitions:')
 	b.writeln(g.type_definitions.str())
 	b.writeln('\n// V Option_xxx definitions:')
@@ -617,26 +621,26 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.EnumDecl {
 			enum_name := it.name.replace('.', '__')
-			g.typedefs.writeln('typedef enum {')
+			g.enum_typedefs.writeln('typedef enum {')
 			mut cur_enum_expr := ''
 			mut cur_enum_offset := 0
 			for field in it.fields {
-				g.typedefs.write('\t${enum_name}_${field.name}')
+				g.enum_typedefs.write('\t${enum_name}_${field.name}')
 				if field.has_expr {
-					g.typedefs.write(' = ')
+					g.enum_typedefs.write(' = ')
 					pos := g.out.len
 					g.expr(field.expr)
 					expr_str := g.out.after(pos)
 					g.out.go_back(expr_str.len)
-					g.typedefs.write(expr_str)
+					g.enum_typedefs.write(expr_str)
 					cur_enum_expr = expr_str
 					cur_enum_offset = 0
 				}
 				cur_value := if cur_enum_offset > 0 { '${cur_enum_expr}+${cur_enum_offset}' } else { cur_enum_expr }
-				g.typedefs.writeln(', // ${cur_value}')
+				g.enum_typedefs.writeln(', // ${cur_value}')
 				cur_enum_offset++
 			}
-			g.typedefs.writeln('} ${enum_name};\n')
+			g.enum_typedefs.writeln('} ${enum_name};\n')
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
