@@ -94,9 +94,14 @@ fn main_v() {
 			mod := vmod.from_file('./v.mod') or { panic(err) }
 
 			scripts := mod.scripts
-			call_name := args[1]
-			script := scripts[call_name]
+			script_name := args[1]
 
+			if script_name !in scripts {
+				println('Unknown script name: $script_name')
+				return
+			}
+
+			script := scripts[script_name]
 			res := os.exec(script) or { panic(err) }
 			println(res.output)
 			return
