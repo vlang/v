@@ -3313,8 +3313,13 @@ fn (mut g Gen) insert_before_stmt(s string) {
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.Type) {
 	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
+	is_none_ok := mr_styp == 'void'
 	g.writeln(';') // or')
-	g.writeln('if (!${cvar_name}.ok) {')
+	if is_none_ok {
+		g.writeln('if (!${cvar_name}.ok && !${cvar_name}.is_none) {')
+	} else {
+		g.writeln('if (!${cvar_name}.ok) {')
+	}
 	if or_block.kind == .block {
 		g.writeln('\tstring err = ${cvar_name}.v_error;')
 		g.writeln('\tint errcode = ${cvar_name}.ecode;')
@@ -3348,8 +3353,8 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			g.stmts(stmts)
 		}
 	} else if or_block.kind == .propagate {
-		g.write_defer_stmts()
 		if g.file.mod.name == 'main' && g.cur_fn.name == 'main' {
+			// No reason to write defers here if we are going to panic this process
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), ${cvar_name}.v_error );')
