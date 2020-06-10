@@ -2928,11 +2928,11 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 }
 
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
-	if g.pref.autofree {
-		g.write('_STR_TMP("')
-	} else {
-		g.write('_STR("')
-	}
+	//if g.pref.autofree {
+		//g.write('_STR_TMP("')
+	//} else {
+	g.write('_STR("')
+	//}
 	// Build the string with %
 	mut fieldwidths := []int{}
 	mut specs := []byte{}
