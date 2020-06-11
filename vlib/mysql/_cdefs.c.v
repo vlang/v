@@ -28,6 +28,7 @@ struct C.MYSQL_FIELD {
 fn C.mysql_init(mysql &C.MYSQL) &C.MYSQL
 fn C.mysql_real_connect(mysql &C.MYSQL, host byteptr, user byteptr, passwd byteptr, db byteptr, port u32, unix_socket byteptr, clientflag u64) &C.MYSQL
 fn C.mysql_query(mysql &C.MYSQL, q byteptr) int
+fn C.mysql_real_query(mysql &C.MYSQL, q byteptr, len u32) int
 fn C.mysql_select_db(mysql &C.MYSQL, db byteptr) int
 fn C.mysql_change_user(mysql &C.MYSQL, user byteptr, password byteptr, db byteptr) bool
 fn C.mysql_affected_rows(mysql &C.MYSQL) u64
