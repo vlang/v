@@ -8,6 +8,15 @@ pub const (
 	max_path_len = 4096
 )
 
+pub struct Uname {
+pub:
+	sysname  string
+	nodename string
+	release  string
+	version  string
+	machine  string
+}
+
 pub struct File {
 	cfile  voidptr // Using void* instead of FILE*
 pub:
@@ -19,6 +28,20 @@ mut:
 struct FileInfo {
 	name string
 	size int
+}
+
+pub fn uname() Uname {
+	d := &C.utsname{}
+	if C.uname(d) == 0 {
+		return Uname{
+			sysname: cstring_to_vstring(&d.sysname),
+			nodename: cstring_to_vstring(&d.nodename),
+			release: cstring_to_vstring(&d.release),
+			version: cstring_to_vstring(&d.version),
+			machine: cstring_to_vstring(&d.machine)
+		}
+	}
+	return Uname{}
 }
 
 pub fn (f File) is_opened() bool {
