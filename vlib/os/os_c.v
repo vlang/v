@@ -2,7 +2,6 @@ module os
 
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
-#include <sys/utsname.h>
 
 fn C.readdir(voidptr) C.dirent
 fn C.getpid() int
@@ -16,7 +15,6 @@ fn C.CopyFile(&u32, &u32, int) int
 fn C.fork() int
 fn C.wait() int
 //fn C.proc_pidpath(int, byteptr, int) int
-fn C.uname(name voidptr) int
 
 struct C.stat {
 	st_size  int
@@ -25,15 +23,6 @@ struct C.stat {
 }
 
 struct C.DIR {}
-
-struct C.utsname {
-mut:
-	sysname  [256]char
-	nodename [256]char
-	release  [256]char
-	version  [256]char
-	machine  [256]char
-}
 
 struct C.sigaction {
 mut:

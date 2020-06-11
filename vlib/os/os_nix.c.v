@@ -5,6 +5,7 @@ import strings
 #include <dirent.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/utsname.h>
 
 pub const (
 	path_separator = '/'
@@ -17,6 +18,16 @@ const (
 	stderr_value = 2
 )
 
+struct C.utsname {
+mut:
+	sysname  [256]char
+	nodename [256]char
+	release  [256]char
+	version  [256]char
+	machine  [256]char
+}
+
+fn C.uname(name voidptr) int
 fn C.symlink(charptr, charptr) int
 
 fn init_os_args(argc int, argv &&byte) []string {
