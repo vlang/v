@@ -1,9 +1,6 @@
 import hello as hl
 import hello.hello1 as hl1
 
-fn JS.alert(arg string)
-fn JS.Math.atan2(f64, f64) f64
-
 const (
     i_am_a_const = 21214
     super = 'amazing keyword'
@@ -81,6 +78,7 @@ fn main() {
         'ddo': "baba"
     }
 
+    // panic('foo')
     for m, n in ma {
         iss := m
     }
