@@ -1093,15 +1093,43 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 
 fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
-	if type_sym.kind != .array_fixed {
-		g.write('[')
-		for i, expr in it.exprs {
-			g.expr(expr)
-			if i < it.exprs.len - 1 {
-				g.write(', ')
+	if type_sym.kind == .array_fixed {
+		// TODO
+	} else if type_sym.kind == .array {
+		if it.has_len {
+			t1 := g.new_tmp_var()
+			t2 := g.new_tmp_var()
+			g.writeln('(function() {')
+			g.inc_indent()
+			g.writeln('const $t1 = [];')
+			g.write('for (let $t2 = 0; $t2 < ')
+			g.expr(it.len_expr)
+			g.writeln('; $t2++) {')
+			g.inc_indent()
+			g.write('${t1}.push(')
+			if it.has_default {
+				g.expr(it.default_expr)
+			} else {
+				// Fill the array with the default values for its type
+				t := g.to_js_typ_val(it.elem_type)
+				g.write(t)
 			}
+			g.writeln(');')
+			g.dec_indent()
+			g.writeln('};')
+			g.writeln('return $t1;')
+			g.dec_indent()
+			g.write('})()')
+		} else {
+			g.write('[')
+			for i, expr in it.exprs {
+				g.expr(expr)
+				if i < it.exprs.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.write(']')
 		}
-		g.write(']')
 	} else {}
 }
 
