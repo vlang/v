@@ -67,8 +67,8 @@ _ = header
 		else if line == '</script>' {
 			state = .html
 		}
-		// TODO
 		if line.contains('@include ') && false {
+			// TODO
 			pos := line.index('@include ') or {
 				continue
 			}
@@ -84,6 +84,20 @@ _ = header
 			}
 			continue
 			//s.writeln(file_content)
+		} else if line.contains('@js ') {
+			pos := line.index('@js') or {
+				continue
+			}
+			s.write('<script src=') // " is inserted in the template
+			s.write(line[pos + 4..])
+			s.writeln('></script>')
+		} else if line.contains('@css ') {
+			pos := line.index('@css') or {
+				continue
+			}
+			s.write('<link href=')
+			s.write(line[pos + 4..])
+			s.writeln(' rel="stylesheet" type="text/css">')
 		} else if line.contains('@if ') {
 			s.writeln(str_end)
 			pos := line.index('@if') or {
