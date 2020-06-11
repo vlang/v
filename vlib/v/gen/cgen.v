@@ -2373,6 +2373,14 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.write('return ')
 			styp = g.typ(g.fn_decl.return_type)
 		}
+		// Edge case handling for 2 multi returns of the same type
+		if node.exprs.len == 1 && g.expr_is_multi_return_call(node.exprs[0]) {
+			g.go_before_stmt(0)
+			g.write('return ')
+			g.expr(node.exprs[0])
+			g.writeln(';')
+			return
+		}
 		// Use this to keep the tmp assignments in order
 		mut multi_unpack := ''
 		g.write('($styp){')
