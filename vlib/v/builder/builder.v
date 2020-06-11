@@ -142,7 +142,7 @@ pub fn (mut b Builder) resolve_deps() {
 
 // graph of all imported modules
 pub fn (b &Builder) import_graph() &depgraph.DepGraph {
-	mut builtins := util.builtin_module_parts
+	mut builtins := util.builtin_module_parts.clone()
 	builtins << 'builtin'
 	mut graph := depgraph.new_dep_graph()
 	for p in b.parsed_files {
