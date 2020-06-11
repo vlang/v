@@ -28,15 +28,15 @@ enum State {
 
 pub fn compile_template(html_, fn_name string) string {
 	// lines := os.read_lines(path)
-	mut html := html_
+	mut html := html_.trim_space()
 	mut header := ''
-if os.exists('templates/header.html') && html.contains('@header') {
-        h := os.read_file('templates/header.html') or {
-                panic('reading file templates/header.html failed')
-        }
-        header = h.replace("\'", '"')
-        html = header + html
-}
+	if os.exists('templates/header.html') && html.contains('@header') {
+		h := os.read_file('templates/header.html') or {
+			panic('reading file templates/header.html failed')
+		}
+		header = h.trim_space().replace("\'", '"')
+		html = header + html
+	}
 
 	mut lines := html.split_into_lines()
 	mut s := strings.new_builder(1000)

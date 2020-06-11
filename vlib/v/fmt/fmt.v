@@ -571,7 +571,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.CharLiteral {
 			f.write('`$it.val`')
 		}
-		ast.ComptimeCall {}
+		ast.ComptimeCall {
+			if it.is_vweb {
+				f.write('$' + 'vweb.html()')
+			}
+		}
 		ast.ConcatExpr {
 			for i, val in it.vals {
 				if i != 0 {

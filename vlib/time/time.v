@@ -200,6 +200,32 @@ pub fn (t Time) relative() string {
 		return '1m'
 	}
 	if secs < 3600 {
+		return '${secs/60} minutes ago'
+	}
+	if secs < 3600 * 24 {
+		return '${secs/3600} hours ago'
+	}
+	if secs < 3600 * 24 * 5 {
+		return '${secs/3600/24} days ago'
+	}
+	if secs > 3600 * 24 * 10000 {
+		return ''
+	}
+	return t.md()
+}
+
+pub fn (t Time) relative_short() string {
+	now := time.now()
+	secs := now.unix - t.unix
+	if secs <= 30 {
+		// right now or in the future
+		// TODO handle time in the future
+		return 'now'
+	}
+	if secs < 60 {
+		return '1m'
+	}
+	if secs < 3600 {
 		return '${secs/60}m'
 	}
 	if secs < 3600 * 24 {
