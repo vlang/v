@@ -156,6 +156,10 @@ Did you forget to add vlib to the path? (Use @vlib for default vlib)')
 }
 
 pub fn (v Builder) get_user_files() []string {
+	if v.pref.path == 'vlib/builtin' {
+		// get_builtin_files() has already added the builtin files:
+		return []
+	}        
 	mut dir := v.pref.path
 	v.log('get_v_files($dir)')
 	// Need to store user files separately, because they have to be added after

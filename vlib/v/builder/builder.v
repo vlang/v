@@ -18,13 +18,13 @@ pub:
 mut:
 	checker             checker.Checker
 	pref                &pref.Preferences
-	parsed_files        []ast.File
 	global_scope        &ast.Scope
 	out_name_c          string
 	out_name_js         string
 	max_nr_errors       int = 100
 pub mut:
 	module_search_paths []string
+	parsed_files        []ast.File
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -142,8 +142,7 @@ pub fn (mut b Builder) resolve_deps() {
 
 // graph of all imported modules
 pub fn (b &Builder) import_graph() &depgraph.DepGraph {
-	mut builtins := util.builtin_module_parts.clone()
-	builtins << 'builtin'
+	builtins := util.builtin_module_parts
 	mut graph := depgraph.new_dep_graph()
 	for p in b.parsed_files {
 		mut deps := []string{}
