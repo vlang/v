@@ -9,25 +9,25 @@ pub mut:
 	vals []string
 }
 
-// Fetches the next row from the result set
+// fetch_row fetches the next row from the result set.
 pub fn (r Result) fetch_row() &byteptr {
 	return C.mysql_fetch_row(r.result)
 }
 
-// num_rows Returns the number of rows in the result set
-pub fn (r Result) num_rows() u64 {
+// n_rows returns the number of rows in the result set.
+pub fn (r Result) n_rows() u64 {
 	return C.mysql_num_rows(r.result)
 }
 
-// num_fields Returns the number of columns in a result set
-pub fn (r Result) num_fields() int {
+// n_fields returns the number of columns in a result set.
+pub fn (r Result) n_fields() int {
 	return C.mysql_num_fields(r.result)
 }
 
-// rows Returns rows with `array` of columns
+// rows returns rows with `array` of columns.
 pub fn (r Result) rows() []Row {
 	mut rows := []Row{}
-	nr_cols := r.num_fields()
+	nr_cols := r.n_fields()
 	for rr := r.fetch_row(); rr; rr = r.fetch_row() {
 		mut row := Row{}
 		for i in 0..nr_cols {
@@ -42,11 +42,11 @@ pub fn (r Result) rows() []Row {
 	return rows
 }
 
-// maps Returns rows with `map` of columns instead `array` of columns
+// Returns rows with `map` of columns instead `array` of columns.
 pub fn (r Result) maps() []map[string]string {
 	mut array_map := []map[string]string{}
 	rows := r.rows()
-	fields := r.fetch_fields()
+	fields := r.fields()
 	for i in 0..rows.len {
 		mut map_val := map[string]string
 		for j in 0..fields.len {
@@ -57,10 +57,10 @@ pub fn (r Result) maps() []map[string]string {
 	return array_map
 }
 
-// fetch_fields Returns an array of all field structures
-pub fn (r Result) fetch_fields() []Field {
+// fields returns an array of all field structures.
+pub fn (r Result) fields() []Field {
 	mut fields := []Field{}
-	nr_cols := r.num_fields()
+	nr_cols := r.n_fields()
 	orig_fields := C.mysql_fetch_fields(r.result)
 	for i in 0..nr_cols {
 		fields << Field{
@@ -139,7 +139,7 @@ pub fn (f Field) str() string {
 '
 }
 
-// free Frees memory used by a result set
+// free frees memory used by a result set
 pub fn (r Result) free() {
 	C.mysql_free_result(r.result)
 }
