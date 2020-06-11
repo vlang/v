@@ -15,10 +15,6 @@ const (
 		'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof',
 		'var', 'void', 'while', 'with', 'yield']
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t']
-	builtin_globals = ['println', 'print']
-	type_values = {
-
-	}
 )
 
 struct JsGen {
@@ -45,6 +41,7 @@ mut:
 	fn_decl           &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	str_types         []string // types that need automatic str() generation
 	method_fn_decls   map[string][]ast.Stmt
+	builtin_fns       []string // Functions defined in `builtin`
 	empty_line        bool
 }
 
@@ -67,6 +64,19 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	g.init()
 
 	mut graph := depgraph.new_dep_graph()
+
+	// Get builtin functions
+	for file in files {
+		if file.mod.name != 'builtin' { break }
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				decl := stmt as ast.FnDecl
+				if decl.is_pub {
+					g.builtin_fns << decl.name
+				}
+			}
+		}
+	}
 
 	// Get class methods
 	for file in files {
@@ -801,6 +811,9 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	if it.no_body {
 		return
 	}
+	if g.namespace == 'builtin' {
+		g.builtin_fns << it.name
+	}
 	g.gen_method_decl(it)
 }
 
@@ -1158,7 +1171,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			return
 		}
 	} else {
-		if name in builtin_globals {
+		if name in g.builtin_fns {
 			g.write('builtin.')
 		}
 	}
