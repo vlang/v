@@ -4382,13 +4382,6 @@ fn (mut g Gen) panic_debug_info(pos token.Position) (int, string, string, string
 	paline := pos.line_nr + 1
 	pafile := g.fn_decl.file.replace('\\', '/')
 	pafn := g.fn_decl.name.after('.')
-	mut pamod := g.fn_decl.name.all_before_last('.')
-	if pamod == pafn {
-		pamod = if g.fn_decl.is_builtin {
-			'builtin'
-		} else {
-			'main'
-		}
-	}
+	pamod := g.fn_decl.modname()
 	return paline, pafile, pamod, pafn
 }

@@ -210,6 +210,7 @@ pub mut:
 pub struct FnDecl {
 pub:
 	name          string
+	mod           string
 	stmts         []Stmt
 	args          []table.Arg
 	is_deprecated bool

@@ -6,6 +6,21 @@ module ast
 import v.table
 import strings
 
+pub fn (node &FnDecl) modname() string {
+	if node.mod != '' {
+		return node.mod
+	}
+	mut pamod := node.name.all_before_last('.')
+	if pamod == node.name.after('.') {
+		pamod = if node.is_builtin {
+			'builtin'
+		} else {
+			'main'
+		}
+	}
+	return pamod
+}
+
 // These methods are used only by vfmt, vdoc, and for debugging.
 
 pub fn (node &FnDecl) str(t &table.Table) string {

@@ -277,6 +277,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.attr_ctdefine = ''
 	return ast.FnDecl{
 		name: name
+		mod: p.mod
 		stmts: stmts
 		return_type: return_type
 		args: args
@@ -339,6 +340,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name
+			mod: p.mod
 			stmts: stmts
 			return_type: return_type
 			args: args
