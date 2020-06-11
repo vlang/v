@@ -605,7 +605,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// TODO
 		}
 		ast.ParExpr {
-			// TODO
+			g.write('(')
+			g.expr(it.expr)
+			g.write(')')
 		}
 		ast.PostfixExpr {
 			g.expr(it.expr)
