@@ -27,8 +27,31 @@ mut:
 	machine  [256]char
 }
 
+pub struct Uname {
+pub:
+	sysname  string
+	nodename string
+	release  string
+	version  string
+	machine  string
+}
+
 fn C.uname(name voidptr) int
 fn C.symlink(charptr, charptr) int
+
+pub fn uname() Uname {
+	d := &C.utsname{}
+	if C.uname(d) == 0 {
+		return Uname{
+			sysname: cstring_to_vstring(&d.sysname),
+			nodename: cstring_to_vstring(&d.nodename),
+			release: cstring_to_vstring(&d.release),
+			version: cstring_to_vstring(&d.version),
+			machine: cstring_to_vstring(&d.machine)
+		}
+	}
+	return Uname{}
+}
 
 fn init_os_args(argc int, argv &&byte) []string {
 	mut args := []string{}
