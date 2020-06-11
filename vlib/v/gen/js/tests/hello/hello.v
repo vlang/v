@@ -1,5 +1,7 @@
 module hello
 
+import hello.hello1
+
 pub const (
 	hello = 'Hello'
 )
@@ -27,5 +29,5 @@ pub fn debugger() string {
 }
 
 pub fn excited() string {
-	return debugger() + "!"
+	return "$hello1.nested() $debugger()!"
 }

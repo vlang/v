@@ -1,4 +1,5 @@
 import hello as hl
+import hello.hello1 as hl1
 
 fn JS.alert(arg string)
 fn JS.Math.atan2(f64, f64) f64
@@ -64,6 +65,7 @@ fn main() {
 
     dun := i_am_a_const * 20
     dunn := hl.hello // External constant
+    _ = hl1.nested()
 
     for i := 0; i < 10; i++ {}
 

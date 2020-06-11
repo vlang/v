@@ -99,7 +99,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 
 	mut out := g.hashes() + g.definitions.str()
 	for node in deps_resolved.nodes {
-		name := g.js_name(node.name)
+		name := g.js_name(node.name).replace('.', '_')
 		if g.enable_doc {
 			out += '/** @namespace $name */\n'
 		}
@@ -127,7 +127,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		out += '\n})('
 		for i, key in imports.keys() {
 			if i > 0 { out += ', ' }
-			out += key
+			out += key.replace('.', '_')
 		}
 		out += ');\n\n'
 	}
