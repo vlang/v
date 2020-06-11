@@ -43,6 +43,21 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	return arr
 }
 
+fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array) array {
+	cap_ := if cap < mylen { mylen } else { cap }
+	arr := array{
+		element_size: elm_size
+		data: vcalloc(cap_ * elm_size)
+		len: mylen
+		cap: cap_
+	}
+	for i in 0..arr.len {
+		val_clone := val.clone()
+		C.memcpy(charptr(arr.data) + i*elm_size, &val_clone, elm_size)
+	}
+	return arr
+}
+
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 	cap_ := if cap < len { len } else { cap }
@@ -146,7 +161,7 @@ pub fn (mut a array) delete(i int) {
 		}
 	}
 	size := a.element_size
-	// NB: if a is [12,34], a.len = 2, a.delete(0) 
+	// NB: if a is [12,34], a.len = 2, a.delete(0)
 	// should move (2-0-1) elements = 1 element (the 34) forward
 	C.memmove(byteptr(a.data) + i * size, byteptr(a.data) + (i + 1) * size, (a.len - i - 1) * size)
 	a.len--
