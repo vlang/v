@@ -20,11 +20,11 @@ const (
 
 struct C.utsname {
 mut:
-	sysname  [256]char
-	nodename [256]char
-	release  [256]char
-	version  [256]char
-	machine  [256]char
+	sysname  charptr
+	nodename charptr
+	release  charptr
+	version  charptr
+	machine  charptr
 }
 
 pub struct Uname {
