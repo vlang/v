@@ -3356,7 +3356,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		} else {
 			// In ordinary functions, `opt()?` call is sugar for:
 			// `opt() or { return error(err) }`
-			// Since we *do* return, first we have to ensure that 
+			// Since we *do* return, first we have to ensure that
 			// the defered statements are generated.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
@@ -4320,10 +4320,16 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		g.write('}')
 		return
 	}
-	// elem_sym := g.table.get_type_symbol(it.elem_type)
 	elem_type_str := g.typ(it.elem_type)
 	if it.exprs.len == 0 {
-		g.write('__new_array_with_default(')
+		elem_sym := g.table.get_type_symbol(it.elem_type)
+		is_default_array := elem_sym.kind == .array && it.has_default
+
+		if is_default_array {
+			g.write('__new_array_with_array_default(')
+		} else {
+			g.write('__new_array_with_default(')
+		}
 		if it.has_len {
 			g.expr(it.len_expr)
 			g.write(', ')
@@ -4337,10 +4343,14 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 			g.write('0, ')
 		}
 		g.write('sizeof($elem_type_str), ')
-		if it.has_default || (it.has_len && it.elem_type == table.string_type) {
-			g.write('&_val_$it.pos.pos)')
+		if is_default_array {
+			g.write('_val_$it.pos.pos)')
 		} else {
-			g.write('0)')
+			if it.has_default || (it.has_len && it.elem_type == table.string_type) {
+				g.write('&_val_$it.pos.pos)')
+			} else {
+				g.write('0)')
+			}
 		}
 		return
 	}
