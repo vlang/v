@@ -754,6 +754,37 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 	return c.call_fn(call_expr)
 }
 
+fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_expr ast.CallExpr) {
+	elem_sym := c.table.get_type_symbol(elem_typ)
+	match call_expr.args[0].expr {
+		ast.AnonFn {
+			if it.decl.args.len > 1 {
+				c.error('function needs exactly 1 argument', call_expr.pos)
+			} else if is_map && (it.decl.return_type != elem_typ || it.decl.args[0].typ != elem_typ) {
+				c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`', call_expr.pos)
+			} else if !is_map && (it.decl.return_type != table.bool_type || it.decl.args[0].typ != elem_typ) {
+				c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`', call_expr.pos)
+			}
+		}
+		ast.Ident {
+			if it.kind == .function {
+				func := c.table.find_fn(it.name) or {
+					c.error('$it.name is not exist', it.pos)
+					return
+				}
+				if func.args.len > 1 {
+					c.error('function needs exactly 1 argument', call_expr.pos)
+				} else if is_map && (func.return_type != elem_typ || func.args[0].typ != elem_typ) {
+					c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`', call_expr.pos)
+				} else if !is_map && (func.return_type != table.bool_type || func.args[0].typ != elem_typ) {
+					c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`', call_expr.pos)
+				}
+			}
+		}
+		else {}
+	}
+}
+
 pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	left_type := c.expr(call_expr.left)
 	is_generic := left_type == table.t_type
@@ -780,31 +811,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		call_expr.receiver_type = left_type
 		if method_name == 'map' {
 			// check fn
-			match call_expr.args[0].expr {
-				ast.AnonFn {
-					if it.decl.args.len > 1 {
-						c.error('function needs exactly 1 argument', call_expr.pos)
-					} else if it.decl.return_type != elem_typ || it.decl.args[0].typ != elem_typ {
-						elem_sym := c.table.get_type_symbol(elem_typ)
-						c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`', call_expr.pos)
-					}
-				}
-				ast.Ident {
-					if it.kind == .function {
-						func := c.table.find_fn(it.name) or {
-							c.error('$it.name is not exist', it.pos)
-							return table.void_type
-						}
-						if func.args.len > 1 {
-							c.error('function needs exactly 1 argument', call_expr.pos)
-						} else if func.return_type != elem_typ || func.args[0].typ != elem_typ {
-							elem_sym := c.table.get_type_symbol(elem_typ)
-							c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`', call_expr.pos)
-						}
-					}
-				}
-				else {}
-			}
+			c.check_map_and_filter(true, elem_typ, call_expr)
 			arg_sym := c.table.get_type_symbol(arg_type)
 			// FIXME: match expr failed for now
 			mut ret_type := 0
@@ -815,31 +822,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.return_type = c.table.find_or_register_array(ret_type, 1, c.mod)
 		} else if method_name == 'filter' {
 			// check fn
-			match call_expr.args[0].expr {
-				ast.AnonFn {
-					if it.decl.args.len > 1 {
-						c.error('function needs exactly 1 argument', call_expr.pos)
-					} else if it.decl.return_type != table.bool_type || it.decl.args[0].typ != elem_typ {
-						elem_sym := c.table.get_type_symbol(elem_typ)
-						c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`', call_expr.pos)
-					}
-				}
-				ast.Ident {
-					if it.kind == .function {
-						func := c.table.find_fn(it.name) or {
-							c.error('$it.name is not exist', it.pos)
-							return table.void_type
-						}
-						if func.args.len > 1 {
-							c.error('function needs exactly 1 argument', call_expr.pos)
-						} else if func.return_type != table.bool_type || func.args[0].typ != elem_typ {
-							elem_sym := c.table.get_type_symbol(elem_typ)
-							c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`', call_expr.pos)
-						}
-					}
-				}
-				else {}
-			}
+			c.check_map_and_filter(false, elem_typ, call_expr)
 		} else if method_name == 'clone' {
 			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
