@@ -1,5 +1,3 @@
-fn JS.setInterval(f fn (), ms int)
-fn JS.console.clear()
 fn clear() { JS.console.clear() }
 
 const (w = 30 h = 30)
@@ -25,13 +23,13 @@ fn neighbours(game [][]bool, x int, y int) int {
 }
 
 fn step(game [][]bool) [][]bool {
-	mut new_game := [[]bool{}]
+	mut new_game := [][]bool{}
 	for y, row in game {
 		mut new_row := []bool{}
 		new_game[y] = new_row
 		for x, cell in row {
 			count := neighbours(game, x, y)
-			new_row[x] = cell && count == 2 || count == 3 // TODO: count in [2, 3]
+			new_row[x] = (cell && count in [2, 3]) || count == 3
 		}
 	}
 	return new_game
@@ -53,15 +51,7 @@ fn show(game [][]bool) {
 	}
 }
 
-mut game := [[]bool{}]
-
-for y in 0..h {
-	mut row := []bool{}
-	for x in 0..w {
-		row[x] = false
-	}
-	game[y] = row
-}
+mut game := [][]bool{ len: h, init: []bool{ len: w } }
 
 game[11][15] = true
 game[11][16] = true
