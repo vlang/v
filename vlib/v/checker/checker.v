@@ -764,10 +764,12 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in ['filter', 'clone', 'repeat', 'reverse',
 		'map', 'slice'] {
+		mut elem_typ := table.void_type
 		if method_name in ['filter', 'map'] {
 			array_info := left_type_sym.info as table.Array
 			mut scope := c.file.scope.innermost(call_expr.pos.pos)
 			scope.update_var_type('it', array_info.elem_type)
+			elem_typ = array_info.elem_type
 		}
 		// map/filter are supposed to have 1 arg only
 		mut arg_type := left_type
@@ -777,6 +779,32 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		call_expr.return_type = left_type
 		call_expr.receiver_type = left_type
 		if method_name == 'map' {
+			// check fn
+			match call_expr.args[0].expr {
+				ast.AnonFn {
+					if it.decl.args.len > 1 {
+						c.error('function needs exactly 1 argument', call_expr.pos)
+					} else if it.decl.return_type != elem_typ || it.decl.args[0].typ != elem_typ {
+						elem_sym := c.table.get_type_symbol(elem_typ)
+						c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`', call_expr.pos)
+					}
+				}
+				ast.Ident {
+					if it.kind == .function {
+						func := c.table.find_fn(it.name) or {
+							c.error('$it.name is not exist', it.pos)
+							return table.void_type
+						}
+						if func.args.len > 1 {
+							c.error('function needs exactly 1 argument', call_expr.pos)
+						} else if func.return_type != elem_typ || func.args[0].typ != elem_typ {
+							elem_sym := c.table.get_type_symbol(elem_typ)
+							c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`', call_expr.pos)
+						}
+					}
+				}
+				else {}
+			}
 			arg_sym := c.table.get_type_symbol(arg_type)
 			// FIXME: match expr failed for now
 			mut ret_type := 0
@@ -785,6 +813,33 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				else { ret_type = arg_type }
 			}
 			call_expr.return_type = c.table.find_or_register_array(ret_type, 1, c.mod)
+		} else if method_name == 'filter' {
+			// check fn
+			match call_expr.args[0].expr {
+				ast.AnonFn {
+					if it.decl.args.len > 1 {
+						c.error('function needs exactly 1 argument', call_expr.pos)
+					} else if it.decl.return_type != table.bool_type || it.decl.args[0].typ != elem_typ {
+						elem_sym := c.table.get_type_symbol(elem_typ)
+						c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`', call_expr.pos)
+					}
+				}
+				ast.Ident {
+					if it.kind == .function {
+						func := c.table.find_fn(it.name) or {
+							c.error('$it.name is not exist', it.pos)
+							return table.void_type
+						}
+						if func.args.len > 1 {
+							c.error('function needs exactly 1 argument', call_expr.pos)
+						} else if func.return_type != table.bool_type || func.args[0].typ != elem_typ {
+							elem_sym := c.table.get_type_symbol(elem_typ)
+							c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`', call_expr.pos)
+						}
+					}
+				}
+				else {}
+			}
 		} else if method_name == 'clone' {
 			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
