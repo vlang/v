@@ -1,0 +1,4 @@
+fn main() {
+    println(~3.0)
+    println(~10.5)
+}
