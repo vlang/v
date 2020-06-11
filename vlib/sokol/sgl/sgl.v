@@ -1,5 +1,10 @@
 module sgl
 
+import sokol.gfx
+
+pub const (
+	version = gfx.version + 1
+)
 
 /* setup/shutdown/misc */
 [inline]

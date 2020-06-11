@@ -53,7 +53,6 @@ fn C.glClear()
 fn C.glCreateShader() int
 fn C.glClearColor()
 fn C.glViewport()
-fn C.glTexImage2D()
 fn C.glPixelStorei()
 fn C.glBlendFunc()
 fn C.glPolygonMode()
