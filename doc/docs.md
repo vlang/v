@@ -286,8 +286,7 @@ f32 f64
 
 any_int, any_float // internal intermediate types of number literals
 
-byteptr, voidptr, charptr, size_t : // these are mostly used for 
-<a href='#calling-c-functions-from-v'>C interoperability</a>
+byteptr, voidptr, charptr, size_t // these are mostly used for C interoperability
 
 any // similar to C's void* and Go's interface{}
 ```
