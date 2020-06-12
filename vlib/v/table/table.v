@@ -274,7 +274,7 @@ pub fn (t &Table) known_type(name string) bool {
 pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
 	return 'array_${elem_type_sym.name}' + if elem_type.is_ptr() {
-		'_ptr'
+		'_ptr'.repeat(elem_type.nr_muls())
 	} else {
 		''
 	} + if nr_dims > 1 {
