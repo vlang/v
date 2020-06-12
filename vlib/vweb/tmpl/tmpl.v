@@ -29,6 +29,15 @@ enum State {
 pub fn compile_template(html_, fn_name string) string {
 	// lines := os.read_lines(path)
 	mut html := html_.trim_space()
+	mut header := ''
+	if os.exists('templates/header.html') && html.contains('@header') {
+		h := os.read_file('templates/header.html') or {
+			panic('reading file templates/header.html failed')
+		}
+		header = h.trim_space().replace("\'", '"')
+		html = header + html
+	}
+
 	mut lines := html.split_into_lines()
 	mut s := strings.new_builder(1000)
 	// base := path.all_after_last('/').replace('.html', '')
@@ -58,7 +67,7 @@ _ = header
 		else if line == '</script>' {
 			state = .html
 		}
-		if line.contains('@include ') {
+		if line.contains('@include ') && false {
 			// TODO
 			pos := line.index('@include ') or {
 				continue
@@ -69,14 +78,12 @@ _ = header
 				panic('reading file $file_name failed')
 			}
 			file_content = file_content.replace("\'", '"')
-			include_file_lines := file_content.split_into_lines()
-			lines_before := lines[0 .. i].clone()
-			lines_after := lines[i + 1 .. lines.len].clone()
-			lines = lines_before
-			lines << include_file_lines
-			lines << lines_after
-			i--
+			lines2 := file_content.split_into_lines()
+			for l in lines2 {
+				lines.insert(i+1, l)
+			}
 			continue
+			//s.writeln(file_content)
 		} else if line.contains('@js ') {
 			pos := line.index('@js') or {
 				continue
