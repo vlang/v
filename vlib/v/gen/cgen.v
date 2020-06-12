@@ -2942,9 +2942,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if i >= node.exprs.len {
 			if escaped_val.len > 0 {
 				end_string = true
-				if !g.pref.autofree {
+				//if !g.pref.autofree {
 					g.write('\\000')
-				}
+				//}
 				g.write(escaped_val)
 			}
 			continue
