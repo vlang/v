@@ -152,13 +152,16 @@ fn new_gen_vc(flag_options FlagOptions) &GenVC {
 }
 
 // WebhookServer init
-pub fn (mut ws WebhookServer) init() {
-
+pub fn (mut ws WebhookServer) init_once() {
 	mut fp := flag.new_flag_parser(os.args.clone())
 	flag_options := parse_flags(mut fp)
 	ws.gen_vc = new_gen_vc(flag_options)
 	ws.gen_vc.init()
 	//ws.gen_vc = new_gen_vc(flag_options)
+}
+
+pub fn (mut ws WebhookServer) init() {
+	//ws.init_once()
 }
 
 // gen webhook
