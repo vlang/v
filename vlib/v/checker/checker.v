@@ -1952,8 +1952,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			if it.op == .mul && right_type.is_ptr() {
 				return right_type.deref()
 			}
-			if it.op == .bit_not && right_type.is_float() {
-				c.error('cannot invert bits of a float', it.pos)
+			if it.op == .bit_not && !right_type.is_int(){
+				c.error('operator ~ only defined on untyped int', it.pos)
 			}
 			if it.op == .not && right_type != table.bool_type_idx {
 				c.error('! operator can only be used with bool types', it.pos)
