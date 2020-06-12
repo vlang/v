@@ -1374,7 +1374,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// TODO: dont fiddle with buffers
 			g.gen_anon_fn_decl(it)
 			fsym := g.table.get_type_symbol(it.typ)
-			g.write('&${fsym.name}')
+			g.write(fsym.name)
 		}
 		ast.ArrayInit {
 			g.array_init(it)
