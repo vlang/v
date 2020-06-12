@@ -25,6 +25,7 @@ void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, 
 		*memsize += (*memsize + *memsize) / 3 + guess;
 		*refbufp = (char*)realloc((void*)*refbufp, *memsize);
 	}
+	va_end(args);
 }
 
 string _STR(const char *fmt, int nfmts, ...) {
