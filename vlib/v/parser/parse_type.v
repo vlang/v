@@ -111,12 +111,8 @@ pub fn (mut p Parser) parse_type() table.Type {
 		p.next()
 	}
 	// &Type
-	for p.tok.kind in [.and, .amp] {
-		if p.tok.kind == .and {
-			nr_muls += 2
-		} else {
-			nr_muls++
-		}
+	for p.tok.kind == .amp {
+		nr_muls++
 		p.next()
 	}
 
