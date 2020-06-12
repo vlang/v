@@ -200,13 +200,25 @@ pub fn (t Time) relative() string {
 		return '1m'
 	}
 	if secs < 3600 {
-		return '${secs/60} minutes ago'
+		m := secs/60
+		if m == 1 {
+			return '1 minute ago'
+		}
+		return '$m minutes ago'
 	}
 	if secs < 3600 * 24 {
-		return '${secs/3600} hours ago'
+		h := secs/3600
+		if h == 1 {
+			return '1 hour ago'
+		}
+		return '$h hours ago'
 	}
 	if secs < 3600 * 24 * 5 {
-		return '${secs/3600/24} days ago'
+		d:=secs/3600/24
+		if d == 1 {
+			return '1 day ago'
+		}
+		return '$d days ago'
 	}
 	if secs > 3600 * 24 * 10000 {
 		return ''
