@@ -614,7 +614,12 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write(it.op.str())
 		}
 		ast.PrefixExpr {
-			// TODO
+			if it.op in [.amp, .mul] {
+				// C pointers/references: ignore them
+			} else {
+				g.write(it.op.str())
+			}
+			g.expr(it.right)
 		}
 		ast.RangeExpr {
 			// Only used in IndexExpr, requires index type info
