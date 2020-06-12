@@ -119,7 +119,14 @@ pub fn (a array) repeat(count int) array {
 		cap: count * a.len
 	}
 	for i in 0..count {
-		C.memcpy(byteptr(arr.data) + i * a.len * a.element_size, byteptr(a.data), a.len * a.element_size)
+		if a.len > 0 && a.element_size == sizeof(array) {
+			ary := array{}
+			C.memcpy(&ary, a.data, sizeof(array))
+			ary_clone := ary.clone()
+			C.memcpy(byteptr(arr.data) + i * a.len * a.element_size, &ary_clone, a.len * a.element_size)
+		} else {
+			C.memcpy(byteptr(arr.data) + i * a.len * a.element_size, byteptr(a.data), a.len * a.element_size)
+		}
 	}
 	return arr
 }
