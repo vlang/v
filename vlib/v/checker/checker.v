@@ -1953,7 +1953,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				return right_type.deref()
 			}
 			if it.op == .bit_not && !right_type.is_int(){
-				c.error('operator ~ only defined on untyped int', it.pos)
+				c.error('operator ~ only defined on int types', it.pos)
 			}
 			if it.op == .not && right_type != table.bool_type_idx {
 				c.error('! operator can only be used with bool types', it.pos)
