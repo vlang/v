@@ -407,9 +407,14 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 		}
 		.lsbr {
+			start_pos := p.tok.position()
 			attrs := p.attributes()
 			if attrs.len > 1 {
-				p.error('multiple attributes detected')
+				end_pos := p.tok.position()
+				p.error_with_pos('multiple attributes detected', start_pos.extend(end_pos))
+			} else if attrs.len == 0 {
+				end_pos := p.tok.position()
+				p.error_with_pos('attributes cannot be empty', start_pos.extend(end_pos))
 			}
 			return attrs[0]
 		}
