@@ -166,6 +166,10 @@ pub fn (mut ws WebhookServer) init() {
 
 // gen webhook
 pub fn (mut ws WebhookServer) genhook() {
+	// request data
+	// println(ws.vweb.req.data)
+	// TODO: parse request. json or urlencoded
+	// json.decode or net.urllib.parse
 	ws.gen_vc.generate()
 	// error in generate
 	if ws.gen_vc.gen_error {
