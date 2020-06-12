@@ -80,16 +80,16 @@ const(
 
 struct GenVC {
 	// logger
-	logger &log.Log
 	// flag options
 	options FlagOptions
 mut:
+	logger &log.Log
 	// true if error was experienced running generate
 	gen_error bool
 }
 
 // webhook server
-pub struct WebhookServer {
+struct WebhookServer {
 pub mut:
 	vweb   vweb.Context
 	gen_vc &GenVC
@@ -111,14 +111,14 @@ fn main() {
 	mut fp := flag.new_flag_parser(os.args.clone())
 
 	fp.application(app_name)
- 	fp.version(app_version)
- 	fp.description(app_description)
- 	fp.skip_executable()
+	fp.version(app_version)
+	fp.description(app_description)
+	fp.skip_executable()
 
 	show_help:=fp.bool('help', 0, false, 'Show this help screen\n')
 	flag_options := parse_flags(mut fp)
 
-	if( show_help ){ println( fp.usage() ) exit(0) }
+	if show_help { println( fp.usage() ) exit(0) }
 
 	fp.finalize() or {
  		eprintln(err)
