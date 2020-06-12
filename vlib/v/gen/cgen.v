@@ -4345,12 +4345,10 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		g.write('sizeof($elem_type_str), ')
 		if is_default_array {
 			g.write('_val_$it.pos.pos)')
+		} else if it.has_default || (it.has_len && it.elem_type == table.string_type) {
+			g.write('&_val_$it.pos.pos)')
 		} else {
-			if it.has_default || (it.has_len && it.elem_type == table.string_type) {
-				g.write('&_val_$it.pos.pos)')
-			} else {
-				g.write('0)')
-			}
+			g.write('0)')
 		}
 		return
 	}
