@@ -50,7 +50,7 @@ header := \' \' // TODO remove
 _ = header
 
 ")
-	s.writeln(str_start)
+	s.write(str_start)
 	mut state := State.html
 	mut in_span := false
 	//for _line in lines {
