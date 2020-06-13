@@ -3607,6 +3607,7 @@ fn (g Gen) type_default(typ table.Type) string {
 pub fn (mut g Gen) write_tests_main() {
 	g.definitions.writeln('int g_test_oks = 0;')
 	g.definitions.writeln('int g_test_fails = 0;')
+	g.includes.writeln('#include <setjmp.h> // write_tests_main')
 	g.writeln('static jmp_buf g_jump_buffer;')
 	$if windows {
 		g.writeln('int wmain() {')
