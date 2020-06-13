@@ -83,3 +83,22 @@ fn test_array_of_map_interpolation() {
 	a << {'c': int(3), 'd': 4}
 	assert '$a' == "[{'a': 1, 'b': 2}, {'c': 3, 'd': 4}]"
 }
+
+fn test_array_initialization_with_interpolation() {
+	sysroot := '/usr'
+	a := [
+		'abcd'
+		'$sysroot/xyz'
+		'u$sysroot/vw'
+		'/rr$sysroot'
+		'lmno'
+	]
+	assert '$a' == "['abcd', '/usr/xyz', 'u/usr/vw', '/rr/usr', 'lmno']"
+	b := [
+		'a${sysroot:5}/r'
+		'ert'
+	]
+	assert '$b' == "['a /usr/r', 'ert']"
+	c := ['xy', 'r$sysroot', '$sysroot/t', '>$sysroot<']
+	assert '$c' == "['xy', 'r/usr', '/usr/t', '>/usr<']"
+}
