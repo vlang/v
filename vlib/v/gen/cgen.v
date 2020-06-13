@@ -3054,7 +3054,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			// TODO: better check this case
 			g.write('${fmt}"PRId32"')
 		}
-		if i < node.exprs.len - 1 && !g.pref.autofree {
+		if i < node.exprs.len - 1 {
 			g.write('\\000')
 		}
 	}
