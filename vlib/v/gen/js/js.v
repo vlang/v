@@ -276,16 +276,10 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		// 'anon_fn_7_7_1' => '(a number, b number) => void'
 		.function {
 			info := sym.info as table.FnType
-			mut res := '('
-			for i, arg in info.func.args {
-				res += '$arg.name: ${g.typ(arg.typ)}'
-				if i < info.func.args.len - 1 { res += ', ' }
-			}
-			styp = res + ') => ' + g.typ(info.func.return_type)
+			styp = g.fn_typ(info.func.args, info.func.return_type)
 		}
 		.interface_ {
-			// TODO: Implement interfaces
-			styp = 'interface'
+			styp = g.js_name(sym.name)
 		}
 		/* else {
 			println('jsgen.typ: Unhandled type $t')
@@ -294,6 +288,16 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 	}
 	if styp.starts_with('JS.') { return styp[3..] }
 	return styp
+}
+
+fn (mut g JsGen) fn_typ(args []table.Arg, return_type table.Type) string {
+	mut res := '('
+	for i, arg in args {
+		res += '$arg.name: ${g.typ(arg.typ)}'
+		if i < args.len - 1 { res += ', ' }
+	}
+	return res + ') => ' + g.typ(return_type)
+
 }
 
 fn (mut g JsGen) struct_typ(s string) string {
@@ -500,7 +504,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_import_stmt(it)
 		}
 		ast.InterfaceDecl {
-			// TODO skip: interfaces not implemented yet
+			g.gen_interface_decl(it)
 		}
 		ast.Module {
 			// skip: namespacing implemented externally
@@ -1023,6 +1027,12 @@ fn (mut g JsGen) gen_import_stmt(it ast.Import) {
 	mut imports := g.namespace_imports[g.namespace]
 	imports[it.mod] = it.alias
 	g.namespace_imports[g.namespace] = imports
+}
+
+fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
+	// JS is dynamically typed, so we don't need any codegen at all
+	// We just need the JSDoc so TypeScript type checking works
+	g.doc.gen_interface(it)
 }
 
 fn (mut g JsGen) gen_return_stmt(it ast.Return) {
