@@ -2,6 +2,7 @@ module os
 
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
+#include <libproc.h>
 
 fn C.readdir(voidptr) C.dirent
 fn C.getpid() int
@@ -14,7 +15,7 @@ fn C.fdopen(int, string) voidptr
 fn C.CopyFile(&u32, &u32, int) int
 fn C.fork() int
 fn C.wait() int
-//fn C.proc_pidpath(int, byteptr, int) int
+fn C.proc_pidpath(int, byteptr, int) int
 
 struct C.stat {
 	st_size  int
