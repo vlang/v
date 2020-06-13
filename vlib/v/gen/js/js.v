@@ -1361,10 +1361,12 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.expr(it.left)
 		g.write(')')
 		if it.op == .not_in { g.write(')') }
-	} else if it.op == .key_is { // foo is Foo
+	} else if it.op in [.key_is, .not_is] { // foo is Foo
+		if it.op == .not_is { g.write('!(') }
 		g.expr(it.left)
 		g.write(' instanceof ')
 		g.write(g.typ(it.right_type))
+		if it.op == .not_is { g.write(')') }
 	} else {
 		g.expr(it.left)
 
