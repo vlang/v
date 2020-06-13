@@ -23,7 +23,7 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 	eprintln('')
 	eprintln('$final_filename:${i.line_nr+1}: failed assert in ${final_funcname}')
 	eprintln('Source  : ${i.src}')
-	if i.op != 'call' {
+	if i.op.len > 0 && i.op != 'call' {
 		eprintln('   left value: ${i.llabel} = ${i.lvalue}')
 		eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
 	}
