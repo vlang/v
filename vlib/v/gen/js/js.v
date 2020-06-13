@@ -1045,16 +1045,8 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 	g.write('return ')
 	if it.exprs.len == 1 {
 		g.expr(it.exprs[0])
-	} else {
-		// Multi return
-		g.write('[')
-		for i, expr in it.exprs {
-			g.expr(expr)
-			if i < it.exprs.len - 1 {
-				g.write(', ')
-			}
-		}
-		g.write(']')
+	} else { // Multi return
+		g.gen_array_init_values(it.exprs)
 	}
 	g.writeln(';')
 }
@@ -1138,16 +1130,20 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 			g.dec_indent()
 			g.write('})()')
 		} else {
-			g.write('[')
-			for i, expr in it.exprs {
-				g.expr(expr)
-				if i < it.exprs.len - 1 {
-					g.write(', ')
-				}
-			}
-			g.write(']')
+			g.gen_array_init_values(it.exprs)
 		}
 	} else {}
+}
+
+fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
+	g.write('[')
+	for i, expr in exprs {
+		g.expr(expr)
+		if i < exprs.len - 1 {
+			g.write(', ')
+		}
+	}
+	g.write(']')
 }
 
 fn (mut g JsGen) gen_assign_expr(it ast.AssignExpr) {
