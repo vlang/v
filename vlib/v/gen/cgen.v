@@ -942,7 +942,7 @@ fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 		g.writeln('	g_test_fails++;')
 		metaname_fail := g.gen_assert_metainfo(a)
 		g.writeln('	cb_assertion_failed(&${metaname_fail});')
-		g.writeln('	exit(1);')
+		g.writeln('	longjmp(g_jump_buffer, 1);')
 		g.writeln('	// TODO')
 		g.writeln('	// Maybe print all vars in a test function if it fails?')
 		g.writeln('}')
@@ -3605,8 +3605,10 @@ fn (g Gen) type_default(typ table.Type) string {
 }
 
 pub fn (mut g Gen) write_tests_main() {
+	g.includes.writeln('#include <setjmp.h> // write_tests_main')
 	g.definitions.writeln('int g_test_oks = 0;')
 	g.definitions.writeln('int g_test_fails = 0;')
+	g.definitions.writeln('jmp_buf g_jump_buffer;')
 	$if windows {
 		g.writeln('int wmain() {')
 	} $else {
@@ -3623,7 +3625,7 @@ pub fn (mut g Gen) write_tests_main() {
 		if g.pref.is_stats {
 			g.writeln('\tBenchedTests_testing_step_start(&bt, tos_lit("$t"));')
 		}
-		g.writeln('\t${t}();')
+		g.writeln('\tif (!setjmp(g_jump_buffer)) ${t}();')
 		if g.pref.is_stats {
 			g.writeln('\tBenchedTests_testing_step_end(&bt);')
 		}
