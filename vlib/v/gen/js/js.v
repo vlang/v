@@ -1352,11 +1352,9 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(')')
 		if it.op == .not_in { g.write(')') }
 	} else if it.op == .key_is { // foo is Foo
-		g.write('/*')
 		g.expr(it.left)
-		g.write(' is $r_sym.name')
-		g.write('*/0')
-		// TODO
+		g.write(' instanceof ')
+		g.write(g.typ(it.right_type))
 	} else {
 		g.expr(it.left)
 
