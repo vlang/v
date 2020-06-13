@@ -113,7 +113,7 @@ pub fn exec(cmd string) ?Result {
 		bufbp := byteptr(buf)
 		res.write_bytes( bufbp, vstrlen(bufbp) )
 	}
-	soutput := res.str().trim_space()
+	soutput := res.str()
 	//res.free()
 	exit_code := vpclose(f)
 	// if exit_code != 0 {

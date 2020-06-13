@@ -44,7 +44,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	fcontent := os.read_file(file) or {	return error('Could not read file ${file}') }
 	content := fcontent.replace('\r', '')
 	input := content.all_before('===output===\n')
-	output := content.all_after('===output===\n')
+	output := content.all_after('===output===\n') + '\n'
 
 	fname := os.file_name( file )
 
