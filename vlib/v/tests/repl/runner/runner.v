@@ -44,7 +44,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	fcontent := os.read_file(file) or {	return error('Could not read file ${file}') }
 	content := fcontent.replace('\r', '')
 	input := content.all_before('===output===\n')
-	output := content.all_after('===output===\n') + '\n'
+	output := content.all_after('===output===\n').trim_right('\n\r')
 
 	fname := os.file_name( file )
 
@@ -66,6 +66,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	.replace(wd  + os.path_separator, '' )
 	.replace(vexec_folder, '')
 	.replace('\\', '/')
+	.trim_right('\n\r')
 
 	if result != output {
 		file_result   := '${file}.result.txt'
