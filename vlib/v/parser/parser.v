@@ -1166,7 +1166,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		vals << p.tok.lit
 		p.next()
 		if p.tok.kind != .str_dollar {
-			continue
+			break
 		}
 		p.next()
 		exprs << p.expr(0)
