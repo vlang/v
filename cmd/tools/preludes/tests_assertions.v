@@ -20,6 +20,7 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 	}
 	final_filename := if use_relative_paths { i.fpath } else { os.real_path(i.fpath) }
 	final_funcname := i.fn_name.replace('main__', '').replace('__', '.')
+	eprintln('')
 	eprintln('$final_filename:${i.line_nr+1}: failed assert in ${final_funcname}')
 	eprintln('Source  : ${i.src}')
 	if i.op != 'call' {
