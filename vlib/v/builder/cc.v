@@ -496,23 +496,42 @@ fn (mut c Builder) cc_linux_cross() {
 			exit(1)
 		}
 	}
+
 	mut cc_args := '-fPIC -w -c -target x86_64-linux-gnu -c -o x.o $c.out_name_c -I $sysroot/include'
+	if c.pref.show_cc {
+		println('cc $cc_args')
+	}
 	if os.system('cc $cc_args') != 0 {
 		println('Cross compilation for Linux failed. Make sure you have clang installed.')
 	}
-	mut args := [
+
+	mut linker_args := [
 		'-L SYSROOT/usr/lib/x86_64-linux-gnu/'
 		'--sysroot=SYSROOT -v -o hi -m elf_x86_64'
 		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'
 		'SYSROOT/crt1.o SYSROOT/crti.o x.o'
-		'SYSROOT/lib/x86_64-linux-gnu/libc.so.6'
+		//'SYSROOT/lib/x86_64-linux-gnu/libc.so.6'
 		'-lc'
+		//'-ldl'
+		//'SYSROOT/lib/x86_64-linux-gnu/libcrypto.so'
+		'-lcrypto'
+		'-lssl'
+		//'-dynamic-linker /usr/lib/x86_64-linux-gnu/libcrypto.so'
+		//'SYSROOT/lib/x86_64-linux-gnu/libssl.a'
 		'SYSROOT/crtn.o'
 	]
-	mut s := args.join(' ')
-	s = s.replace('SYSROOT', sysroot)
-	if	os.system('$sysroot/ld.lld ' + s) != 0 {
+	mut s := linker_args.join(' ')
+	s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
+	s = s.replace('-o hi', '-o ' + c.pref.out_name)
+	if c.pref.show_cc {
+		println('$sysroot/ld.lld ' + s)
+	}
+	res :=	os.exec ('$sysroot/ld.lld ' + s) or { return }
+	//println('output:')
+	//println(x.output)
+	if res.exit_code != 0 {
 		println('Cross compilation for Linux failed. Make sure you have clang installed.')
+		return
 	}
 	println(c.pref.out_name + ' has been successfully compiled')
 }
