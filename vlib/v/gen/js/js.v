@@ -1033,6 +1033,11 @@ fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
 	// JS is dynamically typed, so we don't need any codegen at all
 	// We just need the JSDoc so TypeScript type checking works
 	g.doc.gen_interface(it)
+
+	// This is a hack to make the interface's type accessible outside its namespace
+	// TODO: interfaces are always `pub`?
+	name := g.js_name(it.name)
+	g.push_pub_var('/** @type $name */\n\t\t$name: undefined')
 }
 
 fn (mut g JsGen) gen_return_stmt(it ast.Return) {
