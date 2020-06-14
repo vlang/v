@@ -1,4 +1,4 @@
-vlib/v/checker/tests/is_type_not_exist.v:4:2: error: cannot use type `any_int` as type `Integer` in argument 1 to `fn_with_sum_type_param` 
+vlib/v/checker/tests/is_type_not_exist.v:4:2: error: cannot use type `any_int` as type `Integer` in argument 1 to `fn_with_sum_type_param`
     2 |
     3 | fn main() {
     4 |     fn_with_sum_type_param(1)
