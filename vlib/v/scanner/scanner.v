@@ -641,6 +641,15 @@ pub fn (mut s Scanner) buffer_scan() token.Token {
 	}
 }
 
+[inline]
+fn (s Scanner) look_ahead(n int) byte {
+	if s.pos + n < s.text.len {
+		return s.text[s.pos + n]
+	} else {
+		return `\0`
+	}
+}
+
 fn (mut s Scanner) text_scan() token.Token {
 	// if s.comments_mode == .parse_comments {
 	// println('\nscan()')
@@ -676,14 +685,14 @@ fn (mut s Scanner) text_scan() token.Token {
 	}
 	// handle each char
 	c := s.text[s.pos]
-	nextc := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
+	nextc := s.look_ahead(1)
 
 	// name or keyword
 	if util.is_name_char(c) {
 		name := s.ident_name()
 		// tmp hack to detect . in ${}
 		// Check if not .eof to prevent panic
-		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
+		next_char := s.look_ahead(1)
 		kind := token.keywords[name]
 		if kind != .unknown {
 			if kind == .key_fn {
@@ -738,7 +747,7 @@ fn (mut s Scanner) text_scan() token.Token {
 	if c == `)` && s.is_inter_start {
 		s.is_inter_end = true
 		s.is_inter_start = false
-		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
+		next_char := s.look_ahead(1)
 		if next_char == s.quote {
 			s.is_inside_string = false
 		}
@@ -849,7 +858,9 @@ fn (mut s Scanner) text_scan() token.Token {
 				s.pos++
 				return s.new_token(.and_assign, '', 2)
 			}
-			if nextc == `&` {
+
+			afternextc := s.look_ahead(2)
+			if nextc == `&` && afternextc.is_space() {
 				s.pos++
 				return s.new_token(.and, '', 2)
 			}

@@ -319,6 +319,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		args << args2
 		mut method := ast.FnDecl{
 			name: name
+			mod: p.mod
 			args: args
 			file: p.file_name
 			return_type: table.void_type

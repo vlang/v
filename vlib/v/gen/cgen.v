@@ -942,7 +942,7 @@ fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 		g.writeln('	g_test_fails++;')
 		metaname_fail := g.gen_assert_metainfo(a)
 		g.writeln('	cb_assertion_failed(&${metaname_fail});')
-		g.writeln('	exit(1);')
+		g.writeln('	longjmp(g_jump_buffer, 1);')
 		g.writeln('	// TODO')
 		g.writeln('	// Maybe print all vars in a test function if it fails?')
 		g.writeln('}')
@@ -1097,7 +1097,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if is_call {
 				g.expr(val)
 			} else {
-				g.gen_default_init_value(val)
 				g.write('{$styp _ = ')
 				g.expr(val)
 				g.writeln(';}')
@@ -1106,7 +1105,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			right_sym := g.table.get_type_symbol(assign_stmt.right_types[i])
 			mut is_fixed_array_init := false
 			mut has_val := false
-			is_fixed_array_init, has_val = g.gen_default_init_value(val)
+			match val {
+				ast.ArrayInit {
+					is_fixed_array_init = it.is_fixed
+					has_val = it.has_val
+				}
+				else {}
+			}
 			is_inside_ternary := g.inside_ternary != 0
 			cur_line := if is_inside_ternary {
 				g.register_ternary_name(ident.name)
@@ -1207,33 +1212,6 @@ fn (mut g Gen) gen_cross_tmp_variable(idents []ast.Ident, val ast.Expr) {
 			g.expr(val)
 		}
 	}
-}
-
-fn (mut g Gen) gen_default_init_value(val ast.Expr) (bool, bool) {
-	mut is_fixed_array_init := false
-	mut has_val := false
-	match val {
-		ast.ArrayInit {
-			is_fixed_array_init = it.is_fixed
-			has_val = it.has_val
-			elem_type_str := g.typ(it.elem_type)
-			if it.has_default {
-				g.gen_default_init_value(it.default_expr)
-				g.write('$elem_type_str _val_$it.pos.pos = ')
-				g.expr(it.default_expr)
-				g.writeln(';')
-			} else if it.has_len && it.elem_type == table.string_type {
-				g.writeln('$elem_type_str _val_$it.pos.pos = tos_lit("");')
-			}
-		}
-		ast.StructInit {
-			for field in it.fields {
-				g.gen_default_init_value(field.expr)
-			}
-		}
-		else {}
-	}
-	return is_fixed_array_init, has_val
 }
 
 fn (mut g Gen) register_ternary_name(name string) {
@@ -1374,7 +1352,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// TODO: dont fiddle with buffers
 			g.gen_anon_fn_decl(it)
 			fsym := g.table.get_type_symbol(it.typ)
-			g.write('&${fsym.name}')
+			g.write(fsym.name)
 		}
 		ast.ArrayInit {
 			g.array_init(it)
@@ -1861,13 +1839,15 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		if right_sym.kind == .array {
 			match node.right {
 				ast.ArrayInit {
-					// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
-					// avoids an allocation
-					// g.write('/*in opt*/')
-					g.write('(')
-					g.in_optimization(node.left, it)
-					g.write(')')
-					return
+					if it.exprs.len > 0 {
+						// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
+						// avoids an allocation
+						// g.write('/*in opt*/')
+						g.write('(')
+						g.in_optimization(node.left, it)
+						g.write(')')
+						return
+					}
 				}
 				else {}
 			}
@@ -2942,9 +2922,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if i >= node.exprs.len {
 			if escaped_val.len > 0 {
 				end_string = true
-				if !g.pref.autofree {
+				//if !g.pref.autofree {
 					g.write('\\000')
-				}
+				//}
 				g.write(escaped_val)
 			}
 			continue
@@ -3054,7 +3034,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			// TODO: better check this case
 			g.write('${fmt}"PRId32"')
 		}
-		if i < node.exprs.len - 1 && !g.pref.autofree {
+		if i < node.exprs.len - 1 {
 			g.write('\\000')
 		}
 	}
@@ -3356,7 +3336,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		} else {
 			// In ordinary functions, `opt()?` call is sugar for:
 			// `opt() or { return error(err) }`
-			// Since we *do* return, first we have to ensure that 
+			// Since we *do* return, first we have to ensure that
 			// the defered statements are generated.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
@@ -3605,8 +3585,10 @@ fn (g Gen) type_default(typ table.Type) string {
 }
 
 pub fn (mut g Gen) write_tests_main() {
+	g.includes.writeln('#include <setjmp.h> // write_tests_main')
 	g.definitions.writeln('int g_test_oks = 0;')
 	g.definitions.writeln('int g_test_fails = 0;')
+	g.definitions.writeln('jmp_buf g_jump_buffer;')
 	$if windows {
 		g.writeln('int wmain() {')
 	} $else {
@@ -3623,7 +3605,7 @@ pub fn (mut g Gen) write_tests_main() {
 		if g.pref.is_stats {
 			g.writeln('\tBenchedTests_testing_step_start(&bt, tos_lit("$t"));')
 		}
-		g.writeln('\t${t}();')
+		g.writeln('\tif (!setjmp(g_jump_buffer)) ${t}();')
 		if g.pref.is_stats {
 			g.writeln('\tBenchedTests_testing_step_end(&bt);')
 		}
@@ -4320,10 +4302,16 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		g.write('}')
 		return
 	}
-	// elem_sym := g.table.get_type_symbol(it.elem_type)
 	elem_type_str := g.typ(it.elem_type)
 	if it.exprs.len == 0 {
-		g.write('__new_array_with_default(')
+		elem_sym := g.table.get_type_symbol(it.elem_type)
+		is_default_array := elem_sym.kind == .array && it.has_default
+
+		if is_default_array {
+			g.write('__new_array_with_array_default(')
+		} else {
+			g.write('__new_array_with_default(')
+		}
 		if it.has_len {
 			g.expr(it.len_expr)
 			g.write(', ')
@@ -4337,8 +4325,18 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 			g.write('0, ')
 		}
 		g.write('sizeof($elem_type_str), ')
-		if it.has_default || (it.has_len && it.elem_type == table.string_type) {
-			g.write('&_val_$it.pos.pos)')
+		if is_default_array {
+			g.write('($elem_type_str[]){')
+			g.expr(it.default_expr)
+			g.write('}[0])')
+		} else if it.has_default {
+			g.write('&($elem_type_str[]){')
+			g.expr(it.default_expr)
+			g.write('})')
+		} else if it.has_len && it.elem_type == table.string_type {
+			g.write('&($elem_type_str[]){')
+			g.write('tos_lit("")')
+			g.write('})')
 		} else {
 			g.write('0)')
 		}
@@ -4382,13 +4380,6 @@ fn (mut g Gen) panic_debug_info(pos token.Position) (int, string, string, string
 	paline := pos.line_nr + 1
 	pafile := g.fn_decl.file.replace('\\', '/')
 	pafn := g.fn_decl.name.after('.')
-	mut pamod := g.fn_decl.name.all_before_last('.')
-	if pamod == pafn {
-		pamod = if g.fn_decl.is_builtin {
-			'builtin'
-		} else {
-			'main'
-		}
-	}
+	pamod := g.fn_decl.modname()
 	return paline, pafile, pamod, pafn
 }

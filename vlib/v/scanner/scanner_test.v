@@ -44,8 +44,7 @@ fn fn_name_mod_level_high_order(cb fn(int)) {
 	cb(1)
 }
 
-fn test_scan() {
-	text := 'println(2 + 3)'
+fn scan_kinds(text string) []token.Kind {
 	mut scanner := new_scanner(text, .skip_comments)
 	mut token_kinds := []token.Kind{}
 	for {
@@ -55,6 +54,11 @@ fn test_scan() {
 		}
 		token_kinds << tok.kind
 	}
+	return token_kinds
+}
+
+fn test_scan() {
+	token_kinds := scan_kinds('println(2 + 3)')
 	assert token_kinds.len == 6
 	assert token_kinds[0] == .name
 	assert token_kinds[1] == .lpar
@@ -121,4 +125,56 @@ fn test_vmod_file() {
 	assert content.contains('name:')
 	assert content.contains('version:')
 	assert content.contains('description:')
+}
+
+fn test_reference() {
+	mut result := scan_kinds('true && false')
+	assert result.len == 3
+	assert result[0] == .key_true
+	assert result[1] == .and
+	assert result[2] == .key_false
+
+	result = scan_kinds('&foo')
+	assert result.len == 2
+	assert result[0] == .amp
+	assert result[1] == .name
+
+	result = scan_kinds('[]&foo')
+	assert result.len == 4
+	assert result[0] == .lsbr
+	assert result[1] == .rsbr
+	assert result[2] == .amp
+	assert result[3] == .name
+
+	result = scan_kinds('&[]&foo')
+	assert result.len == 5
+	assert result[0] == .amp
+	assert result[1] == .lsbr
+	assert result[2] == .rsbr
+	assert result[3] == .amp
+	assert result[4] == .name
+
+	result = scan_kinds('&&foo')
+	assert result.len == 3
+	assert result[0] == .amp
+	assert result[1] == .amp
+	assert result[2] == .name
+
+	result = scan_kinds('[]&&foo')
+	assert result.len == 5
+	assert result[0] == .lsbr
+	assert result[1] == .rsbr
+	assert result[2] == .amp
+	assert result[3] == .amp
+	assert result[4] == .name
+
+	result = scan_kinds('&&[]&&foo')
+	assert result.len == 7
+	assert result[0] == .amp
+	assert result[1] == .amp
+	assert result[2] == .lsbr
+	assert result[3] == .rsbr
+	assert result[4] == .amp
+	assert result[5] == .amp
+	assert result[6] == .name
 }

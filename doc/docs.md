@@ -1567,7 +1567,7 @@ NB: Each flag must go on its own line (for now)
 You can also include C code directly in your V module. For example, let's say that your C code is located in a folder named 'c' inside your module folder. Then:
 
 * Put a v.mod file inside the toplevel folder of your module (if you
-created your module with `v create` you already have v.mod file). For
+created your module with `v new` you already have v.mod file). For
 example:
 ```v
 Module {

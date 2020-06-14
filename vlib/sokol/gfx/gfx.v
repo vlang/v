@@ -1,5 +1,9 @@
 module gfx
 
+pub const (
+	version = 1
+)
+
 // setup and misc functions
 [inline]
 pub fn setup(desc &C.sg_desc) {

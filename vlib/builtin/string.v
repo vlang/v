@@ -716,6 +716,9 @@ pub fn (s string) count(substr string) int {
 }
 
 pub fn (s string) contains(p string) bool {
+	if p.len == 0 {
+		return true
+	}
 	s.index(p) or {
 		return false
 	}
@@ -1183,7 +1186,9 @@ pub fn (c byte) is_letter() bool {
 }
 
 pub fn (s &string) free() {
-	if s.is_lit {return}
+	if s.is_lit || s.len == 0 {
+		return
+	}
 	free(s.str)
 }
 

@@ -5,6 +5,7 @@ import strings
 #include <dirent.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/utsname.h>
 
 pub const (
 	path_separator = '/'
@@ -17,7 +18,31 @@ const (
 	stderr_value = 2
 )
 
+struct C.utsname {
+mut:
+	sysname  charptr
+	nodename charptr
+	release  charptr
+	version  charptr
+	machine  charptr
+}
+
+fn C.uname(name voidptr) int
 fn C.symlink(charptr, charptr) int
+
+pub fn uname() Uname {
+	mut u := Uname{}
+	d := &C.utsname( malloc(int(sizeof(C.utsname))) )
+	if C.uname(d) == 0 {
+		u.sysname = cstring_to_vstring(d.sysname)
+		u.nodename = cstring_to_vstring(d.nodename)
+		u.release = cstring_to_vstring(d.release)
+		u.version = cstring_to_vstring(d.version)
+		u.machine = cstring_to_vstring(d.machine)
+	}
+	free(d)
+	return u
+}
 
 fn init_os_args(argc int, argv &&byte) []string {
 	mut args := []string{}
@@ -113,7 +138,7 @@ pub fn exec(cmd string) ?Result {
 		bufbp := byteptr(buf)
 		res.write_bytes( bufbp, vstrlen(bufbp) )
 	}
-	soutput := res.str().trim_space()
+	soutput := res.str()
 	//res.free()
 	exit_code := vpclose(f)
 	// if exit_code != 0 {

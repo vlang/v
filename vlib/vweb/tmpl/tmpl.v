@@ -28,15 +28,15 @@ enum State {
 
 pub fn compile_template(html_, fn_name string) string {
 	// lines := os.read_lines(path)
-	mut html := html_
+	mut html := html_.trim_space()
 	mut header := ''
-if os.exists('templates/header.html') && html.contains('@header') {
-        h := os.read_file('templates/header.html') or {
-                panic('reading file templates/header.html failed')
-        }
-        header = h.replace("\'", '"')
-        html = header + html
-}
+	if os.exists('templates/header.html') && html.contains('@header') {
+		h := os.read_file('templates/header.html') or {
+			panic('reading file templates/header.html failed')
+		}
+		header = h.trim_space().replace("\'", '"')
+		html = header + html
+	}
 
 	mut lines := html.split_into_lines()
 	mut s := strings.new_builder(1000)
@@ -50,7 +50,7 @@ header := \' \' // TODO remove
 _ = header
 
 ")
-	s.writeln(str_start)
+	s.write(str_start)
 	mut state := State.html
 	mut in_span := false
 	//for _line in lines {
@@ -67,8 +67,8 @@ _ = header
 		else if line == '</script>' {
 			state = .html
 		}
-		// TODO
 		if line.contains('@include ') && false {
+			// TODO
 			pos := line.index('@include ') or {
 				continue
 			}
@@ -84,6 +84,20 @@ _ = header
 			}
 			continue
 			//s.writeln(file_content)
+		} else if line.contains('@js ') {
+			pos := line.index('@js') or {
+				continue
+			}
+			s.write('<script src=') // " is inserted in the template
+			s.write(line[pos + 4..])
+			s.writeln('></script>')
+		} else if line.contains('@css ') {
+			pos := line.index('@css') or {
+				continue
+			}
+			s.write('<link href=')
+			s.write(line[pos + 4..])
+			s.writeln(' rel="stylesheet" type="text/css">')
 		} else if line.contains('@if ') {
 			s.writeln(str_end)
 			pos := line.index('@if') or {

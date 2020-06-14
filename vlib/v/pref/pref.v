@@ -103,7 +103,6 @@ pub mut:
 	compile_defines     []string // just ['vfmt']
 	compile_defines_all []string // contains both: ['vfmt','another']
 
-	mod                 string
 	run_args            []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list        []string // a list of generated function names, whose source should be shown, for debugging
 	print_v_files       bool     // when true, just print the list of all parsed .v files then stop.

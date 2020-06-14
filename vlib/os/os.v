@@ -1358,3 +1358,12 @@ pub fn create(path string) ?File {
 		opened: true
 	}
 }
+
+pub struct Uname {
+pub mut:
+	sysname  string
+	nodename string
+	release  string
+	version  string
+	machine  string
+}

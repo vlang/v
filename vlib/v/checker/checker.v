@@ -553,10 +553,10 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			type_expr := infix_expr.right as ast.Type
 			typ_sym := c.table.get_type_symbol(type_expr.typ)
 			if typ_sym.kind == .placeholder {
-				c.error('is: type `${typ_sym.name}` does not exist', type_expr.pos)
+				c.error('$infix_expr.op.str(): type `${typ_sym.name}` does not exist', type_expr.pos)
 			}
 			if left.kind != .interface_ && left.kind != .sum_type {
-				c.error('`is` can only be used with interfaces and sum types', type_expr.pos)
+				c.error('`$infix_expr.op.str()` can only be used with interfaces and sum types', type_expr.pos)
 			}
 			return table.bool_type
 		}
@@ -580,7 +580,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	} else if left_type == table.string_type && infix_expr.op !in [.plus, .eq, .ne, .lt, .gt,
 		.le, .ge] {
 		// TODO broken !in
-		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `&&`',
+		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			infix_expr.pos)
 	}
 	// Dual sides check (compatibility check)
@@ -709,12 +709,18 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 			} else if !right.is_number() && right_type != table.string_type && !right.is_pointer() {
 				c.error('operator += not defined on right operand type `$right.name`', assign_expr.val.position())
 			}
+			if assign_expr.val is ast.IntegerLiteral && assign_expr.val.str().int() == 1 {
+				c.error('use `++` instead of `+= 1`', assign_expr.pos)
+			}
 		}
 		.minus_assign {
 			if !left.is_number() && !left.is_pointer() {
 				c.error('operator -= not defined on left operand type `$left.name`', assign_expr.left.position())
 			} else if !right.is_number() && !right.is_pointer() {
 				c.error('operator -= not defined on right operand type `$right.name`', assign_expr.val.position())
+			}
+			if assign_expr.val is ast.IntegerLiteral && assign_expr.val.str().int() == 1 {
+				c.error('use `--` instead of `-= 1`', assign_expr.pos)
 			}
 		}
 		.mult_assign, .div_assign {
@@ -754,6 +760,37 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 	return c.call_fn(call_expr)
 }
 
+fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_expr ast.CallExpr) {
+	elem_sym := c.table.get_type_symbol(elem_typ)
+	match call_expr.args[0].expr {
+		ast.AnonFn {
+			if it.decl.args.len > 1 {
+				c.error('function needs exactly 1 argument', call_expr.pos)
+			} else if is_map && (it.decl.return_type != elem_typ || it.decl.args[0].typ != elem_typ) {
+				c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`', call_expr.pos)
+			} else if !is_map && (it.decl.return_type != table.bool_type || it.decl.args[0].typ != elem_typ) {
+				c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`', call_expr.pos)
+			}
+		}
+		ast.Ident {
+			if it.kind == .function {
+				func := c.table.find_fn(it.name) or {
+					c.error('$it.name is not exist', it.pos)
+					return
+				}
+				if func.args.len > 1 {
+					c.error('function needs exactly 1 argument', call_expr.pos)
+				} else if is_map && (func.return_type != elem_typ || func.args[0].typ != elem_typ) {
+					c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`', call_expr.pos)
+				} else if !is_map && (func.return_type != table.bool_type || func.args[0].typ != elem_typ) {
+					c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`', call_expr.pos)
+				}
+			}
+		}
+		else {}
+	}
+}
+
 pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	left_type := c.expr(call_expr.left)
 	is_generic := left_type == table.t_type
@@ -764,10 +801,12 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in ['filter', 'clone', 'repeat', 'reverse',
 		'map', 'slice'] {
+		mut elem_typ := table.void_type
 		if method_name in ['filter', 'map'] {
 			array_info := left_type_sym.info as table.Array
 			mut scope := c.file.scope.innermost(call_expr.pos.pos)
 			scope.update_var_type('it', array_info.elem_type)
+			elem_typ = array_info.elem_type
 		}
 		// map/filter are supposed to have 1 arg only
 		mut arg_type := left_type
@@ -777,6 +816,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		call_expr.return_type = left_type
 		call_expr.receiver_type = left_type
 		if method_name == 'map' {
+			// check fn
+			c.check_map_and_filter(true, elem_typ, call_expr)
 			arg_sym := c.table.get_type_symbol(arg_type)
 			// FIXME: match expr failed for now
 			mut ret_type := 0
@@ -785,6 +826,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				else { ret_type = arg_type }
 			}
 			call_expr.return_type = c.table.find_or_register_array(ret_type, 1, c.mod)
+		} else if method_name == 'filter' {
+			// check fn
+			c.check_map_and_filter(false, elem_typ, call_expr)
 		} else if method_name == 'clone' {
 			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
@@ -1913,6 +1957,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			}
 			if it.op == .mul && right_type.is_ptr() {
 				return right_type.deref()
+			}
+			if it.op == .bit_not && !right_type.is_int() {
+				c.error('operator ~ only defined on int types', it.pos)
 			}
 			if it.op == .not && right_type != table.bool_type_idx {
 				c.error('! operator can only be used with bool types', it.pos)

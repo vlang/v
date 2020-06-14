@@ -505,7 +505,8 @@ pub fn (mut f Fmt) struct_field_expr(fexpr ast.Expr) {
 
 fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
-	if res.ends_with('_ptr') {
+
+	for res.ends_with('_ptr') {
 		// type_ptr => &type
 		res = res[0..res.len - 4]
 		start_pos := 2 * res.count('[]')
@@ -571,7 +572,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.CharLiteral {
 			f.write('`$it.val`')
 		}
-		ast.ComptimeCall {}
+		ast.ComptimeCall {
+			if it.is_vweb {
+				f.write('$' + 'vweb.html()')
+			}
+		}
 		ast.ConcatExpr {
 			for i, val in it.vals {
 				if i != 0 {

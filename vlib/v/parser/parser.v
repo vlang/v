@@ -144,6 +144,7 @@ fn (mut p Parser) parse() ast.File {
 			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
 				stmts << ast.FnDecl{
 					name: 'main'
+					mod: p.mod
 					file: p.file_name
 					return_type: table.void_type
 				}
@@ -406,9 +407,14 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 		}
 		.lsbr {
+			start_pos := p.tok.position()
 			attrs := p.attributes()
 			if attrs.len > 1 {
-				p.error('multiple attributes detected')
+				end_pos := p.tok.position()
+				p.error_with_pos('multiple attributes detected', start_pos.extend(end_pos))
+			} else if attrs.len == 0 {
+				end_pos := p.tok.position()
+				p.error_with_pos('attributes cannot be empty', start_pos.extend(end_pos))
 			}
 			return attrs[0]
 		}
@@ -458,6 +464,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				}
 				return ast.FnDecl{
 					name: 'main'
+					mod: p.mod
 					stmts: stmts
 					file: p.file_name
 					return_type: table.void_type
@@ -1159,7 +1166,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		vals << p.tok.lit
 		p.next()
 		if p.tok.kind != .str_dollar {
-			continue
+			break
 		}
 		p.next()
 		exprs << p.expr(0)
@@ -1367,7 +1374,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	}
 }
 
-const(
+const (
 	// modules which allow globals by default
 	global_enabled_mods = ['rand']
 )
@@ -1375,8 +1382,8 @@ const(
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v &&
-		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') &&
-		!p.pref.enable_globals && p.mod !in global_enabled_mods {
+		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals &&
+		!p.pref.is_fmt && p.mod !in global_enabled_mods {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
 	start_pos := p.tok.position()

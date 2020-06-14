@@ -163,7 +163,6 @@ fn (foptions &FormatOptions) format_file(file string) {
 fn print_compiler_options(compiler_params &pref.Preferences) {
 	eprintln('         os: ' + compiler_params.os.str())
 	eprintln('  ccompiler: $compiler_params.ccompiler')
-	eprintln('        mod: $compiler_params.mod ')
 	eprintln('       path: $compiler_params.path ')
 	eprintln('   out_name: $compiler_params.out_name ')
 	eprintln('      vroot: $compiler_params.vroot ')

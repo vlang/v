@@ -816,3 +816,13 @@ fn test_array_with_cap() {
 	assert a5.len == 1
 	assert a5.cap == 10
 }
+
+fn test_mutli_array_index() {
+	mut a := [][]int{len:2, init: []int{len:3, init:0}}
+	a[0][0] = 1
+	assert '$a' == '[[1, 0, 0], [0, 0, 0]]'
+
+	mut b := [[0].repeat(3)].repeat(2)
+	b[0][0] = 1
+	assert '$b' == '[[1, 0, 0], [0, 0, 0]]'
+}
