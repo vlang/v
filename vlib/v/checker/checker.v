@@ -709,12 +709,18 @@ fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
 			} else if !right.is_number() && right_type != table.string_type && !right.is_pointer() {
 				c.error('operator += not defined on right operand type `$right.name`', assign_expr.val.position())
 			}
+			if assign_expr.val is ast.IntegerLiteral && assign_expr.val.str().int() == 1 {
+				c.error('use `++` instead of `+= 1`', assign_expr.pos)
+			}
 		}
 		.minus_assign {
 			if !left.is_number() && !left.is_pointer() {
 				c.error('operator -= not defined on left operand type `$left.name`', assign_expr.left.position())
 			} else if !right.is_number() && !right.is_pointer() {
 				c.error('operator -= not defined on right operand type `$right.name`', assign_expr.val.position())
+			}
+			if assign_expr.val is ast.IntegerLiteral && assign_expr.val.str().int() == 1 {
+				c.error('use `--` instead of `-= 1`', assign_expr.pos)
 			}
 		}
 		.mult_assign, .div_assign {

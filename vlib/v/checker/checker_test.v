@@ -55,7 +55,7 @@ fn check_path(vexe, dir, voptions, result_extension string, tests []string) int 
 			println('found:')
 			println(found)
 			println('============\n')
-			nb_fail += 1
+			nb_fail++
 		} else {
 			println(term.green('OK'))
 			os.rm(program)
