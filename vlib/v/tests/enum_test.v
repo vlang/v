@@ -74,6 +74,20 @@ fn test_nums() {
 	assert d == -10
 }
 
+fn test_enumstr() {
+	a := Foo.a
+	assert '$a' == 'a'
+	b := Foo.b
+	assert '$b' == 'b'
+/*
+	// not yet implemented
+	c := Foo('c')     // making enums also a function?
+	assert c == Foo.c
+	d := Foo['d']     // making enums accessible as arrays
+	assert d == Foo.d
+*/
+}
+
 /*
 enum Expr {
 	BoolExpr(bool)
