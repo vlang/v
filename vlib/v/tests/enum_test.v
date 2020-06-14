@@ -79,6 +79,8 @@ fn test_enumstr() {
 	assert '$a' == 'a'
 	b := Foo.b
 	assert '$b' == 'b'
+	b2 := Foo(2)
+	assert b2.str() == 'b'
 /*
 	// not yet implemented
 	c := Foo('c')     // making enums also a function?
