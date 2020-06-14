@@ -717,10 +717,24 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					continue
 				}
 				f.write('$')
-				if it.expr_fmts[i].len > 0 {
+				if it.has_fmts[i] || (it.exprs[i] !is ast.Ident && it.exprs[i] !is ast.SelectorExpr) {
 					f.write('{')
 					f.expr(it.exprs[i])
-					f.write(it.expr_fmts[i])
+					if it.has_fmts[i] {
+						f.write(':')
+						if it.pluss[i] {
+							f.write('+')
+						}
+						if it.fwidths[i] != 0 {
+							f.write('${it.fwidths[i]}')
+						}
+						if it.precisions[i] != 0 {
+							f.write('.${it.precisions[i]}')
+						}
+						if it.fmts[i] != `_` {
+							f.write('${it.fmts[i]:c}')
+						}
+					}
 					f.write('}')
 				} else {
 					f.expr(it.exprs[i])

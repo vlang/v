@@ -1367,9 +1367,11 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 			continue
 		}
 		expr := it.exprs[i]
-		sfmt := it.expr_fmts[i]
+		fmt := it.fmts[i]
+		fwidth := it.fwidths[i]
+		precision := it.precisions[i]
 		g.write('\${')
-		if sfmt.len > 0 {
+		if fmt != `_` || fwidth !=0 || precision != 0 {
 			// TODO: Handle formatting
 			g.expr(expr)
 		} else {
