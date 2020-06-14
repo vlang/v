@@ -317,7 +317,7 @@ pub:
 	// status_ constants
 	code u32
 	flags u32
-	
+
 	record &ExceptionRecord
 	address voidptr
 	param_count u32
@@ -352,4 +352,16 @@ pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandl
 
 pub fn debugger_present() bool {
 	return C.IsDebuggerPresent()
+}
+
+pub fn uname() Uname {
+	// TODO: implement `os.uname()` for windows
+	unknown := 'unknown'
+	return Uname{
+		sysname: unknown
+		nodename: unknown
+		release: unknown
+		version: unknown
+		machine: unknown
+	}
 }
