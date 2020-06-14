@@ -343,3 +343,12 @@ fn test_basedir() {
 	}
 	assert os.base_dir('filename') == 'filename'
 }
+
+fn test_uname() {
+	u := os.uname()
+	assert u.sysname.len > 0
+	assert u.nodename.len > 0
+	assert u.release.len > 0
+	assert u.version.len > 0
+	assert u.machine.len > 0
+}

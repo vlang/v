@@ -27,30 +27,21 @@ mut:
 	machine  charptr
 }
 
-pub struct Uname {
-pub:
-	sysname  string
-	nodename string
-	release  string
-	version  string
-	machine  string
-}
-
 fn C.uname(name voidptr) int
 fn C.symlink(charptr, charptr) int
 
 pub fn uname() Uname {
-	d := &C.utsname{}
+	mut u := Uname{}
+	d := &C.utsname( malloc(int(sizeof(C.utsname))) )
 	if C.uname(d) == 0 {
-		return Uname{
-			sysname: cstring_to_vstring(&d.sysname),
-			nodename: cstring_to_vstring(&d.nodename),
-			release: cstring_to_vstring(&d.release),
-			version: cstring_to_vstring(&d.version),
-			machine: cstring_to_vstring(&d.machine)
-		}
+		u.sysname = cstring_to_vstring(d.sysname)
+		u.nodename = cstring_to_vstring(d.nodename)
+		u.release = cstring_to_vstring(d.release)
+		u.version = cstring_to_vstring(d.version)
+		u.machine = cstring_to_vstring(d.machine)
 	}
-	return Uname{}
+	free(d)
+	return u
 }
 
 fn init_os_args(argc int, argv &&byte) []string {
