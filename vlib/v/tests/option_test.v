@@ -167,7 +167,7 @@ fn test_reassignment() {
 	assert x2 == 777
 	x2 = 100
 	assert x2 == 100
-	x2 += 1
+	x2++
 	assert x2 == 101
 	//
 	mut x3 := 0

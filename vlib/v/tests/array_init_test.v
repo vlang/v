@@ -189,3 +189,8 @@ fn test_multi_dimensional_array_init() {
 	f := [][]int{len:3}
 	assert '$f' == '[[], [], []]'
 }
+
+fn test_array_init_direct_call() {
+	assert []int{len: 2, init: 0}.len == 2
+	assert []int{len: 3, init: 1}.map(it*2) == [2,2,2]
+}

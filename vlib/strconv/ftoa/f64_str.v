@@ -110,8 +110,8 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 		out /= ten_pow_table_64[out_len - n_digit ]
 		//println("out1:[$out] ${d.m / ten_pow_table_64[out_len - n_digit ]}")
 		if d.m / ten_pow_table_64[out_len - n_digit ] < out {
-			d_exp += 1
-			n_digit += 1
+			d_exp++
+			n_digit++
 		}
 
 		//println("cmp: ${d.m/ten_pow_table_64[out_len - n_digit ]} ${out/ten_pow_table_64[out_len - n_digit ]}")
