@@ -659,8 +659,8 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	g.write('if( ')
 	g.expr(a.expr)
 	g.write(' ) {')
-	s_assertion := a.expr.str().replace('"', "\'")
-	mut mod_path := g.file.path
+	s_assertion := a.expr.str().replace('"', "'")
+	mut mod_path := g.file.path.replace('\\', '\\\\')
 	if g.is_test {
 		g.writeln('	g_test_oks++;')
 		g.writeln('	cb_assertion_ok("${mod_path}", ${a.pos.line_nr+1}, "assert ${s_assertion}", "${g.fn_decl.name}()" );')
@@ -672,8 +672,10 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 		return
 	}
 	g.writeln('} else {')
-	g.writeln('	eprintln("${mod_path}:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
-	g.writeln('	exit(1);')
+	g.inc_indent()
+	g.writeln('builtin.eprintln("${mod_path}:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
+	g.writeln('builtin.exit(1);')
+	g.dec_indent()
 	g.writeln('}')
 }
 
