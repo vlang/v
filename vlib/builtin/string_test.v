@@ -357,6 +357,8 @@ fn test_contains() {
 	s := 'view.v'
 	assert s.contains('vi')
 	assert !s.contains('random')
+	assert ''.contains('')
+	assert 'abc'.contains('')
 }
 
 fn test_arr_contains() {
