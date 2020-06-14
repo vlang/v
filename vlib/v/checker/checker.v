@@ -553,7 +553,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			type_expr := infix_expr.right as ast.Type
 			typ_sym := c.table.get_type_symbol(type_expr.typ)
 			if typ_sym.kind == .placeholder {
-				c.error('$infix_expr.op.str() type `${typ_sym.name}` does not exist', type_expr.pos)
+				c.error('$infix_expr.op.str(): type `${typ_sym.name}` does not exist', type_expr.pos)
 			}
 			if left.kind != .interface_ && left.kind != .sum_type {
 				c.error('`$infix_expr.op.str()` can only be used with interfaces and sum types', type_expr.pos)
