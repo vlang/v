@@ -716,6 +716,9 @@ pub fn (s string) count(substr string) int {
 }
 
 pub fn (s string) contains(p string) bool {
+	if p.len == 0 {
+		return true
+	}
 	s.index(p) or {
 		return false
 	}
