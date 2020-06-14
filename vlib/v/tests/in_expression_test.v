@@ -214,3 +214,7 @@ fn test_optimized_in_expression_with_string() {
 	a = 'ab' in ['ab', 'bc'] && false
 	assert a == false
 }
+
+fn test_in_array_init() {
+	assert 1 !in []int{}
+}

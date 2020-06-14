@@ -1861,13 +1861,15 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		if right_sym.kind == .array {
 			match node.right {
 				ast.ArrayInit {
-					// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
-					// avoids an allocation
-					// g.write('/*in opt*/')
-					g.write('(')
-					g.in_optimization(node.left, it)
-					g.write(')')
-					return
+					if it.exprs.len > 0 {
+						// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
+						// avoids an allocation
+						// g.write('/*in opt*/')
+						g.write('(')
+						g.in_optimization(node.left, it)
+						g.write(')')
+						return
+					}
 				}
 				else {}
 			}
