@@ -66,6 +66,8 @@ print('true\t=> ')
 println('key' in m)
 print('true\t=> ')
 println('badkey' !in m)
+print('true\t=> ')
+println('o' in 'hello')
 
 // for in
 for _ in arr1 {}

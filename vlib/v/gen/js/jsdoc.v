@@ -86,5 +86,5 @@ fn (mut d JsDoc) gen_interface(it ast.InterfaceDecl) {
 		method_name := d.gen.js_name(method.name)
 		d.writeln(' * @property {$typ} $method_name')
 	}
-	d.writeln(' */\n\n')
+	d.writeln(' */\n')
 }

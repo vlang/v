@@ -453,7 +453,6 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.FnDecl {
 			g.fn_decl = it
 			g.gen_fn_decl(it)
-			g.writeln('')
 		}
 		ast.ForCStmt {
 			g.gen_for_c_stmt(it)
@@ -795,9 +794,7 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 
 fn (mut g JsGen) gen_expr_stmt(it ast.ExprStmt) {
 	g.expr(it.expr)
-	expr := it.expr
-	if expr is ast.IfExpr { } // no ; after an if expression
-	else if !g.inside_ternary { g.writeln(';') }
+	if it.expr !is ast.IfExpr && !g.inside_ternary { g.writeln(';') }
 }
 
 fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
@@ -880,7 +877,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		g.write(')();')
 	}
 	if !it.is_anon && !it.is_method {
-		g.writeln('')
+		g.writeln('\n')
 	}
 
 	g.fn_decl = voidptr(0)
@@ -1342,7 +1339,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		if r_sym.kind == .array { g.write('...') } // arr << [1, 2]
 		g.expr(it.right)
 		g.write(')')
-	} else if r_sym.kind in [.array, .map] && it.op in [.key_in, .not_in] {
+	} else if r_sym.kind in [.array, .map, .string] && it.op in [.key_in, .not_in] {
 		if it.op == .not_in { g.write('!(') }
 		g.expr(it.right)
 		g.write(if r_sym.kind == .map { '.has(' } else { '.includes(' })
