@@ -553,10 +553,10 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			type_expr := infix_expr.right as ast.Type
 			typ_sym := c.table.get_type_symbol(type_expr.typ)
 			if typ_sym.kind == .placeholder {
-				c.error('is: type `${typ_sym.name}` does not exist', type_expr.pos)
+				c.error('$infix_expr.op.str(): type `${typ_sym.name}` does not exist', type_expr.pos)
 			}
 			if left.kind != .interface_ && left.kind != .sum_type {
-				c.error('`is` can only be used with interfaces and sum types', type_expr.pos)
+				c.error('`$infix_expr.op.str()` can only be used with interfaces and sum types', type_expr.pos)
 			}
 			return table.bool_type
 		}
@@ -580,7 +580,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	} else if left_type == table.string_type && infix_expr.op !in [.plus, .eq, .ne, .lt, .gt,
 		.le, .ge] {
 		// TODO broken !in
-		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `&&`',
+		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			infix_expr.pos)
 	}
 	// Dual sides check (compatibility check)
@@ -1952,7 +1952,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			if it.op == .mul && right_type.is_ptr() {
 				return right_type.deref()
 			}
-			if it.op == .bit_not && !right_type.is_int(){
+			if it.op == .bit_not && !right_type.is_int() {
 				c.error('operator ~ only defined on int types', it.pos)
 			}
 			if it.op == .not && right_type != table.bool_type_idx {
