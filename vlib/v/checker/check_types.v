@@ -282,7 +282,7 @@ pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type
 					sym.has_method('str') {
 					fmt = `s`
 				} else {
-					c.error('no known default format for type ${c.table.get_type_name(ftyp)}',
+					c.error('no known default format for type `${c.table.get_type_name(ftyp)}`',
 						node.fmt_poss[i])
 				}
 			}
@@ -301,7 +301,7 @@ pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type
 				(typ.is_pointer() && fmt !in [`p`, `x`, `X`]) ||
 				(typ.is_string() && fmt != `s`) ||
 				(typ.idx() in [table.i64_type_idx, table.f64_type_idx] && fmt == `c`) {
-				c.error('illegal format specifier ${fmt:c} for type ${c.table.get_type_name(ftyp)}',
+				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
 					node.fmt_poss[i])
 			}
 		}
