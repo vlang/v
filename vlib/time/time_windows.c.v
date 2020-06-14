@@ -4,7 +4,7 @@
 module time
 
 #include <time.h>
-#include <sysinfoapi.h>
+// #include <sysinfoapi.h>
 
 struct C.tm {
 	tm_year int
