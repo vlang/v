@@ -561,8 +561,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_call_expr(it)
 		}
 		ast.CastExpr {
-			// skip: JS has no types, so no need to cast
-			// TODO: Check if jsdoc is needed for TS support
+			// JS has no types, so no need to cast
+			// Just write the expression inside
+			g.expr(it.expr)
 		}
 		ast.CharLiteral {
 			g.write("'$it.val'")
