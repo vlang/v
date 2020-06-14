@@ -71,6 +71,9 @@ fn print_backtrace_skipping_top_frames(skipframes int) bool {
 	$if msvc {
 		return print_backtrace_skipping_top_frames_msvc(skipframes)
 	}
+	$if tinyc {
+		return print_backtrace_skipping_top_frames_tcc(skipframes)
+	}
 	$if mingw {
 		return print_backtrace_skipping_top_frames_mingw(skipframes)
 	}
@@ -141,6 +144,16 @@ fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 	return false
 }
 
+fn C.tcc_backtrace(fmt charptr, other ...charptr) int
+fn print_backtrace_skipping_top_frames_tcc(skipframes int) bool {
+	$if tinyc {
+		C.tcc_backtrace("Backtrace")
+		return false
+	} $else {
+		eprintln('print_backtrace_skipping_top_frames_tcc must be called only when the compiler is tcc')
+		return false
+	}
+}
 
 //TODO copypaste from os
 // we want to be able to use this here without having to `import os`
@@ -198,7 +211,14 @@ fn C.IsDebuggerPresent() bool
 fn C.__debugbreak()
 
 fn break_if_debugger_attached() {
-	if C.IsDebuggerPresent() {
-		C.__debugbreak()
+	$if tinyc {
+		unsafe {
+			ptr := &voidptr(0)
+			*ptr = 0
+		}
+	} $else {
+		if C.IsDebuggerPresent() {
+			C.__debugbreak()
+		}
 	}
 }

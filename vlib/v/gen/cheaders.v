@@ -44,7 +44,7 @@ const (
 #define __IRQHANDLER
 #undef TCCSKIP
 #define TCCSKIP(x)
-#include <byteswap.h>
+// #include <byteswap.h>
 #endif
 
 // for __offset_of
