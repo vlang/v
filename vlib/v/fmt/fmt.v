@@ -725,6 +725,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 						if it.pluss[i] {
 							f.write('+')
 						}
+						if it.fills[i] && it.fwidths[i] >= 0 {
+							f.write('0')
+						}
 						if it.fwidths[i] != 0 {
 							f.write('${it.fwidths[i]}')
 						}

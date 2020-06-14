@@ -2947,7 +2947,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		g.write('%')
 		fspec := node.fmts[i]
 		mut fmt := if node.pluss[i] { '+' } else { '' }
-		if node.fills[i] {
+		if node.fills[i] && node.fwidths[i] >= 0 {
 			fmt = '${fmt}0'
 		}
 		if node.fwidths[i] != 0 {

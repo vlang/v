@@ -168,6 +168,9 @@ pub fn (x Expr) str() string {
 						if it.pluss[i] {
 							res << '+'
 						}
+						if it.fills[i] && it.fwidths[i] >= 0 {
+							res << '0'
+						}
 						if it.fwidths[i] != 0 {
 							res << '${it.fwidths[i]}'
 						}
