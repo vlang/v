@@ -235,7 +235,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		}
 		.array_fixed {
 			info := sym.info as table.ArrayFixed
-			styp = g.array_fixed_typ(info.elem_type) or { g.typ(info.elem_type) + '[]' }
+			styp = g.typ(info.elem_type) + '[]'
 		}
 		// 'map[string]int' => 'Map<string, number>'
 		.map {
@@ -341,23 +341,6 @@ fn (mut g JsGen) to_js_typ_val(t table.Type) string {
 		}
 	}
 	return styp
-}
-
-fn (mut g JsGen) array_fixed_typ(t table.Type) ?string {
-	sym := g.table.get_type_symbol(t)
-	match sym.kind {
-		.i8   { return 'Int8Array' }
-		.i16  { return 'Int16Array' }
-		.int  { return 'Int32Array' }
-		.i64  { return 'BigInt64Array' }
-		.byte { return 'Uint8Array' }
-		.u16  { return 'Uint16Array' }
-		.u32  { return 'Uint32Array' }
-		.u64  { return 'BigUint64Array' }
-		.f32  { return 'Float32Array' }
-		.f64  { return 'Float64Array' }
-		else  { return none }
-	}
 }
 
 pub fn (mut g JsGen) gen_indent() {
@@ -1107,38 +1090,39 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 }
 
 fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
-	type_sym := g.table.get_type_symbol(it.typ)
-	if type_sym.kind == .array_fixed {
-		// TODO
-	} else if type_sym.kind == .array {
-		if it.has_len {
-			t1 := g.new_tmp_var()
-			t2 := g.new_tmp_var()
-			g.writeln('(function() {')
-			g.inc_indent()
-			g.writeln('const $t1 = [];')
-			g.write('for (let $t2 = 0; $t2 < ')
-			g.expr(it.len_expr)
-			g.writeln('; $t2++) {')
-			g.inc_indent()
-			g.write('${t1}.push(')
-			if it.has_default {
-				g.expr(it.default_expr)
-			} else {
-				// Fill the array with the default values for its type
-				t := g.to_js_typ_val(it.elem_type)
-				g.write(t)
-			}
-			g.writeln(');')
-			g.dec_indent()
-			g.writeln('};')
-			g.writeln('return $t1;')
-			g.dec_indent()
-			g.write('})()')
+	// NB: Fixed arrays and regular arrays are handled the same, since fixed arrays:
+	// 1)  Are only available for number types
+	// 2)  Give the code unnecessary complexity
+	// 3)  Have several limitations like missing most `Array.prototype` methods
+	// 4)  Modern engines can optimize regular arrays into typed arrays anyways,
+	//     offering similar performance
+	if it.has_len {
+		t1 := g.new_tmp_var()
+		t2 := g.new_tmp_var()
+		g.writeln('(function() {')
+		g.inc_indent()
+		g.writeln('const $t1 = [];')
+		g.write('for (let $t2 = 0; $t2 < ')
+		g.expr(it.len_expr)
+		g.writeln('; $t2++) {')
+		g.inc_indent()
+		g.write('${t1}.push(')
+		if it.has_default {
+			g.expr(it.default_expr)
 		} else {
-			g.gen_array_init_values(it.exprs)
+			// Fill the array with the default values for its type
+			t := g.to_js_typ_val(it.elem_type)
+			g.write(t)
 		}
-	} else {}
+		g.writeln(');')
+		g.dec_indent()
+		g.writeln('};')
+		g.writeln('return $t1;')
+		g.dec_indent()
+		g.write('})()')
+	} else {
+		g.gen_array_init_values(it.exprs)
+	}
 }
 
 fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
