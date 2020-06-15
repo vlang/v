@@ -23,6 +23,8 @@ if "%~1"=="-gcc" goto :gcc_strap
 if "%~2"=="-gcc" goto :gcc_strap
 if "%~1"=="-msvc" goto :msvc_strap
 if "%~2"=="-msvc" goto :msvc_strap
+if "%~1"=="-tcc" goto :tcc_strap
+if "%~2"=="-tcc" goto :tcc_strap
 
 :gcc_strap
 echo Attempting to build v.c with GCC...
@@ -36,6 +38,33 @@ if not exist "%gcc_path%" (
 )
 
 gcc -std=c99 -municode -w -o v.exe vc\v_win.c
+if %ERRORLEVEL% NEQ 0 (
+	echo gcc failed to compile - Create an issue at 'https://github.com/vlang'
+	rd /s /q vc
+	goto :error
+)
+
+v.exe self
+if %ERRORLEVEL% NEQ 0 (
+	echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
+	goto :error
+)
+
+del v_old.exe
+goto :success
+
+:tcc_strap
+echo Attempting to build v.c with GCC...
+
+for /f "usebackq tokens=*" %%i in (`where tcc`) do (
+	set tcc_path=%%i
+)
+
+if not exist "%tcc_path%" (
+	goto :msvc_strap
+)
+
+"%tcc_path%" -std=c99 -municode -w -o v.exe vc\v_win.c
 if %ERRORLEVEL% NEQ 0 (
 	echo gcc failed to compile - Create an issue at 'https://github.com/vlang'
 	rd /s /q vc
@@ -94,13 +123,18 @@ goto :success
 
 :no_compiler
 echo You do not appear to have a GCC installation on your PATH and also do not have an MSVC installation
-echo  - this means that you cannot bootstrap a V installation at this time...
+echo 
 echo.
 echo Head to 'https://github.com/vlang/v/releases/download/v0.1.10/mingw-w64-install.exe' to download and install GCC
 echo or head to 'https://visualstudio.microsoft.com/downloads/' to download and install MSVC
 echo   (look for the Build Tools if you don't want to install the Visual Studio IDE)
 echo.
-goto :error
+goto :clone_tcc
+
+:clone_tcc
+
+
+goto :tcc_strap
 
 :compile_error
 echo Failed to compile - Create an issue at 'https://github.com/vlang' and tag '@emily33901'!
