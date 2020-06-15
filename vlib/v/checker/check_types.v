@@ -288,25 +288,6 @@ pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type
 			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
 		}
 		if fmt == `_` { // set default representation for type if none has been given
-			if typ.is_float() {
-				fmt = `g`
-			} else if typ.is_signed() || typ.is_any_int() {
-				fmt = `d`
-			} else if typ.is_unsigned() {
-				fmt = `u`
-			} else if typ.is_pointer() {
-				fmt = `p`
-			} else {
-				sym := c.table.get_type_symbol(ftyp)
-				if ftyp in [table.string_type, table.bool_type] || sym.kind in
-				[.enum_, .array, .array_fixed, .struct_, .map] || ftyp.has_flag(.optional) ||
-					sym.has_method('str') {
-					fmt = `s`
-				} else {
-					c.error('no known default format for type `${c.table.get_type_name(ftyp)}`',
-						node.fmt_poss[i])
-				}
-			}
 			fmt = c.get_default_fmt(ftyp, typ)
 			if fmt == `_` {
 				c.error('no known default format for type `${c.table.get_type_name(ftyp)}`',
