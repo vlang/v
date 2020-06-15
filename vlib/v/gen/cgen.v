@@ -98,7 +98,7 @@ mut:
 	is_json_fn           bool // inside json.encode()
 	json_types           []string // to avoid json gen duplicates
 	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
-	attr                 string
+	attrs                []string // attributes before next decl stmt
 	is_builtin_mod       bool
 	hotcode_fn_names     []string
 	fn_main              &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
@@ -573,6 +573,10 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 		if g.inside_ternary > 0 && i < stmts.len - 1 {
 			g.write(',')
 		}
+		// clear attrs on next non Attr stmt
+		if stmt !is ast.Attr {
+			g.attrs = []
+		}
 	}
 	g.indent--
 	if g.inside_ternary > 0 {
@@ -593,7 +597,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.gen_assign_stmt(it)
 		}
 		ast.Attr {
-			g.attr = it.name
+			g.attrs << it.name
 			g.writeln('// Attr: [$it.name]')
 		}
 		ast.Block {
@@ -685,8 +689,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if it.language != .c {
 				g.writeln('')
 			}
-			// g.attr has to be reset after each function
-			g.attr = ''
 		}
 		ast.ForCStmt {
 			g.write('for (')

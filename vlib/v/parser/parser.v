@@ -36,7 +36,7 @@ mut:
 	pref              &pref.Preferences
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
-	attr              string
+	attrs             []string // attributes before next decl stmt
 	attr_ctdefine     string
 	expr_mod          string // for constructing full type names in parse_type()
 	scope             &ast.Scope
@@ -154,7 +154,13 @@ fn (mut p Parser) parse() ast.File {
 			break
 		}
 		// println('stmt at ' + p.tok.str())
-		stmts << p.top_stmt()
+		stmt := p.top_stmt()
+		// clear the attribtes at the end of next non Attr top level stmt
+		if stmt !is ast.Attr {
+			p.attrs = []
+			p.attr_ctdefine = ''
+		}
+		stmts << stmt
 	}
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
@@ -409,10 +415,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		.lsbr {
 			start_pos := p.tok.position()
 			attrs := p.attributes()
-			if attrs.len > 1 {
-				end_pos := p.tok.position()
-				p.error_with_pos('multiple attributes detected', start_pos.extend(end_pos))
-			} else if attrs.len == 0 {
+			if attrs.len == 0 {
 				end_pos := p.tok.position()
 				p.error_with_pos('attributes cannot be empty', start_pos.extend(end_pos))
 			}
@@ -634,6 +637,7 @@ fn (mut p Parser) attributes() []ast.Attr {
 }
 
 fn (mut p Parser) parse_attr() ast.Attr {
+	start_pos := p.prev_tok.position()
 	mut is_if_attr := false
 	if p.tok.kind == .key_if {
 		p.next()
@@ -650,7 +654,10 @@ fn (mut p Parser) parse_attr() ast.Attr {
 			p.next()
 		}
 	}
-	p.attr = name
+	if name in p.attrs {
+		p.error_with_pos('duplicate attribute `$name`', start_pos.extend(p.tok.position()))
+	}
+	p.attrs << name
 	if is_if_attr {
 		p.attr_ctdefine = name
 	}
@@ -1460,8 +1467,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)
-	attr := p.attr
-	is_flag := attr == 'flag'
+	is_flag := 'flag' in p.attrs
 	if is_flag {
 		if fields.len > 32 {
 			p.error('when an enum is used as bit field, it must have a max of 32 fields')

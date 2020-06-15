@@ -38,9 +38,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		return
 	}
 	fn_start_pos := g.out.len
-	msvc_attrs := g.write_fn_attr()
+	msvc_attrs := g.write_fn_attrs()
 	// Live
-	is_livefn := g.attr == 'live'
+	is_livefn := 'live' in g.attrs
 	is_livemain := g.pref.is_livemain && is_livefn
 	is_liveshared := g.pref.is_liveshared && is_livefn
 	is_livemode := g.pref.is_livemain || g.pref.is_liveshared
@@ -703,78 +703,79 @@ fn (g &Gen) fileis(s string) bool {
 	return g.file.path.contains(s)
 }
 
-fn (mut g Gen) write_fn_attr() string{
+fn (mut g Gen) write_fn_attrs() string{
 	mut msvc_attrs := ''
-	match g.attr {
-		'inline' {
-			g.write('inline ')
-		}
-		// since these are supported by GCC, clang and MSVC, we can consider them officially supported.
-		'no_inline' {
-			g.write('__NOINLINE ')
-		}
-		'irq_handler' {
-			g.write('__IRQHANDLER ')
-		}
+	for attr in g.attrs {
+		match attr {
+			'inline' {
+				g.write('inline ')
+			}
+			// since these are supported by GCC, clang and MSVC, we can consider them officially supported.
+			'no_inline' {
+				g.write('__NOINLINE ')
+			}
+			'irq_handler' {
+				g.write('__IRQHANDLER ')
+			}
 
-		// GCC/clang attributes
-		// prefixed by _ to indicate they're for advanced users only and not really supported by V.
-		// source for descriptions: https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html#Common-Function-Attributes
+			// GCC/clang attributes
+			// prefixed by _ to indicate they're for advanced users only and not really supported by V.
+			// source for descriptions: https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html#Common-Function-Attributes
 
-		// The cold attribute on functions is used to inform the compiler that the function is unlikely
-		// to be executed. The function is optimized for size rather than speed and on many targets it
-		// is placed into a special subsection of the text section so all cold functions appear close
-		// together, improving code locality of non-cold parts of program.
-		'_cold' {
-			g.write('__attribute__((cold)) ')
-		}
-		// The constructor attribute causes the function to be called automatically before execution
-		// enters main ().
-		'_constructor' {
-			g.write('__attribute__((constructor)) ')
-		}
-		// The destructor attribute causes the function to be called automatically after main ()
-		// completes or exit () is called.
-		'_destructor' {
-			g.write('__attribute__((destructor)) ')
-		}
-		// Generally, inlining into a function is limited. For a function marked with this attribute,
-		// every call inside this function is inlined, if possible.
-		'_flatten' {
-			g.write('__attribute__((flatten)) ')
-		}
-		// The hot attribute on a function is used to inform the compiler that the function is a hot
-		// spot of the compiled program.
-		'_hot' {
-			g.write('__attribute__((hot)) ')
-		}
-		// This tells the compiler that a function is malloc-like, i.e., that the pointer P returned by
-		// the function cannot alias any other pointer valid when the function returns, and moreover no
-		// pointers to valid objects occur in any storage addressed by P.
-		'_malloc' {
-			g.write('__attribute__((malloc)) ')
-		}
+			// The cold attribute on functions is used to inform the compiler that the function is unlikely
+			// to be executed. The function is optimized for size rather than speed and on many targets it
+			// is placed into a special subsection of the text section so all cold functions appear close
+			// together, improving code locality of non-cold parts of program.
+			'_cold' {
+				g.write('__attribute__((cold)) ')
+			}
+			// The constructor attribute causes the function to be called automatically before execution
+			// enters main ().
+			'_constructor' {
+				g.write('__attribute__((constructor)) ')
+			}
+			// The destructor attribute causes the function to be called automatically after main ()
+			// completes or exit () is called.
+			'_destructor' {
+				g.write('__attribute__((destructor)) ')
+			}
+			// Generally, inlining into a function is limited. For a function marked with this attribute,
+			// every call inside this function is inlined, if possible.
+			'_flatten' {
+				g.write('__attribute__((flatten)) ')
+			}
+			// The hot attribute on a function is used to inform the compiler that the function is a hot
+			// spot of the compiled program.
+			'_hot' {
+				g.write('__attribute__((hot)) ')
+			}
+			// This tells the compiler that a function is malloc-like, i.e., that the pointer P returned by
+			// the function cannot alias any other pointer valid when the function returns, and moreover no
+			// pointers to valid objects occur in any storage addressed by P.
+			'_malloc' {
+				g.write('__attribute__((malloc)) ')
+			}
 
-		// Calls to functions whose return value is not affected by changes to the observable state
-		// of the program and that have no observable effects on such state other than to return a
-		// value may lend themselves to optimizations such as common subexpression elimination.
-		// Declaring such functions with the const attribute allows GCC to avoid emitting some calls in
-		// repeated invocations of the function with the same argument values.
-		'_pure' {
-			g.write('__attribute__((const)) ')
-		}
+			// Calls to functions whose return value is not affected by changes to the observable state
+			// of the program and that have no observable effects on such state other than to return a
+			// value may lend themselves to optimizations such as common subexpression elimination.
+			// Declaring such functions with the const attribute allows GCC to avoid emitting some calls in
+			// repeated invocations of the function with the same argument values.
+			'_pure' {
+				g.write('__attribute__((const)) ')
+			}
 
-		// windows attributes (msvc/mingw)
-		// prefixed by windows to indicate they're for advanced users only and not really supported by V.
+			// windows attributes (msvc/mingw)
+			// prefixed by windows to indicate they're for advanced users only and not really supported by V.
 
-		'windows_stdcall' {
-			msvc_attrs += '__stdcall '
-		}
+			'windows_stdcall' {
+				msvc_attrs += '__stdcall '
+			}
 
-		else {
-			// nothing but keep V happy
+			else {
+				// nothing but keep V happy
+			}
 		}
 	}
 	return msvc_attrs
-
-	}
+}
