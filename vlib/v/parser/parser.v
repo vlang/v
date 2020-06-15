@@ -921,15 +921,56 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				has_arg = true
 			}
 			p.check(.rpar)
-			node = ast.CastExpr{
-				typ: to_typ
-				expr: expr
-				arg: arg
-				has_arg: has_arg
-				pos: expr.position()
+			if name == 'Foo' {
+				eprintln('castexpr $name $to_typ')
+ts := p.table.find_type(name) or {
+	table.TypeSymbol{}
+}
+enm := ts.info as table.Enum
+				eprintln('castexpr $enm')
+
+lname := name.to_lower()
+mut body := ''
+for e in enm.vals {
+	body += 'if s == "$e" { return ${name}.${e} }\n'
+}
+		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
+		p.scanner.codegen('
+$pubfn (e ${name})fromstr(s string) ?$name {
+	$body
+	return error("invalid enum")
+}
+$pubfn ${lname}_from_string(s string) ?$name {
+	$body
+	return error("invalid enum")
+}
+')
+mname := '${lname}.from_string'
+		//	node = p.call_expr(language, mod)
+/*
+		nede := ast.CallExpr{
+			left: left
+			name: mname
+			args: args
+			pos: pos
+			is_method: true
+			or_block: ast.OrExpr{
+				stmts: or_stmts
+				kind: or_kind
+				pos: pos
 			}
-			p.expr_mod = ''
-			return node
+		}
+*/
+			} else {
+// non Foo
+				node = ast.CastExpr{
+					typ: to_typ
+					expr: expr
+					arg: arg
+					has_arg: has_arg
+					pos: expr.position()
+				}
+			}
 		} else {
 			// fn call
 			// println('calling $p.tok.lit')

@@ -1872,7 +1872,16 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			}
 			ts := c.table.get_type_symbol(it.typ)
 			if ts.kind == .enum_ && it.expr_type == table.string_type {
+				// Handle enum CastExpr from string
 				tn := c.table.type_to_str(it.typ)
+			    	ts = c.table.get_type_symbol(it.typ)
+				e := ts.info as table.Enum
+				if e.vals.len > 0 {
+					arg := e.vals[0]
+					eprintln('$tn "$arg"')
+				}
+c.call_fn(ce)
+//eprintln('$ts')
 				c.error('todo: string to `$tn` enum', it.pos)
 				return it.typ
 			}
