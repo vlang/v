@@ -2034,10 +2034,6 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		info := ident.info as ast.IdentFn
 		return info.typ
 	} else if ident.kind == .unresolved {
-		if c.var_decl.len > 0 && ident.name == c.var_decl {
-			c.error('undefined variable: `$ident.name`', ident.pos)
-			return table.void_type
-		}
 		// first use
 		start_scope := c.file.scope.innermost(ident.pos.pos)
 		if obj := start_scope.find(ident.name) {
