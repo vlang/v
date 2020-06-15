@@ -106,6 +106,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 			ast.IndexExpr {
 				it.is_setter = true
 			}
+			ast.ParExpr {}
 			ast.PrefixExpr {}
 			ast.SelectorExpr {
 				if op == .decl_assign {
