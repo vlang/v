@@ -58,7 +58,7 @@ pub fn run(cmd string) string {
 	}
 	verbose_trace_exec_result(x)
 	if x.exit_code == 0 {
-		return x.output
+		return x.output.trim_right('\r\n')
 	}
 	return ''
 }
