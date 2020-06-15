@@ -112,15 +112,17 @@ fn convert_pos(file_path string, pos token.Position) DocPos {
 	}
 }
 
-pub fn (d Doc) get_signature(stmt ast.Stmt) string {
+pub fn (d Doc) get_signature(stmt ast.Stmt, file &ast.File) string {
 	mut f := fmt.Fmt{
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 		table: d.table
+		file: file
 		cur_mod: d.head.name.split('.').last()
 		indent: 0
 		is_debug: false
 	}
+	f.process_file_imports(file)
 	match stmt {
 		ast.Module {
 			return 'module $it.name'
@@ -331,7 +333,7 @@ pub fn (mut d Doc) generate() ?bool {
 			if stmt is ast.Import {
 				continue
 			}
-			signature := d.get_signature(stmt)
+			signature := d.get_signature(stmt, file_ast)
 			pos := d.get_pos(stmt)
 			mut name := d.get_name(stmt)
 			if (!signature.starts_with('pub') && d.pub_only) || stmt is ast.GlobalDecl {

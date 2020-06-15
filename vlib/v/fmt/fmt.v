@@ -45,9 +45,7 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 		file: file
 		is_debug: is_debug
 	}
-	for imp in file.imports {
-		f.mod2alias[imp.mod.all_after_last('.')] = imp.alias
-	}
+	f.process_file_imports(file)
 	f.cur_mod = 'main'
 	for stmt in file.stmts {
 		if stmt is ast.Import {
@@ -61,6 +59,12 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
 	return res[..f.import_pos] + f.out_imports.str() + res[f.import_pos..] // + '\n'
+}
+
+pub fn (mut f Fmt) process_file_imports(file &ast.File) {
+	for imp in file.imports {
+		f.mod2alias[imp.mod.all_after_last('.')] = imp.alias
+	}
 }
 
 /*
