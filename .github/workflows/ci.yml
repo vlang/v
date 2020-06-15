@@ -106,6 +106,8 @@ jobs:
       run: ./v test-fixed
     - name: Build examples
       run: ./v build-examples
+    - name: Cross-compilation to Linux
+      run: ./v -os linux cmd/v
 #    - name: Test vsh
 #      run:  ./v examples/v_script.vsh
     - name: Test vid
@@ -149,8 +151,6 @@ jobs:
 #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-    - name: cross compilation to Linux
-      run: ./v -os linux cmd/v
     - name: Fixed tests
       run: |
         ./v test-fixed
