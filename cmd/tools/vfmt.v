@@ -119,7 +119,7 @@ fn main() {
 			if worker_result.output.contains(formatted_file_token) {
 				wresult := worker_result.output.split(formatted_file_token)
 				formatted_warn_errs := wresult[0]
-				formatted_file_path := wresult[1]
+				formatted_file_path := wresult[1].trim_right('\n\r')
 				foptions.post_process_file(fpath, formatted_file_path)
 				if formatted_warn_errs.len > 0 {
 					eprintln(formatted_warn_errs)
