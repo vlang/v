@@ -227,9 +227,9 @@ fn (mut v Builder) cc() {
 		}
 	}
 	//
-	is_cc_clang := ccompiler.contains('clang') || guessed_compiler == 'clang'
 	is_cc_tcc := ccompiler.contains('tcc') || guessed_compiler == 'tcc'
-	is_cc_gcc := ccompiler.contains('gcc') || guessed_compiler == 'gcc'
+	is_cc_clang := !is_cc_tcc && (ccompiler.contains('clang') || guessed_compiler == 'clang')
+	is_cc_gcc := !is_cc_tcc && !is_cc_clang && (ccompiler.contains('gcc') || guessed_compiler == 'gcc')
 	// is_cc_msvc := v.pref.ccompiler.contains('msvc') || guessed_compiler == 'msvc'
 	//
 	if is_cc_clang {
@@ -700,8 +700,9 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	}
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
-	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
-	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget '
+	ccompiler := v.find_win_cc() or { v.pref.ccompiler }
+	cppoptions := if ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
+	cmd := '$ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget'
 	res := os.exec(cmd) or {
 		println('failed thirdparty object build cmd: $cmd')
 		verror(err)
