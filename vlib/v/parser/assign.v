@@ -106,12 +106,13 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 			ast.IndexExpr {
 				it.is_setter = true
 			}
+			ast.PrefixExpr {}
 			ast.SelectorExpr {
 				if op == .decl_assign {
 					p.error_with_pos('struct fields can only be declared during the initialization', it.pos)
 				}
 			}
-			else {}
+			else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.position()) }
 		}
 	}
 	return ast.AssignStmt{op: op, left: left, right: right, pos: pos, has_cross_var: has_cross_var}
