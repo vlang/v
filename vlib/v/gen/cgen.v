@@ -3358,18 +3358,29 @@ fn (mut g Gen) type_of_call_expr(node ast.Expr) string {
 // `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
 fn (mut g Gen) in_optimization(left ast.Expr, right ast.ArrayInit) {
 	is_str := right.elem_type == table.string_type
+	elem_sym := g.table.get_type_symbol(right.elem_type)
+	is_array := elem_sym.kind == .array
 	for i, array_expr in right.exprs {
 		if is_str {
 			g.write('string_eq(')
+		} else if is_array {
+			styp := g.table.value_type(right.elem_type)
+			ptr_typ := g.typ(right.elem_type).split('_')[1]
+			if ptr_typ !in g.array_fn_definitions {
+				sym := g.table.get_type_symbol(elem_sym.array_info().elem_type)
+				g.generate_array_equality_fn(ptr_typ, styp, sym)
+			}
+			g.write('${ptr_typ}_arr_eq(')
 		}
+
 		g.expr(left)
-		if is_str {
+		if is_str || is_array {
 			g.write(', ')
 		} else {
 			g.write(' == ')
 		}
 		g.expr(array_expr)
-		if is_str {
+		if is_str || is_array {
 			g.write(')')
 		}
 		if i < right.exprs.len - 1 {
