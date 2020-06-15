@@ -169,7 +169,7 @@ pub fn color_compare_files(diff_cmd, file1, file2 string) string {
 		x := os.exec(full_cmd) or {
 			return 'comparison command: `${full_cmd}` failed'
         }
-        return x.output
+        return x.output.trim_right('\r\n')
     }
     return ''
 }

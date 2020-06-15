@@ -168,7 +168,7 @@ pub:
 	pub_mut_pos int // pub mut:
 	language    table.Language
 	is_union    bool
-	attr        string
+	attrs       []string
 }
 
 pub struct InterfaceDecl {

@@ -70,7 +70,7 @@ fn main() {
 
 fn exec(s string) string {
 	e := os.exec(s) or { panic(err) }
-	return e.output
+	return e.output.trim_right('\r\n')
 }
 
 // returns milliseconds
