@@ -43,6 +43,8 @@ const (
 		'class',
 		'typename'
 	]
+	cmp_str = ['eq', 'ne', 'gt', 'lt', 'ge', 'le'] // same order as in token.Kind
+	cmp_rev = ['eq', 'ne', 'le', 'ge', 'lt', 'gt'] // when operands are switched
 )
 
 struct Gen {
@@ -1745,11 +1747,21 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	// g.infix_op = node.op
 	left_type := if node.left_type == table.t_type { g.cur_generic_type } else { node.left_type }
 	left_sym := g.table.get_type_symbol(left_type)
+	unaliased_left := if left_sym.kind == .alias {
+		(left_sym.info as table.Alias).parent_typ
+	} else {
+		left_type
+	}
 	if node.op in [.key_is, .not_is] {
 		g.is_expr(node)
 		return
 	}
 	right_sym := g.table.get_type_symbol(node.right_type)
+	unaliased_right := if right_sym.kind == .alias {
+		(right_sym.info as table.Alias).parent_typ
+	} else {
+		node.right_type
+	}
 	if left_type == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
 			.plus {
@@ -1899,6 +1911,20 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 			g.write(' }))')
 		}
+	} else if unaliased_left.idx() in [table.u32_type_idx, table.u64_type_idx] && unaliased_right.is_signed() && node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
+		bitsize := if unaliased_left.idx() == table.u32_type_idx && unaliased_right.idx() != table.i64_type_idx { 32 } else { 64 }
+		g.write('_us${bitsize}_${cmp_str[int(node.op)-int(token.Kind.eq)]}(')
+		g.expr(node.left)
+		g.write(',')
+		g.expr(node.right)
+		g.write(')')
+	} else if unaliased_right.idx() in [table.u32_type_idx, table.u64_type_idx] && unaliased_left.is_signed() && node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
+		bitsize := if unaliased_right.idx() == table.u32_type_idx && unaliased_left.idx() != table.i64_type_idx { 32 } else { 64 }
+		g.write('_us${bitsize}_${cmp_rev[int(node.op)-int(token.Kind.eq)]}(')
+		g.expr(node.right)
+		g.write(',')
+		g.expr(node.left)
+		g.write(')')
 	} else {
 		a := left_sym.name[0].is_capital() || left_sym.name.contains('.')
 		b := left_sym.kind != .alias
