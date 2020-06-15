@@ -39,14 +39,10 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 gcc -std=c99 -municode -w -o v.exe vc\v_win.c
-if %ERRORLEVEL% NEQ 0 (
-	goto :compile_error
-)
+if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 v.exe self > NUL
-if %ERRORLEVEL% NEQ 0 (
-	goto :compile_error
-)
+if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :msvc_strap
@@ -79,15 +75,11 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
 set ObjFile=.v.c.obj
 
 cl.exe /nologo /w /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v.exe /INCREMENTAL:NO > NUL
-if %ERRORLEVEL% NEQ 0 (
-	goto :compile_error
-)
+if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 v.exe -cc msvc self
 del %ObjFile%
-if %ERRORLEVEL% NEQ 0 (
-	goto :compile_error
-)
+if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :clone_tcc
@@ -124,14 +116,10 @@ if exist "%tcc_path%" (
 	)
 )
 call "%tcc_exe%" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
-if %ERRORLEVEL% NEQ 0 (
-	goto :compile_error
-)
+if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 v.exe -cc "%tcc_exe%" self > NUL
-if %ERRORLEVEL% NEQ 0 (
-	goto :compile_error
-)
+if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :compile_error
