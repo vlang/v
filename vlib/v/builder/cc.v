@@ -660,7 +660,10 @@ fn (c &Builder) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
 		if flag.value.ends_with('.o') {
 			rest_of_module_flags := c.get_rest_of_module_cflags(flag)
-			ccompiler := c.find_win_cc() or { panic(no_compiler_error) }
+			mut ccompiler := c.pref.ccompiler
+			$if windows {
+				ccompiler = c.find_win_cc() or { 'gcc' }
+			}
 			if ccompiler == 'msvc' {
 				build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
 			} else {

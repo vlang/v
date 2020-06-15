@@ -137,7 +137,7 @@ echo  ^> V built successfully!
 del v_old.exe
 echo.
 echo Adding V to PATH...
-v.exe -cc "%tcc_exe%" symlink > NUL
+v.exe symlink > NUL
 if %ERRORLEVEL% NEQ 0 (
 	echo  ^> Could not add V to %%PATH%%, try rebuilding as admin.
 	goto :error
