@@ -19,13 +19,20 @@ if exist "vc" (
 )
 
 :compile
-REM option to force msvc or gcc
+REM option to disable adding V to PATH
+if "%~1"=="-skip-path" set skip_path=1
+if "%~2"=="-skip-path" set skip_path=1
+
+REM option to force msvc gcc or tcc
 if "%~1"=="-gcc"  set force_gcc=1  & goto :gcc_strap
 if "%~2"=="-gcc"  set force_gcc=1  & goto :gcc_strap
 if "%~1"=="-msvc" set force_msvc=1 & goto :msvc_strap
 if "%~2"=="-msvc" set force_msvc=1 & goto :msvc_strap
 if "%~1"=="-tcc"  set force_tcc=1  & goto :tcc_strap
 if "%~2"=="-tcc"  set force_tcc=1  & goto :tcc_strap
+
+echo %~1 %~2
+
 
 :gcc_strap
 echo.
@@ -135,6 +142,9 @@ exit /b 1
 :success
 echo  ^> V built successfully!
 del v_old.exe
+
+:path
+if "%skip_path%" NEQ "" goto :version
 echo.
 echo Adding V to PATH...
 v.exe symlink > NUL
@@ -151,6 +161,8 @@ if "%cloned_tcc%" NEQ "" (
 )
 
 echo  ^> Restart your shell/IDE to reload it
+
+:version
 echo.
 echo | set /p="V version: "
 v.exe version

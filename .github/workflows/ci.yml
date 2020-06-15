@@ -222,7 +222,7 @@ jobs:
     - name: Build
       run: |
         gcc --version
-        .\make.bat -gcc
+        .\make.bat -gcc -skip-path
     - name: Test new v.c
       run: .\v.exe -o v.c cmd/v && gcc -municode -w v.c
     - name: Install dependencies
@@ -256,7 +256,7 @@ jobs:
       run: |
         echo %VFLAGS%
         echo $VFLAGS
-        .\make.bat -msvc
+        .\make.bat -msvc -skip-path
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
