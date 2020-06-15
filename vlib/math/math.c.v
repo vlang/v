@@ -77,7 +77,15 @@ pub fn atan2(a, b f64) f64 {
 // cbrt calculates cubic root.
 [inline]
 pub fn cbrt(a f64) f64 {
-	return C.cbrt(a)
+	$if !tinyc {
+		return C.cbrt(a)
+	} $else {
+		$if !windows {
+			return C.cbrt(a)
+		} $else {
+			// TODO
+		}
+	}
 }
 
 // ceil returns the nearest f64 greater or equal to the provided value.
@@ -113,19 +121,43 @@ pub fn exp(a f64) f64 {
 // erf computes the error function value
 [inline]
 pub fn erf(a f64) f64 {
-	return C.erf(a)
+	$if !tinyc {
+		return C.erf(a)
+	} $else {
+		$if !windows {
+			return C.erf(a)
+		} $else {
+			// TODO
+		}
+	}
 }
 
 // erfc computes the complementary error function value
 [inline]
 pub fn erfc(a f64) f64 {
-	return C.erfc(a)
+	$if !tinyc {
+		return C.erfc(a)
+	} $else {
+		$if !windows {
+			return C.erfc(a)
+		} $else {
+			// TODO
+		}
+	}
 }
 
 // exp2 returns the base-2 exponential function of a (math.pow(2, a)).
 [inline]
 pub fn exp2(a f64) f64 {
-	return C.exp2(a)
+	$if !tinyc {
+		return C.exp2(a)
+	} $else {
+		$if !windows {
+			return C.exp2(a)
+		} $else {
+			// TODO
+		}
+	}
 }
 
 // floor returns the nearest f64 lower or equal of the provided value.
@@ -143,7 +175,15 @@ pub fn fmod(a, b f64) f64 {
 // gamma computes the gamma function value
 [inline]
 pub fn gamma(a f64) f64 {
-	return C.tgamma(a)
+	$if !tinyc {
+		return C.tgamma(a)
+	} $else {
+		$if !windows {
+			return C.tgamma(a)
+		} $else {
+			// TODO
+		}
+	}
 }
 
 // Returns hypotenuse of a right triangle.
@@ -161,7 +201,15 @@ pub fn log(a f64) f64 {
 // log2 calculates base-2 logarithm of the provided value.
 [inline]
 pub fn log2(a f64) f64 {
-	return C.log2(a)
+	$if !tinyc {
+		return C.log2(a)
+	} $else {
+		$if !windows {
+			return C.log2(a)
+		} $else {
+			// TODO
+		}
+	}
 }
 
 // log10 calculates the common (base-10) logarithm of the provided value.
@@ -173,7 +221,15 @@ pub fn log10(a f64) f64 {
 // log_gamma computes the log-gamma function value
 [inline]
 pub fn log_gamma(a f64) f64 {
-	return C.lgamma(a)
+	$if !tinyc {
+		return C.lgamma(a)
+	} $else {
+		$if !windows {
+			return C.lgamma(a)
+		} $else {
+			// TODO
+		}
+	}
 }
 
 // log_n calculates base-N logarithm of the provided value.
