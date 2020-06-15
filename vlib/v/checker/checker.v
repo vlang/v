@@ -1793,7 +1793,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 		c.stmt(stmt)
 	}
 	if unreachable.line_nr >= 0 {
-		c.warn('unreachable code', unreachable)
+		c.error('unreachable code', unreachable)
 	}
 	c.scope_returns = false
 	c.expected_type = table.void_type

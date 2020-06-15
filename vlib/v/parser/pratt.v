@@ -73,8 +73,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		}
 		.key_none {
+			pos := p.tok.position()
 			p.next()
-			node = ast.None{}
+			node = ast.None{
+				pos: pos
+			}
 		}
 		.key_sizeof {
 			p.next() // sizeof
