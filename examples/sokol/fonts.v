@@ -4,7 +4,6 @@ import sokol.gfx
 import sokol.sgl
 import sokol.sfons
 import os
-import time
 
 struct AppState {
 mut:
@@ -60,14 +59,12 @@ fn init(mut state AppState) {
 }
 
 fn frame(user_data voidptr) {
-	t := time.ticks()
 	mut state := &AppState(user_data)
 	state.render_font()
 	gfx.begin_default_pass(&state.pass_action, sapp.width(), sapp.height())
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
-	// println(time.ticks()-t)
 }
 
 fn (state &AppState) render_font() {
