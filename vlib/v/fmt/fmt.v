@@ -717,10 +717,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					continue
 				}
 				f.write('$')
-				if it.need_fmts[i] || (it.exprs[i] !is ast.Ident && it.exprs[i] !is ast.SelectorExpr) {
+				needs_fspec := it.need_fmts[i] || it.pluss[i] || (it.fills[i] && it.fwidths[i] >= 0) || it.fwidths[i] != 0 || it.precisions[i] != 0
+				if needs_fspec || (it.exprs[i] !is ast.Ident && it.exprs[i] !is ast.SelectorExpr) {
 					f.write('{')
 					f.expr(it.exprs[i])
-					if it.need_fmts[i] {
+					if needs_fspec {
 						f.write(':')
 						if it.pluss[i] {
 							f.write('+')
@@ -734,7 +735,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 						if it.precisions[i] != 0 {
 							f.write('.${it.precisions[i]}')
 						}
-						if it.fmts[i] != `_` {
+						if it.need_fmts[i] {
 							f.write('${it.fmts[i]:c}')
 						}
 					}
