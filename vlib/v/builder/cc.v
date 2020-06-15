@@ -403,7 +403,7 @@ fn (mut v Builder) cc() {
 		if v.pref.is_debug {
 			eword := 'error:'
 			khighlight := if term.can_show_color_on_stdout() { term.red(eword) } else { eword }
-			println(res.output.replace(eword, khighlight))
+			println(res.output.trim_right('\r\n').replace(eword, khighlight))
 			verror(c_error_info)
 		} else {
 			if res.output.len < 30 {

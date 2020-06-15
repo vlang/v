@@ -32,7 +32,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.next() // C || JS
 		p.next() // .
 	}
-	is_typedef := p.attr == 'typedef'
+	is_typedef := 'typedef' in p.attrs
 	no_body := p.peek_tok.kind != .lcbr
 	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
@@ -180,7 +180,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			fields: fields
 			is_typedef: is_typedef
 			is_union: is_union
-			is_ref_only: p.attr == 'ref_only'
+			is_ref_only: 'ref_only' in p.attrs
 		}
 		mod: p.mod
 		is_public: is_pub
@@ -208,7 +208,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		pub_mut_pos: pub_mut_pos
 		language: language
 		is_union: is_union
-		attr: p.attr
+		attrs: p.attrs
 	}
 }
 

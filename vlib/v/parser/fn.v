@@ -119,7 +119,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.top_level_statement_start()
 	start_pos := p.tok.position()
-	is_deprecated := p.attr == 'deprecated'
+	is_deprecated := 'deprecated' in p.attrs
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -273,8 +273,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		stmts = p.parse_block_no_scope(true)
 	}
 	p.close_scope()
-	p.attr = ''
-	p.attr_ctdefine = ''
 	return ast.FnDecl{
 		name: name
 		mod: p.mod
