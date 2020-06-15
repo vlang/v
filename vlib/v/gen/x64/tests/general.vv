@@ -1,5 +1,5 @@
 fn if_test() {
-	a := 1
+	mut a := 1
 	if a == 1 {
 		println('a == 1')
 		b := 2
@@ -27,7 +27,8 @@ fn loop() {
 	}
 }
 
-fn foo(a int) {
+fn foo(a0 int) {
+	mut a := a0
 	println('foo:')
 	if a == 1 {
 		println('a == 1')

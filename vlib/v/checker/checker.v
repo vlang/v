@@ -26,6 +26,7 @@ pub mut:
 	expected_type    table.Type
 	cur_fn           &ast.FnDecl // current function
 	const_decl       string
+	var_decl         string
 	const_deps       []string
 	const_names      []string
 	pref             &pref.Preferences // Preferences shared from V struct
@@ -667,91 +668,6 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 	}
 }
 
-fn (mut c Checker) assign_expr(mut assign_expr ast.AssignExpr) {
-	c.expected_type = table.void_type
-	left_type := c.unwrap_generic(c.expr(assign_expr.left))
-	c.expected_type = left_type
-	if ast.expr_is_blank_ident(assign_expr.left) {
-		c.expected_type = table.Type(0)
-	}
-	assign_expr.left_type = left_type
-	// println('setting exp type to $c.expected_type $t.name')
-	right_type := c.check_expr_opt_call(assign_expr.val, c.unwrap_generic(c.expr(assign_expr.val)))
-	assign_expr.right_type = right_type
-	right := c.table.get_type_symbol(right_type)
-	left := c.table.get_type_symbol(left_type)
-	match assign_expr.left {
-		ast.Ident {
-			if it.kind == .blank_ident {
-				if assign_expr.op != .assign {
-					c.error('cannot modify blank `_` variable', it.pos)
-				}
-				return
-			}
-		}
-		ast.PrefixExpr {
-			// Do now allow `*x = y` outside `unsafe`
-			if it.op == .mul && !c.inside_unsafe {
-				c.error('modifying variables via deferencing can only be done in `unsafe` blocks',
-					assign_expr.pos)
-			}
-		}
-		else {}
-	}
-	// Make sure the variable is mutable
-	c.fail_if_immutable(assign_expr.left)
-	// Single side check
-	match assign_expr.op {
-		.assign {} // No need to do single side check for =. But here put it first for speed.
-		.plus_assign {
-			if !left.is_number() && left_type != table.string_type && !left.is_pointer() {
-				c.error('operator += not defined on left operand type `$left.name`', assign_expr.left.position())
-			} else if !right.is_number() && right_type != table.string_type && !right.is_pointer() {
-				c.error('operator += not defined on right operand type `$right.name`', assign_expr.val.position())
-			}
-			if assign_expr.val is ast.IntegerLiteral && assign_expr.val.str().int() == 1 {
-				c.error('use `++` instead of `+= 1`', assign_expr.pos)
-			}
-		}
-		.minus_assign {
-			if !left.is_number() && !left.is_pointer() {
-				c.error('operator -= not defined on left operand type `$left.name`', assign_expr.left.position())
-			} else if !right.is_number() && !right.is_pointer() {
-				c.error('operator -= not defined on right operand type `$right.name`', assign_expr.val.position())
-			}
-			if assign_expr.val is ast.IntegerLiteral && assign_expr.val.str().int() == 1 {
-				c.error('use `--` instead of `-= 1`', assign_expr.pos)
-			}
-		}
-		.mult_assign, .div_assign {
-			if !left.is_number() {
-				c.error('operator ${assign_expr.op.str()} not defined on left operand type `$left.name`',
-					assign_expr.left.position())
-			} else if !right.is_number() {
-				c.error('operator ${assign_expr.op.str()} not defined on right operand type `$right.name`',
-					assign_expr.val.position())
-			}
-		}
-		.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign, .right_shift_assign {
-			if !left.is_int() {
-				c.error('operator ${assign_expr.op.str()} not defined on left operand type `$left.name`',
-					assign_expr.left.position())
-			} else if !right.is_int() {
-				c.error('operator ${assign_expr.op.str()} not defined on right operand type `$right.name`',
-					assign_expr.val.position())
-			}
-		}
-		else {}
-	}
-	// Dual sides check (compatibility check)
-	if !c.check_types(right_type, left_type) {
-		left_type_sym := c.table.get_type_symbol(left_type)
-		right_type_sym := c.table.get_type_symbol(right_type)
-		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name`',
-			assign_expr.val.position())
-	}
-}
-
 pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 	c.stmts(call_expr.or_block.stmts)
 	if call_expr.is_method {
@@ -1170,7 +1086,9 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 				c.check_or_expr(call_expr.or_block, ret_type)
 			}
 			// remove optional flag
-			return ret_type.clear_flag(.optional)
+			// return ret_type.clear_flag(.optional)
+			// TODO:
+			return ret_type
 		} else if call_expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `$call_expr.name` does not return an optional',
 				call_expr.pos)
@@ -1378,63 +1296,137 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	mut right_len := assign_stmt.right.len
 	if right_first is ast.CallExpr || right_first is ast.IfExpr || right_first is ast.MatchExpr {
 		right_type0 := c.expr(right_first)
-		assign_stmt.right_types = [right_type0]
+		assign_stmt.right_types = [c.check_expr_opt_call(right_first, right_type0)]
 		right_type_sym0 := c.table.get_type_symbol(right_type0)
-		if right_type0 == table.void_type {
-			right_len = 0
-		} else if right_type_sym0.kind == .multi_return {
+		if right_type_sym0.kind == .multi_return {
 			assign_stmt.right_types = right_type_sym0.mr_info().types
 			right_len = assign_stmt.right_types.len
 		}
-		if assign_stmt.left.len != right_len {
-			if right_first is ast.CallExpr {
-				call_expr := assign_stmt.right[0] as ast.CallExpr
-				c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${call_expr.name}()` returns $right_len value(s)',
-					assign_stmt.pos)
-			} else {
-				c.error('assignment mismatch: $assign_stmt.left.len variable(s) $right_len value(s)',
-					assign_stmt.pos)
-			}
-			return
+		else if right_type0 == table.void_type { right_len=0 }
+	}
+	if assign_stmt.left.len != right_len {
+		if right_first is ast.CallExpr {
+			call_expr := assign_stmt.right[0] as ast.CallExpr
+			c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${call_expr.name}()` returns $right_len value(s)',
+				assign_stmt.pos)
+		} else {
+			c.error('assignment mismatch: $assign_stmt.left.len variable(s) $right_len value(s)',
+				assign_stmt.pos)
 		}
-	} else if assign_stmt.left.len != right_len {
-		c.error('assignment mismatch: $assign_stmt.left.len variable(s) $assign_stmt.right.len value(s)',
-			assign_stmt.pos)
 		return
 	}
-	mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
-	for i, _ in assign_stmt.left {
-		mut ident := assign_stmt.left[i]
-		if assign_stmt.right_types.len < right_len {
+	is_decl := assign_stmt.op == .decl_assign
+	for i, left in assign_stmt.left {
+		if is_decl {
+			c.var_decl = (left as ast.Ident).name
+		}
+		if !is_decl && !ast.expr_is_blank_ident(left) {
+			left_type := c.unwrap_generic(c.expr(left))
+			c.expected_type = left_type
+		}
+		if assign_stmt.right_types.len < assign_stmt.left.len { // only once for multi return
 			right_type := c.expr(assign_stmt.right[i])
 			assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
-		} else if i < assign_stmt.right.len { // only once for multi return
-			c.check_expr_opt_call(assign_stmt.right[i], assign_stmt.right_types[i])
 		}
-		mut val_type := assign_stmt.right_types[i]
-		mut ident_var_info := ident.var_info()
-		is_decl := assign_stmt.op == .decl_assign
+		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
+		mut right_type := assign_stmt.right_types[i]
+		mut left_type := right_type
 		if is_decl {
-			if ident.kind != .blank_ident {
-				// check variable name for beginning with capital letter 'Abc'
-				c.check_valid_snake_case(ident.name, 'variable name', ident.pos)
-			}
-			val_type = c.table.mktyp(val_type)
+			c.var_decl = (left as ast.Ident).name
+			right_type = c.table.mktyp(right_type)
+			left_type = right_type
+			assign_stmt.left_types << right_type
 		} else {
-			c.fail_if_immutable(ident)
-			var_type := c.expr(ident)
-			assign_stmt.left_types << var_type
-			if ident.kind != .blank_ident && !c.check_types(val_type, var_type) {
-				val_type_sym := c.table.get_type_symbol(val_type)
-				var_type_sym := c.table.get_type_symbol(var_type)
-				c.error('assign stmt: cannot use `$val_type_sym.name` as `$var_type_sym.name`',
-					assign_stmt.pos)
-			}
+			// Make sure the variable is mutable
+			c.fail_if_immutable(left)
+			left_type = c.expr(left)
+			assign_stmt.left_types << left_type
 		}
-		ident_var_info.typ = val_type
-		ident.info = ident_var_info
-		assign_stmt.left[i] = ident
-		scope.update_var_type(ident.name, val_type)
+
+		mut is_blank_ident := false
+		match left {
+			ast.Ident {
+				is_blank_ident = it.kind == .blank_ident
+				if is_decl && it.kind != .blank_ident {
+					// check variable name for beginning with capital letter 'Abc'
+					c.check_valid_snake_case(it.name, 'variable name', it.pos)
+				}
+				if it.kind == .blank_ident {
+					left_type = right_type
+					assign_stmt.left_types[i] = right_type
+					if assign_stmt.op !in [.assign, .decl_assign] {
+						c.error('cannot modify blank `_` identifier', it.pos)
+					}
+				}
+				mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
+				mut ident_var_info := it.var_info()
+				ident_var_info.typ = left_type
+				it.info = ident_var_info
+				scope.update_var_type(it.name, left_type)
+			}
+			ast.PrefixExpr {
+				// Do now allow `*x = y` outside `unsafe`
+				if it.op == .mul && !c.inside_unsafe {
+					c.error('modifying variables via deferencing can only be done in `unsafe` blocks', assign_stmt.pos)
+				}
+			}
+			else {}
+		}
+
+		left_type_unwrapped := c.unwrap_generic(left_type)
+		right_type_unwrapped := c.unwrap_generic(right_type)
+		// TODO cleanup massive (dont save generic in nodes & dont call unwrap multiple times for same type)
+		left_sym := c.table.get_type_symbol(left_type_unwrapped)
+		right_sym := c.table.get_type_symbol(right_type_unwrapped)
+		// Single side check
+		match assign_stmt.op {
+			.assign {} // No need to do single side check for =. But here put it first for speed.
+			.plus_assign {
+				if !left_sym.is_number() && left_type != table.string_type && !left_sym.is_pointer() {
+					c.error('operator += not defined on left operand type `$left_sym.name`', left.position())
+				} else if !right_sym.is_number() && right_type != table.string_type && !right_sym.is_pointer() {
+					c.error('operator += not defined on right operand type `$right_sym.name`', right.position())
+				}
+				if right is ast.IntegerLiteral && right.str().int() == 1 {
+					c.error('use `++` instead of `+= 1`', assign_stmt.pos)
+				}
+			}
+			.minus_assign {
+				if !left_sym.is_number() && !left_sym.is_pointer() {
+					c.error('operator -= not defined on left operand type `$left_sym.name`', left.position())
+				} else if !right_sym.is_number() && !right_sym.is_pointer() {
+					c.error('operator -= not defined on right operand type `$right_sym.name`', right.position())
+				}
+				if right is ast.IntegerLiteral && right.str().int() == 1 {
+					c.error('use `--` instead of `-= 1`', assign_stmt.pos)
+				}
+			}
+			.mult_assign, .div_assign {
+				if !left_sym.is_number() {
+					c.error('operator ${assign_stmt.op.str()} not defined on left operand type `$left_sym.name`',
+						left.position())
+				} else if !right_sym.is_number() {
+					c.error('operator ${assign_stmt.op.str()} not defined on right operand type `$right_sym.name`',
+						right.position())
+				}
+			}
+			.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign, .right_shift_assign {
+				if !left_sym.is_int() {
+					c.error('operator ${assign_stmt.op.str()} not defined on left operand type `$left_sym.name`',
+						left.position())
+				} else if !right_sym.is_int() {
+					c.error('operator ${assign_stmt.op.str()} not defined on right operand type `$right_sym.name`',
+						right.position())
+				}
+			}
+			else {}
+		}
+		// Dual sides check (compatibility check)
+		if !is_blank_ident && !c.check_types(right_type_unwrapped, left_type_unwrapped) {
+			c.error('cannot assign `$right_sym.name` to `${left.str()}` of type `$left_sym.name`',
+				right.position())
+		}
+		c.var_decl = ''
 	}
 	c.expected_type = table.void_type
 }
@@ -1678,10 +1670,13 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.in_for_count++
 			c.stmt(it.init)
 			c.expr(it.cond)
-			// c.stmt(it.inc)
-			c.expr(it.inc)
+			c.stmt(it.inc)
+			// c.expr(it.inc)
 			c.stmts(it.stmts)
 			c.in_for_count--
+		}
+		ast.ForCIncStmt {
+			c.expr(it.expr)
 		}
 		ast.ForInStmt {
 			c.in_for_count++
@@ -1844,9 +1839,6 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			}
 			return it.typ.to_ptr()
 			// return it.typ
-		}
-		ast.AssignExpr {
-			c.assign_expr(mut it)
 		}
 		ast.Assoc {
 			scope := c.file.scope.innermost(it.pos.pos)
@@ -2048,6 +2040,10 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		info := ident.info as ast.IdentFn
 		return info.typ
 	} else if ident.kind == .unresolved {
+		if c.var_decl.len > 0 && ident.name == c.var_decl {
+			c.error('undefined variable: `$ident.name`', ident.pos)
+			return table.void_type
+		}
 		// first use
 		start_scope := c.file.scope.innermost(ident.pos.pos)
 		if obj := start_scope.find(ident.name) {

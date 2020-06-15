@@ -206,12 +206,15 @@ pub fn (node Stmt) str() string {
 	match node {
 		AssignStmt {
 			mut out := ''
-			for i, ident in it.left {
-				var_info := ident.var_info()
-				if var_info.is_mut {
-					out += 'mut '
+			for i, left in it.left {
+				if left is Ident {
+					ident := left as Ident
+					var_info := ident.var_info()
+					if var_info.is_mut {
+						out += 'mut '
+					}
 				}
-				out += ident.name
+				out += left.str()
 				if i < it.left.len - 1 {
 					out += ','
 				}

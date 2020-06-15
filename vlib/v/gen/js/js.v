@@ -462,6 +462,9 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_for_c_stmt(it)
 			g.writeln('')
 		}
+		ast.ForCIncStmt {
+			g.expr(it.expr)
+		}
 		ast.ForInStmt {
 			g.gen_for_in_stmt(it)
 			g.writeln('')
@@ -529,9 +532,6 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.AsCast {
 			// skip: JS has no types, so no need to cast
 			// TODO: Is jsdoc needed here for TS support?
-		}
-		ast.AssignExpr {
-			g.gen_assign_expr(it)
 		}
 		ast.Assoc {
 			// TODO
@@ -676,12 +676,13 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 	if it.left.len > it.right.len {
 		// multi return
 		g.write('const [')
-		for i, ident in it.left {
-			if ident.name in ['', '_'] {
-				g.write('')
-			} else {
-				g.write(g.js_name(ident.name))
-			}
+		for i, left in it.left {
+			// if ident.name in ['', '_'] {
+			// 	g.write('')
+			// } else {
+			// 	g.write(g.js_name(ident.name))
+			// }
+			g.write(left.str())
 			if i < it.left.len - 1 {
 				g.write(', ')
 			}
@@ -691,32 +692,39 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 		g.writeln(';')
 	} else {
 		// `a := 1` | `a,b := 1,2`
-		for i, ident in it.left {
+		for i, left in it.left {
 			val := it.right[i]
-
-			if ident.kind == .blank_ident || ident.name in ['', '_'] {
-				tmp_var := g.new_tmp_var()
-				// TODO: Can the tmp_var declaration be omitted?
-				g.write('const $tmp_var = ')
-				g.expr(val)
-				g.writeln(';')
-				continue
+			mut is_mut := false
+			mut name := left.str()
+			if left is ast.Ident {
+				ident := left as ast.Ident
+				is_mut = ident.is_mut
+				if ident.kind == .blank_ident || ident.name in ['', '_'] {
+					tmp_var := g.new_tmp_var()
+					// TODO: Can the tmp_var declaration be omitted?
+					g.write('const $tmp_var = ')
+					g.expr(val)
+					g.writeln(';')
+					continue
+				}
 			}
 
-			ident_var_info := ident.var_info()
-			mut styp := g.typ(ident_var_info.typ)
+			// TODO: test
+			mut styp := g.typ(it.left_types[i])
+			// ident_var_info := ident.var_info()
+			// mut styp := g.typ(ident_var_info.typ)
 
 			if !g.inside_loop && styp.len > 0 {
 				g.doc.gen_typ(styp)
 			}
 
-			if g.inside_loop || ident.is_mut {
+			if g.inside_loop || is_mut {
 				g.write('let ')
 			} else {
 				g.write('const ')
 			}
 
-			g.write('${g.js_name(ident.name)} = ')
+			g.write('${g.js_name(name)} = ')
 			g.expr(val)
 
 			if g.inside_loop {
@@ -906,7 +914,7 @@ fn (mut g JsGen) gen_for_c_stmt(it ast.ForCStmt) {
 	}
 	g.write('; ')
 	if it.has_inc {
-		g.expr(it.inc)
+		g.stmt(it.inc)
 	}
 	g.writeln(') {')
 	g.stmts(it.stmts)
@@ -1092,27 +1100,28 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	} else {}
 }
 
-fn (mut g JsGen) gen_assign_expr(it ast.AssignExpr) {
-	if it.left_type == table.void_type && it.op == .assign {
-		// _ = 1
-		tmp_var := g.new_tmp_var()
-		g.write('const $tmp_var = ')
-		g.expr(it.val)
-		return
-	}
+// TODO
+// fn (mut g JsGen) gen_assign_expr(it ast.AssignExpr) {
+// 	if it.left_type == table.void_type && it.op == .assign {
+// 		// _ = 1
+// 		tmp_var := g.new_tmp_var()
+// 		g.write('const $tmp_var = ')
+// 		g.expr(it.val)
+// 		return
+// 	}
 
-	// NB: The expr has to go *before* inside_map_set as it's defined there
-	g.expr(it.left)
-	if g.inside_map_set && it.op == .assign {
-		g.inside_map_set = false
-		g.write(', ')
-		g.expr(it.val)
-		g.write(')')
-	} else {
-		g.write(' $it.op ')
-		g.expr(it.val)
-	}
-}
+// 	// NB: The expr has to go *before* inside_map_set as it's defined there
+// 	g.expr(it.left)
+// 	if g.inside_map_set && it.op == .assign {
+// 		g.inside_map_set = false
+// 		g.write(', ')
+// 		g.expr(it.val)
+// 		g.write(')')
+// 	} else {
+// 		g.write(' $it.op ')
+// 		g.expr(it.val)
+// 	}
+// }
 
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	mut name := ''

@@ -15,10 +15,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	p.is_stmt_ident = false
 	// Prefix
 	match p.tok.kind {
-		.key_mut, .key_static {
-			node = p.parse_assign_ident()
-		}
-		.name {
+		.name, .key_mut, .key_static {
 			node = p.name_expr()
 			p.is_stmt_ident = is_stmt_ident
 		}
@@ -154,13 +151,12 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	}
 	// Infix
 	for precedence < p.tok.precedence() {
-		if p.tok.kind.is_assign() && !p.is_stmt_ident {
-			node = p.assign_expr(node)
-		} else if p.tok.kind == .dot {
+		if p.tok.kind == .dot {
 			node = p.dot_expr(node)
 			p.is_stmt_ident = is_stmt_ident
 		} else if p.tok.kind == .lsbr {
 			node = p.index_expr(node)
+			p.is_stmt_ident = is_stmt_ident
 		} else if p.tok.kind == .key_as {
 			pos := p.tok.position()
 			p.next()
@@ -182,7 +178,8 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				op: tok.kind
 				pos: pos
 			}
-		} else if p.tok.kind.is_infix() {
+		}
+		else if p.tok.kind.is_infix() {
 			// return early for deref assign `*x = 2` goes to prefix expr
 			if p.tok.kind == .mul && p.tok.line_nr != p.prev_tok.line_nr && p.peek_tok2.kind ==
 				.assign {

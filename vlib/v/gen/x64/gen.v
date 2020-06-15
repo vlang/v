@@ -561,7 +561,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
 		ast.ArrayInit {}
-		ast.AssignExpr {}
 		ast.CallExpr {
 			if it.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := it.args[0].expr
@@ -626,17 +625,21 @@ fn (mut g Gen) allocate_var(name string, size, initial_val int) {
 
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
-	for ident in node.left {
-		match node.right[0] {
-			ast.IntegerLiteral {
-				g.allocate_var(ident.name, 4, it.val.int())
-			}
-			ast.InfixExpr {
-				g.infix_expr(it)
-				g.allocate_var(ident.name, 4, 0)
-			}
-			else {
-				g.error_with_pos('assign_stmt unhandled expr: ' + typeof(node.right[0]), node.right[0].position())
+	for i, left in node.left {
+		right := node.right[i]
+		if left is ast.Ident {
+			ident := left as ast.Ident
+			match right {
+				ast.IntegerLiteral {
+					g.allocate_var(ident.name, 4, it.val.int())
+				}
+				ast.InfixExpr {
+					g.infix_expr(it)
+					g.allocate_var(ident.name, 4, 0)
+				}
+				else {
+					g.error_with_pos('assign_stmt unhandled expr: ' + typeof(right), right.position())
+				}
 			}
 		}
 	}

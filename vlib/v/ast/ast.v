@@ -9,7 +9,7 @@ import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral | CallExpr |
+pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr |
 	CastExpr | CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
 	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr |
 	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral |
@@ -18,7 +18,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral |
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
 	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl | TypeDecl |
-	UnsafeStmt
+	ForCIncStmt | UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -504,10 +504,18 @@ pub:
 	has_init bool
 	cond     Expr // i < 10;
 	has_cond bool
-	inc      Expr // i++;
+	inc      Stmt // i++; i += 2
 	has_inc  bool
 	stmts    []Stmt
 	pos      token.Position
+}
+
+pub struct ForCIncStmt {
+pub:
+	expr Expr
+	pos  token.Position
+pub mut:
+	typ  table.Type
 }
 
 /*
@@ -537,10 +545,11 @@ pub:
 	op            token.Kind
 	pos           token.Position
 pub mut:
-	left          []Ident
+	left          []Expr
 	left_types    []table.Type
 	right_types   []table.Type
 	is_static     bool // for translated code only
+	is_simple     bool
 	has_cross_var bool
 }
 
@@ -629,17 +638,6 @@ pub:
 pub struct ParExpr {
 pub:
 	expr Expr
-}
-
-pub struct AssignExpr {
-pub:
-	op         token.Kind
-	pos        token.Position
-	left       Expr
-	val        Expr
-pub mut:
-	left_type  table.Type
-	right_type table.Type
 }
 
 pub struct GoStmt {
@@ -820,9 +818,6 @@ pub fn (expr Expr) position() token.Position {
 			return it.pos
 		}
 		// ast.Ident { }
-		AssignExpr {
-			return it.pos
-		}
 		CastExpr {
 			return it.pos
 		}
