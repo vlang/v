@@ -798,7 +798,8 @@ pub mut:
 
 pub struct None {
 pub:
-	foo int // todo
+	pos  token.Position
+	foo  int // todo
 }
 
 [inline]
@@ -872,6 +873,9 @@ pub fn (expr Expr) position() token.Position {
 			return it.pos
 		}
 		MatchExpr {
+			return it.pos
+		}
+		None {
 			return it.pos
 		}
 		PostfixExpr {
