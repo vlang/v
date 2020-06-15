@@ -73,7 +73,6 @@ pub struct StringInterLiteral {
 pub:
 	vals       []string
 	exprs      []Expr
-	has_fmts   []bool
 	fwidths    []int
 	precisions []int
 	pluss      []bool
@@ -83,6 +82,7 @@ pub:
 pub mut:
 	expr_types []table.Type
 	fmts       []byte
+	need_fmts  []bool // an explicit non-default fmt required, e.g. `x`
 }
 
 pub struct CharLiteral {

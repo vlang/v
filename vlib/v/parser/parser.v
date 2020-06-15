@@ -1237,7 +1237,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	node = ast.StringInterLiteral{
 		vals: vals
 		exprs: exprs
-		has_fmts: has_fmts
+		need_fmts: has_fmts // prelimery - until checker finds out if really needed
 		fwidths: fwidths
 		precisions: precisions
 		pluss: visible_pluss

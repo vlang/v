@@ -160,10 +160,10 @@ pub fn (x Expr) str() string {
 					continue
 				}
 				res << '$'
-				if it.has_fmts[i] || (it.exprs[i] !is Ident && it.exprs[i] !is SelectorExpr) {
+				if it.need_fmts[i] || (it.exprs[i] !is Ident && it.exprs[i] !is SelectorExpr) {
 					res << '{'
 					res << it.exprs[i].str()
-					if it.has_fmts[i] {
+					if it.need_fmts[i] {
 						res << ':'
 						if it.pluss[i] {
 							res << '+'

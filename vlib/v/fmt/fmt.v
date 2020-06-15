@@ -717,10 +717,10 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					continue
 				}
 				f.write('$')
-				if it.has_fmts[i] || (it.exprs[i] !is ast.Ident && it.exprs[i] !is ast.SelectorExpr) {
+				if it.need_fmts[i] || (it.exprs[i] !is ast.Ident && it.exprs[i] !is ast.SelectorExpr) {
 					f.write('{')
 					f.expr(it.exprs[i])
-					if it.has_fmts[i] {
+					if it.need_fmts[i] {
 						f.write(':')
 						if it.pluss[i] {
 							f.write('+')

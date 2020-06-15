@@ -256,6 +256,27 @@ pub fn (c &Checker) symmetric_check(left, right table.Type) bool {
 	return c.check_basic(left, right)
 }
 
+pub fn (c &Checker) get_default_fmt(ftyp, typ table.Type) byte {
+	if typ.is_float() {
+		return `g`
+	} else if typ.is_signed() || typ.is_any_int() {
+		return `d`
+	} else if typ.is_unsigned() {
+		return `u`
+	} else if typ.is_pointer() {
+		return `p`
+	} else {
+		sym := c.table.get_type_symbol(ftyp)
+		if ftyp in [table.string_type, table.bool_type] || sym.kind in
+		[.enum_, .array, .array_fixed, .struct_, .map] || ftyp.has_flag(.optional) ||
+			sym.has_method('str') {
+			return `s`
+		} else {
+			return `_`
+		}
+	}
+}
+
 pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type {
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
@@ -286,7 +307,14 @@ pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type
 						node.fmt_poss[i])
 				}
 			}
-			node.fmts[i] = fmt
+			fmt = c.get_default_fmt(ftyp, typ)
+			if fmt == `_` {
+				c.error('no known default format for type `${c.table.get_type_name(ftyp)}`',
+						node.fmt_poss[i])
+			} else {
+				node.fmts[i] = fmt
+				node.need_fmts[i] = false
+			}
 		} else { // check if given format specifier is valid for type
 			if node.precisions[i] != 0 && !typ.is_float() {
 				c.error('precision specification only valid for float types', node.fmt_poss[i])
@@ -304,6 +332,7 @@ pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type
 				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
 					node.fmt_poss[i])
 			}
+			node.need_fmts[i] = fmt != c.get_default_fmt(ftyp, typ)
 		}
 	}
 	return table.string_type
