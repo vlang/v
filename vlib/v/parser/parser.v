@@ -517,6 +517,9 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				pos: assert_pos
 			}
 		}
+		.key_for {
+			return p.for_stmt()
+		}
 		.name, .key_mut, .key_static, .mul {
 			if p.tok.kind == .name {
 				if p.peek_tok.kind == .colon {
@@ -536,9 +539,6 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				}
 			}
 			return p.parse_multi_expr()
-		}
-		.key_for {
-			return p.for_stmt()
 		}
 		.comment {
 			return p.comment()
