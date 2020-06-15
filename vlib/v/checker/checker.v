@@ -26,7 +26,6 @@ pub mut:
 	expected_type    table.Type
 	cur_fn           &ast.FnDecl // current function
 	const_decl       string
-	var_decl         string
 	const_deps       []string
 	const_names      []string
 	pref             &pref.Preferences // Preferences shared from V struct
@@ -1317,9 +1316,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	}
 	is_decl := assign_stmt.op == .decl_assign
 	for i, left in assign_stmt.left {
-		if is_decl {
-			c.var_decl = (left as ast.Ident).name
-		}
 		if !is_decl && !ast.expr_is_blank_ident(left) {
 			left_type := c.unwrap_generic(c.expr(left))
 			c.expected_type = left_type
@@ -1332,7 +1328,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		mut right_type := assign_stmt.right_types[i]
 		mut left_type := right_type
 		if is_decl {
-			c.var_decl = (left as ast.Ident).name
 			right_type = c.table.mktyp(right_type)
 			left_type = right_type
 			assign_stmt.left_types << right_type
@@ -1426,7 +1421,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.error('cannot assign `$right_sym.name` to `${left.str()}` of type `$left_sym.name`',
 				right.position())
 		}
-		c.var_decl = ''
 	}
 	c.expected_type = table.void_type
 }

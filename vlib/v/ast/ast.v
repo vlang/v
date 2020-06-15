@@ -513,9 +513,6 @@ pub:
 pub struct ForCIncStmt {
 pub:
 	expr Expr
-	pos  token.Position
-pub mut:
-	typ  table.Type
 }
 
 /*
