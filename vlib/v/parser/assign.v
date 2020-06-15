@@ -112,7 +112,9 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 					p.error_with_pos('struct fields can only be declared during the initialization', it.pos)
 				}
 			}
-			else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.position()) }
+			else {}
+			// TODO: parexpr ( check vars)
+			// else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.position()) }
 		}
 	}
 	return ast.AssignStmt{op: op, left: left, right: right, pos: pos, has_cross_var: has_cross_var}
