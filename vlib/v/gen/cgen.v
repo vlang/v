@@ -1039,7 +1039,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if is_optional && assign_stmt.right[0] is ast.CallExpr {
 				val := assign_stmt.right[0] as ast.CallExpr
 				return_type = val.return_type
-				g.or_block(mr_var_name, val.or_block, return_type)
+				// g.or_block(mr_var_name, val.or_block, return_type)
 			}
 			g.writeln(';')
 			for i, lx in assign_stmt.left {
@@ -1084,8 +1084,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 	// `a := 1` | `a,b := 1,2`
 	for i, left in assign_stmt.left {
-		// println('## $assign_stmt.left.len - $assign_stmt.right.len')
-		// println('## $assign_stmt.left_types.len - $assign_stmt.right_types.len')
 		val := assign_stmt.right[i]
 		right_type := assign_stmt.right_types[i]
 		mut var_type :=  assign_stmt.left_types[i] 

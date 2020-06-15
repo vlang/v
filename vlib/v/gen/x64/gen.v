@@ -627,21 +627,22 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
 	for i, left in node.left {
 		right := node.right[i]
-		if left is ast.Ident {
+		name := left.str()
+		// if left is ast.Ident {
 			ident := left as ast.Ident
 			match right {
 				ast.IntegerLiteral {
-					g.allocate_var(ident.name, 4, it.val.int())
+					g.allocate_var(name, 4, it.val.int())
 				}
 				ast.InfixExpr {
 					g.infix_expr(it)
-					g.allocate_var(ident.name, 4, 0)
+					g.allocate_var(name, 4, 0)
 				}
 				else {
 					g.error_with_pos('assign_stmt unhandled expr: ' + typeof(right), right.position())
 				}
 			}
-		}
+		// }
 	}
 }
 
