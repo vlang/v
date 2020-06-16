@@ -1,4 +1,4 @@
 fn main() {
 	a := map[string]int
-	a % 1
+	println(a % 1)
 }
