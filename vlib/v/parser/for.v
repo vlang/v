@@ -29,7 +29,6 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		mut init := ast.Stmt{}
 		mut cond := p.new_true_expr()
 		mut inc := ast.Stmt{}
-		// mut inc := ast.Expr{}
 		mut has_init := false
 		mut has_cond := false
 		mut has_inc := false
@@ -47,13 +46,11 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		p.check(.semicolon)
 		if p.tok.kind != .lcbr {
-			// inc = p.stmt()
 			inc_expr := p.expr(0)
 			if p.tok.kind.is_assign() || p.tok.kind == .assign {
 				tok := p.tok
 				p.next()
-				right := p.expr(0)
-				inc = ast.AssignStmt{op: tok.kind, left: [inc_expr], right: [right], is_simple: true}
+				inc = ast.AssignStmt{op: tok.kind, left: [inc_expr], right: [p.expr(0)], is_simple: true}
 			}
 			else {
 				inc = ast.ForCIncStmt{expr: inc_expr}

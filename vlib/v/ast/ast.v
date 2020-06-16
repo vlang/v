@@ -546,7 +546,7 @@ pub mut:
 	left_types    []table.Type
 	right_types   []table.Type
 	is_static     bool // for translated code only
-	is_simple     bool
+	is_simple     bool // `x+=2` in `for x:=1; ; x+=2 {` 
 	has_cross_var bool
 }
 
