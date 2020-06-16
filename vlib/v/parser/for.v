@@ -46,7 +46,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		p.check(.semicolon)
 		if p.tok.kind != .lcbr {
-			inc = p.stmt()
+			inc = p.stmt(false)
 			has_inc = true
 		}
 		p.inside_for = false
