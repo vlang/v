@@ -1316,7 +1316,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	}
 	is_decl := assign_stmt.op == .decl_assign
 	for i, left in assign_stmt.left {
-		if !is_decl && !ast.expr_is_blank_ident(left) {
+		if !is_decl && !left.is_blank_ident() {
 			left_type := c.unwrap_generic(c.expr(left))
 			c.expected_type = left_type
 		}

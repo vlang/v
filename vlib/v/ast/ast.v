@@ -796,7 +796,7 @@ pub:
 }
 
 [inline]
-pub fn expr_is_blank_ident(expr Expr) bool {
+pub fn (expr Expr) is_blank_ident() bool {
 	match expr {
 		Ident { return it.kind == .blank_ident }
 		else { return false }

@@ -679,7 +679,9 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			// } else {
 			// 	g.write(g.js_name(ident.name))
 			// }
-			g.write(left.str())
+			if !left.is_blank_ident() {
+				g.write(left.str())
+			}
 			if i < it.left.len - 1 {
 				g.write(', ')
 			}
@@ -721,8 +723,8 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 				g.write('const ')
 			}
 
-			g.write('${g.js_name(name)} = ')
-			g.expr(val)
+			g.write(' $it.op ')
+			g.expr(it.val)
 
 			if g.inside_loop {
 				g.write('; ')
