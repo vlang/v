@@ -77,15 +77,12 @@ pub fn atan2(a, b f64) f64 {
 // cbrt calculates cubic root.
 [inline]
 pub fn cbrt(a f64) f64 {
-	$if !tinyc {
-		return C.cbrt(a)
-	} $else {
-		$if !windows {
-			return C.cbrt(a)
-		} $else {
-			// TODO
+	$if tinyc {
+		$if windows {
+			return pow(a, 1.0 / 3)
 		}
 	}
+	return C.cbrt(a)
 }
 
 // ceil returns the nearest f64 greater or equal to the provided value.
@@ -121,43 +118,36 @@ pub fn exp(a f64) f64 {
 // erf computes the error function value
 [inline]
 pub fn erf(a f64) f64 {
-	$if !tinyc {
-		return C.erf(a)
-	} $else {
-		$if !windows {
-			return C.erf(a)
-		} $else {
+	$if tinyc {
+		$if windows {
 			// TODO
+			panic('`math.erf`: not implemented in tcc')
 		}
 	}
+	return C.erf(a)
 }
 
 // erfc computes the complementary error function value
 [inline]
 pub fn erfc(a f64) f64 {
-	$if !tinyc {
-		return C.erfc(a)
-	} $else {
-		$if !windows {
-			return C.erfc(a)
-		} $else {
+	$if tinyc {
+		$if windows {
 			// TODO
+			panic('`math.erfc`: not implemented in tcc')
 		}
 	}
+	return C.erfc(a)
 }
 
 // exp2 returns the base-2 exponential function of a (math.pow(2, a)).
 [inline]
 pub fn exp2(a f64) f64 {
-	$if !tinyc {
-		return C.exp2(a)
-	} $else {
-		$if !windows {
-			return C.exp2(a)
-		} $else {
-			// TODO
+	$if tinyc {
+		$if windows {
+			return pow(2, a)
 		}
 	}
+	return C.exp2(a)
 }
 
 // floor returns the nearest f64 lower or equal of the provided value.
@@ -175,15 +165,13 @@ pub fn fmod(a, b f64) f64 {
 // gamma computes the gamma function value
 [inline]
 pub fn gamma(a f64) f64 {
-	$if !tinyc {
-		return C.tgamma(a)
-	} $else {
-		$if !windows {
-			return C.tgamma(a)
-		} $else {
+	$if tinyc {
+		$if windows {
 			// TODO
+			panic('`math.tgamma`: not implemented in tcc')
 		}
 	}
+	return C.tgamma(a)
 }
 
 // Returns hypotenuse of a right triangle.
@@ -201,15 +189,12 @@ pub fn log(a f64) f64 {
 // log2 calculates base-2 logarithm of the provided value.
 [inline]
 pub fn log2(a f64) f64 {
-	$if !tinyc {
-		return C.log2(a)
-	} $else {
-		$if !windows {
-			return C.log2(a)
-		} $else {
-			// TODO
+	$if tinyc {
+		$if windows {
+			return log10(a) / log10(2)
 		}
 	}
+	return C.log2(a)
 }
 
 // log10 calculates the common (base-10) logarithm of the provided value.
@@ -221,15 +206,13 @@ pub fn log10(a f64) f64 {
 // log_gamma computes the log-gamma function value
 [inline]
 pub fn log_gamma(a f64) f64 {
-	$if !tinyc {
-		return C.lgamma(a)
-	} $else {
-		$if !windows {
-			return C.lgamma(a)
-		} $else {
+	$if tinyc {
+		$if windows {
 			// TODO
+			panic('`math.lgamma`: not implemented in tcc')
 		}
 	}
+	return C.lgamma(a)
 }
 
 // log_n calculates base-N logarithm of the provided value.
