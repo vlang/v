@@ -45,9 +45,7 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 		file: file
 		is_debug: is_debug
 	}
-	for imp in file.imports {
-		f.mod2alias[imp.mod.all_after_last('.')] = imp.alias
-	}
+	f.process_file_imports(file)
 	f.cur_mod = 'main'
 	for stmt in file.stmts {
 		if stmt is ast.Import {
@@ -61,6 +59,12 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
 	return res[..f.import_pos] + f.out_imports.str() + res[f.import_pos..] // + '\n'
+}
+
+pub fn (mut f Fmt) process_file_imports(file &ast.File) {
+	for imp in file.imports {
+		f.mod2alias[imp.mod.all_after_last('.')] = imp.alias
+	}
 }
 
 /*
@@ -156,14 +160,20 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.AssignStmt {
-			for i, ident in it.left {
-				var_info := ident.var_info()
-				if var_info.is_mut {
-					f.write('mut ')
+			for i, left in it.left {
+				if left is ast.Ident {
+					ident := left as ast.Ident
+					var_info := ident.var_info()
+					if var_info.is_mut {
+						f.write('mut ')
+					}
+					f.expr(left)
+					if i < it.left.len - 1 {
+						f.write(', ')
+					}
 				}
-				f.expr(ident)
-				if i < it.left.len - 1 {
-					f.write(', ')
+				else {
+					f.expr(left)
 				}
 			}
 			f.is_assign = true
@@ -256,7 +266,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.write('; ')
 			f.expr(it.cond)
 			f.write('; ')
-			f.expr(it.inc)
+			f.stmt(it.inc)
 			f.writeln(' {')
 			f.stmts(it.stmts)
 			f.writeln('}')
@@ -505,7 +515,6 @@ pub fn (mut f Fmt) struct_field_expr(fexpr ast.Expr) {
 
 fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
-
 	for res.ends_with('_ptr') {
 		// type_ptr => &type
 		res = res[0..res.len - 4]
@@ -539,11 +548,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			type_str := f.type_to_str(it.typ)
 			f.expr(it.expr)
 			f.write(' as $type_str')
-		}
-		ast.AssignExpr {
-			f.expr(it.left)
-			f.write(' $it.op.str() ')
-			f.expr(it.val)
 		}
 		ast.Assoc {
 			f.writeln('{')
@@ -699,6 +703,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 			f.write(')')
 		}
+		ast.SqlExpr {}
 		ast.StringLiteral {
 			if it.is_raw {
 				f.write('r')
@@ -717,10 +722,29 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					continue
 				}
 				f.write('$')
-				if it.expr_fmts[i].len > 0 {
+				needs_fspec := it.need_fmts[i] || it.pluss[i] || (it.fills[i] && it.fwidths[i] >=
+					0) || it.fwidths[i] != 0 || it.precisions[i] != 0
+				if needs_fspec || (it.exprs[i] !is ast.Ident && it.exprs[i] !is ast.SelectorExpr) {
 					f.write('{')
 					f.expr(it.exprs[i])
-					f.write(it.expr_fmts[i])
+					if needs_fspec {
+						f.write(':')
+						if it.pluss[i] {
+							f.write('+')
+						}
+						if it.fills[i] && it.fwidths[i] >= 0 {
+							f.write('0')
+						}
+						if it.fwidths[i] != 0 {
+							f.write('${it.fwidths[i]}')
+						}
+						if it.precisions[i] != 0 {
+							f.write('.${it.precisions[i]}')
+						}
+						if it.need_fmts[i] {
+							f.write('${it.fmts[i]:c}')
+						}
+					}
 					f.write('}')
 				} else {
 					f.expr(it.exprs[i])

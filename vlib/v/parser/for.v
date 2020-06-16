@@ -28,8 +28,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		// `for i := 0; i < 10; i++ {`
 		mut init := ast.Stmt{}
 		mut cond := p.new_true_expr()
-		// mut inc := ast.Stmt{}
-		mut inc := ast.Expr{}
+		mut inc := ast.Stmt{}
 		mut has_init := false
 		mut has_cond := false
 		mut has_inc := false
@@ -47,8 +46,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		p.check(.semicolon)
 		if p.tok.kind != .lcbr {
-			// inc = p.stmt()
-			inc = p.expr(0)
+			inc = p.stmt(false)
 			has_inc = true
 		}
 		p.inside_for = false

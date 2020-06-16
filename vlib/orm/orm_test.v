@@ -1,6 +1,7 @@
 import os
 import pg
 import term
+import sqlite
 
 struct Modules {
 	id int
@@ -10,7 +11,30 @@ struct Modules {
 	//nr_downloads int
 }
 
-fn test_orm() {
+fn test_orm_sqlite() {
+	db := sqlite.connect(':memory:') or { panic(err) }
+	/*
+	db.exec("drop table if exists users")
+	db.exec("create table users (id integer primary key, name text default '');")
+
+	db.exec("insert into users (name) values ('Sam')")
+	db.exec("insert into users (name) values ('Peter')")
+	db.exec("insert into users (name) values ('Kate')")
+	nr_users := sql db {
+		//select count from modules
+	}
+	assert nr_users == 3
+	println('nr_users=')
+	println(nr_users)
+	//nr_modules := db.select count from modules
+	//nr_modules := db.select count from Modules where id == 1
+	//nr_modules := db.select count from Modules where
+		//name == 'Bob' && id == 1
+	*/
+}
+
+
+fn test_orm_pg() {
 	dbname := os.getenv('VDB_NAME')
 	dbuser := os.getenv('VDB_USER')
 	if dbname == '' || dbuser == '' {
@@ -18,6 +42,7 @@ fn test_orm() {
 		return
 	}
 	db := pg.connect(dbname: dbname, user: dbuser) or { panic(err) }
+	_ = db
 /*
 	//nr_modules := db.select count from modules
 	//nr_modules := db.select count from Modules where id == 1

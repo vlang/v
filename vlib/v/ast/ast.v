@@ -9,11 +9,11 @@ import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral | CallExpr |
+pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr |
 	CastExpr | CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
-	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr |
-	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral |
-	StringLiteral | StructInit | Type | TypeOf | Likely
+	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | MapInit | MatchExpr | None |
+	OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr |
+	StringInterLiteral | StringLiteral | StructInit | Type | TypeOf
 
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -42,10 +42,13 @@ pub:
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
-	expr Expr
-	pos  token.Position
+	expr    Expr
+	pos     token.Position
+	// treat like expr (dont add trailing `;`)
+	// is used for `x++` in `for x:=1; ; x++`
+	is_expr bool
 pub mut:
-	typ  table.Type
+	typ     table.Type
 }
 
 pub struct IntegerLiteral {
@@ -73,10 +76,16 @@ pub struct StringInterLiteral {
 pub:
 	vals       []string
 	exprs      []Expr
-	expr_fmts  []string
+	fwidths    []int
+	precisions []int
+	pluss      []bool
+	fills      []bool
+	fmt_poss   []token.Position
 	pos        token.Position
 pub mut:
 	expr_types []table.Type
+	fmts       []byte
+	need_fmts  []bool // an explicit non-default fmt required, e.g. `x`
 }
 
 pub struct CharLiteral {
@@ -504,7 +513,7 @@ pub:
 	has_init bool
 	cond     Expr // i < 10;
 	has_cond bool
-	inc      Expr // i++;
+	inc      Stmt // i++; i += 2
 	has_inc  bool
 	stmts    []Stmt
 	pos      token.Position
@@ -537,10 +546,11 @@ pub:
 	op            token.Kind
 	pos           token.Position
 pub mut:
-	left          []Ident
+	left          []Expr
 	left_types    []table.Type
 	right_types   []table.Type
 	is_static     bool // for translated code only
+	is_simple     bool // `x+=2` in `for x:=1; ; x+=2`
 	has_cross_var bool
 }
 
@@ -629,17 +639,6 @@ pub:
 pub struct ParExpr {
 pub:
 	expr Expr
-}
-
-pub struct AssignExpr {
-pub:
-	op         token.Kind
-	pos        token.Position
-	left       Expr
-	val        Expr
-pub mut:
-	left_type  table.Type
-	right_type table.Type
 }
 
 pub struct GoStmt {
@@ -758,8 +757,8 @@ pub:
 
 pub struct Likely {
 pub:
-	expr     Expr
-	pos      token.Position
+	expr      Expr
+	pos       token.Position
 	is_likely bool // false for _unlikely_
 }
 
@@ -790,7 +789,6 @@ pub:
 	method_name string
 	left        Expr
 	is_vweb     bool
-	// vweb_stmts  []Stmt
 	vweb_tmpl   File
 pub mut:
 	sym         table.TypeSymbol
@@ -798,12 +796,16 @@ pub mut:
 
 pub struct None {
 pub:
-	pos  token.Position
-	foo  int // todo
+	pos token.Position
+	foo int // todo
+}
+
+pub struct SqlExpr {
+	typ table.Type
 }
 
 [inline]
-pub fn expr_is_blank_ident(expr Expr) bool {
+pub fn (expr Expr) is_blank_ident() bool {
 	match expr {
 		Ident { return it.kind == .blank_ident }
 		else { return false }
@@ -820,9 +822,6 @@ pub fn (expr Expr) position() token.Position {
 			return it.pos
 		}
 		// ast.Ident { }
-		AssignExpr {
-			return it.pos
-		}
 		CastExpr {
 			return it.pos
 		}

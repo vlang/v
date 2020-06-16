@@ -1,4 +1,4 @@
 struct Aaa{}
 fn main() {
-    Aaa{} - 10
+    println(Aaa{} - 10)
 }

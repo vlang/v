@@ -5,6 +5,7 @@ module checker
 
 import v.table
 import v.token
+import v.ast
 
 pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 	t := c.table
@@ -253,4 +254,67 @@ pub fn (c &Checker) symmetric_check(left, right table.Type) bool {
 		}
 	}
 	return c.check_basic(left, right)
+}
+
+pub fn (c &Checker) get_default_fmt(ftyp, typ table.Type) byte {
+	if typ.is_float() {
+		return `g`
+	} else if typ.is_signed() || typ.is_any_int() {
+		return `d`
+	} else if typ.is_unsigned() {
+		return `u`
+	} else if typ.is_pointer() {
+		return `p`
+	} else {
+		sym := c.table.get_type_symbol(ftyp)
+		if ftyp in [table.string_type, table.bool_type] || sym.kind in
+		[.enum_, .array, .array_fixed, .struct_, .map] || ftyp.has_flag(.optional) ||
+			sym.has_method('str') {
+			return `s`
+		} else {
+			return `_`
+		}
+	}
+}
+
+pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type {
+	for i, expr in node.exprs {
+		ftyp := c.expr(expr)
+		node.expr_types << ftyp
+		typ := c.table.unalias_num_type(ftyp)
+		mut fmt := node.fmts[i]
+		// analyze and validate format specifier
+		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`, `_`] {
+			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
+		}
+		if fmt == `_` { // set default representation for type if none has been given
+			fmt = c.get_default_fmt(ftyp, typ)
+			if fmt == `_` {
+				c.error('no known default format for type `${c.table.get_type_name(ftyp)}`',
+						node.fmt_poss[i])
+			} else {
+				node.fmts[i] = fmt
+				node.need_fmts[i] = false
+			}
+		} else { // check if given format specifier is valid for type
+			if node.precisions[i] != 0 && !typ.is_float() {
+				c.error('precision specification only valid for float types', node.fmt_poss[i])
+			}
+			if node.pluss[i] && !typ.is_number() {
+				c.error('plus prefix only allowd for numbers', node.fmt_poss[i])
+			}
+			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`]) ||
+				(typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`]) ||
+				(typ.is_any_int() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`]) ||
+				(typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`]) ||
+				(typ.is_pointer() && fmt !in [`p`, `x`, `X`]) ||
+				(typ.is_string() && fmt != `s`) ||
+				(typ.idx() in [table.i64_type_idx, table.f64_type_idx] && fmt == `c`) {
+				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
+					node.fmt_poss[i])
+			}
+			node.need_fmts[i] = fmt != c.get_default_fmt(ftyp, typ)
+		}
+	}
+	return table.string_type
 }

@@ -13,6 +13,7 @@ import v.errors
 import os
 import runtime
 import time
+import strconv
 
 pub struct Parser {
 	file_name         string // "/home/user/hello.v"
@@ -72,7 +73,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	}
 	p.init_parse_fns()
 	p.read_first_token()
-	return p.stmt()
+	return p.stmt(false)
 }
 
 pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope, global_scope &ast.Scope) ast.File {
@@ -316,7 +317,7 @@ pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	mut stmts := []ast.Stmt{}
 	if p.tok.kind != .rcbr {
 		for {
-			stmts << p.stmt()
+			stmts << p.stmt(is_top_level)
 			// p.warn('after stmt(): tok=$p.tok.str()')
 			if p.tok.kind in [.eof, .rcbr] {
 				break
@@ -463,7 +464,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			if p.pref.is_script && !p.pref.is_test {
 				mut stmts := []ast.Stmt{}
 				for p.tok.kind != .eof {
-					stmts << p.stmt()
+					stmts << p.stmt(false)
 				}
 				return ast.FnDecl{
 					name: 'main'
@@ -499,7 +500,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 	}
 }
 
-pub fn (mut p Parser) stmt() ast.Stmt {
+pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
@@ -517,33 +518,28 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				pos: assert_pos
 			}
 		}
-		.key_mut, .key_static {
-			return p.assign_stmt()
-		}
 		.key_for {
 			return p.for_stmt()
 		}
-		.name {
-			if p.peek_tok.kind == .decl_assign {
-				// `x := ...`
-				return p.assign_stmt()
-			} else if p.peek_tok.kind == .comma {
-				// `a, b ...`
-				return p.parse_multi_expr()
-			} else if p.peek_tok.kind == .colon {
-				// `label:`
-				name := p.check_name()
-				p.next()
-				return ast.GotoLabel{
-					name: name
+		.name, .key_mut, .key_static, .mul {
+			if p.tok.kind == .name {
+				if p.peek_tok.kind == .colon {
+					// `label:`
+					name := p.check_name()
+					p.next()
+					return ast.GotoLabel{
+						name: name
+					}
 				}
-			} else if p.peek_tok.kind == .name {
-				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr && p.peek_tok.kind in
-				[.rcbr, .eof] {
-				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
+				else if p.peek_tok.kind == .name {
+					p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
+				}
+				else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr && p.peek_tok.kind in
+					[.rcbr, .eof] {
+					p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
+				}
 			}
-			return p.parse_multi_expr()
+			return p.parse_multi_expr(is_top_level)
 		}
 		.comment {
 			return p.comment()
@@ -612,9 +608,22 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 		}
 		// literals, 'if', etc. in here
 		else {
-			return p.parse_multi_expr()
+			return p.parse_multi_expr(is_top_level)
 		}
 	}
+}
+
+
+fn (mut p Parser) expr_list() []ast.Expr {
+	mut exprs := []ast.Expr{}
+	for {
+		exprs << p.expr(0)
+		if p.tok.kind != .comma {
+			break
+		}
+		p.next()
+	}
+	return exprs
 }
 
 fn (mut p Parser) attributes() []ast.Attr {
@@ -732,59 +741,35 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	}
 }
 
-fn (mut p Parser) parse_multi_expr() ast.Stmt {
+fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// in here might be 1) multi-expr 2) multi-assign
 	// 1, a, c ... }       // multi-expression
 	// a, mut b ... :=/=   // multi-assign
 	// collect things upto hard boundaries
-	mut collected := []ast.Expr{}
-	for {
-		collected << p.expr(0)
-		if p.tok.kind == .comma {
-			p.next()
-		} else {
-			break
+	tok := p.tok
+	left := p.expr_list()
+	left0 := left[0]
+	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
+		return p.partial_assign_stmt(left)
+	}
+	else if is_top_level && left.len > 0 &&
+			left0 !is ast.CallExpr && left0 !is ast.PostfixExpr &&
+			!(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op == .left_shift) &&
+			left0 !is ast.ComptimeCall && tok.kind !in [.key_if, .key_match] {
+		p.error_with_pos('expression evaluated but not used', left0.position())
+	}
+	if left.len == 1 {
+		return ast.ExprStmt{
+			expr: left0
+			pos: tok.position()
+			is_expr: p.inside_for
 		}
 	}
-	// TODO: Try to merge assign_expr and assign_stmt
-	if p.tok.kind == .decl_assign || (p.tok.kind == .assign && collected.len > 1) {
-		mut idents := []ast.Ident{}
-		for c in collected {
-			match c {
-				ast.Ident { idents << it }
-				ast.SelectorExpr { p.error_with_pos('struct fields can only be declared during the initialization',
-						it.pos) }
-				else { p.error_with_pos('unexpected `${typeof(c)}`', c.position()) }
-			}
+	return ast.ExprStmt{
+		expr: ast.ConcatExpr{
+			vals: left
 		}
-		return p.partial_assign_stmt(idents)
-	} else if p.tok.kind.is_assign() {
-		epos := p.tok.position()
-		if collected.len == 1 {
-			return ast.ExprStmt{
-				expr: p.assign_expr(collected[0])
-				pos: epos
-			}
-		}
-		return ast.ExprStmt{
-			expr: p.assign_expr(ast.ConcatExpr{
-				vals: collected
-			})
-			pos: epos
-		}
-	} else {
-		if collected.len == 1 {
-			return ast.ExprStmt{
-				expr: collected[0]
-				pos: p.tok.position()
-			}
-		}
-		return ast.ExprStmt{
-			expr: ast.ConcatExpr{
-				vals: collected
-			}
-			pos: p.tok.position()
-		}
+		pos: tok.position()
 	}
 }
 
@@ -1166,7 +1151,13 @@ fn (mut p Parser) string_expr() ast.Expr {
 	}
 	mut exprs := []ast.Expr{}
 	mut vals := []string{}
-	mut efmts := []string{}
+	mut has_fmts := []bool{}
+	mut fwidths := []int{}
+	mut precisions := []int{}
+	mut visible_pluss := []bool{}
+	mut fills := []bool{}
+	mut fmts := []byte{}
+	mut fposs := []token.Position{}
 	// Handle $ interpolation
 	p.inside_str_interp = true
 	for p.tok.kind == .string {
@@ -1177,31 +1168,66 @@ fn (mut p Parser) string_expr() ast.Expr {
 		}
 		p.next()
 		exprs << p.expr(0)
-		mut efmt := []string{}
+		mut has_fmt := false
+		mut fwidth := 0
+		mut fwidthneg := false
+		mut precision := 0
+		mut visible_plus := false
+		mut fill := false
+		mut fmt := `_` // placeholder
 		if p.tok.kind == .colon {
-			efmt << ':'
+			has_fmt = true
 			p.next()
 			// ${num:-2d}
 			if p.tok.kind == .minus {
-				efmt << '-'
+				fwidthneg = true
+				p.next()
+			} else if p.tok.kind == .plus {
+				visible_plus = true
 				p.next()
 			}
 			// ${num:2d}
 			if p.tok.kind == .number {
-				efmt << p.tok.lit
+				fields := p.tok.lit.split('.')
+				if fields[0].len > 0 && fields[0][0] == `0` {
+					fill = true
+				}
+				fwidth = strconv.atoi(fields[0])
+				if fwidthneg {
+					fwidth = -fwidth
+				}
+				if fields.len > 1 {
+					precision = strconv.atoi(fields[1])
+				}
 				p.next()
 			}
-			if p.tok.kind == .name && p.tok.lit.len == 1 {
-				efmt << p.tok.lit
-				p.next()
+			if p.tok.kind == .name {
+				if p.tok.lit.len == 1 {
+					fmt = p.tok.lit[0]
+					p.next()
+				} else {
+					p.error('format specifier may only be one letter')
+				}
 			}
 		}
-		efmts << efmt.join('')
+		fwidths << fwidth
+		has_fmts << has_fmt
+		precisions << precision
+		visible_pluss << visible_plus
+		fmts << fmt
+		fills << fill
+		fposs << p.prev_tok.position()
 	}
 	node = ast.StringInterLiteral{
 		vals: vals
 		exprs: exprs
-		expr_fmts: efmts
+		need_fmts: has_fmts // prelimery - until checker finds out if really needed
+		fwidths: fwidths
+		precisions: precisions
+		pluss: visible_pluss
+		fills: fills
+		fmts: fmts
+		fmt_poss: fposs
 		pos: pos
 	}
 	p.inside_str_interp = false
@@ -1358,22 +1384,14 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 fn (mut p Parser) return_stmt() ast.Return {
 	first_pos := p.tok.position()
 	p.next()
-	// return expressions
-	mut exprs := []ast.Expr{}
+	// no return
 	if p.tok.kind == .rcbr {
 		return ast.Return{
 			pos: first_pos
 		}
 	}
-	for {
-		expr := p.expr(0)
-		exprs << expr
-		if p.tok.kind == .comma {
-			p.next()
-		} else {
-			break
-		}
-	}
+	// return exprs
+	exprs := p.expr_list()
 	end_pos := exprs.last().position()
 	return ast.Return{
 		exprs: exprs
