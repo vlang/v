@@ -27,9 +27,11 @@ fn C.sqlite3_finalize()
 fn C.sqlite3_column_count(voidptr) int
 
 // Opens the connection with a database.
-pub fn connect(path string) DB {
+pub fn connect(path string) ?DB {
 	db := &C.sqlite3(0)
-	C.sqlite3_open(path.str, &db)
+	if C.sqlite3_open(path.str, &db) != 0 {
+		return error('sqlite db error')
+	}
 	return DB{
 		conn: db
 	}

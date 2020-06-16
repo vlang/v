@@ -10,7 +10,6 @@ import v.pref
 import v.token
 import v.util
 import v.depgraph
-import term
 
 // NB: keywords after 'new' are reserved in C++
 const (
@@ -1520,6 +1519,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.None {
 			g.write('opt_none()')
 		}
+		ast.OrExpr {
+			// this should never appear here
+		}
 		ast.ParExpr {
 			g.write('(')
 			g.expr(it.expr)
@@ -1540,6 +1542,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// g.write(')')
 			g.is_amp = false
 		}
+		ast.RangeExpr {
+			// Only used in IndexExpr
+			}
 		ast.SizeOf {
 			mut styp := it.type_name
 			if it.type_name == '' {
@@ -1559,6 +1564,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			*/
 			g.write('sizeof($styp)')
+		}
+		ast.SqlExpr {
+			g.write('// sql expression')
 		}
 		ast.StringLiteral {
 			if it.is_raw {
@@ -1622,10 +1630,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(it.expr)
 			g.write(')')
 		}
-		else {
+		//else {
 			// #printf("node=%d\n", node.typ);
-			println(term.red('cgen.expr(): bad node ' + typeof(node)))
-		}
+			//println(term.red('cgen.expr(): bad node ' + typeof(node)))
+		//}
 	}
 }
 

@@ -4,7 +4,7 @@ fn test_sqlite() {
 	$if !linux {
 		return
 	}
-	db := sqlite.connect(':memory:')
+	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec("drop table if exists users")
 	db.exec("create table users (id integer primary key, name text default '');")
 

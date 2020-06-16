@@ -11,9 +11,9 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr |
 	CastExpr | CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
-	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr |
-	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral |
-	StringLiteral | StructInit | Type | TypeOf | Likely
+	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | MapInit | MatchExpr | None |
+	OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr |
+	StringInterLiteral | StringLiteral | StructInit | Type | TypeOf
 
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -757,8 +757,8 @@ pub:
 
 pub struct Likely {
 pub:
-	expr     Expr
-	pos      token.Position
+	expr      Expr
+	pos       token.Position
 	is_likely bool // false for _unlikely_
 }
 
@@ -789,7 +789,6 @@ pub:
 	method_name string
 	left        Expr
 	is_vweb     bool
-	// vweb_stmts  []Stmt
 	vweb_tmpl   File
 pub mut:
 	sym         table.TypeSymbol
@@ -797,8 +796,12 @@ pub mut:
 
 pub struct None {
 pub:
-	pos  token.Position
-	foo  int // todo
+	pos token.Position
+	foo int // todo
+}
+
+pub struct SqlExpr {
+	typ table.Type
 }
 
 [inline]

@@ -15,9 +15,17 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	p.is_stmt_ident = false
 	// Prefix
 	match p.tok.kind {
-		.name, .key_mut, .key_static {
+		.key_mut, .key_static {
 			node = p.name_expr()
 			p.is_stmt_ident = is_stmt_ident
+		}
+		.name {
+			if p.tok.lit == 'sql' && p.peek_tok.kind == .name {
+				node = p.sql_expr()
+			} else {
+				node = p.name_expr()
+				p.is_stmt_ident = is_stmt_ident
+			}
 		}
 		.string {
 			node = p.string_expr()
