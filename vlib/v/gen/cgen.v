@@ -1021,9 +1021,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// json_test failed w/o this check
 	if return_type != table.void_type && return_type != 0 {
 		sym := g.table.get_type_symbol(return_type)
-		// the left vs. right is ugly and should be removed
-		if sym.kind == .multi_return || assign_stmt.left.len > assign_stmt.right.len || assign_stmt.left.len >
-			1 {
+		if sym.kind == .multi_return {
 			// multi return
 			// TODO Handle in if_expr
 			is_optional := return_type.has_flag(.optional)
@@ -1033,20 +1031,15 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.is_assign_rhs = true
 			g.expr(assign_stmt.right[0])
 			g.is_assign_rhs = false
-			if is_optional && assign_stmt.right[0] is ast.CallExpr {
-				val := assign_stmt.right[0] as ast.CallExpr
-				return_type = val.return_type
-				// g.or_block(mr_var_name, val.or_block, return_type)
-			}
 			g.writeln(';')
 			for i, lx in assign_stmt.left {
-				if lx is ast.Ident {
-				ident := lx as ast.Ident
-				if ident.kind == .blank_ident {
-					continue
+				match lx {
+					ast.Ident {
+						if it.kind == .blank_ident { continue }
+					}
+					else {}
 				}
-				ident_var_info := ident.var_info()
-				styp := g.typ(ident_var_info.typ)
+				styp := g.typ(assign_stmt.left_types[i])
 				if assign_stmt.op == .decl_assign {
 					g.write('$styp ')
 				}
@@ -1057,17 +1050,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				} else {
 					g.writeln(' = ${mr_var_name}.arg$i;')
 				}
-				}
 			}
 			return
 		}
 	}
-	//if assign_stmt.has_cross_var {
-	//	for ident in assign_stmt.left {
-	//		type_str := g.typ(ident.var_info().typ)
-	//		g.writeln('$type_str _var_$ident.pos.pos = $ident.name;')
-	//	}
-	//}
+	// TODO: non idents on left (exprs)
 	if assign_stmt.has_cross_var {
 		for i,left in assign_stmt.left {
 			match left {
@@ -1081,9 +1068,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 	// `a := 1` | `a,b := 1,2`
 	for i, left in assign_stmt.left {
-		val := assign_stmt.right[i]
-		right_type := assign_stmt.right_types[i]
 		mut var_type :=  assign_stmt.left_types[i] 
+		val_type := assign_stmt.right_types[i]
+		val := assign_stmt.right[i]
 		mut is_call := false
 		mut blank_assign := false
 		mut ident := ast.Ident{}
@@ -1094,7 +1081,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			blank_assign = ident.kind == .blank_ident
 		}
 		styp := g.typ(var_type)
-		// mut or_block := ast.OrExpr{}
 		mut is_fixed_array_init := false
 		mut has_val := false
 		match val {
@@ -1105,7 +1091,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			ast.CallExpr {
 				is_call = true
 				return_type = it.return_type
-				// or_block = it.or_block
 			}
 			// TODO: no buffer fiddling
 			ast.AnonFn {
@@ -1127,9 +1112,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			else {}
 		}
-		right_sym := g.table.get_type_symbol(assign_stmt.right_types[i])
+		right_sym := g.table.get_type_symbol(val_type)
 		g.is_assign_lhs = true
-		if right_type.has_flag(.optional) {
+		if val_type.has_flag(.optional) {
 			g.right_is_opt = true
 		}
 		if blank_assign {
@@ -1206,10 +1191,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					cloned = true
 				}
 			}
-			// TODO: A why did we need this, it should be handled elsewhere (how did it work before)?
-			if !assign_stmt.left_types[i].has_flag(.optional) && assign_stmt.right_types[i].has_flag(.optional) {
-				g.write('*($styp*)')
-			}
+			unwrap_optional := !var_type.has_flag(.optional) && val_type.has_flag(.optional)
+			if unwrap_optional { g.write('*($styp*)') }
 			if !cloned {
 				if is_decl {
 					if is_fixed_array_init && !has_val { g.write('{0}') }
@@ -1218,15 +1201,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if assign_stmt.has_cross_var {
 						g.gen_cross_tmp_variable(assign_stmt.left, val)
 					} else {
-						//g.expr_with_cast(val, assign_stmt.left_types[i], ident_var_info.typ)
-						g.expr_with_cast(val, assign_stmt.right_types[i], assign_stmt.left_types[i])
+						g.expr_with_cast(val, val_type, var_type)
 					}
 				}
 			}
-			// TODO: B
-			if !assign_stmt.left_types[i].has_flag(.optional) && assign_stmt.right_types[i].has_flag(.optional) {
-				g.write('.data')
-			}
+			if unwrap_optional { g.write('.data') }
 			if g.is_array_set {
 				g.write(' })')
 				g.is_array_set = false
