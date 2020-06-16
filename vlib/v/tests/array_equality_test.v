@@ -44,3 +44,12 @@ fn test_array_equality() {
 	assert colors != [Color.blue, Color.green, Color.red]
 	assert colors != [Color.blue, Color.red, Color.green]
 }
+
+fn test_nested_array_equality() {
+	a := [[1]]
+	assert a == [[1]]
+	b := [[[[1]]]]
+	assert b == [[[[1]]]]
+	c := [[[1,2,3]]]
+	assert c == [[[1,2,3]]]
+}
