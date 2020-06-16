@@ -160,14 +160,20 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.AssignStmt {
-			for i, ident in it.left {
-				var_info := ident.var_info()
-				if var_info.is_mut {
-					f.write('mut ')
+			for i, left in it.left {
+				if left is ast.Ident {
+					ident := left as ast.Ident
+					var_info := ident.var_info()
+					if var_info.is_mut {
+						f.write('mut ')
+					}
+					f.expr(left)
+					if i < it.left.len - 1 {
+						f.write(', ')
+					}
 				}
-				f.expr(ident)
-				if i < it.left.len - 1 {
-					f.write(', ')
+				else {
+					f.expr(left)
 				}
 			}
 			f.is_assign = true
@@ -260,7 +266,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.write('; ')
 			f.expr(it.cond)
 			f.write('; ')
-			f.expr(it.inc)
+			f.stmt(it.inc)
 			f.writeln(' {')
 			f.stmts(it.stmts)
 			f.writeln('}')
@@ -542,11 +548,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			type_str := f.type_to_str(it.typ)
 			f.expr(it.expr)
 			f.write(' as $type_str')
-		}
-		ast.AssignExpr {
-			f.expr(it.left)
-			f.write(' $it.op.str() ')
-			f.expr(it.val)
 		}
 		ast.Assoc {
 			f.writeln('{')

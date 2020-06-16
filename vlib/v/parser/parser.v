@@ -518,31 +518,26 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				pos: assert_pos
 			}
 		}
-		.key_mut, .key_static {
-			return p.assign_stmt()
-		}
 		.key_for {
 			return p.for_stmt()
 		}
-		.name {
-			if p.peek_tok.kind == .decl_assign {
-				// `x := ...`
-				return p.assign_stmt()
-			} else if p.peek_tok.kind == .comma {
-				// `a, b ...`
-				return p.parse_multi_expr(is_top_level)
-			} else if p.peek_tok.kind == .colon {
-				// `label:`
-				name := p.check_name()
-				p.next()
-				return ast.GotoLabel{
-					name: name
+		.name, .key_mut, .key_static, .mul {
+			if p.tok.kind == .name {
+				if p.peek_tok.kind == .colon {
+					// `label:`
+					name := p.check_name()
+					p.next()
+					return ast.GotoLabel{
+						name: name
+					}
 				}
-			} else if p.peek_tok.kind == .name {
-				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr && p.peek_tok.kind in
-				[.rcbr, .eof] {
-				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
+				else if p.peek_tok.kind == .name {
+					p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
+				}
+				else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr && p.peek_tok.kind in
+					[.rcbr, .eof] {
+					p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
+				}
 			}
 			return p.parse_multi_expr(is_top_level)
 		}
@@ -616,6 +611,19 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.parse_multi_expr(is_top_level)
 		}
 	}
+}
+
+
+fn (mut p Parser) expr_list() []ast.Expr {
+	mut exprs := []ast.Expr{}
+	for {
+		exprs << p.expr(0)
+		if p.tok.kind != .comma {
+			break
+		}
+		p.next()
+	}
+	return exprs
 }
 
 fn (mut p Parser) attributes() []ast.Attr {
@@ -738,60 +746,30 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// 1, a, c ... }       // multi-expression
 	// a, mut b ... :=/=   // multi-assign
 	// collect things upto hard boundaries
-	tok_kind := p.tok.kind
-	mut collected := []ast.Expr{}
-	for {
-		collected << p.expr(0)
-		if p.tok.kind == .comma {
-			p.next()
-		} else {
-			break
+	tok := p.tok
+	left := p.expr_list()
+	left0 := left[0]
+	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
+		return p.partial_assign_stmt(left)
+	}
+	else if is_top_level && left.len > 0 &&
+			left0 !is ast.CallExpr && left0 !is ast.PostfixExpr &&
+			!(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op == .left_shift) &&
+			left0 !is ast.ComptimeCall && tok.kind !in [.key_if, .key_match] {
+		p.error_with_pos('expression evaluated but not used', left0.position())
+	}
+	if left.len == 1 {
+		return ast.ExprStmt{
+			expr: left0
+			pos: tok.position()
+			is_expr: p.inside_for
 		}
 	}
-	// TODO: Try to merge assign_expr and assign_stmt
-	if p.tok.kind == .decl_assign || (p.tok.kind == .assign && collected.len > 1) {
-		mut idents := []ast.Ident{}
-		for c in collected {
-			match c {
-				ast.Ident { idents << it }
-				ast.SelectorExpr { p.error_with_pos('struct fields can only be declared during the initialization',
-						it.pos) }
-				else { p.error_with_pos('unexpected `${typeof(c)}`', c.position()) }
-			}
+	return ast.ExprStmt{
+		expr: ast.ConcatExpr{
+			vals: left
 		}
-		return p.partial_assign_stmt(idents)
-	} else if p.tok.kind.is_assign() {
-		epos := p.tok.position()
-		if collected.len == 1 {
-			return ast.ExprStmt{
-				expr: p.assign_expr(collected[0])
-				pos: epos
-			}
-		}
-		return ast.ExprStmt{
-			expr: p.assign_expr(ast.ConcatExpr{
-				vals: collected
-			})
-			pos: epos
-		}
-	} else if is_top_level && collected.len > 0 && collected[0] !is ast.AssignExpr &&
-			collected[0] !is ast.CallExpr && collected[0] !is ast.PostfixExpr &&
-			!(collected[0] is ast.InfixExpr && (collected[0] as ast.InfixExpr).op == .left_shift) &&
-			collected[0] !is ast.ComptimeCall && tok_kind !in [.key_if, .key_match] {
-		p.error_with_pos('expression evaluated but not used', collected[0].position())
-	} else {
-		if collected.len == 1 {
-			return ast.ExprStmt{
-				expr: collected[0]
-				pos: p.tok.position()
-			}
-		}
-		return ast.ExprStmt{
-			expr: ast.ConcatExpr{
-				vals: collected
-			}
-			pos: p.tok.position()
-		}
+		pos: tok.position()
 	}
 }
 
@@ -1406,22 +1384,14 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 fn (mut p Parser) return_stmt() ast.Return {
 	first_pos := p.tok.position()
 	p.next()
-	// return expressions
-	mut exprs := []ast.Expr{}
+	// no return
 	if p.tok.kind == .rcbr {
 		return ast.Return{
 			pos: first_pos
 		}
 	}
-	for {
-		expr := p.expr(0)
-		exprs << expr
-		if p.tok.kind == .comma {
-			p.next()
-		} else {
-			break
-		}
-	}
+	// return exprs
+	exprs := p.expr_list()
 	end_pos := exprs.last().position()
 	return ast.Return{
 		exprs: exprs

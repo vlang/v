@@ -449,9 +449,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// ///////
 	g.call_args(node.args, node.expected_arg_types)
 	g.write(')')
-	// if node.or_block.stmts.len > 0 {
-	// g.or_block(node.or_block.stmts, node.return_type)
-	// }
 }
 
 fn (mut g Gen) fn_call(node ast.CallExpr) {
@@ -589,9 +586,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 		g.write(')')
 	}
-	// if node.or_block.stmts.len > 0 {
-	// g.or_block(node.or_block.stmts, node.return_type)
-	// }
 	g.is_c_call = false
 	if g.is_json_fn {
 		g.write(')')

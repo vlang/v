@@ -9,7 +9,7 @@ import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral | CallExpr |
+pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr |
 	CastExpr | CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
 	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | MapInit | MatchExpr | None |
 	OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr |
@@ -42,10 +42,13 @@ pub:
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
-	expr Expr
-	pos  token.Position
+	expr    Expr
+	pos     token.Position
+	// treat like expr (dont add trailing `;`)
+	// is used for `x++` in `for x:=1; ; x++`
+	is_expr bool
 pub mut:
-	typ  table.Type
+	typ     table.Type
 }
 
 pub struct IntegerLiteral {
@@ -510,7 +513,7 @@ pub:
 	has_init bool
 	cond     Expr // i < 10;
 	has_cond bool
-	inc      Expr // i++;
+	inc      Stmt // i++; i += 2
 	has_inc  bool
 	stmts    []Stmt
 	pos      token.Position
@@ -543,10 +546,11 @@ pub:
 	op            token.Kind
 	pos           token.Position
 pub mut:
-	left          []Ident
+	left          []Expr
 	left_types    []table.Type
 	right_types   []table.Type
 	is_static     bool // for translated code only
+	is_simple     bool // `x+=2` in `for x:=1; ; x+=2`
 	has_cross_var bool
 }
 
@@ -635,17 +639,6 @@ pub:
 pub struct ParExpr {
 pub:
 	expr Expr
-}
-
-pub struct AssignExpr {
-pub:
-	op         token.Kind
-	pos        token.Position
-	left       Expr
-	val        Expr
-pub mut:
-	left_type  table.Type
-	right_type table.Type
 }
 
 pub struct GoStmt {
@@ -812,7 +805,7 @@ pub struct SqlExpr {
 }
 
 [inline]
-pub fn expr_is_blank_ident(expr Expr) bool {
+pub fn (expr Expr) is_blank_ident() bool {
 	match expr {
 		Ident { return it.kind == .blank_ident }
 		else { return false }
@@ -829,9 +822,6 @@ pub fn (expr Expr) position() token.Position {
 			return it.pos
 		}
 		// ast.Ident { }
-		AssignExpr {
-			return it.pos
-		}
 		CastExpr {
 			return it.pos
 		}

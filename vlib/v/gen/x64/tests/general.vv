@@ -1,5 +1,5 @@
 fn if_test() {
-	a := 1
+	mut a := 1
 	if a == 1 {
 		println('a == 1')
 		b := 2
