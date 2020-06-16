@@ -674,11 +674,6 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 		// multi return
 		g.write('const [')
 		for i, left in it.left {
-			// if ident.name in ['', '_'] {
-			// 	g.write('')
-			// } else {
-			// 	g.write(g.js_name(ident.name))
-			// }
 			if !left.is_blank_ident() {
 				g.expr(left)
 			}
@@ -709,10 +704,7 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 				}
 			}
 
-			// TODO: test
 			mut styp := g.typ(it.left_types[i])
-			// ident_var_info := ident.var_info()
-			// mut styp := g.typ(ident_var_info.typ)
 
 			if !g.inside_loop && styp.len > 0 {
 				g.doc.gen_typ(styp)
@@ -1099,29 +1091,6 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.write(']')
 	} else {}
 }
-
-// TODO
-// fn (mut g JsGen) gen_assign_expr(it ast.AssignExpr) {
-// 	if it.left_type == table.void_type && it.op == .assign {
-// 		// _ = 1
-// 		tmp_var := g.new_tmp_var()
-// 		g.write('const $tmp_var = ')
-// 		g.expr(it.val)
-// 		return
-// 	}
-
-// 	// NB: The expr has to go *before* inside_map_set as it's defined there
-// 	g.expr(it.left)
-// 	if g.inside_map_set && it.op == .assign {
-// 		g.inside_map_set = false
-// 		g.write(', ')
-// 		g.expr(it.val)
-// 		g.write(')')
-// 	} else {
-// 		g.write(' $it.op ')
-// 		g.expr(it.val)
-// 	}
-// }
 
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	mut name := ''
