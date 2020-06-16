@@ -76,10 +76,16 @@ pub struct StringInterLiteral {
 pub:
 	vals       []string
 	exprs      []Expr
-	expr_fmts  []string
+	fwidths    []int
+	precisions []int
+	pluss      []bool
+	fills      []bool
+	fmt_poss   []token.Position
 	pos        token.Position
 pub mut:
 	expr_types []table.Type
+	fmts       []byte
+	need_fmts  []bool // an explicit non-default fmt required, e.g. `x`
 }
 
 pub struct CharLiteral {

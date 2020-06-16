@@ -1,5 +1,5 @@
 struct Aaa{}
 fn main() {
 	a := Aaa{}
-	a % 1
+	println(a % 1)
 }

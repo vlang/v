@@ -1968,10 +1968,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return table.string_type
 		}
 		ast.StringInterLiteral {
-			for expr in it.exprs {
-				it.expr_types << c.expr(expr)
-			}
-			return table.string_type
+			return c.string_inter_lit(mut it)
 		}
 		ast.StructInit {
 			return c.struct_init(mut it)

@@ -13,6 +13,7 @@ import v.errors
 import os
 import runtime
 import time
+import strconv
 
 pub struct Parser {
 	file_name         string // "/home/user/hello.v"
@@ -72,7 +73,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	}
 	p.init_parse_fns()
 	p.read_first_token()
-	return p.stmt()
+	return p.stmt(false)
 }
 
 pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope, global_scope &ast.Scope) ast.File {
@@ -316,7 +317,7 @@ pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	mut stmts := []ast.Stmt{}
 	if p.tok.kind != .rcbr {
 		for {
-			stmts << p.stmt()
+			stmts << p.stmt(is_top_level)
 			// p.warn('after stmt(): tok=$p.tok.str()')
 			if p.tok.kind in [.eof, .rcbr] {
 				break
@@ -463,7 +464,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			if p.pref.is_script && !p.pref.is_test {
 				mut stmts := []ast.Stmt{}
 				for p.tok.kind != .eof {
-					stmts << p.stmt()
+					stmts << p.stmt(false)
 				}
 				return ast.FnDecl{
 					name: 'main'
@@ -499,7 +500,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 	}
 }
 
-pub fn (mut p Parser) stmt() ast.Stmt {
+pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
@@ -538,7 +539,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 					p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 				}
 			}
-			return p.parse_multi_expr()
+			return p.parse_multi_expr(is_top_level)
 		}
 		.comment {
 			return p.comment()
@@ -607,7 +608,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 		}
 		// literals, 'if', etc. in here
 		else {
-			return p.parse_multi_expr()
+			return p.parse_multi_expr(is_top_level)
 		}
 	}
 }
@@ -740,20 +741,27 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	}
 }
 
-fn (mut p Parser) parse_multi_expr() ast.Stmt {
+fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// in here might be 1) multi-expr 2) multi-assign
 	// 1, a, c ... }       // multi-expression
 	// a, mut b ... :=/=   // multi-assign
 	// collect things upto hard boundaries
-	epos := p.tok.position()
+	tok := p.tok
 	left := p.expr_list()
+	left0 := left[0]
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left)
 	}
+	else if is_top_level && left.len > 0 &&
+			left0 !is ast.CallExpr && left0 !is ast.PostfixExpr &&
+			!(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op == .left_shift) &&
+			left0 !is ast.ComptimeCall && tok.kind !in [.key_if, .key_match] {
+		p.error_with_pos('expression evaluated but not used', left0.position())
+	}
 	if left.len == 1 {
 		return ast.ExprStmt{
-			expr: left[0]
-			pos: epos
+			expr: left0
+			pos: tok.position()
 			is_expr: p.inside_for
 		}
 	}
@@ -761,7 +769,7 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 		expr: ast.ConcatExpr{
 			vals: left
 		}
-		pos: epos
+		pos: tok.position()
 	}
 }
 
@@ -1143,7 +1151,13 @@ fn (mut p Parser) string_expr() ast.Expr {
 	}
 	mut exprs := []ast.Expr{}
 	mut vals := []string{}
-	mut efmts := []string{}
+	mut has_fmts := []bool{}
+	mut fwidths := []int{}
+	mut precisions := []int{}
+	mut visible_pluss := []bool{}
+	mut fills := []bool{}
+	mut fmts := []byte{}
+	mut fposs := []token.Position{}
 	// Handle $ interpolation
 	p.inside_str_interp = true
 	for p.tok.kind == .string {
@@ -1154,31 +1168,66 @@ fn (mut p Parser) string_expr() ast.Expr {
 		}
 		p.next()
 		exprs << p.expr(0)
-		mut efmt := []string{}
+		mut has_fmt := false
+		mut fwidth := 0
+		mut fwidthneg := false
+		mut precision := 0
+		mut visible_plus := false
+		mut fill := false
+		mut fmt := `_` // placeholder
 		if p.tok.kind == .colon {
-			efmt << ':'
+			has_fmt = true
 			p.next()
 			// ${num:-2d}
 			if p.tok.kind == .minus {
-				efmt << '-'
+				fwidthneg = true
+				p.next()
+			} else if p.tok.kind == .plus {
+				visible_plus = true
 				p.next()
 			}
 			// ${num:2d}
 			if p.tok.kind == .number {
-				efmt << p.tok.lit
+				fields := p.tok.lit.split('.')
+				if fields[0].len > 0 && fields[0][0] == `0` {
+					fill = true
+				}
+				fwidth = strconv.atoi(fields[0])
+				if fwidthneg {
+					fwidth = -fwidth
+				}
+				if fields.len > 1 {
+					precision = strconv.atoi(fields[1])
+				}
 				p.next()
 			}
-			if p.tok.kind == .name && p.tok.lit.len == 1 {
-				efmt << p.tok.lit
-				p.next()
+			if p.tok.kind == .name {
+				if p.tok.lit.len == 1 {
+					fmt = p.tok.lit[0]
+					p.next()
+				} else {
+					p.error('format specifier may only be one letter')
+				}
 			}
 		}
-		efmts << efmt.join('')
+		fwidths << fwidth
+		has_fmts << has_fmt
+		precisions << precision
+		visible_pluss << visible_plus
+		fmts << fmt
+		fills << fill
+		fposs << p.prev_tok.position()
 	}
 	node = ast.StringInterLiteral{
 		vals: vals
 		exprs: exprs
-		expr_fmts: efmts
+		need_fmts: has_fmts // prelimery - until checker finds out if really needed
+		fwidths: fwidths
+		precisions: precisions
+		pluss: visible_pluss
+		fills: fills
+		fmts: fmts
+		fmt_poss: fposs
 		pos: pos
 	}
 	p.inside_str_interp = false

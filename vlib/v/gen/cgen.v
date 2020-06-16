@@ -4,7 +4,6 @@
 module gen
 
 import strings
-import strconv
 import v.ast
 import v.table
 import v.pref
@@ -2851,101 +2850,40 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 }
 
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
-	//if g.pref.autofree {
-		//g.write('_STR_TMP("')
-	//} else {
 	g.write('_STR("')
-	//}
 	// Build the string with %
-	mut fieldwidths := []int{}
-	mut specs := []byte{}
 	mut end_string := false
 	for i, val in node.vals {
 		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
 		if i >= node.exprs.len {
 			if escaped_val.len > 0 {
 				end_string = true
-				//if !g.pref.autofree {
-					g.write('\\000')
-				//}
+				g.write('\\000')
 				g.write(escaped_val)
 			}
-			continue
+			break
 		}
 		g.write(escaped_val)
-		sym := g.table.get_type_symbol(node.expr_types[i])
-		sfmt := node.expr_fmts[i]
-		mut fspec := `_` // placeholder
-		mut fmt := '' // field width and precision
-		if sfmt.len > 0 {
-			// analyze and validate format specifier
-			if sfmt[sfmt.len - 1] in [`E`, `F`, `G`, `e`, `f`, `g`,
-				`d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`] {
-				fspec = sfmt[sfmt.len - 1]
-			}
-			fmt = if fspec == `_` {
-				sfmt[1..sfmt.len]
-			} else {
-				sfmt[1..sfmt.len - 1]
-			}
-		}
-		if fspec == `_` { // set default representation for type if still missing
-			if node.expr_types[i].is_float() {
-				fspec = `g`
-			} else if node.expr_types[i].is_signed() || node.expr_types[i].is_any_int() {
-				fspec = `d`
-			} else if node.expr_types[i].is_unsigned() {
-				fspec = `u`
-			} else if node.expr_types[i].is_pointer() {
-				fspec = `p`
-			} else if node.expr_types[i] in [table.string_type, table.bool_type] || sym.kind in
-				[.enum_, .array, .array_fixed, .struct_, .map] || g.typ(node.expr_types[i]).starts_with('Option') ||
-				sym.has_method('str') {
-				fspec = `s`
-			} else {
-				// default to int - TODO: should better be checked
-				fspec = `d`
-			}
-		}
-		fields := fmt.split('.')
-		// validate format
-		// only floats should have precision specifier
-		/*
-		if fields.len > 2 || fields.len == 2 && !(node.expr_types[i].is_float()) || node.expr_types[i].is_signed() &&
-			fspec !in [`d`, `c`, `x`, `X`, `o`] || node.expr_types[i].is_unsigned() && fspec !in [`u`, `x`,
-			`X`, `o`, `c`] || node.expr_types[i].is_any_int() && fspec !in [`d`, `c`, `x`, `X`,
-			`o`, `u`,
-			`x`, `X`, `o`] || node.expr_types[i].is_float() && fspec !in [`E`, `F`, `G`, `e`,
-			`f`, `g`] || node.expr_types[i].is_pointer() && fspec !in [`p`, `x`, `X`] {
-			verror('illegal format specifier ${fspec:c} for type ${g.table.get_type_name(node.expr_types[i])}')
-		}
-		*/
-		// make sure that format paramters are valid numbers
-		/*
-		for j, f in fields {
-			for k, c in f {
-				if (c < `0` || c > `9`) && !(j == 0 && k == 0 && (node.expr_types[i].is_number() &&
-					c == `+` || c == `-`)) {
-					verror('illegal character ${c:c} in format specifier ${fmt}')
-				}
-			}
-		}
-		*/
-		specs << fspec
-		fieldwidths << if fields.len == 0 {
-			0
-		} else {
-			strconv.atoi(fields[0])
-		}
 		// write correct format specifier to intermediate string
 		g.write('%')
+		fspec := node.fmts[i]
+		mut fmt := if node.pluss[i] { '+' } else { '' }
+		if node.fills[i] && node.fwidths[i] >= 0 {
+			fmt = '${fmt}0'
+		}
+		if node.fwidths[i] != 0 {
+			fmt = '$fmt${node.fwidths[i]}'
+		}
+		if node.precisions[i] != 0 {
+			fmt = '${fmt}.${node.precisions[i]}'
+		}
 		if fspec == `s` {
-			if fields.len == 0 || strconv.atoi(fields[0]) == 0 {
+			if node.fwidths[i] == 0 {
 				g.write('.*s')
 			} else {
 				g.write('*.*s')
 			}
-		} else if node.expr_types[i].is_float() || node.expr_types[i].is_pointer() {
+		} else if node.expr_types[i].is_float() {
 			g.write('$fmt${fspec:c}')
 		} else if node.expr_types[i].is_pointer() {
 			if fspec == `p` {
@@ -2955,11 +2893,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 		} else if node.expr_types[i].is_int() {
 			if fspec == `c` {
-				if node.expr_types[i].idx() in [table.i64_type_idx, table.f64_type_idx] {
-					verror('64 bit integer types cannot be interpolated as character')
-				} else {
-					g.write('${fmt}c')
-				}
+				g.write('${fmt}c')
 			} else {
 				g.write('${fmt}"PRI${fspec:c}')
 				if node.expr_types[i] in [table.i8_type, table.byte_type] {
@@ -2990,9 +2924,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		} else if node.expr_types[i] == table.bool_type {
 			g.expr(expr)
 			g.write(' ? _SLIT("true") : _SLIT("false")')
-		} else if node.expr_types[i].is_number() || node.expr_types[i].is_pointer() || specs[i] ==
+		} else if node.expr_types[i].is_number() || node.expr_types[i].is_pointer() || node.fmts[i] ==
 			`d` {
-			if node.expr_types[i].is_signed() && specs[i] in [`x`, `X`, `o`] {
+			if node.expr_types[i].is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
 				// convert to unsigned first befors C's integer propagation strikes
 				if node.expr_types[i] == table.i8_type {
 					g.write('(byte)(')
@@ -3008,13 +2942,13 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				g.expr(expr)
 			}
-		} else if specs[i] == `s` {
+		} else if node.fmts[i] == `s` {
 			g.gen_expr_to_string(expr, node.expr_types[i])
 		} else {
 			g.expr(expr)
 		}
-		if specs[i] == `s` && fieldwidths[i] != 0 {
-			g.write(', ${fieldwidths[i]}')
+		if node.fmts[i] == `s` && node.fwidths[i] != 0 {
+			g.write(', ${node.fwidths[i]}')
 		}
 		if i < node.exprs.len - 1 {
 			g.write(', ')

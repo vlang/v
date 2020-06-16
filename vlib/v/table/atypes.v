@@ -187,6 +187,11 @@ pub fn (typ Type) is_number() bool {
 	return typ.idx() in number_type_idxs
 }
 
+[inline]
+pub fn (typ Type) is_string() bool {
+	return typ.idx() in string_type_idxs
+}
+
 pub const (
 	void_type_idx    = 1
 	voidptr_type_idx = 2
