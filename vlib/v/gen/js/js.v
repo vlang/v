@@ -681,7 +681,6 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 			// }
 			if !left.is_blank_ident() {
 				g.expr(left)
-				g.write(left.str())
 			}
 			if i < it.left.len - 1 {
 				g.write(', ')
@@ -693,6 +692,8 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 	} else {
 		// `a := 1` | `a,b := 1,2`
 		for i, left in it.left {
+			mut op := it.op
+			if it.op == .decl_assign { op = .assign }
 			val := it.right[i]
 			mut is_mut := false
 			if left is ast.Ident {
@@ -723,7 +724,7 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 				g.write('const ')
 			}
 			g.expr(left)
-			g.write(' $it.op ')
+			g.write(' $op ')
 			g.expr(val)
 
 			if g.inside_loop {
