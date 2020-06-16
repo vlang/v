@@ -122,6 +122,12 @@ if exist "%tcc_path%" (
 call "%tcc_exe%" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
+REM TODO: delete this when the tcc bootstrapping logic is merged to master
+v.exe -o vtcc.c cmd\v
+call "%tcc_exe%" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vtcc.c
+if %ERRORLEVEL% NEQ 0 goto :compile_error
+del vtcc.c
+
 v.exe -cc "%tcc_exe%" self > NUL
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
