@@ -509,7 +509,6 @@ pub fn (mut f Fmt) struct_field_expr(fexpr ast.Expr) {
 
 fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
-
 	for res.ends_with('_ptr') {
 		// type_ptr => &type
 		res = res[0..res.len - 4]
@@ -703,6 +702,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 			f.write(')')
 		}
+		ast.SqlExpr {}
 		ast.StringLiteral {
 			if it.is_raw {
 				f.write('r')
@@ -721,7 +721,8 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					continue
 				}
 				f.write('$')
-				needs_fspec := it.need_fmts[i] || it.pluss[i] || (it.fills[i] && it.fwidths[i] >= 0) || it.fwidths[i] != 0 || it.precisions[i] != 0
+				needs_fspec := it.need_fmts[i] || it.pluss[i] || (it.fills[i] && it.fwidths[i] >=
+					0) || it.fwidths[i] != 0 || it.precisions[i] != 0
 				if needs_fspec || (it.exprs[i] !is ast.Ident && it.exprs[i] !is ast.SelectorExpr) {
 					f.write('{')
 					f.expr(it.exprs[i])
