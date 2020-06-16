@@ -226,7 +226,7 @@ static inline bool _us64_ne(uint64_t a, int64_t b) { return a > INT64_MAX || (in
 static inline bool _us64_le(uint64_t a, int64_t b) { return a <= INT64_MAX && (int64_t)a <= b; }
 static inline bool _us64_lt(uint64_t a, int64_t b) { return a < INT64_MAX && (int64_t)a < b; }
 
-#if defined(__MINGW32__) || defined(__MINGW64__)
+#if defined(__MINGW32__) || defined(__MINGW64__) || (defined(_WIN32) && defined(__TINYC__))
 #undef PRId64
 #undef PRIi64
 #undef PRIo64
