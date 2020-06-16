@@ -776,7 +776,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	} else if is_top_level && collected.len > 0 && collected[0] !is ast.AssignExpr &&
 			collected[0] !is ast.CallExpr && collected[0] !is ast.PostfixExpr &&
 			!(collected[0] is ast.InfixExpr && (collected[0] as ast.InfixExpr).op == .left_shift) &&
-			tok_kind !in [.key_if, .key_match] {
+			tok_kind !in [.key_if, .key_match, .dollar] {
 		p.error_with_pos('expression evaluated but not used', collected[0].position())
 	} else {
 		if collected.len == 1 {
