@@ -1086,7 +1086,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 			}
 			// remove optional flag
 			// return ret_type.clear_flag(.optional)
-			// TODO:
+			// TODO: should we unrap here or in assign (currently moved to assign)
 			return ret_type
 		} else if call_expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `$call_expr.name` does not return an optional',
@@ -1316,36 +1316,30 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	}
 	is_decl := assign_stmt.op == .decl_assign
 	for i, left in assign_stmt.left {
-		if !is_decl && !left.is_blank_ident() {
-			left_type := c.unwrap_generic(c.expr(left))
-			c.expected_type = left_type
+		is_blank_ident := left.is_blank_ident()
+		mut left_type := table.void_type
+		if !is_decl && !is_blank_ident {
+			left_type = c.expr(left)
+			c.expected_type = c.unwrap_generic(left_type)
 		}
 		if assign_stmt.right_types.len < assign_stmt.left.len { // only once for multi return
 			right_type := c.expr(assign_stmt.right[i])
 			assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
 		}
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
-		mut right_type := assign_stmt.right_types[i]
-		mut left_type := right_type
+		right_type := assign_stmt.right_types[i]
 		if is_decl {
-			right_type = c.table.mktyp(right_type)
-			left_type = right_type
-			assign_stmt.left_types << right_type
+			left_type = c.table.mktyp(right_type)
+			// we are unwrapping here instead if check_expr_opt_call currently
+			if left_type.has_flag(.optional) { left_type = left_type.clear_flag(.optional) }
 		} else {
 			// Make sure the variable is mutable
 			c.fail_if_immutable(left)
-			left_type = c.expr(left)
-			assign_stmt.left_types << left_type
+			// left_type = c.expr(left)
 		}
-
-		mut is_blank_ident := false
+		assign_stmt.left_types << left_type
 		match left {
 			ast.Ident {
-				is_blank_ident = it.kind == .blank_ident
-				if is_decl && it.kind != .blank_ident {
-					// check variable name for beginning with capital letter 'Abc'
-					c.check_valid_snake_case(it.name, 'variable name', it.pos)
-				}
 				if it.kind == .blank_ident {
 					left_type = right_type
 					assign_stmt.left_types[i] = right_type
@@ -1353,11 +1347,14 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						c.error('cannot modify blank `_` identifier', it.pos)
 					}
 				}
-				mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
-				mut ident_var_info := it.var_info()
-				ident_var_info.typ = left_type
-				it.info = ident_var_info
-				scope.update_var_type(it.name, left_type)
+				else {
+					if is_decl { c.check_valid_snake_case(it.name, 'variable name', it.pos) }
+					mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
+					mut ident_var_info := it.var_info()
+					ident_var_info.typ = left_type
+					it.info = ident_var_info
+					scope.update_var_type(it.name, left_type)
+				}
 			}
 			ast.PrefixExpr {
 				// Do now allow `*x = y` outside `unsafe`
@@ -1370,7 +1367,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 
 		left_type_unwrapped := c.unwrap_generic(left_type)
 		right_type_unwrapped := c.unwrap_generic(right_type)
-		// TODO cleanup massive (dont save generic in nodes & dont call unwrap multiple times for same type)
 		left_sym := c.table.get_type_symbol(left_type_unwrapped)
 		right_sym := c.table.get_type_symbol(right_type_unwrapped)
 		// Single side check
