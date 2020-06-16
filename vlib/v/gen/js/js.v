@@ -710,14 +710,23 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 				g.doc.gen_typ(styp)
 			}
 
-			if g.inside_loop || is_mut {
-				g.write('let ')
-			} else {
-				g.write('const ')
+			if it.op == .decl_assign {
+				if g.inside_loop || is_mut {
+					g.write('let ')
+				} else {
+					g.write('const ')
+				}
 			}
 			g.expr(left)
-			g.write(' $op ')
-			g.expr(val)
+			if g.inside_map_set && op == .assign {
+				g.inside_map_set = false
+				g.write(', ')
+				g.expr(val)
+				g.write(')')
+			} else {
+				g.write(' $op ')
+				g.expr(val)
+			}
 
 			if g.inside_loop {
 				g.write('; ')
