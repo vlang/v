@@ -513,11 +513,6 @@ pub:
 	pos      token.Position
 }
 
-pub struct ForCIncStmt {
-pub:
-	expr Expr
-}
-
 /*
 pub struct ReturnStmt {
 pub:
