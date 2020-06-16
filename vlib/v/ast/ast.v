@@ -801,7 +801,13 @@ pub:
 }
 
 pub struct SqlExpr {
-	typ table.Type
+pub:
+	typ         table.Type
+	is_count    bool
+	db_var_name string // `db` in `sql db {`
+	table_name  string
+	where_expr Expr
+	has_where bool
 }
 
 [inline]

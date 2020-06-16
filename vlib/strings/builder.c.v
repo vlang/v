@@ -49,6 +49,24 @@ pub fn (mut b Builder) go_back(n int) {
 	b.len -= n
 }
 
+pub fn (mut b Builder) cut_last(n int) string {
+	buf := b.buf[b.len-n..]
+	s := string(buf.clone())
+	b.buf.trim(b.buf.len-n)
+	b.len -= n
+	return s
+}
+
+/*
+pub fn (mut b Builder) cut_to(pos int) string {
+	buf := b.buf[pos..]
+	s := string(buf.clone())
+	b.buf.trim(pos)
+	b.len = pos
+	return s
+}
+*/
+
 pub fn (mut b Builder) go_back_to(pos int) {
 	b.buf.trim(pos)
 	b.len = pos

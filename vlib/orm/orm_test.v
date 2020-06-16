@@ -1,6 +1,6 @@
-import os
-import pg
-import term
+//import os
+//import pg
+//import term
 import sqlite
 
 struct Modules {
@@ -11,30 +11,48 @@ struct Modules {
 	//nr_downloads int
 }
 
+struct User {
+	id int
+	name string
+}
+
 fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
-	/*
-	db.exec("drop table if exists users")
-	db.exec("create table users (id integer primary key, name text default '');")
+	db.exec("drop table if exists User")
+	db.exec("create table User (id integer primary key, name text default '');")
 
-	db.exec("insert into users (name) values ('Sam')")
-	db.exec("insert into users (name) values ('Peter')")
-	db.exec("insert into users (name) values ('Kate')")
-	nr_users := sql db {
-		//select count from modules
+	name := 'sam'
+
+	db.exec("insert into User (name) values ('Sam')")
+	db.exec("insert into User (name) values ('Peter')")
+	db.exec("insert into User (name) values ('Kate')")
+	nr_all_users := sql db {
+		select count from User
 	}
-	assert nr_users == 3
-	println('nr_users=')
-	println(nr_users)
-	//nr_modules := db.select count from modules
-	//nr_modules := db.select count from Modules where id == 1
-	//nr_modules := db.select count from Modules where
-		//name == 'Bob' && id == 1
-	*/
+	assert nr_all_users == 3
+	println('nr_all_users=$nr_all_users')
+	//
+	nr_users1 := sql db {
+		select count from User where id == 1
+	}
+	assert nr_users1 == 1
+	println('nr_users1=$nr_users1')
+	//
+	nr_peters := sql db {
+		select count from User where id == 2 && name == 'Peter'
+	}
+	assert nr_peters == 1
+	println('nr_peters=$nr_peters')
+	//
+	nr_sams := sql db {
+		select count from User where id == 1 && name == name
+	}
+	println('nr_sams=$nr_sams')
 }
 
 
 fn test_orm_pg() {
+/*
 	dbname := os.getenv('VDB_NAME')
 	dbuser := os.getenv('VDB_USER')
 	if dbname == '' || dbuser == '' {
@@ -43,8 +61,7 @@ fn test_orm_pg() {
 	}
 	db := pg.connect(dbname: dbname, user: dbuser) or { panic(err) }
 	_ = db
-/*
-	//nr_modules := db.select count from modules
+	nr_modules := db.select count from modules
 	//nr_modules := db.select count from Modules where id == 1
 	nr_modules := db.select count from Modules where
 		name == 'Bob' && id == 1
@@ -61,6 +78,7 @@ fn test_orm_pg() {
 
 /*
 	mod := db.retrieve<Module>(1)
+	mod := db.select from Module where id = 1
 
 	mod := db.update Module set name = name + '!' where id > 10
 

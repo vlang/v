@@ -556,7 +556,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				c.error('$infix_expr.op.str(): type `${typ_sym.name}` does not exist', type_expr.pos)
 			}
 			if left.kind != .interface_ && left.kind != .sum_type {
-				c.error('`$infix_expr.op.str()` can only be used with interfaces and sum types', type_expr.pos)
+				c.error('`$infix_expr.op.str()` can only be used with interfaces and sum types',
+					type_expr.pos)
 			}
 			return table.bool_type
 		}
@@ -681,9 +682,12 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 		ast.AnonFn {
 			if it.decl.args.len > 1 {
 				c.error('function needs exactly 1 argument', call_expr.pos)
-			} else if is_map && (it.decl.return_type != elem_typ || it.decl.args[0].typ != elem_typ) {
-				c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`', call_expr.pos)
-			} else if !is_map && (it.decl.return_type != table.bool_type || it.decl.args[0].typ != elem_typ) {
+			} else if is_map && (it.decl.return_type != elem_typ || it.decl.args[0].typ !=
+				elem_typ) {
+				c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`',
+					call_expr.pos)
+			} else if !is_map && (it.decl.return_type != table.bool_type || it.decl.args[0].typ !=
+				elem_typ) {
 				c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`', call_expr.pos)
 			}
 		}
@@ -696,9 +700,12 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 				if func.args.len > 1 {
 					c.error('function needs exactly 1 argument', call_expr.pos)
 				} else if is_map && (func.return_type != elem_typ || func.args[0].typ != elem_typ) {
-					c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`', call_expr.pos)
-				} else if !is_map && (func.return_type != table.bool_type || func.args[0].typ != elem_typ) {
-					c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`', call_expr.pos)
+					c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`',
+						call_expr.pos)
+				} else if !is_map && (func.return_type != table.bool_type || func.args[0].typ !=
+					elem_typ) {
+					c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
+						call_expr.pos)
 				}
 			}
 		}
@@ -1948,14 +1955,28 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.None {
 			return table.none_type
 		}
+		ast.OrExpr {
+			// never happens
+			return table.void_type
+		}
 		ast.ParExpr {
 			return c.expr(it.expr)
+		}
+		ast.RangeExpr {
+			// never happens
+			return table.void_type
 		}
 		ast.SelectorExpr {
 			return c.selector_expr(mut it)
 		}
 		ast.SizeOf {
 			return table.u32_type
+		}
+		ast.SqlExpr {
+			if it.has_where {
+				c.expr(it.where_expr)
+			}
+			return it.typ
 		}
 		ast.StringLiteral {
 			if it.language == .c {
@@ -1985,12 +2006,6 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					it.pos)
 			}
 			return table.bool_type
-		}
-		else {
-			tnode := typeof(node)
-			if tnode != 'unknown v.ast.Expr' {
-				println('checker.expr(): unhandled node with typeof(`${tnode}`)')
-			}
 		}
 	}
 	return table.void_type

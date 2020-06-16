@@ -61,6 +61,10 @@ pub fn header(text, divider string) string {
 }
 
 fn supports_escape_sequences(fd int) bool {
+	//println('TERM=' + os.getenv('TERM'))
+	if os.getenv('TERM') == 'dumb' {
+		return false
+	}
 	vcolors_override := os.getenv('VCOLORS')
 	if vcolors_override == 'always' {
 		return true

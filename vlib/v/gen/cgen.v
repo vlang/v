@@ -66,6 +66,7 @@ mut:
 	options              strings.Builder // `Option_xxxx` types
 	json_forward_decls   strings.Builder // json type forward decls
 	enum_typedefs        strings.Builder // enum types
+	sql_buf              strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
 	file                 ast.File
 	fn_decl              &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name       string
@@ -76,6 +77,7 @@ mut:
 	is_assign_rhs        bool // inside right part of assign after `=` (val expr)
 	is_array_set         bool
 	is_amp               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	is_sql               bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	optionals            []string // to avoid duplicates TODO perf, use map
 	inside_ternary       int // ?: comma separated statements on a single line
 	ternary_names        map[string]string
@@ -102,6 +104,8 @@ mut:
 	fn_main              &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
 	cur_fn               &ast.FnDecl
 	cur_generic_type     table.Type // `int`, `string`, etc in `foo<T>()`
+	sql_i                int
+	sql_stmt_name        string
 }
 
 const (
@@ -131,6 +135,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		options: strings.new_builder(100)
 		json_forward_decls: strings.new_builder(100)
 		enum_typedefs: strings.new_builder(100)
+		sql_buf: strings.new_builder(100)
 		table: table
 		pref: pref
 		fn_decl: 0
@@ -1544,7 +1549,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.RangeExpr {
 			// Only used in IndexExpr
-			}
+		}
 		ast.SizeOf {
 			mut styp := it.type_name
 			if it.type_name == '' {
@@ -1566,7 +1571,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('sizeof($styp)')
 		}
 		ast.SqlExpr {
-			g.write('// sql expression')
+			g.sql_expr(it)
 		}
 		ast.StringLiteral {
 			if it.is_raw {
@@ -1630,10 +1635,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(it.expr)
 			g.write(')')
 		}
-		//else {
-			// #printf("node=%d\n", node.typ);
-			//println(term.red('cgen.expr(): bad node ' + typeof(node)))
-		//}
 	}
 }
 
@@ -3173,6 +3174,15 @@ fn (mut g Gen) insert_before_stmt(s string) {
 	g.write(cur_line)
 }
 
+fn (mut g Gen) write_expr_to_string(expr ast.Expr) string {
+	pos := g.out.buf.len
+	g.expr(expr)
+	return g.out.cut_last(g.out.buf.len - pos)
+}
+
+fn (mut g Gen) start_tmp() {
+}
+
 // If user is accessing the return value eg. in assigment, pass the variable name.
 // If the user is not using the optional return value. We need to pass a temp var
 // to access its fields (`.ok`, `.error` etc)
@@ -3263,7 +3273,6 @@ fn (mut g Gen) in_optimization(left ast.Expr, right ast.ArrayInit) {
 			ptr_typ := g.gen_array_equality_fn(right.elem_type)
 			g.write('${ptr_typ}_arr_eq(')
 		}
-
 		g.expr(left)
 		if is_str || is_array {
 			g.write(', ')
@@ -4208,7 +4217,6 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 	if it.exprs.len == 0 {
 		elem_sym := g.table.get_type_symbol(it.elem_type)
 		is_default_array := elem_sym.kind == .array && it.has_default
-
 		if is_default_array {
 			g.write('__new_array_with_array_default(')
 		} else {
