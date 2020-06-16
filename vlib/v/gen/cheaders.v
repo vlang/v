@@ -214,17 +214,17 @@ void* g_live_info = NULL;
 // unsigned/signed comparisons
 
 static inline bool _us32_gt(uint32_t a, int32_t b) { return a > INT32_MAX || (int32_t)a > b; }
-static inline bool _us32_ge(uint32_t a, int32_t b) { return a > INT32_MAX || (int32_t)a >= b; }
+static inline bool _us32_ge(uint32_t a, int32_t b) { return a >= INT32_MAX || (int32_t)a >= b; }
 static inline bool _us32_eq(uint32_t a, int32_t b) { return a <= INT32_MAX && (int32_t)a == b; }
 static inline bool _us32_ne(uint32_t a, int32_t b) { return a > INT32_MAX || (int32_t)a != b; }
 static inline bool _us32_le(uint32_t a, int32_t b) { return a <= INT32_MAX && (int32_t)a <= b; }
-static inline bool _us32_lt(uint32_t a, int32_t b) { return a <= INT32_MAX && (int32_t)a < b; }
+static inline bool _us32_lt(uint32_t a, int32_t b) { return a < INT32_MAX && (int32_t)a < b; }
 static inline bool _us64_gt(uint64_t a, int64_t b) { return a > INT64_MAX || (int64_t)a > b; }
-static inline bool _us64_ge(uint64_t a, int64_t b) { return a > INT64_MAX || (int64_t)a >= b; }
+static inline bool _us64_ge(uint64_t a, int64_t b) { return a >= INT64_MAX || (int64_t)a >= b; }
 static inline bool _us64_eq(uint64_t a, int64_t b) { return a <= INT64_MAX && (int64_t)a == b; }
 static inline bool _us64_ne(uint64_t a, int64_t b) { return a > INT64_MAX || (int64_t)a != b; }
 static inline bool _us64_le(uint64_t a, int64_t b) { return a <= INT64_MAX && (int64_t)a <= b; }
-static inline bool _us64_lt(uint64_t a, int64_t b) { return a <= INT64_MAX && (int64_t)a < b; }
+static inline bool _us64_lt(uint64_t a, int64_t b) { return a < INT64_MAX && (int64_t)a < b; }
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #undef PRId64
