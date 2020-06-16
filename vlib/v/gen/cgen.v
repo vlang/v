@@ -648,7 +648,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
-			if g.inside_ternary == 0 && !(it.expr is ast.IfExpr) {
+			if g.inside_ternary == 0 && !it.is_expr && !(it.expr is ast.IfExpr) {
 				g.writeln(';')
 			}
 		}
@@ -708,9 +708,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln(') {')
 			g.stmts(it.stmts)
 			g.writeln('}')
-		}
-		ast.ForCIncStmt {
-			g.expr(it.expr)
 		}
 		ast.ForInStmt {
 			g.for_in(it)
@@ -1143,7 +1140,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.expr(val)
 				g.writeln(';}')
 			}
-		} 
+		}
 		else if right_sym.kind == .array_fixed && assign_stmt.op == .assign {
 			right := val as ast.ArrayInit
 			for j, expr in right.exprs {
@@ -1169,7 +1166,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.write(' = /*f*/string_add(')
 				str_add = true
 			}
-			
+
 			if right_sym.kind == .function && is_decl {
 				if is_inside_ternary  && is_decl {
 					g.out.write(tabs[g.indent - g.inside_ternary])

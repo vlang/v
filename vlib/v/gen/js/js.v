@@ -462,9 +462,6 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_for_c_stmt(it)
 			g.writeln('')
 		}
-		ast.ForCIncStmt {
-			g.expr(it.expr)
-		}
 		ast.ForInStmt {
 			g.gen_for_in_stmt(it)
 			g.writeln('')
@@ -798,7 +795,7 @@ fn (mut g JsGen) gen_expr_stmt(it ast.ExprStmt) {
 	g.expr(it.expr)
 	expr := it.expr
 	if expr is ast.IfExpr { } // no ; after an if expression
-	else if !g.inside_ternary { g.writeln(';') }
+	else if !g.inside_ternary && !it.is_expr { g.writeln(';') }
 }
 
 fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {

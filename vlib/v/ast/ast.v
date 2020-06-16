@@ -18,7 +18,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr |
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
 	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl | TypeDecl |
-	ForCIncStmt | UnsafeStmt
+	UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -42,10 +42,13 @@ pub:
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
-	expr Expr
-	pos  token.Position
+	expr    Expr
+	pos     token.Position
+	// treat like expr (dont add trailing `;`)
+	// is used for `x++` in `for x:=1; ; x++`
+	is_expr bool
 pub mut:
-	typ  table.Type
+	typ     table.Type
 }
 
 pub struct IntegerLiteral {
@@ -546,7 +549,7 @@ pub mut:
 	left_types    []table.Type
 	right_types   []table.Type
 	is_static     bool // for translated code only
-	is_simple     bool // `x+=2` in `for x:=1; ; x+=2 {` 
+	is_simple     bool // `x+=2` in `for x:=1; ; x+=2`
 	has_cross_var bool
 }
 

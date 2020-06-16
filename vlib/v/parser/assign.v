@@ -77,15 +77,15 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 	mut has_cross_var := false
 	if right.len > 1 {
 		for r in right {
-			if op == .decl_assign {
-				p.check_undefined_variables(left, r)
-			}
 			has_cross_var = p.check_cross_variables(left, r)
 		}
 	}
 	for i, lx in left {
 		match lx {
 			ast.Ident {
+				if op == .decl_assign {
+					p.check_undefined_variables(right, lx)
+				}
 				if op == .decl_assign {
 					if left.len == right.len {
 						p.scope.register(it.name, ast.Var{
@@ -118,5 +118,5 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 			// else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.position()) }
 		}
 	}
-	return ast.AssignStmt{op: op, left: left, right: right, pos: pos, has_cross_var: has_cross_var}
+	return ast.AssignStmt{op: op, left: left, right: right, pos: pos, has_cross_var: has_cross_var, is_simple: p.inside_for && p.tok.kind == .lcbr}
 }

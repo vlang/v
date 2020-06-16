@@ -46,15 +46,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		p.check(.semicolon)
 		if p.tok.kind != .lcbr {
-			inc_expr := p.expr(0)
-			if p.tok.kind.is_assign() || p.tok.kind == .assign {
-				tok := p.tok
-				p.next()
-				inc = ast.AssignStmt{op: tok.kind, left: [inc_expr], right: [p.expr(0)], is_simple: true}
-			}
-			else {
-				inc = ast.ForCIncStmt{expr: inc_expr}
-			}
+			inc = p.stmt()
 			has_inc = true
 		}
 		p.inside_for = false

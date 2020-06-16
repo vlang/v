@@ -754,6 +754,7 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 		return ast.ExprStmt{
 			expr: left[0]
 			pos: epos
+			is_expr: p.inside_for
 		}
 	}
 	return ast.ExprStmt{
