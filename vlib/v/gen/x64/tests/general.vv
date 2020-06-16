@@ -27,8 +27,7 @@ fn loop() {
 	}
 }
 
-fn foo(a0 int) {
-	mut a := a0
+fn foo(a int) {
 	println('foo:')
 	if a == 1 {
 		println('a == 1')

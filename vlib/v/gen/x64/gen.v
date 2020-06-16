@@ -629,7 +629,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 		right := node.right[i]
 		name := left.str()
 		// if left is ast.Ident {
-			ident := left as ast.Ident
+			// ident := left as ast.Ident
 			match right {
 				ast.IntegerLiteral {
 					g.allocate_var(name, 4, it.val.int())
