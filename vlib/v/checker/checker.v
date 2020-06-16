@@ -1669,9 +1669,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.stmts(it.stmts)
 			c.in_for_count--
 		}
-		ast.ForCIncStmt {
-			c.expr(it.expr)
-		}
 		ast.ForInStmt {
 			c.in_for_count++
 			typ := c.expr(it.cond)

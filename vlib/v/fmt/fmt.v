@@ -271,9 +271,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
-		ast.ForCIncStmt {
-			f.expr(it.expr)
-		}
 		ast.ForInStmt {
 			f.write('for ')
 			if it.key_var != '' {
