@@ -72,7 +72,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	}
 	p.init_parse_fns()
 	p.read_first_token()
-	return p.stmt()
+	return p.stmt(false)
 }
 
 pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope, global_scope &ast.Scope) ast.File {
@@ -316,7 +316,7 @@ pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	mut stmts := []ast.Stmt{}
 	if p.tok.kind != .rcbr {
 		for {
-			stmts << p.stmt()
+			stmts << p.stmt(is_top_level)
 			// p.warn('after stmt(): tok=$p.tok.str()')
 			if p.tok.kind in [.eof, .rcbr] {
 				break
@@ -463,7 +463,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			if p.pref.is_script && !p.pref.is_test {
 				mut stmts := []ast.Stmt{}
 				for p.tok.kind != .eof {
-					stmts << p.stmt()
+					stmts << p.stmt(false)
 				}
 				return ast.FnDecl{
 					name: 'main'
@@ -499,7 +499,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 	}
 }
 
-pub fn (mut p Parser) stmt() ast.Stmt {
+pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
@@ -529,7 +529,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				return p.assign_stmt()
 			} else if p.peek_tok.kind == .comma {
 				// `a, b ...`
-				return p.parse_multi_expr()
+				return p.parse_multi_expr(is_top_level)
 			} else if p.peek_tok.kind == .colon {
 				// `label:`
 				name := p.check_name()
@@ -543,7 +543,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 				[.rcbr, .eof] {
 				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 			}
-			return p.parse_multi_expr()
+			return p.parse_multi_expr(is_top_level)
 		}
 		.comment {
 			return p.comment()
@@ -612,7 +612,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 		}
 		// literals, 'if', etc. in here
 		else {
-			return p.parse_multi_expr()
+			return p.parse_multi_expr(is_top_level)
 		}
 	}
 }
@@ -732,11 +732,12 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	}
 }
 
-fn (mut p Parser) parse_multi_expr() ast.Stmt {
+fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// in here might be 1) multi-expr 2) multi-assign
 	// 1, a, c ... }       // multi-expression
 	// a, mut b ... :=/=   // multi-assign
 	// collect things upto hard boundaries
+	tok_kind := p.tok.kind
 	mut collected := []ast.Expr{}
 	for {
 		collected << p.expr(0)
@@ -772,6 +773,11 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 			})
 			pos: epos
 		}
+	} else if is_top_level && collected.len > 0 && collected[0] !is ast.AssignExpr &&
+			collected[0] !is ast.CallExpr && collected[0] !is ast.PostfixExpr &&
+			!(collected[0] is ast.InfixExpr && (collected[0] as ast.InfixExpr).op == .left_shift) &&
+			tok_kind !in [.key_if, .key_match] {
+		p.error_with_pos('expression evaluated but not used', collected[0].position())
 	} else {
 		if collected.len == 1 {
 			return ast.ExprStmt{

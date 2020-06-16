@@ -50,7 +50,7 @@ fn (f Foo) fn_with_optional() ?int {
 	return 40
 }
 
-fn mut_array(a mut []int) {
+fn mut_array(mut a []int) {
 	println(1)
 }
 
