@@ -19,8 +19,12 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			node = p.parse_assign_ident()
 		}
 		.name {
-			node = p.name_expr()
-			p.is_stmt_ident = is_stmt_ident
+			if p.tok.lit == 'sql' && p.peek_tok.kind == .name {
+				node = p.sql_expr()
+			} else {
+				node = p.name_expr()
+				p.is_stmt_ident = is_stmt_ident
+			}
 		}
 		.string {
 			node = p.string_expr()
