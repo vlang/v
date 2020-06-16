@@ -2621,6 +2621,7 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	elem_sym := g.table.get_type_symbol(left_sym.array_info().elem_type)
 	mut elem_typ := ''
 	if elem_sym.kind == .array {
+		// Recursive generate array element comparison function code and return element type name
 		elem_typ = g.gen_array_equality_fn(left_sym.array_info().elem_type)
 	}
 	if ptr_typ !in g.array_fn_definitions {
