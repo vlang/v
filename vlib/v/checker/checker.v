@@ -1086,7 +1086,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 			}
 			// remove optional flag
 			// return ret_type.clear_flag(.optional)
-			// TODO: should we unrap here or in assign (currently moved to assign)
+			// TODO: currently unwrapped in assign, would need to refactor assign to unwrap here
 			return ret_type
 		} else if call_expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `$call_expr.name` does not return an optional',
@@ -1322,7 +1322,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			left_type = c.expr(left)
 			c.expected_type = c.unwrap_generic(left_type)
 		}
-		if assign_stmt.right_types.len < assign_stmt.left.len { // only once for multi return
+		if assign_stmt.right_types.len < assign_stmt.left.len { // first type or multi return types added above
 			right_type := c.expr(assign_stmt.right[i])
 			assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
 		}
