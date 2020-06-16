@@ -13,6 +13,7 @@ import v.errors
 import os
 import runtime
 import time
+import strconv
 
 pub struct Parser {
 	file_name         string // "/home/user/hello.v"
@@ -1166,7 +1167,13 @@ fn (mut p Parser) string_expr() ast.Expr {
 	}
 	mut exprs := []ast.Expr{}
 	mut vals := []string{}
-	mut efmts := []string{}
+	mut has_fmts := []bool{}
+	mut fwidths := []int{}
+	mut precisions := []int{}
+	mut visible_pluss := []bool{}
+	mut fills := []bool{}
+	mut fmts := []byte{}
+	mut fposs := []token.Position{}
 	// Handle $ interpolation
 	p.inside_str_interp = true
 	for p.tok.kind == .string {
@@ -1177,31 +1184,66 @@ fn (mut p Parser) string_expr() ast.Expr {
 		}
 		p.next()
 		exprs << p.expr(0)
-		mut efmt := []string{}
+		mut has_fmt := false
+		mut fwidth := 0
+		mut fwidthneg := false
+		mut precision := 0
+		mut visible_plus := false
+		mut fill := false
+		mut fmt := `_` // placeholder
 		if p.tok.kind == .colon {
-			efmt << ':'
+			has_fmt = true
 			p.next()
 			// ${num:-2d}
 			if p.tok.kind == .minus {
-				efmt << '-'
+				fwidthneg = true
+				p.next()
+			} else if p.tok.kind == .plus {
+				visible_plus = true
 				p.next()
 			}
 			// ${num:2d}
 			if p.tok.kind == .number {
-				efmt << p.tok.lit
+				fields := p.tok.lit.split('.')
+				if fields[0].len > 0 && fields[0][0] == `0` {
+					fill = true
+				}
+				fwidth = strconv.atoi(fields[0])
+				if fwidthneg {
+					fwidth = -fwidth
+				}
+				if fields.len > 1 {
+					precision = strconv.atoi(fields[1])
+				}
 				p.next()
 			}
-			if p.tok.kind == .name && p.tok.lit.len == 1 {
-				efmt << p.tok.lit
-				p.next()
+			if p.tok.kind == .name {
+				if p.tok.lit.len == 1 {
+					fmt = p.tok.lit[0]
+					p.next()
+				} else {
+					p.error('format specifier may only be one letter')
+				}
 			}
 		}
-		efmts << efmt.join('')
+		fwidths << fwidth
+		has_fmts << has_fmt
+		precisions << precision
+		visible_pluss << visible_plus
+		fmts << fmt
+		fills << fill
+		fposs << p.prev_tok.position()
 	}
 	node = ast.StringInterLiteral{
 		vals: vals
 		exprs: exprs
-		expr_fmts: efmts
+		need_fmts: has_fmts // prelimery - until checker finds out if really needed
+		fwidths: fwidths
+		precisions: precisions
+		pluss: visible_pluss
+		fills: fills
+		fmts: fmts
+		fmt_poss: fposs
 		pos: pos
 	}
 	p.inside_str_interp = false

@@ -160,10 +160,28 @@ pub fn (x Expr) str() string {
 					continue
 				}
 				res << '$'
-				if it.expr_fmts[i].len > 0 {
+				needs_fspec := it.need_fmts[i] || it.pluss[i] || (it.fills[i] && it.fwidths[i] >= 0) || it.fwidths[i] != 0 || it.precisions[i] != 0
+				if needs_fspec || (it.exprs[i] !is Ident && it.exprs[i] !is SelectorExpr) {
 					res << '{'
 					res << it.exprs[i].str()
-					res << it.expr_fmts[i]
+					if needs_fspec {
+						res << ':'
+						if it.pluss[i] {
+							res << '+'
+						}
+						if it.fills[i] && it.fwidths[i] >= 0 {
+							res << '0'
+						}
+						if it.fwidths[i] != 0 {
+							res << '${it.fwidths[i]}'
+						}
+						if it.precisions[i] != 0 {
+							res << '.${it.precisions[i]}'
+						}
+						if it.need_fmts[i] {
+							res << '${it.fmts[i]:c}'
+						}
+					}
 					res << '}'
 				} else {
 					res << it.exprs[i].str()
