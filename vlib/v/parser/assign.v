@@ -75,7 +75,14 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 	p.next()
 	right := p.expr_list()
 	mut has_cross_var := false
-	if right.len > 1 {
+	if op == .decl_assign {
+		// a, b := a + 1, b
+		for r in right {
+			p.check_undefined_variables(left, r)
+		}
+	}
+	else if left.len > 1 {
+		// a, b = b, a
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
 		}
@@ -83,9 +90,6 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 	for i, lx in left {
 		match lx {
 			ast.Ident {
-				if op == .decl_assign {
-					p.check_undefined_variables(right, lx)
-				}
 				if op == .decl_assign {
 					if left.len == right.len {
 						p.scope.register(it.name, ast.Var{
