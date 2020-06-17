@@ -106,6 +106,14 @@ pub fn (x &InfixExpr) str() string {
 	return '${x.left.str()} $x.op.str() ${x.right.str()}'
 }
 
+// Expressions in string interpolations may have to be put in braces if they
+// are non-trivial or if a format specification is given. In the latter case
+// the format specifier must be appended, separated by a colon:
+// '$z $z.b $z.c.x ${x[4]} ${z:8.3f} ${a:-20} ${a>b+2}'
+// This method creates the format specifier (including the colon) or an empty
+// string if none is needed and also returns (as bool) if the expression
+// must be enclosed in braces.
+
 pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	mut res := []string{}
 	needs_fspec := lit.need_fmts[i] || lit.pluss[i] || (lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0 || lit.precisions[i] != 0
