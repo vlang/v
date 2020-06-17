@@ -3069,7 +3069,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 }
 
 // `nums.map(it % 2 == 0)`
-fn (mut g Gen) gen_map(node ast.CallExpr) {
+fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
 	s := g.go_before_stmt(0)
 	// println('filter s="$s"')
@@ -3127,7 +3127,7 @@ fn (mut g Gen) gen_map(node ast.CallExpr) {
 }
 
 // `nums.filter(it % 2 == 0)`
-fn (mut g Gen) gen_filter(node ast.CallExpr) {
+fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
 	s := g.go_before_stmt(0)
 	// println('filter s="$s"')
@@ -3175,6 +3175,38 @@ fn (mut g Gen) gen_filter(node ast.CallExpr) {
 	g.write(s)
 	g.write(' ')
 	g.write(tmp)
+}
+
+// `nums.insert(0, 2)`
+fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
+	sym := g.table.get_type_symbol(node.left_type)
+	if sym.kind != .array {
+		verror('insert() requires an array')
+	}
+	info := sym.info as table.Array
+	elem_type_str := g.typ(info.elem_type)
+	g.write('array_insert(&')
+	g.expr(node.left)
+	g.write(', ')
+	g.expr(node.args[0].expr)
+	g.write(', &($elem_type_str[]){')
+	g.expr(node.args[1].expr)
+	g.write('});')
+}
+
+// `nums.prepend(2)`
+fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
+	sym := g.table.get_type_symbol(node.left_type)
+	if sym.kind != .array {
+		verror('prepend() requires an array')
+	}
+	info := sym.info as table.Array
+	elem_type_str := g.typ(info.elem_type)
+	g.write('array_prepend(&')
+	g.expr(node.left)
+	g.write(', &($elem_type_str[]){')
+	g.expr(node.args[0].expr)
+	g.write('});')
 }
 
 [inline]

@@ -359,14 +359,27 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write(')')
 		return
 	}
-	if typ_sym.kind == .array && node.name == 'map' {
-		g.gen_map(node)
-		return
-	}
-	// rec_sym := g.table.get_type_symbol(node.receiver_type)
-	if typ_sym.kind == .array && node.name == 'filter' {
-		g.gen_filter(node)
-		return
+	left_sym := g.table.get_type_symbol(node.left_type)
+	if left_sym.kind == .array {
+		match node.name {
+			'filter' {
+				g.gen_array_filter(node)
+				return
+			}
+			'insert' {
+				g.gen_array_insert(node)
+				return
+			}
+			'map' {
+				g.gen_array_map(node)
+				return
+			}
+			'prepend' {
+				g.gen_array_prepend(node)
+				return
+			}
+			else {}
+		}
 	}
 	if node.name == 'str' {
 		mut styp := g.typ(node.receiver_type)
@@ -376,7 +389,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.gen_str_for_type_with_styp(node.receiver_type, styp)
 	}
 	// TODO performance, detect `array` method differently
-	if typ_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free', 'push_many',
+	if left_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free', 'push_many',
 		'trim',
 		'first',
 		'last',
