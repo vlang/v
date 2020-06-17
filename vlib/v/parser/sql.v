@@ -28,6 +28,16 @@ fn (mut p Parser) sql_expr() ast.SqlExpr {
 	if has_where {
 		p.next()
 		where_expr = p.expr(0)
+		// `id == x` means that a single object is returned
+		if !is_count && where_expr is ast.InfixExpr {
+			e := where_expr as ast.InfixExpr
+			if e.op == .eq && e.left is ast.Ident {
+				ident := e.left as ast.Ident
+				if ident.name == 'id' {
+					typ = table_type
+				}
+			}
+		}
 	}
 	p.check(.rcbr)
 	// /////////
@@ -75,5 +85,6 @@ fn (mut p Parser) sql_expr() ast.SqlExpr {
 		table_name: table_name
 		where_expr: where_expr
 		has_where: has_where
+		fields: fields
 	}
 }

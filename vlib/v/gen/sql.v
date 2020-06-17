@@ -5,6 +5,7 @@ module gen
 
 import v.ast
 import strings
+import v.table
 
 // pg,mysql etc
 const (
@@ -26,8 +27,17 @@ fn (mut g Gen) sql_expr(node ast.SqlExpr) {
 	cur_line := g.go_before_stmt(0)
 	mut q := 'select '
 	if node.is_count {
-		// select count(*) from User
+		// `select count(*) from User`
 		q += 'count(*) from $node.table_name'
+	} else {
+		// `select id, name, country from User`
+		for i, field in node.fields {
+			q += '$field.name'
+			if i < node.fields.len - 1 {
+				q += ', '
+			}
+		}
+		q += ' from $node.table_name'
 	}
 	if node.has_where {
 		q += ' where '
@@ -37,7 +47,7 @@ fn (mut g Gen) sql_expr(node ast.SqlExpr) {
 	db_name := g.new_tmp_var()
 	g.writeln('\n\t// sql')
 	// g.write('${dbtype}__DB $db_name = *(${dbtype}__DB*)${node.db_var_name}.data;')
-	g.write('${dbtype}__DB $db_name = ${node.db_var_name};')
+	g.writeln('${dbtype}__DB $db_name = ${node.db_var_name};')
 	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$q')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("$q')
 	if node.has_where && node.where_expr is ast.InfixExpr {
@@ -49,7 +59,27 @@ fn (mut g Gen) sql_expr(node ast.SqlExpr) {
 	g.sql_buf = strings.new_builder(100)
 	g.writeln(binds)
 	g.writeln('puts(sqlite3_errmsg(${db_name}.conn));')
-	g.writeln('$cur_line ${dbtype}__get_int_from_stmt($g.sql_stmt_name);')
+	//
+	if node.is_count {
+		g.writeln('$cur_line ${dbtype}__get_int_from_stmt($g.sql_stmt_name);')
+	} else {
+		// `user := sql db { select from User where id = 1 }`
+		tmp := g.new_tmp_var()
+		g.write(g.typ(node.typ))
+		g.writeln(' $tmp;')
+		g.writeln('sqlite3_step($g.sql_stmt_name);')
+		for i, field in node.fields {
+			mut func := 'sqlite3_column_int'
+			if field.typ == table.string_type {
+				func = 'sqlite3_column_text'
+				g.writeln('${tmp}.$field.name = tos_clone(${func}($g.sql_stmt_name, $i));')
+			} else {
+				g.writeln('${tmp}.$field.name = ${func}($g.sql_stmt_name, $i);')
+			}
+		}
+		g.writeln('sqlite3_finalize($g.sql_stmt_name);')
+		g.writeln('$cur_line $tmp; ') // `User user = tmp;`
+	}
 }
 
 fn (mut g Gen) expr_to_sql(expr ast.Expr) {

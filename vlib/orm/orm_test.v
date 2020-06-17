@@ -3,27 +3,28 @@
 //import term
 import sqlite
 
-struct Modules {
+struct Module {
 	id int
 	user_id int
-	name string
-	url string
+	//name string
+	//url string
 	//nr_downloads int
 }
 
 struct User {
 	id int
+	age int
 	name string
 }
 
 fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec("drop table if exists User")
-	db.exec("create table User (id integer primary key, name text default '');")
+	db.exec("create table User (id integer primary key, age int default 0, name text default '');")
 
 	name := 'sam'
 
-	db.exec("insert into User (name) values ('Sam')")
+	db.exec("insert into User (name, age) values ('Sam', 29)")
 	db.exec("insert into User (name) values ('Peter')")
 	db.exec("insert into User (name) values ('Kate')")
 	nr_all_users := sql db {
@@ -48,6 +49,14 @@ fn test_orm_sqlite() {
 		select count from User where id == 1 && name == name
 	}
 	println('nr_sams=$nr_sams')
+	//
+	user := sql db {
+		select from User where id == 1
+	}
+	println(user)
+	assert user.name == 'Sam'
+	assert user.id == 1
+	assert user.age == 29
 }
 
 

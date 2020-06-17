@@ -1307,8 +1307,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if right_type_sym0.kind == .multi_return {
 			assign_stmt.right_types = right_type_sym0.mr_info().types
 			right_len = assign_stmt.right_types.len
+		} else if right_type0 == table.void_type {
+			right_len = 0
 		}
-		else if right_type0 == table.void_type { right_len=0 }
 	}
 	if assign_stmt.left.len != right_len {
 		if right_first is ast.CallExpr {
@@ -1338,7 +1339,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if is_decl {
 			left_type = c.table.mktyp(right_type)
 			// we are unwrapping here instead if check_expr_opt_call currently
-			if left_type.has_flag(.optional) { left_type = left_type.clear_flag(.optional) }
+			if left_type.has_flag(.optional) {
+				left_type = left_type.clear_flag(.optional)
+			}
 		} else {
 			// Make sure the variable is mutable
 			c.fail_if_immutable(left)
@@ -1353,9 +1356,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if assign_stmt.op !in [.assign, .decl_assign] {
 						c.error('cannot modify blank `_` identifier', it.pos)
 					}
-				}
-				else {
-					if is_decl { c.check_valid_snake_case(it.name, 'variable name', it.pos) }
+				} else {
+					if is_decl {
+						c.check_valid_snake_case(it.name, 'variable name', it.pos)
+					}
 					mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 					mut ident_var_info := it.var_info()
 					ident_var_info.typ = left_type
@@ -1366,12 +1370,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			ast.PrefixExpr {
 				// Do now allow `*x = y` outside `unsafe`
 				if it.op == .mul && !c.inside_unsafe {
-					c.error('modifying variables via deferencing can only be done in `unsafe` blocks', assign_stmt.pos)
+					c.error('modifying variables via deferencing can only be done in `unsafe` blocks',
+						assign_stmt.pos)
 				}
 			}
 			else {}
 		}
-
 		left_type_unwrapped := c.unwrap_generic(left_type)
 		right_type_unwrapped := c.unwrap_generic(right_type)
 		left_sym := c.table.get_type_symbol(left_type_unwrapped)
@@ -1381,9 +1385,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			.assign {} // No need to do single side check for =. But here put it first for speed.
 			.plus_assign {
 				if !left_sym.is_number() && left_type != table.string_type && !left_sym.is_pointer() {
-					c.error('operator += not defined on left operand type `$left_sym.name`', left.position())
+					c.error('operator += not defined on left operand type `$left_sym.name`',
+						left.position())
 				} else if !right_sym.is_number() && right_type != table.string_type && !right_sym.is_pointer() {
-					c.error('operator += not defined on right operand type `$right_sym.name`', right.position())
+					c.error('operator += not defined on right operand type `$right_sym.name`',
+						right.position())
 				}
 				if right is ast.IntegerLiteral && right.str().int() == 1 {
 					c.error('use `++` instead of `+= 1`', assign_stmt.pos)
@@ -1391,9 +1397,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			.minus_assign {
 				if !left_sym.is_number() && !left_sym.is_pointer() {
-					c.error('operator -= not defined on left operand type `$left_sym.name`', left.position())
+					c.error('operator -= not defined on left operand type `$left_sym.name`',
+						left.position())
 				} else if !right_sym.is_number() && !right_sym.is_pointer() {
-					c.error('operator -= not defined on right operand type `$right_sym.name`', right.position())
+					c.error('operator -= not defined on right operand type `$right_sym.name`',
+						right.position())
 				}
 				if right is ast.IntegerLiteral && right.str().int() == 1 {
 					c.error('use `--` instead of `-= 1`', assign_stmt.pos)
@@ -1973,10 +1981,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return table.u32_type
 		}
 		ast.SqlExpr {
-			if it.has_where {
-				c.expr(it.where_expr)
-			}
-			return it.typ
+			return c.sql_expr(it)
 		}
 		ast.StringLiteral {
 			if it.language == .c {
@@ -2562,6 +2567,13 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 // for debugging only
 fn (c &Checker) fileis(s string) bool {
 	return c.file.path.contains(s)
+}
+
+fn (mut c Checker) sql_expr(node ast.SqlExpr) table.Type {
+	if node.has_where {
+		c.expr(node.where_expr)
+	}
+	return node.typ
 }
 
 fn (mut c Checker) fn_decl(it ast.FnDecl) {

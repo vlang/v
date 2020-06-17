@@ -9,11 +9,11 @@ import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr |
-	CastExpr | CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
-	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | MapInit | MatchExpr | None |
-	OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr |
-	StringInterLiteral | StringLiteral | StructInit | Type | TypeOf
+pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr | CharLiteral |
+	ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr |
+	InfixExpr | IntegerLiteral | Likely | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr |
+	PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
+	StructInit | Type | TypeOf
 
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -44,7 +44,6 @@ pub struct ExprStmt {
 pub:
 	expr    Expr
 	pos     token.Position
-	// treat like expr (dont add trailing `;`)
 	// is used for `x++` in `for x:=1; ; x++`
 	is_expr bool
 pub mut:
@@ -806,8 +805,9 @@ pub:
 	is_count    bool
 	db_var_name string // `db` in `sql db {`
 	table_name  string
-	where_expr Expr
-	has_where bool
+	where_expr  Expr
+	has_where   bool
+	fields      []table.Field
 }
 
 [inline]
