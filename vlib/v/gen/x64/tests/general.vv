@@ -32,15 +32,15 @@ fn foo(a int) {
 	if a == 1 {
 		println('a == 1')
 	}
+	if a == 7 {
+		println('a == 7')
+	}
 	a++
 	if a == 2 {
 		println('a == 2')
 	}
 	if a == 3 {
 		println('a == 3')
-	}
-	if a == 7 {
-		println('a == 7')
 	}
 
 }
