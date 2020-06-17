@@ -5,6 +5,7 @@ module fmt
 
 import v.ast
 import v.table
+import v.util
 import strings
 
 const (
@@ -715,36 +716,19 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 		}
 		ast.StringInterLiteral {
+			// TODO: this code is very similar to ast.Expr.str()
 			f.write("'")
 			for i, val in it.vals {
 				f.write(val)
 				if i >= it.exprs.len {
-					continue
+					break
 				}
 				f.write('$')
-				needs_fspec := it.need_fmts[i] || it.pluss[i] || (it.fills[i] && it.fwidths[i] >=
-					0) || it.fwidths[i] != 0 || it.precisions[i] != 0
-				if needs_fspec || (it.exprs[i] !is ast.Ident && it.exprs[i] !is ast.SelectorExpr) {
+				fspec_str, needs_braces := it.get_fspec_braces(i)
+				if needs_braces {
 					f.write('{')
 					f.expr(it.exprs[i])
-					if needs_fspec {
-						f.write(':')
-						if it.pluss[i] {
-							f.write('+')
-						}
-						if it.fills[i] && it.fwidths[i] >= 0 {
-							f.write('0')
-						}
-						if it.fwidths[i] != 0 {
-							f.write('${it.fwidths[i]}')
-						}
-						if it.precisions[i] != 0 {
-							f.write('.${it.precisions[i]}')
-						}
-						if it.need_fmts[i] {
-							f.write('${it.fmts[i]:c}')
-						}
-					}
+					f.write(fspec_str)
 					f.write('}')
 				} else {
 					f.expr(it.exprs[i])

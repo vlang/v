@@ -4,6 +4,7 @@
 module ast
 
 import v.table
+import v.util
 import strings
 
 pub fn (node &FnDecl) modname() string {
@@ -105,6 +106,65 @@ pub fn (x &InfixExpr) str() string {
 	return '${x.left.str()} $x.op.str() ${x.right.str()}'
 }
 
+// Expressions in string interpolations may have to be put in braces if they
+// are non-trivial or if a format specification is given. In the latter case
+// the format specifier must be appended, separated by a colon:
+// '$z $z.b $z.c.x ${x[4]} ${z:8.3f} ${a:-20} ${a>b+2}'
+// This method creates the format specifier (including the colon) or an empty
+// string if none is needed and also returns (as bool) if the expression
+// must be enclosed in braces.
+
+pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
+	mut res := []string{}
+	needs_fspec := lit.need_fmts[i] || lit.pluss[i] || (lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0 || lit.precisions[i] != 0
+	mut needs_braces := needs_fspec
+	if !needs_braces {
+		if i+1 < lit.vals.len && lit.vals[i+1].len > 0 {
+			next_char := lit.vals[i+1][0]
+			if util.is_func_char(next_char) || next_char == `.` {
+				needs_braces = true
+			}
+		}
+	}
+	if !needs_braces {
+		mut sub_expr := lit.exprs[i]
+		for {
+			match sub_expr {
+				Ident {
+					break
+				}
+				SelectorExpr {
+					sub_expr = it.expr
+					continue
+				}
+				else {
+					needs_braces = true
+					break
+				}
+			}
+		}
+	}
+	if needs_fspec {
+		res << ':'
+		if lit.pluss[i] {
+			res << '+'
+		}
+		if lit.fills[i] && lit.fwidths[i] >= 0 {
+			res << '0'
+		}
+		if lit.fwidths[i] != 0 {
+			res << '${lit.fwidths[i]}'
+		}
+		if lit.precisions[i] != 0 {
+			res << '.${lit.precisions[i]}'
+		}
+		if lit.need_fmts[i] {
+			res << '${lit.fmts[i]:c}'
+		}
+	}
+	return res.join(''), needs_braces
+}
+
 // string representaiton of expr
 pub fn (x Expr) str() string {
 	match x {
@@ -157,31 +217,14 @@ pub fn (x Expr) str() string {
 			for i, val in it.vals {
 				res << val
 				if i >= it.exprs.len {
-					continue
+					break
 				}
 				res << '$'
-				needs_fspec := it.need_fmts[i] || it.pluss[i] || (it.fills[i] && it.fwidths[i] >= 0) || it.fwidths[i] != 0 || it.precisions[i] != 0
-				if needs_fspec || (it.exprs[i] !is Ident && it.exprs[i] !is SelectorExpr) {
+				fspec_str, needs_braces := it.get_fspec_braces(i)
+				if needs_braces {
 					res << '{'
 					res << it.exprs[i].str()
-					if needs_fspec {
-						res << ':'
-						if it.pluss[i] {
-							res << '+'
-						}
-						if it.fills[i] && it.fwidths[i] >= 0 {
-							res << '0'
-						}
-						if it.fwidths[i] != 0 {
-							res << '${it.fwidths[i]}'
-						}
-						if it.precisions[i] != 0 {
-							res << '.${it.precisions[i]}'
-						}
-						if it.need_fmts[i] {
-							res << '${it.fmts[i]:c}'
-						}
-					}
+					res << fspec_str
 					res << '}'
 				} else {
 					res << it.exprs[i].str()
