@@ -414,12 +414,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 		}
 		.lsbr {
-			start_pos := p.tok.position()
-			attrs := p.attributes()
-			if attrs.len == 0 {
-				end_pos := p.tok.position()
-				p.error_with_pos('attributes cannot be empty', start_pos.extend(end_pos))
-			}
+			attrs := p.attributes(true)
 			return attrs[0]
 		}
 		.key_interface {
@@ -626,11 +621,19 @@ fn (mut p Parser) expr_list() []ast.Expr {
 	return exprs
 }
 
-fn (mut p Parser) attributes() []ast.Attr {
+// when is_top_stmt is true attrs are added to p.attrs
+fn (mut p Parser) attributes(is_top_stmt bool) []ast.Attr {
 	mut attrs := []ast.Attr{}
 	p.check(.lsbr)
 	for p.tok.kind != .rsbr {
+		start_pos := p.tok.position()
 		attr := p.parse_attr()
+		if attr in attrs || (is_top_stmt && attr.name in p.attrs) {
+			p.error_with_pos('duplicate attribute `$attr.name`', start_pos.extend(p.prev_tok.position()))
+		}
+		if is_top_stmt {
+			p.attrs << attr.name
+		}
 		attrs << attr
 		if p.tok.kind != .semicolon {
 			expected := `;`
@@ -642,11 +645,13 @@ fn (mut p Parser) attributes() []ast.Attr {
 		}
 		p.next()
 	}
+	if attrs.len == 0 {
+		p.error_with_pos('attributes cannot be empty', p.prev_tok.position().extend(p.tok.position()))
+	}
 	return attrs
 }
 
 fn (mut p Parser) parse_attr() ast.Attr {
-	start_pos := p.prev_tok.position()
 	mut is_if_attr := false
 	if p.tok.kind == .key_if {
 		p.next()
@@ -663,10 +668,6 @@ fn (mut p Parser) parse_attr() ast.Attr {
 			p.next()
 		}
 	}
-	if name in p.attrs {
-		p.error_with_pos('duplicate attribute `$name`', start_pos.extend(p.tok.position()))
-	}
-	p.attrs << name
 	if is_if_attr {
 		p.attr_ctdefine = name
 	}

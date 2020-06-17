@@ -567,6 +567,14 @@ pub struct Attr {
 pub:
 	name string
 }
+pub fn (attrs []Attr) contains(attr Attr) bool {
+	for a in attrs {
+		if attr.name == a.name {
+			return true
+		}
+	}
+	return false
+}
 
 pub struct EnumVal {
 pub:

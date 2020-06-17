@@ -117,7 +117,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			*/
 			mut attrs := []string{}
 			if p.tok.kind == .lsbr {
-				parsed_attrs := p.attributes()
+				parsed_attrs := p.attributes(false)
 				for attr in parsed_attrs {
 					attrs << attr.name
 				}
