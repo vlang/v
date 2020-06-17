@@ -1177,7 +1177,6 @@ fn (mut p Parser) string_expr() ast.Expr {
 		mut fill := false
 		mut fmt := `_` // placeholder
 		if p.tok.kind == .colon {
-			has_fmt = true
 			p.next()
 			// ${num:-2d}
 			if p.tok.kind == .minus {
@@ -1205,6 +1204,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 			if p.tok.kind == .name {
 				if p.tok.lit.len == 1 {
 					fmt = p.tok.lit[0]
+					has_fmt = true
 					p.next()
 				} else {
 					p.error('format specifier may only be one letter')
