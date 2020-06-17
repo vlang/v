@@ -427,7 +427,7 @@ The type of an array is determined by the first element: `[1, 2, 3]` is an array
 
 If V is unable to infer the type of an array, the user can explicitly specify it for the first element: `[byte(0x0E), 0x1F, 0xBA, 0x0E]`
 
-V arrays are homogenous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
+V arrays are homogeneous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
 
 `<<` is an operator that appends a value to the end of the array.
 It can also append an entire array.
