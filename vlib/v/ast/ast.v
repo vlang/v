@@ -44,7 +44,6 @@ pub struct ExprStmt {
 pub:
 	expr    Expr
 	pos     token.Position
-	// is used for `x++` in `for x:=1; ; x++`
 	is_expr bool
 pub mut:
 	typ     table.Type
@@ -567,6 +566,7 @@ pub struct Attr {
 pub:
 	name string
 }
+
 pub fn (attrs []Attr) contains(attr Attr) bool {
 	for a in attrs {
 		if attr.name == a.name {
@@ -816,6 +816,7 @@ pub:
 	where_expr  Expr
 	has_where   bool
 	fields      []table.Field
+	is_array    bool
 }
 
 [inline]

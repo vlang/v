@@ -17,11 +17,11 @@ fn (mut g Gen) sql_expr(node ast.SqlExpr) {
 	/*
 	`nr_users := sql db { ... }` =>
 	```
-	sql_init_stmt()
-	sql_bind_int()
-	sql_bind_string()
-	...
-	int nr_users = get_int(stmt)
+		sql_init_stmt()
+		sql_bind_int()
+		sql_bind_string()
+		...
+		int nr_users = get_int(stmt)
 	```
 	*/
 	cur_line := g.go_before_stmt(0)
@@ -65,9 +65,26 @@ fn (mut g Gen) sql_expr(node ast.SqlExpr) {
 	} else {
 		// `user := sql db { select from User where id = 1 }`
 		tmp := g.new_tmp_var()
-		g.write(g.typ(node.typ))
-		g.writeln(' $tmp;')
-		g.writeln('sqlite3_step($g.sql_stmt_name);')
+		styp := g.typ(node.typ)
+		mut elem_type_str := ''
+		if node.is_array {
+			sym := g.table.get_type_symbol(node.typ)
+			info := sym.info as table.Array
+			elem_type_str = g.typ(info.elem_type)
+			// array_User array_tmp;
+			// for { User tmp; ... array_tmp << tmp; }
+			g.writeln('$styp ${tmp}_array = __new_array(0, 10, sizeof($elem_type_str));')
+			g.writeln('while (1) {')
+			g.writeln('\t$elem_type_str $tmp;')
+		} else {
+			// `User tmp;`
+			g.writeln('$styp $tmp;')
+		}
+		//
+		g.writeln('int _step_res$tmp = sqlite3_step($g.sql_stmt_name);')
+		if node.is_array {
+			g.writeln('\tif (_step_res$tmp == SQLITE_DONE) break;')
+		}
 		for i, field in node.fields {
 			mut func := 'sqlite3_column_int'
 			if field.typ == table.string_type {
@@ -77,8 +94,16 @@ fn (mut g Gen) sql_expr(node ast.SqlExpr) {
 				g.writeln('${tmp}.$field.name = ${func}($g.sql_stmt_name, $i);')
 			}
 		}
+		if node.is_array {
+			g.writeln('\t array_push(&${tmp}_array, _MOV(($elem_type_str[]){ $tmp }));')
+			g.writeln('} // for')
+		}
 		g.writeln('sqlite3_finalize($g.sql_stmt_name);')
-		g.writeln('$cur_line $tmp; ') // `User user = tmp;`
+		if node.is_array {
+			g.writeln('$cur_line ${tmp}_array; ') // `array_User users = tmp_array;`
+		} else {
+			g.writeln('$cur_line $tmp; ') // `User user = tmp;`
+		}
 	}
 }
 
@@ -93,6 +118,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 			g.expr_to_sql(it.left)
 			match it.op {
 				.eq { g.write(' = ') }
+				.gt { g.write(' > ') }
 				.and { g.write(' and ') }
 				else {}
 			}

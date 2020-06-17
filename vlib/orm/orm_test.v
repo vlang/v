@@ -25,7 +25,7 @@ fn test_orm_sqlite() {
 	name := 'sam'
 
 	db.exec("insert into User (name, age) values ('Sam', 29)")
-	db.exec("insert into User (name) values ('Peter')")
+	db.exec("insert into User (name, age) values ('Peter', 31)")
 	db.exec("insert into User (name) values ('Kate')")
 	nr_all_users := sql db {
 		select count from User
@@ -57,6 +57,15 @@ fn test_orm_sqlite() {
 	assert user.name == 'Sam'
 	assert user.id == 1
 	assert user.age == 29
+	//
+	users := sql db {
+		select from User where id > 0
+	}
+	println(users)
+	assert users.len == 3
+	assert users[0].name == 'Sam'
+	assert users[1].name == 'Peter'
+	assert users[1].age == 31
 }
 
 
