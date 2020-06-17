@@ -119,7 +119,11 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 			match it.op {
 				.eq { g.write(' = ') }
 				.gt { g.write(' > ') }
+				.lt { g.write(' < ') }
+				.ge { g.write(' >= ') }
+				.le { g.write(' <= ') }
 				.and { g.write(' and ') }
+				.logical_or { g.write(' or ') }
 				else {}
 			}
 			g.expr_to_sql(it.right)

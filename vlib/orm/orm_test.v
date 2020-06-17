@@ -66,6 +66,20 @@ fn test_orm_sqlite() {
 	assert users[0].name == 'Sam'
 	assert users[1].name == 'Peter'
 	assert users[1].age == 31
+	//
+	users2 := sql db {
+		select from User where id < 0
+	}
+	println(users2)
+	assert users2.len == 0
+	//
+	users3 := sql db {
+		select from User where age == 29 || age == 31
+	}
+	println(users3)
+	assert users3.len == 2
+	assert users3[0].age == 29
+	assert users3[1].age == 31
 }
 
 
