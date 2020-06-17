@@ -118,3 +118,7 @@ pub fn (db DB) exec_none(query string) int {
 pub fn (db DB) exec_param(query string, param string) []Row {
 }
 */
+
+pub fn (db DB) insert<T>(x T) {
+}
+

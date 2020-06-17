@@ -1573,7 +1573,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('sizeof($styp)')
 		}
 		ast.SqlExpr {
-			g.sql_expr(it)
+			g.sql_select_expr(it)
 		}
 		ast.StringLiteral {
 			if it.is_raw {

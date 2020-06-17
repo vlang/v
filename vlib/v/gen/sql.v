@@ -12,7 +12,10 @@ const (
 	dbtype = 'sqlite'
 )
 
-fn (mut g Gen) sql_expr(node ast.SqlExpr) {
+fn (mut g Gen) sql_insert_expr(node ast.SqlInsertExpr) {
+}
+
+fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	g.sql_i = 0
 	/*
 	`nr_users := sql db { ... }` =>
@@ -68,11 +71,11 @@ fn (mut g Gen) sql_expr(node ast.SqlExpr) {
 		styp := g.typ(node.typ)
 		mut elem_type_str := ''
 		if node.is_array {
+			// array_User array_tmp;
+			// for { User tmp; ... array_tmp << tmp; }
 			sym := g.table.get_type_symbol(node.typ)
 			info := sym.info as table.Array
 			elem_type_str = g.typ(info.elem_type)
-			// array_User array_tmp;
-			// for { User tmp; ... array_tmp << tmp; }
 			g.writeln('$styp ${tmp}_array = __new_array(0, 10, sizeof($elem_type_str));')
 			g.writeln('while (1) {')
 			g.writeln('\t$elem_type_str $tmp;')

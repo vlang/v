@@ -58,7 +58,7 @@ enum Register {
 }
 
 const (
-	fn_arg_registers = [x64.Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
+	fn_arg_registers = [Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
 )
 
 /*
@@ -263,7 +263,8 @@ fn (mut g Gen) println(comment string) {
 	addr := g.debug_pos.hex()
 	// println('$g.debug_pos "$addr"')
 	print(term.red(strings.repeat(`0`, 6 - addr.len) + addr + '  '))
-	for i := g.debug_pos; i < g.buf.len; i++ {
+	for i := g.debug_pos; i < g.buf.len; i++
+	 {
 		s := g.buf[i].hex()
 		if s.len == 1 {
 			print(term.blue('0'))
@@ -318,7 +319,21 @@ fn (mut g Gen) mov_from_reg(var_offset int, reg Register) {
 		else { verror('mov_from_reg $reg') }
 	}
 	g.write8(0xff - var_offset + 1)
-	g.println('mov from reg')
+	g.println('mov DWORD PTR[rbp-$var_offset.hex()],$reg')
+}
+
+fn (mut g Gen) mov_rbp_offset(reg Register, var_offset int) {
+	// 8b 7d f8          mov edi,DWORD PTR [rbp-0x8]
+	g.write8(0x8b)
+	match reg {
+		.edi, .rdi { g.write8(0x7d) }
+		.rsi { g.write8(0x75) }
+		.rdx { g.write8(0x55) }
+		.rcx { g.write8(0x4d) }
+		else { verror('mov_rbp_offset $reg') }
+	}
+	g.write8(0xff - var_offset + 1)
+	g.println('mov $reg,DWORD PTR[rbp-$var_offset]')
 }
 
 fn (mut g Gen) call(addr int) {
@@ -372,7 +387,15 @@ pub fn (mut g Gen) sub32(reg Register, val int) {
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write32(val)
-	g.println('sub $reg,0x$val.hex()')
+	g.println('sub32 $reg,0x$val.hex()')
+}
+
+pub fn (mut g Gen) sub8(reg Register, val int) {
+	g.write8(0x48)
+	g.write8(0x83)
+	g.write8(0xe8 + reg) // TODO rax is different?
+	g.write8(val)
+	g.println('sub8 $reg,0x$val.hex()')
 }
 
 pub fn (mut g Gen) add(reg Register, val int) {
@@ -381,6 +404,15 @@ pub fn (mut g Gen) add(reg Register, val int) {
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write32(val)
 	g.println('add $reg,0x$val.hex()')
+}
+
+pub fn (mut g Gen) add8(reg Register, val int) {
+	g.write8(0x48)
+	g.write8(0x83)
+	// g.write8(0xe8 + reg) // TODO rax is different?
+	g.write8(0xc4)
+	g.write8(val)
+	g.println('add8 $reg,0x$val.hex()')
 }
 
 fn (mut g Gen) leave() {
@@ -502,8 +534,23 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 	// g.mov(.eax, 0)
 	for i in 0 .. node.args.len {
 		expr := node.args[i].expr
-		int_lit := expr as ast.IntegerLiteral
-		g.mov(fn_arg_registers[i], int_lit.val.int())
+		match expr {
+			ast.IntegerLiteral {
+				// `foo(2)` => `mov edi,0x2`
+				int_lit := expr as ast.IntegerLiteral
+				g.mov(fn_arg_registers[i], int_lit.val.int())
+			}
+			ast.Ident {
+				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`
+				offset := g.get_var_offset(it.name)
+				println('i=$i fn name= $name offset=$offset')
+				println(int(fn_arg_registers[i]))
+				g.mov_rbp_offset(fn_arg_registers[i], offset)
+			}
+			else {
+				verror('unhandled call_fn node: ' + typeof(expr))
+			}
+		}
 	}
 	if node.args.len > 6 {
 		verror('more than 6 args not allowed for now')
@@ -620,7 +667,7 @@ fn (mut g Gen) allocate_var(name string, size, initial_val int) {
 	// Generate the value assigned to the variable
 	g.write32(initial_val)
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
-	g.println('mov DWORD [rbp-0x$n],$initial_val (Aallocate var `$name`)')
+	g.println('mov DWORD [rbp-0x$n],$initial_val (Allocate var `$name`)')
 }
 
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
@@ -629,19 +676,19 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 		right := node.right[i]
 		name := left.str()
 		// if left is ast.Ident {
-			// ident := left as ast.Ident
-			match right {
-				ast.IntegerLiteral {
-					g.allocate_var(name, 4, it.val.int())
-				}
-				ast.InfixExpr {
-					g.infix_expr(it)
-					g.allocate_var(name, 4, 0)
-				}
-				else {
-					g.error_with_pos('assign_stmt unhandled expr: ' + typeof(right), right.position())
-				}
+		// ident := left as ast.Ident
+		match right {
+			ast.IntegerLiteral {
+				g.allocate_var(name, 4, it.val.int())
 			}
+			ast.InfixExpr {
+				g.infix_expr(it)
+				g.allocate_var(name, 4, 0)
+			}
+			else {
+				g.error_with_pos('assign_stmt unhandled expr: ' + typeof(right), right.position())
+			}
+		}
 		// }
 	}
 }
@@ -712,9 +759,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	g.push(.rbp)
 	g.mov_rbp_rsp()
-	if !is_main {
-		g.sub32(.rsp, 0x20)
-	}
+	// if !is_main {
+	g.sub8(.rsp, 0x10)
+	// }
 	if node.args.len > 0 {
 		// g.mov(.r12, 0x77777777)
 	}
@@ -736,9 +783,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		// return
 	}
 	if !is_main {
-		g.leave()
-		// g.add(.rsp, 0x20)
-		// g.pop(.rbp)
+		// g.leave()
+		g.add8(.rsp, 0x10)
+		g.pop(.rbp)
 	}
 	g.ret()
 }

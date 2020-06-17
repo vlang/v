@@ -819,6 +819,9 @@ pub:
 	is_array    bool
 }
 
+pub struct SqlInsertExpr {
+}
+
 [inline]
 pub fn (expr Expr) is_blank_ident() bool {
 	match expr {
