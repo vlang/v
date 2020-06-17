@@ -113,54 +113,40 @@ fn test_push() {
 	assert a.str() == '[1, 3]'
 }
 
-// TODO array.insert is broken
-// Cannot pass literal or primitive type as it cannot be cast to voidptr.
-// In the current state only that would work:
-// i := 3
-// a.insert(0, &i)
-// ----------------------------
-/*
 fn test_insert() {
 	mut a := [1, 2]
 	a.insert(0, 3)
-	println(a)
+	assert a[0] == 3
+	assert a[2] == 2
+	assert a.len == 3
+	a.insert(1, 4)
+	assert a[1] == 4
+	assert a[2] == 1
+	assert a.len == 4
+	a.insert(4, 5)
+	assert a[4] == 5
+	assert a[3] == 2
+	assert a.len == 5
+	mut b := []f64{}
+	assert b.len == 0
+	b.insert(0, f64(1.1))
+	assert b.len == 1
+	assert b[0] == f64(1.1)
 }
-*/
-// fn test_insert() {
-// mut a := [1, 2]
-// a.insert(0, 3)
-// assert a[0] == 3
-// assert a[2] == 2
-// assert a.len == 3
-// a.insert(1, 4)
-// assert a[1] == 4
-// assert a[2] == 1
-// assert a.len == 4
-// a.insert(4, 5)
-// assert a[4] == 5
-// assert a[3] == 2
-// assert a.len == 5
-// mut b := []f64{}
-// assert b.len == 0
-// b.insert(0, f64(1.1))
-// assert b.len == 1
-// assert b[0] == f64(1.1)
-// }
-// TODO array.prepend is broken
-// It depends on array.insert
-// -----------------------------
-// fn test_prepend() {
-// mut a := []int{}
-// assert a.len == 0
-// a.prepend(1)
-// assert a.len == 1
-// assert a[0] == 1
-// mut b := []f64{}
-// assert b.len == 0
-// b.prepend(f64(1.1))
-// assert b.len == 1
-// assert b[0] == f64(1.1)
-// }
+
+fn test_prepend() {
+	mut a := []int{}
+	assert a.len == 0
+	a.prepend(1)
+	assert a.len == 1
+	assert a[0] == 1
+	mut b := []f64{}
+	assert b.len == 0
+	b.prepend(f64(1.1))
+	assert b.len == 1
+	assert b[0] == f64(1.1)
+}
+
 fn test_strings() {
 	a := ['a', 'b', 'c']
 	assert a.str() == "['a', 'b', 'c']"
