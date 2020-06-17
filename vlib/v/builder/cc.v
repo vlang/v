@@ -52,23 +52,17 @@ fn (v &Builder) find_win_cc() ?string {
 		}
 		find_msvc() or {
 			if v.pref.is_verbose {
-				println('msvc not found, looking for tcc...')
+				println('msvc not found, looking for thirdparty/tcc...')
 			}
-			os.exec('tcc -v') or {
+			vpath := os.dir(os.getenv('VEXE'))
+			thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
+			os.exec('$thirdparty_tcc -v') or {
 				if v.pref.is_verbose {
-					println('tcc not found in path, looking for thirdparty/tcc...')
+					println('No C compiler found')
 				}
-				vpath := os.dir(os.getenv('VEXE'))
-				thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
-				os.exec('$thirdparty_tcc -v') or {
-					if v.pref.is_verbose {
-						println('No C compiler found')
-					}
-					return none
-				}
-				return thirdparty_tcc
+				return none
 			}
-			return 'tcc'
+			return thirdparty_tcc
 		}
 		return 'msvc'
 	}
