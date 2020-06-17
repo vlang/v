@@ -742,6 +742,19 @@ fn test_double_quote_inter() {
 	assert '${a} ${b}' == "1 2"
 }
 
+fn test_string_map() {
+	a := 'Hello'.map(fn (b byte) byte {
+		return b + 1
+	}) 
+	assert a == 'Ifmmp'
+
+	assert 'foo'.map(foo) == r'\ee'
+}
+
+fn foo(b byte) byte {
+	return b - 10 
+}
+
 fn test_split_into_lines() {
 	line_content := 'Line'
 	text_crlf := '${line_content}\r\n${line_content}\r\n${line_content}'

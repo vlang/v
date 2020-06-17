@@ -1354,6 +1354,10 @@ pub fn (s string) fields() []string {
 	return s.replace('\t', ' ').split(' ')
 }
 
+pub fn (s string) map(func fn(byte) byte) string {
+	return string(s.bytes().map(func(it)))
+}
+
 // Allows multi-line strings to be formatted in a way that removes white-space
 // before a delimeter. by default `|` is used.
 // Note: the delimiter has to be a byte at this time. That means surrounding
