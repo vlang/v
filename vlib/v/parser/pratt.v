@@ -191,8 +191,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				op: tok.kind
 				pos: pos
 			}
-		}
-		else if p.tok.kind.is_infix() {
+		} else if p.tok.kind.is_infix() {
 			// return early for deref assign `*x = 2` goes to prefix expr
 			if p.tok.kind == .mul && p.tok.line_nr != p.prev_tok.line_nr && p.peek_tok2.kind ==
 				.assign {

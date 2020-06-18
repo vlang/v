@@ -280,11 +280,11 @@ pub fn (mut p Parser) close_scope() {
 		for _, obj in p.scope.objects {
 			match obj {
 				ast.Var {
-					if !it.is_used && it.name[0] != `_` {
+					if !obj.is_used && obj.name[0] != `_` {
 						if p.pref.is_prod {
-							p.error_with_pos('unused variable: `$it.name`', it.pos)
+							p.error_with_pos('unused variable: `$obj.name`', obj.pos)
 						} else {
-							p.warn_with_pos('unused variable: `$it.name`', it.pos)
+							p.warn_with_pos('unused variable: `$obj.name`', obj.pos)
 						}
 					}
 					/*
@@ -356,7 +356,7 @@ fn (mut p Parser) check(expected token.Kind) {
 	// p.next()
 	// }
 	if p.tok.kind != expected {
-		p.error('unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`')
+		p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
 	}
 	p.next()
 }
@@ -525,12 +525,10 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					return ast.GotoLabel{
 						name: name
 					}
-				}
-				else if p.peek_tok.kind == .name {
+				} else if p.peek_tok.kind == .name {
 					p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-				}
-				else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr && p.peek_tok.kind in
-					[.rcbr, .eof] {
+				} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr &&
+					p.peek_tok.kind in [.rcbr, .eof] {
 					p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 				}
 			}
@@ -608,7 +606,6 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	}
 }
 
-
 fn (mut p Parser) expr_list() []ast.Expr {
 	mut exprs := []ast.Expr{}
 	for {
@@ -641,7 +638,7 @@ fn (mut p Parser) attributes(is_top_stmt bool) []ast.Attr {
 				p.next()
 				break
 			}
-			p.error('unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`')
+			p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
 		}
 		p.next()
 	}
@@ -752,11 +749,9 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	left0 := left[0]
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left)
-	}
-	else if is_top_level && tok.kind !in [.key_if, .key_match] &&
-			left0 !is ast.CallExpr && left0 !is ast.PostfixExpr &&
-			!(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op == .left_shift) &&
-			left0 !is ast.ComptimeCall {
+	} else if is_top_level && tok.kind !in [.key_if, .key_match] && left0 !is ast.CallExpr &&
+		left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op == .left_shift) &&
+		left0 !is ast.ComptimeCall {
 		p.error_with_pos('expression evaluated but not used', left0.position())
 	}
 	if left.len == 1 {
@@ -860,7 +855,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		match mut obj {
 			ast.Var {
 				known_var = true
-				it.is_used = true
+				obj.is_used = true
 			}
 			else {}
 		}
@@ -1141,11 +1136,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		node = ast.StringLiteral{
 			val: val
 			is_raw: is_raw
-			language: if is_cstr {
-				table.Language.c
-			} else {
-				table.Language.v
-			}
+			language: if is_cstr { table.Language.c } else { table.Language.v }
 			pos: pos
 		}
 		return node
@@ -1222,7 +1213,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	node = ast.StringInterLiteral{
 		vals: vals
 		exprs: exprs
-		need_fmts: has_fmts // prelimery - until checker finds out if really needed
+		need_fmts: has_fmts
 		fwidths: fwidths
 		precisions: precisions
 		pluss: visible_pluss
@@ -1231,6 +1222,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		fmt_poss: fposs
 		pos: pos
 	}
+	// need_fmts: prelimery - until checker finds out if really needed
 	p.inside_str_interp = false
 	return node
 }
