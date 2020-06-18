@@ -13,6 +13,7 @@ import vweb.tmpl
 const (
 	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
 		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
+	supported_ccompilers = ['tinyc', 'clang', 'mingw', 'msvc', 'gcc', 'cplusplus']
 )
 
 fn (mut p Parser) resolve_vroot(flag string) string {
@@ -154,45 +155,55 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	}
 	val := p.check_name()
 	mut stmts := []ast.Stmt{}
-	mut skip_os := false
+	mut skip := false
+
 	if val in supported_platforms {
 		os := os_from_string(val)
-		// `$if os {` for a different target, skip everything inside
-		// to avoid compilation errors (like including <windows.h> or calling WinAPI fns
-		// on non-Windows systems)
-		if !p.pref.is_fmt && ((!is_not && os != p.pref.os) || (is_not && os == p.pref.os)) &&
-			!p.pref.output_cross_c {
-			skip_os = true
-			p.check(.lcbr)
-			// p.warn('skipping $if $val os=$os p.pref.os=$p.pref.os')
-			mut stack := 1
-			for {
-				if p.tok.kind == .key_return {
-					p.returns = true
-				}
-				if p.tok.kind == .lcbr {
-					stack++
-				} else if p.tok.kind == .rcbr {
-					stack--
-				}
-				if p.tok.kind == .eof {
-					break
-				}
-				if stack <= 0 && p.tok.kind == .rcbr {
-					// p.warn('exiting $stack')
-					p.next()
-					break
-				}
-				p.next()
-			}
+		if (!is_not && os != p.pref.os) || (is_not && os == p.pref.os) {
+			skip = true
+		}
+	} else if val in supported_ccompilers {
+		cc := cc_from_string(val)
+		user_cc := cc_from_string(p.pref.ccompiler)
+		if (!is_not && cc != user_cc) || (is_not && cc == user_cc) {
+			skip = true
 		}
 	}
+
+	// `$if os {` or `$if compiler {` for a different target, skip everything inside
+	// to avoid compilation errors (like including <windows.h> or calling WinAPI fns
+	// on non-Windows systems)
+	if !p.pref.is_fmt && !p.pref.output_cross_c && skip {
+		p.check(.lcbr)
+		// p.warn('skipping $if $val os=$os p.pref.os=$p.pref.os')
+		mut stack := 1
+		for {
+			if p.tok.kind == .key_return {
+				p.returns = true
+			}
+			if p.tok.kind == .lcbr {
+				stack++
+			} else if p.tok.kind == .rcbr {
+				stack--
+			}
+			if p.tok.kind == .eof {
+				break
+			}
+			if stack <= 0 && p.tok.kind == .rcbr {
+				// p.warn('exiting $stack')
+				p.next()
+				break
+			}
+			p.next()
+		}
+	} else { skip = false }
+
 	mut is_opt := false
 	if p.tok.kind == .question {
 		p.next()
 		is_opt = true
 	}
-	if !skip_os {
+	if !skip {
 		stmts = p.parse_block()
 	}
 	mut node := ast.CompIf{
@@ -267,6 +278,16 @@ fn os_from_string(os string) pref.OS {
 	}
 	// println('bad os $os') // todo panic?
 	return .linux
+}
+
+// Helper function to convert string names to CC enum
+pub fn cc_from_string(cc_str string) pref.CC {
+	cc := cc_str.replace('\\', '/').split('/').last().all_before('.')
+	if 'tcc'   in cc { return .tinyc }
+	if 'clang' in cc { return .clang }
+	if 'mingw' in cc { return .mingw }
+	if 'msvc'  in cc { return .msvc  }
+	return .gcc
 }
 
 // `app.$action()` (`action` is a string)
