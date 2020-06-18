@@ -308,10 +308,11 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 	g.println('mov64 $reg, $val')
 }
 
-fn (mut g Gen) mov_from_reg(var_offset int, reg Register) {
-	// 89 7d fc                mov    DWORD PTR [rbp-0x4],edi
+fn (mut g Gen) mov_reg_to_rbp(var_offset int, reg Register) {
+	// 89 7d fc     mov DWORD PTR [rbp-0x4],edi
 	g.write8(0x89)
 	match reg {
+		.eax, .rax { g.write8(0x45) }
 		.edi, .rdi { g.write8(0x7d) }
 		.rsi { g.write8(0x75) }
 		.rdx { g.write8(0x55) }
@@ -319,21 +320,22 @@ fn (mut g Gen) mov_from_reg(var_offset int, reg Register) {
 		else { verror('mov_from_reg $reg') }
 	}
 	g.write8(0xff - var_offset + 1)
-	g.println('mov DWORD PTR[rbp-$var_offset.hex()],$reg')
+	g.println('mov DWORD PTR[rbp-$var_offset.hex2()],$reg')
 }
 
-fn (mut g Gen) mov_rbp_offset(reg Register, var_offset int) {
+fn (mut g Gen) mov_var_to_reg(reg Register, var_offset int) {
 	// 8b 7d f8          mov edi,DWORD PTR [rbp-0x8]
 	g.write8(0x8b)
 	match reg {
+		.eax, .rax { g.write8(0x45) }
 		.edi, .rdi { g.write8(0x7d) }
 		.rsi { g.write8(0x75) }
 		.rdx { g.write8(0x55) }
 		.rcx { g.write8(0x4d) }
-		else { verror('mov_rbp_offset $reg') }
+		else { verror('mov_var_to_reg $reg') }
 	}
 	g.write8(0xff - var_offset + 1)
-	g.println('mov $reg,DWORD PTR[rbp-$var_offset]')
+	g.println('mov $reg,DWORD PTR[rbp-$var_offset.hex2()]')
 }
 
 fn (mut g Gen) call(addr int) {
@@ -342,7 +344,7 @@ fn (mut g Gen) call(addr int) {
 	// +5 is to get the posistion "e8 xx xx xx xx"
 	// Not sure about the -1.
 	rel := 0xffffffff - (g.buf.len + 5 - addr - 1)
-	// println('call addr=$addr.hex() rel_addr=$rel.hex() pos=$g.buf.len')
+	// println('call addr=$addr.hex2() rel_addr=$rel.hex2() pos=$g.buf.len')
 	g.write8(0xe8)
 	g.write32(rel)
 	// g.println('fn call')
@@ -387,7 +389,7 @@ pub fn (mut g Gen) sub32(reg Register, val int) {
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write32(val)
-	g.println('sub32 $reg,0x$val.hex()')
+	g.println('sub32 $reg,$val.hex2()')
 }
 
 pub fn (mut g Gen) sub8(reg Register, val int) {
@@ -395,7 +397,7 @@ pub fn (mut g Gen) sub8(reg Register, val int) {
 	g.write8(0x83)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write8(val)
-	g.println('sub8 $reg,0x$val.hex()')
+	g.println('sub8 $reg,$val.hex2()')
 }
 
 pub fn (mut g Gen) add(reg Register, val int) {
@@ -403,7 +405,7 @@ pub fn (mut g Gen) add(reg Register, val int) {
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write32(val)
-	g.println('add $reg,0x$val.hex()')
+	g.println('add $reg,$val.hex2()')
 }
 
 pub fn (mut g Gen) add8(reg Register, val int) {
@@ -412,7 +414,27 @@ pub fn (mut g Gen) add8(reg Register, val int) {
 	// g.write8(0xe8 + reg) // TODO rax is different?
 	g.write8(0xc4)
 	g.write8(val)
-	g.println('add8 $reg,0x$val.hex()')
+	g.println('add8 $reg,$val.hex2()')
+}
+
+fn (mut g Gen) add8_var(reg Register, var_offset int) {
+	g.write8(0x03)
+	match reg {
+		.eax, .rax { g.write8(0x45) }
+		else { verror('add8_var') }
+	}
+	g.write8(0xff - var_offset + 1)
+	g.println('add8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
+}
+
+fn (mut g Gen) sub8_var(reg Register, var_offset int) {
+	g.write8(0x2b)
+	match reg {
+		.eax, .rax { g.write8(0x45) }
+		else { verror('sub8_var') }
+	}
+	g.write8(0xff - var_offset + 1)
+	g.println('sub8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
 }
 
 fn (mut g Gen) leave() {
@@ -542,10 +564,10 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 			}
 			ast.Ident {
 				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`
-				offset := g.get_var_offset(it.name)
-				println('i=$i fn name= $name offset=$offset')
+				var_offset := g.get_var_offset(it.name)
+				println('i=$i fn name= $name offset=$var_offset')
 				println(int(fn_arg_registers[i]))
-				g.mov_rbp_offset(fn_arg_registers[i], offset)
+				g.mov_var_to_reg(fn_arg_registers[i], var_offset)
 			}
 			else {
 				verror('unhandled call_fn node: ' + typeof(expr))
@@ -608,6 +630,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
 		ast.ArrayInit {}
+		ast.BoolLiteral {}
 		ast.CallExpr {
 			if it.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := it.args[0].expr
@@ -628,7 +651,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.StringLiteral {}
 		ast.StructInit {}
-		ast.BoolLiteral {}
 		else {
 			println(term.red('x64.expr(): unhandled node: ' + typeof(node)))
 		}
@@ -667,7 +689,7 @@ fn (mut g Gen) allocate_var(name string, size, initial_val int) {
 	// Generate the value assigned to the variable
 	g.write32(initial_val)
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
-	g.println('mov DWORD [rbp-0x$n],$initial_val (Allocate var `$name`)')
+	g.println('mov DWORD [rbp-$n.hex2()],$initial_val (Allocate var `$name`)')
 }
 
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
@@ -684,6 +706,10 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			ast.InfixExpr {
 				g.infix_expr(it)
 				g.allocate_var(name, 4, 0)
+				// `mov DWORD PTR [rbp-0x8],eax`
+				offset := g.get_var_offset(name)
+				println('ASS $name offset=$offset.hex2()')
+				g.mov_reg_to_rbp(offset, .eax)
 			}
 			else {
 				g.error_with_pos('assign_stmt unhandled expr: ' + typeof(right), right.position())
@@ -695,9 +721,21 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	println('infix expr op=$node.op')
-	match node.op {
-		.plus {}
+	if node.left is ast.InfixExpr {
+		verror('only simple expressions are supported right now (not more than 2 operands)')
+	}
+	match node.left {
+		ast.Ident { g.mov_var_to_reg(.eax, g.get_var_offset(it.name)) }
 		else {}
+	}
+	if node.right is ast.Ident {
+		ident := node.right as ast.Ident
+		var_offset := g.get_var_offset(ident.name)
+		match node.op {
+			.plus { g.add8_var(.eax, var_offset) }
+			.minus { g.sub8_var(.eax, var_offset) }
+			else {}
+		}
 	}
 }
 
@@ -751,7 +789,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	println(term.green('\n$node.name:'))
 	g.stack_var_pos = 0
 	is_main := node.name == 'main'
-	// println('saving addr $node.name $g.buf.len.hex()')
+	// println('saving addr $node.name $g.buf.len.hex2()')
 	if is_main {
 		g.save_main_fn_addr()
 	} else {
@@ -773,7 +811,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.allocate_var(name, 4, 0)
 		// `mov DWORD PTR [rbp-0x4],edi`
 		offset += 4
-		g.mov_from_reg(offset, fn_arg_registers[i])
+		g.mov_reg_to_rbp(offset, fn_arg_registers[i])
 	}
 	//
 	g.stmts(node.stmts)

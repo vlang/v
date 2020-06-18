@@ -321,6 +321,10 @@ pub fn (nn int) hex() string {
 	return u32(nn).hex()
 }
 
+pub fn (n int) hex2() string {
+	return '0x' + n.hex()
+}
+
 pub fn (nn u64) hex() string {
 	if nn == 0 {
 		return '0'

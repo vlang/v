@@ -516,6 +516,7 @@ fn (mut c Builder) cc_linux_cross() {
 		//'SYSROOT/lib/x86_64-linux-gnu/libcrypto.so'
 		'-lcrypto'
 		'-lssl'
+		'-lpthread'
 		//'-dynamic-linker /usr/lib/x86_64-linux-gnu/libcrypto.so'
 		//'SYSROOT/lib/x86_64-linux-gnu/libssl.a'
 		'$sysroot/crtn.o'
