@@ -284,6 +284,7 @@ fn os_from_string(os string) pref.OS {
 pub fn cc_from_string(cc_str string) pref.CC {
 	cc := cc_str.replace('\\', '/').split('/').last().all_before('.')
 	if 'tcc'   in cc { return .tinyc }
+	if 'tinyc' in cc { return .tinyc }
 	if 'clang' in cc { return .clang }
 	if 'mingw' in cc { return .mingw }
 	if 'msvc'  in cc { return .msvc  }
