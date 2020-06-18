@@ -286,8 +286,8 @@ jobs:
     #  with:
     #    node-version: 12.x
     - name: Build
+      # We need to move gcc and msvc, so that V doesn't find a C compiler
       run: |
-#       We need to move gcc and msvc, so that V doesn't find a C compiler
         for /f "usebackq tokens=*" %i in (`where gcc.exe`) do move /Y "%i" "%i.old"
         for /f "usebackq tokens=*" %i in (`where vswhere.exe`) do move /Y "%i" "%i.old"
         .\make.bat
