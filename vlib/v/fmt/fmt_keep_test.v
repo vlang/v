@@ -45,7 +45,8 @@ fn test_fmt() {
 		}
 		table := table.new_table()
 		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{
-				is_fmt: true
+				is_fmt: true,
+				ccompiler: 'gcc'
 			}, &ast.Scope{
 				parent: 0
 		})
