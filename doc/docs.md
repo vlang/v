@@ -1177,6 +1177,40 @@ To check whether a sum type is a certain type, use `is`:
 println(expr is IfExpr)
 ```
 
+To cast a sum type to one of it's variants you use `as`:
+
+```v
+bin_expr := expr as BinaryExpr
+```
+
+You can also use match to determine the variant & and cast to it at the same time.
+There are 3 ways to access the cast variant inside a match branch:
+- the `it` variable
+- the shadowed match variable
+- using `as` to specify a variable name
+
+```v
+    fn binary_expr(bx BinaryExpr) {...}
+    fn unary_expr(ux UnaryExpr) {...}
+    fn if_expr(ix IfExpr) {...}
+
+    // using `it`
+	match expr {
+		BinaryExpr { binary_expr(it) }
+		...
+	}
+    // using the shadowed variable, in this case `expr`
+	match expr {
+		UnaryExpr { unary_expr(expr) }
+		...
+	}
+    // using `as` so specify a variable
+	match expr as actual_expr {
+		IfExpr { if_expr(actual_expr) }
+		...
+	}
+```
+
 ## Option/Result types and error handling
 
 ```v
