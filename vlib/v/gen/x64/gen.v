@@ -559,8 +559,7 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 		match expr {
 			ast.IntegerLiteral {
 				// `foo(2)` => `mov edi,0x2`
-				int_lit := expr as ast.IntegerLiteral
-				g.mov(fn_arg_registers[i], int_lit.val.int())
+				g.mov(fn_arg_registers[i], it.val.int())
 			}
 			ast.Ident {
 				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`

@@ -170,19 +170,19 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 				}
 			}
 			ast.TypeDecl {
-				type_decl := stmt as ast.TypeDecl
-				if type_decl is ast.AliasTypeDecl {
-					alias_decl := type_decl as ast.AliasTypeDecl
+				// type_decl := stmt as ast.TypeDecl
+				if it is ast.AliasTypeDecl {
+					alias_decl := it as ast.AliasTypeDecl
 					if alias_decl.is_pub {
 						c.warn('type alias `$alias_decl.name` $no_pub_in_main_warning', alias_decl.pos)
 					}
-				} else if type_decl is ast.SumTypeDecl {
-					sum_decl := type_decl as ast.SumTypeDecl
+				} else if it is ast.SumTypeDecl {
+					sum_decl := it as ast.SumTypeDecl
 					if sum_decl.is_pub {
 						c.warn('sum type `$sum_decl.name` $no_pub_in_main_warning', sum_decl.pos)
 					}
-				} else if type_decl is ast.FnTypeDecl {
-					fn_decl := type_decl as ast.FnTypeDecl
+				} else if it is ast.FnTypeDecl {
+					fn_decl := it as ast.FnTypeDecl
 					if fn_decl.is_pub {
 						c.warn('type alias `$fn_decl.name` $no_pub_in_main_warning', fn_decl.pos)
 					}

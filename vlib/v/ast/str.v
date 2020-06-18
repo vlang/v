@@ -126,22 +126,33 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 			}
 		}
 	}
+	// TODO: remove sponge - put back match
 	if !needs_braces {
 		mut sub_expr := lit.exprs[i]
 		for {
-			match sub_expr {
-				Ident {
-					break
-				}
-				SelectorExpr {
-					sub_expr = it.expr
-					continue
-				}
-				else {
-					needs_braces = true
-					break
-				}
+			if sub_expr is Ident { break }
+			else if sub_expr is SelectorExpr {
+				se := sub_expr as SelectorExpr
+				sub_expr = se.expr
+				continue
 			}
+			else {
+				needs_braces = true
+				break
+			}
+			// match sub_expr {
+			// 	Ident {
+			// 		break
+			// 	}
+			// 	SelectorExpr {
+			// 		sub_expr = it.expr
+			// 		continue
+			// 	}
+			// 	else {
+			// 		needs_braces = true
+			// 		break
+			// 	}
+			// }
 		}
 	}
 	if needs_fspec {

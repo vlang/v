@@ -166,6 +166,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			node = p.index_expr(node)
 			p.is_stmt_ident = is_stmt_ident
 		} else if p.tok.kind == .key_as {
+			// sum type match `match x as alias` so return early
+			if p.inside_match {
+				return node
+			}
+			// sum type as cast `x := SumType as Variant`
 			pos := p.tok.position()
 			p.next()
 			typ = p.parse_type()

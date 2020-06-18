@@ -1227,7 +1227,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 }
 
 fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
-	match val {
+	// TODO: remove sponge
+	tmp_val := val
+	match tmp_val {
 		ast.Ident {
 			mut has_var := false
 			for lx in left {
@@ -1987,6 +1989,10 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					g.write('\t$it_type* it = ($it_type*)')
 					g.expr(node.cond)
 					g.writeln('.obj; // ST it')
+					if node.var_name.len > 0 {
+						// for now we just copy it
+						g.writeln('\t$it_type* $node.var_name = it;')
+					}
 				}
 				else {
 					verror('match sum type')
