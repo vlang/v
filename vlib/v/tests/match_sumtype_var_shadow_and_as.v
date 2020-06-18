@@ -3,12 +3,13 @@ struct Dog{name string}
 
 type Animal = Cat | Dog
 
-fn main() {
-	cat := Cat{name: 'cat'}
-	dog := Cat{name: 'dog'}
+const (
+	cat = Cat{name: 'cat'}
+	dog = Cat{name: 'dog'}
+)
+
+fn test_shadow() {
 	mut animal := Animal{}
-	
-	// test shaddow
 	animal = cat
 	match animal {
 		Cat {
@@ -18,7 +19,10 @@ fn main() {
 			assert false
 		}
 	}
-	// test as
+}
+
+fn test_as() {
+	mut animal := Animal{}
 	animal = dog
 	match animal as animal_kind {
 		Dog {
