@@ -32,7 +32,7 @@ pub enum Backend {
 	x64          // The x64 backend
 }
 
-pub enum CC {
+pub enum CompilerType {
 	tinyc
 	clang
 	mingw

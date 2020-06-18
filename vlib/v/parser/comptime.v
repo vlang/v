@@ -13,7 +13,7 @@ import vweb.tmpl
 const (
 	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
 		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
-	supported_ccompilers = ['tinyc', 'clang', 'mingw', 'msvc', 'gcc', 'cplusplus']
+	supported_ccompilers = ['tinyc', 'clang', 'mingw', 'msvc', 'gcc']
 )
 
 fn (mut p Parser) resolve_vroot(flag string) string {
@@ -281,7 +281,7 @@ fn os_from_string(os string) pref.OS {
 }
 
 // Helper function to convert string names to CC enum
-pub fn cc_from_string(cc_str string) pref.CC {
+pub fn cc_from_string(cc_str string) pref.CompilerType {
 	cc := cc_str.replace('\\', '/').split('/').last().all_before('.')
 	if 'tcc'   in cc { return .tinyc }
 	if 'tinyc' in cc { return .tinyc }
