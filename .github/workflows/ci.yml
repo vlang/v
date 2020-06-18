@@ -274,6 +274,43 @@ jobs:
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 
+  windows-tcc:
+    runs-on: windows-2019
+    # We are simulating a user with no cc installed.
+    # This way, v's cc detection on Windows is also tested.
+    # env:
+    #   VFLAGS: -cc tcc
+    steps:
+    - uses: actions/checkout@v2
+    #- uses: actions/setup-node@v1
+    #  with:
+    #    node-version: 12.x
+    - name: Build
+      run: |
+#       We need to move gcc and msvc, so that V doesn't find a C compiler
+        for /f "usebackq tokens=*" %i in (`where gcc.exe`) do move /Y "%i" "%i.old"
+        for /f "usebackq tokens=*" %i in (`where vswhere.exe`) do move /Y "%i" "%i.old"
+        .\make.bat
+    - name: Test new v.c
+      run: .\v.exe -o v.c cmd/v && tcc -w -ladvapi32 -bt10 v_win.c
+    - name: Install dependencies
+      run: |
+        .\v.exe setup-freetype
+        .\.github\workflows\windows-install-sdl.bat
+    - name: Fixed tests
+      run: |
+        .\v.exe test-fixed
+#    - name: Test
+#      run: |
+#        .\v.exe -silent test-compiler
+      ## v.js dosent work on windows
+        #.\v.exe -o hi.js examples/hello_v_js.v
+        #node hi.js
+#    - name: Test v binaries
+#      run: ./v -silent build-vbinaries
+#    - name: v2 self compilation
+#      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+
   docs-line-len-check:
     runs-on: ubuntu-18.04
     steps:
