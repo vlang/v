@@ -91,30 +91,33 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		match lx {
 			ast.Ident {
 				if op == .decl_assign {
+					if p.scope.known_var(lx.name) {
+						p.error_with_pos('redefinition of `$lx.name`', lx.pos)
+					}
 					if left.len == right.len {
-						p.scope.register(it.name, ast.Var{
-							name: it.name
+						p.scope.register(lx.name, ast.Var{
+							name: lx.name
 							expr: right[i]
-							is_mut: it.is_mut || p.inside_for
-							pos: it.pos
+							is_mut: lx.is_mut || p.inside_for
+							pos: lx.pos
 						})
 					} else {
-						p.scope.register(it.name, ast.Var{
-							name: it.name
-							is_mut: it.is_mut || p.inside_for
-							pos: it.pos
+						p.scope.register(lx.name, ast.Var{
+							name: lx.name
+							is_mut: lx.is_mut || p.inside_for
+							pos: lx.pos
 						})
 					}
 				}
 			}
 			ast.IndexExpr {
-				it.is_setter = true
+				lx.is_setter = true
 			}
 			ast.ParExpr {}
 			ast.PrefixExpr {}
 			ast.SelectorExpr {
 				if op == .decl_assign {
-					p.error_with_pos('struct fields can only be declared during the initialization', it.pos)
+					p.error_with_pos('struct fields can only be declared during the initialization', lx.pos)
 				}
 			}
 			else {}
