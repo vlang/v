@@ -94,7 +94,7 @@ pub enum CommentsMode {
 }
 
 // new scanner from file.
-pub fn new_scanner_file(file_path string, comments_mode CommentsMode) &Scanner {
+pub fn new_scanner_file(file_path string, comments_mode CommentsMode, is_fmt bool) &Scanner {
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
@@ -102,20 +102,20 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode) &Scanner {
 		verror(err)
 		return voidptr(0)
 	}
-	mut s := new_scanner(raw_text, comments_mode) // .skip_comments)
+	mut s := new_scanner(raw_text, comments_mode, is_fmt) // .skip_comments)
 	// s.init_fmt()
 	s.file_path = file_path
 	return s
 }
 
 // new scanner from string.
-pub fn new_scanner(text string, comments_mode CommentsMode) &Scanner {
+pub fn new_scanner(text string, comments_mode CommentsMode, is_fmt bool) &Scanner {
 	s := &Scanner{
 		text: text
 		is_print_line_on_error: true
 		is_print_colored_error: true
 		is_print_rel_paths_on_error: true
-		is_fmt: util.is_fmt()
+		is_fmt: is_fmt
 		comments_mode: comments_mode
 	}
 	return s
@@ -883,6 +883,9 @@ fn (mut s Scanner) text_scan() token.Token {
 		`@` {
 			s.pos++
 			name := s.ident_name()
+			if s.is_fmt {
+				return s.new_token(.name, '@' + name, name.len+1)
+			}
 			// @FN => will be substituted with the name of the current V function
 			// @MOD => will be substituted with the name of the current V module
 			// @STRUCT => will be substituted with the name of the current V struct
@@ -1204,14 +1207,14 @@ fn (mut s Scanner) ident_string() string {
 			s.error('0 character in a string literal')
 		}
 		// ${var} (ignore in vfmt mode)
-		if c == `{` && prevc == `$` && !is_raw && !s.is_fmt && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+		if c == `{` && prevc == `$` && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
 			s.is_inside_string = true
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
 		}
 		// $var
-		if util.is_name_char(c) && prevc == `$` && !s.is_fmt && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+		if util.is_name_char(c) && prevc == `$` && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2

@@ -44,8 +44,10 @@ fn test_fmt() {
 			continue
 		}
 		table := table.new_table()
-		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{}, &ast.Scope{
-			parent: 0
+		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{
+				is_fmt: true
+			}, &ast.Scope{
+				parent: 0
 		})
 		result_ocontent := fmt.fmt(file_ast, table, false)
 		if expected_ocontent != result_ocontent {

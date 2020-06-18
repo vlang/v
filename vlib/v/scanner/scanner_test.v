@@ -45,7 +45,7 @@ fn fn_name_mod_level_high_order(cb fn(int)) {
 }
 
 fn scan_kinds(text string) []token.Kind {
-	mut scanner := new_scanner(text, .skip_comments)
+	mut scanner := new_scanner(text, .skip_comments, false)
 	mut token_kinds := []token.Kind{}
 	for {
 		tok := scanner.scan()

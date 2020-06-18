@@ -5,7 +5,6 @@ module fmt
 
 import v.ast
 import v.table
-import v.util
 import strings
 
 const (
@@ -29,6 +28,7 @@ pub mut:
 	file              ast.File
 	did_imports       bool
 	is_assign         bool
+	is_inside_interp  bool
 	auto_imports      []string // automatically inserted imports that the user forgot to specify
 	import_pos        int // position of the imports in the resulting string for later autoimports insertion
 	used_imports      []string // to remove unused imports
@@ -619,8 +619,12 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.InfixExpr {
 			f.expr(it.left)
-			f.write(' $it.op.str() ')
-			f.wrap_long_line()
+			if f.is_inside_interp {
+				f.write('$it.op.str()')
+			} else {
+				f.write(' $it.op.str() ')
+				f.wrap_long_line()
+			}
 			f.expr(it.right)
 		}
 		ast.IndexExpr {
@@ -717,7 +721,19 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.StringInterLiteral {
 			// TODO: this code is very similar to ast.Expr.str()
-			f.write("'")
+			mut contains_single_quote := false
+			for val in it.vals {
+				if val.contains("'") {
+					contains_single_quote = true
+					break
+				}
+			}
+			if contains_single_quote {
+				f.write('"')
+			} else {
+				f.write("'")
+			}
+			f.is_inside_interp = true
 			for i, val in it.vals {
 				f.write(val)
 				if i >= it.exprs.len {
@@ -734,7 +750,12 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.expr(it.exprs[i])
 				}
 			}
-			f.write("'")
+			f.is_inside_interp = false
+			if contains_single_quote {
+				f.write('"')
+			} else {
+				f.write("'")
+			}
 		}
 		ast.StructInit {
 			f.struct_init(it)
@@ -782,7 +803,11 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		}
 		f.expr(arg.expr)
 		if i < args.len - 1 {
-			f.write(', ')
+			if f.is_inside_interp {
+				f.write(',')
+			} else {
+				f.write(', ')
+			}
 		}
 	}
 }
