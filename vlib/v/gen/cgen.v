@@ -3177,36 +3177,58 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.write(tmp)
 }
 
-// `nums.insert(0, 2)`
+// `nums.insert(0, 2)` `nums.insert(0, [2,3,4])`
 fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
-	sym := g.table.get_type_symbol(node.left_type)
-	if sym.kind != .array {
-		verror('insert() requires an array')
+	left_sym := g.table.get_type_symbol(node.left_type)
+	left_info := left_sym.info as table.Array
+	elem_type_str := g.typ(left_info.elem_type)
+	arg2_sym := g.table.get_type_symbol(node.args[1].typ)
+	is_arg2_array := arg2_sym.kind == .array
+	if is_arg2_array {
+		g.write('array_insert_many(&')
+	} else {
+		g.write('array_insert(&')
 	}
-	info := sym.info as table.Array
-	elem_type_str := g.typ(info.elem_type)
-	g.write('array_insert(&')
 	g.expr(node.left)
 	g.write(', ')
 	g.expr(node.args[0].expr)
-	g.write(', &($elem_type_str[]){')
-	g.expr(node.args[1].expr)
-	g.write('});')
+	if is_arg2_array {
+		g.write(', ')
+		g.expr(node.args[1].expr)
+		g.write('.data, ')
+		g.expr(node.args[1].expr)
+		g.write('.len)')
+	} else {
+		g.write(', &($elem_type_str[]){')
+		g.expr(node.args[1].expr)
+		g.write('})')
+	}
 }
 
-// `nums.prepend(2)`
+// `nums.prepend(2)` `nums.prepend([2,3,4])`
 fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
-	sym := g.table.get_type_symbol(node.left_type)
-	if sym.kind != .array {
-		verror('prepend() requires an array')
+	left_sym := g.table.get_type_symbol(node.left_type)
+	left_info := left_sym.info as table.Array
+	elem_type_str := g.typ(left_info.elem_type)
+	arg_sym := g.table.get_type_symbol(node.args[0].typ)
+	is_arg_array := arg_sym.kind == .array
+	if is_arg_array {
+		g.write('array_prepend_many(&')
+	} else {
+		g.write('array_prepend(&')
 	}
-	info := sym.info as table.Array
-	elem_type_str := g.typ(info.elem_type)
-	g.write('array_prepend(&')
 	g.expr(node.left)
-	g.write(', &($elem_type_str[]){')
-	g.expr(node.args[0].expr)
-	g.write('});')
+	if is_arg_array {
+		g.write(', ')
+		g.expr(node.args[0].expr)
+		g.write('.data, ')
+		g.expr(node.args[0].expr)
+		g.write('.len)')
+	} else {
+		g.write(', &($elem_type_str[]){')
+		g.expr(node.args[0].expr)
+		g.write('})')
+	}
 }
 
 [inline]

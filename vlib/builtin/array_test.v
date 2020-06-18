@@ -134,6 +134,15 @@ fn test_insert() {
 	assert b[0] == f64(1.1)
 }
 
+fn test_insert_many() {
+	mut a := [3, 4]
+	a.insert(0, [1, 2])
+	assert a == [1,2,3,4]
+	b := [5,6]
+	a.insert(1, b)
+	assert a == [1,5,6,2,3,4]
+}
+
 fn test_prepend() {
 	mut a := []int{}
 	assert a.len == 0
@@ -145,6 +154,15 @@ fn test_prepend() {
 	b.prepend(f64(1.1))
 	assert b.len == 1
 	assert b[0] == f64(1.1)
+}
+
+fn test_prepend_many() {
+	mut a := [3,4]
+	a.prepend([1,2])
+	assert a == [1,2,3,4]
+	b := [5,6]
+	a.prepend(b)
+	assert a == [5,6,1,2,3,4]
 }
 
 fn test_strings() {
@@ -165,7 +183,6 @@ fn test_compare_ints() {
     assert compare_ints(a, a) == 0
 }
 */
-
 
 fn test_repeat() {
 	{

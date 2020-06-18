@@ -136,11 +136,7 @@ pub fn (mut a array) sort_with_compare(compare voidptr) {
 	C.qsort(a.data, a.len, a.element_size, compare)
 }
 
-// TODO array.insert is broken
-// Cannot pass literal or primitive type as it cannot be cast to voidptr.
-// In the current state only that would work:
-// i := 3
-// a.insert(0, &i)
+// array.insert
 pub fn (mut a array) insert(i int, val voidptr) {
 	$if !no_bounds_checking? {
 		if i < 0 || i > a.len {
@@ -154,10 +150,28 @@ pub fn (mut a array) insert(i int, val voidptr) {
 	a.len++
 }
 
-// TODO array.prepend is broken
-// It depends on array.insert
+// array.insert_many
+pub fn (mut a array) insert_many(i int, val voidptr, size int) {
+	$if !no_bounds_checking? {
+		if i < 0 || i > a.len {
+			panic('array.insert_many: index out of range (i == $i, a.len == $a.len)')
+		}
+	}
+	a.ensure_cap(a.len + size)
+	elem_size := a.element_size
+	C.memmove(byteptr(a.data) + (i + size) * elem_size, byteptr(a.data) + i * elem_size, (a.len - i) * elem_size)
+	C.memcpy(byteptr(a.data) + i * elem_size, val, size * elem_size)
+	a.len += size
+}
+
+// array.prepend
 pub fn (mut a array) prepend(val voidptr) {
 	a.insert(0, val)
+}
+
+// array.prepend_many
+pub fn (mut a array) prepend_many(val voidptr, size int) {
+	a.insert_many(0, val, size)
 }
 
 // array.delete deletes array element at the given index
