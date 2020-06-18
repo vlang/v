@@ -35,7 +35,6 @@ fn test_digits() {
 }
 
 fn test_erf() {
-	$if windows { $if tinyc { return } } // TODO
 	assert erf(0) == 0
 	assert erf(1.5) + erf(-1.5) == 0
 	assert erfc(0) == 1
@@ -44,7 +43,6 @@ fn test_erf() {
 }
 
 fn test_gamma() {
-	$if windows { $if tinyc { return } } // TODO
 	assert gamma(1) == 1
 	assert gamma(5) == 24
 	sval := '2.453737'

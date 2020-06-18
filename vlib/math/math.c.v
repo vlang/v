@@ -83,11 +83,6 @@ pub fn atan2(a, b f64) f64 {
 // cbrt calculates cubic root.
 [inline]
 pub fn cbrt(a f64) f64 {
-	$if tinyc {
-		$if windows {
-			return pow(a, 1.0 / 3)
-		}
-	}
 	return C.cbrt(a)
 }
 
@@ -124,35 +119,18 @@ pub fn exp(a f64) f64 {
 // erf computes the error function value
 [inline]
 pub fn erf(a f64) f64 {
-	$if tinyc {
-		$if windows {
-			// TODO
-			panic('`math.erf`: not implemented in tcc')
-		}
-	}
 	return C.erf(a)
 }
 
 // erfc computes the complementary error function value
 [inline]
 pub fn erfc(a f64) f64 {
-	$if tinyc {
-		$if windows {
-			// TODO
-			panic('`math.erfc`: not implemented in tcc')
-		}
-	}
 	return C.erfc(a)
 }
 
 // exp2 returns the base-2 exponential function of a (math.pow(2, a)).
 [inline]
 pub fn exp2(a f64) f64 {
-	$if tinyc {
-		$if windows {
-			return pow(2, a)
-		}
-	}
 	return C.exp2(a)
 }
 
@@ -171,12 +149,6 @@ pub fn fmod(a, b f64) f64 {
 // gamma computes the gamma function value
 [inline]
 pub fn gamma(a f64) f64 {
-	$if tinyc {
-		$if windows {
-			// TODO
-			panic('`math.tgamma`: not implemented in tcc')
-		}
-	}
 	return C.tgamma(a)
 }
 
@@ -195,11 +167,6 @@ pub fn log(a f64) f64 {
 // log2 calculates base-2 logarithm of the provided value.
 [inline]
 pub fn log2(a f64) f64 {
-	$if tinyc {
-		$if windows {
-			return log10(a) / log10(2)
-		}
-	}
 	return C.log2(a)
 }
 
@@ -212,12 +179,6 @@ pub fn log10(a f64) f64 {
 // log_gamma computes the log-gamma function value
 [inline]
 pub fn log_gamma(a f64) f64 {
-	$if tinyc {
-		$if windows {
-			// TODO
-			panic('`math.lgamma`: not implemented in tcc')
-		}
-	}
 	return C.lgamma(a)
 }
 
