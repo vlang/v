@@ -42,7 +42,7 @@ pub fn (x f64) strlong() string {
 }
 
 // ----- f32 to string functions -----
-// str return a f32 as string in suitable  notation
+// str return a f32 as string in suitable notation
 [inline]
 pub fn (x f32) str() string {
 	abs_x := f32_abs(x)
