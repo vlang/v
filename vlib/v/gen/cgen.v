@@ -4334,7 +4334,9 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 	}
 	len := it.exprs.len
 	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
-	g.writeln('')
+	if len > 8 {
+		g.writeln('')
+	}
 	for i, expr in it.exprs {
 		if it.is_interface {
 			// sym := g.table.get_type_symbol(it.interface_types[i])
@@ -4345,9 +4347,13 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		if it.is_interface {
 			g.write(')')
 		}
-		g.write(', ')
+		if i != len - 1 {
+			g.write(', ')
+		}
 	}
-	g.writeln('')
+	if len > 8 {
+		g.writeln('')
+	}
 	g.write('}))')
 }
 
