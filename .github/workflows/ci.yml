@@ -288,8 +288,8 @@ jobs:
     - name: Build
       # We need to move gcc and msvc, so that V doesn't find a C compiler
       run: |
-        for /f "usebackq tokens=*" %i in (`where gcc.exe`) do move /Y "%i" "%i.old"
-        for /f "usebackq tokens=*" %i in (`where vswhere.exe`) do move /Y "%i" "%i.old"
+        'for /f "usebackq tokens=*" %i in (`where gcc.exe`) do move /Y "%i" "%i.old"'     | cmd
+        'for /f "usebackq tokens=*" %i in (`where vswhere.exe`) do move /Y "%i" "%i.old"' | cmd
         .\make.bat
     - name: Test new v.c
       run: .\v.exe -o v.c cmd/v && tcc -w -ladvapi32 -bt10 v_win.c
