@@ -9,19 +9,18 @@ import strconv.ftoa
 // ----- f64 to string functions -----
 // str return a f64 as string in scientific notation, auto display digits limit
 [inline]
-pub fn (d f64) str() string {
-	return ftoa.ftoa_64(d)
-}
-
-[inline]
-pub fn (d any_float) str() string {
-	x := f64(d)
+pub fn (x f64) str() string {
 	abs_x := f64_abs(x)
-	if abs_x >= 0.01 && abs_x < 1.0e16 {
+	if abs_x >= 0.0001 && abs_x < 1.0e6 {
 		return ftoa.f64_to_str_l(x)
 	} else {
 		return ftoa.ftoa_64(x)
 	}
+}
+
+[inline]
+pub fn (d any_float) str() string {
+	return f64(d).str()
 }
 
 // return a string of the input f64 in scientific notation with digit_num deciamals displayed, max 17 digits
@@ -45,8 +44,13 @@ pub fn (x f64) strlong() string {
 // ----- f32 to string functions -----
 // str return a f32 as string in scientific notation, auto display digits limit
 [inline]
-pub fn (d f32) str() string {
-	return ftoa.ftoa_32(d)
+pub fn (x f32) str() string {
+	abs_x := f32_abs(x)
+	if abs_x >= 0.0001 && abs_x < 1.0e6 {
+		return ftoa.f32_to_str_l(x)
+	} else {
+		return ftoa.ftoa_32(x)
+	}
 }
 
 // return a string of the input f32 in scientific notation with digit_num deciamals displayed, max 8 digits
@@ -69,7 +73,7 @@ pub fn (x f32) strlong() string {
 
 // ----- C functions -----
 [inline]
-fn f32_abs(a f32) f32 {
+pub fn f32_abs(a f32) f32 {
 	return if a < 0 {
 		-a
 	} else {
@@ -88,7 +92,7 @@ fn f64_abs(a f64) f64 {
 
 
 [inline]
-fn f32_max(a, b f32) f32 {
+pub fn f32_max(a, b f32) f32 {
 	return if a > b {
 		a
 	} else {
@@ -97,7 +101,7 @@ fn f32_max(a, b f32) f32 {
 }
 
 [inline]
-fn f32_min(a, b f32) f32 {
+pub fn f32_min(a, b f32) f32 {
 	return if a < b {
 		a
 	} else {
@@ -106,7 +110,7 @@ fn f32_min(a, b f32) f32 {
 }
 
 [inline]
-fn f64_max(a, b f64) f64 {
+pub fn f64_max(a, b f64) f64 {
 	return if a > b {
 		a
 	} else {
