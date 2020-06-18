@@ -5,7 +5,7 @@ type Animal = Cat | Dog
 
 const (
 	cat = Cat{name: 'cat'}
-	dog = Cat{name: 'dog'}
+	dog = Dog{name: 'dog'}
 )
 
 fn test_shadow() {
