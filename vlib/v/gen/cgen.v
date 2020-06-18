@@ -599,10 +599,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.gen_assert_stmt(it)
 		}
 		ast.AssignStmt {
-			g.gen_assign_stmt(it)
+			g.gen_assign_stmt(node)
 		}
 		ast.Attr {
-			g.attrs << it.name
+			g.attrs << node.name
 			g.writeln('// Attr: [$it.name]')
 		}
 		ast.Block {
