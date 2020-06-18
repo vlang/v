@@ -1194,22 +1194,24 @@ There are 3 ways to access the cast variant inside a match branch:
     fn unary_expr(ux UnaryExpr) {...}
     fn if_expr(ix IfExpr) {...}
 
-    // using `it`
+        // using `it`
 	match expr {
 		BinaryExpr { binary_expr(it) }
 		...
 	}
-    // using the shadowed variable, in this case `expr`
+        // using the shadowed variable, in this case `expr`
 	match expr {
 		UnaryExpr { unary_expr(expr) }
 		...
 	}
-    // using `as` so specify a variable
+        // using `as` to specify a variable
 	match expr as actual_expr {
 		IfExpr { if_expr(actual_expr) }
 		...
 	}
 ```
+
+Note: shadowing only works when the match expression is a variable. It will not work on struct fields, arrays indexing, or map key lookup.
 
 ## Option/Result types and error handling
 
