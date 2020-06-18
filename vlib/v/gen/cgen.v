@@ -1227,15 +1227,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 }
 
 fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
-	// TODO: remove sponge
-	tmp_val := val
-	match tmp_val {
+	match val as val_expr {
 		ast.Ident {
 			mut has_var := false
 			for lx in left {
 				if lx is ast.Ident {
 					ident := lx as ast.Ident
-					if it.name == ident.name {
+					if val_expr.name == ident.name {
 						g.write('_var_${ident.pos.pos}')
 						has_var = true
 						break
@@ -1247,17 +1245,17 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			}
 		}
 		ast.InfixExpr {
-			g.gen_cross_tmp_variable(left, it.left)
-			g.write(it.op.str())
-			g.gen_cross_tmp_variable(left, it.right)
+			g.gen_cross_tmp_variable(left, val_expr.left)
+			g.write(val_expr.op.str())
+			g.gen_cross_tmp_variable(left, val_expr.right)
 		}
 		ast.PrefixExpr {
-			g.write(it.op.str())
-			g.gen_cross_tmp_variable(left, it.right)
+			g.write(val_expr.op.str())
+			g.gen_cross_tmp_variable(left, val_expr.right)
 		}
 		ast.PostfixExpr {
-			g.gen_cross_tmp_variable(left, it.expr)
-			g.write(it.op.str())
+			g.gen_cross_tmp_variable(left, val_expr.expr)
+			g.write(val_expr.op.str())
 		}
 		else {
 			g.expr(val)
