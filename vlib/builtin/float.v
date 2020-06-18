@@ -7,7 +7,7 @@ import strconv.ftoa
 
 #include <float.h>
 // ----- f64 to string functions -----
-// str return a f64 as string in scientific notation, auto display digits limit
+// str return a f64 as string in suitable notation
 [inline]
 pub fn (x f64) str() string {
 	abs_x := f64_abs(x)
@@ -42,7 +42,7 @@ pub fn (x f64) strlong() string {
 }
 
 // ----- f32 to string functions -----
-// str return a f32 as string in scientific notation, auto display digits limit
+// str return a f32 as string in suitable  notation
 [inline]
 pub fn (x f32) str() string {
 	abs_x := f32_abs(x)
