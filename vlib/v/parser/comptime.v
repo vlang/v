@@ -282,6 +282,7 @@ fn os_from_string(os string) pref.OS {
 
 // Helper function to convert string names to CC enum
 pub fn cc_from_string(cc_str string) pref.CompilerType {
+	if cc_str.len == 0 { return .gcc }
 	cc := cc_str.replace('\\', '/').split('/').last().all_before('.')
 	if 'tcc'   in cc { return .tinyc }
 	if 'tinyc' in cc { return .tinyc }
