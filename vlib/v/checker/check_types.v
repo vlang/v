@@ -96,11 +96,11 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 	// TODO: there is a bug when casting sumtype the other way if its pointer
 	// so until fixed at least show v (not C) error `x(variant) =  y(SumType*)`
 	// if got_type_sym.kind == .sum_type {
-	// 	sum_info := got_type_sym.info as table.SumType
-	// 	// TODO: handle `match SumType { &PtrVariant {} }` currently just checking base
-	// 	if expected.set_nr_muls(0) in sum_info.variants {
-	// 		return true
-	// 	}
+	// sum_info := got_type_sym.info as table.SumType
+	// // TODO: handle `match SumType { &PtrVariant {} }` currently just checking base
+	// if expected.set_nr_muls(0) in sum_info.variants {
+	// return true
+	// }
 	// }
 	if exp_type_sym.kind == .sum_type {
 		sum_info := exp_type_sym.info as table.SumType
@@ -133,10 +133,12 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 [inline]
 fn (c &Checker) check_shift(left_type, right_type table.Type, left_pos, right_pos token.Position) table.Type {
 	if !left_type.is_int() {
-		c.error('cannot shift type ${c.table.get_type_symbol(right_type).name} into non-integer type ${c.table.get_type_symbol(left_type).name}', left_pos)
+		c.error('cannot shift type ${c.table.get_type_symbol(right_type).name} into non-integer type ${c.table.get_type_symbol(left_type).name}',
+			left_pos)
 		return table.void_type
 	} else if !right_type.is_int() {
-		c.error('cannot shift non-integer type ${c.table.get_type_symbol(right_type).name} into type ${c.table.get_type_symbol(left_type).name}', right_pos)
+		c.error('cannot shift non-integer type ${c.table.get_type_symbol(right_type).name} into type ${c.table.get_type_symbol(left_type).name}',
+			right_pos)
 		return table.void_type
 	}
 	return left_type
@@ -269,9 +271,8 @@ pub fn (c &Checker) get_default_fmt(ftyp, typ table.Type) byte {
 		return `p`
 	} else {
 		sym := c.table.get_type_symbol(ftyp)
-		if ftyp in [table.string_type, table.bool_type] || sym.kind in
-		[.enum_, .array, .array_fixed, .struct_, .map] || ftyp.has_flag(.optional) ||
-			sym.has_method('str') {
+		if ftyp in [table.string_type, table.bool_type] || sym.kind in [.enum_, .array, .array_fixed,
+			.struct_, .map] || ftyp.has_flag(.optional) || sym.has_method('str') {
 			return `s`
 		} else {
 			return `_`
@@ -292,8 +293,10 @@ pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type
 		if fmt == `_` { // set default representation for type if none has been given
 			fmt = c.get_default_fmt(ftyp, typ)
 			if fmt == `_` {
-				c.error('no known default format for type `${c.table.get_type_name(ftyp)}`',
+				if typ != table.void_type {
+					c.error('no known default format for type `${c.table.get_type_name(ftyp)}`',
 						node.fmt_poss[i])
+				}
 			} else {
 				node.fmts[i] = fmt
 				node.need_fmts[i] = false
@@ -305,13 +308,12 @@ pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type
 			if node.pluss[i] && !typ.is_number() {
 				c.error('plus prefix only allowd for numbers', node.fmt_poss[i])
 			}
-			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`]) ||
-				(typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`]) ||
-				(typ.is_any_int() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`]) ||
-				(typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`]) ||
-				(typ.is_pointer() && fmt !in [`p`, `x`, `X`]) ||
-				(typ.is_string() && fmt != `s`) ||
-				(typ.idx() in [table.i64_type_idx, table.f64_type_idx] && fmt == `c`) {
+			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`]) || (typ.is_signed() &&
+				fmt !in [`d`, `x`, `X`, `o`, `c`]) || (typ.is_any_int() && fmt !in [`d`, `c`, `x`, `X`, `o`,
+				`u`, `x`, `X`, `o`]) || (typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`]) || (typ.is_pointer() &&
+				fmt !in [`p`, `x`, `X`]) || (typ.is_string() && fmt != `s`) || (typ.idx() in [table.i64_type_idx,
+				table.f64_type_idx
+			] && fmt == `c`) {
 				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
 					node.fmt_poss[i])
 			}

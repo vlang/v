@@ -277,11 +277,11 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 			// TODO: Implement interfaces
 			styp = 'interface'
 		}
+	}
 		/* else {
 			println('jsgen.typ: Unhandled type $t')
 			styp = sym.name
 		} */
-	}
 	if styp.starts_with('JS.') { return styp[3..] }
 	return styp
 }
@@ -369,7 +369,7 @@ pub fn (mut g JsGen) write(s string) {
 pub fn (mut g JsGen) writeln(s string) {
 	g.gen_indent()
 	g.out.writeln(s)
-	g.empty_line = true
+g.empty_line = true
 }
 
 pub fn (mut g JsGen) new_tmp_var() string {
@@ -510,11 +510,6 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.UnsafeStmt {
 			g.stmts(it.stmts)
 		}
-		/*
-		else {
-			verror('jsgen.stmt(): bad node ${typeof(node)}')
-		}
-		*/
 	}
 }
 
@@ -639,11 +634,6 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.ComptimeCall {
 			// TODO
 		}
-		/*
-		else {
-			println(term.red('jsgen.expr(): unhandled node "${typeof(node)}"'))
-		}
-		*/
 	}
 }
 

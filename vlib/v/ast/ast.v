@@ -369,9 +369,9 @@ pub mut:
 }
 
 pub fn (i &Ident) var_info() IdentVar {
-	match i.info {
+	match i.info as info {
 		IdentVar {
-			return it
+			return info
 		}
 		else {
 			// return IdentVar{}
@@ -826,7 +826,7 @@ pub struct SqlInsertExpr {
 [inline]
 pub fn (expr Expr) is_blank_ident() bool {
 	match expr {
-		Ident { return it.kind == .blank_ident }
+		Ident { return expr.kind == .blank_ident }
 		else { return false }
 	}
 }
@@ -835,91 +835,91 @@ pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
 	match mut expr {
 		ArrayInit {
-			return it.pos
+			return expr.pos
 		}
 		AsCast {
-			return it.pos
+			return expr.pos
 		}
 		// ast.Ident { }
 		CastExpr {
-			return it.pos
+			return expr.pos
 		}
 		Assoc {
-			return it.pos
+			return expr.pos
 		}
 		BoolLiteral {
-			return it.pos
+			return expr.pos
 		}
 		CallExpr {
-			return it.pos
+			return expr.pos
 		}
 		CharLiteral {
-			return it.pos
+			return expr.pos
 		}
 		EnumVal {
-			return it.pos
+			return expr.pos
 		}
 		FloatLiteral {
-			return it.pos
+			return expr.pos
 		}
 		Ident {
-			return it.pos
+			return expr.pos
 		}
 		IfExpr {
-			return it.pos
+			return expr.pos
 		}
 		// ast.IfGuardExpr { }
 		IndexExpr {
-			return it.pos
+			return expr.pos
 		}
 		InfixExpr {
-			left_pos := it.left.position()
-			right_pos := it.right.position()
+			left_pos := expr.left.position()
+			right_pos := expr.right.position()
 			if left_pos.pos == 0 || right_pos.pos == 0 {
-				return it.pos
+				return expr.pos
 			}
 			return token.Position{
-				line_nr: it.pos.line_nr
+				line_nr: expr.pos.line_nr
 				pos: left_pos.pos
 				len: right_pos.pos - left_pos.pos + right_pos.len
 			}
 		}
 		IntegerLiteral {
-			return it.pos
+			return expr.pos
 		}
 		MapInit {
-			return it.pos
+			return expr.pos
 		}
 		MatchExpr {
-			return it.pos
+			return expr.pos
 		}
 		None {
-			return it.pos
+			return expr.pos
 		}
 		PostfixExpr {
-			return it.pos
+			return expr.pos
 		}
 		// ast.None { }
 		PrefixExpr {
-			return it.pos
+			return expr.pos
 		}
 		// ast.ParExpr { }
 		SelectorExpr {
-			return it.pos
+			return expr.pos
 		}
 		// ast.SizeOf { }
 		StringLiteral {
-			return it.pos
+			return expr.pos
 		}
 		StringInterLiteral {
-			return it.pos
+			return expr.pos
 		}
 		// ast.Type { }
 		StructInit {
-			return it.pos
+			return expr.pos
 		}
 		Likely {
-			return it.pos
+			return expr.pos
 		}
 		// ast.TypeOf { }
 		else {
@@ -930,8 +930,8 @@ pub fn (expr Expr) position() token.Position {
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt { return it.pos }
-		AssignStmt { return it.pos }
+		AssertStmt { return stmt.pos }
+		AssignStmt { return stmt.pos }
 		/*
 		// Attr {
 		// }
@@ -940,19 +940,19 @@ pub fn (stmt Stmt) position() token.Position {
 		// BranchStmt {
 		// }
 		*/
-		Comment { return it.pos }
-		CompIf { return it.pos }
-		ConstDecl { return it.pos }
+		Comment { return stmt.pos }
+		CompIf { return stmt.pos }
+		ConstDecl { return stmt.pos }
 		/*
 		// DeferStmt {
 		// }
 		*/
-		EnumDecl { return it.pos }
-		ExprStmt { return it.pos }
-		FnDecl { return it.pos }
-		ForCStmt { return it.pos }
-		ForInStmt { return it.pos }
-		ForStmt { return it.pos }
+		EnumDecl { return stmt.pos }
+		ExprStmt { return stmt.pos }
+		FnDecl { return stmt.pos }
+		ForCStmt { return stmt.pos }
+		ForInStmt { return stmt.pos }
+		ForStmt { return stmt.pos }
 		/*
 		// GlobalDecl {
 		// }
@@ -965,15 +965,15 @@ pub fn (stmt Stmt) position() token.Position {
 		// HashStmt {
 		// }
 		*/
-		Import { return it.pos }
+		Import { return stmt.pos }
 		/*
 		// InterfaceDecl {
 		// }
 		// Module {
 		// }
 		*/
-		Return { return it.pos }
-		StructDecl { return it.pos }
+		Return { return stmt.pos }
+		StructDecl { return stmt.pos }
 		/*
 		// TypeDecl {
 		// }

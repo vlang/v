@@ -514,7 +514,7 @@ pub fn (mut f Fmt) struct_field_expr(fexpr ast.Expr) {
 	}
 }
 
-fn (f &Fmt) type_to_str(t table.Type) string {
+pub fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
 	for res.ends_with('_ptr') {
 		// type_ptr => &type
@@ -1012,6 +1012,12 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	if it.cond is ast.Ident {
 		ident := it.cond as ast.Ident
 		f.it_name = ident.name
+	} else if it.cond is ast.SelectorExpr {
+		// `x.y as z`
+		// if ident.name != it.var_name && it.var_name != '' {
+		if it.var_name != '' {
+			f.write(' as $it.var_name')
+		}
 	}
 	f.writeln(' {')
 	f.indent++

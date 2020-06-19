@@ -3676,77 +3676,72 @@ fn (g Gen) is_importing_os() bool {
 
 fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	tmp := g.new_tmp_var()
-	// x := node.call_expr as ast.CallEpxr // TODO
-	match node.call_expr {
-		ast.CallExpr {
-			mut name := it.name // .replace('.', '__')
-			if it.is_method {
-				receiver_sym := g.table.get_type_symbol(it.receiver_type)
-				name = receiver_sym.name + '_' + name
-			}
-			name = name.replace('.', '__')
-			g.writeln('// go')
-			wrapper_struct_name := 'thread_arg_' + name
-			wrapper_fn_name := name + '_thread_wrapper'
-			arg_tmp_var := 'arg_' + tmp
-			g.writeln('$wrapper_struct_name *$arg_tmp_var = malloc(sizeof(thread_arg_$name));')
-			if it.is_method {
-				g.write('$arg_tmp_var->arg0 = ')
-				g.expr(it.left)
-				g.writeln(';')
-			}
-			for i, arg in it.args {
-				g.write('$arg_tmp_var->arg${i+1} = ')
-				g.expr(arg.expr)
-				g.writeln(';')
-			}
-			if g.pref.os == .windows {
-				g.writeln('CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_fn_name, $arg_tmp_var, 0,0);')
-			} else {
-				g.writeln('pthread_t thread_$tmp;')
-				g.writeln('pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, $arg_tmp_var);')
-			}
-			g.writeln('// endgo\n')
-			// Register the wrapper type and function
-			if name in g.threaded_fns {
-				return
-			}
-			g.type_definitions.writeln('\ntypedef struct $wrapper_struct_name {')
-			if it.is_method {
-				styp := g.typ(it.receiver_type)
-				g.type_definitions.writeln('\t$styp arg0;')
-			}
-			if it.args.len == 0 {
-				g.type_definitions.writeln('EMPTY_STRUCT_DECLARATION;')
-			} else {
-				for i, arg in it.args {
-					styp := g.typ(arg.typ)
-					g.type_definitions.writeln('\t$styp arg${i+1};')
-				}
-			}
-			g.type_definitions.writeln('} $wrapper_struct_name;')
-			g.type_definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg);')
-			g.gowrappers.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg) {')
-			g.gowrappers.write('\t${name}(')
-			if it.is_method {
-				g.gowrappers.write('arg->arg0')
-				if it.args.len > 0 {
-					g.gowrappers.write(', ')
-				}
-			}
-			for i in 0 .. it.args.len {
-				g.gowrappers.write('arg->arg${i+1}')
-				if i < it.args.len - 1 {
-					g.gowrappers.write(', ')
-				}
-			}
-			g.gowrappers.writeln(');')
-			g.gowrappers.writeln('\treturn 0;')
-			g.gowrappers.writeln('}')
-			g.threaded_fns << name
-		}
-		else {}
+	expr := node.call_expr as ast.CallExpr
+	mut name := expr.name // .replace('.', '__')
+	if expr.is_method {
+		receiver_sym := g.table.get_type_symbol(expr.receiver_type)
+		name = receiver_sym.name + '_' + name
 	}
+	name = name.replace('.', '__')
+	g.writeln('// go')
+	wrapper_struct_name := 'thread_arg_' + name
+	wrapper_fn_name := name + '_thread_wrapper'
+	arg_tmp_var := 'arg_' + tmp
+	g.writeln('$wrapper_struct_name *$arg_tmp_var = malloc(sizeof(thread_arg_$name));')
+	if expr.is_method {
+		g.write('$arg_tmp_var->arg0 = ')
+		g.expr(expr.left)
+		g.writeln(';')
+	}
+	for i, arg in expr.args {
+		g.write('$arg_tmp_var->arg${i+1} = ')
+		g.expr(arg.expr)
+		g.writeln(';')
+	}
+	if g.pref.os == .windows {
+		g.writeln('CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_fn_name, $arg_tmp_var, 0,0);')
+	} else {
+		g.writeln('pthread_t thread_$tmp;')
+		g.writeln('pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, $arg_tmp_var);')
+	}
+	g.writeln('// endgo\n')
+	// Register the wrapper type and function
+	if name in g.threaded_fns {
+		return
+	}
+	g.type_definitions.writeln('\ntypedef struct $wrapper_struct_name {')
+	if expr.is_method {
+		styp := g.typ(expr.receiver_type)
+		g.type_definitions.writeln('\t$styp arg0;')
+	}
+	if expr.args.len == 0 {
+		g.type_definitions.writeln('EMPTY_STRUCT_DECLARATION;')
+	} else {
+		for i, arg in expr.args {
+			styp := g.typ(arg.typ)
+			g.type_definitions.writeln('\t$styp arg${i+1};')
+		}
+	}
+	g.type_definitions.writeln('} $wrapper_struct_name;')
+	g.type_definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg);')
+	g.gowrappers.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg) {')
+	g.gowrappers.write('\t${name}(')
+	if expr.is_method {
+		g.gowrappers.write('arg->arg0')
+		if expr.args.len > 0 {
+			g.gowrappers.write(', ')
+		}
+	}
+	for i in 0 .. expr.args.len {
+		g.gowrappers.write('arg->arg${i+1}')
+		if i < expr.args.len - 1 {
+			g.gowrappers.write(', ')
+		}
+	}
+	g.gowrappers.writeln(');')
+	g.gowrappers.writeln('\treturn 0;')
+	g.gowrappers.writeln('}')
+	g.threaded_fns << name
 }
 
 fn (mut g Gen) as_cast(node ast.AsCast) {
