@@ -871,14 +871,6 @@ pub fn write_file(path, text string) {
 	f.close()
 }
 
-// clear clears current terminal screen.
-pub fn clear() {
-	$if !windows {
-		C.printf('\x1b[2J')
-		C.printf('\x1b[H')
-	}
-}
-
 pub fn on_segfault(f voidptr) {
 	$if windows {
 		return
