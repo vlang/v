@@ -9,6 +9,7 @@ pub fn (mut g Gen) gen_c_main() {
 	}
 	g.out.writeln('')
 	g.gen_c_main_header()
+	g.writeln('\tmain__main();')
 	g.gen_c_main_footer()
 }
 

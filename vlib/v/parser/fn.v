@@ -227,7 +227,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec_type)
-		// p.warn('reg method $type_sym.name . $name ()')
+		p.warn('reg method $type_sym.name . $name ()')
 		type_sym.register_method(table.Fn{
 			name: name
 			args: args
@@ -237,6 +237,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			ctdefine: ctdefine
+			mod: p.mod
 		})
 	} else {
 		if language == .c {
@@ -249,6 +250,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if _ := p.table.find_fn(name) {
 			p.fn_redefinition_error(name)
 		}
+		p.warn('reg functn $name ()')
 		p.table.register_fn(table.Fn{
 			name: name
 			args: args
