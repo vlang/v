@@ -75,3 +75,11 @@ fn supports_escape_sequences(fd int) bool {
 		return is_atty(fd) > 0 && os.getenv('TERM') != 'dumb'
 	}
 }
+
+// clear clears current terminal screen.
+pub fn clear() {
+	$if !windows {
+		C.printf('\x1b[2J')
+		C.printf('\x1b[H')
+	}
+}
