@@ -605,7 +605,12 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true) or {
 			mut err_msg := err
 			if errcode == 1 {
-				err_msg += ' Use the `-m` flag if you are generating docs of a directory with multiple modules inside.'
+				mod_list := get_modules_list(cfg.input_path)
+				println('Available modules:\n==================')
+				for mod in mod_list {
+					println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
+				}
+				err_msg += ' Use the `-m` flag if you are generating docs of a directory containing multiple modules.'
 			}
 			eprintln(err_msg)
 			exit(1)
