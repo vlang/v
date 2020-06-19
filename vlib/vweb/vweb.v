@@ -270,9 +270,14 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		//continue
 	}
 
-	// Serve a static file if it's one
-	static_file := app.vweb.static_files[app.vweb.req.url]
-	mime_type := app.vweb.static_mime_types[app.vweb.req.url]
+	// Serve a static file if it is one
+	// TODO: handle url parameters properly - for now, ignore them
+	mut static_file_name := app.vweb.req.url
+	if static_file_name.contains('?') {
+		static_file_name = static_file_name.all_before('?')
+	}
+	static_file := app.vweb.static_files[static_file_name]
+	mime_type := app.vweb.static_mime_types[static_file_name]
 
 	if static_file != '' && mime_type != '' {
 		data := os.read_file(static_file) or {
