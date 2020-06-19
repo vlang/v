@@ -2515,8 +2515,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		return node.typ
 	}
 	// `{'age': 20}`
-	key0_type := c.expr(node.keys[0])
-	val0_type := c.expr(node.vals[0])
+	key0_type := c.table.mktyp(c.expr(node.keys[0]))
+	val0_type := c.table.mktyp(c.expr(node.vals[0]))
 	for i, key in node.keys {
 		key_i := key as ast.StringLiteral
 		for j in 0 .. i {
