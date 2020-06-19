@@ -1,0 +1,47 @@
+import v.checker
+import v.ast
+import v.table
+
+pub fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) table.Type {
+	for i, expr in node.exprs {
+		ftyp := c.expr(expr)
+		node.expr_types << ftyp
+		typ := c.table.unalias_num_type(ftyp)
+		mut fmt := node.fmts[i]
+		// analyze and validate format specifier
+		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`,
+			`d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`, `_`] {
+				c.error('unknown format specifier `${fmt:c}`',
+					node.fmt_poss[i])
+		}
+			if node.precisions[i] != 0 &&
+				!typ.is_float() {
+				c.error('precision specification only valid for float types',
+					node.fmt_poss[i])
+			}
+			if node.pluss[i] && !typ.is_number() {
+				c.error('plus prefix only allowd for numbers', node.fmt_poss[i])
+			}
+			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`]) || (typ.is_signed() &&
+			   		fmt !in [`d`, `x`, `X`, `o`, `c`]) || (typ.is_any_int()
+				&& fmt !in [`d`, `c`, `x`, `X`, `o`,
+		`u`, `x`, `X`, `o`]) || (typ.is_float() && fmt !in [`E`, `F`,
+				`G`, `e`, `f`, `g`]) || (typ.is_pointer() &&
+			fmt !in [`p`, `x`, `X`]) || (typ.is_string() && fmt != `s`)
+				|| (typ.idx() in [table.i64_type_idx,
+				table.f64_type_idx
+			] && fmt == `c`) {
+				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
+					node.fmt_poss[i])
+			}
+			node.need_fmts[i] = fmt != c.get_default_fmt(ftyp, typ)
+		}
+
+	return table.string_type
+}
+
+fn get_some_val(a_test, b_test, c_test, d_test, e_test, f_test f64) {
+	return a_test*b_test*c_test*
+		d_test+e_test*f_test*a_test*d_test+a_test*
+		b_test*c_test
+}
