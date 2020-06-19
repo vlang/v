@@ -767,6 +767,24 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		call_expr.return_type = info.elem_type
 		call_expr.receiver_type = left_type
 		return call_expr.return_type
+	} else if left_type_sym.kind == .array && method_name in ['insert', 'prepend'] {
+		array_info := left_type_sym.info as table.Array
+		elem_sym := c.table.get_type_symbol(array_info.elem_type)
+		arg_expr := if method_name == 'insert' { call_expr.args[1].expr } else { call_expr.args[0].expr }
+		arg_sym := c.table.get_type_symbol(c.expr(arg_expr))
+		if arg_sym.kind == .array {
+			info := arg_sym.info as table.Array
+			sym := c.table.get_type_symbol(info.elem_type)
+			if sym.kind != elem_sym.kind && ((elem_sym.kind == .int && sym.kind != .any_int) ||
+				(elem_sym.kind == .f64 && sym.kind != .any_float)) {
+				c.error('type mismatch, should use `$elem_sym.name[]`', arg_expr.position())
+			}
+		} else {
+			if arg_sym.kind != elem_sym.kind && ((elem_sym.kind == .int && arg_sym.kind != .any_int) ||
+				(elem_sym.kind == .f64 && arg_sym.kind != .any_float)) {
+				c.error('type mismatch, should use `$elem_sym.name`', arg_expr.position())
+			}
+		}
 	}
 	if method := c.table.type_find_method(left_type_sym, method_name) {
 		if !method.is_pub && !c.is_builtin_mod && !c.pref.is_test && left_type_sym.mod != c.mod &&
