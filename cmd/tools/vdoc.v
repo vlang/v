@@ -806,7 +806,7 @@ fn main() {
 					cfg.output_type = .html
 				}
 			}
-			'-r' {
+			'-readme' {
 				cfg.include_readme = true
 			}
 			'-v' {
