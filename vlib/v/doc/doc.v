@@ -38,7 +38,7 @@ pub mut:
 	comment     string
 	pos         DocPos = DocPos{-1, -1}
 	file_path   string = ''
-	parent_type string = ''
+	attrs       map[string]string
 }
 
 pub fn merge_comments(stmts []ast.Stmt) string {
@@ -182,21 +182,22 @@ pub fn (nodes []DocNode) index_by_name(node_name string) ?int {
 		if node.name != node_name { continue }
 		return i
 	}
-	return error('Node with the name "$node_name" was not found.')
+pub fn (nodes []DocNode) find_children_of(parent string) []DocNode {
+	return nodes.find_nodes_with_attr('parent', parent)
 }
 
-pub fn (nodes []DocNode) find_children_of(parent_type string) []DocNode {
-	if parent_type.len == 0 {
-		return []DocNode{}
+pub fn (nodes []DocNode) find_nodes_with_attr(attr_name string, value string) []DocNode {
+	mut subgroup := []DocNode{}
+	if attr_name.len == 0 {
+		return subgroup
 	}
-	mut children := []DocNode{}
 	for node in nodes {
-		if node.parent_type != parent_type {
+		if !node.attrs.exists(attr_name) || node.attrs[attr_name] != value {
 			continue
 		}
-		children << node
+		subgroup << node
 	}
-	return children
+	return subgroup
 }
 
 fn get_parent_mod(dir string) ?string {
@@ -305,10 +306,7 @@ fn (mut d Doc) generate() ?Doc {
 				module_comment := get_comment_block_right_before(prev_comments)
 				prev_comments = []
 				if 'vlib' !in base_path && !module_comment.starts_with('Copyright (c)') {
-					if module_comment == '' {
-						continue
-					}
-					if module_comment == d.head.comment {
+					if module_comment in ['', d.head.comment] {
 						continue
 					}
 					if d.head.comment != '' {
@@ -349,25 +347,45 @@ fn (mut d Doc) generate() ?Doc {
 				pos: convert_pos(v_files[i], pos)
 				file_path: v_files[i]
 			}
+			if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 {
+				continue
+			}
 			if stmt is ast.FnDecl {
 				fnd := stmt as ast.FnDecl
 				if fnd.receiver.typ != 0 {
-					mut parent_type := d.table.get_type_name(fnd.receiver.typ)
-					if parent_type.starts_with(module_name + '.') {
-						parent_type = parent_type.all_after(module_name + '.')
+					node.attrs['parent'] = d.fmt.type_to_str(fnd.receiver.typ).trim_left('&')
+					p_idx := d.contents.index_by_name(node.attrs['parent'])
+					if p_idx == -1 && node.attrs['parent'] != 'void' {
+						d.contents << DocNode{
+							name: node.attrs['parent']
+							content: ''
+							comment: ''
+							attrs: {'category': 'Structs'}
+						}
 					}
-					node.parent_type = parent_type
 				}
 			}
 			if stmt is ast.ConstDecl {
 				if const_idx == -1 {
 					const_idx = sidx
 				} else {
-					node.parent_type = 'Constants'
+					node.attrs['parent'] = 'Constants'
 				}
 			}
-			if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 {
-				continue
+			match stmt {
+				ast.ConstDecl { node.attrs['category'] = 'Constants' }
+				ast.EnumDecl { node.attrs['category'] = 'Enums' }
+				ast.InterfaceDecl { node.attrs['category'] = 'Interfaces' }
+				ast.StructDecl { node.attrs['category'] = 'Structs' }
+				ast.TypeDecl { node.attrs['category'] = 'Typedefs' }
+				ast.FnDecl { 
+					node.attrs['category'] = if node.attrs['parent'] in ['void', ''] || !node.attrs.exists('parent') {
+						'Functions'
+					} else {
+						'Methods'
+					}
+				}
+				else {}
 			}
 			d.contents << node
 			if d.with_comments && (prev_comments.len > 0) {
