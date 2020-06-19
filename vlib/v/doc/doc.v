@@ -239,7 +239,7 @@ fn get_parent_mod(dir string) ?string {
 	return file_ast.mod.name
 }
 
-pub fn (mut d Doc) generate() ?bool {
+fn (mut d Doc) generate() ?Doc {
 	// get all files
 	base_path := if os.is_dir(d.input_path) { d.input_path } else { os.real_path(os.base_dir(d.input_path)) }
 	project_files := os.ls(base_path) or {
@@ -381,15 +381,12 @@ pub fn (mut d Doc) generate() ?bool {
 		d.fmt.mod2alias = map[string]string{}
 	}
 	d.time_generated = time.now()
-	return true
+	return d
 }
 
 pub fn generate(input_path string, pub_only, with_comments bool) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
-	doc.generate() or {
-		return error_with_code(err, errcode)
-	}
-	return doc
+	return doc.generate()
 }
