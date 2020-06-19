@@ -766,7 +766,9 @@ fn main() {
 			'-s' {
 				cfg.inline_assets = true
 				cfg.serve_http = true
-				cfg.output_type = .html
+				if cfg.output_type == .unset {
+					cfg.output_type = .html
+				}
 			}
 			'-r' {
 				cfg.include_readme = true
