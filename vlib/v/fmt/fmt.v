@@ -11,7 +11,8 @@ const (
 	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t\t'
 	]
-	max_len = 90
+	// when to break a line dependant on penalty
+	max_len = [0, 30, 85, 100]
 )
 
 pub struct Fmt {
@@ -439,7 +440,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				if i < sum_type_names.len - 1 {
 					f.write(' | ')
 				}
-				f.wrap_long_line()
+				f.wrap_long_line(2, true)
 			}
 			// f.write(sum_type_names.join(' | '))
 		}
@@ -629,7 +630,14 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				f.write('$node.op.str()')
 			} else {
 				f.write(' $node.op.str() ')
-				f.wrap_long_line()
+				mut penalty := 3
+				if node.left is ast.InfixExpr || node.left is ast.ParExpr {
+					penalty--
+				}
+				if node.right is ast.InfixExpr || node.right is ast.ParExpr {
+					penalty--
+				}
+				f.wrap_long_line(penalty, true)
 			}
 			f.expr(node.right)
 		}
@@ -788,14 +796,14 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 	}
 }
 
-pub fn (mut f Fmt) wrap_long_line() bool {
-	if f.line_len <= max_len {
+pub fn (mut f Fmt) wrap_long_line(penalty int, add_indent bool) bool {
+	if f.line_len <= max_len[penalty] {
 		return false
 	}
 	if f.out.buf[f.out.buf.len - 1] == ` ` {
 		f.out.go_back(1)
 	}
-	f.write('\n' + tabs[f.indent + 1])
+	f.write('\n' + tabs[f.indent + if add_indent { 1 } else { 0 }])
 	f.line_len = 0
 	return true
 }
@@ -806,7 +814,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 			f.write('mut ')
 		}
 		if i > 0 {
-			f.wrap_long_line()
+			f.wrap_long_line(2, true)
 		}
 		f.expr(arg.expr)
 		if i < args.len - 1 {
@@ -1193,15 +1201,24 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	mut inc_indent := false
 	mut last_line_nr := it.pos.line_nr // to have the same newlines between array elements
 	for i, expr in it.exprs {
+		mut penalty := 3
 		line_nr := expr.position().line_nr
 		if last_line_nr < line_nr {
-			if !inc_indent {
-				f.indent++
-				inc_indent = true
-			}
-			f.writeln('')
+			penalty--
 		}
-		is_new_line := last_line_nr < line_nr || f.wrap_long_line()
+		if i == 0 || it.exprs[i-1] is ast.ArrayInit || it.exprs[i-1] is ast.StructInit ||
+			it.exprs[i-1] is ast.MapInit || it.exprs[i-1] is ast.CallExpr {
+			penalty--
+		}
+		if expr is ast.ArrayInit || expr is ast.StructInit ||
+			expr is ast.MapInit || expr is ast.CallExpr {
+			penalty--
+		}
+		is_new_line := f.wrap_long_line(penalty, !inc_indent)
+		if is_new_line && !inc_indent {
+			f.indent++
+			inc_indent = true
+		}
 		if !is_new_line && i > 0 {
 			f.write(' ')
 		}
