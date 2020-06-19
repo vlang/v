@@ -125,7 +125,6 @@ fn (mut v Builder) cc() {
 	}
 	mut ccompiler := v.pref.ccompiler
 	$if windows {
-		ccompiler = v.find_win_cc() or { panic(no_compiler_error) }
 		if ccompiler == 'msvc' {
 			v.cc_msvc()
 			return
@@ -654,11 +653,7 @@ fn (c &Builder) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
 		if flag.value.ends_with('.o') {
 			rest_of_module_flags := c.get_rest_of_module_cflags(flag)
-			mut ccompiler := c.pref.ccompiler
-			$if windows {
-				ccompiler = c.find_win_cc() or { 'gcc' }
-			}
-			if ccompiler == 'msvc' {
+			if c.pref.ccompiler == 'msvc' {
 				build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
 			} else {
 				c.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
@@ -694,9 +689,8 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	}
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
-	ccompiler := v.find_win_cc() or { v.pref.ccompiler }
-	cppoptions := if ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
-	cmd := '$ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget'
+	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
+	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget'
 	res := os.exec(cmd) or {
 		println('failed thirdparty object build cmd: $cmd')
 		verror(err)
