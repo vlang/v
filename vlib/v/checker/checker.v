@@ -2011,6 +2011,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.SqlExpr {
 			return c.sql_expr(node)
 		}
+		ast.SqlInsertExpr {
+			return c.sql_insert_expr(node)
+		}
 		ast.StringLiteral {
 			if node.language == .c {
 				return table.byteptr_type
@@ -2606,6 +2609,10 @@ fn (mut c Checker) sql_expr(node ast.SqlExpr) table.Type {
 		c.expr(node.where_expr)
 	}
 	return node.typ
+}
+
+fn (mut c Checker) sql_insert_expr(node ast.SqlInsertExpr) table.Type {
+	return table.void_type
 }
 
 fn (mut c Checker) fn_decl(it ast.FnDecl) {

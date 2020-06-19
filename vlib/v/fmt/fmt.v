@@ -360,6 +360,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 			f.writeln('')
 		}
+		ast.SqlInsertExpr {}
 		ast.StructDecl {
 			f.struct_decl(it)
 		}
@@ -714,6 +715,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(')')
 		}
 		ast.SqlExpr {}
+		ast.SqlInsertExpr {}
 		ast.StringLiteral {
 			if node.is_raw {
 				f.write('r')

@@ -13,6 +13,45 @@ const (
 )
 
 fn (mut g Gen) sql_insert_expr(node ast.SqlInsertExpr) {
+	g.writeln('\n\t// sql insert')
+	db_name := g.new_tmp_var()
+	g.sql_stmt_name = g.new_tmp_var()
+	g.writeln('${dbtype}__DB $db_name = $node.db_var_name;')
+	mut q := 'insert into $node.table_name ('
+	for i, field in node.fields {
+		if field.name == 'id' {
+			continue
+		}
+		q += '$field.name'
+		if i < node.fields.len - 1 {
+			q += ', '
+		}
+	}
+	q += ') values ('
+	for i, field in node.fields {
+		if field.name == 'id' {
+			continue
+		}
+		q += '?${i+0}'
+		if i < node.fields.len - 1 {
+			q += ', '
+		}
+	}
+	q += ')'
+	g.writeln('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("$q"));')
+	for i, field in node.fields {
+		if field.name == 'id' {
+			continue
+		}
+		x := '${node.object_var_name}.$field.name'
+		if field.typ == table.string_type {
+			g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i+0}, ${x}.str, ${x}.len, 0);')
+		} else {
+			g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i+0}, $x); //insertl')
+		}
+	}
+	g.writeln('sqlite3_step($g.sql_stmt_name);')
+	g.writeln('sqlite3_finalize($g.sql_stmt_name);')
 }
 
 fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
@@ -48,9 +87,9 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	// g.write('${dbtype}__DB_q_int(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$q')
 	g.sql_stmt_name = g.new_tmp_var()
 	db_name := g.new_tmp_var()
-	g.writeln('\n\t// sql')
+	g.writeln('\n\t// sql select')
 	// g.write('${dbtype}__DB $db_name = *(${dbtype}__DB*)${node.db_var_name}.data;')
-	g.writeln('${dbtype}__DB $db_name = ${node.db_var_name};')
+	g.writeln('${dbtype}__DB $db_name = $node.db_var_name;')
 	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$q')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("$q')
 	if node.has_where && node.where_expr is ast.InfixExpr {
@@ -118,8 +157,8 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 	// not a V variable. Need to distinguish column names from V variables.
 	match expr {
 		ast.InfixExpr {
-			g.expr_to_sql(it.left)
-			match it.op {
+			g.expr_to_sql(expr.left)
+			match expr.op {
 				.eq { g.write(' = ') }
 				.gt { g.write(' > ') }
 				.lt { g.write(' < ') }

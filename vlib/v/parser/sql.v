@@ -6,12 +6,19 @@ module parser
 import v.ast
 import v.table
 
-fn (mut p Parser) sql_expr() ast.SqlExpr {
+fn (mut p Parser) sql_expr() ast.Expr {
 	// `sql db {`
 	p.check_name()
 	db_var_name := p.check_name()
 	p.check(.lcbr)
+	// kind := ast.SqlExprKind.select_
 	//
+	/*
+	if p.tok.kind == .name && p.tok.lit == 'insert' {
+		return p.sql_insert_expr(db_var_name)
+		// kind = .insert
+	}
+	*/
 	p.check(.key_select)
 	n := p.check_name()
 	is_count := n == 'count'
@@ -95,5 +102,37 @@ fn (mut p Parser) sql_expr() ast.SqlExpr {
 		has_where: has_where
 		fields: fields
 		is_array: !query_one
+	}
+}
+
+fn (mut p Parser) sql_insert_expr() ast.SqlInsertExpr {
+	// `sql db {`
+	p.check_name()
+	db_var_name := p.check_name()
+	p.check(.lcbr)
+	// kind := ast.SqlExprKind.select_
+	//
+	p.check_name() // insert
+	mut object_var_name := ''
+	expr := p.expr(0)
+	match expr {
+		ast.Ident { object_var_name = expr.name }
+		else { p.error('can only insert variables') }
+	}
+	n := p.check_name() // into
+	if n != 'into' {
+		p.error('expecting `into`')
+	}
+	table_type := p.parse_type() // `User`
+	sym := p.table.get_type_symbol(table_type)
+	info := sym.info as table.Struct
+	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
+	table_name := sym.name
+	p.check(.rcbr)
+	return ast.SqlInsertExpr{
+		db_var_name: db_var_name
+		table_name: table_name
+		fields: fields
+		object_var_name: object_var_name
 	}
 }

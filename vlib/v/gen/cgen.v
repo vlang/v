@@ -622,6 +622,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.const_decl(node)
 			// }
 		}
+		ast.Comment {}
 		ast.CompIf {
 			g.comp_if(node)
 		}
@@ -660,6 +661,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
+			g.tmp_count = 0
 			mut skip := false
 			pos := g.out.buf.len
 			if g.pref.build_mode == .build_module {
@@ -767,6 +769,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.write_autofree_stmts_when_needed(node)
 			g.return_statement(node)
 		}
+		ast.SqlInsertExpr{
+			g.sql_insert_expr(node)
+			}
 		ast.StructDecl {
 			name := if node.language == .c { node.name.replace('.', '__') } else { c_name(node.name) }
 			// g.writeln('typedef struct {')
@@ -789,9 +794,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.UnsafeStmt {
 			g.stmts(node.stmts)
-		}
-		else {
-			verror('cgen.stmt(): unhandled node ' + typeof(node))
 		}
 	}
 	g.stmt_path_pos.delete(g.stmt_path_pos.len - 1)
@@ -1585,6 +1587,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.SqlExpr {
 			g.sql_select_expr(node)
 		}
+		//ast.SqlInsertExpr {
+			//g.sql_insert_expr(node)
+		//}
 		ast.StringLiteral {
 			if node.is_raw {
 				escaped_val := node.val.replace_each(['"', '\\"', '\\', '\\\\'])

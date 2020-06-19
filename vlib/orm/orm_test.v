@@ -80,12 +80,20 @@ fn test_orm_sqlite() {
 	assert users3.len == 2
 	assert users3[0].age == 29
 	assert users3[1].age == 31
+	//
 
-	//user2 := User{}
-	//x := sql db {
-		//insert user2 into User
-	//}
+	new_user := User{name:'New user' age:30}
+	sql db {
+		insert new_user into User
+	}
 	//db.insert<User>(user2)
+	x := sql db {
+		select from User where id == 4
+	}
+	println(x)
+	assert x.age == 30
+	assert x.id == 4
+	assert x.name == 'New user'
 }
 
 

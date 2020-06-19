@@ -501,6 +501,8 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			}
 			g.gen_return_stmt(it)
 		}
+		ast.SqlInsertExpr{
+			}
 		ast.StructDecl {
 			g.gen_struct_decl(it)
 		}
@@ -606,6 +608,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// TODO
 		}
 		ast.SqlExpr{
+			// TODO
+		}
+		ast.SqlInsertExpr{
 			// TODO
 		}
 		ast.StringInterLiteral {
