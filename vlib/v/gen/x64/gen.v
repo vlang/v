@@ -463,9 +463,9 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, newline bool) {
 	match expr {
 		ast.StringLiteral {
 			if newline {
-				g.gen_print(it.val + '\n')
+				g.gen_print(expr.val + '\n')
 			} else {
-				g.gen_print(it.val)
+				g.gen_print(expr.val)
 			}
 		}
 		else {}
@@ -559,11 +559,11 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 		match expr {
 			ast.IntegerLiteral {
 				// `foo(2)` => `mov edi,0x2`
-				g.mov(fn_arg_registers[i], it.val.int())
+				g.mov(fn_arg_registers[i], expr.val.int())
 			}
 			ast.Ident {
 				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`
-				var_offset := g.get_var_offset(it.name)
+				var_offset := g.get_var_offset(expr.name)
 				println('i=$i fn name= $name offset=$var_offset')
 				println(int(fn_arg_registers[i]))
 				g.mov_var_to_reg(fn_arg_registers[i], var_offset)
@@ -584,20 +584,20 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 fn (mut g Gen) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
-			g.assign_stmt(it)
+			g.assign_stmt(node)
 		}
 		ast.ConstDecl {}
 		ast.ExprStmt {
-			g.expr(it.expr)
+			g.expr(node.expr)
 		}
 		ast.FnDecl {
-			g.fn_decl(it)
+			g.fn_decl(node)
 		}
 		ast.ForStmt {
-			g.for_stmt(it)
+			g.for_stmt(node)
 		}
 		ast.HashStmt {
-			words := it.val.split(' ')
+			words := node.val.split(' ')
 			for word in words {
 				if word.len != 2 {
 					verror('opcodes format: xx xx xx xx')
@@ -615,7 +615,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.StructDecl {}
 		ast.UnsafeStmt {
-			g.stmts(it.stmts)
+			g.stmts(node.stmts)
 		}
 		else {
 			println('x64.stmt(): bad node: ' + typeof(node))
@@ -631,22 +631,22 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.ArrayInit {}
 		ast.BoolLiteral {}
 		ast.CallExpr {
-			if it.name in ['println', 'print', 'eprintln', 'eprint'] {
-				expr := it.args[0].expr
-				g.gen_print_from_expr(expr, it.name in ['println', 'eprintln'])
+			if node.name in ['println', 'print', 'eprintln', 'eprint'] {
+				expr := node.args[0].expr
+				g.gen_print_from_expr(expr, node.name in ['println', 'eprintln'])
 				return
 			}
-			g.call_fn(it)
+			g.call_fn(node)
 		}
 		ast.FloatLiteral {}
 		ast.Ident {}
 		ast.IfExpr {
-			g.if_expr(it)
+			g.if_expr(node)
 		}
 		ast.InfixExpr {}
 		ast.IntegerLiteral {}
 		ast.PostfixExpr {
-			g.postfix_expr(it)
+			g.postfix_expr(node)
 		}
 		ast.StringLiteral {}
 		ast.StructInit {}
@@ -700,10 +700,10 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 		// ident := left as ast.Ident
 		match right {
 			ast.IntegerLiteral {
-				g.allocate_var(name, 4, it.val.int())
+				g.allocate_var(name, 4, right.val.int())
 			}
 			ast.InfixExpr {
-				g.infix_expr(it)
+				g.infix_expr(right)
 				g.allocate_var(name, 4, 0)
 				// `mov DWORD PTR [rbp-0x8],eax`
 				offset := g.get_var_offset(name)

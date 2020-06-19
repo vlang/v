@@ -793,6 +793,9 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 				}
 			}
 		}
+		if p.inside_match_body && name == 'it' {
+			// p.warn('it')
+		}
 		if p.expr_mod.len > 0 {
 			name = '${p.expr_mod}.$name'
 		}
