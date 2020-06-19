@@ -282,6 +282,7 @@ pub fn (a &array) clone() array {
 		len: a.len
 		cap: a.cap
 	}
+	// Recursively clone-generated elements if array element is array type
 	if a.element_size == sizeof(array) {
 		for i in 0..a.len {
 			ar := array{}
