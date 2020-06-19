@@ -116,45 +116,45 @@ fn convert_pos(file_path string, pos token.Position) DocPos {
 pub fn (mut d Doc) get_signature(stmt ast.Stmt, file &ast.File) string {
 	match stmt {
 		ast.Module {
-			return 'module $it.name'
+			return 'module $stmt.name'
 		}
 		ast.FnDecl {
-			return it.str(d.table).replace(f.cur_mod + '.', '')
+			return stmt.str(d.table).replace(d.fmt.cur_mod + '.', '')
 		}
 		else {
-			f.stmt(stmt)
-			return f.out.str().trim_space()
+			d.fmt.out = strings.new_builder(1000)
+			d.fmt.stmt(stmt)
+			return d.fmt.out.str().trim_space()
 		}
 	}
 }
 
 pub fn (d Doc) get_pos(stmt ast.Stmt) token.Position {
 	match stmt {
-		ast.FnDecl { return it.pos }
-		ast.StructDecl { return it.pos }
-		ast.EnumDecl { return it.pos }
-		ast.InterfaceDecl { return it.pos }
-		ast.ConstDecl { return it.pos }
+		ast.FnDecl { return stmt.pos }
+		ast.StructDecl { return stmt.pos }
+		ast.EnumDecl { return stmt.pos }
+		ast.InterfaceDecl { return stmt.pos }
+		ast.ConstDecl { return stmt.pos }
 		else { return token.Position{} }
 	}
 }
 
 pub fn (d Doc) get_type_name(decl ast.TypeDecl) string {
 	match decl {
-		ast.SumTypeDecl { return it.name }
-		ast.FnTypeDecl { return it.name }
-		ast.AliasTypeDecl { return it.name }
+		ast.SumTypeDecl { return decl.name }
+		ast.FnTypeDecl { return decl.name }
+		ast.AliasTypeDecl { return decl.name }
 	}
 }
 
 pub fn (d Doc) get_name(stmt ast.Stmt) string {
-	cur_mod := d.head.name.split('.').last()
 	match stmt {
-		ast.FnDecl { return it.name }
-		ast.StructDecl { return it.name }
-		ast.EnumDecl { return it.name }
-		ast.InterfaceDecl { return it.name }
-		ast.TypeDecl { return d.get_type_name(it).replace('&' + cur_mod + '.', '').replace(cur_mod + '.', '') }
+		ast.FnDecl { return stmt.name }
+		ast.StructDecl { return stmt.name }
+		ast.EnumDecl { return stmt.name }
+		ast.InterfaceDecl { return stmt.name }
+		ast.TypeDecl { return d.get_type_name(stmt) }
 		ast.ConstDecl { return 'Constants' }
 		else { return '' }
 	}
