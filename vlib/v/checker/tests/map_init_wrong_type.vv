@@ -1,0 +1,4 @@
+fn main() {
+   mut a := map[string]f32{}
+   a = { 'x': 12.3 }
+}

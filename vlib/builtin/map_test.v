@@ -207,3 +207,45 @@ fn test_delete_size() {
         }
     }
 }
+
+struct Mstruct1 {
+pub mut:
+	mymap map[string]int
+}
+
+struct Mstruct2 {
+pub mut:
+	mymap map[string]f64
+}
+
+struct Mstruct3 {
+pub mut:
+	mymap map[string]u16
+}
+
+fn test_map_assign() {
+	mut a := map[string]f64{}
+	mut b := map[string]int{}
+	mut c := map[string]u16{}
+	a = {
+		'x': 12.4
+		'y': 3
+	}
+	b = {
+		'u': -13
+		'v': 12
+	}
+	c = {
+		's': u16(5)
+		't': 3
+	}
+	d := Mstruct1 {
+		{ 'p': 12 }
+	}
+	e := Mstruct2 {
+		{ 'q': 1.7 }
+	}
+	f := Mstruct3 {
+		{ 'r': u16(6), 's': 5 }
+	}
+}
