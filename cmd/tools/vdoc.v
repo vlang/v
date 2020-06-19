@@ -135,12 +135,12 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 fn js_compress(str string) string {
 	mut js := strings.new_builder(200)
 	lines := str.split_into_lines()
-	rules := [') {', ' = ', ', ', '{ ', ' }', ' (', '; ', ' + ', ' < ']
-	clean := ['){', '=', ',', '{', '}', '(', ';', '+', '<']
+	rules := [') {', ' = ', ', ', '{ ', ' }', ' (', '; ', ' + ', ' < ', ' - ', ' || ', ' var', ': ', ' >= ', ' && ', ' else if', ' === ', ' !== ', ' else ']
+	clean := ['){', '=', ',', '{', '}', '(', ';', '+', '<', '-', '||', 'var', ':', '>=', '&&', 'else if', '===', '!==', 'else']
 	for line in lines {
 		mut trimmed := line.trim_space()
 		if trimmed.starts_with('//') || (trimmed.starts_with('/*') && trimmed.ends_with('*/')) { continue }
-		for i, _ in rules {
+		for i in 0..rules.len-1 {
 			trimmed = trimmed.replace(rules[i], clean[i])
 		}
 		js.write(trimmed)
