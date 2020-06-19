@@ -514,7 +514,7 @@ pub fn (mut f Fmt) struct_field_expr(fexpr ast.Expr) {
 	}
 }
 
-fn (f &Fmt) type_to_str(t table.Type) string {
+pub fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
 	for res.ends_with('_ptr') {
 		// type_ptr => &type
