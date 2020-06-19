@@ -482,13 +482,14 @@ fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 
 fn (cfg DocConfig) render() map[string]string {
 	mut docs := map[string]string
-
 	for i, doc in cfg.docs {
 		// since builtin is generated first, ignore it
-		mut name := if doc.head.name == 'README' {
+		mut name := if doc.head.name == 'README' || cfg.docs.len == 1 {
 			'index'
 		} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
 			os.file_name(cfg.output_path)
+		} else if i-1 >= 0 && cfg.readme_idx() != -1 && cfg.docs.len == 2 {
+			'docs'
 		} else {
 			doc.head.name
 		}
