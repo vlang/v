@@ -613,6 +613,11 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		if !os.is_dir(cfg.output_path) {
 			cfg.output_path = os.real_path('.')
 		}
+		if !os.exists(cfg.output_path) {
+			os.mkdir(cfg.output_path) or {
+				panic(err)
+			}
+		}
 		if cfg.is_multi {
 			cfg.output_path = os.join_path(cfg.output_path, '_docs')
 			if !os.exists(cfg.output_path) {
