@@ -21,6 +21,7 @@ pub mut:
 	head           DocNode
 	with_comments  bool = true
 	contents       []DocNode
+	fmt            fmt.Fmt
 	time_generated time.Time
 }
 
@@ -112,17 +113,7 @@ fn convert_pos(file_path string, pos token.Position) DocPos {
 	}
 }
 
-pub fn (d Doc) get_signature(stmt ast.Stmt, file &ast.File) string {
-	mut f := fmt.Fmt{
-		out: strings.new_builder(1000)
-		out_imports: strings.new_builder(200)
-		table: d.table
-		file: file
-		cur_mod: d.head.name.split('.').last()
-		indent: 0
-		is_debug: false
-	}
-	f.process_file_imports(file)
+pub fn (mut d Doc) get_signature(stmt ast.Stmt, file &ast.File) string {
 	match stmt {
 		ast.Module {
 			return 'module $it.name'
@@ -170,7 +161,7 @@ pub fn (d Doc) get_name(stmt ast.Stmt) string {
 }
 
 pub fn new(input_path string) Doc {
-	return Doc{
+	mut d := Doc{
 		input_path: os.real_path(input_path)
 		prefs: &pref.Preferences{}
 		table: table.new_table()
@@ -178,6 +169,12 @@ pub fn new(input_path string) Doc {
 		contents: []DocNode{}
 		time_generated: time.now()
 	}
+	d.fmt = fmt.Fmt{
+		indent: 0
+		is_debug: false
+	    table: d.table
+	}
+	return d
 }
 
 pub fn (nodes []DocNode) index_by_name(node_name string) ?int {
@@ -285,7 +282,9 @@ pub fn (mut d Doc) generate() ?bool {
 			continue
 		}
 		stmts := file_ast.stmts
-		//
+		d.fmt.file = file_ast
+		d.fmt.cur_mod = orig_mod_name
+		d.fmt.process_file_imports(file_ast)
 		mut last_import_stmt_idx := 0
 		for sidx, stmt in stmts {
 			if stmt is ast.Import {
@@ -378,6 +377,8 @@ pub fn (mut d Doc) generate() ?bool {
 			}
 			prev_comments = []
 		}
+
+		d.fmt.mod2alias = map[string]string{}
 	}
 	d.time_generated = time.now()
 	return true
