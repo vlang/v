@@ -298,10 +298,6 @@ jobs:
       run: |
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sdl.bat
-    - name: Quick debug
-      run: |
-        .\v.exe -showcc .\vlib\math\math_test.v
-        .\v.exe test .\vlib\math\math_test.v
     - name: Fixed tests
       run: |
         .\v.exe test-fixed
