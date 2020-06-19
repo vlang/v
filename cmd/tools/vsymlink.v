@@ -2,9 +2,16 @@ import os
 import v.pref
 
 const (
-	hkey_local_machine = voidptr(0x80000002)
+	hkey_current_user = voidptr(0x80000001)
 	hwnd_broadcast = voidptr(0xffff)
 )
+
+$if windows {
+	$if tinyc {
+		#flag -lAdvapi32
+		#flag -lUser32
+	}
+}
 
 fn main(){
 	$if windows {
@@ -45,16 +52,16 @@ fn setup_symlink_on_windows(){
 		// make.bat being global, which is NOT what we want.
 		//
 		// Instead, we create a small launcher v.bat, in a new local
-		// folder .symlink/ . That .symlink/ folder can then be put
-		// in PATH without poluting it with anything else - just a
-		// `v` command will be available, similar to unix.
+		// folder .bin/ . That .bin/ folder can then be put in PATH
+		// without poluting it with anything else - just a `v`
+		// command will be available, similar to unix.
 		//
 		// Creating a real NTFS symlink to the real executable was also
 		// tried, but then os.real_path( os.executable() ) returns the
 		// path to the symlink, unfortunately, unlike on posix systems
 		// ¯\_(ツ)_/¯
 		vdir := os.real_path(os.dir(vexe))
-		vsymlinkdir := os.join_path(vdir, '.symlink')
+		vsymlinkdir := os.join_path(vdir, '.bin')
 		vsymlinkbat := os.join_path(vsymlinkdir, 'v.bat')
 		if os.exists(vsymlinkbat) {
 			print('Batch script $vsymlinkbat already exists, checking system %PATH%...')
@@ -128,9 +135,9 @@ fn warn_and_exit(err string) {
 fn get_reg_sys_env_handle() ?voidptr {
 	$if windows {
 		// open the registry key
-		reg_key_path   := 'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
+		reg_key_path   := 'Environment'
 		reg_env_key    := voidptr(0) // or HKEY (HANDLE)
-		if C.RegOpenKeyEx(hkey_local_machine, reg_key_path.to_wide(), 0, 1 | 2, &reg_env_key) != 0 {
+		if C.RegOpenKeyEx(hkey_current_user, reg_key_path.to_wide(), 0, 1 | 2, &reg_env_key) != 0 {
 			return error('Could not open "$reg_key_path" in the registry')
 		}
 
@@ -146,7 +153,7 @@ fn get_reg_value(reg_env_key voidptr, key string) ?string {
 		reg_value_size := 4095 // this is the max length (not for the registry, but for the system %PATH%)
 		mut reg_value  := &u16(malloc(reg_value_size))
 		if C.RegQueryValueEx(reg_env_key, key.to_wide(), 0, 0, reg_value, &reg_value_size) != 0 {
-			return error('Unable to get registry value for "$key", are you running as an Administrator?')
+			return error('Unable to get registry value for "$key", try rerunning as an Administrator')
 		}
 
 		return string_from_wide(reg_value)

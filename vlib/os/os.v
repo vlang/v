@@ -139,9 +139,13 @@ pub fn (mut f File) flush() {
 pub fn file_size(path string) int {
 	mut s := C.stat{}
 	$if windows {
-		C._wstat(path.to_wide(), voidptr(&s))
+		$if tinyc {
+			C.stat(charptr(path.str), voidptr(&s))
+		} $else {
+			C._wstat(path.to_wide(), voidptr(&s))
+		}
 	} $else {
-		C.stat(charptr(path.str), &s)
+		C.stat(charptr(path.str), voidptr(&s))
 	}
 	return s.st_size
 }

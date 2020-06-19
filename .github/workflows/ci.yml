@@ -222,7 +222,7 @@ jobs:
     - name: Build
       run: |
         gcc --version
-        .\make.bat -gcc
+        .\make.bat -gcc -skip-path
     - name: Test new v.c
       run: .\v.exe -o v.c cmd/v && gcc -municode -w v.c
     - name: Install dependencies
@@ -256,7 +256,7 @@ jobs:
       run: |
         echo %VFLAGS%
         echo $VFLAGS
-        .\make.bat -msvc
+        .\make.bat -msvc -skip-path
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
@@ -273,6 +273,44 @@ jobs:
         #node hi.js
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
+
+  windows-tcc:
+    runs-on: windows-2019
+    # We are simulating a user with no cc installed.
+    # This way, v's cc detection on Windows is also tested.
+    # env:
+    #   VFLAGS: -cc tcc
+    steps:
+    - uses: actions/checkout@v2
+    #- uses: actions/setup-node@v1
+    #  with:
+    #    node-version: 12.x
+    - name: Build
+      # We need to move gcc and msvc, so that V doesn't find a C compiler
+      run: |
+        'for /f "usebackq tokens=*" %i in (`where gcc.exe`) do move /Y "%i" "%i.old"'     | cmd
+        'for /f "usebackq tokens=*" %i in (`where vswhere.exe`) do move /Y "%i" "%i.old"' | cmd
+        move "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe.old"
+        .\make.bat -skip-path
+    - name: Test new v.c
+      run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -w -ladvapi32 -bt10 v.c
+    - name: Install dependencies
+      run: |
+        .\v.exe setup-freetype
+        .\.github\workflows\windows-install-sdl.bat
+    - name: Fixed tests
+      run: |
+        .\v.exe test-fixed
+#    - name: Test
+#      run: |
+#        .\v.exe -silent test-compiler
+      ## v.js dosent work on windows
+        #.\v.exe -o hi.js examples/hello_v_js.v
+        #node hi.js
+#    - name: Test v binaries
+#      run: ./v -silent build-vbinaries
+#    - name: v2 self compilation
+#      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   docs-line-len-check:
     runs-on: ubuntu-18.04
