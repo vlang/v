@@ -83,7 +83,6 @@ mut:
 	attrs                []string // attributes before next decl stmt
 	is_builtin_mod       bool
 	hotcode_fn_names     []string
-	fn_main              &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
 	cur_fn               &ast.FnDecl = 0
 	cur_generic_type     table.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i                int
@@ -93,6 +92,7 @@ mut:
 	inside_return        bool
 	strs_to_free         string
 	inside_call          bool
+	has_main             bool
 }
 
 const (
@@ -126,7 +126,6 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		table: table
 		pref: pref
 		fn_decl: 0
-		fn_main: 0
 		cur_fn: 0
 		autofree: true
 		indent: -1
@@ -285,11 +284,7 @@ pub fn (mut g Gen) finish() {
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloader_code()
 	}
-	if g.fn_main != voidptr(0) {
-		g.out.writeln('')
-		g.fn_decl = g.fn_main
-		g.gen_fn_decl(g.fn_main)
-	}
+	g.gen_c_main()
 }
 
 pub fn (mut g Gen) write_typeof_functions() {
@@ -691,20 +686,18 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			keep_fn_decl := g.fn_decl
 			g.fn_decl = node // &it
 			if node.name == 'main' {
-				// just remember `it`; main code will be generated in finish()
-				g.fn_main = node
-			} else {
-				if node.name == 'backtrace' ||
-					node.name == 'backtrace_symbols' ||
-					node.name == 'backtrace_symbols_fd' {
-					g.write('\n#ifndef __cplusplus\n')
-				}
-				g.gen_fn_decl(node)
-				if node.name == 'backtrace' ||
-					node.name == 'backtrace_symbols' ||
-					node.name == 'backtrace_symbols_fd' {
-					g.write('\n#endif\n')
-				}
+				g.has_main = true
+			}
+			if node.name == 'backtrace' ||
+				node.name == 'backtrace_symbols' ||
+				node.name == 'backtrace_symbols_fd' {
+				g.write('\n#ifndef __cplusplus\n')
+			}
+			g.gen_fn_decl(node)
+			if node.name == 'backtrace' ||
+				node.name == 'backtrace_symbols' ||
+				node.name == 'backtrace_symbols_fd' {
+				g.write('\n#endif\n')
 			}
 			g.fn_decl = keep_fn_decl
 			if skip {
@@ -2309,7 +2302,6 @@ fn (g Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 
 fn (mut g Gen) return_statement(node ast.Return) {
 	if g.fn_decl.name == 'main' {
-		g.writeln('return 0;')
 		return
 	}
 	if node.exprs.len > 0 {

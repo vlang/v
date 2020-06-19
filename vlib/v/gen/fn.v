@@ -34,9 +34,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		g.cur_generic_type = 0
 		return
 	}
-	if is_main && g.pref.is_liveshared {
-		return
-	}
 	fn_start_pos := g.out.len
 	msvc_attrs := g.write_fn_attrs()
 	// Live
@@ -49,164 +46,104 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		eprintln('INFO: compile with `v -live $g.pref.path `, if you want to use the [live] function $it.name .')
 	}
 	//
-	if is_main {
-		if g.pref.os == .windows {
-			if g.is_gui_app() {
-				// GUI application
-				g.writeln('int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd){')
-				g.last_fn_c_name = 'wWinMain'
-			} else {
-				// Console application
-				g.writeln('int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]){')
-				g.last_fn_c_name = 'wmain'
-			}
-		} else {
-			g.writeln('int main(int ___argc, char** ___argv){')
-			g.last_fn_c_name = it.name
+	mut name := it.name
+	if name[0] in [`+`, `-`, `*`, `/`, `%`] {
+		name = util.replace_op(name)
+	}
+	if it.is_method {
+		name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
+	}
+	if it.language == .c {
+		name = name.replace('.', '__')
+	} else {
+		name = c_name(name)
+	}
+	mut type_name := g.typ(it.return_type)
+	if g.cur_generic_type != 0 {
+		// foo<T>() => foo_int(), foo_string() etc
+		gen_name := g.typ(g.cur_generic_type)
+		name += '_' + gen_name
+		type_name = type_name.replace('T', gen_name)
+	}
+	// if g.pref.show_cc && it.is_builtin {
+	// println(name)
+	// }
+	// type_name := g.table.Type_to_str(it.return_type)
+	// Live functions are protected by a mutex, because otherwise they
+	// can be changed by the live reload thread, *while* they are
+	// running, with unpredictable results (usually just crashing).
+	// For this purpose, the actual body of the live function,
+	// is put under a non publicly accessible function, that is prefixed
+	// with 'impl_live_' .
+	if is_livemain {
+		g.hotcode_fn_names << name
+	}
+	mut impl_fn_name := if is_live_wrap { 'impl_live_${name}' } else { name }
+	g.last_fn_c_name = impl_fn_name
+	//
+	if is_live_wrap {
+		if is_livemain {
+			g.definitions.write('$type_name (* $impl_fn_name)(')
+			g.write('$type_name no_impl_${name}(')
+		}
+		if is_liveshared {
+			g.definitions.write('$type_name ${impl_fn_name}(')
+			g.write('$type_name ${impl_fn_name}(')
 		}
 	} else {
-		mut name := it.name
-		if name[0] in [`+`, `-`, `*`, `/`, `%`] {
-			name = util.replace_op(name)
+		if !(it.is_pub || g.pref.is_debug) {
+			g.write('static ')
+			g.definitions.write('static ')
 		}
-		if it.is_method {
-			name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
-		}
-		if it.language == .c {
-			name = name.replace('.', '__')
-		} else {
-			name = c_name(name)
-		}
-		mut type_name := g.typ(it.return_type)
-		if g.cur_generic_type != 0 {
-			// foo<T>() => foo_int(), foo_string() etc
-			gen_name := g.typ(g.cur_generic_type)
-			name += '_' + gen_name
-			// type_name = type_name.replace('T', gen_name)
-		}
-		// if g.pref.show_cc && it.is_builtin {
-		// println(name)
-		// }
-		// type_name := g.table.Type_to_str(it.return_type)
-		// Live functions are protected by a mutex, because otherwise they
-		// can be changed by the live reload thread, *while* they are
-		// running, with unpredictable results (usually just crashing).
-		// For this purpose, the actual body of the live function,
-		// is put under a non publicly accessible function, that is prefixed
-		// with 'impl_live_' .
-		if is_livemain {
-			g.hotcode_fn_names << name
-		}
-		mut impl_fn_name := if is_live_wrap { 'impl_live_$name' } else { name }
-		g.last_fn_c_name = impl_fn_name
-		//
-		if is_live_wrap {
-			if is_livemain {
-				g.definitions.write('$type_name (* $impl_fn_name)(')
-				g.write('$type_name no_impl_${name}(')
-			}
-			if is_liveshared {
-				g.definitions.write('$type_name ${impl_fn_name}(')
-				g.write('$type_name ${impl_fn_name}(')
-			}
-		} else {
-			if !(it.is_pub || g.pref.is_debug) {
-				g.write('static ')
-				g.definitions.write('static ')
-			}
-			fn_header := if msvc_attrs.len > 0 { '$type_name $msvc_attrs ${name}(' } else { '$type_name ${name}(' }
-			g.definitions.write(fn_header)
-			g.write(fn_header)
-		}
-		fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
-		if it.no_body || (g.pref.use_cache && it.is_builtin) {
-			// Just a function header. Builtin function bodies are defined in builtin.o
-			g.definitions.writeln(');')
-			g.writeln(');')
-			return
-		}
+		fn_header := if msvc_attrs.len > 0 { '$type_name $msvc_attrs ${name}(' } else { '$type_name ${name}(' }
+		g.definitions.write(fn_header)
+		g.write(fn_header)
+	}
+	fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
+	if it.no_body || (g.pref.use_cache && it.is_builtin) {
+		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');')
-		g.writeln(') {')
-		if is_live_wrap {
-			// The live function just calls its implementation dual, while ensuring
-			// that the call is wrapped by the mutex lock & unlock calls.
-			// Adding the mutex lock/unlock inside the body of the implementation
-			// function is not reliable, because the implementation function can do
-			// an early exit, which will leave the mutex locked.
-			mut fn_args_list := []string{}
-			for ia, fa in fargs {
-				fn_args_list << '${fargtypes[ia]} $fa'
-			}
-			mut live_fncall := '${impl_fn_name}(' + fargs.join(', ') + ');'
-			mut live_fnreturn := ''
-			if type_name != 'void' {
-				live_fncall = '$type_name res = $live_fncall'
-				live_fnreturn = 'return res;'
-			}
-			g.definitions.writeln('$type_name ${name}(' + fn_args_list.join(', ') +
-				');')
-			g.hotcode_definitions.writeln('$type_name ${name}(' + fn_args_list.join(', ') +
-				'){')
-			g.hotcode_definitions.writeln('  pthread_mutex_lock(&live_fn_mutex);')
-			g.hotcode_definitions.writeln('  $live_fncall')
-			g.hotcode_definitions.writeln('  pthread_mutex_unlock(&live_fn_mutex);')
-			g.hotcode_definitions.writeln('  $live_fnreturn')
-			g.hotcode_definitions.writeln('}')
-		}
+		g.writeln(');')
+		return
 	}
-	if is_main {
-		if g.pref.os == .windows && g.is_gui_app() {
-			g.writeln('\ttypedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);')
-			g.writeln('\tHMODULE shell32_module = LoadLibrary(L"shell32.dll");')
-			g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
-			g.writeln('\tint ___argc;')
-			g.writeln('\twchar_t** ___argv = CommandLineToArgvW(cmd_line, &___argc);')
+	g.definitions.writeln(');')
+	g.writeln(') {')
+	if is_live_wrap {
+		// The live function just calls its implementation dual, while ensuring
+		// that the call is wrapped by the mutex lock & unlock calls.
+		// Adding the mutex lock/unlock inside the body of the implementation
+		// function is not reliable, because the implementation function can do
+		// an early exit, which will leave the mutex locked.
+		mut fn_args_list := []string{}
+		for ia, fa in fargs {
+			fn_args_list << '${fargtypes[ia]} ${fa}'
 		}
-		g.writeln('\t_vinit();')
-		if g.is_importing_os() {
-			if g.autofree {
-				g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
-			}
-			if g.pref.os == .windows {
-				g.writeln('\t_const_os__args = os__init_os_args_wide(___argc, ___argv);')
-			}
-			//
-			else {
-				g.writeln('\t_const_os__args = os__init_os_args(___argc, (byteptr*)___argv);')
-			}
+		mut live_fncall := '${impl_fn_name}(' + fargs.join(', ') + ');'
+		mut live_fnreturn := ''
+		if type_name != 'void' {
+			live_fncall = '${type_name} res = ${live_fncall}'
+			live_fnreturn = 'return res;'
 		}
-	}
-	if g.pref.is_livemain && is_main {
-		g.generate_hotcode_reloading_main_caller()
+		g.definitions.writeln('$type_name ${name}(' + fn_args_list.join(', ') + ');')
+		g.hotcode_definitions.writeln('$type_name ${name}(' + fn_args_list.join(', ') +
+			'){')
+		g.hotcode_definitions.writeln('  pthread_mutex_lock(&live_fn_mutex);')
+		g.hotcode_definitions.writeln('  $live_fncall')
+		g.hotcode_definitions.writeln('  pthread_mutex_unlock(&live_fn_mutex);')
+		g.hotcode_definitions.writeln('  $live_fnreturn')
+		g.hotcode_definitions.writeln('}')
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
 	if g.pref.is_prof {
 		g.profile_fn(it.name, is_main)
 	}
-	if is_main {
-		g.indent++
-	}
 	g.stmts(it.stmts)
-	if is_main {
-		g.indent--
-	}
 	// ////////////
-	if is_main {
-		if g.autofree {
-			g.writeln('\t_vcleanup();')
-		}
-		if g.is_test {
-			verror('test files cannot have function `main`')
-		}
-	}
 	g.write_defer_stmts_when_needed()
 	// /////////
 	if g.autofree && !is_main {
 		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
 		g.writeln(g.autofree_scope_vars(it.body_pos.pos))
-	}
-	if is_main {
-		g.writeln('\treturn 0;')
 	}
 	g.writeln('}')
 	g.defer_stmts = []
