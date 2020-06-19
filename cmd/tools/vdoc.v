@@ -710,7 +710,7 @@ fn get_modules_list(path string) []string {
 	files := os.walk_ext(path, 'v')
 	mut dirs := []string{}
 	for file in files {
-		if 'test' in file || 'js' in file || 'x64' in file || 'bare' in file || 'uiold' in file || 'vweb' in file { continue }
+		if 'vlib' in path && ('examples' in file || 'test' in file || 'js' in file || 'x64' in file || 'bare' in file || 'uiold' in file || 'vweb' in file) { continue }
 		dirname := os.base_dir(file)
 		if dirname in dirs { continue }
 		dirs << dirname
