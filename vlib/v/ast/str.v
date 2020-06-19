@@ -107,7 +107,8 @@ pub fn (x &InfixExpr) str() string {
 }
 
 // Expressions in string interpolations may have to be put in braces if they
-// are non-trivial or if a format specification is given. In the latter case
+// are non-trivial, if they would interfere with the next character or if a
+// format specification is given. In the latter case
 // the format specifier must be appended, separated by a colon:
 // '$z $z.b $z.c.x ${x[4]} ${z:8.3f} ${a:-20} ${a>b+2}'
 // This method creates the format specifier (including the colon) or an empty
@@ -121,7 +122,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	if !needs_braces {
 		if i+1 < lit.vals.len && lit.vals[i+1].len > 0 {
 			next_char := lit.vals[i+1][0]
-			if util.is_func_char(next_char) || next_char == `.` {
+			if util.is_func_char(next_char) || next_char == `.` || next_char == `(` {
 				needs_braces = true
 			}
 		}
@@ -131,6 +132,15 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 		for {
 			match sub_expr as sx {
 				Ident {
+					if sx.name[0] == `@` {
+						needs_braces = true
+					}
+					break
+				}
+				CallExpr {
+					if sx.args.len != 0 {
+						needs_braces = true
+					}
 					break
 				}
 				SelectorExpr {
