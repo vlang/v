@@ -177,11 +177,34 @@ pub fn new(input_path string) Doc {
 	return d
 }
 
-pub fn (nodes []DocNode) index_by_name(node_name string) ?int {
+pub fn (mut nodes []DocNode) sort_by_name() {
+	nodes.sort_with_compare(compare_nodes_by_name)
+}
+
+pub fn (mut nodes []DocNode) sort_by_category() {
+	nodes.sort_with_compare(compare_nodes_by_category)
+}
+
+fn compare_nodes_by_name(a, b &DocNode) int {
+	al := a.name.to_lower()
+	bl := b.name.to_lower()
+	return compare_strings(al, bl)
+}
+
+fn compare_nodes_by_category(a, b &DocNode) int {
+	al := a.attrs['category']
+	bl := b.attrs['category']
+	return compare_strings(al, bl)
+}
+
+pub fn (nodes []DocNode) index_by_name(node_name string) int {
 	for i, node in nodes {
 		if node.name != node_name { continue }
 		return i
 	}
+	return -1
+}
+
 pub fn (nodes []DocNode) find_children_of(parent string) []DocNode {
 	return nodes.find_nodes_with_attr('parent', parent)
 }
@@ -197,6 +220,7 @@ pub fn (nodes []DocNode) find_nodes_with_attr(attr_name string, value string) []
 		}
 		subgroup << node
 	}
+	subgroup.sort_by_name()
 	return subgroup
 }
 
@@ -399,6 +423,8 @@ fn (mut d Doc) generate() ?Doc {
 		d.fmt.mod2alias = map[string]string{}
 	}
 	d.time_generated = time.now()
+	d.contents.sort_by_name()
+	d.contents.sort_by_category()
 	return d
 }
 
