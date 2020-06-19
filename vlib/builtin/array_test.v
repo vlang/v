@@ -361,6 +361,16 @@ fn test_clone() {
 	assert nums.slice(1, 3).str() == '[2, 3]'
 }
 
+fn test_mutli_array_clone() {
+	mut array1 := [[1, 2, 3], [4, 5, 6]]
+	mut array2 := array1.clone()
+
+	array1[0][1] = 0
+
+	assert array1 == [[1, 0, 3], [4, 5, 6]]
+	assert array2 == [[1, 2, 3], [4, 5, 6]]
+}
+
 fn test_doubling() {
 	mut nums := [1, 2, 3, 4, 5]
 	for i in 0..nums.len {

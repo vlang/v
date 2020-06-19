@@ -282,7 +282,17 @@ pub fn (a &array) clone() array {
 		len: a.len
 		cap: a.cap
 	}
-	C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size)
+	// Recursively clone-generated elements if array element is array type
+	if a.element_size == sizeof(array) {
+		for i in 0..a.len {
+			ar := array{}
+			C.memcpy(&ar, byteptr(a.data) + i * a.element_size, sizeof(array))
+			ar_clone := ar.clone()
+			C.memcpy(byteptr(arr.data) + i * a.element_size, &ar_clone, a.element_size)
+		}
+	} else {
+		C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size)
+	}
 	return arr
 }
 
