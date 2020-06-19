@@ -2656,15 +2656,15 @@ fn (mut g Gen) assoc(node ast.Assoc) {
 }
 
 fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
-	styp := g.table.value_type(left)
 	left_sym := g.table.get_type_symbol(left)
 	typ_name := g.typ(left)
 	ptr_typ := typ_name[typ_name.index_after('_', 0) + 1..]
 	elem_sym := g.table.get_type_symbol(left_sym.array_info().elem_type)
-	mut elem_typ := ''
+	elem_typ := g.typ(left_sym.array_info().elem_type)
+	ptr_elem_typ := elem_typ[elem_typ.index_after('_', 0) + 1..]
 	if elem_sym.kind == .array {
-		// Recursively generate array element comparison function code and return element type name
-		elem_typ = g.gen_array_equality_fn(left_sym.array_info().elem_type)
+		// Recursively generate array element comparison function code if array element is array type
+		g.gen_array_equality_fn(left_sym.array_info().elem_type)
 	}
 	if ptr_typ in g.array_fn_definitions {
 		return ptr_typ
@@ -2675,12 +2675,12 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	g.definitions.writeln('\t\treturn false;')
 	g.definitions.writeln('\t}')
 	g.definitions.writeln('\tfor (int i = 0; i < a.len; i++) {')
-	if styp == table.string_type_idx {
+	if elem_sym.kind == .string {
 		g.definitions.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_typ*)((byte*)b.data+(i*b.element_size))))) {')
 	} else if elem_sym.kind == .struct_ {
 		g.definitions.writeln('\t\tif (memcmp((byte*)a.data+(i*a.element_size), (byte*)b.data+(i*b.element_size), a.element_size)) {')
 	} else if elem_sym.kind == .array {
-		g.definitions.writeln('\t\tif (!${elem_typ}_arr_eq(a, b)) {')
+		g.definitions.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[i], (($elem_typ*)b.data)[i])) {')
 	} else {
 		g.definitions.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+(i*b.element_size)))) {')
 	}

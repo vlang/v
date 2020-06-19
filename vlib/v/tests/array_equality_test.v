@@ -46,10 +46,22 @@ fn test_array_equality() {
 }
 
 fn test_nested_array_equality() {
-	a := [[1]]
-	assert a == [[1]]
-	b := [[[[1]]]]
-	assert b == [[[[1]]]]
-	c := [[[1,2,3]]]
-	assert c == [[[1,2,3]]]
+	a1 := [[1]]
+	assert a1 == [[1]]
+	a2 := [[[[1]]]]
+	assert a2 == [[[[1]]]]
+	a3 := [[[1,2,3]]]
+	assert a3 == [[[1,2,3]]]
+	a4 := [[1.1], [2.2]]
+	assert a4 == [[1.1], [2.2]]
+	a5 := [[[[1,2], [2,3], [3,4]]]]
+	assert a5 == [[[[1,2], [2,3], [3,4]]]]
+	a6 := [[['aa', 'bb'], ['cc', 'dd']]]
+	assert a6 == [[['aa', 'bb'], ['cc', 'dd']]]
+	a7 := [[[true], [false]]]
+	assert a7 == [[[true], [false]]]
+	a8 := [[[[`a`, `b`], [`c`, `d`]]]]
+	assert a8 == [[[[`a`, `b`], [`c`, `d`]]]]
+	a9 := [[[u16(22), 11]]]
+	assert a9 == [[[u16(22), 11]]]
 }
