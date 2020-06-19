@@ -685,7 +685,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 			keep_fn_decl := g.fn_decl
 			g.fn_decl = node // &it
-			if node.name == 'main' {
+			if node.name == 'main.main' {
 				g.has_main = true
 			}
 			if node.name == 'backtrace' ||

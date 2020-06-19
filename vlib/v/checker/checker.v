@@ -159,7 +159,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 				}
 			}
 			ast.FnDecl {
-				if stmt.name == 'main' {
+				if stmt.name == 'main.main' {
 					has_main_fn = true
 					if stmt.is_pub {
 						c.error('function `main` cannot be declared public', stmt.pos)
@@ -937,7 +937,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.returns = true
 	}
 	fn_name := call_expr.name
-	if fn_name == 'main' {
+	if fn_name == 'main.main' {
 		c.error('the `main` function cannot be called in the program', call_expr.pos)
 	}
 	if fn_name == 'typeof' {
@@ -945,7 +945,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		return table.string_type
 	}
 	if call_expr.generic_type.has_flag(.generic) {
-		if c.mod != '' && c.mod != 'main' {
+		if c.mod != '' {
 			// Need to prepend the module when adding a generic type to a function
 			// `fn_gen_types['mymod.myfn'] == ['string', 'int']`
 			c.table.register_fn_gen_type(c.mod + '.' + fn_name, c.cur_generic_type)
@@ -975,12 +975,12 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		call_expr.return_type = ret_type
 		return ret_type
 	}
-	// look for function in format `mod.fn` or `fn` (main/builtin)
+	// look for function in format `mod.fn` or `fn` (builtin)
 	mut f := table.Fn{}
 	mut found := false
 	mut found_in_args := false
 	// try prefix with current module as it would have never gotten prefixed
-	if !fn_name.contains('.') && call_expr.mod !in ['builtin', 'main'] {
+	if !fn_name.contains('.') && call_expr.mod !in ['builtin'] {
 		name_prefixed := '${call_expr.mod}.$fn_name'
 		if f1 := c.table.find_fn(name_prefixed) {
 			call_expr.name = name_prefixed
@@ -1014,7 +1014,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.error('unknown function: $fn_name', call_expr.pos)
 		return table.void_type
 	}
-	if !found_in_args && call_expr.mod in ['builtin', 'main'] {
+	if !found_in_args && call_expr.mod in ['builtin'] {
 		scope := c.file.scope.innermost(call_expr.pos.pos)
 		if _ := scope.find_var(fn_name) {
 			c.error('ambiguous call to: `$fn_name`, may refer to fn `$fn_name` or variable `$fn_name`',
@@ -1669,8 +1669,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				// scope.find(it.name) or {
 				// c.error('undefined ident: `$it.name`', array_init.pos)
 				// }
-				mut full_const_name := if it.mod == 'main' { it.name } else { it.mod + '.' + it.name }
-				if obj := c.file.global_scope.find_const(full_const_name) {
+				mut full_const_name := it.mod + '.' + it.name
+                if obj := c.file.global_scope.find_const(full_const_name) {
 					if cint := const_int_value(obj) {
 						fixed_size = cint
 					}
@@ -2177,7 +2177,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	// TODO: move this
 	if c.const_deps.len > 0 {
 		mut name := ident.name
-		if !name.contains('.') && ident.mod !in ['builtin', 'main'] {
+		if !name.contains('.') && ident.mod !in ['builtin'] {
 			name = '${ident.mod}.$ident.name'
 		}
 		if name == c.const_decl {
@@ -2255,7 +2255,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		}
 		// prepend mod to look for fn call or const
 		mut name := ident.name
-		if !name.contains('.') && ident.mod !in ['builtin', 'main'] {
+		if !name.contains('.') && ident.mod !in ['builtin'] {
 			name = '${ident.mod}.$ident.name'
 		}
 		if obj := c.file.global_scope.find(name) {

@@ -150,8 +150,8 @@ fn (mut p Parser) parse() ast.File {
 		if p.tok.kind == .eof {
 			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
 				stmts << ast.FnDecl{
-					name: 'main'
-					mod: p.mod
+					name: 'main.main'
+					mod: 'main'
 					file: p.file_name
 					return_type: table.void_type
 				}
@@ -449,8 +449,8 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					stmts << p.stmt(false)
 				}
 				return ast.FnDecl{
-					name: 'main'
-					mod: p.mod
+					name: 'main.main'
+					mod: 'main'
 					stmts: stmts
 					file: p.file_name
 					return_type: table.void_type
