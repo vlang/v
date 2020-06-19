@@ -2428,6 +2428,10 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 		else {}
 	}
 	typ_sym := c.table.get_type_symbol(typ)
+	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr() && !(!typ_sym.name[0].is_capital() &&
+		typ_sym.name.ends_with('ptr')) && !typ.has_flag(.variadic) { // byteptr, charptr etc
+		c.error('type `$typ_sym.name` does not support indexing', node.pos)
+	}
 	if !is_range {
 		index_type := c.expr(node.index)
 		index_type_sym := c.table.get_type_symbol(index_type)
