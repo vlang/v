@@ -127,9 +127,6 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 		'git.sir.ht' { '/tree/master/$file_name' }
 		else { '' }
 	}
-	if repo_url.starts_with('https://github.com/vlang/v') && !url.path.contains('master/vlib')  {
-		url.path = url.path.replace('/blob/master/$file_name', '/blob/master/vlib/$file_name')
-	}
 	if url.path == '/' { return '' }
 	url.fragment = 'L$line_nr'
 	return url.str()
@@ -295,7 +292,7 @@ fn write_toc(cn doc.DocNode, nodes []doc.DocNode, toc &strings.Builder) {
 
 fn (cfg DocConfig) write_content(cn &doc.DocNode, dcs &doc.Doc, hw &strings.Builder) {
 	base_dir := os.base_dir(os.real_path(cfg.input_path))
-	file_path_name := cn.file_path.replace('$base_dir/', '')
+	file_path_name := if cfg.is_multi { cn.file_path.replace('$base_dir/', '') } else { os.file_name(cn.file_path) }
 	src_link := get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line)
 	children := dcs.contents.find_children_of(cn.name)
 	hw.write(doc_node_html(cn, src_link, false, dcs.table))
