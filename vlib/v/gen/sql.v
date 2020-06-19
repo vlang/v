@@ -15,7 +15,8 @@ const (
 fn (mut g Gen) sql_insert_expr(node ast.SqlInsertExpr) {
 	sym := g.table.get_type_symbol(node.table_type)
 	info := sym.info as table.Struct
-	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
+	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type] &&
+		'skip' !in it.attrs)
 	g.writeln('\n\t// sql insert')
 	db_name := g.new_tmp_var()
 	g.sql_stmt_name = g.new_tmp_var()
