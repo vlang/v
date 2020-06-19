@@ -36,6 +36,51 @@ const (
 	exe_dir         = os.dir(exe_path)
 	res_path        = os.join_path(exe_dir, 'vdoc-resources')
 	vexe_path       = os.base_dir(@VEXE)
+	html_content    = '
+	<!DOCTYPE html>
+	<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta http-equiv="x-ua-compatible" content="IE=edge" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>{{ title }} | vdoc</title>	
+		<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+		{{ head_assets }}
+	</head>
+	<body>
+		<div id="page">
+			<header class="doc-nav hidden">
+				<div class="heading-container">
+					<div class="heading">
+						<input type="text" id="search" placeholder="Search...">
+						<div class="module">{{ head_name }}</div>
+						<div class="toggle-version-container">
+							<span>{{ version }}</span>
+							<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">{{ light_icon }}{{ dark_icon }}</div>
+						</div>
+						{{ menu_icon }}
+					</div>
+				</div>
+				<nav class="content hidden">
+					<ul>
+						{{ toc_links }}
+					</ul>
+				</nav>
+			</header>
+			<div class="doc-container">
+				<div class="doc-content">
+					{{ contents }}
+					<div class="footer">
+						{{ footer_content }}
+					</div>
+				</div>
+				{{ right_content }}
+			</div>
+		</div>
+		{{ footer_assets }}
+	</body>
+	</html>
+	'
 )
 
 enum OutputType {
@@ -92,6 +137,12 @@ fn (mut cfg DocConfig) serve_html() {
 	if cfg.open_docs {
 		open_url(server_url)
 	}
+	content_type := match cfg.output_type {
+		.html { 'text/html' }
+		.markdown { 'text/markdown' }
+		.json { 'application/json' }
+		else { 'text/plain' }
+	}
 	for {
 		con := server.accept() or {
 			server.close() or { }
@@ -106,7 +157,7 @@ fn (mut cfg DocConfig) serve_html() {
 			filename = if url.path == '/' { def_name } else { url.path.trim_left('/') }
 		}
 		html := docs[filename]
-		con.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n$html') or {
+		con.write('HTTP/1.1 200 OK\r\nContent-Type: $content_type\r\n\r\n$html') or {
 			con.close() or { return }
 			return
 		}
@@ -253,13 +304,13 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	hlighted_code := html_highlight(dd.content, tb)
 	is_const_class := if dd.name == 'Constants' { ' const' } else { '' }
 	mut sym_name := dd.name
-	if dd.parent_type !in ['void', '', 'Constants'] { 
-		sym_name = '${dd.parent_type}.' + sym_name
+	if dd.attrs.exists('parent') && dd.attrs['parent'] !in ['void', '', 'Constants'] { 
+		sym_name = dd.attrs['parent'] + '.' + sym_name
 	}
 	node_id := slug(sym_name)
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
 	dnw.writeln('<section id="$node_id" class="doc-node$is_const_class">')
-	if dd.name != 'README' && dd.parent_type != 'Constants' {
+	if dd.name != 'README' && dd.attrs['parent'] != 'Constants' {
 		dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
@@ -276,10 +327,19 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	return dnw.str()
 }
 
+fn (cfg DocConfig) readme_idx() int {
+	for i, dc in cfg.docs {
+		if dc.head.name != 'README' { continue }
+		return i
+	}
+	return -1
+}
+
 fn write_toc(cn doc.DocNode, nodes []doc.DocNode, toc &strings.Builder) {
-	toc.write('<li><a href="#${slug(cn.name)}">${cn.name}</a>')
+	toc_slug := if cn.content.len == 0 { '' } else { slug(cn.name) }
+	toc.write('<li class="open"><a href="#$toc_slug">${cn.name}</a>')
 	children := nodes.find_children_of(cn.name)
-	if children.len != 0 && cn.name != 'Constants' {
+	if cn.name != 'Constants' {
 		toc.writeln('        <ul>')
 		for child in children {
 			cname := cn.name + '.' + child.name
@@ -295,31 +355,29 @@ fn (cfg DocConfig) write_content(cn &doc.DocNode, dcs &doc.Doc, hw &strings.Buil
 	file_path_name := if cfg.is_multi { cn.file_path.replace('$base_dir/', '') } else { os.file_name(cn.file_path) }
 	src_link := get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line)
 	children := dcs.contents.find_children_of(cn.name)
-	hw.write(doc_node_html(cn, src_link, false, dcs.table))
-	if children.len != 0 {
-		for child in children {
-			child_file_path_name := child.file_path.replace('$base_dir/', '')
-			child_src_link := get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line)
-			hw.write(doc_node_html(child, child_src_link, false, dcs.table))
-		}
+	if cn.content.len != 0 {
+		hw.write(doc_node_html(cn, src_link, false, dcs.table))
+	}
+	for child in children {
+		child_file_path_name := child.file_path.replace('$base_dir/', '')
+		child_src_link := get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line)
+		hw.write(doc_node_html(child, child_src_link, false, dcs.table))
 	}
 }
 
 fn (cfg DocConfig) gen_html(idx int) string {
 	dcs := cfg.docs[idx]
 	time_gen := '$dcs.time_generated.day $dcs.time_generated.smonth() $dcs.time_generated.year $dcs.time_generated.hhmmss()'
-	mut hw := strings.new_builder(200)
 	mut toc := strings.new_builder(200)
+	mut toc2 := strings.new_builder(200)
+	mut contents := strings.new_builder(200)
 	// generate toc first
-	const_node_idx := dcs.contents.index_by_name('Constants') or { -1 }
-	if const_node_idx != -1 {
-		write_toc(dcs.contents[const_node_idx], dcs.contents, &toc)
-	}
+	contents.writeln(doc_node_html(dcs.head, '', true, dcs.table))
 	for cn in dcs.contents {
-		if cn.name == 'Constants' || cn.parent_type !in ['void', ''] { continue }
+		cfg.write_content(&cn, &dcs, &contents)
+		if cn.attrs['parent'] == 'Constants' || cn.attrs['category'] == 'Methods' { continue }
 		write_toc(cn, dcs.contents, &toc)
 	}	// write head
-
 	// get resources
 	doc_css := cfg.get_resource(css_js_assets[0], true)
 	normalize_css := cfg.get_resource(css_js_assets[1], true)
@@ -328,47 +386,17 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	dark_icon := cfg.get_resource('dark.svg', true)
 	menu_icon := cfg.get_resource('menu.svg', true)
 	arrow_icon := cfg.get_resource('arrow.svg', true)
-
-	hw.write('
-	<!DOCTYPE html>
-	<html lang="en">
-	<head>
-		<meta charset="UTF-8">
-		<meta http-equiv="x-ua-compatible" content="IE=edge" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<title>${dcs.head.name} | vdoc</title>
-		<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">')
-
 	// write css
-	if cfg.inline_assets {
-		hw.write('\n	<style>$doc_css</style>')
-		hw.write('\n	<style>$normalize_css</style>')
-	} else {
-		hw.write('\n	<link rel="stylesheet" href="$doc_css" />')
-		hw.write('\n	<link rel="stylesheet" href="$normalize_css" />')
-	}
-
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
-	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.input_path)) } else { dcs.head.name }
+	header_name := if cfg.is_multi && cfg.docs.len > 1 { 
+		os.file_name(os.real_path(cfg.input_path)) 
+	} else if cfg.docs.len == 2 && idx+1 < cfg.docs.len && cfg.readme_idx() != -1 {
+		cfg.docs[cfg.readme_idx()+1].head.name
+	} else {
+		dcs.head.name
+	}
 	// write nav1
-	hw.write('
-	<body>
-	<div id="page">
-		<header class="doc-nav hidden">
-		<div class="heading-container">
-			<div class="heading">
-				<input type="text" id="search" placeholder="Search...">
-				<div class="module">${header_name}</div>
-				<div class="toggle-version-container">
-					<span>${version}</span>
-					<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">$light_icon $dark_icon</div>
-				</div>
-				$menu_icon
-			</div>
-		</div>
-		<nav class="content hidden">
-			<ul>')
-	if cfg.is_multi && cfg.docs.len > 1 {
+	if cfg.is_multi || cfg.docs.len > 1 {
 		mut submod_prefix := ''
 		mut docs := cfg.docs.filter(it.head.name == 'builtin')
 		docs << cfg.docs.filter(it.head.name != 'builtin')
@@ -382,6 +410,8 @@ fn (cfg DocConfig) gen_html(idx int) string {
 				'./index.html'
 			} else if submod_prefix !in cfg.docs.map(it.head.name) {
 				'#'
+			} else if cfg.docs.len == 2 && cfg.readme_idx() == -1 {
+				'./docs.html'
 			} else {
 				'./' + doc.head.name + '.html'
 			}
@@ -394,46 +424,44 @@ fn (cfg DocConfig) gen_html(idx int) string {
 				}
 			}
 			active_class := if doc.head.name == dcs.head.name { ' active' } else { '' }
-			hw.write('<li class="open$active_class"><div class="menu-row">$dropdown<a href="$href_name">${submod_prefix}</a></div>')
+			toc2.write('<li class="open$active_class"><div class="menu-row">$dropdown<a href="$href_name">${submod_prefix}</a></div>')
 			for j, cdoc in submodules {
 				if j == 0 {
-					hw.write('<ul>')
+					toc2.write('<ul>')
 				}
 				submod_name := cdoc.head.name.all_after(submod_prefix + '.')
 				sub_selected_classes := if cdoc.head.name == dcs.head.name { ' class="active"' } else { '' }
-				hw.write('<li$sub_selected_classes><a href="./${cdoc.head.name}.html">${submod_name}</a></li>')
+				toc2.write('<li$sub_selected_classes><a href="./${cdoc.head.name}.html">${submod_name}</a></li>')
 				if j == submodules.len - 1 {
-					hw.write('</ul>')
+					toc2.write('</ul>')
 				}
 			}
-			hw.write('</li>')
+			toc2.write('</li>')
 		}
-	} else {
-		hw.writeln(toc.str())
 	}
-	hw.write('</ul>\n</nav>\n</header>')
-	hw.write('<div class="doc-container">\n<div class="doc-content">\n')
-	hw.write(doc_node_html(dcs.head, '', true, dcs.table))
-	if const_node_idx != -1 {
-		cfg.write_content(&dcs.contents[const_node_idx], &dcs, &hw)
-	}
-	for cn in dcs.contents {
-		if cn.parent_type !in ['void', ''] || cn.name == 'Constants' { continue }
-		cfg.write_content(&cn, &dcs, &hw)
-	}
-	hw.write('\n<div class="footer">Powered by vdoc. Generated on: $time_gen</div>\n</div>\n')
-	if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
-		hw.write('<div class="doc-toc">\n\n<ul>\n${toc.str()}</ul>\n</div>')
-	}
-	hw.write('</div></div>')
-	if cfg.inline_assets {
-		hw.write('<script>$doc_js</script>')
-	} else {
-		hw.write('<script src="$doc_js"></script>')
-	}
-	hw.write('</body>
-	</html>')
-	return hw.str()
+	return html_content
+		.replace('{{ title }}', dcs.head.name)
+		.replace('{{ head_name }}', header_name)
+		.replace('{{ version }}', version)
+		.replace('{{ light_icon }}', light_icon)
+		.replace('{{ dark_icon }}', dark_icon)
+		.replace('{{ menu_icon }}', menu_icon)
+		.replace('{{ head_assets }}', 	if cfg.inline_assets {
+			'\n	<style>$doc_css</style>\n    <style>$normalize_css</style>'
+		} else {
+			'\n	<link rel="stylesheet" href="$doc_css" />\n	<link rel="stylesheet" href="$normalize_css" />'
+		})
+		.replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 { toc2.str() } else { toc.str() })
+		.replace('{{ contents }}', contents.str())
+		.replace('{{ right_content }}', if cfg.is_multi && cfg.docs.len > 1 && dcs.head.name != 'README' {
+			'<div class="doc-toc"><ul>' + toc.str() + '</ul></div>'
+		} else { '' })
+		.replace('{{ footer_content }}', 'Powered by vdoc. Generated on: $time_gen')
+		.replace('{{ footer_assets }}', if cfg.inline_assets {
+			'<script>$doc_js</script>'
+		} else {
+			'<script src="$doc_js"></script>'
+		})
 }
 
 fn (cfg DocConfig) gen_plaintext(idx int) string {
