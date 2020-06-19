@@ -310,7 +310,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('// >> typeof() support for sum types')
 	for typ in g.table.types {
 		if typ.kind == .sum_type {
-			sum_info := typ.info as table.SumTypee
+			sum_info := typ.info as table.SumType
 			tidx := g.table.find_type_idx(typ.name)
 			g.writeln('char * v_typeof_sumtype_${tidx}(int sidx) { /* $typ.name */ ')
 			g.writeln('	switch(sidx) {')
