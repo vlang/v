@@ -125,14 +125,14 @@ fn (mut p Parser) sql_insert_expr() ast.SqlInsertExpr {
 	}
 	table_type := p.parse_type() // `User`
 	sym := p.table.get_type_symbol(table_type)
-	info := sym.info as table.Struct
-	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
+	// info := sym.info as table.Struct
+	// fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
 	table_name := sym.name
 	p.check(.rcbr)
 	return ast.SqlInsertExpr{
 		db_var_name: db_var_name
 		table_name: table_name
-		fields: fields
+		table_type: table_type
 		object_var_name: object_var_name
 	}
 }

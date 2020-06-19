@@ -661,7 +661,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
-			g.tmp_count = 0
+			//g.tmp_count = 0 TODO
 			mut skip := false
 			pos := g.out.buf.len
 			if g.pref.build_mode == .build_module {

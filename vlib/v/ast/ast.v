@@ -819,8 +819,8 @@ pub struct SqlInsertExpr {
 pub:
 	db_var_name     string // `db` in `sql db {`
 	table_name      string
-	fields          []table.Field
 	object_var_name string // `user`
+	table_type      table.Type
 }
 
 pub struct SqlExpr {

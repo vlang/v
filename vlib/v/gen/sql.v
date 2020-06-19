@@ -13,33 +13,37 @@ const (
 )
 
 fn (mut g Gen) sql_insert_expr(node ast.SqlInsertExpr) {
+	sym := g.table.get_type_symbol(node.table_type)
+	info := sym.info as table.Struct
+	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
 	g.writeln('\n\t// sql insert')
 	db_name := g.new_tmp_var()
 	g.sql_stmt_name = g.new_tmp_var()
 	g.writeln('${dbtype}__DB $db_name = $node.db_var_name;')
 	mut q := 'insert into $node.table_name ('
-	for i, field in node.fields {
+	for i, field in fields {
 		if field.name == 'id' {
 			continue
 		}
 		q += '$field.name'
-		if i < node.fields.len - 1 {
+		if i < fields.len - 1 {
 			q += ', '
 		}
 	}
 	q += ') values ('
-	for i, field in node.fields {
+	for i, field in fields {
 		if field.name == 'id' {
 			continue
 		}
 		q += '?${i+0}'
-		if i < node.fields.len - 1 {
+		if i < fields.len - 1 {
 			q += ', '
 		}
 	}
 	q += ')'
+	println(q)
 	g.writeln('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("$q"));')
-	for i, field in node.fields {
+	for i, field in fields {
 		if field.name == 'id' {
 			continue
 		}
@@ -51,6 +55,7 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlInsertExpr) {
 		}
 	}
 	g.writeln('sqlite3_step($g.sql_stmt_name);')
+	g.writeln('puts(sqlite3_errmsg(${db_name}.conn));')
 	g.writeln('sqlite3_finalize($g.sql_stmt_name);')
 }
 
