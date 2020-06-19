@@ -2084,9 +2084,6 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					return obj.typ
 				}
 				ast.Var {
-					if ident.pos.pos < obj.pos.pos {
-						c.error('variable `$ident.name` used before decleration', ident.pos)
-					}
 					mut typ := obj.typ
 					if typ == 0 {
 						if obj.expr is ast.Ident {
