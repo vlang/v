@@ -300,8 +300,8 @@ jobs:
         .\.github\workflows\windows-install-sdl.bat
     - name: Quick debug
       run: |
-        'if exist ".\thirdparty\tcc\lib\openlibm.o" echo "Its there"' | cmd
-        .\thirdparty\tcc\tcc.exe .\thirdparty\tcc\lib\openlibm.o .\temp_test.c -o .\temp_test.exe ; .\temp_test.exe
+        .\v.exe -showcc .\vlib\math\math_test.v
+        .\v.exe test .\vlib\math\math_test.v
     - name: Fixed tests
       run: |
         .\v.exe test-fixed
