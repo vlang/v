@@ -2297,6 +2297,17 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 				return field.typ
 			}
 		}
+		if ident.kind == .unresolved && ident.mod != 'builtin' {
+			// search in the `builtin` idents, for example
+			// main.compare_f32 may actually be builtin.compare_f32
+			saved_mod := ident.mod
+			ident.mod = 'builtin'
+			builtin_type := c.ident( ident )
+			if builtin_type != table.void_type {
+				return builtin_type
+			}
+			ident.mod = saved_mod
+		}
 		c.error('undefined ident: `$ident.name`', ident.pos)
 	}
 	if c.table.known_type(ident.name) {

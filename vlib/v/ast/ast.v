@@ -361,9 +361,9 @@ pub struct Ident {
 pub:
 	language table.Language
 	tok_kind token.Kind
-	mod      string
 	pos      token.Position
 pub mut:
+	mod      string
 	name     string
 	kind     IdentKind
 	info     IdentInfo
