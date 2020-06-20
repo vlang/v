@@ -296,18 +296,26 @@ pub fn (mut g Gen) write_typeof_functions() {
 			tidx := g.table.find_type_idx(typ.name)
 			g.writeln('char * v_typeof_sumtype_${tidx}(int sidx) { /* $typ.name */ ')
 			g.writeln('	switch(sidx) {')
-			g.writeln('		case $tidx: return "$typ.name";')
+			g.writeln('		case $tidx: return "${strip_main_name(typ.name)}";')
 			for v in sum_info.variants {
 				subtype := g.table.get_type_symbol(v)
-				g.writeln('		case $v: return "$subtype.name";')
+				g.writeln('		case $v: return "${strip_main_name(subtype.name)}";')
 			}
-			g.writeln('		default: return "unknown $typ.name";')
+			g.writeln('		default: return "unknown ${strip_main_name(typ.name)}";')
 			g.writeln('	}')
 			g.writeln('}')
 		}
 	}
 	g.writeln('// << typeof() support for sum types')
 	g.writeln('')
+}
+
+fn strip_mod_name(name string) string {
+	return name.all_after_last('.')
+}
+
+fn strip_main_name(name string) string {
+	return name.replace('main.','')
 }
 
 // V type to C type
@@ -1695,7 +1703,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		}
 		g.write('tos_lit("$repr")')
 	} else {
-		g.write('tos_lit("$sym.name")')
+		g.write('tos_lit("${strip_main_name(sym.name)}")')
 	}
 }
 
@@ -3742,7 +3750,7 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 		// `_Animal_Dog_index`
 		sub_type := node.right as ast.Type
 		sub_sym := g.table.get_type_symbol(sub_type.typ)
-		g.write('_${sym.name}_${sub_sym.name}_index')
+		g.write('_${c_name(sym.name)}_${c_name(sub_sym.name)}_index')
 		return
 	} else if sym.kind == .sum_type {
 		g.write('typ $eq ')
