@@ -214,7 +214,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 }
 
 fn (mut c Checker) check_valid_snake_case(name, identifier string, pos token.Position) {
-	if name[0] == `_` && !c.pref.is_vweb {
+	if !c.pref.is_vweb && ( name[0] == `_` || name.contains('._') ) {
 		c.error('$identifier `$name` cannot start with `_`', pos)
 	}
 	if util.contains_capital(name) {
@@ -937,7 +937,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.returns = true
 	}
 	fn_name := call_expr.name
-	if fn_name == 'main.main' {
+	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', call_expr.pos)
 	}
 	if fn_name == 'typeof' {

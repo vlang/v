@@ -63,7 +63,8 @@ fn color(kind, msg string) string {
 }
 
 // formatted_error - `kind` may be 'error' or 'warn'
-pub fn formatted_error(kind, emsg, filepath string, pos token.Position) string {
+pub fn formatted_error(kind, omsg, filepath string, pos token.Position) string {
+	emsg := omsg.replace('main.', '')
 	mut path := filepath
 	verror_paths_override := os.getenv('VERROR_PATHS')
 	if verror_paths_override == 'absolute' {
