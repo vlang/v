@@ -1686,7 +1686,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	} else if sym.kind == .array_fixed {
 		fixed_info := sym.info as table.ArrayFixed
 		typ_name := g.table.get_type_name(fixed_info.elem_type)
-		g.write('tos_lit("[$fixed_info.size]$typ_name")')
+		g.write('tos_lit("[$fixed_info.size]${strip_main_name(typ_name)}")')
 	} else if sym.kind == .function {
 		info := sym.info as table.FnType
 		fn_info := info.func
@@ -1695,11 +1695,11 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 			if i > 0 {
 				repr += ', '
 			}
-			repr += g.table.get_type_name(arg.typ)
+			repr += strip_main_name(g.table.get_type_name(arg.typ))
 		}
 		repr += ')'
 		if fn_info.return_type != table.void_type {
-			repr += ' ${g.table.get_type_name(fn_info.return_type)}'
+			repr += ' ${strip_main_name(g.table.get_type_name(fn_info.return_type))}'
 		}
 		g.write('tos_lit("$repr")')
 	} else {
@@ -3896,6 +3896,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 		deref_typ := styp
 		g.auto_str_funcs.writeln('\t$deref_typ *it = &x;')
 	}
+	clean_struct_v_type_name = strip_main_name(clean_struct_v_type_name)
 	// generate ident / indent length = 4 spaces
 	g.auto_str_funcs.writeln('\tstring indents = tos_lit("");')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
