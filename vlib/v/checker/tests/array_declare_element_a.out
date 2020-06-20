@@ -1,0 +1,5 @@
+vlib/v/checker/tests/array_declare_element_a.v:2:9: error: single array element cannot be declared 
+    1 | fn main() {
+    2 |     arr[0] := 2
+      |            ~~
+    3 | }
