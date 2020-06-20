@@ -112,7 +112,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 			}
 			ast.IndexExpr {
 				if op == .decl_assign {
-					p.error_with_pos('single array element cannot be declared', lx.pos)
+					p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`', lx.pos)
 				}
 				lx.is_setter = true
 			}
