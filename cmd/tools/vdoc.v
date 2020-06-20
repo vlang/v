@@ -127,9 +127,15 @@ fn open_url(url string) {
 }
 
 fn (mut cfg DocConfig) serve_html() {
-	server_url := 'http://localhost:' + cfg.server_port.str()
 	docs := cfg.render()
+	dkeys := docs.keys()            
+	if dkeys.len < 1 {
+		eprintln('no documentation created, the module has no `pub` functions')
+		exit(1)
+	}
 	def_name := docs.keys()[0]
+	//
+	server_url := 'http://localhost:' + cfg.server_port.str()
 	server := net.listen(cfg.server_port) or {
 		panic(err)
 	}
