@@ -15,10 +15,6 @@ const (
 		'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof',
 		'var', 'void', 'while', 'with', 'yield']
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t']
-	builtin_globals = ['println', 'print']
-	type_values = {
-
-	}
 )
 
 struct JsGen {
@@ -44,7 +40,8 @@ mut:
 	defer_stmts       []ast.DeferStmt
 	fn_decl           &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	str_types         []string // types that need automatic str() generation
-	method_fn_decls   map[string][]ast.Stmt
+	method_fn_decls   map[string][]ast.FnDecl
+	builtin_fns       []string // Functions defined in `builtin`
 	empty_line        bool
 }
 
@@ -99,7 +96,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 
 	mut out := g.hashes() + g.definitions.str()
 	for node in deps_resolved.nodes {
-		name := g.js_name(node.name)
+		name := g.js_name(node.name).replace('.', '_')
 		if g.enable_doc {
 			out += '/** @namespace $name */\n'
 		}
@@ -127,7 +124,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		out += '\n})('
 		for i, key in imports.keys() {
 			if i > 0 { out += ', ' }
-			out += key
+			out += key.replace('.', '_')
 		}
 		out += ');\n\n'
 	}
@@ -225,7 +222,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		}
 		.array_fixed {
 			info := sym.info as table.ArrayFixed
-			styp = g.array_fixed_typ(info.elem_type) or { g.typ(info.elem_type) + '[]' }
+			styp = g.typ(info.elem_type) + '[]'
 		}
 		// 'map[string]int' => 'Map<string, number>'
 		.map {
@@ -266,16 +263,10 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		// 'anon_fn_7_7_1' => '(a number, b number) => void'
 		.function {
 			info := sym.info as table.FnType
-			mut res := '('
-			for i, arg in info.func.args {
-				res += '$arg.name: ${g.typ(arg.typ)}'
-				if i < info.func.args.len - 1 { res += ', ' }
-			}
-			styp = res + ') => ' + g.typ(info.func.return_type)
+			styp = g.fn_typ(info.func.args, info.func.return_type)
 		}
 		.interface_ {
-			// TODO: Implement interfaces
-			styp = 'interface'
+			styp = g.js_name(sym.name)
 		}
 	}
 		/* else {
@@ -284,6 +275,16 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		} */
 	if styp.starts_with('JS.') { return styp[3..] }
 	return styp
+}
+
+fn (mut g JsGen) fn_typ(args []table.Arg, return_type table.Type) string {
+	mut res := '('
+	for i, arg in args {
+		res += '$arg.name: ${g.typ(arg.typ)}'
+		if i < args.len - 1 { res += ', ' }
+	}
+	return res + ') => ' + g.typ(return_type)
+
 }
 
 fn (mut g JsGen) struct_typ(s string) string {
@@ -327,23 +328,6 @@ fn (mut g JsGen) to_js_typ_val(t table.Type) string {
 		}
 	}
 	return styp
-}
-
-fn (mut g JsGen) array_fixed_typ(t table.Type) ?string {
-	sym := g.table.get_type_symbol(t)
-	match sym.kind {
-		.i8   { return 'Int8Array' }
-		.i16  { return 'Int16Array' }
-		.int  { return 'Int32Array' }
-		.i64  { return 'BigInt64Array' }
-		.byte { return 'Uint8Array' }
-		.u16  { return 'Uint16Array' }
-		.u32  { return 'Uint32Array' }
-		.u64  { return 'BigUint64Array' }
-		.f32  { return 'Float32Array' }
-		.f64  { return 'Float64Array' }
-		else  { return none }
-	}
 }
 
 pub fn (mut g JsGen) gen_indent() {
@@ -456,7 +440,6 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.FnDecl {
 			g.fn_decl = it
 			g.gen_fn_decl(it)
-			g.writeln('')
 		}
 		ast.ForCStmt {
 			g.gen_for_c_stmt(it)
@@ -490,7 +473,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_import_stmt(it)
 		}
 		ast.InterfaceDecl {
-			// TODO skip: interfaces not implemented yet
+			g.gen_interface_decl(it)
 		}
 		ast.Module {
 			// skip: namespacing implemented externally
@@ -541,8 +524,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_call_expr(it)
 		}
 		ast.CastExpr {
-			// skip: JS has no types, so no need to cast
-			// TODO: Check if jsdoc is needed for TS support
+			// JS has no types, so no need to cast
+			// Just write the expression inside
+			g.expr(it.expr)
 		}
 		ast.CharLiteral {
 			g.write("'$it.val'")
@@ -589,14 +573,21 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// TODO
 		}
 		ast.ParExpr {
-			// TODO
+			g.write('(')
+			g.expr(it.expr)
+			g.write(')')
 		}
 		ast.PostfixExpr {
 			g.expr(it.expr)
 			g.write(it.op.str())
 		}
 		ast.PrefixExpr {
-			// TODO
+			if it.op in [.amp, .mul] {
+				// C pointers/references: ignore them
+			} else {
+				g.write(it.op.str())
+			}
+			g.expr(it.right)
 		}
 		ast.RangeExpr {
 			// Only used in IndexExpr, requires index type info
@@ -649,8 +640,8 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	g.write('if( ')
 	g.expr(a.expr)
 	g.write(' ) {')
-	s_assertion := a.expr.str().replace('"', "\'")
-	mut mod_path := g.file.path
+	s_assertion := a.expr.str().replace('"', "'")
+	mut mod_path := g.file.path.replace('\\', '\\\\')
 	if g.is_test {
 		g.writeln('	g_test_oks++;')
 		g.writeln('	cb_assertion_ok("${mod_path}", ${a.pos.line_nr+1}, "assert ${s_assertion}", "${g.fn_decl.name}()" );')
@@ -662,8 +653,10 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 		return
 	}
 	g.writeln('} else {')
-	g.writeln('	eprintln("${mod_path}:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
-	g.writeln('	exit(1);')
+	g.inc_indent()
+	g.writeln('builtin.eprintln("${mod_path}:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
+	g.writeln('builtin.exit(1);')
+	g.dec_indent()
 	g.writeln('}')
 }
 
@@ -795,18 +788,16 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 
 fn (mut g JsGen) gen_expr_stmt(it ast.ExprStmt) {
 	g.expr(it.expr)
-	expr := it.expr
-	if expr is ast.IfExpr { } // no ; after an if expression
-	else if !g.inside_ternary && !it.is_expr { g.writeln(';') }
+	if !it.is_expr && it.expr !is ast.IfExpr && !g.inside_ternary { g.writeln(';') }
 }
 
 fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
-	if it.is_method {
+	if it.no_body || it.is_method {
 		// Struct methods are handled by class generation code.
 		return
 	}
-	if it.no_body {
-		return
+	if g.namespace == 'builtin' {
+		g.builtin_fns << it.name
 	}
 	g.gen_method_decl(it)
 }
@@ -877,7 +868,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		g.write(')();')
 	}
 	if !it.is_anon && !it.is_method {
-		g.writeln('')
+		g.writeln('\n')
 	}
 
 	g.fn_decl = voidptr(0)
@@ -1012,6 +1003,17 @@ fn (mut g JsGen) gen_import_stmt(it ast.Import) {
 	g.namespace_imports[g.namespace] = imports
 }
 
+fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
+	// JS is dynamically typed, so we don't need any codegen at all
+	// We just need the JSDoc so TypeScript type checking works
+	g.doc.gen_interface(it)
+
+	// This is a hack to make the interface's type accessible outside its namespace
+	// TODO: interfaces are always `pub`?
+	name := g.js_name(it.name)
+	g.push_pub_var('/** @type $name */\n\t\t$name: undefined')
+}
+
 fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 	if it.exprs.len == 0 {
 		// Returns nothing
@@ -1022,16 +1024,8 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 	g.write('return ')
 	if it.exprs.len == 1 {
 		g.expr(it.exprs[0])
-	} else {
-		// Multi return
-		g.write('[')
-		for i, expr in it.exprs {
-			g.expr(expr)
-			if i < it.exprs.len - 1 {
-				g.write(', ')
-			}
-		}
-		g.write(']')
+	} else { // Multi return
+		g.gen_array_init_values(it.exprs)
 	}
 	g.writeln(';')
 }
@@ -1073,9 +1067,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	}
 
 	for i, cfn in fns {
-		// TODO: Move cast to the entire array whenever it's possible
-		it := cfn as ast.FnDecl
-		g.gen_method_decl(it)
+		g.gen_method_decl(cfn)
 		if i < fns.len - 1 { g.writeln(',') } else { g.writeln('') }
 	}
 	g.dec_indent()
@@ -1086,17 +1078,50 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 }
 
 fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
-	type_sym := g.table.get_type_symbol(it.typ)
-	if type_sym.kind != .array_fixed {
-		g.write('[')
-		for i, expr in it.exprs {
-			g.expr(expr)
-			if i < it.exprs.len - 1 {
-				g.write(', ')
-			}
+	// NB: Fixed arrays and regular arrays are handled the same, since fixed arrays:
+	// 1)  Are only available for number types
+	// 2)  Give the code unnecessary complexity
+	// 3)  Have several limitations like missing most `Array.prototype` methods
+	// 4)  Modern engines can optimize regular arrays into typed arrays anyways,
+	//     offering similar performance
+	if it.has_len {
+		t1 := g.new_tmp_var()
+		t2 := g.new_tmp_var()
+		g.writeln('(function() {')
+		g.inc_indent()
+		g.writeln('const $t1 = [];')
+		g.write('for (let $t2 = 0; $t2 < ')
+		g.expr(it.len_expr)
+		g.writeln('; $t2++) {')
+		g.inc_indent()
+		g.write('${t1}.push(')
+		if it.has_default {
+			g.expr(it.default_expr)
+		} else {
+			// Fill the array with the default values for its type
+			t := g.to_js_typ_val(it.elem_type)
+			g.write(t)
 		}
-		g.write(']')
-	} else {}
+		g.writeln(');')
+		g.dec_indent()
+		g.writeln('};')
+		g.writeln('return $t1;')
+		g.dec_indent()
+		g.write('})()')
+	} else {
+		g.gen_array_init_values(it.exprs)
+	}
+}
+
+fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
+	g.write('[')
+	for i, expr in exprs {
+		g.expr(expr)
+		if i < exprs.len - 1 {
+			g.write(', ')
+		}
+	}
+	g.write(']')
 }
 
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
@@ -1143,7 +1168,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			return
 		}
 	} else {
-		if name in builtin_globals {
+		if name in g.builtin_fns {
 			g.write('builtin.')
 		}
 	}
@@ -1281,19 +1306,19 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		if r_sym.kind == .array { g.write('...') } // arr << [1, 2]
 		g.expr(it.right)
 		g.write(')')
-	} else if r_sym.kind in [.array, .map] && it.op in [.key_in, .not_in] {
+	} else if r_sym.kind in [.array, .map, .string] && it.op in [.key_in, .not_in] {
 		if it.op == .not_in { g.write('!(') }
 		g.expr(it.right)
 		g.write(if r_sym.kind == .map { '.has(' } else { '.includes(' })
 		g.expr(it.left)
 		g.write(')')
 		if it.op == .not_in { g.write(')') }
-	} else if it.op == .key_is { // foo is Foo
-		g.write('/*')
+	} else if it.op in [.key_is, .not_is] { // foo is Foo
+		if it.op == .not_is { g.write('!(') }
 		g.expr(it.left)
-		g.write(' is $r_sym.name')
-		g.write('*/0')
-		// TODO
+		g.write(' instanceof ')
+		g.write(g.typ(it.right_type))
+		if it.op == .not_is { g.write(')') }
 	} else {
 		g.expr(it.left)
 

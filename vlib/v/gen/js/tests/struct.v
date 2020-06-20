@@ -23,11 +23,11 @@ struct Config {
 fn use_config(c Config) {}
 
 fn main() {
-  a := Int { value: 10 }
+  mut a := Int { value: 10 }
   a.add(5)
   println(a) // 15
 
-  b := Int{}
+  mut b := Int{}
   b.add(10)
   println(b.get()) // 10
 

@@ -66,6 +66,8 @@ print('true\t=> ')
 println('key' in m)
 print('true\t=> ')
 println('badkey' !in m)
+print('true\t=> ')
+println('o' in 'hello')
 
 // for in
 for _ in arr1 {}
@@ -103,3 +105,16 @@ println(aa)
 println(bb)
 println(cc)
 println(dd)
+
+// fixed arrays: implemented as normal arrays
+f1 := [1, 2, 3, 4, 5]!!
+mut f2 := [8]f32
+f2[0] = f32(1.23)
+f3 := ['foo', 'bar']!!
+f4 := [u64(0xffffffffffffffff), 0xdeadface]!!
+
+println('
+$f1
+$f2
+$f3
+$f4')
