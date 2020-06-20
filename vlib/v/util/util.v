@@ -7,16 +7,20 @@ import os
 import v.pref
 
 pub const (
-	v_version = '0.1.27'
+	v_version = '0.1.28'
 )
 
 // math.bits is needed by strconv.ftoa
 pub const (
-	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash.wyhash', 'strings', 'builtin']
+	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash.wyhash', 'strings',
+		'builtin'
+	]
 )
 
 pub const (
-	external_module_dependencies_for_tool = {'vdoc': ['markdown']}
+	external_module_dependencies_for_tool = {
+		'vdoc': ['markdown']
+	}
 )
 
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
@@ -149,7 +153,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	if should_compile {
 		emodules := external_module_dependencies_for_tool[tool_name]
 		for emodule in emodules {
-			util.check_module_is_installed(emodule, is_verbose) or {
+			check_module_is_installed(emodule, is_verbose) or {
 				panic(err)
 			}
 		}
@@ -316,14 +320,14 @@ and the existing module `${modulename}` may still work.')
 }
 
 pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
-   for tool_name, tool_modules in external_module_dependencies_for_tool {
-	   if is_verbose {
-		   eprintln('Installing modules for tool: $tool_name ...')
-	   }
-	   for emodule in tool_modules {
-		   util.check_module_is_installed(emodule, is_verbose) or {
-			   panic(err)
-		   }
-	   }
-   }
+	for tool_name, tool_modules in external_module_dependencies_for_tool {
+		if is_verbose {
+			eprintln('Installing modules for tool: $tool_name ...')
+		}
+		for emodule in tool_modules {
+			check_module_is_installed(emodule, is_verbose) or {
+				panic(err)
+			}
+		}
+	}
 }

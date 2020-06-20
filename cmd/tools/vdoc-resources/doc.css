@@ -275,10 +275,10 @@ body {
 	word-break: break-word;
 }
 .doc-content > .doc-node.const:not(:first-child) {
-	padding-top: 0;
+	padding-top: 4rem;
 }
 .doc-content > .doc-node.const:not(:last-child) {
-	padding-bottom: 1rem;
+	padding-bottom: 2rem;
 }
 .doc-content > .timestamp {
 	font-size: 0.8rem;
@@ -556,7 +556,12 @@ pre {
 	.doc-nav .content.hidden {
 		display: flex;
 	}
-
+	.doc-content > .doc-node.const:not(:first-child) {
+		padding-top: 0;
+	}
+	.doc-content > .doc-node.const:not(:last-child) {
+		padding-bottom: 1rem;
+	}
 	.doc-container {
 		margin-top: 0;
 		margin-left: 300px;
@@ -565,7 +570,6 @@ pre {
 		padding-top: 1rem !important;
 		margin-top: 0 !important;
 	}
-
 	.doc-toc {
 		top: 0;
 	}

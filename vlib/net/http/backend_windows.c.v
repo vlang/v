@@ -5,7 +5,7 @@
 module http
 
 #flag windows -I @VROOT/thirdparty/vschannel
-#flag -l ws2_32 -l crypt32 -l secur32
+#flag -l ws2_32 -l crypt32 -l secur32 -l user32
  
 #include "vschannel.c"
 

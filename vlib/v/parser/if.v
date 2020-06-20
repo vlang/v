@@ -99,6 +99,11 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	cond_pos := p.tok.position()
 	cond := p.expr(0)
 	p.inside_match = false
+	mut var_name := ''
+	if p.tok.kind == .key_as {
+		p.next()
+		var_name = p.check_name()
+	}
 	p.check(.lcbr)
 	mut branches := []ast.MatchBranch{}
 	for {
@@ -114,6 +119,20 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		} else if p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot) &&
 			(p.tok.lit in table.builtin_type_names || (p.tok.lit[0].is_capital() && !p.tok.lit.is_upper()) ||
 			p.peek_tok.kind == .dot) {
+			if var_name.len == 0 {
+				match cond {
+					ast.Ident {
+						// shadow match cond variable
+						var_name = it.name
+					}
+					// ast.SelectorExpr {
+					// 	p.error('expecting `as` (eg. `match user.attribute as user_attr`) when matching struct fields')
+					// }
+					else {
+						// p.error('only variables can be used in sum types matches')
+					}
+				}
+			}
 			// Sum type match
 			typ := p.parse_type()
 			exprs << ast.Type{
@@ -126,32 +145,23 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				is_used: true
 				is_mut: is_mut
 			})
+			if var_name.len > 0 {
+				// Register shadow variable or `as` variable with actual type
+				p.scope.register(var_name, ast.Var{
+					name: var_name
+					typ: typ.to_ptr()
+					pos: cond_pos
+					is_used: true
+					is_mut: is_mut
+				})
+			}
 			// TODO
 			if p.tok.kind == .comma {
 				p.next()
 				p.parse_type()
 			}
 			is_sum_type = true
-			// Make sure a variable used for the sum type match
-			mut var_name := ''
-			match cond {
-				ast.Ident {
-					var_name = it.name
-				}
-				else {
-					// p.error('only variables can be used in sum types matches')
-				}
-			}
-			if var_name != '' {
-				// Register a shadow variable with the actual type
-				// (this replaces the old `it`)
-				// TODO doesn't work right now (fixed, uncomment when merging)
-				// p.scope.register(var_name, ast.Var{
-				// name: var_name
-				// typ: typ.to_ptr()
-				// })
-				// println(var_name)
-			}
+				
 		} else {
 			// Expression match
 			for {
@@ -200,5 +210,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		is_sum_type: is_sum_type
 		pos: pos
 		is_mut: is_mut
+		var_name: var_name
 	}
 }

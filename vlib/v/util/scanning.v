@@ -1,7 +1,5 @@
 module util
 
-import os
-
 [inline]
 pub fn is_name_char(c byte) bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
@@ -42,8 +40,4 @@ pub fn good_type_name(s string) bool {
 
 pub fn cescaped_path(s string) string {
 	return s.replace('\\', '\\\\')
-}
-
-pub fn is_fmt() bool {
-	return os.executable().contains('vfmt')
 }

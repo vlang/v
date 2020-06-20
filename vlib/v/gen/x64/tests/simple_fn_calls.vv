@@ -2,13 +2,13 @@ fn print_greeting(){
 	println('hello from x64')
 }
 
-fn print_number() {
+fn print_123() {
 	println('123')
 }
 
 fn main() {
 	println('start')
 	print_greeting()
-	print_number()
+	print_123()
 	println('end')
 }

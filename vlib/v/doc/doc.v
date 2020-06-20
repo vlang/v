@@ -21,6 +21,7 @@ pub mut:
 	head           DocNode
 	with_comments  bool = true
 	contents       []DocNode
+	fmt            fmt.Fmt
 	time_generated time.Time
 }
 
@@ -37,7 +38,7 @@ pub mut:
 	comment     string
 	pos         DocPos = DocPos{-1, -1}
 	file_path   string = ''
-	parent_type string = ''
+	attrs       map[string]string
 }
 
 pub fn merge_comments(stmts []ast.Stmt) string {
@@ -112,63 +113,55 @@ fn convert_pos(file_path string, pos token.Position) DocPos {
 	}
 }
 
-pub fn (d Doc) get_signature(stmt ast.Stmt) string {
-	mut f := fmt.Fmt{
-		out: strings.new_builder(1000)
-		out_imports: strings.new_builder(200)
-		table: d.table
-		cur_mod: d.head.name.split('.').last()
-		indent: 0
-		is_debug: false
-	}
+pub fn (mut d Doc) get_signature(stmt ast.Stmt, file &ast.File) string {
 	match stmt {
 		ast.Module {
-			return 'module $it.name'
+			return 'module $stmt.name'
 		}
 		ast.FnDecl {
-			return it.str(d.table).replace(f.cur_mod + '.', '')
+			return stmt.str(d.table).replace(d.fmt.cur_mod + '.', '')
 		}
 		else {
-			f.stmt(stmt)
-			return f.out.str().trim_space()
+			d.fmt.out = strings.new_builder(1000)
+			d.fmt.stmt(stmt)
+			return d.fmt.out.str().trim_space()
 		}
 	}
 }
 
 pub fn (d Doc) get_pos(stmt ast.Stmt) token.Position {
 	match stmt {
-		ast.FnDecl { return it.pos }
-		ast.StructDecl { return it.pos }
-		ast.EnumDecl { return it.pos }
-		ast.InterfaceDecl { return it.pos }
-		ast.ConstDecl { return it.pos }
+		ast.FnDecl { return stmt.pos }
+		ast.StructDecl { return stmt.pos }
+		ast.EnumDecl { return stmt.pos }
+		ast.InterfaceDecl { return stmt.pos }
+		ast.ConstDecl { return stmt.pos }
 		else { return token.Position{} }
 	}
 }
 
 pub fn (d Doc) get_type_name(decl ast.TypeDecl) string {
 	match decl {
-		ast.SumTypeDecl { return it.name }
-		ast.FnTypeDecl { return it.name }
-		ast.AliasTypeDecl { return it.name }
+		ast.SumTypeDecl { return decl.name }
+		ast.FnTypeDecl { return decl.name }
+		ast.AliasTypeDecl { return decl.name }
 	}
 }
 
 pub fn (d Doc) get_name(stmt ast.Stmt) string {
-	cur_mod := d.head.name.split('.').last()
 	match stmt {
-		ast.FnDecl { return it.name }
-		ast.StructDecl { return it.name }
-		ast.EnumDecl { return it.name }
-		ast.InterfaceDecl { return it.name }
-		ast.TypeDecl { return d.get_type_name(it).replace('&' + cur_mod + '.', '').replace(cur_mod + '.', '') }
+		ast.FnDecl { return stmt.name }
+		ast.StructDecl { return stmt.name }
+		ast.EnumDecl { return stmt.name }
+		ast.InterfaceDecl { return stmt.name }
+		ast.TypeDecl { return d.get_type_name(stmt) }
 		ast.ConstDecl { return 'Constants' }
 		else { return '' }
 	}
 }
 
 pub fn new(input_path string) Doc {
-	return Doc{
+	mut d := Doc{
 		input_path: os.real_path(input_path)
 		prefs: &pref.Preferences{}
 		table: table.new_table()
@@ -176,28 +169,59 @@ pub fn new(input_path string) Doc {
 		contents: []DocNode{}
 		time_generated: time.now()
 	}
+	d.fmt = fmt.Fmt{
+		indent: 0
+		is_debug: false
+	    table: d.table
+	}
+	return d
 }
 
-pub fn (nodes []DocNode) index_by_name(node_name string) ?int {
+pub fn (mut nodes []DocNode) sort_by_name() {
+	nodes.sort_with_compare(compare_nodes_by_name)
+}
+
+pub fn (mut nodes []DocNode) sort_by_category() {
+	nodes.sort_with_compare(compare_nodes_by_category)
+}
+
+fn compare_nodes_by_name(a, b &DocNode) int {
+	al := a.name.to_lower()
+	bl := b.name.to_lower()
+	return compare_strings(al, bl)
+}
+
+fn compare_nodes_by_category(a, b &DocNode) int {
+	al := a.attrs['category']
+	bl := b.attrs['category']
+	return compare_strings(al, bl)
+}
+
+pub fn (nodes []DocNode) index_by_name(node_name string) int {
 	for i, node in nodes {
 		if node.name != node_name { continue }
 		return i
 	}
-	return error('Node with the name "$node_name" was not found.')
+	return -1
 }
 
-pub fn (nodes []DocNode) find_children_of(parent_type string) []DocNode {
-	if parent_type.len == 0 {
-		return []DocNode{}
+pub fn (nodes []DocNode) find_children_of(parent string) []DocNode {
+	return nodes.find_nodes_with_attr('parent', parent)
+}
+
+pub fn (nodes []DocNode) find_nodes_with_attr(attr_name string, value string) []DocNode {
+	mut subgroup := []DocNode{}
+	if attr_name.len == 0 {
+		return subgroup
 	}
-	mut children := []DocNode{}
 	for node in nodes {
-		if node.parent_type != parent_type {
+		if !node.attrs.exists(attr_name) || node.attrs[attr_name] != value {
 			continue
 		}
-		children << node
+		subgroup << node
 	}
-	return children
+	subgroup.sort_by_name()
+	return subgroup
 }
 
 fn get_parent_mod(dir string) ?string {
@@ -240,7 +264,7 @@ fn get_parent_mod(dir string) ?string {
 	return file_ast.mod.name
 }
 
-pub fn (mut d Doc) generate() ?bool {
+fn (mut d Doc) generate() ?Doc {
 	// get all files
 	base_path := if os.is_dir(d.input_path) { d.input_path } else { os.real_path(os.base_dir(d.input_path)) }
 	project_files := os.ls(base_path) or {
@@ -283,7 +307,9 @@ pub fn (mut d Doc) generate() ?bool {
 			continue
 		}
 		stmts := file_ast.stmts
-		//
+		d.fmt.file = file_ast
+		d.fmt.cur_mod = orig_mod_name
+		d.fmt.process_file_imports(file_ast)
 		mut last_import_stmt_idx := 0
 		for sidx, stmt in stmts {
 			if stmt is ast.Import {
@@ -304,10 +330,7 @@ pub fn (mut d Doc) generate() ?bool {
 				module_comment := get_comment_block_right_before(prev_comments)
 				prev_comments = []
 				if 'vlib' !in base_path && !module_comment.starts_with('Copyright (c)') {
-					if module_comment == '' {
-						continue
-					}
-					if module_comment == d.head.comment {
+					if module_comment in ['', d.head.comment] {
 						continue
 					}
 					if d.head.comment != '' {
@@ -331,7 +354,7 @@ pub fn (mut d Doc) generate() ?bool {
 			if stmt is ast.Import {
 				continue
 			}
-			signature := d.get_signature(stmt)
+			signature := d.get_signature(stmt, file_ast)
 			pos := d.get_pos(stmt)
 			mut name := d.get_name(stmt)
 			if (!signature.starts_with('pub') && d.pub_only) || stmt is ast.GlobalDecl {
@@ -348,25 +371,45 @@ pub fn (mut d Doc) generate() ?bool {
 				pos: convert_pos(v_files[i], pos)
 				file_path: v_files[i]
 			}
+			if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 {
+				continue
+			}
 			if stmt is ast.FnDecl {
 				fnd := stmt as ast.FnDecl
 				if fnd.receiver.typ != 0 {
-					mut parent_type := d.table.get_type_name(fnd.receiver.typ)
-					if parent_type.starts_with(module_name + '.') {
-						parent_type = parent_type.all_after(module_name + '.')
+					node.attrs['parent'] = d.fmt.type_to_str(fnd.receiver.typ).trim_left('&')
+					p_idx := d.contents.index_by_name(node.attrs['parent'])
+					if p_idx == -1 && node.attrs['parent'] != 'void' {
+						d.contents << DocNode{
+							name: node.attrs['parent']
+							content: ''
+							comment: ''
+							attrs: {'category': 'Structs'}
+						}
 					}
-					node.parent_type = parent_type
 				}
 			}
 			if stmt is ast.ConstDecl {
 				if const_idx == -1 {
 					const_idx = sidx
 				} else {
-					node.parent_type = 'Constants'
+					node.attrs['parent'] = 'Constants'
 				}
 			}
-			if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 {
-				continue
+			match stmt {
+				ast.ConstDecl { node.attrs['category'] = 'Constants' }
+				ast.EnumDecl { node.attrs['category'] = 'Enums' }
+				ast.InterfaceDecl { node.attrs['category'] = 'Interfaces' }
+				ast.StructDecl { node.attrs['category'] = 'Structs' }
+				ast.TypeDecl { node.attrs['category'] = 'Typedefs' }
+				ast.FnDecl { 
+					node.attrs['category'] = if node.attrs['parent'] in ['void', ''] || !node.attrs.exists('parent') {
+						'Functions'
+					} else {
+						'Methods'
+					}
+				}
+				else {}
 			}
 			d.contents << node
 			if d.with_comments && (prev_comments.len > 0) {
@@ -376,17 +419,18 @@ pub fn (mut d Doc) generate() ?bool {
 			}
 			prev_comments = []
 		}
+
+		d.fmt.mod2alias = map[string]string{}
 	}
 	d.time_generated = time.now()
-	return true
+	d.contents.sort_by_name()
+	d.contents.sort_by_category()
+	return d
 }
 
 pub fn generate(input_path string, pub_only, with_comments bool) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
-	doc.generate() or {
-		return error_with_code(err, errcode)
-	}
-	return doc
+	return doc.generate()
 }

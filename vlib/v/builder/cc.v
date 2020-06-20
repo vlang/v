@@ -19,7 +19,21 @@ If you were not working with C interop, please raise an issue on GitHub:
 https://github.com/vlang/v/issues/new/choose
 
 You can also use #help on Discord: https://discord.gg/vlang
-')
+'
+no_compiler_error = '
+==================
+Error: no C compiler detected.
+
+You can find instructions on how to install one in the V wiki:
+https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows
+
+If you think you have one installed, make sure it is in your PATH.
+If you do have one in your PATH, please raise an issue on GitHub:
+https://github.com/vlang/v/issues/new/choose
+
+You can also use #help on Discord: https://discord.gg/vlang
+'
+)
 
 const (
 	mingw_cc = 'x86_64-w64-mingw32-gcc'
@@ -29,16 +43,30 @@ const (
 fn todo() {
 }
 
-fn (v &Builder) no_cc_installed() bool {
-	$if windows {
-		os.exec('$v.pref.ccompiler -v') or {
-			if v.pref.is_verbose {
-				println('C compiler not found, trying to build with msvc...')
-			}
-			return true
+fn (v &Builder) find_win_cc() ?string {
+	$if !windows { return none }
+
+	os.exec('$v.pref.ccompiler -v') or {
+		if v.pref.is_verbose {
+			println('$v.pref.ccompiler not found, looking for msvc...')
 		}
+		find_msvc() or {
+			if v.pref.is_verbose {
+				println('msvc not found, looking for thirdparty/tcc...')
+			}
+			vpath := os.dir(os.getenv('VEXE'))
+			thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
+			os.exec('$thirdparty_tcc -v') or {
+				if v.pref.is_verbose {
+					println('No C compiler found')
+				}
+				return none
+			}
+			return thirdparty_tcc
+		}
+		return 'msvc'
 	}
-	return false
+	return v.pref.ccompiler
 }
 
 fn (mut v Builder) cc() {
@@ -95,8 +123,9 @@ fn (mut v Builder) cc() {
 			return
 		}
 	}
+	mut ccompiler := v.pref.ccompiler
 	$if windows {
-		if v.pref.ccompiler == 'msvc' || v.no_cc_installed() {
+		if ccompiler == 'msvc' {
 			v.cc_msvc()
 			return
 		}
@@ -191,9 +220,9 @@ fn (mut v Builder) cc() {
 		}
 	}
 	//
-	is_cc_clang := v.pref.ccompiler.contains('clang') || guessed_compiler == 'clang'
-	is_cc_tcc := v.pref.ccompiler.contains('tcc') || guessed_compiler == 'tcc'
-	is_cc_gcc := v.pref.ccompiler.contains('gcc') || guessed_compiler == 'gcc'
+	is_cc_tcc := ccompiler.contains('tcc') || guessed_compiler == 'tcc'
+	is_cc_clang := !is_cc_tcc && (ccompiler.contains('clang') || guessed_compiler == 'clang')
+	is_cc_gcc := !is_cc_tcc && !is_cc_clang && (ccompiler.contains('gcc') || guessed_compiler == 'gcc')
 	// is_cc_msvc := v.pref.ccompiler.contains('msvc') || guessed_compiler == 'msvc'
 	//
 	if is_cc_clang {
@@ -227,7 +256,7 @@ fn (mut v Builder) cc() {
 	if debug_mode && os.user_os() != 'windows' {
 		linker_flags << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
-	if v.pref.ccompiler != 'msvc' && v.pref.os != .freebsd {
+	if ccompiler != 'msvc' && v.pref.os != .freebsd {
 		a << '-Werror=implicit-function-declaration'
 	}
 	if v.pref.is_liveshared || v.pref.is_livemain {
@@ -365,7 +394,7 @@ fn (mut v Builder) cc() {
 	start:
 	todo()
 	// TODO remove
-	cmd := '${v.pref.ccompiler} $args'
+	cmd := '${ccompiler} $args'
 	// Run
 	if v.pref.is_verbose || v.pref.show_cc {
 		println('\n==========')
@@ -391,7 +420,7 @@ fn (mut v Builder) cc() {
 		if res.exit_code == 127 {
 			$if linux {
 				// TCC problems on linux? Try GCC.
-				if v.pref.ccompiler.contains('tcc') {
+				if ccompiler.contains('tcc') {
 					v.pref.ccompiler = 'cc'
 					goto start
 				}
@@ -403,7 +432,7 @@ fn (mut v Builder) cc() {
 		if v.pref.is_debug {
 			eword := 'error:'
 			khighlight := if term.can_show_color_on_stdout() { term.red(eword) } else { eword }
-			println(res.output.replace(eword, khighlight))
+			println(res.output.trim_right('\r\n').replace(eword, khighlight))
 			verror(c_error_info)
 		} else {
 			if res.output.len < 30 {
@@ -424,7 +453,7 @@ fn (mut v Builder) cc() {
 	diff := time.ticks() - ticks
 	// Print the C command
 	if v.pref.is_verbose {
-		println('${v.pref.ccompiler} took $diff ms')
+		println('${ccompiler} took $diff ms')
 		println('=========\n')
 	}
 	// Link it if we are cross compiling and need an executable
@@ -516,6 +545,7 @@ fn (mut c Builder) cc_linux_cross() {
 		//'SYSROOT/lib/x86_64-linux-gnu/libcrypto.so'
 		'-lcrypto'
 		'-lssl'
+		'-lpthread'
 		//'-dynamic-linker /usr/lib/x86_64-linux-gnu/libcrypto.so'
 		//'SYSROOT/lib/x86_64-linux-gnu/libssl.a'
 		'$sysroot/crtn.o'
@@ -623,7 +653,7 @@ fn (c &Builder) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
 		if flag.value.ends_with('.o') {
 			rest_of_module_flags := c.get_rest_of_module_cflags(flag)
-			if c.pref.ccompiler == 'msvc' || c.no_cc_installed() {
+			if c.pref.ccompiler == 'msvc' {
 				build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
 			} else {
 				c.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
@@ -660,7 +690,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
 	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
-	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget '
+	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget'
 	res := os.exec(cmd) or {
 		println('failed thirdparty object build cmd: $cmd')
 		verror(err)

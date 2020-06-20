@@ -11,11 +11,11 @@ import v.util
 pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.position()
 	fn_name := if language == .c {
-		'C.${p.check_name()}'
+		'C.$p.check_name()'
 	} else if language == .js {
-		'JS.${p.check_js_name()}'
+		'JS.$p.check_js_name()'
 	} else if mod.len > 0 {
-		'${mod}.${p.check_name()}'
+		'${mod}.$p.check_name()'
 	} else {
 		p.check_name()
 	}
@@ -119,7 +119,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.top_level_statement_start()
 	start_pos := p.tok.position()
-	is_deprecated := p.attr == 'deprecated'
+	is_deprecated := 'deprecated' in p.attrs
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -181,11 +181,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut name := ''
 	if p.tok.kind == .name {
 		// TODO high order fn
-		name = if language == .js {
-			p.check_js_name()
-		} else {
-			p.check_name()
-		}
+		name = if language == .js { p.check_js_name() } else { p.check_name() }
 		if language == .v && !p.pref.translated && util.contains_capital(name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
@@ -273,8 +269,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		stmts = p.parse_block_no_scope(true)
 	}
 	p.close_scope()
-	p.attr = ''
-	p.attr_ctdefine = ''
 	return ast.FnDecl{
 		name: name
 		mod: p.mod
@@ -493,7 +487,7 @@ fn have_fn_main(stmts []ast.Stmt) bool {
 	for stmt in stmts {
 		match stmt {
 			ast.FnDecl {
-				if it.name == 'main' {
+				if stmt.name == 'main' {
 					has_main_fn = true
 				}
 			}

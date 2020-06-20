@@ -2,6 +2,8 @@ module clipboard
 
 import time
 
+#flag -lUser32
+
 struct WndClassEx {
 	cb_size         u32
 	style           u32

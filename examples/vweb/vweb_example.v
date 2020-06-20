@@ -28,13 +28,13 @@ pub fn (mut app App) json_endpoint() {
 	app.vweb.json('{"a": 3}')
 }
 
-pub fn (mut app App) index() {
+pub fn (mut app App) index() vweb.Result {
 	app.cnt++
 	show := true
 	//app.vweb.text('Hello world from vweb')
 	hello := 'Hello world from vweb'
 	numbers := [1,2,3]
-	$vweb.html()
+	return $vweb.html()
 }
 
 pub fn (mut app App) text() {

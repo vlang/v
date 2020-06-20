@@ -113,54 +113,58 @@ fn test_push() {
 	assert a.str() == '[1, 3]'
 }
 
-// TODO array.insert is broken
-// Cannot pass literal or primitive type as it cannot be cast to voidptr.
-// In the current state only that would work:
-// i := 3
-// a.insert(0, &i)
-// ----------------------------
-/*
 fn test_insert() {
 	mut a := [1, 2]
 	a.insert(0, 3)
-	println(a)
+	assert a[0] == 3
+	assert a[2] == 2
+	assert a.len == 3
+	a.insert(1, 4)
+	assert a[1] == 4
+	assert a[2] == 1
+	assert a.len == 4
+	a.insert(4, 5)
+	assert a[4] == 5
+	assert a[3] == 2
+	assert a.len == 5
+	mut b := []f64{}
+	assert b.len == 0
+	b.insert(0, f64(1.1))
+	assert b.len == 1
+	assert b[0] == f64(1.1)
 }
-*/
-// fn test_insert() {
-// mut a := [1, 2]
-// a.insert(0, 3)
-// assert a[0] == 3
-// assert a[2] == 2
-// assert a.len == 3
-// a.insert(1, 4)
-// assert a[1] == 4
-// assert a[2] == 1
-// assert a.len == 4
-// a.insert(4, 5)
-// assert a[4] == 5
-// assert a[3] == 2
-// assert a.len == 5
-// mut b := []f64{}
-// assert b.len == 0
-// b.insert(0, f64(1.1))
-// assert b.len == 1
-// assert b[0] == f64(1.1)
-// }
-// TODO array.prepend is broken
-// It depends on array.insert
-// -----------------------------
-// fn test_prepend() {
-// mut a := []int{}
-// assert a.len == 0
-// a.prepend(1)
-// assert a.len == 1
-// assert a[0] == 1
-// mut b := []f64{}
-// assert b.len == 0
-// b.prepend(f64(1.1))
-// assert b.len == 1
-// assert b[0] == f64(1.1)
-// }
+
+fn test_insert_many() {
+	mut a := [3, 4]
+	a.insert(0, [1, 2])
+	assert a == [1,2,3,4]
+	b := [5,6]
+	a.insert(1, b)
+	assert a == [1,5,6,2,3,4]
+}
+
+fn test_prepend() {
+	mut a := []int{}
+	assert a.len == 0
+	a.prepend(1)
+	assert a.len == 1
+	assert a[0] == 1
+	mut b := []f64{}
+	assert b.len == 0
+	b.prepend(f64(1.1))
+	assert b.len == 1
+	assert b[0] == f64(1.1)
+}
+
+fn test_prepend_many() {
+	mut a := [3,4]
+	a.prepend([1,2])
+	assert a == [1,2,3,4]
+	b := [5,6]
+	a.prepend(b)
+	assert a == [5,6,1,2,3,4]
+}
+
 fn test_strings() {
 	a := ['a', 'b', 'c']
 	assert a.str() == "['a', 'b', 'c']"
@@ -179,7 +183,6 @@ fn test_compare_ints() {
     assert compare_ints(a, a) == 0
 }
 */
-
 
 fn test_repeat() {
 	{
@@ -356,6 +359,48 @@ fn test_clone() {
 	assert nums.str() == '[1, 2, 3, 4, 100]'
 	assert nums2.str() == '[1, 2, 3, 4, 100]'
 	assert nums.slice(1, 3).str() == '[2, 3]'
+}
+
+fn test_mutli_array_clone() {
+    // 2d array_int
+    mut a2_1 := [[1, 2, 3], [4, 5, 6]]
+    mut a2_2 := a2_1.clone()
+
+    a2_1[0][1] = 0
+    a2_2[1][0] = 0
+
+    assert a2_1 == [[1, 0, 3], [4, 5, 6]]
+    assert a2_2 == [[1, 2, 3], [0, 5, 6]]
+
+    // 2d array_string
+    mut b2_1 := [['1', '2', '3'], ['4', '5', '6']]
+    mut b2_2 := b2_1.clone()
+
+    b2_1[0][1] = '0'
+    b2_2[1][0] = '0'
+
+    assert b2_1 == [['1', '0', '3'], ['4', '5', '6']]
+    assert b2_2 == [['1', '2', '3'], ['0', '5', '6']]
+
+    // 3d array_int
+    mut a3_1 := [[[1,1], [2,2], [3,3]], [[4,4], [5,5], [6,6]]]
+    mut a3_2 := a3_1.clone()
+
+    a3_1[0][0][1] = 0
+    a3_2[0][1][0] = 0
+
+    assert a3_1 == [[[1, 0], [2, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
+    assert a3_2 == [[[1, 1], [0, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
+
+    // 3d array_string
+    mut b3_1 := [[['1','1'], ['2','2'], ['3','3']], [['4','4'], ['5','5'], ['6','6']]]
+    mut b3_2 := b3_1.clone()
+
+    b3_1[0][0][1] = '0'
+    b3_2[0][1][0] = '0'
+
+    assert b3_1 == [[['1','0'], ['2','2'], ['3','3']], [['4','4'], ['5','5'], ['6','6']]]
+    assert b3_2 == [[['1','1'], ['0','2'], ['3','3']], [['4','4'], ['5','5'], ['6','6']]]
 }
 
 fn test_doubling() {

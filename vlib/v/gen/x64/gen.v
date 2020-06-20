@@ -58,7 +58,7 @@ enum Register {
 }
 
 const (
-	fn_arg_registers = [x64.Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
+	fn_arg_registers = [Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
 )
 
 /*
@@ -263,7 +263,8 @@ fn (mut g Gen) println(comment string) {
 	addr := g.debug_pos.hex()
 	// println('$g.debug_pos "$addr"')
 	print(term.red(strings.repeat(`0`, 6 - addr.len) + addr + '  '))
-	for i := g.debug_pos; i < g.buf.len; i++ {
+	for i := g.debug_pos; i < g.buf.len; i++
+	 {
 		s := g.buf[i].hex()
 		if s.len == 1 {
 			print(term.blue('0'))
@@ -307,10 +308,11 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 	g.println('mov64 $reg, $val')
 }
 
-fn (mut g Gen) mov_from_reg(var_offset int, reg Register) {
-	// 89 7d fc                mov    DWORD PTR [rbp-0x4],edi
+fn (mut g Gen) mov_reg_to_rbp(var_offset int, reg Register) {
+	// 89 7d fc     mov DWORD PTR [rbp-0x4],edi
 	g.write8(0x89)
 	match reg {
+		.eax, .rax { g.write8(0x45) }
 		.edi, .rdi { g.write8(0x7d) }
 		.rsi { g.write8(0x75) }
 		.rdx { g.write8(0x55) }
@@ -318,7 +320,22 @@ fn (mut g Gen) mov_from_reg(var_offset int, reg Register) {
 		else { verror('mov_from_reg $reg') }
 	}
 	g.write8(0xff - var_offset + 1)
-	g.println('mov from reg')
+	g.println('mov DWORD PTR[rbp-$var_offset.hex2()],$reg')
+}
+
+fn (mut g Gen) mov_var_to_reg(reg Register, var_offset int) {
+	// 8b 7d f8          mov edi,DWORD PTR [rbp-0x8]
+	g.write8(0x8b)
+	match reg {
+		.eax, .rax { g.write8(0x45) }
+		.edi, .rdi { g.write8(0x7d) }
+		.rsi { g.write8(0x75) }
+		.rdx { g.write8(0x55) }
+		.rcx { g.write8(0x4d) }
+		else { verror('mov_var_to_reg $reg') }
+	}
+	g.write8(0xff - var_offset + 1)
+	g.println('mov $reg,DWORD PTR[rbp-$var_offset.hex2()]')
 }
 
 fn (mut g Gen) call(addr int) {
@@ -327,7 +344,7 @@ fn (mut g Gen) call(addr int) {
 	// +5 is to get the posistion "e8 xx xx xx xx"
 	// Not sure about the -1.
 	rel := 0xffffffff - (g.buf.len + 5 - addr - 1)
-	// println('call addr=$addr.hex() rel_addr=$rel.hex() pos=$g.buf.len')
+	// println('call addr=$addr.hex2() rel_addr=$rel.hex2() pos=$g.buf.len')
 	g.write8(0xe8)
 	g.write32(rel)
 	// g.println('fn call')
@@ -372,7 +389,15 @@ pub fn (mut g Gen) sub32(reg Register, val int) {
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write32(val)
-	g.println('sub $reg,0x$val.hex()')
+	g.println('sub32 $reg,$val.hex2()')
+}
+
+pub fn (mut g Gen) sub8(reg Register, val int) {
+	g.write8(0x48)
+	g.write8(0x83)
+	g.write8(0xe8 + reg) // TODO rax is different?
+	g.write8(val)
+	g.println('sub8 $reg,$val.hex2()')
 }
 
 pub fn (mut g Gen) add(reg Register, val int) {
@@ -380,7 +405,36 @@ pub fn (mut g Gen) add(reg Register, val int) {
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write32(val)
-	g.println('add $reg,0x$val.hex()')
+	g.println('add $reg,$val.hex2()')
+}
+
+pub fn (mut g Gen) add8(reg Register, val int) {
+	g.write8(0x48)
+	g.write8(0x83)
+	// g.write8(0xe8 + reg) // TODO rax is different?
+	g.write8(0xc4)
+	g.write8(val)
+	g.println('add8 $reg,$val.hex2()')
+}
+
+fn (mut g Gen) add8_var(reg Register, var_offset int) {
+	g.write8(0x03)
+	match reg {
+		.eax, .rax { g.write8(0x45) }
+		else { verror('add8_var') }
+	}
+	g.write8(0xff - var_offset + 1)
+	g.println('add8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
+}
+
+fn (mut g Gen) sub8_var(reg Register, var_offset int) {
+	g.write8(0x2b)
+	match reg {
+		.eax, .rax { g.write8(0x45) }
+		else { verror('sub8_var') }
+	}
+	g.write8(0xff - var_offset + 1)
+	g.println('sub8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
 }
 
 fn (mut g Gen) leave() {
@@ -409,9 +463,9 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, newline bool) {
 	match expr {
 		ast.StringLiteral {
 			if newline {
-				g.gen_print(it.val + '\n')
+				g.gen_print(expr.val + '\n')
 			} else {
-				g.gen_print(it.val)
+				g.gen_print(expr.val)
 			}
 		}
 		else {}
@@ -502,8 +556,22 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 	// g.mov(.eax, 0)
 	for i in 0 .. node.args.len {
 		expr := node.args[i].expr
-		int_lit := expr as ast.IntegerLiteral
-		g.mov(fn_arg_registers[i], int_lit.val.int())
+		match expr {
+			ast.IntegerLiteral {
+				// `foo(2)` => `mov edi,0x2`
+				g.mov(fn_arg_registers[i], expr.val.int())
+			}
+			ast.Ident {
+				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`
+				var_offset := g.get_var_offset(expr.name)
+				println('i=$i fn name= $name offset=$var_offset')
+				println(int(fn_arg_registers[i]))
+				g.mov_var_to_reg(fn_arg_registers[i], var_offset)
+			}
+			else {
+				verror('unhandled call_fn node: ' + typeof(expr))
+			}
+		}
 	}
 	if node.args.len > 6 {
 		verror('more than 6 args not allowed for now')
@@ -516,20 +584,20 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 fn (mut g Gen) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
-			g.assign_stmt(it)
+			g.assign_stmt(node)
 		}
 		ast.ConstDecl {}
 		ast.ExprStmt {
-			g.expr(it.expr)
+			g.expr(node.expr)
 		}
 		ast.FnDecl {
-			g.fn_decl(it)
+			g.fn_decl(node)
 		}
 		ast.ForStmt {
-			g.for_stmt(it)
+			g.for_stmt(node)
 		}
 		ast.HashStmt {
-			words := it.val.split(' ')
+			words := node.val.split(' ')
 			for word in words {
 				if word.len != 2 {
 					verror('opcodes format: xx xx xx xx')
@@ -547,7 +615,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.StructDecl {}
 		ast.UnsafeStmt {
-			g.stmts(it.stmts)
+			g.stmts(node.stmts)
 		}
 		else {
 			println('x64.stmt(): bad node: ' + typeof(node))
@@ -561,28 +629,27 @@ fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
 		ast.ArrayInit {}
-		ast.AssignExpr {}
+		ast.BoolLiteral {}
 		ast.CallExpr {
-			if it.name in ['println', 'print', 'eprintln', 'eprint'] {
-				expr := it.args[0].expr
-				g.gen_print_from_expr(expr, it.name in ['println', 'eprintln'])
+			if node.name in ['println', 'print', 'eprintln', 'eprint'] {
+				expr := node.args[0].expr
+				g.gen_print_from_expr(expr, node.name in ['println', 'eprintln'])
 				return
 			}
-			g.call_fn(it)
+			g.call_fn(node)
 		}
 		ast.FloatLiteral {}
 		ast.Ident {}
 		ast.IfExpr {
-			g.if_expr(it)
+			g.if_expr(node)
 		}
 		ast.InfixExpr {}
 		ast.IntegerLiteral {}
 		ast.PostfixExpr {
-			g.postfix_expr(it)
+			g.postfix_expr(node)
 		}
 		ast.StringLiteral {}
 		ast.StructInit {}
-		ast.BoolLiteral {}
 		else {
 			println(term.red('x64.expr(): unhandled node: ' + typeof(node)))
 		}
@@ -621,32 +688,53 @@ fn (mut g Gen) allocate_var(name string, size, initial_val int) {
 	// Generate the value assigned to the variable
 	g.write32(initial_val)
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
-	g.println('mov DWORD [rbp-0x$n],$initial_val (Aallocate var `$name`)')
+	g.println('mov DWORD [rbp-$n.hex2()],$initial_val (Allocate var `$name`)')
 }
 
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
-	for ident in node.left {
-		match node.right[0] {
+	for i, left in node.left {
+		right := node.right[i]
+		name := left.str()
+		// if left is ast.Ident {
+		// ident := left as ast.Ident
+		match right {
 			ast.IntegerLiteral {
-				g.allocate_var(ident.name, 4, it.val.int())
+				g.allocate_var(name, 4, right.val.int())
 			}
 			ast.InfixExpr {
-				g.infix_expr(it)
-				g.allocate_var(ident.name, 4, 0)
+				g.infix_expr(right)
+				g.allocate_var(name, 4, 0)
+				// `mov DWORD PTR [rbp-0x8],eax`
+				offset := g.get_var_offset(name)
+				println('ASS $name offset=$offset.hex2()')
+				g.mov_reg_to_rbp(offset, .eax)
 			}
 			else {
-				g.error_with_pos('assign_stmt unhandled expr: ' + typeof(node.right[0]), node.right[0].position())
+				g.error_with_pos('assign_stmt unhandled expr: ' + typeof(right), right.position())
 			}
 		}
+		// }
 	}
 }
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	println('infix expr op=$node.op')
-	match node.op {
-		.plus {}
+	if node.left is ast.InfixExpr {
+		verror('only simple expressions are supported right now (not more than 2 operands)')
+	}
+	match node.left {
+		ast.Ident { g.mov_var_to_reg(.eax, g.get_var_offset(it.name)) }
 		else {}
+	}
+	if node.right is ast.Ident {
+		ident := node.right as ast.Ident
+		var_offset := g.get_var_offset(ident.name)
+		match node.op {
+			.plus { g.add8_var(.eax, var_offset) }
+			.minus { g.sub8_var(.eax, var_offset) }
+			else {}
+		}
 	}
 }
 
@@ -700,7 +788,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	println(term.green('\n$node.name:'))
 	g.stack_var_pos = 0
 	is_main := node.name == 'main'
-	// println('saving addr $node.name $g.buf.len.hex()')
+	// println('saving addr $node.name $g.buf.len.hex2()')
 	if is_main {
 		g.save_main_fn_addr()
 	} else {
@@ -708,9 +796,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	g.push(.rbp)
 	g.mov_rbp_rsp()
-	if !is_main {
-		g.sub32(.rsp, 0x20)
-	}
+	// if !is_main {
+	g.sub8(.rsp, 0x10)
+	// }
 	if node.args.len > 0 {
 		// g.mov(.r12, 0x77777777)
 	}
@@ -722,7 +810,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.allocate_var(name, 4, 0)
 		// `mov DWORD PTR [rbp-0x4],edi`
 		offset += 4
-		g.mov_from_reg(offset, fn_arg_registers[i])
+		g.mov_reg_to_rbp(offset, fn_arg_registers[i])
 	}
 	//
 	g.stmts(node.stmts)
@@ -732,9 +820,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		// return
 	}
 	if !is_main {
-		g.leave()
-		// g.add(.rsp, 0x20)
-		// g.pop(.rbp)
+		// g.leave()
+		g.add8(.rsp, 0x10)
+		g.pop(.rbp)
 	}
 	g.ret()
 }

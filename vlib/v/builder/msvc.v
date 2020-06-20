@@ -138,8 +138,9 @@ fn find_vs(vswhere_dir, host_arch string) ?VsInstallation {
 	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') or {
 		return error(err)
 	}
+	res_output := res.output.trim_right('\r\n')
 	// println('res: "$res"')
-	version := os.read_file('$res.output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
+	version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
 		println('Unable to find msvc version')
 		return error('Unable to find vs installation')
 	}

@@ -425,7 +425,9 @@ The type of an array is determined by the first element: `[1, 2, 3]` is an array
 
 `['a', 'b']` is an array of strings (`[]string`).
 
-V arrays are homogenous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
+If V is unable to infer the type of an array, the user can explicitly specify it for the first element: `[byte(0x0E), 0x1F, 0xBA, 0x0E]`
+
+V arrays are homogeneous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
 
 `<<` is an operator that appends a value to the end of the array.
 It can also append an entire array.
@@ -1174,6 +1176,42 @@ To check whether a sum type is a certain type, use `is`:
 ```v
 println(expr is IfExpr)
 ```
+
+To cast a sum type to one of it's variants you use `as`:
+
+```v
+bin_expr := expr as BinaryExpr
+```
+
+You can also use match to determine the variant & and cast to it at the same time.
+There are 3 ways to access the cast variant inside a match branch:
+- the `it` variable
+- the shadowed match variable
+- using `as` to specify a variable name
+
+```v
+    fn binary_expr(bx BinaryExpr) {...}
+    fn unary_expr(ux UnaryExpr) {...}
+    fn if_expr(ix IfExpr) {...}
+
+        // using `it`
+	match expr {
+		BinaryExpr { binary_expr(it) }
+		...
+	}
+        // using the shadowed variable, in this case `expr`
+	match expr {
+		UnaryExpr { unary_expr(expr) }
+		...
+	}
+        // using `as` to specify a variable
+	match expr as actual_expr {
+		IfExpr { if_expr(actual_expr) }
+		...
+	}
+```
+
+Note: shadowing only works when the match expression is a variable. It will not work on struct fields, arrays indexing, or map key lookup.
 
 ## Option/Result types and error handling
 

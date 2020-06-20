@@ -6,7 +6,7 @@ fn test_from_file() {
 	}
 	assert data.name == 'V'
 	assert data.description == 'The V programming language.'
-	assert data.version == '0.1.27'
+	assert data.version == '0.1.28'
 	assert data.dependencies.len == 0
 }
 

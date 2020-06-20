@@ -1,5 +1,5 @@
 fn if_test() {
-	a := 1
+	mut a := 1
 	if a == 1 {
 		println('a == 1')
 		b := 2
@@ -32,6 +32,9 @@ fn foo(a int) {
 	if a == 1 {
 		println('a == 1')
 	}
+	if a == 7 {
+		println('a == 7')
+	}
 	a++
 	if a == 2 {
 		println('a == 2')
@@ -39,11 +42,14 @@ fn foo(a int) {
 	if a == 3 {
 		println('a == 3')
 	}
+
 }
 
 fn args() {
+	x := 7
 	println('===args===')
 	foo(1)
+	foo(x)
 	foo(2)
 }
 

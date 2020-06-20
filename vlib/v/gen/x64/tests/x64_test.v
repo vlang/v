@@ -48,8 +48,8 @@ fn test_x64() {
 		mut expected := os.read_file('$dir/${test}.out') or {
 			panic(err)
 		}
-		expected = expected.trim_space().trim('\n').replace('\r\n', '\n')
-		mut found := res.output.trim_space().trim('\n').replace('\r\n', '\n')
+		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
+		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
 		found = found.trim_space()
 		if expected != found {
 			println(term.red('FAIL'))

@@ -2961,7 +2961,7 @@ _SOKOL_PRIVATE const _sapp_gl_fbconfig* _sapp_gl_choose_fbconfig(const _sapp_gl_
 #include <windows.h>
 #include <windowsx.h>
 #include <shellapi.h>
-#pragma comment (lib, "Shell32.lib")
+#pragma comment (lib, "Shell32")
 
 #if defined(SOKOL_D3D11)
 #ifndef D3D11_NO_HELPERS
@@ -6781,8 +6781,13 @@ _SOKOL_PRIVATE void _sapp_x11_query_window_size(void) {
 
 _SOKOL_PRIVATE void _sapp_x11_create_window(Visual* visual, int depth) {
     _sapp_x11_colormap = XCreateColormap(_sapp_x11_display, _sapp_x11_root, visual, AllocNone);
+
+
+
+
     XSetWindowAttributes wa;
     memset(&wa, 0, sizeof(wa));
+   //wa.override_redirect = 1;
     const uint32_t wamask = CWBorderPixel | CWColormap | CWEventMask;
     wa.colormap = _sapp_x11_colormap;
     wa.border_pixel = 0;
@@ -6805,6 +6810,26 @@ _SOKOL_PRIVATE void _sapp_x11_create_window(Visual* visual, int depth) {
     _sapp_x11_release_error_handler();
     if (!_sapp_x11_window) {
         _sapp_fail("X11: Failed to create window");
+    }
+
+    if (_sapp.desc.fullscreen) {
+	    Atom wm_state = XInternAtom(_sapp_x11_display, "_NET_WM_STATE", False);
+	    Atom fullscreen = XInternAtom(_sapp_x11_display, "_NET_WM_STATE_FULLSCREEN", False);
+
+	    XEvent xev;
+	    memset(&xev, 0, sizeof(xev));
+	    xev.type = ClientMessage;
+	    xev.xclient.window = _sapp_x11_window;
+	    xev.xclient.message_type = wm_state;
+	    xev.xclient.format = 32;
+	    xev.xclient.data.l[0] = 1;
+	    xev.xclient.data.l[1] = fullscreen;
+	    xev.xclient.data.l[2] = 0;
+
+	    XMapWindow(_sapp_x11_display, _sapp_x11_window);
+
+	    XSendEvent (_sapp_x11_display, DefaultRootWindow(_sapp_x11_display), False,
+		    SubstructureRedirectMask | SubstructureNotifyMask, &xev);
     }
 
     Atom protocols[] = {

@@ -236,10 +236,9 @@ fn intersect(r Ray, spheres &Sphere, nspheres int) (bool, f64, int){
 
 // some casual random function, try to avoid the 0
 fn rand_f64() f64 {
-	x := (rand.intn(cache_len)+1) & 0x3FFF_FFFF
+	x := rand.u32() & 0x3FFF_FFFF
 	return f64(x)/f64(0x3FFF_FFFF)
 }
-
 
 const(
 	cache_len = 65536           // the 2*pi angle will be splitted in 65536 part
@@ -270,6 +269,10 @@ const (
 
 /******************* main function for the radiance calculation **************/
 fn radiance(r Ray, depthi int, scene_id int) Vec {
+	if depthi > 1024 {
+		eprintln('depthi: $depthi')
+		return Vec{} 
+	}
 	sin_tab := &f64( tabs.sin_tab )
 	cos_tab := &f64( tabs.cos_tab )
 	mut depth   := depthi      // actual depth in the reflection tree
@@ -318,7 +321,7 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 		//r1  := f64(2.0 * math.pi) * rand_f64()
 
 		// tabbed speed-up
-		r1 := rand.intn(cache_len) & cache_mask
+		r1 := rand.u32() & cache_mask
 
 		r2  := rand_f64()
 		r2s := math.sqrt(r2)

@@ -32,6 +32,14 @@ pub enum Backend {
 	x64          // The x64 backend
 }
 
+pub enum CompilerType {
+	tinyc
+	clang
+	mingw
+	msvc
+	gcc
+}
+
 const (
 	list_of_flags_with_param = [
 		'o'

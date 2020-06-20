@@ -9,16 +9,16 @@ import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral | CallExpr |
-	CastExpr | CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
-	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr |
-	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral |
-	StringLiteral | StructInit | Type | TypeOf | Likely
+pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr | CharLiteral |
+	ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr |
+	InfixExpr | IntegerLiteral | Likely | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr |
+	PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
+	StructInit | Type | TypeOf
 
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
-	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl | TypeDecl |
-	UnsafeStmt
+	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | SqlInsertExpr |
+	StructDecl | TypeDecl | UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -42,10 +42,11 @@ pub:
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
-	expr Expr
-	pos  token.Position
+	expr    Expr
+	pos     token.Position
+	is_expr bool
 pub mut:
-	typ  table.Type
+	typ     table.Type
 }
 
 pub struct IntegerLiteral {
@@ -73,10 +74,16 @@ pub struct StringInterLiteral {
 pub:
 	vals       []string
 	exprs      []Expr
-	expr_fmts  []string
+	fwidths    []int
+	precisions []int
+	pluss      []bool
+	fills      []bool
+	fmt_poss   []token.Position
 	pos        token.Position
 pub mut:
 	expr_types []table.Type
+	fmts       []byte
+	need_fmts  []bool // an explicit non-default fmt required, e.g. `x`
 }
 
 pub struct CharLiteral {
@@ -162,7 +169,7 @@ pub:
 	pub_mut_pos int // pub mut:
 	language    table.Language
 	is_union    bool
-	attr        string
+	attrs       []string
 }
 
 pub struct InterfaceDecl {
@@ -362,9 +369,9 @@ pub mut:
 }
 
 pub fn (i &Ident) var_info() IdentVar {
-	match i.info {
+	match i.info as info {
 		IdentVar {
-			return it
+			return info
 		}
 		else {
 			// return IdentVar{}
@@ -435,6 +442,7 @@ pub:
 	branches      []MatchBranch
 	pos           token.Position
 	is_mut        bool // `match mut ast_node {`
+	var_name      string
 pub mut:
 	is_expr       bool // returns a value
 	return_type   table.Type
@@ -504,20 +512,12 @@ pub:
 	has_init bool
 	cond     Expr // i < 10;
 	has_cond bool
-	inc      Expr // i++;
+	inc      Stmt // i++; i += 2
 	has_inc  bool
 	stmts    []Stmt
 	pos      token.Position
 }
 
-/*
-pub struct ReturnStmt {
-pub:
-	tok_kind token.Kind // or pos
-	results  []Expr
-	pos      token.Position
-}
-*/
 // #include etc
 pub struct HashStmt {
 pub:
@@ -537,10 +537,11 @@ pub:
 	op            token.Kind
 	pos           token.Position
 pub mut:
-	left          []Ident
+	left          []Expr
 	left_types    []table.Type
 	right_types   []table.Type
 	is_static     bool // for translated code only
+	is_simple     bool // `x+=2` in `for x:=1; ; x+=2`
 	has_cross_var bool
 }
 
@@ -557,6 +558,15 @@ pub mut:
 pub struct Attr {
 pub:
 	name string
+}
+
+pub fn (attrs []Attr) contains(attr Attr) bool {
+	for a in attrs {
+		if attr.name == a.name {
+			return true
+		}
+	}
+	return false
 }
 
 pub struct EnumVal {
@@ -629,17 +639,6 @@ pub:
 pub struct ParExpr {
 pub:
 	expr Expr
-}
-
-pub struct AssignExpr {
-pub:
-	op         token.Kind
-	pos        token.Position
-	left       Expr
-	val        Expr
-pub mut:
-	left_type  table.Type
-	right_type table.Type
 }
 
 pub struct GoStmt {
@@ -758,8 +757,8 @@ pub:
 
 pub struct Likely {
 pub:
-	expr     Expr
-	pos      token.Position
+	expr      Expr
+	pos       token.Position
 	is_likely bool // false for _unlikely_
 }
 
@@ -790,7 +789,6 @@ pub:
 	method_name string
 	left        Expr
 	is_vweb     bool
-	// vweb_stmts  []Stmt
 	vweb_tmpl   File
 pub mut:
 	sym         table.TypeSymbol
@@ -798,13 +796,41 @@ pub mut:
 
 pub struct None {
 pub:
+	pos token.Position
 	foo int // todo
 }
 
+/*
+pub enum SqlExprKind {
+	select_
+	insert
+	update
+}
+*/
+pub struct SqlInsertExpr {
+pub:
+	db_var_name     string // `db` in `sql db {`
+	table_name      string
+	object_var_name string // `user`
+	table_type      table.Type
+}
+
+pub struct SqlExpr {
+pub:
+	typ         table.Type
+	is_count    bool
+	db_var_name string // `db` in `sql db {`
+	table_name  string
+	where_expr  Expr
+	has_where   bool
+	fields      []table.Field
+	is_array    bool
+}
+
 [inline]
-pub fn expr_is_blank_ident(expr Expr) bool {
+pub fn (expr Expr) is_blank_ident() bool {
 	match expr {
-		Ident { return it.kind == .blank_ident }
+		Ident { return expr.kind == .blank_ident }
 		else { return false }
 	}
 }
@@ -813,91 +839,91 @@ pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
 	match mut expr {
 		ArrayInit {
-			return it.pos
+			return expr.pos
 		}
 		AsCast {
-			return it.pos
+			return expr.pos
 		}
 		// ast.Ident { }
-		AssignExpr {
-			return it.pos
-		}
 		CastExpr {
-			return it.pos
+			return expr.pos
 		}
 		Assoc {
-			return it.pos
+			return expr.pos
 		}
 		BoolLiteral {
-			return it.pos
+			return expr.pos
 		}
 		CallExpr {
-			return it.pos
+			return expr.pos
 		}
 		CharLiteral {
-			return it.pos
+			return expr.pos
 		}
 		EnumVal {
-			return it.pos
+			return expr.pos
 		}
 		FloatLiteral {
-			return it.pos
+			return expr.pos
 		}
 		Ident {
-			return it.pos
+			return expr.pos
 		}
 		IfExpr {
-			return it.pos
+			return expr.pos
 		}
 		// ast.IfGuardExpr { }
 		IndexExpr {
-			return it.pos
+			return expr.pos
 		}
 		InfixExpr {
-			left_pos := it.left.position()
-			right_pos := it.right.position()
+			left_pos := expr.left.position()
+			right_pos := expr.right.position()
 			if left_pos.pos == 0 || right_pos.pos == 0 {
-				return it.pos
+				return expr.pos
 			}
 			return token.Position{
-				line_nr: it.pos.line_nr
+				line_nr: expr.pos.line_nr
 				pos: left_pos.pos
 				len: right_pos.pos - left_pos.pos + right_pos.len
 			}
 		}
 		IntegerLiteral {
-			return it.pos
+			return expr.pos
 		}
 		MapInit {
-			return it.pos
+			return expr.pos
 		}
 		MatchExpr {
-			return it.pos
+			return expr.pos
+		}
+		None {
+			return expr.pos
 		}
 		PostfixExpr {
-			return it.pos
+			return expr.pos
 		}
 		// ast.None { }
 		PrefixExpr {
-			return it.pos
+			return expr.pos
 		}
 		// ast.ParExpr { }
 		SelectorExpr {
-			return it.pos
+			return expr.pos
 		}
 		// ast.SizeOf { }
 		StringLiteral {
-			return it.pos
+			return expr.pos
 		}
 		StringInterLiteral {
-			return it.pos
+			return expr.pos
 		}
 		// ast.Type { }
 		StructInit {
-			return it.pos
+			return expr.pos
 		}
 		Likely {
-			return it.pos
+			return expr.pos
 		}
 		// ast.TypeOf { }
 		else {
@@ -908,8 +934,8 @@ pub fn (expr Expr) position() token.Position {
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt { return it.pos }
-		AssignStmt { return it.pos }
+		AssertStmt { return stmt.pos }
+		AssignStmt { return stmt.pos }
 		/*
 		// Attr {
 		// }
@@ -918,19 +944,19 @@ pub fn (stmt Stmt) position() token.Position {
 		// BranchStmt {
 		// }
 		*/
-		Comment { return it.pos }
-		CompIf { return it.pos }
-		ConstDecl { return it.pos }
+		Comment { return stmt.pos }
+		CompIf { return stmt.pos }
+		ConstDecl { return stmt.pos }
 		/*
 		// DeferStmt {
 		// }
 		*/
-		EnumDecl { return it.pos }
-		ExprStmt { return it.pos }
-		FnDecl { return it.pos }
-		ForCStmt { return it.pos }
-		ForInStmt { return it.pos }
-		ForStmt { return it.pos }
+		EnumDecl { return stmt.pos }
+		ExprStmt { return stmt.pos }
+		FnDecl { return stmt.pos }
+		ForCStmt { return stmt.pos }
+		ForInStmt { return stmt.pos }
+		ForStmt { return stmt.pos }
 		/*
 		// GlobalDecl {
 		// }
@@ -943,15 +969,15 @@ pub fn (stmt Stmt) position() token.Position {
 		// HashStmt {
 		// }
 		*/
-		Import { return it.pos }
+		Import { return stmt.pos }
 		/*
 		// InterfaceDecl {
 		// }
 		// Module {
 		// }
 		*/
-		Return { return it.pos }
-		StructDecl { return it.pos }
+		Return { return stmt.pos }
+		StructDecl { return stmt.pos }
 		/*
 		// TypeDecl {
 		// }

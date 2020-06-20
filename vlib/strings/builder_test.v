@@ -8,11 +8,28 @@ fn test_sb() {
 	assert sb.len == 8
 	assert sb.str() == 'hi!hello'
 	assert sb.len == 0
+	///
 	sb = strings.new_builder(10)
 	sb.write('a')
 	sb.write('b')
 	assert sb.len == 2
 	assert sb.str() == 'ab'
+	///
+	$if !windows {
+		// TODO msvc bug
+		sb = strings.new_builder(10)
+		sb.write('123456')
+		assert sb.cut_last(2) == '56'
+		assert sb.str() == '1234'
+	}
+	///
+	/*
+	sb = strings.new_builder(10)
+	sb.write('123456')
+	x := sb.cut_to(2)
+	assert x == '456'
+	assert sb.str() == '123'
+	*/
 }
 
 const (

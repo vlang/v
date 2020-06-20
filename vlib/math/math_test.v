@@ -46,8 +46,8 @@ fn test_gamma() {
 	assert gamma(1) == 1
 	assert gamma(5) == 24
 	sval := '2.453737'
-	assert tst_res(log_gamma(4.5).str(), sval) 
-	assert tst_res(log(gamma(4.5)).str(), sval) 
+	assert tst_res(log_gamma(4.5).str(), sval)
+	assert tst_res(log(gamma(4.5)).str(), sval)
 	//assert log_gamma(4.5).str() == sval
 	//assert log(gamma(4.5)).str() == sval
 	assert abs( log_gamma(4.5) - log(gamma(4.5)) ) < 0.000001

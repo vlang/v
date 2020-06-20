@@ -27,12 +27,29 @@ fn C.sqlite3_finalize()
 fn C.sqlite3_column_count(voidptr) int
 
 // Opens the connection with a database.
-pub fn connect(path string) DB {
+pub fn connect(path string) ?DB {
 	db := &C.sqlite3(0)
-	C.sqlite3_open(path.str, &db)
+	if C.sqlite3_open(path.str, &db) != 0 {
+		return error('sqlite db error')
+	}
 	return DB{
 		conn: db
 	}
+}
+
+// Only for V ORM
+fn (db DB) init_stmt(query string) &C.sqlite3_stmt {
+	stmt := &C.sqlite3_stmt(0)
+	C.sqlite3_prepare_v2(db.conn, query.str, -1, &stmt, 0)
+	return stmt
+}
+
+// Only for V ORM
+fn get_int_from_stmt(stmt &C.sqlite3_stmt) int {
+	C.sqlite3_step(stmt)
+	res := C.sqlite3_column_int(stmt, 0)
+	C.sqlite3_finalize(stmt)
+	return res
 }
 
 // Returns a single cell with value int.
@@ -101,3 +118,7 @@ pub fn (db DB) exec_none(query string) int {
 pub fn (db DB) exec_param(query string, param string) []Row {
 }
 */
+
+pub fn (db DB) insert<T>(x T) {
+}
+

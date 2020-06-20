@@ -16,11 +16,16 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_static {
-			node = p.parse_assign_ident()
-		}
-		.name {
 			node = p.name_expr()
 			p.is_stmt_ident = is_stmt_ident
+		}
+		.name {
+			if p.tok.lit == 'sql' && p.peek_tok.kind == .name {
+				node = p.sql_expr()
+			} else {
+				node = p.name_expr()
+				p.is_stmt_ident = is_stmt_ident
+			}
 		}
 		.string {
 			node = p.string_expr()
@@ -28,6 +33,13 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.dot {
 			// .enum_val
 			node = p.enum_val()
+		}
+		.dollar {
+			if p.peek_tok.kind == .name {
+				return p.vweb()
+			} else {
+				p.error('unexpected $')
+			}
 		}
 		.chartoken {
 			node = ast.CharLiteral{
@@ -73,8 +85,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		}
 		.key_none {
+			pos := p.tok.position()
 			p.next()
-			node = ast.None{}
+			node = ast.None{
+				pos: pos
+			}
 		}
 		.key_sizeof {
 			p.next() // sizeof
@@ -151,14 +166,18 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	}
 	// Infix
 	for precedence < p.tok.precedence() {
-		if p.tok.kind.is_assign() && !p.is_stmt_ident {
-			node = p.assign_expr(node)
-		} else if p.tok.kind == .dot {
+		if p.tok.kind == .dot {
 			node = p.dot_expr(node)
 			p.is_stmt_ident = is_stmt_ident
 		} else if p.tok.kind == .lsbr {
 			node = p.index_expr(node)
+			p.is_stmt_ident = is_stmt_ident
 		} else if p.tok.kind == .key_as {
+			// sum type match `match x as alias` so return early
+			if p.inside_match {
+				return node
+			}
+			// sum type as cast `x := SumType as Variant`
 			pos := p.tok.position()
 			p.next()
 			typ = p.parse_type()
