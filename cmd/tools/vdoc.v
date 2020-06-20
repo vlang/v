@@ -162,8 +162,9 @@ fn (mut cfg DocConfig) serve_html() {
 			url := urllib.parse(data[1]) or { return }
 			filename = if url.path == '/' { def_name } else { url.path.trim_left('/') }
 		}
-		html := docs[filename]
-		con.write('HTTP/1.1 200 OK\r\nContent-Type: $content_type\r\n\r\n$html') or {
+		html := docs[filename].trim_space()
+		content_length := html.len
+		con.send_string('HTTP/1.1 200 OK\r\nServer: VDoc\r\nContent-Type: ${content_type}\r\nContent-Length: ${content_length}\r\nConnection: close\r\n\r\n${html}') or {
 			con.close() or { return }
 			return
 		}
