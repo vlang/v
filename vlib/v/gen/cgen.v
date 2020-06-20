@@ -3073,12 +3073,12 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		}
 		ast.Ident {
 			if it.kind == .function {
-				g.write('${it.name}(it)')
+				g.write('${c_name(it.name)}(it)')
 			} else if it.kind == .variable {
 				var_info := it.var_info()
 				sym := g.table.get_type_symbol(var_info.typ)
 				if sym.kind == .function {
-					g.write('${it.name}(it)')
+					g.write('${c_name(it.name)}(it)')
 				} else {
 					g.expr(node.args[0].expr)
 				}
@@ -3125,12 +3125,12 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		}
 		ast.Ident {
 			if it.kind == .function {
-				g.write('${it.name}(it)')
+				g.write('${c_name(it.name)}(it)')
 			} else if it.kind == .variable {
 				var_info := it.var_info()
 				sym_t := g.table.get_type_symbol(var_info.typ)
 				if sym_t.kind == .function {
-					g.write('${it.name}(it)')
+					g.write('${c_name(it.name)}(it)')
 				} else {
 					g.expr(node.args[0].expr)
 				}
