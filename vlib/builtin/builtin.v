@@ -223,7 +223,7 @@ fn __as_cast(obj voidptr, obj_type, expected_type int) voidptr {
 
 // VAssertMetaInfo is used during assertions. An instance of it
 // is filled in by compile time generated code, when an assertion fails.
-struct VAssertMetaInfo {
+pub struct VAssertMetaInfo {
 pub:
 	fpath   string // the source file path of the assertion
 	line_nr int    // the line number of the assertion

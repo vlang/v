@@ -960,11 +960,11 @@ fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 		g.writeln('{')
 		g.writeln('	g_test_oks++;')
 		metaname_ok := g.gen_assert_metainfo(a)
-		g.writeln('	cb_assertion_ok(&$metaname_ok);')
+		g.writeln('	main__cb_assertion_ok(&$metaname_ok);')
 		g.writeln('} else {')
 		g.writeln('	g_test_fails++;')
 		metaname_fail := g.gen_assert_metainfo(a)
-		g.writeln('	cb_assertion_failed(&$metaname_fail);')
+		g.writeln('	main__cb_assertion_failed(&$metaname_fail);')
 		g.writeln('	longjmp(g_jump_buffer, 1);')
 		g.writeln('	// TODO')
 		g.writeln('	// Maybe print all vars in a test function if it fails?')
@@ -3554,21 +3554,21 @@ pub fn (mut g Gen) write_tests_main() {
 	g.writeln('')
 	all_tfuncs := g.get_all_test_function_names()
 	if g.pref.is_stats {
-		g.writeln('\tBenchedTests bt = start_testing($all_tfuncs.len, tos_lit("$g.pref.path"));')
+		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, tos_lit("$g.pref.path"));')
 	}
 	for t in all_tfuncs {
 		g.writeln('')
 		if g.pref.is_stats {
-			g.writeln('\tBenchedTests_testing_step_start(&bt, tos_lit("$t"));')
+			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, tos_lit("$t"));')
 		}
 		g.writeln('\tif (!setjmp(g_jump_buffer)) ${t}();')
 		if g.pref.is_stats {
-			g.writeln('\tBenchedTests_testing_step_end(&bt);')
+			g.writeln('\tmain__BenchedTests_testing_step_end(&bt);')
 		}
 	}
 	g.writeln('')
 	if g.pref.is_stats {
-		g.writeln('\tBenchedTests_end_testing(&bt);')
+		g.writeln('\tmain__BenchedTests_end_testing(&bt);')
 	}
 	g.writeln('')
 	if g.autofree {
