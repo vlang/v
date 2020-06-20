@@ -126,9 +126,9 @@ fn test_various_map_value() {
 	m12['test'] = f64(0.0)
 	assert m12['test'] == f64(0.0)
 
-	mut m13 := map[string]rune
-	m13['test'] = rune(0)
-	assert m13['test'] == rune(0)
+	//mut m13 := map[string]rune
+	//m13['test'] = rune(0)
+	//assert m13['test'] == rune(0)
 
 	mut m14 := map[string]voidptr
 	m14['test'] = voidptr(0)
@@ -248,6 +248,9 @@ fn test_map_assign() {
 	_ := Mstruct3 {
 		{ 'r': u16(6), 's': 5 }
 	}
+	println('d: $d')
+	println('e: $e')
+	println('f: $f')
 }
 
 fn test_postfix_op_directly() {
