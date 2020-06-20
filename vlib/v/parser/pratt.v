@@ -34,6 +34,13 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			// .enum_val
 			node = p.enum_val()
 		}
+		.dollar {
+			if p.peek_tok.kind == .name {
+				return p.vweb()
+			} else {
+				p.error('unexpected $')
+			}
+		}
 		.chartoken {
 			node = ast.CharLiteral{
 				val: p.tok.lit

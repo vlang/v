@@ -1929,7 +1929,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.nr_warnings += c2.nr_warnings
 				c.nr_errors += c2.nr_errors
 			}
-			return table.void_type
+			return c.table.find_type_idx('vweb.Result')
+			// return table.void_type
 		}
 		ast.ConcatExpr {
 			return c.concat_expr(mut node)

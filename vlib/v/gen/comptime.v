@@ -23,8 +23,11 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 	}
 	g.writeln('// $' + 'method call. sym="$node.sym.name"')
 	mut j := 0
+	result_type := g.table.find_type_idx('vweb.Result')
+	println('!!!!! $result_type')
 	for method in node.sym.methods {
-		if method.return_type != table.void_type {
+		// if method.return_type != table.void_type {
+		if method.return_type != result_type {
 			continue
 		}
 		// receiver := method.args[0]
@@ -36,7 +39,7 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 			g.write(' else ')
 		}
 		g.write('if (string_eq($node.method_name, tos_lit("$method.name"))) ')
-		g.write('${node.sym.name}_$method.name ($amp ')
+		g.write('${node.sym.name}_${method.name}($amp ')
 		g.expr(node.left)
 		g.writeln(');')
 		j++
@@ -46,29 +49,21 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 fn (mut g Gen) comp_if(it ast.CompIf) {
 	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
 	if it.is_not {
-		g.writeln('\n// \$if !${it.val} {\n#ifndef ' + ifdef)
+		g.writeln('\n// \$if !$it.val {\n#ifndef ' + ifdef)
 	} else {
-		g.writeln('\n// \$if  ${it.val} {\n#ifdef ' + ifdef)
+		g.writeln('\n// \$if  $it.val {\n#ifdef ' + ifdef)
 	}
 	// NOTE: g.defer_ifdef is needed for defers called witin an ifdef
 	// in v1 this code would be completely excluded
-	g.defer_ifdef = if it.is_not {
-		'\n#ifndef ' + ifdef
-	} else {
-		'\n#ifdef ' + ifdef
-	}
+	g.defer_ifdef = if it.is_not { '\n#ifndef ' + ifdef } else { '\n#ifdef ' + ifdef }
 	// println('comp if stmts $g.file.path:$it.pos.line_nr')
 	g.stmts(it.stmts)
 	g.defer_ifdef = ''
 	if it.has_else {
 		g.writeln('\n#else')
-		g.defer_ifdef = if it.is_not {
-			'\n#ifdef ' + ifdef
-		} else {
-			'\n#ifndef ' + ifdef
-		}
+		g.defer_ifdef = if it.is_not { '\n#ifdef ' + ifdef } else { '\n#ifndef ' + ifdef }
 		g.stmts(it.else_stmts)
 		g.defer_ifdef = ''
 	}
-	g.writeln('\n// } ${it.val}\n#endif\n')
+	g.writeln('\n// } $it.val\n#endif\n')
 }

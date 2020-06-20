@@ -2296,6 +2296,14 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		g.writeln('return 0;')
 		return
 	}
+	if node.exprs.len > 0 {
+		// skip `retun $vweb.html()`
+		if node.exprs[0] is ast.ComptimeCall {
+			g.expr(node.exprs[0])
+			g.writeln(';')
+			return
+		}
+	}
 	// got to do a correct check for multireturn
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
 	fn_return_is_multi := sym.kind == .multi_return

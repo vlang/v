@@ -49,6 +49,8 @@ pub mut:
 	done bool
 }
 
+pub struct Result {}
+
 fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	if ctx.done { return false }
 	ctx.done = true
@@ -371,6 +373,7 @@ pub fn (mut ctx Context) handle_static(directory_path string) bool {
 
 	return true
 }
+
 
 pub fn (mut ctx Context) serve_static(url, file_path, mime_type string) {
 	ctx.static_files[url] = file_path

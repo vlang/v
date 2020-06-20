@@ -518,14 +518,6 @@ pub:
 	pos      token.Position
 }
 
-/*
-pub struct ReturnStmt {
-pub:
-	tok_kind token.Kind // or pos
-	results  []Expr
-	pos      token.Position
-}
-*/
 // #include etc
 pub struct HashStmt {
 pub:
