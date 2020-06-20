@@ -275,29 +275,6 @@ pub fn (mut p Parser) open_scope() {
 }
 
 pub fn (mut p Parser) close_scope() {
-	// TODO move this to checker since is_changed is set there?
-	if !p.pref.is_repl && !p.scanner.is_fmt {
-		for _, obj in p.scope.objects {
-			match obj {
-				ast.Var {
-					if !obj.is_used && obj.name[0] != `_` {
-						if p.pref.is_prod {
-							p.error_with_pos('unused variable: `$obj.name`', obj.pos)
-						} else {
-							p.warn_with_pos('unused variable: `$obj.name`', obj.pos)
-						}
-					}
-					/*
-					if it.is_mut && !it.is_changed {
-						p.warn_with_pos('`$it.name` is declared as mutable, but it was never changed',
-							it.pos)
-					}
-					*/
-				}
-				else {}
-			}
-		}
-	}
 	p.scope.end_pos = p.tok.pos
 	p.scope.parent.children << p.scope
 	p.scope = p.scope.parent

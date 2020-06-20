@@ -107,7 +107,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		start_pos: 0
 		parent: p.global_scope
 	}
-	file := parse_text(v_code, p.table, p.pref, scope, p.global_scope)
+	mut file := parse_text(v_code, p.table, p.pref, scope, p.global_scope)
 	if p.pref.is_verbose {
 		println('\n\n')
 		println('>>> vweb template for ${path}:')
@@ -115,6 +115,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		println('>>> end of vweb template END')
 		println('\n\n')
 	}
+	file = {file| path:html_name}
 	// copy vars from current fn scope into vweb_tmpl scope
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
@@ -124,12 +125,11 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 				for _, obj in p.scope.objects {
 					if obj is ast.Var {
 						mut v := obj as ast.Var
+						v.pos = fn_decl.body_pos
 						tmpl_scope.register(v.name, *v)
-						// TODO: this is yuck, track idents in parser
-						// or defer unused var logic to checker
-						if v_code.contains(v.name) {
-							v.is_used = true
-						}
+						// set the controller action var to used
+						// if its unused in the template it will warn
+						v.is_used = true
 					}
 				}
 				break

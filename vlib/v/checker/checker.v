@@ -62,20 +62,33 @@ pub fn (mut c Checker) check(ast_file ast.File) {
 		c.expr_level = 0
 		c.stmt(stmt)
 	}
-	// Check scopes
-	// TODO
-	/*
-	for i, obj in c.file.global_scope.objects {
+	c.check_scope_vars(c.file.scope)
+}
+
+pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
+	for _, obj in sc.objects {
 		match obj {
 			ast.Var {
-				if it.is_mut && !it.is_changed {
-					c.warn('`$it.name` is declared as mutable, but it was never changed', it.pos)
+				if !c.pref.is_repl {
+					if !obj.is_used && obj.name[0] != `_` {
+						if c.pref.is_prod {
+							c.error('unused variable: `$obj.name`', obj.pos)
+						} else {
+							c.warn('unused variable: `$obj.name`', obj.pos)
+						}
+					}
 				}
+				// TODO: fix all of these warnings
+				// if obj.is_mut && !obj.is_changed {
+				// 	c.warn('`$obj.name` is declared as mutable, but it was never changed', obj.pos)
+				// }
 			}
 			else {}
 		}
 	}
-	*/
+	for _, child in sc.children {
+		c.check_scope_vars(child)
+	}
 }
 
 // not used right now
@@ -1917,12 +1930,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.ComptimeCall {
 			node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
 			if node.is_vweb {
-				x := *c.pref
-				xx := {
-					x |
-					is_vweb: true
-				} // TODO assoc parser bug
-				mut c2 := new_checker(c.table, xx)
+				// TODO assoc parser bug
+				pref := *c.pref
+				pref2 := {pref|is_vweb: true} 
+				mut c2 := new_checker(c.table, pref2)
 				c2.check(node.vweb_tmpl)
 				c.warnings << c2.warnings
 				c.errors << c2.errors
@@ -2088,6 +2099,11 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					return obj.typ
 				}
 				ast.Var {
+					// incase var was not marked as used yet (vweb tmpl)
+					obj.is_used = true
+					if ident.pos.pos < obj.pos.pos {
+						c.error('undefined variable `$ident.name` (used before declaration)', ident.pos)
+					}
 					mut typ := obj.typ
 					if typ == 0 {
 						if obj.expr is ast.Ident {
