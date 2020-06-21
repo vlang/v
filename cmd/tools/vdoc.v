@@ -149,26 +149,70 @@ fn (mut cfg DocConfig) serve_html() {
 		.json { 'application/json' }
 		else { 'text/plain' }
 	}
+	server_context := VdocHttpServerContext {
+		docs: docs
+		content_type: content_type
+		default_filename: def_name
+	}
 	for {
 		con := server.accept() or {
 			server.close() or { }
 			panic(err)
 		}
-		s := con.read_line()
-		first_line := s.all_before('\n')
-		mut filename := def_name
-		if first_line.len != 0 {
-			data := first_line.split(' ')
-			url := urllib.parse(data[1]) or { return }
-			filename = if url.path == '/' { def_name } else { url.path.trim_left('/') }
+		handle_http_connection(mut con, server_context)
+		con.close() or {
+			eprintln('error closing the connection: $err')
 		}
-		html := docs[filename].trim_space()
-		content_length := html.len
-		con.send_string('HTTP/1.1 200 OK\r\nServer: VDoc\r\nContent-Type: ${content_type}\r\nContent-Length: ${content_length}\r\nConnection: close\r\n\r\n${html}') or {
-			con.close() or { return }
-			return
-		}
-		con.close() or { return }
+	}
+}
+
+struct VdocHttpServerContext {
+	docs map[string]string
+	content_type string
+	default_filename string
+}
+
+fn handle_http_connection(mut con net.Socket, ctx &VdocHttpServerContext) {
+	s := con.read_line()
+	first_line := s.all_before('\r\n')
+	if first_line.len == 0 {
+		send_http_response(mut con, 501, ctx.content_type, 'bad request')
+		return
+	}
+	request_parts := first_line.split(' ')
+	if request_parts.len != 3 {
+		send_http_response(mut con, 501, ctx.content_type, 'bad request')
+		return
+	}
+	urlpath := request_parts[1]
+	filename := if urlpath == '/' { ctx.default_filename.trim_left('/') } else { urlpath.trim_left('/') }
+	if ctx.docs[filename].len == 0 {
+		send_http_response(mut con, 404, ctx.content_type, 'file not found')
+		return
+	}
+	send_http_response(mut con, 200, ctx.content_type, ctx.docs[filename])
+}
+
+fn send_http_response(mut con net.Socket, http_code int, content_type string, html string) {
+	content_length := html.len.str()
+	shttp_code := http_code.str()
+	mut http_response := strings.new_builder(20000)
+	http_response.write('HTTP/1.1 ')
+	http_response.write(shttp_code)
+	http_response.write(' OK\r\n')
+	http_response.write('Server: VDoc\r\n')
+	http_response.write('Content-Type: ')
+	http_response.write(content_type)
+	http_response.write('\r\n')
+	http_response.write('Content-Length: ')
+	http_response.write(content_length)
+	http_response.write('\r\n')
+	http_response.write('Connection: close\r\n')
+	http_response.write('\r\n')
+	http_response.write(html)
+	sresponse := http_response.str()
+	con.send_string(sresponse) or {
+		eprintln('error sending http response: $err')
 	}
 }
 
@@ -531,12 +575,13 @@ fn (cfg DocConfig) render() map[string]string {
 			.json { '.json' }
 			else { '.txt' }
 		}
-		docs[name] = match cfg.output_type {
+		output := match cfg.output_type {
 			.html { cfg.gen_html(i) }
 			.markdown { cfg.gen_markdown(i, true) }
 			.json { cfg.gen_json(i) }
 			else { cfg.gen_plaintext(i) }
 		}
+		docs[name] = output.trim_space()
 	}
 	cfg.vprintln('Rendered: ' + docs.keys().str())
 	return docs
@@ -751,7 +796,7 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 }
 
 fn main() {
-	args := os.args[2..]
+	args := os.args[2..].clone()
 	if args.len == 0 || args[0] in ['help', '-h', '--help'] {
 		os.system('${@VEXE} help doc')
 		exit(0)
