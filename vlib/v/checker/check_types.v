@@ -272,7 +272,7 @@ pub fn (c &Checker) get_default_fmt(ftyp, typ table.Type) byte {
 	} else {
 		sym := c.table.get_type_symbol(ftyp)
 		if ftyp in [table.string_type, table.bool_type] || sym.kind in [.enum_, .array, .array_fixed,
-			.struct_, .map] || ftyp.has_flag(.optional) || sym.has_method('str') {
+			.struct_, .map, .multi_return] || ftyp.has_flag(.optional) || sym.has_method('str') {
 			return `s`
 		} else {
 			return `_`
