@@ -13,6 +13,18 @@ fn (r RetTest) return_multi_3() (f32, bool, []string) {
 	return 2.2, false, ['a', 'b', 'c']
 }
 
+fn return_multi_4() (int, string) {
+	return 1, 'aaa'
+}
+
+fn return_multi_5() (string, bool, []int) {
+	return 'aaa', true, [1,2,3]
+}
+
+fn return_multi_6() (f32, bool, []string) {
+	return 2.2, false, ['a', 'b', 'c']
+}
+
 fn test_multi_return_interpolation() {
 	r := RetTest{}
 
@@ -24,4 +36,14 @@ fn test_multi_return_interpolation() {
 
 	s3 := '${r.return_multi_3()}'
 	assert s3 == "(2.2, false, ['a', 'b', 'c'])"
+
+	s4 := '${return_multi_4()}'
+	assert s1 == "(1, 'aaa')"
+
+	s5 := '${return_multi_5()}'
+	assert s2 == "('aaa', true, [1, 2, 3])"
+
+	s6 := '${return_multi_6()}'
+	assert s3 == "(2.2, false, ['a', 'b', 'c'])"
+
 }
