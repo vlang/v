@@ -1452,7 +1452,7 @@ fn read_log() {
 
 (this is still in an alpha state)
 
-V has a built-in ORM (object-relational mapping) which supports Postgres, and will soon support MySQL and SQLite.
+V has a built-in ORM (object-relational mapping) which supports SQLite, and will soon support MySQL, Postgres, MS SQL, and Oracle.
 
 V's ORM provides a number of benefits:
 
@@ -1492,6 +1492,8 @@ println('$customer.id - $customer.name')
 new_customer := Customer{name: 'Bob', nr_orders: 10}
 sql db { insert new_customer into Customer }
 ```
+
+For more examples, see <a href='https://github.com/vlang/v/blob/master/vlib/orm/orm_test.v'>vlib/orm/orm_test.v</a>.
 
 ## vfmt
 
