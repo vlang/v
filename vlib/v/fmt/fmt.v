@@ -723,7 +723,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(')')
 		}
 		ast.SqlExpr {}
-		ast.SqlInsertExpr {}
 		ast.StringLiteral {
 			if node.is_raw {
 				f.write('r')
