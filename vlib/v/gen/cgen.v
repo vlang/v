@@ -506,7 +506,7 @@ pub fn (mut g Gen) write_multi_return_types() {
 }
 
 pub fn (mut g Gen) write_variadic_types() {
-	if g.variadic_args.size > 0 {
+	if g.variadic_args.len > 0 {
 		g.type_definitions.writeln('// variadic structs')
 	}
 	for type_str, arg_len in g.variadic_args {
@@ -4104,9 +4104,9 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	zero := g.type_default(info.value_type)
 	g.type_definitions.writeln('string ${str_fn_name}($styp m); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp m) { /* gen_str_for_map */')
-	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(m.key_values.size*10);')
+	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(m.key_values.len*10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("{"));')
-	g.auto_str_funcs.writeln('\tfor (unsigned int i = 0; i < m.key_values.size; i++) {')
+	g.auto_str_funcs.writeln('\tfor (unsigned int i = 0; i < m.key_values.len; i++) {')
 	g.auto_str_funcs.writeln('\t\tstring key = (*(string*)DenseArray_get(m.key_values, i));')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, key));')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos_lit(": "));')
@@ -4123,7 +4123,7 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(it));')
 	}
-	g.auto_str_funcs.writeln('\t\tif (i != m.key_values.size-1) {')
+	g.auto_str_funcs.writeln('\t\tif (i != m.key_values.len-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos_lit(", "));')
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')

@@ -70,7 +70,7 @@ pub fn (mut o OrderedDepMap) apply_diff(name string, deps []string) {
 }
 
 pub fn (o &OrderedDepMap) size() int {
-	return o.data.size
+	return o.data.len
 }
 
 pub fn new_dep_graph() &DepGraph {

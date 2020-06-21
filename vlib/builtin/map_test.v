@@ -16,12 +16,12 @@ fn (mut a Aaa) set(key string, val int) {
 
 fn test_map() {
 	mut m := map[string]int
-	assert m.size == 0
+	assert m.len == 0
 	m['hi'] = 80
 	m['hello'] = 101
 	assert m['hi'] == 80
 	assert m['hello'] == 101
-	assert m.size == 2
+	assert m.len == 2
 	assert 'hi' in m
 	mut sum := 0
 	// Test `for in`
@@ -35,9 +35,9 @@ fn test_map() {
 	assert 'hi' in keys
 	assert 'hello' in keys
 	m.delete('hi')
-	assert m.size == 1
+	assert m.len == 1
 	m.delete('aloha')
-	assert m.size == 1
+	assert m.len == 1
 
 	assert m['hi'] == 0
 	assert m.keys().len == 1
@@ -200,8 +200,8 @@ fn test_delete_size() {
         for i in 0..10 {
             m[arr[i]] = i
         }
-        assert(m.size == 10)
-        println(m.size)
+        assert(m.len == 10)
+        println(m.len)
         for i in 0..10 {
             m.delete(arr[i])
         }
