@@ -55,7 +55,7 @@ fn main() {
 			app.compare_api(api_base, api_os, mname, base_os, oname)
 		}
 	}
-	howmany := app.api_differences.size
+	howmany := app.api_differences.len
 	eprintln('NB: please, do run `git clean -xf` after this tool, or at least `find thirdparty/ |grep .o$|xargs rm`')
 	eprintln('otherwise, `./v test-fixed` may show false positives, due to .o files compiled with a cross compiler.')
 	if howmany > 0 {

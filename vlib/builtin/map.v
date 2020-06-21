@@ -68,7 +68,7 @@ const (
 	init_log_capicity   = 5
 	// Initial number of buckets in the hashtable
 	init_capicity       = 1 << init_log_capicity
-	// Maximum load-factor (size / capacity)
+	// Maximum load-factor (len / capacity)
 	max_load_factor     = 0.8
 	// Initial highest even index in metas
 	init_cap            = init_capicity - 2
@@ -96,11 +96,11 @@ fn fast_string_eq(a, b string) bool {
 struct DenseArray {
 	value_bytes int
 mut:
-	cap         u32
-	size        u32
-	deletes     u32
-	keys        &string
-	values      byteptr
+	cap      u32
+	len      u32
+	deletes  u32
+	keys     &string
+	values   byteptr
 }
 
 [inline]
@@ -109,7 +109,7 @@ fn new_dense_array(value_bytes int) DenseArray {
 	return DenseArray{
 		value_bytes: value_bytes
 		cap: 8
-		size: 0
+		len: 0
 		deletes: 0
 		keys: &string(malloc(int(8 * sizeof(string))))
 		values: malloc(8 * value_bytes)
@@ -120,22 +120,22 @@ fn new_dense_array(value_bytes int) DenseArray {
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 [inline]
 fn (mut d DenseArray) push(key string, value voidptr) u32 {
-	if d.cap == d.size {
+	if d.cap == d.len {
 		d.cap += d.cap >> 3
 		d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
 		d.values = C.realloc(d.values, u32(d.value_bytes) * d.cap)
 	}
-	push_index := d.size
+	push_index := d.len
 	d.keys[push_index] = key
 	C.memcpy(d.values + push_index * u32(d.value_bytes), value, d.value_bytes)
-	d.size++
+	d.len++
 	return push_index
 }
 
 fn (d DenseArray) get(i int) voidptr {
 	$if !no_bounds_checking? {
-		if i < 0 || i >= int(d.size) {
-			panic('DenseArray.get: index out of range (i == $i, d.len == $d.size)')
+		if i < 0 || i >= int(d.len) {
+			panic('DenseArray.get: index out of range (i == $i, d.len == $d.len)')
 		}
 	}
 	return byteptr(d.keys) + i * int(sizeof(string))
@@ -146,7 +146,7 @@ fn (d DenseArray) get(i int) voidptr {
 fn (mut d DenseArray) zeros_to_end() {
 	mut tmp_value := malloc(d.value_bytes)
 	mut count := u32(0)
-	for i in 0 .. d.size {
+	for i in 0 .. d.len {
 		if d.keys[i].str != 0 {
 			// swap keys
 			tmp_key := d.keys[count]
@@ -161,7 +161,7 @@ fn (mut d DenseArray) zeros_to_end() {
 	}
 	free(tmp_value)
 	d.deletes = 0
-	d.size = count
+	d.len = count
 	d.cap = if count < 8 { u32(8) } else { count }
 	d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
 	d.values = C.realloc(d.values, u32(d.value_bytes) * d.cap)
@@ -188,7 +188,7 @@ mut:
 	extra_metas     u32
 pub mut:
 	// Number of key-values currently in the hashmap
-	size            int
+	len            int
 }
 
 fn new_map_1(value_bytes int) map {
@@ -200,7 +200,7 @@ fn new_map_1(value_bytes int) map {
 		key_values: new_dense_array(value_bytes)
 		metas: &u32(vcalloc(int(sizeof(u32) * (init_capicity + extra_metas_inc))))
 		extra_metas: extra_metas_inc
-		size: 0
+		len: 0
 	}
 }
 
@@ -270,7 +270,7 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 
 fn (mut m map) set(k string, value voidptr) {
 	key := k.clone()
-	load_factor := f32(m.size << 1) / f32(m.cap)
+	load_factor := f32(m.len << 1) / f32(m.cap)
 	if load_factor > max_load_factor {
 		m.expand()
 	}
@@ -288,7 +288,7 @@ fn (mut m map) set(k string, value voidptr) {
 	}
 	kv_index := m.key_values.push(key, value)
 	m.meta_greater(index, meta, kv_index)
-	m.size++
+	m.len++
 }
 
 // Doubles the size of the hashmap
@@ -311,7 +311,7 @@ fn (mut m map) rehash() {
 	meta_bytes := sizeof(u32) * (m.cap + 2 + m.extra_metas)
 	m.metas = &u32(C.realloc(m.metas, meta_bytes))
 	C.memset(m.metas, 0, meta_bytes)
-	for i := u32(0); i < m.key_values.size; i++ {
+	for i := u32(0); i < m.key_values.len; i++ {
 		if m.key_values.keys[i].str == 0 {
 			continue
 		}
@@ -387,17 +387,17 @@ pub fn (mut m map) delete(key string) {
 				m.metas[index + 1] = m.metas[index + 3]
 				index += 2
 			}
-			m.size--
+			m.len--
 			m.metas[index] = 0
 			m.key_values.deletes++
 			// Mark key as deleted
 			m.key_values.keys[kv_index].free()
 			C.memset(&m.key_values.keys[kv_index], 0, sizeof(string))
-			if m.key_values.size <= 32 {
+			if m.key_values.len <= 32 {
 				return
 			}
 			// Clean up key_values if too many have been deleted
-			if m.key_values.deletes >= (m.key_values.size >> 1) {
+			if m.key_values.deletes >= (m.key_values.len >> 1) {
 				m.key_values.zeros_to_end()
 				m.rehash()
 				m.key_values.deletes = 0
@@ -411,9 +411,9 @@ pub fn (mut m map) delete(key string) {
 
 // TODO: add optimization in case of no deletes
 pub fn (m &map) keys() []string {
-	mut keys := [''].repeat(m.size)
+	mut keys := [''].repeat(m.len)
 	mut j := 0
-	for i := u32(0); i < m.key_values.size; i++ {
+	for i := u32(0); i < m.key_values.len; i++ {
 		if m.key_values.keys[i].str == 0 {
 			continue
 		}
@@ -428,7 +428,7 @@ pub fn (d DenseArray) clone() DenseArray {
 	res := DenseArray {
 		value_bytes: d.value_bytes
 		cap:         d.cap
-		size:        d.size
+		len:        d.len
 		deletes:     d.deletes
 		keys:        &string(malloc(int(d.cap * sizeof(string))))
 		values:      byteptr(malloc(int(d.cap * u32(d.value_bytes))))
@@ -449,7 +449,7 @@ pub fn (m map) clone() map {
 		key_values:      m.key_values.clone()
 		metas:           &u32(malloc(int(metas_size)))
 		extra_metas:     m.extra_metas
-		size:            m.size
+		len:            m.len
 	}
 	C.memcpy(res.metas, m.metas, metas_size)
 	return res
@@ -458,7 +458,7 @@ pub fn (m map) clone() map {
 [unsafe_fn]
 pub fn (m &map) free() {
 	free(m.metas)
-	for i := u32(0); i < m.key_values.size; i++ {
+	for i := u32(0); i < m.key_values.len; i++ {
 		if m.key_values.keys[i].str == 0 {
 			continue
 		}
@@ -469,7 +469,7 @@ pub fn (m &map) free() {
 }
 
 pub fn (m map_string) str() string {
-	if m.size == 0 {
+	if m.len == 0 {
 		return '{}'
 	}
 	mut sb := strings.new_builder(50)
