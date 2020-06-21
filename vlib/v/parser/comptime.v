@@ -10,8 +10,9 @@ import v.vmod
 import v.table
 import vweb.tmpl
 
+// #flag darwin -I.
 const (
-	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
+	supported_platforms  = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
 		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 	supported_ccompilers = ['tinyc', 'clang', 'mingw', 'msvc', 'gcc']
 )
@@ -21,7 +22,7 @@ fn (mut p Parser) resolve_vroot(flag string) string {
 	vmod_file_location := mcache.get_by_folder(p.file_name_dir)
 	if vmod_file_location.vmod_file.len == 0 {
 		// There was no actual v.mod file found.
-		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in ${p.file_name_dir},' +
+		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in $p.file_name_dir,' +
 			' or in one of its parent folders.')
 	}
 	vmod_path := vmod_file_location.vmod_folder
@@ -56,7 +57,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 		}
 		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
 			if flag.contains(deprecated) {
-				p.error('${deprecated} had been deprecated, use @VROOT instead.')
+				p.error('$deprecated had been deprecated, use @VROOT instead.')
 			}
 		}
 		// println('adding flag "$flag"')
@@ -110,7 +111,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	mut file := parse_text(v_code, p.table, p.pref, scope, p.global_scope)
 	if p.pref.is_verbose {
 		println('\n\n')
-		println('>>> vweb template for ${path}:')
+		println('>>> vweb template for $path:')
 		println(v_code)
 		println('>>> end of vweb template END')
 		println('\n\n')
@@ -156,20 +157,20 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	val := p.check_name()
 	mut stmts := []ast.Stmt{}
 	mut skip := false
-
 	if val in supported_platforms {
 		os := os_from_string(val)
-		if (!is_not && os != p.pref.os) || (is_not && os == p.pref.os) {
+		if (!is_not && os != p.pref.os) ||
+			(is_not && os == p.pref.os) {
 			skip = true
 		}
 	} else if val in supported_ccompilers {
 		cc := cc_from_string(val)
 		user_cc := cc_from_string(p.pref.ccompiler)
-		if (!is_not && cc != user_cc) || (is_not && cc == user_cc) {
+		if (!is_not && cc != user_cc) ||
+			(is_not && cc == user_cc) {
 			skip = true
 		}
 	}
-
 	// `$if os {` or `$if compiler {` for a different target, skip everything inside
 	// to avoid compilation errors (like including <windows.h> or calling WinAPI fns
 	// on non-Windows systems)
@@ -196,8 +197,9 @@ fn (mut p Parser) comp_if() ast.Stmt {
 			}
 			p.next()
 		}
-	} else { skip = false }
-
+	} else {
+		skip = false
+	}
 	mut is_opt := false
 	if p.tok.kind == .question {
 		p.next()
@@ -213,7 +215,8 @@ fn (mut p Parser) comp_if() ast.Stmt {
 		val: val
 		stmts: stmts
 	}
-	if p.tok.kind == .dollar && p.peek_tok.kind == .key_else {
+	if p.tok.kind == .dollar &&
+		p.peek_tok.kind == .key_else {
 		p.next()
 		p.next()
 		node.has_else = true
@@ -282,13 +285,25 @@ fn os_from_string(os string) pref.OS {
 
 // Helper function to convert string names to CC enum
 pub fn cc_from_string(cc_str string) pref.CompilerType {
-	if cc_str.len == 0 { return .gcc }
+	if cc_str.len == 0 {
+		return .gcc
+	}
 	cc := cc_str.replace('\\', '/').split('/').last().all_before('.')
-	if 'tcc'   in cc { return .tinyc }
-	if 'tinyc' in cc { return .tinyc }
-	if 'clang' in cc { return .clang }
-	if 'mingw' in cc { return .mingw }
-	if 'msvc'  in cc { return .msvc  }
+	if 'tcc' in cc {
+		return .tinyc
+	}
+	if 'tinyc' in cc {
+		return .tinyc
+	}
+	if 'clang' in cc {
+		return .clang
+	}
+	if 'mingw' in cc {
+		return .mingw
+	}
+	if 'msvc' in cc {
+		return .msvc
+	}
 	return .gcc
 }
 

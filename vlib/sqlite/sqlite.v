@@ -3,6 +3,10 @@ module sqlite
 #flag -lsqlite3
 #flag freebsd -I/usr/local/include
 #flag freebsd -Wl -L/usr/local/lib -lsqlite3
+//#flag linux -I @VROOT/thirdparty/sqlite
+//#flag @VROOT/thirdparty/sqlite/sqlite.c
+
+
 #include "sqlite3.h"
 
 struct C.sqlite3 {}

@@ -143,11 +143,14 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 					c.warn('const $no_pub_in_main_warning', stmt.pos)
 				}
 			}
+			/*
+			// TODO not a Stmt
 			ast.ConstField {
 				if stmt.is_pub {
 					c.warn('const field `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 				}
 			}
+			*/
 			ast.EnumDecl {
 				if stmt.is_pub {
 					c.warn('enum `$stmt.name` $no_pub_in_main_warning', stmt.pos)
@@ -1206,7 +1209,6 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		return table.void_type
 	}
 	selector_expr.expr_type = typ
-	// println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
 	sym := c.table.get_type_symbol(c.unwrap_generic(typ))
 	field_name := selector_expr.field_name
 	// variadic
@@ -1795,6 +1797,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.return_stmt(mut it)
 			c.scope_returns = true
 		}
+		ast.SqlInsertExpr {
+			c.sql_insert_expr(node)
+		}
 		ast.StructDecl {
 			c.struct_decl(it)
 		}
@@ -1932,7 +1937,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			if node.is_vweb {
 				// TODO assoc parser bug
 				pref := *c.pref
-				pref2 := {pref|is_vweb: true} 
+				pref2 := {pref|is_vweb: true}
 				mut c2 := new_checker(c.table, pref2)
 				c2.check(node.vweb_tmpl)
 				c.warnings << c2.warnings
@@ -2022,9 +2027,6 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.SqlExpr {
 			return c.sql_expr(node)
-		}
-		ast.SqlInsertExpr {
-			return c.sql_insert_expr(node)
 		}
 		ast.StringLiteral {
 			if node.language == .c {
@@ -2225,8 +2227,11 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			if node.is_sum_type || node.is_interface {
 				ok := if cond_type_sym.kind == .sum_type {
 					// TODO verify sum type
-					true // c.check_types(typ, cond_type)
+					//true // c.check_types(typ, cond_type)
+					info := cond_type_sym.info as table.SumType
+					typ in info.variants
 				} else {
+					// interface match
 					c.type_implements(typ, cond_type, node.pos)
 				}
 				if !ok {
@@ -2625,10 +2630,12 @@ fn (mut c Checker) sql_expr(node ast.SqlExpr) table.Type {
 	if node.has_where {
 		c.expr(node.where_expr)
 	}
+	c.expr(node.db_expr)
 	return node.typ
 }
 
 fn (mut c Checker) sql_insert_expr(node ast.SqlInsertExpr) table.Type {
+	c.expr(node.db_expr)
 	return table.void_type
 }
 

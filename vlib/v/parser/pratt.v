@@ -21,7 +21,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.name {
 			if p.tok.lit == 'sql' && p.peek_tok.kind == .name {
+				p.inside_match = true // reuse the same var for perf instead of inside_sql TODO rename
 				node = p.sql_expr()
+				p.inside_match = false
 			} else {
 				node = p.name_expr()
 				p.is_stmt_ident = is_stmt_ident

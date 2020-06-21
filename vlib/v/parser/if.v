@@ -161,7 +161,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				p.parse_type()
 			}
 			is_sum_type = true
-				
+
 		} else {
 			// Expression match
 			for {
@@ -204,6 +204,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
 	}
 	p.check(.rcbr)
+	//return ast.StructInit{}
 	return ast.MatchExpr{
 		branches: branches
 		cond: cond

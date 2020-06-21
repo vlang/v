@@ -9,16 +9,16 @@ import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr | CharLiteral |
-	ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr |
-	InfixExpr | IntegerLiteral | Likely | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr |
-	PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
-	StructInit | Type | TypeOf
+pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
+	CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr |
+	IndexExpr | InfixExpr | IntegerLiteral | Likely | MapInit | MatchExpr | None | OrExpr |
+	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
+	StringLiteral | StructInit | Type | TypeOf
 
-pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
-	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
-	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | SqlInsertExpr |
-	StructDecl | TypeDecl | UnsafeStmt
+pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf |
+	ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
+	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
+	Return | SqlInsertExpr | StructDecl | TypeDecl | UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -809,7 +809,7 @@ pub enum SqlExprKind {
 */
 pub struct SqlInsertExpr {
 pub:
-	db_var_name     string // `db` in `sql db {`
+	db_expr    Expr // `db` in `sql db {`
 	table_name      string
 	object_var_name string // `user`
 	table_type      table.Type
@@ -817,14 +817,14 @@ pub:
 
 pub struct SqlExpr {
 pub:
-	typ         table.Type
-	is_count    bool
-	db_var_name string // `db` in `sql db {`
-	table_name  string
-	where_expr  Expr
-	has_where   bool
-	fields      []table.Field
-	is_array    bool
+	typ        table.Type
+	is_count   bool
+	db_expr    Expr // `db` in `sql db {`
+	table_name string
+	where_expr Expr
+	has_where  bool
+	fields     []table.Field
+	is_array   bool
 }
 
 [inline]
@@ -879,7 +879,8 @@ pub fn (expr Expr) position() token.Position {
 		InfixExpr {
 			left_pos := expr.left.position()
 			right_pos := expr.right.position()
-			if left_pos.pos == 0 || right_pos.pos == 0 {
+			if left_pos.pos == 0 ||
+				right_pos.pos == 0 {
 				return expr.pos
 			}
 			return token.Position{

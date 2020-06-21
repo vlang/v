@@ -391,6 +391,10 @@ fn (mut v Builder) cc() {
 		linker_flags << '-lm'
 	}
 	args := a.join(' ') + ' ' + linker_flags.join(' ')
+	if v.pref.is_verbose {
+		println('cc args=$args')
+		println(a)
+	}
 	start:
 	todo()
 	// TODO remove
@@ -512,7 +516,7 @@ fn (mut v Builder) cc() {
 	}
 }
 
-fn (mut c Builder) cc_linux_cross() {
+fn (mut b Builder) cc_linux_cross() {
 	parent_dir := os.home_dir() + '.vmodules'
 	sysroot := os.home_dir() + '.vmodules/linuxroot/'
 	if !os.is_dir(sysroot) {
@@ -526,17 +530,22 @@ fn (mut c Builder) cc_linux_cross() {
 		}
 	}
 
-	mut cc_args := '-fPIC -w -c -target x86_64-linux-gnu -c -o x.o $c.out_name_c -I $sysroot/include'
-	if c.pref.show_cc {
+	mut cc_args := '-fPIC -w -c -target x86_64-linux-gnu -c -o x.o $b.out_name_c -I $sysroot/include '
+	cflags := b.get_os_cflags()
+	cc_args += cflags.c_options_without_object_files()
+	if b.pref.show_cc {
 		println('cc $cc_args')
 	}
-	if os.system('cc $cc_args') != 0 {
-		println('Cross compilation for Linux failed. Make sure you have clang installed.')
+	cc_res := os.exec('cc $cc_args') or { return }
+	if cc_res.exit_code != 0 {
+		println('Cross compilation for Linux failed (first step, clang). Make sure you have clang installed.')
+		println(cc_res.output)
+		exit(1)
 	}
 
 	linker_args := [
 		'-L $sysroot/usr/lib/x86_64-linux-gnu/'
-		'--sysroot=$sysroot -v -o $c.pref.out_name -m elf_x86_64'
+		'--sysroot=$sysroot -v -o $b.pref.out_name -m elf_x86_64'
 		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'
 		'$sysroot/crt1.o $sysroot/crti.o x.o'
 		//'SYSROOT/lib/x86_64-linux-gnu/libc.so.6'
@@ -554,17 +563,16 @@ fn (mut c Builder) cc_linux_cross() {
 	cmd := '$sysroot/ld.lld ' + linker_args_str
 	//s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
 	//s = s.replace('-o hi', '-o ' + c.pref.out_name)
-	if c.pref.show_cc {
+	if b.pref.show_cc {
 		println(cmd)
 	}
 	res :=	os.exec(cmd) or { return }
-	//println('output:')
-	//println(x.output)
 	if res.exit_code != 0 {
-		println('Cross compilation for Linux failed. Make sure you have clang installed.')
-		return
+		println('Cross compilation for Linux failed (second step, lld):')
+		println(res.output)
+		exit(1)
 	}
-	println(c.pref.out_name + ' has been successfully compiled')
+	println(b.pref.out_name + ' has been successfully compiled')
 }
 
 fn (mut c Builder) cc_windows_cross() {

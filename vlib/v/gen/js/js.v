@@ -601,9 +601,6 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.SqlExpr{
 			// TODO
 		}
-		ast.SqlInsertExpr{
-			// TODO
-		}
 		ast.StringInterLiteral {
 			g.gen_string_inter_literal(it)
 		}

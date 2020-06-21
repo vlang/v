@@ -333,7 +333,11 @@ fn (mut p Parser) check(expected token.Kind) {
 	// p.next()
 	// }
 	if p.tok.kind != expected {
-		p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
+		if p.tok.kind == .name {
+			p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
+		} else {
+			p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
+		}
 	}
 	p.next()
 }
@@ -907,7 +911,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			node = p.call_expr(language, mod)
 		}
 	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
-		!p.inside_for {
+		!p.inside_for { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		return p.struct_init(false) // short_syntax: false
 	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language ==
 		.v) {

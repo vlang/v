@@ -20,7 +20,9 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlInsertExpr) {
 	g.writeln('\n\t// sql insert')
 	db_name := g.new_tmp_var()
 	g.sql_stmt_name = g.new_tmp_var()
-	g.writeln('${dbtype}__DB $db_name = $node.db_var_name;')
+	g.write('${dbtype}__DB $db_name = ')
+	g.expr(node.db_expr)
+	g.writeln(';')
 	mut q := 'insert into $node.table_name ('
 	for i, field in fields {
 		if field.name == 'id' {
@@ -95,7 +97,9 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	db_name := g.new_tmp_var()
 	g.writeln('\n\t// sql select')
 	// g.write('${dbtype}__DB $db_name = *(${dbtype}__DB*)${node.db_var_name}.data;')
-	g.writeln('${dbtype}__DB $db_name = $node.db_var_name;')
+	g.write('${dbtype}__DB $db_name = ') // $node.db_var_name;')
+	g.expr(node.db_expr)
+	g.writeln(';')
 	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$q')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("$q')
 	if node.has_where && node.where_expr is ast.InfixExpr {
