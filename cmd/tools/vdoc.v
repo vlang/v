@@ -641,7 +641,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	cfg.vprintln('Rendering docs...')
 	if cfg.output_path.len == 0 {
 		outputs := cfg.render()
-		if outputs.size == 0 {
+		if outputs.len == 0 {
 			println('No documentation for $dirs')
 		} else {
 			first := outputs.keys()[0]
