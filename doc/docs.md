@@ -1151,7 +1151,7 @@ struct CallExpr {
 	...
 }
 
-fn (p mut Parser) expr(precedence int) Expr {
+fn (mut p Parser) expr(precedence int) Expr {
 	match p.tok {
 		.key_if { return IfExpr{} }
 		...
@@ -1161,7 +1161,7 @@ fn (p mut Parser) expr(precedence int) Expr {
 
 fn gen(expr Expr) {
 	match expr {
-		IfExpr { gen_if(it) }
+		IfExpr { gen_if(expr) } // `expr` is cast to the matched type automatically
 		...
 	}
 }
