@@ -38,12 +38,11 @@ fn test_multi_return_interpolation() {
 	assert s3 == "(2.2, false, ['a', 'b', 'c'])"
 
 	s4 := '${return_multi_4()}'
-	assert s1 == "(1, 'aaa')"
+	assert s4 == "(1, 'aaa')"
 
 	s5 := '${return_multi_5()}'
-	assert s2 == "('aaa', true, [1, 2, 3])"
+	assert s5 == "('aaa', true, [1, 2, 3])"
 
 	s6 := '${return_multi_6()}'
-	assert s3 == "(2.2, false, ['a', 'b', 'c'])"
-
+	assert s6 == "(2.2, false, ['a', 'b', 'c'])"
 }
