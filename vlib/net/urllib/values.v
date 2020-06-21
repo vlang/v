@@ -11,7 +11,7 @@ pub mut:
 struct Values {
 pub mut:
 	data map[string]Value
-	size int
+	len int
 }
 
 // new_values returns a new Values struct for creating
@@ -35,7 +35,7 @@ pub fn (v &Value) all() []string {
 // If there are no values associated with the key, get returns
 // a empty string.
 pub fn (v &Values) get(key string) string {
-	if v.data.size == 0 {
+	if v.data.len == 0 {
 		return ''
 	}
 	vs := v.data[key]
@@ -49,7 +49,7 @@ pub fn (v &Values) get(key string) string {
 // If there are no values associated with the key, get returns
 // a empty []string.
 pub fn (v &Values) get_all(key string) []string {
-	if v.data.size == 0 {
+	if v.data.len == 0 {
 		return []
 	}
 	vs := v.data[key]
@@ -65,7 +65,7 @@ pub fn (mut v Values) set(key, value string) {
 	mut a := v.data[key]
 	a.data = [value]
 	v.data[key] = a
-	v.size = v.data.size
+	v.len = v.data.len
 }
 
 // add adds the value to key. It appends to any existing
@@ -77,11 +77,11 @@ pub fn (mut v Values) add(key, value string) {
 	}
 	a.data << value
 	v.data[key] = a
-	v.size = v.data.size
+	v.len = v.data.len
 }
 
 // del deletes the values associated with key.
 pub fn (mut v Values) del(key string) {
 	v.data.delete(key)
-	v.size = v.data.size
+	v.len = v.data.len
 }
