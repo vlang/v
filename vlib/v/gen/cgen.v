@@ -4155,6 +4155,13 @@ fn (mut g Gen) gen_str_for_varg(styp, str_fn_name string, has_str_method bool) {
 }
 
 fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp, str_fn_name string) {
+	for typ in info.types {
+		sym := g.table.get_type_symbol(typ)
+		if !sym.has_method('str') {
+			field_styp := g.typ(typ)
+			g.gen_str_for_type_with_styp(typ, field_styp)
+		}
+	}
 	g.type_definitions.writeln('string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder($info.types.len * 10);')
@@ -4169,9 +4176,6 @@ fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp, str_fn_nam
 			arg_str_fn_name = if is_arg_ptr { field_styp.replace('*', '') + '_str' } else { field_styp + '_str' }
 		} else {
 			arg_str_fn_name = styp_to_str_fn_name(field_styp)
-		}
-		if !sym.has_method('str') {
-			g.gen_str_for_type_with_styp(typ, field_styp)
 		}
 		if sym.kind == .struct_ && !sym_has_str_method {
 			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, ${str_fn_name}(a.arg$i,0));')
