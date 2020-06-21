@@ -249,7 +249,7 @@ fn (req &Request) method_and_url_to_response(method string, url urllib.URL) ?Res
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.path.trim_left('/')
-	path := if url.query().size > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
+	path := if url.query().len > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
 	mut nport := url.port().int()
 	if nport == 0 {
 		if scheme == 'http' {
