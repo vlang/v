@@ -3050,7 +3050,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 			g.enum_expr(expr)
 			g.write('")')
 		}
-	} else if sym_has_str_method || sym.kind in [.array, .array_fixed, .map, .struct_] {
+	} else if sym_has_str_method || sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return] {
 		is_p := etype.is_ptr()
 		val_type := if is_p { etype.deref() } else { etype }
 		str_fn_name := g.gen_str_for_type(val_type)
@@ -3855,6 +3855,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 			table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
 			table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
 			table.Map { g.gen_str_for_map(it, styp, str_fn_name) }
+			table.MultiReturn { g.gen_str_for_multi_return(it, styp, str_fn_name) }
 			else { verror("could not generate string method $str_fn_name for type \'$styp\'") }
 		}
 	}
@@ -4149,6 +4150,49 @@ fn (mut g Gen) gen_str_for_varg(styp, str_fn_name string, has_str_method bool) {
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("]"));')
+	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('}')
+}
+
+fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp, str_fn_name string) {
+	g.type_definitions.writeln('string ${str_fn_name}($styp a); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
+	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder($info.types.len * 10);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("("));')
+	for i, typ in info.types {
+		sym := g.table.get_type_symbol(typ)
+		field_styp := g.typ(typ)
+		is_arg_ptr := typ.is_ptr()
+		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+		mut arg_str_fn_name := ''
+		if sym_has_str_method {
+			arg_str_fn_name = if is_arg_ptr { field_styp.replace('*', '') + '_str' } else { field_styp + '_str' }
+		} else {
+			arg_str_fn_name = styp_to_str_fn_name(field_styp)
+		}
+		if !sym.has_method('str') {
+			g.gen_str_for_type_with_styp(typ, field_styp)
+		}
+		if sym.kind == .struct_ && !sym_has_str_method {
+			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, ${str_fn_name}(a.arg$i,0));')
+		} else if sym.kind in [.f32, .f64] {
+			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _STR("%g", 1, a.arg$i));')
+		} else if sym.kind == .string {
+			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
+		} else {
+			if (str_method_expects_ptr && is_arg_ptr) || (!str_method_expects_ptr && !is_arg_ptr) {
+				g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, ${arg_str_fn_name}(a.arg$i));')
+			} else if str_method_expects_ptr && !is_arg_ptr {
+				g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, ${arg_str_fn_name}(&a.arg$i));')
+			} else if !str_method_expects_ptr && is_arg_ptr {
+				g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, ${arg_str_fn_name}(*a.arg$i));')
+			}
+		}
+		if i != info.types.len - 1 {
+			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit(", "));')
+		}
+	}
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit(")"));')
 	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
 	g.auto_str_funcs.writeln('}')
 }
