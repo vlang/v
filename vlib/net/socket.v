@@ -8,6 +8,8 @@ pub:
 	family int
 	typ    int
 	proto  int
+pub mut:
+	max_single_send_size int = 64000
 }
 
 struct C.in_addr {
@@ -223,7 +225,8 @@ pub fn (s Socket) send(buf byteptr, len int) ?int {
 	mut dptr := buf
 	mut dlen := len
 	for {
-		sbytes := C.send(s.sockfd, dptr, dlen, msg_nosignal)
+		send_size := if dlen > s.max_single_send_size { s.max_single_send_size } else { dlen }
+		sbytes := C.send(s.sockfd, dptr, send_size, msg_nosignal)
 		if sbytes < 0 {
 			return error('net.send: failed with $sbytes')
 		}
