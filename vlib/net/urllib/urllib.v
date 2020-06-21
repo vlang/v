@@ -879,7 +879,7 @@ fn parse_query_values(mut m Values, query string) ?bool {
 // encode encodes the values into ``URL encoded'' form
 // ('bar=baz&foo=quux') sorted by key.
 pub fn (v Values) encode() string {
-	if v.size == 0 {
+	if v.len == 0 {
 		return ''
 	}
 	mut buf := strings.new_builder(200)
