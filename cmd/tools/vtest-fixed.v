@@ -23,6 +23,7 @@ const (
 	skip_on_windows     = [
 		'vlib/orm/orm_test.v',
 		'vlib/net/websocket/ws_test.v',
+		'vlib/sync/pool_test.v',
 	]
 	skip_on_non_windows = []string{}
 	skip_on_macos       = []string{}
