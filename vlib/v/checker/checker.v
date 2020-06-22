@@ -851,9 +851,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			if !c.check_types(got_arg_typ, exp_arg_typ) {
 				got_arg_sym := c.table.get_type_symbol(got_arg_typ)
 				// str method, allow type with str method if fn arg is string
-				if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
-					continue
-				}
+				// if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
+				// 	continue
+				// }
 				if got_arg_typ != table.void_type {
 					c.error('cannot use type `$got_arg_sym.str()` as type `$exp_arg_sym.str()` in argument ${i+1} to `${left_type_sym.name}.$method_name`',
 						call_expr.pos)
