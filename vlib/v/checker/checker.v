@@ -1084,9 +1084,16 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	}
 	if call_expr.generic_type != table.void_type && f.return_type != 0 { // table.t_type {
 		// Handle `foo<T>() T` => `foo<int>() int` => return int
-		sym := c.table.get_type_symbol(f.return_type)
-		if sym.name == 'T' {
+		return_sym := c.table.get_type_symbol(f.return_type)
+		if return_sym.name == 'T' {
 			return call_expr.generic_type
+		} else if return_sym.kind == .array {
+			elem_info := return_sym.info as table.Array
+			elem_sym := c.table.get_type_symbol(elem_info.elem_type)
+			if elem_sym.name == 'T' {
+				idx := c.table.find_or_register_array(call_expr.generic_type, 1, return_sym.mod)
+				return table.new_type(idx)
+			}
 		}
 	}
 	return f.return_type

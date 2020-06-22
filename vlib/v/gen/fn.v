@@ -77,9 +77,12 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		} else {
 			name = c_name(name)
 		}
+		mut type_name := g.typ(it.return_type)
 		if g.cur_generic_type != 0 {
 			// foo<T>() => foo_int(), foo_string() etc
-			name += '_' + g.typ(g.cur_generic_type)
+			gen_name := g.typ(g.cur_generic_type)
+			name += '_' + gen_name
+			type_name = type_name.replace('T', gen_name)
 		}
 		// if g.pref.show_cc && it.is_builtin {
 		// println(name)
@@ -96,7 +99,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 		mut impl_fn_name := if is_live_wrap { 'impl_live_${name}' } else { name }
 		g.last_fn_c_name = impl_fn_name
-		type_name := g.typ(it.return_type)
 		//
 		if is_live_wrap {
 			if is_livemain {
@@ -248,6 +250,11 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 		// if arg.name == 'xxx' {
 		// println('xxx arg type= ' + arg_type_name)
 		// }
+		if g.cur_generic_type != 0 {
+			// foo<T>() => foo_int(), foo_string() etc
+			gen_name := g.typ(g.cur_generic_type)
+			arg_type_name = arg_type_name.replace('T', gen_name)
+		}
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
 			varg_type_str := int(arg.typ).str()

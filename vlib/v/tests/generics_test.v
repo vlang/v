@@ -82,6 +82,21 @@ fn test_create() {
 	mut_arg2<User>(mut u)
 }
 
+fn return_array<T>(arr []T) []T {
+	return arr
+}
+
+fn test_return_array() {
+	a1 := return_array<int>([1, 2, 3])
+	assert a1 == [1, 2, 3]
+	a2 := return_array<f64>([1.1, 2.2, 3.3])
+	assert a2 == [1.1, 2.2, 3.3]
+	a3 := return_array<string>(['a', 'b', 'c'])
+	assert a3 == ['a', 'b', 'c']
+	a4 := return_array<bool>([true, false, true])
+	assert a4 == [true, false, true]
+}
+
 /*
 fn map_f<T,U>(l []T, f fn(T)U) []U {
     mut r := []U{}
