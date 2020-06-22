@@ -379,20 +379,18 @@ fn C.GetLastError() u32
 
 fn C.CreateDirectory(byteptr, int) bool
 
-
+// win crypto
 fn C.BCryptGenRandom(int, voidptr, int, int) int
 
-
+// win synchronization
 fn C.CreateMutex(int, bool, byteptr) voidptr
-
-
 fn C.WaitForSingleObject(voidptr, int) int
-
-
 fn C.ReleaseMutex(voidptr) bool
+fn C.CreateEvent(int, bool, bool, byteptr) voidptr
+fn C.SetEvent(voidptr) int
+
 
 // pthread.h
-
 fn C.pthread_mutex_init(voidptr, voidptr) int
 fn C.pthread_mutex_lock(voidptr) int
 fn C.pthread_mutex_unlock(voidptr) int
