@@ -144,3 +144,14 @@ fn test_fn_type_call() {
 	}
 	assert st1.f(10) == 1010
 }
+
+fn ff() fn () int {
+	return fn () int {
+		return 22
+	}
+}
+
+fn test_fn_return_fn() {
+	f := ff()
+	assert f() == 22
+}
