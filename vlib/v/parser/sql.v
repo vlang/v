@@ -55,6 +55,14 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		// return an array
 		typ = table.new_type(p.table.find_or_register_array(table_type, 1, p.mod))
 	}
+	if p.tok.kind ==.name && p.tok.lit == 'limit' {
+		// `limit 1` means that a single object is returned
+		p.check_name() // `limit`
+		if p.tok.kind == .number && p.tok.lit == '1' {
+			query_one = true
+		}
+		p.next()
+	}
 	p.check(.rcbr)
 	// /////////
 	// Register this type's fields as variables so they can be used in `where`

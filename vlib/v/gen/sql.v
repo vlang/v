@@ -12,6 +12,8 @@ const (
 	dbtype = 'sqlite'
 )
 
+enum SqlExprSide { left right }
+
 fn (mut g Gen) sql_insert_expr(node ast.SqlInsertExpr) {
 	sym := g.table.get_type_symbol(node.table_type)
 	info := sym.info as table.Struct
@@ -135,7 +137,10 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 		//
 		g.writeln('int _step_res$tmp = sqlite3_step($g.sql_stmt_name);')
 		if node.is_array {
+			g.writeln('\tprintf("step res=%d\\n", _step_res$tmp);')
 			g.writeln('\tif (_step_res$tmp == SQLITE_DONE) break;')
+			g.writeln('\tif (_step_res$tmp = SQLITE_ROW) ;') // another row
+			g.writeln('\telse if (_step_res$tmp != SQLITE_OK) break;')
 		}
 		for i, field in node.fields {
 			mut func := 'sqlite3_column_int'
@@ -159,6 +164,16 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	}
 }
 
+fn (mut g Gen) sql_bind_int(val string) {
+	g.sql_buf.writeln('sqlite3_bind_int($g.sql_stmt_name, $g.sql_i, $val);')
+
+}
+
+fn (mut g Gen) sql_bind_string(val string, len string) {
+	g.sql_buf.writeln('sqlite3_bind_text($g.sql_stmt_name, $g.sql_i, $val, $len, 0);')
+
+}
+
 fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 	// Custom handling for infix exprs (since we need e.g. `and` instead of `&&` in SQL queries),
 	// strings. Everything else (like numbers, a.b) is handled by g.expr()
@@ -167,6 +182,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 	// not a V variable. Need to distinguish column names from V variables.
 	match expr {
 		ast.InfixExpr {
+			g.sql_side = .left
 			g.expr_to_sql(expr.left)
 			match expr.op {
 				.eq { g.write(' = ') }
@@ -178,16 +194,38 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 				.logical_or { g.write(' or ') }
 				else {}
 			}
+			g.sql_side = .right
 			g.expr_to_sql(it.right)
 		}
 		ast.StringLiteral {
 			// g.write("'$it.val'")
 			g.inc_sql_i()
-			g.sql_buf.writeln('sqlite3_bind_text($g.sql_stmt_name, $g.sql_i, "$it.val", $it.val.len, 0);')
+			g.sql_bind_string('"$it.val"', it.val.len.str())
 		}
 		ast.IntegerLiteral {
 			g.inc_sql_i()
-			g.sql_buf.writeln('sqlite3_bind_int($g.sql_stmt_name, $g.sql_i, $it.val);')
+			g.sql_bind_int(it.val)
+		}
+		ast.Ident {
+			// `name == user_name` => `name == ?1`
+			// for left sides just add a string, for right sides, generate the bindings
+			if g.sql_side == .left {
+				println("sql gen left $expr.name")
+				g.write(expr.name)
+			} else {
+				g.inc_sql_i()
+				info := expr.info as ast.IdentVar
+				typ := info.typ
+				if typ == table.string_type {
+					g.sql_bind_string('${expr.name}.str', '${expr.name}.len')
+				}
+				else if typ == table.int_type {
+					g.sql_bind_int(expr.name)
+				}
+				else {
+					verror('bad sql type $typ')
+				}
+			}
 		}
 		else {
 			g.expr(expr)
