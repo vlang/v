@@ -402,3 +402,7 @@ fn strip(s string) string {
 	// strip('\nabc\r\n') => 'abc'
 	return s.trim('\r\n')
 }
+
+pub fn not_found() Result {
+	return Result{}
+}
