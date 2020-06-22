@@ -31,8 +31,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	sym := p.table.get_type_symbol(table_type)
 	table_name := sym.name
 	mut where_expr := ast.Expr{}
-	has_where := p.tok.kind == .name &&
-		p.tok.lit == 'where'
+	has_where := p.tok.kind == .name &&		p.tok.lit == 'where'
 	mut query_one := false // one object is returned, not an array
 	if has_where {
 		p.next()
@@ -43,17 +42,10 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			if e.op == .eq && e.left is ast.Ident {
 				ident := e.left as ast.Ident
 				if ident.name == 'id' {
-					// TODO optional
 					query_one = true
-					typ = table_type
-					// typ = table_type.set_flag(.optional)
 				}
 			}
 		}
-	}
-	if !query_one && !is_count {
-		// return an array
-		typ = table.new_type(p.table.find_or_register_array(table_type, 1, p.mod))
 	}
 	if p.tok.kind ==.name && p.tok.lit == 'limit' {
 		// `limit 1` means that a single object is returned
@@ -62,6 +54,15 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			query_one = true
 		}
 		p.next()
+	}
+	if !query_one && !is_count {
+		// return an array
+		typ = table.new_type(p.table.find_or_register_array(table_type, 1, p.mod))
+	} else if !is_count {
+		// return a single object
+		// TODO optional
+		// typ = table_type.set_flag(.optional)
+		typ = table_type
 	}
 	p.check(.rcbr)
 	// /////////

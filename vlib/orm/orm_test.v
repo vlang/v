@@ -54,10 +54,15 @@ fn test_orm_sqlite() {
 	}
 	assert nr_peters3 == 1
 	peters := sql db {
-		select from User where name == name //  limit 1
+		select from User where name == name
 	}
 	assert peters.len == 1
 	assert peters[0].name == 'Peter'
+	one_peter := sql db {
+		select from User where name == name limit 1
+	}
+	assert one_peter.name == 'Peter'
+	assert one_peter.id == 2
 	//
 	user := sql db {
 		select from User where id == 1
