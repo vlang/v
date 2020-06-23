@@ -735,6 +735,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	call_expr.left_type = left_type
 	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
+
+	if left_type.has_flag(.optional) {
+		c.error('optional type cannot be called directly', call_expr.left.position())
+		return table.void_type
+	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in ['filter', 'clone', 'repeat', 'reverse',
@@ -851,9 +856,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			if !c.check_types(got_arg_typ, exp_arg_typ) {
 				got_arg_sym := c.table.get_type_symbol(got_arg_typ)
 				// str method, allow type with str method if fn arg is string
-				if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
-					continue
-				}
+				// if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
+				// 	continue
+				// }
 				if got_arg_typ != table.void_type {
 					c.error('cannot use type `$got_arg_sym.str()` as type `$exp_arg_sym.str()` in argument ${i+1} to `${left_type_sym.name}.$method_name`',
 						call_expr.pos)
@@ -1017,6 +1022,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if (fn_name == 'println' || fn_name == 'print') && call_expr.args.len > 0 {
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
+		// check optional argument
+		if call_expr.args[0].typ.has_flag(.optional) {
+			c.error('cannot print optional type', call_expr.args[0].expr.position())
+		}
 		/*
 		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
 		// It currently generates:

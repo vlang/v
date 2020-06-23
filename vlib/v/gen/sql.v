@@ -137,9 +137,9 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 		//
 		g.writeln('int _step_res$tmp = sqlite3_step($g.sql_stmt_name);')
 		if node.is_array {
-			//g.writeln('\tprintf("step res=%d\\n", _step_res$tmp);')
+			g.writeln('\tprintf("step res=%d\\n", _step_res$tmp);')
 			g.writeln('\tif (_step_res$tmp == SQLITE_DONE) break;')
-			g.writeln('\tif (_step_res$tmp = SQLITE_ROW) ;') // another row
+			g.writeln('\tif (_step_res$tmp == SQLITE_ROW) ;') // another row
 			g.writeln('\telse if (_step_res$tmp != SQLITE_OK) break;')
 		}
 		for i, field in node.fields {
