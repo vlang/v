@@ -12,7 +12,7 @@ const (
 		'\t\t\t\t\t\t\t\t'
 	]
 	// when to break a line dependant on penalty
-	max_len = [0, 30, 85, 100]
+	max_len = [0, 30, 85, 95, 100]
 )
 
 pub struct Fmt {
@@ -21,9 +21,13 @@ pub:
 pub mut:
 	out_imports       strings.Builder
 	out               strings.Builder
+	out_save          strings.Builder
 	indent            int
 	empty_line        bool
 	line_len          int
+	expr_recursion    int
+	expr_bufs         []string
+	penalties         []int
 	single_line_if    bool
 	cur_mod           string
 	file              ast.File
@@ -80,31 +84,67 @@ fn (mut f Fmt) find_comment(line_nr int) {
 	}
 }
 */
+
 pub fn (mut f Fmt) write(s string) {
-	if f.indent > 0 && f.empty_line {
-		if f.indent < tabs.len {
-			f.out.write(tabs[f.indent])
-		} else {
-			// too many indents, do it the slow way:
-			for _ in 0 .. f.indent {
-				f.out.write('\t')
+	if f.expr_recursion == 0 || f.is_inside_interp {
+		if f.indent > 0 && f.empty_line {
+			if f.indent < tabs.len {
+				f.out.write(tabs[f.indent])
+			} else {
+				// too many indents, do it the slow way:
+				for _ in 0 .. f.indent {
+					f.out.write('\t')
+				}
 			}
+			f.line_len += f.indent * 4
 		}
-		f.line_len += f.indent * 4
+		f.out.write(s)
+		f.line_len += s.len
+		f.empty_line = false
+	} else {
+		f.out.write(s)
 	}
-	f.out.write(s)
-	f.line_len += s.len
-	f.empty_line = false
 }
 
 pub fn (mut f Fmt) writeln(s string) {
+	empty_fifo := f.expr_recursion > 0
+	if empty_fifo {
+		f.write(s)
+		f.expr_bufs << f.out.str()
+		f.out = f.out_save
+		f.adjust_complete_line()
+		f.expr_recursion = 0
+		for i, p in f.penalties {
+			f.write(f.expr_bufs[i])
+			f.wrap_long_line(p, true)
+		}
+		f.write(f.expr_bufs[f.expr_bufs.len-1])
+		f.expr_bufs = []string{}
+		f.penalties = []int{}
+		f.expr_recursion = 0
+	}
 	if f.indent > 0 && f.empty_line {
 		// println(f.indent.str() + s)
 		f.out.write(tabs[f.indent])
 	}
-	f.out.writeln(s)
+	f.out.writeln(if empty_fifo {''} else {s})
 	f.empty_line = true
 	f.line_len = 0
+}
+
+// adjustments that can only be done after full line is processed. For now
+// only prevents line breaks if everything fits in max_len[last] by increasing
+// penalties to maximum
+fn (mut f Fmt) adjust_complete_line() {
+	mut l := 0
+	for _, s in f.expr_bufs {
+		l += s.len
+	}
+	if f.line_len + l <= max_len[max_len.len-1] {
+		for i, _ in f.penalties {
+			f.penalties[i] = max_len.len-1
+		}
+	}
 }
 
 pub fn (mut f Fmt) mod(mod ast.Module) {
@@ -625,11 +665,20 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.expr(node.expr)
 		}
 		ast.InfixExpr {
-			f.expr(node.left)
 			if f.is_inside_interp {
+				f.expr(node.left)
 				f.write('$node.op.str()')
+				f.expr(node.right)
 			} else {
+				rec_save := f.expr_recursion
+				if f.expr_recursion == 0 {
+					f.out_save = f.out
+					f.out = strings.new_builder(60)
+					f.expr_recursion++
+				}
+				f.expr(node.left)
 				f.write(' $node.op.str() ')
+				f.expr_bufs << f.out.str()
 				mut penalty := 3
 				if node.left is ast.InfixExpr || node.left is ast.ParExpr {
 					penalty--
@@ -637,9 +686,24 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				if node.right is ast.InfixExpr || node.right is ast.ParExpr {
 					penalty--
 				}
-				f.wrap_long_line(penalty, true)
+				f.penalties << penalty
+				f.out = strings.new_builder(60)
+				f.expr_recursion++
+				f.expr(node.right)
+				if rec_save == 0 && f.expr_recursion > 0 { // now decide if and where to break
+					f.expr_bufs << f.out.str()
+					f.out = f.out_save
+					f.expr_recursion = 0
+					f.adjust_complete_line()
+					for i, p in f.penalties {
+						f.write(f.expr_bufs[i])
+						f.wrap_long_line(p, true)
+					}
+					f.write(f.expr_bufs[f.expr_bufs.len-1])
+					f.expr_bufs = []string{}
+					f.penalties = []int{}
+				}
 			}
-			f.expr(node.right)
 		}
 		ast.IndexExpr {
 			f.expr(node.left)

@@ -39,3 +39,10 @@ fn get_some_val(a_test, b_test, c_test, d_test, e_test, f_test f64) {
 		e_test * f_test * a_test * d_test +
 		a_test * b_test * c_test
 }
+
+fn main() {
+	a, b, r, d := 5.3, 7.5, 4.4, 6.6
+	if a + b + r * d + a + b + r * d > a + b + r * d + a * b + r {
+		println('ok')
+	}
+}
