@@ -9,6 +9,7 @@ import net
 import net.http
 import net.urllib
 import strings
+import time
 
 pub const (
 	methods_with_form = ['POST', 'PUT', 'PATCH']
@@ -52,6 +53,7 @@ pub mut:
 pub struct Result {}
 
 fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
+	//println('send_response_to_client(mimetype=$mimetype)')
 	if ctx.done { return false }
 	ctx.done = true
 	mut sb := strings.new_builder(1024)
@@ -144,7 +146,9 @@ pub fn run_app<T>(mut app T, port int) {
 	for {
 		conn := l.accept() or { panic('accept() failed') }
 		//handle_conn<T>(conn, mut app)
+		//t := time.ticks()
 		handle_conn<T>(conn, mut app)
+		//eprintln('handle conn() took ${time.ticks()-t}ms')
 		// TODO move this to handle_conn<T>(conn, app)
 		//message := readall(conn)
 		//println(message)
@@ -176,7 +180,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	//first_line := strip(lines[0])
 	first_line := conn.read_line()
 	$if debug {
-		println('firstline="$first_line"')
+		println('handleconn<T>() firstline="$first_line"')
 	}
 
 	// Parse the first line

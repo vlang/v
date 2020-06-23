@@ -14,33 +14,9 @@ import v.depgraph
 // NB: keywords after 'new' are reserved in C++
 const (
 	c_reserved = ['delete', 'exit', 'unix', 'error', 'calloc', 'malloc', 'free', 'panic', 'auto',
-		'char',
-		'default',
-		'do',
-		'double',
-		'extern',
-		'float',
-		'inline',
-		'int',
-		'long',
-		'register',
-		'restrict',
-		'short',
-		'signed',
-		'sizeof',
-		'static',
-		'switch',
-		'typedef',
-		'union',
-		'unsigned',
-		'void',
-		'volatile',
-		'while',
-		'new',
-		'namespace',
-		'class',
-		'typename'
-	]
+		'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register',
+		'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned',
+		'void', 'volatile', 'while', 'new', 'namespace', 'class', 'typename']
 	// same order as in token.Kind
 	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
@@ -436,8 +412,7 @@ typedef struct {
 			.alias {
 				parent := &g.table.types[typ.parent_idx]
 				styp := typ.name.replace('.', '__')
-				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] ==
-					`.`
+				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
 				parent_styp := if is_c_parent { 'struct ' + parent.name[2..].replace('.', '__') } else { parent.name.replace('.',
 						'__') }
 				g.type_definitions.writeln('typedef $parent_styp $styp;')
@@ -662,7 +637,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
-			//g.tmp_count = 0 TODO
+			// g.tmp_count = 0 TODO
 			mut skip := false
 			pos := g.out.buf.len
 			if g.pref.build_mode == .build_module {
@@ -684,13 +659,15 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// just remember `it`; main code will be generated in finish()
 				g.fn_main = node
 			} else {
-				if node.name == 'backtrace' || node.name == 'backtrace_symbols' || node.name ==
-					'backtrace_symbols_fd' {
+				if node.name == 'backtrace' ||
+					node.name == 'backtrace_symbols' ||
+					node.name == 'backtrace_symbols_fd' {
 					g.write('\n#ifndef __cplusplus\n')
 				}
 				g.gen_fn_decl(node)
-				if node.name == 'backtrace' || node.name == 'backtrace_symbols' || node.name ==
-					'backtrace_symbols_fd' {
+				if node.name == 'backtrace' ||
+					node.name == 'backtrace_symbols' ||
+					node.name == 'backtrace_symbols_fd' {
 					g.write('\n#endif\n')
 				}
 			}
@@ -770,9 +747,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.write_autofree_stmts_when_needed(node)
 			g.return_statement(node)
 		}
-		ast.SqlInsertExpr{
+		ast.SqlInsertExpr {
 			g.sql_insert_expr(node)
-			}
+		}
 		ast.StructDecl {
 			name := if node.language == .c { node.name.replace('.', '__') } else { c_name(node.name) }
 			// g.writeln('typedef struct {')
@@ -915,9 +892,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 	got_is_ptr := got_type.is_ptr()
 	expected_is_ptr := expected_type.is_ptr()
 	neither_void := table.voidptr_type !in [got_type, expected_type]
-	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_,
-		.placeholder
-	] {
+	if got_is_ptr && !expected_is_ptr && neither_void &&
+		expected_sym.kind !in [.interface_, .placeholder] {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
@@ -1588,9 +1564,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.SqlExpr {
 			g.sql_select_expr(node)
 		}
-		//ast.SqlInsertExpr {
-			//g.sql_insert_expr(node)
-		//}
 		ast.StringLiteral {
 			if node.is_raw {
 				escaped_val := node.val.replace_each(['"', '\\"', '\\', '\\\\'])
@@ -1859,8 +1832,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 	} else if unaliased_left.idx() in [table.u32_type_idx, table.u64_type_idx] && unaliased_right.is_signed() &&
 		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
-		bitsize := if unaliased_left.idx() == table.u32_type_idx && unaliased_right.idx() !=
-			table.i64_type_idx { 32 } else { 64 }
+		bitsize := if unaliased_left.idx() == table.u32_type_idx &&
+			unaliased_right.idx() != table.i64_type_idx { 32 } else { 64 }
 		g.write('_us${bitsize}_${cmp_str[int(node.op)-int(token.Kind.eq)]}(')
 		g.expr(node.left)
 		g.write(',')
@@ -1868,8 +1841,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(')')
 	} else if unaliased_right.idx() in [table.u32_type_idx, table.u64_type_idx] && unaliased_left.is_signed() &&
 		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
-		bitsize := if unaliased_right.idx() == table.u32_type_idx && unaliased_left.idx() !=
-			table.i64_type_idx { 32 } else { 64 }
+		bitsize := if unaliased_right.idx() == table.u32_type_idx &&
+			unaliased_left.idx() != table.i64_type_idx { 32 } else { 64 }
 		g.write('_us${bitsize}_${cmp_rev[int(node.op)-int(token.Kind.eq)]}(')
 		g.expr(node.right)
 		g.write(',')
@@ -1911,8 +1884,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
-	is_expr := (node.is_expr && node.return_type != table.void_type) || g.inside_ternary >
-		0
+	is_expr := (node.is_expr && node.return_type != table.void_type) || g.inside_ternary > 0
 	if is_expr {
 		g.inside_ternary++
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
@@ -2395,8 +2367,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// normal return
 		return_sym := g.table.get_type_symbol(node.types[0])
 		// `return opt_ok(expr)` for functions that expect an optional
-		if fn_return_is_optional && !node.types[0].has_flag(.optional) && return_sym.name !=
-			'Option' {
+		if fn_return_is_optional && !node.types[0].has_flag(.optional) &&
+			return_sym.name != 'Option' {
 			styp := g.base_type(g.fn_decl.return_type)
 			opt_type := g.typ(g.fn_decl.return_type)
 			// Create a tmp for this option
@@ -2994,8 +2966,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		} else if node.expr_types[i] == table.bool_type {
 			g.expr(expr)
 			g.write(' ? _SLIT("true") : _SLIT("false")')
-		} else if node.expr_types[i].is_number() || node.expr_types[i].is_pointer() || node.fmts[i] ==
-			`d` {
+		} else if node.expr_types[i].is_number() || node.expr_types[i].is_pointer() ||
+			node.fmts[i] == `d` {
 			if node.expr_types[i].is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
 				// convert to unsigned first befors C's integer propagation strikes
 				if node.expr_types[i] == table.i8_type {
@@ -3306,8 +3278,8 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		g.writeln('\tstring err = ${cvar_name}.v_error;')
 		g.writeln('\tint errcode = ${cvar_name}.ecode;')
 		stmts := or_block.stmts
-		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len -
-			1] as ast.ExprStmt).typ != table.void_type {
+		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt &&
+			(stmts[stmts.len - 1] as ast.ExprStmt).typ != table.void_type {
 			g.indent++
 			for i, stmt in stmts {
 				if i == stmts.len - 1 {
@@ -3510,7 +3482,8 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 			return 'TARGET_ORDER_IS_BIG'
 		}
 		else {
-			if is_comptime_optional || (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
+			if is_comptime_optional || (g.pref.compile_defines_all.len > 0 &&
+				name in g.pref.compile_defines_all) {
 				return 'CUSTOM_DEFINE_$name'
 			}
 			verror('bad os ifdef name "$name"')
@@ -4174,7 +4147,8 @@ fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp, str_fn_nam
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 		mut arg_str_fn_name := ''
 		if sym_has_str_method {
-			arg_str_fn_name = if is_arg_ptr { field_styp.replace('*', '') + '_str' } else { field_styp + '_str' }
+			arg_str_fn_name = if is_arg_ptr { field_styp.replace('*', '') + '_str' } else { field_styp +
+					'_str' }
 		} else {
 			arg_str_fn_name = styp_to_str_fn_name(field_styp)
 		}
@@ -4183,7 +4157,7 @@ fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp, str_fn_nam
 		} else if sym.kind in [.f32, .f64] {
 			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _STR("%g", 1, a.arg$i));')
 		} else if sym.kind == .string {
-			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
+			g.auto_str_funcs.writeln("\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));")
 		} else {
 			if (str_method_expects_ptr && is_arg_ptr) || (!str_method_expects_ptr && !is_arg_ptr) {
 				g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, ${arg_str_fn_name}(a.arg$i));')
