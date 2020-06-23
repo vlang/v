@@ -483,7 +483,15 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		if comments.len == 0 {
 			f.write('\t$field.name ')
 			f.write(strings.repeat(` `, max - field.name.len))
-			f.writeln(f.type_to_str(field.typ))
+			f.write(f.type_to_str(field.typ))
+			if field.attrs.len > 0 {
+				f.write(' [' + field.attrs.join(';') + ']')
+			}
+			if field.has_default_expr {
+				f.write(' = ')
+				f.struct_field_expr(field.default_expr)
+			}
+			f.write('\n')
 			continue
 		}
 		// Handle comments before field
@@ -506,6 +514,13 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		f.write(strings.repeat(` `, max - field.name.len - comments_len))
 		f.write(f.type_to_str(field.typ))
+		if field.attrs.len > 0 {
+			f.write(' [' + field.attrs.join(';') + ']')
+		}
+		if field.has_default_expr {
+			f.write(' = ')
+			f.struct_field_expr(field.default_expr)
+		}
 		// Handle comments after field type (same line)
 		for j < comments.len && field.pos.line_nr == comments[j].pos.line_nr{
 			f.write(' // ${comments[j].text}') // TODO: handle in a function
