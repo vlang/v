@@ -137,7 +137,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 		//
 		g.writeln('int _step_res$tmp = sqlite3_step($g.sql_stmt_name);')
 		if node.is_array {
-			g.writeln('\tprintf("step res=%d\\n", _step_res$tmp);')
+			//g.writeln('\tprintf("step res=%d\\n", _step_res$tmp);')
 			g.writeln('\tif (_step_res$tmp == SQLITE_DONE) break;')
 			g.writeln('\tif (_step_res$tmp == SQLITE_ROW) ;') // another row
 			g.writeln('\telse if (_step_res$tmp != SQLITE_OK) break;')
@@ -206,11 +206,17 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 			g.inc_sql_i()
 			g.sql_bind_int(it.val)
 		}
+		ast.BoolLiteral {
+			// true/false literals were added to Sqlite 3.23 (2018-04-02)
+			// but lots of apps/distros use older sqlite (e.g. Ubuntu 18.04 LTS )
+			g.inc_sql_i()
+			g.sql_bind_int(if it.val { '1' } else { '0' })
+		}
 		ast.Ident {
 			// `name == user_name` => `name == ?1`
 			// for left sides just add a string, for right sides, generate the bindings
 			if g.sql_side == .left {
-				println("sql gen left $expr.name")
+				//println("sql gen left $expr.name")
 				g.write(expr.name)
 			} else {
 				g.inc_sql_i()

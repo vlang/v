@@ -100,9 +100,9 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		}
 		// println('path is now "$path"')
 	}
-	// if p.pref.is_verbose {
-	println('>>> compiling vweb HTML template "$path"')
-	// }
+	if p.pref.is_verbose {
+		println('>>> compiling vweb HTML template "$path"')
+	}
 	v_code := tmpl.compile_file(path, p.cur_fn_name)
 	mut scope := &ast.Scope{
 		start_pos: 0

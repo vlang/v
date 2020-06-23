@@ -15,18 +15,19 @@ struct User {
 	id int
 	age int
 	name string
+	is_customer bool
 }
 
 fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec("drop table if exists User")
-	db.exec("create table User (id integer primary key, age int default 0, name text default '');")
+	db.exec("create table User (id integer primary key, age int default 0, name text default '', is_customer int default 0);")
 
 	name := 'Peter'
 
 	db.exec("insert into User (name, age) values ('Sam', 29)")
 	db.exec("insert into User (name, age) values ('Peter', 31)")
-	db.exec("insert into User (name) values ('Kate')")
+	db.exec("insert into User (name, age, is_customer) values ('Kate', 30, 1)")
 	nr_all_users := sql db {
 		select count from User
 	}
@@ -108,6 +109,20 @@ fn test_orm_sqlite() {
 	assert x.age == 30
 	assert x.id == 4
 	assert x.name == 'New user'
+	//
+	kate := sql db {
+		select from User where id == 3
+	}
+	println(kate)
+	assert kate.is_customer == true
+	//
+	customer := sql db {
+		select from User where is_customer == true limit 1
+	}
+	println(customer)
+	assert customer.is_customer == true
+	assert customer.name == 'Kate'
+
 }
 
 
