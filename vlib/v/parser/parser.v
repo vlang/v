@@ -471,6 +471,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 	p.next()
 	// p.next_with_comment()
 	return ast.Comment{
+		is_multi: text.contains('\n')
 		text: text
 		pos: pos
 	}
@@ -1328,9 +1329,10 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	p.next() // (
 	mut fields := []ast.ConstField{}
 	for p.tok.kind != .rpar {
-		mut comment := ast.Comment{}
-		if p.tok.kind == .comment {
-			comment = p.comment()
+		mut comments := []ast.Comment{}
+		for p.tok.kind == .comment {
+			comments << p.comment()
+			if p.tok.kind == .rpar {break}
 		}
 		pos := p.tok.position()
 		name := p.check_name()
@@ -1347,7 +1349,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			name: full_name
 			expr: expr
 			pos: pos
-			comment: comment
+			comments: comments
 		}
 		fields << field
 		p.global_scope.register(field.name, field)

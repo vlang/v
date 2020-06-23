@@ -55,12 +55,18 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut is_field_mut := false
 	mut is_field_pub := false
 	mut is_field_global := false
+	mut end_comments := []ast.Comment{}
 	if !no_body {
 		p.check(.lcbr)
 		for p.tok.kind != .rcbr {
-			mut comment := ast.Comment{}
-			if p.tok.kind == .comment {
-				comment = p.comment()
+			mut comments := []ast.Comment{}
+			for p.tok.kind == .comment {
+				comments << p.comment()
+				if p.tok.kind == .rcbr {break}
+			}
+			if p.tok.kind == .rcbr {
+				end_comments = comments
+				break 
 			}
 			if p.tok.kind == .key_pub {
 				p.next()
@@ -104,17 +110,43 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_field_mut = true
 				is_field_global = true
 			}
+			for p.tok.kind == .comment {
+				comments << p.comment()
+				if p.tok.kind == .rcbr {break}
+			}
 			field_start_pos := p.tok.position()
 			field_name := p.check_name()
 			// p.warn('field $field_name')
+			
+			for p.tok.kind == .comment {
+				comments << p.comment()
+				if p.tok.kind == .rcbr {break}
+			}
+
+			// println(p.tok.position())
 			typ := p.parse_type()
-			field_pos := field_start_pos.extend(p.tok.position())
+			// field_pos := field_start_pos.extend(p.tok.position())
+			field_pos := token.Position{
+				line_nr: field_start_pos.line_nr
+				pos: field_start_pos.pos
+				len: p.tok.position().pos - field_start_pos.pos
+			}
 			/*
 			if name == '_net_module_s' {
 			s := p.table.get_type_symbol(typ)
 			println('XXXX' + s.str())
 		}
 			*/
+			// Comments after type (same line)
+			line_pos := field_pos.line_nr
+			for p.tok.kind == .comment && line_pos + 1 == p.tok.line_nr{
+				if p.tok.lit.contains('\n') {
+					break
+				}
+				comments << p.comment()
+				if p.tok.kind == .rcbr {break}
+			}
+
 			mut attrs := []string{}
 			if p.tok.kind == .lsbr {
 				parsed_attrs := p.attributes(false)
@@ -137,15 +169,12 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 				has_default_expr = true
 			}
-			if p.tok.kind == .comment {
-				comment = p.comment()
-			}
 			// TODO merge table and ast Fields?
 			ast_fields << ast.StructField{
 				name: field_name
 				pos: field_pos
 				typ: typ
-				comment: comment
+				comments: comments
 				default_expr: default_expr
 				has_default_expr: has_default_expr
 				attrs: attrs
@@ -209,6 +238,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		language: language
 		is_union: is_union
 		attrs: p.attrs
+		end_comments: end_comments
 	}
 }
 
