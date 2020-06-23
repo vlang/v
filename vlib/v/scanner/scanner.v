@@ -1177,6 +1177,7 @@ fn (mut s Scanner) ident_string() string {
 	// println('\nident_string() at char=${s.text[s.pos].str()}')
 	// println('linenr=$s.line_nr quote=  $qquote ${qquote.str()}')
 	// }
+	mut n_cr_chars := 0
 	mut start := s.pos
 	s.is_inside_string = false
 	slash := `\\`
@@ -1191,6 +1192,9 @@ fn (mut s Scanner) ident_string() string {
 		if c == s.quote && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
 			// handle '123\\'  slash at the end
 			break
+		}
+		if c == `\r` {
+			n_cr_chars++
 		}
 		if c == `\n` {
 			s.inc_line_number()
@@ -1230,10 +1234,14 @@ fn (mut s Scanner) ident_string() string {
 		end++
 	}
 	if start <= s.pos {
-		if s.text[start..end].contains('\\\n') {
-			lit = trim_slash_line_break(s.text[start..end])
+		mut string_so_far := s.text[start..end]
+		if n_cr_chars > 0 {
+			string_so_far = string_so_far.replace('\r', '')
+		}
+		if string_so_far.contains('\\\n') {
+			lit = trim_slash_line_break(string_so_far)
 		} else {
-			lit = s.text[start..end]
+			lit = string_so_far
 		}
 	}
 	return lit
