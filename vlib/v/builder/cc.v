@@ -555,9 +555,11 @@ fn (mut b Builder) cc_linux_cross() {
 		'-lcrypto'
 		'-lssl'
 		'-lpthread'
+		'-ldl'
 		//'-dynamic-linker /usr/lib/x86_64-linux-gnu/libcrypto.so'
 		//'SYSROOT/lib/x86_64-linux-gnu/libssl.a'
 		'$sysroot/crtn.o'
+		cflags.c_options_only_object_files()
 	]
 	linker_args_str := linker_args.join(' ')
 	cmd := '$sysroot/ld.lld ' + linker_args_str
