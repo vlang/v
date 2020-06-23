@@ -206,6 +206,12 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 			g.inc_sql_i()
 			g.sql_bind_int(it.val)
 		}
+		ast.BoolLiteral {
+			// true/false literals were added to Sqlite 3.23 (2018-04-02)
+			// but lots of apps/distros use older sqlite (e.g. Ubuntu 18.04 LTS )
+			g.inc_sql_i()
+			g.sql_bind_int(if it.val { '1' } else { '0' })
+		}
 		ast.Ident {
 			// `name == user_name` => `name == ?1`
 			// for left sides just add a string, for right sides, generate the bindings
