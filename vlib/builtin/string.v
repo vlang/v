@@ -1307,7 +1307,8 @@ pub fn (s string) limit(max int) string {
 
 [deprecated]
 pub fn (c byte) is_white() bool {
-	panic('Use `string.is_space` instead of `string.is_white')
+	eprintln('warning: `string.is_white` has been deprecated, use `string.is_space` instead')
+	return c.is_space()
 }
 
 pub fn (s string) hash() int {

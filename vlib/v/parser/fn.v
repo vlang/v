@@ -235,6 +235,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_variadic: is_variadic
 			is_generic: is_generic
 			is_pub: is_pub
+			is_deprecated: is_deprecated
 			ctdefine: ctdefine
 		})
 	} else {
@@ -256,6 +257,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			language: language
 			is_generic: is_generic
 			is_pub: is_pub
+			is_deprecated: is_deprecated
 			ctdefine: ctdefine
 			mod: p.mod
 		})
