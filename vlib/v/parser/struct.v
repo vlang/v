@@ -123,8 +123,14 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				if p.tok.kind == .rcbr {break}
 			}
 
-			field_pos := field_start_pos.extend(p.tok.position())
+			// println(p.tok.position())
 			typ := p.parse_type()
+			// field_pos := field_start_pos.extend(p.tok.position())
+			field_pos := token.Position{
+				line_nr: field_start_pos.line_nr
+				pos: field_start_pos.pos
+				len: p.tok.position().pos - field_start_pos.pos
+			}
 			/*
 			if name == '_net_module_s' {
 			s := p.table.get_type_symbol(typ)
