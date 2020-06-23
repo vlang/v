@@ -2,6 +2,7 @@ module main
 
 import os
 import flag
+import strings
 
 const (
 	tool_version = '0.0.4'
@@ -50,7 +51,7 @@ fn (context Context) footer() string {
 }
 
 fn (context Context) file2v(file string) string {
-	mut file_s := ''
+	mut sb := strings.new_builder(1000)
 	fname := os.file_name(file)
 	fname_no_dots := fname.replace('.', '_')
 	byte_name := '${context.prefix}${fname_no_dots}'
@@ -59,19 +60,19 @@ fn (context Context) file2v(file string) string {
 		return ''
 	}
 	fbyte := fbytes[0]
-	file_s += '  ${byte_name}_len = ${fbytes.len}\n'
-	file_s += '  ${byte_name} = [ byte(${fbyte}), \n  '
+	sb.write('  ${byte_name}_len = ${fbytes.len}\n')
+	sb.write('  ${byte_name} = [ byte(${fbyte}), \n  ')
 	for i := 1; i < fbytes.len; i++ {
 		b := int(fbytes[i]).str()
-		file_s += '${b:4s}, '
+		sb.write('${b:4s}, ')
 		if 0 == i % 16 {
-			file_s += '\n  '
+			sb.write('\n  ')
 		}
 	}
-	file_s += '\n]!!\n'
-	file_s += '\n'
+	sb.write('\n]!!\n')
+	sb.write('\n')
 
-	return file_s
+	return sb.str()
 }
 
 fn main() {
