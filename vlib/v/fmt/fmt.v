@@ -115,12 +115,13 @@ pub fn (mut f Fmt) writeln(s string) {
 		f.adjust_complete_line()
 		f.expr_recursion = 0
 		for i, p in f.penalties {
+			f.write(f.expr_bufs[i])
 			f.wrap_long_line(p, true)
-			f.out.write(f.expr_bufs[i])
 		}
+		f.write(f.expr_bufs[f.expr_bufs.len-1])
 		f.expr_bufs = []string{}
-		f.expr_recursion = 0
 		f.penalties = []int{}
+		f.expr_recursion = 0
 	}
 	if f.indent > 0 && f.empty_line {
 		// println(f.indent.str() + s)
@@ -670,13 +671,14 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				f.expr(node.right)
 			} else {
 				rec_save := f.expr_recursion
-				f.expr(node.left)
-				f.write(' $node.op.str() ')
 				if f.expr_recursion == 0 {
 					f.out_save = f.out
-				} else {
-					f.expr_bufs << f.out.str()
+					f.out = strings.new_builder(60)
+					f.expr_recursion++
 				}
+				f.expr(node.left)
+				f.write(' $node.op.str() ')
+				f.expr_bufs << f.out.str()
 				mut penalty := 3
 				if node.left is ast.InfixExpr || node.left is ast.ParExpr {
 					penalty--
@@ -685,8 +687,8 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					penalty--
 				}
 				f.penalties << penalty
-				f.expr_recursion++
 				f.out = strings.new_builder(60)
+				f.expr_recursion++
 				f.expr(node.right)
 				if rec_save == 0 && f.expr_recursion > 0 { // now decide if and where to break
 					f.expr_bufs << f.out.str()
@@ -694,10 +696,10 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.expr_recursion = 0
 					f.adjust_complete_line()
 					for i, p in f.penalties {
-						f.wrap_long_line(p, true)
 						f.write(f.expr_bufs[i])
+						f.wrap_long_line(p, true)
 					}
-					// f.write(f.expr_bufs[f.expr_bufs.len-1])
+					f.write(f.expr_bufs[f.expr_bufs.len-1])
 					f.expr_bufs = []string{}
 					f.penalties = []int{}
 				}
