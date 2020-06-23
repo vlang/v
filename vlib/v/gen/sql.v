@@ -137,7 +137,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 		//
 		g.writeln('int _step_res$tmp = sqlite3_step($g.sql_stmt_name);')
 		if node.is_array {
-			g.writeln('\tprintf("step res=%d\\n", _step_res$tmp);')
+			//g.writeln('\tprintf("step res=%d\\n", _step_res$tmp);')
 			g.writeln('\tif (_step_res$tmp == SQLITE_DONE) break;')
 			g.writeln('\tif (_step_res$tmp == SQLITE_ROW) ;') // another row
 			g.writeln('\telse if (_step_res$tmp != SQLITE_OK) break;')
@@ -210,7 +210,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 			// `name == user_name` => `name == ?1`
 			// for left sides just add a string, for right sides, generate the bindings
 			if g.sql_side == .left {
-				println("sql gen left $expr.name")
+				//println("sql gen left $expr.name")
 				g.write(expr.name)
 			} else {
 				g.inc_sql_i()
