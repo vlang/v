@@ -9,6 +9,7 @@ import net
 import net.http
 import net.urllib
 import strings
+import time
 
 pub const (
 	methods_with_form = ['POST', 'PUT', 'PATCH']
@@ -47,6 +48,7 @@ pub mut:
 	form map[string]string
 	headers string // response headers
 	done bool
+	page_gen_start i64
 }
 
 pub struct Result {}
@@ -145,7 +147,8 @@ pub fn run_app<T>(mut app T, port int) {
 		conn := l.accept() or { panic('accept() failed') }
 		//handle_conn<T>(conn, mut app)
 		handle_conn<T>(conn, mut app)
-		// TODO move this to handle_conn<T>(conn, app)
+		//app.vweb.page_gen_time = time.ticks() - t
+		//eprintln('handle conn() took ${time.ticks()-t}ms')
 		//message := readall(conn)
 		//println(message)
 /*
@@ -174,6 +177,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 //fn handle_conn<T>(conn net.Socket, app_ T) T {
 	//mut app := app_
 	//first_line := strip(lines[0])
+	page_gen_start := time.ticks()
 	first_line := conn.read_line()
 	$if debug {
 		println('firstline="$first_line"')
@@ -210,7 +214,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				// End of body
 				//break
 			//}
-			//println('HHH')
 			in_headers = false
 		}
 		if in_headers {
@@ -258,6 +261,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		form: map[string]string
 		static_files: app.vweb.static_files
 		static_mime_types: app.vweb.static_mime_types
+		page_gen_start: page_gen_start
 	}
 	//}
 	if req.method in methods_with_form {
@@ -301,6 +305,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		conn.send_string(http_404) or {}
 	}
 	*/
+
 	conn.close() or {}
 	//app.reset()
 	return
