@@ -458,8 +458,16 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	f.writeln('$name {')
 	mut max := 0
 	for field in node.fields {
-		if field.name.len > max {
-			max = field.name.len
+		end_pos := field.pos.pos + field.pos.len
+		mut comments_len := 0 // Length of comments between field name and type
+		for comment in field.comments {
+			if comment.pos.pos >= end_pos { break }
+			if comment.pos.pos > field.pos.pos {
+				comments_len += '/* ${comment.text} */ '.len
+			}
+		}
+		if comments_len + field.name.len > max {
+			max = comments_len + field.name.len
 		}
 	}
 	for i, field in node.fields {
@@ -470,32 +478,47 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		} else if i == node.pub_mut_pos {
 			f.writeln('pub mut:')
 		}
-		if field.comment.text != '' && field.comment.pos.line_nr < field.pos.line_nr {
-			// Comment on the previous line
-			f.write('\t')
-			f.comment(field.comment)
+		end_pos := field.pos.pos + field.pos.len
+		comments := field.comments
+		if comments.len == 0 {
+			f.write('\t$field.name ')
+			f.write(strings.repeat(` `, max - field.name.len))
+			f.writeln(f.type_to_str(field.typ))
+			continue
+		}
+		// Handle comments before field
+		mut j := 0
+		for j < comments.len && comments[j].pos.pos < field.pos.pos {
+			f.indent++
+			f.empty_line = true
+			f.comment(comments[j])
+			f.indent--
+			j++
 		}
 		f.write('\t$field.name ')
-		f.write(strings.repeat(` `, max - field.name.len))
+		// Handle comments between field name and type
+		mut comments_len := 0
+		for j < comments.len && comments[j].pos.pos < end_pos {
+			comment := '/* ${comments[j].text} */ ' // TODO: handle in a function
+			comments_len += comment.len
+			f.write(comment)
+			j++
+		}
+		f.write(strings.repeat(` `, max - field.name.len - comments_len))
 		f.write(f.type_to_str(field.typ))
-		if field.attrs.len > 0 {
-			f.write(' [' + field.attrs.join(';') + ']')
+		// Handle comments after field type (same line)
+		for j < comments.len && field.pos.line_nr == comments[j].pos.line_nr{
+			f.write(' // ${comments[j].text}') // TODO: handle in a function
+			j++
 		}
-		if field.has_default_expr {
-			f.write(' = ')
-			f.struct_field_expr(field.default_expr)
-		}
-		// f.write('// $field.pos.line_nr')
-		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
-			// Same line comment
-			f.write('  ')
-			f.comment(field.comment)
-		} else {
-			// if field.comment.text != '' {
-			// f.write (' // com linenr=$field.comment.pos.line_nr')
-			// }
-			f.writeln('')
-		}
+		f.write('\n')
+	}
+	// Handle comments after last field 
+	for comment in node.end_comments {
+		f.indent++
+		f.empty_line = true
+		f.comment(comment)
+		f.indent--
 	}
 	f.writeln('}\n')
 }
@@ -860,7 +883,6 @@ pub fn (mut f Fmt) comment(node ast.Comment) {
 	f.writeln('/*')
 	for line in lines {
 		f.writeln(line)
-		f.empty_line = false
 	}
 	f.empty_line = true
 	f.writeln('*/')

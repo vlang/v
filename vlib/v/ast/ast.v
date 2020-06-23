@@ -122,7 +122,7 @@ pub struct StructField {
 pub:
 	name             string
 	pos              token.Position
-	comment          Comment
+	comments         []Comment
 	default_expr     Expr
 	has_default_expr bool
 	attrs            []string
@@ -160,16 +160,17 @@ pub mut:
 
 pub struct StructDecl {
 pub:
-	pos         token.Position
-	name        string
-	fields      []StructField
-	is_pub      bool
-	mut_pos     int // mut:
-	pub_pos     int // pub:
-	pub_mut_pos int // pub mut:
-	language    table.Language
-	is_union    bool
-	attrs       []string
+	pos          token.Position
+	name         string
+	fields       []StructField
+	is_pub       bool
+	mut_pos      int // mut:
+	pub_pos      int // pub:
+	pub_mut_pos  int // pub mut:
+	language     table.Language
+	is_union     bool
+	attrs        []string
+	end_comments []Comment
 }
 
 pub struct InterfaceDecl {
