@@ -1,8 +1,9 @@
 import v.checker
 import v.ast
 import v.table
+import v.gen
 
-pub fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) table.Type {
+fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) table.Type {
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
 		node.expr_types << ftyp
@@ -40,7 +41,7 @@ pub fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) 
 	return table.string_type
 }
 
-fn get_some_val(a_test, b_test, c_test, d_test, e_test, f_test f64) {
+fn get_some_val(a_test, b_test, c_test, d_test, e_test, f_test f64) f64 {
 	return a_test*b_test*c_test*
 		d_test+e_test*f_test*a_test*d_test+a_test*
 		b_test*c_test
@@ -53,5 +54,12 @@ fn main() {
 		d > a+b+r*d+
 		a*b+r {
 		println('ok')
+	}
+}
+
+fn gen_str_for_multi_return(mut g gen.Gen,
+    info table.MultiReturn, styp, str_fn_name string) {
+for i, _ in info.types {
+		println('\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
 	}
 }
