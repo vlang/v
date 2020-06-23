@@ -12,7 +12,7 @@ const (
 		'\t\t\t\t\t\t\t\t'
 	]
 	// when to break a line dependant on penalty
-	max_len = [0, 30, 85, 100, 100]
+	max_len = [0, 30, 85, 95, 100]
 )
 
 pub struct Fmt {
