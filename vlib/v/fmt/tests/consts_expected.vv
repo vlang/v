@@ -1,6 +1,10 @@
 const (
 	// pi
+	// pi
 	pi                  = 3.14
+	// phi
+	// phi
+	// phi
 	phi                 = 1.618
 	// Euler's constant
 	eulers              = 2.7182
