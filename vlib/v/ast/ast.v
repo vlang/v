@@ -141,13 +141,13 @@ pub mut:
 
 pub struct ConstField {
 pub:
-	name    string
-	expr    Expr
-	is_pub  bool
-	pos     token.Position
+	name     string
+	expr     Expr
+	is_pub   bool
+	pos      token.Position
 pub mut:
-	typ     table.Type
-	comment Comment
+	typ      table.Type
+	comments []Comment
 }
 
 pub struct ConstDecl {

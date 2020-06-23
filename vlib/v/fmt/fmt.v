@@ -1333,9 +1333,11 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 	}
 	f.indent++
 	for field in it.fields {
-		if field.comment.text != '' {
-			f.comment(field.comment)
-			// f.writeln('// ' + field.comment.text)
+		comments := field.comments
+		mut j := 0
+		for j < comments.len && comments[j].pos.pos < field.pos.pos {
+			f.comment(comments[j])
+			j++
 		}
 		name := field.name.after('.')
 		f.write('$name ')
