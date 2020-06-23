@@ -898,6 +898,7 @@ pub fn (mut f Fmt) comment(node ast.Comment) {
 	f.writeln('/*')
 	for line in lines {
 		f.writeln(line)
+		f.empty_line = false
 	}
 	f.empty_line = true
 	f.writeln('*/')
