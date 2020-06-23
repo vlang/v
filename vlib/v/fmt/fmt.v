@@ -12,7 +12,7 @@ const (
 		'\t\t\t\t\t\t\t\t'
 	]
 	// when to break a line dependant on penalty
-	max_len = [0, 30, 85, 100, 105]
+	max_len = [0, 30, 85, 100, 100]
 )
 
 pub struct Fmt {
@@ -107,17 +107,28 @@ pub fn (mut f Fmt) write(s string) {
 }
 
 pub fn (mut f Fmt) writeln(s string) {
-	if f.expr_recursion == 0 || f.is_inside_interp {
-		if f.indent > 0 && f.empty_line {
-			// println(f.indent.str() + s)
-			f.out.write(tabs[f.indent])
+	empty_fifo := f.expr_recursion > 0
+	if empty_fifo {
+		f.write(s)
+		f.expr_bufs << f.out.str()
+		f.out = f.out_save
+		f.adjust_complete_line()
+		f.expr_recursion = 0
+		for i, p in f.penalties {
+			f.wrap_long_line(p, true)
+			f.out.write(f.expr_bufs[i])
 		}
-		f.out.writeln(s)
-		f.empty_line = true
-		f.line_len = 0
-	} else {
-		f.out.writeln(s)
+		f.expr_bufs = []string{}
+		f.expr_recursion = 0
+		f.penalties = []int{}
 	}
+	if f.indent > 0 && f.empty_line {
+		// println(f.indent.str() + s)
+		f.out.write(tabs[f.indent])
+	}
+	f.out.writeln(if empty_fifo {''} else {s})
+	f.empty_line = true
+	f.line_len = 0
 }
 
 // adjustments that can only be done after full line is processed. For now
@@ -125,7 +136,7 @@ pub fn (mut f Fmt) writeln(s string) {
 // penalties to maximum
 fn (mut f Fmt) adjust_complete_line() {
 	mut l := 0
-	for s in f.expr_bufs {
+	for _, s in f.expr_bufs {
 		l += s.len
 	}
 	if f.line_len + l <= max_len[max_len.len-1] {
@@ -677,7 +688,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				f.expr_recursion++
 				f.out = strings.new_builder(60)
 				f.expr(node.right)
-				if rec_save == 0 { // now decide if and where to break
+				if rec_save == 0 && f.expr_recursion > 0 { // now decide if and where to break
 					f.expr_bufs << f.out.str()
 					f.out = f.out_save
 					f.expr_recursion = 0
