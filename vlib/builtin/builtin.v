@@ -239,6 +239,11 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 	eprintln('${i.fpath}:${i.line_nr+1}: FAIL: fn ${i.fn_name}: assert ${i.src}')
 	if i.op.len > 0 && i.op != 'call' {
 		eprintln('   left value: ${i.llabel} = ${i.lvalue}')
-		eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
+		if i.rlabel == i.rvalue {
+			eprintln('  right value: $i.rlabel')
+		}
+		else {
+			eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
+		}
 	}
 }

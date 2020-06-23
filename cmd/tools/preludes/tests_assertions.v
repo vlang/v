@@ -9,6 +9,7 @@ import os
 // / customizing the look & feel of the assertions results easier,
 // / since it is done in normal V code, instead of in embedded C ...
 // //////////////////////////////////////////////////////////////////
+// TODO copy pasta builtin.v fn ___print_assert_failure
 fn cb_assertion_failed(i &VAssertMetaInfo) {
 	// color_on := term.can_show_color_on_stderr()
 	use_relative_paths := match os.getenv('VERROR_PATHS') {
@@ -25,7 +26,12 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 	eprintln('Source  : ${i.src}')
 	if i.op.len > 0 && i.op != 'call' {
 		eprintln('   left value: ${i.llabel} = ${i.lvalue}')
-		eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
+		if i.rlabel == i.rvalue {
+			eprintln('  right value: $i.rlabel')
+		}
+		else {
+			eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
+		}
 	}
 }
 

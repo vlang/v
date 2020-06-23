@@ -110,6 +110,7 @@ mut:
 	cur_generic_type     table.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i                int
 	sql_stmt_name        string
+	sql_side             SqlExprSide // left or right, to distinguish idents in `name == name`
 }
 
 const (

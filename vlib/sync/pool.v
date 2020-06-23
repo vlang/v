@@ -118,7 +118,12 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 	pool.thread_contexts << [voidptr(0)].repeat(pool.items.len)
 	pool.waitgroup.add(njobs)
 	for i := 0; i < njobs; i++ {
-		go process_in_thread(mut pool,i)
+		if njobs > 1 {
+			go process_in_thread(mut pool,i)
+		} else {
+			// do not run concurrently, just use the same thread:
+			process_in_thread(mut pool,i)
+		}
 	}
 	pool.waitgroup.wait()
 }

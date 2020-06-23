@@ -22,7 +22,7 @@ fn test_orm_sqlite() {
 	db.exec("drop table if exists User")
 	db.exec("create table User (id integer primary key, age int default 0, name text default '');")
 
-	name := 'sam'
+	name := 'Peter'
 
 	db.exec("insert into User (name, age) values ('Sam', 29)")
 	db.exec("insert into User (name, age) values ('Peter', 31)")
@@ -45,10 +45,24 @@ fn test_orm_sqlite() {
 	assert nr_peters == 1
 	println('nr_peters=$nr_peters')
 	//
-	nr_sams := sql db {
-		select count from User where id == 1 && name == name
+	nr_peters2 := sql db {
+		select count from User where id == 2 && name == name
 	}
-	println('nr_sams=$nr_sams')
+	assert nr_peters2 == 1
+	nr_peters3 := sql db {
+		select count from User where name == name
+	}
+	assert nr_peters3 == 1
+	peters := sql db {
+		select from User where name == name
+	}
+	assert peters.len == 1
+	assert peters[0].name == 'Peter'
+	one_peter := sql db {
+		select from User where name == name limit 1
+	}
+	assert one_peter.name == 'Peter'
+	assert one_peter.id == 2
 	//
 	user := sql db {
 		select from User where id == 1

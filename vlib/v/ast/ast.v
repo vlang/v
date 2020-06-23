@@ -357,7 +357,6 @@ pub enum IdentKind {
 // A single identifier
 pub struct Ident {
 pub:
-	value    string
 	language table.Language
 	tok_kind token.Kind
 	mod      string

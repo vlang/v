@@ -30,12 +30,20 @@ pub fn compile_template(html_, fn_name string) string {
 	// lines := os.read_lines(path)
 	mut html := html_.trim_space()
 	mut header := ''
+	mut footer := ''
 	if os.exists('templates/header.html') && html.contains('@header') {
 		h := os.read_file('templates/header.html') or {
 			panic('reading file templates/header.html failed')
 		}
 		header = h.trim_space().replace("\'", '"')
 		html = header + html
+	}
+	if os.exists('templates/footer.html') && html.contains('@footer') {
+		f := os.read_file('templates/footer.html') or {
+			panic('reading file templates/footer.html failed')
+		}
+		footer = f.trim_space().replace("\'", '"')
+		html += footer
 	}
 
 	mut lines := html.split_into_lines()
@@ -48,6 +56,8 @@ fn vweb_tmpl_${fn_name}() {
 mut sb := strings.new_builder(${lines.len * 30})\n
 header := \' \' // TODO remove
 _ = header
+footer := \' \' // TODO remove
+_ = footer
 
 ")
 	s.write(str_start)
