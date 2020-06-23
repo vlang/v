@@ -841,6 +841,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			for val in node.vals {
 				if val.contains("'") {
 					contains_single_quote = true
+				}
+				if val.contains('"') {
+					contains_single_quote = false
 					break
 				}
 			}
