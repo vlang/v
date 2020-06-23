@@ -204,7 +204,8 @@ pub fn cp(old, new string) ?bool {
 
 [deprecated]
 pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
-	panic('Use `os.cp_all` instead of `os.cp_r`')
+	eprintln('warning: `os.cp_r` has been deprecated, use `os.cp_all` instead')
+	return cp_all(osource_path, odest_path, overwrite)
 }
 
 pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
@@ -622,7 +623,8 @@ pub fn is_readable(path string) bool {
 
 [deprecated]
 pub fn file_exists(_path string) bool {
-	panic('Use `os.exists` instead of `os.file_exists`')
+	eprintln('warning: `os.file_exists` has been deprecated, use `os.exists` instead')
+	return exists(_path)
 }
 
 // rm removes file in `path`.
@@ -645,7 +647,8 @@ pub fn rmdir(path string) {
 
 [deprecated]
 pub fn rmdir_recursive(path string) {
-	panic('Use `os.rmdir_all` instead of `os.rmdir_recursive`')
+	eprintln('warning: `os.rmdir_recursive` has been deprecated, use `os.rmdir_all` instead')
+	rmdir_all(path)
 }
 
 pub fn rmdir_all(path string) {
@@ -1004,7 +1007,8 @@ pub fn exists_in_system_path(prog string) bool {
 
 [deprecated]
 pub fn dir_exists(path string) bool {
-	panic('Use `os.is_dir` instead of `os.dir_exists`')
+	eprintln('warning: `os.dir_exists` has been deprecated, use `os.is_dir` instead')
+	return is_dir(path)
 }
 
 // is_dir returns a boolean indicating whether the given path is a directory.
@@ -1198,7 +1202,8 @@ pub fn log(s string) {
 
 [deprecated]
 pub fn flush_stdout() {
-	panic('Use `os.flush` instead of `os.flush_stdout`')
+	eprintln('warning: `os.flush_stdout` has been deprecated, use `os.flush` instead')
+	flush()
 }
 
 pub fn flush() {
