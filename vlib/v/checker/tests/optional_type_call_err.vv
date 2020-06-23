@@ -1,0 +1,5 @@
+import os
+
+fn main() {
+	os.ls('.').filter(it.ends_with('.v')) or { return }
+}

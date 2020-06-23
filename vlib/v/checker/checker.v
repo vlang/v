@@ -735,6 +735,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	call_expr.left_type = left_type
 	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
+
+	if left_type.has_flag(.optional) {
+		c.error('optional type cannot be called directly', call_expr.left.position())
+		return table.void_type
+	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in ['filter', 'clone', 'repeat', 'reverse',
