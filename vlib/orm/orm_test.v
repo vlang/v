@@ -123,6 +123,12 @@ fn test_orm_sqlite() {
 	println(customer)
 	assert customer.is_customer == true
 	assert customer.name == 'Kate'
+	//
+	/*
+	sql db {
+		update User set age = 31 where name = 'Kate'
+	}
+	*/
 
 }
 

@@ -18,7 +18,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | C
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf |
 	ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
 	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
-	Return | SqlInsertExpr | StructDecl | TypeDecl | UnsafeStmt
+	Return | SqlStmt | StructDecl | TypeDecl | UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -808,8 +808,16 @@ pub enum SqlExprKind {
 	update
 }
 */
-pub struct SqlInsertExpr {
+
+pub enum SqlStmtKind {
+	insert
+	update
+	delete
+}
+
+pub struct SqlStmt {
 pub:
+	kind SqlStmtKind
 	db_expr    Expr // `db` in `sql db {`
 	table_name      string
 	object_var_name string // `user`
