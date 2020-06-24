@@ -330,7 +330,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
-		g.write('\n${cur_line}${tmp_opt}')
+		g.write('\n\t${cur_line}${tmp_opt}')
 	}
 }
 

@@ -1259,7 +1259,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		c.error('too many arguments to return, current function does not return anything',
 			return_stmt.pos)
 		return
-	} else if return_stmt.exprs.len == 0 && c.expected_type != table.void_type {
+	} else if return_stmt.exprs.len == 0 && !(c.expected_type == table.void_type ||
+			c.table.get_type_symbol(c.expected_type).kind == .void) {
 		c.error('too few arguments to return', return_stmt.pos)
 		return
 	}

@@ -375,12 +375,12 @@ fn (g &Gen) optional_type_text(styp, base string) string {
 	// replace void with something else
 	size := if base == 'void' { 'int' } else { base }
 	ret := 'struct $x {
- bool ok;
- bool is_none;
- string v_error;
- int ecode;
- byte data[sizeof($size)];
-} '
+	bool ok;
+	bool is_none;
+	string v_error;
+	int ecode;
+	byte data[sizeof($size)];
+}'
 	return ret
 }
 
@@ -2309,6 +2309,19 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
 	fn_return_is_multi := sym.kind == .multi_return
 	fn_return_is_optional := g.fn_decl.return_type.has_flag(.optional)
+
+	if node.exprs.len == 0 {
+		if fn_return_is_optional {
+			tmp := g.new_tmp_var()
+			styp := g.typ(g.fn_decl.return_type)
+			g.writeln('$styp $tmp;')
+			g.writeln('${tmp}.ok = true;')
+			g.writeln('return $tmp;')
+		} else {
+			g.writeln('return;')
+		}
+		return
+	}
 	// handle promoting none/error/function returning 'Option'
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
@@ -2317,7 +2330,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			tmp := g.new_tmp_var()
 			g.write('/*opt promotion*/ Option $tmp = ')
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-			g.write(';')
+			g.writeln(';')
 			styp := g.typ(g.fn_decl.return_type)
 			g.writeln('return *($styp*)&$tmp;')
 			return
