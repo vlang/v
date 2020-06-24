@@ -12,9 +12,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// || it.no_body {
 		return
 	}
-	//if g.fileis('vweb.v') {
-		//println('\ngen_fn_decl() $it.name $it.is_generic $g.cur_generic_type')
-	//}
+	// if g.fileis('vweb.v') {
+	// println('\ngen_fn_decl() $it.name $it.is_generic $g.cur_generic_type')
+	// }
 	former_cur_fn := g.cur_fn
 	g.cur_fn = &it
 	defer {
@@ -46,7 +46,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	is_livemode := g.pref.is_livemain || g.pref.is_liveshared
 	is_live_wrap := is_livefn && is_livemode
 	if is_livefn && !is_livemode {
-		eprintln('INFO: compile with `v -live $g.pref.path `, if you want to use the [live] function ${it.name} .')
+		eprintln('INFO: compile with `v -live $g.pref.path `, if you want to use the [live] function $it.name .')
 	}
 	//
 	if is_main {
@@ -97,12 +97,12 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		if is_livemain {
 			g.hotcode_fn_names << name
 		}
-		mut impl_fn_name := if is_live_wrap { 'impl_live_${name}' } else { name }
+		mut impl_fn_name := if is_live_wrap { 'impl_live_$name' } else { name }
 		g.last_fn_c_name = impl_fn_name
 		//
 		if is_live_wrap {
 			if is_livemain {
-				g.definitions.write('$type_name (* ${impl_fn_name})(')
+				g.definitions.write('$type_name (* $impl_fn_name)(')
 				g.write('$type_name no_impl_${name}(')
 			}
 			if is_liveshared {
@@ -135,15 +135,16 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			// an early exit, which will leave the mutex locked.
 			mut fn_args_list := []string{}
 			for ia, fa in fargs {
-				fn_args_list << '${fargtypes[ia]} ${fa}'
+				fn_args_list << '${fargtypes[ia]} $fa'
 			}
 			mut live_fncall := '${impl_fn_name}(' + fargs.join(', ') + ');'
 			mut live_fnreturn := ''
 			if type_name != 'void' {
-				live_fncall = '${type_name} res = ${live_fncall}'
+				live_fncall = '$type_name res = $live_fncall'
 				live_fnreturn = 'return res;'
 			}
-			g.definitions.writeln('$type_name ${name}(' + fn_args_list.join(', ') + ');')
+			g.definitions.writeln('$type_name ${name}(' + fn_args_list.join(', ') +
+				');')
 			g.hotcode_definitions.writeln('$type_name ${name}(' + fn_args_list.join(', ') +
 				'){')
 			g.hotcode_definitions.writeln('  pthread_mutex_lock(&live_fn_mutex);')
@@ -168,7 +169,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			}
 			if g.pref.os == .windows {
 				g.writeln('\t_const_os__args = os__init_os_args_wide(___argc, ___argv);')
-			} else {
+			}
+			//
+			else {
 				g.writeln('\t_const_os__args = os__init_os_args(___argc, (byteptr*)___argv);')
 			}
 		}
@@ -330,7 +333,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
-		g.write('\n\t${cur_line}${tmp_opt}')
+		g.write('\n\t$cur_line$tmp_opt')
 	}
 }
 
@@ -396,14 +399,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.gen_str_for_type_with_styp(node.receiver_type, styp)
 	}
 	// TODO performance, detect `array` method differently
-	if left_sym.kind == .array && node.name in ['repeat', 'sort_with_compare', 'free', 'push_many',
-		'trim',
-		'first',
-		'last',
-		'clone',
-		'reverse',
-		'slice'
-	] {
+	if left_sym.kind == .array &&
+		node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'clone', 'reverse', 'slice'] {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 		// `array_byte_clone` => `array_clone`
@@ -413,7 +410,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('*($return_type_str*)')
 		}
 	}
-
 	mut name := '${receiver_type_name}_$node.name'.replace('.', '__')
 	// Check if expression is: arr[a..b].clone(), arr[a..].clone()
 	// if so, then instead of calling array_clone(&array_slice(...))
@@ -583,7 +579,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					g.write('*')
 				}
 				g.expr(expr)
-				if !typ.has_flag(.variadic) && sym.kind == .struct_ && styp != 'ptr' && !sym.has_method('str') {
+				if !typ.has_flag(.variadic) && sym.kind == .struct_ &&
+					styp != 'ptr' && !sym.has_method('str') {
 					g.write(', 0') // trailing 0 is initial struct indent count
 				}
 			}
@@ -621,8 +618,6 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 		if gen_vargs && i == expected_types.len - 1 {
 			break
 		}
-		// if arg.typ.name.starts_with('I') {
-		// }
 		mut is_interface := false
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		// when these are fixed we wont need this check
@@ -717,75 +712,69 @@ fn (g &Gen) fileis(s string) bool {
 	return g.file.path.contains(s)
 }
 
-fn (mut g Gen) write_fn_attrs() string{
+fn (mut g Gen) write_fn_attrs() string {
 	mut msvc_attrs := ''
 	for attr in g.attrs {
 		match attr {
 			'inline' {
 				g.write('inline ')
 			}
-			// since these are supported by GCC, clang and MSVC, we can consider them officially supported.
 			'no_inline' {
+				// since these are supported by GCC, clang and MSVC, we can consider them officially supported.
 				g.write('__NOINLINE ')
 			}
 			'irq_handler' {
 				g.write('__IRQHANDLER ')
 			}
-
-			// GCC/clang attributes
-			// prefixed by _ to indicate they're for advanced users only and not really supported by V.
-			// source for descriptions: https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html#Common-Function-Attributes
-
-			// The cold attribute on functions is used to inform the compiler that the function is unlikely
-			// to be executed. The function is optimized for size rather than speed and on many targets it
-			// is placed into a special subsection of the text section so all cold functions appear close
-			// together, improving code locality of non-cold parts of program.
 			'_cold' {
+				// GCC/clang attributes
+				// prefixed by _ to indicate they're for advanced users only and not really supported by V.
+				// source for descriptions: https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html#Common-Function-Attributes
+				// The cold attribute on functions is used to inform the compiler that the function is unlikely
+				// to be executed. The function is optimized for size rather than speed and on many targets it
+				// is placed into a special subsection of the text section so all cold functions appear close
+				// together, improving code locality of non-cold parts of program.
 				g.write('__attribute__((cold)) ')
 			}
-			// The constructor attribute causes the function to be called automatically before execution
-			// enters main ().
 			'_constructor' {
+				// The constructor attribute causes the function to be called automatically before execution
+				// enters main ().
 				g.write('__attribute__((constructor)) ')
 			}
-			// The destructor attribute causes the function to be called automatically after main ()
-			// completes or exit () is called.
 			'_destructor' {
+				// The destructor attribute causes the function to be called automatically after main ()
+				// completes or exit () is called.
 				g.write('__attribute__((destructor)) ')
 			}
-			// Generally, inlining into a function is limited. For a function marked with this attribute,
-			// every call inside this function is inlined, if possible.
 			'_flatten' {
+				// Generally, inlining into a function is limited. For a function marked with this attribute,
+				// every call inside this function is inlined, if possible.
 				g.write('__attribute__((flatten)) ')
 			}
-			// The hot attribute on a function is used to inform the compiler that the function is a hot
-			// spot of the compiled program.
 			'_hot' {
+				// The hot attribute on a function is used to inform the compiler that the function is a hot
+				// spot of the compiled program.
 				g.write('__attribute__((hot)) ')
 			}
-			// This tells the compiler that a function is malloc-like, i.e., that the pointer P returned by
-			// the function cannot alias any other pointer valid when the function returns, and moreover no
-			// pointers to valid objects occur in any storage addressed by P.
 			'_malloc' {
+				// This tells the compiler that a function is malloc-like, i.e., that the pointer P returned by
+				// the function cannot alias any other pointer valid when the function returns, and moreover no
+				// pointers to valid objects occur in any storage addressed by P.
 				g.write('__attribute__((malloc)) ')
 			}
-
-			// Calls to functions whose return value is not affected by changes to the observable state
-			// of the program and that have no observable effects on such state other than to return a
-			// value may lend themselves to optimizations such as common subexpression elimination.
-			// Declaring such functions with the const attribute allows GCC to avoid emitting some calls in
-			// repeated invocations of the function with the same argument values.
 			'_pure' {
+				// Calls to functions whose return value is not affected by changes to the observable state
+				// of the program and that have no observable effects on such state other than to return a
+				// value may lend themselves to optimizations such as common subexpression elimination.
+				// Declaring such functions with the const attribute allows GCC to avoid emitting some calls in
+				// repeated invocations of the function with the same argument values.
 				g.write('__attribute__((const)) ')
 			}
-
-			// windows attributes (msvc/mingw)
-			// prefixed by windows to indicate they're for advanced users only and not really supported by V.
-
 			'windows_stdcall' {
+				// windows attributes (msvc/mingw)
+				// prefixed by windows to indicate they're for advanced users only and not really supported by V.
 				msvc_attrs += '__stdcall '
 			}
-
 			else {
 				// nothing but keep V happy
 			}

@@ -2326,7 +2326,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				ast.EnumVal { key = expr.val }
 				else { key = expr.str() }
 			}
-			val := if key in branch_exprs { branch_exprs[key] } else { 0 }
+			val := if key in branch_exprs { branch_exprs[key] } /**/ else { 0 }
 			if val == 1 {
 				c.error('match case `$key` is handled more than once', branch.pos)
 			}
@@ -2344,13 +2344,14 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				v_str := c.table.type_to_str(v)
 				if v_str !in branch_exprs {
 					is_exhaustive = false
-unhandled << '					`$v_str`'
+					unhandled << '`$v_str`'
 				}
 			} }
+		//
 		table.Enum { for v in it.vals {
 				if v !in branch_exprs {
 					is_exhaustive = false
-unhandled << '					`.$v`'
+					unhandled << '`.$v`'
 				}
 			} }
 		else { is_exhaustive = false }
