@@ -359,6 +359,25 @@ fn (m map) get3(key string, zero voidptr) voidptr {
 	return zero
 }
 
+fn (mut m map) get2(key string, zero voidptr) voidptr {
+	for {
+		mut index,mut meta := m.key_to_index(key)
+		for {
+			if meta == m.metas[index] {
+				kv_index := m.metas[index + 1]
+				if fast_string_eq(key, m.key_values.keys[kv_index]) {
+					return voidptr(m.key_values.values + kv_index * u32(m.value_bytes))
+				}
+			}
+			index += 2
+			meta += probe_inc
+			if meta > m.metas[index] { break }
+		}
+		// set zero if not found
+		m.set(key, zero)
+	}
+}
+
 fn (m map) exists(key string) bool {
 	mut index,mut meta := m.key_to_index(key)
 	for {
