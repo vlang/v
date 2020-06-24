@@ -329,6 +329,12 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		return_type: return_type
 	}
 	name := 'anon_${p.tok.pos}_$func.signature()'
+	mut is_called := false
+	if p.tok.kind == .lpar {
+		is_called = true
+		p.check(.lpar)
+		p.check(.rpar)
+	}
 	func.name = name
 	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := table.new_type(idx)
@@ -347,6 +353,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			pos: pos
 			file: p.file_name
 		}
+		is_called: is_called
 		typ: typ
 	}
 }

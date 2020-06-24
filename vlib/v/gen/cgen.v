@@ -1111,12 +1111,18 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('{')
 				}
 				ret_styp := g.typ(val.decl.return_type)
-				g.write('$ret_styp (*$ident.name) (')
-				def_pos := g.definitions.len
-				g.fn_args(val.decl.args, val.decl.is_variadic)
-				g.definitions.go_back(g.definitions.len - def_pos)
-				g.write(') = ')
-				g.expr(*val)
+				if val.is_called {
+					g.write('$ret_styp $ident.name = ')
+					g.expr(*val)
+					g.write('()')
+				} else {
+					g.write('$ret_styp (*$ident.name) (')
+					def_pos := g.definitions.len
+					g.fn_args(val.decl.args, val.decl.is_variadic)
+					g.definitions.go_back(g.definitions.len - def_pos)
+					g.write(') = ')
+					g.expr(*val)
+				}
 				g.writeln(';')
 				if blank_assign {
 					g.write('}')

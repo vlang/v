@@ -1881,7 +1881,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			c.cur_fn = &node.decl
 			c.stmts(node.decl.stmts)
 			c.cur_fn = keep_fn
-			return node.typ
+			return if node.is_called { node.decl.return_type } else { node.typ }
 		}
 		ast.ArrayInit {
 			return c.array_init(mut node)
