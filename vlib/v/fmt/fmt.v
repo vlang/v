@@ -5,6 +5,7 @@ module fmt
 
 import v.ast
 import v.table
+import v.token
 import strings
 
 const (
@@ -25,9 +26,11 @@ pub mut:
 	indent            int
 	empty_line        bool
 	line_len          int
-	expr_recursion    int
-	expr_bufs         []string
-	penalties         []int
+	buffering         bool // expressions will be analyzed later by adjust_complete_line() before finally written
+	expr_bufs         []string // and stored here in the meantime (expr_bufs.len-1 = penalties.len = precedences.len)
+	penalties         []int // how hard should it be to break line after each expression
+	precedences       []int // operator/parenthese precedences for operator at end of each expression
+	par_level         int // how many parentheses are put around the current expression
 	single_line_if    bool
 	cur_mod           string
 	file              ast.File
@@ -85,7 +88,7 @@ fn (mut f Fmt) find_comment(line_nr int) {
 }
 */
 pub fn (mut f Fmt) write(s string) {
-	if f.expr_recursion == 0 || f.is_inside_interp {
+	if !f.buffering || f.is_inside_interp {
 		if f.indent > 0 && f.empty_line {
 			if f.indent < tabs.len {
 				f.out.write(tabs[f.indent])
@@ -106,13 +109,13 @@ pub fn (mut f Fmt) write(s string) {
 }
 
 pub fn (mut f Fmt) writeln(s string) {
-	empty_fifo := f.expr_recursion > 0
+	empty_fifo := f.buffering
 	if empty_fifo {
 		f.write(s)
 		f.expr_bufs << f.out.str()
 		f.out = f.out_save
 		f.adjust_complete_line()
-		f.expr_recursion = 0
+		f.buffering = false
 		for i, p in f.penalties {
 			f.write(f.expr_bufs[i])
 			f.wrap_long_line(p, true)
@@ -120,7 +123,7 @@ pub fn (mut f Fmt) writeln(s string) {
 		f.write(f.expr_bufs[f.expr_bufs.len - 1])
 		f.expr_bufs = []string{}
 		f.penalties = []int{}
-		f.expr_recursion = 0
+		f.precedences = []int{}
 	}
 	if f.indent > 0 && f.empty_line {
 		// println(f.indent.str() + s)
@@ -139,13 +142,33 @@ pub fn (mut f Fmt) writeln(s string) {
 // only prevents line breaks if everything fits in max_len[last] by increasing
 // penalties to maximum
 fn (mut f Fmt) adjust_complete_line() {
-	mut l := 0
-	for _, s in f.expr_bufs {
-		l += s.len
-	}
-	if f.line_len + l <= max_len[max_len.len - 1] {
-		for i, _ in f.penalties {
-			f.penalties[i] = max_len.len - 1
+	for i, buf in f.expr_bufs {
+		// search for low penalties
+		if i == 0 || f.penalties[i-1] <= 1 {
+			precedence := if i == 0 { 0 } else { f.precedences[i-1] }
+			mut len_sub_expr := if i == 0 { buf.len + f.line_len } else { buf.len }
+			mut sub_expr_end_idx := f.penalties.len
+			// search for next position with low penalty and same precedence to form subexpression
+			for j in i..f.penalties.len {
+				if f.penalties[j] <= 1 && f.precedences[j] == precedence {
+					sub_expr_end_idx = j
+					break
+				} else {
+					len_sub_expr += f.expr_bufs[j+1].len
+				}
+			}
+			// if subexpression would fit in single line adjust penalties to actually do so
+			if len_sub_expr <= max_len[max_len.len-1] {
+				for j in i..sub_expr_end_idx {
+						f.penalties[j] = max_len.len-1
+				}
+				if i > 0 {
+					f.penalties[i-1] = 0
+				}
+				if sub_expr_end_idx < f.penalties.len {
+					f.penalties[sub_expr_end_idx] = 0
+				}
+			}
 		}
 	}
 }
@@ -716,11 +739,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				f.write('$node.op.str()')
 				f.expr(node.right)
 			} else {
-				rec_save := f.expr_recursion
-				if f.expr_recursion == 0 {
+				buffering_save := f.buffering
+				if !f.buffering {
 					f.out_save = f.out
 					f.out = strings.new_builder(60)
-					f.expr_recursion++
+					f.buffering = true
 				}
 				f.expr(node.left)
 				f.write(' $node.op.str() ')
@@ -733,13 +756,15 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					penalty--
 				}
 				f.penalties << penalty
+				// combine parentheses level with operator precedence to form effective precedence
+				f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
 				f.out = strings.new_builder(60)
-				f.expr_recursion++
+				f.buffering = true
 				f.expr(node.right)
-				if rec_save == 0 && f.expr_recursion > 0 { // now decide if and where to break
+				if !buffering_save && f.buffering { // now decide if and where to break
 					f.expr_bufs << f.out.str()
 					f.out = f.out_save
-					f.expr_recursion = 0
+					f.buffering = false
 					f.adjust_complete_line()
 					for i, p in f.penalties {
 						f.write(f.expr_bufs[i])
@@ -748,6 +773,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.write(f.expr_bufs[f.expr_bufs.len - 1])
 					f.expr_bufs = []string{}
 					f.penalties = []int{}
+					f.precedences = []int{}
 				}
 			}
 		}
@@ -802,7 +828,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.ParExpr {
 			f.write('(')
+			f.par_level++
 			f.expr(node.expr)
+			f.par_level--
 			f.write(')')
 		}
 		ast.PostfixExpr {
