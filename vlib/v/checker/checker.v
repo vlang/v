@@ -231,8 +231,8 @@ fn stripped_name(name string) string {
 }
 
 fn (mut c Checker) check_valid_pascal_case(name, identifier string, pos token.Position) {
-	stripped_name := stripped_name(name)
-	if !stripped_name[0].is_capital() {
+	sname := stripped_name(name)
+	if !sname[0].is_capital() {
 		c.error('$identifier `$name` must begin with capital letter', pos)
 	}
 }
@@ -1014,7 +1014,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.error('unknown function: $fn_name', call_expr.pos)
 		return table.void_type
 	}
-	if !found_in_args && call_expr.mod in ['builtin'] {
+	if !found_in_args {
 		scope := c.file.scope.innermost(call_expr.pos.pos)
 		if _ := scope.find_var(fn_name) {
 			c.error('ambiguous call to: `$fn_name`, may refer to fn `$fn_name` or variable `$fn_name`',

@@ -189,8 +189,8 @@ fn since(t Time) int {
 // relative returns a string representation of difference between time
 // and current time.
 pub fn (t Time) relative() string {
-	now := time.now()
-	secs := now.unix - t.unix
+	znow := time.now()
+	secs := znow.unix - t.unix
 	if secs <= 30 {
 		// right now or in the future
 		// TODO handle time in the future
@@ -227,8 +227,8 @@ pub fn (t Time) relative() string {
 }
 
 pub fn (t Time) relative_short() string {
-	now := time.now()
-	secs := now.unix - t.unix
+	znow := time.now()
+	secs := znow.unix - t.unix
 	if secs <= 30 {
 		// right now or in the future
 		// TODO handle time in the future
