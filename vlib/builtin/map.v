@@ -141,8 +141,7 @@ fn (d DenseArray) get(i int) voidptr {
 	return byteptr(d.keys) + i * int(sizeof(string))
 }
 
-// Move all zeros to the end of the array
-// and resize array
+// Move all zeros to the end of the array and resize array
 fn (mut d DenseArray) zeros_to_end() {
 	mut tmp_value := malloc(d.value_bytes)
 	mut count := u32(0)
@@ -168,10 +167,10 @@ fn (mut d DenseArray) zeros_to_end() {
 }
 
 pub struct map {
-	// Byte size of value
+	// Number of bytes of a value
 	value_bytes     int
 mut:
-	// highest even index in the hashtable
+	// Highest even index in the hashtable
 	cap             u32
 	// Number of cached hashbits left for rehasing
 	cached_hashbits byte
@@ -180,8 +179,8 @@ mut:
 	// Array storing key-values (ordered)
 	key_values      DenseArray
 	// Pointer to meta-data:
-	// Odd indices store kv_index.
-	// Even indices store probe_count and hashbits.
+	// - Odd indices store kv_index.
+	// - Even indices store probe_count and hashbits.
 	metas           &u32
 	// Extra metas that allows for no ranging when incrementing
 	// index in the hashmap
@@ -268,6 +267,9 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 	}
 }
 
+// Insert new element to the map. The element is inserted if its key is 
+// not equivalent to the key of any other element already in the container.
+// If the key already exists, its value is changed to the value of the new element.
 fn (mut m map) set(k string, value voidptr) {
 	key := k.clone()
 	load_factor := f32(m.len << 1) / f32(m.cap)
@@ -307,6 +309,11 @@ fn (mut m map) expand() {
 	}
 }
 
+// A rehash is the reconstruction of the hash table: 
+// All the elements in the container are rearranged according 
+// to their hash value into the newly sized key-value container. 
+// Rehashes are performed when the load_factor is going to surpass
+// the max_load_factor in an operation.
 fn (mut m map) rehash() {
 	meta_bytes := sizeof(u32) * (m.cap + 2 + m.extra_metas)
 	m.metas = &u32(C.realloc(m.metas, meta_bytes))
@@ -321,6 +328,8 @@ fn (mut m map) rehash() {
 	}
 }
 
+// This method works like rehash. However, instead of rehashing the
+// key completely, it uses the bits cached in `metas`. 
 fn (mut m map) cached_rehash(old_cap u32) {
 	old_metas := m.metas
 	m.metas = &u32(vcalloc(int(sizeof(u32) * (m.cap + 2 + m.extra_metas))))
@@ -343,7 +352,36 @@ fn (mut m map) cached_rehash(old_cap u32) {
 	}
 }
 
-fn (m map) get3(key string, zero voidptr) voidptr {
+// This method is used for assignment operators. If the argument-key
+// does not exist in the map, it's added to the map along with the zero/dafault value.
+// If the key exists, its respective value is returned. 
+fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
+	for {
+		mut index,mut meta := m.key_to_index(key)
+		for {
+			if meta == m.metas[index] {
+				kv_index := m.metas[index + 1]
+				if fast_string_eq(key, m.key_values.keys[kv_index]) {
+					return voidptr(m.key_values.values + kv_index * u32(m.value_bytes))
+				}
+			}
+			index += 2
+			meta += probe_inc
+			if meta > m.metas[index] { break }
+		}
+		// Key not found, insert key with zero-value 
+		m.set(key, zero)
+	}
+}
+// Delete this (was used for bootstrap)
+fn (mut m map) get2(key string, zero voidptr) voidptr {
+	return m.get_and_set(key, zero)
+}
+
+// If `key` matches the key of an element in the container, 
+// the method returns a reference to its mapped value.
+// If not, a zero/default value is returned.
+fn (m map) get(key string, zero voidptr) voidptr {
 	mut index,mut meta := m.key_to_index(key)
 	for {
 		if meta == m.metas[index] {
@@ -358,26 +396,12 @@ fn (m map) get3(key string, zero voidptr) voidptr {
 	}
 	return zero
 }
-
-fn (mut m map) get2(key string, zero voidptr) voidptr {
-	for {
-		mut index,mut meta := m.key_to_index(key)
-		for {
-			if meta == m.metas[index] {
-				kv_index := m.metas[index + 1]
-				if fast_string_eq(key, m.key_values.keys[kv_index]) {
-					return voidptr(m.key_values.values + kv_index * u32(m.value_bytes))
-				}
-			}
-			index += 2
-			meta += probe_inc
-			if meta > m.metas[index] { break }
-		}
-		// set zero if not found
-		m.set(key, zero)
-	}
+// Delete this (was used for bootstrap)
+fn (m map) get3(key string, zero voidptr) voidptr {
+	return m.get(key, zero)
 }
 
+// Checks whether a particular key exists in the map.
 fn (m map) exists(key string) bool {
 	mut index,mut meta := m.key_to_index(key)
 	for {
@@ -394,6 +418,7 @@ fn (m map) exists(key string) bool {
 	return false
 }
 
+// Removes the mapping of a particular key from the map.
 pub fn (mut m map) delete(key string) {
 	mut index,mut meta := m.key_to_index(key)
 	index,meta = m.meta_less(index, meta)
@@ -428,6 +453,7 @@ pub fn (mut m map) delete(key string) {
 	}
 }
 
+// Returns all keys in the map.
 // TODO: add optimization in case of no deletes
 pub fn (m &map) keys() []string {
 	mut keys := [''].repeat(m.len)
