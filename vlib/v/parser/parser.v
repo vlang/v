@@ -845,19 +845,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
 		return p.string_expr()
 	}
-	mut known_var := false
-	if obj := p.scope.find(p.tok.lit) {
-		match mut obj {
-			ast.Var {
-				known_var = true
-				obj.is_used = true
-			}
-			else {}
-		}
-	}
+	known_var := p.mark_var_as_used( p.tok.lit )
 	mut is_mod_cast := false
-	if p.peek_tok.kind == .dot && !known_var &&
-		(language != .v || p.known_import(p.tok.lit) || p.mod.all_after_last('.') == p.tok.lit) {
+	if p.peek_tok.kind == .dot && !known_var && 
+		(language != .v || p.known_import(p.tok.lit) ||
+		p.mod.all_after_last('.') == p.tok.lit) {
 		if language == .c {
 			mod = 'C'
 		} else if language == .js {
@@ -1686,4 +1678,17 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 			break
 		}
 	}
+}
+
+pub fn (mut p Parser) mark_var_as_used(varname string) bool {
+	if obj := p.scope.find(varname) {
+		match mut obj {
+			ast.Var {
+				obj.is_used = true
+				return true
+			}
+			else {}
+		}
+	}
+	return false
 }

@@ -1597,8 +1597,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.RangeExpr {
 			// Only used in IndexExpr
 		}
-		ast.SizeOf {
+		ast.SizeOfType {
 			mut styp := node.type_name
+			if styp.starts_with('C.') {
+				styp = styp[2..]
+			}
 			if node.type_name == '' {
 				styp = g.typ(node.typ)
 			} else {
@@ -1610,12 +1613,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 					}
 				}
 			}
-			/*
-			if styp.starts_with('C__') {
-				styp = styp[3..]
-			}
-			*/
-			g.write('sizeof($styp)')
+			g.write('/*SizeOfType*/ sizeof(${util.no_dots(styp)})')
+		}
+		ast.SizeOfVar {
+			g.write('/*SizeOfVar*/ sizeof(')
+			g.expr(node.expr)
+			g.write(')')
 		}
 		ast.SqlExpr {
 			g.sql_select_expr(node)
