@@ -46,6 +46,10 @@ fn main() {
 	if a + b + r * d + a + b + r * d > a + b + r * d + a * b + r {
 		println('ok')
 	}
+	v_str := 'v'
+	s := []string{}
+	s << '	`$v_str`'
+	println(s)
 }
 
 fn gen_str_for_multi_return(mut g gen.Gen, info table.MultiReturn, styp, str_fn_name string) {

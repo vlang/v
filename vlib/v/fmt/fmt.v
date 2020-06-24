@@ -88,7 +88,7 @@ fn (mut f Fmt) find_comment(line_nr int) {
 }
 */
 pub fn (mut f Fmt) write(s string) {
-	if !f.buffering || f.is_inside_interp {
+	if !f.buffering {
 		if f.indent > 0 && f.empty_line {
 			if f.indent < tabs.len {
 				f.out.write(tabs[f.indent])
@@ -152,6 +152,10 @@ fn (mut f Fmt) adjust_complete_line() {
 			for j in i..f.penalties.len {
 				if f.penalties[j] <= 1 && f.precedences[j] == precedence {
 					sub_expr_end_idx = j
+					break
+				} else if f.precedences[j] < precedence {
+					// we cannot form a sensible subexpression
+					len_sub_expr = C.INT32_MAX
 					break
 				} else {
 					len_sub_expr += f.expr_bufs[j+1].len
