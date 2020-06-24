@@ -101,8 +101,11 @@ fn main() {
 	}
 	context.files = real_files
 
+	if !context.write_file.ends_with('.v') {
+		context.write_file += '.v'
+	}
 	if context.write_file.len > 0 {
-		mut out_file := os.create('${context.write_file}.v') or { panic(err) }
+		mut out_file := os.create(context.write_file) or { panic(err) }
 		out_file.write(context.header())
 		for file in real_files {
 			out_file.write(context.file2v(file))
