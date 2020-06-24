@@ -345,7 +345,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	}
 	if type_sym.kind == .alias {
 		info := type_sym.info as table.Alias
-		if info.parent_typ.is_number() {
+		if info.parent_type.is_number() {
 			c.error('cannot instantiate number type alias `$type_sym.name`', struct_init.pos)
 			return table.void_type
 		}
@@ -363,7 +363,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			mut info := table.Struct{}
 			if type_sym.kind == .alias {
 				info_t := type_sym.info as table.Alias
-				sym := c.table.get_type_symbol(info_t.parent_typ)
+				sym := c.table.get_type_symbol(info_t.parent_type)
 				if sym.kind != .struct_ {
 					c.error('alias type name: $sym.name is not struct type', struct_init.pos)
 				}

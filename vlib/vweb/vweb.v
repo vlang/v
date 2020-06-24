@@ -411,3 +411,9 @@ fn strip(s string) string {
 pub fn not_found() Result {
 	return Result{}
 }
+
+fn filter(s string) string {
+	return s.replace('<', '&lt;')
+}
+
+pub type RawHtml = string

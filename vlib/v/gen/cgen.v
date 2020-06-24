@@ -13,8 +13,8 @@ import v.depgraph
 
 // NB: keywords after 'new' are reserved in C++
 const (
-	c_reserved = ['delete', 'exit', 'link', 'unix', 'error', 'calloc', 'malloc', 'free', 'panic', 'auto',
-		'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register',
+	c_reserved = ['delete', 'exit', 'link', 'unix', 'error', 'calloc', 'malloc', 'free', 'panic',
+		'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register',
 		'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned',
 		'void', 'volatile', 'while', 'new', 'namespace', 'class', 'typename']
 	// same order as in token.Kind
@@ -89,6 +89,7 @@ mut:
 	sql_i                int
 	sql_stmt_name        string
 	sql_side             SqlExprSide // left or right, to distinguish idents in `name == name`
+	inside_vweb_tmpl     bool
 }
 
 const (
@@ -1695,13 +1696,13 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	// g.infix_op = node.op
 	left_type := if node.left_type == table.t_type { g.cur_generic_type } else { node.left_type }
 	left_sym := g.table.get_type_symbol(left_type)
-	unaliased_left := if left_sym.kind == .alias { (left_sym.info as table.Alias).parent_typ } else { left_type }
+	unaliased_left := if left_sym.kind == .alias { (left_sym.info as table.Alias).parent_type } else { left_type }
 	if node.op in [.key_is, .not_is] {
 		g.is_expr(node)
 		return
 	}
 	right_sym := g.table.get_type_symbol(node.right_type)
-	unaliased_right := if right_sym.kind == .alias { (right_sym.info as table.Alias).parent_typ } else { node.right_type }
+	unaliased_right := if right_sym.kind == .alias { (right_sym.info as table.Alias).parent_type } else { node.right_type }
 	if left_type == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
 			.plus {
@@ -3004,7 +3005,13 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// Build args
 	for i, expr in node.exprs {
 		if node.expr_types[i] == table.string_type {
-			g.expr(expr)
+			if g.inside_vweb_tmpl {
+				g.write('vweb__filter(')
+				g.expr(expr)
+				g.write(')')
+			} else {
+				g.expr(expr)
+			}
 		} else if node.expr_types[i] == table.bool_type {
 			g.expr(expr)
 			g.write(' ? _SLIT("true") : _SLIT("false")')
@@ -3049,7 +3056,13 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		g.write('${str_fn_name}(')
 		g.expr(expr)
 		g.write(')')
-	} else if sym.kind == .enum_ {
+	}
+	else if sym.kind == .alias && (sym.info as table.Alias).parent_type == table.string_type {
+		// handle string aliases
+		g.expr(expr)
+		return true
+	}
+	else if sym.kind == .enum_ {
 		is_var := match expr {
 			ast.SelectorExpr { true }
 			ast.Ident { true }

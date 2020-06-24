@@ -1577,7 +1577,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		parent_idx: pid
 		mod: p.mod
 		info: table.Alias{
-			parent_typ: parent_type
+			parent_type: parent_type
 			language: language
 		}
 		is_public: is_pub

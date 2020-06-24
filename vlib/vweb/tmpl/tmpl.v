@@ -152,7 +152,8 @@ _ = footer
 			}
 		} else {
 			// HTML, may include `@var`
-			s.writeln(line.replace('@', '\x24').replace("'", '"'))
+			// escaped by cgen, unless it's a `vweb.RawHtml` string
+			s.writeln(line.replace('@', '$').replace("'", '"'))
 		}
 	}
 	s.writeln(str_end)
@@ -161,3 +162,4 @@ _ = footer
 	s.writeln('// === end of vweb html template ===')
 	return s.str()
 }
+

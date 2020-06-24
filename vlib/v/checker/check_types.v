@@ -34,20 +34,23 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 		return true
 	}
 	// TODO i64 as int etc
-	if (exp_idx in table.pointer_type_idxs || exp_idx in table.number_type_idxs) && (got_idx in
-		table.pointer_type_idxs || got_idx in table.number_type_idxs) {
+	if (exp_idx in table.pointer_type_idxs ||
+		exp_idx in table.number_type_idxs) &&
+		(got_idx in table.pointer_type_idxs || got_idx in table.number_type_idxs) {
 		return true
 	}
 	// if exp_idx in pointer_type_idxs && got_idx in pointer_type_idxs {
 	// return true
 	// }
 	// see hack in checker IndexExpr line #691
-	if (got_idx == table.byte_type_idx && exp_idx == table.byteptr_type_idx) || (exp_idx ==
-		table.byte_type_idx && got_idx == table.byteptr_type_idx) {
+	if (got_idx == table.byte_type_idx &&
+		exp_idx == table.byteptr_type_idx) ||
+		(exp_idx == table.byte_type_idx && got_idx == table.byteptr_type_idx) {
 		return true
 	}
-	if (got_idx == table.char_type_idx && exp_idx == table.charptr_type_idx) || (exp_idx ==
-		table.char_type_idx && got_idx == table.charptr_type_idx) {
+	if (got_idx == table.char_type_idx &&
+		exp_idx == table.charptr_type_idx) ||
+		(exp_idx == table.char_type_idx && got_idx == table.charptr_type_idx) {
 		return true
 	}
 	if expected == table.t_type && got == table.t_type {
@@ -63,8 +66,8 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 		return true
 	}
 	// allow enum value to be used as int
-	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) || (exp_type_sym.is_int() &&
-		got_type_sym.kind == .enum_) {
+	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) ||
+		(exp_type_sym.is_int() && got_type_sym.kind == .enum_) {
 		return true
 	}
 	// TODO
@@ -83,13 +86,15 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 	}
 	// TODO
 	// accept [] when an expected type is an array
-	if got_type_sym.kind == .array && got_type_sym.name == 'array_void' && exp_type_sym.kind ==
-		.array {
+	if got_type_sym.kind == .array &&
+		got_type_sym.name == 'array_void' &&
+		exp_type_sym.kind == .array {
 		return true
 	}
 	// type alias
-	if (got_type_sym.kind == .alias && got_type_sym.parent_idx == exp_idx) || (exp_type_sym.kind ==
-		.alias && exp_type_sym.parent_idx == got_idx) {
+	if (got_type_sym.kind == .alias &&
+		got_type_sym.parent_idx == exp_idx) ||
+		(exp_type_sym.kind == .alias && exp_type_sym.parent_idx == got_idx) {
 		return true
 	}
 	// sum type
@@ -271,8 +276,16 @@ pub fn (c &Checker) get_default_fmt(ftyp, typ table.Type) byte {
 		return `p`
 	} else {
 		sym := c.table.get_type_symbol(ftyp)
-		if ftyp in [table.string_type, table.bool_type] || sym.kind in [.enum_, .array, .array_fixed,
-			.struct_, .map, .multi_return] || ftyp.has_flag(.optional) || sym.has_method('str') {
+		if sym.kind == .alias {
+			// string aliases should be printable
+			info := sym.info as table.Alias
+			if info.parent_type == table.string_type {
+				return `s`
+			}
+		}
+		if ftyp in [table.string_type, table.bool_type] ||
+			sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return] || ftyp.has_flag(.optional) ||
+			sym.has_method('str') {
 			return `s`
 		} else {
 			return `_`
@@ -308,12 +321,13 @@ pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type
 			if node.pluss[i] && !typ.is_number() {
 				c.error('plus prefix only allowd for numbers', node.fmt_poss[i])
 			}
-			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`]) || (typ.is_signed() &&
-				fmt !in [`d`, `x`, `X`, `o`, `c`]) || (typ.is_any_int() && fmt !in [`d`, `c`, `x`, `X`, `o`,
-				`u`, `x`, `X`, `o`]) || (typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`]) || (typ.is_pointer() &&
-				fmt !in [`p`, `x`, `X`]) || (typ.is_string() && fmt != `s`) || (typ.idx() in [table.i64_type_idx,
-				table.f64_type_idx
-			] && fmt == `c`) {
+			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`]) ||
+				(typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`]) ||
+				(typ.is_any_int() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`]) ||
+				(typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`]) ||
+				(typ.is_pointer() && fmt !in [`p`, `x`, `X`]) ||
+				(typ.is_string() && fmt != `s`) ||
+				(typ.idx() in [table.i64_type_idx, table.f64_type_idx] && fmt == `c`) {
 				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
 					node.fmt_poss[i])
 			}
