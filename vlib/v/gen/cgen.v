@@ -837,7 +837,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; $idx++) {')
 		g.writeln('\t$key_styp $key = (($key_styp*)${keys_tmp}.data)[$idx];')
 		if it.val_var != '_' {
-			g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)map_get3(')
+			g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)map_get(')
 			g.expr(it.cond)
 			g.writeln(', $key, &($val_styp[]){ $zero }));')
 		}
@@ -2244,7 +2244,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.write(', &($elem_type_str[]) { ')
 			} else if g.inside_map_postfix || g.inside_map_infix {
 				zero := g.type_default(info.value_type)
-				g.write('(*($elem_type_str*)map_get2(')
+				g.write('(*($elem_type_str*)map_get_and_set(')
 				if !left_is_ptr {
 					g.write('&')
 				}
@@ -2254,7 +2254,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.write(', &($elem_type_str[]){ $zero }))\n')
 			} else {
 				zero := g.type_default(info.value_type)
-				g.write('(*($elem_type_str*)map_get3(')
+				g.write('(*($elem_type_str*)map_get(')
 				g.expr(node.left)
 				g.write(', ')
 				g.expr(node.index)
@@ -4127,7 +4127,7 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\t\tstring key = (*(string*)DenseArray_get(m.key_values, i));')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, key));')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos_lit(": "));')
-	g.auto_str_funcs.write('\t$val_styp it = (*($val_styp*)map_get3(')
+	g.auto_str_funcs.write('\t$val_styp it = (*($val_styp*)map_get(')
 	g.auto_str_funcs.write('m, (*(string*)DenseArray_get(m.key_values, i))')
 	g.auto_str_funcs.write(', ')
 	g.auto_str_funcs.writeln(' &($val_styp[]) { $zero }));')
