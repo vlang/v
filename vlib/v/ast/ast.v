@@ -211,6 +211,7 @@ pub:
 pub struct AnonFn {
 pub:
 	decl FnDecl
+	is_called bool
 pub mut:
 	typ  table.Type
 }

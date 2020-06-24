@@ -568,7 +568,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		f.write('\n')
 	}
-	// Handle comments after last field 
+	// Handle comments after last field
 	for comment in node.end_comments {
 		f.indent++
 		f.empty_line = true
@@ -621,6 +621,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 	match node {
 		ast.AnonFn {
 			f.fn_decl(node.decl)
+			if node.is_called {
+				f.write('()')
+			}
 		}
 		ast.ArrayInit {
 			f.array_init(node)
