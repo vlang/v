@@ -734,8 +734,9 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	left0 := left[0]
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left)
-	} else if is_top_level && tok.kind !in [.key_if, .key_match] && left0 !is ast.CallExpr &&
-		left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op == .left_shift) &&
+	} else if is_top_level && tok.kind !in [.key_if, .key_match] &&
+		left0 !is ast.CallExpr && left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr &&
+		(left0 as ast.InfixExpr).op == .left_shift) &&
 		left0 !is ast.ComptimeCall {
 		p.error_with_pos('expression evaluated but not used', left0.position())
 	}
@@ -848,7 +849,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			else {}
 		}
 	}
-	if p.peek_tok.kind == .dot && !known_var && (language != .v || p.known_import(p.tok.lit) ||
+	if p.peek_tok.kind == .dot && !known_var &&
+		(language != .v || p.known_import(p.tok.lit) ||
 		p.mod.all_after_last('.') == p.tok.lit) {
 		if language == .c {
 			mod = 'C'
@@ -867,7 +869,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
-	if p.peek_tok.kind == .lpar || (p.peek_tok.kind == .lt && p.peek_tok2.kind == .name &&
+	if p.peek_tok.kind == .lpar ||
+		(p.peek_tok.kind == .lt && p.peek_tok2.kind == .name &&
 		p.peek_tok3.kind == .gt) {
 		// foo() or foo<int>()
 		mut name := p.tok.lit
@@ -877,7 +880,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if !known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) &&
+		if !known_var && (name in p.table.type_idxs ||
+			name_w_mod in p.table.type_idxs) &&
 			name !in ['C.stat', 'C.sigaction'] {
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
@@ -914,8 +918,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		return p.struct_init(false) // short_syntax: false
-	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language ==
-		.v) {
+	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language == .v) {
 		// `Color.green`
 		mut enum_name := p.check_name()
 		if mod != '' {
@@ -1332,7 +1335,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		mut comments := []ast.Comment{}
 		for p.tok.kind == .comment {
 			comments << p.comment()
-			if p.tok.kind == .rpar {break}
+			if p.tok.kind == .rpar {
+				break
+			}
 		}
 		pos := p.tok.position()
 		name := p.check_name()
@@ -1389,8 +1394,9 @@ const (
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v &&
-		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals &&
-		!p.pref.is_fmt && p.mod !in global_enabled_mods {
+		p.mod != 'ui' && p.mod != 'gg2' &&
+		p.mod != 'uiold' && !p.pref.enable_globals && !p.pref.is_fmt &&
+		p.mod !in global_enabled_mods {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
 	start_pos := p.tok.position()

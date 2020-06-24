@@ -84,7 +84,6 @@ fn (mut f Fmt) find_comment(line_nr int) {
 	}
 }
 */
-
 pub fn (mut f Fmt) write(s string) {
 	if f.expr_recursion == 0 || f.is_inside_interp {
 		if f.indent > 0 && f.empty_line {
@@ -118,7 +117,7 @@ pub fn (mut f Fmt) writeln(s string) {
 			f.write(f.expr_bufs[i])
 			f.wrap_long_line(p, true)
 		}
-		f.write(f.expr_bufs[f.expr_bufs.len-1])
+		f.write(f.expr_bufs[f.expr_bufs.len - 1])
 		f.expr_bufs = []string{}
 		f.penalties = []int{}
 		f.expr_recursion = 0
@@ -127,7 +126,11 @@ pub fn (mut f Fmt) writeln(s string) {
 		// println(f.indent.str() + s)
 		f.out.write(tabs[f.indent])
 	}
-	f.out.writeln(if empty_fifo {''} else {s})
+	f.out.writeln(if empty_fifo {
+		''
+	} else {
+		s
+	})
 	f.empty_line = true
 	f.line_len = 0
 }
@@ -140,9 +143,9 @@ fn (mut f Fmt) adjust_complete_line() {
 	for _, s in f.expr_bufs {
 		l += s.len
 	}
-	if f.line_len + l <= max_len[max_len.len-1] {
+	if f.line_len + l <= max_len[max_len.len - 1] {
 		for i, _ in f.penalties {
-			f.penalties[i] = max_len.len-1
+			f.penalties[i] = max_len.len - 1
 		}
 	}
 }
@@ -401,7 +404,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 			f.writeln('')
 		}
-		ast.SqlInsertExpr {}
+		ast.SqlStmt {}
 		ast.StructDecl {
 			f.struct_decl(it)
 		}
@@ -445,8 +448,8 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 					}
 				}
 				is_last_arg := i == fn_info.args.len - 1
-				should_add_type := is_last_arg || fn_info.args[i + 1].typ != arg.typ || (fn_info.is_variadic &&
-					i == fn_info.args.len - 2)
+				should_add_type := is_last_arg || fn_info.args[i + 1].typ != arg.typ ||
+					(fn_info.is_variadic && i == fn_info.args.len - 2)
 				if should_add_type {
 					if fn_info.is_variadic && is_last_arg {
 						f.write(' ...' + s)
@@ -501,9 +504,11 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		end_pos := field.pos.pos + field.pos.len
 		mut comments_len := 0 // Length of comments between field name and type
 		for comment in field.comments {
-			if comment.pos.pos >= end_pos { break }
+			if comment.pos.pos >= end_pos {
+				break
+			}
 			if comment.pos.pos > field.pos.pos {
-				comments_len += '/* ${comment.text} */ '.len
+				comments_len += '/* $comment.text */ '.len
 			}
 		}
 		if comments_len + field.name.len > max {
@@ -562,7 +567,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			f.struct_field_expr(field.default_expr)
 		}
 		// Handle comments after field type (same line)
-		for j < comments.len && field.pos.line_nr == comments[j].pos.line_nr{
+		for j < comments.len && field.pos.line_nr == comments[j].pos.line_nr {
 			f.write(' // ${comments[j].text}') // TODO: handle in a function
 			j++
 		}
@@ -740,7 +745,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 						f.write(f.expr_bufs[i])
 						f.wrap_long_line(p, true)
 					}
-					f.write(f.expr_bufs[f.expr_bufs.len-1])
+					f.write(f.expr_bufs[f.expr_bufs.len - 1])
 					f.expr_bufs = []string{}
 					f.penalties = []int{}
 				}
@@ -910,7 +915,11 @@ pub fn (mut f Fmt) wrap_long_line(penalty int, add_indent bool) bool {
 	if f.out.buf[f.out.buf.len - 1] == ` ` {
 		f.out.go_back(1)
 	}
-	f.write('\n' + tabs[f.indent + if add_indent { 1 } else { 0 }])
+	f.write('\n' + tabs[f.indent + if add_indent {
+		1
+	} else {
+		0
+	}])
 	f.line_len = 0
 	return true
 }
@@ -1015,8 +1024,10 @@ pub fn (mut f Fmt) short_module(name string) string {
 }
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
-	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 1 &&
-		it.branches[1].stmts.len == 1 && (it.is_expr || f.is_assign)
+	single_line := it.branches.len == 2 && it.has_else &&
+		it.branches[0].stmts.len == 1 &&
+		it.branches[1].stmts.len == 1 &&
+		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
 		if branch.comment.text != '' {
@@ -1313,12 +1324,15 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		if last_line_nr < line_nr {
 			penalty--
 		}
-		if i == 0 || it.exprs[i-1] is ast.ArrayInit || it.exprs[i-1] is ast.StructInit ||
-			it.exprs[i-1] is ast.MapInit || it.exprs[i-1] is ast.CallExpr {
+		if i == 0 || it.exprs[i - 1] is ast.ArrayInit ||
+			it.exprs[i - 1] is ast.StructInit ||
+			it.exprs[i - 1] is ast.MapInit ||
+			it.exprs[i - 1] is ast.CallExpr {
 			penalty--
 		}
-		if expr is ast.ArrayInit || expr is ast.StructInit ||
-			expr is ast.MapInit || expr is ast.CallExpr {
+		if expr is ast.ArrayInit ||
+			expr is ast.StructInit || expr is ast.MapInit ||
+			expr is ast.CallExpr {
 			penalty--
 		}
 		is_new_line := f.wrap_long_line(penalty, !inc_indent)
