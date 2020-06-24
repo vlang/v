@@ -11,4 +11,4 @@ Options:
   -h, --help                Show this help screen.
   -m, --module <string>     Name of the generated module.
   -p, --prefix <string>     A prefix put before each resource name.
-  -w, --write               Write directly to a file. The module name is used as filename.
+  -w, --write <string>      Write directly to a file with the given name.
