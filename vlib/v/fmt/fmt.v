@@ -145,7 +145,7 @@ fn (mut f Fmt) adjust_complete_line() {
 	for i, buf in f.expr_bufs {
 		// search for low penalties
 		if i == 0 || f.penalties[i-1] <= 1 {
-			precedence := if i == 0 { 0 } else { f.precedences[i-1] }
+			precedence := if i == 0 { -1 } else { f.precedences[i-1] }
 			mut len_sub_expr := if i == 0 { buf.len + f.line_len } else { buf.len }
 			mut sub_expr_end_idx := f.penalties.len
 			// search for next position with low penalty and same precedence to form subexpression
