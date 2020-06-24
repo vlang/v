@@ -84,6 +84,8 @@ mut:
 	is_sql               bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	optionals            []string // to avoid duplicates TODO perf, use map
 	inside_ternary       int // ?: comma separated statements on a single line
+	inside_map_postfix   bool // inside map++/-- postfix expr
+	inside_map_infix     bool // inside map<</+=/-= infix expr
 	ternary_names        map[string]string
 	ternary_level_names  map[string][]string
 	stmt_path_pos        []int
@@ -1503,7 +1505,13 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.index_expr(node)
 		}
 		ast.InfixExpr {
-			g.infix_expr(node)
+			if node.op in [.left_shift, .plus_assign, .minus_assign] {
+				g.inside_map_infix = true
+				g.infix_expr(node)
+				g.inside_map_infix = false
+			} else {
+				g.infix_expr(node)
+			}
 		}
 		ast.IntegerLiteral {
 			if node.val.starts_with('0o') {
@@ -1548,7 +1556,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(')')
 		}
 		ast.PostfixExpr {
+			g.inside_map_postfix = true
 			g.expr(node.expr)
+			g.inside_map_postfix = false
 			g.write(node.op.str())
 		}
 		ast.PrefixExpr {
@@ -2254,14 +2264,17 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.write(', ')
 				g.expr(node.index)
 				g.write(', &($elem_type_str[]) { ')
-			} else {
-				/*
+			} else if g.inside_map_postfix || g.inside_map_infix {
+				zero := g.type_default(info.value_type)
 				g.write('(*($elem_type_str*)map_get2(')
+				if !left_is_ptr {
+					g.write('&')
+				}
 				g.expr(node.left)
-					g.write(', ')
-					g.expr(node.index)
-					g.write('))')
-				*/
+				g.write(', ')
+				g.expr(node.index)
+				g.write(', &($elem_type_str[]){ $zero }))\n')
+			} else {
 				zero := g.type_default(info.value_type)
 				g.write('(*($elem_type_str*)map_get3(')
 				g.expr(node.left)
