@@ -1817,7 +1817,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.return_stmt(mut it)
 			c.scope_returns = true
 		}
-		ast.SqlInsertExpr {
+		ast.SqlStmt {
 			c.sql_insert_expr(node)
 		}
 		ast.StructDecl {
@@ -2654,7 +2654,7 @@ fn (mut c Checker) sql_expr(node ast.SqlExpr) table.Type {
 	return node.typ
 }
 
-fn (mut c Checker) sql_insert_expr(node ast.SqlInsertExpr) table.Type {
+fn (mut c Checker) sql_insert_expr(node ast.SqlStmt ) table.Type {
 	c.expr(node.db_expr)
 	return table.void_type
 }

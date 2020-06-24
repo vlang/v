@@ -103,7 +103,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 }
 
-fn (mut p Parser) sql_insert_expr() ast.SqlInsertExpr {
+fn (mut p Parser) sql_insert_expr() ast.SqlStmt{
 	p.inside_match = true
 	defer { p.inside_match = false }
 	// `sql db {`
@@ -130,7 +130,7 @@ fn (mut p Parser) sql_insert_expr() ast.SqlInsertExpr {
 	// fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
 	table_name := sym.name
 	p.check(.rcbr)
-	return ast.SqlInsertExpr{
+	return ast.SqlStmt{
 		db_expr: db_expr
 		table_name: table_name
 		table_type: table_type

@@ -14,7 +14,7 @@ const (
 
 enum SqlExprSide { left right }
 
-fn (mut g Gen) sql_insert_expr(node ast.SqlInsertExpr) {
+fn (mut g Gen) sql_insert_expr(node ast.SqlStmt) {
 	sym := g.table.get_type_symbol(node.table_type)
 	info := sym.info as table.Struct
 	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type] &&

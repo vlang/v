@@ -770,7 +770,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.write_autofree_stmts_when_needed(node)
 			g.return_statement(node)
 		}
-		ast.SqlInsertExpr{
+		ast.SqlStmt{
 			g.sql_insert_expr(node)
 			}
 		ast.StructDecl {
