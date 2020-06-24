@@ -2531,12 +2531,15 @@ fn (mut g Gen) go_back_out(n int) {
 	g.out.go_back(n)
 }
 
-fn (mut g Gen) struct_init(struct_init ast.StructInit) {
-	skip_init := ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'strconv__Float64u', 'struct stat',
+const (
+	skip_struct_init = ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'strconv__Float64u', 'struct stat',
 		'struct addrinfo'
 	]
+)
+
+fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	styp := g.typ(struct_init.typ)
-	if styp in skip_init {
+	if styp in skip_struct_init {
 		g.go_back_out(3)
 		return
 	}
@@ -2587,13 +2590,15 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		}
 	}
 	// The rest of the fields are zeroed.
-	mut nr_info_fields := 0
+	// `inited_fields` is a list of fields that have been init'ed, they are skipped
+	//mut nr_fields := 0
 	if sym.kind == .struct_ {
 		info := sym.info as table.Struct
 		if info.is_union && struct_init.fields.len > 1 {
 			verror('union must not have more than 1 initializer')
 		}
-		nr_info_fields = info.fields.len
+		//g.zero_struct_fields(info, inited_fields)
+		//nr_fields = info.fields.len
 		for field in info.fields {
 			if field.name in inited_fields {
 				sfield := struct_init.fields[inited_fields[field.name]]
@@ -2625,16 +2630,10 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				// TODO handle/require optionals in inits
 				continue
 			}
-			field_name := c_name(field.name)
-			g.write('\t.$field_name = ')
-			if field.has_default_expr {
-				g.expr(ast.fe2ex(field.default_expr))
-			} else {
-				g.write(g.type_default(field.typ))
-			}
-			g.writeln(',')
+			g.zero_struct_field(field)
 			initialized = true
 		}
+
 	}
 	// if struct_init.fields.len == 0 && info.fields.len == 0 {
 	if !initialized {
@@ -2645,6 +2644,20 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.write(', sizeof($styp))')
 	}
 }
+
+fn (mut g Gen) zero_struct_field(field table.Field) {
+	field_name := c_name(field.name)
+	g.write('\t.$field_name = ')
+	if field.has_default_expr {
+		g.expr(ast.fe2ex(field.default_expr))
+	} else {
+		g.write(g.type_default(field.typ))
+	}
+	g.writeln(',')
+}
+
+//fn (mut g Gen) zero_struct_fields(info table.Struct, inited_fields map[string]int) {
+//}
 
 // { user | name: 'new name' }
 fn (mut g Gen) assoc(node ast.Assoc) {

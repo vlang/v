@@ -124,15 +124,31 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 		if node.is_array {
 			// array_User array_tmp;
 			// for { User tmp; ... array_tmp << tmp; }
-			sym := g.table.get_type_symbol(node.typ)
-			info := sym.info as table.Array
-			elem_type_str = g.typ(info.elem_type)
+			array_sym := g.table.get_type_symbol(node.typ)
+			array_info := array_sym.info as table.Array
+			elem_type_str = g.typ(array_info.elem_type)
 			g.writeln('$styp ${tmp}_array = __new_array(0, 10, sizeof($elem_type_str));')
 			g.writeln('while (1) {')
-			g.writeln('\t$elem_type_str $tmp;')
+			g.writeln('\t$elem_type_str $tmp = ($elem_type_str) {')
+			//
+			sym := g.table.get_type_symbol(array_info.elem_type)
+			info :=  sym.info as table.Struct
+			for field in info.fields {
+				g.zero_struct_field(field)
+			}
+			g.writeln('};')
 		} else {
 			// `User tmp;`
-			g.writeln('$styp $tmp;')
+			g.writeln('$styp $tmp = ($styp){')
+			// Zero fields, (only the [skip] ones?)
+			// If we don't, string values are going to be nil etc for fields that are not returned
+			// by the db engine.
+			sym := g.table.get_type_symbol(node.typ)
+			info :=  sym.info as table.Struct
+			for field in info.fields {
+				g.zero_struct_field(field)
+			}
+			g.writeln('};')
 		}
 		//
 		g.writeln('int _step_res$tmp = sqlite3_step($g.sql_stmt_name);')

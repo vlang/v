@@ -16,6 +16,7 @@ struct User {
 	age int
 	name string
 	is_customer bool
+	skipped_string string [skip]
 }
 
 fn test_orm_sqlite() {
