@@ -1490,10 +1490,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 		p.scanner.codegen('
 //
-$pubfn (    e &$name) has(flag $name) bool { return      (int(*e) &  (1 << int(flag))) != 0 }
-$pubfn (mut e  $name) set(flag $name)      { unsafe{ *e = int(*e) |  (1 << int(flag)) } }
-$pubfn (mut e  $name) clear(flag $name)    { unsafe{ *e = int(*e) & ~(1 << int(flag)) } }
-$pubfn (mut e  $name) toggle(flag $name)   { unsafe{ *e = int(*e) ^  (1 << int(flag)) } }
+$pubfn (    e &$enum_name) has(flag $enum_name) bool { return      (int(*e) &  (1 << int(flag))) != 0 }
+$pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = int(*e) |  (1 << int(flag)) } }
+$pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = int(*e) & ~(1 << int(flag)) } }
+$pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (1 << int(flag)) } }
 //
 ')
 	}
