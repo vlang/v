@@ -1,0 +1,9 @@
++ = done
+- = TODO
+
+- coroutines
+- C2V translator
+- doom.v
+
+
+
