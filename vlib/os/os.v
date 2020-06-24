@@ -628,12 +628,17 @@ pub fn file_exists(_path string) bool {
 }
 
 // rm removes file in `path`.
-pub fn rm(path string) {
+pub fn rm(path string) ? {
+	mut rc := -1
 	$if windows {
-		C._wremove(path.to_wide())
+		rc = C._wremove(path.to_wide())
 	} $else {
-		C.remove(path.str)
+		rc = C.remove(path.str)
 	}
+	if rc == -1 {
+		return error(posix_get_error_msg(C.errno))
+	}
+	return
 	// C.unlink(path.cstr())
 }
 // rmdir removes a specified directory.
