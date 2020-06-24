@@ -296,26 +296,18 @@ pub fn (mut g Gen) write_typeof_functions() {
 			tidx := g.table.find_type_idx(typ.name)
 			g.writeln('char * v_typeof_sumtype_${tidx}(int sidx) { /* $typ.name */ ')
 			g.writeln('	switch(sidx) {')
-			g.writeln('		case $tidx: return "${strip_main_name(typ.name)}";')
+			g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
 			for v in sum_info.variants {
 				subtype := g.table.get_type_symbol(v)
-				g.writeln('		case $v: return "${strip_main_name(subtype.name)}";')
+				g.writeln('		case $v: return "${util.strip_main_name(subtype.name)}";')
 			}
-			g.writeln('		default: return "unknown ${strip_main_name(typ.name)}";')
+			g.writeln('		default: return "unknown ${util.strip_main_name(typ.name)}";')
 			g.writeln('	}')
 			g.writeln('}')
 		}
 	}
 	g.writeln('// << typeof() support for sum types')
 	g.writeln('')
-}
-
-fn strip_mod_name(name string) string {
-	return name.all_after_last('.')
-}
-
-fn strip_main_name(name string) string {
-	return name.replace('main.','')
 }
 
 // V type to C type
@@ -1686,7 +1678,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	} else if sym.kind == .array_fixed {
 		fixed_info := sym.info as table.ArrayFixed
 		typ_name := g.table.get_type_name(fixed_info.elem_type)
-		g.write('tos_lit("[$fixed_info.size]${strip_main_name(typ_name)}")')
+		g.write('tos_lit("[$fixed_info.size]${util.strip_main_name(typ_name)}")')
 	} else if sym.kind == .function {
 		info := sym.info as table.FnType
 		fn_info := info.func
@@ -1695,15 +1687,15 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 			if i > 0 {
 				repr += ', '
 			}
-			repr += strip_main_name(g.table.get_type_name(arg.typ))
+			repr += util.strip_main_name(g.table.get_type_name(arg.typ))
 		}
 		repr += ')'
 		if fn_info.return_type != table.void_type {
-			repr += ' ${strip_main_name(g.table.get_type_name(fn_info.return_type))}'
+			repr += ' ${util.strip_main_name(g.table.get_type_name(fn_info.return_type))}'
 		}
 		g.write('tos_lit("$repr")')
 	} else {
-		g.write('tos_lit("${strip_main_name(sym.name)}")')
+		g.write('tos_lit("${util.strip_main_name(sym.name)}")')
 	}
 }
 
@@ -3896,7 +3888,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 		deref_typ := styp
 		g.auto_str_funcs.writeln('\t$deref_typ *it = &x;')
 	}
-	clean_struct_v_type_name = strip_main_name(clean_struct_v_type_name)
+	clean_struct_v_type_name = util.strip_main_name(clean_struct_v_type_name)
 	// generate ident / indent length = 4 spaces
 	g.auto_str_funcs.writeln('\tstring indents = tos_lit("");')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
