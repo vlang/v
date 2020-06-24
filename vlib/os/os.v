@@ -629,14 +629,13 @@ pub fn file_exists(_path string) bool {
 
 // rm removes file in `path`.
 pub fn rm(path string) ? {
-	mut rc := -1
 	$if windows {
-		rc = C._wremove(path.to_wide())
+		C._wremove(path.to_wide())
 	} $else {
-		rc = C.remove(path.str)
-	}
-	if rc == -1 {
-		return error(posix_get_error_msg(C.errno))
+		rc := C.remove(path.str)
+		if rc == -1 {
+			return error(posix_get_error_msg(C.errno))
+		}
 	}
 	return
 	// C.unlink(path.cstr())
