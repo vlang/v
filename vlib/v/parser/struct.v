@@ -62,11 +62,13 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			mut comments := []ast.Comment{}
 			for p.tok.kind == .comment {
 				comments << p.comment()
-				if p.tok.kind == .rcbr {break}
+				if p.tok.kind == .rcbr {
+					break
+				}
 			}
 			if p.tok.kind == .rcbr {
 				end_comments = comments
-				break 
+				break
 			}
 			if p.tok.kind == .key_pub {
 				p.next()
@@ -112,17 +114,19 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			for p.tok.kind == .comment {
 				comments << p.comment()
-				if p.tok.kind == .rcbr {break}
+				if p.tok.kind == .rcbr {
+					break
+				}
 			}
 			field_start_pos := p.tok.position()
 			field_name := p.check_name()
 			// p.warn('field $field_name')
-			
 			for p.tok.kind == .comment {
 				comments << p.comment()
-				if p.tok.kind == .rcbr {break}
+				if p.tok.kind == .rcbr {
+					break
+				}
 			}
-
 			// println(p.tok.position())
 			typ := p.parse_type()
 			// field_pos := field_start_pos.extend(p.tok.position())
@@ -139,14 +143,15 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			*/
 			// Comments after type (same line)
 			line_pos := field_pos.line_nr
-			for p.tok.kind == .comment && line_pos + 1 == p.tok.line_nr{
+			for p.tok.kind == .comment && line_pos + 1 == p.tok.line_nr {
 				if p.tok.lit.contains('\n') {
 					break
 				}
 				comments << p.comment()
-				if p.tok.kind == .rcbr {break}
+				if p.tok.kind == .rcbr {
+					break
+				}
 			}
-
 			mut attrs := []string{}
 			if p.tok.kind == .lsbr {
 				parsed_attrs := p.attributes(false)
@@ -163,7 +168,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				// p.expr(0)
 				default_expr = p.expr(0)
 				match default_expr {
-					ast.EnumVal { it.typ = typ }
+					ast.EnumVal { default_expr.typ = typ }
 					// TODO: implement all types??
 					else {}
 				}
@@ -340,7 +345,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			p.error('interface methods cannot contain uppercase letters, use snake_case instead')
 		}
 		// field_names << name
-		args2, _ := p.fn_args()
+		args2, _ := p.fn_args() // TODO merge table.Arg and ast.Arg to avoid this
 		mut args := [table.Arg{
 			name: 'x'
 			typ: typ

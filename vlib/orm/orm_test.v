@@ -126,10 +126,9 @@ fn test_orm_sqlite() {
 	//
 	/*
 	sql db {
-		update User set age = 31 where name = 'Kate'
+		update User set age = 31 where name == 'Kate'
 	}
 	*/
-
 }
 
 

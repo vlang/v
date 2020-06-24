@@ -501,7 +501,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.name, .key_mut, .key_static, .mul {
 			if p.tok.kind == .name {
 				if p.tok.lit == 'sql' {
-					return p.sql_insert_expr()
+					return p.sql_stmt()
 				}
 				if p.peek_tok.kind == .colon {
 					// `label:`

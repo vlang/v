@@ -31,7 +31,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	sym := p.table.get_type_symbol(table_type)
 	table_name := sym.name
 	mut where_expr := ast.Expr{}
-	has_where := p.tok.kind == .name &&		p.tok.lit == 'where'
+	has_where := p.tok.kind == .name && p.tok.lit == 'where'
 	mut query_one := false // one object is returned, not an array
 	if has_where {
 		p.next()
@@ -47,7 +47,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			}
 		}
 	}
-	if p.tok.kind ==.name && p.tok.lit == 'limit' {
+	if p.tok.kind == .name && p.tok.lit == 'limit' {
 		// `limit 1` means that a single object is returned
 		p.check_name() // `limit`
 		if p.tok.kind == .number && p.tok.lit == '1' {
@@ -73,7 +73,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	// get only string and int fields
 	// mut fields := []Var
 	info := sym.info as table.Struct
-	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type] && 'skip' !in it.attrs)
+	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type] &&
+		'skip' !in it.attrs)
 	if fields.len == 0 {
 		p.error('V orm: select: empty fields in `$table_name`')
 	}
@@ -103,37 +104,79 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 }
 
-fn (mut p Parser) sql_insert_expr() ast.SqlStmt{
+// insert user into User
+// update User set nr_oders=nr_orders+1 where id == user_id
+fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	p.inside_match = true
-	defer { p.inside_match = false }
+	defer {
+		p.inside_match = false
+	}
 	// `sql db {`
 	p.check_name()
 	db_expr := p.expr(0)
-	//println(typeof(db_expr))
+	// println(typeof(db_expr))
 	p.check(.lcbr)
 	// kind := ast.SqlExprKind.select_
 	//
-	p.check_name() // insert
-	mut object_var_name := ''
+	mut n := p.check_name() // insert
+	mut kind := ast.SqlStmtKind.insert
+	if n == 'delete' {
+		kind = .delete
+	} else if n == 'update' {
+		kind = .update
+	}
+	mut inserted_var_name := ''
+	mut table_name := ''
 	expr := p.expr(0)
 	match expr {
-		ast.Ident { object_var_name = expr.name }
-		else { p.error('can only insert variables') }
+		ast.Ident {
+			if kind == .insert {
+				inserted_var_name = expr.name
+			} else if kind == .update {
+				table_name = expr.name
+			}
+		}
+		else {
+			p.error('can only insert variables')
+		}
 	}
-	n := p.check_name() // into
-	if n != 'into' {
+	n = p.check_name() // into
+	mut updated_columns := []string{}
+	if kind == .insert && n != 'into' {
 		p.error('expecting `into`')
+	} else if kind == .update {
+		if n != 'set' {
+			p.error('expecting `set`')
+		}
+		column := p.check_name()
+		updated_columns << column
+		p.check(.assign)
+		p.expr(0)
 	}
-	table_type := p.parse_type() // `User`
-	sym := p.table.get_type_symbol(table_type)
-	// info := sym.info as table.Struct
-	// fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
-	table_name := sym.name
+	mut table_type := table.Type(0)
+	if kind == .insert {
+		table_type = p.parse_type() // `User`
+		sym := p.table.get_type_symbol(table_type)
+		// info := sym.info as table.Struct
+		// fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
+		table_name = sym.name
+	} else if kind == .update {
+		idx := p.table.find_type_idx(table_name)
+		table_type = table.new_type(idx)
+		p.check_sql_keyword('where')
+		p.expr(0)
+	}
 	p.check(.rcbr)
 	return ast.SqlStmt{
 		db_expr: db_expr
 		table_name: table_name
 		table_type: table_type
-		object_var_name: object_var_name
+		object_var_name: inserted_var_name
+	}
+}
+
+fn (mut p Parser) check_sql_keyword(name string) {
+	if p.check_name() != name {
+		p.error('orm: expecting `$name`')
 	}
 }
