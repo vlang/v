@@ -5,6 +5,7 @@ module fmt
 
 import v.ast
 import v.table
+import v.token
 import strings
 
 const (
@@ -28,6 +29,8 @@ pub mut:
 	expr_recursion    int
 	expr_bufs         []string
 	penalties         []int
+	precedences       []int
+	par_level         int
 	single_line_if    bool
 	cur_mod           string
 	file              ast.File
@@ -121,6 +124,7 @@ pub fn (mut f Fmt) writeln(s string) {
 		f.write(f.expr_bufs[f.expr_bufs.len-1])
 		f.expr_bufs = []string{}
 		f.penalties = []int{}
+		f.precedences = []int{}
 		f.expr_recursion = 0
 	}
 	if f.indent > 0 && f.empty_line {
@@ -136,13 +140,31 @@ pub fn (mut f Fmt) writeln(s string) {
 // only prevents line breaks if everything fits in max_len[last] by increasing
 // penalties to maximum
 fn (mut f Fmt) adjust_complete_line() {
-	mut l := 0
-	for _, s in f.expr_bufs {
-		l += s.len
-	}
-	if f.line_len + l <= max_len[max_len.len-1] {
-		for i, _ in f.penalties {
-			f.penalties[i] = max_len.len-1
+	for i, buf in f.expr_bufs {
+		if i == 0 || f.penalties[i-1] <= 1 {
+			// search for next position with low penalty and same precedence
+			precedence := if i == 0 { 0 } else { f.precedences[i-1] }
+			mut len_sub_expr := if i == 0 { buf.len + f.line_len } else { buf.len }
+			mut sub_expr_end_idx := f.penalties.len
+			for j in i..f.penalties.len {
+				if f.penalties[j] <= 1 && f.precedences[j] == precedence {
+					sub_expr_end_idx = j
+					break
+				} else {
+					len_sub_expr += f.expr_bufs[j+1].len
+				}
+			}
+			if len_sub_expr <= max_len[max_len.len-1] {
+				for j in i..sub_expr_end_idx {
+						f.penalties[j] = max_len.len-1
+				}
+				if i > 0 {
+					f.penalties[i-1] = 0
+				}
+				if sub_expr_end_idx < f.penalties.len {
+					f.penalties[sub_expr_end_idx] = 0
+				}
+			}
 		}
 	}
 }
@@ -728,6 +750,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					penalty--
 				}
 				f.penalties << penalty
+				f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
 				f.out = strings.new_builder(60)
 				f.expr_recursion++
 				f.expr(node.right)
@@ -743,6 +766,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.write(f.expr_bufs[f.expr_bufs.len-1])
 					f.expr_bufs = []string{}
 					f.penalties = []int{}
+					f.precedences = []int{}
 				}
 			}
 		}
@@ -797,7 +821,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.ParExpr {
 			f.write('(')
+			f.par_level++
 			f.expr(node.expr)
+			f.par_level--
 			f.write(')')
 		}
 		ast.PostfixExpr {

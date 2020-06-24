@@ -2,6 +2,7 @@ import v.checker
 import v.ast
 import v.table
 import v.gen
+import v.token
 
 fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) table.Type {
 	for i, expr in node.exprs {
@@ -61,5 +62,19 @@ fn gen_str_for_multi_return(mut g gen.Gen,
     info table.MultiReturn, styp, str_fn_name string) {
 for i, _ in info.types {
 		println('\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
+	}
+}
+
+struct Parser {
+	peek_tok token.Token
+	peek_tok2 token.Token
+	peek_tok3 token.Token
+}
+
+fn (mut p Parser) name_expr() {
+	if p.peek_tok.kind ==
+		.lpar || (p.peek_tok.kind == .lt && p.peek_tok2.kind == .name &&
+		p.peek_tok3.kind == .gt) {
+		println(p.peek_tok.lit)
 	}
 }
