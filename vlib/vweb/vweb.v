@@ -413,7 +413,12 @@ pub fn not_found() Result {
 }
 
 fn filter(s string) string {
-	return s.replace('<', '&lt;')
+	return s.replace_each([
+		'<', '&lt;',
+		'"', '&quot;',
+		'&',  '&amp;',
+	])
+
 }
 
 pub type RawHtml = string
