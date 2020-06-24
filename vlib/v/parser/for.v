@@ -73,7 +73,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			key_var_name = val_var_name
 			val_var_pos = p.tok.position()
 			val_var_name = p.check_name()
-			if key_var_name == val_var_name {
+			if key_var_name == val_var_name && key_var_name != '_' {
 				p.error_with_pos('key and value in a for loop cannot be the same', val_var_pos)
 			}
 			if p.scope.known_var(key_var_name) {
