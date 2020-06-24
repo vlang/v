@@ -13,7 +13,7 @@ import v.depgraph
 
 // NB: keywords after 'new' are reserved in C++
 const (
-	c_reserved = ['delete', 'exit', 'unix', 'error', 'calloc', 'malloc', 'free', 'panic', 'auto',
+	c_reserved = ['delete', 'exit', 'link', 'unix', 'error', 'calloc', 'malloc', 'free', 'panic', 'auto',
 		'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register',
 		'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned',
 		'void', 'volatile', 'while', 'new', 'namespace', 'class', 'typename']
