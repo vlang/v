@@ -365,7 +365,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
-		p.peek_tok.kind == .rpar
+		(p.peek_tok.kind == .rpar && p.table.known_type(p.tok.lit))
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')
