@@ -181,9 +181,8 @@ pub fn vcalloc(n int) byteptr {
 		panic('calloc(<=0)')
 	} else if n == 0 {
 		return byteptr(0)
-	} else {
-		return C.calloc(n, 1)
 	}
+	return C.calloc(n, 1)
 }
 
 [unsafe_fn]
