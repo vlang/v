@@ -13,7 +13,7 @@ const (
 		'\t\t\t\t\t\t\t\t'
 	]
 	// when to break a line dependant on penalty
-	max_len = [0, 30, 85, 95, 100]
+	max_len = [0, 35, 85, 93, 100]
 )
 
 pub struct Fmt {
@@ -150,7 +150,7 @@ fn (mut f Fmt) adjust_complete_line() {
 			mut sub_expr_end_idx := f.penalties.len
 			// search for next position with low penalty and same precedence to form subexpression
 			for j in i..f.penalties.len {
-				if f.penalties[j] <= 1 && f.precedences[j] == precedence {
+				if f.penalties[j] <= 1 && f.precedences[j] == precedence && len_sub_expr >= max_len[1] {
 					sub_expr_end_idx = j
 					break
 				} else if f.precedences[j] < precedence {
@@ -164,7 +164,7 @@ fn (mut f Fmt) adjust_complete_line() {
 			// if subexpression would fit in single line adjust penalties to actually do so
 			if len_sub_expr <= max_len[max_len.len-1] {
 				for j in i..sub_expr_end_idx {
-						f.penalties[j] = max_len.len-1
+					f.penalties[j] = max_len.len-1
 				}
 				if i > 0 {
 					f.penalties[i-1] = 0
@@ -173,6 +173,10 @@ fn (mut f Fmt) adjust_complete_line() {
 					f.penalties[sub_expr_end_idx] = 0
 				}
 			}
+		}
+		// emergency fallback: decrease penalty in front of long unbreakable parts 
+		if i > 0 && buf.len > max_len[3] - max_len[1] && f.penalties[i-1] > 0 {
+			f.penalties[i-1] = if buf.len >= max_len[2] { 0 } else { 1 }
 		}
 	}
 }
