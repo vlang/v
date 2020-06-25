@@ -70,3 +70,7 @@ fn (mut p Parser) name_expr() {
 		println(p.peek_tok.lit)
 	}
 }
+
+fn set_nr_muls(t table.Type, nr_muls int) table.Type {
+	return int(t) & 0xff00ffff | (nr_muls << 16)
+}
