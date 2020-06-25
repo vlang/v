@@ -5,6 +5,7 @@ module gen
 import v.ast
 import strings
 import v.table
+import v.util
 
 // pg,mysql etc
 const (
@@ -26,9 +27,9 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.writeln(';')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
 	if node.kind == .insert {
-		g.write('insert into `$node.table_name` (')
+		g.write('INSERT INTO ${util.strip_mod_name(node.table_name)} (')
 	} else {
-		g.write('update `$node.table_name` set ')
+		g.write('UPDATE ${util.strip_mod_name(node.table_name)} SET ')
 	}
 	if node.kind == .insert {
 		for i, field in node.fields {
@@ -59,7 +60,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 				g.write(', ')
 			}
 		}
-		g.write(' where ')
+		g.write(' WHERE ')
 	}
 	if node.kind == .update {
 		g.expr_to_sql(node.where_expr)
@@ -101,10 +102,10 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	```
 	*/
 	cur_line := g.go_before_stmt(0)
-	mut q := 'select '
+	mut q := 'SELECT '
 	if node.is_count {
 		// `select count(*) from User`
-		q += 'count(*) from `$node.table_name`'
+		q += 'COUNT(*) from ${util.strip_mod_name(node.table_name)}'
 	} else {
 		// `select id, name, country from User`
 		for i, field in node.fields {
@@ -113,10 +114,10 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 				q += ', '
 			}
 		}
-		q += ' from `$node.table_name`'
+		q += ' FROM ${util.strip_mod_name(node.table_name)}'
 	}
 	if node.has_where {
-		q += ' where '
+		q += ' WHERE '
 	}
 	// g.write('${dbtype}__DB_q_int(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$q')
 	g.sql_stmt_name = g.new_tmp_var()
@@ -131,13 +132,13 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	if node.has_where && node.where_expr is ast.InfixExpr {
 		g.expr_to_sql(node.where_expr)
 	}
-	g.write(' order by id ')
+	g.write(' ORDER BY id ')
 	if node.has_limit {
-		g.write(' limit ')
+		g.write(' LIMIT ')
 		g.expr_to_sql(node.limit_expr)
 	}
 	if node.has_offset {
-		g.write(' offset ')
+		g.write(' OFFSET ')
 		g.expr_to_sql(node.offset_expr)
 	}
 	g.writeln('"));')
