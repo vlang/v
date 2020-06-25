@@ -234,6 +234,10 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 				.le { g.write(' <= ') }
 				.and { g.write(' and ') }
 				.logical_or { g.write(' or ') }
+				.plus  { g.write(' + ') }
+				.minus{ g.write(' - ') }
+				.mul { g.write(' * ') }
+				.div { g.write(' / ') }
 				else {}
 			}
 			g.sql_side = .right
