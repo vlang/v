@@ -413,8 +413,10 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
 				field_type_sym := c.table.get_type_symbol(info_field.typ)
-				if !c.check_types(expr_type, info_field.typ) && expr_type != table.void_type {
-					c.error('cannot assign `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
+				if !c.check_types(expr_type, info_field.typ) && expr_type != table.void_type  &&
+				expr_type_sym.kind != .placeholder {
+
+					c.error('!cannot assign $expr_type_sym.kind `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
 				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer() &&
@@ -1504,7 +1506,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			else {}
 		}
 		// Dual sides check (compatibility check)
-		if !is_blank_ident && !c.check_types(right_type_unwrapped, left_type_unwrapped) {
+		if !is_blank_ident && !c.check_types(right_type_unwrapped, left_type_unwrapped) &&
+			right_sym.kind != .placeholder {
 			c.error('cannot assign `$right_sym.name` to `$left.str()` of type `$left_sym.name`',
 				right.position())
 		}
@@ -2708,9 +2711,8 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	return node.typ
 }
 
+
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
-	//vlib/v/gen/sql.v:37:18: error: undefined ident: `fields`
-	//vlib/v/gen/sql.v:28:12: error: unknown selector expression
 	sym := c.table.get_type_symbol(node.table_type)
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
