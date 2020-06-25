@@ -1841,7 +1841,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.scope_returns = true
 		}
 		ast.SqlStmt {
-			c.sql_insert_expr(node)
+			c.sql_stmt(node)
 		}
 		ast.StructDecl {
 			c.struct_decl(it)
@@ -2680,7 +2680,34 @@ fn (c &Checker) fileis(s string) bool {
 	return c.file.path.contains(s)
 }
 
-fn (mut c Checker) sql_expr(node ast.SqlExpr) table.Type {
+fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
+	sym := c.table.get_type_symbol(node.table_type)
+	info := sym.info as table.Struct
+	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type] &&
+		'skip' !in it.attrs)
+	if fields.len == 0 {
+		c.error('V orm: select: empty fields in `$node.table_name`', node.pos)
+	}
+	if fields[0].name != 'id' {
+		c.error('V orm: `id int` must be the first field in `$node.table_name`', node.pos)
+	}
+	node.fields = fields
+	node.table_name = sym.name
+	if node.has_where {
+		// Register this type's fields as variables so they can be used in `where`
+		// expressions
+		scope := c.file.scope.innermost(node.pos.pos)
+		for field in fields {
+			// println('registering sql field var $field.name')
+			scope.register(field.name, ast.Var{
+				name: field.name
+				typ: field.typ
+				is_mut: true
+				is_used: true
+				is_changed: true
+			})
+		}
+	}
 	if node.has_where {
 		c.expr(node.where_expr)
 	}
@@ -2688,7 +2715,7 @@ fn (mut c Checker) sql_expr(node ast.SqlExpr) table.Type {
 	return node.typ
 }
 
-fn (mut c Checker) sql_insert_expr(node ast.SqlStmt) table.Type {
+fn (mut c Checker) sql_stmt(node ast.SqlStmt) table.Type {
 	c.expr(node.db_expr)
 	return table.void_type
 }

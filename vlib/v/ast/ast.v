@@ -822,6 +822,7 @@ pub:
 	table_name      string
 	object_var_name string // `user`
 	table_type      table.Type
+	pos token.Position
 }
 
 pub struct SqlExpr {
@@ -829,11 +830,14 @@ pub:
 	typ        table.Type
 	is_count   bool
 	db_expr    Expr // `db` in `sql db {`
-	table_name string
 	where_expr Expr
 	has_where  bool
-	fields     []table.Field
 	is_array   bool
+	table_type table.Type
+	pos token.Position
+pub mut:
+	table_name string
+	fields     []table.Field
 }
 
 [inline]

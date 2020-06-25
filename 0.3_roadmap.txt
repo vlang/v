@@ -3,6 +3,7 @@
 
 - coroutines
 - bring back lock{}
+- thread safe arrays/maps
 - C2V translator
 - doom.v
 - rune type, replace ustring with []rune

@@ -11,14 +11,6 @@ struct Module {
 	//nr_downloads int
 }
 
-struct User {
-	id int
-	age int
-	name string
-	is_customer bool
-	skipped_string string [skip]
-}
-
 fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec("drop table if exists User")
@@ -130,6 +122,15 @@ fn test_orm_sqlite() {
 	}
 	*/
 }
+
+struct User {
+	id int
+	age int
+	name string
+	is_customer bool
+	skipped_string string [skip]
+}
+
 
 
 fn test_orm_pg() {

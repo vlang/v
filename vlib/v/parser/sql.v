@@ -8,17 +8,10 @@ import v.table
 
 fn (mut p Parser) sql_expr() ast.Expr {
 	// `sql db {`
+	pos := p.tok.position()
 	p.check_name()
 	db_expr := p.expr(0)
 	p.check(.lcbr)
-	// kind := ast.SqlExprKind.select_
-	//
-	/*
-	if p.tok.kind == .name && p.tok.lit == 'insert' {
-		return p.sql_insert_expr(db_var_name)
-		// kind = .insert
-	}
-	*/
 	p.check(.key_select)
 	n := p.check_name()
 	is_count := n == 'count'
@@ -28,8 +21,6 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		typ = table.int_type
 	}
 	table_type := p.parse_type() // `User`
-	sym := p.table.get_type_symbol(table_type)
-	table_name := sym.name
 	mut where_expr := ast.Expr{}
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
 	mut query_one := false // one object is returned, not an array
@@ -65,48 +56,24 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		typ = table_type
 	}
 	p.check(.rcbr)
-	// /////////
-	// Register this type's fields as variables so they can be used in `where`
-	// expressions
-	// fields := typ.fields.filter(typ == 'string' || typ == 'int')
-	// fields := typ.fields
-	// get only string and int fields
-	// mut fields := []Var
-	info := sym.info as table.Struct
-	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type] &&
-		'skip' !in it.attrs)
-	if fields.len == 0 {
-		p.error('V orm: select: empty fields in `$table_name`')
-	}
-	if fields[0].name != 'id' {
-		p.error('V orm: `id int` must be the first field in `$table_name`')
-	}
-	for field in fields {
-		// println('registering sql field var $field.name')
-		p.scope.register(field.name, ast.Var{
-			name: field.name
-			typ: field.typ
-			is_mut: true
-			is_used: true
-			is_changed: true
-		})
-	}
-	// ////////////
 	return ast.SqlExpr{
 		is_count: is_count
 		typ: typ
 		db_expr: db_expr
-		table_name: table_name
+		//table_name: table_name
+		table_type: table_type
 		where_expr: where_expr
 		has_where: has_where
-		fields: fields
+		//fields: fields
 		is_array: !query_one
+		pos: pos
 	}
 }
 
 // insert user into User
 // update User set nr_oders=nr_orders+1 where id == user_id
 fn (mut p Parser) sql_stmt() ast.SqlStmt {
+	pos := p.tok.position()
 	p.inside_match = true
 	defer {
 		p.inside_match = false
@@ -172,6 +139,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		table_name: table_name
 		table_type: table_type
 		object_var_name: inserted_var_name
+		pos: pos
 	}
 }
 
