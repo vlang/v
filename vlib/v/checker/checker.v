@@ -2722,12 +2722,26 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
 	node.fields = fields
+	// Register this type's fields as variables so they can be used in `where`
+	// expressions
+	scope := c.file.scope.innermost(node.pos.pos)
+	for field in fields {
+		// println('registering sql field var $field.name')
+		scope.register(field.name, ast.Var{
+			name: field.name
+			typ: field.typ
+			is_mut: true
+			is_used: true
+			is_changed: true
+		})
+	}
 	c.expr(node.db_expr)
 	if node.kind== .update {
 		for expr in node.update_exprs {
 			c.expr(expr)
 		}
 	}
+	c.expr(node.where_expr)
 	return table.void_type
 }
 
