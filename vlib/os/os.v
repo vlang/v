@@ -158,16 +158,13 @@ pub fn mv(old, new string) {
 	}
 }
 
-pub fn cp(old, new string) ?bool {
+pub fn cp(old, new string) ? {
 	$if windows {
 		w_old := old.replace('/', '\\')
 		w_new := new.replace('/', '\\')
 		C.CopyFile(w_old.to_wide(), w_new.to_wide(), false)
 		result := C.GetLastError()
-		if result == 0 {
-			return true
-		}
-		else {
+		if result != 0 {
 			return error_with_code('failed to copy $old to $new', int(result))
 		}
 	} $else {
@@ -198,17 +195,17 @@ pub fn cp(old, new string) ?bool {
 		if C.chmod(new.str, from_attr.st_mode) < 0 {
 			return error_with_code('failed to set permissions for $new', int(-1))
 		}
-		return true
 	}
+	return
 }
 
 [deprecated]
-pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
+pub fn cp_r(osource_path, odest_path string, overwrite bool) ? {
 	eprintln('warning: `os.cp_r` has been deprecated, use `os.cp_all` instead')
 	return cp_all(osource_path, odest_path, overwrite)
 }
 
-pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
+pub fn cp_all(osource_path, odest_path string, overwrite bool) ? {
 	source_path := os.real_path(osource_path)
 	dest_path := os.real_path(odest_path)
 	if !os.exists(source_path) {
@@ -228,7 +225,7 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 		os.cp(source_path, adjusted_path) or {
 			return error(err)
 		}
-		return true
+		return
 	}
 	if !os.is_dir(dest_path) {
 		return error('Destination path is not a valid directory')
@@ -249,17 +246,19 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 			panic(err)
 		}
 	}
-	return true
+	return
 }
 
 // mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
 // mv_by_cp may be used when you are not sure that the source and target are on the same mount/partition.
-pub fn mv_by_cp(source string, target string) ?bool {
+pub fn mv_by_cp(source string, target string) ? {
 	os.cp(source, target) or {
 		return error(err)
 	}
-	os.rm(source)
-	return true
+	os.rm(source) or {
+		return error(err)
+	}
+	return
 }
 
 // vfopen returns an opened C file, given its path and open mode.
@@ -379,8 +378,6 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 		opened: true
 	}
 }
-
-
 
 // system starts the specified command, waits for it to complete, and returns its code.
 fn vpopen(path string) voidptr {
@@ -1302,7 +1299,6 @@ pub fn resource_abs_path(path string) string {
 	}
 	return os.real_path(os.join_path(base_path, path))
 }
-
 
 // open tries to open a file for reading and returns back a read-only `File` object
 pub fn open(path string) ?File {
