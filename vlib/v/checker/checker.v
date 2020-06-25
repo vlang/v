@@ -1962,14 +1962,17 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					node.pos)
 			}
 			if node.expr_type == table.string_type {
-				mut error_msg := 'cannot cast a string'
-				if node.expr is ast.StringLiteral {
-					str_lit := node.expr as ast.StringLiteral
-					if str_lit.val.len == 1 {
-						error_msg += ", for denoting characters use `$str_lit.val` instead of '$str_lit.val'"
+				cast_to_type_sym := c.table.get_type_symbol(node.typ)
+				if cast_to_type_sym.kind != .alias {
+					mut error_msg := 'cannot cast a string'
+					if node.expr is ast.StringLiteral {
+						str_lit := node.expr as ast.StringLiteral
+						if str_lit.val.len == 1 {
+							error_msg += ", for denoting characters use `$str_lit.val` instead of '$str_lit.val'"
+						}
 					}
+					c.error(error_msg, node.pos)
 				}
-				c.error(error_msg, node.pos)
 			}
 			if node.has_arg {
 				c.expr(node.arg)

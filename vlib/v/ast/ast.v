@@ -703,7 +703,7 @@ pub struct CastExpr {
 pub:
 	expr      Expr // `buf`
 	arg       Expr // `n` in `string(buf, n)`
-	typ       table.Type // `string`
+	typ       table.Type // `string` TODO rename to `type_to_cast_to`
 	pos       token.Position
 pub mut:
 	typname   string
