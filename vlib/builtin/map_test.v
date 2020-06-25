@@ -276,3 +276,10 @@ fn test_assign_directly() {
 	a['aaa'] -= 2
 	assert a['aaa'] == 2
 }
+
+fn test_map_in_directly() {
+	for k, v in {'aa': 1} {
+		assert k == 'aa'
+		assert v == 1
+	}
+}
