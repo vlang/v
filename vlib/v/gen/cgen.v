@@ -832,14 +832,16 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		idx := g.new_tmp_var()
 		key := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		zero := g.type_default(it.val_type)
-		g.write('array_$key_styp $keys_tmp = map_keys(&')
+		atmp := g.new_tmp_var()
+		atmp_styp := g.typ(it.cond_type)
+		g.write('$atmp_styp $atmp = ')
 		g.expr(it.cond)
-		g.writeln(');')
+		g.writeln(';')
+		g.writeln('array_$key_styp $keys_tmp = map_keys(&$atmp);')
 		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; $idx++) {')
 		g.writeln('\t$key_styp $key = (($key_styp*)${keys_tmp}.data)[$idx];')
 		if it.val_var != '_' {
-			g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)map_get(')
-			g.expr(it.cond)
+			g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)map_get($atmp')
 			g.writeln(', $key, &($val_styp[]){ $zero }));')
 		}
 		g.stmts(it.stmts)
