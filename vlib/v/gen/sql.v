@@ -1,6 +1,5 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
+// Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gen
 
 import v.ast
@@ -14,11 +13,7 @@ const (
 
 enum SqlExprSide { left right }
 
-fn (mut g Gen) sql_insert_expr(node ast.SqlStmt) {
-	sym := g.table.get_type_symbol(node.table_type)
-	info := sym.info as table.Struct
-	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type] &&
-		'skip' !in it.attrs)
+fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.writeln('\n\t// sql insert')
 	db_name := g.new_tmp_var()
 	g.sql_stmt_name = g.new_tmp_var()
@@ -26,29 +21,29 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlStmt) {
 	g.expr(node.db_expr)
 	g.writeln(';')
 	mut q := 'insert into $node.table_name ('
-	for i, field in fields {
+	for i, field in node.fields {
 		if field.name == 'id' {
 			continue
 		}
 		q += '$field.name'
-		if i < fields.len - 1 {
+		if i < node.fields.len - 1 {
 			q += ', '
 		}
 	}
 	q += ') values ('
-	for i, field in fields {
+	for i, field in node.fields {
 		if field.name == 'id' {
 			continue
 		}
 		q += '?${i+0}'
-		if i < fields.len - 1 {
+		if i < node.fields.len - 1 {
 			q += ', '
 		}
 	}
 	q += ')'
 	println(q)
 	g.writeln('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("$q"));')
-	for i, field in fields {
+	for i, field in node.fields {
 		if field.name == 'id' {
 			continue
 		}

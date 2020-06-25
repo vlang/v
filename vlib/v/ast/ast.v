@@ -819,10 +819,12 @@ pub struct SqlStmt {
 pub:
 	kind SqlStmtKind
 	db_expr    Expr // `db` in `sql db {`
-	table_name      string
 	object_var_name string // `user`
 	table_type      table.Type
 	pos token.Position
+pub mut:
+	table_name string
+	fields     []table.Field
 }
 
 pub struct SqlExpr {

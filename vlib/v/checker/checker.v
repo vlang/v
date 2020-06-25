@@ -2683,14 +2683,7 @@ fn (c &Checker) fileis(s string) bool {
 fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	sym := c.table.get_type_symbol(node.table_type)
 	info := sym.info as table.Struct
-	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type] &&
-		'skip' !in it.attrs)
-	if fields.len == 0 {
-		c.error('V orm: select: empty fields in `$node.table_name`', node.pos)
-	}
-	if fields[0].name != 'id' {
-		c.error('V orm: `id int` must be the first field in `$node.table_name`', node.pos)
-	}
+	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
 	node.fields = fields
 	node.table_name = sym.name
 	if node.has_where {
@@ -2715,10 +2708,30 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	return node.typ
 }
 
-fn (mut c Checker) sql_stmt(node ast.SqlStmt) table.Type {
+fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
+	//vlib/v/gen/sql.v:37:18: error: undefined ident: `fields`
+	//vlib/v/gen/sql.v:28:12: error: unknown selector expression
+	sym := c.table.get_type_symbol(node.table_type)
+	info := sym.info as table.Struct
+	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
+	node.fields = fields
 	c.expr(node.db_expr)
 	return table.void_type
 }
+
+fn (c &Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Position, table_name string) []table.Field {
+	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type] &&
+		'skip' !in it.attrs)
+	if fields.len == 0 {
+		c.error('V orm: select: empty fields in `$table_name`', pos)
+	}
+	if fields[0].name != 'id' {
+		c.error('V orm: `id int` must be the first field in `$table_name`', pos)
+	}
+	return fields
+}
+
+
 
 fn (mut c Checker) fn_decl(it ast.FnDecl) {
 	if it.is_generic && c.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion

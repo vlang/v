@@ -751,7 +751,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.return_statement(node)
 		}
 		ast.SqlStmt {
-			g.sql_insert_expr(node)
+			g.sql_stmt(node)
 		}
 		ast.StructDecl {
 			name := if node.language == .c { node.name.replace('.', '__') } else { c_name(node.name) }
