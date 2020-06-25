@@ -60,11 +60,9 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		is_count: is_count
 		typ: typ
 		db_expr: db_expr
-		//table_name: table_name
 		table_type: table_type
 		where_expr: where_expr
 		has_where: has_where
-		//fields: fields
 		is_array: !query_one
 		pos: pos
 	}
@@ -109,6 +107,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	}
 	n = p.check_name() // into
 	mut updated_columns := []string{}
+	mut update_exprs := []ast.Expr{cap: 5}
 	if kind == .insert && n != 'into' {
 		p.error('expecting `into`')
 	} else if kind == .update {
@@ -118,9 +117,10 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		column := p.check_name()
 		updated_columns << column
 		p.check(.assign)
-		p.expr(0)
+		update_exprs << p.expr(0)
 	}
 	mut table_type := table.Type(0)
+	mut where_expr := ast.Expr{}
 	if kind == .insert {
 		table_type = p.parse_type() // `User`
 		sym := p.table.get_type_symbol(table_type)
@@ -131,7 +131,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		idx := p.table.find_type_idx(table_name)
 		table_type = table.new_type(idx)
 		p.check_sql_keyword('where')
-		p.expr(0)
+		where_expr = p.expr(0)
 	}
 	p.check(.rcbr)
 	return ast.SqlStmt{
@@ -140,6 +140,10 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		table_type: table_type
 		object_var_name: inserted_var_name
 		pos: pos
+		updated_columns: updated_columns
+		update_exprs: update_exprs
+		kind: kind
+		where_expr: where_expr
 	}
 }
 

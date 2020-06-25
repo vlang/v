@@ -822,6 +822,9 @@ pub:
 	object_var_name string // `user`
 	table_type      table.Type
 	pos token.Position
+	where_expr Expr
+	updated_columns []string //for `update set x=y`
+	update_exprs []Expr//for `update`
 pub mut:
 	table_name string
 	fields     []table.Field

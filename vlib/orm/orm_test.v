@@ -116,11 +116,15 @@ fn test_orm_sqlite() {
 	assert customer.is_customer == true
 	assert customer.name == 'Kate'
 	//
-	/*
 	sql db {
 		update User set age = 31 where name == 'Kate'
 	}
-	*/
+	kate2 := sql db {
+		select from User where id == 3
+	}
+	println(kate2)
+	assert kate2.age == 31
+	assert kate2.name == 'Kate'
 }
 
 struct User {

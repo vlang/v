@@ -319,8 +319,8 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			if !c.check_types(field_expr_type, field.typ) {
 				field_expr_type_sym := c.table.get_type_symbol(field_expr_type)
 				field_type_sym := c.table.get_type_symbol(field.typ)
-				c.error('default expression for field `$field.name` ' +
-					'has type `$field_expr_type_sym.name`, but should be `$field_type_sym.name`', field.default_expr.position())
+				c.error('default expression for field `$field.name` ' + 'has type `$field_expr_type_sym.name`, but should be `$field_type_sym.name`',
+					field.default_expr.position())
 			}
 		}
 	}
@@ -413,9 +413,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
 				field_type_sym := c.table.get_type_symbol(info_field.typ)
-				if !c.check_types(expr_type, info_field.typ) && expr_type != table.void_type  &&
-				expr_type_sym.kind != .placeholder {
-
+				if !c.check_types(expr_type, info_field.typ) && expr_type != table.void_type &&
+					expr_type_sym.kind != .placeholder {
 					c.error('!cannot assign $expr_type_sym.kind `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
@@ -535,8 +534,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				if infix_expr.op in [.div, .mod] {
 					if (infix_expr.right is ast.IntegerLiteral &&
 						infix_expr.right.str() == '0') ||
-						(infix_expr.right is ast.FloatLiteral &&
-						infix_expr.right.str().f64() == 0.0) {
+						(infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0) {
 						oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
 						c.error('$oper by zero', right_pos)
 					}
@@ -825,7 +823,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	if method := c.table.type_find_method(left_type_sym, method_name) {
 		if !method.is_pub && !c.is_builtin_mod && !c.pref.is_test &&
-			left_type_sym.mod != c.mod && left_type_sym.mod != '' { // method.mod != c.mod {
+			left_type_sym.mod != c.mod &&
+			left_type_sym.mod != '' { // method.mod != c.mod {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
 			// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
@@ -836,7 +835,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// call_expr.is_mut = true
 		}
 		if method.return_type == table.void_type &&
-			method.ctdefine.len > 0 && method.ctdefine !in c.pref.compile_defines {
+			method.ctdefine.len > 0 &&
+			method.ctdefine !in c.pref.compile_defines {
 			call_expr.should_be_skipped = true
 		}
 		nr_args := if method.args.len == 0 { 0 } else { method.args.len - 1 }
@@ -1020,7 +1020,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	}
 	call_expr.return_type = f.return_type
 	if f.return_type == table.void_type &&
-		f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {
+		f.ctdefine.len > 0 &&
+		f.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
 	}
 	if f.language != .v || call_expr.language != .v {
@@ -2339,7 +2340,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				ast.EnumVal { key = expr.val }
 				else { key = expr.str() }
 			}
-			val := if key in branch_exprs { branch_exprs[key] } /**/ else { 0 }
+			val := if key in branch_exprs { branch_exprs[key] } else { 0 }
 			if val == 1 {
 				c.error('match case `$key` is handled more than once', branch.pos)
 			}
@@ -2714,7 +2715,6 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	return node.typ
 }
 
-
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	sym := c.table.get_type_symbol(node.table_type)
 	info := sym.info as table.Struct
@@ -2735,8 +2735,6 @@ fn (c &Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Positio
 	}
 	return fields
 }
-
-
 
 fn (mut c Checker) fn_decl(it ast.FnDecl) {
 	if it.is_generic && c.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
@@ -2774,8 +2772,8 @@ fn (mut c Checker) fn_decl(it ast.FnDecl) {
 			}
 			sym.methods.delete(idx)
 			//
-			c.error('cannot define new methods on non-local `$sym.name` (' +
-				'current module is `$c.mod`, `$sym.name` is from `$sym.mod`)', it.pos)
+			c.error('cannot define new methods on non-local `$sym.name` (' + 'current module is `$c.mod`, `$sym.name` is from `$sym.mod`)',
+				it.pos)
 		}
 	}
 	if it.language == .v {
