@@ -114,10 +114,18 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		if n != 'set' {
 			p.error('expecting `set`')
 		}
-		column := p.check_name()
-		updated_columns << column
-		p.check(.assign)
-		update_exprs << p.expr(0)
+		for {
+			column := p.check_name()
+			updated_columns << column
+			p.check(.assign)
+			update_exprs << p.expr(0)
+			if p.tok.kind == .comma {
+				p.check(.comma)
+			}
+			else {
+				break
+			}
+		}
 	}
 	mut table_type := table.Type(0)
 	mut where_expr := ast.Expr{}

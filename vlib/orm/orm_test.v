@@ -125,6 +125,16 @@ fn test_orm_sqlite() {
 	println(kate2)
 	assert kate2.age == 31
 	assert kate2.name == 'Kate'
+	//
+	sql db {
+		update User set age = 32, name = 'Kate N' where name == 'Kate'
+	}
+	kate3 := sql db {
+		select from User where id == 3
+	}
+	println(kate3)
+	assert kate3.age == 32
+	assert kate3.name == 'Kate N'
 }
 
 struct User {
