@@ -67,5 +67,5 @@ fn (mut g Gen) comp_if(it ast.CompIf) {
 		g.stmts(it.else_stmts)
 		g.defer_ifdef = ''
 	}
-	g.writeln('\n// } $it.val\n#endif\n')
+	g.writeln('\n#endif\n// } $it.val\n')
 }
