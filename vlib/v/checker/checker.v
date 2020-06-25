@@ -1828,6 +1828,15 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				c.error('expression in `go` must be a function call', it.call_expr.position())
 			}
 			c.expr(it.call_expr)
+
+			call_expr := it.call_expr as ast.CallExpr
+
+			// Make sure there are no mutable arguments
+			for arg in call_expr.args {
+				if arg.is_mut {
+					c.error(' function in `go` statement cannot contain mutable arguments', it.call_expr.position())
+				}
+			}
 		}
 		// ast.HashStmt {}
 		ast.Import {}
