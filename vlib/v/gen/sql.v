@@ -273,8 +273,21 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 				} else if typ == table.int_type {
 					g.sql_bind_int(expr.name)
 				} else {
-					verror('bad sql type $typ')
+					verror('bad sql type=$typ ident_name=$expr.name')
 				}
+			}
+		}
+		ast.SelectorExpr {
+			g.inc_sql_i()
+			if expr.typ == table.int_type {
+				if expr.expr !is ast.Ident {
+					verror('orm selector not ident')
+				}
+				ident := expr.expr as ast.Ident
+				g.sql_bind_int(ident.name + '.' + expr.field_name)
+			}
+			else {
+				verror('bad sql type=$expr.typ selector expr=$expr.field_name')
 			}
 		}
 		else {

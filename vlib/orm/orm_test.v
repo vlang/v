@@ -106,13 +106,11 @@ fn test_orm_sqlite() {
 	kate := sql db {
 		select from User where id == 3
 	}
-	println(kate)
 	assert kate.is_customer == true
 	//
 	customer := sql db {
 		select from User where is_customer == true limit 1
 	}
-	println(customer)
 	assert customer.is_customer == true
 	assert customer.name == 'Kate'
 	//
@@ -122,18 +120,47 @@ fn test_orm_sqlite() {
 	kate2 := sql db {
 		select from User where id == 3
 	}
-	println(kate2)
 	assert kate2.age == 31
 	assert kate2.name == 'Kate'
 	//
 	sql db {
 		update User set age = 32, name = 'Kate N' where name == 'Kate'
 	}
-	kate3 := sql db {
+	mut kate3 := sql db {
+		select from User where id == 3
+	}
+	assert kate3.age == 32
+	assert kate3.name == 'Kate N'
+	//
+	/*
+	sql db {
+		update User set age = age + 1, name = 'Kate N' where name == 'Kate'
+	}
+	kate3 = sql db {
 		select from User where id == 3
 	}
 	println(kate3)
 	assert kate3.age == 32
+	assert kate3.name == 'Kate N'
+	*/
+	new_age := 33
+	sql db {
+		update User set age = new_age, name = 'Kate N' where id == 3
+	}
+	kate3 = sql db {
+		select from User where id == 3
+	}
+	assert kate3.age == 33
+	assert kate3.name == 'Kate N'
+	//
+	foo := Foo{34}
+	sql db {
+		update User set age = foo.age, name = 'Kate N' where id == 3
+	}
+	kate3 = sql db {
+		select from User where id == 3
+	}
+	assert kate3.age == 34
 	assert kate3.name == 'Kate N'
 }
 
@@ -143,6 +170,10 @@ struct User {
 	name string
 	is_customer bool
 	skipped_string string [skip]
+}
+
+struct Foo {
+	age int
 }
 
 

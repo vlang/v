@@ -1252,6 +1252,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	// variadic
 	if typ.has_flag(.variadic) {
 		if field_name == 'len' {
+			selector_expr.typ = table.int_type
 			return table.int_type
 		}
 	}
@@ -1259,6 +1260,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		if sym.mod != c.mod && !field.is_pub {
 			c.error('field `${sym.name}.$field_name` is not public', selector_expr.pos)
 		}
+		selector_expr.typ = field.typ
 		return field.typ
 	}
 	if sym.kind != .struct_ {
@@ -2721,6 +2723,11 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
 	node.fields = fields
 	c.expr(node.db_expr)
+	if node.kind== .update {
+		for expr in node.update_exprs {
+			c.expr(expr)
+		}
+	}
 	return table.void_type
 }
 
