@@ -16,6 +16,9 @@ you can do in V.
 
 ## Table of Contents
 
+<table>
+    <tr><td width=50%>
+
 * [Hello world](#hello-world)
 * [Comments](#comments)
 * [Functions](#functions)
@@ -39,7 +42,7 @@ you can do in V.
 * [println](#println)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
-    * [Anonymous & high order fns](#anonymous--high-order-functions)
+    * [Anonymous & high order functions](#anonymous--high-order-functions)
 * [References](#references)
 * [Modules](#modules)
 * [Constants](#constants)
@@ -48,6 +51,9 @@ you can do in V.
     * [Enums](#enums)
     * [Sum types](#sum-types)
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
+
+</td><td width=50%>
+
 * [Generics](#generics)
 * [Concurrency](#concurrency)
 * [Decoding JSON](#decoding-json)
@@ -73,6 +79,9 @@ you can do in V.
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
+
+    </td></tr>
+</table>
 
 
 
