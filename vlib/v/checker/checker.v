@@ -1826,6 +1826,19 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				c.error('expression in `go` must be a function call', it.call_expr.position())
 			}
 			c.expr(it.call_expr)
+			if it.call_expr is ast.CallExpr {
+				call_expr := it.call_expr as ast.CallExpr
+
+				// Make sure there are no mutable arguments
+				for arg in call_expr.args {
+					if arg.is_mut && !arg.typ.is_ptr() {
+						c.error('function in `go` statement cannot contain mutable non-reference arguments', arg.expr.position())
+					}
+				}
+				if call_expr.is_method && call_expr.receiver_type.is_ptr() && !call_expr.left_type.is_ptr() {
+					c.error('method in `go` statement cannot have non-reference mutable receiver', call_expr.left.position())
+				}
+			}
 		}
 		// ast.HashStmt {}
 		ast.Import {}
