@@ -449,15 +449,11 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	}
 	c.expected_type = table.void_type
 	mut left_type := c.expr(infix_expr.left)
-	// if false && left_type == table.t_type {
-	// left_type = c.cur_generic_type
-	// }
+	// left_type = c.unwrap_genric(c.expr(infix_expr.left))
 	infix_expr.left_type = left_type
 	c.expected_type = left_type
-	mut right_type := c.expr(infix_expr.right)
-	if false && right_type == table.t_type {
-		right_type = c.cur_generic_type
-	}
+	right_type := c.expr(infix_expr.right)
+	// right_type = c.unwrap_genric(c.expr(infix_expr.right))
 	infix_expr.right_type = right_type
 	right := c.table.get_type_symbol(right_type)
 	left := c.table.get_type_symbol(left_type)
@@ -1887,6 +1883,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	c.expected_type = table.void_type
 }
 
+[inline]
 pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 	if typ.idx() == table.t_type_idx {
 		// return c.cur_generic_type
