@@ -1323,9 +1323,9 @@ V's model of concurrency is very similar to Go's. To run `foo()` concurrently, j
 call it with `go foo()`. Right now, it launches the function on a new system
 thread. Soon coroutines and a scheduler will be implemented.
 
-Unlike Go, V has no channels (yet). Nevertheless, data can be exchanged between the *goroutine*
+Unlike Go, V has no channels (yet). Nevertheless, data can be exchanged between the coroutine
 and the calling thread via a shared variable. This variable should be created as reference and passed to
-the goroutine as `mut`. The underlying `struct` should also contain a `mutex` to lock concurrent access:
+the coroutine as `mut`. The underlying `struct` should also contain a `mutex` to lock concurrent access:
 
 ```v
 import sync
@@ -1336,7 +1336,7 @@ mut:
 	mtx &sync.Mutex
 }
 
-fn g(mut b St) {
+fn (mut b St) g() {
 	...
 	b.mtx.lock()
 	// read/modify/write b.x
@@ -1350,7 +1350,7 @@ fn caller() {
 		x: 10
 		mtx: sync.new_mutex()
 	}
-	go g(mut a)
+	go a.g()
 	...
 	a.mtx.lock()
 	// read/modify/write a.x
