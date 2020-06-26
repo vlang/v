@@ -196,7 +196,6 @@ pub fn cp(old, new string) ? {
 			return error_with_code('failed to set permissions for $new', int(-1))
 		}
 	}
-	return
 }
 
 [deprecated]
@@ -246,7 +245,6 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ? {
 			panic(err)
 		}
 	}
-	return
 }
 
 // mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
@@ -258,7 +256,6 @@ pub fn mv_by_cp(source string, target string) ? {
 	os.rm(source) or {
 		return error(err)
 	}
-	return
 }
 
 // vfopen returns an opened C file, given its path and open mode.
