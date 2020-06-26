@@ -97,7 +97,6 @@ Project root
         - base.html
 ```
 
-
 `index.html`
 ```html
 <div>@include 'header/base'</div>
@@ -105,5 +104,4 @@ Project root
 > Note that there shouldn't be a file suffix, it is automatically appended and only allows `html` files.
 
 # Variables
-
-_In Progress_
+All variables which are declared before can be used through the `@{my_var}` syntax. It's also possible to use properties of structs here like `@{my_struct.prop}`.
