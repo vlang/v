@@ -337,6 +337,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 }
 
+[inline]
 pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
 	if typ.idx() == table.t_type_idx {
 		// return g.cur_generic_type

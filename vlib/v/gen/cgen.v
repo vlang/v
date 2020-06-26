@@ -310,11 +310,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 
 // V type to C type
 fn (g &Gen) typ(t table.Type) string {
-	mut styp := g.base_type(t)
-	if styp.len == 1 && t == table.t_type && g.cur_generic_type != 0 {
-		// T => int etc
-		return g.typ(g.cur_generic_type)
-	}
+	styp := g.base_type(t)
 	if t.has_flag(.optional) {
 		// Register an optional if it's not registered yet
 		return g.register_optional(t)
@@ -388,7 +384,7 @@ fn (mut g Gen) register_optional(t table.Type) string {
 // cc_type returns the Cleaned Concrete Type name, *without ptr*,
 // i.e. it's always just Cat, not Cat_ptr:
 fn (g &Gen) cc_type(t table.Type) string {
-	sym := g.table.get_type_symbol(t)
+	sym := g.table.get_type_symbol(g.unwrap_generic(t))
 	mut styp := sym.name.replace('.', '__')
 	if styp.starts_with('C__') {
 		styp = styp[3..]
@@ -1696,7 +1692,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	// }
 	// string + string, string == string etc
 	// g.infix_op = node.op
-	left_type := if node.left_type == table.t_type { g.cur_generic_type } else { node.left_type }
+	left_type := g.unwrap_generic(node.left_type)
 	left_sym := g.table.get_type_symbol(left_type)
 	unaliased_left := if left_sym.kind == .alias { (left_sym.info as table.Alias).parent_type } else { left_type }
 	if node.op in [.key_is, .not_is] {
