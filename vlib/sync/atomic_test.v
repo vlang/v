@@ -8,10 +8,10 @@ mut:
 // without proper syncronization this would fail
 fn test_count_100_milion_should_result_100_million() {
 	mut wg := sync.new_waitgroup()
-	mut counter := Counter{}
+	mut counter := &Counter{}
 	wg.add(10)
 	for i := 0; i < 10; i++ {
-		go count_ten_million(mut &counter, wg)
+		go count_ten_million(mut counter, wg)
 	}
 	wg.wait()
 	assert counter.counter == 10000000
@@ -20,10 +20,10 @@ fn test_count_100_milion_should_result_100_million() {
 // This test just to make sure that we have an anti-test to prove it works
 fn test_count_100_milion_should_fail_100_million_without_sync() {
 	mut wg := sync.new_waitgroup()
-	mut counter := Counter{}
+	mut counter := &Counter{}
 	wg.add(10)
 	for i := 0; i < 10; i++ {
-		go count_ten_million_without_sync(mut &counter, wg)
+		go count_ten_million_without_sync(mut counter, wg)
 	}
 	wg.wait()
 	assert counter.counter != 10000000
