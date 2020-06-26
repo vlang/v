@@ -36,4 +36,19 @@ static inline intptr_t atomic_fetch_add_explicit(intptr_t *x, size_t offset, int
     return old_value;
 }
 
+/*
+    Wrapper for TCC to use mutex locks since it lacks the atomic functions
+*/
+static inline intptr_t atomic_fetch_sub_explicit(intptr_t *x, size_t offset, int mo)
+{
+    pthread_mutex_lock(&lock);
+
+    intptr_t old_value = *x;
+    *x = *x - offset;
+
+    pthread_mutex_unlock(&lock);
+
+    return old_value;
+}
+
 #endif

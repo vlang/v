@@ -2,12 +2,11 @@ module sync
 
 /*
 	Implements the atomic operations. For now TCC does not support
-	the atomic versions so it uses locks to simulate the same behavor.
-	For future development the locking should probably be solved in the
-	header files rather than in the v implementations.
+	the atomic versions on nix so it uses locks to simulate the same behavor.
+	On windows tcc can simulate with other atomic operations.
 
 	The @VROOT/thirdparty/stdatomic contains compability header files
-	for stdatomic that supports both windows and c++.
+	for stdatomic that supports both nix, windows and c++.
 
 	This implementations should be regarded as alpha stage and be
 	further tested.
@@ -35,17 +34,10 @@ pub fn add_u64(ptr &u64, delta int) bool {
 	return res == 0
 }
 
-// pub fn sub_u64(ptr &u64, delta int) bool {
-// 	$if tinyc {
-// 		g_mutex.lock()
-// 		ptr-=u64(delta)
-// 		g_mutex.unlock()
-// 		return true
-// 	} $else {
-// 		res := C.atomic_fetch_sub_explicit(&C.atomic_ullong(ptr), delta, C.NULL)
-// 		return res == 0
-// 	}
-// }
+pub fn sub_u64(ptr &u64, delta int) bool {
+	res := C.atomic_fetch_sub_explicit(&C.atomic_ullong(ptr), delta, C.NULL)
+	return res == 0
+}
 
 // pub fn add_i64(ptr &i64, delta int) bool {
 // 	$if tinyc {

@@ -39,6 +39,38 @@ fn test_count_100_milion_should_fail_100_million_without_sync() {
 
 }
 
+fn test_count_plus_one_u64() {
+	mut c := u64(0)
+
+	sync.add_u64(&c, 1)
+
+	assert c == 1
+}
+
+fn test_count_plus_greater_than_one_u64() {
+	mut c := u64(0)
+
+	sync.add_u64(&c, 10)
+
+	assert c == 10
+}
+
+fn test_count_minus_one_u64() {
+	mut c := u64(1)
+
+	sync.sub_u64(&c, 1)
+
+	assert c == 0
+}
+
+fn test_count_minus_greater_than_one_u64() {
+	mut c := u64(10)
+
+	sync.sub_u64(&c, 10)
+
+	assert c == 0
+}
+
 // count_ten_million counts the common counter 10 million times in thread-safe way
 fn count_ten_million(mut counter &Counter, group &sync.WaitGroup) {
 	for i:=0; i < 1000000; i++ {
