@@ -17,7 +17,7 @@ you can do in V.
 ## Table of Contents
 
 <table>
-    <tr><td width=50%>
+    <tr><td>
 
 * [Hello world](#hello-world)
 * [Comments](#comments)
@@ -40,6 +40,9 @@ you can do in V.
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
 * [println](#println)
+
+</td><td>
+
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Anonymous & high order functions](#anonymous--high-order-functions)
@@ -51,9 +54,6 @@ you can do in V.
     * [Enums](#enums)
     * [Sum types](#sum-types)
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
-
-</td><td width=50%>
-
 * [Generics](#generics)
 * [Concurrency](#concurrency)
 * [Decoding JSON](#decoding-json)
@@ -64,6 +64,9 @@ you can do in V.
 * [Tools](#tools)
     * [vfmt](#vfmt)
     * [Profiling](#profiling)
+
+</td><td>
+
 * [Advanced](#advanced)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Conditional compilation](#conditional-compilation)
