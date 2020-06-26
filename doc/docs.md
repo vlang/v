@@ -17,7 +17,7 @@ you can do in V.
 ## Table of Contents
 
 <table>
-    <tr><td>
+    <tr><td width=33%>
 
 * [Hello world](#hello-world)
 * [Comments](#comments)
@@ -41,7 +41,7 @@ you can do in V.
     * [Methods](#methods)
 * [println](#println)
 
-</td><td>
+</td><td width=33%>
 
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
