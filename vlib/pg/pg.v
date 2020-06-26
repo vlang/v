@@ -36,6 +36,7 @@ fn C.PQntuples(voidptr) int
 fn C.PQnfields(voidptr) int
 fn C.PQexec(voidptr) voidptr
 fn C.PQexecParams(voidptr) voidptr
+fn C.PQclear(voidptr) voidptr
 
 pub fn connect(config Config) ?DB {
 	conninfo := 'host=$config.host port=$config.port user=$config.user dbname=$config.dbname password=$config.password'
@@ -61,6 +62,7 @@ fn res_to_rows(res voidptr) []Row {
 		}
 		rows << row
 	}
+	C.PQclear(res)
 	return rows
 }
 
