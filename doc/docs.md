@@ -83,7 +83,7 @@ you can do in V.
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
 
-    </td></tr>
+</td></tr>
 </table>
 
 
