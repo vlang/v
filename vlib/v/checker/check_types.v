@@ -319,7 +319,7 @@ pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type
 				c.error('precision specification only valid for float types', node.fmt_poss[i])
 			}
 			if node.pluss[i] && !typ.is_number() {
-				c.error('plus prefix only allowd for numbers', node.fmt_poss[i])
+				c.error('plus prefix only allowed for numbers', node.fmt_poss[i])
 			}
 			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`]) ||
 				(typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`]) ||
