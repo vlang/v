@@ -1,4 +1,4 @@
-module sync
+module atomic2
 
 /*
 Implements the atomic operations. For now TCC does not support
