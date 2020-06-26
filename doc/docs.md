@@ -468,7 +468,7 @@ m.delete('two')
 
 // Short syntax
 numbers := {
-    'one': 1,
+    'one': 1
     'two': 2
 }
 ```
