@@ -200,12 +200,14 @@ pub fn (mut v Builder) cc_msvc() {
 		return
 	}
 	out_name_obj := os.real_path(v.out_name_c + '.obj')
+	out_name_pdb := os.real_path(v.out_name_c + '.pdb')
 	// Default arguments
 	// volatile:ms enables atomic volatile (gcc _Atomic)
 	// -w: no warnings
 	// 2 unicode defines
 	// /Fo sets the object file name - needed so we can clean up after ourselves properly
-	mut a := ['-w', '/we4013', '/volatile:ms', '/Fo"$out_name_obj"']
+	// /Fd sets the pdb file name (so its not just vc140 all the time)
+	mut a := ['-w', '/we4013', '/volatile:ms', '/Fo"$out_name_obj"', '/Fd"$out_name_pdb"']
 	if v.pref.is_prod {
 		a << '/O2'
 		a << '/MD'
