@@ -273,7 +273,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		sym := p.table.get_type_symbol(return_type)
 		if sym.kind == .void && return_type.has_flag(.optional) &&
 					(stmts.len == 0 || stmts[stmts.len-1] !is ast.Return) {
-			stmts << ast.Return{ pos: p.tok.position() }
+			stmts << ast.Return{
+				pos: p.tok.position()
+				exprs: []ast.Expr{}
+				types: []table.Type{}
+			}
 		}
 	}
 	p.close_scope()
