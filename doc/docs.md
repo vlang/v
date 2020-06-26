@@ -17,7 +17,7 @@ you can do in V.
 ## Table of Contents
 
 <table>
-    <tr><td width=33%>
+    <tr><td width=33% valign=top>
 
 * [Hello world](#hello-world)
 * [Comments](#comments)
@@ -41,7 +41,7 @@ you can do in V.
     * [Methods](#methods)
 * [println](#println)
 
-</td><td width=33%>
+</td><td width=33% valign=top>
 
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
@@ -65,7 +65,7 @@ you can do in V.
     * [vfmt](#vfmt)
     * [Profiling](#profiling)
 
-</td><td>
+</td><td valign=top>
 
 * [Advanced](#advanced)
     * [Calling C functions from V](#calling-c-functions-from-v)
