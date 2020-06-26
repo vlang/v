@@ -651,7 +651,7 @@ pub fn rmdir(path string) ? {
 		}
 	} $else {
 		rc := C.RemoveDirectory(path.to_wide())
-		if rc == -1 {
+		if rc == 0 {
 			return error('Failed to remove "$path"')
 		}
 	}
