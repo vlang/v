@@ -3054,13 +3054,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		g.write('${str_fn_name}(')
 		g.expr(expr)
 		g.write(')')
-	}
-	else if sym.kind == .alias && (sym.info as table.Alias).parent_type == table.string_type {
+	} else if sym.kind == .alias && (sym.info as table.Alias).parent_type == table.string_type {
 		// handle string aliases
 		g.expr(expr)
 		return true
-	}
-	else if sym.kind == .enum_ {
+	} else if sym.kind == .enum_ {
 		is_var := match expr {
 			ast.SelectorExpr { true }
 			ast.Ident { true }
@@ -3331,7 +3329,8 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		g.writeln('\tstring err = ${cvar_name}.v_error;')
 		g.writeln('\tint errcode = ${cvar_name}.ecode;')
 		stmts := or_block.stmts
-		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt &&
+		if stmts.len > 0 &&
+			stmts[or_block.stmts.len - 1] is ast.ExprStmt &&
 			(stmts[stmts.len - 1] as ast.ExprStmt).typ != table.void_type {
 			g.indent++
 			for i, stmt in stmts {
@@ -3730,6 +3729,12 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	g.writeln('$wrapper_struct_name *$arg_tmp_var = malloc(sizeof(thread_arg_$name));')
 	if expr.is_method {
 		g.write('$arg_tmp_var->arg0 = ')
+		// TODO is this needed?
+		/*
+		if false && !expr.return_type.is_ptr() {
+			g.write('&')
+		}
+		*/
 		g.expr(expr.left)
 		g.writeln(';')
 	}

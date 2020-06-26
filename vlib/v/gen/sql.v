@@ -27,7 +27,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
 	if node.kind == .insert {
 		g.write('insert into $node.table_name (')
-	 } else {
+	} else {
 		g.write('update $node.table_name set ')
 	}
 	if node.kind == .insert {
@@ -40,7 +40,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 				g.write(', ')
 			}
 		}
-		g.write( ') values (')
+		g.write(') values (')
 		for i, field in node.fields {
 			if field.name == 'id' {
 				continue
@@ -60,14 +60,10 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			}
 		}
 		g.write(' where ')
-
 	}
-
-
 	if node.kind == .update {
 		g.expr_to_sql(node.where_expr)
 	}
-
 	g.writeln('"));')
 	if node.kind == .insert {
 		// build the object now (`x.name = ... x.id == ...`)
@@ -185,6 +181,9 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			g.writeln('\tif (_step_res$tmp == SQLITE_DONE) break;')
 			g.writeln('\tif (_step_res$tmp == SQLITE_ROW) ;') // another row
 			g.writeln('\telse if (_step_res$tmp != SQLITE_OK) break;')
+		} else {
+			g.writeln('printf("RES: %d\\n", _step_res$tmp) ;')
+			g.writeln('\tif (_step_res$tmp == SQLITE_OK || _step_res$tmp == SQLITE_ROW) {')
 		}
 		for i, field in node.fields {
 			mut func := 'sqlite3_column_int'
@@ -197,8 +196,8 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 		}
 		if node.is_array {
 			g.writeln('\t array_push(&${tmp}_array, _MOV(($elem_type_str[]){ $tmp }));')
-			g.writeln('} // for')
 		}
+		g.writeln('}')
 		g.writeln('sqlite3_finalize($g.sql_stmt_name);')
 		if node.is_array {
 			g.writeln('$cur_line ${tmp}_array; ') // `array_User users = tmp_array;`
@@ -234,8 +233,8 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 				.le { g.write(' <= ') }
 				.and { g.write(' and ') }
 				.logical_or { g.write(' or ') }
-				.plus  { g.write(' + ') }
-				.minus{ g.write(' - ') }
+				.plus { g.write(' + ') }
+				.minus { g.write(' - ') }
 				.mul { g.write(' * ') }
 				.div { g.write(' / ') }
 				else {}
@@ -289,8 +288,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 				}
 				ident := expr.expr as ast.Ident
 				g.sql_bind_int(ident.name + '.' + expr.field_name)
-			}
-			else {
+			} else {
 				verror('bad sql type=$expr.typ selector expr=$expr.field_name')
 			}
 		}

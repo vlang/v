@@ -162,6 +162,12 @@ fn test_orm_sqlite() {
 	}
 	assert kate3.age == 34
 	assert kate3.name == 'Kate N'
+	//
+	no_user := sql db {
+		select from User where id == 30
+	}
+	assert no_user.name == '' // TODO optional
+	assert no_user.age == 0
 }
 
 struct User {
