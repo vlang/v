@@ -56,6 +56,7 @@ mut:
 	errors            []errors.Error
 	warnings          []errors.Warning
 	cur_fn_name       string
+	json_types        []table.Type
 }
 
 // for tests
