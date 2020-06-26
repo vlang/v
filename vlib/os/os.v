@@ -643,11 +643,17 @@ pub fn rm(path string) ? {
 	// C.unlink(path.cstr())
 }
 // rmdir removes a specified directory.
-pub fn rmdir(path string) {
+pub fn rmdir(path string) ? {
 	$if !windows {
-		C.rmdir(path.str)
+		rc := C.rmdir(path.str)
+		if rc == -1 {
+			return error(posix_get_error_msg(C.errno))
+		}
 	} $else {
-		C.RemoveDirectory(path.to_wide())
+		rc := C.RemoveDirectory(path.to_wide())
+		if rc == 0 {
+			return error('Failed to remove "$path"')
+		}
 	}
 }
 
@@ -657,7 +663,8 @@ pub fn rmdir_recursive(path string) {
 	rmdir_all(path)
 }
 
-pub fn rmdir_all(path string) {
+pub fn rmdir_all(path string) ? {
+	mut ret_err := ''
 	items := os.ls(path) or {
 		return
 	}
@@ -665,9 +672,12 @@ pub fn rmdir_all(path string) {
 		if os.is_dir(os.join_path(path, item)) {
 			rmdir_all(os.join_path(path, item))
 		}
-		os.rm(os.join_path(path, item))
+		os.rm(os.join_path(path, item)) or { ret_err = err }
 	}
-	os.rmdir(path)
+	os.rmdir(path) or { ret_err = err }
+	if ret_err.len > 0 {
+		return error(ret_err)
+	}
 }
 
 pub fn is_dir_empty(path string) bool {
