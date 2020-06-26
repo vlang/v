@@ -206,17 +206,21 @@ pub fn (mut v Builder) cc_msvc() {
 	// -w: no warnings
 	// 2 unicode defines
 	// /Fo sets the object file name - needed so we can clean up after ourselves properly
-	// /Fd sets the pdb file name (so its not just vc140 all the time)
-	mut a := ['-w', '/we4013', '/volatile:ms', '/Fo"$out_name_obj"', '/Fd"$out_name_pdb"']
+	mut a := ['-w', '/we4013', '/volatile:ms', '/Fo"$out_name_obj"']
 	if v.pref.is_prod {
 		a << '/O2'
 		a << '/MD'
-		a << '/Zi'
 		a << '/DNDEBUG'
 	} else {
-		a << '/Zi'
 		a << '/MDd'
 	}
+
+	if v.pref.is_debug {
+		// /Zi generates a .pdb
+		// /Fd sets the pdb file name (so its not just vc140 all the time)
+		a << ['/Zi', '/Fd"$out_name_pdb"']
+	}
+
 	if v.pref.is_shared {
 		if !v.pref.out_name.ends_with('.dll') {
 			v.pref.out_name += '.dll'
