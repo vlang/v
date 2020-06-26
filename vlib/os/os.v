@@ -664,6 +664,7 @@ pub fn rmdir_recursive(path string) {
 }
 
 pub fn rmdir_all(path string) ? {
+	mut ret_err := ''
 	items := os.ls(path) or {
 		return
 	}
@@ -671,9 +672,12 @@ pub fn rmdir_all(path string) ? {
 		if os.is_dir(os.join_path(path, item)) {
 			rmdir_all(os.join_path(path, item))
 		}
-		os.rm(os.join_path(path, item)) or { return error(err) }
+		os.rm(os.join_path(path, item)) or { ret_err = err }
 	}
-	os.rmdir(path) or { return error(err) }
+	os.rmdir(path) or { ret_err = err }
+	if ret_err.len > 0 {
+		return error(ret_err)
+	}
 }
 
 pub fn is_dir_empty(path string) bool {
