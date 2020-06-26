@@ -96,14 +96,6 @@ pub fn (mut ts TestSession) test() {
 		mtx: sync.new_mutex()
 	}
 	pool_of_test_runners.set_shared_context(ts)
-	$if msvc {
-		// NB: MSVC can not be launched in parallel, without giving it
-		// the option /FS because it uses a shared PDB file, which should
-		// be locked, but that makes writing slower...
-		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
-		// Instead, just run tests on 1 core for now.
-		pool_of_test_runners.set_max_jobs(1)
-	}
 	pool_of_test_runners.work_on_pointers(remaining_files.pointers())
 	ts.benchmark.stop()
 	eprintln(term.h_divider('-'))
