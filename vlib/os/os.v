@@ -256,6 +256,7 @@ pub fn mv_by_cp(source string, target string) ? {
 	os.rm(source) or {
 		return error(err)
 	}
+	return
 }
 
 // vfopen returns an opened C file, given its path and open mode.
@@ -635,8 +636,8 @@ pub fn rm(path string) ? {
 			return error(posix_get_error_msg(C.errno))
 		}
 	}
-	// C.unlink(path.cstr())
 }
+
 // rmdir removes a specified directory.
 pub fn rmdir(path string) {
 	$if !windows {
