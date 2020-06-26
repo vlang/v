@@ -635,8 +635,6 @@ pub fn rm(path string) ? {
 			return error(posix_get_error_msg(C.errno))
 		}
 	}
-
-	return
 	// C.unlink(path.cstr())
 }
 // rmdir removes a specified directory.
@@ -1161,7 +1159,6 @@ pub fn walk(path string, f fn(path string)) {
 			f(p)
 		}
 	}
-	return
 }
 
 pub fn signal(signum int, handler voidptr) {
