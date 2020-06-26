@@ -29,36 +29,26 @@ struct C.atomic_ullong
 [typedef]
 struct C.atomic_llong
 
+// add_u64 adds provided delta as an atomic operation
 pub fn add_u64(ptr &u64, delta int) bool {
 	res := C.atomic_fetch_add_explicit(&C.atomic_ullong(ptr), delta, C.NULL)
 	return res == 0
 }
 
+// sub_u64 subtracts provided delta as an atomic operation
 pub fn sub_u64(ptr &u64, delta int) bool {
 	res := C.atomic_fetch_sub_explicit(&C.atomic_ullong(ptr), delta, C.NULL)
 	return res == 0
 }
 
-// pub fn add_i64(ptr &i64, delta int) bool {
-// 	$if tinyc {
-// 		g_mutex.lock()
-// 		ptr+=i64(delta)
-// 		g_mutex.unlock()
-// 		return true
-// 	} $else {
-// 		res := C.atomic_fetch_add_explicit(&C.atomic_llong(ptr), delta, C.NULL)
-// 		return res == 0
-// 	}
-// }
+// add_i64 adds provided delta as an atomic operation
+pub fn add_i64(ptr &i64, delta int) bool {
+	res := C.atomic_fetch_add_explicit(&C.atomic_llong(ptr), delta, C.NULL)
+	return res == 0
+}
 
-// pub fn sub_i64(ptr &i64, delta int) bool {
-// 	$if tinyc {
-// 		g_mutex.lock()
-// 		ptr-=i64(delta)
-// 		g_mutex.unlock()
-// 		return true
-// 	} $else {
-// 		res := C.atomic_fetch_sub_explicit(&C.atomic_llong(ptr), delta, C.NULL)
-// 		return res == 0
-// 	}
-// }
+// add_i64 subtracts provided delta as an atomic operation
+pub fn sub_i64(ptr &i64, delta int) bool {
+	res := C.atomic_fetch_sub_explicit(&C.atomic_llong(ptr), delta, C.NULL)
+	return res == 0
+}
