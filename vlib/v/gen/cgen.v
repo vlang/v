@@ -841,7 +841,6 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			g.writeln(', $key, &($val_styp[]){ $zero }));')
 		}
 		g.stmts(it.stmts)
-		g.writeln('/* for in map cleanup*/ ')
 		g.writeln('}')
 		g.writeln('/*for in map cleanup*/')
 		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; $idx++) { string_free(&(($key_styp*)${keys_tmp}.data)[$idx]); }')
