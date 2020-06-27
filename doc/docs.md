@@ -1389,8 +1389,8 @@ fn caller() {
 
 ***The following paragraph describes features that are not implemented, yet.***
 
-To handle data exchange between coroutines more efficiently there will
-be 4 different ways to declare a variable:
+To handle data exchange between coroutines more there will be 4
+different ways to declare a variable:
 
 ```v
 a := ...
@@ -1405,22 +1405,23 @@ atomic d := ...
   coroutine. That coroutine *owns* the object. A `mut` variable can
   be passed to another coroutine (as receiver or function argument in
   the `go` statement or via a channel) but then ownership is passed,
-  too, and the other coroutine can access the object (and will
-  automatically free the memory space used).
-- `c` can be passed to coroutines an be accessed *concurrently*. In
-  order to avoid data races it has to be locked before access can
-  occur and unlocked to allow access to other coroutines. This is done
-  by the following block structure:
+  too, and only the other coroutine can access the object.<sup>1</sup>
+- `c` can be passed to coroutines an accessed
+  *concurrently*.<sup>2</sup> In order to avoid data races it has to
+  be locked before access can occur and unlocked to allow access to
+  other coroutines. This is done by the following block structure:
   ```v
-  lock c[, c2[, ...]] {
-      // read, modify, write c[, c2[, ...]]
-	  ...
+  lock c {
+      // read, modify, write c
+      ...
   }
   ```
-- `d` can be passed to coroutines an be accessed *concurrently*,
-  too. No lock is needed in this case, however `atomic` variables can
-  only be integers or pointers and access is limited to a small set of
-  predefined idioms.
+  Several variables may be specified with as `lock x, y, z { ... }`.
+  They are unlocked in the opposite order as the are locked.
+- `d` can be passed to coroutines accessed *concurrently*,
+  too.<sup>3</sup> No lock is needed in this case, however
+  `atomic` variables can only be integers or pointers and access is
+  limited to a small set of predefined idioms.
 
 To help making the correct decision the following table summarizes the
 different options:
@@ -1428,10 +1429,18 @@ different options:
 |                           | *default* | `mut` | `shared` | `atomic` |
 | :---                      |   :---:   | :---: |  :---:   |  :---:   |
 | write access              |           |   +   |     +    |    +     |
+| concurrent access         |     +     |       |     +    |    +     |
 | performance               |    ++     |  ++   |          |    +     |
 | sophisticated operations  |     +     |   +   |     +    |          |
 | structured datatypes      |     +     |   +   |     +    |          |
-| concurrent access         |     +     |       |     +    |    +     |
+
+<sup>1</sup> The owning coroutine will also free the memory space used
+for the object when it is no longer needed.  
+<sup>2</sup> For `shared` objects the compiler adds code for reference
+counting. One the counter reaches 0 the object automatically freed.
+<sup>3</sup> Since `atomic` variables are only some bytes in size
+allocation would be an unnecessary overhead. Instead the compiler
+creates global variables.
 
 ## Decoding JSON
 
