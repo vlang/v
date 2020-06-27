@@ -168,6 +168,12 @@ fn test_orm_sqlite() {
 	}
 	assert no_user.name == '' // TODO optional
 	assert no_user.age == 0
+	//
+	two_users := sql db {
+		select from User limit 2
+	}
+	assert two_users.len == 2
+	assert two_users[0].id > 0
 }
 
 struct User {

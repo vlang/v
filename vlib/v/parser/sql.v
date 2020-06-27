@@ -38,13 +38,17 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			}
 		}
 	}
+	mut has_limit := false
+	mut limit_expr := ast.Expr{}
 	if p.tok.kind == .name && p.tok.lit == 'limit' {
 		// `limit 1` means that a single object is returned
 		p.check_name() // `limit`
 		if p.tok.kind == .number && p.tok.lit == '1' {
 			query_one = true
+		} else {
+			has_limit = true
 		}
-		p.next()
+		limit_expr = p.expr(0)
 	}
 	if !query_one && !is_count {
 		// return an array
@@ -63,6 +67,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		table_type: table_type
 		where_expr: where_expr
 		has_where: has_where
+		has_limit: has_limit
+		limit_expr: limit_expr
 		is_array: !query_one
 		pos: pos
 	}
