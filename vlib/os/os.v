@@ -884,12 +884,13 @@ pub fn home_dir() string {
 }
 
 // write_file writes `text` data to a file in `path`.
-pub fn write_file(path, text string) ?{
+pub fn write_file(path, text string) ? {
 	mut f := os.create(path) or {
 		return error(err)
 	}
 	f.write(text)
 	f.close()
+	return none
 }
 
 pub fn on_segfault(f voidptr) {
