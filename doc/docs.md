@@ -1385,6 +1385,54 @@ fn caller() {
 }
 ```
 
+## *Work In Progress*
+
+***The following paragraph describes features that are not implemented, yet.***
+
+To handle data exchange between coroutines more efficiently there will
+be 4 different ways to declare a variable:
+
+```v
+a := ...
+mut b := ...
+shared c := ...
+atomic d := ...
+```
+
+- `a` is declared as *constant* that can be accessed and passed to
+  other coroutines without limitations. However it cannot be changed.
+- `b` can be accessed reading and writing but only from one
+  coroutine. That coroutine *owns* the object. A `mut` variable can
+  be passed to another coroutine (as receiver or function argument in
+  the `go` statement or via a channel) but then ownership is passed,
+  too, and the other coroutine can access the object (and will
+  automatically free the memory space used).
+- `c` can be passed to coroutines an be accessed *concurrently*. In
+  order to avoid data races it has to be locked before access can
+  occur and unlocked to allow access to other coroutines. This is done
+  by the following block structure:
+  ```v
+  lock c[, c2[, ...]] {
+      // read, modify, write c[, c2[, ...]]
+	  ...
+  }
+  ```
+- `d` can be passed to coroutines an be accessed *concurrently*,
+  too. No lock is needed in this case, however `atomic` variables can
+  only be integers or pointers and access is limited to a small set of
+  predefined idioms.
+
+To help making the correct decision the following table summarizes the
+different options:
+
+|                           | *default* | `mut` | `shared` | `atomic` |
+| :---                      |   :---:   | :---: |  :---:   |  :---:   |
+| write access              |           |   +   |     +    |    +     |
+| performance               |    ++     |  ++   |          |    +     |
+| sophisticated operations  |     +     |   +   |     +    |          |
+| structured datatypes      |     +     |   +   |     +    |          |
+| concurrent access         |     +     |       |     +    |    +     |
+
 ## Decoding JSON
 
 ```v
