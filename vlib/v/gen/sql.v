@@ -104,7 +104,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	mut q := 'select '
 	if node.is_count {
 		// `select count(*) from User`
-		q += 'count(*) from $node.table_name'
+		q += 'count(*) from `$node.table_name`'
 	} else {
 		// `select id, name, country from User`
 		for i, field in node.fields {
@@ -113,7 +113,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 				q += ', '
 			}
 		}
-		q += ' from $node.table_name'
+		q += ' from `$node.table_name`'
 	}
 	if node.has_where {
 		q += ' where '
