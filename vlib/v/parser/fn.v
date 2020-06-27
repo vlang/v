@@ -364,8 +364,9 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	mut args := []table.Arg{}
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
+	is_type_only := p.is_fn_type_only_arguments()
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
-		p.peek_tok.kind == .rpar
+		is_type_only
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')
@@ -433,6 +434,9 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				p.next()
 				is_variadic = true
 			}
+			if p.tok.kind == .rpar {
+				p.error_with_pos('unknown type', p.tok.position())
+			}
 			pos := p.tok.position()
 			mut typ := p.parse_type()
 			if is_mut {
@@ -464,6 +468,51 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	}
 	p.check(.rpar)
 	return args, is_variadic
+}
+
+fn (p Parser) is_fn_type_only_arguments() bool {
+	mut pos := p.tok.pos
+	for pos < p.scanner.text.len && p.scanner.text[pos].is_space() {
+		pos++
+	}
+	if pos > p.scanner.text.len {
+		return false
+	}
+	mut is_valid := true 
+	mut type_name := ''
+	mut is_new_type := false
+	for pos < p.scanner.text.len && p.scanner.text[pos].str() != ')' {
+		if !is_valid {
+			break
+		}
+		new_char := p.scanner.text[pos]
+		pos++
+		if (!new_char.is_space() && new_char.str() != ",") && !is_new_type {
+			type_name += new_char.str()
+		} else {
+			if new_char.is_space() {
+				if type_name.len > 0 {
+					is_new_type = true
+				}
+				continue
+			}
+			if new_char.str() == "," {
+				if type_name.len > 1 &&  (type_name in table.builtin_type_names || util.contains_capital(type_name[0].str())) {
+					is_valid = true
+					type_name = ''
+					is_new_type = false
+				} else {
+					is_valid = false
+				}
+			} else {
+				is_valid = false
+			}
+		}
+	}
+	if !(type_name.len > 1 &&  (type_name in table.builtin_type_names || util.contains_capital(type_name[0].str()))) {
+		is_valid = false
+	}
+	return is_valid
 }
 
 fn (p &Parser) fileis(s string) bool {
