@@ -121,8 +121,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 			update_exprs << p.expr(0)
 			if p.tok.kind == .comma {
 				p.check(.comma)
-			}
-			else {
+			} else {
 				break
 			}
 		}
