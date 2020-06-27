@@ -24,8 +24,8 @@ pub fn (mut app App) init_once() {
 pub fn (mut app App) init() {
 }
 
-pub fn (mut app App) json_endpoint() {
-	app.vweb.json('{"a": 3}')
+pub fn (mut app App) json_endpoint() vweb.Result {
+	return app.vweb.json('{"a": 3}')
 }
 
 pub fn (mut app App) index() vweb.Result {
@@ -37,11 +37,11 @@ pub fn (mut app App) index() vweb.Result {
 	return $vweb.html()
 }
 
-pub fn (mut app App) text() {
-	app.vweb.text('Hello world from vweb')
+pub fn (mut app App) text() vweb.Result {
+	return app.vweb.text('Hello world from vweb')
 }
 
-pub fn (mut app App) cookie() {
+pub fn (mut app App) cookie() vweb.Result {
 	app.vweb.set_cookie('cookie', 'test')
-	app.vweb.text('Headers: $app.vweb.headers')
+	return app.vweb.text('Headers: $app.vweb.headers')
 }

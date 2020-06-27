@@ -72,12 +72,14 @@ pub fn (mut ctx Context) html(s string) {
 	ctx.send_response_to_client('text/html', s)
 }
 
-pub fn (mut ctx Context) text(s string) {
+pub fn (mut ctx Context) text(s string) Result {
 	ctx.send_response_to_client('text/plain', s)
+	return vweb.Result{}
 }
 
-pub fn (mut ctx Context) json(s string) {
+pub fn (mut ctx Context) json(s string) Result {
 	ctx.send_response_to_client('application/json', s)
+	return vweb.Result{}
 }
 
 pub fn (mut ctx Context) redirect(url string) {
@@ -86,10 +88,11 @@ pub fn (mut ctx Context) redirect(url string) {
 	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${headers_close}') or { return }
 }
 
-pub fn (mut ctx Context) not_found(s string) {
-	if ctx.done { return }
+pub fn (mut ctx Context) not_found() Result {
+	if ctx.done { return vweb.Result{} }
 	ctx.done = true
-	ctx.conn.send_string(http_404) or { return }
+	ctx.conn.send_string(http_404) or {}
+	return vweb.Result{}
 }
 
 pub fn (mut ctx Context) set_cookie(key, val string) {
