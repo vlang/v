@@ -180,6 +180,13 @@ fn test_orm_sqlite() {
 	}
 	assert y.len == 2
 	assert y[0].id == 2
+	//
+	offset_const := 2
+	z := sql db {
+		select from User limit 2 offset offset_const
+	}
+	assert z.len == 2
+	assert z[0].id == 3
 }
 
 struct User {

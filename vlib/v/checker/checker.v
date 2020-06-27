@@ -319,8 +319,8 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			if !c.check_types(field_expr_type, field.typ) {
 				field_expr_type_sym := c.table.get_type_symbol(field_expr_type)
 				field_type_sym := c.table.get_type_symbol(field.typ)
-				c.error('default expression for field `$field.name` ' + 'has type `$field_expr_type_sym.name`, but should be `$field_type_sym.name`',
-					field.default_expr.position())
+				c.error('default expression for field `$field.name` ' +
+					'has type `$field_expr_type_sym.name`, but should be `$field_type_sym.name`', field.default_expr.position())
 			}
 		}
 	}
@@ -560,7 +560,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					// []T << T
 					return table.void_type
 				}
-				if right.kind == .array && c.check_types(left_value_type, c.table.value_type(right_type)) {
+				if right.kind == .array &&
+					c.check_types(left_value_type, c.table.value_type(right_type)) {
 					// []T << []T
 					return table.void_type
 				}
@@ -819,8 +820,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	if method := c.table.type_find_method(left_type_sym, method_name) {
 		if !method.is_pub && !c.is_builtin_mod && !c.pref.is_test &&
-			left_type_sym.mod != c.mod &&
-			left_type_sym.mod != '' { // method.mod != c.mod {
+			left_type_sym.mod != c.mod && left_type_sym.mod != '' { // method.mod != c.mod {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
 			// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
@@ -831,8 +831,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// call_expr.is_mut = true
 		}
 		if method.return_type == table.void_type &&
-			method.ctdefine.len > 0 &&
-			method.ctdefine !in c.pref.compile_defines {
+			method.ctdefine.len > 0 && method.ctdefine !in c.pref.compile_defines {
 			call_expr.should_be_skipped = true
 		}
 		nr_args := if method.args.len == 0 { 0 } else { method.args.len - 1 }
@@ -1016,8 +1015,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	}
 	call_expr.return_type = f.return_type
 	if f.return_type == table.void_type &&
-		f.ctdefine.len > 0 &&
-		f.ctdefine !in c.pref.compile_defines {
+		f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
 	}
 	if f.language != .v || call_expr.language != .v {
@@ -1828,15 +1826,16 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.expr(it.call_expr)
 			if it.call_expr is ast.CallExpr {
 				call_expr := it.call_expr as ast.CallExpr
-
 				// Make sure there are no mutable arguments
 				for arg in call_expr.args {
 					if arg.is_mut && !arg.typ.is_ptr() {
-						c.error('function in `go` statement cannot contain mutable non-reference arguments', arg.expr.position())
+						c.error('function in `go` statement cannot contain mutable non-reference arguments',
+							arg.expr.position())
 					}
 				}
 				if call_expr.is_method && call_expr.receiver_type.is_ptr() && !call_expr.left_type.is_ptr() {
-					c.error('method in `go` statement cannot have non-reference mutable receiver', call_expr.left.position())
+					c.error('method in `go` statement cannot have non-reference mutable receiver',
+						call_expr.left.position())
 				}
 			}
 		}
@@ -2723,6 +2722,12 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	if node.has_where {
 		c.expr(node.where_expr)
 	}
+	if node.has_offset {
+		c.expr(node.offset_expr)
+	}
+	if node.has_limit {
+		c.expr(node.limit_expr)
+	}
 	c.expr(node.db_expr)
 	return node.typ
 }
@@ -2746,7 +2751,7 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 		})
 	}
 	c.expr(node.db_expr)
-	if node.kind== .update {
+	if node.kind == .update {
 		for expr in node.update_exprs {
 			c.expr(expr)
 		}
@@ -2803,8 +2808,8 @@ fn (mut c Checker) fn_decl(it ast.FnDecl) {
 			}
 			sym.methods.delete(idx)
 			//
-			c.error('cannot define new methods on non-local `$sym.name` (' + 'current module is `$c.mod`, `$sym.name` is from `$sym.mod`)',
-				it.pos)
+			c.error('cannot define new methods on non-local `$sym.name` (' +
+				'current module is `$c.mod`, `$sym.name` is from `$sym.mod`)', it.pos)
 		}
 	}
 	if it.language == .v {
