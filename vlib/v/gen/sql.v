@@ -26,9 +26,9 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.writeln(';')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
 	if node.kind == .insert {
-		g.write('insert into $node.table_name (')
+		g.write('insert into `$node.table_name` (')
 	} else {
-		g.write('update $node.table_name set ')
+		g.write('update `$node.table_name` set ')
 	}
 	if node.kind == .insert {
 		for i, field in node.fields {
@@ -104,7 +104,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	mut q := 'select '
 	if node.is_count {
 		// `select count(*) from User`
-		q += 'count(*) from $node.table_name'
+		q += 'count(*) from `$node.table_name`'
 	} else {
 		// `select id, name, country from User`
 		for i, field in node.fields {
@@ -113,7 +113,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 				q += ', '
 			}
 		}
-		q += ' from $node.table_name'
+		q += ' from `$node.table_name`'
 	}
 	if node.has_where {
 		q += ' where '
