@@ -842,6 +842,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		}
 		g.stmts(it.stmts)
 		g.writeln('}')
+		g.writeln('array_free(&$keys_tmp)')
 	} else if it.cond_type.has_flag(.variadic) {
 		g.writeln('// FOR IN cond_type/variadic')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
