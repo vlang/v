@@ -1864,7 +1864,7 @@ in order to improve readability:
 
 To improve safety and maintainability, operator overloading is limited:
 
-- It's only possible to overload `+, -, *, /` operators.
+- It's only possible to overload `+, -, *, /, %` operators.
 - Calling other functions inside operator functions is not allowed.
 - Operator functions can't modify their arguments.
 - Both arguments must have the same type (just like with all operators in V).
