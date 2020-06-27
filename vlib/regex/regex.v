@@ -479,7 +479,7 @@ enum CharClass_parse_state {
 }
 
 fn (re RE) get_char_class(pc int) string {
-	buf := [byte(0)].repeat(re.cc.len)
+	buf := []byte{len:(re.cc.len)}
 	mut buf_ptr := &byte(&buf)
 
 	mut cc_i := re.prog[pc].cc_index

@@ -16,7 +16,7 @@ const (
 
 fn gen_randoms(seed_data []u32, bound int) []u64 {
 	bound_u64 := u64(bound)
-	mut randoms := [u64(0)].repeat(20)
+	mut randoms := []u64{len:(20)}
 	mut rnd := musl.MuslRNG{}
 	rnd.seed(seed_data)
 	for i in 0 .. 20 {

@@ -70,8 +70,8 @@ mut:
 }
 
 fn (mut d Digest) reset() {
-	d.h = [u64(0)].repeat(8)
-	d.x = [byte(0)].repeat(chunk)
+	d.h = []u64{len:(8)}
+	d.x = []byte{len:(chunk)}
 	match d.function {
 		.sha384 {
 			d.h[0] = init0_384
@@ -212,7 +212,7 @@ fn (d &Digest) sum(b_in []byte) []byte {
 fn (mut d Digest) checksum() []byte {
 	// Padding. Add a 1 bit and 0 bits until 112 bytes mod 128.
 	mut len := d.len
-	mut tmp := [byte(0)].repeat(128)
+	mut tmp := []byte{len:(128)}
 	tmp[0] = 0x80
 	if int(len) % 128 < 112 {
 		d.write(tmp[..112 - int(len) % 128])
@@ -228,7 +228,7 @@ fn (mut d Digest) checksum() []byte {
 	if d.nx != 0 {
 		panic('d.nx != 0')
 	}
-	mut digest := [byte(0)].repeat(size)
+	mut digest := []byte{len:(size)}
 	binary.big_endian_put_u64(mut digest, d.h[0])
 	binary.big_endian_put_u64(mut digest[8..], d.h[1])
 	binary.big_endian_put_u64(mut digest[16..], d.h[2])
@@ -254,7 +254,7 @@ pub fn sum384(data []byte) []byte {
 	mut d := new_digest(.sha384)
 	d.write(data)
 	sum := d.checksum()
-	sum384 := [byte(0)].repeat(size384)
+	sum384 := []byte{len:(size384)}
 	copy(sum384, sum[..size384])
 	return sum384
 }
@@ -264,7 +264,7 @@ pub fn sum512_224(data []byte) []byte {
 	mut d := new_digest(.sha512_224)
 	d.write(data)
 	sum := d.checksum()
-	sum224 := [byte(0)].repeat(size224)
+	sum224 := []byte{len:(size224)}
 	copy(sum224, sum[..size224])
 	return sum224
 }
@@ -274,7 +274,7 @@ pub fn sum512_256(data []byte) []byte {
 	mut d := new_digest(.sha512_256)
 	d.write(data)
 	sum := d.checksum()
-	sum256 := [byte(0)].repeat(size256)
+	sum256 := []byte{len:(size256)}
 	copy(sum256, sum[..size256])
 	return sum256
 }

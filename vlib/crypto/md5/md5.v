@@ -38,8 +38,8 @@ mut:
 }
 
 fn (mut d Digest) reset() {
-	d.s = [u32(0)].repeat(4)
-	d.x = [byte(0)].repeat(block_size)
+	d.s = []u32{len:(4)}
+	d.x = []byte{len:(block_size)}
     d.s[0] = u32(init0)
 	d.s[1] = u32(init1)
 	d.s[2] = u32(init2)
@@ -105,7 +105,7 @@ pub fn (mut d Digest) checksum() []byte {
 	//
 	// 1 byte end marker :: 0-63 padding bytes :: 8 byte length
 	// tmp := [1 + 63 + 8]byte{0x80}
-    mut tmp := [byte(0)].repeat(1 + 63 + 8)
+    mut tmp := []byte{len:(1 + 63 + 8)}
 	tmp[0] = 0x80
 	pad := ((55 - d.len) % 64) // calculate number of padding bytes
 	binary.little_endian_put_u64(mut tmp[1+pad..], d.len<<3) // append length in bits
@@ -117,7 +117,7 @@ pub fn (mut d Digest) checksum() []byte {
 		panic('d.nx != 0')
 	}
 
-    digest := [byte(0)].repeat(size)
+    digest := []byte{len:(size)}
 
 	binary.little_endian_put_u32(mut digest, d.s[0])
 	binary.little_endian_put_u32(mut digest[4..], d.s[1])

@@ -8,7 +8,7 @@ fn check_string_eq () {
 }
 
 fn check_i64_tos() {
-	buffer0 := [byte(0)].repeat(128)
+	buffer0 := []byte{len:(128)}
 	buffer := byteptr(buffer0.data)
 
 	s0 := i64_tos(buffer, 70, 140, 10)
