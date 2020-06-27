@@ -448,7 +448,7 @@ pub fn (mut m map) delete(key string) {
 // Returns all keys in the map.
 // TODO: add optimization in case of no deletes
 pub fn (m &map) keys() []string {
-	mut keys := [''].repeat(m.len)
+	mut keys := []string{ len:m.len }
 	mut j := 0
 	for i := u32(0); i < m.key_values.len; i++ {
 		if m.key_values.keys[i].str == 0 {
