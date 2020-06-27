@@ -40,6 +40,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 	mut has_limit := false
 	mut limit_expr := ast.Expr{}
+	mut has_offset := false
+	mut offset_expr := ast.Expr{}
 	if p.tok.kind == .name && p.tok.lit == 'limit' {
 		// `limit 1` means that a single object is returned
 		p.check_name() // `limit`
@@ -49,6 +51,12 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			has_limit = true
 		}
 		limit_expr = p.expr(0)
+	}
+	if p.tok.kind == .name && p.tok.lit == 'offset' {
+		// `limit 1` means that a single object is returned
+		p.check_name() // `limit`
+		has_offset = true
+		offset_expr = p.expr(0)
 	}
 	if !query_one && !is_count {
 		// return an array
@@ -69,6 +77,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		has_where: has_where
 		has_limit: has_limit
 		limit_expr: limit_expr
+		has_offset: has_offset
+		offset_expr: offset_expr
 		is_array: !query_one
 		pos: pos
 	}
