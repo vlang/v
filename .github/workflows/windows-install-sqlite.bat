@@ -8,4 +8,3 @@ unzip sqlite-amalgamation-3320300.zip -d thirdparty/
 
 move /y thirdparty/sqlite-amalgamation-3320300  thirdparty/sqlite
 
-dir thirdparty thirdparty\sqlite\ thirdparty/sqlite/
