@@ -841,8 +841,10 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			g.writeln(', $key, &($val_styp[]){ $zero }));')
 		}
 		g.stmts(it.stmts)
+		g.writeln('/* for in map cleanup*/ string_free(&$key);')
 		g.writeln('}')
-		g.writeln('array_free(&$keys_tmp)')
+		g.writeln('/*for in map cleanup*/')
+		g.writeln('array_free(&$keys_tmp);')
 	} else if it.cond_type.has_flag(.variadic) {
 		g.writeln('// FOR IN cond_type/variadic')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
