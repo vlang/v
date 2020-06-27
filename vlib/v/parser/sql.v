@@ -53,8 +53,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		limit_expr = p.expr(0)
 	}
 	if p.tok.kind == .name && p.tok.lit == 'offset' {
-		// `limit 1` means that a single object is returned
-		p.check_name() // `limit`
+		p.check_name() // `offset`
 		has_offset = true
 		offset_expr = p.expr(0)
 	}

@@ -173,7 +173,13 @@ fn test_orm_sqlite() {
 		select from User limit 2
 	}
 	assert two_users.len == 2
-	assert two_users[0].id > 0
+	assert two_users[0].id == 1
+	//
+	y := sql db {
+		select from User limit 2 offset 1
+	}
+	assert y.len == 2
+	assert y[0].id == 2
 }
 
 struct User {
