@@ -40,6 +40,7 @@ pub struct Context {
 mut:
 	static_files map[string]string
 	static_mime_types map[string]string
+	content_type string = 'text/plain'
 pub:
 	req http.Request
 	conn net.Socket
@@ -74,12 +75,17 @@ pub fn (mut ctx Context) html(s string) {
 
 pub fn (mut ctx Context) text(s string) Result {
 	ctx.send_response_to_client('text/plain', s)
-	return vweb.Result{}
+	return Result{}
 }
 
 pub fn (mut ctx Context) json(s string) Result {
 	ctx.send_response_to_client('application/json', s)
-	return vweb.Result{}
+	return Result{}
+}
+
+pub fn (mut ctx Context) ok(s string) Result {
+	ctx.send_response_to_client(ctx.content_type, s)
+	return Result{}
 }
 
 pub fn (mut ctx Context) redirect(url string) {
@@ -99,6 +105,10 @@ pub fn (mut ctx Context) set_cookie(key, val string) {
 	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
 	//println('Set-Cookie $key=$val')
 	ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
+}
+
+pub fn (mut ctx Context) set_content_type(typ string) {
+	ctx.content_type = typ
 }
 
 pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor

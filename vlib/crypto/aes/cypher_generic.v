@@ -9,8 +9,8 @@ module aes
 fn new_cipher_generic(key []byte) AesCipher {
 	n := key.len + 28
 	mut c := AesCipher{
-		enc: [u32(0)].repeat(n)
-		dec: [u32(0)].repeat(n)
+		enc: []u32{len:(n)}
+		dec: []u32{len:(n)}
 	}
 	expand_key_generic(key, mut c.enc, mut c.dec)
 	return c

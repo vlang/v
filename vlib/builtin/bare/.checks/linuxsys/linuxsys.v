@@ -40,7 +40,7 @@ fn check_read_write_pipe() {
 	//		sys_read
 	//		sys_close
 	//
-	buffer0 := [byte(0)].repeat(128)
+	buffer0 := []byte{len:(128)}
 	buffer := byteptr(buffer0.data)
 
 	fd := [-1, -1]
@@ -87,7 +87,7 @@ fn check_read_file() {
 			sys_close
 			sys_open
 	*/
-	buffer0 := [byte(0)].repeat(128)
+	buffer0 := []byte{len:(128)}
 	buffer := byteptr(buffer0.data)
 
 	test_file := "sample_text1.txt"

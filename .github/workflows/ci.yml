@@ -229,6 +229,7 @@ jobs:
       run: |
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sdl.bat
+        .\.github\workflows\windows-install-sqlite.bat
     - name: Fixed tests
       run: |
         .\v.exe test-fixed
@@ -261,6 +262,7 @@ jobs:
       run: |
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sdl.bat
+        .\.github\workflows\windows-install-sqlite.bat
     - name: Fixed tests
       run: |
         ./v -cg cmd\tools\vtest-fixed.v
@@ -298,6 +300,7 @@ jobs:
       run: |
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sdl.bat
+        .\.github\workflows\windows-install-sqlite.bat
     - name: Fixed tests
       run: |
         .\v.exe test-fixed

@@ -379,7 +379,7 @@ fn (n &mapnode) subkeys(mut keys []string, at int) int {
 }
 
 pub fn (m &SortedMap) keys() []string {
-	mut keys := [''].repeat(m.len)
+	mut keys := []string{len:m.len}
 	if isnil(m.root) || m.root.len == 0 {
 		return keys
 	}

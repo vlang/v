@@ -148,7 +148,7 @@ fn build_keys() map[string]Kind {
 
 // TODO remove once we have `enum Kind { name('name') if('if') ... }`
 fn build_token_str() []string {
-	mut s := [''].repeat(nr_tokens)
+	mut s := []string{len:(nr_tokens)}
 	s[Kind.unknown] = 'unknown'
 	s[Kind.eof] = 'eof'
 	s[Kind.name] = 'name'
