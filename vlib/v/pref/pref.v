@@ -97,6 +97,7 @@ pub mut:
 	fast                bool // use tcc/x64 codegen
 	enable_globals      bool // allow __global for low level code
 	is_fmt              bool
+	is_vet              bool
 	is_bare             bool
 	no_preludes         bool // Prevents V from generating preludes in resulting .c files
 	custom_prelude		string // Contents of custom V prelude that will be prepended before code in resulting .c files

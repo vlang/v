@@ -114,6 +114,12 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		warnings: []errors.Warning{}
 		global_scope: global_scope
 	}
+	if pref.is_vet && p.scanner.text.contains('\n        ') {
+		// TODO make this smarter
+		println(p.scanner.file_path)
+		println('Looks like you are using spaces for indentation.\n' + 'You can run `v fmt -w file.v` to fix that automatically')
+		exit(1)
+	}
 	return p.parse()
 }
 
@@ -850,8 +856,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	if p.peek_tok.kind == .dot && !known_var &&
-		(language != .v || p.known_import(p.tok.lit) ||
-		p.mod.all_after_last('.') == p.tok.lit) {
+		(language != .v || p.known_import(p.tok.lit) || p.mod.all_after_last('.') == p.tok.lit) {
 		if language == .c {
 			mod = 'C'
 		} else if language == .js {
@@ -870,8 +875,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
 	if p.peek_tok.kind == .lpar ||
-		(p.peek_tok.kind == .lt && p.peek_tok2.kind == .name &&
-		p.peek_tok3.kind == .gt) {
+		(p.peek_tok.kind == .lt && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt) {
 		// foo() or foo<int>()
 		mut name := p.tok.lit
 		if mod.len > 0 {
@@ -1486,7 +1490,7 @@ $pubfn (mut e  $name) set(flag $name)      { unsafe{ *e = int(*e) |  (1 << int(f
 $pubfn (mut e  $name) clear(flag $name)    { unsafe{ *e = int(*e) & ~(1 << int(flag)) } }
 $pubfn (mut e  $name) toggle(flag $name)   { unsafe{ *e = int(*e) ^  (1 << int(flag)) } }
 //
-        ')
+')
 	}
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_
