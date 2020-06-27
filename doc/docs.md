@@ -1417,7 +1417,7 @@ atomic d := ...
   }
   ```
   Several variables may be specified with as `lock x, y, z { ... }`.
-  They are unlocked in the opposite order as the are locked.
+  They are unlocked in the opposite order.
 - `d` can be passed to coroutines accessed *concurrently*,
   too.<sup>3</sup> No lock is needed in this case, however
   `atomic` variables can only be integers or pointers and access is
@@ -1432,12 +1432,48 @@ different options:
 | concurrent access         |     +     |       |     +    |    +     |
 | performance               |    ++     |  ++   |          |    +     |
 | sophisticated operations  |     +     |   +   |     +    |          |
-| structured datatypes      |     +     |   +   |     +    |          |
+| structured data types     |     +     |   +   |     +    |          |
+
+### Strengths
+#### default
+- very fast
+- unlimited access
+- easy to handle
+
+#### `mut`
+- very fast
+- easy to handle
+
+#### `shared`
+- concurrent access from different coroutines
+- complex structures datatypes possible
+- sophisticated access possible (several statements within one `lock`
+  block
+
+#### `atomic`
+- concurrent access from different coroutines
+- reasonably fast
+
+### Weaknesses
+#### default
+- read only
+
+#### `mut`
+- access only from one *owning* coroutine at a time
+
+#### `shared`
+- lock/unlock are slow
+- moderately difficult to handle (needs `lock` block)
+
+#### `atomic`
+- limited to single integers and pointers
+- only a small set of predefined operations possible
+- very difficult to handle
 
 <sup>1</sup> The owning coroutine will also free the memory space used
 for the object when it is no longer needed.  
 <sup>2</sup> For `shared` objects the compiler adds code for reference
-counting. One the counter reaches 0 the object automatically freed.
+counting. One the counter reaches 0 the object automatically freed.  
 <sup>3</sup> Since `atomic` variables are only some bytes in size
 allocation would be an unnecessary overhead. Instead the compiler
 creates global variables.
