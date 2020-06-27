@@ -26,9 +26,9 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.writeln(';')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
 	if node.kind == .insert {
-		g.write('insert into $node.table_name (')
+		g.write('insert into `$node.table_name` (')
 	} else {
-		g.write('update $node.table_name set ')
+		g.write('update `$node.table_name` set ')
 	}
 	if node.kind == .insert {
 		for i, field in node.fields {
