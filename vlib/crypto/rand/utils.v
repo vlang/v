@@ -38,7 +38,7 @@ pub fn int_u64(max u64) ?u64 {
 
 fn bytes_to_u64(b []byte) []u64 {
 	ws := 64/8
-	mut z := [u64(0)].repeat((b.len + ws - 1) / ws)
+	mut z := []u64{len:((b.len + ws - 1) / ws)}
 	mut i := b.len
 	for k := 0; i >= ws; k++ {
 		z[k] = binary.big_endian_u64(b[i-ws..i])

@@ -7,7 +7,7 @@ pub fn run (op fn(), label string, code Wi_si_code, status int) int {
 		sys_exit(0)
 	}
 
-	siginfo := [0].repeat(int(Sig_index.si_size))
+	siginfo := []int{len:int(Sig_index.si_size)}
 
 	e := sys_waitid(.p_pid, child, intptr(&siginfo[0]), .wexited, 0)
 

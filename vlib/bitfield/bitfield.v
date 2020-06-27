@@ -68,7 +68,7 @@ pub fn new(size int) BitField {
 	output := BitField{
 		size: size
 		//field: *u32(calloc(bitnslots(size) * slot_size / 8))
-		field: [u32(0)].repeat(bitnslots(size))
+		field: []u32{len:bitnslots(size)}
 	}
 	return output
 }
@@ -394,7 +394,7 @@ pub fn (mut instance BitField) resize(new_size int) {
 	new_bitnslots := bitnslots(new_size)
 	old_size := instance.size
 	old_bitnslots := bitnslots(old_size)
-	mut field := [u32(0)].repeat(new_bitnslots)
+	mut	field := []u32{len:new_bitnslots}
 	for i := 0; i < old_bitnslots && i < new_bitnslots; i++ {
 		field[i] = instance.field[i]
 	}
