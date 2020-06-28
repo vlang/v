@@ -39,6 +39,8 @@ pub mut:
 	cur_generic_type table.Type
 mut:
 	expr_level       int // to avoid infinit recursion segfaults due to compiler bugs
+	inside_sql       bool // to handle sql table fields pseudo variables
+	cur_orm_ts       table.TypeSymbol
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -2249,6 +2251,11 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return table.int_type
 	}
 	if ident.name != '_' {
+		if c.inside_sql {
+			if field := c.table.struct_find_field(c.cur_orm_ts, ident.name) {
+				return field.typ
+			}
+		}
 		c.error('undefined ident: `$ident.name`', ident.pos)
 	}
 	if c.table.known_type(ident.name) {
@@ -2699,7 +2706,12 @@ fn (c &Checker) fileis(s string) bool {
 }
 
 fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
+	c.inside_sql = true
+	defer {
+		c.inside_sql = false
+	}
 	sym := c.table.get_type_symbol(node.table_type)
+	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
 	node.fields = fields
@@ -2707,6 +2719,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	if node.has_where {
 		// Register this type's fields as variables so they can be used in `where`
 		// expressions
+		/*
 		scope := c.file.scope.innermost(node.pos.pos)
 		for field in fields {
 			// println('registering sql field var $field.name')
@@ -2718,6 +2731,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 				is_changed: true
 			})
 		}
+		*/
 	}
 	if node.has_where {
 		c.expr(node.where_expr)
@@ -2733,23 +2747,32 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 }
 
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
+	c.inside_sql = true
+	defer {
+		c.inside_sql = false
+	}
 	sym := c.table.get_type_symbol(node.table_type)
+	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
 	node.fields = fields
 	// Register this type's fields as variables so they can be used in `where`
 	// expressions
+	/*
 	scope := c.file.scope.innermost(node.pos.pos)
 	for field in fields {
-		// println('registering sql field var $field.name')
+		println('registering sql field var $field.name')
 		scope.register(field.name, ast.Var{
 			name: field.name
 			typ: field.typ
 			is_mut: true
 			is_used: true
 			is_changed: true
+			is_arg: true
 		})
+		// is_arg so that it's not freed TODO not an arg
 	}
+	*/
 	c.expr(node.db_expr)
 	if node.kind == .update {
 		for expr in node.update_exprs {

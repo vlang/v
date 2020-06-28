@@ -2204,8 +2204,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write(', &')
 				}
 				// `x[0] *= y`
-				if g.assign_op != .assign && g.assign_op in token.assign_tokens &&
-						info.elem_type != table.string_type {
+				if g.assign_op != .assign &&
+					g.assign_op in token.assign_tokens &&
+					info.elem_type != table.string_type {
 					// TODO move this
 					g.write('*($elem_type_str*)array_get(')
 					if left_is_ptr {
