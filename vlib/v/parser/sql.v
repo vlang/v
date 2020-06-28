@@ -47,9 +47,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		p.check_name() // `limit`
 		if p.tok.kind == .number && p.tok.lit == '1' {
 			query_one = true
-		} else {
-			has_limit = true
 		}
+		has_limit = true
 		limit_expr = p.expr(0)
 	}
 	if p.tok.kind == .name && p.tok.lit == 'offset' {
