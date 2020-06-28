@@ -1828,11 +1828,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.write(')')
 		}
-	} else if node.op == .left_shift && g.table.get_type_symbol(left_type).kind == .array {
+	} else if node.op == .left_shift && left_sym.kind == .array {
 		// arr << val
 		tmp := g.new_tmp_var()
-		sym := g.table.get_type_symbol(left_type)
-		info := sym.info as table.Array
+		info := left_sym.info as table.Array
 		if right_sym.kind == .array && info.elem_type != node.right_type {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY(&')
