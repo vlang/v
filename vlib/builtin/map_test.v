@@ -248,9 +248,6 @@ fn test_map_assign() {
 	_ := Mstruct3 {
 		{ 'r': u16(6), 's': 5 }
 	}
-	println('d: $d')
-	println('e: $e')
-	println('f: $f')
 }
 
 fn test_postfix_op_directly() {
