@@ -310,7 +310,7 @@ These are the allowed possibilities:
    i8 → i16 → int → i64 ⬏
 ```
 An `int` value for example can be automatically promoted to `f64`
-or `i64` but not to `f32` or `u32`. (`f32` would mean precission
+or `i64` but not to `f32` or `u32`. (`f32` would mean precision
 loss for large values and `u32` would mean loss of the sign for
 negative values).
 
@@ -781,7 +781,7 @@ mut:
     b int   // private mutable
     c int   // (you can list multiple fields with the same access modifier)
 pub:
-    d int   // public immmutable (readonly)
+    d int   // public immutable (readonly)
 pub mut:
     e int   // public, but mutable only in parent module
 __global:
@@ -1446,7 +1446,7 @@ To run the tests do `v hello_test.v`.
 
 To test an entire module, do `v test mymodule`.
 
-You can also do `v test .` to test everything inside your curent folder (and subdirectories).
+You can also do `v test .` to test everything inside your current folder (and subdirectories).
 
 You can pass `-stats` to v test, to see more details about the individual tests in each _test.v file.
 
@@ -1783,7 +1783,7 @@ To cite gcc's documentation: "programmers are notoriously bad at predicting
 how their programs actually perform".
 
 `[inline]` - you can tag functions with `[inline]`, so the C compiler will
-try to inline them, which in some cases, may be beneficial for peformance, 
+try to inline them, which in some cases, may be beneficial for performance, 
 but may impact the size of your executable.
 
 `if _likely_(bool expression) {` this hints the C compiler, that the passed 
@@ -2027,7 +2027,7 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 V has several attributes that modify the behavior of functions and structs.
 
-An attribute is specifed inside `[]` right before the function/struct declaration and applies only to the following definition. 
+An attribute is specified inside `[]` right before the function/struct declaration and applies only to the following definition. 
 
 ```v
 // Calling this function will result in a deprecation warning
