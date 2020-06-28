@@ -151,7 +151,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	} else if kind == .update {
 		if !p.pref.is_fmt {
 			// NB: in vfmt mode, v parses just a single file and table_name may not have been registered
-			idx := p.table.find_type_idx(table_name)
+			idx := p.table.find_type_idx(p.prepend_mod(table_name))
 			table_type = table.new_type(idx)
 		}
 		p.check_sql_keyword('where')
