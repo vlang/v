@@ -148,16 +148,7 @@ fn (mut p Parser) parse() ast.File {
 	}
 	for {
 		if p.tok.kind == .eof {
-			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
-				stmts << ast.FnDecl{
-					name: 'main.main'
-					mod: 'main'
-					file: p.file_name
-					return_type: table.void_type
-				}
-			} else {
-				p.check_unused_imports()
-			}
+			p.check_unused_imports()
 			break
 		}
 		// println('stmt at ' + p.tok.str())
@@ -847,7 +838,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	known_var := p.mark_var_as_used( p.tok.lit )
 	mut is_mod_cast := false
-	if p.peek_tok.kind == .dot && !known_var && 
+	if p.peek_tok.kind == .dot && !known_var &&
 		(language != .v || p.known_import(p.tok.lit) ||
 		p.mod.all_after_last('.') == p.tok.lit) {
 		if language == .c {

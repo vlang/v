@@ -126,7 +126,6 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		table: table
 		pref: pref
 		fn_decl: 0
-		cur_fn: 0
 		autofree: true
 		indent: -1
 		module_built: pref.path.after('vlib/')
@@ -682,8 +681,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					println('build module `$g.module_built` fn `$node.name`')
 				}
 			}
-			keep_fn_decl := g.fn_decl
-			g.fn_decl = node // &it
+			g.fn_decl = node
 			if node.name == 'main.main' {
 				g.has_main = true
 			}
@@ -698,7 +696,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				node.name == 'backtrace_symbols_fd' {
 				g.write('\n#endif\n')
 			}
-			g.fn_decl = keep_fn_decl
+			g.fn_decl = voidptr(0)
 			if skip {
 				g.out.go_back_to(pos)
 			}
@@ -2303,9 +2301,6 @@ fn (g Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) return_statement(node ast.Return) {
-	if g.fn_decl.name == 'main' {
-		return
-	}
 	if node.exprs.len > 0 {
 		// skip `retun $vweb.html()`
 		if node.exprs[0] is ast.ComptimeCall {
@@ -3277,7 +3272,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			g.stmts(stmts)
 		}
 	} else if or_block.kind == .propagate {
-		if g.file.mod.name == 'main' && g.cur_fn.name == 'main' {
+		if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)

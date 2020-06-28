@@ -33,6 +33,13 @@ fn (mut g Gen) gen_c_main_header() {
 		g.writeln('\twchar_t** ___argv = CommandLineToArgvW(cmd_line, &___argc);')
 	}
 	g.writeln('\t_vinit();')
+
+	if g.pref.is_prof {
+		g.writeln('')
+		g.writeln('\tatexit(vprint_profile_stats);')
+		g.writeln('')
+	}
+
 	if g.is_importing_os() {
 		if g.autofree {
 			g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
@@ -52,6 +59,7 @@ pub fn (mut g Gen) gen_c_main_footer() {
 	if g.autofree {
 		g.writeln('\t_vcleanup();')
 	}
+
 	g.writeln('\treturn 0;')
 	g.writeln('}')
 }
