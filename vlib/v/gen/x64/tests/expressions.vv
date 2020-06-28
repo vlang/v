@@ -36,5 +36,5 @@ fn test_add() {
 fn main() {
 	println('start')
 	test_add()
-	println('end1l')
+	println('end')
 }
