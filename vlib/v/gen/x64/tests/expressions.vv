@@ -11,11 +11,19 @@ fn print_number(n int) {
     if n == 9 { println('9') }
 }
 
+struct User {
+	age int
+}
+
+fn print_user(u User) {
+
+}
+
 fn test_add() {
 	println('test_add()')
 	x := 2
-	y := 3
-	z := x + y
+	y :=3
+	z := x * y
 	q := y - x
 	print_number(x)
 	print_number(y)
@@ -26,5 +34,5 @@ fn test_add() {
 fn main() {
 	println('start')
 	test_add()
-	println('end')
+	println('end1l')
 }
