@@ -58,6 +58,7 @@ fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	if ctx.done { return false }
 	ctx.done = true
 	mut sb := strings.new_builder(1024)
+	defer { sb.free() }
 	sb.write('HTTP/1.1 200 OK\r\nContent-Type: ') sb.write(mimetype)
 	sb.write('\r\nContent-Length: ')              sb.write(res.len.str())
 	sb.write(ctx.headers)
@@ -65,7 +66,7 @@ fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	sb.write(headers_close)
 	sb.write(res)
 	ctx.conn.send_string(sb.str()) or { return false }
-	sb.free()
+	//sb.free()
 	return true
 }
 
@@ -304,6 +305,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			return
 		}
 		app.vweb.send_response_to_client(mime_type, data)
+		data.free()
 		return
 	}
 
