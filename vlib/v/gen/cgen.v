@@ -681,6 +681,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					println('build module `$g.module_built` fn `$node.name`')
 				}
 			}
+			keep_fn_decl := g.fn_decl            
 			g.fn_decl = node
 			if node.name == 'main.main' {
 				g.has_main = true
@@ -696,7 +697,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				node.name == 'backtrace_symbols_fd' {
 				g.write('\n#endif\n')
 			}
-			g.fn_decl = voidptr(0)
+			g.fn_decl = keep_fn_decl
 			if skip {
 				g.out.go_back_to(pos)
 			}
