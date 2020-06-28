@@ -435,7 +435,35 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 			f.writeln('')
 		}
-		ast.SqlStmt {}
+		ast.SqlStmt {
+			f.write('sql ')
+			f.expr(it.db_expr)
+			f.writeln(' {')
+			match it.kind as k {
+				.insert {
+					f.writeln('\tinsert $it.object_var_name into $it.table_name')
+				}
+				.update {
+					f.write('\tupdate $it.table_name set ')
+					for i, col in it.updated_columns {
+						f.write('$col = ')
+						f.expr(it.update_exprs[i])
+						if i < it.updated_columns.len - 1 {
+							f.write(', ')
+						} else {
+							f.write(' ')
+						}
+					}
+					f.write('where ')
+					f.expr(it.where_expr)
+					f.writeln('')
+				}
+				.delete {
+					// TODO delete
+				}
+			}
+			f.writeln('}')
+		}
 		ast.StructDecl {
 			f.struct_decl(it)
 		}
@@ -868,7 +896,47 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 			f.write(')')
 		}
-		ast.SqlExpr {}
+		ast.SqlExpr {
+			// sql app.db { select from Contributor where repo == id && user == 0 }
+			f.write('sql ')
+			f.expr(node.db_expr)
+			f.writeln(' {')
+			f.write('\t')
+			f.write('select ')
+			esym := f.table.get_type_symbol(node.table_type)
+			node.table_name = esym.name
+			if node.is_count {
+				f.write('count ')
+			} else {
+				if node.fields.len > 0 {
+					for tfi, tf in node.fields {
+						f.write(tf.name)
+						if tfi < node.fields.len - 1 {
+							f.write(', ')
+						}
+					}
+					f.write(' ')
+				}
+			}
+			f.write('from $node.table_name')
+			f.write(' ')
+			if node.has_where {
+				f.write('where ')
+				f.expr(node.where_expr)
+				f.write(' ')
+			}
+			if node.has_limit {
+				f.write('limit ')
+				f.expr(node.limit_expr)
+				f.write(' ')
+			}
+			if node.has_offset {
+				f.write('offset ')
+				f.expr(node.offset_expr)
+			}
+			f.writeln('')
+			f.write('}')
+		}
 		ast.StringLiteral {
 			if node.is_raw {
 				f.write('r')

@@ -198,7 +198,8 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				'=', '++', '--', '<<',
 				'//', '/*',
 				'fn ', 'pub ', 'mut ', 'enum ', 'const ', 'struct ', 'interface ', 'import ',
-				'#include ', ':=', 'for ', 'or '
+				'#include ', ':=', 'for ', 'or ', 'insert', 'delete', 'prepend',
+				'sort', 'clear', 'trim',
 			]
 			mut is_statement := false
 			for pattern in possible_statement_patterns {

@@ -1144,9 +1144,17 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			mut str_add := false
 			if var_type == table.string_type_idx && assign_stmt.op == .plus_assign {
-				// str += str2 => `str = string_add(str, str2)`
-				g.expr(left)
-				g.write(' = /*f*/string_add(')
+				if left is ast.IndexExpr {
+					// a[0] += str => `array_set(&a, 0, &(string[]) {string_add(...))})`
+					g.expr(left)
+					g.write('string_add(')
+				} else {
+					// str += str2 => `str = string_add(str, str2)`
+					g.expr(left)
+					g.write(' = /*f*/string_add(')
+				}
+				g.is_assign_lhs = false
+				g.is_assign_rhs = true
 				str_add = true
 			}
 			if right_sym.kind == .function && is_decl {
@@ -1209,11 +1217,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if unwrap_optional {
 				g.write('.data')
 			}
+			if str_add {
+				g.write(')')
+			}
 			if g.is_array_set {
 				g.write(' })')
 				g.is_array_set = false
-			} else if str_add {
-				g.write(')')
 			}
 		}
 		g.right_is_opt = false
@@ -1819,11 +1828,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.write(')')
 		}
-	} else if node.op == .left_shift && g.table.get_type_symbol(left_type).kind == .array {
+	} else if node.op == .left_shift && left_sym.kind == .array {
 		// arr << val
 		tmp := g.new_tmp_var()
-		sym := g.table.get_type_symbol(left_type)
-		info := sym.info as table.Array
+		info := left_sym.info as table.Array
 		if right_sym.kind == .array && info.elem_type != node.right_type {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY(&')
@@ -2196,7 +2204,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write(', &')
 				}
 				// `x[0] *= y`
-				if g.assign_op != .assign && g.assign_op in token.assign_tokens {
+				if g.assign_op != .assign && g.assign_op in token.assign_tokens &&
+						info.elem_type != table.string_type {
 					// TODO move this
 					g.write('*($elem_type_str*)array_get(')
 					if left_is_ptr {
