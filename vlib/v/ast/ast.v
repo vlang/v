@@ -323,10 +323,10 @@ pub struct File {
 pub:
 	path         string
 	mod          Module
-	stmts        []Stmt
 	scope        &Scope
 	global_scope &Scope
 pub mut:
+	stmts        []Stmt
 	imports      []Import
 	errors       []errors.Error
 	warnings     []errors.Warning

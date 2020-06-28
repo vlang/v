@@ -105,15 +105,33 @@ pub fn (mut c Checker) check2(ast_file ast.File) []errors.Error {
 pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	mut has_main_mod_file := false
 	mut has_main_fn := false
-	for file in ast_files {
+
+	mut files_from_main_module := []&ast.File{}
+	for i in 0..ast_files.len {
+		file := &ast_files[i]
 		c.check(file)
 		if file.mod.name == 'main' {
+			files_from_main_module << file
 			has_main_mod_file = true
 			if c.check_file_in_main(file) {
 				has_main_fn = true
 			}
 		}
 	}
+
+	if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
+		if c.pref.is_script && !c.pref.is_test {
+			first_main_file := files_from_main_module[0]
+			first_main_file.stmts << ast.FnDecl{
+				name: 'main.main'
+				mod: 'main'
+				file: first_main_file.path
+				return_type: table.void_type
+			}
+			has_main_fn = true
+		}
+	}
+
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
