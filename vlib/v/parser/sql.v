@@ -47,9 +47,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		p.check_name() // `limit`
 		if p.tok.kind == .number && p.tok.lit == '1' {
 			query_one = true
-		} else {
-			has_limit = true
 		}
+		has_limit = true
 		limit_expr = p.expr(0)
 	}
 	if p.tok.kind == .name && p.tok.lit == 'offset' {
@@ -150,8 +149,11 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		// fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
 		table_name = sym.name
 	} else if kind == .update {
-		idx := p.table.find_type_idx(table_name)
-		table_type = table.new_type(idx)
+		if !p.pref.is_fmt {
+			// NB: in vfmt mode, v parses just a single file and table_name may not have been registered
+			idx := p.table.find_type_idx(table_name)
+			table_type = table.new_type(idx)
+		}
 		p.check_sql_keyword('where')
 		where_expr = p.expr(0)
 	}
