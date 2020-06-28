@@ -1389,8 +1389,9 @@ fn caller() {
 
 ***The following paragraph describes features that are not implemented, yet.***
 
-To handle data exchange between coroutines more there will be 4
-different ways to declare a variable:
+Objects that are supposed to be used to exchange data between
+coroutines have to be declared with special care. Exactly one of the following
+4 kinds of declaration has to be chosen:
 
 ```v
 a := ...
