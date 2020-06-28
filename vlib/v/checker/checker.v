@@ -2711,6 +2711,10 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 		c.inside_sql = false
 	}
 	sym := c.table.get_type_symbol(node.table_type)
+	if sym.kind == .placeholder {
+		c.error('orm: unknown type `$sym.name`', node.pos)
+		return table.void_type
+	}
 	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
@@ -2751,7 +2755,14 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	defer {
 		c.inside_sql = false
 	}
+	if node.table_type == 0 {
+		c.error('orm: unknown type `$node.table_name`', node.pos)
+	}
 	sym := c.table.get_type_symbol(node.table_type)
+	if sym.kind == .placeholder {
+		c.error('orm: unknown type `$sym.name`', node.pos)
+		return table.void_type
+	}
 	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
