@@ -135,7 +135,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	// ////////////
 	g.write_defer_stmts_when_needed()
 	// /////////
-	if g.autofree && !is_main {
+	if g.autofree {
 		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
 		g.writeln(g.autofree_scope_vars(it.body_pos.pos))
 	}
