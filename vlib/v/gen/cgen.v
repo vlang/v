@@ -1145,16 +1145,16 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			mut str_add := false
 			if var_type == table.string_type_idx && assign_stmt.op == .plus_assign {
 				if left is ast.IndexExpr {
-					// a[0] += str ==> array_set(&a, 0, &(string[]) {string_add(...))
+					// a[0] += str => `array_set(&a, 0, &(string[]) {string_add(...))})`
 					g.expr(left)
 					g.write('string_add(')
-					g.is_assign_lhs = false
-					g.is_assign_rhs = true
 				} else {
 					// str += str2 => `str = string_add(str, str2)`
 					g.expr(left)
 					g.write(' = /*f*/string_add(')
 				}
+				g.is_assign_lhs = false
+				g.is_assign_rhs = true
 				str_add = true
 			}
 			if right_sym.kind == .function && is_decl {
