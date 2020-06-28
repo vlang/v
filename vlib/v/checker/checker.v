@@ -2721,23 +2721,6 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	node.fields = fields
 	node.table_name = sym.name
 	if node.has_where {
-		// Register this type's fields as variables so they can be used in `where`
-		// expressions
-		/*
-		scope := c.file.scope.innermost(node.pos.pos)
-		for field in fields {
-			// println('registering sql field var $field.name')
-			scope.register(field.name, ast.Var{
-				name: field.name
-				typ: field.typ
-				is_mut: true
-				is_used: true
-				is_changed: true
-			})
-		}
-		*/
-	}
-	if node.has_where {
 		c.expr(node.where_expr)
 	}
 	if node.has_offset {
@@ -2767,23 +2750,6 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
 	node.fields = fields
-	// Register this type's fields as variables so they can be used in `where`
-	// expressions
-	/*
-	scope := c.file.scope.innermost(node.pos.pos)
-	for field in fields {
-		println('registering sql field var $field.name')
-		scope.register(field.name, ast.Var{
-			name: field.name
-			typ: field.typ
-			is_mut: true
-			is_used: true
-			is_changed: true
-			is_arg: true
-		})
-		// is_arg so that it's not freed TODO not an arg
-	}
-	*/
 	c.expr(node.db_expr)
 	if node.kind == .update {
 		for expr in node.update_exprs {
