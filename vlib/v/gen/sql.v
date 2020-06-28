@@ -27,16 +27,16 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.writeln(';')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
 	if node.kind == .insert {
-		g.write('INSERT INTO ${util.strip_mod_name(node.table_name)} (')
+		g.write('INSERT INTO `${util.strip_mod_name(node.table_name)}` (')
 	} else {
-		g.write('UPDATE ${util.strip_mod_name(node.table_name)} SET ')
+		g.write('UPDATE `${util.strip_mod_name(node.table_name)}` SET ')
 	}
 	if node.kind == .insert {
 		for i, field in node.fields {
 			if field.name == 'id' {
 				continue
 			}
-			g.write(field.name)
+			g.write('`${field.name}`')
 			if i < node.fields.len - 1 {
 				g.write(', ')
 			}
@@ -102,24 +102,24 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	```
 	*/
 	cur_line := g.go_before_stmt(0)
-	mut q := 'SELECT '
+	mut sql_query := 'SELECT '
 	if node.is_count {
 		// `select count(*) from User`
-		q += 'COUNT(*) from ${util.strip_mod_name(node.table_name)}'
+		sql_query += 'COUNT(*) FROM `${util.strip_mod_name(node.table_name)}` '
 	} else {
 		// `select id, name, country from User`
 		for i, field in node.fields {
-			q += '$field.name'
+			sql_query += '`${field.name}`'
 			if i < node.fields.len - 1 {
-				q += ', '
+				sql_query += ', '
 			}
 		}
-		q += ' FROM ${util.strip_mod_name(node.table_name)}'
+		sql_query += ' FROM `${util.strip_mod_name(node.table_name)}`'
 	}
 	if node.has_where {
-		q += ' WHERE '
+		sql_query += ' WHERE '
 	}
-	// g.write('${dbtype}__DB_q_int(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$q')
+	// g.write('${dbtype}__DB_q_int(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$sql_query')
 	g.sql_stmt_name = g.new_tmp_var()
 	db_name := g.new_tmp_var()
 	g.writeln('\n\t// sql select')
@@ -127,8 +127,9 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	g.write('${dbtype}__DB $db_name = ') // $node.db_var_name;')
 	g.expr(node.db_expr)
 	g.writeln(';')
-	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$q')
-	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("$q')
+	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$sql_query')
+	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
+	g.write(sql_query)
 	if node.has_where && node.where_expr is ast.InfixExpr {
 		g.expr_to_sql(node.where_expr)
 	}
