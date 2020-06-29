@@ -36,7 +36,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	is_typedef := 'typedef' in p.attrs
 	end_pos := p.tok.position()
 	mut name := p.check_name()
-
+	if name.len == 1 && name[0].is_capital() {
+		p.error_with_pos('single letter capital names are reserved for generic template types.', end_pos)
+	}
 	mut generic_types := []table.Type{}
 	if p.tok.kind == .lt {
 		p.next()
