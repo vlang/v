@@ -115,6 +115,10 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 	ctx.content_type = typ
 }
 
+pub fn (mut ctx Context) set_cookie_with_expire_date(key, val string, expire_date time.Time) {
+	ctx.add_header('Set-Cookie', '$key=$val;  Secure; HttpOnly; expires=${expire_date.utc_string()}')
+}
+
 pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	mut cookie_header := ctx.get_header('cookie')
 	if cookie_header == '' {
