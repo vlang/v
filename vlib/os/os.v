@@ -197,7 +197,6 @@ pub fn cp(old, new string) ? {
 			return error_with_code('failed to set permissions for $new', int(-1))
 		}
 	}
-	return none
 }
 
 [deprecated]
@@ -226,7 +225,7 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ? {
 		os.cp(source_path, adjusted_path) or {
 			return error(err)
 		}
-		return none
+		return
 	}
 	if !os.is_dir(dest_path) {
 		return error('Destination path is not a valid directory')
@@ -247,7 +246,6 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ? {
 			panic(err)
 		}
 	}
-	return none
 }
 
 // mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
@@ -259,7 +257,6 @@ pub fn mv_by_cp(source string, target string) ? {
 	os.rm(source) or {
 		return error(err)
 	}
-	return none
 }
 
 // vfopen returns an opened C file, given its path and open mode.
@@ -639,7 +636,6 @@ pub fn rm(path string) ? {
 			return error(posix_get_error_msg(C.errno))
 		}
 	}
-	return none
 	// C.unlink(path.cstr())
 }
 // rmdir removes a specified directory.
@@ -656,7 +652,6 @@ pub fn rmdir(path string) ? {
 			return error(posix_get_error_msg(C.errno))
 		}
 	}
-	return none
 }
 
 [deprecated]
@@ -680,7 +675,6 @@ pub fn rmdir_all(path string) ? {
 	if ret_err.len > 0 {
 		return error(ret_err)
 	}
-	return none
 }
 
 pub fn is_dir_empty(path string) bool {
@@ -885,7 +879,7 @@ pub fn home_dir() string {
 }
 
 // write_file writes `text` data to a file in `path`.
-pub fn write_file(path, text string) ?{
+pub fn write_file(path, text string) ? {
 	mut f := os.create(path) or {
 		return error(err)
 	}
