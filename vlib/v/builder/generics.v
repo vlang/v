@@ -19,7 +19,7 @@ pub fn (b &Builder) instantiate_generic_structs() {
 					}
 					for j, gp in parent_info.generic_types {
 						if gp == field.typ {
-							field.typ = info.generic_types[j]
+							field.typ = info.generic_types[j].derive(field.typ).clear_flag(.generic)
 							break
 						}
 					}
