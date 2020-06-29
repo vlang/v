@@ -871,3 +871,9 @@ fn test_mutli_array_index() {
 	b[0][0] = 1
 	assert '$b' == '[[1, 0, 0], [0, 0, 0]]'
 }
+
+fn test_plus_assign_string() {
+	mut a := ['']
+	a[0] += 'abc'
+	assert a == ['abc']
+}

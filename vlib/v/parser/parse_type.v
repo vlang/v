@@ -75,7 +75,7 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 	// p.warn('parse fn')
 	p.check(.key_fn)
 	line_nr := p.tok.line_nr
-	args, is_variadic := p.fn_args()
+	args, _, is_variadic := p.fn_args()
 	mut return_type := table.void_type
 	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()

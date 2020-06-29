@@ -38,13 +38,23 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			}
 		}
 	}
+	mut has_limit := false
+	mut limit_expr := ast.Expr{}
+	mut has_offset := false
+	mut offset_expr := ast.Expr{}
 	if p.tok.kind == .name && p.tok.lit == 'limit' {
 		// `limit 1` means that a single object is returned
 		p.check_name() // `limit`
 		if p.tok.kind == .number && p.tok.lit == '1' {
 			query_one = true
 		}
-		p.next()
+		has_limit = true
+		limit_expr = p.expr(0)
+	}
+	if p.tok.kind == .name && p.tok.lit == 'offset' {
+		p.check_name() // `offset`
+		has_offset = true
+		offset_expr = p.expr(0)
 	}
 	if !query_one && !is_count {
 		// return an array
@@ -63,6 +73,10 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		table_type: table_type
 		where_expr: where_expr
 		has_where: has_where
+		has_limit: has_limit
+		limit_expr: limit_expr
+		has_offset: has_offset
+		offset_expr: offset_expr
 		is_array: !query_one
 		pos: pos
 	}
@@ -121,8 +135,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 			update_exprs << p.expr(0)
 			if p.tok.kind == .comma {
 				p.check(.comma)
-			}
-			else {
+			} else {
 				break
 			}
 		}
@@ -136,8 +149,11 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		// fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
 		table_name = sym.name
 	} else if kind == .update {
-		idx := p.table.find_type_idx(table_name)
-		table_type = table.new_type(idx)
+		if !p.pref.is_fmt {
+			// NB: in vfmt mode, v parses just a single file and table_name may not have been registered
+			idx := p.table.find_type_idx(table_name)
+			table_type = table.new_type(idx)
+		}
 		p.check_sql_keyword('where')
 		where_expr = p.expr(0)
 	}

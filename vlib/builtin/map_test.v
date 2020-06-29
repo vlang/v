@@ -283,3 +283,10 @@ fn test_map_in_directly() {
 		assert v == 1
 	}
 }
+
+fn test_plus_assign_string() {
+	mut m := {'one': ''}
+	m['one'] += '1'
+	assert m.len == 1
+	assert m['one'] == '1'
+}

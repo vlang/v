@@ -114,6 +114,12 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		warnings: []errors.Warning{}
 		global_scope: global_scope
 	}
+	if pref.is_vet && p.scanner.text.contains('\n        ') {
+		// TODO make this smarter
+		println(p.scanner.file_path)
+		println('Looks like you are using spaces for indentation.\n' + 'You can run `v fmt -w file.v` to fix that automatically')
+		exit(1)
+	}
 	return p.parse()
 }
 
@@ -849,9 +855,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			else {}
 		}
 	}
+	mut is_mod_cast := false
 	if p.peek_tok.kind == .dot && !known_var &&
-		(language != .v || p.known_import(p.tok.lit) ||
-		p.mod.all_after_last('.') == p.tok.lit) {
+		(language != .v || p.known_import(p.tok.lit) || p.mod.all_after_last('.') == p.tok.lit) {
 		if language == .c {
 			mod = 'C'
 		} else if language == .js {
@@ -859,6 +865,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			if p.tok.lit in p.imports {
 				p.register_used_import(p.tok.lit)
+				if p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital() {
+					is_mod_cast = true
+				}
 			}
 			// prepend the full import
 			mod = p.imports[p.tok.lit]
@@ -881,9 +890,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if !known_var && (name in p.table.type_idxs ||
-			name_w_mod in p.table.type_idxs) &&
-			name !in ['C.stat', 'C.sigaction'] {
+		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) &&
+			name !in ['C.stat', 'C.sigaction']) || is_mod_cast {
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
@@ -1487,7 +1495,7 @@ $pubfn (mut e  $name) set(flag $name)      { unsafe{ *e = int(*e) |  (1 << int(f
 $pubfn (mut e  $name) clear(flag $name)    { unsafe{ *e = int(*e) & ~(1 << int(flag)) } }
 $pubfn (mut e  $name) toggle(flag $name)   { unsafe{ *e = int(*e) ^  (1 << int(flag)) } }
 //
-        ')
+')
 	}
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_

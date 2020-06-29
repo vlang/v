@@ -11,7 +11,7 @@ import v.builder
 
 const (
 	simple_cmd = [
-		'fmt', 'up',
+		'fmt', 'up', 'vet',
 		'self', 'symlink', 'bin2v',
 		'test', 'test-fmt', 'test-compiler', 'test-fixed',
 		'repl',
@@ -79,7 +79,7 @@ fn main_v() {
 			return
 		}
 		'vlib-docs' {
-			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', '-m', '-s', os.join_path(os.base_dir(@VEXE), 'vlib')])
+			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', 'vlib'])
 		}
 		'get' {
 			println('V Error: Use `v install` to install modules from vpm.vlang.io')

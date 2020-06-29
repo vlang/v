@@ -362,7 +362,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			p.error('interface methods cannot contain uppercase letters, use snake_case instead')
 		}
 		// field_names << name
-		args2, _ := p.fn_args() // TODO merge table.Arg and ast.Arg to avoid this
+		args2, _, _ := p.fn_args() // TODO merge table.Arg and ast.Arg to avoid this
 		mut args := [table.Arg{
 			name: 'x'
 			typ: typ

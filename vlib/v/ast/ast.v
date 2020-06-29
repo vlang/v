@@ -106,7 +106,7 @@ pub:
 	field_name string
 pub mut:
 	expr_type  table.Type // type of `Foo` in `Foo.bar`
-	typ  table.Type // type of the entire thing (`Foo.bar`)
+	typ        table.Type // type of the entire thing (`Foo.bar`)
 }
 
 // module declaration
@@ -211,10 +211,10 @@ pub:
 
 pub struct AnonFn {
 pub:
-	decl FnDecl
+	decl      FnDecl
 	is_called bool
 pub mut:
-	typ  table.Type
+	typ       table.Type
 }
 
 pub struct FnDecl {
@@ -809,7 +809,6 @@ pub enum SqlExprKind {
 	update
 }
 */
-
 pub enum SqlStmtKind {
 	insert
 	update
@@ -818,32 +817,36 @@ pub enum SqlStmtKind {
 
 pub struct SqlStmt {
 pub:
-	kind SqlStmtKind
-	db_expr    Expr // `db` in `sql db {`
+	kind            SqlStmtKind
+	db_expr         Expr // `db` in `sql db {`
 	object_var_name string // `user`
 	table_type      table.Type
-	pos token.Position
-	where_expr Expr
-	updated_columns []string //for `update set x=y`
-	update_exprs []Expr//for `update`
+	pos             token.Position
+	where_expr      Expr
+	updated_columns []string // for `update set x=y`
+	update_exprs    []Expr // for `update`
 pub mut:
-	table_name string
-	fields     []table.Field
+	table_name      string
+	fields          []table.Field
 }
 
 pub struct SqlExpr {
 pub:
-	typ        table.Type
-	is_count   bool
-	db_expr    Expr // `db` in `sql db {`
-	where_expr Expr
-	has_where  bool
-	is_array   bool
-	table_type table.Type
-	pos token.Position
+	typ         table.Type
+	is_count    bool
+	db_expr     Expr // `db` in `sql db {`
+	where_expr  Expr
+	has_where   bool
+	has_offset  bool
+	offset_expr Expr
+	is_array    bool
+	table_type  table.Type
+	pos         token.Position
+	has_limit   bool
+	limit_expr  Expr
 pub mut:
-	table_name string
-	fields     []table.Field
+	table_name  string
+	fields      []table.Field
 }
 
 [inline]
@@ -898,8 +901,7 @@ pub fn (expr Expr) position() token.Position {
 		InfixExpr {
 			left_pos := expr.left.position()
 			right_pos := expr.right.position()
-			if left_pos.pos == 0 ||
-				right_pos.pos == 0 {
+			if left_pos.pos == 0 || right_pos.pos == 0 {
 				return expr.pos
 			}
 			return token.Position{

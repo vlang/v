@@ -5,10 +5,20 @@ import sqlite
 
 struct Module {
 	id int
-	user_id int
-	//name string
-	//url string
-	//nr_downloads int
+	name string
+	nr_downloads int
+}
+
+struct User {
+	id int
+	age int
+	name string
+	is_customer bool
+	skipped_string string [skip]
+}
+
+struct Foo {
+	age int
 }
 
 fn test_orm_sqlite() {
@@ -168,21 +178,26 @@ fn test_orm_sqlite() {
 	}
 	assert no_user.name == '' // TODO optional
 	assert no_user.age == 0
+	//
+	two_users := sql db {
+		select from User limit 2
+	}
+	assert two_users.len == 2
+	assert two_users[0].id == 1
+	//
+	y := sql db {
+		select from User limit 2 offset 1
+	}
+	assert y.len == 2
+	assert y[0].id == 2
+	//
+	offset_const := 2
+	z := sql db {
+		select from User limit 2 offset offset_const
+	}
+	assert z.len == 2
+	assert z[0].id == 3
 }
-
-struct User {
-	id int
-	age int
-	name string
-	is_customer bool
-	skipped_string string [skip]
-}
-
-struct Foo {
-	age int
-}
-
-
 
 fn test_orm_pg() {
 /*

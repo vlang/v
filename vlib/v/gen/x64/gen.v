@@ -437,6 +437,17 @@ fn (mut g Gen) sub8_var(reg Register, var_offset int) {
 	g.println('sub8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
 }
 
+fn (mut g Gen) mul8_var(reg Register, var_offset int) {
+	g.write8(0x0f)
+	g.write8(0xaf)
+	match reg {
+		.eax, .rax { g.write8(0x45) }
+		else { verror('mul8_var') }
+	}
+	g.write8(0xff - var_offset + 1)
+	g.println('mul8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
+}
+
 fn (mut g Gen) leave() {
 	g.write8(0xc9)
 	g.println('leave')
@@ -732,6 +743,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		var_offset := g.get_var_offset(ident.name)
 		match node.op {
 			.plus { g.add8_var(.eax, var_offset) }
+			.mul { g.mul8_var(.eax, var_offset) }
 			.minus { g.sub8_var(.eax, var_offset) }
 			else {}
 		}
