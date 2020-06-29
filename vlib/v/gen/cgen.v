@@ -393,7 +393,7 @@ fn (g &Gen) cc_type(t table.Type) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(t))
 	mut styp := sym.name.replace('.', '__')
 	if sym.kind == .struct_ {
-		// TODO: maybe keep c name in info
+		// TODO: maybe keep c name in info ( this is yuck )
 		info := sym.info as table.Struct
 		if info.generic_types.len > 0 {
 			mut sgts := '_T'
@@ -408,7 +408,7 @@ fn (g &Gen) cc_type(t table.Type) string {
 			styp += sgts
 		}
 		else {
-			// TODO: maybe keep c name in info
+			// TODO: maybe keep c name in info ( this is yuck )
 			styp = styp.replace('<', '_T_').replace('>', '').replace(',', '_')
 		}
 	}
@@ -2841,7 +2841,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				if info.generic_types.len > 0 {
 					continue
 				}
-				// TODO: maybe keep c name in info
+				// TODO: maybe keep c name in info ( this is yuck )
 				name = name.replace('<', '_T_').replace('>', '').replace(',', '_')
 				if name.contains('_T_') {
 					g.typedefs.writeln('typedef struct $name $name;')
