@@ -13,8 +13,9 @@ or Markdown format.
 Options:
   -all            Includes private and public functions/methods/structs/consts/enums.
   -f              Specifies the output format to be used.
-  -m              Generate docs for modules listed in that folder.
   -h, -help       Prints this help text.
+  -m              Generate docs for modules listed in that folder.
+  -o              Specifies the output file/folder path where to store the generated docs.
   -readme         Include README.md to docs if present.
   -v              Enables verbose logging. For debugging purposes.
 
@@ -26,4 +27,3 @@ For HTML mode:
 
 For plain text mode:
   -l              Show the locations of the generated signatures.
-  -o              Specifies the output file/folder path where to store the generated docs.
