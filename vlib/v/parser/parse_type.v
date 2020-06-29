@@ -314,9 +314,9 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 		}
 		gt_idx = p.table.add_placeholder_type(bs_name)
 		idx := p.table.register_type_symbol(table.TypeSymbol{
-			kind: .generic_struct_instance
+			kind: .generic_struct_inst
 			name: bs_name
-			info: table.GenericStructInstance{
+			info: table.GenericStructInst{
 				parent_idx: p.table.type_idxs[name]
 				generic_types: generic_types
 			}

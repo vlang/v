@@ -2,15 +2,16 @@ module builder
 
 import v.table
 
-pub fn (b &Builder) instantiate_generic_structs() {
+// generic struct instantiations to concrete types
+pub fn (b &Builder) generic_struct_insts_to_concrete() {
 	for idx, _ in b.table.types {
 		mut typ := &b.table.types[idx]
-		if typ.kind == .generic_struct_instance {
-			info := typ.info as table.GenericStructInstance
+		if typ.kind == .generic_struct_inst {
+			info := typ.info as table.GenericStructInst
 			parent := b.table.types[info.parent_idx]
 			mut parent_info := *(parent.info as table.Struct)
 			mut fields := parent_info.fields.clone()
-			for i, _ in parent_info.fields {
+			for i, _ in fields {
 				mut field := fields[i]
 				if field.typ.has_flag(.generic) {
 					if parent_info.generic_types.len != info.generic_types.len {
@@ -27,9 +28,10 @@ pub fn (b &Builder) instantiate_generic_structs() {
 				fields[i] = field
 			}
 			parent_info.generic_types = []
+			parent_info.fields = fields
 			typ.is_public = true
 			typ.kind = .struct_
-			typ.info = {parent_info| fields: fields}
+			typ.info = parent_info
 		}
 	}
 }

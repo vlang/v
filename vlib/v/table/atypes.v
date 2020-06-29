@@ -16,7 +16,7 @@ import strings
 pub type Type int
 
 pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map | MultiReturn |
-	Struct | GenericStructInstance | SumType
+	Struct | GenericStructInst | SumType
 
 pub enum Language {
 	v
@@ -321,7 +321,7 @@ pub enum Kind {
 	map
 	any
 	struct_
-	generic_struct_instance
+	generic_struct_inst
 	multi_return
 	sum_type
 	alias
@@ -623,9 +623,10 @@ pub mut:
 	generic_types []Type
 }
 
-pub struct GenericStructInstance {
+// instantiation of a generic struct
+pub struct GenericStructInst {
 pub mut:
-	parent_idx    int
+	parent_idx    int // idx of the base generic struct
 	generic_types []Type
 }
 

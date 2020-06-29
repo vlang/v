@@ -238,7 +238,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		.struct_ {
 			styp = g.struct_typ(sym.name)
 		}
-		.generic_struct_instance {}
+		.generic_struct_inst {}
 		// 'multi_return_int_int' => '[number, number]'
 		.multi_return {
 			info := sym.info as table.MultiReturn
