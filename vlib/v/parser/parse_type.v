@@ -246,69 +246,82 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool) table
 					return table.bool_type
 				}
 				else {
+					if name.len == 1 && name[0].is_capital() {
+						return p.parse_generic_template_type(name)
+					}
 					if p.peek_tok.kind == .lt {
-						oname := name
-						mut generic_types := []table.Type{}
-						p.next()
-						p.next()
-						name += '<'
-						// mut generic_types := []table.Type{}
-						mut is_instance := false
-						for {
-							gt := p.parse_type()
-							if gt != table.t_type {
-								is_instance = true
-							}
-							// if gt != table.t_type {
-								gts := p.table.get_type_symbol(gt)
-								name += gts.name
-								generic_types << gt
-							// }
-							// name += p.check_name()
-							if p.tok.kind != .comma {
-								break
-							}
-							p.next()
-							name += ','
-						}
-						// p.check(.gt)
-						name += '>'
-						parent_name := name.all_before('<')
-						if is_instance && generic_types.len > 0 {
-							mut gt_idx := p.table.find_type_idx(name)
-							if gt_idx > 0 {
-								return table.new_type(gt_idx)
-							}
-							gt_idx = p.table.add_placeholder_type(name)
-							println('REGISTERING: $name - $gt_idx')
-							println(generic_types)
-							idx := p.table.register_type_symbol(table.TypeSymbol{
-								kind: .generic_struct_instance
-								name: name
-								info: table.GenericStructInstance{
-									parent_idx: p.table.type_idxs[parent_name]
-									generic_types: generic_types
-								}
-							})
-							return table.new_type(idx)
-						}
-						else {
-							name = oname
-						}
+						return p.parse_generic_struct_inst_type(name)
 					}
-
-					// struct / enum / placeholder
-					// struct / enum
-					mut idx := p.table.find_type_idx(name)
-					if idx > 0 {
-						return table.new_type(idx)
-					}
-					// not found - add placeholder
-					idx = p.table.add_placeholder_type(name)
-					// println('NOT FOUND: $name - adding placeholder - $idx')
-					return table.new_type(idx)
+					return p.parse_enum_or_struct_type(name)
 				}
 			}
 		}
 	}
+}
+
+pub fn (mut p Parser) parse_enum_or_struct_type(name string) table.Type {
+	// struct / enum / placeholder
+	// struct / enum
+	mut idx := p.table.find_type_idx(name)
+	if idx > 0 {
+		return table.new_type(idx)
+	}
+	// not found - add placeholder
+	idx = p.table.add_placeholder_type(name)
+	// println('NOT FOUND: $name - adding placeholder - $idx')
+	return table.new_type(idx)
+}
+
+pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
+	mut idx := p.table.find_type_idx(name)
+	if idx > 0 {
+		return table.new_type(idx).set_flag(.generic)
+	}
+	idx = p.table.register_type_symbol(table.TypeSymbol{
+		name: name
+		kind: .any
+		is_public: true
+	})
+	return table.new_type(idx).set_flag(.generic)
+}
+
+pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
+	mut bs_name := name
+	p.next()
+	bs_name += '<'
+	mut generic_types := []table.Type{}
+	mut is_instance := false
+	for {
+		gt := p.parse_type()
+		if !gt.has_flag(.generic) {
+			is_instance = true
+		}
+		gts := p.table.get_type_symbol(gt)
+		bs_name += gts.name
+		generic_types << gt
+		if p.tok.kind != .comma {
+			break
+		}
+		p.next()
+		bs_name += ','
+	}
+	p.check(.gt)
+	bs_name += '>'
+	if is_instance && generic_types.len > 0 {
+		mut gt_idx := p.table.find_type_idx(bs_name)
+		if gt_idx > 0 {
+			return table.new_type(gt_idx)
+		}
+		gt_idx = p.table.add_placeholder_type(bs_name)
+		idx := p.table.register_type_symbol(table.TypeSymbol{
+			kind: .generic_struct_instance
+			name: bs_name
+			info: table.GenericStructInstance{
+				parent_idx: p.table.type_idxs[name]
+				generic_types: generic_types
+			}
+		})
+		return table.new_type(idx)
+	}
+	return p.parse_enum_or_struct_type(name)
 }

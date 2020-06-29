@@ -5,7 +5,6 @@ import os
 import v.parser
 import v.pref
 import v.gen
-import v.table
 
 pub fn (mut b Builder) gen_c(v_files []string) string {
 	t0 := time.ticks()
@@ -15,46 +14,7 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 	parse_time := t1 - t0
 	b.info('PARSE: ${parse_time}ms')
 	//
-
-
-
-	for idx, _ in b.table.types {
-		mut typ := &b.table.types[idx]
-		if typ.kind == .generic_struct_instance {
-			println('#### $typ.name')
-			info := typ.info as table.GenericStructInstance
-			parent := b.table.types[info.parent_idx]
-			if parent.info !is table.Struct {
-				println("WTF NOT STRUCT: $typ.name")
-			}
-			mut parent_info := *(parent.info as table.Struct)
-			mut fields := parent_info.fields.clone()
-			for i, _ in parent_info.fields {
-				mut field := fields[i]
-				gta := b.table.get_type_symbol(field.typ)
-				println(' * field typ: $gta.name')
-				if field.typ == table.t_type {
-					for j, gp in parent_info.generic_types {
-						if gp == field.typ {
-							field.typ = info.generic_types[j]
-							gtx := b.table.get_type_symbol(field.typ)
-							println('setting $typ.name -> $field.name to $gtx.name')
-							// break
-						}
-					}
-				}
-				fields[i] = field
-			}
-			parent_info.generic_types = []
-			typ.is_public = true
-			typ.kind = .struct_
-			typ.info = {parent_info| fields: fields}
-		}
-	}
-
-
-
-
+	b.instantiate_generic_structs()
 	b.checker.check_files(b.parsed_files)
 	t2 := time.ticks()
 	check_time := t2 - t1

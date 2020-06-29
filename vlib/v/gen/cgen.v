@@ -384,30 +384,26 @@ fn (mut g Gen) register_optional(t table.Type) string {
 // cc_type returns the Cleaned Concrete Type name, *without ptr*,
 // i.e. it's always just Cat, not Cat_ptr:
 fn (g &Gen) cc_type(t table.Type) string {
-	if t == 0 || g.unwrap_generic(t) == 0 {
-		tsx := g.table.get_type_symbol(t)
-		println('ZERO: $tsx.name')
-	}
 	sym := g.table.get_type_symbol(g.unwrap_generic(t))
 	mut styp := sym.name.replace('.', '__')
 	if sym.kind == .struct_ {
+		// TODO: maybe keep c name in info
 		info := sym.info as table.Struct
 		if info.generic_types.len > 0 {
-			println('@@ $sym.name - $styp - $g.cur_generic_type')
 			mut sgts := '_T'
 			for gt in info.generic_types {
-				ugt := g.unwrap_generic(gt)
-				if ugt != 0 {
-					// println(g.cur_generic_type)
-					gts := g.table.get_type_symbol(ugt)
-					sgts += '_$gts.name'
-				}
+				gts := g.table.get_type_symbol(if gt.has_flag(.generic) {
+					g.unwrap_generic(gt)
+				} else {
+					gt
+				})
+				sgts += '_$gts.name'
 			}
-			println('@@ SGTS: $sgts')
 			styp += sgts
 		}
 		else {
-			styp = styp.replace('<', '_T_').replace('>', '')
+			// TODO: maybe keep c name in info
+			styp = styp.replace('<', '_T_').replace('>', '').replace(',', '_')
 		}
 	}
 	if styp.starts_with('C__') {
@@ -2831,7 +2827,8 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				if info.generic_types.len > 0 {
 					continue
 				}
-				name = name.replace('<', '_T_').replace('>', '')
+				// TODO: maybe keep c name in info
+				name = name.replace('<', '_T_').replace('>', '').replace(',', '_')
 				if name.contains('_T_') {
 					g.typedefs.writeln('typedef struct $name $name;')
 				}

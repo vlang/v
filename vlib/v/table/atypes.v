@@ -134,7 +134,7 @@ pub fn (t Type) derive(t_from Type) Type {
 [inline]
 pub fn new_type(idx int) Type {
 	if idx < 1 || idx > 65535 {
-		panic('new_type_id: idx must be between 1 & 65535')
+		panic('new_type: idx must be between 1 & 65535')
 	}
 	return idx
 }
@@ -215,9 +215,9 @@ pub const (
 	array_type_idx   = 20
 	map_type_idx     = 21
 	any_type_idx     = 22
-	t_type_idx       = 23
-	any_flt_type_idx = 24
-	any_int_type_idx = 25
+	// t_type_idx       = 23
+	any_flt_type_idx = 23
+	any_int_type_idx = 24
 )
 
 pub const (
@@ -267,7 +267,7 @@ pub const (
 	array_type   = new_type(array_type_idx)
 	map_type     = new_type(map_type_idx)
 	any_type     = new_type(any_type_idx)
-	t_type       = new_type(t_type_idx)
+	// t_type       = new_type(t_type_idx)
 	any_flt_type = new_type(any_flt_type_idx)
 	any_int_type = new_type(any_int_type_idx)
 )
@@ -506,12 +506,12 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		name: 'any'
 		mod: 'builtin'
 	})
-	t.register_type_symbol({
-		kind: .any
-		name: 'T'
-		mod: 'builtin'
-		is_public: true
-	})
+	// t.register_type_symbol({
+	// 	kind: .any
+	// 	name: 'T'
+	// 	mod: 'builtin'
+	// 	is_public: true
+	// })
 	t.register_type_symbol({
 		kind: .any_float
 		name: 'any_float'

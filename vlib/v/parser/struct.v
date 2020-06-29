@@ -39,19 +39,14 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 
 	mut generic_types := []table.Type{}
 	if p.tok.kind == .lt {
-		// name += '<'
 		p.next()
 		for {
-			gt := p.parse_type()
-			// gts := p.table.get_type_symbol(gt)
-			// name += gts.name
-			generic_types << gt
+			generic_types << p.parse_type()
 			if p.tok.kind != .comma {
 				break
 			}
 			p.next()
 		}
-		// name += '>'
 		p.check(.gt)
 	}
 

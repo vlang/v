@@ -78,9 +78,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			name = c_name(name)
 		}
 		mut type_name := g.typ(it.return_type)
-		if type_name.contains('Repo') {
-			println('RETURN TYPE: $type_name')
-		}
 		if g.cur_generic_type != 0 {
 			// foo<T>() => foo_int(), foo_string() etc
 			gen_name := g.typ(g.cur_generic_type)
@@ -342,9 +339,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 
 [inline]
 pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
-	if typ.idx() == table.t_type_idx {
+	if typ.has_flag(.generic) {
 		// return g.cur_generic_type
-		return g.cur_generic_type.derive(typ)
+		return g.cur_generic_type.derive(typ).clear_flag(.generic)
 	}
 	return typ
 }
