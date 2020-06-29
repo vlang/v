@@ -32,13 +32,34 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.next() // C || JS
 		p.next() // .
 	}
+	
 	is_typedef := 'typedef' in p.attrs
-	no_body := p.peek_tok.kind != .lcbr
+	end_pos := p.tok.position()
+	mut name := p.check_name()
+
+	mut generic_types := []table.Type{}
+	if p.tok.kind == .lt {
+		// name += '<'
+		p.next()
+		for {
+			gt := p.parse_type()
+			// gts := p.table.get_type_symbol(gt)
+			// name += gts.name
+			generic_types << gt
+			if p.tok.kind != .comma {
+				break
+			}
+			p.next()
+		}
+		// name += '>'
+		p.check(.gt)
+	}
+
+	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
-	end_pos := p.tok.position()
-	mut name := p.check_name()
+
 	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
 		p.error_with_pos('struct name `$name` must begin with capital letter', end_pos)
 	}
@@ -215,6 +236,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_typedef: is_typedef
 			is_union: is_union
 			is_ref_only: 'ref_only' in p.attrs
+			generic_types: generic_types
 		}
 		mod: p.mod
 		is_public: is_pub

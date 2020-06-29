@@ -78,11 +78,14 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			name = c_name(name)
 		}
 		mut type_name := g.typ(it.return_type)
+		if type_name.contains('Repo') {
+			println('RETURN TYPE: $type_name')
+		}
 		if g.cur_generic_type != 0 {
 			// foo<T>() => foo_int(), foo_string() etc
 			gen_name := g.typ(g.cur_generic_type)
 			name += '_' + gen_name
-			type_name = type_name.replace('T', gen_name)
+			// type_name = type_name.replace('T', gen_name)
 		}
 		// if g.pref.show_cc && it.is_builtin {
 		// println(name)

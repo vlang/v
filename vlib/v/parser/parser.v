@@ -867,10 +867,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
+	lit0_is_capital := p.tok.lit[0].is_capital()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
 	if p.peek_tok.kind == .lpar ||
-		(p.peek_tok.kind == .lt && p.peek_tok2.kind == .name &&
+		(p.peek_tok.kind == .lt && !lit0_is_capital && p.peek_tok2.kind == .name &&
 		p.peek_tok3.kind == .gt) {
 		// foo() or foo<int>()
 		mut name := p.tok.lit
@@ -915,10 +916,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			// println('calling $p.tok.lit')
 			node = p.call_expr(language, mod)
 		}
-	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
+	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital)) && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		return p.struct_init(false) // short_syntax: false
-	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language == .v) {
+	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// `Color.green`
 		mut enum_name := p.check_name()
 		if mod != '' {
