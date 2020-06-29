@@ -201,7 +201,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.check(.gt)
 	}
 	// Args
-	args2, is_variadic := p.fn_args()
+	args2, are_args_type_only, is_variadic := p.fn_args()
 	args << args2
 	for arg in args {
 		if p.scope.known_var(arg.name) {
@@ -271,6 +271,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		stmts = p.parse_block_no_scope(true)
 	}
 	p.close_scope()
+	if !no_body && are_args_type_only {
+		p.error_with_pos('functions with type only args can not have bodies', body_start_pos)
+	}
 	return ast.FnDecl{
 		name: name
 		mod: p.mod
@@ -303,7 +306,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	p.check(.key_fn)
 	p.open_scope()
 	// TODO generics
-	args, is_variadic := p.fn_args()
+	args, _, is_variadic := p.fn_args()
 	for arg in args {
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
@@ -359,13 +362,12 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 }
 
 // part of fn declaration
-fn (mut p Parser) fn_args() ([]table.Arg, bool) {
+fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 	p.check(.lpar)
 	mut args := []table.Arg{}
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
-	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
-		p.peek_tok.kind == .rpar
+	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] || (p.peek_tok.kind in [.comma, .rpar] && p.table.known_type(p.tok.lit))
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')
@@ -463,7 +465,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 		}
 	}
 	p.check(.rpar)
-	return args, is_variadic
+	return args, types_only, is_variadic
 }
 
 fn (p &Parser) fileis(s string) bool {

@@ -1,0 +1,5 @@
+vlib/v/parser/tests/fn_type_only_args_unknown_name.v:1:16: error: unexpected `{`, expecting `,` 
+    1 | fn test(param) {
+      |                ^
+    2 | }
+    3 | 
