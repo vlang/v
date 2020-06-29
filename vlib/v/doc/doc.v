@@ -376,6 +376,9 @@ fn (mut d Doc) generate() ?Doc {
 			}
 			if stmt is ast.FnDecl {
 				fnd := stmt as ast.FnDecl
+				if fnd.is_deprecated {
+					continue
+				}
 				if fnd.receiver.typ != 0 {
 					node.attrs['parent'] = d.fmt.type_to_str(fnd.receiver.typ).trim_left('&')
 					p_idx := d.contents.index_by_name(node.attrs['parent'])
