@@ -386,24 +386,15 @@ println(s) // "hello\nworld"
 mut nums := [1, 2, 3]
 println(nums) // "[1, 2, 3]"
 println(nums[1]) // "2"
+nums[1] = 5
+println(nums) // "[1, 5, 3]"
 
-nums << 4
-println(nums) // "[1, 2, 3, 4]"
-
-nums << [5, 6, 7]
-println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
-
-mut names := ['John']
-names << 'Peter'
-names << 'Sam'
-// names << 10  <-- This will not compile. `names` is an array of strings.
-println(names.len) // "3"
-println('Alex' in names) // "false"
-
-names = [] // The array is now empty
+println(nums.len) // "3"
+nums = [] // The array is now empty
+println(nums.len) // "0"
 
 // Declare an empty array:
-users := []User{}
+users := []int{}
 
 // We can also preallocate a certain amount of elements.
 ids := []int{ len: 50, init: 0 } // This creates an array with 50 zeros
@@ -417,13 +408,33 @@ If V is unable to infer the type of an array, the user can explicitly specify it
 
 V arrays are homogeneous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
 
+`.len` field returns the length of the array. Note that it's a read-only field,
+and it can't be modified by the user. Exported fields are read-only by default in V.
+See [Access modifiers](#access-modifiers).
+
+```v
+mut nums := [1, 2, 3]
+nums << 4
+println(nums) // "[1, 2, 3, 4]"
+
+// append array
+nums << [5, 6, 7]
+println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
+
+mut names := ['John']
+names << 'Peter'
+names << 'Sam'
+// names << 10  <-- This will not compile. `names` is an array of strings.
+println(names.len) // "3"
+println('Alex' in names) // "false"
+```
+
 `<<` is an operator that appends a value to the end of the array.
 It can also append an entire array.
 
-`.len` field returns the length of the array. Note, that it's a read-only field,
-and it can't be modified by the user. Exported fields are read-only by default in V.
+`val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
 
-`val in array` returns true if the array contains `val`.
+#### Array methods
 
 All arrays can be easily printed with `println(arr)` and converted to a string
 with `s := arr.str()`.
