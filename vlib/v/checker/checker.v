@@ -743,7 +743,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 
 pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	left_type := c.expr(call_expr.left)
-	is_generic := left_type == table.t_type
+	is_generic := left_type.has_flag(.generic)
 	call_expr.left_type = left_type
 	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
@@ -886,7 +886,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		if is_generic {
 			// We need the receiver to be T in cgen.
-			call_expr.receiver_type = table.t_type.derive(method.args[0].typ)
+			// TODO: cant we just set all these to the concrete type in checker? then no need in gen
+			call_expr.receiver_type = left_type.derive(method.args[0].typ).set_flag(.generic)
 		} else {
 			call_expr.receiver_type = method.args[0].typ
 		}
@@ -932,7 +933,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// TODO: impl typeof properly (probably not going to be a fn call)
 		return table.string_type
 	}
-	if call_expr.generic_type == table.t_type {
+	if call_expr.generic_type.has_flag(.generic) {
 		if c.mod != '' && c.mod != 'main' {
 			// Need to prepend the module when adding a generic type to a function
 			// `fn_gen_types['mymod.myfn'] == ['string', 'int']`
@@ -1015,7 +1016,28 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if f.is_deprecated {
 		c.warn('function `$f.name` has been deprecated', call_expr.pos)
 	}
-	call_expr.return_type = f.return_type
+	if f.is_generic {
+		rts := c.table.get_type_symbol(f.return_type)
+		if rts.kind == .struct_ {
+			rts_info := rts.info as table.Struct
+			if rts_info.generic_types.len > 0 {
+				// TODO: multiple generic types
+				// for gt in rts_info.generic_types {
+				// 	gtss := c.table.get_type_symbol(gt)
+				// }
+				gts := c.table.get_type_symbol(call_expr.generic_type)
+				nrt := '${rts.name}<$gts.name>'
+				idx := c.table.type_idxs[nrt]
+				if idx == 0 {
+					c.error('unknown type: $nrt', call_expr.pos)
+				}
+				call_expr.return_type = table.new_type(idx).derive(f.return_type)
+			}
+		}
+	}
+	else {
+		call_expr.return_type = f.return_type
+	}
 	if f.return_type == table.void_type &&
 		f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
@@ -1122,6 +1144,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				return table.new_type(idx)
 			}
 		}
+	}
+	if f.is_generic {
+		return call_expr.return_type
 	}
 	return f.return_type
 }
@@ -1899,9 +1924,9 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 
 [inline]
 pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
-	if typ.idx() == table.t_type_idx {
+	if typ.has_flag(.generic) {
 		// return c.cur_generic_type
-		return c.cur_generic_type.derive(typ)
+		return c.cur_generic_type.derive(typ).clear_flag(.generic)
 	}
 	return typ
 }

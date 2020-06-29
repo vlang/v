@@ -82,7 +82,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			// foo<T>() => foo_int(), foo_string() etc
 			gen_name := g.typ(g.cur_generic_type)
 			name += '_' + gen_name
-			type_name = type_name.replace('T', gen_name)
+			// type_name = type_name.replace('T', gen_name)
 		}
 		// if g.pref.show_cc && it.is_builtin {
 		// println(name)
@@ -339,9 +339,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 
 [inline]
 pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
-	if typ.idx() == table.t_type_idx {
+	if typ.has_flag(.generic) {
 		// return g.cur_generic_type
-		return g.cur_generic_type.derive(typ)
+		return g.cur_generic_type.derive(typ).clear_flag(.generic)
 	}
 	return typ
 }

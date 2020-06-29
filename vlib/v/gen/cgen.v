@@ -392,6 +392,26 @@ fn (mut g Gen) register_optional(t table.Type) string {
 fn (g &Gen) cc_type(t table.Type) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(t))
 	mut styp := sym.name.replace('.', '__')
+	if sym.kind == .struct_ {
+		// TODO: maybe keep c name in info ( this is yuck )
+		info := sym.info as table.Struct
+		if info.generic_types.len > 0 {
+			mut sgts := '_T'
+			for gt in info.generic_types {
+				gts := g.table.get_type_symbol(if gt.has_flag(.generic) {
+					g.unwrap_generic(gt)
+				} else {
+					gt
+				})
+				sgts += '_$gts.name'
+			}
+			styp += sgts
+		}
+		else {
+			// TODO: maybe keep c name in info ( this is yuck )
+			styp = styp.replace('<', '_T_').replace('>', '').replace(',', '_')
+		}
+	}
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 		if sym.kind == .struct_ {
@@ -2815,10 +2835,17 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 			continue
 		}
 		// sym := g.table.get_type_symbol(typ)
-		name := typ.name.replace('.', '__')
-		match typ.info {
+		mut name := typ.name.replace('.', '__')
+		match typ.info as info {
 			table.Struct {
-				info := typ.info as table.Struct
+				if info.generic_types.len > 0 {
+					continue
+				}
+				// TODO: maybe keep c name in info ( this is yuck )
+				name = name.replace('<', '_T_').replace('>', '').replace(',', '_')
+				if name.contains('_T_') {
+					g.typedefs.writeln('typedef struct $name $name;')
+				}
 				// TODO avoid buffer manip
 				start_pos := g.type_definitions.len
 				if info.is_union {
