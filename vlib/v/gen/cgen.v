@@ -283,7 +283,9 @@ pub fn (mut g Gen) finish() {
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloader_code()
 	}
-	g.gen_c_main()
+	if !g.pref.is_test {
+		g.gen_c_main()
+	}
 }
 
 pub fn (mut g Gen) write_typeof_functions() {

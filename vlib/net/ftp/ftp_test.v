@@ -1,5 +1,3 @@
-module main
-
 import net.ftp
 
 // NB: this function makes network calls to external servers,
