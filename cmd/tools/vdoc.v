@@ -778,7 +778,11 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 	path := os.join_path(res_path, name)
 	mut res := os.read_file(path) or { panic('could not read $path') }
 	if minify {
-		res = if name.ends_with('.js') { js_compress(res) } else { res.replace('\n', ' ') }
+		if name.ends_with('.js') {
+			res = js_compress(res) 
+		} else { 
+			res = res.split_into_lines().map(it.trim_space()).join('')
+		}
 	}
 	// TODO: Make SVG inline for now
 	if cfg.inline_assets || path.ends_with('.svg') {
