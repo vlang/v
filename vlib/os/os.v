@@ -667,7 +667,7 @@ pub fn rmdir_recursive(path string) {
 pub fn rmdir_all(path string) ? {
 	mut ret_err := ''
 	items := os.ls(path) or {
-		return none
+		return error(err)
 	}
 	for item in items {
 		if os.is_dir(os.join_path(path, item)) {
