@@ -8,17 +8,10 @@ import v.table
 
 fn (mut p Parser) sql_expr() ast.Expr {
 	// `sql db {`
+	pos := p.tok.position()
 	p.check_name()
 	db_expr := p.expr(0)
 	p.check(.lcbr)
-	// kind := ast.SqlExprKind.select_
-	//
-	/*
-	if p.tok.kind == .name && p.tok.lit == 'insert' {
-		return p.sql_insert_expr(db_var_name)
-		// kind = .insert
-	}
-	*/
 	p.check(.key_select)
 	n := p.check_name()
 	is_count := n == 'count'
@@ -28,10 +21,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		typ = table.int_type
 	}
 	table_type := p.parse_type() // `User`
-	sym := p.table.get_type_symbol(table_type)
-	table_name := sym.name
 	mut where_expr := ast.Expr{}
-	has_where := p.tok.kind == .name &&		p.tok.lit == 'where'
+	has_where := p.tok.kind == .name && p.tok.lit == 'where'
 	mut query_one := false // one object is returned, not an array
 	if has_where {
 		p.next()
@@ -47,13 +38,23 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			}
 		}
 	}
-	if p.tok.kind ==.name && p.tok.lit == 'limit' {
+	mut has_limit := false
+	mut limit_expr := ast.Expr{}
+	mut has_offset := false
+	mut offset_expr := ast.Expr{}
+	if p.tok.kind == .name && p.tok.lit == 'limit' {
 		// `limit 1` means that a single object is returned
 		p.check_name() // `limit`
 		if p.tok.kind == .number && p.tok.lit == '1' {
 			query_one = true
 		}
-		p.next()
+		has_limit = true
+		limit_expr = p.expr(0)
+	}
+	if p.tok.kind == .name && p.tok.lit == 'offset' {
+		p.check_name() // `offset`
+		has_offset = true
+		offset_expr = p.expr(0)
 	}
 	if !query_one && !is_count {
 		// return an array
@@ -65,75 +66,113 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		typ = table_type
 	}
 	p.check(.rcbr)
-	// /////////
-	// Register this type's fields as variables so they can be used in `where`
-	// expressions
-	// fields := typ.fields.filter(typ == 'string' || typ == 'int')
-	// fields := typ.fields
-	// get only string and int fields
-	// mut fields := []Var
-	info := sym.info as table.Struct
-	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type] && 'skip' !in it.attrs)
-	if fields.len == 0 {
-		p.error('V orm: select: empty fields in `$table_name`')
-	}
-	if fields[0].name != 'id' {
-		p.error('V orm: `id int` must be the first field in `$table_name`')
-	}
-	for field in fields {
-		// println('registering sql field var $field.name')
-		p.scope.register(field.name, ast.Var{
-			name: field.name
-			typ: field.typ
-			is_mut: true
-			is_used: true
-			is_changed: true
-		})
-	}
-	// ////////////
 	return ast.SqlExpr{
 		is_count: is_count
 		typ: typ
 		db_expr: db_expr
-		table_name: table_name
+		table_type: table_type
 		where_expr: where_expr
 		has_where: has_where
-		fields: fields
+		has_limit: has_limit
+		limit_expr: limit_expr
+		has_offset: has_offset
+		offset_expr: offset_expr
 		is_array: !query_one
+		pos: pos
 	}
 }
 
-fn (mut p Parser) sql_insert_expr() ast.SqlInsertExpr {
+// insert user into User
+// update User set nr_oders=nr_orders+1 where id == user_id
+fn (mut p Parser) sql_stmt() ast.SqlStmt {
+	pos := p.tok.position()
 	p.inside_match = true
-	defer { p.inside_match = false }
+	defer {
+		p.inside_match = false
+	}
 	// `sql db {`
 	p.check_name()
 	db_expr := p.expr(0)
-	//println(typeof(db_expr))
+	// println(typeof(db_expr))
 	p.check(.lcbr)
 	// kind := ast.SqlExprKind.select_
 	//
-	p.check_name() // insert
-	mut object_var_name := ''
+	mut n := p.check_name() // insert
+	mut kind := ast.SqlStmtKind.insert
+	if n == 'delete' {
+		kind = .delete
+	} else if n == 'update' {
+		kind = .update
+	}
+	mut inserted_var_name := ''
+	mut table_name := ''
 	expr := p.expr(0)
 	match expr {
-		ast.Ident { object_var_name = expr.name }
-		else { p.error('can only insert variables') }
+		ast.Ident {
+			if kind == .insert {
+				inserted_var_name = expr.name
+			} else if kind == .update {
+				table_name = expr.name
+			}
+		}
+		else {
+			p.error('can only insert variables')
+		}
 	}
-	n := p.check_name() // into
-	if n != 'into' {
+	n = p.check_name() // into
+	mut updated_columns := []string{}
+	mut update_exprs := []ast.Expr{cap: 5}
+	if kind == .insert && n != 'into' {
 		p.error('expecting `into`')
+	} else if kind == .update {
+		if n != 'set' {
+			p.error('expecting `set`')
+		}
+		for {
+			column := p.check_name()
+			updated_columns << column
+			p.check(.assign)
+			update_exprs << p.expr(0)
+			if p.tok.kind == .comma {
+				p.check(.comma)
+			} else {
+				break
+			}
+		}
 	}
-	table_type := p.parse_type() // `User`
-	sym := p.table.get_type_symbol(table_type)
-	// info := sym.info as table.Struct
-	// fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
-	table_name := sym.name
+	mut table_type := table.Type(0)
+	mut where_expr := ast.Expr{}
+	if kind == .insert {
+		table_type = p.parse_type() // `User`
+		sym := p.table.get_type_symbol(table_type)
+		// info := sym.info as table.Struct
+		// fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
+		table_name = sym.name
+	} else if kind == .update {
+		if !p.pref.is_fmt {
+			// NB: in vfmt mode, v parses just a single file and table_name may not have been registered
+			idx := p.table.find_type_idx(table_name)
+			table_type = table.new_type(idx)
+		}
+		p.check_sql_keyword('where')
+		where_expr = p.expr(0)
+	}
 	p.check(.rcbr)
-	return ast.SqlInsertExpr{
+	return ast.SqlStmt{
 		db_expr: db_expr
 		table_name: table_name
 		table_type: table_type
-		object_var_name: object_var_name
+		object_var_name: inserted_var_name
+		pos: pos
+		updated_columns: updated_columns
+		update_exprs: update_exprs
+		kind: kind
+		where_expr: where_expr
+	}
+}
+
+fn (mut p Parser) check_sql_keyword(name string) {
+	if p.check_name() != name {
+		p.error('orm: expecting `$name`')
 	}
 }

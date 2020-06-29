@@ -25,7 +25,7 @@ fn get_user_opt() ?User {
 
 fn (u &User) foo() {
 	age := u.age
-	zzz := [''].repeat(u.age)
+	zzz := []string{len:(u.age)}
 	a := 10
 	if a in [10, 20, 30] {
 		b := 10

@@ -484,7 +484,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			}
 			g.gen_return_stmt(it)
 		}
-		ast.SqlInsertExpr{
+		ast.SqlStmt{
 			}
 		ast.StructDecl {
 			g.gen_struct_decl(it)

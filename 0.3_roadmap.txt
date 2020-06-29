@@ -1,0 +1,13 @@
++ = done
+- = TODO
+
+- coroutines
+- bring back lock{}
+- thread safe arrays/maps
+- C2V translator
+- doom.v
+- rune type, replace ustring with []rune
+- maps with non-string keys
+
+
+

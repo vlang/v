@@ -239,13 +239,54 @@ fn test_map_assign() {
 		's': u16(5)
 		't': 3
 	}
-	d := Mstruct1 {
+	_ := Mstruct1 {
 		{ 'p': 12 }
 	}
-	e := Mstruct2 {
+	_ := Mstruct2 {
 		{ 'q': 1.7 }
 	}
-	f := Mstruct3 {
+	_ := Mstruct3 {
 		{ 'r': u16(6), 's': 5 }
 	}
+}
+
+fn test_postfix_op_directly() {
+	mut a := map[string]int
+	a['aaa']++
+	assert a['aaa'] == 1
+	a['aaa']++
+	assert a['aaa'] == 2
+	a['bbb']--
+	assert a['bbb'] == -1
+	a['bbb']--
+	assert a['bbb'] == -2
+}
+
+fn test_map_push_directly() {
+	mut a := map[string][]string
+	a['aaa'] << ['a', 'b', 'c']
+	assert a['aaa'].len == 3
+	assert a['aaa'] == ['a', 'b', 'c']
+}
+
+fn test_assign_directly() {
+	mut a := map[string]int
+	a['aaa'] += 4
+	assert a['aaa'] == 4
+	a['aaa'] -= 2
+	assert a['aaa'] == 2
+}
+
+fn test_map_in_directly() {
+	for k, v in {'aa': 1} {
+		assert k == 'aa'
+		assert v == 1
+	}
+}
+
+fn test_plus_assign_string() {
+	mut m := {'one': ''}
+	m['one'] += '1'
+	assert m.len == 1
+	assert m['one'] == '1'
 }

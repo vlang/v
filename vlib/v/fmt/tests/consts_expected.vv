@@ -10,8 +10,8 @@ const (
 	eulers              = 2.7182
 	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
 		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
-	one_line_supported  = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd', 'netbsd',
-		'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
+	one_line_supported  = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
+		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 	another_const       = ['a', 'b', 'c', 'd', 'e', 'f']
 )
 

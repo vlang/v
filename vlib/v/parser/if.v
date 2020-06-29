@@ -116,19 +116,20 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
-		} else if p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot) &&
-			(p.tok.lit in table.builtin_type_names || (p.tok.lit[0].is_capital() && !p.tok.lit.is_upper()) ||
-			(p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital() ) ) {
+		} else if p.tok.kind == .name && !(p.tok.lit == 'C' &&
+			p.peek_tok.kind == .dot) && (p.tok.lit in table.builtin_type_names ||
+			(p.tok.lit[0].is_capital() && !p.tok.lit.is_upper()) ||
+			(p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital())) {
 			if var_name.len == 0 {
 				match cond {
 					ast.Ident {
 						// shadow match cond variable
-						var_name = it.name
+						var_name = cond.name
 					}
-					// ast.SelectorExpr {
-					// 	p.error('expecting `as` (eg. `match user.attribute as user_attr`) when matching struct fields')
-					// }
 					else {
+						// ast.SelectorExpr {
+						// p.error('expecting `as` (eg. `match user.attribute as user_attr`) when matching struct fields')
+						// }
 						// p.error('only variables can be used in sum types matches')
 					}
 				}
@@ -161,7 +162,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				p.parse_type()
 			}
 			is_sum_type = true
-
 		} else {
 			// Expression match
 			for {
@@ -204,7 +204,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
 	}
 	p.check(.rcbr)
-	//return ast.StructInit{}
+	// return ast.StructInit{}
 	return ast.MatchExpr{
 		branches: branches
 		cond: cond

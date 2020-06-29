@@ -18,7 +18,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | C
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf |
 	ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
 	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
-	Return | SqlInsertExpr | StructDecl | TypeDecl | UnsafeStmt
+	Return | SqlStmt | StructDecl | TypeDecl | UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -105,7 +105,8 @@ pub:
 	expr       Expr
 	field_name string
 pub mut:
-	expr_type  table.Type
+	expr_type  table.Type // type of `Foo` in `Foo.bar`
+	typ        table.Type // type of the entire thing (`Foo.bar`)
 }
 
 // module declaration
@@ -210,9 +211,10 @@ pub:
 
 pub struct AnonFn {
 pub:
-	decl FnDecl
+	decl      FnDecl
+	is_called bool
 pub mut:
-	typ  table.Type
+	typ       table.Type
 }
 
 pub struct FnDecl {
@@ -702,7 +704,7 @@ pub struct CastExpr {
 pub:
 	expr      Expr // `buf`
 	arg       Expr // `n` in `string(buf, n)`
-	typ       table.Type // `string`
+	typ       table.Type // `string` TODO rename to `type_to_cast_to`
 	pos       token.Position
 pub mut:
 	typname   string
@@ -807,24 +809,44 @@ pub enum SqlExprKind {
 	update
 }
 */
-pub struct SqlInsertExpr {
+pub enum SqlStmtKind {
+	insert
+	update
+	delete
+}
+
+pub struct SqlStmt {
 pub:
-	db_expr    Expr // `db` in `sql db {`
-	table_name      string
+	kind            SqlStmtKind
+	db_expr         Expr // `db` in `sql db {`
 	object_var_name string // `user`
 	table_type      table.Type
+	pos             token.Position
+	where_expr      Expr
+	updated_columns []string // for `update set x=y`
+	update_exprs    []Expr // for `update`
+pub mut:
+	table_name      string
+	fields          []table.Field
 }
 
 pub struct SqlExpr {
 pub:
-	typ        table.Type
-	is_count   bool
-	db_expr    Expr // `db` in `sql db {`
-	table_name string
-	where_expr Expr
-	has_where  bool
-	fields     []table.Field
-	is_array   bool
+	typ         table.Type
+	is_count    bool
+	db_expr     Expr // `db` in `sql db {`
+	where_expr  Expr
+	has_where   bool
+	has_offset  bool
+	offset_expr Expr
+	is_array    bool
+	table_type  table.Type
+	pos         token.Position
+	has_limit   bool
+	limit_expr  Expr
+pub mut:
+	table_name  string
+	fields      []table.Field
 }
 
 [inline]
@@ -879,8 +901,7 @@ pub fn (expr Expr) position() token.Position {
 		InfixExpr {
 			left_pos := expr.left.position()
 			right_pos := expr.right.position()
-			if left_pos.pos == 0 ||
-				right_pos.pos == 0 {
+			if left_pos.pos == 0 || right_pos.pos == 0 {
 				return expr.pos
 			}
 			return token.Position{

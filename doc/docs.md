@@ -17,74 +17,73 @@ you can do in V.
 ## Table of Contents
 
 <table>
-	<tr>
-		<td width=16%><a href='#hello-world'>1. Hello world</a></td>
-		<td width=16%><a href='#comments'>2. Comments</a></td>
-		<td width=16%><a href='#functions'>3. Functions</a></td>
-		<td width=16%><a href='#variables'>4. Variables</a></td>
-		<td width=16%><a href='#primitive-types'>5. Primitive types</a></td>
-		<td width=16%><a href='#strings'>6. Strings</a></td>
-	</tr>
-	<tr>
-		<td><a href='#imports'>7. Imports</a></td>
-		<td><a href='#arrays'>Arrays</a></td>
-		<td><a href='#maps'>Maps</a></td>
-		<td><a href='#if'>If</a></td>
-		<td><a href='#in-operator'>In Operator</a></td>
-		<td><a href='#for-loop'>For loop</a></td>
-		</tr>
-	<tr>
-		<td><a href='#match'>Match</a></td>
-		<td><a href='#structs'>Structs</a></td>
-		<td><a href='#short-struct-initialization-syntax'>Short struct init syntax</a></td>
-		<td><a href='#access-modifiers'>Access modifiers</a></td>
-		<td><a href='#methods'>Methods</a></td>
-		<td><a href='#pure-functions-by-default'>Pure functions by default</a></td>
-		</tr>
-	<tr>
-		<td><a href='#anonymous--high-order-functions'>Anonymous & high order fns</a></td>
-		<td><a href='#references'>References</a></td>
-		<td><a href='#constants'>Constants</a></td>
-		<td><a href='#println'>println</a></td>
-		<td><a href='#modules'>Modules</a></td>
-		<td><a href='#interfaces'>Interfaces</a></td>
-		</tr>
-	<tr>
-		<td><a href='#enums'>Enums</a></td>
-		<td><a href='#sum-types'>Sum types</a></td>
-		<td><a href='#optionresult-types-and-error-handling'>Option/Result & error handling</a></td>
-		<td><a href='#generics'>Generics</a></td>
-		<td><a href='#concurrency'>Concurrency</a></td>
-		<td><a href='#decoding-json'>Decoding JSON</a></td>
-		</tr>
-	<tr>
-		<td><a href='#testing'>Testing</a></td>
-		<td><a href='#memory-management'>Memory managment</a></td>
-		<td><a href='#defer'>Defer</a></td>
-		<td><a href='#orm'>ORM</a></td>
-		<td><a href='#vfmt'>vfmt</a></td>
-		<td><a href='#writing-documentation'>Writing documentation</a></td>
-		</tr>
-	<tr>
-		<td><a href='#profiling'>Profiling</a></td>
-		<td><a href='#calling-c-functions-from-v'>Calling C functions from V</a></td>
-		<td><a href='#conditional-compilation'>Conditional compilation</a></td>
-		<td><a href='#compile-time-pseudo-variables'>Compile time pseudo variables</a></td>
-		<td><a href='#reflection-via-codegen'>Reflection via codegen</a></td>
-		<td><a href='#limited-operator-overloading'>Limited operator overloading</a></td>
-	</tr>
-	<tr>
-		<td><a href='#inline-assembly'>Inline assembly</a></td>
-		<td><a href='#translating-cc-to-v'>Translating C/C++ to V</a></td>
-		<td><a href='#hot-code-reloading'>Hot code reloading</a></td>
-		<td><a href='#cross-compilation'>Cross compilation</a></td>
-		<td><a href='#cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
-		<td><a href='#attributes'>Attributes</a></td>
-	</tr>
-	<tr>
-		<td><a href='#appendix-i-keywords'>Appendix I: Keywords</a></td>
-		<td><a href='#appendix-ii-operators'>Appendix II: Operators</a></td>
-	</tr>
+    <tr><td width=33% valign=top>
+
+* [Hello world](#hello-world)
+* [Comments](#comments)
+* [Functions](#functions)
+* [Variables](#variables)
+* [Types](#types)
+    * [Primitive types](#primitive-types)
+    * [Strings](#strings)
+    * [Arrays](#arrays)
+    * [Maps](#maps)
+* [Imports](#imports)
+* [Statements & Expressions](#statements--expressions)
+    * [If](#if)
+    * [In Operator](#in-operator)
+    * [For loop](#for-loop)
+    * [Match](#match)
+    * [Defer](#defer)
+* [Structs](#structs)
+    * [Short struct init syntax](#short-struct-initialization-syntax)
+    * [Access modifiers](#access-modifiers)
+    * [Methods](#methods)
+* [println](#println)
+
+</td><td width=33% valign=top>
+
+* [Functions 2](#functions-2)
+    * [Pure functions by default](#pure-functions-by-default)
+    * [Anonymous & high order functions](#anonymous--high-order-functions)
+* [References](#references)
+* [Modules](#modules)
+* [Constants](#constants)
+* [Types 2](#types-2)
+    * [Interfaces](#interfaces)
+    * [Enums](#enums)
+    * [Sum types](#sum-types)
+    * [Option/Result types & error handling](#optionresult-types-and-error-handling)
+* [Generics](#generics)
+* [Concurrency](#concurrency)
+* [Decoding JSON](#decoding-json)
+* [Testing](#testing)
+* [Memory management](#memory-management)
+* [ORM](#orm)
+* [Writing documentation](#writing-documentation)
+* [Tools](#tools)
+    * [vfmt](#vfmt)
+    * [Profiling](#profiling)
+
+</td><td valign=top>
+
+* [Advanced](#advanced)
+    * [Calling C functions from V](#calling-c-functions-from-v)
+    * [Conditional compilation](#conditional-compilation)
+    * [Compile time pseudo variables](#compile-time-pseudo-variables)
+    * [Reflection via codegen](#reflection-via-codegen)
+    * [Limited operator overloading](#limited-operator-overloading)
+    * [Inline assembly](#inline-assembly)
+    * [Translating C/C++ to V](#translating-cc-to-v)
+    * [Hot code reloading](#hot-code-reloading)
+    * [Cross compilation](#cross-compilation)
+    * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
+    * [Attributes](#attributes)
+* [Appendices](#appendices)
+    * [Keywords](#appendix-i-keywords)
+    * [Operators](#appendix-ii-operators)
+
+</td></tr>
 </table>
 
 
@@ -270,7 +269,9 @@ fn main() {
 
 Unlike most languages, variable shadowing is not allowed. Declaring a variable with a name that is already used in a parent scope will cause a compilation error.
 
-## Primitive types
+## Types
+
+### Primitive types
 
 ```v
 bool
@@ -309,11 +310,11 @@ These are the allowed possibilities:
    i8 → i16 → int → i64 ⬏
 ```
 An `int` value for example can be automatically promoted to `f64`
-or `i64` but not to `f32` or `u32`. (`f32` would mean precission
+or `i64` but not to `f32` or `u32`. (`f32` would mean precision
 loss for large values and `u32` would mean loss of the sign for
 negative values).
 
-## Strings
+### Strings
 
 ```v
 name := 'Bob'
@@ -379,20 +380,7 @@ s := r'hello\nworld'
 println(s) // "hello\nworld"
 ```
 
-## Imports
-
-```v
-import os
-
-fn main() {
-    name := os.input('Enter your name:')
-    println('Hello, $name!')
-}
-```
-
-Modules can be imported using keyword `import`. When using types, functions, and constants from other modules, the full path must be specified. In the example above, `name := input()` wouldn't work. That means that it's always clear from which module a function is called.
-
-## Arrays
+### Arrays
 
 ```v
 mut nums := [1, 2, 3]
@@ -455,7 +443,7 @@ println(upper) // ['HELLO', 'WORLD']
 
 `it` is a builtin variable which refers to element currently being processed in filter/map methods.
 
-## Maps
+### Maps
 
 ```v
 mut m := map[string]int // Only maps with string keys are allowed for now
@@ -468,12 +456,27 @@ m.delete('two')
 
 // Short syntax
 numbers := {
-    'one': 1,
+    'one': 1
     'two': 2
 }
 ```
 
-## If
+## Imports
+
+```v
+import os
+
+fn main() {
+    name := os.input('Enter your name:')
+    println('Hello, $name!')
+}
+```
+
+Modules can be imported using keyword `import`. When using types, functions, and constants from other modules, the full path must be specified. In the example above, `name := input()` wouldn't work. That means that it's always clear from which module a function is called.
+
+## Statements & Expressions
+
+### If
 
 ```v
 a := 10
@@ -503,7 +506,7 @@ else {
 println(s) // "odd"
 ```
 
-## In operator
+### In operator
 
 `in` allows to check whether an array or a map contains an element.
 
@@ -530,7 +533,7 @@ if parser.token in [.plus, .minus, .div, .mult] {
 
 V optimizes such expressions, so both `if` statements above produce the same machine code and no arrays are created.
 
-## For loop
+### For loop
 
 V has only one looping construct: `for`.
 
@@ -603,7 +606,7 @@ stuck in an infinite loop.
 
 Here `i` doesn't need to be declared with `mut` since it's always going to be mutable by definition.
 
-## Match
+### Match
 
 ```v
 os := 'windows'
@@ -644,6 +647,24 @@ fn is_red_or_blue(c Color) bool {
 
 A match statement can also be used to branch on the variants of an `enum`
 by using the shorthand `.variant_here` syntax.
+
+### Defer
+
+A defer statement defers the execution of a block of statements until the surrounding function returns.
+
+```v
+fn read_log() {
+    f := os.open('log.txt')
+    defer { f.close() }
+    ...
+    if !ok {
+        // defer statement will be called here, the file will be closed
+        return
+    }
+    ...
+    // defer statement will be called here, the file will be closed
+}
+```
 
 ## Structs
 
@@ -710,7 +731,7 @@ All struct fields are zeroed by default during the creation of the struct. Array
 It's also possible to define custom default values.
 
 
-## Short struct initialization syntax
+### Short struct initialization syntax
 
 There are no default function argument values or named arguments, for that the short struct initialization syntax can be used instead:
 
@@ -747,7 +768,7 @@ new_button(ButtonConfig{text:'Click me', width:100})
 
 This only works with functions that have a single struct argument.
 
-## Access modifiers
+### Access modifiers
 
 Struct fields are private and immutable by default (making structs immutable as well).
 Their access modifiers can be changed with
@@ -760,7 +781,7 @@ mut:
     b int   // private mutable
     c int   // (you can list multiple fields with the same access modifier)
 pub:
-    d int   // public immmutable (readonly)
+    d int   // public immutable (readonly)
 pub mut:
     e int   // public, but mutable only in parent module
 __global:
@@ -792,7 +813,7 @@ fn main() {
 
 This means that defining public readonly fields is very easy in V, no need in getters/setters or properties.
 
-## Methods
+### Methods
 
 ```v
 struct User {
@@ -820,7 +841,9 @@ In this example, the `can_register` method has a receiver of type `User` named `
 The convention is not to use receiver names like `self` or `this`,
 but a short, preferably one letter long, name.
 
-## Pure functions by default
+## Functions 2
+
+### Pure functions by default
 
 V functions are pure by default, meaning that their return values are a function of their arguments only,
 and their evaluation has no side effects.
@@ -885,7 +908,7 @@ fn register(u User) User {
 user = register(user)
 ```
 
-## Anonymous & high order functions
+### Anonymous & high order functions
 
 ```v
 fn sqr(n int) int {
@@ -1088,7 +1111,9 @@ fn init() int {
 
 The init function cannot be public. It will be called automatically.
 
-## Interfaces
+## Types 2
+
+### Interfaces
 
 ```v
 struct Dog {}
@@ -1124,7 +1149,7 @@ println(perform(cat)) // "meow"
 A type implements an interface by implementing its methods.
 There is no explicit declaration of intent, no "implements" keyword.
 
-## Enums
+### Enums
 
 ```v
 enum Color {
@@ -1137,7 +1162,7 @@ color = .green
 println(color) // "1"  TODO: print "green"?
 ```
 
-## Sum types
+### Sum types
 
 ```v
 type Expr = BinaryExpr | UnaryExpr | IfExpr
@@ -1213,7 +1238,7 @@ There are 3 ways to access the cast variant inside a match branch:
 
 Note: shadowing only works when the match expression is a variable. It will not work on struct fields, arrays indexing, or map key lookup.
 
-## Option/Result types and error handling
+### Option/Result types and error handling
 
 ```v
 struct User {
@@ -1323,6 +1348,43 @@ V's model of concurrency is very similar to Go's. To run `foo()` concurrently, j
 call it with `go foo()`. Right now, it launches the function on a new system
 thread. Soon coroutines and a scheduler will be implemented.
 
+Unlike Go, V has no channels (yet). Nevertheless, data can be exchanged between a coroutine
+and the calling thread via a shared variable. This variable should be created as reference and passed to
+the coroutine as `mut`. The underlying `struct` should also contain a `mutex` to lock concurrent access:
+
+```v
+import sync
+
+struct St {
+mut:
+	x int // share data
+	mtx &sync.Mutex
+}
+
+fn (mut b St) g() {
+	...
+	b.mtx.lock()
+	// read/modify/write b.x
+	...
+	b.mtx.unlock()
+	...
+}
+
+fn caller() {
+	mut a := &St{ // create as reference so it's on the heap
+		x: 10
+		mtx: sync.new_mutex()
+	}
+	go a.g()
+	...
+	a.mtx.lock()
+	// read/modify/write a.x
+	...
+	a.mtx.unlock()
+	...
+}
+```
+
 ## Decoding JSON
 
 ```v
@@ -1384,7 +1446,7 @@ To run the tests do `v hello_test.v`.
 
 To test an entire module, do `v test mymodule`.
 
-You can also do `v test .` to test everything inside your curent folder (and subdirectories).
+You can also do `v test .` to test everything inside your current folder (and subdirectories).
 
 You can pass `-stats` to v test, to see more details about the individual tests in each _test.v file.
 
@@ -1427,24 +1489,6 @@ fn test() []int {
     println(numbers)
     numbers2 := [4, 5, 6] // array that's being returned, won't be freed here
     return numbers2
-}
-```
-
-## Defer
-
-A defer statement defers the execution of a block of statements until the surrounding function returns.
-
-```v
-fn read_log() {
-    f := os.open('log.txt')
-    defer { f.close() }
-    ...
-    if !ok {
-        // defer statement will be called here, the file will be closed
-        return
-    }
-    ...
-    // defer statement will be called here, the file will be closed
 }
 ```
 
@@ -1495,20 +1539,6 @@ sql db { insert new_customer into Customer }
 
 For more examples, see <a href='https://github.com/vlang/v/blob/master/vlib/orm/orm_test.v'>vlib/orm/orm_test.v</a>.
 
-## vfmt
-
-You don't need to worry about formatting your code or setting style guidelines.
-`vfmt` takes care of that:
-
-```v
-v fmt file.v
-```
-
-It's recommended to set up your editor, so that vfmt runs on every save.
-A vfmt run is usually pretty cheap (takes <30ms).
-
-Always run `v fmt -w file.v` before pushing your code.
-
 ## Writing Documentation
 
 The way it works is very similar to Go. It's very simple: there's no need to
@@ -1529,7 +1559,23 @@ An overview of the module must be placed in the first comment right after the mo
 
 To generate documentation use vdoc, for example `v doc net.http`.
 
-## Profiling
+## Tools
+
+### vfmt
+
+You don't need to worry about formatting your code or setting style guidelines.
+`vfmt` takes care of that:
+
+```v
+v fmt file.v
+```
+
+It's recommended to set up your editor, so that vfmt runs on every save.
+A vfmt run is usually pretty cheap (takes <30ms).
+
+Always run `v fmt -w file.v` before pushing your code.
+
+### Profiling
 
 V has good support for profiling your programs: `v -profile profile.txt run file.v`
 That will produce a profile.txt file, which you can then analyze.
@@ -1737,7 +1783,7 @@ To cite gcc's documentation: "programmers are notoriously bad at predicting
 how their programs actually perform".
 
 `[inline]` - you can tag functions with `[inline]`, so the C compiler will
-try to inline them, which in some cases, may be beneficial for peformance, 
+try to inline them, which in some cases, may be beneficial for performance, 
 but may impact the size of your executable.
 
 `if _likely_(bool expression) {` this hints the C compiler, that the passed 
@@ -1818,7 +1864,7 @@ in order to improve readability:
 
 To improve safety and maintainability, operator overloading is limited:
 
-- It's only possible to overload `+, -, *, /` operators.
+- It's only possible to overload `+, -, *, /, %` operators.
 - Calling other functions inside operator functions is not allowed.
 - Operator functions can't modify their arguments.
 - Both arguments must have the same type (just like with all operators in V).
@@ -1981,7 +2027,7 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 V has several attributes that modify the behavior of functions and structs.
 
-An attribute is specifed inside `[]` right before the function/struct declaration and applies only to the following definition. 
+An attribute is specified inside `[]` right before the function/struct declaration and applies only to the following definition. 
 
 ```v
 // Calling this function will result in a deprecation warning
@@ -2015,6 +2061,8 @@ struct C.Foo { }
 fn C.WinFunction()
 ```
 
+
+# Appendices
 
 ## Appendix I: Keywords
 

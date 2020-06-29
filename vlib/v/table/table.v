@@ -202,7 +202,7 @@ pub fn (t &Table) get_type_name(typ Type) string {
 pub fn (t &Table) unalias_num_type(typ Type) Type {
 	sym := t.get_type_symbol(typ)
 	if sym.kind == .alias {
-		pt := (sym.info as Alias).parent_typ
+		pt := (sym.info as Alias).parent_type
 		if pt <= f64_type && pt >= void_type {
 			return pt
 		}

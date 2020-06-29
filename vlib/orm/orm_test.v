@@ -5,10 +5,8 @@ import sqlite
 
 struct Module {
 	id int
-	user_id int
-	//name string
-	//url string
-	//nr_downloads int
+	name string
+	nr_downloads int
 }
 
 struct User {
@@ -16,6 +14,11 @@ struct User {
 	age int
 	name string
 	is_customer bool
+	skipped_string string [skip]
+}
+
+struct Foo {
+	age int
 }
 
 fn test_orm_sqlite() {
@@ -113,18 +116,88 @@ fn test_orm_sqlite() {
 	kate := sql db {
 		select from User where id == 3
 	}
-	println(kate)
 	assert kate.is_customer == true
 	//
 	customer := sql db {
 		select from User where is_customer == true limit 1
 	}
-	println(customer)
 	assert customer.is_customer == true
 	assert customer.name == 'Kate'
-
+	//
+	sql db {
+		update User set age = 31 where name == 'Kate'
+	}
+	kate2 := sql db {
+		select from User where id == 3
+	}
+	assert kate2.age == 31
+	assert kate2.name == 'Kate'
+	//
+	sql db {
+		update User set age = 32, name = 'Kate N' where name == 'Kate'
+	}
+	mut kate3 := sql db {
+		select from User where id == 3
+	}
+	assert kate3.age == 32
+	assert kate3.name == 'Kate N'
+	//
+	/*
+	sql db {
+		update User set age = age + 1, name = 'Kate N' where name == 'Kate'
+	}
+	kate3 = sql db {
+		select from User where id == 3
+	}
+	println(kate3)
+	assert kate3.age == 32
+	assert kate3.name == 'Kate N'
+	*/
+	new_age := 33
+	sql db {
+		update User set age = new_age, name = 'Kate N' where id == 3
+	}
+	kate3 = sql db {
+		select from User where id == 3
+	}
+	assert kate3.age == 33
+	assert kate3.name == 'Kate N'
+	//
+	foo := Foo{34}
+	sql db {
+		update User set age = foo.age, name = 'Kate N' where id == 3
+	}
+	kate3 = sql db {
+		select from User where id == 3
+	}
+	assert kate3.age == 34
+	assert kate3.name == 'Kate N'
+	//
+	no_user := sql db {
+		select from User where id == 30
+	}
+	assert no_user.name == '' // TODO optional
+	assert no_user.age == 0
+	//
+	two_users := sql db {
+		select from User limit 2
+	}
+	assert two_users.len == 2
+	assert two_users[0].id == 1
+	//
+	y := sql db {
+		select from User limit 2 offset 1
+	}
+	assert y.len == 2
+	assert y[0].id == 2
+	//
+	offset_const := 2
+	z := sql db {
+		select from User limit 2 offset offset_const
+	}
+	assert z.len == 2
+	assert z[0].id == 3
 }
-
 
 fn test_orm_pg() {
 /*

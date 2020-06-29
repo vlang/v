@@ -2,6 +2,7 @@ import v.checker
 import v.ast
 import v.table
 import v.gen
+import v.token
 
 fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) table.Type {
 	for i, expr in node.exprs {
@@ -25,8 +26,7 @@ fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) tabl
 			(typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`]) ||
 			(typ.is_pointer() && fmt !in [`p`, `x`, `X`]) ||
 			(typ.is_string() && fmt != `s`) ||
-			(typ.idx() in [table.i64_type_idx, table.f64_type_idx] &&
-			fmt == `c`) {
+			(typ.idx() in [table.i64_type_idx, table.f64_type_idx] && fmt == `c`) {
 			c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
 				node.fmt_poss[i])
 		}
@@ -46,10 +46,38 @@ fn main() {
 	if a + b + r * d + a + b + r * d > a + b + r * d + a * b + r {
 		println('ok')
 	}
+	v_str := 'v'
+	s := []string{}
+	s << '	`$v_str`'
+	println(s)
+	println('this is quite a long string' +
+		' that is followd by an even longer part that should go to another line')
+	if (a == b && b > r) ||
+		(d > r) || (a < b) || (b < d && a + b > r) ||
+		(a + b + d >= 0 && r < 0) || (a > b && d - r < b) {
+		println('ok')
+	}
 }
 
 fn gen_str_for_multi_return(mut g gen.Gen, info table.MultiReturn, styp, str_fn_name string) {
 	for i, _ in info.types {
 		println('\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
 	}
+}
+
+struct Parser {
+	peek_tok  token.Token
+	peek_tok2 token.Token
+	peek_tok3 token.Token
+}
+
+fn (mut p Parser) name_expr() {
+	if p.peek_tok.kind == .lpar ||
+		(p.peek_tok.kind == .lt && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt) {
+		println(p.peek_tok.lit)
+	}
+}
+
+fn set_nr_muls(t table.Type, nr_muls int) table.Type {
+	return int(t) & 0xff00ffff | (nr_muls << 16)
 }

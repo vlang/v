@@ -148,7 +148,7 @@ fn build_keys() map[string]Kind {
 
 // TODO remove once we have `enum Kind { name('name') if('if') ... }`
 fn build_token_str() []string {
-	mut s := [''].repeat(nr_tokens)
+	mut s := []string{len:(nr_tokens)}
 	s[Kind.unknown] = 'unknown'
 	s[Kind.eof] = 'eof'
 	s[Kind.name] = 'name'
@@ -321,82 +321,64 @@ pub enum Precedence {
 }
 
 pub fn build_precedences() []Precedence {
-	mut p := []Precedence{len:100, cap:100}
-	p[Kind.assign] = .assign
+	mut p := []Precedence{len:int(Kind._end_), cap:int(Kind._end_)}
+
+	p[Kind.lsbr] = .index
+	p[Kind.dot] = .call
+	// `++` | `--`
+	p[Kind.inc] = .postfix
+	p[Kind.dec] = .postfix
+	// `*` |  `/` | `%` | `<<` | `>>` | `&`
+	p[Kind.mul] = .product
+	p[Kind.div] = .product
+	p[Kind.mod] = .product
+	p[Kind.left_shift] = .product
+	p[Kind.right_shift] = .product
+	p[Kind.amp] = .product
+	// `+` |  `-` |  `|` | `^`
+	p[Kind.plus] = .sum
+	p[Kind.minus] = .sum
+	p[Kind.pipe] = .sum
+	p[Kind.xor] = .sum
+	// `==` | `!=` | `<` | `<=` | `>` | `>=`
 	p[Kind.eq] = .eq
 	p[Kind.ne] = .eq
-	p[Kind.lt] = .eq // less_greater
-	p[Kind.gt] = .eq // less_greater
-	p[Kind.le] = .eq // less_greater
-	p[Kind.ge] = .eq // less_greater
-	p[Kind.plus] = .sum
-	p[Kind.plus_assign] = .sum
-	p[Kind.minus] = .sum
-	p[Kind.minus_assign] = .sum
-	p[Kind.div] = .product
-	p[Kind.div_assign] = .product
-	p[Kind.mul] = .product
-	p[Kind.mult_assign] = .product
-	p[Kind.mod] = .product // mod
-	p[Kind.and] = .cond
+	p[Kind.lt] = .eq
+	p[Kind.le] = .eq
+	p[Kind.gt] = .eq
+	p[Kind.ge] = .eq
+	// `=` | `+=` | ...
+	p[Kind.assign] = .assign
+	p[Kind.plus_assign] = .assign
+	p[Kind.minus_assign] = .assign
+	p[Kind.div_assign] = .assign
+	p[Kind.mod_assign] = .assign
+	p[Kind.or_assign] = .assign
+	p[Kind.and_assign] = .assign
+	// <<= | *= | ...
+	p[Kind.left_shift_assign] = .assign
+	p[Kind.right_shift_assign] = .assign
+	p[Kind.mult_assign] = .assign
+	p[Kind.xor_assign] = .assign
+
+	p[Kind.key_in] = .in_as
+	p[Kind.not_in] = .in_as
+	p[Kind.key_as] = .in_as
+	p[Kind.key_is] = .in_as
+	p[Kind.not_is] = .in_as
 	p[Kind.logical_or] = .cond
-	p[Kind.lpar] = .call
-	p[Kind.dot] = .call
-	p[Kind.lsbr] = .index
+	p[Kind.and] = .cond
+
 	return p
 }
 
 const (
 	precedences = build_precedences()
-	// int(Kind.assign): Precedence.assign
-	// }
 )
+
 // precedence returns a tokens precedence if defined, otherwise lowest_prec
 pub fn (tok Token) precedence() int {
-	// TODO
-	// return int(precedences[int(tok)])
-	match tok.kind {
-		.lsbr {
-			return int(Precedence.index)
-		}
-		.dot {
-			return int(Precedence.call)
-		}
-		// `++` | `--`
-		.inc, .dec {
-			return int(Precedence.postfix)
-			// return 0
-			// return 7
-		}
-		// `*` |  `/` | `%` | `<<` | `>>` | `&`
-		.mul, .div, .mod, .left_shift, .right_shift, .amp {
-			return int(Precedence.product)
-		}
-		// `+` |  `-` |  `|` | `^`
-		.plus, .minus, .pipe, .xor {
-			return int(Precedence.sum)
-		}
-		// `==` | `!=` | `<` | `<=` | `>` | `>=`
-		.eq, .ne, .lt, .le, .gt, .ge {
-			return int(Precedence.eq)
-		}
-		// .logical_or,
-		.assign, .plus_assign, .minus_assign, .div_assign, .mod_assign,
-.or_assign, .and_assign,
-		//
-		.left_shift_assign, .right_shift_assign, .mult_assign, .xor_assign {
-			return int(Precedence.assign)
-		}
-		.key_in, .not_in, .key_as, .key_is, .not_is {
-			return int(Precedence.in_as)
-		}
-		.logical_or, .and {
-			return int(Precedence.cond)
-		}
-		else {
-			return int(Precedence.lowest)
-		}
-	}
+	return int(precedences[tok.kind])
 }
 
 // is_scalar returns true if the token is a scalar

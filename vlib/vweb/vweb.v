@@ -40,6 +40,7 @@ pub struct Context {
 mut:
 	static_files map[string]string
 	static_mime_types map[string]string
+	content_type string = 'text/plain'
 pub:
 	req http.Request
 	conn net.Socket
@@ -57,14 +58,18 @@ fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	if ctx.done { return false }
 	ctx.done = true
 	mut sb := strings.new_builder(1024)
+	defer { sb.free() }
 	sb.write('HTTP/1.1 200 OK\r\nContent-Type: ') sb.write(mimetype)
 	sb.write('\r\nContent-Length: ')              sb.write(res.len.str())
 	sb.write(ctx.headers)
 	sb.write('\r\n')
 	sb.write(headers_close)
 	sb.write(res)
-	ctx.conn.send_string(sb.str()) or { return false }
-	sb.free()
+	s := sb.str()
+	defer {
+		s.free()
+	}
+	ctx.conn.send_string(s) or { return false }
 	return true
 }
 
@@ -72,12 +77,19 @@ pub fn (mut ctx Context) html(s string) {
 	ctx.send_response_to_client('text/html', s)
 }
 
-pub fn (mut ctx Context) text(s string) {
+pub fn (mut ctx Context) text(s string) Result {
 	ctx.send_response_to_client('text/plain', s)
+	return Result{}
 }
 
-pub fn (mut ctx Context) json(s string) {
+pub fn (mut ctx Context) json(s string) Result {
 	ctx.send_response_to_client('application/json', s)
+	return Result{}
+}
+
+pub fn (mut ctx Context) ok(s string) Result {
+	ctx.send_response_to_client(ctx.content_type, s)
+	return Result{}
 }
 
 pub fn (mut ctx Context) redirect(url string) {
@@ -86,16 +98,21 @@ pub fn (mut ctx Context) redirect(url string) {
 	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${headers_close}') or { return }
 }
 
-pub fn (mut ctx Context) not_found(s string) {
-	if ctx.done { return }
+pub fn (mut ctx Context) not_found() Result {
+	if ctx.done { return vweb.Result{} }
 	ctx.done = true
-	ctx.conn.send_string(http_404) or { return }
+	ctx.conn.send_string(http_404) or {}
+	return vweb.Result{}
 }
 
 pub fn (mut ctx Context) set_cookie(key, val string) {
 	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
 	//println('Set-Cookie $key=$val')
 	ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
+}
+
+pub fn (mut ctx Context) set_content_type(typ string) {
+	ctx.content_type = typ
 }
 
 pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
@@ -291,6 +308,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			return
 		}
 		app.vweb.send_response_to_client(mime_type, data)
+		data.free()
 		return
 	}
 
@@ -411,3 +429,14 @@ fn strip(s string) string {
 pub fn not_found() Result {
 	return Result{}
 }
+
+fn filter(s string) string {
+	return s.replace_each([
+		'<', '&lt;',
+		'"', '&quot;',
+		'&',  '&amp;',
+	])
+
+}
+
+pub type RawHtml = string

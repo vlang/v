@@ -1,7 +1,6 @@
 import bitfield
 
 import rand
-import time
 
 fn test_bf_new_size() {
 	instance := bitfield.new(75)

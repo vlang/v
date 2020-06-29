@@ -1,8 +1,16 @@
 module sqlite
 
-#flag -lsqlite3
+#flag darwin  -lsqlite3
+#flag linux   -lsqlite3
+#flag solaris -lsqlite3
+
 #flag freebsd -I/usr/local/include
 #flag freebsd -Wl -L/usr/local/lib -lsqlite3
+
+#flag windows -I@VROOT/thirdparty/sqlite
+#flag windows -L@VROOT/thirdparty/sqlite
+#flag windows @VROOT/thirdparty/sqlite/sqlite3.o
+
 //#flag linux -I @VROOT/thirdparty/sqlite
 //#flag @VROOT/thirdparty/sqlite/sqlite.c
 

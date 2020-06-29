@@ -5,7 +5,6 @@ module parser
 
 import v.ast
 
-
 fn (mut p Parser) assign_stmt() ast.Stmt {
 	return p.partial_assign_stmt(p.expr_list())
 }
@@ -16,27 +15,27 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) {
 			for expr in exprs {
 				if expr is ast.Ident {
 					ident := expr as ast.Ident
-					if ident.name == it.name {
-						p.error_with_pos('undefined variable: `$it.name`', it.pos)
+					if ident.name == val.name {
+						p.error_with_pos('undefined variable: `$val.name`', val.pos)
 					}
 				}
 			}
 		}
 		ast.InfixExpr {
-			p.check_undefined_variables(exprs, it.left)
-			p.check_undefined_variables(exprs, it.right)
+			p.check_undefined_variables(exprs, val.left)
+			p.check_undefined_variables(exprs, val.right)
 		}
 		ast.ParExpr {
-			p.check_undefined_variables(exprs, it.expr)
+			p.check_undefined_variables(exprs, val.expr)
 		}
 		ast.PostfixExpr {
-			p.check_undefined_variables(exprs, it.expr)
+			p.check_undefined_variables(exprs, val.expr)
 		}
 		ast.PrefixExpr {
-			p.check_undefined_variables(exprs, it.right)
+			p.check_undefined_variables(exprs, val.right)
 		}
 		ast.StringInterLiteral {
-			for expr_ in it.exprs {
+			for expr_ in val.exprs {
 				p.check_undefined_variables(exprs, expr_)
 			}
 		}
@@ -46,23 +45,17 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) {
 
 fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 	match val {
-		ast.Ident {
-			for expr in exprs {
+		ast.Ident { for expr in exprs {
 				if expr is ast.Ident {
 					ident := expr as ast.Ident
-					if ident.name == it.name { return true }
+					if ident.name == val.name {
+						return true
+					}
 				}
-			}
-		}
-		ast.InfixExpr {
-			return p.check_cross_variables(exprs, it.left) || p.check_cross_variables(exprs, it.right)
-		}
-		ast.PrefixExpr {
-			return p.check_cross_variables(exprs, it.right)
-		}
-		ast.PostfixExpr {
-			return p.check_cross_variables(exprs, it.expr)
-		}
+			} }
+		ast.InfixExpr { return p.check_cross_variables(exprs, val.left) || p.check_cross_variables(exprs, val.right) }
+		ast.PrefixExpr { return p.check_cross_variables(exprs, val.right) }
+		ast.PostfixExpr { return p.check_cross_variables(exprs, val.expr) }
 		else {}
 	}
 	return false
@@ -80,8 +73,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		for r in right {
 			p.check_undefined_variables(left, r)
 		}
-	}
-	else if left.len > 1 {
+	} else if left.len > 1 {
 		// a, b = b, a
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
@@ -112,7 +104,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 			}
 			ast.IndexExpr {
 				if op == .decl_assign {
-					p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`', lx.pos)
+					p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`',
+						lx.pos)
 				}
 				lx.is_setter = true
 			}
@@ -120,13 +113,22 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 			ast.PrefixExpr {}
 			ast.SelectorExpr {
 				if op == .decl_assign {
-					p.error_with_pos('struct fields can only be declared during the initialization', lx.pos)
+					p.error_with_pos('struct fields can only be declared during the initialization',
+						lx.pos)
 				}
 			}
-			else {}
-			// TODO: parexpr ( check vars)
-			// else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.position()) }
+			else {
+				// TODO: parexpr ( check vars)
+				// else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.position()) }
+			}
 		}
 	}
-	return ast.AssignStmt{op: op, left: left, right: right, pos: pos, has_cross_var: has_cross_var, is_simple: p.inside_for && p.tok.kind == .lcbr}
+	return ast.AssignStmt{
+		op: op
+		left: left
+		right: right
+		pos: pos
+		has_cross_var: has_cross_var
+		is_simple: p.inside_for && p.tok.kind == .lcbr
+	}
 }

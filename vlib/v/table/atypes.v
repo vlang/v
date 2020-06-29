@@ -634,7 +634,7 @@ pub:
 
 pub struct Alias {
 pub:
-	parent_typ Type
+	parent_type Type
 	language   Language
 }
 

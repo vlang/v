@@ -291,7 +291,7 @@ fn C._putenv() int
 fn C._waccess() int
 
 
-fn C._wremove()
+fn C._wremove() int
 
 
 fn C.ReadConsole() voidptr

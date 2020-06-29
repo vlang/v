@@ -1,10 +1,10 @@
 module parser
 
+// import v.eval
 import v.ast
 import v.gen
 import v.table
 import v.checker
-//import v.eval
 import v.pref
 import term
 
@@ -77,7 +77,9 @@ x := 10
 '
 	table := &table.Table{}
 	vpref := &pref.Preferences{}
-	gscope := &ast.Scope{ parent: 0 }
+	gscope := &ast.Scope{
+		parent: 0
+	}
 	prog := parse_file(s, table, .skip_comments, vpref, gscope)
 	mut checker := checker.new_checker(table, vpref)
 	checker.check(prog)
@@ -90,12 +92,7 @@ fn test_one() {
 		return
 	}
 	println('\n\ntest_one()')
-	input := ['a := 10',
-	// 'a = 20',
-	'b := -a',
-	'c := 20',
-	//
-	]
+	input := ['a := 10', 'b := -a', 'c := 20']
 	expected := 'int a = 10;int b = -a;int c = 20;'
 	table := table.new_table()
 	vpref := &pref.Preferences{}
@@ -119,7 +116,8 @@ fn test_one() {
 	ok := expected == res
 	println(res)
 	assert ok
-	if !ok {}
+	if !ok {
+	}
 	// exit(0)
 }
 
@@ -127,73 +125,14 @@ fn test_parse_expr() {
 	if true {
 		return
 	}
-	input := ['1 == 1',
-	'234234',
-	'2 * 8 + 3',
-	'a := 3',
-	'a++',
-	'b := 4 + 2',
-	'neg := -a',
-	'a + a',
-	'bo := 2 + 3 == 5',
-	'2 + 1',
-	'q := 1',
-	'q + 777',
-	'2 + 3',
-	'2+2*4',
-	// '(2+2)*4',
-	'x := 10',
-	'mut aa := 12',
-	'ab := 10 + 3 * 9',
-	's := "hi"',
-	// '1 += 2',
-	'x = 11',
-	'a += 10',
-	'1.2 + 3.4',
-	'4 + 4',
-	'1 + 2 * 5',
-	'-a+1',
-	'2+2',
-	/*
-	/*
-		'(2 * 3) / 2',
-		'3 + (7 * 6)',
-		'2 ^ 8 * (7 * 6)',
-		'20 + (10 * 15) / 5', // 50
-		'(2) + (17*2-30) * (5)+2 - (8/2)*4', // 8
-		//'2 + "hi"',
-		*/
-		*/
-
-	]
-	expecting := ['1 == 1;',
-	'234234;',
-	'2 * 8 + 3;',
-	'int a = 3;',
-	'a++;',
-	'int b = 4 + 2;',
-	'int neg = -a;',
-	'a + a;',
-	'bool bo = 2 + 3 == 5;',
-	'2 + 1;',
-	'int q = 1;',
-	'q + 777;',
-	'2 + 3;',
-	'2 + 2 * 4;',
-	// '(2 + 2) * 4',
-	'int x = 10;',
-	'int aa = 12;',
-	'int ab = 10 + 3 * 9;',
-	'string s = tos3("hi");',
-	// '1 += 2;',
-	'x = 11;',
-	'a += 10;',
-	'1.2 + 3.4;',
-	'4 + 4;',
-	'1 + 2 * 5;',
-	'-a + 1;',
-	'2 + 2;',
-	]
+	input := ['1 == 1', '234234', '2 * 8 + 3', 'a := 3', 'a++', 'b := 4 + 2', 'neg := -a',
+		'a + a', 'bo := 2 + 3 == 5', '2 + 1', 'q := 1', 'q + 777', '2 + 3', '2+2*4', 'x := 10',
+		'mut aa := 12', 'ab := 10 + 3 * 9', 's := "hi"', 'x = 11', 'a += 10', '1.2 + 3.4', '4 + 4',
+		'1 + 2 * 5', '-a+1', '2+2']
+	expecting := ['1 == 1;', '234234;', '2 * 8 + 3;', 'int a = 3;', 'a++;', 'int b = 4 + 2;',
+		'int neg = -a;', 'a + a;', 'bool bo = 2 + 3 == 5;', '2 + 1;', 'int q = 1;', 'q + 777;',
+		'2 + 3;', '2 + 2 * 4;', 'int x = 10;', 'int aa = 12;', 'int ab = 10 + 3 * 9;', 'string s = tos3("hi");',
+		'x = 11;', 'a += 10;', '1.2 + 3.4;', '4 + 4;', '1 + 2 * 5;', '-a + 1;', '2 + 2;']
 	mut e := []ast.Stmt{}
 	table := table.new_table()
 	vpref := &pref.Preferences{}
@@ -237,7 +176,7 @@ fn test_parse_expr() {
 }
 
 /*
-	table := &table.Table{}
+table := &table.Table{}
 	for s in text_expr {
 		// print using str method
 		x := parse_expr(s, table)

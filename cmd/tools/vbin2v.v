@@ -15,7 +15,7 @@ mut:
 	prefix      string
 	show_help   bool
 	module_name string
-	write_file  bool
+	write_file  string
 }
 
 fn (context Context) header() string {
@@ -31,8 +31,8 @@ fn (context Context) header() string {
 	if context.module_name.len > 0 {
 		options << '-m ${context.module_name}'
 	}
-	if context.write_file {
-		options << '-w'
+	if context.write_file.len > 0 {
+		options << '-w ${context.write_file}'
 	}
 	soptions := options.join(' ')
 
@@ -85,7 +85,7 @@ fn main() {
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.module_name = fp.string('module', `m`, 'binary', 'Name of the generated module.')
 	context.prefix = fp.string('prefix', `p`, '', 'A prefix put before each resource name.')
-	context.write_file = fp.bool('write', `w`, false, 'Write directly to a file. The module name is used as filename.')
+	context.write_file = fp.string('write', `w`, '', 'Write directly to a file with the given name.')
 	if context.show_help {
 		println(fp.usage())
 		exit(0)
@@ -101,8 +101,11 @@ fn main() {
 	}
 	context.files = real_files
 
-	if context.write_file {
-		mut out_file := os.create('${context.module_name}.v') or { panic(err) }
+	if !context.write_file.ends_with('.v') {
+		context.write_file += '.v'
+	}
+	if context.write_file.len > 0 {
+		mut out_file := os.create(context.write_file) or { panic(err) }
 		out_file.write(context.header())
 		for file in real_files {
 			out_file.write(context.file2v(file))
