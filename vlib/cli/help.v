@@ -82,28 +82,31 @@ fn help_func(help_cmd Command) {
 fn pretty_description(s string) string {
 	width, _ := term.get_terminal_size()
 	// Don't prettify if the terminal is that small, it won't be pretty anyway.
-	if s.len + c_description_indent < width || c_description_indent > width {
+  if c_description_indent > width {
 		return s
 	}
-	indent := ' '.repeat(c_description_indent + 1)
+	indent := ' '.repeat(c_description_indent + 2)
 	chars_per_line := width - c_description_indent
 	// Give us enough room, better a little bigger than smaller
 	mut acc := strings.new_builder(((s.len / chars_per_line) + 1) * (width + 1))
 
-	mut i := chars_per_line - 2
-	mut j := 0
-	for ; i < s.len ; i += chars_per_line - 2 {
-		for s.str[i] != ` ` { i-- }
-		// indent was already done the first iteration
-		if j != 0 { acc.write(indent) }
-		acc.writeln(s[j..i])
-		j = i
+	for k, line in s.split('\n') {
+		if k != 0 { acc.write('\n${indent}') }
+		mut i := chars_per_line - 2
+		mut j := 0
+		for ; i < line.len; i += chars_per_line - 2 {
+			for line.str[i] != ` ` { i-- }
+			// indent was already done the first iteration
+			if j != 0 { acc.write(indent) }
+			acc.writeln(line[j..i].trim_space())
+			j = i
+		}
+		// We need this even though it should never happen
+		if j != 0 {
+			acc.write(indent)
+		}
+		acc.write(line[j..].trim_space())
 	}
-	// We need this even though it should never happen
-	if j != 0 {
-		acc.write(indent)
-	}
-	acc.write(s[j..])
 	return acc.str()
 }
 
