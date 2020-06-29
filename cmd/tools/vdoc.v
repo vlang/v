@@ -441,28 +441,22 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
 	header_name := if cfg.is_multi && cfg.docs.len > 1 { 
 		os.file_name(os.real_path(cfg.input_path)) 
-	} else if cfg.docs.len == 2 && idx+1 < cfg.docs.len && cfg.readme_idx() != -1 {
-		cfg.docs[cfg.readme_idx()+1].head.name
 	} else {
 		dcs.head.name
 	}
 	// write nav1
 	if cfg.is_multi || cfg.docs.len > 1 {
 		mut submod_prefix := ''
-		mut docs := cfg.docs.filter(it.head.name == 'builtin')
-		docs << cfg.docs.filter(it.head.name != 'builtin')
-		for i, doc in docs {
+		for i, doc in cfg.docs {
 			if i-1 >= 0 && doc.head.name.starts_with(submod_prefix + '.') {
 				continue
 			}
 			names := doc.head.name.split('.')
 			submod_prefix = if names.len > 1 { names[0] } else { doc.head.name }
-			href_name := if doc.head.name == 'README' {
+			href_name := if ('vlib' in cfg.input_path && doc.head.name == 'builtin' && !cfg.include_readme) || doc.head.name == 'README' {
 				'./index.html'
 			} else if submod_prefix !in cfg.docs.map(it.head.name) {
 				'#'
-			} else if cfg.docs.len == 2 && cfg.readme_idx() == -1 {
-				'./docs.html'
 			} else {
 				'./' + doc.head.name + '.html'
 			}
@@ -560,12 +554,10 @@ fn (cfg DocConfig) render() map[string]string {
 	mut docs := map[string]string
 	for i, doc in cfg.docs {
 		// since builtin is generated first, ignore it
-		mut name := if doc.head.name == 'README' || cfg.docs.len == 1 {
+		mut name := if ('vlib' in cfg.input_path && doc.head.name == 'builtin' && !cfg.include_readme) || doc.head.name == 'README' {
 			'index'
 		} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
 			os.file_name(cfg.output_path)
-		} else if i-1 >= 0 && cfg.readme_idx() != -1 && cfg.docs.len == 2 {
-			'docs'
 		} else {
 			doc.head.name
 		}
@@ -678,6 +670,11 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 			}
 		}
 		cfg.docs << dcs
+	}
+	if 'vlib' in cfg.input_path {
+		mut docs := cfg.docs.filter(it.head.name == 'builtin')
+		docs << cfg.docs.filter(it.head.name != 'builtin')
+		cfg.docs = docs
 	}
 	if cfg.serve_http {
 		cfg.serve_html()
