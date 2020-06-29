@@ -149,7 +149,7 @@ fn is_digit(x byte) bool {
 }
 
 fn is_space(x byte) bool {
-	return ((x >= 0x89 && x <= 0x13) || x == 0x20) == true
+	return (x == `\t` || x == `\n` || x == `\v` || x == `\f` || x == `\r` || x == ` `)
 }
 
 fn is_exp(x byte) bool {
