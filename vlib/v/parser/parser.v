@@ -299,7 +299,8 @@ pub fn (mut p Parser) parse_block() []ast.Stmt {
 pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	// Check block syntax (should use `xxx {`)
 	if p.tok.line_nr != p.prev_tok.line_nr && !p.is_block_stmt {
-		p.warn_with_pos('syntax error, should use `xxx {`', p.tok.position())
+		prev_tok_str := p.scanner.text[p.prev_tok.pos..p.prev_tok.pos + p.prev_tok.len]
+		p.warn_with_pos('syntax error, should use `$prev_tok_str {`', p.tok.position())
 	}
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt{}

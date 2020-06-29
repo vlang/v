@@ -1,4 +1,4 @@
-vlib/v/parser/tests/block_syntax_fn_warning.v:2:1: warning: syntax error, should use `xxx {`
+vlib/v/parser/tests/block_syntax_fn_warning.v:2:1: warning: syntax error, should use `) {`
     1 | fn main()
     2 | {
       | ^

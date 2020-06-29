@@ -1,4 +1,4 @@
-vlib/v/parser/tests/block_syntax_for_warning.v:3:2: warning: syntax error, should use `xxx {`
+vlib/v/parser/tests/block_syntax_for_warning.v:3:2: warning: syntax error, should use `5 {`
     1 | fn main() {
     2 |     for i in 0..5
     3 |     {
