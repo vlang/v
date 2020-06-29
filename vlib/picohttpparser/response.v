@@ -47,6 +47,12 @@ pub fn (mut r Response) content_type(s string) &Response {
 }
 
 [inline]
+pub fn (mut r Response) html() &Response {
+	r.buf += cpy_str(r.buf, "Content-Type: text/html\r\n")
+	return r
+}
+
+[inline]
 pub fn (mut r Response) plain() &Response {
 	r.buf += cpy_str(r.buf, "Content-Type: text/plain\r\n")
 	return r
