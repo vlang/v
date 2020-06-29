@@ -855,6 +855,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			else {}
 		}
 	}
+	mut is_mod_cast := false
 	if p.peek_tok.kind == .dot && !known_var &&
 		(language != .v || p.known_import(p.tok.lit) || p.mod.all_after_last('.') == p.tok.lit) {
 		if language == .c {
@@ -864,6 +865,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			if p.tok.lit in p.imports {
 				p.register_used_import(p.tok.lit)
+				if p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital() {
+					is_mod_cast = true
+				}
 			}
 			// prepend the full import
 			mod = p.imports[p.tok.lit]
@@ -884,9 +888,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if !known_var && (name in p.table.type_idxs ||
-			name_w_mod in p.table.type_idxs) &&
-			name !in ['C.stat', 'C.sigaction'] {
+		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) &&
+			name !in ['C.stat', 'C.sigaction']) || is_mod_cast {
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
