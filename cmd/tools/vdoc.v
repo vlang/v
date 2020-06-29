@@ -353,14 +353,15 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	head_tag := if head { 'h1' } else { 'h2' }
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
-	is_const_class := if dd.name == 'Constants' { ' const' } else { '' }
-	mut sym_name := dd.name
-	if dd.attrs.exists('parent') && dd.attrs['parent'] !in ['void', '', 'Constants'] { 
-		sym_name = dd.attrs['parent'] + '.' + sym_name
+	node_class := if dd.name == 'Constants' { ' const' } else { '' }
+	sym_name := if dd.attrs.exists('parent') && dd.attrs['parent'] !in ['void', '', 'Constants'] { 
+		dd.attrs['parent'] + '.' + dd.name
+	} else {
+		dd.name
 	}
 	node_id := slug(sym_name)
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
-	dnw.writeln('<section id="$node_id" class="doc-node$is_const_class">')
+	dnw.writeln('<section id="$node_id" class="doc-node$node_class">')
 	if dd.name != 'README' && dd.attrs['parent'] != 'Constants' {
 		dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		if link.len != 0 {
