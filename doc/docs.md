@@ -45,6 +45,7 @@ you can do in V.
 
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
+    * [Mutable arguments](#mutable-arguments)
     * [Anonymous & high order functions](#anonymous--high-order-functions)
 * [References](#references)
 * [Modules](#modules)
@@ -160,7 +161,7 @@ This simplifies the code and improves maintainability and readability.
 
 Functions can be used before their declaration:
 `add` and `sub` are declared after `main`, but can still be called from `main`.
-This is true for all declarations in V and eliminates the need of header files
+This is true for all declarations in V and eliminates the need for header files
 or thinking about the order of files and declarations.
 
 <p>&nbsp;</p>
@@ -210,7 +211,7 @@ way to declare variables in V. This means that variables always have an initial
 value.
 
 The variable's type is inferred from the value on the right hand side.
-To force a different type, use type conversion:
+To choose a different type, use type conversion:
 the expression `T(v)` converts the value `v` to the
 type `T`.
 
@@ -252,6 +253,8 @@ fn main() {
     age := 21
 }
 ```
+
+### Errors
 
 In development mode the compiler will warn you that you haven't used the variable (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`) it will not compile at all (like in Go).
@@ -554,12 +557,13 @@ If an index is required, an alternative form `for index, value in` can be used.
 Note, that the value is read-only. If you need to modify the array while looping, you have to use indexing:
 
 ```v
-mut numbers := [1, 2, 3, 4, 5]
-for i, num in numbers {
-    println(num)
-    numbers[i] = 0
+mut numbers := [0, 1, 2]
+for i, _ in numbers {
+    numbers[i]++
 }
+println(numbers) // [1, 2, 3]
 ```
+When an identifier is just a single underscore, it is ignored.
 
 ```v
 mut sum := 0
@@ -848,10 +852,15 @@ but a short, preferably one letter long, name.
 V functions are pure by default, meaning that their return values are a function of their arguments only,
 and their evaluation has no side effects.
 
-This is achieved by lack of global variables and all function arguments being immutable by default,
-even when references are passed.
+This is achieved by a lack of global variables and all function arguments being immutable by default,
+even when [references](#references) are passed.
 
 V is not a purely functional language however.
+
+There is a compiler flag to enable global variables (`--enable-globals`), but this is
+intended for low-level applications like kernels and drivers.
+
+### Mutable arguments
 
 It is possible to modify function arguments by using the keyword `mut`:
 
@@ -893,7 +902,7 @@ It is preferable to return values instead of modifying arguments.
 Modifying arguments should only be done in performance-critical parts of your application
 to reduce allocations and copying.
 
-For this reason V doesn't allow the modification of arguments with primative types such as integers. Only more complex types such as arrays and maps may be modified.
+For this reason V doesn't allow the modification of arguments with primitive types such as integers. Only more complex types such as arrays and maps may be modified.
 
 Use `user.register()` or `user = register(user)`
 instead of `register(mut user)`.
@@ -1003,14 +1012,13 @@ struct Color {
         b int
 }
 
-pub fn (c Color) str() string { return '{$c.r, $c.g, $c.b}' }
-
 fn rgb(r, g, b int) Color { return Color{r: r, g: g, b: b} }
 
 const (
     numbers = [1, 2, 3]
 
     red  = Color{r: 255, g: 0, b: 0}
+    // evaluate function call at compile-time
     blue = rgb(0, 0, 255)
 )
 
@@ -1048,7 +1056,20 @@ println(User{name:'Bob', age:20}) // "User{name:'Bob', age:20}"
 ```
 
 If you want to define a custom print value for your type, simply define a
-`.str() string` method.
+`.str() string` method:
+
+```v
+struct Color {
+    r int
+    g int
+    b int
+}
+
+pub fn (c Color) str() string { return '{$c.r, $c.g, $c.b}' }
+
+red := Color{r: 255, g: 0, b: 0}
+println(red)
+```
 
 If you don't want to print a newline, use `print()` instead.
 
@@ -1171,11 +1192,6 @@ struct BinaryExpr{ ... }
 struct UnaryExpr{ ... }
 struct IfExpr{ ... }
 
-struct CallExpr {
-	args []Expr
-	...
-}
-
 fn (mut p Parser) expr(precedence int) Expr {
 	match p.tok {
 		.key_if { return IfExpr{} }
@@ -1202,13 +1218,13 @@ To check whether a sum type is a certain type, use `is`:
 println(expr is IfExpr)
 ```
 
-To cast a sum type to one of it's variants you use `as`:
+To cast a sum type to one of its variants you use `as`:
 
 ```v
 bin_expr := expr as BinaryExpr
 ```
 
-You can also use match to determine the variant & and cast to it at the same time.
+You can also use match to determine the variant and cast to it at the same time.
 There are 3 ways to access the cast variant inside a match branch:
 - the `it` variable
 - the shadowed match variable
