@@ -1,0 +1,11 @@
+builtin/bare
+builtin/js
+oldgg/
+os/bare
+os2/
+uiold/
+v/tests/
+v/checker/tests/
+v/gen/js/
+v/gen/x64/
+v/gen/tests/

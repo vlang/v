@@ -127,6 +127,7 @@ pub fn read_file(path string) ?string {
 }
 
 /***************************** Utility  ops ************************/
+
 pub fn (mut f File) flush() {
 	if !f.opened {
 		return
