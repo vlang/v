@@ -39,6 +39,8 @@ pub mut:
 	cur_generic_type table.Type
 mut:
 	expr_level       int // to avoid infinit recursion segfaults due to compiler bugs
+	inside_sql       bool // to handle sql table fields pseudo variables
+	cur_orm_ts       table.TypeSymbol
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -741,7 +743,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 
 pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	left_type := c.expr(call_expr.left)
-	is_generic := left_type == table.t_type
+	is_generic := left_type.has_flag(.generic)
 	call_expr.left_type = left_type
 	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
@@ -884,7 +886,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		if is_generic {
 			// We need the receiver to be T in cgen.
-			call_expr.receiver_type = table.t_type.derive(method.args[0].typ)
+			// TODO: cant we just set all these to the concrete type in checker? then no need in gen
+			call_expr.receiver_type = left_type.derive(method.args[0].typ).set_flag(.generic)
 		} else {
 			call_expr.receiver_type = method.args[0].typ
 		}
@@ -930,7 +933,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// TODO: impl typeof properly (probably not going to be a fn call)
 		return table.string_type
 	}
-	if call_expr.generic_type == table.t_type {
+	if call_expr.generic_type.has_flag(.generic) {
 		if c.mod != '' && c.mod != 'main' {
 			// Need to prepend the module when adding a generic type to a function
 			// `fn_gen_types['mymod.myfn'] == ['string', 'int']`
@@ -1013,7 +1016,28 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if f.is_deprecated {
 		c.warn('function `$f.name` has been deprecated', call_expr.pos)
 	}
-	call_expr.return_type = f.return_type
+	if f.is_generic {
+		rts := c.table.get_type_symbol(f.return_type)
+		if rts.kind == .struct_ {
+			rts_info := rts.info as table.Struct
+			if rts_info.generic_types.len > 0 {
+				// TODO: multiple generic types
+				// for gt in rts_info.generic_types {
+				// 	gtss := c.table.get_type_symbol(gt)
+				// }
+				gts := c.table.get_type_symbol(call_expr.generic_type)
+				nrt := '${rts.name}<$gts.name>'
+				idx := c.table.type_idxs[nrt]
+				if idx == 0 {
+					c.error('unknown type: $nrt', call_expr.pos)
+				}
+				call_expr.return_type = table.new_type(idx).derive(f.return_type)
+			}
+		}
+	}
+	else {
+		call_expr.return_type = f.return_type
+	}
 	if f.return_type == table.void_type &&
 		f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
@@ -1120,6 +1144,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				return table.new_type(idx)
 			}
 		}
+	}
+	if f.is_generic {
+		return call_expr.return_type
 	}
 	return f.return_type
 }
@@ -1897,9 +1924,9 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 
 [inline]
 pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
-	if typ.idx() == table.t_type_idx {
+	if typ.has_flag(.generic) {
 		// return c.cur_generic_type
-		return c.cur_generic_type.derive(typ)
+		return c.cur_generic_type.derive(typ).clear_flag(.generic)
 	}
 	return typ
 }
@@ -2249,6 +2276,11 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return table.int_type
 	}
 	if ident.name != '_' {
+		if c.inside_sql {
+			if field := c.table.struct_find_field(c.cur_orm_ts, ident.name) {
+				return field.typ
+			}
+		}
 		c.error('undefined ident: `$ident.name`', ident.pos)
 	}
 	if c.table.known_type(ident.name) {
@@ -2699,26 +2731,20 @@ fn (c &Checker) fileis(s string) bool {
 }
 
 fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
+	c.inside_sql = true
+	defer {
+		c.inside_sql = false
+	}
 	sym := c.table.get_type_symbol(node.table_type)
+	if sym.kind == .placeholder {
+		c.error('orm: unknown type `$sym.name`', node.pos)
+		return table.void_type
+	}
+	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
 	node.fields = fields
 	node.table_name = sym.name
-	if node.has_where {
-		// Register this type's fields as variables so they can be used in `where`
-		// expressions
-		scope := c.file.scope.innermost(node.pos.pos)
-		for field in fields {
-			// println('registering sql field var $field.name')
-			scope.register(field.name, ast.Var{
-				name: field.name
-				typ: field.typ
-				is_mut: true
-				is_used: true
-				is_changed: true
-			})
-		}
-	}
 	if node.has_where {
 		c.expr(node.where_expr)
 	}
@@ -2733,23 +2759,22 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 }
 
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
+	c.inside_sql = true
+	defer {
+		c.inside_sql = false
+	}
+	if node.table_type == 0 {
+		c.error('orm: unknown type `$node.table_name`', node.pos)
+	}
 	sym := c.table.get_type_symbol(node.table_type)
+	if sym.kind == .placeholder {
+		c.error('orm: unknown type `$sym.name`', node.pos)
+		return table.void_type
+	}
+	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
 	node.fields = fields
-	// Register this type's fields as variables so they can be used in `where`
-	// expressions
-	scope := c.file.scope.innermost(node.pos.pos)
-	for field in fields {
-		// println('registering sql field var $field.name')
-		scope.register(field.name, ast.Var{
-			name: field.name
-			typ: field.typ
-			is_mut: true
-			is_used: true
-			is_changed: true
-		})
-	}
 	c.expr(node.db_expr)
 	if node.kind == .update {
 		for expr in node.update_exprs {

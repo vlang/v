@@ -14,6 +14,7 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 	parse_time := t1 - t0
 	b.info('PARSE: ${parse_time}ms')
 	//
+	b.instantiate_generic_structs()
 	b.checker.check_files(b.parsed_files)
 	t2 := time.ticks()
 	check_time := t2 - t1

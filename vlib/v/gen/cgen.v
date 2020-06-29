@@ -84,12 +84,15 @@ mut:
 	is_builtin_mod       bool
 	hotcode_fn_names     []string
 	fn_main              &ast.FnDecl // the FnDecl of the main function. Needed in order to generate the main function code *last*
-	cur_fn               &ast.FnDecl
+	cur_fn               &ast.FnDecl = 0
 	cur_generic_type     table.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i                int
 	sql_stmt_name        string
 	sql_side             SqlExprSide // left or right, to distinguish idents in `name == name`
 	inside_vweb_tmpl     bool
+	inside_return        bool
+	strs_to_free         string
+	inside_call          bool
 }
 
 const (
@@ -261,6 +264,10 @@ pub fn (mut g Gen) init() {
 	if g.pref.is_test || 'test' in g.pref.compile_defines {
 		g.comptime_defines.writeln('#define _VTEST (1)')
 	}
+	if g.pref.autofree {
+		g.comptime_defines.writeln('#define _VAUTOFREE (1)')
+		// g.comptime_defines.writeln('unsigned char* g_cur_str;')
+	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloading_declarations()
 	}
@@ -386,6 +393,26 @@ fn (mut g Gen) register_optional(t table.Type) string {
 fn (g &Gen) cc_type(t table.Type) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(t))
 	mut styp := sym.name.replace('.', '__')
+	if sym.kind == .struct_ {
+		// TODO: maybe keep c name in info ( this is yuck )
+		info := sym.info as table.Struct
+		if info.generic_types.len > 0 {
+			mut sgts := '_T'
+			for gt in info.generic_types {
+				gts := g.table.get_type_symbol(if gt.has_flag(.generic) {
+					g.unwrap_generic(gt)
+				} else {
+					gt
+				})
+				sgts += '_$gts.name'
+			}
+			styp += sgts
+		}
+		else {
+			// TODO: maybe keep c name in info ( this is yuck )
+			styp = styp.replace('<', '_T_').replace('>', '').replace(',', '_')
+		}
+	}
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 		if sym.kind == .struct_ {
@@ -569,6 +596,16 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 
 fn (mut g Gen) stmt(node ast.Stmt) {
 	g.stmt_path_pos << g.out.len
+	defer {
+		// If have temporary string exprs to free after this statement, do it. e.g.:
+		// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
+		if g.pref.autofree {
+			if g.strs_to_free != '' {
+				g.writeln(g.strs_to_free)
+				g.strs_to_free = ''
+			}
+		}
+	}
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
@@ -1592,26 +1629,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.sql_select_expr(node)
 		}
 		ast.StringLiteral {
-			if node.is_raw {
-				escaped_val := node.val.replace_each(['"', '\\"', '\\', '\\\\'])
-				g.write('tos_lit("$escaped_val")')
-				return
-			}
-			escaped_val := node.val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
-			if g.is_c_call || node.language == .c {
-				// In C calls we have to generate C strings
-				// `C.printf("hi")` => `printf("hi");`
-				g.write('"$escaped_val"')
-			} else {
-				// TODO calculate the literal's length in V, it's a bit tricky with all the
-				// escape characters.
-				// Clang and GCC optimize `strlen("lorem ipsum")` to `11`
-				// g.write('tos4("$escaped_val", strlen("$escaped_val"))')
-				// g.write('tos4("$escaped_val", $it.val.len)')
-				// g.write('_SLIT("$escaped_val")')
-				g.write('tos_lit("$escaped_val")')
-				// g.write('tos_lit("$escaped_val")')
-			}
+			g.string_literal(node)
 		}
 		ast.StringInterLiteral {
 			g.string_inter_literal(node)
@@ -2204,8 +2222,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write(', &')
 				}
 				// `x[0] *= y`
-				if g.assign_op != .assign && g.assign_op in token.assign_tokens &&
-						info.elem_type != table.string_type {
+				if g.assign_op != .assign &&
+					g.assign_op in token.assign_tokens &&
+					info.elem_type != table.string_type {
 					// TODO move this
 					g.write('*($elem_type_str*)array_get(')
 					if left_is_ptr {
@@ -2306,6 +2325,10 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.writeln(';')
 			return
 		}
+	}
+	g.inside_return = true
+	defer {
+		g.inside_return = false
 	}
 	// got to do a correct check for multireturn
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
@@ -2813,10 +2836,17 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 			continue
 		}
 		// sym := g.table.get_type_symbol(typ)
-		name := typ.name.replace('.', '__')
-		match typ.info {
+		mut name := typ.name.replace('.', '__')
+		match typ.info as info {
 			table.Struct {
-				info := typ.info as table.Struct
+				if info.generic_types.len > 0 {
+					continue
+				}
+				// TODO: maybe keep c name in info ( this is yuck )
+				name = name.replace('<', '_T_').replace('>', '').replace(',', '_')
+				if name.contains('_T_') {
+					g.typedefs.writeln('typedef struct $name $name;')
+				}
 				// TODO avoid buffer manip
 				start_pos := g.type_definitions.len
 				if info.is_union {
@@ -2942,120 +2972,6 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 		types_sorted << g.table.types[g.table.type_idxs[node.name]]
 	}
 	return types_sorted
-}
-
-fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
-	g.write('_STR("')
-	// Build the string with %
-	mut end_string := false
-	for i, val in node.vals {
-		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
-		if i >= node.exprs.len {
-			if escaped_val.len > 0 {
-				end_string = true
-				g.write('\\000')
-				g.write(escaped_val)
-			}
-			break
-		}
-		g.write(escaped_val)
-		// write correct format specifier to intermediate string
-		g.write('%')
-		fspec := node.fmts[i]
-		mut fmt := if node.pluss[i] { '+' } else { '' }
-		if node.fills[i] && node.fwidths[i] >= 0 {
-			fmt = '${fmt}0'
-		}
-		if node.fwidths[i] != 0 {
-			fmt = '$fmt${node.fwidths[i]}'
-		}
-		if node.precisions[i] != 0 {
-			fmt = '${fmt}.${node.precisions[i]}'
-		}
-		if fspec == `s` {
-			if node.fwidths[i] == 0 {
-				g.write('.*s')
-			} else {
-				g.write('*.*s')
-			}
-		} else if node.expr_types[i].is_float() {
-			g.write('$fmt${fspec:c}')
-		} else if node.expr_types[i].is_pointer() {
-			if fspec == `p` {
-				g.write('${fmt}p')
-			} else {
-				g.write('$fmt"PRI${fspec:c}PTR"')
-			}
-		} else if node.expr_types[i].is_int() {
-			if fspec == `c` {
-				g.write('${fmt}c')
-			} else {
-				g.write('$fmt"PRI${fspec:c}')
-				if node.expr_types[i] in [table.i8_type, table.byte_type] {
-					g.write('8')
-				} else if node.expr_types[i] in [table.i16_type, table.u16_type] {
-					g.write('16')
-				} else if node.expr_types[i] in [table.i64_type, table.u64_type] {
-					g.write('64')
-				} else {
-					g.write('32')
-				}
-				g.write('"')
-			}
-		} else {
-			// TODO: better check this case
-			g.write('$fmt"PRId32"')
-		}
-		if i < node.exprs.len - 1 {
-			g.write('\\000')
-		}
-	}
-	num_string_parts := if end_string { node.exprs.len + 1 } else { node.exprs.len }
-	g.write('", $num_string_parts, ')
-	// Build args
-	for i, expr in node.exprs {
-		if node.expr_types[i] == table.string_type {
-			if g.inside_vweb_tmpl {
-				g.write('vweb__filter(')
-				g.expr(expr)
-				g.write(')')
-			} else {
-				g.expr(expr)
-			}
-		} else if node.expr_types[i] == table.bool_type {
-			g.expr(expr)
-			g.write(' ? _SLIT("true") : _SLIT("false")')
-		} else if node.expr_types[i].is_number() || node.expr_types[i].is_pointer() ||
-			node.fmts[i] == `d` {
-			if node.expr_types[i].is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
-				// convert to unsigned first befors C's integer propagation strikes
-				if node.expr_types[i] == table.i8_type {
-					g.write('(byte)(')
-				} else if node.expr_types[i] == table.i16_type {
-					g.write('(u16)(')
-				} else if node.expr_types[i] == table.int_type {
-					g.write('(u32)(')
-				} else {
-					g.write('(u64)(')
-				}
-				g.expr(expr)
-				g.write(')')
-			} else {
-				g.expr(expr)
-			}
-		} else if node.fmts[i] == `s` {
-			g.gen_expr_to_string(expr, node.expr_types[i])
-		} else {
-			g.expr(expr)
-		}
-		if node.fmts[i] == `s` && node.fwidths[i] != 0 {
-			g.write(', ${node.fwidths[i]}')
-		}
-		if i < node.exprs.len - 1 {
-			g.write(', ')
-		}
-	}
-	g.write(')')
 }
 
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {

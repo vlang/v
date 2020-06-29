@@ -34,7 +34,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.check(.gt) // `>`
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
-		if generic_type != table.t_type {
+		if !generic_type.has_flag(.generic) {
 			p.table.register_fn_gen_type(fn_name, generic_type)
 		}
 	}
@@ -201,7 +201,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.check(.gt)
 	}
 	// Args
-	args2, is_variadic := p.fn_args()
+	args2, are_args_type_only, is_variadic := p.fn_args()
 	args << args2
 	for arg in args {
 		if p.scope.known_var(arg.name) {
@@ -269,8 +269,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope(true)
+		// Add return if `fn(...) ? {...}` have no return at end
+        if return_type != table.void_type && p.table.get_type_symbol(return_type).kind == .void &&
+                return_type.has_flag(.optional) && (stmts.len == 0 || stmts[stmts.len-1] !is ast.Return) {
+            stmts << ast.Return{ pos: p.tok.position() }
+        }
 	}
 	p.close_scope()
+	if !no_body && are_args_type_only {
+		p.error_with_pos('functions with type only args can not have bodies', body_start_pos)
+	}
 	return ast.FnDecl{
 		name: name
 		mod: p.mod
@@ -303,7 +311,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	p.check(.key_fn)
 	p.open_scope()
 	// TODO generics
-	args, is_variadic := p.fn_args()
+	args, _, is_variadic := p.fn_args()
 	for arg in args {
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
@@ -359,7 +367,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 }
 
 // part of fn declaration
-fn (mut p Parser) fn_args() ([]table.Arg, bool) {
+fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 	p.check(.lpar)
 	mut args := []table.Arg{}
 	mut is_variadic := false
@@ -383,7 +391,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			pos := p.tok.position()
 			mut arg_type := p.parse_type()
 			if is_mut {
-				if arg_type != table.t_type {
+				if !arg_type.has_flag(.generic) {
 					p.check_fn_mutable_arguments(arg_type, pos)
 				}
 				// if arg_type.is_ptr() {
@@ -436,7 +444,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			pos := p.tok.position()
 			mut typ := p.parse_type()
 			if is_mut {
-				if typ != table.t_type {
+				if !typ.has_flag(.generic) {
 					p.check_fn_mutable_arguments(typ, pos)
 				}
 				typ = typ.set_nr_muls(1)
@@ -463,7 +471,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 		}
 	}
 	p.check(.rpar)
-	return args, is_variadic
+	return args, types_only, is_variadic
 }
 
 fn (p &Parser) fileis(s string) bool {

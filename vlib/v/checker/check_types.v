@@ -53,9 +53,10 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 		(exp_idx == table.char_type_idx && got_idx == table.charptr_type_idx) {
 		return true
 	}
-	if expected == table.t_type && got == table.t_type {
-		return true
-	}
+	// TODO: this should no longer be needed
+	// if expected == table.t_type && got == table.t_type {
+	// 	return true
+	// }
 	// # NOTE: use symbols from this point on for perf
 	got_type_sym := t.get_type_symbol(got)
 	exp_type_sym := t.get_type_symbol(expected)

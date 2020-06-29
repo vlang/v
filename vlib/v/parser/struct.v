@@ -32,13 +32,31 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.next() // C || JS
 		p.next() // .
 	}
+	
 	is_typedef := 'typedef' in p.attrs
-	no_body := p.peek_tok.kind != .lcbr
+	end_pos := p.tok.position()
+	mut name := p.check_name()
+	if name.len == 1 && name[0].is_capital() {
+		p.error_with_pos('single letter capital names are reserved for generic template types.', end_pos)
+	}
+	mut generic_types := []table.Type{}
+	if p.tok.kind == .lt {
+		p.next()
+		for {
+			generic_types << p.parse_type()
+			if p.tok.kind != .comma {
+				break
+			}
+			p.next()
+		}
+		p.check(.gt)
+	}
+
+	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
-	end_pos := p.tok.position()
-	mut name := p.check_name()
+
 	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
 		p.error_with_pos('struct name `$name` must begin with capital letter', end_pos)
 	}
@@ -215,6 +233,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_typedef: is_typedef
 			is_union: is_union
 			is_ref_only: 'ref_only' in p.attrs
+			generic_types: generic_types
 		}
 		mod: p.mod
 		is_public: is_pub
@@ -345,7 +364,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			p.error('interface methods cannot contain uppercase letters, use snake_case instead')
 		}
 		// field_names << name
-		args2, _ := p.fn_args() // TODO merge table.Arg and ast.Arg to avoid this
+		args2, _, _ := p.fn_args() // TODO merge table.Arg and ast.Arg to avoid this
 		mut args := [table.Arg{
 			name: 'x'
 			typ: typ

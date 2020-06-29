@@ -82,7 +82,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 			// foo<T>() => foo_int(), foo_string() etc
 			gen_name := g.typ(g.cur_generic_type)
 			name += '_' + gen_name
-			type_name = type_name.replace('T', gen_name)
+			// type_name = type_name.replace('T', gen_name)
 		}
 		// if g.pref.show_cc && it.is_builtin {
 		// println(name)
@@ -201,7 +201,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	g.write_defer_stmts_when_needed()
 	// /////////
-	if g.autofree {
+	if g.autofree && !is_main {
 		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
 		g.writeln(g.autofree_scope_vars(it.body_pos.pos))
 	}
@@ -313,6 +313,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
+	g.inside_call = true
+	defer {g.inside_call = false}
 	gen_or := node.or_block.kind != .absent
 	cur_line := if gen_or && g.is_assign_rhs {
 		line := g.go_before_stmt(0)
@@ -339,9 +341,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 
 [inline]
 pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
-	if typ.idx() == table.t_type_idx {
+	if typ.has_flag(.generic) {
 		// return g.cur_generic_type
-		return g.cur_generic_type.derive(typ)
+		return g.cur_generic_type.derive(typ).clear_flag(.generic)
 	}
 	return typ
 }

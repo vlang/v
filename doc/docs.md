@@ -1891,7 +1891,7 @@ TODO: translating C to V will be available in V 0.3. C++ to V will be available 
 V can translate your C/C++ code to human readable V code.
 Let's create a simple program `test.cpp` first:
 
-```v
+```cpp
 #include <vector>
 #include <string>
 #include <iostream>
@@ -2069,6 +2069,7 @@ fn C.WinFunction()
 V has 23 keywords:
 
 ```v
+as
 break
 const
 continue
@@ -2083,6 +2084,7 @@ if
 import
 in
 interface
+is
 match
 module
 none

@@ -855,6 +855,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			else {}
 		}
 	}
+	mut is_mod_cast := false
 	if p.peek_tok.kind == .dot && !known_var &&
 		(language != .v || p.known_import(p.tok.lit) || p.mod.all_after_last('.') == p.tok.lit) {
 		if language == .c {
@@ -864,6 +865,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			if p.tok.lit in p.imports {
 				p.register_used_import(p.tok.lit)
+				if p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital() {
+					is_mod_cast = true
+				}
 			}
 			// prepend the full import
 			mod = p.imports[p.tok.lit]
@@ -872,10 +876,12 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
+	lit0_is_capital := p.tok.lit[0].is_capital()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
 	if p.peek_tok.kind == .lpar ||
-		(p.peek_tok.kind == .lt && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt) {
+		(p.peek_tok.kind == .lt && !lit0_is_capital && p.peek_tok2.kind == .name &&
+		p.peek_tok3.kind == .gt) {
 		// foo() or foo<int>()
 		mut name := p.tok.lit
 		if mod.len > 0 {
@@ -884,9 +890,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if !known_var && (name in p.table.type_idxs ||
-			name_w_mod in p.table.type_idxs) &&
-			name !in ['C.stat', 'C.sigaction'] {
+		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) &&
+			name !in ['C.stat', 'C.sigaction']) || is_mod_cast {
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
@@ -919,10 +924,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			// println('calling $p.tok.lit')
 			node = p.call_expr(language, mod)
 		}
-	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
+	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital)) && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		return p.struct_init(false) // short_syntax: false
-	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language == .v) {
+	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// `Color.green`
 		mut enum_name := p.check_name()
 		if mod != '' {
@@ -1520,6 +1525,9 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	end_pos := p.tok.position()
 	decl_pos := start_pos.extend(end_pos)
 	name := p.check_name()
+	if name.len == 1 && name[0].is_capital() {
+		p.error_with_pos('single letter capital names are reserved for generic template types.', decl_pos)
+	}
 	mut sum_variants := []table.Type{}
 	if p.tok.kind == .assign {
 		p.next() // TODO require `=`

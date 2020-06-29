@@ -22,17 +22,19 @@ fn print_user(u User) {
 fn test_add() {
 	println('test_add()')
 	x := 2
-	y :=3
-	z := x * y
-	q := y - x
+	y := 3
+	sum := x + y
+	product := x * y
+	diff := y - x
 	print_number(x)
 	print_number(y)
-	print_number(z)
-	print_number(q)
+	print_number(sum)
+	print_number(product)
+	print_number(diff)
 }
 
 fn main() {
 	println('start')
 	test_add()
-	println('end1l')
+	println('end')
 }

@@ -65,8 +65,11 @@ fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	sb.write('\r\n')
 	sb.write(headers_close)
 	sb.write(res)
-	ctx.conn.send_string(sb.str()) or { return false }
-	//sb.free()
+	s := sb.str()
+	defer {
+		s.free()
+	}
+	ctx.conn.send_string(s) or { return false }
 	return true
 }
 
