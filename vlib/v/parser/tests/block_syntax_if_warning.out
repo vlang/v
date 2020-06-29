@@ -1,0 +1,7 @@
+vlib/v/parser/tests/block_syntax_if_warning.v:4:2: warning: syntax error, should use `xxx {`
+    2 |     a := 1
+    3 |     if a > 0
+    4 |     {
+      |     ^
+    5 |         println('hello, world')
+    6 |     }

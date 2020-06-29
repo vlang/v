@@ -1,0 +1,7 @@
+fn main() {
+	a := 1
+	if a > 0
+	{
+		println('hello, world')
+	}
+}

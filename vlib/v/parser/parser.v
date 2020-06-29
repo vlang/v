@@ -46,6 +46,7 @@ mut:
 	ast_imports       []ast.Import // mod_names
 	used_imports      []string // alias
 	is_amp            bool // for generating the right code for `&Foo{}`
+	is_block_stmt     bool // for checking block syntax
 	returns           bool
 	inside_match      bool // to separate `match A { }` from `Struct{}`
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
@@ -296,6 +297,10 @@ pub fn (mut p Parser) parse_block() []ast.Stmt {
 }
 
 pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
+	// Check block syntax (should use `xxx {`)
+	if p.tok.line_nr != p.prev_tok.line_nr && !p.is_block_stmt {
+		p.warn_with_pos('syntax error, should use `xxx {`', p.tok.position())
+	}
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt{}
 	if p.tok.kind != .rcbr {
@@ -487,7 +492,9 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
+			p.is_block_stmt = true
 			stmts := p.parse_block()
+			p.is_block_stmt = false
 			return ast.Block{
 				stmts: stmts
 			}

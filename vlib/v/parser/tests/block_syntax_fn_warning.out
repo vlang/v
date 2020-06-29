@@ -1,0 +1,6 @@
+vlib/v/parser/tests/block_syntax_fn_warning.v:2:1: warning: syntax error, should use `xxx {`
+    1 | fn main()
+    2 | {
+      | ^
+    3 |     println('hello, world')
+    4 | }
