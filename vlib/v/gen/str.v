@@ -142,7 +142,7 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut cur_line := ''
 	mut tmp := ''
-	free := g.pref.autofree && !g.inside_return &&
+	free := g.pref.autofree && g.inside_call && !g.inside_return &&
 		g.inside_ternary == 0 && g.cur_fn != 0 &&
 		g.cur_fn.name != ''
 	if free {
@@ -157,7 +157,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		*/
 		// g.insert_before_stmt('// str tmp var\nstring $tmp = ')
 		cur_line = g.go_before_stmt(0)
-		g.writeln('// free _str')
+		g.writeln('// free _str2 $g.inside_call')
 		g.write('string $tmp = ')
 		g.strs_to_free += 'string_free(&$tmp); /*tmp str*/'
 	}

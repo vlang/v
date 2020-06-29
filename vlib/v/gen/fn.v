@@ -313,6 +313,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
+	g.inside_call = true
+	defer {g.inside_call = false}
 	gen_or := node.or_block.kind != .absent
 	cur_line := if gen_or && g.is_assign_rhs {
 		line := g.go_before_stmt(0)

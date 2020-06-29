@@ -92,6 +92,7 @@ mut:
 	inside_vweb_tmpl     bool
 	inside_return        bool
 	strs_to_free         string
+	inside_call          bool
 }
 
 const (
@@ -598,7 +599,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	defer {
 		// If have temporary string exprs to free after this statement, do it. e.g.:
 		// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
-		if false && g.pref.autofree {
+		if g.pref.autofree {
 			if g.strs_to_free != '' {
 				g.writeln(g.strs_to_free)
 				g.strs_to_free = ''
