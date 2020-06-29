@@ -632,8 +632,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		readme_contents := cfg.get_readme(dir_path)
         if cfg.output_type == .stdout {
 			println(markdown.to_plain(readme_contents))
-        }
-        if cfg.output_type == .html {
+        } else if cfg.output_type == .html && cfg.is_multi {
 			cfg.docs << doc.Doc{
 				head: doc.DocNode{
 					name: 'README',
@@ -660,7 +659,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 			exit(1)
 		}
 		if dcs.contents.len == 0 { continue }
-		if cfg.is_multi {
+		if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
 			readme_contents := cfg.get_readme(dirpath)
 			dcs.head.comment = readme_contents
 		}
