@@ -379,7 +379,7 @@ fn (mut g Gen) register_optional(t table.Type) string {
 		g.typedefs2.writeln('typedef struct $styp $styp;')
 		g.options.write(g.optional_type_text(styp, base))
 		g.options.writeln(';\n')
-		g.optionals << styp
+		g.optionals << styp.clone()
 	}
 	return styp
 }
