@@ -117,7 +117,7 @@ pub fn (mut d Digest) checksum() []byte {
 		panic('d.nx != 0')
 	}
 
-    digest := []byte{len:(size)}
+	mut digest := []byte{len:(size)}
 
 	binary.little_endian_put_u32(mut digest, d.s[0])
 	binary.little_endian_put_u32(mut digest[4..], d.s[1])

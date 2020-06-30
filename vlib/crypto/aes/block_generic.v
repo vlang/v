@@ -40,7 +40,7 @@ module aes
 import encoding.binary
 
 // Encrypt one block from src into dst, using the expanded key xk.
-fn encrypt_block_generic(xk []u32, dst, src []byte) {
+fn encrypt_block_generic(xk []u32, mut dst []byte, src []byte) {
 	_ = src[15] // early bounds check
 	mut s0 := binary.big_endian_u32(src[..4])
 	mut s1 := binary.big_endian_u32(src.slice(4, 8))
@@ -85,16 +85,16 @@ fn encrypt_block_generic(xk []u32, dst, src []byte) {
 	s3 ^= xk[k+3]
 
 	_ := dst[15] // early bounds check
-	binary.big_endian_put_u32(mut dst[..4], s0)
-	binary.big_endian_put_u32(mut dst.slice(4, 8), s1)
-	binary.big_endian_put_u32(mut dst.slice(8, 12), s2)
-	binary.big_endian_put_u32(mut dst.slice(12, 16), s3)
+	binary.big_endian_put_u32(mut (*dst)[0..4], s0)
+	binary.big_endian_put_u32(mut (*dst).slice(4, 8), s1)
+	binary.big_endian_put_u32(mut (*dst).slice(8, 12), s2)
+	binary.big_endian_put_u32(mut (*dst).slice(12, 16), s3)
 }
 
 // Decrypt one block from src into dst, using the expanded key xk.
-fn decrypt_block_generic(xk []u32, dst, src []byte) {
+fn decrypt_block_generic(xk []u32, mut dst []byte, src []byte) {
 	_ = src[15] // early bounds check
-	mut s0 := binary.big_endian_u32(src[..4])
+	mut s0 := binary.big_endian_u32(src[0..4])
 	mut s1 := binary.big_endian_u32(src.slice(4, 8))
 	mut s2 := binary.big_endian_u32(src.slice(8, 12))
 	mut s3 := binary.big_endian_u32(src.slice(12, 16))
@@ -137,10 +137,10 @@ fn decrypt_block_generic(xk []u32, dst, src []byte) {
 	s3 ^= xk[k+3]
 
 	_ = dst[15] // early bounds check
-	binary.big_endian_put_u32(mut dst[..4], s0)
-	binary.big_endian_put_u32(mut dst.slice(4, 8), s1)
-	binary.big_endian_put_u32(mut dst.slice(8, 12), s2)
-	binary.big_endian_put_u32(mut dst.slice(12, 16), s3)
+	binary.big_endian_put_u32(mut (*dst)[..4], s0)
+	binary.big_endian_put_u32(mut (*dst).slice(4, 8), s1)
+	binary.big_endian_put_u32(mut (*dst).slice(8, 12), s2)
+	binary.big_endian_put_u32(mut (*dst).slice(12, 16), s3)
 }
 
 // Apply s_box0 to each byte in w.

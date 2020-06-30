@@ -26,7 +26,7 @@ pub fn any_overlap(x, y []byte) bool {
 //
 // inexact_overlap can be used to implement the requirements of the crypto/cipher
 // AEAD, Block, BlockMode and Stream interfaces.
-pub fn inexact_overlap(x, y []byte) bool {
+pub fn inexact_overlap(x []byte, y []byte) bool {
 	if x.len == 0 || y.len == 0 || &x[0] == &y[0] {
 		return false
 	}

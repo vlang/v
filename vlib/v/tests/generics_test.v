@@ -77,7 +77,7 @@ fn mut_arg2<T>(mut x T) T {
 fn test_create() {
 	create<User>()
 	create<City>()
-	u := User{}
+	mut u := User{}
 	mut_arg<User>(mut u)
 	mut_arg2<User>(mut u)
 }
