@@ -1688,7 +1688,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				// c.error('undefined ident: `$it.name`', array_init.pos)
 				// }
 				mut full_const_name := it.mod + '.' + it.name
-                if obj := c.file.global_scope.find_const(full_const_name) {
+				if obj := c.file.global_scope.find_const(full_const_name) {
 					if cint := const_int_value(obj) {
 						fixed_size = cint
 					}
