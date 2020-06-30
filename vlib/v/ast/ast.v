@@ -954,6 +954,80 @@ pub fn (expr Expr) position() token.Position {
 	}
 }
 
+// pub fn (expr Expr) typ() table.Type {
+// 	// all uncommented have to be implemented
+// 	match mut expr {
+// 		AnonFn {
+// 			return expr.typ
+// 		}
+// 		ArrayInit {
+// 			return expr.typ
+// 		}
+// 		AsCast {
+// 			return expr.typ
+// 		}
+// 		Ident {
+// 			return expr.info.typ()
+// 		}
+// 		CastExpr {
+// 			return expr.typ
+// 		}
+// 		Assoc {
+// 			return expr.typ
+// 		}
+// 		CallExpr {
+// 			return expr.return_type
+// 		}
+// 		EnumVal {
+// 			return expr.typ
+// 		}
+// 		IfExpr {
+// 			return expr.typ
+// 		}
+// 		IndexExpr {
+// 			return expr.index.typ()
+// 		}
+// 		InfixExpr {
+// 			return expr.right_type
+// 		}
+// 		MapInit {
+// 			return expr.typ
+// 		}
+// 		MatchExpr {
+// 			return expr.return_type
+// 		}
+// 		PostfixExpr {
+// 			return expr.expr.typ()
+// 		}
+// 		PrefixExpr {
+// 			return expr.right.typ()
+// 		}
+// 		SelectorExpr {
+// 			return expr.typ
+// 		}
+// 		// StringInterLiteral {
+// 		// 	return expr.pos
+// 		// }
+// 		StructInit {
+// 			return expr.typ
+// 		}
+// 		else {
+// 			return table.Type(0)
+// 		}
+// 	}
+// }
+
+// pub fn (id IdentInfo) typ() table.Type {
+// 	match id {
+// 		IdentFn {
+// 			return id.typ
+// 		}
+// 		IdentVar {
+// 			return id.typ
+// 		}
+// 	}
+// }
+
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
 		AssertStmt { return stmt.pos }
