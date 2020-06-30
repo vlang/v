@@ -146,7 +146,7 @@ jobs:
     - name: Build Gitly
       run: |
         git clone --depth 1 https://github.com/vlang/gitly
-        v install markdown
+        ./v install markdown
         cd gitly
         ../v . 
         ../v -autofree .
