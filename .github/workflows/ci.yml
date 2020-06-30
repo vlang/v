@@ -55,15 +55,15 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
 
-#    - name: Build V
-#      uses: spytheman/docker_alpine_v@v7.0
-#      with:
-#        entrypoint: .github/workflows/alpine.build.sh
-
-#    - name: Test V
-#      uses: spytheman/docker_alpine_v@v7.0
-#      with:
-#        entrypoint: .github/workflows/alpine.test.sh
+    - name: Build V
+      uses: spytheman/docker_alpine_v@v7.0
+      with:
+        entrypoint: .github/workflows/alpine.build.sh
+        
+    - name: Test V
+      uses: spytheman/docker_alpine_v@v7.0
+      with:
+        entrypoint: .github/workflows/alpine.test.sh
 
   macos:
     runs-on: ${{ matrix.os }}

@@ -10,7 +10,9 @@ du -s .
 
 ls -lat 
 
-./v test-compiler
+##./v test-compiler
+
+./v test-fixed
 
 ./v build-vbinaries
 

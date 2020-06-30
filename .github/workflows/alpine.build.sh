@@ -8,7 +8,7 @@ uname -a
 
 make -j4
 
-./v -version
+./v version
 
 du -s .
 
