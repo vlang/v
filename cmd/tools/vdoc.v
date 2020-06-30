@@ -155,7 +155,7 @@ fn (mut cfg DocConfig) serve_html() {
 		default_filename: def_name
 	}
 	for {
-		con := server.accept() or {
+		mut con := server.accept() or {
 			server.close() or { }
 			panic(err)
 		}
