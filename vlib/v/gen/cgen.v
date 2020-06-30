@@ -2137,12 +2137,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 }
 
 fn (mut g Gen) index_expr(node ast.IndexExpr) {
-	// TODO else doesn't work with sum types
-	mut is_range := false
 	match node.index {
 		ast.RangeExpr {
 			sym := g.table.get_type_symbol(node.left_type)
-			is_range = true
 			if sym.kind == .string {
 				g.write('string_substr(')
 				g.expr(node.left)
@@ -2177,130 +2174,128 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.write('.len')
 			}
 			g.write(')')
-			return
 		}
-		else {}
-	}
-	if !is_range {
-		sym := g.table.get_type_symbol(node.left_type)
-		left_is_ptr := node.left_type.is_ptr()
-		if node.left_type.has_flag(.variadic) {
-			g.expr(node.left)
-			g.write('.args')
-			g.write('[')
-			g.expr(node.index)
-			g.write(']')
-		} else if sym.kind == .array {
-			info := sym.info as table.Array
-			elem_type_str := g.typ(info.elem_type)
-			// `vals[i].field = x` is an exception and requires `array_get`:
-			// `(*(Val*)array_get(vals, i)).field = x;`
-			is_selector := node.left is ast.SelectorExpr
-			if g.is_assign_lhs && !is_selector && node.is_setter {
-				g.is_array_set = true
-				g.write('array_set(')
-				if !left_is_ptr {
-					g.write('&')
-				}
+		else {
+			sym := g.table.get_type_symbol(node.left_type)
+			left_is_ptr := node.left_type.is_ptr()
+			if node.left_type.has_flag(.variadic) {
 				g.expr(node.left)
-				g.write(', ')
+				g.write('.args')
+				g.write('[')
 				g.expr(node.index)
-				mut need_wrapper := true
-				/*
-				match node.right {
-					ast.EnumVal, ast.Ident {
-						// `&x` is enough for variables and enums
-						// `&(Foo[]){ ... }` is only needed for function calls and literals
-						need_wrapper = false
+				g.write(']')
+			} else if sym.kind == .array {
+				info := sym.info as table.Array
+				elem_type_str := g.typ(info.elem_type)
+				// `vals[i].field = x` is an exception and requires `array_get`:
+				// `(*(Val*)array_get(vals, i)).field = x;`
+				is_selector := node.left is ast.SelectorExpr
+				if g.is_assign_lhs && !is_selector && node.is_setter {
+					g.is_array_set = true
+					g.write('array_set(')
+					if !left_is_ptr {
+						g.write('&')
 					}
-					else {}
-				}
-				*/
-				if need_wrapper {
-					g.write(', &($elem_type_str[]) { ')
+					g.expr(node.left)
+					g.write(', ')
+					g.expr(node.index)
+					mut need_wrapper := true
+					/*
+					match node.right {
+						ast.EnumVal, ast.Ident {
+							// `&x` is enough for variables and enums
+							// `&(Foo[]){ ... }` is only needed for function calls and literals
+							need_wrapper = false
+						}
+						else {}
+					}
+					*/
+					if need_wrapper {
+						g.write(', &($elem_type_str[]) { ')
+					} else {
+						g.write(', &')
+					}
+					// `x[0] *= y`
+					if g.assign_op != .assign &&
+						g.assign_op in token.assign_tokens &&
+						info.elem_type != table.string_type {
+						// TODO move this
+						g.write('*($elem_type_str*)array_get(')
+						if left_is_ptr {
+							g.write('*')
+						}
+						g.expr(node.left)
+						g.write(', ')
+						g.expr(node.index)
+						g.write(') ')
+						op := match g.assign_op {
+							.mult_assign { '*' }
+							.plus_assign { '+' }
+							.minus_assign { '-' }
+							.div_assign { '/' }
+							.xor_assign { '^' }
+							.mod_assign { '%' }
+							.or_assign { '|' }
+							.and_assign { '&' }
+							.left_shift_assign { '<<' }
+							.right_shift_assign { '>>' }
+							else { '' }
+						}
+						g.write(op)
+					}
 				} else {
-					g.write(', &')
-				}
-				// `x[0] *= y`
-				if g.assign_op != .assign &&
-					g.assign_op in token.assign_tokens &&
-					info.elem_type != table.string_type {
-					// TODO move this
-					g.write('*($elem_type_str*)array_get(')
+					g.write('(*($elem_type_str*)array_get(')
 					if left_is_ptr {
 						g.write('*')
 					}
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
-					g.write(') ')
-					op := match g.assign_op {
-						.mult_assign { '*' }
-						.plus_assign { '+' }
-						.minus_assign { '-' }
-						.div_assign { '/' }
-						.xor_assign { '^' }
-						.mod_assign { '%' }
-						.or_assign { '|' }
-						.and_assign { '&' }
-						.left_shift_assign { '<<' }
-						.right_shift_assign { '>>' }
-						else { '' }
+					g.write('))')
+				}
+			} else if sym.kind == .map {
+				info := sym.info as table.Map
+				elem_type_str := g.typ(info.value_type)
+				if g.is_assign_lhs && !g.is_array_set {
+					g.is_array_set = true
+					g.write('map_set(')
+					if !left_is_ptr {
+						g.write('&')
 					}
-					g.write(op)
+					g.expr(node.left)
+					g.write(', ')
+					g.expr(node.index)
+					g.write(', &($elem_type_str[]) { ')
+				} else if g.inside_map_postfix || g.inside_map_infix {
+					zero := g.type_default(info.value_type)
+					g.write('(*($elem_type_str*)map_get_and_set(')
+					if !left_is_ptr {
+						g.write('&')
+					}
+					g.expr(node.left)
+					g.write(', ')
+					g.expr(node.index)
+					g.write(', &($elem_type_str[]){ $zero }))\n')
+				} else {
+					zero := g.type_default(info.value_type)
+					g.write('(*($elem_type_str*)map_get(')
+					g.expr(node.left)
+					g.write(', ')
+					g.expr(node.index)
+					g.write(', &($elem_type_str[]){ $zero }))\n')
 				}
+			} else if sym.kind == .string && !node.left_type.is_ptr() {
+				g.write('string_at(')
+				g.expr(node.left)
+				g.write(', ')
+				g.expr(node.index)
+				g.write(')')
 			} else {
-				g.write('(*($elem_type_str*)array_get(')
-				if left_is_ptr {
-					g.write('*')
-				}
 				g.expr(node.left)
-				g.write(', ')
+				g.write('[')
 				g.expr(node.index)
-				g.write('))')
+				g.write(']')
 			}
-		} else if sym.kind == .map {
-			info := sym.info as table.Map
-			elem_type_str := g.typ(info.value_type)
-			if g.is_assign_lhs && !g.is_array_set {
-				g.is_array_set = true
-				g.write('map_set(')
-				if !left_is_ptr {
-					g.write('&')
-				}
-				g.expr(node.left)
-				g.write(', ')
-				g.expr(node.index)
-				g.write(', &($elem_type_str[]) { ')
-			} else if g.inside_map_postfix || g.inside_map_infix {
-				zero := g.type_default(info.value_type)
-				g.write('(*($elem_type_str*)map_get_and_set(')
-				if !left_is_ptr {
-					g.write('&')
-				}
-				g.expr(node.left)
-				g.write(', ')
-				g.expr(node.index)
-				g.write(', &($elem_type_str[]){ $zero }))\n')
-			} else {
-				zero := g.type_default(info.value_type)
-				g.write('(*($elem_type_str*)map_get(')
-				g.expr(node.left)
-				g.write(', ')
-				g.expr(node.index)
-				g.write(', &($elem_type_str[]){ $zero }))\n')
-			}
-		} else if sym.kind == .string && !node.left_type.is_ptr() {
-			g.write('string_at(')
-			g.expr(node.left)
-			g.write(', ')
-			g.expr(node.index)
-			g.write(')')
-		} else {
-			g.expr(node.left)
-			g.write('[')
-			g.expr(node.index)
-			g.write(']')
 		}
 	}
 }
