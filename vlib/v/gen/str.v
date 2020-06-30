@@ -108,7 +108,7 @@ string _STR_TMP(const char *fmt, ...) {
 	//puts(g_str_buf);
 #endif
 	string res = tos(g_str_buf,  len);
-	res.is_lit = true;
+	res.is_lit = 1;
 	return res;
 
 } // endof _STR_TMP
