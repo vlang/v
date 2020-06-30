@@ -72,7 +72,10 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	if is_livemain {
 		g.hotcode_fn_names << name
 	}
-	mut impl_fn_name := if is_live_wrap { 'impl_live_${name}' } else { name }
+	mut impl_fn_name := name
+	if is_live_wrap {
+		impl_fn_name = 'impl_live_${name}'
+	}
 	g.last_fn_c_name = impl_fn_name
 	//
 	if is_live_wrap {
