@@ -168,21 +168,22 @@ pub fn v_realloc(b byteptr, n int) byteptr {
 	if ptr == 0 {
 		panic('realloc($n) failed')
 	}
-
 	return ptr
 }
 
+[unsafe_fn]
 pub fn v_calloc(n int) byteptr {
-	return C.calloc(n, 1)
+	return C.calloc(1, n)
 }
 
+[unsafe_fn]
 pub fn vcalloc(n int) byteptr {
 	if n < 0 {
 		panic('calloc(<=0)')
 	} else if n == 0 {
 		return byteptr(0)
 	}
-	return C.calloc(n, 1)
+	return C.calloc(1, n)
 }
 
 [unsafe_fn]
