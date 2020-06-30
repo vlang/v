@@ -92,10 +92,11 @@ pub fn (mut ctx Context) ok(s string) Result {
 	return Result{}
 }
 
-pub fn (mut ctx Context) redirect(url string) {
-	if ctx.done { return }
+pub fn (mut ctx Context) redirect(url string) Result {
+	if ctx.done { return Result{} }
 	ctx.done = true
-	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${headers_close}') or { return }
+	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${headers_close}') or { return Result{} }
+	return Result{}
 }
 
 pub fn (mut ctx Context) not_found() Result {
