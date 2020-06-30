@@ -669,6 +669,14 @@ fn test_trim_prefix() {
 	assert s.trim_prefix('V ') == 'Programming Language'
 	assert s.trim_prefix('V Programming ') == 'Language'
 	assert s.trim_prefix('Language') == s
+
+	s2 := 'TestTestTest'
+	assert s2.trim_prefix('Test') == 'TestTest'
+	assert s2.trim_prefix('TestTest') == 'Test'
+
+	s3 := '123Test123Test'
+	assert s3.trim_prefix('123') == 'Test123Test'
+	assert s3.trim_prefix('123Test') == '123Test'
 }
 
 fn test_trim_suffix() {
@@ -676,6 +684,14 @@ fn test_trim_suffix() {
 	assert s.trim_suffix(' Language') == 'V Programming'
 	assert s.trim_suffix(' Programming Language') == 'V'
 	assert s.trim_suffix('V') == s
+
+	s2 := 'TestTestTest'
+	assert s2.trim_suffix('Test') == 'TestTest'
+	assert s2.trim_suffix('TestTest') == 'Test'
+
+	s3 := '123Test123Test'
+	assert s3.trim_suffix('123') == s3
+	assert s3.trim_suffix('123Test') == '123Test'
 }
 
 fn test_raw() {
