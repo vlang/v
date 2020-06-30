@@ -834,7 +834,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.expr(it.cond)
 		g.write('; $i < ')
 		g.expr(it.high)
-		g.writeln('; $i++) {')
+		g.writeln('; ++$i) {')
 		g.stmts(it.stmts)
 		g.writeln('}')
 	} else if it.kind == .array {
@@ -849,7 +849,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln(';')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		op_field := if cond_type_is_ptr { '->' } else { '.' }
-		g.writeln('for (int $i = 0; $i < $atmp${op_field}len; $i++) {')
+		g.writeln('for (int $i = 0; $i < $atmp${op_field}len; ++$i) {')
 		if it.val_var != '_' {
 			g.writeln('\t$styp ${c_name(it.val_var)} = (($styp*)$atmp${op_field}data)[$i];')
 		}
@@ -870,7 +870,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.expr(it.cond)
 		g.writeln(';')
 		g.writeln('array_$key_styp $keys_tmp = map_keys(&$atmp);')
-		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; $idx++) {')
+		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; ++$idx) {')
 		g.writeln('\t$key_styp $key = (($key_styp*)${keys_tmp}.data)[$idx];')
 		if it.val_var != '_' {
 			g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)map_get($atmp')
@@ -879,7 +879,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.stmts(it.stmts)
 		g.writeln('}')
 		g.writeln('/*for in map cleanup*/')
-		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; $idx++) { string_free(&(($key_styp*)${keys_tmp}.data)[$idx]); }')
+		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; ++$idx) { string_free(&(($key_styp*)${keys_tmp}.data)[$idx]); }')
 		g.writeln('array_free(&$keys_tmp);')
 	} else if it.cond_type.has_flag(.variadic) {
 		g.writeln('// FOR IN cond_type/variadic')
@@ -887,7 +887,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		styp := g.typ(it.cond_type)
 		g.write('for (int $i = 0; $i < ')
 		g.expr(it.cond)
-		g.writeln('.len; $i++) {')
+		g.writeln('.len; ++$i) {')
 		g.write('$styp ${c_name(it.val_var)} = ')
 		g.expr(it.cond)
 		g.writeln('.args[$i];')
@@ -897,7 +897,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		g.write('for (int $i = 0; $i < ')
 		g.expr(it.cond)
-		g.writeln('.len; $i++) {')
+		g.writeln('.len; ++$i) {')
 		if it.val_var != '_' {
 			g.write('byte ${c_name(it.val_var)} = ')
 			g.expr(it.cond)
@@ -2725,7 +2725,7 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	g.definitions.writeln('\tif (a.len != b.len) {')
 	g.definitions.writeln('\t\treturn false;')
 	g.definitions.writeln('\t}')
-	g.definitions.writeln('\tfor (int i = 0; i < a.len; i++) {')
+	g.definitions.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 	if elem_sym.kind == .string {
 		g.definitions.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_typ*)((byte*)b.data+(i*b.element_size))))) {')
 	} else if elem_sym.kind == .struct_ {
@@ -3059,7 +3059,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.writeln('.len;')
 	g.writeln('$ret_typ $tmp = __new_array(0, ${tmp}_len, sizeof($ret_elem_type));')
 	i := g.new_tmp_var()
-	g.writeln('for (int $i = 0; $i < ${tmp}_len; $i++) {')
+	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.write('\t$inp_elem_type it = (($inp_elem_type*) ')
 	g.expr(node.left)
 	g.writeln('.data)[$i];')
@@ -3111,7 +3111,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.expr(node.left)
 	g.writeln('.len;')
 	g.writeln('$styp $tmp = __new_array(0, ${tmp}_len, sizeof($elem_type_str));')
-	g.writeln('for (int i = 0; i < ${tmp}_len; i++) {')
+	g.writeln('for (int i = 0; i < ${tmp}_len; ++i) {')
 	g.write('  $elem_type_str it = (($elem_type_str*) ')
 	g.expr(node.left)
 	g.writeln('.data)[i];')
@@ -3896,7 +3896,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	}
 	// generate ident / indent length = 4 spaces
 	g.auto_str_funcs.writeln('\tstring indents = tos_lit("");')
-	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; i++) {')
+	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
 	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, tos_lit("    "));')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\treturn _STR("$clean_struct_v_type_name {\\n"')
@@ -3961,7 +3961,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(a.len * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
-	g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; i++) {')
+	g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 	g.auto_str_funcs.writeln('\t\t$field_styp it = (*($field_styp*)array_get(a, i));')
 	if sym.kind == .struct_ && !sym_has_str_method {
 		if is_elem_ptr {
@@ -4019,7 +4019,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder($info.size * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
-	g.auto_str_funcs.writeln('\tfor (int i = 0; i < $info.size; i++) {')
+	g.auto_str_funcs.writeln('\tfor (int i = 0; i < $info.size; ++i) {')
 	if sym.kind == .struct_ && !sym_has_str_method {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(a[i],0));')
 	} else if sym.kind in [.f32, .f64] {
@@ -4061,7 +4061,7 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp m) { /* gen_str_for_map */')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(m.key_values.len*10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("{"));')
-	g.auto_str_funcs.writeln('\tfor (unsigned int i = 0; i < m.key_values.len; i++) {')
+	g.auto_str_funcs.writeln('\tfor (unsigned int i = 0; i < m.key_values.len; ++i) {')
 	g.auto_str_funcs.writeln('\t\tstring key = (*(string*)DenseArray_get(m.key_values, i));')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, key));')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos_lit(": "));')
@@ -4092,7 +4092,7 @@ fn (mut g Gen) gen_str_for_varg(styp, str_fn_name string, has_str_method bool) {
 	g.auto_str_funcs.writeln('string varg_${str_fn_name}(varg_$styp it) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(it.len);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
-	g.auto_str_funcs.writeln('\tfor(int i=0; i<it.len; i++) {')
+	g.auto_str_funcs.writeln('\tfor(int i=0; i<it.len; ++i) {')
 	if has_str_method {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${str_fn_name}(it.args[i]));')
 	} else {

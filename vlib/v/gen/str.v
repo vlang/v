@@ -36,10 +36,10 @@ string _STR(const char *fmt, int nfmts, ...) {
 	int nbytes = 0;
 	char* buf = (char*)malloc(memsize);
 	va_start(argptr, nfmts);
-	for (int i=0; i<nfmts; i++) {
+	for (int i=0; i<nfmts; ++i) {
 		int k = strlen(fmt);
 		bool is_fspec = false;
-		for (int j=0; j<k; j++) {
+		for (int j=0; j<k; ++j) {
 			if (fmt[j] == '%') {
 				j++;
 				if (fmt[j] != '%') {
