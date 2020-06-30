@@ -11,7 +11,3 @@ pub fn (app &App) find_all_articles() []Article {
 	articles := db.select from Article
 	return articles
 }
-
-
-
-

@@ -5,8 +5,8 @@ import time
 import pg
 import json
 
-pub struct App {
-mut:
+struct App {
+pub mut:
 	vweb vweb.Context
 	db pg.DB
 }
@@ -35,9 +35,12 @@ pub fn (mut app App) init() {
 	db := pg.connect(pg.Config{
 		host:   '127.0.0.1'
 		dbname: 'blog'
-		user:   'alex'
+		user:   'blog'
 	}) or { panic(err) }
 	app.db = db
+}
+
+pub fn (mut app App) init_once() {
 }
 
 pub fn (mut app App) new() {

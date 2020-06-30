@@ -55,8 +55,8 @@ module main
 
 import vweb
 
-pub struct App {
-mut:
+struct App {
+pub mut:
 	vweb vweb.Context
 }
 
@@ -69,6 +69,7 @@ fn (mut app App) index() {
 }
 
 pub fn (app &App) init() {}
+pub fn (app &App) init_once() {}
 pub fn (app &App) reset() {}
 
 ```
@@ -208,7 +209,7 @@ Add a Postgres DB handle to `App`:
 
 ```v
 struct App {
-mut:
+pub mut:
 	vweb vweb.Context
 	db   pg.DB
 }
