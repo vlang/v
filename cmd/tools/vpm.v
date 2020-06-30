@@ -121,7 +121,7 @@ fn vpm_search(keywords []string) {
 			break
 		}
 	}
-	println('\nUse "v install author.module_name" to install the module')
+	println('\nUse "v install author_name.module_name" to install the module')
 	if index == 0 {
 		println('No module(s) found for "$joined"')
 	}
@@ -154,7 +154,8 @@ fn vpm_install(module_names []string) {
 			println('Skipping module "$name", since it uses an unsupported VCS {$vcs} .')
 			continue
 		}
-		final_module_path := os.real_path(os.join_path(settings.vmodules_path,mod.name.replace('.', os.path_separator)))
+		mod_name_as_path := mod.name.replace('.', os.path_separator).replace('-', '_')
+		final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
 		if os.exists(final_module_path) {
 			vpm_update([name])
 			continue
@@ -254,7 +255,8 @@ fn vpm_remove(module_names []string) {
 }
 
 fn valid_final_path_of_existing_module(name string) ?string {
-	name_of_vmodules_folder := os.join_path(settings.vmodules_path,name.replace('.', os.path_separator))
+	mod_name_as_path := name.replace('.', os.path_separator).replace('-', '_')
+	name_of_vmodules_folder := os.join_path(settings.vmodules_path, mod_name_as_path)
 	final_module_path := os.real_path(name_of_vmodules_folder)
 	if !os.exists(final_module_path) {
 		println('No module with name "$name" exists at $name_of_vmodules_folder')
