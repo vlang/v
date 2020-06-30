@@ -137,7 +137,9 @@ pub fn malloc(n int) byteptr {
 	}
 	$if prealloc {
 		res := g_m2_ptr
-		g_m2_ptr += n
+		unsafe {
+			g_m2_ptr += n
+		}
 		nr_mallocs++
 		return res
 	} $else {
