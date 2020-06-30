@@ -37,7 +37,24 @@
 - Built-in ORM
 - C and JavaScript backends
 
-A stable 0.2 release is planned for June 2020. Right now V is in an alpha stage.
+## Stability guarantee and future changes
+
+Despite being at an early development stage, the V language is relatively stable and has
+backwards compatibility guarantee, meaning that the code you write today is guaranteed
+to work a month, a year, or five years from now.
+
+There still may be minor syntax changes before the 1.0 release, but they will be handled
+automatically via `vfmt`, as has been done in the past.
+
+The V core APIs (primarily the `os` module) will still have minor changes until
+they are stabilized in 2020. Of course the APIs will grow after that, but without breaking
+existing code.
+
+Unlike many other languages, V is not going to be always changing, with new features
+being introduced and old features modified. It is always going to be a small and simple 
+language, very similar to the way it is right now.
+
+
 
 ## Installing V from source
 
