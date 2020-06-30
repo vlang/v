@@ -4,6 +4,7 @@
 module gen
 
 import v.table
+import v.util
 import strings
 
 // TODO replace with comptime code generation.
@@ -110,7 +111,7 @@ $enc_fn_dec {
 			mut enc_name := js_enc_name(field_type)
 			if g.table.get_type_symbol(field.typ).kind == .enum_ {
 				enc.writeln('\tcJSON_AddItemToObject(o, "$name", json__encode_u64(val.${c_name(field.name)}));')
-
+				
 			} else {
 				enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));')
 			}
@@ -128,12 +129,12 @@ $enc_fn_dec {
 
 fn js_enc_name(typ string) string {
 	name := 'json__encode_$typ'
-	return name.replace('.', '__')
+	return util.no_dots(name)
 }
 
 fn js_dec_name(typ string) string {
 	name := 'json__decode_$typ'
-	return name.replace('.', '__')
+	return util.no_dots(name)
 }
 
 fn is_js_prim(typ string) bool {

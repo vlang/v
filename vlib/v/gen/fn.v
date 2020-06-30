@@ -48,7 +48,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
 	}
 	if it.language == .c {
-		name = name.replace('.', '__')
+		name = util.no_dots(name)
 	} else {
 		name = c_name(name)
 	}
@@ -183,7 +183,7 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 		caname := c_name(arg.name)
 		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.get_type_symbol(typ)
-		mut arg_type_name := g.typ(typ) // arg_type_sym.name.replace('.', '__')
+		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
 		// if arg.name == 'xxx' {
 		// println('xxx arg type= ' + arg_type_name)
 		// }
@@ -290,7 +290,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// mut receiver_type_name := g.cc_type(node.receiver_type)
 	// mut receiver_type_name := g.typ(node.receiver_type)
 	typ_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver_type))
-	mut receiver_type_name := typ_sym.name.replace('.', '__')
+	mut receiver_type_name := util.no_dots(typ_sym.name)
 	if typ_sym.kind == .interface_ {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		g.write('${c_name(receiver_type_name)}_name_table[')
@@ -347,7 +347,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('*($return_type_str*)')
 		}
 	}
-	mut name := '${receiver_type_name}_$node.name'.replace('.', '__')
+	mut name := util.no_dots('${receiver_type_name}_$node.name')
 	// Check if expression is: arr[a..b].clone(), arr[a..].clone()
 	// if so, then instead of calling array_clone(&array_slice(...))
 	// call array_clone_static(array_slice(...))
@@ -358,7 +358,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			if idx is ast.RangeExpr {
 				// expr is arr[range].clone()
 				// use array_clone_static instead of array_clone
-				name = '${receiver_type_name}_${node.name}_static'.replace('.', '__')
+				name = util.no_dots('${receiver_type_name}_${node.name}_static')
 				is_range_slice = true
 			}
 		}
@@ -441,13 +441,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	if node.language == .c {
 		// Skip "C."
 		g.is_c_call = true
-		name = name[2..].replace('.', '__')
+		name = util.no_dots(name[2..])
 	} else {
 		name = c_name(name)
 	}
 	if is_json_encode {
 		// `json__encode` => `json__encode_User`
-		name += '_' + json_type_str.replace('.', '__')
+		name += '_' + util.no_dots(json_type_str)
 	}
 	if node.generic_type != table.void_type && node.generic_type != 0 {
 		// `foo<int>()` => `foo_int()`

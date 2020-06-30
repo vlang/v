@@ -5,6 +5,7 @@ module gen
 
 import v.ast
 import v.table
+import v.util
 
 fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
@@ -39,9 +40,8 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 		if j > 0 {
 			g.write(' else ')
 		}
-		no_dots_nsname := node.sym.name.replace('.', '__')
 		g.write('if (string_eq($node.method_name, tos_lit("$method.name"))) ')
-		g.write('${no_dots_nsname}_${method.name}($amp ')
+		g.write('${util.no_dots(node.sym.name)}_${method.name}($amp ')
 		g.expr(node.left)
 		g.writeln(');')
 		j++
