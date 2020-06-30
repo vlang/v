@@ -108,6 +108,8 @@ pub enum Kind {
 	key_match
 	key_module
 	key_mut
+	key_shared
+	key_rwshared
 	key_none
 	key_return
 	key_select
@@ -226,6 +228,8 @@ fn build_token_str() []string {
 	s[Kind.key_goto] = 'goto'
 	s[Kind.key_const] = 'const'
 	s[Kind.key_mut] = 'mut'
+	s[Kind.key_shared] = 'shared'
+	s[Kind.key_rwshared] = 'rwshared'
 	s[Kind.key_type] = 'type'
 	s[Kind.key_for] = 'for'
 	s[Kind.key_switch] = 'switch'

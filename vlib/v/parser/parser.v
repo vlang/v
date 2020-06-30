@@ -763,7 +763,9 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 
 pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	// p.warn('name ')
-	is_mut := p.tok.kind == .key_mut
+	is_shared := p.tok.kind in [.key_shared, .key_rwshared]
+	is_atomic_or_rw := p.tok.kind in [.key_rwshared, .key_atomic]
+	is_mut := p.tok.kind == .key_mut || is_shared || is_atomic_or_rw
 	if is_mut {
 		p.next()
 	}
@@ -801,6 +803,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 			info: ast.IdentVar{
 				is_mut: is_mut
 				is_static: is_static
+				share: table.sharetype_from_flags(is_shared, is_atomic_or_rw)
 			}
 		}
 	} else {

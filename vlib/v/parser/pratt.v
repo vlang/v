@@ -15,7 +15,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	p.is_stmt_ident = false
 	// Prefix
 	match p.tok.kind {
-		.key_mut, .key_static {
+		.key_mut, .key_shared, .key_rwshared, .key_atomic, .key_static {
 			node = p.name_expr()
 			p.is_stmt_ident = is_stmt_ident
 		}

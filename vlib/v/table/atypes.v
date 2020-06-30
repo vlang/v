@@ -41,6 +41,40 @@ pub enum TypeFlag {
 	optional
 	variadic
 	generic
+	shared_f
+	atomic_or_rw
+}
+
+/* 
+	To save precious TypeFlag bits the 4 possible ShareTypes are coded in the two
+	bits `shared` and `atomic_or_rw` (see sharetype_from_flags() below).
+*/
+
+pub enum ShareType {
+	not_shared
+	shared_t
+	atomic_t
+	rwshared_t
+}
+
+pub fn (t ShareType) str() string {
+	if t == .not_shared {
+		return 'mut'
+	} else if t == .shared_t {
+		return 'shared'
+	} else if t == .atomic_t {
+		return 'atomic'
+	} else {
+		return 'rwshared'
+	}
+}
+
+pub fn sharetype_from_flags(is_shared, is_atomic_or_rw bool) ShareType {
+	return ShareType((int(is_atomic_or_rw) << 1) | int(is_shared))
+}
+
+pub fn (t Type) share() ShareType {
+	return sharetype_from_flags(t.has_flag(.shared_f), t.has_flag(.atomic_or_rw))
 }
 
 pub fn (types []Type) contains(typ Type) bool {
