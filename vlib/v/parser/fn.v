@@ -32,6 +32,9 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		if generic_type != table.t_type {
 			p.table.register_fn_gen_type(fn_name, generic_type)
 		}
+		if fn_name in ['json.decode', 'json.encode'] {
+			p.gen_json_for_type(generic_type)
+		}
 	}
 	p.check(.lpar)
 	args := p.call_args()
