@@ -596,10 +596,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.SelectorExpr {
 			g.gen_selector_expr(it)
 		}
-		ast.SizeOfType {
-			// TODO
-		}
-		ast.SizeOfVar {
+		ast.SizeOf {
 			// TODO
 		}
 		ast.SqlExpr{

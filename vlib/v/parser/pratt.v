@@ -100,13 +100,15 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			is_known_var := p.mark_var_as_used( p.tok.lit )
 			if is_known_var {
 				expr := p.parse_ident(table.Language.v)
-				node = ast.SizeOfVar{
+				node = ast.SizeOf{
+					is_type: false
 					expr: expr
 					pos: pos
 				}
 			} else {
 				sizeof_type := p.parse_type()
-				node = ast.SizeOfType{
+				node = ast.SizeOf{
+					is_type: true                
 					typ: sizeof_type
 					type_name: p.table.get_type_symbol(sizeof_type).name
 					pos: pos

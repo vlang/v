@@ -12,7 +12,7 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
 	CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr |
 	IndexExpr | InfixExpr | IntegerLiteral | Likely | MapInit | MatchExpr | None | OrExpr |
-	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOfVar | SizeOfType | SqlExpr | StringInterLiteral |
+	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
 	StringLiteral | StructInit | Type | TypeOf
 
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf |
@@ -751,16 +751,12 @@ pub mut:
 	typ      table.Type
 }
 
-pub struct SizeOfVar {
+pub struct SizeOf {
 pub:
-	expr      Expr
-	pos       token.Position
-}
-
-pub struct SizeOfType {
-pub:
+	is_type   bool
 	typ       table.Type
 	type_name string
+	expr      Expr
 	pos       token.Position
 }
 
@@ -940,10 +936,7 @@ pub fn (expr Expr) position() token.Position {
 		SelectorExpr {
 			return expr.pos
 		}
-		SizeOfVar {
-			return expr.pos
-		}
-		SizeOfType {
+		SizeOf {
 			return expr.pos
 		}
 		StringLiteral {

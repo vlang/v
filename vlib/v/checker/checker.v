@@ -2152,10 +2152,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.SelectorExpr {
 			return c.selector_expr(mut node)
 		}
-		ast.SizeOfVar {
-			return table.u32_type
-		}
-		ast.SizeOfType {
+		ast.SizeOf {
 			return table.u32_type
 		}
 		ast.SqlExpr {
