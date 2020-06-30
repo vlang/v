@@ -20,11 +20,6 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.check_name()
 	}
 	mut or_kind := ast.OrKind.absent
-	if fn_name == 'json.decode' {
-		p.expecting_type = true // Makes name_expr() parse the type `User` in `json.decode(User, txt)`
-		p.expr_mod = ''
-		or_kind = .block
-	}
 	mut generic_type := table.void_type
 	if p.tok.kind == .lt {
 		// `foo<int>(10)`
@@ -42,14 +37,6 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	args := p.call_args()
 	last_pos := p.tok.position()
 	p.check(.rpar)
-	if fn_name == 'json.decode' && args[0].expr is ast.Type {
-		json_data_typ := args[0].expr as ast.Type
-		generic_type = json_data_typ.typ
-		if generic_type != table.t_type {
-			p.table.register_fn_gen_type(fn_name, generic_type)
-		}
-		p.gen_json_for_type(generic_type)
-	}
 	// ! in mutable methods
 	if p.tok.kind == .not {
 		p.next()

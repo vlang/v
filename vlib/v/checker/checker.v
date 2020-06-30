@@ -945,24 +945,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	// if c.fileis('json_test.v') {
 	// println(fn_name)
 	// }
-	if fn_name == 'json.encode' {
-	} else if fn_name == 'json.decode' {
-		expr := call_expr.args[0].expr
-		if !(expr is ast.Type) {
-			typ := typeof(expr)
-			c.error('json.decode: first argument needs to be a type, got `$typ`', call_expr.pos)
-			return table.void_type
-		}
-		c.expected_type = table.string_type
-		call_expr.args[1].typ = c.expr(call_expr.args[1].expr)
-		if call_expr.args[1].typ != table.string_type {
-			c.error('json.decode: second argument needs to be a string', call_expr.pos)
-		}
-		typ := expr as ast.Type
-		ret_type := typ.typ.set_flag(.optional)
-		call_expr.return_type = ret_type
-		return ret_type
-	}
 	// look for function in format `mod.fn` or `fn` (main/builtin)
 	mut f := table.Fn{}
 	mut found := false

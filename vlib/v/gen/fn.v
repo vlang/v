@@ -484,34 +484,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	mut name := node.name
 	is_print := name == 'println' || name == 'print'
 	print_method := if name == 'println' { 'println' } else { 'print' }
-	is_json_encode := name == 'json.encode'
-	is_json_decode := name == 'json.decode'
-	g.is_json_fn = is_json_encode || is_json_decode
-	mut json_type_str := ''
-	if g.is_json_fn {
-		if name == 'json.encode' {
-			g.write('json__json_print(')
-			g.gen_json_for_type(node.args[0].typ)
-			json_type_str = g.table.get_type_symbol(node.args[0].typ).name
-		} else {
-			g.insert_before_stmt('// json.decode')
-			ast_type := node.args[0].expr as ast.Type
-			// `json.decode(User, s)` => json.decode_User(s)
-			sym := g.table.get_type_symbol(ast_type.typ)
-			name += '_' + sym.name
-			g.gen_json_for_type(ast_type.typ)
-		}
-	}
 	if node.language == .c {
 		// Skip "C."
 		g.is_c_call = true
 		name = name[2..].replace('.', '__')
 	} else {
 		name = c_name(name)
-	}
-	if is_json_encode {
-		// `json__encode` => `json__encode_User`
-		name += '_' + json_type_str.replace('.', '__')
 	}
 	if node.generic_type != table.void_type && node.generic_type != 0 {
 		// `foo<int>()` => `foo_int()`
@@ -594,14 +572,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		g.write(')')
 	} else {
 		g.write('${g.get_ternary_name(name)}(')
-		if is_json_decode {
-			g.write('json__json_parse(')
-			// Skip the first argument in json.decode which is a type
-			// its name was already used to generate the function call
-			g.call_args(node.args[1..], node.expected_arg_types)
-		} else {
-			g.call_args(node.args, node.expected_arg_types)
-		}
+		g.call_args(node.args, node.expected_arg_types)
 		g.write(')')
 	}
 	g.is_c_call = false
