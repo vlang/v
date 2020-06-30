@@ -144,7 +144,13 @@ jobs:
 #    - name: Build Vorum
 #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
     - name: Build Gitly
-      run: git clone --depth 1 https://github.com/vlang/gitly && cd gitly && ../v . && cd ..
+      run: |
+        git clone --depth 1 https://github.com/vlang/gitly
+        v install markdown
+        cd gitly
+        ../v . 
+        ../v -autofree .
+        cd ..
 #    - name: Build vpm
 #      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
 #    - name: Build V UI examples
