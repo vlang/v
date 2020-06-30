@@ -15,18 +15,19 @@ struct Employee {
 
 fn test_simple() {
 	x := Employee{'Peter', 28, 95000.5, .worker}
-	s := json.encode(x)
-	eprintln('Employee x: $s')
+	s := json.encode<Employee>(x)
+	// eprintln('Employee x: $s')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
-	y := json.decode(Employee, s) or {
-		assert false
-		Employee{}
-	}
-	eprintln('Employee y: $y')
-	assert y.name == 'Peter'
-	assert y.age == 28
-	assert y.salary == 95000.5
-	assert y.title == .worker
+	// y := json.decode<Employee>(s)
+	//  or {
+	// 	assert false
+	// 	Employee{}
+	// }
+	// eprintln('Employee y: $y')
+	// assert y.name == 'Peter'
+	// assert y.age == 28
+	// assert y.salary == 95000.5
+	// assert y.title == .worker
 }
 
 struct User2 {
@@ -45,13 +46,15 @@ struct User {
 
 fn test_parse_user() {
 	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
-	u2 := json.decode(User2, s) or {
-		exit(1)
-	}
+	u2 := json.decode<User2>(s) 
+	// or {
+	// 	exit(1)
+	// }
 	println(u2)
-	u := json.decode(User, s) or {
-		exit(1)
-	}
+	u := json.decode<User>(s) 
+	// or {
+	// 	exit(1)
+	// }
 	println(u)
 	assert u.age == 10
 	assert u.last_name == 'Johnson'
@@ -74,7 +77,7 @@ fn test_encode_user() {
 		pets: 'foo'
 	}
 	expected := '{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"foo"}'
-	out := json.encode(usr)
+	out := json.encode<User>(usr)
 	println(out)
 	assert out == expected
 }
@@ -85,10 +88,11 @@ struct Color {
 }
 
 fn test_raw_json_field() {
-	color := json.decode(Color, '{"space": "YCbCr", "point": {"Y": 123}}') or {
-		println('text')
-		return
-	}
+	color := json.decode<Color>('{"space": "YCbCr", "point": {"Y": 123}}')
+	//  or {
+	// 	println('text')
+	// 	return
+	// }
 	assert color.point == '{"Y":123}'
 	assert color.space == 'YCbCr'
 }
@@ -103,10 +107,11 @@ struct Country {
 }
 
 fn test_struct_in_struct() {
-	country := json.decode(Country, '{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}') or {
-		assert false
-		exit(1)
-	}
+	country := json.decode<Country>('{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}')
+	//  or {
+	// 	assert false
+	// 	exit(1)
+	// }
 	assert country.name == 'UK'
 	assert country.cities.len == 2
 	assert country.cities[0].name == 'London'
