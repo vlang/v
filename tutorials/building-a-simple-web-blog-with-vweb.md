@@ -55,13 +55,13 @@ module main
 
 import vweb
 
-pub struct App {
-mut:
+struct App {
+pub mut:
 	vweb vweb.Context
 }
 
 fn main() {
-	vweb.run<App>(8080)
+	vweb.run<App>(8081)
 }
 
 fn (mut app App) index() {
@@ -69,6 +69,7 @@ fn (mut app App) index() {
 }
 
 pub fn (app &App) init() {}
+pub fn (app &App) init_once() {}
 pub fn (app &App) reset() {}
 
 ```
@@ -80,10 +81,10 @@ v run blog.v
 ```
 
 ```
-Running a Vweb app on http://localhost:8080 ...
+Running a Vweb app on http://localhost:8081 ...
 ```
 
-Vweb helpfully provided a link, open http://localhost:8080/ in your browser:
+Vweb helpfully provided a link, open http://localhost:8081/ in your browser:
 
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/img/hello.png?raw=true">
 
@@ -208,7 +209,7 @@ Add a Postgres DB handle to `App`:
 
 ```v
 struct App {
-mut:
+pub mut:
 	vweb vweb.Context
 	db   pg.DB
 }
@@ -216,20 +217,16 @@ mut:
 
 
 
-Modify the `init()` method we created earlier to connect to a database:
+Modify the `init_once()` method we created earlier to connect to a database:
 
 ```v
-pub fn (mut app App) init() {
-	db := pg.connect(pg.Config{
-		host:   '127.0.0.1'
-		dbname: 'blog'
-		user:   'blog'
-	}) or { panic(err) }
+pub fn (mut app App) init_once() {
+	db := sqlite.connect(':memory:') 	or { panic(err) }
 	app.db = db
 }
 ```
 
-Code in the `init()` function is run only once during app's startup, so we are going
+Code in the `init_once()` function is run only once during app's startup, so we are going
 to have one DB connection for all requests.
 
 Create a new file `article.v`:
@@ -246,18 +243,18 @@ struct Article {
 }
 
 pub fn (app &App) find_all_articles() []Article {
-	db := app.db
-	articles := db.select from Article
-	return articles
+	return sql app.db {
+		select from Article
+	}
 }
 ```
 
 Let's fetch the articles in the `index()` action:
 
 ```v
-fn (app &App) index() {
+fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
-	$vweb.html()
+	return $vweb.html()
 }
 ```
 
@@ -287,7 +284,9 @@ The built-in V ORM uses a syntax very similar to SQL. The queries are built with
 For example, if we only wanted to find articles with ids between 100 and 200, we'd do:
 
 ```
-articles := db.select from Article where id >= 100 && id <= 200
+return sql app.db {
+	select from Article where id >= 100 && id <= 200
+}
 ```
 
 Retrieving a single article is very simple:
@@ -295,9 +294,9 @@ Retrieving a single article is very simple:
 ```v
 
 pub fn (app &App) retrieve_article() ?Article {
-	db := app.db
-	article := db.select from Article limit 1
-	return article
+	return sql app.db {
+		select from Article limit 1
+	}
 }
 ```
 
@@ -310,10 +309,6 @@ article := app.retrieve_article(10) or {
 	return
 }
 ```
-
-
-> `db := app.db` is a temporary limitation in the
-V ORM, soon this will not be needed.
 
 
 ### Adding new articles
@@ -336,7 +331,7 @@ Create `new.html`:
 ```
 
 ```v
-pub fn (mut app App) new_article() {
+pub fn (mut app App) new_article() vweb.Result {
 	title := app.vweb.form['title']
 	text := app.vweb.form['text']
 	if title == '' || text == ''  {
@@ -347,9 +342,10 @@ pub fn (mut app App) new_article() {
 		title: title
 		text: text
 	}
-	db := app.db
-	db.insert(article)
-	app.vweb.redirect('/article/')
+	sql app.db {
+		insert article into Article
+	}
+	return app.vweb.redirect('/article/')
 }
 ```
 
