@@ -339,7 +339,3 @@ pub fn strip_mod_name(name string) string {
 pub fn strip_main_name(name string) string {
 	return name.replace('main.','')
 }
-
-pub fn no_dots(s string) string {
-	return s.replace('.', '__')
-}
