@@ -8,12 +8,12 @@ import vhelp
 import v.vmod
 
 const (
-	default_vpm_server_urls = ['https://vpm.best', 'https://vpm.vlang.io']
-	valid_vpm_commands = ['help', 'search', 'install', 'update', 'remove']
-	excluded_dirs = ['cache', 'vlib']
-	supported_vcs_systems = ['git', 'hg']
-	supported_vcs_folders = ['.git', '.hg']
-	supported_vcs_update_cmds = {
+	default_vpm_server_urls    = ['https://vpm.best', 'https://vpm.vlang.io']
+	valid_vpm_commands         = ['help', 'search', 'install', 'update', 'remove']
+	excluded_dirs              = ['cache', 'vlib']
+	supported_vcs_systems      = ['git', 'hg']
+	supported_vcs_folders      = ['.git', '.hg']
+	supported_vcs_update_cmds  = {
 		'git': 'git pull'
 		'hg': 'hg pull --update'
 	}
@@ -66,10 +66,8 @@ fn main() {
 				manifest := vmod.from_file('./v.mod') or {
 					panic(err)
 				}
-
 				module_names = manifest.dependencies
 			}
-
 			vpm_install(module_names)
 		}
 		'update' {
@@ -141,7 +139,7 @@ fn vpm_install(module_names []string) {
 		name := n.trim_space()
 		mod := get_module_meta_info(name) or {
 			errors++
-			println('Errors while retrieving meta data for module ${name}:')
+			println('Errors while retrieving meta data for module $name:')
 			println(err)
 			continue
 		}
@@ -162,7 +160,7 @@ fn vpm_install(module_names []string) {
 		}
 		println('Installing module "$name" from $mod.url to $final_module_path ...')
 		vcs_install_cmd := supported_vcs_install_cmds[vcs]
-		cmd := '${vcs_install_cmd} "${mod.url}" "${final_module_path}"'
+		cmd := '$vcs_install_cmd "$mod.url" "$final_module_path"'
 		verbose_println('      command: $cmd')
 		cmdres := os.exec(cmd) or {
 			errors++
@@ -174,8 +172,8 @@ fn vpm_install(module_names []string) {
 		if cmdres.exit_code != 0 {
 			errors++
 			println('Failed installing module "$name" to "$final_module_path" .')
-			verbose_println('Failed command: ${cmd}')
-			verbose_println('Failed command output:\n${cmdres.output}')
+			verbose_println('Failed command: $cmd')
+			verbose_println('Failed command output:\n$cmdres.output')
 			continue
 		}
 		resolve_dependencies(name, final_module_path, module_names)
@@ -207,18 +205,18 @@ fn vpm_update(m []string) {
 		}
 		vcs_cmd := supported_vcs_update_cmds[vcs[0]]
 		verbose_println('      command: $vcs_cmd')
-		vcs_res := os.exec('${vcs_cmd}') or {
+		vcs_res := os.exec('$vcs_cmd') or {
 			errors++
 			println('Could not update module "$name".')
-			verbose_println('Error command: ${vcs_cmd}')
+			verbose_println('Error command: $vcs_cmd')
 			verbose_println('Error details:\n$err')
 			continue
 		}
 		if vcs_res.exit_code != 0 {
 			errors++
-			println('Failed updating module "${name}".')
-			verbose_println('Failed command: ${vcs_cmd}')
-			verbose_println('Failed details:\n${vcs_res.output}')
+			println('Failed updating module "$name".')
+			verbose_println('Failed command: $vcs_cmd')
+			verbose_println('Failed details:\n$vcs_res.output')
 			continue
 		}
 		resolve_dependencies(name, final_module_path, module_names)
@@ -246,7 +244,7 @@ fn vpm_remove(module_names []string) {
 		os.rmdir_all(final_module_path)
 		// delete author directory if it is empty
 		author := name.split('.')[0]
-		author_dir := os.real_path(os.join_path(settings.vmodules_path,author))
+		author_dir := os.real_path(os.join_path(settings.vmodules_path, author))
 		if os.is_dir_empty(author_dir) {
 			verbose_println('removing author folder $author_dir')
 			os.rmdir(author_dir)
@@ -289,7 +287,7 @@ fn vpm_help() {
 fn vcs_used_in_dir(dir string) ?[]string {
 	mut vcs := []string{}
 	for repo_subfolder in supported_vcs_folders {
-		checked_folder := os.real_path(os.join_path(dir,repo_subfolder))
+		checked_folder := os.real_path(os.join_path(dir, repo_subfolder))
 		if os.is_dir(checked_folder) {
 			vcs << repo_subfolder.replace('.', '')
 		}
@@ -306,11 +304,11 @@ fn get_installed_modules() []string {
 	}
 	mut modules := []string{}
 	for dir in dirs {
-		adir := os.join_path(settings.vmodules_path,dir)
+		adir := os.join_path(settings.vmodules_path, dir)
 		if dir in excluded_dirs || !os.is_dir(adir) {
 			continue
 		}
-		if os.exists( os.join_path(adir, 'v.mod') ) && os.exists( os.join_path(adir, '.git', 'config') ){
+		if os.exists(os.join_path(adir, 'v.mod')) && os.exists(os.join_path(adir, '.git', 'config')) {
 			// an official vlang module with a short module name, like `vsl`, `ui` or `markdown`
 			modules << dir
 			continue
@@ -320,7 +318,7 @@ fn get_installed_modules() []string {
 			continue
 		}
 		for m in mods {
-			vcs_used_in_dir(os.join_path(adir,m)) or {
+			vcs_used_in_dir(os.join_path(adir, m)) or {
 				continue
 			}
 			modules << '${author}.$m'
@@ -368,7 +366,7 @@ fn get_all_modules() []string {
 }
 
 fn resolve_dependencies(name, module_path string, module_names []string) {
-	vmod_path := os.join_path(module_path,'v.mod')
+	vmod_path := os.join_path(module_path, 'v.mod')
 	if !os.exists(vmod_path) {
 		return
 	}
@@ -384,7 +382,7 @@ fn resolve_dependencies(name, module_path string, module_names []string) {
 		}
 	}
 	if deps.len > 0 {
-		println('Resolving ${deps.len} dependencies for module "$name"...')
+		println('Resolving $deps.len dependencies for module "$name"...')
 		verbose_println('Found dependencies: $deps')
 		vpm_install(deps)
 	}
@@ -393,8 +391,8 @@ fn resolve_dependencies(name, module_path string, module_names []string) {
 fn parse_vmod(data string) Vmod {
 	keys := ['name', 'version', 'deps']
 	mut m := {
-		'name': '',
-		'version': '',
+		'name': ''
+		'version': ''
 		'deps': ''
 	}
 	for key in keys {
@@ -402,7 +400,8 @@ fn parse_vmod(data string) Vmod {
 			continue
 		}
 		key_index += key.len + 1
-		m[key] = data[key_index..data.index_after('\n', key_index)].trim_space().replace("'", '').replace('[', '').replace(']', '')
+		m[key] = data[key_index..data.index_after('\n', key_index)].trim_space().replace("'",
+			'').replace('[', '').replace(']', '')
 	}
 	mut vmod := Vmod{}
 	vmod.name = m['name']
@@ -441,7 +440,7 @@ const (
 
 fn init_settings() {
 	mut s := &VpmSettings(0)
-	unsafe{
+	unsafe {
 		s = settings
 	}
 	s.is_help = '-h' in os.args || '--help' in os.args || 'help' in os.args
@@ -471,7 +470,8 @@ fn get_module_meta_info(name string) ?Mod {
 			continue
 		}
 		if r.status_code != 200 {
-			errors << 'Skipping module "$name", since $server_url responded with $r.status_code http status code. Please try again later.'
+			errors <<
+				'Skipping module "$name", since $server_url responded with $r.status_code http status code. Please try again later.'
 			continue
 		}
 		s := r.text
@@ -480,7 +480,7 @@ fn get_module_meta_info(name string) ?Mod {
 			errors << s.trim_space().limit(100) + '...'
 			continue
 		}
-		mod := json.decode(Mod,s) or {
+		mod := json.decode(Mod, s) or {
 			errors << 'Skipping module "$name", since its information is not in json format.'
 			continue
 		}
