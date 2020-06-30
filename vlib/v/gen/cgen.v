@@ -10,7 +10,6 @@ import v.pref
 import v.token
 import v.util
 import v.depgraph
-import os
 
 // NB: keywords after 'new' are reserved in C++
 const (
@@ -2763,9 +2762,9 @@ fn (mut g Gen) write_init_function() {
 	}
 	if g.pref.autofree {
 		// Pre-allocate the string buffer
-		s_str_buf_size := os.getenv('V_STRBUF_MB')
-		mb_size := if s_str_buf_size == '' { 1 } else { s_str_buf_size.int() }
-		g.writeln('g_str_buf = malloc( ${mb_size} * 1024 * 1000 );')
+		// s_str_buf_size := os.getenv('V_STRBUF_MB')
+		// mb_size := if s_str_buf_size == '' { 1 } else { s_str_buf_size.int() }
+		// g.writeln('g_str_buf = malloc( ${mb_size} * 1024 * 1000 );')
 	}
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
@@ -2787,7 +2786,7 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('void _vcleanup() {')
 		// g.writeln('puts("cleaning up...");')
 		g.writeln(g.cleanups.str())
-		g.writeln('\tfree(g_str_buf);')
+		//g.writeln('\tfree(g_str_buf);')
 		g.writeln('}')
 		if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
 			println(g.out.after(fn_vcleanup_start_pos))
