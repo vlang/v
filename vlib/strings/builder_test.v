@@ -6,7 +6,8 @@ fn test_sb() {
 	sb.write('!')
 	sb.write('hello')
 	assert sb.len == 8
-	assert sb.str() == 'hi!hello'
+    sb_end := sb.str()
+    assert sb_end == 'hi!hello'
 	assert sb.len == 0
 	///
 	sb = strings.new_builder(10)
@@ -19,39 +20,33 @@ fn test_sb() {
 		// TODO msvc bug
 		sb = strings.new_builder(10)
 		sb.write('123456')
-		assert sb.cut_last(2) == '56'
-		assert sb.str() == '1234'
+        last_2 := sb.cut_last(2)
+		assert last_2 == '56'
+        final_sb := sb.str()
+		assert final_sb == '1234'
 	}
-	///
-	/*
-	sb = strings.new_builder(10)
-	sb.write('123456')
-	x := sb.cut_to(2)
-	assert x == '456'
-	assert sb.str() == '123'
-	*/
 }
 
 const (
-	n = 100000
+	maxn = 100000
 )
 
 fn test_big_sb() {
 	mut sb := strings.new_builder(100)
 	mut sb2 := strings.new_builder(10000)
-	for i in 0..n {
+	for i in 0..maxn {
 		sb.writeln(i.str())
 		sb2.write('+')
 	}
 	s := sb.str()
 	lines := s.split_into_lines()
-	assert lines.len == n
+	assert lines.len == maxn
 	assert lines[0] == '0'
 	assert lines[1] == '1'
 	assert lines[777] == '777'
 	assert lines[98765] == '98765'
 	println(sb2.len)
-	assert sb2.len == n
+	assert sb2.len == maxn
 
 }
 
@@ -64,5 +59,6 @@ fn test_byte_write() {
 		count++
 		assert count == sb.len
 	}
-	assert sb.str() == temp_str
+    sb_final := sb.str()
+	assert sb_final == temp_str
 }
