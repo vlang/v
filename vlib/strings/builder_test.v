@@ -6,8 +6,8 @@ fn test_sb() {
 	sb.write('!')
 	sb.write('hello')
 	assert sb.len == 8
-    sb_end := sb.str()
-    assert sb_end == 'hi!hello'
+	sb_end := sb.str()
+	assert sb_end == 'hi!hello'
 	assert sb.len == 0
 	///
 	sb = strings.new_builder(10)
@@ -20,9 +20,9 @@ fn test_sb() {
 		// TODO msvc bug
 		sb = strings.new_builder(10)
 		sb.write('123456')
-        last_2 := sb.cut_last(2)
+		last_2 := sb.cut_last(2)
 		assert last_2 == '56'
-        final_sb := sb.str()
+		final_sb := sb.str()
 		assert final_sb == '1234'
 	}
 }
@@ -59,6 +59,6 @@ fn test_byte_write() {
 		count++
 		assert count == sb.len
 	}
-    sb_final := sb.str()
+	sb_final := sb.str()
 	assert sb_final == temp_str
 }
