@@ -690,6 +690,17 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 				}
 			}
 		}
+		ast.CallExpr {
+			// TODO: should only work for builtin method
+			if expr.name == 'slice' {
+				return
+			} else {
+				c.error('cannot use function call as mut', expr.pos)
+			}
+		}
+		ast.ArrayInit {
+			return
+		}
 		else {
 			c.error('unexpected expression `${typeof(expr)}`', expr.position())
 		}
@@ -1097,11 +1108,16 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.error('when forwarding a varg variable, it must be the final argument',
 				call_expr.pos)
 		}
-		if arg.is_mut && !call_arg.is_mut {
-			c.error('`$arg.name` is a mutable argument, you need to provide `mut`: `${call_expr.name}(mut ...)`',
-				call_arg.expr.position())
-		} else if !arg.is_mut && call_arg.is_mut {
-			c.error('`$arg.name` argument is not mutable, `mut` is not needed`', call_arg.expr.position())
+		if call_arg.is_mut {
+			c.fail_if_immutable(call_arg.expr)
+			if !arg.is_mut {
+				c.error('`$arg.name` argument is not mutable, `mut` is not needed`', call_arg.expr.position())
+			}
+		} else {
+			if arg.is_mut {
+				c.error('`$arg.name` is a mutable argument, you need to provide `mut`: `${call_expr.name}(mut ...)`',
+					call_arg.expr.position())
+			}
 		}
 		// Handle expected interface
 		if arg_typ_sym.kind == .interface_ {
