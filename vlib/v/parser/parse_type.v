@@ -167,7 +167,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool) table
 		name = '${p.imports[name]}.$p.tok.lit'
 	} else if p.expr_mod != '' {
 		name = p.expr_mod + '.' + name
-	} else if p.mod !in ['builtin', 'main'] && name !in table.builtin_type_names  && name.len > 1 {
+	} else if p.mod !in ['builtin'] && name !in p.table.type_idxs  && name.len > 1 {
 		// `Foo` in module `mod` means `mod.Foo`
 		name = p.mod + '.' + name
 	}

@@ -148,16 +148,7 @@ fn (mut p Parser) parse() ast.File {
 	}
 	for {
 		if p.tok.kind == .eof {
-			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
-				stmts << ast.FnDecl{
-					name: 'main'
-					mod: p.mod
-					file: p.file_name
-					return_type: table.void_type
-				}
-			} else {
-				p.check_unused_imports()
-			}
+			p.check_unused_imports()
 			break
 		}
 		// println('stmt at ' + p.tok.str())
@@ -449,8 +440,8 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					stmts << p.stmt(false)
 				}
 				return ast.FnDecl{
-					name: 'main'
-					mod: p.mod
+					name: 'main.main'
+					mod: 'main'
 					stmts: stmts
 					file: p.file_name
 					return_type: table.void_type
@@ -845,19 +836,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
 		return p.string_expr()
 	}
-	mut known_var := false
-	if obj := p.scope.find(p.tok.lit) {
-		match mut obj {
-			ast.Var {
-				known_var = true
-				obj.is_used = true
-			}
-			else {}
-		}
-	}
+	known_var := p.mark_var_as_used( p.tok.lit )
 	mut is_mod_cast := false
 	if p.peek_tok.kind == .dot && !known_var &&
-		(language != .v || p.known_import(p.tok.lit) || p.mod.all_after_last('.') == p.tok.lit) {
+		(language != .v || p.known_import(p.tok.lit) ||
+		p.mod.all_after_last('.') == p.tok.lit) {
 		if language == .c {
 			mod = 'C'
 		} else if language == .js {
@@ -1490,10 +1473,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 		p.scanner.codegen('
 //
-$pubfn (    e &$name) has(flag $name) bool { return      (int(*e) &  (1 << int(flag))) != 0 }
-$pubfn (mut e  $name) set(flag $name)      { unsafe{ *e = int(*e) |  (1 << int(flag)) } }
-$pubfn (mut e  $name) clear(flag $name)    { unsafe{ *e = int(*e) & ~(1 << int(flag)) } }
-$pubfn (mut e  $name) toggle(flag $name)   { unsafe{ *e = int(*e) ^  (1 << int(flag)) } }
+$pubfn (    e &$enum_name) has(flag $enum_name) bool { return      (int(*e) &  (1 << int(flag))) != 0 }
+$pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = int(*e) |  (1 << int(flag)) } }
+$pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = int(*e) & ~(1 << int(flag)) } }
+$pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (1 << int(flag)) } }
 //
 ')
 	}
@@ -1686,4 +1669,17 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 			break
 		}
 	}
+}
+
+pub fn (mut p Parser) mark_var_as_used(varname string) bool {
+	if obj := p.scope.find(varname) {
+		match mut obj {
+			ast.Var {
+				obj.is_used = true
+				return true
+			}
+			else {}
+		}
+	}
+	return false
 }

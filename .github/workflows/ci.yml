@@ -55,15 +55,15 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
 
-#    - name: Build V
-#      uses: spytheman/docker_alpine_v@v7.0
-#      with:
-#        entrypoint: .github/workflows/alpine.build.sh
-
-#    - name: Test V
-#      uses: spytheman/docker_alpine_v@v7.0
-#      with:
-#        entrypoint: .github/workflows/alpine.test.sh
+    - name: Build V
+      uses: spytheman/docker_alpine_v@v7.0
+      with:
+        entrypoint: .github/workflows/alpine.build.sh
+        
+    - name: Test V
+      uses: spytheman/docker_alpine_v@v7.0
+      with:
+        entrypoint: .github/workflows/alpine.test.sh
 
   macos:
     runs-on: ${{ matrix.os }}
@@ -176,8 +176,6 @@ jobs:
         ../../vprod -backend x64 -o 1m 1m.v
         echo "Running it..."
         ls
-    - name: V self compilation with -autofree
-      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 #    - name: SDL examples
 #      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
 
@@ -187,6 +185,18 @@ jobs:
 #      uses: coverallsapp/github-action@v1.0.1
 #      with:
 #        github-token: ${{ secrets.GITHUB_TOKEN }}
+
+
+  ubuntu-autofree-selfcompile:
+    runs-on: ubuntu-18.04
+    env:
+      VFLAGS: -cc gcc
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make -j4
+    - name: V self compilation with -autofree
+      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 
   ubuntu-musl:
     runs-on: ubuntu-18.04

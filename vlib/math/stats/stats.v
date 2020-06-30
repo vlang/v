@@ -203,10 +203,10 @@ pub fn mean_absdev(arr []f64) f64 {
 	if arr.len == 0 {
 		return f64(0)
 	}
-	mean := mean(arr)
+	amean := mean(arr)
 	mut sum := f64(0)
 	for v in arr {
-		sum += math.abs(v-mean)
+		sum += math.abs(v-amean)
 	}
 	return sum/f64(arr.len)
 }

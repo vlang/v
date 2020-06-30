@@ -7,6 +7,7 @@ import v.ast
 import v.table
 import v.token
 import strings
+import v.util
 
 const (
 	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
@@ -441,10 +442,10 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln(' {')
 			match it.kind as k {
 				.insert {
-					f.writeln('\tinsert $it.object_var_name into $it.table_name')
+					f.writeln('\tinsert $it.object_var_name into ${util.strip_mod_name(it.table_name)}')
 				}
 				.update {
-					f.write('\tupdate $it.table_name set ')
+					f.write('\tupdate ${util.strip_mod_name(it.table_name)} set ')
 					for i, col in it.updated_columns {
 						f.write('$col = ')
 						f.expr(it.update_exprs[i])
@@ -888,13 +889,19 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(node.field_name)
 		}
 		ast.SizeOf {
-			f.write('sizeof(')
-			if node.type_name != '' {
-				f.write(node.type_name)
+			if node.is_type {        
+				f.write('sizeof(')
+				if node.type_name != '' {
+					f.write(node.type_name)
+				} else {
+					f.write(f.type_to_str(node.typ))
+				}
+				f.write(')')
 			} else {
-				f.write(f.type_to_str(node.typ))
+				f.write('sizeof(')
+				f.expr(node.expr)
+				f.write(')')
 			}
-			f.write(')')
 		}
 		ast.SqlExpr {
 			// sql app.db { select from Contributor where repo == id && user == 0 }
@@ -918,7 +925,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.write(' ')
 				}
 			}
-			f.write('from $node.table_name')
+			f.write('from ${util.strip_mod_name(node.table_name)}')
 			f.write(' ')
 			if node.has_where {
 				f.write('where ')

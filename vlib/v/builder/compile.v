@@ -204,7 +204,7 @@ pub fn (v Builder) get_user_files() []string {
 				if line[0] == `/` && line[1] == `/` {
 					continue
 				}
-				if line.starts_with('module ') && !line.starts_with('module main') {
+				if line.starts_with('module ') {
 					is_internal_module_test = true
 					break
 				}
