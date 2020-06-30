@@ -480,6 +480,10 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	left_default := c.table.get_type_symbol(c.table.mktyp(left_type))
 	left_pos := infix_expr.left.position()
 	right_pos := infix_expr.right.position()
+	if (left_type.is_ptr() || left.is_pointer()) &&
+		infix_expr.op in [.plus, .minus] && !c.inside_unsafe {
+		c.error('pointer arithmetic is only allowed in `unsafe` blocks', left_pos)
+	}
 	mut return_type := left_type
 	// Single side check
 	// Place these branches according to ops' usage frequency to accelerate.
