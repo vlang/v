@@ -9,11 +9,11 @@ const (
 	spacing = 2
 )
 
-fn help_flag() Flag {
+fn help_flag(with_abbrev bool) Flag {
 	return Flag{
 		flag: .bool,
 		name: 'help',
-		abbrev: 'h',
+		abbrev: if with_abbrev { 'h' } else { '' },
 		description: 'Prints help information',
 	}
 }
