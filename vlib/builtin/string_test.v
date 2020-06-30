@@ -765,7 +765,14 @@ fn test_string_map() {
 	a := 'Hello'.map(fn (b byte) byte {
 		return b + 1
 	})
-	assert a == 'Ifmmp'
+	expected := 'Ifmmp'
+    println('a[0] = ' + a[0].str())
+    println('a[1] = ' + a[1].str())
+    println('a[2] = ' + a[2].str())
+    println('a[3] = ' + a[3].str())
+    println('a[4] = ' + a[4].str())
+	assert a.len == expected.len
+	assert a == expected
 
 	assert 'foo'.map(foo) == r'\ee'
 }
