@@ -888,14 +888,20 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('.')
 			f.write(node.field_name)
 		}
-		ast.SizeOfType {
-			f.write('sizeof(')
-			if node.type_name != '' {
-				f.write(node.type_name)
+		ast.SizeOf {
+			if node.is_type {        
+				f.write('sizeof(')
+				if node.type_name != '' {
+					f.write(node.type_name)
+				} else {
+					f.write(f.type_to_str(node.typ))
+				}
+				f.write(')')
 			} else {
-				f.write(f.type_to_str(node.typ))
+				f.write('sizeof(')
+				f.expr(node.expr)
+				f.write(')')
 			}
-			f.write(')')
 		}
 		ast.SqlExpr {
 			// sql app.db { select from Contributor where repo == id && user == 0 }
@@ -937,11 +943,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 			f.writeln('')
 			f.write('}')
-		}
-		ast.SizeOfVar {
-			f.write('sizeof(')
-			f.expr(node.expr)
-			f.write(')')
 		}
 		ast.StringLiteral {
 			if node.is_raw {
