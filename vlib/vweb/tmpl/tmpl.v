@@ -65,7 +65,7 @@ _ = footer
 	mut in_span := false
 	//for _line in lines {
 	for i := 0; i < lines.len; i ++ {
-		line := lines[i].trim_space()
+		line := lines[i].trim_space().replace("\'", '"')
 		if line == '<style>' {
 			state = .css
 		} else if line == '</style>' {
