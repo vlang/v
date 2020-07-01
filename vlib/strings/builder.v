@@ -115,9 +115,9 @@ pub fn (mut b Builder) str() string {
 	}
 	b.buf << `\0`
 	s := string(b.buf,b.len)
-	//bis := b.initial_size
+	bis := b.initial_size
 	//free(b.buf.data)
-	//b.buf = []byte{cap: bis}
+	b.buf = []byte{cap: bis}
 	b.len = 0
 	return s
 }
