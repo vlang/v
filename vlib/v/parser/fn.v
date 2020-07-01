@@ -35,7 +35,8 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
 		if !generic_type.has_flag(.generic) {
-			p.table.register_fn_gen_type(fn_name, generic_type)
+			full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
+			p.table.register_fn_gen_type(full_generic_fn_name, generic_type)
 		}
 	}
 	p.check(.lpar)
@@ -237,7 +238,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec_type)
-		// p.warn('reg method $type_sym.name . $name ()')
+		//		p.warn('reg method $type_sym.name . $name ()')
 		type_sym.register_method(table.Fn{
 			name: name
 			args: args
@@ -247,6 +248,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			ctdefine: ctdefine
+			mod: p.mod
 		})
 	} else {
 		if language == .c {
@@ -259,6 +261,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if _ := p.table.find_fn(name) {
 			p.fn_redefinition_error(name)
 		}
+		//p.warn('reg functn $name ()')
 		p.table.register_fn(table.Fn{
 			name: name
 			args: args
@@ -382,7 +385,8 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 	mut args := []table.Arg{}
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
-	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
+	argname := if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() { p.prepend_mod(p.tok.lit) } else { p.tok.lit }
+	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] || (p.peek_tok.kind == .comma && p.table.known_type(argname)) ||
 		p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
@@ -558,16 +562,13 @@ fn (mut p Parser) fn_redefinition_error(name string) {
 }
 
 fn have_fn_main(stmts []ast.Stmt) bool {
-	mut has_main_fn := false
 	for stmt in stmts {
-		match stmt {
-			ast.FnDecl {
-				if stmt.name == 'main' {
-					has_main_fn = true
-				}
+		if stmt is ast.FnDecl {
+			f := stmt as ast.FnDecl
+			if f.name == 'main.main' && f.mod == 'main' {
+				return true
 			}
-			else {}
 		}
 	}
-	return has_main_fn
+	return false
 }

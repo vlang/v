@@ -1369,7 +1369,11 @@ pub fn (s string) fields() []string {
 }
 
 pub fn (s string) map(func fn(byte) byte) string {
-	return string(s.bytes().map(func(it)))
+	mut res := malloc(s.len + 1)
+	for i in 0..s.len {
+		res[i] = func(s[i])
+	}
+	return tos(res, s.len)
 }
 
 // Allows multi-line strings to be formatted in a way that removes white-space

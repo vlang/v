@@ -5,6 +5,7 @@ module gen
 
 import v.ast
 import v.table
+import v.util
 
 fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
@@ -12,7 +13,7 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 			if stmt is ast.FnDecl {
 				fn_decl := stmt as ast.FnDecl
 				// insert stmts from vweb_tmpl fn
-				if fn_decl.name.starts_with('vweb_tmpl') {
+				if fn_decl.name.starts_with('main.vweb_tmpl') {
 					g.inside_vweb_tmpl = true
 					g.stmts(fn_decl.stmts)
 					g.inside_vweb_tmpl = false
@@ -40,7 +41,7 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 			g.write(' else ')
 		}
 		g.write('if (string_eq($node.method_name, tos_lit("$method.name"))) ')
-		g.write('${node.sym.name}_${method.name}($amp ')
+		g.write('${util.no_dots(node.sym.name)}_${method.name}($amp ')
 		g.expr(node.left)
 		g.writeln(');')
 		j++
@@ -66,5 +67,5 @@ fn (mut g Gen) comp_if(it ast.CompIf) {
 		g.stmts(it.else_stmts)
 		g.defer_ifdef = ''
 	}
-	g.writeln('\n// } $it.val\n#endif\n')
+	g.writeln('\n#endif\n// } $it.val\n')
 }

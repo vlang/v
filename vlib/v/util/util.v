@@ -331,3 +331,15 @@ pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
 		}
 	}
 }
+
+pub fn strip_mod_name(name string) string {
+	return name.all_after_last('.')
+}
+
+pub fn strip_main_name(name string) string {
+	return name.replace('main.','')
+}
+
+pub fn no_dots(s string) string {
+	return s.replace('.', '__')
+}

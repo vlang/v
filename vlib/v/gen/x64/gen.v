@@ -799,7 +799,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	println(term.green('\n$node.name:'))
 	g.stack_var_pos = 0
-	is_main := node.name == 'main'
+	is_main := node.name == 'main.main'
 	// println('saving addr $node.name $g.buf.len.hex2()')
 	if is_main {
 		g.save_main_fn_addr()

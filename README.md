@@ -24,7 +24,7 @@
 ## Key Features of V
 
 - Simplicity: the language can be learned in less than an hour
-- Fast compilation: ≈100k — 1.2 million loc/s
+- Fast compilation: ≈80k loc/s with a Clang backend, ≈1 million loc/s with x64 and tcc backends *(Intel i5-7500, SSD, no optimization)*
 - Easy to develop: V compiles itself in less than a second
 - Performance: within 3% of C
 - Safety: no null, no globals, no undefined behavior, immutability by default
@@ -218,6 +218,16 @@ Hello from V.js
 Hello from V.js
 ```
 -->
+
+## Developing web applications
+
+Check out the [Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md)
+tutorial and Gitly, a light and fast alternative to GitHub/GitLab:
+
+https://github.com/vlang/gitly
+
+<img src="https://user-images.githubusercontent.com/687996/85933714-b195fe80-b8da-11ea-9ddd-09cadc2103e4.png">
+
 
 ## Troubleshooting
 

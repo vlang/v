@@ -326,10 +326,10 @@ pub struct File {
 pub:
 	path         string
 	mod          Module
-	stmts        []Stmt
 	scope        &Scope
 	global_scope &Scope
 pub mut:
+	stmts        []Stmt
 	imports      []Import
 	errors       []errors.Error
 	warnings     []errors.Warning
@@ -365,9 +365,9 @@ pub struct Ident {
 pub:
 	language table.Language
 	tok_kind token.Kind
-	mod      string
 	pos      token.Position
 pub mut:
+	mod      string
 	name     string
 	kind     IdentKind
 	info     IdentInfo
@@ -414,6 +414,7 @@ pub:
 pub struct IndexExpr {
 pub:
 	pos       token.Position
+	expr      string // a[0] m['a'] etc
 	left      Expr
 	index     Expr // [0], [start..end] etc
 pub mut:
@@ -757,8 +758,11 @@ pub mut:
 
 pub struct SizeOf {
 pub:
+	is_type   bool
 	typ       table.Type
 	type_name string
+	expr      Expr
+	pos       token.Position
 }
 
 pub struct Likely {
@@ -937,7 +941,9 @@ pub fn (expr Expr) position() token.Position {
 		SelectorExpr {
 			return expr.pos
 		}
-		// ast.SizeOf { }
+		SizeOf {
+			return expr.pos
+		}
 		StringLiteral {
 			return expr.pos
 		}

@@ -1379,3 +1379,7 @@ pub fn (mut s Scanner) codegen(newtext string) {
 		}
 	}
 }
+
+pub fn (s Scanner) expr_string(start, end token.Position) string {
+	return s.text[start.pos..end.pos].trim_space()
+}

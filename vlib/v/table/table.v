@@ -108,11 +108,12 @@ pub fn (t &Table) known_fn(name string) bool {
 }
 
 pub fn (mut t Table) register_fn(new_fn Fn) {
-	// println('reg fn $new_fn.name nr_args=$new_fn.args.len')
+	//	println('reg fn $new_fn.name nr_args=$new_fn.args.len')
 	t.fns[new_fn.name] = new_fn
 }
 
 pub fn (mut t TypeSymbol) register_method(new_fn Fn) {
+	//	println('reg me $new_fn.name nr_args=$new_fn.args.len')
 	t.methods << new_fn
 }
 

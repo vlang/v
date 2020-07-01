@@ -1,10 +1,10 @@
 module cli
 
-fn version_flag() Flag {
+fn version_flag(with_abbrev bool) Flag {
 	return Flag{
 		flag: .bool,
 		name: 'version',
-		abbrev: 'v',
+		abbrev: if with_abbrev { 'v' } else { '' },
 		description: 'Prints version information',
 	}
 }
