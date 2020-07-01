@@ -42,7 +42,7 @@ jobs:
       run: ./v test-fixed
     - name: Test building v tools
       run: ./v build-tools
-    - name: v vet
+    - name: ./v vet
       run: |
         v vet vlib/v/parser
         v vet vlib/v/ast

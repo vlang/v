@@ -5,8 +5,12 @@ struct User {
 }
 
 fn main() {
+	u := User{
+		name: 'Peter'
+	}
 	if true {
 	}
+	n := sizeof(User)
 	// else
 	// else {
 	// }
