@@ -313,3 +313,17 @@ fn test_struct_with_default_values_no_init() {
 	assert s2.field_optional == 3
 	assert s3.field_optional == 2
 }
+
+struct Zoo {
+mut:
+	a int
+	b int
+}
+
+fn test_struct_field_cross_assign() {
+	mut x := Zoo{a:1, b:2}
+	x.a, x.b = x.b, x.a
+	//println(x)
+	assert x.a == 2
+	assert x.b == 1
+}

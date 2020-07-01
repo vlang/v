@@ -66,6 +66,13 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 		ast.InfixExpr { return p.check_cross_variables(exprs, val_.left) || p.check_cross_variables(exprs, val_.right) }
 		ast.PrefixExpr { return p.check_cross_variables(exprs, val_.right) }
 		ast.PostfixExpr { return p.check_cross_variables(exprs, val_.expr) }
+		ast.SelectorExpr {
+			for expr in exprs {
+				if expr.str() == val.str() {
+					return true
+				}
+			}
+		}
 		else {}
 	}
 	return false
