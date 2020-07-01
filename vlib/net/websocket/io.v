@@ -2,7 +2,7 @@ module websocket
 
 fn (mut ws Client) write_to_server(buf voidptr, len int) int {
 	mut bytes_written := 0
-	ws.write_lock.lock()
+	ws.write_lock.m_lock()
 	bytes_written = if ws.is_ssl {
 		C.SSL_write(ws.ssl, buf, len)
 	} else {

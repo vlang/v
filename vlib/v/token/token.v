@@ -110,6 +110,8 @@ pub enum Kind {
 	key_mut
 	key_shared
 	key_rwshared
+	key_lock
+	key_rlock
 	key_none
 	key_return
 	key_select
@@ -230,6 +232,8 @@ fn build_token_str() []string {
 	s[Kind.key_mut] = 'mut'
 	s[Kind.key_shared] = 'shared'
 	s[Kind.key_rwshared] = 'rwshared'
+	s[Kind.key_lock] = 'lock'
+	s[Kind.key_rlock] = 'rlock'
 	s[Kind.key_type] = 'type'
 	s[Kind.key_for] = 'for'
 	s[Kind.key_switch] = 'switch'

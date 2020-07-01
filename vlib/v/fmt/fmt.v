@@ -823,6 +823,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.IntegerLiteral {
 			f.write(node.val)
 		}
+		ast.LockExpr {
+			f.lock_expr(node) 
+		}
 		ast.MapInit {
 			if node.keys.len == 0 {
 				mut ktyp := node.key_type
@@ -1132,6 +1135,20 @@ pub fn (mut f Fmt) short_module(name string) string {
 		return symname
 	}
 	return '${aname}.$symname'
+}
+
+pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
+	f.write('lock ')
+	for i, v in lex.lockeds {
+		if i > 0 {
+			f.write(', ')
+		}
+		f.expr(v)
+	}
+	f.write(' {')
+	f.writeln('')
+	f.stmts(lex.stmts)
+	f.write('}')
 }
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {

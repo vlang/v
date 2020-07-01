@@ -1576,6 +1576,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write(node.val) // .int().str())
 			}
 		}
+		ast.LockExpr {
+			g.lock_expr(node)
+		}
 		ast.MatchExpr {
 			g.match_expr(node)
 		}
@@ -1951,6 +1954,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 		}
 	}
+}
+
+fn (mut g Gen) lock_expr(node ast.LockExpr) {
+	// TODO: implement this
 }
 
 fn (mut g Gen) match_expr(node ast.MatchExpr) {

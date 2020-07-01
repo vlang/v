@@ -78,6 +78,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.key_if {
 			node = p.if_expr()
 		}
+		.key_lock, .key_rlock {
+			node = p.lock_expr()
+		}
 		.lsbr {
 			if p.expecting_type {
 				// parse json.decode type (`json.decode([]User, s)`)

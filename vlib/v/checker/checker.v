@@ -2136,6 +2136,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.IntegerLiteral {
 			return table.any_int_type
 		}
+		ast.LockExpr {
+			return c.lock_expr(mut node)
+		}
 		ast.MapInit {
 			return c.map_init(mut node)
 		}
@@ -2512,6 +2515,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 		err_details += ' (add `else {}` at the end)'
 	}
 	c.error(err_details, node.pos)
+}
+
+pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
+	// TODO: implement this
+	return table.void_type
 }
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {

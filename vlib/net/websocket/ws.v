@@ -19,7 +19,7 @@ pub struct Client {
 	// cwebsocket_subprotocol *subprotocol;
 	// cwebsocket_subprotocol *subprotocols[];
 mut:
-	lock       &sync.Mutex = sync.new_mutex()
+	mtx        &sync.Mutex = sync.new_mutex()
 	write_lock &sync.Mutex = sync.new_mutex()
 	state      State
 	socket     net.Socket
@@ -132,9 +132,9 @@ pub fn (mut ws Client) connect() int {
 			// do nothing
 		}
 	}
-	ws.lock.lock()
+	ws.mtx.m_lock()
 	ws.state = .connecting
-	ws.lock.unlock()
+	ws.mtx.unlock()
 	uri := ws.parse_uri()
 	nonce := get_nonce(ws.nonce_size)
 	seckey := base64.encode(nonce)
@@ -160,17 +160,17 @@ pub fn (mut ws Client) connect() int {
 	if ws.is_ssl {
 		ws.connect_ssl()
 	}
-	ws.lock.lock()
+	ws.mtx.m_lock()
 	ws.state = .connected
-	ws.lock.unlock()
+	ws.mtx.unlock()
 	res := ws.write_to_server(handshake.str, handshake.len)
 	if res <= 0 {
 		l.f('Handshake failed.')
 	}
 	ws.read_handshake(seckey)
-	ws.lock.lock()
+	ws.mtx.m_lock()
 	ws.state = .open
-	ws.lock.unlock()
+	ws.mtx.unlock()
 	ws.send_open_event()
 	unsafe {
 		handshake.free()
@@ -182,9 +182,9 @@ pub fn (mut ws Client) connect() int {
 
 pub fn (mut ws Client) close(code int, message string) {
 	if ws.state != .closed && ws.socket.sockfd > 1 {
-		ws.lock.lock()
+		ws.mtx.m_lock()
 		ws.state = .closing
-		ws.lock.unlock()
+		ws.mtx.unlock()
 		mut code32 := 0
 		if code > 0 {
 			code_ := C.htons(code)
@@ -223,9 +223,9 @@ pub fn (mut ws Client) close(code int, message string) {
 		}
 		ws.fragments = []
 		ws.send_close_event()
-		ws.lock.lock()
+		ws.mtx.m_lock()
 		ws.state = .closed
-		ws.lock.unlock()
+		ws.mtx.unlock()
 		unsafe {
 		}
 		// TODO impl autoreconnect

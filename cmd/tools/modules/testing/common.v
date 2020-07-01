@@ -28,7 +28,7 @@ pub mut:
 }
 
 pub fn (mut mh TestMessageHandler) append_message(msg string) {
-	mh.mtx.lock()
+	mh.mtx.m_lock()
 	mh.messages << msg
 	mh.mtx.unlock()
 }
@@ -102,7 +102,7 @@ pub fn (mut ts TestSession) test() {
 }
 
 pub fn (mut m TestMessageHandler) display_message() {
-	m.mtx.lock()
+	m.mtx.m_lock()
 	defer {
 		m.messages.clear()
 		m.mtx.unlock()

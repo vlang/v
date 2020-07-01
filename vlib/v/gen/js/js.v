@@ -561,6 +561,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.IntegerLiteral {
 			g.write(it.val)
 		}
+		ast.LockExpr {
+			g.gen_lock_expr(it)
+		}
 		ast.MapInit {
 			g.gen_map_init_expr(it)
 		}
@@ -1188,6 +1191,10 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	// TODO `is`
 	// TODO handle optionals
 	g.write(name)
+}
+
+fn (mut g JsGen) gen_lock_expr(node ast.LockExpr) {
+	// TODO: implement this
 }
 
 fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {

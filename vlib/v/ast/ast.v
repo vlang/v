@@ -11,7 +11,7 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
 	CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr |
-	IndexExpr | InfixExpr | IntegerLiteral | Likely | MapInit | MatchExpr | None | OrExpr |
+	IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None | OrExpr |
 	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
 	StringLiteral | StructInit | Type | TypeOf
 
@@ -440,6 +440,18 @@ pub:
 	stmts   []Stmt
 	pos     token.Position
 	comment Comment
+}
+
+pub struct LockExpr {
+pub:
+	lockeds  []Expr // `x`, `y` in `lock x, y {`
+	stmts    []Stmt
+	is_rlock bool
+	pos      token.Position
+pub mut:
+	is_expr  bool
+	is_rw    bool // `rwshared` needs special special handling even in `lock` case
+	typ      table.Type
 }
 
 pub struct MatchExpr {
