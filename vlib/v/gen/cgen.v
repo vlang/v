@@ -1864,7 +1864,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.interface_call(node.right_type, info.elem_type)
 			}
-			if elem_sym.kind == .string {
+			if elem_sym.kind == .string && node.right !is ast.StringLiteral {
 				g.write('string_clone(')
 				g.expr_with_cast(node.right, node.right_type, info.elem_type)
 				g.write(')')
