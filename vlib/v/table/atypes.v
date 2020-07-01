@@ -51,21 +51,30 @@ pub enum TypeFlag {
 */
 
 pub enum ShareType {
-	not_shared
+	mut_t
 	shared_t
 	atomic_t
 	rwshared_t
 }
 
 pub fn (t ShareType) str() string {
-	if t == .not_shared {
-		return 'mut'
-	} else if t == .shared_t {
-		return 'shared'
-	} else if t == .atomic_t {
-		return 'atomic'
-	} else {
-		return 'rwshared'
+	match t {
+		.mut_t { return 'mut' }
+		.shared_t { return 'shared' }
+		.atomic_t { return 'atomic' }
+		.rwshared_t { return 'rwshared' }
+	}
+}
+
+// <atomic.h> defines special typenames
+pub fn (t Type) atomic_typename() string {
+	idx := t.idx()
+	match idx {
+		u32_type_idx { return 'atomic_uint' }
+		int_type_idx { return 'atomic_int' }
+		u64_type_idx { return 'atomic_ullong' }
+		i64_type_idx { return 'atomic_llong' }
+		else { return 'unknown_atomic' }
 	}
 }
 

@@ -736,8 +736,20 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.GlobalDecl {
-			styp := g.typ(node.typ)
-			g.definitions.writeln('$styp $node.name; // global')
+			share := node.typ.share()
+			styp := if share == .atomic_t { node.typ.atomic_typename() } else { g.typ(node.typ) }
+			match share {
+				.shared_t {
+					g.definitions.writeln('struct {$styp val; sync__Mutex* mtx;} $node.name; // global')
+				}
+				.rwshared_t {
+					// TODO use sync__RwMutex once it's imlemented
+					g.definitions.writeln('struct {$styp val; sync__Mutex* mtx;} $node.name; // global rw')
+				}
+				else {
+					g.definitions.writeln('$styp $node.name; // global')
+				}
+			}
 		}
 		ast.GoStmt {
 			g.go_stmt(node)
