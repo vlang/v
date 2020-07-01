@@ -83,7 +83,7 @@ mut:
 	attrs                []string // attributes before next decl stmt
 	is_builtin_mod       bool
 	hotcode_fn_names     []string
-	//cur_fn               ast.FnDecl
+	// cur_fn               ast.FnDecl
 	cur_generic_type     table.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i                int
 	sql_stmt_name        string
@@ -93,7 +93,7 @@ mut:
 	strs_to_free         string
 	inside_call          bool
 	has_main             bool
-	inside_const bool
+	inside_const         bool
 }
 
 const (
@@ -1315,7 +1315,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			mut has_var := false
 			for lx in left {
 				if val_.str() == lx.str() {
-					g.write('_var_${lx.position().pos}')
+					g.write('_var_$lx.position().pos')
 					has_var = true
 					break
 				}
@@ -1341,7 +1341,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			mut has_var := false
 			for lx in left {
 				if val_.str() == lx.str() {
-					g.write('_var_${lx.position().pos}')
+					g.write('_var_$lx.position().pos')
 					has_var = true
 					break
 				}
@@ -2538,7 +2538,6 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	defer {
 		g.inside_const = false
 	}
-
 	for field in node.fields {
 		name := c_name(field.name)
 		// TODO hack. Cut the generated value and paste it into definitions.

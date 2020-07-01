@@ -4,4 +4,10 @@ struct User {
 	// last comment2
 }
 
-
+fn main() {
+	if true {
+	}
+	// else
+	// else {
+	// }
+}

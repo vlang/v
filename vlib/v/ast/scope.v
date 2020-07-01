@@ -6,8 +6,8 @@ module ast
 import v.table
 
 pub struct Scope {
-//mut:
 pub mut:
+	// mut:
 	objects   map[string]ScopeObject
 	parent    &Scope
 	children  []&Scope
@@ -16,7 +16,7 @@ pub mut:
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
-	return &ast.Scope{
+	return &Scope{
 		parent: parent
 		start_pos: start_pos
 	}
@@ -24,7 +24,7 @@ pub fn new_scope(parent &Scope, start_pos int) &Scope {
 
 pub fn (s &Scope) find_with_scope(name string) ?(ScopeObject, &Scope) {
 	mut sc := s
-	for  {
+	for {
 		if name in sc.objects {
 			return sc.objects[name], sc
 		}
@@ -37,7 +37,8 @@ pub fn (s &Scope) find_with_scope(name string) ?(ScopeObject, &Scope) {
 }
 
 pub fn (s &Scope) find(name string) ?ScopeObject {
-	for sc := s; ; sc = sc.parent {
+	for sc := s; true; sc = sc.parent
+	 {
 		if name in sc.objects {
 			return sc.objects[name]
 		}
@@ -51,18 +52,15 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 pub fn (s &Scope) is_known(name string) bool {
 	if _ := s.find(name) {
 		return true
+	} else {
 	}
-	//
-	else{}
 	return false
 }
 
 pub fn (s &Scope) find_var(name string) ?&Var {
 	if obj := s.find(name) {
 		match obj {
-			Var {
-				return it
-			}
+			Var { return obj }
 			else {}
 		}
 	}
@@ -72,9 +70,7 @@ pub fn (s &Scope) find_var(name string) ?&Var {
 pub fn (s &Scope) find_const(name string) ?&ConstField {
 	if obj := s.find(name) {
 		match obj {
-			ConstField {
-				return it
-			}
+			ConstField { return obj }
 			else {}
 		}
 	}
@@ -162,12 +158,8 @@ pub fn (sc &Scope) show(depth, max_depth int) string {
 	out += '$indent# $sc.start_pos - $sc.end_pos\n'
 	for _, obj in sc.objects {
 		match obj {
-			ConstField {
-				out += '$indent  * const: $it.name - $it.typ\n'
-			}
-			Var {
-				out += '$indent  * var: $it.name - $it.typ\n'
-			}
+			ConstField { out += '$indent  * const: $obj.name - $obj.typ\n' }
+			Var { out += '$indent  * var: $obj.name - $obj.typ\n' }
 			else {}
 		}
 	}
