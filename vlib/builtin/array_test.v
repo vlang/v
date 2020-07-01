@@ -877,3 +877,12 @@ fn test_plus_assign_string() {
 	a[0] += 'abc'
 	assert a == ['abc']
 }
+
+fn test_push_for_in_keys() {
+	m := {'a': 'b', 'c': 'd'}
+	mut arr := []string{}
+	for k, _ in m {
+		arr << k
+	}
+	assert arr == ['a', 'c']
+}

@@ -683,7 +683,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					println('build module `$g.module_built` fn `$node.name`')
 				}
 			}
-			keep_fn_decl := g.fn_decl            
+			keep_fn_decl := g.fn_decl
 			g.fn_decl = node
 			if node.name == 'main.main' {
 				g.has_main = true
@@ -1864,7 +1864,13 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.interface_call(node.right_type, info.elem_type)
 			}
-			g.expr_with_cast(node.right, node.right_type, info.elem_type)
+			if elem_sym.kind == .string {
+				g.write('string_clone(')
+				g.expr_with_cast(node.right, node.right_type, info.elem_type)
+				g.write(')')
+			} else {
+				g.expr_with_cast(node.right, node.right_type, info.elem_type)
+			}
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.write(')')
 			}
