@@ -290,3 +290,16 @@ fn test_plus_assign_string() {
 	assert m.len == 1
 	assert m['one'] == '1'
 }
+
+
+fn test_map_keys_to_array() {
+	m := {'a': 'b', 'c': 'd'}
+	mut arr := []string{}
+	for k, _ in m {
+		arr << k
+	}
+	sarr := arr.str()
+	println(sarr)
+	assert sarr == "['a', 'c']"
+}
+

@@ -864,9 +864,14 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln(';')
 		g.writeln('array_$key_styp $keys_tmp = map_keys(&$atmp);')
 		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; ++$idx) {')
-		g.writeln('\t$key_styp $key = (($key_styp*)${keys_tmp}.data)[$idx];')
+		// TODO: analyze whether it.key_type has a .clone() method and call .clone() for all types:
+		if it.key_type == table.string_type {
+			g.writeln('\t$key_styp $key = /*kkkk*/ string_clone( (($key_styp*)${keys_tmp}.data)[$idx] );')
+		} else {
+			g.writeln('\t$key_styp $key = /*kkkk*/ (($key_styp*)${keys_tmp}.data)[$idx];')
+		}
 		if it.val_var != '_' {
-			g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)map_get($atmp')
+			g.write('\t$val_styp ${c_name(it.val_var)} = /*vvv*/ (*($val_styp*)map_get($atmp')
 			g.writeln(', $key, &($val_styp[]){ $zero }));')
 		}
 		g.stmts(it.stmts)
