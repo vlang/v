@@ -59,7 +59,7 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 			for expr in exprs {
 				if expr is ast.IndexExpr {
 					idx := expr as ast.IndexExpr
-					if idx.name == val.name {
+					if idx.expr == val.expr {
 						return true
 					}
 				}

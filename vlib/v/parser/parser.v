@@ -990,7 +990,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	return ast.IndexExpr{
 		left: left
 		index: expr
-		name: p.scanner.expr_string(left.position(), end).replace(' ', '')
+		expr: p.scanner.expr_string(left.position(), end).replace(' ', '')
 		pos: p.tok.position()
 	}
 }
