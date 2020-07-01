@@ -988,12 +988,10 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		}
 	}
 	// [expr]
-	end := p.tok.position()
 	p.check(.rsbr)
 	return ast.IndexExpr{
 		left: left
 		index: expr
-		expr: p.scanner.expr_string(left.position(), end).replace(' ', '')
 		pos: p.tok.position()
 	}
 }

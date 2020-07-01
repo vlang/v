@@ -135,7 +135,6 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 		// g.write('tos4("$escaped_val", $it.val.len)')
 		// g.write('_SLIT("$escaped_val")')
 		g.write('tos_lit("$escaped_val")')
-		// g.write('tos_lit("$escaped_val")')
 	}
 }
 
@@ -143,8 +142,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut cur_line := ''
 	mut tmp := ''
 	free := g.pref.autofree && g.inside_call && !g.inside_return &&
-		g.inside_ternary == 0 && g.cur_fn != 0 &&
-		g.cur_fn.name != ''
+		g.inside_ternary == 0 && !g.inside_const 
+		//&& g.cur_fn != 0 &&
+		//g.cur_fn.name != ''
 	if free {
 		// Save the string expr in a temporary variable, so that it can be removed after the call.
 		tmp = g.new_tmp_var()

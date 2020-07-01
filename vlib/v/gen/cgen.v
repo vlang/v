@@ -83,7 +83,7 @@ mut:
 	attrs                []string // attributes before next decl stmt
 	is_builtin_mod       bool
 	hotcode_fn_names     []string
-	cur_fn               &ast.FnDecl = 0
+	//cur_fn               ast.FnDecl
 	cur_generic_type     table.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i                int
 	sql_stmt_name        string
@@ -93,6 +93,7 @@ mut:
 	strs_to_free         string
 	inside_call          bool
 	has_main             bool
+	inside_const bool
 }
 
 const (
@@ -394,16 +395,11 @@ fn (g &Gen) cc_type(t table.Type) string {
 		if info.generic_types.len > 0 {
 			mut sgtyps := '_T'
 			for gt in info.generic_types {
-				gts := g.table.get_type_symbol(if gt.has_flag(.generic) {
-					g.unwrap_generic(gt)
-				} else {
-					gt
-				})
+				gts := g.table.get_type_symbol(if gt.has_flag(.generic) { g.unwrap_generic(gt) } else { gt })
 				sgtyps += '_$gts.name'
 			}
 			styp += sgtyps
-		}
-		else if styp.contains('<') {
+		} else if styp.contains('<') {
 			// TODO: yuck
 			styp = styp.replace('<', '_T_').replace('>', '').replace(',', '_')
 		}
@@ -772,7 +768,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Return {
 			g.write_defer_stmts_when_needed()
-			g.write_autofree_stmts_when_needed(node)
+			if g.pref.autofree {
+				g.write_autofree_stmts_when_needed(node)
+			}
 			g.return_statement(node)
 		}
 		ast.SqlStmt {
@@ -1095,10 +1093,19 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						info := sym.info as table.Array
 						styp := g.typ(info.elem_type)
 						g.write('$styp _var_$left.pos.pos = *($styp*)array_get(')
-						g.expr(it.left)
+						g.expr(left.left)
 						g.write(', ')
-						g.expr(it.index)
+						g.expr(left.index)
 						g.writeln(');')
+					} else if sym.kind == .map {
+						info := sym.info as table.Map
+						styp := g.typ(info.value_type)
+						zero := g.type_default(info.value_type)
+						g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
+						g.expr(left.left)
+						g.write(', ')
+						g.expr(left.index)
+						g.writeln(', &($styp[]){ $zero });')
 					}
 				}
 				else {}
@@ -1301,13 +1308,10 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 		ast.IndexExpr {
 			mut has_var := false
 			for lx in left {
-				if lx is ast.IndexExpr {
-					inx := lx as ast.IndexExpr
-					if val.expr == inx.expr {
-						g.write('_var_$inx.pos.pos')
-						has_var = true
-						break
-					}
+				if val_.str() == lx.str() {
+					g.write('_var_${lx.position().pos}')
+					has_var = true
+					break
 				}
 			}
 			if !has_var {
@@ -2484,7 +2488,21 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.writeln('return $opt_tmp;')
 			return
 		}
-		g.write('return ')
+		free := g.pref.autofree && node.exprs[0] is ast.CallExpr
+		mut tmp := ''
+		if free {
+			// `return foo(a, b, c)`
+			// `tmp := foo(a, b, c); free(a); free(b); free(c); return tmp;`
+			// Save return value in a temp var so that it all args (a,b,c) can be freed
+			tmp = g.new_tmp_var()
+			g.write(g.typ(g.fn_decl.return_type))
+			g.write(' ')
+			g.write(tmp)
+			g.write(' = ')
+			// g.write('return $tmp;')
+		} else {
+			g.write('return ')
+		}
 		cast_interface := sym.kind == .interface_ && node.types[0] != g.fn_decl.return_type
 		if cast_interface {
 			g.interface_call(node.types[0], g.fn_decl.return_type)
@@ -2493,6 +2511,10 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		if cast_interface {
 			g.write(')')
 		}
+		if free {
+			g.writeln(';')
+			g.write('return $tmp')
+		}
 	} else {
 		g.write('return')
 	}
@@ -2500,6 +2522,11 @@ fn (mut g Gen) return_statement(node ast.Return) {
 }
 
 fn (mut g Gen) const_decl(node ast.ConstDecl) {
+	g.inside_const = true
+	defer {
+		g.inside_const = false
+	}
+
 	for field in node.fields {
 		name := c_name(field.name)
 		// TODO hack. Cut the generated value and paste it into definitions.
@@ -2822,7 +2849,7 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('void _vcleanup() {')
 		// g.writeln('puts("cleaning up...");')
 		g.writeln(g.cleanups.str())
-		//g.writeln('\tfree(g_str_buf);')
+		// g.writeln('\tfree(g_str_buf);')
 		g.writeln('}')
 		if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
 			println(g.out.after(fn_vcleanup_start_pos))
