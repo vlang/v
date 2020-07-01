@@ -1,0 +1,7 @@
+struct User {
+	name string // name
+	// last comment
+	// last comment2
+}
+
+

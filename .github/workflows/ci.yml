@@ -42,6 +42,9 @@ jobs:
       run: ./v test-fixed
     - name: Test building v tools
       run: ./v build-tools
+    - name: v vet
+      run: |
+        v vet vlib/v/parser
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 
@@ -59,7 +62,7 @@ jobs:
       uses: spytheman/docker_alpine_v@v7.0
       with:
         entrypoint: .github/workflows/alpine.build.sh
-        
+
     - name: Test V
       uses: spytheman/docker_alpine_v@v7.0
       with:
@@ -148,7 +151,7 @@ jobs:
         git clone --depth 1 https://github.com/vlang/gitly
         ./v install markdown
         cd gitly
-        ../v . 
+        ../v .
         ../v -autofree .
         cd ..
 #    - name: Build vpm

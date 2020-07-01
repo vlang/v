@@ -220,7 +220,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut end_pos := p.prev_tok.position()
 	// Return type
 	mut return_type := table.void_type
-	if p.tok.kind.is_start_of_type() || (p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr) {
+	if p.tok.kind.is_start_of_type() || (p.tok.kind == .key_fn &&
+		p.tok.line_nr == p.prev_tok.line_nr) {
 		end_pos = p.tok.position()
 		return_type = p.parse_type()
 	}
@@ -228,7 +229,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec_type)
-		//		p.warn('reg method $type_sym.name . $name ()')
+		// p.warn('reg method $type_sym.name . $name ()')
 		type_sym.register_method(table.Fn{
 			name: name
 			args: args
@@ -251,7 +252,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if _ := p.table.find_fn(name) {
 			p.fn_redefinition_error(name)
 		}
-		//p.warn('reg functn $name ()')
+		// p.warn('reg functn $name ()')
 		p.table.register_fn(table.Fn{
 			name: name
 			args: args
@@ -273,10 +274,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope(true)
 		// Add return if `fn(...) ? {...}` have no return at end
-        if return_type != table.void_type && p.table.get_type_symbol(return_type).kind == .void &&
-                return_type.has_flag(.optional) && (stmts.len == 0 || stmts[stmts.len-1] !is ast.Return) {
-            stmts << ast.Return{ pos: p.tok.position() }
-        }
+		if return_type != table.void_type &&
+			p.table.get_type_symbol(return_type).kind == .void && return_type.has_flag(.optional) &&
+			(stmts.len == 0 || stmts[stmts.len - 1] !is ast.Return) {
+			stmts << ast.Return{
+				pos: p.tok.position()
+			}
+		}
 	}
 	p.close_scope()
 	if !no_body && are_args_type_only {
@@ -376,7 +380,8 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
 	argname := if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() { p.prepend_mod(p.tok.lit) } else { p.tok.lit }
-	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] || (p.peek_tok.kind == .comma && p.table.known_type(argname)) ||
+	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] ||
+		(p.peek_tok.kind == .comma && p.table.known_type(argname)) ||
 		p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
