@@ -88,14 +88,17 @@ making pullrequests, and you can just do normal git operations such as:
 6. `git push pullrequest`  # (NOTE: the `pullrequest` remote was setup on step 4)
 7. On GitHub's web interface, go to: https://github.com/vlang/v/pulls
 
-Here the UI shows a dialog with a button to make a new pull request based on
-the new pushed branch.
-(Example dialog: https://url4e.com/gyazo/images/364edc04.png)
+   Here the UI shows a dialog with a button to make a new pull request based on
+   the new pushed branch.
+   (Example dialog: https://url4e.com/gyazo/images/364edc04.png)
+
 8. After making your pullrequest (aka, PR), you can continue to work on the
 branch `fix_alabala` ... just do again `git push pullrequest` when you have more
 commits.
+
 9. If there are merge conflicts, or a branch lags too much behind V's master,
 you can do the following:
+
    1. `git pull --rebase origin master` # solve conflicts and do
    `git rebase --continue`
    2. `git push pullrequest -f` # this will overwrite your current remote branch
