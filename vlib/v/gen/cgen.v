@@ -1857,7 +1857,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		} else {
 			// push a single element
 			elem_type_str := g.typ(info.elem_type)
-			g.write('array_push(&')
+			g.write('array_push(')
+			if !left_type.is_ptr() {
+				g.write('&')
+			}
 			g.expr(node.left)
 			g.write(', _MOV(($elem_type_str[]){ ')
 			elem_sym := g.table.get_type_symbol(info.elem_type)
