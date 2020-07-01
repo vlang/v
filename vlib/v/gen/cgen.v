@@ -1093,6 +1093,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						info := sym.info as table.Array
 						styp := g.typ(info.elem_type)
 						g.write('$styp _var_$left.pos.pos = *($styp*)array_get(')
+						if left.left_type.is_ptr() {
+							g.write('*')
+						}
 						g.expr(left.left)
 						g.write(', ')
 						g.expr(left.index)
@@ -1102,6 +1105,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						styp := g.typ(info.value_type)
 						zero := g.type_default(info.value_type)
 						g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
+						if left.left_type.is_ptr() {
+							g.write('*')
+						}
 						g.expr(left.left)
 						g.write(', ')
 						g.expr(left.index)
@@ -1112,7 +1118,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					styp := g.typ(left.typ)
 					g.write('$styp _var_$left.pos.pos = ')
 					g.expr(left.expr)
-					g.writeln('.$left.field_name;')
+					if left.expr_type.is_ptr() {
+						g.writeln('->$left.field_name;')
+					} else {
+						g.writeln('.$left.field_name;')
+					}
 				}
 				else {}
 			}
