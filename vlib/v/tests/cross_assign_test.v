@@ -30,7 +30,7 @@ fn foo3(mut f &Foo) {
 	f.a, f.b = f.b, f.a
 }
 
-fn main() {
+fn test_struct_fields_cross_assign_in_fn() {
 	mut a := Foo{a:1, b:2}
 	foo3(mut a)
 	println(a)
