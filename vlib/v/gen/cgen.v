@@ -1307,13 +1307,10 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 		ast.IndexExpr {
 			mut has_var := false
 			for lx in left {
-				if lx is ast.IndexExpr {
-					inx := lx as ast.IndexExpr
-					if val.expr == inx.expr {
-						g.write('_var_$inx.pos.pos')
-						has_var = true
-						break
-					}
+				if val_.str() == lx.str() {
+					g.write('_var_${lx.position().pos}')
+					has_var = true
+					break
 				}
 			}
 			if !has_var {
