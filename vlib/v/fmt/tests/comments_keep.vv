@@ -1,0 +1,17 @@
+struct User {
+	name string // name
+	// last comment
+	// last comment2
+}
+
+fn main() {
+	u := User{
+		name: 'Peter'
+	}
+	if true {
+	}
+	n := sizeof(User)
+	// else
+	// else {
+	// }
+}

@@ -814,7 +814,7 @@ fn fn_has_go(it ast.FnDecl) bool {
 fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	g.fn_decl = &it
 	has_go := fn_has_go(it)
-	is_main := it.name == 'main'
+	is_main := it.name == 'main.main'
 	if is_main {
 		// there is no concept of main in JS but we do have iife
 		g.writeln('/* program entry point */')

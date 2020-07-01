@@ -65,7 +65,7 @@ _ = footer
 	mut in_span := false
 	//for _line in lines {
 	for i := 0; i < lines.len; i ++ {
-		line := lines[i].trim_space().replace("\'", '"')
+		line := lines[i].trim_space()
 		if line == '<style>' {
 			state = .css
 		} else if line == '</style>' {
@@ -98,16 +98,16 @@ _ = footer
 			pos := line.index('@js') or {
 				continue
 			}
-			s.write('<script src=') // " is inserted in the template
-			s.write(line[pos + 4..])
-			s.writeln('></script>')
+			s.write('<script src="')
+			s.write(line[pos + 5..line.len-1])
+			s.writeln('"></script>')
 		} else if line.contains('@css ') {
 			pos := line.index('@css') or {
 				continue
 			}
-			s.write('<link href=')
-			s.write(line[pos + 4..])
-			s.writeln(' rel="stylesheet" type="text/css">')
+			s.write('<link href="')
+			s.write(line[pos + 6..line.len-1])
+			s.writeln('" rel="stylesheet" type="text/css">')
 		} else if line.contains('@if ') {
 			s.writeln(str_end)
 			pos := line.index('@if') or {

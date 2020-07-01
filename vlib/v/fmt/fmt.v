@@ -145,13 +145,14 @@ pub fn (mut f Fmt) writeln(s string) {
 fn (mut f Fmt) adjust_complete_line() {
 	for i, buf in f.expr_bufs {
 		// search for low penalties
-		if i == 0 || f.penalties[i-1] <= 1 {
-			precedence := if i == 0 { -1 } else { f.precedences[i-1] }
+		if i == 0 || f.penalties[i - 1] <= 1 {
+			precedence := if i == 0 { -1 } else { f.precedences[i - 1] }
 			mut len_sub_expr := if i == 0 { buf.len + f.line_len } else { buf.len }
 			mut sub_expr_end_idx := f.penalties.len
 			// search for next position with low penalty and same precedence to form subexpression
-			for j in i..f.penalties.len {
-				if f.penalties[j] <= 1 && f.precedences[j] == precedence && len_sub_expr >= max_len[1] {
+			for j in i .. f.penalties.len {
+				if f.penalties[j] <= 1 &&
+					f.precedences[j] == precedence && len_sub_expr >= max_len[1] {
 					sub_expr_end_idx = j
 					break
 				} else if f.precedences[j] < precedence {
@@ -159,25 +160,25 @@ fn (mut f Fmt) adjust_complete_line() {
 					len_sub_expr = C.INT32_MAX
 					break
 				} else {
-					len_sub_expr += f.expr_bufs[j+1].len
+					len_sub_expr += f.expr_bufs[j + 1].len
 				}
 			}
 			// if subexpression would fit in single line adjust penalties to actually do so
-			if len_sub_expr <= max_len[max_len.len-1] {
-				for j in i..sub_expr_end_idx {
-					f.penalties[j] = max_len.len-1
+			if len_sub_expr <= max_len[max_len.len - 1] {
+				for j in i .. sub_expr_end_idx {
+					f.penalties[j] = max_len.len - 1
 				}
 				if i > 0 {
-					f.penalties[i-1] = 0
+					f.penalties[i - 1] = 0
 				}
 				if sub_expr_end_idx < f.penalties.len {
 					f.penalties[sub_expr_end_idx] = 0
 				}
 			}
 		}
-		// emergency fallback: decrease penalty in front of long unbreakable parts 
-		if i > 0 && buf.len > max_len[3] - max_len[1] && f.penalties[i-1] > 0 {
-			f.penalties[i-1] = if buf.len >= max_len[2] { 0 } else { 1 }
+		// emergency fallback: decrease penalty in front of long unbreakable parts
+		if i > 0 && buf.len > max_len[3] - max_len[1] && f.penalties[i - 1] > 0 {
+			f.penalties[i - 1] = if buf.len >= max_len[2] { 0 } else { 1 }
 		}
 	}
 }
@@ -892,10 +893,10 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(node.field_name)
 		}
 		ast.SizeOf {
-			if node.is_type {        
+			if node.is_type {
 				f.write('sizeof(')
 				if node.type_name != '' {
-					f.write(node.type_name)
+					f.write(f.short_module(node.type_name))
 				} else {
 					f.write(f.type_to_str(node.typ))
 				}
@@ -1153,8 +1154,7 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	single_line := it.branches.len == 2 && it.has_else &&
-		it.branches[0].stmts.len == 1 &&
-		it.branches[1].stmts.len == 1 &&
+		it.branches[0].stmts.len == 1 && it.branches[1].stmts.len == 1 &&
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
@@ -1452,10 +1452,10 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		if last_line_nr < line_nr {
 			penalty--
 		}
-		if i == 0 || it.exprs[i - 1] is ast.ArrayInit ||
+		if i == 0 ||
+			it.exprs[i - 1] is ast.ArrayInit ||
 			it.exprs[i - 1] is ast.StructInit ||
-			it.exprs[i - 1] is ast.MapInit ||
-			it.exprs[i - 1] is ast.CallExpr {
+			it.exprs[i - 1] is ast.MapInit || it.exprs[i - 1] is ast.CallExpr {
 			penalty--
 		}
 		if expr is ast.ArrayInit ||

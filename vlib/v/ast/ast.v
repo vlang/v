@@ -186,6 +186,7 @@ pub struct StructInitField {
 pub:
 	expr          Expr
 	pos           token.Position
+	comment       Comment
 pub mut:
 	name          string
 	typ           table.Type
@@ -1027,6 +1028,7 @@ pub fn (stmt Stmt) position() token.Position {
 		// UnsafeStmt {
 		// }
 		*/
+		//
 		else { return token.Position{} }
 	}
 }

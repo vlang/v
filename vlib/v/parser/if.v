@@ -26,7 +26,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			// if p.tok.kind == .comment {
 			// p.error('place comments inside {}')
 			// }
-			// comment = p.check_comment()
+			comment = p.check_comment()
 			p.check(.key_else)
 			if p.tok.kind == .key_if {
 				p.next()
@@ -74,7 +74,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			cond: cond
 			stmts: stmts
 			pos: start_pos.extend(end_pos)
-			comment: ast.Comment{}
+			comment: comment
 		}
 		if p.tok.kind != .key_else {
 			break
