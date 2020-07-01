@@ -1108,6 +1108,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.writeln(', &($styp[]){ $zero });')
 					}
 				}
+				ast.SelectorExpr {
+					styp := g.typ(left.typ)
+					g.write('$styp _var_$left.pos.pos = ')
+					g.expr(left.expr)
+					g.writeln('.$left.field_name;')
+				}
 				else {}
 			}
 		}
@@ -1330,6 +1336,19 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 		ast.PostfixExpr {
 			g.gen_cross_tmp_variable(left, val.expr)
 			g.write(val.op.str())
+		}
+		ast.SelectorExpr {
+			mut has_var := false
+			for lx in left {
+				if val_.str() == lx.str() {
+					g.write('_var_${lx.position().pos}')
+					has_var = true
+					break
+				}
+			}
+			if !has_var {
+				g.expr(val_)
+			}
 		}
 		else {
 			g.expr(val_)
