@@ -139,7 +139,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	// /////////
 	if g.autofree {
 		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
-		// g.writeln(g.autofree_scope_vars(it.body_pos.pos))
+		g.writeln(g.autofree_scope_vars(it.body_pos.pos))
 	}
 	g.writeln('}')
 	g.defer_stmts = []
