@@ -877,3 +877,16 @@ fn test_plus_assign_string() {
 	a[0] += 'abc'
 	assert a == ['abc']
 }
+
+fn test_cross_assign() {
+	mut a := [0, 1]
+	a[0], a[1] = a[1], a[0]
+	assert a[0] == 1
+	assert a[1] == 0
+
+	mut b1 := [1, 2, 3]
+	mut b2 := 4
+	b1[2], b2, b1[0] = b1[0], b1[2], 5
+	assert b1 == [5, 2, 1]
+	assert b2 == 3
+}

@@ -45,14 +45,26 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) {
 
 fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 	match val {
-		ast.Ident { for expr in exprs {
+		ast.Ident {
+			for expr in exprs {
 				if expr is ast.Ident {
 					ident := expr as ast.Ident
 					if ident.name == val.name {
 						return true
 					}
 				}
-			} }
+			}
+		}
+		ast.IndexExpr {
+			for expr in exprs {
+				if expr is ast.IndexExpr {
+					idx := expr as ast.IndexExpr
+					if idx.name == val.name {
+						return true
+					}
+				}
+			}
+		}
 		ast.InfixExpr { return p.check_cross_variables(exprs, val.left) || p.check_cross_variables(exprs, val.right) }
 		ast.PrefixExpr { return p.check_cross_variables(exprs, val.right) }
 		ast.PostfixExpr { return p.check_cross_variables(exprs, val.expr) }
@@ -77,6 +89,9 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		// a, b = b, a
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
+			if has_cross_var {
+				break
+			}
 		}
 	}
 	for i, lx in left {

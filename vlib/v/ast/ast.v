@@ -410,6 +410,7 @@ pub:
 pub struct IndexExpr {
 pub:
 	pos       token.Position
+	name      string // a[0] m['a'] etc
 	left      Expr
 	index     Expr // [0], [start..end] etc
 pub mut:
