@@ -1505,7 +1505,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			ast.PrefixExpr {
 				// Do now allow `*x = y` outside `unsafe`
 				if left.op == .mul && !c.inside_unsafe {
-					c.error('modifying variables via deferencing can only be done in `unsafe` blocks',
+					c.error('modifying variables via dereferencing can only be done in `unsafe` blocks',
 						assign_stmt.pos)
 				}
 			}
@@ -1515,6 +1515,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right_type_unwrapped := c.unwrap_generic(right_type)
 		left_sym := c.table.get_type_symbol(left_type_unwrapped)
 		right_sym := c.table.get_type_symbol(right_type_unwrapped)
+		if (left_type.is_ptr() || left_sym.is_pointer()) &&
+			assign_stmt.op !in [.assign, .decl_assign] && !c.inside_unsafe {
+			c.error('pointer arithmetic is only allowed in `unsafe` blocks',
+				assign_stmt.pos)
+		}
 		// Single side check
 		match assign_stmt.op {
 			.assign {} // No need to do single side check for =. But here put it first for speed.
@@ -2581,6 +2586,10 @@ pub fn (mut c Checker) postfix_expr(node ast.PostfixExpr) table.Type {
 			node.pos)
 	} else {
 		c.fail_if_immutable(node.expr)
+	}
+	if (typ.is_ptr() || typ_sym.is_pointer()) && !c.inside_unsafe {
+		c.error('pointer arithmetic is only allowed in `unsafe` blocks',
+			node.pos)
 	}
 	return typ
 }

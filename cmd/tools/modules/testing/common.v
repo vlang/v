@@ -209,7 +209,7 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	return v_build_failing_skipped(zargs, folder, [])
 }
 
-pub fn v_build_failing_skipped(zargs string, folder string, skipped []string) bool {
+pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) bool {
 	main_label := 'Building $folder ...'
 	finish_label := 'building $folder'
 	vexe := pref.vexe_path()
@@ -221,6 +221,7 @@ pub fn v_build_failing_skipped(zargs string, folder string, skipped []string) bo
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
 	mut mains := []string{}
+	mut skipped := oskipped
 	for f in files {
 		if !f.contains('modules') && !f.contains('preludes') {
 			//$if !linux {
@@ -239,6 +240,13 @@ pub fn v_build_failing_skipped(zargs string, folder string, skipped []string) bo
 				if f.ends_with('examples\\pico\\pico.v') {
 					continue
 				}
+			}
+			c := os.read_file(f) or { panic(err) }
+			maxc := if c.len > 300 { 300 } else { c.len }
+			start := c[0..maxc]
+			if start.contains('module ') && !start.contains('module main') {
+				skipped_f := f.replace(os.join_path(parent_dir,''), '')
+				skipped << skipped_f
 			}
 			mains << f
 		}

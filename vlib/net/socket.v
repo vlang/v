@@ -234,7 +234,9 @@ pub fn (s Socket) send(buf byteptr, len int) ?int {
 		if dlen <= 0 {
 			break
 		}
-		dptr += sbytes
+		unsafe {
+			dptr += sbytes
+		}
 	}
 	return len
 }

@@ -28,6 +28,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		g.cur_generic_type = 0
 		return
 	}
+	//g.cur_fn = it
 	fn_start_pos := g.out.len
 	msvc_attrs := g.write_fn_attrs()
 	// Live
@@ -74,7 +75,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	mut impl_fn_name := name
 	if is_live_wrap {
-		impl_fn_name = 'impl_live_${name}'
+		impl_fn_name = 'impl_live_$name'
 	}
 	g.last_fn_c_name = impl_fn_name
 	//
@@ -113,17 +114,16 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		// an early exit, which will leave the mutex locked.
 		mut fn_args_list := []string{}
 		for ia, fa in fargs {
-			fn_args_list << '${fargtypes[ia]} ${fa}'
+			fn_args_list << '${fargtypes[ia]} $fa'
 		}
 		mut live_fncall := '${impl_fn_name}(' + fargs.join(', ') + ');'
 		mut live_fnreturn := ''
 		if type_name != 'void' {
-			live_fncall = '${type_name} res = ${live_fncall}'
+			live_fncall = '$type_name res = $live_fncall'
 			live_fnreturn = 'return res;'
 		}
 		g.definitions.writeln('$type_name ${name}(' + fn_args_list.join(', ') + ');')
-		g.hotcode_definitions.writeln('$type_name ${name}(' + fn_args_list.join(', ') +
-			'){')
+		g.hotcode_definitions.writeln('$type_name ${name}(' + fn_args_list.join(', ') + '){')
 		g.hotcode_definitions.writeln('  pthread_mutex_lock(&live_fn_mutex);')
 		g.hotcode_definitions.writeln('  $live_fncall')
 		g.hotcode_definitions.writeln('  pthread_mutex_unlock(&live_fn_mutex);')
@@ -154,12 +154,9 @@ fn (mut g Gen) write_autofree_stmts_when_needed(r ast.Return) {
 	// TODO: write_autofree_stmts_when_needed should not free the returned variables.
 	// It may require rewriting g.return_statement to assign the expressions
 	// to temporary variables, then protecting *them* from autofreeing ...
-	/*
-	g.writeln('/* autofreeings before return:              -------')
-	//g.write( g.autofree_scope_vars(r.pos.pos) )
-	g.write( g.autofree_scope_vars(g.fn_decl.body_pos.pos) )
-	g.writeln('--------------------------------------------------- */')
-	*/
+	// g.writeln('// autofreeings before return:              -------')
+	// g.writeln(g.autofree_scope_vars(g.fn_decl.body_pos.pos))
+	// g.writeln('//--------------------------------------------------- ') // //g.write( g.autofree_scope_vars(r.pos.pos) )
 }
 
 fn (mut g Gen) write_defer_stmts_when_needed() {
@@ -248,7 +245,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		return
 	}
 	g.inside_call = true
-	defer {g.inside_call = false}
+	defer {
+		g.inside_call = false
+	}
 	gen_or := node.or_block.kind != .absent
 	cur_line := if gen_or && g.is_assign_rhs {
 		line := g.go_before_stmt(0)
@@ -336,8 +335,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.gen_str_for_type_with_styp(node.receiver_type, styp)
 	}
 	// TODO performance, detect `array` method differently
-	if left_sym.kind == .array &&
-		node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'clone', 'reverse', 'slice'] {
+	if left_sym.kind == .array && node.name in
+		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'clone', 'reverse', 'slice'] {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 		// `array_byte_clone` => `array_clone`

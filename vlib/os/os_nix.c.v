@@ -103,6 +103,12 @@ pub fn mkdir(path string) ?bool {
 	if path == '.' {
 		return true
 	}
+	/*
+	mut k := 0
+	defer {
+		k = 1
+	}
+	*/
 	apath := os.real_path(path)
   /*
 	$if linux {

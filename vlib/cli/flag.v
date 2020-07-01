@@ -79,7 +79,7 @@ fn (mut flag Flag) parse(args []string) ?[]string {
 }
 
 // check if first arg matches flag
-fn (flag &Flag) matches(args []string) bool {
+fn (mut flag Flag) matches(args []string) bool {
 	return
 		(flag.name != '' && args[0].starts_with('--${flag.name}')) ||
 		(flag.abbrev != '' && args[0].starts_with('-${flag.abbrev}'))
