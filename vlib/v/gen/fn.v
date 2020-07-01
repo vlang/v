@@ -28,6 +28,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		g.cur_generic_type = 0
 		return
 	}
+	//g.cur_fn = it
 	fn_start_pos := g.out.len
 	msvc_attrs := g.write_fn_attrs()
 	// Live
