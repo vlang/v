@@ -1,4 +1,3 @@
-import time
 import rand
 
 const (
@@ -7,7 +6,6 @@ const (
 )
 
 fn main() {
-	rand.intn(gen_max) // skip the first
 	mut arr := []int{}
 	for _ in 0..gen_len {
 		arr << rand.intn(gen_max)
@@ -24,19 +22,12 @@ fn quick_sort(mut arr []int, l int, r int) {
 	for i in l+1..r+1 {
 		if arr[i] < arr[l] {
 			sep++
-			swap(mut arr, i, sep)
+			arr[i], arr[sep] = arr[sep], arr[i]
 		}
 	}
-	swap(mut arr, l, sep)
+	arr[l], arr[sep] = arr[sep], arr[l]
 	quick_sort(mut arr, l, sep-1)
 	quick_sort(mut arr, sep+1, r)
-}
-
-[inline]
-fn swap(mut arr []int, i int, j int) {
-	temp := arr[i]
-	arr[i] = arr[j]
-	arr[j] = temp
 }
 
 fn is_sorted(arr []int) bool {
