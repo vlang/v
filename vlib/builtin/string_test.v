@@ -669,6 +669,14 @@ fn test_trim_prefix() {
 	assert s.trim_prefix('V ') == 'Programming Language'
 	assert s.trim_prefix('V Programming ') == 'Language'
 	assert s.trim_prefix('Language') == s
+
+	s2 := 'TestTestTest'
+	assert s2.trim_prefix('Test') == 'TestTest'
+	assert s2.trim_prefix('TestTest') == 'Test'
+
+	s3 := '123Test123Test'
+	assert s3.trim_prefix('123') == 'Test123Test'
+	assert s3.trim_prefix('123Test') == '123Test'
 }
 
 fn test_trim_suffix() {
@@ -676,6 +684,14 @@ fn test_trim_suffix() {
 	assert s.trim_suffix(' Language') == 'V Programming'
 	assert s.trim_suffix(' Programming Language') == 'V'
 	assert s.trim_suffix('V') == s
+
+	s2 := 'TestTestTest'
+	assert s2.trim_suffix('Test') == 'TestTest'
+	assert s2.trim_suffix('TestTest') == 'Test'
+
+	s3 := '123Test123Test'
+	assert s3.trim_suffix('123') == s3
+	assert s3.trim_suffix('123Test') == '123Test'
 }
 
 fn test_raw() {
@@ -746,10 +762,20 @@ fn test_string_map() {
 	$if windows {
 		return // TODO
 	}
-	a := 'Hello'.map(fn (b byte) byte {
+	original := 'Hello'
+	println('original.len = $original.len')
+	a := original.map(fn (b byte) byte {
 		return b + 1
 	})
-	assert a == 'Ifmmp'
+	expected := 'Ifmmp'
+	println('a[0] = ' + a[0].str())
+	println('a[1] = ' + a[1].str())
+	println('a[2] = ' + a[2].str())
+	println('a[3] = ' + a[3].str())
+	println('a[4] = ' + a[4].str())
+	println('a.len = $a.len')
+	assert a.len == expected.len
+	assert a == expected
 
 	assert 'foo'.map(foo) == r'\ee'
 }

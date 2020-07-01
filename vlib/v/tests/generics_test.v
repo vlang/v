@@ -40,22 +40,22 @@ fn test_foo() {
 
 fn create<T>() {
 	a := T{}
-	println(a.foo)
+	println(a.name)
 	mut xx := T{}
-	xx.foo = 'foo'
-	println(xx.foo)
-	assert xx.foo == 'foo'
+	xx.name = 'foo'
+	println(xx.name)
+	assert xx.name == 'foo'
 	xx.init()
 }
 
 struct User {
 mut:
-	foo string
+	name string
 }
 
 struct City {
 mut:
-	foo string
+	name string
 }
 
 fn (u User) init() {
@@ -65,19 +65,19 @@ fn (c City) init() {
 }
 
 fn mut_arg<T>(mut x T) {
-	println(x.foo) // = 'foo'
+	println(x.name) // = 'foo'
 }
 
 
 fn mut_arg2<T>(mut x T) T {
-	println(x.foo) // = 'foo'
+	println(x.name) // = 'foo'
 	return x
 }
 
 fn test_create() {
 	create<User>()
 	create<City>()
-	u := User{}
+	mut u := User{}
 	mut_arg<User>(mut u)
 	mut_arg2<User>(mut u)
 }
@@ -182,40 +182,65 @@ fn test_generic_fn_in_for_in_expression() {
         assert value == 'a'
     }
 }
+*/
 
 // test generic struct
 struct DB {
     driver string
 }
 
-struct User {
-	db DB
-mut:
+struct Group {
+pub mut:
+	name string
+	group_name string
+}
+
+struct Permission {
+pub mut:
 	name string
 }
 
-struct Repo<T> {
+struct Repo<T,U> {
 	db DB
-mut:
+pub mut:
 	model  T
+	permission U
 }
 
-fn new_repo<U>(db DB) Repo<U> {
-	return Repo<U>{db: db}
-}
+// TODO: multiple type generic struct  needs fixing in return for fn
+// fn new_repo<T>(db DB) Repo<T,U> {
+// 	return Repo<T,Permission>{db: db}
+// }
+
 
 fn test_generic_struct() {
-	mut a :=  new_repo<User>(DB{})
-	a.model.name = 'joe'
-	mut b := Repo<User>{db: DB{}
+    mut a := Repo<User,Permission>{
+		model: User{name: 'joe'}
 	}
-	b.model.name = 'joe'
+	// a.model.name = 'joe'
 	assert a.model.name == 'joe'
-	assert b.model.name == 'joe'
+    println('a.model.name: $a.model.name')
+
+	mut b := Repo<Group,Permission>{
+		permission: Permission{name: 'superuser'}
+	}
+	b.model.name = 'admins'
+	assert b.model.name == 'admins'
+	assert b.permission.name == 'superuser'
+	println('b.model.name: $b.model.name')
+	println('b.permission.name: $b.permission.name')
+
+	assert typeof(a.model) == 'User'
+	assert typeof(b.model) == 'Group'
+	println('typeof(a.model): ' + typeof(a.model))
+	println('typeof(b.model): ' + typeof(b.model))
+
+	// mut x := new_repo<User>(DB{})
+	// x.model.name = 'joe2'
+	// println(x.model.name)
 }
 
-//
-
+/*
 struct Abc{ x int y int z int }
 
 fn p<T>(args ...T) {

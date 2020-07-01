@@ -45,6 +45,7 @@ you can do in V.
 
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
+    * [Mutable arguments](#mutable-arguments)
     * [Anonymous & high order functions](#anonymous--high-order-functions)
 * [References](#references)
 * [Modules](#modules)
@@ -160,7 +161,7 @@ This simplifies the code and improves maintainability and readability.
 
 Functions can be used before their declaration:
 `add` and `sub` are declared after `main`, but can still be called from `main`.
-This is true for all declarations in V and eliminates the need of header files
+This is true for all declarations in V and eliminates the need for header files
 or thinking about the order of files and declarations.
 
 <p>&nbsp;</p>
@@ -210,7 +211,7 @@ way to declare variables in V. This means that variables always have an initial
 value.
 
 The variable's type is inferred from the value on the right hand side.
-To force a different type, use type conversion:
+To choose a different type, use type conversion:
 the expression `T(v)` converts the value `v` to the
 type `T`.
 
@@ -252,6 +253,8 @@ fn main() {
     age := 21
 }
 ```
+
+### Declaration errors
 
 In development mode the compiler will warn you that you haven't used the variable (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`) it will not compile at all (like in Go).
@@ -386,10 +389,38 @@ println(s) // "hello\nworld"
 mut nums := [1, 2, 3]
 println(nums) // "[1, 2, 3]"
 println(nums[1]) // "2"
+nums[1] = 5
+println(nums) // "[1, 5, 3]"
 
+println(nums.len) // "3"
+nums = [] // The array is now empty
+println(nums.len) // "0"
+
+// Declare an empty array:
+users := []int{}
+
+// We can also preallocate a certain amount of elements.
+ids := []int{ len: 50, init: 0 } // This creates an array with 50 zeros
+```
+
+The type of an array is determined by the first element:
+* `[1, 2, 3]` is an array of ints (`[]int`).
+* `['a', 'b']` is an array of strings (`[]string`).
+
+If V is unable to infer the type of an array, the user can explicitly specify it for the first element: `[byte(0x0E), 0x1F, 0xBA, 0x0E]`
+
+V arrays are homogeneous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
+
+`.len` field returns the length of the array. Note that it's a read-only field,
+and it can't be modified by the user. Exported fields are read-only by default in V.
+See [Access modifiers](#access-modifiers).
+
+```v
+mut nums := [1, 2, 3]
 nums << 4
 println(nums) // "[1, 2, 3, 4]"
 
+// append array
 nums << [5, 6, 7]
 println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
 
@@ -399,31 +430,14 @@ names << 'Sam'
 // names << 10  <-- This will not compile. `names` is an array of strings.
 println(names.len) // "3"
 println('Alex' in names) // "false"
-
-names = [] // The array is now empty
-
-// Declare an empty array:
-users := []User{}
-
-// We can also preallocate a certain amount of elements.
-ids := []int{ len: 50, init: 0 } // This creates an array with 50 zeros
 ```
-
-The type of an array is determined by the first element: `[1, 2, 3]` is an array of ints (`[]int`).
-
-`['a', 'b']` is an array of strings (`[]string`).
-
-If V is unable to infer the type of an array, the user can explicitly specify it for the first element: `[byte(0x0E), 0x1F, 0xBA, 0x0E]`
-
-V arrays are homogeneous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
 
 `<<` is an operator that appends a value to the end of the array.
 It can also append an entire array.
 
-`.len` field returns the length of the array. Note, that it's a read-only field,
-and it can't be modified by the user. Exported fields are read-only by default in V.
+`val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
 
-`val in array` returns true if the array contains `val`.
+#### Array methods
 
 All arrays can be easily printed with `println(arr)` and converted to a string
 with `s := arr.str()`.
@@ -554,12 +568,13 @@ If an index is required, an alternative form `for index, value in` can be used.
 Note, that the value is read-only. If you need to modify the array while looping, you have to use indexing:
 
 ```v
-mut numbers := [1, 2, 3, 4, 5]
-for i, num in numbers {
-    println(num)
-    numbers[i] = 0
+mut numbers := [0, 1, 2]
+for i, _ in numbers {
+    numbers[i]++
 }
+println(numbers) // [1, 2, 3]
 ```
+When an identifier is just a single underscore, it is ignored.
 
 ```v
 mut sum := 0
@@ -848,10 +863,15 @@ but a short, preferably one letter long, name.
 V functions are pure by default, meaning that their return values are a function of their arguments only,
 and their evaluation has no side effects.
 
-This is achieved by lack of global variables and all function arguments being immutable by default,
-even when references are passed.
+This is achieved by a lack of global variables and all function arguments being immutable by default,
+even when [references](#references) are passed.
 
 V is not a purely functional language however.
+
+There is a compiler flag to enable global variables (`--enable-globals`), but this is
+intended for low-level applications like kernels and drivers.
+
+### Mutable arguments
 
 It is possible to modify function arguments by using the keyword `mut`:
 
@@ -893,7 +913,7 @@ It is preferable to return values instead of modifying arguments.
 Modifying arguments should only be done in performance-critical parts of your application
 to reduce allocations and copying.
 
-For this reason V doesn't allow the modification of arguments with primative types such as integers. Only more complex types such as arrays and maps may be modified.
+For this reason V doesn't allow the modification of arguments with primitive types such as integers. Only more complex types such as arrays and maps may be modified.
 
 Use `user.register()` or `user = register(user)`
 instead of `register(mut user)`.
@@ -1003,14 +1023,13 @@ struct Color {
         b int
 }
 
-pub fn (c Color) str() string { return '{$c.r, $c.g, $c.b}' }
-
 fn rgb(r, g, b int) Color { return Color{r: r, g: g, b: b} }
 
 const (
     numbers = [1, 2, 3]
 
     red  = Color{r: 255, g: 0, b: 0}
+    // evaluate function call at compile-time
     blue = rgb(0, 0, 255)
 )
 
@@ -1048,7 +1067,20 @@ println(User{name:'Bob', age:20}) // "User{name:'Bob', age:20}"
 ```
 
 If you want to define a custom print value for your type, simply define a
-`.str() string` method.
+`.str() string` method:
+
+```v
+struct Color {
+    r int
+    g int
+    b int
+}
+
+pub fn (c Color) str() string { return '{$c.r, $c.g, $c.b}' }
+
+red := Color{r: 255, g: 0, b: 0}
+println(red)
+```
 
 If you don't want to print a newline, use `print()` instead.
 
@@ -1171,11 +1203,6 @@ struct BinaryExpr{ ... }
 struct UnaryExpr{ ... }
 struct IfExpr{ ... }
 
-struct CallExpr {
-	args []Expr
-	...
-}
-
 fn (mut p Parser) expr(precedence int) Expr {
 	match p.tok {
 		.key_if { return IfExpr{} }
@@ -1202,13 +1229,13 @@ To check whether a sum type is a certain type, use `is`:
 println(expr is IfExpr)
 ```
 
-To cast a sum type to one of it's variants you use `as`:
+To cast a sum type to one of its variants you use `as`:
 
 ```v
 bin_expr := expr as BinaryExpr
 ```
 
-You can also use match to determine the variant & and cast to it at the same time.
+You can also use match to determine the variant and cast to it at the same time.
 There are 3 ways to access the cast variant inside a match branch:
 - the `it` variable
 - the shadowed match variable
@@ -1891,7 +1918,7 @@ TODO: translating C to V will be available in V 0.3. C++ to V will be available 
 V can translate your C/C++ code to human readable V code.
 Let's create a simple program `test.cpp` first:
 
-```v
+```cpp
 #include <vector>
 #include <string>
 #include <iostream>
@@ -2069,6 +2096,7 @@ fn C.WinFunction()
 V has 23 keywords:
 
 ```v
+as
 break
 const
 continue
@@ -2083,6 +2111,7 @@ if
 import
 in
 interface
+is
 match
 module
 none

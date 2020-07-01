@@ -6,15 +6,10 @@ pub struct ProfileCounterMeta{
 	vpc_calls string
 }
 
-fn (mut g Gen) profile_fn(fn_name string, is_main bool){
-	if is_main {
-		g.writeln('')
-		g.writeln('\tatexit(vprint_profile_stats);')
-		g.writeln('')
-	}
+fn (mut g Gen) profile_fn(fn_name string){
 	if g.pref.profile_no_inline && 'inline' in g.attrs {
 		g.defer_profile_code = ''
-		return        
+		return
 	}
 	if fn_name.starts_with('time.vpc_now') {
 		g.defer_profile_code = ''
@@ -33,7 +28,7 @@ fn (mut g Gen) profile_fn(fn_name string, is_main bool){
 
 pub fn (mut g Gen) gen_vprint_profile_stats() {
 	g.pcs_declarations.writeln('void vprint_profile_stats(){')
-	fstring := '"%14llu %14.3fms %14.0fns %s \\n"'
+	fstring := '"%14lu %14.3fms %14.0fns %s \\n"'
 	if g.pref.profile_file == '-' {
 		for pc_meta in g.pcs {
 			g.pcs_declarations.writeln('\tif (${pc_meta.vpc_calls}) printf($fstring, ${pc_meta.vpc_calls}, ${pc_meta.vpc_name}/1000000.0, ${pc_meta.vpc_name}/${pc_meta.vpc_calls}, "${pc_meta.fn_name}" );')

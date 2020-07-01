@@ -75,6 +75,15 @@ pub fn post(url, data string) ?Response {
 	})
 }
 
+pub fn post_json(url, data string) ?Response {
+	return fetch_with_method('POST', url, {
+		data: data
+		headers: {
+			'Content-Type': 'application/json'
+		}
+	})
+}
+
 pub fn post_form(url string, data map[string]string) ?Response {
 	return fetch_with_method('POST', url, {
 		headers: {

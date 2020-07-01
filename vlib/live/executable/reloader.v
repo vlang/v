@@ -6,6 +6,10 @@ import dl
 import strconv
 import live
 
+pub const (
+	is_used = 1
+)
+
 // The live reloader code is implemented here.
 
 // NB: new_live_reload_info will be called by generated C code inside main()

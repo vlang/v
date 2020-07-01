@@ -29,8 +29,9 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.check(.gt) // `>`
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
-		if generic_type != table.t_type {
-			p.table.register_fn_gen_type(fn_name, generic_type)
+		if !generic_type.has_flag(.generic) {
+			full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
+			p.table.register_fn_gen_type(full_generic_fn_name, generic_type)
 		}
 		if fn_name in ['json.decode', 'json.encode'] {
 			p.gen_json_for_type(generic_type)
@@ -199,7 +200,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.check(.gt)
 	}
 	// Args
-	args2, is_variadic := p.fn_args()
+	args2, are_args_type_only, is_variadic := p.fn_args()
 	args << args2
 	for arg in args {
 		if p.scope.known_var(arg.name) {
@@ -225,7 +226,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec_type)
-		// p.warn('reg method $type_sym.name . $name ()')
+		//		p.warn('reg method $type_sym.name . $name ()')
 		type_sym.register_method(table.Fn{
 			name: name
 			args: args
@@ -235,6 +236,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			ctdefine: ctdefine
+			mod: p.mod
 		})
 	} else {
 		if language == .c {
@@ -247,6 +249,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if _ := p.table.find_fn(name) {
 			p.fn_redefinition_error(name)
 		}
+		//p.warn('reg functn $name ()')
 		p.table.register_fn(table.Fn{
 			name: name
 			args: args
@@ -267,8 +270,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope(true)
+		// Add return if `fn(...) ? {...}` have no return at end
+        if return_type != table.void_type && p.table.get_type_symbol(return_type).kind == .void &&
+                return_type.has_flag(.optional) && (stmts.len == 0 || stmts[stmts.len-1] !is ast.Return) {
+            stmts << ast.Return{ pos: p.tok.position() }
+        }
 	}
 	p.close_scope()
+	if !no_body && are_args_type_only {
+		p.error_with_pos('functions with type only args can not have bodies', body_start_pos)
+	}
 	return ast.FnDecl{
 		name: name
 		mod: p.mod
@@ -301,7 +312,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	p.check(.key_fn)
 	p.open_scope()
 	// TODO generics
-	args, is_variadic := p.fn_args()
+	args, _, is_variadic := p.fn_args()
 	for arg in args {
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
@@ -357,12 +368,13 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 }
 
 // part of fn declaration
-fn (mut p Parser) fn_args() ([]table.Arg, bool) {
+fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 	p.check(.lpar)
 	mut args := []table.Arg{}
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
-	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
+	argname := if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() { p.prepend_mod(p.tok.lit) } else { p.tok.lit }
+	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] || (p.peek_tok.kind == .comma && p.table.known_type(argname)) ||
 		p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
@@ -381,7 +393,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			pos := p.tok.position()
 			mut arg_type := p.parse_type()
 			if is_mut {
-				if arg_type != table.t_type {
+				if !arg_type.has_flag(.generic) {
 					p.check_fn_mutable_arguments(arg_type, pos)
 				}
 				// if arg_type.is_ptr() {
@@ -434,7 +446,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			pos := p.tok.position()
 			mut typ := p.parse_type()
 			if is_mut {
-				if typ != table.t_type {
+				if !typ.has_flag(.generic) {
 					p.check_fn_mutable_arguments(typ, pos)
 				}
 				typ = typ.set_nr_muls(1)
@@ -461,7 +473,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 		}
 	}
 	p.check(.rpar)
-	return args, is_variadic
+	return args, types_only, is_variadic
 }
 
 fn (p &Parser) fileis(s string) bool {
@@ -490,16 +502,13 @@ fn (mut p Parser) fn_redefinition_error(name string) {
 }
 
 fn have_fn_main(stmts []ast.Stmt) bool {
-	mut has_main_fn := false
 	for stmt in stmts {
-		match stmt {
-			ast.FnDecl {
-				if stmt.name == 'main' {
-					has_main_fn = true
-				}
+		if stmt is ast.FnDecl {
+			f := stmt as ast.FnDecl
+			if f.name == 'main.main' && f.mod == 'main' {
+				return true
 			}
-			else {}
 		}
 	}
-	return has_main_fn
+	return false
 }

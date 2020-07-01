@@ -238,6 +238,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		.struct_ {
 			styp = g.struct_typ(sym.name)
 		}
+		.generic_struct_inst {}
 		// 'multi_return_int_int' => '[number, number]'
 		.multi_return {
 			info := sym.info as table.MultiReturn
@@ -1336,8 +1337,8 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	// key_typ_sym := g.table.get_type_symbol(it.key_type)
 	// value_typ_sym := g.table.get_type_symbol(it.value_type)
-	// key_typ_str := key_typ_sym.name.replace('.', '__')
-	// value_typ_str := value_typ_sym.name.replace('.', '__')
+	// key_typ_str := util.no_dots(key_typ_sym.name)
+	// value_typ_str := util.no_dots(value_typ_sym.name)
 	if it.vals.len > 0 {
 		g.writeln('new Map([')
 		g.inc_indent()

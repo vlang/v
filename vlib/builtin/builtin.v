@@ -168,22 +168,22 @@ pub fn v_realloc(b byteptr, n int) byteptr {
 	if ptr == 0 {
 		panic('realloc($n) failed')
 	}
-
 	return ptr
 }
 
+[unsafe_fn]
 pub fn v_calloc(n int) byteptr {
-	return C.calloc(n, 1)
+	return C.calloc(1, n)
 }
 
+[unsafe_fn]
 pub fn vcalloc(n int) byteptr {
 	if n < 0 {
 		panic('calloc(<=0)')
 	} else if n == 0 {
 		return byteptr(0)
-	} else {
-		return C.calloc(n, 1)
 	}
+	return C.calloc(1, n)
 }
 
 [unsafe_fn]
@@ -223,7 +223,7 @@ fn __as_cast(obj voidptr, obj_type, expected_type int) voidptr {
 
 // VAssertMetaInfo is used during assertions. An instance of it
 // is filled in by compile time generated code, when an assertion fails.
-struct VAssertMetaInfo {
+pub struct VAssertMetaInfo {
 pub:
 	fpath   string // the source file path of the assertion
 	line_nr int    // the line number of the assertion

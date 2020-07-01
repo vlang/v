@@ -149,16 +149,7 @@ fn (mut p Parser) parse() ast.File {
 	}
 	for {
 		if p.tok.kind == .eof {
-			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
-				stmts << ast.FnDecl{
-					name: 'main'
-					mod: p.mod
-					file: p.file_name
-					return_type: table.void_type
-				}
-			} else {
-				p.check_unused_imports()
-			}
+			p.check_unused_imports()
 			break
 		}
 		// println('stmt at ' + p.tok.str())
@@ -450,8 +441,8 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					stmts << p.stmt(false)
 				}
 				return ast.FnDecl{
-					name: 'main'
-					mod: p.mod
+					name: 'main.main'
+					mod: 'main'
 					stmts: stmts
 					file: p.file_name
 					return_type: table.void_type
@@ -846,18 +837,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
 		return p.string_expr()
 	}
-	mut known_var := false
-	if obj := p.scope.find(p.tok.lit) {
-		match mut obj {
-			ast.Var {
-				known_var = true
-				obj.is_used = true
-			}
-			else {}
-		}
-	}
+	known_var := p.mark_var_as_used( p.tok.lit )
+	mut is_mod_cast := false
 	if p.peek_tok.kind == .dot && !known_var &&
-		(language != .v || p.known_import(p.tok.lit) || p.mod.all_after_last('.') == p.tok.lit) {
+		(language != .v || p.known_import(p.tok.lit) ||
+		p.mod.all_after_last('.') == p.tok.lit) {
 		if language == .c {
 			mod = 'C'
 		} else if language == .js {
@@ -865,6 +849,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			if p.tok.lit in p.imports {
 				p.register_used_import(p.tok.lit)
+				if p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital() {
+					is_mod_cast = true
+				}
 			}
 			// prepend the full import
 			mod = p.imports[p.tok.lit]
@@ -873,10 +860,12 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
+	lit0_is_capital := p.tok.lit[0].is_capital()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
 	if p.peek_tok.kind == .lpar ||
-		(p.peek_tok.kind == .lt && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt) {
+		(p.peek_tok.kind == .lt && !lit0_is_capital && p.peek_tok2.kind == .name &&
+		p.peek_tok3.kind == .gt) {
 		// foo() or foo<int>()
 		mut name := p.tok.lit
 		if mod.len > 0 {
@@ -885,9 +874,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if !known_var && (name in p.table.type_idxs ||
-			name_w_mod in p.table.type_idxs) &&
-			name !in ['C.stat', 'C.sigaction'] {
+		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) &&
+			name !in ['C.stat', 'C.sigaction']) || is_mod_cast {
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
@@ -920,10 +908,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			// println('calling $p.tok.lit')
 			node = p.call_expr(language, mod)
 		}
-	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
+	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital)) && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		return p.struct_init(false) // short_syntax: false
-	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language == .v) {
+	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// `Color.green`
 		mut enum_name := p.check_name()
 		if mod != '' {
@@ -1486,10 +1474,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 		p.scanner.codegen('
 //
-$pubfn (    e &$name) has(flag $name) bool { return      (int(*e) &  (1 << int(flag))) != 0 }
-$pubfn (mut e  $name) set(flag $name)      { unsafe{ *e = int(*e) |  (1 << int(flag)) } }
-$pubfn (mut e  $name) clear(flag $name)    { unsafe{ *e = int(*e) & ~(1 << int(flag)) } }
-$pubfn (mut e  $name) toggle(flag $name)   { unsafe{ *e = int(*e) ^  (1 << int(flag)) } }
+$pubfn (    e &$enum_name) has(flag $enum_name) bool { return      (int(*e) &  (1 << int(flag))) != 0 }
+$pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = int(*e) |  (1 << int(flag)) } }
+$pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = int(*e) & ~(1 << int(flag)) } }
+$pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (1 << int(flag)) } }
 //
 ')
 	}
@@ -1521,6 +1509,9 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	end_pos := p.tok.position()
 	decl_pos := start_pos.extend(end_pos)
 	name := p.check_name()
+	if name.len == 1 && name[0].is_capital() {
+		p.error_with_pos('single letter capital names are reserved for generic template types.', decl_pos)
+	}
 	mut sum_variants := []table.Type{}
 	if p.tok.kind == .assign {
 		p.next() // TODO require `=`
@@ -1679,4 +1670,17 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 			break
 		}
 	}
+}
+
+pub fn (mut p Parser) mark_var_as_used(varname string) bool {
+	if obj := p.scope.find(varname) {
+		match mut obj {
+			ast.Var {
+				obj.is_used = true
+				return true
+			}
+			else {}
+		}
+	}
+	return false
 }

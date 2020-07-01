@@ -1,7 +1,9 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
+// Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gen
+
+import v.ast
+import v.table
 
 fn (mut g Gen) write_str_fn_definitions() {
 	// _STR function can't be defined in vlib
@@ -34,10 +36,10 @@ string _STR(const char *fmt, int nfmts, ...) {
 	int nbytes = 0;
 	char* buf = (char*)malloc(memsize);
 	va_start(argptr, nfmts);
-	for (int i=0; i<nfmts; i++) {
+	for (int i=0; i<nfmts; ++i) {
 		int k = strlen(fmt);
 		bool is_fspec = false;
-		for (int j=0; j<k; j++) {
+		for (int j=0; j<k; ++j) {
 			if (fmt[j] == '%') {
 				j++;
 				if (fmt[j] != '%') {
@@ -86,6 +88,9 @@ string _STR(const char *fmt, int nfmts, ...) {
 	//puts('_STR:');
 	puts(buf);
 #endif
+#if _VAUTOFREE
+	//g_cur_str = (byteptr)buf;
+#endif
 	return tos2((byteptr)buf);
 }
 
@@ -103,10 +108,173 @@ string _STR_TMP(const char *fmt, ...) {
 	//puts(g_str_buf);
 #endif
 	string res = tos(g_str_buf,  len);
-	res.is_lit = true;
+	res.is_lit = 1;
 	return res;
 
 } // endof _STR_TMP
 
 ")
+}
+
+fn (mut g Gen) string_literal(node ast.StringLiteral) {
+	if node.is_raw {
+		escaped_val := node.val.replace_each(['"', '\\"', '\\', '\\\\'])
+		g.write('tos_lit("$escaped_val")')
+		return
+	}
+	escaped_val := node.val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
+	if g.is_c_call || node.language == .c {
+		// In C calls we have to generate C strings
+		// `C.printf("hi")` => `printf("hi");`
+		g.write('"$escaped_val"')
+	} else {
+		// TODO calculate the literal's length in V, it's a bit tricky with all the
+		// escape characters.
+		// Clang and GCC optimize `strlen("lorem ipsum")` to `11`
+		// g.write('tos4("$escaped_val", strlen("$escaped_val"))')
+		// g.write('tos4("$escaped_val", $it.val.len)')
+		// g.write('_SLIT("$escaped_val")')
+		g.write('tos_lit("$escaped_val")')
+		// g.write('tos_lit("$escaped_val")')
+	}
+}
+
+fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
+	mut cur_line := ''
+	mut tmp := ''
+	free := g.pref.autofree && g.inside_call && !g.inside_return &&
+		g.inside_ternary == 0 && g.cur_fn != 0 &&
+		g.cur_fn.name != ''
+	if free {
+		// Save the string expr in a temporary variable, so that it can be removed after the call.
+		tmp = g.new_tmp_var()
+		/*
+		scope := g.file.scope.innermost(node.pos.pos)
+		scope.register(tmp, ast.Var{
+			name: tmp
+			typ: table.string_type
+		})
+		*/
+		// g.insert_before_stmt('// str tmp var\nstring $tmp = ')
+		cur_line = g.go_before_stmt(0)
+		g.writeln('// free _str2 $g.inside_call')
+		g.write('string $tmp = ')
+		g.strs_to_free += 'string_free(&$tmp); /*tmp str*/'
+	}
+	g.write('_STR("')
+	// Build the string with %
+	mut end_string := false
+	for i, val in node.vals {
+		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
+		if i >= node.exprs.len {
+			if escaped_val.len > 0 {
+				end_string = true
+				g.write('\\000')
+				g.write(escaped_val)
+			}
+			break
+		}
+		g.write(escaped_val)
+		// write correct format specifier to intermediate string
+		g.write('%')
+		fspec := node.fmts[i]
+		mut fmt := if node.pluss[i] { '+' } else { '' }
+		if node.fills[i] && node.fwidths[i] >= 0 {
+			fmt = '${fmt}0'
+		}
+		if node.fwidths[i] != 0 {
+			fmt = '$fmt${node.fwidths[i]}'
+		}
+		if node.precisions[i] != 0 {
+			fmt = '${fmt}.${node.precisions[i]}'
+		}
+		if fspec == `s` {
+			if node.fwidths[i] == 0 {
+				g.write('.*s')
+			} else {
+				g.write('*.*s')
+			}
+		} else if node.expr_types[i].is_float() {
+			g.write('$fmt${fspec:c}')
+		} else if node.expr_types[i].is_pointer() {
+			if fspec == `p` {
+				g.write('${fmt}p')
+			} else {
+				g.write('$fmt"PRI${fspec:c}PTR"')
+			}
+		} else if node.expr_types[i].is_int() {
+			if fspec == `c` {
+				g.write('${fmt}c')
+			} else {
+				g.write('$fmt"PRI${fspec:c}')
+				if node.expr_types[i] in [table.i8_type, table.byte_type] {
+					g.write('8')
+				} else if node.expr_types[i] in [table.i16_type, table.u16_type] {
+					g.write('16')
+				} else if node.expr_types[i] in [table.i64_type, table.u64_type] {
+					g.write('64')
+				} else {
+					g.write('32')
+				}
+				g.write('"')
+			}
+		} else {
+			// TODO: better check this case
+			g.write('$fmt"PRId32"')
+		}
+		if i < node.exprs.len - 1 {
+			g.write('\\000')
+		}
+	}
+	num_string_parts := if end_string { node.exprs.len + 1 } else { node.exprs.len }
+	g.write('", $num_string_parts, ')
+	// Build args
+	for i, expr in node.exprs {
+		if node.expr_types[i] == table.string_type {
+			if g.inside_vweb_tmpl {
+				g.write('vweb__filter(')
+				g.expr(expr)
+				g.write(')')
+			} else {
+				g.expr(expr)
+			}
+		} else if node.expr_types[i] == table.bool_type {
+			g.expr(expr)
+			g.write(' ? _SLIT("true") : _SLIT("false")')
+		} else if node.expr_types[i].is_number() || node.expr_types[i].is_pointer() ||
+			node.fmts[i] == `d` {
+			if node.expr_types[i].is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
+				// convert to unsigned first befors C's integer propagation strikes
+				if node.expr_types[i] == table.i8_type {
+					g.write('(byte)(')
+				} else if node.expr_types[i] == table.i16_type {
+					g.write('(u16)(')
+				} else if node.expr_types[i] == table.int_type {
+					g.write('(u32)(')
+				} else {
+					g.write('(u64)(')
+				}
+				g.expr(expr)
+				g.write(')')
+			} else {
+				g.expr(expr)
+			}
+		} else if node.fmts[i] == `s` {
+			g.gen_expr_to_string(expr, node.expr_types[i])
+		} else {
+			g.expr(expr)
+		}
+		if node.fmts[i] == `s` && node.fwidths[i] != 0 {
+			g.write(', ${node.fwidths[i]}')
+		}
+		if i < node.exprs.len - 1 {
+			g.write(', ')
+		}
+	}
+	g.write(')')
+	if free {
+		g.writeln(';')
+		g.write(cur_line)
+		g.write(tmp)
+	}
 }

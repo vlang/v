@@ -105,15 +105,33 @@ pub fn (mut c Checker) check2(ast_file ast.File) []errors.Error {
 pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	mut has_main_mod_file := false
 	mut has_main_fn := false
-	for file in ast_files {
+
+	mut files_from_main_module := []&ast.File{}
+	for i in 0..ast_files.len {
+		file := &ast_files[i]
 		c.check(file)
 		if file.mod.name == 'main' {
+			files_from_main_module << file
 			has_main_mod_file = true
 			if c.check_file_in_main(file) {
 				has_main_fn = true
 			}
 		}
 	}
+
+	if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
+		if c.pref.is_script && !c.pref.is_test {
+			first_main_file := files_from_main_module[0]
+			first_main_file.stmts << ast.FnDecl{
+				name: 'main.main'
+				mod: 'main'
+				file: first_main_file.path
+				return_type: table.void_type
+			}
+			has_main_fn = true
+		}
+	}
+
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
@@ -159,7 +177,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 				}
 			}
 			ast.FnDecl {
-				if stmt.name == 'main' {
+				if stmt.name == 'main.main' {
 					has_main_fn = true
 					if stmt.is_pub {
 						c.error('function `main` cannot be declared public', stmt.pos)
@@ -214,7 +232,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 }
 
 fn (mut c Checker) check_valid_snake_case(name, identifier string, pos token.Position) {
-	if name[0] == `_` && !c.pref.is_vweb {
+	if !c.pref.is_vweb && ( name[0] == `_` || name.contains('._') ) {
 		c.error('$identifier `$name` cannot start with `_`', pos)
 	}
 	if util.contains_capital(name) {
@@ -231,8 +249,8 @@ fn stripped_name(name string) string {
 }
 
 fn (mut c Checker) check_valid_pascal_case(name, identifier string, pos token.Position) {
-	stripped_name := stripped_name(name)
-	if !stripped_name[0].is_capital() {
+	sname := stripped_name(name)
+	if !sname[0].is_capital() {
 		c.error('$identifier `$name` must begin with capital letter', pos)
 	}
 }
@@ -690,6 +708,17 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 				}
 			}
 		}
+		ast.CallExpr {
+			// TODO: should only work for builtin method
+			if expr.name == 'slice' {
+				return
+			} else {
+				c.error('cannot use function call as mut', expr.pos)
+			}
+		}
+		ast.ArrayInit {
+			return
+		}
 		else {
 			c.error('unexpected expression `${typeof(expr)}`', expr.position())
 		}
@@ -743,7 +772,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 
 pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	left_type := c.expr(call_expr.left)
-	is_generic := left_type == table.t_type
+	is_generic := left_type.has_flag(.generic)
 	call_expr.left_type = left_type
 	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
@@ -886,7 +915,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		if is_generic {
 			// We need the receiver to be T in cgen.
-			call_expr.receiver_type = table.t_type.derive(method.args[0].typ)
+			// TODO: cant we just set all these to the concrete type in checker? then no need in gen
+			call_expr.receiver_type = left_type.derive(method.args[0].typ).set_flag(.generic)
 		} else {
 			call_expr.receiver_type = method.args[0].typ
 		}
@@ -932,8 +962,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// TODO: impl typeof properly (probably not going to be a fn call)
 		return table.string_type
 	}
-	if call_expr.generic_type == table.t_type {
-		if c.mod != '' && c.mod != 'main' {
+	if call_expr.generic_type.has_flag(.generic) {
+		if c.mod != '' {
 			// Need to prepend the module when adding a generic type to a function
 			// `fn_gen_types['mymod.myfn'] == ['string', 'int']`
 			c.table.register_fn_gen_type(c.mod + '.' + fn_name, c.cur_generic_type)
@@ -950,7 +980,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	mut found := false
 	mut found_in_args := false
 	// try prefix with current module as it would have never gotten prefixed
-	if !fn_name.contains('.') && call_expr.mod !in ['builtin', 'main'] {
+	if !fn_name.contains('.') && call_expr.mod !in ['builtin'] {
 		name_prefixed := '${call_expr.mod}.$fn_name'
 		if f1 := c.table.find_fn(name_prefixed) {
 			call_expr.name = name_prefixed
@@ -984,7 +1014,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.error('unknown function: $fn_name', call_expr.pos)
 		return table.void_type
 	}
-	if !found_in_args && call_expr.mod in ['builtin', 'main'] {
+	if !found_in_args {
 		scope := c.file.scope.innermost(call_expr.pos.pos)
 		if _ := scope.find_var(fn_name) {
 			c.error('ambiguous call to: `$fn_name`, may refer to fn `$fn_name` or variable `$fn_name`',
@@ -997,7 +1027,28 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if f.is_deprecated {
 		c.warn('function `$f.name` has been deprecated', call_expr.pos)
 	}
-	call_expr.return_type = f.return_type
+	if f.is_generic {
+		rts := c.table.get_type_symbol(f.return_type)
+		if rts.kind == .struct_ {
+			rts_info := rts.info as table.Struct
+			if rts_info.generic_types.len > 0 {
+				// TODO: multiple generic types
+				// for gt in rts_info.generic_types {
+				// 	gtss := c.table.get_type_symbol(gt)
+				// }
+				gts := c.table.get_type_symbol(call_expr.generic_type)
+				nrt := '${rts.name}<$gts.name>'
+				idx := c.table.type_idxs[nrt]
+				if idx == 0 {
+					c.error('unknown type: $nrt', call_expr.pos)
+				}
+				call_expr.return_type = table.new_type(idx).derive(f.return_type)
+			}
+		}
+	}
+	else {
+		call_expr.return_type = f.return_type
+	}
 	if f.return_type == table.void_type &&
 		f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
@@ -1057,11 +1108,16 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.error('when forwarding a varg variable, it must be the final argument',
 				call_expr.pos)
 		}
-		if arg.is_mut && !call_arg.is_mut {
-			c.error('`$arg.name` is a mutable argument, you need to provide `mut`: `${call_expr.name}(mut ...)`',
-				call_arg.expr.position())
-		} else if !arg.is_mut && call_arg.is_mut {
-			c.error('`$arg.name` argument is not mutable, `mut` is not needed`', call_arg.expr.position())
+		if call_arg.is_mut {
+			c.fail_if_immutable(call_arg.expr)
+			if !arg.is_mut {
+				c.error('`$arg.name` argument is not mutable, `mut` is not needed`', call_arg.expr.position())
+			}
+		} else {
+			if arg.is_mut {
+				c.error('`$arg.name` is a mutable argument, you need to provide `mut`: `${call_expr.name}(mut ...)`',
+					call_arg.expr.position())
+			}
 		}
 		// Handle expected interface
 		if arg_typ_sym.kind == .interface_ {
@@ -1104,6 +1160,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				return table.new_type(idx)
 			}
 		}
+	}
+	if f.is_generic {
+		return call_expr.return_type
 	}
 	return f.return_type
 }
@@ -1160,7 +1219,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 
 pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type) {
 	if or_expr.kind == .propagate {
-		if !c.cur_fn.return_type.has_flag(.optional) && c.cur_fn.name != 'main' {
+		if !c.cur_fn.return_type.has_flag(.optional) && c.cur_fn.name != 'main.main' {
 			c.error('to propagate the optional call, `$c.cur_fn.name` must itself return an optional',
 				or_expr.pos)
 		}
@@ -1610,7 +1669,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				// scope.find(it.name) or {
 				// c.error('undefined ident: `$it.name`', array_init.pos)
 				// }
-				mut full_const_name := if it.mod == 'main' { it.name } else { it.mod + '.' + it.name }
+				mut full_const_name := it.mod + '.' + it.name
 				if obj := c.file.global_scope.find_const(full_const_name) {
 					if cint := const_int_value(obj) {
 						fixed_size = cint
@@ -1881,9 +1940,9 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 
 [inline]
 pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
-	if typ.idx() == table.t_type_idx {
+	if typ.has_flag(.generic) {
 		// return c.cur_generic_type
-		return c.cur_generic_type.derive(typ)
+		return c.cur_generic_type.derive(typ).clear_flag(.generic)
 	}
 	return typ
 }
@@ -2118,7 +2177,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	// TODO: move this
 	if c.const_deps.len > 0 {
 		mut name := ident.name
-		if !name.contains('.') && ident.mod !in ['builtin', 'main'] {
+		if !name.contains('.') && ident.mod !in ['builtin'] {
 			name = '${ident.mod}.$ident.name'
 		}
 		if name == c.const_decl {
@@ -2196,7 +2255,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		}
 		// prepend mod to look for fn call or const
 		mut name := ident.name
-		if !name.contains('.') && ident.mod !in ['builtin', 'main'] {
+		if !name.contains('.') && ident.mod !in ['builtin'] {
 			name = '${ident.mod}.$ident.name'
 		}
 		if obj := c.file.global_scope.find(name) {
@@ -2237,6 +2296,17 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 			if field := c.table.struct_find_field(c.cur_orm_ts, ident.name) {
 				return field.typ
 			}
+		}
+		if ident.kind == .unresolved && ident.mod != 'builtin' {
+			// search in the `builtin` idents, for example
+			// main.compare_f32 may actually be builtin.compare_f32
+			saved_mod := ident.mod
+			ident.mod = 'builtin'
+			builtin_type := c.ident( ident )
+			if builtin_type != table.void_type {
+				return builtin_type
+			}
+			ident.mod = saved_mod
 		}
 		c.error('undefined ident: `$ident.name`', ident.pos)
 	}

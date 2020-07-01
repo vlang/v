@@ -92,10 +92,11 @@ pub fn (mut ctx Context) ok(s string) Result {
 	return Result{}
 }
 
-pub fn (mut ctx Context) redirect(url string) {
-	if ctx.done { return }
+pub fn (mut ctx Context) redirect(url string) Result {
+	if ctx.done { return Result{} }
 	ctx.done = true
-	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${headers_close}') or { return }
+	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${headers_close}') or { return Result{} }
+	return Result{}
 }
 
 pub fn (mut ctx Context) not_found() Result {
@@ -113,6 +114,10 @@ pub fn (mut ctx Context) set_cookie(key, val string) {
 
 pub fn (mut ctx Context) set_content_type(typ string) {
 	ctx.content_type = typ
+}
+
+pub fn (mut ctx Context) set_cookie_with_expire_date(key, val string, expire_date time.Time) {
+	ctx.add_header('Set-Cookie', '$key=$val;  Secure; HttpOnly; expires=${expire_date.utc_string()}')
 }
 
 pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
