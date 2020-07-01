@@ -303,3 +303,10 @@ fn test_map_keys_to_array() {
 	assert sarr == "['a', 'c']"
 }
 
+fn test_map_cross_assign() {
+	mut a := {'one':1, 'two':2}
+	a['one'], a['two'] = a['two'], a['one']
+	println(a)
+	assert a['one'] == 2
+	assert a['two'] == 1
+}

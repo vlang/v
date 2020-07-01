@@ -1099,6 +1099,15 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.write(', ')
 						g.expr(it.index)
 						g.writeln(');')
+					} else if sym.kind == .map {
+						info := sym.info as table.Map
+						styp := g.typ(info.value_type)
+						zero := g.type_default(info.value_type)
+						g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
+						g.expr(it.left)
+						g.write(', ')
+						g.expr(it.index)
+						g.writeln(', &($styp[]){ $zero });')
 					}
 				}
 				else {}
