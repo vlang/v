@@ -46,8 +46,8 @@ jobs:
       run: |
         v vet vlib/v/parser
         v vet vlib/v/ast
-        v vet vlib/v/ast
         v vet vlib/v/gen/cgen.v
+        v vet vlib/v/checker
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 

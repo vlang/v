@@ -31,6 +31,9 @@ fn main() {
 }
 
 fn vet_file(path string, table &table.Table, prefs &pref.Preferences) {
+	if path.contains('/tests') {
+		return
+	}
 	file_ast := parser.parse_file(path, table, .parse_comments, prefs, &ast.Scope{
 		parent: 0
 	})
