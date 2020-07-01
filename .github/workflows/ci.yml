@@ -104,8 +104,8 @@ jobs:
 #      run: ./v -silent test-compiler
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
-##    - name: Test v->js
-##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Test v->js
+      run: ./v -b js -o hi examples/hello_v_js.v && node hi.js
     - name: Test symlink
       run:  ./v symlink && v -o v2 cmd/v
     - name: Fixed tests
@@ -145,8 +145,8 @@ jobs:
 #      run: ./v -silent test-compiler
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
-##    - name: Test v->js
-##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Test v->js
+      run: ./v -b js -o hi examples/hello_v_js.v && node hi.js
 #    - name: Build Vorum
 #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
     - name: Build Gitly
@@ -220,8 +220,8 @@ jobs:
       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
-##    - name: Test v->js
-##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Test v->js
+      run: ./v -b js -o hi examples/hello_v_js.v && node hi.js
     - name: quick debug
       run: ./v -stats vlib/strconv/format_test.v
     - name: Fixed tests
@@ -240,9 +240,9 @@ jobs:
         VFLAGS: -cc gcc
     steps:
     - uses: actions/checkout@v2
-    #- uses: actions/setup-node@v1
-    #  with:
-    #    node-version: 12.x
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
     - name: Build
       run: |
         gcc --version
@@ -260,9 +260,10 @@ jobs:
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
-      ## v.js dosent work on windows
-        #.\v.exe -o hi.js examples/hello_v_js.v
-        #node hi.js
+    - name: Test v->js
+      run: |
+        .\v.exe -o hi.js examples/hello_v_js.v
+        node hi.js
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 #    - name: v2 self compilation
@@ -274,9 +275,9 @@ jobs:
         VFLAGS: -cc msvc
     steps:
     - uses: actions/checkout@v2
-    #- uses: actions/setup-node@v1
-    #  with:
-    #    node-version: 12.x
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
     - name: Build
       run: |
         echo %VFLAGS%
@@ -291,12 +292,13 @@ jobs:
       run: |
         ./v -cg cmd\tools\vtest-fixed.v
         ./v test-fixed
-#    - name: Test
-#      run: |
-#        .\v.exe -silent test-compiler
-#      ## v.js dosent work on windows
-        #.\v.exe -o hi.js examples/hello_v_js.v
-        #node hi.js
+#   - name: Test
+#     run: |
+#       .\v.exe -silent test-compiler
+    - name: Test v->js
+      run: |
+        .\v.exe -o hi.js examples/hello_v_js.v
+        node hi.js
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 
@@ -308,9 +310,9 @@ jobs:
     #   VFLAGS: -cc tcc
     steps:
     - uses: actions/checkout@v2
-    #- uses: actions/setup-node@v1
-    #  with:
-    #    node-version: 12.x
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
     - name: Build
       # We need to move gcc and msvc, so that V doesn't find a C compiler
       run: |
@@ -328,12 +330,11 @@ jobs:
     - name: Fixed tests
       run: |
         .\v.exe test-fixed
-#    - name: Test
-#      run: |
-#        .\v.exe -silent test-compiler
-      ## v.js dosent work on windows
-        #.\v.exe -o hi.js examples/hello_v_js.v
-        #node hi.js
+#       .\v.exe -silent test-compiler
+    - name: Test v->js
+      run: |
+        .\v.exe -b js -o hi examples/hello_v_js.v
+        node hi.js
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 #    - name: v2 self compilation
