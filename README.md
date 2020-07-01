@@ -81,13 +81,15 @@ v up
 
 ### C compiler
 
-You'll need Clang or GCC or Visual Studio. If you are doing development, you most likely already have one of those installed.
+It's recommended to use Clang or GCC or Visual Studio. If you are doing development, you most likely already have one of those installed.
 
 Otherwise, follow these instructions:
 
 - [Installing a C compiler on Linux and macOS](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-and-macOS)
 
 - [Installing a C compiler on Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
+
+However, if none is found when running `make`, TCC would be downloaded and set as an alternative C backend. It's very lightweight (several MB) so this shouldn't take too long.
 
 ### Symlinking
 
