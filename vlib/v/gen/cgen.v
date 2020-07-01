@@ -683,7 +683,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					println('build module `$g.module_built` fn `$node.name`')
 				}
 			}
-			keep_fn_decl := g.fn_decl            
+			keep_fn_decl := g.fn_decl
 			g.fn_decl = node
 			if node.name == 'main.main' {
 				g.has_main = true
@@ -1089,6 +1089,18 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					styp := g.typ(assign_stmt.left_types[i])
 					g.writeln('$styp _var_$left.pos.pos = $left.name;')
 				}
+				ast.IndexExpr {
+					sym := g.table.get_type_symbol(left.left_type)
+					if sym.kind == .array {
+						info := sym.info as table.Array
+						styp := g.typ(info.elem_type)
+						g.write('$styp _var_$left.pos.pos = *($styp*)array_get(')
+						g.expr(it.left)
+						g.write(', ')
+						g.expr(it.index)
+						g.writeln(');')
+					}
+				}
 				else {}
 			}
 		}
@@ -1277,6 +1289,22 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 					ident := lx as ast.Ident
 					if val.name == ident.name {
 						g.write('_var_$ident.pos.pos')
+						has_var = true
+						break
+					}
+				}
+			}
+			if !has_var {
+				g.expr(val_)
+			}
+		}
+		ast.IndexExpr {
+			mut has_var := false
+			for lx in left {
+				if lx is ast.IndexExpr {
+					inx := lx as ast.IndexExpr
+					if val.expr == inx.expr {
+						g.write('_var_$inx.pos.pos')
 						has_var = true
 						break
 					}
