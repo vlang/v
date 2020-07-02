@@ -2808,6 +2808,9 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	if node.has_limit {
 		c.expr(node.limit_expr)
 	}
+	if node.has_order {
+		c.expr(node.order_expr)
+	}
 	c.expr(node.db_expr)
 	return node.typ
 }
