@@ -32,12 +32,12 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.next() // C || JS
 		p.next() // .
 	}
-	
 	is_typedef := 'typedef' in p.attrs
 	end_pos := p.tok.position()
 	mut name := p.check_name()
 	if name.len == 1 && name[0].is_capital() {
-		p.error_with_pos('single letter capital names are reserved for generic template types.', end_pos)
+		p.error_with_pos('single letter capital names are reserved for generic template types.',
+			end_pos)
 	}
 	mut generic_types := []table.Type{}
 	if p.tok.kind == .lt {
@@ -51,12 +51,10 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		}
 		p.check(.gt)
 	}
-
 	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
-
 	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
 		p.error_with_pos('struct name `$name` must begin with capital letter', end_pos)
 	}
@@ -282,7 +280,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	saved_is_amp := p.is_amp
 	p.is_amp = false
 	for p.tok.kind != .rcbr && p.tok.kind != .rpar {
-		p.check_comment()
+		comment := p.check_comment()
 		mut field_name := ''
 		if no_keys {
 			expr := p.expr(0)
@@ -290,6 +288,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			fields << ast.StructInitField{
 				expr: expr
 				pos: expr.position()
+				comment: comment
 			}
 		} else {
 			first_field_pos := p.tok.position()

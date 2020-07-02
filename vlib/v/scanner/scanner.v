@@ -745,13 +745,15 @@ fn (mut s Scanner) text_scan() token.Token {
 	}
 	// Handle `'$fn()'`
 	if c == `)` && s.is_inter_start {
-		s.is_inter_end = true
-		s.is_inter_start = false
 		next_char := s.look_ahead(1)
-		if next_char == s.quote {
-			s.is_inside_string = false
+		if next_char != `.` {
+			s.is_inter_end = true
+			s.is_inter_start = false
+			if next_char == s.quote {
+				s.is_inside_string = false
+			}
+			return s.new_token(.rpar, '', 1)
 		}
-		return s.new_token(.rpar, '', 1)
 	}
 	// all other tokens
 	match c {

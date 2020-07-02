@@ -83,7 +83,7 @@ mut:
 	attrs                []string // attributes before next decl stmt
 	is_builtin_mod       bool
 	hotcode_fn_names     []string
-	//cur_fn               ast.FnDecl
+	// cur_fn               ast.FnDecl
 	cur_generic_type     table.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i                int
 	sql_stmt_name        string
@@ -93,7 +93,7 @@ mut:
 	strs_to_free         string
 	inside_call          bool
 	has_main             bool
-	inside_const bool
+	inside_const         bool
 }
 
 const (
@@ -709,6 +709,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.write('; ')
 			} else {
 				g.stmt(node.init)
+				// Remove excess return and add space
+				if g.out.last_n(1) == '\n' {
+					g.out.go_back(1)
+					g.empty_line = false
+					g.write(' ')
+				}
 			}
 			if node.has_cond {
 				g.expr(node.cond)
@@ -1093,6 +1099,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						info := sym.info as table.Array
 						styp := g.typ(info.elem_type)
 						g.write('$styp _var_$left.pos.pos = *($styp*)array_get(')
+						if left.left_type.is_ptr() {
+							g.write('*')
+						}
 						g.expr(left.left)
 						g.write(', ')
 						g.expr(left.index)
@@ -1102,10 +1111,23 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						styp := g.typ(info.value_type)
 						zero := g.type_default(info.value_type)
 						g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
+						if left.left_type.is_ptr() {
+							g.write('*')
+						}
 						g.expr(left.left)
 						g.write(', ')
 						g.expr(left.index)
 						g.writeln(', &($styp[]){ $zero });')
+					}
+				}
+				ast.SelectorExpr {
+					styp := g.typ(left.typ)
+					g.write('$styp _var_$left.pos.pos = ')
+					g.expr(left.expr)
+					if left.expr_type.is_ptr() {
+						g.writeln('->$left.field_name;')
+					} else {
+						g.writeln('.$left.field_name;')
 					}
 				}
 				else {}
@@ -1295,7 +1317,8 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 				if lx is ast.Ident {
 					ident := lx as ast.Ident
 					if val.name == ident.name {
-						g.write('_var_$ident.pos.pos')
+						g.write('_var_')
+						g.write(ident.pos.pos.str())
 						has_var = true
 						break
 					}
@@ -1309,7 +1332,8 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			mut has_var := false
 			for lx in left {
 				if val_.str() == lx.str() {
-					g.write('_var_${lx.position().pos}')
+					g.write('_var_')
+					g.write(lx.position().pos.str())
 					has_var = true
 					break
 				}
@@ -1330,6 +1354,20 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 		ast.PostfixExpr {
 			g.gen_cross_tmp_variable(left, val.expr)
 			g.write(val.op.str())
+		}
+		ast.SelectorExpr {
+			mut has_var := false
+			for lx in left {
+				if val_.str() == lx.str() {
+					g.write('_var_')
+					g.write(lx.position().pos.str())
+					has_var = true
+					break
+				}
+			}
+			if !has_var {
+				g.expr(val_)
+			}
 		}
 		else {
 			g.expr(val_)
@@ -2445,7 +2483,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.expr(expr)
 			arg_idx++
 			if i < node.exprs.len - 1 {
-				g.write(',')
+				g.write(', ')
 			}
 		}
 		g.write('}')
@@ -2454,7 +2492,9 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.write('return $opt_tmp')
 		}
 		// Make sure to add our unpacks
-		g.insert_before_stmt(multi_unpack)
+		if multi_unpack.len > 0 {
+			g.insert_before_stmt(multi_unpack)
+		}
 	} else if node.exprs.len >= 1 {
 		// normal return
 		return_sym := g.table.get_type_symbol(node.types[0])
@@ -2519,7 +2559,6 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	defer {
 		g.inside_const = false
 	}
-
 	for field in node.fields {
 		name := c_name(field.name)
 		// TODO hack. Cut the generated value and paste it into definitions.

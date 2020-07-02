@@ -160,3 +160,25 @@ fn test_string_interpolation_with_negative_format_width_should_compile_and_run_w
 	eprintln('---------------------------------------------------------------------------------------------')
 	assert true
 }
+
+struct Aa {
+	a int
+}
+
+struct Bb {
+	b Aa
+}
+
+fn (x Bb) f() Aa {
+	return x.b
+}
+
+fn test_method_interpolation() {
+	y := Bb{
+		b: Aa{
+			a: 2
+		}
+	}
+	assert '>${y.f().a}<' == '>2<'
+	assert '>$y.f().a<' == '>2<'
+}
