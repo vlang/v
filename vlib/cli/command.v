@@ -15,6 +15,9 @@ pub mut:
 	disable_version bool
 	disable_flags bool
 
+	sort_flags bool = true
+	sort_commands bool = true
+
 	parent &Command = nil()
 	commands []Command
 	flags []Flag
@@ -48,6 +51,13 @@ pub fn (mut cmd Command) parse(args []string) {
 		cmd.add_default_flags()
 	}
 	cmd.add_default_commands()
+
+	if cmd.sort_flags {
+		cmd.flags.sort()
+	}
+	if cmd.sort_commands {
+		cmd.commands.sort()
+	}
 
 	cmd.args = args[1..]
 	for i in 0..cmd.commands.len {
@@ -88,6 +98,7 @@ fn (mut cmd Command) parse_flags() {
 			mut flag := &cmd.flags[i]
 			if flag.matches(cmd.args) {
 				found = true
+				flag.found = true
 				cmd.args = flag.parse(cmd.args) or {
 					println('failed to parse flag ${cmd.args[0]}: ${err}')
 					exit(1)
@@ -127,8 +138,7 @@ fn (mut cmd Command) parse_commands() {
 	if int(cmd.execute) == 0 {
 		if !cmd.disable_help {
 			help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
-			execute := help_cmd.execute
-			execute(help_cmd)
+			help_cmd.execute(help_cmd)
 		}
 	} else {
 		cmd.check_required_flags()
@@ -153,8 +163,7 @@ fn (mut cmd Command) check_help_flag() {
 		help_flag := cmd.flags.get_bool('help') or { return } // ignore error and handle command normally
 		if help_flag {
 			help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
-			execute := help_cmd.execute
-			execute(help_cmd)
+			help_cmd.execute(help_cmd)
 			exit(0)
 		}
 	}
@@ -168,8 +177,7 @@ fn (mut cmd Command) check_version_flag() {
 		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
 		if version_flag {
 			version_cmd := cmd.commands.get('version') or { return } // ignore error and handle command normally
-			execute := version_cmd.execute
-			execute(version_cmd)
+			version_cmd.execute(version_cmd)
 			exit(0)
 		}
 	}
@@ -185,6 +193,15 @@ fn (mut cmd Command) check_required_flags() {
 	}
 }
 
+fn (cmds []Command) get(name string) ?Command {
+	for cmd in cmds {
+		if cmd.name == name {
+			return cmd
+		}
+	}
+	return error('command \'${name}\' not found.')
+}
+
 fn (cmds []Command) contains(name string) bool {
 	for cmd in cmds {
 		if cmd.name == name {
@@ -194,11 +211,8 @@ fn (cmds []Command) contains(name string) bool {
 	return false
 }
 
-fn (cmds []Command) get(name string) ?Command {
-	for cmd in cmds {
-		if cmd.name == name {
-			return cmd
-		}
-	}
-	return error('command \'${name}\' not found.')
+fn (mut cmds []Command) sort() {
+	cmds.sort_with_compare(fn(a &Command, b &Command) int {
+		return compare_strings(&a.name, &b.name)
+	})
 }

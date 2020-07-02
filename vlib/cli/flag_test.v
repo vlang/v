@@ -18,15 +18,27 @@ fn test_if_bool_flag_parses() {
 		flag: .bool,
 		name: 'flag',
 	}
+	mut value := false
 
 	flag.parse(['--flag']) or { panic(err) }
-	assert flag.value == 'true'
+	value = flag.get_bool() or { panic(err) }
+	assert value == true
 
 	flag.parse(['--flag', 'true']) or { panic(err) }
-	assert flag.value == 'true'
+	value = flag.get_bool() or { panic(err) }
+	assert value == true
 
 	flag.parse(['--flag=true']) or { panic(err) }
-	assert flag.value == 'true'
+	value = flag.get_bool() or { panic(err) }
+	assert value == true
+
+	flag.parse(['--flag', 'false']) or { panic(err) }
+	value = flag.get_bool() or { panic(err) }
+	assert value == false
+
+	flag.parse(['--flag=false']) or { panic(err) }
+	value = flag.get_bool() or { panic(err) }
+	assert value == false
 }
 
 fn test_if_int_flag_parses() {
@@ -34,12 +46,15 @@ fn test_if_int_flag_parses() {
 		flag: .int,
 		name: 'flag',
 	}
+	mut value := 0
 
 	flag.parse(['--flag', '42']) or { panic(err) }
-	assert flag.value.int() == 42
+	value = flag.get_int() or { panic(err) }
+	assert value == 42
 
 	flag.parse(['--flag=42']) or { panic(err) }
-	assert flag.value.int() == 42
+	value = flag.get_int() or { panic(err) }
+	assert value == 42
 }
 
 fn test_if_float_flag_parses() {
@@ -47,10 +62,14 @@ fn test_if_float_flag_parses() {
 		flag: .float,
 		name: 'flag',
 	}
+	mut value := f64(0)
 
 	flag.parse(['--flag', '3.14159']) or { panic(err) }
-	assert flag.value.f64() == 3.14159
+	value = flag.get_float() or { panic(err) }
+	assert value == 3.14159
 
 	flag.parse(['--flag=3.14159']) or { panic(err) }
 	assert flag.value.f64() == 3.14159
+	value = flag.get_float() or { panic(err) }
+	assert value == 3.14159
 }
