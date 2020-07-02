@@ -47,6 +47,12 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	mut has_desc := false
 	if p.tok.kind == .name && p.tok.lit == 'order' {
 		p.check_name() // `order`
+		order_pos := p.tok.position()
+		if p.tok.kind == .name && p.tok.lit == 'by' {
+			p.check_name() // `by`
+		} else {
+			p.error_with_pos('use `order by` in ORM queries', order_pos)
+		}
 		has_order = true
 		order_expr = p.expr(0)
 		if p.tok.kind == .name && p.tok.lit == 'desc' {
