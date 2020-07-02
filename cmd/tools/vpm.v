@@ -119,9 +119,11 @@ fn vpm_search(keywords []string) {
 			break
 		}
 	}
-	println('\nUse "v install author_name.module_name" to install the module')
+
 	if index == 0 {
 		println('No module(s) found for "$joined"')
+	} else {
+		println('\nUse "v install author_name.module_name" to install the module')
 	}
 }
 
