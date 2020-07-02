@@ -70,6 +70,10 @@ fn C.ntohs() int
 
 fn C.getsockname() int
 
+fn C.inet_ntop(af int, src voidptr, dst charptr, dst_size int) charptr
+
+fn C.getpeername(sockfd int, addr &C.sockaddr_in, addrsize &int) int
+
 // create socket
 pub fn new_socket(family, typ, proto int) ?Socket {
 	sockfd := C.socket(family, typ, proto)
@@ -166,11 +170,9 @@ pub fn (s Socket) accept() ?Socket {
 	$if debug {
 		println('accept()')
 	}
-	addr := C.sockaddr_storage{}
-	size := 128 // sizeof(sockaddr_storage)
-	tmp := voidptr(&addr)
-	skaddr := &C.sockaddr(tmp)
-	sockfd := C.accept(s.sockfd, skaddr, &size)
+	addr := C.sockaddr{}
+	size := sizeof(addr)
+	sockfd := C.accept(s.sockfd, &addr, &size)
 	if sockfd < 0 {
 		return error('net.accept: failed with $sockfd')
 	}
@@ -181,6 +183,21 @@ pub fn (s Socket) accept() ?Socket {
 		proto: s.proto
 	}
 	return c
+}
+
+pub fn (s Socket) peer_ip() ?string {
+	buf := [44]byte
+	peeraddr := C.sockaddr_in{}
+	speeraddr := sizeof(peeraddr)
+	ok := C.getpeername(s.sockfd, &C.sockaddr(&peeraddr), &speeraddr)
+	if ok == -1 {
+		return error('net.peer_ip: getpeername failed')
+	}
+	cstr := C.inet_ntop(C.AF_INET, &peeraddr.sin_addr, buf, sizeof(buf))
+	if cstr == 0 {
+		return error('net.peer_ip: inet_ntop failed')
+	}    
+	return cstring_to_vstring(cstr)
 }
 
 // connect to given addrress and port
