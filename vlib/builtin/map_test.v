@@ -291,7 +291,6 @@ fn test_plus_assign_string() {
 	assert m['one'] == '1'
 }
 
-
 fn test_map_keys_to_array() {
 	m := {'a': 'b', 'c': 'd'}
 	mut arr := []string{}
@@ -301,12 +300,4 @@ fn test_map_keys_to_array() {
 	sarr := arr.str()
 	println(sarr)
 	assert sarr == "['a', 'c']"
-}
-
-fn test_map_cross_assign() {
-	mut a := {'one':1, 'two':2}
-	a['one'], a['two'] = a['two'], a['one']
-	println(a)
-	assert a['one'] == 2
-	assert a['two'] == 1
 }
