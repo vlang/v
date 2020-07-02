@@ -462,6 +462,7 @@ pub:
 	pos     token.Position
 	comment Comment // comment above `xxx {`
 	is_else bool
+	post_comments []Comment
 }
 
 /*
@@ -586,6 +587,7 @@ pub struct EnumField {
 pub:
 	name     string
 	pos      token.Position
+	comments []Comment
 	expr     Expr
 	has_expr bool
 }
@@ -595,6 +597,7 @@ pub:
 	name    string
 	is_pub  bool
 	is_flag bool // true when the enum has [flag] tag
+	comments []Comment // enum Abc { /* comments */ ... }
 	fields  []EnumField
 	pos     token.Position
 }

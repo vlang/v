@@ -315,12 +315,14 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 			name := it.name.after('.')
 			f.writeln('enum $name {')
+			f.comments(it.comments)
 			for field in it.fields {
 				f.write('\t$field.name')
 				if field.has_expr {
 					f.write(' = ')
 					f.expr(field.expr)
 				}
+				f.comments(it.comments)
 				f.writeln('')
 			}
 			f.writeln('}\n')
@@ -1098,6 +1100,15 @@ pub fn (mut f Fmt) comment(node ast.Comment) {
 	f.writeln('*/')
 }
 
+pub fn (mut f Fmt) comments(some_comments []ast.Comment) {
+	for c in some_comments {
+		if !f.out.last_n(1)[0].is_space() {
+			f.write('\t')
+		}
+		f.comment(c)
+	}
+}
+
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	// println('$it.name find_comment($it.pos.line_nr)')
 	// f.find_comment(it.pos.line_nr)
@@ -1317,6 +1328,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				f.writeln('}')
 			}
 		}
+		f.comments(branch.post_comments)
 	}
 	f.indent--
 	f.write('}')

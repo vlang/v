@@ -180,6 +180,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.inside_match_body = true
 		stmts := p.parse_block()
 		p.inside_match_body = false
+		post_comments := p.eat_comments()
 		pos := token.Position{
 			line_nr: branch_first_pos.line_nr
 			pos: branch_first_pos.pos
@@ -191,6 +192,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			pos: pos
 			comment: comment
 			is_else: is_else
+			post_comments: post_comments
 		}
 		p.close_scope()
 		if p.tok.kind == .rcbr {
