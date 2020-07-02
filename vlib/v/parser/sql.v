@@ -45,6 +45,15 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	mut has_order := false
 	mut order_expr := ast.Expr{}
 	mut has_desc := false
+	if p.tok.kind == .name && p.tok.lit == 'order' {
+		p.check_name() // `order`
+		has_order = true
+		order_expr = p.expr(0)
+		if p.tok.kind == .name && p.tok.lit == 'desc' {
+			p.check_name() // `desc`
+			has_desc = true
+		}
+	}
 	if p.tok.kind == .name && p.tok.lit == 'limit' {
 		// `limit 1` means that a single object is returned
 		p.check_name() // `limit`
@@ -58,15 +67,6 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		p.check_name() // `offset`
 		has_offset = true
 		offset_expr = p.expr(0)
-	}
-	if p.tok.kind == .name && p.tok.lit == 'order' {
-		p.check_name() // `order`
-		has_order = true
-		order_expr = p.expr(0)
-	}
-	if p.tok.kind == .name && p.tok.lit == 'desc' {
-		p.check_name() // `desc`
-		has_desc = true
 	}
 	if !query_one && !is_count {
 		// return an array
