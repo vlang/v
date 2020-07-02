@@ -345,6 +345,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.expr(it.cond)
 			f.write('; ')
 			f.stmt(it.inc)
+			f.remove_new_line()
 			f.writeln(' {')
 			f.stmts(it.stmts)
 			f.writeln('}')
