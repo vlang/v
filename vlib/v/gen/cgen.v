@@ -714,6 +714,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.write('; ')
 			} else {
 				g.stmt(node.init)
+				// Remove excess return and add space
+				if g.out.last_n(1) == '\n' {
+					g.out.go_back(1)
+					g.empty_line = false
+					g.write(' ')
+				}
 			}
 			if node.has_cond {
 				g.expr(node.cond)
@@ -1098,6 +1104,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						info := sym.info as table.Array
 						styp := g.typ(info.elem_type)
 						g.write('$styp _var_$left.pos.pos = *($styp*)array_get(')
+						if left.left_type.is_ptr() {
+							g.write('*')
+						}
 						g.expr(left.left)
 						g.write(', ')
 						g.expr(left.index)
@@ -1107,6 +1116,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						styp := g.typ(info.value_type)
 						zero := g.type_default(info.value_type)
 						g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
+						if left.left_type.is_ptr() {
+							g.write('*')
+						}
 						g.expr(left.left)
 						g.write(', ')
 						g.expr(left.index)
@@ -1117,7 +1129,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					styp := g.typ(left.typ)
 					g.write('$styp _var_$left.pos.pos = ')
 					g.expr(left.expr)
-					g.writeln('.$left.field_name;')
+					if left.expr_type.is_ptr() {
+						g.writeln('->$left.field_name;')
+					} else {
+						g.writeln('.$left.field_name;')
+					}
 				}
 				else {}
 			}
@@ -2497,7 +2513,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.expr(expr)
 			arg_idx++
 			if i < node.exprs.len - 1 {
-				g.write(',')
+				g.write(', ')
 			}
 		}
 		g.write('}')
@@ -2506,7 +2522,9 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.write('return $opt_tmp')
 		}
 		// Make sure to add our unpacks
-		g.insert_before_stmt(multi_unpack)
+		if multi_unpack.len > 0 {
+			g.insert_before_stmt(multi_unpack)
+		}
 	} else if node.exprs.len >= 1 {
 		// normal return
 		return_sym := g.table.get_type_symbol(node.types[0])

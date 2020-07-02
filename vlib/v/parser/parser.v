@@ -474,6 +474,17 @@ pub fn (mut p Parser) comment() ast.Comment {
 	}
 }
 
+pub fn (mut p Parser) eat_comments() []ast.Comment {
+	mut comments := []ast.Comment{}
+	for {
+		if p.tok.kind != .comment {
+			break
+		}
+		comments << p.check_comment()
+	}
+	return comments
+}
+
 pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
@@ -1444,6 +1455,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	enum_name := p.check_name()
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
+	enum_decl_comments := p.eat_comments()
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
@@ -1464,6 +1476,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			pos: pos
 			expr: expr
 			has_expr: has_expr
+			comments: p.eat_comments()
 		}
 	}
 	p.top_level_statement_end()
@@ -1498,6 +1511,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		is_flag: is_flag
 		fields: fields
 		pos: start_pos.extend(end_pos)
+		comments: enum_decl_comments
 	}
 }
 

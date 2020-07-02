@@ -48,7 +48,7 @@ fn (mut a App) cleanup() {
 
 fn (a App) run() {
 	title := 'V Particle Example'
-	desc := C.sapp_desc {
+	desc := C.sapp_desc{
 		width: a.width
 		height: a.height
 		user_data: &a
@@ -67,7 +67,7 @@ fn (a App) draw() {
 }
 
 fn init(user_data voidptr) {
-	desc := C.sg_desc {
+	desc := C.sg_desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
 		mtl_drawable_cb: sapp.metal_get_drawable

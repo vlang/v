@@ -13,6 +13,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	mut node := ast.Expr{}
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
+	p.eat_comments()
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_shared, .key_rwshared, .key_atomic, .key_static {
@@ -111,7 +112,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			} else {
 				sizeof_type := p.parse_type()
 				node = ast.SizeOf{
-					is_type: true                
+					is_type: true
 					typ: sizeof_type
 					type_name: p.table.get_type_symbol(sizeof_type).name
 					pos: pos
@@ -168,9 +169,6 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			return node
 		}
 		else {
-			if p.tok.kind == .comment {
-				println(p.tok.lit)
-			}
 			p.error('expr(): bad token `$p.tok.kind.str()`')
 		}
 	}

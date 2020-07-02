@@ -257,7 +257,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.is_assign = true
 			f.write(' $node.op.str() ')
 			for i, val in node.right {
-				f.expr(val)
+				f.prefix_expr_cast_expr(val)
 				if i < node.right.len - 1 {
 					f.write(', ')
 				}
@@ -315,12 +315,14 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 			name := it.name.after('.')
 			f.writeln('enum $name {')
+			f.comments(it.comments, false)
 			for field in it.fields {
 				f.write('\t$field.name')
 				if field.has_expr {
 					f.write(' = ')
 					f.expr(field.expr)
 				}
+				f.comments(field.comments, true)
 				f.writeln('')
 			}
 			f.writeln('}\n')
@@ -345,6 +347,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.expr(it.cond)
 			f.write('; ')
 			f.stmt(it.inc)
+			f.remove_new_line()
 			f.writeln(' {')
 			f.stmts(it.stmts)
 			f.writeln('}')
@@ -595,7 +598,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			}
 			if field.has_default_expr {
 				f.write(' = ')
-				f.struct_field_expr(field.default_expr)
+				f.prefix_expr_cast_expr(field.default_expr)
 			}
 			f.write('\n')
 			continue
@@ -625,7 +628,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		if field.has_default_expr {
 			f.write(' = ')
-			f.struct_field_expr(field.default_expr)
+			f.prefix_expr_cast_expr(field.default_expr)
 		}
 		// Handle comments after field type (same line)
 		for j < comments.len && field.pos.line_nr == comments[j].pos.line_nr {
@@ -644,13 +647,14 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	f.writeln('}\n')
 }
 
-pub fn (mut f Fmt) struct_field_expr(fexpr ast.Expr) {
+pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 	mut is_pe_amp_ce := false
 	mut ce := ast.CastExpr{}
 	if fexpr is ast.PrefixExpr {
 		pe := fexpr as ast.PrefixExpr
 		if pe.right is ast.CastExpr && pe.op == .amp {
 			ce = pe.right as ast.CastExpr
+			ce.typname = f.table.get_type_symbol(ce.typ).name
 			is_pe_amp_ce = true
 			f.expr(ce)
 		}
@@ -716,6 +720,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(node.val.str())
 		}
 		ast.CastExpr {
+			node.typname = f.table.get_type_symbol(node.typ).name
 			f.write(f.type_to_str(node.typ) + '(')
 			f.expr(node.expr)
 			f.write(')')
@@ -1081,7 +1086,7 @@ pub fn (mut f Fmt) comment(node ast.Comment) {
 		} else {
 			s = '// ' + s
 		}
-		if !is_separate_line {
+		if !is_separate_line && f.indent > 0 {
 			f.remove_new_line() // delete the generated \n
 			f.write(' ')
 		}
@@ -1096,6 +1101,20 @@ pub fn (mut f Fmt) comment(node ast.Comment) {
 	}
 	f.empty_line = true
 	f.writeln('*/')
+}
+
+pub fn (mut f Fmt) comments(some_comments []ast.Comment, remove_last_new_line bool) {
+	for c in some_comments {
+		if !f.out.last_n(1)[0].is_space() {
+			f.write('\t')
+		}
+		f.indent++
+		f.comment(c)
+		f.indent--
+	}
+	if remove_last_new_line {
+		f.remove_new_line()
+	}
 }
 
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
@@ -1331,6 +1350,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				f.writeln('}')
 			}
 		}
+		f.comments(branch.post_comments, false)
 	}
 	f.indent--
 	f.write('}')
@@ -1494,7 +1514,10 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	type_sym := f.table.get_type_symbol(it.typ)
 	// f.write('<old name: $type_sym.name>')
-	mut name := f.short_module(type_sym.name).replace(f.cur_mod + '.', '') // TODO f.type_to_str?
+	mut name := type_sym.name
+	if !name.starts_with('C.') {
+		name = f.short_module(type_sym.name).replace(f.cur_mod + '.', '') // TODO f.type_to_str?
+	}
 	if name == 'void' {
 		name = ''
 	}
@@ -1507,7 +1530,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		f.write('$name{')
 		// }
 		for i, field in it.fields {
-			f.struct_field_expr(field.expr)
+			f.prefix_expr_cast_expr(field.expr)
 			if i < it.fields.len - 1 {
 				f.write(', ')
 			}
@@ -1522,7 +1545,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		f.indent++
 		for field in it.fields {
 			f.write('$field.name: ')
-			f.struct_field_expr(field.expr)
+			f.prefix_expr_cast_expr(field.expr)
 			f.writeln('')
 		}
 		f.indent--
