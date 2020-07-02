@@ -1524,6 +1524,13 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					}
 					mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 					mut ident_var_info := left.var_info()
+					if ident_var_info.share in [.shared_t, .rwshared_t] {
+						left_type = left_type.set_flag(.shared_f)
+					}
+					if ident_var_info.share in [.atomic_t, .rwshared_t] {
+						left_type = left_type.set_flag(.atomic_or_rw)
+					}
+					assign_stmt.left_types[i] = left_type
 					ident_var_info.typ = left_type
 					left.info = ident_var_info
 					scope.update_var_type(left.name, left_type)

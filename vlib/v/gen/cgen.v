@@ -314,7 +314,8 @@ pub fn (mut g Gen) write_typeof_functions() {
 
 // V type to C type
 fn (g &Gen) typ(t table.Type) string {
-	styp := g.base_type(t)
+	share := t.share()
+	styp := if share == .atomic_t { t.atomic_typename() } else { g.base_type(t) }
 	if t.has_flag(.optional) {
 		// Register an optional if it's not registered yet
 		return g.register_optional(t)
@@ -324,7 +325,14 @@ fn (g &Gen) typ(t table.Type) string {
 		return styp[3..]
 	}
 	*/
-	return styp
+	match share {
+		.shared_t, .rwshared_t {
+			return 'struct {$styp val; sync__Mutex* mtx;}'
+		}
+		else {
+			return styp
+		}
+	}
 }
 
 fn (g &Gen) base_type(t table.Type) string {
@@ -736,20 +744,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.GlobalDecl {
-			share := node.typ.share()
-			styp := if share == .atomic_t { node.typ.atomic_typename() } else { g.typ(node.typ) }
-			match share {
-				.shared_t {
-					g.definitions.writeln('struct {$styp val; sync__Mutex* mtx;} $node.name; // global')
-				}
-				.rwshared_t {
-					// TODO use sync__RwMutex once it's imlemented
-					g.definitions.writeln('struct {$styp val; sync__Mutex* mtx;} $node.name; // global rw')
-				}
-				else {
-					g.definitions.writeln('$styp $node.name; // global')
-				}
-			}
+			styp := g.typ(node.typ)
+			g.definitions.writeln('$styp $node.name; // global')
 		}
 		ast.GoStmt {
 			g.go_stmt(node)
@@ -1133,7 +1129,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
 	for i, left in assign_stmt.left {
 		mut var_type := assign_stmt.left_types[i]
-		val_type := assign_stmt.right_types[i]
+		mut val_type := assign_stmt.right_types[i]
 		val := assign_stmt.right[i]
 		mut is_call := false
 		mut blank_assign := false
@@ -1143,6 +1139,15 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			// id_info := ident.var_info()
 			// var_type = id_info.typ
 			blank_assign = ident.kind == .blank_ident
+			if ident.info is ast.IdentVar {
+				share := (ident.info as ast.IdentVar).share
+				if share in [.shared_t, .rwshared_t] {
+					var_type = var_type.set_flag(.shared_f)
+				}
+				if share in [.atomic_t, .rwshared_t] {
+					var_type = var_type.set_flag(.atomic_or_rw)
+				}
+			}
 		}
 		styp := g.typ(var_type)
 		mut is_fixed_array_init := false
@@ -1270,6 +1275,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if unwrap_optional {
 				g.write('*($styp*)')
 			}
+			wrap_shared := var_type.has_flag(.shared_f)
+			if wrap_shared {
+				g.write('{.val = ')
+			}
 			if !cloned {
 				if is_decl {
 					if is_fixed_array_init && !has_val {
@@ -1294,6 +1303,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if g.is_array_set {
 				g.write(' })')
 				g.is_array_set = false
+			}
+			if wrap_shared {
+				g.write(', .mtx = sync__new_mutex()}')
 			}
 		}
 		g.right_is_opt = false
@@ -1716,6 +1728,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
 				g.write('.')
 			}
+			if node.expr_type.has_flag(.shared_f) {
+				g.write('val.')
+			}
 			if node.expr_type == 0 {
 				verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `$node.expr` | field: `$node.field_name` | file: $g.file.path | line: $node.pos.line_nr')
 			}
@@ -2135,6 +2150,10 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('/*opt*/')
 			styp := g.base_type(ident_var.typ)
 			g.write('(*($styp*)${name}.data)')
+			return
+		}
+		if !g.is_assign_lhs && (ident_var.share == .shared_t || ident_var.share == .rwshared_t) {
+			g.write('${name}.val')
 			return
 		}
 	}
