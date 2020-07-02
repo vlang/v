@@ -135,6 +135,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	}
 	if node.has_order {
 		g.write(' ORDER BY ')
+		g.sql_side = .left
 		g.expr_to_sql(node.order_expr)
 		if node.has_desc {
 			g.write(' DESC ')
