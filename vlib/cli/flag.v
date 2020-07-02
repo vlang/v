@@ -15,14 +15,24 @@ pub mut:
 	description string
 	global bool
 	required bool
-
 	value string
+
+mut:
+	found bool
+}
+
+pub fn (flags []Flag) get_all_found() []Flag {
+	return flags.filter(it.found)
+}
+
+pub fn (flag Flag) get_bool() ?bool {
+	if flag.flag != .bool { return error('invalid flag type') }
+	return flag.value == 'true'
 }
 
 pub fn (flags []Flag) get_bool(name string) ?bool {
 	flag := flags.get(name) or { return error(err) }
-	if flag.flag != .bool { return error('invalid flag type') }
-	return flag.value == 'true'
+	return flag.get_bool()
 }
 
 pub fn (flags []Flag) get_bool_or(name string, or_value bool) bool {
@@ -30,10 +40,14 @@ pub fn (flags []Flag) get_bool_or(name string, or_value bool) bool {
 	return value
 }
 
-pub fn (flags []Flag) get_int(name string) ?int {
-	flag := flags.get(name) or { return error(err) }
+pub fn (flag Flag) get_int() ?int {
 	if flag.flag != .int { return error('invalid flag type') }
 	return flag.value.int()
+}
+
+pub fn (flags []Flag) get_int(name string) ?int {
+	flag := flags.get(name) or { return error(err) }
+	return flag.get_int()
 }
 
 pub fn (flags []Flag) get_int_or(name string, or_value int) int {
@@ -41,21 +55,29 @@ pub fn (flags []Flag) get_int_or(name string, or_value int) int {
 	return value
 }
 
-pub fn (flags []Flag) get_float(name string) ?f32 {
-	flag := flags.get(name) or { return error(err) }
+pub fn (flag Flag) get_float() ?f64 {
 	if flag.flag != .float { return error('invalid flag type') }
-	return flag.value.f32()
+	return flag.value.f64()
 }
 
-pub fn (flags []Flag) get_float_or(name string, or_value f32) f32 {
+pub fn (flags []Flag) get_float(name string) ?f64 {
+	flag := flags.get(name) or { return error(err) }
+	return flag.get_float()
+}
+
+pub fn (flags []Flag) get_float_or(name string, or_value f64) f64 {
 	value := flags.get_float(name) or { return or_value }
 	return value
 }
 
-pub fn (flags []Flag) get_string(name string) ?string {
-	flag := flags.get(name) or { return error(err) }
+pub fn (flag Flag) get_string() ?string {
 	if flag.flag != .string { return error('invalid flag type') }
 	return flag.value
+}
+
+pub fn (flags []Flag) get_string(name string) ?string {
+	flag := flags.get(name) or { return error(err) }
+	return flag.get_string()
 }
 
 pub fn (flags []Flag) get_string_or(name string, or_value string) string {
@@ -81,8 +103,10 @@ fn (mut flag Flag) parse(args []string) ?[]string {
 // check if first arg matches flag
 fn (mut flag Flag) matches(args []string) bool {
 	return
-		(flag.name != '' && args[0].starts_with('--${flag.name}')) ||
-		(flag.abbrev != '' && args[0].starts_with('-${flag.abbrev}'))
+		(flag.name != '' && args[0] == '--${flag.name}') || 
+		(flag.name != '' && args[0].starts_with('--${flag.name}=')) ||
+		(flag.abbrev != '' && args[0] == '-${flag.abbrev}') || 
+		(flag.abbrev != '' && args[0].starts_with('-${flag.abbrev}='))
 }
 
 fn (mut flag Flag) parse_raw(args []string) ?[]string {
@@ -126,4 +150,10 @@ fn (flags []Flag) contains(name string) bool {
 		}
 	}
 	return false
+}
+
+fn (mut flags []Flag) sort() {
+	flags.sort_with_compare(fn(a &Flag, b &Flag) int {
+		return compare_strings(&a.name, &b.name)
+	})
 }
