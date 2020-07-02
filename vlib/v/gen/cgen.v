@@ -40,6 +40,7 @@ mut:
 	gowrappers           strings.Builder // all go callsite wrappers
 	stringliterals       strings.Builder // all string literals (they depend on tos3() beeing defined
 	auto_str_funcs       strings.Builder // function bodies of all auto generated _str funcs
+	anon_funcs					 strings.Builder // function bodies of all anonoymous functions
 	comptime_defines     strings.Builder // custom defines, given by -d/-define flags on the CLI
 	pcs_declarations     strings.Builder // -prof profile counter declarations for each function
 	hotcode_definitions  strings.Builder // -live declarations & functions
@@ -119,6 +120,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		gowrappers: strings.new_builder(100)
 		stringliterals: strings.new_builder(100)
 		auto_str_funcs: strings.new_builder(100)
+		anon_funcs: strings.new_builder(100)
 		comptime_defines: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
@@ -222,6 +224,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.auto_str_funcs.len > 0 {
 		b.writeln('\n// V auto str functions:')
 		b.write(g.auto_str_funcs.str())
+	}
+	if g.anon_funcs.len > 0 {
+		b.writeln('\n// V anonoymous functions:')
+		b.write(g.anon_funcs.str())
 	}
 	b.writeln('\n// V out')
 	b.write(g.out.str())
@@ -1598,12 +1604,12 @@ fn (g &Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 
 fn (mut g Gen) gen_anon_fn_decl(it ast.AnonFn) {
 	pos := g.out.len
-	def_pos := g.definitions.len
+	def_pos := g.anon_funcs.len
 	g.stmt(it.decl)
 	fn_body := g.out.after(pos)
 	g.out.go_back(fn_body.len)
-	g.definitions.go_back(g.definitions.len - def_pos)
-	g.definitions.write(fn_body)
+	g.anon_funcs.go_back(g.anon_funcs.len - def_pos)
+	g.anon_funcs.write(fn_body)
 }
 
 fn (mut g Gen) expr(node ast.Expr) {
