@@ -88,20 +88,21 @@ fn main() {
 }
 
 fn vpm_search(keywords []string) {
+	search_keys := keywords.map(it.replace('_', '-'))
 	if settings.is_help {
 		vhelp.show_topic('search')
 		exit(0)
 	}
-	if keywords.len == 0 {
+	if search_keys.len == 0 {
 		println('  v search requires *at least one* keyword')
 		exit(2)
 	}
 	modules := get_all_modules()
-	joined := keywords.join(', ')
+	joined := search_keys.join(', ')
 	mut index := 0
 	for mod in modules {
 		// TODO for some reason .filter results in substr error, so do it manually
-		for k in keywords {
+		for k in search_keys {
 			if !mod.contains(k) {
 				continue
 			}
@@ -138,7 +139,7 @@ fn vpm_install(module_names []string) {
 	}
 	mut errors := 0
 	for n in module_names {
-		name := n.trim_space()
+		name := n.trim_space().replace('_', '-')
 		mod := get_module_meta_info(name) or {
 			errors++
 			println('Errors while retrieving meta data for module $name:')
