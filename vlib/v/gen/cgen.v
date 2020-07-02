@@ -58,6 +58,7 @@ mut:
 	is_array_set         bool
 	is_amp               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 	is_sql               bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
+	is_shared            bool // for initialization of hidden mutex in `[rw]shared` literals
 	optionals            []string // to avoid duplicates TODO perf, use map
 	inside_ternary       int // ?: comma separated statements on a single line
 	inside_map_postfix   bool // inside map++/-- postfix expr
@@ -314,8 +315,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 
 // V type to C type
 fn (g &Gen) typ(t table.Type) string {
-	share := t.share()
-	styp := if share == .atomic_t { t.atomic_typename() } else { g.base_type(t) }
+	styp := g.base_type(t)
 	if t.has_flag(.optional) {
 		// Register an optional if it's not registered yet
 		return g.register_optional(t)
@@ -325,18 +325,15 @@ fn (g &Gen) typ(t table.Type) string {
 		return styp[3..]
 	}
 	*/
-	match share {
-		.shared_t, .rwshared_t {
-			return 'struct {$styp val; sync__Mutex* mtx;}'
-		}
-		else {
-			return styp
-		}
-	}
+	return styp
 }
 
 fn (g &Gen) base_type(t table.Type) string {
-	mut styp := g.cc_type(t)
+	share := t.share()
+	mut styp := if share == .atomic_t { t.atomic_typename() } else { g.cc_type(t) }
+	if t.has_flag(.shared_f) {
+		styp = 'struct {$styp val; sync__Mutex* mtx;}'
+	}
 	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
@@ -1275,10 +1272,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if unwrap_optional {
 				g.write('*($styp*)')
 			}
-			wrap_shared := var_type.has_flag(.shared_f)
-			if wrap_shared {
-				g.write('{.val = ')
-			}
+			g.is_shared = var_type.has_flag(.shared_f)
 			if !cloned {
 				if is_decl {
 					if is_fixed_array_init && !has_val {
@@ -1304,9 +1298,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.write(' })')
 				g.is_array_set = false
 			}
-			if wrap_shared {
-				g.write(', .mtx = sync__new_mutex()}')
-			}
+			g.is_shared = false
 		}
 		g.right_is_opt = false
 		g.is_assign_rhs = false
@@ -2681,9 +2673,17 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
-		g.write('($styp*)memdup(&($styp){')
+		if g.is_shared {
+			g.write('(struct {$styp val; sync__Mutex* mtx;}*)memdup(&(struct {$styp val; sync__Mutex* mtx;}){.val = ($styp){')
+		} else {
+			g.write('($styp*)memdup(&($styp){')
+		}
 	} else {
-		g.writeln('($styp){')
+		if g.is_shared {
+			g.writeln('{.val = {')
+		} else {
+			g.writeln('($styp){')
+		}
 	}
 	// mut fields := []string{}
 	mut inited_fields := map[string]int{} // TODO this is done in checker, move to ast node
@@ -2772,7 +2772,12 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
 	}
 	g.write('}')
-	if is_amp {
+	if g.is_shared {
+		g.write(', .mtx = sync__new_mutex()}')
+		if is_amp {
+			g.write(', sizeof(struct {$styp val; sync__Mutex* mtx;}))')
+		}
+	} else if is_amp {
 		g.write(', sizeof($styp))')
 	}
 }
