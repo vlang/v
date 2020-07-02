@@ -203,8 +203,10 @@ fn test_orm_sqlite() {
 	}
 	assert oldest.age == 34
 
+	offs := 1
+
 	second_oldest := sql db {
-		select from User order age desc limit 1 offset 1
+		select from User order age desc limit 1 offset offs
 	}
 	assert second_oldest.age == 31
 }
