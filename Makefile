@@ -5,7 +5,7 @@ TMPDIR ?= /tmp
 VC     ?= ./vc
 
 VCFILE := v.c
-TMPTCC := /var/tmp/tcc
+TMPTCC := /tmp/tcc
 VCREPO := https://github.com/vlang/vc
 TCCREPO := https://github.com/vlang/tccbin
 GITCLEANPULL := git clean -xf && git pull --quiet
