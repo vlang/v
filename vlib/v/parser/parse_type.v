@@ -102,11 +102,21 @@ pub fn (mut p Parser) parse_type() table.Type {
 	// optional
 	mut is_optional := false
 	if p.tok.kind == .question {
+		line_nr := p.tok.line_nr
 		p.next()
 		is_optional = true
+
+		if p.tok.line_nr > line_nr {
+			typ := table.void_type
+			if is_optional {
+				typ.set_flag(.optional)
+			}
+			return typ
+		}
 	}
 	is_shared := p.tok.kind in [.key_shared, .key_rwshared]
 	is_atomic_or_rw := p.tok.kind in [.key_rwshared, .key_atomic]
+
 	mut nr_muls := 0
 	if p.tok.kind == .key_mut || is_shared || is_atomic_or_rw {
 		nr_muls++
