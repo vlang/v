@@ -2467,7 +2467,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.expr(expr)
 			arg_idx++
 			if i < node.exprs.len - 1 {
-				g.write(',')
+				g.write(', ')
 			}
 		}
 		g.write('}')
@@ -2476,7 +2476,9 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.write('return $opt_tmp')
 		}
 		// Make sure to add our unpacks
-		g.insert_before_stmt(multi_unpack)
+		if multi_unpack.len > 0 {
+			g.insert_before_stmt(multi_unpack)
+		}
 	} else if node.exprs.len >= 1 {
 		// normal return
 		return_sym := g.table.get_type_symbol(node.types[0])
