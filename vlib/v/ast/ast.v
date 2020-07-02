@@ -846,6 +846,9 @@ pub:
 	has_where   bool
 	has_offset  bool
 	offset_expr Expr
+	has_order   bool
+	order_expr  Expr
+	has_desc    bool
 	is_array    bool
 	table_type  table.Type
 	pos         token.Position
@@ -934,6 +937,7 @@ pub fn (expr Expr) position() token.Position {
 		}
 		// ast.None { }
 		PrefixExpr {
+
 			return expr.pos
 		}
 		// ast.ParExpr { }
