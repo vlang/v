@@ -709,6 +709,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.write('; ')
 			} else {
 				g.stmt(node.init)
+				// Remove excess return and add space
+				if g.out.last_n(1) == '\n' {
+					g.out.go_back(1)
+					g.empty_line = false
+					g.write(' ')
+				}
 			}
 			if node.has_cond {
 				g.expr(node.cond)
