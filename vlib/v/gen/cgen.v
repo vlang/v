@@ -2360,6 +2360,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				} else {
 					zero := g.type_default(info.value_type)
 					g.write('(*($elem_type_str*)map_get(')
+					if node.left_type.is_ptr() {
+						g.write('*')
+					}
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
