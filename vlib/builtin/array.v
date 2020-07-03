@@ -169,8 +169,9 @@ pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 	a.ensure_cap(a.len + size)
 	elem_size := a.element_size
 	unsafe {
-		C.memmove(a.get_unsafe(i + size), a.get_unsafe(i), (a.len - i) * elem_size)
-		C.memcpy(a.get_unsafe(i), val, size * elem_size)
+		iptr := a.get_unsafe(i)
+		C.memmove(a.get_unsafe(i + size), iptr, (a.len - i) * elem_size)
+		C.memcpy(iptr, val, size * elem_size)
 	}
 	a.len += size
 }
