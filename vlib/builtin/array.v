@@ -213,6 +213,7 @@ pub fn (mut a array) trim(index int) {
 	}
 }
 
+// we manually inline this for single operations for performance without -prod
 [inline] [unsafe_fn]
 fn (a array) get_unsafe(i int) voidptr {
 	unsafe {
@@ -227,7 +228,9 @@ fn (a array) get(i int) voidptr {
 			panic('array.get: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	return a.get_unsafe(i)
+	unsafe {
+		return byteptr(a.data) + i * a.element_size
+	}
 }
 
 // array.first returns the first element of the array
@@ -247,7 +250,9 @@ pub fn (a array) last() voidptr {
 			panic('array.last: array is empty')
 		}
 	}
-	return a.get_unsafe(a.len - 1)
+	unsafe {
+		return byteptr(a.data) + (a.len - 1) * a.element_size
+	}
 }
 
 // array.slice returns an array using the same buffer as original array
@@ -267,10 +272,14 @@ fn (a array) slice(start, _end int) array {
 			panic('array.slice: slice bounds out of range ($start < 0)')
 		}
 	}
+	mut data := byteptr(0)
+	unsafe {
+		data = byteptr(a.data) + start * a.element_size
+	}
 	l := end - start
 	res := array{
 		element_size: a.element_size
-		data: a.get_unsafe(start)
+		data: data
 		len: l
 		cap: l
 	}
@@ -328,16 +337,21 @@ fn (a &array) slice_clone(start, _end int) array {
 			panic('array.slice: slice bounds out of range ($start < 0)')
 		}
 	}
+	mut data := byteptr(0)
+	unsafe {
+		data = byteptr(a.data) + start * a.element_size
+	}
 	l := end - start
 	res := array{
 		element_size: a.element_size
-		data: a.get_unsafe(start)
+		data: data
 		len: l
 		cap: l
 	}
 	return res.clone()
 }
 
+// we manually inline this for single operations for performance without -prod
 [inline] [unsafe_fn]
 fn (mut a array) set_unsafe(i int, val voidptr) {
 	unsafe {
@@ -352,12 +366,16 @@ fn (mut a array) set(i int, val voidptr) {
 			panic('array.set: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	a.set_unsafe(i, val)
+	unsafe {
+		C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size)
+	}
 }
 
 fn (mut a array) push(val voidptr) {
 	a.ensure_cap(a.len + 1)
-	a.set_unsafe(a.len, val)
+	unsafe {
+		C.memcpy(byteptr(a.data) + a.element_size * a.len, val, a.element_size)
+	}
 	a.len++
 }
 
