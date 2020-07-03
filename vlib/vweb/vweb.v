@@ -26,10 +26,12 @@ pub const (
 		'.html': 'text/html; charset=utf-8',
 		'.jpg': 'image/jpeg',
 		'.js': 'application/javascript',
-		'.wasm': 'application/wasm',
+		'.md': 'text/markdown; charset=utf-8',
 		'.pdf': 'application/pdf',
 		'.png': 'image/png',
 		'.svg': 'image/svg+xml',
+		'.txt': 'text/plain; charset=utf-8',
+		'.wasm': 'application/wasm',
 		'.xml': 'text/xml; charset=utf-8'
 	}
 	max_http_post_size = 1024 * 1024
