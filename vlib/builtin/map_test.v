@@ -314,7 +314,7 @@ fn test_map_in_mut() {
 	assert m['one'] == 2
 }
 
-fn map_value_relation_op_mut(mut m map[string]int) {
+fn mut_map_with_relation_op_in_fn(mut m map[string]int) {
 	if m['one'] == 1 {
 		m['three'] = 3
 	}
@@ -335,9 +335,9 @@ fn map_value_relation_op_mut(mut m map[string]int) {
 	}
 }
 
-fn test_map_value_relation_op_mut() {
+fn test_mut_map_with_relation_op_in_fn() {
 	mut m := {'one':1, 'two':2}
-	map_value_relation_op_mut(mut m)
+	mut_map_with_relation_op_in_fn(mut m)
 	assert 'three' in m
 	assert 'four' in m
 	assert 'five' in m
