@@ -422,6 +422,8 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.Comment {
 			// Skip: don't generate comments
 		}
+		ast.CompFor {
+			}
 		ast.CompIf {
 			// skip: JS has no compile time if
 		}

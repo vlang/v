@@ -15,10 +15,10 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | C
 	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
 	StringLiteral | StructInit | Type | TypeOf
 
-pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf |
-	ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
-	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
-	Return | SqlStmt | StructDecl | TypeDecl | UnsafeStmt
+pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompFor |
+	CompIf | ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt |
+	ForStmt | GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl |
+	Module | Return | SqlStmt | StructDecl | TypeDecl | UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -473,11 +473,11 @@ pub mut:
 
 pub struct MatchBranch {
 pub:
-	exprs   []Expr // left side
-	stmts   []Stmt // right side
-	pos     token.Position
-	comment Comment // comment above `xxx {`
-	is_else bool
+	exprs         []Expr // left side
+	stmts         []Stmt // right side
+	pos           token.Position
+	comment       Comment // comment above `xxx {`
+	is_else       bool
 	post_comments []Comment
 }
 
@@ -500,6 +500,15 @@ pub mut:
 	is_opt     bool
 	has_else   bool
 	else_stmts []Stmt
+}
+
+pub struct CompFor {
+pub:
+	val_var string
+	stmts   []Stmt
+pub mut:
+	// expr    Expr
+	typ     table.Type
 }
 
 pub struct ForStmt {
@@ -610,12 +619,12 @@ pub:
 
 pub struct EnumDecl {
 pub:
-	name    string
-	is_pub  bool
-	is_flag bool // true when the enum has [flag] tag
+	name     string
+	is_pub   bool
+	is_flag  bool // true when the enum has [flag] tag
 	comments []Comment // enum Abc { /* comments */ ... }
-	fields  []EnumField
-	pos     token.Position
+	fields   []EnumField
+	pos      token.Position
 }
 
 pub struct AliasTypeDecl {
@@ -815,6 +824,7 @@ pub:
 	left        Expr
 	is_vweb     bool
 	vweb_tmpl   File
+	args_var    string
 pub mut:
 	sym         table.TypeSymbol
 }
@@ -892,7 +902,7 @@ pub fn (expr Expr) position() token.Position {
 		AsCast {
 			return expr.pos
 		}
-		// ast.Ident { }
+			// ast.Ident { }
 		CastExpr {
 			return expr.pos
 		}
@@ -920,7 +930,7 @@ pub fn (expr Expr) position() token.Position {
 		IfExpr {
 			return expr.pos
 		}
-		// ast.IfGuardExpr { }
+			// ast.IfGuardExpr { }
 		IndexExpr {
 			return expr.pos
 		}
@@ -951,12 +961,11 @@ pub fn (expr Expr) position() token.Position {
 		PostfixExpr {
 			return expr.pos
 		}
-		// ast.None { }
+			// ast.None { }
 		PrefixExpr {
-
 			return expr.pos
 		}
-		// ast.ParExpr { }
+			// ast.ParExpr { }
 		SelectorExpr {
 			return expr.pos
 		}
@@ -969,14 +978,14 @@ pub fn (expr Expr) position() token.Position {
 		StringInterLiteral {
 			return expr.pos
 		}
-		// ast.Type { }
+			// ast.Type { }
 		StructInit {
 			return expr.pos
 		}
 		Likely {
 			return expr.pos
 		}
-		// ast.TypeOf { }
+			// ast.TypeOf { }
 		else {
 			return token.Position{}
 		}
@@ -987,29 +996,29 @@ pub fn (stmt Stmt) position() token.Position {
 	match stmt {
 		AssertStmt { return stmt.pos }
 		AssignStmt { return stmt.pos }
-		/*
-		// Attr {
+			/*
+			// Attr {
 		// }
 		// Block {
 		// }
 		// BranchStmt {
 		// }
-		*/
+			*/
 		Comment { return stmt.pos }
 		CompIf { return stmt.pos }
 		ConstDecl { return stmt.pos }
-		/*
-		// DeferStmt {
+			/*
+			// DeferStmt {
 		// }
-		*/
+			*/
 		EnumDecl { return stmt.pos }
 		ExprStmt { return stmt.pos }
 		FnDecl { return stmt.pos }
 		ForCStmt { return stmt.pos }
 		ForInStmt { return stmt.pos }
 		ForStmt { return stmt.pos }
-		/*
-		// GlobalDecl {
+			/*
+			// GlobalDecl {
 		// }
 		// GoStmt {
 		// }
@@ -1019,23 +1028,23 @@ pub fn (stmt Stmt) position() token.Position {
 		// }
 		// HashStmt {
 		// }
-		*/
+			*/
 		Import { return stmt.pos }
-		/*
-		// InterfaceDecl {
+			/*
+			// InterfaceDecl {
 		// }
 		// Module {
 		// }
-		*/
+			*/
 		Return { return stmt.pos }
 		StructDecl { return stmt.pos }
-		/*
-		// TypeDecl {
+			/*
+			// TypeDecl {
 		// }
 		// UnsafeStmt {
 		// }
-		*/
-		//
+			*/
+			//
 		else { return token.Position{} }
 	}
 }

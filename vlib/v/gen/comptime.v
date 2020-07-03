@@ -27,9 +27,38 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 	g.writeln('// $' + 'method call. sym="$node.sym.name"')
 	mut j := 0
 	result_type := g.table.find_type_idx('vweb.Result') // TODO not just vweb
+	if node.method_name == 'method' {
+		// `app.$method()`
+		m := node.sym.find_method(g.comp_for_method) or {
+			return
+		}
+		/*
+		vals := m.attrs[0].split('/')
+		args := vals.filter(it.starts_with(':')).map(it[1..])
+		println(vals)
+		for val in vals {
+		}
+		*/
+		g.write('${util.no_dots(node.sym.name)}_${g.comp_for_method}(')
+		g.expr(node.left)
+		if m.args.len > 1 {
+			g.write(', ')
+		}
+		for i in 0 .. m.args.len - 1 {
+			g.write('((string*)${node.args_var}.data) [$i] ')
+			if i < m.args.len - 2 {
+				g.write(', ')
+			}
+		}
+		g.write(' ); // vweb action call with args')
+		return
+	}
 	for method in node.sym.methods {
 		// if method.return_type != table.void_type {
 		if method.return_type != result_type {
+			continue
+		}
+		if method.args.len != 1 {
 			continue
 		}
 		// receiver := method.args[0]
@@ -68,4 +97,30 @@ fn (mut g Gen) comp_if(it ast.CompIf) {
 		g.defer_ifdef = ''
 	}
 	g.writeln('\n#endif\n// } $it.val\n')
+}
+
+fn (mut g Gen) comp_for(node ast.CompFor) {
+	g.writeln('// comptime $' + 'for {')
+	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
+	mut i := 0
+	// g.writeln('string method = tos_lit("");')
+	for method in sym.methods {
+		if method.attrs.len == 0 {
+			continue
+		}
+		g.comp_for_method = method.name
+		g.writeln('\t// method $i')
+		if i == 0 {
+			g.write('\tstring ')
+		}
+		g.writeln('method = tos_lit("$method.name");')
+		if i == 0 {
+			g.write('\tstring ')
+		}
+		g.writeln('attrs = tos_lit("${method.attrs[0]}");')
+		g.stmts(node.stmts)
+		i++
+		g.writeln('')
+	}
+	g.writeln('// } comptime for')
 }
