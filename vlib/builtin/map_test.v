@@ -313,3 +313,35 @@ fn test_map_in_mut() {
 	map_in_mut(mut m)
 	assert m['one'] == 2
 }
+
+fn map_value_relation_op_mut(mut m map[string]int) {
+	if m['one'] == 1 {
+		m['three'] = 3
+	}
+	if m['two'] != 1 {
+		m['four'] = 4	
+	}
+	if m['one'] > 0 {
+		m['five'] = 5	
+	}
+	if m['one'] < 2 {
+		m['six'] = 6	
+	}
+	if m['two'] >= 2 {
+		m['seven'] = 7	
+	}
+	if m['two'] <= 2 {
+		m['eight'] = 8	
+	}
+}
+
+fn test_map_value_relation_op_mut() {
+	mut m := {'one':1, 'two':2}
+	map_value_relation_op_mut(mut m)
+	assert 'three' in m
+	assert 'four' in m
+	assert 'five' in m
+	assert 'six' in m
+	assert 'seven' in m
+	assert 'eight' in m
+}
