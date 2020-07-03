@@ -7,10 +7,14 @@ pub fn (mut g Gen) gen_c_main() {
 	if g.pref.is_liveshared {
 		return
 	}
-	g.out.writeln('')
+	g.out.writeln('')    
+	main_fn_start_pos := g.out.len
 	g.gen_c_main_header()
 	g.writeln('\tmain__main();')
-	g.gen_c_main_footer()
+	g.gen_c_main_footer()    
+	if g.pref.printfn_list.len > 0 && 'main' in g.pref.printfn_list {
+		println(g.out.after(main_fn_start_pos))
+	}                
 }
 
 fn (mut g Gen) gen_c_main_header() {

@@ -23,10 +23,6 @@ const (
 )
 
 fn main() {
-	main_v()
-}
-
-fn main_v() {
 	args := os.args[1..]
 	// args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
