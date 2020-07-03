@@ -257,7 +257,9 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 	} else if payload_len > 125 && payload_len <= 0xffff {
 		len16 := C.htons(payload_len)
 		header[1] = (126 | 0x80)
-		C.memcpy(header.data + 2, &len16, 2)
+		unsafe {
+			C.memcpy(header.data + 2, &len16, 2)
+		}
 		header[4] = masking_key[0]
 		header[5] = masking_key[1]
 		header[6] = masking_key[2]
@@ -265,7 +267,9 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 	} else if payload_len > 0xffff && payload_len <= 0xffffffffffffffff { // 65535 && 18446744073709551615
 		len64 := htonl64(u64(payload_len))
 		header[1] = (127 | 0x80)
-		C.memcpy(header.data + 2, len64, 8)
+		unsafe {
+			C.memcpy(header.data + 2, len64, 8)
+		}
 		header[10] = masking_key[0]
 		header[11] = masking_key[1]
 		header[12] = masking_key[2]
@@ -276,8 +280,11 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 		goto free_data
 		return -1
 	}
-	C.memcpy(fbdata, header.data, header_len)
-	C.memcpy(fbdata + header_len, payload, payload_len)
+	unsafe 
+	{
+		C.memcpy(fbdata, header.data, header_len)
+		C.memcpy(fbdata + header_len, payload, payload_len)
+	}
 	for i in 0 .. payload_len {
 		frame_buf[header_len + i] ^= masking_key[i % 4] & 0xff
 	}
@@ -320,7 +327,10 @@ pub fn (mut ws Client) read() int {
 	mut frame := Frame{}
 	mut frame_size := u64(header_len)
 	for bytes_read < frame_size && ws.state == .open {
-		byt := ws.read_from_server(data + int(bytes_read), 1)
+		mut byt := 0
+		unsafe {
+			byt = ws.read_from_server(data + int(bytes_read), 1)
+		}
 		match byt {
 			0 {
 				error := 'server closed the connection.'
@@ -442,7 +452,9 @@ pub fn (mut ws Client) read() int {
 				}
 				mut by := 0
 				for f in frags {
-					C.memcpy(pl + by, f.data, f.len)
+					unsafe {
+						C.memcpy(pl + by, f.data, f.len)
+					}
 					by += int(f.len)
 					unsafe {
 						free(f.data)

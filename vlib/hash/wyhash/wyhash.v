@@ -51,23 +51,25 @@ fn wyhash64(key byteptr, len, seed_ u64) u64 {
 	mut p := &key[0]
 	mut seed := seed_
 	mut i := len & 63
-	if i < 4 {
-		seed = wymum(wyr3(p, i) ^ seed ^ wyp0, seed ^ wyp1)
-	}
-	else if i <= 8 {
-		seed = wymum(wyr4(p) ^ seed ^ wyp0, wyr4(p + i - 4) ^ seed ^ wyp1)
-	}
-	else if i <= 16 {
-		seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + i - 8) ^ seed ^ wyp1)
-	}
-	else if i <= 24 {
-		seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + i - 8) ^ seed ^ wyp2, seed ^ wyp3)
-	}
-	else if i <= 32 {
-		seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + 16) ^ seed ^ wyp2, wyr8(p + i - 8) ^ seed ^ wyp3)
-	}
-	else {
-		seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + 16) ^ seed ^ wyp2, wyr8(p + 24) ^ seed ^ wyp3) ^ wymum(wyr8(p + i - 32) ^ seed ^ wyp1, wyr8(p + i - 24) ^ seed ^ wyp2) ^ wymum(wyr8(p + i - 16) ^ seed ^ wyp3, wyr8(p + i - 8) ^ seed ^ wyp0)
+	unsafe {
+		if i < 4 {
+			seed = wymum(wyr3(p, i) ^ seed ^ wyp0, seed ^ wyp1)
+		}
+		else if i <= 8 {
+			seed = wymum(wyr4(p) ^ seed ^ wyp0, wyr4(p + i - 4) ^ seed ^ wyp1)
+		}
+		else if i <= 16 {
+			seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + i - 8) ^ seed ^ wyp1)
+		}
+		else if i <= 24 {
+			seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + i - 8) ^ seed ^ wyp2, seed ^ wyp3)
+		}
+		else if i <= 32 {
+			seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + 16) ^ seed ^ wyp2, wyr8(p + i - 8) ^ seed ^ wyp3)
+		}
+		else {
+			seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + 16) ^ seed ^ wyp2, wyr8(p + 24) ^ seed ^ wyp3) ^ wymum(wyr8(p + i - 32) ^ seed ^ wyp1, wyr8(p + i - 24) ^ seed ^ wyp2) ^ wymum(wyr8(p + i - 16) ^ seed ^ wyp3, wyr8(p + i - 8) ^ seed ^ wyp0)
+		}
 	}
 	if i == len {
 		return wymum(seed, len ^ wyp4)
@@ -75,13 +77,15 @@ fn wyhash64(key byteptr, len, seed_ u64) u64 {
 	mut see1 := seed
 	mut see2 := seed
 	mut see3 := seed
-	p = p + i
-	for i = len - i; i >= 64; i -= 64 {
-		seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1)
-		see1 = wymum(wyr8(p + 16) ^ see1 ^ wyp2, wyr8(p + 24) ^ see1 ^ wyp3)
-		see2 = wymum(wyr8(p + 32) ^ see2 ^ wyp1, wyr8(p + 40) ^ see2 ^ wyp2)
-		see3 = wymum(wyr8(p + 48) ^ see3 ^ wyp3, wyr8(p + 56) ^ see3 ^ wyp0)
-		p = p + 64
+	unsafe {
+		p = p + i
+		for i = len - i; i >= 64; i -= 64 {
+			seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1)
+			see1 = wymum(wyr8(p + 16) ^ see1 ^ wyp2, wyr8(p + 24) ^ see1 ^ wyp3)
+			see2 = wymum(wyr8(p + 32) ^ see2 ^ wyp1, wyr8(p + 40) ^ see2 ^ wyp2)
+			see3 = wymum(wyr8(p + 48) ^ see3 ^ wyp3, wyr8(p + 56) ^ see3 ^ wyp0)
+			p = p + 64
+		}
 	}
 	return wymum(seed ^ see1 ^ see2, see3 ^ len ^ wyp4)
 }
