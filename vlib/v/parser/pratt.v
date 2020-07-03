@@ -299,12 +299,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	// p.warn('unsafe')
 	// }
 	p.next()
-	mut right := ast.Expr{}
-	if op == .minus {
-		right = p.expr(token.Precedence.call)
-	} else {
-		right = p.expr(token.Precedence.prefix)
-	}
+	right := if op == .minus { p.expr(token.Precedence.call) } else { p.expr(token.Precedence.prefix) }
 	p.is_amp = false
 	return ast.PrefixExpr{
 		op: op
