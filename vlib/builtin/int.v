@@ -93,7 +93,9 @@ pub fn (nn int) str_l(max int) string {
 		buf[index] = `-`
 	}
 
-	C.memmove(buf,buf+index, (max-index)+1 )
+	unsafe {
+		C.memmove(buf,buf+index, (max-index)+1 )
+	}
 	return tos(buf, (max-index))
 	//return tos(buf + index, (max-index))
 }
@@ -139,7 +141,9 @@ pub fn (nn u32) str() string {
 		index++
 	}
 
-	C.memmove(buf,buf+index, (max-index)+1 )
+	unsafe {
+		C.memmove(buf,buf+index, (max-index)+1 )
+	}
 	return tos(buf, (max-index))
 	//return tos(buf + index, (max-index))
 }
@@ -186,7 +190,9 @@ pub fn (nn i64) str() string {
 		buf[index] = `-`
 	}
 
-	C.memmove(buf,buf+index, (max-index)+1 )
+	unsafe {
+		C.memmove(buf,buf+index, (max-index)+1 )
+	}
 	return tos(buf, (max-index))
 	//return tos(buf + index, (max-index))
 }
@@ -216,7 +222,9 @@ pub fn (nn u64) str() string {
 		index++
 	}
 
-	C.memmove(buf,buf+index, (max-index)+1 )
+	unsafe {
+		C.memmove(buf,buf+index, (max-index)+1 )
+	}
 	return tos(buf, (max-index))
 	//return tos(buf + index, (max-index))
 }
@@ -260,7 +268,9 @@ pub fn (nn byte) hex() string {
 	//buf[index]   = `0`
 	index++
 
-	return tos(buf + index, (max - index))
+	unsafe {
+		return tos(buf + index, (max - index))
+	}
 }
 
 pub fn (nn i8) hex() string {
@@ -287,7 +297,9 @@ pub fn (nn u16) hex() string {
 	//buf[index]   = `0`
 	index++
 
-	return tos(buf + index, (max - index))
+	unsafe {
+		return tos(buf + index, (max - index))
+	}
 }
 
 pub fn (nn i16) hex() string {
@@ -314,7 +326,9 @@ pub fn (nn u32) hex() string {
 	//buf[index]   = `0`
 	index++
 
-	return tos(buf + index, (max - index))
+	unsafe {
+		return tos(buf + index, (max - index))
+	}
 }
 
 pub fn (nn int) hex() string {
@@ -345,7 +359,9 @@ pub fn (nn u64) hex() string {
 	//buf[index]   = `0`
 	index++
 
-	C.memmove(buf,buf+index, (max-index)+1 )
+	unsafe {
+		C.memmove(buf,buf+index, (max-index)+1 )
+	}
 	return tos(buf, (max-index))
 	//return tos(buf + index, (max-index))
 }
