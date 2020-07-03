@@ -290,6 +290,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.Comment {
 			f.comment(it)
 		}
+		ast.CompFor {}
 		ast.CompIf {
 			inversion := if it.is_not { '!' } else { '' }
 			is_opt := if it.is_opt { ' ?' } else { '' }

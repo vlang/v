@@ -94,6 +94,7 @@ mut:
 	inside_call          bool
 	has_main             bool
 	inside_const         bool
+	comp_for_method      string // $for method in T {
 }
 
 const (
@@ -625,6 +626,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// }
 		}
 		ast.Comment {}
+		ast.CompFor {
+			g.comp_for(node)
+		}
 		ast.CompIf {
 			g.comp_if(node)
 		}
@@ -1160,7 +1164,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				is_call = true
 				return_type = val.return_type
 			}
-			// TODO: no buffer fiddling
+				// TODO: no buffer fiddling
 			ast.AnonFn {
 				if blank_assign {
 					g.write('{')
@@ -3044,7 +3048,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 					field_deps << dep
 				}
 			}
-			// table.Interface {}
+				// table.Interface {}
 			else {}
 		}
 		// add type and dependant types to graph
@@ -3504,11 +3508,11 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		'linux_or_macos' {
 			return ''
 		}
-		//
+			//
 		'js' {
 			return '_VJS'
 		}
-		// compilers:
+			// compilers:
 		'tinyc' {
 			return '__TINYC__'
 		}
@@ -3524,7 +3528,7 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		'cplusplus' {
 			return '__cplusplus'
 		}
-		// other:
+			// other:
 		'debug' {
 			return '_VDEBUG'
 		}

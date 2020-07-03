@@ -116,12 +116,15 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		println('>>> end of vweb template END')
 		println('\n\n')
 	}
-	file = {file| path:html_name}
+	file = {
+		file |
+		path: html_name
+	}
 	// copy vars from current fn scope into vweb_tmpl scope
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
 			fn_decl := stmt as ast.FnDecl
-			if fn_decl.name == 'main.vweb_tmpl_${p.cur_fn_name}' {
+			if fn_decl.name == 'main.vweb_tmpl_$p.cur_fn_name' {
 				tmpl_scope := file.scope.innermost(fn_decl.body_pos.pos)
 				for _, obj in p.scope.objects {
 					if obj is ast.Var {
@@ -143,6 +146,32 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	}
 }
 
+fn (mut p Parser) comp_for() ast.CompFor {
+	println('COMP FOR')
+	p.next()
+	p.check(.key_for)
+	val_var := p.check_name()
+	p.scope.register(val_var, ast.Var{
+		name: val_var
+		typ: table.string_type
+	})
+	p.scope.register('attrs', ast.Var{
+		name: 'attrs'
+		typ: table.string_type
+	})
+	p.check(.key_in)
+	// expr := p.expr(0)
+	typ := p.parse_type()
+	// p.check(.dot)
+	// p.check_name()
+	stmts := p.parse_block()
+	return ast.CompFor{
+		val_var: val_var
+		stmts: stmts
+		typ: typ
+	}
+}
+
 fn (mut p Parser) comp_if() ast.Stmt {
 	pos := p.tok.position()
 	p.next()
@@ -159,15 +188,13 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	mut skip := false
 	if val in supported_platforms {
 		os := os_from_string(val)
-		if (!is_not && os != p.pref.os) ||
-			(is_not && os == p.pref.os) {
+		if (!is_not && os != p.pref.os) || (is_not && os == p.pref.os) {
 			skip = true
 		}
 	} else if val in supported_ccompilers {
 		cc := cc_from_string(val)
 		user_cc := cc_from_string(p.pref.ccompiler)
-		if (!is_not && cc != user_cc) ||
-			(is_not && cc == user_cc) {
+		if (!is_not && cc != user_cc) || (is_not && cc == user_cc) {
 			skip = true
 		}
 	}
@@ -215,8 +242,7 @@ fn (mut p Parser) comp_if() ast.Stmt {
 		val: val
 		stmts: stmts
 	}
-	if p.tok.kind == .dollar &&
-		p.peek_tok.kind == .key_else {
+	if p.tok.kind == .dollar && p.peek_tok.kind == .key_else {
 		p.next()
 		p.next()
 		node.has_else = true
@@ -339,6 +365,11 @@ fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 	}
 	*/
 	p.check(.lpar)
+	mut args_var := ''
+	if p.tok.kind == .name {
+		args_var = p.tok.lit
+		p.next()
+	}
 	p.check(.rpar)
 	if p.tok.kind == .key_orelse {
 		p.check(.key_orelse)
@@ -349,5 +380,6 @@ fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 	return ast.ComptimeCall{
 		left: left
 		method_name: method_name
+		args_var: args_var
 	}
 }

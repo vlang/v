@@ -240,6 +240,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_deprecated: is_deprecated
 			ctdefine: ctdefine
 			mod: p.mod
+			attrs: p.attrs
 		})
 	} else {
 		if language == .c {

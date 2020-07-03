@@ -30,6 +30,7 @@ pub:
 	is_deprecated bool
 	mod           string
 	ctdefine      string // compile time define. myflag, when [if myflag] tag
+	attrs []string
 pub mut:
 	name        string
 }
@@ -225,7 +226,9 @@ pub fn (mut t Table) register_builtin_type_symbol(typ TypeSymbol) int {
 					typ |
 					kind: existing_type.kind
 				}
-			} else {
+			}
+			//
+			else {
 				t.types[existing_idx] = typ
 			}
 		}
