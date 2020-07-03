@@ -1,6 +1,0 @@
-vlib/v/parser/tests/division_by_zero_0x0_var_err.v:3:12: error: division by zero
-    1 | fn main() {
-    2 |     a := 0x0
-    3 |     println(1/a)
-      |               ^
-    4 | }

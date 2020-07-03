@@ -239,54 +239,12 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.expecting_type = true
 	}
 	right = p.expr(precedence)
-
-	if op in [.div, .mod] {
-		oper := if op == .div { 'division' } else { 'modulo' }
-		match right {
-			ast.FloatLiteral {
-				if it.val.f64() == 0.0 {
-					p.error_with_pos('$oper by zero', right.pos)
-				}
-			}
-			ast.Ident {
-				if p.is_var_zero(right.name) {
-					p.error_with_pos('$oper by zero', right.pos)
-				}
-			}
-			ast.IntegerLiteral {
-				if it.val.int() == 0 {
-					p.error_with_pos('$oper by zero', right.pos)
-				}
-			}
-			else {}
-		}
-	}
 	return ast.InfixExpr{
 		left: left
 		right: right
 		op: op
 		pos: pos
 	}
-}
-
-fn (mut p Parser) is_var_zero(name string) bool {
-	var := p.scope.find_var(name) or {
-		return false
-	}
-	match var.expr {
-		ast.FloatLiteral {
-			if it.val.f64() == 0.0 {
-				return true
-			}
-		}
-		ast.IntegerLiteral {
-			if it.val.int() == 0 {
-				return true
-			}
-		}
-		else {}
-	}
-	return false
 }
 
 fn (mut p Parser) prefix_expr() ast.PrefixExpr {
