@@ -6,13 +6,16 @@ mut:
 	a int
 }
 
-fn z(shared x St, shared y St) {
+fn f(shared x St, shared y St, shared z St) {
 	for _ in 0..10001 {
 		lock x, y {
 			tmp := y.a
 			y.a = x.a
 			x.a = tmp
 		}
+	}
+	lock z {
+		z.a--
 	}
 }
 
@@ -23,7 +26,10 @@ fn test_shared_lock() {
 	shared y := &St{
 		a: 7
 	}
-	go z(shared x, shared y)
+	shared z := &St{
+		a: 1
+	}
+	go f(shared x, shared y, shared z)
 	for _ in 0..10000 {
 		lock x, y {
 			tmp := x.a
@@ -31,7 +37,16 @@ fn test_shared_lock() {
 			y.a = tmp
 		}
 	}
-	time.sleep_ms(600)
+	// the following would be a good application for a channel
+	for finished := false; ; {
+		lock z {
+			finished = z.a == 0
+		}
+		if finished {
+			break
+		}
+		time.sleep_ms(100)
+	}
 	lock x, y {
 		assert x.a == 7 && y.a == 5
 	}
