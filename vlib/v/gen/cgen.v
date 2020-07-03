@@ -2025,7 +2025,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					// TODO too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
-					g.writeln('else {')
+					g.writeln(' else {')
 				}
 			}
 		} else {
@@ -2033,7 +2033,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 				if is_expr {
 					g.write(' : ')
 				} else {
-					g.write('else ')
+					g.write(' else ')
 				}
 			}
 			if is_expr {
