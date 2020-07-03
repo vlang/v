@@ -31,7 +31,7 @@ fn test_shared_lock() {
 			y.a = tmp
 		}
 	}
-	time.sleep_ms(300)
+	time.sleep_ms(600)
 	lock x, y {
 		assert x.a == 7 && y.a == 5
 	}
