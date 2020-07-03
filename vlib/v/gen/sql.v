@@ -145,10 +145,12 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	}
 	if node.has_limit {
 		g.write(' LIMIT ')
+		g.sql_side = .right
 		g.expr_to_sql(node.limit_expr)
 	}
 	if node.has_offset {
 		g.write(' OFFSET ')
+		g.sql_side = .right
 		g.expr_to_sql(node.offset_expr)
 	}
 	g.writeln('"));')
