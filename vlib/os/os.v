@@ -39,7 +39,7 @@ pub fn (mut f File) write(s string) {
 		}
 	}
 	*/
-	C.fputs(s.str, f.cfile)
+	C.fwrite(s.str, s.len, 1, f.cfile)
 }
 
 pub fn (mut f File) writeln(s string) {
