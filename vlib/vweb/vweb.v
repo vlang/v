@@ -26,10 +26,12 @@ pub const (
 		'.html': 'text/html; charset=utf-8',
 		'.jpg': 'image/jpeg',
 		'.js': 'application/javascript',
-		'.wasm': 'application/wasm',
+		'.md': 'text/markdown; charset=utf-8',
 		'.pdf': 'application/pdf',
 		'.png': 'image/png',
 		'.svg': 'image/svg+xml',
+		'.txt': 'text/plain; charset=utf-8',
+		'.wasm': 'application/wasm',
 		'.xml': 'text/xml; charset=utf-8'
 	}
 	max_http_post_size = 1024 * 1024
@@ -335,16 +337,18 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 					break
 				}
 			}
-		}
-		if ok {
-			action = method
-			app.$method(vars)
-			conn.close() or {}
-			return
+			if ok {
+				action = method
+				println('OK !! $action="$action"')
+				app.$method(vars)
+				conn.close() or {}
+				return
+			}
 		}
 	}
 	// No route matched, just do a simple `/home` => `action=home`
 	if action == '' {
+		//println('action is empty because no routes were matched...')
 		action = vals[1][1..].all_before('/')
 		if action.contains('?') {
 			action = action.all_before('?')
@@ -353,9 +357,9 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			action = 'index'
 		}
 	}
-	$if debug {
+	//$if debug {
 		println('action=$action')
-	}
+	//}
 
 	app.$action()
 	/*

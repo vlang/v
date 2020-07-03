@@ -148,7 +148,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		if g.file.path.ends_with('_test.v') {
 			g.is_test = is_test
 		}
-		if g.file.path == '' || is_test || !g.pref.autofree {
+		if g.file.path == '' || !g.pref.autofree {
 			// cgen test or building V
 			// println('autofree=false')
 			g.autofree = false
@@ -923,7 +923,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.write('for (int $i = 0; $i < ')
 		g.expr(it.cond)
 		g.writeln('.len; ++$i) {')
-		g.write('$styp ${c_name(it.val_var)} = ')
+		g.write('\t$styp ${c_name(it.val_var)} = ')
 		g.expr(it.cond)
 		g.writeln('.args[$i];')
 		g.stmts(it.stmts)
@@ -934,7 +934,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.expr(it.cond)
 		g.writeln('.len; ++$i) {')
 		if it.val_var != '_' {
-			g.write('byte ${c_name(it.val_var)} = ')
+			g.write('\tbyte ${c_name(it.val_var)} = ')
 			g.expr(it.cond)
 			g.writeln('.str[$i];')
 		}
@@ -1960,6 +1960,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write('_IN_MAP(')
 			g.expr(node.left)
 			g.write(', ')
+			if node.right_type.is_ptr() {
+				g.write('*')
+			}
 			g.expr(node.right)
 			g.write(')')
 		} else if right_sym.kind == .string {
@@ -2435,14 +2438,17 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
-					g.write(', &($elem_type_str[]){ $zero }))\n')
+					g.write(', &($elem_type_str[]){ $zero }))')
 				} else {
 					zero := g.type_default(info.value_type)
 					g.write('(*($elem_type_str*)map_get(')
+					if node.left_type.is_ptr() {
+						g.write('*')
+					}
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
-					g.write(', &($elem_type_str[]){ $zero }))\n')
+					g.write(', &($elem_type_str[]){ $zero }))')
 				}
 			} else if sym.kind == .string && !node.left_type.is_ptr() {
 				g.write('string_at(')
@@ -3746,44 +3752,6 @@ fn (g Gen) type_default(typ table.Type) string {
 	else { '{0} '}
 }
 	*/
-}
-
-pub fn (mut g Gen) write_tests_main() {
-	g.includes.writeln('#include <setjmp.h> // write_tests_main')
-	g.definitions.writeln('int g_test_oks = 0;')
-	g.definitions.writeln('int g_test_fails = 0;')
-	g.definitions.writeln('jmp_buf g_jump_buffer;')
-	$if windows {
-		g.writeln('int wmain() {')
-	} $else {
-		g.writeln('int main() {')
-	}
-	g.writeln('\t_vinit();')
-	g.writeln('')
-	all_tfuncs := g.get_all_test_function_names()
-	if g.pref.is_stats {
-		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, tos_lit("$g.pref.path"));')
-	}
-	for t in all_tfuncs {
-		g.writeln('')
-		if g.pref.is_stats {
-			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, tos_lit("$t"));')
-		}
-		g.writeln('\tif (!setjmp(g_jump_buffer)) ${t}();')
-		if g.pref.is_stats {
-			g.writeln('\tmain__BenchedTests_testing_step_end(&bt);')
-		}
-	}
-	g.writeln('')
-	if g.pref.is_stats {
-		g.writeln('\tmain__BenchedTests_end_testing(&bt);')
-	}
-	g.writeln('')
-	if g.autofree {
-		g.writeln('\t_vcleanup();')
-	}
-	g.writeln('\treturn g_test_fails > 0;')
-	g.writeln('}')
 }
 
 fn (g Gen) get_all_test_function_names() []string {

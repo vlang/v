@@ -147,7 +147,6 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 }
 
 fn (mut p Parser) comp_for() ast.CompFor {
-	println('COMP FOR')
 	p.next()
 	p.check(.key_for)
 	val_var := p.check_name()

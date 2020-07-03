@@ -16,7 +16,8 @@ mut:
 	in_func        bool     // are we inside a new custom user function
 	line           string   // the current line entered by the user
 	//
-	imports        []string // all the import statements
+	modules        []string // all the import modules
+	includes       []string // all the #include statements
 	functions      []string // all the user function declarations
 	functions_name []string // all the user function names
 	lines          []string // all the other lines/statements
@@ -62,7 +63,10 @@ fn (r &Repl) function_call(line string) bool {
 
 fn (r &Repl) current_source_code(should_add_temp_lines bool) string {
 	mut all_lines := []string{}
-	all_lines << r.imports
+	for mod in r.modules {
+		all_lines << 'import $mod\n'
+	}
+	all_lines << r.includes
 	all_lines << r.functions
 	all_lines << r.lines
 	if should_add_temp_lines {
@@ -107,7 +111,9 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			os.rm(temp_file[..temp_file.len - 2])
 		}
 	}
-	mut r := Repl{}
+	mut r := Repl{
+		modules: ['os', 'time', 'math']
+	}
 	mut readline := readline.Readline{}
 	vexe := os.getenv('VEXE')
 	for {
@@ -217,7 +223,12 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				temp_flag = true
 			}
 			mut temp_source_code := ''
-			if temp_line.starts_with('import ') || temp_line.starts_with('#include ') {
+			if temp_line.starts_with('import ') {
+				mod := r.line.fields()[1]
+				if mod !in r.modules {
+					temp_source_code = '${temp_line}\n' + r.current_source_code(false)
+				}
+			} else if temp_line.starts_with('#include ') {
 				temp_source_code = '${temp_line}\n' + r.current_source_code(false)
 			} else {
 				for i, l in r.lines {
@@ -241,8 +252,13 @@ fn run_repl(workdir string, vrepl_prefix string) {
 					}
 					r.temp_lines.delete(0)
 				}
-				if r.line.starts_with('import ') || r.line.starts_with('#include ') {
-					r.imports << r.line
+				if r.line.starts_with('import ') {
+					mod := r.line.fields()[1]
+					if mod !in r.modules {
+						r.modules << mod
+					}
+				} else if r.line.starts_with('#include ') {
+					r.includes << r.line
 				} else {
 					r.lines << r.line
 				}

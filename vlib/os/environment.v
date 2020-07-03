@@ -58,11 +58,15 @@ pub fn environ() map[string]string {
 	$if windows {
 		mut estrings := C.GetEnvironmentStringsW()
 		mut eline := ''
-		for c := estrings; *c != 0; c = c + eline.len + 1 {
+		for c := estrings; *c != 0; {
 			eline = string_from_wide(c)
 			eq_index := eline.index_byte(`=`)
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
+			}
+			unsafe 
+			{
+				c = c + eline.len + 1
 			}
 		}
 		C.FreeEnvironmentStringsW(estrings)

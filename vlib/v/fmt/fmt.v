@@ -17,6 +17,11 @@ const (
 	max_len = [0, 35, 85, 93, 100]
 )
 
+enum CommentsLevel {
+	keep
+	indent
+}
+
 pub struct Fmt {
 pub:
 	table             &table.Table
@@ -316,14 +321,14 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 			name := it.name.after('.')
 			f.writeln('enum $name {')
-			f.comments(it.comments, false)
+			f.comments(it.comments, false, .indent)
 			for field in it.fields {
 				f.write('\t$field.name')
 				if field.has_expr {
 					f.write(' = ')
 					f.expr(field.expr)
 				}
-				f.comments(field.comments, true)
+				f.comments(field.comments, true, .indent)
 				f.writeln('')
 			}
 			f.writeln('}\n')
@@ -1104,14 +1109,18 @@ pub fn (mut f Fmt) comment(node ast.Comment) {
 	f.writeln('*/')
 }
 
-pub fn (mut f Fmt) comments(some_comments []ast.Comment, remove_last_new_line bool) {
+pub fn (mut f Fmt) comments(some_comments []ast.Comment, remove_last_new_line bool, level CommentsLevel) {
 	for c in some_comments {
 		if !f.out.last_n(1)[0].is_space() {
 			f.write('\t')
 		}
-		f.indent++
+		if level == .indent {
+			f.indent++
+		}
 		f.comment(c)
-		f.indent--
+		if level == .indent {
+			f.indent--
+		}
 	}
 	if remove_last_new_line {
 		f.remove_new_line()
@@ -1351,7 +1360,9 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				f.writeln('}')
 			}
 		}
-		f.comments(branch.post_comments, false)
+		if branch.post_comments.len > 0 {
+			f.comments(branch.post_comments, false, .keep)
+		}
 	}
 	f.indent--
 	f.write('}')

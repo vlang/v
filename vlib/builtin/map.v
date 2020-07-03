@@ -127,7 +127,9 @@ fn (mut d DenseArray) push(key string, value voidptr) u32 {
 	}
 	push_index := d.len
 	d.keys[push_index] = key
-	C.memcpy(d.values + push_index * u32(d.value_bytes), value, d.value_bytes)
+	unsafe {
+		C.memcpy(d.values + push_index * u32(d.value_bytes), value, d.value_bytes)
+	}
 	d.len++
 	return push_index
 }
@@ -138,7 +140,9 @@ fn (d DenseArray) get(i int) voidptr {
 			panic('DenseArray.get: index out of range (i == $i, d.len == $d.len)')
 		}
 	}
-	return byteptr(d.keys) + i * int(sizeof(string))
+	unsafe {
+		return byteptr(d.keys) + i * int(sizeof(string))
+	}
 }
 
 // Move all zeros to the end of the array and resize array
@@ -152,9 +156,11 @@ fn (mut d DenseArray) zeros_to_end() {
 			d.keys[count] = d.keys[i]
 			d.keys[i] = tmp_key
 			// swap values (TODO: optimize)
-			C.memcpy(tmp_value, d.values + count * u32(d.value_bytes), d.value_bytes)
-			C.memcpy(d.values + count * u32(d.value_bytes), d.values + i * d.value_bytes, d.value_bytes)
-			C.memcpy(d.values + i * d.value_bytes, tmp_value, d.value_bytes)
+			unsafe {
+				C.memcpy(tmp_value, d.values + count * u32(d.value_bytes), d.value_bytes)
+				C.memcpy(d.values + count * u32(d.value_bytes), d.values + i * d.value_bytes, d.value_bytes)
+				C.memcpy(d.values + i * d.value_bytes, tmp_value, d.value_bytes)
+			}
 			count++
 		}
 	}
@@ -206,7 +212,9 @@ fn new_map_1(value_bytes int) map {
 fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
 	mut out := new_map_1(value_bytes)
 	for i in 0 .. n {
-		out.set(keys[i], byteptr(values) + i * value_bytes)
+		unsafe {
+			out.set(keys[i], byteptr(values) + i * value_bytes)
+		}
 	}
 	return out
 }
@@ -258,8 +266,10 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 	if (probe_count << 1) == m.extra_metas {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.cap + 2 + m.extra_metas)
-		m.metas = &u32(C.realloc(m.metas, sizeof(u32) * mem_size))
-		C.memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
+		unsafe {
+			m.metas = &u32(C.realloc(m.metas, sizeof(u32) * mem_size))
+			C.memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
+		}
 		// Should almost never happen
 		if probe_count == 252 {
 			panic('Probe overflow')
@@ -282,7 +292,9 @@ fn (mut m map) set(k string, value voidptr) {
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if fast_string_eq(key, m.key_values.keys[kv_index]) {
-			C.memcpy(m.key_values.values + kv_index * u32(m.value_bytes), value, m.value_bytes)
+			unsafe {
+				C.memcpy(m.key_values.values + kv_index * u32(m.value_bytes), value, m.value_bytes)
+			}
 			return
 		}
 		index += 2
@@ -362,7 +374,9 @@ fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
 			if meta == m.metas[index] {
 				kv_index := m.metas[index + 1]
 				if fast_string_eq(key, m.key_values.keys[kv_index]) {
-					return voidptr(m.key_values.values + kv_index * u32(m.value_bytes))
+					unsafe {
+						return voidptr(m.key_values.values + kv_index * u32(m.value_bytes))
+					}
 				}
 			}
 			index += 2
@@ -383,7 +397,9 @@ fn (m map) get(key string, zero voidptr) voidptr {
 		if meta == m.metas[index] {
 			kv_index := m.metas[index + 1]
 			if fast_string_eq(key, m.key_values.keys[kv_index]) {
-				return voidptr(m.key_values.values + kv_index * u32(m.value_bytes))
+				unsafe {
+					return voidptr(m.key_values.values + kv_index * u32(m.value_bytes))
+				}
 			}
 		}
 		index += 2

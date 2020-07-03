@@ -39,10 +39,10 @@ fn opt_ok2(data voidptr, mut option &OptionBase, size int) {
 		*option = OptionBase {
 			ok: true
 		}
-	}
 
-	// use ecode to get the end of OptionBase and then memcpy into it
-	C.memcpy(byteptr(&option.ecode) + sizeof(int), data, size)
+		// use ecode to get the end of OptionBase and then memcpy into it
+		C.memcpy(byteptr(&option.ecode) + sizeof(int), data, size)
+	}
 }
 
 // Old option type used for bootstrapping

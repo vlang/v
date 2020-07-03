@@ -301,3 +301,47 @@ fn test_map_keys_to_array() {
 	println(sarr)
 	assert sarr == "['a', 'c']"
 }
+
+fn map_in_mut(mut m map[string]int) {
+	if 'one' in m {
+		m['one'] = 2
+	}
+}
+
+fn test_map_in_mut() {
+	mut m := {'one': 1}
+	map_in_mut(mut m)
+	assert m['one'] == 2
+}
+
+fn mut_map_with_relation_op_in_fn(mut m map[string]int) {
+	if m['one'] == 1 {
+		m['three'] = 3
+	}
+	if m['two'] != 1 {
+		m['four'] = 4	
+	}
+	if m['one'] > 0 {
+		m['five'] = 5	
+	}
+	if m['one'] < 2 {
+		m['six'] = 6	
+	}
+	if m['two'] >= 2 {
+		m['seven'] = 7	
+	}
+	if m['two'] <= 2 {
+		m['eight'] = 8	
+	}
+}
+
+fn test_mut_map_with_relation_op_in_fn() {
+	mut m := {'one':1, 'two':2}
+	mut_map_with_relation_op_in_fn(mut m)
+	assert 'three' in m
+	assert 'four' in m
+	assert 'five' in m
+	assert 'six' in m
+	assert 'seven' in m
+	assert 'eight' in m
+}
