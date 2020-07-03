@@ -434,7 +434,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			return p.comment()
 		}
 		else {
-			if p.pref.is_script && !p.pref.is_test {
+			if (p.pref.is_script || p.pref.is_fmt) && !p.pref.is_test {
 				mut stmts := []ast.Stmt{}
 				for p.tok.kind != .eof {
 					stmts << p.stmt(false)
