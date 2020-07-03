@@ -1,0 +1,6 @@
+vlib/v/parser/tests/division_by_zero_float_var_err.v:3:14: error: division by zero
+    1 | fn main() {
+    2 |     a := 0.0
+    3 |     println(1.0/a)
+      |                 ^
+    4 | }

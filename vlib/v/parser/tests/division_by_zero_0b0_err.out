@@ -1,0 +1,5 @@
+vlib/v/parser/tests/division_by_zero_0b0_err.v:2:12: error: division by zero
+    1 | fn main() {
+    2 |     println(1/0b0)
+      |               ~~~
+    3 | }
