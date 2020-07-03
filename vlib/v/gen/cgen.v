@@ -2044,7 +2044,33 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) lock_expr(node ast.LockExpr) {
-	// TODO: implement this
+	for id in node.lockeds {
+		name := id.name
+		deref := if id.is_mut { '->' } else { '.' }
+		// TODO: use 3 different locking functions
+		if node.is_rlock {
+			g.writeln('sync__Mutex_m_lock(${name}${deref}mtx);')
+		} else if id.var_info().typ.has_flag(.atomic_or_rw) {
+			g.writeln('sync__Mutex_m_lock(${name}${deref}mtx);')
+		} else {
+			g.writeln('sync__Mutex_m_lock(${name}${deref}mtx);')
+		}
+	}
+	g.stmts(node.stmts)
+	// unlock in reverse order
+	for i := node.lockeds.len-1; i >= 0; i-- {
+		id := node.lockeds[i]
+		name := id.name
+		deref := if id.is_mut { '->' } else { '.' }
+		// TODO: use 3 different unlocking functions
+		if node.is_rlock {
+			g.writeln('sync__Mutex_unlock(${name}${deref}mtx);')
+		} else if id.var_info().typ.has_flag(.atomic_or_rw) {
+			g.writeln('sync__Mutex_unlock(${name}${deref}mtx);')
+		} else {
+			g.writeln('sync__Mutex_unlock(${name}${deref}mtx);')
+		}
+	}
 }
 
 fn (mut g Gen) match_expr(node ast.MatchExpr) {

@@ -2522,7 +2522,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
-	// TODO: implement this
+	for id in node.lockeds {
+		c.ident(mut id)
+	}
+	c.stmts(node.stmts)
+	// void for now... maybe sometime `x := lock a { a.getval() }`
 	return table.void_type
 }
 

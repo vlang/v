@@ -444,11 +444,11 @@ pub:
 
 pub struct LockExpr {
 pub:
-	lockeds  []Expr // `x`, `y` in `lock x, y {`
 	stmts    []Stmt
 	is_rlock bool
 	pos      token.Position
 pub mut:
+	lockeds  []Ident // `x`, `y` in `lock x, y {`
 	is_expr  bool
 	is_rw    bool // `rwshared` needs special special handling even in `lock` case
 	typ      table.Type
