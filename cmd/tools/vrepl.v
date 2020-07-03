@@ -76,7 +76,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool) string {
 }
 
 fn repl_help() {
-	println(util.full_v_version(true))
+	println(util.full_v_version(false))
 	println('
   help                   Displays this information.
   list                   Show the program so far.
@@ -87,7 +87,7 @@ fn repl_help() {
 }
 
 fn run_repl(workdir string, vrepl_prefix string) {
-	println(util.full_v_version(true))
+	println(util.full_v_version(false))
 	println('Use Ctrl-C or `exit` to exit')
 
 	file := os.join_path(workdir, '.${vrepl_prefix}vrepl.v')
