@@ -106,12 +106,16 @@ fn close_conn(loop &C.picoev_loop, fd int) {
 
 [inline]
 fn myread(fd int, b byteptr, max_len, idx int) int {
-	return C.read(fd, b + idx, max_len - idx)
+	unsafe {
+		return C.read(fd, b + idx, max_len - idx)
+	}
 }
 
 [inline]
 fn mysubstr(s byteptr, from, len int) string {
-	return tos(s + from, len)
+	unsafe {
+		return tos(s + from, len)
+	}
 }
 
 fn rw_callback(loop &C.picoev_loop, fd, events int, cb_arg voidptr) {
@@ -123,7 +127,10 @@ fn rw_callback(loop &C.picoev_loop, fd, events int, cb_arg voidptr) {
 	}
 	else if (events & C.PICOEV_READ) != 0 {
 		C.picoev_set_timeout(loop, fd, timeout_secs)
-		buf := (p.buf + fd * max_read)
+		mut buf := p.buf
+		unsafe {
+			buf += fd * max_read
+		}
 		idx := p.idx[fd]
 		mut r := myread(fd, buf, max_read, idx)
 		if r == 0 {
@@ -141,12 +148,18 @@ fn rw_callback(loop &C.picoev_loop, fd, events int, cb_arg voidptr) {
 		} else {
 			r += idx
 			mut s := tos(buf, r)
-			out := (p.out + fd * max_write)
+			mut out := p.out
+			unsafe {
+				out += fd * max_write
+			}
 			mut res := picohttpparser.Response{
 				fd: fd
 				date: p.date
 				buf_start: out
-				buf: out + p.oidx[fd]
+				buf: out
+			}
+			unsafe {
+				res.buf += p.oidx[fd]
 			}
 			mut req := picohttpparser.Request{}
 			for {
