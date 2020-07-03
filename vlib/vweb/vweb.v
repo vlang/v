@@ -337,16 +337,18 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 					break
 				}
 			}
-		}
-		if ok {
-			action = method
-			app.$method(vars)
-			conn.close() or {}
-			return
+			if ok {
+				action = method
+				println('OK !! $action="$action"')
+				app.$method(vars)
+				conn.close() or {}
+				return
+			}
 		}
 	}
 	// No route matched, just do a simple `/home` => `action=home`
 	if action == '' {
+		//println('action is empty because no routes were matched...')
 		action = vals[1][1..].all_before('/')
 		if action.contains('?') {
 			action = action.all_before('?')
@@ -355,9 +357,9 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			action = 'index'
 		}
 	}
-	$if debug {
+	//$if debug {
 		println('action=$action')
-	}
+	//}
 
 	app.$action()
 	/*
