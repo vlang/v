@@ -23,7 +23,6 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 		}
 		p.check(.comma)
 	}
-	println('parsing locked block')
 	stmts := p.parse_block()
 	return ast.LockExpr {
 		lockeds: lockeds

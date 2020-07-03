@@ -61,8 +61,8 @@ mut:
 	is_shared            bool // for initialization of hidden mutex in `[rw]shared` literals
 	is_rwshared          bool
 	optionals            []string // to avoid duplicates TODO perf, use map
-	shareds              []int
-	rwshareds            []int
+	shareds              []int // types with hidden mutex for which decl has been emitted
+	rwshareds            []int // same with hidden rwmutex
 	inside_ternary       int // ?: comma separated statements on a single line
 	inside_map_postfix   bool // inside map++/-- postfix expr
 	inside_map_infix     bool // inside map<</+=/-= infix expr
