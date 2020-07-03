@@ -301,3 +301,15 @@ fn test_map_keys_to_array() {
 	println(sarr)
 	assert sarr == "['a', 'c']"
 }
+
+fn map_in_mut(mut m map[string]int) {
+	if 'one' in m {
+		m['one'] = 2
+	}
+}
+
+fn test_map_in_mut() {
+	mut m := {'one': 1}
+	map_in_mut(mut m)
+	assert m['one'] == 2
+}

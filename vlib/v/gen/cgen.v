@@ -1912,6 +1912,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write('_IN_MAP(')
 			g.expr(node.left)
 			g.write(', ')
+			if node.right_type.is_ptr() {
+				g.write('*')
+			}
 			g.expr(node.right)
 			g.write(')')
 		} else if right_sym.kind == .string {
