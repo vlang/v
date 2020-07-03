@@ -59,7 +59,10 @@ mut:
 	is_amp               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 	is_sql               bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared            bool // for initialization of hidden mutex in `[rw]shared` literals
+	is_rwshared          bool
 	optionals            []string // to avoid duplicates TODO perf, use map
+	shareds              []int
+	rwshareds            []int
 	inside_ternary       int // ?: comma separated statements on a single line
 	inside_map_postfix   bool // inside map++/-- postfix expr
 	inside_map_infix     bool // inside map<</+=/-= infix expr
@@ -332,7 +335,7 @@ fn (g &Gen) base_type(t table.Type) string {
 	share := t.share()
 	mut styp := if share == .atomic_t { t.atomic_typename() } else { g.cc_type(t) }
 	if t.has_flag(.shared_f) {
-		styp = 'struct {$styp val; sync__Mutex* mtx;}'
+		styp = g.find_or_register_shared(t, styp)
 	}
 	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
@@ -388,6 +391,27 @@ fn (mut g Gen) register_optional(t table.Type) string {
 		g.optionals << styp.clone()
 	}
 	return styp
+}
+
+fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
+	is_rw := t.has_flag(.atomic_or_rw)
+	prefix := if is_rw { 'rw' } else { '' }
+	sh_typ :=  '__${prefix}shared__$base'
+	t_idx := t.idx()
+	if (is_rw && t_idx in g.rwshareds) || (!is_rw && t_idx in g.shareds) {
+		return sh_typ
+	}
+	// TODO: These two should become different...
+	mtx_typ := if is_rw { 'sync__Mutex' } else { 'sync__Mutex' }
+	g.hotcode_definitions.writeln('struct $sh_typ { $base val; $mtx_typ* mtx; };')
+	g.typedefs2.writeln('typedef struct $sh_typ $sh_typ;')
+	// println('registered shared type $sh_typ')
+	if is_rw {
+		g.rwshareds << t_idx
+	} else {
+		g.shareds << t_idx
+	}
+	return sh_typ
 }
 
 // cc_type returns the Cleaned Concrete Type name, *without ptr*,
@@ -1289,6 +1313,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.write('*($styp*)')
 			}
 			g.is_shared = var_type.has_flag(.shared_f)
+			g.is_rwshared = var_type.has_flag(.atomic_or_rw)
 			if !cloned {
 				if is_decl {
 					if is_fixed_array_init && !has_val {
@@ -1314,6 +1339,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.write(' })')
 				g.is_array_set = false
 			}
+			g.is_rwshared = false
 			g.is_shared = false
 		}
 		g.right_is_opt = false
@@ -2682,6 +2708,7 @@ const (
 
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	styp := g.typ(struct_init.typ)
+	mut shared_styp := '' // only needed for shared &St{...
 	if styp in skip_struct_init {
 		g.go_back_out(3)
 		return
@@ -2692,7 +2719,12 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 		if g.is_shared {
-			g.write('(struct {$styp val; sync__Mutex* mtx;}*)memdup(&(struct {$styp val; sync__Mutex* mtx;}){.val = ($styp){')
+			mut shared_typ := struct_init.typ.set_flag(.shared_f)
+			if g.is_rwshared {
+				shared_typ = shared_typ.set_flag(.atomic_or_rw)
+			}
+			shared_styp = g.typ(shared_typ)
+			g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ($styp){')
 		} else {
 			g.write('($styp*)memdup(&($styp){')
 		}
@@ -2793,7 +2825,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if g.is_shared {
 		g.write(', .mtx = sync__new_mutex()}')
 		if is_amp {
-			g.write(', sizeof(struct {$styp val; sync__Mutex* mtx;}))')
+			g.write(', sizeof($shared_styp))')
 		}
 	} else if is_amp {
 		g.write(', sizeof($styp))')
