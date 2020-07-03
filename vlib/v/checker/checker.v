@@ -2993,6 +2993,20 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 		typ_sym.name.ends_with('ptr')) && !typ.has_flag(.variadic) { // byteptr, charptr etc
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)
 	}
+	if !c.inside_unsafe && (typ.is_ptr() || typ.is_pointer()) {
+		mut is_ok := false
+		if node.left is ast.Ident as ident {
+			scope := c.file.scope.innermost(ident.pos.pos)
+			if v := scope.find_var(ident.name) {
+				// `mut param []T` function parameter
+				is_ok = v.is_mut && v.is_arg && !typ.deref().is_ptr()
+			}
+		}
+		if !is_ok {
+			c.warn('pointer indexing is only allowed in `unsafe` blocks',
+				node.pos)
+		}
+	}
 	if node.index !is ast.RangeExpr { // [1]
 		index_type := c.expr(node.index)
 		c.check_index_type(typ_sym, index_type, node.pos)
