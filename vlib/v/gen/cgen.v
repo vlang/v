@@ -890,7 +890,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.write('for (int $i = 0; $i < ')
 		g.expr(it.cond)
 		g.writeln('.len; ++$i) {')
-		g.write('$styp ${c_name(it.val_var)} = ')
+		g.write('\t$styp ${c_name(it.val_var)} = ')
 		g.expr(it.cond)
 		g.writeln('.args[$i];')
 		g.stmts(it.stmts)
@@ -901,7 +901,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.expr(it.cond)
 		g.writeln('.len; ++$i) {')
 		if it.val_var != '_' {
-			g.write('byte ${c_name(it.val_var)} = ')
+			g.write('\tbyte ${c_name(it.val_var)} = ')
 			g.expr(it.cond)
 			g.writeln('.str[$i];')
 		}
