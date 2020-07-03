@@ -7,7 +7,7 @@ mut:
 }
 
 fn (shared x St) f(shared y St, shared z St) {
-	for _ in 0..10001 {
+	for _ in 0..101 {
 		lock x, y {
 			tmp := y.a
 			y.a = x.a
@@ -30,7 +30,7 @@ fn test_shared_receiver_lock() {
 		a: 1
 	}
 	go x.f(shared y, shared z)
-	for _ in 0..10000 {
+	for _ in 0..100 {
 		lock x, y {
 			tmp := x.a
 			x.a = y.a
