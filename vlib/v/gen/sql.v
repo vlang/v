@@ -133,13 +133,24 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	if node.has_where && node.where_expr is ast.InfixExpr {
 		g.expr_to_sql(node.where_expr)
 	}
-	g.write(' ORDER BY id ')
+	if node.has_order {
+		g.write(' ORDER BY ')
+		g.sql_side = .left
+		g.expr_to_sql(node.order_expr)
+		if node.has_desc {
+			g.write(' DESC ')
+		}
+	} else {
+		g.write(' ORDER BY id ')
+	}
 	if node.has_limit {
 		g.write(' LIMIT ')
+		g.sql_side = .right
 		g.expr_to_sql(node.limit_expr)
 	}
 	if node.has_offset {
 		g.write(' OFFSET ')
+		g.sql_side = .right
 		g.expr_to_sql(node.offset_expr)
 	}
 	g.writeln('"));')

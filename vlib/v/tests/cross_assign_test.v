@@ -67,7 +67,7 @@ mut:
 	b int
 }
 
-fn foo3(mut f &Foo) {
+fn foo3(mut f Foo) {
 	f.a, f.b = f.b, f.a
 }
 
@@ -77,4 +77,53 @@ fn test_cross_assign_of_struct_in_fn() {
 	println(a)
 	assert a.a == 2
 	assert a.b == 1
+}
+
+// Test cross assign of mixed types
+fn test_cross_assign_of_mixed_types() {
+	mut a := [0, 1]
+	mut m := {'one':1, 'two':2}
+	mut x := Zoo{a:1, b:2}
+
+	a[0], m['one'], x.a, a[1], m['two'], x.b = a[1], m['two'], x.b, a[0], m['one'], x.a
+
+	assert a == [1, 0]
+	assert m['one'] == 2
+	assert m['two'] == 1
+	assert x.a == 2
+	assert x.b == 1
+}
+
+// Test cross assign of mixed types in function
+fn foo(mut a []int,  mut m map[string]int, mut x Zoo) {
+	a[0], m['one'], x.a, a[1], m['two'], x.b = a[1], m['two'], x.b, a[0], m['one'], x.a
+}
+
+fn test_cross_assign_of_mixed_types_in_fn() {
+	mut a := [0, 1]
+	mut m := {'one':1, 'two':2}
+	mut x := Zoo{a:1, b:2}
+
+	foo(mut a, mut m, mut x)
+
+	assert a == [1, 0]
+	assert m['one'] == 2
+	assert m['two'] == 1
+	assert x.a == 2
+	assert x.b == 1
+}
+
+// Test cross assign of complex types
+fn test_cross_assign_of_complex_types() {
+	mut a := [0, 1]
+	mut m := {'one':1, 'two':2}
+	mut x := Zoo{a:1, b:2}
+
+	a[0], m['one'], x.a, a[1], m['two'], x.b = a[1]+1, -m['two'], x.b, a[0]*2, m['one']*3, x.a-x.b
+
+	assert a == [2, 0]
+	assert m['one'] == -2
+	assert m['two'] == 3
+	assert x.a == 2
+	assert x.b == -1
 }

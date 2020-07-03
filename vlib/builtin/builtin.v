@@ -249,3 +249,9 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 		}
 	}
 }
+
+pub struct MethodAttr {
+pub:
+	value string
+	method string
+}

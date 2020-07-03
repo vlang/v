@@ -105,9 +105,8 @@ pub fn (mut c Checker) check2(ast_file ast.File) []errors.Error {
 pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	mut has_main_mod_file := false
 	mut has_main_fn := false
-
 	mut files_from_main_module := []&ast.File{}
-	for i in 0..ast_files.len {
+	for i in 0 .. ast_files.len {
 		file := &ast_files[i]
 		c.check(file)
 		if file.mod.name == 'main' {
@@ -118,7 +117,6 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			}
 		}
 	}
-
 	if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
 		if c.pref.is_script && !c.pref.is_test {
 			first_main_file := files_from_main_module[0]
@@ -131,7 +129,6 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			has_main_fn = true
 		}
 	}
-
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
@@ -163,14 +160,14 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 					c.warn('const $no_pub_in_main_warning', stmt.pos)
 				}
 			}
-			/*
-			// TODO not a Stmt
+				/*
+				// TODO not a Stmt
 			ast.ConstField {
 				if stmt.is_pub {
 					c.warn('const field `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 				}
 			}
-			*/
+				*/
 			ast.EnumDecl {
 				if stmt.is_pub {
 					c.warn('enum `$stmt.name` $no_pub_in_main_warning', stmt.pos)
@@ -232,7 +229,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 }
 
 fn (mut c Checker) check_valid_snake_case(name, identifier string, pos token.Position) {
-	if !c.pref.is_vweb && ( name[0] == `_` || name.contains('._') ) {
+	if !c.pref.is_vweb && (name[0] == `_` || name.contains('._')) {
 		c.error('$identifier `$name` cannot start with `_`', pos)
 	}
 	if util.contains_capital(name) {
@@ -378,7 +375,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		.placeholder {
 			c.error('unknown struct: $type_sym.name', struct_init.pos)
 		}
-		// string & array are also structs but .kind of string/array
+			// string & array are also structs but .kind of string/array
 		.struct_, .string, .array, .alias {
 			mut info := table.Struct{}
 			if type_sym.kind == .alias {
@@ -545,14 +542,6 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 							c.error('$side type of `$infix_expr.op.str()` cannot be non-integer type $name',
 								pos)
 						}
-					}
-				}
-				if infix_expr.op in [.div, .mod] {
-					if (infix_expr.right is ast.IntegerLiteral &&
-						infix_expr.right.str() == '0') ||
-						(infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0) {
-						oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
-						c.error('$oper by zero', right_pos)
 					}
 				}
 				return_type = promoted_type
@@ -1052,10 +1041,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			if rts_info.generic_types.len > 0 {
 				// TODO: multiple generic types
 				// for gt in rts_info.generic_types {
-				// 	gtss := c.table.get_type_symbol(gt)
+				// gtss := c.table.get_type_symbol(gt)
 				// }
 				gts := c.table.get_type_symbol(call_expr.generic_type)
-				nrt := '${rts.name}<$gts.name>'
+				nrt := '$rts.name<$gts.name>'
 				idx := c.table.type_idxs[nrt]
 				if idx == 0 {
 					c.error('unknown type: $nrt', call_expr.pos)
@@ -1063,8 +1052,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				call_expr.return_type = table.new_type(idx).derive(f.return_type)
 			}
 		}
-	}
-	else {
+	} else {
 		call_expr.return_type = f.return_type
 	}
 	if f.return_type == table.void_type &&
@@ -1517,8 +1505,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right_sym := c.table.get_type_symbol(right_type_unwrapped)
 		if (left_type.is_ptr() || left_sym.is_pointer()) &&
 			assign_stmt.op !in [.assign, .decl_assign] && !c.inside_unsafe {
-			c.error('pointer arithmetic is only allowed in `unsafe` blocks',
-				assign_stmt.pos)
+			c.error('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
 		}
 		// Single side check
 		match assign_stmt.op {
@@ -1740,7 +1727,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					node.pos)
 			}
 		}
-		// ast.Attr {}
+			// ast.Attr {}
 		ast.AssignStmt {
 			c.assign_stmt(mut node)
 		}
@@ -1751,6 +1738,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			if c.in_for_count == 0 {
 				c.error('$node.tok.lit statement not within a loop', node.tok.position())
 			}
+		}
+		ast.CompFor {
+			// node.typ = c.expr(node.expr)
+			c.stmts(node.stmts)
 		}
 		ast.CompIf {
 			// c.expr(it.cond)
@@ -1905,7 +1896,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 			}
 		}
-		// ast.HashStmt {}
+			// ast.HashStmt {}
 		ast.Import {}
 		ast.InterfaceDecl {
 			c.interface_decl(it)
@@ -2325,7 +2316,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 			// main.compare_f32 may actually be builtin.compare_f32
 			saved_mod := ident.mod
 			ident.mod = 'builtin'
-			builtin_type := c.ident( ident )
+			builtin_type := c.ident(ident)
 			if builtin_type != table.void_type {
 				return builtin_type
 			}
@@ -2454,7 +2445,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					unhandled << '`$v_str`'
 				}
 			} }
-		//
+			//
 		table.Enum { for v in it.vals {
 				if v !in branch_exprs {
 					is_exhaustive = false
@@ -2588,8 +2579,7 @@ pub fn (mut c Checker) postfix_expr(node ast.PostfixExpr) table.Type {
 		c.fail_if_immutable(node.expr)
 	}
 	if (typ.is_ptr() || typ_sym.is_pointer()) && !c.inside_unsafe {
-		c.error('pointer arithmetic is only allowed in `unsafe` blocks',
-			node.pos)
+		c.error('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
 	return typ
 }
@@ -2807,6 +2797,9 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	}
 	if node.has_limit {
 		c.expr(node.limit_expr)
+	}
+	if node.has_order {
+		c.expr(node.order_expr)
 	}
 	c.expr(node.db_expr)
 	return node.typ

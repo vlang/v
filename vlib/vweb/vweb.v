@@ -26,10 +26,12 @@ pub const (
 		'.html': 'text/html; charset=utf-8',
 		'.jpg': 'image/jpeg',
 		'.js': 'application/javascript',
-		'.wasm': 'application/wasm',
+		'.md': 'text/markdown; charset=utf-8',
 		'.pdf': 'application/pdf',
 		'.png': 'image/png',
 		'.svg': 'image/svg+xml',
+		'.txt': 'text/plain; charset=utf-8',
+		'.wasm': 'application/wasm',
 		'.xml': 'text/xml; charset=utf-8'
 	}
 	max_http_post_size = 1024 * 1024
@@ -255,13 +257,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		}
 	}
 
-	mut action := vals[1][1..].all_before('/')
-	if action.contains('?') {
-		action = action.all_before('?')
-	}
-	if action == '' {
-		action = 'index'
-	}
 	req := http.Request{
 		headers: http.parse_headers(headers) //s.split_into_lines())
 		data: strip(body)
@@ -274,7 +269,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		println('req.headers = ')
 		println(req.headers)
 		println('req.data="$req.data"' )
-		println('vweb action = "$action"')
+		//println('vweb action = "$action"')
 	}
 	//mut app := T{
 	app.vweb = Context{
@@ -316,19 +311,60 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		data.free()
 		return
 	}
-
+	app.init()
 	// Call the right action
+	mut action := ''
+	mut route_words := []string{}
+	mut ok := true
+	url_words := vals[1][1..].split('/')
+	mut vars := []string{cap: route_words.len}
+	$for method in T {
+		ok = true
+		route_words = attrs[1..].split('/')
+		//println('words:') println(route_words)
+		//println('vals:') println(url_words)
+		vars = []string{cap: route_words.len}
+		if route_words.len == url_words.len {
+			// match `/:user/:repo/tree` to `/vlang/v/tree`
+			for i, word in route_words {
+				if word.starts_with(':') {
+					// remember and skip the var
+					vars << url_words[i]
+					continue
+				}
+				if word != url_words[i] {
+					ok = false
+					break
+				}
+			}
+		}
+		if ok {
+			action = method
+			app.$method(vars)
+			conn.close() or {}
+			return
+		}
+	}
+	// No route matched, just do a simple `/home` => `action=home`
+	if action == '' {
+		action = vals[1][1..].all_before('/')
+		if action.contains('?') {
+			action = action.all_before('?')
+		}
+		if action == '' {
+			action = 'index'
+		}
+	}
 	$if debug {
 		println('action=$action')
 	}
-	app.init()
+
 	app.$action()
 	/*
 	app.$action() or {
 		conn.send_string(http_404) or {}
 	}
 	*/
-
 	conn.close() or {}
 	//app.reset()
 	return

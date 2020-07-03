@@ -3,8 +3,12 @@ import net
 fn setup() (net.Socket, net.Socket, net.Socket) {
 	server := net.listen(0) or { panic(err)	}
 	server_port := server.get_port()
-	client := net.dial('127.0.0.1', server_port) or {	panic(err) }
+	client := net.dial('127.0.0.1', server_port) or { panic(err) }
 	socket := server.accept() or { panic(err) }
+	$if debug_peer_ip ? {
+		ip := socket.peer_ip() or { '$err' }
+		eprintln('socket peer_ip: $ip')
+	}        
 	return server, client, socket
 }
 

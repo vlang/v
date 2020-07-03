@@ -474,6 +474,17 @@ pub fn (mut p Parser) comment() ast.Comment {
 	}
 }
 
+pub fn (mut p Parser) eat_comments() []ast.Comment {
+	mut comments := []ast.Comment{}
+	for {
+		if p.tok.kind != .comment {
+			break
+		}
+		comments << p.check_comment()
+	}
+	return comments
+}
+
 pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
@@ -525,6 +536,8 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.dollar {
 			if p.peek_tok.kind == .key_if {
 				return p.comp_if()
+			} else if p.peek_tok.kind == .key_for {
+				return p.comp_for()
 			} else if p.peek_tok.kind == .name {
 				return ast.ExprStmt{
 					expr: p.vweb()
@@ -581,7 +594,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			p.error_with_pos('const can only be defined at the top level (outside of functions)',
 				p.tok.position())
 		}
-		// literals, 'if', etc. in here
+			// literals, 'if', etc. in here
 		else {
 			return p.parse_multi_expr(is_top_level)
 		}
@@ -636,15 +649,21 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		p.next()
 		is_if_attr = true
 	}
-	mut name := p.check_name()
-	if p.tok.kind == .colon {
-		name += ':'
+	mut name := ''
+	if p.tok.kind == .string {
+		name = p.tok.lit
 		p.next()
-		if p.tok.kind == .name {
-			name += p.check_name()
-		} else if p.tok.kind == .string {
-			name += p.tok.lit
+	} else {
+		mut name = p.check_name()
+		if p.tok.kind == .colon {
+			name += ':'
 			p.next()
+			if p.tok.kind == .name {
+				name += p.check_name()
+			} else if p.tok.kind == .string {
+				name += p.tok.lit
+				p.next()
+			}
 		}
 	}
 	if is_if_attr {
@@ -836,11 +855,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
 		return p.string_expr()
 	}
-	known_var := p.mark_var_as_used( p.tok.lit )
+	known_var := p.mark_var_as_used(p.tok.lit)
 	mut is_mod_cast := false
 	if p.peek_tok.kind == .dot && !known_var &&
-		(language != .v || p.known_import(p.tok.lit) ||
-		p.mod.all_after_last('.') == p.tok.lit) {
+		(language != .v || p.known_import(p.tok.lit) || p.mod.all_after_last('.') == p.tok.lit) {
 		if language == .c {
 			mod = 'C'
 		} else if language == .js {
@@ -863,8 +881,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
 	if p.peek_tok.kind == .lpar ||
-		(p.peek_tok.kind == .lt && !lit0_is_capital && p.peek_tok2.kind == .name &&
-		p.peek_tok3.kind == .gt) {
+		(p.peek_tok.kind == .lt && !lit0_is_capital && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt) {
 		// foo() or foo<int>()
 		mut name := p.tok.lit
 		if mod.len > 0 {
@@ -873,7 +890,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) &&
+		if (!known_var && (name in p.table.type_idxs ||
+			name_w_mod in p.table.type_idxs) &&
 			name !in ['C.stat', 'C.sigaction']) || is_mod_cast {
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
@@ -907,8 +925,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			// println('calling $p.tok.lit')
 			node = p.call_expr(language, mod)
 		}
-	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital)) && !p.inside_match && !p.inside_match_case && !p.inside_if &&
-		!p.inside_for { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
+	} else if (p.peek_tok.kind == .lcbr ||
+		(p.peek_tok.kind == .lt && lit0_is_capital)) && !p.inside_match && !p.inside_match_case &&
+		!p.inside_if && !p.inside_for { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		return p.struct_init(false) // short_syntax: false
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// `Color.green`
@@ -1441,6 +1460,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	enum_name := p.check_name()
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
+	enum_decl_comments := p.eat_comments()
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
@@ -1461,6 +1481,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			pos: pos
 			expr: expr
 			has_expr: has_expr
+			comments: p.eat_comments()
 		}
 	}
 	p.top_level_statement_end()
@@ -1495,6 +1516,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		is_flag: is_flag
 		fields: fields
 		pos: start_pos.extend(end_pos)
+		comments: enum_decl_comments
 	}
 }
 
@@ -1509,7 +1531,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	decl_pos := start_pos.extend(end_pos)
 	name := p.check_name()
 	if name.len == 1 && name[0].is_capital() {
-		p.error_with_pos('single letter capital names are reserved for generic template types.', decl_pos)
+		p.error_with_pos('single letter capital names are reserved for generic template types.',
+			decl_pos)
 	}
 	mut sum_variants := []table.Type{}
 	if p.tok.kind == .assign {

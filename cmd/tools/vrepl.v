@@ -242,9 +242,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 					r.temp_lines.delete(0)
 				}
 				if r.line.starts_with('import ') || r.line.starts_with('#include ') {
-					mut imports := r.imports
-					r.imports = [r.line]
-					r.imports << imports
+					r.imports << r.line
 				} else {
 					r.lines << r.line
 				}

@@ -13,6 +13,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	mut node := ast.Expr{}
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
+	p.eat_comments()
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_static {
@@ -108,7 +109,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			} else {
 				sizeof_type := p.parse_type()
 				node = ast.SizeOf{
-					is_type: true                
+					is_type: true
 					typ: sizeof_type
 					type_name: p.table.get_type_symbol(sizeof_type).name
 					pos: pos
@@ -165,9 +166,6 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			return node
 		}
 		else {
-			if p.tok.kind == .comment {
-				println(p.tok.lit)
-			}
 			p.error('expr(): bad token `$p.tok.kind.str()`')
 		}
 	}
@@ -241,12 +239,54 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.expecting_type = true
 	}
 	right = p.expr(precedence)
+
+	if op in [.div, .mod] {
+		oper := if op == .div { 'division' } else { 'modulo' }
+		match right {
+			ast.FloatLiteral {
+				if it.val.f64() == 0.0 {
+					p.error_with_pos('$oper by zero', right.pos)
+				}
+			}
+			ast.Ident {
+				if p.is_var_zero(right.name) {
+					p.error_with_pos('$oper by zero', right.pos)
+				}
+			}
+			ast.IntegerLiteral {
+				if it.val.int() == 0 {
+					p.error_with_pos('$oper by zero', right.pos)
+				}
+			}
+			else {}
+		}
+	}
 	return ast.InfixExpr{
 		left: left
 		right: right
 		op: op
 		pos: pos
 	}
+}
+
+fn (mut p Parser) is_var_zero(name string) bool {
+	var := p.scope.find_var(name) or {
+		return false
+	}
+	match var.expr {
+		ast.FloatLiteral {
+			if it.val.f64() == 0.0 {
+				return true
+			}
+		}
+		ast.IntegerLiteral {
+			if it.val.int() == 0 {
+				return true
+			}
+		}
+		else {}
+	}
+	return false
 }
 
 fn (mut p Parser) prefix_expr() ast.PrefixExpr {

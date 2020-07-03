@@ -94,6 +94,7 @@ mut:
 	inside_call          bool
 	has_main             bool
 	inside_const         bool
+	comp_for_method      string // $for method in T {
 }
 
 const (
@@ -143,7 +144,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		if g.file.path.ends_with('_test.v') {
 			g.is_test = is_test
 		}
-		if g.file.path == '' || is_test || !g.pref.autofree {
+		if g.file.path == '' || !g.pref.autofree {
 			// cgen test or building V
 			// println('autofree=false')
 			g.autofree = false
@@ -625,6 +626,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// }
 		}
 		ast.Comment {}
+		ast.CompFor {
+			g.comp_for(node)
+		}
 		ast.CompIf {
 			g.comp_if(node)
 		}
@@ -1160,7 +1164,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				is_call = true
 				return_type = val.return_type
 			}
-			// TODO: no buffer fiddling
+				// TODO: no buffer fiddling
 			ast.AnonFn {
 				if blank_assign {
 					g.write('{')
@@ -1908,6 +1912,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write('_IN_MAP(')
 			g.expr(node.left)
 			g.write(', ')
+			if node.right_type.is_ptr() {
+				g.write('*')
+			}
 			g.expr(node.right)
 			g.write(')')
 		} else if right_sym.kind == .string {
@@ -2025,7 +2032,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					// TODO too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
-					g.writeln('else {')
+					g.writeln(' else {')
 				}
 			}
 		} else {
@@ -2033,7 +2040,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 				if is_expr {
 					g.write(' : ')
 				} else {
-					g.write('else ')
+					g.write(' else ')
 				}
 			}
 			if is_expr {
@@ -3044,7 +3051,7 @@ fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 					field_deps << dep
 				}
 			}
-			// table.Interface {}
+				// table.Interface {}
 			else {}
 		}
 		// add type and dependant types to graph
@@ -3504,11 +3511,11 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		'linux_or_macos' {
 			return ''
 		}
-		//
+			//
 		'js' {
 			return '_VJS'
 		}
-		// compilers:
+			// compilers:
 		'tinyc' {
 			return '__TINYC__'
 		}
@@ -3524,7 +3531,7 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		'cplusplus' {
 			return '__cplusplus'
 		}
-		// other:
+			// other:
 		'debug' {
 			return '_VDEBUG'
 		}
@@ -3641,44 +3648,6 @@ fn (g Gen) type_default(typ table.Type) string {
 	else { '{0} '}
 }
 	*/
-}
-
-pub fn (mut g Gen) write_tests_main() {
-	g.includes.writeln('#include <setjmp.h> // write_tests_main')
-	g.definitions.writeln('int g_test_oks = 0;')
-	g.definitions.writeln('int g_test_fails = 0;')
-	g.definitions.writeln('jmp_buf g_jump_buffer;')
-	$if windows {
-		g.writeln('int wmain() {')
-	} $else {
-		g.writeln('int main() {')
-	}
-	g.writeln('\t_vinit();')
-	g.writeln('')
-	all_tfuncs := g.get_all_test_function_names()
-	if g.pref.is_stats {
-		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, tos_lit("$g.pref.path"));')
-	}
-	for t in all_tfuncs {
-		g.writeln('')
-		if g.pref.is_stats {
-			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, tos_lit("$t"));')
-		}
-		g.writeln('\tif (!setjmp(g_jump_buffer)) ${t}();')
-		if g.pref.is_stats {
-			g.writeln('\tmain__BenchedTests_testing_step_end(&bt);')
-		}
-	}
-	g.writeln('')
-	if g.pref.is_stats {
-		g.writeln('\tmain__BenchedTests_end_testing(&bt);')
-	}
-	g.writeln('')
-	if g.autofree {
-		g.writeln('\t_vcleanup();')
-	}
-	g.writeln('\treturn g_test_fails > 0;')
-	g.writeln('}')
 }
 
 fn (g Gen) get_all_test_function_names() []string {

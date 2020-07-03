@@ -1,0 +1,17 @@
+module main
+
+// Top level comment
+enum EnumType {
+	// comment for the enum
+	abc
+	xyz // comment for the enum field
+}
+
+// Another top level comment
+enum PacketType {
+	// Regular data packet
+	data // abc def
+	// xyz
+	// another comment
+	abcd // jklmn
+}
