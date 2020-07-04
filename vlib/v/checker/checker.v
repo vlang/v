@@ -1021,6 +1021,14 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			f = f1
 		}
 	}
+	if c.pref.is_script && !found {
+		os_name := 'os.$fn_name'
+		if f1 := c.table.find_fn(os_name) {
+			call_expr.name = os_name
+			found = true
+			f = f1
+		}
+	}
 	// check for arg (var) of fn type
 	if !found {
 		scope := c.file.scope.innermost(call_expr.pos.pos)
@@ -1181,7 +1189,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			return true
 		}
 		*/
-
 		if !c.check_types(typ, arg.typ) {
 			// str method, allow type with str method if fn arg is string
 			if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
@@ -2835,9 +2842,9 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	// print_backtrace()
 	// }
 	mut details := ''
-	if c.error_details.len > 0 { 
+	if c.error_details.len > 0 {
 		details = c.error_details.join('\n')
-		c.error_details = []        
+		c.error_details = []
 	}
 	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
