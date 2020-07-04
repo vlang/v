@@ -324,7 +324,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		//println('words:') println(route_words)
 		//println('vals:') println(url_words)
 		vars = []string{cap: route_words.len}
-		if route_words.len == url_words.len {
+		if route_words.len <= url_words.len {
 			// match `/:user/:repo/tree` to `/vlang/v/tree`
 			for i, word in route_words {
 				if word.starts_with(':') {

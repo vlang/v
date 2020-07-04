@@ -8,6 +8,6 @@ struct Article {
 
 pub fn (app &App) find_all_articles() []Article {
 	return sql app.db {
-		select from Article
+		select from Article 
 	}
 }

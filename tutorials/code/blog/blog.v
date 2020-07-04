@@ -8,7 +8,7 @@ import json
 struct App {
 pub mut:
 	vweb vweb.Context
-	db sqlite.DB
+	db   sqlite.DB
 }
 
 fn main() {
@@ -25,28 +25,30 @@ fn (app &App) index_html() {
 	$vweb.html()
 }
 */
-
 fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
 }
 
 pub fn (mut app App) init_once() {
-	db := sqlite.connect(':memory:') 	or { panic(err) }
+	db := sqlite.connect(':memory:') or {
+		panic(err)
+	}
+	db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
 	app.db = db
 }
 
 pub fn (mut app App) init() {
 }
 
-pub fn (mut app App) new() vweb.Result{
+pub fn (mut app App) new() vweb.Result {
 	return $vweb.html()
 }
 
 pub fn (mut app App) new_article() vweb.Result {
 	title := app.vweb.form['title']
 	text := app.vweb.form['text']
-	if title == '' || text == ''  {
+	if title == '' || text == '' {
 		app.vweb.text('Empty text/titile')
 		return vweb.Result{}
 	}

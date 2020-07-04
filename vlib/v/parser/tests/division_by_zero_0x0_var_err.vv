@@ -1,4 +1,0 @@
-fn main() {
-	a := 0x0
-	println(1/a)
-}
