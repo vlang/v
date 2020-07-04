@@ -2817,7 +2817,7 @@ fn (mut g Gen) assoc(node ast.Assoc) {
 fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	left_sym := g.table.get_type_symbol(left)
 	typ_name := g.typ(left)
-	ptr_typ := typ_name[typ_name.index_after('_', 0) + 1..]
+	ptr_typ := typ_name[typ_name.index_after('_', 0) + 1..].trim('*')
 	elem_sym := g.table.get_type_symbol(left_sym.array_info().elem_type)
 	elem_typ := g.typ(left_sym.array_info().elem_type)
 	ptr_elem_typ := elem_typ[elem_typ.index_after('_', 0) + 1..]
