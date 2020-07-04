@@ -35,6 +35,8 @@ pub fn (mut app App) init_once() {
 		panic(err)
 	}
 	db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
+	db.exec('insert into Article (title, text) values ("Hello, world!", "V is great.")')
+	db.exec('insert into Article (title, text) values ("Second post.", "Hm... what should I write about?")')
 	app.db = db
 }
 
@@ -57,10 +59,8 @@ pub fn (mut app App) new_article() vweb.Result {
 		text: text
 	}
 	println(article)
-	sql app.db {
-		insert article into Article
-	}
-	return app.vweb.redirect('/article/')
+	app.db.exec('insert article into Article')
+	return app.vweb.redirect('/')
 }
 
 pub fn (mut app App) articles() {
