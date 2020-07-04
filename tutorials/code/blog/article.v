@@ -1,7 +1,5 @@
 module main
 
-import sqlite
-
 struct Article {
 	id    int
 	title string

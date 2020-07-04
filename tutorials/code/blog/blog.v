@@ -15,16 +15,17 @@ fn main() {
 	vweb.run<App>(8081)
 }
 
+/*
 fn (mut app App) index_text() {
 	app.vweb.text('Hello, world from vweb!')
 }
 
-/*
 fn (app &App) index_html() {
 	message := 'Hello, world from vweb!'
 	$vweb.html()
 }
 */
+
 fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
@@ -51,15 +52,17 @@ pub fn (mut app App) new_article() vweb.Result {
 	title := app.vweb.form['title']
 	text := app.vweb.form['text']
 	if title == '' || text == '' {
-		app.vweb.text('Empty text/titile')
+		app.vweb.text('Empty text/title')
 		return vweb.Result{}
 	}
-	article := Article{
+	article := Article {
 		title: title
 		text: text
 	}
 	println(article)
-	app.db.exec('insert article into Article')
+	sql app.db {
+		insert article into Article
+	}
 	return app.vweb.redirect('/')
 }
 
