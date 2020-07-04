@@ -1879,8 +1879,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		} else if node.op == .ne {
 			g.write('!${ptr_typ}_arr_eq(')
 		}
+	    if node.left_type.is_ptr() {
+			g.write('*')
+		}
 		g.expr(node.left)
 		g.write(', ')
+		if node.right_type.is_ptr() {
+			g.write('*')
+		}
 		g.expr(node.right)
 		g.write(')')
 	} else if node.op in [.key_in, .not_in] {
