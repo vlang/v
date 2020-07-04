@@ -143,11 +143,9 @@ pub fn (c &Checker) check_matching_function_symbols(got_type_sym &table.TypeSymb
 		exp_arg_is_ptr := exp_arg.typ.is_ptr() || exp_arg.typ.is_pointer()
 		got_arg_is_ptr := got_arg.typ.is_ptr() || got_arg.typ.is_pointer()
 		if exp_arg_is_ptr != got_arg_is_ptr {
-			$if debug_matching_function_symbols ? {
-				exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
-				got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
-				eprintln('`$exp_fn.name` expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but `$got_fn.name` actual fn argument: `$got_arg.name` is $got_arg_pointedness')
-			}
+			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
+			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
+			c.add_error_detail('`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness')
 			return false
 		}
 		if !c.check_basic(got_arg.typ, exp_arg.typ) {

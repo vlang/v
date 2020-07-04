@@ -13,9 +13,9 @@ fn yyy(t Table) {
 	println(t.name)
 }
 
-fn xxx(mut t Table) {
-	t.rename()
-	println(t.name)
+fn xxx(mut mytable Table) {
+	mytable.rename()
+	println(mytable.name)
 }
 
 fn sum(myfn MyFn) {

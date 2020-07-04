@@ -43,6 +43,7 @@ mut:
 	expr_level       int // to avoid infinit recursion segfaults due to compiler bugs
 	inside_sql       bool // to handle sql table fields pseudo variables
 	cur_orm_ts       table.TypeSymbol
+	error_details    []string
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -2812,6 +2813,10 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	return map_type
 }
 
+pub fn (mut c Checker) add_error_detail(s string) {
+	c.error_details << s
+}
+
 pub fn (mut c Checker) warn(s string, pos token.Position) {
 	allow_warnings := !c.pref.is_prod // allow warnings only in dev builds
 	c.warn_or_error(s, pos, allow_warnings) // allow warnings only in dev builds
@@ -2829,6 +2834,11 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	// if c.pref.is_verbose {
 	// print_backtrace()
 	// }
+	mut details := ''
+	if c.error_details.len > 0 { 
+		details = c.error_details.join('\n')
+		c.error_details = []        
+	}
 	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
 		wrn := errors.Warning{
@@ -2836,6 +2846,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 			pos: pos
 			file_path: c.file.path
 			message: message
+			details: details
 		}
 		c.file.warnings << wrn
 		c.warnings << wrn
@@ -2849,6 +2860,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 				pos: pos
 				file_path: c.file.path
 				message: message
+				details: details
 			}
 			c.file.errors << err
 			c.errors << err
