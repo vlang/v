@@ -12,6 +12,8 @@ import v.errors
 
 const (
 	max_nr_errors = 300
+	enum_min = int(0x80000000)
+	enum_max = 0x7FFFFFFF
 )
 
 pub struct Checker {
@@ -1427,6 +1429,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
+	mut seen := []int{}
 	for i, field in decl.fields {
 		if util.contains_capital(field.name) {
 			c.error('field name `$field.name` cannot contain uppercase letters, use snake_case instead',
@@ -1438,8 +1441,16 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 			}
 		}
 		if field.has_expr {
-			match field.expr {
-				ast.IntegerLiteral {}
+			match field.expr as field_expr {
+				ast.IntegerLiteral {
+					val := field_expr.val.i64()
+					if val < enum_min || val > enum_max {
+						c.error('enum value `$val` overflows int', field_expr.pos)
+					} else if int(val) in seen {
+						c.error('enum value `$val` already exists', field_expr.pos)
+					}
+					seen << int(val)
+				}
 				ast.PrefixExpr {}
 				else {
 					if field.expr is ast.Ident {
@@ -1455,7 +1466,16 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 					c.error('default value for enum has to be an integer', pos)
 				}
 			}
-		}
+		} else {
+			if seen.len > 0 {
+				last := seen[seen.len - 1]
+				if last == 2147483647 {
+					c.error('enum value overflows', field.pos)
+				}
+				seen << last + 1
+			} else {
+				seen << 0
+			}
 	}
 }
 
