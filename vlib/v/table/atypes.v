@@ -641,7 +641,10 @@ pub fn (k Kind) str() string {
 		.alias { 'alias' }
 		.enum_ { 'enum' }
 		.any { 'any' }
-		else { 'unknown' }
+		.function { 'function' }
+		.interface_ { 'interface' }
+		.ustring { 'ustring' }
+		.generic_struct_inst { 'generic_struct_inst' }
 	}
 	return k_str
 }
