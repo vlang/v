@@ -227,7 +227,6 @@ pub fn (mut t Table) register_builtin_type_symbol(typ TypeSymbol) int {
 					kind: existing_type.kind
 				}
 			}
-			//
 			else {
 				t.types[existing_idx] = typ
 			}

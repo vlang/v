@@ -9,8 +9,7 @@ import os
 pub enum BuildMode {
 	// `v program.v'
 	// Build user code only, and add pre-compiled vlib (`cc program.o builtin.o os.o...`)
-	default_mode
-	// `v -lib ~/v/os`
+	default_mode // `v -lib ~/v/os`
 	// build any module (generate os.o + os.vh)
 	build_module
 }
@@ -27,9 +26,9 @@ pub enum ColorOutput {
 }
 
 pub enum Backend {
-	c            // The (default) C backend
-	js           // The JavaScript backend
-	x64          // The x64 backend
+	c // The (default) C backend
+	js // The JavaScript backend
+	x64 // The x64 backend
 }
 
 pub enum CompilerType {
@@ -41,20 +40,18 @@ pub enum CompilerType {
 }
 
 const (
-	list_of_flags_with_param = [
-		'o'
-		'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'arch', 'csource'
-		'cf', 'cflags', 'path']
+	list_of_flags_with_param = ['o', 'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os',
+		'arch', 'csource', 'cf', 'cflags', 'path']
 )
 
 pub struct Preferences {
 pub mut:
-	os                  OS   // the OS to compile for
+	os                  OS // the OS to compile for
 	backend             Backend
 	build_mode          BuildMode
 	output_mode         OutputMode = .stdout
-	//verbosity           VerboseLevel
-	is_verbose bool
+	// verbosity           VerboseLevel
+	is_verbose          bool
 	// nofmt            bool   // disable vfmt
 	is_test             bool // `v test string_test.v`
 	is_script           bool // single file mode (`v program.v`), main function can be skipped
@@ -76,7 +73,7 @@ pub mut:
 	show_cc             bool // -showcc, print cc command
 	// NB: passing -cg instead of -g will set is_vlines to false and is_g to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
-	use_cache            bool // turns on v usage of the module cache to speed up compilation.
+	use_cache           bool // turns on v usage of the module cache to speed up compilation.
 	is_stats            bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	no_auto_free        bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	// TODO Convert this into a []string
@@ -100,31 +97,29 @@ pub mut:
 	is_vet              bool
 	is_bare             bool
 	no_preludes         bool // Prevents V from generating preludes in resulting .c files
-	custom_prelude		string // Contents of custom V prelude that will be prepended before code in resulting .c files
+	custom_prelude      string // Contents of custom V prelude that will be prepended before code in resulting .c files
 	lookup_path         []string
 	output_cross_c      bool
 	prealloc            bool
 	vroot               string
 	out_name            string
 	path                string // Path to file/folder to compile
-
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another { will NOT get here }`
 	compile_defines     []string // just ['vfmt']
 	compile_defines_all []string // contains both: ['vfmt','another']
-
 	run_args            []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list        []string // a list of generated function names, whose source should be shown, for debugging
-	print_v_files       bool     // when true, just print the list of all parsed .v files then stop.
-	skip_running        bool     // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
-	skip_warnings       bool     // like C's "-w"
+	print_v_files       bool // when true, just print the list of all parsed .v files then stop.
+	skip_running        bool // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
+	skip_warnings       bool // like C's "-w"
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
-	is_parallel bool
-	error_limit int
-	is_vweb bool // skip _ var warning in templates
+	is_parallel         bool
+	error_limit         int
+	is_vweb             bool // skip _ var warning in templates
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
-	mut res := &pref.Preferences{}
+	mut res := &Preferences{}
 	mut command := ''
 	mut command_pos := 0
 	// for i, arg in args {
@@ -222,7 +217,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')
 				i++
-				target_os_kind := pref.os_from_string(target_os) or {
+				target_os_kind := os_from_string(target_os) or {
 					if target_os == 'cross' {
 						res.output_cross_c = true
 						continue
@@ -256,7 +251,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				i++
 			}
 			'-b' {
-				b := pref.backend_from_string(cmdline.option(current_args, '-b', 'c')) or {
+				b := backend_from_string(cmdline.option(current_args, '-b', 'c')) or {
 					continue
 				}
 				res.backend = b
@@ -318,46 +313,37 @@ pub fn parse_args(args []string) (&Preferences, string) {
 	return res, command
 }
 
-
 pub fn backend_from_string(s string) ?Backend {
 	match s {
-		'c' {
-			return .c
-		}
-		'js' {
-			return .js
-		}
-		'x64' {
-			return .x64
-		}
-		else {
-			return error('Unknown backend type $s')
-		}
+		'c' { return .c }
+		'js' { return .js }
+		'x64' { return .x64 }
+		else { return error('Unknown backend type $s') }
 	}
 }
 
 fn parse_define(mut prefs Preferences, define string) {
-    define_parts := define.split('=')
-    if define_parts.len == 1 {
-        prefs.compile_defines << define
-        prefs.compile_defines_all << define
-        return
-    }
-    if define_parts.len == 2 {
-        prefs.compile_defines_all << define_parts[0]
-        match define_parts[1] {
-            '0' {}
-            '1' {
-                prefs.compile_defines << define_parts[0]
-            }
-            else {
-                println('V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
-                    'Expected `0` or `1`.')
-                exit(1)
-            }
-        }
-        return
-    }
-    println('V error: Unknown define argument: ${define}. Expected at most one `=`.')
-    exit(1)
+	define_parts := define.split('=')
+	if define_parts.len == 1 {
+		prefs.compile_defines << define
+		prefs.compile_defines_all << define
+		return
+	}
+	if define_parts.len == 2 {
+		prefs.compile_defines_all << define_parts[0]
+		match define_parts[1] {
+			'0' {}
+			'1' {
+				prefs.compile_defines << define_parts[0]
+			}
+			else {
+				println('V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
+					'Expected `0` or `1`.')
+				exit(1)
+			}
+		}
+		return
+	}
+	println('V error: Unknown define argument: ${define}. Expected at most one `=`.')
+	exit(1)
 }

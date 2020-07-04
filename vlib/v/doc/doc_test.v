@@ -1,6 +1,6 @@
-import v.table
-import v.doc
-import v.pref
+//import v.table
+//import v.doc
+//import v.pref
 
 // fn test_vdoc() {
 // 	mut prefs := &pref.Preferences{}

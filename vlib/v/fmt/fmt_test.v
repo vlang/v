@@ -59,7 +59,7 @@ fn test_fmt() {
 			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
 			os.write_file(vfmt_result_file, result_ocontent)
-            eprintln(util.color_compare_files(diff_cmd, opath, vfmt_result_file))
+			eprintln(util.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
 		fmt_bench.ok()

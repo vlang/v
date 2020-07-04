@@ -398,9 +398,9 @@ typedef byte array_fixed_byte_300 [300];
 typedef byte array_fixed_byte_400 [400];
 #ifndef __cplusplus
 #ifndef bool
-        typedef int bool;
-        #define true 1
-        #define false 0
+	typedef int bool;
+	#define true 1
+	#define false 0
 #endif
 #endif
 
