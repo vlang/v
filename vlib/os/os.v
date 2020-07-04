@@ -94,7 +94,7 @@ pub fn (f &File) read_bytes_at(size, pos int) []byte {
 
 pub fn read_bytes(path string) ?[]byte {
 	mut fp := vfopen(path, 'rb')
-	if isnil(fp) {
+	if is_nil(fp) {
 		return error('failed to open file "$path"')
 	}
 	C.fseek(fp, 0, C.SEEK_END)
@@ -111,7 +111,7 @@ pub fn read_bytes(path string) ?[]byte {
 pub fn read_file(path string) ?string {
 	mode := 'rb'
 	mut fp := vfopen(path, mode)
-	if isnil(fp) {
+	if is_nil(fp) {
 		return error('failed to open file "$path"')
 	}
 	defer { C.fclose(fp) }
@@ -318,7 +318,7 @@ pub fn open_append(path string) ?File {
 			cfile: C.fopen(charptr(cpath), 'ab')
 		}
 	}
-	if isnil(file.cfile) {
+	if is_nil(file.cfile) {
 		return error('failed to create(append) file "$path"')
 	}
 	file.opened = true
@@ -366,7 +366,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	}
 
 	cfile := C.fdopen(fd, charptr(mode.str))
-	if isnil(cfile) {
+	if is_nil(cfile) {
 		return error('Failed to open or create file "$path"')
 	}
 

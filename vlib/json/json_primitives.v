@@ -24,80 +24,80 @@ pub fn encode(x voidptr) string {
 }
 
 fn decode_int(root &C.cJSON) int {
-	if isnil(root) {
+	if is_nil(root) {
 		return 0
 	}
 	return root.valueint
 }
 
 fn decode_i8(root &C.cJSON) i8 {
-	if isnil(root) {
+	if is_nil(root) {
 		return i8(0)
 	}
 	return i8(root.valueint)
 }
 
 fn decode_i16(root &C.cJSON) i16 {
-	if isnil(root) {
+	if is_nil(root) {
 		return i16(0)
 	}
 	return i16(root.valueint)
 }
 
 fn decode_i64(root &C.cJSON) i64 {
-	if isnil(root) {
+	if is_nil(root) {
 		return i64(0)
 	}
 	return i64(root.valuedouble) // i64 is double in C
 }
 
 fn decode_byte(root &C.cJSON) byte {
-	if isnil(root) {
+	if is_nil(root) {
 		return byte(0)
 	}
 	return byte(root.valueint)
 }
 
 fn decode_u16(root &C.cJSON) u16 {
-	if isnil(root) {
+	if is_nil(root) {
 		return u16(0)
 	}
 	return u16(root.valueint)
 }
 
 fn decode_u32(root &C.cJSON) u32 {
-	if isnil(root) {
+	if is_nil(root) {
 		return u32(0)
 	}
 	return u32(root.valueint)
 }
 
 fn decode_u64(root &C.cJSON) u64 {
-	if isnil(root) {
+	if is_nil(root) {
 		return u64(0)
 	}
 	return u64(root.valueint)
 }
 
 fn decode_f32(root &C.cJSON) f32 {
-	if isnil(root) {
+	if is_nil(root) {
 		return f32(0)
 	}
 	return root.valuedouble
 }
 
 fn decode_f64(root &C.cJSON) f64 {
-	if isnil(root) {
+	if is_nil(root) {
 		return f64(0)
 	}
 	return f64(root.valuedouble)
 }
 
 fn decode_string(root &C.cJSON) string {
-	if isnil(root) {
+	if is_nil(root) {
 		return ''
 	}
-	if isnil(root.valuestring) {
+	if is_nil(root.valuestring) {
 		return ''
 	}
 	// println('decode string valuestring="$root.valuestring"')
@@ -124,7 +124,7 @@ fn C.cJSON_PrintUnformatted() byteptr
 
 
 fn decode_bool(root &C.cJSON) bool {
-	if isnil(root) {
+	if is_nil(root) {
 		return false
 	}
 	return C.cJSON_IsTrue(root)

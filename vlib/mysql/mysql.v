@@ -30,7 +30,7 @@ pub fn (mut conn Connection) connect() ?bool {
 		0,
 		conn.flag
 	)
-	if isnil(conn.conn) {
+	if is_nil(conn.conn) {
 		return error_with_code(get_error_msg(instance), get_errno(instance))
 	}
 	return true
@@ -97,7 +97,7 @@ pub fn (conn Connection) autocommit(mode bool) {
 // If empty string is passed, will return all tables.
 pub fn (conn Connection) tables(wildcard string) ?[]string {
 	cres := C.mysql_list_tables(conn.conn, wildcard.str)
-	if isnil(cres) {
+	if is_nil(cres) {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
 	res :=  Result{cres}

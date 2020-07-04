@@ -57,7 +57,7 @@ fn worker_repl(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	cdir := os.cache_dir()
 	mut session := &Session(p.get_shared_context())
 	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
-	if isnil(tls_bench) {
+	if is_nil(tls_bench) {
 		tls_bench = benchmark.new_benchmark_pointer()
 		tls_bench.set_total_expected_steps(session.bmark.nexpected_steps)
 		p.set_thread_context(idx, tls_bench)

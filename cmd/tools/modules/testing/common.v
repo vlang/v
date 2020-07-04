@@ -124,7 +124,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	show_stats := '-stats' in ts.vargs.split(' ')
 	// tls_bench is used to format the step messages/timings
 	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
-	if isnil(tls_bench) {
+	if is_nil(tls_bench) {
 		tls_bench = benchmark.new_benchmark_pointer()
 		tls_bench.set_total_expected_steps(ts.benchmark.nexpected_steps)
 		p.set_thread_context(idx, tls_bench)

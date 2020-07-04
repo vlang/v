@@ -66,7 +66,7 @@ pub struct PoolProcessorConfig {
 
 // new_pool_processor returns a new PoolProcessor instance.
 pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
-	if isnil(context.callback) {
+	if is_nil(context.callback) {
 		panic('You need to pass a valid callback to new_pool_processor.')
 	}
 	// TODO: remove this call.

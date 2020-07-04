@@ -172,7 +172,7 @@ fn check_mm_alloc() {
 		ap := intptr(a-4)
 		assert *ap == int(pages)
 		assert e == .enoerror
-		assert !isnil(a)
+		assert !is_nil(a)
 
 		if (i%111) == 0 {
 			for j in 0 .. int(size) {

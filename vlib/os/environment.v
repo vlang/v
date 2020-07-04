@@ -72,7 +72,7 @@ pub fn environ() map[string]string {
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
 		e := &charptr(C.environ)
-		for i := 0; !isnil(e[i]); i++ {
+		for i := 0; !is_nil(e[i]); i++ {
 			eline := cstring_to_vstring(e[i])
 			eq_index := eline.index_byte(`=`)
 			if eq_index > 0 {

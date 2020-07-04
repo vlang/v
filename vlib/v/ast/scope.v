@@ -28,7 +28,7 @@ pub fn (s &Scope) find_with_scope(name string) ?(ScopeObject, &Scope) {
 		if name in sc.objects {
 			return sc.objects[name], sc
 		}
-		if isnil(sc.parent) {
+		if is_nil(sc.parent) {
 			break
 		}
 		sc = sc.parent
@@ -42,7 +42,7 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 		if name in sc.objects {
 			return sc.objects[name]
 		}
-		if isnil(sc.parent) {
+		if is_nil(sc.parent) {
 			break
 		}
 	}
@@ -109,7 +109,7 @@ pub fn (mut s Scope) register(name string, obj ScopeObject) {
 
 pub fn (s &Scope) outermost() &Scope {
 	mut sc := s
-	for !isnil(sc.parent) {
+	for !is_nil(sc.parent) {
 		sc = sc.parent
 	}
 	return sc

@@ -48,7 +48,7 @@ pub fn malloc(n int) byteptr {
 
 	ptr, e := mm_alloc(u64(n))
 	assert e == .enoerror
-	assert !isnil(ptr)
+	assert !is_nil(ptr)
 	return ptr
 }
 

@@ -4,7 +4,7 @@ module builtin
 fn init() {
 }
 
-pub fn isnil(p voidptr) bool {
+pub fn is_nil(p voidptr) bool {
 	return p == 0
 }
 
@@ -40,7 +40,7 @@ fn panic_debug(line_no int, file,  mod, fn_name, s string) {
 	sys_exit(1)
 }
 pub fn eprint(s string) {
-	if isnil(s.str) {
+	if is_nil(s.str) {
 		panic('eprint(NIL)')
 	}
 	sys_write(2, s.str, u64(s.len))
@@ -52,7 +52,7 @@ pub fn eprint_ln(s string) {
 }
 
 pub fn eprintln(s string) {
-	if isnil(s.str) {
+	if is_nil(s.str) {
 		panic('eprintln(NIL)')
 	}
 	eprint_ln(s)

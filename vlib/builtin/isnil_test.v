@@ -1,19 +1,19 @@
-fn test_isnil_byteptr(){
+fn test_is_nil_byteptr(){
 	pb := byteptr(0)
-	assert isnil( pb )
+	assert is_nil( pb )
 }
 
-fn test_isnil_voidptr(){
+fn test_is_nil_voidptr(){
 	pv := voidptr(0)
-	assert isnil( pv )
+	assert is_nil( pv )
 }
 
-fn test_isnil_charptr(){
+fn test_is_nil_charptr(){
 	pc := &char(0)
-	assert isnil( pc )
+	assert is_nil( pc )
 }
 
-fn test_isnil_intptr(){
+fn test_is_nil_intptr(){
 	pi := &int(0)
-	assert isnil( pi )
+	assert is_nil( pi )
 }

@@ -35,7 +35,7 @@ pub fn load(path string) Image {
 	}
 	flag := if ext == 'png' { C.STBI_rgb_alpha } else { 0 }
 	res.data = C.stbi_load(path.str, &res.width, &res.height,	&res.nr_channels, flag)
-	if isnil(res.data) {
+	if is_nil(res.data) {
 		println('stbi image failed to load')
 		exit(1)
 	}
@@ -50,7 +50,7 @@ pub fn load_from_memory(buf byteptr) Image {
 	}
 	flag := C.STBI_rgb_alpha
 	res.data = C.stbi_load_from_memory(buf, 3812, &res.width, &res.height,	&res.nr_channels, flag)
-	if isnil(res.data) {
+	if is_nil(res.data) {
 		println('stbi image failed to load from memory')
 		exit(1)
 	}

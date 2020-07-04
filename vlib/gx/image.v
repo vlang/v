@@ -10,5 +10,5 @@ pub:
 }
 
 pub fn (i Image) is_empty() bool {
-	return isnil(i.obj)
+	return is_nil(i.obj)
 }

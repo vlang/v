@@ -231,7 +231,7 @@ fn test_opt_field() {
 }
 
 fn opt_ptr(a &int) ?&int {
-	if isnil(a) {
+	if is_nil(a) {
 		return none
 	}
 	return a

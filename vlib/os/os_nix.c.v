@@ -59,14 +59,14 @@ fn init_os_args(argc int, argv &&byte) []string {
 pub fn ls(path string) ?[]string {
 	mut res := []string{}
 	dir := C.opendir(path.str)
-	if isnil(dir) {
+	if is_nil(dir) {
 		return error('ls() couldnt open dir "$path"')
 	}
 	mut ent := &C.dirent(0)
 	// mut ent := &C.dirent{!}
 	for {
 		ent = C.readdir(dir)
-		if isnil(ent) {
+		if is_nil(ent) {
 			break
 		}
 		name := tos_clone(byteptr(ent.d_name))
@@ -84,7 +84,7 @@ pub fn is_dir(path string) bool {
 		//C.syscall(4, path.str) // sys_newstat
 	//}
 	dir := C.opendir(path.str)
-	res := !isnil(dir)
+	res := !is_nil(dir)
 	if res {
 		C.closedir(dir)
 	}
@@ -135,7 +135,7 @@ pub fn exec(cmd string) ?Result {
 	// }
 	pcmd := '$cmd 2>&1'
 	f := vpopen(pcmd)
-	if isnil(f) {
+	if is_nil(f) {
 		return error('exec("$cmd") failed')
 	}
 	buf := [4096]byte

@@ -25,14 +25,14 @@ pub mut:
 }
 
 pub fn (cmd Command) full_name() string {
-	if isnil(cmd.parent) {
+	if is_nil(cmd.parent) {
 		return cmd.name
 	}
 	return cmd.parent.full_name() + ' ${cmd.name}'
 }
 
 pub fn (cmd Command) root() Command {
-	if isnil(cmd.parent) {
+	if is_nil(cmd.parent) {
 		return cmd
 	}
 	return cmd.parent.root()

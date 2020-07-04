@@ -27,7 +27,7 @@ fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr) {
 pub fn download_file_with_progress(url, out string, cb DownloadFn, cb_finished fn()) {
 	/*
 	curl := C.curl_easy_init()
-	if isnil(curl) {
+	if is_nil(curl) {
 		return
 	}
 	cout := out.str

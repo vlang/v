@@ -14,7 +14,7 @@ fn check_simple_empty_struct(){
   s := SimpleEmptyStruct{}
   addr_s := &s
   str_addr_s := ptr_str( addr_s )
-  assert !isnil(addr_s)
+  assert !is_nil(addr_s)
   assert str_addr_s.len > 3
   println(str_addr_s)
 }
