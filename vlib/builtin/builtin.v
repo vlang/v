@@ -11,7 +11,7 @@ pub fn exit(code int) {
 }
 
 // isnil returns true if an object is nil (only for C objects).
-pub fn isnil(v voidptr) bool {
+pub fn is_nil(v voidptr) bool {
 	return v == 0
 }
 
