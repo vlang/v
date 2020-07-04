@@ -7,14 +7,7 @@ struct Article {
 }
 
 pub fn (app &App) find_all_articles() []Article {
-	rows, _ := app.db.exec('select * from Article')
-	mut articles := []Article{}
-	for r in rows {
-		articles << Article {
-			r.vals[0].int()
-			r.vals[1]
-			r.vals[2]
-		}
+	return sql app.db {
+		select from Article
 	}
-	return articles
 }

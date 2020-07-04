@@ -16,13 +16,14 @@ fn main() {
 }
 
 /*
-fn (mut app App) index_text() {
+fn (mut app App) index_text() vweb.Result {
 	app.vweb.text('Hello, world from vweb!')
+	return vweb.Result{}
 }
 
-fn (app &App) index_html() {
-	message := 'Hello, world from vweb!'
-	$vweb.html()
+fn (app &App) index_html() vweb.Result {
+	message := 'Hello, world from Vweb!'
+	return $vweb.html()
 }
 */
 

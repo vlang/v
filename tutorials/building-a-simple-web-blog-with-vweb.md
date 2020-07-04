@@ -64,14 +64,13 @@ fn main() {
 	vweb.run<App>(8081)
 }
 
-fn (mut app App) index() {
+fn (mut app App) index() vweb.Result {
 	app.vweb.text('Hello, world from vweb!')
+	return vweb.Result{}
 }
 
 pub fn (app &App) init() {}
 pub fn (app &App) init_once() {}
-pub fn (app &App) reset() {}
-
 ```
 
 Run it with
@@ -115,7 +114,6 @@ text, which isn't frequently used in websites.
 
 ### HTML View
 
-
 Let's return an HTML view instead. Create `index.html` in the same directory:
 
 ```html
@@ -134,9 +132,9 @@ Let's return an HTML view instead. Create `index.html` in the same directory:
 and update our `index()` action so that it returns the HTML view we just created:
 
 ```v
-fn (mut app App) index() {
+fn (mut app App) index() vweb.Result {
 	message := 'Hello, world from Vweb!'
-	$vweb.html()
+	return $vweb.html()
 }
 ```
 
@@ -170,48 +168,22 @@ into a single binary file together with the web application itself.
 
 - All errors in the templates are guaranteed to be caught during compilation.
 
+
 ### Fetching data with V ORM
 
 Now let's display some articles!
 
-We'll be using V's builtin ORM and a Postgres database. (V ORM will also
-support MySQL, SQLite, and SQL Server soon.)
+We'll be using V's builtin ORM and SQLite.
 
-Create a SQL file with the schema:
-```sql
-create database blog;
-
-\c blog
-
-drop table articles;
-
-create table articles (
-	id serial primary key,
-	title text default '',
-	text text default ''
-);
-
-insert into articles (title, text) values (
-	'Hello, world!',
-	'V is great.'
-);
-
-insert into articles (title, text) values (
-	'Second post.',
-	'Hm... what should I write about?'
-);
-```
-
-Run the file with `psql -f blog.sql`.
-
-
-Add a Postgres DB handle to `App`:
+Add a SQLite handle to `App`:
 
 ```v
+import sqlite
+
 struct App {
 pub mut:
 	vweb vweb.Context
-	db   pg.DB
+	db   sqlite.DB
 }
 ```
 
@@ -221,7 +193,10 @@ Modify the `init_once()` method we created earlier to connect to a database:
 
 ```v
 pub fn (mut app App) init_once() {
-	db := sqlite.connect(':memory:') 	or { panic(err) }
+	db := sqlite.connect(':memory:') or { panic(err) }
+	db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
+	db.exec('insert into Article (title, text) values ("Hello, world!", "V is great.")')
+	db.exec('insert into Article (title, text) values ("Second post.", "Hm... what should I write about?")')
 	app.db = db
 }
 ```
@@ -233,7 +208,7 @@ Create a new file `article.v`:
 
 
 ```v
-
+// article.v
 module main
 
 struct Article {
@@ -342,6 +317,7 @@ pub fn (mut app App) new_article() vweb.Result {
 		title: title
 		text: text
 	}
+	println(article)
 	sql app.db {
 		insert article into Article
 	}
