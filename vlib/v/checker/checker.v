@@ -928,6 +928,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	if method_name == 'str' {
 		call_expr.receiver_type = left_type
 		call_expr.return_type = table.string_type
+        eprintln('method .str() call_expr.args.len: $call_expr.args.len')
+        if call_expr.args.len > 0 {
+        	c.error('.str() method calls should have no arguments', call_expr.pos)
+        }
 		return table.string_type
 	}
 	// call struct field fn type
