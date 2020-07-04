@@ -836,7 +836,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('// TypeDecl')
 		}
 		ast.UnsafeStmt {
+			g.writeln('{ // Unsafe block')
 			g.stmts(node.stmts)
+			g.writeln('}')
 		}
 	}
 	g.stmt_path_pos.delete(g.stmt_path_pos.len - 1)
