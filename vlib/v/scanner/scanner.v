@@ -12,8 +12,8 @@ import v.vmod
 const (
 	single_quote = `\'`
 	double_quote = `"`
-// char used as number separator
-	num_sep = `_`
+	// char used as number separator
+	num_sep      = `_`
 )
 
 pub struct Scanner {
@@ -49,6 +49,7 @@ pub mut:
 	tidx                        int
 	eofs                        int
 }
+
 /*
 How the .toplevel_comments mode works:
 
@@ -76,7 +77,6 @@ to true, again refilling the lookahead buffer => calling .next() in this
 mode, will again ignore all the comment tokens, till the top level statement
 is finished.
 */
-
 // The different kinds of scanner modes:
 //
 // .skip_comments - simplest/fastest, just ignores all comments early.
@@ -98,7 +98,7 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, is_fmt boo
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
-	raw_text := util.read_file( file_path ) or {
+	raw_text := util.read_file(file_path) or {
 		verror(err)
 		return voidptr(0)
 	}
@@ -121,22 +121,24 @@ pub fn new_scanner(text string, comments_mode CommentsMode, is_fmt bool) &Scanne
 	return s
 }
 
-
-
 [inline]
 fn (s &Scanner) should_parse_comment() bool {
-	res := (s.comments_mode == .parse_comments) || (s.comments_mode == .toplevel_comments && !s.is_inside_toplvl_statement)
+	res := (s.comments_mode == .parse_comments) ||
+		(s.comments_mode == .toplevel_comments && !s.is_inside_toplvl_statement)
 	return res
 }
+
 // NB: this is called by v's parser
 pub fn (mut s Scanner) set_is_inside_toplevel_statement(newstate bool) {
 	s.is_inside_toplvl_statement = newstate
 }
+
 pub fn (mut s Scanner) set_current_tidx(cidx int) {
 	mut tidx := if cidx < 0 { 0 } else { cidx }
 	tidx = if tidx > s.all_tokens.len { s.all_tokens.len } else { tidx }
 	s.tidx = tidx
 }
+
 fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token {
 	cidx := s.tidx
 	s.tidx++
@@ -166,13 +168,10 @@ fn (mut s Scanner) ident_fn_name() string {
 	start := s.pos
 	mut pos := s.pos
 	pos++
-
 	if s.current_column() - 2 != 0 {
 		return s.fn_name
 	}
-
 	has_struct_name := s.struct_name != ''
-
 	if has_struct_name {
 		for pos < s.text.len && s.text[pos] != `(` {
 			pos++
@@ -182,7 +181,6 @@ fn (mut s Scanner) ident_fn_name() string {
 		}
 		pos++
 	}
-
 	for pos < s.text.len && s.text[pos] != `(` {
 		pos++
 	}
@@ -190,7 +188,6 @@ fn (mut s Scanner) ident_fn_name() string {
 		return ''
 	}
 	pos--
-
 	// Eat whitespaces
 	for pos > start && s.text[pos].is_space() {
 		pos--
@@ -198,36 +195,31 @@ fn (mut s Scanner) ident_fn_name() string {
 	if pos < start {
 		return ''
 	}
-
 	end_pos := pos + 1
-
 	pos--
 	// Search for the start position
 	for pos > start && util.is_func_char(s.text[pos]) {
 		pos--
 	}
 	pos++
-
 	start_pos := pos
-
-	if pos <= start || pos >= s.text.len  {
+	if pos <= start || pos >= s.text.len {
 		return ''
 	}
-	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos || end_pos <= start || start_pos < start {
+	if s.text[start_pos].is_digit() || end_pos > s.text.len ||
+		end_pos <= start_pos || end_pos <= start ||
+		start_pos < start {
 		return ''
 	}
-
 	fn_name := s.text[start_pos..end_pos]
 	return fn_name
 }
 
 // ident_mod_name look ahead and return name of module this file belongs to if possible, otherwise empty string
 fn (mut s Scanner) ident_mod_name() string {
-
 	start := s.pos
 	mut pos := s.pos
 	pos++
-
 	// Eat whitespaces
 	for pos < s.text.len && s.text[pos].is_space() {
 		pos++
@@ -235,9 +227,7 @@ fn (mut s Scanner) ident_mod_name() string {
 	if pos >= s.text.len {
 		return ''
 	}
-
 	start_pos := pos
-
 	// Search for next occurrence of a whitespace or newline
 	for pos < s.text.len && !s.text[pos].is_space() && !util.is_nl(s.text[pos]) {
 		pos++
@@ -245,13 +235,10 @@ fn (mut s Scanner) ident_mod_name() string {
 	if pos >= s.text.len {
 		return ''
 	}
-
 	end_pos := pos
-
 	if end_pos > s.text.len || end_pos <= start_pos || end_pos <= start || start_pos <= start {
 		return ''
 	}
-
 	mod_name := s.text[start_pos..end_pos]
 	return mod_name
 }
@@ -260,14 +247,11 @@ fn (mut s Scanner) ident_mod_name() string {
 fn (mut s Scanner) ident_struct_name() string {
 	start := s.pos
 	mut pos := s.pos
-
 	// Return last known stuct_name encountered to avoid using high order/anonymous function definitions
 	if s.current_column() - 2 != 0 {
 		return s.struct_name
 	}
-
 	pos++
-
 	// Eat whitespaces
 	for pos < s.text.len && s.text[pos].is_space() {
 		pos++
@@ -275,12 +259,10 @@ fn (mut s Scanner) ident_struct_name() string {
 	if pos >= s.text.len {
 		return ''
 	}
-
 	// Return if `(` is not the first character after "fn ..."
 	if s.text[pos] != `(` {
 		return ''
 	}
-
 	// Search for closing parenthesis
 	for pos < s.text.len && s.text[pos] != `)` {
 		pos++
@@ -288,7 +270,6 @@ fn (mut s Scanner) ident_struct_name() string {
 	if pos >= s.text.len {
 		return ''
 	}
-
 	pos--
 	// Search backwards for end position of struct name
 	// Eat whitespaces
@@ -299,7 +280,6 @@ fn (mut s Scanner) ident_struct_name() string {
 		return ''
 	}
 	end_pos := pos + 1
-
 	// Go back while we have a name character or digit
 	for pos > start && (util.is_name_char(s.text[pos]) || s.text[pos].is_digit()) {
 		pos--
@@ -307,30 +287,28 @@ fn (mut s Scanner) ident_struct_name() string {
 	if pos < start {
 		return ''
 	}
-
 	start_pos := pos + 1
-
-	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos || end_pos <= start || start_pos <= start {
+	if s.text[start_pos].is_digit() || end_pos > s.text.len ||
+		end_pos <= start_pos || end_pos <= start ||
+		start_pos <= start {
 		return ''
 	}
 	struct_name := s.text[start_pos..end_pos]
 	return struct_name
 }
 
-fn filter_num_sep(txt byteptr, start int, end int) string {
-	unsafe{
+fn filter_num_sep(txt byteptr, start, end int) string {
+	unsafe {
 		mut b := malloc(end - start + 1) // add a byte for the endstring 0
-		mut i := start
 		mut i1 := 0
-		for i < end {
+		for i := start; i < end; i++ {
 			if txt[i] != num_sep {
 				b[i1] = txt[i]
 				i1++
 			}
-			i++
 		}
 		b[i1] = 0 // C string compatibility
-		return string(b,i1)
+		return string(b)
 	}
 }
 
@@ -345,8 +323,7 @@ fn (mut s Scanner) ident_bin_number() string {
 		if !c.is_bin_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
-			}
-			else if !has_wrong_digit {
+			} else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
@@ -357,10 +334,9 @@ fn (mut s Scanner) ident_bin_number() string {
 	if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
 		s.error('number part of this binary is not provided')
-	}
-	else if has_wrong_digit {
+	} else if has_wrong_digit {
 		s.pos = first_wrong_digit_pos // adjust error position
-		s.error('this binary number has unsuitable digit `${first_wrong_digit.str()}`')
+		s.error('this binary number has unsuitable digit `$first_wrong_digit.str()`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
@@ -378,8 +354,7 @@ fn (mut s Scanner) ident_hex_number() string {
 		if !c.is_hex_digit() && c != num_sep {
 			if !c.is_letter() || s.is_inside_string {
 				break
-			}
-			else if !has_wrong_digit {
+			} else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
@@ -390,10 +365,9 @@ fn (mut s Scanner) ident_hex_number() string {
 	if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
 		s.error('number part of this hexadecimal is not provided')
-	}
-	else if has_wrong_digit {
+	} else if has_wrong_digit {
 		s.pos = first_wrong_digit_pos // adjust error position
-		s.error('this hexadecimal number has unsuitable digit `${first_wrong_digit.str()}`')
+		s.error('this hexadecimal number has unsuitable digit `$first_wrong_digit.str()`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
@@ -411,8 +385,7 @@ fn (mut s Scanner) ident_oct_number() string {
 		if !c.is_oct_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
-			}
-			else if !has_wrong_digit {
+			} else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
@@ -423,10 +396,9 @@ fn (mut s Scanner) ident_oct_number() string {
 	if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
 		s.error('number part of this octal is not provided')
-	}
-	else if has_wrong_digit {
+	} else if has_wrong_digit {
 		s.pos = first_wrong_digit_pos // adjust error position
-		s.error('this octal number has unsuitable digit `${first_wrong_digit.str()}`')
+		s.error('this octal number has unsuitable digit `$first_wrong_digit.str()`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
@@ -444,8 +416,7 @@ fn (mut s Scanner) ident_dec_number() string {
 		if !c.is_digit() && c != num_sep {
 			if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string {
 				break
-			}
-			else if !has_wrong_digit {
+			} else if !has_wrong_digit {
 				has_wrong_digit = true
 				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
@@ -453,9 +424,9 @@ fn (mut s Scanner) ident_dec_number() string {
 		}
 		s.pos++
 	}
-	mut call_method := false  // true for, e.g., 5.str(), 5.5.str(), 5e5.str()
-	mut is_range := false  // true for, e.g., 5..10
-	mut is_float_without_fraction := false  // true for, e.g. 5.
+	mut call_method := false // true for, e.g., 5.str(), 5.5.str(), 5e5.str()
+	mut is_range := false // true for, e.g., 5..10
+	mut is_float_without_fraction := false // true for, e.g. 5.
 	// scan fractional part
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
@@ -471,8 +442,7 @@ fn (mut s Scanner) ident_dec_number() string {
 								call_method = true
 							}
 							break
-						}
-						else if !has_wrong_digit {
+						} else if !has_wrong_digit {
 							has_wrong_digit = true
 							first_wrong_digit_pos = s.pos
 							first_wrong_digit = c
@@ -480,22 +450,18 @@ fn (mut s Scanner) ident_dec_number() string {
 					}
 					s.pos++
 				}
-			}
-			else if s.text[s.pos] == `.` {
-			// 5.. (a range)
+			} else if s.text[s.pos] == `.` {
+				// 5.. (a range)
 				is_range = true
 				s.pos--
-			}
-			else if s.text[s.pos] in [`e`, `E`] {
-			// 5.e5
-			}
-			else if s.text[s.pos].is_letter() {
-			// 5.str()
+			} else if s.text[s.pos] in [`e`, `E`] {
+				// 5.e5
+			} else if s.text[s.pos].is_letter() {
+				// 5.str()
 				call_method = true
 				s.pos--
-			}
-			else if s.text[s.pos] != `)` {
-			// 5.
+			} else if s.text[s.pos] != `)` {
+				// 5.
 				is_float_without_fraction = true
 				s.pos--
 			}
@@ -518,8 +484,7 @@ fn (mut s Scanner) ident_dec_number() string {
 						call_method = true
 					}
 					break
-				}
-				else if !has_wrong_digit {
+				} else if !has_wrong_digit {
 					has_wrong_digit = true
 					first_wrong_digit_pos = s.pos
 					first_wrong_digit = c
@@ -529,21 +494,19 @@ fn (mut s Scanner) ident_dec_number() string {
 		}
 	}
 	if has_wrong_digit {
-	// error check: wrong digit
+		// error check: wrong digit
 		s.pos = first_wrong_digit_pos // adjust error position
-		s.error('this number has unsuitable digit `${first_wrong_digit.str()}`')
-	}
-	else if s.text[s.pos - 1] in [`e`, `E`] {
-	// error check: 5e
+		s.error('this number has unsuitable digit `$first_wrong_digit.str()`')
+	} else if s.text[s.pos - 1] in [`e`, `E`] {
+		// error check: 5e
 		s.pos-- // adjust error position
 		s.error('exponent has no digits')
-	}
-	else if s.pos < s.text.len && s.text[s.pos] == `.` && !is_range && !is_float_without_fraction && !call_method {
-	// error check: 1.23.4, 123.e+3.4
+	} else if s.pos < s.text.len &&
+		s.text[s.pos] == `.` && !is_range && !is_float_without_fraction && !call_method {
+		// error check: 1.23.4, 123.e+3.4
 		if has_exp {
 			s.error('exponential part should be integer')
-		}
-		else {
+		} else {
 			s.error('too many decimal points in number')
 		}
 	}
@@ -555,14 +518,11 @@ fn (mut s Scanner) ident_dec_number() string {
 fn (mut s Scanner) ident_number() string {
 	if s.expect('0b', s.pos) {
 		return s.ident_bin_number()
-	}
-	else if s.expect('0x', s.pos) {
+	} else if s.expect('0x', s.pos) {
 		return s.ident_hex_number()
-	}
-	else if s.expect('0o', s.pos) {
+	} else if s.expect('0o', s.pos) {
 		return s.ident_oct_number()
-	}
-	else {
+	} else {
 		return s.ident_dec_number()
 	}
 }
@@ -586,9 +546,8 @@ fn (mut s Scanner) end_of_file() token.Token {
 	if s.eofs > 50 {
 		s.line_nr--
 		s.error('the end of file `$s.file_path` has been reached 50 times already, the v parser is probably stuck.\n' +
-		'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' +
-		'https://github.com/vlang/v/issues/new?labels=Bug&template=bug_report.md'
-		)
+			'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' +
+			'https://github.com/vlang/v/issues/new?labels=Bug&template=bug_report.md')
 	}
 	if s.pos != s.text.len && s.eofs == 1 {
 		s.inc_line_number()
@@ -597,7 +556,7 @@ fn (mut s Scanner) end_of_file() token.Token {
 	return s.new_token(.eof, '', 1)
 }
 
-pub fn (mut s Scanner) scan_all_tokens_in_buffer(){
+pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	// s.scan_all_tokens_in_buffer is used mainly by vdoc,
 	// in order to implement the .toplevel_comments mode.
 	cmode := s.comments_mode
@@ -613,7 +572,7 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer(){
 	s.tidx = 0
 	$if debugscanner ? {
 		for t in s.all_tokens {
-			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit: ${t.lit}')
+			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit: $t.lit')
 		}
 	}
 }
@@ -686,7 +645,6 @@ fn (mut s Scanner) text_scan() token.Token {
 	// handle each char
 	c := s.text[s.pos]
 	nextc := s.look_ahead(1)
-
 	// name or keyword
 	if util.is_name_char(c) {
 		name := s.ident_name()
@@ -724,9 +682,8 @@ fn (mut s Scanner) text_scan() token.Token {
 			s.pos++
 		}
 		return s.new_token(.name, name, name.len)
-	}
-	else if c.is_digit() || (c == `.` && nextc.is_digit()) {
-	// `123`, `.123`
+	} else if c.is_digit() || (c == `.` && nextc.is_digit()) {
+		// `123`, `.123`
 		if !s.is_inside_string {
 			// In C ints with `0` prefix are octal (in V they're decimal), so discarding heading zeros is needed.
 			mut start_pos := s.pos
@@ -761,8 +718,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			if nextc == `+` {
 				s.pos++
 				return s.new_token(.inc, '', 2)
-			}
-			else if nextc == `=` {
+			} else if nextc == `=` {
 				s.pos++
 				return s.new_token(.plus_assign, '', 2)
 			}
@@ -772,8 +728,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			if nextc == `-` {
 				s.pos++
 				return s.new_token(.dec, '', 2)
-			}
-			else if nextc == `=` {
+			} else if nextc == `=` {
 				s.pos++
 				return s.new_token(.minus_assign, '', 2)
 			}
@@ -834,8 +789,7 @@ fn (mut s Scanner) text_scan() token.Token {
 		`$` {
 			if s.is_inside_string {
 				return s.new_token(.str_dollar, '', 1)
-			}
-			else {
+			} else {
 				return s.new_token(.dollar, '', 1)
 			}
 		}
@@ -850,8 +804,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				}
 				ident_string := s.ident_string()
 				return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
-			}
-			else {
+			} else {
 				return s.new_token(.rcbr, '', 1)
 			}
 		}
@@ -860,7 +813,6 @@ fn (mut s Scanner) text_scan() token.Token {
 				s.pos++
 				return s.new_token(.and_assign, '', 2)
 			}
-
 			afternextc := s.look_ahead(2)
 			if nextc == `&` && afternextc.is_space() {
 				s.pos++
@@ -886,7 +838,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			s.pos++
 			name := s.ident_name()
 			if s.is_fmt {
-				return s.new_token(.name, '@' + name, name.len+1)
+				return s.new_token(.name, '@' + name, name.len + 1)
 			}
 			// @FN => will be substituted with the name of the current V function
 			// @MOD => will be substituted with the name of the current V module
@@ -914,7 +866,8 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.string, util.cescaped_path(vexe), 5)
 			}
 			if name == 'FILE' {
-				return s.new_token(.string, util.cescaped_path(os.real_path(s.file_path)), 5)
+				fpath := os.real_path(s.file_path)
+				return s.new_token(.string, util.cescaped_path(fpath), 5)
 			}
 			if name == 'LINE' {
 				return s.new_token(.string, (s.line_nr + 1).str(), 5)
@@ -928,11 +881,13 @@ fn (mut s Scanner) text_scan() token.Token {
 			if name == 'VMOD_FILE' {
 				if s.vmod_file_content.len == 0 {
 					mcache := vmod.get_cache()
-					vmod_file_location := mcache.get_by_file( s.file_path )
+					vmod_file_location := mcache.get_by_file(s.file_path)
 					if vmod_file_location.vmod_file.len == 0 {
 						s.error('@VMOD_FILE can be used only in projects, that have v.mod file')
 					}
-					vmod_content := os.read_file(vmod_file_location.vmod_file) or {''}
+					vmod_content := os.read_file(vmod_file_location.vmod_file) or {
+						''
+					}
 					$if windows {
 						s.vmod_file_content = vmod_content.replace('\r\n', '\n')
 					} $else {
@@ -947,7 +902,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			return s.new_token(.name, name, name.len)
 		}
 		/*
-	case `\r`:
+		case `\r`:
 		if nextc == `\n` {
 			s.pos++
 			s.last_nl_pos = s.pos
@@ -958,8 +913,7 @@ fn (mut s Scanner) text_scan() token.Token {
 		s.last_nl_pos = s.pos
 		return s.new_token(.nl, '')
 	 }
-	*/
-
+		*/
 		`.` {
 			if nextc == `.` {
 				s.pos++
@@ -987,30 +941,26 @@ fn (mut s Scanner) text_scan() token.Token {
 			if nextc == `=` {
 				s.pos++
 				return s.new_token(.ge, '', 2)
-			}
-			else if nextc == `>` {
+			} else if nextc == `>` {
 				if s.pos + 2 < s.text.len && s.text[s.pos + 2] == `=` {
 					s.pos += 2
 					return s.new_token(.right_shift_assign, '', 3)
 				}
 				s.pos++
 				return s.new_token(.right_shift, '', 2)
-			}
-			else {
+			} else {
 				return s.new_token(.gt, '', 1)
 			}
 		}
 		0xE2 {
 			if nextc == 0x89 && s.text[s.pos + 2] == 0xA0 {
-			// case `≠`:
+				// case `≠`:
 				s.pos += 2
 				return s.new_token(.ne, '', 3)
-			}
-			else if nextc == 0x89 && s.text[s.pos + 2] == 0xBD {
+			} else if nextc == 0x89 && s.text[s.pos + 2] == 0xBD {
 				s.pos += 2
 				return s.new_token(.le, '', 3)
-			}
-			else if nextc == 0xA9 && s.text[s.pos + 2] == 0xBE {
+			} else if nextc == 0xA9 && s.text[s.pos + 2] == 0xBE {
 				s.pos += 2
 				return s.new_token(.ge, '', 3)
 			}
@@ -1019,16 +969,14 @@ fn (mut s Scanner) text_scan() token.Token {
 			if nextc == `=` {
 				s.pos++
 				return s.new_token(.le, '', 2)
-			}
-			else if nextc == `<` {
+			} else if nextc == `<` {
 				if s.pos + 2 < s.text.len && s.text[s.pos + 2] == `=` {
 					s.pos += 2
 					return s.new_token(.left_shift_assign, '', 3)
 				}
 				s.pos++
 				return s.new_token(.left_shift, '', 2)
-			}
-			else {
+			} else {
 				return s.new_token(.lt, '', 1)
 			}
 		}
@@ -1036,12 +984,10 @@ fn (mut s Scanner) text_scan() token.Token {
 			if nextc == `=` {
 				s.pos++
 				return s.new_token(.eq, '', 2)
-			}
-			else if nextc == `>` {
+			} else if nextc == `>` {
 				s.pos++
 				return s.new_token(.arrow, '', 2)
-			}
-			else {
+			} else {
 				return s.new_token(.assign, '', 1)
 			}
 		}
@@ -1049,8 +995,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			if nextc == `=` {
 				s.pos++
 				return s.new_token(.decl_assign, '', 2)
-			}
-			else {
+			} else {
 				return s.new_token(.colon, '', 1)
 			}
 		}
@@ -1061,17 +1006,13 @@ fn (mut s Scanner) text_scan() token.Token {
 			if nextc == `=` {
 				s.pos++
 				return s.new_token(.ne, '', 2)
-			}
-			else if nextc == `i` && s.text[s.pos+2] == `n` && s.text[s.pos+3].is_space() {
+			} else if nextc == `i` && s.text[s.pos + 2] == `n` && s.text[s.pos + 3].is_space() {
 				s.pos += 2
 				return s.new_token(.not_in, '', 3)
-			}
-			else if nextc == `i` && s.text[s.pos+2] == `s` && s.text[s.pos+3].is_space() {
+			} else if nextc == `i` && s.text[s.pos + 2] == `s` && s.text[s.pos + 3].is_space() {
 				s.pos += 2
 				return s.new_token(.not_is, '', 3)
-			}
-			//
-			else {
+			} else {
 				return s.new_token(.not, '', 1)
 			}
 		}
@@ -1095,7 +1036,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				if s.should_parse_comment() {
 					// Find out if this comment is on its own line (for vfmt)
 					mut is_separate_line_comment := true
-					for j := start-2; j >= 0 && s.text[j] != `\n`; j-- {
+					for j := start - 2; j >= 0 && s.text[j] != `\n`; j-- {
 						if s.text[j] !in [`\t`, ` `] {
 							is_separate_line_comment = false
 						}
@@ -1149,7 +1090,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			return s.end_of_file()
 		}
 	}
-	s.error('invalid character `${c.str()}`')
+	s.error('invalid character `$c.str()`')
 	return s.end_of_file()
 }
 
@@ -1203,8 +1144,8 @@ fn (mut s Scanner) ident_string() string {
 		}
 		// Don't allow \0
 		if c == `0` && s.pos > 2 && s.text[s.pos - 1] == slash {
-			if s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit() {}
-			else {
+			if s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit() {
+			} else {
 				s.error('0 character in a string literal')
 			}
 		}
@@ -1220,7 +1161,8 @@ fn (mut s Scanner) ident_string() string {
 			break
 		}
 		// $var
-		if util.is_name_char(c) && prevc == `$` && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+		if util.is_name_char(c) && prevc == `$` && !is_raw &&
+			s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2
@@ -1255,7 +1197,7 @@ fn trim_slash_line_break(s string) string {
 	for {
 		idx := ret_str.index_after('\\\n', start)
 		if idx != -1 {
-			ret_str = ret_str[..idx] + ret_str[idx+2..].trim_left(' \n\t\v\f\r')
+			ret_str = ret_str[..idx] + ret_str[idx + 2..].trim_left(' \n\t\v\f\r')
 			start = idx
 		} else {
 			break
@@ -1294,7 +1236,11 @@ fn (mut s Scanner) ident_char() string {
 		}
 	}
 	// Escapes a `'` character
-	return if c == "\'" { '\\' + c } else { c }
+	return if c == "\'" {
+		'\\' + c
+	} else {
+		c
+	}
 }
 
 fn (s &Scanner) expect(want string, start_pos int) bool {
@@ -1326,8 +1272,7 @@ fn (mut s Scanner) debug_tokens() {
 		print(tok_kind.str())
 		if lit != '' {
 			println(' `$lit`')
-		}
-		else {
+		} else {
 			println('')
 		}
 		if tok_kind == .eof {
