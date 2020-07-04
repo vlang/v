@@ -107,6 +107,12 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			p.next()
 		}
 		e := p.expr(0)
+		if e is ast.Ident {
+			ident := e as ast.Ident
+			if ident.mod == 'main' && ident.name == 'main' {
+				p.error_with_pos('function `main` cannot be passed as an argument', ident.pos)
+			}
+		}
 		args << ast.CallArg{
 			is_mut: is_mut
 			share: table.sharetype_from_flags(is_shared, is_atomic_or_rw)

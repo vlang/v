@@ -151,13 +151,11 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		}
 	}
 	for expr in right {
-		match expr {
-			ast.Ident {
-				if expr.mod == 'main' && expr.name == 'main' {
-					p.error_with_pos('function `main` cannot be assigned', expr.pos)
-				}
+		if expr is ast.Ident {
+			ident := expr as ast.Ident
+			if ident.mod == 'main' && ident.name == 'main' {
+				p.error_with_pos('function `main` cannot be assigned', ident.pos)
 			}
-			else {}
 		}
 	}
 	return ast.AssignStmt{
