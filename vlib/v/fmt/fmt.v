@@ -1073,9 +1073,13 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 	match or_block.kind {
 		.absent {}
 		.block {
-			f.writeln(' or {')
-			f.stmts(or_block.stmts)
-			f.write('}')
+			if or_block.stmts.len == 0 {
+				f.write(' or { }')
+			} else {
+				f.writeln(' or {')
+				f.stmts(or_block.stmts)
+				f.write('}')
+			}
 		}
 		.propagate {
 			f.write('?')
