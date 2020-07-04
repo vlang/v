@@ -56,7 +56,7 @@ pub fn (mut f File) writeln(s string) {
 	}
 	*/
 	// TODO perf
-	C.fputs(s.str, f.cfile)
+	C.fwrite(s.str, s.len, 1, f.cfile)
 	C.fputs('\n', f.cfile)
 }
 
