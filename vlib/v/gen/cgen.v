@@ -2777,7 +2777,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		if g.is_shared {
 			g.writeln('{.val = {')
 		} else {
-			g.writeln('($styp){')
+			g.write('($styp){')
 		}
 	}
 	// mut fields := []string{}
@@ -2798,7 +2798,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		inited_fields[field.name] = i
 		if sym.kind != .struct_ {
 			field_name := c_name(field.name)
-			g.write('\t.$field_name = ')
+			g.write('.$field_name = ')
 			field_type_sym := g.table.get_type_symbol(field.typ)
 			mut cloned := false
 			if g.autofree && field_type_sym.kind in [.array, .string] {
@@ -2813,7 +2813,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				}
 				g.expr_with_cast(field.expr, field.typ, field.expected_type)
 			}
-			g.writeln(',')
+			if i != struct_init.fields.len - 1 {
+				g.write(', ')
+			}
 			initialized = true
 		}
 	}
@@ -2827,11 +2829,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		}
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len
-		for field in info.fields {
+		for i, field in info.fields {
 			if field.name in inited_fields {
 				sfield := struct_init.fields[inited_fields[field.name]]
 				field_name := c_name(sfield.name)
-				g.write('\t.$field_name = ')
+				g.write('.$field_name = ')
 				field_type_sym := g.table.get_type_symbol(sfield.typ)
 				mut cloned := false
 				if g.autofree && field_type_sym.kind in [.array, .string] {
@@ -2846,7 +2848,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					}
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 				}
-				g.writeln(',')
+				if i != info.fields.len - 1 {
+					g.write(', ')
+				}
 				initialized = true
 				continue
 			}
@@ -4533,6 +4537,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
 	if len > 8 {
 		g.writeln('')
+		g.write('\t\t')
 	}
 	for i, expr in it.exprs {
 		if it.is_interface {
@@ -4547,9 +4552,6 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		if i != len - 1 {
 			g.write(', ')
 		}
-	}
-	if len > 8 {
-		g.writeln('')
 	}
 	g.write('}))')
 }
