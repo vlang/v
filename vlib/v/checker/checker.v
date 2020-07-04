@@ -1833,7 +1833,8 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			typ := c.expr(node.cond)
 			typ_idx := typ.idx()
 			if node.is_range {
-				high_type_idx := c.expr(node.high).idx()
+				high_type := c.expr(node.high)
+				high_type_idx := high_type.idx()
 				if typ_idx in table.integer_type_idxs && high_type_idx !in table.integer_type_idxs {
 					c.error('range types do not match', node.cond.position())
 				} else if typ_idx in table.float_type_idxs || high_type_idx in table.float_type_idxs {
@@ -1843,7 +1844,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				} else if typ_idx == table.string_type_idx || high_type_idx == table.string_type_idx {
 					c.error('range type can not be string', node.cond.position())
 				}
-				c.expr(node.high)
 			} else {
 				mut scope := c.file.scope.innermost(node.pos.pos)
 				sym := c.table.get_type_symbol(typ)
