@@ -618,8 +618,16 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 	} else if arg_is_ptr && !expr_is_ptr {
 		if arg.is_mut {
 			if exp_sym.kind == .array {
-				g.write('&')
-				g.expr(arg.expr)
+				if arg.expr is ast.Ident {
+					g.write('&/*arr*/')
+					g.expr(arg.expr)
+				} else {
+					// Special case for mutable arrays. We can't `&` function
+					// results,	have to use `(array[]){ expr }[0]` hack.
+					g.write('&/*111*/(array[]){')
+					g.expr(arg.expr)
+					g.write('}[0]')
+				}
 				return
 			}
 		}
