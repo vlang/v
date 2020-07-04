@@ -115,9 +115,13 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		global_scope: global_scope
 	}
 	if pref.is_vet && p.scanner.text.contains('\n        ') {
-		// TODO make this smarter
-		println(p.scanner.file_path)
-		println('Looks like you are using spaces for indentation.\n' + 'You can run `v fmt -w file.v` to fix that automatically')
+		source_lines := os.read_lines(path) or { []string{} }
+		for lnumber, line in source_lines {
+			if line.starts_with('        ') {
+				eprintln('${p.scanner.file_path}:${lnumber+1}: Looks like you are using spaces for indentation.')
+			}
+		}
+		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')        
 		exit(1)
 	}
 	return p.parse()
