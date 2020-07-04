@@ -278,7 +278,11 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('')
 		}
 		ast.Attr {
-			f.writeln('[$node.name]')
+			if node.is_string {
+				f.writeln("['$node.name']")
+			} else {
+				f.writeln('[$node.name]')
+			}
 		}
 		ast.Block {
 			f.writeln('{')
@@ -1375,8 +1379,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 
 pub fn (mut f Fmt) remove_new_line() {
 	mut i := 0
-	for i = f.out.len - 1; i >= 0; i--
-	 {
+	for i = f.out.len - 1; i >= 0; i-- {
 		if !f.out.buf[i].is_space() { // != `\n` {
 			break
 		}

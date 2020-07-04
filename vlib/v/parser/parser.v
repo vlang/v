@@ -656,7 +656,8 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		is_if_attr = true
 	}
 	mut name := ''
-	if p.tok.kind == .string {
+	is_string := p.tok.kind == .string
+	if is_string {
 		name = p.tok.lit
 		p.next()
 	} else {
@@ -677,6 +678,7 @@ fn (mut p Parser) parse_attr() ast.Attr {
 	}
 	return ast.Attr{
 		name: name
+		is_string: is_string
 	}
 }
 
