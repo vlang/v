@@ -12,6 +12,8 @@ import v.errors
 
 const (
 	max_nr_errors = 300
+	enum_min      = int(0x80000000)
+	enum_max      = 0x7FFFFFFF
 )
 
 pub struct Checker {
@@ -160,14 +162,14 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 					c.warn('const $no_pub_in_main_warning', stmt.pos)
 				}
 			}
-				/*
-				// TODO not a Stmt
+			/*
+			// TODO not a Stmt
 			ast.ConstField {
 				if stmt.is_pub {
 					c.warn('const field `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 				}
 			}
-				*/
+			*/
 			ast.EnumDecl {
 				if stmt.is_pub {
 					c.warn('enum `$stmt.name` $no_pub_in_main_warning', stmt.pos)
@@ -375,7 +377,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		.placeholder {
 			c.error('unknown struct: $type_sym.name', struct_init.pos)
 		}
-			// string & array are also structs but .kind of string/array
+		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array, .alias {
 			mut info := table.Struct{}
 			if type_sym.kind == .alias {
@@ -740,7 +742,8 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 		ast.AnonFn {
 			if arg_expr.decl.args.len > 1 {
 				c.error('function needs exactly 1 argument', call_expr.pos)
-			} else if is_map && (arg_expr.decl.return_type != elem_typ || arg_expr.decl.args[0].typ != elem_typ) {
+			} else if is_map && (arg_expr.decl.return_type != elem_typ ||
+				arg_expr.decl.args[0].typ != elem_typ) {
 				c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`',
 					call_expr.pos)
 			} else if !is_map && (arg_expr.decl.return_type != table.bool_type ||
@@ -1131,7 +1134,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 		if call_arg.is_mut {
 			c.fail_if_immutable(call_arg.expr)
-
 			if !arg.is_mut {
 				mut words := 'mutable'
 				mut tok := 'mut'
@@ -1427,6 +1429,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
+	mut seen := []int{}
 	for i, field in decl.fields {
 		if util.contains_capital(field.name) {
 			c.error('field name `$field.name` cannot contain uppercase letters, use snake_case instead',
@@ -1438,8 +1441,16 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 			}
 		}
 		if field.has_expr {
-			match field.expr {
-				ast.IntegerLiteral {}
+			match field.expr as field_expr {
+				ast.IntegerLiteral {
+					val := field_expr.val.i64()
+					if val < enum_min || val > enum_max {
+						c.error('enum value `$val` overflows int', field_expr.pos)
+					} else if int(val) in seen {
+						c.error('enum value `$val` already exists', field_expr.pos)
+					}
+					seen << int(val)
+				}
 				ast.PrefixExpr {}
 				else {
 					if field.expr is ast.Ident {
@@ -1454,6 +1465,16 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 					}
 					c.error('default value for enum has to be an integer', pos)
 				}
+			}
+		} else {
+			if seen.len > 0 {
+				last := seen[seen.len - 1]
+				if last == enum_max {
+					c.error('enum value overflows', field.pos)
+				}
+				seen << last + 1
+			} else {
+				seen << 0
 			}
 		}
 	}
@@ -1776,7 +1797,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					node.pos)
 			}
 		}
-			// ast.Attr {}
+		// ast.Attr {}
 		ast.AssignStmt {
 			c.assign_stmt(mut node)
 		}
@@ -1944,7 +1965,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 			}
 		}
-			// ast.HashStmt {}
+		// ast.HashStmt {}
 		ast.Import {}
 		ast.InterfaceDecl {
 			c.interface_decl(node)
@@ -2496,7 +2517,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					unhandled << '`$v_str`'
 				}
 			} }
-			//
+		//
 		table.Enum { for v in info.vals {
 				if v !in branch_exprs {
 					is_exhaustive = false
@@ -2953,7 +2974,6 @@ fn (mut c Checker) fn_decl(node ast.FnDecl) {
 			}
 		}
 	}
-
 	if node.language == .v && node.is_method && node.name == 'str' {
 		if node.return_type != table.string_type {
 			c.error('.str() methods should return `string`', node.pos)
@@ -2962,7 +2982,6 @@ fn (mut c Checker) fn_decl(node ast.FnDecl) {
 			c.error('.str() methods should have 0 arguments', node.pos)
 		}
 	}
-
 	c.expected_type = table.void_type
 	c.cur_fn = &node
 	c.stmts(node.stmts)
