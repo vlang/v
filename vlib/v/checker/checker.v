@@ -1194,6 +1194,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 			if typ_sym.kind == .array_fixed {
 			}
+			if typ_sym.kind == .function && arg_typ_sym.kind == .function {
+				candidate_fn_name := if typ_sym.name.starts_with('anon_') { 'anonymous function' } else { 'fn `$typ_sym.name`' }
+				c.error('cannot use $candidate_fn_name as function type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`',
+					call_expr.pos)
+			}
 			c.error('cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`',
 				call_expr.pos)
 		}
