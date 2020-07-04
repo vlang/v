@@ -606,7 +606,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			}
 			if left.kind != .interface_ && left.kind != .sum_type {
 				c.error('`$infix_expr.op.str()` can only be used with interfaces and sum types',
-					type_expr.pos)
+					infix_expr.pos)
 			}
 			return table.bool_type
 		}
