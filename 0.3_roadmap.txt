@@ -10,6 +10,7 @@
 - maps with non-string keys
 - iOS/Android support
 - make `-autofree` the default
+- parallel parser (and maybe checker/gen?)
 
 
 
