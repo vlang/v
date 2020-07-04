@@ -22,6 +22,12 @@ mut:
 	writer_sem   u32        // writer semaphones
 }
 
+[ref_only]
+pub struct RwMutex {
+mut:
+	mx MHANDLE    // mutex handle
+}
+
 enum MutexState {
 	broken
 	waiting
@@ -41,6 +47,12 @@ pub fn new_mutex() &Mutex {
 		}
 	}
 	return sm
+}
+
+pub fn new_rwmutex() &RwMutex {
+	m := &RwMutex{}
+	C.InitializeSRWLock(m.mx)
+	return m
 }
 
 pub fn (mut m Mutex) m_lock() {
@@ -78,6 +90,25 @@ pub fn (mut m Mutex) unlock() {
 		}
 	}
 	m.state = .released
+}
+
+// RwMutex has separate read- and write locks
+pub fn (mut m RwMutex) r_lock() {
+	C.AcquireSRWLockShared(m.mx)
+}
+
+pub fn (mut m RwMutex) w_lock() {
+	C.AcquireSRWLockExclusive(m.mx)
+}
+
+// Windows SRWLocks have different function to unlock
+// So provide two functions here, too, to have a common interface
+pub fn (mut m RwMutex) r_unlock() {
+	C.ReleaseSRWLockShared(m.mx)
+}
+
+pub fn (mut m RwMutex) w_unlock() {
+	C.ReleaseSRWLockExclusive(m.mx)
 }
 
 pub fn (mut m Mutex) destroy() {

@@ -402,8 +402,7 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 	if (is_rw && t_idx in g.rwshareds) || (!is_rw && t_idx in g.shareds) {
 		return sh_typ
 	}
-	// TODO: These two should become different...
-	mtx_typ := if is_rw { 'sync__Mutex' } else { 'sync__Mutex' }
+	mtx_typ := if is_rw { 'sync__RwMutex' } else { 'sync__Mutex' }
 	g.hotcode_definitions.writeln('struct $sh_typ { $base val; $mtx_typ* mtx; };')
 	g.typedefs2.writeln('typedef struct $sh_typ $sh_typ;')
 	// println('registered shared type $sh_typ')
@@ -2060,32 +2059,31 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) lock_expr(node ast.LockExpr) {
+	mut lock_prefixes := []byte{len: 0, cap: node.lockeds.len}
 	for id in node.lockeds {
 		name := id.name
-		deref := if id.is_mut { '->' } else { '.' }
-		// TODO: use 3 different locking functions
-		if node.is_rlock {
-			g.writeln('sync__Mutex_m_lock(${name}${deref}mtx);')
-		} else if id.var_info().typ.has_flag(.atomic_or_rw) {
-			g.writeln('sync__Mutex_m_lock(${name}${deref}mtx);')
-		} else {
-			g.writeln('sync__Mutex_m_lock(${name}${deref}mtx);')
+		// fields of `id` itself have no valid information, so look up type(flags) in scope
+		obj := g.file.scope.innermost(id.pos.pos).find(name) or {
+			verror('cgen: unable to get type for lock variable $name')
+			ast.ScopeObject{}
 		}
+		typ := if obj is ast.Var { (*(obj as ast.Var)).typ } else { table.Type(0) }
+		deref := if id.is_mut { '->' } else { '.' }
+		lock_prefix := if node.is_rlock { `r` } else { if typ.has_flag(.atomic_or_rw) { `w` } else { `m` } }
+		lock_prefixes << lock_prefix // keep for unlock
+		mut_prefix := if lock_prefix == `m` { '' } else { 'Rw' }
+		g.writeln('sync__${mut_prefix}Mutex_${lock_prefix:c}_lock(${name}${deref}mtx);')
 	}
 	g.stmts(node.stmts)
 	// unlock in reverse order
 	for i := node.lockeds.len-1; i >= 0; i-- {
 		id := node.lockeds[i]
+		lock_prefix := lock_prefixes[i]
 		name := id.name
 		deref := if id.is_mut { '->' } else { '.' }
-		// TODO: use 3 different unlocking functions
-		if node.is_rlock {
-			g.writeln('sync__Mutex_unlock(${name}${deref}mtx);')
-		} else if id.var_info().typ.has_flag(.atomic_or_rw) {
-			g.writeln('sync__Mutex_unlock(${name}${deref}mtx);')
-		} else {
-			g.writeln('sync__Mutex_unlock(${name}${deref}mtx);')
-		}
+		mut_prefix := if lock_prefix == `m` { '' } else { 'Rw' }
+		unlock_type := if lock_prefix == `m` { '' } else { '${lock_prefix:c}_' }
+		g.writeln('sync__${mut_prefix}Mutex_${unlock_type}unlock(${name}${deref}mtx);')
 	}
 }
 
@@ -2754,6 +2752,7 @@ const (
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	styp := g.typ(struct_init.typ)
 	mut shared_styp := '' // only needed for shared &St{...
+	mut share_prefix := '' // 'rw' for `rwshared`
 	if styp in skip_struct_init {
 		g.go_back_out(3)
 		return
@@ -2767,6 +2766,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			mut shared_typ := struct_init.typ.set_flag(.shared_f)
 			if g.is_rwshared {
 				shared_typ = shared_typ.set_flag(.atomic_or_rw)
+				share_prefix = 'rw'
 			}
 			shared_styp = g.typ(shared_typ)
 			g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ($styp){')
@@ -2872,7 +2872,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	g.write('}')
 	if g.is_shared {
-		g.write(', .mtx = sync__new_mutex()}')
+		g.write(', .mtx = sync__new_${share_prefix}mutex()}')
 		if is_amp {
 			g.write(', sizeof($shared_styp))')
 		}
