@@ -878,7 +878,7 @@ fn test_plus_assign_string() {
 	assert a == ['abc']
 }
 
-fn mut_arr_with_eq_in_fn(mut a int[]) {
+fn mut_arr_with_eq_in_fn(mut a []int) {
 	if a == [1,2] {
 		a << 3	
 	}
