@@ -16,17 +16,14 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 	pos := p.tok.position()
 	mut branches := []ast.IfBranch{}
 	mut has_else := false
+	mut comments := []ast.Comment{}
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
 		start_pos := p.tok.position()
-		mut comment := ast.Comment{}
 		if p.tok.kind == .key_if {
 			p.next()
 		} else {
-			// if p.tok.kind == .comment {
-			// p.error('place comments inside {}')
-			// }
-			comment = p.check_comment()
+			comments = p.eat_comments()
 			p.check(.key_else)
 			if p.tok.kind == .key_if {
 				p.next()
@@ -37,8 +34,9 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 				branches << ast.IfBranch{
 					stmts: p.parse_block()
 					pos: start_pos.extend(end_pos)
-					comment: comment
+					comments: comments
 				}
+				comments = []
 				break
 			}
 		}
@@ -74,8 +72,9 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			cond: cond
 			stmts: stmts
 			pos: start_pos.extend(end_pos)
-			comment: comment
+			comments: comments
 		}
+		comments = []
 		if p.tok.kind != .key_else {
 			break
 		}

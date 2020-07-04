@@ -436,10 +436,10 @@ pub mut:
 
 pub struct IfBranch {
 pub:
-	cond    Expr
-	stmts   []Stmt
-	pos     token.Position
-	comment Comment
+	cond     Expr
+	stmts    []Stmt
+	pos      token.Position
+	comments []Comment
 }
 
 pub struct LockExpr {

@@ -836,7 +836,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(node.val)
 		}
 		ast.LockExpr {
-			f.lock_expr(node) 
+			f.lock_expr(node)
 		}
 		ast.MapInit {
 			if node.keys.len == 0 {
@@ -1191,8 +1191,8 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
-		if branch.comment.text != '' {
-			f.comment(branch.comment)
+		if branch.comments.len > 0 {
+			f.comments(branch.comments, true, .keep)
 		}
 		if i == 0 {
 			f.write('if ')
