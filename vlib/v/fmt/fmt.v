@@ -421,7 +421,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('interface $it.name {')
 			for method in it.methods {
 				f.write('\t')
-				f.writeln(method.str(f.table).after('fn '))
+				f.writeln(method.stringify(f.table).after('fn '))
 			}
 			f.writeln('}\n')
 		}
@@ -1134,7 +1134,7 @@ pub fn (mut f Fmt) comments(some_comments []ast.Comment, remove_last_new_line bo
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	// println('$it.name find_comment($it.pos.line_nr)')
 	// f.find_comment(it.pos.line_nr)
-	s := node.str(f.table)
+	s := node.stringify(f.table)
 	f.write(s.replace(f.cur_mod + '.', '')) // `Expr` instead of `ast.Expr` in mod ast
 	if node.language == .v {
 		f.writeln(' {')

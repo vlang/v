@@ -2950,6 +2950,16 @@ fn (mut c Checker) fn_decl(node ast.FnDecl) {
 			}
 		}
 	}
+
+	if node.language == .v && node.is_method && node.name == 'str' {
+		if node.return_type != table.string_type {
+			c.error('.str() methods should return `string`', node.pos)
+		}
+		if node.args.len != 1 {
+			c.error('.str() methods should have 0 arguments', node.pos)
+		}
+	}
+
 	c.expected_type = table.void_type
 	c.cur_fn = &node
 	c.stmts(node.stmts)
