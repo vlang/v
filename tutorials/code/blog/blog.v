@@ -33,12 +33,9 @@ fn (app &App) index() vweb.Result {
 }
 
 pub fn (mut app App) init_once() {
-	db := sqlite.connect(':memory:') or {
+	db := sqlite.connect('blog.db') or {
 		panic(err)
 	}
-	db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
-	db.exec('insert into Article (title, text) values ("Hello, world!", "V is great.")')
-	db.exec('insert into Article (title, text) values ("Second post.", "Hm... what should I write about?")')
 	app.db = db
 }
 

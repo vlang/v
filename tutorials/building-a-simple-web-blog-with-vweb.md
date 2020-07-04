@@ -173,7 +173,32 @@ into a single binary file together with the web application itself.
 
 Now let's display some articles!
 
-We'll be using V's builtin ORM and SQLite.
+We'll be using V's builtin ORM and a SQLite database. 
+(V ORM will also support MySQL, Postgre, and SQL Server soon.)
+
+Create a SQLite file with the schema:
+```sql
+drop table Article;
+
+create table Article (
+	id integer primary key,
+	title text default "",
+	text text default ""
+);
+
+insert into Article (title, text) values (
+	"Hello, world!",
+	"V is great."
+);
+
+insert into Article (title, text) values (
+	"Second post.",
+	"Hm... what should I write about?"
+);
+```
+
+Run the file with `sqlite3 blog.db < blog.sqlite`.
+
 
 Add a SQLite handle to `App`:
 
