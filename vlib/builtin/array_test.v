@@ -879,22 +879,22 @@ fn test_plus_assign_string() {
 }
 
 fn mut_arr_with_eq_in_fn(mut a []int) {
-	if a == [1,2] {
-		a << 3	
+	if a == [1,2,3,4] {
+		a[0] = 0
 	}
-	if [1,2,3] == a {
-		a << 4	
+	if [1,2,3,4] == a {
+		a[1] = 0	
 	}
 	if !(a != [1,2,3,4]) {
-		a << 5	
+		a[2] = 0	
 	}
-	if !([1,2,3,4,5] != a) {
-		a << 6	
+	if !([1,2,3,4] != a) {
+		a[3] = 0
 	}
 }
 
 fn test_mut_arr_with_eq_in_fn() {
-	mut a := [1,2]
+	mut a := [1,2,3,4]
 	mut_arr_with_eq_in_fn(mut a)
-	assert a == [1,2,3,4,5,6]
+	assert a == [0,0,0,0]
 }
