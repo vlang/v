@@ -1390,7 +1390,7 @@ mut:
 
 fn (mut b St) g() {
 	...
-	b.mtx.lock()
+	b.mtx.m_lock()
 	// read/modify/write b.x
 	...
 	b.mtx.unlock()
@@ -1404,7 +1404,7 @@ fn caller() {
 	}
 	go a.g()
 	...
-	a.mtx.lock()
+	a.mtx.m_lock()
 	// read/modify/write a.x
 	...
 	a.mtx.unlock()

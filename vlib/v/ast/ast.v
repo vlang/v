@@ -11,7 +11,7 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
 	CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr |
-	IndexExpr | InfixExpr | IntegerLiteral | Likely | MapInit | MatchExpr | None | OrExpr |
+	IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None | OrExpr |
 	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
 	StringLiteral | StructInit | Type | TypeOf
 
@@ -232,6 +232,7 @@ pub:
 	receiver_pos  token.Position
 	is_method     bool
 	rec_mut       bool // is receiver mutable
+	rec_share     table.ShareType
 	language      table.Language
 	no_body       bool // just a definition `fn C.malloc()`
 	is_builtin    bool // this function is defined in builtin/strconv
@@ -271,6 +272,7 @@ pub mut:
 pub struct CallArg {
 pub:
 	is_mut bool
+	share  table.ShareType
 	expr   Expr
 pub mut:
 	typ    table.Type
@@ -301,6 +303,7 @@ pub struct Var {
 pub:
 	name       string
 	expr       Expr
+	share      table.ShareType
 	is_mut     bool
 	is_arg     bool // fn args should not be autofreed
 pub mut:
@@ -344,6 +347,7 @@ pub mut:
 	is_mut      bool
 	is_static   bool
 	is_optional bool
+	share       table.ShareType
 }
 
 pub type IdentInfo = IdentFn | IdentVar
@@ -436,6 +440,18 @@ pub:
 	stmts   []Stmt
 	pos     token.Position
 	comment Comment
+}
+
+pub struct LockExpr {
+pub:
+	stmts    []Stmt
+	is_rlock bool
+	pos      token.Position
+pub mut:
+	lockeds  []Ident // `x`, `y` in `lock x, y {`
+	is_expr  bool
+	is_rw    bool // `rwshared` needs special special handling even in `lock` case
+	typ      table.Type
 }
 
 pub struct MatchExpr {

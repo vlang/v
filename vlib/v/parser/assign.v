@@ -4,6 +4,7 @@
 module parser
 
 import v.ast
+import v.table
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
 	return p.partial_assign_stmt(p.expr_list())
@@ -106,16 +107,22 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 					if p.scope.known_var(lx.name) {
 						p.error_with_pos('redefinition of `$lx.name`', lx.pos)
 					}
+					mut share := table.ShareType(0)
+					if lx.info is ast.IdentVar {
+						share = (lx.info as ast.IdentVar).share
+					}
 					if left.len == right.len {
 						p.scope.register(lx.name, ast.Var{
 							name: lx.name
 							expr: right[i]
+							share: share
 							is_mut: lx.is_mut || p.inside_for
 							pos: lx.pos
 						})
 					} else {
 						p.scope.register(lx.name, ast.Var{
 							name: lx.name
+							share: share
 							is_mut: lx.is_mut || p.inside_for
 							pos: lx.pos
 						})
