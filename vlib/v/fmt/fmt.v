@@ -1304,9 +1304,9 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	} else if it.cond is ast.SelectorExpr {
 		// `x.y as z`
 		// if ident.name != it.var_name && it.var_name != '' {
-		if it.var_name != '' {
-			f.write(' as $it.var_name')
-		}
+	}
+	if it.var_name != '' && f.it_name != it.var_name {
+		f.write(' as $it.var_name')
 	}
 	f.writeln(' {')
 	f.indent++
