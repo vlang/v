@@ -1,13 +1,17 @@
 import net
+
 // This file shows how a basic TCP echo server can be implemented using
 // the `net` module. You can connect to the server by using netcat
 // or telnet, in separate shells, for example:
 // `nc 127.0.0.1 12345`
 // `telnet 127.0.0.1 12345`
 fn handle_connection(con net.Socket) {
-	eprintln('new client connected')
+	peer_ip := con.peer_ip() or {
+		'0.0.0.0'
+	}
+	eprintln('${peer_ip:16} | new client connected')
 	defer {
-		eprintln('closing connection: $con')
+		eprintln('${peer_ip:16} | closing connection...')
 		con.close() or { }
 	}
 	con.send_string("Welcome to V's TCP Echo server.\n") or {
@@ -18,7 +22,7 @@ fn handle_connection(con net.Socket) {
 		if line.len == 0 {
 			return
 		}
-		eprintln('received line: ' + line.trim_space())
+		eprintln('${peer_ip:16} | received line: ' + line.trim_space())
 		con.send_string(line) or {
 			return
 		}

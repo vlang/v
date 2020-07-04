@@ -1128,12 +1128,39 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 		if call_arg.is_mut {
 			c.fail_if_immutable(call_arg.expr)
+
 			if !arg.is_mut {
-				c.error('`$arg.name` argument is not mutable, `mut` is not needed`', call_arg.expr.position())
+				mut words := 'mutable'
+				mut tok := 'mut'
+				if call_arg.share == .shared_t {
+					words = 'shared'
+					tok = 'shared'
+				} else if call_arg.share == .rwshared_t {
+					words = 'read/write shared'
+					tok = 'rwshared'
+				} else if call_arg.share == .atomic_t {
+					words = 'atomic'
+					tok = 'atomic'
+				}
+				c.error('`$arg.name` argument is not $words, `$tok` is not needed`', call_arg.expr.position())
+			} else if arg.typ.share() != call_arg.share {
+				c.error('wrong shared type', call_arg.expr.position())
 			}
 		} else {
-			if arg.is_mut {
-				c.error('`$arg.name` is a mutable argument, you need to provide `mut`: `${call_expr.name}(mut ...)`',
+			if arg.is_mut && (!call_arg.is_mut || arg.typ.share() != call_arg.share) {
+				mut words := ' mutable'
+				mut tok := 'mut'
+				if arg.typ.share() == .shared_t {
+					words = ' shared'
+					tok = 'shared'
+				} else if arg.typ.share() == .rwshared_t {
+					words = ' read/write shared'
+					tok = 'rwshared'
+				} else if arg.typ.share() == .atomic_t {
+					words = 'n atomic'
+					tok = 'atomic'
+				}
+				c.error('`$arg.name` is a$words argument, you need to provide `$tok`: `${call_expr.name}($tok ...)`',
 					call_arg.expr.position())
 			}
 		}
@@ -1497,6 +1524,13 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					}
 					mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 					mut ident_var_info := left.var_info()
+					if ident_var_info.share in [.shared_t, .rwshared_t] {
+						left_type = left_type.set_flag(.shared_f)
+					}
+					if ident_var_info.share in [.atomic_t, .rwshared_t] {
+						left_type = left_type.set_flag(.atomic_or_rw)
+					}
+					assign_stmt.left_types[i] = left_type
 					ident_var_info.typ = left_type
 					left.info = ident_var_info
 					scope.update_var_type(left.name, left_type)
@@ -2116,6 +2150,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.IntegerLiteral {
 			return table.any_int_type
 		}
+		ast.LockExpr {
+			return c.lock_expr(mut node)
+		}
 		ast.MapInit {
 			return c.map_init(mut node)
 		}
@@ -2492,6 +2529,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 		err_details += ' (add `else {}` at the end)'
 	}
 	c.error(err_details, node.pos)
+}
+
+pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
+	for id in node.lockeds {
+		c.ident(mut id)
+	}
+	c.stmts(node.stmts)
+	// void for now... maybe sometime `x := lock a { a.getval() }`
+	return table.void_type
 }
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
@@ -2904,6 +2950,16 @@ fn (mut c Checker) fn_decl(node ast.FnDecl) {
 			}
 		}
 	}
+
+	if node.language == .v && node.is_method && node.name == 'str' {
+		if node.return_type != table.string_type {
+			c.error('.str() methods should return `string`', node.pos)
+		}
+		if node.args.len != 1 {
+			c.error('.str() methods should have 0 arguments', node.pos)
+		}
+	}
+
 	c.expected_type = table.void_type
 	c.cur_fn = &node
 	c.stmts(node.stmts)

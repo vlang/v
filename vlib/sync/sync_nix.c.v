@@ -17,7 +17,8 @@ pub fn new_mutex() &Mutex {
 	return m
 }
 
-pub fn (mut m Mutex) lock() {
+// m_lock(), for *manual* mutex handling, since `lock` is a keyword
+pub fn (mut m Mutex) m_lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 

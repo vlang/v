@@ -883,10 +883,10 @@ fn mut_arr_with_eq_in_fn(mut a []int) {
 		a[0] = 0
 	}
 	if [0,2,3,4] == a {
-		a[1] = 0	
+		a[1] = 0
 	}
 	if !(a != [0,0,3,4]) {
-		a[2] = 0	
+		a[2] = 0
 	}
 	if !([0,0,0,4] != a) {
 		a[3] = 0
@@ -897,4 +897,16 @@ fn test_mut_arr_with_eq_in_fn() {
 	mut a := [1,2,3,4]
 	mut_arr_with_eq_in_fn(mut a)
 	assert a == [0,0,0,0]
+}
+
+fn array_in_mut(mut a []int) {
+	if 1 in a {
+		a[0] = 2
+	}
+}
+
+fn test_array_in_mut() {
+	mut a := [1,2]
+	array_in_mut(mut a)
+	assert a == [2,2]
 }

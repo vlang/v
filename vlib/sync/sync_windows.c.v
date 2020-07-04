@@ -43,7 +43,7 @@ pub fn new_mutex() &Mutex {
 	return sm
 }
 
-pub fn (mut m Mutex) lock() {
+pub fn (mut m Mutex) m_lock() {
 	// if mutex handle not initalized
 	if isnil(m.mx) {
 		m.mx = MHANDLE(C.CreateMutex(0, false, 0))
