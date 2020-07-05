@@ -195,8 +195,14 @@ $c_common_macros
 #pragma comment(lib, "Dbghelp.lib")
 
 extern wchar_t **_wenviron;
-#elif defined(__TINYC__)
-typedef struct SRWLOCK { void* SRWLOCK; } SRWLOCK; 
+#elif !defined(SRWLOCK_INIT)
+// these seem to be missing on Windows tcc
+typedef struct SRWLOCK { void* SRWLOCK; } SRWLOCK;
+void InitializeSRWLock(void*);
+void AcquireSRWLockShared(void*);
+void AcquireSRWLockExclusive(void*);
+void ReleaseSRWLockShared(void*);
+void ReleaseSRWLockExclusive(void*);
 #endif
 
 #else
