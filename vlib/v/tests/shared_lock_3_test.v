@@ -19,8 +19,8 @@ fn f(rwshared x St, shared z St) {
 }
 
 const (
-	reads_per_thread = 100
-	read_threads = 50
+	reads_per_thread = 30
+	read_threads = 10
 	writes = 5
 )
 
