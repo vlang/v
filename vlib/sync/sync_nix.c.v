@@ -11,10 +11,12 @@ pub struct Mutex {
 	mutex C.pthread_mutex_t
 }
 
+[ref_only]
 pub struct RwMutex {
 	mutex C.pthread_rwlock_t
 }
 
+[ref_only]
 struct RwMutexAttr {
 	attr C.pthread_rwlockattr_t
 }
