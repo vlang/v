@@ -346,6 +346,13 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			// since such methods have a priority.
 			// For example URL `/register` matches route `/:user`, but `fn register()`
 			// should be called first.
+
+			if url_words.len == 0 {
+				app.index()
+				conn.close() or {}
+				return
+			}
+
 			println('no attrs for ${url_words[0]}')
 			if url_words[0] == method {
 				println('easy match $method')
