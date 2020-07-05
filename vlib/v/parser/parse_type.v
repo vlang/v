@@ -126,9 +126,9 @@ pub fn (mut p Parser) parse_type() table.Type {
 		is_optional = true
 
 		if p.tok.line_nr > line_nr {
-			typ := table.void_type
+			mut typ := table.void_type
 			if is_optional {
-				typ.set_flag(.optional)
+				typ = typ.set_flag(.optional)
 			}
 			return typ
 		}
