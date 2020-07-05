@@ -333,7 +333,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut action := ''
 	mut route_words := []string{}
 	mut ok := true
-	url_words := vals[1][1..].split('/')
+	mut url_words := vals[1][1..].split('/')
 	mut vars := []string{cap: route_words.len}
 
 	$for method in T {
@@ -354,9 +354,11 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			}
 
 			println('no attrs for ${url_words[0]}')
+			parameter := url_words[0].split('?')[1..]
+			url_words[0] = url_words[0].split('?')[0]
 			if url_words[0] == method {
 				println('easy match $method')
-				vars = []
+				vars = [parameter.join('')]
 				app.$method(vars)
 				conn.close() or {}
 				return
