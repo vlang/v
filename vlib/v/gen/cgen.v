@@ -949,19 +949,15 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type) {
 	// cast to sum type
 	if expected_type != table.void_type {
-		exp_sym := g.table.get_type_symbol(expected_type)
-		if exp_sym.kind == .sum_type {
-			sum_info := exp_sym.info as table.SumType
-			if got_type in sum_info.variants {
-				got_sym := g.table.get_type_symbol(got_type)
-				got_styp := g.typ(got_type)
-				exp_styp := g.typ(expected_type)
-				got_idx := got_type.idx()
-				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {')
-				g.expr(expr)
-				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
-				return
-			}
+		if g.table.check_sumtype_has_variant(expected_type, got_type) {
+			got_sym := g.table.get_type_symbol(got_type)
+			got_styp := g.typ(got_type)
+			exp_styp := g.typ(expected_type)
+			got_idx := got_type.idx()
+			g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {')
+			g.expr(expr)
+			g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
+			return
 		}
 	}
 	// Generic dereferencing logic

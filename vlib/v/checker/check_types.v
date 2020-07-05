@@ -102,21 +102,8 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 		return true
 	}
 	// sum type
-	// TODO: there is a bug when casting sumtype the other way if its pointer
-	// so until fixed at least show v (not C) error `x(variant) =  y(SumType*)`
-	// if got_type_sym.kind == .sum_type {
-	// sum_info := got_type_sym.info as table.SumType
-	// // TODO: handle `match SumType { &PtrVariant {} }` currently just checking base
-	// if expected.set_nr_muls(0) in sum_info.variants {
-	// return true
-	// }
-	// }
-	if exp_type_sym.kind == .sum_type {
-		sum_info := exp_type_sym.info as table.SumType
-		// TODO: handle `match SumType { &PtrVariant {} }` currently just checking base
-		if got.set_nr_muls(0) in sum_info.variants {
-			return true
-		}
+	if c.table.check_sumtype_compatibility(got, expected) {
+		return true
 	}
 	// fn type
 	if got_type_sym.kind == .function && exp_type_sym.kind == .function {

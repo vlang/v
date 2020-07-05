@@ -491,3 +491,32 @@ pub fn (table &Table) register_fn_gen_type(fn_name string, typ Type) {
 	// println('registering fn ($fn_name) gen type $sym.name')
 	table.fn_gen_types[fn_name] = a
 }
+
+
+// TODO: there is a bug when casting sumtype the other way if its pointer
+// so until fixed at least show v (not C) error `x(variant) =  y(SumType*)`
+pub fn (table &Table) check_sumtype_has_variant(parent Type, variant Type) bool {
+	parent_sym := table.get_type_symbol(parent)
+	if parent_sym.kind ==.sum_type {
+		parent_info := parent_sym.info as SumType
+		for v in parent_info.variants {
+			if v.idx() == variant.idx() {
+				return true
+			}
+			if table.check_sumtype_has_variant(v, variant) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+pub fn (table &Table) check_sumtype_compatibility(a Type, b Type) bool {
+	if table.check_sumtype_has_variant(a, b) {
+		return true
+	}
+	if table.check_sumtype_has_variant(b, a) {
+		return true
+	}
+	return false
+}
