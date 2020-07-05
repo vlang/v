@@ -27,7 +27,7 @@ pub fn new_mutex() &Mutex {
 
 pub fn new_rwmutex() &RwMutex {
 	m := &RwMutex{}
-	a := RwMutexAttr{}
+	a := &RwMutexAttr{}
 	C.pthread_rwlockattr_init(&a.attr)
 	// Give writer priority over readers
 	C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)

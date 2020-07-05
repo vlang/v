@@ -199,6 +199,9 @@ extern wchar_t **_wenviron;
 
 #else
 #include <pthread.h>
+#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
+#define pthread_rwlockattr_setkind_np(a, b)
+#endif
 #endif
 
 // g_live_info is used by live.info()
