@@ -82,3 +82,29 @@ fn test_match_enums() {
 	}
 	assert b == .blue
 }
+
+type Sum = A1 | B1
+
+struct A1 {
+	pos int
+}
+struct B1 {
+	val string
+}
+
+fn f(s Sum) string {
+    match s {
+        A1 {
+            return typeof(s)
+        }
+        B1 {
+			return ''
+		}
+    }
+	return ''
+}
+
+fn test_sum_type_name() {
+	a := A1{pos: 22}
+	assert f(a) == 'A1'
+}
