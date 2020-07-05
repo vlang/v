@@ -479,7 +479,7 @@ pub fn (mut ws Client) read() int {
 					return -1
 				}
 			}
-			message := Message{
+			message := &Message{
 				opcode: frame.opcode
 				payload: payload
 				payload_len: int(payload_len)
