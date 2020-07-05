@@ -314,18 +314,27 @@ fn test_struct_with_default_values_no_init() {
 	assert s3.field_optional == 2
 }
 
-struct StructWithFnTypesWithVoidOptionReturnType {
+struct FieldsWithOptionalVoidReturnType {
 	f fn() ?
+	g fn() ?
 }
 
-fn test_struct_with_fn_types_with_optional_void_return() ? {
-	s := StructWithFnTypesWithVoidOptionReturnType {
+fn test_fields_anon_fn_with_optional_void_return_type() {
+	foo := FieldsWithOptionalVoidReturnType {
 		f: fn() ? {
-			assert true
-			return none
+			return error("oops")
+		}
+		g: fn() ? {
+			return
 		}
 	}
 
-	s.f()
+	foo.f() or {
+		assert err == "oops"
+	}
+
+	foo.g() or {
+		assert false
+	}
 }
 
