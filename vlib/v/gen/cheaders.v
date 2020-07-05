@@ -195,10 +195,22 @@ $c_common_macros
 #pragma comment(lib, "Dbghelp.lib")
 
 extern wchar_t **_wenviron;
+#elif !defined(SRWLOCK_INIT)
+// these seem to be missing on Windows tcc
+typedef struct SRWLOCK { void* SRWLOCK; } SRWLOCK;
+void InitializeSRWLock(void*);
+void AcquireSRWLockShared(void*);
+void AcquireSRWLockExclusive(void*);
+void ReleaseSRWLockShared(void*);
+void ReleaseSRWLockExclusive(void*);
 #endif
 
 #else
 #include <pthread.h>
+#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
+// musl does not have that
+#define pthread_rwlockattr_setkind_np(a, b)
+#endif
 #endif
 
 // g_live_info is used by live.info()
