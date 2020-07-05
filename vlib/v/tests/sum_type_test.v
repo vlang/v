@@ -1,4 +1,15 @@
 type Expr = IfExpr | IntegerLiteral
+type Stmt = FnDecl | StructDecl
+type Node = Expr | Stmt
+
+struct FnDecl {
+	pos int
+}
+
+struct StructDecl {
+	pos int
+}
+
 
 struct IfExpr {
 	pos int
@@ -93,4 +104,27 @@ fn test_converting_down() {
 	assert res[0].name == 'two'
 	assert res[1].val == 3
 	assert res[1].name == 'three'
+}
+
+fn test_nested_sumtype() {
+	mut a := Node{}
+	mut b := Node{}
+	a = StructDecl{pos: 1}
+	b = IfExpr {pos: 1}
+	match a {
+		StructDecl {
+			assert true
+		}
+		else {
+			assert false
+		}
+	}
+	// TODO: not working
+	// assert b is IfExpr
+	if b is IfExpr {
+		assert true
+	}
+	else {
+		assert false
+	}
 }

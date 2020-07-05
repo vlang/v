@@ -279,3 +279,40 @@ fn test_optional_val_with_empty_or() {
 	ret_none() or {}
 	assert true
 }
+
+fn test_optional_void_return_types_of_anon_fn() {
+	f := fn(i int) ? {
+		if i == 0 {
+			return error("0")
+		}
+
+		return
+	}
+
+	f(0) or {
+		assert err == "0"
+		return
+	}
+}
+
+struct Foo {
+	f fn(int) ?
+}
+
+fn test_option_void_return_types_of_anon_fn_in_struct() {
+	foo := Foo {
+		f: fn(i int) ? {
+			if i == 0 {
+				return error("0")
+			}
+
+			return
+		}
+	}
+
+	foo.f(0) or {
+		assert err == "0"
+		return
+	}
+}
+

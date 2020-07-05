@@ -836,7 +836,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('// TypeDecl')
 		}
 		ast.UnsafeStmt {
+			g.writeln('{ // Unsafe block')
 			g.stmts(node.stmts)
+			g.writeln('}')
 		}
 	}
 	g.stmt_path_pos.delete(g.stmt_path_pos.len - 1)
@@ -947,19 +949,15 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type) {
 	// cast to sum type
 	if expected_type != table.void_type {
-		exp_sym := g.table.get_type_symbol(expected_type)
-		if exp_sym.kind == .sum_type {
-			sum_info := exp_sym.info as table.SumType
-			if got_type in sum_info.variants {
-				got_sym := g.table.get_type_symbol(got_type)
-				got_styp := g.typ(got_type)
-				exp_styp := g.typ(expected_type)
-				got_idx := got_type.idx()
-				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {')
-				g.expr(expr)
-				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
-				return
-			}
+		if g.table.sumtype_has_variant(expected_type, got_type) {
+			got_sym := g.table.get_type_symbol(got_type)
+			got_styp := g.typ(got_type)
+			exp_styp := g.typ(expected_type)
+			got_idx := got_type.idx()
+			g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {')
+			g.expr(expr)
+			g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
+			return
 		}
 	}
 	// Generic dereferencing logic
@@ -2777,7 +2775,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		if g.is_shared {
 			g.writeln('{.val = {')
 		} else {
-			g.writeln('($styp){')
+			g.write('($styp){')
 		}
 	}
 	// mut fields := []string{}
@@ -2798,7 +2796,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		inited_fields[field.name] = i
 		if sym.kind != .struct_ {
 			field_name := c_name(field.name)
-			g.write('\t.$field_name = ')
+			g.write('.$field_name = ')
 			field_type_sym := g.table.get_type_symbol(field.typ)
 			mut cloned := false
 			if g.autofree && field_type_sym.kind in [.array, .string] {
@@ -2813,7 +2811,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				}
 				g.expr_with_cast(field.expr, field.typ, field.expected_type)
 			}
-			g.writeln(',')
+			if i != struct_init.fields.len - 1 {
+				g.write(', ')
+			}
 			initialized = true
 		}
 	}
@@ -2827,11 +2827,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		}
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len
-		for field in info.fields {
+		for i, field in info.fields {
 			if field.name in inited_fields {
 				sfield := struct_init.fields[inited_fields[field.name]]
 				field_name := c_name(sfield.name)
-				g.write('\t.$field_name = ')
+				g.write('.$field_name = ')
 				field_type_sym := g.table.get_type_symbol(sfield.typ)
 				mut cloned := false
 				if g.autofree && field_type_sym.kind in [.array, .string] {
@@ -2846,7 +2846,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					}
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 				}
-				g.writeln(',')
+				if i != info.fields.len - 1 {
+					g.write(', ')
+				}
 				initialized = true
 				continue
 			}
@@ -4533,6 +4535,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
 	if len > 8 {
 		g.writeln('')
+		g.write('\t\t')
 	}
 	for i, expr in it.exprs {
 		if it.is_interface {
@@ -4547,9 +4550,6 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		if i != len - 1 {
 			g.write(', ')
 		}
-	}
-	if len > 8 {
-		g.writeln('')
 	}
 	g.write('}))')
 }

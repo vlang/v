@@ -115,13 +115,15 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		global_scope: global_scope
 	}
 	if pref.is_vet && p.scanner.text.contains('\n        ') {
-		source_lines := os.read_lines(path) or { []string{} }
+		source_lines := os.read_lines(path) or {
+			[]string{}
+		}
 		for lnumber, line in source_lines {
 			if line.starts_with('        ') {
-				eprintln('${p.scanner.file_path}:${lnumber+1}: Looks like you are using spaces for indentation.')
+				eprintln('$p.scanner.file_path:${lnumber+1}: Looks like you are using spaces for indentation.')
 			}
 		}
-		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')        
+		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
 		exit(1)
 	}
 	return p.parse()
@@ -450,6 +452,8 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					file: p.file_name
 					return_type: table.void_type
 				}
+			} else if p.pref.is_fmt {
+				return p.stmt(false)
 			} else {
 				p.error('bad top level statement ' + p.tok.str())
 				return ast.Stmt{}
@@ -598,7 +602,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			p.error_with_pos('const can only be defined at the top level (outside of functions)',
 				p.tok.position())
 		}
-			// literals, 'if', etc. in here
+		// literals, 'if', etc. in here
 		else {
 			return p.parse_multi_expr(is_top_level)
 		}
@@ -654,7 +658,8 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		is_if_attr = true
 	}
 	mut name := ''
-	if p.tok.kind == .string {
+	is_string := p.tok.kind == .string
+	if is_string {
 		name = p.tok.lit
 		p.next()
 	} else {
@@ -675,6 +680,7 @@ fn (mut p Parser) parse_attr() ast.Attr {
 	}
 	return ast.Attr{
 		name: name
+		is_string: is_string
 	}
 }
 

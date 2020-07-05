@@ -43,6 +43,7 @@ mut:
 	expr_level       int // to avoid infinit recursion segfaults due to compiler bugs
 	inside_sql       bool // to handle sql table fields pseudo variables
 	cur_orm_ts       table.TypeSymbol
+	error_details    []string
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -1020,6 +1021,14 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			f = f1
 		}
 	}
+	if c.pref.is_script && !found {
+		os_name := 'os.$fn_name'
+		if f1 := c.table.find_fn(os_name) {
+			call_expr.name = os_name
+			found = true
+			f = f1
+		}
+	}
 	// check for arg (var) of fn type
 	if !found {
 		scope := c.file.scope.innermost(call_expr.pos.pos)
@@ -1193,8 +1202,14 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 			if typ_sym.kind == .array_fixed {
 			}
-			c.error('cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`',
-				call_expr.pos)
+			if typ_sym.kind == .function && arg_typ_sym.kind == .function {
+				candidate_fn_name := if typ_sym.name.starts_with('anon_') { 'anonymous function' } else { 'fn `$typ_sym.name`' }
+				c.error('cannot use $candidate_fn_name as function type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`',
+					call_expr.pos)
+			} else {
+				c.error('cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`',
+					call_expr.pos)
+			}
 		}
 	}
 	if call_expr.generic_type != table.void_type && f.return_type != 0 { // table.t_type {
@@ -1889,6 +1904,12 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.in_for_count++
 			typ := c.expr(node.cond)
 			typ_idx := typ.idx()
+			if node.key_var.len > 0 && node.key_var != '_' {
+				c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
+			}
+			if node.val_var.len > 0 && node.val_var != '_' {
+				c.check_valid_snake_case(node.val_var, 'variable name', node.pos)
+			}
 			if node.is_range {
 				high_type := c.expr(node.high)
 				high_type_idx := high_type.idx()
@@ -2441,10 +2462,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			typ_sym := c.table.get_type_symbol(typ)
 			if node.is_sum_type || node.is_interface {
 				ok := if cond_type_sym.kind == .sum_type {
-					// TODO verify sum type
-					// true // c.check_types(typ, cond_type)
-					info := cond_type_sym.info as table.SumType
-					typ in info.variants
+					c.table.sumtype_has_variant(cond_type, typ)
 				} else {
 					// interface match
 					c.type_implements(typ, cond_type, node.pos)
@@ -2805,6 +2823,10 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	return map_type
 }
 
+pub fn (mut c Checker) add_error_detail(s string) {
+	c.error_details << s
+}
+
 pub fn (mut c Checker) warn(s string, pos token.Position) {
 	allow_warnings := !c.pref.is_prod // allow warnings only in dev builds
 	c.warn_or_error(s, pos, allow_warnings) // allow warnings only in dev builds
@@ -2822,6 +2844,11 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	// if c.pref.is_verbose {
 	// print_backtrace()
 	// }
+	mut details := ''
+	if c.error_details.len > 0 {
+		details = c.error_details.join('\n')
+		c.error_details = []
+	}
 	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
 		wrn := errors.Warning{
@@ -2829,6 +2856,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 			pos: pos
 			file_path: c.file.path
 			message: message
+			details: details
 		}
 		c.file.warnings << wrn
 		c.warnings << wrn
@@ -2842,6 +2870,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 				pos: pos
 				file_path: c.file.path
 				message: message
+				details: details
 			}
 			c.file.errors << err
 			c.errors << err

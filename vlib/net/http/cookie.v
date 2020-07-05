@@ -153,8 +153,8 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 		return []
 	}
 	mut cookies := []&Cookie{}
-	for _, _line in lines {
-		mut line := _line.trim_space()
+	for _, line_ in lines {
+		mut line := line_.trim_space()
 		mut part := ''
 		for line.len > 0 {
 			if line.index_any(';') > 0 {

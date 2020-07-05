@@ -87,10 +87,8 @@ fn setup_symlink_on_windows(){
 			C.RegCloseKey(reg_sys_env_handle)
 		}
 
-		sys_env_path := get_reg_value(reg_sys_env_handle, 'Path') or {
-			warn_and_exit(err)
-			return
-		}
+		// if the above succeeded, and we cannot get the value, it may simply be empty
+		sys_env_path := get_reg_value(reg_sys_env_handle, 'Path') or { '' }
 
 		current_sys_paths := sys_env_path.split(os.path_delimiter).map(it.trim('/$os.path_separator'))
 		mut new_paths := [ vsymlinkdir ]

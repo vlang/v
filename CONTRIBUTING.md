@@ -111,6 +111,7 @@ main V repository's master, then `git checkout master`, as well as
 (these are actually used by `v up`) and git can always do it cleanly.
 
 Git is very flexible, so there are other ways to accomplish the same thing.
+See the [GitHub flow](https://guides.github.com/introduction/git-handbook/#github), for more information.
 
 ## Using Github's hub CLI tool
 
