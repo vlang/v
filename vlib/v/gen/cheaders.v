@@ -195,6 +195,8 @@ $c_common_macros
 #pragma comment(lib, "Dbghelp.lib")
 
 extern wchar_t **_wenviron;
+#elif defined(__TINYC__)
+typedef struct SRWLOCK { void* SRWLOCK; } SRWLOCK; 
 #endif
 
 #else
