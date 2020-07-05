@@ -100,12 +100,16 @@ fn (mut g Gen) comp_if(it ast.CompIf) {
 }
 
 fn (mut g Gen) comp_for(node ast.CompFor) {
-	g.writeln('// comptime $' + 'for {')
+	g.writeln('// 2comptime $' + 'for {')
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
+	vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
 	// g.writeln('string method = tos_lit("");')
 	for method in sym.methods {
-		if method.attrs.len == 0 {
+		// if method.attrs.len == 0 {
+		// continue
+		// }
+		if method.return_type != vweb_result_type { // table.void_type {
 			continue
 		}
 		g.comp_for_method = method.name
@@ -117,7 +121,11 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		if i == 0 {
 			g.write('\tstring ')
 		}
-		g.writeln('attrs = tos_lit("${method.attrs[0]}");')
+		if method.attrs.len == 0 {
+			g.writeln('attrs = tos_lit("");')
+		} else {
+			g.writeln('attrs = tos_lit("${method.attrs[0]}");')
+		}
 		g.stmts(node.stmts)
 		i++
 		g.writeln('')
