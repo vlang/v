@@ -339,7 +339,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	$for method in T {
 		ok = true
 		println('\n\n method = $method urlwords=')
-		//println(url_words)
+		println(url_words)
 		println('attrs=$attrs')
 		if attrs == '' {
 			// No routing for this method. If it matches, call it and finish matching
@@ -354,11 +354,11 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			}
 
 			println('no attrs for ${url_words[0]}')
-			//parameter := url_words[0].split('?')
-			//name := if '?' in url_words[0] { url_words[0].split('?')[0] } else { url_words[0] }
-			if url_words[0]/*name*/ == method {
+			parameter := url_words[0].split('?')[1..]
+			url_words[0] = url_words[0].split('?')[0]
+			if url_words[0] == method {
 				println('easy match $method')
-				vars = [/*parameter.join('')*/]
+				vars = [parameter.join('')]
 				app.$method(vars)
 				conn.close() or {}
 				return
