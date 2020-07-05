@@ -1904,6 +1904,12 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.in_for_count++
 			typ := c.expr(node.cond)
 			typ_idx := typ.idx()
+			if node.key_var.len > 0 && node.key_var != '_' {
+				c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
+			}
+			if node.val_var.len > 0 && node.val_var != '_' {
+				c.check_valid_snake_case(node.val_var, 'variable name', node.pos)
+			}
 			if node.is_range {
 				high_type := c.expr(node.high)
 				high_type_idx := high_type.idx()
@@ -2456,10 +2462,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			typ_sym := c.table.get_type_symbol(typ)
 			if node.is_sum_type || node.is_interface {
 				ok := if cond_type_sym.kind == .sum_type {
-					// TODO verify sum type
-					// true // c.check_types(typ, cond_type)
-					info := cond_type_sym.info as table.SumType
-					typ in info.variants
+					c.table.sumtype_has_variant(cond_type, typ)
 				} else {
 					// interface match
 					c.type_implements(typ, cond_type, node.pos)
