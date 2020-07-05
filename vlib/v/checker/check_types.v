@@ -102,7 +102,7 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 		return true
 	}
 	// sum type
-	if c.table.check_sumtype_compatibility(got, expected) {
+	if c.check_sumtype_compatibility(got, expected) {
 		return true
 	}
 	// fn type
@@ -345,4 +345,14 @@ pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type
 		}
 	}
 	return table.string_type
+}
+
+pub fn (c &Checker) check_sumtype_compatibility(a table.Type, b table.Type) bool {
+	if c.table.sumtype_has_variant(a, b) {
+		return true
+	}
+	if c.table.sumtype_has_variant(b, a) {
+		return true
+	}
+	return false
 }

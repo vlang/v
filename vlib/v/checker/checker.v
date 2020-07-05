@@ -2462,7 +2462,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			typ_sym := c.table.get_type_symbol(typ)
 			if node.is_sum_type || node.is_interface {
 				ok := if cond_type_sym.kind == .sum_type {
-					c.table.check_sumtype_has_variant(cond_type, typ)
+					c.table.sumtype_has_variant(cond_type, typ)
 				} else {
 					// interface match
 					c.type_implements(typ, cond_type, node.pos)
