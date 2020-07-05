@@ -25,7 +25,7 @@ mut:
 [ref_only]
 pub struct RwMutex {
 mut:
-	mx MHANDLE    // mutex handle
+	mx C.SRWLOCK    // mutex handle
 }
 
 enum MutexState {
@@ -51,7 +51,7 @@ pub fn new_mutex() &Mutex {
 
 pub fn new_rwmutex() &RwMutex {
 	m := &RwMutex{}
-	C.InitializeSRWLock(m.mx)
+	C.InitializeSRWLock(&m.mx)
 	return m
 }
 
@@ -94,21 +94,21 @@ pub fn (mut m Mutex) unlock() {
 
 // RwMutex has separate read- and write locks
 pub fn (mut m RwMutex) r_lock() {
-	C.AcquireSRWLockShared(m.mx)
+	C.AcquireSRWLockShared(&m.mx)
 }
 
 pub fn (mut m RwMutex) w_lock() {
-	C.AcquireSRWLockExclusive(m.mx)
+	C.AcquireSRWLockExclusive(&m.mx)
 }
 
 // Windows SRWLocks have different function to unlock
 // So provide two functions here, too, to have a common interface
 pub fn (mut m RwMutex) r_unlock() {
-	C.ReleaseSRWLockShared(m.mx)
+	C.ReleaseSRWLockShared(&m.mx)
 }
 
 pub fn (mut m RwMutex) w_unlock() {
-	C.ReleaseSRWLockExclusive(m.mx)
+	C.ReleaseSRWLockExclusive(&m.mx)
 }
 
 pub fn (mut m Mutex) destroy() {

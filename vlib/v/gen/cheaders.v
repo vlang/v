@@ -200,6 +200,7 @@ extern wchar_t **_wenviron;
 #else
 #include <pthread.h>
 #ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
+// musl doesn't have that
 #define pthread_rwlockattr_setkind_np(a, b)
 #endif
 #endif
