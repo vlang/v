@@ -98,6 +98,25 @@ pub fn (mut p Parser) parse_type_with_mut(is_mut bool) table.Type {
 	return typ
 }
 
+// Parses any language indicators on a type.
+pub fn (mut p Parser) parse_language() table.Language {
+
+	language := if p.tok.lit == 'C' {
+		table.Language.c
+	} else if p.tok.lit == 'JS' {
+		table.Language.js
+	} else {
+		table.Language.v
+	}
+
+	if language != .v {
+		p.next()
+		p.check(.dot)
+	}
+
+	return language
+}
+
 pub fn (mut p Parser) parse_type() table.Type {
 	// optional
 	mut is_optional := false
@@ -127,19 +146,7 @@ pub fn (mut p Parser) parse_type() table.Type {
 		nr_muls++
 		p.next()
 	}
-
-	language := if p.tok.lit == 'C' {
-		table.Language.c
-	} else if p.tok.lit == 'JS' {
-		table.Language.js
-	} else {
-		table.Language.v
-	}
-
-	if language != .v {
-		p.next()
-		p.check(.dot)
-	}
+	language := p.parse_language()
 	mut typ := table.void_type
 	if p.tok.kind != .lcbr {
 		pos := p.tok.position()
