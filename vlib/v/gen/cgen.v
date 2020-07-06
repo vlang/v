@@ -958,15 +958,11 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
    			got_idx := got_deref_type.idx()
    			got_sym := g.table.get_type_symbol(got_deref_type)
             if expected_is_ptr && got_is_ptr {
-                rewritten_line := '*' + g.go_before_stmt(0).trim_space()
-                g.write(rewritten_line)
-    			g.write('/* sum type cast */ ($exp_styp) {.obj = ')
+    			g.write('/* sum type cast */ &($exp_styp) {.obj = ')
     			g.expr(expr)
     			g.write(', .typ = $got_idx /* $got_sym.name */}')
             } else if expected_is_ptr {
-                rewritten_line := '*' + g.go_before_stmt(0).trim_space()
-                g.write(rewritten_line)
-    			g.write('/* sum type cast */ ($exp_styp) {.obj = &(')
+    			g.write('/* sum type cast */ &($exp_styp) {.obj = &(')
     			g.expr(expr)
     			g.write('), .typ = $got_idx /* $got_sym.name */}')
             } else if got_is_ptr {
