@@ -9,7 +9,6 @@ import rand
 import time
 import gx
 import gg
-import gg.ft
 import sokol.sapp
 
 const (
@@ -127,8 +126,6 @@ struct Game {
 	rotation_idx int
 	// gg context for drawing
 	gg          &gg.Context = voidptr(0)
-	// ft context for font drawing
-	ft          &ft.FT = voidptr(0)
 	font_loaded bool
 	// frame/time counters:
 	frame int
@@ -138,11 +135,6 @@ struct Game {
 }
 
 const ( fpath = os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf') )
-fn init_gui(mut game Game){
-	x := ft.new({ font_path: fpath, scale: sapp.dpi_scale() }) or {panic(err)}
-	game.ft = x
-	game.font_loaded = true
-}
 
 [if showfps]
 fn (game &Game) showfps() {
@@ -159,7 +151,6 @@ fn (game &Game) showfps() {
 
 fn frame(game &Game) {
 	game.frame_sw.restart()
-	game.ft.flush()
 	game.gg.begin()
 	game.draw_scene()
 	game.showfps()
@@ -170,7 +161,6 @@ fn frame(game &Game) {
 fn main() {
 	mut game := &Game{
 		gg: 0
-		ft: 0
 	}
 	game.gg = gg.new_context(
 		bg_color: gx.white
@@ -181,9 +171,9 @@ fn main() {
 		window_title: 'V Tetris'
 		//
 		user_data: game
-		init_fn: init_gui
 		frame_fn: frame
 		event_fn: on_event
+		font_path: fpath
 		//wait_events: true
 	)
 	game.init_game()
@@ -346,19 +336,17 @@ fn (g &Game) draw_field() {
 }
 
 fn (mut g Game) draw_ui() {
-	if g.font_loaded {
-		g.ft.draw_text(1, 3, g.score.str(), text_cfg)
-		if g.state == .gameover {
-			g.gg.draw_rect(0, win_height / 2 - text_size, win_width,
-		 								5 * text_size, ui_color)
-			g.ft.draw_text(1, win_height / 2 + 0 * text_size, 'Game Over', over_cfg)
-			g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'Space to restart', over_cfg)
-		} else if g.state == .paused {
-			g.gg.draw_rect(0, win_height / 2 - text_size, win_width,
-				5 * text_size, ui_color)
-			g.ft.draw_text(1, win_height / 2 + 0 * text_size, 'Game Paused', text_cfg)
-			g.ft.draw_text(1, win_height / 2 + 2 * text_size, 'SPACE to resume', text_cfg)
-		}
+	g.gg.draw_text(1, 3, g.score.str(), text_cfg)
+	if g.state == .gameover {
+		g.gg.draw_rect(0, win_height / 2 - text_size, win_width,
+	 								5 * text_size, ui_color)
+		g.gg.draw_text(1, win_height / 2 + 0 * text_size, 'Game Over', over_cfg)
+		g.gg.draw_text(1, win_height / 2 + 2 * text_size, 'Space to restart', over_cfg)
+	} else if g.state == .paused {
+		g.gg.draw_rect(0, win_height / 2 - text_size, win_width,
+			5 * text_size, ui_color)
+		g.gg.draw_text(1, win_height / 2 + 0 * text_size, 'Game Paused', text_cfg)
+		g.gg.draw_text(1, win_height / 2 + 2 * text_size, 'SPACE to resume', text_cfg)
 	}
 	//g.gg.draw_rect(0, block_size, win_width, limit_thickness, ui_color)
 }

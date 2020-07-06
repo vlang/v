@@ -9,7 +9,7 @@ import sokol
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
-//import gg.ft
+import gg.ft
 
 pub type FNCb fn(x voidptr)
 pub type FNEvent fn(e voidptr, x voidptr)
@@ -40,12 +40,14 @@ pub:
 	keydown_fn    FNKeyDown = voidptr(0) // special case of event_fn
 	char_fn       FNChar = voidptr(0) // special case of event_fn
 	wait_events   bool // set this to true for UIs, to save power
-	font_path string
 	fullscreen bool
 	scale f32 = 1.0 // vid needs this
+	//init_text bool
+	font_path string
 }
 
 pub struct Context {
+	render_text bool
 pub mut:
 	scale      f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
 	width      int
@@ -53,6 +55,8 @@ pub mut:
 	clear_pass C.sg_pass_action
 	window     C.sapp_desc
 	config     Config
+	ft &ft.FT
+	font_inited bool
 }
 
 pub struct Size { pub: width int height int }
@@ -77,19 +81,24 @@ fn gg_init_sokol_window(user_data voidptr) {
 	if g.scale < 0.1 {
 		g.scale = 1.0
 	}
-	is_high_dpi := sapp.high_dpi()
-	fb_w := sapp.width()
-	fb_h := sapp.height()
-	println('g.scale=$g.scale is_high_dpi=$is_high_dpi fb_w=$fb_w fb_h=$fb_h')
+	//is_high_dpi := sapp.high_dpi()
+	//fb_w := sapp.width()
+	//fb_h := sapp.height()
+	//println('g.scale=$g.scale is_high_dpi=$is_high_dpi fb_w=$fb_w fb_h=$fb_h')
+	//if g.config.init_text {
+	if g.config.font_path != '' {
+		g.ft = ft.new({ font_path: g.config.font_path, scale: sapp.dpi_scale() }) or {panic(err)}
+		g.font_inited = true
+	}
 	if g.config.init_fn != voidptr(0) {
-		g.config.init_fn( g.config.user_data )
+		g.config.init_fn(g.config.user_data)
 	}
 }
 
 fn gg_frame_fn(user_data voidptr) {
 	mut g := &Context(user_data)
 	if g.config.frame_fn != voidptr(0) {
-		g.config.frame_fn( g.config.user_data )
+		g.config.frame_fn(g.config.user_data)
 	}
 }
 
@@ -149,6 +158,8 @@ pub fn new_context(cfg Config) &Context{
 		clear_pass: gfx.create_clear_pass( f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0,
 f32(cfg.bg_color.b) / 255.0, 1.0)
 		config: cfg
+		render_text: cfg.font_path != ''
+		ft: 0
 	}
 
 	//C.printf('new_context() %p\n', cfg.user_data)
@@ -225,6 +236,9 @@ pub fn create_image_from_memory(buf byteptr) u32 {
 }
 
 pub fn (gg &Context) begin() {
+	if gg.render_text && gg.font_inited {
+		gg.ft.flush()
+	}
 	sgl.defaults()
 	sgl.matrix_mode_projection()
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
@@ -253,8 +267,20 @@ pub fn (ctx &Context) draw_image(x, y, width, height f32, image u32) {
 }
 
 pub fn (ctx &Context) draw_rounded_rect(x, y, width, height, radius f32, color gx.Color) {
-	}
+}
+
 pub fn (ctx &Context) draw_empty_rounded_rect(x, y, width, height, radius f32, border_color gx.Color) {
+}
+
+pub fn (ctx &Context) draw_text(x, y int, text string, cfg gx.TextCfg) {
+	if !ctx.font_inited {
+		return
+	}
+	ctx.ft.draw_text(x, y, text, cfg)
+}
+
+pub fn (ctx &Context) draw_text_def(x, y int, text string) {
+	ctx.ft.draw_text_def(x, y, text)
 }
 
 
