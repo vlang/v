@@ -1339,6 +1339,11 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		}
 
 		g.expr(it.right)
+
+		// Int division: 2.5 -> 2 by prepending |0
+		if it.op == .div && it.left_type == table.any_int_type_idx && it.right_type == table.any_int_type_idx {
+			g.write('|0')
+		}
 	}
 }
 
