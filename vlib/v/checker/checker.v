@@ -552,11 +552,20 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					}
 				}
 				if infix_expr.op in [.div, .mod] {
-					if (infix_expr.right is ast.IntegerLiteral &&
-						infix_expr.right.str() == '0') ||
-						(infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0) {
-						oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
-						c.error('$oper by zero', right_pos)
+					match infix_expr.right as infix_right {
+						ast.FloatLiteral {
+							if infix_right.val.f64() == 0.0 {
+								oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
+								c.error('$oper by zero', infix_right.pos)
+							}
+						}
+						ast.IntegerLiteral {
+							if infix_right.val.int() == 0 {
+								oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
+								c.error('$oper by zero', infix_right.pos)
+							}
+						}
+						else {}
 					}
 				}
 				return_type = promoted_type
