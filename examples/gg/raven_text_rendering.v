@@ -1,7 +1,6 @@
 module main
 
 import gg
-import gg.ft
 import gx
 import os
 
@@ -62,17 +61,7 @@ lines = text.split('\n')
 struct App {
 mut:
 	gg &gg.Context
-	ft &ft.FT
 }
-
-fn init_gui(mut game App){
-	x := ft.new({
-		font_size: 13
-		scale: 2
-		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
-	}) or { panic(err) }
-	game.ft = x
-	}
 
 fn main() {
 	mut app := &App{}
@@ -86,17 +75,17 @@ fn main() {
 		bg_color: bg_color
 		init_fn: init_gui
 		frame_fn: frame
+		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
 		//window_user_ptr: ctx
 	})
 	app.gg.run()
 }
 
 fn frame(mut app App) {
-	app.ft.flush()
 	app.gg.begin()
 	mut y := 10
 	for line in lines {
-		app.ft.draw_text_def(10,y, line)
+		app.gg.draw_text_def(10, y, line)
 		y += 30
 	}
 	app.gg.end()
