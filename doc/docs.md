@@ -1250,8 +1250,7 @@ fn land(w World) {
 
 `match` must have a pattern for each variant or have an `else` branch.
 
-There are 3 ways to access the cast variant inside a match branch:
-- the `it` variable
+There are 2 ways to access the cast variant inside a match branch:
 - the shadowed match variable
 - using `as` to specify a variable name
 
@@ -1262,9 +1261,8 @@ fn (v Venus) sweat()
 
 fn pass_time(w World) {
     match w {
-        // using `it`
-        Moon { it.moon_walk() }
         // using the shadowed match variable, in this case `w`
+        Moon { w.moon_walk() }
         Mars { w.shiver() }
         else {}
     }
