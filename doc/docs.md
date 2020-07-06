@@ -1196,71 +1196,85 @@ println(color) // "1"  TODO: print "green"?
 
 ### Sum types
 
+A sum type instance can hold a value of several different types. Use the `type`
+keyword to declare a sum type:
+
 ```v
-type Expr = BinaryExpr | UnaryExpr | IfExpr
+struct Moon {}
+struct Mars {}
+struct Venus {}
 
-struct BinaryExpr{ ... }
-struct UnaryExpr{ ... }
-struct IfExpr{ ... }
+type World = Moon | Mars | Venus
 
-fn (mut p Parser) expr(precedence int) Expr {
-	match p.tok {
-		.key_if { return IfExpr{} }
-		...
-		else    { return BinaryExpr{} }
-	}
-}
+sum := World(Moon{})
+```
 
-fn gen(expr Expr) {
-	match expr {
-		IfExpr { gen_if(expr) } // `expr` is cast to the matched type automatically
-		...
-	}
-}
+To check whether a sum type instance holds a certain type, use `sum is Type`.
+To cast a sum type to one of its variants you use `sum as Type`:
 
-fn gen_if(expr IfExpr) {
-	...
+```v
+fn (m Mars) dust_storm() bool
+
+fn main() {
+    mut w := World(Moon{})
+    assert w is Moon
+
+    w = Mars{}
+    // use `as` to access the Mars instance
+    mars := w as Mars
+    if mars.dust_storm() {
+        println('bad weather!')
+    }
 }
 ```
 
-To check whether a sum type is a certain type, use `is`:
+You can also use `match` to determine the variant:
 
 ```v
-println(expr is IfExpr)
+fn open_parachutes(n int)
+
+fn land(w World) {
+    match w {
+        Moon {} // no atmosphere
+        Mars {
+            // light atmosphere
+            open_parachutes(3)
+        }
+        Venus {
+            // heavy atmosphere
+            open_parachutes(1)
+        }
+    }
+}
 ```
 
-To cast a sum type to one of its variants you use `as`:
+`match` must have a pattern for each variant or have an `else` branch.
 
-```v
-bin_expr := expr as BinaryExpr
-```
-
-You can also use match to determine the variant and cast to it at the same time.
-There are 3 ways to access the cast variant inside a match branch:
-- the `it` variable
+There are 2 ways to access the cast variant inside a match branch:
 - the shadowed match variable
 - using `as` to specify a variable name
 
 ```v
-    fn binary_expr(bx BinaryExpr) {...}
-    fn unary_expr(ux UnaryExpr) {...}
-    fn if_expr(ix IfExpr) {...}
+fn (m Moon) moon_walk()
+fn (m Mars) shiver()
+fn (v Venus) sweat()
 
-        // using `it`
-	match expr {
-		BinaryExpr { binary_expr(it) }
-		...
-	}
-        // using the shadowed variable, in this case `expr`
-	match expr {
-		UnaryExpr { unary_expr(expr) }
-		...
-	}
-        // using `as` to specify a variable
-	match expr as actual_expr {
-		IfExpr { if_expr(actual_expr) }
-		...
-	}
+fn pass_time(w World) {
+    match w {
+        // using the shadowed match variable, in this case `w`
+        Moon { w.moon_walk() }
+        Mars { w.shiver() }
+        else {}
+    }
+    // using `as` to specify a variable name
+    match w as expr {
+        Venus { expr.sweat() }
+        else {
+            // w is of type World
+            assert w !is Venus
+        }
+    }
+}
 ```
 
 Note: shadowing only works when the match expression is a variable. It will not work on struct fields, arrays indexing, or map key lookup.
@@ -1739,10 +1753,9 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 To debug issues in the generated C code, you can pass these flags:
 
 - `-cg` - produces a less optimized executable with more debug information in it.
-- `-keepc` - keep the generated C file, so your debugger can also use it.
 - `-showcc` - prints the C command that is used to build the program.
 
-For the best debugging experience, you can pass all of them at the same time: `v -cg -keepc -showcc yourprogram.v` , then just run your debugger (gdb/lldb) or IDE on the produced executable `yourprogram`.
+For the best debugging experience, you can pass all of them at the same time: `v -cg -showcc yourprogram.v` , then just run your debugger (gdb/lldb) or IDE on the produced executable `yourprogram`.
 
 If you just want to inspect the generated C code, without further compilation, you can also use the `-o` flag (e.g. `-o file.c`). This will make V produce the `file.c` then stop.
 

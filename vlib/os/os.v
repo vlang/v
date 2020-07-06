@@ -1225,12 +1225,14 @@ pub fn flush() {
 
 pub fn mkdir_all(path string) {
 	mut p := if path.starts_with(os.path_separator) { os.path_separator } else { '' }
-	for subdir in path.split(os.path_separator) {
+	path_parts := path.trim_left(os.path_separator).split(os.path_separator)
+	for subdir in path_parts {
 		p += subdir + os.path_separator
-		if !os.is_dir(p) {
-			os.mkdir(p) or {
-				panic(err)
-			}
+		if os.exists(p) && os.is_dir(p) {
+			continue
+		}
+		os.mkdir(p) or {
+			panic('folder: $p, error: $err')
 		}
 	}
 }

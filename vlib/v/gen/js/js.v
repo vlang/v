@@ -1327,6 +1327,12 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(g.typ(it.right_type))
 		if it.op == .not_is { g.write(')') }
 	} else {
+		both_are_int := int(it.left_type) in table.integer_type_idxs && int(it.right_type) in table.integer_type_idxs
+
+		if it.op == .div && both_are_int {
+			g.write('parseInt(')
+		}
+
 		g.expr(it.left)
 
 		// in js == is non-strict & === is strict, always do strict
@@ -1339,6 +1345,11 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		}
 
 		g.expr(it.right)
+
+		// Int division: 2.5 -> 2 by prepending |0
+		if it.op == .div && both_are_int {
+			g.write(',10)')
+		}
 	}
 }
 

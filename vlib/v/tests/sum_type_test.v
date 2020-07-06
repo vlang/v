@@ -128,3 +128,41 @@ fn test_nested_sumtype() {
 		assert false
 	}
 }
+
+type Abc = int | string
+
+fn test_string_cast_to_sumtype() {
+	a := Abc('test')
+	match a {
+		int {
+			assert false
+		}
+		string {
+			assert true
+		}
+	}
+}
+
+fn test_int_cast_to_sumtype() {
+	// literal
+	a := Abc(111)
+	match a {
+		int {
+			assert true
+		}
+		string {
+			assert false
+		}
+	}
+	// var
+	i := 111
+	b := Abc(i)
+	match b {
+		int {
+			assert true
+		}
+		string {
+			assert false
+		}
+	}
+}
