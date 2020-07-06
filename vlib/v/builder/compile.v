@@ -8,12 +8,15 @@ import os
 import v.pref
 
 fn get_vtmp_folder() string {
-	vtmp := os.join_path(os.temp_dir(), 'v')
-	if !os.is_dir(vtmp) {
-		os.mkdir(vtmp) or {
-			verror(err)
-		}
+	mut vtmp := os.getenv('VTMP')
+	if vtmp.len > 0 {
+		return vtmp
 	}
+	vtmp = os.join_path(os.temp_dir(), 'v')
+	if !os.exists(vtmp) || !os.is_dir(vtmp) {
+		os.mkdir_all(vtmp)
+	}
+	os.setenv('VTMP', vtmp, true)
 	return vtmp
 }
 
