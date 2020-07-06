@@ -22,21 +22,24 @@ you can do in V.
 * [Hello world](#hello-world)
 * [Comments](#comments)
 * [Functions](#functions)
+    * [Returning multiple values](#returning-multiple-values)
+* [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [Types](#types)
-    * [Primitive types](#primitive-types)
     * [Strings](#strings)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
     * [Maps](#maps)
-* [Module Imports](#module-imports)
-* [Statements & Expressions](#statements--expressions)
+* [Module imports](#module-imports)
+* [Statements & expressions](#statements--expressions)
     * [If](#if)
-    * [In Operator](#in-operator)
+    * [In operator](#in-operator)
     * [For loop](#for-loop)
     * [Match](#match)
     * [Defer](#defer)
 * [Structs](#structs)
+    * [Embedded structs](#embedded-structs)
+    * [Default field values](#default-field-values)
     * [Short struct literal syntax](#short-struct-initialization-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
@@ -167,7 +170,7 @@ Functions can be used before their declaration:
 This is true for all declarations in V and eliminates the need for header files
 or thinking about the order of files and declarations.
 
-<p>&nbsp;</p>
+### Returning multiple values
 
 ```v
 fn foo() (int, int) {
@@ -180,10 +183,7 @@ println(b) // 3
 c, _ := foo() // ignore values using `_`
 ```
 
-Functions can return multiple values.
-
-<p>&nbsp;</p>
-
+## Symbol visibility
 
 ```v
 pub fn public_function() {
@@ -193,11 +193,9 @@ fn private_function() {
 }
 ```
 
-Like constants and types, functions are private (not exported) by default.
+Functions are private (not exported) by default.
 To allow other modules to use them, prepend `pub`. The same applies
 to constants and types.
-
-
 
 ## Variables
 
@@ -220,9 +218,9 @@ the expression `T(v)` converts the value `v` to the
 type `T`.
 
 Unlike most other languages, V only allows defining variables in functions.
-Global (module level) variables are not allowed. There's no global state in V.
+Global (module level) variables are not allowed.
 
-<p>&nbsp;</p>
+### Mutable variables
 
 ```v
 mut age := 20
@@ -236,10 +234,10 @@ immutable by default. To be able to change the value of the variable, you have t
 
 Try compiling the program above after removing `mut` from the first line.
 
+### Initialization vs assignment
+
 Note the (important) difference between `:=` and `=`
 `:=` is used for declaring and initializing, `=` is used for assigning.
-
-<p>&nbsp;</p>
 
 ```v
 fn main() {
@@ -249,8 +247,6 @@ fn main() {
 
 This code will not compile, because the variable `age` is not declared.
 All variables need to be declared in V.
-
-<p>&nbsp;</p>
 
 ```v
 fn main() {
@@ -263,14 +259,13 @@ fn main() {
 In development mode the compiler will warn you that you haven't used the variable (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`) it will not compile at all (like in Go).
 
-<p>&nbsp;</p>
-
 ```v
 fn main() {
     a := 10
     if true {
-        a := 20
+        a := 20 // error: shadowed variable
     }
+    // warning: unused variable `a`
 }
 ```
 
@@ -548,11 +543,11 @@ numbers := {
 }
 ```
 
-## Module Imports
+## Module imports
 
 For information about creating a module, see [Modules](#modules)
 
-### Importing a Module
+### Importing a module
 
 Modules can be imported using keyword `import`.
 
@@ -574,7 +569,7 @@ import crypto.sha256 { sum }
 import time { Time }
 ```
 
-### Module Import Aliasing
+### Module import aliasing
 
 Any imported module name can be aliased using the `as` keyword:
 
@@ -608,7 +603,7 @@ fn main() {
 }
 ```
 
-## Statements & Expressions
+## Statements & expressions
 
 ### If
 
@@ -870,7 +865,7 @@ p = Point{10, 20}
 assert p.x == 10
 ```
 
-<p>&nbsp;</p>
+### Heap structs
 
 Structs are allocated on the stack. To allocate a struct on the heap
 and get a reference to it, use the `&` prefix:
@@ -881,10 +876,10 @@ p := &Point{10, 10}
 println(p.x)
 ```
 
-The type of `p` is `&Point`. It's a reference to `Point`.
+The type of `p` is `&Point`. It's a [reference](#references) to `Point`.
 References are similar to Go pointers and C++ references.
 
-<p>&nbsp;</p>
+### Embedded structs
 
 V doesn't allow subclassing, but it supports embedded structs:
 
@@ -902,7 +897,7 @@ button.set_pos(x, y)
 button.widget.set_pos(x,y)
 ```
 
-<p>&nbsp;</p>
+### Default field values
 
 ```v
 struct Foo {
@@ -1030,10 +1025,8 @@ user2 := User{age: 20}
 println(user2.can_register()) // "true"
 ```
 
-V doesn't have classes. But you can define methods on types.
-
+V doesn't have classes, but you can define methods on types.
 A method is a function with a special receiver argument.
-
 The receiver appears in its own argument list between the `fn` keyword and the method name.
 
 In this example, the `can_register` method has a receiver of type `User` named `u`.
@@ -2453,6 +2446,8 @@ unsafe
 See also [Types](#types).
 
 ## Appendix II: Operators
+
+This lists operators for [primitive types](#primitive-types) only.
 
 ```v
 +    sum                    integers, floats, strings
