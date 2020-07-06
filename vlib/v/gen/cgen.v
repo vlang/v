@@ -177,40 +177,53 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	g.finish()
 	//
 	mut b := strings.new_builder(250000)
-	b.writeln(g.hashes())
-	b.writeln(g.comptime_defines.str())
+	b.write(g.hashes())
+	b.write(g.comptime_defines.str())
 	b.writeln('\n// V typedefs:')
-	b.writeln(g.typedefs.str())
+	b.write(g.typedefs.str())
 	b.writeln('\n// V typedefs2:')
-	b.writeln(g.typedefs2.str())
+	b.write(g.typedefs2.str())
 	b.writeln('\n// V cheaders:')
-	b.writeln(g.cheaders.str())
+	b.write(g.cheaders.str())
 	b.writeln('\n// V includes:')
-	b.writeln(g.includes.str())
+	b.write(g.includes.str())
 	b.writeln('\n// Enum definitions:')
-	b.writeln(g.enum_typedefs.str())
+	b.write(g.enum_typedefs.str())
 	b.writeln('\n// V type definitions:')
-	b.writeln(g.type_definitions.str())
+	b.write(g.type_definitions.str())
 	b.writeln('\n// V Option_xxx definitions:')
-	b.writeln(g.options.str())
+	b.write(g.options.str())
 	b.writeln('\n// V json forward decls:')
-	b.writeln(g.json_forward_decls.str())
+	b.write(g.json_forward_decls.str())
 	b.writeln('\n// V definitions:')
-	b.writeln(g.definitions.str())
-	b.writeln('\n// V profile counters:')
-	b.writeln(g.pcs_declarations.str())
-	b.writeln('\n// V interface table:')
-	b.writeln(g.interface_table())
-	b.writeln('\n// V gowrappers:')
-	b.writeln(g.gowrappers.str())
-	b.writeln('\n// V hotcode definitions:')
-	b.writeln(g.hotcode_definitions.str())
-	b.writeln('\n// V stringliterals:')
-	b.writeln(g.stringliterals.str())
-	b.writeln('\n// V auto str functions:')
-	b.writeln(g.auto_str_funcs.str())
+	b.write(g.definitions.str())
+	if g.pcs_declarations.len > 0 {
+		b.writeln('\n// V profile counters:')
+		b.write(g.pcs_declarations.str())
+	}
+	interface_table := g.interface_table()
+	if interface_table.len > 0 {
+		b.writeln('\n// V interface table:')
+		b.write(interface_table)
+	}
+	if g.gowrappers.len > 0 {
+		b.writeln('\n// V gowrappers:')
+		b.write(g.gowrappers.str())
+	}
+	if g.hotcode_definitions.len > 0 {
+		b.writeln('\n// V hotcode definitions:')
+		b.write(g.hotcode_definitions.str())
+	}
+	if g.stringliterals.len > 0 {
+		b.writeln('\n// V stringliterals:')
+		b.write(g.stringliterals.str())
+	}
+	if g.auto_str_funcs.len > 0 {
+		b.writeln('\n// V auto str functions:')
+		b.write(g.auto_str_funcs.str())
+	}
 	b.writeln('\n// V out')
-	b.writeln(g.out.str())
+	b.write(g.out.str())
 	b.writeln('\n// THE END.')
 	return b.str()
 }
@@ -2985,7 +2998,7 @@ fn (mut g Gen) write_init_function() {
 	}
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
-	g.writeln(g.inits.str())
+	g.write(g.inits.str())
 	for mod_name in g.table.imports {
 		init_fn_name := '${mod_name}.init'
 		if _ := g.table.find_fn(init_fn_name) {
