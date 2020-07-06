@@ -73,7 +73,6 @@ fn main() {
 		window_title: 'Empty window'
 		user_data: app
 		bg_color: bg_color
-		init_fn: init_gui
 		frame_fn: frame
 		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
 		//window_user_ptr: ctx
