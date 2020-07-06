@@ -77,7 +77,7 @@ fn on_open(sender voidptr, ws &websocket.Client, x voidptr) {
 	println('websocket opened.')
 }
 
-fn on_message(sender voidptr, mut ws websocket.Client, msg websocket.Message) {
+fn on_message(sender voidptr, mut ws websocket.Client, msg &websocket.Message) {
 	println('Message recieved. Sending it back.')
 	typ := msg.opcode
 	if typ == .text_frame {

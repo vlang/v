@@ -119,7 +119,7 @@ pub fn (mut d Doc) get_signature(stmt ast.Stmt, file &ast.File) string {
 			return 'module $stmt.name'
 		}
 		ast.FnDecl {
-			return stmt.str(d.table).replace(d.fmt.cur_mod + '.', '')
+			return stmt.stringify(d.table).replace(d.fmt.cur_mod + '.', '')
 		}
 		else {
 			d.fmt.out = strings.new_builder(1000)

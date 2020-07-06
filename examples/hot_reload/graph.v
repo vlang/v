@@ -3,7 +3,6 @@ module main
 import gx
 import gg
 import time
-import glfw
 import math
 
 const (
@@ -17,7 +16,6 @@ struct Context {
 }
 
 fn main() {
-	glfw.init_glfw()
 	gconfig := gg.Cfg {
 			width: size
 			height: size

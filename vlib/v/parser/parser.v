@@ -115,9 +115,15 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		global_scope: global_scope
 	}
 	if pref.is_vet && p.scanner.text.contains('\n        ') {
-		// TODO make this smarter
-		println(p.scanner.file_path)
-		println('Looks like you are using spaces for indentation.\n' + 'You can run `v fmt -w file.v` to fix that automatically')
+		source_lines := os.read_lines(path) or {
+			[]string{}
+		}
+		for lnumber, line in source_lines {
+			if line.starts_with('        ') {
+				eprintln('$p.scanner.file_path:${lnumber+1}: Looks like you are using spaces for indentation.')
+			}
+		}
+		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
 		exit(1)
 	}
 	return p.parse()
@@ -446,6 +452,8 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					file: p.file_name
 					return_type: table.void_type
 				}
+			} else if p.pref.is_fmt {
+				return p.stmt(false)
 			} else {
 				p.error('bad top level statement ' + p.tok.str())
 				return ast.Stmt{}
@@ -506,7 +514,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_for {
 			return p.for_stmt()
 		}
-		.name, .key_mut, .key_static, .mul {
+		.name, .key_mut, .key_shared, .key_atomic, .key_rwshared, .key_static, .mul {
 			if p.tok.kind == .name {
 				if p.tok.lit == 'sql' {
 					return p.sql_stmt()
@@ -594,7 +602,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			p.error_with_pos('const can only be defined at the top level (outside of functions)',
 				p.tok.position())
 		}
-			// literals, 'if', etc. in here
+		// literals, 'if', etc. in here
 		else {
 			return p.parse_multi_expr(is_top_level)
 		}
@@ -650,7 +658,8 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		is_if_attr = true
 	}
 	mut name := ''
-	if p.tok.kind == .string {
+	is_string := p.tok.kind == .string
+	if is_string {
 		name = p.tok.lit
 		p.next()
 	} else {
@@ -671,6 +680,7 @@ fn (mut p Parser) parse_attr() ast.Attr {
 	}
 	return ast.Attr{
 		name: name
+		is_string: is_string
 	}
 }
 
@@ -750,7 +760,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	left0 := left[0]
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left)
-	} else if is_top_level && tok.kind !in [.key_if, .key_match] &&
+	} else if is_top_level && tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock] &&
 		left0 !is ast.CallExpr && left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr &&
 		(left0 as ast.InfixExpr).op == .left_shift) &&
 		left0 !is ast.ComptimeCall {
@@ -773,7 +783,9 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 
 pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	// p.warn('name ')
-	is_mut := p.tok.kind == .key_mut
+	is_shared := p.tok.kind in [.key_shared, .key_rwshared]
+	is_atomic_or_rw := p.tok.kind in [.key_rwshared, .key_atomic]
+	is_mut := p.tok.kind == .key_mut || is_shared || is_atomic_or_rw
 	if is_mut {
 		p.next()
 	}
@@ -811,6 +823,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 			info: ast.IdentVar{
 				is_mut: is_mut
 				is_static: is_static
+				share: table.sharetype_from_flags(is_shared, is_atomic_or_rw)
 			}
 		}
 	} else {

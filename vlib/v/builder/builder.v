@@ -57,14 +57,17 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 // parse all deps from already parsed files
 pub fn (mut b Builder) parse_imports() {
 	mut done_imports := []string{}
+		if b.pref.is_script {
+			done_imports << 'os'
+		}
 	// NB: b.parsed_files is appended in the loop,
 	// so we can not use the shorter `for in` form.
 	for i := 0; i < b.parsed_files.len; i++ {
 		ast_file := b.parsed_files[i]
-		for _, imp in ast_file.imports {
+		for imp in ast_file.imports {
 			mod := imp.mod
 			if mod == 'builtin' {
-				verror('cannot import module "$mod"')
+				verror('cannot import module "builtin"')
 				break
 			}
 			if mod in done_imports {
@@ -88,7 +91,7 @@ pub fn (mut b Builder) parse_imports() {
 			for file in parsed_files {
 				if file.mod.name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					verror('bad module definition: ${ast_file.path} imports module "$mod" but $file.path is defined as module `$file.mod.name`')
+					verror('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$file.mod.name`')
 				}
 			}
 			b.parsed_files << parsed_files
@@ -109,15 +112,13 @@ pub fn (mut b Builder) resolve_deps() {
 	graph := b.import_graph()
 	deps_resolved := graph.resolve()
 	cycles := deps_resolved.display_cycles()
-	if cycles.len > 1 {
-		eprintln('warning: import cycle detected between the following modules: \n' + cycles)
-		// TODO: error, when v itself does not have v.table -> v.ast -> v.table cycles anymore
-		return
-	}
 	if b.pref.is_verbose {
 		eprintln('------ resolved dependencies graph: ------')
 		eprintln(deps_resolved.display())
 		eprintln('------------------------------------------')
+	}
+	if cycles.len > 1 {
+		verror('error: import cycle detected between the following modules: \n' + cycles)
 	}
 	mut mods := []string{}
 	for node in deps_resolved.nodes {
@@ -148,8 +149,14 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 		mut deps := []string{}
 		if p.mod.name !in builtins {
 			deps << 'builtin'
+			if b.pref.backend == .c {
+				// TODO JavaScript backend doesn't handle os for now
+				if b.pref.is_script && p.mod.name != 'os' {
+					deps << 'os'
+				}
+			}
 		}
-		for _, m in p.imports {
+		for m in p.imports {
 			deps << m.mod
 		}
 		graph.add(p.mod.name, deps)
@@ -200,7 +207,8 @@ pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 	vmod_file_location := mcache.get_by_file(fpath)
 	mod_path := module_path(mod)
 	mut module_lookup_paths := []string{}
-	if vmod_file_location.vmod_file.len != 0 && vmod_file_location.vmod_folder !in b.module_search_paths {
+	if vmod_file_location.vmod_file.len != 0 &&
+		vmod_file_location.vmod_folder !in b.module_search_paths {
 		module_lookup_paths << vmod_file_location.vmod_folder
 	}
 	module_lookup_paths << b.module_search_paths
@@ -235,6 +243,9 @@ fn (b &Builder) print_warnings_and_errors() {
 			kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_warnings:' } else { 'warning:' }
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
+			if err.details.len > 0 {
+				eprintln('details: $err.details')
+			}
 			// eprintln('')
 			if i > b.max_nr_errors {
 				return
@@ -250,6 +261,9 @@ fn (b &Builder) print_warnings_and_errors() {
 			kind := if b.pref.is_verbose { '$err.reporter error #$b.checker.nr_errors:' } else { 'error:' }
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
+			if err.details.len > 0 {
+				eprintln('details: $err.details')
+			}
 			// eprintln('')
 			if i > b.max_nr_errors {
 				return
@@ -268,7 +282,7 @@ fn (b &Builder) print_warnings_and_errors() {
 						f := stmt as ast.FnDecl
 						if f.name == fn_name {
 							fline := f.pos.line_nr
-							println('${file.path}:${fline}:')
+							println('$file.path:$fline:')
 						}
 					}
 				}

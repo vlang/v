@@ -1390,7 +1390,7 @@ mut:
 
 fn (mut b St) g() {
 	...
-	b.mtx.lock()
+	b.mtx.m_lock()
 	// read/modify/write b.x
 	...
 	b.mtx.unlock()
@@ -1404,7 +1404,7 @@ fn caller() {
 	}
 	go a.g()
 	...
-	a.mtx.lock()
+	a.mtx.m_lock()
 	// read/modify/write a.x
 	...
 	a.mtx.unlock()
@@ -1739,10 +1739,9 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 To debug issues in the generated C code, you can pass these flags:
 
 - `-cg` - produces a less optimized executable with more debug information in it.
-- `-keepc` - keep the generated C file, so your debugger can also use it.
 - `-showcc` - prints the C command that is used to build the program.
 
-For the best debugging experience, you can pass all of them at the same time: `v -cg -keepc -showcc yourprogram.v` , then just run your debugger (gdb/lldb) or IDE on the produced executable `yourprogram`.
+For the best debugging experience, you can pass all of them at the same time: `v -cg -showcc yourprogram.v` , then just run your debugger (gdb/lldb) or IDE on the produced executable `yourprogram`.
 
 If you just want to inspect the generated C code, without further compilation, you can also use the `-o` flag (e.g. `-o file.c`). This will make V produce the `file.c` then stop.
 

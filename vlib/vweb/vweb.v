@@ -54,6 +54,14 @@ pub mut:
 	page_gen_start i64
 }
 
+pub struct Cookie {
+	name string
+	value string
+	exprires time.Time
+	secure bool
+	http_only bool
+}
+
 pub struct Result {}
 
 fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
@@ -108,10 +116,17 @@ pub fn (mut ctx Context) not_found() Result {
 	return vweb.Result{}
 }
 
-pub fn (mut ctx Context) set_cookie(key, val string) {
+pub fn (mut ctx Context) set_cookie(cookie Cookie) {
+	secure := if cookie.secure { "Secure;" } else { "" }
+	http_only := if cookie.http_only { "HttpOnly" } else { "" }
+	ctx.add_header('Set-Cookie', '$cookie.name=$cookie.value; $secure $http_only')
+}
+
+pub fn (mut ctx Context) set_cookie_old(key, val string) {
 	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
 	//println('Set-Cookie $key=$val')
-	ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
+	//ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
+	ctx.add_header('Set-Cookie', '${key}=${val}; HttpOnly')
 }
 
 pub fn (mut ctx Context) set_content_type(typ string) {
@@ -313,40 +328,82 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	}
 	app.init()
 	// Call the right action
+	println('route matching...')
+	t := time.ticks()
 	mut action := ''
 	mut route_words := []string{}
 	mut ok := true
 	url_words := vals[1][1..].split('/')
 	mut vars := []string{cap: route_words.len}
+
 	$for method in T {
 		ok = true
-		route_words = attrs[1..].split('/')
-		//println('words:') println(route_words)
-		//println('vals:') println(url_words)
-		vars = []string{cap: route_words.len}
-		if route_words.len == url_words.len {
-			// match `/:user/:repo/tree` to `/vlang/v/tree`
-			for i, word in route_words {
-				if word.starts_with(':') {
-					// remember and skip the var
-					vars << url_words[i]
-					continue
+		println('\n\n method = $method urlwords=')
+		println(url_words)
+		println('attrs=$attrs')
+		if attrs == '' {
+			// No routing for this method. If it matches, call it and finish matching
+			// since such methods have a priority.
+			// For example URL `/register` matches route `/:user`, but `fn register()`
+			// should be called first.
+
+			if url_words.len == 0 {
+				app.index()
+				conn.close() or {}
+				return
+			}
+
+			println('no attrs for ${url_words[0]}')
+			if url_words[0] == method {
+				println('easy match $method')
+				vars = []
+				app.$method(vars)
+				conn.close() or {}
+				return
+			}
+		}
+		else {
+			//println('ATTR=$attrs')
+			route_words = attrs[1..].split('/')
+			//println('words:') println(route_words)
+			//println('vals:') println(url_words)
+			vars = []string{cap: route_words.len}
+			if route_words.len <= url_words.len {
+				// match `/:user/:repo/tree` to `/vlang/v/tree`
+				for i, word in route_words {
+					if word.starts_with(':') {
+						// remember and skip the var
+						vars << url_words[i]
+						continue
+					}
+					if word != url_words[i] {
+						ok = false
+						break
+					}
 				}
-				if word != url_words[i] {
-					ok = false
-					break
+				if ok {
+					//goto end  // TODO break in $for
+					if !route_words[0].starts_with(':') {
+						// Routes without variables have higher priority, so call it right now
+						// e.g. `/register` matches `['/:user']`, but `['/register']` should be called first.
+						//println('OK not var $action="$action"')
+						app.$method(vars)
+						conn.close() or {}
+						return
+					}
+					action = method
+					println('setting action to $method')
 				}
 			}
 		}
-		if ok {
-			action = method
-			app.$method(vars)
-			conn.close() or {}
-			return
-		}
 	}
+	if action == '' {
+		conn.send_string(http_404) or {}
+	}
+	//end:
 	// No route matched, just do a simple `/home` => `action=home`
 	if action == '' {
+		//println('action is empty because no routes were matched...')
 		action = vals[1][1..].all_before('/')
 		if action.contains('?') {
 			action = action.all_before('?')
@@ -359,6 +416,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		println('action=$action')
 	}
 
+	println('route matching took ${time.ticks() - t}ms')
 	app.$action()
 	/*
 	app.$action() or {

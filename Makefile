@@ -115,10 +115,10 @@ $(VC)/.git/config:
 	$(MAKE) fresh_vc
 
 selfcompile:
-	./v -keepc -cg -o v cmd/v
+	./v -cg -o v cmd/v
 
 selfcompile-static:
-	./v -keepc -cg -cflags '--static' -o v-static cmd/v
+	./v -cg -cflags '--static' -o v-static cmd/v
 
 modules: module_builtin module_strings module_strconv
 module_builtin:

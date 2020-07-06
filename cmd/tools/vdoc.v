@@ -632,9 +632,9 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	}
 	if cfg.include_readme {
 		readme_contents := cfg.get_readme(dir_path)
-        if cfg.output_type == .stdout {
+		if cfg.output_type == .stdout {
 			println(markdown.to_plain(readme_contents))
-        } else if cfg.output_type == .html && cfg.is_multi {
+		} else if cfg.output_type == .html && cfg.is_multi {
 			cfg.docs << doc.Doc{
 				head: doc.DocNode{
 					name: 'README',
@@ -642,7 +642,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 				}
 				time_generated: time.now()
 			}
-        }
+		}
 	}
 	dirs := if cfg.is_multi { get_modules_list(cfg.input_path, []string{}) } else { [cfg.input_path] } 
 	for dirpath in dirs {

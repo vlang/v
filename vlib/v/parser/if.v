@@ -16,17 +16,14 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 	pos := p.tok.position()
 	mut branches := []ast.IfBranch{}
 	mut has_else := false
+	mut comments := []ast.Comment{}
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
 		start_pos := p.tok.position()
-		mut comment := ast.Comment{}
 		if p.tok.kind == .key_if {
 			p.next()
 		} else {
-			// if p.tok.kind == .comment {
-			// p.error('place comments inside {}')
-			// }
-			comment = p.check_comment()
+			comments = p.eat_comments()
 			p.check(.key_else)
 			if p.tok.kind == .key_if {
 				p.next()
@@ -37,8 +34,9 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 				branches << ast.IfBranch{
 					stmts: p.parse_block()
 					pos: start_pos.extend(end_pos)
-					comment: comment
+					comments: comments
 				}
+				comments = []
 				break
 			}
 		}
@@ -74,8 +72,9 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			cond: cond
 			stmts: stmts
 			pos: start_pos.extend(end_pos)
-			comment: comment
+			comments: comments
 		}
+		comments = []
 		if p.tok.kind != .key_else {
 			break
 		}
@@ -116,10 +115,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
-		} else if p.tok.kind == .name && !(p.tok.lit == 'C' &&
-			p.peek_tok.kind == .dot) && (p.tok.lit in table.builtin_type_names ||
-			(p.tok.lit[0].is_capital() && !p.tok.lit.is_upper()) ||
-			(p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital())) {
+		} else if p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot) &&
+				(p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
+				(p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital())) {
 			if var_name.len == 0 {
 				match cond {
 					ast.Ident {

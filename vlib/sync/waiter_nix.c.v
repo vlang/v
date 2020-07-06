@@ -10,7 +10,7 @@ mut:
 }
 
 pub fn (mut w Waiter) wait() {
-	w.mx.lock()
+	w.mx.m_lock()
 }
 
 pub fn (mut w Waiter) stop() {

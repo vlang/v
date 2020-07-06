@@ -1,4 +1,4 @@
-module shared
+module sharedlib
 
 import live
 

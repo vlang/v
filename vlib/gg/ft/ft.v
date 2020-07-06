@@ -86,3 +86,17 @@ pub fn (mut gg FT) init_font() {
 pub fn (ft &FT) flush(){
 	sfons.flush(ft.fons)
 }
+
+pub fn (ft &FT) text_width(s string) int {
+	return 0
+}
+
+pub fn (ft &FT) text_height(s string) int {
+	return 0
+
+}
+
+pub fn (ft &FT) text_size(s string) (int, int) {
+	return 0,0
+}
+

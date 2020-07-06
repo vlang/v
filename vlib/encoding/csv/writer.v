@@ -27,8 +27,8 @@ pub fn (mut w Writer) write(record []string) ?bool {
 		return err_invalid_delim
 	}
 	le := if w.use_crlf { '\r\n' } else { '\n' }
-	for n, _field in record {
-		mut field := _field
+	for n, field_ in record {
+		mut field := field_
 		if n > 0 {
 			w.sb.write(w.delimiter.str())
 		}

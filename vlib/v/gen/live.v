@@ -82,7 +82,7 @@ fn (g &Gen) generate_hotcode_reloading_main_caller() {
 	file := util.cescaped_path( g.pref.path )
 	msvc := if g.pref.ccompiler == 'msvc' { '-cc msvc' } else { '' }
 	so_debug_flag := if g.pref.is_debug { '-cg' } else { '' }
-	vopts := '$msvc $so_debug_flag -keepc -sharedlive -shared'
+	vopts := '$msvc $so_debug_flag -sharedlive -shared'
 	//
 	g.writeln('\t\t// start background reloading thread')
 	if g.pref.os == .windows {

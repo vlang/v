@@ -34,10 +34,6 @@ These build flags are enabled on `build` and `run` as long as the backend is set
    -compress
       Strip the compiled executable to compress it.
 
-   -keepc
-      Specify that you want V to not delete the intermediate generated C source code.
-      Use with -cg for best debugging experience.
-
    -freestanding
       Build the executable without dependency on libc.
       Supported only on `linux` targets currently.

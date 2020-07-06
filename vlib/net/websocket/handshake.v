@@ -7,7 +7,10 @@ fn (mut ws Client) read_handshake(seckey string) {
 	buffer_size := 1
 	mut buffer := malloc(max_buffer)
 	for bytes_read <= max_buffer {
-		res := ws.read_from_server(buffer + bytes_read, buffer_size)
+		mut res := 0
+		unsafe {
+			res = ws.read_from_server(buffer + bytes_read, buffer_size)
+		}
 		if res == 0 || res == -1 {
 			l.f('read_handshake: Failed to read handshake.')
 		}

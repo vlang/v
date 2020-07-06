@@ -515,10 +515,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					g.write('*')
 				}
 				g.expr(expr)
-				if !typ.has_flag(.variadic) && sym.kind == .struct_ &&
-					styp != 'ptr' && !sym.has_method('str') {
-					g.write(', 0') // trailing 0 is initial struct indent count
-				}
 			}
 			g.write('))')
 		}

@@ -118,7 +118,9 @@ pub fn (_str string) to_wide() &u16 {
 		mut wstr := &u16(malloc((num_chars + 1) * 2)) // sizeof(wchar_t)
 		if wstr != 0 {
 			C.MultiByteToWideChar(cp_utf8, 0, _str.str, _str.len, wstr, num_chars)
-			C.memset(&byte(wstr) + num_chars * 2, 0, 2)
+			unsafe {
+				C.memset(&byte(wstr) + num_chars * 2, 0, 2)
+			}
 		}
 		return wstr
 	} $else {
@@ -141,7 +143,9 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
 		mut str_to := malloc(num_chars + 1)
 		if str_to != 0 {
 			C.WideCharToMultiByte(cp_utf8, 0, _wstr, len, str_to, num_chars, 0, 0)
-			C.memset(str_to + num_chars, 0, 1)
+			unsafe {
+				C.memset(str_to + num_chars, 0, 1)
+			}
 		}
 		return tos2(str_to)
 	} $else {

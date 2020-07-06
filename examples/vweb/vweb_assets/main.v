@@ -29,7 +29,7 @@ pub fn (mut app App) init_once() {
 
 pub fn (mut app App) init() {}
 
-fn (mut app App) index() {
+pub fn (mut app App) index() {
 	// We can dynamically specify which assets are to be used in template.
 	mut am := assets.new_manager()
 	am.add_css('assets/index.css')

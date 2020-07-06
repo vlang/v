@@ -38,7 +38,7 @@ fn test_all() {
 		full_test_path := os.real_path(test)
 		println('x.v: $wrkdir/x.v')
 		os.system('cp ${dir}/${test} $wrkdir/x.v') // cant run .vv file
-		compile_cmd := '$vexe -cflags "-w" -verbose=3 -autofree -keepc -cg $wrkdir/x.v'
+		compile_cmd := '$vexe -cflags "-w" -verbose=3 -autofree -cg $wrkdir/x.v'
 		vprintln('compile cmd: $compile_cmd')
 		res := os.exec(compile_cmd) or {
 			bench.fail()

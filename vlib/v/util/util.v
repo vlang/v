@@ -37,16 +37,16 @@ pub fn full_hash() string {
 	if build_hash == current_hash {
 		return build_hash
 	}
-	return '${build_hash}.${current_hash}'
+	return '${build_hash}.$current_hash'
 }
 
 // full_v_version() returns the full version of the V compiler
 pub fn full_v_version(is_verbose bool) string {
 	if is_verbose {
-		return 'V ${v_version} ${full_hash()}'
+		return 'V $v_version $full_hash()'
 	}
 	hash := githash(false)
-	return 'V ${v_version} $hash'
+	return 'V $v_version $hash'
 }
 
 // githash(x) returns the current git commit hash.
@@ -182,7 +182,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 
 pub fn quote_path_with_spaces(s string) string {
 	if s.contains(' ') {
-		return '"${s}"'
+		return '"$s"'
 	}
 	return s
 }
@@ -282,7 +282,7 @@ pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
 	}
 	if os.exists(mod_v_file) {
 		vexe := pref.vexe_path()
-		update_cmd := '"$vexe" update "${modulename}"'
+		update_cmd := '"$vexe" update "$modulename"'
 		if is_verbose {
 			eprintln('check_module_is_installed: updating with $update_cmd ...')
 		}
@@ -290,9 +290,9 @@ pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
 			return error('can not start $update_cmd, error: $err')
 		}
 		if update_res.exit_code != 0 {
-			eprintln('Warning: `${modulename}` exists, but is not updated.
+			eprintln('Warning: `$modulename` exists, but is not updated.
 V will continue, since updates can fail due to temporary network problems,
-and the existing module `${modulename}` may still work.')
+and the existing module `$modulename` may still work.')
 			if is_verbose {
 				eprintln('Details:')
 				eprintln(update_res.output)
@@ -337,7 +337,7 @@ pub fn strip_mod_name(name string) string {
 }
 
 pub fn strip_main_name(name string) string {
-	return name.replace('main.','')
+	return name.replace('main.', '')
 }
 
 pub fn no_dots(s string) string {

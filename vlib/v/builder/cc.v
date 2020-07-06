@@ -482,9 +482,6 @@ fn (mut v Builder) cc() {
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
 	*/
-	if !v.pref.keep_c && v.out_name_c != 'v.c' {
-		os.rm(v.out_name_c)
-	}
 	if v.pref.compress {
 		$if windows {
 			println('-compress does not work on Windows for now')
