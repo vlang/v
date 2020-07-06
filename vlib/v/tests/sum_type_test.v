@@ -133,7 +133,6 @@ type Abc = int | string
 
 fn test_string_cast_to_sumtype() {
 	a := Abc('test')
-	b := Abc(111)
 	match a {
 		int {
 			assert false
@@ -142,6 +141,22 @@ fn test_string_cast_to_sumtype() {
 			assert true
 		}
 	}
+}
+
+fn test_int_cast_to_sumtype() {
+	// literal
+	a := Abc(111)
+	match a {
+		int {
+			assert true
+		}
+		string {
+			assert false
+		}
+	}
+	// var
+	i := 111
+	b := Abc(i)
 	match b {
 		int {
 			assert true
