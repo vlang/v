@@ -78,7 +78,7 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 }
 
 fn (mut g Gen) comp_if(it ast.CompIf) {
-	if it.stmts.len == 0 {
+	if it.stmts.len == 0 && it.else_stmts.len == 0 {
 		return
 	}
 	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
