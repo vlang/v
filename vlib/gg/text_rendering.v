@@ -1,4 +1,6 @@
-module ft
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license that can be found in the LICENSE file.
+module gg
 
 import sokol.sfons
 import gx
@@ -7,13 +9,6 @@ import os
 const (
 	default_font_size = 20
 )
-// TODO remove globals
-/*
-__global g_fons &C.FONScontext
-__global g_font_normal int
-__global g_font_path string
-*/
-
 
 pub struct FT   {
 	pub:
@@ -23,13 +18,13 @@ pub struct FT   {
 	scale f32 = 1.0
 }
 
-pub struct Config {
+pub struct FTConfig {
 	font_path string
 	scale f32 = 1.0
 	font_size int
 }
 
-pub fn new(c Config) ?&FT{
+fn new_ft(c Config) ?&FT{
 	if c.font_path == '' {
 		// Load default font
 	}
@@ -50,38 +45,40 @@ pub fn new(c Config) ?&FT{
 
 }
 
-pub fn (ft &FT) draw_text(x, y int, text string, cfg gx.TextCfg) {
-	ft.fons.set_font(ft.font_normal)
-	ft.fons.set_size(2.0 * ft.scale * f32(cfg.size))
+pub fn (ctx &Context) draw_text(x, y int, text string, cfg gx.TextCfg) {
+	if !ctx.font_inited {
+		return
+	}
+	ctx.ft.fons.set_font(ctx.ft.font_normal)
+	ctx.ft.fons.set_size(2.0 * ctx.ft.scale * f32(cfg.size))
 	if cfg.align == gx.align_right {
-		C.fonsSetAlign(ft.fons, C.FONS_ALIGN_RIGHT | C.FONS_ALIGN_TOP)
+		C.fonsSetAlign(ctx.ft.fons, C.FONS_ALIGN_RIGHT | C.FONS_ALIGN_TOP)
 	}
 	else {
-		C.fonsSetAlign(ft.fons, C.FONS_ALIGN_LEFT | C.FONS_ALIGN_TOP)
+		C.fonsSetAlign(ctx.ft.fons, C.FONS_ALIGN_LEFT | C.FONS_ALIGN_TOP)
 	}
 	color := C.sfons_rgba(cfg.color.r, cfg.color.g, cfg.color.b, 255)
-	C.fonsSetColor(ft.fons, color)
+	C.fonsSetColor(ctx.ft.fons, color)
 	ascender := f32(0.0)
 	descender := f32(0.0)
 	lh := f32(0.0)
-	ft.fons.vert_metrics(&ascender, &descender, &lh)
-	C.fonsDrawText(ft.fons, x*ft.scale, y*ft.scale, text.str, 0) // TODO: check offsets/alignment
+	ctx.ft.fons.vert_metrics(&ascender, &descender, &lh)
+	C.fonsDrawText(ctx.ft.fons, x*ctx.ft.scale, y*ctx.ft.scale, text.str, 0) // TODO: check offsets/alignment
 }
 
-pub fn (ft &FT) draw_text_def(x, y int, text string) {
+pub fn (ctx &Context) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
 		color: gx.black
 		size: default_font_size
 		align: gx.align_left
 	}
-	ft.draw_text(x, y, text, cfg)
+	ctx.draw_text(x, y, text, cfg)
 }
 
+/*
 pub fn (mut gg FT) init_font() {
-	// TODO
-	////gg.fons =g_fons
-	//gg.font_normal=g_font_normal
 }
+*/
 
 pub fn (ft &FT) flush(){
 	sfons.flush(ft.fons)
@@ -93,7 +90,6 @@ pub fn (ft &FT) text_width(s string) int {
 
 pub fn (ft &FT) text_height(s string) int {
 	return 0
-
 }
 
 pub fn (ft &FT) text_size(s string) (int, int) {

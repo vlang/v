@@ -1,6 +1,5 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
+// Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
 import gx
@@ -9,7 +8,6 @@ import sokol
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
-import gg.ft
 
 pub type FNCb fn(x voidptr)
 pub type FNEvent fn(e voidptr, x voidptr)
@@ -55,7 +53,7 @@ pub mut:
 	clear_pass C.sg_pass_action
 	window     C.sapp_desc
 	config     Config
-	ft &ft.FT
+	ft &FT
 	font_inited bool
 }
 
@@ -87,7 +85,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	//println('g.scale=$g.scale is_high_dpi=$is_high_dpi fb_w=$fb_w fb_h=$fb_h')
 	//if g.config.init_text {
 	if g.config.font_path != '' {
-		g.ft = ft.new({ font_path: g.config.font_path, scale: sapp.dpi_scale() }) or {panic(err)}
+		g.ft = new_ft({ font_path: g.config.font_path, scale: sapp.dpi_scale() }) or {panic(err)}
 		g.font_inited = true
 	}
 	if g.config.init_fn != voidptr(0) {
@@ -271,18 +269,6 @@ pub fn (ctx &Context) draw_rounded_rect(x, y, width, height, radius f32, color g
 
 pub fn (ctx &Context) draw_empty_rounded_rect(x, y, width, height, radius f32, border_color gx.Color) {
 }
-
-pub fn (ctx &Context) draw_text(x, y int, text string, cfg gx.TextCfg) {
-	if !ctx.font_inited {
-		return
-	}
-	ctx.ft.draw_text(x, y, text, cfg)
-}
-
-pub fn (ctx &Context) draw_text_def(x, y int, text string) {
-	ctx.ft.draw_text_def(x, y, text)
-}
-
 
 fn C.WaitMessage()
 
