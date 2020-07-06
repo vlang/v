@@ -6,7 +6,7 @@ mut:
 	a int
 }
 
-fn f(rwshared x St, shared z St) {
+fn f(shared x St, shared z St) {
 	for _ in 0..reads_per_thread {
 		rlock x { // other instances may read at the same time
 			time.sleep_ms(1)
@@ -26,14 +26,14 @@ const (
 
 fn test_shared_lock() {
 	// object with separate read/write lock
-	rwshared x := &St{
+	shared x := &St{
 		a: 5
 	}
 	shared z := &St{
 		a: read_threads
 	}
 	for _ in 0..read_threads {
-		go f(rwshared x, shared z)
+		go f(shared x, shared z)
 	}
 	for i in 0..writes {
 		lock x { // wait for ongoing reads to finish, don't start new ones

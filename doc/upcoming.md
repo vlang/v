@@ -35,10 +35,17 @@ atomic d := ...
 - `c` can be passed to coroutines an accessed
   *concurrently*.<sup>2</sup> In order to avoid data races it has to
   be locked before access can occur and unlocked to allow access to
-  other coroutines. This is done by the following block structure:
+  other coroutines. This is done by one the following block structures:
   ```v
   lock c {
       // read, modify, write c
+      ...
+  }
+  ```
+  
+  ```v
+  rlock c {
+      // read c
       ...
   }
   ```

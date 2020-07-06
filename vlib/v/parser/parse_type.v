@@ -133,11 +133,11 @@ pub fn (mut p Parser) parse_type() table.Type {
 			return typ
 		}
 	}
-	is_shared := p.tok.kind in [.key_shared, .key_rwshared]
-	is_atomic_or_rw := p.tok.kind in [.key_rwshared, .key_atomic]
+	is_shared := p.tok.kind == .key_shared
+	is_atomic := p.tok.kind == .key_atomic
 
 	mut nr_muls := 0
-	if p.tok.kind == .key_mut || is_shared || is_atomic_or_rw {
+	if p.tok.kind == .key_mut || is_shared || is_atomic {
 		nr_muls++
 		p.next()
 	}
@@ -161,8 +161,8 @@ pub fn (mut p Parser) parse_type() table.Type {
 	if is_shared {
 		typ = typ.set_flag(.shared_f)
 	}
-	if is_atomic_or_rw {
-		typ = typ.set_flag(.atomic_or_rw)
+	if is_atomic {
+		typ = typ.set_flag(.atomic_f)
 	}
 	if nr_muls > 0 {
 		typ = typ.set_nr_muls(nr_muls)

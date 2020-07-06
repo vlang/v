@@ -33,6 +33,7 @@ pub fn new_rwmutex() &RwMutex {
 	C.pthread_rwlockattr_init(&a.attr)
 	// Give writer priority over readers
 	C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
+	C.pthread_rwlockattr_setpshared(&a.attr, C.PTHREAD_PROCESS_PRIVATE)
 	C.pthread_rwlock_init(&m.mutex, &a.attr)
 	return m
 }

@@ -1158,9 +1158,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				if call_arg.share == .shared_t {
 					words = 'shared'
 					tok = 'shared'
-				} else if call_arg.share == .rwshared_t {
-					words = 'read/write shared'
-					tok = 'rwshared'
 				} else if call_arg.share == .atomic_t {
 					words = 'atomic'
 					tok = 'atomic'
@@ -1176,9 +1173,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				if arg.typ.share() == .shared_t {
 					words = ' shared'
 					tok = 'shared'
-				} else if arg.typ.share() == .rwshared_t {
-					words = ' read/write shared'
-					tok = 'rwshared'
 				} else if arg.typ.share() == .atomic_t {
 					words = 'n atomic'
 					tok = 'atomic'
@@ -1572,11 +1566,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					}
 					mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 					mut ident_var_info := left.var_info()
-					if ident_var_info.share in [.shared_t, .rwshared_t] {
+					if ident_var_info.share == .shared_t {
 						left_type = left_type.set_flag(.shared_f)
 					}
-					if ident_var_info.share in [.atomic_t, .rwshared_t] {
-						left_type = left_type.set_flag(.atomic_or_rw)
+					if ident_var_info.share == .atomic_t {
+						left_type = left_type.set_flag(.atomic_f)
 					}
 					assign_stmt.left_types[i] = left_type
 					ident_var_info.typ = left_type
