@@ -10,7 +10,7 @@ const (
 	default_font_size = 20
 )
 
-pub struct FT   {
+struct FT {
 pub:
 	fons &C.FONScontext
 
@@ -18,13 +18,13 @@ pub:
 	scale f32 = 1.0
 }
 
-pub struct FTConfig {
+struct FTConfig {
 	font_path string
 	scale f32 = 1.0
 	font_size int
 }
 
-fn new_ft(c Config) ?&FT{
+fn new_ft(c FTConfig) ?&FT{
 	if c.font_path == '' {
 		// Load default font
 	}
