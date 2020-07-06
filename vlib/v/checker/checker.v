@@ -2122,7 +2122,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			}
 			if node.expr_type == table.string_type {
 				cast_to_type_sym := c.table.get_type_symbol(node.typ)
-				if cast_to_type_sym.kind != .alias {
+				if cast_to_type_sym.kind !in [.alias, .sum_type] {
 					mut error_msg := 'cannot cast a string'
 					if node.expr is ast.StringLiteral {
 						str_lit := node.expr as ast.StringLiteral
